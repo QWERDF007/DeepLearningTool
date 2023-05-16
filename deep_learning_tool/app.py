@@ -6,7 +6,7 @@ from qtpy import QtWidgets
 
 from deep_learning_tool import __appname__
 from deep_learning_tool import utils
-from deep_learning_tool.widgets import ToolBar
+# from deep_learning_tool.widgets import ToolBar
 from deep_learning_tool.widgets import GalleryWindow, LabelWindow
 from deep_learning_tool.data import Project
 

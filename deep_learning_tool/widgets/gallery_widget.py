@@ -1,7 +1,6 @@
 
 import typing
 import os
-import PySide6.QtWidgets
 
 from qtpy.QtCore import QObject, Signal, Slot, QDir, QDirIterator
 from qtpy.QtCore import Qt, QSize, QRectF, QPointF
