@@ -69,6 +69,9 @@ class ImageView(QGraphicsView):
 
         self.label_image = None
 
+        self.middle_button_press = False
+        self.last_pos = self.pos()
+
 
     def setLabelImage(self, label_image : QGraphicsPixmapItem):
         LOGGER.debug("setLabelImage")
@@ -128,24 +131,42 @@ class ImageView(QGraphicsView):
         self.label_rects = []
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            self.middle_button_press = True
+            self.last_pos = event.pos()
         return super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if self.label_image is not None and self.cross_line_enable:
-            pos = self.mapToScene(event.pos())
-            self.current_viewport_rect = self.getCurrentViewRect()
+        # LOGGER.debug("mouseMoveEvent")
+        
+            # self.setCursor(Qt.CursorShape.ClosedHandCursor)
             
-            new_line1 = QLineF(QPointF(self.current_viewport_rect.x() + 5, pos.y()), 
-                               QPointF(self.current_viewport_rect.x() + self.current_viewport_rect.width() - 5, pos.y()))
+        if self.label_image is not None:
+            if self.middle_button_press:
+                LOGGER.debug(f"move {self.last_pos}")
+                offset = event.pos() - self.last_pos
+                self.last_pos = event.pos()
+                self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - offset.x())
+                self.verticalScrollBar().setValue(self.verticalScrollBar().value() - offset.y())
             
-            new_line2 = QLineF(QPointF(pos.x(), self.current_viewport_rect.y() + 5), 
-                               QPointF(pos.x(), self.current_viewport_rect.y() + self.current_viewport_rect.height() - 5))
-            
-            self.cross_line[0].setLine(new_line1)
-            self.cross_line[1].setLine(new_line2)
+            if self.cross_line_enable:
+                pos = self.mapToScene(event.pos())
+                self.current_viewport_rect = self.getCurrentViewRect()
+                
+                new_line1 = QLineF(QPointF(self.current_viewport_rect.x() + 5, pos.y()), 
+                                QPointF(self.current_viewport_rect.x() + self.current_viewport_rect.width() - 5, pos.y()))
+                
+                new_line2 = QLineF(QPointF(pos.x(), self.current_viewport_rect.y() + 5), 
+                                QPointF(pos.x(), self.current_viewport_rect.y() + self.current_viewport_rect.height() - 5))
+                
+                self.cross_line[0].setLine(new_line1)
+                self.cross_line[1].setLine(new_line2)
         return super().mouseMoveEvent(event)
     
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        self.middle_button_press = False
         return super().mouseReleaseEvent(event)
     
     def wheelEvent(self, event: QWheelEvent) -> None:
