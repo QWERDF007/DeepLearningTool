@@ -7,7 +7,7 @@ from qtpy.QtCore import Qt, QLineF, QRectF, QPointF
 from qtpy.QtWidgets import QWidget, QMainWindow, QDockWidget, QSizePolicy, QListWidget
 from qtpy.QtWidgets import QGridLayout
 from qtpy.QtWidgets import QGraphicsScene, QGraphicsView, QGraphicsLineItem, QGraphicsRectItem, QGraphicsItem, QGraphicsPixmapItem
-from qtpy.QtGui import QPixmap, QPen
+from qtpy.QtGui import QPixmap, QPen, QPainter
 
 
 from qtpy.QtCore import QEvent
@@ -62,7 +62,12 @@ class ImageView(QGraphicsView):
 
         self.current_viewport_rect = self.getCurrentViewRect()
 
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+
+        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
 
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -76,6 +81,8 @@ class ImageView(QGraphicsView):
     def setLabelImage(self, label_image : QGraphicsPixmapItem):
         LOGGER.debug("setLabelImage")
         self.label_image = label_image
+        # 设置 sceneRect 缩放才正常
+        self.scene().setSceneRect(self.label_image.boundingRect())
         self.label_image.setPos(0,0)
         self.fitInView(self.label_image, Qt.AspectRatioMode.KeepAspectRatio)
 
@@ -134,8 +141,23 @@ class ImageView(QGraphicsView):
         if event.button() == Qt.MouseButton.MiddleButton:
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
             self.middle_button_press = True
-            self.last_pos = event.pos()
+            self.last_pos = self.mapToScene(event.pos())
         return super().mousePressEvent(event)
+    
+    def drawCrossLine(self, pos):
+        if self.cross_line_enable:
+            pos = self.mapToScene(pos)
+            self.current_viewport_rect = self.getCurrentViewRect()
+            
+            new_line1 = QLineF(QPointF(self.current_viewport_rect.x() + 5, pos.y()), 
+                            QPointF(self.current_viewport_rect.x() + self.current_viewport_rect.width() - 5, pos.y()))
+            
+            new_line2 = QLineF(QPointF(pos.x(), self.current_viewport_rect.y() + 5), 
+                            QPointF(pos.x(), self.current_viewport_rect.y() + self.current_viewport_rect.height() - 5))
+            
+            self.cross_line[0].setLine(new_line1)
+            self.cross_line[1].setLine(new_line2)
+
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         # LOGGER.debug("mouseMoveEvent")
@@ -144,24 +166,15 @@ class ImageView(QGraphicsView):
             
         if self.label_image is not None:
             if self.middle_button_press:
-                LOGGER.debug(f"move {self.last_pos}")
-                offset = event.pos() - self.last_pos
-                self.last_pos = event.pos()
-                self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - offset.x())
-                self.verticalScrollBar().setValue(self.verticalScrollBar().value() - offset.y())
-            
-            if self.cross_line_enable:
                 pos = self.mapToScene(event.pos())
-                self.current_viewport_rect = self.getCurrentViewRect()
+                offset = pos - self.last_pos
+                self.label_image.moveBy(offset.x(), offset.y())
+                self.last_pos = pos
+                # self.centerOn(pos)
                 
-                new_line1 = QLineF(QPointF(self.current_viewport_rect.x() + 5, pos.y()), 
-                                QPointF(self.current_viewport_rect.x() + self.current_viewport_rect.width() - 5, pos.y()))
-                
-                new_line2 = QLineF(QPointF(pos.x(), self.current_viewport_rect.y() + 5), 
-                                QPointF(pos.x(), self.current_viewport_rect.y() + self.current_viewport_rect.height() - 5))
-                
-                self.cross_line[0].setLine(new_line1)
-                self.cross_line[1].setLine(new_line2)
+
+        self.drawCrossLine(event.pos())
+            
         return super().mouseMoveEvent(event)
     
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
@@ -170,6 +183,10 @@ class ImageView(QGraphicsView):
         return super().mouseReleaseEvent(event)
     
     def wheelEvent(self, event: QWheelEvent) -> None:
+        new_scale = 1.0 + event.angleDelta().y()  * 0.00125
+        self.scale(new_scale, new_scale)
+        self.update()
+        self.drawCrossLine(event.pos())
         return super().wheelEvent(event)
     
     def leaveEvent(self, event: QEvent) -> None:
