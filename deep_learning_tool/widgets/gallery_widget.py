@@ -18,6 +18,7 @@ from qtpy.QtGui import QMouseEvent, QResizeEvent, QWheelEvent, QKeyEvent, QConte
 
 from deep_learning_tool.utils import newIcon, newAction
 from deep_learning_tool.data import Project
+from deep_learning_tool.configs import image_suffixs_filter
 from deep_learning_tool import LOGGER
 
 from .widget import ProjectInfo, HLine
@@ -277,8 +278,7 @@ class GalleryWindow(QMainWindow):
 
     @Slot()
     def openImage(self):
-        filter = "Image Files (*.png *.jpg *.bmp)"
-        file_path, _ = QFileDialog().getOpenFileName(self, "选择图片加入项目", "/home",  filter)
+        file_path, _ = QFileDialog().getOpenFileName(self, "选择图片加入项目", "/home",  image_suffixs_filter)
         if file_path != "" and self.project.images_path.get(file_path) is None:
             self.project.addImage(file_path)
             self.gallery_view.addImage(GalleryItem(file_path))
