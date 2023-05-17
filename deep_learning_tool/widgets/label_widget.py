@@ -9,7 +9,7 @@ from qtpy.QtWidgets import QGridLayout
 from qtpy.QtWidgets import (QGraphicsScene, QGraphicsView, QGraphicsLineItem, QGraphicsRectItem, 
                             QGraphicsItem, QGraphicsPixmapItem, QStyleOptionGraphicsItem)
 from qtpy.QtWidgets import QGraphicsSceneHoverEvent
-from qtpy.QtGui import QPixmap, QPen, QPainter, QPainterPath, QPolygonF, QTransform
+from qtpy.QtGui import QPixmap, QPen, QPainter, QPainterPath, QPolygonF, QCursor
 
 
 from qtpy.QtCore import QEvent
@@ -18,8 +18,8 @@ from qtpy.QtGui import QMouseEvent, QResizeEvent, QWheelEvent, QKeyEvent
 from .widget import ProjectInfo, HLine
 
 from deep_learning_tool.data import Project
+from deep_learning_tool.utils import newPixmap
 from deep_learning_tool import LOGGER
-
 
 class RectItem(QGraphicsRectItem):
     # rectChanged = Signal(QRectF)
@@ -28,24 +28,23 @@ class RectItem(QGraphicsRectItem):
         LOGGER.debug("init")
         super().__init__(rect, parent)
         # self.acceptHoverEvents(True)
-        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
-        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
-        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
-        self.setAcceptHoverEvents(True)
+        # self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+        # self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+        # self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
+        # self.setAcceptHoverEvents(True)
+
+    def setPenCursor(self, cursor):
+        self.pen_cursor = cursor
 
     def __del__(self):
         LOGGER.debug("del")
         
 
-
     def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value: QPointF) -> Any:
         # 限制移动不超出 parentItem 的 Pixmap
         parent = self.parentItem()
-        LOGGER.debug(parent)
         if parent is not None and isinstance(parent, QGraphicsPixmapItem) and change == QGraphicsItem.GraphicsItemChange.ItemPositionChange:
-            LOGGER.debug(value)
             new_pos = value
-            
             rect = self.rect()
             pos_on_pixmap = new_pos + rect.topLeft()
             prect = QRectF(parent.pixmap().rect())
@@ -68,7 +67,7 @@ class RectItem(QGraphicsRectItem):
         return super().hoverMoveEvent(event)
     
     def hoverLeaveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
-        self.setCursor(Qt.CursorShape.ArrowCursor)
+        self.setCursor(self.pen_cursor)
         return super().hoverLeaveEvent(event)
 
 class ImageItem(QGraphicsPixmapItem):
@@ -131,10 +130,13 @@ class CrossLineItem(QGraphicsItem):
         painter.drawLine(self.line1)
         painter.drawLine(self.line2)
 
+
 class ImageView(QGraphicsView):
     def __init__(self, scene, parent=None) -> None:
         LOGGER.debug("ImageView")
         super().__init__(scene, parent)
+
+        self.pen_cursor = QCursor(newPixmap("pen"))
 
         self.label_rects = []
 
@@ -239,11 +241,7 @@ class ImageView(QGraphicsView):
         return rect
     
     def getRectInImage(self, rect : QRectF) -> QRectF:
-        LOGGER.debug(self.label_image.boundingRect())
-        # polygon = self.mapToScene(self.label_image.boundingRect())
-        # prect = QRectF(polygon[0], polygon[2])
         prect = self.label_image.boundingRect()
-        LOGGER.debug(f"{prect} {rect}")
         return rect.intersected(prect)
 
 
@@ -256,6 +254,11 @@ class ImageView(QGraphicsView):
         else:
             rect = self.getRectInImage(rect)
             self.drawing_rect.setRect(rect)
+            self.drawing_rect.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+            self.drawing_rect.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+            self.drawing_rect.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
+            self.drawing_rect.setAcceptHoverEvents(True)
+            self.drawing_rect.setPenCursor(self.pen_cursor)
             self.drawing_rect = None
             return True
         
@@ -268,6 +271,7 @@ class ImageView(QGraphicsView):
             selected_items = self.scene().selectedItems()
             selected_items_count = len(selected_items)
             if selected_items_count > 0:
+                self.setCursor(Qt.CursorShape.SizeAllCursor)
                 super().mousePressEvent(event)
             elif self.label_image is not None:
                 self.p0 = self.label_image.mapFromScene(self.mapToScene(pos))
@@ -296,13 +300,14 @@ class ImageView(QGraphicsView):
                 self.label_image.moveBy(offset.x(), offset.y())
                 self.last_pos = pos
                 return 
+
         super().mouseMoveEvent(event)
     
 
     
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         pos = event.pos()
-        self.setCursor(Qt.CursorShape.ArrowCursor)
+        self.setCursor(self.pen_cursor)
         self.middle_button_press = False
         if event.button() == Qt.MouseButton.LeftButton:
             if self.label_image is not None and self.drawing_rect is not None:
@@ -317,21 +322,32 @@ class ImageView(QGraphicsView):
                             self.current_select_item = item
                             item.setSelected(True)
                             break
+                    self.setCursor(Qt.CursorShape.SizeAllCursor)
                     super().mouseReleaseEvent(event)
-        return super().mouseReleaseEvent(event)
-    
+        return super().mouseReleaseEvent(event)    
     
     def wheelEvent(self, event: QWheelEvent) -> None:
         new_scale = 1.0 + event.angleDelta().y()  * 0.00125
         self.scale(new_scale, new_scale)
         self.update()
         self.drawCrossLine(event.pos())
-        return super().wheelEvent(event)
+        event.accept()
+        # 不调用父类事件传递下去，避免缩放后触发滚动条
+        # return super().wheelEvent(event)
     
     def leaveEvent(self, event: QEvent) -> None:
         if self.cross_line:
             self.cross_line.setCrossLine(QLineF(), QLineF())
+        self.setCursor(Qt.CursorShape.ArrowCursor)
         return super().leaveEvent(event)
+    
+    def enterEvent(self, event : QEvent) -> None:
+        self.setCursor(self.pen_cursor)
+        return super().enterEvent(event)
+
+    def keyPressEvent(self, event : QEvent) -> None:
+        return super().keyPressEvent(event)
+
     
 
 class LabelWindow(QMainWindow):
