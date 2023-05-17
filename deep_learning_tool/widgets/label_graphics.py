@@ -1,5 +1,5 @@
 import typing
-from typing import Any
+from typing import Any, Optional
 
 from qtpy.QtCore import Signal, Slot
 from qtpy.QtCore import Qt, QLineF, QRectF, QPointF
@@ -24,10 +24,6 @@ class RectItem(QGraphicsRectItem):
         LOGGER.debug("init")
         super().__init__(rect, parent)
 
-
-    def setPenCursor(self, cursor):
-        self.pen_cursor = cursor
-
     def __del__(self):
         LOGGER.debug("del")
         
@@ -49,18 +45,32 @@ class RectItem(QGraphicsRectItem):
         return super().itemChange(change, value)
     
     def hoverEnterEvent(self, event: QGraphicsSceneHoverEvent) -> None:
-        if self.isSelected():
+        # LOGGER.debug(f"hoverEnterEvent {self.isSelected()} {self.cursor()} {self.cursor().shape() != Qt.CursorShape.SizeAllCursor}")
+        if self.isSelected() and self.cursor().shape() != Qt.CursorShape.SizeAllCursor:
             self.setCursor(Qt.CursorShape.SizeAllCursor)
         return super().hoverEnterEvent(event)
     
     def hoverMoveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
-        if self.isSelected():
+        # LOGGER.debug(f"hoverMoveEvent {self.isSelected()} {self.cursor()} {self.cursor().shape() != Qt.CursorShape.SizeAllCursor}")
+        if self.isSelected() and self.cursor().shape() != Qt.CursorShape.SizeAllCursor:
             self.setCursor(Qt.CursorShape.SizeAllCursor)
         return super().hoverMoveEvent(event)
     
     def hoverLeaveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
-        self.setCursor(self.pen_cursor)
+        # LOGGER.debug(f"hoverLeaveEvent {self.cursor()} {self.cursor().shape() != Qt.CursorShape.ArrowCursor}")
+        if self.cursor().shape() != Qt.CursorShape.ArrowCursor:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
         return super().hoverLeaveEvent(event)
+    
+    def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = ...) -> None:
+        pen = self.pen()
+        pen.setWidth(1)
+        pen.setCosmetic(True)
+        if self.isSelected():
+            pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.drawRect(self.rect())
+        # return super().paint(painter, option, widget)
 
 
 
@@ -131,8 +141,6 @@ class ImageView(QGraphicsView):
     def __init__(self, scene, parent=None) -> None:
         LOGGER.debug("ImageView")
         super().__init__(scene, parent)
-
-        self.pen_cursor = QCursor(newPixmap("pen"))
 
         self.label_rects = []
 
@@ -254,7 +262,6 @@ class ImageView(QGraphicsView):
             self.drawing_rect.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
             self.drawing_rect.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
             self.drawing_rect.setAcceptHoverEvents(True)
-            self.drawing_rect.setPenCursor(self.pen_cursor)
             self.drawing_rect = None
             return True
         
@@ -266,9 +273,12 @@ class ImageView(QGraphicsView):
                 return super().mousePressEvent(event)
             selected_items = self.scene().selectedItems()
             selected_items_count = len(selected_items)
-            if selected_items_count > 0:
+            items = self.items(pos)
+            if selected_items_count == 1:
                 self.setCursor(Qt.CursorShape.SizeAllCursor)
-                super().mousePressEvent(event)
+                return super().mousePressEvent(event)
+            elif selected_items_count > 1:
+                return super().mousePressEvent(event)
             elif self.label_image is not None:
                 self.p0 = self.label_image.mapFromScene(self.mapToScene(pos))
                 self.drawing_rect = RectItem(QRectF(self.p0, self.p0), self.label_image)
@@ -288,22 +298,20 @@ class ImageView(QGraphicsView):
             if self.drawing_rect is not None:
                 self.scene().clearSelection()
                 self.drawing_rect.setRect(self.drawingRect(self.mapToScene(event.pos())))
-                return
 
             if self.middle_button_press:
                 pos = self.mapToScene(event.pos())
                 offset = pos - self.last_pos
                 self.label_image.moveBy(offset.x(), offset.y())
                 self.last_pos = pos
-                return 
 
-        super().mouseMoveEvent(event)
+        return super().mouseMoveEvent(event)
     
 
     
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         pos = event.pos()
-        self.setCursor(self.pen_cursor)
+        
         self.middle_button_press = False
         if event.button() == Qt.MouseButton.LeftButton:
             if self.label_image is not None and self.drawing_rect is not None:
@@ -317,8 +325,8 @@ class ImageView(QGraphicsView):
                             self.current_select_item = item
                             item.setSelected(True)
                             break
-                    self.setCursor(Qt.CursorShape.SizeAllCursor)
-                    super().mouseReleaseEvent(event)
+                    return super().mouseReleaseEvent(event)
+        # self.setCursor(Qt.CursorShape.ArrowCursor)
         return super().mouseReleaseEvent(event)    
     
     def wheelEvent(self, event: QWheelEvent) -> None:
@@ -337,7 +345,6 @@ class ImageView(QGraphicsView):
         return super().leaveEvent(event)
     
     def enterEvent(self, event : QEvent) -> None:
-        self.setCursor(self.pen_cursor)
         return super().enterEvent(event)
 
     def keyPressEvent(self, event : QEvent) -> None:
