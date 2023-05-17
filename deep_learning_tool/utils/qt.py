@@ -1,12 +1,15 @@
 import os
 
 from qtpy.QtWidgets import QAction, QMenu
-from qtpy.QtGui import QIcon
+from qtpy.QtGui import QIcon, QPixmap
 from qtpy.QtCore import QThread
 
 
 here = os.path.dirname(os.path.abspath(__file__))
 
+def newPixmap(pm:str):
+    pixmap_dir = os.path.join(here, "../icons")
+    return  QPixmap(os.path.join(":/", pixmap_dir, "%s.png" % pm))
 
 def newIcon(icon:str):
     icons_dir = os.path.join(here, "../icons")
