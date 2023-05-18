@@ -1,4 +1,3 @@
-import gc
 import typing
 from typing import Any, Optional
 from enum import Enum
@@ -127,6 +126,7 @@ class RectItem(QGraphicsRectItem):
             self.setRectFromParent(rect)
         else:
             # fixme
+            LOGGER.error("fixme")
             self.setRect(QRectF())
 
     def adjustByVertex(self, pos : QPointF):
@@ -174,15 +174,13 @@ class RectItem(QGraphicsRectItem):
                     y2 = prect.height() if y2 > prect.height() else y2
             else:
                 # fixme
-                LOGGER.debug("fixme")
+                LOGGER.error("fixme")
                 x1, x2, y1, y2 = 0, 0, 0, 0
-            LOGGER.debug(QRectF(QPointF(x1, y1), QPointF(x2, y2)))
             return QRectF(QPointF(x1, y1), QPointF(x2, y2)).intersected(prect)
         else:
             return QRectF()
 
 
-    
     def adjustByEdge(self, pos : QPointF) -> QRectF:
         if isinstance(self.parentItem(), QGraphicsPixmapItem):
             prect = QRectF(self.parentItem().pixmap().rect())
@@ -225,27 +223,33 @@ class RectItem(QGraphicsRectItem):
                 y2 = bottom
             else:
                 # fixme
-                LOGGER.debug("fixme")
+                LOGGER.error("fixme")
                 x1, x2, y1, y2 = 0, 0, 0, 0
-            LOGGER.debug(QRectF(QPointF(x1, y1), QPointF(x2, y2)))
             return QRectF(QPointF(x1, y1), QPointF(x2, y2)).intersected(prect)
         else:
-            LOGGER.debug(QRectF())
             return QRectF()
 
     
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if self.isSelected():
+        if event.button() == Qt.MouseButton.LeftButton and self.isSelected():
             scale = self.scene().views()[0].transform().m11()    
             self.selected_vertex = self.nearestVertex(event.pos(), 10 / scale)
             if self.selected_vertex == VertexEdge.NO_VERTEX.value:
                 self.selected_edge = self.nearestEdge(event.pos(), 10 / scale)
-        LOGGER.debug(f"vertex {self.selected_vertex} edge {self.selected_edge}")
+        elif event.button() == Qt.MouseButton.MiddleButton:
+            if self.cursor().shape() != Qt.CursorShape.ClosedHandCursor:
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
         return super().mousePressEvent(event)
     
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if self.selected_vertex != VertexEdge.NO_VERTEX.value or self.selected_edge != VertexEdge.NO_EDGE.value:
-            self.adjustRect(event.pos())
+        if event.buttons() & Qt.MouseButton.MiddleButton:
+            if self.cursor().shape() != Qt.CursorShape.ClosedHandCursor:
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        elif event.buttons() & Qt.MouseButton.LeftButton:
+            if self.selected_vertex != VertexEdge.NO_VERTEX.value or self.selected_edge != VertexEdge.NO_EDGE.value:
+                self.adjustRect(event.pos())
+            else:
+                return super().mouseMoveEvent(event)
         else:
             return super().mouseMoveEvent(event)
     
@@ -271,7 +275,6 @@ class RectItem(QGraphicsRectItem):
         return super().hoverMoveEvent(event)
     
     def hoverLeaveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
-        # LOGGER.debug(f"hoverLeaveEvent {self.cursor()} {self.cursor().shape() != Qt.CursorShape.ArrowCursor}")
         if self.cursor().shape() != Qt.CursorShape.ArrowCursor:
             self.setCursor(Qt.CursorShape.ArrowCursor)
         return super().hoverLeaveEvent(event)
@@ -288,7 +291,9 @@ class RectItem(QGraphicsRectItem):
 
     def boundingRect(self) -> QRectF:
         # 在rect基础上向外扩充 10 个单位
-        return self.rect().adjusted(-10, -10, 10, 10)
+        scale = self.scene().views()[0].transform().m11()
+        offset = 10 / scale
+        return self.rect().adjusted(-offset, -offset, offset, offset)
 
     def shape(self) -> QPainterPath:
         # 重写以扩充鼠标事件响应范围和碰撞检测范围
@@ -447,7 +452,6 @@ class ImageView(QGraphicsView):
 
     def drawCrossLine(self, pos):
         if self.cross_line_enable:
-            pos = self.mapToScene(pos)
             self.current_viewport_rect = self.getCurrentViewRectOnScene()
             
             new_line1 = QLineF(QPointF(self.current_viewport_rect.x(), pos.y()), 
@@ -491,6 +495,7 @@ class ImageView(QGraphicsView):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         pos = event.pos()
+        scenePos = self.mapToScene(pos)
         if event.button() == Qt.MouseButton.LeftButton:
             if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
                 return super().mousePressEvent(event)
@@ -502,41 +507,43 @@ class ImageView(QGraphicsView):
             elif selected_items_count > 1:
                 return super().mousePressEvent(event)
             elif self.label_image is not None:
-                self.p0 = self.label_image.mapFromScene(self.mapToScene(pos))
+                self.p0 = self.label_image.mapFromScene(scenePos)
                 self.drawing_rect = RectItem(QRectF(self.p0, self.p0), self.label_image)
                 return
         elif event.button() == Qt.MouseButton.MiddleButton:
-            self.setCursor(Qt.CursorShape.ClosedHandCursor)
-            self.middle_button_press = True
-            self.last_pos = self.mapToScene(event.pos())
+            if self.viewport().cursor().shape() != Qt.CursorShape.ClosedHandCursor:
+                self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
+            self.last_pos = scenePos
             return
-        super().mousePressEvent(event)
+        return super().mousePressEvent(event)
 
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        pos = event.pos()
+        scenePos = self.mapToScene(pos)
         if self.label_image is not None:
-            self.drawCrossLine(event.pos())
+            self.drawCrossLine(scenePos)
 
             if self.drawing_rect is not None:
                 self.scene().clearSelection()
-                self.drawing_rect.setRect(self.drawingRect(self.mapToScene(event.pos())))
+                self.drawing_rect.setRect(self.drawingRect(scenePos))
 
-            if self.middle_button_press:
-                pos = self.mapToScene(event.pos())
-                offset = pos - self.last_pos
+            if event.buttons() & Qt.MouseButton.MiddleButton:
+                if self.viewport().cursor().shape() != Qt.CursorShape.ClosedHandCursor:
+                    self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
+                offset = scenePos - self.last_pos
                 self.label_image.moveBy(offset.x(), offset.y())
-                self.last_pos = pos
+                self.last_pos = scenePos
 
         return super().mouseMoveEvent(event)
     
     
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         pos = event.pos()
-        
-        self.middle_button_press = False
+        scenePos = self.mapToScene(pos)
         if event.button() == Qt.MouseButton.LeftButton:
             if self.label_image is not None and self.drawing_rect is not None:
-                rect = self.drawingRect(self.mapToScene(pos))
+                rect = self.drawingRect(scenePos)
                 LOGGER.debug("finishedRect")
                 if not self.finishedRect(rect):
                     items = self.items(pos)
@@ -546,15 +553,16 @@ class ImageView(QGraphicsView):
                             item.setSelected(True)
                             break
                     return super().mouseReleaseEvent(event)
-        if self.cursor().shape() != Qt.CursorShape.ArrowCursor:
-            self.setCursor(Qt.CursorShape.ArrowCursor)
-        return super().mouseReleaseEvent(event)    
+        if self.viewport().cursor().shape() != Qt.CursorShape.ArrowCursor:
+            self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+        return super().mouseReleaseEvent(event)
+    
     
     def wheelEvent(self, event: QWheelEvent) -> None:
         new_scale = 1.0 + event.angleDelta().y()  * 0.00125
         self.scale(new_scale, new_scale)
         self.update()
-        self.drawCrossLine(event.pos())
+        self.drawCrossLine(self.mapToScene(event.pos()))
         event.accept()
         # 不调用父类事件传递下去，避免缩放后触发滚动条
         # return super().wheelEvent(event)
