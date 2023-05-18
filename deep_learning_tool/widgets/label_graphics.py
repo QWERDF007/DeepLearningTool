@@ -60,8 +60,8 @@ class RectItem(QGraphicsRectItem):
 
     def __init__(self, rect: QRectF, parent: typing.Optional[QGraphicsItem] = ...) -> None:
         super().__init__(rect, parent)
-        self.selected_vertex = VertexEdge.NO_VERTEX
-        self.selected_edge = VertexEdge.NO_EDGE
+        self.selected_vertex = VertexEdge.NO_VERTEX.value
+        self.selected_edge = VertexEdge.NO_EDGE.value
         LOGGER.debug(f"init item:\n{self}")
 
     def __del__(self):
@@ -88,16 +88,6 @@ class RectItem(QGraphicsRectItem):
         rect = self.rect()
         return [rect.topLeft(), rect.topRight(), rect.bottomRight(), rect.bottomLeft()]
     
-    # def Edges(self):
-    #     vertices = self.Vertices()
-    #     edges = [
-    #         QLineF(vertices[3], vertices[0]), 
-    #         QLineF(vertices[0], vertices[1]),
-    #         QLineF(vertices[1], vertices[2]),
-    #         QLineF(vertices[2], vertices[3]),
-    #     ] 
-    #     return edges
-    
     def nearestVertex(self, pos : QPointF, epsilon : float):
         min_distance = float("inf")
         min_i = VertexEdge.NO_VERTEX.value
@@ -107,7 +97,6 @@ class RectItem(QGraphicsRectItem):
             if dist <= epsilon and dist < min_distance:
                 min_distance = dist
                 min_i = i
-        LOGGER.debug(f"{min_distance} {epsilon}")
         return min_i
     
     def nearestEdge(self, pos : QPointF, epsilon : float):
@@ -120,26 +109,150 @@ class RectItem(QGraphicsRectItem):
             if dist <= epsilon and dist < min_distance:
                 min_distance = dist
                 post_i = i
-        LOGGER.debug(f"{min_distance} {epsilon}")
         return post_i
     
+    def setRectFromParent(self, rect : QRectF):
+        if isinstance(self.parentItem(), QGraphicsPixmapItem):
+            prect = self.parentItem().pixmap().rect()
+            self.setRect(self.mapRectFromParent(rect.intersected(prect)))
+        else:
+            self.setRect(QRectF())
+    
+    def adjustRect(self, pos):
+        if self.selected_vertex != VertexEdge.NO_VERTEX.value:
+            rect = self.adjustByVertex(pos)
+            self.setRectFromParent(rect)
+        elif self.selected_edge != VertexEdge.NO_EDGE.value:
+            rect = self.adjustByEdge(pos)
+            self.setRectFromParent(rect)
+        else:
+            # fixme
+            self.setRect(QRectF())
+
+    def adjustByVertex(self, pos : QPointF):
+        LOGGER.debug(f'\n{self}\n{self.parentItem()}')
+        if isinstance(self.parentItem(), QGraphicsPixmapItem):
+            prect = QRectF(self.parentItem().pixmap().rect())
+            min_edge = 10
+            x1, x2 = 0, 0
+            y1, y2 = 0, 0
+            pos = self.mapToParent(pos)
+            top_left = self.mapToParent(self.rect().topLeft())
+            bottom_right = self.mapToParent(self.rect().bottomRight())
+
+            if self.selected_vertex == VertexEdge.TOP_LEFT.value:
+                x1 = min(pos.x(), bottom_right.x() - min_edge)
+                y1 = min(pos.y(), bottom_right.y() - min_edge)
+                x2 = bottom_right.x()
+                y2 = bottom_right.y()
+                if not prect.contains(QPointF(x1, y1)):
+                    x1 = 0 if x1 < 0 else x1
+                    y1 = 0 if y1 < 0 else y1
+            elif self.selected_vertex == VertexEdge.TOP_RIGHT.value:
+                x1 = top_left.x()
+                y1 = min(pos.y(), bottom_right.y() - min_edge)
+                x2 = max(pos.x(), x1 + min_edge)
+                y2 = bottom_right.y()
+                if not prect.contains(QPointF(x2, y1)):
+                    x2 = prect.width() if x2 > prect.width() else x2
+                    y1 = 0 if y1 < 0 else y1
+            elif self.selected_vertex == VertexEdge.BOTTOM_RIGHT.value:
+                x1 = top_left.x()
+                y1 = top_left.y()
+                x2 = max(pos.x(), x1 + min_edge)
+                y2 = max(pos.y(), y1 + min_edge)
+                if not prect.contains(QPointF(x2, y2)):
+                    x2 = prect.width() if x2 > prect.width() else x2
+                    y2 = prect.height() if y2 > prect.height() else y2
+            elif self.selected_vertex == VertexEdge.BOTTOM_LEFT.value:
+                x1 = min(pos.x(), bottom_right.x() - min_edge)
+                y1 = top_left.y()
+                x2 = bottom_right.x()
+                y2 = max(pos.y(), y1 + min_edge)
+                if not prect.contains(QPointF(x1, y2)):
+                    x1 = 0 if x1 < 0 else x1
+                    y2 = prect.height() if y2 > prect.height() else y2
+            else:
+                # fixme
+                LOGGER.debug("fixme")
+                x1, x2, y1, y2 = 0, 0, 0, 0
+            LOGGER.debug(QRectF(QPointF(x1, y1), QPointF(x2, y2)))
+            return QRectF(QPointF(x1, y1), QPointF(x2, y2)).intersected(prect)
+        else:
+            return QRectF()
+
+
+    
+    def adjustByEdge(self, pos : QPointF) -> QRectF:
+        if isinstance(self.parentItem(), QGraphicsPixmapItem):
+            prect = QRectF(self.parentItem().pixmap().rect())
+            min_edge = 10
+            x1, x2 = 0, 0
+            y1, y2 = 0, 0
+            pos = self.mapToParent(pos)
+            top_left = self.mapToParent(self.rect().topLeft())
+            bottom_right = self.mapToParent(self.rect().bottomRight())
+
+            if self.selected_edge == VertexEdge.LEFT.value:
+                x1 = min(pos.x(), bottom_right.x() - min_edge)
+                y1 = top_left.y()
+                if not prect.contains(QPointF(x1, y1)):
+                    x1 = 0
+                x2 = bottom_right.x()
+                y2 = bottom_right.y()
+            elif self.selected_edge == VertexEdge.TOP.value:
+                x1 = top_left.x()
+                y1 = min(pos.y(), bottom_right.y() - min_edge)
+                if not prect.contains(QPointF(x1, y1)):
+                    y1 = 0
+                x2 = bottom_right.x()
+                y2 = bottom_right.y()
+            elif self.selected_edge == VertexEdge.RIGHT.value:
+                x1 = top_left.x()
+                y1 = top_left.y()
+                right = max(pos.x(), top_left.x() + min_edge)
+                if not prect.contains(QPointF(right, y1)):
+                    right = prect.width()
+                x2 = right
+                y2 = bottom_right.y()
+            elif self.selected_edge == VertexEdge.BOTTOM.value:
+                x1 = top_left.x()
+                y1 = top_left.y()
+                bottom = max(pos.y(), top_left.y() + min_edge)
+                if not prect.contains(QPointF(x1, bottom)):
+                    bottom = prect.height()
+                x2 = bottom_right.x()
+                y2 = bottom
+            else:
+                # fixme
+                LOGGER.debug("fixme")
+                x1, x2, y1, y2 = 0, 0, 0, 0
+            LOGGER.debug(QRectF(QPointF(x1, y1), QPointF(x2, y2)))
+            return QRectF(QPointF(x1, y1), QPointF(x2, y2)).intersected(prect)
+        else:
+            LOGGER.debug(QRectF())
+            return QRectF()
+
+    
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if self.cursor().shape() != Qt.CursorShape.SizeAllCursor:
-            self.setCursor(Qt.CursorShape.SizeAllCursor)
-        return super().mousePressEvent(event)
-    
-    # def hoverEnterEvent(self, event: QGraphicsSceneHoverEvent) -> None:
-    #     # LOGGER.debug(f"hoverEnterEvent {self.isSelected()} {self.cursor()} {self.cursor().shape() != Qt.CursorShape.SizeAllCursor}")
-    #     if self.isSelected() and self.cursor().shape() != Qt.CursorShape.SizeAllCursor:
-    #         self.setCursor(Qt.CursorShape.SizeAllCursor)
-    #     return super().hoverEnterEvent(event)
-    
-    def hoverMoveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
-        LOGGER.debug(self)
         if self.isSelected():
             scale = self.scene().views()[0].transform().m11()    
             self.selected_vertex = self.nearestVertex(event.pos(), 10 / scale)
-            LOGGER.debug(f'vertex {self.selected_vertex}')
+            if self.selected_vertex == VertexEdge.NO_VERTEX.value:
+                self.selected_edge = self.nearestEdge(event.pos(), 10 / scale)
+        LOGGER.debug(f"vertex {self.selected_vertex} edge {self.selected_edge}")
+        return super().mousePressEvent(event)
+    
+    def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self.selected_vertex != VertexEdge.NO_VERTEX.value or self.selected_edge != VertexEdge.NO_EDGE.value:
+            self.adjustRect(event.pos())
+        else:
+            return super().mouseMoveEvent(event)
+    
+    def hoverMoveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
+        if self.isSelected():
+            scale = self.scene().views()[0].transform().m11()    
+            self.selected_vertex = self.nearestVertex(event.pos(), 10 / scale)
             if self.selected_vertex != VertexEdge.NO_VERTEX.value:
                 if self.selected_vertex == VertexEdge.TOP_LEFT.value or self.selected_vertex == VertexEdge.BOTTOM_RIGHT.value:
                     self.setCursor(Qt.CursorShape.SizeFDiagCursor)
@@ -147,7 +260,6 @@ class RectItem(QGraphicsRectItem):
                     self.setCursor(Qt.CursorShape.SizeBDiagCursor)
             else:
                 self.selected_edge = self.nearestEdge(event.pos(), 10 / scale)
-                LOGGER.debug(f'edge {self.selected_vertex}')
                 if self.selected_edge != VertexEdge.NO_EDGE.value:
                     if self.selected_edge == VertexEdge.LEFT.value or self.selected_edge == VertexEdge.RIGHT.value:
                         self.setCursor(Qt.CursorShape.SizeHorCursor)
