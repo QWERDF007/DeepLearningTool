@@ -1,5 +1,8 @@
+import gc
 import typing
 from typing import Any, Optional
+from enum import Enum
+
 
 from qtpy.QtCore import Signal, Slot
 from qtpy.QtCore import Qt, QLineF, QRectF, QPointF
@@ -7,25 +10,62 @@ from qtpy.QtCore import QEvent
 
 from qtpy.QtWidgets import QWidget
 from qtpy.QtWidgets import QGraphicsView, QGraphicsItem, QGraphicsPixmapItem, QGraphicsRectItem, QStyleOptionGraphicsItem
-from qtpy.QtWidgets import QGraphicsSceneHoverEvent
+from qtpy.QtWidgets import QGraphicsSceneHoverEvent, QGraphicsSceneMouseEvent
 
-from qtpy.QtGui import QPainter, QPen, QPainterPath, QPixmap, QCursor
+from qtpy.QtGui import QPainter, QPen, QPainterPath, QPixmap, QCursor, QPainterPathStroker
 from qtpy.QtGui import QMouseEvent, QResizeEvent, QWheelEvent
 
 from deep_learning_tool import LOGGER
-from deep_learning_tool.utils import newPixmap
+from deep_learning_tool.utils import newPixmap, distance, distancetoline
 
 
+def qt_graphicsItem_shapeFromPath(path : QPainterPath, pen : QPen) -> QPainterPath:
+    pen_width_zero = 0.00000001
+    if path.isEmpty() or pen.style() == Qt.PenStyle.NoPen:
+        return path
+    
+    ps = QPainterPathStroker()
+    ps.setCapStyle(pen.capStyle())
+    if pen.widthF() <= 0.0:
+        ps.setWidth(pen_width_zero)
+    else:
+        ps.setWidth(pen.widthF())
+    
+    ps.setJoinStyle(pen.joinStyle())
+    ps.setMiterLimit(pen.miterLimit())
+    p = ps.createStroke(path)
+    p.addPath(path)
+    return p
+
+
+class VertexEdge(Enum):
+    # vertex order
+    TOP_LEFT = 0
+    TOP_RIGHT = 1
+    BOTTOM_RIGHT = 2
+    BOTTOM_LEFT = 3
+    NO_VERTEX = -1
+
+    # edge order
+    LEFT = 0
+    TOP = 1
+    RIGHT = 2
+    BOTTOM = 3
+    NO_EDGE = -1
 
 class RectItem(QGraphicsRectItem):
     # rectChanged = Signal(QRectF)
 
+    
+
     def __init__(self, rect: QRectF, parent: typing.Optional[QGraphicsItem] = ...) -> None:
-        LOGGER.debug("init")
         super().__init__(rect, parent)
+        self.selected_vertex = VertexEdge.NO_VERTEX
+        self.selected_edge = VertexEdge.NO_EDGE
+        LOGGER.debug(f"init item:\n{self}")
 
     def __del__(self):
-        LOGGER.debug("del")
+        LOGGER.debug(f"del item:\n{self}")
         
 
     def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value: typing.Union[Any, QPointF]) -> Any:
@@ -43,17 +83,79 @@ class RectItem(QGraphicsRectItem):
                 new_pos.setY(y)
                 return new_pos
         return super().itemChange(change, value)
+
+    def Vertices(self):
+        rect = self.rect()
+        return [rect.topLeft(), rect.topRight(), rect.bottomRight(), rect.bottomLeft()]
     
-    def hoverEnterEvent(self, event: QGraphicsSceneHoverEvent) -> None:
-        # LOGGER.debug(f"hoverEnterEvent {self.isSelected()} {self.cursor()} {self.cursor().shape() != Qt.CursorShape.SizeAllCursor}")
-        if self.isSelected() and self.cursor().shape() != Qt.CursorShape.SizeAllCursor:
+    # def Edges(self):
+    #     vertices = self.Vertices()
+    #     edges = [
+    #         QLineF(vertices[3], vertices[0]), 
+    #         QLineF(vertices[0], vertices[1]),
+    #         QLineF(vertices[1], vertices[2]),
+    #         QLineF(vertices[2], vertices[3]),
+    #     ] 
+    #     return edges
+    
+    def nearestVertex(self, pos : QPointF, epsilon : float):
+        min_distance = float("inf")
+        min_i = VertexEdge.NO_VERTEX.value
+        vertices = self.Vertices()
+        for i, vertex in enumerate(vertices):
+            dist = distance(vertex - pos)
+            if dist <= epsilon and dist < min_distance:
+                min_distance = dist
+                min_i = i
+        LOGGER.debug(f"{min_distance} {epsilon}")
+        return min_i
+    
+    def nearestEdge(self, pos : QPointF, epsilon : float):
+        min_distance = float("inf")
+        post_i = VertexEdge.NO_EDGE.value
+        vertices = self.Vertices()
+        for i in range(len(vertices)):
+            line = [vertices[i - 1], vertices[i]]
+            dist = distancetoline(pos, line)
+            if dist <= epsilon and dist < min_distance:
+                min_distance = dist
+                post_i = i
+        LOGGER.debug(f"{min_distance} {epsilon}")
+        return post_i
+    
+    def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self.cursor().shape() != Qt.CursorShape.SizeAllCursor:
             self.setCursor(Qt.CursorShape.SizeAllCursor)
-        return super().hoverEnterEvent(event)
+        return super().mousePressEvent(event)
+    
+    # def hoverEnterEvent(self, event: QGraphicsSceneHoverEvent) -> None:
+    #     # LOGGER.debug(f"hoverEnterEvent {self.isSelected()} {self.cursor()} {self.cursor().shape() != Qt.CursorShape.SizeAllCursor}")
+    #     if self.isSelected() and self.cursor().shape() != Qt.CursorShape.SizeAllCursor:
+    #         self.setCursor(Qt.CursorShape.SizeAllCursor)
+    #     return super().hoverEnterEvent(event)
     
     def hoverMoveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
-        # LOGGER.debug(f"hoverMoveEvent {self.isSelected()} {self.cursor()} {self.cursor().shape() != Qt.CursorShape.SizeAllCursor}")
-        if self.isSelected() and self.cursor().shape() != Qt.CursorShape.SizeAllCursor:
-            self.setCursor(Qt.CursorShape.SizeAllCursor)
+        LOGGER.debug(self)
+        if self.isSelected():
+            scale = self.scene().views()[0].transform().m11()    
+            self.selected_vertex = self.nearestVertex(event.pos(), 10 / scale)
+            LOGGER.debug(f'vertex {self.selected_vertex}')
+            if self.selected_vertex != VertexEdge.NO_VERTEX.value:
+                if self.selected_vertex == VertexEdge.TOP_LEFT.value or self.selected_vertex == VertexEdge.BOTTOM_RIGHT.value:
+                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+                elif self.selected_vertex == VertexEdge.TOP_RIGHT.value or self.selected_vertex == VertexEdge.BOTTOM_LEFT.value:
+                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
+            else:
+                self.selected_edge = self.nearestEdge(event.pos(), 10 / scale)
+                LOGGER.debug(f'edge {self.selected_vertex}')
+                if self.selected_edge != VertexEdge.NO_EDGE.value:
+                    if self.selected_edge == VertexEdge.LEFT.value or self.selected_edge == VertexEdge.RIGHT.value:
+                        self.setCursor(Qt.CursorShape.SizeHorCursor)
+                    elif self.selected_edge == VertexEdge.TOP_RIGHT.value or self.selected_edge == VertexEdge.BOTTOM_LEFT.value:
+                        self.setCursor(Qt.CursorShape.SizeVerCursor)
+                else:
+                    if self.cursor().shape() != Qt.CursorShape.SizeAllCursor:
+                        self.setCursor(Qt.CursorShape.SizeAllCursor)
         return super().hoverMoveEvent(event)
     
     def hoverLeaveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
@@ -71,6 +173,16 @@ class RectItem(QGraphicsRectItem):
         painter.setPen(pen)
         painter.drawRect(self.rect())
         # return super().paint(painter, option, widget)
+
+    def boundingRect(self) -> QRectF:
+        # 在rect基础上向外扩充 10 个单位
+        return self.rect().adjusted(-10, -10, 10, 10)
+
+    def shape(self) -> QPainterPath:
+        # 重写以扩充鼠标事件响应范围和碰撞检测范围
+        path = QPainterPath()
+        path.addRect(self.boundingRect())
+        return qt_graphicsItem_shapeFromPath(path, self.pen())
 
 
 
@@ -134,7 +246,6 @@ class CrossLineItem(QGraphicsItem):
 class ImageItem(QGraphicsPixmapItem):
     def __init__(self, pixmap: QPixmap, parent: typing.Optional[QGraphicsItem] = None) -> None: 
         super().__init__(pixmap, parent)
-
 
 
 class ImageView(QGraphicsView):
@@ -275,7 +386,6 @@ class ImageView(QGraphicsView):
             selected_items_count = len(selected_items)
             items = self.items(pos)
             if selected_items_count == 1:
-                self.setCursor(Qt.CursorShape.SizeAllCursor)
                 return super().mousePressEvent(event)
             elif selected_items_count > 1:
                 return super().mousePressEvent(event)
@@ -307,7 +417,6 @@ class ImageView(QGraphicsView):
 
         return super().mouseMoveEvent(event)
     
-
     
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         pos = event.pos()
@@ -315,7 +424,6 @@ class ImageView(QGraphicsView):
         self.middle_button_press = False
         if event.button() == Qt.MouseButton.LeftButton:
             if self.label_image is not None and self.drawing_rect is not None:
-                LOGGER.debug("drawingRect")
                 rect = self.drawingRect(self.mapToScene(pos))
                 LOGGER.debug("finishedRect")
                 if not self.finishedRect(rect):
@@ -326,7 +434,8 @@ class ImageView(QGraphicsView):
                             item.setSelected(True)
                             break
                     return super().mouseReleaseEvent(event)
-        # self.setCursor(Qt.CursorShape.ArrowCursor)
+        if self.cursor().shape() != Qt.CursorShape.ArrowCursor:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
         return super().mouseReleaseEvent(event)    
     
     def wheelEvent(self, event: QWheelEvent) -> None:
@@ -348,4 +457,18 @@ class ImageView(QGraphicsView):
         return super().enterEvent(event)
 
     def keyPressEvent(self, event : QEvent) -> None:
+        if event.key() == Qt.Key.Key_Delete:
+            self.deleteItems()
+            LOGGER.debug("delete items")
         return super().keyPressEvent(event)
+    
+    def deleteItems(self):
+        LOGGER.debug(f"items before delete\n{self.items()}")
+        selected_items = self.scene().selectedItems()
+        LOGGER.debug(f"selected_items before delete\n{selected_items}")
+        for i in range(len(selected_items)):
+            LOGGER.debug(f"delete item:\n{selected_items[i]}")
+            self.scene().removeItem(selected_items[i])
+            selected_items[i].setParentItem(None)
+            del selected_items[i]
+        LOGGER.debug(f"items after delete\n{self.items()}")

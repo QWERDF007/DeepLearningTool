@@ -34,8 +34,8 @@ class LabelWindow(QMainWindow):
     def initLabelImage(self):
         LOGGER.debug("initLabelImage")
         if self.label_image is None and len(self.project.images_path) >= 1:
-            path, index = next(iter(self.project.images_path.items()))
-            self.label_image = self.scene.addPixmap(QPixmap(path))
+            image_path, index = next(iter(self.project.images_path.items()))
+            self.label_image = self.scene.addPixmap(QPixmap(image_path))
             self.image_view.setLabelImage(self.label_image)
 
 
