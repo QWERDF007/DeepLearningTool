@@ -1,5 +1,3 @@
-from .qt import newAction
-from .qt import addActions
 from .qt import struct
-from .qt import newIcon
-from .qt import newPixmap
+from .qt import newIcon, newPixmap, newAction, addActions
+from .qt import distance, distancetoline
