@@ -64,8 +64,11 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def setLabelImage(self, image_path):
         # 要先切换widget显示，后面的view的fitInView才正常
-        self.setCurrentTab(self.label_window)
-        self.label_window.setLabelImage(image_path)
+        self.setCurrentTab(self.label_window, self.actions.tools[2])
+        if self.label_window.label_image is None:
+            self.label_window.initLabelImage()
+        else:
+            self.label_window.setLabelImage(image_path)
 
     def toolbar(self, title, actions=None):
         toolbar = QToolBar(title, self)
@@ -178,8 +181,6 @@ class MainWindow(QMainWindow):
         index = self.tab_widget.indexOf(widget)
         if index != self.tab_widget.currentIndex():
             self.tab_widget.setCurrentIndex(index)
-            if widget == self.label_window and self.label_window.label_image is None:
-                self.label_window.initLabelImage()
         if action != None:
             for tool in self.actions.tools:
                 if tool != action:
