@@ -464,6 +464,7 @@ class ImageView(QGraphicsView):
         self.press_pos = self.pos()
 
         self.current_select_rects = set()
+        self.rects_has_selected_once = set()
 
 
     def setLabelImage(self, label_image : QGraphicsPixmapItem):
@@ -596,32 +597,40 @@ class ImageView(QGraphicsView):
             # FIXME:
             LOGGER.error("FIXME")
 
+    def rectItemSize(self, items_count : int) -> int:
+        size = items_count - 2
+        return size if size >= 0 else 0
+    
+    def rectItemSizeOnPos(self, pos : QPointF) -> int:
+        items = self.items(pos)
+        items_count = len(items)
+        return self.rectItemSize(items_count)
+
     
     def changeSelectedRect(self, items : typing.List[QGraphicsItem], items_count : int):
-        index = 0
-        current_selected_rect = None
         if len(self.current_select_rects) > 1:
             # FIXME:
             return LOGGER.error("FIXME")
-        
-        for i, item in enumerate(items):
-            if item in self.current_select_rects:
-                index = i
-                current_selected_rect = item
-                break
-        
-        index = (index + 1) % items_count
-        while not isinstance(items[index], RectItem):
-            index = (index + 1) % items_count
-
-        current_selected_rect.setZValue(0)
-        current_selected_rect.setSelected(False)
-        self.current_select_rects.remove(current_selected_rect)
-        LOGGER.debug(f"change select from {current_selected_rect} to {items[index]}")
-        current_selected_rect = items[index]
-        current_selected_rect.setZValue(1)
-        current_selected_rect.setSelected(True)
-        self.current_select_rects.add(current_selected_rect)
+        current_select_rect = self.current_select_rects.pop()
+        current_select_rect.setZValue(0)
+        current_select_rect.setSelected(False)
+        if len(self.rects_has_selected_once) == self.rectItemSize(items_count):
+            self.rects_has_selected_once.clear()
+            for item in items:
+                if isinstance(item, RectItem) and item != current_select_rect:
+                    item.setZValue(1)
+                    item.setSelected(True)
+                    self.current_select_rects.add(item)
+                    self.rects_has_selected_once.add(item)
+                    break
+        else:
+            for item in items:
+                if isinstance(item, RectItem) and item not in self.rects_has_selected_once:
+                    item.setZValue(1)
+                    item.setSelected(True)
+                    self.current_select_rects.add(item)
+                    self.rects_has_selected_once.add(item)
+                    break
             
         
     def selectOneRect(self, items : typing.List[QGraphicsItem], items_count : int, scenePos : QPointF):
@@ -637,6 +646,7 @@ class ImageView(QGraphicsView):
             for item in items:
                 if isinstance(item, RectItem):
                     self.selectRect(item)
+                    self.rects_has_selected_once.add(item)
                     break
             if len(self.current_select_rects) <= 0:
                 # FIXME:
@@ -774,6 +784,7 @@ class ImageView(QGraphicsView):
         # 集合不能在遍历时增加/删除元素
         self.unselectRects(list(self.current_select_rects))
         self.current_select_rects.clear()
+        self.rects_has_selected_once.clear()
         LOGGER.debug(self.current_select_rects)
 
 
