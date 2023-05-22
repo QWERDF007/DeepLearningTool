@@ -614,12 +614,10 @@ class ImageView(QGraphicsView):
         while not isinstance(items[index], RectItem):
             index = (index + 1) % items_count
 
-        LOGGER.debug(f"{current_selected_rect} in set: {current_selected_rect in self.current_select_rects if current_selected_rect is not None else False}")
-
         current_selected_rect.setZValue(0)
         current_selected_rect.setSelected(False)
         self.current_select_rects.remove(current_selected_rect)
-        
+        LOGGER.debug(f"change select from {current_selected_rect} to {items[index]}")
         current_selected_rect = items[index]
         current_selected_rect.setZValue(1)
         current_selected_rect.setSelected(True)
@@ -627,7 +625,7 @@ class ImageView(QGraphicsView):
             
         
     def selectOneRect(self, items : typing.List[QGraphicsItem], items_count : int, scenePos : QPointF):
-        """选中当前位置下的一个矩形, 如果在同一位置有多个rect, 且多次点击, 则在多个rect切换选中
+        """没按下control, 选中当前位置下的一个矩形, 如果在同一位置有多个rect, 且多次点击, 则在多个rect切换选中
 
         Args:
             items (typing.List[QGraphicsItem]): 当前位置下的QGraphicsItem
@@ -638,9 +636,7 @@ class ImageView(QGraphicsView):
         if len(self.current_select_rects) <= 0:
             for item in items:
                 if isinstance(item, RectItem):
-                    item.setZValue(1)
-                    item.setSelected(True)
-                    self.current_select_rects.add(item)
+                    self.selectRect(item)
                     break
             if len(self.current_select_rects) <= 0:
                 # FIXME:
@@ -679,17 +675,77 @@ class ImageView(QGraphicsView):
     def disableCrossLine(self):
         if self.cross_line:
             self.cross_line.setCrossLine(QLineF(), QLineF())
+
+    def selectRect(self, item : RectItem):
+        """选中矩形
+
+        Args:
+            item (RectItem): _description_
+        """
+        if isinstance(item, RectItem):
+            item.setZValue(1)
+            item.setSelected(True)
+            self.current_select_rects.add(item)
+
+    def selectRects(self, items : typing.List[RectItem]):
+        """control按下时选择当前位置的矩形, 当前位置全部被选中后再次点击会清空选择
+
+        Args:
+            items (typing.List[RectItem]): 矩形
+        """
+        tmp = set()
+        for item in items:
+            if isinstance(item, RectItem):
+                tmp.add(item)
+        
+        if tmp.issubset(self.current_select_rects):
+            self.unselectRects(tmp)
+        else:
+            for item in tmp:
+                if item not in self.current_select_rects:
+                    self.selectRect(item)
+                    break
+
+
+    def selectRectsOnPos(self, pos : QPointF):
+        """control按下时选择当前位置的矩形, 当前位置全部被选中后再次点击会清空选择
+
+        Args:
+            pos (QPointF): 当前鼠标位置
+        """
+        items = self.items(pos)
+        self.selectRects(items)
+
         
     def unselectRect(self, item : RectItem):
-        if item is not None:
+        """取消选中单个矩形
+
+        Args:
+            item (RectItem): 矩形
+        """
+        if isinstance(item, RectItem):
             item.setZValue(0)
             item.setSelected(False)
+            self.current_select_rects.remove(item)
     
     def unselectRects(self, items: typing.List[RectItem]):
+        """取消选中多个矩形
+
+        Args:
+            items (typing.List[RectItem]): 矩形列表
+        """
         for item in items:
             self.unselectRect(item)
 
-    def hasSelectedRect(self, items : typing.List[QGraphicsItem]):
+    def hasSelectedRect(self, items : typing.List[QGraphicsItem]) -> bool:
+        """判断当前items中是否有选中的矩形
+
+        Args:
+            items (typing.List[QGraphicsItem]): 图形项列表
+
+        Returns:
+            bool: True 有, False 没有
+        """
         if len(self.current_select_rects) == 0:
             return False
         for selected_rect in self.current_select_rects:
@@ -697,17 +753,36 @@ class ImageView(QGraphicsView):
                 return True
         return False
     
-    def hasSelectedRectOnPos(self, pos) -> bool:
+
+    def hasSelectedRectOnPos(self, pos : QPointF) -> bool:
+        """判断当前鼠标位置的items中是否有选中的矩形
+
+        Args:
+            pos (QPointF): 当前鼠标位置
+
+        Returns:
+            bool: True 有, False 没有
+        """
         items = self.items(pos)
         return self.hasSelectedRect(items)
         
     
     def clearSelectedRects(self):
-        self.unselectRects(self.current_select_rects)
+        """清除选中
+        """
+        LOGGER.debug(self.current_select_rects)
+        # 集合不能在遍历时增加/删除元素
+        self.unselectRects(list(self.current_select_rects))
         self.current_select_rects.clear()
+        LOGGER.debug(self.current_select_rects)
 
 
-    def moveImageBy(self, scenePos):
+    def moveImageBy(self, scenePos : QPointF):
+        """移动图像
+
+        Args:
+            scenePos (QPointF): 场景坐标
+        """
         offset = scenePos - self.last_pos
         self.label_image.moveBy(offset.x(), offset.y())
         
@@ -816,7 +891,9 @@ class ImageView(QGraphicsView):
         if event.button() == Qt.MouseButton.LeftButton:
             if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
                 self.setViewportCursor(Qt.CursorShape.OpenHandCursor)
-                # TODO:
+                if not self.hasMove:
+                    self.selectRectsOnPos(pos)
+                    self.mode = Mode.EDIT
                 return super().mouseReleaseEvent(event)
             if self.label_image is not None:
                 if self.mode == Mode.CREATE:
