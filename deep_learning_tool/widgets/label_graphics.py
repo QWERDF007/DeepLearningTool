@@ -812,8 +812,6 @@ class ImageView(QGraphicsView):
                 if self.viewport().cursor().shape() != Qt.CursorShape.ClosedHandCursor:
                     self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
                 return
-            
-            LOGGER.debug(f"{self.mode}")
             if self.label_image is not None:
                 if self.mode == Mode.CREATE:
                     self.initDrawingRect(scenePos)
@@ -854,7 +852,7 @@ class ImageView(QGraphicsView):
                 return super().mousePressEvent(event)
         elif event.button() == Qt.MouseButton.MiddleButton or event.buttons() & Qt.MouseButton.MiddleButton:
             self.setViewportCursor(Qt.CursorShape.ClosedHandCursor)
-            return super().mousePressEvent(event)
+            return
         else:
             # TODO: 右键
             LOGGER.warning("right button not implement")
