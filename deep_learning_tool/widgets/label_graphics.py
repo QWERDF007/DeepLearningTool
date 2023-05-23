@@ -234,9 +234,7 @@ class RectItem(QGraphicsRectItem):
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         LOGGER.debug(f"{event.modifiers()} {event.button()} {event.buttons()}")
         if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
-            LOGGER.debug("set movable")
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
-            # return super().mousePressEvent(event)
             return
         if event.button() == Qt.MouseButton.LeftButton:
             if self.isSelected():
@@ -245,17 +243,15 @@ class RectItem(QGraphicsRectItem):
                 if self.selected_vertex == VertexEdge.NO_VERTEX.value:
                     self.selected_edge = self.nearestEdge(event.pos(), 10 / scale)
             return super().mousePressEvent(event)
-        elif event.button() == Qt.MouseButton.MiddleButton or event.buttons() & Qt.MouseButton.MiddleButton:
-            self.setCursor(Qt.CursorShape.ClosedHandCursor)
-            return 
         else:
             return super().mousePressEvent(event)
     
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if event.modifiers() == Qt.KeyboardModifier.ControlModifier or event.buttons() & Qt.MouseButton.MiddleButton:
+        # LOGGER.debug(f"{event.modifiers()} {event.button()} {event.buttons()}")
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
             return
-        elif event.buttons() & Qt.MouseButton.LeftButton:
+        elif event.buttons() == Qt.MouseButton.LeftButton:
             if self.selected_vertex != VertexEdge.NO_VERTEX.value or self.selected_edge != VertexEdge.NO_EDGE.value:
                 scene_selected_count = len(self.scene().selectedItems())
                 if scene_selected_count == 1:
@@ -274,6 +270,8 @@ class RectItem(QGraphicsRectItem):
             else:
                 self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
                 return super().mouseMoveEvent(event)
+        elif event.buttons() & Qt.MouseButton.MiddleButton:
+            return
         else:
             return super().mouseMoveEvent(event)
 
@@ -806,7 +804,8 @@ class ImageView(QGraphicsView):
         scenePos = self.mapToScene(pos)
         self.hasMove = False
         self.press_pos = pos
-        self.centerAnchor = self.mapToScene(self.width() / 2, self.height() / 2)
+        # 使用 viewport 的矩形中心，防止抖动
+        self.centerAnchor = self.mapToScene(self.viewport().rect().center())
         if event.button() == Qt.MouseButton.LeftButton:
             if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
                 if self.viewport().cursor().shape() != Qt.CursorShape.ClosedHandCursor:
