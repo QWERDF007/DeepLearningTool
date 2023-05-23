@@ -922,21 +922,17 @@ class ImageView(QGraphicsView):
                 elif self.mode == Mode.EDIT:
                     items = self.items(pos)
                     items_count = len(items)
-                    selected_items = self.scene().selectedItems()
-                    selected_items_count = len(selected_items)
-                    if selected_items_count <= 1:
-                        if self.hasRectItem(items_count) == 1:
-                            return super().mouseReleaseEvent(event)
-                        elif self.hasRectItem(items_count) > 1:
-                            if self.hasMove:
-                                return super().mouseReleaseEvent(event)
-                            else:
-                                super().mouseReleaseEvent(event)
-                                return self.selectOneRect(items, items_count, scenePos)
+                    if self.hasMove:
+                        return super().mouseReleaseEvent(event)
+                    else:
+                        super().mouseReleaseEvent(event)
+                        rects_count = self.hasRectItem(items_count)
+                        if rects_count < 1:
+                            return
                         else:
-                            # FIXME:
-                            LOGGER.error("FIXME")
-                            return super().mouseReleaseEvent(event)
+                            if len(self.current_select_rects) > 1:
+                                self.clearSelectedRects()
+                            return self.selectOneRect(items, items_count, scenePos)
                 else:
                     # FIXME:
                     LOGGER.error("FIXME")
