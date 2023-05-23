@@ -253,13 +253,10 @@ class RectItem(QGraphicsRectItem):
     
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if event.modifiers() == Qt.KeyboardModifier.ControlModifier or event.buttons() & Qt.MouseButton.MiddleButton:
-            LOGGER.debug(f"{event.modifiers()} {event.button()} {event.buttons()}")
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
             return
         elif event.buttons() & Qt.MouseButton.LeftButton:
             if self.selected_vertex != VertexEdge.NO_VERTEX.value or self.selected_edge != VertexEdge.NO_EDGE.value:
-                self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
-                
                 scene_selected_count = len(self.scene().selectedItems())
                 if scene_selected_count == 1:
                     self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
@@ -891,11 +888,11 @@ class ImageView(QGraphicsView):
     
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         LOGGER.debug(f"{self.mode} hasMove: {self.hasMove}  {event.modifiers()} {event.button()} {event.buttons()}")
+        super().mouseReleaseEvent(event)
         pos = event.pos()
         scenePos = self.mapToScene(pos)
         if event.button() == Qt.MouseButton.LeftButton:
             if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
-                super().mouseReleaseEvent(event)
                 self.setViewportCursor(Qt.CursorShape.OpenHandCursor)
                 if not self.hasMove:
                     self.selectRectsOnPos(pos)
@@ -923,9 +920,8 @@ class ImageView(QGraphicsView):
                     items = self.items(pos)
                     items_count = len(items)
                     if self.hasMove:
-                        return super().mouseReleaseEvent(event)
+                        return 
                     else:
-                        super().mouseReleaseEvent(event)
                         rects_count = self.hasRectItem(items_count)
                         if rects_count < 1:
                             return
@@ -936,18 +932,16 @@ class ImageView(QGraphicsView):
                 else:
                     # FIXME:
                     LOGGER.error("FIXME")
-                    return super().mouseReleaseEvent(event)
+                    return
         elif event.button() == Qt.MouseButton.MiddleButton or event.buttons() & Qt.MouseButton.MiddleButton:
-            super().mouseReleaseEvent(event)
             if event.modifiers() != Qt.KeyboardModifier.ControlModifier:
                 self.resetViewPortCursor()
             else:
                 self.setViewportCursor(Qt.CursorShape.OpenHandCursor)
             self.setSelectedRectCursorOnPos(pos, scenePos)
             return
-
-        super().mouseReleaseEvent(event)
-        self.resetViewPortCursor()
+        else:
+            self.resetViewPortCursor()
     
     
     def wheelEvent(self, event: QWheelEvent) -> None:
