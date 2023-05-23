@@ -246,19 +246,15 @@ class RectItem(QGraphicsRectItem):
                     self.selected_edge = self.nearestEdge(event.pos(), 10 / scale)
             return super().mousePressEvent(event)
         elif event.button() == Qt.MouseButton.MiddleButton or event.buttons() & Qt.MouseButton.MiddleButton:
-            selected = self.isSelected()
-            super().mousePressEvent(event)
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
-            self.setSelected(selected)
             return 
         else:
             return super().mousePressEvent(event)
     
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if event.modifiers() == Qt.KeyboardModifier.ControlModifier or event.button() == Qt.MouseButton.MiddleButton or event.buttons() & Qt.MouseButton.MiddleButton:
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier or event.buttons() & Qt.MouseButton.MiddleButton:
             LOGGER.debug(f"{event.modifiers()} {event.button()} {event.buttons()}")
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
-            self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
             return
         elif event.buttons() & Qt.MouseButton.LeftButton:
             if self.selected_vertex != VertexEdge.NO_VERTEX.value or self.selected_edge != VertexEdge.NO_EDGE.value:
@@ -455,8 +451,8 @@ class ImageView(QGraphicsView):
 
         self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
 
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
 
         self.label_image = None
 
@@ -471,7 +467,7 @@ class ImageView(QGraphicsView):
         LOGGER.debug("setLabelImage")
         self.label_image = label_image
         # 设置 sceneRect 缩放才正常
-        self.scene().setSceneRect(self.label_image.boundingRect())
+        self.scene().setSceneRect(self.label_image.boundingRect().adjusted(-2000,-2000,2000,2000))
         self.label_image.setPos(0,0)
         self.fitInView(self.label_image, Qt.AspectRatioMode.KeepAspectRatio)
         
@@ -608,6 +604,7 @@ class ImageView(QGraphicsView):
 
     
     def changeSelectedRect(self, items : typing.List[QGraphicsItem], items_count : int):
+        LOGGER.debug(self.current_select_rects)
         if len(self.current_select_rects) > 1:
             # FIXME:
             return LOGGER.error("FIXME")
@@ -631,6 +628,7 @@ class ImageView(QGraphicsView):
                     self.current_select_rects.add(item)
                     self.rects_has_selected_once.add(item)
                     break
+        LOGGER.debug(self.current_select_rects)
             
         
     def selectOneRect(self, items : typing.List[QGraphicsItem], items_count : int, scenePos : QPointF):
@@ -641,7 +639,8 @@ class ImageView(QGraphicsView):
             items_count (int): items的数量
         """
         LOGGER.debug(f'items:\n{items}')
-        LOGGER.debug(f'current select:\n{self.scene().selectedItems()}')
+        LOGGER.debug(f'selected:\n{self.scene().selectedItems()}')
+        LOGGER.debug(f'current selected:\n{self.current_select_rects}')
         if len(self.current_select_rects) <= 0:
             for item in items:
                 if isinstance(item, RectItem):
@@ -788,14 +787,15 @@ class ImageView(QGraphicsView):
         LOGGER.debug(self.current_select_rects)
 
 
-    def moveImageBy(self, scenePos : QPointF):
-        """移动图像
+    def moveBy(self, pos : QPointF):
+        """移动视图
 
         Args:
-            scenePos (QPointF): 场景坐标
+            pos (QPointF): 鼠标坐标
         """
-        offset = scenePos - self.last_pos
-        self.label_image.moveBy(offset.x(), offset.y())
+        # 使用 view 的 pos 防抖, 使用 m11 确保在缩放后同样的移动效果
+        offset = QPointF(pos - self.press_pos) / self.transform().m11()
+        self.centerOn(self.centerAnchor - offset)
         
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
@@ -808,8 +808,8 @@ class ImageView(QGraphicsView):
         pos = event.pos()
         scenePos = self.mapToScene(pos)
         self.hasMove = False
-        self.press_pos = scenePos
-        self.last_pos = scenePos
+        self.press_pos = pos
+        self.centerAnchor = self.mapToScene(self.width() / 2, self.height() / 2)
         if event.button() == Qt.MouseButton.LeftButton:
             if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
                 if self.viewport().cursor().shape() != Qt.CursorShape.ClosedHandCursor:
@@ -873,23 +873,18 @@ class ImageView(QGraphicsView):
             self.drawCrossLine(scenePos)
 
             if event.buttons() & Qt.MouseButton.MiddleButton or (event.buttons() & Qt.MouseButton.LeftButton and event.modifiers() == Qt.KeyboardModifier.ControlModifier):
-                # super().mouseMoveEvent(event)
+                super().mouseMoveEvent(event)
                 self.setViewportCursor(Qt.CursorShape.ClosedHandCursor)
-                self.moveImageBy(scenePos)
-                self.last_pos = scenePos
+                self.moveBy(pos)
                 return
             elif event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+                super().mouseMoveEvent(event)
                 if event.buttons() == Qt.MouseButton.NoButton:
                     self.setViewportCursor(Qt.CursorShape.OpenHandCursor)
-                # super().mouseMoveEvent(event)
-                self.last_pos = scenePos
                 return
-            else:
-                self.last_pos = scenePos
 
             if self.mode == Mode.CREATE and self.drawing_rect is not None:
                 self.drawing_rect.setRect(self.getDrawingRect(self.p0, scenePos))
-                self.last_pos = scenePos
 
         return super().mouseMoveEvent(event)
     
@@ -898,14 +893,14 @@ class ImageView(QGraphicsView):
         LOGGER.debug(f"{self.mode} hasMove: {self.hasMove}  {event.modifiers()} {event.button()} {event.buttons()}")
         pos = event.pos()
         scenePos = self.mapToScene(pos)
-        self.last_pos = scenePos
         if event.button() == Qt.MouseButton.LeftButton:
             if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+                super().mouseReleaseEvent(event)
                 self.setViewportCursor(Qt.CursorShape.OpenHandCursor)
                 if not self.hasMove:
                     self.selectRectsOnPos(pos)
                     self.mode = Mode.EDIT
-                return super().mouseReleaseEvent(event)
+                return 
             if self.label_image is not None:
                 if self.mode == Mode.CREATE:
                     rect = self.getDrawingRect(self.p0, scenePos)
