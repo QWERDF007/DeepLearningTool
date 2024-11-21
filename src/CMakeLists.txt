@@ -1,0 +1,5 @@
+add_subdirectory(common)
+add_subdirectory(project)
+add_subdirectory(data)
+add_subdirectory(ui)
+add_subdirectory(tool)

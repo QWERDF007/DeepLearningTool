@@ -1,0 +1,369 @@
+#include "project/Project.h"
+
+#include "data/DataBase.h"
+
+#include <spdlog/spdlog.h>
+
+#include <QDateTime>
+#include <QFile>
+#include <algorithm>
+#include <chrono>
+
+namespace dltool::project {
+
+Project::Project(const QString &name, const int method, const QString &path, const QString &description,
+                 const QString image_base_path, const qint64 ctime, const qint64 mtime, QObject *parent)
+    : QObject(parent)
+    , name_(name)
+    , method_(method)
+    , path_(path)
+    , description_(description)
+    , image_base_path_(image_base_path)
+    , ctime_(ctime)
+    , mtime_(mtime)
+{
+
+}
+
+Project::Project(const QString &path, QObject *parent)
+    : QObject(parent)
+    , path_(path)
+{
+
+}
+
+Project::~Project()
+{
+
+}
+
+void Project::initProject()
+{
+    if (database_ == nullptr)
+        database_ = new data::ProjectDataBase(path_, this);
+    spdlog::info("创建数据库: {}, ok: {}", path_.toUtf8().constData(), database_ != nullptr);
+    qint64 ctime = QDateTime::currentSecsSinceEpoch();
+    bool   ok    = database_->initProject(name_, method_, path_, description_, image_base_path_, ctime, ctime);
+    spdlog::info("创建表: project, ok: {}", ok);
+}
+
+void Project::openProject()
+{
+    if (database_ == nullptr)
+        database_ = new data::ProjectDataBase(path_, this);
+    spdlog::info("打开数据库: {}, ok: {}", path_.toUtf8().constData(), database_ != nullptr);
+    bool ok = database_->openProject(name_, method_, path_, description_, image_base_path_, ctime_, mtime_);
+    spdlog::info("查询表: project, ok: {}", ok);
+}
+
+std::tuple<bool, QString> Project::isValid(const int method, const QString &path, bool is_new)
+{
+    bool file_exist = QFile::exists(path);
+    if (is_new)
+    {
+        if (file_exist)
+            return {false, "项目已存在"};
+        // else if (!dltool::core::DeepLearningMethod::getInstance()->getMethodTypes().contains(method))
+        // return false;
+        else
+            return {true, ""};
+    }
+    return {file_exist, file_exist ? "" : "项目不存在"};
+}
+
+RectentProjects::RectentProjects(const QString &path, QObject *parent)
+    : QAbstractListModel(parent)
+    , path_(path)
+    , selection_(new QItemSelectionModel(this))
+{
+    init();
+}
+
+RectentProjects::~RectentProjects()
+{
+
+}
+
+void RectentProjects::init()
+{
+    auto start = std::chrono::high_resolution_clock::now();
+    if (database_ == nullptr)
+        database_ = new data::RecentProjectsDataBase(path_, this);
+    if (!project_infos.empty())
+        project_infos.clear();
+    spdlog::info("打开数据库: {}, ok: {}", path_.toUtf8().constData(), database_ != nullptr);
+    std::vector<QString> paths;
+    const int            size = database_->getProjects(paths);
+    spdlog::info("查询表: recent_projects, size: {}", path_.toUtf8().constData(), size);
+
+    beginResetModel();
+    for (int i = 0; i < size; ++i)
+    {
+        ProjectBaseInfo info;
+        info.path = paths[i];
+        data::ProjectDataBase::getProjectBaseInfo(info.path, info.name, info.mtime);
+        project_infos.emplace_back(info);
+    }
+    std::sort(project_infos.begin(), project_infos.end(),
+              [](const ProjectBaseInfo &lhs, const ProjectBaseInfo &rhs) { return lhs.mtime > rhs.mtime; });
+    endResetModel();
+    connect(selection_, &QItemSelectionModel::selectionChanged, this, &RectentProjects::updateSelection);
+    auto   end      = std::chrono::high_resolution_clock::now();
+    double duration = std::chrono::duration<double, std::milli>(end - start).count();
+    qInfo() << __FUNCTION__ << __LINE__ << "time elapsed:" << duration << "ms";
+}
+
+int RectentProjects::rowCount(const QModelIndex &parent) const
+{
+    if (parent.isValid())
+        return 0;
+    return static_cast<int>(project_infos.size());
+}
+
+QVariant RectentProjects::data(const QModelIndex &index, int role) const
+{
+    const int row = index.row();
+    if (row < 0 || row >= rowCount())
+        return QVariant();
+    switch (role)
+    {
+    case NameRole:
+        return getName(index);
+    case PathRole:
+        return getPath(index);
+    case ToolTipRole:
+        return getTooltip(index);
+    case SelectedRole:
+        return getSelected(index);
+    default:
+        return QVariant();
+    }
+}
+
+bool RectentProjects::setData(const QModelIndex &index, const QVariant &value, int role)
+{
+    return QAbstractListModel::setData(index, value, role);
+}
+
+QHash<int, QByteArray> RectentProjects::roleNames() const
+{
+    return {
+        {    NameRole,     "name"},
+        {    PathRole,     "path"},
+        { ToolTipRole,  "tooltip"},
+        {SelectedRole, "selected"},
+    };
+}
+
+bool RectentProjects::insertRows(int row, int count, const QModelIndex &parent)
+{
+    if (count < 1 || row < 0 || row > rowCount(parent))
+        return false;
+    beginInsertRows(QModelIndex(), row, row + count - 1);
+    project_infos.insert(project_infos.begin() + row, count, ProjectBaseInfo{});
+    endInsertRows();
+    return true;
+}
+
+bool RectentProjects::addProject(const QString &path)
+{
+    if (database_ == nullptr)
+        return false;
+    const int row = 0;
+    if (!insertRow(row))
+        return false;
+    ProjectBaseInfo &info = project_infos[row];
+    bool         ok   = database_->addProject(path);
+    spdlog::info("添加最近项目: {}, ok: {}", path.toUtf8().constData(), ok);
+    if (ok)
+    {
+        info.path = path;
+        data::ProjectDataBase::getProjectBaseInfo(info.path, info.name, info.mtime);
+
+        QModelIndex top_left = index(row);
+        emit        dataChanged(top_left, top_left, {NameRole, PathRole, ToolTipRole});
+
+        selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
+        return true;
+    }
+    return false;
+}
+
+bool RectentProjects::updateProject(const QString &path)
+{
+    if (database_ == nullptr)
+        return false;
+    const int size = static_cast<int>(project_infos.size());
+    for (int i = 0; i < size; ++i)
+    {
+        ProjectBaseInfo info = project_infos[i];
+        if (info.path == path)
+        {
+            info.path = path;
+            project_infos.erase(project_infos.begin() + i);
+            project_infos.insert(project_infos.begin(), info);
+            spdlog::info("更新最近项目: {}, ok: {}", path.toUtf8().constData(), true);
+
+            QModelIndex top_left     = index(0);
+            QModelIndex bottom_right = index(i);
+            emit        dataChanged(top_left, bottom_right, {NameRole, PathRole, ToolTipRole});
+
+            selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
+            return true;
+        }
+    }
+    return addProject(path);
+}
+
+QVariant RectentProjects::getName(const QModelIndex &index) const
+{
+    return project_infos.at(index.row()).name;
+}
+
+QVariant RectentProjects::getPath(const QModelIndex &index) const
+{
+    return project_infos.at(index.row()).path;
+}
+
+QVariant RectentProjects::getTooltip(const QModelIndex &index) const
+{
+    const ProjectBaseInfo &info = project_infos.at(index.row());
+
+    QString mtime = QDateTime::fromSecsSinceEpoch(info.mtime).toString("yyyy/MM/dd hh:mm");
+    QString   msg
+        = QString("%1\n路径: %2\n修改时间: %3").arg(info.name, info.path, mtime);
+    return msg;
+}
+
+QVariant RectentProjects::getSelected(const QModelIndex &index) const
+{
+    if (selection_ == nullptr)
+        return false;
+    const QModelIndexList &items = selection_->selectedIndexes();
+    for (const QModelIndex selected_index : items)
+    {
+        if (selected_index == index)
+            return true;
+    }
+    return false;
+}
+
+void RectentProjects::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)
+{
+    const QModelIndexList &dselected_items = deselected.indexes();
+    int                    top{-1};
+    int                    bottom{-1};
+    for (const QModelIndex &index : dselected_items)
+    {
+        const int row = index.row();
+        if (top == -1)
+            top = row;
+        else
+            top = std::min(top, row);
+        bottom = std::max(bottom, row);
+    }
+    emit dataChanged(index(top), index(bottom), {SelectedRole});
+
+    top    = -1;
+    bottom = -1;
+
+    const QModelIndexList &selected_items = selected.indexes();
+    for (const QModelIndex &index : selected_items)
+    {
+        const int row = index.row();
+        if (top == -1)
+            top = row;
+        else
+            top = std::min(top, row);
+        bottom = std::max(bottom, row);
+    }
+    emit dataChanged(index(top), index(bottom), {SelectedRole});
+}
+
+ProjectManager::ProjectManager(QObject *parent)
+    : QObject(parent)
+    , recent_projects_(new RectentProjects("./history.db", this))
+{
+
+}
+
+ProjectManager::~ProjectManager()
+{
+
+}
+
+Project *ProjectManager::createProject(const QString &name, const int method, const QString &path,
+                                       const QString &description, const QString image_base_path)
+{
+    if (current_project_)
+        closeProject();
+    const auto &[valid, msg] = Project::isValid(method, path, true);
+    if (!valid)
+    {
+        spdlog::error("创建项目 name: {}, path: {}, ok: {}, msg: {}", name.toUtf8().constData(),
+                      path.toUtf8().constData(), false, msg.toUtf8().constData());
+        return nullptr;
+    }
+    qint64 ctime     = QDateTime::currentSecsSinceEpoch();
+    current_project_ = new Project(name, method, path, description, image_base_path, ctime, ctime, this);
+    spdlog::info("创建项目 name: {}, path: {}, ok: {}", name.toUtf8().constData(), path.toUtf8().constData(),
+                 current_project_ != nullptr);
+    current_project_->initProject();
+    if (recent_projects_)
+        recent_projects_->addProject(path);
+    emit projectChanged();
+    return current_project_;
+}
+
+Project *ProjectManager::openProject(const QString &path)
+{
+    if (current_project_ && current_project_->path() == path)
+        return current_project_;
+    const auto &[valid, msg] = Project::isValid(-1, path, false);
+    if (!valid)
+    {
+        spdlog::error("打开项目 path: {}, ok: {}, msg: {}", path.toUtf8().constData(), false, msg.toUtf8().constData());
+        return nullptr;
+    }
+    if (current_project_)
+        closeProject();
+    current_project_ = new Project(path, this);
+    spdlog::info("打开项目 path: {}, ok: {}", path.toUtf8().constData(), current_project_ != nullptr);
+    current_project_->openProject();
+    if (recent_projects_)
+        recent_projects_->updateProject(current_project_->path());
+    emit projectChanged();
+    return current_project_;
+}
+
+void ProjectManager::closeProject()
+{
+    if (current_project_)
+    {
+        spdlog::info("关闭项目 path: {}, ok: {}", current_project_->path().toUtf8().constData(), true);
+        current_project_->deleteLater();
+        current_project_ = nullptr;
+        emit projectChanged();
+    }
+    else
+    {
+        spdlog::error("关闭项目失败, 当前未打开项目");
+    }
+}
+
+QString ProjectManager::isProjectValid(const int method, const QString &path, bool is_new)
+{
+    const auto &[valid, msg] = Project::isValid(method, path, is_new);
+    return msg;
+}
+
+QVariantMap ProjectManager::getProjectInfo(const QString &path)
+{
+    if (projects_info.find(path) == projects_info.end())
+    {
+        projects_info[path] = data::ProjectDataBase::getProjectInfo(path);
+    }
+    return projects_info[path];
+}
+
+} // namespace dltool::project

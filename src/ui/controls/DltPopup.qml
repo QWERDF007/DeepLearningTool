@@ -1,0 +1,61 @@
+import QtQuick
+import QtQuick.Templates as T
+import QtQuick.Controls
+
+
+import dltool.ui
+
+Popup {
+    id: control
+    property alias bg: bg
+    padding: 0
+    modal:true
+    parent: Overlay.overlay
+    x: Math.round((d.parentWidth - width) / 2)
+    y: Math.round((d.parentHeight - height) / 2)
+    closePolicy: Popup.NoAutoClose
+    enter: Transition {
+        NumberAnimation {
+            property: "opacity"
+            duration: 83
+            from:0
+            to:1
+        }
+    }
+    height: Math.min(implicitHeight,d.parentHeight)
+    exit: Transition {
+        NumberAnimation {
+            property: "opacity"
+            duration: 83
+            from:1
+            to:0
+        }
+    }
+    background: Rectangle {
+        id: bg
+        radius: [5,5,5,5]
+        color: DltColor.Background
+        DltShadow {
+            radius: 5
+        }
+    }
+    QtObject{
+        id:d
+        property int parentHeight: {
+            if(control.parent){
+                return control.parent.height
+            }
+            return control.height
+        }
+        property int parentWidth: {
+            if(control.parent){
+                return control.parent.width
+            }
+            return control.width
+        }
+    }
+
+    T.Overlay.modal: Rectangle {
+        color: Utils.withOpacity("#F0F0F0", 0.5)
+    }
+}

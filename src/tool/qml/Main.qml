@@ -1,0 +1,42 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+
+import dltool.ui
+import dltool.tool
+import dltool.project
+
+ApplicationWindow {
+    id: window
+    visible: true
+    width: 1920
+    height: 1080
+    title: ProjectManager.project ? ProjectManager.project.path : ""
+
+    header: Header {
+        id: _header
+        width: parent.width
+        height: 48
+    }
+
+
+    Content {
+        id: content
+        anchors {
+            top: parent.top
+            bottom: parent.bottom
+        }
+        height: parent.heght
+        width: parent.width
+        Layout.fillHeight: true
+        Layout.fillWidth: true
+        currentIndex: _header.currentIndex
+    }
+
+
+    footer: Rectangle {
+        width: parent.width
+        height: 32
+        color: DltColor.Primary
+    }
+}

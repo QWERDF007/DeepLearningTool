@@ -1,0 +1,8 @@
+[submodule "3rdparty/sqlpp11"]
+	path = 3rdparty/sqlpp11
+	url = https://github.com/rbock/sqlpp11.git
+	branch = main
+[submodule "3rdparty/spdlog"]
+	path = 3rdparty/spdlog
+	url = https://github.com/gabime/spdlog.git
+	branch = v1.x

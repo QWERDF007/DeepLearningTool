@@ -1,0 +1,76 @@
+set(PLUGIN_NAME "common")
+set(TARGET_NAME "${PROJECT_NAME}_${PLUGIN_NAME}")
+
+# 指定可执行文件和库文件的输出目录
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${PROJECT_NAME}/${PLUGIN_NAME})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${PROJECT_NAME}/${PLUGIN_NAME})
+
+# MSVC 去掉 Debug Release 文件夹的嵌套  
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+
+# 获取所有源文件的相对路径
+file(GLOB_RECURSE SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp)
+
+# 获取所有头文件的相对路径
+file(GLOB_RECURSE HEADERS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.h *.hpp)
+
+# 获取所有QML文件的相对路径
+file(GLOB_RECURSE QML_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.qml)
+# 将 qml 文件组织到一起
+source_group("QML Files" FILES ${QML_SOURCES})
+
+# 设置插件输出目录
+set(QML_PLUGIN_DIRECTORY "${CMAKE_BINARY_DIR}/${PROJECT_NAME}/${PLUGIN_NAME}")
+
+qt_add_library(${TARGET_NAME} SHARED
+    ${SOURCES}
+    ${HEADERS}
+    ${QML_SOURCES}
+)
+
+# 如果编译模式是Debug或RelWithDebInfo，则添加预处理定义QT_QML_DEBUG。用于开启Qt Quick调试功能
+target_compile_definitions(${TARGET_NAME}
+    PRIVATE $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:QT_QML_DEBUG>
+)
+
+target_link_libraries(${TARGET_NAME}
+    PUBLIC
+        Qt6::Core
+        spdlog::spdlog
+)
+
+target_include_directories(${TARGET_NAME} 
+    PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/${PLUGIN_NAME}>
+        $<INSTALL_INTERFACE:include>
+)
+
+
+if (WIN32)
+    target_link_libraries(${TARGET_NAME} PRIVATE Dbghelp)
+else()
+    target_link_libraries(${TARGET_NAME} PRIVATE dl)
+endif()
+
+# 将名称转换为大写
+string(TOUPPER ${TARGET_NAME} TARGET_NAME_UPPER)
+# 设置额外编译定义
+set(TARGET_EXPORTS "${TARGET_NAME_UPPER}_BUILD_SHARED_LIBS")
+# 添加一个宏定义, 配合动态库导出函数、类
+# https://stackoverflow.com/a/67923443
+add_compile_definitions(${TARGET_NAME} PRIVATE ${TARGET_EXPORTS})
+
+# 添加接口头文件，链接目标后可以include, 无需另外包含头文件目录
+set(PLUGIN_HEADER "${PROJECT_NAME}_${PLUGIN_NAME}_header")
+add_library(${PLUGIN_HEADER} INTERFACE)
+target_include_directories(${PLUGIN_HEADER}
+    INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_BINARY_DIR}/include
+)
