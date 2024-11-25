@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import dltool.ui
 
 Rectangle {
+    id: projectInfo
     clip: true
     height: 200
     width: 200
@@ -17,6 +18,7 @@ Rectangle {
     property string ctime: ""
     property string mtime: ""
 
+    signal projectDescriptionChanged(string desc)
 
     ColumnLayout {
         anchors.fill: parent
@@ -31,7 +33,7 @@ Rectangle {
             }
             DltText {
                 Layout.fillWidth: true
-                text: description
+                text: projectInfo.description
                 wrapMode: Text.WrapAnywhere
             }
         }
@@ -43,7 +45,7 @@ Rectangle {
             }
             DltText {
                 Layout.fillWidth: true
-                text: path
+                text: projectInfo.path
                 wrapMode: Text.WrapAnywhere
             }
         }
@@ -55,7 +57,7 @@ Rectangle {
             }
             DltText {
                 Layout.fillWidth: true
-                text: image_base_path
+                text: projectInfo.image_base_path
                 wrapMode: Text.WrapAnywhere
             }
         }
@@ -67,7 +69,7 @@ Rectangle {
             }
             DltText {
                 Layout.fillWidth: true
-                text: label_classes
+                text: projectInfo.label_classes
                 wrapMode: Text.WrapAnywhere
             }
         }
@@ -79,7 +81,7 @@ Rectangle {
             }
             DltText {
                 Layout.fillWidth: true
-                text: label_instances_images
+                text: projectInfo.label_instances_images
                 wrapMode: Text.WrapAnywhere
             }
         }
@@ -91,7 +93,7 @@ Rectangle {
             }
             DltText {
                 Layout.fillWidth: true
-                text: ctime + " " + mtime
+                text: projectInfo.ctime + " " + projectInfo.mtime
                 wrapMode: Text.WrapAnywhere
             }
         }
@@ -101,18 +103,31 @@ Rectangle {
     }
 
     DltTextIconButton {
+        id: editBtn
         anchors{
             top: parent.top
             right: parent.right
             margins: 5
         }
-        visible: path !== ""
+        visible: projectInfo.path !== ""
         color: hovered ? DltColor.Button : "transparent"
         iconColor: DltColor.FontPrimary
         iconSource: DltFontIcon.Edit
         text: "编辑项目描述"
         onClicked: {
-            console.log("编辑项目描述...")
+            editor.text = projectInfo.description
+            let pos = projectInfo.mapToItem(Qt.application.activeWindow, editBtn.x, editBtn.y)
+            editor.x = pos.x + 20
+            editor.y = pos.y + 20
+            editor.open()
+        }
+    }
+
+    DltEditor {
+        id: editor
+        description: editBtn.text
+        onEditTextChanged: function(newDescription) {
+            projectInfo.projectDescriptionChanged(newDescription)
         }
     }
 }

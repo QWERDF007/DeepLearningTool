@@ -8,6 +8,8 @@ import dltool.ui
 Popup {
     id: control
     property alias bg: bg
+    property real maskOpacity: 0.5
+    property bool maskVisible: true
     padding: 0
     modal:true
     parent: Overlay.overlay
@@ -56,6 +58,7 @@ Popup {
     }
 
     T.Overlay.modal: Rectangle {
-        color: Utils.withOpacity("#F0F0F0", 0.5)
+        visible: maskVisible
+        color: Utils.withOpacity("#F0F0F0", maskOpacity)
     }
 }

@@ -19,7 +19,7 @@ public:
         return pool_;
     }
 
-    static sqlpp::sqlite3::connection connect(const QString& path, const int flags);
+    static sqlpp::sqlite3::connection connect(const QString &path, const int flags);
 
 protected:
     QString path_;
@@ -39,14 +39,17 @@ public:
     ~ProjectDataBase();
 
     bool initProject(const QString &name, const int method, const QString &path, const QString &description,
-                     const QString image_base_path, const qint64 ctime, const qint64 mtime) const;
+                     const QString image_base_path, const qint64 ctime, const qint64 mtime, QString &err_msg) const;
     bool openProject(QString &name, int &method, QString &path, QString &description, QString image_base_path,
-                     qint64 &ctime, qint64 &mtime) const;
+                     qint64 &ctime, qint64 &mtime, QString &err_msg) const;
     bool updateProject(const QString &name, const QString &path, const QString &description,
-                       const QString &image_base_path, const qint64 mtime) const;
+                       const QString &image_base_path, const qint64 mtime, QString &err_msg) const;
 
-    static void getProjectBaseInfo(const QString &path, QString &name, qint64 &mtime);
-    static QVariantMap getProjectInfo(const QString &path);
+    static bool getProjectBaseInfo(const QString &path, QString &name, qint64 &mtime, QString &err_msg);
+    static bool updateProjectBaseInfo(const QString &path, const QString &new_name, const QString &new_description,
+                                      const qint64 new_mtime, QString &err_msg);
+
+    static bool getProjectInfo(const QString &path, QVariantMap &project_info, QString &err_msg);
 };
 
 class DATA_API RecentProjectsDataBase : public DataBase
@@ -55,9 +58,9 @@ public:
     RecentProjectsDataBase(const QString &path, QObject *parent = nullptr);
     ~RecentProjectsDataBase();
 
-    bool addProject(const QString &path) const;
-    bool deleteProject(const QString &path) const;
-    int  getProjects(std::vector<QString> &paths) const;
+    bool addProject(const QString &path, QString &err_msg) const;
+    bool deleteProject(const QString &path, QString &err_msg) const;
+    int  getProjects(std::vector<QString> &paths, QString &err_msg) const;
 };
 
 } // namespace dltool::data

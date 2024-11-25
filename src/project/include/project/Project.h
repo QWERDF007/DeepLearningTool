@@ -6,7 +6,6 @@
 #include <QItemSelectionModel>
 #include <QObject>
 
-
 namespace dltool::data {
 class DataBase;
 class ProjectDataBase;
@@ -90,7 +89,7 @@ class RectentProjects : public QAbstractListModel
 {
     Q_OBJECT
     QML_ANONYMOUS
-    Q_PROPERTY(QItemSelectionModel* selection READ selection CONSTANT)
+    Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
 public:
     explicit RectentProjects(const QString &path, QObject *parent = nullptr);
     ~RectentProjects();
@@ -124,9 +123,11 @@ public:
 
     bool addProject(const QString &path);
 
-    bool updateProject(const QString &path);
+    bool updateProject(const QString &path, const QString &new_name, const qint64 new_mtime);
 
-    QItemSelectionModel* selection() const
+    bool openProject(const QString &path);
+
+    QItemSelectionModel *selection() const
     {
         return selection_;
     }
@@ -140,10 +141,10 @@ private:
 
     std::vector<ProjectBaseInfo> project_infos;
 
-    QVariant getName(const QModelIndex& index) const;
-    QVariant getPath(const QModelIndex& index) const;
-    QVariant getTooltip(const QModelIndex& index) const;
-    QVariant getSelected(const QModelIndex& index) const;
+    QVariant getName(const QModelIndex &index) const;
+    QVariant getPath(const QModelIndex &index) const;
+    QVariant getTooltip(const QModelIndex &index) const;
+    QVariant getSelected(const QModelIndex &index) const;
 
     void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
 };
@@ -160,6 +161,8 @@ public:
                                        const QString image_base_path);
     Q_INVOKABLE Project *openProject(const QString &path);
     Q_INVOKABLE void     closeProject();
+    Q_INVOKABLE bool     updateProjectBaseInfo(const QString &path, const QString &new_name,
+                                               const QString &new_description);
 
     Q_INVOKABLE QString isProjectValid(const int method, const QString &path, bool is_new);
 
@@ -183,7 +186,7 @@ public:
         return recent_projects_;
     }
 
-    Q_INVOKABLE QVariantMap getProjectInfo(const QString& path);
+    Q_INVOKABLE QVariantMap getProjectInfo(const QString &path);
 
 private:
     explicit ProjectManager(QObject *parent = nullptr);
@@ -191,8 +194,6 @@ private:
 
     Project         *current_project_{nullptr};
     RectentProjects *recent_projects_{nullptr};
-
-    std::unordered_map<QString, QVariantMap> projects_info;
 
 signals:
     void projectChanged();

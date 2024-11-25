@@ -67,12 +67,25 @@ Rectangle {
                 id: projectNameType
                 Layout.fillWidth: true
                 Layout.preferredHeight: 120
+                onProjectNameChanged: function(newName) {
+                    let ok = ProjectManager.updateProjectBaseInfo(projectInfo.path, newName, projectInfo.description)
+                    if (ok) {
+                        projectNameType.name = newName
+                    }
+                }
             }
 
             ProjectInfo {
                 id: projectInfo
                 Layout.fillHeight: true
                 Layout.fillWidth: true
+                onProjectDescriptionChanged: function(newDescription) {
+                    let ok = ProjectManager.updateProjectBaseInfo(projectInfo.path, projectNameType.name, newDescription)
+                    if (ok) {
+                        console.log("new desc", newDescription)
+                        projectInfo.description = newDescription
+                    }
+                }
             }
         }
 
