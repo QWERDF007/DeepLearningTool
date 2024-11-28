@@ -18,6 +18,36 @@ Item {
     property string path: ""
     property ItemSelectionModel selection: ProjectManager.recentProjects ? ProjectManager.recentProjects.selection : null
 
+    DltMenu {
+        id: menu
+        width: 200
+        // onWidthChanged: {
+        //     console.log("menu width changed", width, childrenRect.width)
+        // }
+
+        DltMenuItem {
+            text: "打开项目"
+
+            // onWidthChanged: {
+            //     console.log("打开项目", width)
+            // }
+        }
+        DltMenuItem {
+            text: "删除项目"
+            // onWidthChanged: {
+            //     console.log("删除项目", width)
+            // }
+        }
+        DltMenuItem {
+            text: "从最近项目列表中删除"
+            iconSource: DltFontIcon.DeleteWord
+        }
+        DltMenuItem {
+            text: "在资源浏览器中打开"
+            iconSource: DltFontIcon.OpenLocal
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.leftMargin: 5
@@ -46,6 +76,7 @@ Item {
             }
             MouseArea {
                 anchors.fill: parent
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
                 propagateComposedEvents: true
                 onClicked: function (mouse) {
                     let posInGridView = Qt.point(mouse.x, mouse.y)
@@ -55,6 +86,9 @@ Item {
                     if (item) {
                         selection.select(view.model.index(index, 0), ItemSelectionModel.ClearAndSelect)
                         projectsView.path = item.path
+                        if (mouse.button === Qt.RightButton) {
+                            menu.popup()
+                        }
                     }
                 }
             }

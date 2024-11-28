@@ -89,7 +89,7 @@ Rectangle {
             }
         }
 
-        ProjectsView {
+        ProjectHistoryView {
             SplitView.fillHeight: true
             SplitView.fillWidth: true
             onPathChanged: {

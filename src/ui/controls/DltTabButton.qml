@@ -8,7 +8,7 @@ TabButton {
     font: DltFont.Subtitle
     property alias textColor: content.color
     property color normalColor: DltColor.Primary
-    property color hoverColor: Qt.lighter(normalColor, 1.2)
+    property color hoverColor: DltColor.Hovered
     property color pressedColor: Qt.lighter(normalColor, 1.3)
     contentItem: IconLabel {
         id: content
