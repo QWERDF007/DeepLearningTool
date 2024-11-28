@@ -18,9 +18,6 @@ T.MenuItem {
     implicitHeight: Math.max(implicitBackgroundHeight + topInset + bottomInset,
                              implicitContentHeight + topPadding + bottomPadding,
                              implicitIndicatorHeight + topPadding + bottomPadding)
-    onImplicitWidthChanged: {
-        console.log("menu item implicitwidth", control.text,  implicitWidth)
-    }
 
     padding: 6
     spacing: 6

@@ -15,8 +15,7 @@ T.Menu {
     margins: 0
     overlap: 1
     spacing: 0
-    delegate: DltMenuItem {
-    }
+    delegate: DltMenuItem {}
     enter: Transition {
         NumberAnimation {
             property: "opacity"
@@ -37,24 +36,14 @@ T.Menu {
     contentItem: ListView {
         id: view
         implicitHeight: contentHeight
-        implicitWidth: Math.max(contentWidth, childrenRect.width)
         model: control.contentModel
-        spacing: 0
-        // interactive: Window.window
-        //              ? contentHeight + control.topPadding + control.bottomPadding > Window.window.height
-        //              : false
+        // spacing: 0
+        interactive: Window.window
+                     ? contentHeight + control.topPadding + control.bottomPadding > Window.window.height
+                     : false
         clip: true
         currentIndex: control.currentIndex
         ScrollBar.vertical: DltScrollBar{}
-        onContentWidthChanged: {
-            console.log("listview onContentWidthChanged width", view.width, view.contentWidth, view.childrenRect.width)
-        }
-        onContentHeightChanged: {
-            console.log("listview onContentHeightChanged height", view.height, view.contentHeight, view.childrenRect.height)
-        }
-        onWidthChanged: {
-            console.log("listview onWidthChanged width", view.width, view.contentWidth, view.childrenRect.width)
-        }
     }
     background: Rectangle {
         implicitWidth: 150

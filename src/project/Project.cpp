@@ -36,17 +36,17 @@ void Project::initProject()
 {
     if (database_ == nullptr)
         database_ = new data::ProjectDataBase(path_, this);
-    spdlog::info("创建数据库: {}, ok: {}", path_.toUtf8().constData(), database_ != nullptr);
+    spdlog::info("初始化项目, 创建数据库: {}", path_.toUtf8().constData());
     qint64  ctime = QDateTime::currentSecsSinceEpoch();
     QString err_msg;
     bool    ok = database_->initProject(name_, method_, path_, description_, image_base_path_, ctime, ctime, err_msg);
     if (ok)
     {
-        spdlog::info("创建表: project, ok: {}", true);
+        spdlog::info("创建表: project");
     }
     else
     {
-        spdlog::info("初始化项目失败, error: {}", err_msg.toUtf8().constData());
+        spdlog::error("初始化项目失败, error: {}", err_msg.toUtf8().constData());
     }
 }
 
@@ -54,17 +54,16 @@ void Project::openProject()
 {
     if (database_ == nullptr)
         database_ = new data::ProjectDataBase(path_, this);
-    spdlog::info("打开数据库: {}, ok: {}", path_.toUtf8().constData(), database_ != nullptr);
+    spdlog::info("打开数据库: {}", path_.toUtf8().constData());
     QString err_msg;
     bool    ok = database_->openProject(name_, method_, path_, description_, image_base_path_, ctime_, mtime_, err_msg);
-    spdlog::info("查询表: project, ok: {}", ok);
     if (ok)
     {
-        spdlog::info("查询表: project, ok: {}", true);
+        spdlog::info("查询表: project");
     }
     else
     {
-        spdlog::info("打开项目失败: {}, error: {}", path_.toUtf8().constData(), err_msg.toUtf8().constData());
+        spdlog::error("打开项目失败: {}, error: {}", path_.toUtf8().constData(), err_msg.toUtf8().constData());
     }
 }
 
@@ -100,18 +99,17 @@ void RectentProjects::init()
         database_ = new data::RecentProjectsDataBase(path_, this);
     if (!project_infos.empty())
         project_infos.clear();
-    spdlog::info("打开数据库: {}, ok: {}", path_.toUtf8().constData(), database_ != nullptr);
+    spdlog::info("打开最近项目数据库: {}", path_.toUtf8().constData());
     std::vector<QString> paths;
     QString              err_msg;
     const int            size = database_->getProjects(paths, err_msg);
-    if (size > 0)
+    if (err_msg.isEmpty())
     {
-        spdlog::info("查询表: recent_projects, size: {}", path_.toUtf8().constData(), size);
+        spdlog::info("查询表: recent_projects, size: {}", size);
     }
     else
     {
-        spdlog::error("查询表失败: recent_projects, error: {}", path_.toUtf8().constData(),
-                      err_msg.toUtf8().constData());
+        spdlog::error("查询表失败: recent_projects, error: {}", err_msg.toUtf8().constData());
     }
 
     beginResetModel();
@@ -191,10 +189,23 @@ bool RectentProjects::insertRows(int row, int count, const QModelIndex &parent)
     return true;
 }
 
+bool RectentProjects::removeRows(int row, int count, const QModelIndex &parent)
+{
+    if (count <= 0 || row < 0 || (row + count) > rowCount(parent))
+        return false;
+    beginRemoveRows(QModelIndex(), row, row + count - 1);
+    project_infos.erase(project_infos.begin() + row, project_infos.begin() + row + count);
+    endRemoveRows();
+    return true;
+}
+
 bool RectentProjects::addProject(const QString &path)
 {
     if (database_ == nullptr)
+    {
+        spdlog::error("添加项目到最近项目失败, 数据库未初始化: {}", path_.toUtf8().constData());
         return false;
+    }
     const int row = 0;
     if (!insertRow(row))
         return false;
@@ -204,7 +215,7 @@ bool RectentProjects::addProject(const QString &path)
     bool    ok = database_->addProject(path, err_msg);
     if (ok)
     {
-        spdlog::info("添加最近项目: {}, ok: {}", path.toUtf8().constData(), true);
+        spdlog::info("添加最近项目: {}", path.toUtf8().constData());
         info.path = path;
         data::ProjectDataBase::getProjectBaseInfo(info.path, info.name, info.mtime, err_msg);
         emit dataChanged(index(row), index(row), {NameRole, PathRole, ToolTipRole});
@@ -220,6 +231,11 @@ bool RectentProjects::addProject(const QString &path)
 
 bool RectentProjects::updateProject(const QString &path, const QString &new_name, const qint64 new_mtime)
 {
+    if (database_ == nullptr)
+    {
+        spdlog::error("更新最近项目失败, 数据库未初始化: {}", path_.toUtf8().constData());
+        return false;
+    }
     const int size = static_cast<int>(project_infos.size());
     bool      ok{false};
     for (int i = 0; i < size; ++i)
@@ -240,7 +256,10 @@ bool RectentProjects::updateProject(const QString &path, const QString &new_name
 bool RectentProjects::openProject(const QString &path)
 {
     if (database_ == nullptr)
+    {
+        spdlog::error("打开最近项目失败, 数据库未初始化: {}", path_.toUtf8().constData());
         return false;
+    }
     const int size = static_cast<int>(project_infos.size());
     for (int i = 0; i < size; ++i)
     {
@@ -250,13 +269,43 @@ bool RectentProjects::openProject(const QString &path)
             info.path = path;
             project_infos.erase(project_infos.begin() + i);
             project_infos.insert(project_infos.begin(), info);
-            spdlog::info("打开最近项目: {}, ok: {}", path.toUtf8().constData(), true);
+            spdlog::info("打开最近项目: {}", path.toUtf8().constData());
             emit dataChanged(index(0), index(i), {NameRole, PathRole, ToolTipRole});
             selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
             return true;
         }
     }
     return addProject(path);
+}
+
+bool RectentProjects::removeProject(const QString &path)
+{
+    if (database_ == nullptr)
+    {
+        spdlog::error("删除最近项目失败, 数据库未初始化: {}", path_.toUtf8().constData());
+        return false;
+    }
+    spdlog::info("删除最近项目: {}", path.toUtf8().constData());
+    for (size_t i = 0; i < project_infos.size(); ++i)
+    {
+        const ProjectBaseInfo& info = project_infos[i];
+        if (info.path == path)
+        {
+            const int idx = static_cast<int>(i);
+            removeRow(idx);
+            emit dataChanged(index(idx), index(static_cast<int>(project_infos.size() - 1)), {NameRole, PathRole, ToolTipRole});
+            selection_->select(index(0), QItemSelectionModel::SelectCurrent);
+            break;
+        }
+    }
+
+    QString err_msg;
+    bool ok = database_->removeProject(path, err_msg);
+    if (!ok)
+    {
+        spdlog::error("删除最近项目失败: {}, error: {}", path.toUtf8().constData(), err_msg.toUtf8().constData());
+    }
+    return ok;
 }
 
 QVariant RectentProjects::getName(const QModelIndex &index) const
@@ -336,25 +385,17 @@ Project *ProjectManager::createProject(const QString &name, const int method, co
 {
     if (current_project_)
         closeProject();
+    spdlog::info("创建项目 name: {}, path: {}", name.toUtf8().constData(), path.toUtf8().constData());
     const auto &[valid, msg] = Project::isValid(method, path, true);
     if (!valid)
     {
-        spdlog::error("创建项目 name: {}, path: {}, ok: {}, msg: {}", name.toUtf8().constData(),
-                      path.toUtf8().constData(), false, msg.toUtf8().constData());
+        spdlog::error("创建项目失败: {}, error: {}", path.toUtf8().constData(), msg.toUtf8().constData());
         return nullptr;
     }
     qint64 ctime     = QDateTime::currentSecsSinceEpoch();
     current_project_ = new Project(name, method, path, description, image_base_path, ctime, ctime, this);
-    spdlog::info("创建项目 name: {}, path: {}, ok: {}", name.toUtf8().constData(), path.toUtf8().constData(),
-                 current_project_ != nullptr);
     current_project_->initProject();
-    if (recent_projects_)
-    {
-        bool ok = recent_projects_->addProject(path);
-        if (!ok)
-        {
-        }
-    }
+    recent_projects_->addProject(path);
     emit projectChanged();
     return current_project_;
 }
@@ -363,19 +404,18 @@ Project *ProjectManager::openProject(const QString &path)
 {
     if (current_project_ && current_project_->path() == path)
         return current_project_;
+    spdlog::info("打开项目: {}", path.toUtf8().constData());
     const auto &[valid, msg] = Project::isValid(-1, path, false);
     if (!valid)
     {
-        spdlog::error("打开项目 path: {}, ok: {}, msg: {}", path.toUtf8().constData(), false, msg.toUtf8().constData());
+        spdlog::error("打开项目失败: {}, error: {}", path.toUtf8().constData(), msg.toUtf8().constData());
         return nullptr;
     }
     if (current_project_)
         closeProject();
     current_project_ = new Project(path, this);
-    spdlog::info("打开项目 path: {}, ok: {}", path.toUtf8().constData(), current_project_ != nullptr);
     current_project_->openProject();
-    if (recent_projects_)
-        recent_projects_->openProject(current_project_->path());
+    recent_projects_->openProject(current_project_->path());
     emit projectChanged();
     return current_project_;
 }
@@ -384,7 +424,7 @@ void ProjectManager::closeProject()
 {
     if (current_project_)
     {
-        spdlog::info("关闭项目 path: {}, ok: {}", current_project_->path().toUtf8().constData(), true);
+        spdlog::info("关闭项目: {}", current_project_->path().toUtf8().constData());
         current_project_->deleteLater();
         current_project_ = nullptr;
         emit projectChanged();
@@ -397,19 +437,29 @@ void ProjectManager::closeProject()
 
 bool ProjectManager::updateProjectBaseInfo(const QString &path, const QString &new_name, const QString &new_description)
 {
+    spdlog::info("更新项目基础信息: {}", path.toUtf8().constData());
     QString      err_msg;
     const qint64 mtime = QDateTime::currentSecsSinceEpoch();
     bool         ok    = data::ProjectDataBase::updateProjectBaseInfo(path, new_name, new_description, mtime, err_msg);
     if (ok)
     {
         recent_projects_->updateProject(path, new_name, mtime);
-        spdlog::info("更新项目基础信息: {}, ok: {}", path.toUtf8().constData(), true);
     }
     else
     {
         spdlog::error("更新项目基础信息失败: {}, error: {}", path.toUtf8().constData(), err_msg.toUtf8().constData());
     }
     return ok;
+}
+
+bool ProjectManager::deleteProject(const QString &path)
+{
+    return false;
+}
+
+bool ProjectManager::removeFromRectentProjects(const QString &path)
+{
+    return recent_projects_->removeProject(path);
 }
 
 QString ProjectManager::isProjectValid(const int method, const QString &path, bool is_new)
@@ -420,6 +470,7 @@ QString ProjectManager::isProjectValid(const int method, const QString &path, bo
 
 QVariantMap ProjectManager::getProjectInfo(const QString &path)
 {
+    spdlog::info("获取项目信息: {}", path.toUtf8().constData());
     QVariantMap project_info;
     QString     err_msg;
     bool        ok = data::ProjectDataBase::getProjectInfo(path, project_info, err_msg);

@@ -59,7 +59,7 @@ public:
     ~RecentProjectsDataBase();
 
     bool addProject(const QString &path, QString &err_msg) const;
-    bool deleteProject(const QString &path, QString &err_msg) const;
+    bool removeProject(const QString &path, QString &err_msg) const;
     int  getProjects(std::vector<QString> &paths, QString &err_msg) const;
 };
 

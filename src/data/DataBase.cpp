@@ -257,7 +257,7 @@ bool RecentProjectsDataBase::addProject(const QString &path, QString &err_msg) c
     }
 }
 
-bool RecentProjectsDataBase::deleteProject(const QString &path, QString &err_msg) const
+bool RecentProjectsDataBase::removeProject(const QString &path, QString &err_msg) const
 {
     try
     {

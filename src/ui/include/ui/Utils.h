@@ -12,6 +12,7 @@ class Utils : public QObject
 public:
     Q_INVOKABLE QColor  withOpacity(const QColor &color, qreal opacity) const;
     Q_INVOKABLE QString documentsLocation() const;
+    Q_INVOKABLE void    openInFileExplorer(const QString &path);
 
 private:
     explicit Utils(QObject *parent = nullptr);

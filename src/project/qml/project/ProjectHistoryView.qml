@@ -27,24 +27,31 @@ Item {
 
         DltMenuItem {
             text: "打开项目"
-
-            // onWidthChanged: {
-            //     console.log("打开项目", width)
-            // }
+            iconSource: DltFontIcon.OpenFolderHorizontal
+            onClicked: {
+                ProjectManager.openProject(projectsView.path)
+            }
         }
         DltMenuItem {
             text: "删除项目"
-            // onWidthChanged: {
-            //     console.log("删除项目", width)
-            // }
+            iconSource: DltFontIcon.Delete
+            onClicked: {
+
+            }
         }
         DltMenuItem {
             text: "从最近项目列表中删除"
-            iconSource: DltFontIcon.DeleteWord
+            iconSource: DltFontIcon.Cancel
+            onClicked: {
+                ProjectManager.removeFromRectentProjects(projectsView.path)
+            }
         }
         DltMenuItem {
             text: "在资源浏览器中打开"
             iconSource: DltFontIcon.OpenLocal
+            onClicked: {
+                Utils.openInFileExplorer(projectsView.path)
+            }
         }
     }
 
@@ -69,7 +76,7 @@ Item {
             delegate: ProjectDelegate {
                 width: projectsView.cellWidth
                 height: projectsView.cellHeight
-                selected: model.selected
+                selected: model.selected ? true : false
                 name: model.name
                 path: model.path
                 msg: model.tooltip

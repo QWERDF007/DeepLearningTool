@@ -1,7 +1,11 @@
 #include "ui/Utils.h"
 
 #include <QColor>
+#include <QDir>
+#include <QFileInfo>
+#include <QProcess>
 #include <QStandardPaths>
+
 
 namespace dltool::ui {
 
@@ -21,6 +25,14 @@ QColor Utils::withOpacity(const QColor &color, qreal opacity) const
 QString Utils::documentsLocation() const
 {
     return QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+}
+
+void Utils::openInFileExplorer(const QString &path)
+{
+    // QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+    const QString explorer = "explorer";
+    QStringList   param{"/select,", QDir::toNativeSeparators(path)};
+    QProcess::startDetached(explorer, param);
 }
 
 } // namespace dltool::ui

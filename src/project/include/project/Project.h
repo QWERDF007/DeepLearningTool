@@ -120,12 +120,15 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     bool insertRows(int row, int count, const QModelIndex &parent = QModelIndex()) override;
+    bool removeRows(int row, int count, const QModelIndex &parent = QModelIndex()) override;
 
     bool addProject(const QString &path);
 
     bool updateProject(const QString &path, const QString &new_name, const qint64 new_mtime);
 
     bool openProject(const QString &path);
+
+    bool removeProject(const QString& path);
 
     QItemSelectionModel *selection() const
     {
@@ -163,6 +166,8 @@ public:
     Q_INVOKABLE void     closeProject();
     Q_INVOKABLE bool     updateProjectBaseInfo(const QString &path, const QString &new_name,
                                                const QString &new_description);
+    Q_INVOKABLE bool     deleteProject(const QString &path);
+    Q_INVOKABLE bool     removeFromRectentProjects(const QString &path);
 
     Q_INVOKABLE QString isProjectValid(const int method, const QString &path, bool is_new);
 
