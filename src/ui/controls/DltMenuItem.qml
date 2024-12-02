@@ -11,6 +11,7 @@ T.MenuItem {
     property int iconSpacing: 5
     property int iconSource
     property int iconSize: 16
+    property color disabledColor: "#6E6E6E"
     property color textColor: DltColor.FontPrimary
     id: control
     implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset,
@@ -32,7 +33,7 @@ T.MenuItem {
             id:content_icon
             iconSize: control.iconSize
             iconSource:control.iconSource
-            iconColor: DltColor.FontPrimary
+            iconColor: enabled ? DltColor.FontPrimary : disabledColor
         }
     }
     contentItem: Item{
@@ -57,7 +58,7 @@ T.MenuItem {
                 id:content_text
                 text: control.text
                 font: control.font
-                color: control.textColor
+                color: enabled ? control.textColor : disabledColor
                 anchors.verticalCenter: parent.verticalCenter
             }
         }
