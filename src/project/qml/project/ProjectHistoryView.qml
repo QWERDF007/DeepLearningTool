@@ -15,15 +15,12 @@ Item {
     property int cellWidth: 210
     property int cellHeight: 170
     property int spacing: 10
-    property string path: ""
+    property string path: ProjectManager.recentProjects ? ProjectManager.recentProjects.currentProjectPath : ""
     property ItemSelectionModel selection: ProjectManager.recentProjects ? ProjectManager.recentProjects.selection : null
 
     DltMenu {
         id: menu
         width: 200
-        // onWidthChanged: {
-        //     console.log("menu width changed", width, childrenRect.width)
-        // }
 
         DltMenuItem {
             text: "打开项目"
@@ -36,11 +33,13 @@ Item {
             text: "删除项目"
             iconSource: DltFontIcon.Delete
             onClicked: {
-
+                ProjectManager.deleteProject(projectsView.path)
             }
         }
         DltMenuItem {
             text: "从最近项目列表中删除"
+            enabled: ProjectManager.currentProject ? ProjectManager.currentProject.path !== projectsView.path : true
+
             iconSource: DltFontIcon.Cancel
             onClicked: {
                 ProjectManager.removeFromRectentProjects(projectsView.path)
@@ -92,7 +91,6 @@ Item {
                     let item = view.itemAtIndex(index)
                     if (item) {
                         selection.select(view.model.index(index, 0), ItemSelectionModel.ClearAndSelect)
-                        projectsView.path = item.path
                         if (mouse.button === Qt.RightButton) {
                             menu.popup()
                         }

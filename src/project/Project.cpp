@@ -294,7 +294,7 @@ bool RectentProjects::removeProject(const QString &path)
             const int idx = static_cast<int>(i);
             removeRow(idx);
             emit dataChanged(index(idx), index(static_cast<int>(project_infos.size() - 1)), {NameRole, PathRole, ToolTipRole});
-            selection_->select(index(0), QItemSelectionModel::SelectCurrent);
+            selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
             break;
         }
     }
@@ -306,6 +306,15 @@ bool RectentProjects::removeProject(const QString &path)
         spdlog::error("删除最近项目失败: {}, error: {}", path.toUtf8().constData(), err_msg.toUtf8().constData());
     }
     return ok;
+}
+
+bool RectentProjects::setCurrentProjectPath(const QString &path)
+{
+    if (path == current_path_)
+        return false;
+    current_path_ = path;
+    emit currentProjectPathChanged();
+    return true;
 }
 
 QVariant RectentProjects::getName(const QModelIndex &index) const
@@ -368,6 +377,7 @@ void RectentProjects::updateSelection(const QItemSelection &selected, const QIte
         else
             top = std::min(top, row);
         bottom = std::max(bottom, row);
+        setCurrentProjectPath(getPath(index).toString());
     }
     emit dataChanged(index(top), index(bottom), {SelectedRole});
 }
@@ -396,7 +406,7 @@ Project *ProjectManager::createProject(const QString &name, const int method, co
     current_project_ = new Project(name, method, path, description, image_base_path, ctime, ctime, this);
     current_project_->initProject();
     recent_projects_->addProject(path);
-    emit projectChanged();
+    emit currentProjectChanged();
     return current_project_;
 }
 
@@ -416,7 +426,7 @@ Project *ProjectManager::openProject(const QString &path)
     current_project_ = new Project(path, this);
     current_project_->openProject();
     recent_projects_->openProject(current_project_->path());
-    emit projectChanged();
+    emit currentProjectChanged();
     return current_project_;
 }
 
@@ -425,9 +435,10 @@ void ProjectManager::closeProject()
     if (current_project_)
     {
         spdlog::info("关闭项目: {}", current_project_->path().toUtf8().constData());
-        current_project_->deleteLater();
+        // current_project_->deleteLater();
+        delete current_project_;
         current_project_ = nullptr;
-        emit projectChanged();
+        emit currentProjectChanged();
     }
     else
     {
@@ -454,7 +465,17 @@ bool ProjectManager::updateProjectBaseInfo(const QString &path, const QString &n
 
 bool ProjectManager::deleteProject(const QString &path)
 {
-    return false;
+    if (current_project_ && current_project_->path() == path)
+        closeProject();
+    spdlog::info("删除项目: {}", path.toUtf8().constData());
+    removeFromRectentProjects(path);
+    QFile file(path);
+    bool ok = file.remove();
+    if (!ok)
+    {
+        spdlog::error("删除项目失败: {}, error: {}", path.toUtf8().constData(), file.errorString().toUtf8().constData());
+    }
+    return ok;
 }
 
 bool ProjectManager::removeFromRectentProjects(const QString &path)
@@ -470,6 +491,18 @@ QString ProjectManager::isProjectValid(const int method, const QString &path, bo
 
 QVariantMap ProjectManager::getProjectInfo(const QString &path)
 {
+    if (path.isEmpty())
+    {
+        return QVariantMap({
+            {"name", ""},
+            {"method", -1},
+            {"path", ""},
+            {"description", ""},
+            {"image_base_path", ""},
+            {"ctime", ""},
+            {"mtime", ""},
+        });
+    }
     spdlog::info("获取项目信息: {}", path.toUtf8().constData());
     QVariantMap project_info;
     QString     err_msg;

@@ -90,6 +90,7 @@ class RectentProjects : public QAbstractListModel
     Q_OBJECT
     QML_ANONYMOUS
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
+    Q_PROPERTY(QString currentProjectPath READ currentProjectPath WRITE setCurrentProjectPath NOTIFY currentProjectPathChanged FINAL)
 public:
     explicit RectentProjects(const QString &path, QObject *parent = nullptr);
     ~RectentProjects();
@@ -135,8 +136,15 @@ public:
         return selection_;
     }
 
+    QString currentProjectPath() const
+    {
+        return current_path_;
+    }
+    bool setCurrentProjectPath(const QString &path);
+
 private:
     QString path_;
+    QString current_path_;
 
     data::RecentProjectsDataBase *database_{nullptr};
 
@@ -150,6 +158,9 @@ private:
     QVariant getSelected(const QModelIndex &index) const;
 
     void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
+
+signals:
+    void currentProjectPathChanged();
 };
 
 class ProjectManager : public QObject
@@ -157,7 +168,7 @@ class ProjectManager : public QObject
     Q_OBJECT
     QML_NAMED_ELEMENT(ProjectManager)
     QT_QML_SINGLETON(ProjectManager)
-    Q_PROPERTY(Project *project READ project NOTIFY projectChanged FINAL)
+    Q_PROPERTY(Project *currentProject READ currentProject NOTIFY currentProjectChanged FINAL)
     Q_PROPERTY(RectentProjects *recentProjects READ recentProjects CONSTANT)
 public:
     Q_INVOKABLE Project *createProject(const QString &name, const int method, const QString &path, const QString &desc,
@@ -181,7 +192,7 @@ public:
         return "Project files (*.dlpro)";
     }
 
-    Project *project() const
+    Project *currentProject() const
     {
         return current_project_;
     }
@@ -201,7 +212,7 @@ private:
     RectentProjects *recent_projects_{nullptr};
 
 signals:
-    void projectChanged();
+    void currentProjectChanged();
 };
 
 } // namespace dltool::project

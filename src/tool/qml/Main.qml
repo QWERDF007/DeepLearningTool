@@ -11,7 +11,7 @@ ApplicationWindow {
     visible: true
     width: 1920
     height: 1080
-    title: ProjectManager.project ? ProjectManager.project.path : ""
+    title: ProjectManager.currentProject ? ProjectManager.currentProject.path : ""
 
     header: Header {
         id: _header
