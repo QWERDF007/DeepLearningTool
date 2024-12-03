@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import Qt.labs.platform
+
 
 import dltool.ui
 import dltool.data
@@ -17,9 +17,7 @@ Rectangle {
     height: 1920
     color: DltColor.Background
 
-    ProjectCreator {
-        id: projectCreator
-    }
+    
 
     DltSplitView {
         anchors.fill: parent
@@ -29,39 +27,9 @@ Rectangle {
             SplitView.minimumWidth: 200
             SplitView.maximumWidth: parent.width / 2
             SplitView.preferredWidth: 300
-            Rectangle {
-                color: DltColor.Primary
+            ProjectOpener {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 110
-                Column {
-                    anchors {
-                        top: parent.top
-                        topMargin: 10
-                        left: parent.left
-                        leftMargin: 10
-                        right: parent.right
-                        rightMargin: 10
-                    }
-                    spacing: 8
-
-                    DltButton {
-                        width: parent.width
-                        height: 40
-                        text: "创建项目"
-                        onClicked: {
-                            projectCreator.open()
-                        }
-                    }
-
-                    DltButton {
-                        width: parent.width
-                        height: 40
-                        text: "打开项目"
-                        onClicked: {
-                            fileDialog.open()
-                        }
-                    }
-                }
             }
             ProjectNameType {
                 id: projectNameType
@@ -102,16 +70,6 @@ Rectangle {
                 projectInfo.ctime = info.ctime
                 projectInfo.mtime = info.mtime
             }
-        }
-    }
-
-    FileDialog {
-        id: fileDialog
-        folder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
-        nameFilters: [ProjectManager.projectFileFilter()]
-        onAccepted: {
-            var path = fileDialog.file.toString().slice(8)
-            ProjectManager.openProject(path)
         }
     }
 }
