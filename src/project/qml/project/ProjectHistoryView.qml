@@ -75,10 +75,10 @@ Item {
             delegate: ProjectDelegate {
                 width: projectsView.cellWidth
                 height: projectsView.cellHeight
-                selected: model.selected ? true : false
-                name: model.name
-                path: model.path
-                msg: model.tooltip
+                selected: model.selected ? model.selected : false
+                name: model.name ? model.name : ""
+                path: model.path ? model.path : ""
+                msg: model.tooltip ? model.tooltip : ""
             }
             MouseArea {
                 anchors.fill: parent
@@ -90,7 +90,9 @@ Item {
                     let index = view.indexAt(posInContentItem.x, posInContentItem.y)
                     let item = view.itemAtIndex(index)
                     if (item) {
-                        selection.select(view.model.index(index, 0), ItemSelectionModel.ClearAndSelect)
+                        let tmpIndex = view.model.index(index, 0)
+                        selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
+                        selection.setCurrentIndex(tmpIndex, ItemSelectionModel.ClearAndSelect)
                         if (mouse.button === Qt.RightButton) {
                             menu.popup()
                         }

@@ -158,6 +158,7 @@ private:
     QVariant getSelected(const QModelIndex &index) const;
 
     void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
+    void onCurrentChanged(const QModelIndex &current, const QModelIndex &previous);
 
 signals:
     void currentProjectPathChanged();

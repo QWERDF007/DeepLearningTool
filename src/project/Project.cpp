@@ -132,6 +132,7 @@ void RectentProjects::init()
               [](const ProjectBaseInfo &lhs, const ProjectBaseInfo &rhs) { return lhs.mtime > rhs.mtime; });
     endResetModel();
     connect(selection_, &QItemSelectionModel::selectionChanged, this, &RectentProjects::updateSelection);
+    connect(selection_, &QItemSelectionModel::currentChanged, this, &RectentProjects::onCurrentChanged);
     auto   end      = std::chrono::high_resolution_clock::now();
     double duration = std::chrono::duration<double, std::milli>(end - start).count();
     qInfo() << __FUNCTION__ << __LINE__ << "time elapsed:" << duration << "ms";
@@ -220,6 +221,7 @@ bool RectentProjects::addProject(const QString &path)
         data::ProjectDataBase::getProjectBaseInfo(info.path, info.name, info.mtime, err_msg);
         emit dataChanged(index(row), index(row), {NameRole, PathRole, ToolTipRole});
         selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
+        selection_->setCurrentIndex(index(0), QItemSelectionModel::ClearAndSelect);
         return true;
     }
     else
@@ -270,8 +272,9 @@ bool RectentProjects::openProject(const QString &path)
             project_infos.erase(project_infos.begin() + i);
             project_infos.insert(project_infos.begin(), info);
             spdlog::info("打开最近项目: {}", path.toUtf8().constData());
-            emit dataChanged(index(0), index(i), {NameRole, PathRole, ToolTipRole});
+            emit dataChanged(index(0), index(0), {NameRole, PathRole, ToolTipRole});
             selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
+            selection_->setCurrentIndex(index(0), QItemSelectionModel::ClearAndSelect);
             return true;
         }
     }
@@ -293,8 +296,15 @@ bool RectentProjects::removeProject(const QString &path)
         {
             const int idx = static_cast<int>(i);
             removeRow(idx);
-            emit dataChanged(index(idx), index(static_cast<int>(project_infos.size() - 1)), {NameRole, PathRole, ToolTipRole});
-            selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
+            if (rowCount() > 0)
+            {
+                selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
+                selection_->setCurrentIndex(index(0), QItemSelectionModel::ClearAndSelect);
+            }
+            else
+            {
+                selection_->clear();
+            }
             break;
         }
     }
@@ -377,9 +387,17 @@ void RectentProjects::updateSelection(const QItemSelection &selected, const QIte
         else
             top = std::min(top, row);
         bottom = std::max(bottom, row);
-        setCurrentProjectPath(getPath(index).toString());
     }
     emit dataChanged(index(top), index(bottom), {SelectedRole});
+}
+
+void RectentProjects::onCurrentChanged(const QModelIndex &current, const QModelIndex &previous)
+{
+    Q_UNUSED(previous)
+    if (current.row() < 0 || current.row() >= rowCount())
+        setCurrentProjectPath("");
+    else
+        setCurrentProjectPath(getPath(current).toString());
 }
 
 ProjectManager::ProjectManager(QObject *parent)

@@ -18,7 +18,7 @@ Rectangle {
     property bool selected: false
     property string name: "项目名"
     property string path: ""
-    property string imagePath: "D:/Datasets/性感美女/raw/065_Asuna_Maid_64.jpg"
+    property string imagePath: ""
     property string msg: ""
 
     ColumnLayout {
@@ -35,7 +35,7 @@ Rectangle {
                 anchors.margins: 2
                 asynchronous: true
                 fillMode: Image.PreserveAspectFit // Image.PreserveAspectCrop
-                source: "file:///" + control.imagePath
+                source: control.imagePath ? "file:///" + control.imagePath : ""
                 sourceSize.width: parent.width
                 sourceSize.height: parent.height
             }
