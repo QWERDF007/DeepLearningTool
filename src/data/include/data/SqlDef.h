@@ -20,8 +20,8 @@ public:
          "description TEXT, image_base_path TEXT, ctime INTEGER NOT NULL, mtime INTEGER NOT NULL, "
          "program_version TEXT, extra_data BLOB)"},
         {CreateRecentProjects,
-         "CREATE TABLE IF NOT EXISTS recent_projects (id INTEGER NOT NULL PRIMARY KEY, name TEXT, path TEXT, mtime "
-         "INTEGER NOT NULL)"                     }
+         "CREATE TABLE IF NOT EXISTS recent_projects (id INTEGER NOT NULL PRIMARY KEY, path TEXT)"
+         }
     };
 };
 
