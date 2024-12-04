@@ -10,7 +10,7 @@ Item {
     width: 400
     height: 600
     // clip: true
-    property int method: view.currentItem.method
+    property int method: view.currentItem ? view.currentItem.method : -1
     ColumnLayout {
         anchors.fill: parent
         DltText {
