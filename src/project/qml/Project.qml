@@ -2,15 +2,12 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-
 import dltool.ui
 import dltool.data
 import dltool.project
 
 import "creator"
 import "project"
-
-
 
 Rectangle {
     width: 1080

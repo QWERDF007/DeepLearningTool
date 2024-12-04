@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.project
+import dltool.data
 
 StackLayout {
     width: 1080
@@ -18,9 +19,8 @@ StackLayout {
 
     Component {
         id: dataset_com
-        Rectangle {
+        Dataset {
             anchors.fill: parent
-            color: "red"
         }
     }
 

@@ -13,6 +13,15 @@ ApplicationWindow {
     height: 1080
     title: ProjectManager.currentProject ? ProjectManager.currentProject.path : ""
 
+    Connections {
+        target: ProjectManager
+        function onCurrentProjectChanged() {
+            if (ProjectManager.currentProject) {
+                _header.currentIndex = 1
+            }
+        }
+    }
+
     header: Header {
         id: _header
         width: parent.width
