@@ -119,11 +119,8 @@ void RectentProjects::init()
         info.path = paths[i];
         QString msg;
         bool    ok = data::ProjectDataBase::getProjectBaseInfo(info.path, info.name, info.mtime, msg);
-        if (ok)
-        {
-            project_infos.emplace_back(info);
-        }
-        else
+        project_infos.emplace_back(info);
+        if (!ok)
         {
             spdlog::error("获取基础信息失败: {}, error: {}", info.path.toUtf8().constData(), msg.toUtf8().constData());
         }
@@ -341,7 +338,7 @@ QVariant RectentProjects::getTooltip(const QModelIndex &index) const
 {
     const ProjectBaseInfo &info = project_infos.at(index.row());
 
-    QString mtime = QDateTime::fromSecsSinceEpoch(info.mtime).toString("yyyy/MM/dd hh:mm");
+    QString mtime = info.mtime == 0 ? "" : QDateTime::fromSecsSinceEpoch(info.mtime).toString("yyyy/MM/dd hh:mm");
     QString msg   = QString("%1\n路径: %2\n修改时间: %3").arg(info.name, info.path, mtime);
     return msg;
 }
@@ -509,7 +506,7 @@ QString ProjectManager::isProjectValid(const int method, const QString &path, bo
 
 QVariantMap ProjectManager::getProjectInfo(const QString &path)
 {
-    if (path.isEmpty())
+    if (path.isEmpty() || !QFile::exists(path))
     {
         return QVariantMap({
             {"name", ""},
