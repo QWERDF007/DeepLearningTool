@@ -1,6 +1,8 @@
 #include "data/DataBase.h"
 
 #include "data/SqlDef.h"
+#include "data/ddl/DatasetsTable.h"
+#include "data/ddl/ImagesTable.h"
 #include "data/ddl/ProjectTable.h"
 #include "data/ddl/RecentProjectsTable.h"
 
@@ -14,6 +16,8 @@ namespace dltool::data {
 
 const auto ProjectTable         = Project{};
 const auto RectentProjectsTable = RecentProjects{};
+const auto ImagesTable          = Images{};
+const auto DatasetsTable        = Datasets{};
 
 DataBase::DataBase(const QString &path, QObject *parent)
     : QObject(parent)
@@ -75,6 +79,8 @@ bool ProjectDataBase::initProject(const QString &name, const int method, const Q
                     ProjectTable.description   = description.toUtf8().constData(),
                     ProjectTable.imageBasePath = image_base_path.toUtf8().constData(), ProjectTable.ctime = ctime,
                     ProjectTable.mtime = mtime));
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateDatasets));
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateImages));
         return true;
     }
     catch (const std::exception &e)
@@ -152,6 +158,8 @@ bool ProjectDataBase::getProjectBaseInfo(const QString &path, QString &name, qin
 {
     try
     {
+        if (!QFile::exists(path))
+            return false;
         sqlpp::sqlite3::connection db = DataBase::connect(path, SQLITE_OPEN_READONLY);
         auto data = db(sqlpp::select(ProjectTable.name, ProjectTable.mtime).from(ProjectTable).unconditionally());
         if (!data.empty())
@@ -225,6 +233,95 @@ bool ProjectDataBase::getProjectInfo(const QString &path, QVariantMap &project_i
     }
 }
 
+bool ProjectDataBase::addDataset(const QString &name, QString &err_msg)
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        db(sqlpp::insert_into(DatasetsTable).set(DatasetsTable.name = name.toUtf8().constData()));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+int ProjectDataBase::getDatasetId(const QString &name, QString &err_msg)
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db   = pool_->get();
+        auto data = db(sqlpp::select(DatasetsTable.id)
+                           .from(DatasetsTable)
+                           .where(DatasetsTable.name == name.toUtf8().toStdString()));
+        if (!data.empty())
+        {
+            const auto &row = data.front();
+            return row.id;
+        }
+        return -1;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return -1;
+    }
+}
+
+bool ProjectDataBase::updateDataset(const QString &old_name, const QString &new_name, QString &err_msg)
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        db(sqlpp::update(DatasetsTable)
+               .set(DatasetsTable.name = new_name.toUtf8().constData())
+               .where(DatasetsTable.name == old_name.toUtf8().constData()));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::deleteDataset(const QString &name, QString &err_msg)
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        db(sqlpp::remove_from(DatasetsTable).where(DatasetsTable.name == name.toUtf8().toStdString()));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
 RecentProjectsDataBase::RecentProjectsDataBase(const QString &path, QObject *parent)
     : DataBase(path, parent)
 {
@@ -243,7 +340,7 @@ bool RecentProjectsDataBase::addProject(const QString &path, QString &err_msg) c
     {
         if (pool_ == nullptr)
         {
-            err_msg = QString("打开数据库失败, %1").arg(path);
+            err_msg = QString("打开数据库失败, %1").arg(path_);
             return false;
         }
         auto db = pool_->get();
@@ -263,7 +360,7 @@ bool RecentProjectsDataBase::removeProject(const QString &path, QString &err_msg
     {
         if (pool_ == nullptr)
         {
-            err_msg = QString("打开数据库失败, %1").arg(path);
+            err_msg = QString("打开数据库失败, %1").arg(path_);
             return false;
         }
         auto db = pool_->get();

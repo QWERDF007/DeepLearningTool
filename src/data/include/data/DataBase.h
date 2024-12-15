@@ -50,6 +50,11 @@ public:
                                       const qint64 new_mtime, QString &err_msg);
 
     static bool getProjectInfo(const QString &path, QVariantMap &project_info, QString &err_msg);
+
+    bool addDataset(const QString &name, QString& err_msg);
+    int getDatasetId(const QString &name, QString & err_msg);
+    bool updateDataset(const QString &old_name, const QString& new_name, QString& err_msg);
+    bool deleteDataset(const QString& name, QString& err_msg);
 };
 
 class DATA_API RecentProjectsDataBase : public DataBase
