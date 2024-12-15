@@ -1,10 +1,12 @@
 import QtQuick
 import QtQuick.Controls
 
+import dltool.ui
+
 Text {
     property int iconSource
     property int iconSize: 20
-    property color iconColor: "#000000"
+    property color iconColor: DltColor.FontPrimary
     id:control
     font.family: "Segoe Fluent Icons"
     font.pixelSize: iconSize

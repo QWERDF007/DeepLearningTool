@@ -18,7 +18,7 @@ Button {
     // property color disableColor: QuickColor.ItemNormal
     property Component iconDelegate: com_icon
     property color color: pressed ? pressedColor : hovered ? hoverColor : normalColor
-    property color iconColor: enabled ? Qt.rgba(0,0,0,1) : Qt.rgba(161/255,161/255,161/255,1)
+    property color iconColor: enabled ? DltColor.FontPrimary : "#6E6E6E"
     property color textColor: DltColor.FontPrimary
     Accessible.role: Accessible.Button
     Accessible.name: control.text
