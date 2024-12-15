@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import "./gallery"
 
 Rectangle {
     width: 1080
@@ -18,11 +19,10 @@ Rectangle {
             SplitView.maximumWidth: parent.width / 2
             SplitView.preferredWidth: 300
             orientation: Qt.Vertical
-            Rectangle { // 数据集
+            DatasetsView { // 数据集
                 SplitView.fillWidth: true
                 SplitView.fillHeight: true
                 SplitView.minimumHeight: 200
-                color: DltColor.Primary
             }
             Rectangle { // 图像属性
                 SplitView.fillWidth: true
@@ -38,15 +38,19 @@ Rectangle {
             }
         }
 
-        Rectangle {
+        RowLayout {
             SplitView.fillHeight: true
             SplitView.fillWidth: true
-            color: DltColor.Background
 
             Rectangle {
-                anchors.right: parent.right
-                height: parent.height
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                color: DltColor.Background
+            }
+
+            Rectangle {
                 width: 48
+                Layout.fillHeight: true
                 color: DltColor.Primary
             }
         }

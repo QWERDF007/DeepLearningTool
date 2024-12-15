@@ -126,7 +126,7 @@ Rectangle {
     DltEditor {
         id: editor
         description: editBtn.text
-        onEditTextChanged: function(newDescription) {
+        onEditTextChanged: function (newDescription) {
             projectInfo.projectDescriptionChanged(newDescription)
         }
     }

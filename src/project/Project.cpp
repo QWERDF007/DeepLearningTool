@@ -1,6 +1,7 @@
 #include "project/Project.h"
 
 #include "data/DataBase.h"
+#include "project/Dataset.h"
 
 #include <spdlog/spdlog.h>
 
@@ -42,7 +43,8 @@ void Project::initProject()
     bool    ok = database_->initProject(name_, method_, path_, description_, image_base_path_, ctime, ctime, err_msg);
     if (ok)
     {
-        spdlog::info("创建表: project");
+        datasets_ = new DatasetsListModel(database_, this);
+        emit datasetsChanged();
     }
     else
     {
@@ -54,12 +56,13 @@ void Project::openProject()
 {
     if (database_ == nullptr)
         database_ = new data::ProjectDataBase(path_, this);
-    spdlog::info("打开数据库: {}", path_.toUtf8().constData());
+    spdlog::info("打开项目, 打开数据库: {}", path_.toUtf8().constData());
     QString err_msg;
     bool    ok = database_->openProject(name_, method_, path_, description_, image_base_path_, ctime_, mtime_, err_msg);
     if (ok)
     {
-        spdlog::info("查询表: project");
+        datasets_ = new DatasetsListModel(database_, this);
+        emit datasetsChanged();
     }
     else
     {
@@ -288,7 +291,7 @@ bool RectentProjects::removeProject(const QString &path)
     spdlog::info("删除最近项目: {}", path.toUtf8().constData());
     for (size_t i = 0; i < project_infos.size(); ++i)
     {
-        const ProjectBaseInfo& info = project_infos[i];
+        const ProjectBaseInfo &info = project_infos[i];
         if (info.path == path)
         {
             const int idx = static_cast<int>(i);
@@ -307,7 +310,7 @@ bool RectentProjects::removeProject(const QString &path)
     }
 
     QString err_msg;
-    bool ok = database_->removeProject(path, err_msg);
+    bool    ok = database_->removeProject(path, err_msg);
     if (!ok)
     {
         spdlog::error("删除最近项目失败: {}, error: {}", path.toUtf8().constData(), err_msg.toUtf8().constData());
@@ -485,10 +488,11 @@ bool ProjectManager::deleteProject(const QString &path)
     spdlog::info("删除项目: {}", path.toUtf8().constData());
     removeFromRectentProjects(path);
     QFile file(path);
-    bool ok = file.remove();
+    bool  ok = file.remove();
     if (!ok)
     {
-        spdlog::error("删除项目失败: {}, error: {}", path.toUtf8().constData(), file.errorString().toUtf8().constData());
+        spdlog::error("删除项目失败: {}, error: {}", path.toUtf8().constData(),
+                      file.errorString().toUtf8().constData());
     }
     return ok;
 }
@@ -509,13 +513,13 @@ QVariantMap ProjectManager::getProjectInfo(const QString &path)
     if (path.isEmpty() || !QFile::exists(path))
     {
         return QVariantMap({
-            {"name", ""},
-            {"method", -1},
-            {"path", ""},
-            {"description", ""},
+            {           "name", ""},
+            {         "method", -1},
+            {           "path", ""},
+            {    "description", ""},
             {"image_base_path", ""},
-            {"ctime", ""},
-            {"mtime", ""},
+            {          "ctime", ""},
+            {          "mtime", ""},
         });
     }
     spdlog::info("获取项目信息: {}", path.toUtf8().constData());

@@ -233,7 +233,32 @@ bool ProjectDataBase::getProjectInfo(const QString &path, QVariantMap &project_i
     }
 }
 
-bool ProjectDataBase::addDataset(const QString &name, QString &err_msg)
+std::vector<std::pair<int, QString>> ProjectDataBase::getAllDatasets(QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return {};
+        }
+        auto db   = pool_->get();
+        auto data = db(sqlpp::select(DatasetsTable.id, DatasetsTable.name).from(DatasetsTable).unconditionally());
+        std::vector<std::pair<int, QString>> datasets;
+        for (const auto &row : data)
+        {
+            datasets.emplace_back(row.id, QString::fromStdString(row.name));
+        }
+        return datasets;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return {};
+    }
+}
+
+bool ProjectDataBase::addDataset(const QString &name, QString &err_msg) const
 {
     try
     {
@@ -253,7 +278,7 @@ bool ProjectDataBase::addDataset(const QString &name, QString &err_msg)
     }
 }
 
-int ProjectDataBase::getDatasetId(const QString &name, QString &err_msg)
+int ProjectDataBase::getDatasetId(const QString &name, QString &err_msg) const
 {
     try
     {
@@ -280,7 +305,7 @@ int ProjectDataBase::getDatasetId(const QString &name, QString &err_msg)
     }
 }
 
-bool ProjectDataBase::updateDataset(const QString &old_name, const QString &new_name, QString &err_msg)
+bool ProjectDataBase::updateDataset(const QString &old_name, const QString &new_name, QString &err_msg) const
 {
     try
     {
@@ -302,7 +327,7 @@ bool ProjectDataBase::updateDataset(const QString &old_name, const QString &new_
     }
 }
 
-bool ProjectDataBase::deleteDataset(const QString &name, QString &err_msg)
+bool ProjectDataBase::deleteDataset(const QString &name, QString &err_msg) const
 {
     try
     {

@@ -10,9 +10,11 @@ namespace dltool::data {
 class DataBase;
 class ProjectDataBase;
 class RecentProjectsDataBase;
+
 } // namespace dltool::data
 
 namespace dltool::project {
+class DatasetsListModel;
 
 class Project : public QObject
 {
@@ -23,6 +25,7 @@ class Project : public QObject
     Q_PROPERTY(QString path READ path CONSTANT)
     Q_PROPERTY(QString description READ description NOTIFY descriptionChanged FINAL)
     Q_PROPERTY(QString imageBasePath READ imageBasePath NOTIFY imageBasePathChanged FINAL)
+    Q_PROPERTY(DatasetsListModel *datasets READ datasets NOTIFY datasetsChanged FINAL)
 public:
     Project(const QString &name, const int method, const QString &path, const QString &description,
             const QString image_base_path, const qint64 ctime, const qint64 mtime, QObject *parent = nullptr);
@@ -69,6 +72,11 @@ public:
         return mtime_;
     }
 
+    DatasetsListModel *datasets() const
+    {
+        return datasets_;
+    }
+
 private:
     QString name_;
     int     method_;
@@ -79,10 +87,12 @@ private:
     qint64  mtime_;
 
     data::ProjectDataBase *database_{nullptr};
+    DatasetsListModel     *datasets_{nullptr};
 
 signals:
     void descriptionChanged();
     void imageBasePathChanged();
+    void datasetsChanged();
 };
 
 class RectentProjects : public QAbstractListModel
@@ -90,7 +100,8 @@ class RectentProjects : public QAbstractListModel
     Q_OBJECT
     QML_ANONYMOUS
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
-    Q_PROPERTY(QString currentProjectPath READ currentProjectPath WRITE setCurrentProjectPath NOTIFY currentProjectPathChanged FINAL)
+    Q_PROPERTY(QString currentProjectPath READ currentProjectPath WRITE setCurrentProjectPath NOTIFY
+                   currentProjectPathChanged FINAL)
 public:
     explicit RectentProjects(const QString &path, QObject *parent = nullptr);
     ~RectentProjects();
@@ -101,7 +112,7 @@ public:
     {
         QString name;
         QString path;
-        qint64  mtime;
+        qint64  mtime{0};
     };
 
     enum Role
@@ -129,7 +140,7 @@ public:
 
     bool openProject(const QString &path);
 
-    bool removeProject(const QString& path);
+    bool removeProject(const QString &path);
 
     QItemSelectionModel *selection() const
     {
@@ -140,6 +151,7 @@ public:
     {
         return current_path_;
     }
+
     bool setCurrentProjectPath(const QString &path);
 
 private:

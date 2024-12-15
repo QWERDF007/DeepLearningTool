@@ -51,10 +51,12 @@ public:
 
     static bool getProjectInfo(const QString &path, QVariantMap &project_info, QString &err_msg);
 
-    bool addDataset(const QString &name, QString& err_msg);
-    int getDatasetId(const QString &name, QString & err_msg);
-    bool updateDataset(const QString &old_name, const QString& new_name, QString& err_msg);
-    bool deleteDataset(const QString& name, QString& err_msg);
+    std::vector<std::pair<int, QString>> getAllDatasets(QString &err_msg) const;
+
+    bool addDataset(const QString &name, QString &err_msg) const;
+    int  getDatasetId(const QString &name, QString &err_msg) const;
+    bool updateDataset(const QString &old_name, const QString &new_name, QString &err_msg) const;
+    bool deleteDataset(const QString &name, QString &err_msg) const;
 };
 
 class DATA_API RecentProjectsDataBase : public DataBase

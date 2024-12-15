@@ -12,14 +12,14 @@ StackLayout {
 
     Component {
         id: project_com
-        Project {
+        ProjectPage {
             anchors.fill: parent
         }
     }
 
     Component {
         id: dataset_com
-        Dataset {
+        GalleryPage {
             anchors.fill: parent
         }
     }
