@@ -272,7 +272,7 @@ bool RectentProjects::openProject(const QString &path)
             project_infos.erase(project_infos.begin() + i);
             project_infos.insert(project_infos.begin(), info);
             spdlog::info("打开最近项目: {}", path.toUtf8().constData());
-            emit dataChanged(index(0), index(0), {NameRole, PathRole, ToolTipRole});
+            emit dataChanged(index(0), index(i), {NameRole, PathRole, ToolTipRole});
             selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
             selection_->setCurrentIndex(index(0), QItemSelectionModel::ClearAndSelect);
             return true;
