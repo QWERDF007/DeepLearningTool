@@ -100,8 +100,7 @@ class RectentProjects : public QAbstractListModel
     Q_OBJECT
     QML_ANONYMOUS
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
-    Q_PROPERTY(QString currentProjectPath READ currentProjectPath WRITE setCurrentProjectPath NOTIFY
-                   currentProjectPathChanged FINAL)
+    Q_PROPERTY(QString currentProjectPath READ currentProjectPath NOTIFY currentProjectPathChanged FINAL)
 public:
     explicit RectentProjects(const QString &path, QObject *parent = nullptr);
     ~RectentProjects();
