@@ -63,6 +63,8 @@ QVariant DatasetsListModel::data(const QModelIndex &index, int role) const
     }
     switch (role)
     {
+    case DatasetIdRole:
+        return getDatasetId(index);
     case NameRole:
         return getName(index);
     case StatsRole:
@@ -80,8 +82,9 @@ bool DatasetsListModel::setData(const QModelIndex &index, const QVariant &value,
 QHash<int, QByteArray> DatasetsListModel::roleNames() const
 {
     return {
-        { NameRole,  "name"},
-        {StatsRole, "stats"},
+        {DatasetIdRole, "dataset_id"},
+        {     NameRole,       "name"},
+        {    StatsRole,      "stats"},
     };
 }
 

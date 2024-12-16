@@ -39,6 +39,7 @@ public:
     enum Role
     {
         NameRole = Qt::UserRole + 1,
+        DatasetIdRole,
         StatsRole,
     };
 

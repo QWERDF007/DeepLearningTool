@@ -23,6 +23,7 @@ Rectangle {
 
         ListView {
             id: view
+            clip: true
             Layout.fillHeight: true
             Layout.fillWidth: true
             model: datasetsView.datasets
@@ -32,6 +33,7 @@ Rectangle {
                 width: view.width
                 name: model.name
                 stats: model.stats
+                dataset_id: model.dataset_id
             }
         }
     }
