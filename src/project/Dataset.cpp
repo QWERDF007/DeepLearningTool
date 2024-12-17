@@ -6,8 +6,9 @@
 
 namespace dltool::project {
 
-Dataset::Dataset(const QString &name, QObject *parent)
+Dataset::Dataset(const int64_t id, const QString &name, QObject *parent)
     : QObject(parent)
+    , id_(id)
     , name_(name)
 {
 }
@@ -38,7 +39,7 @@ DatasetsListModel::DatasetsListModel(data::ProjectDataBase *database, QObject *p
         {
             for (const auto &[dataset_id, name] : datasets)
             {
-                datasets_.emplace(dataset_id, new Dataset(name, this));
+                datasets_.emplace(dataset_id, new Dataset(dataset_id, name, this));
             }
         }
     }
@@ -57,10 +58,6 @@ QVariant DatasetsListModel::data(const QModelIndex &index, int role) const
 {
     if (index.row() < 0 || index.row() >= rowCount())
         return QVariant();
-    if (role == NameRole)
-    {
-        return getName(index);
-    }
     switch (role)
     {
     case DatasetIdRole:
@@ -116,27 +113,20 @@ bool DatasetsListModel::addDataset(const QString &name)
         return false;
     }
     QString err_msg;
-    bool    ok = database_->addDataset(name, err_msg);
+    int64_t dataset_id{-1};
+    bool    ok = database_->addDataset(name, dataset_id, err_msg);
     if (!ok)
     {
         spdlog::error("添加数据集失败: {}, error: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
         return false;
     }
     spdlog::info("添加数据集: {}", name.toUtf8().constData());
-    int dataset_id = database_->getDatasetId(name, err_msg);
-    if (dataset_id == -1)
-    {
-        spdlog::error("查询数据集id失败: {}, error: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
-    }
-    else
-    {
-        const int row = rowCount();
-        // const int count = 1;
-        // beginInsertRows(QModelIndex(), row, row + count - 1);
-        beginInsertRows(QModelIndex(), row, row);
-        datasets_.emplace(dataset_id, new Dataset(name, this));
-        endInsertRows();
-    }
+    const int row = rowCount();
+    // const int count = 1;
+    // beginInsertRows(QModelIndex(), row, row + count - 1);
+    beginInsertRows(QModelIndex(), row, row);
+    datasets_.emplace(dataset_id, new Dataset(dataset_id, name, this));
+    endInsertRows();
     return true;
 }
 

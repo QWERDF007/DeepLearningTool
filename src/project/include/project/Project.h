@@ -185,12 +185,17 @@ class ProjectManager : public QObject
 public:
     Q_INVOKABLE Project *createProject(const QString &name, const int method, const QString &path, const QString &desc,
                                        const QString image_base_path);
+
     Q_INVOKABLE Project *openProject(const QString &path);
-    Q_INVOKABLE void     closeProject();
-    Q_INVOKABLE bool     updateProjectBaseInfo(const QString &path, const QString &new_name,
-                                               const QString &new_description);
-    Q_INVOKABLE bool     deleteProject(const QString &path);
-    Q_INVOKABLE bool     removeFromRectentProjects(const QString &path);
+
+    Q_INVOKABLE void closeProject();
+
+    Q_INVOKABLE bool updateProjectBaseInfo(const QString &path, const QString &new_name,
+                                           const QString &new_description);
+
+    Q_INVOKABLE bool deleteProject(const QString &path);
+
+    Q_INVOKABLE bool removeFromRectentProjects(const QString &path);
 
     Q_INVOKABLE QString isProjectValid(const int method, const QString &path, bool is_new);
 
