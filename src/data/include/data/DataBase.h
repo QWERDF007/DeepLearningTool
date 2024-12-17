@@ -53,7 +53,7 @@ public:
 
     std::vector<std::pair<int, QString>> getAllDatasets(QString &err_msg) const;
 
-    bool addDataset(const QString &name, QString &err_msg) const;
+    bool addDataset(const QString &name, int64_t& dataset_id, QString &err_msg) const;
     int  getDatasetId(const QString &name, QString &err_msg) const;
     bool updateDataset(const QString &old_name, const QString &new_name, QString &err_msg) const;
     bool deleteDataset(const QString &name, QString &err_msg) const;

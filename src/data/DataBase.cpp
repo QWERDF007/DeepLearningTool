@@ -258,7 +258,7 @@ std::vector<std::pair<int, QString>> ProjectDataBase::getAllDatasets(QString &er
     }
 }
 
-bool ProjectDataBase::addDataset(const QString &name, QString &err_msg) const
+bool ProjectDataBase::addDataset(const QString &name, int64_t& dataset_id, QString &err_msg) const
 {
     try
     {
@@ -269,6 +269,7 @@ bool ProjectDataBase::addDataset(const QString &name, QString &err_msg) const
         }
         auto db = pool_->get();
         db(sqlpp::insert_into(DatasetsTable).set(DatasetsTable.name = name.toUtf8().constData()));
+        dataset_id = static_cast<int64_t>(db.last_insert_id());
         return true;
     }
     catch (const std::exception &e)

@@ -13,7 +13,7 @@ namespace dltool::project {
 class Dataset : public QObject
 {
 public:
-    Dataset(const QString &name, QObject *parent = nullptr);
+    Dataset(const int64_t id, const QString &name, QObject *parent = nullptr);
     ~Dataset();
 
     QString name() const
@@ -24,6 +24,8 @@ public:
     bool setName(const QString &name);
 
 private:
+    int64_t id_;
+
     QString name_;
 };
 
@@ -38,8 +40,8 @@ public:
 
     enum Role
     {
-        NameRole = Qt::UserRole + 1,
-        DatasetIdRole,
+        DatasetIdRole = Qt::UserRole + 1,
+        NameRole,
         StatsRole,
     };
 
@@ -64,8 +66,10 @@ private:
     QVariant getName(const QModelIndex &index) const;
     QVariant getStats(const QModelIndex &index) const;
 
-    std::map<int, Dataset *> datasets_;
     data::ProjectDataBase   *database_{nullptr};
+
+    std::map<int64_t, Dataset *> datasets_;
+
 };
 
 } // namespace dltool::project
