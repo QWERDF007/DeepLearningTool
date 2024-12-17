@@ -25,8 +25,9 @@ ProgressBar{
         implicitHeight: control.strokeWidth
         color: control.backgroundColor
     }
-    contentItem: DltClip {
+    contentItem: Rectangle {
         clip: true
+        color: "#00000000"
         Rectangle {
             id:rect_progress
             width: {
