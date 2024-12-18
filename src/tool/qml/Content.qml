@@ -4,7 +4,6 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.project
-import dltool.data
 
 StackLayout {
     width: 1080
