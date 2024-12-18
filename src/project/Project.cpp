@@ -85,6 +85,27 @@ std::tuple<bool, QString> Project::isValid(const int method, const QString &path
     return {file_exist, file_exist ? "" : "项目不存在"};
 }
 
+bool Project::addDataset(const QString &name)
+{
+    if (datasets_ == nullptr)
+        return false;
+    return datasets_->addDataset(name);
+}
+
+bool Project::updateDataset(const QString &old_name, const QString &new_name)
+{
+    if (datasets_ == nullptr)
+        return false;
+    return datasets_->updateDataset(old_name, new_name);
+}
+
+bool Project::deleteDataset(const QString &name)
+{
+    if (datasets_ == nullptr)
+        return false;
+    return datasets_->deleteDataset(name);
+}
+
 RectentProjects::RectentProjects(const QString &path, QObject *parent)
     : QAbstractListModel(parent)
     , path_(path)

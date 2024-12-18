@@ -19,7 +19,8 @@ class DatasetsListModel;
 class Project : public QObject
 {
     Q_OBJECT
-    QML_ANONYMOUS
+    QML_NAMED_ELEMENT(Project)
+    QML_UNCREATABLE("Can not create Project directly!")
     Q_PROPERTY(QString name READ name CONSTANT)
     Q_PROPERTY(int method READ method CONSTANT)
     Q_PROPERTY(QString path READ path CONSTANT)
@@ -76,6 +77,10 @@ public:
     {
         return datasets_;
     }
+
+    Q_INVOKABLE bool addDataset(const QString &name);
+    Q_INVOKABLE bool updateDataset(const QString &old_name, const QString &new_name);
+    Q_INVOKABLE bool deleteDataset(const QString &name);
 
 private:
     QString name_;

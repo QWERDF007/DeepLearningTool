@@ -10,7 +10,7 @@ Rectangle {
     width: 200
     height: 200
     color: DltColor.Primary
-    property DatasetsList datasets: ProjectManager.currentProject ? ProjectManager.currentProject.datasets : null
+    property Project project: ProjectManager.currentProject
 
     ColumnLayout {
         anchors.fill: parent
@@ -18,7 +18,7 @@ Rectangle {
         DatasetHeader {
             Layout.fillWidth: true
             height: 32
-            datasets: datasetsView.datasets
+            project: datasetsView.project
         }
 
         ListView {
@@ -26,7 +26,7 @@ Rectangle {
             clip: true
             Layout.fillHeight: true
             Layout.fillWidth: true
-            model: datasetsView.datasets
+            model: datasetsView.project ? datasetsView.project.datasets : null
             ScrollBar.vertical: DltScrollBar {}
             delegate: DatasetDelegate {
                 height: 32

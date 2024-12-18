@@ -32,8 +32,7 @@ private:
 class DatasetsListModel : public QAbstractListModel
 {
     Q_OBJECT
-    QML_NAMED_ELEMENT(DatasetsList)
-    QML_UNCREATABLE("Can not create DatasetsList directly!")
+    QML_ANONYMOUS
 public:
     DatasetsListModel(data::ProjectDataBase *database, QObject *parent = nullptr);
     ~DatasetsListModel();
