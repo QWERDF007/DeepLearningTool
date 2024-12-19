@@ -2,6 +2,7 @@
 
 #include "data/DataBase.h"
 #include "project/Dataset.h"
+#include "project/Image.h"
 
 #include <spdlog/spdlog.h>
 
@@ -99,11 +100,18 @@ bool Project::updateDataset(const QString &old_name, const QString &new_name)
     return datasets_->updateDataset(old_name, new_name);
 }
 
-bool Project::deleteDataset(const QString &name)
+bool Project::deleteDataset(const int64_t dataset_id)
 {
     if (datasets_ == nullptr)
         return false;
-    return datasets_->deleteDataset(name);
+    return datasets_->deleteDataset(dataset_id);
+}
+
+bool Project::addImage(const int64_t dataset_id, const QString &path)
+{
+    if (images_ == nullptr)
+        return false;
+    return images_->addImageInstance(dataset_id, path);
 }
 
 RectentProjects::RectentProjects(const QString &path, QObject *parent)

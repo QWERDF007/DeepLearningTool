@@ -5,6 +5,10 @@
 #include <sqlpp11/sqlite3/connection_pool.h>
 
 #include <QObject>
+#include <map>
+#include <optional>
+#include <utility>
+#include <vector>
 
 namespace dltool::data {
 
@@ -53,10 +57,17 @@ public:
 
     std::vector<std::pair<int, QString>> getAllDatasets(QString &err_msg) const;
 
-    bool addDataset(const QString &name, int64_t& dataset_id, QString &err_msg) const;
-    int  getDatasetId(const QString &name, QString &err_msg) const;
+    bool addDataset(const QString &name, int64_t &dataset_id, QString &err_msg) const;
     bool updateDataset(const QString &old_name, const QString &new_name, QString &err_msg) const;
-    bool deleteDataset(const QString &name, QString &err_msg) const;
+    bool deleteDataset(const int64_t dataset_id, QString &err_msg) const;
+
+    std::optional<int64_t> getDatasetId(const QString &name, QString &err_msg) const;
+
+    bool addImage(const int64_t dataset_id, const QString &path, int64_t &image_id, QString &err_msg) const;
+    bool getImage(const int64_t image_id, int64_t &dataset_id, QString &path, QString &err_msg) const;
+    bool deleteImage(const int64_t image_id, QString &err_msg) const;
+    std::vector<std::pair<int64_t, QString>> getImages(const int64_t dataset_id, QString &err_msg) const;
+    std::map<int64_t, std::vector<std::pair<int64_t, QString>>> getAllImages(QString &err_msg) const;
 };
 
 class DATA_API RecentProjectsDataBase : public DataBase

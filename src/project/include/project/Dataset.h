@@ -23,6 +23,11 @@ public:
 
     bool setName(const QString &name);
 
+    int64_t id() const
+    {
+        return id_;
+    }
+
 private:
     int64_t id_;
 
@@ -55,9 +60,9 @@ public:
     bool insertRows(int row, int count, const QModelIndex &parent = QModelIndex()) override;
     bool removeRows(int row, int count, const QModelIndex &parent = QModelIndex()) override;
 
-    Q_INVOKABLE bool addDataset(const QString &name);
-    Q_INVOKABLE bool updateDataset(const QString &old_name, const QString &new_name);
-    Q_INVOKABLE bool deleteDataset(const QString &name);
+    bool addDataset(const QString &name);
+    bool updateDataset(const QString &old_name, const QString &new_name);
+    bool deleteDataset(const int64_t dataset_id);
 
 private:
     int getDatasetId(const QModelIndex &index) const;

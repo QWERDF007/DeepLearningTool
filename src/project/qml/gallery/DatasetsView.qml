@@ -11,6 +11,27 @@ Rectangle {
     height: 200
     color: DltColor.Primary
     property Project project: ProjectManager.currentProject
+    property int cur_dataset_id: -1
+
+    DltMenu {
+        id: menu
+        width: 200
+        DltMenuItem {
+            text: "导入数据"
+            iconSource: DltFontIcon.ImportMirrored
+            onClicked: {
+            }
+        }
+        DltMenuItem {
+            text: "删除数据集"
+            iconSource: DltFontIcon.Delete
+            onClicked: {
+                if (project) {
+                    project.deleteDataset(cur_dataset_id)
+                }
+            }
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -34,6 +55,25 @@ Rectangle {
                 name: model.name
                 stats: model.stats
                 dataset_id: model.dataset_id
+            }
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                onClicked: function (mouse) {
+                    if (datasetsView.project === null)
+                        return
+                    let posInGridView = Qt.point(mouse.x, mouse.y)
+                    let posInContentItem = mapToItem(view.contentItem, posInGridView)
+                    let index = view.indexAt(posInContentItem.x, posInContentItem.y)
+                    let item = view.itemAtIndex(index)
+                    if (item) {
+                        // let tmpIndex = view.model.index(index, 0)
+                        if (mouse.button === Qt.RightButton) {
+                            cur_dataset_id = item.dataset_id
+                            menu.popup()
+                        }
+                    }
+                }
             }
         }
     }

@@ -34,14 +34,14 @@ Item {
             Layout.preferredWidth: 48
         }
 
-        DltTextIconButton {
-            iconSource: DltFontIcon.Picture
-            text: "导入数据"
-            implicitWidth: 24
-            implicitHeight: 24
-            iconSize: 20
-            verticalPadding: 0
-            horizontalPadding: 0
-        }
+        // DltTextIconButton {
+        //     iconSource: DltFontIcon.Picture
+        //     text: "导入数据"
+        //     implicitWidth: 24
+        //     implicitHeight: 24
+        //     iconSize: 20
+        //     verticalPadding: 0
+        //     horizontalPadding: 0
+        // }
     }
 }

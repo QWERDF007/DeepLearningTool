@@ -54,6 +54,9 @@ public:
 
     QHash<int, QByteArray> roleNames() const override;
 
+    bool addImageInstance(const int64_t dataset_id, const QString &path);
+    bool deleteImageInstance(const int64_t image_id);
+
 private:
     data::ProjectDataBase *database_{nullptr};
 

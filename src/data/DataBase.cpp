@@ -1,5 +1,6 @@
 #include "data/DataBase.h"
 
+#include "DataBase.h"
 #include "data/SqlDef.h"
 #include "data/ddl/DatasetsTable.h"
 #include "data/ddl/ImagesTable.h"
@@ -258,7 +259,7 @@ std::vector<std::pair<int, QString>> ProjectDataBase::getAllDatasets(QString &er
     }
 }
 
-bool ProjectDataBase::addDataset(const QString &name, int64_t& dataset_id, QString &err_msg) const
+bool ProjectDataBase::addDataset(const QString &name, int64_t &dataset_id, QString &err_msg) const
 {
     try
     {
@@ -279,14 +280,14 @@ bool ProjectDataBase::addDataset(const QString &name, int64_t& dataset_id, QStri
     }
 }
 
-int ProjectDataBase::getDatasetId(const QString &name, QString &err_msg) const
+std::optional<int64_t> ProjectDataBase::getDatasetId(const QString &name, QString &err_msg) const
 {
     try
     {
         if (pool_ == nullptr)
         {
             err_msg = QString("打开数据库失败, %1").arg(path_);
-            return false;
+            return std::nullopt;
         }
         auto db   = pool_->get();
         auto data = db(sqlpp::select(DatasetsTable.id)
@@ -297,12 +298,12 @@ int ProjectDataBase::getDatasetId(const QString &name, QString &err_msg) const
             const auto &row = data.front();
             return row.id;
         }
-        return -1;
+        return std::nullopt;
     }
     catch (const std::exception &e)
     {
         err_msg = e.what();
-        return -1;
+        return std::nullopt;
     }
 }
 
@@ -328,7 +329,7 @@ bool ProjectDataBase::updateDataset(const QString &old_name, const QString &new_
     }
 }
 
-bool ProjectDataBase::deleteDataset(const QString &name, QString &err_msg) const
+bool ProjectDataBase::deleteDataset(const int64_t dataset_id, QString &err_msg) const
 {
     try
     {
@@ -338,13 +339,139 @@ bool ProjectDataBase::deleteDataset(const QString &name, QString &err_msg) const
             return false;
         }
         auto db = pool_->get();
-        db(sqlpp::remove_from(DatasetsTable).where(DatasetsTable.name == name.toUtf8().toStdString()));
+        db(sqlpp::remove_from(DatasetsTable).where(DatasetsTable.id == dataset_id));
         return true;
     }
     catch (const std::exception &e)
     {
         err_msg = e.what();
         return false;
+    }
+}
+
+bool ProjectDataBase::addImage(const int64_t dataset_id, const QString &path, int64_t &image_id, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        // db(sqlpp::insert_into(DatasetsTable).set(DatasetsTable.name = name.toUtf8().constData()));
+        db(sqlpp::insert_into(ImagesTable)
+               .set(ImagesTable.datasetId = dataset_id, ImagesTable.path = path.toUtf8().constData()));
+        image_id = static_cast<int64_t>(db.last_insert_id());
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::getImage(const int64_t image_id, int64_t &dataset_id, QString &path, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db   = pool_->get();
+        auto data = db(
+            sqlpp::select(ImagesTable.datasetId, ImagesTable.path).from(ImagesTable).where(ImagesTable.id == image_id));
+        if (!data.empty())
+        {
+            const auto &row = data.front();
+            dataset_id      = row.datasetId;
+            path            = QString::fromStdString(row.path);
+        }
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::deleteImage(const int64_t image_id, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        db(sqlpp::remove_from(ImagesTable).where(ImagesTable.id == image_id));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+std::vector<std::pair<int64_t, QString>> ProjectDataBase::getImages(const int64_t dataset_id, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return {};
+        }
+        auto db   = pool_->get();
+        auto data = db(sqlpp::select(ImagesTable.id, ImagesTable.path)
+                           .from(ImagesTable)
+                           .where(ImagesTable.datasetId == dataset_id));
+
+        std::vector<std::pair<int64_t, QString>> images;
+        for (const auto &row : data)
+        {
+            images.emplace_back(std::make_pair(row.id, QString::fromStdString(row.path)));
+        }
+        return images;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return {};
+    }
+}
+
+std::map<int64_t, std::vector<std::pair<int64_t, QString>>> ProjectDataBase::getAllImages(QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return {};
+        }
+        auto db   = pool_->get();
+        auto data = db(
+            sqlpp::select(ImagesTable.id, ImagesTable.datasetId, ImagesTable.path).from(ImagesTable).unconditionally());
+        std::map<int64_t, std::vector<std::pair<int64_t, QString>>> images;
+        for (const auto &row : data)
+        {
+            if (images.find(row.datasetId) == images.end())
+                images[row.datasetId] = std::vector<std::pair<int64_t, QString>>();
+            images[row.datasetId].emplace_back(std::make_pair(row.id, QString::fromStdString(row.path)));
+        }
+        return images;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return {};
     }
 }
 

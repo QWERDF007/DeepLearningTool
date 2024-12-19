@@ -159,25 +159,26 @@ bool DatasetsListModel::updateDataset(const QString &old_name, const QString &ne
     return true;
 }
 
-bool DatasetsListModel::deleteDataset(const QString &name)
+bool DatasetsListModel::deleteDataset(const int64_t dataset_id)
 {
     if (database_ == nullptr)
     {
-        spdlog::error("删除数据集失败: {}, 数据库未初始化", name.toUtf8().constData());
+        spdlog::error("删除数据集失败: {}, 数据库未初始化", dataset_id);
         return false;
     }
+
     QString err_msg;
-    bool    ok = database_->deleteDataset(name, err_msg);
+    bool    ok = database_->deleteDataset(dataset_id, err_msg);
     if (!ok)
     {
-        spdlog::error("删除数据集失败: {}, error: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
+        spdlog::error("删除数据集失败: {}, error: {}", dataset_id, err_msg.toUtf8().constData());
         return false;
     }
-    spdlog::info("删除数据集: {}", name.toUtf8().constData());
+    spdlog::info("删除数据集: {}", dataset_id);
     int idx{0};
-    for (const auto &[dataset_id, dataset] : datasets_)
+    for (const auto &[_, dataset] : datasets_)
     {
-        if (dataset && dataset->name() == name)
+        if (dataset && dataset->id() == dataset_id)
         {
             beginRemoveRows(QModelIndex(), idx, idx);
             delete dataset;

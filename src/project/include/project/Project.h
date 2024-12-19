@@ -15,6 +15,7 @@ class RecentProjectsDataBase;
 
 namespace dltool::project {
 class DatasetsListModel;
+class ImageInstancesListModel;
 
 class Project : public QObject
 {
@@ -80,7 +81,9 @@ public:
 
     Q_INVOKABLE bool addDataset(const QString &name);
     Q_INVOKABLE bool updateDataset(const QString &old_name, const QString &new_name);
-    Q_INVOKABLE bool deleteDataset(const QString &name);
+    Q_INVOKABLE bool deleteDataset(const int64_t dataset_id);
+
+    Q_INVOKABLE bool addImage(const int64_t dataset_id, const QString &path);
 
 private:
     QString name_;
@@ -92,7 +95,9 @@ private:
     qint64  mtime_;
 
     data::ProjectDataBase *database_{nullptr};
-    DatasetsListModel     *datasets_{nullptr};
+
+    DatasetsListModel       *datasets_{nullptr};
+    ImageInstancesListModel *images_{nullptr};
 
 signals:
     void descriptionChanged();
