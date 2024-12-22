@@ -20,6 +20,7 @@ Rectangle {
             text: "导入数据"
             iconSource: DltFontIcon.ImportMirrored
             onClicked: {
+                importDataDialog.open()
             }
         }
         DltMenuItem {
@@ -31,6 +32,10 @@ Rectangle {
                 }
             }
         }
+    }
+
+    ImportDataDialog {
+        id: importDataDialog
     }
 
     ColumnLayout {
