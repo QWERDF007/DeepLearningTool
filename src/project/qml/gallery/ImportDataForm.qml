@@ -81,6 +81,28 @@ Item {
             }
         }
     }
+    Item {
+        anchors.top: label.bottom
+        anchors.topMargin: 10
+        width: parent.width
+        height: rowH
+        Column {
+            anchors {
+                left: parent.left
+                leftMargin: 5
+                right: parent.right
+                rightMargin: 5
+            }
+            height: parent.height
+            DltText {
+                text: "数据格式:"
+                textColor: DltColor.FontDark
+            }
+            DltComboBox {
+                model: ["1", "2", "3"]
+            }
+        }
+    }
 
     FolderDialog {
         id: imageDialog

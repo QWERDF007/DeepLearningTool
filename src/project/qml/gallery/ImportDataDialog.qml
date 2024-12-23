@@ -8,8 +8,8 @@ import dltool.project
 
 DltPopup {
     id: importDataDialog
-    width: 1000
-    height: 600
+    width: 600
+    height: 400
 
     property int rowH: 64
 
