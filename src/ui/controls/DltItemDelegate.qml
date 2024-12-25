@@ -6,7 +6,7 @@ import dltool.ui
 T.ItemDelegate {
     id: control
     implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset,
-                            implicitContentWidth + leftPadding + rightPadding)
+                            implicitContentWidth + leftPadding + rightPadding, contentItem.contentWidth)
     implicitHeight: Math.max(implicitBackgroundHeight + topInset + bottomInset,
                              implicitContentHeight + topPadding + bottomPadding,
                              implicitIndicatorHeight + topPadding + bottomPadding)
@@ -14,7 +14,8 @@ T.ItemDelegate {
     verticalPadding: 8
     horizontalPadding: 10
     icon.color: control.palette.text
-    contentItem:DltText {
+    contentItem: DltText {
+        id: _text
         text: control.text
         font: control.font
         color: DltColor.FontPrimary

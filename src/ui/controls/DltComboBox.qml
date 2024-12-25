@@ -4,6 +4,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Templates as T
 import  dltool.ui
 
+
 T.ComboBox {
     id: control
     signal commit(string text)
@@ -23,16 +24,18 @@ T.ComboBox {
     enabled: !disabled
     delegate: DltItemDelegate {
         width: ListView.view.width
+        onImplicitWidthChanged: { // 在下拉选项内容长度变化时修改下拉框的宽度
+            ListView.view.implicitWidth = Math.max(ListView.view.implicitWidth, implicitWidth)
+        }
+
         text: control.textRole ? (Array.isArray(control.model) ? modelData[control.textRole] : model[control.textRole]) : modelData
         palette.text: control.palette.text
         font: control.font
         palette.highlightedText: control.palette.highlightedText
         highlighted: control.highlightedIndex === index
-        // hoverEnabled: control.hoverEnabled
-        hoverEnabled: true
+        hoverEnabled: control.hoverEnabled
     }
-    focusReason: Qt.MouseFocusReason
-    // focusPolicy:Qt.TabFocus
+    focusPolicy:Qt.TabFocus
     indicator: DltTextIcon {
         x: control.mirrored ? control.padding : control.width - width - control.padding
         y: control.topPadding + (control.availableHeight - height) / 2
@@ -50,7 +53,7 @@ T.ComboBox {
         topPadding: 6 - control.padding
         bottomPadding: 6 - control.padding
         renderType: Text.NativeRendering
-        selectionColor: Utils.withOpacity(DltColor.Primary,0.5)
+        selectionColor: Utils.withOpacity(normalColor,0.5)
         selectedTextColor: color
         text: control.editable ? control.editText : control.displayText
         enabled: control.editable
@@ -60,21 +63,13 @@ T.ComboBox {
         color: DltColor.FontPrimary
         inputMethodHints: control.inputMethodHints
         validator: control.validator
-        selectByMouse: true
+        selectByMouse: control.selectTextByMouse
         verticalAlignment: Text.AlignVCenter
         background: DltControlBackground {
             id: _bg
-            // border.width: 1
+            border.width: 1
             bottomMargin: !control.editabl ? 1 : contentItem && contentItem.activeFocus ? 2 : 1
-            color: {
-                if (control.pressed) {
-                    return control.normalColor
-                }
-                if (control.popup.visible) {
-                    return control.hovered ? control.hoverColor : control.normalColor
-                }
-                return control.hovered ? control.hoverColor : control.normalColor
-            }
+            color: control.hovered ? control.hoverColor : control.normalColor
         }
 
         Component.onCompleted: {
@@ -90,8 +85,6 @@ T.ComboBox {
     background: Rectangle {
         implicitWidth: 140
         implicitHeight: 32
-        // border.color: DltColor.Background
-        // border.width: 1
         visible: !control.flat || control.down
         radius: 4
         DltFocusRectangle{
@@ -99,26 +92,19 @@ T.ComboBox {
             radius:4
             anchors.margins: -2
         }
-        color:{
-            if (control.pressed) {
-                return control.normalColor
-            }
-            if (control.popup.visible) {
-                return control.hovered ? control.hoverColor : control.normalColor
-            }
-            return control.hovered ? control.hoverColor : control.normalColor
-        }
+        color: control.hovered ? control.hoverColor : control.normalColor
     }
 
     popup: T.Popup {
         id: _popup
         y: control.height
-        width: control.width
+        width: Math.max(control.width, contentItem.implicitWidth)
         height: Math.min(contentItem.implicitHeight, control.Window.height - topMargin - bottomMargin)
         topMargin: 6
         bottomMargin: 6
-        modal: true
+        // modal: true // 会影响 hovered 属性
         contentItem: ListView {
+            id: view
             clip: true
             implicitHeight: contentHeight
             model: control.delegateModel
