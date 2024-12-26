@@ -191,6 +191,16 @@ bool DatasetsListModel::deleteDataset(const int64_t dataset_id)
     return true;
 }
 
+QList<QString> DatasetsListModel::getDatasetsName() const
+{
+    QList<QString> names;
+    for (const auto &[id, dataset] : datasets_)
+    {
+        names.append(dataset->name());
+    }
+    return names;
+}
+
 int DatasetsListModel::getDatasetId(const QModelIndex &index) const
 {
     int idx = 0;

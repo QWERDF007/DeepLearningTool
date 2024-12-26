@@ -64,6 +64,8 @@ public:
     bool updateDataset(const QString &old_name, const QString &new_name);
     bool deleteDataset(const int64_t dataset_id);
 
+    QList<QString> getDatasetsName() const;
+
 private:
     int getDatasetId(const QModelIndex &index) const;
 

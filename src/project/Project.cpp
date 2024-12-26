@@ -86,6 +86,13 @@ std::tuple<bool, QString> Project::isValid(const int method, const QString &path
     return {file_exist, file_exist ? "" : "项目不存在"};
 }
 
+QList<QString> Project::getDatasetsName() const
+{
+    if (datasets_ == nullptr)
+        return {};
+    return datasets_->getDatasetsName();
+}
+
 bool Project::addDataset(const QString &name)
 {
     if (datasets_ == nullptr)

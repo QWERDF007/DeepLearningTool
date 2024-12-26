@@ -28,7 +28,8 @@ T.ComboBox {
             ListView.view.implicitWidth = Math.max(ListView.view.implicitWidth, implicitWidth)
         }
 
-        text: control.textRole ? (Array.isArray(control.model) ? modelData[control.textRole] : model[control.textRole]) : modelData
+        // text: control.textRole ? (Array.isArray(control.model) ? modelData[control.textRole] : model[control.textRole]) : modelData
+        text: control.textRole ? (modelData[control.textRole] !== undefined ? modelData[control.textRole] :model[control.textRole]) : modelData
         palette.text: control.palette.text
         font: control.font
         palette.highlightedText: control.palette.highlightedText

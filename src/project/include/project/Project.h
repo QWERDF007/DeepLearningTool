@@ -79,6 +79,8 @@ public:
         return datasets_;
     }
 
+    Q_INVOKABLE QList<QString> getDatasetsName() const;
+
     Q_INVOKABLE bool addDataset(const QString &name);
     Q_INVOKABLE bool updateDataset(const QString &old_name, const QString &new_name);
     Q_INVOKABLE bool deleteDataset(const int64_t dataset_id);

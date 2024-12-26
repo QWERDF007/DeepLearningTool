@@ -12,6 +12,7 @@ Rectangle {
     color: DltColor.Primary
     property Project project: ProjectManager.currentProject
     property int cur_dataset_id: -1
+    property string cur_dataset_name: ""
 
     DltMenu {
         id: menu
@@ -20,7 +21,11 @@ Rectangle {
             text: "导入数据"
             iconSource: DltFontIcon.ImportMirrored
             onClicked: {
-                importDataDialog.open()
+                if (project) {
+                    importDataDialog.datasetsModel = project.getDatasetsName()
+                    importDataDialog.datasetName = cur_dataset_name
+                    importDataDialog.open()
+                }
             }
         }
         DltMenuItem {
@@ -75,6 +80,7 @@ Rectangle {
                         // let tmpIndex = view.model.index(index, 0)
                         if (mouse.button === Qt.RightButton) {
                             cur_dataset_id = item.dataset_id
+                            cur_dataset_name = item.name
                             menu.popup()
                         }
                     }

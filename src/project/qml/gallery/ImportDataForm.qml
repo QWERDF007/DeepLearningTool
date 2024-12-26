@@ -11,8 +11,15 @@ Item {
     width: 400
     height: 200
     property int rowH: 64
+    // property Project project: ProjectManager.currentProject
+    property string datasetName: ""
+    property alias datasetsModel: datasetBox.model
+    property int datasetId: -1
+    property alias dataFormatModel: dataFormatBox.model
+    property int dataFormat: -1
+
     Item {
-        id: image
+        id: imageForm
         width: parent.width
         height: rowH
         Column {
@@ -46,8 +53,8 @@ Item {
         }
     }
     Item {
-        id: label
-        anchors.top: image.bottom
+        id: labelForm
+        anchors.top: imageForm.bottom
         anchors.topMargin: 10
         width: parent.width
         height: rowH
@@ -81,25 +88,38 @@ Item {
             }
         }
     }
-    Item {
-        anchors.top: label.bottom
-        anchors.topMargin: 10
+    Row {
+        anchors.top: labelForm.bottom
+        anchors.topMargin: 20
         width: parent.width
         height: rowH
         Column {
-            anchors {
-                left: parent.left
-                leftMargin: 5
-                right: parent.right
-                rightMargin: 5
-            }
+            spacing: 10
+            width: parent.width / 2
             height: parent.height
             DltText {
                 text: "数据格式:"
                 textColor: DltColor.FontDark
             }
             DltComboBox {
+                id: dataFormatBox
+                width: 240
                 model: ["1", "2", "3"]
+            }
+        }
+
+        Column {
+            spacing: 10
+            width: parent.width / 2
+            height: parent.height
+            DltText {
+                text: "数据集:"
+                textColor: DltColor.FontDark
+            }
+            DltComboBox {
+                id: datasetBox
+                width: 240
+                currentIndex: indexOfValue(datasetName)
             }
         }
     }

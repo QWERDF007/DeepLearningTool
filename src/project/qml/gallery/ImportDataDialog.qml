@@ -11,7 +11,9 @@ DltPopup {
     width: 600
     height: 400
 
-    property int rowH: 64
+    property alias datasetName: importDataForm.datasetName
+    property alias datasetsModel: importDataForm.datasetsModel
+    // property alias dataFormatModel: importDataForm.dataFormatModel
 
     ColumnLayout {
         anchors.fill: parent
@@ -23,11 +25,35 @@ DltPopup {
         ImportDataForm {
             id: importDataForm
             Layout.fillWidth: true
-            height: 320
+            Layout.fillHeight: true
+            // height: 320
         }
         Item {
-            Layout.fillHeight: true
             Layout.fillWidth: true
+            height: 32
+            DltButton {
+                anchors.right: createBtn.left
+                anchors.rightMargin: 5
+                width: parent.width / 4
+                height: parent.height
+                text: "取消"
+                onClicked: {
+                    importDataDialog.close()
+                }
+            }
+
+            DltButton {
+                id: createBtn
+                // enabled: projectForm.isValid
+                anchors.right: parent.right
+                width: parent.width / 4
+                height: parent.height
+                text: " 导入"
+                normalColor: DltColor.Highlight
+                onClicked: {
+
+                }
+            }
         }
     }
 }
