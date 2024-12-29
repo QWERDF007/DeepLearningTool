@@ -47,7 +47,6 @@ Rectangle {
                 onProjectDescriptionChanged: function(newDescription) {
                     let ok = ProjectManager.updateProjectBaseInfo(projectInfo.path, projectNameType.name, newDescription)
                     if (ok) {
-                        console.log("new desc", newDescription)
                         projectInfo.description = newDescription
                     }
                 }

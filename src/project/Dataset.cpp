@@ -121,10 +121,10 @@ bool DatasetsListModel::addDataset(const QString &name)
         return false;
     }
     spdlog::info("添加数据集: {}", name.toUtf8().constData());
-    const int row = rowCount();
-    // const int count = 1;
-    // beginInsertRows(QModelIndex(), row, row + count - 1);
-    beginInsertRows(QModelIndex(), row, row);
+    const int row   = rowCount(); // 添加到队列尾部
+    const int count = 1;
+    beginInsertRows(QModelIndex(), row, row + count - 1);
+    // beginInsertRows(QModelIndex(), row, row);
     datasets_.emplace(dataset_id, new Dataset(dataset_id, name, this));
     endInsertRows();
     return true;
@@ -191,14 +191,24 @@ bool DatasetsListModel::deleteDataset(const int64_t dataset_id)
     return true;
 }
 
-QList<QString> DatasetsListModel::getDatasetsName() const
+QList<QString> DatasetsListModel::getAllDatasetsName() const
 {
-    QList<QString> names;
+    QList<QString> list;
     for (const auto &[id, dataset] : datasets_)
     {
-        names.append(dataset->name());
+        list.append(dataset->name());
     }
-    return names;
+    return list;
+}
+
+int DatasetsListModel::getDatasetId(const QString &dataset_name) const
+{
+    for (const auto &[id, dataset] : datasets_)
+    {
+        if (dataset_name == dataset->name())
+            return id;
+    }
+    return -1;
 }
 
 int DatasetsListModel::getDatasetId(const QModelIndex &index) const
@@ -215,6 +225,14 @@ int DatasetsListModel::getDatasetId(const QModelIndex &index) const
     return -1;
 }
 
+QString DatasetsListModel::getDatasetName(const int dataset_id) const
+{
+    auto found = datasets_.find(dataset_id);
+    if (found == datasets_.end())
+        return QString();
+    return found->second->name();
+}
+
 QVariant DatasetsListModel::getName(const QModelIndex &index) const
 {
     const int id = getDatasetId(index);
@@ -227,7 +245,7 @@ QVariant DatasetsListModel::getStats(const QModelIndex &index) const
 {
     const int id = getDatasetId(index);
     if (id != -1)
-        return "0/0";
+        return QString("%1/%2").arg(0).arg(database_->getImagesCount(id));
     return QVariant();
 }
 

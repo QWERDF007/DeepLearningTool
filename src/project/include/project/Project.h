@@ -28,6 +28,7 @@ class Project : public QObject
     Q_PROPERTY(QString description READ description NOTIFY descriptionChanged FINAL)
     Q_PROPERTY(QString imageBasePath READ imageBasePath NOTIFY imageBasePathChanged FINAL)
     Q_PROPERTY(DatasetsListModel *datasets READ datasets NOTIFY datasetsChanged FINAL)
+    Q_PROPERTY(ImageInstancesListModel *imageInstances READ imageInstances NOTIFY imageInstancesChanged FINAL)
 public:
     Project(const QString &name, const int method, const QString &path, const QString &description,
             const QString image_base_path, const qint64 ctime, const qint64 mtime, QObject *parent = nullptr);
@@ -79,13 +80,22 @@ public:
         return datasets_;
     }
 
-    Q_INVOKABLE QList<QString> getDatasetsName() const;
+    ImageInstancesListModel *imageInstances() const
+    {
+        return image_instances_;
+    }
 
-    Q_INVOKABLE bool addDataset(const QString &name);
-    Q_INVOKABLE bool updateDataset(const QString &old_name, const QString &new_name);
-    Q_INVOKABLE bool deleteDataset(const int64_t dataset_id);
+    Q_INVOKABLE QList<QString> getAllDatasetsName() const;
 
-    Q_INVOKABLE bool addImage(const int64_t dataset_id, const QString &path);
+    Q_INVOKABLE int     getDatasetId(const QString &dataset_name) const;
+    Q_INVOKABLE QString getDatasetName(const int dataset_id) const;
+
+    Q_INVOKABLE void addDataset(const QString &name);
+    Q_INVOKABLE void updateDataset(const QString &old_name, const QString &new_name);
+    Q_INVOKABLE void deleteDataset(const int64_t dataset_id);
+
+    Q_INVOKABLE void importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
+                                const QString &data_dir);
 
 private:
     QString name_;
@@ -99,12 +109,13 @@ private:
     data::ProjectDataBase *database_{nullptr};
 
     DatasetsListModel       *datasets_{nullptr};
-    ImageInstancesListModel *images_{nullptr};
+    ImageInstancesListModel *image_instances_{nullptr};
 
 signals:
     void descriptionChanged();
     void imageBasePathChanged();
     void datasetsChanged();
+    void imageInstancesChanged();
 };
 
 class RectentProjects : public QAbstractListModel
@@ -202,12 +213,12 @@ public:
 
     Q_INVOKABLE void closeProject();
 
-    Q_INVOKABLE bool updateProjectBaseInfo(const QString &path, const QString &new_name,
+    Q_INVOKABLE void updateProjectBaseInfo(const QString &path, const QString &new_name,
                                            const QString &new_description);
 
-    Q_INVOKABLE bool deleteProject(const QString &path);
+    Q_INVOKABLE void deleteProject(const QString &path);
 
-    Q_INVOKABLE bool removeFromRectentProjects(const QString &path);
+    Q_INVOKABLE void removeFromRectentProjects(const QString &path);
 
     Q_INVOKABLE QString isProjectValid(const int method, const QString &path, bool is_new);
 

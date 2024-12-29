@@ -1,15 +1,22 @@
 #include "project/Image.h"
 
+#include "Image.h"
 #include "data/DataBase.h"
 
+#include <data/DataFormat.h>
 #include <spdlog/spdlog.h>
 
+#include <QDir>
+#include <QFileInfo>
+
 namespace dltool::project {
-ImageInstance::ImageInstance(const int64_t id, const QString &path, QObject *parent)
+ImageInstance::ImageInstance(const int64_t dataset_id, const int64_t image_id, const QString &path, QObject *parent)
     : QObject(parent)
-    , id_(id)
+    , dataset_id_(dataset_id)
+    , image_id_(image_id)
     , path_(path)
 {
+    name_ = QFileInfo(path_).fileName();
 }
 
 ImageInstance::~ImageInstance() {}
@@ -18,6 +25,7 @@ ImageInstancesListModel::ImageInstancesListModel(data::ProjectDataBase *database
     : QAbstractListModel(parent)
     , database_(database)
 {
+    init();
 }
 
 ImageInstancesListModel::~ImageInstancesListModel() {}
@@ -36,11 +44,11 @@ QVariant ImageInstancesListModel::data(const QModelIndex &index, int role) const
     switch (role)
     {
     case ImageIdRole:
-        return QVariant();
+        return getImageId(index);
     case NameRole:
-        return QVariant();
+        return getImageName(index);
     case PathRole:
-        return QVariant();
+        return getImagePath(index);
     default:
         return QVariant();
     }
@@ -55,58 +63,160 @@ QHash<int, QByteArray> ImageInstancesListModel::roleNames() const
     };
 }
 
-bool ImageInstancesListModel::addImageInstance(const int64_t dataset_id, const QString &path)
+bool ImageInstancesListModel::addImageInstances(const int64_t dataset_id, const std::vector<QString> &paths)
 {
     if (database_ == nullptr)
     {
-        spdlog::error("添加图像失败: {}, 数据库未初始化", path.toUtf8().constData());
+        spdlog::error("批量添加图像失败, dataset id: {}, 数据库未初始化", dataset_id);
         return false;
     }
-    QString err_msg;
-    int64_t image_id{-1};
-    bool    ok = database_->addImage(dataset_id, path, image_id, err_msg);
+    QString              err_msg;
+    std::vector<int64_t> image_ids;
+    bool                 ok = database_->addImages(dataset_id, paths, image_ids, err_msg);
     if (!ok)
     {
-        spdlog::error("添加图像失败: {}, error: {}", path.toUtf8().constData(), err_msg.toUtf8().constData());
+        spdlog::error("批量添加图像失败, dataset id: {}, error: {}", dataset_id, err_msg.toUtf8().constData());
         return false;
     }
-    spdlog::info("添加图像: {}, id: {}", path.toUtf8().constData(), image_id);
-    const int row = rowCount();
-    beginInsertRows(QModelIndex(), row, row);
-    image_instances_.emplace(dataset_id, new ImageInstance(image_id, path, this));
+    spdlog::info("批量添加图像, dataset id: {}, 数量: {}", dataset_id, image_ids.size());
+    const int row   = 0; // 添加到队列首部
+    const int count = static_cast<int>(image_ids.size());
+    beginInsertRows(QModelIndex(), row, row + count - 1);
+    // beginInsertRows(QModelIndex(), row, row);
+    for (size_t i = 0; i < image_ids.size(); ++i)
+    {
+        image_instances_.insert(
+            image_instances_.begin(),
+            std::make_pair(image_ids[i], new ImageInstance(dataset_id, image_ids[i], paths[i], this)));
+        // image_instances_.emplace(dataset_id, new ImageInstance(image_id, path, this));
+    }
     endInsertRows();
     return true;
 }
 
-bool ImageInstancesListModel::deleteImageInstance(const int64_t image_id)
+bool ImageInstancesListModel::addImageInstances(const int64_t dataset_id, const QString &image_idr)
 {
     if (database_ == nullptr)
     {
-        spdlog::error("删除图像失败: {}, 数据库未初始化", image_id);
+        spdlog::error("添加图像失败: {}, 数据库未初始化", image_idr.toUtf8().constData());
+        return false;
+    }
+    std::vector<QString> paths = getImagePaths(image_idr);
+    return addImageInstances(dataset_id, paths);
+}
+
+bool ImageInstancesListModel::deleteImageInstances(const std::vector<int64_t> &image_ids)
+{
+    if (database_ == nullptr)
+    {
+        spdlog::error("批量删除图像失败, 数量: {}, 数据库未初始化", image_ids.size());
         return false;
     }
     QString err_msg;
-    bool    ok = database_->deleteImage(image_id, err_msg);
+    bool    ok = database_->deleteImages(image_ids, err_msg);
     if (!ok)
     {
-        spdlog::error("删除图像失败: {}, error: {}", image_id, err_msg.toUtf8().constData());
+        spdlog::error("批量删除图像失败: {}, error: {}", image_ids.size(), err_msg.toUtf8().constData());
         return false;
     }
-    spdlog::info("删除图像: {}", image_id);
-    int idx{0};
-    for (const auto &[_image_id, image_instance] : image_instances_)
+    spdlog::info("批量删除图像, 数量: {}", image_ids.size());
+    beginResetModel();
+    for (const auto &image_id : image_ids)
     {
-        if (image_instance && image_instance->id() == image_id)
+        auto found = image_instances_.find(image_id);
+        if (found != image_instances_.end())
         {
-            beginRemoveRows(QModelIndex(), idx, idx);
-            delete image_instance;
-            image_instances_.erase(image_id);
-            endRemoveRows();
-            break;
+            image_instances_.erase(found);
+            delete found->second;
+        }
+    }
+    endResetModel();
+    return true;
+}
+
+std::vector<QString> ImageInstancesListModel::getImagePaths(const QString &image_idr)
+{
+    return getFiles(image_idr, data::DataFormat::getSupportedImageFormat(), false);
+}
+
+std::vector<QString> ImageInstancesListModel::getFiles(const QString &path, const QStringList &name_filters,
+                                                       bool recursive)
+{
+    QFileInfo fileinfo(path);
+    if (fileinfo.isFile())
+    {
+        return {path};
+    }
+    else if (fileinfo.isDir())
+    {
+        QDir dir(path);
+        dir.setNameFilters(name_filters);
+        dir.setFilter(recursive ? QDir::Files : QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
+        dir.setSorting(QDir::Name);
+        std::vector<QString> files;
+        for (const auto &entry_info : dir.entryInfoList())
+        {
+            if (entry_info.isFile())
+            {
+                files.emplace_back(entry_info.absoluteFilePath());
+            }
+            else if (recursive && entry_info.isDir())
+            {
+                std::vector<QString> tmp_files = getFiles(entry_info.absoluteFilePath(), name_filters, recursive);
+                files.insert(files.end(), tmp_files.begin(), tmp_files.end());
+            }
+        }
+        return files;
+    }
+    else
+    {
+        return {};
+    }
+}
+
+void ImageInstancesListModel::init()
+{
+    QString err_msg;
+    auto    all_instances = database_->getAllImages(err_msg);
+    for (const auto &[dataset_id, instances] : all_instances)
+    {
+        for (const auto &[image_id, path] : instances)
+        {
+            image_instances_.emplace(image_id, new ImageInstance(dataset_id, image_id, path, this));
+        }
+    }
+}
+
+QVariant ImageInstancesListModel::getImageId(const QModelIndex &index) const
+{
+    int idx = 0;
+    for (const auto &[id, image_instance] : image_instances_)
+    {
+        if (index.row() == idx)
+        {
+            return id;
         }
         ++idx;
     }
-    return true;
+    return -1;
+}
+
+QVariant ImageInstancesListModel::getImageName(const QModelIndex &index) const
+{
+    const int image_id = getImageId(index).toInt();
+    auto      found    = image_instances_.find(image_id);
+    if (found != image_instances_.end())
+        return found->second->name();
+    return QVariant();
+}
+
+QVariant ImageInstancesListModel::getImagePath(const QModelIndex &index) const
+{
+    const int image_id = getImageId(index).toInt();
+    auto      found    = image_instances_.find(image_id);
+    if (found != image_instances_.end())
+        return found->second->path();
+    return QVariant();
 }
 
 } // namespace dltool::project

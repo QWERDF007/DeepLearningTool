@@ -13,23 +13,37 @@ namespace dltool::project {
 class ImageInstance : public QObject
 {
 public:
-    ImageInstance(const int64_t id, const QString &path, QObject *parent = nullptr);
+    ImageInstance(const int64_t dataset_id, const int64_t image_id, const QString &path, QObject *parent = nullptr);
     ~ImageInstance();
+
+    int64_t datasetId() const
+    {
+        return dataset_id_;
+    }
+
+    int64_t imageId() const
+    {
+        return image_id_;
+    }
+
+    QString name() const
+    {
+        return name_;
+    }
 
     QString path() const
     {
         return path_;
     }
 
-    int64_t id() const
-    {
-        return id_;
-    }
-
 private:
-    int64_t id_;
+    int64_t dataset_id_;
+
+    int64_t image_id_;
 
     QString path_;
+
+    QString name_;
 };
 
 class ImageInstancesListModel : public QAbstractListModel
@@ -54,10 +68,21 @@ public:
 
     QHash<int, QByteArray> roleNames() const override;
 
-    bool addImageInstance(const int64_t dataset_id, const QString &path);
-    bool deleteImageInstance(const int64_t image_id);
+    bool addImageInstances(const int64_t dataset_id, const std::vector<QString> &paths);
+    bool addImageInstances(const int64_t dataset_id, const QString &image_idr);
+    bool deleteImageInstances(const std::vector<int64_t> &image_ids);
+
+    static std::vector<QString> getImagePaths(const QString &image_idr);
+
+    static std::vector<QString> getFiles(const QString &path, const QStringList &name_filters, bool recursive);
 
 private:
+    void init();
+
+    QVariant getImageId(const QModelIndex &index) const;
+    QVariant getImageName(const QModelIndex &index) const;
+    QVariant getImagePath(const QModelIndex &index) const;
+
     data::ProjectDataBase *database_{nullptr};
 
     std::map<int64_t, ImageInstance *> image_instances_;

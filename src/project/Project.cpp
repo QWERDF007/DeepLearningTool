@@ -1,5 +1,6 @@
 #include "project/Project.h"
 
+#include "Project.h"
 #include "data/DataBase.h"
 #include "project/Dataset.h"
 #include "project/Image.h"
@@ -24,51 +25,45 @@ Project::Project(const QString &name, const int method, const QString &path, con
     , ctime_(ctime)
     , mtime_(mtime)
 {
+    database_        = new data::ProjectDataBase(path_, this);
+    datasets_        = new DatasetsListModel(database_, this);
+    image_instances_ = new ImageInstancesListModel(database_, this);
 }
 
 Project::Project(const QString &path, QObject *parent)
     : QObject(parent)
     , path_(path)
 {
+    database_        = new data::ProjectDataBase(path_, this);
+    datasets_        = new DatasetsListModel(database_, this);
+    image_instances_ = new ImageInstancesListModel(database_, this);
 }
 
 Project::~Project() {}
 
 void Project::initProject()
 {
-    if (database_ == nullptr)
-        database_ = new data::ProjectDataBase(path_, this);
     spdlog::info("初始化项目, 创建数据库: {}", path_.toUtf8().constData());
     qint64  ctime = QDateTime::currentSecsSinceEpoch();
     QString err_msg;
     bool    ok = database_->initProject(name_, method_, path_, description_, image_base_path_, ctime, ctime, err_msg);
-    if (ok)
-    {
-        datasets_ = new DatasetsListModel(database_, this);
-        emit datasetsChanged();
-    }
-    else
+    if (!ok)
     {
         spdlog::error("初始化项目失败, error: {}", err_msg.toUtf8().constData());
     }
+    // emit datasetsChanged();
 }
 
 void Project::openProject()
 {
-    if (database_ == nullptr)
-        database_ = new data::ProjectDataBase(path_, this);
     spdlog::info("打开项目, 打开数据库: {}", path_.toUtf8().constData());
     QString err_msg;
     bool    ok = database_->openProject(name_, method_, path_, description_, image_base_path_, ctime_, mtime_, err_msg);
-    if (ok)
-    {
-        datasets_ = new DatasetsListModel(database_, this);
-        emit datasetsChanged();
-    }
-    else
+    if (!ok)
     {
         spdlog::error("打开项目失败: {}, error: {}", path_.toUtf8().constData(), err_msg.toUtf8().constData());
     }
+    // emit datasetsChanged();
 }
 
 std::tuple<bool, QString> Project::isValid(const int method, const QString &path, bool is_new)
@@ -86,44 +81,48 @@ std::tuple<bool, QString> Project::isValid(const int method, const QString &path
     return {file_exist, file_exist ? "" : "项目不存在"};
 }
 
-QList<QString> Project::getDatasetsName() const
+QList<QString> Project::getAllDatasetsName() const
 {
-    if (datasets_ == nullptr)
-        return {};
-    return datasets_->getDatasetsName();
+    return datasets_->getAllDatasetsName();
 }
 
-bool Project::addDataset(const QString &name)
+int Project::getDatasetId(const QString &dataset_name) const
 {
-    if (datasets_ == nullptr)
-        return false;
-    return datasets_->addDataset(name);
+    return datasets_->getDatasetId(dataset_name);
 }
 
-bool Project::updateDataset(const QString &old_name, const QString &new_name)
+QString Project::getDatasetName(const int dataset_id) const
 {
-    if (datasets_ == nullptr)
-        return false;
-    return datasets_->updateDataset(old_name, new_name);
+    return datasets_->getDatasetName(dataset_id);
 }
 
-bool Project::deleteDataset(const int64_t dataset_id)
+void Project::addDataset(const QString &name)
 {
-    if (datasets_ == nullptr)
-        return false;
-    return datasets_->deleteDataset(dataset_id);
+    datasets_->addDataset(name);
 }
 
-bool Project::addImage(const int64_t dataset_id, const QString &path)
+void Project::updateDataset(const QString &old_name, const QString &new_name)
 {
-    if (images_ == nullptr)
-        return false;
-    return images_->addImageInstance(dataset_id, path);
+    datasets_->updateDataset(old_name, new_name);
+}
+
+void Project::deleteDataset(const int64_t dataset_id)
+{
+    datasets_->deleteDataset(dataset_id);
+}
+
+void Project::importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
+                         const QString &data_dir)
+{
+    qInfo() << __FUNCTION__ << __LINE__ << "dataset_id" << dataset_id << "data_format" << data_format << "image_dir"
+            << image_dir << "data_dir" << data_dir;
+    image_instances_->addImageInstances(dataset_id, image_dir);
 }
 
 RectentProjects::RectentProjects(const QString &path, QObject *parent)
     : QAbstractListModel(parent)
     , path_(path)
+    , database_(new data::RecentProjectsDataBase(path_, this))
     , selection_(new QItemSelectionModel(this))
 {
     init();
@@ -134,8 +133,6 @@ RectentProjects::~RectentProjects() {}
 void RectentProjects::init()
 {
     auto start = std::chrono::high_resolution_clock::now();
-    if (database_ == nullptr)
-        database_ = new data::RecentProjectsDataBase(path_, this);
     if (!project_infos.empty())
         project_infos.clear();
     spdlog::info("打开最近项目数据库: {}", path_.toUtf8().constData());
@@ -238,11 +235,6 @@ bool RectentProjects::removeRows(int row, int count, const QModelIndex &parent)
 
 bool RectentProjects::addProject(const QString &path)
 {
-    if (database_ == nullptr)
-    {
-        spdlog::error("添加项目到最近项目失败, 数据库未初始化: {}", path_.toUtf8().constData());
-        return false;
-    }
     const int row = 0;
     if (!insertRow(row))
         return false;
@@ -269,11 +261,6 @@ bool RectentProjects::addProject(const QString &path)
 
 bool RectentProjects::updateProject(const QString &path, const QString &new_name, const qint64 new_mtime)
 {
-    if (database_ == nullptr)
-    {
-        spdlog::error("更新最近项目失败, 数据库未初始化: {}", path_.toUtf8().constData());
-        return false;
-    }
     const int size = static_cast<int>(project_infos.size());
     bool      ok{false};
     for (int i = 0; i < size; ++i)
@@ -293,11 +280,6 @@ bool RectentProjects::updateProject(const QString &path, const QString &new_name
 
 bool RectentProjects::openProject(const QString &path)
 {
-    if (database_ == nullptr)
-    {
-        spdlog::error("打开最近项目失败, 数据库未初始化: {}", path_.toUtf8().constData());
-        return false;
-    }
     const int size = static_cast<int>(project_infos.size());
     for (int i = 0; i < size; ++i)
     {
@@ -319,11 +301,6 @@ bool RectentProjects::openProject(const QString &path)
 
 bool RectentProjects::removeProject(const QString &path)
 {
-    if (database_ == nullptr)
-    {
-        spdlog::error("删除最近项目失败, 数据库未初始化: {}", path_.toUtf8().constData());
-        return false;
-    }
     spdlog::info("删除最近项目: {}", path.toUtf8().constData());
     for (size_t i = 0; i < project_infos.size(); ++i)
     {
@@ -500,7 +477,7 @@ void ProjectManager::closeProject()
     }
 }
 
-bool ProjectManager::updateProjectBaseInfo(const QString &path, const QString &new_name, const QString &new_description)
+void ProjectManager::updateProjectBaseInfo(const QString &path, const QString &new_name, const QString &new_description)
 {
     spdlog::info("更新项目基础信息: {}", path.toUtf8().constData());
     QString      err_msg;
@@ -514,10 +491,9 @@ bool ProjectManager::updateProjectBaseInfo(const QString &path, const QString &n
     {
         spdlog::error("更新项目基础信息失败: {}, error: {}", path.toUtf8().constData(), err_msg.toUtf8().constData());
     }
-    return ok;
 }
 
-bool ProjectManager::deleteProject(const QString &path)
+void ProjectManager::deleteProject(const QString &path)
 {
     if (current_project_ && current_project_->path() == path)
         closeProject();
@@ -530,12 +506,11 @@ bool ProjectManager::deleteProject(const QString &path)
         spdlog::error("删除项目失败: {}, error: {}", path.toUtf8().constData(),
                       file.errorString().toUtf8().constData());
     }
-    return ok;
 }
 
-bool ProjectManager::removeFromRectentProjects(const QString &path)
+void ProjectManager::removeFromRectentProjects(const QString &path)
 {
-    return recent_projects_->removeProject(path);
+    recent_projects_->removeProject(path);
 }
 
 QString ProjectManager::isProjectValid(const int method, const QString &path, bool is_new)

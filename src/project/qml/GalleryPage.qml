@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
-import "./gallery"
+import "gallery"
 
 Rectangle {
     width: 1080
@@ -42,14 +42,13 @@ Rectangle {
             SplitView.fillHeight: true
             SplitView.fillWidth: true
 
-            Rectangle {
+            ImageInstancesView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                color: DltColor.Background
             }
 
             Rectangle {
-                width: 48
+                Layout.preferredWidth: 48
                 Layout.fillHeight: true
                 color: DltColor.Primary
             }

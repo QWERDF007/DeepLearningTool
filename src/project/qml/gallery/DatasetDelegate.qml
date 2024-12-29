@@ -31,7 +31,7 @@ Item {
         }
         DltText {
             text: control.stats
-            Layout.preferredWidth: 48
+            Layout.preferredWidth: 64
         }
 
         // DltTextIconButton {

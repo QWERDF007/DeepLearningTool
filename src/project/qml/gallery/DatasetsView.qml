@@ -22,7 +22,7 @@ Rectangle {
             iconSource: DltFontIcon.ImportMirrored
             onClicked: {
                 if (project) {
-                    importDataDialog.datasetsModel = project.getDatasetsName()
+                    importDataDialog.datasetsModel = project.getAllDatasetsName()
                     importDataDialog.datasetName = cur_dataset_name
                     importDataDialog.open()
                 }
@@ -81,6 +81,7 @@ Rectangle {
                         if (mouse.button === Qt.RightButton) {
                             cur_dataset_id = item.dataset_id
                             cur_dataset_name = item.name
+                            console.log("cur_dataset_name", cur_dataset_name)
                             menu.popup()
                         }
                     }

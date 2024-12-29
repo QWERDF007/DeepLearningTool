@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import Qt.labs.platform
 
 import dltool.ui
+import dltool.data
 import dltool.project
 
 Item {
@@ -14,9 +15,9 @@ Item {
     // property Project project: ProjectManager.currentProject
     property string datasetName: ""
     property alias datasetsModel: datasetBox.model
-    property int datasetId: -1
-    property alias dataFormatModel: dataFormatBox.model
-    property int dataFormat: -1
+    property string dataFormat: dataFormatBox.currentText
+    property string image_dir: imagePathInput.text
+    property string data_dir: labelPathInput.text
 
     Item {
         id: imageForm
@@ -104,7 +105,10 @@ Item {
             DltComboBox {
                 id: dataFormatBox
                 width: 240
-                model: ["1", "2", "3"]
+                model: DataFormat.getSupportedDataFormat()
+                // onActivated: {
+                //     dataFormat = currentText
+                // }
             }
         }
 
@@ -120,6 +124,9 @@ Item {
                 id: datasetBox
                 width: 240
                 currentIndex: indexOfValue(datasetName)
+                onActivated: {
+                    datasetName = currentText
+                }
             }
         }
     }

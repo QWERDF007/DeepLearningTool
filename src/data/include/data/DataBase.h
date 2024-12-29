@@ -63,9 +63,14 @@ public:
 
     std::optional<int64_t> getDatasetId(const QString &name, QString &err_msg) const;
 
-    bool addImage(const int64_t dataset_id, const QString &path, int64_t &image_id, QString &err_msg) const;
-    bool getImage(const int64_t image_id, int64_t &dataset_id, QString &path, QString &err_msg) const;
-    bool deleteImage(const int64_t image_id, QString &err_msg) const;
+    int64_t getImagesCount(const int64_t dataset_id) const;
+
+    bool addImages(const int64_t dataset_id, const std::vector<QString> &paths, std::vector<int64_t> &image_ids,
+                   QString &err_msg) const;
+    bool getImage(const int64_t image_id, std::pair<int64_t, QString> &image, QString &err_msg) const;
+    bool getImages(const std::vector<int64_t> &image_ids, std::vector<std::pair<int64_t, QString>> &images,
+                   QString &err_msg) const;
+    bool deleteImages(const std::vector<int64_t> &image_ids, QString &err_msg) const;
     std::vector<std::pair<int64_t, QString>> getImages(const int64_t dataset_id, QString &err_msg) const;
     std::map<int64_t, std::vector<std::pair<int64_t, QString>>> getAllImages(QString &err_msg) const;
 };

@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import Qt.labs.platform
 
 import dltool.ui
+import dltool.data
 import dltool.project
 
 DltPopup {
@@ -11,9 +12,10 @@ DltPopup {
     width: 600
     height: 400
 
+    property Project project: ProjectManager.currentProject
+
     property alias datasetName: importDataForm.datasetName
     property alias datasetsModel: importDataForm.datasetsModel
-    // property alias dataFormatModel: importDataForm.dataFormatModel
 
     ColumnLayout {
         anchors.fill: parent
@@ -44,14 +46,20 @@ DltPopup {
 
             DltButton {
                 id: createBtn
-                // enabled: projectForm.isValid
+                enabled: importDataForm.image_dir
                 anchors.right: parent.right
                 width: parent.width / 4
                 height: parent.height
                 text: " 导入"
                 normalColor: DltColor.Highlight
                 onClicked: {
-
+                    importDataDialog.close()
+                    if (project) {
+                        console.log("dataFormat", importDataForm.dataFormat)
+                        let dataset_id = project.getDatasetId(importDataForm.datasetName)
+                        let data_format = DataFormat.getDataFormat(importDataForm.dataFormat)
+                        project.importData(dataset_id, data_format, importDataForm.image_dir, importDataForm.data_dir)
+                    }
                 }
             }
         }
