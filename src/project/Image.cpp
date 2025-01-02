@@ -24,6 +24,7 @@ ImageInstance::~ImageInstance() {}
 ImageInstancesListModel::ImageInstancesListModel(data::ProjectDataBase *database, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
+    , selection_(new QItemSelectionModel(this))
 {
     init();
 }
@@ -49,6 +50,8 @@ QVariant ImageInstancesListModel::data(const QModelIndex &index, int role) const
         return getImageName(index);
     case PathRole:
         return getImagePath(index);
+    case SelectedRole:
+        return getSelected(index);
     default:
         return QVariant();
     }
@@ -57,9 +60,10 @@ QVariant ImageInstancesListModel::data(const QModelIndex &index, int role) const
 QHash<int, QByteArray> ImageInstancesListModel::roleNames() const
 {
     return {
-        {ImageIdRole, "image_id"},
-        {   NameRole,     "name"},
-        {   PathRole,     "path"},
+        { ImageIdRole, "image_id"},
+        {    NameRole,     "name"},
+        {    PathRole,     "path"},
+        {SelectedRole, "selected"},
     };
 }
 
@@ -91,6 +95,7 @@ bool ImageInstancesListModel::addImageInstances(const int64_t dataset_id, const 
         // image_instances_.emplace(dataset_id, new ImageInstance(image_id, path, this));
     }
     endInsertRows();
+    emit statsChanged();
     return true;
 }
 
@@ -131,6 +136,7 @@ bool ImageInstancesListModel::deleteImageInstances(const std::vector<int64_t> &i
         }
     }
     endResetModel();
+    emit statsChanged();
     return true;
 }
 
@@ -176,6 +182,9 @@ std::vector<QString> ImageInstancesListModel::getFiles(const QString &path, cons
 
 void ImageInstancesListModel::init()
 {
+    connect(selection_, &QItemSelectionModel::selectionChanged, this, &ImageInstancesListModel::updateSelection);
+    connect(selection_, &QItemSelectionModel::currentChanged, this, &ImageInstancesListModel::onCurrentChanged);
+
     QString err_msg;
     auto    all_instances = database_->getAllImages(err_msg);
     for (const auto &[dataset_id, instances] : all_instances)
@@ -218,5 +227,52 @@ QVariant ImageInstancesListModel::getImagePath(const QModelIndex &index) const
         return found->second->path();
     return QVariant();
 }
+
+QVariant ImageInstancesListModel::getSelected(const QModelIndex &index) const
+{
+    if (selection_ == nullptr)
+        return false;
+    const QModelIndexList &items = selection_->selectedIndexes();
+    for (const QModelIndex selected_index : items)
+    {
+        if (selected_index == index)
+            return true;
+    }
+    return false;
+}
+
+void ImageInstancesListModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)
+{
+    const QModelIndexList &dselected_items = deselected.indexes();
+    int                    top{-1};
+    int                    bottom{-1};
+    for (const QModelIndex &index : dselected_items)
+    {
+        const int row = index.row();
+        if (top == -1)
+            top = row;
+        else
+            top = std::min(top, row);
+        bottom = std::max(bottom, row);
+    }
+    emit dataChanged(index(top), index(bottom), {SelectedRole});
+
+    top    = -1;
+    bottom = -1;
+
+    const QModelIndexList &selected_items = selected.indexes();
+    for (const QModelIndex &index : selected_items)
+    {
+        const int row = index.row();
+        if (top == -1)
+            top = row;
+        else
+            top = std::min(top, row);
+        bottom = std::max(bottom, row);
+    }
+    emit dataChanged(index(top), index(bottom), {SelectedRole});
+}
+
+void ImageInstancesListModel::onCurrentChanged(const QModelIndex &current, const QModelIndex &previous) {}
 
 } // namespace dltool::project

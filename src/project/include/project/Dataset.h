@@ -75,9 +75,14 @@ private:
     QVariant getName(const QModelIndex &index) const;
     QVariant getStats(const QModelIndex &index) const;
 
+    void onStatsChanged();
+
     data::ProjectDataBase *database_{nullptr};
 
     std::map<int64_t, Dataset *> datasets_;
+
+signals:
+    void statsChanged();
 };
 
 } // namespace dltool::project

@@ -98,6 +98,8 @@ public:
                                 const QString &data_dir);
 
 private:
+    void init();
+
     QString name_;
     int     method_;
     QString path_;

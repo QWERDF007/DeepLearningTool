@@ -11,6 +11,7 @@ Dataset::Dataset(const int64_t id, const QString &name, QObject *parent)
     , id_(id)
     , name_(name)
 {
+
 }
 
 Dataset::~Dataset() {}
@@ -43,6 +44,7 @@ DatasetsListModel::DatasetsListModel(data::ProjectDataBase *database, QObject *p
             }
         }
     }
+    connect(this, &DatasetsListModel::statsChanged, this, &DatasetsListModel::onStatsChanged);
 }
 
 DatasetsListModel::~DatasetsListModel() {}
@@ -247,6 +249,12 @@ QVariant DatasetsListModel::getStats(const QModelIndex &index) const
     if (id != -1)
         return QString("%1/%2").arg(0).arg(database_->getImagesCount(id));
     return QVariant();
+}
+
+void DatasetsListModel::onStatsChanged()
+{
+    if (rowCount() > 0)
+        emit dataChanged(index(0), index(rowCount() - 1), {StatsRole});
 }
 
 } // namespace dltool::project

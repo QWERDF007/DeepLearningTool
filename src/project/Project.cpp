@@ -25,18 +25,14 @@ Project::Project(const QString &name, const int method, const QString &path, con
     , ctime_(ctime)
     , mtime_(mtime)
 {
-    database_        = new data::ProjectDataBase(path_, this);
-    datasets_        = new DatasetsListModel(database_, this);
-    image_instances_ = new ImageInstancesListModel(database_, this);
+    init();
 }
 
 Project::Project(const QString &path, QObject *parent)
     : QObject(parent)
     , path_(path)
 {
-    database_        = new data::ProjectDataBase(path_, this);
-    datasets_        = new DatasetsListModel(database_, this);
-    image_instances_ = new ImageInstancesListModel(database_, this);
+    init();
 }
 
 Project::~Project() {}
@@ -117,6 +113,16 @@ void Project::importData(const int64_t dataset_id, const int data_format, const 
     qInfo() << __FUNCTION__ << __LINE__ << "dataset_id" << dataset_id << "data_format" << data_format << "image_dir"
             << image_dir << "data_dir" << data_dir;
     image_instances_->addImageInstances(dataset_id, image_dir);
+}
+
+void Project::init()
+{
+    database_        = new data::ProjectDataBase(path_, this);
+    datasets_        = new DatasetsListModel(database_, this);
+    image_instances_ = new ImageInstancesListModel(database_, this);
+
+    // 添加/删除图像时
+    connect(image_instances_, &ImageInstancesListModel::statsChanged, datasets_, &DatasetsListModel::statsChanged);
 }
 
 RectentProjects::RectentProjects(const QString &path, QObject *parent)

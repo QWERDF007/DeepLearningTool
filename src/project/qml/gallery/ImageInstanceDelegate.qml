@@ -6,12 +6,15 @@ import dltool.ui
 
 Rectangle {
     id: imageInstanceDelegate
+    property alias image: image
+    property bool selected: false
+
     width: 320
     height: 240
     color: "transparent"
-    border.color: DltColor.Border
-    border.width: 1
-    property alias image: image
+    border.color: selected ? DltColor.Highlight : DltColor.Border
+    border.width: selected ? 2 : 1
+
 
     Image {
         id: image

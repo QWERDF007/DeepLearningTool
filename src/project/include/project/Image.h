@@ -51,6 +51,7 @@ class ImageInstancesListModel : public QAbstractListModel
     Q_OBJECT
     QML_NAMED_ELEMENT(ImageInstancesList)
     QML_UNCREATABLE("Can not create ImageInstancesList directly!")
+    Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
 public:
     ImageInstancesListModel(data::ProjectDataBase *database, QObject *parent = nullptr);
     ~ImageInstancesListModel();
@@ -64,6 +65,7 @@ public:
         ImageIdRole = Qt::UserRole + 1,
         NameRole,
         PathRole,
+        SelectedRole,
     };
 
     QHash<int, QByteArray> roleNames() const override;
@@ -76,16 +78,31 @@ public:
 
     static std::vector<QString> getFiles(const QString &path, const QStringList &name_filters, bool recursive);
 
+    QItemSelectionModel *selection() const
+    {
+        return selection_;
+    }
+
 private:
     void init();
 
     QVariant getImageId(const QModelIndex &index) const;
     QVariant getImageName(const QModelIndex &index) const;
     QVariant getImagePath(const QModelIndex &index) const;
+    QVariant getSelected(const QModelIndex &index) const;
+
+    void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
+
+    void onCurrentChanged(const QModelIndex &current, const QModelIndex &previous);
 
     data::ProjectDataBase *database_{nullptr};
 
     std::map<int64_t, ImageInstance *> image_instances_;
+
+    QItemSelectionModel *selection_{nullptr};
+
+signals:
+    void statsChanged();
 };
 
 } // namespace dltool::project

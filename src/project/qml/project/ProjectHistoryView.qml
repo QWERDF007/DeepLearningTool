@@ -19,7 +19,7 @@ Item {
     property ItemSelectionModel selection: ProjectManager.recentProjects ? ProjectManager.recentProjects.selection : null
 
     DltMenu {
-        id: menu
+        id: projectMenu
         width: 200
 
         DltMenuItem {
@@ -94,7 +94,7 @@ Item {
                         selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
                         selection.setCurrentIndex(tmpIndex, ItemSelectionModel.ClearAndSelect)
                         if (mouse.button === Qt.RightButton) {
-                            menu.popup()
+                            projectMenu.popup()
                         }
                     }
                 }
