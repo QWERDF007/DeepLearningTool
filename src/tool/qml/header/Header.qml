@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import dltool.project
 
 Rectangle {
     id: header
@@ -32,6 +33,7 @@ Rectangle {
                         text: modelData
                         textColor: mainTabBar.currentIndex === index ? DltColor.Highlight : "white"
                         focusPolicy: Qt.NoFocus
+                        enabled: modelData === "项目" || (ProjectManager.currentProject ? true : false)
                     }
                 }
             }

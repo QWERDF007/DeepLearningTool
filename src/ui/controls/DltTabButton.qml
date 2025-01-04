@@ -20,13 +20,14 @@ TabButton {
         text: control.text
         font: control.font
         color: control.palette.brightText
+        opacity: enabled ? 1 : 0.3
     }
 
     background: Rectangle {
         id: bg
         implicitHeight: 48
         opacity: enabled ? 1 : 0.3
-        color: control.down ? pressedColor : control.hovered ? hoverColor : normalColor
+        color: enabled ? (control.down ? pressedColor : control.hovered ? hoverColor : normalColor) : normalColor
         radius: 2
     }
 }
