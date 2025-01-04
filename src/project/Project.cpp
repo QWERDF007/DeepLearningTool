@@ -425,7 +425,11 @@ ProjectManager::ProjectManager(QObject *parent)
 {
 }
 
-ProjectManager::~ProjectManager() {}
+ProjectManager::~ProjectManager()
+{
+    if (current_project_)
+        closeProject();
+}
 
 Project *ProjectManager::createProject(const QString &name, const int method, const QString &path,
                                        const QString &description, const QString image_base_path)
@@ -472,6 +476,8 @@ void ProjectManager::closeProject()
     if (current_project_)
     {
         spdlog::info("关闭项目: {}", current_project_->path().toUtf8().constData());
+        qint64 mtime = QDateTime::currentSecsSinceEpoch();
+        updateProjectMtime(current_project_->path(), mtime);
         // current_project_->deleteLater();
         delete current_project_;
         current_project_ = nullptr;
@@ -497,6 +503,29 @@ void ProjectManager::updateProjectBaseInfo(const QString &path, const QString &n
     {
         spdlog::error("更新项目基础信息失败: {}, error: {}", path.toUtf8().constData(), err_msg.toUtf8().constData());
     }
+}
+
+void ProjectManager::updateProjectMtime(const QString &path, const qint64 mtime)
+{
+    spdlog::info("更新项目修改时间: {}", path.toUtf8().constData());
+    QVariantMap project_info;
+    QString     err_msg;
+    bool        ok = data::ProjectDataBase::getProjectInfo(path, project_info, err_msg);
+    if (!ok)
+    {
+        spdlog::error("更新项目修改时间失败: {}, error: {}", path.toUtf8().constData(), err_msg.toUtf8().constData());
+        return;
+    }
+    QString name        = project_info["name"].toString();
+    QString description = project_info["description"].toString();
+
+    ok = data::ProjectDataBase::updateProjectBaseInfo(path, name, description, mtime, err_msg);
+    if (!ok)
+    {
+        spdlog::error("更新项目修改时间失败: {}, error: {}", path.toUtf8().constData(), err_msg.toUtf8().constData());
+        return;
+    }
+    recent_projects_->updateProject(path, name, mtime);
 }
 
 void ProjectManager::deleteProject(const QString &path)

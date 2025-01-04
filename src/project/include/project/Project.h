@@ -218,6 +218,8 @@ public:
     Q_INVOKABLE void updateProjectBaseInfo(const QString &path, const QString &new_name,
                                            const QString &new_description);
 
+    void updateProjectMtime(const QString &path, const qint64 mtime);
+
     Q_INVOKABLE void deleteProject(const QString &path);
 
     Q_INVOKABLE void removeFromRectentProjects(const QString &path);
