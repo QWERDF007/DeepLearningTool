@@ -7,6 +7,7 @@ import dltool.ui
 Rectangle {
     id: imageInstanceDelegate
     property alias image: image
+    property int image_id: -1
     property bool selected: false
 
     width: 320

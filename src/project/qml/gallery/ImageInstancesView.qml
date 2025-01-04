@@ -33,6 +33,7 @@ Item {
         id: view
         clip: true
         anchors.fill: parent
+        property int lastIndex: -1
         cellWidth: instancesView.cellWidth + instancesView.spacing
         cellHeight: instancesView.cellHeight + instancesView.spacing
         ScrollBar.vertical: DltScrollBar {}
@@ -41,6 +42,7 @@ Item {
             width: instancesView.cellWidth
             height: instancesView.cellHeight
             image.source: model.path? "file:///" + model.path : ""
+            image_id: model.image_id ? model.image_id : -1
             selected: model.selected ? model.selected : false
         }
         MouseArea {
@@ -53,12 +55,28 @@ Item {
                 let index = view.indexAt(posInContentItem.x, posInContentItem.y)
                 let item = view.itemAtIndex(index)
                 if (item) {
+                    imageInstance = item
                     let tmpIndex = view.model.index(index, 0)
-                    selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
-                    selection.setCurrentIndex(tmpIndex, ItemSelectionModel.ClearAndSelect)
-                    if (mouse.button === Qt.RightButton) {
-                        imageInstanceMenu.popup()
+                    if (view.lastIndex === -1) {
+                        view.lastIndex = index
                     }
+                    if (mouse.button === Qt.RightButton) { // 右键弹出菜单
+                        imageInstanceMenu.popup()
+                    } else if (mouse.button === Qt.LeftButton) { // 选中
+                        if (mouse.modifiers & Qt.ShiftModifier) { // shift 多选
+                            view.model.shiftSelect(index, view.lastIndex, ItemSelectionModel.ClearAndSelect)
+                            selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
+                        } else if (mouse.modifiers & Qt.ControlModifier) { // ctrl 多选
+                            selection.select(tmpIndex, ItemSelectionModel.Select)
+                            selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
+                        } else { // 单选
+                            selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
+                            selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
+                            view.lastIndex = index
+                        }
+                    }
+                } else {
+                    selection.clear()
                 }
             }
         }

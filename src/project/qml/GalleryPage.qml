@@ -43,6 +43,7 @@ Rectangle {
             SplitView.fillWidth: true
 
             ImageInstancesView {
+                id: imagesView
                 Layout.fillWidth: true
                 Layout.fillHeight: true
             }

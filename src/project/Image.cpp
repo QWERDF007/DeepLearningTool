@@ -180,6 +180,17 @@ std::vector<QString> ImageInstancesListModel::getFiles(const QString &path, cons
     }
 }
 
+Q_INVOKABLE void ImageInstancesListModel::shiftSelect(int current_index, int previous_index,
+                                                      QItemSelectionModel::SelectionFlags command)
+{
+    const int top    = std::min(current_index, previous_index);
+    const int bottom = std::max(current_index, previous_index);
+
+    QItemSelection selection;
+    selection.select(index(top), index(bottom));
+    selection_->select(selection, command);
+}
+
 void ImageInstancesListModel::init()
 {
     connect(selection_, &QItemSelectionModel::selectionChanged, this, &ImageInstancesListModel::updateSelection);
@@ -273,6 +284,9 @@ void ImageInstancesListModel::updateSelection(const QItemSelection &selected, co
     emit dataChanged(index(top), index(bottom), {SelectedRole});
 }
 
-void ImageInstancesListModel::onCurrentChanged(const QModelIndex &current, const QModelIndex &previous) {}
+void ImageInstancesListModel::onCurrentChanged(const QModelIndex &current, const QModelIndex &previous)
+{
+    qInfo() << __FUNCTION__ << __LINE__ << current;
+}
 
 } // namespace dltool::project

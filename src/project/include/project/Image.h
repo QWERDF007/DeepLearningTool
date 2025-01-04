@@ -83,6 +83,8 @@ public:
         return selection_;
     }
 
+    Q_INVOKABLE void shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command);
+
 private:
     void init();
 
