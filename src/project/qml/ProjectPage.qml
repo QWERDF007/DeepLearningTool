@@ -6,7 +6,6 @@ import dltool.ui
 import dltool.data
 import dltool.project
 
-import "creator"
 import "project"
 
 Rectangle {
