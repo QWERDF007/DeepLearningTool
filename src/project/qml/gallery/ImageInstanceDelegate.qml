@@ -22,10 +22,8 @@ Rectangle {
         anchors.fill: parent
         anchors.margins: 2
         fillMode: Image.PreserveAspectFit
-        // width: parent.width
-        // height: parent.height
-        sourceSize.width: parent.width
-        sourceSize.height: parent.height
+        // sourceSize.width: image.width
+        // sourceSize.height: image.height
         asynchronous: true
     }
 }

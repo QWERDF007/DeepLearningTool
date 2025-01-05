@@ -191,6 +191,23 @@ Q_INVOKABLE void ImageInstancesListModel::shiftSelect(int current_index, int pre
     selection_->select(selection, command);
 }
 
+QVariantMap ImageInstancesListModel::getImageInstanceInfo(const int64_t image_id)
+{
+    QVariantMap info;
+    auto        found = image_instances_.find(image_id);
+    if (found == image_instances_.end())
+    {
+        info["image_id"] = -1;
+        info["name"]     = "";
+        info["path"]     = "";
+        return info;
+    }
+    info["image_id"] = found->second->imageId();
+    info["name"]     = found->second->name();
+    info["path"]     = found->second->path();
+    return info;
+}
+
 void ImageInstancesListModel::init()
 {
     connect(selection_, &QItemSelectionModel::selectionChanged, this, &ImageInstancesListModel::updateSelection);
@@ -286,7 +303,7 @@ void ImageInstancesListModel::updateSelection(const QItemSelection &selected, co
 
 void ImageInstancesListModel::onCurrentChanged(const QModelIndex &current, const QModelIndex &previous)
 {
-    qInfo() << __FUNCTION__ << __LINE__ << current;
+    // qInfo() << __FUNCTION__ << __LINE__ << current;
 }
 
 } // namespace dltool::project

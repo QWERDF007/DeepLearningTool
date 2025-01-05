@@ -16,6 +16,8 @@ Item {
     property int spacing: 10
 
     property ItemSelectionModel selection: ProjectManager.currentProject ? ProjectManager.currentProject.imageInstances.selection : null
+    property int curImageId: -1
+    property var curImageSize
 
     DltMenu {
         id: imageInstanceMenu
@@ -122,8 +124,12 @@ Item {
                             view.lastIndex = index
                         }
                     }
+                    curImageId = item.image_id
+                    curImageSize = item.image.sourceSize
                 } else {
                     selection.clear()
+                    curImageId = -1
+                    curImageSize = null
                 }
             }
         }

@@ -85,6 +85,8 @@ public:
 
     Q_INVOKABLE void shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command);
 
+    QVariantMap getImageInstanceInfo(const int64_t image_id);
+
 private:
     void init();
 

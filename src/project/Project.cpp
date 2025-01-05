@@ -115,6 +115,12 @@ void Project::importData(const int64_t dataset_id, const int data_format, const 
     image_instances_->addImageInstances(dataset_id, image_dir);
 }
 
+Q_INVOKABLE QVariantMap Project::getImageInstanceInfo(const int64_t image_id)
+{
+    QVariantMap info = image_instances_->getImageInstanceInfo(image_id);
+    return info;
+}
+
 void Project::init()
 {
     database_        = new data::ProjectDataBase(path_, this);

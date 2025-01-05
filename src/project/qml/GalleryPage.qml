@@ -24,11 +24,13 @@ Rectangle {
                 SplitView.fillHeight: true
                 SplitView.minimumHeight: 200
             }
-            Rectangle { // 图像属性
+            ImageInstanceInfo { // 图像属性
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: 360
                 color: DltColor.Primary
+                curImageId: imagesView.curImageId
+                curImageSize: imagesView.curImageSize
             }
             Rectangle { // 图像标签
                 SplitView.fillWidth: true
