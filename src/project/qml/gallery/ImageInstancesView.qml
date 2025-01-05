@@ -45,6 +45,54 @@ Item {
             image_id: model.image_id ? model.image_id : -1
             selected: model.selected ? model.selected : false
         }
+
+        Keys.onPressed: function(event) {
+            let curIndex = selection.currentIndex.row
+            let newIndex = curIndex
+            let columns = Math.floor(view.width / view.cellWidth)
+            let rows = Math.floor(view.height / view.cellHeight)
+            if (event.key === Qt.Key_Left) {
+                newIndex = Math.max(0, curIndex - 1)
+            } else if (event.key === Qt.Key_Right) {
+                newIndex = Math.min(view.count - 1, curIndex + 1)
+            } else if (event.key === Qt.Key_Up) {
+                newIndex = Math.max(0, curIndex - columns)
+            } else if (event.key === Qt.Key_Down) {
+                newIndex = Math.min(view.count - 1, curIndex + columns)
+            } else if (event.key === Qt.Key_Home) {
+                // newIndex = 0
+                view.positionViewAtBeginning()
+            } else if (event.key === Qt.Key_End) {
+                // newIndex = view.count - 1
+                view.positionViewAtEnd()
+            } else if (event.key === Qt.Key_PageUp) {
+                let firstVisibleIndex = view.indexAt(0, view.contentY)
+                view.positionViewAtIndex(firstVisibleIndex - columns * (rows - 1), GridView.Beginning)
+            } else if (event.key === Qt.Key_PageDown) {
+                let firstVisibleIndex = view.indexAt(0, view.contentY)
+                view.positionViewAtIndex(firstVisibleIndex + columns * (rows - 1), GridView.Beginning)
+            }
+
+            if (newIndex !== curIndex) {
+                let tmpIndex = view.model.index(newIndex, 0)
+                if (event.modifiers & Qt.ShiftModifier) { // shift 多选
+                    // view.model.shiftSelect(newIndex, view.lastIndex, ItemSelectionModel.ClearAndSelect)
+                } else {
+                    if (event.modifiers & Qt.ControlModifier) {
+
+                    } else { // 单选
+                        selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
+                        selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
+                        view.lastIndex = newIndex
+                    }
+                }
+            }
+        }
+
+        // onCurrentIndexChanged:  {
+        //     console.log("onCurrentIndexChanged", currentIndex)
+        // }
+
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.LeftButton | Qt.RightButton
@@ -55,7 +103,6 @@ Item {
                 let index = view.indexAt(posInContentItem.x, posInContentItem.y)
                 let item = view.itemAtIndex(index)
                 if (item) {
-                    imageInstance = item
                     let tmpIndex = view.model.index(index, 0)
                     if (view.lastIndex === -1) {
                         view.lastIndex = index
