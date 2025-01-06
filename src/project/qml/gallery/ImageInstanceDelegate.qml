@@ -22,8 +22,8 @@ Rectangle {
         anchors.fill: parent
         anchors.margins: 2
         fillMode: Image.PreserveAspectFit
-        // sourceSize.width: image.width
-        // sourceSize.height: image.height
+        sourceSize.width: image.width
+        sourceSize.height: image.height
         asynchronous: true
     }
 }

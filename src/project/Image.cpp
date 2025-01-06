@@ -8,6 +8,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QImageReader>
 
 namespace dltool::project {
 ImageInstance::ImageInstance(const int64_t dataset_id, const int64_t image_id, const QString &path, QObject *parent)
@@ -201,12 +202,16 @@ QVariantMap ImageInstancesListModel::getImageInstanceInfo(const int64_t image_id
         info["name"]       = "";
         info["path"]       = "";
         info["dataset_id"] = -1;
+        info["imageSize"] = "";
         return info;
     }
     info["image_id"]   = found->second->imageId();
     info["name"]       = found->second->name();
     info["path"]       = found->second->path();
     info["dataset_id"] = found->second->datasetId();
+    QImageReader reader(found->second->path());
+    QSize image_size = reader.size();
+    info["imageSize"] = QString("%1x%2").arg(image_size.width()).arg(image_size.height());
     return info;
 }
 

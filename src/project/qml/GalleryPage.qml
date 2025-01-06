@@ -30,7 +30,6 @@ Rectangle {
                 SplitView.preferredHeight: 360
                 color: DltColor.Primary
                 curImageId: imagesView.curImageId
-                curImageSize: imagesView.curImageSize
             }
             Rectangle { // 图像标签
                 SplitView.fillWidth: true

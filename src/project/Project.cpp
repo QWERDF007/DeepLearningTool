@@ -125,10 +125,7 @@ Q_INVOKABLE QVariantMap Project::getImageInstanceInfo(const int64_t image_id)
 {
     QVariantMap   info       = image_instances_->getImageInstanceInfo(image_id);
     const int64_t dataset_id = info.value("dataset_id").toInt();
-    if (dataset_id != -1)
-    {
-        info["datasetName"] = datasets_->getDatasetName(dataset_id);
-    }
+    info["datasetName"] = datasets_->getDatasetName(dataset_id);
     // qInfo() << __FUNCTION__ << __LINE__ << image_id << dataset_id << info;
     return info;
 }

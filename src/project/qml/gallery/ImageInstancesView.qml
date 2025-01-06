@@ -11,13 +11,18 @@ Item {
     width: 800
     height: 600
 
+    onVisibleChanged: {
+        if (visible) {
+            view.forceActiveFocus()
+        }
+    }
+
     property int cellWidth: 330
     property int cellHeight: 250
     property int spacing: 10
 
     property ItemSelectionModel selection: ProjectManager.currentProject ? ProjectManager.currentProject.imageInstances.selection : null
     property int curImageId: -1
-    property var curImageSize
 
     DltMenu {
         id: imageInstanceMenu
@@ -38,7 +43,9 @@ Item {
         property int lastIndex: -1
         cellWidth: instancesView.cellWidth + instancesView.spacing
         cellHeight: instancesView.cellHeight + instancesView.spacing
-        ScrollBar.vertical: DltScrollBar {}
+        ScrollBar.vertical: DltScrollBar {
+            id: scrollBar
+        }
         model:  ProjectManager.currentProject ? ProjectManager.currentProject.imageInstances : null
         delegate: ImageInstanceDelegate {
             width: instancesView.cellWidth
@@ -68,11 +75,13 @@ Item {
                 // newIndex = view.count - 1
                 view.positionViewAtEnd()
             } else if (event.key === Qt.Key_PageUp) {
-                let firstVisibleIndex = view.indexAt(0, view.contentY)
-                view.positionViewAtIndex(firstVisibleIndex - columns * (rows - 1), GridView.Beginning)
+                scrollBar.decrease()
+                // let firstVisibleIndex = view.indexAt(0, view.contentY)
+                // view.positionViewAtIndex(firstVisibleIndex - columns * (rows - 1), GridView.Beginning)
             } else if (event.key === Qt.Key_PageDown) {
-                let firstVisibleIndex = view.indexAt(0, view.contentY)
-                view.positionViewAtIndex(firstVisibleIndex + columns * (rows - 1), GridView.Beginning)
+                scrollBar.increase()
+                // let firstVisibleIndex = view.indexAt(0, view.contentY)
+                // view.positionViewAtIndex(firstVisibleIndex + columns * (rows - 1), GridView.Beginning)
             }
 
             if (newIndex !== curIndex) {
@@ -125,11 +134,9 @@ Item {
                         }
                     }
                     curImageId = item.image_id
-                    curImageSize = item.image.sourceSize
                 } else {
                     selection.clear()
                     curImageId = -1
-                    curImageSize = null
                 }
             }
         }

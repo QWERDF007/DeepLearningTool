@@ -13,7 +13,6 @@ Rectangle {
 
     property Project project: ProjectManager.currentProject
     property int curImageId: -1
-    property var curImageSize: null
 
     DltText {
         anchors.top: parent.top
@@ -42,6 +41,8 @@ Rectangle {
             }
             DltText {
                 id: imageName
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
             }
         }
         ColumnLayout {
@@ -53,6 +54,18 @@ Rectangle {
             }
             DltText {
                 id: imagePath
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                // elide: Text.ElideMiddle
+                // DltToolTip {
+                //     text: imagePath.text
+                //     visible: mouseArea.containsMouse && imagePath.truncated
+                // }
+                // MouseArea {
+                //     id: mouseArea 
+                //     anchors.fill: parent
+                //     hoverEnabled: true
+                // }
             }
         }
         ColumnLayout {
@@ -63,7 +76,7 @@ Rectangle {
                 textColor: DltColor.FontDark
             }
             DltText {
-                text: curImageSize ? curImageSize.width + "x" + curImageSize.height : ""
+                id: imageSize
             }
         }
         ColumnLayout {
@@ -99,5 +112,6 @@ Rectangle {
         imageName.text = info.name
         imagePath.text = info.path
         datasetName.text = info.datasetName
+        imageSize.text = info.imageSize
     }
 }
