@@ -55,7 +55,6 @@ DltPopup {
                 onClicked: {
                     importDataDialog.close()
                     if (project) {
-                        console.log("dataFormat", importDataForm.dataFormat)
                         let dataset_id = project.getDatasetId(importDataForm.datasetName)
                         let data_format = DataFormat.getDataFormat(importDataForm.dataFormat)
                         project.importData(dataset_id, data_format, importDataForm.image_dir, importDataForm.data_dir)
