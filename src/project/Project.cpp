@@ -2,6 +2,7 @@
 
 #include "Project.h"
 #include "data/DataBase.h"
+#include "data/DataFormat.h"
 #include "project/Dataset.h"
 #include "project/Image.h"
 
@@ -112,12 +113,23 @@ void Project::importData(const int64_t dataset_id, const int data_format, const 
 {
     qInfo() << __FUNCTION__ << __LINE__ << "dataset_id" << dataset_id << "data_format" << data_format << "image_dir"
             << image_dir << "data_dir" << data_dir;
+    if (!data::DataFormat::isDataFormatSupported(data_format))
+    {
+        spdlog::error("导入数据失败, 数据格式不支持: {}", data_format);
+        return;
+    }
     image_instances_->addImageInstances(dataset_id, image_dir);
 }
 
 Q_INVOKABLE QVariantMap Project::getImageInstanceInfo(const int64_t image_id)
 {
-    QVariantMap info = image_instances_->getImageInstanceInfo(image_id);
+    QVariantMap   info       = image_instances_->getImageInstanceInfo(image_id);
+    const int64_t dataset_id = info.value("dataset_id").toInt();
+    if (dataset_id != -1)
+    {
+        info["datasetName"] = datasets_->getDatasetName(dataset_id);
+    }
+    // qInfo() << __FUNCTION__ << __LINE__ << image_id << dataset_id << info;
     return info;
 }
 

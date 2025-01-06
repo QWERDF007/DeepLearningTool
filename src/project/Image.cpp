@@ -197,14 +197,16 @@ QVariantMap ImageInstancesListModel::getImageInstanceInfo(const int64_t image_id
     auto        found = image_instances_.find(image_id);
     if (found == image_instances_.end())
     {
-        info["image_id"] = -1;
-        info["name"]     = "";
-        info["path"]     = "";
+        info["image_id"]   = -1;
+        info["name"]       = "";
+        info["path"]       = "";
+        info["dataset_id"] = -1;
         return info;
     }
-    info["image_id"] = found->second->imageId();
-    info["name"]     = found->second->name();
-    info["path"]     = found->second->path();
+    info["image_id"]   = found->second->imageId();
+    info["name"]       = found->second->name();
+    info["path"]       = found->second->path();
+    info["dataset_id"] = found->second->datasetId();
     return info;
 }
 

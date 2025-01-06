@@ -98,5 +98,6 @@ Rectangle {
         let info = project.getImageInstanceInfo(curImageId)
         imageName.text = info.name
         imagePath.text = info.path
+        datasetName.text = info.datasetName
     }
 }

@@ -31,6 +31,11 @@ public:
         return found->second;
     }
 
+    static bool isDataFormatSupported(const int data_format)
+    {
+        return IdToName.find(data_format) != IdToName.end();
+    }
+
 private:
     explicit DataFormat(QObject *parent = nullptr)
         : QObject(parent)
@@ -46,6 +51,10 @@ private:
 
     inline static const QList<QString> DataFormatList = {
         "LabelMe",
+    };
+
+    inline static const std::unordered_map<int, QString> IdToName = {
+        {LabelMe, "LabelMe"},
     };
 
     inline static const std::unordered_map<QString, int> NameToId = {
