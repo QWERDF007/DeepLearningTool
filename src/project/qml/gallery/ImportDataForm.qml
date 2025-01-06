@@ -105,10 +105,10 @@ Item {
             DltComboBox {
                 id: dataFormatBox
                 width: 240
-                model: DataFormat.getSupportedDataFormat()
-                // onActivated: {
-                //     dataFormat = currentText
-                // }
+                // model: DataFormat.getSupportedDataFormat()
+                Component.onCompleted: {
+                    model = DataFormat.getSupportedDataFormat()
+                }
             }
         }
 
