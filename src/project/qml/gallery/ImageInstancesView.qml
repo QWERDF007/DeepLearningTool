@@ -80,23 +80,19 @@ Item {
                 // view.positionViewAtIndex(firstVisibleIndex - columns * (rows - 1), GridView.Beginning)
             } else if (event.key === Qt.Key_PageDown) {
                 scrollBar.increase()
-                // let firstVisibleIndex = view.indexAt(0, view.contentY)
-                // view.positionViewAtIndex(firstVisibleIndex + columns * (rows - 1), GridView.Beginning)
+            } else if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
+                view.model.selectAll()
+                return
+            } else if (event.key === Qt.Key_Escape) {
+                selection.clear()
+                curImageId = -1
             }
 
-            if (newIndex !== curIndex) {
+            if (curIndex !== -1 && newIndex !== curIndex) {
                 let tmpIndex = view.model.index(newIndex, 0)
-                if (event.modifiers & Qt.ShiftModifier) { // shift 多选
-                    // view.model.shiftSelect(newIndex, view.lastIndex, ItemSelectionModel.ClearAndSelect)
-                } else {
-                    if (event.modifiers & Qt.ControlModifier) {
-
-                    } else { // 单选
-                        selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
-                        selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
-                        view.lastIndex = newIndex
-                    }
-                }
+                selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
+                selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
+                view.lastIndex = newIndex
             }
         }
 

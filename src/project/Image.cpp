@@ -192,6 +192,13 @@ Q_INVOKABLE void ImageInstancesListModel::shiftSelect(int current_index, int pre
     selection_->select(selection, command);
 }
 
+void ImageInstancesListModel::selectAll()
+{
+    QItemSelection selection;
+    selection.select(index(0), index(rowCount() - 1));
+    selection_->select(selection, QItemSelectionModel::Select);
+}
+
 QVariantMap ImageInstancesListModel::getImageInstanceInfo(const int64_t image_id)
 {
     QVariantMap info;
