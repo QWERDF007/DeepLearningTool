@@ -17,8 +17,8 @@ Item {
         }
     }
 
-    property int cellWidth: 330
-    property int cellHeight: 250
+    property int cellWidth: 320 * Settings.galleryImageScale + 10
+    property int cellHeight: 240 * Settings.galleryImageScale + 10
     property int spacing: 10
 
     property ItemSelectionModel selection: ProjectManager.currentProject ? ProjectManager.currentProject.imageInstances.selection : null
@@ -93,6 +93,21 @@ Item {
                 selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
                 selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
                 view.lastIndex = newIndex
+            }
+        }
+
+        WheelHandler {
+            acceptedModifiers: Qt.ControlModifier
+            onWheel: function handler(event) {
+                if (event.modifiers) {
+                    if (event.angleDelta.y > 0 && Settings.imageScale < 2) {
+                        Settings.imageScale += 0.25
+                    } else if (event.angleDelta.y < 0 && Settings.imageScale > 0.25) {
+                        Settings.imageScale -= 0.25
+                    } else {
+
+                    }
+                }
             }
         }
 
