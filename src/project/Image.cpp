@@ -132,8 +132,8 @@ bool ImageInstancesListModel::deleteImageInstances(const std::vector<int64_t> &i
         auto found = image_instances_.find(image_id);
         if (found != image_instances_.end())
         {
-            image_instances_.erase(found);
             delete found->second;
+            image_instances_.erase(found);
         }
     }
     endResetModel();
