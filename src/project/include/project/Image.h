@@ -2,6 +2,7 @@
 
 #include <QAbstractListModel>
 #include <QtQml>
+#include <functional>
 #include <map>
 
 namespace dltool::data {
@@ -73,6 +74,7 @@ public:
     bool addImageInstances(const int64_t dataset_id, const std::vector<QString> &paths);
     bool addImageInstances(const int64_t dataset_id, const QString &image_idr);
     bool deleteImageInstances(const std::vector<int64_t> &image_ids);
+    bool deleteImageInstances(const int64_t dataset_id);
 
     static std::vector<QString> getImagePaths(const QString &image_idr);
 
@@ -103,7 +105,7 @@ private:
 
     data::ProjectDataBase *database_{nullptr};
 
-    std::map<int64_t, ImageInstance *> image_instances_;
+    std::map<int64_t, ImageInstance *, std::greater<int64_t>> image_instances_;
 
     QItemSelectionModel *selection_{nullptr};
 

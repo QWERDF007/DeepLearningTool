@@ -105,6 +105,7 @@ void Project::updateDataset(const QString &old_name, const QString &new_name)
 
 void Project::deleteDataset(const int64_t dataset_id)
 {
+    image_instances_->deleteImageInstances(dataset_id);
     datasets_->deleteDataset(dataset_id);
 }
 

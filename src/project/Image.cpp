@@ -141,6 +141,19 @@ bool ImageInstancesListModel::deleteImageInstances(const std::vector<int64_t> &i
     return true;
 }
 
+bool ImageInstancesListModel::deleteImageInstances(const int64_t dataset_id)
+{
+    std::vector<int64_t> image_ids;
+    for (const auto &[image_id, image_instance] : image_instances_)
+    {
+        if (image_instance->datasetId() == dataset_id)
+        {
+            image_ids.push_back(image_id);
+        }
+    }
+    return deleteImageInstances(image_ids);
+}
+
 std::vector<QString> ImageInstancesListModel::getImagePaths(const QString &image_idr)
 {
     return getFiles(image_idr, data::DataFormat::getSupportedImageFormat(), false);
@@ -201,7 +214,7 @@ void ImageInstancesListModel::selectAll()
 
 Q_INVOKABLE void ImageInstancesListModel::deleteSelected()
 {
-    QList<int>     indices;
+    QList<int>           indices;
     std::vector<int64_t> image_ids;
     for (const auto &index : selection_->selectedIndexes())
     {
@@ -212,7 +225,7 @@ Q_INVOKABLE void ImageInstancesListModel::deleteSelected()
     {
         if (indices.contains(idx))
         {
-            image_ids.push_back(id);
+            image_ids.emplace_back(id);
         }
         ++idx;
     }

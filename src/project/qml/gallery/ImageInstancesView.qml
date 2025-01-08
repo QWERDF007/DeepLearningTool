@@ -134,13 +134,13 @@ Item {
         let newIndex = curIndex
         let columns = Math.floor(view.width / view.cellWidth)
         let rows = Math.floor(view.height / view.cellHeight)
-        if (event.key === Qt.Key_Left) {
+        if (event.key === Qt.Key_A) {
             newIndex = Math.max(0, curIndex - 1)
-        } else if (event.key === Qt.Key_Right) {
+        } else if (event.key === Qt.Key_D) {
             newIndex = Math.min(view.count - 1, curIndex + 1)
-        } else if (event.key === Qt.Key_Up) {
+        } else if (event.key === Qt.Key_W) {
             newIndex = Math.max(0, curIndex - columns)
-        } else if (event.key === Qt.Key_Down) {
+        } else if (event.key === Qt.Key_S) {
             newIndex = Math.min(view.count - 1, curIndex + columns)
         } else if (event.key === Qt.Key_Home) {
             // newIndex = 0
@@ -154,12 +154,19 @@ Item {
             // view.positionViewAtIndex(firstVisibleIndex - columns * (rows - 1), GridView.Beginning)
         } else if (event.key === Qt.Key_PageDown) {
             scrollBar.increase()
-        } 
+        }
+
         if (curIndex !== -1 && newIndex !== curIndex) {
             let tmpIndex = view.model.index(newIndex, 0)
             selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
             selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
             view.lastIndex = newIndex
+            view.positionViewAtIndex(newIndex, GridView.Contain)
+            let item = view.itemAtIndex(newIndex)
+            if (item) {
+                curImageId = item.image_id
+            }
+            
         }
     }
 }
