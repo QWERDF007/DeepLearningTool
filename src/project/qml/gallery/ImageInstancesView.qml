@@ -21,8 +21,10 @@ Item {
     property int cellHeight: 240 * Settings.imageCellScale + 10
     property int spacing: 10
 
-    property ItemSelectionModel selection: ProjectManager.currentProject ? ProjectManager.currentProject.imageInstances.selection : null
+    property Project project: ProjectManager.currentProject
+    property ItemSelectionModel selection: project ? project.imageInstances.selection : null
     property int curImageId: -1
+    property bool hasSelection: selection ? selection.hasSelection : false
 
     DltMenu {
         id: imageInstanceMenu
@@ -31,7 +33,9 @@ Item {
             text: "删除项目"
             iconSource: DltFontIcon.Delete
             onClicked: {
-                view.model.deleteSelected()
+                if (project) {
+                    project.imageInstances.deleteSelected()
+                }
             }
         }
     }
@@ -46,7 +50,7 @@ Item {
         ScrollBar.vertical: DltScrollBar {
             id: scrollBar
         }
-        model:  ProjectManager.currentProject ? ProjectManager.currentProject.imageInstances : null
+        model:  project ? project.imageInstances : null
         delegate: ImageInstanceDelegate {
             width: instancesView.cellWidth
             height: instancesView.cellHeight
@@ -60,9 +64,9 @@ Item {
                 selection.clear()
                 curImageId = -1
             } else if (event.key === Qt.Key_Delete) {
-                view.model.deleteSelected()
+                project.imageInstances.deleteSelected()
             } else if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
-                view.model.selectAll()
+                project.imageInstances.selectAll()
             } else {
                 updateSelectionByKeyboard(event)
             }
@@ -97,7 +101,6 @@ Item {
                 let index = view.indexAt(posInContentItem.x, posInContentItem.y)
                 let item = view.itemAtIndex(index)
                 if (item) {
-                    console.log("item.path", item.image.source)
                     let tmpIndex = view.model.index(index, 0)
                     if (view.lastIndex === -1) {
                         view.lastIndex = index
@@ -106,7 +109,7 @@ Item {
                         imageInstanceMenu.popup()
                     } else if (mouse.button === Qt.LeftButton) { // 选中
                         if (mouse.modifiers & Qt.ShiftModifier) { // shift 多选
-                            view.model.shiftSelect(index, view.lastIndex, ItemSelectionModel.ClearAndSelect)
+                            project.imageInstances.shiftSelect(index, view.lastIndex, ItemSelectionModel.ClearAndSelect)
                             selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
                         } else if (mouse.modifiers & Qt.ControlModifier) { // ctrl 多选
                             selection.select(tmpIndex, ItemSelectionModel.Select)

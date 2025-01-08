@@ -15,6 +15,7 @@ Item {
     property int cellWidth: 210
     property int cellHeight: 170
     property int spacing: 10
+    property Project project: ProjectManager.currentProject
     property string path: ProjectManager.recentProjects ? ProjectManager.recentProjects.currentProjectPath : ""
     property ItemSelectionModel selection: ProjectManager.recentProjects ? ProjectManager.recentProjects.selection : null
 
@@ -38,7 +39,7 @@ Item {
         }
         DltMenuItem {
             text: "从最近项目列表中删除"
-            enabled: ProjectManager.currentProject ? ProjectManager.currentProject.path !== projectsView.path : true
+            enabled: project ? project.path !== projectsView.path : true
 
             iconSource: DltFontIcon.Cancel
             onClicked: {

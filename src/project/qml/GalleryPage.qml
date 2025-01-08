@@ -31,6 +31,13 @@ Rectangle {
                 color: DltColor.Primary
                 curImageId: imagesView.curImageId
             }
+            ImageInstancesSelection {
+                SplitView.fillWidth: true
+                SplitView.minimumHeight: 120
+                SplitView.maximumHeight: 160
+                SplitView.preferredHeight: 120
+                color: DltColor.Primary
+            }
             Rectangle { // 图像标签
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
