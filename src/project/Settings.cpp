@@ -2,6 +2,8 @@
 
 #include "Settings.h"
 
+#include <algorithm>
+
 namespace dltool::project {
 
 Settings::Settings(QObject *parent)
@@ -10,5 +12,37 @@ Settings::Settings(QObject *parent)
 }
 
 Settings::~Settings() {}
+
+void Settings::setImageCellScale(const double scale)
+{
+    if (image_cell_scale_ == scale)
+        return;
+    image_cell_scale_ = std::clamp(scale, image_cell_scale_from_, image_cell_scale_to_);
+    emit imageCellScaleChanged();
+}
+
+void Settings::setImageCellScaleFrom(const double from)
+{
+    if (image_cell_scale_from_ == from)
+        return;
+    image_cell_scale_from_ = from;
+    emit imageCellScaleFromChanged();
+}
+
+void Settings::setImageCellScaleTo(const double to)
+{
+    if (image_cell_scale_to_ == to)
+        return;
+    image_cell_scale_to_ = to;
+    emit imageCellScaleToChanged();
+}
+
+void Settings::setImageCellScaleStep(const double step)
+{
+    if (step == image_cell_scale_step_)
+        return;
+    image_cell_scale_step_ = step;
+    emit imageCellScaleStepChanged();
+}
 
 } // namespace dltool::project

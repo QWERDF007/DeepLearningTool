@@ -199,6 +199,27 @@ void ImageInstancesListModel::selectAll()
     selection_->select(selection, QItemSelectionModel::Select);
 }
 
+Q_INVOKABLE void ImageInstancesListModel::deleteSelected()
+{
+    QList<int>     indices;
+    std::vector<int64_t> image_ids;
+    for (const auto &index : selection_->selectedIndexes())
+    {
+        indices.push_back(index.row());
+    }
+    int idx = 0;
+    for (const auto &[id, image_instance] : image_instances_)
+    {
+        if (indices.contains(idx))
+        {
+            image_ids.push_back(id);
+        }
+        ++idx;
+    }
+    deleteImageInstances(image_ids);
+    selection_->clearSelection();
+}
+
 QVariantMap ImageInstancesListModel::getImageInstanceInfo(const int64_t image_id)
 {
     QVariantMap info;
@@ -209,7 +230,7 @@ QVariantMap ImageInstancesListModel::getImageInstanceInfo(const int64_t image_id
         info["name"]       = "";
         info["path"]       = "";
         info["dataset_id"] = -1;
-        info["imageSize"] = "";
+        info["imageSize"]  = "";
         return info;
     }
     info["image_id"]   = found->second->imageId();
@@ -217,8 +238,8 @@ QVariantMap ImageInstancesListModel::getImageInstanceInfo(const int64_t image_id
     info["path"]       = found->second->path();
     info["dataset_id"] = found->second->datasetId();
     QImageReader reader(found->second->path());
-    QSize image_size = reader.size();
-    info["imageSize"] = QString("%1x%2").arg(image_size.width()).arg(image_size.height());
+    QSize        image_size = reader.size();
+    info["imageSize"]       = QString("%1x%2").arg(image_size.width()).arg(image_size.height());
     return info;
 }
 

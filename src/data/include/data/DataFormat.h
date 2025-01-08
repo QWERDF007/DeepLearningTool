@@ -62,9 +62,7 @@ private:
     };
 
     inline static const QList<QString> ImageFormatList = {
-        "*.jpg",
-        "*.png",
-        "*.bmp",
+        "*.jpg", "*.jpeg", "*.png", "*.bmp", "*.webp",
     };
 };
 

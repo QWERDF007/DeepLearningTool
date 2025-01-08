@@ -17,8 +17,8 @@ Item {
         }
     }
 
-    property int cellWidth: 320 * Settings.galleryImageScale + 10
-    property int cellHeight: 240 * Settings.galleryImageScale + 10
+    property int cellWidth: 320 * Settings.imageCellScale + 10
+    property int cellHeight: 240 * Settings.imageCellScale + 10
     property int spacing: 10
 
     property ItemSelectionModel selection: ProjectManager.currentProject ? ProjectManager.currentProject.imageInstances.selection : null
@@ -31,7 +31,7 @@ Item {
             text: "删除项目"
             iconSource: DltFontIcon.Delete
             onClicked: {
-
+                view.model.deleteSelected()
             }
         }
     }
@@ -56,43 +56,15 @@ Item {
         }
 
         Keys.onPressed: function(event) {
-            let curIndex = selection.currentIndex.row
-            let newIndex = curIndex
-            let columns = Math.floor(view.width / view.cellWidth)
-            let rows = Math.floor(view.height / view.cellHeight)
-            if (event.key === Qt.Key_Left) {
-                newIndex = Math.max(0, curIndex - 1)
-            } else if (event.key === Qt.Key_Right) {
-                newIndex = Math.min(view.count - 1, curIndex + 1)
-            } else if (event.key === Qt.Key_Up) {
-                newIndex = Math.max(0, curIndex - columns)
-            } else if (event.key === Qt.Key_Down) {
-                newIndex = Math.min(view.count - 1, curIndex + columns)
-            } else if (event.key === Qt.Key_Home) {
-                // newIndex = 0
-                view.positionViewAtBeginning()
-            } else if (event.key === Qt.Key_End) {
-                // newIndex = view.count - 1
-                view.positionViewAtEnd()
-            } else if (event.key === Qt.Key_PageUp) {
-                scrollBar.decrease()
-                // let firstVisibleIndex = view.indexAt(0, view.contentY)
-                // view.positionViewAtIndex(firstVisibleIndex - columns * (rows - 1), GridView.Beginning)
-            } else if (event.key === Qt.Key_PageDown) {
-                scrollBar.increase()
-            } else if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
-                view.model.selectAll()
-                return
-            } else if (event.key === Qt.Key_Escape) {
+            if (event.key === Qt.Key_Escape) {
                 selection.clear()
                 curImageId = -1
-            }
-
-            if (curIndex !== -1 && newIndex !== curIndex) {
-                let tmpIndex = view.model.index(newIndex, 0)
-                selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
-                selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
-                view.lastIndex = newIndex
+            } else if (event.key === Qt.Key_Delete) {
+                view.model.deleteSelected()
+            } else if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
+                view.model.selectAll()
+            } else {
+                updateSelectionByKeyboard(event)
             }
         }
 
@@ -100,10 +72,10 @@ Item {
             acceptedModifiers: Qt.ControlModifier
             onWheel: function handler(event) {
                 if (event.modifiers) {
-                    if (event.angleDelta.y > 0 && Settings.imageScale < 2) {
-                        Settings.imageScale += 0.25
-                    } else if (event.angleDelta.y < 0 && Settings.imageScale > 0.25) {
-                        Settings.imageScale -= 0.25
+                    if (event.angleDelta.y > 0 && Settings.imageCellScale < Settings.imageCellScaleTo) {
+                        Settings.imageCellScale += Settings.imageCellScaleStep
+                    } else if (event.angleDelta.y < 0 && Settings.imageCellScale > Settings.imageCellScaleFrom) {
+                        Settings.imageCellScale -= Settings.imageCellScaleStep
                     } else {
 
                     }
@@ -125,6 +97,7 @@ Item {
                 let index = view.indexAt(posInContentItem.x, posInContentItem.y)
                 let item = view.itemAtIndex(index)
                 if (item) {
+                    console.log("item.path", item.image.source)
                     let tmpIndex = view.model.index(index, 0)
                     if (view.lastIndex === -1) {
                         view.lastIndex = index
@@ -150,6 +123,40 @@ Item {
                     curImageId = -1
                 }
             }
+        }
+    }
+
+    function updateSelectionByKeyboard(event) {
+        let curIndex = selection.currentIndex.row
+        let newIndex = curIndex
+        let columns = Math.floor(view.width / view.cellWidth)
+        let rows = Math.floor(view.height / view.cellHeight)
+        if (event.key === Qt.Key_Left) {
+            newIndex = Math.max(0, curIndex - 1)
+        } else if (event.key === Qt.Key_Right) {
+            newIndex = Math.min(view.count - 1, curIndex + 1)
+        } else if (event.key === Qt.Key_Up) {
+            newIndex = Math.max(0, curIndex - columns)
+        } else if (event.key === Qt.Key_Down) {
+            newIndex = Math.min(view.count - 1, curIndex + columns)
+        } else if (event.key === Qt.Key_Home) {
+            // newIndex = 0
+            view.positionViewAtBeginning()
+        } else if (event.key === Qt.Key_End) {
+            // newIndex = view.count - 1
+            view.positionViewAtEnd()
+        } else if (event.key === Qt.Key_PageUp) {
+            scrollBar.decrease()
+            // let firstVisibleIndex = view.indexAt(0, view.contentY)
+            // view.positionViewAtIndex(firstVisibleIndex - columns * (rows - 1), GridView.Beginning)
+        } else if (event.key === Qt.Key_PageDown) {
+            scrollBar.increase()
+        } 
+        if (curIndex !== -1 && newIndex !== curIndex) {
+            let tmpIndex = view.model.index(newIndex, 0)
+            selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
+            selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
+            view.lastIndex = newIndex
         }
     }
 }

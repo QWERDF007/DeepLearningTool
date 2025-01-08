@@ -10,28 +10,54 @@ class Settings : public QObject
     QML_NAMED_ELEMENT(Settings)
     QT_QML_SINGLETON(Settings)
     // clang-format off
-    Q_PROPERTY(double imageScale READ imageScale WRITE setImageScale NOTIFY imageScaleChanged)
+    Q_PROPERTY(double imageCellScale READ imageCellScale WRITE setImageCellScale NOTIFY imageCellScaleChanged)
+    Q_PROPERTY(double imageCellScaleFrom READ imageCellScaleFrom WRITE setImageCellScaleFrom NOTIFY imageCellScaleFromChanged)
+    Q_PROPERTY(double imageCellScaleTo READ imageCellScaleTo WRITE setImageCellScaleTo NOTIFY imageCellScaleToChanged)
+    Q_PROPERTY(double imageCellScaleStep READ imageCellScaleStep WRITE setImageCellScaleStep NOTIFY imageCellScaleStepChanged)
     // clang-format on
 public:
-    double imageScale() const
+    double imageCellScale() const
     {
-        return image_scale_;
+        return image_cell_scale_;
     }
 
-    void setImageScale(double scale)
+    void setImageCellScale(const double scale);
+
+    double imageCellScaleFrom() const
     {
-        image_scale_ = scale;
-        emit imageScaleChanged();
+        return image_cell_scale_from_;
     }
+
+    void setImageCellScaleFrom(const double from);
+
+    double imageCellScaleTo() const
+    {
+        return image_cell_scale_to_;
+    }
+
+    void setImageCellScaleTo(const double to);
+
+    double imageCellScaleStep() const
+    {
+        return image_cell_scale_step_;
+    }
+
+    void setImageCellScaleStep(const double step);
 
 private:
     explicit Settings(QObject *parent = nullptr);
     ~Settings();
 
-    double image_scale_{1.0};
+    double image_cell_scale_{1.0};
+    double image_cell_scale_from_{0.25};
+    double image_cell_scale_to_{8.0};
+    double image_cell_scale_step_{0.25};
 
 signals:
-    void imageScaleChanged();
+    void imageCellScaleChanged();
+    void imageCellScaleFromChanged();
+    void imageCellScaleToChanged();
+    void imageCellScaleStepChanged();
 };
 
 } // namespace dltool::project
