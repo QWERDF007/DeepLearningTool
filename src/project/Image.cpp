@@ -36,7 +36,7 @@ int ImageInstancesListModel::rowCount(const QModelIndex &parent) const
 {
     if (parent.isValid())
         return 0;
-    return static_cast<int>(image_instances_.size());
+    return static_cast<int>(std::min(image_instances_.size(), image_instances_model_.size()));
 }
 
 QVariant ImageInstancesListModel::data(const QModelIndex &index, int role) const
@@ -84,10 +84,7 @@ bool ImageInstancesListModel::addImageInstances(const int64_t dataset_id, const 
         return false;
     }
     spdlog::info("批量添加图像, dataset id: {}, 数量: {}", dataset_id, image_ids.size());
-    const int row   = 0; // 添加到队列首部
-    const int count = static_cast<int>(image_ids.size());
-    beginInsertRows(QModelIndex(), row, row + count - 1);
-    // beginInsertRows(QModelIndex(), row, row);
+
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
         image_instances_.insert(
@@ -95,7 +92,7 @@ bool ImageInstancesListModel::addImageInstances(const int64_t dataset_id, const 
             std::make_pair(image_ids[i], new ImageInstance(dataset_id, image_ids[i], paths[i], this)));
         // image_instances_.emplace(dataset_id, new ImageInstance(image_id, path, this));
     }
-    endInsertRows();
+    resetModel();
     emit statsChanged();
     return true;
 }
@@ -126,7 +123,6 @@ bool ImageInstancesListModel::deleteImageInstances(const std::vector<int64_t> &i
         return false;
     }
     spdlog::info("批量删除图像, 数量: {}", image_ids.size());
-    beginResetModel();
     for (const auto &image_id : image_ids)
     {
         auto found = image_instances_.find(image_id);
@@ -136,7 +132,7 @@ bool ImageInstancesListModel::deleteImageInstances(const std::vector<int64_t> &i
             image_instances_.erase(found);
         }
     }
-    endResetModel();
+    resetModel();
     emit statsChanged();
     return true;
 }
@@ -230,7 +226,7 @@ Q_INVOKABLE void ImageInstancesListModel::deleteSelected()
         ++idx;
     }
     deleteImageInstances(image_ids);
-    selection_->clearSelection();
+    selection_->clear();
 }
 
 QVariantMap ImageInstancesListModel::getImageInstanceInfo(const int64_t image_id)
@@ -270,38 +266,22 @@ void ImageInstancesListModel::init()
             image_instances_.emplace(image_id, new ImageInstance(dataset_id, image_id, path, this));
         }
     }
+    resetModel();
 }
 
 QVariant ImageInstancesListModel::getImageId(const QModelIndex &index) const
 {
-    int idx = 0;
-    for (const auto &[id, image_instance] : image_instances_)
-    {
-        if (index.row() == idx)
-        {
-            return id;
-        }
-        ++idx;
-    }
-    return -1;
+    return image_instances_model_[index.row()]->imageId();
 }
 
 QVariant ImageInstancesListModel::getImageName(const QModelIndex &index) const
 {
-    const int image_id = getImageId(index).toInt();
-    auto      found    = image_instances_.find(image_id);
-    if (found != image_instances_.end())
-        return found->second->name();
-    return QVariant();
+    return image_instances_model_[index.row()]->name();
 }
 
 QVariant ImageInstancesListModel::getImagePath(const QModelIndex &index) const
 {
-    const int image_id = getImageId(index).toInt();
-    auto      found    = image_instances_.find(image_id);
-    if (found != image_instances_.end())
-        return found->second->path();
-    return QVariant();
+    return image_instances_model_[index.row()]->path();
 }
 
 QVariant ImageInstancesListModel::getSelected(const QModelIndex &index) const
@@ -315,6 +295,14 @@ QVariant ImageInstancesListModel::getSelected(const QModelIndex &index) const
             return true;
     }
     return false;
+}
+
+int ImageInstancesListModel::getCurImageId() const
+{
+    QModelIndex index = selection_->currentIndex();
+    if (index.row() < 0 || index.row() >= rowCount())
+        return -1;
+    return getImageId(index).toInt();
 }
 
 void ImageInstancesListModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)
@@ -351,7 +339,20 @@ void ImageInstancesListModel::updateSelection(const QItemSelection &selected, co
 
 void ImageInstancesListModel::onCurrentChanged(const QModelIndex &current, const QModelIndex &previous)
 {
-    // qInfo() << __FUNCTION__ << __LINE__ << current;
+    Q_UNUSED(current)
+    Q_UNUSED(previous)
+    emit curImageIdChanged();
+}
+
+void ImageInstancesListModel::resetModel()
+{
+    beginResetModel();
+    image_instances_model_.clear();
+    for (const auto &[image_id, image_instance] : image_instances_)
+    {
+        image_instances_model_.emplace_back(image_instance);
+    }
+    endResetModel();
 }
 
 } // namespace dltool::project

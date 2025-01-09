@@ -23,7 +23,6 @@ Item {
 
     property Project project: ProjectManager.currentProject
     property ItemSelectionModel selection: project ? project.imageInstances.selection : null
-    property int curImageId: -1
     property bool hasSelection: selection ? selection.hasSelection : false
 
     DltMenu {
@@ -62,7 +61,6 @@ Item {
         Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Escape) {
                 selection.clear()
-                curImageId = -1
             } else if (event.key === Qt.Key_Delete) {
                 project.imageInstances.deleteSelected()
             } else if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
@@ -120,10 +118,8 @@ Item {
                             view.lastIndex = index
                         }
                     }
-                    curImageId = item.image_id
                 } else {
                     selection.clear()
-                    curImageId = -1
                 }
             }
         }
@@ -162,11 +158,6 @@ Item {
             selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
             view.lastIndex = newIndex
             view.positionViewAtIndex(newIndex, GridView.Contain)
-            let item = view.itemAtIndex(newIndex)
-            if (item) {
-                curImageId = item.image_id
-            }
-            
         }
     }
 }

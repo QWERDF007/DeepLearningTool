@@ -29,7 +29,6 @@ Rectangle {
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: 360
                 color: DltColor.Primary
-                curImageId: imagesView.curImageId
             }
             ImageInstancesSelection {
                 SplitView.fillWidth: true
