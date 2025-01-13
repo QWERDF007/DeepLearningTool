@@ -45,4 +45,20 @@ void Settings::setImageCellScaleStep(const double step)
     emit imageCellScaleStepChanged();
 }
 
+void Settings::setImageBrightness(const double brightness)
+{
+    if (image_brightness_ == brightness)
+        return;
+    image_brightness_ = std::clamp(brightness, -1.0, 1.0);
+    emit imageBrightnessChanged();
+}
+
+void Settings::setImageContrast(const double contrast)
+{
+    if (image_contrast_ == contrast)
+        return;
+    image_contrast_ = std::clamp(contrast, -1.0, 1.0);
+    emit imageContrastChanged();
+}
+
 } // namespace dltool::project

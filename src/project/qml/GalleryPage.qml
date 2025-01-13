@@ -49,16 +49,15 @@ Rectangle {
             SplitView.fillHeight: true
             SplitView.fillWidth: true
 
-            ImageInstancesView {
+            ImageInstancesView { // 图像列表
                 id: imagesView
                 Layout.fillWidth: true
                 Layout.fillHeight: true
             }
 
-            Rectangle {
-                Layout.preferredWidth: 48
+            GallerySidebar { // 侧边栏
+                Layout.preferredWidth: 40
                 Layout.fillHeight: true
-                color: DltColor.Primary
             }
         }
     }

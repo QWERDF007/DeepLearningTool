@@ -1,8 +1,10 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Effects
 
 import dltool.ui
+import dltool.project
 
 Rectangle {
     id: imageInstanceDelegate
@@ -19,11 +21,18 @@ Rectangle {
 
     Image {
         id: image
+        visible: false
         anchors.fill: parent
         anchors.margins: 2
         fillMode: Image.PreserveAspectFit
         sourceSize.width: image.width
         sourceSize.height: image.height
         asynchronous: true
+    }
+    MultiEffect {
+        source: image
+        anchors.fill: image
+        brightness: Settings.imageBrightness
+        contrast: Settings.imageContrast
     }
 }
