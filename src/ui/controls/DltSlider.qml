@@ -7,6 +7,8 @@ import dltool.ui
 T.Slider {
     property bool tooltipEnabled: true
     property string text: String(control.value)
+    property color bgColor: DltColor.Highlight
+    property color handleColor: DltColor.Highlight
     id: control
     to:100
     stepSize:1
@@ -21,7 +23,7 @@ T.Slider {
         implicitWidth: 20
         implicitHeight: 20
         radius: 10
-        color: Qt.rgba(1,1,1,1)
+        color: Utils.withOpacity(handleColor, 0.5)
         DltShadow{
             radius: 10
         }
@@ -42,7 +44,7 @@ T.Slider {
                 }
                 return control.hovered ? 1.2 : 1
             }
-            iconColor: DltColor.Primary
+            iconColor: handleColor
             anchors.centerIn: parent
         }
     }
@@ -57,15 +59,17 @@ T.Slider {
             anchors.fill: parent
             anchors.margins: 1
             radius: 2
-            color: Qt.rgba(138/255,138/255,138/255,1)
+            opacity: 0.3
+            color: bgColor
         }
         scale: control.horizontal && control.mirrored ? -1 : 1
         Rectangle {
+            id: pro
             y: control.horizontal ? 0 : control.visualPosition * parent.height
             width: control.horizontal ? control.position * parent.width : 6
             height: control.horizontal ? 6 : control.position * parent.height
             radius: 3
-            color: DltColor.Primary
+            color: bgColor
         }
     }
     DltToolTip{
