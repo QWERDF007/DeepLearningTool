@@ -6,6 +6,7 @@ import dltool.ui
 import dltool.project
 
 Rectangle { // 侧边栏
+    id: sidebar
     color: DltColor.Primary
 
     ColumnLayout {
@@ -17,21 +18,36 @@ Rectangle { // 侧边栏
             iconSource: DltFontIcon.ExploreContentSingle
             text: "调整图像大小"
             onClicked: {
-                popup.open()
+                slider.from = Settings.imageCellScaleFrom
+                slider.to = Settings.imageCellScaleTo
+                slider.value = Settings.imageCellScale
+                slider.snapMode = Slider.NoSnap
+                slider.stepSize = Settings.imageCellScaleStepSize
+                openPopup(x,y)
             }
         }
         DltTextIconButton {
             iconSource: DltFontIcon.Brightness
             text: "调整图像亮度"
             onClicked: {
-                popup.open()
+                slider.from = Settings.imageBrightnessFrom
+                slider.to = Settings.imageBrightnessTo
+                slider.value = Settings.imageBrightness
+                slider.snapMode = Slider.SnapAlways
+                slider.stepSize = Settings.imageBrightnessStepSize
+                openPopup(x,y)
             }
         }
         DltTextIconButton {
             iconSource: DltFontIcon.BlueLight
             text: "调整图像对比度"
             onClicked: {
-                popup.open()
+                slider.from = Settings.imageContrastFrom
+                slider.to = Settings.imageContrastTo
+                slider.value = Settings.imageContrast
+                slider.snapMode = Slider.SnapAlways
+                slider.stepSize = Settings.imageContrastStepSize
+                openPopup(x,y)
             }
         }
         Item {
@@ -42,9 +58,17 @@ Rectangle { // 侧边栏
         id: popup
         closePolicy: Popup.CloseOnPressOutside
         width: 200
-        height: 48
+        height: 32
         DltSlider {
             id: slider
+            anchors.centerIn: parent
         }
+    }
+
+    function openPopup(x, y) {
+        let pos = sidebar.mapToItem(Qt.application.activeWindow, x, y)
+        popup.x = pos.x - popup.width
+        popup.y = pos.y
+        popup.open()
     }
 }

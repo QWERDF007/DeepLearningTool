@@ -37,12 +37,12 @@ void Settings::setImageCellScaleTo(const double to)
     emit imageCellScaleToChanged();
 }
 
-void Settings::setImageCellScaleStep(const double step)
+void Settings::setImageCellScaleStepSize(const double step_size)
 {
-    if (step == image_cell_scale_step_)
+    if (step_size == image_cell_scale_step_size_)
         return;
-    image_cell_scale_step_ = step;
-    emit imageCellScaleStepChanged();
+    image_cell_scale_step_size_ = step_size;
+    emit imageCellScaleStepSizeChanged();
 }
 
 void Settings::setImageBrightness(const double brightness)
