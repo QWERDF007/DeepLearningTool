@@ -92,10 +92,10 @@ Item {
                     let step = delta * view.cellHeight * stepFactor
                     // 计算新的contentY位置并限制范围
                     let newContentY = view.contentY - step
-                    newContentY = Math.max(0, Math.min(newContentY, maxContentY))
-                    // 更新滚动条位置
-                    scrollBar.position = newContentY / maxContentY
-                    view.contentY = newContentY
+                    // 更新位置
+                    view.contentY = Math.max(0, Math.min(newContentY, maxContentY))
+                    // scrollBar.position = newContentY / maxContentY
+                    // view.contentY = newContentY
                 }
                 event.accepted = true
             }
