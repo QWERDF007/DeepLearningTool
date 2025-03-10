@@ -5,13 +5,17 @@ import QtQuick.Templates as T
 import dltool.ui
 
 T.Slider {
+    id: control
+
     property bool tooltipEnabled: true
     property string text: String(control.value)
     property color bgColor: DltColor.Highlight
     property color handleColor: DltColor.Highlight
-    id: control
+    property int precision: 2
+    
     to:100
     stepSize:1
+    
     implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset,
                             implicitHandleWidth + leftPadding + rightPadding)
     implicitHeight: Math.max(implicitBackgroundHeight + topInset + bottomInset,
@@ -75,6 +79,6 @@ T.Slider {
     DltToolTip{
         parent: control.handle
         visible: control.tooltipEnabled && (control.pressed || control.hovered)
-        text:control.text
+        text: control.value.toFixed(control.precision)
     }
 }
