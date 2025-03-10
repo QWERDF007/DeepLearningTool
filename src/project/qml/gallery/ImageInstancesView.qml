@@ -17,7 +17,7 @@ Item {
         }
     }
 
-    property int cellWidth: 320 * Settings.imageCellScale + 10
+    property int cellWidth: 180 * Settings.imageCellScale + 10
     property int cellHeight: 240 * Settings.imageCellScale + 10
     property int spacing: 10
 
@@ -29,7 +29,7 @@ Item {
         id: imageInstanceMenu
         width: 200
         DltMenuItem {
-            text: "删除项目"
+            text: "删除图像"
             iconSource: DltFontIcon.Delete
             onClicked: {
                 if (project) {
@@ -48,7 +48,10 @@ Item {
         cellHeight: instancesView.cellHeight + instancesView.spacing
         ScrollBar.vertical: DltScrollBar {
             id: scrollBar
+            interactive: false
         }
+        keyNavigationEnabled: false // 禁用键盘导航以便启用方向键切换选中图
+
         model:  project ? project.imageInstances : null
         delegate: ImageInstanceDelegate {
             width: instancesView.cellWidth
@@ -71,17 +74,30 @@ Item {
         }
 
         WheelHandler {
-            acceptedModifiers: Qt.ControlModifier
+            // acceptedModifiers: Qt.ControlModifier
             onWheel: function handler(event) {
-                if (event.modifiers) {
+                if (event.modifiers & Qt.ControlModifier) {
                     if (event.angleDelta.y > 0 && Settings.imageCellScale < Settings.imageCellScaleTo) {
-                        Settings.imageCellScale += Settings.imageCellScaleStep
+                        Settings.imageCellScale += Settings.imageCellScaleStepSize
                     } else if (event.angleDelta.y < 0 && Settings.imageCellScale > Settings.imageCellScaleFrom) {
-                        Settings.imageCellScale -= Settings.imageCellScaleStep
+                        Settings.imageCellScale -= Settings.imageCellScaleStepSize
                     } else {
 
                     }
+                } else { // 替换原有的滚动事件, 原来的滚动有点慢, 调整stepFactor系数改变速度
+                    // 计算滚动步长
+                    const stepFactor = 2.0
+                    let maxContentY = view.contentHeight - view.height
+                    let delta = event.angleDelta.y / 120
+                    let step = delta * view.cellHeight * stepFactor
+                    // 计算新的contentY位置并限制范围
+                    let newContentY = view.contentY - step
+                    newContentY = Math.max(0, Math.min(newContentY, maxContentY))
+                    // 更新滚动条位置
+                    scrollBar.position = newContentY / maxContentY
+                    view.contentY = newContentY
                 }
+                event.accepted = true
             }
         }
 
@@ -130,13 +146,13 @@ Item {
         let newIndex = curIndex
         let columns = Math.floor(view.width / view.cellWidth)
         let rows = Math.floor(view.height / view.cellHeight)
-        if (event.key === Qt.Key_A) {
+        if (event.key === Qt.Key_A  || event.key === Qt.Key_Left) {
             newIndex = Math.max(0, curIndex - 1)
-        } else if (event.key === Qt.Key_D) {
+        } else if (event.key === Qt.Key_D  || event.key === Qt.Key_Right) {
             newIndex = Math.min(view.count - 1, curIndex + 1)
-        } else if (event.key === Qt.Key_W) {
+        } else if (event.key === Qt.Key_W || event.key === Qt.Key_Up) {
             newIndex = Math.max(0, curIndex - columns)
-        } else if (event.key === Qt.Key_S) {
+        } else if (event.key === Qt.Key_S || event.key === Qt.Key_Down) {
             newIndex = Math.min(view.count - 1, curIndex + columns)
         } else if (event.key === Qt.Key_Home) {
             // newIndex = 0
