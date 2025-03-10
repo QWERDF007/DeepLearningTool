@@ -23,6 +23,9 @@ Rectangle { // 侧边栏
                 slider.value = Settings.imageCellScale
                 slider.snapMode = Slider.NoSnap
                 slider.stepSize = Settings.imageCellScaleStepSize
+                slider.valueUpdateCallback = function(value) {
+                    Settings.imageCellScale = value
+                }
                 openPopup(x,y)
             }
         }
@@ -35,6 +38,9 @@ Rectangle { // 侧边栏
                 slider.value = Settings.imageBrightness
                 slider.snapMode = Slider.SnapAlways
                 slider.stepSize = Settings.imageBrightnessStepSize
+                slider.valueUpdateCallback = function(value) {
+                    Settings.imageBrightness = value
+                }
                 openPopup(x,y)
             }
         }
@@ -47,6 +53,9 @@ Rectangle { // 侧边栏
                 slider.value = Settings.imageContrast
                 slider.snapMode = Slider.SnapAlways
                 slider.stepSize = Settings.imageContrastStepSize
+                slider.valueUpdateCallback = function(value) {
+                    Settings.imageContrast = value
+                }
                 openPopup(x,y)
             }
         }
@@ -62,6 +71,12 @@ Rectangle { // 侧边栏
         DltSlider {
             id: slider
             anchors.centerIn: parent
+            property var valueUpdateCallback: null
+            onValueChanged: {
+                if (valueUpdateCallback) {
+                    valueUpdateCallback(value)
+                }
+            }
         }
     }
 
