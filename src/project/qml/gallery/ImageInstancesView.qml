@@ -73,29 +73,53 @@ Item {
             }
         }
 
+        function scaleView(event) {
+            if (event.angleDelta.y > 0 && Settings.imageCellScale < Settings.imageCellScaleTo) {
+                Settings.imageCellScale += Settings.imageCellScaleStepSize
+            } else if (event.angleDelta.y < 0 && Settings.imageCellScale > Settings.imageCellScaleFrom) {
+                Settings.imageCellScale -= Settings.imageCellScaleStepSize
+            } else {
+
+            }
+        }
+
+        function scrollToCurrentItem() {
+            // 获取当前项相对于视图内容的位置, 计算视图应该滚动到的位置, 使当前项保持在视图中心
+            if (selection.hasSelection) {
+                let currentIndex = selection.currentIndex.row
+                let currentItem = view.itemAtIndex(currentIndex)
+                if (currentItem) {
+                    let itemPos = currentItem.mapToItem(view.contentItem, 0, 0)
+                    let itemCenterY = itemPos.y + currentItem.height / 2
+                    let targetContentY = itemCenterY - view.height / 2
+                    view.contentY = Math.max(0, Math.min(targetContentY, view.contentHeight - view.height))
+                }
+            }
+        }
+
+        function scrollItem(event) {
+            // 替换原有的滚动事件, 原来的滚动有点慢, 调整stepFactor系数改变速度
+            // 计算滚动步长
+            const stepFactor = 2.0
+            let maxContentY = view.contentHeight - view.height
+            let delta = event.angleDelta.y / 120
+            let step = delta * view.cellHeight * stepFactor
+            // 计算新的contentY位置并限制范围
+            let newContentY = view.contentY - step
+            // 更新位置
+            view.contentY = Math.max(0, Math.min(newContentY, maxContentY))
+            // scrollBar.position = newContentY / maxContentY
+            // view.contentY = newContentY
+        }
+
         WheelHandler {
             // acceptedModifiers: Qt.ControlModifier
             onWheel: function handler(event) {
                 if (event.modifiers & Qt.ControlModifier) {
-                    if (event.angleDelta.y > 0 && Settings.imageCellScale < Settings.imageCellScaleTo) {
-                        Settings.imageCellScale += Settings.imageCellScaleStepSize
-                    } else if (event.angleDelta.y < 0 && Settings.imageCellScale > Settings.imageCellScaleFrom) {
-                        Settings.imageCellScale -= Settings.imageCellScaleStepSize
-                    } else {
-
-                    }
-                } else { // 替换原有的滚动事件, 原来的滚动有点慢, 调整stepFactor系数改变速度
-                    // 计算滚动步长
-                    const stepFactor = 2.0
-                    let maxContentY = view.contentHeight - view.height
-                    let delta = event.angleDelta.y / 120
-                    let step = delta * view.cellHeight * stepFactor
-                    // 计算新的contentY位置并限制范围
-                    let newContentY = view.contentY - step
-                    // 更新位置
-                    view.contentY = Math.max(0, Math.min(newContentY, maxContentY))
-                    // scrollBar.position = newContentY / maxContentY
-                    // view.contentY = newContentY
+                    view.scaleView(event)
+                    view.scrollToCurrentItem()
+                } else { 
+                    view.scrollItem(event)
                 }
                 event.accepted = true
             }
