@@ -23,7 +23,14 @@ StackLayout {
         }
     }
 
-    property var pages: [project_com, dataset_com]
+    Component {
+        id: label_com
+        LabelPage {
+            anchors.fill: parent
+        }
+    }
+
+    property var pages: [project_com, dataset_com, label_com]
 
     Repeater {
         model: pages
