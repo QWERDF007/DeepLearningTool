@@ -54,6 +54,7 @@ class ImageInstancesListModel : public QAbstractListModel
     QML_UNCREATABLE("Can not create ImageInstancesList directly!")
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
     Q_PROPERTY(int curImageId READ getCurImageId NOTIFY curImageIdChanged)
+    Q_PROPERTY(QString curImagePath READ curImagePath NOTIFY curImagePathChanged)
 public:
     ImageInstancesListModel(data::ProjectDataBase *database, QObject *parent = nullptr);
     ~ImageInstancesListModel();
@@ -92,6 +93,8 @@ public:
 
     QVariantMap getImageInstanceInfo(const int64_t image_id);
 
+    QString curImagePath() const;
+
 private:
     void init();
 
@@ -119,6 +122,7 @@ private:
 signals:
     void statsChanged();
     void curImageIdChanged();
+    void curImagePathChanged();
 };
 
 } // namespace dltool::project

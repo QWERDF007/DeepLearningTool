@@ -132,6 +132,11 @@ Item {
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+            onDoubleClicked: function (mouse) {
+                SignalHelper.changeTabBarIndex(2)
+            }
+            
             onClicked: function (mouse) {
                 view.forceActiveFocus()
                 let posInGridView = Qt.point(mouse.x, mouse.y)

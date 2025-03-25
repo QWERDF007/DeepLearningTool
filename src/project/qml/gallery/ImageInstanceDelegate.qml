@@ -29,6 +29,12 @@ Rectangle {
         sourceSize.height: image.height
         asynchronous: true
     }
+    
+    BusyIndicator {
+        anchors.centerIn: parent
+        running: image.status === Image.Loading
+    }
+
     MultiEffect {
         source: image
         anchors.fill: image

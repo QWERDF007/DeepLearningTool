@@ -13,6 +13,13 @@ Rectangle {
 
     property alias currentIndex: mainTabBar.currentIndex
 
+    Connections {
+        target: SignalHelper
+        function onChangeTabBarIndex(index) {
+            mainTabBar.currentIndex = index
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         RowLayout {

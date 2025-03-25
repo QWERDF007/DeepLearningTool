@@ -252,6 +252,16 @@ QVariantMap ImageInstancesListModel::getImageInstanceInfo(const int64_t image_id
     return info;
 }
 
+QString ImageInstancesListModel::curImagePath() const
+{
+    if (selection_ == nullptr)
+        return QString();
+    QModelIndex index = selection_->currentIndex();
+    if (index.row() < 0 || index.row() >= rowCount())
+        return QString();
+    return getImagePath(index).toString();
+}
+
 void ImageInstancesListModel::init()
 {
     connect(selection_, &QItemSelectionModel::selectionChanged, this, &ImageInstancesListModel::updateSelection);
@@ -342,6 +352,7 @@ void ImageInstancesListModel::onCurrentChanged(const QModelIndex &current, const
     Q_UNUSED(current)
     Q_UNUSED(previous)
     emit curImageIdChanged();
+    emit curImagePathChanged();
 }
 
 void ImageInstancesListModel::resetModel()
