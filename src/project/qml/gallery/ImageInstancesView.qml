@@ -48,7 +48,6 @@ Item {
         cellHeight: instancesView.cellHeight + instancesView.spacing
         ScrollBar.vertical: DltScrollBar {
             id: scrollBar
-            interactive: false
         }
         keyNavigationEnabled: false // 禁用键盘导航以便启用方向键切换选中图
 
