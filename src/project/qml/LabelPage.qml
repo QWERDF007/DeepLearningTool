@@ -41,7 +41,7 @@ Rectangle {
                 color: DltColor.Primary
             }
         }
-        LabelImage { // 中间内容
+        LabelCanvas { // 中间内容
             SplitView.fillHeight: true
             SplitView.fillWidth: true
         }
