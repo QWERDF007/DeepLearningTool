@@ -11,7 +11,6 @@ Item {
     property bool dragMode: false
 
     property alias image: image
-    property bool isFitInView: true
     
     property string curImagePath: ""
 
@@ -63,11 +62,7 @@ Item {
         }
         onStatusChanged: {
             if (isInit && image.status === Image.Ready) {
-                if (isFitInView) {
-                    labelImage.fitInView()
-                } else {
-                    labelImage.scaleInCenter(1.0)
-                }
+                labelImage.fitInView()
             }
         }
     }
@@ -171,13 +166,9 @@ Item {
     }
     onHeightChanged: {
         if (visible && !isInit) {
+            isInit = true
             if (image.status === Image.Ready) {
-                isInit = true
-                if (isFitInView) {
-                    labelImage.fitInView()
-                } else {
-                    labelImage.scaleInCenter(1.0)
-                }
+                labelImage.fitInView()
             }
         }
     }
