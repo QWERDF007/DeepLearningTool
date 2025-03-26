@@ -1,18 +1,19 @@
 import QtQuick
 import QtQuick.Controls
 
-import dltool.project
-
 Item {
     id: labelImage
     clip: true
-    property bool _init: false
+
+    default property alias children: image.data
+
+    property bool isInit: false
+    property bool dragMode: false
 
     property alias image: image
     property bool isFitInView: true
     
-    property Project project: ProjectManager.currentProject
-    property string curImagePath: project ? project.imageInstances.curImagePath : ""
+    property string curImagePath: ""
 
     property real imageSourceScale: {
         if (image.source !== Qt.url("") && image.status === image.Ready) {
@@ -22,13 +23,20 @@ Item {
     }
 
     property real stepSize: {
-        if (image.scale < 2 || image.paintedWidth * image.scale < labelImage.width || image.paintedHeight * image.scale < labelImage.height) {
-            return 0.1
-        } else if (image.scale < 10) {
-            return 1
-        } else {
-            return 2
+        // 基于图像原始大小和当前显示大小计算基础步长
+        let baseStep = Math.min(image.sourceSize.width / labelImage.width, 
+                              image.sourceSize.height / labelImage.height) * 0.1
+        
+        // 当缩放比例较小或图像未充满视图时使用较小步长
+        if (image.scale < 2 || image.paintedWidth * image.scale < labelImage.width || 
+            image.paintedHeight * image.scale < labelImage.height) {
+            return Math.max(0.25, baseStep)
         }
+        
+        // 使用指数函数根据原始图像大小和当前缩放比例计算平滑步长
+        // 较大图像会有较大的步长，较小图像会有较小的步长
+        return Math.min(baseStep * Math.pow(1.5, image.scale - 2), 
+                       Math.max(8.0, baseStep * 4))
     }
 
     property var scaledImagePos: mapFromItem(image, 0, 0)
@@ -55,7 +63,7 @@ Item {
 
         }
         onStatusChanged: {
-            if (image.status === Image.Ready) {
+            if (isInit && image.status === Image.Ready) {
                 if (isFitInView) {
                     labelImage.fitInView()
                 } else {
@@ -70,28 +78,19 @@ Item {
         enabled: labelImage.visible && image.status === Image.Ready
         drag.target: image
         drag.axis: Drag.XAndYAxis
-        hoverEnabled: true
         acceptedButtons: Qt.AllButtons
+        onPressed: function(event) {
+            if (event.modifiers & Qt.ControlModifier) {
+                drag.target = image
+            } else if (event.button === Qt.MiddleButton) {
+                drag.target = image
+            } else {
+                drag.target = null
+            }
+        }
         onWheel: function(event) {
             labelImage.scaleImageByWheel(event)
             labelImage.updateImagePos()
-        }
-    }
-
-    onWidthChanged: {
-        if (isFitInView) {
-            labelImage.fitInView()
-        } else if (!labelImage._init && labelImage.width && labelImage.height) {
-            labelImage.scaleInCenter(1.0)
-            labelImage._init = true
-        }
-    }
-    onHeightChanged: {
-        if (isFitInView) {
-            labelImage.fitInView()
-        } else if (!labelImage._init && labelImage.width && labelImage.height) {
-            labelImage.scaleInCenter(1.0)
-            labelImage._init = true
         }
     }
 
@@ -166,4 +165,23 @@ Item {
         image.y -= scaledImagePos.y - dy
     }
 
+    // 执行顺序如下, 在可见情况下使图像适应窗口
+    // onWidthChanged -> onHeightChanged -> onCompleted -> onVisibleChanged ->
+    // onVisibleChanged -> onWidthChanged -> onHeightChanged
+    onWidthChanged: {
+    }
+    onHeightChanged: {
+        if (visible && !isInit) {
+            if (image.status === Image.Ready) {
+                isInit = true
+                if (isFitInView) {
+                    labelImage.fitInView()
+                } else {
+                    labelImage.scaleInCenter(1.0)
+                }
+            }
+        }
+    }
+    Component.onCompleted: {
+    }
 }
