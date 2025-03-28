@@ -9,8 +9,8 @@ import dltool.project
 ApplicationWindow {
     id: window
     visible: true
-    width: 1920
-    height: 1080
+    width: Screen.width
+    height: Screen.height
     title: ProjectManager.currentProject ? ProjectManager.currentProject.path : ""
 
     Connections {
@@ -47,5 +47,9 @@ ApplicationWindow {
         width: parent.width
         height: 32
         color: DltColor.Primary
+    }
+
+    Component.onCompleted: {
+        window.showMaximized()
     }
 }
