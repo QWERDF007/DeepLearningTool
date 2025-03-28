@@ -18,11 +18,24 @@ public:
     DataBase(const QString &path, QObject *parent = nullptr);
     virtual ~DataBase();
 
+    /**
+     * @brief 获取数据库连接池指针
+     * 
+     * @return sqlpp::sqlite3::connection_pool* 数据库连接池指针
+     * @details 返回当前数据库的连接池对象指针,可用于获取数据库连接进行操作
+     */
     sqlpp::sqlite3::connection_pool *connectionPool()
     {
         return pool_;
     }
 
+    /**
+     * @brief 连接到 SQLite 数据库
+     * 
+     * @param path 数据库文件路径
+     * @param flags SQLite 连接标志
+     * @return sqlpp::sqlite3::connection 数据库连接对象
+     */
     static sqlpp::sqlite3::connection connect(const QString &path, const int flags);
 
 protected:
@@ -33,6 +46,15 @@ protected:
     sqlpp::sqlite3::connection_pool *pool_{nullptr};
 
 private:
+    /**
+     * @brief 创建数据库连接池
+     * 
+     * @details 该函数创建一个 SQLite 数据库连接池, 用于管理数据库连接。
+     * 主要功能:
+     * 1. 设置数据库文件路径和访问标志
+     * 2. 创建数据库文件所在目录(如果不存在)
+     * 3. 初始化连接池
+     */
     void createDataBase();
 };
 
@@ -42,8 +64,36 @@ public:
     ProjectDataBase(const QString &path, QObject *parent = nullptr);
     ~ProjectDataBase();
 
+    /**
+     * @brief 初始化项目数据库, 创建必要的表结构并插入项目基本信息。
+     * 
+     * @param name 项目名称
+     * @param method 项目类型
+     * @param path 项目路径
+     * @param description 项目描述
+     * @param image_base_path 图片基础路径
+     * @param ctime 创建时间
+     * @param mtime 修改时间
+     * @param err_msg 错误信息
+     * @return true/false 初始化成功/失败
+     * @details 该函数主要检查数据库连接池是否可用, 创建表并插入项目基本信息
+     */
     bool initProject(const QString &name, const int method, const QString &path, const QString &description,
                      const QString image_base_path, const qint64 ctime, const qint64 mtime, QString &err_msg) const;
+
+    /**
+     * @brief 打开项目数据库, 获取项目基本信息
+     * 
+     * @param name 项目名称
+     * @param method 项目类型
+     * @param path 项目路径
+     * @param description 项目描述
+     * @param image_base_path 图片基础路径
+     * @param ctime 创建时间
+     * @param mtime 修改时间
+     * @param err_msg 错误信息
+     * @return true/false 打开数据库成功/失败
+     */
     bool openProject(QString &name, int &method, QString &path, QString &description, QString image_base_path,
                      qint64 &ctime, qint64 &mtime, QString &err_msg) const;
     bool updateProject(const QString &name, const QString &path, const QString &description,

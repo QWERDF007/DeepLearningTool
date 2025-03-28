@@ -4,6 +4,8 @@
 #include "data/SqlDef.h"
 #include "data/ddl/DatasetsTable.h"
 #include "data/ddl/ImagesTable.h"
+#include "data/ddl/LabelClassesTable.h"
+#include "data/ddl/LabelsTable.h"
 #include "data/ddl/ProjectTable.h"
 #include "data/ddl/RecentProjectsTable.h"
 
@@ -19,6 +21,8 @@ const auto ProjectTable         = Project{};
 const auto RectentProjectsTable = RecentProjects{};
 const auto ImagesTable          = Images{};
 const auto DatasetsTable        = Datasets{};
+const auto LabelClassesTable    = LabelClasses{};
+const auto LabelsTable          = Labels{};
 
 DataBase::DataBase(const QString &path, QObject *parent)
     : QObject(parent)
@@ -82,6 +86,8 @@ bool ProjectDataBase::initProject(const QString &name, const int method, const Q
                     ProjectTable.mtime = mtime));
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateDatasets));
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateImages));
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateLabelClasses));
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateLabels));
         return true;
     }
     catch (const std::exception &e)
