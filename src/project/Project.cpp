@@ -177,8 +177,11 @@ void RectentProjects::init()
         info.path = paths[i];
         QString msg;
         bool    ok = data::ProjectDataBase::getProjectBaseInfo(info.path, info.name, info.mtime, msg);
-        project_infos.emplace_back(info);
-        if (!ok)
+        if (ok)
+        {
+            project_infos.emplace_back(info);
+        }
+        else
         {
             spdlog::error("获取基础信息失败: {}, error: {}", info.path.toUtf8().constData(), msg.toUtf8().constData());
         }
