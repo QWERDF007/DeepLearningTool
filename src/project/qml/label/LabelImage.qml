@@ -8,6 +8,7 @@ Item {
     default property alias children: image.data
 
     property bool isInit: false
+    property bool needFitInView: false
     property bool dragMode: false
 
     property alias image: image
@@ -61,8 +62,12 @@ Item {
 
         }
         onStatusChanged: {
-            if (isInit && image.status === Image.Ready) {
-                labelImage.fitInView()
+            if (image.status === Image.Ready) {
+                if (isInit) {
+                    labelImage.fitInView()
+                } else {
+                    needFitInView = true
+                }
             }
         }
     }
@@ -162,14 +167,17 @@ Item {
     // 执行顺序如下, 在可见情况下使图像适应窗口
     // onWidthChanged -> onHeightChanged -> onCompleted -> onVisibleChanged ->
     // onVisibleChanged -> onWidthChanged -> onHeightChanged
+    onVisibleChanged: {
+        if (visible && !isInit) {
+            isInit = true
+        }
+    }
     onWidthChanged: {
     }
     onHeightChanged: {
-        if (visible && !isInit) {
-            isInit = true
-            if (image.status === Image.Ready) {
-                labelImage.fitInView()
-            }
+        if (visible && isInit && needFitInView) {
+            labelImage.fitInView()
+            needFitInView = false
         }
     }
     Component.onCompleted: {
