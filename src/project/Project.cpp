@@ -183,6 +183,7 @@ void RectentProjects::init()
         }
         else
         {
+            removeProject(info.path);
             spdlog::error("获取基础信息失败: {}, error: {}", info.path.toUtf8().constData(), msg.toUtf8().constData());
         }
     }
