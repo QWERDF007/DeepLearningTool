@@ -7,6 +7,6 @@ CREATE TABLE project (
     image_base_path TEXT,
     ctime INTEGER NOT NULL,
     mtime INTEGER NOT NULL,
-    program_version TEXT,
+    version TEXT,
     extra_data BLOB
 )

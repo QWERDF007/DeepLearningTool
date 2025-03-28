@@ -1,1 +1,6 @@
-CREATE TABLE images (id INTEGER NOT NULL PRIMARY KEY, dataset_id INTEGER NOT NULL REFERENCES datasets(id), path TEXT, extra_data BLOB)
+CREATE TABLE images (
+    id INTEGER NOT NULL PRIMARY KEY, 
+    dataset_id INTEGER NOT NULL REFERENCES datasets(id), 
+    path TEXT, 
+    extra_data BLOB
+)
