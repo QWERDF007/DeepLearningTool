@@ -140,18 +140,18 @@ namespace data
       };
       using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::require_insert>;
     };
-    struct ProgramVersion
+    struct Version
     {
       struct _alias_t
       {
-        static constexpr const char _literal[] =  "program_version";
+        static constexpr const char _literal[] =  "version";
         using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
         template<typename T>
         struct _member_t
           {
-            T programVersion;
-            T& operator()() { return programVersion; }
-            const T& operator()() const { return programVersion; }
+            T version;
+            T& operator()() { return version; }
+            const T& operator()() const { return version; }
           };
       };
       using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::can_be_null>;
@@ -183,7 +183,7 @@ namespace data
                Project_::ImageBasePath,
                Project_::Ctime,
                Project_::Mtime,
-               Project_::ProgramVersion,
+               Project_::Version,
                Project_::ExtraData>
   {
     struct _alias_t
