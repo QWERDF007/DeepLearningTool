@@ -27,7 +27,7 @@ Rectangle {
             ImageInstanceInfo { // 图像属性
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
-                SplitView.preferredHeight: 360
+                SplitView.preferredHeight: parent.height / 3
                 color: DltColor.Primary
             }
             ImageInstancesSelection {

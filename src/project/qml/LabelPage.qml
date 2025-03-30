@@ -27,7 +27,7 @@ Rectangle {
                 color: DltColor.Primary
             }
 
-            Rectangle { // 标签类别
+            LabelClassesView { // 标签类别
                 SplitView.fillWidth: true
                 SplitView.fillHeight: true
                 SplitView.minimumHeight: 200
