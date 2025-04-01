@@ -3,7 +3,9 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+
 import "label"
+import "gallery"
 
 Rectangle {
     width: 1080
@@ -20,24 +22,30 @@ Rectangle {
             SplitView.preferredWidth: 300
             orientation: Qt.Vertical
 
-            Rectangle { // 图像导航
+            DatasetsView { // 数据集
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
-                SplitView.preferredHeight: 240
+                SplitView.preferredHeight: parent.height / 3
+                color: DltColor.Primary
+            }
+
+            LabelImageFlip { // 图像切换
+                SplitView.fillWidth: true
+                SplitView.minimumHeight: 140
+                SplitView.preferredHeight: 140
                 color: DltColor.Primary
             }
 
             LabelClassesView { // 标签类别
                 SplitView.fillWidth: true
-                SplitView.fillHeight: true
                 SplitView.minimumHeight: 200
+                SplitView.preferredHeight: parent.height / 3
                 color: DltColor.Primary
             }
 
             Rectangle { // 图像切换
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
-                SplitView.preferredHeight: 240
                 color: DltColor.Primary
             }
         }

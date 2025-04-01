@@ -23,6 +23,7 @@ Rectangle {
                 SplitView.fillWidth: true
                 SplitView.fillHeight: true
                 SplitView.minimumHeight: 200
+                color: DltColor.Primary
             }
             ImageInstanceInfo { // 图像属性
                 SplitView.fillWidth: true
