@@ -70,6 +70,8 @@ public:
     QString getDatasetName(const int dataset_id) const;
 
 private:
+    void init();
+
     int getDatasetId(const QModelIndex &index) const;
 
     QVariant getName(const QModelIndex &index) const;

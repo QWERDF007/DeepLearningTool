@@ -29,7 +29,13 @@ Item {
             }
         }
     }
-    ColorEditor {
+    LabelClassEditor {
         id: editor
+        onEditFinished: function (name, color, shortcut) {
+            if (project) {
+                project.addLabelClass(name, color, shortcut)
+            }
+        }
     }
 }
+

@@ -11,7 +11,6 @@ Dataset::Dataset(const int64_t id, const QString &name, QObject *parent)
     , id_(id)
     , name_(name)
 {
-
 }
 
 Dataset::~Dataset() {}
@@ -27,6 +26,13 @@ bool Dataset::setName(const QString &name)
 DatasetsListModel::DatasetsListModel(data::ProjectDataBase *database, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
+{
+    init();
+}
+
+DatasetsListModel::~DatasetsListModel() {}
+
+void DatasetsListModel::init()
 {
     if (database_)
     {
@@ -46,8 +52,6 @@ DatasetsListModel::DatasetsListModel(data::ProjectDataBase *database, QObject *p
     }
     connect(this, &DatasetsListModel::statsChanged, this, &DatasetsListModel::onStatsChanged);
 }
-
-DatasetsListModel::~DatasetsListModel() {}
 
 int DatasetsListModel::rowCount(const QModelIndex &parent) const
 {

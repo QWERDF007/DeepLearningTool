@@ -123,6 +123,16 @@ public:
     bool deleteImages(const std::vector<int64_t> &image_ids, QString &err_msg) const;
     std::vector<std::pair<int64_t, QString>> getImages(const int64_t dataset_id, QString &err_msg) const;
     std::map<int64_t, std::vector<std::pair<int64_t, QString>>> getAllImages(QString &err_msg) const;
+
+    bool getAllLabelClasses(std::vector<int64_t> &label_class_ids, std::vector<QString> &names,
+                            std::vector<QString> &colors, std::vector<QString> &shortcuts,
+                            std::vector<int64_t> &ordinal_indices, QString &err_msg) const;
+
+    bool addLabelClass(const QString &name, const QString &color, const QString &shortcut, const int64_t ordinal_index,
+                       int64_t &label_class_id, QString &err_msg) const;
+    bool updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
+                          const QString &shortcut, const int64_t ordinal_index, QString &err_msg) const;
+    bool deleteLabelClass(const int64_t label_class_id, QString &err_msg) const;
 };
 
 class DATA_API RecentProjectsDataBase : public DataBase

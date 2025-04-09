@@ -5,6 +5,7 @@
 #include "data/DataFormat.h"
 #include "project/Dataset.h"
 #include "project/Image.h"
+#include "project/LabelClass.h"
 
 #include <spdlog/spdlog.h>
 
@@ -131,12 +132,28 @@ Q_INVOKABLE QVariantMap Project::getImageInstanceInfo(const int64_t image_id)
     return info;
 }
 
+Q_INVOKABLE void Project::addLabelClass(const QString &name, const QString &color, const QString &shortcut)
+{
+    label_classes_->addLabelClass(name, color, shortcut);
+}
+
+Q_INVOKABLE void Project::updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
+                                           const QString &shortcut, const int64_t ordinal_index)
+{
+    label_classes_->updateLabelClass(label_class_id, name, color, shortcut, ordinal_index);
+}
+
+Q_INVOKABLE void Project::deleteLabelClass(const int64_t label_class_id)
+{
+    label_classes_->deleteLabelClass(label_class_id);
+}
+
 void Project::init()
 {
     database_        = new data::ProjectDataBase(path_, this);
     datasets_        = new DatasetsListModel(database_, this);
     image_instances_ = new ImageInstancesListModel(database_, this);
-
+    label_classes_   = new LabelClassesListModel(database_, this);
     // 添加/删除图像时
     connect(image_instances_, &ImageInstancesListModel::statsChanged, datasets_, &DatasetsListModel::statsChanged);
 }

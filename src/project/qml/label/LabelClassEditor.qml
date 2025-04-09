@@ -15,8 +15,9 @@ DltPopup {
 
     property alias name: nameField.text
     property alias color: colorField.text
+    property alias shortcut: shortcutField.text
 
-    signal editFinished(string name, string color)
+    signal editFinished(string name, string color, string shortcut)
 
     ColumnLayout {
         anchors.fill: parent
@@ -98,7 +99,7 @@ DltPopup {
             DltButton {
                 text: "确认"
                 onClicked: {
-                    editFinished(nameField.text, colorField.text)
+                    editFinished(nameField.text, colorField.text, shortcutField.text)
                     control.close()
                 }
             }

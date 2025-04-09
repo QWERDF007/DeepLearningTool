@@ -16,6 +16,7 @@ class RecentProjectsDataBase;
 namespace dltool::project {
 class DatasetsListModel;
 class ImageInstancesListModel;
+class LabelClassesListModel;
 
 class Project : public QObject
 {
@@ -29,6 +30,7 @@ class Project : public QObject
     Q_PROPERTY(QString imageBasePath READ imageBasePath NOTIFY imageBasePathChanged FINAL)
     Q_PROPERTY(DatasetsListModel *datasets READ datasets NOTIFY datasetsChanged FINAL)
     Q_PROPERTY(ImageInstancesListModel *imageInstances READ imageInstances NOTIFY imageInstancesChanged FINAL)
+    Q_PROPERTY(LabelClassesListModel *labelClasses READ labelClasses NOTIFY labelClassesChanged FINAL)
 public:
     Project(const QString &name, const int method, const QString &path, const QString &description,
             const QString image_base_path, const qint64 ctime, const qint64 mtime, QObject *parent = nullptr);
@@ -85,6 +87,11 @@ public:
         return image_instances_;
     }
 
+    LabelClassesListModel *labelClasses() const
+    {
+        return label_classes_;
+    }
+
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
 
     Q_INVOKABLE int     getDatasetId(const QString &dataset_name) const;
@@ -98,6 +105,11 @@ public:
                                 const QString &data_dir);
 
     Q_INVOKABLE QVariantMap getImageInstanceInfo(const int64_t image_id);
+
+    Q_INVOKABLE void addLabelClass(const QString &name, const QString &color, const QString &shortcut);
+    Q_INVOKABLE void updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
+                                      const QString &shortcut, const int64_t ordinal_index);
+    Q_INVOKABLE void deleteLabelClass(const int64_t label_class_id);
 
 private:
     void init();
@@ -114,12 +126,14 @@ private:
 
     DatasetsListModel       *datasets_{nullptr};
     ImageInstancesListModel *image_instances_{nullptr};
+    LabelClassesListModel   *label_classes_{nullptr};
 
 signals:
     void descriptionChanged();
     void imageBasePathChanged();
     void datasetsChanged();
     void imageInstancesChanged();
+    void labelClassesChanged();
 };
 
 class RectentProjects : public QAbstractListModel

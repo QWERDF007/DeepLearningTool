@@ -551,6 +551,110 @@ std::map<int64_t, std::vector<std::pair<int64_t, QString>>> ProjectDataBase::get
     }
 }
 
+bool ProjectDataBase::getAllLabelClasses(std::vector<int64_t> &label_class_ids, std::vector<QString> &names,
+                                         std::vector<QString> &colors, std::vector<QString> &shortcuts,
+                                         std::vector<int64_t> &ordinal_indices, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db   = pool_->get();
+        auto data = db(sqlpp::select(LabelClassesTable.id, LabelClassesTable.name, LabelClassesTable.color,
+                                     LabelClassesTable.shortcut, LabelClassesTable.ordinalIndex)
+                           .from(LabelClassesTable)
+                           .unconditionally());
+        for (const auto &row : data)
+        {
+            label_class_ids.emplace_back(row.id);
+            names.emplace_back(QString::fromStdString(row.name));
+            colors.emplace_back(QString::fromStdString(row.color));
+            shortcuts.emplace_back(QString::fromStdString(row.shortcut));
+            ordinal_indices.emplace_back(row.ordinalIndex);
+        }
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::addLabelClass(const QString &name, const QString &color, const QString &shortcut,
+                                    const int64_t ordinal_index, int64_t &label_class_id, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        db(sqlpp::insert_into(LabelClassesTable)
+               .set(LabelClassesTable.name         = name.toUtf8().constData(),
+                    LabelClassesTable.color        = color.toUtf8().constData(),
+                    LabelClassesTable.shortcut     = shortcut.toUtf8().constData(),
+                    LabelClassesTable.ordinalIndex = ordinal_index));
+        label_class_id = static_cast<int64_t>(db.last_insert_id());
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
+                                       const QString &shortcut, const int64_t ordinal_index, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        db(sqlpp::update(LabelClassesTable)
+               .set(LabelClassesTable.name     = name.toUtf8().constData(),
+                    LabelClassesTable.color    = color.toUtf8().constData(),
+                    LabelClassesTable.shortcut = shortcut.toUtf8().constData())
+               .where(LabelClassesTable.id == label_class_id));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::deleteLabelClass(const int64_t label_class_id, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        db(sqlpp::remove_from(LabelClassesTable).where(LabelClassesTable.id == label_class_id));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
 RecentProjectsDataBase::RecentProjectsDataBase(const QString &path, QObject *parent)
     : DataBase(path, parent)
 {
