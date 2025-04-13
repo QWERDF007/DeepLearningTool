@@ -23,6 +23,8 @@ Item {
         DltText {
             text: control.name
             Layout.fillWidth: true
+            Layout.minimumWidth: 60
+            elide: Text.ElideRight
         }
         DltProgressBar {
             textVisible: visualPosition > 0

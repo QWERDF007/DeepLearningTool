@@ -98,7 +98,7 @@ public:
     Q_INVOKABLE QString getDatasetName(const int dataset_id) const;
 
     Q_INVOKABLE void addDataset(const QString &name);
-    Q_INVOKABLE void updateDataset(const QString &old_name, const QString &new_name);
+    Q_INVOKABLE void updateDataset(const int64_t dataset_id, const QString &name);
     Q_INVOKABLE void deleteDataset(const int64_t dataset_id);
 
     Q_INVOKABLE void importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
@@ -231,10 +231,9 @@ public:
 
     Q_INVOKABLE void closeProject();
 
-    Q_INVOKABLE void updateProjectBaseInfo(const QString &path, const QString &new_name,
-                                           const QString &new_description);
+    Q_INVOKABLE void updateProject(const QString &path, const QString &name, const QString &description);
 
-    void updateProjectMtime(const QString &path, const qint64 mtime);
+    void updateProject(const QString &path);
 
     Q_INVOKABLE void deleteProject(const QString &path);
 

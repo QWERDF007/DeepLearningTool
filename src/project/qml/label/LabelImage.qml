@@ -26,21 +26,20 @@ Item {
         // 基于图像原始大小和当前显示大小计算基础步长
         let baseStep = Math.min(image.sourceSize.width / labelImage.width,
                                 image.sourceSize.height / labelImage.height) * 0.1
-        
         // 当缩放比例较小或图像未充满视图时使用较小步长
-        if (image.scale < 2 || image.paintedWidth * image.scale < labelImage.width ||
-            image.paintedHeight * image.scale < labelImage.height) {
-            return Math.min(0.1, baseStep)
-        }
+        // if (image.scale < 2 || image.paintedWidth * image.scale < labelImage.width ||
+        //     image.paintedHeight * image.scale < labelImage.height) {
+        //     return Math.min(0.1, baseStep)
+        // }
         
         // 使用指数函数根据原始图像大小和当前缩放比例计算平滑步长
         // 较大图像会有较大的步长，较小图像会有较小的步长
-        return Math.min(baseStep * Math.pow(1.5, image.scale - 2), 8.0)
+        return Math.min(Math.max(baseStep * Math.pow(1.5, image.scale - 2), 0.1), 8.0)
     }
 
     property var scaledImagePos: mapFromItem(image, 0, 0)
 
-    property real from: 0.1
+    property real from: 0.25
     property real to: 32
     
         

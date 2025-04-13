@@ -61,7 +61,7 @@ public:
     bool removeRows(int row, int count, const QModelIndex &parent = QModelIndex()) override;
 
     bool addDataset(const QString &name);
-    bool updateDataset(const QString &old_name, const QString &new_name);
+    bool updateDataset(const int64_t dataset_id, const QString &name);
     bool deleteDataset(const int64_t dataset_id);
 
     QList<QString> getAllDatasetsName() const;

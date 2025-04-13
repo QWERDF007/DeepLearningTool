@@ -136,27 +136,35 @@ bool DatasetsListModel::addDataset(const QString &name)
     return true;
 }
 
-bool DatasetsListModel::updateDataset(const QString &old_name, const QString &new_name)
+bool DatasetsListModel::updateDataset(const int64_t dataset_id, const QString &name)
 {
     if (database_ == nullptr)
     {
-        spdlog::error("更新数据集失败: {}, 数据库未初始化", old_name.toUtf8().constData());
+        spdlog::error("更新数据集失败: {}, 数据库未初始化", dataset_id);
         return false;
     }
+    auto found = datasets_.find(dataset_id);
+    if (found == datasets_.end())
+    {
+        spdlog::error("更新数据集失败: {}, 数据集不存在", dataset_id);
+        return false;
+    }
+    if (found->second->name() == name)
+        return true;
     QString err_msg;
-    bool    ok = database_->updateDataset(old_name, new_name, err_msg);
+    bool    ok = database_->updateDataset(dataset_id, name, err_msg);
     if (!ok)
     {
-        spdlog::error("更新数据集失败: {}, error: {}", old_name.toUtf8().constData(), err_msg.toUtf8().constData());
+        spdlog::error("更新数据集失败: {}, error: {}", dataset_id, err_msg.toUtf8().constData());
         return false;
     }
-    spdlog::info("更新数据集: {} -> {}", old_name.toUtf8().constData(), new_name.toUtf8().constData());
+    spdlog::info("更新数据集: {} -> {}", found->second->name().toUtf8().constData(), name.toUtf8().constData());
     int idx{0};
-    for (const auto &[dataset_id, dataset] : datasets_)
+    for (const auto &[_, dataset] : datasets_)
     {
-        if (dataset && dataset->name() == old_name)
+        if (dataset && dataset->id() == dataset_id)
         {
-            dataset->setName(new_name);
+            dataset->setName(name);
             emit dataChanged(index(idx), index(idx), {NameRole});
             break;
         }
@@ -172,15 +180,21 @@ bool DatasetsListModel::deleteDataset(const int64_t dataset_id)
         spdlog::error("删除数据集失败: {}, 数据库未初始化", dataset_id);
         return false;
     }
-
+    auto found = datasets_.find(dataset_id);
+    if (found == datasets_.end())
+    {
+        spdlog::error("删除数据集失败: {}, 数据集不存在", dataset_id);
+        return false;
+    }
+    spdlog::info("删除数据集: {}", found->second->name().toUtf8().constData());
     QString err_msg;
     bool    ok = database_->deleteDataset(dataset_id, err_msg);
     if (!ok)
     {
-        spdlog::error("删除数据集失败: {}, error: {}", dataset_id, err_msg.toUtf8().constData());
+        spdlog::error("删除数据集失败: {}, error: {}", found->second->name().toUtf8().constData(),
+                      err_msg.toUtf8().constData());
         return false;
     }
-    spdlog::info("删除数据集: {}", dataset_id);
     int idx{0};
     for (const auto &[_, dataset] : datasets_)
     {

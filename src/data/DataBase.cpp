@@ -328,7 +328,7 @@ int64_t ProjectDataBase::getImagesCount(const int64_t dataset_id) const
     }
 }
 
-bool ProjectDataBase::updateDataset(const QString &old_name, const QString &new_name, QString &err_msg) const
+bool ProjectDataBase::updateDataset(const int64_t dataset_id, const QString &name, QString &err_msg) const
 {
     try
     {
@@ -339,8 +339,8 @@ bool ProjectDataBase::updateDataset(const QString &old_name, const QString &new_
         }
         auto db = pool_->get();
         db(sqlpp::update(DatasetsTable)
-               .set(DatasetsTable.name = new_name.toUtf8().constData())
-               .where(DatasetsTable.name == old_name.toUtf8().constData()));
+               .set(DatasetsTable.name = name.toUtf8().constData())
+               .where(DatasetsTable.id == dataset_id));
         return true;
     }
     catch (const std::exception &e)

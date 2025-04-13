@@ -11,30 +11,52 @@ Rectangle {
     height: 200
     color: DltColor.Primary
     property Project project: ProjectManager.currentProject
-    property int cur_dataset_id: -1
-    property string cur_dataset_name: ""
+    property var curItem
 
     DltMenu {
         id: menu
         width: 200
         DltMenuItem {
-            text: "导入数据"
+            text: "导入"
             iconSource: DltFontIcon.ImportMirrored
             onClicked: {
-                if (project) {
+                if (project && curItem) {
                     importDataDialog.datasetsModel = project.getAllDatasetsName()
-                    importDataDialog.datasetName = cur_dataset_name
+                    importDataDialog.datasetName = curItem.name
                     importDataDialog.open()
                 }
             }
         }
         DltMenuItem {
-            text: "删除数据集"
+            text: "修改"
+            iconSource: DltFontIcon.Edit
+            onClicked: {
+                if (curItem) {
+                    editor.text = ""
+                    let pos = datasetsView.mapToItem(Qt.application.activeWindow, curItem.x, curItem.y)
+                    editor.x = pos.x + curItem.width
+                    editor.y = pos.y + 60
+                    editor.open()
+                }
+            }
+        }
+        DltMenuItem {
+            text: "删除"
             iconSource: DltFontIcon.Delete
             onClicked: {
-                if (project) {
-                    project.deleteDataset(cur_dataset_id)
+                if (project && curItem) {
+                    project.deleteDataset(curItem.dataset_id)
                 }
+            }
+        }
+    }
+
+    DltEditor {
+        id: editor
+        description: "输入数据集名称"
+        onEditTextChanged: function (datasetName) {
+            if (project && curItem) {
+                project.updateDataset(curItem.dataset_id, datasetName)
             }
         }
     }
@@ -79,8 +101,9 @@ Rectangle {
                     if (item) {
                         // let tmpIndex = view.model.index(index, 0)
                         if (mouse.button === Qt.RightButton) {
-                            cur_dataset_id = item.dataset_id
-                            cur_dataset_name = item.name
+                            curItem = item
+                            // cur_dataset_id = item.dataset_id
+                            // cur_dataset_name = item.name
                             menu.popup()
                         }
                     }
