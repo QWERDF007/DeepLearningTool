@@ -298,13 +298,7 @@ QVariant ImageInstancesListModel::getSelected(const QModelIndex &index) const
 {
     if (selection_ == nullptr)
         return false;
-    const QModelIndexList &items = selection_->selectedIndexes();
-    for (const QModelIndex selected_index : items)
-    {
-        if (selected_index == index)
-            return true;
-    }
-    return false;
+    return selection_->isSelected(index);
 }
 
 int ImageInstancesListModel::getCurImageId() const

@@ -507,13 +507,12 @@ void ProjectManager::closeProject()
 {
     if (current_project_)
     {
-
-        updateProject(current_project_->path());
+        updateProject(current_project_->path()); // 更新修改时间
+        spdlog::info("关闭项目: {}", current_project_->path().toUtf8().constData());
         // current_project_->deleteLater();
         delete current_project_;
         current_project_ = nullptr;
         emit currentProjectChanged();
-        spdlog::info("关闭项目: {}", current_project_->path().toUtf8().constData());
     }
     else
     {

@@ -44,6 +44,7 @@ Item {
         clip: true
         anchors.fill: parent
         property int lastIndex: -1
+        boundsBehavior: Flickable.StopAtBounds
         cellWidth: instancesView.cellWidth + instancesView.spacing
         cellHeight: instancesView.cellHeight + instancesView.spacing
         ScrollBar.vertical: DltScrollBar {

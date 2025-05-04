@@ -79,6 +79,7 @@ Rectangle {
             clip: true
             Layout.fillHeight: true
             Layout.fillWidth: true
+            boundsBehavior: Flickable.StopAtBounds
             model: datasetsView.project ? datasetsView.project.datasets : null
             ScrollBar.vertical: DltScrollBar {}
             delegate: DatasetDelegate {
