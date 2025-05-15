@@ -63,6 +63,7 @@ class LabelClassesListModel : public QAbstractListModel
 {
     Q_OBJECT
     QML_ANONYMOUS
+    Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
 public:
     LabelClassesListModel(data::ProjectDataBase *database, QObject *parent = nullptr);
     ~LabelClassesListModel();
@@ -74,6 +75,7 @@ public:
         ColorRole,
         ShortcutRole,
         OrdinalIndexRole,
+        SelectedRole,
     };
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -90,6 +92,11 @@ public:
     int     getLabelClassId(const QString &name) const;
     QString getLabelClassName(const int label_class_id) const;
 
+    QItemSelectionModel *selection() const
+    {
+        return selection_;
+    }
+
 private:
     void init();
 
@@ -98,10 +105,16 @@ private:
     QVariant getLabelClassName(const QModelIndex &index) const;
     QVariant getLabelClassColor(const QModelIndex &index) const;
     QVariant getLabelClassShortcut(const QModelIndex &index) const;
+    QVariant getLabelClassOrdinalIndex(const QModelIndex &index) const;
+    QVariant getLabelClassSelected(const QModelIndex &index) const;
+
+    void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
 
     data::ProjectDataBase *database_{nullptr};
 
     std::map<int64_t, LabelClass *> label_classes_;
+
+    QItemSelectionModel *selection_{nullptr};
 };
 
 } // namespace dltool::project

@@ -12,7 +12,7 @@ Rectangle {
     height: 200
     color: DltColor.Primary
     property Project project: ProjectManager.currentProject
-
+    property ItemSelectionModel selection: project ? project.labelClasses.selection : null
     
     ColumnLayout {
         anchors.fill: parent
@@ -26,27 +26,26 @@ Rectangle {
             id: view
             clip: true
             spacing: 5
+            boundsBehavior: Flickable.StopAtBounds
             Layout.fillHeight: true
             Layout.fillWidth: true
             model: labelClassesView.project ? labelClassesView.project.labelClasses : null
-            delegate:  Rectangle {
-                width: parent.width
+            delegate:  LabelClassDelegate {
+                width: view.width
                 height: 32
-                color: Qt.lighter(DltColor.Primary, 1.2)
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 5
-                    anchors.rightMargin: 5
-                    Rectangle {
-                        Layout.preferredWidth: 32
-                        Layout.fillHeight: true
-                        radius: 3
-                        color: model.color
-                    }
-                    DltText {
-                        text: model.name
-                        Layout.fillWidth: true
-                    }
+                color: model.selected ? DltColor.Highlight : Qt.lighter(DltColor.Primary, 1.2)
+                className: model.name
+                classColor: model.color
+                onClicked: function() {
+                    console.log("clicked")
+                    selection.select(view.model.index(index, 0), ItemSelectionModel.ClearAndSelect)
+                }
+                onEditClicked: function() {
+                    console.log("editClicked")
+                }
+                onDeleteClicked: function () {
+                    console.log("deleteClicked", model.label_class_id)
+                    project.deleteLabelClass(model.label_class_id)
                 }
             }
         }

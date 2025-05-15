@@ -56,6 +56,7 @@ bool LabelClass::setOrdinalIndex(const int64_t ordinal_index)
 LabelClassesListModel::LabelClassesListModel(data::ProjectDataBase *database, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
+    , selection_(new QItemSelectionModel(this))
 {
     init();
 }
@@ -64,23 +65,29 @@ LabelClassesListModel::~LabelClassesListModel() {}
 
 void LabelClassesListModel::init()
 {
-    if (database_)
+    connect(selection_, &QItemSelectionModel::selectionChanged, this, &LabelClassesListModel::updateSelection);
+    if (database_ == nullptr)
     {
-        QString              err_msg;
-        std::vector<int64_t> label_class_ids, ordinal_indices;
-        std::vector<QString> names, colors, shortcuts;
-        if (database_->getAllLabelClasses(label_class_ids, names, colors, shortcuts, ordinal_indices, err_msg))
+        return;
+    }
+    QString              err_msg;
+    std::vector<int64_t> label_class_ids, ordinal_indices;
+    std::vector<QString> names, colors, shortcuts;
+    if (database_->getAllLabelClasses(label_class_ids, names, colors, shortcuts, ordinal_indices, err_msg))
+    {
+        for (size_t i = 0; i < label_class_ids.size(); ++i)
         {
-            for (size_t i = 0; i < label_class_ids.size(); ++i)
-            {
-                label_classes_.emplace(label_class_ids[i], new LabelClass(label_class_ids[i], names[i], colors[i],
-                                                                          shortcuts[i], ordinal_indices[i], this));
-            }
+            label_classes_.emplace(label_class_ids[i], new LabelClass(label_class_ids[i], names[i], colors[i],
+                                                                      shortcuts[i], ordinal_indices[i], this));
         }
-        else
+        if (selection_ && label_class_ids.size() > 0)
         {
-            spdlog::error("查询所有标签类失败, error: {}", err_msg.toUtf8().constData());
+            selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
         }
+    }
+    else
+    {
+        spdlog::error("查询所有标签类失败, error: {}", err_msg.toUtf8().constData());
     }
 }
 
@@ -105,6 +112,8 @@ QVariant LabelClassesListModel::data(const QModelIndex &index, int role) const
         return getLabelClassColor(index);
     case ShortcutRole:
         return getLabelClassShortcut(index);
+    case SelectedRole:
+        return getLabelClassSelected(index);
     default:
         return QVariant();
     }
@@ -117,7 +126,8 @@ QHash<int, QByteArray> LabelClassesListModel::roleNames() const
         {        NameRole,           "name"},
         {       ColorRole,          "color"},
         {    ShortcutRole,       "shortcut"},
-        {OrdinalIndexRole,  "ordinal_index"}
+        {OrdinalIndexRole,  "ordinal_index"},
+        {    SelectedRole,       "selected"}
     };
 }
 
@@ -267,6 +277,45 @@ QVariant LabelClassesListModel::getLabelClassShortcut(const QModelIndex &index) 
     if (id != -1)
         return label_classes_.at(id)->shortcut();
     return QVariant();
+}
+
+QVariant LabelClassesListModel::getLabelClassSelected(const QModelIndex &index) const
+{
+    if (selection_ == nullptr)
+        return false;
+    return selection_->isSelected(index);
+}
+
+void LabelClassesListModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)
+{
+    const QModelIndexList &dselected_items = deselected.indexes();
+    int                    top{-1};
+    int                    bottom{-1};
+    for (const QModelIndex &index : dselected_items)
+    {
+        const int row = index.row();
+        if (top == -1)
+            top = row;
+        else
+            top = std::min(top, row);
+        bottom = std::max(bottom, row);
+    }
+    emit dataChanged(index(top), index(bottom), {SelectedRole});
+
+    top    = -1;
+    bottom = -1;
+
+    const QModelIndexList &selected_items = selected.indexes();
+    for (const QModelIndex &index : selected_items)
+    {
+        const int row = index.row();
+        if (top == -1)
+            top = row;
+        else
+            top = std::min(top, row);
+        bottom = std::max(bottom, row);
+    }
+    emit dataChanged(index(top), index(bottom), {SelectedRole});
 }
 
 } // namespace dltool::project
