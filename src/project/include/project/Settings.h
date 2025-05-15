@@ -103,7 +103,7 @@ private:
     ~Settings();
 
     double image_cell_scale_{1.0};
-    double image_cell_scale_from_{0.25};
+    double image_cell_scale_from_{0.5};
     double image_cell_scale_to_{4.0};
     double image_cell_scale_step_size_{0.25};
 
