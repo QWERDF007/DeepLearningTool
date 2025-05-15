@@ -106,6 +106,6 @@ Button {
             return hovered
         }
         text:control.text
-        delay: 1000
+        delay: 500
     }
 }
