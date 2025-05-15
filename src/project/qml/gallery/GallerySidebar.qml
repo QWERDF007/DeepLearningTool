@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Templates as T
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -71,13 +72,15 @@ Rectangle { // 侧边栏
         DltSlider {
             id: slider
             anchors.centerIn: parent
+            snapMode: Slider.SnapAlways
             property var valueUpdateCallback: null
-            onValueChanged: {
+            onMoved: {
                 if (valueUpdateCallback) {
                     valueUpdateCallback(value)
                 }
             }
         }
+        T.Overlay.modal: null // 不显示遮罩
     }
 
     function openPopup(x, y) {
