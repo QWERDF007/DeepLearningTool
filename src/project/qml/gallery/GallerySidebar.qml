@@ -66,6 +66,7 @@ Rectangle { // 侧边栏
     }
     DltPopup {
         id: popup
+        bgColor: DltColor.Primary
         closePolicy: Popup.CloseOnPressOutside
         width: 200
         height: 32

@@ -10,6 +10,7 @@ Popup {
     property alias bg: bg
     property real maskOpacity: 0.5
     property bool maskVisible: true
+    property color bgColor: DltColor.Background
     padding: 0
     modal:true
     parent: Overlay.overlay
@@ -36,7 +37,7 @@ Popup {
     background: Rectangle {
         id: bg
         radius: [5,5,5,5]
-        color: DltColor.Background
+        color: control.bgColor
         DltShadow {
             radius: 5
         }
