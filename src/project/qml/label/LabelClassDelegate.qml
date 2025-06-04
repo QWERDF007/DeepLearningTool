@@ -10,6 +10,7 @@ Rectangle {
     height: 32
     color: Qt.lighter(DltColor.Primary, 1.2)
     property string className: ""
+    property string classShortcut: ""
     property color classColor: "black"
     property int classId
 
@@ -33,6 +34,11 @@ Rectangle {
             Layout.preferredWidth: height
             radius: 3
             color: control.classColor
+            DltText {
+                text: control.classShortcut
+                color: "black"
+                anchors.centerIn: parent
+            }
         }
         DltText {
             text: control.className

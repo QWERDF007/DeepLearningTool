@@ -13,11 +13,13 @@ DltPopup {
     height: 280
     maskOpacity: 0.2
 
-    property alias name: nameField.text
-    property alias color: colorField.text
-    property alias shortcut: shortcutField.text
+    property int classId: -1
+    property alias className: nameField.text
+    property alias classColor: colorField.text
+    property alias classShortcut: shortcutField.text
+    property int ordinalIndex: -1
 
-    signal editFinished(string name, string color, string shortcut)
+    signal editFinished(int classId, string className, string classColor, string classShortcut, int ordinalIndex)
 
     ColumnLayout {
         anchors.fill: parent
@@ -99,7 +101,7 @@ DltPopup {
             DltButton {
                 text: "确认"
                 onClicked: {
-                    editFinished(nameField.text, colorField.text, shortcutField.text)
+                    editFinished(classId, nameField.text, colorField.text, shortcutField.text, ordinalIndex)
                     control.close()
                 }
             }

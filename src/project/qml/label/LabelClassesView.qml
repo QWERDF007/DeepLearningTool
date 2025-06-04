@@ -13,6 +13,15 @@ Rectangle {
     color: DltColor.Primary
     property Project project: ProjectManager.currentProject
     property ItemSelectionModel selection: project ? project.labelClasses.selection : null
+
+    LabelClassEditor {
+        id: editor
+        onEditFinished: function (classId, className, classColor, classShortcut, ordinalIndex) {
+            if (project) {
+                project.updateLabelClass(classId, className, classColor, classShortcut, ordinalIndex)
+            }
+        }
+    }
     
     ColumnLayout {
         anchors.fill: parent
@@ -31,20 +40,28 @@ Rectangle {
             Layout.fillWidth: true
             model: labelClassesView.project ? labelClassesView.project.labelClasses : null
             delegate:  LabelClassDelegate {
+                id: delegateItem
                 width: view.width
                 height: 32
                 color: model.selected ? DltColor.Highlight : Qt.lighter(DltColor.Primary, 1.2)
                 className: model.name
                 classColor: model.color
+                classShortcut: model.shortcut
                 onClicked: function() {
-                    console.log("clicked")
                     selection.select(view.model.index(index, 0), ItemSelectionModel.ClearAndSelect)
                 }
                 onEditClicked: function() {
-                    console.log("editClicked")
+                    let pos = view.mapToItem(Qt.application.activeWindow, delegateItem.x, delegateItem.y)
+                    editor.x = pos.x + delegateItem.width
+                    editor.y = pos.y + 10
+                    editor.classId = model.label_class_id
+                    editor.className = model.name
+                    editor.classColor = model.color
+                    editor.classShortcut = model.shortcut
+                    // editor.ordinalIndex = model.ordinal_index
+                    editor.open()
                 }
                 onDeleteClicked: function () {
-                    console.log("deleteClicked", model.label_class_id)
                     project.deleteLabelClass(model.label_class_id)
                 }
             }

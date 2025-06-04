@@ -31,9 +31,9 @@ Item {
     }
     LabelClassEditor {
         id: editor
-        onEditFinished: function (name, color, shortcut) {
+        onEditFinished: function (classId, className, classColor, classShortcut, ordinalIndex) {
             if (project) {
-                project.addLabelClass(name, color, shortcut)
+                project.addLabelClass(className, classColor, classShortcut)
             }
         }
     }
