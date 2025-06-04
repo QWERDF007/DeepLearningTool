@@ -8,6 +8,7 @@
 #include "data/ddl/LabelsTable.h"
 #include "data/ddl/ProjectTable.h"
 #include "data/ddl/RecentProjectsTable.h"
+#include "data/ddl/TagsTable.h"
 
 #include <sqlpp11/sqlpp11.h>
 
@@ -23,6 +24,7 @@ const auto ImagesTable          = Images{};
 const auto DatasetsTable        = Datasets{};
 const auto LabelClassesTable    = LabelClasses{};
 const auto LabelsTable          = Labels{};
+const auto TagsTable            = Tags{};
 
 DataBase::DataBase(const QString &path, QObject *parent)
     : QObject(parent)
@@ -88,6 +90,7 @@ bool ProjectDataBase::initProject(const QString &name, const int method, const Q
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateImages));
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateLabelClasses));
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateLabels));
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateTags));
         return true;
     }
     catch (const std::exception &e)
