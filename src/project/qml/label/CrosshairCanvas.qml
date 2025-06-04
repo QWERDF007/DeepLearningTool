@@ -3,7 +3,6 @@ import QtQuick.Controls
 
 Canvas {
         id: crosshairCanvas
-        visible: mouseArea.containsMouse && labelImage.image.status === Image.Ready
         anchors.fill: parent
         z: 100
         property point mousePos

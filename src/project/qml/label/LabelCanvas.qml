@@ -48,6 +48,7 @@ Item {
     }
 
     CrosshairCanvas {
+        visible: mouseArea.containsMouse && labelImage.image.status === Image.Ready
         mousePos: Qt.point(mouseArea.mouseX, mouseArea.mouseY)
     }
 
