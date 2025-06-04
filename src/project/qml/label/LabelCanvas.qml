@@ -47,21 +47,67 @@ Item {
         }
     }
 
-    MouseArea {
+    Canvas {
+        id: crosshairCanvas
+        visible: mouseArea.containsMouse
         anchors.fill: parent
+        z: 100
+        property point mousePos: Qt.point(-1, -1)
+
+        onPaint: {
+            var ctx = crosshairCanvas.getContext("2d")
+            ctx.clearRect(0, 0, width, height)
+            if (mousePos.x < 0 || mousePos.y < 0)
+                return
+
+            ctx.save()
+            ctx.setLineDash([6, 6])
+            ctx.strokeStyle = "#00FFFF"
+            ctx.lineWidth = 1
+
+            // 画竖线
+            ctx.beginPath()
+            ctx.moveTo(mousePos.x, 0)
+            ctx.lineTo(mousePos.x, height)
+            ctx.stroke()
+
+            // 画横线
+            ctx.beginPath()
+            ctx.moveTo(0, mousePos.y)
+            ctx.lineTo(width, mousePos.y)
+            ctx.stroke()
+
+            ctx.restore()
+        }
+    }
+
+
+    // 在MouseArea的onPositionChanged中调用
+
+    MouseArea {
+        id: mouseArea
+        anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        hoverEnabled: true
         property point startPoint
         property bool isDrawing: false
 
         onPressed: function(event) {
-            // 获取相对于LabelImage的坐标
-            var pos = mapToItem(labelImage.image, event.x, event.y)
-            startPoint = Qt.point(pos.x, pos.y)
-            isDrawing = true
-            drawItemLoader.item.visible = true
-            drawItemLoader.item.x = startPoint.x
-            drawItemLoader.item.y = startPoint.y
-            drawItemLoader.item.width = 0
-            drawItemLoader.item.height = 0
+            if (event.button === Qt.LeftButton) {
+                // 获取相对于LabelImage的坐标
+                var pos = mapToItem(labelImage.image, event.x, event.y)
+                startPoint = Qt.point(pos.x, pos.y)
+                isDrawing = true
+                drawItemLoader.item.visible = true
+                drawItemLoader.item.x = startPoint.x
+                drawItemLoader.item.y = startPoint.y
+                drawItemLoader.item.width = 0
+                drawItemLoader.item.height = 0    
+            } else if (event.button === Qt.RightButton) {
+                isDrawing = false
+            } else {
+                isDrawing = false
+            }
         }
 
         onReleased: function(event) {
@@ -108,6 +154,8 @@ Item {
                 drawItemLoader.item.width = width 
                 drawItemLoader.item.height = height
             }
+            crosshairCanvas.mousePos = Qt.point(event.x, event.y)
+            crosshairCanvas.requestPaint()
         }
     }
 }
