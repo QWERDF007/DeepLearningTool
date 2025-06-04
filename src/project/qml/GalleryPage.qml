@@ -3,7 +3,9 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+
 import "gallery"
+import "component"
 
 Rectangle {
     width: 1080
@@ -33,12 +35,12 @@ Rectangle {
             }
             ImageInstancesSelection {
                 SplitView.fillWidth: true
-                SplitView.minimumHeight: 120
-                SplitView.maximumHeight: 160
-                SplitView.preferredHeight: 120
+                SplitView.minimumHeight: 100
+                SplitView.maximumHeight: 100
+                SplitView.preferredHeight: 100
                 color: DltColor.Primary
             }
-            Rectangle { // 图像标签
+            ImageTagView { // 图像标签
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: 240

@@ -6,6 +6,7 @@ import dltool.ui
 
 import "label"
 import "gallery"
+import "component"
 
 Rectangle {
     width: 1080
@@ -31,8 +32,8 @@ Rectangle {
 
             LabelImageFlip { // 图像切换
                 SplitView.fillWidth: true
-                SplitView.minimumHeight: 140
-                SplitView.preferredHeight: 140
+                SplitView.minimumHeight: 120
+                SplitView.preferredHeight: 120
                 color: DltColor.Primary
             }
 
@@ -43,9 +44,10 @@ Rectangle {
                 color: DltColor.Primary
             }
 
-            Rectangle { // 图像切换
+            ImageTagView { // 图像切换
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
+                SplitView.preferredHeight: 240
                 color: DltColor.Primary
             }
         }
