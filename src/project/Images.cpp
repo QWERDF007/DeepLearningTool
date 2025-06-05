@@ -1,6 +1,5 @@
-#include "project/Image.h"
+#include "project/Images.h"
 
-#include "Image.h"
 #include "data/DataBase.h"
 
 #include <data/DataFormat.h>

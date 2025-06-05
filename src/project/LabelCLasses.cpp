@@ -1,6 +1,5 @@
-#include "project/LabelClass.h"
+#include "project/LabelClasses.h"
 
-#include "LabelClass.h"
 #include "data/DataBase.h"
 
 #include <spdlog/spdlog.h>

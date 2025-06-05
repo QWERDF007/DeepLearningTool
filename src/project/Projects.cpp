@@ -1,11 +1,10 @@
-#include "project/Project.h"
+#include "project/Projects.h"
 
-#include "Project.h"
 #include "data/DataBase.h"
 #include "data/DataFormat.h"
-#include "project/Dataset.h"
-#include "project/Image.h"
-#include "project/LabelClass.h"
+#include "project/Datasets.h"
+#include "project/Images.h"
+#include "project/LabelClasses.h"
 
 #include <spdlog/spdlog.h>
 
