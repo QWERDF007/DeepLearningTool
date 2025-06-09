@@ -105,13 +105,13 @@ public:
 
     static bool getProjectInfo(const QString &path, QVariantMap &project_info, QString &err_msg);
 
-    std::vector<std::pair<int, QString>> getAllDatasets(QString &err_msg) const;
+    bool getAllDatasets(std::vector<int64_t> &dataset_ids, std::vector<QString> &names, QString &err_msg) const;
 
     bool addDataset(const QString &name, int64_t &dataset_id, QString &err_msg) const;
     bool updateDataset(const int64_t dataset_id, const QString &name, QString &err_msg) const;
     bool deleteDataset(const int64_t dataset_id, QString &err_msg) const;
 
-    std::optional<int64_t> getDatasetId(const QString &name, QString &err_msg) const;
+    // std::optional<int64_t> getDatasetId(const QString &name, QString &err_msg) const;
 
     int64_t getImagesCount(const int64_t dataset_id) const;
 
@@ -121,8 +121,10 @@ public:
     bool getImages(const std::vector<int64_t> &image_ids, std::vector<std::pair<int64_t, QString>> &images,
                    QString &err_msg) const;
     bool deleteImages(const std::vector<int64_t> &image_ids, QString &err_msg) const;
-    std::vector<std::pair<int64_t, QString>> getImages(const int64_t dataset_id, QString &err_msg) const;
-    std::map<int64_t, std::vector<std::pair<int64_t, QString>>> getAllImages(QString &err_msg) const;
+    bool getImages(const int64_t dataset_id, std::vector<int64_t> &image_ids, std::vector<QString> &paths,
+                   QString &err_msg) const;
+    bool getAllImages(std::vector<int64_t> &dataset_ids, std::vector<int64_t> &image_ids, std::vector<QString> &paths,
+                      QString &err_msg) const;
 
     bool getAllLabelClasses(std::vector<int64_t> &label_class_ids, std::vector<QString> &names,
                             std::vector<QString> &colors, std::vector<QString> &shortcuts,
@@ -133,6 +135,11 @@ public:
     bool updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
                           const QString &shortcut, const int64_t ordinal_index, QString &err_msg) const;
     bool deleteLabelClass(const int64_t label_class_id, QString &err_msg) const;
+
+    bool getAllTags(std::vector<int64_t> &tag_ids, std::vector<QString> &names, QString &err_msg) const;
+    bool addTag(const QString &name, int64_t &tag_id, QString &err_msg) const;
+    bool updateTag(const int64_t tag_id, const QString &name, QString &err_msg) const;
+    bool deleteTag(const int64_t tag_id, QString &err_msg) const;
 };
 
 class DATA_API RecentProjectsDataBase : public DataBase

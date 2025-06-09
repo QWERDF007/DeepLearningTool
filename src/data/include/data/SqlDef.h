@@ -37,7 +37,7 @@ public:
          "CREATE TABLE labels (id INTEGER NOT NULL PRIMARY KEY, image_id INTEGER NOT NULL REFERENCES images(id), "
          "label_class_id INTEGER NOT NULL REFERENCES label_classes, region_type INTEGER NOT NULL, region BLOB, ordinal_index INTEGER, extra_data BLOB)"},
         {CreateTags,
-         "CREATE TABLE tags (id INTEGER NOT NULL PRIMARY KEY, name TEXT, shortcut TEXT, extra_data BLOB)"},
+         "CREATE TABLE tags (id INTEGER NOT NULL PRIMARY KEY, name TEXT, extra_data BLOB)"},
     };
 
     // clang-format on

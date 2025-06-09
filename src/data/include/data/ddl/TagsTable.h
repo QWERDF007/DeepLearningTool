@@ -44,22 +44,6 @@ namespace data
       };
       using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::can_be_null>;
     };
-    struct Shortcut
-    {
-      struct _alias_t
-      {
-        static constexpr const char _literal[] =  "shortcut";
-        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
-        template<typename T>
-        struct _member_t
-          {
-            T shortcut;
-            T& operator()() { return shortcut; }
-            const T& operator()() const { return shortcut; }
-          };
-      };
-      using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::can_be_null>;
-    };
     struct ExtraData
     {
       struct _alias_t
@@ -81,7 +65,6 @@ namespace data
   struct Tags: sqlpp::table_t<Tags,
                Tags_::Id,
                Tags_::Name,
-               Tags_::Shortcut,
                Tags_::ExtraData>
   {
     struct _alias_t

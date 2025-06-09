@@ -243,28 +243,29 @@ bool ProjectDataBase::getProjectInfo(const QString &path, QVariantMap &project_i
     }
 }
 
-std::vector<std::pair<int, QString>> ProjectDataBase::getAllDatasets(QString &err_msg) const
+bool ProjectDataBase::getAllDatasets(std::vector<int64_t> &dataset_ids, std::vector<QString> &names,
+                                     QString &err_msg) const
 {
     try
     {
         if (pool_ == nullptr)
         {
             err_msg = QString("打开数据库失败, %1").arg(path_);
-            return {};
+            return false;
         }
         auto db   = pool_->get();
         auto data = db(sqlpp::select(DatasetsTable.id, DatasetsTable.name).from(DatasetsTable).unconditionally());
-        std::vector<std::pair<int, QString>> datasets;
         for (const auto &row : data)
         {
-            datasets.emplace_back(row.id, QString::fromStdString(row.name));
+            dataset_ids.emplace_back(row.id);
+            names.emplace_back(QString::fromStdString(row.name));
         }
-        return datasets;
+        return true;
     }
     catch (const std::exception &e)
     {
         err_msg = e.what();
-        return {};
+        return false;
     }
 }
 
@@ -289,32 +290,32 @@ bool ProjectDataBase::addDataset(const QString &name, int64_t &dataset_id, QStri
     }
 }
 
-std::optional<int64_t> ProjectDataBase::getDatasetId(const QString &name, QString &err_msg) const
-{
-    try
-    {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
-            return std::nullopt;
-        }
-        auto db   = pool_->get();
-        auto data = db(sqlpp::select(DatasetsTable.id)
-                           .from(DatasetsTable)
-                           .where(DatasetsTable.name == name.toUtf8().toStdString()));
-        if (!data.empty())
-        {
-            const auto &row = data.front();
-            return row.id;
-        }
-        return std::nullopt;
-    }
-    catch (const std::exception &e)
-    {
-        err_msg = e.what();
-        return std::nullopt;
-    }
-}
+// std::optional<int64_t> ProjectDataBase::getDatasetId(const QString &name, QString &err_msg) const
+// {
+//     try
+//     {
+//         if (pool_ == nullptr)
+//         {
+//             err_msg = QString("打开数据库失败, %1").arg(path_);
+//             return std::nullopt;
+//         }
+//         auto db   = pool_->get();
+//         auto data = db(sqlpp::select(DatasetsTable.id)
+//                            .from(DatasetsTable)
+//                            .where(DatasetsTable.name == name.toUtf8().toStdString()));
+//         if (!data.empty())
+//         {
+//             const auto &row = data.front();
+//             return row.id;
+//         }
+//         return std::nullopt;
+//     }
+//     catch (const std::exception &e)
+//     {
+//         err_msg = e.what();
+//         return std::nullopt;
+//     }
+// }
 
 int64_t ProjectDataBase::getImagesCount(const int64_t dataset_id) const
 {
@@ -498,59 +499,60 @@ bool ProjectDataBase::deleteImages(const std::vector<int64_t> &image_ids, QStrin
     }
 }
 
-std::vector<std::pair<int64_t, QString>> ProjectDataBase::getImages(const int64_t dataset_id, QString &err_msg) const
+bool ProjectDataBase::getImages(const int64_t dataset_id, std::vector<int64_t> &image_ids, std::vector<QString> &paths,
+                                QString &err_msg) const
 {
     try
     {
         if (pool_ == nullptr)
         {
             err_msg = QString("打开数据库失败, %1").arg(path_);
-            return {};
+            return false;
         }
         auto db   = pool_->get();
         auto data = db(sqlpp::select(ImagesTable.id, ImagesTable.path)
                            .from(ImagesTable)
                            .where(ImagesTable.datasetId == dataset_id));
 
-        std::vector<std::pair<int64_t, QString>> images;
         for (const auto &row : data)
         {
-            images.emplace_back(std::make_pair(row.id, QString::fromStdString(row.path)));
+            image_ids.emplace_back(row.id);
+            paths.emplace_back(QString::fromStdString(row.path));
         }
-        return images;
+        return true;
     }
     catch (const std::exception &e)
     {
         err_msg = e.what();
-        return {};
+        return false;
     }
 }
 
-std::map<int64_t, std::vector<std::pair<int64_t, QString>>> ProjectDataBase::getAllImages(QString &err_msg) const
+bool ProjectDataBase::getAllImages(std::vector<int64_t> &dataset_ids, std::vector<int64_t> &image_ids,
+                                   std::vector<QString> &paths, QString &err_msg) const
 {
     try
     {
         if (pool_ == nullptr)
         {
             err_msg = QString("打开数据库失败, %1").arg(path_);
-            return {};
+            return false;
         }
         auto db   = pool_->get();
         auto data = db(
             sqlpp::select(ImagesTable.id, ImagesTable.datasetId, ImagesTable.path).from(ImagesTable).unconditionally());
-        std::map<int64_t, std::vector<std::pair<int64_t, QString>>> images;
         for (const auto &row : data)
         {
-            if (images.find(row.datasetId) == images.end())
-                images[row.datasetId] = std::vector<std::pair<int64_t, QString>>();
-            images[row.datasetId].emplace_back(std::make_pair(row.id, QString::fromStdString(row.path)));
+            dataset_ids.emplace_back(row.datasetId);
+            image_ids.emplace_back(row.id);
+            paths.emplace_back(QString::fromStdString(row.path));
         }
-        return images;
+        return true;
     }
     catch (const std::exception &e)
     {
         err_msg = e.what();
-        return {};
+        return false;
     }
 }
 
@@ -649,6 +651,92 @@ bool ProjectDataBase::deleteLabelClass(const int64_t label_class_id, QString &er
         }
         auto db = pool_->get();
         db(sqlpp::remove_from(LabelClassesTable).where(LabelClassesTable.id == label_class_id));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::getAllTags(std::vector<int64_t> &tag_ids, std::vector<QString> &names, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db   = pool_->get();
+        auto data = db(sqlpp::select(TagsTable.id, TagsTable.name).from(TagsTable).unconditionally());
+        for (const auto &row : data)
+        {
+            tag_ids.emplace_back(row.id);
+            names.emplace_back(QString::fromStdString(row.name));
+        }
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::addTag(const QString &name, int64_t &tag_id, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        db(sqlpp::insert_into(TagsTable).set(TagsTable.name = name.toUtf8().constData()));
+        tag_id = static_cast<int64_t>(db.last_insert_id());
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::updateTag(const int64_t tag_id, const QString &name, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        db(sqlpp::update(TagsTable).set(TagsTable.name = name.toUtf8().constData()).where(TagsTable.id == tag_id));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::deleteTag(const int64_t tag_id, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        db(sqlpp::remove_from(TagsTable).where(TagsTable.id == tag_id));
         return true;
     }
     catch (const std::exception &e)
