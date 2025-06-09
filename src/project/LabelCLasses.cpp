@@ -189,7 +189,7 @@ bool LabelClassesListModel::updateLabelClass(const int64_t label_class_id, const
         }
         ++idx;
     }
-    return false;
+    return true;
 }
 
 bool LabelClassesListModel::deleteLabelClass(const int64_t label_class_id)

@@ -13,15 +13,28 @@ namespace dltool::project {
 class Dataset : public QObject
 {
 public:
-    Dataset(const int64_t id, const QString &name, QObject *parent = nullptr);
-    ~Dataset();
+    Dataset(const int64_t id, const QString &name, QObject *parent = nullptr)
+        : QObject(parent)
+        , id_(id)
+        , name_(name)
+
+    {
+    }
+
+    ~Dataset() {}
 
     QString name() const
     {
         return name_;
     }
 
-    bool setName(const QString &name);
+    bool setName(const QString &name)
+    {
+        if (name_ == name)
+            return false;
+        name_ = name;
+        return true;
+    }
 
     int64_t id() const
     {

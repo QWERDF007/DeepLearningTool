@@ -17,8 +17,8 @@ Item {
         }
     }
 
-    property int cellWidth: 180 * Settings.imageCellScale + 10
-    property int cellHeight: 240 * Settings.imageCellScale + 10
+    property int cellWidth: 180 * Settings.imageCellScale
+    property int cellHeight: 240 * Settings.imageCellScale
     property int spacing: 10
 
     property Project project: ProjectManager.currentProject
@@ -61,6 +61,7 @@ Item {
             selected: model.selected ? model.selected : false
         }
 
+        Keys.enabled: view.visible // 防止切换页面后还能用按键触发
         Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Escape) {
                 selection.clear()

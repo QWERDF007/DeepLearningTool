@@ -17,6 +17,7 @@ namespace dltool::project {
 class DatasetsListModel;
 class ImageInstancesListModel;
 class LabelClassesListModel;
+class ImageTagsListModel;
 
 class Project : public QObject
 {
@@ -31,6 +32,7 @@ class Project : public QObject
     Q_PROPERTY(DatasetsListModel *datasets READ datasets NOTIFY datasetsChanged FINAL)
     Q_PROPERTY(ImageInstancesListModel *imageInstances READ imageInstances NOTIFY imageInstancesChanged FINAL)
     Q_PROPERTY(LabelClassesListModel *labelClasses READ labelClasses NOTIFY labelClassesChanged FINAL)
+    Q_PROPERTY(ImageTagsListModel *imageTags READ imageTags NOTIFY imageTagsChanged FINAL)
 public:
     Project(const QString &name, const int method, const QString &path, const QString &description,
             const QString image_base_path, const qint64 ctime, const qint64 mtime, QObject *parent = nullptr);
@@ -92,6 +94,11 @@ public:
         return label_classes_;
     }
 
+    ImageTagsListModel *imageTags() const
+    {
+        return image_tags_;
+    }
+
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
 
     Q_INVOKABLE int     getDatasetId(const QString &dataset_name) const;
@@ -111,6 +118,8 @@ public:
                                       const QString &shortcut, const int64_t ordinal_index);
     Q_INVOKABLE void deleteLabelClass(const int64_t label_class_id);
 
+    Q_INVOKABLE void addTag(const QString &name);
+
 private:
     void init();
 
@@ -127,6 +136,7 @@ private:
     DatasetsListModel       *datasets_{nullptr};
     ImageInstancesListModel *image_instances_{nullptr};
     LabelClassesListModel   *label_classes_{nullptr};
+    ImageTagsListModel      *image_tags_{nullptr};
 
 signals:
     void descriptionChanged();
@@ -134,6 +144,7 @@ signals:
     void datasetsChanged();
     void imageInstancesChanged();
     void labelClassesChanged();
+    void imageTagsChanged();
 };
 
 class RectentProjects : public QAbstractListModel

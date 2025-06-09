@@ -31,6 +31,24 @@ ImageInstancesListModel::ImageInstancesListModel(data::ProjectDataBase *database
 
 ImageInstancesListModel::~ImageInstancesListModel() {}
 
+void ImageInstancesListModel::init()
+{
+    connect(selection_, &QItemSelectionModel::selectionChanged, this, &ImageInstancesListModel::updateSelection);
+    connect(selection_, &QItemSelectionModel::currentChanged, this, &ImageInstancesListModel::onCurrentChanged);
+
+    QString              err_msg;
+    std::vector<int64_t> dataset_ids;
+    std::vector<int64_t> image_ids;
+    std::vector<QString> paths;
+    database_->getAllImages(dataset_ids, image_ids, paths, err_msg);
+    for (size_t i = 0; i < image_ids.size(); ++i)
+    {
+        image_instances_.emplace(image_ids[i], new ImageInstance(dataset_ids[i], image_ids[i], paths[i], this));
+    }
+
+    resetModel();
+}
+
 int ImageInstancesListModel::rowCount(const QModelIndex &parent) const
 {
     if (parent.isValid())
@@ -259,23 +277,6 @@ QString ImageInstancesListModel::curImagePath() const
     if (index.row() < 0 || index.row() >= rowCount())
         return QString();
     return getImagePath(index).toString();
-}
-
-void ImageInstancesListModel::init()
-{
-    connect(selection_, &QItemSelectionModel::selectionChanged, this, &ImageInstancesListModel::updateSelection);
-    connect(selection_, &QItemSelectionModel::currentChanged, this, &ImageInstancesListModel::onCurrentChanged);
-
-    QString err_msg;
-    auto    all_instances = database_->getAllImages(err_msg);
-    for (const auto &[dataset_id, instances] : all_instances)
-    {
-        for (const auto &[image_id, path] : instances)
-        {
-            image_instances_.emplace(image_id, new ImageInstance(dataset_id, image_id, path, this));
-        }
-    }
-    resetModel();
 }
 
 QVariant ImageInstancesListModel::getImageId(const QModelIndex &index) const

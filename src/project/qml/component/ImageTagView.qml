@@ -3,33 +3,37 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import dltool.project
 
 Rectangle {
     id: imageTagView
     color: DltColor.Primary
+    property Project project: ProjectManager.currentProject
+    property int cellWidth: 80
+    property int cellHeight: 30
+    property int spacing: 10
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 5
         ImageTagHeader {
             Layout.fillWidth: true
             height: 32
-            // project: imageTagView.project
+            project: imageTagView.project
         }
 
         GridView {
+            id: view
             Layout.fillHeight: true
             Layout.fillWidth: true
-            cellWidth: 90
-            cellHeight: 40
-            model: 10
-            delegate: Item {
-                width: 80
-                height: 30
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: 5
-                    color: Qt.lighter(DltColor.Primary, 1.2)
-                }
+            cellWidth: imageTagView.cellWidth + imageTagView.spacing
+            cellHeight: imageTagView.cellHeight + imageTagView.spacing
+            model: imageTagView.project ? imageTagView.project.imageTags : null
+            delegate: ImageTagDelegate {
+                width: imageTagView.cellWidth
+                height: imageTagView.cellHeight
+                tagId: model.tag_id
+                tagName: model.name
+                tagStats: model.stats
             }
         }
     }

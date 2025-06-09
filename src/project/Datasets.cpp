@@ -6,23 +6,6 @@
 
 namespace dltool::project {
 
-Dataset::Dataset(const int64_t id, const QString &name, QObject *parent)
-    : QObject(parent)
-    , id_(id)
-    , name_(name)
-{
-}
-
-Dataset::~Dataset() {}
-
-bool Dataset::setName(const QString &name)
-{
-    if (name_ == name)
-        return false;
-    name_ = name;
-    return true;
-}
-
 DatasetsListModel::DatasetsListModel(data::ProjectDataBase *database, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
@@ -36,17 +19,19 @@ void DatasetsListModel::init()
 {
     if (database_)
     {
-        QString    err_msg;
-        const auto datasets = database_->getAllDatasets(err_msg);
+        QString              err_msg;
+        std::vector<int64_t> datasets_id;
+        std::vector<QString> datasets_name;
+        database_->getAllDatasets(datasets_id, datasets_name, err_msg);
         if (!err_msg.isEmpty())
         {
             spdlog::error("查询所有数据集失败, error: {}", err_msg.toUtf8().constData());
         }
         else
         {
-            for (const auto &[dataset_id, name] : datasets)
+            for (size_t i = 0; i < datasets_id.size(); ++i)
             {
-                datasets_.emplace(dataset_id, new Dataset(dataset_id, name, this));
+                datasets_.emplace(datasets_id[i], new Dataset(datasets_id[i], datasets_name[i], this));
             }
         }
     }

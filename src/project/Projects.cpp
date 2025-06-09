@@ -1,8 +1,10 @@
 #include "project/Projects.h"
 
+#include "Projects.h"
 #include "data/DataBase.h"
 #include "data/DataFormat.h"
 #include "project/Datasets.h"
+#include "project/ImageTags.h"
 #include "project/Images.h"
 #include "project/LabelClasses.h"
 
@@ -12,6 +14,7 @@
 #include <QFile>
 #include <algorithm>
 #include <chrono>
+
 
 namespace dltool::project {
 
@@ -37,6 +40,17 @@ Project::Project(const QString &path, QObject *parent)
 }
 
 Project::~Project() {}
+
+void Project::init()
+{
+    database_        = new data::ProjectDataBase(path_, this);
+    datasets_        = new DatasetsListModel(database_, this);
+    image_instances_ = new ImageInstancesListModel(database_, this);
+    label_classes_   = new LabelClassesListModel(database_, this);
+    image_tags_      = new ImageTagsListModel(database_, this);
+    // 添加/删除图像时
+    connect(image_instances_, &ImageInstancesListModel::statsChanged, datasets_, &DatasetsListModel::statsChanged);
+}
 
 void Project::initProject()
 {
@@ -147,14 +161,9 @@ Q_INVOKABLE void Project::deleteLabelClass(const int64_t label_class_id)
     label_classes_->deleteLabelClass(label_class_id);
 }
 
-void Project::init()
+Q_INVOKABLE void Project::addTag(const QString &name)
 {
-    database_        = new data::ProjectDataBase(path_, this);
-    datasets_        = new DatasetsListModel(database_, this);
-    image_instances_ = new ImageInstancesListModel(database_, this);
-    label_classes_   = new LabelClassesListModel(database_, this);
-    // 添加/删除图像时
-    connect(image_instances_, &ImageInstancesListModel::statsChanged, datasets_, &DatasetsListModel::statsChanged);
+    image_tags_->addTag(name);
 }
 
 RectentProjects::RectentProjects(const QString &path, QObject *parent)

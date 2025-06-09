@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import dltool.project
 
 import "gallery"
 import "component"
@@ -52,7 +53,7 @@ Rectangle {
             SplitView.fillHeight: true
             SplitView.fillWidth: true
 
-            ImageInstancesView { // 图像列表
+            GalleryView { // 图像列表
                 id: imagesView
                 Layout.fillWidth: true
                 Layout.fillHeight: true
