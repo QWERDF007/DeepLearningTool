@@ -136,10 +136,14 @@ public:
                           const QString &shortcut, const int64_t ordinal_index, QString &err_msg) const;
     bool deleteLabelClass(const int64_t label_class_id, QString &err_msg) const;
 
-    bool getAllTags(std::vector<int64_t> &tag_ids, std::vector<QString> &names, QString &err_msg) const;
-    bool addTag(const QString &name, int64_t &tag_id, QString &err_msg) const;
-    bool updateTag(const int64_t tag_id, const QString &name, QString &err_msg) const;
-    bool deleteTag(const int64_t tag_id, QString &err_msg) const;
+    bool getAllTagClasses(std::vector<int64_t> &tag_class_ids, std::vector<QString> &names, QString &err_msg) const;
+    bool addTagClass(const QString &name, int64_t &tag_class_id, QString &err_msg) const;
+    bool updateTagClass(const int64_t tag_class_id, const QString &name, QString &err_msg) const;
+    bool deleteTagClass(const int64_t tag_class_id, QString &err_msg) const;
+
+    bool getAllTags(std::vector<int64_t> &image_ids, std::vector<int64_t> &tag_ids, QString &err_msg) const;
+    bool addTags(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &tag_ids, QString &err_msg) const;
+    bool deleteTags(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &tag_ids, QString &err_msg) const;
 };
 
 class DATA_API RecentProjectsDataBase : public DataBase

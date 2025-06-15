@@ -68,17 +68,17 @@ public:
 
     QHash<int, QByteArray> roleNames() const override;
 
-    bool addTag(const QString &name);
-    bool updateTag(const int64_t tag_id, const QString &name);
-    bool deleteTag(const int64_t tag_id);
+    bool addTagClass(const QString &name);
+    bool updateTagClass(const int64_t tag_class_id, const QString &name);
+    bool deleteTagClass(const int64_t tag_class_id);
 
 private:
     void init();
 
-    int getTagId(const QModelIndex &index) const;
+    int getTagClassId(const QModelIndex &index) const;
 
-    QVariant getTagName(const QModelIndex &index) const;
-    QVariant getTagStats(const QModelIndex &index) const;
+    QVariant getTagClassName(const QModelIndex &index) const;
+    QVariant getTagClassStats(const QModelIndex &index) const;
 
     data::ProjectDataBase *database_{nullptr};
 

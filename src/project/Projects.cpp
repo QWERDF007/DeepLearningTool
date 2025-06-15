@@ -161,9 +161,9 @@ Q_INVOKABLE void Project::deleteLabelClass(const int64_t label_class_id)
     label_classes_->deleteLabelClass(label_class_id);
 }
 
-Q_INVOKABLE void Project::addTag(const QString &name)
+Q_INVOKABLE void Project::addTagClass(const QString &name)
 {
-    image_tags_->addTag(name);
+    image_tags_->addTagClass(name);
 }
 
 RectentProjects::RectentProjects(const QString &path, QObject *parent)

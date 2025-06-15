@@ -118,7 +118,7 @@ public:
                                       const QString &shortcut, const int64_t ordinal_index);
     Q_INVOKABLE void deleteLabelClass(const int64_t label_class_id);
 
-    Q_INVOKABLE void addTag(const QString &name);
+    Q_INVOKABLE void addTagClass(const QString &name);
 
 private:
     void init();

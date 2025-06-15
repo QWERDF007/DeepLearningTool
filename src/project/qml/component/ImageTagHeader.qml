@@ -35,7 +35,7 @@ Item {
         description: "输入Tag名称"
         onEditTextChanged: function (tagName) {
             if (project) {
-                project.addTag(tagName)
+                project.addTagClass(tagName)
             }
         }
     }
