@@ -1,0 +1,33 @@
+#pragma once
+
+#include <functional>
+#include <string>
+
+namespace dltool::common {
+
+class LinuxCCrashHandler
+{
+public:
+    explicit LinuxCCrashHandler() = default;
+    ~LinuxCCrashHandler()         = default;
+
+    void setup(std::function<void()> func = nullptr);
+
+    static std::function<void()> crash_callback;
+
+private:
+#if defined(__linux__)
+    static std::string GetExceptionName(int code);
+    static std::string GetExceptionModule(const pid_t pid);
+
+    static std::string GetCurrentTraceBackString(const int frame_to_skip = 0);
+
+    static void CreateMiniDump(const std::string &filename, const std::string &msg);
+
+    static std::string HandleCommonException(int);
+
+    static void SingalHandler(int);
+#endif
+};
+
+} // namespace dltool::common
