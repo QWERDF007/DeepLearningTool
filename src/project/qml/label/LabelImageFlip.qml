@@ -3,12 +3,17 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import dltool.project
 
 Rectangle { 
     id: labelImageFlip
     width: 200
     height: 200
     color: DltColor.Primary
+    property Project project: ProjectManager.currentProject
+    property ItemSelectionModel selection: project ? project.imageInstances.selection : null
+    property int total: selection ? selection.model.count : 0
+    property int current: selection ? selection.currentIndex.row : -1
 
     DltMenu {
         id: menu
@@ -63,7 +68,7 @@ Rectangle {
                 Layout.fillWidth: true
             }
             DltText {
-                text: "1/22"
+                text:current + 1 + "/" + total
             }
             Item {
                 Layout.fillWidth: true

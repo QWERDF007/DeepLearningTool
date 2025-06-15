@@ -12,7 +12,7 @@ Rectangle {
 
     property Project project: ProjectManager.currentProject
     property ItemSelectionModel selection: project ? project.imageInstances.selection : null
-    property int total: selection ? selection.model.rowCount() : 0
+    property int total: selection ? selection.model.count : 0
     property int selected: selection ? selection.selectedIndexes.length : 0
     visible: selection ? selection.hasSelection : false
 

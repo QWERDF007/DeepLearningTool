@@ -1,8 +1,9 @@
+#include "common/Logger.h"
+#include "common/CrashHandler.h"
+#include "project/Logger.h"
+
 #include <QApplication>
 #include <QQmlApplicationEngine>
-
-#include "common/Logger.h"
-#include "project/Logger.h"
 
 void InitLogger()
 {
@@ -22,12 +23,14 @@ void InitLogger()
 
 int main(int argc, char *argv[])
 {
-    QApplication          app(argc, argv);
-    QQmlApplicationEngine engine;
+    dltool::common::CrashHandler crash_handler;
+    crash_handler.setup();
 
     InitLogger();
-
     spdlog::info("Welcome to dltool!");
+
+    QApplication          app(argc, argv);
+    QQmlApplicationEngine engine;
 
     qDebug() << "qml import path list" << engine.importPathList();
     const QUrl url(QStringLiteral("qrc:/qt/qml/dltool/tool/qml/Main.qml"));

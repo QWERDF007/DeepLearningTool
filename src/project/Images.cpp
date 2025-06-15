@@ -93,23 +93,36 @@ bool ImageInstancesListModel::addImageInstances(const int64_t dataset_id, const 
         return false;
     }
     QString              err_msg;
-    std::vector<int64_t> image_ids;
-    bool                 ok = database_->addImages(dataset_id, paths, image_ids, err_msg);
+    std::vector<int64_t> new_image_ids;
+    bool                 ok = database_->addImages(dataset_id, paths, new_image_ids, err_msg);
     if (!ok)
     {
         spdlog::error("批量添加图像失败, dataset id: {}, error: {}", dataset_id, err_msg.toUtf8().constData());
         return false;
     }
-    spdlog::info("批量添加图像, dataset id: {}, 数量: {}", dataset_id, image_ids.size());
+    spdlog::info("批量添加图像, dataset id: {}, 数量: {}", dataset_id, new_image_ids.size());
 
-    for (size_t i = 0; i < image_ids.size(); ++i)
+    for (size_t i = 0; i < new_image_ids.size(); ++i)
     {
         image_instances_.insert(
             image_instances_.begin(),
-            std::make_pair(image_ids[i], new ImageInstance(dataset_id, image_ids[i], paths[i], this)));
+            std::make_pair(new_image_ids[i], new ImageInstance(dataset_id, new_image_ids[i], paths[i], this)));
         // image_instances_.emplace(dataset_id, new ImageInstance(image_id, path, this));
     }
+    QModelIndexList selected_indexes = selection_->selectedIndexes();
+    QModelIndex     current_index    = selection_->currentIndex();
     resetModel();
+    if (!selected_indexes.empty())
+    {
+        int offset = static_cast<int>(new_image_ids.size());
+        for (const auto &selected_index : selected_indexes)
+        {
+            QModelIndex new_index = index(selected_index.row() + offset);
+            selection_->select(new_index, QItemSelectionModel::ClearAndSelect);
+        }
+        QModelIndex new_index = index(current_index.row() + offset);
+        selection_->setCurrentIndex(new_index, QItemSelectionModel::Select);
+    }
     emit statsChanged();
     return true;
 }

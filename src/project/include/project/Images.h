@@ -55,6 +55,7 @@ class ImageInstancesListModel : public QAbstractListModel
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
     Q_PROPERTY(int curImageId READ getCurImageId NOTIFY curImageIdChanged)
     Q_PROPERTY(QString curImagePath READ curImagePath NOTIFY curImagePathChanged)
+    Q_PROPERTY(int count READ count NOTIFY statsChanged)
 public:
     ImageInstancesListModel(data::ProjectDataBase *database, QObject *parent = nullptr);
     ~ImageInstancesListModel();
@@ -95,6 +96,11 @@ public:
 
     QString curImagePath() const;
 
+    int count() const
+    {
+        return image_instances_model_.size();
+    }
+
 private:
     void init();
 
@@ -113,6 +119,9 @@ private:
 
     data::ProjectDataBase *database_{nullptr};
 
+    /**
+     * @brief 图像实例 {image_id, ImageInstance}，按照 image_id 排序
+     */
     std::map<int64_t, ImageInstance *, std::greater<int64_t>> image_instances_;
 
     std::vector<ImageInstance *> image_instances_model_;

@@ -34,7 +34,6 @@ Item {
         id: editor
         description: "输入Tag名称"
         onEditTextChanged: function (tagName) {
-            console.log("addTag name", tagName)
             if (project) {
                 project.addTag(tagName)
             }
