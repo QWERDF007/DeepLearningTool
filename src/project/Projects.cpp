@@ -1,6 +1,5 @@
 #include "project/Projects.h"
 
-#include "Projects.h"
 #include "data/DataBase.h"
 #include "data/DataFormat.h"
 #include "project/Datasets.h"
@@ -14,7 +13,6 @@
 #include <QFile>
 #include <algorithm>
 #include <chrono>
-
 
 namespace dltool::project {
 
@@ -47,7 +45,7 @@ void Project::init()
     datasets_        = new DatasetsListModel(database_, this);
     image_instances_ = new ImageInstancesListModel(database_, this);
     label_classes_   = new LabelClassesListModel(database_, this);
-    image_tags_      = new ImageTagsListModel(database_, this);
+    image_tags_      = new ImageTagsListModel(database_, image_instances_, this);
     // 添加/删除图像时
     connect(image_instances_, &ImageInstancesListModel::statsChanged, datasets_, &DatasetsListModel::statsChanged);
 }

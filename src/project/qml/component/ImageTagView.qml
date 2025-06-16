@@ -9,6 +9,7 @@ Rectangle {
     id: imageTagView
     color: DltColor.Primary
     property Project project: ProjectManager.currentProject
+    property bool multiSelect: false
     property int cellWidth: 80
     property int cellHeight: 30
     property int spacing: 10
@@ -33,7 +34,17 @@ Rectangle {
                 height: imageTagView.cellHeight
                 tagId: model.tag_id
                 tagName: model.name
-                tagStats: model.stats
+                tagStats: imageTagView.multiSelect ? model.selected_images_stats : model.current_image_stats
+                onClicked: {
+                    if (imageTagView.multiSelect)
+                    {
+                        view.model.setImagesTag(imageTagView.project.imageInstances.getSelectedImagesId(), model.tag_id)
+                    }
+                    else
+                    {
+                        view.model.setImagesTag(imageTagView.project.imageInstances.curImageId, model.tag_id)
+                    }
+                }
             }
         }
     }

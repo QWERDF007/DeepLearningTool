@@ -1,5 +1,6 @@
 #include "project/Images.h"
 
+#include "Images.h"
 #include "data/DataBase.h"
 
 #include <data/DataFormat.h>
@@ -292,7 +293,7 @@ QString ImageInstancesListModel::curImagePath() const
     return getImagePath(index).toString();
 }
 
-QVariant ImageInstancesListModel::getImageId(const QModelIndex &index) const
+int ImageInstancesListModel::getImageId(const QModelIndex &index) const
 {
     return image_instances_model_[index.row()]->imageId();
 }
@@ -319,7 +320,31 @@ int ImageInstancesListModel::getCurImageId() const
     QModelIndex index = selection_->currentIndex();
     if (index.row() < 0 || index.row() >= rowCount())
         return -1;
-    return getImageId(index).toInt();
+    return getImageId(index);
+}
+
+std::vector<int64_t> ImageInstancesListModel::getSelectedImagesId() const
+{
+    std::vector<int64_t> images_id;
+    for (QModelIndex selected_index : selection_->selectedIndexes())
+    {
+        images_id.push_back(getImageId(selected_index));
+    }
+    return images_id;
+}
+
+std::vector<ImageInstance *> ImageInstancesListModel::getImageInstances(const std::vector<int64_t> &images_id) const
+{
+    std::vector<ImageInstance *> image_instances;
+    for (const auto &image_id : images_id)
+    {
+        auto found = image_instances_.find(image_id);
+        if (found != image_instances_.end())
+        {
+            image_instances.push_back(found->second);
+        }
+    }
+    return image_instances;
 }
 
 void ImageInstancesListModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)

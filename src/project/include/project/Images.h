@@ -4,6 +4,7 @@
 #include <QtQml>
 #include <functional>
 #include <map>
+#include <unordered_set>
 
 namespace dltool::data {
 class ProjectDataBase;
@@ -37,6 +38,24 @@ public:
         return path_;
     }
 
+    void addTagIds(const std::vector<int64_t> &tag_ids)
+    {
+        tag_ids_.insert(tag_ids.begin(), tag_ids.end());
+    }
+
+    void deleteTagIds(const std::vector<int64_t> &tag_ids)
+    {
+        for (const auto &tag_id : tag_ids)
+        {
+            tag_ids_.erase(tag_id);
+        }
+    }
+
+    std::unordered_set<int64_t> tagIds() const
+    {
+        return tag_ids_;
+    }
+
 private:
     int64_t dataset_id_;
 
@@ -45,6 +64,8 @@ private:
     QString path_;
 
     QString name_;
+
+    std::unordered_set<int64_t> tag_ids_;
 };
 
 class ImageInstancesListModel : public QAbstractListModel
@@ -101,15 +122,20 @@ public:
         return image_instances_model_.size();
     }
 
+    int getCurImageId() const;
+
+    Q_INVOKABLE std::vector<int64_t> getSelectedImagesId() const;
+
+    std::vector<ImageInstance *> getImageInstances(const std::vector<int64_t> &images_id) const;
+
 private:
     void init();
 
-    QVariant getImageId(const QModelIndex &index) const;
+    int getImageId(const QModelIndex &index) const;
+
     QVariant getImageName(const QModelIndex &index) const;
     QVariant getImagePath(const QModelIndex &index) const;
     QVariant getSelected(const QModelIndex &index) const;
-
-    int getCurImageId() const;
 
     void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
 

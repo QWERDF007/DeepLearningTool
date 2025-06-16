@@ -46,6 +46,7 @@ Rectangle {
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: 240
                 color: DltColor.Primary
+                multiSelect: true
             }
         }
 

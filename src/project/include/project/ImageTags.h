@@ -10,6 +10,8 @@ class ProjectDataBase;
 
 namespace dltool::project {
 
+class ImageInstancesListModel;
+
 class ImageTag : public QObject
 {
 public:
@@ -52,14 +54,16 @@ class ImageTagsListModel : public QAbstractListModel
     Q_OBJECT
     QML_ANONYMOUS
 public:
-    ImageTagsListModel(data::ProjectDataBase *database, QObject *parent = nullptr);
+    ImageTagsListModel(data::ProjectDataBase *database, ImageInstancesListModel *image_instances,
+                       QObject *parent = nullptr);
     ~ImageTagsListModel();
 
     enum Role
     {
         TagIdRole = Qt::UserRole + 1,
         NameRole,
-        StatsRole,
+        SelectedImagesStatsRole,
+        CurrentImageStatsRole,
     };
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -69,8 +73,10 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     bool addTagClass(const QString &name);
-    bool updateTagClass(const int64_t tag_class_id, const QString &name);
-    bool deleteTagClass(const int64_t tag_class_id);
+    bool updateTagClass(const int64_t tag_id, const QString &name);
+    bool deleteTagClass(const int64_t tag_id);
+
+    Q_INVOKABLE bool setImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id);
 
 private:
     void init();
@@ -78,9 +84,12 @@ private:
     int getTagClassId(const QModelIndex &index) const;
 
     QVariant getTagClassName(const QModelIndex &index) const;
-    QVariant getTagClassStats(const QModelIndex &index) const;
+    QVariant getSelectedImagesTagStats(const QModelIndex &index) const;
+    QVariant getCurrentImageTagStats(const QModelIndex &index) const;
 
     data::ProjectDataBase *database_{nullptr};
+
+    ImageInstancesListModel *image_instances_{nullptr};
 
     std::map<int64_t, ImageTag *> image_tags_;
 };
