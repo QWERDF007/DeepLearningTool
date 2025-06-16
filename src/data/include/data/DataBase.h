@@ -142,8 +142,8 @@ public:
     bool deleteTagClass(const int64_t tag_class_id, QString &err_msg) const;
 
     bool getAllTags(std::vector<int64_t> &image_ids, std::vector<int64_t> &tag_ids, QString &err_msg) const;
-    bool addTags(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &tag_ids, QString &err_msg) const;
-    bool deleteTags(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &tag_ids, QString &err_msg) const;
+    bool addImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id, QString &err_msg) const;
+    bool deleteImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id, QString &err_msg) const;
 };
 
 class DATA_API RecentProjectsDataBase : public DataBase

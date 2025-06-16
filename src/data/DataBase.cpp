@@ -479,20 +479,6 @@ bool ProjectDataBase::deleteImages(const std::vector<int64_t> &image_ids, QStrin
         }
         auto db = pool_->get();
         db(sqlpp::remove_from(ImagesTable).where(ImagesTable.id.in(sqlpp::value_list(image_ids))));
-        // auto tx = sqlpp::start_transaction(db);
-        // try
-        // {
-        //     for (const auto &image_id : image_ids)
-        //     {
-        //         db(sqlpp::remove_from(ImagesTable).where(ImagesTable.id == image_id));
-        //     }
-        //     tx.commit();
-        // }
-        // catch (...)
-        // {
-        //     tx.rollback();
-        //     throw;
-        // }
         return true;
     }
     catch (const std::exception &e)
@@ -777,30 +763,34 @@ bool ProjectDataBase::getAllTags(std::vector<int64_t> &image_ids, std::vector<in
     }
 }
 
-bool ProjectDataBase::addTags(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &tag_ids,
-                              QString &err_msg) const
+bool ProjectDataBase::addImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id, QString &err_msg) const
 {
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
+    }
+    auto db = pool_->get();
+    auto tx = sqlpp::start_transaction(db);
     try
     {
-        if (pool_ == nullptr)
+        for (const auto &image_id : image_ids)
         {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
-            return false;
+            db(sqlpp::insert_into(TagsTable).set(TagsTable.imageId = image_id, TagsTable.tagId = tag_id));
         }
-        auto db = pool_->get();
-        db(sqlpp::insert_into(TagsTable).set(TagsTable.imageId = sqlpp::value_list(image_ids),
-                                             TagsTable.tagId   = sqlpp::value_list(tag_ids)));
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
     {
+        tx.rollback();
         err_msg = e.what();
         return false;
     }
 }
 
-bool ProjectDataBase::deleteTags(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &tag_ids,
-                                 QString &err_msg) const
+bool ProjectDataBase::deleteImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id,
+                                      QString &err_msg) const
 {
     try
     {
@@ -811,7 +801,7 @@ bool ProjectDataBase::deleteTags(const std::vector<int64_t> &image_ids, const st
         }
         auto db = pool_->get();
         db(sqlpp::remove_from(TagsTable).where(TagsTable.imageId.in(sqlpp::value_list(image_ids))
-                                               && TagsTable.tagId.in(sqlpp::value_list(tag_ids))));
+                                               && TagsTable.tagId == tag_id));
         return true;
     }
     catch (const std::exception &e)
