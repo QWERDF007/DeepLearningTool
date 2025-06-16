@@ -44,11 +44,12 @@ Rectangle {
                 color: DltColor.Primary
             }
 
-            ImageTagView { // 图像切换
+            ImageTagView { // 图像标签
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: 240
                 color: DltColor.Primary
+                multiSelect: false
             }
         }
         LabelCanvas { // 中间内容

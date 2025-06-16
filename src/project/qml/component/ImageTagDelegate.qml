@@ -8,11 +8,12 @@ Rectangle {
     id: control
     width: 80
     height: 30
-    color: Qt.lighter(DltColor.Primary, 1.2)
 
     property int tagId: -1
     property string tagName: ""
     property string tagStats: ""
+
+    color: tagStats === "" ? Qt.lighter(DltColor.Primary, 1.2) : DltColor.Highlight
 
     signal clicked()
 

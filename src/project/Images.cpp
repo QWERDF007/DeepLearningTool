@@ -1,6 +1,5 @@
 #include "project/Images.h"
 
-#include "Images.h"
 #include "data/DataBase.h"
 
 #include <data/DataFormat.h>
@@ -333,7 +332,15 @@ std::vector<int64_t> ImageInstancesListModel::getSelectedImagesId() const
     return images_id;
 }
 
-std::vector<ImageInstance *> ImageInstancesListModel::getImageInstances(const std::vector<int64_t> &images_id) const
+ImageInstance *ImageInstancesListModel::getImageInstance(const int64_t image_id)
+{
+    auto found = image_instances_.find(image_id);
+    if (found != image_instances_.end())
+        return found->second;
+    return nullptr;
+}
+
+std::vector<ImageInstance *> ImageInstancesListModel::getImageInstances(const std::vector<int64_t> &images_id)
 {
     std::vector<ImageInstance *> image_instances;
     for (const auto &image_id : images_id)

@@ -43,7 +43,7 @@ public:
         tag_ids_.insert(tag_ids.begin(), tag_ids.end());
     }
 
-    void deleteTagIds(const std::vector<int64_t> &tag_ids)
+    void removeTagIds(const std::vector<int64_t> &tag_ids)
     {
         for (const auto &tag_id : tag_ids)
         {
@@ -51,7 +51,12 @@ public:
         }
     }
 
-    std::unordered_set<int64_t> tagIds() const
+    std::unordered_set<int64_t>& tagIds()
+    {
+        return tag_ids_;
+    }
+
+    const std::unordered_set<int64_t> &tagIds() const
     {
         return tag_ids_;
     }
@@ -126,7 +131,8 @@ public:
 
     Q_INVOKABLE std::vector<int64_t> getSelectedImagesId() const;
 
-    std::vector<ImageInstance *> getImageInstances(const std::vector<int64_t> &images_id) const;
+    ImageInstance               *getImageInstance(const int64_t image_id);
+    std::vector<ImageInstance *> getImageInstances(const std::vector<int64_t> &images_id);
 
 private:
     void init();

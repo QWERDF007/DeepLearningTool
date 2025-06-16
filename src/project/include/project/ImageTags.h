@@ -3,6 +3,7 @@
 #include <QAbstractListModel>
 #include <QtQml>
 #include <map>
+#include <unordered_set>
 
 namespace dltool::data {
 class ProjectDataBase;
@@ -43,10 +44,35 @@ public:
         return id_;
     }
 
+    std::unordered_set<int64_t> &imagesId()
+    {
+        return images_id_;
+    }
+
+    const std::unordered_set<int64_t> &imagesId() const
+    {
+        return images_id_;
+    }
+
+    void addImageId(const std::vector<int64_t> &image_ids)
+    {
+        images_id_.insert(image_ids.begin(), image_ids.end());
+    }
+
+    void removeImageId(const std::vector<int64_t> &image_ids)
+    {
+        for (const auto &image_id : image_ids)
+        {
+            images_id_.erase(image_id);
+        }
+    }
+
 private:
     int64_t id_;
 
     QString name_;
+
+    std::unordered_set<int64_t> images_id_;
 };
 
 class ImageTagsListModel : public QAbstractListModel
@@ -76,16 +102,24 @@ public:
     bool updateTagClass(const int64_t tag_id, const QString &name);
     bool deleteTagClass(const int64_t tag_id);
 
-    Q_INVOKABLE bool setImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id);
+    Q_INVOKABLE bool setImagesTag(const std::vector<int64_t> &images_id, const int64_t tag_id);
+
+    ImageTag *getImageTag(const int64_t tag_id);
 
 private:
     void init();
+    bool initTagClass();
+    bool initImagesTag();
 
     int getTagClassId(const QModelIndex &index) const;
 
     QVariant getTagClassName(const QModelIndex &index) const;
     QVariant getSelectedImagesTagStats(const QModelIndex &index) const;
     QVariant getCurrentImageTagStats(const QModelIndex &index) const;
+
+    std::vector<int64_t> getValidImagesId(const std::vector<int64_t> &new_images_id, const int64_t tag_id);
+
+    void updateStats();
 
     data::ProjectDataBase *database_{nullptr};
 
