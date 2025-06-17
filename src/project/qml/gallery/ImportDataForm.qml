@@ -15,6 +15,7 @@ Item {
     // property Project project: ProjectManager.currentProject
     property string datasetName: ""
     property alias datasetsModel: datasetBox.model
+    property alias dataFormatModel: dataFormatBox.model
     property string dataFormat: dataFormatBox.currentText
     property string image_dir: imagePathInput.text
     property string data_dir: labelPathInput.text
@@ -106,9 +107,10 @@ Item {
                 id: dataFormatBox
                 width: 240
                 // model: DataFormat.getSupportedDataFormat()
-                Component.onCompleted: {
-                    model = DataFormat.getSupportedDataFormat()
-                }
+                // Component.onCompleted: {
+                //     console.log(DataFormat.getSupportedDataFormat())
+                //     model = DataFormat.getSupportedDataFormat()
+                // }
             }
         }
 

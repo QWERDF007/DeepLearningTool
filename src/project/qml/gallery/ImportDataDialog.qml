@@ -16,6 +16,7 @@ DltPopup {
 
     property alias datasetName: importDataForm.datasetName
     property alias datasetsModel: importDataForm.datasetsModel
+    property alias dataFormatModel: importDataForm.dataFormatModel
 
     ColumnLayout {
         anchors.fill: parent
