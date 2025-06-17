@@ -4,7 +4,7 @@
 #include <QtQml>
 #include <functional>
 #include <map>
-#include <unordered_set>
+#include <set>
 
 namespace dltool::data {
 class ProjectDataBase;
@@ -38,27 +38,27 @@ public:
         return path_;
     }
 
-    void addTagIds(const std::vector<int64_t> &tag_ids)
+    void addTagsId(const std::vector<int64_t> &tags_id)
     {
-        tag_ids_.insert(tag_ids.begin(), tag_ids.end());
+        tags_id_.insert(tags_id.begin(), tags_id.end());
     }
 
-    void removeTagIds(const std::vector<int64_t> &tag_ids)
+    void removeTagsId(const std::vector<int64_t> &tags_id)
     {
-        for (const auto &tag_id : tag_ids)
+        for (const auto &tag_id : tags_id)
         {
-            tag_ids_.erase(tag_id);
+            tags_id_.erase(tag_id);
         }
     }
 
-    std::unordered_set<int64_t>& tagIds()
+    std::set<int64_t>& tagsId()
     {
-        return tag_ids_;
+        return tags_id_;
     }
 
-    const std::unordered_set<int64_t> &tagIds() const
+    const std::set<int64_t> &tagsId() const
     {
-        return tag_ids_;
+        return tags_id_;
     }
 
 private:
@@ -70,7 +70,7 @@ private:
 
     QString name_;
 
-    std::unordered_set<int64_t> tag_ids_;
+    std::set<int64_t> tags_id_;
 };
 
 class ImageInstancesListModel : public QAbstractListModel

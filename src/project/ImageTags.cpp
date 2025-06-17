@@ -63,24 +63,25 @@ bool ImageTagsListModel::initImagesTag()
 
     connect(image_instances_->selection(), &QItemSelectionModel::selectionChanged, this,
             &ImageTagsListModel::updateStats);
+    connect(image_instances_->selection(), &QItemSelectionModel::currentChanged, this,&ImageTagsListModel::updateStats);
 
     QString              err_msg;
-    std::vector<int64_t> image_ids, tag_ids;
-    database_->getAllTags(image_ids, tag_ids, err_msg);
+    std::vector<int64_t> images_id, tags_id;
+    database_->getAllTags(images_id, tags_id, err_msg);
     if (!err_msg.isEmpty())
     {
         spdlog::error("查询所有图像标签(Tag)失败, error: {}", err_msg.toUtf8().constData());
         return false;
     }
 
-    for (size_t i = 0; i < image_ids.size(); ++i)
+    for (size_t i = 0; i < images_id.size(); ++i)
     {
-        ImageInstance *image_instance = image_instances_->getImageInstance(image_ids[i]);
+        ImageInstance *image_instance = image_instances_->getImageInstance(images_id[i]);
         if (image_instance)
-            image_instance->addTagIds({tag_ids[i]});
-        ImageTag *image_tag = getImageTag(tag_ids[i]);
+            image_instance->addTagsId({tags_id[i]});
+        ImageTag *image_tag = getImageTag(tags_id[i]);
         if (image_tag)
-            image_tag->addImageId({image_ids[i]});
+            image_tag->addImageId({images_id[i]});
     }
     return true;
 }
@@ -187,22 +188,24 @@ bool ImageTagsListModel::deleteTagClass(const int64_t tag_class_id)
     return false;
 }
 
-bool ImageTagsListModel::setImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id)
+bool ImageTagsListModel::setImagesTag(const std::vector<int64_t> &images_id, const int64_t tag_id)
 {
     if (database_ == nullptr)
     {
         spdlog::error("添加标签(Tag)失败: 数据库未初始化");
         return false;
     }
+    if (images_id.empty())
+        return true;
     // TODO: 判断当前图像是否全部包含该标签, 如果包含, 则删除该标签
     std::string op{"添加"}; // 添加, 删除
 
-    std::vector<int64_t> valid_image_ids = getValidImagesId(image_ids, tag_id);
+    std::vector<int64_t> valid_images_id = getValidImagesId(images_id, tag_id);
 
-    if (valid_image_ids.empty())
+    if (valid_images_id.empty())
     {
         op              = "删除";
-        valid_image_ids = image_ids;
+        valid_images_id = images_id;
     }
     else
     {
@@ -212,24 +215,24 @@ bool ImageTagsListModel::setImagesTag(const std::vector<int64_t> &image_ids, con
     QString err_msg;
     bool    ok{false};
     if (op == "添加")
-        ok = database_->addImagesTag(valid_image_ids, tag_id, err_msg);
+        ok = database_->addImagesTag(valid_images_id, tag_id, err_msg);
     else
-        ok = database_->deleteImagesTag(valid_image_ids, tag_id, err_msg);
+        ok = database_->deleteImagesTag(valid_images_id, tag_id, err_msg);
     if (!ok)
     {
         spdlog::error("{}标签(Tag)失败: {}, error: {}", op, tag_id, err_msg.toUtf8().constData());
         return false;
     }
-    spdlog::info("为 {} 个图像{}标签(Tag)成功, tag_id: {}", image_ids.size(), op, tag_id);
-    for (const auto &image_id : image_ids)
+    spdlog::info("为 {} 个图像{}标签(Tag)成功, tag_id: {}", images_id.size(), op, tag_id);
+    for (const auto &image_id : images_id)
     {
         ImageInstance *image_instance = image_instances_->getImageInstance(image_id);
         if (image_instance)
         {
             if (op == "添加")
-                image_instance->addTagIds({tag_id});
+                image_instance->addTagsId({tag_id});
             else
-                image_instance->removeTagIds({tag_id});
+                image_instance->removeTagsId({tag_id});
         }
         ImageTag *image_tag = getImageTag(tag_id);
         if (image_tag)
@@ -294,7 +297,7 @@ QVariant ImageTagsListModel::getSelectedImagesTagStats(const QModelIndex &index)
     int count{0};
     for (const ImageInstance *image_instance : image_instances)
     {
-        if (image_instance->tagIds().count(tag_id) > 0)
+        if (image_instance->tagsId().count(tag_id) > 0)
             ++count;
     }
     return count > 0 ? QString("(%1)").arg(count) : "";
@@ -321,7 +324,7 @@ QVariant ImageTagsListModel::getCurrentImageTagStats(const QModelIndex &index) c
     const std::vector<ImageInstance *> image_instances = image_instances_->getImageInstances({image_id});
 
     int count{0};
-    if (!image_instances.empty() && image_instances.at(0)->tagIds().count(tag_id) > 0)
+    if (!image_instances.empty() && image_instances.at(0)->tagsId().count(tag_id) > 0)
         ++count;
     return count > 0 ? QString("(%1)").arg(count) : "";
 }
@@ -329,11 +332,12 @@ QVariant ImageTagsListModel::getCurrentImageTagStats(const QModelIndex &index) c
 std::vector<int64_t> ImageTagsListModel::getValidImagesId(const std::vector<int64_t> &new_images_id,
                                                           const int64_t               tag_id)
 {
-    std::unordered_set<int64_t> A{new_images_id.begin(), new_images_id.end()};
-    std::unordered_set<int64_t> B = getImageTag(tag_id)->imagesId();
+    std::set<int64_t> A{new_images_id.begin(), new_images_id.end()};
+    std::set<int64_t> B = getImageTag(tag_id)->imagesId();
     if (A.empty() || B.empty())
         return new_images_id;
-    std::unordered_set<int64_t> result;
+    std::set<int64_t> result;
+    // 注意: 两个集合需要已排序, 所以不能用 std::unordered_set
     std::set_difference(A.begin(), A.end(), B.begin(), B.end(), std::inserter(result, result.end()));
     return std::vector<int64_t>{result.begin(), result.end()};
 }

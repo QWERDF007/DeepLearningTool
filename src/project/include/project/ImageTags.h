@@ -3,7 +3,7 @@
 #include <QAbstractListModel>
 #include <QtQml>
 #include <map>
-#include <unordered_set>
+#include <set>
 
 namespace dltool::data {
 class ProjectDataBase;
@@ -44,12 +44,12 @@ public:
         return id_;
     }
 
-    std::unordered_set<int64_t> &imagesId()
+    std::set<int64_t> &imagesId()
     {
         return images_id_;
     }
 
-    const std::unordered_set<int64_t> &imagesId() const
+    const std::set<int64_t> &imagesId() const
     {
         return images_id_;
     }
@@ -72,7 +72,7 @@ private:
 
     QString name_;
 
-    std::unordered_set<int64_t> images_id_;
+    std::set<int64_t> images_id_;
 };
 
 class ImageTagsListModel : public QAbstractListModel
