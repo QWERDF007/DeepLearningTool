@@ -33,7 +33,7 @@ Item {
             iconSource: DltFontIcon.Delete
             onClicked: {
                 if (project) {
-                    project.imageInstances.deleteSelected()
+                    project.deleteSelected()
                 }
             }
         }
@@ -66,7 +66,7 @@ Item {
             if (event.key === Qt.Key_Escape) {
                 selection.clear()
             } else if (event.key === Qt.Key_Delete) {
-                project.imageInstances.deleteSelected()
+                project.deleteSelected()
             } else if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
                 project.imageInstances.selectAll()
             } else {

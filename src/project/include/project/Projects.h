@@ -111,6 +111,8 @@ public:
     Q_INVOKABLE void importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
                                 const QString &data_dir);
 
+    Q_INVOKABLE void deleteSelected();
+
     Q_INVOKABLE QVariantMap getImageInstanceInfo(const int64_t image_id);
 
     Q_INVOKABLE void addLabelClass(const QString &name, const QString &color, const QString &shortcut);

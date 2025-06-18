@@ -134,6 +134,13 @@ void Project::importData(const int64_t dataset_id, const int data_format, const 
     image_instances_->addImageInstances(dataset_id, image_dir);
 }
 
+void Project::deleteSelected()
+{
+    qInfo() << __FUNCTION__ << __LINE__;
+    image_tags_->removeImagesTags(image_instances_->getSelectedImagesId());
+    image_instances_->deleteSelected();
+}
+
 QVariantMap Project::getImageInstanceInfo(const int64_t image_id)
 {
     QVariantMap   info       = image_instances_->getImageInstanceInfo(image_id);

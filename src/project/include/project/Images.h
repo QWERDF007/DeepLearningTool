@@ -51,7 +51,14 @@ public:
         }
     }
 
-    std::set<int64_t>& tagsId()
+    std::set<int64_t> removeAllTagsId()
+    {
+        auto tags_id = tags_id_;
+        tags_id_.clear();
+        return tags_id;
+    }
+
+    std::set<int64_t> &tagsId()
     {
         return tags_id_;
     }
@@ -116,7 +123,8 @@ public:
 
     Q_INVOKABLE void shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command);
     Q_INVOKABLE void selectAll();
-    Q_INVOKABLE void deleteSelected();
+
+    void deleteSelected();
 
     QVariantMap getImageInstanceInfo(const int64_t image_id);
 
@@ -124,7 +132,7 @@ public:
 
     int count() const
     {
-        return image_instances_model_.size();
+        return static_cast<int>(image_instances_model_.size());
     }
 
     int getCurImageId() const;

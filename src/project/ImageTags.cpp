@@ -254,6 +254,47 @@ bool ImageTagsListModel::setImagesTag(const int64_t image_id, const int64_t tag_
     return setImagesTag(images_id, tag_id);
 }
 
+bool ImageTagsListModel::removeImagesTags(const std::vector<int64_t> &images_id)
+{
+    if (database_ == nullptr)
+    {
+        spdlog::error("删除图像标签(Tag)失败: 数据库未初始化");
+        return false;
+    }
+    if (images_id.empty())
+        return true;
+    QString err_msg;
+    bool    ok = database_->deleteImagesTagsByImagesId(images_id, err_msg);
+    if (!ok)
+    {
+        spdlog::error("删除图像标签(Tag)失败: {}, error: {}", images_id.size(), err_msg.toUtf8().constData());
+        return false;
+    }
+    spdlog::info("删除 {} 个图像标签(Tag)成功", images_id.size());
+    std::map<int64_t, std::vector<int64_t>> tags_images_id;
+    for (const auto &image_id : images_id)
+    {
+        ImageInstance *image_instance = image_instances_->getImageInstance(image_id);
+        if (image_instance == nullptr)
+            continue;
+        auto tags_id = image_instance->removeAllTagsId();
+        for (const auto &tag_id : tags_id)
+        {
+            tags_images_id[tag_id].push_back(image_id);
+        }
+    }
+    for (const auto &[tag_id, deleted_images_id] : tags_images_id)
+    {
+        ImageTag *image_tag = getImageTag(tag_id);
+        if (image_tag)
+        {
+            image_tag->removeImageId(deleted_images_id);
+        }
+    }
+    updateStats();
+    return true;
+}
+
 ImageTag *ImageTagsListModel::getImageTag(const int64_t tag_id)
 {
     auto found = image_tags_.find(tag_id);

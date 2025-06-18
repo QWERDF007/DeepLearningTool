@@ -1,6 +1,5 @@
 #include "data/DataBase.h"
 
-#include "DataBase.h"
 #include "data/SqlDef.h"
 #include "data/ddl/DatasetsTable.h"
 #include "data/ddl/ImagesTable.h"
@@ -802,6 +801,46 @@ bool ProjectDataBase::deleteImagesTag(const std::vector<int64_t> &image_ids, con
         auto db = pool_->get();
         db(sqlpp::remove_from(TagsTable).where(TagsTable.imageId.in(sqlpp::value_list(image_ids))
                                                && TagsTable.tagId == tag_id));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::deleteImagesTagsByImagesId(const std::vector<int64_t> &images_id, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        db(sqlpp::remove_from(TagsTable).where(TagsTable.imageId.in(sqlpp::value_list(images_id))));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::deleteImagesTagsByTagsId(const std::vector<int64_t> &tags_id, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        db(sqlpp::remove_from(TagsTable).where(TagsTable.tagId.in(sqlpp::value_list(tags_id))));
         return true;
     }
     catch (const std::exception &e)
