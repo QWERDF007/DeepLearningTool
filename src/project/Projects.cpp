@@ -134,7 +134,7 @@ void Project::importData(const int64_t dataset_id, const int data_format, const 
     image_instances_->addImageInstances(dataset_id, image_dir);
 }
 
-Q_INVOKABLE QVariantMap Project::getImageInstanceInfo(const int64_t image_id)
+QVariantMap Project::getImageInstanceInfo(const int64_t image_id)
 {
     QVariantMap   info       = image_instances_->getImageInstanceInfo(image_id);
     const int64_t dataset_id = info.value("dataset_id").toInt();
@@ -142,24 +142,24 @@ Q_INVOKABLE QVariantMap Project::getImageInstanceInfo(const int64_t image_id)
     return info;
 }
 
-Q_INVOKABLE void Project::addLabelClass(const QString &name, const QString &color, const QString &shortcut)
+void Project::addLabelClass(const QString &name, const QString &color, const QString &shortcut)
 {
     label_classes_->addLabelClass(name, color, shortcut);
 }
 
-Q_INVOKABLE void Project::updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
-                                           const QString &shortcut, const int64_t ordinal_index)
+void Project::updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
+                               const QString &shortcut, const int64_t ordinal_index)
 {
     label_classes_->updateLabelClass(label_class_id, name, color, shortcut, ordinal_index);
 }
 
-Q_INVOKABLE void Project::deleteLabelClass(const int64_t label_class_id)
+void Project::deleteLabelClass(const int64_t label_class_id)
 {
     // TODO: 删除对应标签类别的标注
     label_classes_->deleteLabelClass(label_class_id);
 }
 
-Q_INVOKABLE void Project::addTagClass(const QString &name)
+void Project::addTagClass(const QString &name)
 {
     image_tags_->addTagClass(name);
 }

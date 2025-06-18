@@ -220,8 +220,8 @@ std::vector<QString> ImageInstancesListModel::getFiles(const QString &path, cons
     }
 }
 
-Q_INVOKABLE void ImageInstancesListModel::shiftSelect(int current_index, int previous_index,
-                                                      QItemSelectionModel::SelectionFlags command)
+void ImageInstancesListModel::shiftSelect(int current_index, int previous_index,
+                                          QItemSelectionModel::SelectionFlags command)
 {
     const int top    = std::min(current_index, previous_index);
     const int bottom = std::max(current_index, previous_index);
@@ -238,7 +238,7 @@ void ImageInstancesListModel::selectAll()
     selection_->select(selection, QItemSelectionModel::Select);
 }
 
-Q_INVOKABLE void ImageInstancesListModel::deleteSelected()
+void ImageInstancesListModel::deleteSelected()
 {
     QList<int>           indices;
     std::vector<int64_t> image_ids;
