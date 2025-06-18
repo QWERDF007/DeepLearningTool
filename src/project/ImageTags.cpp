@@ -63,7 +63,8 @@ bool ImageTagsListModel::initImagesTag()
 
     connect(image_instances_->selection(), &QItemSelectionModel::selectionChanged, this,
             &ImageTagsListModel::updateStats);
-    connect(image_instances_->selection(), &QItemSelectionModel::currentChanged, this,&ImageTagsListModel::updateStats);
+    connect(image_instances_->selection(), &QItemSelectionModel::currentChanged, this,
+            &ImageTagsListModel::updateStats);
 
     QString              err_msg;
     std::vector<int64_t> images_id, tags_id;
@@ -344,7 +345,10 @@ std::vector<int64_t> ImageTagsListModel::getValidImagesId(const std::vector<int6
 
 void ImageTagsListModel::updateStats()
 {
-    emit dataChanged(index(0), index(static_cast<int>(image_tags_.size() - 1)), {SelectedImagesStatsRole, CurrentImageStatsRole});
+    if (image_instances_ == nullptr || image_tags_.empty())
+        return;
+    emit dataChanged(index(0), index(static_cast<int>(image_tags_.size() - 1)),
+                     {SelectedImagesStatsRole, CurrentImageStatsRole});
 }
 
 } // namespace dltool::project
