@@ -151,7 +151,7 @@ Item {
                     if (view.lastIndex === -1) {
                         view.lastIndex = index
                     }
-                    if (!selection.isSelected(tmpIndex)) {
+                    if (mouse.button === Qt.LeftButton || (mouse.button === Qt.RightButton && !selection.isSelected(tmpIndex))) {
                         if (mouse.modifiers & Qt.ShiftModifier) { // shift 多选
                             project.imageInstances.shiftSelect(index, view.lastIndex, ItemSelectionModel.ClearAndSelect)
                             selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
