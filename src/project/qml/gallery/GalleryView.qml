@@ -135,7 +135,9 @@ Item {
             acceptedButtons: Qt.LeftButton | Qt.RightButton
 
             onDoubleClicked: function (mouse) {
-                SignalHelper.changeTabBarIndex(2)
+                if (selection.hasSelection) {
+                    SignalHelper.changeTabBarIndex(2)
+                }
             }
             
             onClicked: function (mouse) {
@@ -149,9 +151,7 @@ Item {
                     if (view.lastIndex === -1) {
                         view.lastIndex = index
                     }
-                    if (mouse.button === Qt.RightButton) { // 右键弹出菜单
-                        imageInstanceMenu.popup()
-                    } else if (mouse.button === Qt.LeftButton) { // 选中
+                    if (!selection.isSelected(tmpIndex)) {
                         if (mouse.modifiers & Qt.ShiftModifier) { // shift 多选
                             project.imageInstances.shiftSelect(index, view.lastIndex, ItemSelectionModel.ClearAndSelect)
                             selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
@@ -163,6 +163,9 @@ Item {
                             selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
                             view.lastIndex = index
                         }
+                    }
+                    if (mouse.button === Qt.RightButton) { // 右键弹出菜单
+                        imageInstanceMenu.popup()
                     }
                 } else {
                     selection.clear()

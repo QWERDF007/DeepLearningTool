@@ -240,23 +240,23 @@ void ImageInstancesListModel::selectAll()
 
 void ImageInstancesListModel::deleteSelected()
 {
-    QList<int>           indices;
+    std::set<int>        indices;
     std::vector<int64_t> image_ids;
     for (const auto &index : selection_->selectedIndexes())
     {
-        indices.push_back(index.row());
+        indices.insert(index.row());
     }
+    selection_->clear(); // 清空选中, 注意要在resetModel前调用, 否则不会清空
     int idx = 0;
     for (const auto &[id, image_instance] : image_instances_)
     {
-        if (indices.contains(idx))
+        if (indices.count(idx))
         {
             image_ids.emplace_back(id);
         }
         ++idx;
     }
     deleteImageInstances(image_ids);
-    selection_->clear();
 }
 
 QVariantMap ImageInstancesListModel::getImageInstanceInfo(const int64_t image_id)

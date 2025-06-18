@@ -136,7 +136,6 @@ void Project::importData(const int64_t dataset_id, const int data_format, const 
 
 void Project::deleteSelected()
 {
-    qInfo() << __FUNCTION__ << __LINE__;
     image_tags_->removeImagesTags(image_instances_->getSelectedImagesId());
     image_instances_->deleteSelected();
 }
