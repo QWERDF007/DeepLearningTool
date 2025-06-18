@@ -248,6 +248,12 @@ bool ImageTagsListModel::setImagesTag(const std::vector<int64_t> &images_id, con
     return true;
 }
 
+bool ImageTagsListModel::setImagesTag(const int64_t image_id, const int64_t tag_id)
+{
+    std::vector<int64_t> images_id{image_id};
+    return setImagesTag(images_id, tag_id);
+}
+
 ImageTag *ImageTagsListModel::getImageTag(const int64_t tag_id)
 {
     auto found = image_tags_.find(tag_id);
