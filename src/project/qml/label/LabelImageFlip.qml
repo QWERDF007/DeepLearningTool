@@ -11,8 +11,9 @@ Rectangle {
     height: 200
     color: DltColor.Primary
     property Project project: ProjectManager.currentProject
-    property ItemSelectionModel selection: project ? project.imageInstances.selection : null
-    property int total: selection ? selection.model.count : 0
+    property ImageInstancesModel model: project ? project.imageInstances : null
+    property ItemSelectionModel selection: model ? model.selection : null
+    property int total: model ? model.count : 0
     property int current: selection ? selection.currentIndex.row : -1
 
     DltMenu {
@@ -45,7 +46,7 @@ Rectangle {
             DltText {
                 id: nameText
                 Layout.fillWidth: true
-                text: "图像名称"
+                text: model ? model.curImageName : ""
                 MouseArea {
                     anchors.fill: parent
                     acceptedButtons: Qt.RightButton
@@ -63,19 +64,40 @@ Rectangle {
             Layout.fillHeight: true
             DltTextIconButton {
                 iconSource: DltFontIcon.ChevronLeft
+                onClicked: {
+                    if (selection && total > 0) {
+                        let row = Math.max(0, current - 1)
+                        labelImageFlip.updateIndex(row)
+                    }
+                }
             }
             Item {
                 Layout.fillWidth: true
             }
             DltText {
-                text:current + 1 + "/" + total
+                text: current >= 0 ? current + 1 + "/" + total : ""
             }
             Item {
                 Layout.fillWidth: true
             }
             DltTextIconButton {
                 iconSource: DltFontIcon.ChevronRight
+                onClicked: {
+                    if (selection && total > 0) {
+                        let row = Math.min(total - 1, current + 1)
+                        labelImageFlip.updateIndex(row)
+                    }
+                }
             }
+        }
+    }
+
+    function updateIndex(row) {
+        if (row !== labelImageFlip.current) {
+            let newIndex = model.index(row, 0)
+            selection.select(newIndex, ItemSelectionModel.ClearAndSelect)
+            selection.setCurrentIndex(newIndex, ItemSelectionModel.Select)
+            model.lastIndex = row
         }
     }
 }

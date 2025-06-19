@@ -22,7 +22,8 @@ Item {
     property int spacing: 10
 
     property Project project: ProjectManager.currentProject
-    property ItemSelectionModel selection: project ? project.imageInstances.selection : null
+    property ImageInstancesModel model: project ? project.imageInstances : null
+    property ItemSelectionModel selection: model ? model.selection : null
     property bool hasSelection: selection ? selection.hasSelection : false
 
     DltMenu {
@@ -43,7 +44,6 @@ Item {
         id: view
         clip: true
         anchors.fill: parent
-        property int lastIndex: -1
         boundsBehavior: Flickable.StopAtBounds
         cellWidth: instancesView.cellWidth + instancesView.spacing
         cellHeight: instancesView.cellHeight + instancesView.spacing
@@ -86,7 +86,7 @@ Item {
 
         function scrollToCurrentItem() {
             // 获取当前项相对于视图内容的位置, 计算视图应该滚动到的位置, 使当前项保持在视图中心
-            if (selection.hasSelection) {
+            if (hasSelection) {
                 let currentIndex = selection.currentIndex.row
                 let currentItem = view.itemAtIndex(currentIndex)
                 if (currentItem) {
@@ -135,7 +135,7 @@ Item {
             acceptedButtons: Qt.LeftButton | Qt.RightButton
 
             onDoubleClicked: function (mouse) {
-                if (selection.hasSelection) {
+                if (hasSelection) {
                     SignalHelper.changeTabBarIndex(2)
                 }
             }
@@ -148,12 +148,12 @@ Item {
                 let item = view.itemAtIndex(index)
                 if (item) {
                     let tmpIndex = view.model.index(index, 0)
-                    if (view.lastIndex === -1) {
-                        view.lastIndex = index
+                    if (model.lastIndex === -1) {
+                        model.lastIndex = index
                     }
                     if (mouse.button === Qt.LeftButton || (mouse.button === Qt.RightButton && !selection.isSelected(tmpIndex))) {
                         if (mouse.modifiers & Qt.ShiftModifier) { // shift 多选
-                            project.imageInstances.shiftSelect(index, view.lastIndex, ItemSelectionModel.ClearAndSelect)
+                            project.imageInstances.shiftSelect(index, model.lastIndex, ItemSelectionModel.ClearAndSelect)
                             selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
                         } else if (mouse.modifiers & Qt.ControlModifier) { // ctrl 多选
                             selection.select(tmpIndex, ItemSelectionModel.Select)
@@ -161,7 +161,7 @@ Item {
                         } else { // 单选
                             selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
                             selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
-                            view.lastIndex = index
+                            model.lastIndex = index
                         }
                     }
                     if (mouse.button === Qt.RightButton) { // 右键弹出菜单
@@ -179,6 +179,7 @@ Item {
         let newIndex = curIndex
         let columns = Math.floor(view.width / view.cellWidth)
         let rows = Math.floor(view.height / view.cellHeight)
+        // ADWS 上下左右 时计算并选中新项
         if (event.key === Qt.Key_A  || event.key === Qt.Key_Left) {
             newIndex = Math.max(0, curIndex - 1)
         } else if (event.key === Qt.Key_D  || event.key === Qt.Key_Right) {
@@ -188,15 +189,11 @@ Item {
         } else if (event.key === Qt.Key_S || event.key === Qt.Key_Down) {
             newIndex = Math.min(view.count - 1, curIndex + columns)
         } else if (event.key === Qt.Key_Home) {
-            // newIndex = 0
             view.positionViewAtBeginning()
         } else if (event.key === Qt.Key_End) {
-            // newIndex = view.count - 1
             view.positionViewAtEnd()
         } else if (event.key === Qt.Key_PageUp) {
             scrollBar.decrease()
-            // let firstVisibleIndex = view.indexAt(0, view.contentY)
-            // view.positionViewAtIndex(firstVisibleIndex - columns * (rows - 1), GridView.Beginning)
         } else if (event.key === Qt.Key_PageDown) {
             scrollBar.increase()
         }
@@ -205,8 +202,14 @@ Item {
             let tmpIndex = view.model.index(newIndex, 0)
             selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
             selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
-            view.lastIndex = newIndex
-            view.positionViewAtIndex(newIndex, GridView.Contain)
+            model.lastIndex = newIndex
+        }
+    }
+
+    Connections {
+        target: selection
+        function onCurrentIndexChanged(current, previous) { 
+            view.positionViewAtIndex(current.row, GridView.Contain) // 滚动到当前选中项
         }
     }
 }

@@ -83,12 +83,14 @@ private:
 class ImageInstancesListModel : public QAbstractListModel
 {
     Q_OBJECT
-    QML_NAMED_ELEMENT(ImageInstancesList)
+    QML_NAMED_ELEMENT(ImageInstancesModel)
     QML_UNCREATABLE("Can not create ImageInstancesList directly!")
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
-    Q_PROPERTY(int curImageId READ getCurImageId NOTIFY curImageIdChanged)
-    Q_PROPERTY(QString curImagePath READ curImagePath NOTIFY curImagePathChanged)
+    Q_PROPERTY(int curImageId READ getCurImageId NOTIFY curImageChanged)
+    Q_PROPERTY(QString curImageName READ curImageName NOTIFY curImageChanged)
+    Q_PROPERTY(QString curImagePath READ curImagePath NOTIFY curImageChanged)
     Q_PROPERTY(int count READ count NOTIFY statsChanged)
+    Q_PROPERTY(int lastIndex READ lastIndex WRITE setLastIndex NOTIFY lastSelectedIndexChanged)
 public:
     ImageInstancesListModel(data::ProjectDataBase *database, QObject *parent = nullptr);
     ~ImageInstancesListModel();
@@ -128,6 +130,7 @@ public:
 
     QVariantMap getImageInstanceInfo(const int64_t image_id);
 
+    QString curImageName() const;
     QString curImagePath() const;
 
     int count() const
@@ -141,6 +144,13 @@ public:
 
     ImageInstance               *getImageInstance(const int64_t image_id);
     std::vector<ImageInstance *> getImageInstances(const std::vector<int64_t> &images_id);
+
+    int lastIndex() const
+    {
+        return last_index_;
+    }
+
+    void setLastIndex(int last_index);
 
 private:
     void init();
@@ -168,10 +178,12 @@ private:
 
     QItemSelectionModel *selection_{nullptr};
 
+    int last_index_{-1};
+
 signals:
     void statsChanged();
-    void curImageIdChanged();
-    void curImagePathChanged();
+    void curImageChanged();
+    void lastSelectedIndexChanged();
 };
 
 } // namespace dltool::project
