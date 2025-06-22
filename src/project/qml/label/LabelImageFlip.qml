@@ -7,6 +7,7 @@ import dltool.project
 
 Rectangle { 
     id: labelImageFlip
+    clip: true
     width: 200
     height: 200
     color: DltColor.Primary
@@ -21,13 +22,14 @@ Rectangle {
         width: 200
         DltMenuItem {
             text: "复制"
-            onClicked: {
-                
+            onTriggered: {
+                copyboard.selectAll()
+                copyboard.copy()
             }
         }
     }
     TextEdit {
-        id: pasteboard
+        id: copyboard
         visible: false
         text: nameText.text
     }
@@ -47,8 +49,16 @@ Rectangle {
                 id: nameText
                 Layout.fillWidth: true
                 text: model ? model.curImageName : ""
+                elide: Text.ElideMiddle
+                DltToolTip {
+                    text: nameText.text
+                    delay: 200
+                    visible: mouseArea.containsMouse && nameText.truncated
+                }
                 MouseArea {
+                    id: mouseArea
                     anchors.fill: parent
+                    hoverEnabled: true
                     acceptedButtons: Qt.RightButton
                     onClicked: function(mouse) {
                         menu.popup()
@@ -65,10 +75,7 @@ Rectangle {
             DltTextIconButton {
                 iconSource: DltFontIcon.ChevronLeft
                 onClicked: {
-                    if (selection && total > 0) {
-                        let row = Math.max(0, current - 1)
-                        labelImageFlip.updateIndex(row)
-                    }
+                    labelImageFlip.prevItem()
                 }
             }
             Item {
@@ -83,12 +90,23 @@ Rectangle {
             DltTextIconButton {
                 iconSource: DltFontIcon.ChevronRight
                 onClicked: {
-                    if (selection && total > 0) {
-                        let row = Math.min(total - 1, current + 1)
-                        labelImageFlip.updateIndex(row)
-                    }
+                    labelImageFlip.nextItem()
                 }
             }
+        }
+    }
+
+    function prevItem() {
+        if (selection && total > 0) {
+            let row = Math.max(0, current - 1)
+            labelImageFlip.updateIndex(row)
+        }
+    }
+
+    function nextItem() {
+        if (selection && total > 0) {
+            let row = Math.min(total - 1, current + 1)
+            labelImageFlip.updateIndex(row)
         }
     }
 
@@ -98,6 +116,22 @@ Rectangle {
             selection.select(newIndex, ItemSelectionModel.ClearAndSelect)
             selection.setCurrentIndex(newIndex, ItemSelectionModel.Select)
             model.lastIndex = row
+        }
+    }
+
+    Shortcut {
+        enabled: labelImageFlip.visible
+        sequences: ["a", "left"]
+        onActivated: {
+            labelImageFlip.prevItem()
+        }
+    }
+
+    Shortcut {
+        enabled: labelImageFlip.visible
+        sequences: ["d", "Right"]
+        onActivated: {
+            labelImageFlip.nextItem()
         }
     }
 }

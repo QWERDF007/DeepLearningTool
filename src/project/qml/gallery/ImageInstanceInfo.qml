@@ -24,6 +24,22 @@ Rectangle {
         font: DltFont.Subtitle
     }
 
+    DltMenu {
+        id: menu
+        width: 200
+        DltMenuItem {
+            text: "复制"
+            onTriggered: {
+                copyboard.selectAll()
+                copyboard.copy()
+            }
+        }
+    }
+    TextEdit {
+        id: copyboard
+        visible: false
+    }
+
     ColumnLayout {
         anchors{
             top: title.bottom
@@ -43,6 +59,14 @@ Rectangle {
                 id: imageName
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.RightButton
+                    onClicked: function(mouse) {
+                        copyboard.text = imageName.text
+                        menu.popup()
+                    }
+                }
             }
         }
         ColumnLayout {
@@ -66,6 +90,14 @@ Rectangle {
                 //     anchors.fill: parent
                 //     hoverEnabled: true
                 // }
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.RightButton
+                    onClicked: function(mouse) {
+                        copyboard.text = imagePath.text
+                        menu.popup()
+                    }
+                }
             }
         }
         ColumnLayout {
