@@ -16,39 +16,21 @@ Item {
         id: labelImage
         anchors.fill: parent
         curImagePath: project ? project.imageInstances.curImagePath : ""
-
-        Repeater {
-            model: labelImage.image.status === Image.Ready ? labelModel : null
-            Rectangle {
-                x: model.x
-                y: model.y
-                width: model.width
-                height: model.height
-                color: "transparent"
-                border.color: model.color
-                border.width: 2
-            }
-        }
-
-        Loader {
-            id: drawItemLoader
-            sourceComponent: rectItem
-        }
     }
 
-    Component {
-        id: rectItem
-        Rectangle {
-            width: 0
-            height: 0
-            color: "transparent"
-            border.color: "red"
-            border.width: 2
-        }
+    LabelsView {
+        offsetX: labelImage.image.x
+        offsetY: labelImage.image.y
+        factor: labelImage.image.scale
+        model: labelImage.image.status === Image.Ready ? labelModel : null
+    }
+
+    DrawingItem {
+        id: drawingItem
     }
 
     CrosshairCanvas {
-        visible: mouseArea.containsMouse && labelImage.image.status === Image.Ready
+        visible: mouseArea.containsMouse && !labelImage.isDragging && labelImage.image.status === Image.Ready
         mousePos: Qt.point(mouseArea.mouseX, mouseArea.mouseY)
     }
 
@@ -63,14 +45,9 @@ Item {
         onPressed: function(event) {
             if (event.button === Qt.LeftButton) {
                 // 获取相对于LabelImage的坐标
-                var pos = mapToItem(labelImage.image, event.x, event.y)
-                startPoint = Qt.point(pos.x, pos.y)
+                startPoint = Qt.point(event.x, event.y)
                 isDrawing = true
-                drawItemLoader.item.visible = true
-                drawItemLoader.item.x = startPoint.x
-                drawItemLoader.item.y = startPoint.y
-                drawItemLoader.item.width = 0
-                drawItemLoader.item.height = 0    
+                drawingItem.initItem(startPoint.x, startPoint.y, 0, 0, "red")
             } else if (event.button === Qt.RightButton) {
                 isDrawing = false
             } else {
@@ -81,16 +58,13 @@ Item {
         onReleased: function(event) {
             if (isDrawing) {
                 isDrawing = false
-                drawItemLoader.item.visible = false
-                
-                // 获取相对于LabelImage的坐标
-                var pos = mapToItem(labelImage.image, event.x, event.y)
+                drawingItem.clearItem()
                 
                 // 计算矩形的位置和大小
-                var x = Math.min(startPoint.x, pos.x)
-                var y = Math.min(startPoint.y, pos.y)
-                var width = Math.abs(pos.x - startPoint.x)
-                var height = Math.abs(pos.y - startPoint.y)
+                var x = (Math.min(startPoint.x, event.x) - labelImage.image.x) / labelImage.image.scale
+                var y = (Math.min(startPoint.y, event.y) - labelImage.image.y) / labelImage.image.scale
+                var width = Math.abs(event.x - startPoint.x) / labelImage.image.scale
+                var height = Math.abs(event.y - startPoint.y) / labelImage.image.scale
 
                 // 添加到ListModel
                 labelModel.append({
@@ -100,27 +74,18 @@ Item {
                     "height": height,
                     "color": "red"
                 })
-
-                drawItemLoader.item.width = 0
-                drawItemLoader.item.height = 0
             }
         }
 
         onPositionChanged: function(event) {
             if (isDrawing) {
-                // 获取相对于LabelImage的坐标
-                var pos = mapToItem(labelImage.image, event.x, event.y)
-                
                 // 更新绘制中的矩形
-                var x = Math.min(startPoint.x, pos.x)
-                var y = Math.min(startPoint.y, pos.y)
-                var width = Math.abs(pos.x - startPoint.x)
-                var height = Math.abs(pos.y - startPoint.y)
+                var x = Math.min(startPoint.x, event.x)
+                var y = Math.min(startPoint.y, event.y)
+                var width = Math.abs(event.x - startPoint.x)
+                var height = Math.abs(event.y - startPoint.y)
 
-                drawItemLoader.item.x = x
-                drawItemLoader.item.y = y
-                drawItemLoader.item.width = width 
-                drawItemLoader.item.height = height
+                drawingItem.updateItem(x, y, width, height)
             }
         }
     }

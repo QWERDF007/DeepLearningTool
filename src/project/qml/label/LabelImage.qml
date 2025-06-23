@@ -9,7 +9,7 @@ Item {
 
     property bool isInit: false
     property bool needFitInView: false
-    property bool dragMode: false
+    property bool isDragging: mouseArea.drag.active
 
     property alias image: image
     
@@ -72,9 +72,10 @@ Item {
     }
     
     MouseArea {
+        id: mouseArea
         anchors.fill: parent
         enabled: labelImage.visible && image.status === Image.Ready
-        drag.target: image
+        drag.target: null
         drag.axis: Drag.XAndYAxis
         acceptedButtons: Qt.AllButtons
         onPressed: function(event) {
