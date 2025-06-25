@@ -44,26 +44,26 @@ public:
         return id_;
     }
 
-    std::set<int64_t> &imagesId()
+    std::set<int64_t> &imageIds()
     {
-        return images_id_;
+        return image_ids_;
     }
 
-    const std::set<int64_t> &imagesId() const
+    const std::set<int64_t> &imageIds() const
     {
-        return images_id_;
+        return image_ids_;
     }
 
-    void addImageId(const std::vector<int64_t> &image_ids)
+    void addImageIds(const std::vector<int64_t> &image_ids)
     {
-        images_id_.insert(image_ids.begin(), image_ids.end());
+        image_ids_.insert(image_ids.begin(), image_ids.end());
     }
 
-    void removeImageId(const std::vector<int64_t> &image_ids)
+    void removeImageIds(const std::vector<int64_t> &image_ids)
     {
         for (const auto &image_id : image_ids)
         {
-            images_id_.erase(image_id);
+            image_ids_.erase(image_id);
         }
     }
 
@@ -72,7 +72,7 @@ private:
 
     QString name_;
 
-    std::set<int64_t> images_id_;
+    std::set<int64_t> image_ids_;
 };
 
 class ImageTagsListModel : public QAbstractListModel
@@ -102,10 +102,10 @@ public:
     bool updateTagClass(const int64_t tag_id, const QString &name);
     bool deleteTagClass(const int64_t tag_id);
 
-    Q_INVOKABLE bool setImagesTag(const std::vector<int64_t> &images_id, const int64_t tag_id);
+    Q_INVOKABLE bool setImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id);
     Q_INVOKABLE bool setImagesTag(const int64_t image_id, const int64_t tag_id);
 
-    bool removeImagesTags(const std::vector<int64_t> &images_id);
+    bool removeImagesTags(const std::vector<int64_t> &image_ids);
 
     ImageTag *getImageTag(const int64_t tag_id);
 
@@ -120,7 +120,7 @@ private:
     QVariant getSelectedImagesTagStats(const QModelIndex &index) const;
     QVariant getCurrentImageTagStats(const QModelIndex &index) const;
 
-    std::vector<int64_t> getValidImagesId(const std::vector<int64_t> &new_images_id, const int64_t tag_id);
+    std::vector<int64_t> getValidImagesId(const std::vector<int64_t> &new_image_ids, const int64_t tag_id);
 
     void updateStats();
 

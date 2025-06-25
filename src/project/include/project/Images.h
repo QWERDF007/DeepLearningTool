@@ -38,34 +38,34 @@ public:
         return path_;
     }
 
-    void addTagsId(const std::vector<int64_t> &tags_id)
+    void addTagIds(const std::vector<int64_t> &tag_ids)
     {
-        tags_id_.insert(tags_id.begin(), tags_id.end());
+        tag_ids_.insert(tag_ids.begin(), tag_ids.end());
     }
 
-    void removeTagsId(const std::vector<int64_t> &tags_id)
+    void removeTagIds(const std::vector<int64_t> &tag_ids)
     {
-        for (const auto &tag_id : tags_id)
+        for (const auto &tag_id : tag_ids)
         {
-            tags_id_.erase(tag_id);
+            tag_ids_.erase(tag_id);
         }
     }
 
-    std::set<int64_t> removeAllTagsId()
+    std::set<int64_t> removeAllTagIds()
     {
-        auto tags_id = tags_id_;
-        tags_id_.clear();
-        return tags_id;
+        auto tag_ids = tag_ids_;
+        tag_ids_.clear();
+        return tag_ids;
     }
 
-    std::set<int64_t> &tagsId()
+    std::set<int64_t> &tagIds()
     {
-        return tags_id_;
+        return tag_ids_;
     }
 
-    const std::set<int64_t> &tagsId() const
+    const std::set<int64_t> &tagIds() const
     {
-        return tags_id_;
+        return tag_ids_;
     }
 
 private:
@@ -77,7 +77,7 @@ private:
 
     QString name_;
 
-    std::set<int64_t> tags_id_;
+    std::set<int64_t> tag_ids_;
 };
 
 class ImageInstancesListModel : public QAbstractListModel
@@ -143,7 +143,7 @@ public:
     Q_INVOKABLE std::vector<int64_t> getSelectedImagesId() const;
 
     ImageInstance               *getImageInstance(const int64_t image_id);
-    std::vector<ImageInstance *> getImageInstances(const std::vector<int64_t> &images_id);
+    std::vector<ImageInstance *> getImageInstances(const std::vector<int64_t> &image_ids);
 
     int lastIndex() const
     {

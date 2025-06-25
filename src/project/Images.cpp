@@ -334,12 +334,12 @@ int ImageInstancesListModel::getCurImageId() const
 
 std::vector<int64_t> ImageInstancesListModel::getSelectedImagesId() const
 {
-    std::vector<int64_t> images_id;
+    std::vector<int64_t> image_ids;
     for (QModelIndex selected_index : selection_->selectedIndexes())
     {
-        images_id.push_back(getImageId(selected_index));
+        image_ids.push_back(getImageId(selected_index));
     }
-    return images_id;
+    return image_ids;
 }
 
 ImageInstance *ImageInstancesListModel::getImageInstance(const int64_t image_id)
@@ -350,10 +350,10 @@ ImageInstance *ImageInstancesListModel::getImageInstance(const int64_t image_id)
     return nullptr;
 }
 
-std::vector<ImageInstance *> ImageInstancesListModel::getImageInstances(const std::vector<int64_t> &images_id)
+std::vector<ImageInstance *> ImageInstancesListModel::getImageInstances(const std::vector<int64_t> &image_ids)
 {
     std::vector<ImageInstance *> image_instances;
-    for (const auto &image_id : images_id)
+    for (const auto &image_id : image_ids)
     {
         auto found = image_instances_.find(image_id);
         if (found != image_instances_.end())

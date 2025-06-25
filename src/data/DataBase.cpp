@@ -810,7 +810,7 @@ bool ProjectDataBase::deleteImagesTag(const std::vector<int64_t> &image_ids, con
     }
 }
 
-bool ProjectDataBase::deleteImagesTagsByImagesId(const std::vector<int64_t> &images_id, QString &err_msg) const
+bool ProjectDataBase::deleteImagesTagsByImagesId(const std::vector<int64_t> &image_ids, QString &err_msg) const
 {
     try
     {
@@ -820,7 +820,7 @@ bool ProjectDataBase::deleteImagesTagsByImagesId(const std::vector<int64_t> &ima
             return false;
         }
         auto db = pool_->get();
-        db(sqlpp::remove_from(TagsTable).where(TagsTable.imageId.in(sqlpp::value_list(images_id))));
+        db(sqlpp::remove_from(TagsTable).where(TagsTable.imageId.in(sqlpp::value_list(image_ids))));
         return true;
     }
     catch (const std::exception &e)
@@ -830,7 +830,7 @@ bool ProjectDataBase::deleteImagesTagsByImagesId(const std::vector<int64_t> &ima
     }
 }
 
-bool ProjectDataBase::deleteImagesTagsByTagsId(const std::vector<int64_t> &tags_id, QString &err_msg) const
+bool ProjectDataBase::deleteImagesTagsByTagsId(const std::vector<int64_t> &tag_ids, QString &err_msg) const
 {
     try
     {
@@ -840,7 +840,7 @@ bool ProjectDataBase::deleteImagesTagsByTagsId(const std::vector<int64_t> &tags_
             return false;
         }
         auto db = pool_->get();
-        db(sqlpp::remove_from(TagsTable).where(TagsTable.tagId.in(sqlpp::value_list(tags_id))));
+        db(sqlpp::remove_from(TagsTable).where(TagsTable.tagId.in(sqlpp::value_list(tag_ids))));
         return true;
     }
     catch (const std::exception &e)
