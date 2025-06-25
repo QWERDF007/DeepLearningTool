@@ -48,7 +48,9 @@ Rectangle {
                 classColor: model.color
                 classShortcut: model.shortcut
                 onClicked: function() {
-                    selection.select(view.model.index(index, 0), ItemSelectionModel.ClearAndSelect)
+                    let tmpIndex = view.model.index(delegateItem.index, 0)
+                    selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
+                    selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
                 }
                 onEditClicked: function() {
                     let pos = view.mapToItem(Qt.application.activeWindow, delegateItem.x, delegateItem.y)

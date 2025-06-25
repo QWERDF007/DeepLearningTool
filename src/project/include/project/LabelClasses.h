@@ -62,8 +62,10 @@ private:
 class LabelClassesListModel : public QAbstractListModel
 {
     Q_OBJECT
-    QML_ANONYMOUS
+    QML_NAMED_ELEMENT(LabelClassesModel)
+    QML_UNCREATABLE("Can not create LabelClassesModel directly!")
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
+    Q_PROPERTY(int currentLabelClassId READ getCurrentLabelClassId NOTIFY currentLabelClassChanged)
 public:
     LabelClassesListModel(data::ProjectDataBase *database, QObject *parent = nullptr);
     ~LabelClassesListModel();
@@ -97,6 +99,8 @@ public:
         return selection_;
     }
 
+    int getCurrentLabelClassId() const;
+
 private:
     void init();
 
@@ -115,6 +119,9 @@ private:
     std::map<int64_t, LabelClass *> label_classes_;
 
     QItemSelectionModel *selection_{nullptr};
+
+signals:
+    void currentLabelClassChanged();
 };
 
 } // namespace dltool::project

@@ -65,6 +65,8 @@ LabelClassesListModel::~LabelClassesListModel() {}
 void LabelClassesListModel::init()
 {
     connect(selection_, &QItemSelectionModel::selectionChanged, this, &LabelClassesListModel::updateSelection);
+    connect(selection_, &QItemSelectionModel::currentChanged, this, &LabelClassesListModel::currentLabelClassChanged);
+
     if (database_ == nullptr)
     {
         return;
@@ -82,6 +84,7 @@ void LabelClassesListModel::init()
         if (selection_ && label_class_ids.size() > 0)
         {
             selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
+            selection_->setCurrentIndex(index(0), QItemSelectionModel::Select);
         }
     }
     else
@@ -254,6 +257,14 @@ QString LabelClassesListModel::getLabelClassName(const int label_class_id) const
     if (found != label_classes_.end())
         return found->second->name();
     return QString();
+}
+
+int LabelClassesListModel::getCurrentLabelClassId() const
+{
+    QModelIndex index = selection_->currentIndex();
+    if (index.row() < 0 || index.row() >= rowCount())
+        return -1;
+    return getLabelClassId(index);
 }
 
 QVariant LabelClassesListModel::getLabelClassName(const QModelIndex &index) const
