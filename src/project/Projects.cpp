@@ -6,6 +6,7 @@
 #include "project/ImageTags.h"
 #include "project/Images.h"
 #include "project/LabelClasses.h"
+#include "project/Labels.h"
 
 #include <spdlog/spdlog.h>
 
@@ -46,6 +47,8 @@ void Project::init()
     image_instances_ = new ImageInstancesListModel(database_, this);
     label_classes_   = new LabelClassesListModel(database_, this);
     image_tags_      = new ImageTagsListModel(database_, image_instances_, this);
+    label_instances_ = new LabelInstancesListModel(database_, image_instances_, label_classes_, this);
+    image_labels_    = new ImageLabelsListModel(image_instances_, label_instances_, this);
     // 添加/删除图像时
     connect(image_instances_, &ImageInstancesListModel::statsChanged, datasets_, &DatasetsListModel::statsChanged);
 }
@@ -137,6 +140,7 @@ void Project::importData(const int64_t dataset_id, const int data_format, const 
 void Project::deleteSelected()
 {
     image_tags_->removeImagesTags(image_instances_->getSelectedImagesId());
+    // TODO: 删除选中图像对应的标注
     image_instances_->deleteSelected();
 }
 
@@ -163,6 +167,23 @@ void Project::deleteLabelClass(const int64_t label_class_id)
 {
     // TODO: 删除对应标签类别的标注
     label_classes_->deleteLabelClass(label_class_id);
+}
+
+void Project::addLabel(const int64_t image_id, const int64_t label_class_id, const QVariantMap &data)
+{
+    // TODO: 添加标注
+    qInfo() << __FUNCTION__ << __LINE__ << "image_id" << image_id << "label_class_id" << label_class_id << "data"
+            << data;
+}
+
+void Project::updateLabel(const int64_t label_id, const QVariantMap &data)
+{
+    // TODO: 更新标注
+}
+
+void Project::deleteLabel(const int64_t label_id)
+{
+    // TODO: 删除标注
 }
 
 void Project::addTagClass(const QString &name)

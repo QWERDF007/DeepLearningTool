@@ -7,10 +7,10 @@ Item {
     id: labelView
 
     property Project project: ProjectManager.currentProject
-
-    ListModel {
-        id: labelModel
-    }
+    property ImageInstancesModel imageInstances: project ? project.imageInstances : null
+    property LabelClassesModel labelClasses: project ? project.labelClasses : null
+    property ImageLabelsModel imageLabels: project ? project.imageLabels : null
+    property color drawingColor: project ? labelClasses.currentLabelClassColor : "red"
 
     LabelImage {
         id: labelImage
@@ -22,7 +22,7 @@ Item {
         offsetX: labelImage.image.x
         offsetY: labelImage.image.y
         factor: labelImage.image.scale
-        model: labelImage.image.status === Image.Ready ? labelModel : null
+        model: labelImage.image.status === Image.Ready ? imageLabels : null
     }
 
     DrawingItem {
@@ -47,7 +47,7 @@ Item {
                 // 获取相对于LabelImage的坐标
                 startPoint = Qt.point(event.x, event.y)
                 isDrawing = true
-                drawingItem.initItem(startPoint.x, startPoint.y, 0, 0, "red")
+                drawingItem.initItem(startPoint.x, startPoint.y, 0, 0, drawingColor)
             } else if (event.button === Qt.RightButton) {
                 isDrawing = false
             } else {
@@ -67,13 +67,10 @@ Item {
                 var height = Math.abs(event.y - startPoint.y) / labelImage.image.scale
 
                 // 添加到ListModel
-                labelModel.append({
-                    "x": x,
-                    "y": y, 
-                    "width": width,
-                    "height": height,
-                    "color": "red"
-                })
+                if (project) {
+                    let data = { "x": x, "y": y, "width": width, "height": height }
+                    project.addLabel(imageInstances.curImageId, labelClasses.currentLabelClassId, data)
+                }
             }
         }
 

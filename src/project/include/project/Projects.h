@@ -18,6 +18,8 @@ class DatasetsListModel;
 class ImageInstancesListModel;
 class LabelClassesListModel;
 class ImageTagsListModel;
+class LabelInstancesListModel;
+class ImageLabelsListModel;
 
 class Project : public QObject
 {
@@ -33,6 +35,7 @@ class Project : public QObject
     Q_PROPERTY(ImageInstancesListModel *imageInstances READ imageInstances NOTIFY imageInstancesChanged FINAL)
     Q_PROPERTY(LabelClassesListModel *labelClasses READ labelClasses NOTIFY labelClassesChanged FINAL)
     Q_PROPERTY(ImageTagsListModel *imageTags READ imageTags NOTIFY imageTagsChanged FINAL)
+    Q_PROPERTY(ImageLabelsListModel *imageLabels READ imageLabels CONSTANT)
 public:
     Project(const QString &name, const int method, const QString &path, const QString &description,
             const QString image_base_path, const qint64 ctime, const qint64 mtime, QObject *parent = nullptr);
@@ -99,6 +102,11 @@ public:
         return image_tags_;
     }
 
+    ImageLabelsListModel *imageLabels() const
+    {
+        return image_labels_;
+    }
+
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
 
     Q_INVOKABLE int     getDatasetId(const QString &dataset_name) const;
@@ -120,6 +128,10 @@ public:
                                       const QString &shortcut, const int64_t ordinal_index);
     Q_INVOKABLE void deleteLabelClass(const int64_t label_class_id);
 
+    Q_INVOKABLE void addLabel(const int64_t image_id, const int64_t label_class_id, const QVariantMap &data);
+    Q_INVOKABLE void updateLabel(const int64_t label_id, const QVariantMap &data);
+    Q_INVOKABLE void deleteLabel(const int64_t label_id);
+
     Q_INVOKABLE void addTagClass(const QString &name);
 
 private:
@@ -139,6 +151,8 @@ private:
     ImageInstancesListModel *image_instances_{nullptr};
     LabelClassesListModel   *label_classes_{nullptr};
     ImageTagsListModel      *image_tags_{nullptr};
+    LabelInstancesListModel *label_instances_{nullptr};
+    ImageLabelsListModel    *image_labels_{nullptr};
 
 signals:
     void descriptionChanged();
