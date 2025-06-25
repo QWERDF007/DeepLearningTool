@@ -66,6 +66,7 @@ class LabelClassesListModel : public QAbstractListModel
     QML_UNCREATABLE("Can not create LabelClassesModel directly!")
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
     Q_PROPERTY(int currentLabelClassId READ getCurrentLabelClassId NOTIFY currentLabelClassChanged)
+    Q_PROPERTY(QString currentLabelClassColor READ getCurrentLabelClassColor NOTIFY currentLabelClassChanged FINAL)
 public:
     LabelClassesListModel(data::ProjectDataBase *database, QObject *parent = nullptr);
     ~LabelClassesListModel();
@@ -99,7 +100,8 @@ public:
         return selection_;
     }
 
-    int getCurrentLabelClassId() const;
+    int     getCurrentLabelClassId() const;
+    QString getCurrentLabelClassColor() const;
 
 private:
     void init();

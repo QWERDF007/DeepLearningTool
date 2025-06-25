@@ -267,6 +267,14 @@ int LabelClassesListModel::getCurrentLabelClassId() const
     return getLabelClassId(index);
 }
 
+QString LabelClassesListModel::getCurrentLabelClassColor() const
+{
+    QModelIndex index = selection_->currentIndex();
+    if (index.row() < 0 || index.row() >= rowCount())
+        return "red";
+    return getLabelClassColor(index).toString();
+}
+
 QVariant LabelClassesListModel::getLabelClassName(const QModelIndex &index) const
 {
     const int id = getLabelClassId(index);

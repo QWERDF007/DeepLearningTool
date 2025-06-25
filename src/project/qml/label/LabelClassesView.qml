@@ -40,7 +40,6 @@ Rectangle {
             Layout.fillWidth: true
             model: labelClassesView.project ? labelClassesView.project.labelClasses : null
             delegate:  LabelClassDelegate {
-                id: delegateItem
                 width: view.width
                 height: 32
                 color: model.selected ? DltColor.Highlight : Qt.lighter(DltColor.Primary, 1.2)
@@ -48,13 +47,13 @@ Rectangle {
                 classColor: model.color
                 classShortcut: model.shortcut
                 onClicked: function() {
-                    let tmpIndex = view.model.index(delegateItem.index, 0)
+                    let tmpIndex = view.model.index(index, 0)
                     selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
                     selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
                 }
                 onEditClicked: function() {
-                    let pos = view.mapToItem(Qt.application.activeWindow, delegateItem.x, delegateItem.y)
-                    editor.x = pos.x + delegateItem.width
+                    let pos = view.mapToItem(Qt.application.activeWindow, x, y)
+                    editor.x = pos.x + width
                     editor.y = pos.y + 10
                     editor.classId = model.label_class_id
                     editor.className = model.name
