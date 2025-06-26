@@ -69,7 +69,7 @@ Item {
                 // 添加到ListModel
                 if (project) {
                     let data = { "x": x, "y": y, "width": width, "height": height }
-                    project.addLabel(imageInstances.curImageId, labelClasses.currentLabelClassId, data)
+                    project.addLabels([imageInstances.curImageId], [labelClasses.currentLabelClassId], [data])
                 }
             }
         }

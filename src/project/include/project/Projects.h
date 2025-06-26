@@ -128,9 +128,10 @@ public:
                                       const QString &shortcut, const int64_t ordinal_index);
     Q_INVOKABLE void deleteLabelClass(const int64_t label_class_id);
 
-    Q_INVOKABLE void addLabel(const int64_t image_id, const int64_t label_class_id, const QVariantMap &data);
-    Q_INVOKABLE void updateLabel(const int64_t label_id, const QVariantMap &data);
-    Q_INVOKABLE void deleteLabel(const int64_t label_id);
+    Q_INVOKABLE void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
+                               const std::vector<QVariantMap> &data);
+    Q_INVOKABLE void updateLabels(const std::vector<int64_t> &label_ids, const std::vector<QVariantMap> &data);
+    Q_INVOKABLE void deleteLabels(const std::vector<int64_t> &label_ids);
 
     Q_INVOKABLE void addTagClass(const QString &name);
 

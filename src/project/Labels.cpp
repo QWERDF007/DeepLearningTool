@@ -61,6 +61,29 @@ LabelInstance *LabelInstancesListModel::getLabelInstance(const int64_t label_id)
     return found->second;
 }
 
+void LabelInstancesListModel::addLabels(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
+                                        const std::vector<int64_t>     &label_class_ids,
+                                        const std::vector<QVariantMap> &data)
+{
+    for (int i = 0; i < image_ids.size(); ++i)
+    {
+        const QVariantMap        &_data = data[i];
+        LabelInstance::BaseData_t base_data;
+        base_data.x      = _data.value("x", 0).toDouble();
+        base_data.y      = _data.value("y", 0).toDouble();
+        base_data.width  = _data.value("width", 0).toDouble();
+        base_data.height = _data.value("height", 0).toDouble();
+        insert(label_ids[i], image_ids[i], label_class_ids[i], base_data);
+    }
+}
+
+void LabelInstancesListModel::insert(const int64_t label_id, const int64_t image_id, const int64_t label_class_id,
+                                     const LabelInstance::BaseData_t &data)
+{
+    label_ids_.push_back(label_id);
+    label_instances_.emplace(label_id, new LabelInstance(label_id, image_id, label_class_id, data, this));
+}
+
 int64_t LabelInstancesListModel::getLabelId(const QModelIndex &index) const
 {
     return label_ids_[index.row()];
@@ -90,10 +113,12 @@ QVariant LabelInstancesListModel::getData(const QModelIndex &index) const
 }
 
 ImageLabelsListModel::ImageLabelsListModel(ImageInstancesListModel *image_instances,
-                                           LabelInstancesListModel *label_instances, QObject *parent)
+                                           LabelInstancesListModel *label_instances,
+                                           LabelClassesListModel *label_classes, QObject *parent)
     : QAbstractListModel(parent)
     , image_instances_(image_instances)
     , label_instances_(label_instances)
+    , label_classes_(label_classes)
 {
     init();
 }
@@ -133,6 +158,8 @@ QVariant ImageLabelsListModel::data(const QModelIndex &index, int role) const
         return getLabelClassId(index);
     case DataRole:
         return getData(index);
+    case LabelClassColorRole:
+        return getColor(index);
     default:
         return QVariant();
     }
@@ -141,11 +168,21 @@ QVariant ImageLabelsListModel::data(const QModelIndex &index, int role) const
 QHash<int, QByteArray> ImageLabelsListModel::roleNames() const
 {
     return {
-        {     LabelIdRole,       "label_id"},
-        {     ImageIdRole,       "image_id"},
-        {LabelClassIdRole, "label_class_id"},
-        {        DataRole,           "data"},
+        {        LabelIdRole,       "label_id"},
+        {        ImageIdRole,       "image_id"},
+        {   LabelClassIdRole, "label_class_id"},
+        {           DataRole,           "data"},
+        {LabelClassColorRole,          "color"},
     };
+}
+
+void ImageLabelsListModel::addLabels(const std::vector<int64_t> &label_ids)
+{
+    int row   = rowCount();
+    int count = static_cast<int>(label_ids.size());
+    beginInsertRows(QModelIndex(), row, row + count - 1);
+    label_ids_.insert(label_ids_.end(), label_ids.begin(), label_ids.end());
+    endInsertRows();
 }
 
 int64_t ImageLabelsListModel::getLabelId(const QModelIndex &index) const
@@ -186,6 +223,15 @@ QVariant ImageLabelsListModel::getData(const QModelIndex &index) const
     map["height"] = data.height;
 
     return map;
+}
+
+QVariant ImageLabelsListModel::getColor(const QModelIndex &index) const
+{
+    int64_t        label_id = label_ids_[index.row()];
+    LabelInstance *instance = label_instances_->getLabelInstance(label_id);
+    if (instance == nullptr)
+        return QVariant();
+    return label_classes_->getLabelClassColor(instance->labelClassId());
 }
 
 } // namespace dltool::project

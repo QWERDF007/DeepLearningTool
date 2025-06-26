@@ -48,7 +48,7 @@ void Project::init()
     label_classes_   = new LabelClassesListModel(database_, this);
     image_tags_      = new ImageTagsListModel(database_, image_instances_, this);
     label_instances_ = new LabelInstancesListModel(database_, image_instances_, label_classes_, this);
-    image_labels_    = new ImageLabelsListModel(image_instances_, label_instances_, this);
+    image_labels_    = new ImageLabelsListModel(image_instances_, label_instances_, label_classes_, this);
     // 添加/删除图像时
     connect(image_instances_, &ImageInstancesListModel::statsChanged, datasets_, &DatasetsListModel::statsChanged);
 }
@@ -169,19 +169,26 @@ void Project::deleteLabelClass(const int64_t label_class_id)
     label_classes_->deleteLabelClass(label_class_id);
 }
 
-void Project::addLabel(const int64_t image_id, const int64_t label_class_id, const QVariantMap &data)
+void Project::addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
+                        const std::vector<QVariantMap> &data)
 {
-    // TODO: 添加标注
-    qInfo() << __FUNCTION__ << __LINE__ << "image_id" << image_id << "label_class_id" << label_class_id << "data"
-            << data;
+    // TODO: 写入数据库
+    std::vector<int64_t> label_ids;
+    int                  row = label_instances_->rowCount();
+    for (int i = 0; i < image_ids.size(); ++i)
+    {
+        label_ids.push_back(i + row);
+    }
+    label_instances_->addLabels(label_ids, image_ids, label_class_ids, data);
+    image_labels_->addLabels(label_ids);
 }
 
-void Project::updateLabel(const int64_t label_id, const QVariantMap &data)
+void Project::updateLabels(const std::vector<int64_t> &label_ids, const std::vector<QVariantMap> &data)
 {
     // TODO: 更新标注
 }
 
-void Project::deleteLabel(const int64_t label_id)
+void Project::deleteLabels(const std::vector<int64_t> &label_ids)
 {
     // TODO: 删除标注
 }

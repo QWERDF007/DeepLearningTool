@@ -95,7 +95,13 @@ public:
 
     LabelInstance *getLabelInstance(const int64_t label_id);
 
+    void addLabels(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
+                   const std::vector<int64_t> &label_class_ids, const std::vector<QVariantMap> &data);
+
 private:
+    void insert(const int64_t label_id, const int64_t image_id, const int64_t label_class_id,
+                const LabelInstance::BaseData_t &data);
+
     int64_t  getLabelId(const QModelIndex &index) const;
     int64_t  getImageId(const QModelIndex &index) const;
     int64_t  getLabelClassId(const QModelIndex &index) const;
@@ -116,7 +122,7 @@ class ImageLabelsListModel : public QAbstractListModel
     QML_UNCREATABLE("Can not create ImageLabelsModel directly!")
 public:
     ImageLabelsListModel(ImageInstancesListModel *image_instances, LabelInstancesListModel *label_instances,
-                         QObject *parent = nullptr);
+                         LabelClassesListModel *label_classes, QObject *parent = nullptr);
 
     ~ImageLabelsListModel() {}
 
@@ -126,6 +132,7 @@ public:
         ImageIdRole,
         LabelClassIdRole,
         DataRole,
+        LabelClassColorRole,
     };
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -133,6 +140,8 @@ public:
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
 
     QHash<int, QByteArray> roleNames() const override;
+
+    void addLabels(const std::vector<int64_t> &label_ids);
 
 private:
     void init();
@@ -143,9 +152,11 @@ private:
     int64_t  getImageId(const QModelIndex &index) const;
     int64_t  getLabelClassId(const QModelIndex &index) const;
     QVariant getData(const QModelIndex &index) const;
+    QVariant getColor(const QModelIndex &index) const;
 
     ImageInstancesListModel *image_instances_{nullptr};
     LabelInstancesListModel *label_instances_{nullptr};
+    LabelClassesListModel   *label_classes_{nullptr};
 
     int64_t image_id_{-1};
 

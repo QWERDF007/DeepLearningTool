@@ -7,10 +7,11 @@ Repeater {
     property real offsetY: 0
     property real factor: 0
     delegate: Rectangle {
-        x: repeater.offsetX + model.x * repeater.factor
-        y: repeater.offsetY + model.y * repeater.factor
-        width: model.width * repeater.factor
-        height: model.height * repeater.factor
+        property var data: model.data
+        x: repeater.offsetX + data.x * repeater.factor
+        y: repeater.offsetY + data.y * repeater.factor
+        width: data.width * repeater.factor
+        height: data.height * repeater.factor
         color: "transparent"
         border.color: model.color
         border.width: 2
