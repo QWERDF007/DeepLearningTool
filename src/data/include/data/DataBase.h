@@ -5,8 +5,6 @@
 #include <sqlpp11/sqlite3/connection_pool.h>
 
 #include <QObject>
-#include <map>
-#include <optional>
 #include <utility>
 #include <vector>
 
