@@ -259,6 +259,14 @@ QString LabelClassesListModel::getLabelClassName(const int label_class_id) const
     return QString();
 }
 
+QString LabelClassesListModel::getLabelClassColor(const int label_class_id) const
+{
+    auto found = label_classes_.find(label_class_id);
+    if (found != label_classes_.end())
+        return found->second->color();
+    return QString();
+}
+
 int LabelClassesListModel::getCurrentLabelClassId() const
 {
     QModelIndex index = selection_->currentIndex();

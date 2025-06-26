@@ -94,6 +94,7 @@ public:
 
     int     getLabelClassId(const QString &name) const;
     QString getLabelClassName(const int label_class_id) const;
+    QString getLabelClassColor(const int label_class_id) const;
 
     QItemSelectionModel *selection() const
     {
