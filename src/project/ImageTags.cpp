@@ -186,6 +186,7 @@ bool ImageTagsListModel::updateTagClass(const int64_t tag_class_id, const QStrin
 
 bool ImageTagsListModel::deleteTagClass(const int64_t tag_class_id)
 {
+    // TODO: 删除TagClass
     return false;
 }
 

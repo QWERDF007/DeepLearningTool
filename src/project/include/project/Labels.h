@@ -12,18 +12,28 @@ namespace dltool::project {
 class ImageInstancesListModel;
 class LabelClassesListModel;
 
+enum LabelType
+{
+    Rect = 0,
+};
+
+class LabelData_t
+{
+public:
+    int    type{LabelType::Rect};
+    double x;
+    double y;
+    double width;
+    double height;
+
+    virtual std::vector<uint8_t> toBlob() const;
+    virtual void                 fromBlob(const std::vector<uint8_t> &blob);
+};
+
 class LabelInstance : public QObject
 {
 public:
-    struct BaseData_t
-    {
-        double x;
-        double y;
-        double width;
-        double height;
-    };
-
-    LabelInstance(const int64_t label_id, const int64_t image_id, const int64_t label_class_id, const BaseData_t &data,
+    LabelInstance(const int64_t label_id, const int64_t image_id, const int64_t label_class_id, const LabelData_t &data,
                   QObject *parent = nullptr)
         : QObject(parent)
         , label_id_(label_id)
@@ -50,12 +60,12 @@ public:
         return label_class_id_;
     }
 
-    BaseData_t &data()
+    LabelData_t &data()
     {
         return data_;
     }
 
-    const BaseData_t &data() const
+    const LabelData_t &data() const
     {
         return data_;
     }
@@ -65,7 +75,7 @@ private:
     int64_t image_id_;
     int64_t label_class_id_;
 
-    BaseData_t data_;
+    LabelData_t data_;
 };
 
 class LabelInstancesListModel : public QAbstractListModel
@@ -95,12 +105,13 @@ public:
 
     LabelInstance *getLabelInstance(const int64_t label_id);
 
-    void addLabels(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
+    void addLabels(std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
                    const std::vector<int64_t> &label_class_ids, const std::vector<QVariantMap> &data);
 
 private:
-    void insert(const int64_t label_id, const int64_t image_id, const int64_t label_class_id,
-                const LabelInstance::BaseData_t &data);
+    void init();
+
+    void insert(const int64_t label_id, const int64_t image_id, const int64_t label_class_id, const LabelData_t &data);
 
     int64_t  getLabelId(const QModelIndex &index) const;
     int64_t  getImageId(const QModelIndex &index) const;
@@ -141,7 +152,7 @@ public:
 
     QHash<int, QByteArray> roleNames() const override;
 
-    void addLabels(const std::vector<int64_t> &label_ids);
+    void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
 
 private:
     void init();

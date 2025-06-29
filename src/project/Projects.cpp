@@ -172,15 +172,9 @@ void Project::deleteLabelClass(const int64_t label_class_id)
 void Project::addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                         const std::vector<QVariantMap> &data)
 {
-    // TODO: 写入数据库
     std::vector<int64_t> label_ids;
-    int                  row = label_instances_->rowCount();
-    for (int i = 0; i < image_ids.size(); ++i)
-    {
-        label_ids.push_back(i + row);
-    }
     label_instances_->addLabels(label_ids, image_ids, label_class_ids, data);
-    image_labels_->addLabels(label_ids);
+    image_labels_->addLabels(image_ids, label_ids);
 }
 
 void Project::updateLabels(const std::vector<int64_t> &label_ids, const std::vector<QVariantMap> &data)

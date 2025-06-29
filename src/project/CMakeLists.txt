@@ -62,6 +62,8 @@ target_include_directories(${TARGET_NAME}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/${PLUGIN_NAME}>
         $<INSTALL_INTERFACE:include>
+
+        ${CMAKE_SOURCE_DIR}/3rdparty/nlohmann
 )
 
 # 将名称转换为大写
