@@ -108,6 +108,8 @@ public:
     void addLabels(std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
                    const std::vector<int64_t> &label_class_ids, const std::vector<QVariantMap> &data);
 
+    void getAllImagesLabelIds(std::vector<int64_t> &image_ids, std::vector<int64_t> &label_ids) const;
+
 private:
     void init();
 

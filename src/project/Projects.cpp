@@ -51,6 +51,13 @@ void Project::init()
     image_labels_    = new ImageLabelsListModel(image_instances_, label_instances_, label_classes_, this);
     // 添加/删除图像时
     connect(image_instances_, &ImageInstancesListModel::statsChanged, datasets_, &DatasetsListModel::statsChanged);
+
+    std::vector<int64_t> tags_image_ids, tag_ids;
+    std::vector<int64_t> labels_image_ids, label_ids;
+    image_tags_->getAllImagesTagIds(tags_image_ids, tag_ids);
+    label_instances_->getAllImagesLabelIds(labels_image_ids, label_ids);
+    image_instances_->addImagesTagIds(tags_image_ids, tag_ids);
+    image_instances_->addImagesLabelIds(labels_image_ids, label_ids);
 }
 
 void Project::initProject()

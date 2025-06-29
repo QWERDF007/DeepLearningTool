@@ -77,9 +77,6 @@ bool ImageTagsListModel::initImagesTag()
 
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        ImageInstance *image_instance = image_instances_->getImageInstance(image_ids[i]);
-        if (image_instance)
-            image_instance->addTagIds({tag_ids[i]});
         ImageTag *image_tag = getImageTag(tag_ids[i]);
         if (image_tag)
             image_tag->addImageIds({image_ids[i]});
@@ -302,6 +299,18 @@ ImageTag *ImageTagsListModel::getImageTag(const int64_t tag_id)
     if (found == image_tags_.end())
         return nullptr;
     return found->second;
+}
+
+void ImageTagsListModel::getAllImagesTagIds(std::vector<int64_t> &image_ids, std::vector<int64_t> &tag_ids) const
+{
+    for (const auto &[tag_id, tag] : image_tags_)
+    {
+        for (int64_t image_id : tag->imageIds())
+        {
+            image_ids.push_back(image_id);
+            tag_ids.push_back(tag_id);
+        }
+    }
 }
 
 int ImageTagsListModel::getTagClassId(const QModelIndex &index) const

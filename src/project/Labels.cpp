@@ -61,20 +61,11 @@ void LabelInstancesListModel::init()
         spdlog::error("查询所有标注失败: {}", err_msg.toUtf8().constData());
         return;
     }
-    std::map<int64_t, std::vector<int64_t>> images_label_ids;
     for (size_t i = 0; i < label_ids.size(); ++i)
     {
         LabelData_t label_data;
         label_data.fromBlob(labels_data[i]);
         insert(label_ids[i], image_ids[i], label_class_ids[i], label_data);
-        if (images_label_ids.find(image_ids[i]) == images_label_ids.end())
-            images_label_ids.emplace(image_ids[i], std::vector<int64_t>());
-        images_label_ids[image_ids[i]].emplace_back(label_ids[i]);
-    }
-    for (auto &[image_id, image_label_ids] : images_label_ids)
-    {
-        auto instance = image_instances_->getImageInstance(image_id);
-        instance->addLabelIds(image_label_ids);
     }
 }
 
@@ -175,11 +166,22 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
             images_label_ids[image_ids[i]] = std::vector<int64_t>();
         images_label_ids[image_ids[i]].push_back(label_ids[i]);
     }
-    for (const auto&[image_id, image_label_ids] : images_label_ids)
+    for (const auto &[image_id, image_label_ids] : images_label_ids)
     {
         ImageInstance *instance = image_instances_->getImageInstance(image_id);
         if (instance)
             instance->addLabelIds(image_label_ids);
+    }
+}
+
+void LabelInstancesListModel::getAllImagesLabelIds(std::vector<int64_t> &image_ids,
+                                                   std::vector<int64_t> &label_ids) const
+{
+    for (const auto &[label_id, instance] : label_instances_)
+    {
+        const int64_t image_id = instance->imageId();
+        image_ids.push_back(image_id);
+        label_ids.push_back(label_id);
     }
 }
 

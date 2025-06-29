@@ -184,6 +184,9 @@ public:
 
     void setLastIndex(int last_index);
 
+    void addImagesLabelIds(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
+    void addImagesTagIds(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &tag_ids);
+
 private:
     void init();
 
