@@ -850,6 +850,120 @@ bool ProjectDataBase::deleteImagesTagsByTagsId(const std::vector<int64_t> &tag_i
     }
 }
 
+bool ProjectDataBase::getAllLabels(std::vector<int64_t> &label_ids, std::vector<int64_t> &image_ids,
+                                   std::vector<int64_t> &label_class_ids, std::vector<int64_t> &label_types,
+                                   std::vector<std::vector<uint8_t>> &labels_data, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db   = pool_->get();
+        auto data = db(sqlpp::select(LabelsTable.id, LabelsTable.imageId, LabelsTable.labelClassId,
+                                     LabelsTable.regionType, LabelsTable.region)
+                           .from(LabelsTable)
+                           .unconditionally());
+        for (const auto &row : data)
+        {
+            label_ids.emplace_back(row.id);
+            image_ids.emplace_back(row.imageId);
+            label_class_ids.emplace_back(row.labelClassId);
+            label_types.emplace_back(row.regionType);
+            labels_data.emplace_back(row.region.value());
+        }
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
+                                const std::vector<int64_t>              &label_types,
+                                const std::vector<std::vector<uint8_t>> &labels_data, std::vector<int64_t> &label_ids,
+                                QString &err_msg) const
+{
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
+    }
+    auto db = pool_->get();
+    auto tx = sqlpp::start_transaction(db);
+    try
+    {
+        for (size_t i = 0; i < image_ids.size(); ++i)
+        {
+            db(sqlpp::insert_into(LabelsTable)
+                   .set(LabelsTable.imageId = image_ids[i], LabelsTable.labelClassId = label_class_ids[i],
+                        LabelsTable.regionType = label_types[i], LabelsTable.region = labels_data[i]));
+            label_ids.emplace_back(static_cast<int64_t>(db.last_insert_id()));
+        }
+        tx.commit();
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        tx.rollback();
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::updateLabels(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &label_class_ids,
+                                   const std::vector<std::vector<uint8_t>> &labels_data, QString &err_msg) const
+{
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
+    }
+    auto db = pool_->get();
+    auto tx = sqlpp::start_transaction(db);
+    try
+    {
+        for (size_t i = 0; i < label_ids.size(); ++i)
+        {
+            db(sqlpp::update(LabelsTable)
+                   .set(LabelsTable.labelClassId = label_class_ids[i], LabelsTable.region = labels_data[i])
+                   .where(LabelsTable.id == label_ids[i]));
+        }
+        tx.commit();
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        tx.rollback();
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::deleteLabels(const std::vector<int64_t> &label_ids, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        db(sqlpp::remove_from(LabelsTable).where(LabelsTable.id.in(sqlpp::value_list(label_ids))));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
 RecentProjectsDataBase::RecentProjectsDataBase(const QString &path, QObject *parent)
     : DataBase(path, parent)
 {
