@@ -21,13 +21,17 @@ DltPopup {
 
     signal editFinished(int classId, string className, string classColor, string classShortcut, int ordinalIndex)
 
-    ColumnLayout {
+    Item {
         anchors.fill: parent
         anchors.margins: 10
-        spacing: 10
+        // spacing: 10
         RowLayout {
-            Layout.fillHeight: true
-            Layout.fillWidth: true
+            anchors {
+                left: parent.left
+                right: parent.right
+                top: parent.top
+                bottom: buttonRow.top - 10
+            }
             // 左侧输入区域
             ColumnLayout {
                 Layout.fillHeight: true
@@ -88,8 +92,12 @@ DltPopup {
 
         // 底部按钮
         RowLayout {
-            Layout.fillHeight: true
-            Layout.fillWidth: true
+            id: buttonRow
+            anchors {
+                left: parent.left
+                right: parent.right
+                bottom: parent.bottom
+            }
             spacing: 10
             Item {
                 Layout.fillWidth: true
