@@ -20,6 +20,24 @@ Rectangle {
 
     signal projectDescriptionChanged(string desc)
 
+    DltMenu {
+        id: menu
+        width: 200
+        DltMenuItem {
+            text: "复制"
+            onTriggered: {
+                copyboard.selectAll()
+                copyboard.copy()
+            }
+        }
+    }
+    TextEdit {
+        id: copyboard
+        visible: false
+    }
+
+    
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 5
@@ -35,6 +53,14 @@ Rectangle {
                 Layout.fillWidth: true
                 text: projectInfo.description
                 wrapMode: Text.WrapAnywhere
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.RightButton
+                    onClicked: function(mouse) {
+                        copyboard.text = projectInfo.description
+                        menu.popup()
+                    }
+                }
             }
         }
         ColumnLayout {
@@ -47,6 +73,14 @@ Rectangle {
                 Layout.fillWidth: true
                 text: projectInfo.path
                 wrapMode: Text.WrapAnywhere
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.RightButton
+                    onClicked: function(mouse) {
+                        copyboard.text = projectInfo.path
+                        menu.popup()
+                    }
+                }
             }
         }
         ColumnLayout {
@@ -59,6 +93,14 @@ Rectangle {
                 Layout.fillWidth: true
                 text: projectInfo.image_base_path
                 wrapMode: Text.WrapAnywhere
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.RightButton
+                    onClicked: function(mouse) {
+                        copyboard.text = projectInfo.image_base_path
+                        menu.popup()
+                    }
+                }
             }
         }
         ColumnLayout {

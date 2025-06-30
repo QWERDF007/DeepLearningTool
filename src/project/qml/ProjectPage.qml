@@ -32,7 +32,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 120
                 onProjectNameChanged: function(newName) {
-                    let ok = ProjectManager.updateProject(projectInfo.path, newName, projectInfo.description)
+                    let ok = ProjectManager.updateProjectBaseInfo(projectInfo.path, newName, projectInfo.description)
                     if (ok) {
                         projectNameType.name = newName
                     }
@@ -44,7 +44,7 @@ Rectangle {
                 Layout.fillHeight: true
                 Layout.fillWidth: true
                 onProjectDescriptionChanged: function(newDescription) {
-                    let ok = ProjectManager.updateProject(projectInfo.path, projectNameType.name, newDescription)
+                    let ok = ProjectManager.updateProjectBaseInfo(projectInfo.path, projectNameType.name, newDescription)
                     if (ok) {
                         projectInfo.description = newDescription
                     }

@@ -340,7 +340,7 @@ bool RectentProjects::addProject(const QString &path)
     return false;
 }
 
-bool RectentProjects::updateProject(const QString &path, const QString &new_name, const qint64 new_mtime)
+bool RectentProjects::updateProjectBaseInfo(const QString &path, const QString &new_name, const qint64 new_mtime)
 {
     const int size = static_cast<int>(project_infos.size());
     bool      ok{false};
@@ -548,7 +548,7 @@ void ProjectManager::closeProject()
 {
     if (current_project_)
     {
-        updateProject(current_project_->path()); // 更新修改时间
+        updateProjectMtime(current_project_->path());
         spdlog::info("关闭项目: {}", current_project_->path().toUtf8().constData());
         // current_project_->deleteLater();
         delete current_project_;
@@ -561,7 +561,7 @@ void ProjectManager::closeProject()
     }
 }
 
-bool ProjectManager::updateProject(const QString &path, const QString &name, const QString &description)
+bool ProjectManager::updateProjectBaseInfo(const QString &path, const QString &name, const QString &description)
 {
     spdlog::info("更新项目: {}", path.toUtf8().constData());
     QString      err_msg;
@@ -569,7 +569,7 @@ bool ProjectManager::updateProject(const QString &path, const QString &name, con
     bool         ok    = data::ProjectDataBase::updateProjectBaseInfo(path, name, description, mtime, err_msg);
     if (ok)
     {
-        recent_projects_->updateProject(path, name, mtime);
+        recent_projects_->updateProjectBaseInfo(path, name, mtime);
     }
     else
     {
@@ -578,14 +578,14 @@ bool ProjectManager::updateProject(const QString &path, const QString &name, con
     return ok;
 }
 
-void ProjectManager::updateProject(const QString &path)
+void ProjectManager::updateProjectMtime(const QString &path)
 {
     QVariantMap project_info;
     QString     err_msg;
     data::ProjectDataBase::getProjectInfo(path, project_info, err_msg);
     QString name        = project_info["name"].toString();
     QString description = project_info["description"].toString();
-    updateProject(path, name, description);
+    updateProjectBaseInfo(path, name, description);
 }
 
 void ProjectManager::deleteProject(const QString &path)

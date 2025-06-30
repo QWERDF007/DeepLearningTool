@@ -204,7 +204,7 @@ public:
 
     bool addProject(const QString &path);
 
-    bool updateProject(const QString &path, const QString &new_name, const qint64 new_mtime);
+    bool updateProjectBaseInfo(const QString &path, const QString &new_name, const qint64 new_mtime);
 
     bool openProject(const QString &path);
 
@@ -259,9 +259,7 @@ public:
 
     Q_INVOKABLE void closeProject();
 
-    Q_INVOKABLE bool updateProject(const QString &path, const QString &name, const QString &description);
-
-    void updateProject(const QString &path);
+    Q_INVOKABLE bool updateProjectBaseInfo(const QString &path, const QString &name, const QString &description);
 
     Q_INVOKABLE void deleteProject(const QString &path);
 
@@ -294,6 +292,8 @@ public:
 private:
     explicit ProjectManager(QObject *parent = nullptr);
     ~ProjectManager();
+
+    void updateProjectMtime(const QString &path);
 
     Project         *current_project_{nullptr};
     RectentProjects *recent_projects_{nullptr};
