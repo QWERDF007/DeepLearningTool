@@ -167,7 +167,7 @@ public:
 
     int count() const
     {
-        return static_cast<int>(image_instances_model_.size());
+        return static_cast<int>(image_ids_.size());
     }
 
     int getCurImageId() const;
@@ -202,14 +202,15 @@ private:
 
     void resetModel();
 
+    void insert(const int64_t dataset_id, const int64_t image_id, const QString &path);
+
     data::ProjectDataBase *database_{nullptr};
 
     /**
      * @brief 图像实例 {image_id, ImageInstance}，按照 image_id 排序
      */
     std::map<int64_t, ImageInstance *, std::greater<int64_t>> image_instances_;
-
-    std::vector<ImageInstance *> image_instances_model_;
+    std::vector<int64_t>                                      image_ids_;
 
     QItemSelectionModel *selection_{nullptr};
 

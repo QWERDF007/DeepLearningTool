@@ -43,17 +43,21 @@ void ImageInstancesListModel::init()
     database_->getAllImages(dataset_ids, image_ids, paths, err_msg);
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        image_instances_.emplace(image_ids[i], new ImageInstance(dataset_ids[i], image_ids[i], paths[i], this));
+        insert(dataset_ids[i], image_ids[i], paths[i]);
     }
+}
 
-    resetModel();
+void ImageInstancesListModel::insert(const int64_t dataset_id, const int64_t image_id, const QString &path)
+{
+    image_instances_.emplace(image_id, new ImageInstance(dataset_id, image_id, path, this));
+    image_ids_.insert(image_ids_.begin(), image_id);
 }
 
 int ImageInstancesListModel::rowCount(const QModelIndex &parent) const
 {
     if (parent.isValid())
         return 0;
-    return static_cast<int>(std::min(image_instances_.size(), image_instances_model_.size()));
+    return count();
 }
 
 QVariant ImageInstancesListModel::data(const QModelIndex &index, int role) const
@@ -102,16 +106,17 @@ bool ImageInstancesListModel::addImageInstances(const int64_t dataset_id, const 
     }
     spdlog::info("批量添加图像, dataset id: {}, 数量: {}", dataset_id, new_image_ids.size());
 
-    for (size_t i = 0; i < new_image_ids.size(); ++i)
-    {
-        image_instances_.insert(
-            image_instances_.begin(),
-            std::make_pair(new_image_ids[i], new ImageInstance(dataset_id, new_image_ids[i], paths[i], this)));
-        // image_instances_.emplace(dataset_id, new ImageInstance(image_id, path, this));
-    }
     QModelIndexList selected_indexes = selection_->selectedIndexes();
     QModelIndex     current_index    = selection_->currentIndex();
-    resetModel();
+
+    int count = static_cast<int>(new_image_ids.size() - 1);
+    beginInsertRows(QModelIndex(), 0, count);
+    for (size_t i = 0; i < new_image_ids.size(); ++i)
+    {
+        insert(dataset_id, new_image_ids[i], paths[i]);
+    }
+    endInsertRows();
+
     if (!selected_indexes.empty())
     {
         int offset = static_cast<int>(new_image_ids.size());
@@ -304,17 +309,19 @@ QString ImageInstancesListModel::curImagePath() const
 
 int ImageInstancesListModel::getImageId(const QModelIndex &index) const
 {
-    return image_instances_model_[index.row()]->imageId();
+    return image_ids_[index.row()];
 }
 
 QVariant ImageInstancesListModel::getImageName(const QModelIndex &index) const
 {
-    return image_instances_model_[index.row()]->name();
+    const int64_t image_id = image_ids_[index.row()];
+    return image_instances_.at(image_id)->name();
 }
 
 QVariant ImageInstancesListModel::getImagePath(const QModelIndex &index) const
 {
-    return image_instances_model_[index.row()]->path();
+    const int64_t image_id = image_ids_[index.row()];
+    return image_instances_.at(image_id)->path();
 }
 
 QVariant ImageInstancesListModel::getSelected(const QModelIndex &index) const
@@ -453,10 +460,10 @@ void ImageInstancesListModel::onCurrentChanged(const QModelIndex &current, const
 void ImageInstancesListModel::resetModel()
 {
     beginResetModel();
-    image_instances_model_.clear();
+    image_ids_.clear();
     for (const auto &[image_id, image_instance] : image_instances_)
     {
-        image_instances_model_.emplace_back(image_instance);
+        image_ids_.push_back(image_id);
     }
     endResetModel();
 }
