@@ -259,7 +259,7 @@ public:
 
     Q_INVOKABLE void closeProject();
 
-    Q_INVOKABLE void updateProject(const QString &path, const QString &name, const QString &description);
+    Q_INVOKABLE bool updateProject(const QString &path, const QString &name, const QString &description);
 
     void updateProject(const QString &path);
 

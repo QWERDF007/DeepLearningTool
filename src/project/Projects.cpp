@@ -561,7 +561,7 @@ void ProjectManager::closeProject()
     }
 }
 
-void ProjectManager::updateProject(const QString &path, const QString &name, const QString &description)
+bool ProjectManager::updateProject(const QString &path, const QString &name, const QString &description)
 {
     spdlog::info("更新项目: {}", path.toUtf8().constData());
     QString      err_msg;
@@ -575,6 +575,7 @@ void ProjectManager::updateProject(const QString &path, const QString &name, con
     {
         spdlog::error("更新项目失败: {}, error: {}", path.toUtf8().constData(), err_msg.toUtf8().constData());
     }
+    return ok;
 }
 
 void ProjectManager::updateProject(const QString &path)
