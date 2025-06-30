@@ -202,8 +202,6 @@ private:
 
     void resetModel();
 
-    void insert(const int64_t dataset_id, const int64_t image_id, const QString &path);
-
     data::ProjectDataBase *database_{nullptr};
 
     /**

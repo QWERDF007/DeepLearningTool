@@ -41,16 +41,13 @@ void ImageInstancesListModel::init()
     std::vector<int64_t> image_ids;
     std::vector<QString> paths;
     database_->getAllImages(dataset_ids, image_ids, paths, err_msg);
+
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        insert(dataset_ids[i], image_ids[i], paths[i]);
+        image_instances_.emplace(image_ids[i], new ImageInstance(dataset_ids[i], image_ids[i], paths[i], this));
     }
-}
-
-void ImageInstancesListModel::insert(const int64_t dataset_id, const int64_t image_id, const QString &path)
-{
-    image_instances_.emplace(image_id, new ImageInstance(dataset_id, image_id, path, this));
-    image_ids_.insert(image_ids_.begin(), image_id);
+    std::sort(image_ids.begin(), image_ids.end(), std::greater<int64_t>());
+    image_ids_.insert(image_ids_.begin(), image_ids.begin(), image_ids.end());
 }
 
 int ImageInstancesListModel::rowCount(const QModelIndex &parent) const
@@ -113,8 +110,10 @@ bool ImageInstancesListModel::addImageInstances(const int64_t dataset_id, const 
     beginInsertRows(QModelIndex(), 0, count);
     for (size_t i = 0; i < new_image_ids.size(); ++i)
     {
-        insert(dataset_id, new_image_ids[i], paths[i]);
+        image_instances_.emplace(new_image_ids[i], new ImageInstance(dataset_id, new_image_ids[i], paths[i], this));
     }
+    std::sort(new_image_ids.begin(), new_image_ids.end(), std::greater<int64_t>());
+    image_ids_.insert(image_ids_.begin(), new_image_ids.begin(), new_image_ids.end());
     endInsertRows();
 
     if (!selected_indexes.empty())
@@ -128,6 +127,7 @@ bool ImageInstancesListModel::addImageInstances(const int64_t dataset_id, const 
         QModelIndex new_index = index(current_index.row() + offset);
         selection_->setCurrentIndex(new_index, QItemSelectionModel::Select);
     }
+
     emit statsChanged();
     return true;
 }
