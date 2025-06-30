@@ -22,7 +22,7 @@ Rectangle {
             iconSource: DltFontIcon.ImportMirrored
             onClicked: {
                 if (project && curItem) {
-                    // importDataDialog.dataFormatModel = DataFormat.getSupportedDataFormat()
+                    importDataDialog.dataFormatModel = DataFormat.getSupportedDataFormat()
                     importDataDialog.datasetsModel = project.getAllDatasetsName()
                     importDataDialog.datasetName = curItem.name
                     importDataDialog.open()
@@ -65,7 +65,6 @@ Rectangle {
 
     ImportDataDialog {
         id: importDataDialog
-        dataFormatModel: DataFormat.getSupportedDataFormat()
     }
 
     ColumnLayout {
