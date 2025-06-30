@@ -30,7 +30,8 @@ DltPopup {
                 left: parent.left
                 right: parent.right
                 top: parent.top
-                bottom: buttonRow.top - 10
+                bottom: buttonRow.top
+                bottomMargin: 10
             }
             // 左侧输入区域
             ColumnLayout {
