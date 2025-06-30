@@ -64,7 +64,7 @@ Rectangle {
             SplitView.preferredWidth: 300
             orientation: Qt.Vertical
 
-            Rectangle { // 标注实例
+            LabelInstancesView { // 标注实例
                 SplitView.fillWidth: true
                 SplitView.fillHeight: true
                 SplitView.minimumHeight: 200
