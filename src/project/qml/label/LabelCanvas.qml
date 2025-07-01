@@ -9,7 +9,7 @@ Item {
     property Project project: ProjectManager.currentProject
     property ImageInstancesModel imageInstances: project ? project.imageInstances : null
     property LabelClassesModel labelClasses: project ? project.labelClasses : null
-    property ImageLabelsModel imageLabels: project ? project.imageLabels : null
+    property ImageLabelsListModel imageLabelsList: project ? project.imageLabelsList : null
     property color drawingColor: project ? labelClasses.currentLabelClassColor : "red"
 
     LabelImage {
@@ -22,7 +22,7 @@ Item {
         offsetX: labelImage.image.x
         offsetY: labelImage.image.y
         factor: labelImage.image.scale
-        model: labelImage.image.status === Image.Ready ? imageLabels : null
+        model: labelImage.image.status === Image.Ready ? imageLabelsList : null
     }
 
     DrawingItem {

@@ -34,16 +34,9 @@ class LabelInstance : public QObject
 {
 public:
     LabelInstance(const int64_t label_id, const int64_t image_id, const int64_t label_class_id, const LabelData_t &data,
-                  QObject *parent = nullptr)
-        : QObject(parent)
-        , label_id_(label_id)
-        , image_id_(image_id)
-        , label_class_id_(label_class_id)
-        , data_(data)
-    {
-    }
+                  QObject *parent = nullptr);
 
-    ~LabelInstance() {}
+    ~LabelInstance();
 
     int64_t labelId() const
     {
@@ -131,8 +124,8 @@ private:
 class ImageLabelsListModel : public QAbstractListModel
 {
     Q_OBJECT
-    QML_NAMED_ELEMENT(ImageLabelsModel)
-    QML_UNCREATABLE("Can not create ImageLabelsModel directly!")
+    QML_NAMED_ELEMENT(ImageLabelsListModel)
+    QML_UNCREATABLE("Can not create ImageLabelsListModel directly!")
 public:
     ImageLabelsListModel(ImageInstancesListModel *image_instances, LabelInstancesListModel *label_instances,
                          LabelClassesListModel *label_classes, QObject *parent = nullptr);
@@ -171,7 +164,52 @@ private:
     LabelInstancesListModel *label_instances_{nullptr};
     LabelClassesListModel   *label_classes_{nullptr};
 
-    int64_t image_id_{-1};
+    std::vector<int64_t> label_ids_;
+};
+
+class ImageLabelsTableModel : public QAbstractTableModel
+{
+    Q_OBJECT
+    QML_NAMED_ELEMENT(ImageLabelsTableModel)
+    QML_UNCREATABLE("Can not create ImageLabelsTableModel directly!")
+public:
+    ImageLabelsTableModel(ImageInstancesListModel *image_instances, LabelInstancesListModel *label_instances,
+                          LabelClassesListModel *label_classes, QObject *parent = nullptr);
+
+    ~ImageLabelsTableModel();
+
+    enum Role
+    {
+        TitleRole = Qt::UserRole + 1,
+        DataRole,
+    };
+
+    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+
+    int columnCount(const QModelIndex &parent = QModelIndex()) const override;
+
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+
+    QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
+
+    QHash<int, QByteArray> roleNames() const override;
+
+    void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
+
+protected:
+    virtual QStringList columnHeaders() const;
+    virtual QStringList columnKeys() const;
+
+private:
+    void init();
+
+    void resetModel();
+
+    QVariant getData(const QModelIndex &index) const;
+
+    ImageInstancesListModel *image_instances_{nullptr};
+    LabelInstancesListModel *label_instances_{nullptr};
+    LabelClassesListModel   *label_classes_{nullptr};
 
     std::vector<int64_t> label_ids_;
 };

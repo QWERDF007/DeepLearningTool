@@ -20,6 +20,7 @@ class LabelClassesListModel;
 class ImageTagsListModel;
 class LabelInstancesListModel;
 class ImageLabelsListModel;
+class ImageLabelsTableModel;
 
 class Project : public QObject
 {
@@ -35,7 +36,8 @@ class Project : public QObject
     Q_PROPERTY(ImageInstancesListModel *imageInstances READ imageInstances NOTIFY imageInstancesChanged FINAL)
     Q_PROPERTY(LabelClassesListModel *labelClasses READ labelClasses NOTIFY labelClassesChanged FINAL)
     Q_PROPERTY(ImageTagsListModel *imageTags READ imageTags NOTIFY imageTagsChanged FINAL)
-    Q_PROPERTY(ImageLabelsListModel *imageLabels READ imageLabels CONSTANT)
+    Q_PROPERTY(ImageLabelsListModel *imageLabelsList READ imageLabelsList CONSTANT)
+    Q_PROPERTY(ImageLabelsTableModel *imageLabelsTable READ imageLabelsTable CONSTANT)
 public:
     Project(const QString &name, const int method, const QString &path, const QString &description,
             const QString image_base_path, const qint64 ctime, const qint64 mtime, QObject *parent = nullptr);
@@ -102,9 +104,14 @@ public:
         return image_tags_;
     }
 
-    ImageLabelsListModel *imageLabels() const
+    ImageLabelsListModel *imageLabelsList() const
     {
-        return image_labels_;
+        return image_labels_list_;
+    }
+
+    ImageLabelsTableModel *imageLabelsTable() const
+    {
+        return image_labels_table_;
     }
 
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
@@ -153,7 +160,8 @@ private:
     LabelClassesListModel   *label_classes_{nullptr};
     ImageTagsListModel      *image_tags_{nullptr};
     LabelInstancesListModel *label_instances_{nullptr};
-    ImageLabelsListModel    *image_labels_{nullptr};
+    ImageLabelsListModel    *image_labels_list_{nullptr};
+    ImageLabelsTableModel   *image_labels_table_{nullptr};
 
 signals:
     void descriptionChanged();

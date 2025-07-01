@@ -42,13 +42,14 @@ Project::~Project() {}
 
 void Project::init()
 {
-    database_        = new data::ProjectDataBase(path_, this);
-    datasets_        = new DatasetsListModel(database_, this);
-    image_instances_ = new ImageInstancesListModel(database_, this);
-    label_classes_   = new LabelClassesListModel(database_, this);
-    image_tags_      = new ImageTagsListModel(database_, image_instances_, this);
-    label_instances_ = new LabelInstancesListModel(database_, image_instances_, label_classes_, this);
-    image_labels_    = new ImageLabelsListModel(image_instances_, label_instances_, label_classes_, this);
+    database_           = new data::ProjectDataBase(path_, this);
+    datasets_           = new DatasetsListModel(database_, this);
+    image_instances_    = new ImageInstancesListModel(database_, this);
+    label_classes_      = new LabelClassesListModel(database_, this);
+    image_tags_         = new ImageTagsListModel(database_, image_instances_, this);
+    label_instances_    = new LabelInstancesListModel(database_, image_instances_, label_classes_, this);
+    image_labels_list_  = new ImageLabelsListModel(image_instances_, label_instances_, label_classes_, this);
+    image_labels_table_ = new ImageLabelsTableModel(image_instances_, label_instances_, label_classes_, this);
     // 添加/删除图像时
     connect(image_instances_, &ImageInstancesListModel::statsChanged, datasets_, &DatasetsListModel::statsChanged);
 
@@ -181,7 +182,8 @@ void Project::addLabels(const std::vector<int64_t> &image_ids, const std::vector
 {
     std::vector<int64_t> label_ids;
     label_instances_->addLabels(label_ids, image_ids, label_class_ids, data);
-    image_labels_->addLabels(image_ids, label_ids);
+    image_labels_list_->addLabels(image_ids, label_ids);
+    image_labels_table_->addLabels(image_ids, label_ids);
 }
 
 void Project::updateLabels(const std::vector<int64_t> &label_ids, const std::vector<QVariantMap> &data)

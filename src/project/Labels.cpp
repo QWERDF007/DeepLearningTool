@@ -32,6 +32,18 @@ void LabelData_t::fromBlob(const std::vector<uint8_t> &blob)
     height = j.value("height", -1);
 }
 
+LabelInstance::LabelInstance(const int64_t label_id, const int64_t image_id, const int64_t label_class_id,
+                             const LabelData_t &data, QObject *parent)
+    : QObject(parent)
+    , label_id_(label_id)
+    , image_id_(image_id)
+    , label_class_id_(label_class_id)
+    , data_(data)
+{
+}
+
+LabelInstance::~LabelInstance() {}
+
 LabelInstancesListModel::LabelInstancesListModel(data::ProjectDataBase   *database,
                                                  ImageInstancesListModel *image_instances,
                                                  LabelClassesListModel *label_classes, QObject *parent)
@@ -240,6 +252,7 @@ void ImageLabelsListModel::init()
 
 void ImageLabelsListModel::resetModel()
 {
+    qInfo() << __FUNCTION__ << __LINE__;
     beginResetModel();
     const int                          image_id  = image_instances_->getCurImageId();
     const std::vector<ImageInstance *> instances = image_instances_->getImageInstances({image_id});
@@ -358,6 +371,142 @@ QVariant ImageLabelsListModel::getColor(const QModelIndex &index) const
     if (instance == nullptr)
         return QVariant();
     return label_classes_->getLabelClassColor(instance->labelClassId());
+}
+
+ImageLabelsTableModel::ImageLabelsTableModel(ImageInstancesListModel *image_instances,
+                                             LabelInstancesListModel *label_instances,
+                                             LabelClassesListModel *label_classes, QObject *parent)
+    : QAbstractTableModel(parent)
+    , image_instances_(image_instances)
+    , label_instances_(label_instances)
+    , label_classes_(label_classes)
+{
+    init();
+}
+
+ImageLabelsTableModel::~ImageLabelsTableModel() {}
+
+void ImageLabelsTableModel::init()
+{
+    if (image_instances_ == nullptr || label_instances_ == nullptr)
+        return;
+    connect(image_instances_, &ImageInstancesListModel::curImageChanged, this, &ImageLabelsTableModel::resetModel);
+}
+
+void ImageLabelsTableModel::resetModel()
+{
+    beginResetModel();
+    const int                          image_id  = image_instances_->getCurImageId();
+    const std::vector<ImageInstance *> instances = image_instances_->getImageInstances({image_id});
+    if (!instances.empty() && instances.at(0))
+    {
+        std::set<int64_t> label_ids = instances.at(0)->labelIds();
+        label_ids_.clear();
+        label_ids_.insert(label_ids_.end(), label_ids.begin(), label_ids.end());
+    }
+    endResetModel();
+}
+
+int ImageLabelsTableModel::rowCount(const QModelIndex &parent) const
+{
+    if (parent.isValid() || label_instances_ == nullptr)
+        return 0;
+    return static_cast<int>(label_ids_.size());
+}
+
+int ImageLabelsTableModel::columnCount(const QModelIndex &parent) const
+{
+    if (parent.isValid())
+        return 0;
+    return static_cast<int>(columnHeaders().size());
+}
+
+QVariant ImageLabelsTableModel::data(const QModelIndex &index, int role) const
+{
+    if (index.row() < 0 || index.row() >= rowCount() || index.column() < 0 || index.column() >= columnCount())
+        return QVariant();
+
+    switch (role)
+    {
+    case DataRole:
+        return getData(index);
+    default:
+        return QVariant();
+    }
+}
+
+QVariant ImageLabelsTableModel::headerData(int section, Qt::Orientation orientation, int role) const
+{
+    if (orientation == Qt::Horizontal && role == Qt::DisplayRole)
+    {
+        auto headers = columnHeaders();
+        if (section < headers.size())
+            return headers[section];
+    }
+    return QVariant();
+}
+
+QHash<int, QByteArray> ImageLabelsTableModel::roleNames() const
+{
+    return {
+        {Qt::DisplayRole, "display"},
+        {       DataRole,    "data"},
+    };
+}
+
+void ImageLabelsTableModel::addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids)
+{
+    if (image_ids.empty() || label_ids.empty())
+        return;
+    const int64_t        cur_image_id = image_instances_->getCurImageId();
+    std::vector<int64_t> valid_label_ids;
+    for (size_t i = 0; i < image_ids.size(); ++i)
+    {
+        if (image_ids[i] == cur_image_id)
+            valid_label_ids.push_back(label_ids[i]);
+    }
+    if (valid_label_ids.empty())
+        return;
+    const int row   = rowCount();
+    const int count = static_cast<int>(valid_label_ids.size());
+    beginInsertRows(QModelIndex(), row, row + count - 1);
+    label_ids_.insert(label_ids_.end(), valid_label_ids.begin(), valid_label_ids.end());
+    endInsertRows();
+}
+
+QStringList ImageLabelsTableModel::columnHeaders() const
+{
+    return {"类别", "X", "Y", "宽度", "高度"};
+}
+
+QStringList ImageLabelsTableModel::columnKeys() const
+{
+    return {"label_class_id", "x", "y", "width", "height"};
+}
+
+QVariant ImageLabelsTableModel::getData(const QModelIndex &index) const
+{
+    const int64_t  label_id = label_ids_[index.row()];
+    LabelInstance *instance = label_instances_->getLabelInstance(label_id);
+    if (instance == nullptr)
+        return QVariantMap();
+    const int         col  = index.column();
+    const LabelData_t data = instance->data();
+    switch (col)
+    {
+    case 0:
+        return label_classes_->getLabelClassName(instance->labelClassId());
+    case 1:
+        return data.x;
+    case 2:
+        return data.y;
+    case 3:
+        return data.width;
+    case 4:
+        return data.height;
+    default:
+        return QVariant();
+    }
 }
 
 } // namespace dltool::project

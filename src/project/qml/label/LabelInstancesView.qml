@@ -11,7 +11,7 @@ Rectangle {
     height: 200
 
     property Project project: ProjectManager.currentProject
-    property ImageLabelsModel imageLabels: project ? project.imageLabels : null
+    property ImageLabelsTableModel imageLabelsTable: project ? project.imageLabelsTable : null
 
     ColumnLayout {
         anchors.fill: parent
@@ -30,7 +30,6 @@ Rectangle {
                 id: horizontalHeader
                 Layout.fillWidth: true
                 Layout.preferredHeight: 32
-                model: ["类别", "X", "Y", "宽度", "高度"]
                 syncView: tableView
                 columnSpacing: 5
                 resizableColumns: true
@@ -51,7 +50,6 @@ Rectangle {
                     }
 
                     DltText {
-                        id: text
                         anchors.centerIn: parent
                         text: horizontalHeader.textRole ?
                             (Array.isArray(horizontalHeader.model) ? modelData[horizontalHeader.textRole] : model[horizontalHeader.textRole])
@@ -63,15 +61,20 @@ Rectangle {
 
             TableView {
                 id: tableView
+                clip: true
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 boundsBehavior: Flickable.StopAtBounds
 
-                model: 10
+                model: imageLabelsTable
                 delegate: Rectangle {
-                    implicitWidth: tableView.width / 5
+                    implicitWidth: horizontalHeader.width / horizontalHeader.columns
                     implicitHeight: 24
-                    color: index % 2 == 0 ? "green" : "blue"
+                    color: row % 2 == 0 ? Qt.lighter(DltColor.Primary, 1.3) : DltColor.Primary
+                    DltText {
+                        anchors.centerIn: parent
+                        text: model.data
+                    }
                 }
             }
         }
