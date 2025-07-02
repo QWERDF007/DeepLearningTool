@@ -67,7 +67,7 @@ Item {
                 var height = Math.abs(event.y - startPoint.y) / labelImage.image.scale
 
                 // 添加到ListModel
-                if (project) {
+                if (project && labelClasses.currentLabelClassId !== -1) {
                     let data = { "x": x, "y": y, "width": width, "height": height }
                     project.addLabels([imageInstances.curImageId], [labelClasses.currentLabelClassId], [data])
                 }

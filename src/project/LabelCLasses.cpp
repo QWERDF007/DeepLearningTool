@@ -157,7 +157,10 @@ bool LabelClassesListModel::addLabelClass(const QString &name, const QString &co
     // beginInsertRows(QModelIndex(), row, row);
     label_classes_.emplace(label_class_id, new LabelClass(label_class_id, name, color, shortcut, row, this));
     endInsertRows();
-    return false;
+    QModelIndex index = this->index(row);
+    selection_->select(index, QItemSelectionModel::ClearAndSelect);
+    selection_->setCurrentIndex(index, QItemSelectionModel::Select);
+    return true;
 }
 
 bool LabelClassesListModel::updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
@@ -224,7 +227,7 @@ bool LabelClassesListModel::deleteLabelClass(const int64_t label_class_id)
         }
         ++idx;
     }
-    return false;
+    return true;
 }
 
 int LabelClassesListModel::getLabelClassId(const QString &name) const
