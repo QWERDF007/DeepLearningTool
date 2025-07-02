@@ -1,5 +1,6 @@
 #include "project/Labels.h"
 
+#include "Labels.h"
 #include "data/DataBase.h"
 #include "project/Images.h"
 #include "project/LabelClasses.h"
@@ -33,7 +34,7 @@ void LabelData_t::fromBlob(const std::vector<uint8_t> &blob)
 }
 
 LabelInstance::LabelInstance(const int64_t label_id, const int64_t image_id, const int64_t label_class_id,
-                             const LabelData_t &data, QObject *parent)
+                             LabelData_t *data, QObject *parent)
     : QObject(parent)
     , label_id_(label_id)
     , image_id_(image_id)
@@ -42,7 +43,11 @@ LabelInstance::LabelInstance(const int64_t label_id, const int64_t image_id, con
 {
 }
 
-LabelInstance::~LabelInstance() {}
+ LabelInstance::~LabelInstance()
+{
+    if (data_)
+        delete data_;
+}
 
 LabelInstancesListModel::LabelInstancesListModel(data::ProjectDataBase   *database,
                                                  ImageInstancesListModel *image_instances,
@@ -75,9 +80,7 @@ void LabelInstancesListModel::init()
     }
     for (size_t i = 0; i < label_ids.size(); ++i)
     {
-        LabelData_t label_data;
-        label_data.fromBlob(labels_data[i]);
-        insert(label_ids[i], image_ids[i], label_class_ids[i], label_data);
+        // TODO: 从 labels_data 构造 label_instances_ 和将 label_id 添加到 label_ids_
     }
 }
 
@@ -146,16 +149,7 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
 
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        const QVariantMap &_data = data[i];
-        LabelData_t        label_data;
-        label_data.type   = LabelType::Rect;
-        label_data.x      = _data.value("x", 0).toDouble();
-        label_data.y      = _data.value("y", 0).toDouble();
-        label_data.width  = _data.value("width", 0).toDouble();
-        label_data.height = _data.value("height", 0).toDouble();
-        labels_data.push_back(label_data);
-        label_types.push_back(label_data.type);
-        labels_data_blob.push_back(label_data.toBlob());
+        // TODO: 将数据转换到 blob 插入数据库, 从 QVariantMap 转换到 std::vector<uint8_t>
     }
 
     QString err_msg;
@@ -173,7 +167,7 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
     std::map<int64_t, std::vector<int64_t>> images_label_ids;
     for (size_t i = 0; i < label_ids.size(); ++i)
     {
-        insert(label_ids[i], image_ids[i], label_class_ids[i], labels_data[i]);
+        // TODO: 从 labels_data 构造 label_instances_ 和将 label_id 添加到 label_ids_
         if (images_label_ids.find(image_ids[i]) == images_label_ids.end())
             images_label_ids[image_ids[i]] = std::vector<int64_t>();
         images_label_ids[image_ids[i]].push_back(label_ids[i]);
@@ -197,12 +191,6 @@ void LabelInstancesListModel::getAllImagesLabelIds(std::vector<int64_t> &image_i
     }
 }
 
-void LabelInstancesListModel::insert(const int64_t label_id, const int64_t image_id, const int64_t label_class_id,
-                                     const LabelData_t &data)
-{
-    label_ids_.push_back(label_id);
-    label_instances_.emplace(label_id, new LabelInstance(label_id, image_id, label_class_id, data, this));
-}
 
 int64_t LabelInstancesListModel::getLabelId(const QModelIndex &index) const
 {
@@ -221,15 +209,7 @@ int64_t LabelInstancesListModel::getLabelClassId(const QModelIndex &index) const
 
 QVariant LabelInstancesListModel::getData(const QModelIndex &index) const
 {
-    const LabelData_t &data = label_instances_.at(label_ids_[index.row()])->data();
-
-    QVariantMap map;
-    map["x"]      = data.x;
-    map["y"]      = data.y;
-    map["width"]  = data.width;
-    map["height"] = data.height;
-
-    return map;
+    return label_instances_.at(label_ids_[index.row()])->dataMap();
 }
 
 ImageLabelsListModel::ImageLabelsListModel(ImageInstancesListModel *image_instances,
@@ -353,15 +333,7 @@ QVariant ImageLabelsListModel::getData(const QModelIndex &index) const
     LabelInstance *instance = label_instances_->getLabelInstance(label_id);
     if (instance == nullptr)
         return QVariantMap();
-    const LabelData_t &data = instance->data();
-
-    QVariantMap map;
-    map["x"]      = data.x;
-    map["y"]      = data.y;
-    map["width"]  = data.width;
-    map["height"] = data.height;
-
-    return map;
+    return instance->dataMap();
 }
 
 QVariant ImageLabelsListModel::getColor(const QModelIndex &index) const
@@ -381,6 +353,7 @@ ImageLabelsTableModel::ImageLabelsTableModel(ImageInstancesListModel *image_inst
     , label_instances_(label_instances)
     , label_classes_(label_classes)
 {
+    // TODO: 添加列名和数据key
     init();
 }
 
@@ -403,6 +376,12 @@ void ImageLabelsTableModel::resetModel()
         std::set<int64_t> label_ids = instances.at(0)->labelIds();
         label_ids_.clear();
         label_ids_.insert(label_ids_.end(), label_ids.begin(), label_ids.end());
+        for (const int64_t label_id : label_ids)
+        {
+            const LabelInstance *instance = label_instances_->getLabelInstance(label_id);
+            if (instance == nullptr)
+                continue;
+        }
     }
     endResetModel();
 }
@@ -418,7 +397,7 @@ int ImageLabelsTableModel::columnCount(const QModelIndex &parent) const
 {
     if (parent.isValid())
         return 0;
-    return static_cast<int>(columnHeaders().size());
+    return static_cast<int>(column_headers_.size());
 }
 
 QVariant ImageLabelsTableModel::data(const QModelIndex &index, int role) const
@@ -439,9 +418,8 @@ QVariant ImageLabelsTableModel::headerData(int section, Qt::Orientation orientat
 {
     if (orientation == Qt::Horizontal && role == Qt::DisplayRole)
     {
-        auto headers = columnHeaders();
-        if (section < headers.size())
-            return headers[section];
+        if (section < static_cast<int>(column_headers_.size()))
+            return column_headers_[section];
     }
     return QVariant();
 }
@@ -474,39 +452,38 @@ void ImageLabelsTableModel::addLabels(const std::vector<int64_t> &image_ids, con
     endInsertRows();
 }
 
-QStringList ImageLabelsTableModel::columnHeaders() const
-{
-    return {"类别", "X", "Y", "宽度", "高度"};
-}
-
-QStringList ImageLabelsTableModel::columnKeys() const
-{
-    return {"label_class_id", "x", "y", "width", "height"};
-}
-
 QVariant ImageLabelsTableModel::getData(const QModelIndex &index) const
 {
     const int64_t  label_id = label_ids_[index.row()];
     LabelInstance *instance = label_instances_->getLabelInstance(label_id);
     if (instance == nullptr)
-        return QVariantMap();
-    const int         col  = index.column();
-    const LabelData_t data = instance->data();
+        return QVariant();
+    const int col  = index.column();
     switch (col)
     {
     case 0:
         return label_classes_->getLabelClassName(instance->labelClassId());
-    case 1:
-        return QString::number(data.x, 'f', 2);
-    case 2:
-        return QString::number(data.y, 'f', 2);
-    case 3:
-        return QString::number(data.width, 'f', 2);
-    case 4:
-        return QString::number(data.height, 'f', 2);
     default:
         return QVariant();
     }
+}
+
+QVariant ImageLabelsTableModel::getData(LabelInstance *instance, const int col) const
+{
+    auto data = instance->dataMap();
+    if (col >= static_cast<int>(column_keys_.size()))
+        return QVariant();
+    return data.value(column_keys_[col], QVariant());
+}
+
+std::vector<uint8_t> DetLabelData_t::toBlob() const
+{
+    return LabelData_t::toBlob();
+}
+
+void DetLabelData_t::fromBlob(const std::vector<uint8_t> &blob)
+{
+    LabelData_t::fromBlob(blob);
 }
 
 } // namespace dltool::project

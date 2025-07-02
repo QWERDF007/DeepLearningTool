@@ -14,17 +14,20 @@ class LabelClassesListModel;
 
 enum LabelType
 {
-    Rect = 0,
+
+    DetLabel = 0,
 };
 
 class LabelData_t
 {
 public:
-    int    type{LabelType::Rect};
-    double x;
-    double y;
-    double width;
-    double height;
+    LabelData_t() {};
+    virtual ~LabelData_t() {};
+    int    type{-1};
+    double x{0};
+    double y{0};
+    double width{0};
+    double height{0};
 
     virtual std::vector<uint8_t> toBlob() const;
     virtual void                 fromBlob(const std::vector<uint8_t> &blob);
@@ -33,10 +36,10 @@ public:
 class LabelInstance : public QObject
 {
 public:
-    LabelInstance(const int64_t label_id, const int64_t image_id, const int64_t label_class_id, const LabelData_t &data,
+    LabelInstance(const int64_t label_id, const int64_t image_id, const int64_t label_class_id, LabelData_t *data,
                   QObject *parent = nullptr);
 
-    ~LabelInstance();
+    virtual ~LabelInstance();
 
     int64_t labelId() const
     {
@@ -53,14 +56,19 @@ public:
         return label_class_id_;
     }
 
-    LabelData_t &data()
+    LabelData_t *data() const
     {
         return data_;
     }
 
-    const LabelData_t &data() const
+    QVariantMap& dataMap()
     {
-        return data_;
+        return data_map_;
+    }
+
+    const QVariantMap& dataMap() const
+    {
+        return data_map_;
     }
 
 private:
@@ -68,7 +76,8 @@ private:
     int64_t image_id_;
     int64_t label_class_id_;
 
-    LabelData_t data_;
+    LabelData_t *data_{nullptr};
+    QVariantMap data_map_;
 };
 
 class LabelInstancesListModel : public QAbstractListModel
@@ -105,8 +114,6 @@ public:
 
 private:
     void init();
-
-    void insert(const int64_t label_id, const int64_t image_id, const int64_t label_class_id, const LabelData_t &data);
 
     int64_t  getLabelId(const QModelIndex &index) const;
     int64_t  getImageId(const QModelIndex &index) const;
@@ -196,22 +203,35 @@ public:
 
     void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
 
-protected:
-    virtual QStringList columnHeaders() const;
-    virtual QStringList columnKeys() const;
-
 private:
     void init();
 
     void resetModel();
 
     QVariant getData(const QModelIndex &index) const;
+    QVariant getData(LabelInstance *instance, const int col) const;
 
     ImageInstancesListModel *image_instances_{nullptr};
     LabelInstancesListModel *label_instances_{nullptr};
     LabelClassesListModel   *label_classes_{nullptr};
 
     std::vector<int64_t> label_ids_;
+
+    mutable std::vector<QString>     column_headers_;
+    mutable std::vector<QString>     column_keys_;
+};
+
+class DetLabelData_t : public LabelData_t
+{
+public:
+    std::vector<uint8_t> toBlob() const override;
+    void                 fromBlob(const std::vector<uint8_t> &blob) override;
+};
+
+class DetLabelInstance : public LabelInstance
+{
+public:
+
 };
 
 } // namespace dltool::project
