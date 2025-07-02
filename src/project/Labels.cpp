@@ -497,13 +497,13 @@ QVariant ImageLabelsTableModel::getData(const QModelIndex &index) const
     case 0:
         return label_classes_->getLabelClassName(instance->labelClassId());
     case 1:
-        return data.x;
+        return QString::number(data.x, 'f', 2);
     case 2:
-        return data.y;
+        return QString::number(data.y, 'f', 2);
     case 3:
-        return data.width;
+        return QString::number(data.width, 'f', 2);
     case 4:
-        return data.height;
+        return QString::number(data.height, 'f', 2);
     default:
         return QVariant();
     }
