@@ -64,16 +64,30 @@ Rectangle {
             SplitView.preferredWidth: 300
             orientation: Qt.Vertical
 
+            Rectangle { // 图像增强
+                SplitView.fillWidth: true
+                SplitView.minimumHeight: 200
+                SplitView.preferredHeight: 240
+                color: DltColor.Primary
+            }
             LabelInstancesView { // 标注实例
                 SplitView.fillWidth: true
                 SplitView.fillHeight: true
-                SplitView.minimumHeight: 200
+                SplitView.minimumHeight: 240
                 color: DltColor.Primary
             }
+            
+            Rectangle { // 编辑实例
+                SplitView.fillWidth: true
+                SplitView.minimumHeight: 200
+                SplitView.preferredHeight: parent.height / 4 - 20
+                color: DltColor.Primary
+            }
+
             Rectangle { // 文件列表
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
-                SplitView.preferredHeight: parent.height / 2 - 20
+                SplitView.preferredHeight: parent.height / 4 - 20
                 color: DltColor.Primary
             }
         }

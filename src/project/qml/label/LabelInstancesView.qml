@@ -28,18 +28,16 @@ Rectangle {
 
             HorizontalHeaderView {
                 id: horizontalHeader
+                clip: true
                 Layout.fillWidth: true
                 Layout.preferredHeight: 32
                 syncView: tableView
                 columnSpacing: 5
                 resizableColumns: true
-                resizableRows: true
                 boundsBehavior: Flickable.StopAtBounds
-                clip: true
                 delegate:  Rectangle {
                     implicitWidth: horizontalHeader.width / horizontalHeader.columns
                     implicitHeight: horizontalHeader.height
-                    //                    implicitHeight: horizontalHeader.implicitHeight
                     color: DltColor.Background
                     Rectangle {
                         anchors.right: parent.right
