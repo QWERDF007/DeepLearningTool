@@ -1,5 +1,6 @@
 #include "project/Projects.h"
 
+#include "data/CoreDef.h"
 #include "data/DataBase.h"
 #include "data/DataFormat.h"
 #include "project/Datasets.h"
@@ -89,16 +90,25 @@ void Project::openProject()
 std::tuple<bool, QString> Project::isValid(const int method, const QString &path, bool is_new)
 {
     bool file_exist = QFile::exists(path);
+    if (!file_exist)
+        return {false, "项目不存在"};
     if (is_new)
     {
         if (file_exist)
             return {false, "项目已存在"};
-        // else if (!dltool::core::DeepLearningMethod::getInstance()->getMethodTypes().contains(method))
-        // return false;
+        else if (!dltool::data::DeepLearningMethod::getInstance()->getMethodTypes().contains(method))
+            return {false, QString("项目类型非法: %1").arg(method)};
         else
             return {true, ""};
     }
-    return {file_exist, file_exist ? "" : "项目不存在"};
+    else
+    {
+        auto      info           = ProjectManager::getInstance()->getProjectInfo(path);
+        const int project_method = info.value("method", -1).toInt();
+        if (!dltool::data::DeepLearningMethod::getInstance()->getMethodTypes().contains(project_method))
+            return {false, QString("项目类型非法: %1").arg(method)};
+    }
+    return {true, ""};
 }
 
 QList<QString> Project::getAllDatasetsName() const
