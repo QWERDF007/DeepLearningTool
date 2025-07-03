@@ -3,6 +3,7 @@
 #include "data/CoreDef.h"
 #include "data/DataBase.h"
 #include "data/DataFormat.h"
+#include "data/LabelData.h"
 #include "project/Datasets.h"
 #include "project/ImageTags.h"
 #include "project/Images.h"
@@ -29,28 +30,29 @@ Project::Project(const QString &name, const int method, const QString &path, con
     , ctime_(ctime)
     , mtime_(mtime)
 {
-    init();
+    database_ = new data::ProjectDataBase(path_, this);
 }
 
 Project::Project(const QString &path, QObject *parent)
     : QObject(parent)
     , path_(path)
 {
-    init();
+    database_ = new data::ProjectDataBase(path_, this);
 }
 
 Project::~Project() {}
 
 void Project::init()
 {
-    database_           = new data::ProjectDataBase(path_, this);
     datasets_           = new DatasetsListModel(database_, this);
     image_instances_    = new ImageInstancesListModel(database_, this);
     label_classes_      = new LabelClassesListModel(database_, this);
     image_tags_         = new ImageTagsListModel(database_, image_instances_, this);
-    label_instances_    = new LabelInstancesListModel(database_, image_instances_, label_classes_, this);
+    label_instances_    = new LabelInstancesListModel(database_, image_instances_, label_classes_,
+                                                      data::createLabelDataFactory(method_), this);
     image_labels_list_  = new ImageLabelsListModel(image_instances_, label_instances_, label_classes_, this);
-    image_labels_table_ = new ImageLabelsTableModel(image_instances_, label_instances_, label_classes_, this);
+    image_labels_table_ = new ImageLabelsTableModel(image_instances_, label_instances_, label_classes_,
+                                                    data::LabelDataColumns(method_), this);
     // 添加/删除图像时
     connect(image_instances_, &ImageInstancesListModel::statsChanged, datasets_, &DatasetsListModel::statsChanged);
 
@@ -72,7 +74,7 @@ void Project::initProject()
     {
         spdlog::error("初始化项目失败, error: {}", err_msg.toUtf8().constData());
     }
-    // emit datasetsChanged();
+    init();
 }
 
 void Project::openProject()
@@ -84,14 +86,12 @@ void Project::openProject()
     {
         spdlog::error("打开项目失败, error: {}", err_msg.toUtf8().constData());
     }
-    // emit datasetsChanged();
+    init();
 }
 
 std::tuple<bool, QString> Project::isValid(const int method, const QString &path, bool is_new)
 {
     bool file_exist = QFile::exists(path);
-    if (!file_exist)
-        return {false, "项目不存在"};
     if (is_new)
     {
         if (file_exist)
@@ -103,6 +103,8 @@ std::tuple<bool, QString> Project::isValid(const int method, const QString &path
     }
     else
     {
+        if (!file_exist)
+            return {false, "项目不存在"};
         auto      info           = ProjectManager::getInstance()->getProjectInfo(path);
         const int project_method = info.value("method", -1).toInt();
         if (!dltool::data::DeepLearningMethod::getInstance()->getMethodTypes().contains(project_method))
@@ -192,6 +194,7 @@ void Project::addLabels(const std::vector<int64_t> &image_ids, const std::vector
 {
     std::vector<int64_t> label_ids;
     label_instances_->addLabels(label_ids, image_ids, label_class_ids, data);
+    image_instances_->addImagesLabelIds(image_ids, label_ids);
     image_labels_list_->addLabels(image_ids, label_ids);
     image_labels_table_->addLabels(image_ids, label_ids);
 }

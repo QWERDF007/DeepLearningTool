@@ -13,6 +13,10 @@ Rectangle {
     property Project project: ProjectManager.currentProject
     property ImageLabelsTableModel imageLabelsTable: project ? project.imageLabelsTable : null
 
+    function isNumber(value) {
+        return typeof value === "number" && !isNaN(value);
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 10
@@ -66,12 +70,16 @@ Rectangle {
 
                 model: imageLabelsTable
                 delegate: Rectangle {
+                    clip: true
+                    property var mdata: model.data
                     implicitWidth: horizontalHeader.width / horizontalHeader.columns
                     implicitHeight: 24
                     color: row % 2 == 0 ? Qt.lighter(DltColor.Primary, 1.3) : DltColor.Primary
                     DltText {
-                        anchors.centerIn: parent
-                        text: model.data
+                        width: parent.width
+                        anchors.verticalCenter: parent.verticalCenter
+                        elide: Text.ElideRight
+                        text: isNumber(mdata) ? mdata.toFixed(2) : mdata
                     }
                 }
             }

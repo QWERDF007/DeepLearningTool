@@ -2,41 +2,25 @@
 
 #include <QAbstractListModel>
 #include <QtQml>
+#include <functional>
 
 namespace dltool::data {
 class ProjectDataBase;
-}
+class LabelData_t;
+} // namespace dltool::data
+
+using LabelData        = std::unique_ptr<dltool::data::LabelData_t>;
+using LabelDataFactory = std::function<LabelData()>;
 
 namespace dltool::project {
 
 class ImageInstancesListModel;
 class LabelClassesListModel;
 
-enum LabelType
-{
-
-    DetLabel = 0,
-};
-
-class LabelData_t
-{
-public:
-    LabelData_t() {};
-    virtual ~LabelData_t() {};
-    int    type{-1};
-    double x{0};
-    double y{0};
-    double width{0};
-    double height{0};
-
-    virtual std::vector<uint8_t> toBlob() const;
-    virtual void                 fromBlob(const std::vector<uint8_t> &blob);
-};
-
 class LabelInstance : public QObject
 {
 public:
-    LabelInstance(const int64_t label_id, const int64_t image_id, const int64_t label_class_id, LabelData_t *data,
+    LabelInstance(const int64_t label_id, const int64_t image_id, const int64_t label_class_id, LabelData data,
                   QObject *parent = nullptr);
 
     virtual ~LabelInstance();
@@ -56,19 +40,9 @@ public:
         return label_class_id_;
     }
 
-    LabelData_t *data() const
+    const LabelData &data() const
     {
         return data_;
-    }
-
-    QVariantMap& dataMap()
-    {
-        return data_map_;
-    }
-
-    const QVariantMap& dataMap() const
-    {
-        return data_map_;
     }
 
 private:
@@ -76,8 +50,7 @@ private:
     int64_t image_id_;
     int64_t label_class_id_;
 
-    LabelData_t *data_{nullptr};
-    QVariantMap data_map_;
+    LabelData data_{nullptr};
 };
 
 class LabelInstancesListModel : public QAbstractListModel
@@ -87,7 +60,7 @@ class LabelInstancesListModel : public QAbstractListModel
     QML_UNCREATABLE("Can not create LabelInstancesModel directly!")
 public:
     LabelInstancesListModel(data::ProjectDataBase *database, ImageInstancesListModel *image_instances,
-                            LabelClassesListModel *label_classes, QObject *parent = nullptr);
+                            LabelClassesListModel *label_classes, LabelDataFactory factory, QObject *parent = nullptr);
 
     ~LabelInstancesListModel();
 
@@ -124,8 +97,11 @@ private:
     ImageInstancesListModel *image_instances_{nullptr};
     LabelClassesListModel   *label_classes_{nullptr};
 
+    LabelDataFactory factory_;
+
     std::map<int64_t, LabelInstance *> label_instances_;
-    std::vector<int64_t>               label_ids_;
+
+    std::vector<int64_t> label_ids_;
 };
 
 class ImageLabelsListModel : public QAbstractListModel
@@ -181,7 +157,9 @@ class ImageLabelsTableModel : public QAbstractTableModel
     QML_UNCREATABLE("Can not create ImageLabelsTableModel directly!")
 public:
     ImageLabelsTableModel(ImageInstancesListModel *image_instances, LabelInstancesListModel *label_instances,
-                          LabelClassesListModel *label_classes, QObject *parent = nullptr);
+                          LabelClassesListModel                                       *label_classes,
+                          const std::pair<std::vector<QString>, std::vector<QString>> &columns,
+                          QObject                                                     *parent = nullptr);
 
     ~ImageLabelsTableModel();
 
@@ -217,21 +195,8 @@ private:
 
     std::vector<int64_t> label_ids_;
 
-    mutable std::vector<QString>     column_headers_;
-    mutable std::vector<QString>     column_keys_;
-};
-
-class DetLabelData_t : public LabelData_t
-{
-public:
-    std::vector<uint8_t> toBlob() const override;
-    void                 fromBlob(const std::vector<uint8_t> &blob) override;
-};
-
-class DetLabelInstance : public LabelInstance
-{
-public:
-
+    mutable std::vector<QString> column_headers_;
+    mutable std::vector<QString> column_keys_;
 };
 
 } // namespace dltool::project

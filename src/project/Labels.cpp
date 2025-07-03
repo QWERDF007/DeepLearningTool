@@ -1,61 +1,39 @@
 #include "project/Labels.h"
 
-#include "Labels.h"
 #include "data/DataBase.h"
+#include "data/LabelData.h"
 #include "project/Images.h"
 #include "project/LabelClasses.h"
 
-#include <json.hpp>
 #include <spdlog/spdlog.h>
-
-using json = nlohmann::json;
 
 namespace dltool::project {
 
-std::vector<uint8_t> LabelData_t::toBlob() const
-{
-    json j = json{
-        {     "x",      x},
-        {     "y",      y},
-        { "width",  width},
-        {"height", height},
-    };
-
-    return json::to_bson(j);
-}
-
-void LabelData_t::fromBlob(const std::vector<uint8_t> &blob)
-{
-    json j = json::from_bson(blob);
-    x      = j.value("x", -1);
-    y      = j.value("y", -1);
-    width  = j.value("width", -1);
-    height = j.value("height", -1);
-}
-
 LabelInstance::LabelInstance(const int64_t label_id, const int64_t image_id, const int64_t label_class_id,
-                             LabelData_t *data, QObject *parent)
+                             LabelData data, QObject *parent)
     : QObject(parent)
     , label_id_(label_id)
     , image_id_(image_id)
     , label_class_id_(label_class_id)
-    , data_(data)
+    , data_(std::move(data))
 {
+
 }
 
- LabelInstance::~LabelInstance()
+LabelInstance::~LabelInstance()
 {
-    if (data_)
-        delete data_;
+
 }
 
 LabelInstancesListModel::LabelInstancesListModel(data::ProjectDataBase   *database,
                                                  ImageInstancesListModel *image_instances,
-                                                 LabelClassesListModel *label_classes, QObject *parent)
+                                                 LabelClassesListModel *label_classes, LabelDataFactory factory,
+                                                 QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
     , image_instances_(image_instances)
     , label_classes_(label_classes)
+    , factory_(std::move(factory))
 {
     init();
 }
@@ -78,10 +56,20 @@ void LabelInstancesListModel::init()
         spdlog::error("查询所有标注失败: {}", err_msg.toUtf8().constData());
         return;
     }
+    if (factory_ == nullptr)
+    {
+        spdlog::error("查询所有标注失败, 标签数据工厂未初始化");
+        return;
+    }
     for (size_t i = 0; i < label_ids.size(); ++i)
     {
-        // TODO: 从 labels_data 构造 label_instances_ 和将 label_id 添加到 label_ids_
+        LabelData data = factory_();
+        data->fromBlob(labels_data[i]);
+        label_instances_[label_ids[i]]
+            = new LabelInstance(label_ids[i], image_ids[i], label_class_ids[i], std::move(data), this);
     }
+    std::reverse(label_ids.begin(), label_ids.end());
+    label_ids_.insert(label_ids_.end(), label_ids.begin(), label_ids.end());
 }
 
 int LabelInstancesListModel::rowCount(const QModelIndex &parent) const
@@ -143,13 +131,27 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
         return;
     }
 
-    std::vector<LabelData_t>          labels_data;
-    std::vector<std::vector<uint8_t>> labels_data_blob;
+    if (factory_ == nullptr)
+    {
+        spdlog::error("添加标注失败: 标签数据工厂未初始化");
+        return;
+    }
+
     std::vector<int64_t>              label_types;
+    std::vector<LabelData>            labels_data;
+    std::vector<std::vector<uint8_t>> labels_data_blob;
+
+    label_types.reserve(image_ids.size());
+    labels_data.reserve(image_ids.size());
+    labels_data_blob.reserve(image_ids.size());
 
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        // TODO: 将数据转换到 blob 插入数据库, 从 QVariantMap 转换到 std::vector<uint8_t>
+        LabelData label_data = factory_();
+        label_data->fromQVariantMap(data[i]);
+        label_types.push_back(label_data->type());
+        labels_data_blob.push_back(label_data->toBlob());
+        labels_data.push_back(std::move(label_data));
     }
 
     QString err_msg;
@@ -164,20 +166,15 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
         spdlog::error("添加标注失败: 标签ID数量与图像ID数量不一致, {} != {}", label_ids.size(), image_ids.size());
         return;
     }
-    std::map<int64_t, std::vector<int64_t>> images_label_ids;
+
     for (size_t i = 0; i < label_ids.size(); ++i)
     {
-        // TODO: 从 labels_data 构造 label_instances_ 和将 label_id 添加到 label_ids_
-        if (images_label_ids.find(image_ids[i]) == images_label_ids.end())
-            images_label_ids[image_ids[i]] = std::vector<int64_t>();
-        images_label_ids[image_ids[i]].push_back(label_ids[i]);
+        label_instances_[label_ids[i]]
+            = new LabelInstance(label_ids[i], image_ids[i], label_class_ids[i], std::move(labels_data[i]), this);
     }
-    for (const auto &[image_id, image_label_ids] : images_label_ids)
-    {
-        ImageInstance *instance = image_instances_->getImageInstance(image_id);
-        if (instance)
-            instance->addLabelIds(image_label_ids);
-    }
+    std::vector<int64_t> sorted_label_ids(label_ids.begin(), label_ids.end());
+    std::reverse(sorted_label_ids.begin(), sorted_label_ids.end());
+    label_ids_.insert(label_ids_.end(), sorted_label_ids.begin(), sorted_label_ids.end());
 }
 
 void LabelInstancesListModel::getAllImagesLabelIds(std::vector<int64_t> &image_ids,
@@ -190,7 +187,6 @@ void LabelInstancesListModel::getAllImagesLabelIds(std::vector<int64_t> &image_i
         label_ids.push_back(label_id);
     }
 }
-
 
 int64_t LabelInstancesListModel::getLabelId(const QModelIndex &index) const
 {
@@ -209,7 +205,8 @@ int64_t LabelInstancesListModel::getLabelClassId(const QModelIndex &index) const
 
 QVariant LabelInstancesListModel::getData(const QModelIndex &index) const
 {
-    return label_instances_.at(label_ids_[index.row()])->dataMap();
+    // return label_instances_.at(label_ids_[index.row()])->data()->dataMap();
+    return QVariant();
 }
 
 ImageLabelsListModel::ImageLabelsListModel(ImageInstancesListModel *image_instances,
@@ -333,7 +330,7 @@ QVariant ImageLabelsListModel::getData(const QModelIndex &index) const
     LabelInstance *instance = label_instances_->getLabelInstance(label_id);
     if (instance == nullptr)
         return QVariantMap();
-    return instance->dataMap();
+    return instance->data()->dataMap();
 }
 
 QVariant ImageLabelsListModel::getColor(const QModelIndex &index) const
@@ -347,11 +344,15 @@ QVariant ImageLabelsListModel::getColor(const QModelIndex &index) const
 
 ImageLabelsTableModel::ImageLabelsTableModel(ImageInstancesListModel *image_instances,
                                              LabelInstancesListModel *label_instances,
-                                             LabelClassesListModel *label_classes, QObject *parent)
+                                             LabelClassesListModel   *label_classes,
+                                             const std::pair<std::vector<QString>, std::vector<QString>> &columns,
+                                             QObject                                                     *parent)
     : QAbstractTableModel(parent)
     , image_instances_(image_instances)
     , label_instances_(label_instances)
     , label_classes_(label_classes)
+    , column_headers_(columns.first)
+    , column_keys_(columns.second)
 {
     // TODO: 添加列名和数据key
     init();
@@ -458,32 +459,22 @@ QVariant ImageLabelsTableModel::getData(const QModelIndex &index) const
     LabelInstance *instance = label_instances_->getLabelInstance(label_id);
     if (instance == nullptr)
         return QVariant();
-    const int col  = index.column();
+    const int col = index.column();
     switch (col)
     {
     case 0:
         return label_classes_->getLabelClassName(instance->labelClassId());
     default:
-        return QVariant();
+        return getData(instance, col);
     }
 }
 
 QVariant ImageLabelsTableModel::getData(LabelInstance *instance, const int col) const
 {
-    auto data = instance->dataMap();
+    auto data = instance->data()->dataMap();
     if (col >= static_cast<int>(column_keys_.size()))
         return QVariant();
     return data.value(column_keys_[col], QVariant());
-}
-
-std::vector<uint8_t> DetLabelData_t::toBlob() const
-{
-    return LabelData_t::toBlob();
-}
-
-void DetLabelData_t::fromBlob(const std::vector<uint8_t> &blob)
-{
-    LabelData_t::fromBlob(blob);
 }
 
 } // namespace dltool::project
