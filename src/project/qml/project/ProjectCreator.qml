@@ -10,6 +10,7 @@ DltPopup {
     id: creator
     width: 1000
     height: 600
+    property alias methods: methodSelection.methods
 
     ColumnLayout {
         anchors.fill: parent

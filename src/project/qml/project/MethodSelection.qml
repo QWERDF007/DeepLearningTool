@@ -3,7 +3,6 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
-import dltool.data
 
 Item {
     id: methodSelection
@@ -11,6 +10,7 @@ Item {
     height: 600
     // clip: true
     property int method: view.currentItem ? view.currentItem.method : -1
+    property alias methods: view.model
     ColumnLayout {
         anchors.fill: parent
         DltText {
@@ -25,7 +25,6 @@ Item {
             boundsBehavior: Flickable.StopAtBounds
             Layout.fillHeight: true
             Layout.fillWidth: true
-            model: DeepLearningMethod.getMethods()
             cellWidth: view.width / 4
             cellHeight: view.height / 3
             delegate: Item {

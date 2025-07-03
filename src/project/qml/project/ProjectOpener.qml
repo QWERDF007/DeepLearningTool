@@ -5,6 +5,7 @@ import Qt.labs.platform
 
 import dltool.ui
 import dltool.project
+import dltool.data
 
 Rectangle {
     color: DltColor.Primary
@@ -31,6 +32,7 @@ Rectangle {
             height: 40
             text: "创建项目"
             onClicked: {
+                projectCreator.methods = DeepLearningMethod.getMethods()
                 projectCreator.open()
             }
         }
