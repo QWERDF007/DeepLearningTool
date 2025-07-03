@@ -19,8 +19,8 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 10
-        spacing: 5
+        anchors.margins: 5
+        // spacing: 5
         DltText {
             text: "标签实例:"
             font: DltFont.Subtitle

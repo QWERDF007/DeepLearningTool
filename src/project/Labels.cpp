@@ -229,7 +229,6 @@ void ImageLabelsListModel::init()
 
 void ImageLabelsListModel::resetModel()
 {
-    qInfo() << __FUNCTION__ << __LINE__;
     beginResetModel();
     const int                          image_id  = image_instances_->getCurImageId();
     const std::vector<ImageInstance *> instances = image_instances_->getImageInstances({image_id});
