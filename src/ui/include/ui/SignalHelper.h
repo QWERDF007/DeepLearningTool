@@ -19,6 +19,9 @@ private:
 
 signals:
     void changeTabBarIndex(int index);
+
+    void imageLabelListSelectionChanged(const QModelIndex &index, QItemSelectionModel::SelectionFlags command);
+    void imageLabelTableSelectionChanged(const QModelIndex &index, QItemSelectionModel::SelectionFlags command);
 };
 
 } // namespace dltool::ui

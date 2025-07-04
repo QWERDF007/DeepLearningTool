@@ -57,14 +57,6 @@ Rectangle {
             id: labelCanvas
             SplitView.fillHeight: true
             SplitView.fillWidth: true
-            Connections {
-                target: labelInstancesView
-                function onTableSelectionChanged(index, command) {
-                    if (labelCanvas.selection) {
-                        labelCanvas.selection.select(index, command)
-                    }
-                }
-            }
         }
 
         DltSplitView {
@@ -87,14 +79,6 @@ Rectangle {
                 SplitView.fillHeight: true
                 SplitView.minimumHeight: 240
                 color: DltColor.Primary
-                Connections {
-                    target: labelCanvas
-                    function onListSelectionChanged(index, command) {
-                        if (labelInstancesView.selection) {
-                            labelInstancesView.selection.select(index, command)
-                        }
-                    }
-                }
             }
             
             Rectangle { // 编辑实例

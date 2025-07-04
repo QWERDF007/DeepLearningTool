@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 
+import dltool.ui
 import dltool.project
 
 Item {
@@ -13,7 +14,14 @@ Item {
     property ItemSelectionModel selection: imageLabelsList ? imageLabelsList.selection : null
     property color drawingColor: project ? labelClasses.currentLabelClassColor : "red"
 
-    signal listSelectionChanged(var index, var command)
+    Connections {
+        target: SignalHelper
+        function onImageLabelTableSelectionChanged(index, command) {
+            if (selection) {
+                selection.select(index, command)
+            }
+        }
+    }
 
     LabelImage {
         id: labelImage
@@ -93,7 +101,7 @@ Item {
     function select(index, command) {
         if (selection) {
             selection.select(index, command)
-            labelView.listSelectionChanged(index, command)
+            SignalHelper.imageLabelListSelectionChanged(index, command)
         }
     }
 }

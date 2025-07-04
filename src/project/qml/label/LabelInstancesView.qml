@@ -19,10 +19,13 @@ Rectangle {
     property real rowHeight: 24
     property real colWidth: horizontalHeader.width / horizontalHeader.columns
 
-    signal tableSelectionChanged(var index, var command)
-
-    function isNumber(value) {
-        return typeof value === "number" && !isNaN(value);
+    Connections {
+        target: SignalHelper
+        function onImageLabelListSelectionChanged(index, command) {
+            if (selection) {
+                selection.select(index, command)
+            }
+        }
     }
 
     ColumnLayout {
@@ -146,7 +149,7 @@ Rectangle {
     function select(index, command) {
         if (selection) {
             selection.select(index, command)
-            control.tableSelectionChanged(index, command)
+            SignalHelper.imageLabelTableSelectionChanged(index, command)
         }
     }
 }
