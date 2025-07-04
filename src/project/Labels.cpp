@@ -223,6 +223,7 @@ void ImageLabelsListModel::init()
     if (image_instances_ == nullptr || label_instances_ == nullptr)
         return;
     connect(image_instances_, &ImageInstancesListModel::curImageChanged, this, &ImageLabelsListModel::resetModel);
+    connect(selection_, &QItemSelectionModel::selectionChanged, this, &ImageLabelsListModel::updateSelection);
 }
 
 void ImageLabelsListModel::resetModel()
@@ -262,6 +263,8 @@ QVariant ImageLabelsListModel::data(const QModelIndex &index, int role) const
         return getData(index);
     case LabelClassColorRole:
         return getColor(index);
+    case SelectedRole:
+        return getSelected(index);
     default:
         return QVariant();
     }
@@ -275,6 +278,7 @@ QHash<int, QByteArray> ImageLabelsListModel::roleNames() const
         {   LabelClassIdRole, "label_class_id"},
         {           DataRole,           "data"},
         {LabelClassColorRole,          "color"},
+        {       SelectedRole,       "selected"},
     };
 }
 
@@ -296,6 +300,40 @@ void ImageLabelsListModel::addLabels(const std::vector<int64_t> &image_ids, cons
     beginInsertRows(QModelIndex(), row, row + count - 1);
     label_ids_.insert(label_ids_.end(), valid_label_ids.begin(), valid_label_ids.end());
     endInsertRows();
+}
+
+void ImageLabelsListModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)
+{
+    qInfo() << __FUNCTION__ << __LINE__;
+    const QModelIndexList &dselected_items = deselected.indexes();
+
+    int top{-1};
+    int bottom{-1};
+    for (const QModelIndex &index : dselected_items)
+    {
+        const int row = index.row();
+        if (top == -1)
+            top = row;
+        else
+            top = std::min(top, row);
+        bottom = std::max(bottom, row);
+    }
+    emit dataChanged(index(top), index(bottom), {SelectedRole});
+
+    top    = -1;
+    bottom = -1;
+
+    const QModelIndexList &selected_items = selected.indexes();
+    for (const QModelIndex &index : selected_items)
+    {
+        const int row = index.row();
+        if (top == -1)
+            top = row;
+        else
+            top = std::min(top, row);
+        bottom = std::max(bottom, row);
+    }
+    emit dataChanged(index(top), index(bottom), {SelectedRole});
 }
 
 int64_t ImageLabelsListModel::getLabelId(const QModelIndex &index) const
@@ -337,6 +375,11 @@ QVariant ImageLabelsListModel::getColor(const QModelIndex &index) const
     if (instance == nullptr)
         return QVariant();
     return label_classes_->getLabelClassColor(instance->labelClassId());
+}
+
+QVariant ImageLabelsListModel::getSelected(const QModelIndex &index) const
+{
+    return selection_->isSelected(index);
 }
 
 ImageLabelsTableModel::ImageLabelsTableModel(ImageInstancesListModel *image_instances,
@@ -457,6 +500,7 @@ void ImageLabelsTableModel::addLabels(const std::vector<int64_t> &image_ids, con
 
 void ImageLabelsTableModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)
 {
+    qInfo() << __FUNCTION__ << __LINE__;
     const QModelIndexList &dselected_items = deselected.indexes();
 
     int top{-1}, left{-1};

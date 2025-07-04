@@ -132,6 +132,7 @@ public:
         LabelClassIdRole,
         DataRole,
         LabelClassColorRole,
+        SelectedRole,
     };
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -152,11 +153,14 @@ private:
 
     void resetModel();
 
+    void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
+
     int64_t  getLabelId(const QModelIndex &index) const;
     int64_t  getImageId(const QModelIndex &index) const;
     int64_t  getLabelClassId(const QModelIndex &index) const;
     QVariant getData(const QModelIndex &index) const;
     QVariant getColor(const QModelIndex &index) const;
+    QVariant getSelected(const QModelIndex &index) const;
 
     ImageInstancesListModel *image_instances_{nullptr};
     LabelInstancesListModel *label_instances_{nullptr};

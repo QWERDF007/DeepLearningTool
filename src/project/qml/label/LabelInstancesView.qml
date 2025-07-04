@@ -7,6 +7,7 @@ import dltool.ui
 import dltool.project
 
 Rectangle {
+    id: control
     color: DltColor.Primary
     width: 200
     height: 200
@@ -17,6 +18,8 @@ Rectangle {
 
     property real rowHeight: 24
     property real colWidth: horizontalHeader.width / horizontalHeader.columns
+
+    signal selectionChanged(var index, var command)
 
     function isNumber(value) {
         return typeof value === "number" && !isNaN(value);
@@ -133,6 +136,7 @@ Rectangle {
                         if (selection) {
                             let tmpIndex = tableView.model.index(row, 0)
                             selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
+                            control.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
                         }
                     }
                 }
