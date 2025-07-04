@@ -3,6 +3,7 @@
 #include "DataExport.h"
 
 #include <QObject>
+#include <QRect>
 #include <QVariantMap>
 #include <functional>
 #include <memory>
@@ -25,7 +26,7 @@ public:
     virtual std::vector<uint8_t> toBlob() const;
     virtual void                 fromBlob(const std::vector<uint8_t> &blob);
 
-    virtual void fromQVariantMap(const QVariantMap &data);
+    virtual void fromQVariantMap(const QVariantMap &data, const QRectF &image_rect);
 
     virtual const QVariantMap &dataMap();
 
@@ -43,9 +44,9 @@ public:
     int type() const override;
 
     std::vector<uint8_t> toBlob() const override;
-    void                 fromBlob(const std::vector<uint8_t> &blob) override;
 
-    void fromQVariantMap(const QVariantMap &data) override;
+    void fromBlob(const std::vector<uint8_t> &blob) override;
+    void fromQVariantMap(const QVariantMap &data, const QRectF &image_rect) override;
 
     static std::pair<std::vector<QString>, std::vector<QString>> columns();
 };
@@ -58,7 +59,7 @@ public:
     std::vector<uint8_t> toBlob() const override;
 
     void fromBlob(const std::vector<uint8_t> &blob) override;
-    void fromQVariantMap(const QVariantMap &data) override;
+    void fromQVariantMap(const QVariantMap &data, const QRectF &image_rect) override;
 };
 
 using LabelDataFactory = std::function<std::unique_ptr<LabelData_t>()>;

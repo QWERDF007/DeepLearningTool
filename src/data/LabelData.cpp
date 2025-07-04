@@ -9,15 +9,9 @@ using json = nlohmann::json;
 
 namespace dltool::data {
 
-LabelData_t::LabelData_t()
-{
+LabelData_t::LabelData_t() {}
 
-}
-
-LabelData_t::~LabelData_t()
-{
-
-}
+LabelData_t::~LabelData_t() {}
 
 std::vector<uint8_t> LabelData_t::toBlob() const
 {
@@ -40,12 +34,23 @@ void LabelData_t::fromBlob(const std::vector<uint8_t> &blob)
     height = j.value<double>("height", -1);
 }
 
-void LabelData_t::fromQVariantMap(const QVariantMap &data)
+void LabelData_t::fromQVariantMap(const QVariantMap &data, const QRectF &image_rect)
 {
-    x      = data.value("x", -1).toDouble();
-    y      = data.value("y", -1).toDouble();
-    width  = data.value("width", -1).toDouble();
-    height = data.value("height", -1).toDouble();
+    double ix = data.value("x", -1).toDouble();
+    double iy = data.value("y", -1).toDouble();
+    double iw = data.value("width", -1).toDouble();
+    double ih = data.value("height", -1).toDouble();
+
+    x = std::min<double>(image_rect.width(), std::max<double>(0, ix));
+    y = std::min<double>(image_rect.height(), std::max<double>(0, iy));
+
+    double x2 = ix + iw;
+    double y2 = iy + ih;
+    x2        = std::min<double>(image_rect.width(), std::max<double>(0, x2));
+    y2        = std::min<double>(image_rect.height(), std::max<double>(0, y2));
+
+    width  = std::min<double>(image_rect.width(), std::max<double>(0, x2 - x));
+    height = std::min<double>(image_rect.height(), std::max<double>(0, y2 - y));
 }
 
 const QVariantMap &LabelData_t::dataMap()
@@ -62,13 +67,9 @@ const QVariantMap &LabelData_t::dataMap()
     return data_map_;
 }
 
-DetLabelData_t::DetLabelData_t()
-{
-}
+DetLabelData_t::DetLabelData_t() {}
 
-DetLabelData_t::~DetLabelData_t()
-{
-}
+DetLabelData_t::~DetLabelData_t() {}
 
 int DetLabelData_t::type() const
 {
@@ -85,9 +86,9 @@ void DetLabelData_t::fromBlob(const std::vector<uint8_t> &blob)
     LabelData_t::fromBlob(blob);
 }
 
-void DetLabelData_t::fromQVariantMap(const QVariantMap &data)
+void DetLabelData_t::fromQVariantMap(const QVariantMap &data, const QRectF &image_rect)
 {
-    LabelData_t::fromQVariantMap(data);
+    LabelData_t::fromQVariantMap(data, image_rect);
 }
 
 std::pair<std::vector<QString>, std::vector<QString>> DetLabelData_t::columns()
@@ -113,9 +114,9 @@ void SegLabelData_t::fromBlob(const std::vector<uint8_t> &blob)
     LabelData_t::fromBlob(blob);
 }
 
-void SegLabelData_t::fromQVariantMap(const QVariantMap &data)
+void SegLabelData_t::fromQVariantMap(const QVariantMap &data, const QRectF &image_rect)
 {
-    LabelData_t::fromQVariantMap(data);
+    LabelData_t::fromQVariantMap(data, image_rect);
 }
 
 // clang-format off

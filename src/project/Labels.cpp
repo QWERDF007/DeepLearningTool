@@ -144,8 +144,10 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
 
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
+        auto instance = image_instances_->getImageInstance(image_ids[i]);
+
         LabelData label_data = factory_();
-        label_data->fromQVariantMap(data[i]);
+        label_data->fromQVariantMap(data[i], instance->imageRect());
         label_types.push_back(label_data->type());
         labels_data_blob.push_back(label_data->toBlob());
         labels_data.push_back(std::move(label_data));

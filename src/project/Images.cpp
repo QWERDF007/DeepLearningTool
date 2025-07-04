@@ -21,6 +21,28 @@ ImageInstance::ImageInstance(const int64_t dataset_id, const int64_t image_id, c
 
 ImageInstance::~ImageInstance() {}
 
+QSize ImageInstance::imageSize() const
+{
+    if (image_rect_.isEmpty())
+    {
+        QImageReader reader(path_);
+        image_size_ = reader.size();
+        image_rect_ = QRectF(0, 0, image_size_.width(), image_size_.height());
+    }
+    return image_size_;
+}
+
+QRectF ImageInstance::imageRect() const
+{
+    if (image_rect_.isEmpty())
+    {
+        QImageReader reader(path_);
+        image_size_ = reader.size();
+        image_rect_ = QRectF(0, 0, image_size_.width(), image_size_.height());
+    }
+    return image_rect_;
+}
+
 ImageInstancesListModel::ImageInstancesListModel(data::ProjectDataBase *database, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)

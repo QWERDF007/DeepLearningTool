@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QRect>
 #include <QtQml>
 #include <functional>
 #include <map>
@@ -98,6 +99,10 @@ public:
         return label_ids_;
     }
 
+    QSize imageSize() const;
+
+    QRectF imageRect() const;
+
 private:
     int64_t dataset_id_;
 
@@ -110,6 +115,9 @@ private:
     std::set<int64_t> tag_ids_;
 
     std::set<int64_t> label_ids_;
+
+    mutable QSize  image_size_;
+    mutable QRectF image_rect_;
 };
 
 class ImageInstancesListModel : public QAbstractListModel
