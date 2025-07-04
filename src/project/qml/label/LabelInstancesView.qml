@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Qt.labs.qmlmodels
 
 import dltool.ui
 import dltool.project
@@ -12,6 +13,10 @@ Rectangle {
 
     property Project project: ProjectManager.currentProject
     property ImageLabelsTableModel imageLabelsTable: project ? project.imageLabelsTable : null
+    property ItemSelectionModel selection: imageLabelsTable ? imageLabelsTable.selection : null
+
+    property real rowHeight: 24
+    property real colWidth: horizontalHeader.width / horizontalHeader.columns
 
     function isNumber(value) {
         return typeof value === "number" && !isNaN(value);
@@ -40,7 +45,7 @@ Rectangle {
                 resizableColumns: true
                 boundsBehavior: Flickable.StopAtBounds
                 delegate:  Rectangle {
-                    implicitWidth: horizontalHeader.width / horizontalHeader.columns
+                    implicitWidth: colWidth
                     implicitHeight: horizontalHeader.height
                     color: DltColor.Background
                     Rectangle {
@@ -54,8 +59,8 @@ Rectangle {
                     DltText {
                         anchors.centerIn: parent
                         text: horizontalHeader.textRole ?
-                            (Array.isArray(horizontalHeader.model) ? modelData[horizontalHeader.textRole] : model[horizontalHeader.textRole])
-                            : modelData
+                                  (Array.isArray(horizontalHeader.model) ? modelData[horizontalHeader.textRole] : model[horizontalHeader.textRole])
+                                : modelData
                         color: "white"
                     }
                 }
@@ -69,17 +74,66 @@ Rectangle {
                 boundsBehavior: Flickable.StopAtBounds
 
                 model: imageLabelsTable
-                delegate: Rectangle {
-                    clip: true
-                    property var mdata: model.data
-                    implicitWidth: horizontalHeader.width / horizontalHeader.columns
-                    implicitHeight: 24
-                    color: row % 2 == 0 ? Qt.lighter(DltColor.Primary, 1.3) : DltColor.Primary
-                    DltText {
-                        width: parent.width
-                        anchors.verticalCenter: parent.verticalCenter
-                        elide: Text.ElideRight
-                        text: isNumber(mdata) ? mdata.toFixed(2) : mdata
+                // delegate: Rectangle {
+                //     clip: true
+                //     property var mdata: model.data
+                //     implicitWidth: horizontalHeader.width / horizontalHeader.columns
+                //     implicitHeight: 24
+                //     color: row % 2 == 0 ? Qt.lighter(DltColor.Primary, 1.3) : DltColor.Primary
+                //     DltText {
+                //         width: parent.width
+                //         anchors.verticalCenter: parent.verticalCenter
+                //         elide: Text.ElideRight
+                //         text: isNumber(mdata) ? mdata.toFixed(2) : mdata
+                //     }
+                // }
+
+                delegate: DelegateChooser {
+                    // role: "column"
+
+                    DelegateChoice{
+                        column: 0
+                        Rectangle {
+                            clip: true
+                            implicitWidth: colWidth
+                            implicitHeight: rowHeight
+                            color: model.selected ? DltColor.Highlight : row % 2 == 0 ? Qt.lighter(DltColor.Primary, 1.3) : DltColor.Primary
+                            DltText {
+                                width: parent.width
+                                anchors.verticalCenter: parent.verticalCenter
+                                elide: Text.ElideRight
+                                text:  model.data
+                            }
+                        }
+                    }
+
+                    DelegateChoice {
+                        Rectangle {
+                            clip: true
+                            implicitWidth: colWidth
+                            implicitHeight: rowHeight
+                            color: model.selected ? DltColor.Highlight : row % 2 == 0 ? Qt.lighter(DltColor.Primary, 1.3) : DltColor.Primary
+                            DltText {
+                                width: parent.width
+                                anchors.verticalCenter: parent.verticalCenter
+                                elide: Text.ElideRight
+                                text: model.data.toFixed(2)
+                            }
+                        }
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onClicked: function(mouse) {
+                        tableView.forceActiveFocus()
+
+                        let row = Math.floor(mouse.y / rowHeight)
+                        if (selection) {
+                            let tmpIndex = tableView.model.index(row, 0)
+                            selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
+                        }
                     }
                 }
             }

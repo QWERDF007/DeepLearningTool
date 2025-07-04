@@ -17,13 +17,9 @@ LabelInstance::LabelInstance(const int64_t label_id, const int64_t image_id, con
     , label_class_id_(label_class_id)
     , data_(std::move(data))
 {
-
 }
 
-LabelInstance::~LabelInstance()
-{
-
-}
+LabelInstance::~LabelInstance() {}
 
 LabelInstancesListModel::LabelInstancesListModel(data::ProjectDataBase   *database,
                                                  ImageInstancesListModel *image_instances,
@@ -34,6 +30,7 @@ LabelInstancesListModel::LabelInstancesListModel(data::ProjectDataBase   *databa
     , image_instances_(image_instances)
     , label_classes_(label_classes)
     , factory_(std::move(factory))
+    , selection_(new QItemSelectionModel(this))
 {
     init();
 }
@@ -216,6 +213,7 @@ ImageLabelsListModel::ImageLabelsListModel(ImageInstancesListModel *image_instan
     , image_instances_(image_instances)
     , label_instances_(label_instances)
     , label_classes_(label_classes)
+    , selection_(new QItemSelectionModel(this))
 {
     init();
 }
@@ -352,6 +350,7 @@ ImageLabelsTableModel::ImageLabelsTableModel(ImageInstancesListModel *image_inst
     , label_classes_(label_classes)
     , column_headers_(columns.first)
     , column_keys_(columns.second)
+    , selection_(new QItemSelectionModel(this))
 {
     // TODO: 添加列名和数据key
     init();
@@ -364,6 +363,7 @@ void ImageLabelsTableModel::init()
     if (image_instances_ == nullptr || label_instances_ == nullptr)
         return;
     connect(image_instances_, &ImageInstancesListModel::curImageChanged, this, &ImageLabelsTableModel::resetModel);
+    connect(selection_, &QItemSelectionModel::selectionChanged, this, &ImageLabelsTableModel::updateSelection);
 }
 
 void ImageLabelsTableModel::resetModel()
@@ -409,6 +409,8 @@ QVariant ImageLabelsTableModel::data(const QModelIndex &index, int role) const
     {
     case DataRole:
         return getData(index);
+    case SelectedRole:
+        return getSelected(index);
     default:
         return QVariant();
     }
@@ -427,8 +429,9 @@ QVariant ImageLabelsTableModel::headerData(int section, Qt::Orientation orientat
 QHash<int, QByteArray> ImageLabelsTableModel::roleNames() const
 {
     return {
-        {Qt::DisplayRole, "display"},
-        {       DataRole,    "data"},
+        {Qt::DisplayRole,  "display"},
+        {       DataRole,     "data"},
+        {   SelectedRole, "selected"},
     };
 }
 
@@ -450,6 +453,61 @@ void ImageLabelsTableModel::addLabels(const std::vector<int64_t> &image_ids, con
     beginInsertRows(QModelIndex(), row, row + count - 1);
     label_ids_.insert(label_ids_.end(), valid_label_ids.begin(), valid_label_ids.end());
     endInsertRows();
+}
+
+void ImageLabelsTableModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)
+{
+    const QModelIndexList &dselected_items = deselected.indexes();
+
+    int top{-1}, left{-1};
+    int bottom{-1}, right{-1};
+    for (const QModelIndex &index : dselected_items)
+    {
+        const int row = index.row();
+        const int col = index.column();
+        if (top == -1)
+        {
+            top    = row;
+            left   = col;
+            bottom = row;
+            right  = col;
+        }
+        else
+        {
+            top    = std::min(top, row);
+            left   = std::min(left, col);
+            bottom = std::max(bottom, row);
+            right  = std::max(right, col);
+        }
+    }
+    emit dataChanged(index(top, left), index(bottom, right), {SelectedRole});
+
+    top    = -1;
+    bottom = -1;
+    left   = -1;
+    right  = -1;
+
+    const QModelIndexList &selected_items = selected.indexes();
+    for (const QModelIndex &index : selected_items)
+    {
+        const int row = index.row();
+        const int col = index.column();
+        if (top == -1)
+        {
+            top    = row;
+            left   = col;
+            bottom = row;
+            right  = col;
+        }
+        else
+        {
+            top    = std::min(top, row);
+            left   = std::min(left, col);
+            bottom = std::max(bottom, row);
+            right  = std::max(right, col);
+        }
+    }
+    emit dataChanged(index(top, left), index(bottom, right), {SelectedRole});
 }
 
 QVariant ImageLabelsTableModel::getData(const QModelIndex &index) const
@@ -474,6 +532,11 @@ QVariant ImageLabelsTableModel::getData(LabelInstance *instance, const int col) 
     if (col >= static_cast<int>(column_keys_.size()))
         return QVariant();
     return data.value(column_keys_[col], QVariant());
+}
+
+QVariant ImageLabelsTableModel::getSelected(const QModelIndex &index) const
+{
+    return selection_->isSelected(index);
 }
 
 } // namespace dltool::project

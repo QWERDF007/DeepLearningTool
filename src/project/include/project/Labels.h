@@ -58,6 +58,7 @@ class LabelInstancesListModel : public QAbstractListModel
     Q_OBJECT
     QML_NAMED_ELEMENT(LabelInstancesModel)
     QML_UNCREATABLE("Can not create LabelInstancesModel directly!")
+    Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
 public:
     LabelInstancesListModel(data::ProjectDataBase *database, ImageInstancesListModel *image_instances,
                             LabelClassesListModel *label_classes, LabelDataFactory factory, QObject *parent = nullptr);
@@ -70,6 +71,7 @@ public:
         ImageIdRole,
         LabelClassIdRole,
         DataRole,
+        SelectedRole,
     };
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -84,6 +86,11 @@ public:
                    const std::vector<int64_t> &label_class_ids, const std::vector<QVariantMap> &data);
 
     void getAllImagesLabelIds(std::vector<int64_t> &image_ids, std::vector<int64_t> &label_ids) const;
+
+    QItemSelectionModel *selection() const
+    {
+        return selection_;
+    }
 
 private:
     void init();
@@ -102,6 +109,8 @@ private:
     std::map<int64_t, LabelInstance *> label_instances_;
 
     std::vector<int64_t> label_ids_;
+
+    QItemSelectionModel *selection_{nullptr};
 };
 
 class ImageLabelsListModel : public QAbstractListModel
@@ -109,6 +118,7 @@ class ImageLabelsListModel : public QAbstractListModel
     Q_OBJECT
     QML_NAMED_ELEMENT(ImageLabelsListModel)
     QML_UNCREATABLE("Can not create ImageLabelsListModel directly!")
+    Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
 public:
     ImageLabelsListModel(ImageInstancesListModel *image_instances, LabelInstancesListModel *label_instances,
                          LabelClassesListModel *label_classes, QObject *parent = nullptr);
@@ -132,6 +142,11 @@ public:
 
     void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
 
+    QItemSelectionModel *selection() const
+    {
+        return selection_;
+    }
+
 private:
     void init();
 
@@ -148,6 +163,8 @@ private:
     LabelClassesListModel   *label_classes_{nullptr};
 
     std::vector<int64_t> label_ids_;
+
+    QItemSelectionModel *selection_{nullptr};
 };
 
 class ImageLabelsTableModel : public QAbstractTableModel
@@ -155,6 +172,7 @@ class ImageLabelsTableModel : public QAbstractTableModel
     Q_OBJECT
     QML_NAMED_ELEMENT(ImageLabelsTableModel)
     QML_UNCREATABLE("Can not create ImageLabelsTableModel directly!")
+    Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
 public:
     ImageLabelsTableModel(ImageInstancesListModel *image_instances, LabelInstancesListModel *label_instances,
                           LabelClassesListModel                                       *label_classes,
@@ -167,6 +185,7 @@ public:
     {
         TitleRole = Qt::UserRole + 1,
         DataRole,
+        SelectedRole,
     };
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -181,13 +200,21 @@ public:
 
     void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
 
+    QItemSelectionModel *selection() const
+    {
+        return selection_;
+    }
+
 private:
     void init();
 
     void resetModel();
 
+    void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
+
     QVariant getData(const QModelIndex &index) const;
     QVariant getData(LabelInstance *instance, const int col) const;
+    QVariant getSelected(const QModelIndex &index) const;
 
     ImageInstancesListModel *image_instances_{nullptr};
     LabelInstancesListModel *label_instances_{nullptr};
@@ -197,6 +224,8 @@ private:
 
     mutable std::vector<QString> column_headers_;
     mutable std::vector<QString> column_keys_;
+
+    QItemSelectionModel *selection_{nullptr};
 };
 
 } // namespace dltool::project
