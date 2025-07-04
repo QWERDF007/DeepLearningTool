@@ -19,7 +19,7 @@ Rectangle {
     property real rowHeight: 24
     property real colWidth: horizontalHeader.width / horizontalHeader.columns
 
-    signal selectionChanged(var index, var command)
+    signal tableSelectionChanged(var index, var command)
 
     function isNumber(value) {
         return typeof value === "number" && !isNaN(value);
@@ -135,12 +135,18 @@ Rectangle {
                         let row = Math.floor(mouse.y / rowHeight)
                         if (selection) {
                             let tmpIndex = tableView.model.index(row, 0)
-                            selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
                             control.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
                         }
                     }
                 }
             }
+        }
+    }
+
+    function select(index, command) {
+        if (selection) {
+            selection.select(index, command)
+            control.tableSelectionChanged(index, command)
         }
     }
 }

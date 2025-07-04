@@ -10,7 +10,10 @@ Item {
     property ImageInstancesModel imageInstances: project ? project.imageInstances : null
     property LabelClassesModel labelClasses: project ? project.labelClasses : null
     property ImageLabelsListModel imageLabelsList: project ? project.imageLabelsList : null
+    property ItemSelectionModel selection: imageLabelsList ? imageLabelsList.selection : null
     property color drawingColor: project ? labelClasses.currentLabelClassColor : "red"
+
+    signal listSelectionChanged(var index, var command)
 
     LabelImage {
         id: labelImage
@@ -84,6 +87,13 @@ Item {
 
                 drawingItem.updateItem(x, y, width, height)
             }
+        }
+    }
+
+    function select(index, command) {
+        if (selection) {
+            selection.select(index, command)
+            labelView.listSelectionChanged(index, command)
         }
     }
 }
