@@ -54,7 +54,6 @@ Rectangle {
         }
 
         LabelCanvas { // 标注画布
-            id: labelCanvas
             SplitView.fillHeight: true
             SplitView.fillWidth: true
         }
@@ -73,8 +72,7 @@ Rectangle {
                 color: DltColor.Primary
             }
 
-            LabelInstancesView { // 标注实例
-                id: labelInstancesView
+            LabelsTableView { // 标注实例
                 SplitView.fillWidth: true
                 SplitView.fillHeight: true
                 SplitView.minimumHeight: 240

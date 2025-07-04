@@ -29,7 +29,7 @@ Item {
         curImagePath: project ? project.imageInstances.curImagePath : ""
     }
 
-    LabelsView {
+    LabelsListView {
         offsetX: labelImage.image.x
         offsetY: labelImage.image.y
         factor: labelImage.image.scale
