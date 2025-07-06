@@ -238,6 +238,69 @@ QString DatasetsListModel::getDatasetName(const int dataset_id) const
     return found->second->name();
 }
 
+void DatasetsListModel::addImages(const std::vector<int64_t> &dataset_ids, const std::vector<int64_t> &image_ids)
+{
+    if (dataset_ids.size() != image_ids.size())
+    {
+        spdlog::error("添加图像失败: 数据集id和图像id数量不一致");
+        return;
+    }
+    std::map<int64_t, std::vector<int64_t>> datasets_image_ids;
+    for (size_t i = 0; i < dataset_ids.size(); ++i)
+    {
+        const int64_t dataset_id = dataset_ids[i];
+        if (datasets_image_ids.find(dataset_id) == datasets_image_ids.end())
+        {
+            datasets_image_ids[dataset_id] = std::vector<int64_t>();
+            datasets_image_ids[dataset_id].reserve(image_ids.size());
+        }
+        datasets_image_ids[dataset_id].push_back(image_ids[i]);
+    }
+
+    for (const auto &[dataset_id, image_ids] : datasets_image_ids)
+    {
+        auto found = datasets_.find(dataset_id);
+        if (found == datasets_.end())
+        {
+            spdlog::error("添加图像失败: 数据集不存在: {}", dataset_id);
+            continue;
+        }
+        found->second->addImageIds(image_ids);
+    }
+    emit statsChanged();
+}
+
+void DatasetsListModel::deleteImages(const std::vector<int64_t> &dataset_ids, const std::vector<int64_t> &image_ids)
+{
+    if (dataset_ids.size() != image_ids.size())
+    {
+        spdlog::error("删除图像失败: 数据集id和图像id数量不一致");
+        return;
+    }
+    std::map<int64_t, std::vector<int64_t>> datasets_image_ids;
+    for (size_t i = 0; i < dataset_ids.size(); ++i)
+    {
+        const int64_t dataset_id = dataset_ids[i];
+        if (datasets_image_ids.find(dataset_id) == datasets_image_ids.end())
+        {
+            datasets_image_ids[dataset_id] = std::vector<int64_t>();
+            datasets_image_ids[dataset_id].reserve(image_ids.size());
+        }
+        datasets_image_ids[dataset_id].push_back(image_ids[i]);
+    }
+    for (const auto &[dataset_id, image_ids] : datasets_image_ids)
+    {
+        auto found = datasets_.find(dataset_id);
+        if (found == datasets_.end())
+        {
+            spdlog::error("删除图像失败: 数据集不存在: {}", dataset_id);
+            continue;
+        }
+        found->second->removeImageIds(image_ids);
+    }
+    emit statsChanged();
+}
+
 QVariant DatasetsListModel::getName(const QModelIndex &index) const
 {
     const int id = getDatasetId(index);

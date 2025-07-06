@@ -176,15 +176,60 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
     label_ids_.insert(label_ids_.end(), sorted_label_ids.begin(), sorted_label_ids.end());
 }
 
+void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids)
+{
+    if (database_ == nullptr)
+    {
+        spdlog::error("添加标注失败: 数据库未初始化");
+        return;
+    }
+    QString err_msg;
+    bool    ok = database_->deleteLabels(label_ids, err_msg);
+    if (!ok)
+    {
+        spdlog::error("删除标注失败: {}", err_msg.toUtf8().constData());
+        return;
+    }
+    for (const auto &label_id : label_ids)
+    {
+        label_instances_.erase(label_id);
+    }
+    std::vector<int64_t> new_label_ids;
+    new_label_ids.reserve(label_instances_.size());
+    for (const auto &[label_id, _] : label_instances_)
+    {
+        new_label_ids.push_back(label_id);
+    }
+    std::reverse(new_label_ids.begin(), new_label_ids.end());
+    label_ids_ = new_label_ids;
+}
+
 void LabelInstancesListModel::getAllImagesLabelIds(std::vector<int64_t> &image_ids,
                                                    std::vector<int64_t> &label_ids) const
 {
+    size_t size = label_instances_.size();
+    image_ids.reserve(size);
+    label_ids.reserve(size);
     for (const auto &[label_id, instance] : label_instances_)
     {
         const int64_t image_id = instance->imageId();
         image_ids.push_back(image_id);
         label_ids.push_back(label_id);
     }
+}
+
+std::vector<int64_t> LabelInstancesListModel::getLabelIds(const std::vector<int64_t> &image_ids) const
+{
+    std::vector<int64_t> label_ids;
+    label_ids.reserve(image_ids.size());
+    std::set<int64_t> image_ids_set(image_ids.begin(), image_ids.end());
+    for (const auto &[label_id, instance] : label_instances_)
+    {
+        const int64_t image_id = instance->imageId();
+        if (image_ids_set.count(image_id))
+            label_ids.push_back(label_id);
+    }
+    return label_ids;
 }
 
 int64_t LabelInstancesListModel::getLabelId(const QModelIndex &index) const
@@ -224,19 +269,18 @@ void ImageLabelsListModel::init()
 {
     if (image_instances_ == nullptr || label_instances_ == nullptr)
         return;
-    connect(image_instances_, &ImageInstancesListModel::curImageChanged, this, &ImageLabelsListModel::resetModel);
     connect(selection_, &QItemSelectionModel::selectionChanged, this, &ImageLabelsListModel::updateSelection);
 }
 
 void ImageLabelsListModel::resetModel()
 {
     beginResetModel();
+    label_ids_.clear();
     const int                          image_id  = image_instances_->getCurImageId();
     const std::vector<ImageInstance *> instances = image_instances_->getImageInstances({image_id});
     if (!instances.empty() && instances.at(0))
     {
         std::set<int64_t> label_ids = instances.at(0)->labelIds();
-        label_ids_.clear();
         label_ids_.insert(label_ids_.end(), label_ids.begin(), label_ids.end());
     }
     endResetModel();
@@ -288,8 +332,12 @@ void ImageLabelsListModel::addLabels(const std::vector<int64_t> &image_ids, cons
 {
     if (image_ids.empty() || label_ids.empty())
         return;
-    const int64_t        cur_image_id = image_instances_->getCurImageId();
+    size_t size = label_ids.size();
+
+    const int64_t cur_image_id = image_instances_->getCurImageId();
+
     std::vector<int64_t> valid_label_ids;
+    valid_label_ids.reserve(size);
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
         if (image_ids[i] == cur_image_id)
@@ -302,6 +350,11 @@ void ImageLabelsListModel::addLabels(const std::vector<int64_t> &image_ids, cons
     beginInsertRows(QModelIndex(), row, row + count - 1);
     label_ids_.insert(label_ids_.end(), valid_label_ids.begin(), valid_label_ids.end());
     endInsertRows();
+}
+
+void ImageLabelsListModel::onCurrentImageChanged()
+{
+    resetModel();
 }
 
 void ImageLabelsListModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)
@@ -407,19 +460,18 @@ void ImageLabelsTableModel::init()
 {
     if (image_instances_ == nullptr || label_instances_ == nullptr)
         return;
-    connect(image_instances_, &ImageInstancesListModel::curImageChanged, this, &ImageLabelsTableModel::resetModel);
     connect(selection_, &QItemSelectionModel::selectionChanged, this, &ImageLabelsTableModel::updateSelection);
 }
 
 void ImageLabelsTableModel::resetModel()
 {
     beginResetModel();
+    label_ids_.clear();
     const int                          image_id  = image_instances_->getCurImageId();
     const std::vector<ImageInstance *> instances = image_instances_->getImageInstances({image_id});
     if (!instances.empty() && instances.at(0))
     {
         std::set<int64_t> label_ids = instances.at(0)->labelIds();
-        label_ids_.clear();
         label_ids_.insert(label_ids_.end(), label_ids.begin(), label_ids.end());
         for (const int64_t label_id : label_ids)
         {
@@ -484,8 +536,12 @@ void ImageLabelsTableModel::addLabels(const std::vector<int64_t> &image_ids, con
 {
     if (image_ids.empty() || label_ids.empty())
         return;
-    const int64_t        cur_image_id = image_instances_->getCurImageId();
+    size_t size = label_ids.size();
+
+    const int64_t cur_image_id = image_instances_->getCurImageId();
+
     std::vector<int64_t> valid_label_ids;
+    valid_label_ids.reserve(size);
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
         if (image_ids[i] == cur_image_id)
@@ -498,6 +554,11 @@ void ImageLabelsTableModel::addLabels(const std::vector<int64_t> &image_ids, con
     beginInsertRows(QModelIndex(), row, row + count - 1);
     label_ids_.insert(label_ids_.end(), valid_label_ids.begin(), valid_label_ids.end());
     endInsertRows();
+}
+
+void ImageLabelsTableModel::onCurrentImageChanged()
+{
+    resetModel();
 }
 
 void ImageLabelsTableModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)

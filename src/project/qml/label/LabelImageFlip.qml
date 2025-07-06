@@ -67,6 +67,9 @@ Rectangle {
             }
             DltTextIconButton {
                 iconSource: DltFontIcon.Delete
+                onClicked: {
+                    project.deleteSelectedImages()
+                }
             }
         }
         RowLayout {

@@ -3,6 +3,7 @@
 #include <QAbstractListModel>
 #include <QtQml>
 #include <map>
+#include <set>
 
 namespace dltool::data {
 class ProjectDataBase;
@@ -41,10 +42,35 @@ public:
         return id_;
     }
 
+    const std::set<int64_t> &imageIds() const
+    {
+        return image_ids_;
+    }
+
+    std::set<int64_t> &imageIds()
+    {
+        return image_ids_;
+    }
+
+    void addImageIds(const std::vector<int64_t> &image_ids)
+    {
+        image_ids_.insert(image_ids.begin(), image_ids.end());
+    }
+
+    void removeImageIds(const std::vector<int64_t> &image_ids)
+    {
+        for (const auto &image_id : image_ids)
+        {
+            image_ids_.erase(image_id);
+        }
+    }
+
 private:
     int64_t id_;
 
     QString name_;
+
+    std::set<int64_t> image_ids_;
 };
 
 class DatasetsListModel : public QAbstractListModel
@@ -81,6 +107,9 @@ public:
 
     int     getDatasetId(const QString &dataset_name) const;
     QString getDatasetName(const int dataset_id) const;
+
+    void addImages(const std::vector<int64_t> &dataset_id, const std::vector<int64_t> &image_ids);
+    void deleteImages(const std::vector<int64_t> &dataset_id, const std::vector<int64_t> &image_ids);
 
 private:
     void init();

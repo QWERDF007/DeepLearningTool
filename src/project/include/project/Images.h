@@ -126,9 +126,9 @@ class ImageInstancesListModel : public QAbstractListModel
     QML_NAMED_ELEMENT(ImageInstancesModel)
     QML_UNCREATABLE("Can not create ImageInstancesList directly!")
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
-    Q_PROPERTY(int curImageId READ getCurImageId NOTIFY curImageChanged)
-    Q_PROPERTY(QString curImageName READ curImageName NOTIFY curImageChanged)
-    Q_PROPERTY(QString curImagePath READ curImagePath NOTIFY curImageChanged)
+    Q_PROPERTY(int curImageId READ getCurImageId NOTIFY currentImageChanged)
+    Q_PROPERTY(QString curImageName READ curImageName NOTIFY currentImageChanged)
+    Q_PROPERTY(QString curImagePath READ curImagePath NOTIFY currentImageChanged)
     Q_PROPERTY(int count READ count NOTIFY statsChanged)
     Q_PROPERTY(int lastIndex READ lastIndex WRITE setLastIndex NOTIFY lastSelectedIndexChanged)
 public:
@@ -145,14 +145,17 @@ public:
         NameRole,
         PathRole,
         SelectedRole,
+        IsCurrentRole,
     };
 
     QHash<int, QByteArray> roleNames() const override;
 
-    bool addImageInstances(const int64_t dataset_id, const std::vector<QString> &paths);
-    bool addImageInstances(const int64_t dataset_id, const QString &image_idr);
-    bool deleteImageInstances(const std::vector<int64_t> &image_ids);
-    bool deleteImageInstances(const int64_t dataset_id);
+    bool addImages(const int64_t dataset_id, const std::vector<QString> &paths, std::vector<int64_t> &image_ids);
+    bool addImages(const int64_t dataset_id, const QString &image_idr, std::vector<int64_t> &image_ids);
+    bool deleteImages(const std::vector<int64_t> &image_ids);
+    bool deleteImages(const int64_t dataset_id, std::vector<int64_t> &image_ids);
+
+    std::vector<int64_t> getDatasetIds(const std::vector<int64_t> &image_ids) const;
 
     static std::vector<QString> getImagePaths(const QString &image_idr);
 
@@ -165,8 +168,6 @@ public:
 
     Q_INVOKABLE void shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command);
     Q_INVOKABLE void selectAll();
-
-    void deleteSelected();
 
     QVariantMap getImageInstanceInfo(const int64_t image_id);
 
@@ -203,6 +204,7 @@ private:
     QVariant getImageName(const QModelIndex &index) const;
     QVariant getImagePath(const QModelIndex &index) const;
     QVariant getSelected(const QModelIndex &index) const;
+    QVariant getIsCurrent(const QModelIndex &index) const;
 
     void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
 
@@ -224,7 +226,7 @@ private:
 
 signals:
     void statsChanged();
-    void curImageChanged();
+    void currentImageChanged();
     void lastSelectedIndexChanged();
 };
 

@@ -312,8 +312,6 @@ QVariant LabelClassesListModel::getLabelClassShortcut(const QModelIndex &index) 
 
 QVariant LabelClassesListModel::getLabelClassSelected(const QModelIndex &index) const
 {
-    if (selection_ == nullptr)
-        return false;
     return selection_->isSelected(index);
 }
 

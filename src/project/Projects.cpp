@@ -53,8 +53,6 @@ void Project::init()
     image_labels_list_  = new ImageLabelsListModel(image_instances_, label_instances_, label_classes_, this);
     image_labels_table_ = new ImageLabelsTableModel(image_instances_, label_instances_, label_classes_,
                                                     data::LabelDataColumns(method_), this);
-    // 添加/删除图像时
-    connect(image_instances_, &ImageInstancesListModel::statsChanged, datasets_, &DatasetsListModel::statsChanged);
 
     std::vector<int64_t> tags_image_ids, tag_ids;
     std::vector<int64_t> labels_image_ids, label_ids;
@@ -62,6 +60,11 @@ void Project::init()
     label_instances_->getAllImagesLabelIds(labels_image_ids, label_ids);
     image_instances_->addImagesTagIds(tags_image_ids, tag_ids);
     image_instances_->addImagesLabelIds(labels_image_ids, label_ids);
+
+    connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_labels_list_,
+            &ImageLabelsListModel::onCurrentImageChanged);
+    connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_labels_table_,
+            &ImageLabelsTableModel::onCurrentImageChanged);
 }
 
 void Project::initProject()
@@ -140,7 +143,8 @@ void Project::updateDataset(const int64_t dataset_id, const QString &name)
 
 void Project::deleteDataset(const int64_t dataset_id)
 {
-    image_instances_->deleteImageInstances(dataset_id);
+    std::vector<int64_t> image_ids;
+    image_instances_->deleteImages(dataset_id, image_ids);
     datasets_->deleteDataset(dataset_id);
 }
 
@@ -154,14 +158,21 @@ void Project::importData(const int64_t dataset_id, const int data_format, const 
         spdlog::error("导入数据失败, 数据格式不支持: {}", data_format);
         return;
     }
-    image_instances_->addImageInstances(dataset_id, image_dir);
+    std::vector<int64_t> image_ids;
+    image_instances_->addImages(dataset_id, image_dir, image_ids);
+    std::vector<int64_t> dataset_ids(image_ids.size(), dataset_id);
+    datasets_->addImages(dataset_ids, image_ids);
 }
 
-void Project::deleteSelected()
+void Project::deleteSelectedImages()
 {
-    image_tags_->removeImagesTags(image_instances_->getSelectedImagesId());
-    // TODO: 删除选中图像对应的标注
-    image_instances_->deleteSelected();
+    std::vector<int64_t> image_ids   = image_instances_->getSelectedImagesId();
+    std::vector<int64_t> dataset_ids = image_instances_->getDatasetIds(image_ids);
+    std::vector<int64_t> label_ids   = label_instances_->getLabelIds(image_ids);
+    datasets_->deleteImages(dataset_ids, image_ids);
+    image_tags_->removeImagesTags(image_ids);
+    image_instances_->deleteImages(image_ids);
+    label_instances_->deleteLabels(label_ids);
 }
 
 QVariantMap Project::getImageInstanceInfo(const int64_t image_id)
@@ -456,8 +467,6 @@ QVariant RectentProjects::getTooltip(const QModelIndex &index) const
 
 QVariant RectentProjects::getSelected(const QModelIndex &index) const
 {
-    if (selection_ == nullptr)
-        return false;
     const QModelIndexList &items = selection_->selectedIndexes();
     for (const QModelIndex selected_index : items)
     {

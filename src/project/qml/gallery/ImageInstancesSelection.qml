@@ -52,7 +52,7 @@ Rectangle {
             iconSource: DltFontIcon.Delete
             onClicked: {
                 if (project) {
-                    project.imageInstances.deleteSelected()
+                    project.deleteSelectedImages()
                 }
             }
         }

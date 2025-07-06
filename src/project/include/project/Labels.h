@@ -85,12 +85,17 @@ public:
     void addLabels(std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
                    const std::vector<int64_t> &label_class_ids, const std::vector<QVariantMap> &data);
 
+    void deleteLabels(const std::vector<int64_t> &label_ids);
+
     void getAllImagesLabelIds(std::vector<int64_t> &image_ids, std::vector<int64_t> &label_ids) const;
 
     QItemSelectionModel *selection() const
     {
         return selection_;
     }
+
+    std::vector<int64_t> getLabelIds(const std::vector<int64_t> &image_ids) const;
+
 
 private:
     void init();
@@ -147,6 +152,8 @@ public:
     {
         return selection_;
     }
+
+    void onCurrentImageChanged();
 
 private:
     void init();
@@ -208,6 +215,8 @@ public:
     {
         return selection_;
     }
+
+    void onCurrentImageChanged();
 
 private:
     void init();
