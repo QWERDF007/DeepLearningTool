@@ -54,17 +54,22 @@ void Project::init()
     image_labels_table_ = new ImageLabelsTableModel(image_instances_, label_instances_, label_classes_,
                                                     data::LabelDataColumns(method_), this);
 
-    std::vector<int64_t> tags_image_ids, tag_ids;
-    std::vector<int64_t> labels_image_ids, label_ids;
-    image_tags_->getAllImagesTagIds(tags_image_ids, tag_ids);
-    label_instances_->getAllImagesLabelIds(labels_image_ids, label_ids);
-    image_instances_->addImagesTagIds(tags_image_ids, tag_ids);
-    image_instances_->addImagesLabelIds(labels_image_ids, label_ids);
-
     connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_labels_list_,
             &ImageLabelsListModel::onCurrentImageChanged);
     connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_labels_table_,
             &ImageLabelsTableModel::onCurrentImageChanged);
+
+    std::vector<int64_t> image_ids   = image_instances_->getAllImageIds();
+    std::vector<int64_t> dataset_ids = image_instances_->getImagesDatasetIds(image_ids);
+
+    std::vector<std::vector<int64_t>> images_label_ids = label_instances_->getImagesLabelIds(image_ids);
+    std::vector<std::vector<int64_t>> images_tag_ids   = image_tags_->getImagesTagIds(image_ids);
+
+    datasets_->addImages(dataset_ids, image_ids);
+    datasets_->setStats(dataset_ids, image_ids, images_label_ids);
+
+    image_instances_->addImagesLabelIds(image_ids, images_label_ids);
+    image_instances_->addImagesTagIds(image_ids, images_tag_ids);
 }
 
 void Project::initProject()
@@ -173,6 +178,7 @@ void Project::deleteSelectedImages()
     image_tags_->removeImagesTags(image_ids);
     image_instances_->deleteImages(image_ids);
     label_instances_->deleteLabels(label_ids);
+    updateDatasetsStats();
 }
 
 QVariantMap Project::getImageInstanceInfo(const int64_t image_id)
@@ -208,6 +214,7 @@ void Project::addLabels(const std::vector<int64_t> &image_ids, const std::vector
     image_instances_->addImagesLabelIds(image_ids, label_ids);
     image_labels_list_->addLabels(image_ids, label_ids);
     image_labels_table_->addLabels(image_ids, label_ids);
+    updateDatasetsStats();
 }
 
 void Project::updateLabels(const std::vector<int64_t> &label_ids, const std::vector<QVariantMap> &data)
@@ -223,6 +230,16 @@ void Project::deleteLabels(const std::vector<int64_t> &label_ids)
 void Project::addTagClass(const QString &name)
 {
     image_tags_->addTagClass(name);
+}
+
+void Project::updateDatasetsStats()
+{
+    if (image_instances_ == nullptr || datasets_ == nullptr)
+        return;
+    std::vector<int64_t>              dataset_ids, image_ids;
+    std::vector<std::vector<int64_t>> images_label_ids;
+    image_instances_->getImagesLabelIds(dataset_ids, image_ids, images_label_ids);
+    datasets_->setStats(dataset_ids, image_ids, images_label_ids);
 }
 
 RectentProjects::RectentProjects(const QString &path, QObject *parent)

@@ -194,7 +194,17 @@ public:
     void setLastIndex(int last_index);
 
     void addImagesLabelIds(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
+    void addImagesLabelIds(const std::vector<int64_t> &image_ids, const std::vector<std::vector<int64_t>> &label_ids);
+
     void addImagesTagIds(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &tag_ids);
+    void addImagesTagIds(const std::vector<int64_t> &image_ids, const std::vector<std::vector<int64_t>> &tag_ids);
+
+    std::vector<int64_t> getAllImageIds() const;
+
+    std::vector<int64_t> getImagesDatasetIds(const std::vector<int64_t> &image_ids) const;
+
+    void getImagesLabelIds(std::vector<int64_t> &dataset_ids, std::vector<int64_t> &image_ids,
+                           std::vector<std::vector<int64_t>> &images_label_ids) const;
 
 private:
     void init();

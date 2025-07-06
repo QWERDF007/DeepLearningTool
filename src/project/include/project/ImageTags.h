@@ -109,7 +109,7 @@ public:
 
     ImageTag *getImageTag(const int64_t tag_id);
 
-    void getAllImagesTagIds(std::vector<int64_t> &image_ids, std::vector<int64_t> &tag_ids) const;
+    std::vector<std::vector<int64_t>> getImagesTagIds(const std::vector<int64_t> &image_ids) const;
 
 private:
     void init();

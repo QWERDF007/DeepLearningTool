@@ -90,6 +90,7 @@ Rectangle {
                 name: model.name
                 stats: model.stats
                 dataset_id: model.dataset_id
+                progress: model.progress
             }
             MouseArea {
                 anchors.fill: parent

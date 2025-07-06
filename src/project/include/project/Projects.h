@@ -145,6 +145,8 @@ public:
 private:
     void init();
 
+    void updateDatasetsStats();
+
     QString name_;
     int     method_;
     QString path_;

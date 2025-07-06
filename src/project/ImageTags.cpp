@@ -301,16 +301,22 @@ ImageTag *ImageTagsListModel::getImageTag(const int64_t tag_id)
     return found->second;
 }
 
-void ImageTagsListModel::getAllImagesTagIds(std::vector<int64_t> &image_ids, std::vector<int64_t> &tag_ids) const
+std::vector<std::vector<int64_t>> ImageTagsListModel::getImagesTagIds(const std::vector<int64_t> &image_ids) const
 {
-    for (const auto &[tag_id, tag] : image_tags_)
+    std::vector<std::vector<int64_t>> images_tag_ids;
+    images_tag_ids.reserve(image_ids.size());
+    for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        for (int64_t image_id : tag->imageIds())
+        const int64_t        image_id = image_ids[i];
+        std::vector<int64_t> tag_ids;
+        for (const auto &[tag_id, image_tag] : image_tags_)
         {
-            image_ids.push_back(image_id);
-            tag_ids.push_back(tag_id);
+            if (image_tag->imageIds().count(image_id) > 0)
+                tag_ids.push_back(tag_id);
         }
+        images_tag_ids.push_back(tag_ids);
     }
+    return images_tag_ids;
 }
 
 int ImageTagsListModel::getTagClassId(const QModelIndex &index) const

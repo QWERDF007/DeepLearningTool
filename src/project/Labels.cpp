@@ -204,18 +204,23 @@ void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids
     label_ids_ = new_label_ids;
 }
 
-void LabelInstancesListModel::getAllImagesLabelIds(std::vector<int64_t> &image_ids,
-                                                   std::vector<int64_t> &label_ids) const
+std::vector<std::vector<int64_t>> LabelInstancesListModel::getImagesLabelIds(
+    const std::vector<int64_t> &image_ids) const
 {
-    size_t size = label_instances_.size();
-    image_ids.reserve(size);
-    label_ids.reserve(size);
-    for (const auto &[label_id, instance] : label_instances_)
+    std::vector<std::vector<int64_t>> images_label_ids;
+    images_label_ids.reserve(image_ids.size());
+    for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        const int64_t image_id = instance->imageId();
-        image_ids.push_back(image_id);
-        label_ids.push_back(label_id);
+        const int64_t        image_id = image_ids[i];
+        std::vector<int64_t> label_ids;
+        for (const auto &[label_id, instance] : label_instances_)
+        {
+            if (instance->imageId() == image_id)
+                label_ids.push_back(label_id);
+        }
+        images_label_ids.push_back(label_ids);
     }
+    return images_label_ids;
 }
 
 std::vector<int64_t> LabelInstancesListModel::getLabelIds(const std::vector<int64_t> &image_ids) const

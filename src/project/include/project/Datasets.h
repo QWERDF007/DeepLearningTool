@@ -86,6 +86,7 @@ public:
         DatasetIdRole = Qt::UserRole + 1,
         NameRole,
         StatsRole,
+        ProgressRole,
     };
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -111,6 +112,9 @@ public:
     void addImages(const std::vector<int64_t> &dataset_id, const std::vector<int64_t> &image_ids);
     void deleteImages(const std::vector<int64_t> &dataset_id, const std::vector<int64_t> &image_ids);
 
+    void setStats(const std::vector<int64_t> &dataset_ids, const std::vector<int64_t> &image_ids,
+                  const std::vector<std::vector<int64_t>> &images_labels_count);
+
 private:
     void init();
 
@@ -118,12 +122,15 @@ private:
 
     QVariant getName(const QModelIndex &index) const;
     QVariant getStats(const QModelIndex &index) const;
+    QVariant getProgress(const QModelIndex &index) const;
 
     void onStatsChanged();
 
     data::ProjectDataBase *database_{nullptr};
 
     std::map<int64_t, Dataset *> datasets_;
+
+    std::map<int64_t, int64_t> labelled_image_stats_;
 
 signals:
     void statsChanged();

@@ -57,6 +57,8 @@ QVariant DatasetsListModel::data(const QModelIndex &index, int role) const
         return getName(index);
     case StatsRole:
         return getStats(index);
+    case ProgressRole:
+        return getProgress(index);
     default:
         return QVariant();
     }
@@ -73,6 +75,7 @@ QHash<int, QByteArray> DatasetsListModel::roleNames() const
         {DatasetIdRole, "dataset_id"},
         {     NameRole,       "name"},
         {    StatsRole,      "stats"},
+        { ProgressRole,   "progress"},
     };
 }
 
@@ -288,7 +291,7 @@ void DatasetsListModel::deleteImages(const std::vector<int64_t> &dataset_ids, co
         }
         datasets_image_ids[dataset_id].push_back(image_ids[i]);
     }
-    for (const auto &[dataset_id, image_ids] : datasets_image_ids)
+    for (const auto &[dataset_id, dataset_image_ids] : datasets_image_ids)
     {
         auto found = datasets_.find(dataset_id);
         if (found == datasets_.end())
@@ -297,6 +300,29 @@ void DatasetsListModel::deleteImages(const std::vector<int64_t> &dataset_ids, co
             continue;
         }
         found->second->removeImageIds(image_ids);
+    }
+    emit statsChanged();
+}
+
+void DatasetsListModel::setStats(const std::vector<int64_t> &dataset_ids, const std::vector<int64_t> &image_ids,
+                                 const std::vector<std::vector<int64_t>> &images_label_ids)
+{
+    Q_UNUSED(image_ids)
+    labelled_image_stats_.clear();
+    for (size_t i = 0; i < dataset_ids.size(); ++i)
+    {
+        const int64_t dataset_id = dataset_ids[i];
+        // const int64_t image_id           = image_ids[i];
+        const size_t  image_labels_count = images_label_ids[i].size();
+
+        auto found = labelled_image_stats_.find(dataset_id);
+        if (found == labelled_image_stats_.end())
+        {
+            labelled_image_stats_[dataset_id] = 0;
+        }
+        if (image_labels_count <= 0)
+            continue;
+        labelled_image_stats_[dataset_id] += 1;
     }
     emit statsChanged();
 }
@@ -311,16 +337,34 @@ QVariant DatasetsListModel::getName(const QModelIndex &index) const
 
 QVariant DatasetsListModel::getStats(const QModelIndex &index) const
 {
-    const int id = getDatasetId(index);
-    if (id != -1)
-        return QString("%1/%2").arg(0).arg(database_->getImagesCount(id));
+    const int dataset_id = getDatasetId(index);
+    if (dataset_id != -1)
+    {
+        auto found = labelled_image_stats_.find(dataset_id);
+        if (found == labelled_image_stats_.end())
+            return QString("0/0");
+        return QString("%1/%2").arg(found->second).arg(datasets_.at(dataset_id)->imageIds().size());
+    }
+    return QVariant();
+}
+
+QVariant DatasetsListModel::getProgress(const QModelIndex &index) const
+{
+    const int dataset_id = getDatasetId(index);
+    if (dataset_id != -1)
+    {
+        auto found = labelled_image_stats_.find(dataset_id);
+        if (found == labelled_image_stats_.end())
+            return 0;
+        return found->second / (datasets_.at(dataset_id)->imageIds().size() + 1e-9);
+    }
     return QVariant();
 }
 
 void DatasetsListModel::onStatsChanged()
 {
     if (rowCount() > 0)
-        emit dataChanged(index(0), index(rowCount() - 1), {StatsRole});
+        emit dataChanged(index(0), index(rowCount() - 1), {StatsRole, ProgressRole});
 }
 
 } // namespace dltool::project

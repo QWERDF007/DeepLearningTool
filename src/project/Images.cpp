@@ -422,6 +422,18 @@ void ImageInstancesListModel::addImagesLabelIds(const std::vector<int64_t> &imag
     }
 }
 
+void ImageInstancesListModel::addImagesLabelIds(const std::vector<int64_t>              &image_ids,
+                                                const std::vector<std::vector<int64_t>> &label_ids)
+{
+    for (size_t i = 0; i < image_ids.size(); ++i)
+    {
+        const int64_t  image_id       = image_ids[i];
+        ImageInstance *image_instance = getImageInstance(image_id);
+        if (image_instance)
+            image_instance->addLabelIds(label_ids[i]);
+    }
+}
+
 void ImageInstancesListModel::addImagesTagIds(const std::vector<int64_t> &image_ids,
                                               const std::vector<int64_t> &tag_ids)
 {
@@ -441,6 +453,57 @@ void ImageInstancesListModel::addImagesTagIds(const std::vector<int64_t> &image_
         ImageInstance *image_instance = getImageInstance(image_id);
         if (image_instance)
             image_instance->addTagIds(image_tag_ids);
+    }
+}
+
+void ImageInstancesListModel::addImagesTagIds(const std::vector<int64_t>              &image_ids,
+                                              const std::vector<std::vector<int64_t>> &tag_ids)
+{
+    for (size_t i = 0; i < image_ids.size(); ++i)
+    {
+        const int64_t  image_id       = image_ids[i];
+        ImageInstance *image_instance = getImageInstance(image_id);
+        if (image_instance)
+            image_instance->addTagIds(tag_ids[i]);
+    }
+}
+
+std::vector<int64_t> ImageInstancesListModel::getAllImageIds() const
+{
+    std::vector<int64_t> image_ids;
+    image_ids.reserve(image_instances_.size());
+    for (const auto &[image_id, _] : image_instances_)
+    {
+        image_ids.push_back(image_id);
+    }
+    return image_ids;
+}
+
+std::vector<int64_t> ImageInstancesListModel::getImagesDatasetIds(const std::vector<int64_t> &image_ids) const
+{
+    std::vector<int64_t> dataset_ids;
+    dataset_ids.reserve(image_ids.size());
+    for (const auto &image_id : image_ids)
+    {
+        auto found = image_instances_.find(image_id);
+        if (found != image_instances_.end())
+            dataset_ids.push_back(found->second->datasetId());
+    }
+    return dataset_ids;
+}
+
+void ImageInstancesListModel::getImagesLabelIds(std::vector<int64_t> &dataset_ids, std::vector<int64_t> &image_ids,
+                                                std::vector<std::vector<int64_t>> &images_label_ids) const
+{
+    dataset_ids.reserve(image_instances_.size());
+    image_ids.reserve(image_instances_.size());
+    images_label_ids.reserve(image_instances_.size());
+    for (const auto &[_, image_instance] : image_instances_)
+    {
+        dataset_ids.push_back(image_instance->datasetId());
+        image_ids.push_back(image_instance->imageId());
+        images_label_ids.push_back(
+            std::vector<int64_t>{image_instance->labelIds().begin(), image_instance->labelIds().end()});
     }
 }
 
