@@ -43,10 +43,9 @@ ApplicationWindow {
     }
 
 
-    footer: Rectangle {
+    footer: Footer {
         width: parent.width
         height: 32
-        color: DltColor.Primary
     }
 
     Component.onCompleted: {

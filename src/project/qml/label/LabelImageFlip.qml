@@ -67,6 +67,7 @@ Rectangle {
             }
             DltTextIconButton {
                 iconSource: DltFontIcon.Delete
+                text: "删除图像"
                 onClicked: {
                     project.deleteSelectedImages()
                 }
@@ -77,6 +78,7 @@ Rectangle {
             Layout.fillHeight: true
             DltTextIconButton {
                 iconSource: DltFontIcon.ChevronLeft
+                text: "上一张"
                 onClicked: {
                     labelImageFlip.prevItem()
                 }
@@ -92,6 +94,7 @@ Rectangle {
             }
             DltTextIconButton {
                 iconSource: DltFontIcon.ChevronRight
+                text: "下一张"
                 onClicked: {
                     labelImageFlip.nextItem()
                 }

@@ -30,6 +30,7 @@ Rectangle {
         DltTextIconButton {
             iconSource: DltFontIcon.Clear
             Layout.rightMargin: 5
+            text: "清空选择"
             onClicked: {
                 if (selection) {
                     selection.clear()
@@ -50,6 +51,7 @@ Rectangle {
 
         DltTextIconButton {
             iconSource: DltFontIcon.Delete
+            text: "删除选中图像"
             onClicked: {
                 if (project) {
                     project.deleteSelectedImages()
