@@ -59,6 +59,11 @@ void Project::init()
     connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_labels_table_,
             &ImageLabelsTableModel::onCurrentImageChanged);
 
+    connect(image_instances_->selection(), &QItemSelectionModel::selectionChanged, image_tags_,
+            &ImageTagsListModel::updateStats);
+    connect(image_instances_->selection(), &QItemSelectionModel::currentChanged, image_tags_,
+            &ImageTagsListModel::updateStats);
+
     std::vector<int64_t> image_ids   = image_instances_->getAllImageIds();
     std::vector<int64_t> dataset_ids = image_instances_->getImagesDatasetIds(image_ids);
 

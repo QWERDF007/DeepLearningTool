@@ -260,7 +260,7 @@ void DatasetsListModel::addImages(const std::vector<int64_t> &dataset_ids, const
         datasets_image_ids[dataset_id].push_back(image_ids[i]);
     }
 
-    for (const auto &[dataset_id, image_ids] : datasets_image_ids)
+    for (const auto &[dataset_id, dataset_image_ids] : datasets_image_ids)
     {
         auto found = datasets_.find(dataset_id);
         if (found == datasets_.end())
@@ -268,7 +268,7 @@ void DatasetsListModel::addImages(const std::vector<int64_t> &dataset_ids, const
             spdlog::error("添加图像失败: 数据集不存在: {}", dataset_id);
             continue;
         }
-        found->second->addImageIds(image_ids);
+        found->second->addImageIds(dataset_image_ids);
     }
     emit statsChanged();
 }

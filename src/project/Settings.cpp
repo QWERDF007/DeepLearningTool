@@ -1,7 +1,5 @@
 #include "project/Settings.h"
 
-#include "Settings.h"
-
 #include <algorithm>
 
 namespace dltool::project {

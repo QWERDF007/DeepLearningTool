@@ -81,7 +81,7 @@ void LabelClassesListModel::init()
             label_classes_.emplace(label_class_ids[i], new LabelClass(label_class_ids[i], names[i], colors[i],
                                                                       shortcuts[i], ordinal_indices[i], this));
         }
-        if (selection_ && label_class_ids.size() > 0)
+        if (label_class_ids.size() > 0)
         {
             selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
             selection_->setCurrentIndex(index(0), QItemSelectionModel::Select);

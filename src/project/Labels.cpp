@@ -254,6 +254,7 @@ int64_t LabelInstancesListModel::getLabelClassId(const QModelIndex &index) const
 
 QVariant LabelInstancesListModel::getData(const QModelIndex &index) const
 {
+    // TODO: 获取标注数据
     // return label_instances_.at(label_ids_[index.row()])->data()->dataMap();
     return QVariant();
 }
@@ -272,8 +273,6 @@ ImageLabelsListModel::ImageLabelsListModel(ImageInstancesListModel *image_instan
 
 void ImageLabelsListModel::init()
 {
-    if (image_instances_ == nullptr || label_instances_ == nullptr)
-        return;
     connect(selection_, &QItemSelectionModel::selectionChanged, this, &ImageLabelsListModel::updateSelection);
 }
 
@@ -463,8 +462,6 @@ ImageLabelsTableModel::~ImageLabelsTableModel() {}
 
 void ImageLabelsTableModel::init()
 {
-    if (image_instances_ == nullptr || label_instances_ == nullptr)
-        return;
     connect(selection_, &QItemSelectionModel::selectionChanged, this, &ImageLabelsTableModel::updateSelection);
 }
 

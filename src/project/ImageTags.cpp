@@ -55,16 +55,11 @@ bool ImageTagsListModel::initTagClass()
 
 bool ImageTagsListModel::initImagesTag()
 {
-    if (image_instances_ == nullptr)
+    if (database_ == nullptr)
     {
-        spdlog::error("初始化图像标签(Tag)失败: 图像实例列表未初始化");
+        spdlog::error("初始化图像标签(Tag)失败, 数据库未初始化");
         return false;
     }
-
-    connect(image_instances_->selection(), &QItemSelectionModel::selectionChanged, this,
-            &ImageTagsListModel::updateStats);
-    connect(image_instances_->selection(), &QItemSelectionModel::currentChanged, this,
-            &ImageTagsListModel::updateStats);
 
     QString              err_msg;
     std::vector<int64_t> image_ids, tag_ids;

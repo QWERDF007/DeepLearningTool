@@ -111,6 +111,8 @@ public:
 
     std::vector<std::vector<int64_t>> getImagesTagIds(const std::vector<int64_t> &image_ids) const;
 
+    void updateStats();
+
 private:
     void init();
     bool initTagClass();
@@ -123,8 +125,6 @@ private:
     QVariant getCurrentImageTagStats(const QModelIndex &index) const;
 
     std::vector<int64_t> getValidImagesId(const std::vector<int64_t> &new_image_ids, const int64_t tag_id);
-
-    void updateStats();
 
     data::ProjectDataBase *database_{nullptr};
 
