@@ -72,6 +72,6 @@ target_link_libraries(${PROJECT_NAME}
 PRIVATE 
     Qt6::Quick Qt6::Gui Qt6::Widgets
     dltool_common dltool_common_header
-    dltool_ui
+    dltool_ui dltool_ui_header
     dltool_project dltool_project_header
 )

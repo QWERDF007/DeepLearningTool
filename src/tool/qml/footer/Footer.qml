@@ -20,16 +20,30 @@ Rectangle {
             Layout.fillHeight: true
             color: DltColor.Primary
             DltButton {
+                id: btn
                 text: "日志"
+                checkable: true
+                normalColor: checked ? DltColor.Highlight : DltColor.Button
                 onClicked: {
-                    log.open()
+                    if (checked)
+                    {
+                        let pos = btn.mapToItem(Qt.application.activeWindow, 0, 0)
+                        log.x = pos.x - log.width + 60
+                        log.y = pos.y - log.height - 20
+                        log.open()
+                    }
+                    else
+                    {
+                        log.close()
+                    }
                 }
             }
         }
     }
+
     LogDialog {
         id: log
         width: 640
-        height: 240
+        height: 320
     }
 }

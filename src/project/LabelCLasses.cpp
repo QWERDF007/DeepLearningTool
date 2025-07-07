@@ -89,7 +89,7 @@ void LabelClassesListModel::init()
     }
     else
     {
-        spdlog::error("查询所有标签类别(LabelClass)失败, error: {}", err_msg.toUtf8().constData());
+        spdlog::error("查询所有标签类别失败: {}", err_msg.toUtf8().constData());
     }
 }
 
@@ -137,7 +137,7 @@ bool LabelClassesListModel::addLabelClass(const QString &name, const QString &co
 {
     if (database_ == nullptr)
     {
-        spdlog::error("添加标签类别(LabelClass)失败: {}, 数据库未初始化", name.toUtf8().constData());
+        spdlog::error("添加标签类别 [{}] 失败, 数据库未初始化", name.toUtf8().constData());
         return false;
     }
     const int row = rowCount();
@@ -146,11 +146,9 @@ bool LabelClassesListModel::addLabelClass(const QString &name, const QString &co
     bool      ok = database_->addLabelClass(name, color, shortcut, row, label_class_id, err_msg);
     if (!ok)
     {
-        spdlog::error("添加标签类别(LabelClass)失败: {}, error: {}", name.toUtf8().constData(),
-                      err_msg.toUtf8().constData());
+        spdlog::error("添加标签类别 [{}] 失败: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
         return false;
     }
-    spdlog::info("添加标签类别(LabelClass): {}", name.toUtf8().constData());
     // 添加到队列尾部
     const int count = 1;
     beginInsertRows(QModelIndex(), row, row + count - 1);
@@ -160,6 +158,7 @@ bool LabelClassesListModel::addLabelClass(const QString &name, const QString &co
     QModelIndex index = this->index(row);
     selection_->select(index, QItemSelectionModel::ClearAndSelect);
     selection_->setCurrentIndex(index, QItemSelectionModel::Select);
+    spdlog::info("添加标签类别 [{}] 成功", name.toUtf8().constData());
     return true;
 }
 
@@ -168,22 +167,17 @@ bool LabelClassesListModel::updateLabelClass(const int64_t label_class_id, const
 {
     if (database_ == nullptr)
     {
-        spdlog::error("更新标签类别(LabelClass)失败: {}, 数据库未初始化", name.toUtf8().constData());
+        spdlog::error("更新标签类别 [{}] 失败, 数据库未初始化", name.toUtf8().constData());
         return false;
     }
     QString err_msg;
     bool    ok = database_->updateLabelClass(label_class_id, name, color, shortcut, ordinal_index, err_msg);
     if (!ok)
     {
-        spdlog::error("更新标签类别(LabelClass)失败: {}, error: {}", name.toUtf8().constData(),
-                      err_msg.toUtf8().constData());
+        spdlog::error("更新标签类别 [{}] 失败: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
         return false;
     }
 
-    LabelClass *it = label_classes_[label_class_id];
-    spdlog::info("更新标签类别(LabelClass): {} -> {}, {} -> {}, {} -> {}, {} -> {}", it->name().toUtf8().constData(),
-                 name.toUtf8().constData(), it->color().toUtf8().constData(), color.toUtf8().constData(),
-                 it->shortcut().toUtf8().constData(), shortcut.toUtf8().constData(), it->ordinalIndex(), ordinal_index);
     int idx{0};
     for (const auto &[_, label_class] : label_classes_)
     {
@@ -197,6 +191,10 @@ bool LabelClassesListModel::updateLabelClass(const int64_t label_class_id, const
         }
         ++idx;
     }
+    LabelClass *it = label_classes_[label_class_id];
+    spdlog::info("更新标签类别 {} -> {}, {} -> {}, {} -> {}, {} -> {} 成功", it->name().toUtf8().constData(),
+                 name.toUtf8().constData(), it->color().toUtf8().constData(), color.toUtf8().constData(),
+                 it->shortcut().toUtf8().constData(), shortcut.toUtf8().constData(), it->ordinalIndex(), ordinal_index);
     return true;
 }
 
@@ -204,17 +202,17 @@ bool LabelClassesListModel::deleteLabelClass(const int64_t label_class_id)
 {
     if (database_ == nullptr)
     {
-        spdlog::error("删除标签类别(LabelClass)失败: {}, 数据库未初始化", label_class_id);
+        spdlog::error("删除标签类别 [{}] 失败, 数据库未初始化", label_class_id);
         return false;
     }
+    QString name = getLabelClassName(label_class_id);
     QString err_msg;
     bool    ok = database_->deleteLabelClass(label_class_id, err_msg);
     if (!ok)
     {
-        spdlog::error("删除标签类别(LabelClass)失败: {}, error: {}", label_class_id, err_msg.toUtf8().constData());
+        spdlog::error("删除标签类别 [{}] 失败: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
         return false;
     }
-    spdlog::info("删除标签类别(LabelClass): {}", label_class_id);
     int idx{0};
     for (const auto &[_, label_class] : label_classes_)
     {
@@ -227,6 +225,7 @@ bool LabelClassesListModel::deleteLabelClass(const int64_t label_class_id)
         }
         ++idx;
     }
+    spdlog::info("删除标签类别 [{}] 成功", name.toUtf8().constData());
     return true;
 }
 

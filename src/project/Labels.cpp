@@ -41,7 +41,7 @@ void LabelInstancesListModel::init()
 {
     if (database_ == nullptr)
     {
-        spdlog::error("初始化标注(Label)失败: 数据库未初始化");
+        spdlog::error("初始化标注失败: 数据库未初始化");
         return;
     }
     std::vector<int64_t>              label_ids, image_ids, label_class_ids, label_types;
@@ -55,7 +55,7 @@ void LabelInstancesListModel::init()
     }
     if (factory_ == nullptr)
     {
-        spdlog::error("查询所有标注失败, 标签数据工厂未初始化");
+        spdlog::error("查询所有标注失败: 标签数据工厂未初始化");
         return;
     }
     for (size_t i = 0; i < label_ids.size(); ++i)
@@ -162,7 +162,7 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
     }
     if (label_ids.size() != image_ids.size())
     {
-        spdlog::error("添加标注失败: 标签ID数量与图像ID数量不一致, {} != {}", label_ids.size(), image_ids.size());
+        spdlog::error("添加标注失败: 标签ID数量 {} 与图像ID数量 {} 不一致!", label_ids.size(), image_ids.size());
         return;
     }
 
@@ -174,6 +174,7 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
     std::vector<int64_t> sorted_label_ids(label_ids.begin(), label_ids.end());
     std::reverse(sorted_label_ids.begin(), sorted_label_ids.end());
     label_ids_.insert(label_ids_.end(), sorted_label_ids.begin(), sorted_label_ids.end());
+    spdlog::info("添加 {} 个标注成功", label_ids.size());
 }
 
 void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids)
@@ -187,7 +188,7 @@ void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids
     bool    ok = database_->deleteLabels(label_ids, err_msg);
     if (!ok)
     {
-        spdlog::error("删除标注失败: {}", err_msg.toUtf8().constData());
+        spdlog::error("删除 {} 个标注失败: {}", label_ids.size(), err_msg.toUtf8().constData());
         return;
     }
     for (const auto &label_id : label_ids)
@@ -202,6 +203,7 @@ void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids
     }
     std::reverse(new_label_ids.begin(), new_label_ids.end());
     label_ids_ = new_label_ids;
+    spdlog::info("删除 {} 个标注成功", label_ids.size());
 }
 
 std::vector<std::vector<int64_t>> LabelInstancesListModel::getImagesLabelIds(

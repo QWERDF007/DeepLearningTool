@@ -44,6 +44,7 @@ ApplicationWindow {
 
 
     footer: Footer {
+        id: _footer
         width: parent.width
         height: 32
     }

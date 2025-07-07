@@ -8,7 +8,7 @@ Button {
     property bool disabled: false
     property string contentDescription: ""
     property color normalColor: DltColor.Button
-    property color hoverColor:  DltColor.Hovered
+    property color hoverColor:  Qt.lighter(normalColor, 1.2)
     property color pressedColor: Qt.lighter(normalColor, 1.3)
     property color textColor: DltColor.FontPrimary
     Accessible.role: Accessible.Button
