@@ -19,15 +19,17 @@ Rectangle {
             Layout.preferredWidth: 100
             Layout.fillHeight: true
             color: DltColor.Primary
-            
-            DltInfoBadge {
-                anchors{
-                    right: parent.right
-                    top: parent.top
+            DltButton {
+                text: "日志"
+                onClicked: {
+                    log.open()
                 }
-                count: 10
-                max: 99
             }
         }
+    }
+    LogDialog {
+        id: log
+        width: 640
+        height: 240
     }
 }

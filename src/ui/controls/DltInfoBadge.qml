@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 
-
 Rectangle{
     id:control
     property bool isDot: false
