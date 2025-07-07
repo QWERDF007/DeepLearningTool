@@ -191,7 +191,6 @@ bool ImageTagsListModel::setImagesTag(const std::vector<int64_t> &image_ids, con
     }
     if (image_ids.empty())
         return true;
-    // TODO: 判断当前图像是否全部包含该标签, 如果包含, 则删除该标签
     std::string op{"添加"}; // 添加, 删除
 
     std::vector<int64_t> valid_image_ids = getValidImagesId(image_ids, tag_id);
