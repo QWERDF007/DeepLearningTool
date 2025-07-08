@@ -3,8 +3,6 @@
 #include "project/Logger.h"
 #include "ui/UILogger.h"
 
-#include <spdlog/sinks/qt_sinks.h>
-
 #include <QApplication>
 #include <QQmlApplicationEngine>
 
@@ -16,8 +14,7 @@ void InitLogger()
         // 对qml引用的指针 设置所属关系 由c++管理释放
         // warn: 不会释放 UILogger, 需要手动释放
         QQmlEngine::setObjectOwnership(dltool::ui::UILogger::getInstance(), QQmlEngine::CppOwnership);
-        sinks.push_back(
-            std::make_shared<spdlog::sinks::qt_sink<std::mutex>>(dltool::ui::UILogger::getInstance(), "log"));
+        sinks.push_back(std::make_shared<dltool::ui::qt_sink<std::mutex>>(dltool::ui::UILogger::getInstance()));
         auto logger = dltool::common::setupLogger(sinks);
         logger->set_level(spdlog::level::debug);
         logger->set_pattern("[%Y/%m/%d %T.%e] [%n] [%^%L%$] [%t] %v");
