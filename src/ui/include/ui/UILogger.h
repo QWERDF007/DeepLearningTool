@@ -15,6 +15,7 @@ class UI_API UILogger : public QObject
     Q_PROPERTY(QString message READ getMessage NOTIFY messageChanged)
 public:
     QString getMessage() const;
+    QString getColorfulMessage() const;
 
     Q_INVOKABLE void log(const QString &message);
 
@@ -24,10 +25,7 @@ private:
     {
     }
 
-    ~UILogger()
-    {
-        qInfo() << __FUNCTION__;
-    }
+    ~UILogger() {}
 
     QQueue<QString> queue_;
 

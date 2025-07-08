@@ -53,7 +53,9 @@ DltPopup {
             contentHeight: textArea.height
             DltTextArea {
                 id: textArea
+                readOnly: true
                 width: parent.width
+                textFormat: Text.AutoText
                 text: UILogger.message
                 wrapMode: Text.Wrap
             }
