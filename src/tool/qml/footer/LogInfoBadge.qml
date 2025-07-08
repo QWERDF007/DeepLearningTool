@@ -20,11 +20,11 @@ Rectangle {
             text: "日志"
         }
         DltInfoBadge {
-            count: 100
+            count: UILogger.infoCount
             max: 99
         }
         DltInfoBadge {
-            count: 0
+            count: UILogger.errorCount
             max: 99
             icon.iconSource: DltFontIcon.ErrorBadge
             contentColor: "red"

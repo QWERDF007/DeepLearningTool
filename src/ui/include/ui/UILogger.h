@@ -9,10 +9,10 @@
 
 namespace spdlog::sinks {
 template<typename Mutex>
-class qt_sink : public base_sink<Mutex>
+class qt_logger_sink : public base_sink<Mutex>
 {
 public:
-    qt_sink(QObject *qt_object)
+    qt_logger_sink(QObject *qt_object)
         : qt_object_(qt_object)
     {
         if (!qt_object_)
@@ -21,7 +21,7 @@ public:
         }
     }
 
-    ~qt_sink()
+    ~qt_logger_sink()
     {
         flush_();
     }
@@ -52,11 +52,25 @@ class UI_API UILogger : public QObject
     QML_NAMED_ELEMENT(UILogger)
     QT_QML_SINGLETON(UILogger)
     Q_PROPERTY(QString message READ getColorfulMessage NOTIFY messageChanged)
+    Q_PROPERTY(int infoCount READ getInfoCount NOTIFY countChanged)
+    Q_PROPERTY(int errorCount READ getErrorCount NOTIFY countChanged)
 public:
     QString getMessage() const;
     QString getColorfulMessage() const;
 
     Q_INVOKABLE void log(const int level, const QString &message);
+
+    Q_INVOKABLE int getInfoCount() const
+    {
+        return info_count_;
+    }
+
+    Q_INVOKABLE int getErrorCount() const
+    {
+        return error_count_;
+    }
+
+    Q_INVOKABLE void clearCount();
 
 private:
     explicit UILogger(QObject *parent = nullptr)
@@ -68,10 +82,14 @@ private:
 
     QQueue<std::pair<int, QString>> queue_;
 
-    const int max_size_ = 100;
+    const int max_size_{100};
+
+    int info_count_{0};
+    int error_count_{0};
 
 signals:
     void messageChanged();
+    void countChanged();
 };
 
 } // namespace dltool::ui

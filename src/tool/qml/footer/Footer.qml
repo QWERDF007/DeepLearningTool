@@ -31,7 +31,10 @@ Rectangle {
                     log.x = pos.x - log.width + 60
                     log.y = pos.y - log.height - 20
                     if (checked)
+                    {
+                        UILogger.clearCount()
                         log.open()
+                    }
                     else
                         log.close()
                 }

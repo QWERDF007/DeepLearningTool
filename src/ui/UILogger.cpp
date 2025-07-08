@@ -9,14 +9,27 @@ namespace dltool::ui {
 
 void UILogger::log(const int level, const QString &message)
 {
+    if (level == spdlog::level::err)
+        ++error_count_;
+    else
+        ++info_count_;
+
     queue_.enqueue(std::make_pair(level, message + "\n"));
 
-    // 保证队列长度不超过 max_size_ 条
     while (queue_.size() > max_size_)
     {
         queue_.dequeue();
     }
+
+    emit countChanged();
     emit messageChanged();
+}
+
+void UILogger::clearCount()
+{
+    info_count_  = 0;
+    error_count_ = 0;
+    emit countChanged();
 }
 
 QString UILogger::getMessage() const
