@@ -1,42 +1,32 @@
 import QtQuick
 import QtQuick.Controls
 
-Rectangle{
+import dltool.ui
+
+Item {
     id:control
-    property bool isDot: false
-    property bool showZero: false
     property int count: 0
     property int max: 99
-    color: Qt.rgba(255/255,77/255,79/255,1)
-    width: {
-        if(isDot)
-            return 10
-        return content_text.implicitWidth + 12
-    }
-    height: {
-        if(isDot)
-            return 10
-        return 20
-    }
-    radius: {
-        if(isDot)
-            return 5
-        return 10
-    }
-    border.width: 1
-    border.color: Qt.rgba(1,1,1,1)
-    visible: {
-        if(showZero)
-            return true
-        return count!==0
+    width: childrenRect.width
+    height: 20
+    property alias icon: badge_icon
+    property alias text: badge_text
+    property color contentColor: DltColor.FontPrimary
+    DltTextIcon {
+        id: badge_icon
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        iconSource: DltFontIcon.Info
+        iconSize: 12
+        color: control.contentColor
     }
     DltText{
-        id: content_text
-        anchors.centerIn: parent
-        color: Qt.rgba(1,1,1,1)
-        visible: !isDot
-        text:{
-            return count <= max ? count: "%1+".arg(max)
-        }
+        id: badge_text
+        anchors.left: badge_icon.right
+        anchors.leftMargin: 2
+        anchors.verticalCenter: parent.verticalCenter
+        text: count <= max ? count: "%1+".arg(max)
+        font: DltFont.Caption
+        color: control.contentColor
     }
 }

@@ -23,7 +23,6 @@ DltPopup {
                 top: parent.top
                 right: parent.right
             }
-            text: "最小化"
             iconSource: DltFontIcon.ChromeMinimize
             onClicked: {
                 popup.close()

@@ -6,7 +6,7 @@ import dltool.ui
 
 Rectangle {
     width: 640
-    height: 32
+    height: 36
     color: DltColor.Background
     RowLayout {
         anchors.fill: parent
@@ -16,26 +16,24 @@ Rectangle {
             color: DltColor.Primary
         }
         Rectangle {
-            Layout.preferredWidth: 100
+            Layout.preferredWidth: 120
             Layout.fillHeight: true
             color: DltColor.Primary
-            DltButton {
-                id: btn
-                text: "日志"
-                checkable: true
-                normalColor: checked ? DltColor.Highlight : DltColor.Button
-                onClicked: {
+            LogInfoBadge {
+                id: infoBadge
+                anchors.fill: parent
+                anchors.leftMargin: 5
+                anchors.rightMargin: 5
+                anchors.topMargin: 2
+                anchors.bottomMargin: 2
+                onCheckedChanged: {
+                    let pos = infoBadge.mapToItem(Qt.application.activeWindow, 0, 0)
+                    log.x = pos.x - log.width + 60
+                    log.y = pos.y - log.height - 20
                     if (checked)
-                    {
-                        let pos = btn.mapToItem(Qt.application.activeWindow, 0, 0)
-                        log.x = pos.x - log.width + 60
-                        log.y = pos.y - log.height - 20
                         log.open()
-                    }
                     else
-                    {
                         log.close()
-                    }
                 }
             }
         }
@@ -45,5 +43,8 @@ Rectangle {
         id: log
         width: 640
         height: 320
+        onClosed: {
+            infoBadge.checked = false
+        }
     }
 }
