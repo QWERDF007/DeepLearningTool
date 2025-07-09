@@ -17,6 +17,7 @@ Rectangle {
     RowLayout {
         anchors.fill: parent
         DltText {
+            Layout.leftMargin: 5
             text: "日志"
         }
         DltInfoBadge {

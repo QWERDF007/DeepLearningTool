@@ -22,10 +22,6 @@ Rectangle {
             LogInfoBadge {
                 id: infoBadge
                 anchors.fill: parent
-                anchors.leftMargin: 5
-                anchors.rightMargin: 5
-                anchors.topMargin: 2
-                anchors.bottomMargin: 2
                 onCheckedChanged: {
                     let pos = infoBadge.mapToItem(Qt.application.activeWindow, 0, 0)
                     log.x = pos.x - log.width + 60
