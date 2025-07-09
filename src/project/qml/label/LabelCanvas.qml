@@ -6,6 +6,7 @@ import dltool.project
 
 Item {
     id: labelView
+    clip: true
 
     property Project project: ProjectManager.currentProject
     property ImageInstancesModel imageInstances: project ? project.imageInstances : null
@@ -45,27 +46,47 @@ Item {
     }
 
     CrosshairCanvas {
-        visible: mouseArea.containsMouse && !labelImage.isDragging && labelImage.image.status === Image.Ready
+        visible: mouseArea.containsMouse && labelImage.image.status === Image.Ready
         mousePos: Qt.point(mouseArea.mouseX, mouseArea.mouseY)
+    }
+
+
+    Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Control && !mouseArea.pressed) {
+            mouseArea.cursorShape = Qt.OpenHandCursor
+        }
+    }
+
+    Keys.onReleased: function(event) {
+        if (event.key === Qt.Key_Control  && !mouseArea.pressed) {
+            mouseArea.cursorShape = Qt.ArrowCursor
+        }
     }
 
     MouseArea {
         id: mouseArea
         anchors.fill: parent
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        acceptedButtons: Qt.AllButtons
         hoverEnabled: true
         property bool isDrawing: false
+        property bool isDragging: false
 
         onPressed: function(event) {
-            if (event.button === Qt.LeftButton) {
+            if (event.button === Qt.MiddleButton || (event.modifiers & Qt.ControlModifier && event.button === Qt.LeftButton)) {
+                mouseArea.cursorShape = Qt.ClosedHandCursor
+                startPos = Qt.point(event.x, event.y)
+                isDragging = true
+                return
+            } else if (event.button === Qt.RightButton) {
+
+            } else if (event.button === Qt.LeftButton) {
+                isDrawing = true
                 // 获取相对于LabelImage的坐标
                 startPos = Qt.point((event.x - labelImage.image.x) / labelImage.image.scale, (event.y - labelImage.image.y) / labelImage.image.scale)
-                isDrawing = true
                 drawingItem.initItem(startPos.x, startPos.y, 0, 0, drawingColor)
-            } else if (event.button === Qt.RightButton) {
-                isDrawing = false
             } else {
                 isDrawing = false
+                isDragging = false
             }
         }
 
@@ -73,7 +94,7 @@ Item {
             if (isDrawing) {
                 isDrawing = false
                 drawingItem.clearItem()
-                
+
                 // 计算矩形的位置和大小
                 let rect = getRect(event)
 
@@ -81,6 +102,13 @@ Item {
                 if (project && labelClasses.currentLabelClassId !== -1 && rect.width > 1 && rect.height > 1) {
                     project.addLabels([imageInstances.curImageId], [labelClasses.currentLabelClassId], [rect])
                 }
+            } else if (isDragging) {
+                isDragging = false
+                mouseArea.cursorShape = event.modifiers & Qt.ControlModifier ? Qt.OpenHandCursor : Qt.ArrowCursor
+                startPos = Qt.point(event.x, event.y)
+                return
+            } else {
+                mouseArea.cursorShape = event.modifiers & Qt.ControlModifier ? Qt.OpenHandCursor : Qt.ArrowCursor
             }
         }
 
@@ -88,7 +116,16 @@ Item {
             if (isDrawing) {
                 let rect = getRect(event)
                 drawingItem.updateItem(rect.x, rect.y, rect.width, rect.height)
+            }  else if (isDragging) {
+                let dx = event.x - startPos.x
+                let dy = event.y - startPos.y
+                labelImage.image.x += dx
+                labelImage.image.y += dy
+                startPos = Qt.point(event.x, event.y)
             }
+        }
+        onEntered: {
+            labelView.forceActiveFocus()
         }
     }
 
