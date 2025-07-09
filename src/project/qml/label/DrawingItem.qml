@@ -6,11 +6,22 @@ import dltool.ui
 DltLoader {
     id: drawItemLoader
 
+    property real offsetX: 0
+    property real offsetY: 0
+    property real factor: 1
+
+    property real ix: 0
+    property real iy: 0
+    property real iwidth: 0
+    property real iheight: 0
+    
     Component {
         id: rectItem
         Rectangle {
-            width: 0
-            height: 0
+            x: ix * factor + offsetX
+            y: iy * factor + offsetY
+            width: iwidth * factor
+            height: iheight * factor
             color: "transparent"
             border.color: "red"
             border.width: 2
@@ -21,24 +32,24 @@ DltLoader {
 
     function initItem(x, y, width, height, color) {
         drawItemLoader.item.visible = true
-        drawItemLoader.item.x = x
-        drawItemLoader.item.y = y
-        drawItemLoader.item.width = width
-        drawItemLoader.item.height = height
+        drawItemLoader.ix = x
+        drawItemLoader.iy = y
+        drawItemLoader.iwidth = width
+        drawItemLoader.iheight = height
         drawItemLoader.item.border.color = color
     }
 
     function updateItem(x, y, width, height) {
-        drawItemLoader.item.x = x
-        drawItemLoader.item.y = y
-        drawItemLoader.item.width = width
-        drawItemLoader.item.height = height
+        drawItemLoader.ix = x
+        drawItemLoader.iy = y
+        drawItemLoader.iwidth = width
+        drawItemLoader.iheight = height
     }
 
     function clearItem() {
         drawItemLoader.item.visible = false
-        drawItemLoader.item.width = 0
-        drawItemLoader.item.height = 0
+        drawItemLoader.iwidth = 0
+        drawItemLoader.iheight = 0
     }
 }
 

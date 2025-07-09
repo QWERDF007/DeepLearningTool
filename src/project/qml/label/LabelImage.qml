@@ -10,6 +10,7 @@ Item {
     property bool isInit: false
     property bool needFitInView: false
     property bool isDragging: mouseArea.drag.active
+    property bool scalable: true
 
     property alias image: image
     
@@ -88,8 +89,10 @@ Item {
             }
         }
         onWheel: function(event) {
-            labelImage.scaleImageByWheel(event)
-            labelImage.updateImagePos()
+            if (labelImage.scalable) {
+                labelImage.scaleImageByWheel(event)
+                labelImage.updateImagePos()
+            }
         }
     }
 
