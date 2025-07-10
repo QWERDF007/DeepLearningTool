@@ -631,7 +631,7 @@ QVariant ImageLabelsTableModel::getData(const QModelIndex &index) const
     switch (col)
     {
     case 0:
-        return label_classes_->getLabelClassName(instance->labelClassId());
+        return getClassData(instance);
     default:
         return getData(instance, col);
     }
@@ -643,6 +643,16 @@ QVariant ImageLabelsTableModel::getData(LabelInstance *instance, const int col) 
     if (col >= static_cast<int>(column_keys_.size()))
         return QVariant();
     return data.value(column_keys_[col], QVariant());
+}
+
+QVariant ImageLabelsTableModel::getClassData(LabelInstance *instance) const
+{
+    const int64_t class_id = instance->labelClassId();
+    QVariantMap data {
+        {"class_name", label_classes_->getLabelClassName(class_id)},
+        {"class_color", label_classes_->getLabelClassColor(class_id)},
+    };
+    return data;
 }
 
 QVariant ImageLabelsTableModel::getSelected(const QModelIndex &index) const

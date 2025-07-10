@@ -226,6 +226,7 @@ private:
 
     QVariant getData(const QModelIndex &index) const;
     QVariant getData(LabelInstance *instance, const int col) const;
+    QVariant getClassData(LabelInstance *instance) const;
     QVariant getSelected(const QModelIndex &index) const;
 
     ImageInstancesListModel *image_instances_{nullptr};

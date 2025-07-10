@@ -76,7 +76,6 @@ Rectangle {
                 SplitView.fillWidth: true
                 SplitView.fillHeight: true
                 SplitView.minimumHeight: 240
-                color: DltColor.Primary
             }
             
             Rectangle { // 编辑实例

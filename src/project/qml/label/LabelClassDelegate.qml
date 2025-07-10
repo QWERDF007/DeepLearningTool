@@ -34,6 +34,8 @@ Rectangle {
             Layout.preferredWidth: height
             radius: 3
             color: control.classColor
+            border.width: 1
+            border.color: "black"
             DltText {
                 text: control.classShortcut
                 color: "black"

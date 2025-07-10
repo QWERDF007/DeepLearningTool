@@ -21,7 +21,9 @@ signals:
     void changeTabBarIndex(int index);
 
     void imageLabelListSelectionChanged(const QModelIndex &index, QItemSelectionModel::SelectionFlags command);
+    void imageLabelListSelectionClear();
     void imageLabelTableSelectionChanged(const QModelIndex &index, QItemSelectionModel::SelectionFlags command);
+    void imageLabelTableSelectionClear();
 };
 
 } // namespace dltool::ui

@@ -23,6 +23,11 @@ Item {
                 selection.select(index, command)
             }
         }
+        function onImageLabelTableSelectionClear() {
+            if (selection) {
+                selection.clear()
+            }
+        }
     }
 
     LabelImage {
@@ -143,6 +148,13 @@ Item {
         if (selection) {
             selection.select(index, command)
             SignalHelper.imageLabelListSelectionChanged(index, command)
+        }
+    }
+
+    function clearSelection() {
+        if (selection) {
+            selection.clear()
+            SignalHelper.imageLabelListSelectionClear()
         }
     }
 }
