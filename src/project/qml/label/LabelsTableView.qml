@@ -41,35 +41,11 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            HorizontalHeaderView {
+            LabelsTableHeader {
                 id: horizontalHeader
-                clip: true
                 Layout.fillWidth: true
                 Layout.preferredHeight: 32
                 syncView: tableView
-                columnSpacing: 5
-                resizableColumns: true
-                boundsBehavior: Flickable.StopAtBounds
-                delegate:  Rectangle {
-                    implicitWidth: colWidth
-                    implicitHeight: horizontalHeader.height
-                    color: DltColor.Background
-                    Rectangle {
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 2
-                        height: parent.height - 4
-                        color: DltColor.Primary
-                    }
-
-                    DltText {
-                        anchors.centerIn: parent
-                        text: horizontalHeader.textRole ?
-                                  (Array.isArray(horizontalHeader.model) ? modelData[horizontalHeader.textRole] : model[horizontalHeader.textRole])
-                                : modelData
-                        color: "white"
-                    }
-                }
             }
 
             TableView {
@@ -80,65 +56,25 @@ Rectangle {
                 boundsBehavior: Flickable.StopAtBounds
 
                 model: imageLabelsTable
-                // delegate: Rectangle {
-                //     clip: true
-                //     property var mdata: model.data
-                //     implicitWidth: horizontalHeader.width / horizontalHeader.columns
-                //     implicitHeight: 24
-                //     color: row % 2 == 0 ? Qt.lighter(DltColor.Primary, 1.3) : DltColor.Primary
-                //     DltText {
-                //         width: parent.width
-                //         anchors.verticalCenter: parent.verticalCenter
-                //         elide: Text.ElideRight
-                //         text: isNumber(mdata) ? mdata.toFixed(2) : mdata
-                //     }
-                // }
 
                 delegate: DelegateChooser {
-                    // role: "column"
 
                     DelegateChoice{
                         column: 0
-                        Rectangle {
-                            clip: true
-                            property var mdata: model.data
+                        ClassColumnDelegate {
                             implicitWidth: colWidth
                             implicitHeight: rowHeight
-                            color: model.selected ? DltColor.Highlight : row % 2 == 0 ? Qt.lighter(DltColor.Primary, 1.3) : DltColor.Primary
-                            RowLayout {
-                                anchors.fill: parent
-                                Rectangle {
-                                    color: mdata.class_color
-                                    width: rowHeight - 5
-                                    height: rowHeight - 5
-                                    radius: 3
-                                    border.width: 1
-                                    border.color: "black"
-                                }
-                                DltText {
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    elide: Text.ElideRight
-                                    text:  mdata.class_name
-                                    verticalAlignment: Text.AlignVCenter
-                                }    
-                            }
-                            
+                            mdata: model.data
+                            selected: model.selected
                         }
                     }
 
                     DelegateChoice {
-                        Rectangle {
-                            clip: true
+                        DataColumnDelegate {
                             implicitWidth: colWidth
                             implicitHeight: rowHeight
-                            color: model.selected ? DltColor.Highlight : row % 2 == 0 ? Qt.lighter(DltColor.Primary, 1.3) : DltColor.Primary
-                            DltText {
-                                width: parent.width
-                                anchors.verticalCenter: parent.verticalCenter
-                                elide: Text.ElideRight
-                                text: model.data.toFixed(2)
-                            }
+                            mdata: model.data
+                            selected: model.selected
                         }
                     }
                 }
@@ -160,6 +96,9 @@ Rectangle {
                 }
                 let tmpIndex = tableView.model.index(row, 0)
                 control.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
+            }
+            if (mouse.button === Qt.RightButton) {
+
             }
         }
     }
