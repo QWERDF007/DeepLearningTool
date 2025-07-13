@@ -62,7 +62,7 @@ Rectangle {
             SplitView.fillHeight: true
             SplitView.minimumWidth: 200
             SplitView.maximumWidth: parent.width / 2
-            SplitView.preferredWidth: 300
+            SplitView.preferredWidth: 320
             orientation: Qt.Vertical
 
             Rectangle { // 图像增强

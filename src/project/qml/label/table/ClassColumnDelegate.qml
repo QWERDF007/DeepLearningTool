@@ -11,6 +11,8 @@ Rectangle {
     color: selected ? DltColor.Highlight : row % 2 == 0 ? Qt.lighter(DltColor.Primary, 1.3) : DltColor.Primary
     RowLayout {
         anchors.fill: parent
+        anchors.leftMargin: 2
+        anchors.rightMargin: 2
         Rectangle {
             color: mdata.class_color
             width: rowHeight - 5

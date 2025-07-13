@@ -154,6 +154,9 @@ public:
         return selection_;
     }
 
+    Q_INVOKABLE void shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command);
+    Q_INVOKABLE void selectAll();
+
     void onCurrentImageChanged();
 
 private:
@@ -185,6 +188,7 @@ class ImageLabelsTableModel : public QAbstractTableModel
     QML_NAMED_ELEMENT(ImageLabelsTableModel)
     QML_UNCREATABLE("Can not create ImageLabelsTableModel directly!")
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
+    Q_PROPERTY(int lastIndex READ lastIndex WRITE setLastIndex NOTIFY lastSelectedIndexChanged)
 public:
     ImageLabelsTableModel(ImageInstancesListModel *image_instances, LabelInstancesListModel *label_instances,
                           LabelClassesListModel                                       *label_classes,
@@ -218,6 +222,16 @@ public:
         return selection_;
     }
 
+    Q_INVOKABLE void shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command);
+    Q_INVOKABLE void selectAll();
+
+    int lastIndex() const
+    {
+        return last_index_;
+    }
+
+    void setLastIndex(int last_index);
+
     void onCurrentImageChanged();
 
     Q_INVOKABLE std::vector<int64_t> getSelectedLabelIds() const;
@@ -244,6 +258,11 @@ private:
     mutable std::vector<QString> column_keys_;
 
     QItemSelectionModel *selection_{nullptr};
+
+    int last_index_{-1};
+
+signals:
+    void lastSelectedIndexChanged();
 };
 
 } // namespace dltool::project

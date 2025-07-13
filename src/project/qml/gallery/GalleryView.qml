@@ -142,33 +142,36 @@ Item {
             
             onClicked: function (mouse) {
                 view.forceActiveFocus()
+                if (selection === null) {
+                    return
+                }
                 let posInGridView = Qt.point(mouse.x, mouse.y)
                 let posInContentItem = mapToItem(view.contentItem, posInGridView)
                 let index = view.indexAt(posInContentItem.x, posInContentItem.y)
                 let item = view.itemAtIndex(index)
-                if (item) {
-                    let tmpIndex = view.model.index(index, 0)
-                    if (model.lastIndex === -1) {
+                if (item === null || item === undefined) {
+                    selection.clear()
+                    return
+                }
+                let tmpIndex = view.model.index(index, 0)
+                if (model.lastIndex === -1) {
+                    model.lastIndex = index
+                }
+                if (mouse.button === Qt.LeftButton || (mouse.button === Qt.RightButton && !selection.isSelected(tmpIndex))) {
+                    if (mouse.modifiers & Qt.ShiftModifier) { // shift 多选
+                        project.imageInstances.shiftSelect(index, model.lastIndex, ItemSelectionModel.ClearAndSelect)
+                        selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
+                    } else if (mouse.modifiers & Qt.ControlModifier) { // ctrl 多选
+                        selection.select(tmpIndex, ItemSelectionModel.Select)
+                        selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
+                    } else { // 单选
+                        selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
+                        selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
                         model.lastIndex = index
                     }
-                    if (mouse.button === Qt.LeftButton || (mouse.button === Qt.RightButton && !selection.isSelected(tmpIndex))) {
-                        if (mouse.modifiers & Qt.ShiftModifier) { // shift 多选
-                            project.imageInstances.shiftSelect(index, model.lastIndex, ItemSelectionModel.ClearAndSelect)
-                            selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
-                        } else if (mouse.modifiers & Qt.ControlModifier) { // ctrl 多选
-                            selection.select(tmpIndex, ItemSelectionModel.Select)
-                            selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
-                        } else { // 单选
-                            selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
-                            selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
-                            model.lastIndex = index
-                        }
-                    }
-                    if (mouse.button === Qt.RightButton) { // 右键弹出菜单
-                        imageInstanceMenu.popup()
-                    }
-                } else {
-                    selection.clear()
+                }
+                if (mouse.button === Qt.RightButton) { // 右键弹出菜单
+                    imageInstanceMenu.popup()
                 }
             }
         }

@@ -98,20 +98,40 @@ Rectangle {
         }
     }
 
+    Keys.enabled: control.visible
+    Keys.onPressed: function(event) {
+        if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
+            control.selectAll()
+        }
+    }
+
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onClicked: function(mouse) {
-            tableView.forceActiveFocus()
+            control.forceActiveFocus()
+            if (selection === null) {
+                return
+            }
             let pos = mapToItem(tableView, mouse.x, mouse.y)
             let row = Math.floor(pos.y / rowHeight)
-            if (selection) {
-                if (row >= tableView.model.rowCount()) {
-                    control.clearSelection()
-                    return
+            if (row >= imageLabelsTable.rowCount()) {
+                control.clearSelection()
+                return
+            }
+            let tmpIndex = imageLabelsTable.index(row, 0)
+            if (imageLabelsTable.lastIndex === -1) {
+                imageLabelsTable.lastIndex = row
+            }
+            if (mouse.button === Qt.LeftButton || (mouse.button === Qt.RightButton && !selection.isSelected(tmpIndex))) {
+                if (mouse.modifiers & Qt.ShiftModifier) { // shift 多选
+                    control.shiftSelect(row, imageLabelsTable.lastIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
+                } else if (mouse.modifiers & Qt.ControlModifier) { // ctrl 多选
+                    control.select(tmpIndex, ItemSelectionModel.Select | ItemSelectionModel.Rows)
+                } else { // 单选
+                    control.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
+                    imageLabelsTable.lastIndex = row
                 }
-                let tmpIndex = tableView.model.index(row, 0)
-                control.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
             }
             if (mouse.button === Qt.RightButton) {
                 tableViewMenu.popup()
@@ -123,6 +143,20 @@ Rectangle {
         if (selection) {
             selection.select(index, command)
             SignalHelper.imageLabelTableSelectionChanged(index, command)
+        }
+    }
+
+    function shiftSelect(currentIndex, lastIndex, command) {
+        if (selection) {
+            imageLabelsTable.shiftSelect(currentIndex, lastIndex, command)
+            SignalHelper.imageLabelTableShiftSelect(currentIndex, lastIndex, command)
+        }
+    }
+
+    function selectAll() {
+        if (selection) {
+            imageLabelsTable.selectAll()
+            SignalHelper.imageLabelTableSelectAll()
         }
     }
 

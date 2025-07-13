@@ -23,6 +23,12 @@ Item {
                 selection.select(index, command)
             }
         }
+        function onImageLabelTableShiftSelect(currentIndex, lastIndex, command) {
+            imageLabelsList.shiftSelect(currentIndex, lastIndex, command)
+        }
+        function onImageLabelTableSelectAll() {
+            imageLabelsList.selectAll()
+        }
         function onImageLabelTableSelectionClear() {
             if (selection) {
                 selection.clear()
@@ -148,6 +154,13 @@ Item {
         if (selection) {
             selection.select(index, command)
             SignalHelper.imageLabelListSelectionChanged(index, command)
+        }
+    }
+
+    function shiftSelect(currentIndex, lastIndex, command) {
+        if (selection) {
+            imageLabelsList.shiftSelect(currentIndex, lastIndex, command)
+            SignalHelper.imageLabelListShiftSelect(currentIndex, lastIndex, command)
         }
     }
 

@@ -21,9 +21,13 @@ signals:
     void changeTabBarIndex(int index);
 
     void imageLabelListSelectionChanged(const QModelIndex &index, QItemSelectionModel::SelectionFlags command);
+    void imageLabelListShiftSelect(int currentIndex, int lastIndex, QItemSelectionModel::SelectionFlags command);
     void imageLabelListSelectionClear();
+    void imageLabelListSelectAll();
     void imageLabelTableSelectionChanged(const QModelIndex &index, QItemSelectionModel::SelectionFlags command);
+    void imageLabelTableShiftSelect(int currentIndex, int lastIndex, QItemSelectionModel::SelectionFlags command);
     void imageLabelTableSelectionClear();
+    void imageLabelTableSelectAll();
 };
 
 } // namespace dltool::ui

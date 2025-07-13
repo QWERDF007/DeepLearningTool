@@ -412,9 +412,26 @@ void ImageLabelsListModel::onCurrentImageChanged()
     resetModel();
 }
 
+void ImageLabelsListModel::shiftSelect(int current_index, int previous_index,
+                                       QItemSelectionModel::SelectionFlags command)
+{
+    const int top    = std::min(current_index, previous_index);
+    const int bottom = std::max(current_index, previous_index);
+
+    QItemSelection selection;
+    selection.select(index(top), index(bottom));
+    selection_->select(selection, command);
+}
+
+void ImageLabelsListModel::selectAll()
+{
+    QItemSelection selection;
+    selection.select(index(0), index(static_cast<int>(label_ids_.size()) - 1));
+    selection_->select(selection, QItemSelectionModel::Select | QItemSelectionModel::Rows);
+}
+
 void ImageLabelsListModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)
 {
-    qInfo() << __FUNCTION__ << __LINE__;
     const QModelIndexList &dselected_items = deselected.indexes();
 
     int top{-1};
@@ -655,9 +672,38 @@ std::vector<int64_t> ImageLabelsTableModel::getSelectedLabelIds() const
     return label_ids;
 }
 
+void ImageLabelsTableModel::shiftSelect(int current_index, int previous_index,
+                                        QItemSelectionModel::SelectionFlags command)
+{
+    const int top    = std::min(current_index, previous_index);
+    const int bottom = std::max(current_index, previous_index);
+
+    QItemSelection selection;
+    selection.select(index(top, 0), index(bottom, static_cast<int>(column_headers_.size()) - 1));
+    selection_->select(selection, command);
+}
+
+void ImageLabelsTableModel::selectAll()
+{
+    QItemSelection    selection;
+    const QModelIndex top_left = index(0, 0);
+    const QModelIndex bottom_right
+        = index(static_cast<int>(label_ids_.size()) - 1, static_cast<int>(column_headers_.size()) - 1);
+    selection.select(top_left, bottom_right);
+    selection_->select(selection, QItemSelectionModel::Select | QItemSelectionModel::Rows);
+}
+
+void ImageLabelsTableModel::setLastIndex(int last_index)
+{
+    if (last_index_ != last_index)
+    {
+        last_index_ = last_index;
+        emit lastSelectedIndexChanged();
+    }
+}
+
 void ImageLabelsTableModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)
 {
-    qInfo() << __FUNCTION__ << __LINE__;
     const QModelIndexList &dselected_items = deselected.indexes();
 
     int top{-1}, left{-1};

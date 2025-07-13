@@ -234,6 +234,9 @@ private:
 
     QItemSelectionModel *selection_{nullptr};
 
+    /**
+     * @brief 上次选中的图像索引, 用于多选时记录上次选中的图像索引
+     */
     int last_index_{-1};
 
 signals:
