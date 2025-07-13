@@ -28,6 +28,22 @@ Rectangle {
         }
     }
 
+    DltMenu {
+        id: tableViewMenu
+        width: 200
+        DltMenuItem {
+            text: "删除选中标签"
+            iconSource: DltFontIcon.Delete
+            onClicked: {
+                if (project && imageLabelsTable) {
+                    let label_ids = imageLabelsTable.getSelectedLabelIds()
+                    project.deleteLabels(label_ids)
+                }
+            }
+        }
+    }
+
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 5
@@ -98,7 +114,7 @@ Rectangle {
                 control.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
             }
             if (mouse.button === Qt.RightButton) {
-
+                tableViewMenu.popup()
             }
         }
     }

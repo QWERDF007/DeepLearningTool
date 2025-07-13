@@ -229,7 +229,12 @@ void Project::updateLabels(const std::vector<int64_t> &label_ids, const std::vec
 
 void Project::deleteLabels(const std::vector<int64_t> &label_ids)
 {
-    // TODO: 删除标注
+    std::vector<int64_t> image_ids = label_instances_->getImageIds(label_ids);
+    label_instances_->deleteLabels(label_ids);
+    image_instances_->deleteImagesLabelIds(image_ids, label_ids);
+    image_labels_list_->deleteLabels(image_ids, label_ids);
+    image_labels_table_->deleteLabels(image_ids, label_ids);
+    updateDatasetsStats();
 }
 
 void Project::addTagClass(const QString &name)

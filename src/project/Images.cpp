@@ -434,6 +434,28 @@ void ImageInstancesListModel::addImagesLabelIds(const std::vector<int64_t>      
     }
 }
 
+void ImageInstancesListModel::deleteImagesLabelIds(const std::vector<int64_t> &image_ids,
+                                                   const std::vector<int64_t> &label_ids)
+{
+    std::map<int64_t, std::vector<int64_t>> images_label_ids;
+    for (size_t i = 0; i < image_ids.size(); ++i)
+    {
+        const int64_t image_id = image_ids[i];
+        if (images_label_ids.find(image_id) == images_label_ids.end())
+        {
+            images_label_ids[image_id] = std::vector<int64_t>();
+            images_label_ids[image_id].reserve(image_ids.size());
+        }
+        images_label_ids[image_id].push_back(label_ids[i]);
+    }
+    for (const auto &[image_id, image_label_ids] : images_label_ids)
+    {
+        ImageInstance *image_instance = getImageInstance(image_id);
+        if (image_instance)
+            image_instance->removeLabelIds(image_label_ids);
+    }
+}
+
 void ImageInstancesListModel::addImagesTagIds(const std::vector<int64_t> &image_ids,
                                               const std::vector<int64_t> &tag_ids)
 {

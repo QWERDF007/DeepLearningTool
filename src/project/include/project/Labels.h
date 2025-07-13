@@ -95,6 +95,7 @@ public:
     }
 
     std::vector<int64_t> getLabelIds(const std::vector<int64_t> &image_ids) const;
+    std::vector<int64_t> getImageIds(const std::vector<int64_t> &label_ids) const;
 
 private:
     void init();
@@ -146,6 +147,7 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
+    void deleteLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
 
     QItemSelectionModel *selection() const
     {
@@ -209,6 +211,7 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
+    void deleteLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
 
     QItemSelectionModel *selection() const
     {
@@ -216,6 +219,8 @@ public:
     }
 
     void onCurrentImageChanged();
+
+    Q_INVOKABLE std::vector<int64_t> getSelectedLabelIds() const;
 
 private:
     void init();
