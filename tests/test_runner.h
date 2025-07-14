@@ -15,7 +15,7 @@
     static TestClass##Registrator _registrator;                                       \
     }
 
-inline int runAllTests(int argc, char **argv)
+inline int runAllCppTests(int argc, char **argv)
 {
     int result = 0;
     for (const auto &factory : TestRegistry::getInstance().getTests())

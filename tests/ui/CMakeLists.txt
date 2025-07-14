@@ -2,6 +2,8 @@ set(PLUGIN_NAME "ui")
 set(TARGET_NAME "${PROJECT_NAME}_${PLUGIN_NAME}")
 set(TEST_TARGET_NAME "tst_${TARGET_NAME}")
 
+# generate_qml_test_list(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/qml_test_list.h)
+
 # 获取所有源文件的相对路径
 file(GLOB_RECURSE SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp)
 
