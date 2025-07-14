@@ -50,7 +50,7 @@ target_compile_definitions(${TARGET_NAME}
 )
 
 target_link_libraries(${TARGET_NAME} 
-    PRIVATE  
+    PUBLIC
         Qt6::Core Qt6::Gui Qt6::Quick
         dltool_common dltool_common_header
 )

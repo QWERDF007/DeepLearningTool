@@ -1,10 +1,11 @@
 #pragma once
 
+#include "UIExport.h"
 #include "common/Singleton.h"
 
 namespace dltool::ui {
 
-class Utils : public QObject
+class UI_API Utils : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(Utils)

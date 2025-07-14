@@ -25,7 +25,7 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
 endif()
 
 # 配置构建树的选项
-option(DLT_BUILD_TESTS "Enable testsuite" OFF)
+option(DLT_BUILD_TESTS "Enable testsuite" ON)
 option(DLT_BUILD_DOCS "Build Docs" OFF)
 option(DLT_ENABLE_SANITIZER "Enabled sanitized build" OFF)
 
@@ -44,7 +44,7 @@ add_subdirectory(3rdparty EXCLUDE_FROM_ALL)
 add_subdirectory(src)
 
 # 构建测试用例
-if(DeepLearningTool_BUILD_TESTS)
+if(DLT_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 

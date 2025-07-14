@@ -100,3 +100,8 @@ message(STATUS "")
 message(STATUS "Python")
 message(STATUS "    PYTHON_EXECUTABLE   : ${PYTHON_EXECUTABLE}")
 message(STATUS "")
+
+
+message(STATUS "Tests")
+message(STATUS "    DLT_BUILD_TESTS      : ${DLT_BUILD_TESTS}")
+message(STATUS "")
