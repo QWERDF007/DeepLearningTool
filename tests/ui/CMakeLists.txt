@@ -28,7 +28,7 @@ target_link_libraries(${TEST_TARGET_NAME} PRIVATE
     Qt6::Quick Qt6::QuickTest
 )
 
-target_include_directories(${TEST_TARGET_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../)
+target_include_directories(${TEST_TARGET_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/tests)
 
 target_compile_definitions(${TEST_TARGET_NAME} PRIVATE TEST_QML_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
