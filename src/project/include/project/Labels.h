@@ -100,9 +100,9 @@ public:
 private:
     void init();
 
-    int64_t  getLabelId(const QModelIndex &index) const;
-    int64_t  getImageId(const QModelIndex &index) const;
-    int64_t  getLabelClassId(const QModelIndex &index) const;
+    int getLabelId(const QModelIndex &index) const;
+    int getImageId(const QModelIndex &index) const;
+    int getLabelClassId(const QModelIndex &index) const;
     QVariant getData(const QModelIndex &index) const;
 
     data::ProjectDataBase   *database_{nullptr};
@@ -166,9 +166,9 @@ private:
 
     void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
 
-    int64_t  getLabelId(const QModelIndex &index) const;
-    int64_t  getImageId(const QModelIndex &index) const;
-    int64_t  getLabelClassId(const QModelIndex &index) const;
+    int  getLabelId(const QModelIndex &index) const;
+    int  getImageId(const QModelIndex &index) const;
+    int  getLabelClassId(const QModelIndex &index) const;
     QVariant getData(const QModelIndex &index) const;
     QVariant getColor(const QModelIndex &index) const;
     QVariant getSelected(const QModelIndex &index) const;

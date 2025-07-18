@@ -4,8 +4,9 @@
 #    define PROJECT_HIDDEN
 #    define PROJECT_EXPORT __declspec(dllexport)
 #    define PROJECT_IMPORT __declspec(dllimport)
-#elif __GNUC__
+#elif defined(__GNUC__) || defined(__clang__)
 #    define PROJECT_EXPORT __attribute__((__visibility__("default")))
+#    define PROJECT_IMPORT __attribute__((visibility("default")))
 #    define PROJECT_HIDDEN __attribute__((__visibility__("hidden")))
 #else
 #    define PROJECT_EXPORT

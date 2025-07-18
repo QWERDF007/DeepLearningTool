@@ -4,8 +4,9 @@
 #    define UI_HIDDEN
 #    define UI_EXPORT __declspec(dllexport)
 #    define UI_IMPORT __declspec(dllimport)
-#elif __GNUC__
+#elif defined(__GNUC__) || defined(__clang__)
 #    define UI_EXPORT __attribute__((__visibility__("default")))
+#    define UI_IMPORT __attribute__((visibility("default")))
 #    define UI_HIDDEN __attribute__((__visibility__("hidden")))
 #else
 #    define UI_EXPORT

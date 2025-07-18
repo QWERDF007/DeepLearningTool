@@ -19,12 +19,12 @@ public:
     ImageInstance(const int64_t dataset_id, const int64_t image_id, const QString &path, QObject *parent = nullptr);
     ~ImageInstance();
 
-    int64_t datasetId() const
+    int datasetId() const
     {
         return dataset_id_;
     }
 
-    int64_t imageId() const
+    int imageId() const
     {
         return image_id_;
     }

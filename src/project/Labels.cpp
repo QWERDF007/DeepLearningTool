@@ -260,17 +260,17 @@ std::vector<int64_t> LabelInstancesListModel::getImageIds(const std::vector<int6
     return image_ids;
 }
 
-int64_t LabelInstancesListModel::getLabelId(const QModelIndex &index) const
+int LabelInstancesListModel::getLabelId(const QModelIndex &index) const
 {
     return label_ids_[index.row()];
 }
 
-int64_t LabelInstancesListModel::getImageId(const QModelIndex &index) const
+int LabelInstancesListModel::getImageId(const QModelIndex &index) const
 {
     return label_instances_.at(label_ids_[index.row()])->imageId();
 }
 
-int64_t LabelInstancesListModel::getLabelClassId(const QModelIndex &index) const
+int LabelInstancesListModel::getLabelClassId(const QModelIndex &index) const
 {
     return label_instances_.at(label_ids_[index.row()])->labelClassId();
 }
@@ -463,12 +463,12 @@ void ImageLabelsListModel::updateSelection(const QItemSelection &selected, const
     emit dataChanged(index(top), index(bottom), {SelectedRole});
 }
 
-int64_t ImageLabelsListModel::getLabelId(const QModelIndex &index) const
+int ImageLabelsListModel::getLabelId(const QModelIndex &index) const
 {
     return label_ids_[index.row()];
 }
 
-int64_t ImageLabelsListModel::getImageId(const QModelIndex &index) const
+int ImageLabelsListModel::getImageId(const QModelIndex &index) const
 {
     int64_t        label_id = label_ids_[index.row()];
     LabelInstance *instance = label_instances_->getLabelInstance(label_id);
@@ -477,7 +477,7 @@ int64_t ImageLabelsListModel::getImageId(const QModelIndex &index) const
     return instance->imageId();
 }
 
-int64_t ImageLabelsListModel::getLabelClassId(const QModelIndex &index) const
+int ImageLabelsListModel::getLabelClassId(const QModelIndex &index) const
 {
     int64_t        label_id = label_ids_[index.row()];
     LabelInstance *instance = label_instances_->getLabelInstance(label_id);

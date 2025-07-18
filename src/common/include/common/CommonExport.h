@@ -1,11 +1,12 @@
 #pragma once
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
 #    define COMMON_HIDDEN
 #    define COMMON_EXPORT __declspec(dllexport)
 #    define COMMON_IMPORT __declspec(dllimport)
-#elif __GNUC__
+#elif defined(__GNUC__) || defined(__clang__)
 #    define COMMON_EXPORT __attribute__((__visibility__("default")))
+#    define COMMON_IMPORT __attribute__((visibility("default")))
 #    define COMMON_HIDDEN __attribute__((__visibility__("hidden")))
 #else
 #    define COMMON_EXPORT
