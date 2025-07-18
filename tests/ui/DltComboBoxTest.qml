@@ -21,7 +21,7 @@ DltComboBox {
         when: windowShown
 
         function init() {
-            combo.disabled = false
+            combo.enabled = true
             combo.model = ["Option A", "Option B", "Option C"]
         }
 
@@ -46,9 +46,11 @@ DltComboBox {
             compare(commitSpy.signalArguments[0][0], "012")
         }
 
-        function test_disabledState() {
-            combo.disabled = true
+        function test_disabled() { // 测试禁用
+            combo.enabled = false
             verify(!combo.enabled)
+            mouseClick(combo.indicator)
+            verify(!combo.popup.visible)
         }
 
         function test_popup() { // 测试点击弹窗

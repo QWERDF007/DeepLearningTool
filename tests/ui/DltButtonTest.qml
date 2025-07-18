@@ -20,15 +20,21 @@ DltButton {
     TestCase {
         name: "DltButtonTest"
         when: windowShown
+
+        function init() {
+            buttonItem.enabled = true
+            clickSpy.clear()
+        }
         
-        function test_disabledState() {
-            buttonItem.disabled = true
-            wait(0) // 等待属性应用
+        function test_disabled() { // 测试禁用
+            buttonItem.enabled = false
+            mouseClick(buttonItem)
             compare(buttonItem.enabled, false)
             compare(buttonItem.opacity, 0.3)
+            compare(clickSpy.count, 0)
         }
 
-        function test_click() {
+        function test_click() { // 测试点击
             compare(buttonItem.text, "测试按钮")
             mouseClick(buttonItem)
             compare(buttonItem.text, "Clicked")

@@ -22,4 +22,5 @@ Item {
     DltButtonTest {x:0;y:0}
     DltTextTest {x:0;y:100}
     DltComboBoxTest {x:0;y:200}
+    DltTextIconButtonTest {x:0;y:300}
 }
