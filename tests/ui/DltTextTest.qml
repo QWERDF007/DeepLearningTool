@@ -11,7 +11,7 @@ DltText {
     TestCase {
         name: "DltTextTest"
         // when: windowShown
-        function test_text_properties() {
+        function test_textProperties() {
             compare(textItem.text, "测试文本");
             compare(textItem.font, DltFont.Body);
             compare(textItem.color, DltColor.FontPrimary);
