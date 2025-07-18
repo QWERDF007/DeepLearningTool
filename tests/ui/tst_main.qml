@@ -12,6 +12,8 @@ import QtTest
 import dltool.ui
 
 Item {
+    height: 800
+    width: 600
     TestCase {
         name: "TestDummy"
 
@@ -23,4 +25,5 @@ Item {
     DltTextTest {x:0;y:100}
     DltComboBoxTest {x:0;y:200}
     DltTextIconButtonTest {x:0;y:300}
+    DltEditorTest {}
 }

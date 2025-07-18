@@ -6,7 +6,6 @@ import dltool.ui
 
 DltComboBox {
     id: combo
-    width: 200
     editable: true
     model: ["Option A", "Option B", "Option C"]
 
@@ -35,6 +34,7 @@ DltComboBox {
         }
 
         function test_textCommit() { // 测试编辑文本
+            combo.editable = true
             verify(combo.enabled)
             commitSpy.clear()
             // 模拟用户输入
@@ -80,7 +80,7 @@ DltComboBox {
             verify(item !== null)
             // 模拟点击该项（点击中间位置）
             mouseClick(item)
-            
+
             // wait(50) // 等模型更新
 
             compare(combo.currentIndex, indexToClick)
