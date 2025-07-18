@@ -48,7 +48,6 @@ DltComboBox {
 
         function test_disabled() { // 测试禁用
             combo.enabled = false
-            verify(!combo.enabled)
             mouseClick(combo.indicator)
             verify(!combo.popup.visible)
         }

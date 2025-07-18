@@ -29,12 +29,11 @@ DltButton {
         function test_disabled() { // 测试禁用
             buttonItem.enabled = false
             mouseClick(buttonItem)
-            compare(buttonItem.enabled, false)
             compare(buttonItem.opacity, 0.3)
             compare(clickSpy.count, 0)
         }
 
-        function test_click() { // 测试点击
+        function test_clicked() { // 测试点击
             compare(buttonItem.text, "测试按钮")
             mouseClick(buttonItem)
             compare(buttonItem.text, "Clicked")

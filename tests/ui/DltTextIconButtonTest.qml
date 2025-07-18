@@ -21,7 +21,18 @@ DltTextIconButton {
         name: "DltTextIconButtonTest"
         when: windowShown
 
-        function test_click() {
+        function init() {
+            buttonItem.enabled = true
+            clickSpy.clear()
+        }
+
+        function test_disabled() { // 测试禁用
+            buttonItem.enabled = false
+            mouseClick(buttonItem)
+            compare(clickSpy.count, 0)
+        }
+
+        function test_clicked() {
             mouseClick(buttonItem)
             compare(buttonItem.text, "Clicked")
             compare(clickSpy.count, 1)
