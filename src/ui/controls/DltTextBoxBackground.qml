@@ -6,18 +6,6 @@ import dltool.ui
 DltControlBackground {
     property Item inputItem
     id:control
-    // color: {
-    //     if(inputItem && inputItem.disabled){
-    //         return Qt.rgba(252/255,252/255,252/255,1)
-    //     }
-    //     if(inputItem && inputItem.activeFocus){
-    //         return "#303030"
-    //     }
-    //     if(inputItem && inputItem.hovered){
-    //         return "#4A4A4A"
-    //     }
-    //     return Qt.rgba(1,1,1,1)
-    // }
     color: "red"
     border.width: 1
     gradient: Gradient {

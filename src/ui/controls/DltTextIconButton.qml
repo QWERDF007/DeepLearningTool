@@ -9,7 +9,6 @@ Button {
     display: Button.IconOnly
     property int iconSize: 20
     property int iconSource
-    property bool disabled: false
     property int radius:4
     property string contentDescription: ""
     property color hoverColor: Qt.lighter(normalColor, 1.2)
@@ -29,7 +28,6 @@ Button {
     padding: 0
     verticalPadding: 4
     horizontalPadding: 4
-    enabled: !disabled
     font: DltFont.Caption
     background: Rectangle{
         implicitWidth: 30
@@ -106,6 +104,6 @@ Button {
             return hovered
         }
         text:control.text
-        delay: 500
+        delay: 200
     }
 }

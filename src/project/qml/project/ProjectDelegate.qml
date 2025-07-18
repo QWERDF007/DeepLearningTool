@@ -59,7 +59,7 @@ Rectangle {
     DltToolTip {
         text: msg
         visible: mouseArea.containsMouse
-        delay: 500
+        delay: 200
         x: 0
         y: -height
     }

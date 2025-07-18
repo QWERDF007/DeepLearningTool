@@ -5,7 +5,6 @@ import QtQuick.Controls.Basic
 import dltool.ui
 
 Button {
-    property bool disabled: false
     property string contentDescription: ""
     property color normalColor: DltColor.Button
     property color hoverColor: Qt.lighter(normalColor, 1.2)
@@ -16,7 +15,6 @@ Button {
     Accessible.description: contentDescription
     Accessible.onPressAction: control.clicked()
     id: control
-    enabled: !disabled
     focusPolicy:Qt.TabFocus
     font: DltFont.Body
     verticalPadding: 0

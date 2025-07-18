@@ -8,7 +8,6 @@ import  dltool.ui
 T.ComboBox {
     id: control
     signal commit(string text)
-    property bool disabled: false
     property color normalColor: DltColor.Primary
     property color hoverColor: DltColor.Hovered
     // property alias bg: _bg
@@ -21,7 +20,6 @@ T.ComboBox {
     font: DltFont.Body
     leftPadding: padding + (!control.mirrored || !indicator || !indicator.visible ? 0 : indicator.width + spacing)
     rightPadding: padding + (control.mirrored || !indicator || !indicator.visible ? 0 : indicator.width + spacing)
-    enabled: !disabled
     delegate: DltItemDelegate {
         width: ListView.view.width
         onImplicitWidthChanged: { // 在下拉选项内容长度变化时修改下拉框的宽度
@@ -48,7 +46,7 @@ T.ComboBox {
     }
     contentItem: T.TextField {
         id: _content
-        property bool disabled: !control.editable
+        enabled: control.editable
         leftPadding: !control.mirrored ? 10 : control.editable && activeFocus ? 3 : 1
         rightPadding: control.mirrored ? 10 : control.editable && activeFocus ? 3 : 1
         topPadding: 6 - control.padding
@@ -57,7 +55,6 @@ T.ComboBox {
         selectionColor: Utils.withOpacity(normalColor,0.5)
         selectedTextColor: color
         text: control.editable ? control.editText : control.displayText
-        enabled: control.editable
         autoScroll: control.editable
         font:control.font
         readOnly: control.down
