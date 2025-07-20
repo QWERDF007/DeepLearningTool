@@ -9,16 +9,16 @@ else()
 endif()
 
 
-if(QUICKTOOLS_BUILD_TESTS)
-    message(STATUS "    QUICKTOOLS_BUILD_TESTS   : ON")
+if(DLT_BUILD_TESTS)
+    message(STATUS "    DLT_BUILD_TESTS          : ON")
 else()
-    message(STATUS "    QUICKTOOLS_BUILD_TESTS   : OFF")
+    message(STATUS "    DLT_BUILD_TESTS          : OFF")
 endif()
 
-if(QUICKTOOLS_BUILD_DOCS)
-    message(STATUS "    QUICKTOOLS_BUILD_DOCS    : ON")
+if(DLT_BUILD_DOCS)
+    message(STATUS "    DLT_BUILD_DOCS           : ON")
 else()
-    message(STATUS "    QUICKTOOLS_BUILD_DOCS    : OFF")
+    message(STATUS "    DLT_BUILD_DOCS           : OFF")
 endif()
 
 
@@ -99,9 +99,4 @@ message(STATUS "")
 
 message(STATUS "Python")
 message(STATUS "    PYTHON_EXECUTABLE   : ${PYTHON_EXECUTABLE}")
-message(STATUS "")
-
-
-message(STATUS "Tests")
-message(STATUS "    DLT_BUILD_TESTS      : ${DLT_BUILD_TESTS}")
 message(STATUS "")

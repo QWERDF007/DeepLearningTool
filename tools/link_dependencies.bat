@@ -28,22 +28,30 @@ if %errorlevel% neq 0 (
     echo "link sqlite3 dll success"
 )
 
-python tools\link_opencv.py
+python tools\link_test.py
 
 if %errorlevel% neq 0 (
-    echo "link opencv dll failed"
+    echo "link test failed"
     exit /b 1
 ) else (
-    echo "link opencv dll success"
+    echo "link test success"
 )
 
-python tools\link_python.py
+@REM python tools\link_opencv.py
 
-if %errorlevel% neq 0 (
-    echo "link python dll failed"
-    exit /b 1
-) else (
-    echo "link python dll success"
-)
+@REM if %errorlevel% neq 0 (
+@REM     echo "link opencv dll failed"
+@REM     exit /b 1
+@REM ) else (
+@REM     echo "link opencv dll success"
+@REM )
 
+@REM python tools\link_python.py
+
+@REM if %errorlevel% neq 0 (
+@REM     echo "link python failed"
+@REM     exit /b 1
+@REM ) else (
+@REM     echo "link python success"
+@REM )
 
