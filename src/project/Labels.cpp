@@ -415,15 +415,67 @@ void ImageLabelsListModel::onCurrentImageChanged()
     resetModel();
 }
 
-void ImageLabelsListModel::hover(const QPoint &pos)
+std::vector<int64_t> ImageLabelsListModel::getSelectedLabelIds() const
 {
-    // qInfo() << __FUNCTION__ << __LINE__ << pos;
-    auto instance = image_instances_->getImageInstance(image_instances_->getCurrentImageId());
-    if (instance == nullptr)
-        return;
+    std::vector<int64_t> label_ids;
+    for (const auto &selected : selection_->selectedRows())
+    {
+        const int row = selected.row();
+        if (row < 0 || row >= static_cast<int>(label_ids_.size()))
+            continue;
+        label_ids.push_back(label_ids_[row]);
+    }
+    return label_ids;
 }
 
-void ImageLabelsListModel::select(const QPoint &pos) {}
+std::vector<int> ImageLabelsListModel::getIndicesAt(const QPointF &pos)
+{
+    std::vector<int> indices;
+    if (label_ids_.empty())
+        return indices;
+    auto image_instance = image_instances_->getImageInstance(image_instances_->getCurrentImageId());
+    if (image_instance == nullptr)
+        return indices;
+    QRectF image_rect = image_instance->imageRect();
+    if (!image_rect.contains(pos))
+        return indices;
+    for (int i = 0; i < static_cast<int>(label_ids_.size()); ++i)
+    {
+        auto label_instance = label_instances_->getLabelInstance(label_ids_[i]);
+        if (label_instance == nullptr)
+            continue;
+        if (label_instances_->helper()->isInside(pos, label_instance->data()))
+        {
+            indices.push_back(i);
+        }
+    }
+    return indices;
+}
+
+QModelIndex ImageLabelsListModel::chooseIndex(const std::vector<int> &indices)
+{
+    if (indices.empty())
+        return QModelIndex();
+    int size = static_cast<int>(indices.size());
+    for (int i = 0; i < size; ++i)
+    {
+        if (selection_->isSelected(index(indices[i])))
+        {
+            int next_index = (i + 1) % size;
+            return index(indices[next_index]);
+        }
+    }
+    return index(indices[0]);
+}
+
+void ImageLabelsListModel::setHovered(const std::vector<int> &indices)
+{
+    std::set<int> new_hovered_indices(indices.begin(), indices.end());
+    if (hovered_indices_ == new_hovered_indices)
+        return;
+    hovered_indices_ = new_hovered_indices;
+    emit dataChanged(index(0), index(static_cast<int>(label_ids_.size() - 1)), {HoveredRole});
+}
 
 void ImageLabelsListModel::shiftSelect(int current_index, int previous_index,
                                        QItemSelectionModel::SelectionFlags command)
@@ -524,7 +576,13 @@ QVariant ImageLabelsListModel::getSelected(const QModelIndex &index) const
 
 QVariant ImageLabelsListModel::getHovered(const QModelIndex &index) const
 {
-    return hovered_index_ == index;
+    const int row = index.row();
+    for (int i : hovered_indices_)
+    {
+        if (row == i)
+            return true;
+    }
+    return false;
 }
 
 ImageLabelsTableModel::ImageLabelsTableModel(ImageInstancesListModel *image_instances,

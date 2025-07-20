@@ -2,6 +2,7 @@
 
 #include <QAbstractListModel>
 #include <QtQml>
+#include <set>
 
 namespace dltool::data {
 class ProjectDataBase;
@@ -161,12 +162,17 @@ public:
         return selection_;
     }
 
-    Q_INVOKABLE void hover(const QPoint &pos);
-    Q_INVOKABLE void select(const QPoint &pos);
+    Q_INVOKABLE std::vector<int> getIndicesAt(const QPointF &pos);
+    Q_INVOKABLE QModelIndex      chooseIndex(const std::vector<int> &indices);
+
+    Q_INVOKABLE void setHovered(const std::vector<int> &indices);
+
     Q_INVOKABLE void shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command);
     Q_INVOKABLE void selectAll();
 
     void onCurrentImageChanged();
+
+    Q_INVOKABLE std::vector<int64_t> getSelectedLabelIds() const;
 
 private:
     void init();
@@ -191,7 +197,7 @@ private:
 
     QItemSelectionModel *selection_{nullptr};
 
-    QModelIndex hovered_index_;
+    std::set<int> hovered_indices_;
 };
 
 class ImageLabelsTableModel : public QAbstractTableModel

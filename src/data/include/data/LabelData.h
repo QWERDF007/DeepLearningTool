@@ -5,7 +5,6 @@
 #include <QObject>
 #include <QRect>
 #include <QVariantMap>
-#include <functional>
 #include <memory>
 #include <utility>
 
@@ -72,6 +71,8 @@ public:
 
     virtual std::pair<std::vector<QString>, std::vector<QString>> dataColumns() const = 0;
 
+    virtual bool isInside(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr) const = 0;
+
 private:
     int type_;
 };
@@ -85,6 +86,8 @@ public:
     std::unique_ptr<LabelData_t> createLabelData() const override;
 
     std::pair<std::vector<QString>, std::vector<QString>> dataColumns() const override;
+
+    bool isInside(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr) const override;
 };
 
 DATA_API std::unique_ptr<LabelDataHelper_t> createLabelDataHelper(const int type);

@@ -143,6 +143,20 @@ std::pair<std::vector<QString>, std::vector<QString>> DetLabelDataHelper::dataCo
     return DetLabelData_t::columns();
 }
 
+bool DetLabelDataHelper::isInside(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr) const
+{
+    if (label_data_ptr == nullptr)
+        return false;
+    DetLabelData_t *data = dynamic_cast<DetLabelData_t *>(label_data_ptr.get());
+    if (data == nullptr)
+        return false;
+    double x = data->x;
+    double y = data->y;
+    double w = data->width;
+    double h = data->height;
+    return pos.x() >= x && pos.x() <= x + w && pos.y() >= y && pos.y() <= y + h;
+}
+
 std::unique_ptr<LabelDataHelper_t> createLabelDataHelper(const int type)
 {
     switch (type)
