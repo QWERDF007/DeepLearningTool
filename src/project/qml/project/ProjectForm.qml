@@ -19,14 +19,14 @@ Item {
     property alias msg: msgInput.text
     property int method: -1
     property bool isValid: msg === ""
-    property string folder: Utils.documentsLocation()
+    property string folder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
 
     onFolderChanged: {
         pathInput.text = projectForm.folder + "/" + nameInput.text + ProjectManager.projectSuffix()
     }
 
     function reset() {
-        projectForm.folder = Utils.documentsLocation()
+        projectForm.folder = StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
         projectForm.name = "新项目"
         projectForm.description = ""
         projectForm.image_base_path = ""
@@ -149,7 +149,7 @@ Item {
         id: folderDialog
         folder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
         onAccepted: {
-            projectForm.folder = folderDialog.folder.toString().slice(8)
+            projectForm.folder = Utils.getCleanPath(folderDialog.folder.toString())
         }
     }
 }

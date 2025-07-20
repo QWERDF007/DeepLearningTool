@@ -137,7 +137,7 @@ Item {
         id: imageDialog
         folder: StandardPaths.writableLocation(StandardPaths.PicturesLocation)
         onAccepted: {
-            imagePathInput.text = imageDialog.folder.toString().slice(8)
+            imagePathInput.text = Utils.getCleanPath(imageDialog.folder.toString())
         }
     }
 
@@ -145,7 +145,7 @@ Item {
         id: labelDialog
         folder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
         onAccepted: {
-            labelPathInput.text = labelDialog.folder.toString().slice(8)
+            labelPathInput.text = Utils.getCleanPath(labelDialog.folder.toString())
         }
     }
 }

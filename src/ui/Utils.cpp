@@ -22,9 +22,13 @@ QColor Utils::withOpacity(const QColor &color, qreal opacity) const
     return QColor::fromRgba((alpha << 24) | (color.rgba() & 0xffffff));
 }
 
-QString Utils::documentsLocation() const
+QString Utils::getCleanPath(const QString &path) const
 {
-    return QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+#ifdef _WIN32
+    return path.sliced(8);
+#else
+    return path.sliced(7);
+#endif
 }
 
 void Utils::openInFileExplorer(const QString &path)

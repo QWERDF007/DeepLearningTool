@@ -12,7 +12,7 @@ class UI_API Utils : public QObject
     QT_QML_SINGLETON(Utils)
 public:
     Q_INVOKABLE QColor  withOpacity(const QColor &color, qreal opacity) const;
-    Q_INVOKABLE QString documentsLocation() const;
+    Q_INVOKABLE QString getCleanPath(const QString &path) const;
     Q_INVOKABLE void    openInFileExplorer(const QString &path);
 
 private:

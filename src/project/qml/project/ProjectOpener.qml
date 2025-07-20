@@ -52,8 +52,7 @@ Rectangle {
         folder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
         nameFilters: [ProjectManager.projectFileFilter()]
         onAccepted: {
-            var path = fileDialog.file.toString().slice(8)
-            ProjectManager.openProject(path)
+            ProjectManager.openProject(Utils.getCleanPath(fileDialog.file.toString()))
         }
     }
 }
