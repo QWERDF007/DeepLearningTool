@@ -19,12 +19,15 @@ Rectangle {
         DltText {
             Layout.leftMargin: 5
             text: "日志"
+            verticalAlignment: Text.AlignVCenter
         }
         DltInfoBadge {
+            Layout.preferredWidth: 32
             count: UILogger.infoCount
             max: 99
         }
         DltInfoBadge {
+            Layout.preferredWidth: 32
             count: UILogger.errorCount
             max: 99
             icon.iconSource: DltFontIcon.ErrorBadge

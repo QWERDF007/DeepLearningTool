@@ -24,6 +24,7 @@ Item {
         id: badge_text
         anchors.left: badge_icon.right
         anchors.leftMargin: 2
+        verticalAlignment: Text.AlignVCenter
         anchors.verticalCenter: parent.verticalCenter
         text: count <= max ? count: "%1+".arg(max)
         font: DltFont.Caption
