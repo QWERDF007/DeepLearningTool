@@ -100,9 +100,9 @@ public:
 private:
     void init();
 
-    int getLabelId(const QModelIndex &index) const;
-    int getImageId(const QModelIndex &index) const;
-    int getLabelClassId(const QModelIndex &index) const;
+    int      getLabelId(const QModelIndex &index) const;
+    int      getImageId(const QModelIndex &index) const;
+    int      getLabelClassId(const QModelIndex &index) const;
     QVariant getData(const QModelIndex &index) const;
 
     data::ProjectDataBase   *database_{nullptr};
@@ -138,6 +138,7 @@ public:
         DataRole,
         LabelClassColorRole,
         SelectedRole,
+        HoveredRole,
     };
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -154,6 +155,8 @@ public:
         return selection_;
     }
 
+    Q_INVOKABLE void hover(const QPoint &pos);
+    Q_INVOKABLE void select(const QPoint &pos);
     Q_INVOKABLE void shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command);
     Q_INVOKABLE void selectAll();
 
@@ -166,12 +169,13 @@ private:
 
     void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
 
-    int  getLabelId(const QModelIndex &index) const;
-    int  getImageId(const QModelIndex &index) const;
-    int  getLabelClassId(const QModelIndex &index) const;
+    int      getLabelId(const QModelIndex &index) const;
+    int      getImageId(const QModelIndex &index) const;
+    int      getLabelClassId(const QModelIndex &index) const;
     QVariant getData(const QModelIndex &index) const;
     QVariant getColor(const QModelIndex &index) const;
     QVariant getSelected(const QModelIndex &index) const;
+    QVariant getHovered(const QModelIndex &index) const;
 
     ImageInstancesListModel *image_instances_{nullptr};
     LabelInstancesListModel *label_instances_{nullptr};
@@ -180,6 +184,8 @@ private:
     std::vector<int64_t> label_ids_;
 
     QItemSelectionModel *selection_{nullptr};
+
+    QModelIndex hovered_index_;
 };
 
 class ImageLabelsTableModel : public QAbstractTableModel

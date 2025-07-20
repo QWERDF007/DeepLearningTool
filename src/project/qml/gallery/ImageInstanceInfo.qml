@@ -12,7 +12,7 @@ Rectangle {
     property int rowH: 64
 
     property Project project: ProjectManager.currentProject
-    property int curImageId: project ? project.imageInstances.curImageId : -1
+    property int currentImageId: project ? project.imageInstances.currentImageId : -1
 
     DltText {
         anchors.top: parent.top
@@ -139,9 +139,9 @@ Rectangle {
         }
     }
 
-    onCurImageIdChanged: {
+    onCurrentImageIdChanged: {
         if (project) {
-            let info = project.getImageInstanceInfo(curImageId)
+            let info = project.getImageInstanceInfo(currentImageId)
             imageName.text = info.name
             imagePath.text = info.path
             datasetName.text = info.datasetName

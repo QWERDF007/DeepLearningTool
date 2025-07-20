@@ -375,7 +375,7 @@ QVariant ImageTagsListModel::getCurrentImageTagStats(const QModelIndex &index) c
         return "";
     }
 
-    const int image_id = image_instances_->getCurImageId();
+    const int image_id = image_instances_->getCurrentImageId();
     if (image_id == -1)
         return "";
 

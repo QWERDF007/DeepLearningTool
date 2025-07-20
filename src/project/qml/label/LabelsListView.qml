@@ -14,6 +14,6 @@ Repeater {
         height: data.height * repeater.factor
         color: "transparent"
         border.color: model.color
-        border.width: model.selected ? 2 : 1
+        border.width: model.selected ? 3 : model.hovered ? 2 : 1
     }
 }

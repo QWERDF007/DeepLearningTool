@@ -126,9 +126,9 @@ class ImageInstancesListModel : public QAbstractListModel
     QML_NAMED_ELEMENT(ImageInstancesModel)
     QML_UNCREATABLE("Can not create ImageInstancesList directly!")
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
-    Q_PROPERTY(int curImageId READ getCurImageId NOTIFY currentImageChanged)
-    Q_PROPERTY(QString curImageName READ curImageName NOTIFY currentImageChanged)
-    Q_PROPERTY(QString curImagePath READ curImagePath NOTIFY currentImageChanged)
+    Q_PROPERTY(int currentImageId READ getCurrentImageId NOTIFY currentImageChanged)
+    Q_PROPERTY(QString currentImageName READ currentImageName NOTIFY currentImageChanged)
+    Q_PROPERTY(QString currentImagePath READ currentImagePath NOTIFY currentImageChanged)
     Q_PROPERTY(int count READ count NOTIFY statsChanged)
     Q_PROPERTY(int lastIndex READ lastIndex WRITE setLastIndex NOTIFY lastSelectedIndexChanged)
 public:
@@ -171,15 +171,15 @@ public:
 
     QVariantMap getImageInstanceInfo(const int64_t image_id);
 
-    QString curImageName() const;
-    QString curImagePath() const;
+    QString currentImageName() const;
+    QString currentImagePath() const;
 
     int count() const
     {
         return static_cast<int>(image_ids_.size());
     }
 
-    int getCurImageId() const;
+    int getCurrentImageId() const;
 
     Q_INVOKABLE std::vector<int64_t> getSelectedImagesId() const;
 

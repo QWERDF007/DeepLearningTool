@@ -304,7 +304,7 @@ QVariantMap ImageInstancesListModel::getImageInstanceInfo(const int64_t image_id
     return info;
 }
 
-QString ImageInstancesListModel::curImageName() const
+QString ImageInstancesListModel::currentImageName() const
 {
     QModelIndex index = selection_->currentIndex();
     if (index.row() < 0 || index.row() >= rowCount())
@@ -312,7 +312,7 @@ QString ImageInstancesListModel::curImageName() const
     return getImageName(index).toString();
 }
 
-QString ImageInstancesListModel::curImagePath() const
+QString ImageInstancesListModel::currentImagePath() const
 {
     QModelIndex index = selection_->currentIndex();
     if (index.row() < 0 || index.row() >= rowCount())
@@ -347,7 +347,7 @@ QVariant ImageInstancesListModel::getIsCurrent(const QModelIndex &index) const
     return selection_->currentIndex() == index;
 }
 
-int ImageInstancesListModel::getCurImageId() const
+int ImageInstancesListModel::getCurrentImageId() const
 {
     QModelIndex index = selection_->currentIndex();
     if (index.row() < 0 || index.row() >= rowCount())

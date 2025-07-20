@@ -48,7 +48,7 @@ Rectangle {
             DltText {
                 id: nameText
                 Layout.fillWidth: true
-                text: model ? model.curImageName : ""
+                text: model ? model.currentImageName : ""
                 elide: Text.ElideMiddle
                 DltToolTip {
                     text: nameText.text

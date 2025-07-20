@@ -14,7 +14,7 @@ Item {
 
     property alias image: image
     
-    property string curImagePath: ""
+    property string currentImagePath: ""
 
     property real imageSourceScale: {
         if (image.source !== Qt.url("") && image.status === image.Ready) {
@@ -49,7 +49,7 @@ Item {
         smooth: false
         asynchronous: true
         fillMode: Image.PreserveAspectFit
-        source: curImagePath ? "file:///" + curImagePath : ""
+        source: currentImagePath ? "file:///" + currentImagePath : ""
         transformOrigin: Item.TopLeft
 
         onXChanged: {

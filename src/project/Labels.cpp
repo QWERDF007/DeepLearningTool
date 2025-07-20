@@ -303,7 +303,7 @@ void ImageLabelsListModel::resetModel()
 {
     beginResetModel();
     label_ids_.clear();
-    const int                          image_id  = image_instances_->getCurImageId();
+    const int                          image_id  = image_instances_->getCurrentImageId();
     const std::vector<ImageInstance *> instances = image_instances_->getImageInstances({image_id});
     if (!instances.empty() && instances.at(0))
     {
@@ -338,6 +338,8 @@ QVariant ImageLabelsListModel::data(const QModelIndex &index, int role) const
         return getColor(index);
     case SelectedRole:
         return getSelected(index);
+    case HoveredRole:
+        return getHovered(index);
     default:
         return QVariant();
     }
@@ -352,6 +354,7 @@ QHash<int, QByteArray> ImageLabelsListModel::roleNames() const
         {           DataRole,           "data"},
         {LabelClassColorRole,          "color"},
         {       SelectedRole,       "selected"},
+        {        HoveredRole,        "hovered"},
     };
 }
 
@@ -361,13 +364,13 @@ void ImageLabelsListModel::addLabels(const std::vector<int64_t> &image_ids, cons
         return;
     size_t size = label_ids.size();
 
-    const int64_t cur_image_id = image_instances_->getCurImageId();
+    const int64_t current_image_id = image_instances_->getCurrentImageId();
 
     std::vector<int64_t> valid_label_ids;
     valid_label_ids.reserve(size);
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        if (image_ids[i] == cur_image_id)
+        if (image_ids[i] == current_image_id)
             valid_label_ids.push_back(label_ids[i]);
     }
     if (valid_label_ids.empty())
@@ -385,13 +388,13 @@ void ImageLabelsListModel::deleteLabels(const std::vector<int64_t> &image_ids, c
         return;
     size_t size = label_ids.size();
 
-    const int64_t cur_image_id = image_instances_->getCurImageId();
+    const int64_t current_image_id = image_instances_->getCurrentImageId();
 
     std::vector<int64_t> valid_label_ids;
     valid_label_ids.reserve(size);
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        if (image_ids[i] == cur_image_id)
+        if (image_ids[i] == current_image_id)
             valid_label_ids.push_back(label_ids[i]);
     }
     if (valid_label_ids.empty())
@@ -411,6 +414,13 @@ void ImageLabelsListModel::onCurrentImageChanged()
 {
     resetModel();
 }
+
+void ImageLabelsListModel::hover(const QPoint &pos)
+{
+    qInfo() << __FUNCTION__ << __LINE__ << pos;
+}
+
+void ImageLabelsListModel::select(const QPoint &pos) {}
 
 void ImageLabelsListModel::shiftSelect(int current_index, int previous_index,
                                        QItemSelectionModel::SelectionFlags command)
@@ -509,6 +519,11 @@ QVariant ImageLabelsListModel::getSelected(const QModelIndex &index) const
     return selection_->isSelected(index);
 }
 
+QVariant ImageLabelsListModel::getHovered(const QModelIndex &index) const
+{
+    return hovered_index_ == index;
+}
+
 ImageLabelsTableModel::ImageLabelsTableModel(ImageInstancesListModel *image_instances,
                                              LabelInstancesListModel *label_instances,
                                              LabelClassesListModel   *label_classes,
@@ -537,7 +552,7 @@ void ImageLabelsTableModel::resetModel()
 {
     beginResetModel();
     label_ids_.clear();
-    const int                          image_id  = image_instances_->getCurImageId();
+    const int                          image_id  = image_instances_->getCurrentImageId();
     const std::vector<ImageInstance *> instances = image_instances_->getImageInstances({image_id});
     if (!instances.empty() && instances.at(0))
     {
@@ -608,13 +623,13 @@ void ImageLabelsTableModel::addLabels(const std::vector<int64_t> &image_ids, con
         return;
     size_t size = label_ids.size();
 
-    const int64_t cur_image_id = image_instances_->getCurImageId();
+    const int64_t current_image_id = image_instances_->getCurrentImageId();
 
     std::vector<int64_t> valid_label_ids;
     valid_label_ids.reserve(size);
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        if (image_ids[i] == cur_image_id)
+        if (image_ids[i] == current_image_id)
             valid_label_ids.push_back(label_ids[i]);
     }
     if (valid_label_ids.empty())
@@ -632,13 +647,13 @@ void ImageLabelsTableModel::deleteLabels(const std::vector<int64_t> &image_ids, 
         return;
     size_t size = label_ids.size();
 
-    const int64_t cur_image_id = image_instances_->getCurImageId();
+    const int64_t current_image_id = image_instances_->getCurrentImageId();
 
     std::vector<int64_t> valid_label_ids;
     valid_label_ids.reserve(size);
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        if (image_ids[i] == cur_image_id)
+        if (image_ids[i] == current_image_id)
             valid_label_ids.push_back(label_ids[i]);
     }
     if (valid_label_ids.empty())

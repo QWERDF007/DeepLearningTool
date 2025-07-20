@@ -39,7 +39,7 @@ Item {
     LabelImage {
         id: labelImage
         anchors.fill: parent
-        curImagePath: project ? project.imageInstances.curImagePath : ""
+        currentImagePath: project ? project.imageInstances.currentImagePath : ""
     }
 
     LabelsListView {
@@ -111,7 +111,7 @@ Item {
 
                 // 添加到ListModel
                 if (project && labelClasses.currentLabelClassId !== -1 && rect.width > 1 && rect.height > 1) {
-                    project.addLabels([imageInstances.curImageId], [labelClasses.currentLabelClassId], [rect])
+                    project.addLabels([imageInstances.currentImageId], [labelClasses.currentLabelClassId], [rect])
                 }
             } else if (isDragging) {
                 isDragging = false
@@ -133,6 +133,9 @@ Item {
                 labelImage.image.x += dx
                 labelImage.image.y += dy
                 startPos = Qt.point(event.x, event.y)
+            } else {
+                let pos = Qt.point((event.x - labelImage.image.x) / labelImage.image.scale, (event.y - labelImage.image.y) / labelImage.image.scale)
+                imageLabelsList.hover(pos)
             }
         }
         onEntered: {

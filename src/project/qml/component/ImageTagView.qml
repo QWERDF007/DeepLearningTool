@@ -42,7 +42,7 @@ Rectangle {
                     }
                     else
                     {
-                        view.model.setImagesTag(imageTagView.project.imageInstances.curImageId, model.tag_id)
+                        view.model.setImagesTag(imageTagView.project.imageInstances.currentImageId, model.tag_id)
                     }
                 }
             }
