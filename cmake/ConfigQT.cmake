@@ -1,8 +1,9 @@
 # 设置 Qt 的 cmake 文件目录
-set(Qt6_CMAKE_DIR  "E:/Softwares/Qt/6.7.2/msvc2019_64/lib/cmake")
+set(Qt6_ROOT "/home/pc/Qt/6.8.3/gcc_64/")
+set(Qt6_CMAKE_DIR  "${Qt6_ROOT}/lib/cmake")
 set(Qt6_DIR  "${Qt6_CMAKE_DIR}/Qt6")
 set(Qt6QmlTools_DIR  "${Qt6_CMAKE_DIR}/Qt6QmlTools")
-set(QT_QML_IMPORT_DIR "E:/Softwares/Qt/6.7.2/msvc2019_64/qml")
+set(QT_QML_IMPORT_DIR "${Qt6_ROOT}/qml")
 
 
 # 寻找Qt6的组件
@@ -20,7 +21,9 @@ set(CMAKE_AUTOUIC ON)
 
 
 # 设置 QTP0001 策略为 NEW，即使使用新的资源前缀 :/qt/qml/ 作为默认值
+# 设置 QTP0004 策略为 NEW，抑制警告 Qt policy QTP0004 is not set: You need qmldir files for each extra directory that contains .qml files for your module. 
 qt_policy(SET QTP0001 NEW)
+qt_policy(SET QTP0004 NEW)
 
 # 添加 qml 导入目录
 # QML_IMPORT_PATH 用于支持语法高亮
