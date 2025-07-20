@@ -17,5 +17,6 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         elide: Text.ElideRight
         text: mdata.toFixed(2)
+        verticalAlignment: Text.AlignVCenter
     }
 }
