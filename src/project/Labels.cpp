@@ -23,13 +23,13 @@ LabelInstance::~LabelInstance() {}
 
 LabelInstancesListModel::LabelInstancesListModel(data::ProjectDataBase   *database,
                                                  ImageInstancesListModel *image_instances,
-                                                 LabelClassesListModel *label_classes, LabelDataFactory factory,
-                                                 QObject *parent)
+                                                 LabelClassesListModel   *label_classes,
+                                                 LabelDataHelper label_data_helper, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
     , image_instances_(image_instances)
     , label_classes_(label_classes)
-    , factory_(std::move(factory))
+    , label_data_helper_(std::move(label_data_helper))
     , selection_(new QItemSelectionModel(this))
 {
     init();
@@ -53,14 +53,14 @@ void LabelInstancesListModel::init()
         spdlog::error("查询所有标注失败: {}", err_msg.toUtf8().constData());
         return;
     }
-    if (factory_ == nullptr)
+    if (label_data_helper_ == nullptr)
     {
         spdlog::error("查询所有标注失败: 标签数据工厂未初始化");
         return;
     }
     for (size_t i = 0; i < label_ids.size(); ++i)
     {
-        LabelData data = factory_();
+        LabelData data = label_data_helper_->createLabelData();
         data->fromBlob(labels_data[i]);
         label_instances_[label_ids[i]]
             = new LabelInstance(label_ids[i], image_ids[i], label_class_ids[i], std::move(data), this);
@@ -128,7 +128,7 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
         return;
     }
 
-    if (factory_ == nullptr)
+    if (label_data_helper_ == nullptr)
     {
         spdlog::error("添加标注失败: 标签数据工厂未初始化");
         return;
@@ -146,7 +146,7 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
     {
         auto instance = image_instances_->getImageInstance(image_ids[i]);
 
-        LabelData label_data = factory_();
+        LabelData label_data = label_data_helper_->createLabelData();
         label_data->fromQVariantMap(data[i], instance->imageRect());
         label_types.push_back(label_data->type());
         labels_data_blob.push_back(label_data->toBlob());
@@ -417,7 +417,10 @@ void ImageLabelsListModel::onCurrentImageChanged()
 
 void ImageLabelsListModel::hover(const QPoint &pos)
 {
-    qInfo() << __FUNCTION__ << __LINE__ << pos;
+    // qInfo() << __FUNCTION__ << __LINE__ << pos;
+    auto instance = image_instances_->getImageInstance(image_instances_->getCurrentImageId());
+    if (instance == nullptr)
+        return;
 }
 
 void ImageLabelsListModel::select(const QPoint &pos) {}
@@ -526,15 +529,11 @@ QVariant ImageLabelsListModel::getHovered(const QModelIndex &index) const
 
 ImageLabelsTableModel::ImageLabelsTableModel(ImageInstancesListModel *image_instances,
                                              LabelInstancesListModel *label_instances,
-                                             LabelClassesListModel   *label_classes,
-                                             const std::pair<std::vector<QString>, std::vector<QString>> &columns,
-                                             QObject                                                     *parent)
+                                             LabelClassesListModel *label_classes, QObject *parent)
     : QAbstractTableModel(parent)
     , image_instances_(image_instances)
     , label_instances_(label_instances)
     , label_classes_(label_classes)
-    , column_headers_(columns.first)
-    , column_keys_(columns.second)
     , selection_(new QItemSelectionModel(this))
 {
     // TODO: 添加列名和数据key
@@ -546,6 +545,9 @@ ImageLabelsTableModel::~ImageLabelsTableModel() {}
 void ImageLabelsTableModel::init()
 {
     connect(selection_, &QItemSelectionModel::selectionChanged, this, &ImageLabelsTableModel::updateSelection);
+    auto data       = label_instances_->helper()->dataColumns();
+    column_headers_ = data.first;
+    column_keys_    = data.second;
 }
 
 void ImageLabelsTableModel::resetModel()

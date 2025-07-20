@@ -49,10 +49,9 @@ void Project::init()
     label_classes_      = new LabelClassesListModel(database_, this);
     image_tags_         = new ImageTagsListModel(database_, image_instances_, this);
     label_instances_    = new LabelInstancesListModel(database_, image_instances_, label_classes_,
-                                                      data::createLabelDataFactory(method_), this);
+                                                      data::createLabelDataHelper(method_), this);
     image_labels_list_  = new ImageLabelsListModel(image_instances_, label_instances_, label_classes_, this);
-    image_labels_table_ = new ImageLabelsTableModel(image_instances_, label_instances_, label_classes_,
-                                                    data::LabelDataColumns(method_), this);
+    image_labels_table_ = new ImageLabelsTableModel(image_instances_, label_instances_, label_classes_, this);
 
     connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_labels_list_,
             &ImageLabelsListModel::onCurrentImageChanged);

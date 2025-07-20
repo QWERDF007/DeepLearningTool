@@ -2,15 +2,15 @@
 
 #include <QAbstractListModel>
 #include <QtQml>
-#include <functional>
 
 namespace dltool::data {
 class ProjectDataBase;
 class LabelData_t;
+class LabelDataHelper_t;
 } // namespace dltool::data
 
-using LabelData        = std::unique_ptr<dltool::data::LabelData_t>;
-using LabelDataFactory = std::function<LabelData()>;
+using LabelData       = std::unique_ptr<dltool::data::LabelData_t>;
+using LabelDataHelper = std::unique_ptr<dltool::data::LabelDataHelper_t>;
 
 namespace dltool::project {
 
@@ -61,7 +61,8 @@ class LabelInstancesListModel : public QAbstractListModel
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
 public:
     LabelInstancesListModel(data::ProjectDataBase *database, ImageInstancesListModel *image_instances,
-                            LabelClassesListModel *label_classes, LabelDataFactory factory, QObject *parent = nullptr);
+                            LabelClassesListModel *label_classes, LabelDataHelper label_data_helper,
+                            QObject *parent = nullptr);
 
     ~LabelInstancesListModel();
 
@@ -97,6 +98,11 @@ public:
     std::vector<int64_t> getLabelIds(const std::vector<int64_t> &image_ids) const;
     std::vector<int64_t> getImageIds(const std::vector<int64_t> &label_ids) const;
 
+    const LabelDataHelper &helper() const
+    {
+        return label_data_helper_;
+    }
+
 private:
     void init();
 
@@ -109,7 +115,7 @@ private:
     ImageInstancesListModel *image_instances_{nullptr};
     LabelClassesListModel   *label_classes_{nullptr};
 
-    LabelDataFactory factory_;
+    LabelDataHelper label_data_helper_;
 
     std::map<int64_t, LabelInstance *> label_instances_;
 
@@ -197,9 +203,7 @@ class ImageLabelsTableModel : public QAbstractTableModel
     Q_PROPERTY(int lastIndex READ lastIndex WRITE setLastIndex NOTIFY lastSelectedIndexChanged)
 public:
     ImageLabelsTableModel(ImageInstancesListModel *image_instances, LabelInstancesListModel *label_instances,
-                          LabelClassesListModel                                       *label_classes,
-                          const std::pair<std::vector<QString>, std::vector<QString>> &columns,
-                          QObject                                                     *parent = nullptr);
+                          LabelClassesListModel *label_classes, QObject *parent = nullptr);
 
     ~ImageLabelsTableModel();
 

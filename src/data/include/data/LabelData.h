@@ -62,10 +62,31 @@ public:
     void fromQVariantMap(const QVariantMap &data, const QRectF &image_rect) override;
 };
 
-using LabelDataFactory = std::function<std::unique_ptr<LabelData_t>()>;
+class DATA_API LabelDataHelper_t
+{
+public:
+    LabelDataHelper_t(const int type);
+    virtual ~LabelDataHelper_t();
 
-DATA_API LabelDataFactory createLabelDataFactory(const int type);
+    virtual std::unique_ptr<LabelData_t> createLabelData() const = 0;
 
-DATA_API std::pair<std::vector<QString>, std::vector<QString>> LabelDataColumns(const int type);
+    virtual std::pair<std::vector<QString>, std::vector<QString>> dataColumns() const = 0;
+
+private:
+    int type_;
+};
+
+class DATA_API DetLabelDataHelper final : public LabelDataHelper_t
+{
+public:
+    DetLabelDataHelper(const int type);
+    ~DetLabelDataHelper();
+
+    std::unique_ptr<LabelData_t> createLabelData() const override;
+
+    std::pair<std::vector<QString>, std::vector<QString>> dataColumns() const override;
+};
+
+DATA_API std::unique_ptr<LabelDataHelper_t> createLabelDataHelper(const int type);
 
 } // namespace dltool::data

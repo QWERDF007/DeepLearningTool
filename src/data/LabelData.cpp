@@ -119,28 +119,38 @@ void SegLabelData_t::fromQVariantMap(const QVariantMap &data, const QRectF &imag
     LabelData_t::fromQVariantMap(data, image_rect);
 }
 
-// clang-format off
-LabelDataFactory createLabelDataFactory(const int type)
+LabelDataHelper_t::LabelDataHelper_t(const int type)
+    : type_(type)
 {
-    static std::unordered_map<int, LabelDataFactory> factory_map = {
-        {DeepLearningMethod::Detection, []() { return std::make_unique<dltool::data::DetLabelData_t>(); }},
-    };
-    auto found = factory_map.find(type);
-    if (found != factory_map.end())
-        return found->second;
-    return nullptr;
 }
 
-// clang-format on
+LabelDataHelper_t::~LabelDataHelper_t() {}
 
-std::pair<std::vector<QString>, std::vector<QString>> LabelDataColumns(const int type)
+DetLabelDataHelper::DetLabelDataHelper(const int type)
+    : LabelDataHelper_t(type)
+{
+}
+
+DetLabelDataHelper::~DetLabelDataHelper() {}
+
+std::unique_ptr<LabelData_t> DetLabelDataHelper::createLabelData() const
+{
+    return std::make_unique<dltool::data::DetLabelData_t>();
+}
+
+std::pair<std::vector<QString>, std::vector<QString>> DetLabelDataHelper::dataColumns() const
+{
+    return DetLabelData_t::columns();
+}
+
+std::unique_ptr<LabelDataHelper_t> createLabelDataHelper(const int type)
 {
     switch (type)
     {
     case DeepLearningMethod::Detection:
-        return DetLabelData_t::columns();
+        return std::make_unique<DetLabelDataHelper>(type);
     default:
-        return {std::vector<QString>{}, std::vector<QString>{}};
+        return nullptr;
     }
 }
 
