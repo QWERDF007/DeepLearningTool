@@ -95,39 +95,24 @@ Item {
         anchors.fill: parent
         acceptedButtons: Qt.AllButtons
         hoverEnabled: true
-        property bool readyDrawing: false
-        property bool isDrawing: false
-        property bool isDragging: false
-        property bool readyEditing: false
-        property bool isEditing: false
+        property string state: "idle"
 
         onPressed: function(event) {
             if (event.button === Qt.MiddleButton || (event.modifiers & Qt.ControlModifier && event.button === Qt.LeftButton)) {
                 mouseArea.cursorShape = Qt.ClosedHandCursor
                 startPos = Qt.point(event.x, event.y)
-                isDragging = true
+                state = "dragging"
             } else if (event.button === Qt.RightButton) {
 
             } else if (event.button === Qt.LeftButton) {
                 // 获取相对于LabelImage的坐标
                 startPos = getPosOnImage(event)
-                let hasHit = hitTest(startPos)
-                if (hasHit) {
-                    readyEditing = true
-                } else {
-                    readyDrawing = true
-                }
-            } else {
-                readyDrawing = false
-                isDrawing = false
-                isDragging = false
-                readyEditing = false
-                isEditing = false
-            }
+                state = hitTest(startPos) ? "readyEdit" : "readyDraw"
+            } 
         }
 
         onReleased: function(event) {
-            if (isDrawing) {
+            if (state === "drawing") {
                 drawingItem.clearItem()
                 // 计算矩形的位置和大小
                 let rect = getRect(event)
@@ -135,13 +120,12 @@ Item {
                 if (project && labelClasses.currentLabelClassId !== -1 && rect.width > 1 && rect.height > 1) {
                     project.addLabels([imageInstances.currentImageId], [labelClasses.currentLabelClassId], [rect])
                 }
-            } else if (isDragging) {
+            } else if (state === "draging" ) {
                 mouseArea.cursorShape = event.modifiers & Qt.ControlModifier ? Qt.OpenHandCursor : Qt.ArrowCursor
                 startPos = Qt.point(event.x, event.y)
-            } else if (isEditing) {
+            } else if (state === "editing") {
                 let pos = getPosOnImage(event)
-                let hasHit = hitTest(pos)
-                if (!hasHit) {
+                if (!hitTest(pos)) {
                     mouseArea.cursorShape = Qt.ArrowCursor
                 }
             } else {
@@ -166,27 +150,23 @@ Item {
                     labelCanvasMenu.popup()
                 }
             }
-            readyDrawing = false
-            isDrawing = false
-            isDragging = false
-            readyEditing = false
-            isEditing = false
+            state = "idle"
         }
 
         onPositionChanged: function(event) {
-            if (readyEditing) {
-                isEditing = true
-            } else if (readyDrawing) {
-                isDrawing = true
+            if (state === "readyEdit") {
+                state = "editing"
+            } else if (state === "readyDraw") {
+                state = "drawing"
                 drawingItem.initItem(startPos.x, startPos.y, 0, 0, drawingColor)
             }
-            if (isDrawing) {
+            if (state === "drawing") {
                 imageLabelsList.setHovered([])
                 let rect = getRect(event)
                 drawingItem.updateItem(rect.x, rect.y, rect.width, rect.height)
-            }  else if (isDragging) {
+            }  else if (state === "dragging") {
                 moveImage(event)
-            } else if (isEditing) {
+            } else if (state === "editing") {
                 imageLabelsList.setHovered([])
             } else {
                 let pos = getPosOnImage(event)
