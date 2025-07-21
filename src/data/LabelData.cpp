@@ -157,6 +157,48 @@ bool DetLabelDataHelper::isInside(const QPointF &pos, const std::unique_ptr<Labe
     return pos.x() >= x && pos.x() <= x + w && pos.y() >= y && pos.y() <= y + h;
 }
 
+QVariantMap DetLabelDataHelper::hitTestHandle(const QPointF                      &pos,
+                                              const std::unique_ptr<LabelData_t> &label_data_ptr) const
+{
+    if (label_data_ptr == nullptr)
+        return QVariantMap{{"found", false}, {"direction", ""}};
+    DetLabelData_t *data = dynamic_cast<DetLabelData_t *>(label_data_ptr.get());
+    if (data == nullptr)
+        return QVariantMap{{"found", false}, {"direction", ""}};
+    double x = data->x;
+    double y = data->y;
+    double w = data->width;
+    double h = data->height;
+
+    const double handle_size = 8;
+
+    std::vector<std::pair<QString, std::vector<double>>> vertices = {
+        {"tl",         {x, y}},
+        {"tr",     {x + w, y}},
+        {"bl",     {x, y + h}},
+        {"br", {x + w, y + h}},
+    };
+
+    std::vector<std::pair<QString, std::vector<double>>> edges = {
+        {"l",         {x - handle_size, x + handle_size, y, y + h}},
+        {"r", {x + w - handle_size, x + w + handle_size, y, y + h}},
+        {"t",         {x, x + w, y - handle_size, y + handle_size}},
+        {"b", {x, x + w, y + h - handle_size, y + h + handle_size}},
+    };
+
+    for (const auto &[dir, data] : vertices)
+    {
+        if (std::abs(data[0] - pos.x()) <= handle_size && std::abs(data[1] - pos.y()) <= handle_size)
+            return QVariantMap{{"found", true}, {"direction", dir}};
+    }
+    for (const auto &[dir, data] : edges)
+    {
+        if (pos.x() >= data[0] && pos.x() <= data[1] && pos.y() >= data[2] && pos.y() <= data[3])
+            return QVariantMap{{"found", true}, {"direction", dir}};
+    }
+    return QVariantMap{{"found", false}, {"direction", ""}};
+}
+
 std::unique_ptr<LabelDataHelper_t> createLabelDataHelper(const int type)
 {
     switch (type)

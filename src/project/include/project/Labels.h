@@ -116,7 +116,7 @@ private:
     ImageInstancesListModel *image_instances_{nullptr};
     LabelClassesListModel   *label_classes_{nullptr};
 
-    LabelDataHelper label_data_helper_;
+    LabelDataHelper label_data_helper_{nullptr};
 
     std::map<int64_t, LabelInstance *> label_instances_;
 
@@ -162,9 +162,37 @@ public:
         return selection_;
     }
 
-    Q_INVOKABLE std::vector<int> getIndicesAt(const QPointF &pos);
-    Q_INVOKABLE QModelIndex      chooseIndex(const std::vector<int> &indices);
+    /**
+     * @brief 获取鼠标位置所在的标注索引
+     * @param pos 鼠标位置
+     * @return 标注索引
+     */
+    Q_INVOKABLE std::vector<int> getIndicesAt(const QPointF &pos) const;
 
+    /**
+     * @brief 获取选中项中最顶层的索引
+     * @return 标注索引
+     */
+    Q_INVOKABLE int getTopSelectedIndex() const;
+
+    Q_INVOKABLE QModelIndex chooseIndex(const std::vector<int> &indices) const;
+
+    /**
+     * @brief 测试鼠标是否在标注的内部
+     */
+    Q_INVOKABLE bool isInside(const QPointF &pos, const int index) const;
+
+    /**
+     * @brief 测试鼠标是否命中标注的某个手柄, 
+     * @param pos 鼠标位置
+     * @param index 标注索引
+     * @return 手柄信息
+     */
+    Q_INVOKABLE QVariantMap hitTestHandle(const QPointF &pos, const int index) const;
+
+    /**
+     * @brief 设置鼠标悬停的标注索引
+     */
     Q_INVOKABLE void setHovered(const std::vector<int> &indices);
 
     Q_INVOKABLE void shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command);

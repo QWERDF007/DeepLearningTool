@@ -76,7 +76,6 @@ Item {
         mousePos: Qt.point(mouseArea.mouseX, mouseArea.mouseY)
     }
 
-
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Control && !mouseArea.pressed) {
             mouseArea.cursorShape = Qt.OpenHandCursor
@@ -99,35 +98,39 @@ Item {
         property bool readyDrawing: false
         property bool isDrawing: false
         property bool isDragging: false
-        
+        property bool readyEditing: false
+        property bool isEditing: false
 
         onPressed: function(event) {
             if (event.button === Qt.MiddleButton || (event.modifiers & Qt.ControlModifier && event.button === Qt.LeftButton)) {
                 mouseArea.cursorShape = Qt.ClosedHandCursor
                 startPos = Qt.point(event.x, event.y)
                 isDragging = true
-                return
             } else if (event.button === Qt.RightButton) {
 
             } else if (event.button === Qt.LeftButton) {
-                readyDrawing = true
                 // 获取相对于LabelImage的坐标
                 startPos = getPosOnImage(event)
-                // drawingItem.initItem(startPos.x, startPos.y, 0, 0, drawingColor)
+                let hasHit = hitTest(startPos)
+                if (hasHit) {
+                    readyEditing = true
+                } else {
+                    readyDrawing = true
+                }
             } else {
                 readyDrawing = false
                 isDrawing = false
                 isDragging = false
+                readyEditing = false
+                isEditing = false
             }
         }
 
         onReleased: function(event) {
             if (isDrawing) {
                 drawingItem.clearItem()
-
                 // 计算矩形的位置和大小
                 let rect = getRect(event)
-
                 // 添加到ListModel
                 if (project && labelClasses.currentLabelClassId !== -1 && rect.width > 1 && rect.height > 1) {
                     project.addLabels([imageInstances.currentImageId], [labelClasses.currentLabelClassId], [rect])
@@ -135,6 +138,12 @@ Item {
             } else if (isDragging) {
                 mouseArea.cursorShape = event.modifiers & Qt.ControlModifier ? Qt.OpenHandCursor : Qt.ArrowCursor
                 startPos = Qt.point(event.x, event.y)
+            } else if (isEditing) {
+                let pos = getPosOnImage(event)
+                let hasHit = hitTest(pos)
+                if (!hasHit) {
+                    mouseArea.cursorShape = Qt.ArrowCursor
+                }
             } else {
                 mouseArea.cursorShape = event.modifiers & Qt.ControlModifier ? Qt.OpenHandCursor : Qt.ArrowCursor
                 if (event.button === Qt.LeftButton) {
@@ -142,10 +151,11 @@ Item {
                     let indices = imageLabelsList.getIndicesAt(pos)
                     let new_index = imageLabelsList.chooseIndex(indices)
                     select(new_index, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
+                    hitTest(pos)
                 } else if (event.button === Qt.RightButton) { // 右键在有选中的情况下不选中新的
                     let pos = getPosOnImage(event)
-                    var indices = imageLabelsList.getIndicesAt(pos)
-                    var hasSelected = false
+                    let indices = imageLabelsList.getIndicesAt(pos)
+                    let hasSelected = false
                     for (let index of indices) {
                         hasSelected |= selection.isSelected(imageLabelsList.index(index, 0))
                     }
@@ -159,10 +169,14 @@ Item {
             readyDrawing = false
             isDrawing = false
             isDragging = false
+            readyEditing = false
+            isEditing = false
         }
 
         onPositionChanged: function(event) {
-            if (readyDrawing) {
+            if (readyEditing) {
+                isEditing = true
+            } else if (readyDrawing) {
                 isDrawing = true
                 drawingItem.initItem(startPos.x, startPos.y, 0, 0, drawingColor)
             }
@@ -172,12 +186,21 @@ Item {
                 drawingItem.updateItem(rect.x, rect.y, rect.width, rect.height)
             }  else if (isDragging) {
                 moveImage(event)
+            } else if (isEditing) {
+                imageLabelsList.setHovered([])
             } else {
                 let pos = getPosOnImage(event)
-                let indices = imageLabelsList.getIndicesAt(pos)
-                imageLabelsList.setHovered(indices)
+                let hasHit = hitTest(pos)
+                if (hasHit) {
+                    imageLabelsList.setHovered([])
+                } else {
+                    mouseArea.cursorShape = Qt.ArrowCursor
+                    let indices = imageLabelsList.getIndicesAt(pos)
+                    imageLabelsList.setHovered(indices)
+                }
             }
         }
+
         onEntered: {
             labelView.forceActiveFocus()
         }
@@ -224,5 +247,88 @@ Item {
 
     function getPosOnImage(event) {
         return Qt.point((event.x - labelImage.image.x) / labelImage.image.scale, (event.y - labelImage.image.y) / labelImage.image.scale)
+    }
+
+    function hitTest(pos) {
+        let hasHit = false
+        if (selection === null || !selection.hasSelection) {
+            return false
+        }
+        // 检查是否点击在已选中的标签上（优先角/边，其次move）
+        // 只支持单选编辑
+        let selectedIndex = imageLabelsList.getTopSelectedIndex()
+        if (selectedIndex !== -1) {
+            let hit = imageLabelsList.hitTestHandle(pos, selectedIndex)
+            if (hit.found) {
+                // 命中resize手柄
+                if (hit.direction === "tl" || hit.direction === "br") {
+                    mouseArea.cursorShape = Qt.SizeFDiagCursor
+                } else if (hit.direction === "tr" || hit.direction === "bl") {
+                    mouseArea.cursorShape = Qt.SizeBDiagCursor
+                } else if (hit.direction === "l" || hit.direction === "r") {
+                    mouseArea.cursorShape = Qt.SizeHorCursor
+                } else if (hit.direction === "t" || hit.direction === "b") {
+                    mouseArea.cursorShape = Qt.SizeVerCursor
+                }
+                hasHit = true
+            } else if (imageLabelsList.isInside(pos, selectedIndex)) {
+                // 命中矩形本体，移动
+                mouseArea.cursorShape = Qt.SizeAllCursor
+                hasHit = true
+            }
+        }
+        return hasHit
+    }
+
+    // 计算编辑后的矩形
+    function calcEditRect(orig, start, now, mode, dir) {
+        let rect = Object.assign({}, orig)
+        let dx = now.x - start.x
+        let dy = now.y - start.y
+        if (mode === "move") {
+            rect.x += dx
+            rect.y += dy
+        } else if (mode === "resize") {
+            switch (dir) {
+            case "tl":
+                rect.x += dx
+                rect.y += dy
+                rect.width -= dx
+                rect.height -= dy
+                break
+            case "tr":
+                rect.y += dy
+                rect.width += dx
+                rect.height -= dy
+                break
+            case "bl":
+                rect.x += dx
+                rect.width -= dx
+                rect.height += dy
+                break
+            case "br":
+                rect.width += dx
+                rect.height += dy
+                break
+            case "l":
+                rect.x += dx
+                rect.width -= dx
+                break
+            case "r":
+                rect.width += dx
+                break
+            case "t":
+                rect.y += dy
+                rect.height -= dy
+                break
+            case "b":
+                rect.height += dy
+                break
+            }
+            // 保证宽高为正
+            if (rect.width < 1) rect.width = 1
+            if (rect.height < 1) rect.height = 1
+        }
+        return rect
     }
 }

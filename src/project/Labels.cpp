@@ -428,7 +428,7 @@ std::vector<int64_t> ImageLabelsListModel::getSelectedLabelIds() const
     return label_ids;
 }
 
-std::vector<int> ImageLabelsListModel::getIndicesAt(const QPointF &pos)
+std::vector<int> ImageLabelsListModel::getIndicesAt(const QPointF &pos) const
 {
     std::vector<int> indices;
     if (label_ids_.empty())
@@ -452,7 +452,17 @@ std::vector<int> ImageLabelsListModel::getIndicesAt(const QPointF &pos)
     return indices;
 }
 
-QModelIndex ImageLabelsListModel::chooseIndex(const std::vector<int> &indices)
+int ImageLabelsListModel::getTopSelectedIndex() const
+{
+    int index = -1;
+    for (const auto &selected : selection_->selectedRows())
+    {
+        index = std::max(index, selected.row());
+    }
+    return index;
+}
+
+QModelIndex ImageLabelsListModel::chooseIndex(const std::vector<int> &indices) const
 {
     if (indices.empty())
         return QModelIndex();
@@ -466,6 +476,32 @@ QModelIndex ImageLabelsListModel::chooseIndex(const std::vector<int> &indices)
         }
     }
     return index(indices[0]);
+}
+
+bool ImageLabelsListModel::isInside(const QPointF &pos, const int index) const
+{
+    if (index < 0 || index >= static_cast<int>(label_ids_.size()))
+        return false;
+    auto label_instance = label_instances_->getLabelInstance(label_ids_[index]);
+    if (label_instance == nullptr)
+        return false;
+    return label_instances_->helper()->isInside(pos, label_instance->data());
+}
+
+QVariantMap ImageLabelsListModel::hitTestHandle(const QPointF &pos, const int index) const
+{
+    if (index < 0 || index >= static_cast<int>(label_ids_.size()))
+        return QVariantMap{
+            {    "found", false},
+            {"direction",    ""}
+        };
+    auto label_instance = label_instances_->getLabelInstance(label_ids_[index]);
+    if (label_instance == nullptr)
+        return QVariantMap{
+            {    "found", false},
+            {"direction",    ""}
+        };
+    return label_instances_->helper()->hitTestHandle(pos, label_instance->data());
 }
 
 void ImageLabelsListModel::setHovered(const std::vector<int> &indices)
