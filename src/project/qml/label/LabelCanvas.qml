@@ -116,7 +116,8 @@ Item {
             if (state === "drawing") {
                 drawingItem.clearItem()
                 // 计算矩形的位置和大小
-                let rect = getRect(event)
+                let endPos = getPosOnImage(event)
+                let rect = getRect(startPos, endPos)
                 // 添加到ListModel
                 if (project && labelClasses.currentLabelClassId !== -1 && rect.width > 1 && rect.height > 1) {
                     project.addLabels([imageInstances.currentImageId], [labelClasses.currentLabelClassId], [rect])
@@ -162,16 +163,16 @@ Item {
                 drawingItem.initItem(startPos.x, startPos.y, 0, 0, drawingColor)
             }
             if (state === "drawing") {
-                let rect = getRect(event)
+                let endPos = getPosOnImage(event)
+                let rect = getRect(startPos, endPos)
                 drawingItem.updateItem(rect.x, rect.y, rect.width, rect.height)
             }  else if (state === "dragging") {
                 moveImage(event)
             } else if (state === "editing") {
-                
+                // let pos = getPosOnImage(event)
             } else {
                 let pos = getPosOnImage(event)
-                let hasHit = hitTest(pos)
-                if (!hasHit) {
+                if (!hitTest(pos)) {
                     mouseArea.cursorShape = Qt.ArrowCursor
                     let indices = imageLabelsList.getIndicesAt(pos)
                     imageLabelsList.setHovered(indices)
@@ -184,13 +185,12 @@ Item {
         }
     }
 
-    function getRect(event) {
+    function getRect(pt1, pt2) {
         // 计算矩形的位置和大小
-        let endPos = getPosOnImage(event)
-        let x = Math.min(startPos.x, endPos.x)
-        let y = Math.min(startPos.y, endPos.y)
-        let width = Math.abs(endPos.x - startPos.x)
-        let height = Math.abs(endPos.y - startPos.y)
+        let x = Math.min(pt1.x, pt2.x)
+        let y = Math.min(pt1.y, pt2.y)
+        let width = Math.abs(pt2.x - pt1.x)
+        let height = Math.abs(pt2.y - pt1.y)
         return { x: x, y: y, width: width, height: height }
     }
 
@@ -228,25 +228,20 @@ Item {
     }
 
     function hitTest(pos) {
-        let hasHit = false
         if (selection === null || !selection.hasSelection) {
-            return false
+            return null
         }
-        // 检查是否点击在已选中的标签上（优先角/边，其次move）
+        // 检查是否点击在已选中的标签上（优先角、边，其次内部）
         // 只支持单选编辑
         let selectedIndex = imageLabelsList.getTopSelectedIndex()
         if (selectedIndex !== -1) {
             let hit = imageLabelsList.hitTestHandle(pos, selectedIndex, labelImage.image.scale)
             if (hit.found) {
                 mouseArea.cursorShape = hit.cursor
-                hasHit = true
-            } else if (imageLabelsList.isInside(pos, selectedIndex)) {
-                // 命中矩形本体，移动
-                mouseArea.cursorShape = Qt.SizeAllCursor
-                hasHit = true
+                return hit
             }
         }
-        return hasHit
+        return null
     }
 
     // 计算编辑后的矩形

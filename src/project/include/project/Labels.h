@@ -188,7 +188,7 @@ public:
     Q_INVOKABLE bool isInside(const QPointF &pos, const int index) const;
 
     /**
-     * @brief 测试鼠标是否命中标注的某个手柄, 
+     * @brief 测试鼠标是否命中标注的某个手柄, 判定先后顺序为 顶点, 边, 内部
      * @param pos 鼠标位置
      * @param index 标注索引
      * @param scale 图像缩放比例

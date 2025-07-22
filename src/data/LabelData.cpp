@@ -230,6 +230,14 @@ QVariantMap DetLabelDataHelper::hitTestHandle(const QPointF &pos, const std::uni
             };
         }
     }
+    if (pos.x() >= x && pos.x() <= x + w && pos.y() >= y && pos.y() <= y + h)
+    {
+        return QVariantMap{
+            {    "found",                   true},
+            {"direction",               "inside"},
+            {   "cursor", int(Qt::SizeAllCursor)}
+        };
+    }
 
     return QVariantMap{
         {    "found",                false},
