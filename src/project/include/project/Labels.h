@@ -175,6 +175,11 @@ public:
      */
     Q_INVOKABLE int getTopSelectedIndex() const;
 
+    /**
+     * @brief 获取第一个选中项的下一项的索引, 如果没有选中项, 则返回第一个
+     * @param indices 标注索引列表
+     * @return 标注索引
+     */
     Q_INVOKABLE QModelIndex chooseIndex(const std::vector<int> &indices) const;
 
     /**

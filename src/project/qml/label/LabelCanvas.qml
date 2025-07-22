@@ -98,16 +98,17 @@ Item {
         property string state: "idle"
 
         onPressed: function(event) {
-            if (event.button === Qt.MiddleButton || (event.modifiers & Qt.ControlModifier && event.button === Qt.LeftButton)) {
+            if (state === "idle" && (event.button === Qt.MiddleButton || (event.modifiers & Qt.ControlModifier && event.button === Qt.LeftButton))) {
                 mouseArea.cursorShape = Qt.ClosedHandCursor
                 startPos = Qt.point(event.x, event.y)
                 state = "dragging"
-            } else if (event.button === Qt.RightButton) {
+            } else if (state === "idle" && event.button === Qt.RightButton) {
 
-            } else if (event.button === Qt.LeftButton) {
+            } else if (state === "idle" && event.button === Qt.LeftButton) {
                 // 获取相对于LabelImage的坐标
                 startPos = getPosOnImage(event)
                 state = hitTest(startPos) ? "readyEdit" : "readyDraw"
+                imageLabelsList.setHovered([])
             } 
         }
 
@@ -120,7 +121,7 @@ Item {
                 if (project && labelClasses.currentLabelClassId !== -1 && rect.width > 1 && rect.height > 1) {
                     project.addLabels([imageInstances.currentImageId], [labelClasses.currentLabelClassId], [rect])
                 }
-            } else if (state === "draging" ) {
+            } else if (state === "draging") {
                 mouseArea.cursorShape = event.modifiers & Qt.ControlModifier ? Qt.OpenHandCursor : Qt.ArrowCursor
                 startPos = Qt.point(event.x, event.y)
             } else if (state === "editing") {
@@ -161,19 +162,16 @@ Item {
                 drawingItem.initItem(startPos.x, startPos.y, 0, 0, drawingColor)
             }
             if (state === "drawing") {
-                imageLabelsList.setHovered([])
                 let rect = getRect(event)
                 drawingItem.updateItem(rect.x, rect.y, rect.width, rect.height)
             }  else if (state === "dragging") {
                 moveImage(event)
             } else if (state === "editing") {
-                imageLabelsList.setHovered([])
+                
             } else {
                 let pos = getPosOnImage(event)
                 let hasHit = hitTest(pos)
-                if (hasHit) {
-                    imageLabelsList.setHovered([])
-                } else {
+                if (!hasHit) {
                     mouseArea.cursorShape = Qt.ArrowCursor
                     let indices = imageLabelsList.getIndicesAt(pos)
                     imageLabelsList.setHovered(indices)
