@@ -6,6 +6,8 @@ import dltool.ui
 DltLoader {
     id: drawItemLoader
 
+    property int labelId: -1
+
     property real offsetX: 0
     property real offsetY: 0
     property real factor: 1
@@ -30,26 +32,39 @@ DltLoader {
 
     sourceComponent: rectItem
 
-    function initItem(x, y, width, height, color) {
+    function initItem(data) {
         drawItemLoader.item.visible = true
-        drawItemLoader.ix = x
-        drawItemLoader.iy = y
-        drawItemLoader.iwidth = width
-        drawItemLoader.iheight = height
-        drawItemLoader.item.border.color = color
+        drawItemLoader.labelId = data.label_id
+        drawItemLoader.ix = data.x
+        drawItemLoader.iy = data.y
+        drawItemLoader.iwidth = data.width
+        drawItemLoader.iheight = data.height
+        drawItemLoader.item.border.color = data.color
     }
 
-    function updateItem(x, y, width, height) {
-        drawItemLoader.ix = x
-        drawItemLoader.iy = y
-        drawItemLoader.iwidth = width
-        drawItemLoader.iheight = height
+    function updateItem(data) {
+        drawItemLoader.labelId = data.label_id
+        drawItemLoader.ix = data.x
+        drawItemLoader.iy = data.y
+        drawItemLoader.iwidth = data.width
+        drawItemLoader.iheight = data.height
     }
 
     function clearItem() {
         drawItemLoader.item.visible = false
         drawItemLoader.iwidth = 0
         drawItemLoader.iheight = 0
+    }
+
+    function getData() {
+        return {
+            label_id: drawItemLoader.labelId,
+            x: drawItemLoader.ix,
+            y: drawItemLoader.iy,
+            width: drawItemLoader.iwidth,
+            height: drawItemLoader.iheight,
+            color: drawItemLoader.item.border.color
+        }
     }
 }
 

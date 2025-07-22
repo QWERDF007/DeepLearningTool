@@ -428,6 +428,29 @@ std::vector<int64_t> ImageLabelsListModel::getSelectedLabelIds() const
     return label_ids;
 }
 
+QVariantMap ImageLabelsListModel::getData(const int index) const
+{
+    if (index < 0 || index >= static_cast<int>(label_ids_.size()))
+        return QVariantMap();
+    int64_t        label_id = label_ids_[index];
+    LabelInstance *instance = label_instances_->getLabelInstance(label_id);
+    if (instance == nullptr)
+        return QVariantMap();
+    auto data        = instance->data()->dataMap();
+    data["label_id"] = label_id;
+    data["color"]    = label_classes_->getLabelClassColor(instance->labelClassId());
+    data["index"]    = index;
+    return data;
+}
+
+QVariantMap ImageLabelsListModel::getEditedData(const QVariantMap &data, const QPointF &start, const QPointF &end)
+{
+    auto image_instance = image_instances_->getImageInstance(image_instances_->getCurrentImageId());
+    if (image_instance == nullptr)
+        return QVariantMap();
+    return label_instances_->helper()->getEditedData(data, start, end, image_instance->imageRect());
+}
+
 std::vector<int> ImageLabelsListModel::getIndicesAt(const QPointF &pos) const
 {
     std::vector<int> indices;
@@ -589,11 +612,7 @@ int ImageLabelsListModel::getLabelClassId(const QModelIndex &index) const
 
 QVariant ImageLabelsListModel::getData(const QModelIndex &index) const
 {
-    int64_t        label_id = label_ids_[index.row()];
-    LabelInstance *instance = label_instances_->getLabelInstance(label_id);
-    if (instance == nullptr)
-        return QVariantMap();
-    return instance->data()->dataMap();
+    return getData(index.row());
 }
 
 QVariant ImageLabelsListModel::getColor(const QModelIndex &index) const

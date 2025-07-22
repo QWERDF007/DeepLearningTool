@@ -58,6 +58,7 @@ Item {
     }
 
     LabelsListView {
+        id: labelsListView
         offsetX: labelImage.image.x
         offsetY: labelImage.image.y
         factor: labelImage.image.scale
@@ -96,6 +97,7 @@ Item {
         acceptedButtons: Qt.AllButtons
         hoverEnabled: true
         property string state: "idle"
+        property var data: null
 
         onPressed: function(event) {
             if (state === "idle" && (event.button === Qt.MiddleButton || (event.modifiers & Qt.ControlModifier && event.button === Qt.LeftButton))) {
@@ -114,14 +116,12 @@ Item {
 
         onReleased: function(event) {
             if (state === "drawing") {
-                drawingItem.clearItem()
-                // 计算矩形的位置和大小
-                let endPos = getPosOnImage(event)
-                let rect = getRect(startPos, endPos)
+                data = drawingItem.getData()
                 // 添加到ListModel
-                if (project && labelClasses.currentLabelClassId !== -1 && rect.width > 1 && rect.height > 1) {
-                    project.addLabels([imageInstances.currentImageId], [labelClasses.currentLabelClassId], [rect])
+                if (project && labelClasses.currentLabelClassId !== -1 && data.width > 1 && data.height > 1) {
+                    project.addLabels([imageInstances.currentImageId], [labelClasses.currentLabelClassId], [data])
                 }
+                drawingItem.clearItem()
             } else if (state === "draging") {
                 mouseArea.cursorShape = event.modifiers & Qt.ControlModifier ? Qt.OpenHandCursor : Qt.ArrowCursor
                 startPos = Qt.point(event.x, event.y)
@@ -130,6 +130,9 @@ Item {
                 if (!hitTest(pos)) {
                     mouseArea.cursorShape = Qt.ArrowCursor
                 }
+                let item = labelsListView.itemAt(data.index)
+                item.visible = true
+                drawingItem.clearItem()
             } else {
                 mouseArea.cursorShape = event.modifiers & Qt.ControlModifier ? Qt.OpenHandCursor : Qt.ArrowCursor
                 if (event.button === Qt.LeftButton) {
@@ -158,18 +161,29 @@ Item {
         onPositionChanged: function(event) {
             if (state === "readyEdit") {
                 state = "editing"
+                let pos = getPosOnImage(event)
+                let hit = hitTest(pos)
+                let index = imageLabelsList.getTopSelectedIndex()
+                let item = labelsListView.itemAt(index)
+                item.visible = false
+                data = imageLabelsList.getData(index)
+                data.hit = hit
+                drawingItem.initItem(data)
             } else if (state === "readyDraw") {
                 state = "drawing"
-                drawingItem.initItem(startPos.x, startPos.y, 0, 0, drawingColor)
+                drawingItem.initItem({label_id: -1, x: startPos.x, y: startPos.y, width: 0, height: 0, color: drawingColor})
             }
             if (state === "drawing") {
                 let endPos = getPosOnImage(event)
                 let rect = getRect(startPos, endPos)
-                drawingItem.updateItem(rect.x, rect.y, rect.width, rect.height)
+                drawingItem.updateItem({label_id: -1, x: rect.x, y: rect.y, width: rect.width, height: rect.height, color: drawingColor})
             }  else if (state === "dragging") {
                 moveImage(event)
             } else if (state === "editing") {
-                // let pos = getPosOnImage(event)
+                let endPos = getPosOnImage(event)
+                data = imageLabelsList.getEditedData(data, startPos, endPos)
+                drawingItem.updateItem({label_id: data.label_id, x: data.x, y: data.y, width: data.width, height: data.height, color: data.color})
+                startPos = endPos
             } else {
                 let pos = getPosOnImage(event)
                 if (!hitTest(pos)) {
@@ -242,57 +256,5 @@ Item {
             }
         }
         return null
-    }
-
-    // 计算编辑后的矩形
-    function calcEditRect(orig, start, now, mode, dir) {
-        let rect = Object.assign({}, orig)
-        let dx = now.x - start.x
-        let dy = now.y - start.y
-        if (mode === "move") {
-            rect.x += dx
-            rect.y += dy
-        } else if (mode === "resize") {
-            switch (dir) {
-            case "tl":
-                rect.x += dx
-                rect.y += dy
-                rect.width -= dx
-                rect.height -= dy
-                break
-            case "tr":
-                rect.y += dy
-                rect.width += dx
-                rect.height -= dy
-                break
-            case "bl":
-                rect.x += dx
-                rect.width -= dx
-                rect.height += dy
-                break
-            case "br":
-                rect.width += dx
-                rect.height += dy
-                break
-            case "l":
-                rect.x += dx
-                rect.width -= dx
-                break
-            case "r":
-                rect.width += dx
-                break
-            case "t":
-                rect.y += dy
-                rect.height -= dy
-                break
-            case "b":
-                rect.height += dy
-                break
-            }
-            // 保证宽高为正
-            if (rect.width < 1) rect.width = 1
-            if (rect.height < 1) rect.height = 1
-        }
-        return rect
     }
 }

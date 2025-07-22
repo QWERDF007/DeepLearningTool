@@ -208,6 +208,15 @@ public:
 
     Q_INVOKABLE std::vector<int64_t> getSelectedLabelIds() const;
 
+    /**
+     * @brief 获取标注数据, 由具体的实现类来实现, 一般包含 index, label_id, x, y, width, height, color
+     * @param index 标注索引
+     * @return 标注数据
+     */
+    Q_INVOKABLE QVariantMap getData(const int index) const;
+
+    Q_INVOKABLE QVariantMap getEditedData(const QVariantMap &data, const QPointF &start, const QPointF &end);
+
 private:
     void init();
 

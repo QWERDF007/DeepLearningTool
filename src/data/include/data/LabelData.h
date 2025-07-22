@@ -76,6 +76,9 @@ public:
     virtual QVariantMap hitTestHandle(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr,
                                       const double scale) const = 0;
 
+    virtual QVariantMap getEditedData(const QVariantMap &data, const QPointF &start, const QPointF &end,
+                                      const QRectF &image_rect) const = 0;
+
 private:
     int type_;
 };
@@ -94,6 +97,9 @@ public:
 
     QVariantMap hitTestHandle(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr,
                               const double scale) const override;
+
+    QVariantMap getEditedData(const QVariantMap &data, const QPointF &start, const QPointF &end,
+                              const QRectF &image_rect) const override;
 };
 
 DATA_API std::unique_ptr<LabelDataHelper_t> createLabelDataHelper(const int type);
