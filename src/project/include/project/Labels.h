@@ -191,9 +191,10 @@ public:
      * @brief 测试鼠标是否命中标注的某个手柄, 
      * @param pos 鼠标位置
      * @param index 标注索引
+     * @param scale 图像缩放比例
      * @return 手柄信息
      */
-    Q_INVOKABLE QVariantMap hitTestHandle(const QPointF &pos, const int index) const;
+    Q_INVOKABLE QVariantMap hitTestHandle(const QPointF &pos, const int index, const double scale) const;
 
     /**
      * @brief 设置鼠标悬停的标注索引

@@ -73,7 +73,8 @@ public:
 
     virtual bool isInside(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr) const = 0;
 
-    virtual QVariantMap hitTestHandle(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr) const = 0;
+    virtual QVariantMap hitTestHandle(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr,
+                                      const double scale) const = 0;
 
 private:
     int type_;
@@ -91,7 +92,8 @@ public:
 
     bool isInside(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr) const override;
 
-    QVariantMap hitTestHandle(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr) const override;
+    QVariantMap hitTestHandle(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr,
+                              const double scale) const override;
 };
 
 DATA_API std::unique_ptr<LabelDataHelper_t> createLabelDataHelper(const int type);

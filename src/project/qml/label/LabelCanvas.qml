@@ -236,18 +236,9 @@ Item {
         // 只支持单选编辑
         let selectedIndex = imageLabelsList.getTopSelectedIndex()
         if (selectedIndex !== -1) {
-            let hit = imageLabelsList.hitTestHandle(pos, selectedIndex)
+            let hit = imageLabelsList.hitTestHandle(pos, selectedIndex, labelImage.image.scale)
             if (hit.found) {
-                // 命中resize手柄
-                if (hit.direction === "tl" || hit.direction === "br") {
-                    mouseArea.cursorShape = Qt.SizeFDiagCursor
-                } else if (hit.direction === "tr" || hit.direction === "bl") {
-                    mouseArea.cursorShape = Qt.SizeBDiagCursor
-                } else if (hit.direction === "l" || hit.direction === "r") {
-                    mouseArea.cursorShape = Qt.SizeHorCursor
-                } else if (hit.direction === "t" || hit.direction === "b") {
-                    mouseArea.cursorShape = Qt.SizeVerCursor
-                }
+                mouseArea.cursorShape = hit.cursor
                 hasHit = true
             } else if (imageLabelsList.isInside(pos, selectedIndex)) {
                 // 命中矩形本体，移动

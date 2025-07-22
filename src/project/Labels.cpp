@@ -488,7 +488,7 @@ bool ImageLabelsListModel::isInside(const QPointF &pos, const int index) const
     return label_instances_->helper()->isInside(pos, label_instance->data());
 }
 
-QVariantMap ImageLabelsListModel::hitTestHandle(const QPointF &pos, const int index) const
+QVariantMap ImageLabelsListModel::hitTestHandle(const QPointF &pos, const int index, const double scale) const
 {
     if (index < 0 || index >= static_cast<int>(label_ids_.size()))
         return QVariantMap{
@@ -501,7 +501,7 @@ QVariantMap ImageLabelsListModel::hitTestHandle(const QPointF &pos, const int in
             {    "found", false},
             {"direction",    ""}
         };
-    return label_instances_->helper()->hitTestHandle(pos, label_instance->data());
+    return label_instances_->helper()->hitTestHandle(pos, label_instance->data(), scale);
 }
 
 void ImageLabelsListModel::setHovered(const std::vector<int> &indices)
