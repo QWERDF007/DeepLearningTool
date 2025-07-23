@@ -223,7 +223,11 @@ void Project::addLabels(const std::vector<int64_t> &image_ids, const std::vector
 
 void Project::updateLabels(const std::vector<int64_t> &label_ids, const std::vector<QVariantMap> &data)
 {
-    // TODO: 更新标注
+    std::vector<int64_t> image_ids = label_instances_->getImageIds(label_ids);
+    label_instances_->updateLabelsData(label_ids, image_ids, data);
+    image_labels_list_->updateLabels(image_ids, label_ids);
+    image_labels_table_->updateLabels(image_ids, label_ids);
+    // updateDatasetsStats();
 }
 
 void Project::deleteLabels(const std::vector<int64_t> &label_ids)

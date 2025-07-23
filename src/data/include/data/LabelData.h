@@ -27,10 +27,7 @@ public:
 
     virtual void fromQVariantMap(const QVariantMap &data, const QRectF &image_rect);
 
-    virtual const QVariantMap &dataMap();
-
-protected:
-    QVariantMap data_map_;
+    virtual QVariantMap dataMap();
 };
 
 class DATA_API DetLabelData_t : public LabelData_t

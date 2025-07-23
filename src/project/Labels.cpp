@@ -180,6 +180,50 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
     spdlog::info("添加 {} 个标注成功", label_ids.size());
 }
 
+void LabelInstancesListModel::updateLabelsData(const std::vector<int64_t>     &label_ids,
+                                               const std::vector<int64_t>     &image_ids,
+                                               const std::vector<QVariantMap> &data)
+{
+    if (database_ == nullptr)
+    {
+        spdlog::error("更新标注失败: 数据库未初始化");
+        return;
+    }
+    if (image_instances_ == nullptr)
+    {
+        spdlog::error("更新标注失败: 图像实例列表未初始化");
+        return;
+    }
+
+    std::vector<std::vector<uint8_t>> labels_data_blob;
+    labels_data_blob.reserve(label_ids.size());
+    for (size_t i = 0; i < label_ids.size(); ++i)
+    {
+        auto instance = image_instances_->getImageInstance(image_ids[i]);
+
+        const LabelData &label_data = label_instances_[label_ids[i]]->data();
+        label_data->fromQVariantMap(data[i], instance->imageRect());
+        labels_data_blob.push_back(label_data->toBlob());
+    }
+
+    QString err_msg;
+    bool    ok = database_->updateLabelsData(label_ids, labels_data_blob, err_msg);
+    if (!ok)
+    {
+        spdlog::error("更新标注数据失败: {}", err_msg.toUtf8().constData());
+        return;
+    }
+    beginResetModel();
+    // TODO: 只刷新需要更新的数据, 而不是全部数据
+    endResetModel();
+    spdlog::info("更新 {} 个标注数据成功", label_ids.size());
+}
+
+void LabelInstancesListModel::updateLabelsClass(const std::vector<int64_t> &label_ids,
+                                                const std::vector<int64_t> &label_class_ids)
+{
+}
+
 void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids)
 {
     if (database_ == nullptr)
@@ -206,6 +250,7 @@ void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids
     }
     std::reverse(new_label_ids.begin(), new_label_ids.end());
     beginResetModel();
+    // TODO: 只刷新需要更新的数据, 而不是全部数据
     label_ids_ = new_label_ids;
     endResetModel();
     // TODO: 更新选中状态
@@ -380,6 +425,28 @@ void ImageLabelsListModel::addLabels(const std::vector<int64_t> &image_ids, cons
     beginInsertRows(QModelIndex(), row, row + count - 1);
     label_ids_.insert(label_ids_.end(), valid_label_ids.begin(), valid_label_ids.end());
     endInsertRows();
+}
+
+void ImageLabelsListModel::updateLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids)
+{
+    if (image_ids.empty() || label_ids.empty())
+        return;
+    size_t size = label_ids.size();
+
+    const int64_t current_image_id = image_instances_->getCurrentImageId();
+
+    std::vector<int64_t> valid_label_ids;
+    valid_label_ids.reserve(size);
+    for (size_t i = 0; i < image_ids.size(); ++i)
+    {
+        if (image_ids[i] == current_image_id)
+            valid_label_ids.push_back(label_ids[i]);
+    }
+    if (valid_label_ids.empty())
+        return;
+
+    // TODO: 只刷新需要更新的数据, 而不是全部数据
+    emit dataChanged(index(0), index(static_cast<int>(label_ids_.size()) - 1), {DataRole});
 }
 
 void ImageLabelsListModel::deleteLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids)
@@ -754,6 +821,28 @@ void ImageLabelsTableModel::addLabels(const std::vector<int64_t> &image_ids, con
     beginInsertRows(QModelIndex(), row, row + count - 1);
     label_ids_.insert(label_ids_.end(), valid_label_ids.begin(), valid_label_ids.end());
     endInsertRows();
+}
+
+void ImageLabelsTableModel::updateLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids)
+{
+    if (image_ids.empty() || label_ids.empty())
+        return;
+    size_t size = label_ids.size();
+
+    const int64_t current_image_id = image_instances_->getCurrentImageId();
+
+    std::vector<int64_t> valid_label_ids;
+    valid_label_ids.reserve(size);
+    for (size_t i = 0; i < image_ids.size(); ++i)
+    {
+        if (image_ids[i] == current_image_id)
+            valid_label_ids.push_back(label_ids[i]);
+    }
+    if (valid_label_ids.empty())
+        return;
+    emit dataChanged(index(0, 0),
+                     index(static_cast<int>(label_ids_.size()) - 1, static_cast<int>(column_headers_.size()) - 1),
+                     {DataRole});
 }
 
 void ImageLabelsTableModel::deleteLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids)

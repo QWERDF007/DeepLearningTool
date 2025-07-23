@@ -915,8 +915,8 @@ bool ProjectDataBase::addLabels(const std::vector<int64_t> &image_ids, const std
     }
 }
 
-bool ProjectDataBase::updateLabels(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &label_class_ids,
-                                   const std::vector<std::vector<uint8_t>> &labels_data, QString &err_msg) const
+bool ProjectDataBase::updateLabelsData(const std::vector<int64_t>              &label_ids,
+                                       const std::vector<std::vector<uint8_t>> &labels_data, QString &err_msg) const
 {
     if (pool_ == nullptr)
     {
@@ -930,7 +930,36 @@ bool ProjectDataBase::updateLabels(const std::vector<int64_t> &label_ids, const 
         for (size_t i = 0; i < label_ids.size(); ++i)
         {
             db(sqlpp::update(LabelsTable)
-                   .set(LabelsTable.labelClassId = label_class_ids[i], LabelsTable.region = labels_data[i])
+                   .set(LabelsTable.region = labels_data[i])
+                   .where(LabelsTable.id == label_ids[i]));
+        }
+        tx.commit();
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        tx.rollback();
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::updateLabelsClass(const std::vector<int64_t> &label_ids,
+                                        const std::vector<int64_t> &label_class_ids, QString &err_msg) const
+{
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
+    }
+    auto db = pool_->get();
+    auto tx = sqlpp::start_transaction(db);
+    try
+    {
+        for (size_t i = 0; i < label_ids.size(); ++i)
+        {
+            db(sqlpp::update(LabelsTable)
+                   .set(LabelsTable.labelClassId = label_class_ids[i])
                    .where(LabelsTable.id == label_ids[i]));
         }
         tx.commit();

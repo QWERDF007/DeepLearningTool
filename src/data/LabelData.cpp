@@ -70,18 +70,14 @@ void LabelData_t::fromQVariantMap(const QVariantMap &data, const QRectF &image_r
     height = rect.height();
 }
 
-const QVariantMap &LabelData_t::dataMap()
+QVariantMap LabelData_t::dataMap()
 {
-    if (data_map_.isEmpty())
-    {
-        data_map_ = QVariantMap{
-            {     "x",      x},
-            {     "y",      y},
-            { "width",  width},
-            {"height", height},
-        };
-    }
-    return data_map_;
+    return QVariantMap{
+        {     "x",      x},
+        {     "y",      y},
+        { "width",  width},
+        {"height", height},
+    };
 }
 
 DetLabelData_t::DetLabelData_t() {}

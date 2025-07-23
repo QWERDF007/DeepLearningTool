@@ -87,6 +87,11 @@ public:
     void addLabels(std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
                    const std::vector<int64_t> &label_class_ids, const std::vector<QVariantMap> &data);
 
+    void updateLabelsData(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
+                          const std::vector<QVariantMap> &data);
+
+    void updateLabelsClass(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &label_class_ids);
+
     void deleteLabels(const std::vector<int64_t> &label_ids);
 
     std::vector<std::vector<int64_t>> getImagesLabelIds(const std::vector<int64_t> &image_ids) const;
@@ -155,6 +160,7 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
+    void updateLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
     void deleteLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
 
     QItemSelectionModel *selection() const
@@ -274,6 +280,7 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
+    void updateLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
     void deleteLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
 
     QItemSelectionModel *selection() const

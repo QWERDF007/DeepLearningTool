@@ -126,11 +126,16 @@ Item {
                 mouseArea.cursorShape = event.modifiers & Qt.ControlModifier ? Qt.OpenHandCursor : Qt.ArrowCursor
                 startPos = Qt.point(event.x, event.y)
             } else if (state === "editing") {
+                let item = labelsListView.itemAt(data.index)
+                // data = drawingItem.getData()
+                // 编辑结束时更新标注
+                if (project && data.label_id !== -1) {
+                    project.updateLabels([data.label_id], [data])
+                }
                 let pos = getPosOnImage(event)
                 if (!hitTest(pos)) {
                     mouseArea.cursorShape = Qt.ArrowCursor
                 }
-                let item = labelsListView.itemAt(data.index)
                 item.visible = true
                 drawingItem.clearItem()
             } else {

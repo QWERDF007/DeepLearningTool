@@ -152,8 +152,10 @@ public:
     bool addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                    const std::vector<int64_t> &label_types, const std::vector<std::vector<uint8_t>> &labels_data,
                    std::vector<int64_t> &label_ids, QString &err_msg) const;
-    bool updateLabels(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &label_class_ids,
-                      const std::vector<std::vector<uint8_t>> &labels_data, QString &err_msg) const;
+    bool updateLabelsData(const std::vector<int64_t> &label_ids, const std::vector<std::vector<uint8_t>> &labels_data,
+                          QString &err_msg) const;
+    bool updateLabelsClass(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &label_class_ids,
+                           QString &err_msg) const;
     bool deleteLabels(const std::vector<int64_t> &label_ids, QString &err_msg) const;
 };
 
