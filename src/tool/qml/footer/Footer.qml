@@ -23,7 +23,7 @@ Rectangle {
                 id: infoBadge
                 anchors.fill: parent
                 onCheckedChanged: {
-                    let pos = infoBadge.mapToItem(Qt.application.activeWindow, 0, 0)
+                    let pos = infoBadge.mapToItem(null, 0, 0)
                     log.x = pos.x - log.width + 60
                     log.y = pos.y - log.height - 20
                     if (checked)

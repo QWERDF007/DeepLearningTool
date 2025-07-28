@@ -8,6 +8,7 @@ import dltool.project
 Item {
     id: header
     property Project project
+    property LabelClassesModel labelClasses: project ? project.labelClasses : null
     RowLayout {
         anchors.fill: parent
         DltText {
@@ -22,7 +23,7 @@ Item {
             iconSource: DltFontIcon.Add
             text: "添加标签类别"
             onClicked: {
-                let pos = header.mapToItem(Qt.application.activeWindow, addBtn.x, addBtn.y)
+                let pos = mapToItem(null, 0, 0)
                 editor.x = pos.x + 20
                 editor.y = pos.y + 20
                 editor.open()
@@ -31,7 +32,13 @@ Item {
     }
     LabelClassEditor {
         id: editor
-        onEditFinished: function (classId, className, classColor, classShortcut, ordinalIndex) {
+        isCreate: true
+        onLabelClassChanged: function (classId, className, classColor, classShortcut, ordinalIndex) {
+            if (labelClasses) {
+                editor.msg = labelClasses.isValid(classId, className, classShortcut, -1)
+            }
+        }
+        onLabelClassChangedAccepted: function (classId, className, classColor, classShortcut, ordinalIndex) {
             if (project) {
                 project.addLabelClass(className, classColor, classShortcut)
             }

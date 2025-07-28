@@ -23,7 +23,7 @@ Item {
             text: "添加Tag"
             onClicked: {
                 editor.text = ""
-                let pos = header.mapToItem(Qt.application.activeWindow, addBtn.x, addBtn.y)
+                let pos = mapToItem(null, 0, 0) // 获取当前item左上角的全局坐标
                 editor.x = pos.x + 20
                 editor.y = pos.y + 20
                 editor.open()

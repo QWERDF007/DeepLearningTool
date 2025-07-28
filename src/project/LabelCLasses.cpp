@@ -116,6 +116,8 @@ QVariant LabelClassesListModel::data(const QModelIndex &index, int role) const
         return getLabelClassShortcut(index);
     case SelectedRole:
         return getLabelClassSelected(index);
+    case OrdinalIndexRole:
+        return getLabelClassOrdinalIndex(index);
     default:
         return QVariant();
     }
@@ -140,7 +142,7 @@ bool LabelClassesListModel::addLabelClass(const QString &name, const QString &co
         spdlog::error("添加标签类别 [{}] 失败, 数据库未初始化", name.toUtf8().constData());
         return false;
     }
-    const int row = rowCount();
+    const int row = static_cast<int>(label_classes_.size());
     QString   err_msg;
     int64_t   label_class_id{-1};
     bool      ok = database_->addLabelClass(name, color, shortcut, row, label_class_id, err_msg);
@@ -285,6 +287,25 @@ QString LabelClassesListModel::getCurrentLabelClassColor() const
     return getLabelClassColor(index).toString();
 }
 
+QString LabelClassesListModel::isValid(const int label_class_id, const QString &name, const QString &shortcut,
+                                       const int ordinal_index) const
+{
+    if (ordinal_index > static_cast<int>(label_classes_.size()) - 1)
+        return "标签序号索引超出范围";
+    for (const auto &[_, label_class] : label_classes_)
+    {
+        if (label_class->id() == label_class_id)
+            continue;
+        if (label_class->name() == name)
+            return "标签名称已存在";
+        if (!shortcut.isEmpty() && label_class->shortcut() == shortcut)
+            return "标签快捷键已存在";
+        if (label_class->ordinalIndex() == ordinal_index)
+            return "标签序号索引已存在";
+    }
+    return QString();
+}
+
 QVariant LabelClassesListModel::getLabelClassName(const QModelIndex &index) const
 {
     const int id = getLabelClassId(index);
@@ -306,6 +327,14 @@ QVariant LabelClassesListModel::getLabelClassShortcut(const QModelIndex &index) 
     const int id = getLabelClassId(index);
     if (id != -1)
         return label_classes_.at(id)->shortcut();
+    return QVariant();
+}
+
+QVariant LabelClassesListModel::getLabelClassOrdinalIndex(const QModelIndex &index) const
+{
+    const int id = getLabelClassId(index);
+    if (id != -1)
+        return label_classes_.at(id)->ordinalIndex();
     return QVariant();
 }
 

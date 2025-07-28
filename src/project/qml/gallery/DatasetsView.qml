@@ -35,9 +35,9 @@ Rectangle {
             onClicked: {
                 if (curItem) {
                     editor.text = ""
-                    let pos = datasetsView.mapToItem(Qt.application.activeWindow, curItem.x, curItem.y)
+                    let pos = curItem.mapToItem(null, 0, 0)
                     editor.x = pos.x + curItem.width
-                    editor.y = pos.y + 60
+                    editor.y = pos.y + 10
                     editor.open()
                 }
             }

@@ -104,6 +104,8 @@ public:
     int     getCurrentLabelClassId() const;
     QString getCurrentLabelClassColor() const;
 
+    Q_INVOKABLE QString isValid(const int label_class_id, const QString &name, const QString &shortcut, const int ordinal_index) const;
+
 private:
     void init();
 

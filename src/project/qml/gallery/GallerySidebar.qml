@@ -85,8 +85,8 @@ Rectangle { // 侧边栏
     }
 
     function openPopup(x, y) {
-        let pos = sidebar.mapToItem(Qt.application.activeWindow, x, y)
-        popup.x = pos.x - popup.width
+        let pos = sidebar.mapToItem(null, x, y)
+        popup.x = pos.x - popup.width - 10
         popup.y = pos.y
         popup.open()
     }

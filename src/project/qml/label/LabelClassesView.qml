@@ -12,11 +12,19 @@ Rectangle {
     height: 200
     color: DltColor.Primary
     property Project project: ProjectManager.currentProject
+    property LabelClassesModel labelClasses: project ? project.labelClasses : null
     property ItemSelectionModel selection: project ? project.labelClasses.selection : null
 
     LabelClassEditor {
         id: editor
-        onEditFinished: function (classId, className, classColor, classShortcut, ordinalIndex) {
+        isCreate: false
+        maxOrdinalIndex: view.count
+        onLabelClassChanged: function (classId, className, classColor, classShortcut, ordinalIndex) {
+            if (labelClasses) {
+                editor.msg = labelClasses.isValid(classId, className, classShortcut, ordinalIndex)
+            }
+        }
+        onLabelClassChangedAccepted: function (classId, className, classColor, classShortcut, ordinalIndex) {
             if (project) {
                 project.updateLabelClass(classId, className, classColor, classShortcut, ordinalIndex)
             }
@@ -36,11 +44,12 @@ Rectangle {
             clip: true
             spacing: 5
             boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: DltScrollBar {}
             Layout.fillHeight: true
             Layout.fillWidth: true
-            model: labelClassesView.project ? labelClassesView.project.labelClasses : null
+            model: labelClassesView.labelClasses
             delegate:  LabelClassDelegate {
-                width: view.width
+                width: view.width - 8
                 height: 32
                 color: model.selected ? DltColor.Highlight : Qt.lighter(DltColor.Primary, 1.2)
                 className: model.name
@@ -52,14 +61,14 @@ Rectangle {
                     selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
                 }
                 onEditClicked: function() {
-                    let pos = view.mapToItem(Qt.application.activeWindow, x, y)
+                    let pos = mapToItem(null, 0, 0)
                     editor.x = pos.x + width
                     editor.y = pos.y + 10
                     editor.classId = model.label_class_id
                     editor.className = model.name
                     editor.classColor = model.color
                     editor.classShortcut = model.shortcut
-                    // editor.ordinalIndex = model.ordinal_index
+                    editor.ordinalIndex = model.ordinal_index
                     editor.open()
                 }
                 onDeleteClicked: function () {

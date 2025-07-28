@@ -48,7 +48,7 @@ Rectangle {
         text: "编辑项目名称"
         onClicked: {
             editor.text = projectNameType.name
-            let pos = projectNameType.mapToItem(Qt.application.activeWindow, editBtn.x, editBtn.y)
+            let pos = mapToItem(null, 0, 0)
             editor.x = pos.x + 20
             editor.y = pos.y + 20
             editor.open()

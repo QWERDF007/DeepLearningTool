@@ -23,7 +23,7 @@ Item {
             text: "添加数据集"
             onClicked: {
                 editor.text = ""
-                let pos = header.mapToItem(Qt.application.activeWindow, addBtn.x, addBtn.y)
+                let pos = mapToItem(null, 0, 0)
                 editor.x = pos.x + 20
                 editor.y = pos.y + 20
                 editor.open()
