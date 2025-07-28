@@ -103,7 +103,7 @@ public:
     bool deleteTagClass(const int64_t tag_id);
 
     Q_INVOKABLE bool setImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id);
-    Q_INVOKABLE bool setImagesTag(const int64_t image_id, const int64_t tag_id);
+    Q_INVOKABLE bool setImageTag(const int64_t image_id, const int64_t tag_id);
 
     bool removeImagesTags(const std::vector<int64_t> &image_ids);
 

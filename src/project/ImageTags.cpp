@@ -240,7 +240,7 @@ bool ImageTagsListModel::setImagesTag(const std::vector<int64_t> &image_ids, con
     return true;
 }
 
-bool ImageTagsListModel::setImagesTag(const int64_t image_id, const int64_t tag_id)
+bool ImageTagsListModel::setImageTag(const int64_t image_id, const int64_t tag_id)
 {
     std::vector<int64_t> image_ids{image_id};
     return setImagesTag(image_ids, tag_id);

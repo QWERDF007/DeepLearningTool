@@ -38,11 +38,11 @@ Rectangle {
                 onClicked: {
                     if (imageTagView.multiSelect)
                     {
-                        view.model.setImagesTag(imageTagView.project.imageInstances.getSelectedImagesId(), model.tag_id)
+                        view.model.setImagesTag(project.imageInstances.getSelectedImagesId(), model.tag_id)
                     }
                     else
                     {
-                        view.model.setImagesTag(imageTagView.project.imageInstances.currentImageId, model.tag_id)
+                        view.model.setImageTag(project.imageInstances.currentImageId, model.tag_id)
                     }
                 }
             }
