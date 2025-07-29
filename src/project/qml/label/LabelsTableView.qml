@@ -13,7 +13,8 @@ Rectangle {
     height: 200
 
     property Project project: ProjectManager.currentProject
-    property ImageLabelsTableModel imageLabelsTable: project ? project.imageLabelsTable : null
+    property DataManager dataManager: project ? project.dataManager : null
+    property ImageLabelsTableModel imageLabelsTable: dataManager ? dataManager.imageLabelsTable : null
     property ItemSelectionModel selection: imageLabelsTable ? imageLabelsTable.selection : null
 
     property real rowHeight: 24
@@ -35,9 +36,9 @@ Rectangle {
             text: "删除选中标签"
             iconSource: DltFontIcon.Delete
             onClicked: {
-                if (project && imageLabelsTable) {
+                if (dataManager && imageLabelsTable) {
                     let label_ids = imageLabelsTable.getSelectedLabelIds()
-                    project.deleteLabels(label_ids)
+                    dataManager.deleteLabels(label_ids)
                 }
             }
         }

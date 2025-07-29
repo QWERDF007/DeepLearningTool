@@ -11,8 +11,10 @@ Rectangle {
     clip: true
 
     property Project project: ProjectManager.currentProject
-    property ItemSelectionModel selection: project ? project.imageInstances.selection : null
-    property int total: selection ? selection.model.count : 0
+    property DataManager dataManager: project ? project.dataManager : null
+    property ImageInstancesModel imageInstances: dataManager ? dataManager.imageInstances : null
+    property ItemSelectionModel selection: imageInstances ? imageInstances.selection : null
+    property int total: imageInstances ? imageInstances.count : 0
     property int selected: selection ? selection.selectedIndexes.length : 0
     visible: selection ? selection.hasSelection : false
 
@@ -53,8 +55,8 @@ Rectangle {
             iconSource: DltFontIcon.Delete
             text: "删除选中图像"
             onClicked: {
-                if (project) {
-                    project.deleteSelectedImages()
+                if (dataManager) {
+                    dataManager.deleteSelectedImages()
                 }
             }
         }

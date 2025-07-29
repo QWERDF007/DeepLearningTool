@@ -89,10 +89,7 @@ DltPopup {
                     placeholderText: "输入序号"
                     validator: IntValidator {
                         bottom: 0
-                        top: {
-                            console.log("maxOrdinalIndex", maxOrdinalIndex)
-                            return maxOrdinalIndex
-                        }
+                        top: maxOrdinalIndex
                     }
                     onTextEdited: {
                         labelClassChanged(classId, className, classColor, classShortcut, ordinalIndex)

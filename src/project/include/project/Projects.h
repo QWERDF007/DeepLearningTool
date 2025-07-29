@@ -14,13 +14,8 @@ class RecentProjectsDataBase;
 } // namespace dltool::data
 
 namespace dltool::project {
-class DatasetsListModel;
-class ImageInstancesListModel;
-class LabelClassesListModel;
-class ImageTagsListModel;
-class LabelInstancesListModel;
-class ImageLabelsListModel;
-class ImageLabelsTableModel;
+
+class DataManager;
 
 class Project : public QObject
 {
@@ -32,12 +27,8 @@ class Project : public QObject
     Q_PROPERTY(QString path READ path CONSTANT)
     Q_PROPERTY(QString description READ description NOTIFY descriptionChanged FINAL)
     Q_PROPERTY(QString imageBasePath READ imageBasePath NOTIFY imageBasePathChanged FINAL)
-    Q_PROPERTY(DatasetsListModel *datasets READ datasets NOTIFY datasetsChanged FINAL)
-    Q_PROPERTY(ImageInstancesListModel *imageInstances READ imageInstances NOTIFY imageInstancesChanged FINAL)
-    Q_PROPERTY(LabelClassesListModel *labelClasses READ labelClasses NOTIFY labelClassesChanged FINAL)
-    Q_PROPERTY(ImageTagsListModel *imageTags READ imageTags NOTIFY imageTagsChanged FINAL)
-    Q_PROPERTY(ImageLabelsListModel *imageLabelsList READ imageLabelsList CONSTANT)
-    Q_PROPERTY(ImageLabelsTableModel *imageLabelsTable READ imageLabelsTable CONSTANT)
+    Q_PROPERTY(DataManager *dataManager READ dataManager CONSTANT FINAL)
+
 public:
     Project(const QString &name, const int method, const QString &path, const QString &description,
             const QString image_base_path, const qint64 ctime, const qint64 mtime, QObject *parent = nullptr);
@@ -84,68 +75,13 @@ public:
         return mtime_;
     }
 
-    DatasetsListModel *datasets() const
+    DataManager *dataManager() const
     {
-        return datasets_;
+        return data_manager_;
     }
-
-    ImageInstancesListModel *imageInstances() const
-    {
-        return image_instances_;
-    }
-
-    LabelClassesListModel *labelClasses() const
-    {
-        return label_classes_;
-    }
-
-    ImageTagsListModel *imageTags() const
-    {
-        return image_tags_;
-    }
-
-    ImageLabelsListModel *imageLabelsList() const
-    {
-        return image_labels_list_;
-    }
-
-    ImageLabelsTableModel *imageLabelsTable() const
-    {
-        return image_labels_table_;
-    }
-
-    Q_INVOKABLE QList<QString> getAllDatasetsName() const;
-
-    Q_INVOKABLE int     getDatasetId(const QString &dataset_name) const;
-    Q_INVOKABLE QString getDatasetName(const int dataset_id) const;
-
-    Q_INVOKABLE void addDataset(const QString &name);
-    Q_INVOKABLE void updateDataset(const int64_t dataset_id, const QString &name);
-    Q_INVOKABLE void deleteDataset(const int64_t dataset_id);
-
-    Q_INVOKABLE void importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
-                                const QString &data_dir);
-
-    Q_INVOKABLE void deleteSelectedImages();
-
-    Q_INVOKABLE QVariantMap getImageInstanceInfo(const int64_t image_id);
-
-    Q_INVOKABLE void addLabelClass(const QString &name, const QString &color, const QString &shortcut);
-    Q_INVOKABLE void updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
-                                      const QString &shortcut, const int64_t ordinal_index);
-    Q_INVOKABLE void deleteLabelClass(const int64_t label_class_id);
-
-    Q_INVOKABLE void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
-                               const std::vector<QVariantMap> &data);
-    Q_INVOKABLE void updateLabels(const std::vector<int64_t> &label_ids, const std::vector<QVariantMap> &data);
-    Q_INVOKABLE void deleteLabels(const std::vector<int64_t> &label_ids);
-
-    Q_INVOKABLE void addTagClass(const QString &name);
 
 private:
     void init();
-
-    void updateDatasetsStats();
 
     QString name_;
     int     method_;
@@ -157,21 +93,11 @@ private:
 
     data::ProjectDataBase *database_{nullptr};
 
-    DatasetsListModel       *datasets_{nullptr};
-    ImageInstancesListModel *image_instances_{nullptr};
-    LabelClassesListModel   *label_classes_{nullptr};
-    ImageTagsListModel      *image_tags_{nullptr};
-    LabelInstancesListModel *label_instances_{nullptr};
-    ImageLabelsListModel    *image_labels_list_{nullptr};
-    ImageLabelsTableModel   *image_labels_table_{nullptr};
+    DataManager *data_manager_{nullptr};
 
 signals:
     void descriptionChanged();
     void imageBasePathChanged();
-    void datasetsChanged();
-    void imageInstancesChanged();
-    void labelClassesChanged();
-    void imageTagsChanged();
 };
 
 class RectentProjects : public QAbstractListModel

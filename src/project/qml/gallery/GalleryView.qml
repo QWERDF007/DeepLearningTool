@@ -22,9 +22,9 @@ Item {
     property int spacing: 10
 
     property Project project: ProjectManager.currentProject
-    property ImageInstancesModel model: project ? project.imageInstances : null
-    property ItemSelectionModel selection: model ? model.selection : null
-    property bool hasSelection: selection ? selection.hasSelection : false
+    property DataManager dataManager : project ? project.dataManager : null
+    property ImageInstancesModel imageInstances: dataManager ? dataManager.imageInstances : null
+    property ItemSelectionModel selection: imageInstances ? imageInstances.selection : null
 
     DltMenu {
         id: imageInstanceMenu
@@ -33,8 +33,8 @@ Item {
             text: "删除图像"
             iconSource: DltFontIcon.Delete
             onClicked: {
-                if (project) {
-                    project.deleteSelectedImages()
+                if (dataManager) {
+                    dataManager.deleteSelectedImages()
                 }
             }
         }
@@ -52,7 +52,7 @@ Item {
         }
         keyNavigationEnabled: false // 禁用键盘导航以便启用方向键切换选中图
 
-        model:  project ? project.imageInstances : null
+        model: imageInstances
         delegate: ImageInstanceDelegate {
             width: instancesView.cellWidth
             height: instancesView.cellHeight
@@ -66,9 +66,9 @@ Item {
             if (event.key === Qt.Key_Escape) {
                 selection.clear()
             } else if (event.key === Qt.Key_Delete) {
-                project.deleteSelectedImages()
+                dataManager.deleteSelectedImages()
             } else if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
-                project.imageInstances.selectAll()
+                imageInstances.selectAll()
             } else {
                 updateSelectionByKeyboard(event)
             }
@@ -86,7 +86,7 @@ Item {
 
         function scrollToCurrentItem() {
             // 获取当前项相对于视图内容的位置, 计算视图应该滚动到的位置, 使当前项保持在视图中心
-            if (hasSelection) {
+            if (selection && selection.hasSelection) {
                 let currentIndex = selection.currentIndex.row
                 let currentItem = view.itemAtIndex(currentIndex)
                 if (currentItem) {
@@ -135,7 +135,7 @@ Item {
             acceptedButtons: Qt.LeftButton | Qt.RightButton
 
             onDoubleClicked: function (mouse) {
-                if (hasSelection) {
+                if (selection && selection.hasSelection) {
                     SignalHelper.changeTabBarIndex(2)
                 }
             }
@@ -153,13 +153,13 @@ Item {
                     selection.clear()
                     return
                 }
-                let tmpIndex = view.model.index(index, 0)
-                if (model.lastIndex === -1) {
-                    model.lastIndex = index
+                let tmpIndex = imageInstances.index(index, 0)
+                if (imageInstances.lastIndex === -1) {
+                    imageInstances.lastIndex = index
                 }
                 if (mouse.button === Qt.LeftButton || (mouse.button === Qt.RightButton && !selection.isSelected(tmpIndex))) {
                     if (mouse.modifiers & Qt.ShiftModifier) { // shift 多选
-                        project.imageInstances.shiftSelect(index, model.lastIndex, ItemSelectionModel.ClearAndSelect)
+                        imageInstances.shiftSelect(index, imageInstances.lastIndex, ItemSelectionModel.ClearAndSelect)
                         selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
                     } else if (mouse.modifiers & Qt.ControlModifier) { // ctrl 多选
                         selection.select(tmpIndex, ItemSelectionModel.Select)
@@ -167,7 +167,7 @@ Item {
                     } else { // 单选
                         selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
                         selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
-                        model.lastIndex = index
+                        imageInstances.lastIndex = index
                     }
                 }
                 if (mouse.button === Qt.RightButton) { // 右键弹出菜单
@@ -202,7 +202,7 @@ Item {
         }
 
         if (curIndex !== -1 && newIndex !== curIndex) {
-            let tmpIndex = view.model.index(newIndex, 0)
+            let tmpIndex = imageInstances.index(newIndex, 0)
             selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
             selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
             model.lastIndex = newIndex

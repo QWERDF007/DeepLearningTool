@@ -78,7 +78,8 @@ private:
 class ImageTagsListModel : public QAbstractListModel
 {
     Q_OBJECT
-    QML_ANONYMOUS
+    QML_NAMED_ELEMENT(ImageTagsModel)
+    QML_UNCREATABLE("Can not create ImageTagsModel directly!")
 public:
     ImageTagsListModel(data::ProjectDataBase *database, ImageInstancesListModel *image_instances,
                        QObject *parent = nullptr);

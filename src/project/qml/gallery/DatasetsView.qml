@@ -12,6 +12,8 @@ Rectangle {
     height: 200
     color: DltColor.Primary
     property Project project: ProjectManager.currentProject
+    property DataManager dataManager: project ? project.dataManager : null
+    property DatasetsModel datasets: dataManager ? dataManager.datasets : null
     property var curItem
 
     DltMenu {
@@ -21,9 +23,9 @@ Rectangle {
             text: "导入"
             iconSource: DltFontIcon.ImportMirrored
             onClicked: {
-                if (project && curItem) {
+                if (dataManager && curItem) {
                     importDataDialog.dataFormatModel = DataFormat.getSupportedDataFormat()
-                    importDataDialog.datasetsModel = project.getAllDatasetsName()
+                    importDataDialog.datasetsModel = dataManager.getAllDatasetsName()
                     importDataDialog.datasetName = curItem.name
                     importDataDialog.open()
                 }
@@ -46,8 +48,8 @@ Rectangle {
             text: "删除"
             iconSource: DltFontIcon.Delete
             onClicked: {
-                if (project && curItem) {
-                    project.deleteDataset(curItem.dataset_id)
+                if (dataManager && curItem) {
+                    dataManager.deleteDataset(curItem.dataset_id)
                 }
             }
         }
@@ -57,8 +59,8 @@ Rectangle {
         id: editor
         description: "输入数据集名称"
         onEditTextChanged: function (datasetName) {
-            if (project && curItem) {
-                project.updateDataset(curItem.dataset_id, datasetName)
+            if (dataManager && curItem) {
+                dataManager.updateDataset(curItem.dataset_id, datasetName)
             }
         }
     }
@@ -73,7 +75,7 @@ Rectangle {
         DatasetHeader {
             Layout.fillWidth: true
             height: 32
-            project: datasetsView.project
+            dataManager: datasetsView.dataManager
         }
 
         ListView {
@@ -82,7 +84,7 @@ Rectangle {
             Layout.fillHeight: true
             Layout.fillWidth: true
             boundsBehavior: Flickable.StopAtBounds
-            model: datasetsView.project ? datasetsView.project.datasets : null
+            model: datasets
             ScrollBar.vertical: DltScrollBar {}
             delegate: DatasetDelegate {
                 height: 32
@@ -96,18 +98,15 @@ Rectangle {
                 anchors.fill: parent
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 onClicked: function (mouse) {
-                    if (datasetsView.project === null)
+                    if (dataManager === null)
                         return
                     let posInGridView = Qt.point(mouse.x, mouse.y)
                     let posInContentItem = mapToItem(view.contentItem, posInGridView)
                     let index = view.indexAt(posInContentItem.x, posInContentItem.y)
                     let item = view.itemAtIndex(index)
                     if (item) {
-                        // let tmpIndex = view.model.index(index, 0)
                         if (mouse.button === Qt.RightButton) {
                             curItem = item
-                            // cur_dataset_id = item.dataset_id
-                            // cur_dataset_name = item.name
                             menu.popup()
                         }
                     }

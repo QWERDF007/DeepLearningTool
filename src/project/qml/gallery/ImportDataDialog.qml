@@ -13,6 +13,7 @@ DltPopup {
     height: 400
 
     property Project project: ProjectManager.currentProject
+    property DataManager dataManager: project ? project.dataManager : null
 
     property alias datasetName: importDataForm.datasetName
     property alias datasetsModel: importDataForm.datasetsModel
@@ -55,10 +56,10 @@ DltPopup {
                 normalColor: DltColor.Highlight
                 onClicked: {
                     importDataDialog.close()
-                    if (project) {
-                        let dataset_id = project.getDatasetId(importDataForm.datasetName)
+                    if (dataManager) {
+                        let dataset_id = dataManager.getDatasetId(importDataForm.datasetName)
                         let data_format = DataFormat.getDataFormat(importDataForm.dataFormat)
-                        project.importData(dataset_id, data_format, importDataForm.image_dir, importDataForm.data_dir)
+                        dataManager.importData(dataset_id, data_format, importDataForm.image_dir, importDataForm.data_dir)
                     }
                 }
             }

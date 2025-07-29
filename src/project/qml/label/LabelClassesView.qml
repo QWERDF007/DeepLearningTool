@@ -12,8 +12,9 @@ Rectangle {
     height: 200
     color: DltColor.Primary
     property Project project: ProjectManager.currentProject
-    property LabelClassesModel labelClasses: project ? project.labelClasses : null
-    property ItemSelectionModel selection: project ? project.labelClasses.selection : null
+    property DataManager dataManager: project ? project.dataManager : null
+    property LabelClassesModel labelClasses: dataManager ? dataManager.labelClasses : null
+    property ItemSelectionModel selection: dataManager ? dataManager.labelClasses.selection : null
 
     LabelClassEditor {
         id: editor
@@ -25,8 +26,8 @@ Rectangle {
             }
         }
         onLabelClassChangedAccepted: function (classId, className, classColor, classShortcut, ordinalIndex) {
-            if (project) {
-                project.updateLabelClass(classId, className, classColor, classShortcut, ordinalIndex)
+            if (dataManager) {
+                dataManager.updateLabelClass(classId, className, classColor, classShortcut, ordinalIndex)
             }
         }
     }
@@ -37,7 +38,7 @@ Rectangle {
         LabelClassesHeader {
             Layout.fillWidth: true
             height: 32
-            project: labelClassesView.project
+            dataManager: labelClassesView.dataManager
         }
         ListView {
             id: view
@@ -56,7 +57,7 @@ Rectangle {
                 classColor: model.color
                 classShortcut: model.shortcut
                 onClicked: function() {
-                    let tmpIndex = view.model.index(index, 0)
+                    let tmpIndex = labelClasses.index(index, 0)
                     selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
                     selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
                 }
@@ -72,7 +73,7 @@ Rectangle {
                     editor.open()
                 }
                 onDeleteClicked: function () {
-                    project.deleteLabelClass(model.label_class_id)
+                    dataManager.deleteLabelClass(model.label_class_id)
                 }
             }
         }

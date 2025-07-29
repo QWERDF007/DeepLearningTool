@@ -9,6 +9,9 @@ Rectangle {
     id: imageTagView
     color: DltColor.Primary
     property Project project: ProjectManager.currentProject
+    property DataManager dataManager: project ? project.dataManager : null
+    property ImageInstancesModel imageInstances: dataManager ? dataManager.imageInstances : null
+    property ImageTagsModel imageTags: dataManager ? dataManager.imageTags : null
     property bool multiSelect: false
     property int cellWidth: 80
     property int cellHeight: 30
@@ -19,7 +22,7 @@ Rectangle {
         ImageTagHeader {
             Layout.fillWidth: true
             height: 32
-            project: imageTagView.project
+            dataManager: imageTagView.dataManager
         }
 
         GridView {
@@ -28,7 +31,7 @@ Rectangle {
             Layout.fillWidth: true
             cellWidth: imageTagView.cellWidth + imageTagView.spacing
             cellHeight: imageTagView.cellHeight + imageTagView.spacing
-            model: imageTagView.project ? imageTagView.project.imageTags : null
+            model: imageTags
             delegate: ImageTagDelegate {
                 width: imageTagView.cellWidth
                 height: imageTagView.cellHeight
@@ -38,11 +41,11 @@ Rectangle {
                 onClicked: {
                     if (imageTagView.multiSelect)
                     {
-                        view.model.setImagesTag(project.imageInstances.getSelectedImagesId(), model.tag_id)
+                        imageTags.setImagesTag(imageInstances.getSelectedImagesId(), model.tag_id)
                     }
                     else
                     {
-                        view.model.setImageTag(project.imageInstances.currentImageId, model.tag_id)
+                        imageTags.setImageTag(imageInstances.currentImageId, model.tag_id)
                     }
                 }
             }

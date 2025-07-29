@@ -7,7 +7,7 @@ import dltool.project
 
 Item {
     id: header
-    property Project project
+    property DataManager dataManager
     RowLayout {
         anchors.fill: parent
         DltText {
@@ -34,8 +34,8 @@ Item {
         id: editor
         description: "输入Tag名称"
         onEditTextChanged: function (tagName) {
-            if (project) {
-                project.addTagClass(tagName)
+            if (dataManager) {
+                dataManager.addTagClass(tagName)
             }
         }
     }

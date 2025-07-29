@@ -12,7 +12,8 @@ Rectangle {
     height: 200
     color: DltColor.Primary
     property Project project: ProjectManager.currentProject
-    property ImageInstancesModel model: project ? project.imageInstances : null
+    property DataManager dataManager: project ? project.dataManager : null
+    property ImageInstancesModel model: dataManager ? dataManager.imageInstances : null
     property ItemSelectionModel selection: model ? model.selection : null
     property int total: model ? model.count : 0
     property int current: selection ? selection.currentIndex.row : -1
@@ -69,7 +70,7 @@ Rectangle {
                 iconSource: DltFontIcon.Delete
                 text: "删除图像"
                 onClicked: {
-                    project.deleteSelectedImages()
+                    dataManager.deleteSelectedImages()
                 }
             }
         }

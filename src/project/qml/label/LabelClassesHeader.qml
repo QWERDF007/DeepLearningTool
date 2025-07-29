@@ -7,8 +7,7 @@ import dltool.project
 
 Item {
     id: header
-    property Project project
-    property LabelClassesModel labelClasses: project ? project.labelClasses : null
+    property DataManager dataManager
     RowLayout {
         anchors.fill: parent
         DltText {
@@ -39,8 +38,8 @@ Item {
             }
         }
         onLabelClassChangedAccepted: function (classId, className, classColor, classShortcut, ordinalIndex) {
-            if (project) {
-                project.addLabelClass(className, classColor, classShortcut)
+            if (dataManager) {
+                dataManager.addLabelClass(className, classColor, classShortcut)
             }
         }
     }

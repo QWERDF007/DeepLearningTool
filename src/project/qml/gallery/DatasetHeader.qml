@@ -7,7 +7,7 @@ import dltool.project
 
 Item {
     id: header
-    property Project project
+    property DataManager dataManager
     RowLayout {
         anchors.fill: parent
         DltText {
@@ -34,8 +34,8 @@ Item {
         id: editor
         description: "输入数据集名称"
         onEditTextChanged: function (datasetName) {
-            if (project) {
-                project.addDataset(datasetName)
+            if (dataManager) {
+                dataManager.addDataset(datasetName)
             }
         }
     }

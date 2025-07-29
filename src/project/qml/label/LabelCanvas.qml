@@ -9,11 +9,12 @@ Item {
     clip: true
 
     property Project project: ProjectManager.currentProject
-    property ImageInstancesModel imageInstances: project ? project.imageInstances : null
-    property LabelClassesModel labelClasses: project ? project.labelClasses : null
-    property ImageLabelsListModel imageLabelsList: project ? project.imageLabelsList : null
+    property DataManager dataManager: project ? project.dataManager : null
+    property ImageInstancesModel imageInstances: dataManager ? dataManager.imageInstances : null
+    property LabelClassesModel labelClasses: dataManager ? dataManager.labelClasses : null
+    property ImageLabelsListModel imageLabelsList: dataManager ? dataManager.imageLabelsList : null
     property ItemSelectionModel selection: imageLabelsList ? imageLabelsList.selection : null
-    property color drawingColor: project ? labelClasses.currentLabelClassColor : "red"
+    property color drawingColor: labelClasses ? labelClasses.currentLabelClassColor : "red"
     property point startPos: Qt.point(0, 0)
 
     Connections {
@@ -43,9 +44,9 @@ Item {
             text: "删除选中标签"
             iconSource: DltFontIcon.Delete
             onClicked: {
-                if (project && imageLabelsList) {
+                if (dataManager && imageLabelsList) {
                     let label_ids = imageLabelsList.getSelectedLabelIds()
-                    project.deleteLabels(label_ids)
+                    dataManager.deleteLabels(label_ids)
                 }
             }
         }
@@ -54,7 +55,7 @@ Item {
     LabelImage {
         id: labelImage
         anchors.fill: parent
-        currentImagePath: project ? project.imageInstances.currentImagePath : ""
+        currentImagePath: imageInstances ? imageInstances.currentImagePath : ""
     }
 
     LabelsListView {
@@ -118,8 +119,8 @@ Item {
             if (state === "drawing") {
                 data = drawingItem.getData()
                 // 添加到ListModel
-                if (project && labelClasses.currentLabelClassId !== -1 && data.width > 1 && data.height > 1) {
-                    project.addLabels([imageInstances.currentImageId], [labelClasses.currentLabelClassId], [data])
+                if (dataManager && labelClasses.currentLabelClassId !== -1 && data.width > 1 && data.height > 1) {
+                    dataManager.addLabels([imageInstances.currentImageId], [labelClasses.currentLabelClassId], [data])
                 }
                 drawingItem.clearItem()
             } else if (state === "draging") {
@@ -129,8 +130,8 @@ Item {
                 let item = labelsListView.itemAt(data.index)
                 // data = drawingItem.getData()
                 // 编辑结束时更新标注
-                if (project && data.label_id !== -1) {
-                    project.updateLabels([data.label_id], [data])
+                if (dataManager && data.label_id !== -1) {
+                    dataManager.updateLabels([data.label_id], [data])
                 }
                 let pos = getPosOnImage(event)
                 if (!hitTest(pos)) {
