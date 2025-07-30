@@ -528,4 +528,24 @@ QVariantMap ProjectManager::getProjectInfo(const QString &path)
     return project_info;
 }
 
+QVariantMap ProjectManager::getLabelInfo(const QString &path)
+{
+    if (path.isEmpty() || !QFile::exists(path))
+    {
+        return QVariantMap({
+            {         "label_classes", ""},
+            {"label_instances_images", ""},
+        });
+    }
+    spdlog::info("获取标注信息: {}", path.toUtf8().constData());
+    QVariantMap label_info;
+    QString     err_msg;
+    bool        ok = data::ProjectDataBase::getLabelInfo(path, label_info, err_msg);
+    if (!ok)
+    {
+        spdlog::error("获取项目信息失败, {}, error: {}", path.toUtf8().constData(), err_msg.toUtf8().constData());
+    }
+    return label_info;
+}
+
 } // namespace dltool::project

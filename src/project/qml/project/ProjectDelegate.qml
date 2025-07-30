@@ -12,8 +12,6 @@ Rectangle {
     width: 160
     height: 120
     color: DltColor.Background
-    border.color: DltColor.Border
-    border.width: 1
 
     property bool selected: false
     property string name: "项目名"
@@ -21,31 +19,28 @@ Rectangle {
     property string imagePath: ""
     property string msg: ""
 
+    border.color: selected ? DltColor.Highlight : DltColor.Border
+    border.width: 2
+
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 1
-        Rectangle {
+        anchors.margins: 2
+        Image {
             Layout.fillHeight: true
             Layout.fillWidth: true
-            color: "transparent"
-            border.color: DltColor.Highlight
-            border.width: selected ? 2 : 0
-            Image {
-                anchors.fill: parent
-                anchors.margins: 2
-                asynchronous: true
-                fillMode: Image.PreserveAspectFit // Image.PreserveAspectCrop
-                source: control.imagePath ? "file:///" + control.imagePath : ""
-                sourceSize.width: parent.width
-                sourceSize.height: parent.height
-            }
+            asynchronous: true
+            fillMode: Image.PreserveAspectFit // Image.PreserveAspectCrop
+            source: control.imagePath ? "file:///" + control.imagePath : ""
+            sourceSize.width: parent.width
+            sourceSize.height: parent.height
         }
         DltText {
-            Layout.leftMargin: 5
+            Layout.fillWidth: true
+            Layout.margins: 5
+            verticalAlignment: Text.AlignVCenter
             text: control.name
         }
     }
-
 
     MouseArea {
         id: mouseArea

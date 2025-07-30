@@ -64,6 +64,9 @@ Rectangle {
                 projectInfo.image_base_path = info.image_base_path
                 projectInfo.ctime = info.ctime
                 projectInfo.mtime = info.mtime
+                info = ProjectManager.getLabelInfo(path)
+                projectInfo.label_classes = info.label_classes
+                projectInfo.label_instances_images = info.label_instances_images
             }
         }
     }

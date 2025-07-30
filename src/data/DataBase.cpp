@@ -245,6 +245,67 @@ bool ProjectDataBase::getProjectInfo(const QString &path, QVariantMap &project_i
     }
 }
 
+bool ProjectDataBase::getLabelInfo(const QString &path, QVariantMap &label_info, QString &err_msg)
+{
+    try
+    {
+        label_info.insert("label_classes", "");
+        label_info.insert("label_instances_images", "");
+
+        sqlpp::sqlite3::connection db = DataBase::connect(path, SQLITE_OPEN_READONLY);
+
+        QString classes_info;
+        int     label_classes_cnt = 0;
+        // 查询每个类别的标注实例数量
+        auto    query1 = sqlpp::select(LabelClassesTable.name, count(LabelsTable.id))
+                          .from(LabelClassesTable.left_outer_join(LabelsTable)
+                                    .on(LabelClassesTable.id == LabelsTable.labelClassId))
+                          .unconditionally()
+                          .group_by(LabelClassesTable.id, LabelClassesTable.name)
+                          .order_by(count(LabelsTable.id).desc());
+        for (const auto &row : db(query1))
+        {
+            ++label_classes_cnt;
+            classes_info += QString("%1 (%2), ").arg(QString::fromStdString(row.name)).arg(row.count);
+        }
+        if (label_classes_cnt)
+        {
+            classes_info.chop(2);
+            label_info["label_classes"] = QString("%1 : %2").arg(label_classes_cnt).arg(classes_info);
+        }
+
+        QString image_instances_info;
+        int     image_cnt{0}, labelled_image_cnt{0}, label_cnt{0};
+        // 查询每个图像的标注实例数量
+        auto    query2 = sqlpp::select(LabelsTable.imageId, count(LabelsTable.id))
+                          .from(LabelsTable)
+                          .unconditionally()
+                          .group_by(LabelsTable.imageId);
+        for (const auto &row : db(query2))
+        {
+            ++labelled_image_cnt;
+            label_cnt += row.count;
+        }
+        // 查询图像数量
+        auto query3 = sqlpp::select(count(ImagesTable.id)).from(ImagesTable).unconditionally();
+        auto data   = db(query3);
+        if (!data.empty())
+        {
+            image_cnt = data.front().count;
+        }
+
+        image_instances_info
+            = QString("%1 个实例在 %2 张图像中 / %3 图像").arg(label_cnt).arg(labelled_image_cnt).arg(image_cnt);
+        label_info["label_instances_images"] = image_instances_info;
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
 bool ProjectDataBase::getAllDatasets(std::vector<int64_t> &dataset_ids, std::vector<QString> &names,
                                      QString &err_msg) const
 {

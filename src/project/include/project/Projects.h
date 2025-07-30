@@ -224,6 +224,7 @@ public:
     }
 
     Q_INVOKABLE QVariantMap getProjectInfo(const QString &path);
+    Q_INVOKABLE QVariantMap getLabelInfo(const QString &path);
 
 private:
     explicit ProjectManager(QObject *parent = nullptr);

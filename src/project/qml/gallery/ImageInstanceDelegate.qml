@@ -16,7 +16,7 @@ Rectangle {
     height: 240
     color: "transparent"
     border.color: selected ? DltColor.Highlight : DltColor.Border
-    border.width: selected ? 2 : 1
+    border.width: 2
 
 
     Image {

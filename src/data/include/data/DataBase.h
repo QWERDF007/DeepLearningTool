@@ -102,6 +102,7 @@ public:
                                       const qint64 new_mtime, QString &err_msg);
 
     static bool getProjectInfo(const QString &path, QVariantMap &project_info, QString &err_msg);
+    static bool getLabelInfo(const QString &path, QVariantMap &label_info, QString &err_msg);
 
     bool getAllDatasets(std::vector<int64_t> &dataset_ids, std::vector<QString> &names, QString &err_msg) const;
 
