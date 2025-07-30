@@ -101,8 +101,10 @@ public:
         return selection_;
     }
 
-    std::vector<int64_t> getLabelIds(const std::vector<int64_t> &image_ids) const;
+    int64_t              getImageId(const int64_t label_id) const;
     std::vector<int64_t> getImageIds(const std::vector<int64_t> &label_ids) const;
+    int64_t              getLabelClassId(const int64_t label_id) const;
+    std::vector<int64_t> getLabelClassIds(const std::vector<int64_t> &label_ids) const;
 
     const LabelDataHelper &helper() const
     {

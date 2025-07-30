@@ -13,6 +13,10 @@ class ProjectDataBase;
 
 namespace dltool::project {
 
+class DatasetsListModel;
+class LabelClassesListModel;
+class LabelInstancesListModel;
+
 class ImageInstance : public QObject
 {
 public:
@@ -124,7 +128,7 @@ class ImageInstancesListModel : public QAbstractListModel
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(ImageInstancesModel)
-    QML_UNCREATABLE("Can not create ImageInstancesList directly!")
+    QML_UNCREATABLE("Can not create ImageInstancesModel directly!")
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
     Q_PROPERTY(int currentImageId READ getCurrentImageId NOTIFY currentImageChanged)
     Q_PROPERTY(QString currentImageName READ currentImageName NOTIFY currentImageChanged)
@@ -156,6 +160,8 @@ public:
     bool deleteImages(const int64_t dataset_id, std::vector<int64_t> &image_ids);
 
     std::vector<int64_t> getDatasetIds(const std::vector<int64_t> &image_ids) const;
+
+    std::vector<std::vector<int64_t>> getLabelIds(const std::vector<int64_t> &image_ids) const;
 
     static std::vector<QString> getImagePaths(const QString &image_idr);
 
@@ -205,8 +211,8 @@ public:
 
     std::vector<int64_t> getImagesDatasetIds(const std::vector<int64_t> &image_ids) const;
 
-    void getImagesLabelIds(std::vector<int64_t> &dataset_ids, std::vector<int64_t> &image_ids,
-                           std::vector<std::vector<int64_t>> &images_label_ids) const;
+    void getAllDatasetsImagesLabels(std::vector<int64_t> &dataset_ids, std::vector<int64_t> &image_ids,
+                                    std::vector<std::vector<int64_t>> &images_label_ids) const;
 
 private:
     void init();
@@ -245,4 +251,40 @@ signals:
     void lastSelectedIndexChanged();
 };
 
+class ImageInfoListModel : public QAbstractListModel
+{
+    Q_OBJECT
+    QML_NAMED_ELEMENT(ImageInfoModel)
+    QML_UNCREATABLE("Can not create ImageInfoModel directly!")
+public:
+    ImageInfoListModel(DatasetsListModel *datasets, ImageInstancesListModel *image_instances,
+                       LabelClassesListModel *label_classes, LabelInstancesListModel *label_instances,
+                       QObject *parent = nullptr);
+    ~ImageInfoListModel();
+
+    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+
+    enum Role
+    {
+        TitleRole = Qt::UserRole + 1,
+        ValueRole,
+    };
+
+    QHash<int, QByteArray> roleNames() const override;
+
+    void onCurrentImageChanged();
+
+private:
+    void resetModel();
+
+    QVariant getTitle(const QModelIndex &index) const;
+    QVariant getValue(const QModelIndex &index) const;
+
+    DatasetsListModel       *datasets_{nullptr};
+    ImageInstancesListModel *image_instances_{nullptr};
+    LabelClassesListModel   *label_classes_{nullptr};
+    LabelInstancesListModel *label_instances_{nullptr};
+};
 } // namespace dltool::project

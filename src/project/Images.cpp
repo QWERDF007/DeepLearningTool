@@ -223,6 +223,20 @@ std::vector<int64_t> ImageInstancesListModel::getDatasetIds(const std::vector<in
     return dataset_ids;
 }
 
+std::vector<std::vector<int64_t>> ImageInstancesListModel::getLabelIds(const std::vector<int64_t> &image_ids) const
+{
+    std::vector<std::vector<int64_t>> label_ids;
+    label_ids.reserve(image_ids.size());
+    for (const auto &image_id : image_ids)
+    {
+        auto found = image_instances_.find(image_id);
+        if (found != image_instances_.end())
+            label_ids.push_back(
+                std::vector<int64_t>{found->second->labelIds().begin(), found->second->labelIds().end()});
+    }
+    return label_ids;
+}
+
 std::vector<QString> ImageInstancesListModel::getImagePaths(const QString &image_idr)
 {
     return getFiles(image_idr, data::DataFormat::getSupportedImageFormat(), false);
@@ -514,8 +528,9 @@ std::vector<int64_t> ImageInstancesListModel::getImagesDatasetIds(const std::vec
     return dataset_ids;
 }
 
-void ImageInstancesListModel::getImagesLabelIds(std::vector<int64_t> &dataset_ids, std::vector<int64_t> &image_ids,
-                                                std::vector<std::vector<int64_t>> &images_label_ids) const
+void ImageInstancesListModel::getAllDatasetsImagesLabels(std::vector<int64_t>              &dataset_ids,
+                                                         std::vector<int64_t>              &image_ids,
+                                                         std::vector<std::vector<int64_t>> &images_label_ids) const
 {
     dataset_ids.reserve(image_instances_.size());
     image_ids.reserve(image_instances_.size());
@@ -578,6 +593,71 @@ void ImageInstancesListModel::resetModel()
         image_ids_.push_back(image_id);
     }
     endResetModel();
+}
+
+ImageInfoListModel::ImageInfoListModel(DatasetsListModel *datasets, ImageInstancesListModel *image_instances,
+                                       LabelClassesListModel *label_classes, LabelInstancesListModel *label_instances,
+                                       QObject *parent)
+    : QAbstractListModel(parent)
+    , datasets_(datasets)
+    , image_instances_(image_instances)
+    , label_classes_(label_classes)
+    , label_instances_(label_instances)
+{
+}
+
+ImageInfoListModel::~ImageInfoListModel() {}
+
+int ImageInfoListModel::rowCount(const QModelIndex &parent) const
+{
+    if (parent.isValid())
+        return 0;
+    return 5;
+}
+
+QVariant ImageInfoListModel::data(const QModelIndex &index, int role) const
+{
+    if (index.row() < 0 || index.row() >= rowCount())
+        return QVariant();
+    switch (role)
+    {
+    case TitleRole:
+        return "";
+    case ValueRole:
+        return "";
+    default:
+        return QVariant();
+    }
+}
+
+QHash<int, QByteArray> ImageInfoListModel::roleNames() const
+{
+    return {
+        {TitleRole, "title"},
+        {ValueRole, "value"},
+    };
+}
+
+void ImageInfoListModel::onCurrentImageChanged()
+{
+    resetModel();
+}
+
+void ImageInfoListModel::resetModel()
+{
+    beginResetModel();
+    // TODO: 重置模型
+    endResetModel();
+}
+
+QVariant ImageInfoListModel::getTitle(const QModelIndex &index) const
+{
+    return "";
+}
+
+QVariant ImageInfoListModel::getValue(const QModelIndex &index) const
+{
+    return "";
 }
 
 } // namespace dltool::project

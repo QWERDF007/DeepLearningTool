@@ -276,18 +276,12 @@ std::vector<std::vector<int64_t>> LabelInstancesListModel::getImagesLabelIds(
     return images_label_ids;
 }
 
-std::vector<int64_t> LabelInstancesListModel::getLabelIds(const std::vector<int64_t> &image_ids) const
+int64_t LabelInstancesListModel::getImageId(const int64_t label_id) const
 {
-    std::vector<int64_t> label_ids;
-    label_ids.reserve(image_ids.size());
-    std::set<int64_t> image_ids_set(image_ids.begin(), image_ids.end());
-    for (const auto &[label_id, instance] : label_instances_)
-    {
-        const int64_t image_id = instance->imageId();
-        if (image_ids_set.count(image_id))
-            label_ids.push_back(label_id);
-    }
-    return label_ids;
+    auto found = label_instances_.find(label_id);
+    if (found == label_instances_.end())
+        return -1;
+    return found->second->imageId();
 }
 
 std::vector<int64_t> LabelInstancesListModel::getImageIds(const std::vector<int64_t> &label_ids) const
@@ -296,13 +290,28 @@ std::vector<int64_t> LabelInstancesListModel::getImageIds(const std::vector<int6
     image_ids.reserve(label_ids.size());
     for (const auto &label_id : label_ids)
     {
-        auto found = label_instances_.find(label_id);
-        if (found == label_instances_.end())
-            image_ids.push_back(-1);
-        else
-            image_ids.push_back(found->second->imageId());
+        image_ids.push_back(getImageId(label_id));
     }
     return image_ids;
+}
+
+int64_t LabelInstancesListModel::getLabelClassId(const int64_t label_id) const
+{
+    auto found = label_instances_.find(label_id);
+    if (found == label_instances_.end())
+        return -1;
+    return found->second->labelClassId();
+}
+
+std::vector<int64_t> LabelInstancesListModel::getLabelClassIds(const std::vector<int64_t> &label_ids) const
+{
+    std::vector<int64_t> label_class_ids;
+    label_class_ids.reserve(label_ids.size());
+    for (const auto &label_id : label_ids)
+    {
+        label_class_ids.push_back(getLabelClassId(label_id));
+    }
+    return label_class_ids;
 }
 
 int LabelInstancesListModel::getLabelId(const QModelIndex &index) const
@@ -317,7 +326,7 @@ int LabelInstancesListModel::getImageId(const QModelIndex &index) const
 
 int LabelInstancesListModel::getLabelClassId(const QModelIndex &index) const
 {
-    return label_instances_.at(label_ids_[index.row()])->labelClassId();
+    return getLabelClassId(label_ids_[index.row()]);
 }
 
 QVariant LabelInstancesListModel::getData(const QModelIndex &index) const

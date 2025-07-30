@@ -27,6 +27,7 @@ class DataManager : public QObject
     Q_PROPERTY(LabelInstancesListModel *labelInstances READ labelInstances CONSTANT FINAL)
     Q_PROPERTY(ImageLabelsListModel *imageLabelsList READ imageLabelsList CONSTANT FINAL)
     Q_PROPERTY(ImageLabelsTableModel *imageLabelsTable READ imageLabelsTable CONSTANT FINAL)
+    Q_PROPERTY(ImageInfoListModel *imageInfo READ imageInfo CONSTANT FINAL)
 
 public:
     DataManager(const int method, data::ProjectDataBase *database, QObject *parent = nullptr);
@@ -65,6 +66,11 @@ public:
     ImageLabelsTableModel *imageLabelsTable() const
     {
         return image_labels_table_;
+    }
+
+    ImageInfoListModel *imageInfo() const
+    {
+        return image_info_;
     }
 
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
@@ -109,6 +115,8 @@ private:
     LabelInstancesListModel *label_instances_{nullptr};
     ImageLabelsListModel    *image_labels_list_{nullptr};
     ImageLabelsTableModel   *image_labels_table_{nullptr};
+
+    ImageInfoListModel *image_info_{nullptr};
 };
 
 } // namespace dltool::project

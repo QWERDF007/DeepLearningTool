@@ -27,11 +27,14 @@ void DataManager::init(const int method)
                                                       data::createLabelDataHelper(method), this);
     image_labels_list_  = new ImageLabelsListModel(image_instances_, label_instances_, label_classes_, this);
     image_labels_table_ = new ImageLabelsTableModel(image_instances_, label_instances_, label_classes_, this);
+    image_info_         = new ImageInfoListModel(datasets_, image_instances_, label_classes_, label_instances_, this);
 
     connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_labels_list_,
             &ImageLabelsListModel::onCurrentImageChanged);
     connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_labels_table_,
             &ImageLabelsTableModel::onCurrentImageChanged);
+    connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_info_,
+            &ImageInfoListModel::onCurrentImageChanged);
 
     connect(image_instances_->selection(), &QItemSelectionModel::selectionChanged, image_tags_,
             &ImageTagsListModel::updateStats);
@@ -101,9 +104,14 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
 
 void DataManager::deleteSelectedImages()
 {
-    std::vector<int64_t> image_ids   = image_instances_->getSelectedImagesId();
-    std::vector<int64_t> dataset_ids = image_instances_->getDatasetIds(image_ids);
-    std::vector<int64_t> label_ids   = label_instances_->getLabelIds(image_ids);
+    std::vector<int64_t>              image_ids        = image_instances_->getSelectedImagesId();
+    std::vector<int64_t>              dataset_ids      = image_instances_->getDatasetIds(image_ids);
+    std::vector<std::vector<int64_t>> images_label_ids = image_instances_->getLabelIds(image_ids);
+    std::vector<int64_t>              label_ids;
+    for (const std::vector<int64_t> &_label_ids : images_label_ids)
+    {
+        label_ids.insert(label_ids.end(), _label_ids.begin(), _label_ids.end());
+    }
     datasets_->deleteImages(dataset_ids, image_ids);
     image_tags_->removeImagesTags(image_ids);
     image_instances_->deleteImages(image_ids);
@@ -116,6 +124,32 @@ QVariantMap DataManager::getImageInstanceInfo(const int64_t image_id)
     QVariantMap   info       = image_instances_->getImageInstanceInfo(image_id);
     const int64_t dataset_id = info.value("dataset_id").toInt();
     info["datasetName"]      = datasets_->getDatasetName(dataset_id);
+
+    std::vector<std::vector<int64_t>> images_label_ids = image_instances_->getLabelIds({image_id});
+    if (images_label_ids.empty() || images_label_ids[0].empty())
+    {
+        info["labelInfo"] = "";
+        return info;
+    }
+    std::map<QString, int> class_count;
+    for (const int64_t label_id : images_label_ids[0])
+    {
+        const int64_t label_class_id = label_instances_->getLabelClassId(label_id);
+        if (label_class_id == -1)
+            continue;
+        QString label_class_name = label_classes_->getLabelClassName(label_class_id);
+        if (class_count.find(label_class_name) == class_count.end())
+            class_count[label_class_name] = 0;
+        class_count[label_class_name]++;
+    }
+    QString label_info;
+    for (const auto &[label_class_name, count] : class_count)
+    {
+        label_info += QString("%1(%2), ").arg(label_class_name).arg(count);
+    }
+    if (!label_info.isEmpty())
+        label_info.chop(2);
+    info["labelInfo"] = label_info;
     return info;
 }
 
@@ -177,7 +211,7 @@ void DataManager::updateDatasetsStats()
         return;
     std::vector<int64_t>              dataset_ids, image_ids;
     std::vector<std::vector<int64_t>> images_label_ids;
-    image_instances_->getImagesLabelIds(dataset_ids, image_ids, images_label_ids);
+    image_instances_->getAllDatasetsImagesLabels(dataset_ids, image_ids, images_label_ids);
     datasets_->setStats(dataset_ids, image_ids, images_label_ids);
 }
 

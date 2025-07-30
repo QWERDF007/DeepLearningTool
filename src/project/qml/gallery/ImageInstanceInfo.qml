@@ -131,7 +131,7 @@ Rectangle {
                 textColor: DltColor.FontDark
             }
             DltText {
-                id: labelInstance
+                id: labelInfo
             }
         }
         Item {
@@ -147,6 +147,7 @@ Rectangle {
             imagePath.text = info.path
             datasetName.text = info.datasetName
             imageSize.text = info.imageSize
+            labelInfo.text = info.labelInfo
         }
     }
 }
