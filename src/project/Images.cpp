@@ -1,6 +1,9 @@
 #include "project/Images.h"
 
 #include "data/DataBase.h"
+#include "project/Datasets.h"
+#include "project/LabelClasses.h"
+#include "project/Labels.h"
 
 #include <data/DataFormat.h>
 #include <spdlog/spdlog.h>
@@ -293,29 +296,6 @@ void ImageInstancesListModel::selectAll()
     QItemSelection selection;
     selection.select(index(0), index(rowCount() - 1));
     selection_->select(selection, QItemSelectionModel::Select);
-}
-
-QVariantMap ImageInstancesListModel::getImageInstanceInfo(const int64_t image_id)
-{
-    QVariantMap info;
-    auto        found = image_instances_.find(image_id);
-    if (found == image_instances_.end())
-    {
-        info["image_id"]   = -1;
-        info["name"]       = "";
-        info["path"]       = "";
-        info["dataset_id"] = -1;
-        info["imageSize"]  = "";
-        return info;
-    }
-    info["image_id"]   = found->second->imageId();
-    info["name"]       = found->second->name();
-    info["path"]       = found->second->path();
-    info["dataset_id"] = found->second->datasetId();
-    QImageReader reader(found->second->path());
-    QSize        image_size = reader.size();
-    info["imageSize"]       = QString("%1x%2").arg(image_size.width()).arg(image_size.height());
-    return info;
 }
 
 QString ImageInstancesListModel::currentImageName() const
@@ -622,9 +602,9 @@ QVariant ImageInfoListModel::data(const QModelIndex &index, int role) const
     switch (role)
     {
     case TitleRole:
-        return "";
+        return getTitle(index);
     case ValueRole:
-        return "";
+        return getValue(index);
     default:
         return QVariant();
     }
@@ -643,6 +623,11 @@ void ImageInfoListModel::onCurrentImageChanged()
     resetModel();
 }
 
+void ImageInfoListModel::updateLabelInfo()
+{
+    emit dataChanged(index(4), index(4), {ValueRole});
+}
+
 void ImageInfoListModel::resetModel()
 {
     beginResetModel();
@@ -652,12 +637,70 @@ void ImageInfoListModel::resetModel()
 
 QVariant ImageInfoListModel::getTitle(const QModelIndex &index) const
 {
-    return "";
+    const int row = index.row();
+    switch (row)
+    {
+    case 0:
+        return "图像名称:";
+    case 1:
+        return "图像路径:";
+    case 2:
+        return "图像大小:";
+    case 3:
+        return "所属数据集:";
+    case 4:
+        return "标签实例:";
+    default:
+        return QVariant();
+    }
 }
 
 QVariant ImageInfoListModel::getValue(const QModelIndex &index) const
 {
-    return "";
+    const int      row      = index.row();
+    const int64_t  image_id = image_instances_->getCurrentImageId();
+    ImageInstance *instance = image_instances_->getImageInstance(image_id);
+    if (instance == nullptr)
+        return "";
+    switch (row)
+    {
+    case 0:
+        return instance->name();
+    case 1:
+        return instance->path();
+    case 2:
+    {
+        QSize size = instance->imageSize();
+        return QString("%1x%2").arg(size.width()).arg(size.height());
+    }
+    case 3:
+        return datasets_->getDatasetName(instance->datasetId());
+    case 4:
+    {
+        std::set<int64_t>      label_ids = instance->labelIds();
+        std::map<QString, int> classes_count;
+        for (const auto &label_id : label_ids)
+        {
+            const int64_t label_class_id = label_instances_->getLabelClassId(label_id);
+            if (label_class_id == -1)
+                continue;
+            const QString class_name = label_classes_->getLabelClassName(label_class_id);
+            if (classes_count.find(class_name) == classes_count.end())
+                classes_count[class_name] = 0;
+            classes_count[class_name]++;
+        }
+        QString label_info;
+        for (const auto &[class_name, count] : classes_count)
+        {
+            label_info += QString("%1 (%2), ").arg(class_name).arg(count);
+        }
+        if (!label_info.isEmpty())
+            label_info.chop(2);
+        return label_info;
+    }
+    default:
+        return QVariant();
+    }
 }
 
 } // namespace dltool::project

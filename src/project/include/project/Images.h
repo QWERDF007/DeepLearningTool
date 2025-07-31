@@ -175,8 +175,6 @@ public:
     Q_INVOKABLE void shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command);
     Q_INVOKABLE void selectAll();
 
-    QVariantMap getImageInstanceInfo(const int64_t image_id);
-
     QString currentImageName() const;
     QString currentImagePath() const;
 
@@ -275,6 +273,8 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     void onCurrentImageChanged();
+
+    void updateLabelInfo();
 
 private:
     void resetModel();

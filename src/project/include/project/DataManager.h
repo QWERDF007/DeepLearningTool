@@ -87,8 +87,6 @@ public:
 
     Q_INVOKABLE void deleteSelectedImages();
 
-    Q_INVOKABLE QVariantMap getImageInstanceInfo(const int64_t image_id);
-
     Q_INVOKABLE void addLabelClass(const QString &name, const QString &color, const QString &shortcut);
     Q_INVOKABLE void updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
                                       const QString &shortcut, const int64_t ordinal_index);

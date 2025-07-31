@@ -13,17 +13,10 @@ Rectangle {
 
     property Project project: ProjectManager.currentProject
     property DataManager dataManager: project ? project.dataManager : null
+    property ImageInfoModel imageInfo : dataManager ? dataManager.imageInfo : null
     property int currentImageId: dataManager ? dataManager.imageInstances.currentImageId : -1
 
-    DltText {
-        anchors.top: parent.top
-        anchors.topMargin: 5
-        anchors.left: parent.left
-        anchors.leftMargin: 5
-        id: title
-        text: "图像属性:"
-        font: DltFont.Subtitle
-    }
+
 
     DltMenu {
         id: menu
@@ -40,114 +33,51 @@ Rectangle {
         id: copyboard
         visible: false
     }
-
     ColumnLayout {
-        anchors{
-            top: title.bottom
-            left: parent.left
-            right: parent.right
-            bottom: parent.bottom
+        anchors.fill: parent
+        anchors.margins: 5
+        DltText {
+            Layout.fillWidth: true
+            height: 32
+            text: "图像属性:"
+            font: DltFont.Subtitle
         }
-        anchors.margins: 10
-        ColumnLayout {
-            width: parent.width
-            height: rowH
-            DltText {
-                text: "图像名称:"
-                textColor: DltColor.FontDark
-            }
-            DltText {
-                id: imageName
-                Layout.fillWidth: true
-                wrapMode: Text.Wrap
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.RightButton
-                    onClicked: function(mouse) {
-                        copyboard.text = imageName.text
-                        menu.popup()
-                    }
-                }
-            }
-        }
-        ColumnLayout {
-            width: parent.width
-            height: rowH
-            DltText {
-                text: "图像路径:"
-                textColor: DltColor.FontDark
-            }
-            DltText {
-                id: imagePath
-                Layout.fillWidth: true
-                wrapMode: Text.Wrap
-                // elide: Text.ElideMiddle
-                // DltToolTip {
-                //     text: imagePath.text
-                //     visible: mouseArea.containsMouse && imagePath.truncated
-                // }
-                // MouseArea {
-                //     id: mouseArea 
-                //     anchors.fill: parent
-                //     hoverEnabled: true
-                // }
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.RightButton
-                    onClicked: function(mouse) {
-                        copyboard.text = imagePath.text
-                        menu.popup()
-                    }
-                }
-            }
-        }
-        ColumnLayout {
-            width: parent.width
-            height: rowH
-            DltText {
-                text: "图像大小:"
-                textColor: DltColor.FontDark
-            }
-            DltText {
-                id: imageSize
-            }
-        }
-        ColumnLayout {
-            width: parent.width
-            height: rowH
-            DltText {
-                text: "所属数据集:"
-                textColor: DltColor.FontDark
-            }
-            DltText {
-                id: datasetName
-            }
-        }
-        ColumnLayout {
-            width: parent.width
-            height: rowH
-            DltText {
-                text: "标签实例:"
-                textColor: DltColor.FontDark
-            }
-            DltText {
-                id: labelInfo
-            }
-        }
-        Item {
+
+        ListView {
+            id: view
+            clip: true
             Layout.fillHeight: true
             Layout.fillWidth: true
-        }
-    }
-
-    onCurrentImageIdChanged: {
-        if (dataManager) {
-            let info = dataManager.getImageInstanceInfo(currentImageId)
-            imageName.text = info.name
-            imagePath.text = info.path
-            datasetName.text = info.datasetName
-            imageSize.text = info.imageSize
-            labelInfo.text = info.labelInfo
+            boundsBehavior: Flickable.StopAtBounds
+            model: imageInfo
+            ScrollBar.vertical: DltScrollBar{}
+            delegate: ColumnLayout {
+                width: view.width
+                spacing: 2
+                DltText {
+                    Layout.leftMargin: 5
+                    Layout.rightMargin: 5
+                    text: model.title
+                    textColor: DltColor.FontDark
+                }
+                DltText {
+                    id: value
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 5
+                    Layout.rightMargin: 5
+                    Layout.bottomMargin: 5
+                    text: model.value
+                    wrapMode: Text.Wrap
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.RightButton
+                        onClicked: function(mouse) {
+                            copyboard.text = value.text
+                            menu.popup()
+                        }
+                    }
+                }
+            }
         }
     }
 }

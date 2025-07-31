@@ -119,40 +119,6 @@ void DataManager::deleteSelectedImages()
     updateDatasetsStats();
 }
 
-QVariantMap DataManager::getImageInstanceInfo(const int64_t image_id)
-{
-    QVariantMap   info       = image_instances_->getImageInstanceInfo(image_id);
-    const int64_t dataset_id = info.value("dataset_id").toInt();
-    info["datasetName"]      = datasets_->getDatasetName(dataset_id);
-
-    std::vector<std::vector<int64_t>> images_label_ids = image_instances_->getLabelIds({image_id});
-    if (images_label_ids.empty() || images_label_ids[0].empty())
-    {
-        info["labelInfo"] = "";
-        return info;
-    }
-    std::map<QString, int> class_count;
-    for (const int64_t label_id : images_label_ids[0])
-    {
-        const int64_t label_class_id = label_instances_->getLabelClassId(label_id);
-        if (label_class_id == -1)
-            continue;
-        QString label_class_name = label_classes_->getLabelClassName(label_class_id);
-        if (class_count.find(label_class_name) == class_count.end())
-            class_count[label_class_name] = 0;
-        class_count[label_class_name]++;
-    }
-    QString label_info;
-    for (const auto &[label_class_name, count] : class_count)
-    {
-        label_info += QString("%1(%2), ").arg(label_class_name).arg(count);
-    }
-    if (!label_info.isEmpty())
-        label_info.chop(2);
-    info["labelInfo"] = label_info;
-    return info;
-}
-
 void DataManager::addLabelClass(const QString &name, const QString &color, const QString &shortcut)
 {
     label_classes_->addLabelClass(name, color, shortcut);
@@ -179,6 +145,7 @@ void DataManager::addLabels(const std::vector<int64_t> &image_ids, const std::ve
     image_labels_list_->addLabels(image_ids, label_ids);
     image_labels_table_->addLabels(image_ids, label_ids);
     updateDatasetsStats();
+    image_info_->updateLabelInfo();
 }
 
 void DataManager::updateLabels(const std::vector<int64_t> &label_ids, const std::vector<QVariantMap> &data)
@@ -198,6 +165,7 @@ void DataManager::deleteLabels(const std::vector<int64_t> &label_ids)
     image_labels_list_->deleteLabels(image_ids, label_ids);
     image_labels_table_->deleteLabels(image_ids, label_ids);
     updateDatasetsStats();
+    image_info_->updateLabelInfo();
 }
 
 void DataManager::addTagClass(const QString &name)
