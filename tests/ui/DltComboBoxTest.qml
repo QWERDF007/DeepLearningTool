@@ -7,7 +7,6 @@ import dltool.ui
 DltComboBox {
     id: combo
     editable: true
-    model: ["Option A", "Option B", "Option C"]
 
     SignalSpy {
         id: commitSpy
@@ -21,17 +20,63 @@ DltComboBox {
 
         function init() {
             combo.enabled = true
-            combo.model = ["Option A", "Option B", "Option C"]
+            combo.model = ["Option A", "Option B", "Option C", "Option D"]
+            combo.currentIndex = -1
         }
 
         function cleanup() {
-
+            combo.popup.close()
         }
 
-        function test_defaultProperties() {
-            verify(combo.enabled)
-            verify(combo.editable)
+        function test_initialState() { // 测试初始状态
+            verify(combo !== null)
+            verify(combo.count === 4)
+            verify(combo.currentIndex === -1)
+            verify(combo.displayText === "")
         }
+
+        function test_modelUpdate() { // 测试模型更新
+            verify(combo.model !== null)
+            verify(combo.currentIndex === -1)
+            verify(combo.displayText === "")
+            combo.model = ["A", "B", "C"]
+            verify(combo.count === 3)
+            verify(combo.currentIndex === 0)
+            verify(combo.displayText === "A")
+        }
+
+        function test_emptyModel() { // 测试空模型
+            combo.model = []
+            verify(combo.count === 0)
+            verify(combo.currentIndex === -1)
+            verify(combo.displayText === "")
+        }
+
+        function test_currentIndexChange() {
+            combo.currentIndex = 2
+            verify(combo.currentIndex === 2)
+            verify(combo.displayText === "Option C")
+        }
+
+        // function test_keyboardNavigation() { // 测试键盘导航
+        //     combo.forceActiveFocus()
+        //     verify(combo.activeFocus)
+            
+        //     keyClick(Qt.Key_Down)
+        //     verify(combo.currentIndex === 1)
+            
+        //     keyClick(Qt.Key_Down)
+        //     verify(combo.currentIndex === 2)
+            
+        //     keyClick(Qt.Key_Up)
+        //     verify(combo.currentIndex === 1)
+            
+        //     keyClick(Qt.Key_Home)
+        //     verify(combo.currentIndex === 0)
+            
+        //     keyClick(Qt.Key_End)
+        //     verify(combo.currentIndex === 3)
+        // }
 
         function test_textCommit() { // 测试编辑文本
             combo.editable = true
