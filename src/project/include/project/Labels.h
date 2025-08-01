@@ -103,6 +103,7 @@ public:
 
     int64_t              getImageId(const int64_t label_id) const;
     std::vector<int64_t> getImageIds(const std::vector<int64_t> &label_ids) const;
+    std::vector<int64_t> getLabelIds(const int64_t label_class_id) const;
     int64_t              getLabelClassId(const int64_t label_id) const;
     std::vector<int64_t> getLabelClassIds(const std::vector<int64_t> &label_ids) const;
 

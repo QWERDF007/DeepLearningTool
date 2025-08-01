@@ -295,6 +295,18 @@ std::vector<int64_t> LabelInstancesListModel::getImageIds(const std::vector<int6
     return image_ids;
 }
 
+std::vector<int64_t> LabelInstancesListModel::getLabelIds(const int64_t label_class_id) const
+{
+    std::vector<int64_t> label_ids;
+    label_ids.reserve(label_instances_.size());
+    for (const auto &[label_id, instance] : label_instances_)
+    {
+        if (instance->labelClassId() == label_class_id)
+            label_ids.push_back(label_id);
+    }
+    return label_ids;
+}
+
 int64_t LabelInstancesListModel::getLabelClassId(const int64_t label_id) const
 {
     auto found = label_instances_.find(label_id);

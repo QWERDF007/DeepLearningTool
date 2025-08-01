@@ -132,7 +132,8 @@ void DataManager::updateLabelClass(const int64_t label_class_id, const QString &
 
 void DataManager::deleteLabelClass(const int64_t label_class_id)
 {
-    // TODO: 删除对应标签类别的标注
+    std::vector<int64_t> label_ids = label_instances_->getLabelIds(label_class_id);
+    deleteLabels(label_ids);
     label_classes_->deleteLabelClass(label_class_id);
 }
 
