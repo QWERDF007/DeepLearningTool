@@ -15,6 +15,7 @@ Rectangle {
     property DataManager dataManager: project ? project.dataManager : null
     property LabelClassesModel labelClasses: dataManager ? dataManager.labelClasses : null
     property ItemSelectionModel selection: dataManager ? dataManager.labelClasses.selection : null
+    property int _label_class_id: -1
 
     LabelClassEditor {
         id: editor
@@ -28,6 +29,19 @@ Rectangle {
         onLabelClassChangedAccepted: function (classId, className, classColor, classShortcut, ordinalIndex) {
             if (dataManager) {
                 dataManager.updateLabelClass(classId, className, classColor, classShortcut, ordinalIndex)
+            }
+        }
+    }
+
+    DltConfirmDialog {
+        id: deleteConfirmDialog
+        title: "删除标签类别"
+        message: "确定删除选中的标签类别吗?"
+        usePositiveButton: true
+        useNegativeButton: true
+        onPositiveClicked: function () {
+            if (dataManager) {
+                dataManager.deleteLabelClass(_label_class_id)
             }
         }
     }
@@ -73,7 +87,8 @@ Rectangle {
                     editor.open()
                 }
                 onDeleteClicked: function () {
-                    dataManager.deleteLabelClass(model.label_class_id)
+                    _label_class_id = model.label_class_id
+                    deleteConfirmDialog.open()
                 }
             }
         }
