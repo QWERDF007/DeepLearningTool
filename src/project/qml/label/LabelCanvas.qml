@@ -93,7 +93,7 @@ Item {
             mouseArea.cursorShape = Qt.OpenHandCursor
         } else if (event.key === Qt.Key_A && event.modifiers & Qt.ControlModifier) {
             imageLabelsList.selectAll()
-        } else if (event.key === Qt.Key_Delete) {
+        } else if (event.key === Qt.Key_Delete && selection && selection.hasSelection) {
             deleteConfirmDialog.open()
         }
     }

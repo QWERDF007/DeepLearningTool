@@ -74,7 +74,7 @@ Item {
         Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Escape) {
                 selection.clear()
-            } else if (event.key === Qt.Key_Delete) {
+            } else if (event.key === Qt.Key_Delete && selection && selection.hasSelection) {
                 deleteConfirmDialog.open()
             } else if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
                 imageInstances.selectAll()
