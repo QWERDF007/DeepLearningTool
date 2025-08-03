@@ -18,6 +18,17 @@ Rectangle {
     property int selected: selection ? selection.selectedIndexes.length : 0
     visible: selection ? selection.hasSelection : false
 
+    DltConfirmDialog {
+        id: deleteConfirmDialog
+        title: "删除图像"
+        message: "确定删除选中的图像吗?"
+        onPositiveClicked: function () {
+            if (dataManager) {
+                dataManager.deleteSelectedImages()
+            }
+        }
+    }
+
     RowLayout {
         id: title
         anchors.top: parent.top
@@ -55,9 +66,7 @@ Rectangle {
             iconSource: DltFontIcon.Delete
             text: "删除选中图像"
             onClicked: {
-                if (dataManager) {
-                    dataManager.deleteSelectedImages()
-                }
+                    deleteConfirmDialog.open()
             }
         }
     }

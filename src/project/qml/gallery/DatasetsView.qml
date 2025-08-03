@@ -16,6 +16,17 @@ Rectangle {
     property DatasetsModel datasets: dataManager ? dataManager.datasets : null
     property var curItem
 
+    DltConfirmDialog {
+        id: deleteConfirmDialog
+        title: "删除数据集"
+        message: "确定删除选中的数据集吗?"
+        onPositiveClicked: function () {
+            if (dataManager && curItem) {
+                dataManager.deleteDataset(curItem.dataset_id)
+            }
+        }
+    }
+
     DltMenu {
         id: menu
         width: 200
@@ -48,9 +59,7 @@ Rectangle {
             text: "删除"
             iconSource: DltFontIcon.Delete
             onClicked: {
-                if (dataManager && curItem) {
-                    dataManager.deleteDataset(curItem.dataset_id)
-                }
+                deleteConfirmDialog.open()
             }
         }
     }

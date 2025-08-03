@@ -34,7 +34,7 @@ Item {
             text: "删除项目"
             iconSource: DltFontIcon.Delete
             onClicked: {
-                ProjectManager.deleteProject(projectsView.path)
+                deleteConfirmDialog.open()
             }
         }
         DltMenuItem {
@@ -51,6 +51,17 @@ Item {
             iconSource: DltFontIcon.OpenLocal
             onClicked: {
                 Utils.openInFileExplorer(projectsView.path)
+            }
+        }
+    }
+
+    DltConfirmDialog {
+        id: deleteConfirmDialog
+        title: "删除项目"
+        message: "确定删除选中的项目吗?"
+        onPositiveClicked: function () {
+            if (ProjectManager) {
+                ProjectManager.deleteProject(projectsView.path)
             }
         }
     }

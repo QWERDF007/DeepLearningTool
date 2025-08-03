@@ -33,9 +33,18 @@ Item {
             text: "删除图像"
             iconSource: DltFontIcon.Delete
             onClicked: {
-                if (dataManager) {
-                    dataManager.deleteSelectedImages()
-                }
+                deleteConfirmDialog.open()
+            }
+        }
+    }
+
+    DltConfirmDialog {
+        id: deleteConfirmDialog
+        title: "删除图像"
+        message: "确定删除选中的图像吗?"
+        onPositiveClicked: function () {
+            if (dataManager) {
+                dataManager.deleteSelectedImages()
             }
         }
     }
@@ -66,7 +75,7 @@ Item {
             if (event.key === Qt.Key_Escape) {
                 selection.clear()
             } else if (event.key === Qt.Key_Delete) {
-                dataManager.deleteSelectedImages()
+                deleteConfirmDialog.open()
             } else if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
                 imageInstances.selectAll()
             } else {

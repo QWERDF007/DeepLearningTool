@@ -41,13 +41,22 @@ Item {
         id: labelCanvasMenu
         width: 200
         DltMenuItem {
-            text: "删除选中标签"
+            text: "删除选中标签实例"
             iconSource: DltFontIcon.Delete
             onClicked: {
-                if (dataManager && imageLabelsList) {
-                    let label_ids = imageLabelsList.getSelectedLabelIds()
-                    dataManager.deleteLabels(label_ids)
-                }
+                deleteConfirmDialog.open()
+            }
+        }
+    }
+
+    DltConfirmDialog {
+        id: deleteConfirmDialog
+        title: "删除选中标签实例"
+        message: "确定删除选中的标签实例吗?"
+        onPositiveClicked: function () {
+            if (dataManager) {
+                let label_ids = imageLabelsList.getSelectedLabelIds()
+                dataManager.deleteLabels(label_ids)
             }
         }
     }

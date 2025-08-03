@@ -18,6 +18,17 @@ Rectangle {
     property int total: model ? model.count : 0
     property int current: selection ? selection.currentIndex.row : -1
 
+    DltConfirmDialog {
+        id: deleteConfirmDialog
+        title: "删除图像"
+        message: "确定删除选中的图像吗?"
+        onPositiveClicked: function () {
+            if (dataManager) {
+                dataManager.deleteSelectedImages()
+            }
+        }
+    }
+
     DltMenu {
         id: menu
         width: 200
@@ -70,7 +81,7 @@ Rectangle {
                 iconSource: DltFontIcon.Delete
                 text: "删除图像"
                 onClicked: {
-                    dataManager.deleteSelectedImages()
+                    deleteConfirmDialog.open()
                 }
             }
         }

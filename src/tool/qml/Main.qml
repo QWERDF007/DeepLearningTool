@@ -52,4 +52,20 @@ ApplicationWindow {
     Component.onCompleted: {
         window.showMaximized()
     }
+
+    onClosing: function (close){
+        close.accepted = false
+        exitDialog.open()
+    }
+
+    DltConfirmDialog {
+        id: exitDialog
+        title: "退出程序"
+        message: "确定退出程序吗?"
+        positiveText: "退出"
+        negativeText: "取消"
+        onPositiveClicked: function () {
+            Qt.exit(0)
+        }
+    }
 }

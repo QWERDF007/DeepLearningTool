@@ -36,10 +36,19 @@ Rectangle {
             text: "删除选中标签"
             iconSource: DltFontIcon.Delete
             onClicked: {
-                if (dataManager && imageLabelsTable) {
-                    let label_ids = imageLabelsTable.getSelectedLabelIds()
-                    dataManager.deleteLabels(label_ids)
-                }
+                deleteConfirmDialog.open()
+            }
+        }
+    }
+
+    DltConfirmDialog {
+        id: deleteConfirmDialog
+        title: "删除标签实例"
+        message: "确定删除选中的标签实例吗?"
+        onPositiveClicked: function () {
+            if (dataManager) {
+                let label_ids = imageLabelsTable.getSelectedLabelIds()
+                dataManager.deleteLabels(label_ids)
             }
         }
     }
