@@ -214,7 +214,7 @@ Item {
             let tmpIndex = imageInstances.index(newIndex, 0)
             selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
             selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
-            model.lastIndex = newIndex
+            imageInstances.lastIndex = newIndex
         }
     }
 

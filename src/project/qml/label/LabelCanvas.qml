@@ -42,6 +42,7 @@ Item {
         width: 200
         DltMenuItem {
             text: "删除选中标签实例"
+            enabled : selection ? selection.hasSelection : false
             iconSource: DltFontIcon.Delete
             onClicked: {
                 deleteConfirmDialog.open()
@@ -92,6 +93,8 @@ Item {
             mouseArea.cursorShape = Qt.OpenHandCursor
         } else if (event.key === Qt.Key_A && event.modifiers & Qt.ControlModifier) {
             imageLabelsList.selectAll()
+        } else if (event.key === Qt.Key_Delete) {
+            deleteConfirmDialog.open()
         }
     }
 
@@ -158,7 +161,7 @@ Item {
                     hitTest(pos)
                 } else if (event.button === Qt.RightButton) { // 右键在有选中的情况下不选中新的
                     let pos = getPosOnImage(event)
-                    let indices = imageLabelsList.getIndicesAt(pos)
+                    let indices = imageLabelsList.getIndicesAt(pos)                    
                     let hasSelected = false
                     for (let index of indices) {
                         hasSelected |= selection.isSelected(imageLabelsList.index(index, 0))

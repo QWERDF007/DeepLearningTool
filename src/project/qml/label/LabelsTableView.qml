@@ -34,6 +34,7 @@ Rectangle {
         width: 200
         DltMenuItem {
             text: "删除选中标签"
+            enabled : selection ? selection.hasSelection : false
             iconSource: DltFontIcon.Delete
             onClicked: {
                 deleteConfirmDialog.open()
@@ -112,6 +113,8 @@ Rectangle {
     Keys.onPressed: function(event) {
         if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
             control.selectAll()
+        } else if (event.key === Qt.Key_Delete && selection && selection.hasSelection) {
+            deleteConfirmDialog.open()
         }
     }
 
