@@ -92,6 +92,8 @@ public:
 
     void updateLabelsClass(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &label_class_ids);
 
+    void labelClassUpdated(const int64_t label_class_id);
+
     void deleteLabels(const std::vector<int64_t> &label_ids);
 
     std::vector<std::vector<int64_t>> getImagesLabelIds(const std::vector<int64_t> &image_ids) const;
@@ -165,6 +167,8 @@ public:
     void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
     void updateLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
     void deleteLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
+
+    void labelClassUpdated(const int64_t label_class_id);
 
     QItemSelectionModel *selection() const
     {
@@ -269,6 +273,7 @@ public:
     {
         TitleRole = Qt::UserRole + 1,
         DataRole,
+        ClassDataRole,
         SelectedRole,
     };
 
@@ -285,6 +290,8 @@ public:
     void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
     void updateLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
     void deleteLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
+
+    void labelClassUpdated(const int64_t label_class_id);
 
     QItemSelectionModel *selection() const
     {
@@ -313,8 +320,7 @@ private:
     void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
 
     QVariant getData(const QModelIndex &index) const;
-    QVariant getData(LabelInstance *instance, const int col) const;
-    QVariant getClassData(LabelInstance *instance) const;
+    QVariant getClassData(const QModelIndex &index) const;
     QVariant getSelected(const QModelIndex &index) const;
 
     ImageInstancesListModel *image_instances_{nullptr};

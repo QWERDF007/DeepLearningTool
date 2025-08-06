@@ -128,6 +128,9 @@ void DataManager::updateLabelClass(const int64_t label_class_id, const QString &
                                    const QString &shortcut, const int64_t ordinal_index)
 {
     label_classes_->updateLabelClass(label_class_id, name, color, shortcut, ordinal_index);
+    label_instances_->labelClassUpdated(label_class_id);
+    image_labels_list_->labelClassUpdated(label_class_id);
+    image_labels_table_->labelClassUpdated(label_class_id);
 }
 
 void DataManager::deleteLabelClass(const int64_t label_class_id)

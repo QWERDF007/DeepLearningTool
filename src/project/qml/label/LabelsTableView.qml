@@ -91,7 +91,7 @@ Rectangle {
                         ClassColumnDelegate {
                             implicitWidth: colWidth
                             implicitHeight: rowHeight
-                            mdata: model.data
+                            mdata: model.class_data
                             selected: model.selected
                         }
                     }

@@ -224,6 +224,11 @@ void LabelInstancesListModel::updateLabelsClass(const std::vector<int64_t> &labe
 {
 }
 
+void LabelInstancesListModel::labelClassUpdated(const int64_t label_class_id)
+{
+    // TODO:
+}
+
 void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids)
 {
     if (database_ == nullptr)
@@ -498,6 +503,11 @@ void ImageLabelsListModel::deleteLabels(const std::vector<int64_t> &image_ids, c
     endResetModel();
 }
 
+void ImageLabelsListModel::labelClassUpdated(const int64_t label_class_id)
+{
+    emit dataChanged(index(0), index(static_cast<int>(label_ids_.size()) - 1), {LabelClassColorRole});
+}
+
 void ImageLabelsListModel::onCurrentImageChanged()
 {
     resetModel();
@@ -602,16 +612,20 @@ bool ImageLabelsListModel::isInside(const QPointF &pos, const int index) const
 QVariantMap ImageLabelsListModel::hitTestHandle(const QPointF &pos, const int index, const double scale) const
 {
     if (index < 0 || index >= static_cast<int>(label_ids_.size()))
+    {
         return QVariantMap{
             {    "found", false},
             {"direction",    ""}
         };
+    }
     auto label_instance = label_instances_->getLabelInstance(label_ids_[index]);
     if (label_instance == nullptr)
+    {
         return QVariantMap{
             {    "found", false},
             {"direction",    ""}
         };
+    }
     return label_instances_->helper()->hitTestHandle(pos, label_instance->data(), scale);
 }
 
@@ -794,6 +808,8 @@ QVariant ImageLabelsTableModel::data(const QModelIndex &index, int role) const
     {
     case DataRole:
         return getData(index);
+    case ClassDataRole:
+        return getClassData(index);
     case SelectedRole:
         return getSelected(index);
     default:
@@ -814,9 +830,10 @@ QVariant ImageLabelsTableModel::headerData(int section, Qt::Orientation orientat
 QHash<int, QByteArray> ImageLabelsTableModel::roleNames() const
 {
     return {
-        {Qt::DisplayRole,  "display"},
-        {       DataRole,     "data"},
-        {   SelectedRole, "selected"},
+        {Qt::DisplayRole,    "display"},
+        {       DataRole,       "data"},
+        {  ClassDataRole, "class_data"},
+        {   SelectedRole,   "selected"},
     };
 }
 
@@ -892,6 +909,13 @@ void ImageLabelsTableModel::deleteLabels(const std::vector<int64_t> &image_ids, 
     }
     label_ids_ = new_label_ids;
     endResetModel();
+}
+
+void ImageLabelsTableModel::labelClassUpdated(const int64_t label_class_id)
+{
+    emit dataChanged(index(0, 0),
+                     index(static_cast<int>(label_ids_.size()) - 1, static_cast<int>(column_headers_.size()) - 1),
+                     {ClassDataRole});
 }
 
 void ImageLabelsTableModel::onCurrentImageChanged()
@@ -1003,26 +1027,19 @@ QVariant ImageLabelsTableModel::getData(const QModelIndex &index) const
     LabelInstance *instance = label_instances_->getLabelInstance(label_id);
     if (instance == nullptr)
         return QVariant();
-    const int col = index.column();
-    switch (col)
-    {
-    case 0:
-        return getClassData(instance);
-    default:
-        return getData(instance, col);
-    }
-}
-
-QVariant ImageLabelsTableModel::getData(LabelInstance *instance, const int col) const
-{
-    auto data = instance->data()->dataMap();
+    auto      data = instance->data()->dataMap();
+    const int col  = index.column();
     if (col >= static_cast<int>(column_keys_.size()))
         return QVariant();
     return data.value(column_keys_[col], QVariant());
 }
 
-QVariant ImageLabelsTableModel::getClassData(LabelInstance *instance) const
+QVariant ImageLabelsTableModel::getClassData(const QModelIndex &index) const
 {
+    const int64_t  label_id = label_ids_[index.row()];
+    LabelInstance *instance = label_instances_->getLabelInstance(label_id);
+    if (instance == nullptr)
+        return QVariant();
     const int64_t class_id = instance->labelClassId();
     QVariantMap   data{
           { "class_name",  label_classes_->getLabelClassName(class_id)},
