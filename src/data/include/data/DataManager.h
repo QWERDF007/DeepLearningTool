@@ -1,0 +1,122 @@
+#pragma once
+
+#include "Datasets.h"
+#include "ImageTags.h"
+#include "Images.h"
+#include "Labels.h"
+#include "labelclasses.h"
+
+#include "DataExport.h"
+
+#include <QObject>
+#include <QtQml>
+
+namespace dltool::data {
+class ProjectDataBase;
+}
+
+namespace dltool::data {
+
+class DATA_API DataManager : public QObject
+{
+    Q_OBJECT
+    QML_NAMED_ELEMENT(DataManager)
+    QML_UNCREATABLE("Can not create DataManager directly!")
+    Q_PROPERTY(DatasetsListModel *datasets READ datasets CONSTANT FINAL)
+    Q_PROPERTY(ImageInstancesListModel *imageInstances READ imageInstances CONSTANT FINAL)
+    Q_PROPERTY(LabelClassesListModel *labelClasses READ labelClasses CONSTANT FINAL)
+    Q_PROPERTY(ImageTagsListModel *imageTags READ imageTags CONSTANT FINAL)
+    Q_PROPERTY(LabelInstancesListModel *labelInstances READ labelInstances CONSTANT FINAL)
+    Q_PROPERTY(ImageLabelsListModel *imageLabelsList READ imageLabelsList CONSTANT FINAL)
+    Q_PROPERTY(ImageLabelsTableModel *imageLabelsTable READ imageLabelsTable CONSTANT FINAL)
+    Q_PROPERTY(ImageInfoListModel *imageInfo READ imageInfo CONSTANT FINAL)
+
+public:
+    DataManager(const int method, data::ProjectDataBase *database, QObject *parent = nullptr);
+    ~DataManager();
+
+    DatasetsListModel *datasets() const
+    {
+        return datasets_;
+    }
+
+    ImageInstancesListModel *imageInstances() const
+    {
+        return image_instances_;
+    }
+
+    LabelClassesListModel *labelClasses() const
+    {
+        return label_classes_;
+    }
+
+    ImageTagsListModel *imageTags() const
+    {
+        return image_tags_;
+    }
+
+    LabelInstancesListModel *labelInstances() const
+    {
+        return label_instances_;
+    }
+
+    ImageLabelsListModel *imageLabelsList() const
+    {
+        return image_labels_list_;
+    }
+
+    ImageLabelsTableModel *imageLabelsTable() const
+    {
+        return image_labels_table_;
+    }
+
+    ImageInfoListModel *imageInfo() const
+    {
+        return image_info_;
+    }
+
+    Q_INVOKABLE QList<QString> getAllDatasetsName() const;
+
+    Q_INVOKABLE int     getDatasetId(const QString &dataset_name) const;
+    Q_INVOKABLE QString getDatasetName(const int dataset_id) const;
+
+    Q_INVOKABLE void addDataset(const QString &name);
+    Q_INVOKABLE void updateDataset(const int64_t dataset_id, const QString &name);
+    Q_INVOKABLE void deleteDataset(const int64_t dataset_id);
+
+    Q_INVOKABLE void importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
+                                const QString &data_dir);
+
+    Q_INVOKABLE void deleteSelectedImages();
+
+    Q_INVOKABLE void addLabelClass(const QString &name, const QString &color, const QString &shortcut);
+    Q_INVOKABLE void updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
+                                      const QString &shortcut, const int64_t ordinal_index);
+    Q_INVOKABLE void deleteLabelClass(const int64_t label_class_id);
+
+    Q_INVOKABLE void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
+                               const std::vector<QVariantMap> &data);
+    Q_INVOKABLE void updateLabels(const std::vector<int64_t> &label_ids, const std::vector<QVariantMap> &data);
+    Q_INVOKABLE void deleteLabels(const std::vector<int64_t> &label_ids);
+
+    Q_INVOKABLE void addTagClass(const QString &name);
+
+private:
+    void init(const int method);
+
+    void updateDatasetsStats();
+
+    data::ProjectDataBase *database_{nullptr};
+
+    DatasetsListModel       *datasets_{nullptr};
+    ImageInstancesListModel *image_instances_{nullptr};
+    LabelClassesListModel   *label_classes_{nullptr};
+    ImageTagsListModel      *image_tags_{nullptr};
+    LabelInstancesListModel *label_instances_{nullptr};
+    ImageLabelsListModel    *image_labels_list_{nullptr};
+    ImageLabelsTableModel   *image_labels_table_{nullptr};
+
+    ImageInfoListModel *image_info_{nullptr};
+};
+
+} // namespace dltool::data

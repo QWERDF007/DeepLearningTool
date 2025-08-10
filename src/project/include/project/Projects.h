@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/Singleton.h"
+#include "data/DataManager.h"
 
 #include <QAbstractListModel>
 #include <QItemSelectionModel>
@@ -15,8 +16,6 @@ class RecentProjectsDataBase;
 
 namespace dltool::project {
 
-class DataManager;
-
 class Project : public QObject
 {
     Q_OBJECT
@@ -27,7 +26,7 @@ class Project : public QObject
     Q_PROPERTY(QString path READ path CONSTANT)
     Q_PROPERTY(QString description READ description NOTIFY descriptionChanged FINAL)
     Q_PROPERTY(QString imageBasePath READ imageBasePath NOTIFY imageBasePathChanged FINAL)
-    Q_PROPERTY(DataManager *dataManager READ dataManager CONSTANT FINAL)
+    Q_PROPERTY(data::DataManager *dataManager READ dataManager CONSTANT FINAL)
 
 public:
     Project(const QString &name, const int method, const QString &path, const QString &description,
@@ -75,7 +74,7 @@ public:
         return mtime_;
     }
 
-    DataManager *dataManager() const
+    data::DataManager *dataManager() const
     {
         return data_manager_;
     }
@@ -93,7 +92,7 @@ private:
 
     data::ProjectDataBase *database_{nullptr};
 
-    DataManager *data_manager_{nullptr};
+    data::DataManager *data_manager_{nullptr};
 
 signals:
     void descriptionChanged();

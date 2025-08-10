@@ -13,7 +13,7 @@ Rectangle {
     height: 1920
     color: DltColor.Background
 
-    
+    property Project project
 
     DltSplitView {
         anchors.fill: parent

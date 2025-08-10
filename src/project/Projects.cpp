@@ -2,7 +2,7 @@
 
 #include "data/CoreDef.h"
 #include "data/DataBase.h"
-#include "project/DataManager.h"
+
 
 #include <spdlog/spdlog.h>
 
@@ -38,7 +38,7 @@ Project::~Project() {}
 
 void Project::init()
 {
-    data_manager_ = new DataManager(method_, database_, this);
+    data_manager_ = new data::DataManager(method_, database_, this);
 }
 
 void Project::initProject()

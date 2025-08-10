@@ -74,4 +74,5 @@ PRIVATE
     dltool_common dltool_common_header
     dltool_ui dltool_ui_header
     dltool_project dltool_project_header
+    dltool_data dltool_data_header
 )

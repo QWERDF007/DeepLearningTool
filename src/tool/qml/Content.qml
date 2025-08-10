@@ -4,15 +4,21 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.project
+import dltool.data
 
 StackLayout {
+    id: content
     width: 1080
     height: 1920
+
+    property Project project : ProjectManager.currentProject
+    property DataManager dataManager: project ? project.dataManager : null
 
     Component {
         id: project_com
         ProjectPage {
             anchors.fill: parent
+            project: content.project
         }
     }
 
@@ -20,6 +26,7 @@ StackLayout {
         id: dataset_com
         GalleryPage {
             anchors.fill: parent
+            dataManager: content.dataManager
         }
     }
 
@@ -27,6 +34,7 @@ StackLayout {
         id: label_com
         LabelPage {
             anchors.fill: parent
+            dataManager: content.dataManager
         }
     }
 
