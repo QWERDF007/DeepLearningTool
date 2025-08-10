@@ -100,6 +100,7 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
     image_instances_->addImages(dataset_id, image_dir, image_ids);
     std::vector<int64_t> dataset_ids(image_ids.size(), dataset_id);
     datasets_->addImages(dataset_ids, image_ids);
+    updateDatasetsStats();
 }
 
 void DataManager::deleteSelectedImages()

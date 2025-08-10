@@ -74,6 +74,7 @@ Rectangle {
 
     ImportDataDialog {
         id: importDataDialog
+        dataManager: datasetsView.dataManager
     }
 
     ColumnLayout {
