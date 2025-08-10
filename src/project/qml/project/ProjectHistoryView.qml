@@ -55,7 +55,7 @@ Item {
         }
     }
 
-    DltConfirmDialog {
+    DltContentDialog {
         id: deleteConfirmDialog
         title: "删除项目"
         message: "确定删除选中的项目吗?"

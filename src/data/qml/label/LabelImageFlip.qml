@@ -17,7 +17,7 @@ Rectangle {
     property int total: model ? model.count : 0
     property int current: selection ? selection.currentIndex.row : -1
 
-    DltConfirmDialog {
+    DltContentDialog {
         id: deleteConfirmDialog
         title: "删除图像"
         message: "确定删除选中的图像吗?"

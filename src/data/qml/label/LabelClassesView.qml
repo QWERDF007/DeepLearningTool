@@ -32,7 +32,7 @@ Rectangle {
         }
     }
 
-    DltConfirmDialog {
+    DltContentDialog {
         id: deleteConfirmDialog
         title: "删除标签类别"
         message: "确定删除选中的标签类别吗?"

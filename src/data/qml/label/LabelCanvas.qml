@@ -49,7 +49,7 @@ Item {
         }
     }
 
-    DltConfirmDialog {
+    DltContentDialog {
         id: deleteConfirmDialog
         title: "删除选中标签实例"
         message: "确定删除选中的标签实例吗?"

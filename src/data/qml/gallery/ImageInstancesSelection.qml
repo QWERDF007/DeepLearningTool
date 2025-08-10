@@ -17,7 +17,7 @@ Rectangle {
     property int selected: selection ? selection.selectedIndexes.length : 0
     visible: selection ? selection.hasSelection : false
 
-    DltConfirmDialog {
+    DltContentDialog {
         id: deleteConfirmDialog
         title: "删除图像"
         message: "确定删除选中的图像吗?"

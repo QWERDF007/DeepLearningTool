@@ -58,7 +58,7 @@ ApplicationWindow {
         exitDialog.open()
     }
 
-    DltConfirmDialog {
+    DltContentDialog {
         id: exitDialog
         title: "退出程序"
         message: "确定退出程序吗?"

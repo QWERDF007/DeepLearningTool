@@ -37,7 +37,7 @@ Item {
         }
     }
 
-    DltConfirmDialog {
+    DltContentDialog {
         id: deleteConfirmDialog
         title: "删除图像"
         message: "确定删除选中的图像吗?"

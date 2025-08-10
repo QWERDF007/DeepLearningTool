@@ -14,7 +14,7 @@ Rectangle {
     property DatasetsModel datasets: dataManager ? dataManager.datasets : null
     property var curItem
 
-    DltConfirmDialog {
+    DltContentDialog {
         id: deleteConfirmDialog
         title: "删除数据集"
         message: "确定删除选中的数据集吗?"
@@ -23,6 +23,12 @@ Rectangle {
                 dataManager.deleteDataset(curItem.dataset_id)
             }
         }
+    }
+
+    ImportDataProgressDialog {
+        id: progressDialog
+        // implicitHeight: 800
+        // implicitWidth: 1200
     }
 
     DltMenu {
