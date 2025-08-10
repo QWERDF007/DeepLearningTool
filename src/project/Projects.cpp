@@ -106,7 +106,6 @@ void RectentProjects::init()
     auto start = std::chrono::high_resolution_clock::now();
     if (!project_infos.empty())
         project_infos.clear();
-    spdlog::info("获取最近项目: {}", path_.toUtf8().constData());
     std::vector<QString> paths;
     QString              err_msg;
     const int            size = database_->getProjects(paths, err_msg);
@@ -280,7 +279,7 @@ bool RectentProjects::removeProject(const QString &path)
         {
             const int idx = static_cast<int>(i);
             removeRow(idx);
-            if (rowCount() > 0)
+            if (project_infos.size() > 0)
             {
                 selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
                 selection_->setCurrentIndex(index(0), QItemSelectionModel::ClearAndSelect);
@@ -517,7 +516,6 @@ QVariantMap ProjectManager::getProjectInfo(const QString &path)
             {          "mtime", ""},
         });
     }
-    spdlog::info("获取项目信息: {}", path.toUtf8().constData());
     QVariantMap project_info;
     QString     err_msg;
     bool        ok = data::ProjectDataBase::getProjectInfo(path, project_info, err_msg);
@@ -537,7 +535,6 @@ QVariantMap ProjectManager::getLabelInfo(const QString &path)
             {"label_instances_images", ""},
         });
     }
-    spdlog::info("获取标注信息: {}", path.toUtf8().constData());
     QVariantMap label_info;
     QString     err_msg;
     bool        ok = data::ProjectDataBase::getLabelInfo(path, label_info, err_msg);
