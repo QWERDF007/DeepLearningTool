@@ -57,8 +57,10 @@ DltPopup {
         ColumnLayout{
             id:layout_column
             width: parent.width
+            spacing: 0
             DltText { // 标题
                 id:text_title
+                Layout.bottomMargin: 10
                 font: DltFont.Title
                 text:title
                 topPadding: 20

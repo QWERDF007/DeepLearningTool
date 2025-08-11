@@ -27,8 +27,7 @@ Rectangle {
 
     ImportDataProgressDialog {
         id: progressDialog
-        // implicitHeight: 800
-        // implicitWidth: 1200
+        title: "导入数据"
     }
 
     DltMenu {
@@ -43,6 +42,7 @@ Rectangle {
                     importDataDialog.datasetsModel = dataManager.getAllDatasetsName()
                     importDataDialog.datasetName = curItem.name
                     importDataDialog.open()
+                    // progressDialog.open()
                 }
             }
         }
