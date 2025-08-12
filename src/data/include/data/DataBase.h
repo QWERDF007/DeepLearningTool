@@ -133,6 +133,8 @@ public:
                        int64_t &label_class_id, QString &err_msg) const;
     bool updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
                           const QString &shortcut, const int64_t ordinal_index, QString &err_msg) const;
+    bool updateLabelClass(const std::vector<int64_t> &label_class_ids, const std::vector<int64_t> &ordinal_indexes,
+                          QString &err_msg) const;
     bool deleteLabelClass(const int64_t label_class_id, QString &err_msg) const;
 
     bool getAllTagClasses(std::vector<int64_t> &tag_class_ids, std::vector<QString> &names, QString &err_msg) const;

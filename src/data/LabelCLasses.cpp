@@ -28,6 +28,76 @@ bool LabelClass::setName(const QString &name)
     return true;
 }
 
+bool LabelClassesListModel::reorderLabelClass(const int64_t label_class_id, const int64_t new_ordinal_index)
+{
+    if (new_ordinal_index < 0 || new_ordinal_index >= rowCount())
+        return false;
+
+    // 找到当前项的行与当前 ordinal
+    int     current_row{-1};
+    int64_t current_ordinal{-1};
+    int     row{0};
+    for (const auto &[id, label_class] : label_classes_)
+    {
+        if (label_class->id() == label_class_id)
+        {
+            current_row     = row;
+            current_ordinal = static_cast<int64_t>(label_class->ordinalIndex());
+            break;
+        }
+        ++row;
+    }
+    if (current_row == -1)
+        return false;
+    if (current_ordinal == new_ordinal_index)
+        return true;
+
+    // 计算受影响区间并调整相邻项的 ordinal_index，保证连续无冲突
+    const int from = static_cast<int>(current_ordinal);
+    const int to   = static_cast<int>(new_ordinal_index);
+
+    // 只更新序号索引，同时计算当前和其他类别的序号索引
+    // 先计算所有需要更新的label_class_id和对应的新ordinal_index
+    std::vector<int64_t> ids_to_update;
+    std::vector<int64_t> new_ordinals;
+
+    for (const auto &[id, label_class] : label_classes_)
+    {
+        int64_t ord = label_class->ordinalIndex();
+        if (id == label_class_id)
+        {
+            // 被拖拽项
+            ids_to_update.push_back(id);
+            new_ordinals.push_back(new_ordinal_index);
+        }
+        else if (from < to)
+        {
+            // 区间 (from, to] 的项 ordinal_index 全部减 1
+            if (ord > from && ord <= to)
+            {
+                ids_to_update.push_back(id);
+                new_ordinals.push_back(ord - 1);
+            }
+        }
+        else if (from > to)
+        {
+            // 区间 [to, from) 的项 ordinal_index 全部加 1
+            if (ord >= to && ord < from)
+            {
+                ids_to_update.push_back(id);
+                new_ordinals.push_back(ord + 1);
+            }
+        }
+    }
+
+    // 批量更新数据库
+    if (!updateLabelClass(ids_to_update, new_ordinals))
+        return false;
+    beginResetModel();
+    endResetModel();
+    return true;
+}
+
 bool LabelClass::setColor(const QString &color)
 {
     if (color_ == color)
@@ -188,7 +258,8 @@ bool LabelClassesListModel::updateLabelClass(const int64_t label_class_id, const
             label_class->setName(name);
             label_class->setColor(color);
             label_class->setShortcut(shortcut);
-            emit dataChanged(index(idx), index(idx), {NameRole, ColorRole, ShortcutRole});
+            label_class->setOrdinalIndex(ordinal_index);
+            emit dataChanged(index(idx), index(idx), {NameRole, ColorRole, ShortcutRole, OrdinalIndexRole});
             break;
         }
         ++idx;
@@ -197,6 +268,31 @@ bool LabelClassesListModel::updateLabelClass(const int64_t label_class_id, const
     spdlog::info("更新标签类别 {} -> {}, {} -> {}, {} -> {}, {} -> {} 成功", it->name().toUtf8().constData(),
                  name.toUtf8().constData(), it->color().toUtf8().constData(), color.toUtf8().constData(),
                  it->shortcut().toUtf8().constData(), shortcut.toUtf8().constData(), it->ordinalIndex(), ordinal_index);
+    return true;
+}
+
+bool dltool::data::LabelClassesListModel::updateLabelClass(const std::vector<int64_t> &label_class_ids,
+                                                           const std::vector<int64_t> &ordinal_indexes)
+{
+    if (database_ == nullptr)
+    {
+        spdlog::error("更新 [{}] 个标签类别序号索引失败, 数据库未初始化", label_class_ids.size());
+        return false;
+    }
+    QString err_msg;
+    bool    ok = database_->updateLabelClass(label_class_ids, ordinal_indexes, err_msg);
+    if (!ok)
+    {
+        spdlog::error("更新 [{}] 个标签类别序号索引失败: {}", label_class_ids.size(), err_msg.toUtf8().constData());
+        return false;
+    }
+    for (size_t i = 0; i < label_class_ids.size(); ++i)
+    {
+        auto found = label_classes_.find(label_class_ids[i]);
+        if (found == label_classes_.end())
+            continue;
+        found->second->setOrdinalIndex(ordinal_indexes[i]);
+    }
     return true;
 }
 
@@ -243,14 +339,12 @@ int LabelClassesListModel::getLabelClassId(const QString &name) const
 
 int LabelClassesListModel::getLabelClassId(const QModelIndex &index) const
 {
-    int idx = 0;
     for (const auto &[id, label_class] : label_classes_)
     {
-        if (index.row() == idx)
+        if (index.row() == static_cast<int>(label_class->ordinalIndex()))
         {
             return id;
         }
-        ++idx;
     }
     return -1;
 }
@@ -311,7 +405,7 @@ QVariant LabelClassesListModel::getLabelClassName(const QModelIndex &index) cons
     const int id = getLabelClassId(index);
     if (id != -1)
         return label_classes_.at(id)->name();
-    return QVariant();
+    return QString();
 }
 
 QVariant LabelClassesListModel::getLabelClassColor(const QModelIndex &index) const
@@ -319,7 +413,7 @@ QVariant LabelClassesListModel::getLabelClassColor(const QModelIndex &index) con
     const int id = getLabelClassId(index);
     if (id != -1)
         return label_classes_.at(id)->color();
-    return QVariant();
+    return QString();
 }
 
 QVariant LabelClassesListModel::getLabelClassShortcut(const QModelIndex &index) const
@@ -327,7 +421,7 @@ QVariant LabelClassesListModel::getLabelClassShortcut(const QModelIndex &index) 
     const int id = getLabelClassId(index);
     if (id != -1)
         return label_classes_.at(id)->shortcut();
-    return QVariant();
+    return QString();
 }
 
 QVariant LabelClassesListModel::getLabelClassOrdinalIndex(const QModelIndex &index) const
@@ -335,7 +429,7 @@ QVariant LabelClassesListModel::getLabelClassOrdinalIndex(const QModelIndex &ind
     const int id = getLabelClassId(index);
     if (id != -1)
         return label_classes_.at(id)->ordinalIndex();
-    return QVariant();
+    return -1;
 }
 
 QVariant LabelClassesListModel::getLabelClassSelected(const QModelIndex &index) const

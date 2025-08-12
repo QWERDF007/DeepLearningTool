@@ -69,6 +69,10 @@ Rectangle {
                 className: model.name
                 classColor: model.color
                 classShortcut: model.shortcut
+                classId: model.label_class_id
+                ordinalIndex: model.ordinal_index
+                listView: view
+                labelClasses: labelClassesView.labelClasses
                 onClicked: function() {
                     let tmpIndex = labelClasses.index(index, 0)
                     selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)

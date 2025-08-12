@@ -676,10 +676,42 @@ bool ProjectDataBase::updateLabelClass(const int64_t label_class_id, const QStri
         }
         auto db = pool_->get();
         db(sqlpp::update(LabelClassesTable)
-               .set(LabelClassesTable.name     = name.toUtf8().constData(),
-                    LabelClassesTable.color    = color.toUtf8().constData(),
-                    LabelClassesTable.shortcut = shortcut.toUtf8().constData())
+               .set(LabelClassesTable.name         = name.toUtf8().constData(),
+                    LabelClassesTable.color        = color.toUtf8().constData(),
+                    LabelClassesTable.shortcut     = shortcut.toUtf8().constData(),
+                    LabelClassesTable.ordinalIndex = ordinal_index)
                .where(LabelClassesTable.id == label_class_id));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::updateLabelClass(const std::vector<int64_t> &label_class_ids,
+                                       const std::vector<int64_t> &ordinal_indexes, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        if (label_class_ids.size() != ordinal_indexes.size())
+        {
+            err_msg = QString("标签类别ID数量与序号数量不一致");
+            return false;
+        }
+        auto db = pool_->get();
+        for (size_t i = 0; i < label_class_ids.size(); ++i)
+        {
+            db(sqlpp::update(LabelClassesTable)
+                   .set(LabelClassesTable.ordinalIndex = ordinal_indexes[i])
+                   .where(LabelClassesTable.id == label_class_ids[i]));
+        }
         return true;
     }
     catch (const std::exception &e)

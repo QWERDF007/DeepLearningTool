@@ -90,6 +90,7 @@ public:
     bool addLabelClass(const QString &name, const QString &color, const QString &shortcut);
     bool updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
                           const QString &shortcut, const int64_t ordinal_index);
+    bool updateLabelClass(const std::vector<int64_t> &label_class_ids, const std::vector<int64_t> &ordinal_indexes);
     bool deleteLabelClass(const int64_t label_class_id);
 
     int     getLabelClassId(const QString &name) const;
@@ -104,7 +105,10 @@ public:
     int     getCurrentLabelClassId() const;
     QString getCurrentLabelClassColor() const;
 
-    Q_INVOKABLE QString isValid(const int label_class_id, const QString &name, const QString &shortcut, const int ordinal_index) const;
+    Q_INVOKABLE QString isValid(const int label_class_id, const QString &name, const QString &shortcut,
+                                const int ordinal_index) const;
+
+    Q_INVOKABLE bool reorderLabelClass(const int64_t label_class_id, const int64_t new_ordinal_index);
 
 private:
     void init();

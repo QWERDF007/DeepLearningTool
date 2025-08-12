@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import dltool.data
 
 Rectangle {
     id: control
@@ -13,16 +14,34 @@ Rectangle {
     property string classShortcut: ""
     property color classColor: "black"
     property int classId
+    property int ordinalIndex
+    property var listView
+    property LabelClassesModel labelClasses
 
     signal editClicked
     signal deleteClicked
     signal clicked
 
     MouseArea {
+        id: dragArea
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton
+        hoverEnabled: true
+        drag.axis: Drag.YAxis
+        drag.target: control
         onClicked: function(mouse) {
             control.clicked()
+        }
+        onReleased: function(mouse) {
+            // 计算拖拽释放位置对应的目标索引，并请求重排
+            if (!listView || !labelClasses)
+                return
+            let pos = control.mapToItem(listView.contentItem, 0, mouse.y)
+            let itemSpan = control.height + listView.spacing
+            let newOrdinalIndex = Math.max(0, Math.min(listView.count - 1, Math.floor(pos.y / itemSpan)))
+            if (newOrdinalIndex === control.ordinalIndex)
+                return
+            labelClasses.reorderLabelClass(control.classId, newOrdinalIndex)
         }
     }
 
