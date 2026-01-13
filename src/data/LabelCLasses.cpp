@@ -33,31 +33,25 @@ bool LabelClassesListModel::reorderLabelClass(const int64_t label_class_id, cons
     if (new_ordinal_index < 0 || new_ordinal_index >= rowCount())
         return false;
 
-    // 找到当前项的行与当前 ordinal
-    int     current_row{-1};
+    // 找到当前项的 ordinal_index
     int64_t current_ordinal{-1};
-    int     row{0};
     for (const auto &[id, label_class] : label_classes_)
     {
         if (label_class->id() == label_class_id)
         {
-            current_row     = row;
-            current_ordinal = static_cast<int64_t>(label_class->ordinalIndex());
+            current_ordinal = label_class->ordinalIndex();
             break;
         }
-        ++row;
     }
-    if (current_row == -1)
+    if (current_ordinal == -1)
         return false;
     if (current_ordinal == new_ordinal_index)
         return true;
 
-    // 计算受影响区间并调整相邻项的 ordinal_index，保证连续无冲突
     const int from = static_cast<int>(current_ordinal);
     const int to   = static_cast<int>(new_ordinal_index);
 
-    // 只更新序号索引，同时计算当前和其他类别的序号索引
-    // 先计算所有需要更新的label_class_id和对应的新ordinal_index
+    // 计算所有需要更新的 label_class_id 和对应的新 ordinal_index
     std::vector<int64_t> ids_to_update;
     std::vector<int64_t> new_ordinals;
 
@@ -66,13 +60,12 @@ bool LabelClassesListModel::reorderLabelClass(const int64_t label_class_id, cons
         int64_t ord = label_class->ordinalIndex();
         if (id == label_class_id)
         {
-            // 被拖拽项
             ids_to_update.push_back(id);
             new_ordinals.push_back(new_ordinal_index);
         }
         else if (from < to)
         {
-            // 区间 (from, to] 的项 ordinal_index 全部减 1
+            // 向下移动：区间 (from, to] 的项 ordinal_index 全部减 1
             if (ord > from && ord <= to)
             {
                 ids_to_update.push_back(id);
@@ -81,7 +74,7 @@ bool LabelClassesListModel::reorderLabelClass(const int64_t label_class_id, cons
         }
         else if (from > to)
         {
-            // 区间 [to, from) 的项 ordinal_index 全部加 1
+            // 向上移动：区间 [to, from) 的项 ordinal_index 全部加 1
             if (ord >= to && ord < from)
             {
                 ids_to_update.push_back(id);
@@ -90,11 +83,44 @@ bool LabelClassesListModel::reorderLabelClass(const int64_t label_class_id, cons
         }
     }
 
-    // 批量更新数据库
+    // 保存当前选中的 label_class_id
+    int64_t     selectedClassId = -1;
+    QModelIndex currentIdx      = selection_->currentIndex();
+    if (currentIdx.isValid())
+    {
+        selectedClassId = getLabelClassId(currentIdx);
+    }
+
+    // 批量更新数据库（这会同时更新内存中的 ordinalIndex）
     if (!updateLabelClass(ids_to_update, new_ordinals))
         return false;
-    beginResetModel();
-    endResetModel();
+
+    // 计算受影响的行范围
+    int minRow = std::min(from, to);
+    int maxRow = std::max(from, to);
+
+    // 通知视图所有受影响行的数据已更改
+    // 注意：由于 ordinalIndex 改变后，行与数据的映射关系改变了
+    // 需要通知整个受影响范围的所有角色
+    emit dataChanged(index(minRow), index(maxRow),
+                     {LabelClassIdRole, NameRole, ColorRole, ShortcutRole, OrdinalIndexRole, SelectedRole});
+
+    // 恢复选中状态
+    if (selectedClassId != -1)
+    {
+        for (const auto &[id, label_class] : label_classes_)
+        {
+            if (id == selectedClassId)
+            {
+                int         newRow   = static_cast<int>(label_class->ordinalIndex());
+                QModelIndex newIndex = index(newRow);
+                selection_->select(newIndex, QItemSelectionModel::ClearAndSelect);
+                selection_->setCurrentIndex(newIndex, QItemSelectionModel::Select);
+                break;
+            }
+        }
+    }
+
     return true;
 }
 

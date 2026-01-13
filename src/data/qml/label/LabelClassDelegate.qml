@@ -7,14 +7,16 @@ import dltool.data
 
 Rectangle {
     id: control
-    width: parent.width
+    width: parent ? parent.width : 200
     height: 32
-    color: Qt.lighter(DltColor.Primary, 1.2)
+    color: backgroundColor
+    
     property string className: ""
     property string classShortcut: ""
     property color classColor: "black"
-    property int classId
-    property int ordinalIndex
+    property color backgroundColor: Qt.lighter(DltColor.Primary, 1.2)
+    property int classId: -1
+    property int ordinalIndex: -1
     property var listView
     property LabelClassesModel labelClasses
 
@@ -22,28 +24,19 @@ Rectangle {
     signal deleteClicked
     signal clicked
 
-    MouseArea {
-        id: dragArea
-        anchors.fill: parent
-        acceptedButtons: Qt.LeftButton
-        hoverEnabled: true
-        drag.axis: Drag.YAxis
-        drag.target: control
-        onClicked: function(mouse) {
-            control.clicked()
-        }
-        onReleased: function(mouse) {
-            // 计算拖拽释放位置对应的目标索引，并请求重排
-            if (!listView || !labelClasses)
-                return
-            let pos = control.mapToItem(listView.contentItem, 0, mouse.y)
-            let itemSpan = control.height + listView.spacing
-            let newOrdinalIndex = Math.max(0, Math.min(listView.count - 1, Math.floor(pos.y / itemSpan)))
-            if (newOrdinalIndex === control.ordinalIndex)
-                return
-            labelClasses.reorderLabelClass(control.classId, newOrdinalIndex)
-        }
-    }
+    // 拖拽状态
+    property bool held: false
+    property real dragStartY: 0
+    property int dragStartIndex: -1
+    
+    // 拖拽时的视觉效果
+    z: held ? 100 : 1
+    opacity: held ? 0.9 : 1.0
+
+    Drag.active: held
+    Drag.source: control
+    Drag.hotSpot.x: width / 2
+    Drag.hotSpot.y: height / 2
 
     RowLayout {
         anchors.fill: parent
@@ -66,28 +59,110 @@ Rectangle {
             Layout.fillWidth: true
         }
     }
+    
     RowLayout {
-        anchors{
+        anchors {
             top: parent.top
             bottom: parent.bottom
             right: parent.right
             rightMargin: 5
-            // margins: 5
         }
         spacing: 3
         DltTextIconButton {
             iconSource: DltFontIcon.Edit
-            onClicked: {
-                control.editClicked()
-            }
-            normalColor: control.color
+            onClicked: control.editClicked()
+            normalColor: control.backgroundColor
         }
         DltTextIconButton {
             iconSource: DltFontIcon.Delete
-            onClicked: {
-                control.deleteClicked()
+            onClicked: control.deleteClicked()
+            normalColor: control.backgroundColor
+        }
+    }
+
+    MouseArea {
+        id: dragArea
+        anchors.fill: parent
+        acceptedButtons: Qt.LeftButton
+        hoverEnabled: true
+        drag.target: held ? control : undefined
+        drag.axis: Drag.YAxis
+        pressAndHoldInterval: 200
+        
+        onClicked: function(mouse) {
+            control.clicked()
+        }
+        
+        onPressAndHold: function(mouse) {
+            // 如果未选中，先选中该项
+            control.clicked()
+            
+            control.dragStartIndex = control.ordinalIndex
+            control.dragStartY = control.y
+            control.held = true
+        }
+        
+        onReleased: function(mouse) {
+            if (control.held) {
+                control.held = false
+                
+                if (!listView || !labelClasses) {
+                    control.y = control.dragStartY
+                    return
+                }
+                
+                // 使用 mapToItem 获取在 contentItem 中的绝对位置
+                let posInList = control.mapToItem(listView.contentItem, 0, 0)
+                let itemHeight = control.height + listView.spacing
+                
+                // 计算拖拽项中心位置
+                let dragCenterY = posInList.y + control.height / 2
+                
+                // 计算目标位置：拖拽项中心超过目标项中心才交换
+                // 目标项 i 的中心位置 = i * itemHeight + itemHeight / 2
+                // 当 dragCenterY > 目标项中心时，说明拖拽项应该在目标项下方
+                let targetIndex = control.dragStartIndex
+                
+                if (dragCenterY < control.dragStartIndex * itemHeight + itemHeight / 2) {
+                    // 向上拖拽：找到第一个中心位置大于拖拽项中心的项
+                    for (let i = control.dragStartIndex - 1; i >= 0; i--) {
+                        let targetCenterY = i * itemHeight + itemHeight / 2
+                        if (dragCenterY < targetCenterY) {
+                            targetIndex = i
+                        } else {
+                            break
+                        }
+                    }
+                } else if (dragCenterY > control.dragStartIndex * itemHeight + itemHeight / 2) {
+                    // 向下拖拽：找到最后一个中心位置小于拖拽项中心的项
+                    for (let i = control.dragStartIndex + 1; i < listView.count; i++) {
+                        let targetCenterY = i * itemHeight + itemHeight / 2
+                        if (dragCenterY > targetCenterY) {
+                            targetIndex = i
+                        } else {
+                            break
+                        }
+                    }
+                }
+                
+                // 边界检查
+                targetIndex = Math.max(0, Math.min(listView.count - 1, targetIndex))
+                
+                // 重置位置
+                control.y = control.dragStartY
+                
+                // 执行重排序
+                if (targetIndex !== control.dragStartIndex) {
+                    labelClasses.reorderLabelClass(control.classId, targetIndex)
+                }
             }
-            normalColor: control.color
+        }
+        
+        onCanceled: {
+            if (control.held) {
+                control.held = false
+                control.y = control.dragStartY
+            }
         }
     }
 }

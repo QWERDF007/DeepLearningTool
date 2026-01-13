@@ -62,10 +62,21 @@ Rectangle {
             Layout.fillHeight: true
             Layout.fillWidth: true
             model: labelClassesView.labelClasses
+            
+            // 添加位移动画
+            displaced: Transition {
+                NumberAnimation { properties: "x,y"; duration: 200; easing.type: Easing.OutQuad }
+            }
+            
+            // 添加移动动画
+            move: Transition {
+                NumberAnimation { properties: "x,y"; duration: 200; easing.type: Easing.OutQuad }
+            }
+            
             delegate:  LabelClassDelegate {
                 width: view.width - 8
                 height: 32
-                color: model.selected ? DltColor.Highlight : Qt.lighter(DltColor.Primary, 1.2)
+                backgroundColor: model.selected ? DltColor.Highlight : Qt.lighter(DltColor.Primary, 1.2)
                 className: model.name
                 classColor: model.color
                 classShortcut: model.shortcut
