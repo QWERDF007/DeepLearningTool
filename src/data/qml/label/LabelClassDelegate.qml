@@ -38,48 +38,7 @@ Rectangle {
     Drag.hotSpot.x: width / 2
     Drag.hotSpot.y: height / 2
 
-    RowLayout {
-        anchors.fill: parent
-        anchors.margins: 5
-        Rectangle {
-            Layout.fillHeight: true
-            Layout.preferredWidth: height
-            radius: 3
-            color: control.classColor
-            border.width: 1
-            border.color: "black"
-            DltText {
-                text: control.classShortcut
-                color: "black"
-                anchors.centerIn: parent
-            }
-        }
-        DltText {
-            text: control.className
-            Layout.fillWidth: true
-        }
-    }
-    
-    RowLayout {
-        anchors {
-            top: parent.top
-            bottom: parent.bottom
-            right: parent.right
-            rightMargin: 5
-        }
-        spacing: 3
-        DltTextIconButton {
-            iconSource: DltFontIcon.Edit
-            onClicked: control.editClicked()
-            normalColor: control.backgroundColor
-        }
-        DltTextIconButton {
-            iconSource: DltFontIcon.Delete
-            onClicked: control.deleteClicked()
-            normalColor: control.backgroundColor
-        }
-    }
-
+    // 拖拽区域放在最底层
     MouseArea {
         id: dragArea
         anchors.fill: parent
@@ -119,8 +78,6 @@ Rectangle {
                 let dragCenterY = posInList.y + control.height / 2
                 
                 // 计算目标位置：拖拽项中心超过目标项中心才交换
-                // 目标项 i 的中心位置 = i * itemHeight + itemHeight / 2
-                // 当 dragCenterY > 目标项中心时，说明拖拽项应该在目标项下方
                 let targetIndex = control.dragStartIndex
                 
                 if (dragCenterY < control.dragStartIndex * itemHeight + itemHeight / 2) {
@@ -163,6 +120,49 @@ Rectangle {
                 control.held = false
                 control.y = control.dragStartY
             }
+        }
+    }
+
+    RowLayout {
+        anchors.fill: parent
+        anchors.margins: 5
+        Rectangle {
+            Layout.fillHeight: true
+            Layout.preferredWidth: height
+            radius: 3
+            color: control.classColor
+            border.width: 1
+            border.color: "black"
+            DltText {
+                text: control.classShortcut
+                color: "black"
+                anchors.centerIn: parent
+            }
+        }
+        DltText {
+            text: control.className
+            Layout.fillWidth: true
+        }
+    }
+    
+    // 按钮放在最上层，可以接收点击事件
+    RowLayout {
+        anchors {
+            top: parent.top
+            bottom: parent.bottom
+            right: parent.right
+            rightMargin: 5
+        }
+        spacing: 3
+        DltTextIconButton {
+            iconSource: DltFontIcon.Edit
+            onClicked: control.editClicked()
+            normalColor: control.backgroundColor
+        }
+        DltTextIconButton {
+            iconSource: DltFontIcon.Delete
+            onClicked: control.deleteClicked()
+            normalColor: control.backgroundColor
         }
     }
 }
