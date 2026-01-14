@@ -150,6 +150,7 @@ public:
         PathRole,
         SelectedRole,
         IsCurrentRole,
+        HasLabelsRole,
     };
 
     QHash<int, QByteArray> roleNames() const override;
@@ -221,6 +222,9 @@ private:
     QVariant getImagePath(const QModelIndex &index) const;
     QVariant getSelected(const QModelIndex &index) const;
     QVariant getIsCurrent(const QModelIndex &index) const;
+    QVariant getHasLabels(const QModelIndex &index) const;
+
+    void notifyHasLabelsChanged(int64_t image_id);
 
     void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
 

@@ -38,6 +38,7 @@ Rectangle {
                 height: 24
                 filePath: model.path ? model.path : ""
                 selected: model.selected ? model.selected : false
+                hasLabels: model.hasLabels ? model.hasLabels : false
                 onClicked: fileListView.switchToImage(index)
             }
             

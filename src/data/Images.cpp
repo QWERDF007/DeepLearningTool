@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QImageReader>
+#include <algorithm>
 
 namespace dltool::data {
 ImageInstance::ImageInstance(const int64_t dataset_id, const int64_t image_id, const QString &path, QObject *parent)
@@ -98,6 +99,8 @@ QVariant ImageInstancesListModel::data(const QModelIndex &index, int role) const
         return getSelected(index);
     case IsCurrentRole:
         return getIsCurrent(index);
+    case HasLabelsRole:
+        return getHasLabels(index);
     default:
         return QVariant();
     }
@@ -106,10 +109,11 @@ QVariant ImageInstancesListModel::data(const QModelIndex &index, int role) const
 QHash<int, QByteArray> ImageInstancesListModel::roleNames() const
 {
     return {
-        { ImageIdRole, "image_id"},
-        {    NameRole,     "name"},
-        {    PathRole,     "path"},
-        {SelectedRole, "selected"},
+        {  ImageIdRole,  "image_id"},
+        {     NameRole,      "name"},
+        {     PathRole,      "path"},
+        { SelectedRole,  "selected"},
+        {HasLabelsRole, "hasLabels"},
     };
 }
 
@@ -341,6 +345,17 @@ QVariant ImageInstancesListModel::getIsCurrent(const QModelIndex &index) const
     return selection_->currentIndex() == index;
 }
 
+QVariant ImageInstancesListModel::getHasLabels(const QModelIndex &index) const
+{
+    const int64_t image_id = image_ids_[index.row()];
+    auto          it       = image_instances_.find(image_id);
+    if (it != image_instances_.end())
+    {
+        return !it->second->labelIds().empty();
+    }
+    return false;
+}
+
 int ImageInstancesListModel::getCurrentImageId() const
 {
     QModelIndex index = selection_->currentIndex();
@@ -412,7 +427,10 @@ void ImageInstancesListModel::addImagesLabelIds(const std::vector<int64_t> &imag
     {
         ImageInstance *image_instance = getImageInstance(image_id);
         if (image_instance)
+        {
             image_instance->addLabelIds(image_label_ids);
+            notifyHasLabelsChanged(image_id);
+        }
     }
 }
 
@@ -424,7 +442,10 @@ void ImageInstancesListModel::addImagesLabelIds(const std::vector<int64_t>      
         const int64_t  image_id       = image_ids[i];
         ImageInstance *image_instance = getImageInstance(image_id);
         if (image_instance)
+        {
             image_instance->addLabelIds(label_ids[i]);
+            notifyHasLabelsChanged(image_id);
+        }
     }
 }
 
@@ -446,7 +467,21 @@ void ImageInstancesListModel::deleteImagesLabelIds(const std::vector<int64_t> &i
     {
         ImageInstance *image_instance = getImageInstance(image_id);
         if (image_instance)
+        {
             image_instance->removeLabelIds(image_label_ids);
+            notifyHasLabelsChanged(image_id);
+        }
+    }
+}
+
+void ImageInstancesListModel::notifyHasLabelsChanged(int64_t image_id)
+{
+    auto it = std::find(image_ids_.begin(), image_ids_.end(), image_id);
+    if (it != image_ids_.end())
+    {
+        int         row = std::distance(image_ids_.begin(), it);
+        QModelIndex idx = index(row, 0);
+        emit        dataChanged(idx, idx, {HasLabelsRole});
     }
 }
 
