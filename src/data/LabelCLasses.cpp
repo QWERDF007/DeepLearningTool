@@ -276,24 +276,41 @@ bool LabelClassesListModel::updateLabelClass(const int64_t label_class_id, const
         return false;
     }
 
-    int idx{0};
-    for (const auto &[_, label_class] : label_classes_)
+    auto found = label_classes_.find(label_class_id);
+    if (found != label_classes_.end())
     {
-        if (label_class->id() == label_class_id)
+        LabelClass *label_class = found->second;
+        int         old_row     = static_cast<int>(label_class->ordinalIndex());
+        int         new_row     = static_cast<int>(ordinal_index);
+
+        // 先记录旧值用于日志
+        QString old_name     = label_class->name();
+        QString old_color    = label_class->color();
+        QString old_shortcut = label_class->shortcut();
+        int64_t old_ordinal  = label_class->ordinalIndex();
+
+        // 更新内存中的数据
+        label_class->setName(name);
+        label_class->setColor(color);
+        label_class->setShortcut(shortcut);
+        label_class->setOrdinalIndex(ordinal_index);
+
+        // 使用 ordinalIndex 作为行索引发出 dataChanged 信号
+        // 如果 ordinalIndex 改变了，需要通知两个位置
+        if (old_row != new_row)
         {
-            label_class->setName(name);
-            label_class->setColor(color);
-            label_class->setShortcut(shortcut);
-            label_class->setOrdinalIndex(ordinal_index);
-            emit dataChanged(index(idx), index(idx), {NameRole, ColorRole, ShortcutRole, OrdinalIndexRole});
-            break;
+            emit dataChanged(index(old_row), index(old_row), {NameRole, ColorRole, ShortcutRole, OrdinalIndexRole});
+            emit dataChanged(index(new_row), index(new_row), {NameRole, ColorRole, ShortcutRole, OrdinalIndexRole});
         }
-        ++idx;
+        else
+        {
+            emit dataChanged(index(old_row), index(old_row), {NameRole, ColorRole, ShortcutRole, OrdinalIndexRole});
+        }
+
+        spdlog::info("更新标签类别 {} -> {}, {} -> {}, {} -> {}, {} -> {} 成功", old_name.toUtf8().constData(),
+                     name.toUtf8().constData(), old_color.toUtf8().constData(), color.toUtf8().constData(),
+                     old_shortcut.toUtf8().constData(), shortcut.toUtf8().constData(), old_ordinal, ordinal_index);
     }
-    LabelClass *it = label_classes_[label_class_id];
-    spdlog::info("更新标签类别 {} -> {}, {} -> {}, {} -> {}, {} -> {} 成功", it->name().toUtf8().constData(),
-                 name.toUtf8().constData(), it->color().toUtf8().constData(), color.toUtf8().constData(),
-                 it->shortcut().toUtf8().constData(), shortcut.toUtf8().constData(), it->ordinalIndex(), ordinal_index);
     return true;
 }
 
@@ -424,6 +441,42 @@ QString LabelClassesListModel::isValid(const int label_class_id, const QString &
             return "标签序号索引已存在";
     }
     return QString();
+}
+
+int LabelClassesListModel::findByShortcut(const QString &shortcut) const
+{
+    if (shortcut.isEmpty())
+        return -1;
+
+    int     best_index   = -1;
+    int64_t best_ordinal = std::numeric_limits<int64_t>::max();
+
+    for (const auto &[_, label_class] : label_classes_)
+    {
+        if (label_class->shortcut().compare(shortcut, Qt::CaseInsensitive) == 0)
+        {
+            // 选择 ordinal_index 最小的类别（即列表中的第一个）
+            if (label_class->ordinalIndex() < best_ordinal)
+            {
+                best_ordinal = label_class->ordinalIndex();
+                best_index   = static_cast<int>(label_class->ordinalIndex());
+            }
+        }
+    }
+
+    return best_index;
+}
+
+bool LabelClassesListModel::selectByShortcut(const QString &shortcut)
+{
+    int match_index = findByShortcut(shortcut);
+    if (match_index < 0)
+        return false;
+
+    QModelIndex model_index = index(match_index, 0);
+    selection_->select(model_index, QItemSelectionModel::ClearAndSelect);
+    selection_->setCurrentIndex(model_index, QItemSelectionModel::Select);
+    return true;
 }
 
 QVariant LabelClassesListModel::getLabelClassName(const QModelIndex &index) const

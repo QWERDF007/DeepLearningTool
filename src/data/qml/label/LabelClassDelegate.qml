@@ -24,6 +24,16 @@ Rectangle {
     signal deleteClicked
     signal clicked
 
+    // 计算对比色：根据背景色亮度决定使用黑色或白色文本
+    // 使用相对亮度公式: L = 0.299*R + 0.587*G + 0.114*B
+    function getContrastColor(bgColor) {
+        var r = bgColor.r
+        var g = bgColor.g
+        var b = bgColor.b
+        var luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        return luminance > 0.5 ? "black" : "white"
+    }
+
     // 拖拽状态
     property bool held: false
     property real dragStartY: 0
@@ -135,7 +145,7 @@ Rectangle {
             border.color: "black"
             DltText {
                 text: control.classShortcut
-                color: "black"
+                color: control.getContrastColor(control.classColor)
                 anchors.centerIn: parent
             }
         }

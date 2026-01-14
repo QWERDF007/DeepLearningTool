@@ -94,6 +94,11 @@ Item {
             imageLabelsList.selectAll()
         } else if (event.key === Qt.Key_Delete && selection && selection.hasSelection) {
             deleteConfirmDialog.open()
+        } else if (labelClasses && event.text.length > 0) {
+            // 快捷键切换标签类别
+            if (labelClasses.selectByShortcut(event.text)) {
+                event.accepted = true
+            }
         }
     }
 

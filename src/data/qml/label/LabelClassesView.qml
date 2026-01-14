@@ -11,10 +11,48 @@ Rectangle {
     width: 200
     height: 200
     color: DltColor.Primary
+    focus: true
+    activeFocusOnTab: true
     property DataManager dataManager
     property LabelClassesModel labelClasses: dataManager ? dataManager.labelClasses : null
     property ItemSelectionModel selection: dataManager ? dataManager.labelClasses.selection : null
     property int _label_class_id: -1
+
+    // 点击获取焦点
+    MouseArea {
+        anchors.fill: parent
+        onClicked: {
+            labelClassesView.forceActiveFocus()
+        }
+        // 允许事件传递给子组件
+        propagateComposedEvents: true
+        onPressed: function(mouse) {
+            mouse.accepted = false
+        }
+        onReleased: function(mouse) {
+            mouse.accepted = false
+        }
+    }
+
+    // 键盘事件处理 - 快捷键选中
+    Keys.onPressed: function(event) {
+        if (!labelClasses || !selection) {
+            return
+        }
+        
+        let key = event.text
+        if (key.length === 0) {
+            return
+        }
+        
+        let matchIndex = labelClasses.findByShortcut(key)
+        if (matchIndex >= 0) {
+            let modelIndex = labelClasses.index(matchIndex, 0)
+            selection.select(modelIndex, ItemSelectionModel.ClearAndSelect)
+            selection.setCurrentIndex(modelIndex, ItemSelectionModel.Select)
+            event.accepted = true
+        }
+    }
 
     LabelClassEditor {
         id: editor

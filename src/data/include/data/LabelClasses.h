@@ -105,10 +105,38 @@ public:
     int     getCurrentLabelClassId() const;
     QString getCurrentLabelClassColor() const;
 
+    /**
+     * @brief 验证标签类别的有效性
+     * @param label_class_id 标签类别ID（编辑时排除自身）
+     * @param name 类别名称
+     * @param shortcut 快捷键
+     * @param ordinal_index 排序索引
+     * @return 错误信息，空字符串表示有效
+     */
     Q_INVOKABLE QString isValid(const int label_class_id, const QString &name, const QString &shortcut,
                                 const int ordinal_index) const;
 
+    /**
+     * @brief 重新排序标签类别
+     * @param label_class_id 要移动的标签类别ID
+     * @param new_ordinal_index 新的排序索引位置
+     * @return 是否成功
+     */
     Q_INVOKABLE bool reorderLabelClass(const int64_t label_class_id, const int64_t new_ordinal_index);
+
+    /**
+     * @brief 根据快捷键查找标签类别
+     * @param shortcut 快捷键（不区分大小写）
+     * @return 匹配的标签类别索引，未找到返回 -1；多个匹配时返回 ordinal_index 最小的
+     */
+    Q_INVOKABLE int findByShortcut(const QString &shortcut) const;
+
+    /**
+     * @brief 根据快捷键选中标签类别
+     * @param shortcut 快捷键（不区分大小写）
+     * @return 是否成功选中
+     */
+    Q_INVOKABLE bool selectByShortcut(const QString &shortcut);
 
 private:
     void init();
