@@ -427,18 +427,18 @@ QString LabelClassesListModel::getCurrentLabelClassColor() const
 QString LabelClassesListModel::isValid(const int label_class_id, const QString &name, const QString &shortcut,
                                        const int ordinal_index) const
 {
-    if (ordinal_index > static_cast<int>(label_classes_.size()) - 1)
-        return "标签序号索引超出范围";
+    if (ordinal_index > static_cast<int>(label_classes_.size()) - 1 || ordinal_index < 0)
+        return "error:标签序号索引超出范围";
     for (const auto &[_, label_class] : label_classes_)
     {
         if (label_class->id() == label_class_id)
             continue;
         if (label_class->name() == name)
-            return "标签名称已存在";
+            return "error:标签名称已存在";
         if (!shortcut.isEmpty() && label_class->shortcut() == shortcut)
-            return "标签快捷键已存在";
+            return "error:标签快捷键已存在";
         if (label_class->ordinalIndex() == ordinal_index)
-            return "标签序号索引已存在";
+            return "warning:修改序号将重新排序标签类别";
     }
     return QString();
 }

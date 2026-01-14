@@ -128,6 +128,25 @@ void DataManager::addLabelClass(const QString &name, const QString &color, const
 void DataManager::updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
                                    const QString &shortcut, const int64_t ordinal_index)
 {
+    // 获取当前的 ordinal_index
+    int64_t current_ordinal = -1;
+    for (int i = 0; i < label_classes_->rowCount(); ++i)
+    {
+        QModelIndex idx = label_classes_->index(i, 0);
+        if (label_classes_->data(idx, LabelClassesListModel::LabelClassIdRole).toLongLong() == label_class_id)
+        {
+            current_ordinal = label_classes_->data(idx, LabelClassesListModel::OrdinalIndexRole).toLongLong();
+            break;
+        }
+    }
+
+    // 如果 ordinal_index 改变了，先进行重排序
+    if (current_ordinal != -1 && current_ordinal != ordinal_index)
+    {
+        label_classes_->reorderLabelClass(label_class_id, ordinal_index);
+    }
+
+    // 更新其他属性（名称、颜色、快捷键），使用新的 ordinal_index
     label_classes_->updateLabelClass(label_class_id, name, color, shortcut, ordinal_index);
     label_instances_->labelClassUpdated(label_class_id);
     image_labels_list_->labelClassUpdated(label_class_id);

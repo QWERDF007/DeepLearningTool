@@ -18,10 +18,35 @@ DltPopup {
     property alias classColor: colorField.text
     property alias classShortcut: shortcutField.text
     property alias ordinalIndex: ordinalField.text
-    property alias msg : msgText.text
+    property string msg: ""
     property int maxOrdinalIndex: 0
 
     property bool isCreate: true
+    
+    // 判断消息是否为错误（阻止提交）
+    function isError() {
+        return msg.startsWith("error:")
+    }
+    
+    // 获取显示的消息文本（去掉前缀）
+    function getDisplayMsg() {
+        if (msg.startsWith("error:")) {
+            return msg.substring(6)
+        } else if (msg.startsWith("warning:")) {
+            return msg.substring(8)
+        }
+        return msg
+    }
+    
+    // 获取消息颜色
+    function getMsgColor() {
+        if (msg.startsWith("error:")) {
+            return "red"
+        } else if (msg.startsWith("warning:")) {
+            return "orange"
+        }
+        return "red"
+    }
 
     signal labelClassChanged(int classId, string className, string classColor, string classShortcut, int ordinalIndex)
     signal labelClassChangedAccepted(int classId, string className, string classColor, string classShortcut, int ordinalIndex)
@@ -143,7 +168,7 @@ DltPopup {
             }
             DltButton {
                 text: "确认"
-                enabled: msgText.text ? false : true
+                enabled: !control.isError()
                 onClicked: {
                     labelClassChangedAccepted(classId, nameField.text, colorField.text, shortcutField.text, ordinalField.text)
                     clearInput()
@@ -154,14 +179,15 @@ DltPopup {
 
         DltText {
             id: msgText
+            text: control.getDisplayMsg()
             anchors {
                 bottom: parent.bottom
                 left: parent.left
                 right: buttonRow.left
                 rightMargin: 5
             }
-            color: "red"
-            visible: text ? true : false
+            color: control.getMsgColor()
+            visible: control.msg ? true : false
         }
     }
 
@@ -178,6 +204,6 @@ DltPopup {
         colorField.text = "#000000"
         shortcutField.text = ""
         ordinalField.text = ""
-        msgText.text = ""
+        control.msg = ""
     }
 }
