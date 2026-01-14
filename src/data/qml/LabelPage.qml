@@ -96,11 +96,11 @@ Rectangle {
                 color: DltColor.Primary
             }
 
-            Rectangle { // 文件列表
+            FileListView { // 文件列表
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: parent.height / 4 - 20
-                color: DltColor.Primary
+                dataManager: labelPage.dataManager
             }
         }
     }
