@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtQuick.Window
 
 import dltool.data
 import dltool.ui
@@ -129,8 +130,34 @@ Rectangle {
                 }
                 onEditClicked: function() {
                     let pos = mapToItem(null, 0, 0)
-                    editor.x = pos.x + width
-                    editor.y = pos.y + 10
+                    let windowWidth = Window.width
+                    let windowHeight = Window.height
+                    let editorWidth = editor.width
+                    let editorHeight = editor.height
+                    
+                    // 计算初始位置（按钮右侧）
+                    let targetX = pos.x + width
+                    let targetY = pos.y + 10
+                    
+                    // 水平边界检查：如果右侧超出窗口，则显示在左侧
+                    if (targetX + editorWidth > windowWidth) {
+                        targetX = pos.x - editorWidth
+                        if (targetX < 0) {
+                            targetX = 0
+                        }
+                    }
+                    
+                    // 垂直边界检查：确保弹窗不超出窗口底部
+                    if (targetY + editorHeight > windowHeight) {
+                        targetY = windowHeight - editorHeight
+                    }
+                    // 确保不超出窗口顶部
+                    if (targetY < 0) {
+                        targetY = 0
+                    }
+                    
+                    editor.x = targetX
+                    editor.y = targetY
                     editor.classId = model.label_class_id
                     editor.className = model.name
                     editor.classColor = model.color
