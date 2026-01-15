@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import dltool.project
 
 import "label"
 import "gallery"
@@ -63,6 +64,7 @@ Rectangle {
         }
 
         LabelCanvas { // 标注画布
+            id: labelCanvas
             SplitView.fillHeight: true
             SplitView.fillWidth: true
             dataManager: labelPage.dataManager
@@ -75,11 +77,15 @@ Rectangle {
             SplitView.preferredWidth: 320
             orientation: Qt.Vertical
 
-            Rectangle { // 图像增强
+            ImageEnhancementPanel { // 图像增强
+                id: imageEnhancementPanel
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: 240
-                color: DltColor.Primary
+                
+                onFitToWindow: {
+                    labelCanvas.fitImageInView()
+                }
             }
 
             LabelsTableView { // 标注实例

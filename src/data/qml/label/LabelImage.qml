@@ -1,5 +1,8 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
+
+import dltool.project
 
 Item {
     id: labelImage
@@ -46,6 +49,7 @@ Item {
         
     Image {
         id: image
+        visible: false  // 隐藏原始图像，使用 MultiEffect 显示
         smooth: false
         asynchronous: true
         fillMode: Image.PreserveAspectFit
@@ -70,6 +74,18 @@ Item {
                 }
             }
         }
+    }
+    
+    // 应用亮度和对比度效果
+    MultiEffect {
+        source: image
+        anchors.fill: image
+        x: image.x
+        y: image.y
+        scale: image.scale
+        transformOrigin: Item.TopLeft
+        brightness: Settings.imageBrightness
+        contrast: Settings.imageContrast
     }
     
     MouseArea {

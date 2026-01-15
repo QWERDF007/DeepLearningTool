@@ -279,4 +279,8 @@ Item {
         }
         return null
     }
+
+    function fitImageInView() {
+        labelImage.fitInView()
+    }
 }
