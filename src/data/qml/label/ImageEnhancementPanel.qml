@@ -46,7 +46,6 @@ Rectangle {
             showFitButton: true
             
             onValueAdjusted: function(newValue) {
-                control.zoomValue = newValue
                 control.zoomChanged(newValue)
             }
             

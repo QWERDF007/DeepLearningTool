@@ -47,7 +47,6 @@ Item {
             enabled: control.value > control.from
             onClicked: {
                 var newValue = Math.max(control.from, control.value - control.stepSize)
-                control.value = newValue
                 control.valueAdjusted(newValue)
             }
             Layout.preferredWidth: 28
@@ -62,12 +61,16 @@ Item {
             from: control.from
             to: control.to
             stepSize: control.stepSize
-            value: control.value
             precision: 2
             
+            // 使用 Binding 保持与外部 value 的同步
+            Binding on value {
+                value: control.value
+                when: !slider.pressed
+            }
+            
             onMoved: {
-                control.value = value
-                control.valueAdjusted(value)
+                control.valueAdjusted(slider.value)
             }
         }
         
@@ -81,7 +84,6 @@ Item {
             enabled: control.value < control.to
             onClicked: {
                 var newValue = Math.min(control.to, control.value + control.stepSize)
-                control.value = newValue
                 control.valueAdjusted(newValue)
             }
             Layout.preferredWidth: 28
@@ -96,7 +98,6 @@ Item {
             iconSize: 16
             text: "重置" + control.label
             onClicked: {
-                control.value = control.defaultValue
                 control.valueAdjusted(control.defaultValue)
                 control.resetClicked()
             }

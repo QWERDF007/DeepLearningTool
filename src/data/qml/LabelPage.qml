@@ -81,10 +81,17 @@ Rectangle {
                 id: imageEnhancementPanel
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
-                SplitView.preferredHeight: 240
+                SplitView.preferredHeight: 200
+                
+                // 绑定当前图像缩放值
+                zoomValue: labelCanvas.imageScale
                 
                 onFitToWindow: {
                     labelCanvas.fitImageInView()
+                }
+                
+                onZoomChanged: function(zoom) {
+                    labelCanvas.setImageScale(zoom)
                 }
             }
 

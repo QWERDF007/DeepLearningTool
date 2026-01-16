@@ -15,6 +15,9 @@ Item {
     property ItemSelectionModel selection: imageLabelsList ? imageLabelsList.selection : null
     property color drawingColor: labelClasses ? labelClasses.currentLabelClassColor : "red"
     property point startPos: Qt.point(0, 0)
+    
+    // 暴露图像缩放属性
+    property real imageScale: labelImage.image.scale
 
     Connections {
         target: SignalHelper
@@ -282,5 +285,10 @@ Item {
 
     function fitImageInView() {
         labelImage.fitInView()
+    }
+    
+    // 设置图像缩放
+    function setImageScale(scale) {
+        labelImage.scaleInCenter(scale)
     }
 }
