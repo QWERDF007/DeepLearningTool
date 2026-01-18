@@ -103,9 +103,11 @@ Rectangle {
             }
             
             LabelInstanceEditor { // 编辑实例
+                id: labelInstanceEditor
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: parent.height / 4 - 20
+                visible: hasSelection
                 dataManager: labelPage.dataManager
             }
 

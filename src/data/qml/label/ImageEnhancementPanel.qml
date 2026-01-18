@@ -28,7 +28,7 @@ Rectangle {
         
         // 标题
         DltText {
-            text: "图像增强"
+            text: "图像增强："
             font: DltFont.Subtitle
             Layout.fillWidth: true
         }

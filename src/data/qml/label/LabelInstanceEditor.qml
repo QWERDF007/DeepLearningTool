@@ -115,29 +115,46 @@ Rectangle {
         _updating = false
     }
 
-    ColumnLayout {
+    Flickable {
         anchors.fill: parent
         anchors.margins: 8
-        spacing: 12
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        contentHeight: contentColumn.height
+        
+        ScrollBar.vertical: DltScrollBar {}
 
-        // 标题
-        DltText {
-            text: "编辑实例"
-            font: DltFont.Subtitle
-            Layout.fillWidth: true
-        }
+        ColumnLayout {
+            id: contentColumn
+            width: parent.width
 
-        // 内容区域
-        Loader {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            sourceComponent: {
-                if (!control.hasSelection) {
-                    return emptyStateComponent
-                } else if (control.multiSelection) {
-                    return multiSelectStateComponent
-                } else {
-                    return editorComponent
+            // 标题
+            DltText {
+                text: "编辑实例："
+                font: DltFont.Subtitle
+                Layout.fillWidth: true
+            }
+
+            // 内容区域
+            Loader {
+                Layout.fillWidth: true
+                Layout.preferredHeight: {
+                    if (!control.hasSelection) {
+                        return 60
+                    } else if (control.multiSelection) {
+                        return 60
+                    } else {
+                        return 220
+                    }
+                }
+                sourceComponent: {
+                    if (!control.hasSelection) {
+                        return emptyStateComponent
+                    } else if (control.multiSelection) {
+                        return multiSelectStateComponent
+                    } else {
+                        return editorComponent
+                    }
                 }
             }
         }
@@ -171,16 +188,15 @@ Rectangle {
     Component {
         id: editorComponent
         ColumnLayout {
-            spacing: 8
+            width: parent.width
 
             // 类别选择器行
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 8
 
                 DltText {
                     text: "类别"
-                    Layout.preferredWidth: 60
+                    Layout.preferredWidth: 50
                     Layout.alignment: Qt.AlignVCenter
                 }
 
@@ -200,11 +216,10 @@ Rectangle {
             // X 行
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 8
 
                 DltText {
                     text: "X"
-                    Layout.preferredWidth: 60
+                    Layout.preferredWidth: 50
                     Layout.alignment: Qt.AlignVCenter
                 }
 
@@ -228,11 +243,10 @@ Rectangle {
             // Y 行
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 8
 
                 DltText {
                     text: "Y"
-                    Layout.preferredWidth: 60
+                    Layout.preferredWidth: 50
                     Layout.alignment: Qt.AlignVCenter
                 }
 
@@ -256,11 +270,10 @@ Rectangle {
             // 宽度行
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 8
 
                 DltText {
                     text: "宽度"
-                    Layout.preferredWidth: 60
+                    Layout.preferredWidth: 50
                     Layout.alignment: Qt.AlignVCenter
                 }
 
@@ -284,11 +297,10 @@ Rectangle {
             // 高度行
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 8
 
                 DltText {
                     text: "高度"
-                    Layout.preferredWidth: 60
+                    Layout.preferredWidth: 50
                     Layout.alignment: Qt.AlignVCenter
                 }
 
@@ -307,11 +319,6 @@ Rectangle {
                         control.commitGeometryChange(xEditor.value, yEditor.value, widthEditor.value, heightEditor.value)
                     }
                 }
-            }
-
-            // 填充剩余空间
-            Item {
-                Layout.fillHeight: true
             }
         }
     }
