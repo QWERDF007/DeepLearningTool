@@ -77,7 +77,7 @@ DltPopup {
                     Layout.fillWidth: true
                     placeholderText: "输入类别名称"
                     onTextEdited: {
-                        labelClassChanged(classId, className, classColor, classShortcut, ordinalIndex)
+                        labelClassChanged(classId, className, classColor, classShortcut, isCreate ? -1 : ordinalIndex)
                     }
                 }
                 DltText {
@@ -89,7 +89,7 @@ DltPopup {
                     placeholderText: "#RRGGBB"
                     text: colorDialog.currentColor
                     onTextEdited: {
-                        labelClassChanged(classId, className, classColor, classShortcut, ordinalIndex)
+                        labelClassChanged(classId, className, classColor, classShortcut, isCreate ? -1 : ordinalIndex)
                     }
                 }
                 DltText {
@@ -100,7 +100,7 @@ DltPopup {
                     Layout.fillWidth: true
                     placeholderText: "输入快捷键"
                     onTextEdited: {
-                        labelClassChanged(classId, className, classColor, classShortcut, ordinalIndex)
+                        labelClassChanged(classId, className, classColor, classShortcut, isCreate ? -1 : ordinalIndex)
                     }
                 }
                 DltText {
@@ -117,7 +117,7 @@ DltPopup {
                         top: maxOrdinalIndex
                     }
                     onTextEdited: {
-                        labelClassChanged(classId, className, classColor, classShortcut, ordinalIndex)
+                        labelClassChanged(classId, className, classColor, classShortcut, isCreate ? -1 : ordinalIndex)
                     }
                 }
                 Item {
@@ -170,7 +170,7 @@ DltPopup {
                 text: "确认"
                 enabled: !control.isError()
                 onClicked: {
-                    labelClassChangedAccepted(classId, nameField.text, colorField.text, shortcutField.text, ordinalField.text)
+                    labelClassChangedAccepted(classId, nameField.text, colorField.text, shortcutField.text, isCreate ? maxOrdinalIndex : ordinalField.text)
                     clearInput()
                     control.close()
                 }
