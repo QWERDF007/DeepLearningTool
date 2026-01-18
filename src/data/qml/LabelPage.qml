@@ -102,11 +102,11 @@ Rectangle {
                 dataManager: labelPage.dataManager
             }
             
-            Rectangle { // 编辑实例
+            LabelInstanceEditor { // 编辑实例
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: parent.height / 4 - 20
-                color: DltColor.Primary
+                dataManager: labelPage.dataManager
             }
 
             FileListView { // 文件列表

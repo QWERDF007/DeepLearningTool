@@ -1,9 +1,9 @@
 #include "data/Labels.h"
 
 #include "data/DataBase.h"
-#include "data/LabelData.h"
 #include "data/Images.h"
 #include "data/LabelClasses.h"
+#include "data/LabelData.h"
 
 #include <spdlog/spdlog.h>
 
@@ -222,6 +222,39 @@ void LabelInstancesListModel::updateLabelsData(const std::vector<int64_t>     &l
 void LabelInstancesListModel::updateLabelsClass(const std::vector<int64_t> &label_ids,
                                                 const std::vector<int64_t> &label_class_ids)
 {
+    if (database_ == nullptr)
+    {
+        spdlog::error("更新标注类别失败: 数据库未初始化");
+        return;
+    }
+    if (label_ids.size() != label_class_ids.size())
+    {
+        spdlog::error("更新标注类别失败: 标签ID数量 {} 与类别ID数量 {} 不一致!", label_ids.size(),
+                      label_class_ids.size());
+        return;
+    }
+
+    QString err_msg;
+    bool    ok = database_->updateLabelsClass(label_ids, label_class_ids, err_msg);
+    if (!ok)
+    {
+        spdlog::error("更新标注类别失败: {}", err_msg.toUtf8().constData());
+        return;
+    }
+
+    // 更新内存中的标注实例
+    for (size_t i = 0; i < label_ids.size(); ++i)
+    {
+        auto found = label_instances_.find(label_ids[i]);
+        if (found != label_instances_.end())
+        {
+            found->second->setLabelClassId(label_class_ids[i]);
+        }
+    }
+
+    beginResetModel();
+    endResetModel();
+    spdlog::info("更新 {} 个标注类别成功", label_ids.size());
 }
 
 void LabelInstancesListModel::labelClassUpdated(const int64_t label_class_id)
@@ -472,7 +505,8 @@ void ImageLabelsListModel::updateLabels(const std::vector<int64_t> &image_ids, c
         return;
 
     // TODO: 只刷新需要更新的数据, 而不是全部数据
-    emit dataChanged(index(0), index(static_cast<int>(label_ids_.size()) - 1), {DataRole});
+    emit dataChanged(index(0), index(static_cast<int>(label_ids_.size()) - 1),
+                     {DataRole, LabelClassIdRole, LabelClassColorRole});
 }
 
 void ImageLabelsListModel::deleteLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids)
@@ -534,10 +568,11 @@ QVariantMap ImageLabelsListModel::getData(const int index) const
     LabelInstance *instance = label_instances_->getLabelInstance(label_id);
     if (instance == nullptr)
         return QVariantMap();
-    auto data        = instance->data()->dataMap();
-    data["label_id"] = label_id;
-    data["color"]    = label_classes_->getLabelClassColor(instance->labelClassId());
-    data["index"]    = index;
+    auto data              = instance->data()->dataMap();
+    data["label_id"]       = label_id;
+    data["label_class_id"] = instance->labelClassId();
+    data["color"]          = label_classes_->getLabelClassColor(instance->labelClassId());
+    data["index"]          = index;
     return data;
 }
 
@@ -880,7 +915,7 @@ void ImageLabelsTableModel::updateLabels(const std::vector<int64_t> &image_ids, 
         return;
     emit dataChanged(index(0, 0),
                      index(static_cast<int>(label_ids_.size()) - 1, static_cast<int>(column_headers_.size()) - 1),
-                     {DataRole});
+                     {DataRole, ClassDataRole});
 }
 
 void ImageLabelsTableModel::deleteLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids)

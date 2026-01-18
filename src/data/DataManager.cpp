@@ -181,6 +181,14 @@ void DataManager::updateLabels(const std::vector<int64_t> &label_ids, const std:
     // updateDatasetsStats();
 }
 
+void DataManager::updateLabelsClass(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &label_class_ids)
+{
+    std::vector<int64_t> image_ids = label_instances_->getImageIds(label_ids);
+    label_instances_->updateLabelsClass(label_ids, label_class_ids);
+    image_labels_list_->updateLabels(image_ids, label_ids);
+    image_labels_table_->updateLabels(image_ids, label_ids);
+}
+
 void DataManager::deleteLabels(const std::vector<int64_t> &label_ids)
 {
     std::vector<int64_t> image_ids = label_instances_->getImageIds(label_ids);

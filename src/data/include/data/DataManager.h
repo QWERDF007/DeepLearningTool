@@ -89,6 +89,15 @@ public:
     Q_INVOKABLE void deleteSelectedImages();
 
     Q_INVOKABLE void addLabelClass(const QString &name, const QString &color, const QString &shortcut);
+
+    /**
+     * @brief 更新标签类别的名称、颜色、快捷键、序号索引
+     * @param label_class_id
+     * @param name
+     * @param color
+     * @param shortcut
+     * @param ordinal_index
+     */
     Q_INVOKABLE void updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
                                       const QString &shortcut, const int64_t ordinal_index);
     Q_INVOKABLE void deleteLabelClass(const int64_t label_class_id);
@@ -96,6 +105,8 @@ public:
     Q_INVOKABLE void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                                const std::vector<QVariantMap> &data);
     Q_INVOKABLE void updateLabels(const std::vector<int64_t> &label_ids, const std::vector<QVariantMap> &data);
+    Q_INVOKABLE void updateLabelsClass(const std::vector<int64_t> &label_ids,
+                                       const std::vector<int64_t> &label_class_ids);
     Q_INVOKABLE void deleteLabels(const std::vector<int64_t> &label_ids);
 
     Q_INVOKABLE void addTagClass(const QString &name);

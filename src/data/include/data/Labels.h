@@ -41,6 +41,11 @@ public:
         return label_class_id_;
     }
 
+    void setLabelClassId(const int64_t label_class_id)
+    {
+        label_class_id_ = label_class_id;
+    }
+
     const LabelData &data() const
     {
         return data_;
