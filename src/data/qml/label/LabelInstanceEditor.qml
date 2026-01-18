@@ -39,6 +39,10 @@ Rectangle {
                 control.updateSelectedLabel()
             }
         }
+        function onModelReset() {
+            // 模型重置时（如删除标注），清空选择状态
+            control.updateSelectedLabel()
+        }
     }
 
     // 更新选中的标注数据
@@ -60,10 +64,22 @@ Rectangle {
             selectedLabelId = -1
             selectedLabelClassId = -1
         } else if (selectedIndexes.length === 1) {
+            let index = selectedIndexes[0].row
+            let data = imageLabelsList.getData(index)
+            
+            // 检查数据是否有效（标注可能已被删除）
+            if (!data || Object.keys(data).length === 0 || data.label_id === undefined) {
+                hasSelection = false
+                multiSelection = false
+                selectedLabelData = null
+                selectedLabelId = -1
+                selectedLabelClassId = -1
+                return
+            }
+            
             hasSelection = true
             multiSelection = false
-            let index = selectedIndexes[0].row
-            selectedLabelData = imageLabelsList.getData(index)
+            selectedLabelData = data
             selectedLabelId = selectedLabelData.label_id
             selectedLabelClassId = selectedLabelData.label_class_id
         } else {
