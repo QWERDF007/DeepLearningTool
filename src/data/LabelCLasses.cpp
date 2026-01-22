@@ -346,7 +346,19 @@ bool LabelClassesListModel::deleteLabelClass(const int64_t label_class_id)
         spdlog::error("删除标签类别 [{}] 失败, 数据库未初始化", label_class_id);
         return false;
     }
-    QString name = getLabelClassName(label_class_id);
+
+    // 查找要删除的项并获取其 ordinal_index
+    auto found = label_classes_.find(label_class_id);
+    if (found == label_classes_.end())
+    {
+        spdlog::error("删除标签类别 [{}] 失败, 未找到该类别", label_class_id);
+        return false;
+    }
+
+    int64_t deleted_ordinal = found->second->ordinalIndex();
+    QString name            = found->second->name();
+
+    // 从数据库中删除
     QString err_msg;
     bool    ok = database_->deleteLabelClass(label_class_id, err_msg);
     if (!ok)
@@ -354,18 +366,46 @@ bool LabelClassesListModel::deleteLabelClass(const int64_t label_class_id)
         spdlog::error("删除标签类别 [{}] 失败: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
         return false;
     }
-    int idx{0};
-    for (const auto &[_, label_class] : label_classes_)
+
+    // 从模型中移除
+    int row = static_cast<int>(deleted_ordinal);
+    beginRemoveRows(QModelIndex(), row, row);
+    label_classes_.erase(label_class_id);
+    endRemoveRows();
+
+    // 更新所有在删除项之后的项的 ordinal_index
+    std::vector<int64_t> ids_to_update;
+    std::vector<int64_t> new_ordinals;
+
+    for (const auto &[id, label_class] : label_classes_)
     {
-        if (label_class->id() == label_class_id)
+        if (label_class->ordinalIndex() > deleted_ordinal)
         {
-            beginRemoveRows(QModelIndex(), idx, idx);
-            label_classes_.erase(label_class_id);
-            endRemoveRows();
-            break;
+            ids_to_update.push_back(id);
+            new_ordinals.push_back(label_class->ordinalIndex() - 1);
         }
-        ++idx;
     }
+
+    // 批量更新数据库和内存中的 ordinal_index
+    if (!ids_to_update.empty())
+    {
+        if (!updateLabelClass(ids_to_update, new_ordinals))
+        {
+            spdlog::error("更新删除后的序号索引失败");
+            return false;
+        }
+
+        // 为所有受影响的行发出 dataChanged 信号
+        // 删除后行会上移，因此从 deleted_ordinal 通知到末尾
+        int minRow = static_cast<int>(deleted_ordinal);
+        int maxRow = rowCount() - 1;
+        if (maxRow >= minRow)
+        {
+            emit dataChanged(index(minRow), index(maxRow),
+                             {LabelClassIdRole, NameRole, ColorRole, ShortcutRole, OrdinalIndexRole, SelectedRole});
+        }
+    }
+
     spdlog::info("删除标签类别 [{}] 成功", name.toUtf8().constData());
     return true;
 }
