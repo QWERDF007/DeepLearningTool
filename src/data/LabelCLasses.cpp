@@ -406,6 +406,14 @@ bool LabelClassesListModel::deleteLabelClass(const int64_t label_class_id)
         }
     }
 
+    // 自动选择逻辑：如果删除后没有选中项且列表不为空，则选中第一项
+    if (rowCount() > 0 && !selection_->hasSelection())
+    {
+        QModelIndex firstIndex = index(0);
+        selection_->select(firstIndex, QItemSelectionModel::ClearAndSelect);
+        selection_->setCurrentIndex(firstIndex, QItemSelectionModel::Select);
+    }
+
     spdlog::info("删除标签类别 [{}] 成功", name.toUtf8().constData());
     return true;
 }
