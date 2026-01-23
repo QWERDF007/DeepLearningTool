@@ -38,7 +38,15 @@ StackLayout {
         }
     }
 
-    property var pages: [project_com, dataset_com, label_com]
+    Component {
+        id: review_com
+        ReviewPage {
+            anchors.fill: parent
+            dataManager: content.dataManager
+        }
+    }
+
+    property var pages: [project_com, dataset_com, label_com, review_com]
 
     Repeater {
         model: pages
