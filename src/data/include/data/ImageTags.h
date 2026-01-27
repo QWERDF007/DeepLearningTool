@@ -127,6 +127,13 @@ private:
 
     std::vector<int64_t> getValidImagesId(const std::vector<int64_t> &new_image_ids, const int64_t tag_id);
 
+    /**
+     * @brief 检查指定的图像是否有任何 tag
+     * @param image_ids 要检查的图像 ID 列表
+     * @return 如果至少有一个图像有 tag 则返回 true，否则返回 false
+     */
+    bool hasAnyTags(const std::vector<int64_t> &image_ids) const;
+
     data::ProjectDataBase *database_{nullptr};
 
     ImageInstancesListModel *image_instances_{nullptr};

@@ -255,6 +255,11 @@ bool ImageTagsListModel::removeImagesTags(const std::vector<int64_t> &image_ids)
     }
     if (image_ids.empty())
         return true;
+
+    // 如果这些图像都没有 tag，直接返回
+    if (!hasAnyTags(image_ids))
+        return true;
+
     QString err_msg;
     bool    ok = database_->deleteImagesTagsByImagesId(image_ids, err_msg);
     if (!ok)
@@ -406,6 +411,25 @@ void ImageTagsListModel::updateStats()
         return;
     emit dataChanged(index(0), index(static_cast<int>(image_tags_.size() - 1)),
                      {SelectedImagesStatsRole, CurrentImageStatsRole});
+}
+
+bool ImageTagsListModel::hasAnyTags(const std::vector<int64_t> &image_ids) const
+{
+    // 如果没有任何 tag 定义，直接返回 false
+    if (image_tags_.empty())
+        return false;
+
+    // 检查这些图像是否有任何 tag
+    for (const auto &image_id : image_ids)
+    {
+        ImageInstance *image_instance = image_instances_->getImageInstance(image_id);
+        if (image_instance != nullptr && !image_instance->getTagIds().empty())
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 } // namespace dltool::data
