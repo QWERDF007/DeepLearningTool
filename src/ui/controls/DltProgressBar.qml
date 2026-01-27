@@ -49,7 +49,7 @@ ProgressBar{
         }
         DltText{
             visible: control.textVisible
-            text: (control.visualPosition * 100).toFixed(0) + "%"
+            text: (control.visualPosition * 100).toFixed(2) + "%"
             anchors.centerIn: parent
         }
     }
