@@ -4,15 +4,17 @@
 #include "Datasets.h"
 #include "ImageTags.h"
 #include "Images.h"
+#include "LabelMeImporter.h"
 #include "Labels.h"
 #include "labelclasses.h"
 
 #include <QObject>
 #include <QtQml>
 
+
 namespace dltool::data {
 class ProjectDataBase;
-}
+} // namespace dltool::data
 
 namespace dltool::data {
 
@@ -116,6 +118,24 @@ private:
 
     void updateDatasetsStats();
 
+    /**
+     * @brief 导入 LabelMe 格式数据
+     * @param dataset_id 数据集 ID
+     * @param image_dir 图像目录路径
+     * @param data_dir LabelMe JSON 文件目录路径
+     */
+    void importLabelMeData(const int64_t dataset_id, const QString &image_dir, const QString &data_dir);
+
+    /**
+     * @brief 将 LabelMe 形状转换为系统标注数据
+     */
+    QVariantMap convertShapeToLabelData(const LabelMeImporter::LabelMeShape &shape, int image_width, int image_height);
+
+    /**
+     * @brief 生成默认颜色
+     */
+    QString generateDefaultColor(int index);
+
     data::ProjectDataBase *database_{nullptr};
 
     DatasetsListModel       *datasets_{nullptr};
@@ -127,6 +147,8 @@ private:
     ImageLabelsTableModel   *image_labels_table_{nullptr};
 
     ImageInfoListModel *image_info_{nullptr};
+
+    int method_{0}; // 标签数据类型
 };
 
 } // namespace dltool::data

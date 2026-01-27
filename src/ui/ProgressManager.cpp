@@ -36,32 +36,8 @@ QString ProgressManager::getMessage() const
 
 QString ProgressManager::getColorfulMessage() const
 {
-    QTextDocument document;
-    QTextCursor   cursor(&document);
-    cursor.beginEditBlock();
-    for (const auto &[level, msg] : message_queue_)
-    {
-        QString message = msg;
-        if (!message.endsWith('\n'))
-        {
-            message += '\n';
-        }
-
-        if (level == spdlog::level::err)
-        {
-            QTextCharFormat format;
-            format.setForeground(QColor("red"));
-            cursor.insertText(message, format);
-            format.setForeground(DltColor::getInstance()->FontPrimary());
-            cursor.setCharFormat(format);
-        }
-        else
-        {
-            cursor.insertText(message);
-        }
-    }
-    cursor.endEditBlock();
-    return document.toHtml();
+    // 返回普通文本而不是 HTML
+    return getMessage();
 }
 
 void ProgressManager::startTask(const QString &taskName)
