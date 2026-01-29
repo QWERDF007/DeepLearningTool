@@ -1,16 +1,15 @@
 #pragma once
 
 #include "DataExport.h"
+#include "DataImporter.h"
 #include "Datasets.h"
 #include "ImageTags.h"
 #include "Images.h"
-#include "LabelMeImporter.h"
 #include "Labels.h"
 #include "labelclasses.h"
 
 #include <QObject>
 #include <QtQml>
-
 
 namespace dltool::data {
 class ProjectDataBase;
@@ -119,22 +118,11 @@ private:
     void updateDatasetsStats();
 
     /**
-     * @brief 导入 LabelMe 格式数据
-     * @param dataset_id 数据集 ID
-     * @param image_dir 图像目录路径
-     * @param data_dir LabelMe JSON 文件目录路径
+     * @brief 处理导入器的 dataReady 信号
      */
-    void importLabelMeData(const int64_t dataset_id, const QString &image_dir, const QString &data_dir);
-
-    /**
-     * @brief 将 LabelMe 形状转换为系统标注数据
-     */
-    QVariantMap convertShapeToLabelData(const LabelMeImporter::LabelMeShape &shape, int image_width, int image_height);
-
-    /**
-     * @brief 生成默认颜色
-     */
-    QString generateDefaultColor(int index);
+    void handleDataReady(bool success, int64_t dataset_id, std::vector<QString> image_paths,
+                         std::vector<int64_t> image_widths, std::vector<int64_t> image_heights,
+                         std::map<QString, QString> label_class_info, std::vector<ImportedLabel> labels);
 
     data::ProjectDataBase *database_{nullptr};
 

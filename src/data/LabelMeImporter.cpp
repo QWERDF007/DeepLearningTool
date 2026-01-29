@@ -54,14 +54,14 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
     try
     {
         // 1. 扫描 JSON 文件
-        emit                 progressUpdated(0, "正在扫描 JSON 文件...");
+        updateProgress(0, "正在扫描 JSON 文件...");
         std::vector<QString> json_files = scanJsonFiles(data_dir);
 
         if (json_files.empty())
         {
             spdlog::warn("未找到任何 JSON 文件");
-            emit progressUpdated(100, "未找到任何 JSON 文件");
-            emit dataParsed(false, dataset_id, parsed_data, label_class_names);
+            updateProgress(100, "未找到任何 JSON 文件");
+            emit dataReady(false, dataset_id, {}, {}, {}, {}, {});
             return;
         }
 
@@ -69,9 +69,9 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
         spdlog::info("找到 {} 个 JSON 文件，开始解析...", total_files);
 
         // 2. 解析所有 JSON 文件
-        emit progressUpdated(10, QString("正在解析 %1 个 JSON 文件...").arg(total_files));
-        int  parsed_count  = 0;
-        int  skipped_count = 0;
+        updateProgress(10, QString("正在解析 %1 个 JSON 文件...").arg(total_files));
+        int parsed_count  = 0;
+        int skipped_count = 0;
 
         for (const auto &json_path : json_files)
         {
@@ -153,7 +153,7 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
             int progress = 10 + (parsed_count * 80 / total_files);
             if (parsed_count % std::max(1, total_files / 10) == 0 || parsed_count == total_files)
             {
-                emit progressUpdated(progress, QString("已解析: %1/%2").arg(parsed_count).arg(total_files));
+                updateProgress(progress, QString("已解析: %1/%2").arg(parsed_count).arg(total_files));
             }
         }
 
@@ -163,32 +163,30 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
         if (parsed_data.empty())
         {
             spdlog::warn("没有有效的数据可导入");
-            emit progressUpdated(100, "没有有效的数据可导入");
-            emit dataParsed(false, dataset_id, parsed_data, label_class_names);
+            updateProgress(100, "没有有效的数据可导入");
+            emit dataReady(false, dataset_id, {}, {}, {}, {}, {});
             return;
         }
 
         // 3. 提取标签类别
-        emit progressUpdated(90, "正在提取标签类别...");
+        updateProgress(90, "正在提取标签类别...");
         label_class_names = extractLabelClasses(parsed_data);
 
         spdlog::info("提取到 {} 个唯一的标签类别", label_class_names.size());
 
         success = true;
-        emit progressUpdated(100, QString("解析完成: %1 个图像").arg(parsed_data.size()));
+        updateProgress(100, QString("解析完成: %1 个图像").arg(parsed_data.size()));
+
+        // 处理数据并发射 dataReady 信号
+        processAndEmitData(dataset_id, parsed_data, label_class_names);
     }
 
     catch (const std::exception &e)
     {
         spdlog::error("解析过程中发生异常: {}", e.what());
-        emit progressUpdated(100, QString("解析失败: %1").arg(e.what()));
-        success = false;
+        updateProgress(100, QString("解析失败: %1").arg(e.what()));
+        emit dataReady(false, dataset_id, {}, {}, {}, {}, {});
     }
-
-    // 发射数据解析完成信号
-    spdlog::info("解析完成: success={}, images={}, label_classes={}", success, parsed_data.size(),
-                 label_class_names.size());
-    emit dataParsed(success, dataset_id, parsed_data, label_class_names);
 }
 
 std::vector<QString> LabelMeImporter::scanJsonFiles(const QString &data_dir)
@@ -350,6 +348,147 @@ std::set<QString> LabelMeImporter::extractLabelClasses(const std::vector<LabelMe
     }
 
     return label_classes;
+}
+
+QVariantMap LabelMeImporter::convertShapeToLabelData(const LabelMeShape &shape, int image_width, int image_height)
+{
+    QVariantMap label_data;
+
+    // 检查图像尺寸是否有效
+    if (image_width <= 0 || image_height <= 0)
+    {
+        spdlog::warn("图像尺寸无效: width={}, height={}", image_width, image_height);
+        return label_data;
+    }
+
+    // 处理 rectangle 类型
+    if (shape.shape_type == "rectangle")
+    {
+        if (shape.points.size() < 2)
+        {
+            spdlog::warn("rectangle 类型的 shape 点数不足: {}", shape.points.size());
+            return label_data;
+        }
+
+        QPointF p1 = shape.points[0];
+        QPointF p2 = shape.points[1];
+
+        double x_min = std::min(p1.x(), p2.x());
+        double y_min = std::min(p1.y(), p2.y());
+        double x_max = std::max(p1.x(), p2.x());
+        double y_max = std::max(p1.y(), p2.y());
+
+        double width  = x_max - x_min;
+        double height = y_max - y_min;
+
+        label_data["x"]      = x_min;
+        label_data["y"]      = y_min;
+        label_data["width"]  = width;
+        label_data["height"] = height;
+    }
+    else if (shape.shape_type == "polygon")
+    {
+        if (shape.points.empty())
+        {
+            spdlog::warn("polygon 类型的 shape 没有点");
+            return label_data;
+        }
+
+        double x_min = shape.points[0].x();
+        double y_min = shape.points[0].y();
+        double x_max = shape.points[0].x();
+        double y_max = shape.points[0].y();
+
+        for (const auto &point : shape.points)
+        {
+            x_min = std::min(x_min, point.x());
+            y_min = std::min(y_min, point.y());
+            x_max = std::max(x_max, point.x());
+            y_max = std::max(y_max, point.y());
+        }
+
+        double width  = x_max - x_min;
+        double height = y_max - y_min;
+
+        label_data["x"]      = x_min;
+        label_data["y"]      = y_min;
+        label_data["width"]  = width;
+        label_data["height"] = height;
+    }
+    else
+    {
+        spdlog::warn("不支持的 shape_type: {}, label: {}", shape.shape_type.toStdString(), shape.label.toStdString());
+        return label_data;
+    }
+
+    return label_data;
+}
+
+QString LabelMeImporter::generateDefaultColor(int index)
+{
+    const double golden_ratio = 0.618033988749895;
+    double       hue          = fmod(index * golden_ratio, 1.0);
+    QColor       color        = QColor::fromHsvF(hue, 0.8, 0.9);
+    return color.name();
+}
+
+void LabelMeImporter::processAndEmitData(int64_t dataset_id, const std::vector<LabelMeData> &parsed_data,
+                                         const std::set<QString> &label_class_names)
+{
+    spdlog::info("开始处理数据并准备发射 dataReady 信号");
+
+    // 准备数据结构
+    std::vector<QString>       image_paths;
+    std::vector<int64_t>       image_widths;
+    std::vector<int64_t>       image_heights;
+    std::map<QString, QString> label_class_info; // name -> color
+    std::vector<ImportedLabel> labels;
+
+    // 1. 为标签类别生成颜色
+    int color_index = 0;
+    for (const auto &class_name : label_class_names)
+    {
+        QString color                = generateDefaultColor(color_index++);
+        label_class_info[class_name] = color;
+        spdlog::debug("标签类别: {}, 颜色: {}", class_name.toStdString(), color.toStdString());
+    }
+
+    // 2. 处理每个图像的数据
+    for (const auto &data : parsed_data)
+    {
+        // 添加图像信息
+        image_paths.push_back(data.image_path);
+        image_widths.push_back(data.image_width);
+        image_heights.push_back(data.image_height);
+
+        // 3. 转换每个形状为标注数据
+        for (const auto &shape : data.shapes)
+        {
+            QVariantMap label_data = convertShapeToLabelData(shape, data.image_width, data.image_height);
+
+            // 如果转换失败（返回空映射），跳过该标注
+            if (label_data.isEmpty())
+            {
+                spdlog::warn("跳过无效的标注: label={}, shape_type={}, image={}", shape.label.toStdString(),
+                             shape.shape_type.toStdString(), data.image_path.toStdString());
+                continue;
+            }
+
+            // 创建 ImportedLabel 结构
+            ImportedLabel imported_label;
+            imported_label.label_class_name = shape.label;
+            imported_label.data             = label_data;
+            imported_label.image_path       = data.image_path;
+
+            labels.push_back(imported_label);
+        }
+    }
+
+    spdlog::info("数据处理完成: images={}, label_classes={}, labels={}", image_paths.size(), label_class_info.size(),
+                 labels.size());
+
+    // 4. 发射 dataReady 信号
+    emit dataReady(true, dataset_id, image_paths, image_widths, image_heights, label_class_info, labels);
 }
 
 } // namespace dltool::data

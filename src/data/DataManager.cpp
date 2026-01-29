@@ -2,8 +2,8 @@
 
 #include "data/DataBase.h"
 #include "data/DataFormat.h"
+#include "data/DataImporter.h"
 #include "data/LabelData.h"
-#include "data/LabelMeImporter.h"
 #include "ui/ProgressManager.h"
 
 #include <spdlog/spdlog.h>
@@ -96,25 +96,40 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
 {
     qInfo() << __FUNCTION__ << __LINE__ << "dataset_id" << dataset_id << "data_format" << data_format << "image_dir"
             << image_dir << "data_dir" << data_dir;
+
+    // 验证数据格式是否支持
     if (!data::DataFormat::isDataFormatSupported(data_format))
     {
         spdlog::error("导入数据失败, 数据格式不支持: {}", data_format);
         return;
     }
 
-    // 根据数据格式调用相应的导入函数
-    if (data_format == data::DataFormat::getDataFormat("LabelMe"))
+    // 显示进度对话框
+    // ui::ProgressManager::getInstance()->startTask("导入数据");
+    // 下面这样会在 UI 线程 (ProgressManager 所在线程) 中调用, 异步调用
+    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
+                              Q_ARG(QString, "导入数据"));
+
+    // 使用工厂函数创建导入器
+    // 重构后：DataManager 不再直接实例化具体的导入器类
+    // 而是通过工厂函数获取，实现了依赖倒置原则
+    DataImporter *importer = DataImporter::createImporter(data_format, database_, this);
+    if (!importer)
     {
-        importLabelMeData(dataset_id, image_dir, data_dir);
+        spdlog::error("无法为格式 {} 创建导入器", data_format);
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
+                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, "不支持的数据格式"));
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
         return;
     }
 
-    // 默认导入逻辑（仅导入图像）
-    std::vector<int64_t> image_ids;
-    image_instances_->addImages(dataset_id, image_dir, image_ids);
-    std::vector<int64_t> dataset_ids(image_ids.size(), dataset_id);
-    datasets_->addImages(dataset_ids, image_ids);
-    updateDatasetsStats();
+    // 连接信号 - 使用 QueuedConnection 确保在主线程更新 UI
+    // 重构后：使用 dataReady 信号接收完整的处理后数据
+    // 进度更新现在由 DataImporter 内部处理，不再需要连接 progressUpdated 信号
+    connect(importer, &DataImporter::dataReady, this, &DataManager::handleDataReady, Qt::QueuedConnection);
+
+    // 启动导入
+    importer->startImport(dataset_id, image_dir, data_dir);
 }
 
 void DataManager::deleteSelectedImages()
@@ -229,231 +244,135 @@ void DataManager::updateDatasetsStats()
     datasets_->setStats(dataset_ids, image_ids, images_label_ids);
 }
 
-void DataManager::importLabelMeData(const int64_t dataset_id, const QString &image_dir, const QString &data_dir)
+void DataManager::handleDataReady(bool success, int64_t dataset_id, std::vector<QString> image_paths,
+                                  std::vector<int64_t> image_widths, std::vector<int64_t> image_heights,
+                                  std::map<QString, QString> label_class_info, std::vector<ImportedLabel> labels)
 {
-    // 显示进度对话框
-    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
-                              Q_ARG(QString, "导入 LabelMe 数据"));
+    // 获取发送信号的导入器，用于稍后删除
+    DataImporter *importer = qobject_cast<DataImporter *>(sender());
 
-    // 创建导入器
-    auto *importer = new LabelMeImporter(database_, this);
-
-    // 连接进度更新信号 - 使用 QueuedConnection 确保在主线程更新 UI
-    connect(
-        importer, &LabelMeImporter::progressUpdated, this,
-        [](int progress, const QString &message)
+    if (!success || image_paths.empty())
+    {
+        spdlog::error("数据解析失败或没有数据");
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
+                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, "数据解析失败"));
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+        if (importer)
         {
-            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "updateProgress", Qt::QueuedConnection,
-                                      Q_ARG(int, progress));
-            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                      Q_ARG(int, spdlog::level::info), Q_ARG(QString, message));
-        },
-        Qt::QueuedConnection);
-
-    // 连接数据解析完成信号 - 在主线程中处理数据
-    connect(
-        importer, &LabelMeImporter::dataParsed, this,
-        [this, importer](bool success, int64_t dataset_id, std::vector<LabelMeImporter::LabelMeData> parsed_data,
-                         std::set<QString> label_class_names)
-        {
-            if (!success || parsed_data.empty())
-            {
-                spdlog::error("数据解析失败或没有数据");
-                QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                          Q_ARG(int, spdlog::level::err), Q_ARG(QString, "数据解析失败"));
-                QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
-                importer->deleteLater();
-                return;
-            }
-
-            spdlog::info("开始在主线程中导入数据，图像数量: {}", parsed_data.size());
-            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                      Q_ARG(int, spdlog::level::info), Q_ARG(QString, "开始导入数据到数据库..."));
-
-            // 1. 创建缺失的标签类别
-            std::map<QString, int64_t> label_class_map;
-            for (const auto &label_name : label_class_names)
-            {
-                // 检查标签类别是否已存在
-                int64_t label_class_id = label_classes_->getLabelClassId(label_name);
-                if (label_class_id < 0)
-                {
-                    // 创建新的标签类别
-                    QString color    = generateDefaultColor(static_cast<int>(label_class_map.size()));
-                    QString shortcut = "";
-                    addLabelClass(label_name, color, shortcut);
-                    label_class_id = label_classes_->getLabelClassId(label_name);
-                }
-                label_class_map[label_name] = label_class_id;
-            }
-
-            // 2. 准备图像路径
-            std::vector<QString> image_paths;
-            for (const auto &data : parsed_data)
-            {
-                image_paths.push_back(data.image_path);
-            }
-
-            // 3. 批量添加图像
-            std::vector<int64_t> image_ids;
-            if (!image_instances_->addImages(dataset_id, image_paths, image_ids))
-            {
-                spdlog::error("添加图像失败");
-                QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                          Q_ARG(int, spdlog::level::err), Q_ARG(QString, "添加图像失败"));
-                QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
-                importer->deleteLater();
-                return;
-            }
-
-            spdlog::info("成功导入 {} 个图像", image_ids.size());
-
-            // 4. 为每个图像添加标注
-            std::vector<int64_t>     all_label_image_ids;
-            std::vector<int64_t>     all_label_class_ids;
-            std::vector<QVariantMap> all_label_data;
-
-            for (size_t i = 0; i < parsed_data.size() && i < image_ids.size(); ++i)
-            {
-                const auto &data     = parsed_data[i];
-                int64_t     image_id = image_ids[i];
-
-                for (const auto &shape : data.shapes)
-                {
-                    // 查找标签类别 ID
-                    auto it = label_class_map.find(shape.label);
-                    if (it == label_class_map.end())
-                    {
-                        spdlog::warn("未找到标签类别: {}", shape.label.toStdString());
-                        continue;
-                    }
-
-                    int64_t label_class_id = it->second;
-
-                    // 转换形状为标注数据
-                    QVariantMap label_data_map = convertShapeToLabelData(shape, data.image_width, data.image_height);
-                    if (label_data_map.isEmpty())
-                    {
-                        spdlog::warn("跳过无效的形状: label={}, shape_type={}", shape.label.toStdString(),
-                                     shape.shape_type.toStdString());
-                        continue;
-                    }
-
-                    all_label_image_ids.push_back(image_id);
-                    all_label_class_ids.push_back(label_class_id);
-                    all_label_data.push_back(label_data_map);
-                }
-            }
-
-            // 5. 批量添加标注
-            if (!all_label_image_ids.empty())
-            {
-                addLabels(all_label_image_ids, all_label_class_ids, all_label_data);
-                spdlog::info("成功导入 {} 个标注", all_label_image_ids.size());
-            }
-
-            // 6. 更新数据集中的图像
-            std::vector<int64_t> dataset_ids(image_ids.size(), dataset_id);
-            datasets_->addImages(dataset_ids, image_ids);
-
-            // 7. 更新统计信息
-            updateDatasetsStats();
-
-            spdlog::info("导入完成");
-            QMetaObject::invokeMethod(
-                ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection, Q_ARG(int, spdlog::level::info),
-                Q_ARG(QString,
-                      QString("导入完成: %1 个图像, %2 个标注").arg(image_ids.size()).arg(all_label_image_ids.size())));
-            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
             importer->deleteLater();
-        },
-        Qt::QueuedConnection);
-
-    // 启动导入
-    importer->startImport(dataset_id, image_dir, data_dir);
-}
-
-QVariantMap DataManager::convertShapeToLabelData(const LabelMeImporter::LabelMeShape &shape, int image_width,
-                                                 int image_height)
-{
-    QVariantMap label_data;
-
-    // 检查图像尺寸是否有效
-    if (image_width <= 0 || image_height <= 0)
-    {
-        spdlog::warn("图像尺寸无效: width={}, height={}", image_width, image_height);
-        return label_data;
+        }
+        return;
     }
 
-    // 处理 rectangle 类型
-    if (shape.shape_type == "rectangle")
+    spdlog::info("开始在主线程中导入数据，图像数量: {}", image_paths.size());
+    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
+                              Q_ARG(int, spdlog::level::info), Q_ARG(QString, "开始导入数据到数据库..."));
+
+    // 重构后：DataManager 只负责数据库操作
+    // 所有格式特定的处理逻辑都在导入器中完成
+
+    // 1. 创建缺失的标签类别
+    std::map<QString, int64_t> label_class_map;
+    for (const auto &[label_name, color] : label_class_info)
     {
-        if (shape.points.size() < 2)
+        // 检查标签类别是否已存在
+        int64_t label_class_id = label_classes_->getLabelClassId(label_name);
+        if (label_class_id < 0)
         {
-            spdlog::warn("rectangle 类型的 shape 点数不足: {}", shape.points.size());
-            return label_data;
+            // 创建新的标签类别
+            QString shortcut = "";
+            addLabelClass(label_name, color, shortcut);
+            label_class_id = label_classes_->getLabelClassId(label_name);
+        }
+        label_class_map[label_name] = label_class_id;
+    }
+
+    // 2. 批量添加图像
+    std::vector<int64_t> image_ids;
+    if (!image_instances_->addImages(dataset_id, image_paths, image_ids))
+    {
+        spdlog::error("添加图像失败");
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
+                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, "添加图像失败"));
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+        if (importer)
+        {
+            importer->deleteLater();
+        }
+        return;
+    }
+
+    spdlog::info("成功导入 {} 个图像", image_ids.size());
+
+    // 3. 创建图像路径到 ID 的映射
+    std::map<QString, int64_t> image_path_to_id;
+    for (size_t i = 0; i < image_paths.size() && i < image_ids.size(); ++i)
+    {
+        image_path_to_id[image_paths[i]] = image_ids[i];
+    }
+
+    // 4. 为每个图像添加标注
+    std::vector<int64_t>     all_label_image_ids;
+    std::vector<int64_t>     all_label_class_ids;
+    std::vector<QVariantMap> all_label_data;
+
+    for (const auto &label : labels)
+    {
+        // 查找图像 ID
+        auto image_it = image_path_to_id.find(label.image_path);
+        if (image_it == image_path_to_id.end())
+        {
+            spdlog::warn("未找到图像路径对应的 ID: {}", label.image_path.toStdString());
+            continue;
+        }
+        int64_t image_id = image_it->second;
+
+        // 查找标签类别 ID
+        auto class_it = label_class_map.find(label.label_class_name);
+        if (class_it == label_class_map.end())
+        {
+            spdlog::warn("未找到标签类别: {}", label.label_class_name.toStdString());
+            continue;
+        }
+        int64_t label_class_id = class_it->second;
+
+        if (label.data.isEmpty())
+        {
+            spdlog::warn("跳过空的标注数据: label_class={}", label.label_class_name.toStdString());
+            continue;
         }
 
-        QPointF p1 = shape.points[0];
-        QPointF p2 = shape.points[1];
-
-        double x_min = std::min(p1.x(), p2.x());
-        double y_min = std::min(p1.y(), p2.y());
-        double x_max = std::max(p1.x(), p2.x());
-        double y_max = std::max(p1.y(), p2.y());
-
-        double width  = x_max - x_min;
-        double height = y_max - y_min;
-
-        label_data["x"]      = x_min;
-        label_data["y"]      = y_min;
-        label_data["width"]  = width;
-        label_data["height"] = height;
+        all_label_image_ids.push_back(image_id);
+        all_label_class_ids.push_back(label_class_id);
+        all_label_data.push_back(label.data);
     }
-    else if (shape.shape_type == "polygon")
+
+    // 5. 批量添加标注
+    if (!all_label_image_ids.empty())
     {
-        if (shape.points.empty())
-        {
-            spdlog::warn("polygon 类型的 shape 没有点");
-            return label_data;
-        }
-
-        double x_min = shape.points[0].x();
-        double y_min = shape.points[0].y();
-        double x_max = shape.points[0].x();
-        double y_max = shape.points[0].y();
-
-        for (const auto &point : shape.points)
-        {
-            x_min = std::min(x_min, point.x());
-            y_min = std::min(y_min, point.y());
-            x_max = std::max(x_max, point.x());
-            y_max = std::max(y_max, point.y());
-        }
-
-        double width  = x_max - x_min;
-        double height = y_max - y_min;
-
-        label_data["x"]      = x_min;
-        label_data["y"]      = y_min;
-        label_data["width"]  = width;
-        label_data["height"] = height;
+        addLabels(all_label_image_ids, all_label_class_ids, all_label_data);
+        spdlog::info("成功导入 {} 个标注", all_label_image_ids.size());
     }
-    else
+
+    // 6. 更新数据集中的图像
+    std::vector<int64_t> dataset_ids(image_ids.size(), dataset_id);
+    datasets_->addImages(dataset_ids, image_ids);
+
+    // 7. 更新统计信息
+    updateDatasetsStats();
+
+    spdlog::info("导入完成");
+    QMetaObject::invokeMethod(
+        ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection, Q_ARG(int, spdlog::level::info),
+        Q_ARG(QString,
+              QString("导入完成: %1 个图像, %2 个标注").arg(image_ids.size()).arg(all_label_image_ids.size())));
+    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+
+    // 清理导入器
+    if (importer)
     {
-        spdlog::warn("不支持的 shape_type: {}, label: {}", shape.shape_type.toStdString(), shape.label.toStdString());
-        return label_data;
+        importer->deleteLater();
     }
-
-    return label_data;
-}
-
-QString DataManager::generateDefaultColor(int index)
-{
-    const double golden_ratio = 0.618033988749895;
-    double       hue          = fmod(index * golden_ratio, 1.0);
-    QColor       color        = QColor::fromHsvF(hue, 0.8, 0.9);
-    return color.name();
 }
 
 } // namespace dltool::data
