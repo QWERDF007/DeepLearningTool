@@ -198,13 +198,14 @@ bool ImageInstancesListModel::deleteImages(const std::vector<int64_t> &image_ids
         delete found->second;
         image_instances_.erase(found);
     }
-    resetModel();
 
-    // 如果模型为空，清空选中状态
+    // 如果模型将要变空，在重置前清空选中状态
     if (image_instances_.empty() && selection_)
     {
         selection_->clear();
     }
+
+    resetModel();
 
     emit statsChanged();
     emit currentImageChanged();
