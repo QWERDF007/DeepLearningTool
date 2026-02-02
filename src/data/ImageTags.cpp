@@ -423,7 +423,7 @@ bool ImageTagsListModel::hasAnyTags(const std::vector<int64_t> &image_ids) const
     for (const auto &image_id : image_ids)
     {
         ImageInstance *image_instance = image_instances_->getImageInstance(image_id);
-        if (image_instance != nullptr && !image_instance->getTagIds().empty())
+        if (image_instance != nullptr && !image_instance->tagIds().empty())
         {
             return true;
         }

@@ -1,9 +1,11 @@
 #pragma once
 
+#include "UIExport.h"
 #include "common/Singleton.h"
 
 #include <QQueue>
 #include <QString>
+
 
 namespace dltool::ui {
 
@@ -39,7 +41,7 @@ namespace dltool::ui {
  *                          Q_ARG(int, 75));
  * @endcode
  */
-class ProgressManager : public QObject
+class UI_API ProgressManager : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(ProgressManager)
@@ -50,7 +52,6 @@ class ProgressManager : public QObject
     Q_PROPERTY(QString message READ getColorfulMessage NOTIFY messageChanged)
 
 public:
-
     /**
      * @brief 获取当前进度值
      * @return 进度百分比 (0-100)
@@ -76,9 +77,8 @@ public:
     QString getMessage() const;
 
     /**
-     * @brief 获取彩色格式化的消息文本
-     * 错误消息以红色显示
-     * @return HTML 格式的消息字符串
+     * @brief 获取消息文本
+     * @return 拼接后的消息字符串
      */
     QString getColorfulMessage() const;
 

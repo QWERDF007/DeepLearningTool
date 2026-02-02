@@ -52,7 +52,8 @@ Rectangle {
             color: DltColor.Primary
         }
         Rectangle {
-            Layout.preferredWidth: 120
+            visible: ProgressManager ? ProgressManager.isRunning : false
+            Layout.preferredWidth: 80
             Layout.fillHeight: true
             color: DltColor.Primary
             ProgressInfoBadge {

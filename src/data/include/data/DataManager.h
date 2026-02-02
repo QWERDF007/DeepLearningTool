@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DataExport.h"
+#include "DataImporter.h"
 #include "Datasets.h"
 #include "ImageTags.h"
 #include "Images.h"
@@ -12,7 +13,7 @@
 
 namespace dltool::data {
 class ProjectDataBase;
-}
+} // namespace dltool::data
 
 namespace dltool::data {
 
@@ -116,6 +117,13 @@ private:
 
     void updateDatasetsStats();
 
+    /**
+     * @brief 处理导入器的 dataReady 信号
+     */
+    void handleDataReady(bool success, int64_t dataset_id, std::vector<QString> image_paths,
+                         std::vector<int64_t> image_widths, std::vector<int64_t> image_heights,
+                         std::map<QString, QString> label_class_info, std::vector<ImportedLabel> labels);
+
     data::ProjectDataBase *database_{nullptr};
 
     DatasetsListModel       *datasets_{nullptr};
@@ -127,6 +135,8 @@ private:
     ImageLabelsTableModel   *image_labels_table_{nullptr};
 
     ImageInfoListModel *image_info_{nullptr};
+
+    int method_{0}; // 标签数据类型
 };
 
 } // namespace dltool::data

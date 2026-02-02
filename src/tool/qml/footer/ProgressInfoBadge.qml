@@ -30,31 +30,11 @@ Rectangle {
             verticalAlignment: Text.AlignVCenter
         }
         
-        // 进度图标 - 根据运行状态切换
-        DltTextIcon {
-            id: progressIcon
-            Layout.preferredWidth: 24
-            Layout.preferredHeight: 24
-            iconSource: ProgressManager.isRunning ? 
-                       DltFontIcon.ProgressRingDots : 
-                       DltFontIcon.CheckMark
-            iconSize: 16
-            
-            // 旋转动画 - 仅在任务运行时显示
-            RotationAnimator on rotation {
-                running: ProgressManager.isRunning
-                from: 0
-                to: 360
-                duration: 1000
-                loops: Animation.Infinite
-            }
-        }
-        
         // 进度百分比文本 - 仅在运行时显示
         DltText {
             Layout.preferredWidth: 32
-            text: ProgressManager.progress + "%"
-            visible: ProgressManager.isRunning
+            text: ProgressManager ? ProgressManager.progress + "%" : ""
+            visible: ProgressManager ? ProgressManager.isRunning : false
             verticalAlignment: Text.AlignVCenter
         }
         

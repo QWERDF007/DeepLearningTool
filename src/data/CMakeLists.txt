@@ -52,7 +52,7 @@ target_compile_definitions(${TARGET_NAME}
 target_link_libraries(${TARGET_NAME} 
     PRIVATE
         Qt6::Core Qt6::Gui Qt6::Quick
-        dltool_common dltool_common_header
+        dltool_common dltool_common_header dltool_ui dltool_ui_header
     PUBLIC
         sqlpp11::sqlite3
 )
