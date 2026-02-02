@@ -12,6 +12,18 @@
 namespace dltool::data {
 
 /**
+ * @brief 图像数据结构
+ * 
+ * 用于在导入过程中跟踪图像信息
+ */
+struct ImageData
+{
+    QString image_path;   // 图像文件完整路径
+    int     image_width;  // 图像宽度（像素）
+    int     image_height; // 图像高度（像素）
+};
+
+/**
  * @brief LabelMe 数据格式导入器
  * 
  * 负责解析 LabelMe JSON 格式的标注文件，并将数据导入到数据库中。
@@ -73,6 +85,29 @@ private:
     std::vector<QString> scanJsonFiles(const QString &data_dir);
 
     /**
+     * @brief 扫描图像目录中的所有图像文件
+     * 
+     * 扫描指定目录中的所有常见图像格式文件（jpg, jpeg, png, bmp, gif, tiff, webp）。
+     * 
+     * @param image_dir 图像目录路径
+     * @return 图像文件路径列表
+     */
+    std::vector<QString> scanImageFiles(const QString &image_dir);
+
+    /**
+     * @brief 获取图像文件的尺寸
+     * 
+     * 使用 QImageReader 读取图像文件的宽度和高度。
+     * 该方法不会加载完整的图像数据，只读取元数据，因此效率较高。
+     * 
+     * @param image_path 图像文件路径
+     * @param width 输出参数：图像宽度
+     * @param height 输出参数：图像高度
+     * @return 如果成功读取尺寸返回 true，否则返回 false
+     */
+    bool getImageDimensions(const QString &image_path, int &width, int &height);
+
+    /**
      * @brief 解析单个 LabelMe JSON 文件
      */
     bool parseLabelMeJson(const QString &json_path, LabelMeData &data);
@@ -117,8 +152,8 @@ private:
      * DataManager 只需要接收处理后的数据并插入数据库。
      * 
      * @param dataset_id 数据集 ID
-     * @param parsed_data 解析的 LabelMe 数据
-     * @param label_class_names 标签类别名称集合
+     * @param images 图像数据映射（文件名 -> ImageData）
+     * @param parsed_annotations 解析的 LabelMe 标注数据
      * 
      * 该方法将：
      * 1. 转换形状为标注数据
@@ -126,8 +161,8 @@ private:
      * 3. 准备所有数据结构
      * 4. 发射 dataReady 信号
      */
-    void processAndEmitData(int64_t dataset_id, const std::vector<LabelMeData> &parsed_data,
-                            const std::set<QString> &label_class_names);
+    void processAndEmitData(int64_t dataset_id, const std::map<QString, ImageData> &images,
+                            const std::vector<LabelMeData> &parsed_annotations);
 };
 
 } // namespace dltool::data

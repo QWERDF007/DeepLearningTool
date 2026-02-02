@@ -1,7 +1,6 @@
 #include "data/LabelMeImporter.h"
 
 #include "data/DataBase.h"
-#include "data/LabelData.h"
 
 #include <json.hpp>
 #include <spdlog/spdlog.h>
@@ -13,8 +12,6 @@
 #include <QFileInfo>
 #include <QImageReader>
 #include <algorithm>
-#include <fstream>
-#include <memory>
 
 namespace dltool::data {
 
@@ -47,144 +44,150 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
 {
     spdlog::info("开始解析 LabelMe 数据: dataset_id={}", dataset_id);
 
-    bool                     success = false;
-    std::vector<LabelMeData> parsed_data;
-    std::set<QString>        label_class_names;
-
     try
     {
-        // 1. 扫描 JSON 文件
-        updateProgress(0, "正在扫描 JSON 文件...");
-        std::vector<QString> json_files = scanJsonFiles(data_dir);
+        // ========== Phase 1: 扫描和收集所有图像 ==========
+        updateProgress(0, "正在扫描图像文件...");
+        std::vector<QString> image_files = scanImageFiles(image_dir);
 
-        if (json_files.empty())
+        if (image_files.empty())
         {
-            spdlog::warn("未找到任何 JSON 文件");
-            updateProgress(100, "未找到任何 JSON 文件");
+            spdlog::warn("未找到任何图像文件");
+            updateProgress(100, "未找到任何图像文件");
             emit dataReady(false, dataset_id, {}, {}, {}, {}, {});
             return;
         }
 
-        int total_files = static_cast<int>(json_files.size());
-        spdlog::info("找到 {} 个 JSON 文件，开始解析...", total_files);
+        int total_images = static_cast<int>(image_files.size());
+        spdlog::info("找到 {} 个图像文件，开始读取尺寸...", total_images);
 
-        // 2. 解析所有 JSON 文件
-        updateProgress(10, QString("正在解析 %1 个 JSON 文件...").arg(total_files));
-        int parsed_count  = 0;
-        int skipped_count = 0;
+        // 创建文件名 -> ImageData 的映射，用于后续匹配标注
+        std::map<QString, ImageData> images_map;
+        int                          processed_images = 0;
+        int                          skipped_images   = 0;
+
+        for (const auto &image_path : image_files)
+        {
+            int width  = 0;
+            int height = 0;
+
+            // 读取图像尺寸
+            if (!getImageDimensions(image_path, width, height))
+            {
+                spdlog::warn("跳过无法读取尺寸的图像: {}, 原因: 无法读取图像尺寸", image_path.toStdString());
+                skipped_images++;
+                continue;
+            }
+
+            // 提取文件名（不含路径和扩展名）作为键
+            QFileInfo file_info(image_path);
+            QString   base_name = file_info.baseName(); // 不含扩展名的文件名
+
+            // 创建 ImageData 并添加到映射
+            ImageData img_data;
+            img_data.image_path   = image_path;
+            img_data.image_width  = width;
+            img_data.image_height = height;
+
+            images_map[base_name] = img_data;
+            processed_images++;
+
+            // 每处理 10% 更新一次进度
+            int progress = (processed_images * 40 / total_images);
+            if (processed_images % std::max(1, total_images / 10) == 0 || processed_images == total_images)
+            {
+                updateProgress(progress, QString("已扫描图像: %1/%2").arg(processed_images).arg(total_images));
+            }
+        }
+
+        spdlog::info("图像扫描完成: 总数={}, 成功读取尺寸={}, 跳过={}", total_images, processed_images, skipped_images);
+        updateProgress(40, QString("图像扫描完成: 总数=%1, 成功=%2, 跳过=%3")
+                               .arg(total_images)
+                               .arg(processed_images)
+                               .arg(skipped_images));
+
+        if (images_map.empty())
+        {
+            spdlog::warn("没有有效的图像可导入");
+            updateProgress(100, "没有有效的图像可导入");
+            emit dataReady(false, dataset_id, {}, {}, {}, {}, {});
+            return;
+        }
+
+        // ========== Phase 2: 解析标注并匹配到图像 ==========
+        updateProgress(40, "正在扫描标注文件...");
+        std::vector<QString> json_files = scanJsonFiles(data_dir);
+
+        int total_json_files = static_cast<int>(json_files.size());
+        spdlog::info("找到 {} 个标注文件，开始解析...", total_json_files);
+
+        std::vector<LabelMeData> parsed_annotations;
+        int                      parsed_count    = 0;
+        int                      skipped_count   = 0;
+        int                      matched_count   = 0;
+        int                      unmatched_count = 0;
 
         for (const auto &json_path : json_files)
         {
             LabelMeData data;
             if (!parseLabelMeJson(json_path, data))
             {
+                spdlog::warn("跳过无法解析的标注文件: {}, 原因: JSON 解析失败", json_path.toStdString());
                 skipped_count++;
                 continue;
             }
 
-            // 验证图像文件路径
-            QString image_path;
-            if (QFileInfo(data.image_path).isAbsolute())
-            {
-                image_path = data.image_path;
-            }
-            else
-            {
-                // 相对路径：相对于 JSON 文件所在目录或 image_dir
-                QFileInfo json_file_info(json_path);
-                QString   json_dir = json_file_info.absolutePath();
+            // 从标注文件路径提取文件名（不含扩展名）
+            // 例如：/path/to/annotations/image001.json -> "image001"
+            QFileInfo json_file_info(json_path);
+            QString   annotation_base_name = json_file_info.baseName(); // 不含扩展名的标注文件名
 
-                // 首先尝试相对于 JSON 文件目录
-                QString candidate1 = QDir(json_dir).filePath(data.image_path);
-                if (QFileInfo::exists(candidate1))
-                {
-                    image_path = candidate1;
-                }
-                else
-                {
-                    // 然后尝试相对于 image_dir
-                    QString candidate2 = QDir(image_dir).filePath(data.image_path);
-                    if (QFileInfo::exists(candidate2))
-                    {
-                        image_path = candidate2;
-                    }
-                    else
-                    {
-                        // 最后尝试只使用文件名在 image_dir 中查找
-                        QString filename   = QFileInfo(data.image_path).fileName();
-                        QString candidate3 = QDir(image_dir).filePath(filename);
-                        if (QFileInfo::exists(candidate3))
-                        {
-                            image_path = candidate3;
-                        }
-                        else
-                        {
-                            skipped_count++;
-                            continue;
-                        }
-                    }
-                }
+            // 使用标注文件名在图像映射表中查找对应的图像
+            auto it = images_map.find(annotation_base_name);
+            if (it == images_map.end())
+            {
+                spdlog::warn("标注文件对应的图像不存在，跳过: {}, 期望图像名: {}", json_path.toStdString(),
+                             annotation_base_name.toStdString());
+                unmatched_count++;
+                skipped_count++;
+                continue;
             }
 
-            // 更新为完整路径
-            data.image_path = image_path;
+            // 使用扫描到的图像信息更新标注数据（覆盖标注中可能错误的 imagePath）
+            data.image_path   = it->second.image_path;
+            data.image_width  = it->second.image_width;
+            data.image_height = it->second.image_height;
 
-            // 如果 JSON 中没有尺寸信息，从图像文件读取
-            if (data.image_width <= 0 || data.image_height <= 0)
-            {
-                QImageReader reader(image_path);
-                QSize        size = reader.size();
-                if (size.isValid())
-                {
-                    data.image_width  = size.width();
-                    data.image_height = size.height();
-                }
-                else
-                {
-                    skipped_count++;
-                    continue;
-                }
-            }
-
-            parsed_data.push_back(data);
+            parsed_annotations.push_back(data);
             parsed_count++;
+            matched_count++;
 
             // 每解析 10% 更新一次进度
-            int progress = 10 + (parsed_count * 80 / total_files);
-            if (parsed_count % std::max(1, total_files / 10) == 0 || parsed_count == total_files)
+            int progress = 40 + (parsed_count * 50 / std::max(1, total_json_files));
+            if (parsed_count % std::max(1, total_json_files / 10) == 0 || parsed_count == total_json_files)
             {
-                updateProgress(progress, QString("已解析: %1/%2").arg(parsed_count).arg(total_files));
+                updateProgress(progress, QString("已解析标注: %1/%2").arg(parsed_count).arg(total_json_files));
             }
         }
 
-        // 汇总解析结果
-        spdlog::info("解析完成: 总文件数={}, 成功解析={}, 跳过={}", total_files, parsed_count, skipped_count);
+        spdlog::info("标注解析完成: 总文件数={}, 成功解析={}, 成功匹配={}, 未匹配={}, 跳过={}", total_json_files,
+                     parsed_count, matched_count, unmatched_count, skipped_count);
+        updateProgress(90, QString("标注解析完成: 总文件数=%1, 成功解析=%2, 跳过=%3")
+                               .arg(total_json_files)
+                               .arg(parsed_count)
+                               .arg(skipped_count));
 
-        if (parsed_data.empty())
-        {
-            spdlog::warn("没有有效的数据可导入");
-            updateProgress(100, "没有有效的数据可导入");
-            emit dataReady(false, dataset_id, {}, {}, {}, {}, {});
-            return;
-        }
-
-        // 3. 提取标签类别
-        updateProgress(90, "正在提取标签类别...");
-        label_class_names = extractLabelClasses(parsed_data);
-
-        spdlog::info("提取到 {} 个唯一的标签类别", label_class_names.size());
-
-        success = true;
-        updateProgress(100, QString("解析完成: %1 个图像").arg(parsed_data.size()));
+        updateProgress(90, "正在处理数据...");
 
         // 处理数据并发射 dataReady 信号
-        processAndEmitData(dataset_id, parsed_data, label_class_names);
-    }
+        processAndEmitData(dataset_id, images_map, parsed_annotations);
 
+        updateProgress(100, QString("导入完成: %1 个图像, %2 个标注").arg(images_map.size()).arg(parsed_count));
+    }
     catch (const std::exception &e)
     {
-        spdlog::error("解析过程中发生异常: {}", e.what());
-        updateProgress(100, QString("解析失败: %1").arg(e.what()));
+        spdlog::error("导入过程中发生异常: {}", e.what());
+        updateProgress(100, QString("导入失败: %1").arg(e.what()));
         emit dataReady(false, dataset_id, {}, {}, {}, {}, {});
     }
 }
@@ -211,6 +214,55 @@ std::vector<QString> LabelMeImporter::scanJsonFiles(const QString &data_dir)
     }
 
     return json_files;
+}
+
+std::vector<QString> LabelMeImporter::scanImageFiles(const QString &image_dir)
+{
+    std::vector<QString> image_files;
+
+    // 检查目录是否存在
+    QDir dir(image_dir);
+    if (!dir.exists())
+    {
+        spdlog::warn("图像目录不存在: {}", image_dir.toStdString());
+        return image_files;
+    }
+
+    // 定义支持的图像格式
+    QStringList image_filters;
+    image_filters << "*.jpg" << "*.jpeg" << "*.png" << "*.bmp" << "*.gif" << "*.tiff" << "*.tif" << "*.webp"
+                  << "*.JPG" << "*.JPEG" << "*.PNG" << "*.BMP" << "*.GIF" << "*.TIFF" << "*.TIF" << "*.WEBP";
+
+    // 使用 QDirIterator 递归扫描目录
+    QDirIterator it(image_dir, image_filters, QDir::Files, QDirIterator::Subdirectories);
+
+    while (it.hasNext())
+    {
+        QString image_path = it.next();
+        image_files.push_back(image_path);
+    }
+
+    spdlog::info("在目录 {} 中找到 {} 个图像文件", image_dir.toStdString(), image_files.size());
+
+    return image_files;
+}
+
+bool LabelMeImporter::getImageDimensions(const QString &image_path, int &width, int &height)
+{
+    // 使用 QImageReader 读取图像尺寸（不加载完整图像数据）
+    QImageReader reader(image_path);
+    QSize        size = reader.size();
+
+    if (!size.isValid())
+    {
+        spdlog::warn("无法读取图像尺寸: {}, 错误: {}", image_path.toStdString(), reader.errorString().toStdString());
+        return false;
+    }
+
+    width  = size.width();
+    height = size.height();
+
+    return true;
 }
 
 bool LabelMeImporter::parseLabelMeJson(const QString &json_path, LabelMeData &data)
@@ -241,14 +293,13 @@ bool LabelMeImporter::parseLabelMeJson(const QString &json_path, LabelMeData &da
             return false;
         }
 
-        // 提取 imagePath 字段（必需）
-        if (!json_data.contains("imagePath"))
-        {
-            return false;
-        }
-        data.image_path = QString::fromStdString(json_data["imagePath"].get<std::string>());
+        // 注意：不使用 JSON 中的 imagePath 字段，因为它可能是错误的
+        // 我们将在 doImport() 中基于标注文件名来匹配正确的图像
+        // 这里只是初始化为空字符串，稍后会被覆盖
+        data.image_path = "";
 
         // 提取 imageWidth 字段（可选，默认为 0）
+        // 注意：这些值也可能不准确，会在匹配图像后被覆盖
         if (json_data.contains("imageWidth") && json_data["imageWidth"].is_number())
         {
             data.image_width = json_data["imageWidth"].get<int>();
@@ -432,8 +483,8 @@ QString LabelMeImporter::generateDefaultColor(int index)
     return color.name();
 }
 
-void LabelMeImporter::processAndEmitData(int64_t dataset_id, const std::vector<LabelMeData> &parsed_data,
-                                         const std::set<QString> &label_class_names)
+void LabelMeImporter::processAndEmitData(int64_t dataset_id, const std::map<QString, ImageData> &images,
+                                         const std::vector<LabelMeData> &parsed_annotations)
 {
     spdlog::info("开始处理数据并准备发射 dataReady 信号");
 
@@ -444,7 +495,46 @@ void LabelMeImporter::processAndEmitData(int64_t dataset_id, const std::vector<L
     std::map<QString, QString> label_class_info; // name -> color
     std::vector<ImportedLabel> labels;
 
-    // 1. 为标签类别生成颜色
+    // 1. 收集所有图像信息
+    // 重要：为了确保 image_id 和标注数据的对应关系正确，
+    // 我们需要按照标注数据中引用的顺序来收集图像
+    std::set<QString> images_with_annotations; // 记录已经添加的图像
+
+    // 1.1 先添加有标注的图像（按标注顺序）
+    for (const auto &annotation : parsed_annotations)
+    {
+        if (images_with_annotations.find(annotation.image_path) == images_with_annotations.end())
+        {
+            image_paths.push_back(annotation.image_path);
+            image_widths.push_back(annotation.image_width);
+            image_heights.push_back(annotation.image_height);
+            images_with_annotations.insert(annotation.image_path);
+        }
+    }
+
+    // 1.2 再添加没有标注的图像
+    for (const auto &pair : images)
+    {
+        const ImageData &img_data = pair.second;
+        if (images_with_annotations.find(img_data.image_path) == images_with_annotations.end())
+        {
+            image_paths.push_back(img_data.image_path);
+            image_widths.push_back(img_data.image_width);
+            image_heights.push_back(img_data.image_height);
+        }
+    }
+
+    // 2. 从标注中提取标签类别
+    std::set<QString> label_class_names;
+    for (const auto &annotation : parsed_annotations)
+    {
+        for (const auto &shape : annotation.shapes)
+        {
+            label_class_names.insert(shape.label);
+        }
+    }
+
+    // 3. 为标签类别生成颜色
     int color_index = 0;
     for (const auto &class_name : label_class_names)
     {
@@ -453,24 +543,19 @@ void LabelMeImporter::processAndEmitData(int64_t dataset_id, const std::vector<L
         spdlog::debug("标签类别: {}, 颜色: {}", class_name.toStdString(), color.toStdString());
     }
 
-    // 2. 处理每个图像的数据
-    for (const auto &data : parsed_data)
+    // 4. 处理每个标注的数据
+    for (const auto &annotation : parsed_annotations)
     {
-        // 添加图像信息
-        image_paths.push_back(data.image_path);
-        image_widths.push_back(data.image_width);
-        image_heights.push_back(data.image_height);
-
-        // 3. 转换每个形状为标注数据
-        for (const auto &shape : data.shapes)
+        // 转换每个形状为标注数据
+        for (const auto &shape : annotation.shapes)
         {
-            QVariantMap label_data = convertShapeToLabelData(shape, data.image_width, data.image_height);
+            QVariantMap label_data = convertShapeToLabelData(shape, annotation.image_width, annotation.image_height);
 
             // 如果转换失败（返回空映射），跳过该标注
             if (label_data.isEmpty())
             {
                 spdlog::warn("跳过无效的标注: label={}, shape_type={}, image={}", shape.label.toStdString(),
-                             shape.shape_type.toStdString(), data.image_path.toStdString());
+                             shape.shape_type.toStdString(), annotation.image_path.toStdString());
                 continue;
             }
 
@@ -478,7 +563,7 @@ void LabelMeImporter::processAndEmitData(int64_t dataset_id, const std::vector<L
             ImportedLabel imported_label;
             imported_label.label_class_name = shape.label;
             imported_label.data             = label_data;
-            imported_label.image_path       = data.image_path;
+            imported_label.image_path       = annotation.image_path;
 
             labels.push_back(imported_label);
         }
@@ -487,7 +572,7 @@ void LabelMeImporter::processAndEmitData(int64_t dataset_id, const std::vector<L
     spdlog::info("数据处理完成: images={}, label_classes={}, labels={}", image_paths.size(), label_class_info.size(),
                  labels.size());
 
-    // 4. 发射 dataReady 信号
+    // 5. 发射 dataReady 信号
     emit dataReady(true, dataset_id, image_paths, image_widths, image_heights, label_class_info, labels);
 }
 

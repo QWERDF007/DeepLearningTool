@@ -273,6 +273,9 @@ void DataManager::handleDataReady(bool success, int64_t dataset_id, std::vector<
 
     // 1. 创建缺失的标签类别
     std::map<QString, int64_t> label_class_map;
+    int                        created_label_classes  = 0;
+    int                        existing_label_classes = 0;
+
     for (const auto &[label_name, color] : label_class_info)
     {
         // 检查标签类别是否已存在
@@ -283,15 +286,25 @@ void DataManager::handleDataReady(bool success, int64_t dataset_id, std::vector<
             QString shortcut = "";
             addLabelClass(label_name, color, shortcut);
             label_class_id = label_classes_->getLabelClassId(label_name);
+            created_label_classes++;
+            spdlog::debug("创建新标签类别: {}, ID: {}", label_name.toStdString(), label_class_id);
+        }
+        else
+        {
+            existing_label_classes++;
+            spdlog::debug("使用已存在的标签类别: {}, ID: {}", label_name.toStdString(), label_class_id);
         }
         label_class_map[label_name] = label_class_id;
     }
+
+    spdlog::info("标签类别处理完成: 总数={}, 新创建={}, 已存在={}", label_class_info.size(), created_label_classes,
+                 existing_label_classes);
 
     // 2. 批量添加图像
     std::vector<int64_t> image_ids;
     if (!image_instances_->addImages(dataset_id, image_paths, image_ids))
     {
-        spdlog::error("添加图像失败");
+        spdlog::error("添加图像失败: dataset_id={}, 图像数量={}", dataset_id, image_paths.size());
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
                                   Q_ARG(int, spdlog::level::err), Q_ARG(QString, "添加图像失败"));
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
@@ -302,7 +315,7 @@ void DataManager::handleDataReady(bool success, int64_t dataset_id, std::vector<
         return;
     }
 
-    spdlog::info("成功导入 {} 个图像", image_ids.size());
+    spdlog::info("成功导入 {} 个图像到数据库", image_ids.size());
 
     // 3. 创建图像路径到 ID 的映射
     std::map<QString, int64_t> image_path_to_id;
@@ -315,6 +328,7 @@ void DataManager::handleDataReady(bool success, int64_t dataset_id, std::vector<
     std::vector<int64_t>     all_label_image_ids;
     std::vector<int64_t>     all_label_class_ids;
     std::vector<QVariantMap> all_label_data;
+    int                      skipped_labels = 0;
 
     for (const auto &label : labels)
     {
@@ -322,7 +336,9 @@ void DataManager::handleDataReady(bool success, int64_t dataset_id, std::vector<
         auto image_it = image_path_to_id.find(label.image_path);
         if (image_it == image_path_to_id.end())
         {
-            spdlog::warn("未找到图像路径对应的 ID: {}", label.image_path.toStdString());
+            spdlog::warn("未找到图像路径对应的 ID，跳过标注: {}, 标签类别: {}", label.image_path.toStdString(),
+                         label.label_class_name.toStdString());
+            skipped_labels++;
             continue;
         }
         int64_t image_id = image_it->second;
@@ -331,14 +347,18 @@ void DataManager::handleDataReady(bool success, int64_t dataset_id, std::vector<
         auto class_it = label_class_map.find(label.label_class_name);
         if (class_it == label_class_map.end())
         {
-            spdlog::warn("未找到标签类别: {}", label.label_class_name.toStdString());
+            spdlog::warn("未找到标签类别，跳过标注: {}, 图像: {}", label.label_class_name.toStdString(),
+                         label.image_path.toStdString());
+            skipped_labels++;
             continue;
         }
         int64_t label_class_id = class_it->second;
 
         if (label.data.isEmpty())
         {
-            spdlog::warn("跳过空的标注数据: label_class={}", label.label_class_name.toStdString());
+            spdlog::warn("跳过空的标注数据: label_class={}, 图像: {}", label.label_class_name.toStdString(),
+                         label.image_path.toStdString());
+            skipped_labels++;
             continue;
         }
 
@@ -347,11 +367,18 @@ void DataManager::handleDataReady(bool success, int64_t dataset_id, std::vector<
         all_label_data.push_back(label.data);
     }
 
+    spdlog::info("标注数据准备完成: 总数={}, 有效={}, 跳过={}", labels.size(), all_label_image_ids.size(),
+                 skipped_labels);
+
     // 5. 批量添加标注
     if (!all_label_image_ids.empty())
     {
         addLabels(all_label_image_ids, all_label_class_ids, all_label_data);
-        spdlog::info("成功导入 {} 个标注", all_label_image_ids.size());
+        spdlog::info("成功导入 {} 个标注到数据库", all_label_image_ids.size());
+    }
+    else
+    {
+        spdlog::info("没有标注需要导入");
     }
 
     // 6. 更新数据集中的图像
@@ -361,7 +388,8 @@ void DataManager::handleDataReady(bool success, int64_t dataset_id, std::vector<
     // 7. 更新统计信息
     updateDatasetsStats();
 
-    spdlog::info("导入完成");
+    spdlog::info("数据导入完成: 图像={}, 标注={}, 标签类别={}", image_ids.size(), all_label_image_ids.size(),
+                 label_class_info.size());
     QMetaObject::invokeMethod(
         ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection, Q_ARG(int, spdlog::level::info),
         Q_ARG(QString,

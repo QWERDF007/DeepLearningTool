@@ -143,8 +143,11 @@ bool ImageInstancesListModel::addImages(const int64_t dataset_id, const std::vec
     {
         image_instances_.emplace(image_ids[i], new ImageInstance(dataset_id, image_ids[i], paths[i], this));
     }
-    std::sort(image_ids.begin(), image_ids.end(), std::greater<int64_t>());
-    image_ids_.insert(image_ids_.begin(), image_ids.begin(), image_ids.end());
+    // 注意：为了 UI 显示，我们需要将 image_ids 从大到小排序后插入到 image_ids_ 列表
+    // 但不能修改传出的 image_ids 参数，因为调用者依赖于 image_ids 和 paths 的顺序对应关系
+    std::vector<int64_t> sorted_image_ids(image_ids.begin(), image_ids.end());
+    std::sort(sorted_image_ids.begin(), sorted_image_ids.end(), std::greater<int64_t>());
+    image_ids_.insert(image_ids_.begin(), sorted_image_ids.begin(), sorted_image_ids.end());
     endInsertRows();
 
     if (!selected_indexes.empty())
