@@ -235,6 +235,20 @@ public:
 
     Q_INVOKABLE QVariantMap getEditedData(const QVariantMap &data, const QPointF &start, const QPointF &end);
 
+    /**
+     * @brief 获取指定图像的标注摘要信息
+     * @param image_id 图像 ID
+     * @return 标注摘要字符串，格式："类别1: 数量1\n类别2: 数量2"，无标注时返回空字符串
+     */
+    Q_INVOKABLE QString getLabelSummaryForImage(int64_t image_id) const;
+
+    /**
+     * @brief 获取指定图像的第一个标注类别颜色
+     * @param image_id 图像 ID
+     * @return 颜色字符串（如 "#FF0000"），无标注时返回空字符串
+     */
+    Q_INVOKABLE QString getLabelColorForImage(int64_t image_id) const;
+
 private:
     void init();
 

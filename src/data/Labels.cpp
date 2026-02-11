@@ -1088,4 +1088,76 @@ QVariant ImageLabelsTableModel::getSelected(const QModelIndex &index) const
     return selection_->isSelected(index);
 }
 
+QString ImageLabelsListModel::getLabelSummaryForImage(int64_t image_id) const
+{
+    // 空指针保护
+    if (!label_instances_ || !label_classes_)
+    {
+        return QString();
+    }
+
+    // 通过 label_instances_ 获取指定图像的所有 label_ids
+    std::vector<std::vector<int64_t>> images_label_ids = label_instances_->getImagesLabelIds({image_id});
+    if (images_label_ids.empty() || images_label_ids[0].empty())
+    {
+        return QString();
+    }
+
+    const std::vector<int64_t> &label_ids = images_label_ids[0];
+
+    // 统计每个类别的标注数量
+    std::map<int64_t, int> class_count;
+    for (const int64_t label_id : label_ids)
+    {
+        int64_t label_class_id = label_instances_->getLabelClassId(label_id);
+        if (label_class_id >= 0)
+        {
+            class_count[label_class_id]++;
+        }
+    }
+
+    // 格式化为 "标签总览：\n- 类别名 : 数量\n..." 的字符串
+    QString summary = QString::fromUtf8("标签总览：");
+    for (const auto &[label_class_id, count] : class_count)
+    {
+        QString class_name = label_classes_->getLabelClassName(label_class_id);
+        if (!class_name.isEmpty())
+        {
+            summary += QString("\n  - %1 : %2").arg(class_name).arg(count);
+        }
+    }
+
+    return summary;
+}
+
+QString ImageLabelsListModel::getLabelColorForImage(int64_t image_id) const
+{
+    // 空指针保护
+    if (!label_instances_ || !label_classes_)
+    {
+        return QString();
+    }
+
+    // 通过 label_instances_ 获取指定图像的所有 label_ids
+    std::vector<std::vector<int64_t>> images_label_ids = label_instances_->getImagesLabelIds({image_id});
+    if (images_label_ids.empty() || images_label_ids[0].empty())
+    {
+        return QString();
+    }
+
+    const std::vector<int64_t> &label_ids = images_label_ids[0];
+
+    // 获取第一个 label_id 的 label_class_id
+    int64_t first_label_id       = label_ids[0];
+    int64_t first_label_class_id = label_instances_->getLabelClassId(first_label_id);
+    if (first_label_class_id < 0)
+    {
+        return QString();
+    }
+
+    // 通过 label_classes_ 获取颜色字符串
+    QString color = label_classes_->getLabelClassColor(first_label_class_id);
+    return color;
+}
+
 } // namespace dltool::data

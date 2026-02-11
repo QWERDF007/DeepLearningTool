@@ -67,6 +67,7 @@ Item {
             image.source: model.path? "file:///" + model.path : ""
             image_id: model.image_id ? model.image_id : -1
             selected: model.selected ? model.selected : false
+            dataManager: instancesView.dataManager
         }
 
         Keys.enabled: view.visible // 防止切换页面后还能用按键触发
