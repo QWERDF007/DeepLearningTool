@@ -3,11 +3,11 @@
 #include "data/CoreDef.h"
 #include "data/DataBase.h"
 
-
 #include <spdlog/spdlog.h>
 
 #include <QDateTime>
 #include <QFile>
+#include <QQmlApplicationEngine>
 #include <algorithm>
 #include <chrono>
 
@@ -38,7 +38,13 @@ Project::~Project() {}
 
 void Project::init()
 {
+    qInfo() << "Project::init called, qml_engine_:" << (void *)qml_engine_;
     data_manager_ = new data::DataManager(method_, database_, this);
+
+    // 初始化图像提供器（会自动从 QML 上下文获取引擎）
+    qInfo() << "Calling data_manager_->initializeQmlEngine with engine:" << (void *)qml_engine_;
+    data_manager_->initializeQmlEngine(qml_engine_);
+    qInfo() << "initializeQmlEngine completed";
 }
 
 void Project::initProject()
@@ -385,6 +391,26 @@ ProjectManager::ProjectManager(QObject *parent)
     : QObject(parent)
     , recent_projects_(new RectentProjects("./history.db", this))
 {
+    qInfo() << "ProjectManager constructor called";
+
+    // 尝试从 QML 上下文获取引擎
+    QQmlEngine *qmlEngine = QQmlEngine::contextForObject(this) ? QQmlEngine::contextForObject(this)->engine() : nullptr;
+    if (qmlEngine)
+    {
+        qml_engine_ = qobject_cast<QQmlApplicationEngine *>(qmlEngine);
+        if (qml_engine_)
+        {
+            qInfo() << "ProjectManager: got QML engine from context:" << (void *)qml_engine_;
+        }
+        else
+        {
+            qInfo() << "ProjectManager: QML engine is not QQmlApplicationEngine";
+        }
+    }
+    else
+    {
+        qInfo() << "ProjectManager: could not get QML engine from context in constructor";
+    }
 }
 
 ProjectManager::~ProjectManager()
@@ -407,6 +433,7 @@ Project *ProjectManager::createProject(const QString &name, const int method, co
     }
     qint64 ctime     = QDateTime::currentSecsSinceEpoch();
     current_project_ = new Project(name, method, path, description, image_base_path, ctime, ctime, this);
+    current_project_->setQmlEngine(qml_engine_);
     current_project_->initProject();
     recent_projects_->addProject(path);
     emit currentProjectChanged();
@@ -426,6 +453,7 @@ Project *ProjectManager::openProject(const QString &path)
     if (current_project_)
         closeProject();
     current_project_ = new Project(path, this);
+    current_project_->setQmlEngine(qml_engine_);
     current_project_->openProject();
     recent_projects_->openProject(current_project_->path());
     emit currentProjectChanged();

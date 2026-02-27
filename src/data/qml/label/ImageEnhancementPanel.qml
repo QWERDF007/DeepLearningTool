@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
-import dltool.project
+import dltool.settings
 
 Rectangle {
     id: control
@@ -59,20 +59,20 @@ Rectangle {
             id: brightnessControl
             Layout.fillWidth: true
             label: "亮度"
-            value: Settings.imageBrightness
-            from: Settings.imageBrightnessFrom
-            to: Settings.imageBrightnessTo
-            stepSize: Settings.imageBrightnessStepSize
+            value: GlobalSettings.ui.imageBrightness
+            from: GlobalSettings.ui.imageBrightnessFrom
+            to: GlobalSettings.ui.imageBrightnessTo
+            stepSize: GlobalSettings.ui.imageBrightnessStepSize
             showResetButton: true
             showFitButton: false
             defaultValue: 0.0
             
             onValueAdjusted: function(newValue) {
-                Settings.imageBrightness = newValue
+                GlobalSettings.ui.imageBrightness = newValue
             }
             
             onResetClicked: {
-                Settings.imageBrightness = 0.0
+                GlobalSettings.ui.imageBrightness = 0.0
             }
         }
         
@@ -81,20 +81,20 @@ Rectangle {
             id: contrastControl
             Layout.fillWidth: true
             label: "对比度"
-            value: Settings.imageContrast
-            from: Settings.imageContrastFrom
-            to: Settings.imageContrastTo
-            stepSize: Settings.imageContrastStepSize
+            value: GlobalSettings.ui.imageContrast
+            from: GlobalSettings.ui.imageContrastFrom
+            to: GlobalSettings.ui.imageContrastTo
+            stepSize: GlobalSettings.ui.imageContrastStepSize
             showResetButton: true
             showFitButton: false
             defaultValue: 0.0
             
             onValueAdjusted: function(newValue) {
-                Settings.imageContrast = newValue
+                GlobalSettings.ui.imageContrast = newValue
             }
             
             onResetClicked: {
-                Settings.imageContrast = 0.0
+                GlobalSettings.ui.imageContrast = 0.0
             }
         }
         

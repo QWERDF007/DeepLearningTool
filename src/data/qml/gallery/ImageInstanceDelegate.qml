@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Effects
 
 import dltool.ui
-import dltool.project
+import dltool.settings
 import dltool.data
 
 Rectangle {
@@ -52,8 +52,8 @@ Rectangle {
     MultiEffect {
         source: image
         anchors.fill: image
-        brightness: Settings.imageBrightness
-        contrast: Settings.imageContrast
+        brightness: GlobalSettings.ui.imageBrightness
+        contrast: GlobalSettings.ui.imageContrast
     }
     
     // 标注指示器 - 显示在右上角

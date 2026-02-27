@@ -4,11 +4,14 @@
 #include "data/DataFormat.h"
 #include "data/DataImporter.h"
 #include "data/LabelData.h"
+#include "data/LabelInstanceImageProvider.h"
 #include "ui/ProgressManager.h"
 
 #include <spdlog/spdlog.h>
 
 #include <QColor>
+#include <QQmlApplicationEngine>
+#include <QTimer>
 
 namespace dltool::data {
 
@@ -57,6 +60,15 @@ void DataManager::init(const int method)
 
     image_instances_->addImagesLabelIds(image_ids, images_label_ids);
     image_instances_->addImagesTagIds(image_ids, images_tag_ids);
+
+    // 延迟注册 ImageProvider，等待 QML 上下文可用
+    qInfo() << "DataManager::init - About to schedule QTimer for ImageProvider registration";
+    QTimer::singleShot(0, this,
+                       [this]()
+                       {
+                           qInfo() << "DataManager: QTimer fired - Attempting to register ImageProvider";
+                           initializeQmlEngine(nullptr);
+                       });
 }
 
 QList<QString> DataManager::getAllDatasetsName() const
@@ -401,6 +413,44 @@ void DataManager::handleDataReady(bool success, int64_t dataset_id, std::vector<
     {
         importer->deleteLater();
     }
+}
+
+void DataManager::initializeQmlEngine(QQmlApplicationEngine *engine)
+{
+    qInfo() << "DataManager::initializeQmlEngine called with engine:" << (void *)engine;
+
+    if (!engine)
+    {
+        qInfo() << "DataManager::initializeQmlEngine: engine parameter is null, trying to get from QML context";
+        // 尝试从 QObject 上下文获取引擎
+        QQmlEngine *qmlEngine
+            = QQmlEngine::contextForObject(this) ? QQmlEngine::contextForObject(this)->engine() : nullptr;
+        if (!qmlEngine)
+        {
+            qInfo() << "DataManager::initializeQmlEngine: could not get QML engine from context";
+            return;
+        }
+        engine = qobject_cast<QQmlApplicationEngine *>(qmlEngine);
+        if (!engine)
+        {
+            qInfo() << "DataManager::initializeQmlEngine: QML engine is not QQmlApplicationEngine";
+            return;
+        }
+        qInfo() << "DataManager::initializeQmlEngine: got engine from context:" << (void *)engine;
+    }
+
+    qInfo() << "Creating LabelInstanceImageProvider with models: label_instances=" << (void *)label_instances_
+            << "image_instances=" << (void *)image_instances_ << "label_classes=" << (void *)label_classes_;
+
+    // 创建 LabelInstanceImageProvider 实例，传入三个模型指针
+    auto *labelInstanceProvider = new LabelInstanceImageProvider(label_instances_, image_instances_, label_classes_);
+
+    qInfo() << "Registering LabelInstanceImageProvider with name 'labelinstance'";
+
+    // 注册到 QML 引擎（使用小写名称，因为 QML Image 会自动转换为小写）
+    engine->addImageProvider("labelinstance", labelInstanceProvider);
+
+    qInfo() << "LabelInstanceImageProvider registered successfully with name 'labelinstance'";
 }
 
 } // namespace dltool::data

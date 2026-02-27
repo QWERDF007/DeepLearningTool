@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Effects
 
-import dltool.project
+import dltool.settings
 
 Item {
     id: labelImage
@@ -84,8 +84,8 @@ Item {
         y: image.y
         scale: image.scale
         transformOrigin: Item.TopLeft
-        brightness: Settings.imageBrightness
-        contrast: Settings.imageContrast
+        brightness: GlobalSettings.ui.imageBrightness
+        contrast: GlobalSettings.ui.imageContrast
     }
     
     MouseArea {

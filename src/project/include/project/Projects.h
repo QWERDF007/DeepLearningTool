@@ -2,10 +2,13 @@
 
 #include "common/Singleton.h"
 #include "data/DataManager.h"
+#include "ProjectExport.h"
 
 #include <QAbstractListModel>
 #include <QItemSelectionModel>
 #include <QObject>
+
+class QQmlApplicationEngine;
 
 namespace dltool::data {
 class DataBase;
@@ -79,6 +82,15 @@ public:
         return data_manager_;
     }
 
+    /**
+     * @brief 设置 QML 引擎引用
+     * @param engine QML 应用引擎指针
+     */
+    void setQmlEngine(QQmlApplicationEngine *engine)
+    {
+        qml_engine_ = engine;
+    }
+
 private:
     void init();
 
@@ -93,6 +105,8 @@ private:
     data::ProjectDataBase *database_{nullptr};
 
     data::DataManager *data_manager_{nullptr};
+
+    QQmlApplicationEngine *qml_engine_{nullptr};
 
 signals:
     void descriptionChanged();
@@ -179,7 +193,7 @@ signals:
     void currentProjectPathChanged();
 };
 
-class ProjectManager : public QObject
+class PROJECT_API ProjectManager : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(ProjectManager)
@@ -225,6 +239,15 @@ public:
     Q_INVOKABLE QVariantMap getProjectInfo(const QString &path);
     Q_INVOKABLE QVariantMap getLabelInfo(const QString &path);
 
+    /**
+     * @brief 设置 QML 引擎引用，用于注册图像提供器
+     * @param engine QML 应用引擎指针
+     */
+    void setQmlEngine(QQmlApplicationEngine *engine)
+    {
+        qml_engine_ = engine;
+    }
+
 private:
     explicit ProjectManager(QObject *parent = nullptr);
     ~ProjectManager();
@@ -233,6 +256,8 @@ private:
 
     Project         *current_project_{nullptr};
     RectentProjects *recent_projects_{nullptr};
+
+    QQmlApplicationEngine *qml_engine_{nullptr};
 
 signals:
     void currentProjectChanged();

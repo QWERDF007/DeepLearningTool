@@ -11,6 +11,8 @@
 #include <QObject>
 #include <QtQml>
 
+class QQmlApplicationEngine;
+
 namespace dltool::data {
 class ProjectDataBase;
 } // namespace dltool::data
@@ -111,6 +113,12 @@ public:
     Q_INVOKABLE void deleteLabels(const std::vector<int64_t> &label_ids);
 
     Q_INVOKABLE void addTagClass(const QString &name);
+
+    /**
+     * @brief 初始化 QML 引擎，注册图像提供器
+     * @param engine QML 应用引擎指针
+     */
+    void initializeQmlEngine(QQmlApplicationEngine *engine);
 
 private:
     void init(const int method);

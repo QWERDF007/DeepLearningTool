@@ -1,4 +1,5 @@
 add_subdirectory(common)
+add_subdirectory(settings)
 add_subdirectory(project)
 add_subdirectory(data)
 add_subdirectory(ui)

@@ -54,6 +54,7 @@ target_link_libraries(${TARGET_NAME}
         Qt6::Core Qt6::Gui Qt6::Quick
         dltool_ui
         dltool_data dltool_data_header
+        dltool_settings dltool_settings_header
         dltool_common dltool_common_header
 )
 

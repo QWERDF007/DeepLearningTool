@@ -1,7 +1,8 @@
 #include "common/CrashHandler.h"
 #include "common/Logger.h"
-#include "project/Logger.h"
 #include "data/Logger.h"
+#include "project/Logger.h"
+#include "project/Projects.h"
 #include "ui/UILogger.h"
 
 #include <QApplication>
@@ -41,14 +42,24 @@ int main(int argc, char *argv[])
     QApplication          app(argc, argv);
     QQmlApplicationEngine engine;
 
+    // 将 QML 引擎设置到 ProjectManager（通过 QML 上下文属性）
+    // 注意：ProjectManager 是 QML 单例，会在 QML 加载时自动创建
+    // 我们需要在 QML 加载后设置引擎引用
+
     qDebug() << "qml import path list" << engine.importPathList();
     const QUrl url(QStringLiteral("qrc:/qt/qml/dltool/tool/qml/Main.qml"));
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreated, &app,
-        [url](QObject *obj, const QUrl &objUrl)
+        [url, &engine](QObject *obj, const QUrl &objUrl)
         {
             if (!obj && url == objUrl)
                 QCoreApplication::exit(-1);
+            else if (obj && url == objUrl)
+            {
+                // QML 加载成功后，将引擎传递给 ProjectManager
+                dltool::project::ProjectManager::getInstance()->setQmlEngine(&engine);
+                qInfo() << "QML engine set to ProjectManager:" << (void *)&engine;
+            }
         },
         Qt::QueuedConnection);
     engine.load(url);

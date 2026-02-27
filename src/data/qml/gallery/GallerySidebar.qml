@@ -4,7 +4,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
-import dltool.project
+import dltool.settings
 
 Rectangle { // 侧边栏
     id: sidebar
@@ -19,13 +19,13 @@ Rectangle { // 侧边栏
             iconSource: DltFontIcon.ExploreContentSingle
             text: "调整图像大小"
             onClicked: {
-                slider.from = Settings.imageCellScaleFrom
-                slider.to = Settings.imageCellScaleTo
-                slider.value = Settings.imageCellScale
+                slider.from = GlobalSettings.ui.imageCellScaleFrom
+                slider.to = GlobalSettings.ui.imageCellScaleTo
+                slider.value = GlobalSettings.ui.imageCellScale
                 slider.snapMode = Slider.NoSnap
-                slider.stepSize = Settings.imageCellScaleStepSize
+                slider.stepSize = GlobalSettings.ui.imageCellScaleStepSize
                 slider.valueUpdateCallback = function(value) {
-                    Settings.imageCellScale = value
+                    GlobalSettings.ui.imageCellScale = value
                 }
                 openPopup(x,y)
             }
@@ -34,13 +34,13 @@ Rectangle { // 侧边栏
             iconSource: DltFontIcon.Brightness
             text: "调整图像亮度"
             onClicked: {
-                slider.from = Settings.imageBrightnessFrom
-                slider.to = Settings.imageBrightnessTo
-                slider.value = Settings.imageBrightness
+                slider.from = GlobalSettings.ui.imageBrightnessFrom
+                slider.to = GlobalSettings.ui.imageBrightnessTo
+                slider.value = GlobalSettings.ui.imageBrightness
                 slider.snapMode = Slider.SnapAlways
-                slider.stepSize = Settings.imageBrightnessStepSize
+                slider.stepSize = GlobalSettings.ui.imageBrightnessStepSize
                 slider.valueUpdateCallback = function(value) {
-                    Settings.imageBrightness = value
+                    GlobalSettings.ui.imageBrightness = value
                 }
                 openPopup(x,y)
             }
@@ -49,13 +49,13 @@ Rectangle { // 侧边栏
             iconSource: DltFontIcon.BlueLight
             text: "调整图像对比度"
             onClicked: {
-                slider.from = Settings.imageContrastFrom
-                slider.to = Settings.imageContrastTo
-                slider.value = Settings.imageContrast
+                slider.from = GlobalSettings.ui.imageContrastFrom
+                slider.to = GlobalSettings.ui.imageContrastTo
+                slider.value = GlobalSettings.ui.imageContrast
                 slider.snapMode = Slider.SnapAlways
-                slider.stepSize = Settings.imageContrastStepSize
+                slider.stepSize = GlobalSettings.ui.imageContrastStepSize
                 slider.valueUpdateCallback = function(value) {
-                    Settings.imageContrast = value
+                    GlobalSettings.ui.imageContrast = value
                 }
                 openPopup(x,y)
             }

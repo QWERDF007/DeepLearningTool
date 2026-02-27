@@ -1,65 +1,89 @@
 #pragma once
 
-#include "common/Singleton.h"
+#include "settings/SettingsExport.h"
 
-namespace dltool::project {
+#include <QObject>
+#include <QSettings>
+#include <QString>
+#include <QtQml>
 
-class Settings : public QObject
+namespace dltool::settings {
+
+/**
+ * @brief UI 相关设置
+ *
+ * 包含界面显示、交互等相关的配置
+ */
+class SETTINGS_API UISettings : public QObject
 {
     Q_OBJECT
-    QML_NAMED_ELEMENT(Settings)
-    QT_QML_SINGLETON(Settings)
-    // clang-format off
-    Q_PROPERTY(double imageCellScale READ imageCellScale WRITE setImageCellScale NOTIFY imageCellScaleChanged)
-    Q_PROPERTY(double imageCellScaleFrom READ imageCellScaleFrom WRITE setImageCellScaleFrom NOTIFY imageCellScaleFromChanged)
-    Q_PROPERTY(double imageCellScaleTo READ imageCellScaleTo WRITE setImageCellScaleTo NOTIFY imageCellScaleToChanged)
-    Q_PROPERTY(double imageCellScaleStepSize READ imageCellScaleStepSize WRITE setImageCellScaleStepSize NOTIFY imageCellScaleStepSizeChanged)
+    QML_NAMED_ELEMENT(UISettings)
+    QML_UNCREATABLE("UISettings is managed by GlobalSettings")
 
+    // 图像单元格缩放
+    Q_PROPERTY(double imageCellScale READ imageCellScale WRITE setImageCellScale NOTIFY imageCellScaleChanged)
+    Q_PROPERTY(
+        double imageCellScaleFrom READ imageCellScaleFrom WRITE setImageCellScaleFrom NOTIFY imageCellScaleFromChanged)
+    Q_PROPERTY(double imageCellScaleTo READ imageCellScaleTo WRITE setImageCellScaleTo NOTIFY imageCellScaleToChanged)
+    Q_PROPERTY(double imageCellScaleStepSize READ imageCellScaleStepSize WRITE setImageCellScaleStepSize NOTIFY
+                   imageCellScaleStepSizeChanged)
+
+    // 图像亮度
     Q_PROPERTY(double imageBrightness READ imageBrightness WRITE setImageBrightness NOTIFY imageBrightnessChanged)
     Q_PROPERTY(double imageBrightnessFrom READ imageBrightnessFrom CONSTANT)
     Q_PROPERTY(double imageBrightnessTo READ imageBrightnessTo CONSTANT)
     Q_PROPERTY(double imageBrightnessStepSize READ imageBrightnessStepSize CONSTANT)
 
+    // 图像对比度
     Q_PROPERTY(double imageContrast READ imageContrast WRITE setImageContrast NOTIFY imageContrastChanged)
     Q_PROPERTY(double imageContrastFrom READ imageContrastFrom CONSTANT)
     Q_PROPERTY(double imageContrastTo READ imageContrastTo CONSTANT)
     Q_PROPERTY(double imageContrastStepSize READ imageContrastStepSize CONSTANT)
-    // clang-format on
+
+    // 主题
+    Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
+
+    // 语言
+    Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
+
 public:
+    explicit UISettings(QObject *parent = nullptr);
+    ~UISettings();
+
     double imageCellScale() const
     {
         return image_cell_scale_;
     }
 
-    void setImageCellScale(const double scale);
+    void setImageCellScale(double value);
 
     double imageCellScaleFrom() const
     {
         return image_cell_scale_from_;
     }
 
-    void setImageCellScaleFrom(const double from);
+    void setImageCellScaleFrom(double value);
 
     double imageCellScaleTo() const
     {
         return image_cell_scale_to_;
     }
 
-    void setImageCellScaleTo(const double to);
+    void setImageCellScaleTo(double value);
 
     double imageCellScaleStepSize() const
     {
         return image_cell_scale_step_size_;
     }
 
-    void setImageCellScaleStepSize(const double step_size);
+    void setImageCellScaleStepSize(double value);
 
     double imageBrightness() const
     {
         return image_brightness_;
     }
 
-    void setImageBrightness(const double brightness);
+    void setImageBrightness(double value);
 
     double imageBrightnessFrom() const
     {
@@ -81,6 +105,8 @@ public:
         return image_contrast_;
     }
 
+    void setImageContrast(double value);
+
     double imageContrastFrom() const
     {
         return image_contrast_from_;
@@ -96,12 +122,48 @@ public:
         return image_contrast_step_size_;
     }
 
-    void setImageContrast(const double contrast);
+    QString theme() const
+    {
+        return theme_;
+    }
+
+    void setTheme(const QString &value);
+
+    QString language() const
+    {
+        return language_;
+    }
+
+    void setLanguage(const QString &value);
+
+    /**
+     * @brief 从 QSettings 加载设置
+     * @param settings QSettings 对象
+     */
+    void load(QSettings *settings);
+
+    /**
+     * @brief 保存设置到 QSettings
+     * @param settings QSettings 对象
+     */
+    void save(QSettings *settings);
+
+    /**
+     * @brief 重置所有设置为默认值
+     */
+    void reset();
+
+signals:
+    void imageCellScaleChanged();
+    void imageCellScaleFromChanged();
+    void imageCellScaleToChanged();
+    void imageCellScaleStepSizeChanged();
+    void imageBrightnessChanged();
+    void imageContrastChanged();
+    void themeChanged();
+    void languageChanged();
 
 private:
-    explicit Settings(QObject *parent = nullptr);
-    ~Settings();
-
     double image_cell_scale_{1.0};
     double image_cell_scale_from_{0.5};
     double image_cell_scale_to_{4.0};
@@ -117,21 +179,8 @@ private:
     double image_contrast_to_{1.0};
     double image_contrast_step_size_{0.1};
 
-signals:
-    void imageCellScaleChanged();
-    void imageCellScaleFromChanged();
-    void imageCellScaleToChanged();
-    void imageCellScaleStepSizeChanged();
-
-    void imageBrightnessChanged();
-    void imageBrightnessFromChanged();
-    void imageBrightnessToChanged();
-    void imageBrightnessStepSizeChanged();
-
-    void imageContrastChanged();
-    void imageContrastFromChanged();
-    void imageContrastToChanged();
-    void imageContrastStepSizeChanged();
+    QString theme_{"dark"};
+    QString language_{"zh_CN"};
 };
 
-} // namespace dltool::project
+} // namespace dltool::settings

@@ -4,7 +4,7 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
-import dltool.project
+import dltool.settings
 
 Item {
     id: instancesView
@@ -17,8 +17,8 @@ Item {
         }
     }
 
-    property int cellWidth: 180 * Settings.imageCellScale
-    property int cellHeight: 240 * Settings.imageCellScale
+    property int cellWidth: 180 * GlobalSettings.ui.imageCellScale
+    property int cellHeight: 240 * GlobalSettings.ui.imageCellScale
     property int spacing: 10
 
     property DataManager dataManager
@@ -84,10 +84,10 @@ Item {
         }
 
         function scaleView(event) {
-            if (event.angleDelta.y > 0 && Settings.imageCellScale < Settings.imageCellScaleTo) {
-                Settings.imageCellScale += Settings.imageCellScaleStepSize
-            } else if (event.angleDelta.y < 0 && Settings.imageCellScale > Settings.imageCellScaleFrom) {
-                Settings.imageCellScale -= Settings.imageCellScaleStepSize
+            if (event.angleDelta.y > 0 && GlobalSettings.ui.imageCellScale < GlobalSettings.ui.imageCellScaleTo) {
+                GlobalSettings.ui.imageCellScale += GlobalSettings.ui.imageCellScaleStepSize
+            } else if (event.angleDelta.y < 0 && GlobalSettings.ui.imageCellScale > GlobalSettings.ui.imageCellScaleFrom) {
+                GlobalSettings.ui.imageCellScale -= GlobalSettings.ui.imageCellScaleStepSize
             } else {
 
             }
