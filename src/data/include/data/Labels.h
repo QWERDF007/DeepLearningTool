@@ -77,6 +77,7 @@ public:
         LabelIdRole = Qt::UserRole + 1,
         ImageIdRole,
         LabelClassIdRole,
+        LabelClassNameRole,
         DataRole,
         SelectedRole,
     };
@@ -125,6 +126,7 @@ private:
     int      getLabelId(const QModelIndex &index) const;
     int      getImageId(const QModelIndex &index) const;
     int      getLabelClassId(const QModelIndex &index) const;
+    QString  getLabelClassName(const QModelIndex &index) const;
     QVariant getData(const QModelIndex &index) const;
 
     data::ProjectDataBase   *database_{nullptr};

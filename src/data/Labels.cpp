@@ -88,6 +88,8 @@ QVariant LabelInstancesListModel::data(const QModelIndex &index, int role) const
         return getImageId(index);
     case LabelClassIdRole:
         return getLabelClassId(index);
+    case LabelClassNameRole:
+        return getLabelClassName(index);
     case DataRole:
         return getData(index);
     default:
@@ -98,10 +100,11 @@ QVariant LabelInstancesListModel::data(const QModelIndex &index, int role) const
 QHash<int, QByteArray> LabelInstancesListModel::roleNames() const
 {
     return {
-        {     LabelIdRole,       "label_id"},
-        {     ImageIdRole,       "image_id"},
-        {LabelClassIdRole, "label_class_id"},
-        {        DataRole,           "data"},
+        {       LabelIdRole,         "label_id"},
+        {       ImageIdRole,         "image_id"},
+        {  LabelClassIdRole,   "label_class_id"},
+        {LabelClassNameRole, "label_class_name"},
+        {          DataRole,             "data"},
     };
 }
 
@@ -377,6 +380,15 @@ int LabelInstancesListModel::getImageId(const QModelIndex &index) const
 int LabelInstancesListModel::getLabelClassId(const QModelIndex &index) const
 {
     return getLabelClassId(label_ids_[index.row()]);
+}
+
+QString LabelInstancesListModel::getLabelClassName(const QModelIndex &index) const
+{
+    if (!label_classes_)
+        return QString();
+
+    int64_t label_class_id = getLabelClassId(label_ids_[index.row()]);
+    return label_classes_->getLabelClassName(label_class_id);
 }
 
 QVariant LabelInstancesListModel::getData(const QModelIndex &index) const
