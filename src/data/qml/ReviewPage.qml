@@ -18,22 +18,6 @@ Rectangle {
 
     property DataManager dataManager
 
-    // 监听 dataManager 变化
-    onDataManagerChanged: {
-        console.log("[ReviewPage] dataManager changed:", dataManager);
-        if (dataManager) {
-            console.log("[ReviewPage] dataManager.labelInstances:", dataManager.labelInstances);
-            console.log("[ReviewPage] dataManager.imageLabelsTable:", dataManager.imageLabelsTable);
-            if (dataManager.imageLabelsTable) {
-                console.log("[ReviewPage] imageLabelsTable.selection:", dataManager.imageLabelsTable.selection);
-            }
-        }
-    }
-
-    Component.onCompleted: {
-        console.log("[ReviewPage] Component completed, dataManager:", dataManager);
-    }
-
     DltSplitView {
         anchors.fill: parent
         anchors.margins: 5

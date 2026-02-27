@@ -60,15 +60,6 @@ void DataManager::init(const int method)
 
     image_instances_->addImagesLabelIds(image_ids, images_label_ids);
     image_instances_->addImagesTagIds(image_ids, images_tag_ids);
-
-    // 延迟注册 ImageProvider，等待 QML 上下文可用
-    qInfo() << "DataManager::init - About to schedule QTimer for ImageProvider registration";
-    QTimer::singleShot(0, this,
-                       [this]()
-                       {
-                           qInfo() << "DataManager: QTimer fired - Attempting to register ImageProvider";
-                           initializeQmlEngine(nullptr);
-                       });
 }
 
 QList<QString> DataManager::getAllDatasetsName() const
