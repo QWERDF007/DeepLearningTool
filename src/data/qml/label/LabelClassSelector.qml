@@ -18,7 +18,7 @@ DltComboBox {
 
     // 内部状态
     property bool _updating: false
-    property color _currentColor: "transparent"
+    property color _currentColor: DltColor.Transparent
 
     implicitWidth: 200
     implicitHeight: 32
@@ -49,7 +49,7 @@ DltComboBox {
                 currentIndex = i
                 // 从模型数据获取颜色 (ColorRole = 259)
                 var colorData = labelClassesModel.data(modelIndex, 259)
-                _currentColor = colorData ? colorData : "transparent"
+                _currentColor = colorData ? colorData : DltColor.Transparent
                 _updating = false
                 return
             }
@@ -57,7 +57,7 @@ DltComboBox {
         
         // 未找到，重置为 -1
         currentIndex = -1
-        _currentColor = "transparent"
+        _currentColor = DltColor.Transparent
         _updating = false
     }
 
@@ -71,7 +71,7 @@ DltComboBox {
         if (newClassId !== currentClassId) {
             // 从模型数据获取颜色 (ColorRole = 259)
             var colorData = labelClassesModel.data(modelIndex, 259)
-            _currentColor = colorData ? colorData : "transparent"
+            _currentColor = colorData ? colorData : DltColor.Transparent
             // 不在这里修改 currentClassId - 让父组件处理
             classChanged(newClassId)
         }
@@ -85,7 +85,7 @@ DltComboBox {
         highlighted: control.highlightedIndex === index
         hoverEnabled: control.hoverEnabled
 
-        property color delegateColor: model.color !== undefined ? model.color : "transparent"
+        property color delegateColor: model.color !== undefined ? model.color : DltColor.Transparent
 
         contentItem: RowLayout {
             spacing: 8
@@ -112,7 +112,7 @@ DltComboBox {
         }
 
         background: Rectangle {
-            color: delegateItem.highlighted ? DltColor.Hovered : "transparent"
+            color: delegateItem.highlighted ? DltColor.Hovered : DltColor.Transparent
         }
     }
 
@@ -135,7 +135,7 @@ DltComboBox {
                 visible: control.currentIndex >= 0 && control.labelClassesModel
                 color: control._currentColor
                 border.width: visible ? 1 : 0
-                border.color: visible && control._currentColor !== "transparent" ? Qt.darker(control._currentColor, 1.3) : "transparent"
+                border.color: visible && control._currentColor !== DltColor.Transparent ? Qt.darker(control._currentColor, 1.3) : DltColor.Transparent
             }
 
             // 显示文本

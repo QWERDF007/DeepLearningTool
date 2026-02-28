@@ -28,7 +28,7 @@ Rectangle {
 
     width: 320
     height: 240
-    color: "transparent"
+    color: DltColor.Transparent
     border.color: selected ? DltColor.Highlight : DltColor.Border
     border.width: 2
 

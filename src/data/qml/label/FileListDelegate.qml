@@ -7,7 +7,7 @@ Rectangle {
     id: delegate
     height: 24
     radius: 4
-    color: selected ? DltColor.Highlight : "transparent"
+    color: selected ? DltColor.Highlight : DltColor.Transparent
     
     property string filePath: ""
     property bool selected: false

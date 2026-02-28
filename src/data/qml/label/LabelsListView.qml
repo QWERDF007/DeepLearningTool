@@ -12,7 +12,7 @@ Repeater {
         y: repeater.offsetY + data.y * repeater.factor
         width: data.width * repeater.factor
         height: data.height * repeater.factor
-        color: "transparent"
+        color: DltColor.Transparent
         border.color: model.color
         border.width: model.selected ? 3 : model.hovered ? 2 : 1
     }

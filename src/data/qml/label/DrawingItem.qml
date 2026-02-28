@@ -24,7 +24,7 @@ DltLoader {
             y: iy * factor + offsetY
             width: iwidth * factor
             height: iheight * factor
-            color: "transparent"
+            color: DltColor.Transparent
             border.color: "red"
             border.width: 2
         }

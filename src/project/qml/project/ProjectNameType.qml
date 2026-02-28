@@ -42,7 +42,7 @@ Rectangle {
             margins: 5
         }
         visible: projectNameType.name !== ""
-        color: hovered ? DltColor.Button : "transparent"
+        color: hovered ? DltColor.Button : DltColor.Transparent
         iconColor: DltColor.FontPrimary
         iconSource: DltFontIcon.Edit
         text: "编辑项目名称"

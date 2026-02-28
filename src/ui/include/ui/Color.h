@@ -12,6 +12,7 @@ class DltColor : public QObject
     Q_OBJECT
     QML_NAMED_ELEMENT(DltColor)
     QT_QML_SINGLETON(DltColor)
+    Q_PROPERTY_AUTO(QColor, Transparent)
     Q_PROPERTY_AUTO(QColor, Background)
     Q_PROPERTY_AUTO(QColor, Primary)
     Q_PROPERTY_AUTO(QColor, Border)

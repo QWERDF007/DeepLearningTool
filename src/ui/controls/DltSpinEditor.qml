@@ -91,7 +91,7 @@ Item {
                         iconSize: 12
                         radius: 2
                         enabled: control.enabled && control._internalValue > control.minValue
-                        normalColor: "transparent"
+                        normalColor: DltColor.Transparent
                         hoverColor: Qt.lighter(DltColor.Button, 1.3)
                         pressedColor: Qt.lighter(DltColor.Button, 1.5)
                         onClicked: {
@@ -145,7 +145,7 @@ Item {
                         iconSize: 12
                         radius: 2
                         enabled: control.enabled && control._internalValue < control.maxValue
-                        normalColor: "transparent"
+                        normalColor: DltColor.Transparent
                         hoverColor: Qt.lighter(DltColor.Button, 1.3)
                         pressedColor: Qt.lighter(DltColor.Button, 1.5)
                         onClicked: {
@@ -161,7 +161,7 @@ Item {
                     width: parent.width
                     height: 2
                     radius: 1
-                    color: textInput.activeFocus ? DltColor.Highlight : "transparent"
+                    color: textInput.activeFocus ? DltColor.Highlight : DltColor.Transparent
                 }
             }
         }
