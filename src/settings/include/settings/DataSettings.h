@@ -35,6 +35,14 @@ class SETTINGS_API DataSettings : public QObject
     // 标注填充透明度 (0-100)
     Q_PROPERTY(int labelFillOpacity READ labelFillOpacity WRITE setLabelFillOpacity NOTIFY labelFillOpacityChanged)
 
+    // 图像单元格缩放
+    Q_PROPERTY(double imageCellScale READ imageCellScale WRITE setImageCellScale NOTIFY imageCellScaleChanged)
+    Q_PROPERTY(
+        double imageCellScaleFrom READ imageCellScaleFrom WRITE setImageCellScaleFrom NOTIFY imageCellScaleFromChanged)
+    Q_PROPERTY(double imageCellScaleTo READ imageCellScaleTo WRITE setImageCellScaleTo NOTIFY imageCellScaleToChanged)
+    Q_PROPERTY(double imageCellScaleStepSize READ imageCellScaleStepSize WRITE setImageCellScaleStepSize NOTIFY
+                   imageCellScaleStepSizeChanged)
+
 public:
     explicit DataSettings(QObject *parent = nullptr);
     ~DataSettings();
@@ -74,6 +82,34 @@ public:
 
     void setLabelFillOpacity(int value);
 
+    double imageCellScale() const
+    {
+        return image_cell_scale_;
+    }
+
+    void setImageCellScale(double value);
+
+    double imageCellScaleFrom() const
+    {
+        return image_cell_scale_from_;
+    }
+
+    void setImageCellScaleFrom(double value);
+
+    double imageCellScaleTo() const
+    {
+        return image_cell_scale_to_;
+    }
+
+    void setImageCellScaleTo(double value);
+
+    double imageCellScaleStepSize() const
+    {
+        return image_cell_scale_step_size_;
+    }
+
+    void setImageCellScaleStepSize(double value);
+
     /**
      * @brief 从 QSettings 加载设置
      * @param settings QSettings 对象
@@ -97,6 +133,10 @@ signals:
     void imageLoadThreadsChanged();
     void labelBorderWidthChanged();
     void labelFillOpacityChanged();
+    void imageCellScaleChanged();
+    void imageCellScaleFromChanged();
+    void imageCellScaleToChanged();
+    void imageCellScaleStepSizeChanged();
 
 private:
     int thumbnail_margin_{10};
@@ -104,6 +144,11 @@ private:
     int image_load_threads_{4};
     int label_border_width_{2};
     int label_fill_opacity_{30}; // 30%
+
+    double image_cell_scale_{1.0};
+    double image_cell_scale_from_{0.5};
+    double image_cell_scale_to_{4.0};
+    double image_cell_scale_step_size_{0.25};
 };
 
 } // namespace dltool::settings

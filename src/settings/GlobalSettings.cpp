@@ -208,12 +208,12 @@ void GlobalSettings::connectAutoSave()
     connect(data_settings_, &DataSettings::imageLoadThreadsChanged, this, &GlobalSettings::scheduleSave);
     connect(data_settings_, &DataSettings::labelBorderWidthChanged, this, &GlobalSettings::scheduleSave);
     connect(data_settings_, &DataSettings::labelFillOpacityChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::imageCellScaleChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::imageCellScaleFromChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::imageCellScaleToChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::imageCellScaleStepSizeChanged, this, &GlobalSettings::scheduleSave);
 
     // 连接 UISettings 的所有信号
-    connect(ui_settings_, &UISettings::imageCellScaleChanged, this, &GlobalSettings::scheduleSave);
-    connect(ui_settings_, &UISettings::imageCellScaleFromChanged, this, &GlobalSettings::scheduleSave);
-    connect(ui_settings_, &UISettings::imageCellScaleToChanged, this, &GlobalSettings::scheduleSave);
-    connect(ui_settings_, &UISettings::imageCellScaleStepSizeChanged, this, &GlobalSettings::scheduleSave);
     connect(ui_settings_, &UISettings::imageBrightnessChanged, this, &GlobalSettings::scheduleSave);
     connect(ui_settings_, &UISettings::imageContrastChanged, this, &GlobalSettings::scheduleSave);
     connect(ui_settings_, &UISettings::themeChanged, this, &GlobalSettings::scheduleSave);

@@ -20,13 +20,13 @@ class SETTINGS_API UISettings : public QObject
     QML_NAMED_ELEMENT(UISettings)
     QML_UNCREATABLE("UISettings is managed by GlobalSettings")
 
-    // 图像单元格缩放
-    Q_PROPERTY(double imageCellScale READ imageCellScale WRITE setImageCellScale NOTIFY imageCellScaleChanged)
-    Q_PROPERTY(
-        double imageCellScaleFrom READ imageCellScaleFrom WRITE setImageCellScaleFrom NOTIFY imageCellScaleFromChanged)
-    Q_PROPERTY(double imageCellScaleTo READ imageCellScaleTo WRITE setImageCellScaleTo NOTIFY imageCellScaleToChanged)
-    Q_PROPERTY(double imageCellScaleStepSize READ imageCellScaleStepSize WRITE setImageCellScaleStepSize NOTIFY
-                   imageCellScaleStepSizeChanged)
+    // 图像单元格缩放 - DEPRECATED: 已迁移到 DataSettings
+    // Q_PROPERTY(double imageCellScale READ imageCellScale WRITE setImageCellScale NOTIFY imageCellScaleChanged)
+    // Q_PROPERTY(
+    //     double imageCellScaleFrom READ imageCellScaleFrom WRITE setImageCellScaleFrom NOTIFY imageCellScaleFromChanged)
+    // Q_PROPERTY(double imageCellScaleTo READ imageCellScaleTo WRITE setImageCellScaleTo NOTIFY imageCellScaleToChanged)
+    // Q_PROPERTY(double imageCellScaleStepSize READ imageCellScaleStepSize WRITE setImageCellScaleStepSize NOTIFY
+    //                imageCellScaleStepSizeChanged)
 
     // 图像亮度
     Q_PROPERTY(double imageBrightness READ imageBrightness WRITE setImageBrightness NOTIFY imageBrightnessChanged)
@@ -50,33 +50,34 @@ public:
     explicit UISettings(QObject *parent = nullptr);
     ~UISettings();
 
-    double imageCellScale() const
-    {
-        return image_cell_scale_;
-    }
+    // DEPRECATED: imageCellScale 已迁移到 DataSettings
+    // double imageCellScale() const
+    // {
+    //     return image_cell_scale_;
+    // }
 
-    void setImageCellScale(double value);
+    // void setImageCellScale(double value);
 
-    double imageCellScaleFrom() const
-    {
-        return image_cell_scale_from_;
-    }
+    // double imageCellScaleFrom() const
+    // {
+    //     return image_cell_scale_from_;
+    // }
 
-    void setImageCellScaleFrom(double value);
+    // void setImageCellScaleFrom(double value);
 
-    double imageCellScaleTo() const
-    {
-        return image_cell_scale_to_;
-    }
+    // double imageCellScaleTo() const
+    // {
+    //     return image_cell_scale_to_;
+    // }
 
-    void setImageCellScaleTo(double value);
+    // void setImageCellScaleTo(double value);
 
-    double imageCellScaleStepSize() const
-    {
-        return image_cell_scale_step_size_;
-    }
+    // double imageCellScaleStepSize() const
+    // {
+    //     return image_cell_scale_step_size_;
+    // }
 
-    void setImageCellScaleStepSize(double value);
+    // void setImageCellScaleStepSize(double value);
 
     double imageBrightness() const
     {
@@ -154,20 +155,22 @@ public:
     void reset();
 
 signals:
-    void imageCellScaleChanged();
-    void imageCellScaleFromChanged();
-    void imageCellScaleToChanged();
-    void imageCellScaleStepSizeChanged();
+    // DEPRECATED: imageCellScale 信号已迁移到 DataSettings
+    // void imageCellScaleChanged();
+    // void imageCellScaleFromChanged();
+    // void imageCellScaleToChanged();
+    // void imageCellScaleStepSizeChanged();
     void imageBrightnessChanged();
     void imageContrastChanged();
     void themeChanged();
     void languageChanged();
 
 private:
-    double image_cell_scale_{1.0};
-    double image_cell_scale_from_{0.5};
-    double image_cell_scale_to_{4.0};
-    double image_cell_scale_step_size_{0.25};
+    // DEPRECATED: imageCellScale 已迁移到 DataSettings
+    // double image_cell_scale_{1.0};
+    // double image_cell_scale_from_{0.5};
+    // double image_cell_scale_to_{4.0};
+    // double image_cell_scale_step_size_{0.25};
 
     double image_brightness_{0.0};
     double image_brightness_from_{-1.0};

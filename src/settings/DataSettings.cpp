@@ -71,6 +71,54 @@ void DataSettings::setLabelFillOpacity(int value)
     }
 }
 
+void DataSettings::setImageCellScale(double value)
+{
+    // 验证：缩放值必须在合理范围内
+    value = std::clamp(value, 0.1, 10.0);
+
+    if (image_cell_scale_ != value)
+    {
+        image_cell_scale_ = value;
+        emit imageCellScaleChanged();
+    }
+}
+
+void DataSettings::setImageCellScaleFrom(double value)
+{
+    // 验证：最小缩放值必须大于 0
+    value = std::max(0.1, value);
+
+    if (image_cell_scale_from_ != value)
+    {
+        image_cell_scale_from_ = value;
+        emit imageCellScaleFromChanged();
+    }
+}
+
+void DataSettings::setImageCellScaleTo(double value)
+{
+    // 验证：最大缩放值必须大于最小值
+    value = std::max(image_cell_scale_from_ + 0.1, value);
+
+    if (image_cell_scale_to_ != value)
+    {
+        image_cell_scale_to_ = value;
+        emit imageCellScaleToChanged();
+    }
+}
+
+void DataSettings::setImageCellScaleStepSize(double value)
+{
+    // 验证：步长必须大于 0
+    value = std::max(0.01, value);
+
+    if (image_cell_scale_step_size_ != value)
+    {
+        image_cell_scale_step_size_ = value;
+        emit imageCellScaleStepSizeChanged();
+    }
+}
+
 void DataSettings::load(QSettings *settings)
 {
     if (!settings)
@@ -85,6 +133,11 @@ void DataSettings::load(QSettings *settings)
     setImageLoadThreads(settings->value("imageLoadThreads", 4).toInt());
     setLabelBorderWidth(settings->value("labelBorderWidth", 2).toInt());
     setLabelFillOpacity(settings->value("labelFillOpacity", 30).toInt());
+
+    setImageCellScale(settings->value("imageCellScale", 1.0).toDouble());
+    setImageCellScaleFrom(settings->value("imageCellScaleFrom", 0.5).toDouble());
+    setImageCellScaleTo(settings->value("imageCellScaleTo", 4.0).toDouble());
+    setImageCellScaleStepSize(settings->value("imageCellScaleStepSize", 0.25).toDouble());
 
     settings->endGroup();
 }
@@ -104,6 +157,11 @@ void DataSettings::save(QSettings *settings)
     settings->setValue("labelBorderWidth", label_border_width_);
     settings->setValue("labelFillOpacity", label_fill_opacity_);
 
+    settings->setValue("imageCellScale", image_cell_scale_);
+    settings->setValue("imageCellScaleFrom", image_cell_scale_from_);
+    settings->setValue("imageCellScaleTo", image_cell_scale_to_);
+    settings->setValue("imageCellScaleStepSize", image_cell_scale_step_size_);
+
     settings->endGroup();
 }
 
@@ -114,6 +172,11 @@ void DataSettings::reset()
     setImageLoadThreads(4);
     setLabelBorderWidth(2);
     setLabelFillOpacity(30);
+
+    setImageCellScale(1.0);
+    setImageCellScaleFrom(0.5);
+    setImageCellScaleTo(4.0);
+    setImageCellScaleStepSize(0.25);
 }
 
 } // namespace dltool::settings

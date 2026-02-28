@@ -19,13 +19,13 @@ Rectangle { // 侧边栏
             iconSource: DltFontIcon.ExploreContentSingle
             text: "调整图像大小"
             onClicked: {
-                slider.from = GlobalSettings.ui.imageCellScaleFrom
-                slider.to = GlobalSettings.ui.imageCellScaleTo
-                slider.value = GlobalSettings.ui.imageCellScale
+                slider.from = GlobalSettings.data.imageCellScaleFrom
+                slider.to = GlobalSettings.data.imageCellScaleTo
+                slider.value = GlobalSettings.data.imageCellScale
                 slider.snapMode = Slider.NoSnap
-                slider.stepSize = GlobalSettings.ui.imageCellScaleStepSize
+                slider.stepSize = GlobalSettings.data.imageCellScaleStepSize
                 slider.valueUpdateCallback = function(value) {
-                    GlobalSettings.ui.imageCellScale = value
+                    GlobalSettings.data.imageCellScale = value
                 }
                 openPopup(x,y)
             }

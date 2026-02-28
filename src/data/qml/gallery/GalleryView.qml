@@ -17,8 +17,8 @@ Item {
         }
     }
 
-    property int cellWidth: 180 * GlobalSettings.ui.imageCellScale
-    property int cellHeight: 240 * GlobalSettings.ui.imageCellScale
+    property int cellWidth: 180 * GlobalSettings.data.imageCellScale
+    property int cellHeight: 240 * GlobalSettings.data.imageCellScale
     property int spacing: 10
 
     property DataManager dataManager
@@ -84,10 +84,10 @@ Item {
         }
 
         function scaleView(event) {
-            if (event.angleDelta.y > 0 && GlobalSettings.ui.imageCellScale < GlobalSettings.ui.imageCellScaleTo) {
-                GlobalSettings.ui.imageCellScale += GlobalSettings.ui.imageCellScaleStepSize
-            } else if (event.angleDelta.y < 0 && GlobalSettings.ui.imageCellScale > GlobalSettings.ui.imageCellScaleFrom) {
-                GlobalSettings.ui.imageCellScale -= GlobalSettings.ui.imageCellScaleStepSize
+            if (event.angleDelta.y > 0 && GlobalSettings.data.imageCellScale < GlobalSettings.data.imageCellScaleTo) {
+                GlobalSettings.data.imageCellScale += GlobalSettings.data.imageCellScaleStepSize
+            } else if (event.angleDelta.y < 0 && GlobalSettings.data.imageCellScale > GlobalSettings.data.imageCellScaleFrom) {
+                GlobalSettings.data.imageCellScale -= GlobalSettings.data.imageCellScaleStepSize
             } else {
 
             }
