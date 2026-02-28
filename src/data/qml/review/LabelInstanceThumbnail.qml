@@ -19,12 +19,6 @@ Item {
     readonly property bool imageLoaded: thumbnail.status === Image.Ready
     readonly property bool imageError: thumbnail.status === Image.Error
     
-    // 监听 labelId 变化（移除日志以提升性能）
-    // onLabelIdChanged: {
-    //     console.log("[LabelInstanceThumbnail] labelId changed to:", labelId);
-    //     console.log("[LabelInstanceThumbnail] Will request image:", "image://labelinstance/" + labelId);
-    // }
-    
     // 图像组件
     Image {
         id: thumbnail
