@@ -69,6 +69,8 @@ Rectangle {
                     id: thumbnailGridView
                     anchors.fill: parent
                     anchors.margins: 10
+
+                    boundsBehavior:Flickable.StopAtBounds
                     
                     cellWidth: 200
                     cellHeight: 200
@@ -82,30 +84,35 @@ Rectangle {
                     cacheBuffer: 400  // 只缓冲 2 行的高度
                     
                     delegate: Rectangle {
+                        id: delegateItem
                         width: thumbnailGridView.cellWidth - 10
                         height: thumbnailGridView.cellHeight - 10
                         color: DltColor.Primary
                         radius: 4
                         
+                        property int labelId: model.label_id || -1
+                        
                         // 边框：选中时高亮
                         border.width: 2
                         border.color: {
-                            if (!dataManager || !dataManager.imageLabelsTable) {
-                                return "transparent";
+                            if (!dataManager || !dataManager.labelInstances) {
+                                return DltColor.Transparent;
                             }
-                            let selection = dataManager.imageLabelsTable.selection;
+                            let selection = dataManager.labelInstances.selection;
                             if (!selection || !selection.hasSelection) {
-                                return "transparent";
+                                return DltColor.Transparent
                             }
                             let currentIndex = selection.currentIndex.row;
                             if (currentIndex < 0) {
-                                return "transparent";
+                                return DltColor.Transparent
                             }
-                            let selectedData = dataManager.imageLabelsTable.getData(currentIndex);
-                            if (selectedData && selectedData.label_id === model.label_id) {
-                                return "#2196F3";  // 蓝色高亮
+                            // 检查当前 delegate 的索引是否被选中
+                            let myIndex = model.index;
+                            let myModelIndex = dataManager.labelInstances.index(myIndex, 0);
+                            if (selection.isSelected(myModelIndex)) {
+                                return DltColor.Highlight
                             }
-                            return "transparent";
+                            return DltColor.Transparent
                         }
                         
                         ColumnLayout {
@@ -117,14 +124,14 @@ Rectangle {
                             LabelInstanceThumbnail {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                labelId: model.label_id
+                                labelId: delegateItem.labelId
                             }
                             
                             // 标注信息
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 30
-                                color: "transparent"
+                                color: DltColor.Transparent
                                 
                                 ColumnLayout {
                                     anchors.fill: parent
@@ -132,7 +139,7 @@ Rectangle {
                                     
                                     DltText {
                                         Layout.fillWidth: true
-                                        text: "ID: " + model.label_id
+                                        text: "ID: " + delegateItem.labelId
                                         // color: DltColor.TextPrimary
                                         font.pixelSize: 10
                                         elide: Text.ElideRight
@@ -148,42 +155,61 @@ Rectangle {
                                 }
                             }
                         }
+                    }
+                    
+                    ScrollBar.vertical: DltScrollBar {}
+
+                    
+                    // 鼠标点击选中
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
                         
-                        // 鼠标点击选中
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: {
-                                if (dataManager && dataManager.imageLabelsTable) {
-                                    // 找到对应的行索引并选中
-                                    for (let i = 0; i < dataManager.imageLabelsTable.rowCount(); i++) {
-                                        let data = dataManager.imageLabelsTable.getData(i);
-                                        if (data && data.label_id === model.label_id) {
-                                            let modelIndex = dataManager.imageLabelsTable.index(i, 0);
-                                            dataManager.imageLabelsTable.selection.select(
-                                                modelIndex, 
-                                                ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows
-                                            );
-                                            break;
-                                        }
-                                    }
+                        onClicked: function (mouse) {
+                            thumbnailGridView.forceActiveFocus()
+                            
+                            if (!dataManager) {
+                                return
+                            }
+                            
+                            if (!dataManager.labelInstances) {
+                                return
+                            }
+                            
+                            let selection = dataManager.labelInstances.selection
+                            if (!selection) {
+                                return
+                            }
+                            
+                            // 计算点击位置对应的索引
+                            let posInGridView = Qt.point(mouse.x, mouse.y)
+                            let posInContentItem = mapToItem(thumbnailGridView.contentItem, posInGridView)
+                            let index = thumbnailGridView.indexAt(posInContentItem.x, posInContentItem.y)
+                            
+                            if (index < 0) {
+                                selection.clear()
+                                return
+                            }
+                            
+                            let item = thumbnailGridView.itemAtIndex(index)
+                            if (!item) {
+                                selection.clear()
+                                return
+                            }
+                            
+                            // 直接选中 labelInstances 模型中的对应项
+                            let modelIndex = dataManager.labelInstances.index(index, 0)
+                            
+                            if (mouse.button === Qt.LeftButton) {
+                                if (mouse.modifiers & Qt.ControlModifier) {
+                                    selection.select(modelIndex, ItemSelectionModel.Toggle)
+                                } else {
+                                    selection.select(modelIndex, ItemSelectionModel.ClearAndSelect)
                                 }
+                                selection.setCurrentIndex(modelIndex, ItemSelectionModel.Current)
                             }
                         }
                     }
-                    
-                    // 滚动条
-                    ScrollBar.vertical: ScrollBar {
-                        policy: ScrollBar.AsNeeded
-                    }
-                }
-                
-                // 提示文本：当没有标注时显示
-                DltText {
-                    anchors.centerIn: parent
-                    visible: thumbnailGridView.count === 0
-                    text: "没有标注实例"
-                    // color: DltColor.TextSecondary
-                    font.pixelSize: 16
                 }
             }
 
