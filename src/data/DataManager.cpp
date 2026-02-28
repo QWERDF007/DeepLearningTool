@@ -141,9 +141,9 @@ void DataManager::deleteSelectedImages()
     std::vector<int64_t>              dataset_ids      = image_instances_->getDatasetIds(image_ids);
     std::vector<std::vector<int64_t>> images_label_ids = image_instances_->getLabelIds(image_ids);
     std::vector<int64_t>              label_ids;
-    for (const std::vector<int64_t> &_label_ids : images_label_ids)
+    for (const std::vector<int64_t> &label_ids_vec : images_label_ids)
     {
-        label_ids.insert(label_ids.end(), _label_ids.begin(), _label_ids.end());
+        label_ids.insert(label_ids.end(), label_ids_vec.begin(), label_ids_vec.end());
     }
     datasets_->deleteImages(dataset_ids, image_ids);
     image_tags_->removeImagesTags(image_ids);
@@ -385,8 +385,8 @@ void DataManager::handleDataReady(bool success, int64_t dataset_id, std::vector<
     }
 
     // 6. 更新数据集中的图像
-    std::vector<int64_t> dataset_ids(image_ids.size(), dataset_id);
-    datasets_->addImages(dataset_ids, image_ids);
+    std::vector<int64_t> dataset_ids_vec(image_ids.size(), dataset_id);
+    datasets_->addImages(dataset_ids_vec, image_ids);
 
     // 7. 更新统计信息
     updateDatasetsStats();
@@ -414,14 +414,14 @@ void DataManager::initializeQmlEngine(QQmlApplicationEngine *engine)
     {
         qInfo() << "DataManager::initializeQmlEngine: engine parameter is null, trying to get from QML context";
         // 尝试从 QObject 上下文获取引擎
-        QQmlEngine *qmlEngine
+        QQmlEngine *qml_engine
             = QQmlEngine::contextForObject(this) ? QQmlEngine::contextForObject(this)->engine() : nullptr;
-        if (!qmlEngine)
+        if (!qml_engine)
         {
             qInfo() << "DataManager::initializeQmlEngine: could not get QML engine from context";
             return;
         }
-        engine = qobject_cast<QQmlApplicationEngine *>(qmlEngine);
+        engine = qobject_cast<QQmlApplicationEngine *>(qml_engine);
         if (!engine)
         {
             qInfo() << "DataManager::initializeQmlEngine: QML engine is not QQmlApplicationEngine";
@@ -434,12 +434,12 @@ void DataManager::initializeQmlEngine(QQmlApplicationEngine *engine)
             << "image_instances=" << (void *)image_instances_ << "label_classes=" << (void *)label_classes_;
 
     // 创建 LabelInstanceImageProvider 实例，传入三个模型指针
-    auto *labelInstanceProvider = new LabelInstanceImageProvider(label_instances_, image_instances_, label_classes_);
+    auto *label_instance_provider = new LabelInstanceImageProvider(label_instances_, image_instances_, label_classes_);
 
     qInfo() << "Registering LabelInstanceImageProvider with name 'labelinstance'";
 
     // 注册到 QML 引擎（使用小写名称，因为 QML Image 会自动转换为小写）
-    engine->addImageProvider("labelinstance", labelInstanceProvider);
+    engine->addImageProvider("labelinstance", label_instance_provider);
 
     qInfo() << "LabelInstanceImageProvider registered successfully with name 'labelinstance'";
 }

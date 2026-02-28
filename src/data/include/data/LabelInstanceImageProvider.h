@@ -8,7 +8,6 @@
 #include <QRectF>
 #include <QString>
 
-
 namespace dltool::data {
 
 class LabelInstancesListModel;
@@ -53,25 +52,25 @@ private:
 
     /**
      * @brief 裁剪图像区域
-     * @param sourceImage 原始图像
+     * @param source_image 原始图像
      * @param bbox 标注矩形（相对于原始图像）
      * @param margin 边距
-     * @param fillColor 填充颜色
+     * @param fill_color 填充颜色
      * @return 裁剪后的图像
      */
-    QImage cropImageWithMargin(const QImage &sourceImage, const QRectF &bbox, int margin,
-                               const QColor &fillColor) const;
+    QImage cropImageWithMargin(const QImage &source_image, const QRectF &bbox, int margin,
+                               const QColor &fill_color) const;
 
     /**
      * @brief 在图像上绘制矩形框
      * @param image 目标图像（会被修改）
      * @param bbox 标注矩形（相对于原始图像）
-     * @param cropRect 裁剪区域（相对于原始图像）
-     * @param borderColor 边框颜色
-     * @param borderWidth 边框宽度（像素）
+     * @param crop_rect 裁剪区域（相对于原始图像）
+     * @param border_color 边框颜色
+     * @param border_width 边框宽度（像素）
      */
-    void drawBoundingBox(QImage &image, const QRectF &bbox, const QRectF &cropRect, const QColor &borderColor,
-                         int borderWidth = 2) const;
+    void drawBoundingBox(QImage &image, const QRectF &bbox, const QRectF &crop_rect, const QColor &border_color,
+                         int border_width = 2) const;
 
     /**
      * @brief 创建错误占位图像
