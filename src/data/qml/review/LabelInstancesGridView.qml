@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import dltool.settings
 
 // 标注实例缩略图网格视图
 Rectangle {
@@ -19,8 +20,12 @@ Rectangle {
         anchors.fill: parent
         anchors.margins: 10
         
-        cellWidth: 200
-        cellHeight: 200
+        // 基础尺寸
+        property real baseCellSize: 200
+        
+        // 绑定到设置
+        cellWidth: baseCellSize * GlobalSettings.data.labelThumbnailScale
+        cellHeight: cellWidth * GlobalSettings.data.labelThumbnailAspectRatio
         
         clip: true
         

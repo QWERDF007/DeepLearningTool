@@ -49,13 +49,47 @@ QImage LabelInstanceImageProvider::requestImage(const QString &id, QSize *size, 
 
     try
     {
+        // 解析 URL: "label_id?padding=value"
+        QString id_part = id;
+        double  padding = 0.1; // 默认值
+
+        // 检查是否包含查询参数
+        int query_pos = id.indexOf('?');
+        if (query_pos != -1)
+        {
+            id_part              = id.left(query_pos);
+            QString query_string = id.mid(query_pos + 1);
+
+            // 解析 padding 参数
+            QStringList params = query_string.split('&');
+            for (const QString &param : params)
+            {
+                QStringList key_value = param.split('=');
+                if (key_value.size() == 2 && key_value[0] == "padding")
+                {
+                    bool   ok             = false;
+                    double parsed_padding = key_value[1].toDouble(&ok);
+                    if (ok && parsed_padding >= 0.0 && parsed_padding <= 1.0)
+                    {
+                        padding = parsed_padding;
+                    }
+                    else
+                    {
+                        spdlog::debug("[LabelInstanceImageProvider] Invalid padding value: {}, using default 0.1",
+                                      key_value[1].toStdString());
+                    }
+                    break;
+                }
+            }
+        }
+
         // 解析 label_id
         bool    ok       = false;
-        int64_t label_id = id.toLongLong(&ok);
+        int64_t label_id = id_part.toLongLong(&ok);
 
         if (!ok || label_id < 0)
         {
-            spdlog::debug("[LabelInstanceImageProvider] Invalid label_id: {}", id.toStdString());
+            spdlog::debug("[LabelInstanceImageProvider] Invalid label_id: {}", id_part.toStdString());
             QImage empty_image = createEmptyImage();
             if (size)
                 *size = empty_image.size();
@@ -63,7 +97,7 @@ QImage LabelInstanceImageProvider::requestImage(const QString &id, QSize *size, 
         }
 
         // 生成缩略图
-        QImage result = generateThumbnail(label_id);
+        QImage result = generateThumbnail(label_id, padding);
         if (size)
             *size = result.size();
 
@@ -87,7 +121,7 @@ QImage LabelInstanceImageProvider::requestImage(const QString &id, QSize *size, 
     }
 }
 
-QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id) const
+QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id, double padding) const
 {
     try
     {
@@ -149,10 +183,17 @@ QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id) const
         QColor  border_color(border_color_str.isEmpty() ? DEFAULT_BORDER_COLOR : border_color_str);
         QColor  fill_color(DEFAULT_FILL_COLOR);
 
-        // 6. 裁剪图像并绘制边框
-        QImage cropped_image = cropImageWithMargin(source_image, bbox, margin, fill_color);
+        // 6. 根据 padding 参数计算扩展的边距
+        // padding 是相对于 bbox 尺寸的比例（0.0 - 1.0）
+        // 计算额外的边距：padding * max(width, height)
+        double max_dimension   = qMax(bbox.width(), bbox.height());
+        int    extended_margin = margin + static_cast<int>(padding * max_dimension);
 
-        QRectF crop_rect(bbox.x() - margin, bbox.y() - margin, bbox.width() + 2 * margin, bbox.height() + 2 * margin);
+        // 7. 裁剪图像并绘制边框
+        QImage cropped_image = cropImageWithMargin(source_image, bbox, extended_margin, fill_color);
+
+        QRectF crop_rect(bbox.x() - extended_margin, bbox.y() - extended_margin, bbox.width() + 2 * extended_margin,
+                         bbox.height() + 2 * extended_margin);
 
         drawBoundingBox(cropped_image, bbox, crop_rect, border_color, border_width);
 

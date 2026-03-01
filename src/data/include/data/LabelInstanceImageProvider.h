@@ -18,7 +18,9 @@ class LabelClassesListModel;
  * @brief 标注实例图像提供器
  * 
  * 为 QML 提供裁剪和处理后的标注区域图像。
- * URL 格式：image://labelInstance/label_id
+ * URL 格式：image://labelInstance/label_id?padding=value
+ * - label_id: 标注实例 ID
+ * - padding: 可选，边界扩展比例（0.0-1.0），默认 0.1
  * 边距从 Settings 单例获取，颜色从 LabelClasses 获取
  */
 class DATA_API LabelInstanceImageProvider : public QQuickImageProvider
@@ -46,9 +48,10 @@ private:
     /**
      * @brief 生成标注缩略图
      * @param label_id 标注 ID
+     * @param padding 边界扩展比例（0.0 - 1.0），相对于标注框的最大尺寸
      * @return 处理后的图像
      */
-    QImage generateThumbnail(int64_t label_id) const;
+    QImage generateThumbnail(int64_t label_id, double padding = 0.1) const;
 
     /**
      * @brief 裁剪图像区域

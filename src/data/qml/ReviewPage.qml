@@ -66,10 +66,9 @@ Rectangle {
                 dataManager: labelPage.dataManager
             }
 
-            Rectangle { // 侧边栏
+            ReviewSidebar { // 侧边栏
                 Layout.preferredWidth: 40
                 Layout.fillHeight: true
-                color: DltColor.Primary
             }
         }
     }

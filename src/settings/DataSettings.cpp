@@ -119,6 +119,42 @@ void DataSettings::setImageCellScaleStepSize(double value)
     }
 }
 
+void DataSettings::setLabelThumbnailScale(double value)
+{
+    // 验证：缩放值必须在 0.5-4.0 范围内
+    value = std::clamp(value, 0.5, 4.0);
+
+    if (label_thumbnail_scale_ != value)
+    {
+        label_thumbnail_scale_ = value;
+        emit labelThumbnailScaleChanged();
+    }
+}
+
+void DataSettings::setLabelThumbnailAspectRatio(double value)
+{
+    // 验证：长宽比必须在 0.5-2.0 范围内
+    value = std::clamp(value, 0.5, 2.0);
+
+    if (label_thumbnail_aspect_ratio_ != value)
+    {
+        label_thumbnail_aspect_ratio_ = value;
+        emit labelThumbnailAspectRatioChanged();
+    }
+}
+
+void DataSettings::setLabelThumbnailBorderPadding(double value)
+{
+    // 验证：边界必须在 0.0-1.0 范围内
+    value = std::clamp(value, 0.0, 1.0);
+
+    if (label_thumbnail_border_padding_ != value)
+    {
+        label_thumbnail_border_padding_ = value;
+        emit labelThumbnailBorderPaddingChanged();
+    }
+}
+
 void DataSettings::load(QSettings *settings)
 {
     if (!settings)
@@ -138,6 +174,10 @@ void DataSettings::load(QSettings *settings)
     setImageCellScaleFrom(settings->value("imageCellScaleFrom", 0.5).toDouble());
     setImageCellScaleTo(settings->value("imageCellScaleTo", 4.0).toDouble());
     setImageCellScaleStepSize(settings->value("imageCellScaleStepSize", 0.25).toDouble());
+
+    setLabelThumbnailScale(settings->value("labelThumbnailScale", 1.0).toDouble());
+    setLabelThumbnailAspectRatio(settings->value("labelThumbnailAspectRatio", 1.0).toDouble());
+    setLabelThumbnailBorderPadding(settings->value("labelThumbnailBorderPadding", 0.1).toDouble());
 
     settings->endGroup();
 }
@@ -162,6 +202,10 @@ void DataSettings::save(QSettings *settings)
     settings->setValue("imageCellScaleTo", image_cell_scale_to_);
     settings->setValue("imageCellScaleStepSize", image_cell_scale_step_size_);
 
+    settings->setValue("labelThumbnailScale", label_thumbnail_scale_);
+    settings->setValue("labelThumbnailAspectRatio", label_thumbnail_aspect_ratio_);
+    settings->setValue("labelThumbnailBorderPadding", label_thumbnail_border_padding_);
+
     settings->endGroup();
 }
 
@@ -177,6 +221,10 @@ void DataSettings::reset()
     setImageCellScaleFrom(0.5);
     setImageCellScaleTo(4.0);
     setImageCellScaleStepSize(0.25);
+
+    setLabelThumbnailScale(1.0);
+    setLabelThumbnailAspectRatio(1.0);
+    setLabelThumbnailBorderPadding(0.1);
 }
 
 } // namespace dltool::settings

@@ -1,7 +1,9 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
 
 import dltool.ui
+import dltool.settings
 
 /**
  * @brief 标注实例缩略图组件
@@ -25,8 +27,11 @@ Item {
         anchors.fill: parent
         fillMode: Image.PreserveAspectFit
         
-        // 简化的 URL，只需要 label_id（使用小写 labelinstance）
-        source: root.labelId >= 0 ? "image://labelinstance/" + root.labelId : ""
+        // URL 包含 padding 查询参数以支持边界扩展
+        source: root.labelId >= 0 
+            ? "image://labelinstance/" + root.labelId 
+              + "?padding=" + GlobalSettings.data.labelThumbnailBorderPadding
+            : ""
         
         // 缓存控制 - 启用缓存以提升性能
         cache: true
@@ -55,5 +60,13 @@ Item {
             text: "Failed to load image"
             color: "red"
         }
+    }
+    
+    // 应用亮度和对比度效果
+    MultiEffect {
+        source: thumbnail
+        anchors.fill: thumbnail
+        brightness: GlobalSettings.ui.imageBrightness
+        contrast: GlobalSettings.ui.imageContrast
     }
 }

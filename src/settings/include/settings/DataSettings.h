@@ -43,6 +43,27 @@ class SETTINGS_API DataSettings : public QObject
     Q_PROPERTY(double imageCellScaleStepSize READ imageCellScaleStepSize WRITE setImageCellScaleStepSize NOTIFY
                    imageCellScaleStepSizeChanged)
 
+    // 标注缩略图缩放
+    Q_PROPERTY(double labelThumbnailScale READ labelThumbnailScale WRITE setLabelThumbnailScale NOTIFY
+                   labelThumbnailScaleChanged)
+    Q_PROPERTY(double labelThumbnailScaleFrom READ labelThumbnailScaleFrom CONSTANT)
+    Q_PROPERTY(double labelThumbnailScaleTo READ labelThumbnailScaleTo CONSTANT)
+    Q_PROPERTY(double labelThumbnailScaleStepSize READ labelThumbnailScaleStepSize CONSTANT)
+
+    // 标注缩略图长宽比
+    Q_PROPERTY(double labelThumbnailAspectRatio READ labelThumbnailAspectRatio WRITE setLabelThumbnailAspectRatio NOTIFY
+                   labelThumbnailAspectRatioChanged)
+    Q_PROPERTY(double labelThumbnailAspectRatioFrom READ labelThumbnailAspectRatioFrom CONSTANT)
+    Q_PROPERTY(double labelThumbnailAspectRatioTo READ labelThumbnailAspectRatioTo CONSTANT)
+    Q_PROPERTY(double labelThumbnailAspectRatioStepSize READ labelThumbnailAspectRatioStepSize CONSTANT)
+
+    // 标注缩略图边界扩展
+    Q_PROPERTY(double labelThumbnailBorderPadding READ labelThumbnailBorderPadding WRITE setLabelThumbnailBorderPadding
+                   NOTIFY labelThumbnailBorderPaddingChanged)
+    Q_PROPERTY(double labelThumbnailBorderPaddingFrom READ labelThumbnailBorderPaddingFrom CONSTANT)
+    Q_PROPERTY(double labelThumbnailBorderPaddingTo READ labelThumbnailBorderPaddingTo CONSTANT)
+    Q_PROPERTY(double labelThumbnailBorderPaddingStepSize READ labelThumbnailBorderPaddingStepSize CONSTANT)
+
 public:
     explicit DataSettings(QObject *parent = nullptr);
     ~DataSettings();
@@ -110,6 +131,72 @@ public:
 
     void setImageCellScaleStepSize(double value);
 
+    double labelThumbnailScale() const
+    {
+        return label_thumbnail_scale_;
+    }
+
+    void setLabelThumbnailScale(double value);
+
+    double labelThumbnailScaleFrom() const
+    {
+        return label_thumbnail_scale_from_;
+    }
+
+    double labelThumbnailScaleTo() const
+    {
+        return label_thumbnail_scale_to_;
+    }
+
+    double labelThumbnailScaleStepSize() const
+    {
+        return label_thumbnail_scale_step_size_;
+    }
+
+    double labelThumbnailAspectRatio() const
+    {
+        return label_thumbnail_aspect_ratio_;
+    }
+
+    void setLabelThumbnailAspectRatio(double value);
+
+    double labelThumbnailAspectRatioFrom() const
+    {
+        return label_thumbnail_aspect_ratio_from_;
+    }
+
+    double labelThumbnailAspectRatioTo() const
+    {
+        return label_thumbnail_aspect_ratio_to_;
+    }
+
+    double labelThumbnailAspectRatioStepSize() const
+    {
+        return label_thumbnail_aspect_ratio_step_size_;
+    }
+
+    double labelThumbnailBorderPadding() const
+    {
+        return label_thumbnail_border_padding_;
+    }
+
+    void setLabelThumbnailBorderPadding(double value);
+
+    double labelThumbnailBorderPaddingFrom() const
+    {
+        return label_thumbnail_border_padding_from_;
+    }
+
+    double labelThumbnailBorderPaddingTo() const
+    {
+        return label_thumbnail_border_padding_to_;
+    }
+
+    double labelThumbnailBorderPaddingStepSize() const
+    {
+        return label_thumbnail_border_padding_step_size_;
+    }
+
     /**
      * @brief 从 QSettings 加载设置
      * @param settings QSettings 对象
@@ -137,6 +224,9 @@ signals:
     void imageCellScaleFromChanged();
     void imageCellScaleToChanged();
     void imageCellScaleStepSizeChanged();
+    void labelThumbnailScaleChanged();
+    void labelThumbnailAspectRatioChanged();
+    void labelThumbnailBorderPaddingChanged();
 
 private:
     int thumbnail_margin_{10};
@@ -149,6 +239,21 @@ private:
     double image_cell_scale_from_{0.5};
     double image_cell_scale_to_{4.0};
     double image_cell_scale_step_size_{0.25};
+
+    double label_thumbnail_scale_{1.0};
+    double label_thumbnail_scale_from_{0.5};
+    double label_thumbnail_scale_to_{4.0};
+    double label_thumbnail_scale_step_size_{0.25};
+
+    double label_thumbnail_aspect_ratio_{1.0};
+    double label_thumbnail_aspect_ratio_from_{0.5};
+    double label_thumbnail_aspect_ratio_to_{2.0};
+    double label_thumbnail_aspect_ratio_step_size_{0.1};
+
+    double label_thumbnail_border_padding_{0.1};
+    double label_thumbnail_border_padding_from_{0.0};
+    double label_thumbnail_border_padding_to_{1.0};
+    double label_thumbnail_border_padding_step_size_{0.1};
 };
 
 } // namespace dltool::settings
