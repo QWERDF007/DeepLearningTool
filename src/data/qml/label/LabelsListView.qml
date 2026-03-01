@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 
+import dltool.ui
+
 Repeater {
     id: repeater
     property real offsetX: 0
