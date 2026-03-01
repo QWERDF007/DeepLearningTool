@@ -22,11 +22,43 @@ Item {
     // 只读属性
     readonly property bool imageLoaded: thumbnail.status === Image.Ready
     readonly property bool imageError: thumbnail.status === Image.Error
+    readonly property bool hasValidLabelData: isLabelDataValid()
     
     // 配置属性（从 GlobalSettings 获取）
     readonly property int margin: GlobalSettings.data.thumbnailMargin
     readonly property int borderWidth: GlobalSettings.data.labelBorderWidth
     readonly property real padding: GlobalSettings.data.labelThumbnailBorderPadding
+    
+    // 极端尺寸处理常量
+    readonly property real minVisibleSize: 4.0  // 最小可见尺寸（像素）
+    readonly property real minBboxSize: 1.0     // 最小 bbox 尺寸（原始坐标）
+    
+    // 验证 labelData 是否有效
+    function isLabelDataValid() {
+        if (!labelData) {
+            return false
+        }
+        
+        // 检查必需的属性是否存在且为有效数值
+        if (typeof labelData.x !== 'number' || isNaN(labelData.x)) {
+            console.warn("[LabelInstanceThumbnail] Invalid labelData.x:", labelData.x)
+            return false
+        }
+        if (typeof labelData.y !== 'number' || isNaN(labelData.y)) {
+            console.warn("[LabelInstanceThumbnail] Invalid labelData.y:", labelData.y)
+            return false
+        }
+        if (typeof labelData.width !== 'number' || isNaN(labelData.width) || labelData.width <= 0) {
+            console.warn("[LabelInstanceThumbnail] Invalid labelData.width:", labelData.width)
+            return false
+        }
+        if (typeof labelData.height !== 'number' || isNaN(labelData.height) || labelData.height <= 0) {
+            console.warn("[LabelInstanceThumbnail] Invalid labelData.height:", labelData.height)
+            return false
+        }
+        
+        return true
+    }
     
     // 图像组件
     Image {
@@ -60,12 +92,42 @@ Item {
             visible: running
         }
         
-        // 错误提示
-        Text {
+        // 错误提示 - 当图像加载失败时显示
+        Rectangle {
             anchors.centerIn: parent
             visible: thumbnail.status === Image.Error
-            text: "Failed to load image"
-            color: "red"
+            width: Math.min(parent.width * 0.8, 200)
+            height: Math.min(parent.height * 0.8, 100)
+            color: DltColor.ControlStrokeColorDefault
+            radius: 4
+            border.color: DltColor.SystemFillColorCritical
+            border.width: 1
+            
+            Column {
+                anchors.centerIn: parent
+                spacing: 8
+                
+                DltTextIcon {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    icon: DltIcon.ErrorBadge
+                    iconSize: 24
+                    color: DltColor.SystemFillColorCritical
+                }
+                
+                DltText {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: qsTr("Failed to load image")
+                    color: DltColor.TextFillColorPrimary
+                    font.pixelSize: 12
+                }
+                
+                DltText {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: qsTr("Label ID: %1").arg(root.labelId)
+                    color: DltColor.TextFillColorSecondary
+                    font.pixelSize: 10
+                }
+            }
         }
     }
     
@@ -78,9 +140,14 @@ Item {
     }
     
     // 矩形覆盖层 - 显示标注边框
+    // 仅在以下条件全部满足时显示：
+    // 1. labelData 有效 (hasValidLabelData)
+    // 2. 图像加载成功 (imageLoaded)
+    // 3. 图像没有错误 (!imageError)
+    // 4. 图像已绘制 (paintedWidth > 0)
     Rectangle {
         id: boundingBox
-        visible: labelData && imageLoaded && !imageError && thumbnail.paintedWidth > 0
+        visible: hasValidLabelData && imageLoaded && !imageError && thumbnail.paintedWidth > 0
         
         // 使用计算函数绑定位置和尺寸
         x: calculateX()
@@ -96,7 +163,7 @@ Item {
     
     // 位置计算函数
     function calculateExtendedMargin() {
-        if (!labelData || !labelData.width || !labelData.height) {
+        if (!hasValidLabelData) {
             return margin
         }
         let maxDimension = Math.max(labelData.width, labelData.height)
@@ -105,7 +172,7 @@ Item {
     
     function calculateScale() {
         // 计算图像在 Image 组件中的实际缩放比例
-        if (!labelData || thumbnail.sourceSize.width === 0 || thumbnail.sourceSize.height === 0) {
+        if (!hasValidLabelData || thumbnail.sourceSize.width === 0 || thumbnail.sourceSize.height === 0) {
             return 1.0
         }
         
@@ -129,37 +196,89 @@ Item {
     }
     
     function calculateX() {
-        if (!labelData) return 0
+        if (!hasValidLabelData) return 0
         let extendedMargin = calculateExtendedMargin()
         let scale = calculateScale()
         let offsetX = calculateImageOffsetX()
         
         // 矩形在裁剪图像中的位置是扩展边距，然后应用缩放和偏移
-        return offsetX + extendedMargin * scale
+        let x = offsetX + extendedMargin * scale
+        
+        // 确保不超出图像左边界
+        if (x < offsetX) {
+            x = offsetX
+        }
+        
+        // 确保不超出图像右边界（留出至少 minVisibleSize 的空间）
+        let maxX = offsetX + thumbnail.paintedWidth - minVisibleSize
+        if (x > maxX) {
+            x = maxX
+        }
+        
+        return Math.max(offsetX, x)
     }
     
     function calculateY() {
-        if (!labelData) return 0
+        if (!hasValidLabelData) return 0
         let extendedMargin = calculateExtendedMargin()
         let scale = calculateScale()
         let offsetY = calculateImageOffsetY()
         
-        return offsetY + extendedMargin * scale
+        let y = offsetY + extendedMargin * scale
+        
+        // 确保不超出图像上边界
+        if (y < offsetY) {
+            y = offsetY
+        }
+        
+        // 确保不超出图像下边界（留出至少 minVisibleSize 的空间）
+        let maxY = offsetY + thumbnail.paintedHeight - minVisibleSize
+        if (y > maxY) {
+            y = maxY
+        }
+        
+        return Math.max(offsetY, y)
     }
     
     function calculateWidth() {
-        if (!labelData || !labelData.width) return 0
+        if (!hasValidLabelData) return 0
         let scale = calculateScale()
         
         // 矩形宽度保持与原始 bbox 相同，然后应用缩放
-        return labelData.width * scale
+        let width = labelData.width * scale
+        
+        // 确保极小 bbox 仍然可见
+        if (width > 0 && width < minVisibleSize) {
+            width = minVisibleSize
+        }
+        
+        // 确保不超出图像边界
+        let maxWidth = thumbnail.paintedWidth - calculateX()
+        if (maxWidth > 0 && width > maxWidth) {
+            width = maxWidth
+        }
+        
+        return Math.max(0, width)
     }
     
     function calculateHeight() {
-        if (!labelData || !labelData.height) return 0
+        if (!hasValidLabelData) return 0
         let scale = calculateScale()
         
         // 矩形高度保持与原始 bbox 相同，然后应用缩放
-        return labelData.height * scale
+        let height = labelData.height * scale
+        
+        // 确保极小 bbox 仍然可见
+        if (height > 0 && height < minVisibleSize) {
+            height = minVisibleSize
+        }
+        
+        // 确保不超出图像边界
+        let maxHeight = thumbnail.paintedHeight - calculateY()
+        if (maxHeight > 0 && height > maxHeight) {
+            height = maxHeight
+        }
+        
+        return Math.max(0, height)
     }
 }
