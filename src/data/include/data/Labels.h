@@ -78,6 +78,7 @@ public:
         ImageIdRole,
         LabelClassIdRole,
         LabelClassNameRole,
+        LabelClassColorRole,
         DataRole,
         SelectedRole,
     };
@@ -127,6 +128,7 @@ private:
     int      getImageId(const QModelIndex &index) const;
     int      getLabelClassId(const QModelIndex &index) const;
     QString  getLabelClassName(const QModelIndex &index) const;
+    QString  getLabelClassColor(const QModelIndex &index) const;
     QVariant getData(const QModelIndex &index) const;
 
     data::ProjectDataBase   *database_{nullptr};

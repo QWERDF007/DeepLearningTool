@@ -147,14 +147,12 @@ QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id, double pa
             return createEmptyImage();
         }
 
-        int64_t image_id       = label_instance->imageId();
-        int64_t label_class_id = label_instance->labelClassId();
+        int64_t image_id = label_instance->imageId();
         QRectF  bbox(label_data->x, label_data->y, label_data->width, label_data->height);
 
         // 3. 获取配置参数
-        auto settings     = dltool::settings::GlobalSettings::getInstance()->data();
-        int  margin       = settings->thumbnailMargin();
-        int  border_width = settings->labelBorderWidth();
+        auto settings = dltool::settings::GlobalSettings::getInstance()->data();
+        int  margin   = settings->thumbnailMargin();
 
         // 4. 加载原始图像
         if (!image_instances_)
@@ -178,10 +176,8 @@ QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id, double pa
             return createErrorPlaceholder();
         }
 
-        // 5. 获取边框颜色
-        QString border_color_str = label_classes_ ? label_classes_->getLabelClassColor(label_class_id) : "";
-        QColor  border_color(border_color_str.isEmpty() ? DEFAULT_BORDER_COLOR : border_color_str);
-        QColor  fill_color(DEFAULT_FILL_COLOR);
+        // 5. 获取填充颜色
+        QColor fill_color(DEFAULT_FILL_COLOR);
 
         // 6. 根据 padding 参数计算扩展的边距
         // padding 是相对于 bbox 尺寸的比例（0.0 - 1.0）
@@ -189,13 +185,8 @@ QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id, double pa
         double max_dimension   = qMax(bbox.width(), bbox.height());
         int    extended_margin = margin + static_cast<int>(padding * max_dimension);
 
-        // 7. 裁剪图像并绘制边框
+        // 7. 裁剪图像（不绘制矩形边框，边框由 QML 层负责）
         QImage cropped_image = cropImageWithMargin(source_image, bbox, extended_margin, fill_color);
-
-        QRectF crop_rect(bbox.x() - extended_margin, bbox.y() - extended_margin, bbox.width() + 2 * extended_margin,
-                         bbox.height() + 2 * extended_margin);
-
-        drawBoundingBox(cropped_image, bbox, crop_rect, border_color, border_width);
 
         return cropped_image;
     }
@@ -234,30 +225,6 @@ QImage LabelInstanceImageProvider::cropImageWithMargin(const QImage &source_imag
     }
 
     return output_image;
-}
-
-void LabelInstanceImageProvider::drawBoundingBox(QImage &image, const QRectF &bbox, const QRectF &crop_rect,
-                                                 const QColor &border_color, int border_width) const
-{
-    QPainter painter(&image);
-
-    // 设置画笔
-    QPen pen(border_color);
-    pen.setWidth(border_width);
-    pen.setStyle(Qt::SolidLine);
-    painter.setPen(pen);
-    painter.setBrush(Qt::NoBrush);
-
-    // 将 bbox 坐标转换到裁剪图像的坐标系
-    QRectF bbox_in_output(bbox.x() - crop_rect.x(), bbox.y() - crop_rect.y(), bbox.width(), bbox.height());
-
-    // 调整矩形位置，确保边框完全可见
-    // QPainter 的 drawRect 会将线宽的一半绘制在矩形边界内，一半在外
-    qreal  half_border = border_width / 2.0;
-    QRectF adjusted_rect(bbox_in_output.x() + half_border, bbox_in_output.y() + half_border,
-                         bbox_in_output.width() - border_width, bbox_in_output.height() - border_width);
-
-    painter.drawRect(adjusted_rect);
 }
 
 QImage LabelInstanceImageProvider::createErrorPlaceholder() const

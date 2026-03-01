@@ -77,6 +77,8 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     labelId: delegateItem.labelId
+                    labelData: model.data || null
+                    borderColor: model.label_class_color || DltColor.Transparent
                 }
                 
                 // 标注信息

@@ -90,6 +90,8 @@ QVariant LabelInstancesListModel::data(const QModelIndex &index, int role) const
         return getLabelClassId(index);
     case LabelClassNameRole:
         return getLabelClassName(index);
+    case LabelClassColorRole:
+        return getLabelClassColor(index);
     case DataRole:
         return getData(index);
     default:
@@ -100,11 +102,12 @@ QVariant LabelInstancesListModel::data(const QModelIndex &index, int role) const
 QHash<int, QByteArray> LabelInstancesListModel::roleNames() const
 {
     return {
-        {       LabelIdRole,         "label_id"},
-        {       ImageIdRole,         "image_id"},
-        {  LabelClassIdRole,   "label_class_id"},
-        {LabelClassNameRole, "label_class_name"},
-        {          DataRole,             "data"},
+        {        LabelIdRole,          "label_id"},
+        {        ImageIdRole,          "image_id"},
+        {   LabelClassIdRole,    "label_class_id"},
+        { LabelClassNameRole,  "label_class_name"},
+        {LabelClassColorRole, "label_class_color"},
+        {           DataRole,              "data"},
     };
 }
 
@@ -391,11 +394,24 @@ QString LabelInstancesListModel::getLabelClassName(const QModelIndex &index) con
     return label_classes_->getLabelClassName(label_class_id);
 }
 
+QString LabelInstancesListModel::getLabelClassColor(const QModelIndex &index) const
+{
+    if (!label_classes_)
+        return QString();
+
+    int64_t label_class_id = getLabelClassId(label_ids_[index.row()]);
+    return label_classes_->getLabelClassColor(label_class_id);
+}
+
 QVariant LabelInstancesListModel::getData(const QModelIndex &index) const
 {
-    // TODO: 获取标注数据
-    // return label_instances_.at(label_ids_[index.row()])->data()->dataMap();
-    return QVariant();
+    if (index.row() < 0 || index.row() >= rowCount())
+        return QVariant();
+    int64_t label_id = label_ids_[index.row()];
+    auto    found    = label_instances_.find(label_id);
+    if (found == label_instances_.end())
+        return QVariant();
+    return found->second->data()->dataMap();
 }
 
 ImageLabelsListModel::ImageLabelsListModel(ImageInstancesListModel *image_instances,

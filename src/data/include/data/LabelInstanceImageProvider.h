@@ -17,11 +17,12 @@ class LabelClassesListModel;
 /**
  * @brief 标注实例图像提供器
  * 
- * 为 QML 提供裁剪和处理后的标注区域图像。
+ * 为 QML 提供裁剪后的标注区域图像。
+ * 矩形边框的绘制由 QML 层负责。
  * URL 格式：image://labelInstance/label_id?padding=value
  * - label_id: 标注实例 ID
  * - padding: 可选，边界扩展比例（0.0-1.0），默认 0.1
- * 边距从 Settings 单例获取，颜色从 LabelClasses 获取
+ * 边距从 Settings 单例获取
  */
 class DATA_API LabelInstanceImageProvider : public QQuickImageProvider
 {
@@ -63,17 +64,6 @@ private:
      */
     QImage cropImageWithMargin(const QImage &source_image, const QRectF &bbox, int margin,
                                const QColor &fill_color) const;
-
-    /**
-     * @brief 在图像上绘制矩形框
-     * @param image 目标图像（会被修改）
-     * @param bbox 标注矩形（相对于原始图像）
-     * @param crop_rect 裁剪区域（相对于原始图像）
-     * @param border_color 边框颜色
-     * @param border_width 边框宽度（像素）
-     */
-    void drawBoundingBox(QImage &image, const QRectF &bbox, const QRectF &crop_rect, const QColor &border_color,
-                         int border_width = 2) const;
 
     /**
      * @brief 创建错误占位图像
