@@ -6,10 +6,9 @@ import dltool.ui
 import dltool.data
 import dltool.project
 
-import "label"
+import "review"
 import "gallery"
 import "component"
-import "review"
 
 Rectangle {
     id: labelPage
