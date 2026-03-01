@@ -110,7 +110,55 @@ Rectangle {
         boundsBehavior: Flickable.StopAtBounds
         
         // 滚动条
-        ScrollBar.vertical: DltScrollBar {}
+        ScrollBar.vertical: DltScrollBar {
+            id: scrollBar
+        }
+        
+        // 缩放视图函数
+        function scaleView(event) {
+            if (event.angleDelta.y > 0 && GlobalSettings.data.labelThumbnailScale < GlobalSettings.data.labelThumbnailScaleTo) {
+                GlobalSettings.data.labelThumbnailScale += GlobalSettings.data.labelThumbnailScaleStepSize
+            } else if (event.angleDelta.y < 0 && GlobalSettings.data.labelThumbnailScale > GlobalSettings.data.labelThumbnailScaleFrom) {
+                GlobalSettings.data.labelThumbnailScale -= GlobalSettings.data.labelThumbnailScaleStepSize
+            }
+        }
+        
+        // 滚动到当前选中项
+        function scrollToCurrentItem() {
+            if (selection && selection.hasSelection) {
+                let currentIndex = selection.currentIndex.row
+                let currentItem = thumbnailGridView.itemAtIndex(currentIndex)
+                if (currentItem) {
+                    let itemPos = currentItem.mapToItem(thumbnailGridView.contentItem, 0, 0)
+                    let itemCenterY = itemPos.y + currentItem.height / 2
+                    let targetContentY = itemCenterY - thumbnailGridView.height / 2
+                    thumbnailGridView.contentY = Math.max(0, Math.min(targetContentY, thumbnailGridView.contentHeight - thumbnailGridView.height))
+                }
+            }
+        }
+        
+        // 自定义滚动函数
+        function scrollItem(event) {
+            const stepFactor = 2.0
+            let maxContentY = thumbnailGridView.contentHeight - thumbnailGridView.height
+            let delta = event.angleDelta.y / 120
+            let step = delta * thumbnailGridView.cellHeight * stepFactor
+            let newContentY = thumbnailGridView.contentY - step
+            thumbnailGridView.contentY = Math.max(0, Math.min(newContentY, maxContentY))
+        }
+        
+        // 滚轮处理器
+        WheelHandler {
+            onWheel: function handler(event) {
+                if (event.modifiers & Qt.ControlModifier) {
+                    thumbnailGridView.scaleView(event)
+                    thumbnailGridView.scrollToCurrentItem()
+                } else {
+                    thumbnailGridView.scrollItem(event)
+                }
+                event.accepted = true
+            }
+        }
         
         // 鼠标点击选中
         MouseArea {
