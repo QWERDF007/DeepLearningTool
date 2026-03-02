@@ -93,42 +93,39 @@ Item {
         }
         
         // 错误提示 - 当图像加载失败时显示
-        Rectangle {
-            anchors.centerIn: parent
-            visible: thumbnail.status === Image.Error
-            width: Math.min(parent.width * 0.8, 200)
-            height: Math.min(parent.height * 0.8, 100)
-            color: DltColor.ControlStrokeColorDefault
-            radius: 4
-            border.color: DltColor.SystemFillColorCritical
-            border.width: 1
+        // Rectangle {
+        //     anchors.centerIn: parent
+        //     visible: thumbnail.status === Image.Error
+        //     width: Math.min(parent.width * 0.8, 200)
+        //     height: Math.min(parent.height * 0.8, 100)
+        //     // color: DltColor.ControlStrokeColorDefault
+        //     radius: 4
+        //     border.color: "red"
+        //     border.width: 1
             
-            Column {
-                anchors.centerIn: parent
-                spacing: 8
+        //     Column {
+        //         anchors.centerIn: parent
+        //         spacing: 8
                 
-                DltTextIcon {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    icon: DltIcon.ErrorBadge
-                    iconSize: 24
-                    color: DltColor.SystemFillColorCritical
-                }
+        //         DltTextIcon {
+        //             anchors.horizontalCenter: parent.horizontalCenter
+        //             iconSource: DltFontIcon.ErrorBadge
+        //             iconSize: 24
+        //         }
                 
-                DltText {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: qsTr("Failed to load image")
-                    color: DltColor.TextFillColorPrimary
-                    font.pixelSize: 12
-                }
+        //         DltText {
+        //             anchors.horizontalCenter: parent.horizontalCenter
+        //             text: qsTr("Failed to load image")
+        //             font.pixelSize: 12
+        //         }
                 
-                DltText {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: qsTr("Label ID: %1").arg(root.labelId)
-                    color: DltColor.TextFillColorSecondary
-                    font.pixelSize: 10
-                }
-            }
-        }
+        //         DltText {
+        //             anchors.horizontalCenter: parent.horizontalCenter
+        //             text: qsTr("Label ID: %1").arg(root.labelId)
+        //             font.pixelSize: 10
+        //         }
+        //     }
+        // }
     }
     
     // 应用亮度和对比度效果
