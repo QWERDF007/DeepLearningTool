@@ -117,6 +117,35 @@ QHash<int, QByteArray> ImageInstancesListModel::roleNames() const
     };
 }
 
+bool ImageInstancesListModel::removeRows(int row, int count, const QModelIndex &parent)
+{
+    if (parent.isValid() || row < 0 || count <= 0 || row + count > static_cast<int>(image_ids_.size()))
+    {
+        return false;
+    }
+
+    beginRemoveRows(parent, row, row + count - 1);
+
+    // 删除指定范围的图像实例
+    for (int i = 0; i < count; ++i)
+    {
+        int64_t image_id = image_ids_[row + i];
+        auto    found    = image_instances_.find(image_id);
+        if (found != image_instances_.end())
+        {
+            delete found->second;
+            image_instances_.erase(found);
+        }
+    }
+
+    // 从 image_ids_ 中移除
+    image_ids_.erase(image_ids_.begin() + row, image_ids_.begin() + row + count);
+
+    endRemoveRows();
+
+    return true;
+}
+
 bool ImageInstancesListModel::addImages(const int64_t dataset_id, const std::vector<QString> &paths,
                                         std::vector<int64_t> &image_ids)
 {
@@ -193,22 +222,32 @@ bool ImageInstancesListModel::deleteImages(const std::vector<int64_t> &image_ids
         return false;
     }
     spdlog::info("批量删除图像, 数量: {}", image_ids.size());
-    for (const auto &image_id : image_ids)
+
+    // 在删除前保存当前选中的行索引
+    int current_row = -1;
+    if (selection_ && selection_->hasSelection())
     {
-        auto found = image_instances_.find(image_id);
-        if (found == image_instances_.end())
-            continue;
-        delete found->second;
-        image_instances_.erase(found);
+        current_row = selection_->currentIndex().row();
     }
 
-    // 如果模型将要变空，在重置前清空选中状态
-    if (image_instances_.empty() && selection_)
+    // 找到所有要删除的图像在 image_ids_ 中的索引位置
+    std::vector<int> rows_to_remove = findRowsByImageIds(image_ids);
+
+    // 按升序排序
+    std::sort(rows_to_remove.begin(), rows_to_remove.end());
+
+    // 合并连续的索引范围，批量删除
+    std::vector<std::pair<int, int>> ranges = mergeConsecutiveRanges(rows_to_remove);
+
+    // 从后往前删除范围，避免索引变化
+    for (auto it = ranges.rbegin(); it != ranges.rend(); ++it)
     {
-        selection_->clear();
+        removeRows(it->first, it->second);
     }
 
-    resetModel();
+    // 删除后自动选择下一个合适的图像
+    int new_count = static_cast<int>(image_ids_.size());
+    selectNextAfterDeletion(current_row, new_count);
 
     emit statsChanged();
     emit currentImageChanged();
@@ -619,6 +658,102 @@ void ImageInstancesListModel::resetModel()
         image_ids_.push_back(image_id);
     }
     endResetModel();
+}
+
+void ImageInstancesListModel::selectNextAfterDeletion(int current_row, int new_count)
+{
+    if (!selection_)
+    {
+        return;
+    }
+
+    // 如果没有图像剩余，清空选择 (需求 2.3)
+    if (new_count == 0)
+    {
+        selection_->clear();
+        return;
+    }
+
+    // 如果之前没有选择，无需处理
+    if (current_row < 0)
+    {
+        return;
+    }
+
+    // 确定下一个要选择的索引
+    int next_row = -1;
+
+    // 如果删除位置后还有图像，选择相同索引位置 (需求 2.1)
+    if (current_row < new_count)
+    {
+        next_row = current_row;
+    }
+    // 如果删除的是最后一张且前面有图像，选择前一张 (需求 2.2)
+    else if (current_row > 0)
+    {
+        next_row = new_count - 1;
+    }
+
+    // 应用选择 (需求 2.4)
+    if (next_row >= 0 && next_row < new_count)
+    {
+        QModelIndex next_index = index(next_row, 0);
+        selection_->select(next_index, QItemSelectionModel::ClearAndSelect);
+        selection_->setCurrentIndex(next_index, QItemSelectionModel::Select);
+    }
+}
+
+std::vector<std::pair<int, int>> ImageInstancesListModel::mergeConsecutiveRanges(
+    const std::vector<int> &sorted_rows) const
+{
+    std::vector<std::pair<int, int>> ranges;
+
+    if (sorted_rows.empty())
+    {
+        return ranges;
+    }
+
+    int range_start = sorted_rows[0];
+    int range_count = 1;
+
+    for (size_t i = 1; i < sorted_rows.size(); ++i)
+    {
+        if (sorted_rows[i] == sorted_rows[i - 1] + 1)
+        {
+            // 连续的索引，扩展当前范围
+            range_count++;
+        }
+        else
+        {
+            // 不连续，保存当前范围，开始新范围
+            ranges.push_back({range_start, range_count});
+            range_start = sorted_rows[i];
+            range_count = 1;
+        }
+    }
+
+    // 保存最后一个范围
+    ranges.push_back({range_start, range_count});
+
+    return ranges;
+}
+
+std::vector<int> ImageInstancesListModel::findRowsByImageIds(const std::vector<int64_t> &image_ids) const
+{
+    std::vector<int> rows;
+    rows.reserve(image_ids.size());
+
+    for (const auto &image_id : image_ids)
+    {
+        auto it = std::find(image_ids_.begin(), image_ids_.end(), image_id);
+        if (it != image_ids_.end())
+        {
+            int row = std::distance(image_ids_.begin(), it);
+            rows.push_back(row);
+        }
+    }
+
+    return rows;
 }
 
 ImageInfoListModel::ImageInfoListModel(DatasetsListModel *datasets, ImageInstancesListModel *image_instances,

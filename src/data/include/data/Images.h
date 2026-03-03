@@ -6,6 +6,8 @@
 #include <functional>
 #include <map>
 #include <set>
+#include <utility>
+#include <vector>
 
 namespace dltool::data {
 class ProjectDataBase;
@@ -143,6 +145,8 @@ public:
 
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
 
+    bool removeRows(int row, int count, const QModelIndex &parent = QModelIndex()) override;
+
     enum Role
     {
         ImageIdRole = Qt::UserRole + 1,
@@ -217,6 +221,28 @@ private:
     void init();
 
     int getImageId(const QModelIndex &index) const;
+
+    /**
+     * @brief 删除图像后自动选择下一个合适的图像
+     * @param current_row 删除前当前选中的行索引
+     * @param new_count 删除后剩余的图像数量
+     */
+    void selectNextAfterDeletion(int current_row, int new_count);
+
+    /**
+     * @brief 将排序后的索引列表合并成连续的范围
+     * @param sorted_rows 已排序的行索引列表
+     * @return 范围列表，每个范围是 pair<起始行, 数量>
+     * @note 例如：[1, 2, 3, 5, 6, 8] -> [(1,3), (5,2), (8,1)]
+     */
+    std::vector<std::pair<int, int>> mergeConsecutiveRanges(const std::vector<int> &sorted_rows) const;
+
+    /**
+     * @brief 根据图像ID列表查找它们在 image_ids_ 中的行索引
+     * @param image_ids 要查找的图像ID列表
+     * @return 对应的行索引列表（未排序）
+     */
+    std::vector<int> findRowsByImageIds(const std::vector<int64_t> &image_ids) const;
 
     QVariant getImageName(const QModelIndex &index) const;
     QVariant getImagePath(const QModelIndex &index) const;
