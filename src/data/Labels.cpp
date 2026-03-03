@@ -180,7 +180,7 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
     std::vector<int64_t> sorted_label_ids(label_ids.begin(), label_ids.end());
     std::reverse(sorted_label_ids.begin(), sorted_label_ids.end());
     beginInsertRows(QModelIndex(), 0, static_cast<int>(sorted_label_ids.size()) - 1);
-    label_ids_.insert(label_ids_.end(), sorted_label_ids.begin(), sorted_label_ids.end());
+    label_ids_.insert(label_ids_.begin(), sorted_label_ids.begin(), sorted_label_ids.end());
     endInsertRows();
     // TODO: 更新选中状态
     spdlog::info("添加 {} 个标注成功", label_ids.size());

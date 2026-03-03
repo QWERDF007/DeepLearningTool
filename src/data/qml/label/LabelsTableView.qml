@@ -28,6 +28,14 @@ Rectangle {
         }
     }
 
+    Connections {
+        target: imageLabelsTable
+        function onRowsInserted(parent, first, last) {
+            // Select and scroll to the last inserted row
+            selectAndScrollToRow(last)
+        }
+    }
+
     DltMenu {
         id: tableViewMenu
         width: 200
@@ -176,6 +184,26 @@ Rectangle {
         if (selection) {
             selection.clear()
             SignalHelper.imageLabelTableSelectionClear()
+        }
+    }
+
+    function selectAndScrollToRow(row) {
+        if (!selection || !imageLabelsTable) {
+            return
+        }
+        
+        // Select the row using ClearAndSelect flag
+        let tmpIndex = imageLabelsTable.index(row, 0)
+        selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
+        
+        // Calculate the row position and scroll to make it visible
+        let rowY = row * rowHeight
+        let viewportHeight = tableView.height
+        
+        // Check if the row is not visible in the current viewport
+        if (rowY < tableView.contentY || rowY + rowHeight > tableView.contentY + viewportHeight) {
+            // Scroll to position the row in the middle of the viewport
+            tableView.contentY = Math.max(0, rowY - viewportHeight / 2)
         }
     }
 }
