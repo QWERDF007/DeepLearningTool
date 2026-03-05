@@ -141,10 +141,13 @@ Item {
     // 1. labelData 有效 (hasValidLabelData)
     // 2. 图像加载成功 (imageLoaded)
     // 3. 图像没有错误 (!imageError)
-    // 4. 图像已绘制 (paintedWidth > 0)
+    // 4. 图像已绘制 (paintedWidth > 0 && paintedHeight > 0)
+    // 5. 图像源尺寸有效 (sourceSize.width > 0 && sourceSize.height > 0)
     Rectangle {
         id: boundingBox
-        visible: hasValidLabelData && imageLoaded && !imageError && thumbnail.paintedWidth > 0
+        visible: hasValidLabelData && imageLoaded && !imageError && 
+                 thumbnail.paintedWidth > 0 && thumbnail.paintedHeight > 0 &&
+                 thumbnail.sourceSize.width > 0 && thumbnail.sourceSize.height > 0
         
         // 使用计算函数绑定位置和尺寸
         x: calculateX()
@@ -164,7 +167,8 @@ Item {
             return margin
         }
         let maxDimension = Math.max(labelData.width, labelData.height)
-        return margin + padding * maxDimension
+        // 注意：C++ 端使用 static_cast<int>，所以这里也要使用 Math.floor 来保持一致
+        return margin + Math.floor(padding * maxDimension)
     }
     
     function calculateScale() {
@@ -198,7 +202,7 @@ Item {
         let scale = calculateScale()
         let offsetX = calculateImageOffsetX()
         
-        // 矩形在裁剪图像中的位置是扩展边距，然后应用缩放和偏移
+        // 矩形在裁剪图像中的位置是 extended_margin，然后应用缩放和偏移
         let x = offsetX + extendedMargin * scale
         
         // 确保不超出图像左边界
@@ -221,6 +225,7 @@ Item {
         let scale = calculateScale()
         let offsetY = calculateImageOffsetY()
         
+        // 矩形在裁剪图像中的位置是 extended_margin，然后应用缩放和偏移
         let y = offsetY + extendedMargin * scale
         
         // 确保不超出图像上边界
@@ -250,7 +255,10 @@ Item {
         }
         
         // 确保不超出图像边界
-        let maxWidth = thumbnail.paintedWidth - calculateX()
+        // calculateX() 返回的是绝对位置，需要减去 offsetX 得到相对于图像的位置
+        let offsetX = calculateImageOffsetX()
+        let rectXInImage = calculateX() - offsetX
+        let maxWidth = thumbnail.paintedWidth - rectXInImage
         if (maxWidth > 0 && width > maxWidth) {
             width = maxWidth
         }
@@ -262,7 +270,7 @@ Item {
         if (!hasValidLabelData) return 0
         let scale = calculateScale()
         
-        // 矩形高度保持与原始 bbox 相同，然后应用缩放
+        // 矩形高度应该完美贴合 bbox，不包含 padding
         let height = labelData.height * scale
         
         // 确保极小 bbox 仍然可见
@@ -271,7 +279,10 @@ Item {
         }
         
         // 确保不超出图像边界
-        let maxHeight = thumbnail.paintedHeight - calculateY()
+        // calculateY() 返回的是绝对位置，需要减去 offsetY 得到相对于图像的位置
+        let offsetY = calculateImageOffsetY()
+        let rectYInImage = calculateY() - offsetY
+        let maxHeight = thumbnail.paintedHeight - rectYInImage
         if (maxHeight > 0 && height > maxHeight) {
             height = maxHeight
         }
