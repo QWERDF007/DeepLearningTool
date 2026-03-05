@@ -37,6 +37,7 @@ DeepLearningTool/
 ├── docs/                        # 文档目录
 ├── src/                         # 源代码
 │   ├── common/                  # 通用模块
+│   ├── settings/                # 配置管理模块
 │   ├── data/                    # 数据层模块
 │   ├── model/                   # 模型模块(预留)
 │   ├── project/                 # 项目管理模块
@@ -68,6 +69,10 @@ flowchart TB
         data["dltool_data"]
     end
     
+    subgraph Configuration["配置层"]
+        settings["dltool_settings"]
+    end
+    
     subgraph Infrastructure["基础设施层"]
         common["dltool_common"]
     end
@@ -82,14 +87,21 @@ flowchart TB
     exe --> project
     exe --> ui
     exe --> data
+    exe --> settings
     exe --> common
     
     project --> ui
     project --> data
+    project --> settings
     project --> common
     
+    ui --> settings
     ui --> common
+    
+    data --> settings
     data --> common
+    
+    settings --> common
     
     common --> qt6
     common --> spdlog
@@ -102,9 +114,10 @@ flowchart TB
 | 模块 | 依赖 | QML URI |
 |------|------|---------|
 | dltool_common | Qt6::Core, spdlog | - |
-| dltool_ui | dltool_common, Qt6::Quick | dltool.ui |
-| dltool_data | dltool_common, sqlpp11, nlohmann | dltool.data |
-| dltool_project | dltool_ui, dltool_data, dltool_common | dltool.project |
+| dltool_settings | dltool_common, Qt6::Qml | dltool.settings |
+| dltool_ui | dltool_common, dltool_settings, Qt6::Quick | dltool.ui |
+| dltool_data | dltool_common, dltool_settings, sqlpp11, nlohmann | dltool.data |
+| dltool_project | dltool_ui, dltool_data, dltool_settings, dltool_common | dltool.project |
 | dltool (exe) | 所有模块 | dltool.tool |
 
 ## 5. 模块详细说明
@@ -140,7 +153,94 @@ src/common/
 | `Singleton<T>` | 单例模板类 |
 | `Utils` | 通用工具函数 |
 
-### 5.2 Data 模块 (dltool_data)
+### 5.2 Settings 模块 (dltool_settings)
+
+**职责**: 全局配置管理，提供统一的设置访问接口
+
+**目录结构**:
+```
+src/settings/
+├── include/settings/
+│   ├── SettingsExport.h        # 导出宏定义
+│   ├── GlobalSettings.h        # 全局设置单例
+│   ├── ProjectSettings.h       # 项目相关设置
+│   ├── DataSettings.h          # 数据相关设置
+│   └── UISettings.h            # UI相关设置
+├── GlobalSettings.cpp
+├── ProjectSettings.cpp
+├── DataSettings.cpp
+└── UISettings.cpp
+```
+
+**核心类**:
+
+| 类名 | 说明 |
+|------|------|
+| `GlobalSettings` | 全局设置单例，统一管理所有设置 |
+| `ProjectSettings` | 项目相关设置（自动保存、最近项目等） |
+| `DataSettings` | 数据处理设置（缩略图、图像加载等） |
+| `UISettings` | 界面设置（主题、亮度、对比度等） |
+
+**设置分类**:
+
+1. **ProjectSettings** - 项目管理相关
+   - maxRecentProjects: 最近项目数量限制（默认10）
+   - autoSaveInterval: 自动保存间隔（默认300秒）
+   - autoSaveEnabled: 是否启用自动保存（默认true）
+
+2. **DataSettings** - 数据处理相关
+   - thumbnailMargin: 缩略图边距（默认10）
+   - thumbnailCacheSize: 缩略图缓存大小（默认100MB）
+   - imageLoadThreads: 图像加载线程数（默认4）
+   - labelBorderWidth: 标注边框宽度（默认2）
+   - labelFillOpacity: 标注填充透明度（默认30%）
+
+3. **UISettings** - 界面显示相关
+   - imageCellScale: 图像单元格缩放（默认1.0）
+   - imageBrightness: 图像亮度（默认0.0，范围-1.0到1.0）
+   - imageContrast: 图像对比度（默认0.0，范围-1.0到1.0）
+   - theme: 主题（默认"dark"）
+   - language: 语言（默认"zh_CN"）
+
+**使用示例**:
+
+C++:
+```cpp
+#include "settings/GlobalSettings.h"
+
+// 访问设置
+auto* settings = dltool::settings::GlobalSettings::getInstance();
+int margin = settings->data()->thumbnailMargin();
+double brightness = settings->ui()->imageBrightness();
+
+// 修改设置
+settings->data()->setThumbnailMargin(15);
+settings->save();  // 保存到磁盘
+```
+
+QML:
+```qml
+import dltool.settings
+
+Item {
+    // 读取设置
+    property int margin: GlobalSettings.data.thumbnailMargin
+    
+    // 修改设置
+    Slider {
+        value: GlobalSettings.data.thumbnailMargin
+        onValueChanged: GlobalSettings.data.thumbnailMargin = value
+    }
+    
+    // 保存设置
+    Button {
+        text: "保存"
+        onClicked: GlobalSettings.save()
+    }
+}
+```
+
+### 5.3 Data 模块 (dltool_data)
 
 **职责**: 数据持久化、数据库操作、数据模型管理
 
@@ -185,7 +285,7 @@ src/data/
 | `ImageTagsListModel` | 图像标签列表模型 |
 | `LabelInstancesListModel` | 标签实例列表模型 |
 
-### 5.3 UI 模块 (dltool_ui)
+### 5.4 UI 模块 (dltool_ui)
 
 **职责**: 提供统一的UI主题、自定义控件和UI工具
 
@@ -244,7 +344,7 @@ src/ui/
 | `DltPage` | 页面容器 |
 | `DltScrollablePage` | 可滚动页面 |
 
-### 5.4 Project 模块 (dltool_project)
+### 5.5 Project 模块 (dltool_project)
 
 **职责**: 项目生命周期管理、业务流程编排
 
@@ -273,7 +373,7 @@ src/project/
 | `ProjectManager` | 项目管理器单例，管理项目创建/打开/关闭 |
 | `Settings` | 项目设置管理 |
 
-### 5.5 Tool 模块 (dltool 可执行程序)
+### 5.6 Tool 模块 (dltool 可执行程序)
 
 **职责**: 应用程序入口、顶层QML界面
 
@@ -331,6 +431,7 @@ flowchart LR
 | URI | 模块 | 说明 |
 |-----|------|------|
 | `dltool.common` | dltool_common | 通用组件 |
+| `dltool.settings` | dltool_settings | 配置管理 |
 | `dltool.ui` | dltool_ui | UI控件库 |
 | `dltool.data` | dltool_data | 数据模型 |
 | `dltool.project` | dltool_project | 项目管理 |
@@ -340,6 +441,7 @@ flowchart LR
 
 ```qml
 import dltool.ui          // 导入UI控件
+import dltool.settings    // 导入配置管理
 import dltool.project     // 导入项目管理
 import dltool.data        // 导入数据模型
 ```

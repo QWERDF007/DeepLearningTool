@@ -30,25 +30,30 @@
 - 职责: 日志、崩溃处理、单例模板、工具函数
 - 详见: [CODE_STRUCTURE.md#51-common-模块](./CODE_STRUCTURE.md#51-common-模块-dltool_common)
 
+### Settings 模块
+- 位置: `src/settings/`
+- 职责: 全局配置管理、设置持久化
+- 详见: [CODE_STRUCTURE.md#52-settings-模块](./CODE_STRUCTURE.md#52-settings-模块-dltool_settings)
+
 ### Data 模块
 - 位置: `src/data/`
 - 职责: 数据库操作、数据模型、数据持久化
-- 详见: [CODE_STRUCTURE.md#52-data-模块](./CODE_STRUCTURE.md#52-data-模块-dltool_data)
+- 详见: [CODE_STRUCTURE.md#53-data-模块](./CODE_STRUCTURE.md#53-data-模块-dltool_data)
 
 ### UI 模块
 - 位置: `src/ui/`
 - 职责: 自定义控件、主题、UI工具
-- 详见: [CODE_STRUCTURE.md#53-ui-模块](./CODE_STRUCTURE.md#53-ui-模块-dltool_ui)
+- 详见: [CODE_STRUCTURE.md#54-ui-模块](./CODE_STRUCTURE.md#54-ui-模块-dltool_ui)
 
 ### Project 模块
 - 位置: `src/project/`
 - 职责: 项目管理、业务流程
-- 详见: [CODE_STRUCTURE.md#54-project-模块](./CODE_STRUCTURE.md#54-project-模块-dltool_project)
+- 详见: [CODE_STRUCTURE.md#55-project-模块](./CODE_STRUCTURE.md#55-project-模块-dltool_project)
 
 ### Tool 模块
 - 位置: `src/tool/`
 - 职责: 应用入口、主界面
-- 详见: [CODE_STRUCTURE.md#55-tool-模块](./CODE_STRUCTURE.md#55-tool-模块-dltool-可执行程序)
+- 详见: [CODE_STRUCTURE.md#56-tool-模块](./CODE_STRUCTURE.md#56-tool-模块-dltool-可执行程序)
 
 ## 相关资源
 

@@ -4,10 +4,11 @@
 
 ### 模块分层与边界
 - **基础层 dltool_common**: 通用设施（日志、崩溃处理、工具函数、单例基类）。
-- **数据层 dltool_data**: 数据库与数据模型（依赖 `common`、`sqlpp11::sqlite3`、`nlohmann/json`）。
-- **UI 组件层 dltool_ui**: 统一的 UI 主题、控件与工具（依赖 `common`）。
-- **业务聚合层 dltool_project**: 业务流程编排（依赖 `ui`、`data`、`common`）。
-- **应用层 dltool（可执行）**: 入口程序与顶层 QML（依赖 `common`、`ui`、 `project`、 `data`）。
+- **配置层 dltool_settings**: 全局配置管理（依赖 `common`）。
+- **数据层 dltool_data**: 数据库与数据模型（依赖 `common`、`settings`、`sqlpp11::sqlite3`、`nlohmann/json`）。
+- **UI 组件层 dltool_ui**: 统一的 UI 主题、控件与工具（依赖 `common`、`settings`）。
+- **业务聚合层 dltool_project**: 业务流程编排（依赖 `ui`、`data`、`common`、`settings`）。
+- **应用层 dltool（可执行）**: 入口程序与顶层 QML（依赖 `common`、`settings`、`ui`、 `project`、 `data`）。
 
 约束：
 - 下层不可反向依赖上层；跨层访问遵循相邻层转发，避免跨层“直通”耦合。
@@ -23,6 +24,7 @@ flowchart TB
   assets["assets/assets.qrc"]
 
   lib_common["dltool_common (lib)"]
+  lib_settings["dltool_settings (lib, QML URI: dltool.settings)"]
   lib_ui["dltool_ui (lib, QML URI: dltool.ui)"]
   lib_data["dltool_data (lib, QML URI: dltool.data)"]
   lib_project["dltool_project (lib, QML URI: dltool.project)"]
@@ -30,6 +32,7 @@ flowchart TB
   exe["dltool (executable, src/tool)"]
 
   qt6 --> lib_common
+  qt6 --> lib_settings
   qt6 --> lib_ui
   qt6 --> lib_data
   qt6 --> lib_project
@@ -40,14 +43,20 @@ flowchart TB
   sqlpp --> lib_data
   nlohmann --> lib_data
 
+  lib_common --> lib_settings
   lib_common --> lib_ui
   lib_common --> lib_data
   lib_common --> lib_project
   lib_common --> lib_model
 
+  lib_settings --> lib_ui
+  lib_settings --> lib_data
+  lib_settings --> lib_project
+
   lib_ui --> lib_project
   lib_data --> lib_project
 
+  lib_settings --> exe
   lib_ui --> exe
   lib_project --> exe
   lib_data --> exe
@@ -64,6 +73,10 @@ flowchart TB
         common_inc["include/common/..."]
         common_sources["CrashHandler.cpp, Logger.cpp, Utils.cpp, WindowsCCrashHandler.cpp, LinuxCCrashHandler.cpp"]
       end
+      subgraph settings["src/settings"]
+        settings_inc["include/settings/..."]
+        settings_sources["GlobalSettings.cpp, ProjectSettings.cpp, DataSettings.cpp, UISettings.cpp"]
+      end
       subgraph data["src/data"]
         data_inc["include/data/..."]
         data_ddl["include/data/ddl/... (tables, sql)"]
@@ -73,7 +86,7 @@ flowchart TB
       subgraph project["src/project"]
         project_inc["include/project/..."]
         project_qml["qml/..."]
-        project_sources["Projects.cpp, Logger.cpp, Settings.cpp"]
+        project_sources["Projects.cpp, Logger.cpp"]
       end
       subgraph ui["src/ui"]
         ui_inc["include/ui/..."]

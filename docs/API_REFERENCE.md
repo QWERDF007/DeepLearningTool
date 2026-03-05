@@ -69,9 +69,224 @@ public:
 
 ---
 
-## 2. Data 模块 API
+## 2. Settings 模块 API
 
-### 2.1 DataBase
+### 2.1 GlobalSettings
+
+全局设置管理器单例，提供对所有设置的统一访问。
+
+```cpp
+namespace dltool::settings {
+
+class GlobalSettings : public QObject {
+    Q_OBJECT
+    QML_NAMED_ELEMENT(GlobalSettings)
+    QT_QML_SINGLETON(GlobalSettings)
+    
+    Q_PROPERTY(ProjectSettings* project READ project CONSTANT)
+    Q_PROPERTY(DataSettings* data READ data CONSTANT)
+    Q_PROPERTY(UISettings* ui READ ui CONSTANT)
+    
+public:
+    static GlobalSettings* getInstance();
+    
+    ProjectSettings* project() const;
+    DataSettings* data() const;
+    UISettings* ui() const;
+    
+    Q_INVOKABLE void load();   // 加载所有设置
+    Q_INVOKABLE void save();   // 保存所有设置
+    Q_INVOKABLE void reset();  // 重置所有设置为默认值
+};
+
+}
+```
+
+**使用示例**:
+```cpp
+// C++ 访问
+auto* settings = dltool::settings::GlobalSettings::getInstance();
+int margin = settings->data()->thumbnailMargin();
+settings->data()->setThumbnailMargin(15);
+settings->save();
+```
+
+```qml
+// QML 访问
+import dltool.settings
+
+Item {
+    Component.onCompleted: {
+        console.log("Margin:", GlobalSettings.data.thumbnailMargin)
+        GlobalSettings.data.thumbnailMargin = 15
+        GlobalSettings.save()
+    }
+}
+```
+
+### 2.2 ProjectSettings
+
+项目相关设置。
+
+```cpp
+namespace dltool::settings {
+
+class ProjectSettings : public QObject {
+    Q_OBJECT
+    QML_NAMED_ELEMENT(ProjectSettings)
+    
+    Q_PROPERTY(int maxRecentProjects READ maxRecentProjects WRITE setMaxRecentProjects NOTIFY maxRecentProjectsChanged)
+    Q_PROPERTY(int autoSaveInterval READ autoSaveInterval WRITE setAutoSaveInterval NOTIFY autoSaveIntervalChanged)
+    Q_PROPERTY(bool autoSaveEnabled READ autoSaveEnabled WRITE setAutoSaveEnabled NOTIFY autoSaveEnabledChanged)
+    
+public:
+    int maxRecentProjects() const;        // 默认: 10
+    void setMaxRecentProjects(int value);
+    
+    int autoSaveInterval() const;         // 默认: 300 (秒)
+    void setAutoSaveInterval(int value);
+    
+    bool autoSaveEnabled() const;         // 默认: true
+    void setAutoSaveEnabled(bool value);
+    
+signals:
+    void maxRecentProjectsChanged();
+    void autoSaveIntervalChanged();
+    void autoSaveEnabledChanged();
+};
+
+}
+```
+
+### 2.3 DataSettings
+
+数据处理相关设置。
+
+```cpp
+namespace dltool::settings {
+
+class DataSettings : public QObject {
+    Q_OBJECT
+    QML_NAMED_ELEMENT(DataSettings)
+    
+    Q_PROPERTY(int thumbnailMargin READ thumbnailMargin WRITE setThumbnailMargin NOTIFY thumbnailMarginChanged)
+    Q_PROPERTY(int thumbnailCacheSize READ thumbnailCacheSize WRITE setThumbnailCacheSize NOTIFY thumbnailCacheSizeChanged)
+    Q_PROPERTY(int imageLoadThreads READ imageLoadThreads WRITE setImageLoadThreads NOTIFY imageLoadThreadsChanged)
+    Q_PROPERTY(int labelBorderWidth READ labelBorderWidth WRITE setLabelBorderWidth NOTIFY labelBorderWidthChanged)
+    Q_PROPERTY(int labelFillOpacity READ labelFillOpacity WRITE setLabelFillOpacity NOTIFY labelFillOpacityChanged)
+    
+public:
+    int thumbnailMargin() const;          // 默认: 10
+    void setThumbnailMargin(int value);
+    
+    int thumbnailCacheSize() const;       // 默认: 100 (MB)
+    void setThumbnailCacheSize(int value);
+    
+    int imageLoadThreads() const;         // 默认: 4
+    void setImageLoadThreads(int value);
+    
+    int labelBorderWidth() const;         // 默认: 2
+    void setLabelBorderWidth(int value);
+    
+    int labelFillOpacity() const;         // 默认: 30 (%)
+    void setLabelFillOpacity(int value);
+    
+signals:
+    void thumbnailMarginChanged();
+    void thumbnailCacheSizeChanged();
+    void imageLoadThreadsChanged();
+    void labelBorderWidthChanged();
+    void labelFillOpacityChanged();
+};
+
+}
+```
+
+### 2.4 UISettings
+
+界面相关设置。
+
+```cpp
+namespace dltool::settings {
+
+class UISettings : public QObject {
+    Q_OBJECT
+    QML_NAMED_ELEMENT(UISettings)
+    
+    Q_PROPERTY(double imageCellScale READ imageCellScale WRITE setImageCellScale NOTIFY imageCellScaleChanged)
+    Q_PROPERTY(double imageCellScaleFrom READ imageCellScaleFrom WRITE setImageCellScaleFrom NOTIFY imageCellScaleFromChanged)
+    Q_PROPERTY(double imageCellScaleTo READ imageCellScaleTo WRITE setImageCellScaleTo NOTIFY imageCellScaleToChanged)
+    Q_PROPERTY(double imageCellScaleStepSize READ imageCellScaleStepSize WRITE setImageCellScaleStepSize NOTIFY imageCellScaleStepSizeChanged)
+    
+    Q_PROPERTY(double imageBrightness READ imageBrightness WRITE setImageBrightness NOTIFY imageBrightnessChanged)
+    Q_PROPERTY(double imageBrightnessFrom READ imageBrightnessFrom CONSTANT)
+    Q_PROPERTY(double imageBrightnessTo READ imageBrightnessTo CONSTANT)
+    Q_PROPERTY(double imageBrightnessStepSize READ imageBrightnessStepSize CONSTANT)
+    
+    Q_PROPERTY(double imageContrast READ imageContrast WRITE setImageContrast NOTIFY imageContrastChanged)
+    Q_PROPERTY(double imageContrastFrom READ imageContrastFrom CONSTANT)
+    Q_PROPERTY(double imageContrastTo READ imageContrastTo CONSTANT)
+    Q_PROPERTY(double imageContrastStepSize READ imageContrastStepSize CONSTANT)
+    
+    Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
+    Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
+    
+public:
+    // 图像单元格缩放
+    double imageCellScale() const;              // 默认: 1.0
+    void setImageCellScale(double value);
+    
+    double imageCellScaleFrom() const;          // 默认: 0.5
+    void setImageCellScaleFrom(double value);
+    
+    double imageCellScaleTo() const;            // 默认: 4.0
+    void setImageCellScaleTo(double value);
+    
+    double imageCellScaleStepSize() const;      // 默认: 0.25
+    void setImageCellScaleStepSize(double value);
+    
+    // 图像亮度
+    double imageBrightness() const;             // 默认: 0.0, 范围: -1.0 到 1.0
+    void setImageBrightness(double value);
+    
+    double imageBrightnessFrom() const;         // 常量: -1.0
+    double imageBrightnessTo() const;           // 常量: 1.0
+    double imageBrightnessStepSize() const;     // 常量: 0.1
+    
+    // 图像对比度
+    double imageContrast() const;               // 默认: 0.0, 范围: -1.0 到 1.0
+    void setImageContrast(double value);
+    
+    double imageContrastFrom() const;           // 常量: -1.0
+    double imageContrastTo() const;             // 常量: 1.0
+    double imageContrastStepSize() const;       // 常量: 0.1
+    
+    // 主题和语言
+    QString theme() const;                      // 默认: "dark"
+    void setTheme(const QString& value);
+    
+    QString language() const;                   // 默认: "zh_CN"
+    void setLanguage(const QString& value);
+    
+signals:
+    void imageCellScaleChanged();
+    void imageCellScaleFromChanged();
+    void imageCellScaleToChanged();
+    void imageCellScaleStepSizeChanged();
+    void imageBrightnessChanged();
+    void imageContrastChanged();
+    void themeChanged();
+    void languageChanged();
+};
+
+}
+```
+
+---
+
+## 3. Data 模块 API
+
+### 3.1 DataBase
 
 数据库连接管理基类。
 
@@ -92,7 +307,7 @@ public:
 }
 ```
 
-### 2.2 ProjectDataBase
+### 3.2 ProjectDataBase
 
 项目数据库操作类。
 
@@ -155,7 +370,7 @@ public:
 }
 ```
 
-### 2.3 DataManager
+### 3.3 DataManager
 
 数据管理器，统一管理所有数据模型。
 
@@ -217,9 +432,9 @@ public:
 
 ---
 
-## 3. Project 模块 API
+## 4. Project 模块 API
 
-### 3.1 Project
+### 4.1 Project
 
 项目实体类。
 
@@ -271,7 +486,7 @@ signals:
 }
 ```
 
-### 3.2 ProjectManager
+### 4.2 ProjectManager
 
 项目管理器单例。
 
@@ -320,7 +535,7 @@ signals:
 }
 ```
 
-### 3.3 RectentProjects
+### 4.3 RectentProjects
 
 最近项目列表模型。
 
@@ -362,9 +577,9 @@ signals:
 
 ---
 
-## 4. UI 模块 API
+## 5. UI 模块 API
 
-### 4.1 Color
+### 5.1 Color
 
 颜色管理类。
 
@@ -379,7 +594,7 @@ class Color : public QObject {
 }
 ```
 
-### 4.2 Font
+### 5.2 Font
 
 字体管理类。
 
@@ -394,7 +609,7 @@ class Font : public QObject {
 }
 ```
 
-### 4.3 UILogger
+### 5.3 UILogger
 
 UI日志输出类，用于在界面显示日志。
 
@@ -414,9 +629,47 @@ class UILogger : public QObject {
 
 ---
 
-## 5. QML API
+## 6. QML API
 
-### 5.1 ProjectManager (QML)
+### 6.1 GlobalSettings (QML)
+
+```qml
+import dltool.settings
+
+// 访问单例
+GlobalSettings.project      // ProjectSettings 实例
+GlobalSettings.data         // DataSettings 实例
+GlobalSettings.ui           // UISettings 实例
+
+// 方法
+GlobalSettings.load()       // 加载所有设置
+GlobalSettings.save()       // 保存所有设置
+GlobalSettings.reset()      // 重置所有设置
+
+// 使用示例
+Item {
+    // 读取设置
+    property int margin: GlobalSettings.data.thumbnailMargin
+    property double brightness: GlobalSettings.ui.imageBrightness
+    
+    // 修改设置
+    Slider {
+        from: GlobalSettings.ui.imageBrightnessFrom
+        to: GlobalSettings.ui.imageBrightnessTo
+        stepSize: GlobalSettings.ui.imageBrightnessStepSize
+        value: GlobalSettings.ui.imageBrightness
+        onValueChanged: GlobalSettings.ui.imageBrightness = value
+    }
+    
+    // 保存设置
+    Button {
+        text: "保存设置"
+        onClicked: GlobalSettings.save()
+    }
+}
+```
+
+### 6.2 ProjectManager (QML)
 
 ```qml
 import dltool.project
@@ -433,7 +686,7 @@ ProjectManager.deleteProject(path)
 ProjectManager.isProjectValid(method, path, isNew)
 ```
 
-### 5.2 DataManager (QML)
+### 6.3 DataManager (QML)
 
 ```qml
 import dltool.data
@@ -453,7 +706,7 @@ dataManager.addLabelClass(name, color, shortcut)
 dataManager.deleteLabelClass(labelClassId)
 ```
 
-### 5.3 自定义控件 (QML)
+### 6.4 自定义控件 (QML)
 
 ```qml
 import dltool.ui
@@ -490,9 +743,9 @@ DltToolTip { text: "提示" }
 
 ---
 
-## 6. 数据模型角色
+## 7. 数据模型角色
 
-### 6.1 DatasetsListModel
+### 7.1 DatasetsListModel
 
 | 角色 | 类型 | 说明 |
 |------|------|------|
@@ -500,7 +753,7 @@ DltToolTip { text: "提示" }
 | `IdRole` | int64_t | 数据集ID |
 | `CountRole` | int | 图像数量 |
 
-### 6.2 ImageInstancesListModel
+### 7.2 ImageInstancesListModel
 
 | 角色 | 类型 | 说明 |
 |------|------|------|
@@ -509,7 +762,7 @@ DltToolTip { text: "提示" }
 | `DatasetIdRole` | int64_t | 所属数据集ID |
 | `SelectedRole` | bool | 是否选中 |
 
-### 6.3 LabelClassesListModel
+### 7.3 LabelClassesListModel
 
 | 角色 | 类型 | 说明 |
 |------|------|------|
@@ -519,7 +772,7 @@ DltToolTip { text: "提示" }
 | `ShortcutRole` | QString | 快捷键 |
 | `OrdinalIndexRole` | int64_t | 排序索引 |
 
-### 6.4 LabelInstancesListModel
+### 7.4 LabelInstancesListModel
 
 | 角色 | 类型 | 说明 |
 |------|------|------|
