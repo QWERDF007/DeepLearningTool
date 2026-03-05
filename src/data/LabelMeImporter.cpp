@@ -115,17 +115,42 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
         }
 
         // ========== Phase 2: 解析标注并匹配到图像 ==========
+        std::vector<LabelMeData> parsed_annotations;
+
+        // 检查 data_dir 是否为空或不存在
+        if (data_dir.isEmpty() || !QDir(data_dir).exists())
+        {
+            spdlog::info("标注目录为空或不存在，将只导入图像（无标注）");
+            updateProgress(90, "标注目录为空，只导入图像");
+
+            // 直接处理数据（只有图像，没有标注）
+            processAndEmitData(dataset_id, images_map, parsed_annotations);
+            updateProgress(100, QString("导入完成: %1 个图像, 0 个标注").arg(images_map.size()));
+            return;
+        }
+
         updateProgress(40, "正在扫描标注文件...");
         std::vector<QString> json_files = scanJsonFiles(data_dir);
 
         int total_json_files = static_cast<int>(json_files.size());
         spdlog::info("找到 {} 个标注文件，开始解析...", total_json_files);
 
-        std::vector<LabelMeData> parsed_annotations;
-        int                      parsed_count    = 0;
-        int                      skipped_count   = 0;
-        int                      matched_count   = 0;
-        int                      unmatched_count = 0;
+        // 如果没有找到标注文件，直接导入图像
+        if (total_json_files == 0)
+        {
+            spdlog::info("未找到标注文件，将只导入图像（无标注）");
+            updateProgress(90, "未找到标注文件，只导入图像");
+
+            // 直接处理数据（只有图像，没有标注）
+            processAndEmitData(dataset_id, images_map, parsed_annotations);
+            updateProgress(100, QString("导入完成: %1 个图像, 0 个标注").arg(images_map.size()));
+            return;
+        }
+
+        int parsed_count    = 0;
+        int skipped_count   = 0;
+        int matched_count   = 0;
+        int unmatched_count = 0;
 
         for (const auto &json_path : json_files)
         {
