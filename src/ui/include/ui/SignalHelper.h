@@ -28,6 +28,10 @@ signals:
     void imageLabelTableShiftSelect(int currentIndex, int lastIndex, QItemSelectionModel::SelectionFlags command);
     void imageLabelTableSelectionClear();
     void imageLabelTableSelectAll();
+
+    // Navigation signals for review-to-label navigation
+    void switchToImage(int64_t image_id);
+    void selectLabel(int64_t label_id);
 };
 
 } // namespace dltool::ui

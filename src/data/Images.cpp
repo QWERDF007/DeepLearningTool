@@ -352,6 +352,27 @@ void ImageInstancesListModel::selectAll()
     selection_->select(selection, QItemSelectionModel::Select);
 }
 
+int ImageInstancesListModel::findRowByImageId(int64_t image_id) const
+{
+    // Find the image in the model
+    auto it = image_instances_.find(image_id);
+    if (it == image_instances_.end())
+    {
+        spdlog::warn("Image ID not found: {}", image_id);
+        return -1;
+    }
+
+    // Find the row index
+    auto row_it = std::find(image_ids_.begin(), image_ids_.end(), image_id);
+    if (row_it == image_ids_.end())
+    {
+        spdlog::warn("Image ID not in image_ids_ vector: {}", image_id);
+        return -1;
+    }
+
+    return std::distance(image_ids_.begin(), row_it);
+}
+
 QString ImageInstancesListModel::currentImageName() const
 {
     QModelIndex index = selection_->currentIndex();

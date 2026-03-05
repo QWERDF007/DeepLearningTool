@@ -999,6 +999,18 @@ std::vector<int64_t> ImageLabelsTableModel::getSelectedLabelIds() const
     return label_ids;
 }
 
+int ImageLabelsTableModel::findRowByLabelId(int64_t label_id) const
+{
+    for (size_t i = 0; i < label_ids_.size(); ++i)
+    {
+        if (label_ids_[i] == label_id)
+        {
+            return static_cast<int>(i);
+        }
+    }
+    return -1; // Not found
+}
+
 void ImageLabelsTableModel::shiftSelect(int current_index, int previous_index,
                                         QItemSelectionModel::SelectionFlags command)
 {

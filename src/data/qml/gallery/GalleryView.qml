@@ -234,4 +234,21 @@ Item {
             view.positionViewAtIndex(current.row, GridView.Contain) // 滚动到当前选中项
         }
     }
+
+    // Handle image switching signal from review page navigation
+    Connections {
+        target: SignalHelper
+        function onSwitchToImage(image_id) {
+            if (imageInstances && selection) {
+                let row = imageInstances.findRowByImageId(image_id)
+                if (row >= 0) {
+                    let tmpIndex = imageInstances.index(row, 0)
+                    selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
+                    selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
+                    imageInstances.lastIndex = row
+                    view.positionViewAtIndex(row, GridView.Contain)
+                }
+            }
+        }
+    }
 }

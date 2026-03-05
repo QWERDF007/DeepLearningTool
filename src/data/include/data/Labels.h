@@ -335,6 +335,13 @@ public:
 
     Q_INVOKABLE std::vector<int64_t> getSelectedLabelIds() const;
 
+    /**
+     * @brief Find row index by label_id
+     * @param label_id The label ID to search for
+     * @return Row index if found, -1 if not found
+     */
+    Q_INVOKABLE int findRowByLabelId(int64_t label_id) const;
+
 private:
     void init();
 

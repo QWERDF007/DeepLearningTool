@@ -26,6 +26,11 @@ Rectangle {
                 selection.select(index, command)
             }
         }
+        function onSelectLabel(label_id) {
+            if (imageLabelsTable) {
+                control.selectLabelById(label_id)
+            }
+        }
     }
 
     Connections {
@@ -194,7 +199,7 @@ Rectangle {
         
         // Select the row using ClearAndSelect flag
         let tmpIndex = imageLabelsTable.index(row, 0)
-        selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
+        control.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
         
         // Calculate the row position and scroll to make it visible
         let rowY = row * rowHeight
@@ -204,6 +209,19 @@ Rectangle {
         if (rowY < tableView.contentY || rowY + rowHeight > tableView.contentY + viewportHeight) {
             // Scroll to position the row in the middle of the viewport
             tableView.contentY = Math.max(0, rowY - viewportHeight / 2)
+        }
+    }
+
+    function selectLabelById(label_id) {
+        if (!imageLabelsTable || !selection) {
+            return
+        }
+        
+        let row = imageLabelsTable.findRowByLabelId(label_id)
+        if (row >= 0) {
+            selectAndScrollToRow(row)
+        } else {
+            console.warn("Label ID not found in current image:", label_id)
         }
     }
 }

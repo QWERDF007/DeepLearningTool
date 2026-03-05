@@ -44,6 +44,7 @@ Rectangle {
             radius: 4
             
             property int labelId: model.label_id || -1
+            property int imageId: model.image_id || -1
             
             // 边框：选中时高亮
             border.width: 2
@@ -107,6 +108,8 @@ Rectangle {
                     }
                 }
             }
+            
+
         }
         
         boundsBehavior: Flickable.StopAtBounds
@@ -167,30 +170,24 @@ Rectangle {
             anchors.fill: parent
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             
+            
+            
             onClicked: function (mouse) {
                 thumbnailGridView.forceActiveFocus()
                 
                 if (!labelInstances || !selection) {
                     return
                 }
-                // 计算点击位置对应的索引
-                let posInGridView = Qt.point(mouse.x, mouse.y)
-                let posInContentItem = mapToItem(thumbnailGridView.contentItem, posInGridView)
-                let index = thumbnailGridView.indexAt(posInContentItem.x, posInContentItem.y)
                 
-                if (index < 0) {
-                    selection.clear()
-                    return
-                }
+                let result = getItemAtMousePosition(mouse)
                 
-                let item = thumbnailGridView.itemAtIndex(index)
-                if (!item) {
+                if (result.index < 0 || !result.item) {
                     selection.clear()
                     return
                 }
                 
                 // 直接选中 labelInstances 模型中的对应项
-                let modelIndex = labelInstances.index(index, 0)
+                let modelIndex = labelInstances.index(result.index, 0)
                 
                 if (mouse.button === Qt.LeftButton) {
                     if (mouse.modifiers & Qt.ControlModifier) {
@@ -200,6 +197,44 @@ Rectangle {
                     }
                     selection.setCurrentIndex(modelIndex, ItemSelectionModel.Current)
                 }
+            }
+            
+            // Double-click handler for navigation to label page
+            onDoubleClicked: function (mouse) {
+                if (!labelInstances) {
+                    return
+                }
+                
+                let result = getItemAtMousePosition(mouse)
+                
+                if (result.index < 0 || !result.item) {
+                    return
+                }
+                
+                // 获取标注和图像 ID
+                let labelId = result.item.labelId
+                let imageId = result.item.imageId
+                
+                if (labelId >= 0 && imageId >= 0) {
+                    // Navigate to label page with correct image and label selected
+                    SignalHelper.changeTabBarIndex(2)
+                    SignalHelper.switchToImage(imageId)
+                    SignalHelper.selectLabel(labelId)
+                }
+            }
+
+            // 计算鼠标位置对应的索引和项目
+            function getItemAtMousePosition(mouse) {
+                let posInGridView = Qt.point(mouse.x, mouse.y)
+                let posInContentItem = mapToItem(thumbnailGridView.contentItem, posInGridView)
+                let index = thumbnailGridView.indexAt(posInContentItem.x, posInContentItem.y)
+                
+                if (index < 0) {
+                    return { index: -1, item: null }
+                }
+                
+                let item = thumbnailGridView.itemAtIndex(index)
+                return { index: index, item: item }
             }
         }
     }
