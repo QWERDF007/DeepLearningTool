@@ -1125,6 +1125,8 @@ QVariant ImageLabelsTableModel::getClassData(const QModelIndex &index) const
 
 QVariant ImageLabelsTableModel::getSelected(const QModelIndex &index) const
 {
+    if (!selection_)
+        return false;
     return selection_->isSelected(index);
 }
 

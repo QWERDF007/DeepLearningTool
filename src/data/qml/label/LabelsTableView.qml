@@ -104,7 +104,7 @@ Rectangle {
                             implicitWidth: colWidth
                             implicitHeight: rowHeight
                             mdata: model.class_data
-                            selected: model.selected
+                            selected: model.selected ?? false
                         }
                     }
 
@@ -113,7 +113,7 @@ Rectangle {
                             implicitWidth: colWidth
                             implicitHeight: rowHeight
                             mdata: model.data
-                            selected: model.selected
+                            selected: model.selected ?? false
                         }
                     }
                 }
