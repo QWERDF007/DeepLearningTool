@@ -8,7 +8,7 @@ import dltool.project
 Rectangle {
     id: header
     width: 600
-    height: 48
+    height: 80
     color: DltColor.Primary
 
     property alias currentIndex: mainTabBar.currentIndex
@@ -22,9 +22,12 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
+        anchors.leftMargin: 5
+        anchors.rightMargin: 5
         RowLayout {
             Layout.fillWidth: true
-            Layout.fillHeight: true
+            // Layout.fillHeight: true
+            Layout.preferredHeight: 36
             MenuTabBar {
                 id: mainTabBar
                 Layout.fillWidth: true
@@ -36,11 +39,55 @@ Rectangle {
                     delegate: DltTabButton {
                         id: tbtn
                         width: 100
-                        height: header.height
+                        height: 32
                         text: modelData
                         textColor: mainTabBar.currentIndex === index ? DltColor.Highlight : "white"
                         focusPolicy: Qt.NoFocus
                         enabled: modelData === "项目" || (ProjectManager.currentProject ? true : false)
+                    }
+                }
+            }
+            Rectangle { // splitter
+                color: DltColor.Background
+                width: 5
+                Layout.fillHeight: true
+            }
+            ToolBar {
+                Layout.fillHeight: true
+                background: Rectangle {
+                    color: DltColor.Primary
+                }
+
+                RowLayout {
+                    anchors.verticalCenter: parent.verticalCenter
+                    DltTextIconButton {
+                        iconSource: DltFontIcon.Help
+                        text: "帮助"
+                    }
+                    DltTextIconButton {
+                        iconSource: DltFontIcon.Settings
+                        text: "设置"
+                    }
+                }
+            }
+        }
+        RowLayout { // TODO: 过滤栏
+            id: filterBar
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            ToolBar {
+                Layout.fillHeight: true
+                background: Rectangle {
+                    color: DltColor.Primary
+                }
+                RowLayout {
+                    DltTextIconButton {
+                        iconSource: DltFontIcon.Help
+                        text: "帮助"
+                    }
+                    DltTextIconButton {
+                        iconSource: DltFontIcon.Settings
+                        text: "设置"
                     }
                 }
             }

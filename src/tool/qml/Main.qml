@@ -25,7 +25,7 @@ ApplicationWindow {
     header: Header {
         id: _header
         width: parent.width
-        height: 48
+        // height: 48
     }
 
 
