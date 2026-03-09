@@ -1,26 +1,21 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
-import QtQuick.Controls.Material.impl
-import Qt5Compat.GraphicalEffects
+import QtQuick.Templates as T
 
 //import dl.studio.theme 1.0
 
-import QuickUI
+import dltool.ui
 
 
-Button {
+DltButton {
     id: control
-    property color backgroundColor: QuickColor.DarkButton
-    property int radius: 2
-    property bool backgroundVisible: true
-    property alias popupContentItem: popupMenu.contentItem
+    clip: true
 
-    property alias dropDownButton: dropDownBtn
-    property alias popupMenu: popupMenu
+    opacity: enabled ? 1.0 : 0.3
 
-    implicitWidth: implicitContentWidth/* + leftPadding + rightPadding*/
-    implicitHeight: implicitContentHeight/* + topPadding + bottomPadding*/
+    property alias model : popupModel.model
+
 
     //    padding: 0
     leftPadding: 0
@@ -28,7 +23,6 @@ Button {
     topPadding: 0
     bottomPadding: 0
 
-    icon.color: control.palette.brightText
     spacing: 6
 
     checkable: true
@@ -37,84 +31,61 @@ Button {
         id: container
         //        clip: true
         anchors.centerIn: parent
-        opacity: enabled ? 1.0 : 0.3
-        QuickToolButton {
+        DltTextIconButton {
             id: dropDownBtn
-            icon.source: "/icons/expand"
-            implicitWidth: 20
-            implicitHeight: 20
+            iconSource: DltFontIcon.ChevronDown
             Layout.leftMargin: 5
-            Layout.alignment: Qt.AlignHCenter
-            backgroundColor: Qt.lighter(bg.color, 1.1)
-            backgroundVisible: hovered
+            Layout.alignment: Qt.AlignLeft
+            pressedColor: Qt.lighter(control.pressedColor, 1.2)
+            hoverColor:  Qt.lighter(control.hoverColor, 1.2)
 
             onClicked: {
-                if (!popupMenu.visible) {
-                    popupMenu.open()
+                if (!popup.visible) {
+                    openPopup(x, y)
                 } else {
-                    popupMenu.close()
+                    popup.close()
                 }
             }
 
 
-            Popup {
-                id: popupMenu
-                y: container.y + container.height
-//                height: popupMenu.contentItem.childrenRect.height
-//                width: popupMenu.contentItem.childrenRect.width
-                contentWidth:  popupMenu.contentItem.implicitWidth
-                contentHeight:  popupMenu.contentItem.implicitHeight
-                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-
-                Component.onCompleted: {
-                    console.log("123", popupMenu.width, popupMenu.height)
+            DltPopup {
+                id: popup
+                padding: 6
+                bg.border{
+                    color: "black"
+                    width: 1
                 }
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                ListView {
+                    id: popupModel
+                    spacing: 5
+                    implicitWidth: contentItem.childrenRect.width
+                    implicitHeight: contentItem.childrenRect.height
+                    delegate: DltCheckBox {
+                        text: model.text
+                    }
+                }
+                maskVisible: false
+                // T.Overlay.modal: null // 不显示遮罩
             }
         }
 
-        Text {
+        DltText {
             text: control.text
             font: control.font
-            opacity: enabled ? 1.0 : 0.3
+
             color: control.palette.brightText
-            horizontalAlignment: Text.AlignHCenter
+            horizontalAlignment: Text.AlignLeft
             verticalAlignment: Text.AlignVCenter
             fontSizeMode: Text.Fit
             Layout.rightMargin: 5
         }
     }
 
-    background: Rectangle {
-        id: bg
-        anchors.centerIn: parent
-        width: control.implicitWidth
-        height: control.implicitHeight
-        radius: control.radius
-        clip: true
-        color: control.checked ? QuickColor.HighLight : Qt.lighter(control.backgroundColor, control.hovered ? 1.2 : 1.0)
-        opacity: enabled ? 1 : 0.3
-        visible: control.backgroundVisible
-
-        // 波纹效果
-        Ripple {
-            id: ripple
-            clipRadius: 1
-            width: parent.width
-            height: parent.height
-            pressed: control.pressed
-            anchor: control
-            active: control.down
-            color: control.flat && control.highlighted ?  control.Material.highlightedRippleColor : control.Material.rippleColor
-            // 圆形按钮时, 波纹效果的透明掩码, 避免超出背景
-            layer.enabled: true
-            layer.effect: OpacityMask {
-                maskSource: Rectangle
-                {
-                    width: ripple.width
-                    height: ripple.height
-                    radius: control.radius
-                }
-            }
-        }
+    function openPopup(x, y) {
+        let pos = control.mapToItem(null, x, y)
+        popup.x = pos.x
+        popup.y = pos.y + 30
+        popup.open()
     }
 }

@@ -82,12 +82,22 @@ Rectangle {
                 }
                 RowLayout {
                     DltTextIconButton {
-                        iconSource: DltFontIcon.Help
-                        text: "帮助"
+                        iconSource: DltFontIcon.Filter
+                        text: "过滤"
                     }
-                    DltTextIconButton {
-                        iconSource: DltFontIcon.Settings
-                        text: "设置"
+                    DropDownMenuButton {
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: 200
+                        text: "按数据集: "
+                        model: ListModel {
+                            id: testModel1
+                            ListElement { text: "数据集1"; color: "red"; checked: true }
+                            ListElement { text: "数据集2"; color: "green"; checked: false }
+                            ListElement { text: "数据集3"; color: "blue"; checked: true }
+                            ListElement { text: "数据集4"; color: "yellow"; checked: true }
+                            ListElement { text: "数据集5"; color: "lightgreen"; checked: false }
+                            ListElement { text: "数据集6xxxxx"; color: "yellow"; checked: true }
+                        }
                     }
                 }
             }
