@@ -47,30 +47,30 @@ bool TagFilterModule::isActive() const
     return enabled_;
 }
 
-std::set<int64_t> TagFilterModule::getActiveCriteria() const
+std::unordered_set<int64_t> TagFilterModule::getActiveCriteria() const
 {
     if (enabled_)
     {
         return selected_tag_ids_;
     }
-    return std::set<int64_t>();
+    return std::unordered_set<int64_t>();
 }
 
 bool TagFilterModule::passes(int64_t image_id) const
 {
-    // If filter is disabled, all images pass
+    // 如果过滤器禁用，所有图像都通过
     if (!enabled_)
     {
         return true;
     }
 
-    // If no tags are selected, no images pass
+    // 如果没有选中任何标签，没有图像通过
     if (selected_tag_ids_.empty())
     {
         return false;
     }
 
-    // Get the image instance and check if it has any of the selected tags
+    // 获取图像实例并检查它是否拥有任一选中的标签
     if (image_model_)
     {
         ImageInstance *image = image_model_->getImageInstance(image_id);
@@ -78,18 +78,18 @@ bool TagFilterModule::passes(int64_t image_id) const
         {
             const std::set<int64_t> &image_tag_ids = image->tagIds();
 
-            // Check if any of the image's tags are in the selected tags (OR logic within module)
+            // 检查图像的标签中是否有任一选中的标签（模块内OR逻辑）
             for (const auto &tag_id : selected_tag_ids_)
             {
                 if (image_tag_ids.find(tag_id) != image_tag_ids.end())
                 {
-                    return true; // Image has at least one of the selected tags
+                    return true; // 图像至少拥有一个选中的标签
                 }
             }
         }
     }
 
-    return false; // Image doesn't have any of the selected tags
+    return false; // 图像没有任何选中的标签
 }
 
 void TagFilterModule::selectAll()
@@ -98,7 +98,7 @@ void TagFilterModule::selectAll()
 
     if (tags_model_)
     {
-        // Get all tag IDs from the tags model
+        // 从标签模型获取所有标签ID
         int row_count = tags_model_->rowCount();
         for (int i = 0; i < row_count; ++i)
         {

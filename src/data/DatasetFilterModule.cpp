@@ -48,36 +48,37 @@ bool DatasetFilterModule::isActive() const
     return enabled_;
 }
 
-std::set<int64_t> DatasetFilterModule::getActiveCriteria() const
+std::unordered_set<int64_t> DatasetFilterModule::getActiveCriteria() const
 {
     if (enabled_)
     {
         return selected_dataset_ids_;
     }
-    return std::set<int64_t>();
+    return std::unordered_set<int64_t>();
 }
 
 bool DatasetFilterModule::passes(int64_t image_id) const
 {
-    // If filter is disabled, all images pass
+    // 如果过滤器禁用，所有图像都通过
     if (!enabled_)
     {
         return true;
     }
 
-    // If no datasets are selected, no images pass
+    // 如果没有选中任何数据集，没有图像通过
     if (selected_dataset_ids_.empty())
     {
         return false;
     }
 
-    // Get the image instance and check if its dataset is in the selected set
+    // 获取图像实例并检查其数据集是否在选中集合中
     if (image_model_)
     {
         ImageInstance *image = image_model_->getImageInstance(image_id);
         if (image)
         {
             int64_t dataset_id = image->datasetId();
+            // 使用unordered_set的find进行O(1)平均时间复杂度的查找
             return selected_dataset_ids_.find(dataset_id) != selected_dataset_ids_.end();
         }
     }
@@ -91,7 +92,7 @@ void DatasetFilterModule::selectAll()
 
     if (datasets_model_)
     {
-        // Get all dataset IDs from the datasets model
+        // 从数据集模型获取所有数据集ID
         int row_count = datasets_model_->rowCount();
         for (int i = 0; i < row_count; ++i)
         {

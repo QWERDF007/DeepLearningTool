@@ -14,24 +14,23 @@ GlobalFilter::GlobalFilter(ImageInstancesListModel *image_model, LabelInstancesL
     , image_model_(image_model)
     , label_model_(label_model)
 {
-    // Filter modules will be initialized later via initializeFilterModules()
-    // after DataManager is fully constructed
+    // 过滤模块将在DataManager完全构造后通过initializeFilterModules()初始化
 }
 
 GlobalFilter::~GlobalFilter()
 {
-    // Unique pointers will automatically clean up
+    // unique_ptr会自动清理资源
 }
 
 void GlobalFilter::initializeFilterModules(DatasetsListModel *datasets_model, ImageTagsListModel *tags_model)
 {
-    // Initialize dataset filter module
+    // 初始化数据集过滤模块
     dataset_filter_ = std::make_unique<DatasetFilterModule>(image_model_, datasets_model, this);
 
-    // Initialize tag filter module
+    // 初始化标签过滤模块
     tag_filter_ = std::make_unique<TagFilterModule>(image_model_, tags_model, this);
 
-    // Connect filter module signals to applyFilters slot
+    // 连接过滤模块信号到applyFilters槽
     connect(dataset_filter_.get(), &FilterModule::criteriaChanged, this, &GlobalFilter::applyFilters);
     connect(dataset_filter_.get(), &FilterModule::enabledChanged, this, &GlobalFilter::applyFilters);
 
@@ -108,8 +107,19 @@ void GlobalFilter::setDatasetFilterEnabled(bool enabled)
 {
     if (dataset_filter_)
     {
+        bool was_enabled = dataset_filter_->isEnabled();
         dataset_filter_->setEnabled(enabled);
-        applyFilters();
+
+        // 如果启用状态发生变化，强制更新过滤条件并重新应用
+        if (was_enabled != enabled)
+        {
+            updateFilterCriteria();
+            // 强制重新应用过滤，即使条件看起来没变
+            // 因为启用状态的变化本身就需要重新过滤
+            previous_criteria_ = FilterCriteria(); // 重置以强制重新过滤
+            applyFilters();
+        }
+
         emit filterStateChanged();
     }
 }
@@ -118,8 +128,19 @@ void GlobalFilter::setTagFilterEnabled(bool enabled)
 {
     if (tag_filter_)
     {
+        bool was_enabled = tag_filter_->isEnabled();
         tag_filter_->setEnabled(enabled);
-        applyFilters();
+
+        // 如果启用状态发生变化，强制更新过滤条件并重新应用
+        if (was_enabled != enabled)
+        {
+            updateFilterCriteria();
+            // 强制重新应用过滤，即使条件看起来没变
+            // 因为启用状态的变化本身就需要重新过滤
+            previous_criteria_ = FilterCriteria(); // 重置以强制重新过滤
+            applyFilters();
+        }
+
         emit filterStateChanged();
     }
 }
@@ -194,10 +215,10 @@ std::vector<int64_t> GlobalFilter::getActiveTagIds() const
 
 void GlobalFilter::applyFilters()
 {
-    // Check if any filter is active
+    // 检查是否有激活的过滤器
     if (!isActive())
     {
-        // No filters active, clear any existing filters on models
+        // 没有激活的过滤器，清除模型上的现有过滤
         if (image_model_)
         {
             image_model_->clearFilter();
@@ -206,14 +227,25 @@ void GlobalFilter::applyFilters()
         {
             label_model_->clearFilter();
         }
+
+        // 重置上一次的过滤条件，因为没有激活的过滤器
+        previous_criteria_ = FilterCriteria();
+
         emit filterApplied();
         return;
     }
 
-    // Apply filter to image model
+    // 检查过滤条件是否改变 - 如果没有改变，跳过过滤操作（性能优化）
+    if (!hasFilterCriteriaChanged())
+    {
+        // 条件未改变，无需重新应用过滤
+        return;
+    }
+
+    // 应用过滤到图像模型
     if (image_model_)
     {
-        // Create a lambda that captures this and checks if an image should be included
+        // 创建lambda函数，捕获this并检查图像是否应该被包含
         auto image_filter_func = [this](int64_t image_id) -> bool
         {
             return shouldIncludeImage(image_id);
@@ -222,11 +254,11 @@ void GlobalFilter::applyFilters()
         image_model_->applyFilter(image_filter_func);
     }
 
-    // Apply filter to label model
+    // 应用过滤到标注模型
     if (label_model_)
     {
-        // Create a lambda that checks if an image should be included
-        // Note: LabelInstancesListModel expects a function that takes image_id, not label_id
+        // 创建lambda函数检查图像是否应该被包含
+        // 注意：LabelInstancesListModel期望接收image_id参数，而不是label_id
         auto image_filter_func = [this](int64_t image_id) -> bool
         {
             return shouldIncludeImage(image_id);
@@ -235,12 +267,15 @@ void GlobalFilter::applyFilters()
         label_model_->applyFilter(image_filter_func);
     }
 
+    // 成功过滤后更新上一次的过滤条件
+    previous_criteria_ = current_criteria_;
+
     emit filterApplied();
 }
 
 void GlobalFilter::updateFilterCriteria()
 {
-    // Update the current_criteria_ structure based on active filter modules
+    // 从各个过滤模块更新current_criteria_结构
     current_criteria_.dataset_ids.clear();
     current_criteria_.tag_ids.clear();
 
@@ -257,39 +292,58 @@ void GlobalFilter::updateFilterCriteria()
 
 bool GlobalFilter::shouldIncludeImage(int64_t image_id) const
 {
-    // An image is included if it passes ALL enabled filter modules (AND logic)
+    // 图像被包含当且仅当它通过所有启用的过滤模块（AND逻辑）
 
-    // Check dataset filter (if enabled)
+    // 检查数据集过滤器（如果启用）
     if (dataset_filter_ && dataset_filter_->isEnabled())
     {
         if (!dataset_filter_->passes(image_id))
         {
-            return false; // Failed dataset filter
+            return false; // 未通过数据集过滤
         }
     }
 
-    // Check tag filter (if enabled)
+    // 检查标签过滤器（如果启用）
     if (tag_filter_ && tag_filter_->isEnabled())
     {
         if (!tag_filter_->passes(image_id))
         {
-            return false; // Failed tag filter
+            return false; // 未通过标签过滤
         }
     }
 
-    // Passed all enabled filters (or no filters enabled)
+    // 通过所有启用的过滤器（或没有启用的过滤器）
     return true;
 }
 
 bool GlobalFilter::shouldIncludeLabel(int64_t label_id) const
 {
-    // A label is included if its associated image passes the image filter
+    // 标注被包含当且仅当其关联的图像通过图像过滤器
     if (label_model_)
     {
         int64_t image_id = label_model_->getImageId(label_id);
         return shouldIncludeImage(image_id);
     }
 
+    return false;
+}
+
+bool GlobalFilter::hasFilterCriteriaChanged() const
+{
+    // 比较当前条件与上一次条件
+    // 检查数据集ID是否改变
+    if (current_criteria_.dataset_ids != previous_criteria_.dataset_ids)
+    {
+        return true;
+    }
+
+    // 检查标签ID是否改变
+    if (current_criteria_.tag_ids != previous_criteria_.tag_ids)
+    {
+        return true;
+    }
+
+    // 未检测到变化
     return false;
 }
 

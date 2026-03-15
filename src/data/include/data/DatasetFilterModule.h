@@ -2,14 +2,19 @@
 
 #include "FilterModule.h"
 
-#include <set>
-
+#include <unordered_set>
 
 namespace dltool::data {
 
 class ImageInstancesListModel;
 class DatasetsListModel;
 
+/**
+ * @brief 数据集过滤模块
+ * 
+ * 根据数据集ID过滤图像
+ * 使用OR逻辑：图像属于任一选中的数据集即通过过滤
+ */
 class DatasetFilterModule : public FilterModule
 {
     Q_OBJECT
@@ -19,28 +24,35 @@ public:
                                  QObject *parent = nullptr);
     ~DatasetFilterModule() override = default;
 
-    void              setCriteria(const std::vector<int64_t> &dataset_ids) override;
-    void              clear() override;
-    void              setEnabled(bool enabled) override;
-    bool              isEnabled() const override;
-    bool              isActive() const override;
-    std::set<int64_t> getActiveCriteria() const override;
+    void                        setCriteria(const std::vector<int64_t> &dataset_ids) override;
+    void                        clear() override;
+    void                        setEnabled(bool enabled) override;
+    bool                        isEnabled() const override;
+    bool                        isActive() const override;
+    std::unordered_set<int64_t> getActiveCriteria() const override;
 
-    // Check if image belongs to selected datasets
-    // Returns true if filter is disabled OR image matches criteria
+    /**
+     * @brief 检查图像是否属于选中的数据集
+     * @param image_id 图像ID
+     * @return 如果过滤器禁用或图像匹配条件返回true
+     */
     bool passes(int64_t image_id) const override;
 
-    // Select all datasets
+    /**
+     * @brief 选择所有数据集
+     */
     void selectAll() override;
 
-    // Deselect all datasets
+    /**
+     * @brief 取消选择所有数据集
+     */
     void deselectAll() override;
 
 private:
-    ImageInstancesListModel *image_model_{nullptr};
-    DatasetsListModel       *datasets_model_{nullptr};
-    std::set<int64_t>        selected_dataset_ids_;
-    bool                     enabled_{false}; // Filter module enabled state
+    ImageInstancesListModel    *image_model_{nullptr};    // 图像实例列表模型
+    DatasetsListModel          *datasets_model_{nullptr}; // 数据集列表模型
+    std::unordered_set<int64_t> selected_dataset_ids_;    // 选中的数据集ID（使用unordered_set提高查找性能）
+    bool                        enabled_{false};          // 过滤模块启用状态
 };
 
 } // namespace dltool::data
