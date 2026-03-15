@@ -3,6 +3,7 @@
 #include "DataExport.h"
 #include "DataImporter.h"
 #include "Datasets.h"
+#include "GlobalFilter.h"
 #include "ImageTags.h"
 #include "Images.h"
 #include "Labels.h"
@@ -32,6 +33,7 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(ImageLabelsListModel *imageLabelsList READ imageLabelsList CONSTANT FINAL)
     Q_PROPERTY(ImageLabelsTableModel *imageLabelsTable READ imageLabelsTable CONSTANT FINAL)
     Q_PROPERTY(ImageInfoListModel *imageInfo READ imageInfo CONSTANT FINAL)
+    Q_PROPERTY(GlobalFilter *globalFilter READ globalFilter CONSTANT FINAL)
 
 public:
     DataManager(const int method, data::ProjectDataBase *database, QObject *parent = nullptr);
@@ -75,6 +77,11 @@ public:
     ImageInfoListModel *imageInfo() const
     {
         return image_info_;
+    }
+
+    GlobalFilter *globalFilter() const
+    {
+        return global_filter_;
     }
 
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
@@ -143,6 +150,8 @@ private:
     ImageLabelsTableModel   *image_labels_table_{nullptr};
 
     ImageInfoListModel *image_info_{nullptr};
+
+    GlobalFilter *global_filter_{nullptr};
 
     int method_{0}; // 标签数据类型
 };

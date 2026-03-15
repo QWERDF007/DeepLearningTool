@@ -203,6 +203,25 @@ public:
 
     void setLastIndex(int last_index);
 
+    // NEW: Filter support methods
+    void applyFilter(const std::function<bool(int64_t)> &filter_func);
+    void clearFilter();
+
+    bool isFilterActive() const
+    {
+        return is_filtered_;
+    }
+
+    int filteredCount() const
+    {
+        return static_cast<int>(filtered_image_ids_.size());
+    }
+
+    int totalCount() const
+    {
+        return static_cast<int>(full_image_instances_.size());
+    }
+
     void addImagesLabelIds(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
     void addImagesLabelIds(const std::vector<int64_t> &image_ids, const std::vector<std::vector<int64_t>> &label_ids);
 
@@ -222,6 +241,11 @@ private:
     void init();
 
     int getImageId(const QModelIndex &index) const;
+
+    /**
+     * @brief NEW: Helper to rebuild filtered_image_ids_ based on filter function
+     */
+    void rebuildFilteredList(const std::function<bool(int64_t)> &filter_func);
 
     /**
      * @brief 删除图像后自动选择下一个合适的图像
@@ -263,9 +287,26 @@ private:
 
     /**
      * @brief 图像实例 {image_id, ImageInstance}，按照 image_id 排序
+     * MODIFIED: Renamed from image_instances_ to indicate it's the full dataset
      */
-    std::map<int64_t, ImageInstance *, std::greater<int64_t>> image_instances_;
-    std::vector<int64_t>                                      image_ids_;
+    std::map<int64_t, ImageInstance *, std::greater<int64_t>> full_image_instances_;
+
+    /**
+     * @brief 图像 ID 列表，用于显示顺序
+     * When filtering is active, this points to filtered_image_ids_
+     * When filtering is inactive, this contains all image IDs from full_image_instances_
+     */
+    std::vector<int64_t> image_ids_;
+
+    /**
+     * @brief NEW: Filtered image IDs (subset of full_image_instances_ keys)
+     */
+    std::vector<int64_t> filtered_image_ids_;
+
+    /**
+     * @brief NEW: Flag indicating if filter is active
+     */
+    bool is_filtered_{false};
 
     QItemSelectionModel *selection_{nullptr};
 

@@ -121,6 +121,25 @@ public:
         return label_data_helper_;
     }
 
+    // NEW: Filter support methods
+    void applyFilter(const std::function<bool(int64_t)> &image_filter_func);
+    void clearFilter();
+
+    bool isFilterActive() const
+    {
+        return is_filtered_;
+    }
+
+    int filteredCount() const
+    {
+        return static_cast<int>(filtered_label_ids_.size());
+    }
+
+    int totalCount() const
+    {
+        return static_cast<int>(full_label_instances_.size());
+    }
+
 private:
     void init();
 
@@ -131,15 +150,38 @@ private:
     QString  getLabelClassColor(const QModelIndex &index) const;
     QVariant getData(const QModelIndex &index) const;
 
+    /**
+     * @brief NEW: Helper to rebuild filtered_label_ids_ based on image filter function
+     */
+    void rebuildFilteredList(const std::function<bool(int64_t)> &image_filter_func);
+
     data::ProjectDataBase   *database_{nullptr};
     ImageInstancesListModel *image_instances_{nullptr};
     LabelClassesListModel   *label_classes_{nullptr};
 
     LabelDataHelper label_data_helper_{nullptr};
 
-    std::map<int64_t, LabelInstance *> label_instances_;
+    /**
+     * @brief MODIFIED: Renamed from label_instances_ to indicate it's the full dataset
+     */
+    std::map<int64_t, LabelInstance *> full_label_instances_;
 
+    /**
+     * @brief 标注 ID 列表，用于显示顺序
+     * When filtering is active, this contains filtered_label_ids_
+     * When filtering is inactive, this contains all label IDs from full_label_instances_
+     */
     std::vector<int64_t> label_ids_;
+
+    /**
+     * @brief NEW: Filtered label IDs (subset of full_label_instances_ keys)
+     */
+    std::vector<int64_t> filtered_label_ids_;
+
+    /**
+     * @brief NEW: Flag indicating if filter is active
+     */
+    bool is_filtered_{false};
 
     QItemSelectionModel *selection_{nullptr};
 };

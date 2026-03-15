@@ -70,7 +70,7 @@ void ImageInstancesListModel::init()
 
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        image_instances_.emplace(image_ids[i], new ImageInstance(dataset_ids[i], image_ids[i], paths[i], this));
+        full_image_instances_.emplace(image_ids[i], new ImageInstance(dataset_ids[i], image_ids[i], paths[i], this));
     }
     std::sort(image_ids.begin(), image_ids.end(), std::greater<int64_t>());
     image_ids_.insert(image_ids_.begin(), image_ids.begin(), image_ids.end());
@@ -130,11 +130,11 @@ bool ImageInstancesListModel::removeRows(int row, int count, const QModelIndex &
     for (int i = 0; i < count; ++i)
     {
         int64_t image_id = image_ids_[row + i];
-        auto    found    = image_instances_.find(image_id);
-        if (found != image_instances_.end())
+        auto    found    = full_image_instances_.find(image_id);
+        if (found != full_image_instances_.end())
         {
             delete found->second;
-            image_instances_.erase(found);
+            full_image_instances_.erase(found);
         }
     }
 
@@ -170,7 +170,7 @@ bool ImageInstancesListModel::addImages(const int64_t dataset_id, const std::vec
     beginInsertRows(QModelIndex(), 0, count);
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        image_instances_.emplace(image_ids[i], new ImageInstance(dataset_id, image_ids[i], paths[i], this));
+        full_image_instances_.emplace(image_ids[i], new ImageInstance(dataset_id, image_ids[i], paths[i], this));
     }
     // 注意：为了 UI 显示，我们需要将 image_ids 从大到小排序后插入到 image_ids_ 列表
     // 但不能修改传出的 image_ids 参数，因为调用者依赖于 image_ids 和 paths 的顺序对应关系
@@ -256,8 +256,8 @@ bool ImageInstancesListModel::deleteImages(const std::vector<int64_t> &image_ids
 
 bool ImageInstancesListModel::deleteImages(const int64_t dataset_id, std::vector<int64_t> &image_ids)
 {
-    image_ids.reserve(image_instances_.size());
-    for (const auto &[image_id, image_instance] : image_instances_)
+    image_ids.reserve(full_image_instances_.size());
+    for (const auto &[image_id, image_instance] : full_image_instances_)
     {
         if (image_instance->datasetId() == dataset_id)
         {
@@ -273,8 +273,8 @@ std::vector<int64_t> ImageInstancesListModel::getDatasetIds(const std::vector<in
     dataset_ids.reserve(image_ids.size());
     for (const auto &image_id : image_ids)
     {
-        auto found = image_instances_.find(image_id);
-        if (found != image_instances_.end())
+        auto found = full_image_instances_.find(image_id);
+        if (found != full_image_instances_.end())
             dataset_ids.push_back(found->second->datasetId());
     }
     return dataset_ids;
@@ -286,8 +286,8 @@ std::vector<std::vector<int64_t>> ImageInstancesListModel::getLabelIds(const std
     label_ids.reserve(image_ids.size());
     for (const auto &image_id : image_ids)
     {
-        auto found = image_instances_.find(image_id);
-        if (found != image_instances_.end())
+        auto found = full_image_instances_.find(image_id);
+        if (found != full_image_instances_.end())
             label_ids.push_back(
                 std::vector<int64_t>{found->second->labelIds().begin(), found->second->labelIds().end()});
     }
@@ -355,8 +355,8 @@ void ImageInstancesListModel::selectAll()
 int ImageInstancesListModel::findRowByImageId(int64_t image_id) const
 {
     // Find the image in the model
-    auto it = image_instances_.find(image_id);
-    if (it == image_instances_.end())
+    auto it = full_image_instances_.find(image_id);
+    if (it == full_image_instances_.end())
     {
         spdlog::warn("Image ID not found: {}", image_id);
         return -1;
@@ -397,13 +397,13 @@ int ImageInstancesListModel::getImageId(const QModelIndex &index) const
 QVariant ImageInstancesListModel::getImageName(const QModelIndex &index) const
 {
     const int64_t image_id = image_ids_[index.row()];
-    return image_instances_.at(image_id)->name();
+    return full_image_instances_.at(image_id)->name();
 }
 
 QVariant ImageInstancesListModel::getImagePath(const QModelIndex &index) const
 {
     const int64_t image_id = image_ids_[index.row()];
-    return image_instances_.at(image_id)->path();
+    return full_image_instances_.at(image_id)->path();
 }
 
 QVariant ImageInstancesListModel::getSelected(const QModelIndex &index) const
@@ -419,8 +419,8 @@ QVariant ImageInstancesListModel::getIsCurrent(const QModelIndex &index) const
 QVariant ImageInstancesListModel::getHasLabels(const QModelIndex &index) const
 {
     const int64_t image_id = image_ids_[index.row()];
-    auto          it       = image_instances_.find(image_id);
-    if (it != image_instances_.end())
+    auto          it       = full_image_instances_.find(image_id);
+    if (it != full_image_instances_.end())
     {
         return !it->second->labelIds().empty();
     }
@@ -450,8 +450,8 @@ std::vector<int64_t> ImageInstancesListModel::getSelectedImagesId() const
 
 ImageInstance *ImageInstancesListModel::getImageInstance(const int64_t image_id)
 {
-    auto found = image_instances_.find(image_id);
-    if (found != image_instances_.end())
+    auto found = full_image_instances_.find(image_id);
+    if (found != full_image_instances_.end())
         return found->second;
     return nullptr;
 }
@@ -462,8 +462,8 @@ std::vector<ImageInstance *> ImageInstancesListModel::getImageInstances(const st
     image_instances.reserve(image_ids.size());
     for (const auto &image_id : image_ids)
     {
-        auto found = image_instances_.find(image_id);
-        if (found != image_instances_.end())
+        auto found = full_image_instances_.find(image_id);
+        if (found != full_image_instances_.end())
         {
             image_instances.push_back(found->second);
         }
@@ -593,8 +593,8 @@ void ImageInstancesListModel::addImagesTagIds(const std::vector<int64_t>        
 std::vector<int64_t> ImageInstancesListModel::getAllImageIds() const
 {
     std::vector<int64_t> image_ids;
-    image_ids.reserve(image_instances_.size());
-    for (const auto &[image_id, _] : image_instances_)
+    image_ids.reserve(full_image_instances_.size());
+    for (const auto &[image_id, _] : full_image_instances_)
     {
         image_ids.push_back(image_id);
     }
@@ -607,8 +607,8 @@ std::vector<int64_t> ImageInstancesListModel::getImagesDatasetIds(const std::vec
     dataset_ids.reserve(image_ids.size());
     for (const auto &image_id : image_ids)
     {
-        auto found = image_instances_.find(image_id);
-        if (found != image_instances_.end())
+        auto found = full_image_instances_.find(image_id);
+        if (found != full_image_instances_.end())
             dataset_ids.push_back(found->second->datasetId());
     }
     return dataset_ids;
@@ -618,10 +618,10 @@ void ImageInstancesListModel::getAllDatasetsImagesLabels(std::vector<int64_t>   
                                                          std::vector<int64_t>              &image_ids,
                                                          std::vector<std::vector<int64_t>> &images_label_ids) const
 {
-    dataset_ids.reserve(image_instances_.size());
-    image_ids.reserve(image_instances_.size());
-    images_label_ids.reserve(image_instances_.size());
-    for (const auto &[_, image_instance] : image_instances_)
+    dataset_ids.reserve(full_image_instances_.size());
+    image_ids.reserve(full_image_instances_.size());
+    images_label_ids.reserve(full_image_instances_.size());
+    for (const auto &[_, image_instance] : full_image_instances_)
     {
         dataset_ids.push_back(image_instance->datasetId());
         image_ids.push_back(image_instance->imageId());
@@ -664,8 +664,21 @@ void ImageInstancesListModel::updateSelection(const QItemSelection &selected, co
 
 void ImageInstancesListModel::onCurrentChanged(const QModelIndex &current, const QModelIndex &previous)
 {
-    Q_UNUSED(current)
     Q_UNUSED(previous)
+
+    // If filter is active and current selection is invalid, select first available image or clear
+    if (is_filtered_ && !current.isValid() && rowCount() > 0)
+    {
+        // Select the first available image
+        QModelIndex first_index = index(0, 0);
+        selection_->setCurrentIndex(first_index, QItemSelectionModel::ClearAndSelect);
+    }
+    else if (is_filtered_ && !current.isValid() && rowCount() == 0)
+    {
+        // No images available after filtering, clear selection
+        selection_->clear();
+    }
+
     emit currentImageChanged();
 }
 
@@ -673,8 +686,8 @@ void ImageInstancesListModel::resetModel()
 {
     beginResetModel();
     image_ids_.clear();
-    image_ids_.reserve(image_instances_.size());
-    for (const auto &[image_id, _] : image_instances_)
+    image_ids_.reserve(full_image_instances_.size());
+    for (const auto &[image_id, _] : full_image_instances_)
     {
         image_ids_.push_back(image_id);
     }
@@ -775,6 +788,91 @@ std::vector<int> ImageInstancesListModel::findRowsByImageIds(const std::vector<i
     }
 
     return rows;
+}
+
+void ImageInstancesListModel::applyFilter(const std::function<bool(int64_t)> &filter_func)
+{
+    if (!filter_func)
+    {
+        spdlog::warn("applyFilter called with null filter function");
+        return;
+    }
+
+    // Save current selection
+    int64_t current_image_id = getCurrentImageId();
+
+    rebuildFilteredList(filter_func);
+    is_filtered_ = true;
+
+    beginResetModel();
+    image_ids_ = filtered_image_ids_;
+    endResetModel();
+
+    // Handle selection state after filtering
+    if (rowCount() == 0)
+    {
+        // No images after filtering, clear selection
+        selection_->clear();
+    }
+    else if (current_image_id != -1)
+    {
+        // Check if current image is still in filtered list
+        int row = findRowByImageId(current_image_id);
+        if (row >= 0)
+        {
+            // Current image still visible, keep it selected
+            QModelIndex idx = index(row, 0);
+            selection_->setCurrentIndex(idx, QItemSelectionModel::ClearAndSelect);
+        }
+        else
+        {
+            // Current image filtered out, select first available
+            QModelIndex first_index = index(0, 0);
+            selection_->setCurrentIndex(first_index, QItemSelectionModel::ClearAndSelect);
+        }
+    }
+
+    emit statsChanged();
+    emit currentImageChanged();
+}
+
+void ImageInstancesListModel::clearFilter()
+{
+    if (!is_filtered_)
+    {
+        return; // No filter active, nothing to clear
+    }
+
+    is_filtered_ = false;
+    filtered_image_ids_.clear();
+
+    beginResetModel();
+    // Restore full list
+    image_ids_.clear();
+    image_ids_.reserve(full_image_instances_.size());
+    for (const auto &[image_id, _] : full_image_instances_)
+    {
+        image_ids_.push_back(image_id);
+    }
+    endResetModel();
+
+    emit statsChanged();
+    emit currentImageChanged();
+}
+
+void ImageInstancesListModel::rebuildFilteredList(const std::function<bool(int64_t)> &filter_func)
+{
+    filtered_image_ids_.clear();
+    filtered_image_ids_.reserve(full_image_instances_.size());
+
+    // Iterate through full_image_instances_ and apply filter
+    for (const auto &[image_id, _] : full_image_instances_)
+    {
+        if (filter_func(image_id))
+        {
+            filtered_image_ids_.push_back(image_id);
+        }
+    }
 }
 
 ImageInfoListModel::ImageInfoListModel(DatasetsListModel *datasets, ImageInstancesListModel *image_instances,

@@ -6,7 +6,7 @@ import dltool.ui
 
 Button {
     property string contentDescription: ""
-    property color normalColor: DltColor.Button
+    property color normalColor: checkable && checked ? DltColor.Highlight : DltColor.Button
     property color hoverColor:  Qt.lighter(normalColor, 1.2)
     property color pressedColor: Qt.lighter(normalColor, 1.3)
     property color textColor: DltColor.FontPrimary

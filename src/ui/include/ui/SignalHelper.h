@@ -32,6 +32,11 @@ signals:
     // Navigation signals for review-to-label navigation
     void switchToImage(int64_t image_id);
     void selectLabel(int64_t label_id);
+
+    // Filter-related signals
+    void filterCriteriaChanged(QString filterType, QVariantList ids);
+    void filterModuleEnabledChanged(QString filterType, bool enabled);
+    void clearAllFilters();
 };
 
 } // namespace dltool::ui

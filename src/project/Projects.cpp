@@ -38,13 +38,10 @@ Project::~Project() {}
 
 void Project::init()
 {
-    qInfo() << "Project::init called, qml_engine_:" << (void *)qml_engine_;
     data_manager_ = new data::DataManager(method_, database_, this);
 
     // 初始化图像提供器（会自动从 QML 上下文获取引擎）
-    qInfo() << "Calling data_manager_->initializeQmlEngine with engine:" << (void *)qml_engine_;
     data_manager_->initializeQmlEngine(qml_engine_);
-    qInfo() << "initializeQmlEngine completed";
 }
 
 void Project::initProject()
@@ -391,25 +388,11 @@ ProjectManager::ProjectManager(QObject *parent)
     : QObject(parent)
     , recent_projects_(new RectentProjects("./history.db", this))
 {
-    qInfo() << "ProjectManager constructor called";
-
     // 尝试从 QML 上下文获取引擎
     QQmlEngine *qmlEngine = QQmlEngine::contextForObject(this) ? QQmlEngine::contextForObject(this)->engine() : nullptr;
     if (qmlEngine)
     {
         qml_engine_ = qobject_cast<QQmlApplicationEngine *>(qmlEngine);
-        if (qml_engine_)
-        {
-            qInfo() << "ProjectManager: got QML engine from context:" << (void *)qml_engine_;
-        }
-        else
-        {
-            qInfo() << "ProjectManager: QML engine is not QQmlApplicationEngine";
-        }
-    }
-    else
-    {
-        qInfo() << "ProjectManager: could not get QML engine from context in constructor";
     }
 }
 

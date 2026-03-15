@@ -62,7 +62,7 @@ void LabelInstancesListModel::init()
     {
         LabelData data = label_data_helper_->createLabelData();
         data->fromBlob(labels_data[i]);
-        label_instances_[label_ids[i]]
+        full_label_instances_[label_ids[i]]
             = new LabelInstance(label_ids[i], image_ids[i], label_class_ids[i], std::move(data), this);
     }
     std::reverse(label_ids.begin(), label_ids.end());
@@ -113,8 +113,8 @@ QHash<int, QByteArray> LabelInstancesListModel::roleNames() const
 
 LabelInstance *LabelInstancesListModel::getLabelInstance(const int64_t label_id)
 {
-    auto found = label_instances_.find(label_id);
-    if (found == label_instances_.end())
+    auto found = full_label_instances_.find(label_id);
+    if (found == full_label_instances_.end())
         return nullptr;
     return found->second;
 }
@@ -174,7 +174,7 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
 
     for (size_t i = 0; i < label_ids.size(); ++i)
     {
-        label_instances_[label_ids[i]]
+        full_label_instances_[label_ids[i]]
             = new LabelInstance(label_ids[i], image_ids[i], label_class_ids[i], std::move(labels_data[i]), this);
     }
     std::vector<int64_t> sorted_label_ids(label_ids.begin(), label_ids.end());
@@ -207,7 +207,7 @@ void LabelInstancesListModel::updateLabelsData(const std::vector<int64_t>     &l
     {
         auto instance = image_instances_->getImageInstance(image_ids[i]);
 
-        const LabelData &label_data = label_instances_[label_ids[i]]->data();
+        const LabelData &label_data = full_label_instances_[label_ids[i]]->data();
         label_data->fromQVariantMap(data[i], instance->imageRect());
         labels_data_blob.push_back(label_data->toBlob());
     }
@@ -251,8 +251,8 @@ void LabelInstancesListModel::updateLabelsClass(const std::vector<int64_t> &labe
     // 更新内存中的标注实例
     for (size_t i = 0; i < label_ids.size(); ++i)
     {
-        auto found = label_instances_.find(label_ids[i]);
-        if (found != label_instances_.end())
+        auto found = full_label_instances_.find(label_ids[i]);
+        if (found != full_label_instances_.end())
         {
             found->second->setLabelClassId(label_class_ids[i]);
         }
@@ -284,11 +284,11 @@ void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids
     }
     for (const auto &label_id : label_ids)
     {
-        label_instances_.erase(label_id);
+        full_label_instances_.erase(label_id);
     }
     std::vector<int64_t> new_label_ids;
-    new_label_ids.reserve(label_instances_.size());
-    for (const auto &[label_id, _] : label_instances_)
+    new_label_ids.reserve(full_label_instances_.size());
+    for (const auto &[label_id, _] : full_label_instances_)
     {
         new_label_ids.push_back(label_id);
     }
@@ -310,7 +310,7 @@ std::vector<std::vector<int64_t>> LabelInstancesListModel::getImagesLabelIds(
     {
         const int64_t        image_id = image_ids[i];
         std::vector<int64_t> label_ids;
-        for (const auto &[label_id, instance] : label_instances_)
+        for (const auto &[label_id, instance] : full_label_instances_)
         {
             if (instance->imageId() == image_id)
                 label_ids.push_back(label_id);
@@ -322,8 +322,8 @@ std::vector<std::vector<int64_t>> LabelInstancesListModel::getImagesLabelIds(
 
 int64_t LabelInstancesListModel::getImageId(const int64_t label_id) const
 {
-    auto found = label_instances_.find(label_id);
-    if (found == label_instances_.end())
+    auto found = full_label_instances_.find(label_id);
+    if (found == full_label_instances_.end())
         return -1;
     return found->second->imageId();
 }
@@ -342,8 +342,8 @@ std::vector<int64_t> LabelInstancesListModel::getImageIds(const std::vector<int6
 std::vector<int64_t> LabelInstancesListModel::getLabelIds(const int64_t label_class_id) const
 {
     std::vector<int64_t> label_ids;
-    label_ids.reserve(label_instances_.size());
-    for (const auto &[label_id, instance] : label_instances_)
+    label_ids.reserve(full_label_instances_.size());
+    for (const auto &[label_id, instance] : full_label_instances_)
     {
         if (instance->labelClassId() == label_class_id)
             label_ids.push_back(label_id);
@@ -353,8 +353,8 @@ std::vector<int64_t> LabelInstancesListModel::getLabelIds(const int64_t label_cl
 
 int64_t LabelInstancesListModel::getLabelClassId(const int64_t label_id) const
 {
-    auto found = label_instances_.find(label_id);
-    if (found == label_instances_.end())
+    auto found = full_label_instances_.find(label_id);
+    if (found == full_label_instances_.end())
         return -1;
     return found->second->labelClassId();
 }
@@ -377,7 +377,7 @@ int LabelInstancesListModel::getLabelId(const QModelIndex &index) const
 
 int LabelInstancesListModel::getImageId(const QModelIndex &index) const
 {
-    return label_instances_.at(label_ids_[index.row()])->imageId();
+    return full_label_instances_.at(label_ids_[index.row()])->imageId();
 }
 
 int LabelInstancesListModel::getLabelClassId(const QModelIndex &index) const
@@ -408,10 +408,74 @@ QVariant LabelInstancesListModel::getData(const QModelIndex &index) const
     if (index.row() < 0 || index.row() >= rowCount())
         return QVariant();
     int64_t label_id = label_ids_[index.row()];
-    auto    found    = label_instances_.find(label_id);
-    if (found == label_instances_.end())
+    auto    found    = full_label_instances_.find(label_id);
+    if (found == full_label_instances_.end())
         return QVariant();
     return found->second->data()->dataMap();
+}
+
+void LabelInstancesListModel::applyFilter(const std::function<bool(int64_t)> &image_filter_func)
+{
+    if (!image_filter_func)
+    {
+        qWarning() << "applyFilter called with null filter function";
+        return;
+    }
+
+    rebuildFilteredList(image_filter_func);
+    is_filtered_ = true;
+
+    beginResetModel();
+    label_ids_ = filtered_label_ids_;
+    endResetModel();
+
+    // Handle selection state after filtering
+    if (rowCount() == 0)
+    {
+        // No labels after filtering, clear selection
+        selection_->clear();
+    }
+}
+
+void LabelInstancesListModel::clearFilter()
+{
+    if (!is_filtered_)
+    {
+        return; // No filter active, nothing to clear
+    }
+
+    is_filtered_ = false;
+    filtered_label_ids_.clear();
+
+    beginResetModel();
+    // Restore full list
+    label_ids_.clear();
+    label_ids_.reserve(full_label_instances_.size());
+    for (const auto &[label_id, _] : full_label_instances_)
+    {
+        label_ids_.push_back(label_id);
+    }
+    std::reverse(label_ids_.begin(), label_ids_.end());
+    endResetModel();
+}
+
+void LabelInstancesListModel::rebuildFilteredList(const std::function<bool(int64_t)> &image_filter_func)
+{
+    filtered_label_ids_.clear();
+    filtered_label_ids_.reserve(full_label_instances_.size());
+
+    // Iterate through full_label_instances_ and apply filter based on image_id
+    for (const auto &[label_id, instance] : full_label_instances_)
+    {
+        int64_t image_id = instance->imageId();
+        if (image_filter_func(image_id))
+        {
+            filtered_label_ids_.push_back(label_id);
+        }
+    }
+
+    // Maintain reverse order (newest first)
+    std::reverse(filtered_label_ids_.begin(), filtered_label_ids_.end());
 }
 
 ImageLabelsListModel::ImageLabelsListModel(ImageInstancesListModel *image_instances,
