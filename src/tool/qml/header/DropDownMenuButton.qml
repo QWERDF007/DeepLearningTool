@@ -129,7 +129,7 @@ DltButton {
                         delegate: DltCheckBox {
                             id: itemCheckBox
                             text: model.text
-                            width: parent.width
+                            width: popupModel.width
                             property bool updatingFromModel: false
                             
                             // Use Component.onCompleted to set initial state
