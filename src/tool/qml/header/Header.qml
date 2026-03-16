@@ -134,7 +134,7 @@ Rectangle {
                         Layout.preferredWidth: 200
                         text: "按数据集: "
                         filterType: "dataset"
-                        model: datasetFilterModel
+                        model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.datasetFilterItems : null
                     }
                     DropDownMenuButton {
                         id: tagDropDown
@@ -142,114 +142,20 @@ Rectangle {
                         Layout.preferredWidth: 200
                         text: "按Tag: "
                         filterType: "tag"
-                        model: tagFilterModel
+                        model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.tagFilterItems : null
                     }
                 }
             }
         }
     }
     
-    // Dynamic models populated from DataManager
-    ListModel {
-        id: datasetFilterModel
-    }
-    
-    ListModel {
-        id: tagFilterModel
-    }
-    
-    // Instantiators to populate models from DataManager models
-    Instantiator {
-        id: datasetInstantiator
-        model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.datasets : null
-        delegate: QtObject {
-            Component.onCompleted: {
-                datasetFilterModel.append({
-                    id: model.dataset_id,
-                    text: model.name,
-                    checked: true  // Default to checked (select all)
-                })
-            }
-        }
-        onObjectAdded: function(index, object) {
-            // After all items are added, update the dropdown
-            if (index === count - 1) {
-                Qt.callLater(function() {
-                    datasetDropDown.updateCheckedIds()
-                })
-            }
-        }
-    }
-    
-    Instantiator {
-        id: tagInstantiator
-        model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.imageTags : null
-        delegate: QtObject {
-            Component.onCompleted: {
-                tagFilterModel.append({
-                    id: model.tag_id,
-                    text: model.name,
-                    checked: true  // Default to checked (select all)
-                })
-            }
-        }
-        onObjectAdded: function(index, object) {
-            // After all items are added, update the dropdown
-            if (index === count - 1) {
-                Qt.callLater(function() {
-                    tagDropDown.updateCheckedIds()
-                })
-            }
-        }
-    }
-    
-    // Clear and repopulate when project changes
+    // Clear filter UI state when project changes
     Connections {
         target: ProjectManager
         function onCurrentProjectChanged() {
-            datasetFilterModel.clear()
-            tagFilterModel.clear()
-            
-            // 手动填充模型（作为 Instantiator 的备份）
-            if (ProjectManager.currentProject && ProjectManager.currentProject.dataManager) {
-                let dataManager = ProjectManager.currentProject.dataManager
-                
-                // 填充数据集模型
-                let datasets = dataManager.datasets
-                for (let i = 0; i < datasets.rowCount(); i++) {
-                    let idx = datasets.index(i, 0)
-                    let datasetId = datasets.data(idx, 257)  // DatasetIdRole
-                    let datasetName = datasets.data(idx, 258)  // NameRole
-                    if (datasetId !== undefined && datasetName !== undefined) {
-                        datasetFilterModel.append({
-                            id: datasetId,
-                            text: datasetName,
-                            checked: true  // Default to checked (select all)
-                        })
-                    }
-                }
-                
-                // 填充标签模型
-                let tags = dataManager.imageTags
-                for (let i = 0; i < tags.rowCount(); i++) {
-                    let idx = tags.index(i, 0)
-                    let tagId = tags.data(idx, 257)  // TagIdRole
-                    let tagName = tags.data(idx, 258)  // NameRole
-                    if (tagId !== undefined && tagName !== undefined) {
-                        tagFilterModel.append({
-                            id: tagId,
-                            text: tagName,
-                            checked: true  // Default to checked (select all)
-                        })
-                    }
-                }
-                
-                // Update the dropdowns after populating
-                Qt.callLater(function() {
-                    datasetDropDown.updateCheckedIds()
-                    tagDropDown.updateCheckedIds()
-                })
-            }
+            // Reset dropdown UI state
+            datasetDropDown.checked = false
+            tagDropDown.checked = false
         }
     }
 }

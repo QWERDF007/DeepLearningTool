@@ -42,6 +42,14 @@ void DataManager::init(const int method)
     global_filter_ = new GlobalFilter(image_instances_, label_instances_, this);
     global_filter_->initializeFilterModules(datasets_, image_tags_);
 
+    // Create filter items models
+    dataset_filter_items_ = new DatasetFilterItemsModel(this);
+    tag_filter_items_     = new TagFilterItemsModel(this);
+
+    // Populate filter items models from datasets and tags
+    dataset_filter_items_->populateFromDatasets(datasets_);
+    tag_filter_items_->populateFromTags(image_tags_);
+
     connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_labels_list_,
             &ImageLabelsListModel::onCurrentImageChanged);
     connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_labels_table_,

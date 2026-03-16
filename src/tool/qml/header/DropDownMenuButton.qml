@@ -3,9 +3,8 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Templates as T
 
-//import dl.studio.theme 1.0
-
 import dltool.ui
+import dltool.data
 
 
 DltButton {
@@ -19,6 +18,13 @@ DltButton {
     // NEW: Filter-related properties (Subtask 9.1)
     property string filterType: ""  // "dataset" or "tag"
     property var checkedIds: []     // Track checked item IDs
+    
+    // Initialize checkedIds when model changes
+    onModelChanged: {
+        if (model) {
+            Qt.callLater(updateCheckedIds)
+        }
+    }
 
     //    padding: 0
     leftPadding: 0
@@ -188,33 +194,44 @@ DltButton {
     
     // NEW: Select all items (Subtask 9.4)
     function selectAll() {
-        for (let i = 0; i < model.count; i++) {
-            model.setProperty(i, "checked", true)
+        if (!model) return
+        
+        for (let i = 0; i < model.rowCount(); i++) {
+            let idx = model.index(i, 0)
+            model.setData(idx, true, FilterItemsModel.CheckedRole)
         }
         updateCheckedIds()
     }
     
     // NEW: Deselect all items (Subtask 9.4)
     function deselectAll() {
-        for (let i = 0; i < model.count; i++) {
-            model.setProperty(i, "checked", false)
+        if (!model) return
+        
+        for (let i = 0; i < model.rowCount(); i++) {
+            let idx = model.index(i, 0)
+            model.setData(idx, false, FilterItemsModel.CheckedRole)
         }
         updateCheckedIds()
     }
     
     // NEW: Update checked IDs and emit signal (Subtask 9.4)
     function updateCheckedIds() {
+        if (!model) return
+        
         let ids = []
-        for (let i = 0; i < model.count; i++) {
-            if (model.get(i).checked) {
-                ids.push(model.get(i).id)
+        for (let i = 0; i < model.rowCount(); i++) {
+            let idx = model.index(i, 0)
+            let isChecked = model.data(idx, FilterItemsModel.CheckedRole)
+            if (isChecked) {
+                let itemId = model.data(idx, FilterItemsModel.IdRole)
+                ids.push(itemId)
             }
         }
         checkedIds = ids
         
         // Update the select all / deselect all checkboxes state
         let checkedCount = ids.length
-        let totalCount = model.count
+        let totalCount = model.rowCount()
         
         // Use a flag to prevent triggering onCheckedChanged during programmatic updates
         if (popup.visible) {
@@ -238,17 +255,19 @@ DltButton {
     
     // NEW: Display checked count and enabled state (Subtask 9.5)
     function updateDisplayText() {
+        if (!model) return text + " (未加载)"
+        
         let checkedCount = checkedIds.length
-        let totalCount = model.count
+        let totalCount = model.rowCount()
         
         if (!control.checked) {
             return text + " (未启用)"
         }
         
         if (checkedCount === 0) {
-            return text + " 无"
+            return text + " 全不选"
         } else if (checkedCount === totalCount) {
-            return text + " 全部"
+            return text + " 全选"
         } else {
             return text + " " + checkedCount + "/" + totalCount
         }
