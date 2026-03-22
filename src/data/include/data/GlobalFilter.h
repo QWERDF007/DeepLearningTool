@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QtQml>
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -14,6 +15,7 @@ class DatasetsListModel;
 class ImageTagsListModel;
 class DatasetFilterModule;
 class TagFilterModule;
+class FilterModule;
 
 /**
  * @brief 过滤条件结构体
@@ -22,8 +24,8 @@ class TagFilterModule;
  */
 struct FilterCriteria
 {
-    std::unordered_set<int64_t> dataset_ids; // 选中的数据集ID（空表示全部）
-    std::unordered_set<int64_t> tag_ids;     // 选中的标签ID（空表示全部）
+    std::unordered_set<int64_t> dataset_ids; // 选中的数据集ID（空表示未选择任何条件）
+    std::unordered_set<int64_t> tag_ids;     // 选中的标签ID（空表示未选择任何条件）
 
     /**
      * @brief 检查过滤条件是否为空
@@ -52,6 +54,18 @@ class GlobalFilter : public QObject
     Q_PROPERTY(QString filterSummary READ filterSummary NOTIFY filterStateChanged)
 
 public:
+    /**
+     * @brief 过滤器类型枚举
+     * 
+     * 用于标识不同的过滤模块类型，提供类型安全的过滤器标识
+     */
+    enum class FilterType
+    {
+        Dataset, // 数据集过滤器
+        Tag      // 标签过滤器
+    };
+    Q_ENUM(FilterType)
+
     GlobalFilter(ImageInstancesListModel *image_model, LabelInstancesListModel *label_model, QObject *parent = nullptr);
     ~GlobalFilter();
 
@@ -82,30 +96,33 @@ public:
      */
     QString filterSummary() const;
 
-    // 过滤条件管理
+    // 通用过滤器接口方法
     /**
-     * @brief 设置数据集过滤条件
-     * @param dataset_ids 选中的数据集ID列表
+     * @brief 设置过滤条件（通用方法）
+     * @param type 过滤器类型
+     * @param ids 选中的ID列表
      */
-    Q_INVOKABLE void setDatasetFilter(const std::vector<int64_t> &dataset_ids);
+    Q_INVOKABLE void setFilter(FilterType type, const std::vector<int64_t> &ids);
 
     /**
-     * @brief 设置标签过滤条件
-     * @param tag_ids 选中的标签ID列表
-     */
-    Q_INVOKABLE void setTagFilter(const std::vector<int64_t> &tag_ids);
-
-    /**
-     * @brief 启用/禁用数据集过滤器
+     * @brief 启用/禁用过滤器（通用方法）
+     * @param type 过滤器类型
      * @param enabled 是否启用
      */
-    Q_INVOKABLE void setDatasetFilterEnabled(bool enabled);
+    Q_INVOKABLE void setFilterEnabled(FilterType type, bool enabled);
 
     /**
-     * @brief 启用/禁用标签过滤器
-     * @param enabled 是否启用
+     * @brief 清除过滤器（通用方法）
+     * @param type 过滤器类型
      */
-    Q_INVOKABLE void setTagFilterEnabled(bool enabled);
+    Q_INVOKABLE void clearFilter(FilterType type);
+
+    /**
+     * @brief 获取激活的ID列表（通用方法）
+     * @param type 过滤器类型
+     * @return ID列表
+     */
+    Q_INVOKABLE std::vector<int64_t> getActiveIds(FilterType type) const;
 
     /**
      * @brief 清除所有过滤器
@@ -113,33 +130,10 @@ public:
     Q_INVOKABLE void clearAllFilters();
 
     /**
-     * @brief 清除数据集过滤器
-     */
-    Q_INVOKABLE void clearDatasetFilter();
-
-    /**
-     * @brief 清除标签过滤器
-     */
-    Q_INVOKABLE void clearTagFilter();
-
-    // 获取当前过滤状态
-    /**
-     * @brief 获取激活的数据集ID列表
-     * @return 数据集ID列表
-     */
-    Q_INVOKABLE std::vector<int64_t> getActiveDatasetIds() const;
-
-    /**
-     * @brief 获取激活的标签ID列表
-     * @return 标签ID列表
-     */
-    Q_INVOKABLE std::vector<int64_t> getActiveTagIds() const;
-
-    /**
      * @brief 应用过滤器到数据模型
      * 
      * 根据当前过滤条件更新图像和标注模型的显示内容
-     * 如果条件未改变，则跳过过滤操作以提高性能
+     * 如果条件未改变，通常会跳过过滤操作以提高性能
      */
     void applyFilters();
 
@@ -148,6 +142,13 @@ signals:
     void filterApplied();      // 过滤器应用完成信号
 
 private:
+    /**
+     * @brief 获取指定类型的过滤模块
+     * @param type 过滤器类型
+     * @return 过滤模块指针，如果类型无效返回nullptr
+     */
+    FilterModule *getFilterModule(FilterType type) const;
+
     /**
      * @brief 更新当前过滤条件
      * 
@@ -183,8 +184,12 @@ private:
     std::unique_ptr<DatasetFilterModule> dataset_filter_; // 数据集过滤模块
     std::unique_ptr<TagFilterModule>     tag_filter_;     // 标签过滤模块
 
+    std::unordered_map<FilterType, FilterModule *> filter_modules_; // 过滤模块映射表
+
     FilterCriteria current_criteria_;  // 当前过滤条件
     FilterCriteria previous_criteria_; // 上一次过滤条件（用于避免不必要的过滤）
+
+    bool force_apply_{false}; // 强制重新应用过滤（跳过条件未变的优化）
 };
 
 } // namespace dltool::data

@@ -19,7 +19,6 @@ GlobalFilter::GlobalFilter(ImageInstancesListModel *image_model, LabelInstancesL
 
 GlobalFilter::~GlobalFilter()
 {
-    // unique_ptr会自动清理资源
 }
 
 void GlobalFilter::initializeFilterModules(DatasetsListModel *datasets_model, ImageTagsListModel *tags_model)
@@ -30,29 +29,124 @@ void GlobalFilter::initializeFilterModules(DatasetsListModel *datasets_model, Im
     // 初始化标签过滤模块
     tag_filter_ = std::make_unique<TagFilterModule>(image_model_, tags_model, this);
 
-    // 连接过滤模块信号到applyFilters槽
-    connect(dataset_filter_.get(), &FilterModule::criteriaChanged, this, &GlobalFilter::applyFilters);
-    connect(dataset_filter_.get(), &FilterModule::enabledChanged, this, &GlobalFilter::applyFilters);
+    // 注册过滤模块到map中
+    filter_modules_[FilterType::Dataset] = dataset_filter_.get();
+    filter_modules_[FilterType::Tag]     = tag_filter_.get();
 
-    connect(tag_filter_.get(), &FilterModule::criteriaChanged, this, &GlobalFilter::applyFilters);
-    connect(tag_filter_.get(), &FilterModule::enabledChanged, this, &GlobalFilter::applyFilters);
+    // 连接过滤模块信号到applyFilters槽（使用循环遍历map）
+    for (auto &[type, module] : filter_modules_)
+    {
+        connect(module, &FilterModule::criteriaChanged, this, &GlobalFilter::applyFilters);
+        connect(module, &FilterModule::enabledChanged, this, &GlobalFilter::applyFilters);
+    }
+}
+
+FilterModule *GlobalFilter::getFilterModule(FilterType type) const
+{
+    auto it = filter_modules_.find(type);
+    if (it == filter_modules_.end())
+    {
+        qWarning() << "GlobalFilter: Invalid filter type requested:" << static_cast<int>(type);
+        return nullptr;
+    }
+    return it->second;
+}
+
+void GlobalFilter::setFilter(FilterType type, const std::vector<int64_t> &ids)
+{
+    FilterModule *module = getFilterModule(type);
+    if (!module)
+    {
+        qWarning() << "GlobalFilter: Cannot set filter for invalid type:" << static_cast<int>(type);
+        return;
+    }
+
+    module->setCriteria(ids);
+    updateFilterCriteria();
+    applyFilters();
+    emit filterStateChanged();
+}
+
+void GlobalFilter::setFilterEnabled(FilterType type, bool enabled)
+{
+    FilterModule *module = getFilterModule(type);
+    if (!module)
+    {
+        qWarning() << "GlobalFilter: Cannot set filter enabled for invalid type:" << static_cast<int>(type);
+        return;
+    }
+
+    bool was_enabled = module->isEnabled();
+    module->setEnabled(enabled);
+
+    // 如果启用状态发生变化，强制更新过滤条件并重新应用
+    if (was_enabled != enabled)
+    {
+        updateFilterCriteria();
+        // 强制重新应用过滤，即使条件看起来没变
+        // 因为启用状态的变化本身就需要重新过滤
+        force_apply_ = true;
+        applyFilters();
+    }
+
+    emit filterStateChanged();
+}
+
+void GlobalFilter::clearFilter(FilterType type)
+{
+    FilterModule *module = getFilterModule(type);
+    if (!module)
+    {
+        qWarning() << "GlobalFilter: Cannot clear filter for invalid type:" << static_cast<int>(type);
+        return;
+    }
+
+    module->clear();
+    updateFilterCriteria();
+    applyFilters();
+    emit filterStateChanged();
+}
+
+std::vector<int64_t> GlobalFilter::getActiveIds(FilterType type) const
+{
+    FilterModule *module = getFilterModule(type);
+    if (!module)
+    {
+        return std::vector<int64_t>();
+    }
+
+    if (!module->isActive())
+    {
+        return std::vector<int64_t>();
+    }
+
+    auto criteria = module->getActiveCriteria();
+    return std::vector<int64_t>(criteria.begin(), criteria.end());
 }
 
 bool GlobalFilter::isActive() const
 {
-    return (dataset_filter_ && dataset_filter_->isActive()) || (tag_filter_ && tag_filter_->isActive());
+    // 遍历 filter_modules_ map，检查任一模块是否激活
+    for (const auto &[type, module] : filter_modules_)
+    {
+        if (module && module->isActive())
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 int GlobalFilter::activeFilterCount() const
 {
+    // 遍历 filter_modules_ map，计数激活的模块数量
     int count = 0;
-    if (dataset_filter_ && dataset_filter_->isActive())
+    for (const auto &[type, module] : filter_modules_)
     {
-        count++;
-    }
-    if (tag_filter_ && tag_filter_->isActive())
-    {
-        count++;
+        if (module && module->isActive())
+        {
+            count++;
+        }
     }
     return count;
 }
@@ -61,16 +155,30 @@ QString GlobalFilter::filterSummary() const
 {
     QStringList summary_parts;
 
-    if (dataset_filter_ && dataset_filter_->isActive())
+    // 遍历 filter_modules_ map，为每个激活的模块生成摘要
+    for (const auto &[type, module] : filter_modules_)
     {
-        auto criteria = dataset_filter_->getActiveCriteria();
-        summary_parts.append(QString("数据集: %1").arg(criteria.size()));
-    }
+        if (module && module->isActive())
+        {
+            auto criteria = module->getActiveCriteria();
 
-    if (tag_filter_ && tag_filter_->isActive())
-    {
-        auto criteria = tag_filter_->getActiveCriteria();
-        summary_parts.append(QString("标签: %1").arg(criteria.size()));
+            // 使用 FilterType 枚举确定显示文本
+            QString type_name;
+            switch (type)
+            {
+            case FilterType::Dataset:
+                type_name = "数据集";
+                break;
+            case FilterType::Tag:
+                type_name = "标签";
+                break;
+            default:
+                type_name = "未知";
+                break;
+            }
+
+            summary_parts.append(QString("%1: %2").arg(type_name).arg(criteria.size()));
+        }
     }
 
     if (summary_parts.isEmpty())
@@ -79,70 +187,6 @@ QString GlobalFilter::filterSummary() const
     }
 
     return summary_parts.join(", ");
-}
-
-void GlobalFilter::setDatasetFilter(const std::vector<int64_t> &dataset_ids)
-{
-    if (dataset_filter_)
-    {
-        dataset_filter_->setCriteria(dataset_ids);
-        updateFilterCriteria();
-        applyFilters();
-        emit filterStateChanged();
-    }
-}
-
-void GlobalFilter::setTagFilter(const std::vector<int64_t> &tag_ids)
-{
-    if (tag_filter_)
-    {
-        tag_filter_->setCriteria(tag_ids);
-        updateFilterCriteria();
-        applyFilters();
-        emit filterStateChanged();
-    }
-}
-
-void GlobalFilter::setDatasetFilterEnabled(bool enabled)
-{
-    if (dataset_filter_)
-    {
-        bool was_enabled = dataset_filter_->isEnabled();
-        dataset_filter_->setEnabled(enabled);
-
-        // 如果启用状态发生变化，强制更新过滤条件并重新应用
-        if (was_enabled != enabled)
-        {
-            updateFilterCriteria();
-            // 强制重新应用过滤，即使条件看起来没变
-            // 因为启用状态的变化本身就需要重新过滤
-            previous_criteria_ = FilterCriteria(); // 重置以强制重新过滤
-            applyFilters();
-        }
-
-        emit filterStateChanged();
-    }
-}
-
-void GlobalFilter::setTagFilterEnabled(bool enabled)
-{
-    if (tag_filter_)
-    {
-        bool was_enabled = tag_filter_->isEnabled();
-        tag_filter_->setEnabled(enabled);
-
-        // 如果启用状态发生变化，强制更新过滤条件并重新应用
-        if (was_enabled != enabled)
-        {
-            updateFilterCriteria();
-            // 强制重新应用过滤，即使条件看起来没变
-            // 因为启用状态的变化本身就需要重新过滤
-            previous_criteria_ = FilterCriteria(); // 重置以强制重新过滤
-            applyFilters();
-        }
-
-        emit filterStateChanged();
-    }
 }
 
 void GlobalFilter::clearAllFilters()
@@ -171,50 +215,12 @@ void GlobalFilter::clearAllFilters()
     }
 }
 
-void GlobalFilter::clearDatasetFilter()
-{
-    if (dataset_filter_)
-    {
-        dataset_filter_->clear();
-        updateFilterCriteria();
-        applyFilters();
-        emit filterStateChanged();
-    }
-}
-
-void GlobalFilter::clearTagFilter()
-{
-    if (tag_filter_)
-    {
-        tag_filter_->clear();
-        updateFilterCriteria();
-        applyFilters();
-        emit filterStateChanged();
-    }
-}
-
-std::vector<int64_t> GlobalFilter::getActiveDatasetIds() const
-{
-    if (dataset_filter_ && dataset_filter_->isActive())
-    {
-        auto criteria = dataset_filter_->getActiveCriteria();
-        return std::vector<int64_t>(criteria.begin(), criteria.end());
-    }
-    return std::vector<int64_t>();
-}
-
-std::vector<int64_t> GlobalFilter::getActiveTagIds() const
-{
-    if (tag_filter_ && tag_filter_->isActive())
-    {
-        auto criteria = tag_filter_->getActiveCriteria();
-        return std::vector<int64_t>(criteria.begin(), criteria.end());
-    }
-    return std::vector<int64_t>();
-}
-
 void GlobalFilter::applyFilters()
 {
+    // 如果需要强制应用过滤（例如启用状态变化），跳过“条件未变则不重新过滤”的优化
+    const bool should_force_apply = force_apply_;
+    force_apply_                  = false;
+
     // 检查是否有激活的过滤器
     if (!isActive())
     {
@@ -236,7 +242,7 @@ void GlobalFilter::applyFilters()
     }
 
     // 检查过滤条件是否改变 - 如果没有改变，跳过过滤操作（性能优化）
-    if (!hasFilterCriteriaChanged())
+    if (!should_force_apply && !hasFilterCriteriaChanged())
     {
         // 条件未改变，无需重新应用过滤
         return;

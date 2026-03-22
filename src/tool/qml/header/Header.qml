@@ -20,37 +20,6 @@ Rectangle {
         function onChangeTabBarIndex(index) {
             mainTabBar.currentIndex = index
         }
-        
-        function onFilterCriteriaChanged(filterType, ids) {
-            if (globalFilter) {
-                if (filterType === "dataset") {
-                    globalFilter.setDatasetFilter(ids)
-                } else if (filterType === "tag") {
-                    globalFilter.setTagFilter(ids)
-                }
-            }
-        }
-        
-        function onFilterModuleEnabledChanged(filterType, enabled) {
-            if (globalFilter) {
-                if (filterType === "dataset") {
-                    globalFilter.setDatasetFilterEnabled(enabled)
-                } else if (filterType === "tag") {
-                    globalFilter.setTagFilterEnabled(enabled)
-                }
-            }
-        }
-        
-        function onClearAllFilters() {
-            if (globalFilter) {
-                globalFilter.clearAllFilters()
-                // Reset UI state
-                datasetDropDown.checked = false
-                datasetDropDown.deselectAll()
-                tagDropDown.checked = false
-                tagDropDown.deselectAll()
-            }
-        }
     }
 
     ColumnLayout {
@@ -59,7 +28,6 @@ Rectangle {
         anchors.rightMargin: 5
         RowLayout {
             Layout.fillWidth: true
-            // Layout.fillHeight: true
             Layout.preferredHeight: 36
             MenuTabBar {
                 id: mainTabBar
@@ -125,7 +93,16 @@ Rectangle {
                         iconSource: DltFontIcon.Clear
                         text: "清除所有"
                         visible: globalFilter && globalFilter.isActive
-                        onClicked: SignalHelper.clearAllFilters()
+                        onClicked: {
+                            if (globalFilter) {
+                                globalFilter.clearAllFilters()
+                                // Reset UI state
+                                datasetDropDown.checked = false
+                                datasetDropDown.selectAll()
+                                tagDropDown.checked = false
+                                tagDropDown.selectAll()
+                            }
+                        }
                     }
                     
                     DropDownMenuButton {
@@ -133,7 +110,8 @@ Rectangle {
                         Layout.fillHeight: true
                         Layout.preferredWidth: 200
                         text: "按数据集: "
-                        filterType: "dataset"
+                        filterType: GlobalFilter.FilterType.Dataset
+                        globalFilter: header.globalFilter
                         model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.datasetFilterItems : null
                     }
                     DropDownMenuButton {
@@ -141,7 +119,8 @@ Rectangle {
                         Layout.fillHeight: true
                         Layout.preferredWidth: 200
                         text: "按Tag: "
-                        filterType: "tag"
+                        filterType: GlobalFilter.FilterType.Tag
+                        globalFilter: header.globalFilter
                         model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.tagFilterItems : null
                     }
                 }

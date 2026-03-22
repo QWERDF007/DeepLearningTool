@@ -14,19 +14,48 @@ DltButton {
     opacity: enabled ? 1.0 : 0.3
 
     property alias model : popupModel.model
+    property string displayText: ""
     
-    // NEW: Filter-related properties (Subtask 9.1)
-    property string filterType: ""  // "dataset" or "tag"
-    property var checkedIds: []     // Track checked item IDs
+    // Filter-related properties
+    property int filterType: GlobalFilter.FilterType.Dataset  // Use FilterType enum
+    property var globalFilter: null  // GlobalFilter instance
     
     // Initialize checkedIds when model changes
     onModelChanged: {
         if (model) {
-            Qt.callLater(updateCheckedIds)
+            Qt.callLater(function() {
+                // If nothing is checked on first load, default to "select all"
+                if (!control.hasAnyChecked()) {
+                    control.selectAll()
+                } else {
+                    control.updateCheckedIds()
+                }
+                control.refreshDisplayText()
+            })
+        } else {
+            control.refreshDisplayText()
         }
     }
 
-    //    padding: 0
+    Connections {
+        target: control.model
+        function onDataChanged(topLeft, bottomRight, roles) {
+            control.updateCheckedIds()
+        }
+        function onModelReset() {
+            control.updateCheckedIds()
+        }
+        function onRowsInserted(parent, first, last) {
+            control.updateCheckedIds()
+        }
+        function onRowsRemoved(parent, first, last) {
+            control.updateCheckedIds()
+        }
+        function onLayoutChanged(parents, hint) {
+            control.updateCheckedIds()
+        }
+    }
+
     leftPadding: 0
     rightPadding: 0
     topPadding: 0
@@ -34,24 +63,29 @@ DltButton {
 
     spacing: 6
 
-    // NEW: Make button checkable to control filter enabled state (Subtask 9.1)
     checkable: true
     checked: false  // Default unchecked (filter disabled)
 
     onCheckedChanged: {
-        
-        // Notify filter module enabled state changed
-        SignalHelper.filterModuleEnabledChanged(filterType, checked)
-        
-        // If becoming enabled, apply current criteria
-        if (checked) {
-            SignalHelper.filterCriteriaChanged(filterType, checkedIds)
+        // When enabling, push criteria first so default "select all" won't be treated as empty criteria.
+        if (!globalFilter) {
+            console.warn("DropDownMenuButton: globalFilter is null")
+            return
         }
+
+        if (checked) {
+            let ids = control.getCheckedIds()
+            globalFilter.setFilter(filterType, ids)
+            globalFilter.setFilterEnabled(filterType, true)
+        } else {
+            globalFilter.setFilterEnabled(filterType, false)
+        }
+
+        control.refreshDisplayText()
     }
 
     contentItem: RowLayout {
         id: container
-        //        clip: true
         anchors.centerIn: parent
         DltTextIconButton {
             id: dropDownBtn
@@ -79,6 +113,9 @@ DltButton {
                     width: 1
                 }
                 closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                onOpened: {
+                    control.updateCheckedIds()
+                }
                 
                 ColumnLayout {
                     spacing: 5
@@ -156,7 +193,6 @@ DltButton {
                                 }
                             }
                             
-                            // NEW: Handle check state change (Subtask 9.4)
                             onCheckedChanged: {
                                 if (!updatingFromModel && model.checked !== checked) {
                                     model.checked = checked
@@ -168,15 +204,13 @@ DltButton {
                 }
                 
                 maskVisible: false
-                // T.Overlay.modal: null // 不显示遮罩
             }
         }
 
         DltText {
-            text: control.updateDisplayText()  // MODIFIED: Use dynamic text (Subtask 9.5)
+            text: control.displayText
             font: control.font
 
-            // MODIFIED: Text color changes when checked (Subtask 9.2)
             color: control.checked ? DltColor.FontPrimary : control.palette.brightText
             horizontalAlignment: Text.AlignLeft
             verticalAlignment: Text.AlignVCenter
@@ -217,17 +251,8 @@ DltButton {
     // NEW: Update checked IDs and emit signal (Subtask 9.4)
     function updateCheckedIds() {
         if (!model) return
-        
-        let ids = []
-        for (let i = 0; i < model.rowCount(); i++) {
-            let idx = model.index(i, 0)
-            let isChecked = model.data(idx, FilterItemsModel.CheckedRole)
-            if (isChecked) {
-                let itemId = model.data(idx, FilterItemsModel.IdRole)
-                ids.push(itemId)
-            }
-        }
-        checkedIds = ids
+
+        let ids = control.getCheckedIds()
         
         // Update the select all / deselect all checkboxes state
         let checkedCount = ids.length
@@ -247,17 +272,62 @@ DltButton {
             }
         }
         
-        // Only apply filter if button is checked (filter enabled)
-        if (control.checked) {
-            SignalHelper.filterCriteriaChanged(filterType, ids)
+        // Call GlobalFilter directly to set filter criteria
+        if (control.checked && globalFilter) {
+            globalFilter.setFilter(filterType, ids)
+        } else if (!globalFilter) {
+            console.warn("DropDownMenuButton: globalFilter is null")
         }
+
+        control.refreshDisplayText()
+    }
+
+    function hasAnyChecked() {
+        if (!model) return false
+
+        for (let i = 0; i < model.rowCount(); i++) {
+            let idx = model.index(i, 0)
+            let isChecked = model.data(idx, FilterItemsModel.CheckedRole)
+            if (isChecked) {
+                return true
+            }
+        }
+        return false
+    }
+
+    function getCheckedIds() {
+        if (!model) return []
+
+        let ids = []
+        for (let i = 0; i < model.rowCount(); i++) {
+            let idx = model.index(i, 0)
+            let isChecked = model.data(idx, FilterItemsModel.CheckedRole)
+            if (isChecked) {
+                let itemId = model.data(idx, FilterItemsModel.IdRole)
+                ids.push(itemId)
+            }
+        }
+        return ids
     }
     
+    function refreshDisplayText() {
+        control.displayText = control.computeDisplayText()
+    }
+
     // NEW: Display checked count and enabled state (Subtask 9.5)
-    function updateDisplayText() {
+    function computeDisplayText() {
         if (!model) return text + " (未加载)"
         
-        let checkedCount = checkedIds.length
+        // Calculate checked count dynamically
+        let checkedCount = 0
+        for (let i = 0; i < model.rowCount(); i++) {
+            let idx = model.index(i, 0)
+            let isChecked = model.data(idx, FilterItemsModel.CheckedRole)
+            if (isChecked) {
+                checkedCount++
+            }
+        }
+        
         let totalCount = model.rowCount()
         
         if (!control.checked) {
