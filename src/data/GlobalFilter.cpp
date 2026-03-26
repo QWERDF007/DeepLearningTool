@@ -4,8 +4,10 @@
 #include "data/Datasets.h"
 #include "data/ImageTags.h"
 #include "data/Images.h"
+#include "data/LabelClassFilterModule.h"
 #include "data/Labels.h"
 #include "data/TagFilterModule.h"
+
 
 namespace dltool::data {
 
@@ -17,9 +19,7 @@ GlobalFilter::GlobalFilter(ImageInstancesListModel *image_model, LabelInstancesL
     // 过滤模块将在DataManager完全构造后通过initializeFilterModules()初始化
 }
 
-GlobalFilter::~GlobalFilter()
-{
-}
+GlobalFilter::~GlobalFilter() {}
 
 void GlobalFilter::initializeFilterModules(DatasetsListModel *datasets_model, ImageTagsListModel *tags_model)
 {
@@ -29,9 +29,13 @@ void GlobalFilter::initializeFilterModules(DatasetsListModel *datasets_model, Im
     // 初始化标签过滤模块
     tag_filter_ = std::make_unique<TagFilterModule>(image_model_, tags_model, this);
 
+    // 初始化标注类别过滤模块
+    label_class_filter_ = std::make_unique<LabelClassFilterModule>(this);
+
     // 注册过滤模块到map中
-    filter_modules_[FilterType::Dataset] = dataset_filter_.get();
-    filter_modules_[FilterType::Tag]     = tag_filter_.get();
+    filter_modules_[FilterType::Dataset]    = dataset_filter_.get();
+    filter_modules_[FilterType::Tag]        = tag_filter_.get();
+    filter_modules_[FilterType::LabelClass] = label_class_filter_.get();
 
     // 连接过滤模块信号到applyFilters槽（使用循环遍历map）
     for (auto &[type, module] : filter_modules_)
@@ -172,6 +176,9 @@ QString GlobalFilter::filterSummary() const
             case FilterType::Tag:
                 type_name = "标签";
                 break;
+            case FilterType::LabelClass:
+                type_name = "类别";
+                break;
             default:
                 type_name = "未知";
                 break;
@@ -204,6 +211,13 @@ void GlobalFilter::clearAllFilters()
     {
         tag_filter_->clear();
         tag_filter_->setEnabled(false);
+        changed = true;
+    }
+
+    if (label_class_filter_)
+    {
+        label_class_filter_->clear();
+        label_class_filter_->setEnabled(false);
         changed = true;
     }
 
@@ -270,7 +284,16 @@ void GlobalFilter::applyFilters()
             return shouldIncludeImage(image_id);
         };
 
-        label_model_->applyFilter(image_filter_func);
+        auto label_class_filter_func = [this](int64_t label_class_id) -> bool
+        {
+            if (label_class_filter_ && label_class_filter_->isEnabled())
+            {
+                return label_class_filter_->passes(label_class_id);
+            }
+            return true;
+        };
+
+        label_model_->applyFilter(image_filter_func, label_class_filter_func);
     }
 
     // 成功过滤后更新上一次的过滤条件
@@ -284,6 +307,7 @@ void GlobalFilter::updateFilterCriteria()
     // 从各个过滤模块更新current_criteria_结构
     current_criteria_.dataset_ids.clear();
     current_criteria_.tag_ids.clear();
+    current_criteria_.label_class_ids.clear();
 
     if (dataset_filter_ && dataset_filter_->isActive())
     {
@@ -293,6 +317,11 @@ void GlobalFilter::updateFilterCriteria()
     if (tag_filter_ && tag_filter_->isActive())
     {
         current_criteria_.tag_ids = tag_filter_->getActiveCriteria();
+    }
+
+    if (label_class_filter_ && label_class_filter_->isActive())
+    {
+        current_criteria_.label_class_ids = label_class_filter_->getActiveCriteria();
     }
 }
 
@@ -317,6 +346,8 @@ bool GlobalFilter::shouldIncludeImage(int64_t image_id) const
             return false; // 未通过标签过滤
         }
     }
+
+    // 注意：LabelClass 过滤仅作用于 label instances，不作用于 image instances
 
     // 通过所有启用的过滤器（或没有启用的过滤器）
     return true;
@@ -345,6 +376,12 @@ bool GlobalFilter::hasFilterCriteriaChanged() const
 
     // 检查标签ID是否改变
     if (current_criteria_.tag_ids != previous_criteria_.tag_ids)
+    {
+        return true;
+    }
+
+    // 检查标注类别ID是否改变
+    if (current_criteria_.label_class_ids != previous_criteria_.label_class_ids)
     {
         return true;
     }

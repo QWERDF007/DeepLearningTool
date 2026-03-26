@@ -416,13 +416,19 @@ QVariant LabelInstancesListModel::getData(const QModelIndex &index) const
 
 void LabelInstancesListModel::applyFilter(const std::function<bool(int64_t)> &image_filter_func)
 {
-    if (!image_filter_func)
+    applyFilter(image_filter_func, std::function<bool(int64_t)>());
+}
+
+void LabelInstancesListModel::applyFilter(const std::function<bool(int64_t)> &image_filter_func,
+                                          const std::function<bool(int64_t)> &label_class_filter_func)
+{
+    if (!image_filter_func && !label_class_filter_func)
     {
         qWarning() << "applyFilter called with null filter function";
         return;
     }
 
-    rebuildFilteredList(image_filter_func);
+    rebuildFilteredList(image_filter_func, label_class_filter_func);
     is_filtered_ = true;
 
     beginResetModel();
@@ -459,16 +465,22 @@ void LabelInstancesListModel::clearFilter()
     endResetModel();
 }
 
-void LabelInstancesListModel::rebuildFilteredList(const std::function<bool(int64_t)> &image_filter_func)
+void LabelInstancesListModel::rebuildFilteredList(const std::function<bool(int64_t)> &image_filter_func,
+                                                  const std::function<bool(int64_t)> &label_class_filter_func)
 {
     filtered_label_ids_.clear();
     filtered_label_ids_.reserve(full_label_instances_.size());
 
-    // Iterate through full_label_instances_ and apply filter based on image_id
+    // Iterate through full_label_instances_ and apply filter based on image_id / label_class_id
     for (const auto &[label_id, instance] : full_label_instances_)
     {
-        int64_t image_id = instance->imageId();
-        if (image_filter_func(image_id))
+        const int64_t image_id       = instance->imageId();
+        const int64_t label_class_id = instance->labelClassId();
+
+        const bool image_ok = image_filter_func ? image_filter_func(image_id) : true;
+        const bool class_ok = label_class_filter_func ? label_class_filter_func(label_class_id) : true;
+
+        if (image_ok && class_ok)
         {
             filtered_label_ids_.push_back(label_id);
         }

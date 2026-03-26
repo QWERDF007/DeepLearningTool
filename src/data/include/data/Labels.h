@@ -123,6 +123,8 @@ public:
 
     // NEW: Filter support methods
     void applyFilter(const std::function<bool(int64_t)> &image_filter_func);
+    void applyFilter(const std::function<bool(int64_t)> &image_filter_func,
+                     const std::function<bool(int64_t)> &label_class_filter_func);
     void clearFilter();
 
     bool isFilterActive() const
@@ -153,7 +155,8 @@ private:
     /**
      * @brief NEW: Helper to rebuild filtered_label_ids_ based on image filter function
      */
-    void rebuildFilteredList(const std::function<bool(int64_t)> &image_filter_func);
+    void rebuildFilteredList(const std::function<bool(int64_t)> &image_filter_func,
+                             const std::function<bool(int64_t)> &label_class_filter_func);
 
     data::ProjectDataBase   *database_{nullptr};
     ImageInstancesListModel *image_instances_{nullptr};

@@ -39,11 +39,12 @@ Rectangle {
 
             
 
-            Rectangle { // 类别筛选
+            ClassFilterView { // 类别筛选
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: parent.height / 3
                 color: DltColor.Primary
+                dataManager: labelPage.dataManager
             }
 
             Rectangle { // 标注列表
