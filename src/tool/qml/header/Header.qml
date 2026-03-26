@@ -101,6 +101,8 @@ Rectangle {
                                 datasetDropDown.selectAll()
                                 tagDropDown.checked = false
                                 tagDropDown.selectAll()
+                                labelClassImageDropDown.checked = false
+                                labelClassImageDropDown.selectAll()
                             }
                         }
                     }
@@ -123,6 +125,15 @@ Rectangle {
                         globalFilter: header.globalFilter
                         model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.tagFilterItems : null
                     }
+                    DropDownMenuButton {
+                        id: labelClassImageDropDown
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: 200
+                        text: "按标签类别: "
+                        filterType: GlobalFilter.FilterType.ImageLabelClass
+                        globalFilter: header.globalFilter
+                        model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.labelClassFilterItems : null
+                    }
                 }
             }
         }
@@ -135,6 +146,7 @@ Rectangle {
             // Reset dropdown UI state
             datasetDropDown.checked = false
             tagDropDown.checked = false
+            labelClassImageDropDown.checked = false
         }
     }
 }

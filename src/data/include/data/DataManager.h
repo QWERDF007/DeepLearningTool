@@ -37,6 +37,7 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(GlobalFilter *globalFilter READ globalFilter CONSTANT FINAL)
     Q_PROPERTY(DatasetFilterItemsModel *datasetFilterItems READ datasetFilterItems CONSTANT FINAL)
     Q_PROPERTY(TagFilterItemsModel *tagFilterItems READ tagFilterItems CONSTANT FINAL)
+    Q_PROPERTY(LabelClassFilterItemsModel *labelClassFilterItems READ labelClassFilterItems CONSTANT FINAL)
 
 public:
     DataManager(const int method, data::ProjectDataBase *database, QObject *parent = nullptr);
@@ -95,6 +96,11 @@ public:
     TagFilterItemsModel *tagFilterItems() const
     {
         return tag_filter_items_;
+    }
+
+    LabelClassFilterItemsModel *labelClassFilterItems() const
+    {
+        return label_class_filter_items_;
     }
 
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
@@ -166,8 +172,9 @@ private:
 
     GlobalFilter *global_filter_{nullptr};
 
-    DatasetFilterItemsModel *dataset_filter_items_{nullptr};
-    TagFilterItemsModel     *tag_filter_items_{nullptr};
+    DatasetFilterItemsModel    *dataset_filter_items_{nullptr};
+    TagFilterItemsModel        *tag_filter_items_{nullptr};
+    LabelClassFilterItemsModel *label_class_filter_items_{nullptr};
 
     int method_{0}; // 标签数据类型
 };

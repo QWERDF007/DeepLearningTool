@@ -2,6 +2,7 @@
 
 #include "data/Datasets.h"
 #include "data/ImageTags.h"
+#include "data/LabelClasses.h"
 
 #include <spdlog/spdlog.h>
 
@@ -220,6 +221,44 @@ void TagFilterItemsModel::populateFromTags(QAbstractItemModel *tags_model)
     }
 
     spdlog::info("TagFilterItemsModel populated with {} tags", items_.size());
+}
+
+// ============================================================================
+// LabelClassFilterItemsModel 实现
+// ============================================================================
+
+LabelClassFilterItemsModel::LabelClassFilterItemsModel(QObject *parent)
+    : FilterItemsModel(parent)
+{
+}
+
+void LabelClassFilterItemsModel::populateFromLabelClasses(QAbstractItemModel *label_classes_model)
+{
+    if (!label_classes_model)
+    {
+        spdlog::warn("LabelClassFilterItemsModel::populateFromLabelClasses: label_classes_model is null");
+        return;
+    }
+
+    clear();
+
+    const int row_count = label_classes_model->rowCount();
+    for (int i = 0; i < row_count; ++i)
+    {
+        const QModelIndex idx = label_classes_model->index(i, 0);
+
+        QVariant id_variant   = label_classes_model->data(idx, LabelClassesListModel::LabelClassIdRole);
+        QVariant name_variant = label_classes_model->data(idx, LabelClassesListModel::NameRole);
+
+        if (id_variant.isValid() && name_variant.isValid())
+        {
+            const int64_t label_class_id = id_variant.toLongLong();
+            const QString name           = name_variant.toString();
+            append(label_class_id, name, true);
+        }
+    }
+
+    spdlog::info("LabelClassFilterItemsModel populated with {} label classes", items_.size());
 }
 
 } // namespace dltool::data

@@ -129,4 +129,26 @@ public:
     void populateFromTags(QAbstractItemModel *tags_model);
 };
 
+/**
+ * @brief 标签类别过滤项模型
+ * 
+ * 从LabelClassesListModel填充标签类别列表
+ */
+class LabelClassFilterItemsModel : public FilterItemsModel
+{
+    Q_OBJECT
+    QML_NAMED_ELEMENT(LabelClassFilterItemsModel)
+    QML_UNCREATABLE("Cannot create LabelClassFilterItemsModel directly!")
+
+public:
+    explicit LabelClassFilterItemsModel(QObject *parent = nullptr);
+    ~LabelClassFilterItemsModel() override = default;
+
+    /**
+     * @brief 从LabelClassesListModel填充模型
+     * @param label_classes_model 标签类别列表模型
+     */
+    void populateFromLabelClasses(QAbstractItemModel *label_classes_model);
+};
+
 } // namespace dltool::data

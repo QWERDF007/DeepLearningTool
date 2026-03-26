@@ -13,9 +13,11 @@ class ImageInstancesListModel;
 class LabelInstancesListModel;
 class DatasetsListModel;
 class ImageTagsListModel;
+class LabelClassesListModel;
 class DatasetFilterModule;
 class TagFilterModule;
 class LabelClassFilterModule;
+class ImageLabelClassFilterModule;
 class FilterModule;
 
 /**
@@ -25,9 +27,10 @@ class FilterModule;
  */
 struct FilterCriteria
 {
-    std::unordered_set<int64_t> dataset_ids;     // 选中的数据集ID（空表示未选择任何条件）
-    std::unordered_set<int64_t> tag_ids;         // 选中的标签ID（空表示未选择任何条件）
-    std::unordered_set<int64_t> label_class_ids; // 选中的标注类别ID（空表示未选择任何条件）
+    std::unordered_set<int64_t> dataset_ids;           // 选中的数据集ID（空表示未选择任何条件）
+    std::unordered_set<int64_t> tag_ids;               // 选中的标签ID（空表示未选择任何条件）
+    std::unordered_set<int64_t> label_class_ids;       // 选中的标注类别ID（空表示未选择任何条件）
+    std::unordered_set<int64_t> image_label_class_ids; // 选中的图像级标注类别ID（空表示未选择任何条件）
 
     /**
      * @brief 检查过滤条件是否为空
@@ -35,7 +38,7 @@ struct FilterCriteria
      */
     bool isEmpty() const
     {
-        return dataset_ids.empty() && tag_ids.empty() && label_class_ids.empty();
+        return dataset_ids.empty() && tag_ids.empty() && label_class_ids.empty() && image_label_class_ids.empty();
     }
 };
 
@@ -63,9 +66,10 @@ public:
      */
     enum class FilterType
     {
-        Dataset,   // 数据集过滤器
-        Tag,       // 标签过滤器
-        LabelClass // 标注类别过滤器
+        Dataset,        // 数据集过滤器
+        Tag,            // 标签过滤器
+        LabelClass,     // 标注类别过滤器（仅作用于标注实例）
+        ImageLabelClass // 标注类别过滤器（作用于图像：图像中包含选中类别实例则保留）
     };
     Q_ENUM(FilterType)
 
@@ -78,7 +82,8 @@ public:
      * @param tags_model 标签列表模型
      * @note 必须在DataManager完全构造后调用
      */
-    void initializeFilterModules(DatasetsListModel *datasets_model, ImageTagsListModel *tags_model);
+    void initializeFilterModules(DatasetsListModel *datasets_model, ImageTagsListModel *tags_model,
+                                 LabelClassesListModel *label_classes_model);
 
     // 过滤器状态查询
     /**
@@ -184,9 +189,10 @@ private:
     ImageInstancesListModel *image_model_{nullptr}; // 图像实例列表模型
     LabelInstancesListModel *label_model_{nullptr}; // 标注实例列表模型
 
-    std::unique_ptr<DatasetFilterModule>    dataset_filter_;     // 数据集过滤模块
-    std::unique_ptr<TagFilterModule>        tag_filter_;         // 标签过滤模块
-    std::unique_ptr<LabelClassFilterModule> label_class_filter_; // 标注类别过滤模块
+    std::unique_ptr<DatasetFilterModule>         dataset_filter_;           // 数据集过滤模块
+    std::unique_ptr<TagFilterModule>             tag_filter_;               // 标签过滤模块
+    std::unique_ptr<LabelClassFilterModule>      label_class_filter_;       // 标注类别过滤模块
+    std::unique_ptr<ImageLabelClassFilterModule> image_label_class_filter_; // 图像级标注类别过滤模块
 
     std::unordered_map<FilterType, FilterModule *> filter_modules_; // 过滤模块映射表
 

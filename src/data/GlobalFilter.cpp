@@ -2,12 +2,12 @@
 
 #include "data/DatasetFilterModule.h"
 #include "data/Datasets.h"
+#include "data/ImageLabelClassFilterModule.h"
 #include "data/ImageTags.h"
 #include "data/Images.h"
 #include "data/LabelClassFilterModule.h"
 #include "data/Labels.h"
 #include "data/TagFilterModule.h"
-
 
 namespace dltool::data {
 
@@ -21,7 +21,8 @@ GlobalFilter::GlobalFilter(ImageInstancesListModel *image_model, LabelInstancesL
 
 GlobalFilter::~GlobalFilter() {}
 
-void GlobalFilter::initializeFilterModules(DatasetsListModel *datasets_model, ImageTagsListModel *tags_model)
+void GlobalFilter::initializeFilterModules(DatasetsListModel *datasets_model, ImageTagsListModel *tags_model,
+                                           LabelClassesListModel *label_classes_model)
 {
     // 初始化数据集过滤模块
     dataset_filter_ = std::make_unique<DatasetFilterModule>(image_model_, datasets_model, this);
@@ -32,10 +33,15 @@ void GlobalFilter::initializeFilterModules(DatasetsListModel *datasets_model, Im
     // 初始化标注类别过滤模块
     label_class_filter_ = std::make_unique<LabelClassFilterModule>(this);
 
+    // 初始化图像级标注类别过滤模块
+    image_label_class_filter_
+        = std::make_unique<ImageLabelClassFilterModule>(image_model_, label_model_, label_classes_model, this);
+
     // 注册过滤模块到map中
-    filter_modules_[FilterType::Dataset]    = dataset_filter_.get();
-    filter_modules_[FilterType::Tag]        = tag_filter_.get();
-    filter_modules_[FilterType::LabelClass] = label_class_filter_.get();
+    filter_modules_[FilterType::Dataset]         = dataset_filter_.get();
+    filter_modules_[FilterType::Tag]             = tag_filter_.get();
+    filter_modules_[FilterType::LabelClass]      = label_class_filter_.get();
+    filter_modules_[FilterType::ImageLabelClass] = image_label_class_filter_.get();
 
     // 连接过滤模块信号到applyFilters槽（使用循环遍历map）
     for (auto &[type, module] : filter_modules_)
@@ -179,6 +185,9 @@ QString GlobalFilter::filterSummary() const
             case FilterType::LabelClass:
                 type_name = "类别";
                 break;
+            case FilterType::ImageLabelClass:
+                type_name = "图像类别";
+                break;
             default:
                 type_name = "未知";
                 break;
@@ -218,6 +227,13 @@ void GlobalFilter::clearAllFilters()
     {
         label_class_filter_->clear();
         label_class_filter_->setEnabled(false);
+        changed = true;
+    }
+
+    if (image_label_class_filter_)
+    {
+        image_label_class_filter_->clear();
+        image_label_class_filter_->setEnabled(false);
         changed = true;
     }
 
@@ -308,6 +324,7 @@ void GlobalFilter::updateFilterCriteria()
     current_criteria_.dataset_ids.clear();
     current_criteria_.tag_ids.clear();
     current_criteria_.label_class_ids.clear();
+    current_criteria_.image_label_class_ids.clear();
 
     if (dataset_filter_ && dataset_filter_->isActive())
     {
@@ -322,6 +339,11 @@ void GlobalFilter::updateFilterCriteria()
     if (label_class_filter_ && label_class_filter_->isActive())
     {
         current_criteria_.label_class_ids = label_class_filter_->getActiveCriteria();
+    }
+
+    if (image_label_class_filter_ && image_label_class_filter_->isActive())
+    {
+        current_criteria_.image_label_class_ids = image_label_class_filter_->getActiveCriteria();
     }
 }
 
@@ -348,6 +370,15 @@ bool GlobalFilter::shouldIncludeImage(int64_t image_id) const
     }
 
     // 注意：LabelClass 过滤仅作用于 label instances，不作用于 image instances
+
+    // 图像级标注类别过滤（如果启用）
+    if (image_label_class_filter_ && image_label_class_filter_->isEnabled())
+    {
+        if (!image_label_class_filter_->passes(image_id))
+        {
+            return false;
+        }
+    }
 
     // 通过所有启用的过滤器（或没有启用的过滤器）
     return true;
@@ -382,6 +413,12 @@ bool GlobalFilter::hasFilterCriteriaChanged() const
 
     // 检查标注类别ID是否改变
     if (current_criteria_.label_class_ids != previous_criteria_.label_class_ids)
+    {
+        return true;
+    }
+
+    // 检查图像级标注类别ID是否改变
+    if (current_criteria_.image_label_class_ids != previous_criteria_.image_label_class_ids)
     {
         return true;
     }
