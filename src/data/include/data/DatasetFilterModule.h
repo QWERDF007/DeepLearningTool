@@ -6,8 +6,7 @@
 
 namespace dltool::data {
 
-class ImageInstancesListModel;
-class DatasetsListModel;
+class DataManager;
 
 /**
  * @brief 数据集过滤模块
@@ -20,8 +19,7 @@ class DatasetFilterModule : public FilterModule
     Q_OBJECT
 
 public:
-    explicit DatasetFilterModule(ImageInstancesListModel *image_model, DatasetsListModel *datasets_model,
-                                 QObject *parent = nullptr);
+    explicit DatasetFilterModule(DataManager *data_manager, QObject *parent = nullptr);
     ~DatasetFilterModule() override = default;
 
     void                        setCriteria(const std::vector<int64_t> &dataset_ids) override;
@@ -49,10 +47,8 @@ public:
     void deselectAll() override;
 
 private:
-    ImageInstancesListModel    *image_model_{nullptr};    // 图像实例列表模型
-    DatasetsListModel          *datasets_model_{nullptr}; // 数据集列表模型
-    std::unordered_set<int64_t> selected_dataset_ids_;    // 选中的数据集ID（使用unordered_set提高查找性能）
-    bool                        enabled_{false};          // 过滤模块启用状态
+    std::unordered_set<int64_t> selected_dataset_ids_; // 选中的数据集ID（使用unordered_set提高查找性能）
+    bool                        enabled_{false};       // 过滤模块启用状态
 };
 
 } // namespace dltool::data

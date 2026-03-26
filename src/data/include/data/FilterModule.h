@@ -6,6 +6,8 @@
 
 namespace dltool::data {
 
+class DataManager;
+
 /**
  * @brief 过滤模块基类
  * 
@@ -17,8 +19,9 @@ class FilterModule : public QObject
     Q_OBJECT
 
 public:
-    explicit FilterModule(QObject *parent = nullptr)
+    explicit FilterModule(DataManager *data_manager, QObject *parent = nullptr)
         : QObject(parent)
+        , data_manager_(data_manager)
     {
     }
 
@@ -75,6 +78,15 @@ public:
      * @brief 取消选择所有项目
      */
     virtual void deselectAll() = 0;
+
+protected:
+    DataManager *dataManager() const
+    {
+        return data_manager_;
+    }
+
+private:
+    DataManager *data_manager_{nullptr};
 
 signals:
     void criteriaChanged();            // 过滤条件改变信号

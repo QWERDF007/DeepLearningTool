@@ -9,6 +9,7 @@
 
 namespace dltool::data {
 
+class DataManager;
 class ImageInstancesListModel;
 class LabelInstancesListModel;
 class DatasetsListModel;
@@ -73,17 +74,15 @@ public:
     };
     Q_ENUM(FilterType)
 
-    GlobalFilter(ImageInstancesListModel *image_model, LabelInstancesListModel *label_model, QObject *parent = nullptr);
+    GlobalFilter(DataManager *data_manager, QObject *parent = nullptr);
     ~GlobalFilter();
 
     /**
      * @brief 初始化过滤模块
-     * @param datasets_model 数据集列表模型
-     * @param tags_model 标签列表模型
+     * @param data_manager DataManager实例
      * @note 必须在DataManager完全构造后调用
      */
-    void initializeFilterModules(DatasetsListModel *datasets_model, ImageTagsListModel *tags_model,
-                                 LabelClassesListModel *label_classes_model);
+    void initializeFilterModules(DataManager *data_manager);
 
     // 过滤器状态查询
     /**

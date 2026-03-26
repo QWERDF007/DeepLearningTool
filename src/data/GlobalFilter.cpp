@@ -1,5 +1,6 @@
 #include "data/GlobalFilter.h"
 
+#include "data/DataManager.h"
 #include "data/DatasetFilterModule.h"
 #include "data/Datasets.h"
 #include "data/ImageLabelClassFilterModule.h"
@@ -11,31 +12,37 @@
 
 namespace dltool::data {
 
-GlobalFilter::GlobalFilter(ImageInstancesListModel *image_model, LabelInstancesListModel *label_model, QObject *parent)
+GlobalFilter::GlobalFilter(DataManager *data_manager, QObject *parent)
     : QObject(parent)
-    , image_model_(image_model)
-    , label_model_(label_model)
 {
-    // 过滤模块将在DataManager完全构造后通过initializeFilterModules()初始化
+    if (data_manager)
+    {
+        image_model_ = data_manager->imageInstances();
+        label_model_ = data_manager->labelInstances();
+    }
 }
 
 GlobalFilter::~GlobalFilter() {}
 
-void GlobalFilter::initializeFilterModules(DatasetsListModel *datasets_model, ImageTagsListModel *tags_model,
-                                           LabelClassesListModel *label_classes_model)
+void GlobalFilter::initializeFilterModules(DataManager *data_manager)
 {
+    if (!data_manager)
+    {
+        qWarning() << "GlobalFilter: initializeFilterModules called with null DataManager";
+        return;
+    }
+
     // 初始化数据集过滤模块
-    dataset_filter_ = std::make_unique<DatasetFilterModule>(image_model_, datasets_model, this);
+    dataset_filter_ = std::make_unique<DatasetFilterModule>(data_manager, this);
 
     // 初始化标签过滤模块
-    tag_filter_ = std::make_unique<TagFilterModule>(image_model_, tags_model, this);
+    tag_filter_ = std::make_unique<TagFilterModule>(data_manager, this);
 
     // 初始化标注类别过滤模块
-    label_class_filter_ = std::make_unique<LabelClassFilterModule>(this);
+    label_class_filter_ = std::make_unique<LabelClassFilterModule>(data_manager, this);
 
     // 初始化图像级标注类别过滤模块
-    image_label_class_filter_
-        = std::make_unique<ImageLabelClassFilterModule>(image_model_, label_model_, label_classes_model, this);
+    image_label_class_filter_ = std::make_unique<ImageLabelClassFilterModule>(data_manager, this);
 
     // 注册过滤模块到map中
     filter_modules_[FilterType::Dataset]         = dataset_filter_.get();

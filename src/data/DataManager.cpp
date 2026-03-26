@@ -39,8 +39,8 @@ void DataManager::init(const int method)
     image_info_         = new ImageInfoListModel(datasets_, image_instances_, label_classes_, label_instances_, this);
 
     // Create GlobalFilter and initialize it with the models
-    global_filter_ = new GlobalFilter(image_instances_, label_instances_, this);
-    global_filter_->initializeFilterModules(datasets_, image_tags_, label_classes_);
+    global_filter_ = new GlobalFilter(this, this);
+    global_filter_->initializeFilterModules(this);
 
     // Create filter items models
     dataset_filter_items_     = new DatasetFilterItemsModel(this);

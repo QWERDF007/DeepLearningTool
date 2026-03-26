@@ -6,17 +6,14 @@
 
 namespace dltool::data {
 
-class ImageInstancesListModel;
-class LabelInstancesListModel;
-class LabelClassesListModel;
+class DataManager;
 
 class ImageLabelClassFilterModule : public FilterModule
 {
     Q_OBJECT
 
 public:
-    explicit ImageLabelClassFilterModule(ImageInstancesListModel *image_model, LabelInstancesListModel *label_model,
-                                         LabelClassesListModel *label_classes_model, QObject *parent = nullptr);
+    explicit ImageLabelClassFilterModule(DataManager *data_manager, QObject *parent = nullptr);
     ~ImageLabelClassFilterModule() override = default;
 
     void                        setCriteria(const std::vector<int64_t> &label_class_ids) override;
@@ -30,10 +27,6 @@ public:
     void                        deselectAll() override;
 
 private:
-    ImageInstancesListModel *image_model_{nullptr};
-    LabelInstancesListModel *label_model_{nullptr};
-    LabelClassesListModel   *label_classes_model_{nullptr};
-
     std::unordered_set<int64_t> selected_label_class_ids_;
     bool                        enabled_{false};
 };

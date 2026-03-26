@@ -1,19 +1,14 @@
 #include "data/ImageLabelClassFilterModule.h"
 
+#include "data/DataManager.h"
 #include "data/Images.h"
 #include "data/LabelClasses.h"
 #include "data/Labels.h"
 
 namespace dltool::data {
 
-ImageLabelClassFilterModule::ImageLabelClassFilterModule(ImageInstancesListModel *image_model,
-                                                         LabelInstancesListModel *label_model,
-                                                         LabelClassesListModel   *label_classes_model,
-                                                         QObject *parent)
-    : FilterModule(parent)
-    , image_model_(image_model)
-    , label_model_(label_model)
-    , label_classes_model_(label_classes_model)
+ImageLabelClassFilterModule::ImageLabelClassFilterModule(DataManager *data_manager, QObject *parent)
+    : FilterModule(data_manager, parent)
 {
 }
 
@@ -78,12 +73,20 @@ bool ImageLabelClassFilterModule::passes(int64_t image_id) const
         return false;
     }
 
-    if (!image_model_ || !label_model_)
+    DataManager *dm = dataManager();
+    if (!dm)
     {
         return false;
     }
 
-    ImageInstance *image = image_model_->getImageInstance(image_id);
+    ImageInstancesListModel *image_model = dm->imageInstances();
+    LabelInstancesListModel *label_model = dm->labelInstances();
+    if (!image_model || !label_model)
+    {
+        return false;
+    }
+
+    ImageInstance *image = image_model->getImageInstance(image_id);
     if (!image)
     {
         return false;
@@ -92,7 +95,7 @@ bool ImageLabelClassFilterModule::passes(int64_t image_id) const
     const std::set<int64_t> &label_ids = image->labelIds();
     for (const auto &label_id : label_ids)
     {
-        const int64_t label_class_id = label_model_->getLabelClassId(label_id);
+        const int64_t label_class_id = label_model->getLabelClassId(label_id);
         if (selected_label_class_ids_.find(label_class_id) != selected_label_class_ids_.end())
         {
             return true;
@@ -106,15 +109,20 @@ void ImageLabelClassFilterModule::selectAll()
 {
     selected_label_class_ids_.clear();
 
-    if (label_classes_model_)
+    DataManager *dm = dataManager();
+    if (dm)
     {
-        const int row_count = label_classes_model_->rowCount();
-        for (int i = 0; i < row_count; ++i)
+        LabelClassesListModel *label_classes_model = dm->labelClasses();
+        if (label_classes_model)
         {
-            const QModelIndex index = label_classes_model_->index(i, 0);
-            const int64_t     id
-                = label_classes_model_->data(index, LabelClassesListModel::LabelClassIdRole).toLongLong();
-            selected_label_class_ids_.insert(id);
+            const int row_count = label_classes_model->rowCount();
+            for (int i = 0; i < row_count; ++i)
+            {
+                const QModelIndex index = label_classes_model->index(i, 0);
+                const int64_t     id
+                    = label_classes_model->data(index, LabelClassesListModel::LabelClassIdRole).toLongLong();
+                selected_label_class_ids_.insert(id);
+            }
         }
     }
 

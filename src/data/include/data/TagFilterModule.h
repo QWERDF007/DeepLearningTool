@@ -6,8 +6,7 @@
 
 namespace dltool::data {
 
-class ImageInstancesListModel;
-class ImageTagsListModel;
+class DataManager;
 
 /**
  * @brief 标签过滤模块
@@ -20,8 +19,7 @@ class TagFilterModule : public FilterModule
     Q_OBJECT
 
 public:
-    explicit TagFilterModule(ImageInstancesListModel *image_model, ImageTagsListModel *tags_model,
-                             QObject *parent = nullptr);
+    explicit TagFilterModule(DataManager *data_manager, QObject *parent = nullptr);
     ~TagFilterModule() override = default;
 
     void                        setCriteria(const std::vector<int64_t> &tag_ids) override;
@@ -49,10 +47,8 @@ public:
     void deselectAll() override;
 
 private:
-    ImageInstancesListModel    *image_model_{nullptr}; // 图像实例列表模型
-    ImageTagsListModel         *tags_model_{nullptr};  // 标签列表模型
-    std::unordered_set<int64_t> selected_tag_ids_;     // 选中的标签ID（使用unordered_set提高查找性能）
-    bool                        enabled_{false};       // 过滤模块启用状态
+    std::unordered_set<int64_t> selected_tag_ids_; // 选中的标签ID（使用unordered_set提高查找性能）
+    bool                        enabled_{false};   // 过滤模块启用状态
 };
 
 } // namespace dltool::data

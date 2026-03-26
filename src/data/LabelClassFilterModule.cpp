@@ -1,9 +1,11 @@
 #include "data/LabelClassFilterModule.h"
 
+#include "data/DataManager.h"
+
 namespace dltool::data {
 
-LabelClassFilterModule::LabelClassFilterModule(QObject *parent)
-    : FilterModule(parent)
+LabelClassFilterModule::LabelClassFilterModule(DataManager *data_manager, QObject *parent)
+    : FilterModule(data_manager, parent)
 {
 }
 

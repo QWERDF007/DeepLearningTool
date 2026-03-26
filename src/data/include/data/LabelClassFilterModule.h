@@ -6,6 +6,8 @@
 
 namespace dltool::data {
 
+class DataManager;
+
 /**
  * @brief 标注类别过滤模块
  * 
@@ -17,7 +19,7 @@ class LabelClassFilterModule : public FilterModule
     Q_OBJECT
 
 public:
-    explicit LabelClassFilterModule(QObject *parent = nullptr);
+    explicit LabelClassFilterModule(DataManager *data_manager, QObject *parent = nullptr);
     ~LabelClassFilterModule() override = default;
 
     void                        setCriteria(const std::vector<int64_t> &label_class_ids) override;

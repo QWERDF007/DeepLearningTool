@@ -1,14 +1,13 @@
 #include "data/TagFilterModule.h"
 
+#include "data/DataManager.h"
 #include "data/ImageTags.h"
 #include "data/Images.h"
 
 namespace dltool::data {
 
-TagFilterModule::TagFilterModule(ImageInstancesListModel *image_model, ImageTagsListModel *tags_model, QObject *parent)
-    : FilterModule(parent)
-    , image_model_(image_model)
-    , tags_model_(tags_model)
+TagFilterModule::TagFilterModule(DataManager *data_manager, QObject *parent)
+    : FilterModule(data_manager, parent)
 {
 }
 
@@ -70,22 +69,32 @@ bool TagFilterModule::passes(int64_t image_id) const
         return false;
     }
 
-    // 获取图像实例并检查它是否拥有任一选中的标签
-    if (image_model_)
+    DataManager *dm = dataManager();
+    if (!dm)
     {
-        ImageInstance *image = image_model_->getImageInstance(image_id);
-        if (image)
-        {
-            const std::set<int64_t> &image_tag_ids = image->tagIds();
+        return false;
+    }
 
-            // 检查图像的标签中是否有任一选中的标签（模块内OR逻辑）
-            for (const auto &tag_id : selected_tag_ids_)
-            {
-                if (image_tag_ids.find(tag_id) != image_tag_ids.end())
-                {
-                    return true; // 图像至少拥有一个选中的标签
-                }
-            }
+    ImageInstancesListModel *image_model = dm->imageInstances();
+    if (!image_model)
+    {
+        return false;
+    }
+
+    ImageInstance *image = image_model->getImageInstance(image_id);
+    if (!image)
+    {
+        return false;
+    }
+
+    const std::set<int64_t> &image_tag_ids = image->tagIds();
+
+    // 检查图像的标签中是否有任一选中的标签（模块内OR逻辑）
+    for (const auto &tag_id : selected_tag_ids_)
+    {
+        if (image_tag_ids.find(tag_id) != image_tag_ids.end())
+        {
+            return true; // 图像至少拥有一个选中的标签
         }
     }
 
@@ -96,15 +105,20 @@ void TagFilterModule::selectAll()
 {
     selected_tag_ids_.clear();
 
-    if (tags_model_)
+    DataManager *dm = dataManager();
+    if (dm)
     {
-        // 从标签模型获取所有标签ID
-        int row_count = tags_model_->rowCount();
-        for (int i = 0; i < row_count; ++i)
+        ImageTagsListModel *tags_model = dm->imageTags();
+        if (tags_model)
         {
-            QModelIndex index  = tags_model_->index(i, 0);
-            int64_t     tag_id = tags_model_->data(index, ImageTagsListModel::TagIdRole).toLongLong();
-            selected_tag_ids_.insert(tag_id);
+            // 从标签模型获取所有标签ID
+            const int row_count = tags_model->rowCount();
+            for (int i = 0; i < row_count; ++i)
+            {
+                const QModelIndex index  = tags_model->index(i, 0);
+                const int64_t     tag_id = tags_model->data(index, ImageTagsListModel::TagIdRole).toLongLong();
+                selected_tag_ids_.insert(tag_id);
+            }
         }
     }
 
