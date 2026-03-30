@@ -185,8 +185,7 @@ private:
      */
     bool hasFilterCriteriaChanged() const;
 
-    ImageInstancesListModel *image_model_{nullptr}; // 图像实例列表模型
-    LabelInstancesListModel *label_model_{nullptr}; // 标注实例列表模型
+    DataManager *data_manager_{nullptr}; // 数据管理器
 
     std::unique_ptr<DatasetFilterModule>         dataset_filter_;           // 数据集过滤模块
     std::unique_ptr<TagFilterModule>             tag_filter_;               // 标签过滤模块

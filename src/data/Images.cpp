@@ -74,6 +74,11 @@ void ImageInstancesListModel::init()
     }
     std::sort(image_ids.begin(), image_ids.end(), std::greater<int64_t>());
     image_ids_.insert(image_ids_.begin(), image_ids.begin(), image_ids.end());
+    if (count() > 0)
+    {
+        QModelIndex first_index = index(0, 0);
+        selection_->setCurrentIndex(first_index, QItemSelectionModel::ClearAndSelect);
+    }
 }
 
 int ImageInstancesListModel::rowCount(const QModelIndex &parent) const
@@ -667,13 +672,13 @@ void ImageInstancesListModel::onCurrentChanged(const QModelIndex &current, const
     Q_UNUSED(previous)
 
     // If filter is active and current selection is invalid, select first available image or clear
-    if (is_filtered_ && !current.isValid() && rowCount() > 0)
+    if (is_filtered_ && !current.isValid() && count() > 0)
     {
         // Select the first available image
         QModelIndex first_index = index(0, 0);
         selection_->setCurrentIndex(first_index, QItemSelectionModel::ClearAndSelect);
     }
-    else if (is_filtered_ && !current.isValid() && rowCount() == 0)
+    else if (is_filtered_ && !current.isValid() && count() == 0)
     {
         // No images available after filtering, clear selection
         selection_->clear();
@@ -809,7 +814,7 @@ void ImageInstancesListModel::applyFilter(const std::function<bool(int64_t)> &fi
     endResetModel();
 
     // Handle selection state after filtering
-    if (rowCount() == 0)
+    if (count() == 0)
     {
         // No images after filtering, clear selection
         selection_->clear();
@@ -830,6 +835,11 @@ void ImageInstancesListModel::applyFilter(const std::function<bool(int64_t)> &fi
             QModelIndex first_index = index(0, 0);
             selection_->setCurrentIndex(first_index, QItemSelectionModel::ClearAndSelect);
         }
+    }
+    else
+    {
+        QModelIndex first_index = index(0, 0);
+        selection_->setCurrentIndex(first_index, QItemSelectionModel::ClearAndSelect);
     }
 
     emit statsChanged();
@@ -855,6 +865,12 @@ void ImageInstancesListModel::clearFilter()
         image_ids_.push_back(image_id);
     }
     endResetModel();
+
+    if (count() > 0)
+    {
+        QModelIndex first_index = index(0, 0);
+        selection_->setCurrentIndex(first_index, QItemSelectionModel::ClearAndSelect);
+    }
 
     emit statsChanged();
     emit currentImageChanged();

@@ -14,12 +14,8 @@ namespace dltool::data {
 
 GlobalFilter::GlobalFilter(DataManager *data_manager, QObject *parent)
     : QObject(parent)
+    , data_manager_(data_manager)
 {
-    if (data_manager)
-    {
-        image_model_ = data_manager->imageInstances();
-        label_model_ = data_manager->labelInstances();
-    }
 }
 
 GlobalFilter::~GlobalFilter() {}
@@ -262,13 +258,16 @@ void GlobalFilter::applyFilters()
     if (!isActive())
     {
         // 没有激活的过滤器，清除模型上的现有过滤
-        if (image_model_)
+        if (data_manager_)
         {
-            image_model_->clearFilter();
-        }
-        if (label_model_)
-        {
-            label_model_->clearFilter();
+            if (auto *image_model = data_manager_->imageInstances())
+            {
+                image_model->clearFilter();
+            }
+            if (auto *label_model = data_manager_->labelInstances())
+            {
+                label_model->clearFilter();
+            }
         }
 
         // 重置上一次的过滤条件，因为没有激活的过滤器
@@ -286,37 +285,43 @@ void GlobalFilter::applyFilters()
     }
 
     // 应用过滤到图像模型
-    if (image_model_)
+    if (data_manager_)
     {
-        // 创建lambda函数，捕获this并检查图像是否应该被包含
-        auto image_filter_func = [this](int64_t image_id) -> bool
+        if (auto *image_model = data_manager_->imageInstances())
         {
-            return shouldIncludeImage(image_id);
-        };
+            // 创建lambda函数，捕获this并检查图像是否应该被包含
+            auto image_filter_func = [this](int64_t image_id) -> bool
+            {
+                return shouldIncludeImage(image_id);
+            };
 
-        image_model_->applyFilter(image_filter_func);
+            image_model->applyFilter(image_filter_func);
+        }
     }
 
     // 应用过滤到标注模型
-    if (label_model_)
+    if (data_manager_)
     {
-        // 创建lambda函数检查图像是否应该被包含
-        // 注意：LabelInstancesListModel期望接收image_id参数，而不是label_id
-        auto image_filter_func = [this](int64_t image_id) -> bool
+        if (auto *label_model = data_manager_->labelInstances())
         {
-            return shouldIncludeImage(image_id);
-        };
-
-        auto label_class_filter_func = [this](int64_t label_class_id) -> bool
-        {
-            if (label_class_filter_ && label_class_filter_->isEnabled())
+            // 创建lambda函数检查图像是否应该被包含
+            // 注意：LabelInstancesListModel期望接收image_id参数，而不是label_id
+            auto image_filter_func = [this](int64_t image_id) -> bool
             {
-                return label_class_filter_->passes(label_class_id);
-            }
-            return true;
-        };
+                return shouldIncludeImage(image_id);
+            };
 
-        label_model_->applyFilter(image_filter_func, label_class_filter_func);
+            auto label_class_filter_func = [this](int64_t label_class_id) -> bool
+            {
+                if (label_class_filter_ && label_class_filter_->isEnabled())
+                {
+                    return label_class_filter_->passes(label_class_id);
+                }
+                return true;
+            };
+
+            label_model->applyFilter(image_filter_func, label_class_filter_func);
+        }
     }
 
     // 成功过滤后更新上一次的过滤条件
@@ -394,10 +399,13 @@ bool GlobalFilter::shouldIncludeImage(int64_t image_id) const
 bool GlobalFilter::shouldIncludeLabel(int64_t label_id) const
 {
     // 标注被包含当且仅当其关联的图像通过图像过滤器
-    if (label_model_)
+    if (data_manager_)
     {
-        int64_t image_id = label_model_->getImageId(label_id);
-        return shouldIncludeImage(image_id);
+        if (auto *label_model = data_manager_->labelInstances())
+        {
+            int64_t image_id = label_model->getImageId(label_id);
+            return shouldIncludeImage(image_id);
+        }
     }
 
     return false;

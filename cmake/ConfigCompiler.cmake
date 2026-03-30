@@ -1,11 +1,13 @@
 
-# 将C++标准设置为17
-set(CMAKE_CXX_STANDARD 17)
+# 将C++标准设置为20
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # 在RelWithDebInfo模式下给CXX编译器添加-O3和-ggdb参数
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O3 -ggdb")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -O3 -ggdb")
 
+# 使用 CMake 3.20 之前的旧行为处理 Ninja 的 DEPFILES 生成器，这影响依赖文件的生成方式。
+cmake_policy(SET CMP0116 OLD)
 
 if(WARNINGS_AS_ERRORS)
     # 设置C语言警告为错误
@@ -15,7 +17,7 @@ if(WARNINGS_AS_ERRORS)
 endif()
 
 # -Wall：启用所有警告
-# -Wno-unknown-pragmas：禁止对未知的编译器指令发出警告
+# -Wno-unknown-pragmas：忽略未知的 pragma 指令
 # -Wpointer-arith：对指针算术运算发出警告
 # -Wmissing-declarations：对缺少声明的函数或变量发出警告
 # -Wredundant-decls：对冗余的声明发出警告
@@ -56,17 +58,9 @@ endif ()
 include(CheckIPOSupported)
 # 检查当前编译器是否支持链接时间优化(LTO)
 check_ipo_supported(RESULT LTO_SUPPORTED)
+# 默认启用
+set(LTO_ENABLED ON)
 
-
-# 编译器是 GNU, 且版本大于等于 10.0, 开启 LTO
-if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"
-   # Enable if gcc>=10. With 9.4 in some contexts we hit ICE with LTO:
-   # internal compiler error: in add_symbol_to_partition_1, at lto/lto-partition.c:153
-   AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 10.0)
-    set(LTO_ENABLED ON)
-else()
-    set(LTO_ENABLED OFF)
-endif()
 
 # 定义 ENABLE_SANITIZER 且编译器是 GCC, 开启 sanitizer 来检测代码问题
 if(ENABLE_SANITIZER AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
