@@ -11,6 +11,21 @@ Item {
     width: 800
     height: 600
 
+    onVisibleChanged: {
+        if (visible) {
+            view.forceActiveFocus()
+            // Auto-select first image if model has data and nothing is selected (Requirements 1.1, 1.2)
+            autoSelectFirstImage()
+        }
+    }
+
+    function autoSelectFirstImage() {
+        if (imageInstances && imageInstances.rowCount() > 0 && selection && !selection.hasSelection) {
+            let firstIndex = imageInstances.index(0, 0)
+            selection.select(firstIndex, ItemSelectionModel.ClearAndSelect)
+            selection.setCurrentIndex(firstIndex, ItemSelectionModel.Select)
+        }
+    }
 
     property int cellWidth: 180 * GlobalSettings.data.imageCellScale
     property int cellHeight: 240 * GlobalSettings.data.imageCellScale

@@ -74,11 +74,6 @@ void ImageInstancesListModel::init()
     }
     std::sort(image_ids.begin(), image_ids.end(), std::greater<int64_t>());
     image_ids_.insert(image_ids_.begin(), image_ids.begin(), image_ids.end());
-    if (count() > 0)
-    {
-        QModelIndex first_index = index(0, 0);
-        selection_->setCurrentIndex(first_index, QItemSelectionModel::ClearAndSelect);
-    }
 }
 
 int ImageInstancesListModel::rowCount(const QModelIndex &parent) const
