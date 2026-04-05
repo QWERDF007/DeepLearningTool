@@ -266,7 +266,8 @@ bool ProjectDataBase::getLabelInfo(const QString &path, QVariantMap &label_info,
         for (const auto &row : db(query1))
         {
             ++label_classes_cnt;
-            classes_info += QString("%1 (%2), ").arg(QString::fromStdString(row.name)).arg(row.count);
+            classes_info
+                += QString("%1 (%2), ").arg(QString::fromStdString(row.name)).arg(static_cast<int64_t>(row.count));
         }
         if (label_classes_cnt)
         {
