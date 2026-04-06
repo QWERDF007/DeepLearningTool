@@ -490,6 +490,33 @@ void LabelInstancesListModel::rebuildFilteredList(const std::function<bool(int64
     std::reverse(filtered_label_ids_.begin(), filtered_label_ids_.end());
 }
 
+void LabelInstancesListModel::shiftSelect(int current_index, int previous_index,
+                                          QItemSelectionModel::SelectionFlags command)
+{
+    const int top    = std::min(current_index, previous_index);
+    const int bottom = std::max(current_index, previous_index);
+
+    QItemSelection selection;
+    selection.select(index(top), index(bottom));
+    selection_->select(selection, command);
+}
+
+void LabelInstancesListModel::selectAll()
+{
+    QItemSelection selection;
+    selection.select(index(0), index(rowCount() - 1));
+    selection_->select(selection, QItemSelectionModel::Select);
+}
+
+void LabelInstancesListModel::setLastIndex(int last_index)
+{
+    if (last_index_ != last_index)
+    {
+        last_index_ = last_index;
+        emit lastIndexChanged();
+    }
+}
+
 ImageLabelsListModel::ImageLabelsListModel(ImageInstancesListModel *image_instances,
                                            LabelInstancesListModel *label_instances,
                                            LabelClassesListModel *label_classes, QObject *parent)

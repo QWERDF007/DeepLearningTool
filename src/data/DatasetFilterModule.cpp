@@ -1,4 +1,4 @@
-#include "data/DatasetFilterModule.h"
+﻿#include "data/DatasetFilterModule.h"
 
 #include "data/DataManager.h"
 #include "data/Datasets.h"
@@ -89,8 +89,6 @@ bool DatasetFilterModule::passes(int64_t image_id) const
 
     const int64_t dataset_id = image->datasetId();
     return selected_dataset_ids_.find(dataset_id) != selected_dataset_ids_.end();
-
-    return false;
 }
 
 void DatasetFilterModule::selectAll()

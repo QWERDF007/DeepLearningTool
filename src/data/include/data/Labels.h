@@ -65,6 +65,7 @@ class LabelInstancesListModel : public QAbstractListModel
     QML_NAMED_ELEMENT(LabelInstancesModel)
     QML_UNCREATABLE("Can not create LabelInstancesModel directly!")
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
+    Q_PROPERTY(int lastIndex READ lastIndex WRITE setLastIndex NOTIFY lastIndexChanged)
 public:
     LabelInstancesListModel(data::ProjectDataBase *database, ImageInstancesListModel *image_instances,
                             LabelClassesListModel *label_classes, LabelDataHelper label_data_helper,
@@ -110,6 +111,16 @@ public:
     {
         return selection_;
     }
+
+    Q_INVOKABLE void shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command);
+    Q_INVOKABLE void selectAll();
+
+    int lastIndex() const
+    {
+        return last_index_;
+    }
+
+    void setLastIndex(int last_index);
 
     int64_t              getImageId(const int64_t label_id) const;
     std::vector<int64_t> getImageIds(const std::vector<int64_t> &label_ids) const;
@@ -188,6 +199,14 @@ private:
     bool is_filtered_{false};
 
     QItemSelectionModel *selection_{nullptr};
+
+    /**
+     * @brief 上次选中的标注索引, 用于多选时记录上次选中的标注索引
+     */
+    int last_index_{-1};
+
+signals:
+    void lastIndexChanged();
 };
 
 class ImageLabelsListModel : public QAbstractListModel

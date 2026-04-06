@@ -36,6 +36,8 @@ Rectangle {
         // 优化：减少缓冲区大小，避免一次性加载太多项目
         cacheBuffer: 400  // 只缓冲 2 行的高度
         
+        keyNavigationEnabled: false // 禁用键盘导航以便启用方向键切换选中
+        
         delegate: Rectangle {
             id: delegateItem
             width: thumbnailGridView.cellWidth - 10
@@ -84,6 +86,23 @@ Rectangle {
         // 滚动条
         ScrollBar.vertical: DltScrollBar {
             id: scrollBar
+        }
+        
+        // 键盘事件处理
+        Keys.enabled: thumbnailGridView.visible
+        Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_Escape) {
+                selection.clear()
+            } else if (event.key === Qt.Key_Delete && selection && selection.hasSelection) {
+                // 可以在这里添加删除标注的逻辑
+                // deleteConfirmDialog.open()
+            } else if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
+                if (labelInstances) {
+                    labelInstances.selectAll()
+                }
+            } else {
+                updateSelectionByKeyboard(event)
+            }
         }
         
         // 缩放视图函数
@@ -156,13 +175,22 @@ Rectangle {
                 // 直接选中 labelInstances 模型中的对应项
                 let modelIndex = labelInstances.index(result.index, 0)
                 
-                if (mouse.button === Qt.LeftButton) {
-                    if (mouse.modifiers & Qt.ControlModifier) {
-                        selection.select(modelIndex, ItemSelectionModel.Toggle)
-                    } else {
+                if (labelInstances.lastIndex === -1) {
+                    labelInstances.lastIndex = result.index
+                }
+                
+                if (mouse.button === Qt.LeftButton || (mouse.button === Qt.RightButton && !selection.isSelected(modelIndex))) {
+                    if (mouse.modifiers & Qt.ShiftModifier) { // shift 多选
+                        labelInstances.shiftSelect(result.index, labelInstances.lastIndex, ItemSelectionModel.ClearAndSelect)
+                        selection.setCurrentIndex(modelIndex, ItemSelectionModel.Select)
+                    } else if (mouse.modifiers & Qt.ControlModifier) { // ctrl 多选
+                        selection.select(modelIndex, ItemSelectionModel.Select)
+                        selection.setCurrentIndex(modelIndex, ItemSelectionModel.Select)
+                    } else { // 单选
                         selection.select(modelIndex, ItemSelectionModel.ClearAndSelect)
+                        selection.setCurrentIndex(modelIndex, ItemSelectionModel.Select)
+                        labelInstances.lastIndex = result.index
                     }
-                    selection.setCurrentIndex(modelIndex, ItemSelectionModel.Current)
                 }
             }
             
@@ -212,5 +240,50 @@ Rectangle {
         visible: thumbnailGridView.count === 0
         text: "没有标注实例"
         font.pixelSize: 16
+    }
+    
+    // 方向键移动选中的函数
+    function updateSelectionByKeyboard(event) {
+        if (!selection || !labelInstances) {
+            return
+        }
+        
+        let curIndex = selection.currentIndex.row
+        let newIndex = curIndex
+        let columns = Math.floor(thumbnailGridView.width / thumbnailGridView.cellWidth)
+        
+        // ADWS 上下左右 时计算并选中新项
+        if (event.key === Qt.Key_A || event.key === Qt.Key_Left) {
+            newIndex = Math.max(0, curIndex - 1)
+        } else if (event.key === Qt.Key_D || event.key === Qt.Key_Right) {
+            newIndex = Math.min(thumbnailGridView.count - 1, curIndex + 1)
+        } else if (event.key === Qt.Key_W || event.key === Qt.Key_Up) {
+            newIndex = Math.max(0, curIndex - columns)
+        } else if (event.key === Qt.Key_S || event.key === Qt.Key_Down) {
+            newIndex = Math.min(thumbnailGridView.count - 1, curIndex + columns)
+        } else if (event.key === Qt.Key_Home) {
+            thumbnailGridView.positionViewAtBeginning()
+        } else if (event.key === Qt.Key_End) {
+            thumbnailGridView.positionViewAtEnd()
+        } else if (event.key === Qt.Key_PageUp) {
+            scrollBar.decrease()
+        } else if (event.key === Qt.Key_PageDown) {
+            scrollBar.increase()
+        }
+        
+        if (curIndex !== -1 && newIndex !== curIndex) {
+            let tmpIndex = labelInstances.index(newIndex, 0)
+            selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
+            selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
+            labelInstances.lastIndex = newIndex
+        }
+    }
+    
+    // 监听选中项变化，自动滚动到当前选中项
+    Connections {
+        target: selection
+        function onCurrentIndexChanged(current, previous) {
+            thumbnailGridView.positionViewAtIndex(current.row, GridView.Contain)
+        }
     }
 }
