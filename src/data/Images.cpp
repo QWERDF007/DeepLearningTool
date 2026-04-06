@@ -1,4 +1,4 @@
-#include "data/Images.h"
+﻿#include "data/Images.h"
 
 #include "data/DataBase.h"
 #include "data/Datasets.h"
@@ -397,13 +397,13 @@ int ImageInstancesListModel::getImageId(const QModelIndex &index) const
 QVariant ImageInstancesListModel::getImageName(const QModelIndex &index) const
 {
     const int64_t image_id = image_ids_[index.row()];
-    return full_image_instances_.at(image_id)->name();
+    return getImageName(image_id);
 }
 
 QVariant ImageInstancesListModel::getImagePath(const QModelIndex &index) const
 {
     const int64_t image_id = image_ids_[index.row()];
-    return full_image_instances_.at(image_id)->path();
+    return getImagePath(image_id);
 }
 
 QVariant ImageInstancesListModel::getSelected(const QModelIndex &index) const
@@ -628,6 +628,38 @@ void ImageInstancesListModel::getAllDatasetsImagesLabels(std::vector<int64_t>   
         images_label_ids.push_back(
             std::vector<int64_t>{image_instance->labelIds().begin(), image_instance->labelIds().end()});
     }
+}
+
+QString ImageInstancesListModel::getImageName(const int64_t image_id) const
+{
+    auto found = full_image_instances_.find(image_id);
+    if (found == full_image_instances_.end())
+        return QString();
+    return found->second->name();
+}
+
+QString ImageInstancesListModel::getImagePath(const int64_t image_id) const
+{
+    auto found = full_image_instances_.find(image_id);
+    if (found == full_image_instances_.end())
+        return QString();
+    return found->second->path();
+}
+
+int64_t ImageInstancesListModel::getImageDatasetId(const int64_t image_id) const
+{
+    auto found = full_image_instances_.find(image_id);
+    if (found == full_image_instances_.end())
+        return -1;
+    return found->second->datasetId();
+}
+
+std::set<int64_t> ImageInstancesListModel::getImageTagIds(const int64_t image_id) const
+{
+    auto found = full_image_instances_.find(image_id);
+    if (found == full_image_instances_.end())
+        return {};
+    return found->second->tagIds();
 }
 
 void ImageInstancesListModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)

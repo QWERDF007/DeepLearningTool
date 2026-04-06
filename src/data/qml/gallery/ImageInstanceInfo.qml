@@ -1,4 +1,4 @@
-import QtQuick
+﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -50,31 +50,14 @@ Rectangle {
             boundsBehavior: Flickable.StopAtBounds
             model: imageInfo
             ScrollBar.vertical: DltScrollBar{}
-            delegate: ColumnLayout {
+            delegate: InfoTextItem {
+                id: infoItem
                 width: view.width
-                spacing: 2
-                DltText {
-                    Layout.leftMargin: 5
-                    Layout.rightMargin: 5
-                    text: model.title
-                    textColor: DltColor.FontDark
-                }
-                DltText {
-                    id: value
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 5
-                    Layout.rightMargin: 5
-                    Layout.bottomMargin: 5
-                    text: model.value
-                    wrapMode: Text.Wrap
-                    MouseArea {
-                        anchors.fill: parent
-                        acceptedButtons: Qt.RightButton
-                        onClicked: function(mouse) {
-                            copyboard.text = value.text
-                            menu.popup()
-                        }
-                    }
+                title: model.title
+                text: model.value
+                onClicked: {
+                    copyboard.text = text
+                    menu.popup()
                 }
             }
         }

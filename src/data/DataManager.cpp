@@ -1,4 +1,4 @@
-#include "data/DataManager.h"
+﻿#include "data/DataManager.h"
 
 #include "data/DataBase.h"
 #include "data/DataFormat.h"
@@ -266,6 +266,8 @@ void DataManager::handleDataReady(bool success, int64_t dataset_id, std::vector<
                                   std::vector<int64_t> image_widths, std::vector<int64_t> image_heights,
                                   std::map<QString, QString> label_class_info, std::vector<ImportedLabel> labels)
 {
+    Q_UNUSED(image_widths)
+    Q_UNUSED(image_heights)
     // 获取发送信号的导入器，用于稍后删除
     DataImporter *importer = qobject_cast<DataImporter *>(sender());
 
@@ -444,6 +446,35 @@ void DataManager::initializeQmlEngine(QQmlApplicationEngine *engine)
 
     // 注册到 QML 引擎（使用小写名称，因为 QML Image 会自动转换为小写）
     engine->addImageProvider("labelinstance", label_instance_provider);
+}
+
+QString DataManager::getImageName(const int64_t image_id) const
+{
+    return image_instances_->getImageName(image_id);
+}
+
+QString DataManager::getImagePath(const int64_t image_id) const
+{
+    return image_instances_->getImagePath(image_id);
+}
+
+QString DataManager::getImageDatasetName(const int64_t image_id) const
+{
+    const int64_t dataset_id = image_instances_->getImageDatasetId(image_id);
+    return datasets_->getDatasetName(dataset_id);
+}
+
+QString DataManager::getImageTagName(const int64_t image_id) const
+{
+    const std::set<int64_t> tag_ids = image_instances_->getImageTagIds(image_id);
+    if (tag_ids.empty())
+        return QString();
+    QString tag_names;
+    for (int64_t tag_id : tag_ids)
+    {
+        tag_names.append(image_tags_->getTagClassName(tag_id) + ";");
+    }
+    return tag_names;
 }
 
 } // namespace dltool::data

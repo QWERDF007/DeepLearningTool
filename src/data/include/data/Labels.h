@@ -82,6 +82,7 @@ public:
         DataRole,
         SelectedRole,
     };
+    Q_ENUM(Role)
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
 

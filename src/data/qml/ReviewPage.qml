@@ -47,12 +47,12 @@ Rectangle {
                 dataManager: labelPage.dataManager
             }
 
-            Rectangle { // 标注列表
+            SelectedLabelsInfoPanel { // 所选标注信息
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: 240
                 color: DltColor.Primary
-                
+                dataManager: labelPage.dataManager
             }
         }
 

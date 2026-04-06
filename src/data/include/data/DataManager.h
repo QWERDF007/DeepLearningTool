@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "DataExport.h"
 #include "DataImporter.h"
@@ -145,6 +145,11 @@ public:
      * @param engine QML 应用引擎指针
      */
     void initializeQmlEngine(QQmlApplicationEngine *engine);
+
+    Q_INVOKABLE QString getImageName(const int64_t image_id) const;
+    Q_INVOKABLE QString getImagePath(const int64_t image_id) const;
+    Q_INVOKABLE QString getImageDatasetName(const int64_t image_id) const;
+    Q_INVOKABLE QString getImageTagName(const int64_t image_id) const;
 
 private:
     void init(const int method);

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <QAbstractListModel>
 #include <QRect>
@@ -25,12 +25,12 @@ public:
     ImageInstance(const int64_t dataset_id, const int64_t image_id, const QString &path, QObject *parent = nullptr);
     ~ImageInstance();
 
-    int datasetId() const
+    int64_t datasetId() const
     {
         return dataset_id_;
     }
 
-    int imageId() const
+    int64_t imageId() const
     {
         return image_id_;
     }
@@ -156,6 +156,7 @@ public:
         IsCurrentRole,
         HasLabelsRole,
     };
+    Q_ENUM(Role)
 
     QHash<int, QByteArray> roleNames() const override;
 
@@ -236,6 +237,11 @@ public:
 
     void getAllDatasetsImagesLabels(std::vector<int64_t> &dataset_ids, std::vector<int64_t> &image_ids,
                                     std::vector<std::vector<int64_t>> &images_label_ids) const;
+
+    QString           getImageName(const int64_t image_id) const;
+    QString           getImagePath(const int64_t image_id) const;
+    int64_t           getImageDatasetId(const int64_t image_id) const;
+    std::set<int64_t> getImageTagIds(const int64_t image_id) const;
 
 private:
     void init();

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <QAbstractListModel>
 #include <QtQml>
@@ -92,6 +92,7 @@ public:
         SelectedImagesStatsRole,
         CurrentImageStatsRole,
     };
+    Q_ENUM(Role)
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
 
@@ -113,6 +114,8 @@ public:
     std::vector<std::vector<int64_t>> getImagesTagIds(const std::vector<int64_t> &image_ids) const;
 
     void updateStats();
+
+    QString getTagClassName(const int64_t tag_id) const;
 
 private:
     void init();

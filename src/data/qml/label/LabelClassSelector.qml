@@ -1,4 +1,4 @@
-import QtQuick
+﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -12,6 +12,8 @@ DltComboBox {
     // 公共属性
     property LabelClassesModel labelClassesModel: null
     property int currentClassId: -1
+    property bool showMultipleDifferent: false  // 是否显示"不同类别"状态
+    property string multipleDifferentText: "不同类别"  // 多个不同类别时的显示文本
 
     // 信号
     signal classChanged(int newClassId)
@@ -25,6 +27,18 @@ DltComboBox {
 
     model: labelClassesModel
     textRole: "name"
+
+    // 显示文本：如果是多个不同类别，显示自定义文本
+    displayText: {
+        if (showMultipleDifferent) {
+            return multipleDifferentText
+        }
+        if (currentIndex >= 0 && labelClassesModel) {
+            let modelIndex = labelClassesModel.index(currentIndex, 0)
+            return labelClassesModel.data(modelIndex, LabelClassesModel.NameRole)
+        }
+        return ""
+    }
 
     Component.onCompleted: {
         syncCurrentIndex()
@@ -44,11 +58,10 @@ DltComboBox {
         var rowCount = labelClassesModel.rowCount()
         for (var i = 0; i < rowCount; i++) {
             var modelIndex = labelClassesModel.index(i, 0)
-            var classId = labelClassesModel.data(modelIndex, 257) // LabelClassIdRole = Qt.UserRole + 1 = 257
+            var classId = labelClassesModel.data(modelIndex, LabelClassesModel.LabelClassIdRole)
             if (classId === currentClassId) {
                 currentIndex = i
-                // 从模型数据获取颜色 (ColorRole = 259)
-                var colorData = labelClassesModel.data(modelIndex, 259)
+                var colorData = labelClassesModel.data(modelIndex, LabelClassesModel.ColorRole)
                 _currentColor = colorData ? colorData : DltColor.Transparent
                 _updating = false
                 return
@@ -66,11 +79,10 @@ DltComboBox {
         if (_updating || !labelClassesModel || index < 0) return
         
         var modelIndex = labelClassesModel.index(index, 0)
-        var newClassId = labelClassesModel.data(modelIndex, 257) // LabelClassIdRole
+        var newClassId = labelClassesModel.data(modelIndex, LabelClassesModel.LabelClassIdRole)
         
         if (newClassId !== currentClassId) {
-            // 从模型数据获取颜色 (ColorRole = 259)
-            var colorData = labelClassesModel.data(modelIndex, 259)
+            var colorData = labelClassesModel.data(modelIndex, LabelClassesModel.ColorRole)
             _currentColor = colorData ? colorData : DltColor.Transparent
             // 不在这里修改 currentClassId - 让父组件处理
             classChanged(newClassId)
@@ -132,7 +144,7 @@ DltComboBox {
                 Layout.preferredWidth: 16
                 Layout.preferredHeight: 16
                 radius: 3
-                visible: control.currentIndex >= 0 && control.labelClassesModel
+                visible: !control.showMultipleDifferent && control.currentIndex >= 0 && control.labelClassesModel
                 color: control._currentColor
                 border.width: visible ? 1 : 0
                 border.color: visible && control._currentColor !== DltColor.Transparent ? Qt.darker(control._currentColor, 1.3) : DltColor.Transparent

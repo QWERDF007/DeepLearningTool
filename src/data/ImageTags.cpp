@@ -1,4 +1,4 @@
-#include "data/ImageTags.h"
+﻿#include "data/ImageTags.h"
 
 #include "data/DataBase.h"
 #include "data/Datasets.h"
@@ -333,9 +333,7 @@ int ImageTagsListModel::getTagClassId(const QModelIndex &index) const
 QVariant ImageTagsListModel::getTagClassName(const QModelIndex &index) const
 {
     const int tag_id = getTagClassId(index);
-    if (tag_id != -1)
-        return image_tags_.at(tag_id)->name();
-    return "";
+    return getTagClassName(tag_id);
 }
 
 QVariant ImageTagsListModel::getSelectedImagesTagStats(const QModelIndex &index) const
@@ -411,6 +409,14 @@ void ImageTagsListModel::updateStats()
         return;
     emit dataChanged(index(0), index(static_cast<int>(image_tags_.size() - 1)),
                      {SelectedImagesStatsRole, CurrentImageStatsRole});
+}
+
+QString ImageTagsListModel::getTagClassName(const int64_t tag_id) const
+{
+    auto found = image_tags_.find(tag_id);
+    if (found == image_tags_.end())
+        return QString();
+    return found->second->name();
 }
 
 bool ImageTagsListModel::hasAnyTags(const std::vector<int64_t> &image_ids) const
