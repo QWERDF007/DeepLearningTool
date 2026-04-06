@@ -1,4 +1,4 @@
-import QtQuick
+﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -68,48 +68,15 @@ Rectangle {
                 return DltColor.Transparent
             }
             
-            ColumnLayout {
+                
+            // 缩略图
+            LabelInstanceThumbnail {
                 anchors.fill: parent
                 anchors.margins: 5
-                spacing: 5
-                
-                // 缩略图
-                LabelInstanceThumbnail {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    labelId: delegateItem.labelId
-                    labelData: model.data || null
-                    borderColor: model.label_class_color || DltColor.Transparent
-                }
-                
-                // 标注信息
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 30
-                    color: DltColor.Transparent
-                    
-                    ColumnLayout {
-                        anchors.fill: parent
-                        spacing: 2
-                        
-                        DltText {
-                            Layout.fillWidth: true
-                            text: "ID: " + delegateItem.labelId
-                            font.pixelSize: 10
-                            elide: Text.ElideRight
-                        }
-                        
-                        DltText {
-                            Layout.fillWidth: true
-                            text: model.label_class_name || "Unknown"
-                            font.pixelSize: 10
-                            elide: Text.ElideRight
-                        }
-                    }
-                }
+                labelId: delegateItem.labelId
+                labelData: model.data || null
+                borderColor: model.label_class_color || DltColor.Transparent
             }
-            
-
         }
         
         boundsBehavior: Flickable.StopAtBounds
