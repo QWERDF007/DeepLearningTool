@@ -1,4 +1,4 @@
-import QtQuick
+﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Qt.labs.qmlmodels
@@ -17,7 +17,7 @@ Rectangle {
     property ItemSelectionModel selection: imageLabelsTable ? imageLabelsTable.selection : null
 
     property real rowHeight: 24
-    property real colWidth: horizontalHeader.width / horizontalHeader.columns
+    property real colWidth: horizontalHeader.columns > 0 ? horizontalHeader.width / horizontalHeader.columns : 1
 
     Connections {
         target: SignalHelper
