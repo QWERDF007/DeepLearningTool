@@ -6,6 +6,7 @@ dltool::ui::DltColor::DltColor(QObject *parent)
     : QObject(parent)
 {
     Transparent(QColor(0, 0, 0, 0));              // #000000
+    Black(QColor(0, 0, 0, 255));                  // #000000
     Background(QColor(48, 48, 48, 255));          // #303030
     Primary(QColor(61, 61, 61, 255));             // #3D3D3D
     Border(QColor(62, 62, 62, 255));              // #3E3E3E
