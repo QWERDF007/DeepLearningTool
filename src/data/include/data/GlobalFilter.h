@@ -144,6 +144,12 @@ public:
      */
     void applyFilters();
 
+    /**
+     * @brief 获取当前过滤条件
+     * @return 当前的过滤条件结构
+     */
+    const FilterCriteria& getCurrentCriteria() const { return current_criteria_; }
+
 signals:
     void filterStateChanged(); // 过滤器状态改变信号
     void filterApplied();      // 过滤器应用完成信号

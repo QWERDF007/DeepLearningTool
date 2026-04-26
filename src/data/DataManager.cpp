@@ -1,5 +1,6 @@
 ﻿#include "data/DataManager.h"
 
+#include "data/CategoryStatisticsModel.h"
 #include "data/DataBase.h"
 #include "data/DataFormat.h"
 #include "data/DataImporter.h"
@@ -46,6 +47,9 @@ void DataManager::init(const int method)
     dataset_filter_items_     = new DatasetFilterItemsModel(this);
     tag_filter_items_         = new TagFilterItemsModel(this);
     label_class_filter_items_ = new LabelClassFilterItemsModel(this);
+
+    // Create CategoryStatisticsModel
+    category_statistics_model_ = new CategoryStatisticsModel(label_instances_, label_classes_, this);
 
     // Populate filter items models from datasets and tags
     dataset_filter_items_->populateFromDatasets(datasets_);

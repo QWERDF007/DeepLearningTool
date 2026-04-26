@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include "CategoryStatisticsModel.h"
 #include "DataExport.h"
 #include "DataImporter.h"
 #include "Datasets.h"
@@ -38,6 +39,7 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(DatasetFilterItemsModel *datasetFilterItems READ datasetFilterItems CONSTANT FINAL)
     Q_PROPERTY(TagFilterItemsModel *tagFilterItems READ tagFilterItems CONSTANT FINAL)
     Q_PROPERTY(LabelClassFilterItemsModel *labelClassFilterItems READ labelClassFilterItems CONSTANT FINAL)
+    Q_PROPERTY(CategoryStatisticsModel *categoryStatisticsModel READ categoryStatisticsModel CONSTANT FINAL)
 
 public:
     DataManager(const int method, data::ProjectDataBase *database, QObject *parent = nullptr);
@@ -101,6 +103,11 @@ public:
     LabelClassFilterItemsModel *labelClassFilterItems() const
     {
         return label_class_filter_items_;
+    }
+
+    CategoryStatisticsModel *categoryStatisticsModel() const
+    {
+        return category_statistics_model_;
     }
 
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
@@ -180,6 +187,8 @@ private:
     DatasetFilterItemsModel    *dataset_filter_items_{nullptr};
     TagFilterItemsModel        *tag_filter_items_{nullptr};
     LabelClassFilterItemsModel *label_class_filter_items_{nullptr};
+
+    CategoryStatisticsModel *category_statistics_model_{nullptr};
 
     int method_{0}; // 标签数据类型
 };

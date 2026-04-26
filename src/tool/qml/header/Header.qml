@@ -1,4 +1,4 @@
-import QtQuick
+﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -45,6 +45,24 @@ Rectangle {
                         textColor: mainTabBar.currentIndex === index ? DltColor.Highlight : "white"
                         focusPolicy: Qt.NoFocus
                         enabled: modelData === "项目" || (ProjectManager.currentProject ? true : false)
+                    }
+                }
+            }
+            ToolBar {
+                Layout.fillHeight: true
+                background: Rectangle {
+                    color: DltColor.Primary
+                }
+
+                RowLayout {
+                    anchors.verticalCenter: parent.verticalCenter
+                    DltTextIconButton {
+                        iconSource: DltFontIcon.AreaChart
+                        text: "统计"
+                        enabled: ProjectManager.currentProject !== null
+                        onClicked: {
+                            categoryStatisticsDialog.open()
+                        }
                     }
                 }
             }
@@ -148,5 +166,10 @@ Rectangle {
             tagDropDown.checked = false
             labelClassImageDropDown.checked = false
         }
+    }
+    
+    CategoryStatisticsDialog {
+        id: categoryStatisticsDialog
+        dataManager: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager : null
     }
 }

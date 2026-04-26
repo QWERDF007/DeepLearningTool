@@ -154,6 +154,12 @@ public:
         return static_cast<int>(full_label_instances_.size());
     }
 
+    // NEW: Access to unfiltered data for statistics
+    const std::map<int64_t, LabelInstance *> &getAllLabelInstances() const
+    {
+        return full_label_instances_;
+    }
+
 private:
     void init();
 

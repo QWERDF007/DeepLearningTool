@@ -1,4 +1,4 @@
-import QtQuick
+﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Effects
 
@@ -22,7 +22,7 @@ Item {
     // 只读属性
     readonly property bool imageLoaded: thumbnail.status === Image.Ready
     readonly property bool imageError: thumbnail.status === Image.Error
-    readonly property bool hasValidLabelData: isLabelDataValid()
+    readonly property bool hasValidLabelData: true //isLabelDataValid()
     
     // 配置属性（从 GlobalSettings 获取）
     readonly property int margin: GlobalSettings.data.thumbnailMargin
