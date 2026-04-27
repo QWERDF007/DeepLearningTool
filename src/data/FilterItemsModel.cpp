@@ -6,6 +6,8 @@
 
 #include <spdlog/spdlog.h>
 
+#include <unordered_set>
+
 namespace dltool::data {
 
 // ============================================================================
@@ -150,6 +152,16 @@ void DatasetFilterItemsModel::populateFromDatasets(QAbstractItemModel *datasets_
         return;
     }
 
+    // 保存现有未选中项的ID，以便重新填充后恢复选中状态
+    std::unordered_set<int64_t> unchecked_ids;
+    for (const auto &item : items_)
+    {
+        if (!item.checked)
+        {
+            unchecked_ids.insert(item.id);
+        }
+    }
+
     // 清空现有数据
     clear();
 
@@ -160,8 +172,6 @@ void DatasetFilterItemsModel::populateFromDatasets(QAbstractItemModel *datasets_
         QModelIndex idx = datasets_model->index(i, 0);
 
         // 获取数据集ID和名称
-        // DatasetIdRole = Qt::UserRole + 1 = 257
-        // NameRole = Qt::UserRole + 2 = 258
         QVariant id_variant   = datasets_model->data(idx, DatasetsListModel::DatasetIdRole);
         QVariant name_variant = datasets_model->data(idx, DatasetsListModel::NameRole);
 
@@ -170,8 +180,9 @@ void DatasetFilterItemsModel::populateFromDatasets(QAbstractItemModel *datasets_
             int64_t dataset_id   = id_variant.toLongLong();
             QString dataset_name = name_variant.toString();
 
-            // 默认选中所有数据集
-            append(dataset_id, dataset_name, true);
+            // 保留已有项的选中状态，新项默认选中
+            bool checked = unchecked_ids.find(dataset_id) == unchecked_ids.end();
+            append(dataset_id, dataset_name, checked);
         }
     }
 
@@ -195,6 +206,16 @@ void TagFilterItemsModel::populateFromTags(QAbstractItemModel *tags_model)
         return;
     }
 
+    // 保存现有未选中项的ID，以便重新填充后恢复选中状态
+    std::unordered_set<int64_t> unchecked_ids;
+    for (const auto &item : items_)
+    {
+        if (!item.checked)
+        {
+            unchecked_ids.insert(item.id);
+        }
+    }
+
     // 清空现有数据
     clear();
 
@@ -205,8 +226,6 @@ void TagFilterItemsModel::populateFromTags(QAbstractItemModel *tags_model)
         QModelIndex idx = tags_model->index(i, 0);
 
         // 获取标签ID和名称
-        // TagIdRole = Qt::UserRole + 1 = 257
-        // NameRole = Qt::UserRole + 2 = 258
         QVariant id_variant   = tags_model->data(idx, ImageTagsListModel::TagIdRole);
         QVariant name_variant = tags_model->data(idx, ImageTagsListModel::NameRole);
 
@@ -215,8 +234,9 @@ void TagFilterItemsModel::populateFromTags(QAbstractItemModel *tags_model)
             int64_t tag_id   = id_variant.toLongLong();
             QString tag_name = name_variant.toString();
 
-            // 默认选中所有标签
-            append(tag_id, tag_name, true);
+            // 保留已有项的选中状态，新项默认选中
+            bool checked = unchecked_ids.find(tag_id) == unchecked_ids.end();
+            append(tag_id, tag_name, checked);
         }
     }
 
@@ -240,6 +260,16 @@ void LabelClassFilterItemsModel::populateFromLabelClasses(QAbstractItemModel *la
         return;
     }
 
+    // 保存现有未选中项的ID，以便重新填充后恢复选中状态
+    std::unordered_set<int64_t> unchecked_ids;
+    for (const auto &item : items_)
+    {
+        if (!item.checked)
+        {
+            unchecked_ids.insert(item.id);
+        }
+    }
+
     clear();
 
     const int row_count = label_classes_model->rowCount();
@@ -254,7 +284,10 @@ void LabelClassFilterItemsModel::populateFromLabelClasses(QAbstractItemModel *la
         {
             const int64_t label_class_id = id_variant.toLongLong();
             const QString name           = name_variant.toString();
-            append(label_class_id, name, true);
+
+            // 保留已有项的选中状态，新项默认选中
+            bool checked = unchecked_ids.find(label_class_id) == unchecked_ids.end();
+            append(label_class_id, name, checked);
         }
     }
 

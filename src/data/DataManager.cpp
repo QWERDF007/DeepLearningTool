@@ -56,6 +56,28 @@ void DataManager::init(const int method)
     tag_filter_items_->populateFromTags(image_tags_);
     label_class_filter_items_->populateFromLabelClasses(label_classes_);
 
+    // Connect source model changes to refresh filter items models
+    connect(datasets_, &QAbstractItemModel::rowsInserted, this,
+            [this](const QModelIndex &, int, int) { dataset_filter_items_->populateFromDatasets(datasets_); });
+    connect(datasets_, &QAbstractItemModel::rowsRemoved, this,
+            [this](const QModelIndex &, int, int) { dataset_filter_items_->populateFromDatasets(datasets_); });
+    connect(datasets_, &QAbstractItemModel::modelReset, this,
+            [this]() { dataset_filter_items_->populateFromDatasets(datasets_); });
+
+    connect(image_tags_, &QAbstractItemModel::rowsInserted, this,
+            [this](const QModelIndex &, int, int) { tag_filter_items_->populateFromTags(image_tags_); });
+    connect(image_tags_, &QAbstractItemModel::rowsRemoved, this,
+            [this](const QModelIndex &, int, int) { tag_filter_items_->populateFromTags(image_tags_); });
+    connect(image_tags_, &QAbstractItemModel::modelReset, this,
+            [this]() { tag_filter_items_->populateFromTags(image_tags_); });
+
+    connect(label_classes_, &QAbstractItemModel::rowsInserted, this, [this](const QModelIndex &, int, int)
+            { label_class_filter_items_->populateFromLabelClasses(label_classes_); });
+    connect(label_classes_, &QAbstractItemModel::rowsRemoved, this, [this](const QModelIndex &, int, int)
+            { label_class_filter_items_->populateFromLabelClasses(label_classes_); });
+    connect(label_classes_, &QAbstractItemModel::modelReset, this,
+            [this]() { label_class_filter_items_->populateFromLabelClasses(label_classes_); });
+
     connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_labels_list_,
             &ImageLabelsListModel::onCurrentImageChanged);
     connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_labels_table_,
