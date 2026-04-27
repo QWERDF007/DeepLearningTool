@@ -92,9 +92,7 @@ DltPopup {
                         return rowHeight
                     }
                     
-                    ScrollBar.vertical: DltScrollBar {
-                        policy: ScrollBar.AsNeeded
-                    }
+                    ScrollBar.vertical: DltScrollBar {}
                     
                     delegate: DelegateChooser {
                         // 第一列：类别名称

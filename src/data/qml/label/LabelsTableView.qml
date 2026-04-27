@@ -96,6 +96,8 @@ Rectangle {
 
                 model: imageLabelsTable
 
+                ScrollBar.vertical: DltScrollBar {}
+
                 delegate: DelegateChooser {
 
                     DelegateChoice{
