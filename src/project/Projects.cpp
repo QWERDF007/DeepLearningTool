@@ -1,7 +1,7 @@
 #include "project/Projects.h"
 
 #include "data/CoreDef.h"
-#include "data/DataBase.h"
+#include "database/DataBase.h"
 
 #include <spdlog/spdlog.h>
 
@@ -24,14 +24,14 @@ Project::Project(const QString &name, const int method, const QString &path, con
     , ctime_(ctime)
     , mtime_(mtime)
 {
-    database_ = new data::ProjectDataBase(path_, this);
+    database_ = new dltool::database::ProjectDataBase(path_, this);
 }
 
 Project::Project(const QString &path, QObject *parent)
     : QObject(parent)
     , path_(path)
 {
-    database_ = new data::ProjectDataBase(path_, this);
+    database_ = new dltool::database::ProjectDataBase(path_, this);
 }
 
 Project::~Project() {}
@@ -96,7 +96,7 @@ std::tuple<bool, QString> Project::isValid(const int method, const QString &path
 RectentProjects::RectentProjects(const QString &path, QObject *parent)
     : QAbstractListModel(parent)
     , path_(path)
-    , database_(new data::RecentProjectsDataBase(path_, this))
+    , database_(new dltool::database::RecentProjectsDataBase(path_, this))
     , selection_(new QItemSelectionModel(this))
 {
     init();
@@ -124,7 +124,7 @@ void RectentProjects::init()
         ProjectBaseInfo info;
         info.path = paths[i];
         QString msg;
-        bool    ok = data::ProjectDataBase::getProjectBaseInfo(info.path, info.name, info.mtime, msg);
+        bool    ok = dltool::database::ProjectDataBase::getProjectBaseInfo(info.path, info.name, info.mtime, msg);
         if (ok)
         {
             project_infos.emplace_back(info);
@@ -220,7 +220,7 @@ bool RectentProjects::addProject(const QString &path)
     {
         spdlog::info("添加最近项目: {}", path.toUtf8().constData());
         info.path = path;
-        data::ProjectDataBase::getProjectBaseInfo(info.path, info.name, info.mtime, err_msg);
+        dltool::database::ProjectDataBase::getProjectBaseInfo(info.path, info.name, info.mtime, err_msg);
         emit dataChanged(index(row), index(row), {NameRole, PathRole, ToolTipRole});
         selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
         selection_->setCurrentIndex(index(0), QItemSelectionModel::ClearAndSelect);
@@ -465,7 +465,7 @@ bool ProjectManager::updateProjectBaseInfo(const QString &path, const QString &n
     spdlog::info("更新项目: {}", path.toUtf8().constData());
     QString      err_msg;
     const qint64 mtime = QDateTime::currentSecsSinceEpoch();
-    bool         ok    = data::ProjectDataBase::updateProjectBaseInfo(path, name, description, mtime, err_msg);
+    bool         ok = dltool::database::ProjectDataBase::updateProjectBaseInfo(path, name, description, mtime, err_msg);
     if (ok)
     {
         recent_projects_->updateProjectBaseInfo(path, name, mtime);
@@ -481,7 +481,7 @@ void ProjectManager::updateProjectMtime(const QString &path)
 {
     QVariantMap project_info;
     QString     err_msg;
-    data::ProjectDataBase::getProjectInfo(path, project_info, err_msg);
+    dltool::database::ProjectDataBase::getProjectInfo(path, project_info, err_msg);
     QString name        = project_info["name"].toString();
     QString description = project_info["description"].toString();
     updateProjectBaseInfo(path, name, description);
@@ -529,7 +529,7 @@ QVariantMap ProjectManager::getProjectInfo(const QString &path)
     }
     QVariantMap project_info;
     QString     err_msg;
-    bool        ok = data::ProjectDataBase::getProjectInfo(path, project_info, err_msg);
+    bool        ok = dltool::database::ProjectDataBase::getProjectInfo(path, project_info, err_msg);
     if (!ok)
     {
         spdlog::error("获取项目信息失败, {}, error: {}", path.toUtf8().constData(), err_msg.toUtf8().constData());
@@ -548,7 +548,7 @@ QVariantMap ProjectManager::getLabelInfo(const QString &path)
     }
     QVariantMap label_info;
     QString     err_msg;
-    bool        ok = data::ProjectDataBase::getLabelInfo(path, label_info, err_msg);
+    bool        ok = dltool::database::ProjectDataBase::getLabelInfo(path, label_info, err_msg);
     if (!ok)
     {
         spdlog::error("获取项目信息失败, {}, error: {}", path.toUtf8().constData(), err_msg.toUtf8().constData());

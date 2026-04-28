@@ -8,9 +8,11 @@
 #include <map>
 #include <vector>
 
-namespace dltool::data {
-
+namespace dltool::database {
 class ProjectDataBase;
+} // namespace dltool::database
+
+namespace dltool::data {
 
 /**
  * @brief 导入的标注数据结构
@@ -42,7 +44,7 @@ class DATA_API DataImporter : public QObject
     Q_OBJECT
 
 public:
-    explicit DataImporter(ProjectDataBase *database, QObject *parent = nullptr);
+    explicit DataImporter(dltool::database::ProjectDataBase *database, QObject *parent = nullptr);
     virtual ~DataImporter();
 
     /**
@@ -52,7 +54,8 @@ public:
      * @param parent 父对象
      * @return 导入器实例，如果格式不支持则返回 nullptr
      */
-    static DataImporter *createImporter(int data_format, ProjectDataBase *database, QObject *parent = nullptr);
+    static DataImporter *createImporter(int data_format, dltool::database::ProjectDataBase *database,
+                                        QObject *parent = nullptr);
 
     /**
      * @brief 开始导入数据
@@ -95,7 +98,7 @@ signals:
                    std::map<QString, QString> label_class_info, std::vector<ImportedLabel> labels);
 
 protected:
-    ProjectDataBase *database_;
+    dltool::database::ProjectDataBase *database_;
 
     /**
      * @brief 更新进度信息到 UI

@@ -1,6 +1,6 @@
 #include "data/LabelMeImporter.h"
 
-#include "data/DataBase.h"
+#include "database/DataBase.h"
 
 #include <json.hpp>
 #include <spdlog/spdlog.h>
@@ -15,7 +15,7 @@
 
 namespace dltool::data {
 
-LabelMeImporter::LabelMeImporter(ProjectDataBase *database, QObject *parent)
+LabelMeImporter::LabelMeImporter(dltool::database::ProjectDataBase *database, QObject *parent)
     : DataImporter(database, parent)
 {
 }

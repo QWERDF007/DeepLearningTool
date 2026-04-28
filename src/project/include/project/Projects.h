@@ -1,8 +1,8 @@
 #pragma once
 
+#include "ProjectExport.h"
 #include "common/Singleton.h"
 #include "data/DataManager.h"
-#include "ProjectExport.h"
 
 #include <QAbstractListModel>
 #include <QItemSelectionModel>
@@ -10,12 +10,11 @@
 
 class QQmlApplicationEngine;
 
-namespace dltool::data {
+namespace dltool::database {
 class DataBase;
 class ProjectDataBase;
 class RecentProjectsDataBase;
-
-} // namespace dltool::data
+} // namespace dltool::database
 
 namespace dltool::project {
 
@@ -102,7 +101,7 @@ private:
     qint64  ctime_;
     qint64  mtime_;
 
-    data::ProjectDataBase *database_{nullptr};
+    dltool::database::ProjectDataBase *database_{nullptr};
 
     data::DataManager *data_manager_{nullptr};
 
@@ -175,7 +174,7 @@ private:
     QString path_;
     QString current_path_;
 
-    data::RecentProjectsDataBase *database_{nullptr};
+    dltool::database::RecentProjectsDataBase *database_{nullptr};
 
     QItemSelectionModel *selection_{nullptr};
 

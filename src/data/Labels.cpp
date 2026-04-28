@@ -1,9 +1,9 @@
 #include "data/Labels.h"
 
-#include "data/DataBase.h"
 #include "data/Images.h"
 #include "data/LabelClasses.h"
 #include "data/LabelData.h"
+#include "database/DataBase.h"
 
 #include <spdlog/spdlog.h>
 
@@ -21,9 +21,9 @@ LabelInstance::LabelInstance(const int64_t label_id, const int64_t image_id, con
 
 LabelInstance::~LabelInstance() {}
 
-LabelInstancesListModel::LabelInstancesListModel(data::ProjectDataBase   *database,
-                                                 ImageInstancesListModel *image_instances,
-                                                 LabelClassesListModel   *label_classes,
+LabelInstancesListModel::LabelInstancesListModel(dltool::database::ProjectDataBase *database,
+                                                 ImageInstancesListModel           *image_instances,
+                                                 LabelClassesListModel             *label_classes,
                                                  LabelDataHelper label_data_helper, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
@@ -1220,8 +1220,8 @@ QVariant ImageLabelsTableModel::getClassData(const QModelIndex &index) const
         return QVariant();
     const int64_t class_id = instance->labelClassId();
     QVariantMap   data{
-          { "class_name",  label_classes_->getLabelClassName(class_id)},
-          {"class_color", label_classes_->getLabelClassColor(class_id)},
+        { "class_name",  label_classes_->getLabelClassName(class_id)},
+        {"class_color", label_classes_->getLabelClassColor(class_id)},
     };
     return data;
 }

@@ -1,6 +1,6 @@
 #include "data/LabelClasses.h"
 
-#include "data/DataBase.h"
+#include "database/DataBase.h"
 
 #include <spdlog/spdlog.h>
 
@@ -148,7 +148,7 @@ bool LabelClass::setOrdinalIndex(const int64_t ordinal_index)
     return true;
 }
 
-LabelClassesListModel::LabelClassesListModel(data::ProjectDataBase *database, QObject *parent)
+LabelClassesListModel::LabelClassesListModel(dltool::database::ProjectDataBase *database, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
     , selection_(new QItemSelectionModel(this))

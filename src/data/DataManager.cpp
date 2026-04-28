@@ -1,12 +1,12 @@
 ﻿#include "data/DataManager.h"
 
 #include "data/CategoryStatisticsModel.h"
-#include "data/DataBase.h"
 #include "data/DataFormat.h"
 #include "data/DataImporter.h"
 #include "data/GlobalFilter.h"
 #include "data/LabelData.h"
 #include "data/LabelInstanceImageProvider.h"
+#include "database/DataBase.h"
 #include "ui/ProgressManager.h"
 
 #include <spdlog/spdlog.h>
@@ -17,7 +17,7 @@
 
 namespace dltool::data {
 
-DataManager::DataManager(const int method, data::ProjectDataBase *database, QObject *parent)
+DataManager::DataManager(const int method, dltool::database::ProjectDataBase *database, QObject *parent)
     : QObject(parent)
     , database_(database)
     , method_(method)

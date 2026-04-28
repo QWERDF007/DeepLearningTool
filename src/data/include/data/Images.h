@@ -9,9 +9,9 @@
 #include <utility>
 #include <vector>
 
-namespace dltool::data {
+namespace dltool::database {
 class ProjectDataBase;
-}
+} // namespace dltool::database
 
 namespace dltool::data {
 
@@ -138,7 +138,7 @@ class ImageInstancesListModel : public QAbstractListModel
     Q_PROPERTY(int count READ count NOTIFY statsChanged)
     Q_PROPERTY(int lastIndex READ lastIndex WRITE setLastIndex NOTIFY lastSelectedIndexChanged)
 public:
-    ImageInstancesListModel(data::ProjectDataBase *database, QObject *parent = nullptr);
+    ImageInstancesListModel(dltool::database::ProjectDataBase *database, QObject *parent = nullptr);
     ~ImageInstancesListModel();
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -289,7 +289,7 @@ private:
 
     void resetModel();
 
-    data::ProjectDataBase *database_{nullptr};
+    dltool::database::ProjectDataBase *database_{nullptr};
 
     /**
      * @brief 图像实例 {image_id, ImageInstance}，按照 image_id 排序

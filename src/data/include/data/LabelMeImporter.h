@@ -64,7 +64,7 @@ public:
         std::vector<LabelMeShape> shapes;       // 标注形状列表
     };
 
-    explicit LabelMeImporter(ProjectDataBase *database, QObject *parent = nullptr);
+    explicit LabelMeImporter(dltool::database::ProjectDataBase *database, QObject *parent = nullptr);
     ~LabelMeImporter() override;
 
     /**

@@ -4,8 +4,11 @@
 #include <QtQml>
 #include <set>
 
-namespace dltool::data {
+namespace dltool::database {
 class ProjectDataBase;
+} // namespace dltool::database
+
+namespace dltool::data {
 class LabelData_t;
 class LabelDataHelper_t;
 } // namespace dltool::data
@@ -67,7 +70,7 @@ class LabelInstancesListModel : public QAbstractListModel
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
     Q_PROPERTY(int lastIndex READ lastIndex WRITE setLastIndex NOTIFY lastIndexChanged)
 public:
-    LabelInstancesListModel(data::ProjectDataBase *database, ImageInstancesListModel *image_instances,
+    LabelInstancesListModel(dltool::database::ProjectDataBase *database, ImageInstancesListModel *image_instances,
                             LabelClassesListModel *label_classes, LabelDataHelper label_data_helper,
                             QObject *parent = nullptr);
 
@@ -176,9 +179,9 @@ private:
     void rebuildFilteredList(const std::function<bool(int64_t)> &image_filter_func,
                              const std::function<bool(int64_t)> &label_class_filter_func);
 
-    data::ProjectDataBase   *database_{nullptr};
-    ImageInstancesListModel *image_instances_{nullptr};
-    LabelClassesListModel   *label_classes_{nullptr};
+    dltool::database::ProjectDataBase *database_{nullptr};
+    ImageInstancesListModel           *image_instances_{nullptr};
+    LabelClassesListModel             *label_classes_{nullptr};
 
     LabelDataHelper label_data_helper_{nullptr};
 

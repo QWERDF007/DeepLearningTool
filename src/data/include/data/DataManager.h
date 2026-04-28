@@ -16,9 +16,9 @@
 
 class QQmlApplicationEngine;
 
-namespace dltool::data {
+namespace dltool::database {
 class ProjectDataBase;
-} // namespace dltool::data
+} // namespace dltool::database
 
 namespace dltool::data {
 
@@ -42,7 +42,7 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(CategoryStatisticsModel *categoryStatisticsModel READ categoryStatisticsModel CONSTANT FINAL)
 
 public:
-    DataManager(const int method, data::ProjectDataBase *database, QObject *parent = nullptr);
+    DataManager(const int method, dltool::database::ProjectDataBase *database, QObject *parent = nullptr);
     ~DataManager();
 
     DatasetsListModel *datasets() const
@@ -170,7 +170,7 @@ private:
                          std::vector<int64_t> image_widths, std::vector<int64_t> image_heights,
                          std::map<QString, QString> label_class_info, std::vector<ImportedLabel> labels);
 
-    data::ProjectDataBase *database_{nullptr};
+    dltool::database::ProjectDataBase *database_{nullptr};
 
     DatasetsListModel       *datasets_{nullptr};
     ImageInstancesListModel *image_instances_{nullptr};

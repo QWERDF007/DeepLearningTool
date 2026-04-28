@@ -1,9 +1,9 @@
 ﻿#include "data/Images.h"
 
-#include "data/DataBase.h"
 #include "data/Datasets.h"
 #include "data/LabelClasses.h"
 #include "data/Labels.h"
+#include "database/DataBase.h"
 
 #include <data/DataFormat.h>
 #include <spdlog/spdlog.h>
@@ -47,7 +47,7 @@ QRectF ImageInstance::imageRect() const
     return image_rect_;
 }
 
-ImageInstancesListModel::ImageInstancesListModel(data::ProjectDataBase *database, QObject *parent)
+ImageInstancesListModel::ImageInstancesListModel(dltool::database::ProjectDataBase *database, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
     , selection_(new QItemSelectionModel(this))

@@ -4,9 +4,9 @@
 #include <QtQml>
 #include <map>
 
-namespace dltool::data {
+namespace dltool::database {
 class ProjectDataBase;
-}
+} // namespace dltool::database
 
 namespace dltool::data {
 
@@ -68,7 +68,7 @@ class LabelClassesListModel : public QAbstractListModel
     Q_PROPERTY(int currentLabelClassId READ getCurrentLabelClassId NOTIFY currentLabelClassChanged)
     Q_PROPERTY(QString currentLabelClassColor READ getCurrentLabelClassColor NOTIFY currentLabelClassChanged FINAL)
 public:
-    LabelClassesListModel(data::ProjectDataBase *database, QObject *parent = nullptr);
+    LabelClassesListModel(dltool::database::ProjectDataBase *database, QObject *parent = nullptr);
     ~LabelClassesListModel();
 
     enum Role
@@ -152,7 +152,7 @@ private:
 
     void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
 
-    data::ProjectDataBase *database_{nullptr};
+    dltool::database::ProjectDataBase *database_{nullptr};
 
     std::map<int64_t, LabelClass *> label_classes_;
 

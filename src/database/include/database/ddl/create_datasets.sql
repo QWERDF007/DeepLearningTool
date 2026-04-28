@@ -1,4 +1,4 @@
-CREATE TABLE tag_classes (
+CREATE TABLE datasets (
     id INTEGER NOT NULL PRIMARY KEY, 
     name TEXT, 
     extra_data BLOB

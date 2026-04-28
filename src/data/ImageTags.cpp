@@ -1,8 +1,8 @@
 ﻿#include "data/ImageTags.h"
 
-#include "data/DataBase.h"
 #include "data/Datasets.h"
 #include "data/Images.h"
+#include "database/DataBase.h"
 
 #include <spdlog/spdlog.h>
 
@@ -10,8 +10,8 @@
 
 namespace dltool::data {
 
-ImageTagsListModel::ImageTagsListModel(data::ProjectDataBase *database, ImageInstancesListModel *image_instances,
-                                       QObject *parent)
+ImageTagsListModel::ImageTagsListModel(dltool::database::ProjectDataBase *database,
+                                       ImageInstancesListModel *image_instances, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
     , image_instances_(image_instances)

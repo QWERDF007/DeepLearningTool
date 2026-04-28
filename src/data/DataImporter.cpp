@@ -1,14 +1,15 @@
-#include "data/DataImporter.h"
+﻿#include "data/DataImporter.h"
 
-#include "data/DataFormat.h"
 #include "data/LabelMeImporter.h"
+#include "database/DataBase.h"
 #include "ui/ProgressManager.h"
+#include "data/DataFormat.h"
 
 #include <spdlog/spdlog.h>
 
 namespace dltool::data {
 
-DataImporter::DataImporter(ProjectDataBase *database, QObject *parent)
+DataImporter::DataImporter(dltool::database::ProjectDataBase *database, QObject *parent)
     : QObject(parent)
     , database_(database)
 {
@@ -16,7 +17,8 @@ DataImporter::DataImporter(ProjectDataBase *database, QObject *parent)
 
 DataImporter::~DataImporter() {}
 
-DataImporter *DataImporter::createImporter(int data_format, ProjectDataBase *database, QObject *parent)
+DataImporter *DataImporter::createImporter(int data_format, dltool::database::ProjectDataBase *database,
+                                           QObject *parent)
 {
     spdlog::info("创建导入器: data_format={}", data_format);
 

@@ -53,8 +53,7 @@ target_link_libraries(${TARGET_NAME}
     PRIVATE
         Qt6::Core Qt6::Gui Qt6::Quick
         dltool_common dltool_common_header dltool_ui dltool_ui_header dltool_settings dltool_settings_header
-    PUBLIC
-        sqlpp11::sqlite3
+        dltool_database dltool_database_header
 )
 
 target_include_directories(${TARGET_NAME} 
@@ -64,6 +63,7 @@ target_include_directories(${TARGET_NAME}
         $<INSTALL_INTERFACE:include>
 
         ${CMAKE_SOURCE_DIR}/3rdparty/nlohmann
+        ${CMAKE_SOURCE_DIR}/3rdparty/spdlog/include
 )
 
 # 将名称转换为大写

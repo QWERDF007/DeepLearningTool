@@ -5,9 +5,9 @@
 #include <map>
 #include <set>
 
-namespace dltool::data {
+namespace dltool::database {
 class ProjectDataBase;
-}
+} // namespace dltool::database
 
 namespace dltool::data {
 
@@ -79,7 +79,7 @@ class DatasetsListModel : public QAbstractListModel
     QML_NAMED_ELEMENT(DatasetsModel)
     QML_UNCREATABLE("Can not create DatasetsModel directly!")
 public:
-    DatasetsListModel(data::ProjectDataBase *database, QObject *parent = nullptr);
+    DatasetsListModel(dltool::database::ProjectDataBase *database, QObject *parent = nullptr);
     ~DatasetsListModel();
 
     enum Role
@@ -127,7 +127,7 @@ private:
 
     void onStatsChanged();
 
-    data::ProjectDataBase *database_{nullptr};
+    dltool::database::ProjectDataBase *database_{nullptr};
 
     std::map<int64_t, Dataset *> datasets_;
 

@@ -1,14 +1,14 @@
-#include "data/DataBase.h"
+#include "database/DataBase.h"
 
-#include "data/SqlDef.h"
-#include "data/ddl/DatasetsTable.h"
-#include "data/ddl/ImagesTable.h"
-#include "data/ddl/LabelClassesTable.h"
-#include "data/ddl/LabelsTable.h"
-#include "data/ddl/ProjectTable.h"
-#include "data/ddl/RecentProjectsTable.h"
-#include "data/ddl/TagClassesTable.h"
-#include "data/ddl/TagsTable.h"
+#include "database/SqlDef.h"
+#include "database/ddl/DatasetsTable.h"
+#include "database/ddl/ImagesTable.h"
+#include "database/ddl/LabelClassesTable.h"
+#include "database/ddl/LabelsTable.h"
+#include "database/ddl/ProjectTable.h"
+#include "database/ddl/RecentProjectsTable.h"
+#include "database/ddl/TagClassesTable.h"
+#include "database/ddl/TagsTable.h"
 
 #include <sqlpp11/sqlpp11.h>
 
@@ -16,7 +16,7 @@
 #include <QDir>
 #include <QFileInfo>
 
-namespace dltool::data {
+namespace dltool::database {
 
 const auto ProjectTable         = Project{};
 const auto RectentProjectsTable = RecentProjects{};
@@ -1164,4 +1164,4 @@ int RecentProjectsDataBase::getProjects(std::vector<QString> &paths, QString &er
     }
 }
 
-} // namespace dltool::data
+} // namespace dltool::database

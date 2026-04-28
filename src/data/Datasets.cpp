@@ -1,12 +1,12 @@
 #include "data/Datasets.h"
 
-#include "data/DataBase.h"
+#include "database/DataBase.h"
 
 #include <spdlog/spdlog.h>
 
 namespace dltool::data {
 
-DatasetsListModel::DatasetsListModel(data::ProjectDataBase *database, QObject *parent)
+DatasetsListModel::DatasetsListModel(dltool::database::ProjectDataBase *database, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
 {

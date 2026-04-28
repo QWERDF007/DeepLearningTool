@@ -5,9 +5,9 @@
 #include <map>
 #include <set>
 
-namespace dltool::data {
+namespace dltool::database {
 class ProjectDataBase;
-}
+} // namespace dltool::database
 
 namespace dltool::data {
 
@@ -81,7 +81,7 @@ class ImageTagsListModel : public QAbstractListModel
     QML_NAMED_ELEMENT(ImageTagsModel)
     QML_UNCREATABLE("Can not create ImageTagsModel directly!")
 public:
-    ImageTagsListModel(data::ProjectDataBase *database, ImageInstancesListModel *image_instances,
+    ImageTagsListModel(dltool::database::ProjectDataBase *database, ImageInstancesListModel *image_instances,
                        QObject *parent = nullptr);
     ~ImageTagsListModel();
 
@@ -137,7 +137,7 @@ private:
      */
     bool hasAnyTags(const std::vector<int64_t> &image_ids) const;
 
-    data::ProjectDataBase *database_{nullptr};
+    dltool::database::ProjectDataBase *database_{nullptr};
 
     ImageInstancesListModel *image_instances_{nullptr};
 

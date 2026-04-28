@@ -3,7 +3,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace dltool::data {
+namespace dltool::database {
 
 class SqlDef
 {
@@ -47,4 +47,4 @@ public:
     // clang-format on
 };
 
-} // namespace dltool::data
+} // namespace dltool::database

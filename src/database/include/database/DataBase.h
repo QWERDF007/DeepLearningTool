@@ -1,6 +1,6 @@
 #pragma once
 
-#include "DataExport.h"
+#include "DatabaseExport.h"
 
 #include <sqlpp11/sqlite3/connection_pool.h>
 
@@ -8,9 +8,9 @@
 #include <utility>
 #include <vector>
 
-namespace dltool::data {
+namespace dltool::database {
 
-class DATA_API DataBase : public QObject
+class DATABASE_API DataBase : public QObject
 {
 public:
     DataBase(const QString &path, QObject *parent = nullptr);
@@ -56,7 +56,7 @@ private:
     void createDataBase();
 };
 
-class DATA_API ProjectDataBase : public DataBase
+class DATABASE_API ProjectDataBase : public DataBase
 {
 public:
     ProjectDataBase(const QString &path, QObject *parent = nullptr);
@@ -162,7 +162,7 @@ public:
     bool deleteLabels(const std::vector<int64_t> &label_ids, QString &err_msg) const;
 };
 
-class DATA_API RecentProjectsDataBase : public DataBase
+class DATABASE_API RecentProjectsDataBase : public DataBase
 {
 public:
     RecentProjectsDataBase(const QString &path, QObject *parent = nullptr);
@@ -173,4 +173,4 @@ public:
     int  getProjects(std::vector<QString> &paths, QString &err_msg) const;
 };
 
-} // namespace dltool::data
+} // namespace dltool::database
