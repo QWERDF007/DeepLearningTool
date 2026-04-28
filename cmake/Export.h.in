@@ -1,0 +1,27 @@
+#pragma once
+
+// clang-format off
+
+#if defined(_WIN32) || defined(__CYGWIN__)
+#    define @PLUGIN_NAME_UPPER@_HIDDEN
+#    define @PLUGIN_NAME_UPPER@_EXPORT __declspec(dllexport)
+#    define @PLUGIN_NAME_UPPER@_IMPORT __declspec(dllimport)
+#elif defined(__GNUC__) || defined(__clang__)
+#    define @PLUGIN_NAME_UPPER@_EXPORT __attribute__((__visibility__("default")))
+#    define @PLUGIN_NAME_UPPER@_IMPORT __attribute__((visibility("default")))
+#    define @PLUGIN_NAME_UPPER@_HIDDEN __attribute__((__visibility__("hidden")))
+#else
+#    define @PLUGIN_NAME_UPPER@_EXPORT
+#    define @PLUGIN_NAME_UPPER@_IMPORT
+#    define @PLUGIN_NAME_UPPER@_HIDDEN
+#endif
+
+#if defined(@TARGET_NAME_UPPER@_STATIC_LIBS)
+#    define @PLUGIN_NAME_UPPER@_API
+#elif defined(@TARGET_NAME_UPPER@_BUILD_SHARED_LIBS)
+#    define @PLUGIN_NAME_UPPER@_API @PLUGIN_NAME_UPPER@_EXPORT
+#else
+#    define @PLUGIN_NAME_UPPER@_API @PLUGIN_NAME_UPPER@_IMPORT
+#endif
+
+// clang-format on

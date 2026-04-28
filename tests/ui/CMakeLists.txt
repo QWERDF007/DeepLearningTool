@@ -24,7 +24,7 @@ qt_add_executable(${TEST_TARGET_NAME}
 add_test(NAME ${TEST_TARGET_NAME} COMMAND ${TEST_TARGET_NAME})
 
 target_link_libraries(${TEST_TARGET_NAME} PRIVATE 
-    dltool_ui dltool_ui_header
+    dltool_ui
     Qt6::Quick Qt6::QuickTest
 )
 

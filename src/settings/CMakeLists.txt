@@ -1,69 +1,8 @@
-set(PLUGIN_NAME "settings")
-set(TARGET_NAME "${PROJECT_NAME}_${PLUGIN_NAME}")
-
-# 指定可执行文件和库文件的输出目录
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${PROJECT_NAME}/${PLUGIN_NAME})
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${PROJECT_NAME}/${PLUGIN_NAME})
-
-# MSVC 去掉 Debug Release 文件夹的嵌套  
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
-
-# 获取所有源文件的相对路径
-file(GLOB_RECURSE SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp)
-
-# 获取所有头文件的相对路径
-file(GLOB_RECURSE HEADERS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.h *.hpp)
-
-# 设置插件输出目录
-set(QML_PLUGIN_DIRECTORY "${CMAKE_BINARY_DIR}/${PROJECT_NAME}/${PLUGIN_NAME}")
-
-# 添加qml模块
-qt_add_library(${TARGET_NAME} SHARED
-    ${SOURCES}
-    ${HEADERS}
+add_plugin_library(settings
+    QML_URI "dltool.settings"
+    PRIVATE_LIBS Qt6::Core Qt6::Qml dltool_common
 )
 
-qt_add_qml_module(${TARGET_NAME}
-    # 没有下面这行代码就会生成 xxxplugin.dll 与 xxxpluginplugin.dll 两个动态库
-    PLUGIN_TARGET ${TARGET_NAME}
-    OUTPUT_DIRECTORY ${QML_PLUGIN_DIRECTORY}
-    VERSION 1.0
-    URI "dltool.${PLUGIN_NAME}"
-    SOURCES ${SOURCES}
-)
-
-# 如果编译模式是Debug或RelWithDebInfo，则添加预处理定义QT_QML_DEBUG。用于开启Qt Quick调试功能
-target_compile_definitions(${TARGET_NAME}
-    PRIVATE 
-        $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:QT_QML_DEBUG>
-        SETTINGS_LIBRARY
-)
-
-target_link_libraries(${TARGET_NAME} 
-    PRIVATE  
-        Qt6::Core
-        Qt6::Qml
-        dltool_common
-        dltool_common_header
-)
-
-target_include_directories(${TARGET_NAME} 
-    PRIVATE
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/${PLUGIN_NAME}>
-        $<INSTALL_INTERFACE:include>
-)
-
-# 添加接口头文件，链接目标后可以include, 无需另外包含头文件目录
-set(TARGET_HEADER "${TARGET_NAME}_header")
-add_library(${TARGET_HEADER} INTERFACE)
-target_include_directories(${TARGET_HEADER}
-    INTERFACE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_BINARY_DIR}/include
+target_compile_definitions(dltool_settings
+    PRIVATE SETTINGS_LIBRARY
 )

@@ -37,6 +37,7 @@ include(ConfigCompiler)
 include(ConfigQT)
 # include(ConfigCUDA)
 include(ConfigSQLite)
+include(AddPluginLibrary)
 
 # 第三方库
 add_subdirectory(3rdparty EXCLUDE_FROM_ALL)
