@@ -1,59 +1,104 @@
-## 贡献指南（Contributing）
+# 贡献指南
 
-欢迎你为 DeepLearningTool 做出贡献！本指南阐述了工作流、代码规范与提交流程，帮助我们保持高质量与一致性。
+本文档说明 DeepLearningTool 的本地开发、测试、提交流程和评审检查点。
 
-### 分支模型
-- `main`: 稳定分支，仅用于发布版本。
-- `dev`: 日常开发集成分支。
-- `feature/<name>`: 新特性开发。
-- `fix/<name>`: 缺陷修复。
+## 分支模型
 
-### 提交信息规范
-- 格式：`type(scope): summary`
-- 可选类型：`feat`、`fix`、`refactor`、`docs`、`test`、`build`、`chore`。
-- 示例：`feat(data): add ImageTagsTable model with roles`
+- `main`：稳定分支，用于发布。
+- `dev`：日常开发集成分支。
+- `feature/<name>`：新特性。
+- `fix/<name>`：缺陷修复。
+- `docs/<name>`：文档更新。
 
-### 开发流程
-1. 从最新的 `dev` 创建分支：`git checkout -b feature/<name> origin/dev`。
-2. 本地实现与自测：包括基础构建、关键交互与单元/集成测试。
-3. 发起 PR 到 `dev`，在描述中说明：变更缘由、范围、风险点与测试结论。
-4. 至少 1 名维护者 Code Review 通过后合并。
+## 提交信息
 
-### PR 检查清单
-- 架构边界：未引入跨层反向依赖；跨模块包含仅通过头目标（`*_header`）。
-- CMake：新增模块使用 `qt_add_library`/`qt_add_qml_module` 模式；公共头通过 `add_library(<name>_header INTERFACE)` 暴露。
-- 代码风格：遵循 `docs/CODING_STYLE.md`；无警告（或已说明理由）。
-- QML：组件命名、URI、资源路径符合约定；复杂逻辑下沉 C++。
-- 数据层：事务封装到 RAII；禁止 UI/Project 直接操作连接。
-- 日志与异常：`spdlog` 统一入口；异常仅用于不可恢复错误。
-- 文档：必要变更已更新 `README.md` 或 `docs/`。
+格式：
 
-### 本地构建与运行
-```bash
-# Windows (建议使用 Ninja)
-cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
+```text
+type(scope): summary
+```
+
+常用类型：`feat`、`fix`、`refactor`、`docs`、`test`、`build`、`chore`。
+
+示例：
+
+```text
+feat(data): add category statistics model
+docs(api): document database module
+```
+
+## 本地构建
+
+Windows 建议使用 Ninja：
+
+```powershell
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build --config RelWithDebInfo
+```
 
-# Linux / macOS
+Linux / macOS：
+
+```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build -j
 ```
 
-备注：需正确配置 Qt6 与编译器；项目自带 `cmake/ConfigQT.cmake` 完成必要探测。
+注意：
 
-### 运行测试
-```bash
-cmake --build build --target tests
+- 当前 `cmake/ConfigQT.cmake` 写有本机 Qt 安装路径，例如 `Qt6_ROOT`。换机或 CI 构建时需要改为目标环境路径，或通过 CMake cache/toolchain 传入。
+- 根构建脚本启用 CUDA 语言；如果本机没有 CUDA 工具链，需要先确认当前构建环境是否支持。
+- 当前 C++ 标准为 C++17。
+
+## 运行测试
+
+当前 `tests/CMakeLists.txt` 只启用 UI 测试：
+
+```powershell
+cmake --build build --target tst_dltool_ui
 ctest --test-dir build -V
 ```
-注：UI 测试位于 `tests/ui`，用于覆盖关键控件与交互；可扩展更多非 UI 测试。
 
-### 引入第三方依赖
-- 统一通过 `3rdparty/` 与 `cmake/` 管理；优先使用现有包管理脚本或 `Find<Lib>.cmake`。
-- 引入前请在 PR 说明安全/许可证与兼容性影响；避免在业务模块中直接 `add_subdirectory` 外部仓库。
+测试源码位于：
 
-### 报告缺陷与提建议
-- 建议提供：问题复现步骤、环境信息、日志与最小复现示例。
-- 对于架构调整类建议，请附带影响面与迁移方案草案。
+```text
+tests/ui/
+├── main.cpp
+├── test_Utils.cpp
+├── tst_main.qml
+└── *Test.qml
+```
 
+## 开发流程
 
+1. 从最新 `dev` 创建分支。
+2. 修改代码和文档，保持模块边界不被破坏。
+3. 本地构建并运行相关测试。
+4. 发起 PR 到 `dev`。
+5. PR 描述中说明变更原因、范围、风险点和测试结果。
+
+## PR 检查清单
+
+- 架构：没有新增低层模块对高层模块的反向依赖。
+- CMake：新增库模块使用 `add_plugin_library()`，不需要 QML 时显式 `NO_QML_MODULE`。
+- Include：跨模块包含使用模块名前缀，不使用跨模块相对路径。
+- 数据库：DDL 和 sqlpp11 表定义放在 `src/database/include/database/ddl/`；UI/Project 不直接操作 SQLite 连接。
+- 数据模型：`QAbstractItemModel` role 名称已同步到文档或 QML 使用处。
+- QML：复杂业务逻辑不堆在 QML 中，通用控件放在 `src/ui/controls/`。
+- 资源：字体、图标和静态资源统一通过 `assets/assets.qrc`。
+- 测试：影响 UI 控件、数据模型或项目生命周期时补充或更新测试。
+- 文档：接口、目录、构建方式或模块边界变化时同步 `docs/`。
+
+## 第三方依赖
+
+- 现有依赖：`sqlpp11`、`spdlog`、`nlohmann/json`。
+- 新增依赖应放在 `3rdparty/` 或通过统一 CMake 配置管理。
+- PR 中说明许可证、平台兼容性、体积和维护影响。
+
+## 缺陷报告
+
+报告问题时建议提供：
+
+- 复现步骤。
+- 系统、编译器、Qt 版本和构建类型。
+- 相关日志、截图或最小复现项目文件。
+- 预期行为和实际行为。

@@ -1,59 +1,55 @@
 # DeepLearningTool 文档索引
 
+DeepLearningTool 是一个基于 C++17、Qt 6/QML、CMake 和 SQLite 的深度学习数据标注桌面工具。当前项目主要覆盖项目管理、数据集管理、图像导入、目标检测标注、图像标签、过滤和统计等工作流。
+
 ## 文档列表
 
 | 文档 | 说明 |
 |------|------|
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | 系统架构总览，模块分层与依赖关系 |
-| [CODE_STRUCTURE.md](./CODE_STRUCTURE.md) | 详细代码结构，模块说明，数据流 |
-| [API_REFERENCE.md](./API_REFERENCE.md) | API参考文档，C++和QML接口说明 |
-| [CODING_STYLE.md](./CODING_STYLE.md) | 代码风格指南 |
-| [CONTRIBUTING.md](./CONTRIBUTING.md) | 贡献指南 |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | 系统架构总览、模块边界和依赖关系 |
+| [CODE_STRUCTURE.md](./CODE_STRUCTURE.md) | 当前目录结构、模块职责、构建目标和数据流 |
+| [API_REFERENCE.md](./API_REFERENCE.md) | C++/QML 公开接口、模型 role 和常用单例 |
+| [CODING_STYLE.md](./CODING_STYLE.md) | C++、QML、CMake、数据层和资源约定 |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | 本地开发、测试、PR 与评审流程 |
 
 ## 快速导航
 
 ### 了解项目
-1. 阅读 [ARCHITECTURE.md](./ARCHITECTURE.md) 了解整体架构
-2. 阅读 [CODE_STRUCTURE.md](./CODE_STRUCTURE.md) 了解代码组织
+
+1. 阅读 [ARCHITECTURE.md](./ARCHITECTURE.md) 了解分层和模块依赖。
+2. 阅读 [CODE_STRUCTURE.md](./CODE_STRUCTURE.md) 了解源码目录、QML 模块和测试结构。
 
 ### 开发参考
-1. 阅读 [API_REFERENCE.md](./API_REFERENCE.md) 了解接口定义
-2. 阅读 [CODING_STYLE.md](./CODING_STYLE.md) 了解代码规范
+
+1. 阅读 [API_REFERENCE.md](./API_REFERENCE.md) 查找 QML 单例、模型 role 和主要 C++ 接口。
+2. 阅读 [CODING_STYLE.md](./CODING_STYLE.md) 对齐命名、模块边界、CMake 和数据层约定。
 
 ### 参与贡献
-1. 阅读 [CONTRIBUTING.md](./CONTRIBUTING.md) 了解贡献流程
 
-## 模块文档
+1. 阅读 [CONTRIBUTING.md](./CONTRIBUTING.md) 了解构建、测试和提交检查清单。
 
-### Common 模块
-- 位置: `src/common/`
-- 职责: 日志、崩溃处理、单例模板、工具函数
-- 详见: [CODE_STRUCTURE.md#51-common-模块](./CODE_STRUCTURE.md#51-common-模块-dltool_common)
+## 当前模块
 
-### Settings 模块
-- 位置: `src/settings/`
-- 职责: 全局配置管理、设置持久化
-- 详见: [CODE_STRUCTURE.md#52-settings-模块](./CODE_STRUCTURE.md#52-settings-模块-dltool_settings)
+| 模块 | 位置 | 目标 | QML URI | 职责 |
+|------|------|------|---------|------|
+| Common | `src/common/` | `dltool_common` | 无 | 日志、崩溃处理、工具函数、单例模板 |
+| Settings | `src/settings/` | `dltool_settings` | `dltool.settings` | 全局/项目/数据/UI 设置与持久化 |
+| Database | `src/database/` | `dltool_database` | 无 | SQLite 连接池、项目库、最近项目库、DDL |
+| Data | `src/data/` | `dltool_data` | `dltool.data` | 数据集、图像、标注、标签、过滤、统计模型和数据导入 |
+| UI | `src/ui/` | `dltool_ui` | `dltool.ui` | 主题、字体、图标、日志/进度单例、自定义 QML 控件 |
+| Project | `src/project/` | `dltool_project` | `dltool.project` | 项目生命周期、最近项目、业务聚合 |
+| Tool | `src/tool/` | `dltool` | `dltool.tool` | 应用入口、顶层 QML、主窗口布局 |
+| Model | `src/model/` | `dltool_model` | `dltool.model` | 预留模块；当前未在 `src/CMakeLists.txt` 中构建 |
 
-### Data 模块
-- 位置: `src/data/`
-- 职责: 数据库操作、数据模型、数据持久化
-- 详见: [CODE_STRUCTURE.md#53-data-模块](./CODE_STRUCTURE.md#53-data-模块-dltool_data)
+## 常用命令
 
-### UI 模块
-- 位置: `src/ui/`
-- 职责: 自定义控件、主题、UI工具
-- 详见: [CODE_STRUCTURE.md#54-ui-模块](./CODE_STRUCTURE.md#54-ui-模块-dltool_ui)
+```powershell
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build --config RelWithDebInfo
+ctest --test-dir build -V
+```
 
-### Project 模块
-- 位置: `src/project/`
-- 职责: 项目管理、业务流程
-- 详见: [CODE_STRUCTURE.md#55-project-模块](./CODE_STRUCTURE.md#55-project-模块-dltool_project)
-
-### Tool 模块
-- 位置: `src/tool/`
-- 职责: 应用入口、主界面
-- 详见: [CODE_STRUCTURE.md#56-tool-模块](./CODE_STRUCTURE.md#56-tool-模块-dltool-可执行程序)
+`cmake/ConfigQT.cmake` 当前写有本机 Qt 路径，迁移环境时需要先调整 `Qt6_ROOT` 或改为外部传入。
 
 ## 相关资源
 

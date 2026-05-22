@@ -1,500 +1,366 @@
-# DeepLearningTool 代码结构文档
+# DeepLearningTool 代码结构
 
 ## 1. 项目概述
 
-DeepLearningTool (dltool) 是一个基于 C++17 和 Qt 6 开发的深度学习数据标注工具，采用分层模块化架构设计，支持项目管理、数据集管理、图像标注等核心功能。
+DeepLearningTool (`dltool`) 是一个 Qt 6/QML 桌面应用，主要用于深度学习数据标注。当前实现以项目文件为中心，支持数据集管理、图像导入、目标检测标注、图像标签、过滤、类别统计和最近项目管理。
 
 ## 2. 技术栈
 
-| 类别 | 技术选型 |
+| 类别 | 当前选型 |
 |------|----------|
-| 编程语言 | C++17 |
-| UI框架 | Qt 6 (Qt Quick/QML) |
+| 编程语言 | C++17，QML |
+| UI 框架 | Qt 6 / Qt Quick / Qt Quick Controls |
 | 构建系统 | CMake 3.18+ |
-| 数据库 | SQLite (sqlpp11) |
-| 日志系统 | spdlog |
-| JSON处理 | nlohmann/json |
-| GPU支持 | CUDA |
+| 数据库 | SQLite + sqlpp11 |
+| 日志 | spdlog |
+| JSON | nlohmann/json |
+| 资源 | Qt resource (`assets/assets.qrc`) |
+| 测试 | Qt Quick Test + CTest |
 
-## 3. 目录结构
+## 3. 顶层目录
 
-```
+```text
 DeepLearningTool/
-├── 3rdparty/                    # 第三方库
-│   ├── nlohmann/                # JSON库
-│   ├── spdlog/                  # 日志库
-│   └── sqlpp11/                 # SQL库
-├── assets/                      # 资源文件
-│   ├── assets.qrc               # Qt资源文件
-│   └── Font/                    # 字体文件
-├── cmake/                       # CMake配置模块
-│   ├── ConfigBuildTree.cmake
-│   ├── ConfigCompiler.cmake
-│   ├── ConfigCUDA.cmake
-│   ├── ConfigQT.cmake
-│   ├── ConfigSQLite.cmake
-│   └── PrintConfig.cmake
-├── docs/                        # 文档目录
-├── src/                         # 源代码
-│   ├── common/                  # 通用模块
-│   ├── settings/                # 配置管理模块
-│   ├── data/                    # 数据层模块
-│   ├── model/                   # 模型模块(预留)
-│   ├── project/                 # 项目管理模块
-│   ├── tool/                    # 应用入口
-│   └── ui/                      # UI组件模块
-├── tests/                       # 测试代码
-└── tools/                       # 构建工具脚本
+├── 3rdparty/                 # sqlpp11、spdlog、nlohmann/json
+├── assets/                   # Qt 资源、字体、图标字体
+├── cmake/                    # CMake 配置与 add_plugin_library()
+├── docs/                     # 项目文档
+├── src/                      # 主源码
+├── tests/                    # Qt Quick/UI 测试
+├── tools/                    # 辅助脚本
+├── CMakeLists.txt            # 根构建脚本
+├── DESIGN.md                 # 产品设计说明
+└── README.md                 # 项目简介
 ```
 
-## 4. 模块架构
+## 4. 构建入口
 
-### 4.1 架构分层图
+根 `CMakeLists.txt`：
 
-```mermaid
-flowchart TB
-    subgraph Application["应用层"]
-        exe["dltool (可执行程序)"]
-    end
-    
-    subgraph Business["业务层"]
-        project["dltool_project"]
-    end
-    
-    subgraph Presentation["表现层"]
-        ui["dltool_ui"]
-    end
-    
-    subgraph Data["数据层"]
-        data["dltool_data"]
-    end
-    
-    subgraph Configuration["配置层"]
-        settings["dltool_settings"]
-    end
-    
-    subgraph Infrastructure["基础设施层"]
-        common["dltool_common"]
-    end
-    
-    subgraph ThirdParty["第三方库"]
-        qt6["Qt6"]
-        spdlog["spdlog"]
-        sqlpp11["sqlpp11"]
-        nlohmann["nlohmann/json"]
-    end
-    
-    exe --> project
-    exe --> ui
-    exe --> data
-    exe --> settings
-    exe --> common
-    
-    project --> ui
-    project --> data
-    project --> settings
-    project --> common
-    
-    ui --> settings
-    ui --> common
-    
-    data --> settings
-    data --> common
-    
-    settings --> common
-    
-    common --> qt6
-    common --> spdlog
-    data --> sqlpp11
-    data --> nlohmann
+- 项目名：`dltool`，长名称：`DeepLearningTool`。
+- 版本：`0.0.1`，后缀：`-beta`。
+- 启用语言：C、C++、CUDA。
+- 选项：`DLT_BUILD_TESTS`、`DLT_BUILD_DOCS`、`DLT_ENABLE_SANITIZER`。
+- 加载 `cmake/ConfigBuildTree.cmake`、`ConfigCompiler.cmake`、`ConfigQT.cmake`、`ConfigSQLite.cmake`、`AddPluginLibrary.cmake`。
+- 添加 `3rdparty/`、`src/`，并在 `DLT_BUILD_TESTS=ON` 时添加 `tests/`。
+
+`src/CMakeLists.txt` 当前构建：
+
+```cmake
+add_subdirectory(common)
+add_subdirectory(settings)
+add_subdirectory(database)
+add_subdirectory(project)
+add_subdirectory(data)
+add_subdirectory(ui)
+add_subdirectory(tool)
 ```
 
-### 4.2 模块依赖关系
+`src/model/` 存在但未被构建。
 
-| 模块 | 依赖 | QML URI |
-|------|------|---------|
-| dltool_common | Qt6::Core, spdlog | - |
-| dltool_settings | dltool_common, Qt6::Qml | dltool.settings |
-| dltool_ui | dltool_common, dltool_settings, Qt6::Quick | dltool.ui |
-| dltool_data | dltool_common, dltool_settings, sqlpp11, nlohmann | dltool.data |
-| dltool_project | dltool_ui, dltool_data, dltool_settings, dltool_common | dltool.project |
-| dltool (exe) | 所有模块 | dltool.tool |
+## 5. 模块结构
 
-## 5. 模块详细说明
+### 5.1 Common (`dltool_common`)
 
-### 5.1 Common 模块 (dltool_common)
+位置：`src/common/`
 
-**职责**: 提供全局通用功能和基础设施
+职责：
 
-**目录结构**:
-```
+- `Logger`：封装默认 spdlog sinks 和 logger 创建。
+- `CrashHandler`：跨平台崩溃处理入口，Windows 使用 `Dbghelp`，Linux 使用 `dl`。
+- `Singleton<T>`：C++/QML 单例模板和宏。
+- `Utils`、`FileReader`：UUID、路径、文件扫描和格式转换工具。
+
+结构：
+
+```text
 src/common/
 ├── include/common/
-│   ├── CommonExport.h          # 导出宏定义
-│   ├── CrashHandler.h          # 崩溃处理接口
-│   ├── LinuxCCrashHandler.h    # Linux崩溃处理
-│   ├── WindowsCCrashHandler.h  # Windows崩溃处理
-│   ├── Logger.h                # 日志系统
-│   ├── Singleton.h             # 单例模板
-│   └── Utils.h                 # 工具函数
+│   ├── CommonExport.h
+│   ├── CrashHandler.h
+│   ├── LinuxCCrashHandler.h
+│   ├── Logger.h
+│   ├── Singleton.h
+│   ├── Utils.h
+│   └── WindowsCCrashHandler.h
 ├── CrashHandler.cpp
 ├── LinuxCCrashHandler.cpp
-├── WindowsCCrashHandler.cpp
 ├── Logger.cpp
-└── Utils.cpp
+├── Utils.cpp
+└── WindowsCCrashHandler.cpp
 ```
 
-**核心类**:
+### 5.2 Settings (`dltool_settings`, URI `dltool.settings`)
 
-| 类名 | 说明 |
-|------|------|
-| `CrashHandler` | 跨平台崩溃处理器 |
-| `Logger` | 基于spdlog的日志封装 |
-| `Singleton<T>` | 单例模板类 |
-| `Utils` | 通用工具函数 |
+位置：`src/settings/`
 
-### 5.2 Settings 模块 (dltool_settings)
+职责：
 
-**职责**: 全局配置管理，提供统一的设置访问接口
+- `GlobalSettings`：QML 单例，聚合项目、数据和 UI 设置。
+- `ProjectSettings`：最近项目数量、自动保存间隔、自动保存开关。
+- `DataSettings`：缩略图、图像加载、标注显示、图像网格缩放、标注缩略图参数。
+- `UISettings`：图像亮度/对比度、主题、语言。
 
-**目录结构**:
-```
+结构：
+
+```text
 src/settings/
 ├── include/settings/
-│   ├── SettingsExport.h        # 导出宏定义
-│   ├── GlobalSettings.h        # 全局设置单例
-│   ├── ProjectSettings.h       # 项目相关设置
-│   ├── DataSettings.h          # 数据相关设置
-│   └── UISettings.h            # UI相关设置
+│   ├── DataSettings.h
+│   ├── GlobalSettings.h
+│   ├── ProjectSettings.h
+│   ├── SettingsExport.h
+│   └── UISettings.h
+├── DataSettings.cpp
 ├── GlobalSettings.cpp
 ├── ProjectSettings.cpp
-├── DataSettings.cpp
 └── UISettings.cpp
 ```
 
-**核心类**:
+### 5.3 Database (`dltool_database`)
 
-| 类名 | 说明 |
-|------|------|
-| `GlobalSettings` | 全局设置单例，统一管理所有设置 |
-| `ProjectSettings` | 项目相关设置（自动保存、最近项目等） |
-| `DataSettings` | 数据处理设置（缩略图、图像加载等） |
-| `UISettings` | 界面设置（主题、亮度、对比度等） |
+位置：`src/database/`
 
-**设置分类**:
+职责：
 
-1. **ProjectSettings** - 项目管理相关
-   - maxRecentProjects: 最近项目数量限制（默认10）
-   - autoSaveInterval: 自动保存间隔（默认300秒）
-   - autoSaveEnabled: 是否启用自动保存（默认true）
+- `DataBase`：SQLite 连接池和数据库文件创建。
+- `ProjectDataBase`：`.dlpro` 项目库读写。
+- `RecentProjectsDataBase`：最近项目 `history.db` 读写。
+- `SqlDef` 和 `ddl/`：sqlpp11 表定义与建表 SQL。
 
-2. **DataSettings** - 数据处理相关
-   - thumbnailMargin: 缩略图边距（默认10）
-   - thumbnailCacheSize: 缩略图缓存大小（默认100MB）
-   - imageLoadThreads: 图像加载线程数（默认4）
-   - labelBorderWidth: 标注边框宽度（默认2）
-   - labelFillOpacity: 标注填充透明度（默认30%）
+结构：
 
-3. **UISettings** - 界面显示相关
-   - imageCellScale: 图像单元格缩放（默认1.0）
-   - imageBrightness: 图像亮度（默认0.0，范围-1.0到1.0）
-   - imageContrast: 图像对比度（默认0.0，范围-1.0到1.0）
-   - theme: 主题（默认"dark"）
-   - language: 语言（默认"zh_CN"）
-
-**使用示例**:
-
-C++:
-```cpp
-#include "settings/GlobalSettings.h"
-
-// 访问设置
-auto* settings = dltool::settings::GlobalSettings::getInstance();
-int margin = settings->data()->thumbnailMargin();
-double brightness = settings->ui()->imageBrightness();
-
-// 修改设置
-settings->data()->setThumbnailMargin(15);
-settings->save();  // 保存到磁盘
+```text
+src/database/
+├── include/database/
+│   ├── ddl/
+│   │   ├── create_datasets.sql
+│   │   ├── create_images.sql
+│   │   ├── create_label_classes.sql
+│   │   ├── create_labels.sql
+│   │   ├── create_project.sql
+│   │   ├── create_recent_projects.sql
+│   │   ├── create_tag_classes.sql
+│   │   ├── create_tags.sql
+│   │   └── *Table.h
+│   ├── DataBase.h
+│   ├── DatabaseExport.h
+│   └── SqlDef.h
+└── DataBase.cpp
 ```
 
-QML:
-```qml
-import dltool.settings
+### 5.4 Data (`dltool_data`, URI `dltool.data`)
 
-Item {
-    // 读取设置
-    property int margin: GlobalSettings.data.thumbnailMargin
-    
-    // 修改设置
-    Slider {
-        value: GlobalSettings.data.thumbnailMargin
-        onValueChanged: GlobalSettings.data.thumbnailMargin = value
-    }
-    
-    // 保存设置
-    Button {
-        text: "保存"
-        onClicked: GlobalSettings.save()
-    }
-}
-```
+位置：`src/data/`
 
-### 5.3 Data 模块 (dltool_data)
+职责：
 
-**职责**: 数据持久化、数据库操作、数据模型管理
+- 数据模型：`DatasetsListModel`、`ImageInstancesListModel`、`LabelClassesListModel`、`ImageTagsListModel`、`LabelInstancesListModel`、`ImageLabelsListModel`、`ImageLabelsTableModel`、`ImageInfoListModel`。
+- 数据聚合：`DataManager` 统一创建和暴露模型。
+- 数据导入：`DataImporter`、`LabelMeImporter`。
+- 标注数据：`LabelData_t`、`DetLabelData_t`、`LabelDataHelper_t`。
+- 过滤：`GlobalFilter`、`DatasetFilterModule`、`TagFilterModule`、`LabelClassFilterModule`、`ImageLabelClassFilterModule`、`FilterItemsModel`。
+- 统计：`CategoryStatisticsModel`。
+- QML 页面：Gallery、Label、Review 和公共组件。
 
-**目录结构**:
-```
+结构：
+
+```text
 src/data/
 ├── include/data/
-│   ├── ddl/                    # 数据库DDL定义
-│   ├── CoreDef.h               # 核心定义
-│   ├── DataBase.h              # 数据库连接管理
-│   ├── DataExport.h            # 导出宏
-│   ├── DataFormat.h            # 数据格式定义
-│   ├── DataManager.h           # 数据管理器
-│   ├── Datasets.h              # 数据集模型
-│   ├── Images.h                # 图像模型
-│   ├── ImageTags.h             # 图像标签模型
-│   ├── LabelClasses.h          # 标签类别模型
-│   ├── LabelData.h             # 标签数据
-│   ├── Labels.h                # 标签模型
-│   ├── Logger.h                # 数据层日志
-│   └── SqlDef.h                # SQL定义
-├── qml/                        # QML界面
-│   ├── component/              # 组件
-│   ├── gallery/                # 图库页面
-│   ├── label/                  # 标注页面
+│   ├── CategoryStatisticsModel.h
+│   ├── CoreDef.h
+│   ├── DataFormat.h
+│   ├── DataImporter.h
+│   ├── DataManager.h
+│   ├── Datasets.h
+│   ├── FilterItemsModel.h
+│   ├── GlobalFilter.h
+│   ├── Images.h
+│   ├── ImageTags.h
+│   ├── LabelClasses.h
+│   ├── LabelData.h
+│   └── Labels.h
+├── qml/
+│   ├── component/
+│   ├── gallery/
+│   ├── label/
+│   ├── review/
 │   ├── GalleryPage.qml
-│   └── LabelPage.qml
-└── *.cpp                       # 实现文件
+│   ├── LabelPage.qml
+│   └── ReviewPage.qml
+└── *.cpp
 ```
 
-**核心类**:
+### 5.5 UI (`dltool_ui`, URI `dltool.ui`)
 
-| 类名 | 说明 |
-|------|------|
-| `DataBase` | 数据库基类，管理SQLite连接池 |
-| `ProjectDataBase` | 项目数据库，管理项目相关数据 |
-| `RecentProjectsDataBase` | 最近项目数据库 |
-| `DataManager` | 数据管理器，统一管理所有数据模型 |
-| `DatasetsListModel` | 数据集列表模型 |
-| `ImageInstancesListModel` | 图像实例列表模型 |
-| `LabelClassesListModel` | 标签类别列表模型 |
-| `ImageTagsListModel` | 图像标签列表模型 |
-| `LabelInstancesListModel` | 标签实例列表模型 |
+位置：`src/ui/`
 
-### 5.4 UI 模块 (dltool_ui)
+职责：
 
-**职责**: 提供统一的UI主题、自定义控件和UI工具
+- `DltColor`、`DltFont`、`DltFontIcon`：主题颜色、字体、图标枚举。
+- `UILogger`：接收 spdlog sink 的 QML 日志单例。
+- `ProgressManager`：长任务进度和消息队列。
+- `Utils`：QML 可调用的路径/颜色/文件管理器工具。
+- `controls/`：统一样式的 QML 控件。
 
-**目录结构**:
-```
+结构：
+
+```text
 src/ui/
 ├── include/ui/
-│   ├── Color.h                 # 颜色管理
-│   ├── Def.h                   # UI定义
-│   ├── Font.h                  # 字体管理
-│   ├── IconsFont.h             # 图标字体
-│   ├── SignalHelper.h          # 信号辅助
-│   ├── UIExport.h              # 导出宏
-│   ├── UILogger.h              # UI日志
-│   └── Utils.h                 # UI工具
-├── controls/                   # 自定义QML控件
+│   ├── Color.h
+│   ├── Def.h
+│   ├── Font.h
+│   ├── IconsFont.h
+│   ├── ProgressManager.h
+│   ├── SignalHelper.h
+│   ├── UILogger.h
+│   └── Utils.h
+├── controls/
 │   ├── DltButton.qml
+│   ├── DltCheckBox.qml
 │   ├── DltComboBox.qml
 │   ├── DltContentDialog.qml
 │   ├── DltEditor.qml
-│   ├── DltFilledButton.qml
-│   ├── DltMenu.qml
-│   ├── DltPage.qml
-│   ├── DltPopup.qml
 │   ├── DltProgressBar.qml
-│   ├── DltScrollBar.qml
+│   ├── DltScrollablePage.qml
 │   ├── DltSlider.qml
-│   ├── DltSplitView.qml
-│   ├── DltTabButton.qml
-│   ├── DltText.qml
-│   ├── DltTextArea.qml
-│   ├── DltTextField.qml
-│   ├── DltToolTip.qml
+│   ├── DltText*.qml
 │   └── ...
-└── *.cpp                       # 实现文件
+└── *.cpp
 ```
 
-**自定义控件列表**:
+### 5.6 Project (`dltool_project`, URI `dltool.project`)
 
-| 控件名 | 说明 |
-|--------|------|
-| `DltButton` | 标准按钮 |
-| `DltFilledButton` | 填充按钮 |
-| `DltTextIconButton` | 图标文字按钮 |
-| `DltComboBox` | 下拉框 |
-| `DltTextField` | 文本输入框 |
-| `DltTextArea` | 多行文本框 |
-| `DltEditor` | 编辑器 |
-| `DltContentDialog` | 内容对话框 |
-| `DltMenu` | 菜单 |
-| `DltPopup` | 弹出框 |
-| `DltProgressBar` | 进度条 |
-| `DltSlider` | 滑块 |
-| `DltScrollBar` | 滚动条 |
-| `DltSplitView` | 分割视图 |
-| `DltPage` | 页面容器 |
-| `DltScrollablePage` | 可滚动页面 |
+位置：`src/project/`
 
-### 5.5 Project 模块 (dltool_project)
+职责：
 
-**职责**: 项目生命周期管理、业务流程编排
+- `Project`：项目实体，持有 `ProjectDataBase` 和 `DataManager`。
+- `RectentProjects`：最近项目列表模型，保留了当前代码中的类名拼写。
+- `ProjectManager`：QML 单例，负责创建、打开、关闭、删除项目和读取项目信息。
+- QML 页面：项目首页、创建器、打开器、历史列表、项目信息表单。
 
-**目录结构**:
-```
+结构：
+
+```text
 src/project/
 ├── include/project/
-│   ├── Logger.h                # 项目层日志
-│   ├── ProjectExport.h         # 导出宏
-│   ├── Projects.h              # 项目管理
-│   └── Settings.h              # 项目设置
+│   ├── Logger.h
+│   ├── ProjectExport.h
+│   └── Projects.h
 ├── qml/
-│   ├── project/                # 项目相关QML
-│   └── ProjectPage.qml         # 项目页面
+│   ├── project/
+│   └── ProjectPage.qml
 ├── Logger.cpp
-├── Projects.cpp
-└── Settings.cpp
+└── Projects.cpp
 ```
 
-**核心类**:
+### 5.7 Tool (`dltool`, URI `dltool.tool`)
 
-| 类名 | 说明 |
-|------|------|
-| `Project` | 项目实体类，包含项目元数据和数据管理器 |
-| `RectentProjects` | 最近项目列表模型 |
-| `ProjectManager` | 项目管理器单例，管理项目创建/打开/关闭 |
-| `Settings` | 项目设置管理 |
+位置：`src/tool/`
 
-### 5.6 Tool 模块 (dltool 可执行程序)
+职责：
 
-**职责**: 应用程序入口、顶层QML界面
+- `main.cpp`：安装崩溃处理、初始化日志、创建 `QApplication` 和 `QQmlApplicationEngine`。
+- `Main.qml`：主窗口入口。
+- `Content.qml`：主要页面容器。
+- `header/`、`footer/`：顶部导航和底部日志/进度状态区。
+- `qtquickcontrols2.conf`：Qt Quick Controls 配置。
 
-**目录结构**:
-```
+结构：
+
+```text
 src/tool/
 ├── qml/
-│   ├── header/                 # 头部导航
-│   ├── footer/                 # 底部状态栏
-│   ├── Main.qml                # 主窗口
-│   └── Content.qml             # 内容区域
-├── main.cpp                    # 程序入口
-└── qtquickcontrols2.conf       # Qt Quick控件配置
+│   ├── footer/
+│   ├── header/
+│   ├── Content.qml
+│   └── Main.qml
+├── main.cpp
+└── qtquickcontrols2.conf
 ```
 
-## 6. 数据流架构
+## 6. 数据流
 
-### 6.1 整体数据流
-
-```mermaid
-sequenceDiagram
-    participant QML as QML界面
-    participant Model as Qt模型
-    participant Manager as DataManager
-    participant DB as ProjectDataBase
-    participant SQLite as SQLite数据库
-    
-    QML->>Model: 用户操作
-    Model->>Manager: 调用业务方法
-    Manager->>DB: 数据库操作
-    DB->>SQLite: SQL执行
-    SQLite-->>DB: 返回结果
-    DB-->>Manager: 处理结果
-    Manager-->>Model: 更新模型
-    Model-->>QML: 数据绑定更新
-```
-
-### 6.2 项目创建流程
+### 6.1 项目打开/创建
 
 ```mermaid
 flowchart LR
-    A[用户创建项目] --> B[ProjectManager.createProject]
-    B --> C[创建Project实例]
-    C --> D[初始化ProjectDataBase]
-    D --> E[创建数据库表结构]
-    E --> F[初始化DataManager]
-    F --> G[加载数据模型]
-    G --> H[更新UI显示]
+  A[QML ProjectPage] --> B[ProjectManager]
+  B --> C[Project]
+  C --> D[ProjectDataBase]
+  D --> E[(.dlpro SQLite)]
+  C --> F[DataManager]
+  F --> G[Datasets/Images/Labels/Tags Models]
+  G --> A
 ```
 
-## 7. QML模块系统
+### 6.2 标注与 UI 更新
 
-### 7.1 QML URI映射
+```mermaid
+sequenceDiagram
+  participant QML as Label/Gallery/Review QML
+  participant DM as DataManager
+  participant Model as Qt Model
+  participant DB as ProjectDataBase
 
-| URI | 模块 | 说明 |
-|-----|------|------|
-| `dltool.common` | dltool_common | 通用组件 |
-| `dltool.settings` | dltool_settings | 配置管理 |
-| `dltool.ui` | dltool_ui | UI控件库 |
-| `dltool.data` | dltool_data | 数据模型 |
-| `dltool.project` | dltool_project | 项目管理 |
-| `dltool.tool` | dltool | 应用入口 |
-
-### 7.2 QML导入示例
-
-```qml
-import dltool.ui          // 导入UI控件
-import dltool.settings    // 导入配置管理
-import dltool.project     // 导入项目管理
-import dltool.data        // 导入数据模型
+  QML->>DM: addDataset/importData/addLabels/updateLabels
+  DM->>Model: 调用模型操作
+  Model->>DB: 持久化到 SQLite
+  DB-->>Model: 返回 id/状态
+  Model-->>QML: begin/end rows、dataChanged、role 数据
 ```
 
-## 8. 构建配置
+### 6.3 过滤与统计
 
-### 8.1 CMake选项
+`GlobalFilter` 聚合四类过滤条件：
 
-| 选项 | 默认值 | 说明 |
-|------|--------|------|
-| `DLT_BUILD_TESTS` | ON | 启用测试 |
-| `DLT_BUILD_DOCS` | OFF | 构建文档 |
-| `DLT_ENABLE_SANITIZER` | OFF | 启用内存检测 |
+- `Dataset`：按数据集过滤图像。
+- `Tag`：按图像标签过滤图像。
+- `LabelClass`：按标注类别过滤标注实例。
+- `ImageLabelClass`：按图像是否包含指定标注类别过滤图像。
 
-### 8.2 构建目标
+过滤项由 `DatasetFilterItemsModel`、`TagFilterItemsModel`、`LabelClassFilterItemsModel` 提供；类别统计由 `CategoryStatisticsModel` 提供。
 
-| 目标 | 类型 | 输出目录 |
-|------|------|----------|
-| `dltool_common` | 动态库 | `build/dltool/common/` |
-| `dltool_ui` | 动态库 | `build/dltool/ui/` |
-| `dltool_data` | 动态库 | `build/dltool/data/` |
-| `dltool_project` | 动态库 | `build/dltool/project/` |
-| `dltool` | 可执行 | `build/bin/` |
+## 7. 构建目标
 
-## 9. 测试结构
+| 目标 | 类型 | QML URI | 说明 |
+|------|------|---------|------|
+| `dltool_common` | shared library | 无 | 基础设施 |
+| `dltool_settings` | shared library | `dltool.settings` | 设置 |
+| `dltool_database` | shared library | 无 | SQLite/sqlpp11 |
+| `dltool_data` | shared library | `dltool.data` | 数据模型和页面 |
+| `dltool_ui` | shared library | `dltool.ui` | UI 控件和主题 |
+| `dltool_project` | shared library | `dltool.project` | 项目业务 |
+| `dltool` | executable | `dltool.tool` | 应用入口 |
+| `tst_dltool_ui` | test executable | - | UI/QML 测试 |
 
-```
+## 8. 测试结构
+
+```text
 tests/
 ├── CMakeLists.txt
-├── test_registry.h             # 测试注册
-├── test_runner.h               # 测试运行器
-├── project/                    # 项目模块测试
-└── ui/                         # UI模块测试
+├── test_registry.h
+├── test_runner.h
+└── ui/
+    ├── CMakeLists.txt
+    ├── main.cpp
+    ├── test_Utils.cpp
+    ├── test_Utils.h
+    ├── tst_main.qml
     ├── DltButtonTest.qml
     ├── DltComboBoxTest.qml
     ├── DltEditorTest.qml
     ├── DltTextIconButtonTest.qml
-    ├── DltTextTest.qml
-    └── ...
+    └── DltTextTest.qml
 ```
 
-## 10. 扩展点
+当前 `tests/CMakeLists.txt` 只启用了 `tests/ui`。
 
-### 10.1 Model模块 (预留)
+## 9. 资源
 
-`src/model/` 目录已创建但未启用，预留用于：
-- 模型训练管理
-- 模型推理服务
-- 模型版本控制
-
-### 10.2 插件系统
-
-基于Qt QML模块系统，可扩展：
-- 自定义标注工具
-- 数据格式导入/导出插件
-- 第三方服务集成
+- `assets/assets.qrc`：主资源清单，由 `src/tool/CMakeLists.txt` 使用 `qt_add_big_resources()` 链入可执行程序。
+- `assets/Font/Segoe_Fluent_Icons.ttf`：图标字体。
+- UI 控件和页面 QML 由各模块的 `qt_add_qml_module()` 收集并生成模块资源。
