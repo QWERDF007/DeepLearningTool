@@ -15,6 +15,8 @@ Item {
     property ItemSelectionModel selection: imageLabelsList ? imageLabelsList.selection : null
     property color drawingColor: labelClasses ? labelClasses.currentLabelClassColor : "red"
     property point startPos: Qt.point(0, 0)
+    property bool segmentationMode: dataManager ? dataManager.method === DeepLearningMethod.Segmentation : false
+    property var polygonPoints: []
     
     // 暴露图像缩放属性
     property real imageScale: labelImage.image.scale
@@ -36,6 +38,13 @@ Item {
             if (selection) {
                 selection.clear()
             }
+        }
+    }
+
+    Connections {
+        target: imageInstances
+        function onCurrentImageChanged() {
+            cancelPolygonDrawing()
         }
     }
 
@@ -97,6 +106,9 @@ Item {
             imageLabelsList.selectAll()
         } else if (event.key === Qt.Key_Delete && selection && selection.hasSelection) {
             deleteConfirmDialog.open()
+        } else if (event.key === Qt.Key_Escape && mouseArea.drawingPolygon) {
+            cancelPolygonDrawing()
+            event.accepted = true
         } else if (labelClasses && event.text.length > 0) {
             // 快捷键切换标签类别
             if (labelClasses.selectByShortcut(event.text)) {
@@ -118,12 +130,30 @@ Item {
         hoverEnabled: true
         property string state: "idle"
         property var data: null
+        property bool drawingPolygon: false
+        property bool suppressNextRelease: false
 
         onPressed: function(event) {
             if (state === "idle" && (event.button === Qt.MiddleButton || (event.modifiers & Qt.ControlModifier && event.button === Qt.LeftButton))) {
                 mouseArea.cursorShape = Qt.ClosedHandCursor
                 startPos = Qt.point(event.x, event.y)
                 state = "dragging"
+            } else if (segmentationMode && state === "idle" && event.button === Qt.RightButton && drawingPolygon) {
+                finishPolygonDrawing()
+                suppressNextRelease = true
+                event.accepted = true
+            } else if (segmentationMode && state === "idle" && event.button === Qt.LeftButton) {
+                startPos = getPosOnImage(event)
+                let hit = hitTest(startPos)
+                if (hit) {
+                    state = "readyEdit"
+                    imageLabelsList.setHovered([])
+                } else if (!drawingPolygon && imageLabelsList.getIndicesAt(startPos).length > 0) {
+                    imageLabelsList.setHovered(imageLabelsList.getIndicesAt(startPos))
+                } else {
+                    appendPolygonPoint(startPos)
+                    event.accepted = true
+                }
             } else if (state === "idle" && event.button === Qt.RightButton) {
 
             } else if (state === "idle" && event.button === Qt.LeftButton) {
@@ -135,6 +165,15 @@ Item {
         }
 
         onReleased: function(event) {
+            if (suppressNextRelease) {
+                suppressNextRelease = false
+                state = "idle"
+                return
+            }
+            if (segmentationMode && drawingPolygon && state === "idle") {
+                updatePolygonPreview(getPosOnImage(event))
+                return
+            }
             if (state === "drawing") {
                 data = drawingItem.getData()
                 // 添加到ListModel
@@ -156,7 +195,9 @@ Item {
                 if (!hitTest(pos)) {
                     mouseArea.cursorShape = Qt.ArrowCursor
                 }
-                item.visible = true
+                if (item) {
+                    item.visible = true
+                }
                 drawingItem.clearItem()
             } else {
                 mouseArea.cursorShape = event.modifiers & Qt.ControlModifier ? Qt.OpenHandCursor : Qt.ArrowCursor
@@ -184,13 +225,19 @@ Item {
         }
 
         onPositionChanged: function(event) {
+            if (segmentationMode && drawingPolygon && state === "idle") {
+                updatePolygonPreview(getPosOnImage(event))
+                return
+            }
             if (state === "readyEdit") {
                 state = "editing"
                 let pos = getPosOnImage(event)
                 let hit = hitTest(pos)
                 let index = imageLabelsList.getTopSelectedIndex()
                 let item = labelsListView.itemAt(index)
-                item.visible = false
+                if (item) {
+                    item.visible = false
+                }
                 data = imageLabelsList.getData(index)
                 data.hit = hit
                 drawingItem.initItem(data)
@@ -207,7 +254,7 @@ Item {
             } else if (state === "editing") {
                 let endPos = getPosOnImage(event)
                 data = imageLabelsList.getEditedData(data, startPos, endPos)
-                drawingItem.updateItem({label_id: data.label_id, x: data.x, y: data.y, width: data.width, height: data.height, color: data.color})
+                drawingItem.updateItem(data)
                 startPos = endPos
             } else {
                 let pos = getPosOnImage(event)
@@ -222,6 +269,112 @@ Item {
         onEntered: {
             labelView.forceActiveFocus()
         }
+
+        onDoubleClicked: function(event) {
+            if (segmentationMode && event.button === Qt.LeftButton && drawingPolygon) {
+                finishPolygonDrawing()
+                suppressNextRelease = true
+                event.accepted = true
+            }
+        }
+    }
+
+    function clonePoints(points) {
+        let result = []
+        if (!points) {
+            return result
+        }
+        for (let point of points) {
+            result.push({x: point.x, y: point.y})
+        }
+        return result
+    }
+
+    function clampPointToImage(point) {
+        if (labelImage.image.status !== Image.Ready) {
+            return point
+        }
+        return Qt.point(Math.max(0, Math.min(labelImage.image.sourceSize.width, point.x)),
+                        Math.max(0, Math.min(labelImage.image.sourceSize.height, point.y)))
+    }
+
+    function distance(pt1, pt2) {
+        let dx = pt1.x - pt2.x
+        let dy = pt1.y - pt2.y
+        return Math.sqrt(dx * dx + dy * dy)
+    }
+
+    function getPolygonBounds(points) {
+        if (!points || points.length === 0) {
+            return {x: 0, y: 0, width: 0, height: 0}
+        }
+
+        let xMin = points[0].x
+        let yMin = points[0].y
+        let xMax = points[0].x
+        let yMax = points[0].y
+        for (let point of points) {
+            xMin = Math.min(xMin, point.x)
+            yMin = Math.min(yMin, point.y)
+            xMax = Math.max(xMax, point.x)
+            yMax = Math.max(yMax, point.y)
+        }
+        return {x: xMin, y: yMin, width: xMax - xMin, height: yMax - yMin}
+    }
+
+    function appendPolygonPoint(pos) {
+        let imagePos = clampPointToImage(pos)
+        if (mouseArea.drawingPolygon && polygonPoints.length >= 3) {
+            let closeDistance = 10 / Math.max(labelImage.image.scale, 0.01)
+            if (distance(imagePos, polygonPoints[0]) <= closeDistance) {
+                finishPolygonDrawing()
+                return
+            }
+        }
+
+        if (!mouseArea.drawingPolygon) {
+            clearSelection()
+            polygonPoints = []
+            mouseArea.drawingPolygon = true
+        }
+
+        let points = clonePoints(polygonPoints)
+        points.push({x: imagePos.x, y: imagePos.y})
+        polygonPoints = points
+        updatePolygonPreview(imagePos)
+    }
+
+    function updatePolygonPreview(pos) {
+        if (!mouseArea.drawingPolygon) {
+            return
+        }
+
+        let points = clonePoints(polygonPoints)
+        if (pos && points.length > 0) {
+            let imagePos = clampPointToImage(pos)
+            if (distance(imagePos, points[points.length - 1]) > 0.0001) {
+                points.push({x: imagePos.x, y: imagePos.y})
+            }
+        }
+        drawingItem.updateItem({label_id: -1, points: points, color: drawingColor})
+    }
+
+    function finishPolygonDrawing() {
+        let points = clonePoints(polygonPoints)
+        let bounds = getPolygonBounds(points)
+        if (dataManager && imageInstances && labelClasses && labelClasses.currentLabelClassId !== -1
+                && points.length >= 3 && bounds.width > 1 && bounds.height > 1) {
+            dataManager.addLabels([imageInstances.currentImageId],
+                                  [labelClasses.currentLabelClassId],
+                                  [{points: points}])
+        }
+        cancelPolygonDrawing()
+    }
+
+    function cancelPolygonDrawing() {
+        polygonPoints = []
+        mouseArea.drawingPolygon = false
+        drawingItem.clearItem()
     }
 
     function getRect(pt1, pt2) {

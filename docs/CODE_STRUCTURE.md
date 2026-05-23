@@ -2,7 +2,7 @@
 
 ## 1. 项目概述
 
-DeepLearningTool (`dltool`) 是一个 Qt 6/QML 桌面应用，主要用于深度学习数据标注。当前实现以项目文件为中心，支持数据集管理、图像导入、目标检测标注、图像标签、过滤、类别统计和最近项目管理。
+DeepLearningTool (`dltool`) 是一个 Qt 6/QML 桌面应用，主要用于深度学习数据标注。当前实现以项目文件为中心，支持数据集管理、图像导入、目标检测标注、语义分割多边形标注、图像标签、过滤、类别统计和最近项目管理。
 
 ## 2. 技术栈
 
@@ -159,9 +159,9 @@ src/database/
 
 - 数据模型：`DatasetsListModel`、`ImageInstancesListModel`、`LabelClassesListModel`、`ImageTagsListModel`、`LabelInstancesListModel`、`ImageLabelsListModel`、`ImageLabelsTableModel`、`ImageInfoListModel`。
 - 数据聚合：`DataManager` 统一创建和暴露模型。
-- 数据导入：`DataImporter`、`LabelMeImporter`、`COCOImporter`，通过 `DatasetIO` 复用图片扫描、JSON 扫描、bbox 转换等公共逻辑。
-- 数据导出：`DataExporter`、`LabelMeExporter`、`COCOExporter`。导出时 `DataManager` 先组装统一的 `ExportDataset`，格式类负责写出目录结构和标注文件。
-- 标注数据：`LabelData_t`、`DetLabelData_t`、`LabelDataHelper_t`。
+- 数据导入：`DataImporter`、`LabelMeImporter`、`COCOImporter`，通过 `DatasetIO` 复用图片扫描、JSON 扫描、bbox 与多边形点集转换等公共逻辑。
+- 数据导出：`DataExporter`、`LabelMeExporter`、`COCOExporter`。导出时 `DataManager` 先组装统一的 `ExportDataset`，格式类负责写出目录结构和标注文件；带 `points` 的标注会导出为 LabelMe polygon 或 COCO segmentation。
+- 标注数据：`LabelData_t`、`DetLabelData_t`、`SegLabelData_t`、`LabelDataHelper_t`，其中 `SegLabelDataHelper` 负责多边形命中测试、顶点拖拽和整体移动。
 - 过滤：`GlobalFilter`、`DatasetFilterModule`、`TagFilterModule`、`LabelClassFilterModule`、`ImageLabelClassFilterModule`、`FilterItemsModel`。
 - 统计：`CategoryStatisticsModel`。
 - QML 页面：Gallery、Label、Review 和公共组件。

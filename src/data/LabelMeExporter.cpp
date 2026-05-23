@@ -141,11 +141,26 @@ void LabelMeExporter::doExport(ExportDataset dataset, QString output_dir)
 
                 nlohmann::json shape;
                 shape["label"]       = class_name_by_id[label.label_class_id].toStdString();
-                shape["points"]      = {{x, y}, {x + w, y + h}};
                 shape["group_id"]    = nullptr;
                 shape["description"] = "";
-                shape["shape_type"]  = "rectangle";
                 shape["flags"]       = nlohmann::json::object();
+
+                const std::vector<QPointF> points = DatasetIO::variantListToPoints(label.data.value(QStringLiteral("points")));
+                if (points.size() >= 3)
+                {
+                    nlohmann::json point_array = nlohmann::json::array();
+                    for (const QPointF &point : points)
+                    {
+                        point_array.push_back({point.x(), point.y()});
+                    }
+                    shape["points"]     = point_array;
+                    shape["shape_type"] = "polygon";
+                }
+                else
+                {
+                    shape["points"]     = {{x, y}, {x + w, y + h}};
+                    shape["shape_type"] = "rectangle";
+                }
                 json_data["shapes"].push_back(shape);
             }
 

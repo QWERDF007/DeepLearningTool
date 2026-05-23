@@ -96,8 +96,13 @@ public:
 
     LabelInstance *getLabelInstance(const int64_t label_id);
 
+    bool tryAddLabels(std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
+                      const std::vector<int64_t> &label_class_ids, const std::vector<QVariantMap> &data,
+                      QString *err_msg = nullptr);
+
     void addLabels(std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
-                   const std::vector<int64_t> &label_class_ids, const std::vector<QVariantMap> &data);
+                   const std::vector<int64_t> &label_class_ids, const std::vector<QVariantMap> &data,
+                   QString *err_msg = nullptr);
 
     void updateLabelsData(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
                           const std::vector<QVariantMap> &data);

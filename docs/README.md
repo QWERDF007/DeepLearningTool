@@ -1,6 +1,6 @@
 # DeepLearningTool 文档索引
 
-DeepLearningTool 是一个基于 C++17、Qt 6/QML、CMake 和 SQLite 的深度学习数据标注桌面工具。当前项目主要覆盖项目管理、数据集管理、图像导入、目标检测标注、图像标签、过滤和统计等工作流。
+DeepLearningTool 是一个基于 C++17、Qt 6/QML、CMake 和 SQLite 的深度学习数据标注桌面工具。当前项目主要覆盖项目管理、数据集管理、图像导入、目标检测标注、语义分割多边形标注、图像标签、过滤和统计等工作流。
 
 ## 文档列表
 

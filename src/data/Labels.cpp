@@ -119,24 +119,123 @@ LabelInstance *LabelInstancesListModel::getLabelInstance(const int64_t label_id)
     return found->second;
 }
 
+bool LabelInstancesListModel::tryAddLabels(std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
+                                           const std::vector<int64_t>     &label_class_ids,
+                                           const std::vector<QVariantMap> &data, QString *err_msg)
+{
+    label_ids.clear();
+
+    if (database_ == nullptr || image_instances_ == nullptr || label_data_helper_ == nullptr)
+    {
+        const QString message = QStringLiteral("数据库、图像列表或标签数据工厂未初始化");
+        if (err_msg != nullptr)
+        {
+            *err_msg = message;
+        }
+        spdlog::error("添加标注失败: {}", message.toUtf8().constData());
+        return false;
+    }
+
+    if (image_ids.size() != label_class_ids.size() || image_ids.size() != data.size())
+    {
+        const QString message = QStringLiteral("image_ids=%1, label_class_ids=%2, data=%3 数量不一致")
+                                    .arg(image_ids.size())
+                                    .arg(label_class_ids.size())
+                                    .arg(data.size());
+        if (err_msg != nullptr)
+        {
+            *err_msg = message;
+        }
+        spdlog::error("添加标注失败: {}", message.toUtf8().constData());
+        return false;
+    }
+
+    for (const int64_t image_id : image_ids)
+    {
+        if (image_instances_->getImageInstance(image_id) == nullptr)
+        {
+            const QString message = QStringLiteral("图像实例不存在, image_id=%1").arg(image_id);
+            if (err_msg != nullptr)
+            {
+                *err_msg = message;
+            }
+            spdlog::error("添加标注失败: {}", message.toUtf8().constData());
+            return false;
+        }
+    }
+
+    addLabels(label_ids, image_ids, label_class_ids, data, err_msg);
+    if (label_ids.size() != image_ids.size())
+    {
+        const QString message = QStringLiteral("写入后的标签 ID 数量 %1 与图像 ID 数量 %2 不一致")
+                                    .arg(label_ids.size())
+                                    .arg(image_ids.size());
+        if (err_msg != nullptr && err_msg->isEmpty())
+        {
+            *err_msg = message;
+        }
+        spdlog::error("添加标注失败: {}", message.toUtf8().constData());
+        label_ids.clear();
+        return false;
+    }
+
+    return true;
+}
+
 void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
                                         const std::vector<int64_t>     &label_class_ids,
-                                        const std::vector<QVariantMap> &data)
+                                        const std::vector<QVariantMap> &data, QString *err_msg)
 {
+    label_ids.clear();
+
     if (database_ == nullptr)
     {
-        spdlog::error("添加标注失败: 数据库未初始化");
+        const QString message = QStringLiteral("数据库未初始化");
+        if (err_msg != nullptr)
+        {
+            *err_msg = message;
+        }
+        spdlog::error("添加标注失败: {}", message.toUtf8().constData());
         return;
     }
     if (image_instances_ == nullptr)
     {
-        spdlog::error("添加标注失败: 图像实例列表未初始化");
+        const QString message = QStringLiteral("图像实例列表未初始化");
+        if (err_msg != nullptr)
+        {
+            *err_msg = message;
+        }
+        spdlog::error("添加标注失败: {}", message.toUtf8().constData());
         return;
     }
 
     if (label_data_helper_ == nullptr)
     {
-        spdlog::error("添加标注失败: 标签数据工厂未初始化");
+        const QString message = QStringLiteral("标签数据工厂未初始化");
+        if (err_msg != nullptr)
+        {
+            *err_msg = message;
+        }
+        spdlog::error("添加标注失败: {}", message.toUtf8().constData());
+        return;
+    }
+
+    if (image_ids.size() != label_class_ids.size() || image_ids.size() != data.size())
+    {
+        const QString message = QStringLiteral("image_ids=%1, label_class_ids=%2, data=%3 数量不一致")
+                                    .arg(image_ids.size())
+                                    .arg(label_class_ids.size())
+                                    .arg(data.size());
+        if (err_msg != nullptr)
+        {
+            *err_msg = message;
+        }
+        spdlog::error("添加标注失败: {}", message.toUtf8().constData());
+        return;
+    }
+
+    if (image_ids.empty())
+    {
         return;
     }
 
@@ -151,24 +250,57 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
         auto instance = image_instances_->getImageInstance(image_ids[i]);
+        if (instance == nullptr)
+        {
+            const QString message = QStringLiteral("图像实例不存在, image_id=%1").arg(image_ids[i]);
+            if (err_msg != nullptr)
+            {
+                *err_msg = message;
+            }
+            spdlog::error("添加标注失败: {}", message.toUtf8().constData());
+            label_ids.clear();
+            return;
+        }
 
         LabelData label_data = label_data_helper_->createLabelData();
+        if (label_data == nullptr)
+        {
+            const QString message = QStringLiteral("标签数据创建失败, image_id=%1").arg(image_ids[i]);
+            if (err_msg != nullptr)
+            {
+                *err_msg = message;
+            }
+            spdlog::error("添加标注失败: {}", message.toUtf8().constData());
+            label_ids.clear();
+            return;
+        }
         label_data->fromQVariantMap(data[i], instance->imageRect());
         label_types.push_back(label_data->type());
         labels_data_blob.push_back(label_data->toBlob());
         labels_data.push_back(std::move(label_data));
     }
 
-    QString err_msg;
-    bool    ok = database_->addLabels(image_ids, label_class_ids, label_types, labels_data_blob, label_ids, err_msg);
+    QString db_err_msg;
+    bool ok = database_->addLabels(image_ids, label_class_ids, label_types, labels_data_blob, label_ids, db_err_msg);
     if (!ok)
     {
-        spdlog::error("添加标注失败: {}", err_msg.toUtf8().constData());
+        if (err_msg != nullptr)
+        {
+            *err_msg = db_err_msg;
+        }
+        spdlog::error("添加标注失败: {}", db_err_msg.toUtf8().constData());
         return;
     }
     if (label_ids.size() != image_ids.size())
     {
-        spdlog::error("添加标注失败: 标签ID数量 {} 与图像ID数量 {} 不一致!", label_ids.size(), image_ids.size());
+        const QString message = QStringLiteral("标签ID数量 %1 与图像ID数量 %2 不一致")
+                                    .arg(label_ids.size())
+                                    .arg(image_ids.size());
+        if (err_msg != nullptr)
+        {
+            *err_msg = message;
+        }
+        spdlog::error("添加标注失败: {}", message.toUtf8().constData());
         return;
     }
 

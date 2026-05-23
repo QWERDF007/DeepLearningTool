@@ -10,10 +10,10 @@
 namespace dltool::data {
 
 /**
- * @brief COCO 检测数据导入器
+ * @brief COCO 数据导入器
  *
- * 当前内部标注模型只保存检测框，因此导入 COCO 时使用 annotations[].bbox。
- * segmentation/iscrowd 等字段会被忽略，后续可在新的 LabelData 实现中扩展。
+ * 语义分割项目导入时优先读取 polygon/RLE segmentation 并生成多边形点集；
+ * 检测项目或没有可用 segmentation 时，使用 annotations[].bbox 生成检测框数据。
  */
 class DATA_API COCOImporter : public DataImporter
 {

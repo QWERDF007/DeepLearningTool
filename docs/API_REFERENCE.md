@@ -247,7 +247,7 @@ Q_INVOKABLE QList<QVariantMap> getMethods() const;
 Q_INVOKABLE QString getMethodName(const int method);
 ```
 
-当前 `getMethodTypes()` 只返回 `Classification` 和 `Detection`，项目有效性校验只接受这两类。
+当前 `getMethodTypes()` 返回 `Classification`、`Detection` 和 `Segmentation`，项目有效性校验接受这三类。
 
 ### DataFormat
 
@@ -261,7 +261,7 @@ static Q_INVOKABLE int getDataFormat(const QString &name);
 static bool isDataFormatSupported(const int data_format);
 ```
 
-当前导入支持 LabelMe、COCO；导出支持 LabelMe、COCO。内部标注模型目前是检测框，COCO `segmentation` 导入时会忽略，使用 `bbox` 生成检测框。
+当前导入支持 LabelMe、COCO；导出支持 LabelMe、COCO。目标检测使用 bbox 标注；语义分割使用多边形点集 `points`，并保留 bbox 作为显示、筛选和缩略图裁剪的外接框。LabelMe polygon、COCO polygon `segmentation` 和 COCO RLE `segmentation` 会导入为点集，导出时也会按点集写出。
 
 ### DataManager
 
@@ -282,6 +282,7 @@ class DataManager : public QObject {
     Q_PROPERTY(TagFilterItemsModel *tagFilterItems READ tagFilterItems CONSTANT)
     Q_PROPERTY(LabelClassFilterItemsModel *labelClassFilterItems READ labelClassFilterItems CONSTANT)
     Q_PROPERTY(CategoryStatisticsModel *categoryStatisticsModel READ categoryStatisticsModel CONSTANT)
+    Q_PROPERTY(int method READ method CONSTANT)
 
 public:
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
@@ -377,6 +378,8 @@ Q_INVOKABLE void clearAllFilters();
 | `ImageLabelsTableModel` | `ImageLabelsTableModel` | `display`、`data`、`class_data`、`selected` |
 | `FilterItemsModel` | `FilterItemsModel` | `id`、`text`、`checked` |
 | `CategoryStatisticsModel` | `CategoryStatisticsModel` | `categoryId`、`categoryName`、`categoryColor`、`instanceCount`、`imageCount`、`instancePercentage`、`imagePercentage` |
+
+标注 `data` 的公共字段为 `x`、`y`、`width`、`height`。语义分割标注额外包含 `point_count` 和 `points`，其中 `points` 是 `{x, y}` 点列表；检测标注会忽略该字段。
 
 ## 5. Project (`dltool.project`)
 

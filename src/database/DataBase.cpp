@@ -20,6 +20,8 @@
 #include <QFileInfo>
 #include <QMetaType>
 
+#include <sqlite3.h>
+
 namespace dltool::database {
 
 const auto ProjectTable         = Project{};
@@ -120,6 +122,54 @@ QString DataBase::applicationDatabasePath(const QString &fileName)
 {
     const QDir app_dir(QCoreApplication::applicationDirPath());
     return app_dir.filePath(QStringLiteral("db/%1").arg(fileName));
+}
+
+bool DataBase::checkIntegrity(QString &err_msg) const
+{
+    sqlite3 *db = nullptr;
+    int      rc = sqlite3_open_v2(path_.toUtf8().constData(), &db, SQLITE_OPEN_READONLY, nullptr);
+    if (rc != SQLITE_OK)
+    {
+        const char *sqlite_message = db != nullptr ? sqlite3_errmsg(db) : "数据库句柄为空";
+        err_msg = QStringLiteral("无法打开数据库: %1").arg(QString::fromUtf8(sqlite_message));
+        if (db != nullptr)
+        {
+            sqlite3_close(db);
+        }
+        return false;
+    }
+
+    sqlite3_stmt *stmt = nullptr;
+    rc = sqlite3_prepare_v2(db, "PRAGMA quick_check", -1, &stmt, nullptr);
+    if (rc != SQLITE_OK)
+    {
+        err_msg = QStringLiteral("无法检查数据库: %1").arg(QString::fromUtf8(sqlite3_errmsg(db)));
+        sqlite3_close(db);
+        return false;
+    }
+
+    bool ok = true;
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+    {
+        const unsigned char *text = sqlite3_column_text(stmt, 0);
+        const QString message = text != nullptr ? QString::fromUtf8(reinterpret_cast<const char *>(text)) : QString();
+        if (message.compare(QStringLiteral("ok"), Qt::CaseInsensitive) != 0)
+        {
+            err_msg = message;
+            ok      = false;
+            break;
+        }
+    }
+
+    if (ok && rc != SQLITE_DONE)
+    {
+        err_msg = QStringLiteral("数据库检查失败: %1").arg(QString::fromUtf8(sqlite3_errmsg(db)));
+        ok      = false;
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    return ok;
 }
 
 void DataBase::createDataBase()
@@ -464,7 +514,7 @@ int64_t ProjectDataBase::getImagesCount(const int64_t dataset_id) const
             sqlpp::select(sqlpp::count(ImagesTable.id)).from(ImagesTable).where(ImagesTable.datasetId == dataset_id));
         return static_cast<int64_t>(data.front().count);
     }
-    catch (const std::exception &e)
+    catch (const std::exception &)
     {
         return 0;
     }
@@ -1056,20 +1106,41 @@ bool ProjectDataBase::addLabels(const std::vector<int64_t> &image_ids, const std
                                 const std::vector<std::vector<uint8_t>> &labels_data, std::vector<int64_t> &label_ids,
                                 QString &err_msg) const
 {
+    label_ids.clear();
     if (pool_ == nullptr)
     {
         err_msg = QString("打开数据库失败, %1").arg(path_);
         return false;
     }
+
+    if (image_ids.size() != label_class_ids.size() || image_ids.size() != label_types.size()
+        || image_ids.size() != labels_data.size())
+    {
+        err_msg = QStringLiteral("标注写入参数数量不一致: image_ids=%1, label_class_ids=%2, label_types=%3, labels=%4")
+                      .arg(image_ids.size())
+                      .arg(label_class_ids.size())
+                      .arg(label_types.size())
+                      .arg(labels_data.size());
+        return false;
+    }
+
     auto db = pool_->get();
     auto tx = sqlpp::start_transaction(db);
     try
     {
+        auto prepared_insert = db.prepare(sqlpp::insert_into(LabelsTable)
+                                              .set(LabelsTable.imageId      = sqlpp::parameter(LabelsTable.imageId),
+                                                   LabelsTable.labelClassId = sqlpp::parameter(LabelsTable.labelClassId),
+                                                   LabelsTable.regionType   = sqlpp::parameter(LabelsTable.regionType),
+                                                   LabelsTable.region       = sqlpp::parameter(LabelsTable.region)));
+
         for (size_t i = 0; i < image_ids.size(); ++i)
         {
-            db(sqlpp::insert_into(LabelsTable)
-                   .set(LabelsTable.imageId = image_ids[i], LabelsTable.labelClassId = label_class_ids[i],
-                        LabelsTable.regionType = label_types[i], LabelsTable.region = labels_data[i]));
+            prepared_insert.params.imageId      = image_ids[i];
+            prepared_insert.params.labelClassId = label_class_ids[i];
+            prepared_insert.params.regionType   = label_types[i];
+            prepared_insert.params.region       = labels_data[i];
+            db(prepared_insert);
             label_ids.emplace_back(static_cast<int64_t>(db.last_insert_id()));
         }
         tx.commit();
@@ -1091,15 +1162,27 @@ bool ProjectDataBase::updateLabelsData(const std::vector<int64_t>              &
         err_msg = QString("打开数据库失败, %1").arg(path_);
         return false;
     }
+    if (label_ids.size() != labels_data.size())
+    {
+        err_msg = QStringLiteral("标注更新参数数量不一致: label_ids=%1, labels=%2")
+                      .arg(label_ids.size())
+                      .arg(labels_data.size());
+        return false;
+    }
+
     auto db = pool_->get();
     auto tx = sqlpp::start_transaction(db);
     try
     {
+        auto prepared_update = db.prepare(sqlpp::update(LabelsTable)
+                                              .set(LabelsTable.region = sqlpp::parameter(LabelsTable.region))
+                                              .where(LabelsTable.id == sqlpp::parameter(LabelsTable.id)));
+
         for (size_t i = 0; i < label_ids.size(); ++i)
         {
-            db(sqlpp::update(LabelsTable)
-                   .set(LabelsTable.region = labels_data[i])
-                   .where(LabelsTable.id == label_ids[i]));
+            prepared_update.params.region = labels_data[i];
+            prepared_update.params.id     = label_ids[i];
+            db(prepared_update);
         }
         tx.commit();
         return true;

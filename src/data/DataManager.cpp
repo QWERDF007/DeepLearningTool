@@ -15,12 +15,44 @@
 
 #include <QColor>
 #include <QFileInfo>
+#include <QMetaType>
 #include <QQmlApplicationEngine>
-#include <QTimer>
 
-#include <set>
+#include <algorithm>
+#include <cstddef>
 
 namespace dltool::data {
+
+namespace {
+
+bool isFatalDatabaseError(const QString &message)
+{
+    return message.contains(QStringLiteral("database disk image is malformed"), Qt::CaseInsensitive)
+           || message.contains(QStringLiteral("file is not a database"), Qt::CaseInsensitive);
+}
+
+} // namespace
+
+struct DataManager::PendingImportTask
+{
+    DataImporter *importer{nullptr};
+
+    int64_t dataset_id{0};
+
+    std::map<QString, int64_t> label_class_map;
+    std::map<QString, int64_t> image_path_to_id;
+
+    size_t total_images{0};
+    size_t processed_images{0};
+    size_t imported_images{0};
+    size_t imported_labels{0};
+    size_t failed_batches{0};
+    size_t failed_images{0};
+    size_t failed_labels{0};
+    int    skipped_labels{0};
+    QString first_error_message;
+    bool    fatal_error{false};
+};
 
 DataManager::DataManager(const int method, dltool::database::ProjectDataBase *database, QObject *parent)
     : QObject(parent)
@@ -146,6 +178,17 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
     qInfo() << __FUNCTION__ << __LINE__ << "dataset_id" << dataset_id << "data_format" << data_format << "image_dir"
             << image_dir << "data_dir" << data_dir;
 
+    if (import_running_)
+    {
+        spdlog::warn("导入数据失败, 已有导入任务正在运行");
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
+                                  Q_ARG(QString, "导入数据"));
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
+                                  Q_ARG(int, spdlog::level::warn), Q_ARG(QString, "已有导入任务正在运行"));
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+        return;
+    }
+
     // 验证数据格式是否支持
     if (!data::DataFormat::isDataFormatSupported(data_format))
     {
@@ -159,6 +202,17 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
                               Q_ARG(QString, "导入数据"));
 
+    QString db_check_err_msg;
+    if (database_ == nullptr || !database_->checkIntegrity(db_check_err_msg))
+    {
+        const QString message = QStringLiteral("项目数据库检查失败，无法导入数据: %1").arg(db_check_err_msg);
+        spdlog::error("{}", message.toStdString());
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
+                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, message));
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+        return;
+    }
+
     // 使用工厂函数创建导入器
     // 重构后：DataManager 不再直接实例化具体的导入器类
     // 而是通过工厂函数获取，实现了依赖倒置原则
@@ -171,11 +225,22 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
         return;
     }
+    importer->setTargetMethod(method_);
+    import_running_ = true;
+    pending_import_task_             = std::make_unique<PendingImportTask>();
+    pending_import_task_->importer   = importer;
+    pending_import_task_->dataset_id = dataset_id;
 
-    // 连接信号 - 使用 QueuedConnection 确保在主线程更新 UI
-    // 重构后：使用 dataReady 信号接收完整的处理后数据
-    // 进度更新现在由 DataImporter 内部处理，不再需要连接 progressUpdated 信号
-    connect(importer, &DataImporter::dataReady, this, &DataManager::handleDataReady, Qt::QueuedConnection);
+    qRegisterMetaType<std::vector<QString>>("std::vector<QString>");
+    qRegisterMetaType<std::vector<int64_t>>("std::vector<int64_t>");
+    qRegisterMetaType<std::map<QString, QString>>("std::map<QString, QString>");
+    qRegisterMetaType<std::vector<ImportedLabel>>("std::vector<ImportedLabel>");
+
+    // 导入器每解析出一批数据就交给 DataManager 写库。
+    // BlockingQueuedConnection 可以限制后台线程速度，避免批次在主线程事件队列中大量堆积。
+    connect(importer, &DataImporter::dataBatchReady, this, &DataManager::handleDataBatchReady,
+            Qt::BlockingQueuedConnection);
+    connect(importer, &DataImporter::importFinished, this, &DataManager::handleImportFinished, Qt::QueuedConnection);
 
     // 启动导入
     importer->startImport(dataset_id, image_dir, data_dir);
@@ -361,13 +426,24 @@ void DataManager::deleteLabelClass(const int64_t label_class_id)
 void DataManager::addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                             const std::vector<QVariantMap> &data)
 {
+    addLabelsInternal(image_ids, label_class_ids, data);
+}
+
+bool DataManager::addLabelsInternal(const std::vector<int64_t> &image_ids,
+                                    const std::vector<int64_t> &label_class_ids,
+                                    const std::vector<QVariantMap> &data, QString *err_msg)
+{
     std::vector<int64_t> label_ids;
-    label_instances_->addLabels(label_ids, image_ids, label_class_ids, data);
+    if (!label_instances_->tryAddLabels(label_ids, image_ids, label_class_ids, data, err_msg))
+    {
+        return false;
+    }
     image_instances_->addImagesLabelIds(image_ids, label_ids);
     image_labels_list_->addLabels(image_ids, label_ids);
     image_labels_table_->addLabels(image_ids, label_ids);
     updateDatasetsStats();
     image_info_->updateLabelInfo();
+    return true;
 }
 
 void DataManager::updateLabels(const std::vector<int64_t> &label_ids, const std::vector<QVariantMap> &data)
@@ -413,165 +489,261 @@ void DataManager::updateDatasetsStats()
     datasets_->setStats(dataset_ids, image_ids, images_label_ids);
 }
 
-void DataManager::handleDataReady(bool success, int64_t dataset_id, std::vector<QString> image_paths,
-                                  std::vector<int64_t> image_widths, std::vector<int64_t> image_heights,
-                                  std::map<QString, QString> label_class_info, std::vector<ImportedLabel> labels)
+void DataManager::handleDataBatchReady(int64_t dataset_id, std::vector<QString> image_paths,
+                                       std::vector<int64_t> image_widths, std::vector<int64_t> image_heights,
+                                       std::map<QString, QString> label_class_info,
+                                       std::vector<ImportedLabel> labels, int64_t processed_images,
+                                       int64_t total_images)
 {
     Q_UNUSED(image_widths)
     Q_UNUSED(image_heights)
-    // 获取发送信号的导入器，用于稍后删除
-    DataImporter *importer = qobject_cast<DataImporter *>(sender());
 
-    if (!success || image_paths.empty())
+    DataImporter *importer = qobject_cast<DataImporter *>(sender());
+    if (!pending_import_task_ || pending_import_task_->importer != importer)
     {
-        spdlog::error("数据解析失败或没有数据");
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, "数据解析失败"));
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
-        if (importer)
-        {
-            importer->deleteLater();
-        }
         return;
     }
 
-    spdlog::info("开始在主线程中导入数据，图像数量: {}", image_paths.size());
-    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                              Q_ARG(int, spdlog::level::info), Q_ARG(QString, "开始导入数据到数据库..."));
+    PendingImportTask &task = *pending_import_task_;
+    task.processed_images = std::max(task.processed_images, static_cast<size_t>(std::max<int64_t>(0, processed_images)));
+    task.total_images     = std::max(task.total_images, static_cast<size_t>(std::max<int64_t>(0, total_images)));
 
-    // 重构后：DataManager 只负责数据库操作
-    // 所有格式特定的处理逻辑都在导入器中完成
+    QString err_msg;
+    if (!writeImportBatch(dataset_id, image_paths, label_class_info, labels, err_msg))
+    {
+        task.failed_batches++;
+        task.failed_images += image_paths.size();
+        task.failed_labels += labels.size();
+        task.skipped_labels += static_cast<int>(labels.size());
+        if (task.first_error_message.isEmpty())
+        {
+            task.first_error_message = err_msg;
+        }
 
-    // 1. 创建缺失的标签类别
-    std::map<QString, int64_t> label_class_map;
-    int                        created_label_classes  = 0;
-    int                        existing_label_classes = 0;
+        if (isFatalDatabaseError(err_msg))
+        {
+            task.fatal_error         = true;
+            task.first_error_message = QStringLiteral("项目数据库已损坏，无法继续导入标注: %1").arg(err_msg);
+            if (importer != nullptr)
+            {
+                importer->requestCancel();
+            }
+        }
+
+        const QString progress_message
+            = task.fatal_error
+                  ? task.first_error_message
+                  : QStringLiteral("批次写入失败，已跳过当前批次并继续导入后续数据: %1").arg(err_msg);
+        spdlog::error("{}", progress_message.toStdString());
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
+                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, progress_message));
+        return;
+    }
+
+    QMetaObject::invokeMethod(
+        ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection, Q_ARG(int, spdlog::level::info),
+        Q_ARG(QString,
+              QString("已写入 %1 个图像, %2 个标注")
+                  .arg(task.imported_images)
+                  .arg(task.imported_labels)));
+}
+
+bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString> &image_paths,
+                                   const std::map<QString, QString> &label_class_info,
+                                   const std::vector<ImportedLabel> &labels, QString &err_msg)
+{
+    if (!pending_import_task_)
+    {
+        err_msg = QStringLiteral("导入任务不存在");
+        return false;
+    }
+
+    PendingImportTask &task = *pending_import_task_;
+    if (dataset_id != task.dataset_id)
+    {
+        err_msg = QStringLiteral("导入批次的数据集 ID 不一致");
+        return false;
+    }
 
     for (const auto &[label_name, color] : label_class_info)
     {
-        // 检查标签类别是否已存在
         int64_t label_class_id = label_classes_->getLabelClassId(label_name);
         if (label_class_id < 0)
         {
-            // 创建新的标签类别
-            QString shortcut = "";
-            addLabelClass(label_name, color, shortcut);
+            addLabelClass(label_name, color, QString());
             label_class_id = label_classes_->getLabelClassId(label_name);
-            created_label_classes++;
             spdlog::debug("创建新标签类别: {}, ID: {}", label_name.toStdString(), label_class_id);
         }
-        else
+
+        if (label_class_id >= 0)
         {
-            existing_label_classes++;
-            spdlog::debug("使用已存在的标签类别: {}, ID: {}", label_name.toStdString(), label_class_id);
+            task.label_class_map[label_name] = label_class_id;
         }
-        label_class_map[label_name] = label_class_id;
     }
 
-    spdlog::info("标签类别处理完成: 总数={}, 新创建={}, 已存在={}", label_class_info.size(), created_label_classes,
-                 existing_label_classes);
-
-    // 2. 批量添加图像
     std::vector<int64_t> image_ids;
-    if (!image_instances_->addImages(dataset_id, image_paths, image_ids))
+    if (!image_paths.empty())
     {
-        spdlog::error("添加图像失败: dataset_id={}, 图像数量={}", dataset_id, image_paths.size());
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, "添加图像失败"));
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
-        if (importer)
+        if (!image_instances_->addImages(task.dataset_id, image_paths, image_ids))
         {
-            importer->deleteLater();
+            err_msg = QStringLiteral("添加图像失败，当前批次已跳过。已导入 %1 个图像, %2 个标注")
+                          .arg(task.imported_images)
+                          .arg(task.imported_labels);
+            return false;
         }
-        return;
+
+        if (image_ids.size() != image_paths.size())
+        {
+            err_msg = QStringLiteral("添加图像失败，返回的图像 ID 数量不一致");
+            return false;
+        }
+
+        task.imported_images += image_ids.size();
+
+        std::vector<int64_t> dataset_ids(image_ids.size(), task.dataset_id);
+        datasets_->addImages(dataset_ids, image_ids);
+
+        for (size_t i = 0; i < image_paths.size(); ++i)
+        {
+            task.image_path_to_id[image_paths[i]] = image_ids[i];
+        }
     }
 
-    spdlog::info("成功导入 {} 个图像到数据库", image_ids.size());
+    std::vector<int64_t>     batch_label_image_ids;
+    std::vector<int64_t>     batch_label_class_ids;
+    std::vector<QVariantMap> batch_label_data;
 
-    // 3. 创建图像路径到 ID 的映射
-    std::map<QString, int64_t> image_path_to_id;
-    for (size_t i = 0; i < image_paths.size() && i < image_ids.size(); ++i)
+    for (const ImportedLabel &label : labels)
     {
-        image_path_to_id[image_paths[i]] = image_ids[i];
-    }
-
-    // 4. 为每个图像添加标注
-    std::vector<int64_t>     all_label_image_ids;
-    std::vector<int64_t>     all_label_class_ids;
-    std::vector<QVariantMap> all_label_data;
-    int                      skipped_labels = 0;
-
-    for (const auto &label : labels)
-    {
-        // 查找图像 ID
-        auto image_it = image_path_to_id.find(label.image_path);
-        if (image_it == image_path_to_id.end())
+        auto image_it = task.image_path_to_id.find(label.image_path);
+        if (image_it == task.image_path_to_id.end())
         {
             spdlog::warn("未找到图像路径对应的 ID，跳过标注: {}, 标签类别: {}", label.image_path.toStdString(),
                          label.label_class_name.toStdString());
-            skipped_labels++;
+            task.skipped_labels++;
             continue;
         }
-        int64_t image_id = image_it->second;
 
-        // 查找标签类别 ID
-        auto class_it = label_class_map.find(label.label_class_name);
-        if (class_it == label_class_map.end())
+        auto class_it = task.label_class_map.find(label.label_class_name);
+        if (class_it == task.label_class_map.end())
+        {
+            const QString fallback_color
+                = DatasetIO::generateDefaultColor(static_cast<int>(task.label_class_map.size()));
+            addLabelClass(label.label_class_name, fallback_color, QString());
+            const int64_t label_class_id = label_classes_->getLabelClassId(label.label_class_name);
+            if (label_class_id >= 0)
+            {
+                task.label_class_map[label.label_class_name] = label_class_id;
+                class_it = task.label_class_map.find(label.label_class_name);
+            }
+        }
+
+        if (class_it == task.label_class_map.end())
         {
             spdlog::warn("未找到标签类别，跳过标注: {}, 图像: {}", label.label_class_name.toStdString(),
                          label.image_path.toStdString());
-            skipped_labels++;
+            task.skipped_labels++;
             continue;
         }
-        int64_t label_class_id = class_it->second;
 
         if (label.data.isEmpty())
         {
             spdlog::warn("跳过空的标注数据: label_class={}, 图像: {}", label.label_class_name.toStdString(),
                          label.image_path.toStdString());
-            skipped_labels++;
+            task.skipped_labels++;
             continue;
         }
 
-        all_label_image_ids.push_back(image_id);
-        all_label_class_ids.push_back(label_class_id);
-        all_label_data.push_back(label.data);
+        batch_label_image_ids.push_back(image_it->second);
+        batch_label_class_ids.push_back(class_it->second);
+        batch_label_data.push_back(label.data);
     }
 
-    spdlog::info("标注数据准备完成: 总数={}, 有效={}, 跳过={}", labels.size(), all_label_image_ids.size(),
-                 skipped_labels);
-
-    // 5. 批量添加标注
-    if (!all_label_image_ids.empty())
+    if (!batch_label_image_ids.empty())
     {
-        addLabels(all_label_image_ids, all_label_class_ids, all_label_data);
-        spdlog::info("成功导入 {} 个标注到数据库", all_label_image_ids.size());
+        QString label_err_msg;
+        if (!addLabelsInternal(batch_label_image_ids, batch_label_class_ids, batch_label_data, &label_err_msg))
+        {
+            err_msg = QStringLiteral("添加标注失败，当前标注批次已跳过。待写入标注 %1 个")
+                          .arg(batch_label_image_ids.size());
+            if (!label_err_msg.isEmpty())
+            {
+                err_msg += QStringLiteral("，原因: %1").arg(label_err_msg);
+            }
+            return false;
+        }
+        task.imported_labels += batch_label_image_ids.size();
     }
     else
     {
-        spdlog::info("没有标注需要导入");
+        updateDatasetsStats();
+        image_info_->updateLabelInfo();
     }
 
-    // 6. 更新数据集中的图像
-    std::vector<int64_t> dataset_ids_vec(image_ids.size(), dataset_id);
-    datasets_->addImages(dataset_ids_vec, image_ids);
+    return true;
+}
 
-    // 7. 更新统计信息
-    updateDatasetsStats();
+void DataManager::handleImportFinished(bool success, std::vector<int64_t> image_ids,
+                                       std::vector<int64_t> label_class_ids)
+{
+    Q_UNUSED(image_ids)
+    Q_UNUSED(label_class_ids)
 
-    spdlog::info("数据导入完成: 图像={}, 标注={}, 标签类别={}", image_ids.size(), all_label_image_ids.size(),
-                 label_class_info.size());
-    QMetaObject::invokeMethod(
-        ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection, Q_ARG(int, spdlog::level::info),
-        Q_ARG(QString,
-              QString("导入完成: %1 个图像, %2 个标注").arg(image_ids.size()).arg(all_label_image_ids.size())));
+    if (!pending_import_task_)
+    {
+        import_running_ = false;
+        return;
+    }
+
+    PendingImportTask &task = *pending_import_task_;
+    if (!success)
+    {
+        QString message = task.first_error_message;
+        if (message.isEmpty())
+        {
+            message = QStringLiteral("数据解析失败或没有数据");
+        }
+        finishBatchedImport(false, message);
+        return;
+    }
+
+    QString message = QString("导入完成: %1 个图像, %2 个标注, 跳过标注 %3 个")
+                          .arg(task.imported_images)
+                          .arg(task.imported_labels)
+                          .arg(task.skipped_labels);
+    if (task.failed_batches > 0)
+    {
+        message += QString("，写入失败批次 %1 个, 失败图像 %2 个, 失败标注 %3 个")
+                       .arg(task.failed_batches)
+                       .arg(task.failed_images)
+                       .arg(task.failed_labels);
+    }
+    spdlog::info("数据导入完成: 图像={}, 标注={}, 跳过标注={}, 写入失败批次={}, 失败图像={}, 失败标注={}",
+                 task.imported_images, task.imported_labels, task.skipped_labels, task.failed_batches,
+                 task.failed_images, task.failed_labels);
+    finishBatchedImport(true, message);
+}
+
+void DataManager::finishBatchedImport(bool success, const QString &message)
+{
+    DataImporter *importer = pending_import_task_ ? pending_import_task_->importer : nullptr;
+
+    const int level = success ? spdlog::level::info : spdlog::level::err;
+    if (success)
+    {
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "updateProgress", Qt::QueuedConnection,
+                                  Q_ARG(int, 100));
+    }
+    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
+                              Q_ARG(int, level), Q_ARG(QString, message));
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
 
-    // 清理导入器
     if (importer)
     {
         importer->deleteLater();
     }
+    pending_import_task_.reset();
+    import_running_ = false;
 }
 
 void DataManager::initializeQmlEngine(QQmlApplicationEngine *engine)

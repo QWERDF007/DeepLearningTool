@@ -47,6 +47,14 @@ public:
      */
     static QString applicationDatabasePath(const QString &fileName);
 
+    /**
+     * @brief 检查数据库文件是否仍然可被 SQLite 正常读写。
+     *
+     * @param err_msg 检查失败时返回 SQLite 的诊断信息
+     * @return true 数据库检查通过
+     */
+    bool checkIntegrity(QString &err_msg) const;
+
 protected:
     QString path_;
 

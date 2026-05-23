@@ -15,6 +15,8 @@
 #include <QObject>
 #include <QtQml>
 
+#include <memory>
+
 class QQmlApplicationEngine;
 
 namespace dltool::database {
@@ -41,6 +43,7 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(TagFilterItemsModel *tagFilterItems READ tagFilterItems CONSTANT FINAL)
     Q_PROPERTY(LabelClassFilterItemsModel *labelClassFilterItems READ labelClassFilterItems CONSTANT FINAL)
     Q_PROPERTY(CategoryStatisticsModel *categoryStatisticsModel READ categoryStatisticsModel CONSTANT FINAL)
+    Q_PROPERTY(int method READ method CONSTANT FINAL)
 
 public:
     DataManager(const int method, dltool::database::ProjectDataBase *database, QObject *parent = nullptr);
@@ -111,6 +114,11 @@ public:
         return category_statistics_model_;
     }
 
+    int method() const
+    {
+        return method_;
+    }
+
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
 
     Q_INVOKABLE int     getDatasetId(const QString &dataset_name) const;
@@ -161,6 +169,8 @@ public:
     Q_INVOKABLE QString getImageTagName(const int64_t image_id) const;
 
 private:
+    struct PendingImportTask;
+
     void init(const int method);
 
     void updateDatasetsStats();
@@ -168,11 +178,19 @@ private:
     ExportDataset buildExportDataset(const int64_t dataset_id) const;
 
     /**
-     * @brief 处理导入器的 dataReady 信号
+     * @brief 处理导入器解析出的单个数据批次
      */
-    void handleDataReady(bool success, int64_t dataset_id, std::vector<QString> image_paths,
-                         std::vector<int64_t> image_widths, std::vector<int64_t> image_heights,
-                         std::map<QString, QString> label_class_info, std::vector<ImportedLabel> labels);
+    void handleDataBatchReady(int64_t dataset_id, std::vector<QString> image_paths,
+                              std::vector<int64_t> image_widths, std::vector<int64_t> image_heights,
+                              std::map<QString, QString> label_class_info, std::vector<ImportedLabel> labels,
+                              int64_t processed_images, int64_t total_images);
+    void handleImportFinished(bool success, std::vector<int64_t> image_ids, std::vector<int64_t> label_class_ids);
+    bool addLabelsInternal(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
+                           const std::vector<QVariantMap> &data, QString *err_msg = nullptr);
+    bool writeImportBatch(int64_t dataset_id, const std::vector<QString> &image_paths,
+                          const std::map<QString, QString> &label_class_info,
+                          const std::vector<ImportedLabel> &labels, QString &err_msg);
+    void finishBatchedImport(bool success, const QString &message);
 
     dltool::database::ProjectDataBase *database_{nullptr};
 
@@ -195,6 +213,9 @@ private:
     CategoryStatisticsModel *category_statistics_model_{nullptr};
 
     int method_{0}; // 标签数据类型
+
+    bool                               import_running_{false};
+    std::unique_ptr<PendingImportTask> pending_import_task_;
 };
 
 } // namespace dltool::data

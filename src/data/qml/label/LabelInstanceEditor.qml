@@ -21,6 +21,7 @@ Rectangle {
     property int selectedLabelClassId: -1
     property bool hasSelection: false
     property bool multiSelection: false
+    property bool polygonSelection: selectedLabelData && selectedLabelData.points && selectedLabelData.points.length > 0
     property bool _updating: false
 
     // 当选择改变时更新选中的标注数据
@@ -110,6 +111,9 @@ Rectangle {
             y: y,
             width: w,
             height: h
+        }
+        if (selectedLabelData.points) {
+            data.points = selectedLabelData.points
         }
         dataManager.updateLabels([selectedLabelId], [data])
         _updating = false
@@ -232,7 +236,7 @@ Rectangle {
                     maxValue: 10000
                     step: 1
                     decimals: 0
-                    enabled: control.hasSelection && !control.multiSelection
+                    enabled: control.hasSelection && !control.multiSelection && !control.polygonSelection
 
                     onEditingFinished: {
                         control.commitGeometryChange(xEditor.value, yEditor.value, widthEditor.value, heightEditor.value)
@@ -259,7 +263,7 @@ Rectangle {
                     maxValue: 10000
                     step: 1
                     decimals: 0
-                    enabled: control.hasSelection && !control.multiSelection
+                    enabled: control.hasSelection && !control.multiSelection && !control.polygonSelection
 
                     onEditingFinished: {
                         control.commitGeometryChange(xEditor.value, yEditor.value, widthEditor.value, heightEditor.value)
@@ -286,7 +290,7 @@ Rectangle {
                     maxValue: 10000
                     step: 1
                     decimals: 0
-                    enabled: control.hasSelection && !control.multiSelection
+                    enabled: control.hasSelection && !control.multiSelection && !control.polygonSelection
 
                     onEditingFinished: {
                         control.commitGeometryChange(xEditor.value, yEditor.value, widthEditor.value, heightEditor.value)
@@ -313,7 +317,7 @@ Rectangle {
                     maxValue: 10000
                     step: 1
                     decimals: 0
-                    enabled: control.hasSelection && !control.multiSelection
+                    enabled: control.hasSelection && !control.multiSelection && !control.polygonSelection
 
                     onEditingFinished: {
                         control.commitGeometryChange(xEditor.value, yEditor.value, widthEditor.value, heightEditor.value)

@@ -3,10 +3,12 @@
 #include "DataExport.h"
 
 #include <QObject>
+#include <QPointF>
 #include <QRect>
 #include <QVariantMap>
 #include <memory>
 #include <utility>
+#include <vector>
 
 namespace dltool::data {
 
@@ -56,6 +58,12 @@ public:
 
     void fromBlob(const std::vector<uint8_t> &blob) override;
     void fromQVariantMap(const QVariantMap &data, const QRectF &image_rect) override;
+
+    QVariantMap dataMap() override;
+
+    static std::pair<std::vector<QString>, std::vector<QString>> columns();
+
+    std::vector<QPointF> points;
 };
 
 class DATA_API LabelDataHelper_t
@@ -85,6 +93,25 @@ class DATA_API DetLabelDataHelper final : public LabelDataHelper_t
 public:
     DetLabelDataHelper(const int type);
     ~DetLabelDataHelper();
+
+    std::unique_ptr<LabelData_t> createLabelData() const override;
+
+    std::pair<std::vector<QString>, std::vector<QString>> dataColumns() const override;
+
+    bool isInside(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr) const override;
+
+    QVariantMap hitTestHandle(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr,
+                              const double scale) const override;
+
+    QVariantMap getEditedData(const QVariantMap &data, const QPointF &start, const QPointF &end,
+                              const QRectF &image_rect) const override;
+};
+
+class DATA_API SegLabelDataHelper final : public LabelDataHelper_t
+{
+public:
+    SegLabelDataHelper(const int type);
+    ~SegLabelDataHelper();
 
     std::unique_ptr<LabelData_t> createLabelData() const override;
 

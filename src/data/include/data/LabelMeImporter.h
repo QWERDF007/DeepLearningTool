@@ -48,9 +48,6 @@ private:
     void doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir);
 
     QVariantMap convertShapeToLabelData(const LabelMeShape &shape, int image_width, int image_height);
-
-    void processAndEmitData(int64_t dataset_id, const std::map<QString, ImageData> &images,
-                            const std::vector<LabelMeData> &parsed_annotations);
 };
 
 } // namespace dltool::data

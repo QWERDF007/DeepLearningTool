@@ -2,6 +2,9 @@
 
 #include "DataExport.h"
 
+#include <QPointF>
+#include <QVariant>
+#include <QVariantList>
 #include <QVariantMap>
 #include <QString>
 
@@ -59,6 +62,10 @@ public:
     static bool                 getImageDimensions(const QString &image_path, int &width, int &height);
     static QVariantMap          bboxToLabelData(double x, double y, double width, double height, int image_width,
                                                 int image_height);
+    static QVariantList         pointsToVariantList(const std::vector<QPointF> &points);
+    static std::vector<QPointF> variantListToPoints(const QVariant &value);
+    static QVariantMap          pointsToLabelData(const std::vector<QPointF> &points, int image_width,
+                                                  int image_height);
     static QString              generateDefaultColor(int index);
     static QString              uniqueFileName(const QString &source_path, int64_t stable_id,
                                                 const std::map<QString, int> &used_names);

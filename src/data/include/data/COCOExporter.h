@@ -7,7 +7,7 @@
 namespace dltool::data {
 
 /**
- * @brief COCO 检测格式导出器
+ * @brief COCO 数据格式导出器
  *
  * 导出目录结构:
  * - images/ 保存复制后的图像

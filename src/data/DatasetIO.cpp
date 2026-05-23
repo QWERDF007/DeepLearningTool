@@ -10,6 +10,7 @@
 #include <QImageReader>
 #include <QRectF>
 
+#include <algorithm>
 #include <cmath>
 
 namespace dltool::data {
@@ -107,6 +108,85 @@ QVariantMap DatasetIO::bboxToLabelData(double x, double y, double width, double 
         { "width",  clipped.width()},
         {"height", clipped.height()},
     };
+}
+
+QVariantList DatasetIO::pointsToVariantList(const std::vector<QPointF> &points)
+{
+    QVariantList result;
+    result.reserve(static_cast<int>(points.size()));
+    for (const QPointF &point : points)
+    {
+        result.push_back(QVariantMap{
+            {"x", point.x()},
+            {"y", point.y()},
+        });
+    }
+    return result;
+}
+
+std::vector<QPointF> DatasetIO::variantListToPoints(const QVariant &value)
+{
+    std::vector<QPointF> points;
+    const QVariantList   list = value.toList();
+    points.reserve(static_cast<size_t>(list.size()));
+
+    for (const QVariant &item : list)
+    {
+        if (item.canConvert<QVariantMap>())
+        {
+            const QVariantMap map = item.toMap();
+            points.emplace_back(map.value(QStringLiteral("x")).toDouble(), map.value(QStringLiteral("y")).toDouble());
+        }
+        else if (item.canConvert<QVariantList>())
+        {
+            const QVariantList pair = item.toList();
+            if (pair.size() >= 2)
+            {
+                points.emplace_back(pair[0].toDouble(), pair[1].toDouble());
+            }
+        }
+    }
+
+    return points;
+}
+
+QVariantMap DatasetIO::pointsToLabelData(const std::vector<QPointF> &points, int image_width, int image_height)
+{
+    if (image_width <= 0 || image_height <= 0 || points.size() < 3)
+    {
+        return {};
+    }
+
+    const QRectF image_rect(0, 0, image_width, image_height);
+    std::vector<QPointF> clipped_points;
+    clipped_points.reserve(points.size());
+    for (const QPointF &point : points)
+    {
+        clipped_points.emplace_back(std::clamp(point.x(), image_rect.left(), image_rect.right()),
+                                    std::clamp(point.y(), image_rect.top(), image_rect.bottom()));
+    }
+
+    double x_min = clipped_points.front().x();
+    double y_min = clipped_points.front().y();
+    double x_max = clipped_points.front().x();
+    double y_max = clipped_points.front().y();
+    for (const QPointF &point : clipped_points)
+    {
+        x_min = std::min(x_min, point.x());
+        y_min = std::min(y_min, point.y());
+        x_max = std::max(x_max, point.x());
+        y_max = std::max(y_max, point.y());
+    }
+
+    QVariantMap data = bboxToLabelData(x_min, y_min, x_max - x_min, y_max - y_min, image_width, image_height);
+    if (data.isEmpty())
+    {
+        return {};
+    }
+
+    data[QStringLiteral("point_count")] = static_cast<int>(clipped_points.size());
+    data[QStringLiteral("points")]      = pointsToVariantList(clipped_points);
+    return data;
 }
 
 QString DatasetIO::generateDefaultColor(int index)

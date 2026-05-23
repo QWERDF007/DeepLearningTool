@@ -18,6 +18,16 @@ DataImporter::DataImporter(dltool::database::ProjectDataBase *database, QObject 
 
 DataImporter::~DataImporter() {}
 
+void DataImporter::requestCancel()
+{
+    cancel_requested_.store(true, std::memory_order_relaxed);
+}
+
+bool DataImporter::isCancelRequested() const
+{
+    return cancel_requested_.load(std::memory_order_relaxed);
+}
+
 DataImporter *DataImporter::createImporter(int data_format, dltool::database::ProjectDataBase *database,
                                            QObject *parent)
 {

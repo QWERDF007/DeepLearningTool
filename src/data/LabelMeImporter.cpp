@@ -5,12 +5,10 @@
 #include <json.hpp>
 #include <spdlog/spdlog.h>
 
-#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 
 #include <algorithm>
-#include <set>
 
 namespace dltool::data {
 
@@ -43,129 +41,179 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
     {
         updateProgress(0, QStringLiteral("正在扫描图像文件..."));
         const std::vector<QString> image_files = DatasetIO::scanImageFiles(image_dir);
-
         if (image_files.empty())
         {
             updateProgress(100, QStringLiteral("未找到任何图像文件"));
-            emit dataReady(false, dataset_id, {}, {}, {}, {}, {});
             emit importFinished(false, {}, {});
             return;
         }
 
-        const int total_images = static_cast<int>(image_files.size());
-        std::map<QString, ImageData> images_map;
-        int                          processed_images = 0;
-        int                          skipped_images   = 0;
-
-        for (const auto &image_path : image_files)
+        std::map<QString, QString> annotation_files_by_name;
+        int                        total_json_files = 0;
+        if (!data_dir.isEmpty() && QFileInfo(data_dir).exists())
         {
+            updateProgress(5, QStringLiteral("正在扫描标注文件..."));
+            const std::vector<QString> json_files = DatasetIO::scanJsonFiles(data_dir);
+            total_json_files                      = static_cast<int>(json_files.size());
+            for (const QString &json_path : json_files)
+            {
+                annotation_files_by_name[QFileInfo(json_path).baseName()] = json_path;
+            }
+        }
+
+        const int total_images = static_cast<int>(image_files.size());
+
+        std::vector<QString>       batch_image_paths;
+        std::vector<int64_t>       batch_image_widths;
+        std::vector<int64_t>       batch_image_heights;
+        std::map<QString, QString> batch_label_class_info;
+        std::vector<ImportedLabel> batch_labels;
+        batch_image_paths.reserve(DataImporter::ImportBatchImageCount);
+        batch_image_widths.reserve(DataImporter::ImportBatchImageCount);
+        batch_image_heights.reserve(DataImporter::ImportBatchImageCount);
+
+        std::map<QString, QString> label_class_colors;
+        int                        color_index         = 0;
+        int                        processed_images    = 0;
+        int                        valid_images        = 0;
+        int                        skipped_images      = 0;
+        int                        parsed_annotations  = 0;
+        int                        skipped_annotations = 0;
+
+        auto flush_batch = [&]() -> bool {
+            if (batch_image_paths.empty() && batch_labels.empty())
+            {
+                return true;
+            }
+
+            emit dataBatchReady(dataset_id, std::move(batch_image_paths), std::move(batch_image_widths),
+                                std::move(batch_image_heights), std::move(batch_label_class_info),
+                                std::move(batch_labels), processed_images, total_images);
+
+            batch_image_paths.clear();
+            batch_image_widths.clear();
+            batch_image_heights.clear();
+            batch_label_class_info.clear();
+            batch_labels.clear();
+            batch_image_paths.reserve(DataImporter::ImportBatchImageCount);
+            batch_image_widths.reserve(DataImporter::ImportBatchImageCount);
+            batch_image_heights.reserve(DataImporter::ImportBatchImageCount);
+
+            return !isCancelRequested();
+        };
+
+        for (const QString &image_path : image_files)
+        {
+            if (isCancelRequested())
+            {
+                emit importFinished(false, {}, {});
+                return;
+            }
+
+            ++processed_images;
+
             int width  = 0;
             int height = 0;
             if (!DatasetIO::getImageDimensions(image_path, width, height))
             {
-                skipped_images++;
+                ++skipped_images;
                 continue;
             }
 
-            QFileInfo file_info(image_path);
-            ImageData img_data;
-            img_data.image_path   = image_path;
-            img_data.image_width  = width;
-            img_data.image_height = height;
-            images_map[file_info.baseName()] = img_data;
-            processed_images++;
+            ++valid_images;
+            batch_image_paths.push_back(image_path);
+            batch_image_widths.push_back(width);
+            batch_image_heights.push_back(height);
+
+            const QString image_name = QFileInfo(image_path).baseName();
+            auto          json_it    = annotation_files_by_name.find(image_name);
+            if (json_it != annotation_files_by_name.end())
+            {
+                LabelMeData data;
+                if (parseLabelMeJson(json_it->second, data))
+                {
+                    data.image_path   = image_path;
+                    data.image_width  = width;
+                    data.image_height = height;
+                    ++parsed_annotations;
+
+                    for (const LabelMeShape &shape : data.shapes)
+                    {
+                        if (shape.label.isEmpty())
+                        {
+                            continue;
+                        }
+
+                        auto color_it = label_class_colors.find(shape.label);
+                        if (color_it == label_class_colors.end())
+                        {
+                            const QString color = DatasetIO::generateDefaultColor(color_index++);
+                            color_it            = label_class_colors.emplace(shape.label, color).first;
+                            batch_label_class_info[shape.label] = color;
+                        }
+
+                        const QVariantMap label_data = convertShapeToLabelData(shape, width, height);
+                        if (label_data.isEmpty())
+                        {
+                            continue;
+                        }
+
+                        ImportedLabel imported_label;
+                        imported_label.label_class_name = shape.label;
+                        imported_label.data             = label_data;
+                        imported_label.image_path       = image_path;
+                        batch_labels.push_back(imported_label);
+                    }
+                }
+                else
+                {
+                    ++skipped_annotations;
+                }
+            }
 
             if (processed_images % std::max(1, total_images / 10) == 0 || processed_images == total_images)
             {
-                updateProgress(processed_images * 40 / total_images,
-                               QStringLiteral("已扫描图像 %1/%2").arg(processed_images).arg(total_images));
+                const int progress = 10 + (processed_images * 80 / std::max(1, total_images));
+                updateProgress(progress,
+                               QStringLiteral("已处理 LabelMe 图像 %1/%2").arg(processed_images).arg(total_images));
+            }
+
+            if (batch_image_paths.size() >= DataImporter::ImportBatchImageCount)
+            {
+                if (!flush_batch())
+                {
+                    emit importFinished(false, {}, {});
+                    return;
+                }
             }
         }
 
-        if (images_map.empty())
+        if (!flush_batch())
         {
-            updateProgress(100, QStringLiteral("没有有效的图像可导入"));
-            emit dataReady(false, dataset_id, {}, {}, {}, {}, {});
             emit importFinished(false, {}, {});
             return;
         }
 
-        updateProgress(40, QStringLiteral("图像扫描完成: 总数=%1, 成功=%2, 跳过=%3")
-                               .arg(total_images)
-                               .arg(processed_images)
-                               .arg(skipped_images));
-
-        std::vector<LabelMeData> parsed_annotations;
-        if (data_dir.isEmpty() || !QFileInfo(data_dir).exists())
+        if (valid_images == 0)
         {
-            updateProgress(90, QStringLiteral("标注路径为空，只导入图像"));
-            processAndEmitData(dataset_id, images_map, parsed_annotations);
-            updateProgress(100, QStringLiteral("导入完成: %1 个图像, 0 个标注").arg(images_map.size()));
-            emit importFinished(true, {}, {});
+            updateProgress(100, QStringLiteral("没有有效的图像可导入"));
+            emit importFinished(false, {}, {});
             return;
         }
 
-        updateProgress(40, QStringLiteral("正在扫描标注文件..."));
-        const std::vector<QString> json_files = DatasetIO::scanJsonFiles(data_dir);
-        const int                  total_json_files = static_cast<int>(json_files.size());
-        if (json_files.empty())
-        {
-            updateProgress(90, QStringLiteral("未找到标注文件，只导入图像"));
-            processAndEmitData(dataset_id, images_map, parsed_annotations);
-            updateProgress(100, QStringLiteral("导入完成: %1 个图像, 0 个标注").arg(images_map.size()));
-            emit importFinished(true, {}, {});
-            return;
-        }
-
-        int parsed_count  = 0;
-        int skipped_count = 0;
-        for (const auto &json_path : json_files)
-        {
-            LabelMeData data;
-            if (!parseLabelMeJson(json_path, data))
-            {
-                skipped_count++;
-                continue;
-            }
-
-            QFileInfo json_file_info(json_path);
-            auto      image_it = images_map.find(json_file_info.baseName());
-            if (image_it == images_map.end())
-            {
-                spdlog::warn("标注文件对应的图像不存在，跳过: {}", json_path.toStdString());
-                skipped_count++;
-                continue;
-            }
-
-            data.image_path   = image_it->second.image_path;
-            data.image_width  = image_it->second.image_width;
-            data.image_height = image_it->second.image_height;
-            parsed_annotations.push_back(data);
-            parsed_count++;
-
-            if (parsed_count % std::max(1, total_json_files / 10) == 0 || parsed_count == total_json_files)
-            {
-                const int progress = 40 + (parsed_count * 50 / std::max(1, total_json_files));
-                updateProgress(progress,
-                               QStringLiteral("已解析标注 %1/%2").arg(parsed_count).arg(total_json_files));
-            }
-        }
-
-        updateProgress(90, QStringLiteral("标注解析完成: 总数=%1, 成功=%2, 跳过=%3")
-                               .arg(total_json_files)
-                               .arg(parsed_count)
-                               .arg(skipped_count));
-        processAndEmitData(dataset_id, images_map, parsed_annotations);
-        updateProgress(100, QStringLiteral("导入完成: %1 个图像, %2 个标注文件")
-                               .arg(images_map.size())
-                               .arg(parsed_count));
+        updateProgress(100,
+                       QStringLiteral("导入完成: %1 个图像, %2 个标注文件，跳过图像 %3 个，跳过标注 %4/%5")
+                           .arg(valid_images)
+                           .arg(parsed_annotations)
+                           .arg(skipped_images)
+                           .arg(skipped_annotations)
+                           .arg(total_json_files));
         emit importFinished(true, {}, {});
     }
     catch (const std::exception &e)
     {
         spdlog::error("导入过程中发生异常: {}", e.what());
         updateProgress(100, QStringLiteral("导入失败: %1").arg(e.what()));
-        emit dataReady(false, dataset_id, {}, {}, {}, {}, {});
         emit importFinished(false, {}, {});
     }
 }
@@ -242,12 +290,12 @@ QVariantMap LabelMeImporter::convertShapeToLabelData(const LabelMeShape &shape, 
             return {};
         }
 
-        const QPointF p1     = shape.points[0];
-        const QPointF p2     = shape.points[1];
-        const double  x_min  = std::min(p1.x(), p2.x());
-        const double  y_min  = std::min(p1.y(), p2.y());
-        const double  x_max  = std::max(p1.x(), p2.x());
-        const double  y_max  = std::max(p1.y(), p2.y());
+        const QPointF p1    = shape.points[0];
+        const QPointF p2    = shape.points[1];
+        const double  x_min = std::min(p1.x(), p2.x());
+        const double  y_min = std::min(p1.y(), p2.y());
+        const double  x_max = std::max(p1.x(), p2.x());
+        const double  y_max = std::max(p1.y(), p2.y());
         return DatasetIO::bboxToLabelData(x_min, y_min, x_max - x_min, y_max - y_min, image_width, image_height);
     }
 
@@ -259,93 +307,18 @@ QVariantMap LabelMeImporter::convertShapeToLabelData(const LabelMeShape &shape, 
             return {};
         }
 
-        double x_min = shape.points[0].x();
-        double y_min = shape.points[0].y();
-        double x_max = shape.points[0].x();
-        double y_max = shape.points[0].y();
-        for (const QPointF &point : shape.points)
+        const QVariantMap label_data = DatasetIO::pointsToLabelData(shape.points, image_width, image_height);
+        if (label_data.isEmpty())
         {
-            x_min = std::min(x_min, point.x());
-            y_min = std::min(y_min, point.y());
-            x_max = std::max(x_max, point.x());
-            y_max = std::max(y_max, point.y());
+            spdlog::warn("polygon 标注点数不足或超出图像范围: {}", shape.points.size());
+            return {};
         }
-
-        return DatasetIO::bboxToLabelData(x_min, y_min, x_max - x_min, y_max - y_min, image_width, image_height);
+        return label_data;
     }
 
     spdlog::warn("不支持的 LabelMe shape_type: {}, label: {}", shape.shape_type.toStdString(),
                  shape.label.toStdString());
     return {};
-}
-
-void LabelMeImporter::processAndEmitData(int64_t dataset_id, const std::map<QString, ImageData> &images,
-                                         const std::vector<LabelMeData> &parsed_annotations)
-{
-    std::vector<QString>       image_paths;
-    std::vector<int64_t>       image_widths;
-    std::vector<int64_t>       image_heights;
-    std::map<QString, QString> label_class_info;
-    std::vector<ImportedLabel> labels;
-
-    std::set<QString> images_with_annotations;
-    for (const auto &annotation : parsed_annotations)
-    {
-        if (images_with_annotations.insert(annotation.image_path).second)
-        {
-            image_paths.push_back(annotation.image_path);
-            image_widths.push_back(annotation.image_width);
-            image_heights.push_back(annotation.image_height);
-        }
-    }
-
-    for (const auto &[_, img_data] : images)
-    {
-        if (images_with_annotations.find(img_data.image_path) == images_with_annotations.end())
-        {
-            image_paths.push_back(img_data.image_path);
-            image_widths.push_back(img_data.image_width);
-            image_heights.push_back(img_data.image_height);
-        }
-    }
-
-    std::set<QString> label_class_names;
-    for (const auto &annotation : parsed_annotations)
-    {
-        for (const auto &shape : annotation.shapes)
-        {
-            label_class_names.insert(shape.label);
-        }
-    }
-
-    int color_index = 0;
-    for (const auto &class_name : label_class_names)
-    {
-        label_class_info[class_name] = DatasetIO::generateDefaultColor(color_index++);
-    }
-
-    for (const auto &annotation : parsed_annotations)
-    {
-        for (const auto &shape : annotation.shapes)
-        {
-            const QVariantMap label_data
-                = convertShapeToLabelData(shape, annotation.image_width, annotation.image_height);
-            if (label_data.isEmpty())
-            {
-                continue;
-            }
-
-            ImportedLabel imported_label;
-            imported_label.label_class_name = shape.label;
-            imported_label.data             = label_data;
-            imported_label.image_path       = annotation.image_path;
-            labels.push_back(imported_label);
-        }
-    }
-
-    spdlog::info("LabelMe 数据处理完成: images={}, label_classes={}, labels={}", image_paths.size(),
-                 label_class_info.size(), labels.size());
-    emit dataReady(true, dataset_id, image_paths, image_widths, image_heights, label_class_info, labels);
 }
 
 } // namespace dltool::data

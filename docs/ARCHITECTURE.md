@@ -113,9 +113,12 @@ sequenceDiagram
 ## 数据集导入导出
 
 - `DataImporter`/`DataExporter` 作为格式扩展点，`DataManager` 只负责调度和数据库/模型聚合。
-- `LabelMeImporter`、`COCOImporter` 将外部格式转换为统一的图像路径、类别信息和 bbox 标注；COCO 导入当前使用 `annotations[].bbox`，暂不保存 `segmentation`。
-- `LabelMeExporter`、`COCOExporter` 从统一的 `ExportDataset` 写出文件。导出目录统一包含 `images/`，LabelMe 标注位于 `annotations/*.json`，COCO 标注位于 `annotations/instances.json`。
-- `DatasetIO` 复用图片扫描、JSON 扫描、图像尺寸读取、bbox 裁剪、文件拷贝和导出文件名去重逻辑，减少格式实现之间的重复代码。
+- `LabelMeImporter`、`COCOImporter` 将外部格式转换为统一的图像路径、类别信息和标注数据。bbox 标注用于目标检测；LabelMe polygon、COCO polygon `segmentation` 和 COCO RLE `segmentation` 会保留为 `points` 点集，用于语义分割。
+- 导入器采用批次信号边解析边交给 `DataManager` 写入，批次大小为 1000 张图像或 1000 条标注。批次信号使用阻塞队列连接，后台解析线程会等待当前批次写库完成后继续，避免解析结果或待写入批次在内存中堆积。
+- 单个批次写入失败时只跳过当前批次并记录失败数量，不取消整个导入流程，后续批次会继续解析和写入。
+- `LabelMeImporter` 按图像逐个查找并解析对应 JSON；`COCOImporter` 使用 nlohmann/json parser callback 流式读取顶层数组，两遍解析 COCO 文件：第一遍只保留类别和图像索引并分批写入图像，第二遍流式转换 annotations 并分批写入标注。
+- `LabelMeExporter`、`COCOExporter` 从统一的 `ExportDataset` 写出文件。导出目录统一包含 `images/`，LabelMe 标注位于 `annotations/*.json`，COCO 标注位于 `annotations/instances.json`；带 `points` 的语义分割标注会导出为 polygon/segmentation。
+- `DatasetIO` 复用图片扫描、JSON 扫描、图像尺寸读取、bbox 裁剪、点集转换、文件拷贝和导出文件名去重逻辑，减少格式实现之间的重复代码。
 
 ## QML 模块
 

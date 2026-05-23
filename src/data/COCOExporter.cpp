@@ -9,9 +9,31 @@
 #include <QFileInfo>
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 
 namespace dltool::data {
+
+namespace {
+
+double polygonArea(const std::vector<QPointF> &points)
+{
+    if (points.size() < 3)
+    {
+        return 0.0;
+    }
+
+    double area = 0.0;
+    for (size_t i = 0; i < points.size(); ++i)
+    {
+        const QPointF &a = points[i];
+        const QPointF &b = points[(i + 1) % points.size()];
+        area += a.x() * b.y() - b.x() * a.y();
+    }
+    return std::abs(area) / 2.0;
+}
+
+} // namespace
 
 COCOExporter::COCOExporter(QObject *parent)
     : DataExporter(parent)
@@ -114,14 +136,33 @@ void COCOExporter::doExport(ExportDataset dataset, QString output_dir)
                 continue;
             }
 
+            nlohmann::json segmentation = nlohmann::json::array();
+            double         area         = w * h;
+            const std::vector<QPointF> points = DatasetIO::variantListToPoints(label.data.value(QStringLiteral("points")));
+            if (points.size() >= 3)
+            {
+                nlohmann::json flat_points = nlohmann::json::array();
+                for (const QPointF &point : points)
+                {
+                    flat_points.push_back(point.x());
+                    flat_points.push_back(point.y());
+                }
+                segmentation.push_back(flat_points);
+                area = polygonArea(points);
+                if (area <= 0)
+                {
+                    area = w * h;
+                }
+            }
+
             json_data["annotations"].push_back({
                 {         "id",                 label.label_id},
                 {   "image_id",                 label.image_id},
                 {"category_id",            label.label_class_id},
                 {       "bbox",            {x, y, w, h}},
-                {       "area",                       w * h},
+                {       "area",                        area},
                 {    "iscrowd",                           0},
-                {"segmentation", nlohmann::json::array()},
+                {"segmentation",                  segmentation},
             });
 
             if ((i + 1) % std::max(1, label_count / 10) == 0 || i + 1 == label_count)

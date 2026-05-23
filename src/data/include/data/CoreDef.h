@@ -56,6 +56,7 @@ private:
     inline static const  QList<int> TypesList{
         Method::Classification,
         Method::Detection,
+        Method::Segmentation,
     };
 
     inline static const QList<QVariantMap> MethodsList{

@@ -5,6 +5,13 @@
 
 #include <json.hpp>
 
+#include <QLineF>
+#include <QPolygonF>
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 using json = nlohmann::json;
 
 namespace dltool::data {
@@ -29,6 +36,117 @@ enum EditDirection
     Bottom      = 7,
     Inside      = 8,
 };
+
+namespace {
+
+QVariantList pointsToVariantList(const std::vector<QPointF> &points)
+{
+    QVariantList result;
+    result.reserve(static_cast<int>(points.size()));
+    for (const QPointF &point : points)
+    {
+        result.push_back(QVariantMap{
+            {"x", point.x()},
+            {"y", point.y()},
+        });
+    }
+    return result;
+}
+
+std::vector<QPointF> variantListToPoints(const QVariant &value)
+{
+    std::vector<QPointF> points;
+    const QVariantList   list = value.toList();
+    points.reserve(static_cast<size_t>(list.size()));
+
+    for (const QVariant &item : list)
+    {
+        if (item.canConvert<QVariantMap>())
+        {
+            const QVariantMap map = item.toMap();
+            points.emplace_back(map.value("x").toDouble(), map.value("y").toDouble());
+        }
+        else if (item.canConvert<QVariantList>())
+        {
+            const QVariantList pair = item.toList();
+            if (pair.size() >= 2)
+            {
+                points.emplace_back(pair[0].toDouble(), pair[1].toDouble());
+            }
+        }
+    }
+
+    return points;
+}
+
+QRectF boundingBoxFromPoints(const std::vector<QPointF> &points)
+{
+    if (points.empty())
+    {
+        return QRectF();
+    }
+
+    double x_min = points.front().x();
+    double y_min = points.front().y();
+    double x_max = points.front().x();
+    double y_max = points.front().y();
+    for (const QPointF &point : points)
+    {
+        x_min = std::min(x_min, point.x());
+        y_min = std::min(y_min, point.y());
+        x_max = std::max(x_max, point.x());
+        y_max = std::max(y_max, point.y());
+    }
+
+    return QRectF(x_min, y_min, x_max - x_min, y_max - y_min);
+}
+
+void updateBoundingBoxFromPoints(LabelData_t &data, const std::vector<QPointF> &points)
+{
+    const QRectF bbox = boundingBoxFromPoints(points);
+    data.x           = bbox.x();
+    data.y           = bbox.y();
+    data.width       = bbox.width();
+    data.height      = bbox.height();
+}
+
+QPointF clampPointToRect(const QPointF &point, const QRectF &rect)
+{
+    return QPointF(std::clamp(point.x(), rect.left(), rect.right()),
+                   std::clamp(point.y(), rect.top(), rect.bottom()));
+}
+
+std::vector<QPointF> clippedPointsToImage(const std::vector<QPointF> &points, const QRectF &image_rect)
+{
+    std::vector<QPointF> clipped;
+    clipped.reserve(points.size());
+    for (const QPointF &point : points)
+    {
+        clipped.push_back(clampPointToRect(point, image_rect));
+    }
+    return clipped;
+}
+
+double distanceToSegment(const QPointF &point, const QPointF &a, const QPointF &b)
+{
+    const QLineF segment(a, b);
+    if (segment.length() <= 0.0001)
+    {
+        return QLineF(point, a).length();
+    }
+
+    const double ax = a.x();
+    const double ay = a.y();
+    const double bx = b.x();
+    const double by = b.y();
+    const double dx = bx - ax;
+    const double dy = by - ay;
+    const double t  = std::clamp(((point.x() - ax) * dx + (point.y() - ay) * dy) / (dx * dx + dy * dy), 0.0, 1.0);
+    const QPointF projection(ax + t * dx, ay + t * dy);
+    return QLineF(point, projection).length();
+}
+
+} // namespace
 
 LabelData_t::LabelData_t() {}
 
@@ -119,17 +237,104 @@ int SegLabelData_t::type() const
 
 std::vector<uint8_t> SegLabelData_t::toBlob() const
 {
-    return LabelData_t::toBlob();
+    json point_array = json::array();
+    for (const QPointF &point : points)
+    {
+        point_array.push_back({
+            {"x", point.x()},
+            {"y", point.y()},
+        });
+    }
+
+    json j = json{
+        {          "x",      x},
+        {          "y",      y},
+        {      "width",  width},
+        {     "height", height},
+        {"point_count", points.size()},
+        {     "points", point_array},
+    };
+
+    return json::to_bson(j);
 }
 
 void SegLabelData_t::fromBlob(const std::vector<uint8_t> &blob)
 {
-    LabelData_t::fromBlob(blob);
+    json j = json::from_bson(blob);
+    x      = j.value<double>("x", -1);
+    y      = j.value<double>("y", -1);
+    width  = j.value<double>("width", -1);
+    height = j.value<double>("height", -1);
+
+    points.clear();
+    if (j.contains("points") && j["points"].is_array())
+    {
+        for (const auto &point_json : j["points"])
+        {
+            if (point_json.contains("x") && point_json.contains("y") && point_json["x"].is_number()
+                && point_json["y"].is_number())
+            {
+                points.emplace_back(point_json["x"].get<double>(), point_json["y"].get<double>());
+            }
+        }
+    }
+
+    if (!points.empty())
+    {
+        updateBoundingBoxFromPoints(*this, points);
+    }
+    else if (width > 0 && height > 0)
+    {
+        points = {
+            QPointF(x, y),
+            QPointF(x + width, y),
+            QPointF(x + width, y + height),
+            QPointF(x, y + height),
+        };
+    }
 }
 
 void SegLabelData_t::fromQVariantMap(const QVariantMap &data, const QRectF &image_rect)
 {
-    LabelData_t::fromQVariantMap(data, image_rect);
+    points = clippedPointsToImage(variantListToPoints(data.value("points")), image_rect);
+
+    if (points.size() < 3)
+    {
+        // 导入或兼容旧数据时，如果只有 bbox，就按矩形生成一个四点多边形。
+        LabelData_t::fromQVariantMap(data, image_rect);
+        if (width > 0 && height > 0)
+        {
+            points = {
+                QPointF(x, y),
+                QPointF(x + width, y),
+                QPointF(x + width, y + height),
+                QPointF(x, y + height),
+            };
+        }
+        return;
+    }
+
+    updateBoundingBoxFromPoints(*this, points);
+}
+
+QVariantMap SegLabelData_t::dataMap()
+{
+    return QVariantMap{
+        {          "x",                  x},
+        {          "y",                  y},
+        {      "width",              width},
+        {     "height",             height},
+        {"point_count", static_cast<int>(points.size())},
+        {     "points", pointsToVariantList(points)},
+    };
+}
+
+std::pair<std::vector<QString>, std::vector<QString>> SegLabelData_t::columns()
+{
+    return {
+        std::vector<QString>{          "类别", "顶点数", "X", "Y",  "宽度",   "高度"},
+        std::vector<QString>{"label_class_id", "point_count", "x", "y", "width", "height"}
+    };
 }
 
 LabelDataHelper_t::LabelDataHelper_t(const int type)
@@ -383,12 +588,172 @@ QVariantMap DetLabelDataHelper::getEditedData(const QVariantMap &data, const QPo
     return new_data;
 }
 
+SegLabelDataHelper::SegLabelDataHelper(const int type)
+    : LabelDataHelper_t(type)
+{
+}
+
+SegLabelDataHelper::~SegLabelDataHelper() {}
+
+std::unique_ptr<LabelData_t> SegLabelDataHelper::createLabelData() const
+{
+    return std::make_unique<dltool::data::SegLabelData_t>();
+}
+
+std::pair<std::vector<QString>, std::vector<QString>> SegLabelDataHelper::dataColumns() const
+{
+    return SegLabelData_t::columns();
+}
+
+bool SegLabelDataHelper::isInside(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr) const
+{
+    if (label_data_ptr == nullptr)
+        return false;
+    const SegLabelData_t *data = dynamic_cast<SegLabelData_t *>(label_data_ptr.get());
+    if (data == nullptr || data->points.size() < 3)
+        return false;
+
+    QPolygonF polygon;
+    for (const QPointF &point : data->points)
+    {
+        polygon << point;
+    }
+    return polygon.containsPoint(pos, Qt::OddEvenFill);
+}
+
+QVariantMap SegLabelDataHelper::hitTestHandle(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr,
+                                              const double scale) const
+{
+    if (label_data_ptr == nullptr)
+    {
+        return QVariantMap{
+            {    "found",                  false},
+            {     "mode",     EditMode::NoneMode},
+            {"direction", EditDirection::NoneDir},
+            {   "cursor",   int(Qt::ArrowCursor)}
+        };
+    }
+
+    const SegLabelData_t *data = dynamic_cast<SegLabelData_t *>(label_data_ptr.get());
+    if (data == nullptr || data->points.empty())
+    {
+        return QVariantMap{
+            {    "found",                  false},
+            {     "mode",     EditMode::NoneMode},
+            {"direction", EditDirection::NoneDir},
+            {   "cursor",   int(Qt::ArrowCursor)}
+        };
+    }
+
+    const double handle_size = 10 / scale;
+    for (int i = 0; i < static_cast<int>(data->points.size()); ++i)
+    {
+        if (QLineF(pos, data->points[i]).length() <= handle_size)
+        {
+            return QVariantMap{
+                {    "found",                    true},
+                {     "mode",        EditMode::Resize},
+                {"direction",                       i},
+                {   "cursor", int(Qt::SizeAllCursor)}
+            };
+        }
+    }
+
+    for (int i = 0; i < static_cast<int>(data->points.size()); ++i)
+    {
+        const QPointF &a = data->points[i];
+        const QPointF &b = data->points[(i + 1) % data->points.size()];
+        if (distanceToSegment(pos, a, b) <= handle_size / 2.0)
+        {
+            return QVariantMap{
+                {    "found",                   true},
+                {     "mode",         EditMode::Move},
+                {"direction",  EditDirection::Inside},
+                {   "cursor", int(Qt::SizeAllCursor)}
+            };
+        }
+    }
+
+    if (isInside(pos, label_data_ptr))
+    {
+        return QVariantMap{
+            {    "found",                   true},
+            {     "mode",         EditMode::Move},
+            {"direction",  EditDirection::Inside},
+            {   "cursor", int(Qt::SizeAllCursor)}
+        };
+    }
+
+    return QVariantMap{
+        {    "found",                  false},
+        {     "mode",     EditMode::NoneMode},
+        {"direction", EditDirection::NoneDir},
+        {   "cursor",   int(Qt::ArrowCursor)}
+    };
+}
+
+QVariantMap SegLabelDataHelper::getEditedData(const QVariantMap &data, const QPointF &start, const QPointF &end,
+                                              const QRectF &image_rect) const
+{
+    std::vector<QPointF> points = variantListToPoints(data.value("points"));
+    if (points.empty())
+    {
+        return data;
+    }
+
+    const double dx = end.x() - start.x();
+    const double dy = end.y() - start.y();
+
+    const QVariantMap hit  = data.value("hit", QVariantMap()).toMap();
+    const int         mode = hit.value("mode", EditMode::NoneMode).toInt();
+    const int         dir  = hit.value("direction", EditDirection::NoneDir).toInt();
+
+    if (mode == EditMode::Move)
+    {
+        double min_dx = -std::numeric_limits<double>::max();
+        double max_dx = std::numeric_limits<double>::max();
+        double min_dy = -std::numeric_limits<double>::max();
+        double max_dy = std::numeric_limits<double>::max();
+        for (const QPointF &point : points)
+        {
+            min_dx = std::max(min_dx, image_rect.left() - point.x());
+            max_dx = std::min(max_dx, image_rect.right() - point.x());
+            min_dy = std::max(min_dy, image_rect.top() - point.y());
+            max_dy = std::min(max_dy, image_rect.bottom() - point.y());
+        }
+
+        const double safe_dx = std::clamp(dx, min_dx, max_dx);
+        const double safe_dy = std::clamp(dy, min_dy, max_dy);
+        for (QPointF &point : points)
+        {
+            point += QPointF(safe_dx, safe_dy);
+        }
+    }
+    else if (mode == EditMode::Resize && dir >= 0 && dir < static_cast<int>(points.size()))
+    {
+        points[dir] = clampPointToRect(points[dir] + QPointF(dx, dy), image_rect);
+    }
+
+    const QRectF bbox = boundingBoxFromPoints(points);
+
+    QVariantMap new_data = data;
+    new_data["x"]           = bbox.x();
+    new_data["y"]           = bbox.y();
+    new_data["width"]       = bbox.width();
+    new_data["height"]      = bbox.height();
+    new_data["point_count"] = static_cast<int>(points.size());
+    new_data["points"]      = pointsToVariantList(points);
+    return new_data;
+}
+
 std::unique_ptr<LabelDataHelper_t> createLabelDataHelper(const int type)
 {
     switch (type)
     {
     case DeepLearningMethod::Detection:
         return std::make_unique<DetLabelDataHelper>(type);
+    case DeepLearningMethod::Segmentation:
+        return std::make_unique<SegLabelDataHelper>(type);
     default:
         return nullptr;
     }
