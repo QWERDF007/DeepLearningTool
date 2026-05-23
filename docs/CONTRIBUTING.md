@@ -43,6 +43,26 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build -j
 ```
 
+## 本地打包
+
+Windows：
+
+```powershell
+tools\package_app.bat
+```
+
+Linux：
+
+```bash
+bash tools/package_app.sh
+```
+
+Linux 打包脚本默认从 `build/` 读取构建产物并输出到 `install/`，会复制 `dltool` 可执行程序、项目 QML 模块、Qt QML/插件目录，并通过 `ldd` 收集 ELF 依赖。若 Qt 不在系统可发现路径中，可显式传入：
+
+```bash
+bash tools/package_app.sh --qt-root /opt/Qt/6.8.0/gcc_64
+```
+
 注意：
 
 - 当前 `cmake/ConfigQT.cmake` 写有本机 Qt 安装路径，例如 `Qt6_ROOT`。换机或 CI 构建时需要改为目标环境路径，或通过 CMake cache/toolchain 传入。

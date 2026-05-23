@@ -49,6 +49,16 @@ cmake --build build --config RelWithDebInfo
 ctest --test-dir build -V
 ```
 
+打包当前构建产物：
+
+```powershell
+tools\package_app.bat
+```
+
+```bash
+bash tools/package_app.sh
+```
+
 `cmake/ConfigQT.cmake` 当前写有本机 Qt 路径，迁移环境时需要先调整 `Qt6_ROOT` 或改为外部传入。
 
 ## 相关资源

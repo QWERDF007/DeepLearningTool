@@ -33,6 +33,7 @@
 
 # Build Files
 build/
+install/
 CMakeLists.txt.user
 
 # vscode
