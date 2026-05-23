@@ -2,6 +2,7 @@
 
 #include "CategoryStatisticsModel.h"
 #include "DataExport.h"
+#include "DataExporter.h"
 #include "DataImporter.h"
 #include "Datasets.h"
 #include "FilterItemsModel.h"
@@ -121,6 +122,7 @@ public:
 
     Q_INVOKABLE void importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
                                 const QString &data_dir);
+    Q_INVOKABLE void exportDataset(const int64_t dataset_id, const int data_format, const QString &output_dir);
 
     Q_INVOKABLE void deleteSelectedImages();
 
@@ -162,6 +164,8 @@ private:
     void init(const int method);
 
     void updateDatasetsStats();
+
+    ExportDataset buildExportDataset(const int64_t dataset_id) const;
 
     /**
      * @brief 处理导入器的 dataReady 信号

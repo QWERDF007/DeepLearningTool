@@ -14,6 +14,28 @@ Rectangle {
     property DataManager dataManager
     property LabelInstancesModel labelInstances : dataManager ? dataManager.labelInstances : null
     property ItemSelectionModel selection : labelInstances ? labelInstances.selection : null
+
+    DltContentDialog {
+        id: deleteConfirmDialog
+        title: "删除标注"
+        message: "确定删除选中的标注吗?"
+        onPositiveClicked: function () {
+            deleteSelectedLabels()
+        }
+    }
+
+    DltMenu {
+        id: contextMenu
+        width: 200
+        DltMenuItem {
+            text: "删除标注"
+            iconSource: DltFontIcon.Delete
+            enabled: selection && selection.hasSelection
+            onClicked: {
+                deleteConfirmDialog.open()
+            }
+        }
+    }
     
     GridView {
         id: thumbnailGridView
@@ -94,8 +116,7 @@ Rectangle {
             if (event.key === Qt.Key_Escape) {
                 selection.clear()
             } else if (event.key === Qt.Key_Delete && selection && selection.hasSelection) {
-                // 可以在这里添加删除标注的逻辑
-                // deleteConfirmDialog.open()
+                deleteConfirmDialog.open()
             } else if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
                 if (labelInstances) {
                     labelInstances.selectAll()
@@ -192,6 +213,13 @@ Rectangle {
                         labelInstances.lastIndex = result.index
                     }
                 }
+
+                if (mouse.button === Qt.RightButton) {
+                    let menuPos = mapToItem(root, mouse.x, mouse.y)
+                    contextMenu.x = menuPos.x
+                    contextMenu.y = menuPos.y
+                    contextMenu.popup()
+                }
             }
             
             // Double-click handler for navigation to label page
@@ -277,6 +305,18 @@ Rectangle {
             selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
             labelInstances.lastIndex = newIndex
         }
+    }
+
+    function deleteSelectedLabels() {
+        if (!dataManager || !labelInstances || !selection || !selection.hasSelection) {
+            return
+        }
+
+        let labelIds = labelInstances.getSelectedLabelIds()
+        if (labelIds.length === 0) {
+            return
+        }
+        dataManager.deleteLabels(labelIds)
     }
     
     // 监听选中项变化，自动滚动到当前选中项

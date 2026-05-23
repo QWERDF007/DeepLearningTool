@@ -254,11 +254,14 @@ Q_INVOKABLE QString getMethodName(const int method);
 QML 单例：`DataFormat`
 
 ```cpp
-static Q_INVOKABLE QList<QString> getSupportedDataFormat();  // ["LabelMe"]
+static Q_INVOKABLE QList<QString> getSupportedDataFormat();  // ["LabelMe", "COCO"]
+static Q_INVOKABLE QList<QString> getSupportedExportDataFormat(); // ["LabelMe", "COCO"]
 static Q_INVOKABLE QList<QString> getSupportedImageFormat(); // jpg/jpeg/png/bmp/webp
 static Q_INVOKABLE int getDataFormat(const QString &name);
 static bool isDataFormatSupported(const int data_format);
 ```
+
+当前导入支持 LabelMe、COCO；导出支持 LabelMe、COCO。内部标注模型目前是检测框，COCO `segmentation` 导入时会忽略，使用 `bbox` 生成检测框。
 
 ### DataManager
 
@@ -290,6 +293,8 @@ public:
     Q_INVOKABLE void deleteDataset(const int64_t dataset_id);
     Q_INVOKABLE void importData(const int64_t dataset_id, const int data_format,
                                 const QString &image_dir, const QString &data_dir);
+    Q_INVOKABLE void exportDataset(const int64_t dataset_id, const int data_format,
+                                   const QString &output_dir);
     Q_INVOKABLE void deleteSelectedImages();
 
     Q_INVOKABLE void addLabelClass(const QString &name, const QString &color,

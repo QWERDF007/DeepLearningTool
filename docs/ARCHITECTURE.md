@@ -110,6 +110,13 @@ sequenceDiagram
 - `RecentProjectsDataBase` 使用软件目录下的 `db/history.db` 保存最近项目列表。
 - `DataManager` 聚合所有数据模型，并向 QML 暴露统一入口。
 
+## 数据集导入导出
+
+- `DataImporter`/`DataExporter` 作为格式扩展点，`DataManager` 只负责调度和数据库/模型聚合。
+- `LabelMeImporter`、`COCOImporter` 将外部格式转换为统一的图像路径、类别信息和 bbox 标注；COCO 导入当前使用 `annotations[].bbox`，暂不保存 `segmentation`。
+- `LabelMeExporter`、`COCOExporter` 从统一的 `ExportDataset` 写出文件。导出目录统一包含 `images/`，LabelMe 标注位于 `annotations/*.json`，COCO 标注位于 `annotations/instances.json`。
+- `DatasetIO` 复用图片扫描、JSON 扫描、图像尺寸读取、bbox 裁剪、文件拷贝和导出文件名去重逻辑，减少格式实现之间的重复代码。
+
 ## QML 模块
 
 | URI | 目标 | 内容 |

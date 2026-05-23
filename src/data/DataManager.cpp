@@ -2,7 +2,9 @@
 
 #include "data/CategoryStatisticsModel.h"
 #include "data/DataFormat.h"
+#include "data/DataExporter.h"
 #include "data/DataImporter.h"
+#include "data/DatasetIO.h"
 #include "data/GlobalFilter.h"
 #include "data/LabelData.h"
 #include "data/LabelInstanceImageProvider.h"
@@ -12,8 +14,11 @@
 #include <spdlog/spdlog.h>
 
 #include <QColor>
+#include <QFileInfo>
 #include <QQmlApplicationEngine>
 #include <QTimer>
+
+#include <set>
 
 namespace dltool::data {
 
@@ -174,6 +179,126 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
 
     // 启动导入
     importer->startImport(dataset_id, image_dir, data_dir);
+}
+
+void DataManager::exportDataset(const int64_t dataset_id, const int data_format, const QString &output_dir)
+{
+    qInfo() << __FUNCTION__ << __LINE__ << "dataset_id" << dataset_id << "data_format" << data_format << "output_dir"
+            << output_dir;
+
+    if (!data::DataFormat::isDataFormatSupported(data_format))
+    {
+        spdlog::error("导出数据失败, 数据格式不支持: {}", data_format);
+        return;
+    }
+
+    if (output_dir.isEmpty())
+    {
+        spdlog::error("导出数据失败, 输出目录为空");
+        return;
+    }
+
+    ExportDataset dataset = buildExportDataset(dataset_id);
+    if (dataset.images.empty())
+    {
+        spdlog::warn("导出数据失败, 数据集为空: {}", dataset_id);
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
+                                  Q_ARG(QString, "导出数据"));
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
+                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, "数据集没有可导出的图像"));
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+        return;
+    }
+
+    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
+                              Q_ARG(QString, "导出数据"));
+
+    DataExporter *exporter = DataExporter::createExporter(data_format, this);
+    if (!exporter)
+    {
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
+                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, "不支持的数据格式"));
+        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+        return;
+    }
+
+    connect(exporter, &DataExporter::exportFinished, this,
+            [exporter](bool success, const QString &message)
+            {
+                const int level = success ? spdlog::level::info : spdlog::level::err;
+                QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
+                                          Q_ARG(int, level), Q_ARG(QString, message));
+                QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+                exporter->deleteLater();
+            },
+            Qt::QueuedConnection);
+
+    exporter->startExport(dataset, output_dir);
+}
+
+ExportDataset DataManager::buildExportDataset(const int64_t dataset_id) const
+{
+    ExportDataset dataset;
+    dataset.dataset_id   = dataset_id;
+    dataset.dataset_name = datasets_->getDatasetName(dataset_id);
+
+    std::set<int64_t> image_id_set;
+    for (const int64_t image_id : image_instances_->getAllImageIds())
+    {
+        ImageInstance *image = image_instances_->getImageInstance(image_id);
+        if (image == nullptr || image->datasetId() != dataset_id)
+        {
+            continue;
+        }
+
+        QSize image_size = image->imageSize();
+        if (!image_size.isValid())
+        {
+            int width  = 0;
+            int height = 0;
+            if (DatasetIO::getImageDimensions(image->path(), width, height))
+            {
+                image_size = QSize(width, height);
+            }
+        }
+
+        ExportImage export_image;
+        export_image.dataset_id = dataset_id;
+        export_image.image_id   = image->imageId();
+        export_image.path       = image->path();
+        export_image.width      = image_size.width();
+        export_image.height     = image_size.height();
+        dataset.images.push_back(export_image);
+        image_id_set.insert(image->imageId());
+    }
+
+    std::set<int64_t> label_class_ids;
+    for (const auto &[label_id, label_instance] : label_instances_->getAllLabelInstances())
+    {
+        if (label_instance == nullptr || image_id_set.find(label_instance->imageId()) == image_id_set.end())
+        {
+            continue;
+        }
+
+        ExportLabel export_label;
+        export_label.label_id       = label_id;
+        export_label.image_id       = label_instance->imageId();
+        export_label.label_class_id = label_instance->labelClassId();
+        export_label.data           = label_instance->data() ? label_instance->data()->dataMap() : QVariantMap();
+        dataset.labels.push_back(export_label);
+        label_class_ids.insert(export_label.label_class_id);
+    }
+
+    for (const int64_t label_class_id : label_class_ids)
+    {
+        ExportLabelClass export_class;
+        export_class.id    = label_class_id;
+        export_class.name  = label_classes_->getLabelClassName(label_class_id);
+        export_class.color = label_classes_->getLabelClassColor(label_class_id);
+        dataset.label_classes.push_back(export_class);
+    }
+
+    return dataset;
 }
 
 void DataManager::deleteSelectedImages()

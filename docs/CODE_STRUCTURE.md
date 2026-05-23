@@ -159,7 +159,8 @@ src/database/
 
 - 数据模型：`DatasetsListModel`、`ImageInstancesListModel`、`LabelClassesListModel`、`ImageTagsListModel`、`LabelInstancesListModel`、`ImageLabelsListModel`、`ImageLabelsTableModel`、`ImageInfoListModel`。
 - 数据聚合：`DataManager` 统一创建和暴露模型。
-- 数据导入：`DataImporter`、`LabelMeImporter`。
+- 数据导入：`DataImporter`、`LabelMeImporter`、`COCOImporter`，通过 `DatasetIO` 复用图片扫描、JSON 扫描、bbox 转换等公共逻辑。
+- 数据导出：`DataExporter`、`LabelMeExporter`、`COCOExporter`。导出时 `DataManager` 先组装统一的 `ExportDataset`，格式类负责写出目录结构和标注文件。
 - 标注数据：`LabelData_t`、`DetLabelData_t`、`LabelDataHelper_t`。
 - 过滤：`GlobalFilter`、`DatasetFilterModule`、`TagFilterModule`、`LabelClassFilterModule`、`ImageLabelClassFilterModule`、`FilterItemsModel`。
 - 统计：`CategoryStatisticsModel`。
@@ -173,7 +174,9 @@ src/data/
 │   ├── CategoryStatisticsModel.h
 │   ├── CoreDef.h
 │   ├── DataFormat.h
+│   ├── DataExporter.h
 │   ├── DataImporter.h
+│   ├── DatasetIO.h
 │   ├── DataManager.h
 │   ├── Datasets.h
 │   ├── FilterItemsModel.h

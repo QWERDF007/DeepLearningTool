@@ -42,7 +42,18 @@ Rectangle {
                     importDataDialog.datasetsModel = dataManager.getAllDatasetsName()
                     importDataDialog.datasetName = curItem.name
                     importDataDialog.open()
-                    // progressDialog.open()
+                }
+            }
+        }
+        DltMenuItem {
+            text: "导出"
+            iconSource: DltFontIcon.Export
+            onClicked: {
+                if (dataManager && curItem) {
+                    exportDataDialog.dataFormatModel = DataFormat.getSupportedExportDataFormat()
+                    exportDataDialog.datasetId = curItem.dataset_id
+                    exportDataDialog.datasetName = curItem.name
+                    exportDataDialog.open()
                 }
             }
         }
@@ -80,6 +91,11 @@ Rectangle {
 
     ImportDataDialog {
         id: importDataDialog
+        dataManager: datasetsView.dataManager
+    }
+
+    ExportDataDialog {
+        id: exportDataDialog
         dataManager: datasetsView.dataManager
     }
 

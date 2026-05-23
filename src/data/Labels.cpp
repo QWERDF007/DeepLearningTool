@@ -508,6 +508,24 @@ void LabelInstancesListModel::selectAll()
     selection_->select(selection, QItemSelectionModel::Select);
 }
 
+std::vector<int64_t> LabelInstancesListModel::getSelectedLabelIds() const
+{
+    std::vector<int64_t> label_ids;
+    if (!selection_)
+        return label_ids;
+
+    const QModelIndexList selected_indexes = selection_->selectedIndexes();
+    label_ids.reserve(selected_indexes.size());
+    for (const QModelIndex &selected_index : selected_indexes)
+    {
+        const int row = selected_index.row();
+        if (row < 0 || row >= static_cast<int>(label_ids_.size()))
+            continue;
+        label_ids.push_back(label_ids_[row]);
+    }
+    return label_ids;
+}
+
 void LabelInstancesListModel::setLastIndex(int last_index)
 {
     if (last_index_ != last_index)

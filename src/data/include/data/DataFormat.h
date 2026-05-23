@@ -18,6 +18,11 @@ public:
         return DataFormatList;
     }
 
+    static Q_INVOKABLE QList<QString> getSupportedExportDataFormat()
+    {
+        return DataFormatList;
+    }
+
     static Q_INVOKABLE QList<QString> getSupportedImageFormat()
     {
         return ImageFormatList;
@@ -47,18 +52,22 @@ private:
     enum SupportedDataFormat
     {
         LabelMe = 0,
+        COCO    = 1,
     };
 
     inline static const QList<QString> DataFormatList = {
         "LabelMe",
+        "COCO",
     };
 
     inline static const std::unordered_map<int, QString> IdToName = {
         {LabelMe, "LabelMe"},
+        {  COCO,    "COCO"},
     };
 
     inline static const std::unordered_map<QString, int> NameToId = {
         {"LabelMe", LabelMe},
+        {   "COCO",    COCO},
     };
 
     inline static const QList<QString> ImageFormatList = {

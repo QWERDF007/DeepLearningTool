@@ -1,9 +1,10 @@
 ﻿#include "data/DataImporter.h"
 
+#include "data/COCOImporter.h"
+#include "data/DataFormat.h"
 #include "data/LabelMeImporter.h"
 #include "database/DataBase.h"
 #include "ui/ProgressManager.h"
-#include "data/DataFormat.h"
 
 #include <spdlog/spdlog.h>
 
@@ -38,6 +39,11 @@ DataImporter *DataImporter::createImporter(int data_format, dltool::database::Pr
     {
         spdlog::info("创建 LabelMeImporter 实例");
         importer = new LabelMeImporter(database, parent);
+    }
+    else if (data_format == DataFormat::getDataFormat("COCO"))
+    {
+        spdlog::info("创建 COCOImporter 实例");
+        importer = new COCOImporter(database, parent);
     }
     else
     {
