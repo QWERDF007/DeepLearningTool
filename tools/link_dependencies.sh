@@ -8,10 +8,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
+# 统一输出警告到 stderr，便于调用方区分正常日志和异常提示。
 warn() {
     echo "warning: $*" >&2
 }
 
+# 解析绝对路径。优先使用 realpath；极简环境没有 realpath 时做基础兜底。
 abs_path() {
     local path="$1"
     if command -v realpath >/dev/null 2>&1; then
@@ -23,6 +25,9 @@ abs_path() {
     fi
 }
 
+# 创建单个路径链接。
+# 目标不存在时只提示并跳过，保持旧 Python 脚本的宽松行为。
+# 如果链接位置已经存在真实文件或目录，则拒绝覆盖，避免误删用户手工放置的内容。
 link_path() {
     local target="$1"
     local link="$2"
@@ -49,6 +54,8 @@ link_path() {
     echo "create symlink $link_abs -> $target_abs"
 }
 
+# 从 cmake/ConfigSQLite.cmake 读取 CMAKE_PREFIX_PATH。
+# 项目当前用这个路径定位 sqlite 运行库。
 read_sqlite_root() {
     local cmake_file="cmake/ConfigSQLite.cmake"
     [[ -f "$cmake_file" ]] || return 0
@@ -56,6 +63,8 @@ read_sqlite_root() {
     sed -nE 's#^[[:space:]]*set[[:space:]]*\([[:space:]]*CMAKE_PREFIX_PATH[[:space:]]+"([^"]+)".*#\1#p' "$cmake_file" | tail -n 1
 }
 
+# 链接项目自身模块目录。
+# build/bin/dltool 指向 build/dltool，随后把模块共享库链接到 build/bin 根目录。
 link_dltool() {
     link_path "build/dltool" "build/bin/dltool"
 
@@ -70,6 +79,8 @@ link_dltool() {
         done
 }
 
+# 链接 SQLite 运行库。
+# Linux/macOS/Windows shell 环境的库文件名不同，因此按 uname 分支处理。
 link_sqlite() {
     local sqlite_root
     sqlite_root="$(read_sqlite_root || true)"
@@ -102,6 +113,7 @@ link_sqlite() {
     esac
 }
 
+# 如果测试目录存在，则让测试可执行程序也能从运行目录找到 dltool 模块。
 link_test() {
     if [[ -d "build/tests" ]]; then
         link_path "build/dltool" "build/tests/dltool"
@@ -110,6 +122,7 @@ link_test() {
     fi
 }
 
+# 按原脚本顺序执行三类链接。每一步成功后输出一条兼容旧日志的 success 信息。
 link_dltool
 echo "link dltool dll success"
 

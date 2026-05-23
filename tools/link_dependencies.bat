@@ -2,19 +2,24 @@
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 
-REM DeepLearningTool Windows dependency link script.
-REM This script does not require Python. It uses mklink directly.
+REM DeepLearningTool Windows 依赖链接脚本。
+REM 这里不依赖 Python，直接使用 mklink 创建构建目录中的链接。
+REM 目录链接优先使用符号链接，失败后回退到 junction；文件链接优先符号链接，失败后回退到 hardlink。
 
+REM 切换到项目根目录，保证从任意当前目录调用脚本时，相对路径都按项目根目录解析。
 pushd "%~dp0.." || exit /b 1
 
+REM 链接项目自身模块目录，并把模块 DLL 暴露到 build\bin，方便可执行程序直接加载。
 call :link_dltool
 if errorlevel 1 exit /b 1
 echo link dltool dll success
 
+REM 根据 cmake\ConfigSQLite.cmake 中的 CMAKE_PREFIX_PATH 链接 sqlite3.dll。
 call :link_sqlite
 if errorlevel 1 exit /b 1
 echo link sqlite3 dll success
 
+REM 如果已经构建测试目标，则给 build\tests 创建同样的 dltool 模块目录链接。
 call :link_test
 if errorlevel 1 exit /b 1
 echo link test success
@@ -23,9 +28,11 @@ popd
 exit /b 0
 
 :link_dltool
+REM build\bin\dltool 指向 build\dltool，使运行目录可以找到项目 QML/插件模块。
 call :link_dir "build\bin\dltool" "build\dltool"
 if errorlevel 1 exit /b 1
 
+REM 将 build\bin\dltool 下的项目 DLL 链接到 build\bin 根目录，匹配 Windows DLL 搜索规则。
 if exist "build\bin\dltool\" (
     for /r "build\bin\dltool" %%F in (*.dll) do (
         call :link_file "%%~fF" "build\bin\%%~nxF"
@@ -37,6 +44,7 @@ if exist "build\bin\dltool\" (
 exit /b 0
 
 :link_sqlite
+REM 从 CMake 配置读取 SQLite 安装根目录，当前约定 sqlite3.dll 位于 <root>\lib。
 set "SQLITE_ROOT="
 if exist "cmake\ConfigSQLite.cmake" (
     for /f tokens^=2^ delims^=^" %%A in ('findstr /c:"set(CMAKE_PREFIX_PATH" "cmake\ConfigSQLite.cmake"') do (
@@ -54,6 +62,7 @@ call :link_file "!SQLITE_DLL!" "build\bin\sqlite3.dll"
 exit /b %errorlevel%
 
 :link_test
+REM 测试可执行程序运行目录不同，需要额外链接 dltool 模块目录。
 if exist "build\tests\" (
     call :link_dir "build\tests\dltool" "build\dltool"
     exit /b %errorlevel%
@@ -63,6 +72,7 @@ echo skip test link, missing build\tests
 exit /b 0
 
 :link_file
+REM 创建文件链接。目标不存在时只跳过，保留原 Python 脚本的宽松行为。
 set "TARGET=%~1"
 set "LINK=%~2"
 for %%I in ("%TARGET%") do set "TARGET_ABS=%%~fI"
@@ -76,6 +86,7 @@ if not exist "!TARGET_ABS!" (
 call :remove_existing_file_link "!LINK_ABS!"
 if errorlevel 1 exit /b 1
 
+REM 普通用户环境可能没有创建符号链接权限，所以失败后尝试 hardlink。
 for %%I in ("!LINK_ABS!") do if not exist "%%~dpI" mkdir "%%~dpI"
 mklink "!LINK_ABS!" "!TARGET_ABS!" >nul 2>nul
 if errorlevel 1 (
@@ -93,6 +104,7 @@ echo create symlink !LINK_ABS! -^> !TARGET_ABS!
 exit /b 0
 
 :link_dir
+REM 创建目录链接。目标不存在时只跳过，避免未构建某些目标时脚本失败。
 set "LINK=%~1"
 set "TARGET=%~2"
 for %%I in ("%TARGET%") do set "TARGET_ABS=%%~fI"
@@ -106,6 +118,7 @@ if not exist "!TARGET_ABS!\" (
 call :remove_existing_link "!LINK_ABS!"
 if errorlevel 1 exit /b 1
 
+REM 目录符号链接需要权限；junction 通常不需要管理员权限，适合作为回退。
 for %%I in ("!LINK_ABS!") do if not exist "%%~dpI" mkdir "%%~dpI"
 mklink /D "!LINK_ABS!" "!TARGET_ABS!" >nul 2>nul
 if errorlevel 1 (
@@ -123,6 +136,7 @@ echo create symlink !LINK_ABS! -^> !TARGET_ABS!
 exit /b 0
 
 :remove_existing_file_link
+REM 文件链接可能是 symlink 或 hardlink。这里仅处理文件路径，遇到目录则拒绝覆盖。
 set "LINK_PATH=%~1"
 if not exist "!LINK_PATH!" exit /b 0
 if exist "!LINK_PATH!\" (
@@ -134,6 +148,7 @@ del /f /q "!LINK_PATH!"
 exit /b %errorlevel%
 
 :remove_existing_link
+REM 删除旧目录链接前先确认它是 reparse point，避免误删真实目录。
 set "LINK_PATH=%~1"
 if not exist "!LINK_PATH!" if not exist "!LINK_PATH!\" exit /b 0
 
