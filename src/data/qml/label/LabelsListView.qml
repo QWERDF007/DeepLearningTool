@@ -11,12 +11,38 @@ Repeater {
 
     delegate: Item {
         id: labelDelegate
-        anchors.fill: parent
 
         property var labelData: model.data
         property color labelColor: model.color
         property bool labelSelected: model.selected ?? false
         property bool labelHovered: model.hovered ?? false
+        property real bboxX: labelData ? (labelData.x ?? 0) : 0
+        property real bboxY: labelData ? (labelData.y ?? 0) : 0
+        property real bboxWidth: labelData ? (labelData.width ?? 0) : 0
+        property real bboxHeight: labelData ? (labelData.height ?? 0) : 0
+        property real screenMargin: labelSelected ? 8 : labelHovered ? 6 : 4
+        property real safeFactor: Math.max(repeater.factor, 0.0001)
+        property real imageMargin: screenMargin / safeFactor
+        property real rawLeft: bboxX - imageMargin
+        property real rawTop: bboxY - imageMargin
+        property real rawRight: bboxX + bboxWidth + imageMargin
+        property real rawBottom: bboxY + bboxHeight + imageMargin
+        property real viewportLeft: -repeater.offsetX / safeFactor
+        property real viewportTop: -repeater.offsetY / safeFactor
+        property real viewportRight: viewportLeft + (parent ? parent.width : 0) / safeFactor
+        property real viewportBottom: viewportTop + (parent ? parent.height : 0) / safeFactor
+        property real visibleLeft: Math.max(rawLeft, viewportLeft)
+        property real visibleTop: Math.max(rawTop, viewportTop)
+        property real visibleRight: Math.min(rawRight, viewportRight)
+        property real visibleBottom: Math.min(rawBottom, viewportBottom)
+
+        x: repeater.offsetX + visibleLeft * safeFactor
+        y: repeater.offsetY + visibleTop * safeFactor
+        width: Math.max(1, (visibleRight - visibleLeft) * safeFactor)
+        height: Math.max(1, (visibleBottom - visibleTop) * safeFactor)
+        visible: labelData !== undefined && labelData !== null
+                 && visibleRight > visibleLeft
+                 && visibleBottom > visibleTop
 
         Canvas {
             id: canvas
@@ -33,28 +59,19 @@ Repeater {
         onLabelColorChanged: canvas.requestPaint()
         onLabelSelectedChanged: canvas.requestPaint()
         onLabelHoveredChanged: canvas.requestPaint()
+        onWidthChanged: canvas.requestPaint()
+        onHeightChanged: canvas.requestPaint()
+        onVisibleLeftChanged: canvas.requestPaint()
+        onVisibleTopChanged: canvas.requestPaint()
 
         Connections {
             target: repeater
-            function onOffsetXChanged() { canvas.requestPaint() }
-            function onOffsetYChanged() { canvas.requestPaint() }
             function onFactorChanged() { canvas.requestPaint() }
         }
 
-        function clonePoints(points) {
-            let result = []
-            if (!points) {
-                return result
-            }
-            for (let point of points) {
-                result.push({x: point.x, y: point.y})
-            }
-            return result
-        }
-
         function toScreen(point) {
-            return Qt.point(repeater.offsetX + point.x * repeater.factor,
-                            repeater.offsetY + point.y * repeater.factor)
+            return Qt.point((point.x - labelDelegate.visibleLeft) * labelDelegate.safeFactor,
+                            (point.y - labelDelegate.visibleTop) * labelDelegate.safeFactor)
         }
 
         function paint(ctx) {
@@ -64,7 +81,7 @@ Repeater {
             }
 
             let lineWidth = labelSelected ? 3 : labelHovered ? 2 : 1
-            let points = clonePoints(labelData.points ?? [])
+            let points = labelData.points ?? []
 
             ctx.save()
             ctx.strokeStyle = labelColor
@@ -86,16 +103,20 @@ Repeater {
                 ctx.stroke()
 
                 if (labelSelected) {
+                    let handleSize = 6
                     for (let point of points) {
                         let screenPoint = toScreen(point)
-                        ctx.fillRect(screenPoint.x - 3, screenPoint.y - 3, 6, 6)
+                        ctx.fillRect(screenPoint.x - handleSize / 2,
+                                     screenPoint.y - handleSize / 2,
+                                     handleSize,
+                                     handleSize)
                     }
                 }
             } else {
-                ctx.strokeRect(repeater.offsetX + labelData.x * repeater.factor,
-                               repeater.offsetY + labelData.y * repeater.factor,
-                               labelData.width * repeater.factor,
-                               labelData.height * repeater.factor)
+                ctx.strokeRect((labelData.x - labelDelegate.visibleLeft) * labelDelegate.safeFactor,
+                               (labelData.y - labelDelegate.visibleTop) * labelDelegate.safeFactor,
+                               labelData.width * labelDelegate.safeFactor,
+                               labelData.height * labelDelegate.safeFactor)
             }
 
             ctx.restore()

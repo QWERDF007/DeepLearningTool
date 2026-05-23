@@ -95,7 +95,10 @@ Item {
     }
 
     CrosshairCanvas {
-        visible: mouseArea.containsMouse && labelImage.image.status === Image.Ready
+        visible: mouseArea.containsMouse
+                 && labelImage.image.status === Image.Ready
+                 && mouseArea.state !== "dragging"
+                 && mouseArea.state !== "editing"
         mousePos: Qt.point(mouseArea.mouseX, mouseArea.mouseY)
     }
 
@@ -148,8 +151,14 @@ Item {
                 if (hit) {
                     state = "readyEdit"
                     imageLabelsList.setHovered([])
-                } else if (!drawingPolygon && imageLabelsList.getIndicesAt(startPos).length > 0) {
-                    imageLabelsList.setHovered(imageLabelsList.getIndicesAt(startPos))
+                } else if (!drawingPolygon) {
+                    let indices = imageLabelsList.getIndicesAt(startPos)
+                    if (indices.length > 0) {
+                        imageLabelsList.setHovered(indices)
+                    } else {
+                        appendPolygonPoint(startPos)
+                        event.accepted = true
+                    }
                 } else {
                     appendPolygonPoint(startPos)
                     event.accepted = true

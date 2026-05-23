@@ -2,7 +2,11 @@
 
 #include <QAbstractListModel>
 #include <QtQml>
+#include <functional>
+#include <map>
+#include <memory>
 #include <set>
+#include <vector>
 
 namespace dltool::database {
 class ProjectDataBase;
@@ -20,6 +24,14 @@ namespace dltool::data {
 
 class ImageInstancesListModel;
 class LabelClassesListModel;
+
+struct LoadedLabelInstance
+{
+    int64_t   label_id{0};
+    int64_t   image_id{0};
+    int64_t   label_class_id{0};
+    LabelData data{nullptr};
+};
 
 class LabelInstance : public QObject
 {
@@ -72,7 +84,7 @@ class LabelInstancesListModel : public QAbstractListModel
 public:
     LabelInstancesListModel(dltool::database::ProjectDataBase *database, ImageInstancesListModel *image_instances,
                             LabelClassesListModel *label_classes, LabelDataHelper label_data_helper,
-                            QObject *parent = nullptr);
+                            bool load_from_database = true, QObject *parent = nullptr);
 
     ~LabelInstancesListModel();
 
@@ -95,6 +107,8 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     LabelInstance *getLabelInstance(const int64_t label_id);
+
+    void replaceAllLabels(std::vector<LoadedLabelInstance> labels);
 
     bool tryAddLabels(std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
                       const std::vector<int64_t> &label_class_ids, const std::vector<QVariantMap> &data,
@@ -170,7 +184,8 @@ public:
     }
 
 private:
-    void init();
+    void init(bool load_from_database);
+    void loadLabelsFromDatabase();
 
     int      getLabelId(const QModelIndex &index) const;
     int      getImageId(const QModelIndex &index) const;

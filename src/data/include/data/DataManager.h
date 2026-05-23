@@ -16,6 +16,7 @@
 #include <QtQml>
 
 #include <memory>
+#include <vector>
 
 class QQmlApplicationEngine;
 
@@ -172,6 +173,10 @@ private:
     struct PendingImportTask;
 
     void init(const int method);
+    void startAsyncLabelLoading();
+    void handleAsyncLabelsLoaded(std::shared_ptr<std::vector<LoadedLabelInstance>> labels, bool success,
+                                 const QString &err_msg, qint64 elapsed_ms);
+    void rebuildLabelRelations();
 
     void updateDatasetsStats();
 
@@ -216,6 +221,9 @@ private:
 
     bool                               import_running_{false};
     std::unique_ptr<PendingImportTask> pending_import_task_;
+
+    bool labels_loading_{false};
+    bool labels_changed_during_loading_{false};
 };
 
 } // namespace dltool::data

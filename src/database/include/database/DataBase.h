@@ -30,6 +30,11 @@ public:
         return pool_;
     }
 
+    QString path() const
+    {
+        return path_;
+    }
+
     /**
      * @brief 连接到 SQLite 数据库
      * 

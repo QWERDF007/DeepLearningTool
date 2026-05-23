@@ -520,6 +520,33 @@ void ImageInstancesListModel::addImagesLabelIds(const std::vector<int64_t>      
     }
 }
 
+void ImageInstancesListModel::setImagesLabelIds(const std::vector<int64_t>              &image_ids,
+                                                const std::vector<std::vector<int64_t>> &label_ids)
+{
+    for (auto &[_, image_instance] : full_image_instances_)
+    {
+        if (image_instance != nullptr)
+        {
+            image_instance->removeAllLabelIds();
+        }
+    }
+
+    const size_t count = std::min(image_ids.size(), label_ids.size());
+    for (size_t i = 0; i < count; ++i)
+    {
+        ImageInstance *image_instance = getImageInstance(image_ids[i]);
+        if (image_instance != nullptr)
+        {
+            image_instance->addLabelIds(label_ids[i]);
+        }
+    }
+
+    if (rowCount() > 0)
+    {
+        emit dataChanged(index(0), index(rowCount() - 1), {HasLabelsRole});
+    }
+}
+
 void ImageInstancesListModel::deleteImagesLabelIds(const std::vector<int64_t> &image_ids,
                                                    const std::vector<int64_t> &label_ids)
 {

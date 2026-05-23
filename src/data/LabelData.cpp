@@ -6,7 +6,6 @@
 #include <json.hpp>
 
 #include <QLineF>
-#include <QPolygonF>
 
 #include <algorithm>
 #include <cmath>
@@ -114,6 +113,33 @@ QPointF clampPointToRect(const QPointF &point, const QRectF &rect)
 {
     return QPointF(std::clamp(point.x(), rect.left(), rect.right()),
                    std::clamp(point.y(), rect.top(), rect.bottom()));
+}
+
+bool isPointNearLabelBounds(const LabelData_t &data, const QPointF &point, double padding = 0.0)
+{
+    return point.x() >= data.x - padding && point.x() <= data.x + data.width + padding
+           && point.y() >= data.y - padding && point.y() <= data.y + data.height + padding;
+}
+
+bool isPointInPolygon(const QPointF &point, const std::vector<QPointF> &polygon)
+{
+    bool inside = false;
+    for (size_t i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++)
+    {
+        const QPointF &a = polygon[i];
+        const QPointF &b = polygon[j];
+        const bool intersects = (a.y() > point.y()) != (b.y() > point.y());
+        if (intersects)
+        {
+            const double x_intersection
+                = (b.x() - a.x()) * (point.y() - a.y()) / (b.y() - a.y()) + a.x();
+            if (point.x() < x_intersection)
+            {
+                inside = !inside;
+            }
+        }
+    }
+    return inside;
 }
 
 std::vector<QPointF> clippedPointsToImage(const std::vector<QPointF> &points, const QRectF &image_rect)
@@ -612,13 +638,10 @@ bool SegLabelDataHelper::isInside(const QPointF &pos, const std::unique_ptr<Labe
     const SegLabelData_t *data = dynamic_cast<SegLabelData_t *>(label_data_ptr.get());
     if (data == nullptr || data->points.size() < 3)
         return false;
+    if (!isPointNearLabelBounds(*data, pos))
+        return false;
 
-    QPolygonF polygon;
-    for (const QPointF &point : data->points)
-    {
-        polygon << point;
-    }
-    return polygon.containsPoint(pos, Qt::OddEvenFill);
+    return isPointInPolygon(pos, data->points);
 }
 
 QVariantMap SegLabelDataHelper::hitTestHandle(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr,
@@ -646,6 +669,16 @@ QVariantMap SegLabelDataHelper::hitTestHandle(const QPointF &pos, const std::uni
     }
 
     const double handle_size = 10 / scale;
+    if (!isPointNearLabelBounds(*data, pos, handle_size))
+    {
+        return QVariantMap{
+            {    "found",                  false},
+            {     "mode",     EditMode::NoneMode},
+            {"direction", EditDirection::NoneDir},
+            {   "cursor",   int(Qt::ArrowCursor)}
+        };
+    }
+
     for (int i = 0; i < static_cast<int>(data->points.size()); ++i)
     {
         if (QLineF(pos, data->points[i]).length() <= handle_size)
@@ -654,7 +687,7 @@ QVariantMap SegLabelDataHelper::hitTestHandle(const QPointF &pos, const std::uni
                 {    "found",                    true},
                 {     "mode",        EditMode::Resize},
                 {"direction",                       i},
-                {   "cursor", int(Qt::SizeAllCursor)}
+                {   "cursor",   int(Qt::CrossCursor)}
             };
         }
     }

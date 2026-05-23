@@ -14,12 +14,16 @@
 #include <spdlog/spdlog.h>
 
 #include <QColor>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QMetaType>
+#include <QPointer>
 #include <QQmlApplicationEngine>
+#include <QThread>
 
 #include <algorithm>
 #include <cstddef>
+#include <memory>
 
 namespace dltool::data {
 
@@ -71,7 +75,7 @@ void DataManager::init(const int method)
     label_classes_      = new LabelClassesListModel(database_, this);
     image_tags_         = new ImageTagsListModel(database_, image_instances_, this);
     label_instances_    = new LabelInstancesListModel(database_, image_instances_, label_classes_,
-                                                      data::createLabelDataHelper(method), this);
+                                                      data::createLabelDataHelper(method), false, this);
     image_labels_list_  = new ImageLabelsListModel(image_instances_, label_instances_, label_classes_, this);
     image_labels_table_ = new ImageLabelsTableModel(image_instances_, label_instances_, label_classes_, this);
     image_info_         = new ImageInfoListModel(datasets_, image_instances_, label_classes_, label_instances_, this);
@@ -130,14 +134,155 @@ void DataManager::init(const int method)
     std::vector<int64_t> image_ids   = image_instances_->getAllImageIds();
     std::vector<int64_t> dataset_ids = image_instances_->getImagesDatasetIds(image_ids);
 
-    std::vector<std::vector<int64_t>> images_label_ids = label_instances_->getImagesLabelIds(image_ids);
-    std::vector<std::vector<int64_t>> images_tag_ids   = image_tags_->getImagesTagIds(image_ids);
+    std::vector<std::vector<int64_t>> images_label_ids(image_ids.size());
+    std::vector<std::vector<int64_t>> images_tag_ids = image_tags_->getImagesTagIds(image_ids);
 
     datasets_->addImages(dataset_ids, image_ids);
     datasets_->setStats(dataset_ids, image_ids, images_label_ids);
 
-    image_instances_->addImagesLabelIds(image_ids, images_label_ids);
+    image_instances_->setImagesLabelIds(image_ids, images_label_ids);
     image_instances_->addImagesTagIds(image_ids, images_tag_ids);
+
+    startAsyncLabelLoading();
+}
+
+void DataManager::startAsyncLabelLoading()
+{
+    if (database_ == nullptr || labels_loading_)
+    {
+        return;
+    }
+
+    labels_loading_                 = true;
+    labels_changed_during_loading_  = false;
+    const QString database_path     = database_->path();
+    const int     label_data_method = method_;
+    QPointer<DataManager> manager(this);
+
+    QThread *worker_thread = QThread::create(
+        [manager, database_path, label_data_method]()
+        {
+            QElapsedTimer timer;
+            timer.start();
+
+            auto    loaded_labels = std::make_shared<std::vector<LoadedLabelInstance>>();
+            bool    success       = false;
+            QString err_msg;
+
+            try
+            {
+                dltool::database::ProjectDataBase database(database_path);
+                std::vector<int64_t>              label_ids;
+                std::vector<int64_t>              image_ids;
+                std::vector<int64_t>              label_class_ids;
+                std::vector<int64_t>              label_types;
+                std::vector<std::vector<uint8_t>> labels_data;
+
+                success = database.getAllLabels(label_ids, image_ids, label_class_ids, label_types, labels_data,
+                                                err_msg);
+                if (success)
+                {
+                    LabelDataHelper helper = data::createLabelDataHelper(label_data_method);
+                    if (helper == nullptr)
+                    {
+                        success = false;
+                        err_msg = QStringLiteral("标签数据工厂未初始化");
+                    }
+                    else
+                    {
+                        loaded_labels->reserve(label_ids.size());
+                        for (size_t i = 0; i < label_ids.size(); ++i)
+                        {
+                            LabelData label_data = helper->createLabelData();
+                            label_data->fromBlob(labels_data[i]);
+
+                            LoadedLabelInstance label;
+                            label.label_id       = label_ids[i];
+                            label.image_id       = image_ids[i];
+                            label.label_class_id = label_class_ids[i];
+                            label.data           = std::move(label_data);
+                            loaded_labels->push_back(std::move(label));
+                        }
+                    }
+                }
+            }
+            catch (const std::exception &e)
+            {
+                success = false;
+                err_msg = QString::fromUtf8(e.what());
+            }
+
+            const qint64 elapsed_ms = timer.elapsed();
+            if (manager)
+            {
+                QMetaObject::invokeMethod(
+                    manager.data(),
+                    [manager, loaded_labels, success, err_msg, elapsed_ms]()
+                    {
+                        if (manager)
+                        {
+                            manager->handleAsyncLabelsLoaded(loaded_labels, success, err_msg, elapsed_ms);
+                        }
+                    },
+                    Qt::QueuedConnection);
+            }
+        });
+
+    connect(worker_thread, &QThread::finished, worker_thread, &QObject::deleteLater);
+    worker_thread->start();
+}
+
+void DataManager::handleAsyncLabelsLoaded(std::shared_ptr<std::vector<LoadedLabelInstance>> labels, bool success,
+                                          const QString &err_msg, qint64 elapsed_ms)
+{
+    labels_loading_ = false;
+
+    if (labels_changed_during_loading_)
+    {
+        labels_changed_during_loading_ = false;
+        spdlog::info("项目标注后台加载期间发生修改，丢弃当前结果并重新加载");
+        startAsyncLabelLoading();
+        return;
+    }
+
+    if (!success || labels == nullptr)
+    {
+        spdlog::error("后台加载项目标注失败: {}", err_msg.toStdString());
+        return;
+    }
+
+    label_instances_->replaceAllLabels(std::move(*labels));
+    rebuildLabelRelations();
+
+    spdlog::info("后台加载项目标注完成: {} 个标注, 耗时 {} ms", label_instances_->totalCount(), elapsed_ms);
+}
+
+void DataManager::rebuildLabelRelations()
+{
+    if (image_instances_ == nullptr || label_instances_ == nullptr || datasets_ == nullptr)
+    {
+        return;
+    }
+
+    std::vector<int64_t>              image_ids        = image_instances_->getAllImageIds();
+    std::vector<int64_t>              dataset_ids      = image_instances_->getImagesDatasetIds(image_ids);
+    std::vector<std::vector<int64_t>> images_label_ids = label_instances_->getImagesLabelIds(image_ids);
+
+    image_instances_->setImagesLabelIds(image_ids, images_label_ids);
+    datasets_->setStats(dataset_ids, image_ids, images_label_ids);
+
+    if (image_labels_list_ != nullptr)
+    {
+        image_labels_list_->onCurrentImageChanged();
+    }
+    if (image_labels_table_ != nullptr)
+    {
+        image_labels_table_->onCurrentImageChanged();
+    }
+    if (image_info_ != nullptr)
+    {
+        image_info_->updateLabelInfo();
+    }
 }
 
 QList<QString> DataManager::getAllDatasetsName() const
@@ -438,6 +583,10 @@ bool DataManager::addLabelsInternal(const std::vector<int64_t> &image_ids,
     {
         return false;
     }
+    if (labels_loading_)
+    {
+        labels_changed_during_loading_ = true;
+    }
     image_instances_->addImagesLabelIds(image_ids, label_ids);
     image_labels_list_->addLabels(image_ids, label_ids);
     image_labels_table_->addLabels(image_ids, label_ids);
@@ -448,6 +597,10 @@ bool DataManager::addLabelsInternal(const std::vector<int64_t> &image_ids,
 
 void DataManager::updateLabels(const std::vector<int64_t> &label_ids, const std::vector<QVariantMap> &data)
 {
+    if (labels_loading_)
+    {
+        labels_changed_during_loading_ = true;
+    }
     std::vector<int64_t> image_ids = label_instances_->getImageIds(label_ids);
     label_instances_->updateLabelsData(label_ids, image_ids, data);
     image_labels_list_->updateLabels(image_ids, label_ids);
@@ -457,6 +610,10 @@ void DataManager::updateLabels(const std::vector<int64_t> &label_ids, const std:
 
 void DataManager::updateLabelsClass(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &label_class_ids)
 {
+    if (labels_loading_)
+    {
+        labels_changed_during_loading_ = true;
+    }
     std::vector<int64_t> image_ids = label_instances_->getImageIds(label_ids);
     label_instances_->updateLabelsClass(label_ids, label_class_ids);
     image_labels_list_->updateLabels(image_ids, label_ids);
@@ -465,6 +622,10 @@ void DataManager::updateLabelsClass(const std::vector<int64_t> &label_ids, const
 
 void DataManager::deleteLabels(const std::vector<int64_t> &label_ids)
 {
+    if (labels_loading_)
+    {
+        labels_changed_during_loading_ = true;
+    }
     std::vector<int64_t> image_ids = label_instances_->getImageIds(label_ids);
     label_instances_->deleteLabels(label_ids);
     image_instances_->deleteImagesLabelIds(image_ids, label_ids);

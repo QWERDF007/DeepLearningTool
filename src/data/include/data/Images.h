@@ -225,6 +225,7 @@ public:
 
     void addImagesLabelIds(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
     void addImagesLabelIds(const std::vector<int64_t> &image_ids, const std::vector<std::vector<int64_t>> &label_ids);
+    void setImagesLabelIds(const std::vector<int64_t> &image_ids, const std::vector<std::vector<int64_t>> &label_ids);
 
     void deleteImagesLabelIds(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
 

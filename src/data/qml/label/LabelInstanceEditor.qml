@@ -21,7 +21,11 @@ Rectangle {
     property int selectedLabelClassId: -1
     property bool hasSelection: false
     property bool multiSelection: false
-    property bool polygonSelection: selectedLabelData && selectedLabelData.points && selectedLabelData.points.length > 0
+    property bool polygonSelection: selectedLabelData !== null
+                                    && selectedLabelData !== undefined
+                                    && selectedLabelData.points !== undefined
+                                    && selectedLabelData.points !== null
+                                    && selectedLabelData.points.length > 0
     property bool _updating: false
 
     // 当选择改变时更新选中的标注数据

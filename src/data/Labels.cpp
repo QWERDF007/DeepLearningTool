@@ -7,6 +7,9 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
+#include <iterator>
+
 namespace dltool::data {
 
 LabelInstance::LabelInstance(const int64_t label_id, const int64_t image_id, const int64_t label_class_id,
@@ -24,7 +27,8 @@ LabelInstance::~LabelInstance() {}
 LabelInstancesListModel::LabelInstancesListModel(dltool::database::ProjectDataBase *database,
                                                  ImageInstancesListModel           *image_instances,
                                                  LabelClassesListModel             *label_classes,
-                                                 LabelDataHelper label_data_helper, QObject *parent)
+                                                 LabelDataHelper label_data_helper, bool load_from_database,
+                                                 QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
     , image_instances_(image_instances)
@@ -32,12 +36,20 @@ LabelInstancesListModel::LabelInstancesListModel(dltool::database::ProjectDataBa
     , label_data_helper_(std::move(label_data_helper))
     , selection_(new QItemSelectionModel(this))
 {
-    init();
+    init(load_from_database);
 }
 
 LabelInstancesListModel::~LabelInstancesListModel() {}
 
-void LabelInstancesListModel::init()
+void LabelInstancesListModel::init(bool load_from_database)
+{
+    if (load_from_database)
+    {
+        loadLabelsFromDatabase();
+    }
+}
+
+void LabelInstancesListModel::loadLabelsFromDatabase()
 {
     if (database_ == nullptr)
     {
@@ -58,15 +70,53 @@ void LabelInstancesListModel::init()
         spdlog::error("查询所有标注失败: 标签数据工厂未初始化");
         return;
     }
+    std::vector<LoadedLabelInstance> labels;
+    labels.reserve(label_ids.size());
     for (size_t i = 0; i < label_ids.size(); ++i)
     {
         LabelData data = label_data_helper_->createLabelData();
         data->fromBlob(labels_data[i]);
-        full_label_instances_[label_ids[i]]
-            = new LabelInstance(label_ids[i], image_ids[i], label_class_ids[i], std::move(data), this);
+
+        LoadedLabelInstance label;
+        label.label_id       = label_ids[i];
+        label.image_id       = image_ids[i];
+        label.label_class_id = label_class_ids[i];
+        label.data           = std::move(data);
+        labels.push_back(std::move(label));
     }
-    std::reverse(label_ids.begin(), label_ids.end());
-    label_ids_.insert(label_ids_.end(), label_ids.begin(), label_ids.end());
+    replaceAllLabels(std::move(labels));
+}
+
+void LabelInstancesListModel::replaceAllLabels(std::vector<LoadedLabelInstance> labels)
+{
+    if (selection_)
+    {
+        selection_->clear();
+    }
+
+    beginResetModel();
+    for (auto &[_, instance] : full_label_instances_)
+    {
+        delete instance;
+    }
+    full_label_instances_.clear();
+    label_ids_.clear();
+    filtered_label_ids_.clear();
+    is_filtered_ = false;
+    last_index_  = -1;
+
+    std::sort(labels.begin(), labels.end(), [](const LoadedLabelInstance &left, const LoadedLabelInstance &right)
+              { return left.label_id > right.label_id; });
+
+    label_ids_.reserve(labels.size());
+    for (LoadedLabelInstance &label : labels)
+    {
+        label_ids_.push_back(label.label_id);
+        full_label_instances_[label.label_id]
+            = new LabelInstance(label.label_id, label.image_id, label.label_class_id, std::move(label.data), this);
+    }
+    endResetModel();
+    emit lastIndexChanged();
 }
 
 int LabelInstancesListModel::rowCount(const QModelIndex &parent) const
@@ -436,18 +486,26 @@ void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids
 std::vector<std::vector<int64_t>> LabelInstancesListModel::getImagesLabelIds(
     const std::vector<int64_t> &image_ids) const
 {
+    std::map<int64_t, std::vector<int64_t>> labels_by_image_id;
+    for (const auto &[label_id, instance] : full_label_instances_)
+    {
+        if (instance != nullptr)
+        {
+            labels_by_image_id[instance->imageId()].push_back(label_id);
+        }
+    }
+
     std::vector<std::vector<int64_t>> images_label_ids;
     images_label_ids.reserve(image_ids.size());
-    for (size_t i = 0; i < image_ids.size(); ++i)
+    for (const int64_t image_id : image_ids)
     {
-        const int64_t        image_id = image_ids[i];
-        std::vector<int64_t> label_ids;
-        for (const auto &[label_id, instance] : full_label_instances_)
+        auto found = labels_by_image_id.find(image_id);
+        if (found == labels_by_image_id.end())
         {
-            if (instance->imageId() == image_id)
-                label_ids.push_back(label_id);
+            images_label_ids.emplace_back();
+            continue;
         }
-        images_label_ids.push_back(label_ids);
+        images_label_ids.push_back(found->second);
     }
     return images_label_ids;
 }
@@ -688,6 +746,7 @@ void ImageLabelsListModel::resetModel()
 {
     beginResetModel();
     label_ids_.clear();
+    hovered_indices_.clear();
     const int                          image_id  = image_instances_->getCurrentImageId();
     const std::vector<ImageInstance *> instances = image_instances_->getImageInstances({image_id});
     if (!instances.empty() && instances.at(0))
@@ -785,9 +844,17 @@ void ImageLabelsListModel::updateLabels(const std::vector<int64_t> &image_ids, c
     if (valid_label_ids.empty())
         return;
 
-    // TODO: 只刷新需要更新的数据, 而不是全部数据
-    emit dataChanged(index(0), index(static_cast<int>(label_ids_.size()) - 1),
-                     {DataRole, LabelClassIdRole, LabelClassColorRole});
+    for (const int64_t label_id : valid_label_ids)
+    {
+        const auto label_it = std::find(label_ids_.begin(), label_ids_.end(), label_id);
+        if (label_it == label_ids_.end())
+        {
+            continue;
+        }
+
+        const int row = static_cast<int>(std::distance(label_ids_.begin(), label_it));
+        emit dataChanged(index(row), index(row), {DataRole, LabelClassIdRole, LabelClassColorRole});
+    }
 }
 
 void ImageLabelsListModel::deleteLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids)
@@ -815,12 +882,35 @@ void ImageLabelsListModel::deleteLabels(const std::vector<int64_t> &image_ids, c
             new_label_ids.push_back(label_id);
     }
     label_ids_ = new_label_ids;
+    hovered_indices_.clear();
     endResetModel();
 }
 
 void ImageLabelsListModel::labelClassUpdated(const int64_t label_class_id)
 {
-    emit dataChanged(index(0), index(static_cast<int>(label_ids_.size()) - 1), {LabelClassColorRole});
+    if (label_ids_.empty())
+    {
+        return;
+    }
+
+    int top    = -1;
+    int bottom = -1;
+    for (int row = 0; row < static_cast<int>(label_ids_.size()); ++row)
+    {
+        LabelInstance *instance = label_instances_->getLabelInstance(label_ids_[row]);
+        if (instance == nullptr || instance->labelClassId() != label_class_id)
+        {
+            continue;
+        }
+
+        top    = top == -1 ? row : std::min(top, row);
+        bottom = std::max(bottom, row);
+    }
+
+    if (top >= 0)
+    {
+        emit dataChanged(index(top), index(bottom), {LabelClassColorRole});
+    }
 }
 
 void ImageLabelsListModel::onCurrentImageChanged()
@@ -950,8 +1040,20 @@ void ImageLabelsListModel::setHovered(const std::vector<int> &indices)
     std::set<int> new_hovered_indices(indices.begin(), indices.end());
     if (hovered_indices_ == new_hovered_indices)
         return;
+
+    std::vector<int> changed_indices;
+    std::set_symmetric_difference(hovered_indices_.begin(), hovered_indices_.end(), new_hovered_indices.begin(),
+                                  new_hovered_indices.end(), std::back_inserter(changed_indices));
+
     hovered_indices_ = new_hovered_indices;
-    emit dataChanged(index(0), index(static_cast<int>(label_ids_.size() - 1)), {HoveredRole});
+
+    for (const int row : changed_indices)
+    {
+        if (row >= 0 && row < static_cast<int>(label_ids_.size()))
+        {
+            emit dataChanged(index(row), index(row), {HoveredRole});
+        }
+    }
 }
 
 void ImageLabelsListModel::shiftSelect(int current_index, int previous_index,
@@ -967,6 +1069,11 @@ void ImageLabelsListModel::shiftSelect(int current_index, int previous_index,
 
 void ImageLabelsListModel::selectAll()
 {
+    if (label_ids_.empty())
+    {
+        return;
+    }
+
     QItemSelection selection;
     selection.select(index(0), index(static_cast<int>(label_ids_.size()) - 1));
     selection_->select(selection, QItemSelectionModel::Select | QItemSelectionModel::Rows);
@@ -987,7 +1094,10 @@ void ImageLabelsListModel::updateSelection(const QItemSelection &selected, const
             top = std::min(top, row);
         bottom = std::max(bottom, row);
     }
-    emit dataChanged(index(top), index(bottom), {SelectedRole});
+    if (top >= 0 && bottom >= top)
+    {
+        emit dataChanged(index(top), index(bottom), {SelectedRole});
+    }
 
     top    = -1;
     bottom = -1;
@@ -1002,7 +1112,10 @@ void ImageLabelsListModel::updateSelection(const QItemSelection &selected, const
             top = std::min(top, row);
         bottom = std::max(bottom, row);
     }
-    emit dataChanged(index(top), index(bottom), {SelectedRole});
+    if (top >= 0 && bottom >= top)
+    {
+        emit dataChanged(index(top), index(bottom), {SelectedRole});
+    }
 }
 
 int ImageLabelsListModel::getLabelId(const QModelIndex &index) const
@@ -1050,12 +1163,7 @@ QVariant ImageLabelsListModel::getSelected(const QModelIndex &index) const
 QVariant ImageLabelsListModel::getHovered(const QModelIndex &index) const
 {
     const int row = index.row();
-    for (int i : hovered_indices_)
-    {
-        if (row == i)
-            return true;
-    }
-    return false;
+    return hovered_indices_.find(row) != hovered_indices_.end();
 }
 
 ImageLabelsTableModel::ImageLabelsTableModel(ImageInstancesListModel *image_instances,
