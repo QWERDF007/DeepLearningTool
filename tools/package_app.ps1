@@ -9,6 +9,7 @@
 # - WinDeployQt：可显式传入 windeployqt.exe 路径；为空时自动查找。
 # - SkipWinDeployQt：跳过 Qt 依赖部署，仅复制项目自身产物。
 # - IncludePdb：是否复制 PDB 调试符号。默认不复制，避免 install 体积过大。
+# - IncludeQmlModuleDir：额外复制 build/dltool 目录。当前 QML 已嵌入资源，默认不需要。
 # - NoClean：不清理 install 目录，直接覆盖复制。
 # - ForceClean：强制清理 install 目录。用于清理不是本脚本生成的旧目录。
 param(
@@ -19,6 +20,7 @@ param(
     [string]$WinDeployQt = "",
     [switch]$SkipWinDeployQt,
     [switch]$IncludePdb,
+    [switch]$IncludeQmlModuleDir,
     [switch]$NoClean,
     [switch]$ForceClean
 )
@@ -106,6 +108,28 @@ function Copy-PackageFile {
 
     Copy-Item -LiteralPath $copySource -Destination $Destination -Force
     Write-Host "copy $copySource -> $Destination"
+}
+
+# 判断项目 DLL 是否属于当前打包配置。
+# MSVC Debug 产物带 d 后缀，例如 dltool_datad.dll；Release 产物没有该后缀。
+function Test-ProjectDllMatchesConfig {
+    param(
+        [string]$Path,
+        [string]$DetectedConfig
+    )
+
+    $name = [System.IO.Path]::GetFileName($Path).ToLowerInvariant()
+    $prefix = [regex]::Escape($ProjectName)
+
+    if ($name -notmatch "^${prefix}_.+\.dll$") {
+        return $true
+    }
+
+    $isDebugDll = $name -match "^${prefix}_.+d\.dll$"
+    if ($DetectedConfig -eq "debug") {
+        return $isDebugDll
+    }
+    return -not $isDebugDll
 }
 
 # 清理或创建 install 目录。
@@ -425,7 +449,8 @@ function Copy-DirectoryFiltered {
     param(
         [string]$Source,
         [string]$Destination,
-        [bool]$CopyPdb
+        [bool]$CopyPdb,
+        [string]$DetectedConfig
     )
 
     $sourceRoot = (Resolve-Path -LiteralPath $Source).Path.TrimEnd("\")
@@ -455,6 +480,10 @@ function Copy-DirectoryFiltered {
         if ($ignored.Contains($item.Extension.ToLowerInvariant())) {
             continue
         }
+        if ($item.Extension.ToLowerInvariant() -eq ".dll" -and
+            -not (Test-ProjectDllMatchesConfig -Path $item.FullName -DetectedConfig $DetectedConfig)) {
+            continue
+        }
 
         Copy-PackageFile -Source $item.FullName -Destination $target
     }
@@ -463,12 +492,15 @@ function Copy-DirectoryFiltered {
 }
 
 # 复制项目自身运行时。
-# 包括 build/dltool 下的 QML 模块目录，以及各模块 DLL 到 install 根目录，方便 Windows DLL 搜索。
+# 默认只复制各模块 DLL 到 install 根目录，方便 Windows DLL 搜索。
+# build/dltool 下的 QML 模块目录通常已通过 Qt 资源嵌入，只有调试散装 QML 时才需要额外复制。
 function Copy-ProjectRuntime {
     param(
         [string]$BuildPath,
         [string]$OutputPath,
-        [bool]$CopyPdb
+        [bool]$CopyPdb,
+        [string]$DetectedConfig,
+        [bool]$CopyQmlModuleDir
     )
 
     $moduleRoot = Join-Path $BuildPath $ProjectName
@@ -476,15 +508,23 @@ function Copy-ProjectRuntime {
         throw "cannot find QML module output: $moduleRoot"
     }
 
-    Copy-DirectoryFiltered -Source $moduleRoot -Destination (Join-Path $OutputPath $ProjectName) -CopyPdb $CopyPdb
+    if ($CopyQmlModuleDir) {
+        Copy-DirectoryFiltered -Source $moduleRoot -Destination (Join-Path $OutputPath $ProjectName) -CopyPdb $CopyPdb -DetectedConfig $DetectedConfig
+    }
 
     foreach ($dll in Get-ChildItem -LiteralPath $moduleRoot -Recurse -Filter "*.dll" -File) {
+        if (-not (Test-ProjectDllMatchesConfig -Path $dll.FullName -DetectedConfig $DetectedConfig)) {
+            continue
+        }
         Copy-PackageFile -Source $dll.FullName -Destination (Join-Path $OutputPath $dll.Name)
     }
 
     $binDir = Join-Path $BuildPath "bin"
     if (Test-Path -LiteralPath $binDir) {
         foreach ($dll in Get-ChildItem -LiteralPath $binDir -Filter "*.dll" -File) {
+            if (-not (Test-ProjectDllMatchesConfig -Path $dll.FullName -DetectedConfig $DetectedConfig)) {
+                continue
+            }
             Copy-PackageFile -Source $dll.FullName -Destination (Join-Path $OutputPath $dll.Name)
         }
         if ($CopyPdb) {
@@ -582,7 +622,7 @@ Clear-InstallDirectory -Path $ResolvedInstallDir -Clean (-not $NoClean.IsPresent
 
 $PackagedExe = Join-Path $ResolvedInstallDir (Split-Path -Leaf $SourceExe)
 Copy-PackageFile -Source $SourceExe -Destination $PackagedExe
-Copy-ProjectRuntime -BuildPath $ResolvedBuildDir -OutputPath $ResolvedInstallDir -CopyPdb $IncludePdb.IsPresent
+Copy-ProjectRuntime -BuildPath $ResolvedBuildDir -OutputPath $ResolvedInstallDir -CopyPdb $IncludePdb.IsPresent -DetectedConfig $DetectedConfig -CopyQmlModuleDir $IncludeQmlModuleDir.IsPresent
 Copy-SqliteIfNeeded -BuildPath $ResolvedBuildDir -OutputPath $ResolvedInstallDir
 
 # 补充 windeployqt 不一定能在普通 PowerShell 中找到的 MSVC/Windows SDK 依赖。
@@ -604,7 +644,8 @@ $marker = Join-Path $ResolvedInstallDir $MarkerFile
     "generated_by=tools/package_app.ps1",
     "build_dir=$ResolvedBuildDir",
     "config=$DetectedConfig",
-    "architecture=$Architecture"
+    "architecture=$Architecture",
+    "include_qml_module_dir=$($IncludeQmlModuleDir.IsPresent)"
 ) | Set-Content -LiteralPath $marker -Encoding UTF8
 
 Write-Host ""

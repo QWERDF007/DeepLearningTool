@@ -17,6 +17,7 @@ CONFIG="auto"
 QT_ROOT=""
 SKIP_QT=0
 INCLUDE_DEBUG=0
+INCLUDE_QML_MODULE_DIR=0
 NO_CLEAN=0
 FORCE_CLEAN=0
 COPY_SYSTEM_LIBS=1
@@ -33,6 +34,7 @@ Options:
   --qt-root <path>, -QtRoot <path>           Qt install root, for example /opt/Qt/6.8.0/gcc_64
   --skip-qt, -SkipQt                         Do not copy Qt qml/plugins directories
   --include-debug, -IncludeDebug             Keep debug symbol files when copying project outputs
+  --include-qml-module-dir                   Also copy build/dltool loose QML module directory
   --skip-system-libs                         Do not copy libraries from /lib and /usr/lib
   --copy-system-libs                         Copy system libraries except glibc/loader core files
   --no-clean, -NoClean                       Do not clean install directory before copying
@@ -225,13 +227,16 @@ copy_project_runtime() {
     local build_path="$1"
     local output_path="$2"
     local include_debug="$3"
+    local include_qml_module_dir="$4"
     local module_root="$build_path/$PROJECT_NAME"
     local project_qml_root="$output_path/qml/$PROJECT_NAME"
     local lib_dir="$output_path/lib"
 
     [[ -d "$module_root" ]] || die "cannot find QML module output: $module_root"
 
-    copy_directory_filtered "$module_root" "$project_qml_root" "$include_debug"
+    if [[ "$include_qml_module_dir" -eq 1 ]]; then
+        copy_directory_filtered "$module_root" "$project_qml_root" "$include_debug"
+    fi
     mkdir -p "$lib_dir"
 
     while IFS= read -r -d '' so_file; do
@@ -604,6 +609,10 @@ while [[ $# -gt 0 ]]; do
             INCLUDE_DEBUG=1
             shift
             ;;
+        --include-qml-module-dir)
+            INCLUDE_QML_MODULE_DIR=1
+            shift
+            ;;
         --skip-system-libs)
             COPY_SYSTEM_LIBS=0
             shift
@@ -647,7 +656,7 @@ clear_install_directory "$RESOLVED_INSTALL_DIR" "$((1 - NO_CLEAN))" "$FORCE_CLEA
 
 PACKAGED_EXE="$RESOLVED_INSTALL_DIR/$(basename "$SOURCE_EXE")"
 copy_file "$SOURCE_EXE" "$PACKAGED_EXE"
-copy_project_runtime "$RESOLVED_BUILD_DIR" "$RESOLVED_INSTALL_DIR" "$INCLUDE_DEBUG"
+copy_project_runtime "$RESOLVED_BUILD_DIR" "$RESOLVED_INSTALL_DIR" "$INCLUDE_DEBUG" "$INCLUDE_QML_MODULE_DIR"
 copy_qt_runtime "$RESOLVED_BUILD_DIR" "$RESOLVED_INSTALL_DIR" "$QT_ROOT"
 copy_elf_dependencies "$RESOLVED_INSTALL_DIR"
 patch_rpath_if_possible "$RESOLVED_INSTALL_DIR"
@@ -659,6 +668,7 @@ generated_by=tools/package_app.sh
 build_dir=$RESOLVED_BUILD_DIR
 config=$DETECTED_CONFIG
 qt_root=$QT_ROOT
+include_qml_module_dir=$INCLUDE_QML_MODULE_DIR
 EOF
 
 echo ""
