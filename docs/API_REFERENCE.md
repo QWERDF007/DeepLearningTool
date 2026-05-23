@@ -418,7 +418,13 @@ Q_INVOKABLE QString projectSuffix() const;      // ".dlpro"
 Q_INVOKABLE QString projectFileFilter() const;  // "Project files (*.dlpro)"
 Q_INVOKABLE QVariantMap getProjectInfo(const QString &path);
 Q_INVOKABLE QVariantMap getLabelInfo(const QString &path);
+
+signals:
+    void currentProjectChanged();
+    void projectActivated();
 ```
+
+`projectActivated()` 在项目创建、成功打开，以及再次激活当前已打开项目时触发；主界面用它切换到图库页。
 
 ### RectentProjects
 

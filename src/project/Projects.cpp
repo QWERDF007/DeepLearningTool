@@ -421,13 +421,18 @@ Project *ProjectManager::createProject(const QString &name, const int method, co
     current_project_->initProject();
     recent_projects_->addProject(path);
     emit currentProjectChanged();
+    emit projectActivated();
     return current_project_;
 }
 
 Project *ProjectManager::openProject(const QString &path)
 {
     if (current_project_ && current_project_->path() == path)
+    {
+        recent_projects_->openProject(path);
+        emit projectActivated();
         return current_project_;
+    }
     const auto &[valid, msg] = Project::isValid(-1, path, false);
     if (!valid)
     {
@@ -441,6 +446,7 @@ Project *ProjectManager::openProject(const QString &path)
     current_project_->openProject();
     recent_projects_->openProject(current_project_->path());
     emit currentProjectChanged();
+    emit projectActivated();
     return current_project_;
 }
 

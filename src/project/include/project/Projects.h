@@ -260,6 +260,7 @@ private:
 
 signals:
     void currentProjectChanged();
+    void projectActivated();
 };
 
 } // namespace dltool::project

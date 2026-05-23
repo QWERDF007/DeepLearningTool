@@ -15,7 +15,7 @@ ApplicationWindow {
 
     Connections {
         target: ProjectManager
-        function onCurrentProjectChanged() {
+        function onProjectActivated() {
             if (ProjectManager.currentProject) {
                 _header.currentIndex = 1
             }
