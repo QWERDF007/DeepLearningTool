@@ -48,8 +48,8 @@ DeepLearningTool/
 
 ```cmake
 add_subdirectory(common)
-add_subdirectory(settings)
 add_subdirectory(database)
+add_subdirectory(settings)
 add_subdirectory(project)
 add_subdirectory(data)
 add_subdirectory(ui)
@@ -96,7 +96,7 @@ src/common/
 
 职责：
 
-- `GlobalSettings`：QML 单例，聚合项目、数据和 UI 设置。
+- `GlobalSettings`：QML 单例，聚合项目、数据和 UI 设置，通过 `SettingsDataBase` 保存到软件目录下的 `db/settings.db`。
 - `ProjectSettings`：最近项目数量、自动保存间隔、自动保存开关。
 - `DataSettings`：缩略图、图像加载、标注显示、图像网格缩放、标注缩略图参数。
 - `UISettings`：图像亮度/对比度、主题、语言。
@@ -123,9 +123,10 @@ src/settings/
 
 职责：
 
-- `DataBase`：SQLite 连接池和数据库文件创建。
+- `DataBase`：SQLite 连接池、数据库文件创建，以及软件目录 `db/` 路径生成。
 - `ProjectDataBase`：`.dlpro` 项目库读写。
-- `RecentProjectsDataBase`：最近项目 `history.db` 读写。
+- `RecentProjectsDataBase`：最近项目 `db/history.db` 读写。
+- `SettingsDataBase`：全局设置 `db/settings.db` 读写。
 - `SqlDef` 和 `ddl/`：sqlpp11 表定义与建表 SQL。
 
 结构：
@@ -140,6 +141,7 @@ src/database/
 │   │   ├── create_labels.sql
 │   │   ├── create_project.sql
 │   │   ├── create_recent_projects.sql
+│   │   ├── create_settings.sql
 │   │   ├── create_tag_classes.sql
 │   │   ├── create_tags.sql
 │   │   └── *Table.h

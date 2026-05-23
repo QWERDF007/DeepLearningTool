@@ -115,6 +115,8 @@ Item {
 }
 ```
 
+设置项持久化到软件目录下的 `db/settings.db`，表结构由 `src/database/include/database/ddl/create_settings.sql` 定义。
+
 ### ProjectSettings
 
 | 属性 | 类型 | 默认值 | 说明 |
@@ -182,6 +184,7 @@ public:
 
     sqlpp::sqlite3::connection_pool *connectionPool();
     static sqlpp::sqlite3::connection connect(const QString &path, const int flags);
+    static QString applicationDatabasePath(const QString &fileName);
 };
 ```
 
@@ -198,12 +201,28 @@ public:
 
 ### RecentProjectsDataBase
 
+保存最近项目列表，默认数据库位置为软件目录下的 `db/history.db`。
+
 ```cpp
 class RecentProjectsDataBase : public DataBase {
 public:
     bool addProject(const QString &path, QString &err_msg) const;
     bool removeProject(const QString &path, QString &err_msg) const;
     int getProjects(std::vector<QString> &paths, QString &err_msg) const;
+};
+```
+
+### SettingsDataBase
+
+保存全局设置，默认数据库位置为软件目录下的 `db/settings.db`。设置表使用 `group_name + setting_key` 唯一定位一项，值以文本和类型标记保存。
+
+```cpp
+class SettingsDataBase : public DataBase {
+public:
+    QVariant value(const QString &group, const QString &key,
+                   const QVariant &default_value, QString &err_msg) const;
+    bool setValue(const QString &group, const QString &key,
+                  const QVariant &value, QString &err_msg) const;
 };
 ```
 

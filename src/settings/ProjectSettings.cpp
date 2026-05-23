@@ -1,5 +1,9 @@
 #include "settings/ProjectSettings.h"
 
+#include "database/DataBase.h"
+
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 
 namespace dltool::settings {
@@ -44,36 +48,46 @@ void ProjectSettings::setAutoSaveEnabled(bool value)
     }
 }
 
-void ProjectSettings::load(QSettings *settings)
+void ProjectSettings::load(database::SettingsDataBase *database)
 {
-    if (!settings)
+    if (!database)
     {
         return;
     }
 
-    settings->beginGroup("Project");
+    const QString group = QStringLiteral("Project");
+    QString       err_msg;
 
-    setMaxRecentProjects(settings->value("maxRecentProjects", 10).toInt());
-    setAutoSaveInterval(settings->value("autoSaveInterval", 300).toInt());
-    setAutoSaveEnabled(settings->value("autoSaveEnabled", true).toBool());
+    setMaxRecentProjects(database->value(group, QStringLiteral("maxRecentProjects"), 10, err_msg).toInt());
+    setAutoSaveInterval(database->value(group, QStringLiteral("autoSaveInterval"), 300, err_msg).toInt());
+    setAutoSaveEnabled(database->value(group, QStringLiteral("autoSaveEnabled"), true, err_msg).toBool());
 
-    settings->endGroup();
+    if (!err_msg.isEmpty())
+    {
+        spdlog::warn("Load Project settings failed: {}", err_msg.toUtf8().constData());
+    }
 }
 
-void ProjectSettings::save(QSettings *settings)
+void ProjectSettings::save(database::SettingsDataBase *database)
 {
-    if (!settings)
+    if (!database)
     {
         return;
     }
 
-    settings->beginGroup("Project");
+    const QString group = QStringLiteral("Project");
 
-    settings->setValue("maxRecentProjects", max_recent_projects_);
-    settings->setValue("autoSaveInterval", auto_save_interval_);
-    settings->setValue("autoSaveEnabled", auto_save_enabled_);
+    auto save_value = [database, &group](const QString &key, const QVariant &value) {
+        QString err_msg;
+        if (!database->setValue(group, key, value, err_msg))
+        {
+            spdlog::error("Save Project setting {} failed: {}", key.toUtf8().constData(), err_msg.toUtf8().constData());
+        }
+    };
 
-    settings->endGroup();
+    save_value(QStringLiteral("maxRecentProjects"), max_recent_projects_);
+    save_value(QStringLiteral("autoSaveInterval"), auto_save_interval_);
+    save_value(QStringLiteral("autoSaveEnabled"), auto_save_enabled_);
 }
 
 void ProjectSettings::reset()

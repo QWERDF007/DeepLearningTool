@@ -3,9 +3,12 @@
 #include "settings/SettingsExport.h"
 
 #include <QObject>
-#include <QSettings>
 #include <QString>
 #include <QtQml>
+
+namespace dltool::database {
+class SettingsDataBase;
+}
 
 namespace dltool::settings {
 
@@ -138,16 +141,16 @@ public:
     void setLanguage(const QString &value);
 
     /**
-     * @brief 从 QSettings 加载设置
-     * @param settings QSettings 对象
+     * @brief 从数据库加载设置
+     * @param database 设置数据库
      */
-    void load(QSettings *settings);
+    void load(database::SettingsDataBase *database);
 
     /**
-     * @brief 保存设置到 QSettings
-     * @param settings QSettings 对象
+     * @brief 保存设置到数据库
+     * @param database 设置数据库
      */
-    void save(QSettings *settings);
+    void save(database::SettingsDataBase *database);
 
     /**
      * @brief 重置所有设置为默认值

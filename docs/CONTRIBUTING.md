@@ -103,7 +103,7 @@ tests/ui/
 - 架构：没有新增低层模块对高层模块的反向依赖。
 - CMake：新增库模块使用 `add_plugin_library()`，不需要 QML 时显式 `NO_QML_MODULE`。
 - Include：跨模块包含使用模块名前缀，不使用跨模块相对路径。
-- 数据库：DDL 和 sqlpp11 表定义放在 `src/database/include/database/ddl/`；UI/Project 不直接操作 SQLite 连接。
+- 数据库：DDL 和 sqlpp11 表定义放在 `src/database/include/database/ddl/`；UI/Project 不直接操作 SQLite 连接，设置等全局数据也通过 `dltool_database` 的访问类读写。
 - 数据模型：`QAbstractItemModel` role 名称已同步到文档或 QML 使用处。
 - QML：复杂业务逻辑不堆在 QML 中，通用控件放在 `src/ui/controls/`。
 - 资源：字体、图标和静态资源统一通过 `assets/assets.qrc`。

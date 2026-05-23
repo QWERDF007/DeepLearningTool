@@ -1,5 +1,9 @@
 #include "settings/UISettings.h"
 
+#include "database/DataBase.h"
+
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 
 namespace dltool::settings {
@@ -102,52 +106,63 @@ void UISettings::setLanguage(const QString &value)
     }
 }
 
-void UISettings::load(QSettings *settings)
+void UISettings::load(database::SettingsDataBase *database)
 {
-    if (!settings)
+    if (!database)
     {
         return;
     }
 
-    settings->beginGroup("UI");
+    const QString group = QStringLiteral("UI");
+    QString       err_msg;
 
     // DEPRECATED: imageCellScale 已迁移到 DataSettings，不再从 UI 组加载
-    // setImageCellScale(settings->value("imageCellScale", 1.0).toDouble());
-    // setImageCellScaleFrom(settings->value("imageCellScaleFrom", 0.5).toDouble());
-    // setImageCellScaleTo(settings->value("imageCellScaleTo", 4.0).toDouble());
-    // setImageCellScaleStepSize(settings->value("imageCellScaleStepSize", 0.25).toDouble());
+    // setImageCellScale(database->value(group, QStringLiteral("imageCellScale"), 1.0, err_msg).toDouble());
+    // setImageCellScaleFrom(database->value(group, QStringLiteral("imageCellScaleFrom"), 0.5, err_msg).toDouble());
+    // setImageCellScaleTo(database->value(group, QStringLiteral("imageCellScaleTo"), 4.0, err_msg).toDouble());
+    // setImageCellScaleStepSize(database->value(group, QStringLiteral("imageCellScaleStepSize"), 0.25,
+    // err_msg).toDouble());
 
-    setImageBrightness(settings->value("imageBrightness", 0.0).toDouble());
-    setImageContrast(settings->value("imageContrast", 0.0).toDouble());
+    setImageBrightness(database->value(group, QStringLiteral("imageBrightness"), 0.0, err_msg).toDouble());
+    setImageContrast(database->value(group, QStringLiteral("imageContrast"), 0.0, err_msg).toDouble());
 
-    setTheme(settings->value("theme", "dark").toString());
-    setLanguage(settings->value("language", "zh_CN").toString());
+    setTheme(database->value(group, QStringLiteral("theme"), QStringLiteral("dark"), err_msg).toString());
+    setLanguage(database->value(group, QStringLiteral("language"), QStringLiteral("zh_CN"), err_msg).toString());
 
-    settings->endGroup();
+    if (!err_msg.isEmpty())
+    {
+        spdlog::warn("Load UI settings failed: {}", err_msg.toUtf8().constData());
+    }
 }
 
-void UISettings::save(QSettings *settings)
+void UISettings::save(database::SettingsDataBase *database)
 {
-    if (!settings)
+    if (!database)
     {
         return;
     }
 
-    settings->beginGroup("UI");
+    const QString group = QStringLiteral("UI");
+
+    auto save_value = [database, &group](const QString &key, const QVariant &value) {
+        QString err_msg;
+        if (!database->setValue(group, key, value, err_msg))
+        {
+            spdlog::error("Save UI setting {} failed: {}", key.toUtf8().constData(), err_msg.toUtf8().constData());
+        }
+    };
 
     // DEPRECATED: imageCellScale 已迁移到 DataSettings，不再保存到 UI 组
-    // settings->setValue("imageCellScale", image_cell_scale_);
-    // settings->setValue("imageCellScaleFrom", image_cell_scale_from_);
-    // settings->setValue("imageCellScaleTo", image_cell_scale_to_);
-    // settings->setValue("imageCellScaleStepSize", image_cell_scale_step_size_);
+    // save_value(QStringLiteral("imageCellScale"), image_cell_scale_);
+    // save_value(QStringLiteral("imageCellScaleFrom"), image_cell_scale_from_);
+    // save_value(QStringLiteral("imageCellScaleTo"), image_cell_scale_to_);
+    // save_value(QStringLiteral("imageCellScaleStepSize"), image_cell_scale_step_size_);
 
-    settings->setValue("imageBrightness", image_brightness_);
-    settings->setValue("imageContrast", image_contrast_);
+    save_value(QStringLiteral("imageBrightness"), image_brightness_);
+    save_value(QStringLiteral("imageContrast"), image_contrast_);
 
-    settings->setValue("theme", theme_);
-    settings->setValue("language", language_);
-
-    settings->endGroup();
+    save_value(QStringLiteral("theme"), theme_);
+    save_value(QStringLiteral("language"), language_);
 }
 
 void UISettings::reset()

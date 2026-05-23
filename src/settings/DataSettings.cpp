@@ -1,5 +1,9 @@
 #include "settings/DataSettings.h"
 
+#include "database/DataBase.h"
+
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 
 namespace dltool::settings {
@@ -155,58 +159,70 @@ void DataSettings::setLabelThumbnailBorderPadding(double value)
     }
 }
 
-void DataSettings::load(QSettings *settings)
+void DataSettings::load(database::SettingsDataBase *database)
 {
-    if (!settings)
+    if (!database)
     {
         return;
     }
 
-    settings->beginGroup("Data");
+    const QString group = QStringLiteral("Data");
+    QString       err_msg;
 
-    setThumbnailMargin(settings->value("thumbnailMargin", 10).toInt());
-    setThumbnailCacheSize(settings->value("thumbnailCacheSize", 100).toInt());
-    setImageLoadThreads(settings->value("imageLoadThreads", 4).toInt());
-    setLabelBorderWidth(settings->value("labelBorderWidth", 2).toInt());
-    setLabelFillOpacity(settings->value("labelFillOpacity", 30).toInt());
+    setThumbnailMargin(database->value(group, QStringLiteral("thumbnailMargin"), 10, err_msg).toInt());
+    setThumbnailCacheSize(database->value(group, QStringLiteral("thumbnailCacheSize"), 100, err_msg).toInt());
+    setImageLoadThreads(database->value(group, QStringLiteral("imageLoadThreads"), 4, err_msg).toInt());
+    setLabelBorderWidth(database->value(group, QStringLiteral("labelBorderWidth"), 2, err_msg).toInt());
+    setLabelFillOpacity(database->value(group, QStringLiteral("labelFillOpacity"), 30, err_msg).toInt());
 
-    setImageCellScale(settings->value("imageCellScale", 1.0).toDouble());
-    setImageCellScaleFrom(settings->value("imageCellScaleFrom", 0.5).toDouble());
-    setImageCellScaleTo(settings->value("imageCellScaleTo", 4.0).toDouble());
-    setImageCellScaleStepSize(settings->value("imageCellScaleStepSize", 0.25).toDouble());
+    setImageCellScale(database->value(group, QStringLiteral("imageCellScale"), 1.0, err_msg).toDouble());
+    setImageCellScaleFrom(database->value(group, QStringLiteral("imageCellScaleFrom"), 0.5, err_msg).toDouble());
+    setImageCellScaleTo(database->value(group, QStringLiteral("imageCellScaleTo"), 4.0, err_msg).toDouble());
+    setImageCellScaleStepSize(database->value(group, QStringLiteral("imageCellScaleStepSize"), 0.25, err_msg).toDouble());
 
-    setLabelThumbnailScale(settings->value("labelThumbnailScale", 1.0).toDouble());
-    setLabelThumbnailAspectRatio(settings->value("labelThumbnailAspectRatio", 1.0).toDouble());
-    setLabelThumbnailBorderPadding(settings->value("labelThumbnailBorderPadding", 0.1).toDouble());
+    setLabelThumbnailScale(database->value(group, QStringLiteral("labelThumbnailScale"), 1.0, err_msg).toDouble());
+    setLabelThumbnailAspectRatio(
+        database->value(group, QStringLiteral("labelThumbnailAspectRatio"), 1.0, err_msg).toDouble());
+    setLabelThumbnailBorderPadding(
+        database->value(group, QStringLiteral("labelThumbnailBorderPadding"), 0.1, err_msg).toDouble());
 
-    settings->endGroup();
+    if (!err_msg.isEmpty())
+    {
+        spdlog::warn("Load Data settings failed: {}", err_msg.toUtf8().constData());
+    }
 }
 
-void DataSettings::save(QSettings *settings)
+void DataSettings::save(database::SettingsDataBase *database)
 {
-    if (!settings)
+    if (!database)
     {
         return;
     }
 
-    settings->beginGroup("Data");
+    const QString group = QStringLiteral("Data");
 
-    settings->setValue("thumbnailMargin", thumbnail_margin_);
-    settings->setValue("thumbnailCacheSize", thumbnail_cache_size_);
-    settings->setValue("imageLoadThreads", image_load_threads_);
-    settings->setValue("labelBorderWidth", label_border_width_);
-    settings->setValue("labelFillOpacity", label_fill_opacity_);
+    auto save_value = [database, &group](const QString &key, const QVariant &value) {
+        QString err_msg;
+        if (!database->setValue(group, key, value, err_msg))
+        {
+            spdlog::error("Save Data setting {} failed: {}", key.toUtf8().constData(), err_msg.toUtf8().constData());
+        }
+    };
 
-    settings->setValue("imageCellScale", image_cell_scale_);
-    settings->setValue("imageCellScaleFrom", image_cell_scale_from_);
-    settings->setValue("imageCellScaleTo", image_cell_scale_to_);
-    settings->setValue("imageCellScaleStepSize", image_cell_scale_step_size_);
+    save_value(QStringLiteral("thumbnailMargin"), thumbnail_margin_);
+    save_value(QStringLiteral("thumbnailCacheSize"), thumbnail_cache_size_);
+    save_value(QStringLiteral("imageLoadThreads"), image_load_threads_);
+    save_value(QStringLiteral("labelBorderWidth"), label_border_width_);
+    save_value(QStringLiteral("labelFillOpacity"), label_fill_opacity_);
 
-    settings->setValue("labelThumbnailScale", label_thumbnail_scale_);
-    settings->setValue("labelThumbnailAspectRatio", label_thumbnail_aspect_ratio_);
-    settings->setValue("labelThumbnailBorderPadding", label_thumbnail_border_padding_);
+    save_value(QStringLiteral("imageCellScale"), image_cell_scale_);
+    save_value(QStringLiteral("imageCellScaleFrom"), image_cell_scale_from_);
+    save_value(QStringLiteral("imageCellScaleTo"), image_cell_scale_to_);
+    save_value(QStringLiteral("imageCellScaleStepSize"), image_cell_scale_step_size_);
 
-    settings->endGroup();
+    save_value(QStringLiteral("labelThumbnailScale"), label_thumbnail_scale_);
+    save_value(QStringLiteral("labelThumbnailAspectRatio"), label_thumbnail_aspect_ratio_);
+    save_value(QStringLiteral("labelThumbnailBorderPadding"), label_thumbnail_border_padding_);
 }
 
 void DataSettings::reset()

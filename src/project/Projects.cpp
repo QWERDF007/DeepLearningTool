@@ -386,7 +386,8 @@ void RectentProjects::onCurrentChanged(const QModelIndex &current, const QModelI
 
 ProjectManager::ProjectManager(QObject *parent)
     : QObject(parent)
-    , recent_projects_(new RectentProjects("./history.db", this))
+    , recent_projects_(new RectentProjects(
+          dltool::database::DataBase::applicationDatabasePath(QStringLiteral("history.db")), this))
 {
     // 尝试从 QML 上下文获取引擎
     QQmlEngine *qmlEngine = QQmlEngine::contextForObject(this) ? QQmlEngine::contextForObject(this)->engine() : nullptr;

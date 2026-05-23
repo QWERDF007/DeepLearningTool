@@ -7,8 +7,8 @@ DeepLearningTool 采用“基础设施 + 配置 + 数据库 + 数据模型 + UI 
 | 层级 | 目标 | 位置 | 边界 |
 |------|------|------|------|
 | 基础设施 | `dltool_common` | `src/common/` | 日志、崩溃处理、通用文件工具、单例模板；不依赖业务模块 |
-| 配置 | `dltool_settings` | `src/settings/` | `GlobalSettings` 聚合项目/数据/UI 设置，通过 `QSettings` 持久化 |
-| 数据库 | `dltool_database` | `src/database/` | SQLite 连接池、项目数据库、最近项目数据库、DDL 和 sqlpp11 表定义 |
+| 配置 | `dltool_settings` | `src/settings/` | `GlobalSettings` 聚合项目/数据/UI 设置，通过 `SettingsDataBase` 持久化到 `db/settings.db` |
+| 数据库 | `dltool_database` | `src/database/` | SQLite 连接池、项目数据库、最近项目数据库、设置数据库、DDL 和 sqlpp11 表定义 |
 | 数据模型 | `dltool_data` | `src/data/` | Qt 模型、数据导入、标注数据结构、图像标签、过滤与统计；通过 `dltool_database` 访问数据库 |
 | UI 组件 | `dltool_ui` | `src/ui/` | 主题、字体、图标、日志/进度单例和通用 QML 控件 |
 | 项目业务 | `dltool_project` | `src/project/` | 项目创建/打开/关闭、最近项目、业务对象聚合 |
@@ -45,6 +45,7 @@ flowchart TB
 
   common --> settings
   qt --> settings
+  database --> settings
 
   qt --> database
   sqlpp --> database
@@ -103,9 +104,10 @@ sequenceDiagram
 ## 数据与持久化
 
 - 项目文件后缀为 `.dlpro`，本质是 SQLite 数据库。
-- 表结构定义在 `src/database/include/database/ddl/`，包括 project、recent_projects、datasets、images、label_classes、labels、tag_classes、tags。
+- 表结构定义在 `src/database/include/database/ddl/`，包括 project、recent_projects、settings、datasets、images、label_classes、labels、tag_classes、tags。
 - `ProjectDataBase` 提供项目元数据、数据集、图像、标签类别、图像标签和标注实例的读写。
-- `RecentProjectsDataBase` 使用 `history.db` 保存最近项目列表。
+- `SettingsDataBase` 使用软件目录下的 `db/settings.db` 保存全局设置。
+- `RecentProjectsDataBase` 使用软件目录下的 `db/history.db` 保存最近项目列表。
 - `DataManager` 聚合所有数据模型，并向 QML 暴露统一入口。
 
 ## QML 模块

@@ -5,6 +5,9 @@
 #include <sqlpp11/sqlite3/connection_pool.h>
 
 #include <QObject>
+#include <QString>
+#include <QVariant>
+#include <QVariantMap>
 #include <utility>
 #include <vector>
 
@@ -35,6 +38,14 @@ public:
      * @return sqlpp::sqlite3::connection 数据库连接对象
      */
     static sqlpp::sqlite3::connection connect(const QString &path, const int flags);
+
+    /**
+     * @brief 获取应用程序目录下 db 子目录中的数据库文件路径
+     *
+     * @param fileName 数据库文件名，例如 settings.db 或 history.db
+     * @return QString 数据库完整路径
+     */
+    static QString applicationDatabasePath(const QString &fileName);
 
 protected:
     QString path_;
@@ -171,6 +182,36 @@ public:
     bool addProject(const QString &path, QString &err_msg) const;
     bool removeProject(const QString &path, QString &err_msg) const;
     int  getProjects(std::vector<QString> &paths, QString &err_msg) const;
+};
+
+class DATABASE_API SettingsDataBase : public DataBase
+{
+public:
+    SettingsDataBase(const QString &path, QObject *parent = nullptr);
+    ~SettingsDataBase();
+
+    /**
+     * @brief 读取设置项
+     *
+     * @param group 设置分组
+     * @param key 设置键
+     * @param default_value 设置不存在或读取失败时返回的默认值
+     * @param err_msg 错误信息
+     * @return QVariant 设置值
+     */
+    QVariant value(const QString &group, const QString &key, const QVariant &default_value, QString &err_msg) const;
+
+    /**
+     * @brief 写入设置项
+     *
+     * @param group 设置分组
+     * @param key 设置键
+     * @param value 设置值
+     * @param err_msg 错误信息
+     * @return true 写入成功
+     * @return false 写入失败
+     */
+    bool setValue(const QString &group, const QString &key, const QVariant &value, QString &err_msg) const;
 };
 
 } // namespace dltool::database

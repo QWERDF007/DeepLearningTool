@@ -47,7 +47,7 @@
 
 - 数据库模块在 `src/database/`，命名空间为 `dltool::database`。
 - DDL 和 sqlpp11 表定义放在 `src/database/include/database/ddl/`。
-- `ProjectDataBase` 和 `RecentProjectsDataBase` 是数据库访问边界。
+- `ProjectDataBase`、`RecentProjectsDataBase` 和 `SettingsDataBase` 是数据库访问边界。
 - `src/data/` 负责 Qt 模型、导入、过滤、统计和标注数据结构，不直接定义 DDL。
 - QML 和 UI 层通过 `DataManager` 暴露的模型和 invokable 方法修改数据。
 - 批量变更模型时使用 `beginInsertRows`/`endInsertRows`、`beginRemoveRows`/`endRemoveRows` 或 `beginResetModel`/`endResetModel`，并准确发送 `dataChanged`。

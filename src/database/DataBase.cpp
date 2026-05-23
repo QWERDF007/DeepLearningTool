@@ -7,25 +7,93 @@
 #include "database/ddl/LabelsTable.h"
 #include "database/ddl/ProjectTable.h"
 #include "database/ddl/RecentProjectsTable.h"
+#include "database/ddl/SettingsTable.h"
 #include "database/ddl/TagClassesTable.h"
 #include "database/ddl/TagsTable.h"
 
 #include <sqlpp11/sqlpp11.h>
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QMetaType>
 
 namespace dltool::database {
 
 const auto ProjectTable         = Project{};
 const auto RectentProjectsTable = RecentProjects{};
+const auto SettingsTable        = Settings{};
 const auto ImagesTable          = Images{};
 const auto DatasetsTable        = Datasets{};
 const auto LabelClassesTable    = LabelClasses{};
 const auto LabelsTable          = Labels{};
 const auto TagClassesTable      = TagClasses{};
 const auto TagsTable            = Tags{};
+
+namespace {
+
+QString settingValueType(const QVariant &value)
+{
+    switch (value.userType())
+    {
+    case QMetaType::Bool:
+        return QStringLiteral("bool");
+    case QMetaType::Int:
+    case QMetaType::UInt:
+    case QMetaType::LongLong:
+    case QMetaType::ULongLong:
+        return QStringLiteral("integer");
+    case QMetaType::Float:
+    case QMetaType::Double:
+        return QStringLiteral("double");
+    default:
+        return QStringLiteral("string");
+    }
+}
+
+QString settingValueToText(const QVariant &value)
+{
+    switch (value.userType())
+    {
+    case QMetaType::Bool:
+        return value.toBool() ? QStringLiteral("1") : QStringLiteral("0");
+    case QMetaType::Float:
+    case QMetaType::Double:
+        return QString::number(value.toDouble(), 'g', 17);
+    default:
+        return value.toString();
+    }
+}
+
+QVariant settingValueFromText(const QString &text, const QString &type, const QVariant &default_value)
+{
+    bool ok = false;
+    if (type == QStringLiteral("bool"))
+    {
+        return text == QStringLiteral("1") || text.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0;
+    }
+    if (type == QStringLiteral("integer"))
+    {
+        if (default_value.userType() == QMetaType::Int)
+        {
+            const int value = text.toInt(&ok);
+            return ok ? QVariant(value) : default_value;
+        }
+
+        const qlonglong value = text.toLongLong(&ok);
+        return ok ? QVariant(value) : default_value;
+    }
+    if (type == QStringLiteral("double"))
+    {
+        const double value = text.toDouble(&ok);
+        return ok ? QVariant(value) : default_value;
+    }
+    return text;
+}
+
+} // namespace
 
 DataBase::DataBase(const QString &path, QObject *parent)
     : QObject(parent)
@@ -46,6 +114,12 @@ sqlpp::sqlite3::connection DataBase::connect(const QString &path, const int flag
     config->path_to_database = path.toUtf8().constData();
     config->flags            = flags;
     return sqlpp::sqlite3::connection(config);
+}
+
+QString DataBase::applicationDatabasePath(const QString &fileName)
+{
+    const QDir app_dir(QCoreApplication::applicationDirPath());
+    return app_dir.filePath(QStringLiteral("db/%1").arg(fileName));
 }
 
 void DataBase::createDataBase()
@@ -1090,7 +1164,7 @@ bool ProjectDataBase::deleteLabels(const std::vector<int64_t> &label_ids, QStrin
 RecentProjectsDataBase::RecentProjectsDataBase(const QString &path, QObject *parent)
     : DataBase(path, parent)
 {
-    if (pool_ != nullptr && !QFile::exists(path))
+    if (pool_ != nullptr)
     {
         auto db = pool_->get();
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateRecentProjects));
@@ -1156,6 +1230,96 @@ int RecentProjectsDataBase::getProjects(std::vector<QString> &paths, QString &er
             paths.emplace_back(path);
         }
         return static_cast<int>(paths.size());
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+SettingsDataBase::SettingsDataBase(const QString &path, QObject *parent)
+    : DataBase(path, parent)
+{
+    if (pool_ != nullptr)
+    {
+        auto db = pool_->get();
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateSettings));
+    }
+}
+
+SettingsDataBase::~SettingsDataBase() {}
+
+QVariant SettingsDataBase::value(const QString &group, const QString &key, const QVariant &default_value,
+                                 QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败: %1").arg(path_);
+            return default_value;
+        }
+
+        const std::string group_name  = group.toUtf8().toStdString();
+        const std::string setting_key = key.toUtf8().toStdString();
+
+        auto db   = pool_->get();
+        auto data = db(sqlpp::select(SettingsTable.settingValue, SettingsTable.valueType)
+                           .from(SettingsTable)
+                           .where(SettingsTable.groupName == group_name && SettingsTable.settingKey == setting_key));
+        if (data.empty())
+        {
+            return default_value;
+        }
+
+        const auto &row = data.front();
+        return settingValueFromText(QString::fromStdString(row.settingValue), QString::fromStdString(row.valueType),
+                                    default_value);
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return default_value;
+    }
+}
+
+bool SettingsDataBase::setValue(const QString &group, const QString &key, const QVariant &value, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败: %1").arg(path_);
+            return false;
+        }
+
+        const std::string group_name    = group.toUtf8().toStdString();
+        const std::string setting_key   = key.toUtf8().toStdString();
+        const std::string setting_value = settingValueToText(value).toUtf8().toStdString();
+        const std::string value_type    = settingValueType(value).toUtf8().toStdString();
+        const qint64      mtime         = QDateTime::currentSecsSinceEpoch();
+
+        auto db   = pool_->get();
+        auto data = db(sqlpp::select(SettingsTable.id)
+                           .from(SettingsTable)
+                           .where(SettingsTable.groupName == group_name && SettingsTable.settingKey == setting_key));
+        if (data.empty())
+        {
+            db(sqlpp::insert_into(SettingsTable)
+                   .set(SettingsTable.groupName = group_name, SettingsTable.settingKey = setting_key,
+                        SettingsTable.settingValue = setting_value, SettingsTable.valueType = value_type,
+                        SettingsTable.mtime = mtime));
+        }
+        else
+        {
+            const auto id = data.front().id;
+            db(sqlpp::update(SettingsTable)
+                   .set(SettingsTable.settingValue = setting_value, SettingsTable.valueType = value_type,
+                        SettingsTable.mtime = mtime)
+                   .where(SettingsTable.id == id));
+        }
+        return true;
     }
     catch (const std::exception &e)
     {

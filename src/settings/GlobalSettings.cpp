@@ -1,25 +1,31 @@
 #include "settings/GlobalSettings.h"
 
+#include "database/DataBase.h"
+
 #include <spdlog/spdlog.h>
 
-#include <QCoreApplication>
 #include <QTimer>
 
 namespace dltool::settings {
+
+namespace {
+
+QString settingsDatabasePath()
+{
+    return dltool::database::DataBase::applicationDatabasePath(QStringLiteral("settings.db"));
+}
+
+} // namespace
 
 GlobalSettings::GlobalSettings(QObject *parent)
     : QObject(parent)
     , project_settings_(new ProjectSettings(this))
     , data_settings_(new DataSettings(this))
     , ui_settings_(new UISettings(this))
-    , qsettings_(nullptr)
+    , settings_database_(new dltool::database::SettingsDataBase(settingsDatabasePath(), this))
     , save_timer_(new QTimer(this))
     , auto_save_enabled_(true)
 {
-    // 初始化 QSettings 对象
-    // 使用应用程序的组织名称和应用程序名称
-    qsettings_ = new QSettings(QCoreApplication::organizationName(), QCoreApplication::applicationName(), this);
-
     // 配置延迟保存定时器
     save_timer_->setSingleShot(true);
     save_timer_->setInterval(1000); // 1秒延迟
@@ -29,7 +35,7 @@ GlobalSettings::GlobalSettings(QObject *parent)
     try
     {
         load();
-        spdlog::info("Settings loaded successfully from: {}", qsettings_->fileName().toStdString());
+        spdlog::info("Settings loaded successfully from: {}", settingsDatabasePath().toUtf8().constData());
     }
     catch (const std::exception &e)
     {
@@ -68,42 +74,23 @@ GlobalSettings::~GlobalSettings()
         }
     }
 
-    // QSettings 会被 Qt 的父子关系自动删除
-    // 子设置对象也会被自动删除
+    // 设置数据库和子设置对象会被 Qt 的父子关系自动删除
 }
 
 void GlobalSettings::load()
 {
-    if (!qsettings_)
+    if (!settings_database_)
     {
-        spdlog::error("Cannot load settings: QSettings object is null");
+        spdlog::error("Cannot load settings: database object is null");
         return;
-    }
-
-    // 检查配置文件状态
-    QSettings::Status status = qsettings_->status();
-    if (status != QSettings::NoError)
-    {
-        if (status == QSettings::AccessError)
-        {
-            spdlog::warn(
-                "Settings file access error. File may not exist yet or is not accessible. Using default values.");
-        }
-        else if (status == QSettings::FormatError)
-        {
-            spdlog::error("Settings file format error. File may be corrupted. Using default values.");
-            // 重置为默认值
-            reset();
-            return;
-        }
     }
 
     try
     {
         // 调用所有子设置的 load 方法
-        project_settings_->load(qsettings_);
-        data_settings_->load(qsettings_);
-        ui_settings_->load(qsettings_);
+        project_settings_->load(settings_database_);
+        data_settings_->load(settings_database_);
+        ui_settings_->load(settings_database_);
 
         spdlog::info("All settings loaded successfully");
     }
@@ -121,39 +108,20 @@ void GlobalSettings::load()
 
 void GlobalSettings::save()
 {
-    if (!qsettings_)
+    if (!settings_database_)
     {
-        spdlog::error("Cannot save settings: QSettings object is null");
+        spdlog::error("Cannot save settings: database object is null");
         return;
     }
 
     try
     {
         // 调用所有子设置的 save 方法
-        project_settings_->save(qsettings_);
-        data_settings_->save(qsettings_);
-        ui_settings_->save(qsettings_);
+        project_settings_->save(settings_database_);
+        data_settings_->save(settings_database_);
+        ui_settings_->save(settings_database_);
 
-        // 确保立即写入磁盘
-        qsettings_->sync();
-
-        // 检查写入状态
-        QSettings::Status status = qsettings_->status();
-        if (status != QSettings::NoError)
-        {
-            if (status == QSettings::AccessError)
-            {
-                spdlog::error("Failed to save settings: Access error. Check file permissions.");
-            }
-            else if (status == QSettings::FormatError)
-            {
-                spdlog::error("Failed to save settings: Format error.");
-            }
-        }
-        else
-        {
-            spdlog::info("Settings saved successfully to: {}", qsettings_->fileName().toStdString());
-        }
+        spdlog::info("Settings saved successfully to: {}", settingsDatabasePath().toUtf8().constData());
     }
     catch (const std::exception &e)
     {

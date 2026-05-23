@@ -7,9 +7,12 @@
 #include "settings/UISettings.h"
 
 #include <QObject>
-#include <QSettings>
 #include <QTimer>
 #include <QtQml>
+
+namespace dltool::database {
+class SettingsDataBase;
+}
 
 namespace dltool::settings {
 
@@ -88,7 +91,7 @@ private:
     DataSettings    *data_settings_;
     UISettings      *ui_settings_;
 
-    QSettings *qsettings_; // Qt 的持久化设置
+    database::SettingsDataBase *settings_database_; // 设置数据库
 
     QTimer *save_timer_;        // 延迟保存定时器
     bool    auto_save_enabled_; // 是否启用自动保存
