@@ -15,14 +15,16 @@ void DatasetFilterModule::setCriteria(const std::vector<int64_t> &dataset_ids)
 {
     selected_dataset_ids_.clear();
     selected_dataset_ids_.insert(dataset_ids.begin(), dataset_ids.end());
+    inverted_ = false;
     emit criteriaChanged();
 }
 
 void DatasetFilterModule::clear()
 {
-    if (!selected_dataset_ids_.empty())
+    if (!selected_dataset_ids_.empty() || inverted_)
     {
         selected_dataset_ids_.clear();
+        inverted_ = false;
         emit criteriaChanged();
     }
 }
@@ -55,6 +57,11 @@ std::unordered_set<int64_t> DatasetFilterModule::getActiveCriteria() const
     return std::unordered_set<int64_t>();
 }
 
+bool DatasetFilterModule::isInverted() const
+{
+    return inverted_;
+}
+
 bool DatasetFilterModule::passes(int64_t image_id) const
 {
     // 如果过滤器禁用，所有图像都通过
@@ -63,10 +70,10 @@ bool DatasetFilterModule::passes(int64_t image_id) const
         return true;
     }
 
-    // 如果没有选中任何数据集，没有图像通过
+    // 如果没有选中任何数据集，正向过滤不通过；反向过滤表示“不在空条件内”，全部通过。
     if (selected_dataset_ids_.empty())
     {
-        return false;
+        return inverted_;
     }
 
     DataManager *dm = dataManager();
@@ -88,12 +95,14 @@ bool DatasetFilterModule::passes(int64_t image_id) const
     }
 
     const int64_t dataset_id = image->datasetId();
-    return selected_dataset_ids_.find(dataset_id) != selected_dataset_ids_.end();
+    const bool    matches    = selected_dataset_ids_.find(dataset_id) != selected_dataset_ids_.end();
+    return inverted_ ? !matches : matches;
 }
 
 void DatasetFilterModule::selectAll()
 {
     selected_dataset_ids_.clear();
+    inverted_ = false;
 
     DataManager *dm = dataManager();
     if (dm)
@@ -116,11 +125,26 @@ void DatasetFilterModule::selectAll()
 
 void DatasetFilterModule::deselectAll()
 {
-    if (!selected_dataset_ids_.empty())
+    selected_dataset_ids_.clear();
+    inverted_ = true;
+
+    DataManager *dm = dataManager();
+    if (dm)
     {
-        selected_dataset_ids_.clear();
-        emit criteriaChanged();
+        DatasetsListModel *datasets_model = dm->datasets();
+        if (datasets_model)
+        {
+            const int row_count = datasets_model->rowCount();
+            for (int i = 0; i < row_count; ++i)
+            {
+                const QModelIndex index  = datasets_model->index(i, 0);
+                const int64_t dataset_id = datasets_model->data(index, DatasetsListModel::DatasetIdRole).toLongLong();
+                selected_dataset_ids_.insert(dataset_id);
+            }
+        }
     }
+
+    emit criteriaChanged();
 }
 
 } // namespace dltool::data

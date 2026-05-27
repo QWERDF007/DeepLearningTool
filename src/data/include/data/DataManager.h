@@ -7,6 +7,7 @@
 #include "Datasets.h"
 #include "FilterItemsModel.h"
 #include "GlobalFilter.h"
+#include "ImageSearchController.h"
 #include "ImageTags.h"
 #include "Images.h"
 #include "Labels.h"
@@ -40,6 +41,7 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(ImageLabelsTableModel *imageLabelsTable READ imageLabelsTable CONSTANT FINAL)
     Q_PROPERTY(ImageInfoListModel *imageInfo READ imageInfo CONSTANT FINAL)
     Q_PROPERTY(GlobalFilter *globalFilter READ globalFilter CONSTANT FINAL)
+    Q_PROPERTY(ImageSearchController *imageSearch READ imageSearch CONSTANT FINAL)
     Q_PROPERTY(DatasetFilterItemsModel *datasetFilterItems READ datasetFilterItems CONSTANT FINAL)
     Q_PROPERTY(TagFilterItemsModel *tagFilterItems READ tagFilterItems CONSTANT FINAL)
     Q_PROPERTY(LabelClassFilterItemsModel *labelClassFilterItems READ labelClassFilterItems CONSTANT FINAL)
@@ -95,6 +97,11 @@ public:
         return global_filter_;
     }
 
+    ImageSearchController *imageSearch() const
+    {
+        return image_search_;
+    }
+
     DatasetFilterItemsModel *datasetFilterItems() const
     {
         return dataset_filter_items_;
@@ -119,6 +126,8 @@ public:
     {
         return method_;
     }
+
+    QString databasePath() const;
 
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
 
@@ -210,6 +219,7 @@ private:
     ImageInfoListModel *image_info_{nullptr};
 
     GlobalFilter *global_filter_{nullptr};
+    ImageSearchController *image_search_{nullptr};
 
     DatasetFilterItemsModel    *dataset_filter_items_{nullptr};
     TagFilterItemsModel        *tag_filter_items_{nullptr};

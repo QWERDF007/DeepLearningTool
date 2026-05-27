@@ -15,20 +15,17 @@ ImageLabelClassFilterModule::ImageLabelClassFilterModule(DataManager *data_manag
 void ImageLabelClassFilterModule::setCriteria(const std::vector<int64_t> &label_class_ids)
 {
     selected_label_class_ids_.clear();
-
-    if (!label_class_ids.empty())
-    {
-        selected_label_class_ids_.insert(label_class_ids.begin(), label_class_ids.end());
-    }
-
+    selected_label_class_ids_.insert(label_class_ids.begin(), label_class_ids.end());
+    inverted_ = false;
     emit criteriaChanged();
 }
 
 void ImageLabelClassFilterModule::clear()
 {
-    if (!selected_label_class_ids_.empty())
+    if (!selected_label_class_ids_.empty() || inverted_)
     {
         selected_label_class_ids_.clear();
+        inverted_ = false;
         emit criteriaChanged();
     }
 }
@@ -58,7 +55,12 @@ std::unordered_set<int64_t> ImageLabelClassFilterModule::getActiveCriteria() con
     {
         return selected_label_class_ids_;
     }
-    return std::unordered_set<int64_t>();
+    return {};
+}
+
+bool ImageLabelClassFilterModule::isInverted() const
+{
+    return inverted_;
 }
 
 bool ImageLabelClassFilterModule::passes(int64_t image_id) const
@@ -70,7 +72,7 @@ bool ImageLabelClassFilterModule::passes(int64_t image_id) const
 
     if (selected_label_class_ids_.empty())
     {
-        return false;
+        return inverted_;
     }
 
     DataManager *dm = dataManager();
@@ -92,22 +94,24 @@ bool ImageLabelClassFilterModule::passes(int64_t image_id) const
         return false;
     }
 
-    const std::set<int64_t> &label_ids = image->labelIds();
-    for (const auto &label_id : label_ids)
+    bool matches = false;
+    for (const auto &label_id : image->labelIds())
     {
         const int64_t label_class_id = label_model->getLabelClassId(label_id);
         if (selected_label_class_ids_.find(label_class_id) != selected_label_class_ids_.end())
         {
-            return true;
+            matches = true;
+            break;
         }
     }
 
-    return false;
+    return inverted_ ? !matches : matches;
 }
 
 void ImageLabelClassFilterModule::selectAll()
 {
     selected_label_class_ids_.clear();
+    inverted_ = false;
 
     DataManager *dm = dataManager();
     if (dm)
@@ -131,7 +135,27 @@ void ImageLabelClassFilterModule::selectAll()
 
 void ImageLabelClassFilterModule::deselectAll()
 {
-    clear();
+    selected_label_class_ids_.clear();
+    inverted_ = true;
+
+    DataManager *dm = dataManager();
+    if (dm)
+    {
+        LabelClassesListModel *label_classes_model = dm->labelClasses();
+        if (label_classes_model)
+        {
+            const int row_count = label_classes_model->rowCount();
+            for (int i = 0; i < row_count; ++i)
+            {
+                const QModelIndex index = label_classes_model->index(i, 0);
+                const int64_t     id
+                    = label_classes_model->data(index, LabelClassesListModel::LabelClassIdRole).toLongLong();
+                selected_label_class_ids_.insert(id);
+            }
+        }
+    }
+
+    emit criteriaChanged();
 }
 
 } // namespace dltool::data

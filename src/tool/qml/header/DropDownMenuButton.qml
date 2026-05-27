@@ -1,11 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
-import QtQuick.Templates as T
 
 import dltool.ui
 import dltool.data
-
 
 DltButton {
     id: control
@@ -13,46 +11,70 @@ DltButton {
 
     opacity: enabled ? 1.0 : 0.3
 
-    property alias model : popupModel.model
+    property alias model: popupModel.model
     property string displayText: ""
-    
-    // Filter-related properties
-    property int filterType: GlobalFilter.FilterType.Dataset  // Use FilterType enum
-    property var globalFilter: null  // GlobalFilter instance
-    
-    // Initialize checkedIds when model changes
+    property int filterType: GlobalFilter.FilterType.Dataset
+    property var globalFilter: null
+    property bool showItemList: true
+    property int resultCount: -1
+
+    property bool initialized: false
+    property bool bulkUpdating: false
+    property bool syncingBulkControls: false
+    property bool suppressCheckedHandler: false
+    property bool allDeselected: false
+
+    onTextChanged: refreshDisplayText()
+    onResultCountChanged: refreshDisplayText()
+
     onModelChanged: {
+        if (!showItemList) {
+            refreshDisplayText()
+            return
+        }
+
         if (model) {
             Qt.callLater(function() {
-                // If nothing is checked on first load, default to "select all"
-                if (!control.hasAnyChecked()) {
-                    control.selectAll()
-                } else {
-                    control.updateCheckedIds()
+                if (!control.initialized && !control.hasAnyChecked()) {
+                    control.setAllModelChecked(true)
+                    control.allDeselected = false
                 }
-                control.refreshDisplayText()
+                control.initialized = true
+                control.updateCheckedIds()
             })
         } else {
+            control.initialized = false
             control.refreshDisplayText()
         }
     }
 
     Connections {
-        target: control.model
+        target: control.showItemList ? control.model : null
+        ignoreUnknownSignals: true
         function onDataChanged(topLeft, bottomRight, roles) {
-            control.updateCheckedIds()
+            if (!control.bulkUpdating) {
+                control.updateCheckedIds()
+            }
         }
         function onModelReset() {
-            control.updateCheckedIds()
+            if (!control.bulkUpdating) {
+                control.updateCheckedIds()
+            }
         }
         function onRowsInserted(parent, first, last) {
-            control.updateCheckedIds()
+            if (!control.bulkUpdating) {
+                control.updateCheckedIds()
+            }
         }
         function onRowsRemoved(parent, first, last) {
-            control.updateCheckedIds()
+            if (!control.bulkUpdating) {
+                control.updateCheckedIds()
+            }
         }
         function onLayoutChanged(parents, hint) {
-            control.updateCheckedIds()
+            if (!control.bulkUpdating) {
+                control.updateCheckedIds()
+            }
         }
     }
 
@@ -62,20 +84,22 @@ DltButton {
     bottomPadding: 0
 
     spacing: 6
-
     checkable: true
-    checked: false  // Default unchecked (filter disabled)
+    checked: false
 
     onCheckedChanged: {
-        // When enabling, push criteria first so default "select all" won't be treated as empty criteria.
+        if (suppressCheckedHandler) {
+            refreshDisplayText()
+            return
+        }
+
         if (!globalFilter) {
             console.warn("DropDownMenuButton: globalFilter is null")
             return
         }
 
         if (checked) {
-            let ids = control.getCheckedIds()
-            globalFilter.setFilter(filterType, ids)
+            control.applyCurrentSelection()
             globalFilter.setFilterEnabled(filterType, true)
         } else {
             globalFilter.setFilterEnabled(filterType, false)
@@ -87,6 +111,7 @@ DltButton {
     contentItem: RowLayout {
         id: container
         anchors.centerIn: parent
+
         DltTextIconButton {
             id: dropDownBtn
             iconSource: DltFontIcon.ChevronDown
@@ -94,21 +119,20 @@ DltButton {
             Layout.alignment: Qt.AlignLeft
             normalColor: Qt.lighter(control.normalColor, 1.2)
             pressedColor: Qt.lighter(control.pressedColor, 1.2)
-            hoverColor:  Qt.lighter(control.hoverColor, 1.2)
+            hoverColor: Qt.lighter(control.hoverColor, 1.2)
 
             onClicked: {
                 if (!popup.visible) {
-                    openPopup(x, y)
+                    control.openPopup(x, y)
                 } else {
                     popup.close()
                 }
             }
 
-
             DltPopup {
                 id: popup
                 padding: 6
-                bg.border{
+                bg.border {
                     color: "black"
                     width: 1
                 }
@@ -116,83 +140,78 @@ DltButton {
                 onOpened: {
                     control.updateCheckedIds()
                 }
-                
+
                 ColumnLayout {
                     spacing: 5
-                    
-                    // NEW: Control buttons column (Subtask 9.4)
+
                     ColumnLayout {
                         spacing: 5
                         Layout.fillWidth: true
-                        
+
                         DltCheckBox {
                             id: selectAllCheckBox
                             text: "全选"
                             checked: true
                             Layout.fillWidth: true
-                            
-                            onCheckedChanged: {
-                                if (checked) {
-                                    deselectAllCheckBox.checked = false
+
+                            onClicked: {
+                                if (!control.syncingBulkControls) {
                                     control.selectAll()
                                 }
                             }
                         }
-                        
+
                         DltCheckBox {
                             id: deselectAllCheckBox
                             text: "全不选"
                             checked: false
                             Layout.fillWidth: true
-                            
-                            onCheckedChanged: {
-                                if (checked) {
-                                    selectAllCheckBox.checked = false
+
+                            onClicked: {
+                                if (!control.syncingBulkControls) {
                                     control.deselectAll()
                                 }
                             }
                         }
                     }
-                    
-                    // NEW: Separator
+
                     Rectangle {
                         Layout.fillWidth: true
-                        height: 1
+                        height: control.showItemList ? 1 : 0
+                        visible: control.showItemList
                         color: DltColor.Border
                     }
-                    
-                    // MODIFIED: Items list
+
                     ListView {
                         id: popupModel
                         spacing: 5
                         Layout.preferredWidth: 250
-                        Layout.preferredHeight: Math.min(contentHeight, 400)
+                        Layout.preferredHeight: control.showItemList ? Math.min(contentHeight, 400) : 0
+                        visible: control.showItemList
                         clip: true
-                        
+
                         delegate: DltCheckBox {
                             id: itemCheckBox
                             text: model.text
                             width: popupModel.width
                             property bool updatingFromModel: false
-                            
-                            // Use Component.onCompleted to set initial state
+
                             Component.onCompleted: {
                                 updatingFromModel = true
                                 checked = model.checked || false
                                 updatingFromModel = false
                             }
-                            
-                            // Watch for model.checked changes
+
                             Connections {
                                 target: popupModel.model
+                                ignoreUnknownSignals: true
                                 function onDataChanged() {
-                                    // Update checkbox when model data changes
                                     itemCheckBox.updatingFromModel = true
                                     itemCheckBox.checked = model.checked || false
                                     itemCheckBox.updatingFromModel = false
                                 }
                             }
-                            
+
                             onCheckedChanged: {
                                 if (!updatingFromModel && model.checked !== checked) {
                                     model.checked = checked
@@ -202,7 +221,7 @@ DltButton {
                         }
                     }
                 }
-                
+
                 maskVisible: false
             }
         }
@@ -210,7 +229,6 @@ DltButton {
         DltText {
             text: control.displayText
             font: control.font
-
             color: control.checked ? DltColor.FontPrimary : control.palette.brightText
             horizontalAlignment: Text.AlignLeft
             verticalAlignment: Text.AlignVCenter
@@ -225,121 +243,220 @@ DltButton {
         popup.y = pos.y + 30
         popup.open()
     }
-    
-    // NEW: Select all items (Subtask 9.4)
-    function selectAll() {
-        if (!model) return
-        
-        for (let i = 0; i < model.rowCount(); i++) {
-            let idx = model.index(i, 0)
-            model.setData(idx, true, FilterItemsModel.CheckedRole)
-        }
-        updateCheckedIds()
-    }
-    
-    // NEW: Deselect all items (Subtask 9.4)
-    function deselectAll() {
-        if (!model) return
-        
-        for (let i = 0; i < model.rowCount(); i++) {
-            let idx = model.index(i, 0)
-            model.setData(idx, false, FilterItemsModel.CheckedRole)
-        }
-        updateCheckedIds()
-    }
-    
-    // NEW: Update checked IDs and emit signal (Subtask 9.4)
-    function updateCheckedIds() {
-        if (!model) return
 
-        let ids = control.getCheckedIds()
-        
-        // Update the select all / deselect all checkboxes state
-        let checkedCount = ids.length
-        let totalCount = model.rowCount()
-        
-        // Use a flag to prevent triggering onCheckedChanged during programmatic updates
-        if (popup.visible) {
-            if (checkedCount === totalCount && totalCount > 0) {
-                selectAllCheckBox.checked = true
-                deselectAllCheckBox.checked = false
-            } else if (checkedCount === 0) {
-                selectAllCheckBox.checked = false
-                deselectAllCheckBox.checked = true
-            } else {
-                selectAllCheckBox.checked = false
-                deselectAllCheckBox.checked = false
-            }
-        }
-        
-        // Call GlobalFilter directly to set filter criteria
-        if (control.checked && globalFilter) {
-            globalFilter.setFilter(filterType, ids)
-        } else if (!globalFilter) {
+    function warnMissingGlobalFilter() {
+        if (!globalFilter) {
             console.warn("DropDownMenuButton: globalFilter is null")
+            return true
+        }
+        return false
+    }
+
+    function ensureFilterEnabled() {
+        if (warnMissingGlobalFilter()) {
+            return
+        }
+
+        if (!control.checked) {
+            control.suppressCheckedHandler = true
+            control.checked = true
+            control.suppressCheckedHandler = false
+        }
+        globalFilter.setFilterEnabled(filterType, true)
+    }
+
+    function setAllModelChecked(checked) {
+        if (!model) {
+            return
+        }
+
+        control.bulkUpdating = true
+        for (let i = 0; i < model.rowCount(); i++) {
+            let idx = model.index(i, 0)
+            model.setData(idx, checked, FilterItemsModel.CheckedRole)
+        }
+        control.bulkUpdating = false
+    }
+
+    function selectAll(applyFilter) {
+        let shouldApply = applyFilter !== false
+        control.allDeselected = false
+        if (control.showItemList) {
+            control.setAllModelChecked(true)
+        }
+        control.setBulkControls(true, false)
+
+        if (shouldApply && !warnMissingGlobalFilter()) {
+            globalFilter.selectAll(filterType)
+            control.ensureFilterEnabled()
+        }
+        control.refreshDisplayText()
+    }
+
+    function deselectAll(applyFilter) {
+        let shouldApply = applyFilter !== false
+        control.allDeselected = true
+        if (control.showItemList) {
+            control.setAllModelChecked(false)
+        }
+        control.setBulkControls(false, true)
+
+        if (shouldApply && !warnMissingGlobalFilter()) {
+            globalFilter.deselectAll(filterType)
+            control.ensureFilterEnabled()
+        }
+        control.refreshDisplayText()
+    }
+
+    function updateCheckedIds() {
+        if (!control.showItemList) {
+            control.setBulkControls(!control.allDeselected, control.allDeselected)
+            control.refreshDisplayText()
+            return
+        }
+
+        if (!model) {
+            control.refreshDisplayText()
+            return
+        }
+
+        let checkedCount = control.getCheckedCount()
+        let totalCount = model.rowCount()
+
+        if (totalCount === 0) {
+            control.setBulkControls(!control.allDeselected, control.allDeselected)
+        } else if (checkedCount === totalCount) {
+            control.allDeselected = false
+            control.setBulkControls(true, false)
+        } else if (checkedCount === 0) {
+            control.allDeselected = true
+            control.setBulkControls(false, true)
+        } else {
+            control.allDeselected = false
+            control.setBulkControls(false, false)
+        }
+
+        if (control.checked && globalFilter) {
+            control.applyCurrentSelection()
         }
 
         control.refreshDisplayText()
     }
 
+    function applyCurrentSelection() {
+        if (warnMissingGlobalFilter()) {
+            return
+        }
+
+        if (!control.showItemList) {
+            if (control.allDeselected) {
+                globalFilter.deselectAll(filterType)
+            } else {
+                globalFilter.selectAll(filterType)
+            }
+            return
+        }
+
+        if (!model) {
+            return
+        }
+
+        let checkedCount = control.getCheckedCount()
+        let totalCount = model.rowCount()
+        if (totalCount === 0) {
+            if (control.allDeselected) {
+                globalFilter.deselectAll(filterType)
+            } else {
+                globalFilter.selectAll(filterType)
+            }
+        } else if (checkedCount === 0) {
+            globalFilter.deselectAll(filterType)
+        } else if (checkedCount === totalCount && totalCount > 0) {
+            globalFilter.selectAll(filterType)
+        } else {
+            globalFilter.setFilter(filterType, control.getCheckedIds())
+        }
+    }
+
+    function setBulkControls(selectChecked, deselectChecked) {
+        control.syncingBulkControls = true
+        selectAllCheckBox.checked = selectChecked
+        deselectAllCheckBox.checked = deselectChecked
+        control.syncingBulkControls = false
+    }
+
     function hasAnyChecked() {
-        if (!model) return false
+        if (!model) {
+            return false
+        }
 
         for (let i = 0; i < model.rowCount(); i++) {
             let idx = model.index(i, 0)
-            let isChecked = model.data(idx, FilterItemsModel.CheckedRole)
-            if (isChecked) {
+            if (model.data(idx, FilterItemsModel.CheckedRole)) {
                 return true
             }
         }
         return false
     }
 
+    function getCheckedCount() {
+        if (!model) {
+            return 0
+        }
+
+        let checkedCount = 0
+        for (let i = 0; i < model.rowCount(); i++) {
+            let idx = model.index(i, 0)
+            if (model.data(idx, FilterItemsModel.CheckedRole)) {
+                checkedCount++
+            }
+        }
+        return checkedCount
+    }
+
     function getCheckedIds() {
-        if (!model) return []
+        if (!model) {
+            return []
+        }
 
         let ids = []
         for (let i = 0; i < model.rowCount(); i++) {
             let idx = model.index(i, 0)
-            let isChecked = model.data(idx, FilterItemsModel.CheckedRole)
-            if (isChecked) {
-                let itemId = model.data(idx, FilterItemsModel.IdRole)
-                ids.push(itemId)
+            if (model.data(idx, FilterItemsModel.CheckedRole)) {
+                ids.push(model.data(idx, FilterItemsModel.IdRole))
             }
         }
         return ids
     }
-    
+
     function refreshDisplayText() {
         control.displayText = control.computeDisplayText()
     }
 
-    // NEW: Display checked count and enabled state (Subtask 9.5)
     function computeDisplayText() {
-        if (!model) return text + " (未加载)"
-        
-        // Calculate checked count dynamically
-        let checkedCount = 0
-        for (let i = 0; i < model.rowCount(); i++) {
-            let idx = model.index(i, 0)
-            let isChecked = model.data(idx, FilterItemsModel.CheckedRole)
-            if (isChecked) {
-                checkedCount++
-            }
-        }
-        
-        let totalCount = model.rowCount()
-        
         if (!control.checked) {
             return text + " (未启用)"
         }
-        
-        if (checkedCount === 0) {
+
+        if (!control.showItemList) {
+            let countText = control.resultCount >= 0 ? " " + control.resultCount : ""
+            return text + countText + (control.allDeselected ? " 全不选" : " 全选")
+        }
+
+        if (!model) {
+            return text + " (未加载)"
+        }
+
+        let checkedCount = control.getCheckedCount()
+        let totalCount = model.rowCount()
+
+        if (totalCount === 0) {
+            return text + (control.allDeselected ? " 全不选" : " 全选")
+        } else if (checkedCount === 0) {
             return text + " 全不选"
         } else if (checkedCount === totalCount) {
             return text + " 全选"
-        } else {
-            return text + " " + checkedCount + "/" + totalCount
         }
+        return text + " " + checkedCount + "/" + totalCount
     }
 }

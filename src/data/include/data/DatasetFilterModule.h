@@ -28,6 +28,7 @@ public:
     bool                        isEnabled() const override;
     bool                        isActive() const override;
     std::unordered_set<int64_t> getActiveCriteria() const override;
+    bool                        isInverted() const override;
 
     /**
      * @brief 检查图像是否属于选中的数据集
@@ -49,6 +50,7 @@ public:
 private:
     std::unordered_set<int64_t> selected_dataset_ids_; // 选中的数据集ID（使用unordered_set提高查找性能）
     bool                        enabled_{false};       // 过滤模块启用状态
+    bool                        inverted_{false};
 };
 
 } // namespace dltool::data

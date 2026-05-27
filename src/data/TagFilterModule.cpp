@@ -15,14 +15,16 @@ void TagFilterModule::setCriteria(const std::vector<int64_t> &tag_ids)
 {
     selected_tag_ids_.clear();
     selected_tag_ids_.insert(tag_ids.begin(), tag_ids.end());
+    inverted_ = false;
     emit criteriaChanged();
 }
 
 void TagFilterModule::clear()
 {
-    if (!selected_tag_ids_.empty())
+    if (!selected_tag_ids_.empty() || inverted_)
     {
         selected_tag_ids_.clear();
+        inverted_ = false;
         emit criteriaChanged();
     }
 }
@@ -52,21 +54,24 @@ std::unordered_set<int64_t> TagFilterModule::getActiveCriteria() const
     {
         return selected_tag_ids_;
     }
-    return std::unordered_set<int64_t>();
+    return {};
+}
+
+bool TagFilterModule::isInverted() const
+{
+    return inverted_;
 }
 
 bool TagFilterModule::passes(int64_t image_id) const
 {
-    // 如果过滤器禁用，所有图像都通过
     if (!enabled_)
     {
         return true;
     }
 
-    // 如果没有选中任何标签，没有图像通过
     if (selected_tag_ids_.empty())
     {
-        return false;
+        return inverted_;
     }
 
     DataManager *dm = dataManager();
@@ -88,22 +93,23 @@ bool TagFilterModule::passes(int64_t image_id) const
     }
 
     const std::set<int64_t> &image_tag_ids = image->tagIds();
-
-    // 检查图像的标签中是否有任一选中的标签（模块内OR逻辑）
+    bool                     matches       = false;
     for (const auto &tag_id : selected_tag_ids_)
     {
         if (image_tag_ids.find(tag_id) != image_tag_ids.end())
         {
-            return true; // 图像至少拥有一个选中的标签
+            matches = true;
+            break;
         }
     }
 
-    return false; // 图像没有任何选中的标签
+    return inverted_ ? !matches : matches;
 }
 
 void TagFilterModule::selectAll()
 {
     selected_tag_ids_.clear();
+    inverted_ = false;
 
     DataManager *dm = dataManager();
     if (dm)
@@ -111,7 +117,6 @@ void TagFilterModule::selectAll()
         ImageTagsListModel *tags_model = dm->imageTags();
         if (tags_model)
         {
-            // 从标签模型获取所有标签ID
             const int row_count = tags_model->rowCount();
             for (int i = 0; i < row_count; ++i)
             {
@@ -127,11 +132,26 @@ void TagFilterModule::selectAll()
 
 void TagFilterModule::deselectAll()
 {
-    if (!selected_tag_ids_.empty())
+    selected_tag_ids_.clear();
+    inverted_ = true;
+
+    DataManager *dm = dataManager();
+    if (dm)
     {
-        selected_tag_ids_.clear();
-        emit criteriaChanged();
+        ImageTagsListModel *tags_model = dm->imageTags();
+        if (tags_model)
+        {
+            const int row_count = tags_model->rowCount();
+            for (int i = 0; i < row_count; ++i)
+            {
+                const QModelIndex index  = tags_model->index(i, 0);
+                const int64_t     tag_id = tags_model->data(index, ImageTagsListModel::TagIdRole).toLongLong();
+                selected_tag_ids_.insert(tag_id);
+            }
+        }
     }
+
+    emit criteriaChanged();
 }
 
 } // namespace dltool::data

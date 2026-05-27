@@ -39,6 +39,16 @@ Item {
         id: imageInstanceMenu
         width: 200
         DltMenuItem {
+            text: "图像搜索"
+            iconSource: DltFontIcon.Search
+            enabled: dataManager && dataManager.imageSearch
+                     && selection && selection.hasSelection
+                     && !dataManager.imageSearch.running
+            onClicked: {
+                imageSearchDialog.openForSearch()
+            }
+        }
+        DltMenuItem {
             text: "删除图像"
             iconSource: DltFontIcon.Delete
             onClicked: {
@@ -56,6 +66,11 @@ Item {
                 dataManager.deleteSelectedImages()
             }
         }
+    }
+
+    ImageSearchDialog {
+        id: imageSearchDialog
+        dataManager: instancesView.dataManager
     }
 
     GridView {

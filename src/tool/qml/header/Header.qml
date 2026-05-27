@@ -14,6 +14,7 @@ Rectangle {
 
     property alias currentIndex: mainTabBar.currentIndex
     property var globalFilter: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.globalFilter : null
+    property var imageSearch: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.imageSearch : null
 
     Connections {
         target: SignalHelper
@@ -116,14 +117,18 @@ Rectangle {
                                 globalFilter.clearAllFilters()
                                 // Reset UI state
                                 datasetDropDown.checked = false
-                                datasetDropDown.selectAll()
+                                datasetDropDown.selectAll(false)
                                 tagDropDown.checked = false
-                                tagDropDown.selectAll()
+                                tagDropDown.selectAll(false)
                                 labelClassImageDropDown.checked = false
-                                labelClassImageDropDown.selectAll()
+                                labelClassImageDropDown.selectAll(false)
+                                imageSearchDropDown.checked = false
+                                imageSearchDropDown.selectAll(false)
                             }
                         }
                     }
+
+                    
                     
                     DropDownMenuButton {
                         id: datasetDropDown
@@ -152,6 +157,28 @@ Rectangle {
                         globalFilter: header.globalFilter
                         model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.labelClassFilterItems : null
                     }
+
+                    DropDownMenuButton {
+                        id: imageSearchDropDown
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: 200
+                        text: "按图像搜索:"
+                        filterType: GlobalFilter.FilterType.ImageSearch
+                        globalFilter: header.globalFilter
+                        showItemList: false
+                        resultCount: globalFilter ? globalFilter.imageSearchResultCount : 0
+                        enabled: imageSearch && !imageSearch.running && globalFilter && globalFilter.hasImageSearchResults
+                        Connections {
+                            target: imageSearchDropDown.globalFilter
+                            function onFilterStateChanged() {
+                                imageSearchDropDown.suppressCheckedHandler = true
+                                imageSearchDropDown.checked = imageSearchDropDown.globalFilter
+                                                             && imageSearchDropDown.globalFilter.imageSearchFilterEnabled
+                                imageSearchDropDown.suppressCheckedHandler = false
+                                imageSearchDropDown.refreshDisplayText()
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -165,6 +192,7 @@ Rectangle {
             datasetDropDown.checked = false
             tagDropDown.checked = false
             labelClassImageDropDown.checked = false
+            imageSearchDropDown.checked = false
         }
     }
     

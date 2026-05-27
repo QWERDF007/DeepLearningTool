@@ -19,19 +19,21 @@ class DatasetFilterModule;
 class TagFilterModule;
 class LabelClassFilterModule;
 class ImageLabelClassFilterModule;
+class ImageSearchFilterModule;
 class FilterModule;
 
-/**
- * @brief 过滤条件结构体
- * 
- * 存储当前激活的过滤条件，包括选中的数据集ID和标签ID
- */
 struct FilterCriteria
 {
-    std::unordered_set<int64_t> dataset_ids;           // 选中的数据集ID（空表示未选择任何条件）
-    std::unordered_set<int64_t> tag_ids;               // 选中的标签ID（空表示未选择任何条件）
-    std::unordered_set<int64_t> label_class_ids;       // 选中的标注类别ID（空表示未选择任何条件）
-    std::unordered_set<int64_t> image_label_class_ids; // 选中的图像级标注类别ID（空表示未选择任何条件）
+    std::unordered_set<int64_t> dataset_ids;
+    std::unordered_set<int64_t> tag_ids;
+    std::unordered_set<int64_t> label_class_ids;
+    std::unordered_set<int64_t> image_label_class_ids;
+    std::unordered_set<int64_t> image_search_ids;
+    bool                        dataset_inverted{false};
+    bool                        tag_inverted{false};
+    bool                        label_class_inverted{false};
+    bool                        image_label_class_inverted{false};
+    bool                        image_search_inverted{false};
 
     /**
      * @brief 检查过滤条件是否为空
@@ -39,7 +41,9 @@ struct FilterCriteria
      */
     bool isEmpty() const
     {
-        return dataset_ids.empty() && tag_ids.empty() && label_class_ids.empty() && image_label_class_ids.empty();
+        return dataset_ids.empty() && tag_ids.empty() && label_class_ids.empty() && image_label_class_ids.empty()
+            && image_search_ids.empty() && !dataset_inverted && !tag_inverted && !label_class_inverted
+            && !image_label_class_inverted && !image_search_inverted;
     }
 };
 
@@ -58,6 +62,9 @@ class GlobalFilter : public QObject
     Q_PROPERTY(bool isActive READ isActive NOTIFY filterStateChanged)
     Q_PROPERTY(int activeFilterCount READ activeFilterCount NOTIFY filterStateChanged)
     Q_PROPERTY(QString filterSummary READ filterSummary NOTIFY filterStateChanged)
+    Q_PROPERTY(bool hasImageSearchResults READ hasImageSearchResults NOTIFY filterStateChanged)
+    Q_PROPERTY(bool imageSearchFilterEnabled READ imageSearchFilterEnabled NOTIFY filterStateChanged)
+    Q_PROPERTY(int imageSearchResultCount READ imageSearchResultCount NOTIFY filterStateChanged)
 
 public:
     /**
@@ -67,10 +74,11 @@ public:
      */
     enum class FilterType
     {
-        Dataset,        // 数据集过滤器
-        Tag,            // 标签过滤器
-        LabelClass,     // 标注类别过滤器（仅作用于标注实例）
-        ImageLabelClass // 标注类别过滤器（作用于图像：图像中包含选中类别实例则保留）
+        Dataset,         // 数据集过滤器
+        Tag,             // 标签过滤器
+        LabelClass,      // 标注类别过滤器（仅作用于标注实例）
+        ImageLabelClass, // 标注类别过滤器（作用于图像：图像中包含选中类别实例则保留）
+        ImageSearch,
     };
     Q_ENUM(FilterType)
 
@@ -85,6 +93,7 @@ public:
     void initializeFilterModules(DataManager *data_manager);
 
     // 过滤器状态查询
+
     /**
      * @brief 检查是否有激活的过滤器
      * @return 如果有任何过滤器激活返回true
@@ -104,6 +113,7 @@ public:
     QString filterSummary() const;
 
     // 通用过滤器接口方法
+
     /**
      * @brief 设置过滤条件（通用方法）
      * @param type 过滤器类型
@@ -124,6 +134,9 @@ public:
      */
     Q_INVOKABLE void clearFilter(FilterType type);
 
+    Q_INVOKABLE void selectAll(FilterType type);
+
+    Q_INVOKABLE void deselectAll(FilterType type);
     /**
      * @brief 获取激活的ID列表（通用方法）
      * @param type 过滤器类型
@@ -137,6 +150,42 @@ public:
     Q_INVOKABLE void clearAllFilters();
 
     /**
+     * @brief 启用或禁用图像搜索过滤器
+     * @param enabled 是否启用；无搜索结果时会被强制设为 false
+     */
+    Q_INVOKABLE void setImageSearchFilterEnabled(bool enabled);
+
+    /**
+     * @brief 清除图像搜索结果并关闭搜索过滤
+     */
+    Q_INVOKABLE void clearImageSearchResults();
+
+    /**
+     * @brief 设置图像搜索结果并更新过滤条件
+     * @param image_ids 搜索命中的图像 ID 列表
+     * @param enable_filter 是否在设置结果后启用搜索过滤；列表为空时不会启用
+     */
+    void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter);
+
+    /**
+     * @brief 是否存在图像搜索结果
+     * @return 有非空搜索结果时返回 true
+     */
+    bool hasImageSearchResults() const;
+
+    /**
+     * @brief 图像搜索过滤器是否已启用
+     * @return 过滤器处于启用状态时返回 true
+     */
+    bool imageSearchFilterEnabled() const;
+
+    /**
+     * @brief 获取图像搜索结果数量
+     * @return 当前搜索结果中的图像数量
+     */
+    int imageSearchResultCount() const;
+
+    /**
      * @brief 应用过滤器到数据模型
      * 
      * 根据当前过滤条件更新图像和标注模型的显示内容
@@ -148,7 +197,10 @@ public:
      * @brief 获取当前过滤条件
      * @return 当前的过滤条件结构
      */
-    const FilterCriteria& getCurrentCriteria() const { return current_criteria_; }
+    const FilterCriteria &getCurrentCriteria() const
+    {
+        return current_criteria_;
+    }
 
 signals:
     void filterStateChanged(); // 过滤器状态改变信号
@@ -197,6 +249,7 @@ private:
     std::unique_ptr<TagFilterModule>             tag_filter_;               // 标签过滤模块
     std::unique_ptr<LabelClassFilterModule>      label_class_filter_;       // 标注类别过滤模块
     std::unique_ptr<ImageLabelClassFilterModule> image_label_class_filter_; // 图像级标注类别过滤模块
+    std::unique_ptr<ImageSearchFilterModule>     image_search_filter_;
 
     std::unordered_map<FilterType, FilterModule *> filter_modules_; // 过滤模块映射表
 

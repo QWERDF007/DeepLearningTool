@@ -1,6 +1,7 @@
 #include "data/LabelClassFilterModule.h"
 
 #include "data/DataManager.h"
+#include "data/LabelClasses.h"
 
 namespace dltool::data {
 
@@ -12,20 +13,17 @@ LabelClassFilterModule::LabelClassFilterModule(DataManager *data_manager, QObjec
 void LabelClassFilterModule::setCriteria(const std::vector<int64_t> &label_class_ids)
 {
     selected_label_class_ids_.clear();
-
-    if (!label_class_ids.empty())
-    {
-        selected_label_class_ids_.insert(label_class_ids.front());
-    }
-
+    selected_label_class_ids_.insert(label_class_ids.begin(), label_class_ids.end());
+    inverted_ = false;
     emit criteriaChanged();
 }
 
 void LabelClassFilterModule::clear()
 {
-    if (!selected_label_class_ids_.empty())
+    if (!selected_label_class_ids_.empty() || inverted_)
     {
         selected_label_class_ids_.clear();
+        inverted_ = false;
         emit criteriaChanged();
     }
 }
@@ -55,7 +53,12 @@ std::unordered_set<int64_t> LabelClassFilterModule::getActiveCriteria() const
     {
         return selected_label_class_ids_;
     }
-    return std::unordered_set<int64_t>();
+    return {};
+}
+
+bool LabelClassFilterModule::isInverted() const
+{
+    return inverted_;
 }
 
 bool LabelClassFilterModule::passes(int64_t label_class_id) const
@@ -67,21 +70,61 @@ bool LabelClassFilterModule::passes(int64_t label_class_id) const
 
     if (selected_label_class_ids_.empty())
     {
-        return false;
+        return inverted_;
     }
 
-    return selected_label_class_ids_.find(label_class_id) != selected_label_class_ids_.end();
+    const bool matches = selected_label_class_ids_.find(label_class_id) != selected_label_class_ids_.end();
+    return inverted_ ? !matches : matches;
 }
 
 void LabelClassFilterModule::selectAll()
 {
     selected_label_class_ids_.clear();
+    inverted_ = false;
+
+    DataManager *dm = dataManager();
+    if (dm)
+    {
+        LabelClassesListModel *label_classes_model = dm->labelClasses();
+        if (label_classes_model)
+        {
+            const int row_count = label_classes_model->rowCount();
+            for (int i = 0; i < row_count; ++i)
+            {
+                const QModelIndex index = label_classes_model->index(i, 0);
+                const int64_t     id
+                    = label_classes_model->data(index, LabelClassesListModel::LabelClassIdRole).toLongLong();
+                selected_label_class_ids_.insert(id);
+            }
+        }
+    }
+
     emit criteriaChanged();
 }
 
 void LabelClassFilterModule::deselectAll()
 {
-    clear();
+    selected_label_class_ids_.clear();
+    inverted_ = true;
+
+    DataManager *dm = dataManager();
+    if (dm)
+    {
+        LabelClassesListModel *label_classes_model = dm->labelClasses();
+        if (label_classes_model)
+        {
+            const int row_count = label_classes_model->rowCount();
+            for (int i = 0; i < row_count; ++i)
+            {
+                const QModelIndex index = label_classes_model->index(i, 0);
+                const int64_t     id
+                    = label_classes_model->data(index, LabelClassesListModel::LabelClassIdRole).toLongLong();
+                selected_label_class_ids_.insert(id);
+            }
+        }
+    }
+
+    emit criteriaChanged();
 }
 
 } // namespace dltool::data

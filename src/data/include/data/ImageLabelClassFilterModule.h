@@ -22,6 +22,7 @@ public:
     bool                        isEnabled() const override;
     bool                        isActive() const override;
     std::unordered_set<int64_t> getActiveCriteria() const override;
+    bool                        isInverted() const override;
     bool                        passes(int64_t image_id) const override;
     void                        selectAll() override;
     void                        deselectAll() override;
@@ -29,6 +30,7 @@ public:
 private:
     std::unordered_set<int64_t> selected_label_class_ids_;
     bool                        enabled_{false};
+    bool                        inverted_{false};
 };
 
 } // namespace dltool::data

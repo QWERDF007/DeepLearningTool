@@ -28,6 +28,7 @@ public:
     bool                        isEnabled() const override;
     bool                        isActive() const override;
     std::unordered_set<int64_t> getActiveCriteria() const override;
+    bool                        isInverted() const override;
 
     /**
      * @brief 检查标注类别是否匹配
@@ -42,6 +43,7 @@ public:
 private:
     std::unordered_set<int64_t> selected_label_class_ids_;
     bool                        enabled_{false};
+    bool                        inverted_{false};
 };
 
 } // namespace dltool::data

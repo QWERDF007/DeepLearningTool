@@ -83,6 +83,7 @@ void DataManager::init(const int method)
     // Create GlobalFilter and initialize it with the models
     global_filter_ = new GlobalFilter(this, this);
     global_filter_->initializeFilterModules(this);
+    image_search_ = new ImageSearchController(this, this);
 
     // Create filter items models
     dataset_filter_items_     = new DatasetFilterItemsModel(this);
@@ -293,6 +294,11 @@ QList<QString> DataManager::getAllDatasetsName() const
 int DataManager::getDatasetId(const QString &dataset_name) const
 {
     return datasets_->getDatasetId(dataset_name);
+}
+
+QString DataManager::databasePath() const
+{
+    return database_ ? database_->path() : QString();
 }
 
 QString DataManager::getDatasetName(const int dataset_id) const

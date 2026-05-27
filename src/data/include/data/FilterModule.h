@@ -62,6 +62,11 @@ public:
      */
     virtual std::unordered_set<int64_t> getActiveCriteria() const = 0;
 
+    virtual bool isInverted() const
+    {
+        return false;
+    }
+
     /**
      * @brief 检查某个项目是否通过此过滤器
      * @param item_id 项目ID

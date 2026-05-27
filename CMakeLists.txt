@@ -37,6 +37,7 @@ include(ConfigCompiler)
 include(ConfigQT)
 # include(ConfigCUDA)
 include(ConfigSQLite)
+include(ConfigInferRT)
 include(AddPluginLibrary)
 
 # 第三方库
