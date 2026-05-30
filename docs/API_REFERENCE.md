@@ -150,8 +150,24 @@ Item {
 | `labelThumbnailBorderPaddingFrom` | `double` | `0.0` | 边界扩展下限 |
 | `labelThumbnailBorderPaddingTo` | `double` | `1.0` | 边界扩展上限 |
 | `labelThumbnailBorderPaddingStepSize` | `double` | `0.1` | 边界扩展步长 |
+| `featureExtractionEnabled` | `bool` | `true` | 是否启用特征提取默认值 |
+| `featureExtractionModel` | `QString` | `"resnet18"` | 默认特征提取模型名称 |
+| `featureExtractionModelPath` | `QString` | `"F:/models/resnet18.wts"` | 模型权重文件路径 |
+| `featureExtractionFeatureName` | `QString` | `"layer4"` | 默认特征层名称 |
+| `featureExtractionRebuildIndex` | `bool` | `false` | 是否强制重建 FAISS 索引 |
+| `featureExtractionTopK` | `int` | `5` | 每张查询图返回的最近邻数量 |
+| `featureExtractionNorm` | `QString` | `"l2"` | 特征归一化方式（none / l1 / l2） |
+| `featureExtractionPreprocessBackend` | `QString` | `"cpu"` | 预处理后端（cpu / gpu） |
+| `featureExtractionFaissBackend` | `QString` | `"cpu"` | FAISS 计算后端（cpu / gpu） |
+| `featureExtractionIndexStorage` | `QString` | `"ram"` | 索引存储方式（ram / disk） |
+| `featureExtractionDiskBuildBatchSize` | `int` | `256` | 磁盘索引构建批大小 |
+| `featureExtractionModelBackend` | `QString` | `"tensorrt"` | 模型推理后端（tensorrt / openvino / onnxruntime） |
+| `featureExtractionModelDevice` | `QString` | `"gpu"` | 模型运行设备（cpu / gpu） |
+| `featureExtractionIndexDirectory` | `QString` | `""` | 特征库（FAISS 索引和特征向量）存储目录 |
 
 `imageCellScale` 已迁移到 `DataSettings`，不要再从 `UISettings` 读取。
+
+`DataSettings` 还提供 `featureExtractionCustomFeatureNames(model_name)` 和 `addFeatureExtractionCustomFeatureName(model_name, feature_name)` 用于管理各模型的自定义特征层名称列表。
 
 ### UISettings
 
@@ -282,6 +298,7 @@ class DataManager : public QObject {
     Q_PROPERTY(TagFilterItemsModel *tagFilterItems READ tagFilterItems CONSTANT)
     Q_PROPERTY(LabelClassFilterItemsModel *labelClassFilterItems READ labelClassFilterItems CONSTANT)
     Q_PROPERTY(CategoryStatisticsModel *categoryStatisticsModel READ categoryStatisticsModel CONSTANT)
+    Q_PROPERTY(ImageSearchController *imageSearch READ imageSearch CONSTANT)
     Q_PROPERTY(int method READ method CONSTANT)
 
 public:
@@ -350,18 +367,26 @@ enum class FilterType {
     Dataset,
     Tag,
     LabelClass,
-    ImageLabelClass
+    ImageLabelClass,
+    ImageSearch
 };
 
 Q_PROPERTY(bool isActive READ isActive NOTIFY filterStateChanged)
 Q_PROPERTY(int activeFilterCount READ activeFilterCount NOTIFY filterStateChanged)
 Q_PROPERTY(QString filterSummary READ filterSummary NOTIFY filterStateChanged)
+Q_PROPERTY(bool hasImageSearchResults READ hasImageSearchResults NOTIFY filterStateChanged)
+Q_PROPERTY(bool imageSearchFilterEnabled READ imageSearchFilterEnabled NOTIFY filterStateChanged)
+Q_PROPERTY(int imageSearchResultCount READ imageSearchResultCount NOTIFY filterStateChanged)
 
 Q_INVOKABLE void setFilter(FilterType type, const std::vector<int64_t> &ids);
 Q_INVOKABLE void setFilterEnabled(FilterType type, bool enabled);
 Q_INVOKABLE void clearFilter(FilterType type);
+Q_INVOKABLE void selectAll(FilterType type);
+Q_INVOKABLE void deselectAll(FilterType type);
 Q_INVOKABLE std::vector<int64_t> getActiveIds(FilterType type) const;
 Q_INVOKABLE void clearAllFilters();
+Q_INVOKABLE void setImageSearchFilterEnabled(bool enabled);
+Q_INVOKABLE void clearImageSearchResults();
 ```
 
 ### 常用模型 Role
@@ -380,6 +405,62 @@ Q_INVOKABLE void clearAllFilters();
 | `CategoryStatisticsModel` | `CategoryStatisticsModel` | `categoryId`、`categoryName`、`categoryColor`、`instanceCount`、`imageCount`、`instancePercentage`、`imagePercentage` |
 
 标注 `data` 的公共字段为 `x`、`y`、`width`、`height`。语义分割标注额外包含 `point_count` 和 `points`，其中 `points` 是 `{x, y}` 点列表；检测标注会忽略该字段。
+
+### ImageSearchController
+
+QML 类型：`ImageSearchController`，通过 `DataManager.imageSearch` 获取。
+
+基于 InferRT 特征提取与 FAISS 索引，支持多种推理后端（TensorRT / OpenVINO / ONNX Runtime），对当前选中的查询图像在指定数据集图库中执行相似检索。搜索在后台线程执行，完成后将结果写入 `GlobalFilter` 的图像搜索过滤模块。
+
+```cpp
+Q_PROPERTY(bool running READ isRunning NOTIFY runningChanged FINAL)
+Q_PROPERTY(bool hasResults READ hasResults NOTIFY resultsChanged FINAL)
+Q_PROPERTY(int resultCount READ resultCount NOTIFY resultsChanged FINAL)
+Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged FINAL)
+Q_PROPERTY(QString lastSummary READ lastSummary NOTIFY resultsChanged FINAL)
+Q_PROPERTY(QString defaultInferRtRoot READ defaultInferRtRoot CONSTANT FINAL)
+Q_PROPERTY(QString defaultModelName READ defaultModelName CONSTANT FINAL)
+Q_PROPERTY(QString defaultFeatureName READ defaultFeatureName CONSTANT FINAL)
+```
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `running` | `bool` | 后台是否正在执行搜索 |
+| `hasResults` | `bool` | 最近一次搜索是否有命中结果 |
+| `resultCount` | `int` | 命中图像数量 |
+| `lastError` | `QString` | 最近一次错误或校验失败信息 |
+| `lastSummary` | `QString` | 最近一次成功搜索的摘要信息 |
+| `defaultInferRtRoot` | `QString` | 默认 InferRT 安装根目录 |
+| `defaultModelName` | `QString` | 默认特征提取模型名称 |
+| `defaultFeatureName` | `QString` | 默认特征层名称 |
+
+主要方法：
+
+```cpp
+Q_INVOKABLE QStringList supportedModelPresets() const;
+Q_INVOKABLE QStringList modelFeatureNames(const QString &model_name) const;
+Q_INVOKABLE QString suggestedWeightsPath(const QString &model_name) const;
+Q_INVOKABLE bool searchSelectedImages(const QVariantList &dataset_ids, const QString &model_name,
+                                       const QString &weights_file, const QString &feature_name, bool rebuild_index,
+                                       int top_k, const QString &norm, const QString &preprocess_backend,
+                                       const QString &faiss_backend, const QString &index_storage,
+                                       int disk_build_batch_size, const QString &model_backend,
+                                       const QString &model_device);
+```
+
+| 方法 | 说明 |
+|------|------|
+| `supportedModelPresets()` | 获取支持的模型预设列表（如 resnet50、dinov2） |
+| `modelFeatureNames(model_name)` | 获取指定模型可用的特征层名称 |
+| `suggestedWeightsPath(model_name)` | 根据模型名建议权重文件路径 |
+| `searchSelectedImages(...)` | 对选中图像执行相似度搜索，参数包括数据集范围、模型、特征层、top-K、归一化方式、前后端选择等 |
+
+信号：
+
+- `runningChanged()` — 搜索运行状态变化。
+- `resultsChanged()` — 搜索结果或命中数量变化。
+- `lastErrorChanged()` — 错误信息变化。
+- `buildProgressChanged(int processedCount, int totalCount)` — 特征库构建进度。
 
 ## 5. Project (`dltool.project`)
 

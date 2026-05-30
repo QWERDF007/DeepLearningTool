@@ -106,9 +106,10 @@ sequenceDiagram
 - 项目文件后缀为 `.dlpro`，本质是 SQLite 数据库。
 - 表结构定义在 `src/database/include/database/ddl/`，包括 project、recent_projects、settings、datasets、images、label_classes、labels、tag_classes、tags。
 - `ProjectDataBase` 提供项目元数据、数据集、图像、标签类别、图像标签和标注实例的读写。
-- `SettingsDataBase` 使用软件目录下的 `db/settings.db` 保存全局设置。
+- `SettingsDataBase` 使用软件目录下的 `db/settings.db` 保存全局设置，包括特征提取（模型、后端、设备、索引等）参数。
 - `RecentProjectsDataBase` 使用软件目录下的 `db/history.db` 保存最近项目列表。
-- `DataManager` 聚合所有数据模型，并向 QML 暴露统一入口。
+- `DataManager` 聚合所有数据模型，并向 QML 暴露统一入口，同时持有 `ImageSearchController` 用于图像相似度搜索。
+- `ImageSearchController` 基于 InferRT 特征提取与 FAISS 索引，支持多种推理后端（TensorRT / OpenVINO / ONNX Runtime），可对选中图像在数据集图库中执行相似检索，结果通过 `ImageSearchFilterModule` 写入 `GlobalFilter`。
 
 ## 数据集导入导出
 
@@ -126,7 +127,7 @@ sequenceDiagram
 |-----|------|------|
 | `dltool.settings` | `dltool_settings` | `GlobalSettings`、`ProjectSettings`、`DataSettings`、`UISettings` |
 | `dltool.ui` | `dltool_ui` | `DltColor`、`DltFont`、`UILogger`、`ProgressManager`、`Utils`、`controls/*.qml` |
-| `dltool.data` | `dltool_data` | `DataManager`、数据模型、过滤模型、统计模型、Gallery/Label/Review QML |
+| `dltool.data` | `dltool_data` | `DataManager`、`ImageSearchController`、数据模型、过滤模型、统计模型、Gallery/Label/Review QML |
 | `dltool.project` | `dltool_project` | `ProjectManager`、`Project`、项目创建/打开 QML |
 | `dltool.tool` | `dltool` | 主窗口、Header、Content、Footer |
 

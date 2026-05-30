@@ -96,7 +96,7 @@ src/common/
 
 职责：
 
-- `GlobalSettings`：QML 单例，聚合项目、数据和 UI 设置，通过 `SettingsDataBase` 保存到软件目录下的 `db/settings.db`。
+- `GlobalSettings`：QML 单例，聚合项目、数据和 UI 设置，通过 `SettingsDataBase` 保存到软件目录下的 `db/settings.db`。`DataSettings` 新增特征提取设置（模型、推理后端、FAISS 后端、索引存储方式、top-K、归一化等）。
 - `ProjectSettings`：最近项目数量、自动保存间隔、自动保存开关。
 - `DataSettings`：缩略图、图像加载、标注显示、图像网格缩放、标注缩略图参数。
 - `UISettings`：图像亮度/对比度、主题、语言。
@@ -162,9 +162,10 @@ src/database/
 - 数据导入：`DataImporter`、`LabelMeImporter`、`COCOImporter`，通过 `DatasetIO` 复用图片扫描、JSON 扫描、bbox 与多边形点集转换等公共逻辑。
 - 数据导出：`DataExporter`、`LabelMeExporter`、`COCOExporter`。导出时 `DataManager` 先组装统一的 `ExportDataset`，格式类负责写出目录结构和标注文件；带 `points` 的标注会导出为 LabelMe polygon 或 COCO segmentation。
 - 标注数据：`LabelData_t`、`DetLabelData_t`、`SegLabelData_t`、`LabelDataHelper_t`，其中 `SegLabelDataHelper` 负责多边形命中测试、顶点拖拽和整体移动。
-- 过滤：`GlobalFilter`、`DatasetFilterModule`、`TagFilterModule`、`LabelClassFilterModule`、`ImageLabelClassFilterModule`、`FilterItemsModel`。
+- 图像搜索：`ImageSearchController` 基于 InferRT + FAISS 实现以图搜图，支持 TensorRT / OpenVINO / ONNX Runtime 等多种推理后端，结果通过 `ImageSearchFilterModule` 写入 `GlobalFilter`。
+- 过滤：`GlobalFilter`、`DatasetFilterModule`、`TagFilterModule`、`LabelClassFilterModule`、`ImageLabelClassFilterModule`、`ImageSearchFilterModule`、`FilterItemsModel`。所有过滤模块支持正向/反向过滤（invert），通过 `GlobalFilter.setFilter()` / `selectAll()` / `deselectAll()` 操作。
 - 统计：`CategoryStatisticsModel`。
-- QML 页面：Gallery、Label、Review 和公共组件。
+- QML 页面：Gallery、Label、Review 和公共组件，Gallery 包含 `ImageSearchDialog.qml` 图像搜索弹窗。
 
 结构：
 
@@ -181,6 +182,8 @@ src/data/
 │   ├── Datasets.h
 │   ├── FilterItemsModel.h
 │   ├── GlobalFilter.h
+│   ├── ImageSearchController.h
+│   ├── ImageSearchFilterModule.h
 │   ├── Images.h
 │   ├── ImageTags.h
 │   ├── LabelClasses.h
@@ -320,14 +323,21 @@ sequenceDiagram
 
 ### 6.3 过滤与统计
 
-`GlobalFilter` 聚合四类过滤条件：
+`GlobalFilter` 聚合五类过滤条件，各模块间按 AND 逻辑组合，模块内按 OR 逻辑组合：
 
 - `Dataset`：按数据集过滤图像。
 - `Tag`：按图像标签过滤图像。
 - `LabelClass`：按标注类别过滤标注实例。
 - `ImageLabelClass`：按图像是否包含指定标注类别过滤图像。
+- `ImageSearch`：按图像相似度搜索结果过滤图像（由 `ImageSearchController` 驱动）。
 
-过滤项由 `DatasetFilterItemsModel`、`TagFilterItemsModel`、`LabelClassFilterItemsModel` 提供；类别统计由 `CategoryStatisticsModel` 提供。
+每种过滤类型均支持反向过滤（invert），启用后将反转匹配逻辑（显示不满足条件的图像）。过滤项由 `DatasetFilterItemsModel`、`TagFilterItemsModel`、`LabelClassFilterItemsModel` 提供；类别统计由 `CategoryStatisticsModel` 提供。
+
+图像搜索流程：
+1. 用户在图库界面选中查询图像，通过 `ImageSearchDialog` 配置搜索参数（模型、后端、特征层、top-K 等）。
+2. `DataSettings` 中持久化特征提取参数（模型路径、后端类型、索引存储方式等）。
+3. `ImageSearchController` 在后台线程执行特征提取与 FAISS 检索。
+4. 搜索完成后，结果图像 ID 写入 `ImageSearchFilterModule`，`GlobalFilter` 联合其他过滤条件更新可见图像列表。
 
 ## 7. 构建目标
 
