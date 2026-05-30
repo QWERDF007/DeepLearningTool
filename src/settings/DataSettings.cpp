@@ -4,9 +4,48 @@
 
 #include <spdlog/spdlog.h>
 
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+
 #include <algorithm>
 
 namespace dltool::settings {
+
+namespace {
+
+constexpr const char *kDefaultFeatureExtractionModel       = "resnet18";
+constexpr const char *kDefaultFeatureExtractionModelPath   = "F:/models/resnet18.wts";
+constexpr const char *kDefaultFeatureExtractionFeatureName = "layer4";
+
+QString normalizedFeatureModel(QString value)
+{
+    value = value.trimmed();
+    return value.isEmpty() ? QString::fromLatin1(kDefaultFeatureExtractionModel) : value;
+}
+
+QString normalizedFeatureName(QString value)
+{
+    value = value.trimmed();
+    return value.isEmpty() ? QString::fromLatin1(kDefaultFeatureExtractionFeatureName) : value;
+}
+
+QString normalizedOption(QString value, const QStringList &allowed_values, const QString &default_value)
+{
+    value = value.trimmed().toLower();
+    return allowed_values.contains(value) ? value : default_value;
+}
+
+void appendUnique(QStringList &values, QString value)
+{
+    value = value.trimmed();
+    if (!value.isEmpty() && !values.contains(value))
+    {
+        values.append(value);
+    }
+}
+
+} // namespace
 
 DataSettings::DataSettings(QObject *parent)
     : QObject(parent)
@@ -159,6 +198,237 @@ void DataSettings::setLabelThumbnailBorderPadding(double value)
     }
 }
 
+void DataSettings::setFeatureExtractionEnabled(bool value)
+{
+    if (feature_extraction_enabled_ != value)
+    {
+        feature_extraction_enabled_ = value;
+        emit featureExtractionEnabledChanged();
+    }
+}
+
+void DataSettings::setFeatureExtractionModel(const QString &value)
+{
+    const QString model = normalizedFeatureModel(value);
+    if (feature_extraction_model_ != model)
+    {
+        feature_extraction_model_ = model;
+        emit featureExtractionModelChanged();
+    }
+}
+
+void DataSettings::setFeatureExtractionModelPath(const QString &value)
+{
+    const QString path = value.trimmed();
+    if (feature_extraction_model_path_ != path)
+    {
+        feature_extraction_model_path_ = path;
+        emit featureExtractionModelPathChanged();
+    }
+}
+
+void DataSettings::setFeatureExtractionFeatureName(const QString &value)
+{
+    const QString feature_name = normalizedFeatureName(value);
+    if (feature_extraction_feature_name_ != feature_name)
+    {
+        feature_extraction_feature_name_ = feature_name;
+        emit featureExtractionFeatureNameChanged();
+    }
+}
+
+void DataSettings::setFeatureExtractionRebuildIndex(bool value)
+{
+    if (feature_extraction_rebuild_index_ != value)
+    {
+        feature_extraction_rebuild_index_ = value;
+        emit featureExtractionRebuildIndexChanged();
+    }
+}
+
+void DataSettings::setFeatureExtractionTopK(int value)
+{
+    value = std::clamp(value, 1, 1000);
+    if (feature_extraction_top_k_ != value)
+    {
+        feature_extraction_top_k_ = value;
+        emit featureExtractionTopKChanged();
+    }
+}
+
+void DataSettings::setFeatureExtractionNorm(const QString &value)
+{
+    const QString norm = normalizedOption(value, {QStringLiteral("l2"), QStringLiteral("l1"), QStringLiteral("none")},
+                                          QStringLiteral("l2"));
+    if (feature_extraction_norm_ != norm)
+    {
+        feature_extraction_norm_ = norm;
+        emit featureExtractionNormChanged();
+    }
+}
+
+void DataSettings::setFeatureExtractionPreprocessBackend(const QString &value)
+{
+    const QString backend
+        = normalizedOption(value, {QStringLiteral("cpu"), QStringLiteral("gpu")}, QStringLiteral("cpu"));
+    if (feature_extraction_preprocess_backend_ != backend)
+    {
+        feature_extraction_preprocess_backend_ = backend;
+        emit featureExtractionPreprocessBackendChanged();
+    }
+}
+
+void DataSettings::setFeatureExtractionFaissBackend(const QString &value)
+{
+    const QString backend
+        = normalizedOption(value, {QStringLiteral("cpu"), QStringLiteral("gpu")}, QStringLiteral("cpu"));
+    if (feature_extraction_faiss_backend_ != backend)
+    {
+        feature_extraction_faiss_backend_ = backend;
+        emit featureExtractionFaissBackendChanged();
+    }
+    if (backend == QStringLiteral("gpu"))
+    {
+        setFeatureExtractionIndexStorage(QStringLiteral("ram"));
+    }
+}
+
+void DataSettings::setFeatureExtractionIndexStorage(const QString &value)
+{
+    QString storage = normalizedOption(value, {QStringLiteral("ram"), QStringLiteral("disk")}, QStringLiteral("ram"));
+    if (feature_extraction_faiss_backend_ == QStringLiteral("gpu"))
+    {
+        storage = QStringLiteral("ram");
+    }
+
+    if (feature_extraction_index_storage_ != storage)
+    {
+        feature_extraction_index_storage_ = storage;
+        emit featureExtractionIndexStorageChanged();
+    }
+}
+
+void DataSettings::setFeatureExtractionDiskBuildBatchSize(int value)
+{
+    value = std::clamp(value, 1, 8192);
+    if (feature_extraction_disk_build_batch_size_ != value)
+    {
+        feature_extraction_disk_build_batch_size_ = value;
+        emit featureExtractionDiskBuildBatchSizeChanged();
+    }
+}
+
+void DataSettings::setFeatureExtractionModelBackend(const QString &value)
+{
+    const QString backend = normalizedOption(value,
+                                             {QStringLiteral("tensorrt"), QStringLiteral("openvino"),
+                                              QStringLiteral("onnxruntime")},
+                                             QStringLiteral("tensorrt"));
+    if (feature_extraction_model_backend_ != backend)
+    {
+        feature_extraction_model_backend_ = backend;
+        emit featureExtractionModelBackendChanged();
+    }
+}
+
+void DataSettings::setFeatureExtractionModelDevice(const QString &value)
+{
+    const QString device
+        = normalizedOption(value, {QStringLiteral("cpu"), QStringLiteral("gpu")}, QStringLiteral("gpu"));
+    if (feature_extraction_model_device_ != device)
+    {
+        feature_extraction_model_device_ = device;
+        emit featureExtractionModelDeviceChanged();
+    }
+}
+
+void DataSettings::setFeatureExtractionIndexDirectory(const QString &value)
+{
+    const QString path = value.trimmed();
+    if (feature_extraction_index_directory_ != path)
+    {
+        feature_extraction_index_directory_ = path;
+        emit featureExtractionIndexDirectoryChanged();
+    }
+}
+
+QStringList DataSettings::featureExtractionCustomFeatureNames(const QString &model_name) const
+{
+    return feature_extraction_custom_feature_names_.value(normalizedFeatureModel(model_name));
+}
+
+void DataSettings::addFeatureExtractionCustomFeatureName(const QString &model_name, const QString &feature_name)
+{
+    const QString model   = normalizedFeatureModel(model_name);
+    const QString feature = feature_name.trimmed();
+    if (feature.isEmpty())
+    {
+        return;
+    }
+
+    QStringList values = feature_extraction_custom_feature_names_.value(model);
+    if (values.contains(feature))
+    {
+        return;
+    }
+
+    values.append(feature);
+    feature_extraction_custom_feature_names_.insert(model, values);
+    emit featureExtractionCustomFeatureNamesChanged();
+}
+
+QString DataSettings::featureExtractionCustomFeatureNamesJson() const
+{
+    QJsonObject root;
+    const auto  keys = feature_extraction_custom_feature_names_.keys();
+    for (const QString &model : keys)
+    {
+        QJsonArray names;
+        for (const QString &feature_name : feature_extraction_custom_feature_names_.value(model))
+        {
+            names.append(feature_name);
+        }
+        root.insert(model, names);
+    }
+    return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
+}
+
+void DataSettings::setFeatureExtractionCustomFeatureNamesJson(const QString &value)
+{
+    QHash<QString, QStringList> parsed_names;
+    const QJsonDocument         document = QJsonDocument::fromJson(value.toUtf8());
+    if (document.isObject())
+    {
+        const QJsonObject root = document.object();
+        for (auto it = root.constBegin(); it != root.constEnd(); ++it)
+        {
+            QStringList names;
+            if (it.value().isArray())
+            {
+                for (const QJsonValue &entry : it.value().toArray())
+                {
+                    appendUnique(names, entry.toString());
+                }
+            }
+            else if (it.value().isString())
+            {
+                appendUnique(names, it.value().toString());
+            }
+
+            if (!names.isEmpty())
+            {
+                parsed_names.insert(normalizedFeatureModel(it.key()), names);
+            }
+        }
+    }
+
+    if (feature_extraction_custom_feature_names_ != parsed_names)
+    {
+        feature_extraction_custom_feature_names_ = parsed_names;
+        emit featureExtractionCustomFeatureNamesChanged();
+    }
+}
+
 void DataSettings::load(database::SettingsDataBase *database)
 {
     if (!database)
@@ -185,6 +455,55 @@ void DataSettings::load(database::SettingsDataBase *database)
         database->value(group, QStringLiteral("labelThumbnailAspectRatio"), 1.0, err_msg).toDouble());
     setLabelThumbnailBorderPadding(
         database->value(group, QStringLiteral("labelThumbnailBorderPadding"), 0.1, err_msg).toDouble());
+
+    setFeatureExtractionEnabled(
+        database->value(group, QStringLiteral("featureExtractionEnabled"), true, err_msg).toBool());
+    setFeatureExtractionModel(database->value(group,
+                                             QStringLiteral("featureExtractionModel"),
+                                             QString::fromLatin1(kDefaultFeatureExtractionModel), err_msg)
+                                  .toString());
+    setFeatureExtractionModelPath(database->value(group,
+                                                 QStringLiteral("featureExtractionModelPath"),
+                                                 QString::fromLatin1(kDefaultFeatureExtractionModelPath), err_msg)
+                                      .toString());
+    setFeatureExtractionFeatureName(database->value(group,
+                                                   QStringLiteral("featureExtractionFeatureName"),
+                                                   QString::fromLatin1(kDefaultFeatureExtractionFeatureName), err_msg)
+                                        .toString());
+    setFeatureExtractionRebuildIndex(
+        database->value(group, QStringLiteral("featureExtractionRebuildIndex"), false, err_msg).toBool());
+    setFeatureExtractionTopK(database->value(group, QStringLiteral("featureExtractionTopK"), 5, err_msg).toInt());
+    setFeatureExtractionNorm(
+        database->value(group, QStringLiteral("featureExtractionNorm"), QStringLiteral("l2"), err_msg).toString());
+    setFeatureExtractionPreprocessBackend(database->value(group,
+                                                         QStringLiteral("featureExtractionPreprocessBackend"),
+                                                         QStringLiteral("cpu"), err_msg)
+                                              .toString());
+    setFeatureExtractionFaissBackend(database->value(group,
+                                                    QStringLiteral("featureExtractionFaissBackend"),
+                                                    QStringLiteral("cpu"), err_msg)
+                                         .toString());
+    setFeatureExtractionIndexStorage(database->value(group,
+                                                    QStringLiteral("featureExtractionIndexStorage"),
+                                                    QStringLiteral("ram"), err_msg)
+                                         .toString());
+    setFeatureExtractionDiskBuildBatchSize(
+        database->value(group, QStringLiteral("featureExtractionDiskBuildBatchSize"), 256, err_msg).toInt());
+    setFeatureExtractionModelBackend(database->value(group,
+                                                     QStringLiteral("featureExtractionModelBackend"),
+                                                     QStringLiteral("tensorrt"), err_msg)
+                                          .toString());
+    setFeatureExtractionModelDevice(database->value(group,
+                                                    QStringLiteral("featureExtractionModelDevice"),
+                                                    QStringLiteral("gpu"), err_msg)
+                                         .toString());
+    setFeatureExtractionIndexDirectory(database->value(group,
+                                                       QStringLiteral("featureExtractionIndexDirectory"),
+                                                       QString(), err_msg)
+                                            .toString());
+    setFeatureExtractionCustomFeatureNamesJson(
+        database->value(group, QStringLiteral("featureExtractionCustomFeatureNames"), QStringLiteral("{}"), err_msg)
+            .toString());
 
     if (!err_msg.isEmpty())
     {
@@ -223,6 +542,22 @@ void DataSettings::save(database::SettingsDataBase *database)
     save_value(QStringLiteral("labelThumbnailScale"), label_thumbnail_scale_);
     save_value(QStringLiteral("labelThumbnailAspectRatio"), label_thumbnail_aspect_ratio_);
     save_value(QStringLiteral("labelThumbnailBorderPadding"), label_thumbnail_border_padding_);
+
+    save_value(QStringLiteral("featureExtractionEnabled"), feature_extraction_enabled_);
+    save_value(QStringLiteral("featureExtractionModel"), feature_extraction_model_);
+    save_value(QStringLiteral("featureExtractionModelPath"), feature_extraction_model_path_);
+    save_value(QStringLiteral("featureExtractionFeatureName"), feature_extraction_feature_name_);
+    save_value(QStringLiteral("featureExtractionRebuildIndex"), feature_extraction_rebuild_index_);
+    save_value(QStringLiteral("featureExtractionTopK"), feature_extraction_top_k_);
+    save_value(QStringLiteral("featureExtractionNorm"), feature_extraction_norm_);
+    save_value(QStringLiteral("featureExtractionPreprocessBackend"), feature_extraction_preprocess_backend_);
+    save_value(QStringLiteral("featureExtractionFaissBackend"), feature_extraction_faiss_backend_);
+    save_value(QStringLiteral("featureExtractionIndexStorage"), feature_extraction_index_storage_);
+    save_value(QStringLiteral("featureExtractionDiskBuildBatchSize"), feature_extraction_disk_build_batch_size_);
+    save_value(QStringLiteral("featureExtractionModelBackend"), feature_extraction_model_backend_);
+    save_value(QStringLiteral("featureExtractionModelDevice"), feature_extraction_model_device_);
+    save_value(QStringLiteral("featureExtractionIndexDirectory"), feature_extraction_index_directory_);
+    save_value(QStringLiteral("featureExtractionCustomFeatureNames"), featureExtractionCustomFeatureNamesJson());
 }
 
 void DataSettings::reset()
@@ -241,6 +576,22 @@ void DataSettings::reset()
     setLabelThumbnailScale(1.0);
     setLabelThumbnailAspectRatio(1.0);
     setLabelThumbnailBorderPadding(0.1);
+
+    setFeatureExtractionEnabled(true);
+    setFeatureExtractionModel(QString::fromLatin1(kDefaultFeatureExtractionModel));
+    setFeatureExtractionModelPath(QString::fromLatin1(kDefaultFeatureExtractionModelPath));
+    setFeatureExtractionFeatureName(QString::fromLatin1(kDefaultFeatureExtractionFeatureName));
+    setFeatureExtractionRebuildIndex(false);
+    setFeatureExtractionTopK(5);
+    setFeatureExtractionNorm(QStringLiteral("l2"));
+    setFeatureExtractionPreprocessBackend(QStringLiteral("cpu"));
+    setFeatureExtractionFaissBackend(QStringLiteral("cpu"));
+    setFeatureExtractionIndexStorage(QStringLiteral("ram"));
+    setFeatureExtractionDiskBuildBatchSize(256);
+    setFeatureExtractionModelBackend(QStringLiteral("tensorrt"));
+    setFeatureExtractionModelDevice(QStringLiteral("gpu"));
+    setFeatureExtractionIndexDirectory(QString());
+    setFeatureExtractionCustomFeatureNamesJson(QStringLiteral("{}"));
 }
 
 } // namespace dltool::settings

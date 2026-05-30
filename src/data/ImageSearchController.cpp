@@ -3,9 +3,11 @@
 #include "data/DataManager.h"
 #include "data/GlobalFilter.h"
 #include "data/Images.h"
+#include "settings/GlobalSettings.h"
 #include "ui/ProgressManager.h"
 
 #include <inferrt/features/ImageSearch.hpp>
+#include <inferrt/model/ModelFeatures.hpp>
 #include <spdlog/spdlog.h>
 
 #include <QCryptographicHash>
@@ -85,8 +87,13 @@ QString datasetHash(const std::vector<int64_t> &dataset_ids, const std::vector<i
     return QString::fromLatin1(QCryptographicHash::hash(payload, QCryptographicHash::Sha1).toHex().left(16));
 }
 
-QString indexDirectoryForProject(const QString &database_path)
+QString indexDirectoryForProject(const QString &database_path, const QString &custom_directory)
 {
+    if (!custom_directory.trimmed().isEmpty())
+    {
+        return QDir::cleanPath(custom_directory.trimmed());
+    }
+
     if (!database_path.isEmpty())
     {
         return QFileInfo(database_path).absoluteDir().filePath(QStringLiteral(".image_search"));
@@ -100,13 +107,12 @@ QString indexDirectoryForProject(const QString &database_path)
     return QDir(fallback).filePath(QStringLiteral("image_search"));
 }
 
-QString indexPathForRequest(const QString &database_path, const std::vector<int64_t> &dataset_ids,
+QString indexPathForRequest(const QString &index_dir_path, const std::vector<int64_t> &dataset_ids,
                             const std::vector<int64_t> &gallery_image_ids, const QString &model_name,
                             const QString &feature_name, const QString &norm, const QString &faiss_backend,
-                            const QString &index_storage)
+                            const QString &index_storage, const QString &model_backend, const QString &model_device)
 {
-    QString index_dir_path = indexDirectoryForProject(database_path);
-    QDir    index_dir(index_dir_path);
+    QDir index_dir(index_dir_path);
     if (!index_dir.exists())
     {
         index_dir.mkpath(QStringLiteral("."));
@@ -114,9 +120,10 @@ QString indexPathForRequest(const QString &database_path, const std::vector<int6
 
     const QString key = datasetHash(dataset_ids, gallery_image_ids);
     const QString file_name
-        = QStringLiteral("%1_%2_%3_%4_%5_%6.faiss")
+        = QStringLiteral("%1_%2_%3_%4_%5_%6_%7_%8.faiss")
               .arg(sanitizeFilePart(model_name), sanitizeFilePart(feature_name), sanitizeFilePart(norm),
-                   sanitizeFilePart(faiss_backend), sanitizeFilePart(index_storage), key);
+                   sanitizeFilePart(faiss_backend), sanitizeFilePart(index_storage),
+                   sanitizeFilePart(model_backend), sanitizeFilePart(model_device), key);
     return index_dir.filePath(file_name);
 }
 
@@ -155,6 +162,27 @@ irt::features::ImageSearchIndexStorage parseIndexStorage(const QString &storage)
                : irt::features::ImageSearchIndexStorage::RAM;
 }
 
+irt::model::ModelBackend parseModelBackend(const QString &backend)
+{
+    const QString value = backend.trimmed().toLower();
+    if (value == QStringLiteral("openvino"))
+    {
+        return irt::model::ModelBackend::OpenVINO;
+    }
+    if (value == QStringLiteral("onnxruntime"))
+    {
+        return irt::model::ModelBackend::ONNXRuntime;
+    }
+    return irt::model::ModelBackend::TensorRT;
+}
+
+irt::model::ModelDevice parseModelDevice(const QString &device)
+{
+    return device.trimmed().toLower() == QStringLiteral("cpu")
+               ? irt::model::ModelDevice::CPU
+               : irt::model::ModelDevice::GPU;
+}
+
 void addProgressMessage(int level, const QString &message)
 {
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
@@ -181,6 +209,11 @@ struct ImageSearchController::SearchRequest
     irt::features::ImageSearchFeatureNorm       norm_mode{irt::features::ImageSearchFeatureNorm::L2};
     irt::features::ImageSearchFaissBackend      faiss_backend_mode{irt::features::ImageSearchFaissBackend::CPU};
     irt::features::ImageSearchIndexStorage      index_storage_mode{irt::features::ImageSearchIndexStorage::RAM};
+    irt::model::ModelBackend                    model_backend{irt::model::ModelBackend::TensorRT};
+    irt::model::ModelDevice                     model_device{irt::model::ModelDevice::GPU};
+
+    QString model_backend_str;
+    QString model_device_str;
 
     std::vector<std::filesystem::path> query_images;
     std::vector<std::filesystem::path> gallery_images;
@@ -257,6 +290,29 @@ QStringList ImageSearchController::supportedModelPresets() const
     };
 }
 
+QStringList ImageSearchController::modelFeatureNames(const QString &model_name) const
+{
+    const QString model = model_name.trimmed().isEmpty() ? defaultModelName() : model_name.trimmed();
+
+    QStringList names;
+    const std::vector<std::string> feature_names = irt::model::modelFeatureNames(model.toStdString());
+    for (const std::string &feature_name : feature_names)
+    {
+        const QString name = QString::fromStdString(feature_name);
+        if (!name.isEmpty() && !names.contains(name))
+        {
+            names.append(name);
+        }
+    }
+
+    if (names.isEmpty())
+    {
+        names.append(defaultFeatureName());
+    }
+
+    return names;
+}
+
 QString ImageSearchController::suggestedWeightsPath(const QString &model_name) const
 {
     const QString model = model_name.trimmed().isEmpty() ? defaultModelName() : model_name.trimmed();
@@ -267,7 +323,8 @@ bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids
                                                  const QString &weights_file, const QString &feature_name,
                                                  bool rebuild_index, int top_k, const QString &norm,
                                                  const QString &preprocess_backend, const QString &faiss_backend,
-                                                 const QString &index_storage, int disk_build_batch_size)
+                                                 const QString &index_storage, int disk_build_batch_size,
+                                                 const QString &model_backend, const QString &model_device)
 {
     if (running_)
     {
@@ -341,6 +398,10 @@ bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids
     request.preprocess_backend      = parsePreprocessBackend(preprocess_backend);
     request.faiss_backend_mode      = parseFaissBackend(effective_faiss_backend);
     request.index_storage_mode      = parseIndexStorage(effective_index_storage);
+    request.model_backend           = parseModelBackend(model_backend);
+    request.model_device            = parseModelDevice(model_device);
+    request.model_backend_str       = model_backend.trimmed().toLower();
+    request.model_device_str        = model_device.trimmed().toLower();
 
     const std::vector<int64_t> all_image_ids = image_model->getAllImageIds();
     for (const int64_t image_id : all_image_ids)
@@ -384,10 +445,12 @@ bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids
     }
 
     std::sort(gallery_image_ids.begin(), gallery_image_ids.end());
+    QString index_dir = indexDirectoryForProject(data_manager_->databasePath(),
+                                                   dltool::settings::GlobalSettings::getInstance()->data()->featureExtractionIndexDirectory());
     request.index_file
-        = indexPathForRequest(data_manager_->databasePath(), sorted_dataset_ids, gallery_image_ids,
+        = indexPathForRequest(index_dir, sorted_dataset_ids, gallery_image_ids,
                               request.model_name, request.feature_name, request.norm, request.faiss_backend,
-                              request.index_storage);
+                              request.index_storage, request.model_backend_str, request.model_device_str);
 
     setLastError(QString());
     last_summary_.clear();
@@ -418,6 +481,8 @@ bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids
                 config.faiss_backend         = request.faiss_backend_mode;
                 config.index_storage         = request.index_storage_mode;
                 config.disk_build_batch_size = static_cast<size_t>(request.disk_build_batch_size);
+                config.model_backend         = request.model_backend;
+                config.model_device          = request.model_device;
 
                 irt::features::ImageSearch search(config);
 

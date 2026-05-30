@@ -2,7 +2,10 @@
 
 #include "settings/SettingsExport.h"
 
+#include <QHash>
 #include <QObject>
+#include <QString>
+#include <QStringList>
 #include <QtQml>
 
 namespace dltool::database {
@@ -66,6 +69,35 @@ class SETTINGS_API DataSettings : public QObject
     Q_PROPERTY(double labelThumbnailBorderPaddingFrom READ labelThumbnailBorderPaddingFrom CONSTANT)
     Q_PROPERTY(double labelThumbnailBorderPaddingTo READ labelThumbnailBorderPaddingTo CONSTANT)
     Q_PROPERTY(double labelThumbnailBorderPaddingStepSize READ labelThumbnailBorderPaddingStepSize CONSTANT)
+
+    Q_PROPERTY(bool featureExtractionEnabled READ featureExtractionEnabled WRITE setFeatureExtractionEnabled NOTIFY
+                   featureExtractionEnabledChanged)
+    Q_PROPERTY(QString featureExtractionModel READ featureExtractionModel WRITE setFeatureExtractionModel NOTIFY
+                   featureExtractionModelChanged)
+    Q_PROPERTY(QString featureExtractionModelPath READ featureExtractionModelPath WRITE setFeatureExtractionModelPath
+                   NOTIFY featureExtractionModelPathChanged)
+    Q_PROPERTY(QString featureExtractionFeatureName READ featureExtractionFeatureName WRITE
+                   setFeatureExtractionFeatureName NOTIFY featureExtractionFeatureNameChanged)
+    Q_PROPERTY(bool featureExtractionRebuildIndex READ featureExtractionRebuildIndex WRITE
+                   setFeatureExtractionRebuildIndex NOTIFY featureExtractionRebuildIndexChanged)
+    Q_PROPERTY(int featureExtractionTopK READ featureExtractionTopK WRITE setFeatureExtractionTopK NOTIFY
+                   featureExtractionTopKChanged)
+    Q_PROPERTY(QString featureExtractionNorm READ featureExtractionNorm WRITE setFeatureExtractionNorm NOTIFY
+                   featureExtractionNormChanged)
+    Q_PROPERTY(QString featureExtractionPreprocessBackend READ featureExtractionPreprocessBackend WRITE
+                   setFeatureExtractionPreprocessBackend NOTIFY featureExtractionPreprocessBackendChanged)
+    Q_PROPERTY(QString featureExtractionFaissBackend READ featureExtractionFaissBackend WRITE
+                   setFeatureExtractionFaissBackend NOTIFY featureExtractionFaissBackendChanged)
+    Q_PROPERTY(QString featureExtractionIndexStorage READ featureExtractionIndexStorage WRITE
+                   setFeatureExtractionIndexStorage NOTIFY featureExtractionIndexStorageChanged)
+    Q_PROPERTY(int featureExtractionDiskBuildBatchSize READ featureExtractionDiskBuildBatchSize WRITE
+                   setFeatureExtractionDiskBuildBatchSize NOTIFY featureExtractionDiskBuildBatchSizeChanged)
+    Q_PROPERTY(QString featureExtractionModelBackend READ featureExtractionModelBackend WRITE
+                   setFeatureExtractionModelBackend NOTIFY featureExtractionModelBackendChanged)
+    Q_PROPERTY(QString featureExtractionModelDevice READ featureExtractionModelDevice WRITE
+                   setFeatureExtractionModelDevice NOTIFY featureExtractionModelDeviceChanged)
+    Q_PROPERTY(QString featureExtractionIndexDirectory READ featureExtractionIndexDirectory WRITE
+                   setFeatureExtractionIndexDirectory NOTIFY featureExtractionIndexDirectoryChanged)
 
 public:
     explicit DataSettings(QObject *parent = nullptr);
@@ -200,6 +232,108 @@ public:
         return label_thumbnail_border_padding_step_size_;
     }
 
+    bool featureExtractionEnabled() const
+    {
+        return feature_extraction_enabled_;
+    }
+
+    void setFeatureExtractionEnabled(bool value);
+
+    QString featureExtractionModel() const
+    {
+        return feature_extraction_model_;
+    }
+
+    void setFeatureExtractionModel(const QString &value);
+
+    QString featureExtractionModelPath() const
+    {
+        return feature_extraction_model_path_;
+    }
+
+    void setFeatureExtractionModelPath(const QString &value);
+
+    QString featureExtractionFeatureName() const
+    {
+        return feature_extraction_feature_name_;
+    }
+
+    void setFeatureExtractionFeatureName(const QString &value);
+
+    bool featureExtractionRebuildIndex() const
+    {
+        return feature_extraction_rebuild_index_;
+    }
+
+    void setFeatureExtractionRebuildIndex(bool value);
+
+    int featureExtractionTopK() const
+    {
+        return feature_extraction_top_k_;
+    }
+
+    void setFeatureExtractionTopK(int value);
+
+    QString featureExtractionNorm() const
+    {
+        return feature_extraction_norm_;
+    }
+
+    void setFeatureExtractionNorm(const QString &value);
+
+    QString featureExtractionPreprocessBackend() const
+    {
+        return feature_extraction_preprocess_backend_;
+    }
+
+    void setFeatureExtractionPreprocessBackend(const QString &value);
+
+    QString featureExtractionFaissBackend() const
+    {
+        return feature_extraction_faiss_backend_;
+    }
+
+    void setFeatureExtractionFaissBackend(const QString &value);
+
+    QString featureExtractionIndexStorage() const
+    {
+        return feature_extraction_index_storage_;
+    }
+
+    void setFeatureExtractionIndexStorage(const QString &value);
+
+    int featureExtractionDiskBuildBatchSize() const
+    {
+        return feature_extraction_disk_build_batch_size_;
+    }
+
+    void setFeatureExtractionDiskBuildBatchSize(int value);
+
+    QString featureExtractionModelBackend() const
+    {
+        return feature_extraction_model_backend_;
+    }
+
+    void setFeatureExtractionModelBackend(const QString &value);
+
+    QString featureExtractionModelDevice() const
+    {
+        return feature_extraction_model_device_;
+    }
+
+    void setFeatureExtractionModelDevice(const QString &value);
+
+    QString featureExtractionIndexDirectory() const
+    {
+        return feature_extraction_index_directory_;
+    }
+
+    void setFeatureExtractionIndexDirectory(const QString &value);
+
+    Q_INVOKABLE QStringList featureExtractionCustomFeatureNames(const QString &model_name) const;
+
+    Q_INVOKABLE void addFeatureExtractionCustomFeatureName(const QString &model_name, const QString &feature_name);
+
     /**
      * @brief 从数据库加载设置
      * @param database 设置数据库
@@ -230,8 +364,26 @@ signals:
     void labelThumbnailScaleChanged();
     void labelThumbnailAspectRatioChanged();
     void labelThumbnailBorderPaddingChanged();
+    void featureExtractionEnabledChanged();
+    void featureExtractionModelChanged();
+    void featureExtractionModelPathChanged();
+    void featureExtractionFeatureNameChanged();
+    void featureExtractionRebuildIndexChanged();
+    void featureExtractionTopKChanged();
+    void featureExtractionNormChanged();
+    void featureExtractionPreprocessBackendChanged();
+    void featureExtractionFaissBackendChanged();
+    void featureExtractionIndexStorageChanged();
+    void featureExtractionDiskBuildBatchSizeChanged();
+    void featureExtractionModelBackendChanged();
+    void featureExtractionModelDeviceChanged();
+    void featureExtractionIndexDirectoryChanged();
+    void featureExtractionCustomFeatureNamesChanged();
 
 private:
+    QString featureExtractionCustomFeatureNamesJson() const;
+    void    setFeatureExtractionCustomFeatureNamesJson(const QString &value);
+
     int thumbnail_margin_{10};
     int thumbnail_cache_size_{100}; // 100MB
     int image_load_threads_{4};
@@ -257,6 +409,23 @@ private:
     double label_thumbnail_border_padding_from_{0.0};
     double label_thumbnail_border_padding_to_{1.0};
     double label_thumbnail_border_padding_step_size_{0.1};
+
+    bool    feature_extraction_enabled_{true};
+    QString feature_extraction_model_{QStringLiteral("resnet18")};
+    QString feature_extraction_model_path_{QStringLiteral("F:/models/resnet18.wts")};
+    QString feature_extraction_feature_name_{QStringLiteral("layer4")};
+    bool    feature_extraction_rebuild_index_{false};
+    int     feature_extraction_top_k_{5};
+    QString feature_extraction_norm_{QStringLiteral("l2")};
+    QString feature_extraction_preprocess_backend_{QStringLiteral("cpu")};
+    QString feature_extraction_faiss_backend_{QStringLiteral("cpu")};
+    QString feature_extraction_index_storage_{QStringLiteral("ram")};
+    int     feature_extraction_disk_build_batch_size_{256};
+    QString feature_extraction_model_backend_{QStringLiteral("tensorrt")};
+    QString feature_extraction_model_device_{QStringLiteral("gpu")};
+    QString feature_extraction_index_directory_;
+
+    QHash<QString, QStringList> feature_extraction_custom_feature_names_;
 };
 
 } // namespace dltool::settings

@@ -92,6 +92,8 @@ public:
      */
     Q_INVOKABLE QStringList supportedModelPresets() const;
 
+    Q_INVOKABLE QStringList modelFeatureNames(const QString &model_name) const;
+
     /**
      * @brief 根据模型名建议权重文件路径
      * @param model_name 模型名称；为空时使用默认模型名
@@ -116,13 +118,16 @@ public:
      * @param faiss_backend FAISS 计算后端（cpu / gpu）；为 gpu 时索引强制使用内存
      * @param index_storage 索引存储方式（ram / disk）
      * @param disk_build_batch_size 磁盘索引构建时的批大小
+     * @param model_backend 模型推理后端（tensorrt / openvino / onnxruntime）
+     * @param model_device 模型运行设备（cpu / gpu）
      * @return 任务成功提交到后台线程时返回 true
      */
     Q_INVOKABLE bool searchSelectedImages(const QVariantList &dataset_ids, const QString &model_name,
                                           const QString &weights_file, const QString &feature_name, bool rebuild_index,
                                           int top_k, const QString &norm, const QString &preprocess_backend,
                                           const QString &faiss_backend, const QString &index_storage,
-                                          int disk_build_batch_size);
+                                          int disk_build_batch_size, const QString &model_backend,
+                                          const QString &model_device);
 
 signals:
     /** @brief 运行状态变化（running 属性） */
@@ -133,6 +138,9 @@ signals:
 
     /** @brief 最近一次错误信息变化 */
     void lastErrorChanged();
+
+    /** @brief 特征库构建进度更新 */
+    void buildProgressChanged(int processedCount, int totalCount);
 
 private:
     struct SearchRequest;

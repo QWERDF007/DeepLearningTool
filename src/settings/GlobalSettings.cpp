@@ -180,6 +180,26 @@ void GlobalSettings::connectAutoSave()
     connect(data_settings_, &DataSettings::imageCellScaleFromChanged, this, &GlobalSettings::scheduleSave);
     connect(data_settings_, &DataSettings::imageCellScaleToChanged, this, &GlobalSettings::scheduleSave);
     connect(data_settings_, &DataSettings::imageCellScaleStepSizeChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionEnabledChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionModelChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionModelPathChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionFeatureNameChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionRebuildIndexChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionTopKChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionNormChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionPreprocessBackendChanged, this,
+            &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionFaissBackendChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionIndexStorageChanged, this,
+            &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionDiskBuildBatchSizeChanged, this,
+            &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionModelBackendChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionModelDeviceChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionIndexDirectoryChanged, this,
+            &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionCustomFeatureNamesChanged, this,
+            &GlobalSettings::scheduleSave);
 
     // 连接 UISettings 的所有信号
     connect(ui_settings_, &UISettings::imageBrightnessChanged, this, &GlobalSettings::scheduleSave);

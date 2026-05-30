@@ -5,15 +5,55 @@ import Qt.labs.platform
 
 import dltool.ui
 import dltool.data
+import dltool.settings
 
 DltPopup {
     id: dialog
 
     property DataManager dataManager
+    property bool syncing: false
+    property string lastSuggestedWeightsPath: ""
 
     implicitWidth: 680
     implicitHeight: contentColumn.implicitHeight
     focus: true
+
+    function trimText(value) {
+        return value === undefined || value === null ? "" : String(value).trim()
+    }
+
+    function comboText(combo) {
+        let text = combo.editable ? trimText(combo.editText) : trimText(combo.currentText)
+        if (text === "") {
+            text = trimText(combo.currentText)
+        }
+        return text
+    }
+
+    function setComboText(combo, value) {
+        let text = trimText(value)
+        let index = combo.find(text)
+        if (index >= 0) {
+            combo.currentIndex = index
+        } else {
+            combo.currentIndex = -1
+        }
+        if (combo.editable) {
+            combo.editText = text
+        }
+    }
+
+    function imageSearchController() {
+        return dataManager ? dataManager.imageSearch : null
+    }
+
+    function suggestedWeightsPath(modelName) {
+        let controller = imageSearchController()
+        if (controller) {
+            return controller.suggestedWeightsPath(modelName)
+        }
+        return modelName === "" ? "" : "F:/models/" + modelName + ".wts"
+    }
 
     function openForSearch() {
         resetDefaults()
@@ -21,17 +61,42 @@ DltPopup {
     }
 
     function resetDefaults() {
-        if (dataManager && dataManager.imageSearch) {
-            if (modelBox.currentText === "") {
-                modelBox.currentIndex = 0
-            }
-            if (featureInput.text === "") {
-                featureInput.text = dataManager.imageSearch.defaultFeatureName
-            }
-            if (weightsPathInput.text === "") {
-                weightsPathInput.text = dataManager.imageSearch.suggestedWeightsPath(modelBox.currentText)
-            }
+        let controller = imageSearchController()
+        syncing = true
+
+        let modelName = GlobalSettings.data.featureExtractionModel
+        if (modelName === "" && controller) {
+            modelName = controller.defaultModelName
         }
+        setComboText(modelBox, modelName)
+
+        let modelPath = GlobalSettings.data.featureExtractionModelPath
+        if (modelPath === "") {
+            modelPath = suggestedWeightsPath(modelName)
+        }
+        weightsPathInput.text = modelPath
+
+        let featureName = GlobalSettings.data.featureExtractionFeatureName
+        if (featureName === "" && controller) {
+            featureName = controller.defaultFeatureName
+        }
+        featureBox.modelName = modelName
+        featureBox.featureName = featureName
+        featureBox.refreshFeatureNames()
+
+        rebuildCheckBox.checked = GlobalSettings.data.featureExtractionRebuildIndex
+        topKEditor.value = GlobalSettings.data.featureExtractionTopK
+        setComboText(normBox, GlobalSettings.data.featureExtractionNorm)
+        setComboText(preprocessBox, GlobalSettings.data.featureExtractionPreprocessBackend)
+        setComboText(faissBackendBox, GlobalSettings.data.featureExtractionFaissBackend)
+        setComboText(indexStorageBox, GlobalSettings.data.featureExtractionIndexStorage)
+        diskBatchEditor.value = GlobalSettings.data.featureExtractionDiskBuildBatchSize
+        setComboText(modelBackendBox, GlobalSettings.data.featureExtractionModelBackend)
+        setComboText(modelDeviceBox, GlobalSettings.data.featureExtractionModelDevice)
+
+        lastSuggestedWeightsPath = suggestedWeightsPath(modelName)
+        syncing = false
+
         Qt.callLater(function () {
             for (let i = 0; i < datasetRepeater.count; ++i) {
                 let item = datasetRepeater.itemAt(i)
@@ -40,6 +105,44 @@ DltPopup {
                 }
             }
         })
+    }
+
+    function updateModel(value) {
+        if (syncing) {
+            return
+        }
+
+        let modelName = trimText(value)
+        if (modelName === "") {
+            return
+        }
+
+        let previousSuggested = lastSuggestedWeightsPath
+        let nextSuggested = suggestedWeightsPath(modelName)
+        GlobalSettings.data.featureExtractionModel = modelName
+        featureBox.modelName = modelName
+        if (weightsPathInput.text === "" || weightsPathInput.text === previousSuggested) {
+            weightsPathInput.text = nextSuggested
+            GlobalSettings.data.featureExtractionModelPath = nextSuggested
+        }
+        lastSuggestedWeightsPath = nextSuggested
+        featureBox.refreshFeatureNames()
+    }
+
+    function persistSettings() {
+        featureBox.rememberCurrentText()
+        GlobalSettings.data.featureExtractionModel = comboText(modelBox)
+        GlobalSettings.data.featureExtractionModelPath = trimText(weightsPathInput.text)
+        GlobalSettings.data.featureExtractionFeatureName = featureBox.currentFeatureText()
+        GlobalSettings.data.featureExtractionRebuildIndex = rebuildCheckBox.checked
+        GlobalSettings.data.featureExtractionTopK = Math.round(topKEditor.value)
+        GlobalSettings.data.featureExtractionNorm = normBox.currentText
+        GlobalSettings.data.featureExtractionPreprocessBackend = preprocessBox.currentText
+        GlobalSettings.data.featureExtractionFaissBackend = faissBackendBox.currentText
+        GlobalSettings.data.featureExtractionIndexStorage = indexStorageBox.currentText
+        GlobalSettings.data.featureExtractionDiskBuildBatchSize = Math.round(diskBatchEditor.value)
+        GlobalSettings.data.featureExtractionModelBackend = modelBackendBox.currentText
+        GlobalSettings.data.featureExtractionModelDevice = modelDeviceBox.currentText
     }
 
     function selectedDatasetIds() {
@@ -54,27 +157,37 @@ DltPopup {
     }
 
     function startSearch() {
-        if (!dataManager || !dataManager.imageSearch) {
+        let controller = imageSearchController()
+        if (!controller || !GlobalSettings.data.featureExtractionEnabled) {
             return
         }
-        let started = dataManager.imageSearch.searchSelectedImages(
+
+        persistSettings()
+        let started = controller.searchSelectedImages(
                     selectedDatasetIds(),
-                    modelBox.currentText,
-                    weightsPathInput.text,
-                    featureInput.text,
-                    rebuildCheckBox.checked,
-                    Math.round(topKEditor.value),
-                    normBox.currentText,
-                    preprocessBox.currentText,
-                    faissBackendBox.currentText,
-                    indexStorageBox.currentText,
-                    Math.round(diskBatchEditor.value))
+                    GlobalSettings.data.featureExtractionModel,
+                    GlobalSettings.data.featureExtractionModelPath,
+                    GlobalSettings.data.featureExtractionFeatureName,
+                    GlobalSettings.data.featureExtractionRebuildIndex,
+                    GlobalSettings.data.featureExtractionTopK,
+                    GlobalSettings.data.featureExtractionNorm,
+                    GlobalSettings.data.featureExtractionPreprocessBackend,
+                    GlobalSettings.data.featureExtractionFaissBackend,
+                    GlobalSettings.data.featureExtractionIndexStorage,
+                    GlobalSettings.data.featureExtractionDiskBuildBatchSize,
+                    GlobalSettings.data.featureExtractionModelBackend,
+                    GlobalSettings.data.featureExtractionModelDevice)
         if (started) {
             close()
         }
     }
 
     onOpened: resetDefaults()
+    onClosed: {
+        if (!syncing) {
+            persistSettings()
+        }
+    }
 
     ColumnLayout {
         id: contentColumn
@@ -139,6 +252,7 @@ DltPopup {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
+                enabled: GlobalSettings.data.featureExtractionEnabled
 
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -151,14 +265,13 @@ DltPopup {
                         id: modelBox
                         Layout.fillWidth: true
                         editable: true
-                        model: dialog.dataManager && dialog.dataManager.imageSearch
-                               ? dialog.dataManager.imageSearch.supportedModelPresets()
+                        model: dialog.imageSearchController()
+                               ? dialog.imageSearchController().supportedModelPresets()
                                : []
-                        Component.onCompleted: currentIndex = 0
-                        onActivated: {
-                            if (dialog.dataManager && dialog.dataManager.imageSearch) {
-                                weightsPathInput.text = dialog.dataManager.imageSearch.suggestedWeightsPath(currentText)
-                            }
+                        onActivated: dialog.updateModel(dialog.comboText(modelBox))
+                        onCommit: function (text) {
+                            editText = text
+                            dialog.updateModel(text)
                         }
                     }
                 }
@@ -167,16 +280,62 @@ DltPopup {
                     Layout.preferredWidth: 220
                     spacing: 4
                     DltText {
-                        text: "特征层"
+                        text: "特征层名"
                         color: DltColor.FontDark
                     }
-                    DltTextField {
-                        id: featureInput
+                    FeatureNameComboBox {
+                        id: featureBox
                         Layout.fillWidth: true
-                        text: dialog.dataManager && dialog.dataManager.imageSearch
-                              ? dialog.dataManager.imageSearch.defaultFeatureName
-                              : "layer4"
-                        placeholderText: "layer4 / x_norm_clstoken"
+                        imageSearch: dialog.imageSearchController()
+                        modelName: dialog.comboText(modelBox)
+                        featureName: GlobalSettings.data.featureExtractionFeatureName
+                        onFeatureNameAccepted: function (featureName) {
+                            GlobalSettings.data.featureExtractionFeatureName = featureName
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                enabled: GlobalSettings.data.featureExtractionEnabled
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    DltText {
+                        text: "推理后端"
+                        color: DltColor.FontDark
+                    }
+                    DltComboBox {
+                        id: modelBackendBox
+                        Layout.fillWidth: true
+                        model: ["tensorrt", "openvino", "onnxruntime"]
+                        onActivated: {
+                            if (!dialog.syncing) {
+                                GlobalSettings.data.featureExtractionModelBackend = currentText
+                            }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    DltText {
+                        text: "推理设备"
+                        color: DltColor.FontDark
+                    }
+                    DltComboBox {
+                        id: modelDeviceBox
+                        Layout.fillWidth: true
+                        model: ["gpu", "cpu"]
+                        onActivated: {
+                            if (!dialog.syncing) {
+                                GlobalSettings.data.featureExtractionModelDevice = currentText
+                            }
+                        }
                     }
                 }
             }
@@ -184,6 +343,7 @@ DltPopup {
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 4
+                enabled: GlobalSettings.data.featureExtractionEnabled
                 DltText {
                     text: "模型路径"
                     color: DltColor.FontDark
@@ -195,6 +355,9 @@ DltPopup {
                         id: weightsPathInput
                         Layout.fillWidth: true
                         placeholderText: "选择 .wts 权重文件"
+                        onEditingFinished: {
+                            GlobalSettings.data.featureExtractionModelPath = dialog.trimText(text)
+                        }
                     }
                     DltButton {
                         text: "打开"
@@ -206,12 +369,18 @@ DltPopup {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
+                enabled: GlobalSettings.data.featureExtractionEnabled
 
                 DltCheckBox {
                     id: rebuildCheckBox
                     Layout.preferredWidth: 190
                     text: "重新构建特征库"
                     checked: false
+                    onToggled: {
+                        if (!dialog.syncing) {
+                            GlobalSettings.data.featureExtractionRebuildIndex = checked
+                        }
+                    }
                 }
 
                 DltSpinEditor {
@@ -222,6 +391,11 @@ DltPopup {
                     minValue: 1
                     maxValue: 1000
                     step: 1
+                    onValueChanged: {
+                        if (!dialog.syncing) {
+                            GlobalSettings.data.featureExtractionTopK = Math.round(value)
+                        }
+                    }
                 }
 
                 DltSpinEditor {
@@ -232,12 +406,18 @@ DltPopup {
                     minValue: 1
                     maxValue: 8192
                     step: 1
+                    onValueChanged: {
+                        if (!dialog.syncing) {
+                            GlobalSettings.data.featureExtractionDiskBuildBatchSize = Math.round(value)
+                        }
+                    }
                 }
             }
 
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
+                enabled: GlobalSettings.data.featureExtractionEnabled
 
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -250,6 +430,11 @@ DltPopup {
                         id: normBox
                         Layout.fillWidth: true
                         model: ["l2", "l1", "none"]
+                        onActivated: {
+                            if (!dialog.syncing) {
+                                GlobalSettings.data.featureExtractionNorm = currentText
+                            }
+                        }
                     }
                 }
 
@@ -264,6 +449,11 @@ DltPopup {
                         id: preprocessBox
                         Layout.fillWidth: true
                         model: ["cpu", "gpu"]
+                        onActivated: {
+                            if (!dialog.syncing) {
+                                GlobalSettings.data.featureExtractionPreprocessBackend = currentText
+                            }
+                        }
                     }
                 }
 
@@ -279,8 +469,11 @@ DltPopup {
                         Layout.fillWidth: true
                         model: ["cpu", "gpu"]
                         onActivated: {
-                            if (currentText === "gpu") {
-                                indexStorageBox.currentIndex = 0
+                            if (!dialog.syncing) {
+                                GlobalSettings.data.featureExtractionFaissBackend = currentText
+                                if (currentText === "gpu") {
+                                    dialog.setComboText(indexStorageBox, "ram")
+                                }
                             }
                         }
                     }
@@ -298,6 +491,11 @@ DltPopup {
                         Layout.fillWidth: true
                         enabled: faissBackendBox.currentText !== "gpu"
                         model: ["ram", "disk"]
+                        onActivated: {
+                            if (!dialog.syncing) {
+                                GlobalSettings.data.featureExtractionIndexStorage = currentText
+                            }
+                        }
                     }
                 }
             }
@@ -313,9 +511,7 @@ DltPopup {
 
             DltText {
                 Layout.fillWidth: true
-                text: dialog.dataManager && dialog.dataManager.imageSearch
-                      ? dialog.dataManager.imageSearch.lastError
-                      : ""
+                text: dialog.imageSearchController() ? dialog.imageSearchController().lastError : ""
                 color: "red"
                 elide: Text.ElideRight
             }
@@ -326,8 +522,9 @@ DltPopup {
             }
             DltButton {
                 text: "开始搜索"
-                enabled: dialog.dataManager && dialog.dataManager.imageSearch
-                         && !dialog.dataManager.imageSearch.running
+                enabled: dialog.imageSearchController()
+                         && !dialog.imageSearchController().running
+                         && GlobalSettings.data.featureExtractionEnabled
                 onClicked: dialog.startSearch()
             }
         }
@@ -336,9 +533,10 @@ DltPopup {
     FileDialog {
         id: weightsFileDialog
         title: "选择模型权重"
-        nameFilters: ["Weights (*.wts)", "All files (*)"]
+        nameFilters: ["Weights (*.wts *.onnx)", "All files (*)"]
         onAccepted: {
             weightsPathInput.text = Utils.getCleanPath(weightsFileDialog.file.toString())
+            GlobalSettings.data.featureExtractionModelPath = weightsPathInput.text
         }
     }
 }

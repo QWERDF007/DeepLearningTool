@@ -44,6 +44,7 @@ Item {
             enabled: dataManager && dataManager.imageSearch
                      && selection && selection.hasSelection
                      && !dataManager.imageSearch.running
+                     && GlobalSettings.data.featureExtractionEnabled
             onClicked: {
                 imageSearchDialog.openForSearch()
             }

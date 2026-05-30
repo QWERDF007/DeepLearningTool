@@ -6,6 +6,7 @@ import QtQuick.Controls.Basic
 import dltool.ui
 
 Button {
+    id:control
     display: Button.IconOnly
     property int iconSize: 20
     property int iconSource
@@ -19,11 +20,19 @@ Button {
     property color color: pressed ? pressedColor : hovered ? hoverColor : normalColor
     property color iconColor: enabled ? DltColor.FontPrimary : "#6E6E6E"
     property color textColor: DltColor.FontPrimary
+    readonly property bool hostingPopupOpen: {
+        var ancestor = control.parent
+        while (ancestor) {
+            if (ancestor instanceof Popup)
+                return ancestor.opened
+            ancestor = ancestor.parent
+        }
+        return true
+    }
     Accessible.role: Accessible.Button
     Accessible.name: control.text
     Accessible.description: contentDescription
     Accessible.onPressAction: control.clicked()
-    id:control
     focusPolicy:Qt.TabFocus
     padding: 0
     verticalPadding: 4
@@ -94,16 +103,30 @@ Button {
     }
     DltToolTip{
         id:tool_tip
-        visible: {
-            if(control.text === ""){
-                return false
-            }
-            if(control.display !== Button.IconOnly){
-                return false
-            }
-            return hovered
-        }
+        visible: control.text !== ""
+                && control.display === Button.IconOnly
+                && control.hovered
+                && control.visible
+                && !control.pressed
+                && control.hostingPopupOpen
         text:control.text
         delay: 200
     }
+
+    onVisibleChanged: {
+        if (!control.visible)
+            tool_tip.close()
+    }
+
+    onHoveredChanged: {
+        if (!control.hovered)
+            tool_tip.close()
+    }
+
+    onPressedChanged: {
+        if (control.pressed)
+            tool_tip.close()
+    }
+
+    Component.onDestruction: tool_tip.close()
 }

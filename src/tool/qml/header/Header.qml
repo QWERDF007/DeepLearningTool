@@ -87,6 +87,7 @@ Rectangle {
                     DltTextIconButton {
                         iconSource: DltFontIcon.Settings
                         text: "设置"
+                        onClicked: settingsDialog.open()
                     }
                 }
             }
@@ -199,5 +200,10 @@ Rectangle {
     CategoryStatisticsDialog {
         id: categoryStatisticsDialog
         dataManager: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager : null
+    }
+
+    SettingsDialog {
+        id: settingsDialog
+        imageSearch: header.imageSearch
     }
 }

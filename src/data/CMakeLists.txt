@@ -5,3 +5,8 @@ add_plugin_library(data
 )
 
 setup_inferrt(${PROJECT_NAME}_data)
+
+# target_link_libraries(${PROJECT_NAME}_data PUBLIC
+#     "$<$<CONFIG:Debug>:inferrt_modeld>"
+#     "$<$<NOT:$<CONFIG:Debug>>:inferrt_model>"
+# )
