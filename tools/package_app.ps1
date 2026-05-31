@@ -535,6 +535,105 @@ function Copy-ProjectRuntime {
     }
 }
 
+# 查找 Intel MKL 根目录。
+# MKL DLL 是 Faiss 的运行时依赖，大规模检索时 BLAS 运算需要它们。
+function Get-MklRoots {
+    param([string]$BuildPath)
+
+    $roots = New-Object System.Collections.Generic.List[string]
+
+    foreach ($name in @("MKLROOT", "MKL_ROOT")) {
+        $value = [Environment]::GetEnvironmentVariable($name)
+        if ($value) {
+            $roots.Add($value)
+        }
+    }
+
+    # 从 CMakeCache 中读取 MKL 库路径反推安装目录。
+    $cacheFile = Join-Path $BuildPath "CMakeCache.txt"
+    foreach ($key in @("BLAS_mkl_core_dll_LIBRARY", "MKL_CORE_LIBRARY")) {
+        $value = Read-CMakeCacheValue -CacheFile $cacheFile -Key $key
+        if (-not $value) {
+            continue
+        }
+        $normalized = $value.Replace("/", "\")
+        $index = $normalized.ToLowerInvariant().IndexOf("\mkl\")
+        if ($index -gt 0) {
+            $roots.Add($normalized.Substring(0, $index))
+        }
+    }
+
+    if (Test-Path -LiteralPath "D:\Software\mkl") {
+        $roots.Add("D:\Software\mkl")
+    }
+
+    return $roots | Select-Object -Unique
+}
+
+# 复制 Intel MKL 运行时 DLL。
+# Faiss 在启用 MKL 编译时需要 mkl_core / mkl_intel_thread / mkl_rt 和 libiomp5md。
+function Copy-MklRuntime {
+    param(
+        [string]$BuildPath,
+        [string]$OutputPath
+    )
+
+    $target = Join-Path $OutputPath "mkl_core.2.dll"
+    if (Test-Path -LiteralPath $target) {
+        return
+    }
+
+    $mklRoots = Get-MklRoots -BuildPath $BuildPath
+    foreach ($mklRoot in $mklRoots) {
+        $binDirs = @(
+            (Join-Path $mklRoot "mkl\bin"),
+            (Join-Path $mklRoot "bin")
+        )
+        $compilerDirs = @(
+            (Join-Path $mklRoot "compiler\bin"),
+            (Join-Path $mklRoot "..\compiler\bin")
+        )
+
+        $mklBin = $null
+        $compilerBin = $null
+        foreach ($dir in $binDirs) {
+            if (Test-Path -LiteralPath $dir) {
+                $mklBin = (Resolve-Path -LiteralPath $dir).Path
+                break
+            }
+        }
+        foreach ($dir in $compilerDirs) {
+            if (Test-Path -LiteralPath $dir) {
+                $compilerBin = (Resolve-Path -LiteralPath $dir).Path
+                break
+            }
+        }
+
+        if (-not $mklBin) {
+            continue
+        }
+
+        foreach ($name in @("mkl_core.2.dll", "mkl_intel_thread.2.dll", "mkl_rt.2.dll")) {
+            $src = Join-Path $mklBin $name
+            if (Test-Path -LiteralPath $src) {
+                Copy-PackageFile -Source $src -Destination (Join-Path $OutputPath $name)
+            }
+        }
+
+        if ($compilerBin) {
+            $iomp = Join-Path $compilerBin "libiomp5md.dll"
+            if (Test-Path -LiteralPath $iomp) {
+                Copy-PackageFile -Source $iomp -Destination (Join-Path $OutputPath "libiomp5md.dll")
+            }
+        }
+
+        Write-Host "MKL runtime DLLs copied successfully"
+        return
+    }
+
+    Write-Warning "MKL runtime DLLs were not found; image search may crash with large datasets"
+}
+
 # 复制 sqlite3.dll。
 # 优先使用 CMakeCache 中 SQLite3_LIBRARY 对应目录，兜底使用 cmake/ConfigSQLite.cmake 中的路径。
 function Copy-SqliteIfNeeded {
@@ -624,6 +723,7 @@ $PackagedExe = Join-Path $ResolvedInstallDir (Split-Path -Leaf $SourceExe)
 Copy-PackageFile -Source $SourceExe -Destination $PackagedExe
 Copy-ProjectRuntime -BuildPath $ResolvedBuildDir -OutputPath $ResolvedInstallDir -CopyPdb $IncludePdb.IsPresent -DetectedConfig $DetectedConfig -CopyQmlModuleDir $IncludeQmlModuleDir.IsPresent
 Copy-SqliteIfNeeded -BuildPath $ResolvedBuildDir -OutputPath $ResolvedInstallDir
+Copy-MklRuntime -BuildPath $ResolvedBuildDir -OutputPath $ResolvedInstallDir
 
 # 补充 windeployqt 不一定能在普通 PowerShell 中找到的 MSVC/Windows SDK 依赖。
 Copy-MsvcRuntime -OutputPath $ResolvedInstallDir -DetectedConfig $DetectedConfig -Architecture $Architecture

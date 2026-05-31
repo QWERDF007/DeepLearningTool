@@ -1,4 +1,4 @@
-import QtQuick
+﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Qt.labs.platform
@@ -61,6 +61,7 @@ DltPopup {
 
     function loadFromSettings() {
         syncing = true
+        advancedExpander.expand = false
         advancedExpanded = false
 
         enableCheckBox.checked = GlobalSettings.data.featureExtractionEnabled
@@ -130,6 +131,7 @@ DltPopup {
     ColumnLayout {
         id: contentColumn
         width: parent.width
+        height: parent.height
         spacing: 0
 
         RowLayout {
@@ -149,15 +151,13 @@ DltPopup {
 
         }
 
-        ScrollView {
-            id: settingsScroll
+        DltScrollablePage {
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(600, settingsColumn.implicitHeight + 4)
-            clip: true
+            Layout.fillHeight: true
+            padding: 0
 
             ColumnLayout {
-                id: settingsColumn
-                width: settingsScroll.availableWidth
+                width: parent.width
                 spacing: 12
 
                 Rectangle {
@@ -175,19 +175,27 @@ DltPopup {
                         anchors.margins: 12
                         spacing: 12
 
-                        RowLayout {
+                        Item {
                             Layout.fillWidth: true
-                            spacing: 12
+                            implicitHeight: 24
 
                             DltText {
-                                Layout.fillWidth: true
+                                anchors {
+                                    left: parent.left
+                                    verticalCenter: parent.verticalCenter
+                                }
+                                width: parent.width / 3
                                 text: "特征提取"
                                 font: DltFont.Subtitle
                                 color: DltColor.FontPrimary
                             }
 
-                            DltCheckBox {
+                            DltToggleSwitch {
                                 id: enableCheckBox
+                                anchors {
+                                    right: parent.right
+                                    verticalCenter: parent.verticalCenter
+                                }
                                 text: "启用"
                                 checked: GlobalSettings.data.featureExtractionEnabled
                                 onToggled: {
@@ -198,207 +206,348 @@ DltPopup {
                             }
                         }
 
-                        GridLayout {
-                            Layout.fillWidth: true
-                            columns: 2
-                            rowSpacing: 10
-                            columnSpacing: 12
-                            enabled: enableCheckBox.checked
-
-                            DltText {
-                                text: "模型"
-                                color: DltColor.FontDark
-                            }
-                            DltComboBox {
-                                id: modelBox
-                                Layout.fillWidth: true
-                                editable: true
-                                model: dialog.imageSearch ? dialog.imageSearch.supportedModelPresets() : []
-                                onActivated: dialog.updateModel(dialog.comboText(modelBox))
-                                onCommit: function (text) {
-                                    editText = text
-                                    dialog.updateModel(text)
-                                }
-                            }
-
-                            DltText {
-                                text: "模型路径"
-                                color: DltColor.FontDark
-                            }
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-
-                                DltTextField {
-                                    id: modelPathInput
-                                    Layout.fillWidth: true
-                                    placeholderText: "选择 .wts 权重文件"
-                                    onEditingFinished: {
-                                        if (!dialog.syncing) {
-                                            GlobalSettings.data.featureExtractionModelPath = dialog.trimText(text)
-                                        }
-                                    }
-                                }
-
-                                DltTextIconButton {
-                                    Layout.preferredWidth: 34
-                                    Layout.preferredHeight: 34
-                                    iconSource: DltFontIcon.OpenFile
-                                    text: "打开"
-                                    onClicked: modelPathDialog.open()
-                                }
-                            }
-
-                            DltText {
-                                text: "特征层名"
-                                color: DltColor.FontDark
-                            }
-                            FeatureNameComboBox {
-                                id: featureNameBox
-                                Layout.fillWidth: true
-                                imageSearch: dialog.imageSearch
-                                modelName: dialog.comboText(modelBox)
-                                featureName: GlobalSettings.data.featureExtractionFeatureName
-                                onFeatureNameAccepted: function (featureName) {
-                                    dialog.updateFeatureName(featureName)
-                                }
-                            }
-
-                            DltText {
-                                text: "推理后端"
-                                color: DltColor.FontDark
-                            }
-                            DltComboBox {
-                                id: modelBackendBox
-                                Layout.fillWidth: true
-                                model: ["tensorrt", "openvino", "onnxruntime"]
-                                onActivated: {
-                                    if (!dialog.syncing) {
-                                        GlobalSettings.data.featureExtractionModelBackend = currentText
-                                    }
-                                }
-                            }
-
-                            DltText {
-                                text: "推理设备"
-                                color: DltColor.FontDark
-                            }
-                            DltComboBox {
-                                id: modelDeviceBox
-                                Layout.fillWidth: true
-                                model: ["gpu", "cpu"]
-                                onActivated: {
-                                    if (!dialog.syncing) {
-                                        GlobalSettings.data.featureExtractionModelDevice = currentText
-                                    }
-                                }
-                            }
-
-                            DltText {
-                                text: "特征库目录"
-                                color: DltColor.FontDark
-                            }
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-
-                                DltTextField {
-                                    id: indexDirInput
-                                    Layout.fillWidth: true
-                                    placeholderText: "留空则使用项目目录"
-                                    text: GlobalSettings.data.featureExtractionIndexDirectory
-                                    onEditingFinished: {
-                                        if (!dialog.syncing) {
-                                            GlobalSettings.data.featureExtractionIndexDirectory = dialog.trimText(text)
-                                        }
-                                    }
-                                }
-
-                                DltTextIconButton {
-                                    Layout.preferredWidth: 34
-                                    Layout.preferredHeight: 34
-                                    iconSource: DltFontIcon.OpenFile
-                                    text: "选择"
-                                    onClicked: indexDirDialog.open()
-                                }
-                            }
-                        }
-
-                        DltTextIconButton {
-                            id: advancedButton
-                            Layout.preferredHeight: 32
-                            Layout.preferredWidth: 140
-                            display: Button.TextBesideIcon
-                            iconSource: dialog.advancedExpanded ? DltFontIcon.ChevronDown : DltFontIcon.ChevronRight
-                            text: "高级设置"
-                            normalColor: DltColor.Button
-                            onClicked: dialog.advancedExpanded = !dialog.advancedExpanded
-                        }
-
                         ColumnLayout {
                             Layout.fillWidth: true
-                            visible: dialog.advancedExpanded
-                            enabled: enableCheckBox.checked
                             spacing: 10
+                            enabled: enableCheckBox.checked
 
-                            RowLayout {
+                            // 模型
+                            Item {
                                 Layout.fillWidth: true
-                                spacing: 10
+                                implicitHeight: 34
 
-                                DltCheckBox {
-                                    id: rebuildCheckBox
-                                    Layout.preferredWidth: 190
-                                    text: "重新构建特征库"
-                                    onToggled: {
-                                        if (!dialog.syncing) {
-                                            GlobalSettings.data.featureExtractionRebuildIndex = checked
-                                        }
+                                DltText {
+                                    anchors {
+                                        left: parent.left
+                                        verticalCenter: parent.verticalCenter
+                                    }
+                                    width: parent.width / 3
+                                    text: "模型"
+                                    color: DltColor.FontDark
+                                }
+                                DltComboBox {
+                                    id: modelBox
+                                    anchors {
+                                        right: parent.right
+                                        verticalCenter: parent.verticalCenter
+                                    }
+                                    width: parent.width * 2 / 3
+                                    editable: true
+                                    model: dialog.imageSearch ? dialog.imageSearch.supportedModelPresets() : []
+                                    onActivated: dialog.updateModel(dialog.comboText(modelBox))
+                                    onCommit: function (text) {
+                                        editText = text
+                                        dialog.updateModel(text)
                                     }
                                 }
+                            }
 
-                                DltSpinEditor {
-                                    id: topKEditor
-                                    Layout.preferredWidth: 180
-                                    label: "TopK"
-                                    minValue: 1
-                                    maxValue: 1000
-                                    step: 1
-                                    onValueChanged: {
-                                        if (!dialog.syncing) {
-                                            GlobalSettings.data.featureExtractionTopK = Math.round(value)
+                            // 模型路径
+                            Item {
+                                Layout.fillWidth: true
+                                implicitHeight: 34
+
+                                DltText {
+                                    anchors {
+                                        left: parent.left
+                                        verticalCenter: parent.verticalCenter
+                                    }
+                                    width: parent.width / 3
+                                    text: "模型路径"
+                                    color: DltColor.FontDark
+                                }
+                                RowLayout {
+                                    anchors {
+                                        right: parent.right
+                                        verticalCenter: parent.verticalCenter
+                                    }
+                                    width: parent.width * 2 / 3
+                                    spacing: 8
+
+                                    DltTextField {
+                                        id: modelPathInput
+                                        Layout.fillWidth: true
+                                        placeholderText: "选择 .wts 权重文件"
+                                        onEditingFinished: {
+                                            if (!dialog.syncing) {
+                                                GlobalSettings.data.featureExtractionModelPath = dialog.trimText(text)
+                                            }
                                         }
                                     }
-                                }
 
-                                DltSpinEditor {
-                                    id: diskBatchEditor
-                                    Layout.fillWidth: true
-                                    label: "磁盘批次"
-                                    minValue: 1
-                                    maxValue: 8192
-                                    step: 1
-                                    onValueChanged: {
+                                    DltTextIconButton {
+                                        Layout.preferredWidth: 34
+                                        Layout.preferredHeight: 34
+                                        iconSource: DltFontIcon.OpenFile
+                                        text: "打开"
+                                        onClicked: modelPathDialog.open()
+                                    }
+                                }
+                            }
+
+                            // 特征层名
+                            Item {
+                                Layout.fillWidth: true
+                                implicitHeight: 34
+
+                                DltText {
+                                    anchors {
+                                        left: parent.left
+                                        verticalCenter: parent.verticalCenter
+                                    }
+                                    width: parent.width / 3
+                                    text: "特征层名"
+                                    color: DltColor.FontDark
+                                }
+                                FeatureNameComboBox {
+                                    id: featureNameBox
+                                    anchors {
+                                        right: parent.right
+                                        verticalCenter: parent.verticalCenter
+                                    }
+                                    width: parent.width * 2 / 3
+                                    imageSearch: dialog.imageSearch
+                                    modelName: dialog.comboText(modelBox)
+                                    featureName: GlobalSettings.data.featureExtractionFeatureName
+                                    onFeatureNameAccepted: function (featureName) {
+                                        dialog.updateFeatureName(featureName)
+                                    }
+                                }
+                            }
+
+                            // 推理后端
+                            Item {
+                                Layout.fillWidth: true
+                                implicitHeight: 34
+
+                                DltText {
+                                    anchors {
+                                        left: parent.left
+                                        verticalCenter: parent.verticalCenter
+                                    }
+                                    width: parent.width / 3
+                                    text: "推理后端"
+                                    color: DltColor.FontDark
+                                }
+                                DltComboBox {
+                                    id: modelBackendBox
+                                    anchors {
+                                        right: parent.right
+                                        verticalCenter: parent.verticalCenter
+                                    }
+                                    width: parent.width * 2 / 3
+                                    model: ["tensorrt", "openvino", "onnxruntime"]
+                                    onActivated: {
                                         if (!dialog.syncing) {
-                                            GlobalSettings.data.featureExtractionDiskBuildBatchSize = Math.round(value)
+                                            GlobalSettings.data.featureExtractionModelBackend = currentText
                                         }
                                     }
                                 }
                             }
 
-                            RowLayout {
+                            // 推理设备
+                            Item {
                                 Layout.fillWidth: true
-                                spacing: 10
+                                implicitHeight: 34
 
-                                ColumnLayout {
+                                DltText {
+                                    anchors {
+                                        left: parent.left
+                                        verticalCenter: parent.verticalCenter
+                                    }
+                                    width: parent.width / 3
+                                    text: "推理设备"
+                                    color: DltColor.FontDark
+                                }
+                                DltComboBox {
+                                    id: modelDeviceBox
+                                    anchors {
+                                        right: parent.right
+                                        verticalCenter: parent.verticalCenter
+                                    }
+                                    width: parent.width * 2 / 3
+                                    model: ["gpu", "cpu"]
+                                    onActivated: {
+                                        if (!dialog.syncing) {
+                                            GlobalSettings.data.featureExtractionModelDevice = currentText
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 特征库目录
+                            Item {
+                                Layout.fillWidth: true
+                                implicitHeight: 34
+
+                                DltText {
+                                    anchors {
+                                        left: parent.left
+                                        verticalCenter: parent.verticalCenter
+                                    }
+                                    width: parent.width / 3
+                                    text: "特征库目录"
+                                    color: DltColor.FontDark
+                                }
+                                RowLayout {
+                                    anchors {
+                                        right: parent.right
+                                        verticalCenter: parent.verticalCenter
+                                    }
+                                    width: parent.width * 2 / 3
+                                    spacing: 8
+
+                                    DltTextField {
+                                        id: indexDirInput
+                                        Layout.fillWidth: true
+                                        placeholderText: "留空则使用项目目录"
+                                        text: GlobalSettings.data.featureExtractionIndexDirectory
+                                        onEditingFinished: {
+                                            if (!dialog.syncing) {
+                                                GlobalSettings.data.featureExtractionIndexDirectory = dialog.trimText(text)
+                                            }
+                                        }
+                                    }
+
+                                    DltTextIconButton {
+                                        Layout.preferredWidth: 34
+                                        Layout.preferredHeight: 34
+                                        iconSource: DltFontIcon.OpenFile
+                                        text: "选择"
+                                        onClicked: indexDirDialog.open()
+                                    }
+                                }
+                            }
+                        }
+
+                        DltExpander {
+                            id: advancedExpander
+                            Layout.fillWidth: true
+                            headerText: "高级设置"
+                            contentHeight: 310
+                            enabled: enableCheckBox.checked
+                            onExpandChanged: dialog.advancedExpanded = expand
+
+                            content: ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                spacing: 8
+
+                                // 特征库重建
+                                Item {
                                     Layout.fillWidth: true
-                                    spacing: 4
+                                    implicitHeight: 24
+
                                     DltText {
+                                        anchors {
+                                            left: parent.left
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        width: parent.width / 3
+                                        text: "特征库重建"
+                                        color: DltColor.FontDark
+                                    }
+                                    DltToggleSwitch {
+                                        id: rebuildCheckBox
+                                        anchors {
+                                            right: parent.right
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        onToggled: {
+                                            if (!dialog.syncing) {
+                                                GlobalSettings.data.featureExtractionRebuildIndex = checked
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // TopK
+                                Item {
+                                    Layout.fillWidth: true
+                                    implicitHeight: 32
+
+                                    DltText {
+                                        anchors {
+                                            left: parent.left
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        width: parent.width / 3
+                                        text: "TopK"
+                                        color: DltColor.FontDark
+                                    }
+                                    DltSpinEditor {
+                                        id: topKEditor
+                                        anchors {
+                                            right: parent.right
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        width: parent.width * 2 / 3
+                                        label: ""
+                                        minValue: 1
+                                        maxValue: 1000
+                                        step: 1
+                                        onValueChanged: {
+                                            if (!dialog.syncing) {
+                                                GlobalSettings.data.featureExtractionTopK = Math.round(value)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 磁盘批次
+                                Item {
+                                    Layout.fillWidth: true
+                                    implicitHeight: 32
+
+                                    DltText {
+                                        anchors {
+                                            left: parent.left
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        width: parent.width / 3
+                                        text: "磁盘批次"
+                                        color: DltColor.FontDark
+                                    }
+                                    DltSpinEditor {
+                                        id: diskBatchEditor
+                                        anchors {
+                                            right: parent.right
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        width: parent.width * 2 / 3
+                                        label: ""
+                                        minValue: 1
+                                        maxValue: 8192
+                                        step: 1
+                                        onValueChanged: {
+                                            if (!dialog.syncing) {
+                                                GlobalSettings.data.featureExtractionDiskBuildBatchSize = Math.round(value)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 归一化
+                                Item {
+                                    Layout.fillWidth: true
+                                    implicitHeight: 34
+
+                                    DltText {
+                                        anchors {
+                                            left: parent.left
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        width: parent.width / 3
                                         text: "归一化"
                                         color: DltColor.FontDark
                                     }
                                     DltComboBox {
                                         id: normBox
-                                        Layout.fillWidth: true
+                                        anchors {
+                                            right: parent.right
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        width: parent.width * 2 / 3
                                         model: ["l2", "l1", "none"]
                                         onActivated: {
                                             if (!dialog.syncing) {
@@ -408,16 +557,27 @@ DltPopup {
                                     }
                                 }
 
-                                ColumnLayout {
+                                // 预处理
+                                Item {
                                     Layout.fillWidth: true
-                                    spacing: 4
+                                    implicitHeight: 34
+
                                     DltText {
+                                        anchors {
+                                            left: parent.left
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        width: parent.width / 3
                                         text: "预处理"
                                         color: DltColor.FontDark
                                     }
                                     DltComboBox {
                                         id: preprocessBox
-                                        Layout.fillWidth: true
+                                        anchors {
+                                            right: parent.right
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        width: parent.width * 2 / 3
                                         model: ["cpu", "gpu"]
                                         onActivated: {
                                             if (!dialog.syncing) {
@@ -427,16 +587,27 @@ DltPopup {
                                     }
                                 }
 
-                                ColumnLayout {
+                                // Faiss
+                                Item {
                                     Layout.fillWidth: true
-                                    spacing: 4
+                                    implicitHeight: 34
+
                                     DltText {
+                                        anchors {
+                                            left: parent.left
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        width: parent.width / 3
                                         text: "Faiss"
                                         color: DltColor.FontDark
                                     }
                                     DltComboBox {
                                         id: faissBackendBox
-                                        Layout.fillWidth: true
+                                        anchors {
+                                            right: parent.right
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        width: parent.width * 2 / 3
                                         model: ["cpu", "gpu"]
                                         onActivated: {
                                             if (!dialog.syncing) {
@@ -449,16 +620,27 @@ DltPopup {
                                     }
                                 }
 
-                                ColumnLayout {
+                                // 索引存储
+                                Item {
                                     Layout.fillWidth: true
-                                    spacing: 4
+                                    implicitHeight: 34
+
                                     DltText {
+                                        anchors {
+                                            left: parent.left
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        width: parent.width / 3
                                         text: "索引存储"
                                         color: DltColor.FontDark
                                     }
                                     DltComboBox {
                                         id: indexStorageBox
-                                        Layout.fillWidth: true
+                                        anchors {
+                                            right: parent.right
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        width: parent.width * 2 / 3
                                         enabled: faissBackendBox.currentText !== "gpu"
                                         model: ["ram", "disk"]
                                         onActivated: {

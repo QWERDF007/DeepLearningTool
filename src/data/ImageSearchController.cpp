@@ -512,7 +512,43 @@ bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids
                     addProgressMessage(spdlog::level::info,
                                        QStringLiteral("正在构建图像搜索特征库: %1 张图像")
                                            .arg(request.gallery_images.size()));
-                    search.build(weights_file, request.gallery_images, index_file);
+                    search.build(
+                        weights_file, request.gallery_images, index_file,
+                        [&](const irt::features::ImageSearchBuildProgress &progress)
+                        {
+                            const int processed = static_cast<int>(progress.processed_count);
+                            const int total     = static_cast<int>(progress.total_count);
+
+                            if (controller)
+                            {
+                                QMetaObject::invokeMethod(
+                                    controller.data(),
+                                    [controller, processed, total]()
+                                    {
+                                        if (controller)
+                                        {
+                                            emit controller->buildProgressChanged(processed, total);
+                                        }
+                                    },
+                                    Qt::QueuedConnection);
+                            }
+
+                            if (total > 0)
+                            {
+                                const int pct = std::min(100, static_cast<int>(processed * 100 / total));
+                                QMetaObject::invokeMethod(
+                                    ui::ProgressManager::getInstance(), "updateProgress", Qt::QueuedConnection,
+                                    Q_ARG(int, pct));
+                            }
+
+                            addProgressMessage(
+                                spdlog::level::info,
+                                QStringLiteral("构建进度 [%1]: %2 / %3")
+                                    .arg(QString::fromUtf8(
+                                        irt::features::imageSearchBuildStageName(progress.stage)))
+                                    .arg(processed)
+                                    .arg(total));
+                        });
                 }
 
                 std::map<int64_t, float> result_scores;
