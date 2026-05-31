@@ -1,22 +1,6 @@
 CREATE TABLE IF NOT EXISTS thumbnail_settings (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    margin INTEGER NOT NULL DEFAULT 10,
-    cache_size INTEGER NOT NULL DEFAULT 100,
-    image_load_threads INTEGER NOT NULL DEFAULT 4,
-    cell_scale REAL NOT NULL DEFAULT 1.0,
-    cell_scale_from REAL NOT NULL DEFAULT 0.5,
-    cell_scale_to REAL NOT NULL DEFAULT 4.0,
-    cell_scale_step REAL NOT NULL DEFAULT 0.25,
-    label_scale REAL NOT NULL DEFAULT 1.0,
-    label_scale_from REAL NOT NULL DEFAULT 0.5,
-    label_scale_to REAL NOT NULL DEFAULT 4.0,
-    label_scale_step REAL NOT NULL DEFAULT 0.25,
-    label_aspect_ratio REAL NOT NULL DEFAULT 1.0,
-    label_aspect_ratio_from REAL NOT NULL DEFAULT 0.5,
-    label_aspect_ratio_to REAL NOT NULL DEFAULT 2.0,
-    label_aspect_ratio_step REAL NOT NULL DEFAULT 0.1,
-    label_border_padding REAL NOT NULL DEFAULT 0.1,
-    label_border_padding_from REAL NOT NULL DEFAULT 0.0,
-    label_border_padding_to REAL NOT NULL DEFAULT 1.0,
-    label_border_padding_step REAL NOT NULL DEFAULT 0.1
+    id INTEGER PRIMARY KEY,
+    key TEXT NOT NULL UNIQUE,
+    value TEXT NOT NULL,
+    mtime INTEGER NOT NULL
 )

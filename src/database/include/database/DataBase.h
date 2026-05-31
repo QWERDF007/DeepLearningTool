@@ -238,9 +238,6 @@ public:
 
     QVariantMap loadProjectSettings(QString &err_msg) const;
     bool        saveProjectSettings(const QVariantMap &row, QString &err_msg) const;
-
-private:
-    bool saveSingleRow(const QString &table, const QVariantMap &row, QString &err_msg) const;
 };
 
 } // namespace dltool::database
