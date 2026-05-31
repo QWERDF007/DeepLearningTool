@@ -7,7 +7,6 @@
 #include "database/ddl/LabelsTable.h"
 #include "database/ddl/ProjectTable.h"
 #include "database/ddl/RecentProjectsTable.h"
-#include "database/ddl/SettingsTable.h"
 #include "database/ddl/TagClassesTable.h"
 #include "database/ddl/TagsTable.h"
 
@@ -26,7 +25,6 @@ namespace dltool::database {
 
 const auto ProjectTable         = Project{};
 const auto RectentProjectsTable = RecentProjects{};
-const auto SettingsTable        = Settings{};
 const auto ImagesTable          = Images{};
 const auto DatasetsTable        = Datasets{};
 const auto LabelClassesTable    = LabelClasses{};
@@ -34,68 +32,6 @@ const auto LabelsTable          = Labels{};
 const auto TagClassesTable      = TagClasses{};
 const auto TagsTable            = Tags{};
 
-namespace {
-
-QString settingValueType(const QVariant &value)
-{
-    switch (value.userType())
-    {
-    case QMetaType::Bool:
-        return QStringLiteral("bool");
-    case QMetaType::Int:
-    case QMetaType::UInt:
-    case QMetaType::LongLong:
-    case QMetaType::ULongLong:
-        return QStringLiteral("integer");
-    case QMetaType::Float:
-    case QMetaType::Double:
-        return QStringLiteral("double");
-    default:
-        return QStringLiteral("string");
-    }
-}
-
-QString settingValueToText(const QVariant &value)
-{
-    switch (value.userType())
-    {
-    case QMetaType::Bool:
-        return value.toBool() ? QStringLiteral("1") : QStringLiteral("0");
-    case QMetaType::Float:
-    case QMetaType::Double:
-        return QString::number(value.toDouble(), 'g', 17);
-    default:
-        return value.toString();
-    }
-}
-
-QVariant settingValueFromText(const QString &text, const QString &type, const QVariant &default_value)
-{
-    bool ok = false;
-    if (type == QStringLiteral("bool"))
-    {
-        return text == QStringLiteral("1") || text.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0;
-    }
-    if (type == QStringLiteral("integer"))
-    {
-        if (default_value.userType() == QMetaType::Int)
-        {
-            const int value = text.toInt(&ok);
-            return ok ? QVariant(value) : default_value;
-        }
-
-        const qlonglong value = text.toLongLong(&ok);
-        return ok ? QVariant(value) : default_value;
-    }
-    if (type == QStringLiteral("double"))
-    {
-        const double value = text.toDouble(&ok);
-        return ok ? QVariant(value) : default_value;
-    }
-    return text;
-}
-
-} // namespace
 
 DataBase::DataBase(const QString &path, QObject *parent)
     : QObject(parent)
@@ -1327,88 +1263,228 @@ SettingsDataBase::SettingsDataBase(const QString &path, QObject *parent)
     if (pool_ != nullptr)
     {
         auto db = pool_->get();
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateSettings));
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateFeatureSearchSettings));
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateThumbnailSettings));
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateLabelDisplaySettings));
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateImageEnhanceSettings));
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateUISettings));
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateProjectSettings));
     }
 }
 
 SettingsDataBase::~SettingsDataBase() {}
 
-QVariant SettingsDataBase::value(const QString &group, const QString &key, const QVariant &default_value,
-                                 QString &err_msg) const
+// ── raw SQL helpers ──
+
+static sqlite3_stmt *prepareOrNull(sqlite3 *db, const std::string &sql, QString &err_msg)
 {
-    try
+    sqlite3_stmt *stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql.c_str(), static_cast<int>(sql.size()), &stmt, nullptr) != SQLITE_OK)
     {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("打开数据库失败: %1").arg(path_);
-            return default_value;
-        }
-
-        const std::string group_name  = group.toUtf8().toStdString();
-        const std::string setting_key = key.toUtf8().toStdString();
-
-        auto db   = pool_->get();
-        auto data = db(sqlpp::select(SettingsTable.settingValue, SettingsTable.valueType)
-                           .from(SettingsTable)
-                           .where(SettingsTable.groupName == group_name && SettingsTable.settingKey == setting_key));
-        if (data.empty())
-        {
-            return default_value;
-        }
-
-        const auto &row = data.front();
-        return settingValueFromText(QString::fromStdString(row.settingValue), QString::fromStdString(row.valueType),
-                                    default_value);
+        err_msg = QString::fromUtf8(sqlite3_errmsg(db));
+        return nullptr;
     }
-    catch (const std::exception &e)
-    {
-        err_msg = e.what();
-        return default_value;
-    }
+    return stmt;
 }
 
-bool SettingsDataBase::setValue(const QString &group, const QString &key, const QVariant &value, QString &err_msg) const
+static QVariantMap loadSingleRow(sqlpp::sqlite3::connection_pool *pool, const QString &table,
+                                  const QStringList &columns, QString &err_msg)
 {
-    try
+    QVariantMap result;
+    if (!pool)
+        return result;
+
+    auto  conn = pool->get();
+    auto *db   = conn.native_handle();
+    const std::string sql
+        = "SELECT " + columns.join(QStringLiteral(",")).toStdString() + " FROM " + table.toStdString()
+        + " WHERE id = 1";
+    sqlite3_stmt *stmt = prepareOrNull(db, sql, err_msg);
+    if (!stmt)
+        return result;
+
+    if (sqlite3_step(stmt) == SQLITE_ROW)
     {
-        if (pool_ == nullptr)
+        for (int i = 0; i < columns.size(); ++i)
         {
-            err_msg = QString("打开数据库失败: %1").arg(path_);
-            return false;
+            const QString name = QString::fromUtf8(sqlite3_column_name(stmt, i));
+            switch (sqlite3_column_type(stmt, i))
+            {
+            case SQLITE_INTEGER:
+                result.insert(name, QVariant::fromValue(sqlite3_column_int64(stmt, i)));
+                break;
+            case SQLITE_FLOAT:
+                result.insert(name, sqlite3_column_double(stmt, i));
+                break;
+            case SQLITE_TEXT:
+                result.insert(name, QString::fromUtf8(
+                                       reinterpret_cast<const char *>(sqlite3_column_text(stmt, i))));
+                break;
+            default:
+                break;
+            }
         }
-
-        const std::string group_name    = group.toUtf8().toStdString();
-        const std::string setting_key   = key.toUtf8().toStdString();
-        const std::string setting_value = settingValueToText(value).toUtf8().toStdString();
-        const std::string value_type    = settingValueType(value).toUtf8().toStdString();
-        const qint64      mtime         = QDateTime::currentSecsSinceEpoch();
-
-        auto db   = pool_->get();
-        auto data = db(sqlpp::select(SettingsTable.id)
-                           .from(SettingsTable)
-                           .where(SettingsTable.groupName == group_name && SettingsTable.settingKey == setting_key));
-        if (data.empty())
-        {
-            db(sqlpp::insert_into(SettingsTable)
-                   .set(SettingsTable.groupName = group_name, SettingsTable.settingKey = setting_key,
-                        SettingsTable.settingValue = setting_value, SettingsTable.valueType = value_type,
-                        SettingsTable.mtime = mtime));
-        }
-        else
-        {
-            const auto id = data.front().id;
-            db(sqlpp::update(SettingsTable)
-                   .set(SettingsTable.settingValue = setting_value, SettingsTable.valueType = value_type,
-                        SettingsTable.mtime = mtime)
-                   .where(SettingsTable.id == id));
-        }
-        return true;
     }
-    catch (const std::exception &e)
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+bool SettingsDataBase::saveSingleRow(const QString &table, const QVariantMap &row, QString &err_msg) const
+{
+    if (!pool_)
     {
-        err_msg = e.what();
+        err_msg = QStringLiteral("数据库连接池不可用");
         return false;
     }
+
+    auto  conn = pool_->get();
+    auto *db   = conn.native_handle();
+    const QStringList keys = row.keys();
+
+    QString sql = QStringLiteral("INSERT OR REPLACE INTO ") + table + QStringLiteral(" (id");
+    QString placeholders = QStringLiteral(" VALUES (?");
+    for (const QString &key : keys)
+    {
+        sql += QStringLiteral(", ") + key;
+        placeholders += QStringLiteral(", ?");
+    }
+    sql += QStringLiteral(")") + placeholders + QStringLiteral(")");
+
+    sqlite3_stmt *stmt = prepareOrNull(db, sql.toStdString(), err_msg);
+    if (!stmt)
+        return false;
+
+    sqlite3_bind_int64(stmt, 1, 1);
+    for (int i = 0; i < keys.size(); ++i)
+    {
+        const QVariant &value = row[keys[i]];
+        const int       idx   = i + 2;
+        switch (static_cast<QMetaType::Type>(value.type()))
+        {
+        case QMetaType::Bool:
+            sqlite3_bind_int64(stmt, idx, value.toBool() ? 1 : 0);
+            break;
+        case QMetaType::Int:
+        case QMetaType::LongLong:
+            sqlite3_bind_int64(stmt, idx, value.toLongLong());
+            break;
+        case QMetaType::Double:
+        case QMetaType::Float:
+            sqlite3_bind_double(stmt, idx, value.toDouble());
+            break;
+        case QMetaType::QString: {
+            const QByteArray utf8 = value.toString().toUtf8();
+            sqlite3_bind_text(stmt, idx, utf8.constData(), utf8.size(), SQLITE_TRANSIENT);
+            break;
+        }
+        default:
+            sqlite3_bind_null(stmt, idx);
+            break;
+        }
+    }
+
+    const int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    if (rc != SQLITE_DONE)
+    {
+        err_msg = QString::fromUtf8(sqlite3_errmsg(db));
+        return false;
+    }
+    return true;
+}
+
+// ── Load / save per table ──
+
+QVariantMap SettingsDataBase::loadFeatureSearchSettings(QString &err_msg) const
+{
+    return loadSingleRow(pool_, QStringLiteral("feature_search_settings"),
+                         QStringList{QStringLiteral("enabled"), QStringLiteral("model"),
+                                     QStringLiteral("model_path"), QStringLiteral("feature_name"),
+                                     QStringLiteral("rebuild_index"), QStringLiteral("top_k"),
+                                     QStringLiteral("norm"), QStringLiteral("preprocess_backend"),
+                                     QStringLiteral("faiss_backend"), QStringLiteral("index_storage"),
+                                     QStringLiteral("disk_build_batch_size"), QStringLiteral("model_backend"),
+                                     QStringLiteral("model_device"), QStringLiteral("index_directory"),
+                                     QStringLiteral("custom_feature_names")},
+                         err_msg);
+}
+
+bool SettingsDataBase::saveFeatureSearchSettings(const QVariantMap &row, QString &err_msg) const
+{
+    return saveSingleRow(QStringLiteral("feature_search_settings"), row, err_msg);
+}
+
+QVariantMap SettingsDataBase::loadThumbnailSettings(QString &err_msg) const
+{
+    return loadSingleRow(pool_, QStringLiteral("thumbnail_settings"),
+                         QStringList{QStringLiteral("margin"), QStringLiteral("cache_size"),
+                                     QStringLiteral("image_load_threads"), QStringLiteral("cell_scale"),
+                                     QStringLiteral("cell_scale_from"), QStringLiteral("cell_scale_to"),
+                                     QStringLiteral("cell_scale_step"), QStringLiteral("label_scale"),
+                                     QStringLiteral("label_scale_from"), QStringLiteral("label_scale_to"),
+                                     QStringLiteral("label_scale_step"), QStringLiteral("label_aspect_ratio"),
+                                     QStringLiteral("label_aspect_ratio_from"), QStringLiteral("label_aspect_ratio_to"),
+                                     QStringLiteral("label_aspect_ratio_step"), QStringLiteral("label_border_padding"),
+                                     QStringLiteral("label_border_padding_from"),
+                                     QStringLiteral("label_border_padding_to"),
+                                     QStringLiteral("label_border_padding_step")},
+                         err_msg);
+}
+
+bool SettingsDataBase::saveThumbnailSettings(const QVariantMap &row, QString &err_msg) const
+{
+    return saveSingleRow(QStringLiteral("thumbnail_settings"), row, err_msg);
+}
+
+QVariantMap SettingsDataBase::loadLabelDisplaySettings(QString &err_msg) const
+{
+    return loadSingleRow(pool_, QStringLiteral("label_display_settings"),
+                         QStringList{QStringLiteral("border_width"), QStringLiteral("fill_opacity")}, err_msg);
+}
+
+bool SettingsDataBase::saveLabelDisplaySettings(const QVariantMap &row, QString &err_msg) const
+{
+    return saveSingleRow(QStringLiteral("label_display_settings"), row, err_msg);
+}
+
+QVariantMap SettingsDataBase::loadImageEnhanceSettings(QString &err_msg) const
+{
+    return loadSingleRow(pool_, QStringLiteral("image_enhance_settings"),
+                         QStringList{QStringLiteral("brightness"), QStringLiteral("brightness_from"),
+                                     QStringLiteral("brightness_to"), QStringLiteral("brightness_step"),
+                                     QStringLiteral("contrast"), QStringLiteral("contrast_from"),
+                                     QStringLiteral("contrast_to"), QStringLiteral("contrast_step")},
+                         err_msg);
+}
+
+bool SettingsDataBase::saveImageEnhanceSettings(const QVariantMap &row, QString &err_msg) const
+{
+    return saveSingleRow(QStringLiteral("image_enhance_settings"), row, err_msg);
+}
+
+QVariantMap SettingsDataBase::loadUiSettings(QString &err_msg) const
+{
+    return loadSingleRow(pool_, QStringLiteral("ui_settings"),
+                         QStringList{QStringLiteral("theme"), QStringLiteral("language")}, err_msg);
+}
+
+bool SettingsDataBase::saveUiSettings(const QVariantMap &row, QString &err_msg) const
+{
+    return saveSingleRow(QStringLiteral("ui_settings"), row, err_msg);
+}
+
+QVariantMap SettingsDataBase::loadProjectSettings(QString &err_msg) const
+{
+    return loadSingleRow(pool_, QStringLiteral("project_settings"),
+                         QStringList{QStringLiteral("max_recent_projects"), QStringLiteral("auto_save_enabled"),
+                                     QStringLiteral("auto_save_interval")},
+                         err_msg);
+}
+
+bool SettingsDataBase::saveProjectSettings(const QVariantMap &row, QString &err_msg) const
+{
+    return saveSingleRow(QStringLiteral("project_settings"), row, err_msg);
 }
 
 } // namespace dltool::database

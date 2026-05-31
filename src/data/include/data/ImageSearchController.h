@@ -144,26 +144,57 @@ signals:
 
 private:
     struct SearchRequest;
-
     struct SearchResponse;
 
+    // ── 参数解析与校验 ──
+
+    /// 从 QVariantList 提取生效的 dataset ID 集合
+    static std::set<int64_t> parseDatasetIds(const QVariantList &dataset_ids);
+
+    /// 校验权重文件是否存在；失败时自动调用 setLastError
+    bool validateWeightsFile(const QString &path);
+
+    /// 将 UI 层传入的原始参数统一应用默认值并组装为 SearchRequest
+    SearchRequest buildSearchRequest(const QString &model_name, const QString &weights_file,
+                                     const QString &feature_name, bool rebuild_index,
+                                     int top_k, const QString &norm, const QString &preprocess_backend,
+                                     const QString &faiss_backend, const QString &index_storage,
+                                     int disk_build_batch_size, const QString &model_backend,
+                                     const QString &model_device);
+
+    // ── 图像收集 ──
+
+    /// 按数据集过滤并收集图库图像路径及 ID 映射
+    void collectGalleryImages(SearchRequest &request, const std::set<int64_t> &dataset_ids);
+
+    /// 收集当前选中图像的查询路径
+    void collectQueryImages(SearchRequest &request, const std::vector<int64_t> &query_ids) const;
+
+    // ── 索引路径 ──
+
+    /// 计算当前搜索请求对应的 FAISS 索引文件路径
+    QString computeIndexPath(const SearchRequest &request) const;
+
+    // ── 后台搜索 ──
+
+    static void executeSearchWorker(SearchRequest request, QPointer<ImageSearchController> controller);
+
+    // ── UI 反馈 ──
+
+    void resetForNewSearch();
+    void startProgress(const SearchRequest &request);
+    void finishProgress(bool success, const QString &message);
     void setRunning(bool running);
-
     void setLastError(const QString &last_error);
-
     void finishSearch(const SearchResponse &response);
 
-    void clearPreviousResultsForNewSearch();
+    // ── 数据成员 ──
 
     DataManager *data_manager_{nullptr};
-
-    bool running_{false};
-
-    QString last_error_;
-
-    QString last_summary_;
-
-    int result_count_{0};
+    bool         running_{false};
+    QString      last_error_;
+    QString      last_summary_;
+    int          result_count_{0};
 };
 
 } // namespace dltool::data

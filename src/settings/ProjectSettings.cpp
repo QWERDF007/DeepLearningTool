@@ -17,9 +17,7 @@ ProjectSettings::~ProjectSettings() {}
 
 void ProjectSettings::setMaxRecentProjects(int value)
 {
-    // 验证：最近项目数量必须在 1-50 之间
     value = std::clamp(value, 1, 50);
-
     if (max_recent_projects_ != value)
     {
         max_recent_projects_ = value;
@@ -29,9 +27,7 @@ void ProjectSettings::setMaxRecentProjects(int value)
 
 void ProjectSettings::setAutoSaveInterval(int value)
 {
-    // 验证：自动保存间隔必须大于等于 30 秒
     value = std::max(30, value);
-
     if (auto_save_interval_ != value)
     {
         auto_save_interval_ = value;
@@ -51,43 +47,34 @@ void ProjectSettings::setAutoSaveEnabled(bool value)
 void ProjectSettings::load(database::SettingsDataBase *database)
 {
     if (!database)
-    {
         return;
-    }
 
-    const QString group = QStringLiteral("Project");
-    QString       err_msg;
-
-    setMaxRecentProjects(database->value(group, QStringLiteral("maxRecentProjects"), 10, err_msg).toInt());
-    setAutoSaveInterval(database->value(group, QStringLiteral("autoSaveInterval"), 300, err_msg).toInt());
-    setAutoSaveEnabled(database->value(group, QStringLiteral("autoSaveEnabled"), true, err_msg).toBool());
-
+    QString err_msg;
+    const auto row = database->loadProjectSettings(err_msg);
     if (!err_msg.isEmpty())
     {
-        spdlog::warn("Load Project settings failed: {}", err_msg.toUtf8().constData());
+        spdlog::warn("Load project settings failed: {}", err_msg.toUtf8().constData());
     }
+    setMaxRecentProjects(row.value(QStringLiteral("max_recent_projects"), 10).toInt());
+    setAutoSaveInterval(row.value(QStringLiteral("auto_save_interval"), 300).toInt());
+    setAutoSaveEnabled(row.value(QStringLiteral("auto_save_enabled"), true).toBool());
 }
 
 void ProjectSettings::save(database::SettingsDataBase *database)
 {
     if (!database)
-    {
         return;
-    }
 
-    const QString group = QStringLiteral("Project");
-
-    auto save_value = [database, &group](const QString &key, const QVariant &value) {
-        QString err_msg;
-        if (!database->setValue(group, key, value, err_msg))
-        {
-            spdlog::error("Save Project setting {} failed: {}", key.toUtf8().constData(), err_msg.toUtf8().constData());
-        }
-    };
-
-    save_value(QStringLiteral("maxRecentProjects"), max_recent_projects_);
-    save_value(QStringLiteral("autoSaveInterval"), auto_save_interval_);
-    save_value(QStringLiteral("autoSaveEnabled"), auto_save_enabled_);
+    QString err_msg;
+    database->saveProjectSettings(
+        QVariantMap{
+            {QStringLiteral("max_recent_projects"), max_recent_projects_},
+            {QStringLiteral("auto_save_enabled"), auto_save_enabled_},
+            {QStringLiteral("auto_save_interval"), auto_save_interval_},
+        },
+        err_msg);
+    if (!err_msg.isEmpty())
+        spdlog::error("Save project settings failed: {}", err_msg.toUtf8().constData());
 }
 
 void ProjectSettings::reset()

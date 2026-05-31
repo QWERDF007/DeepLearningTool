@@ -319,6 +319,10 @@ QString ImageSearchController::suggestedWeightsPath(const QString &model_name) c
     return QDir(QStringLiteral("F:/models")).filePath(model + QStringLiteral(".wts"));
 }
 
+// ────────────────────────────────────────────────────────────
+//  公开接口
+// ────────────────────────────────────────────────────────────
+
 bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids, const QString &model_name,
                                                  const QString &weights_file, const QString &feature_name,
                                                  bool rebuild_index, int top_k, const QString &norm,
@@ -326,138 +330,349 @@ bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids
                                                  const QString &index_storage, int disk_build_batch_size,
                                                  const QString &model_backend, const QString &model_device)
 {
+    // 1. 前置校验
     if (running_)
     {
         setLastError(QStringLiteral("图像搜索正在运行"));
         return false;
     }
-
     if (!data_manager_ || !data_manager_->imageInstances())
     {
         setLastError(QStringLiteral("图像模型未初始化"));
         return false;
     }
 
-    ImageInstancesListModel *image_model = data_manager_->imageInstances();
-    const std::vector<int64_t> query_image_ids = image_model->getSelectedImagesId();
-    if (query_image_ids.empty())
+    ImageInstancesListModel *images     = data_manager_->imageInstances();
+    const auto               query_ids  = images->getSelectedImagesId();
+    if (query_ids.empty())
     {
         setLastError(QStringLiteral("请先选择要检索的图片"));
         return false;
     }
 
-    clearPreviousResultsForNewSearch();
-
-    const QString effective_model_name
-        = model_name.trimmed().isEmpty() ? QString::fromLatin1(irt::features::ImageSearch::kDefaultModelName)
-                                         : model_name.trimmed();
-    const QString effective_feature_name
-        = feature_name.trimmed().isEmpty() ? QString::fromLatin1(irt::features::ImageSearch::kDefaultFeatureName)
-                                           : feature_name.trimmed();
-    const QString effective_norm          = norm.trimmed().isEmpty() ? QStringLiteral("l2") : norm.trimmed().toLower();
-    const QString effective_faiss_backend = faiss_backend.trimmed().isEmpty() ? QStringLiteral("cpu")
-                                                                              : faiss_backend.trimmed().toLower();
-    QString       effective_index_storage = index_storage.trimmed().isEmpty() ? QStringLiteral("ram")
-                                                                              : index_storage.trimmed().toLower();
-    if (effective_faiss_backend == QStringLiteral("gpu"))
-    {
-        effective_index_storage = QStringLiteral("ram");
-    }
-
-    QFileInfo weights_info(weights_file);
-    if (weights_file.trimmed().isEmpty() || !weights_info.isFile())
-    {
-        setLastError(QStringLiteral("模型权重文件不存在: %1").arg(weights_file));
+    // 2. 解析参数 & 构建请求
+    const auto dataset_ids_set = parseDatasetIds(dataset_ids);
+    if (!validateWeightsFile(weights_file))
         return false;
-    }
 
-    std::set<int64_t> selected_dataset_ids;
-    for (const QVariant &value : dataset_ids)
-    {
-        bool    ok         = false;
-        int64_t dataset_id = value.toLongLong(&ok);
-        if (ok)
-        {
-            selected_dataset_ids.insert(dataset_id);
-        }
-    }
+    SearchRequest request = buildSearchRequest(model_name, weights_file, feature_name, rebuild_index,
+                                               top_k, norm, preprocess_backend, faiss_backend,
+                                               index_storage, disk_build_batch_size, model_backend, model_device);
 
-    std::vector<int64_t> sorted_dataset_ids(selected_dataset_ids.begin(), selected_dataset_ids.end());
-    std::vector<int64_t> gallery_image_ids;
-    SearchRequest        request;
-    request.model_name              = effective_model_name;
-    request.feature_name            = effective_feature_name;
-    request.weights_file            = weights_info.absoluteFilePath();
-    request.rebuild_index           = rebuild_index;
-    request.top_k                   = std::max(1, top_k);
-    request.disk_build_batch_size   = static_cast<int>(std::max(1, disk_build_batch_size));
-    request.norm                    = effective_norm;
-    request.faiss_backend           = effective_faiss_backend;
-    request.index_storage           = effective_index_storage;
-    request.norm_mode               = parseNorm(effective_norm);
-    request.preprocess_backend      = parsePreprocessBackend(preprocess_backend);
-    request.faiss_backend_mode      = parseFaissBackend(effective_faiss_backend);
-    request.index_storage_mode      = parseIndexStorage(effective_index_storage);
-    request.model_backend           = parseModelBackend(model_backend);
-    request.model_device            = parseModelDevice(model_device);
-    request.model_backend_str       = model_backend.trimmed().toLower();
-    request.model_device_str        = model_device.trimmed().toLower();
-
-    const std::vector<int64_t> all_image_ids = image_model->getAllImageIds();
-    for (const int64_t image_id : all_image_ids)
-    {
-        const int64_t dataset_id = image_model->getImageDatasetId(image_id);
-        if (!selected_dataset_ids.empty() && selected_dataset_ids.find(dataset_id) == selected_dataset_ids.end())
-        {
-            continue;
-        }
-
-        const QString image_path = image_model->getImagePath(image_id);
-        if (!QFileInfo::exists(image_path))
-        {
-            continue;
-        }
-
-        request.gallery_images.push_back(toFsPath(QFileInfo(image_path).absoluteFilePath()));
-        request.path_to_image_id.insert(normalizedPathKey(image_path), image_id);
-        gallery_image_ids.push_back(image_id);
-    }
-
+    // 3. 收集图像
+    collectGalleryImages(request, dataset_ids_set);
     if (request.gallery_images.empty())
     {
         setLastError(QStringLiteral("选定数据集中没有可搜索的图像"));
         return false;
     }
 
-    for (const int64_t query_image_id : query_image_ids)
-    {
-        const QString query_path = image_model->getImagePath(query_image_id);
-        if (QFileInfo::exists(query_path))
-        {
-            request.query_images.push_back(toFsPath(QFileInfo(query_path).absoluteFilePath()));
-        }
-    }
-
+    collectQueryImages(request, query_ids);
     if (request.query_images.empty())
     {
         setLastError(QStringLiteral("选中的查询图片文件不存在"));
         return false;
     }
 
-    std::sort(gallery_image_ids.begin(), gallery_image_ids.end());
-    QString index_dir = indexDirectoryForProject(data_manager_->databasePath(),
-                                                   dltool::settings::GlobalSettings::getInstance()->data()->featureExtractionIndexDirectory());
-    request.index_file
-        = indexPathForRequest(index_dir, sorted_dataset_ids, gallery_image_ids,
-                              request.model_name, request.feature_name, request.norm, request.faiss_backend,
-                              request.index_storage, request.model_backend_str, request.model_device_str);
+    // 4. 计算索引路径
+    request.index_file = computeIndexPath(request);
 
+    // 5. 清理状态并启动后台搜索
+    resetForNewSearch();
+    startProgress(request);
+
+    QPointer<ImageSearchController> controller(this);
+    QThread *work_thread = QThread::create(
+        [controller, request = std::move(request)]() mutable
+        { executeSearchWorker(std::move(request), controller); });
+
+    connect(work_thread, &QThread::finished, work_thread, &QObject::deleteLater);
+    work_thread->start();
+    return true;
+}
+
+// ────────────────────────────────────────────────────────────
+//  参数解析与校验
+// ────────────────────────────────────────────────────────────
+
+std::set<int64_t> ImageSearchController::parseDatasetIds(const QVariantList &dataset_ids)
+{
+    std::set<int64_t> result;
+    for (const QVariant &value : dataset_ids)
+    {
+        bool    ok         = false;
+        int64_t dataset_id = value.toLongLong(&ok);
+        if (ok)
+        {
+            result.insert(dataset_id);
+        }
+    }
+    return result;
+}
+
+bool ImageSearchController::validateWeightsFile(const QString &path)
+{
+    QFileInfo info(path);
+    if (path.trimmed().isEmpty() || !info.isFile())
+    {
+        setLastError(QStringLiteral("模型权重文件不存在: %1").arg(path));
+        return false;
+    }
+    return true;
+}
+
+ImageSearchController::SearchRequest ImageSearchController::buildSearchRequest(
+    const QString &model_name, const QString &weights_file, const QString &feature_name,
+    bool rebuild_index, int top_k, const QString &norm, const QString &preprocess_backend,
+    const QString &faiss_backend, const QString &index_storage, int disk_build_batch_size,
+    const QString &model_backend, const QString &model_device)
+{
+    const auto effective = [](const QString &value, const QString &fallback) -> QString
+    { return value.trimmed().isEmpty() ? fallback : value.trimmed(); };
+
+    const QString effective_norm    = effective(norm, QStringLiteral("l2")).toLower();
+    QString       effective_faiss   = effective(faiss_backend, QStringLiteral("cpu")).toLower();
+    QString       effective_storage = effective(index_storage, QStringLiteral("ram")).toLower();
+    if (effective_faiss == QStringLiteral("gpu"))
+        effective_storage = QStringLiteral("ram");
+
+    QFileInfo weights_info(weights_file);
+
+    SearchRequest req;
+    req.model_name    = effective(model_name, QString::fromLatin1(irt::features::ImageSearch::kDefaultModelName));
+    req.feature_name  = effective(feature_name, QString::fromLatin1(irt::features::ImageSearch::kDefaultFeatureName));
+    req.weights_file  = weights_info.absoluteFilePath();
+    req.rebuild_index = rebuild_index;
+    req.top_k         = std::max(1, top_k);
+    req.disk_build_batch_size = static_cast<int>(std::max(1, disk_build_batch_size));
+    req.norm                  = effective_norm;
+    req.faiss_backend         = effective_faiss;
+    req.index_storage         = effective_storage;
+    req.preprocess_backend    = parsePreprocessBackend(preprocess_backend);
+    req.norm_mode             = parseNorm(effective_norm);
+    req.faiss_backend_mode    = parseFaissBackend(effective_faiss);
+    req.index_storage_mode    = parseIndexStorage(effective_storage);
+    req.model_backend         = parseModelBackend(model_backend);
+    req.model_device          = parseModelDevice(model_device);
+    req.model_backend_str     = model_backend.trimmed().toLower();
+    req.model_device_str      = model_device.trimmed().toLower();
+    return req;
+}
+
+// ────────────────────────────────────────────────────────────
+//  图像收集
+// ────────────────────────────────────────────────────────────
+
+void ImageSearchController::collectGalleryImages(SearchRequest            &request,
+                                                  const std::set<int64_t> &dataset_ids)
+{
+    ImageInstancesListModel *images = data_manager_->imageInstances();
+    const auto               all_ids = images->getAllImageIds();
+
+    for (const int64_t id : all_ids)
+    {
+        if (!dataset_ids.empty() && dataset_ids.find(images->getImageDatasetId(id)) == dataset_ids.end())
+            continue;
+
+        const QString path = images->getImagePath(id);
+        if (!QFileInfo::exists(path))
+            continue;
+
+        request.gallery_images.push_back(toFsPath(QFileInfo(path).absoluteFilePath()));
+        request.path_to_image_id.insert(normalizedPathKey(path), id);
+    }
+}
+
+void ImageSearchController::collectQueryImages(SearchRequest                 &request,
+                                                const std::vector<int64_t> &query_ids) const
+{
+    ImageInstancesListModel *images = data_manager_->imageInstances();
+    for (const int64_t id : query_ids)
+    {
+        const QString path = images->getImagePath(id);
+        if (QFileInfo::exists(path))
+            request.query_images.push_back(toFsPath(QFileInfo(path).absoluteFilePath()));
+    }
+}
+
+// ────────────────────────────────────────────────────────────
+//  索引路径
+// ────────────────────────────────────────────────────────────
+
+QString ImageSearchController::computeIndexPath(const SearchRequest &request) const
+{
+    std::vector<int64_t> gallery_ids;
+    gallery_ids.reserve(request.path_to_image_id.size());
+    for (auto it = request.path_to_image_id.cbegin(); it != request.path_to_image_id.cend(); ++it)
+        gallery_ids.push_back(it.value());
+    std::sort(gallery_ids.begin(), gallery_ids.end());
+
+    // 从 gallery_images 中反推 dataset IDs（保持原逻辑兼容）
+    std::set<int64_t> dataset_ids;
+    ImageInstancesListModel *images = data_manager_->imageInstances();
+    for (const int64_t id : gallery_ids)
+        dataset_ids.insert(images->getImageDatasetId(id));
+
+    const std::vector<int64_t> sorted_dataset_ids(dataset_ids.begin(), dataset_ids.end());
+    const QString index_dir = indexDirectoryForProject(
+        data_manager_->databasePath(),
+        dltool::settings::GlobalSettings::getInstance()->data()->featureExtractionIndexDirectory());
+
+    return indexPathForRequest(index_dir, sorted_dataset_ids, gallery_ids,
+                               request.model_name, request.feature_name, request.norm,
+                               request.faiss_backend, request.index_storage,
+                               request.model_backend_str, request.model_device_str);
+}
+
+// ────────────────────────────────────────────────────────────
+//  后台搜索执行
+// ────────────────────────────────────────────────────────────
+
+void ImageSearchController::executeSearchWorker(SearchRequest                     request,
+                                                 QPointer<ImageSearchController> controller)
+{
+    auto reportProgress = [&controller](const irt::features::ImageSearchBuildProgress &progress)
+    {
+        const int processed = static_cast<int>(progress.processed_count);
+        const int total     = static_cast<int>(progress.total_count);
+
+        if (controller)
+        {
+            QMetaObject::invokeMethod(controller.data(),
+                                      [controller, processed, total]() {
+                                          if (controller)
+                                              emit controller->buildProgressChanged(processed, total);
+                                      },
+                                      Qt::QueuedConnection);
+        }
+
+        if (total > 0)
+        {
+            const int pct = std::min(100, static_cast<int>(processed * 100 / total));
+            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(),
+                                      "updateProgress", Qt::QueuedConnection, Q_ARG(int, pct));
+        }
+
+        addProgressMessage(spdlog::level::info,
+                           QStringLiteral("构建进度 [%1]: %2 / %3")
+                               .arg(QString::fromUtf8(irt::features::imageSearchBuildStageName(progress.stage)))
+                               .arg(processed)
+                               .arg(total));
+    };
+
+    SearchResponse response;
+    try
+    {
+        irt::features::ImageSearchConfig config;
+        config.model_name            = request.model_name.toStdString();
+        config.feature_name          = request.feature_name.toStdString();
+        config.preprocess_backend    = request.preprocess_backend;
+        config.norm                  = request.norm_mode;
+        config.faiss_backend         = request.faiss_backend_mode;
+        config.index_storage         = request.index_storage_mode;
+        config.disk_build_batch_size = static_cast<size_t>(request.disk_build_batch_size);
+        config.model_backend         = request.model_backend;
+        config.model_device          = request.model_device;
+
+        irt::features::ImageSearch search(config);
+        const auto weights_path = toFsPath(request.weights_file);
+        const auto index_path   = toFsPath(request.index_file);
+
+        bool loaded = false;
+        if (!request.rebuild_index && std::filesystem::exists(index_path))
+        {
+            try
+            {
+                search.load(weights_path, index_path.parent_path(), index_path);
+                loaded = true;
+                addProgressMessage(spdlog::level::info,
+                                   QStringLiteral("已加载图像搜索特征库: %1").arg(request.index_file));
+            }
+            catch (const std::exception &e)
+            {
+                addProgressMessage(spdlog::level::warn,
+                                   QStringLiteral("加载既有特征库失败，将重新构建: %1")
+                                       .arg(QString::fromUtf8(e.what())));
+            }
+        }
+
+        if (!loaded)
+        {
+            addProgressMessage(spdlog::level::info,
+                               QStringLiteral("正在构建图像搜索特征库: %1 张图像")
+                                   .arg(request.gallery_images.size()));
+            search.build(weights_path, request.gallery_images, index_path, reportProgress);
+        }
+
+        // 对每张查询图执行检索
+        std::map<int64_t, float> result_scores;
+        for (const auto &query_image : request.query_images)
+        {
+            for (const auto &result : search.search(query_image, request.top_k))
+            {
+                const auto found = request.path_to_image_id.constFind(
+                    normalizedPathKey(fromFsPath(result.image_path)));
+                if (found == request.path_to_image_id.constEnd())
+                    continue;
+
+                const int64_t image_id = found.value();
+                auto          it       = result_scores.find(image_id);
+                if (it == result_scores.end() || result.score > it->second)
+                    result_scores[image_id] = result.score;
+            }
+        }
+
+        // 按分数降序排列
+        std::vector<std::pair<int64_t, float>> sorted(result_scores.begin(), result_scores.end());
+        std::sort(sorted.begin(), sorted.end(),
+                  [](const auto &lhs, const auto &rhs) { return lhs.second > rhs.second; });
+
+        response.result_ids.reserve(sorted.size());
+        for (const auto &[id, _] : sorted)
+            response.result_ids.push_back(id);
+
+        response.success = true;
+        response.summary = QStringLiteral("图像搜索完成: 命中 %1 张图像").arg(response.result_ids.size());
+    }
+    catch (const std::exception &e)
+    {
+        response.success = false;
+        response.error   = QString::fromUtf8(e.what());
+    }
+    catch (...)
+    {
+        response.success = false;
+        response.error   = QStringLiteral("未知图像搜索错误");
+    }
+
+    if (controller)
+    {
+        QMetaObject::invokeMethod(controller.data(),
+                                  [controller, response]() {
+                                      if (controller)
+                                          controller->finishSearch(response);
+                                  },
+                                  Qt::QueuedConnection);
+    }
+}
+
+// ────────────────────────────────────────────────────────────
+//  UI 反馈
+// ────────────────────────────────────────────────────────────
+
+void ImageSearchController::resetForNewSearch()
+{
     setLastError(QString());
     last_summary_.clear();
     result_count_ = 0;
+    if (data_manager_ && data_manager_->globalFilter())
+        data_manager_->globalFilter()->clearImageSearchResults();
     emit resultsChanged();
-    setRunning(true);
+}
 
+void ImageSearchController::startProgress(const SearchRequest &request)
+{
+    setRunning(true);
     ui::ProgressManager::getInstance()->startTask(QStringLiteral("图像搜索"));
     ui::ProgressManager::getInstance()->addMessage(
         spdlog::level::info,
@@ -465,163 +680,38 @@ bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids
             .arg(request.query_images.size())
             .arg(request.gallery_images.size())
             .arg(request.top_k));
+}
 
-    QPointer<ImageSearchController> controller(this);
-    QThread                        *worker_thread = QThread::create(
-        [controller, request = std::move(request)]() mutable
-        {
-            SearchResponse response;
-            try
-            {
-                irt::features::ImageSearchConfig config;
-                config.model_name            = request.model_name.toStdString();
-                config.feature_name          = request.feature_name.toStdString();
-                config.preprocess_backend    = request.preprocess_backend;
-                config.norm                  = request.norm_mode;
-                config.faiss_backend         = request.faiss_backend_mode;
-                config.index_storage         = request.index_storage_mode;
-                config.disk_build_batch_size = static_cast<size_t>(request.disk_build_batch_size);
-                config.model_backend         = request.model_backend;
-                config.model_device          = request.model_device;
+void ImageSearchController::finishProgress(bool success, const QString &message)
+{
+    const int level = success ? spdlog::level::info : spdlog::level::err;
+    ui::ProgressManager::getInstance()->addMessage(level, message);
+    ui::ProgressManager::getInstance()->completeTask();
+}
 
-                irt::features::ImageSearch search(config);
+void ImageSearchController::finishSearch(const SearchResponse &response)
+{
+    setRunning(false);
 
-                const std::filesystem::path weights_file = toFsPath(request.weights_file);
-                const std::filesystem::path index_file   = toFsPath(request.index_file);
+    if (!response.success)
+    {
+        result_count_ = 0;
+        last_summary_.clear();
+        emit resultsChanged();
+        setLastError(response.error);
+        finishProgress(false, response.error);
+        return;
+    }
 
-                bool loaded_existing_index = false;
-                if (!request.rebuild_index && std::filesystem::exists(index_file))
-                {
-                    try
-                    {
-                        search.load(weights_file, index_file.parent_path(), index_file);
-                        loaded_existing_index = true;
-                        addProgressMessage(spdlog::level::info,
-                                           QStringLiteral("已加载图像搜索特征库: %1").arg(request.index_file));
-                    }
-                    catch (const std::exception &e)
-                    {
-                        addProgressMessage(
-                            spdlog::level::warn,
-                            QStringLiteral("加载既有特征库失败，将重新构建: %1").arg(QString::fromUtf8(e.what())));
-                    }
-                }
+    setLastError(QString());
+    result_count_  = static_cast<int>(response.result_ids.size());
+    last_summary_  = response.summary;
 
-                if (!loaded_existing_index)
-                {
-                    addProgressMessage(spdlog::level::info,
-                                       QStringLiteral("正在构建图像搜索特征库: %1 张图像")
-                                           .arg(request.gallery_images.size()));
-                    search.build(
-                        weights_file, request.gallery_images, index_file,
-                        [&](const irt::features::ImageSearchBuildProgress &progress)
-                        {
-                            const int processed = static_cast<int>(progress.processed_count);
-                            const int total     = static_cast<int>(progress.total_count);
+    if (data_manager_ && data_manager_->globalFilter())
+        data_manager_->globalFilter()->setImageSearchResults(response.result_ids, !response.result_ids.empty());
 
-                            if (controller)
-                            {
-                                QMetaObject::invokeMethod(
-                                    controller.data(),
-                                    [controller, processed, total]()
-                                    {
-                                        if (controller)
-                                        {
-                                            emit controller->buildProgressChanged(processed, total);
-                                        }
-                                    },
-                                    Qt::QueuedConnection);
-                            }
-
-                            if (total > 0)
-                            {
-                                const int pct = std::min(100, static_cast<int>(processed * 100 / total));
-                                QMetaObject::invokeMethod(
-                                    ui::ProgressManager::getInstance(), "updateProgress", Qt::QueuedConnection,
-                                    Q_ARG(int, pct));
-                            }
-
-                            addProgressMessage(
-                                spdlog::level::info,
-                                QStringLiteral("构建进度 [%1]: %2 / %3")
-                                    .arg(QString::fromUtf8(
-                                        irt::features::imageSearchBuildStageName(progress.stage)))
-                                    .arg(processed)
-                                    .arg(total));
-                        });
-                }
-
-                std::map<int64_t, float> result_scores;
-                for (const std::filesystem::path &query_image : request.query_images)
-                {
-                    const std::vector<irt::features::ImageSearchResult> results
-                        = search.search(query_image, request.top_k);
-                    for (const irt::features::ImageSearchResult &result : results)
-                    {
-                        const QString result_path = fromFsPath(result.image_path);
-                        const QString key         = normalizedPathKey(result_path);
-                        auto          found       = request.path_to_image_id.constFind(key);
-                        if (found == request.path_to_image_id.constEnd())
-                        {
-                            continue;
-                        }
-
-                        const int64_t image_id = found.value();
-                        auto          score_it = result_scores.find(image_id);
-                        if (score_it == result_scores.end() || result.score > score_it->second)
-                        {
-                            result_scores[image_id] = result.score;
-                        }
-                    }
-                }
-
-                std::vector<std::pair<int64_t, float>> sorted_results;
-                sorted_results.reserve(result_scores.size());
-                for (const auto &[image_id, score] : result_scores)
-                {
-                    sorted_results.emplace_back(image_id, score);
-                }
-                std::sort(sorted_results.begin(), sorted_results.end(),
-                          [](const auto &lhs, const auto &rhs) { return lhs.second > rhs.second; });
-
-                response.result_ids.reserve(sorted_results.size());
-                for (const auto &[image_id, _] : sorted_results)
-                {
-                    response.result_ids.push_back(image_id);
-                }
-
-                response.success = true;
-                response.summary = QStringLiteral("图像搜索完成: 命中 %1 张图像").arg(response.result_ids.size());
-            }
-            catch (const std::exception &e)
-            {
-                response.success = false;
-                response.error   = QString::fromUtf8(e.what());
-            }
-            catch (...)
-            {
-                response.success = false;
-                response.error   = QStringLiteral("未知图像搜索错误");
-            }
-
-            if (controller)
-            {
-                QMetaObject::invokeMethod(
-                    controller.data(),
-                    [controller, response]()
-                    {
-                        if (controller)
-                        {
-                            controller->finishSearch(response);
-                        }
-                    },
-                    Qt::QueuedConnection);
-            }
-        });
-
-    connect(worker_thread, &QThread::finished, worker_thread, &QObject::deleteLater);
-    worker_thread->start();
-    return true;
+    finishProgress(true, response.summary);
+    emit resultsChanged();
 }
 
 void ImageSearchController::setRunning(bool running)
@@ -646,47 +736,6 @@ void ImageSearchController::setLastError(const QString &last_error)
         spdlog::error("图像搜索失败: {}", last_error_.toStdString());
     }
     emit lastErrorChanged();
-}
-
-void ImageSearchController::finishSearch(const SearchResponse &response)
-{
-    setRunning(false);
-
-    if (!response.success)
-    {
-        result_count_ = 0;
-        last_summary_.clear();
-        emit resultsChanged();
-        setLastError(response.error);
-        ui::ProgressManager::getInstance()->addMessage(spdlog::level::err, response.error);
-        ui::ProgressManager::getInstance()->completeTask();
-        return;
-    }
-
-    setLastError(QString());
-    result_count_ = static_cast<int>(response.result_ids.size());
-    last_summary_ = response.summary;
-
-    if (data_manager_ && data_manager_->globalFilter())
-    {
-        data_manager_->globalFilter()->setImageSearchResults(response.result_ids, !response.result_ids.empty());
-    }
-
-    ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, response.summary);
-    ui::ProgressManager::getInstance()->completeTask();
-
-    emit resultsChanged();
-}
-
-void ImageSearchController::clearPreviousResultsForNewSearch()
-{
-    result_count_ = 0;
-    last_summary_.clear();
-    if (data_manager_ && data_manager_->globalFilter())
-    {
-        data_manager_->globalFilter()->clearImageSearchResults();
-    }
-    emit resultsChanged();
 }
 
 } // namespace dltool::data

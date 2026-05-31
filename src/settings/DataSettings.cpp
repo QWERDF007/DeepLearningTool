@@ -432,132 +432,137 @@ void DataSettings::setFeatureExtractionCustomFeatureNamesJson(const QString &val
 void DataSettings::load(database::SettingsDataBase *database)
 {
     if (!database)
-    {
         return;
+
+    // 缩略图设置
+    {
+        QString err_msg;
+        const auto row = database->loadThumbnailSettings(err_msg);
+        if (!err_msg.isEmpty())
+        {
+            spdlog::warn("Load thumbnail settings failed: {}", err_msg.toUtf8().constData());
+        }
+        setThumbnailMargin(row.value(QStringLiteral("margin"), 10).toInt());
+        setThumbnailCacheSize(row.value(QStringLiteral("cache_size"), 100).toInt());
+        setImageLoadThreads(row.value(QStringLiteral("image_load_threads"), 4).toInt());
+        setImageCellScale(row.value(QStringLiteral("cell_scale"), 1.0).toDouble());
+        setImageCellScaleFrom(row.value(QStringLiteral("cell_scale_from"), 0.5).toDouble());
+        setImageCellScaleTo(row.value(QStringLiteral("cell_scale_to"), 4.0).toDouble());
+        setImageCellScaleStepSize(row.value(QStringLiteral("cell_scale_step"), 0.25).toDouble());
+        setLabelThumbnailScale(row.value(QStringLiteral("label_scale"), 1.0).toDouble());
+        setLabelThumbnailAspectRatio(row.value(QStringLiteral("label_aspect_ratio"), 1.0).toDouble());
+        setLabelThumbnailBorderPadding(row.value(QStringLiteral("label_border_padding"), 0.1).toDouble());
     }
 
-    const QString group = QStringLiteral("Data");
-    QString       err_msg;
-
-    setThumbnailMargin(database->value(group, QStringLiteral("thumbnailMargin"), 10, err_msg).toInt());
-    setThumbnailCacheSize(database->value(group, QStringLiteral("thumbnailCacheSize"), 100, err_msg).toInt());
-    setImageLoadThreads(database->value(group, QStringLiteral("imageLoadThreads"), 4, err_msg).toInt());
-    setLabelBorderWidth(database->value(group, QStringLiteral("labelBorderWidth"), 2, err_msg).toInt());
-    setLabelFillOpacity(database->value(group, QStringLiteral("labelFillOpacity"), 30, err_msg).toInt());
-
-    setImageCellScale(database->value(group, QStringLiteral("imageCellScale"), 1.0, err_msg).toDouble());
-    setImageCellScaleFrom(database->value(group, QStringLiteral("imageCellScaleFrom"), 0.5, err_msg).toDouble());
-    setImageCellScaleTo(database->value(group, QStringLiteral("imageCellScaleTo"), 4.0, err_msg).toDouble());
-    setImageCellScaleStepSize(database->value(group, QStringLiteral("imageCellScaleStepSize"), 0.25, err_msg).toDouble());
-
-    setLabelThumbnailScale(database->value(group, QStringLiteral("labelThumbnailScale"), 1.0, err_msg).toDouble());
-    setLabelThumbnailAspectRatio(
-        database->value(group, QStringLiteral("labelThumbnailAspectRatio"), 1.0, err_msg).toDouble());
-    setLabelThumbnailBorderPadding(
-        database->value(group, QStringLiteral("labelThumbnailBorderPadding"), 0.1, err_msg).toDouble());
-
-    setFeatureExtractionEnabled(
-        database->value(group, QStringLiteral("featureExtractionEnabled"), true, err_msg).toBool());
-    setFeatureExtractionModel(database->value(group,
-                                             QStringLiteral("featureExtractionModel"),
-                                             QString::fromLatin1(kDefaultFeatureExtractionModel), err_msg)
-                                  .toString());
-    setFeatureExtractionModelPath(database->value(group,
-                                                 QStringLiteral("featureExtractionModelPath"),
-                                                 QString::fromLatin1(kDefaultFeatureExtractionModelPath), err_msg)
-                                      .toString());
-    setFeatureExtractionFeatureName(database->value(group,
-                                                   QStringLiteral("featureExtractionFeatureName"),
-                                                   QString::fromLatin1(kDefaultFeatureExtractionFeatureName), err_msg)
-                                        .toString());
-    setFeatureExtractionRebuildIndex(
-        database->value(group, QStringLiteral("featureExtractionRebuildIndex"), false, err_msg).toBool());
-    setFeatureExtractionTopK(database->value(group, QStringLiteral("featureExtractionTopK"), 5, err_msg).toInt());
-    setFeatureExtractionNorm(
-        database->value(group, QStringLiteral("featureExtractionNorm"), QStringLiteral("l2"), err_msg).toString());
-    setFeatureExtractionPreprocessBackend(database->value(group,
-                                                         QStringLiteral("featureExtractionPreprocessBackend"),
-                                                         QStringLiteral("cpu"), err_msg)
-                                              .toString());
-    setFeatureExtractionFaissBackend(database->value(group,
-                                                    QStringLiteral("featureExtractionFaissBackend"),
-                                                    QStringLiteral("cpu"), err_msg)
-                                         .toString());
-    setFeatureExtractionIndexStorage(database->value(group,
-                                                    QStringLiteral("featureExtractionIndexStorage"),
-                                                    QStringLiteral("ram"), err_msg)
-                                         .toString());
-    setFeatureExtractionDiskBuildBatchSize(
-        database->value(group, QStringLiteral("featureExtractionDiskBuildBatchSize"), 256, err_msg).toInt());
-    setFeatureExtractionModelBackend(database->value(group,
-                                                     QStringLiteral("featureExtractionModelBackend"),
-                                                     QStringLiteral("tensorrt"), err_msg)
-                                          .toString());
-    setFeatureExtractionModelDevice(database->value(group,
-                                                    QStringLiteral("featureExtractionModelDevice"),
-                                                    QStringLiteral("gpu"), err_msg)
-                                         .toString());
-    setFeatureExtractionIndexDirectory(database->value(group,
-                                                       QStringLiteral("featureExtractionIndexDirectory"),
-                                                       QString(), err_msg)
-                                            .toString());
-    setFeatureExtractionCustomFeatureNamesJson(
-        database->value(group, QStringLiteral("featureExtractionCustomFeatureNames"), QStringLiteral("{}"), err_msg)
-            .toString());
-
-    if (!err_msg.isEmpty())
+    // 标注显示设置
     {
-        spdlog::warn("Load Data settings failed: {}", err_msg.toUtf8().constData());
+        QString err_msg;
+        const auto row = database->loadLabelDisplaySettings(err_msg);
+        if (!err_msg.isEmpty())
+        {
+            spdlog::warn("Load label display settings failed: {}", err_msg.toUtf8().constData());
+        }
+        setLabelBorderWidth(row.value(QStringLiteral("border_width"), 2).toInt());
+        setLabelFillOpacity(row.value(QStringLiteral("fill_opacity"), 30).toInt());
+    }
+
+    // 特征搜索设置
+    {
+        QString err_msg;
+        const auto row = database->loadFeatureSearchSettings(err_msg);
+        if (!err_msg.isEmpty())
+        {
+            spdlog::warn("Load feature search settings failed: {}", err_msg.toUtf8().constData());
+        }
+        setFeatureExtractionEnabled(row.value(QStringLiteral("enabled"), true).toBool());
+        setFeatureExtractionModel(
+            row.value(QStringLiteral("model"), QString::fromLatin1(kDefaultFeatureExtractionModel)).toString());
+        setFeatureExtractionModelPath(
+            row.value(QStringLiteral("model_path"), QString::fromLatin1(kDefaultFeatureExtractionModelPath)).toString());
+        setFeatureExtractionFeatureName(row.value(QStringLiteral("feature_name"),
+                                                  QString::fromLatin1(kDefaultFeatureExtractionFeatureName))
+                                            .toString());
+        setFeatureExtractionRebuildIndex(row.value(QStringLiteral("rebuild_index"), false).toBool());
+        setFeatureExtractionTopK(row.value(QStringLiteral("top_k"), 5).toInt());
+        setFeatureExtractionNorm(row.value(QStringLiteral("norm"), QStringLiteral("l2")).toString());
+        setFeatureExtractionPreprocessBackend(
+            row.value(QStringLiteral("preprocess_backend"), QStringLiteral("cpu")).toString());
+        setFeatureExtractionFaissBackend(row.value(QStringLiteral("faiss_backend"), QStringLiteral("cpu")).toString());
+        setFeatureExtractionIndexStorage(row.value(QStringLiteral("index_storage"), QStringLiteral("ram")).toString());
+        setFeatureExtractionDiskBuildBatchSize(row.value(QStringLiteral("disk_build_batch_size"), 256).toInt());
+        setFeatureExtractionModelBackend(
+            row.value(QStringLiteral("model_backend"), QStringLiteral("tensorrt")).toString());
+        setFeatureExtractionModelDevice(row.value(QStringLiteral("model_device"), QStringLiteral("gpu")).toString());
+        setFeatureExtractionIndexDirectory(row.value(QStringLiteral("index_directory"), QString()).toString());
+        setFeatureExtractionCustomFeatureNamesJson(
+            row.value(QStringLiteral("custom_feature_names"), QStringLiteral("{}")).toString());
     }
 }
 
 void DataSettings::save(database::SettingsDataBase *database)
 {
     if (!database)
-    {
         return;
+
+    // 缩略图设置
+    {
+        QString err_msg;
+        database->saveThumbnailSettings(
+            QVariantMap{
+                {QStringLiteral("margin"), thumbnail_margin_},
+                {QStringLiteral("cache_size"), thumbnail_cache_size_},
+                {QStringLiteral("image_load_threads"), image_load_threads_},
+                {QStringLiteral("cell_scale"), image_cell_scale_},
+                {QStringLiteral("cell_scale_from"), image_cell_scale_from_},
+                {QStringLiteral("cell_scale_to"), image_cell_scale_to_},
+                {QStringLiteral("cell_scale_step"), image_cell_scale_step_size_},
+                {QStringLiteral("label_scale"), label_thumbnail_scale_},
+                {QStringLiteral("label_aspect_ratio"), label_thumbnail_aspect_ratio_},
+                {QStringLiteral("label_border_padding"), label_thumbnail_border_padding_},
+            },
+            err_msg);
+        if (!err_msg.isEmpty())
+            spdlog::error("Save thumbnail settings failed: {}", err_msg.toUtf8().constData());
     }
 
-    const QString group = QStringLiteral("Data");
-
-    auto save_value = [database, &group](const QString &key, const QVariant &value) {
+    // 标注显示设置
+    {
         QString err_msg;
-        if (!database->setValue(group, key, value, err_msg))
-        {
-            spdlog::error("Save Data setting {} failed: {}", key.toUtf8().constData(), err_msg.toUtf8().constData());
-        }
-    };
+        database->saveLabelDisplaySettings(
+            QVariantMap{
+                {QStringLiteral("border_width"), label_border_width_},
+                {QStringLiteral("fill_opacity"), label_fill_opacity_},
+            },
+            err_msg);
+        if (!err_msg.isEmpty())
+            spdlog::error("Save label display settings failed: {}", err_msg.toUtf8().constData());
+    }
 
-    save_value(QStringLiteral("thumbnailMargin"), thumbnail_margin_);
-    save_value(QStringLiteral("thumbnailCacheSize"), thumbnail_cache_size_);
-    save_value(QStringLiteral("imageLoadThreads"), image_load_threads_);
-    save_value(QStringLiteral("labelBorderWidth"), label_border_width_);
-    save_value(QStringLiteral("labelFillOpacity"), label_fill_opacity_);
-
-    save_value(QStringLiteral("imageCellScale"), image_cell_scale_);
-    save_value(QStringLiteral("imageCellScaleFrom"), image_cell_scale_from_);
-    save_value(QStringLiteral("imageCellScaleTo"), image_cell_scale_to_);
-    save_value(QStringLiteral("imageCellScaleStepSize"), image_cell_scale_step_size_);
-
-    save_value(QStringLiteral("labelThumbnailScale"), label_thumbnail_scale_);
-    save_value(QStringLiteral("labelThumbnailAspectRatio"), label_thumbnail_aspect_ratio_);
-    save_value(QStringLiteral("labelThumbnailBorderPadding"), label_thumbnail_border_padding_);
-
-    save_value(QStringLiteral("featureExtractionEnabled"), feature_extraction_enabled_);
-    save_value(QStringLiteral("featureExtractionModel"), feature_extraction_model_);
-    save_value(QStringLiteral("featureExtractionModelPath"), feature_extraction_model_path_);
-    save_value(QStringLiteral("featureExtractionFeatureName"), feature_extraction_feature_name_);
-    save_value(QStringLiteral("featureExtractionRebuildIndex"), feature_extraction_rebuild_index_);
-    save_value(QStringLiteral("featureExtractionTopK"), feature_extraction_top_k_);
-    save_value(QStringLiteral("featureExtractionNorm"), feature_extraction_norm_);
-    save_value(QStringLiteral("featureExtractionPreprocessBackend"), feature_extraction_preprocess_backend_);
-    save_value(QStringLiteral("featureExtractionFaissBackend"), feature_extraction_faiss_backend_);
-    save_value(QStringLiteral("featureExtractionIndexStorage"), feature_extraction_index_storage_);
-    save_value(QStringLiteral("featureExtractionDiskBuildBatchSize"), feature_extraction_disk_build_batch_size_);
-    save_value(QStringLiteral("featureExtractionModelBackend"), feature_extraction_model_backend_);
-    save_value(QStringLiteral("featureExtractionModelDevice"), feature_extraction_model_device_);
-    save_value(QStringLiteral("featureExtractionIndexDirectory"), feature_extraction_index_directory_);
-    save_value(QStringLiteral("featureExtractionCustomFeatureNames"), featureExtractionCustomFeatureNamesJson());
+    // 特征搜索设置
+    {
+        QString err_msg;
+        database->saveFeatureSearchSettings(
+            QVariantMap{
+                {QStringLiteral("enabled"), feature_extraction_enabled_},
+                {QStringLiteral("model"), feature_extraction_model_},
+                {QStringLiteral("model_path"), feature_extraction_model_path_},
+                {QStringLiteral("feature_name"), feature_extraction_feature_name_},
+                {QStringLiteral("rebuild_index"), feature_extraction_rebuild_index_},
+                {QStringLiteral("top_k"), feature_extraction_top_k_},
+                {QStringLiteral("norm"), feature_extraction_norm_},
+                {QStringLiteral("preprocess_backend"), feature_extraction_preprocess_backend_},
+                {QStringLiteral("faiss_backend"), feature_extraction_faiss_backend_},
+                {QStringLiteral("index_storage"), feature_extraction_index_storage_},
+                {QStringLiteral("disk_build_batch_size"), feature_extraction_disk_build_batch_size_},
+                {QStringLiteral("model_backend"), feature_extraction_model_backend_},
+                {QStringLiteral("model_device"), feature_extraction_model_device_},
+                {QStringLiteral("index_directory"), feature_extraction_index_directory_},
+                {QStringLiteral("custom_feature_names"), featureExtractionCustomFeatureNamesJson()},
+            },
+            err_msg);
+        if (!err_msg.isEmpty())
+            spdlog::error("Save feature search settings failed: {}", err_msg.toUtf8().constData());
+    }
 }
 
 void DataSettings::reset()

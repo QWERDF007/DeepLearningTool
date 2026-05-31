@@ -197,34 +197,50 @@ public:
     int  getProjects(std::vector<QString> &paths, QString &err_msg) const;
 };
 
+/**
+ * @brief 设置数据库。
+ *
+ * 每个设置分类使用独立的单行表，通过列名直接读写，不再使用 EAV 键值对模式。
+ * 各 Settings 类通过 "load" / "save" 前缀的方法直接操作对应表。
+ */
 class DATABASE_API SettingsDataBase : public DataBase
 {
 public:
     SettingsDataBase(const QString &path, QObject *parent = nullptr);
     ~SettingsDataBase();
 
-    /**
-     * @brief 读取设置项
-     *
-     * @param group 设置分组
-     * @param key 设置键
-     * @param default_value 设置不存在或读取失败时返回的默认值
-     * @param err_msg 错误信息
-     * @return QVariant 设置值
-     */
-    QVariant value(const QString &group, const QString &key, const QVariant &default_value, QString &err_msg) const;
+    // ── 特征搜索设置 ──
 
-    /**
-     * @brief 写入设置项
-     *
-     * @param group 设置分组
-     * @param key 设置键
-     * @param value 设置值
-     * @param err_msg 错误信息
-     * @return true 写入成功
-     * @return false 写入失败
-     */
-    bool setValue(const QString &group, const QString &key, const QVariant &value, QString &err_msg) const;
+    QVariantMap loadFeatureSearchSettings(QString &err_msg) const;
+    bool        saveFeatureSearchSettings(const QVariantMap &row, QString &err_msg) const;
+
+    // ── 缩略图设置 ──
+
+    QVariantMap loadThumbnailSettings(QString &err_msg) const;
+    bool        saveThumbnailSettings(const QVariantMap &row, QString &err_msg) const;
+
+    // ── 标注显示设置 ──
+
+    QVariantMap loadLabelDisplaySettings(QString &err_msg) const;
+    bool        saveLabelDisplaySettings(const QVariantMap &row, QString &err_msg) const;
+
+    // ── 图像增强设置 ──
+
+    QVariantMap loadImageEnhanceSettings(QString &err_msg) const;
+    bool        saveImageEnhanceSettings(const QVariantMap &row, QString &err_msg) const;
+
+    // ── UI 设置 ──
+
+    QVariantMap loadUiSettings(QString &err_msg) const;
+    bool        saveUiSettings(const QVariantMap &row, QString &err_msg) const;
+
+    // ── 项目设置 ──
+
+    QVariantMap loadProjectSettings(QString &err_msg) const;
+    bool        saveProjectSettings(const QVariantMap &row, QString &err_msg) const;
+
+private:
+    bool saveSingleRow(const QString &table, const QVariantMap &row, QString &err_msg) const;
 };
 
 } // namespace dltool::database
