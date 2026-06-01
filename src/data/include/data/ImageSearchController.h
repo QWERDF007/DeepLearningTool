@@ -7,6 +7,7 @@
 #include <QStringList>
 #include <QVariantList>
 #include <QtQml>
+#include <set>
 #include <vector>
 
 namespace dltool::data {
@@ -118,6 +119,7 @@ public:
      * @param faiss_backend FAISS 计算后端（cpu / gpu）；为 gpu 时索引强制使用内存
      * @param index_storage 索引存储方式（ram / disk）
      * @param disk_build_batch_size 磁盘索引构建时的批大小
+     * @param model_batch_size 特征提取模型推理批大小
      * @param model_backend 模型推理后端（tensorrt / openvino / onnxruntime）
      * @param model_device 模型运行设备（cpu / gpu）
      * @return 任务成功提交到后台线程时返回 true
@@ -126,8 +128,8 @@ public:
                                           const QString &weights_file, const QString &feature_name, bool rebuild_index,
                                           int top_k, const QString &norm, const QString &preprocess_backend,
                                           const QString &faiss_backend, const QString &index_storage,
-                                          int disk_build_batch_size, const QString &model_backend,
-                                          const QString &model_device);
+                                          int disk_build_batch_size, int model_batch_size,
+                                          const QString &model_backend, const QString &model_device);
 
 signals:
     /** @brief 运行状态变化（running 属性） */
@@ -159,7 +161,7 @@ private:
                                      const QString &feature_name, bool rebuild_index,
                                      int top_k, const QString &norm, const QString &preprocess_backend,
                                      const QString &faiss_backend, const QString &index_storage,
-                                     int disk_build_batch_size, const QString &model_backend,
+                                     int disk_build_batch_size, int model_batch_size, const QString &model_backend,
                                      const QString &model_device);
 
     // ── 图像收集 ──

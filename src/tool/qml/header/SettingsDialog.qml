@@ -78,6 +78,7 @@ DltPopup {
         setComboText(faissBackendBox, GlobalSettings.data.featureExtractionFaissBackend)
         setComboText(indexStorageBox, GlobalSettings.data.featureExtractionIndexStorage)
         diskBatchEditor.value = GlobalSettings.data.featureExtractionDiskBuildBatchSize
+        modelBatchEditor.value = GlobalSettings.data.featureExtractionModelBatchSize
         setComboText(modelBackendBox, GlobalSettings.data.featureExtractionModelBackend)
         setComboText(modelDeviceBox, GlobalSettings.data.featureExtractionModelDevice)
         indexDirInput.text = GlobalSettings.data.featureExtractionIndexDirectory
@@ -370,6 +371,40 @@ DltPopup {
                                     onActivated: {
                                         if (!dialog.syncing) {
                                             GlobalSettings.data.featureExtractionModelDevice = currentText
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 模型批次
+                            Item {
+                                Layout.fillWidth: true
+                                implicitHeight: 32
+
+                                DltText {
+                                    anchors {
+                                        left: parent.left
+                                        verticalCenter: parent.verticalCenter
+                                    }
+                                    width: parent.width / 3
+                                    text: "模型批次"
+                                    color: DltColor.FontDark
+                                }
+                                DltSpinEditor {
+                                    id: modelBatchEditor
+                                    anchors {
+                                        right: parent.right
+                                        verticalCenter: parent.verticalCenter
+                                    }
+                                    width: parent.width * 2 / 3
+                                    label: ""
+                                    value: 1
+                                    minValue: 1
+                                    maxValue: 8192
+                                    step: 1
+                                    onValueChanged: {
+                                        if (!dialog.syncing) {
+                                            GlobalSettings.data.featureExtractionModelBatchSize = Math.round(value)
                                         }
                                     }
                                 }

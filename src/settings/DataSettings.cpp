@@ -318,6 +318,16 @@ void DataSettings::setFeatureExtractionDiskBuildBatchSize(int value)
     }
 }
 
+void DataSettings::setFeatureExtractionModelBatchSize(int value)
+{
+    value = std::clamp(value, 1, 8192);
+    if (feature_extraction_model_batch_size_ != value)
+    {
+        feature_extraction_model_batch_size_ = value;
+        emit featureExtractionModelBatchSizeChanged();
+    }
+}
+
 void DataSettings::setFeatureExtractionModelBackend(const QString &value)
 {
     const QString backend = normalizedOption(value,
@@ -490,6 +500,7 @@ void DataSettings::load(database::SettingsDataBase *database)
         setFeatureExtractionFaissBackend(row.value(QStringLiteral("faiss_backend"), QStringLiteral("cpu")).toString());
         setFeatureExtractionIndexStorage(row.value(QStringLiteral("index_storage"), QStringLiteral("ram")).toString());
         setFeatureExtractionDiskBuildBatchSize(row.value(QStringLiteral("disk_build_batch_size"), 256).toInt());
+        setFeatureExtractionModelBatchSize(row.value(QStringLiteral("model_batch_size"), 1).toInt());
         setFeatureExtractionModelBackend(
             row.value(QStringLiteral("model_backend"), QStringLiteral("tensorrt")).toString());
         setFeatureExtractionModelDevice(row.value(QStringLiteral("model_device"), QStringLiteral("gpu")).toString());
@@ -554,6 +565,7 @@ void DataSettings::save(database::SettingsDataBase *database)
                 {QStringLiteral("faiss_backend"), feature_extraction_faiss_backend_},
                 {QStringLiteral("index_storage"), feature_extraction_index_storage_},
                 {QStringLiteral("disk_build_batch_size"), feature_extraction_disk_build_batch_size_},
+                {QStringLiteral("model_batch_size"), feature_extraction_model_batch_size_},
                 {QStringLiteral("model_backend"), feature_extraction_model_backend_},
                 {QStringLiteral("model_device"), feature_extraction_model_device_},
                 {QStringLiteral("index_directory"), feature_extraction_index_directory_},
@@ -593,6 +605,7 @@ void DataSettings::reset()
     setFeatureExtractionFaissBackend(QStringLiteral("cpu"));
     setFeatureExtractionIndexStorage(QStringLiteral("ram"));
     setFeatureExtractionDiskBuildBatchSize(256);
+    setFeatureExtractionModelBatchSize(1);
     setFeatureExtractionModelBackend(QStringLiteral("tensorrt"));
     setFeatureExtractionModelDevice(QStringLiteral("gpu"));
     setFeatureExtractionIndexDirectory(QString());

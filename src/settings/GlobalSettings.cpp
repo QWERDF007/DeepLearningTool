@@ -194,6 +194,8 @@ void GlobalSettings::connectAutoSave()
             &GlobalSettings::scheduleSave);
     connect(data_settings_, &DataSettings::featureExtractionDiskBuildBatchSizeChanged, this,
             &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::featureExtractionModelBatchSizeChanged, this,
+            &GlobalSettings::scheduleSave);
     connect(data_settings_, &DataSettings::featureExtractionModelBackendChanged, this, &GlobalSettings::scheduleSave);
     connect(data_settings_, &DataSettings::featureExtractionModelDeviceChanged, this, &GlobalSettings::scheduleSave);
     connect(data_settings_, &DataSettings::featureExtractionIndexDirectoryChanged, this,

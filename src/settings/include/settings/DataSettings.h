@@ -92,6 +92,8 @@ class SETTINGS_API DataSettings : public QObject
                    setFeatureExtractionIndexStorage NOTIFY featureExtractionIndexStorageChanged)
     Q_PROPERTY(int featureExtractionDiskBuildBatchSize READ featureExtractionDiskBuildBatchSize WRITE
                    setFeatureExtractionDiskBuildBatchSize NOTIFY featureExtractionDiskBuildBatchSizeChanged)
+    Q_PROPERTY(int featureExtractionModelBatchSize READ featureExtractionModelBatchSize WRITE
+                   setFeatureExtractionModelBatchSize NOTIFY featureExtractionModelBatchSizeChanged)
     Q_PROPERTY(QString featureExtractionModelBackend READ featureExtractionModelBackend WRITE
                    setFeatureExtractionModelBackend NOTIFY featureExtractionModelBackendChanged)
     Q_PROPERTY(QString featureExtractionModelDevice READ featureExtractionModelDevice WRITE
@@ -309,6 +311,13 @@ public:
 
     void setFeatureExtractionDiskBuildBatchSize(int value);
 
+    int featureExtractionModelBatchSize() const
+    {
+        return feature_extraction_model_batch_size_;
+    }
+
+    void setFeatureExtractionModelBatchSize(int value);
+
     QString featureExtractionModelBackend() const
     {
         return feature_extraction_model_backend_;
@@ -375,6 +384,7 @@ signals:
     void featureExtractionFaissBackendChanged();
     void featureExtractionIndexStorageChanged();
     void featureExtractionDiskBuildBatchSizeChanged();
+    void featureExtractionModelBatchSizeChanged();
     void featureExtractionModelBackendChanged();
     void featureExtractionModelDeviceChanged();
     void featureExtractionIndexDirectoryChanged();
@@ -421,6 +431,7 @@ private:
     QString feature_extraction_faiss_backend_{QStringLiteral("cpu")};
     QString feature_extraction_index_storage_{QStringLiteral("ram")};
     int     feature_extraction_disk_build_batch_size_{256};
+    int     feature_extraction_model_batch_size_{1};
     QString feature_extraction_model_backend_{QStringLiteral("tensorrt")};
     QString feature_extraction_model_device_{QStringLiteral("gpu")};
     QString feature_extraction_index_directory_;
