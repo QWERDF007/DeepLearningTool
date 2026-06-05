@@ -202,6 +202,17 @@ void GlobalSettings::connectAutoSave()
             &GlobalSettings::scheduleSave);
     connect(data_settings_, &DataSettings::featureExtractionCustomFeatureNamesChanged, this,
             &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::smartAnnotationEnabledChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::smartAnnotationModelChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::smartAnnotationModelPathChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::smartAnnotationModelBackendChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::smartAnnotationModelDeviceChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::smartAnnotationMaskThresholdChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::smartAnnotationPolygonSimplifyEpsilonChanged, this,
+            &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::smartAnnotationMaskAlphaChanged, this, &GlobalSettings::scheduleSave);
+    connect(data_settings_, &DataSettings::smartAnnotationRefreshIntervalChanged, this,
+            &GlobalSettings::scheduleSave);
 
     // 连接 UISettings 的所有信号
     connect(ui_settings_, &UISettings::imageBrightnessChanged, this, &GlobalSettings::scheduleSave);

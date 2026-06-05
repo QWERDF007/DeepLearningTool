@@ -9,6 +9,7 @@
 #include "data/LabelData.h"
 #include "data/LabelInstanceImageProvider.h"
 #include "database/DataBase.h"
+#include "settings/GlobalSettings.h"
 #include "ui/ProgressManager.h"
 
 #include <spdlog/spdlog.h>
@@ -84,6 +85,12 @@ void DataManager::init(const int method)
     global_filter_ = new GlobalFilter(this, this);
     global_filter_->initializeFilterModules(this);
     image_search_ = new ImageSearchController(this, this);
+    smart_annotation_ = new SmartAnnotationController(this);
+    if (auto *settings = dltool::settings::GlobalSettings::getInstance()->data())
+    {
+        connect(settings, &dltool::settings::DataSettings::smartAnnotationEnabledChanged, smart_annotation_,
+                &SmartAnnotationController::clearCache);
+    }
 
     // Create filter items models
     dataset_filter_items_     = new DatasetFilterItemsModel(this);
@@ -580,6 +587,29 @@ void DataManager::addLabels(const std::vector<int64_t> &image_ids, const std::ve
     addLabelsInternal(image_ids, label_class_ids, data);
 }
 
+bool DataManager::addLabel(const int64_t image_id, const int64_t label_class_id, const QVariantMap &data)
+{
+    if (image_id < 0)
+    {
+        spdlog::warn("添加标注失败: 当前图像无效, image_id={}", image_id);
+        return false;
+    }
+    if (label_class_id < 0)
+    {
+        spdlog::warn("添加标注失败: 当前标签类别无效, label_class_id={}", label_class_id);
+        return false;
+    }
+
+    QString err_msg;
+    const bool ok = addLabelsInternal({image_id}, {label_class_id}, {data}, &err_msg);
+    if (!ok)
+    {
+        spdlog::error("添加标注失败: image_id={}, label_class_id={}, error={}", image_id, label_class_id,
+                      err_msg.toUtf8().constData());
+    }
+    return ok;
+}
+
 bool DataManager::addLabelsInternal(const std::vector<int64_t> &image_ids,
                                     const std::vector<int64_t> &label_class_ids,
                                     const std::vector<QVariantMap> &data, QString *err_msg)
@@ -639,6 +669,47 @@ void DataManager::deleteLabels(const std::vector<int64_t> &label_ids)
     image_labels_table_->deleteLabels(image_ids, label_ids);
     updateDatasetsStats();
     image_info_->updateLabelInfo();
+}
+
+void DataManager::duplicateSelectedLabels()
+{
+    if (image_labels_list_ == nullptr || label_instances_ == nullptr || image_instances_ == nullptr)
+    {
+        return;
+    }
+
+    const std::vector<int64_t> selected_label_ids = image_labels_list_->getSelectedLabelIds();
+    if (selected_label_ids.empty())
+    {
+        return;
+    }
+
+    const int64_t current_image_id = image_instances_->getCurrentImageId();
+    std::vector<int64_t>     image_ids;
+    std::vector<int64_t>     label_class_ids;
+    std::vector<QVariantMap> labels_data;
+    image_ids.reserve(selected_label_ids.size());
+    label_class_ids.reserve(selected_label_ids.size());
+    labels_data.reserve(selected_label_ids.size());
+
+    for (const int64_t label_id : selected_label_ids)
+    {
+        LabelInstance *instance = label_instances_->getLabelInstance(label_id);
+        if (instance == nullptr || instance->imageId() != current_image_id || instance->data() == nullptr)
+        {
+            continue;
+        }
+
+        QVariantMap data = instance->data()->dataMap();
+        image_ids.push_back(current_image_id);
+        label_class_ids.push_back(instance->labelClassId());
+        labels_data.push_back(data);
+    }
+
+    if (!image_ids.empty())
+    {
+        addLabelsInternal(image_ids, label_class_ids, labels_data);
+    }
 }
 
 void DataManager::addTagClass(const QString &name)

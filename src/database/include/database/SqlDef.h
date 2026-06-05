@@ -19,6 +19,7 @@ public:
         CreateTagClasses,
         CreateTags,
         CreateFeatureSearchSettings,
+        CreateSmartAnnotationSettings,
         CreateThumbnailSettings,
         CreateLabelDisplaySettings,
         CreateImageEnhanceSettings,
@@ -50,6 +51,12 @@ public:
          "extra_data BLOB, UNIQUE (image_id, tag_id))"},
         {CreateFeatureSearchSettings,
          "CREATE TABLE IF NOT EXISTS feature_search_settings ("
+         "id INTEGER PRIMARY KEY,"
+         "key TEXT NOT NULL UNIQUE,"
+         "value TEXT NOT NULL,"
+         "mtime INTEGER NOT NULL)"},
+        {CreateSmartAnnotationSettings,
+         "CREATE TABLE IF NOT EXISTS smart_annotation_settings ("
          "id INTEGER PRIMARY KEY,"
          "key TEXT NOT NULL UNIQUE,"
          "value TEXT NOT NULL,"

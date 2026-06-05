@@ -11,6 +11,7 @@
 #include "ImageTags.h"
 #include "Images.h"
 #include "Labels.h"
+#include "SmartAnnotationController.h"
 #include "labelclasses.h"
 
 #include <QObject>
@@ -42,6 +43,7 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(ImageInfoListModel *imageInfo READ imageInfo CONSTANT FINAL)
     Q_PROPERTY(GlobalFilter *globalFilter READ globalFilter CONSTANT FINAL)
     Q_PROPERTY(ImageSearchController *imageSearch READ imageSearch CONSTANT FINAL)
+    Q_PROPERTY(SmartAnnotationController *smartAnnotation READ smartAnnotation CONSTANT FINAL)
     Q_PROPERTY(DatasetFilterItemsModel *datasetFilterItems READ datasetFilterItems CONSTANT FINAL)
     Q_PROPERTY(TagFilterItemsModel *tagFilterItems READ tagFilterItems CONSTANT FINAL)
     Q_PROPERTY(LabelClassFilterItemsModel *labelClassFilterItems READ labelClassFilterItems CONSTANT FINAL)
@@ -102,6 +104,11 @@ public:
         return image_search_;
     }
 
+    SmartAnnotationController *smartAnnotation() const
+    {
+        return smart_annotation_;
+    }
+
     DatasetFilterItemsModel *datasetFilterItems() const
     {
         return dataset_filter_items_;
@@ -160,10 +167,12 @@ public:
 
     Q_INVOKABLE void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                                const std::vector<QVariantMap> &data);
+    Q_INVOKABLE bool addLabel(const int64_t image_id, const int64_t label_class_id, const QVariantMap &data);
     Q_INVOKABLE void updateLabels(const std::vector<int64_t> &label_ids, const std::vector<QVariantMap> &data);
     Q_INVOKABLE void updateLabelsClass(const std::vector<int64_t> &label_ids,
                                        const std::vector<int64_t> &label_class_ids);
     Q_INVOKABLE void deleteLabels(const std::vector<int64_t> &label_ids);
+    Q_INVOKABLE void duplicateSelectedLabels();
 
     Q_INVOKABLE void addTagClass(const QString &name);
 
@@ -220,6 +229,7 @@ private:
 
     GlobalFilter *global_filter_{nullptr};
     ImageSearchController *image_search_{nullptr};
+    SmartAnnotationController *smart_annotation_{nullptr};
 
     DatasetFilterItemsModel    *dataset_filter_items_{nullptr};
     TagFilterItemsModel        *tag_filter_items_{nullptr};

@@ -11,9 +11,11 @@ DltPopup {
     id: dialog
 
     property var imageSearch: null
+    property var smartAnnotation: null
     property bool advancedExpanded: false
     property bool syncing: false
     property string lastSuggestedWeightsPath: ""
+    property string lastSuggestedSmartModelPath: ""
 
     implicitWidth: 1200
     implicitHeight: 800 // Math.min(1280, contentColumn.implicitHeight)
@@ -59,6 +61,16 @@ DltPopup {
         return modelName === "" ? "" : "F:/models/" + modelName + ".wts"
     }
 
+    function suggestedSmartModelPath(modelName, backend) {
+        let model = trimText(modelName)
+        let runtime = trimText(backend)
+        if (smartAnnotation) {
+            return smartAnnotation.suggestedModelPath(model, runtime)
+        }
+        let suffix = runtime === "tensorrt" || runtime === "" ? ".wts" : ".onnx"
+        return model === "" ? "" : "F:/models/" + model + suffix
+    }
+
     function loadFromSettings() {
         syncing = true
         advancedExpander.expand = false
@@ -84,6 +96,17 @@ DltPopup {
         indexDirInput.text = GlobalSettings.data.featureExtractionIndexDirectory
 
         lastSuggestedWeightsPath = suggestedWeightsPath(comboText(modelBox))
+
+        smartEnableCheckBox.checked = GlobalSettings.data.smartAnnotationEnabled
+        setComboText(smartModelBox, GlobalSettings.data.smartAnnotationModel)
+        smartModelPathInput.text = GlobalSettings.data.smartAnnotationModelPath
+        setComboText(smartBackendBox, GlobalSettings.data.smartAnnotationModelBackend)
+        setComboText(smartDeviceBox, GlobalSettings.data.smartAnnotationModelDevice)
+        smartThresholdEditor.value = GlobalSettings.data.smartAnnotationMaskThreshold
+        smartSimplifyEditor.value = GlobalSettings.data.smartAnnotationPolygonSimplifyEpsilon
+        smartAlphaEditor.value = GlobalSettings.data.smartAnnotationMaskAlpha
+        smartRefreshIntervalEditor.value = GlobalSettings.data.smartAnnotationRefreshInterval
+        lastSuggestedSmartModelPath = suggestedSmartModelPath(comboText(smartModelBox), comboText(smartBackendBox))
         syncing = false
     }
 
@@ -109,6 +132,42 @@ DltPopup {
         featureNameBox.refreshFeatureNames()
     }
 
+    function updateSmartModel(value) {
+        if (syncing) {
+            return
+        }
+
+        let model = trimText(value)
+        if (model === "") {
+            return
+        }
+
+        let previousSuggested = lastSuggestedSmartModelPath
+        let nextSuggested = suggestedSmartModelPath(model, comboText(smartBackendBox))
+        GlobalSettings.data.smartAnnotationModel = model
+        if (smartModelPathInput.text === "" || smartModelPathInput.text === previousSuggested) {
+            smartModelPathInput.text = nextSuggested
+            GlobalSettings.data.smartAnnotationModelPath = nextSuggested
+        }
+        lastSuggestedSmartModelPath = nextSuggested
+    }
+
+    function updateSmartBackend(value) {
+        if (syncing) {
+            return
+        }
+
+        let backend = trimText(value)
+        let previousSuggested = lastSuggestedSmartModelPath
+        let nextSuggested = suggestedSmartModelPath(comboText(smartModelBox), backend)
+        GlobalSettings.data.smartAnnotationModelBackend = backend
+        if (smartModelPathInput.text === "" || smartModelPathInput.text === previousSuggested) {
+            smartModelPathInput.text = nextSuggested
+            GlobalSettings.data.smartAnnotationModelPath = nextSuggested
+        }
+        lastSuggestedSmartModelPath = nextSuggested
+    }
+
     function updateFeatureName(value) {
         if (syncing) {
             return
@@ -126,6 +185,15 @@ DltPopup {
         GlobalSettings.data.featureExtractionModel = comboText(modelBox)
         GlobalSettings.data.featureExtractionModelPath = trimText(modelPathInput.text)
         GlobalSettings.data.featureExtractionFeatureName = featureNameBox.currentFeatureText()
+        GlobalSettings.data.smartAnnotationEnabled = smartEnableCheckBox.checked
+        GlobalSettings.data.smartAnnotationModel = comboText(smartModelBox)
+        GlobalSettings.data.smartAnnotationModelPath = trimText(smartModelPathInput.text)
+        GlobalSettings.data.smartAnnotationModelBackend = comboText(smartBackendBox)
+        GlobalSettings.data.smartAnnotationModelDevice = comboText(smartDeviceBox)
+        GlobalSettings.data.smartAnnotationMaskThreshold = smartThresholdEditor.value
+        GlobalSettings.data.smartAnnotationPolygonSimplifyEpsilon = smartSimplifyEditor.value
+        GlobalSettings.data.smartAnnotationMaskAlpha = smartAlphaEditor.value
+        GlobalSettings.data.smartAnnotationRefreshInterval = Math.round(smartRefreshIntervalEditor.value)
         GlobalSettings.save()
     }
 
@@ -687,8 +755,327 @@ DltPopup {
                                 }
                             }
                         }
+
                     }
                 }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 20
+                    implicitHeight: smartAnnotationSection.implicitHeight + 24
+                    radius: 4
+                    color: DltColor.Primary
+                    border.color: DltColor.Border
+
+                    ColumnLayout {
+                        id: smartAnnotationSection
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 12
+
+                        Item {
+                            Layout.fillWidth: true
+                            implicitHeight: 24
+
+                            DltText {
+                                anchors {
+                                    left: parent.left
+                                    verticalCenter: parent.verticalCenter
+                                }
+                                width: parent.width / 3
+                                text: "智能标注"
+                                font: DltFont.Subtitle
+                                color: DltColor.FontPrimary
+                            }
+
+                            DltToggleSwitch {
+                                id: smartEnableCheckBox
+                                anchors {
+                                    right: parent.right
+                                    verticalCenter: parent.verticalCenter
+                                }
+                                text: "启用"
+                                checked: GlobalSettings.data.smartAnnotationEnabled
+                                onToggled: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.data.smartAnnotationEnabled = checked
+                                    }
+                                }
+                            }
+                        }
+
+                        ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    enabled: smartEnableCheckBox.checked
+
+                                    Item {
+                                        Layout.fillWidth: true
+                                        implicitHeight: 34
+
+                                        DltText {
+                                            anchors {
+                                                left: parent.left
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width / 3
+                                            text: "模型"
+                                            color: DltColor.FontDark
+                                        }
+                                        DltComboBox {
+                                            id: smartModelBox
+                                            anchors {
+                                                right: parent.right
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width * 2 / 3
+                                            editable: true
+                                            model: dialog.smartAnnotation
+                                                   ? dialog.smartAnnotation.supportedModelPresets()
+                                                   : ["edge_sam", "sam_vit_b", "sam_vit_l", "sam_vit_h",
+                                                      "sam2_hiera_tiny", "sam2_hiera_small",
+                                                      "sam2_hiera_base_plus", "sam2_hiera_large",
+                                                      "sam2_1_hiera_tiny", "sam2_1_hiera_small",
+                                                      "sam2_1_hiera_base_plus", "sam2_1_hiera_large"]
+                                            onActivated: dialog.updateSmartModel(dialog.comboText(smartModelBox))
+                                            onCommit: function (text) {
+                                                editText = text
+                                                dialog.updateSmartModel(text)
+                                            }
+                                        }
+                                    }
+
+                                    Item {
+                                        Layout.fillWidth: true
+                                        implicitHeight: 34
+
+                                        DltText {
+                                            anchors {
+                                                left: parent.left
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width / 3
+                                            text: "模型文件"
+                                            color: DltColor.FontDark
+                                        }
+                                        RowLayout {
+                                            anchors {
+                                                right: parent.right
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width * 2 / 3
+                                            spacing: 8
+
+                                            DltTextField {
+                                                id: smartModelPathInput
+                                                Layout.fillWidth: true
+                                                placeholderText: "选择 .wts 或 .onnx 模型文件"
+                                                onEditingFinished: {
+                                                    if (!dialog.syncing) {
+                                                        GlobalSettings.data.smartAnnotationModelPath = dialog.trimText(text)
+                                                    }
+                                                }
+                                            }
+
+                                            DltTextIconButton {
+                                                Layout.preferredWidth: 34
+                                                Layout.preferredHeight: 34
+                                                iconSource: DltFontIcon.OpenFile
+                                                text: "打开"
+                                                onClicked: smartModelPathDialog.open()
+                                            }
+                                        }
+                                    }
+
+                                    Item {
+                                        Layout.fillWidth: true
+                                        implicitHeight: 34
+
+                                        DltText {
+                                            anchors {
+                                                left: parent.left
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width / 3
+                                            text: "推理后端"
+                                            color: DltColor.FontDark
+                                        }
+                                        DltComboBox {
+                                            id: smartBackendBox
+                                            anchors {
+                                                right: parent.right
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width * 2 / 3
+                                            model: ["tensorrt", "openvino", "onnxruntime"]
+                                            onActivated: dialog.updateSmartBackend(currentText)
+                                        }
+                                    }
+
+                                    Item {
+                                        Layout.fillWidth: true
+                                        implicitHeight: 34
+
+                                        DltText {
+                                            anchors {
+                                                left: parent.left
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width / 3
+                                            text: "推理设备"
+                                            color: DltColor.FontDark
+                                        }
+                                        DltComboBox {
+                                            id: smartDeviceBox
+                                            anchors {
+                                                right: parent.right
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width * 2 / 3
+                                            model: ["gpu", "cpu"]
+                                            onActivated: {
+                                                if (!dialog.syncing) {
+                                                    GlobalSettings.data.smartAnnotationModelDevice = currentText
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Item {
+                                        Layout.fillWidth: true
+                                        implicitHeight: 32
+
+                                        DltText {
+                                            anchors {
+                                                left: parent.left
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width / 3
+                                            text: "Mask阈值"
+                                            color: DltColor.FontDark
+                                        }
+                                        DltSpinEditor {
+                                            id: smartThresholdEditor
+                                            anchors {
+                                                right: parent.right
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width * 2 / 3
+                                            label: ""
+                                            minValue: -20
+                                            maxValue: 20
+                                            step: 0.1
+                                            decimals: 2
+                                            onValueChanged: {
+                                                if (!dialog.syncing) {
+                                                    GlobalSettings.data.smartAnnotationMaskThreshold = value
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Item {
+                                        Layout.fillWidth: true
+                                        implicitHeight: 32
+
+                                        DltText {
+                                            anchors {
+                                                left: parent.left
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width / 3
+                                            text: "刷新间隔(ms)"
+                                            color: DltColor.FontDark
+                                        }
+                                        DltSpinEditor {
+                                            id: smartRefreshIntervalEditor
+                                            anchors {
+                                                right: parent.right
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width * 2 / 3
+                                            label: ""
+                                            minValue: 20
+                                            maxValue: 5000
+                                            step: 10
+                                            decimals: 0
+                                            onValueChanged: {
+                                                if (!dialog.syncing) {
+                                                    GlobalSettings.data.smartAnnotationRefreshInterval = Math.round(value)
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Item {
+                                        Layout.fillWidth: true
+                                        implicitHeight: 32
+
+                                        DltText {
+                                            anchors {
+                                                left: parent.left
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width / 3
+                                            text: "Mask透明度"
+                                            color: DltColor.FontDark
+                                        }
+                                        DltSpinEditor {
+                                            id: smartAlphaEditor
+                                            anchors {
+                                                right: parent.right
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width * 2 / 3
+                                            label: ""
+                                            minValue: 0
+                                            maxValue: 1
+                                            step: 0.05
+                                            decimals: 2
+                                            onValueChanged: {
+                                                if (!dialog.syncing) {
+                                                    GlobalSettings.data.smartAnnotationMaskAlpha = value
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Item {
+                                        Layout.fillWidth: true
+                                        implicitHeight: 32
+
+                                        DltText {
+                                            anchors {
+                                                left: parent.left
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width / 3
+                                            text: "轮廓简化"
+                                            color: DltColor.FontDark
+                                        }
+                                        DltSpinEditor {
+                                            id: smartSimplifyEditor
+                                            anchors {
+                                                right: parent.right
+                                                verticalCenter: parent.verticalCenter
+                                            }
+                                            width: parent.width * 2 / 3
+                                            label: ""
+                                            minValue: 0
+                                            maxValue: 50
+                                            step: 0.5
+                                            decimals: 1
+                                            onValueChanged: {
+                                                if (!dialog.syncing) {
+                                                    GlobalSettings.data.smartAnnotationPolygonSimplifyEpsilon = value
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
             }
         }
 
@@ -718,6 +1105,16 @@ DltPopup {
         onAccepted: {
             modelPathInput.text = Utils.getCleanPath(modelPathDialog.file.toString())
             GlobalSettings.data.featureExtractionModelPath = modelPathInput.text
+        }
+    }
+
+    FileDialog {
+        id: smartModelPathDialog
+        title: "选择智能标注模型"
+        nameFilters: ["Model Files (*.wts *.onnx *.xml *.bin)", "All files (*)"]
+        onAccepted: {
+            smartModelPathInput.text = Utils.getCleanPath(smartModelPathDialog.file.toString())
+            GlobalSettings.data.smartAnnotationModelPath = smartModelPathInput.text
         }
     }
 

@@ -29,7 +29,7 @@ Rectangle {
             SplitView.preferredWidth: 300
             orientation: Qt.Vertical
 
-            DatasetsView { // 数据集
+            DatasetsView {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: parent.height / 3
@@ -37,7 +37,7 @@ Rectangle {
                 dataManager: labelPage.dataManager
             }
 
-            LabelImageFlip { // 图像切换
+            LabelImageFlip {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 120
                 SplitView.preferredHeight: 120
@@ -45,7 +45,7 @@ Rectangle {
                 dataManager: labelPage.dataManager
             }
 
-            LabelClassesView { // 标签类别
+            LabelClassesView {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: parent.height / 3
@@ -53,7 +53,7 @@ Rectangle {
                 dataManager: labelPage.dataManager
             }
 
-            ImageTagView { // 图像标签
+            ImageTagView {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: 240
@@ -63,11 +63,129 @@ Rectangle {
             }
         }
 
-        LabelCanvas { // 标注画布
-            id: labelCanvas
+        Item {
             SplitView.fillHeight: true
             SplitView.fillWidth: true
-            dataManager: labelPage.dataManager
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 4
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 42
+                    color: DltColor.Primary
+                    border.color: DltColor.Border
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        spacing: 6
+
+                        DltTextIconButton {
+                            Layout.preferredWidth: 32
+                            Layout.preferredHeight: 32
+                            iconSource: DltFontIcon.Delete
+                            text: "删除"
+                            enabled: labelCanvas.selection ? labelCanvas.selection.hasSelection : false
+                            onClicked: labelCanvas.deleteSelectedLabels()
+                        }
+
+                        DltTextIconButton {
+                            Layout.preferredWidth: 32
+                            Layout.preferredHeight: 32
+                            normalColor: labelCanvas.showBoundingBoxes ? DltColor.Highlight : DltColor.Button
+                            iconSource: DltFontIcon.View
+                            text: "显示外接矩形"
+                            onClicked: labelCanvas.showBoundingBoxes = !labelCanvas.showBoundingBoxes
+                        }
+
+                        DltTextIconButton {
+                            Layout.preferredWidth: 32
+                            Layout.preferredHeight: 32
+                            iconSource: DltFontIcon.Copy
+                            text: "复制"
+                            enabled: labelCanvas.selection ? labelCanvas.selection.hasSelection : false
+                            onClicked: labelCanvas.copySelectedLabels()
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: 4
+
+                    Rectangle {
+                        Layout.preferredWidth: 42
+                        Layout.fillHeight: true
+                        color: DltColor.Primary
+                        border.color: DltColor.Border
+
+                        ColumnLayout {
+                            anchors.top: parent.top
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.topMargin: 8
+                            spacing: 6
+
+                            DltTextIconButton {
+                                Layout.alignment: Qt.AlignHCenter
+                                Layout.preferredWidth: 32
+                                Layout.preferredHeight: 32
+                                normalColor: labelCanvas.toolMode === "select" ? DltColor.Highlight : DltColor.Button
+                                iconSource: DltFontIcon.TouchPointer
+                                text: "选中"
+                                onClicked: labelCanvas.setToolMode("select")
+                            }
+
+                            DltTextIconButton {
+                                Layout.alignment: Qt.AlignHCenter
+                                Layout.preferredWidth: 32
+                                Layout.preferredHeight: 32
+                                normalColor: labelCanvas.toolMode === "rect" ? DltColor.Highlight : DltColor.Button
+                                iconSource: DltFontIcon.RectangularClipping
+                                text: "绘制矩形"
+                                onClicked: labelCanvas.setToolMode("rect")
+                            }
+
+                            DltTextIconButton {
+                                Layout.alignment: Qt.AlignHCenter
+                                Layout.preferredWidth: 32
+                                Layout.preferredHeight: 32
+                                enabled: labelCanvas.segmentationMode
+                                normalColor: labelCanvas.toolMode === "polygon" ? DltColor.Highlight : DltColor.Button
+                                iconSource: DltFontIcon.FreeFormClipping
+                                text: "绘制多边形"
+                                onClicked: labelCanvas.setToolMode("polygon")
+                            }
+
+                            DltTextIconButton {
+                                Layout.alignment: Qt.AlignHCenter
+                                Layout.preferredWidth: 32
+                                Layout.preferredHeight: 32
+                                enabled: labelCanvas.smartAnnotationAvailable
+                                normalColor: labelCanvas.toolMode === "smart" ? DltColor.Highlight : DltColor.Button
+                                iconSource: DltFontIcon.Robot
+                                text: "智能标注"
+                                onClicked: labelCanvas.setToolMode("smart")
+                            }
+                        }
+                    }
+
+                    LabelCanvas {
+                        id: labelCanvas
+                        Layout.fillHeight: true
+                        Layout.fillWidth: true
+                        dataManager: labelPage.dataManager
+                    }
+                }
+            }
         }
 
         DltSplitView {
@@ -77,32 +195,30 @@ Rectangle {
             SplitView.preferredWidth: 320
             orientation: Qt.Vertical
 
-            ImageEnhancementPanel { // 图像增强
+            ImageEnhancementPanel {
                 id: imageEnhancementPanel
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: 200
-                
-                // 绑定当前图像缩放值
                 zoomValue: labelCanvas.imageScale
-                
+
                 onFitToWindow: {
                     labelCanvas.fitImageInView()
                 }
-                
+
                 onZoomChanged: function(zoom) {
                     labelCanvas.setImageScale(zoom)
                 }
             }
 
-            LabelsTableView { // 标注实例
+            LabelsTableView {
                 SplitView.fillWidth: true
                 SplitView.fillHeight: true
                 SplitView.minimumHeight: 240
                 dataManager: labelPage.dataManager
             }
-            
-            LabelInstanceEditor { // 编辑实例
+
+            LabelInstanceEditor {
                 id: labelInstanceEditor
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
@@ -111,7 +227,7 @@ Rectangle {
                 dataManager: labelPage.dataManager
             }
 
-            FileListView { // 文件列表
+            FileListView {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: parent.height / 4 - 20

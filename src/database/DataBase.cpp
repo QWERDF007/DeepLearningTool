@@ -7,6 +7,7 @@
 #include "database/ddl/LabelsTable.h"
 #include "database/ddl/ProjectTable.h"
 #include "database/ddl/RecentProjectsTable.h"
+#include "database/ddl/SmartAnnotationSettingsTable.h"
 #include "database/ddl/TagClassesTable.h"
 #include "database/ddl/TagsTable.h"
 #include "database/ddl/FeatureSearchSettingsTable.h"
@@ -36,6 +37,7 @@ const auto LabelsTable          = Labels{};
 const auto TagClassesTable      = TagClasses{};
 const auto TagsTable                    = Tags{};
 const auto FeatureSearchSettingsTable    = FeatureSearchSettings{};
+const auto SmartAnnotationSettingsTable  = SmartAnnotationSettings{};
 const auto ThumbnailSettingsTable        = ThumbnailSettings{};
 const auto LabelDisplaySettingsTable     = LabelDisplaySettings{};
 const auto ImageEnhanceSettingsTable     = ImageEnhanceSettings{};
@@ -1274,6 +1276,7 @@ SettingsDataBase::SettingsDataBase(const QString &path, QObject *parent)
     {
         auto db = pool_->get();
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateFeatureSearchSettings));
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateSmartAnnotationSettings));
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateThumbnailSettings));
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateLabelDisplaySettings));
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateImageEnhanceSettings));
@@ -1352,6 +1355,11 @@ QVariantMap SettingsDataBase::loadFeatureSearchSettings(QString &err_msg) const
 { return LOAD_SETTINGS_KV(pool_, FeatureSearchSettingsTable, err_msg); }
 bool SettingsDataBase::saveFeatureSearchSettings(const QVariantMap &row, QString &err_msg) const
 { return saveSettingsKV(pool_, FeatureSearchSettingsTable, row, err_msg); }
+
+QVariantMap SettingsDataBase::loadSmartAnnotationSettings(QString &err_msg) const
+{ return LOAD_SETTINGS_KV(pool_, SmartAnnotationSettingsTable, err_msg); }
+bool SettingsDataBase::saveSmartAnnotationSettings(const QVariantMap &row, QString &err_msg) const
+{ return saveSettingsKV(pool_, SmartAnnotationSettingsTable, row, err_msg); }
 
 QVariantMap SettingsDataBase::loadThumbnailSettings(QString &err_msg) const
 { return LOAD_SETTINGS_KV(pool_, ThumbnailSettingsTable, err_msg); }

@@ -17,6 +17,8 @@ namespace {
 constexpr const char *kDefaultFeatureExtractionModel       = "resnet18";
 constexpr const char *kDefaultFeatureExtractionModelPath   = "F:/models/resnet18.wts";
 constexpr const char *kDefaultFeatureExtractionFeatureName = "layer4";
+constexpr const char *kDefaultSmartAnnotationModel         = "edge_sam";
+constexpr const char *kDefaultSmartAnnotationModelPath     = "F:/models/edge_sam.wts";
 
 QString normalizedFeatureModel(QString value)
 {
@@ -28,6 +30,12 @@ QString normalizedFeatureName(QString value)
 {
     value = value.trimmed();
     return value.isEmpty() ? QString::fromLatin1(kDefaultFeatureExtractionFeatureName) : value;
+}
+
+QString normalizedSmartAnnotationModel(QString value)
+{
+    value = value.trimmed();
+    return value.isEmpty() ? QString::fromLatin1(kDefaultSmartAnnotationModel) : value;
 }
 
 QString normalizedOption(QString value, const QStringList &allowed_values, const QString &default_value)
@@ -362,6 +370,99 @@ void DataSettings::setFeatureExtractionIndexDirectory(const QString &value)
     }
 }
 
+void DataSettings::setSmartAnnotationEnabled(bool value)
+{
+    if (smart_annotation_enabled_ != value)
+    {
+        smart_annotation_enabled_ = value;
+        emit smartAnnotationEnabledChanged();
+    }
+}
+
+void DataSettings::setSmartAnnotationModel(const QString &value)
+{
+    const QString model = normalizedSmartAnnotationModel(value);
+    if (smart_annotation_model_ != model)
+    {
+        smart_annotation_model_ = model;
+        emit smartAnnotationModelChanged();
+    }
+}
+
+void DataSettings::setSmartAnnotationModelPath(const QString &value)
+{
+    const QString path = value.trimmed();
+    if (smart_annotation_model_path_ != path)
+    {
+        smart_annotation_model_path_ = path;
+        emit smartAnnotationModelPathChanged();
+    }
+}
+
+void DataSettings::setSmartAnnotationModelBackend(const QString &value)
+{
+    const QString backend = normalizedOption(value,
+                                             {QStringLiteral("tensorrt"), QStringLiteral("openvino"),
+                                              QStringLiteral("onnxruntime")},
+                                             QStringLiteral("tensorrt"));
+    if (smart_annotation_model_backend_ != backend)
+    {
+        smart_annotation_model_backend_ = backend;
+        emit smartAnnotationModelBackendChanged();
+    }
+}
+
+void DataSettings::setSmartAnnotationModelDevice(const QString &value)
+{
+    const QString device
+        = normalizedOption(value, {QStringLiteral("cpu"), QStringLiteral("gpu")}, QStringLiteral("gpu"));
+    if (smart_annotation_model_device_ != device)
+    {
+        smart_annotation_model_device_ = device;
+        emit smartAnnotationModelDeviceChanged();
+    }
+}
+
+void DataSettings::setSmartAnnotationMaskThreshold(double value)
+{
+    value = std::clamp(value, -20.0, 20.0);
+    if (smart_annotation_mask_threshold_ != value)
+    {
+        smart_annotation_mask_threshold_ = value;
+        emit smartAnnotationMaskThresholdChanged();
+    }
+}
+
+void DataSettings::setSmartAnnotationPolygonSimplifyEpsilon(double value)
+{
+    value = std::clamp(value, 0.0, 50.0);
+    if (smart_annotation_polygon_simplify_epsilon_ != value)
+    {
+        smart_annotation_polygon_simplify_epsilon_ = value;
+        emit smartAnnotationPolygonSimplifyEpsilonChanged();
+    }
+}
+
+void DataSettings::setSmartAnnotationMaskAlpha(double value)
+{
+    value = std::clamp(value, 0.0, 1.0);
+    if (smart_annotation_mask_alpha_ != value)
+    {
+        smart_annotation_mask_alpha_ = value;
+        emit smartAnnotationMaskAlphaChanged();
+    }
+}
+
+void DataSettings::setSmartAnnotationRefreshInterval(int value)
+{
+    value = std::clamp(value, 20, 5000);
+    if (smart_annotation_refresh_interval_ != value)
+    {
+        smart_annotation_refresh_interval_ = value;
+        emit smartAnnotationRefreshIntervalChanged();
+    }
+}
+
 QStringList DataSettings::featureExtractionCustomFeatureNames(const QString &model_name) const
 {
     return feature_extraction_custom_feature_names_.value(normalizedFeatureModel(model_name));
@@ -444,7 +545,7 @@ void DataSettings::load(database::SettingsDataBase *database)
     if (!database)
         return;
 
-    // 缩略图设置
+    // Thumbnail settings
     {
         QString err_msg;
         const auto row = database->loadThumbnailSettings(err_msg);
@@ -464,7 +565,7 @@ void DataSettings::load(database::SettingsDataBase *database)
         setLabelThumbnailBorderPadding(row.value(QStringLiteral("label_border_padding"), 0.1).toDouble());
     }
 
-    // 标注显示设置
+    // Label display settings
     {
         QString err_msg;
         const auto row = database->loadLabelDisplaySettings(err_msg);
@@ -476,7 +577,7 @@ void DataSettings::load(database::SettingsDataBase *database)
         setLabelFillOpacity(row.value(QStringLiteral("fill_opacity"), 30).toInt());
     }
 
-    // 特征搜索设置
+    // Feature search settings
     {
         QString err_msg;
         const auto row = database->loadFeatureSearchSettings(err_msg);
@@ -508,6 +609,43 @@ void DataSettings::load(database::SettingsDataBase *database)
         setFeatureExtractionCustomFeatureNamesJson(
             row.value(QStringLiteral("custom_feature_names"), QStringLiteral("{}")).toString());
     }
+
+    // Smart annotation settings
+    {
+        QString err_msg;
+        auto row = database->loadSmartAnnotationSettings(err_msg);
+        if (!err_msg.isEmpty())
+        {
+            spdlog::warn("Load smart annotation settings failed: {}", err_msg.toUtf8().constData());
+        }
+        if (row.isEmpty())
+        {
+            QString legacy_err_msg;
+            row = database->loadFeatureSearchSettings(legacy_err_msg);
+            if (!legacy_err_msg.isEmpty())
+            {
+                spdlog::warn("Load legacy smart annotation settings failed: {}",
+                             legacy_err_msg.toUtf8().constData());
+            }
+        }
+        setSmartAnnotationEnabled(row.value(QStringLiteral("smart_annotation_enabled"), false).toBool());
+        setSmartAnnotationModel(row.value(QStringLiteral("smart_annotation_model"),
+                                          QString::fromLatin1(kDefaultSmartAnnotationModel))
+                                    .toString());
+        setSmartAnnotationModelPath(row.value(QStringLiteral("smart_annotation_model_path"),
+                                              QString::fromLatin1(kDefaultSmartAnnotationModelPath))
+                                        .toString());
+        setSmartAnnotationModelBackend(
+            row.value(QStringLiteral("smart_annotation_model_backend"), QStringLiteral("tensorrt")).toString());
+        setSmartAnnotationModelDevice(
+            row.value(QStringLiteral("smart_annotation_model_device"), QStringLiteral("gpu")).toString());
+        setSmartAnnotationMaskThreshold(row.value(QStringLiteral("smart_annotation_mask_threshold"), 0.0).toDouble());
+        setSmartAnnotationPolygonSimplifyEpsilon(
+            row.value(QStringLiteral("smart_annotation_polygon_simplify_epsilon"), 2.0).toDouble());
+        setSmartAnnotationMaskAlpha(row.value(QStringLiteral("smart_annotation_mask_alpha"), 0.35).toDouble());
+        setSmartAnnotationRefreshInterval(
+            row.value(QStringLiteral("smart_annotation_refresh_interval"), 80).toInt());
+    }
 }
 
 void DataSettings::save(database::SettingsDataBase *database)
@@ -515,7 +653,7 @@ void DataSettings::save(database::SettingsDataBase *database)
     if (!database)
         return;
 
-    // 缩略图设置
+    // Thumbnail settings
     {
         QString err_msg;
         database->saveThumbnailSettings(
@@ -536,7 +674,7 @@ void DataSettings::save(database::SettingsDataBase *database)
             spdlog::error("Save thumbnail settings failed: {}", err_msg.toUtf8().constData());
     }
 
-    // 标注显示设置
+    // Label display settings
     {
         QString err_msg;
         database->saveLabelDisplaySettings(
@@ -549,7 +687,7 @@ void DataSettings::save(database::SettingsDataBase *database)
             spdlog::error("Save label display settings failed: {}", err_msg.toUtf8().constData());
     }
 
-    // 特征搜索设置
+    // Feature search settings
     {
         QString err_msg;
         database->saveFeatureSearchSettings(
@@ -574,6 +712,27 @@ void DataSettings::save(database::SettingsDataBase *database)
             err_msg);
         if (!err_msg.isEmpty())
             spdlog::error("Save feature search settings failed: {}", err_msg.toUtf8().constData());
+    }
+
+    // Smart annotation settings
+    {
+        QString err_msg;
+        database->saveSmartAnnotationSettings(
+            QVariantMap{
+                {QStringLiteral("smart_annotation_enabled"), smart_annotation_enabled_},
+                {QStringLiteral("smart_annotation_model"), smart_annotation_model_},
+                {QStringLiteral("smart_annotation_model_path"), smart_annotation_model_path_},
+                {QStringLiteral("smart_annotation_model_backend"), smart_annotation_model_backend_},
+                {QStringLiteral("smart_annotation_model_device"), smart_annotation_model_device_},
+                {QStringLiteral("smart_annotation_mask_threshold"), smart_annotation_mask_threshold_},
+                {QStringLiteral("smart_annotation_polygon_simplify_epsilon"),
+                 smart_annotation_polygon_simplify_epsilon_},
+                {QStringLiteral("smart_annotation_mask_alpha"), smart_annotation_mask_alpha_},
+                {QStringLiteral("smart_annotation_refresh_interval"), smart_annotation_refresh_interval_},
+            },
+            err_msg);
+        if (!err_msg.isEmpty())
+            spdlog::error("Save smart annotation settings failed: {}", err_msg.toUtf8().constData());
     }
 }
 
@@ -610,6 +769,16 @@ void DataSettings::reset()
     setFeatureExtractionModelDevice(QStringLiteral("gpu"));
     setFeatureExtractionIndexDirectory(QString());
     setFeatureExtractionCustomFeatureNamesJson(QStringLiteral("{}"));
+
+    setSmartAnnotationEnabled(false);
+    setSmartAnnotationModel(QString::fromLatin1(kDefaultSmartAnnotationModel));
+    setSmartAnnotationModelPath(QString::fromLatin1(kDefaultSmartAnnotationModelPath));
+    setSmartAnnotationModelBackend(QStringLiteral("tensorrt"));
+    setSmartAnnotationModelDevice(QStringLiteral("gpu"));
+    setSmartAnnotationMaskThreshold(0.0);
+    setSmartAnnotationPolygonSimplifyEpsilon(2.0);
+    setSmartAnnotationMaskAlpha(0.35);
+    setSmartAnnotationRefreshInterval(80);
 }
 
 } // namespace dltool::settings

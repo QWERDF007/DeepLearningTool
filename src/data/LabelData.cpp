@@ -668,8 +668,9 @@ QVariantMap SegLabelDataHelper::hitTestHandle(const QPointF &pos, const std::uni
         };
     }
 
-    const double handle_size = 10 / scale;
-    if (!isPointNearLabelBounds(*data, pos, handle_size))
+    const double handle_size      = 10 / scale;
+    const double edge_handle_size = 12 / scale;
+    if (!isPointNearLabelBounds(*data, pos, edge_handle_size))
     {
         return QVariantMap{
             {    "found",                  false},
@@ -696,13 +697,16 @@ QVariantMap SegLabelDataHelper::hitTestHandle(const QPointF &pos, const std::uni
     {
         const QPointF &a = data->points[i];
         const QPointF &b = data->points[(i + 1) % data->points.size()];
-        if (distanceToSegment(pos, a, b) <= handle_size / 2.0)
+        if (distanceToSegment(pos, a, b) <= edge_handle_size)
         {
+            const int next_index = (i + 1) % static_cast<int>(data->points.size());
             return QVariantMap{
-                {    "found",                   true},
-                {     "mode",         EditMode::Move},
-                {"direction",  EditDirection::Inside},
-                {   "cursor", int(Qt::SizeAllCursor)}
+                {        "found",                   true},
+                {         "mode",         EditMode::Move},
+                {    "direction",  EditDirection::Inside},
+                {   "edge_index",                      i},
+                {"edge_next_index",             next_index},
+                {       "cursor", int(Qt::SizeAllCursor)}
             };
         }
     }

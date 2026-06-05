@@ -15,6 +15,7 @@ Rectangle {
     property alias currentIndex: mainTabBar.currentIndex
     property var globalFilter: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.globalFilter : null
     property var imageSearch: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.imageSearch : null
+    property var smartAnnotation: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.smartAnnotation : null
 
     Connections {
         target: SignalHelper
@@ -205,5 +206,6 @@ Rectangle {
     SettingsDialog {
         id: settingsDialog
         imageSearch: header.imageSearch
+        smartAnnotation: header.smartAnnotation
     }
 }

@@ -8,6 +8,7 @@ Repeater {
     property real offsetX: 0
     property real offsetY: 0
     property real factor: 0
+    property bool showBoundingBoxes: false
 
     delegate: Item {
         id: labelDelegate
@@ -67,6 +68,7 @@ Repeater {
         Connections {
             target: repeater
             function onFactorChanged() { canvas.requestPaint() }
+            function onShowBoundingBoxesChanged() { canvas.requestPaint() }
         }
 
         function toScreen(point) {
@@ -111,6 +113,17 @@ Repeater {
                                      handleSize,
                                      handleSize)
                     }
+                }
+
+                if (repeater.showBoundingBoxes) {
+                    ctx.save()
+                    ctx.setLineDash([6, 4])
+                    ctx.globalAlpha = labelSelected || labelHovered ? 0.9 : 0.65
+                    ctx.strokeRect((labelData.x - labelDelegate.visibleLeft) * labelDelegate.safeFactor,
+                                   (labelData.y - labelDelegate.visibleTop) * labelDelegate.safeFactor,
+                                   labelData.width * labelDelegate.safeFactor,
+                                   labelData.height * labelDelegate.safeFactor)
+                    ctx.restore()
                 }
             } else {
                 ctx.strokeRect((labelData.x - labelDelegate.visibleLeft) * labelDelegate.safeFactor,

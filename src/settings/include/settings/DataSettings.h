@@ -101,6 +101,26 @@ class SETTINGS_API DataSettings : public QObject
     Q_PROPERTY(QString featureExtractionIndexDirectory READ featureExtractionIndexDirectory WRITE
                    setFeatureExtractionIndexDirectory NOTIFY featureExtractionIndexDirectoryChanged)
 
+    // 智能标注设置
+    Q_PROPERTY(bool smartAnnotationEnabled READ smartAnnotationEnabled WRITE setSmartAnnotationEnabled NOTIFY
+                   smartAnnotationEnabledChanged)
+    Q_PROPERTY(QString smartAnnotationModel READ smartAnnotationModel WRITE setSmartAnnotationModel NOTIFY
+                   smartAnnotationModelChanged)
+    Q_PROPERTY(QString smartAnnotationModelPath READ smartAnnotationModelPath WRITE setSmartAnnotationModelPath NOTIFY
+                   smartAnnotationModelPathChanged)
+    Q_PROPERTY(QString smartAnnotationModelBackend READ smartAnnotationModelBackend WRITE setSmartAnnotationModelBackend
+                   NOTIFY smartAnnotationModelBackendChanged)
+    Q_PROPERTY(QString smartAnnotationModelDevice READ smartAnnotationModelDevice WRITE setSmartAnnotationModelDevice
+                   NOTIFY smartAnnotationModelDeviceChanged)
+    Q_PROPERTY(double smartAnnotationMaskThreshold READ smartAnnotationMaskThreshold WRITE
+                   setSmartAnnotationMaskThreshold NOTIFY smartAnnotationMaskThresholdChanged)
+    Q_PROPERTY(double smartAnnotationPolygonSimplifyEpsilon READ smartAnnotationPolygonSimplifyEpsilon WRITE
+                   setSmartAnnotationPolygonSimplifyEpsilon NOTIFY smartAnnotationPolygonSimplifyEpsilonChanged)
+    Q_PROPERTY(double smartAnnotationMaskAlpha READ smartAnnotationMaskAlpha WRITE setSmartAnnotationMaskAlpha NOTIFY
+                   smartAnnotationMaskAlphaChanged)
+    Q_PROPERTY(int smartAnnotationRefreshInterval READ smartAnnotationRefreshInterval WRITE
+                   setSmartAnnotationRefreshInterval NOTIFY smartAnnotationRefreshIntervalChanged)
+
 public:
     explicit DataSettings(QObject *parent = nullptr);
     ~DataSettings();
@@ -339,6 +359,69 @@ public:
 
     void setFeatureExtractionIndexDirectory(const QString &value);
 
+    bool smartAnnotationEnabled() const
+    {
+        return smart_annotation_enabled_;
+    }
+
+    void setSmartAnnotationEnabled(bool value);
+
+    QString smartAnnotationModel() const
+    {
+        return smart_annotation_model_;
+    }
+
+    void setSmartAnnotationModel(const QString &value);
+
+    QString smartAnnotationModelPath() const
+    {
+        return smart_annotation_model_path_;
+    }
+
+    void setSmartAnnotationModelPath(const QString &value);
+
+    QString smartAnnotationModelBackend() const
+    {
+        return smart_annotation_model_backend_;
+    }
+
+    void setSmartAnnotationModelBackend(const QString &value);
+
+    QString smartAnnotationModelDevice() const
+    {
+        return smart_annotation_model_device_;
+    }
+
+    void setSmartAnnotationModelDevice(const QString &value);
+
+    double smartAnnotationMaskThreshold() const
+    {
+        return smart_annotation_mask_threshold_;
+    }
+
+    void setSmartAnnotationMaskThreshold(double value);
+
+    double smartAnnotationPolygonSimplifyEpsilon() const
+    {
+        return smart_annotation_polygon_simplify_epsilon_;
+    }
+
+    void setSmartAnnotationPolygonSimplifyEpsilon(double value);
+
+    double smartAnnotationMaskAlpha() const
+    {
+        return smart_annotation_mask_alpha_;
+    }
+
+    void setSmartAnnotationMaskAlpha(double value);
+
+    int smartAnnotationRefreshInterval() const
+    {
+        return smart_annotation_refresh_interval_;
+    }
+
+    void setSmartAnnotationRefreshInterval(int value);
+
     Q_INVOKABLE QStringList featureExtractionCustomFeatureNames(const QString &model_name) const;
 
     Q_INVOKABLE void addFeatureExtractionCustomFeatureName(const QString &model_name, const QString &feature_name);
@@ -389,6 +472,15 @@ signals:
     void featureExtractionModelDeviceChanged();
     void featureExtractionIndexDirectoryChanged();
     void featureExtractionCustomFeatureNamesChanged();
+    void smartAnnotationEnabledChanged();
+    void smartAnnotationModelChanged();
+    void smartAnnotationModelPathChanged();
+    void smartAnnotationModelBackendChanged();
+    void smartAnnotationModelDeviceChanged();
+    void smartAnnotationMaskThresholdChanged();
+    void smartAnnotationPolygonSimplifyEpsilonChanged();
+    void smartAnnotationMaskAlphaChanged();
+    void smartAnnotationRefreshIntervalChanged();
 
 private:
     QString featureExtractionCustomFeatureNamesJson() const;
@@ -437,6 +529,16 @@ private:
     QString feature_extraction_index_directory_;
 
     QHash<QString, QStringList> feature_extraction_custom_feature_names_;
+
+    bool    smart_annotation_enabled_{false};
+    QString smart_annotation_model_{QStringLiteral("edge_sam")};
+    QString smart_annotation_model_path_{QStringLiteral("F:/models/edge_sam.wts")};
+    QString smart_annotation_model_backend_{QStringLiteral("tensorrt")};
+    QString smart_annotation_model_device_{QStringLiteral("gpu")};
+    double  smart_annotation_mask_threshold_{0.0};
+    double  smart_annotation_polygon_simplify_epsilon_{2.0};
+    double  smart_annotation_mask_alpha_{0.35};
+    int     smart_annotation_refresh_interval_{80};
 };
 
 } // namespace dltool::settings
