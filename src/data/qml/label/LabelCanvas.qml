@@ -39,27 +39,9 @@ Item {
     // 暴露图像缩放属性
     property real imageScale: labelImage.image.scale
 
-    onToolModeChanged: {
-        mouseArea.state = "idle"
-        mouseArea.cursorShape = Qt.ArrowCursor
-        if (toolMode !== "polygon") {
-            cancelPolygonDrawing()
-        }
-        if (toolMode !== "smart") {
-            clearSmartAnnotation()
-        } else if (mouseArea.containsMouse) {
-            setSmartHoverPoint(getPosOnImagePoint(mouseArea.mouseX, mouseArea.mouseY), true)
-        }
-    }
+    onToolModeChanged: handleToolModeChanged()
 
-    onSmartAnnotationAvailableChanged: {
-        if (!smartAnnotationAvailable && toolMode === "smart") {
-            toolMode = "select"
-        }
-        if (!smartAnnotationAvailable) {
-            clearSmartAnnotation()
-        }
-    }
+    onSmartAnnotationAvailableChanged: handleSmartAnnotationAvailableChanged()
 
     Connections {
         target: SignalHelper
@@ -138,27 +120,7 @@ Item {
                  && smartAnnotationResult.mask_runs.length > 0
                  && GlobalSettings.data.smartAnnotationMaskAlpha > 0
 
-        onPaint: {
-            let ctx = getContext("2d")
-            ctx.clearRect(0, 0, width, height)
-            if (!visible) {
-                return
-            }
-
-            let scale = labelImage.image.scale
-            let offsetX = labelImage.image.x
-            let offsetY = labelImage.image.y
-            let alpha = Math.max(0, Math.min(1, GlobalSettings.data.smartAnnotationMaskAlpha))
-            ctx.save()
-            ctx.fillStyle = Qt.rgba(drawingColor.r, drawingColor.g, drawingColor.b, alpha)
-            for (let run of smartAnnotationResult.mask_runs) {
-                ctx.fillRect(offsetX + run.x * scale,
-                             offsetY + run.y * scale,
-                             Math.max(1, run.width * scale),
-                             Math.max(1, scale))
-            }
-            ctx.restore()
-        }
+        onPaint: paintSmartMask()
     }
 
     LabelsListView {
@@ -183,46 +145,15 @@ Item {
         antialiasing: true
         visible: smartAnnotationMode && (smartPoints.length > 0 || smartHoverPointValid)
 
-        onPaint: {
-            let ctx = getContext("2d")
-            ctx.clearRect(0, 0, width, height)
-            if (!visible) {
-                return
-            }
-
-            ctx.save()
-            for (let point of smartPoints) {
-                let screen = toScreen(point)
-                ctx.beginPath()
-                ctx.arc(screen.x, screen.y, 6, 0, Math.PI * 2)
-                ctx.fillStyle = point.label > 0 ? "#20B15A" : "#E5484D"
-                ctx.fill()
-                ctx.lineWidth = 2
-                ctx.strokeStyle = "white"
-                ctx.stroke()
-            }
-            if (smartHoverPointValid) {
-                let screen = toScreen(smartHoverPoint)
-                ctx.beginPath()
-                ctx.arc(screen.x, screen.y, 6, 0, Math.PI * 2)
-                ctx.fillStyle = "#20B15A"
-                ctx.globalAlpha = 0.65
-                ctx.fill()
-                ctx.globalAlpha = 1
-                ctx.lineWidth = 2
-                ctx.strokeStyle = "white"
-                ctx.stroke()
-            }
-            ctx.restore()
-        }
+        onPaint: paintSmartPrompts()
     }
 
     Connections {
         target: labelImage.image
-        function onXChanged() { smartMaskCanvas.requestPaint(); smartPromptCanvas.requestPaint() }
-        function onYChanged() { smartMaskCanvas.requestPaint(); smartPromptCanvas.requestPaint() }
-        function onScaleChanged() { smartMaskCanvas.requestPaint(); smartPromptCanvas.requestPaint() }
-        function onStatusChanged() { smartMaskCanvas.requestPaint(); smartPromptCanvas.requestPaint() }
+        function onXChanged() { requestSmartOverlayPaint() }
+        function onYChanged() { requestSmartOverlayPaint() }
+        function onScaleChanged() { requestSmartOverlayPaint() }
+        function onStatusChanged() { requestSmartOverlayPaint() }
     }
 
     Connections {
@@ -241,35 +172,9 @@ Item {
         mousePos: Qt.point(mouseArea.mouseX, mouseArea.mouseY)
     }
 
-    Keys.onPressed: function(event) {
-        if (smartAnnotationMode && event.key === Qt.Key_Escape) {
-            clearSmartAnnotation()
-            event.accepted = true
-        } else if (smartAnnotationMode && (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
-            confirmSmartAnnotation()
-            event.accepted = true
-        } else if (event.key === Qt.Key_Control && !mouseArea.pressed) {
-            mouseArea.cursorShape = Qt.OpenHandCursor
-        } else if (event.key === Qt.Key_A && event.modifiers & Qt.ControlModifier) {
-            imageLabelsList.selectAll()
-        } else if (event.key === Qt.Key_Delete && selection && selection.hasSelection) {
-            deleteConfirmDialog.open()
-        } else if (event.key === Qt.Key_Escape && polygonToolMode && mouseArea.drawingPolygon) {
-            cancelPolygonDrawing()
-            event.accepted = true
-        } else if (labelClasses && event.text.length > 0) {
-            // 快捷键切换标签类别
-            if (labelClasses.selectByShortcut(event.text)) {
-                event.accepted = true
-            }
-        }
-    }
+    Keys.onPressed: function(event) { handleKeyPressed(event) }
 
-    Keys.onReleased: function(event) {
-        if (event.key === Qt.Key_Control  && !mouseArea.pressed) {
-            mouseArea.cursorShape = Qt.ArrowCursor
-        }
-    }
+    Keys.onReleased: function(event) { handleKeyReleased(event) }
 
     MouseArea {
         id: mouseArea
@@ -281,198 +186,461 @@ Item {
         property bool drawingPolygon: false
         property bool suppressNextRelease: false
 
-        onPressed: function(event) {
-            if (state === "idle" && (event.button === Qt.MiddleButton || (event.modifiers & Qt.ControlModifier && event.button === Qt.LeftButton))) {
-                mouseArea.cursorShape = Qt.ClosedHandCursor
-                startPos = Qt.point(event.x, event.y)
-                state = "dragging"
-            } else if (smartAnnotationMode && state === "idle"
-                       && (event.button === Qt.LeftButton || event.button === Qt.RightButton)) {
-                appendSmartPoint(getPosOnImage(event), event.button === Qt.LeftButton ? 1 : 0)
-                event.accepted = true
-            } else if (polygonToolMode && state === "idle" && event.button === Qt.RightButton && drawingPolygon) {
-                finishPolygonDrawing()
-                suppressNextRelease = true
-                event.accepted = true
-            } else if (polygonToolMode && state === "idle" && event.button === Qt.LeftButton) {
-                startPos = getPosOnImage(event)
-                appendPolygonPoint(startPos)
-                event.accepted = true
-            } else if (state === "idle" && event.button === Qt.RightButton) {
+        onPressed: function(event) { handleMousePressed(event) }
 
-            } else if (state === "idle" && event.button === Qt.LeftButton) {
-                // 获取相对于LabelImage的坐标
-                startPos = getPosOnImage(event)
-                if (rectangleToolMode) {
-                    state = "readyDraw"
-                    clearSelection()
-                } else if (selectToolMode) {
-                    state = hitTest(startPos) ? "readyEdit" : "idle"
-                } else {
-                    state = "idle"
-                }
-                imageLabelsList.setHovered([])
-            } 
-        }
+        onReleased: function(event) { handleMouseReleased(event) }
 
-        onReleased: function(event) {
-            if (suppressNextRelease) {
-                suppressNextRelease = false
-                state = "idle"
-                return
-            }
-            if (smartAnnotationMode && state === "idle"
-                    && (event.button === Qt.LeftButton || event.button === Qt.RightButton)) {
-                return
-            }
-            if (polygonToolMode && drawingPolygon && state === "idle") {
-                updatePolygonPreview(getPosOnImage(event))
-                return
-            }
-            if (!selectToolMode && state !== "drawing" && state !== "dragging") {
-                mouseArea.cursorShape = event.modifiers & Qt.ControlModifier ? Qt.OpenHandCursor : Qt.ArrowCursor
-                state = "idle"
-                return
-            }
-            if (state === "drawing") {
-                data = drawingItem.getData()
-                // 添加到ListModel
-                if (data.width > 1 && data.height > 1) {
-                    addCurrentLabel(data)
-                }
-                drawingItem.clearItem()
-            } else if (state === "dragging") {
-                mouseArea.cursorShape = event.modifiers & Qt.ControlModifier ? Qt.OpenHandCursor : Qt.ArrowCursor
-                startPos = Qt.point(event.x, event.y)
-            } else if (state === "editing") {
-                let item = labelsListView.itemAt(data.index)
-                // data = drawingItem.getData()
-                // 编辑结束时更新标注
-                if (dataManager && data.label_id !== -1) {
-                    dataManager.updateLabels([data.label_id], [data])
-                }
-                let pos = getPosOnImage(event)
-                if (!hitTest(pos)) {
-                    mouseArea.cursorShape = Qt.ArrowCursor
-                }
-                if (item) {
-                    item.visible = true
-                }
-                drawingItem.clearItem()
-            } else if (state === "readyEdit") {
-                let pos = getPosOnImage(event)
-                let hit = hitTest(pos)
-                if (isEditHandleHit(hit)) {
-                    if (!hit) {
-                        mouseArea.cursorShape = Qt.ArrowCursor
-                    }
-                } else if (event.button === Qt.LeftButton) {
-                    mouseArea.cursorShape = event.modifiers & Qt.ControlModifier ? Qt.OpenHandCursor : Qt.ArrowCursor
-                    let indices = imageLabelsList.getIndicesAt(pos)
-                    let new_index = imageLabelsList.chooseIndex(indices)
-                    select(new_index, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
-                    hitTest(pos)
-                }
-            } else {
-                mouseArea.cursorShape = event.modifiers & Qt.ControlModifier ? Qt.OpenHandCursor : Qt.ArrowCursor
-                if (event.button === Qt.LeftButton) {
-                    let pos = getPosOnImage(event)
-                    let indices = imageLabelsList.getIndicesAt(pos)
-                    let new_index = imageLabelsList.chooseIndex(indices)
-                    select(new_index, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
-                    hitTest(pos)
-                } else if (event.button === Qt.RightButton) { // 右键在有选中的情况下不选中新的
-                    let pos = getPosOnImage(event)
-                    let indices = imageLabelsList.getIndicesAt(pos)                    
-                    let hasSelected = false
-                    for (let index of indices) {
-                        hasSelected |= selection.isSelected(imageLabelsList.index(index, 0))
-                    }
-                    if (!hasSelected) {
-                        let new_index = imageLabelsList.chooseIndex(indices)
-                        select(new_index, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
-                    }
-                    labelCanvasMenu.popup()
-                }
-            }
-            state = "idle"
-        }
-
-        onPositionChanged: function(event) {
-            if (smartAnnotationMode && state === "idle") {
-                setSmartHoverPoint(getPosOnImage(event), true)
-                return
-            }
-            if (polygonToolMode && drawingPolygon && state === "idle") {
-                updatePolygonPreview(getPosOnImage(event))
-                return
-            }
-            if (selectToolMode && state === "readyEdit") {
-                state = "editing"
-                let pos = getPosOnImage(event)
-                let hit = hitTest(pos)
-                let index = imageLabelsList.getTopSelectedIndex()
-                let item = labelsListView.itemAt(index)
-                if (item) {
-                    item.visible = false
-                }
-                data = imageLabelsList.getData(index)
-                data.hit = hit
-                drawingItem.initItem(data)
-            } else if (state === "readyDraw") {
-                state = "drawing"
-                drawingItem.initItem({label_id: -1, x: startPos.x, y: startPos.y, width: 0, height: 0, color: drawingColor})
-            }
-            if (state === "drawing") {
-                let endPos = getPosOnImage(event)
-                let rect = getRect(startPos, endPos)
-                drawingItem.updateItem({label_id: -1, x: rect.x, y: rect.y, width: rect.width, height: rect.height, color: drawingColor})
-            }  else if (state === "dragging") {
-                moveImage(event)
-            } else if (state === "editing") {
-                let endPos = getPosOnImage(event)
-                data = imageLabelsList.getEditedData(data, startPos, endPos)
-                drawingItem.updateItem(data)
-                startPos = endPos
-            } else if (selectToolMode) {
-                let pos = getPosOnImage(event)
-                if (!hitTest(pos)) {
-                    mouseArea.cursorShape = Qt.ArrowCursor
-                    let indices = imageLabelsList.getIndicesAt(pos)
-                    imageLabelsList.setHovered(indices)
-                }
-            } else {
-                imageLabelsList.setHovered([])
-            }
-        }
+        onPositionChanged: function(event) { handleMousePositionChanged(event) }
 
         onEntered: {
             labelView.forceActiveFocus()
         }
 
-        onExited: {
-            if (smartAnnotationMode && smartHoverPointValid) {
-                clearSmartHoverPoint()
-                smartAnnotationDirty = true
-                smartPreviewTimer.restart()
-            }
+        onExited: handleMouseExited()
+
+        onDoubleClicked: function(event) { handleMouseDoubleClicked(event) }
+    }
+
+    function handleToolModeChanged() {
+        mouseArea.state = "idle"
+        mouseArea.cursorShape = Qt.ArrowCursor
+        if (toolMode !== "polygon") {
+            cancelPolygonDrawing()
+        }
+        if (toolMode !== "smart") {
+            clearSmartAnnotation()
+        } else if (mouseArea.containsMouse) {
+            setSmartHoverPoint(getPosOnImagePoint(mouseArea.mouseX, mouseArea.mouseY), true)
+        }
+    }
+
+    function handleSmartAnnotationAvailableChanged() {
+        if (!smartAnnotationAvailable && toolMode === "smart") {
+            toolMode = "select"
+        }
+        if (!smartAnnotationAvailable) {
+            clearSmartAnnotation()
+        }
+    }
+
+    function requestSmartOverlayPaint() {
+        smartMaskCanvas.requestPaint()
+        smartPromptCanvas.requestPaint()
+    }
+
+    function paintSmartMask() {
+        let ctx = smartMaskCanvas.getContext("2d")
+        ctx.clearRect(0, 0, smartMaskCanvas.width, smartMaskCanvas.height)
+        if (!smartMaskCanvas.visible) {
+            return
         }
 
-        onDoubleClicked: function(event) {
-            if (polygonToolMode && event.button === Qt.LeftButton && drawingPolygon) {
-                finishPolygonDrawing()
-                suppressNextRelease = true
+        let scale = labelImage.image.scale
+        let offsetX = labelImage.image.x
+        let offsetY = labelImage.image.y
+        let alpha = Math.max(0, Math.min(1, GlobalSettings.data.smartAnnotationMaskAlpha))
+        ctx.save()
+        ctx.fillStyle = Qt.rgba(drawingColor.r, drawingColor.g, drawingColor.b, alpha)
+        for (let run of smartAnnotationResult.mask_runs) {
+            ctx.fillRect(offsetX + run.x * scale,
+                         offsetY + run.y * scale,
+                         Math.max(1, run.width * scale),
+                         Math.max(1, scale))
+        }
+        ctx.restore()
+    }
+
+    function paintSmartPrompts() {
+        let ctx = smartPromptCanvas.getContext("2d")
+        ctx.clearRect(0, 0, smartPromptCanvas.width, smartPromptCanvas.height)
+        if (!smartPromptCanvas.visible) {
+            return
+        }
+
+        ctx.save()
+        for (let point of smartPoints) {
+            paintSmartPromptPoint(ctx, point, point.label > 0 ? "#20B15A" : "#E5484D", 1)
+        }
+        if (smartHoverPointValid) {
+            paintSmartPromptPoint(ctx, smartHoverPoint, "#20B15A", 0.65)
+        }
+        ctx.restore()
+    }
+
+    function paintSmartPromptPoint(ctx, point, fillColor, alpha) {
+        let screen = toScreen(point)
+        ctx.beginPath()
+        ctx.arc(screen.x, screen.y, 6, 0, Math.PI * 2)
+        ctx.fillStyle = fillColor
+        ctx.globalAlpha = alpha
+        ctx.fill()
+        ctx.globalAlpha = 1
+        ctx.lineWidth = 2
+        ctx.strokeStyle = "white"
+        ctx.stroke()
+    }
+
+    function handleKeyPressed(event) {
+        if (smartAnnotationMode && event.key === Qt.Key_Escape) {
+            clearSmartAnnotation()
+            event.accepted = true
+            return
+        }
+        if (smartAnnotationMode && isConfirmKey(event.key)) {
+            confirmSmartAnnotation()
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Control && !mouseArea.pressed) {
+            mouseArea.cursorShape = Qt.OpenHandCursor
+            return
+        }
+        if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier)) {
+            imageLabelsList.selectAll()
+            return
+        }
+        if (event.key === Qt.Key_Delete && selection && selection.hasSelection) {
+            deleteConfirmDialog.open()
+            return
+        }
+        if (event.key === Qt.Key_Escape && polygonToolMode && mouseArea.drawingPolygon) {
+            cancelPolygonDrawing()
+            event.accepted = true
+            return
+        }
+        handleLabelClassShortcut(event)
+    }
+
+    function handleKeyReleased(event) {
+        if (event.key === Qt.Key_Control && !mouseArea.pressed) {
+            mouseArea.cursorShape = Qt.ArrowCursor
+        }
+    }
+
+    function isConfirmKey(key) {
+        return key === Qt.Key_Space || key === Qt.Key_Return || key === Qt.Key_Enter
+    }
+
+    function handleLabelClassShortcut(event) {
+        if (!labelClasses || event.text.length <= 0) {
+            return false
+        }
+        if (labelClasses.selectByShortcut(event.text)) {
+            event.accepted = true
+            return true
+        }
+        return false
+    }
+
+    function handleMousePressed(event) {
+        if (!isIdle()) {
+            return
+        }
+        if (isPanPress(event)) {
+            beginImageDrag(event)
+            return
+        }
+        if (handleSmartAnnotationPress(event)) {
+            return
+        }
+        if (handlePolygonPress(event)) {
+            return
+        }
+        if (event.button === Qt.LeftButton) {
+            beginToolPress(event)
+        }
+    }
+
+    function handleMouseReleased(event) {
+        if (consumeSuppressedRelease()) {
+            return
+        }
+        if (isSmartAnnotationPointRelease(event)) {
+            return
+        }
+        if (isPolygonPreviewRelease()) {
+            updatePolygonPreview(getPosOnImage(event))
+            return
+        }
+        if (isIgnoredNonSelectRelease()) {
+            setIdleCursor(event.modifiers)
+            mouseArea.state = "idle"
+            return
+        }
+
+        if (mouseArea.state === "drawing") {
+            finishRectangleDrawing()
+        } else if (mouseArea.state === "dragging") {
+            finishImageDrag(event)
+        } else if (mouseArea.state === "editing") {
+            finishLabelEditing(event)
+        } else if (mouseArea.state === "readyEdit") {
+            finishReadyEdit(event)
+        } else {
+            handleIdleRelease(event)
+        }
+        mouseArea.state = "idle"
+    }
+
+    function handleMousePositionChanged(event) {
+        if (smartAnnotationMode && isIdle()) {
+            setSmartHoverPoint(getPosOnImage(event), true)
+            return
+        }
+        if (polygonToolMode && mouseArea.drawingPolygon && isIdle()) {
+            updatePolygonPreview(getPosOnImage(event))
+            return
+        }
+
+        if (selectToolMode && mouseArea.state === "readyEdit") {
+            beginLabelEditing(event)
+        } else if (mouseArea.state === "readyDraw") {
+            beginRectangleDrawing()
+        }
+
+        updateActiveMouseState(event)
+    }
+
+    function handleMouseExited() {
+        if (smartAnnotationMode && smartHoverPointValid) {
+            clearSmartHoverPoint()
+            smartAnnotationDirty = true
+            smartPreviewTimer.restart()
+        }
+    }
+
+    function handleMouseDoubleClicked(event) {
+        if (polygonToolMode && event.button === Qt.LeftButton && mouseArea.drawingPolygon) {
+            finishPolygonDrawing()
+            mouseArea.suppressNextRelease = true
+            event.accepted = true
+            return
+        }
+        if (selectToolMode && segmentationMode && event.button === Qt.LeftButton) {
+            let pos = getPosOnImage(event)
+            if (insertPointOnSelectedPolygonEdge(pos)) {
+                mouseArea.state = "idle"
+                mouseArea.suppressNextRelease = true
                 event.accepted = true
-                return
             }
-            if (selectToolMode && segmentationMode && event.button === Qt.LeftButton) {
-                let pos = getPosOnImage(event)
-                if (insertPointOnSelectedPolygonEdge(pos)) {
-                    state = "idle"
-                    suppressNextRelease = true
-                    event.accepted = true
-                }
+        }
+    }
+
+    function isIdle() {
+        return mouseArea.state === "idle"
+    }
+
+    function isPanPress(event) {
+        return event.button === Qt.MiddleButton
+               || ((event.modifiers & Qt.ControlModifier) && event.button === Qt.LeftButton)
+    }
+
+    function isPrimaryOrSecondaryButton(event) {
+        return event.button === Qt.LeftButton || event.button === Qt.RightButton
+    }
+
+    function beginImageDrag(event) {
+        mouseArea.cursorShape = Qt.ClosedHandCursor
+        startPos = Qt.point(event.x, event.y)
+        mouseArea.state = "dragging"
+    }
+
+    function handleSmartAnnotationPress(event) {
+        if (!smartAnnotationMode || !isPrimaryOrSecondaryButton(event)) {
+            return false
+        }
+        appendSmartPoint(getPosOnImage(event), event.button === Qt.LeftButton ? 1 : 0)
+        event.accepted = true
+        return true
+    }
+
+    function handlePolygonPress(event) {
+        if (!polygonToolMode) {
+            return false
+        }
+        if (event.button === Qt.RightButton && mouseArea.drawingPolygon) {
+            finishPolygonDrawing()
+            mouseArea.suppressNextRelease = true
+            event.accepted = true
+            return true
+        }
+        if (event.button === Qt.LeftButton) {
+            startPos = getPosOnImage(event)
+            appendPolygonPoint(startPos)
+            event.accepted = true
+            return true
+        }
+        return false
+    }
+
+    function beginToolPress(event) {
+        startPos = getPosOnImage(event)
+        if (rectangleToolMode) {
+            mouseArea.state = "readyDraw"
+            clearSelection()
+        } else if (selectToolMode) {
+            mouseArea.state = hitTest(startPos) ? "readyEdit" : "idle"
+        } else {
+            mouseArea.state = "idle"
+        }
+        imageLabelsList.setHovered([])
+    }
+
+    function consumeSuppressedRelease() {
+        if (!mouseArea.suppressNextRelease) {
+            return false
+        }
+        mouseArea.suppressNextRelease = false
+        mouseArea.state = "idle"
+        return true
+    }
+
+    function isSmartAnnotationPointRelease(event) {
+        return smartAnnotationMode && isIdle() && isPrimaryOrSecondaryButton(event)
+    }
+
+    function isPolygonPreviewRelease() {
+        return polygonToolMode && mouseArea.drawingPolygon && isIdle()
+    }
+
+    function isIgnoredNonSelectRelease() {
+        return !selectToolMode && mouseArea.state !== "drawing" && mouseArea.state !== "dragging"
+    }
+
+    function setIdleCursor(modifiers) {
+        mouseArea.cursorShape = (modifiers & Qt.ControlModifier) ? Qt.OpenHandCursor : Qt.ArrowCursor
+    }
+
+    function finishRectangleDrawing() {
+        mouseArea.data = drawingItem.getData()
+        if (mouseArea.data.width > 1 && mouseArea.data.height > 1) {
+            addCurrentLabel(mouseArea.data)
+        }
+        drawingItem.clearItem()
+    }
+
+    function finishImageDrag(event) {
+        setIdleCursor(event.modifiers)
+        startPos = Qt.point(event.x, event.y)
+    }
+
+    function finishLabelEditing(event) {
+        let item = labelsListView.itemAt(mouseArea.data.index)
+        if (dataManager && mouseArea.data.label_id !== -1) {
+            dataManager.updateLabels([mouseArea.data.label_id], [mouseArea.data])
+        }
+        let pos = getPosOnImage(event)
+        if (!hitTest(pos)) {
+            mouseArea.cursorShape = Qt.ArrowCursor
+        }
+        if (item) {
+            item.visible = true
+        }
+        drawingItem.clearItem()
+    }
+
+    function finishReadyEdit(event) {
+        let pos = getPosOnImage(event)
+        let hit = hitTest(pos)
+        if (isEditHandleHit(hit)) {
+            return
+        }
+        if (event.button === Qt.LeftButton) {
+            setIdleCursor(event.modifiers)
+            selectAt(pos)
+        }
+    }
+
+    function handleIdleRelease(event) {
+        setIdleCursor(event.modifiers)
+        let pos = getPosOnImage(event)
+        if (event.button === Qt.LeftButton) {
+            selectAt(pos)
+        } else if (event.button === Qt.RightButton) {
+            openContextMenuAt(pos)
+        }
+    }
+
+    function selectAt(pos) {
+        let indices = imageLabelsList.getIndicesAt(pos)
+        let newIndex = imageLabelsList.chooseIndex(indices)
+        select(newIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
+        hitTest(pos)
+    }
+
+    function openContextMenuAt(pos) {
+        let indices = imageLabelsList.getIndicesAt(pos)
+        if (!hasSelectedIndex(indices)) {
+            let newIndex = imageLabelsList.chooseIndex(indices)
+            select(newIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
+        }
+        labelCanvasMenu.popup()
+    }
+
+    function hasSelectedIndex(indices) {
+        if (!selection) {
+            return false
+        }
+        for (let index of indices) {
+            if (selection.isSelected(imageLabelsList.index(index, 0))) {
+                return true
             }
+        }
+        return false
+    }
+
+    function beginLabelEditing(event) {
+        mouseArea.state = "editing"
+        let pos = getPosOnImage(event)
+        let hit = hitTest(pos)
+        let index = imageLabelsList.getTopSelectedIndex()
+        let item = labelsListView.itemAt(index)
+        if (item) {
+            item.visible = false
+        }
+        mouseArea.data = imageLabelsList.getData(index)
+        mouseArea.data.hit = hit
+        drawingItem.initItem(mouseArea.data)
+    }
+
+    function beginRectangleDrawing() {
+        mouseArea.state = "drawing"
+        drawingItem.initItem({label_id: -1, x: startPos.x, y: startPos.y, width: 0, height: 0, color: drawingColor})
+    }
+
+    function updateActiveMouseState(event) {
+        if (mouseArea.state === "drawing") {
+            updateRectangleDrawing(event)
+        } else if (mouseArea.state === "dragging") {
+            moveImage(event)
+        } else if (mouseArea.state === "editing") {
+            updateLabelEditing(event)
+        } else if (selectToolMode) {
+            updateSelectionHover(event)
+        } else {
+            imageLabelsList.setHovered([])
+        }
+    }
+
+    function updateRectangleDrawing(event) {
+        let endPos = getPosOnImage(event)
+        let rect = getRect(startPos, endPos)
+        drawingItem.updateItem({label_id: -1, x: rect.x, y: rect.y, width: rect.width, height: rect.height, color: drawingColor})
+    }
+
+    function updateLabelEditing(event) {
+        let endPos = getPosOnImage(event)
+        mouseArea.data = imageLabelsList.getEditedData(mouseArea.data, startPos, endPos)
+        drawingItem.updateItem(mouseArea.data)
+        startPos = endPos
+    }
+
+    function updateSelectionHover(event) {
+        let pos = getPosOnImage(event)
+        if (!hitTest(pos)) {
+            mouseArea.cursorShape = Qt.ArrowCursor
+            let indices = imageLabelsList.getIndicesAt(pos)
+            imageLabelsList.setHovered(indices)
         }
     }
 
@@ -652,23 +820,41 @@ Item {
     function updateSmartAnnotationPreview() {
         smartPreviewTimer.stop()
         let prompts = smartPromptPoints()
-        if (!smartAnnotation || !imageInstances || prompts.length === 0) {
-            smartAnnotationResult = ({})
-            smartAnnotationDirty = false
-            drawingItem.clearItem()
+        if (!canRunSmartAnnotation(prompts)) {
+            clearSmartPreview()
             return
         }
 
         let result = smartAnnotation.infer(imageInstances.currentImagePath, prompts)
-        if (!result || result.success !== true) {
-            smartAnnotationResult = ({})
-            smartAnnotationDirty = false
-            drawingItem.clearItem()
+        if (!isValidSmartAnnotationResult(result)) {
+            clearSmartPreview()
             return
         }
 
+        applySmartPreview(result)
+    }
+
+    function canRunSmartAnnotation(prompts) {
+        return smartAnnotation && imageInstances && prompts.length > 0
+    }
+
+    function isValidSmartAnnotationResult(result) {
+        return result && result.success === true
+    }
+
+    function clearSmartPreview() {
+        smartAnnotationResult = ({})
+        smartAnnotationDirty = false
+        drawingItem.clearItem()
+    }
+
+    function applySmartPreview(result) {
         smartAnnotationResult = result
         smartAnnotationDirty = false
+        updateSmartDrawingPreview(result)
+    }
+
+    function updateSmartDrawingPreview(result) {
         if (segmentationMode && result.points && result.points.length >= 3) {
             drawingItem.updateItem({label_id: -1, points: result.points, color: drawingColor})
         } else {
@@ -684,43 +870,65 @@ Item {
     }
 
     function confirmSmartAnnotation() {
-        if (!dataManager || !imageInstances || !labelClasses || labelClasses.currentLabelClassId === -1) {
+        if (!canAddSmartAnnotation()) {
             return
         }
 
-        if (!smartHoverPointValid && smartPoints.length === 0 && mouseArea.containsMouse) {
-            setSmartHoverPoint(getPosOnImagePoint(mouseArea.mouseX, mouseArea.mouseY), false)
-        }
+        ensureSmartPromptFromMouse()
         if (smartPromptPoints().length === 0) {
             return
         }
 
-        if (smartAnnotationDirty || !smartAnnotationResult || smartAnnotationResult.success !== true) {
-            updateSmartAnnotationPreview()
-        }
-        if (!smartAnnotationResult || smartAnnotationResult.success !== true) {
+        if (!ensureSmartAnnotationResult()) {
             return
         }
 
-        let data = {}
-        if (segmentationMode && smartAnnotationResult.points && smartAnnotationResult.points.length >= 3) {
-            data.points = clonePoints(smartAnnotationResult.points)
-            data.x = smartAnnotationResult.x
-            data.y = smartAnnotationResult.y
-            data.width = smartAnnotationResult.width
-            data.height = smartAnnotationResult.height
-        } else if (smartAnnotationResult.width > 1 && smartAnnotationResult.height > 1) {
-            data.x = smartAnnotationResult.x
-            data.y = smartAnnotationResult.y
-            data.width = smartAnnotationResult.width
-            data.height = smartAnnotationResult.height
-        } else {
+        let data = buildSmartAnnotationLabelData(smartAnnotationResult)
+        if (!data) {
             return
         }
 
         if (addCurrentLabel(data)) {
             clearSmartAnnotation()
         }
+    }
+
+    function canAddSmartAnnotation() {
+        return dataManager && imageInstances && labelClasses && labelClasses.currentLabelClassId !== -1
+    }
+
+    function ensureSmartPromptFromMouse() {
+        if (!smartHoverPointValid && smartPoints.length === 0 && mouseArea.containsMouse) {
+            setSmartHoverPoint(getPosOnImagePoint(mouseArea.mouseX, mouseArea.mouseY), false)
+        }
+    }
+
+    function ensureSmartAnnotationResult() {
+        if (smartAnnotationDirty || !isValidSmartAnnotationResult(smartAnnotationResult)) {
+            updateSmartAnnotationPreview()
+        }
+        return isValidSmartAnnotationResult(smartAnnotationResult)
+    }
+
+    function buildSmartAnnotationLabelData(result) {
+        if (segmentationMode && result.points && result.points.length >= 3) {
+            return {
+                points: clonePoints(result.points),
+                x: result.x,
+                y: result.y,
+                width: result.width,
+                height: result.height
+            }
+        }
+        if (result.width > 1 && result.height > 1) {
+            return {
+                x: result.x,
+                y: result.y,
+                width: result.width,
+                height: result.height
+            }
+        }
+        return null
     }
 
     function clearSmartAnnotation() {
