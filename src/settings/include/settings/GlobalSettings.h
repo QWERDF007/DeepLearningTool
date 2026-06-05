@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/Singleton.h"
+#include "settings/AdvancedSettings.h"
 #include "settings/DataSettings.h"
 #include "settings/ProjectSettings.h"
 #include "settings/SettingsExport.h"
@@ -29,6 +30,7 @@ class SETTINGS_API GlobalSettings : public QObject
 
     Q_PROPERTY(ProjectSettings *project READ project CONSTANT)
     Q_PROPERTY(DataSettings *data READ data CONSTANT)
+    Q_PROPERTY(AdvancedSettings *advanced READ advanced CONSTANT)
     Q_PROPERTY(UISettings *ui READ ui CONSTANT)
 
 public:
@@ -40,6 +42,11 @@ public:
     DataSettings *data() const
     {
         return data_settings_;
+    }
+
+    AdvancedSettings *advanced() const
+    {
+        return advanced_settings_;
     }
 
     UISettings *ui() const
@@ -89,6 +96,7 @@ private:
 
     ProjectSettings *project_settings_;
     DataSettings    *data_settings_;
+    AdvancedSettings *advanced_settings_;
     UISettings      *ui_settings_;
 
     database::SettingsDataBase *settings_database_; // 设置数据库

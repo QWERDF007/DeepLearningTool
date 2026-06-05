@@ -44,7 +44,7 @@ Item {
             enabled: dataManager && dataManager.imageSearch
                      && selection && selection.hasSelection
                      && !dataManager.imageSearch.running
-                     && GlobalSettings.data.featureExtractionEnabled
+                     && GlobalSettings.advanced.imageSearch.enabled
             onClicked: {
                 imageSearchDialog.openForSearch()
             }
@@ -84,7 +84,7 @@ Item {
         ScrollBar.vertical: DltScrollBar {
             id: scrollBar
         }
-        keyNavigationEnabled: false // 禁用键盘导航以便启用方向键切换选中图
+        keyNavigationEnabled: false // 禁用键盘导航以便启用方向键切换选中�?
 
         model: imageInstances
         delegate: ImageInstanceDelegate {
@@ -120,7 +120,7 @@ Item {
         }
 
         function scrollToCurrentItem() {
-            // 获取当前项相对于视图内容的位置, 计算视图应该滚动到的位置, 使当前项保持在视图中心
+            // 获取当前项相对于视图内容的位�? 计算视图应该滚动到的位置, 使当前项保持在视图中�?
             if (selection && selection.hasSelection) {
                 let currentIndex = selection.currentIndex.row
                 let currentItem = view.itemAtIndex(currentIndex)
@@ -134,13 +134,13 @@ Item {
         }
 
         function scrollItem(event) {
-            // 替换原有的滚动事件, 原来的滚动有点慢, 调整stepFactor系数改变速度
+            // 替换原有的滚动事�? 原来的滚动有点慢, 调整stepFactor系数改变速度
             // 计算滚动步长
             const stepFactor = 2.0
             let maxContentY = view.contentHeight - view.height
             let delta = event.angleDelta.y / 120
             let step = delta * view.cellHeight * stepFactor
-            // 计算新的contentY位置并限制范围
+            // 计算新的contentY位置并限制范�?
             let newContentY = view.contentY - step
             // 更新位置
             view.contentY = Math.max(0, Math.min(newContentY, maxContentY))
@@ -193,13 +193,13 @@ Item {
                     imageInstances.lastIndex = index
                 }
                 if (mouse.button === Qt.LeftButton || (mouse.button === Qt.RightButton && !selection.isSelected(tmpIndex))) {
-                    if (mouse.modifiers & Qt.ShiftModifier) { // shift 多选
+                    if (mouse.modifiers & Qt.ShiftModifier) { // shift 多�?
                         imageInstances.shiftSelect(index, imageInstances.lastIndex, ItemSelectionModel.ClearAndSelect)
                         selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
-                    } else if (mouse.modifiers & Qt.ControlModifier) { // ctrl 多选
+                    } else if (mouse.modifiers & Qt.ControlModifier) { // ctrl 多�?
                         selection.select(tmpIndex, ItemSelectionModel.Select)
                         selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
-                    } else { // 单选
+                    } else { // 单�?
                         selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
                         selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
                         imageInstances.lastIndex = index
@@ -247,7 +247,7 @@ Item {
     Connections {
         target: selection
         function onCurrentIndexChanged(current, previous) { 
-            view.positionViewAtIndex(current.row, GridView.Contain) // 滚动到当前选中项
+            view.positionViewAtIndex(current.row, GridView.Contain) // 滚动到当前选中�?
         }
     }
 

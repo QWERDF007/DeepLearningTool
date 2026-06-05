@@ -21,6 +21,7 @@ GlobalSettings::GlobalSettings(QObject *parent)
     : QObject(parent)
     , project_settings_(new ProjectSettings(this))
     , data_settings_(new DataSettings(this))
+    , advanced_settings_(new AdvancedSettings(this))
     , ui_settings_(new UISettings(this))
     , settings_database_(new dltool::database::SettingsDataBase(settingsDatabasePath(), this))
     , save_timer_(new QTimer(this))
@@ -90,6 +91,7 @@ void GlobalSettings::load()
         // 调用所有子设置的 load 方法
         project_settings_->load(settings_database_);
         data_settings_->load(settings_database_);
+        advanced_settings_->load(settings_database_);
         ui_settings_->load(settings_database_);
 
         spdlog::info("All settings loaded successfully");
@@ -119,6 +121,7 @@ void GlobalSettings::save()
         // 调用所有子设置的 save 方法
         project_settings_->save(settings_database_);
         data_settings_->save(settings_database_);
+        advanced_settings_->save(settings_database_);
         ui_settings_->save(settings_database_);
 
         spdlog::info("Settings saved successfully to: {}", settingsDatabasePath().toUtf8().constData());
@@ -138,6 +141,7 @@ void GlobalSettings::reset()
     // 调用所有子设置的 reset 方法
     project_settings_->reset();
     data_settings_->reset();
+    advanced_settings_->reset();
     ui_settings_->reset();
 }
 
@@ -180,39 +184,35 @@ void GlobalSettings::connectAutoSave()
     connect(data_settings_, &DataSettings::imageCellScaleFromChanged, this, &GlobalSettings::scheduleSave);
     connect(data_settings_, &DataSettings::imageCellScaleToChanged, this, &GlobalSettings::scheduleSave);
     connect(data_settings_, &DataSettings::imageCellScaleStepSizeChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionEnabledChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionModelChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionModelPathChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionFeatureNameChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionRebuildIndexChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionTopKChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionNormChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionPreprocessBackendChanged, this,
+    auto *image_search = advanced_settings_->imageSearch();
+    connect(image_search, &ImageSearchSettings::enabledChanged, this, &GlobalSettings::scheduleSave);
+    connect(image_search, &ImageSearchSettings::modelChanged, this, &GlobalSettings::scheduleSave);
+    connect(image_search, &ImageSearchSettings::modelPathChanged, this, &GlobalSettings::scheduleSave);
+    connect(image_search, &ImageSearchSettings::featureNameChanged, this, &GlobalSettings::scheduleSave);
+    connect(image_search, &ImageSearchSettings::rebuildIndexChanged, this, &GlobalSettings::scheduleSave);
+    connect(image_search, &ImageSearchSettings::topKChanged, this, &GlobalSettings::scheduleSave);
+    connect(image_search, &ImageSearchSettings::normChanged, this, &GlobalSettings::scheduleSave);
+    connect(image_search, &ImageSearchSettings::preprocessBackendChanged, this, &GlobalSettings::scheduleSave);
+    connect(image_search, &ImageSearchSettings::faissBackendChanged, this, &GlobalSettings::scheduleSave);
+    connect(image_search, &ImageSearchSettings::indexStorageChanged, this, &GlobalSettings::scheduleSave);
+    connect(image_search, &ImageSearchSettings::diskBuildBatchSizeChanged, this, &GlobalSettings::scheduleSave);
+    connect(image_search, &ImageSearchSettings::modelBatchSizeChanged, this, &GlobalSettings::scheduleSave);
+    connect(image_search, &ImageSearchSettings::modelBackendChanged, this, &GlobalSettings::scheduleSave);
+    connect(image_search, &ImageSearchSettings::modelDeviceChanged, this, &GlobalSettings::scheduleSave);
+    connect(image_search, &ImageSearchSettings::indexDirectoryChanged, this, &GlobalSettings::scheduleSave);
+    connect(image_search, &ImageSearchSettings::customFeatureNamesChanged, this, &GlobalSettings::scheduleSave);
+
+    auto *smart_annotation = advanced_settings_->smartAnnotation();
+    connect(smart_annotation, &SmartAnnotationSettings::enabledChanged, this, &GlobalSettings::scheduleSave);
+    connect(smart_annotation, &SmartAnnotationSettings::modelChanged, this, &GlobalSettings::scheduleSave);
+    connect(smart_annotation, &SmartAnnotationSettings::modelPathChanged, this, &GlobalSettings::scheduleSave);
+    connect(smart_annotation, &SmartAnnotationSettings::modelBackendChanged, this, &GlobalSettings::scheduleSave);
+    connect(smart_annotation, &SmartAnnotationSettings::modelDeviceChanged, this, &GlobalSettings::scheduleSave);
+    connect(smart_annotation, &SmartAnnotationSettings::maskThresholdChanged, this, &GlobalSettings::scheduleSave);
+    connect(smart_annotation, &SmartAnnotationSettings::polygonSimplifyEpsilonChanged, this,
             &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionFaissBackendChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionIndexStorageChanged, this,
-            &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionDiskBuildBatchSizeChanged, this,
-            &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionModelBatchSizeChanged, this,
-            &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionModelBackendChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionModelDeviceChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionIndexDirectoryChanged, this,
-            &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::featureExtractionCustomFeatureNamesChanged, this,
-            &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::smartAnnotationEnabledChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::smartAnnotationModelChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::smartAnnotationModelPathChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::smartAnnotationModelBackendChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::smartAnnotationModelDeviceChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::smartAnnotationMaskThresholdChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::smartAnnotationPolygonSimplifyEpsilonChanged, this,
-            &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::smartAnnotationMaskAlphaChanged, this, &GlobalSettings::scheduleSave);
-    connect(data_settings_, &DataSettings::smartAnnotationRefreshIntervalChanged, this,
-            &GlobalSettings::scheduleSave);
+    connect(smart_annotation, &SmartAnnotationSettings::maskAlphaChanged, this, &GlobalSettings::scheduleSave);
+    connect(smart_annotation, &SmartAnnotationSettings::refreshIntervalChanged, this, &GlobalSettings::scheduleSave);
 
     // 连接 UISettings 的所有信号
     connect(ui_settings_, &UISettings::imageBrightnessChanged, this, &GlobalSettings::scheduleSave);

@@ -1229,18 +1229,18 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
 
     try
     {
-        auto *settings = dltool::settings::GlobalSettings::getInstance()->data();
-        if (settings == nullptr || !settings->smartAnnotationEnabled())
+        auto *settings = dltool::settings::GlobalSettings::getInstance()->advanced()->smartAnnotation();
+        if (settings == nullptr || !settings->enabled())
         {
             throw std::runtime_error("智能标注未启用");
         }
 
         const std::vector<PromptPoint> prompts = parsePromptPoints(prompt_points);
 
-        const QString model_name = normalizedModelName(settings->smartAnnotationModel());
-        const QString backend    = normalizedBackend(settings->smartAnnotationModelBackend());
-        const QString device     = normalizedDevice(settings->smartAnnotationModelDevice());
-        QString       model_path = settings->smartAnnotationModelPath().trimmed();
+        const QString model_name = normalizedModelName(settings->model());
+        const QString backend    = normalizedBackend(settings->modelBackend());
+        const QString device     = normalizedDevice(settings->modelDevice());
+        QString       model_path = settings->modelPath().trimmed();
         if (model_path.isEmpty())
         {
             model_path = suggestedModelPath(model_name, backend);
@@ -1390,7 +1390,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
             = resizeBilinear(cropped_mask.data(), preprocessed.resized_w, preprocessed.resized_h, image.width(),
                              image.height());
 
-        const double threshold = settings->smartAnnotationMaskThreshold();
+        const double threshold = settings->maskThreshold();
         std::vector<uint8_t> binary_mask(static_cast<size_t>(image.width()) * image.height(), 0);
         int foreground_pixels = 0;
         for (size_t i = 0; i < binary_mask.size(); ++i)
@@ -1419,7 +1419,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
             polygon = rectanglePoints(bbox);
         }
 
-        polygon = simplifyFinalPolygon(std::move(polygon), settings->smartAnnotationPolygonSimplifyEpsilon());
+        polygon = simplifyFinalPolygon(std::move(polygon), settings->polygonSimplifyEpsilon());
         if (polygon.size() < 3)
         {
             polygon = rectanglePoints(bbox);

@@ -8,8 +8,8 @@ DltComboBox {
     id: control
 
     property var imageSearch: null
-    property string modelName: GlobalSettings.data.featureExtractionModel
-    property string featureName: GlobalSettings.data.featureExtractionFeatureName
+    property string modelName: GlobalSettings.advanced.imageSearch.model
+    property string featureName: GlobalSettings.advanced.imageSearch.featureName
     property var featureNames: []
     property bool rememberCustomValues: true
 
@@ -30,8 +30,8 @@ DltComboBox {
     }
 
     Connections {
-        target: GlobalSettings.data
-        function onFeatureExtractionCustomFeatureNamesChanged() {
+        target: GlobalSettings.advanced.imageSearch
+        function onCustomFeatureNamesChanged() {
             control.refreshFeatureNames()
         }
     }
@@ -79,7 +79,7 @@ DltComboBox {
             }
         }
 
-        let customNames = GlobalSettings.data.featureExtractionCustomFeatureNames(modelName)
+        let customNames = GlobalSettings.advanced.imageSearch.customFeatureNames(modelName)
         for (let j = 0; j < customNames.length; ++j) {
             appendUnique(names, customNames[j])
         }
@@ -104,7 +104,7 @@ DltComboBox {
         }
 
         if (rememberCustomValues && featureNames.indexOf(text) < 0) {
-            GlobalSettings.data.addFeatureExtractionCustomFeatureName(modelName, text)
+            GlobalSettings.advanced.imageSearch.addCustomFeatureName(modelName, text)
         }
         if (featureNames.indexOf(text) < 0) {
             refreshFeatureNames()

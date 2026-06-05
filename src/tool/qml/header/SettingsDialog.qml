@@ -1,4 +1,4 @@
-Ôªøimport QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Qt.labs.platform
@@ -76,36 +76,36 @@ DltPopup {
         advancedExpander.expand = false
         advancedExpanded = false
 
-        enableCheckBox.checked = GlobalSettings.data.featureExtractionEnabled
-        setComboText(modelBox, GlobalSettings.data.featureExtractionModel)
-        modelPathInput.text = GlobalSettings.data.featureExtractionModelPath
-        featureNameBox.modelName = GlobalSettings.data.featureExtractionModel
-        featureNameBox.featureName = GlobalSettings.data.featureExtractionFeatureName
+        enableCheckBox.checked = GlobalSettings.advanced.imageSearch.enabled
+        setComboText(modelBox, GlobalSettings.advanced.imageSearch.model)
+        modelPathInput.text = GlobalSettings.advanced.imageSearch.modelPath
+        featureNameBox.modelName = GlobalSettings.advanced.imageSearch.model
+        featureNameBox.featureName = GlobalSettings.advanced.imageSearch.featureName
         featureNameBox.refreshFeatureNames()
 
-        rebuildCheckBox.checked = GlobalSettings.data.featureExtractionRebuildIndex
-        topKEditor.value = GlobalSettings.data.featureExtractionTopK
-        setComboText(normBox, GlobalSettings.data.featureExtractionNorm)
-        setComboText(preprocessBox, GlobalSettings.data.featureExtractionPreprocessBackend)
-        setComboText(faissBackendBox, GlobalSettings.data.featureExtractionFaissBackend)
-        setComboText(indexStorageBox, GlobalSettings.data.featureExtractionIndexStorage)
-        diskBatchEditor.value = GlobalSettings.data.featureExtractionDiskBuildBatchSize
-        modelBatchEditor.value = GlobalSettings.data.featureExtractionModelBatchSize
-        setComboText(modelBackendBox, GlobalSettings.data.featureExtractionModelBackend)
-        setComboText(modelDeviceBox, GlobalSettings.data.featureExtractionModelDevice)
-        indexDirInput.text = GlobalSettings.data.featureExtractionIndexDirectory
+        rebuildCheckBox.checked = GlobalSettings.advanced.imageSearch.rebuildIndex
+        topKEditor.value = GlobalSettings.advanced.imageSearch.topK
+        setComboText(normBox, GlobalSettings.advanced.imageSearch.norm)
+        setComboText(preprocessBox, GlobalSettings.advanced.imageSearch.preprocessBackend)
+        setComboText(faissBackendBox, GlobalSettings.advanced.imageSearch.faissBackend)
+        setComboText(indexStorageBox, GlobalSettings.advanced.imageSearch.indexStorage)
+        diskBatchEditor.value = GlobalSettings.advanced.imageSearch.diskBuildBatchSize
+        modelBatchEditor.value = GlobalSettings.advanced.imageSearch.modelBatchSize
+        setComboText(modelBackendBox, GlobalSettings.advanced.imageSearch.modelBackend)
+        setComboText(modelDeviceBox, GlobalSettings.advanced.imageSearch.modelDevice)
+        indexDirInput.text = GlobalSettings.advanced.imageSearch.indexDirectory
 
         lastSuggestedWeightsPath = suggestedWeightsPath(comboText(modelBox))
 
-        smartEnableCheckBox.checked = GlobalSettings.data.smartAnnotationEnabled
-        setComboText(smartModelBox, GlobalSettings.data.smartAnnotationModel)
-        smartModelPathInput.text = GlobalSettings.data.smartAnnotationModelPath
-        setComboText(smartBackendBox, GlobalSettings.data.smartAnnotationModelBackend)
-        setComboText(smartDeviceBox, GlobalSettings.data.smartAnnotationModelDevice)
-        smartThresholdEditor.value = GlobalSettings.data.smartAnnotationMaskThreshold
-        smartSimplifyEditor.value = GlobalSettings.data.smartAnnotationPolygonSimplifyEpsilon
-        smartAlphaEditor.value = GlobalSettings.data.smartAnnotationMaskAlpha
-        smartRefreshIntervalEditor.value = GlobalSettings.data.smartAnnotationRefreshInterval
+        smartEnableCheckBox.checked = GlobalSettings.advanced.smartAnnotation.enabled
+        setComboText(smartModelBox, GlobalSettings.advanced.smartAnnotation.model)
+        smartModelPathInput.text = GlobalSettings.advanced.smartAnnotation.modelPath
+        setComboText(smartBackendBox, GlobalSettings.advanced.smartAnnotation.modelBackend)
+        setComboText(smartDeviceBox, GlobalSettings.advanced.smartAnnotation.modelDevice)
+        smartThresholdEditor.value = GlobalSettings.advanced.smartAnnotation.maskThreshold
+        smartSimplifyEditor.value = GlobalSettings.advanced.smartAnnotation.polygonSimplifyEpsilon
+        smartAlphaEditor.value = GlobalSettings.advanced.smartAnnotation.maskAlpha
+        smartRefreshIntervalEditor.value = GlobalSettings.advanced.smartAnnotation.refreshInterval
         lastSuggestedSmartModelPath = suggestedSmartModelPath(comboText(smartModelBox), comboText(smartBackendBox))
         syncing = false
     }
@@ -122,11 +122,11 @@ DltPopup {
 
         let previousSuggested = lastSuggestedWeightsPath
         let nextSuggested = suggestedWeightsPath(model)
-        GlobalSettings.data.featureExtractionModel = model
+        GlobalSettings.advanced.imageSearch.model = model
         featureNameBox.modelName = model
         if (modelPathInput.text === "" || modelPathInput.text === previousSuggested) {
             modelPathInput.text = nextSuggested
-            GlobalSettings.data.featureExtractionModelPath = nextSuggested
+            GlobalSettings.advanced.imageSearch.modelPath = nextSuggested
         }
         lastSuggestedWeightsPath = nextSuggested
         featureNameBox.refreshFeatureNames()
@@ -144,10 +144,10 @@ DltPopup {
 
         let previousSuggested = lastSuggestedSmartModelPath
         let nextSuggested = suggestedSmartModelPath(model, comboText(smartBackendBox))
-        GlobalSettings.data.smartAnnotationModel = model
+        GlobalSettings.advanced.smartAnnotation.model = model
         if (smartModelPathInput.text === "" || smartModelPathInput.text === previousSuggested) {
             smartModelPathInput.text = nextSuggested
-            GlobalSettings.data.smartAnnotationModelPath = nextSuggested
+            GlobalSettings.advanced.smartAnnotation.modelPath = nextSuggested
         }
         lastSuggestedSmartModelPath = nextSuggested
     }
@@ -160,10 +160,10 @@ DltPopup {
         let backend = trimText(value)
         let previousSuggested = lastSuggestedSmartModelPath
         let nextSuggested = suggestedSmartModelPath(comboText(smartModelBox), backend)
-        GlobalSettings.data.smartAnnotationModelBackend = backend
+        GlobalSettings.advanced.smartAnnotation.modelBackend = backend
         if (smartModelPathInput.text === "" || smartModelPathInput.text === previousSuggested) {
             smartModelPathInput.text = nextSuggested
-            GlobalSettings.data.smartAnnotationModelPath = nextSuggested
+            GlobalSettings.advanced.smartAnnotation.modelPath = nextSuggested
         }
         lastSuggestedSmartModelPath = nextSuggested
     }
@@ -177,23 +177,23 @@ DltPopup {
         if (featureName === "") {
             return
         }
-        GlobalSettings.data.featureExtractionFeatureName = featureName
+        GlobalSettings.advanced.imageSearch.featureName = featureName
     }
 
     function saveVisibleFields() {
         featureNameBox.rememberCurrentText()
-        GlobalSettings.data.featureExtractionModel = comboText(modelBox)
-        GlobalSettings.data.featureExtractionModelPath = trimText(modelPathInput.text)
-        GlobalSettings.data.featureExtractionFeatureName = featureNameBox.currentFeatureText()
-        GlobalSettings.data.smartAnnotationEnabled = smartEnableCheckBox.checked
-        GlobalSettings.data.smartAnnotationModel = comboText(smartModelBox)
-        GlobalSettings.data.smartAnnotationModelPath = trimText(smartModelPathInput.text)
-        GlobalSettings.data.smartAnnotationModelBackend = comboText(smartBackendBox)
-        GlobalSettings.data.smartAnnotationModelDevice = comboText(smartDeviceBox)
-        GlobalSettings.data.smartAnnotationMaskThreshold = smartThresholdEditor.value
-        GlobalSettings.data.smartAnnotationPolygonSimplifyEpsilon = smartSimplifyEditor.value
-        GlobalSettings.data.smartAnnotationMaskAlpha = smartAlphaEditor.value
-        GlobalSettings.data.smartAnnotationRefreshInterval = Math.round(smartRefreshIntervalEditor.value)
+        GlobalSettings.advanced.imageSearch.model = comboText(modelBox)
+        GlobalSettings.advanced.imageSearch.modelPath = trimText(modelPathInput.text)
+        GlobalSettings.advanced.imageSearch.featureName = featureNameBox.currentFeatureText()
+        GlobalSettings.advanced.smartAnnotation.enabled = smartEnableCheckBox.checked
+        GlobalSettings.advanced.smartAnnotation.model = comboText(smartModelBox)
+        GlobalSettings.advanced.smartAnnotation.modelPath = trimText(smartModelPathInput.text)
+        GlobalSettings.advanced.smartAnnotation.modelBackend = comboText(smartBackendBox)
+        GlobalSettings.advanced.smartAnnotation.modelDevice = comboText(smartDeviceBox)
+        GlobalSettings.advanced.smartAnnotation.maskThreshold = smartThresholdEditor.value
+        GlobalSettings.advanced.smartAnnotation.polygonSimplifyEpsilon = smartSimplifyEditor.value
+        GlobalSettings.advanced.smartAnnotation.maskAlpha = smartAlphaEditor.value
+        GlobalSettings.advanced.smartAnnotation.refreshInterval = Math.round(smartRefreshIntervalEditor.value)
         GlobalSettings.save()
     }
 
@@ -213,7 +213,7 @@ DltPopup {
 
             DltText {
                 Layout.fillWidth: true
-                text: "ËÆæÁΩÆ"
+                text: "…Ë÷√"
                 font: DltFont.Title
                 color: DltColor.FontPrimary
             }
@@ -254,7 +254,7 @@ DltPopup {
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
-                                text: "ÁâπÂæÅÊèêÂèñ"
+                                text: "Ãÿ’˜Ã·»°"
                                 font: DltFont.Subtitle
                                 color: DltColor.FontPrimary
                             }
@@ -265,11 +265,11 @@ DltPopup {
                                     right: parent.right
                                     verticalCenter: parent.verticalCenter
                                 }
-                                text: "ÂêØÁî®"
-                                checked: GlobalSettings.data.featureExtractionEnabled
+                                text: "∆Ù”√"
+                                checked: GlobalSettings.advanced.imageSearch.enabled
                                 onToggled: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.data.featureExtractionEnabled = checked
+                                        GlobalSettings.advanced.imageSearch.enabled = checked
                                     }
                                 }
                             }
@@ -280,7 +280,7 @@ DltPopup {
                             spacing: 10
                             enabled: enableCheckBox.checked
 
-                            // Ê®°Âûã
+                            // ƒ£–Õ
                             Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 34
@@ -291,7 +291,7 @@ DltPopup {
                                         verticalCenter: parent.verticalCenter
                                     }
                                     width: parent.width / 3
-                                    text: "Ê®°Âûã"
+                                    text: "ƒ£–Õ"
                                     color: DltColor.FontDark
                                 }
                                 DltComboBox {
@@ -311,7 +311,7 @@ DltPopup {
                                 }
                             }
 
-                            // Ê®°ÂûãË∑ØÂæÑ
+                            // ƒ£–Õ¬∑æ∂
                             Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 34
@@ -322,7 +322,7 @@ DltPopup {
                                         verticalCenter: parent.verticalCenter
                                     }
                                     width: parent.width / 3
-                                    text: "Ê®°ÂûãË∑ØÂæÑ"
+                                    text: "ƒ£–Õ¬∑æ∂"
                                     color: DltColor.FontDark
                                 }
                                 RowLayout {
@@ -336,10 +336,10 @@ DltPopup {
                                     DltTextField {
                                         id: modelPathInput
                                         Layout.fillWidth: true
-                                        placeholderText: "ÈÄâÊã© .wts ÊùÉÈáçÊñá‰ª∂"
+                                        placeholderText: "—°‘Ò .wts »®÷ÿŒƒº˛"
                                         onEditingFinished: {
                                             if (!dialog.syncing) {
-                                                GlobalSettings.data.featureExtractionModelPath = dialog.trimText(text)
+                                                GlobalSettings.advanced.imageSearch.modelPath = dialog.trimText(text)
                                             }
                                         }
                                     }
@@ -348,13 +348,13 @@ DltPopup {
                                         Layout.preferredWidth: 34
                                         Layout.preferredHeight: 34
                                         iconSource: DltFontIcon.OpenFile
-                                        text: "ÊâìÂºÄ"
+                                        text: "¥Úø™"
                                         onClicked: modelPathDialog.open()
                                     }
                                 }
                             }
 
-                            // ÁâπÂæÅÂ±ÇÂêç
+                            // Ãÿ’˜≤„√˚
                             Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 34
@@ -365,7 +365,7 @@ DltPopup {
                                         verticalCenter: parent.verticalCenter
                                     }
                                     width: parent.width / 3
-                                    text: "ÁâπÂæÅÂ±ÇÂêç"
+                                    text: "Ãÿ’˜≤„√˚"
                                     color: DltColor.FontDark
                                 }
                                 FeatureNameComboBox {
@@ -377,14 +377,14 @@ DltPopup {
                                     width: parent.width * 2 / 3
                                     imageSearch: dialog.imageSearch
                                     modelName: dialog.comboText(modelBox)
-                                    featureName: GlobalSettings.data.featureExtractionFeatureName
+                                    featureName: GlobalSettings.advanced.imageSearch.featureName
                                     onFeatureNameAccepted: function (featureName) {
                                         dialog.updateFeatureName(featureName)
                                     }
                                 }
                             }
 
-                            // Êé®ÁêÜÂêéÁ´Ø
+                            // Õ∆¿Ì∫Û∂À
                             Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 34
@@ -395,7 +395,7 @@ DltPopup {
                                         verticalCenter: parent.verticalCenter
                                     }
                                     width: parent.width / 3
-                                    text: "Êé®ÁêÜÂêéÁ´Ø"
+                                    text: "Õ∆¿Ì∫Û∂À"
                                     color: DltColor.FontDark
                                 }
                                 DltComboBox {
@@ -408,13 +408,13 @@ DltPopup {
                                     model: ["tensorrt", "openvino", "onnxruntime"]
                                     onActivated: {
                                         if (!dialog.syncing) {
-                                            GlobalSettings.data.featureExtractionModelBackend = currentText
+                                            GlobalSettings.advanced.imageSearch.modelBackend = currentText
                                         }
                                     }
                                 }
                             }
 
-                            // Êé®ÁêÜËÆæÂ§á
+                            // Õ∆¿Ì…Ë±∏
                             Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 34
@@ -425,7 +425,7 @@ DltPopup {
                                         verticalCenter: parent.verticalCenter
                                     }
                                     width: parent.width / 3
-                                    text: "Êé®ÁêÜËÆæÂ§á"
+                                    text: "Õ∆¿Ì…Ë±∏"
                                     color: DltColor.FontDark
                                 }
                                 DltComboBox {
@@ -438,13 +438,13 @@ DltPopup {
                                     model: ["gpu", "cpu"]
                                     onActivated: {
                                         if (!dialog.syncing) {
-                                            GlobalSettings.data.featureExtractionModelDevice = currentText
+                                            GlobalSettings.advanced.imageSearch.modelDevice = currentText
                                         }
                                     }
                                 }
                             }
 
-                            // Ê®°ÂûãÊâπÊ¨°
+                            // ƒ£–Õ≈˙¥Œ
                             Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 32
@@ -455,7 +455,7 @@ DltPopup {
                                         verticalCenter: parent.verticalCenter
                                     }
                                     width: parent.width / 3
-                                    text: "Ê®°ÂûãÊâπÊ¨°"
+                                    text: "ƒ£–Õ≈˙¥Œ"
                                     color: DltColor.FontDark
                                 }
                                 DltSpinEditor {
@@ -472,13 +472,13 @@ DltPopup {
                                     step: 1
                                     onValueChanged: {
                                         if (!dialog.syncing) {
-                                            GlobalSettings.data.featureExtractionModelBatchSize = Math.round(value)
+                                            GlobalSettings.advanced.imageSearch.modelBatchSize = Math.round(value)
                                         }
                                     }
                                 }
                             }
 
-                            // ÁâπÂæÅÂ∫ìÁõÆÂΩï
+                            // Ãÿ’˜ø‚ƒø¬º
                             Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 34
@@ -489,7 +489,7 @@ DltPopup {
                                         verticalCenter: parent.verticalCenter
                                     }
                                     width: parent.width / 3
-                                    text: "ÁâπÂæÅÂ∫ìÁõÆÂΩï"
+                                    text: "Ãÿ’˜ø‚ƒø¬º"
                                     color: DltColor.FontDark
                                 }
                                 RowLayout {
@@ -503,11 +503,11 @@ DltPopup {
                                     DltTextField {
                                         id: indexDirInput
                                         Layout.fillWidth: true
-                                        placeholderText: "ÁïôÁ©∫Âàô‰ΩøÁî®È°πÁõÆÁõÆÂΩï"
-                                        text: GlobalSettings.data.featureExtractionIndexDirectory
+                                        placeholderText: "¡Ùø’‘Ú π”√œÓƒøƒø¬º"
+                                        text: GlobalSettings.advanced.imageSearch.indexDirectory
                                         onEditingFinished: {
                                             if (!dialog.syncing) {
-                                                GlobalSettings.data.featureExtractionIndexDirectory = dialog.trimText(text)
+                                                GlobalSettings.advanced.imageSearch.indexDirectory = dialog.trimText(text)
                                             }
                                         }
                                     }
@@ -516,7 +516,7 @@ DltPopup {
                                         Layout.preferredWidth: 34
                                         Layout.preferredHeight: 34
                                         iconSource: DltFontIcon.OpenFile
-                                        text: "ÈÄâÊã©"
+                                        text: "—°‘Ò"
                                         onClicked: indexDirDialog.open()
                                     }
                                 }
@@ -526,7 +526,7 @@ DltPopup {
                         DltExpander {
                             id: advancedExpander
                             Layout.fillWidth: true
-                            headerText: "È´òÁ∫ßËÆæÁΩÆ"
+                            headerText: "∏ﬂº∂…Ë÷√"
                             contentHeight: 310
                             enabled: enableCheckBox.checked
                             onExpandChanged: dialog.advancedExpanded = expand
@@ -536,7 +536,7 @@ DltPopup {
                                 anchors.margins: 12
                                 spacing: 8
 
-                                // ÁâπÂæÅÂ∫ìÈáçÂª∫
+                                // Ãÿ’˜ø‚÷ÿΩ®
                                 Item {
                                     Layout.fillWidth: true
                                     implicitHeight: 24
@@ -547,7 +547,7 @@ DltPopup {
                                             verticalCenter: parent.verticalCenter
                                         }
                                         width: parent.width / 3
-                                        text: "ÁâπÂæÅÂ∫ìÈáçÂª∫"
+                                        text: "Ãÿ’˜ø‚÷ÿΩ®"
                                         color: DltColor.FontDark
                                     }
                                     DltToggleSwitch {
@@ -558,7 +558,7 @@ DltPopup {
                                         }
                                         onToggled: {
                                             if (!dialog.syncing) {
-                                                GlobalSettings.data.featureExtractionRebuildIndex = checked
+                                                GlobalSettings.advanced.imageSearch.rebuildIndex = checked
                                             }
                                         }
                                     }
@@ -591,13 +591,13 @@ DltPopup {
                                         step: 1
                                         onValueChanged: {
                                             if (!dialog.syncing) {
-                                                GlobalSettings.data.featureExtractionTopK = Math.round(value)
+                                                GlobalSettings.advanced.imageSearch.topK = Math.round(value)
                                             }
                                         }
                                     }
                                 }
 
-                                // Á£ÅÁõòÊâπÊ¨°
+                                // ¥≈≈Ã≈˙¥Œ
                                 Item {
                                     Layout.fillWidth: true
                                     implicitHeight: 32
@@ -608,7 +608,7 @@ DltPopup {
                                             verticalCenter: parent.verticalCenter
                                         }
                                         width: parent.width / 3
-                                        text: "Á£ÅÁõòÊâπÊ¨°"
+                                        text: "¥≈≈Ã≈˙¥Œ"
                                         color: DltColor.FontDark
                                     }
                                     DltSpinEditor {
@@ -624,13 +624,13 @@ DltPopup {
                                         step: 1
                                         onValueChanged: {
                                             if (!dialog.syncing) {
-                                                GlobalSettings.data.featureExtractionDiskBuildBatchSize = Math.round(value)
+                                                GlobalSettings.advanced.imageSearch.diskBuildBatchSize = Math.round(value)
                                             }
                                         }
                                     }
                                 }
 
-                                // ÂΩí‰∏ÄÂåñ
+                                // πÈ“ªªØ
                                 Item {
                                     Layout.fillWidth: true
                                     implicitHeight: 34
@@ -641,7 +641,7 @@ DltPopup {
                                             verticalCenter: parent.verticalCenter
                                         }
                                         width: parent.width / 3
-                                        text: "ÂΩí‰∏ÄÂåñ"
+                                        text: "πÈ“ªªØ"
                                         color: DltColor.FontDark
                                     }
                                     DltComboBox {
@@ -654,13 +654,13 @@ DltPopup {
                                         model: ["l2", "l1", "none"]
                                         onActivated: {
                                             if (!dialog.syncing) {
-                                                GlobalSettings.data.featureExtractionNorm = currentText
+                                                GlobalSettings.advanced.imageSearch.norm = currentText
                                             }
                                         }
                                     }
                                 }
 
-                                // È¢ÑÂ§ÑÁêÜ
+                                // ‘§¥¶¿Ì
                                 Item {
                                     Layout.fillWidth: true
                                     implicitHeight: 34
@@ -671,7 +671,7 @@ DltPopup {
                                             verticalCenter: parent.verticalCenter
                                         }
                                         width: parent.width / 3
-                                        text: "È¢ÑÂ§ÑÁêÜ"
+                                        text: "‘§¥¶¿Ì"
                                         color: DltColor.FontDark
                                     }
                                     DltComboBox {
@@ -684,7 +684,7 @@ DltPopup {
                                         model: ["cpu", "gpu"]
                                         onActivated: {
                                             if (!dialog.syncing) {
-                                                GlobalSettings.data.featureExtractionPreprocessBackend = currentText
+                                                GlobalSettings.advanced.imageSearch.preprocessBackend = currentText
                                             }
                                         }
                                     }
@@ -714,7 +714,7 @@ DltPopup {
                                         model: ["cpu", "gpu"]
                                         onActivated: {
                                             if (!dialog.syncing) {
-                                                GlobalSettings.data.featureExtractionFaissBackend = currentText
+                                                GlobalSettings.advanced.imageSearch.faissBackend = currentText
                                                 if (currentText === "gpu") {
                                                     dialog.setComboText(indexStorageBox, "ram")
                                                 }
@@ -723,7 +723,7 @@ DltPopup {
                                     }
                                 }
 
-                                // Á¥¢ÂºïÂ≠òÂÇ®
+                                // À˜“˝¥Ê¥¢
                                 Item {
                                     Layout.fillWidth: true
                                     implicitHeight: 34
@@ -734,7 +734,7 @@ DltPopup {
                                             verticalCenter: parent.verticalCenter
                                         }
                                         width: parent.width / 3
-                                        text: "Á¥¢ÂºïÂ≠òÂÇ®"
+                                        text: "À˜“˝¥Ê¥¢"
                                         color: DltColor.FontDark
                                     }
                                     DltComboBox {
@@ -748,7 +748,7 @@ DltPopup {
                                         model: ["ram", "disk"]
                                         onActivated: {
                                             if (!dialog.syncing) {
-                                                GlobalSettings.data.featureExtractionIndexStorage = currentText
+                                                GlobalSettings.advanced.imageSearch.indexStorage = currentText
                                             }
                                         }
                                     }
@@ -784,7 +784,7 @@ DltPopup {
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
-                                text: "Êô∫ËÉΩÊ†áÊ≥®"
+                                text: "÷«ƒ‹±Í◊¢"
                                 font: DltFont.Subtitle
                                 color: DltColor.FontPrimary
                             }
@@ -795,11 +795,11 @@ DltPopup {
                                     right: parent.right
                                     verticalCenter: parent.verticalCenter
                                 }
-                                text: "ÂêØÁî®"
-                                checked: GlobalSettings.data.smartAnnotationEnabled
+                                text: "∆Ù”√"
+                                checked: GlobalSettings.advanced.smartAnnotation.enabled
                                 onToggled: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.data.smartAnnotationEnabled = checked
+                                        GlobalSettings.advanced.smartAnnotation.enabled = checked
                                     }
                                 }
                             }
@@ -820,7 +820,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "Ê®°Âûã"
+                                            text: "ƒ£–Õ"
                                             color: DltColor.FontDark
                                         }
                                         DltComboBox {
@@ -856,7 +856,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "Ê®°ÂûãÊñá‰ª∂"
+                                            text: "ƒ£–ÕŒƒº˛"
                                             color: DltColor.FontDark
                                         }
                                         RowLayout {
@@ -870,10 +870,10 @@ DltPopup {
                                             DltTextField {
                                                 id: smartModelPathInput
                                                 Layout.fillWidth: true
-                                                placeholderText: "ÈÄâÊã© .wts Êàñ .onnx Ê®°ÂûãÊñá‰ª∂"
+                                                placeholderText: "—°‘Ò .wts ªÚ .onnx ƒ£–ÕŒƒº˛"
                                                 onEditingFinished: {
                                                     if (!dialog.syncing) {
-                                                        GlobalSettings.data.smartAnnotationModelPath = dialog.trimText(text)
+                                                        GlobalSettings.advanced.smartAnnotation.modelPath = dialog.trimText(text)
                                                     }
                                                 }
                                             }
@@ -882,7 +882,7 @@ DltPopup {
                                                 Layout.preferredWidth: 34
                                                 Layout.preferredHeight: 34
                                                 iconSource: DltFontIcon.OpenFile
-                                                text: "ÊâìÂºÄ"
+                                                text: "¥Úø™"
                                                 onClicked: smartModelPathDialog.open()
                                             }
                                         }
@@ -898,7 +898,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "Êé®ÁêÜÂêéÁ´Ø"
+                                            text: "Õ∆¿Ì∫Û∂À"
                                             color: DltColor.FontDark
                                         }
                                         DltComboBox {
@@ -923,7 +923,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "Êé®ÁêÜËÆæÂ§á"
+                                            text: "Õ∆¿Ì…Ë±∏"
                                             color: DltColor.FontDark
                                         }
                                         DltComboBox {
@@ -936,7 +936,7 @@ DltPopup {
                                             model: ["gpu", "cpu"]
                                             onActivated: {
                                                 if (!dialog.syncing) {
-                                                    GlobalSettings.data.smartAnnotationModelDevice = currentText
+                                                    GlobalSettings.advanced.smartAnnotation.modelDevice = currentText
                                                 }
                                             }
                                         }
@@ -952,7 +952,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "MaskÈòàÂÄº"
+                                            text: "Mask„–÷µ"
                                             color: DltColor.FontDark
                                         }
                                         DltSpinEditor {
@@ -969,7 +969,7 @@ DltPopup {
                                             decimals: 2
                                             onValueChanged: {
                                                 if (!dialog.syncing) {
-                                                    GlobalSettings.data.smartAnnotationMaskThreshold = value
+                                                    GlobalSettings.advanced.smartAnnotation.maskThreshold = value
                                                 }
                                             }
                                         }
@@ -985,7 +985,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "Âà∑Êñ∞Èó¥Èöî(ms)"
+                                            text: "À¢–¬º‰∏Ù(ms)"
                                             color: DltColor.FontDark
                                         }
                                         DltSpinEditor {
@@ -1002,7 +1002,7 @@ DltPopup {
                                             decimals: 0
                                             onValueChanged: {
                                                 if (!dialog.syncing) {
-                                                    GlobalSettings.data.smartAnnotationRefreshInterval = Math.round(value)
+                                                    GlobalSettings.advanced.smartAnnotation.refreshInterval = Math.round(value)
                                                 }
                                             }
                                         }
@@ -1018,7 +1018,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "MaskÈÄèÊòéÂ∫¶"
+                                            text: "MaskÕ∏√˜∂»"
                                             color: DltColor.FontDark
                                         }
                                         DltSpinEditor {
@@ -1035,7 +1035,7 @@ DltPopup {
                                             decimals: 2
                                             onValueChanged: {
                                                 if (!dialog.syncing) {
-                                                    GlobalSettings.data.smartAnnotationMaskAlpha = value
+                                                    GlobalSettings.advanced.smartAnnotation.maskAlpha = value
                                                 }
                                             }
                                         }
@@ -1051,7 +1051,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "ËΩÆÂªìÁÆÄÂåñ"
+                                            text: "¬÷¿™ºÚªØ"
                                             color: DltColor.FontDark
                                         }
                                         DltSpinEditor {
@@ -1068,7 +1068,7 @@ DltPopup {
                                             decimals: 1
                                             onValueChanged: {
                                                 if (!dialog.syncing) {
-                                                    GlobalSettings.data.smartAnnotationPolygonSimplifyEpsilon = value
+                                                    GlobalSettings.advanced.smartAnnotation.polygonSimplifyEpsilon = value
                                                 }
                                             }
                                         }
@@ -1092,7 +1092,7 @@ DltPopup {
             }
 
             DltButton {
-                text: "ÂÖ≥Èó≠"
+                text: "πÿ±’"
                 onClicked: dialog.close()
             }
         }
@@ -1100,30 +1100,30 @@ DltPopup {
 
     FileDialog {
         id: modelPathDialog
-        title: "ÈÄâÊã©Ê®°ÂûãÊùÉÈáç"
+        title: "—°‘Òƒ£–Õ»®÷ÿ"
         nameFilters: ["Weights (*.wts *.onnx)", "All files (*)"]
         onAccepted: {
             modelPathInput.text = Utils.getCleanPath(modelPathDialog.file.toString())
-            GlobalSettings.data.featureExtractionModelPath = modelPathInput.text
+            GlobalSettings.advanced.imageSearch.modelPath = modelPathInput.text
         }
     }
 
     FileDialog {
         id: smartModelPathDialog
-        title: "ÈÄâÊã©Êô∫ËÉΩÊ†áÊ≥®Ê®°Âûã"
+        title: "—°‘Ò÷«ƒ‹±Í◊¢ƒ£–Õ"
         nameFilters: ["Model Files (*.wts *.onnx *.xml *.bin)", "All files (*)"]
         onAccepted: {
             smartModelPathInput.text = Utils.getCleanPath(smartModelPathDialog.file.toString())
-            GlobalSettings.data.smartAnnotationModelPath = smartModelPathInput.text
+            GlobalSettings.advanced.smartAnnotation.modelPath = smartModelPathInput.text
         }
     }
 
     FolderDialog {
         id: indexDirDialog
-        title: "ÈÄâÊã©ÁâπÂæÅÂ∫ì‰øùÂ≠òÁõÆÂΩï"
+        title: "—°‘ÒÃÿ’˜ø‚±£¥Êƒø¬º"
         onAccepted: {
             indexDirInput.text = Utils.getCleanPath(indexDirDialog.folder.toString())
-            GlobalSettings.data.featureExtractionIndexDirectory = indexDirInput.text
+            GlobalSettings.advanced.imageSearch.indexDirectory = indexDirInput.text
         }
     }
 }

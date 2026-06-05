@@ -21,7 +21,7 @@ Item {
     property string toolMode: "select"
     property bool showBoundingBoxes: false
     readonly property bool smartAnnotationAvailable: smartAnnotation
-                                                    && GlobalSettings.data.smartAnnotationEnabled
+                                                    && GlobalSettings.advanced.smartAnnotation.enabled
                                                     && dataManager
                                                     && (dataManager.method === DeepLearningMethod.Detection
                                                         || dataManager.method === DeepLearningMethod.Segmentation)
@@ -36,7 +36,7 @@ Item {
     property bool smartAnnotationDirty: false
     property var polygonPoints: []
     
-    // 暴露图像缩放属性
+    // 暴露图像缩放属�?
     property real imageScale: labelImage.image.scale
 
     onToolModeChanged: handleToolModeChanged()
@@ -73,7 +73,7 @@ Item {
 
     Timer {
         id: smartPreviewTimer
-        interval: Math.max(20, GlobalSettings.data.smartAnnotationRefreshInterval)
+        interval: Math.max(20, GlobalSettings.advanced.smartAnnotation.refreshInterval)
         repeat: false
         onTriggered: updateSmartAnnotationPreview()
     }
@@ -118,7 +118,7 @@ Item {
                  && smartAnnotationResult.success === true
                  && smartAnnotationResult.mask_runs
                  && smartAnnotationResult.mask_runs.length > 0
-                 && GlobalSettings.data.smartAnnotationMaskAlpha > 0
+                 && GlobalSettings.advanced.smartAnnotation.maskAlpha > 0
 
         onPaint: paintSmartMask()
     }
@@ -157,8 +157,8 @@ Item {
     }
 
     Connections {
-        target: GlobalSettings.data
-        function onSmartAnnotationMaskAlphaChanged() { smartMaskCanvas.requestPaint() }
+        target: GlobalSettings.advanced.smartAnnotation
+        function onMaskAlphaChanged() { smartMaskCanvas.requestPaint() }
     }
 
     onDrawingColorChanged: smartMaskCanvas.requestPaint()
@@ -238,7 +238,7 @@ Item {
         let scale = labelImage.image.scale
         let offsetX = labelImage.image.x
         let offsetY = labelImage.image.y
-        let alpha = Math.max(0, Math.min(1, GlobalSettings.data.smartAnnotationMaskAlpha))
+        let alpha = Math.max(0, Math.min(1, GlobalSettings.advanced.smartAnnotation.maskAlpha))
         ctx.save()
         ctx.fillStyle = Qt.rgba(drawingColor.r, drawingColor.g, drawingColor.b, alpha)
         for (let run of smartAnnotationResult.mask_runs) {
@@ -1100,7 +1100,7 @@ Item {
             return null
         }
         // 检查是否点击在已选中的标签上（优先角、边，其次内部）
-        // 只支持单选编辑
+        // 只支持单选编�?
         let selectedIndex = imageLabelsList.getTopSelectedIndex()
         if (selectedIndex !== -1) {
             let hit = imageLabelsList.hitTestHandle(pos, selectedIndex, labelImage.image.scale)

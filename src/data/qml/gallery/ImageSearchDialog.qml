@@ -65,19 +65,19 @@ DltPopup {
         let controller = imageSearchController()
         syncing = true
 
-        let modelName = GlobalSettings.data.featureExtractionModel
+        let modelName = GlobalSettings.advanced.imageSearch.model
         if (modelName === "" && controller) {
             modelName = controller.defaultModelName
         }
         setComboText(modelBox, modelName)
 
-        let modelPath = GlobalSettings.data.featureExtractionModelPath
+        let modelPath = GlobalSettings.advanced.imageSearch.modelPath
         if (modelPath === "") {
             modelPath = suggestedWeightsPath(modelName)
         }
         weightsPathInput.text = modelPath
 
-        let featureName = GlobalSettings.data.featureExtractionFeatureName
+        let featureName = GlobalSettings.advanced.imageSearch.featureName
         if (featureName === "" && controller) {
             featureName = controller.defaultFeatureName
         }
@@ -85,16 +85,16 @@ DltPopup {
         featureBox.featureName = featureName
         featureBox.refreshFeatureNames()
 
-        rebuildCheckBox.checked = GlobalSettings.data.featureExtractionRebuildIndex
-        topKEditor.value = GlobalSettings.data.featureExtractionTopK
-        setComboText(normBox, GlobalSettings.data.featureExtractionNorm)
-        setComboText(preprocessBox, GlobalSettings.data.featureExtractionPreprocessBackend)
-        setComboText(faissBackendBox, GlobalSettings.data.featureExtractionFaissBackend)
-        setComboText(indexStorageBox, GlobalSettings.data.featureExtractionIndexStorage)
-        diskBatchEditor.value = GlobalSettings.data.featureExtractionDiskBuildBatchSize
-        modelBatchEditor.value = GlobalSettings.data.featureExtractionModelBatchSize
-        setComboText(modelBackendBox, GlobalSettings.data.featureExtractionModelBackend)
-        setComboText(modelDeviceBox, GlobalSettings.data.featureExtractionModelDevice)
+        rebuildCheckBox.checked = GlobalSettings.advanced.imageSearch.rebuildIndex
+        topKEditor.value = GlobalSettings.advanced.imageSearch.topK
+        setComboText(normBox, GlobalSettings.advanced.imageSearch.norm)
+        setComboText(preprocessBox, GlobalSettings.advanced.imageSearch.preprocessBackend)
+        setComboText(faissBackendBox, GlobalSettings.advanced.imageSearch.faissBackend)
+        setComboText(indexStorageBox, GlobalSettings.advanced.imageSearch.indexStorage)
+        diskBatchEditor.value = GlobalSettings.advanced.imageSearch.diskBuildBatchSize
+        modelBatchEditor.value = GlobalSettings.advanced.imageSearch.modelBatchSize
+        setComboText(modelBackendBox, GlobalSettings.advanced.imageSearch.modelBackend)
+        setComboText(modelDeviceBox, GlobalSettings.advanced.imageSearch.modelDevice)
 
         lastSuggestedWeightsPath = suggestedWeightsPath(modelName)
         syncing = false
@@ -121,11 +121,11 @@ DltPopup {
 
         let previousSuggested = lastSuggestedWeightsPath
         let nextSuggested = suggestedWeightsPath(modelName)
-        GlobalSettings.data.featureExtractionModel = modelName
+        GlobalSettings.advanced.imageSearch.model = modelName
         featureBox.modelName = modelName
         if (weightsPathInput.text === "" || weightsPathInput.text === previousSuggested) {
             weightsPathInput.text = nextSuggested
-            GlobalSettings.data.featureExtractionModelPath = nextSuggested
+            GlobalSettings.advanced.imageSearch.modelPath = nextSuggested
         }
         lastSuggestedWeightsPath = nextSuggested
         featureBox.refreshFeatureNames()
@@ -133,19 +133,19 @@ DltPopup {
 
     function persistSettings() {
         featureBox.rememberCurrentText()
-        GlobalSettings.data.featureExtractionModel = comboText(modelBox)
-        GlobalSettings.data.featureExtractionModelPath = trimText(weightsPathInput.text)
-        GlobalSettings.data.featureExtractionFeatureName = featureBox.currentFeatureText()
-        GlobalSettings.data.featureExtractionRebuildIndex = rebuildCheckBox.checked
-        GlobalSettings.data.featureExtractionTopK = Math.round(topKEditor.value)
-        GlobalSettings.data.featureExtractionNorm = normBox.currentText
-        GlobalSettings.data.featureExtractionPreprocessBackend = preprocessBox.currentText
-        GlobalSettings.data.featureExtractionFaissBackend = faissBackendBox.currentText
-        GlobalSettings.data.featureExtractionIndexStorage = indexStorageBox.currentText
-        GlobalSettings.data.featureExtractionDiskBuildBatchSize = Math.round(diskBatchEditor.value)
-        GlobalSettings.data.featureExtractionModelBatchSize = Math.round(modelBatchEditor.value)
-        GlobalSettings.data.featureExtractionModelBackend = modelBackendBox.currentText
-        GlobalSettings.data.featureExtractionModelDevice = modelDeviceBox.currentText
+        GlobalSettings.advanced.imageSearch.model = comboText(modelBox)
+        GlobalSettings.advanced.imageSearch.modelPath = trimText(weightsPathInput.text)
+        GlobalSettings.advanced.imageSearch.featureName = featureBox.currentFeatureText()
+        GlobalSettings.advanced.imageSearch.rebuildIndex = rebuildCheckBox.checked
+        GlobalSettings.advanced.imageSearch.topK = Math.round(topKEditor.value)
+        GlobalSettings.advanced.imageSearch.norm = normBox.currentText
+        GlobalSettings.advanced.imageSearch.preprocessBackend = preprocessBox.currentText
+        GlobalSettings.advanced.imageSearch.faissBackend = faissBackendBox.currentText
+        GlobalSettings.advanced.imageSearch.indexStorage = indexStorageBox.currentText
+        GlobalSettings.advanced.imageSearch.diskBuildBatchSize = Math.round(diskBatchEditor.value)
+        GlobalSettings.advanced.imageSearch.modelBatchSize = Math.round(modelBatchEditor.value)
+        GlobalSettings.advanced.imageSearch.modelBackend = modelBackendBox.currentText
+        GlobalSettings.advanced.imageSearch.modelDevice = modelDeviceBox.currentText
     }
 
     function selectedDatasetIds() {
@@ -161,26 +161,26 @@ DltPopup {
 
     function startSearch() {
         let controller = imageSearchController()
-        if (!controller || !GlobalSettings.data.featureExtractionEnabled) {
+        if (!controller || !GlobalSettings.advanced.imageSearch.enabled) {
             return
         }
 
         persistSettings()
         let started = controller.searchSelectedImages(
                     selectedDatasetIds(),
-                    GlobalSettings.data.featureExtractionModel,
-                    GlobalSettings.data.featureExtractionModelPath,
-                    GlobalSettings.data.featureExtractionFeatureName,
-                    GlobalSettings.data.featureExtractionRebuildIndex,
-                    GlobalSettings.data.featureExtractionTopK,
-                    GlobalSettings.data.featureExtractionNorm,
-                    GlobalSettings.data.featureExtractionPreprocessBackend,
-                    GlobalSettings.data.featureExtractionFaissBackend,
-                    GlobalSettings.data.featureExtractionIndexStorage,
-                    GlobalSettings.data.featureExtractionDiskBuildBatchSize,
-                    GlobalSettings.data.featureExtractionModelBatchSize,
-                    GlobalSettings.data.featureExtractionModelBackend,
-                    GlobalSettings.data.featureExtractionModelDevice)
+                    GlobalSettings.advanced.imageSearch.model,
+                    GlobalSettings.advanced.imageSearch.modelPath,
+                    GlobalSettings.advanced.imageSearch.featureName,
+                    GlobalSettings.advanced.imageSearch.rebuildIndex,
+                    GlobalSettings.advanced.imageSearch.topK,
+                    GlobalSettings.advanced.imageSearch.norm,
+                    GlobalSettings.advanced.imageSearch.preprocessBackend,
+                    GlobalSettings.advanced.imageSearch.faissBackend,
+                    GlobalSettings.advanced.imageSearch.indexStorage,
+                    GlobalSettings.advanced.imageSearch.diskBuildBatchSize,
+                    GlobalSettings.advanced.imageSearch.modelBatchSize,
+                    GlobalSettings.advanced.imageSearch.modelBackend,
+                    GlobalSettings.advanced.imageSearch.modelDevice)
         if (started) {
             close()
         }
@@ -215,7 +215,7 @@ DltPopup {
             }
         }
 
-        // 可滚动内容
+        // 可滚动内�?
         DltScrollablePage {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -239,15 +239,15 @@ DltPopup {
                         anchors.fill: parent
                         anchors.margins: 12
                         spacing: 10
-                        enabled: GlobalSettings.data.featureExtractionEnabled
+                        enabled: GlobalSettings.advanced.imageSearch.enabled
 
-                        // 搜索数据集
+                        // 搜索数据�?
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 4
 
                             DltText {
-                                text: "搜索数据集"
+                                text: "\u641c\u7d22\u6570\u636e\u96c6"
                                 color: DltColor.FontDark
                             }
 
@@ -346,7 +346,7 @@ DltPopup {
                                     Layout.fillWidth: true
                                     placeholderText: "选择 .wts 权重文件"
                                     onEditingFinished: {
-                                        GlobalSettings.data.featureExtractionModelPath = dialog.trimText(text)
+                                        GlobalSettings.advanced.imageSearch.modelPath = dialog.trimText(text)
                                     }
                                 }
                                 DltTextIconButton {
@@ -382,9 +382,9 @@ DltPopup {
                                 width: parent.width * 2 / 3
                                 imageSearch: dialog.imageSearchController()
                                 modelName: dialog.comboText(modelBox)
-                                featureName: GlobalSettings.data.featureExtractionFeatureName
+                                featureName: GlobalSettings.advanced.imageSearch.featureName
                                 onFeatureNameAccepted: function (featureName) {
-                                    GlobalSettings.data.featureExtractionFeatureName = featureName
+                                    GlobalSettings.advanced.imageSearch.featureName = featureName
                                 }
                             }
                         }
@@ -413,7 +413,7 @@ DltPopup {
                                 model: ["tensorrt", "openvino", "onnxruntime"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.data.featureExtractionModelBackend = currentText
+                                        GlobalSettings.advanced.imageSearch.modelBackend = currentText
                                     }
                                 }
                             }
@@ -443,7 +443,7 @@ DltPopup {
                                 model: ["gpu", "cpu"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.data.featureExtractionModelDevice = currentText
+                                        GlobalSettings.advanced.imageSearch.modelDevice = currentText
                                     }
                                 }
                             }
@@ -477,13 +477,13 @@ DltPopup {
                                 step: 1
                                 onValueChanged: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.data.featureExtractionModelBatchSize = Math.round(value)
+                                        GlobalSettings.advanced.imageSearch.modelBatchSize = Math.round(value)
                                     }
                                 }
                             }
                         }
 
-                        // 特征库重建
+                        // 特征库重�?
                         Item {
                             Layout.fillWidth: true
                             implicitHeight: 24
@@ -494,7 +494,7 @@ DltPopup {
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
-                                text: "特征库重建"
+                                text: "\u7279\u5f81\u5e93\u91cd\u5efa"
                                 color: DltColor.FontDark
                             }
                             DltToggleSwitch {
@@ -505,7 +505,7 @@ DltPopup {
                                 }
                                 onToggled: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.data.featureExtractionRebuildIndex = checked
+                                        GlobalSettings.advanced.imageSearch.rebuildIndex = checked
                                     }
                                 }
                             }
@@ -539,7 +539,7 @@ DltPopup {
                                 step: 1
                                 onValueChanged: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.data.featureExtractionTopK = Math.round(value)
+                                        GlobalSettings.advanced.imageSearch.topK = Math.round(value)
                                     }
                                 }
                             }
@@ -573,13 +573,13 @@ DltPopup {
                                 step: 1
                                 onValueChanged: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.data.featureExtractionDiskBuildBatchSize = Math.round(value)
+                                        GlobalSettings.advanced.imageSearch.diskBuildBatchSize = Math.round(value)
                                     }
                                 }
                             }
                         }
 
-                        // 归一化
+                        // 归一�?
                         Item {
                             Layout.fillWidth: true
                             implicitHeight: 34
@@ -590,7 +590,7 @@ DltPopup {
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
-                                text: "归一化"
+                                text: "\u5f52\u4e00\u5316"
                                 color: DltColor.FontDark
                             }
                             DltComboBox {
@@ -603,13 +603,13 @@ DltPopup {
                                 model: ["l2", "l1", "none"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.data.featureExtractionNorm = currentText
+                                        GlobalSettings.advanced.imageSearch.norm = currentText
                                     }
                                 }
                             }
                         }
 
-                        // 预处理
+                        // 预处�?
                         Item {
                             Layout.fillWidth: true
                             implicitHeight: 34
@@ -620,7 +620,7 @@ DltPopup {
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
-                                text: "预处理"
+                                text: "\u9884\u5904\u7406"
                                 color: DltColor.FontDark
                             }
                             DltComboBox {
@@ -633,7 +633,7 @@ DltPopup {
                                 model: ["cpu", "gpu"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.data.featureExtractionPreprocessBackend = currentText
+                                        GlobalSettings.advanced.imageSearch.preprocessBackend = currentText
                                     }
                                 }
                             }
@@ -663,7 +663,7 @@ DltPopup {
                                 model: ["cpu", "gpu"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.data.featureExtractionFaissBackend = currentText
+                                        GlobalSettings.advanced.imageSearch.faissBackend = currentText
                                         if (currentText === "gpu") {
                                             dialog.setComboText(indexStorageBox, "ram")
                                         }
@@ -697,7 +697,7 @@ DltPopup {
                                 model: ["ram", "disk"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.data.featureExtractionIndexStorage = currentText
+                                        GlobalSettings.advanced.imageSearch.indexStorage = currentText
                                     }
                                 }
                             }
@@ -728,10 +728,10 @@ DltPopup {
                 onClicked: dialog.close()
             }
             DltButton {
-                text: "开始搜索"
+                text: "\u5f00\u59cb\u641c\u7d22"
                 enabled: dialog.imageSearchController()
                          && !dialog.imageSearchController().running
-                         && GlobalSettings.data.featureExtractionEnabled
+                         && GlobalSettings.advanced.imageSearch.enabled
                 onClicked: dialog.startSearch()
             }
         }
@@ -743,7 +743,7 @@ DltPopup {
         nameFilters: ["Weights (*.wts *.onnx)", "All files (*)"]
         onAccepted: {
             weightsPathInput.text = Utils.getCleanPath(weightsFileDialog.file.toString())
-            GlobalSettings.data.featureExtractionModelPath = weightsPathInput.text
+            GlobalSettings.advanced.imageSearch.modelPath = weightsPathInput.text
         }
     }
 }

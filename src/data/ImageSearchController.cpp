@@ -636,7 +636,7 @@ QString ImageSearchController::computeIndexPath(const SearchRequest &request) co
     const std::vector<int64_t> sorted_dataset_ids(dataset_ids.begin(), dataset_ids.end());
     const QString              index_dir = indexDirectoryForProject(
         data_manager_->databasePath(),
-        dltool::settings::GlobalSettings::getInstance()->data()->featureExtractionIndexDirectory());
+        dltool::settings::GlobalSettings::getInstance()->advanced()->imageSearch()->indexDirectory());
 
     return indexPathForRequest(index_dir, sorted_dataset_ids, gallery_ids, request.model_name, request.feature_name,
                                request.norm, request.faiss_backend, request.index_storage, request.model_backend_str,
