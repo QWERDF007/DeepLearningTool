@@ -12,8 +12,11 @@
 #include <QFileInfo>
 #include <QImage>
 #include <QLineF>
+#include <QMetaObject>
 #include <QPointF>
+#include <QPointer>
 #include <QRectF>
+#include <QThread>
 
 #include <algorithm>
 #include <cmath>
@@ -371,6 +374,55 @@ irt::model::ModelDevice parseModelDevice(const QString &device)
 {
     return normalizedDevice(device) == QStringLiteral("cpu") ? irt::model::ModelDevice::CPU
                                                              : irt::model::ModelDevice::GPU;
+}
+
+struct SmartModelLoadRequest
+{
+    QString model_name;
+    QString backend;
+    QString device;
+    QString absolute_model_path;
+    QString runtime_model_name;
+    QString key;
+};
+
+SmartModelLoadRequest buildSmartModelLoadRequest(const QString &model_name, const QString &model_path,
+                                                 const QString &backend, const QString &device)
+{
+    const QFileInfo model_info(model_path);
+    SmartModelLoadRequest request;
+    request.model_name          = normalizedModelName(model_name);
+    request.backend             = normalizedBackend(backend);
+    request.device              = normalizedDevice(device);
+    request.absolute_model_path = model_info.absoluteFilePath();
+    request.runtime_model_name  = isTensorRtBackend(request.backend) ? request.model_name : QStringLiteral("onnx");
+    request.key                 = QStringLiteral("%1|%2|%3|%4")
+                      .arg(request.model_name.toLower(), request.backend, request.device,
+                           QDir::cleanPath(request.absolute_model_path).toCaseFolded());
+    return request;
+}
+
+std::unique_ptr<irt::model::IModel> loadSmartModel(const SmartModelLoadRequest &request)
+{
+    auto config = std::make_unique<SmartModelConfig>();
+    config->setBackend(parseModelBackend(request.backend));
+    config->setDevice(parseModelDevice(request.device));
+
+    spdlog::info("Loading smart annotation model: model={}, runtime={}, backend={}, device={}, path={}",
+                 request.model_name.toStdString(), request.runtime_model_name.toStdString(),
+                 request.backend.toStdString(), request.device.toStdString(), request.absolute_model_path.toStdString());
+    auto model = irt::model::CreateModel(request.runtime_model_name.toStdString(), std::move(config));
+    if (!model)
+    {
+        throw std::runtime_error(
+            QStringLiteral("Failed to create InferRT model: %1").arg(request.runtime_model_name).toStdString());
+    }
+    model->setLogLevel(nvinfer1::ILogger::Severity::kWARNING);
+    model->buildOrLoad(request.absolute_model_path.toStdString());
+    spdlog::info("Smart annotation model loaded: model={}, backend={}, device={}, path={}",
+                 request.model_name.toStdString(), request.backend.toStdString(), request.device.toStdString(),
+                 request.absolute_model_path.toStdString());
+    return model;
 }
 
 void checkCuda(cudaError_t status, const char *operation)
@@ -1170,54 +1222,121 @@ void SmartAnnotationController::clearCache()
 {
     model_.reset();
     cached_model_key_.clear();
+    loading_model_key_.clear();
+    setLoadingModel(false);
+    setRunning(false);
 }
 
 bool SmartAnnotationController::ensureModel(const QString &model_name, const QString &model_path,
                                             const QString &backend, const QString &device)
 {
-    const QFileInfo model_info(model_path);
-    const QString   absolute_model_path = model_info.absoluteFilePath();
-    const QString   key                 = QStringLiteral("%1|%2|%3|%4")
-                            .arg(normalizedModelName(model_name).toLower(), normalizedBackend(backend),
-                                 normalizedDevice(device), QDir::cleanPath(absolute_model_path).toCaseFolded());
+    const SmartModelLoadRequest request = buildSmartModelLoadRequest(model_name, model_path, backend, device);
 
-    if (model_ != nullptr && cached_model_key_ == key)
+    if (model_ != nullptr && cached_model_key_ == request.key)
     {
         return true;
     }
 
-    auto config = std::make_unique<SmartModelConfig>();
-    config->setBackend(parseModelBackend(backend));
-    config->setDevice(parseModelDevice(device));
-
-    const QString runtime_model_name
-        = isTensorRtBackend(backend) ? normalizedModelName(model_name) : QStringLiteral("onnx");
-    spdlog::info("Loading smart annotation model: model={}, runtime={}, backend={}, device={}, path={}",
-                 normalizedModelName(model_name).toStdString(), runtime_model_name.toStdString(),
-                 normalizedBackend(backend).toStdString(), normalizedDevice(device).toStdString(),
-                 absolute_model_path.toStdString());
-    auto model = irt::model::CreateModel(runtime_model_name.toStdString(), std::move(config));
-    if (!model)
-    {
-        throw std::runtime_error(QStringLiteral("创建 InferRT 模型失败: %1").arg(runtime_model_name).toStdString());
-    }
-    model->setLogLevel(nvinfer1::ILogger::Severity::kWARNING);
-    model->buildOrLoad(absolute_model_path.toStdString());
-    spdlog::info("Smart annotation model loaded: model={}, backend={}, device={}, path={}",
-                 normalizedModelName(model_name).toStdString(), normalizedBackend(backend).toStdString(),
-                 normalizedDevice(device).toStdString(), absolute_model_path.toStdString());
-
-    model_            = std::move(model);
-    cached_model_key_ = key;
+    model_            = loadSmartModel(request);
+    cached_model_key_ = request.key;
     return true;
+}
+
+void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, const QString &model_path,
+                                                    const QString &backend, const QString &device)
+{
+    const SmartModelLoadRequest request = buildSmartModelLoadRequest(model_name, model_path, backend, device);
+    if (loading_model_ && loading_model_key_ == request.key)
+    {
+        return;
+    }
+
+    loading_model_key_ = request.key;
+    setLastError(QString());
+    setLoadingModel(true);
+    setRunning(true);
+
+    QPointer<SmartAnnotationController> controller(this);
+    QThread *work_thread = QThread::create(
+        [controller, request]()
+        {
+            auto    model_holder = std::make_shared<std::unique_ptr<irt::model::IModel>>();
+            QString error;
+            bool    success = false;
+
+            try
+            {
+                *model_holder = loadSmartModel(request);
+                success       = true;
+            }
+            catch (const std::exception &e)
+            {
+                error = QString::fromUtf8(e.what());
+                spdlog::error("Smart annotation model load failed: {}", error.toStdString());
+            }
+            catch (...)
+            {
+                error = QStringLiteral("Unknown smart annotation model load error");
+                spdlog::error("Smart annotation model load failed with unknown error");
+            }
+
+            if (!controller)
+            {
+                return;
+            }
+
+            QMetaObject::invokeMethod(
+                controller.data(),
+                [controller, request, model_holder, error, success]() mutable
+                {
+                    if (!controller)
+                    {
+                        return;
+                    }
+
+                    if (controller->loading_model_key_ != request.key)
+                    {
+                        return;
+                    }
+
+                    controller->loading_model_key_.clear();
+                    if (success)
+                    {
+                        controller->model_            = std::move(*model_holder);
+                        controller->cached_model_key_ = request.key;
+                        controller->setLastError(QString());
+                    }
+                    else
+                    {
+                        controller->model_.reset();
+                        controller->cached_model_key_.clear();
+                        controller->setLastError(error);
+                    }
+
+                    controller->setLoadingModel(false);
+                    controller->setRunning(false);
+                    emit controller->modelLoadFinished(success);
+                },
+                Qt::QueuedConnection);
+        });
+
+    connect(work_thread, &QThread::finished, work_thread, &QObject::deleteLater);
+    work_thread->start();
 }
 
 QVariantMap SmartAnnotationController::infer(const QString &image_path, const QVariantList &prompt_points)
 {
     QVariantMap result{
         {QStringLiteral("success"), false},
-        {  QStringLiteral("error"),    {}}
+        {  QStringLiteral("error"),    {}},
+        {QStringLiteral("loading"), false}
     };
+
+    if (loading_model_)
+    {
+        result[QStringLiteral("loading")] = true;
+        return result;
+    }
 
     if (running_)
     {
@@ -1252,10 +1371,17 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
             throw std::runtime_error(QStringLiteral("智能标注模型文件不存在: %1").arg(model_path).toStdString());
         }
 
+        const SmartModelLoadRequest request = buildSmartModelLoadRequest(model_name, model_path, backend, device);
+        if (model_ == nullptr || cached_model_key_ != request.key)
+        {
+            startAsyncModelLoad(model_name, model_path, backend, device);
+            result[QStringLiteral("loading")] = true;
+            return result;
+        }
+
         const QImage image = loadRgbImage(image_path);
 
         setRunning(true);
-        ensureModel(model_name, model_path, backend, device);
 
         const auto input_names = model_->ioTensorNames(nvinfer1::TensorIOMode::kINPUT);
         const auto output_names = model_->ioTensorNames(nvinfer1::TensorIOMode::kOUTPUT);
@@ -1479,6 +1605,16 @@ void SmartAnnotationController::setRunning(bool running)
     }
     running_ = running;
     emit runningChanged();
+}
+
+void SmartAnnotationController::setLoadingModel(bool loading_model)
+{
+    if (loading_model_ == loading_model)
+    {
+        return;
+    }
+    loading_model_ = loading_model;
+    emit loadingModelChanged();
 }
 
 void SmartAnnotationController::setLastError(const QString &last_error)

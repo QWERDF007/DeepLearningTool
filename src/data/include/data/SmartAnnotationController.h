@@ -24,6 +24,7 @@ class DATA_API SmartAnnotationController : public QObject
     QML_UNCREATABLE("Can not create SmartAnnotationController directly!")
 
     Q_PROPERTY(bool running READ isRunning NOTIFY runningChanged FINAL)
+    Q_PROPERTY(bool loadingModel READ isLoadingModel NOTIFY loadingModelChanged FINAL)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged FINAL)
 
 public:
@@ -33,6 +34,11 @@ public:
     bool isRunning() const
     {
         return running_;
+    }
+
+    bool isLoadingModel() const
+    {
+        return loading_model_;
     }
 
     QString lastError() const
@@ -48,17 +54,24 @@ public:
 
 signals:
     void runningChanged();
+    void loadingModelChanged();
     void lastErrorChanged();
+    void modelLoadFinished(bool success);
 
 private:
     bool ensureModel(const QString &model_name, const QString &model_path, const QString &backend,
                      const QString &device);
+    void startAsyncModelLoad(const QString &model_name, const QString &model_path, const QString &backend,
+                             const QString &device);
     void setRunning(bool running);
+    void setLoadingModel(bool loading_model);
     void setLastError(const QString &last_error);
 
     std::unique_ptr<irt::model::IModel> model_;
     QString                             cached_model_key_;
+    QString                             loading_model_key_;
     bool                                running_{false};
+    bool                                loading_model_{false};
     QString                             last_error_;
 };
 

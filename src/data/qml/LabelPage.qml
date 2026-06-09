@@ -17,6 +17,8 @@ Rectangle {
     color: DltColor.Background
 
     property DataManager dataManager
+    readonly property var smartAnnotationController: dataManager ? dataManager.smartAnnotation : null
+    readonly property bool smartAnnotationLoading: smartAnnotationController ? smartAnnotationController.loadingModel : false
 
     DltSplitView {
         anchors.fill: parent
@@ -183,6 +185,45 @@ Rectangle {
                         Layout.fillHeight: true
                         Layout.fillWidth: true
                         dataManager: labelPage.dataManager
+                    }
+                }
+            }
+
+            Connections {
+                target: labelPage.smartAnnotationController
+                function onModelLoadFinished(success) {
+                    if (success && labelCanvas.smartAnnotationMode) {
+                        labelCanvas.updateSmartAnnotationPreview()
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                z: 100
+                visible: labelPage.smartAnnotationLoading
+                color: "#66000000"
+
+                MouseArea {
+                    anchors.fill: parent
+                }
+
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 10
+
+                    BusyIndicator {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 48
+                        height: 48
+                        running: labelPage.smartAnnotationLoading
+                    }
+
+                    DltText {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "正在加载智能标注模型..."
+                        color: "white"
+                        font: DltFont.Body
                     }
                 }
             }
