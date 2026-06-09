@@ -213,7 +213,7 @@ DltPopup {
 
             DltText {
                 Layout.fillWidth: true
-                text: "ÉèÖÃ"
+                text: "è®¾ç½®"
                 font: DltFont.Title
                 color: DltColor.FontPrimary
             }
@@ -254,7 +254,7 @@ DltPopup {
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
-                                text: "ÌØÕ÷ÌáÈ¡"
+                                text: "ç‰¹å¾æå–"
                                 font: DltFont.Subtitle
                                 color: DltColor.FontPrimary
                             }
@@ -265,7 +265,7 @@ DltPopup {
                                     right: parent.right
                                     verticalCenter: parent.verticalCenter
                                 }
-                                text: "ÆôÓÃ"
+                                text: "å¯ç”¨"
                                 checked: GlobalSettings.advanced.imageSearch.enabled
                                 onToggled: {
                                     if (!dialog.syncing) {
@@ -280,7 +280,7 @@ DltPopup {
                             spacing: 10
                             enabled: enableCheckBox.checked
 
-                            // Ä£ĞÍ
+                            // æ¨¡å‹
                             Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 34
@@ -291,7 +291,7 @@ DltPopup {
                                         verticalCenter: parent.verticalCenter
                                     }
                                     width: parent.width / 3
-                                    text: "Ä£ĞÍ"
+                                    text: "æ¨¡å‹"
                                     color: DltColor.FontDark
                                 }
                                 DltComboBox {
@@ -311,7 +311,7 @@ DltPopup {
                                 }
                             }
 
-                            // Ä£ĞÍÂ·¾¶
+                            // æ¨¡å‹è·¯å¾„
                             Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 34
@@ -322,7 +322,7 @@ DltPopup {
                                         verticalCenter: parent.verticalCenter
                                     }
                                     width: parent.width / 3
-                                    text: "Ä£ĞÍÂ·¾¶"
+                                    text: "æ¨¡å‹è·¯å¾„"
                                     color: DltColor.FontDark
                                 }
                                 RowLayout {
@@ -336,7 +336,7 @@ DltPopup {
                                     DltTextField {
                                         id: modelPathInput
                                         Layout.fillWidth: true
-                                        placeholderText: "Ñ¡Ôñ .wts È¨ÖØÎÄ¼ş"
+                                        placeholderText: "é€‰æ‹© .wts æƒé‡æ–‡ä»¶"
                                         onEditingFinished: {
                                             if (!dialog.syncing) {
                                                 GlobalSettings.advanced.imageSearch.modelPath = dialog.trimText(text)
@@ -348,13 +348,13 @@ DltPopup {
                                         Layout.preferredWidth: 34
                                         Layout.preferredHeight: 34
                                         iconSource: DltFontIcon.OpenFile
-                                        text: "´ò¿ª"
+                                        text: "æ‰“å¼€"
                                         onClicked: modelPathDialog.open()
                                     }
                                 }
                             }
 
-                            // ÌØÕ÷²ãÃû
+                            // ç‰¹å¾å±‚å
                             Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 34
@@ -365,7 +365,7 @@ DltPopup {
                                         verticalCenter: parent.verticalCenter
                                     }
                                     width: parent.width / 3
-                                    text: "ÌØÕ÷²ãÃû"
+                                    text: "ç‰¹å¾å±‚å"
                                     color: DltColor.FontDark
                                 }
                                 FeatureNameComboBox {
@@ -384,7 +384,7 @@ DltPopup {
                                 }
                             }
 
-                            // ÍÆÀíºó¶Ë
+                            // æ¨ç†åç«¯
                             Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 34
@@ -395,7 +395,7 @@ DltPopup {
                                         verticalCenter: parent.verticalCenter
                                     }
                                     width: parent.width / 3
-                                    text: "ÍÆÀíºó¶Ë"
+                                    text: "æ¨ç†åç«¯"
                                     color: DltColor.FontDark
                                 }
                                 DltComboBox {
@@ -414,7 +414,7 @@ DltPopup {
                                 }
                             }
 
-                            // ÍÆÀíÉè±¸
+                            // æ¨ç†è®¾å¤‡
                             Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 34
@@ -425,7 +425,7 @@ DltPopup {
                                         verticalCenter: parent.verticalCenter
                                     }
                                     width: parent.width / 3
-                                    text: "ÍÆÀíÉè±¸"
+                                    text: "æ¨ç†è®¾å¤‡"
                                     color: DltColor.FontDark
                                 }
                                 DltComboBox {
@@ -444,7 +444,7 @@ DltPopup {
                                 }
                             }
 
-                            // Ä£ĞÍÅú´Î
+                            // æ¨¡å‹æ‰¹æ¬¡
                             Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 32
@@ -455,7 +455,7 @@ DltPopup {
                                         verticalCenter: parent.verticalCenter
                                     }
                                     width: parent.width / 3
-                                    text: "Ä£ĞÍÅú´Î"
+                                    text: "æ¨¡å‹æ‰¹æ¬¡"
                                     color: DltColor.FontDark
                                 }
                                 DltSpinEditor {
@@ -478,7 +478,7 @@ DltPopup {
                                 }
                             }
 
-                            // ÌØÕ÷¿âÄ¿Â¼
+                            // ç‰¹å¾åº“ç›®å½•
                             Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 34
@@ -489,7 +489,7 @@ DltPopup {
                                         verticalCenter: parent.verticalCenter
                                     }
                                     width: parent.width / 3
-                                    text: "ÌØÕ÷¿âÄ¿Â¼"
+                                    text: "ç‰¹å¾åº“ç›®å½•"
                                     color: DltColor.FontDark
                                 }
                                 RowLayout {
@@ -503,7 +503,7 @@ DltPopup {
                                     DltTextField {
                                         id: indexDirInput
                                         Layout.fillWidth: true
-                                        placeholderText: "Áô¿ÕÔòÊ¹ÓÃÏîÄ¿Ä¿Â¼"
+                                        placeholderText: "ç•™ç©ºåˆ™ä½¿ç”¨é¡¹ç›®ç›®å½•"
                                         text: GlobalSettings.advanced.imageSearch.indexDirectory
                                         onEditingFinished: {
                                             if (!dialog.syncing) {
@@ -516,7 +516,7 @@ DltPopup {
                                         Layout.preferredWidth: 34
                                         Layout.preferredHeight: 34
                                         iconSource: DltFontIcon.OpenFile
-                                        text: "Ñ¡Ôñ"
+                                        text: "é€‰æ‹©"
                                         onClicked: indexDirDialog.open()
                                     }
                                 }
@@ -526,7 +526,7 @@ DltPopup {
                         DltExpander {
                             id: advancedExpander
                             Layout.fillWidth: true
-                            headerText: "¸ß¼¶ÉèÖÃ"
+                            headerText: "é«˜çº§è®¾ç½®"
                             contentHeight: 310
                             enabled: enableCheckBox.checked
                             onExpandChanged: dialog.advancedExpanded = expand
@@ -536,7 +536,7 @@ DltPopup {
                                 anchors.margins: 12
                                 spacing: 8
 
-                                // ÌØÕ÷¿âÖØ½¨
+                                // ç‰¹å¾åº“é‡å»º
                                 Item {
                                     Layout.fillWidth: true
                                     implicitHeight: 24
@@ -547,7 +547,7 @@ DltPopup {
                                             verticalCenter: parent.verticalCenter
                                         }
                                         width: parent.width / 3
-                                        text: "ÌØÕ÷¿âÖØ½¨"
+                                        text: "ç‰¹å¾åº“é‡å»º"
                                         color: DltColor.FontDark
                                     }
                                     DltToggleSwitch {
@@ -597,7 +597,7 @@ DltPopup {
                                     }
                                 }
 
-                                // ´ÅÅÌÅú´Î
+                                // ç£ç›˜æ‰¹æ¬¡
                                 Item {
                                     Layout.fillWidth: true
                                     implicitHeight: 32
@@ -608,7 +608,7 @@ DltPopup {
                                             verticalCenter: parent.verticalCenter
                                         }
                                         width: parent.width / 3
-                                        text: "´ÅÅÌÅú´Î"
+                                        text: "ç£ç›˜æ‰¹æ¬¡"
                                         color: DltColor.FontDark
                                     }
                                     DltSpinEditor {
@@ -630,7 +630,7 @@ DltPopup {
                                     }
                                 }
 
-                                // ¹éÒ»»¯
+                                // å½’ä¸€åŒ–
                                 Item {
                                     Layout.fillWidth: true
                                     implicitHeight: 34
@@ -641,7 +641,7 @@ DltPopup {
                                             verticalCenter: parent.verticalCenter
                                         }
                                         width: parent.width / 3
-                                        text: "¹éÒ»»¯"
+                                        text: "å½’ä¸€åŒ–"
                                         color: DltColor.FontDark
                                     }
                                     DltComboBox {
@@ -660,7 +660,7 @@ DltPopup {
                                     }
                                 }
 
-                                // Ô¤´¦Àí
+                                // é¢„å¤„ç†
                                 Item {
                                     Layout.fillWidth: true
                                     implicitHeight: 34
@@ -671,7 +671,7 @@ DltPopup {
                                             verticalCenter: parent.verticalCenter
                                         }
                                         width: parent.width / 3
-                                        text: "Ô¤´¦Àí"
+                                        text: "é¢„å¤„ç†"
                                         color: DltColor.FontDark
                                     }
                                     DltComboBox {
@@ -723,7 +723,7 @@ DltPopup {
                                     }
                                 }
 
-                                // Ë÷Òı´æ´¢
+                                // ç´¢å¼•å­˜å‚¨
                                 Item {
                                     Layout.fillWidth: true
                                     implicitHeight: 34
@@ -734,7 +734,7 @@ DltPopup {
                                             verticalCenter: parent.verticalCenter
                                         }
                                         width: parent.width / 3
-                                        text: "Ë÷Òı´æ´¢"
+                                        text: "ç´¢å¼•å­˜å‚¨"
                                         color: DltColor.FontDark
                                     }
                                     DltComboBox {
@@ -784,7 +784,7 @@ DltPopup {
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
-                                text: "ÖÇÄÜ±ê×¢"
+                                text: "æ™ºèƒ½æ ‡æ³¨"
                                 font: DltFont.Subtitle
                                 color: DltColor.FontPrimary
                             }
@@ -795,7 +795,7 @@ DltPopup {
                                     right: parent.right
                                     verticalCenter: parent.verticalCenter
                                 }
-                                text: "ÆôÓÃ"
+                                text: "å¯ç”¨"
                                 checked: GlobalSettings.advanced.smartAnnotation.enabled
                                 onToggled: {
                                     if (!dialog.syncing) {
@@ -820,7 +820,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "Ä£ĞÍ"
+                                            text: "æ¨¡å‹"
                                             color: DltColor.FontDark
                                         }
                                         DltComboBox {
@@ -856,7 +856,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "Ä£ĞÍÎÄ¼ş"
+                                            text: "æ¨¡å‹æ–‡ä»¶"
                                             color: DltColor.FontDark
                                         }
                                         RowLayout {
@@ -870,7 +870,7 @@ DltPopup {
                                             DltTextField {
                                                 id: smartModelPathInput
                                                 Layout.fillWidth: true
-                                                placeholderText: "Ñ¡Ôñ .wts »ò .onnx Ä£ĞÍÎÄ¼ş"
+                                                placeholderText: "é€‰æ‹© .wts æˆ– .onnx æ¨¡å‹æ–‡ä»¶"
                                                 onEditingFinished: {
                                                     if (!dialog.syncing) {
                                                         GlobalSettings.advanced.smartAnnotation.modelPath = dialog.trimText(text)
@@ -882,7 +882,7 @@ DltPopup {
                                                 Layout.preferredWidth: 34
                                                 Layout.preferredHeight: 34
                                                 iconSource: DltFontIcon.OpenFile
-                                                text: "´ò¿ª"
+                                                text: "æ‰“å¼€"
                                                 onClicked: smartModelPathDialog.open()
                                             }
                                         }
@@ -898,7 +898,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "ÍÆÀíºó¶Ë"
+                                            text: "æ¨ç†åç«¯"
                                             color: DltColor.FontDark
                                         }
                                         DltComboBox {
@@ -923,7 +923,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "ÍÆÀíÉè±¸"
+                                            text: "æ¨ç†è®¾å¤‡"
                                             color: DltColor.FontDark
                                         }
                                         DltComboBox {
@@ -952,7 +952,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "MaskãĞÖµ"
+                                            text: "Maské˜ˆå€¼"
                                             color: DltColor.FontDark
                                         }
                                         DltSpinEditor {
@@ -985,7 +985,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "Ë¢ĞÂ¼ä¸ô(ms)"
+                                            text: "åˆ·æ–°é—´éš”(ms)"
                                             color: DltColor.FontDark
                                         }
                                         DltSpinEditor {
@@ -1018,7 +1018,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "MaskÍ¸Ã÷¶È"
+                                            text: "Maské€æ˜åº¦"
                                             color: DltColor.FontDark
                                         }
                                         DltSpinEditor {
@@ -1051,7 +1051,7 @@ DltPopup {
                                                 verticalCenter: parent.verticalCenter
                                             }
                                             width: parent.width / 3
-                                            text: "ÂÖÀª¼ò»¯"
+                                            text: "è½®å»“ç®€åŒ–"
                                             color: DltColor.FontDark
                                         }
                                         DltSpinEditor {
@@ -1092,7 +1092,7 @@ DltPopup {
             }
 
             DltButton {
-                text: "¹Ø±Õ"
+                text: "å…³é—­"
                 onClicked: dialog.close()
             }
         }
@@ -1100,7 +1100,7 @@ DltPopup {
 
     FileDialog {
         id: modelPathDialog
-        title: "Ñ¡ÔñÄ£ĞÍÈ¨ÖØ"
+        title: "é€‰æ‹©æ¨¡å‹æƒé‡"
         nameFilters: ["Weights (*.wts *.onnx)", "All files (*)"]
         onAccepted: {
             modelPathInput.text = Utils.getCleanPath(modelPathDialog.file.toString())
@@ -1110,7 +1110,7 @@ DltPopup {
 
     FileDialog {
         id: smartModelPathDialog
-        title: "Ñ¡ÔñÖÇÄÜ±ê×¢Ä£ĞÍ"
+        title: "é€‰æ‹©æ™ºèƒ½æ ‡æ³¨æ¨¡å‹"
         nameFilters: ["Model Files (*.wts *.onnx *.xml *.bin)", "All files (*)"]
         onAccepted: {
             smartModelPathInput.text = Utils.getCleanPath(smartModelPathDialog.file.toString())
@@ -1120,7 +1120,7 @@ DltPopup {
 
     FolderDialog {
         id: indexDirDialog
-        title: "Ñ¡ÔñÌØÕ÷¿â±£´æÄ¿Â¼"
+        title: "é€‰æ‹©ç‰¹å¾åº“ä¿å­˜ç›®å½•"
         onAccepted: {
             indexDirInput.text = Utils.getCleanPath(indexDirDialog.folder.toString())
             GlobalSettings.advanced.imageSearch.indexDirectory = indexDirInput.text
