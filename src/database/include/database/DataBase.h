@@ -179,6 +179,11 @@ public:
                       QString &err_msg) const;
     bool addModel(const QString &name, const QString &network_structure, const qint64 ctime, const qint64 mtime,
                   int64_t &model_id, QString &err_msg) const;
+    bool addModel(const QString &name, const QString &network_structure, const QString &training_result,
+                  const QString &test_result, const qint64 ctime, const qint64 mtime, int64_t &model_id,
+                  QString &err_msg) const;
+    bool updateModelName(const int64_t model_id, const QString &name, const qint64 mtime, QString &err_msg) const;
+    bool deleteModel(const int64_t model_id, QString &err_msg) const;
 
     bool getAllLabels(std::vector<int64_t> &label_ids, std::vector<int64_t> &image_ids,
                       std::vector<int64_t> &label_class_ids, std::vector<int64_t> &label_types,

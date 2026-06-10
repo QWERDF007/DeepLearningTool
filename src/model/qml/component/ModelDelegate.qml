@@ -9,14 +9,15 @@ Rectangle {
     width: 200
     height: 200
     color: DltColor.Primary
-    border.color: DltColor.Background
-    border.width: 2
+    border.color: selected ? DltColor.Highlight : DltColor.Background
+    border.width: selected ? 2 : 1
 
-    property int modelId: -1
+    property var modelId: -1
     property string modelName: ""
     property string networkStructure: ""
     property string trainingResult: ""
     property string testResult: ""
+    property bool selected: false
 
     ColumnLayout {
         anchors.fill: parent

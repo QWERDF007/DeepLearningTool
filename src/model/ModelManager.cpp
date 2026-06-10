@@ -6,11 +6,31 @@
 
 #include <QDateTime>
 
+#include <algorithm>
+
 namespace dltool::model {
 
-ModelManager::ModelManager(dltool::database::ProjectDataBase *database, QObject *parent)
+namespace {
+
+struct RegisteredModel
+{
+    int method{-1};
+    QString name;
+    ModelManager::ModelFactory factory;
+};
+
+std::vector<RegisteredModel> &modelRegistry()
+{
+    static std::vector<RegisteredModel> registry;
+    return registry;
+}
+
+} // namespace
+
+ModelManager::ModelManager(const int method, dltool::database::ProjectDataBase *database, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
+    , method_(method)
 {
     init();
 }
@@ -120,6 +140,13 @@ bool ModelManager::addModel(const QString &name, const QString &network_structur
         return false;
     }
 
+    if (!registeredModelNames(method_).contains(trimmed_network_structure))
+    {
+        spdlog::warn("add model failed: model is not registered for method {}, network: {}", method_,
+                     trimmed_network_structure.toUtf8().constData());
+        return false;
+    }
+
     if (database_ == nullptr)
     {
         spdlog::error("add model failed: database is null");
@@ -155,19 +182,229 @@ bool ModelManager::addModel(const QString &name, const QString &network_structur
     return true;
 }
 
+bool ModelManager::renameModel(const qint64 model_id, const QString &name)
+{
+    const QString trimmed_name = name.trimmed();
+    if (trimmed_name.isEmpty())
+    {
+        spdlog::warn("rename model failed: model name is empty");
+        return false;
+    }
+
+    const int row = indexOfModel(model_id);
+    if (row < 0)
+    {
+        spdlog::warn("rename model failed: model {} not found", model_id);
+        return false;
+    }
+
+    QString err_msg;
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    const bool ok = database_ != nullptr
+                        && database_->updateModelName(model_id, trimmed_name, now, err_msg);
+    if (!ok)
+    {
+        spdlog::error("rename model failed, id: {}, error: {}", model_id, err_msg.toUtf8().constData());
+        return false;
+    }
+
+    models_[row].name = trimmed_name;
+    models_[row].mtime = now;
+    emit dataChanged(index(row), index(row), {NameRole, MtimeRole});
+    return true;
+}
+
+bool ModelManager::deleteModel(const qint64 model_id)
+{
+    const int row = indexOfModel(model_id);
+    if (row < 0)
+    {
+        spdlog::warn("delete model failed: model {} not found", model_id);
+        return false;
+    }
+
+    QString err_msg;
+    const bool ok = database_ != nullptr && database_->deleteModel(model_id, err_msg);
+    if (!ok)
+    {
+        spdlog::error("delete model failed, id: {}, error: {}", model_id, err_msg.toUtf8().constData());
+        return false;
+    }
+
+    beginRemoveRows(QModelIndex(), row, row);
+    models_.erase(models_.begin() + row);
+    endRemoveRows();
+    return true;
+}
+
+bool ModelManager::copyModel(const qint64 model_id)
+{
+    const int row = indexOfModel(model_id);
+    if (row < 0)
+    {
+        spdlog::warn("copy model failed: model {} not found", model_id);
+        return false;
+    }
+
+    const ModelRecord &source = models_[row];
+    QString err_msg;
+    int64_t new_model_id{-1};
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    const QString copied_name = uniqueCopyName(source.name);
+    const bool ok = database_ != nullptr
+                        && database_->addModel(copied_name, source.network_structure, source.training_result,
+                                               source.test_result, now, now, new_model_id, err_msg);
+    if (!ok)
+    {
+        spdlog::error("copy model failed, id: {}, error: {}", model_id, err_msg.toUtf8().constData());
+        return false;
+    }
+
+    const int insert_row = rowCount();
+    beginInsertRows(QModelIndex(), insert_row, insert_row);
+    models_.push_back(ModelRecord{
+        new_model_id,
+        copied_name,
+        source.network_structure,
+        source.training_result,
+        source.test_result,
+        now,
+        now,
+    });
+    endInsertRows();
+    return true;
+}
+
 QStringList ModelManager::supportedNetworkStructures() const
 {
-    return {
-        QStringLiteral("LeNet"),
-        QStringLiteral("AlexNet"),
-        QStringLiteral("VGG16"),
-        QStringLiteral("ResNet18"),
-        QStringLiteral("ResNet50"),
-        QStringLiteral("MobileNetV2"),
-        QStringLiteral("EfficientNet-B0"),
-        QStringLiteral("YOLOv5"),
-        QStringLiteral("RF-DETR"),
+    return registeredModelNames(method_);
+}
+
+QStringList ModelManager::availableModelNames() const
+{
+    return registeredModelNames(method_);
+}
+
+bool ModelManager::registerModel(const int method, const QString &type_name, ModelFactory factory)
+{
+    const QString trimmed_type_name = type_name.trimmed();
+    if (trimmed_type_name.isEmpty() || !factory)
+    {
+        return false;
+    }
+
+    auto &registry = modelRegistry();
+    const auto found = std::find_if(registry.begin(), registry.end(),
+                                    [method, &trimmed_type_name](const RegisteredModel &model)
+                                    { return model.method == method && model.name == trimmed_type_name; });
+    if (found != registry.end())
+    {
+        return false;
+    }
+
+    registry.push_back(RegisteredModel{method, trimmed_type_name, std::move(factory)});
+    return true;
+}
+
+bool ModelManager::registerModel(const QString &type_name, ModelFactory factory)
+{
+    return registerModel(-1, type_name, std::move(factory));
+}
+
+QStringList ModelManager::registeredModelNames(const int method)
+{
+    QStringList names;
+    const auto &registry = modelRegistry();
+    names.reserve(static_cast<int>(registry.size()));
+    for (const RegisteredModel &model : registry)
+    {
+        if (method < 0 || model.method == method)
+        {
+            names.append(model.name);
+        }
+    }
+    return names;
+}
+
+QStringList ModelManager::registeredModelNames()
+{
+    return registeredModelNames(-1);
+}
+
+std::unique_ptr<IModel> ModelManager::createRegisteredModel(const int method, const QString &type_name)
+{
+    const auto &registry = modelRegistry();
+    const auto found = std::find_if(registry.begin(), registry.end(),
+                                    [method, &type_name](const RegisteredModel &model)
+                                    { return (method < 0 || model.method == method) && model.name == type_name; });
+    if (found == registry.end() || !found->factory)
+    {
+        return nullptr;
+    }
+    return found->factory();
+}
+
+std::unique_ptr<IModel> ModelManager::createRegisteredModel(const QString &type_name)
+{
+    return createRegisteredModel(-1, type_name);
+}
+
+std::vector<std::unique_ptr<IModel>> ModelManager::registeredModels(const int method)
+{
+    std::vector<std::unique_ptr<IModel>> models;
+    const auto &registry = modelRegistry();
+    models.reserve(registry.size());
+    for (const RegisteredModel &model : registry)
+    {
+        if ((method < 0 || model.method == method) && model.factory)
+        {
+            models.emplace_back(model.factory());
+        }
+    }
+    return models;
+}
+
+std::vector<std::unique_ptr<IModel>> ModelManager::registeredModels()
+{
+    return registeredModels(-1);
+}
+
+std::unique_ptr<IModel> ModelManager::createRegisteredModelInstance(const QString &type_name) const
+{
+    return createRegisteredModel(method_, type_name);
+}
+
+std::vector<std::unique_ptr<IModel>> ModelManager::registeredModelInstances() const
+{
+    return registeredModels(method_);
+}
+
+int ModelManager::indexOfModel(const int64_t model_id) const
+{
+    for (int i = 0; i < static_cast<int>(models_.size()); ++i)
+    {
+        if (models_[i].model_id == model_id)
+            return i;
+    }
+    return -1;
+}
+
+QString ModelManager::uniqueCopyName(const QString &name) const
+{
+    const QString base = QStringLiteral("%1 Copy").arg(name);
+    QString candidate = base;
+    int suffix = 2;
+    auto exists = [this](const QString &candidate_name)
+    {
+        return std::any_of(models_.begin(), models_.end(),
+                           [&candidate_name](const ModelRecord &model) { return model.name == candidate_name; });
     };
+
+    while (exists(candidate))
+    {
+        candidate = QStringLiteral("%1 %2").arg(base).arg(suffix++);
+    }
+    return candidate;
 }
 
 QVariant ModelManager::getModelId(const QModelIndex &index) const

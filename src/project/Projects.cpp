@@ -40,7 +40,7 @@ Project::~Project() {}
 void Project::init()
 {
     data_manager_ = new data::DataManager(method_, database_, this);
-    model_manager_ = new model::ModelManager(database_, this);
+    model_manager_ = new model::ModelManager(method_, database_, this);
 
     // 初始化图像提供器（会自动从 QML 上下文获取引擎）
     data_manager_->initializeQmlEngine(qml_engine_);

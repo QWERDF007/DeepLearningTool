@@ -1070,6 +1070,13 @@ bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<
 bool ProjectDataBase::addModel(const QString &name, const QString &network_structure, const qint64 ctime,
                                const qint64 mtime, int64_t &model_id, QString &err_msg) const
 {
+    return addModel(name, network_structure, QString(), QString(), ctime, mtime, model_id, err_msg);
+}
+
+bool ProjectDataBase::addModel(const QString &name, const QString &network_structure, const QString &training_result,
+                               const QString &test_result, const qint64 ctime, const qint64 mtime, int64_t &model_id,
+                               QString &err_msg) const
+{
     try
     {
         if (pool_ == nullptr)
@@ -1083,12 +1090,64 @@ bool ProjectDataBase::addModel(const QString &name, const QString &network_struc
 
         const QByteArray name_bytes = name.toUtf8();
         const QByteArray network_structure_bytes = network_structure.toUtf8();
+        const QByteArray training_result_bytes = training_result.toUtf8();
+        const QByteArray test_result_bytes = test_result.toUtf8();
         db(sqlpp::insert_into(ModelsTable)
                .set(ModelsTable.name = name_bytes.constData(),
                     ModelsTable.networkStructure = network_structure_bytes.constData(),
-                    ModelsTable.trainingResult = "", ModelsTable.testResult = "", ModelsTable.ctime = ctime,
+                    ModelsTable.trainingResult = training_result_bytes.constData(),
+                    ModelsTable.testResult = test_result_bytes.constData(), ModelsTable.ctime = ctime,
                     ModelsTable.mtime = mtime));
         model_id = static_cast<int64_t>(db.last_insert_id());
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::updateModelName(const int64_t model_id, const QString &name, const qint64 mtime,
+                                      QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("open database failed: %1").arg(path_);
+            return false;
+        }
+
+        auto db = pool_->get();
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
+
+        const QByteArray name_bytes = name.toUtf8();
+        db(sqlpp::update(ModelsTable)
+               .set(ModelsTable.name = name_bytes.constData(), ModelsTable.mtime = mtime)
+               .where(ModelsTable.id == model_id));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::deleteModel(const int64_t model_id, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("open database failed: %1").arg(path_);
+            return false;
+        }
+
+        auto db = pool_->get();
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
+        db(sqlpp::remove_from(ModelsTable).where(ModelsTable.id == model_id));
         return true;
     }
     catch (const std::exception &e)
