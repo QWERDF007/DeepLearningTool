@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.model
+import dltool.project
 
 Rectangle {
     id: labelPage
@@ -11,11 +12,13 @@ Rectangle {
     height: 1920
     color: DltColor.Background
 
+    property ModelManager modelManager: ProjectManager.currentProject ? ProjectManager.currentProject.modelManager : null
+
     DltSplitView {
         anchors.fill: parent
         anchors.margins: 5
 
-        ModelView { // 模型面板
+        ModelView {
             SplitView.fillHeight: true
             SplitView.minimumWidth: 200
             SplitView.preferredWidth: 300
@@ -23,13 +26,12 @@ Rectangle {
             color: DltColor.Primary
             headerTitle: "模型训练:"
             addEnable: true
+            modelManager: labelPage.modelManager
         }
 
-        Item { // 训练面板
+        Item {
             SplitView.fillHeight: true
             SplitView.fillWidth: true
-            // color: DltColor.Primary
         }
-        
     }
 }

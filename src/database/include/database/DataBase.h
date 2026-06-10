@@ -173,6 +173,13 @@ public:
     bool deleteImagesTagsByImagesId(const std::vector<int64_t> &image_ids, QString &err_msg) const;
     bool deleteImagesTagsByTagsId(const std::vector<int64_t> &tag_ids, QString &err_msg) const;
 
+    bool getAllModels(std::vector<int64_t> &model_ids, std::vector<QString> &names,
+                      std::vector<QString> &network_structures, std::vector<QString> &training_results,
+                      std::vector<QString> &test_results, std::vector<qint64> &ctimes, std::vector<qint64> &mtimes,
+                      QString &err_msg) const;
+    bool addModel(const QString &name, const QString &network_structure, const qint64 ctime, const qint64 mtime,
+                  int64_t &model_id, QString &err_msg) const;
+
     bool getAllLabels(std::vector<int64_t> &label_ids, std::vector<int64_t> &image_ids,
                       std::vector<int64_t> &label_class_ids, std::vector<int64_t> &label_types,
                       std::vector<std::vector<uint8_t>> &labels_data, QString &err_msg) const;

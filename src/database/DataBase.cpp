@@ -5,6 +5,7 @@
 #include "database/ddl/ImagesTable.h"
 #include "database/ddl/LabelClassesTable.h"
 #include "database/ddl/LabelsTable.h"
+#include "database/ddl/ModelsTable.h"
 #include "database/ddl/ProjectTable.h"
 #include "database/ddl/RecentProjectsTable.h"
 #include "database/ddl/SmartAnnotationSettingsTable.h"
@@ -36,6 +37,7 @@ const auto LabelClassesTable    = LabelClasses{};
 const auto LabelsTable          = Labels{};
 const auto TagClassesTable      = TagClasses{};
 const auto TagsTable                    = Tags{};
+const auto ModelsTable                  = Models{};
 const auto FeatureSearchSettingsTable    = FeatureSearchSettings{};
 const auto SmartAnnotationSettingsTable  = SmartAnnotationSettings{};
 const auto ThumbnailSettingsTable        = ThumbnailSettings{};
@@ -165,6 +167,7 @@ bool ProjectDataBase::initProject(const QString &name, const int method, const Q
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateLabels));
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateTagClasses));
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateTags));
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
         return true;
     }
     catch (const std::exception &e)
@@ -1007,6 +1010,85 @@ bool ProjectDataBase::deleteImagesTagsByTagsId(const std::vector<int64_t> &tag_i
         }
         auto db = pool_->get();
         db(sqlpp::remove_from(TagsTable).where(TagsTable.tagId.in(sqlpp::value_list(tag_ids))));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<QString> &names,
+                                   std::vector<QString> &network_structures,
+                                   std::vector<QString> &training_results, std::vector<QString> &test_results,
+                                   std::vector<qint64> &ctimes, std::vector<qint64> &mtimes, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("open database failed: %1").arg(path_);
+            return false;
+        }
+
+        model_ids.clear();
+        names.clear();
+        network_structures.clear();
+        training_results.clear();
+        test_results.clear();
+        ctimes.clear();
+        mtimes.clear();
+
+        auto db = pool_->get();
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
+        auto data = db(sqlpp::select(ModelsTable.id, ModelsTable.name, ModelsTable.networkStructure,
+                                     ModelsTable.trainingResult, ModelsTable.testResult, ModelsTable.ctime,
+                                     ModelsTable.mtime)
+                           .from(ModelsTable)
+                           .unconditionally()
+                           .order_by(ModelsTable.id.asc()));
+        for (const auto &row : data)
+        {
+            model_ids.emplace_back(row.id);
+            names.emplace_back(QString::fromStdString(row.name));
+            network_structures.emplace_back(QString::fromStdString(row.networkStructure));
+            training_results.emplace_back(QString::fromStdString(row.trainingResult));
+            test_results.emplace_back(QString::fromStdString(row.testResult));
+            ctimes.emplace_back(row.ctime);
+            mtimes.emplace_back(row.mtime);
+        }
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::addModel(const QString &name, const QString &network_structure, const qint64 ctime,
+                               const qint64 mtime, int64_t &model_id, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("open database failed: %1").arg(path_);
+            return false;
+        }
+
+        auto db = pool_->get();
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
+
+        const QByteArray name_bytes = name.toUtf8();
+        const QByteArray network_structure_bytes = network_structure.toUtf8();
+        db(sqlpp::insert_into(ModelsTable)
+               .set(ModelsTable.name = name_bytes.constData(),
+                    ModelsTable.networkStructure = network_structure_bytes.constData(),
+                    ModelsTable.trainingResult = "", ModelsTable.testResult = "", ModelsTable.ctime = ctime,
+                    ModelsTable.mtime = mtime));
+        model_id = static_cast<int64_t>(db.last_insert_id());
         return true;
     }
     catch (const std::exception &e)

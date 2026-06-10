@@ -3,6 +3,7 @@
 #include "ProjectExport.h"
 #include "common/Singleton.h"
 #include "data/DataManager.h"
+#include "model/ModelManager.h"
 
 #include <QAbstractListModel>
 #include <QItemSelectionModel>
@@ -29,6 +30,7 @@ class Project : public QObject
     Q_PROPERTY(QString description READ description NOTIFY descriptionChanged FINAL)
     Q_PROPERTY(QString imageBasePath READ imageBasePath NOTIFY imageBasePathChanged FINAL)
     Q_PROPERTY(data::DataManager *dataManager READ dataManager CONSTANT FINAL)
+    Q_PROPERTY(model::ModelManager *modelManager READ modelManager CONSTANT FINAL)
 
 public:
     Project(const QString &name, const int method, const QString &path, const QString &description,
@@ -81,6 +83,11 @@ public:
         return data_manager_;
     }
 
+    model::ModelManager *modelManager() const
+    {
+        return model_manager_;
+    }
+
     /**
      * @brief 设置 QML 引擎引用
      * @param engine QML 应用引擎指针
@@ -104,6 +111,7 @@ private:
     dltool::database::ProjectDataBase *database_{nullptr};
 
     data::DataManager *data_manager_{nullptr};
+    model::ModelManager *model_manager_{nullptr};
 
     QQmlApplicationEngine *qml_engine_{nullptr};
 
