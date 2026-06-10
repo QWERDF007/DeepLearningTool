@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import dltool.ui
 import dltool.project
 import dltool.data
+import dltool.model
 
 StackLayout {
     id: content
@@ -46,7 +47,21 @@ StackLayout {
         }
     }
 
-    property var pages: [project_com, dataset_com, label_com, review_com]
+    Component {
+        id: train_com
+        TrainPage {
+            anchors.fill: parent
+        }
+    }
+
+    Component {
+        id: test_com
+        TestPage {
+            anchors.fill: parent
+        }
+    }
+
+    property var pages: [project_com, dataset_com, label_com, review_com, train_com, test_com]
 
     Repeater {
         model: pages
