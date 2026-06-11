@@ -2,28 +2,19 @@
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 
-REM DeepLearningTool Windows 依赖链接脚本。
-REM 这里不依赖 Python，直接使用 mklink 创建构建目录中的链接。
-REM 目录链接优先使用符号链接，失败后回退到 junction；文件链接优先符号链接，失败后回退到 hardlink。
+rem DeepLearningTool dependency link script for Windows.
+rem Runtime dependency names are listed in tools\dependencies.
 
-REM 切换到项目根目录，保证从任意当前目录调用脚本时，相对路径都按项目根目录解析。
 pushd "%~dp0.." || exit /b 1
 
-REM 链接项目自身模块目录，并把模块 DLL 暴露到 build\bin，方便可执行程序直接加载。
 call :link_dltool
 if errorlevel 1 exit /b 1
 echo link dltool dll success
 
-REM 根据 cmake\ConfigSQLite.cmake 中的 CMAKE_PREFIX_PATH 链接 sqlite3.dll。
-call :link_sqlite
+call :link_deps
 if errorlevel 1 exit /b 1
-echo link sqlite3 dll success
+echo link external dependencies success
 
-call :link_inferrt
-if errorlevel 1 exit /b 1
-echo link inferrt runtime dll success
-
-REM 如果已经构建测试目标，则给 build\tests 创建同样的 dltool 模块目录链接。
 call :link_test
 if errorlevel 1 exit /b 1
 echo link test success
@@ -32,13 +23,11 @@ popd
 exit /b 0
 
 :link_dltool
-REM build\bin\dltool 指向 build\dltool，使运行目录可以找到项目 QML/插件模块。
 call :link_dir "build\bin\dltool" "build\dltool"
 if errorlevel 1 exit /b 1
 
-REM 将 build\bin\dltool 下的项目 DLL 链接到 build\bin 根目录，匹配 Windows DLL 搜索规则。
 if exist "build\bin\dltool\" (
-    for /r "build\bin\dltool" %%F in (*.dll) do (
+    for /r "build\bin\dltool" %%F in (dltool_*.dll) do (
         call :link_file "%%~fF" "build\bin\%%~nxF"
         if errorlevel 1 exit /b 1
     )
@@ -47,95 +36,192 @@ if exist "build\bin\dltool\" (
 )
 exit /b 0
 
-:link_sqlite
-REM 从 CMake 配置读取 SQLite 安装根目录，当前约定 sqlite3.dll 位于 <root>\lib。
-set "SQLITE_ROOT="
-if exist "cmake\ConfigSQLite.cmake" (
-    for /f tokens^=2^ delims^=^" %%A in ('findstr /c:"set(CMAKE_PREFIX_PATH" "cmake\ConfigSQLite.cmake"') do (
-        set "SQLITE_ROOT=%%A"
-    )
-)
-
-if not defined SQLITE_ROOT (
-    echo skip sqlite3 link, CMAKE_PREFIX_PATH was not found in cmake\ConfigSQLite.cmake
+:link_deps
+set "DEPENDENCIES_FILE=tools\dependencies"
+if not exist "!DEPENDENCIES_FILE!" (
+    echo skip external dependency links, missing !DEPENDENCIES_FILE!
     exit /b 0
 )
 
-set "SQLITE_DLL=!SQLITE_ROOT:/=\!\lib\sqlite3.dll"
-call :link_file "!SQLITE_DLL!" "build\bin\sqlite3.dll"
-exit /b %errorlevel%
+set "DEPENDENCY_SECTION="
+set "DEPENDENCY_CMAKE="
+set "DEPENDENCY_ROOT_VAR="
+set "DEPENDENCY_ROOT="
+set "DEPENDENCY_DESTS="
+set "DEPENDENCY_ENABLED=1"
 
-:link_inferrt
-set "INFERRT_ROOT="
-set "INFERRT_DEBUG_ROOT="
-if exist "cmake\ConfigInferRT.cmake" (
-    for /f tokens^=2^ delims^=^" %%A in ('findstr /b /c:"set(INFERRT_ROOT " "cmake\ConfigInferRT.cmake"') do (
-        set "INFERRT_ROOT=%%A"
-    )
-    for /f tokens^=2^ delims^=^" %%A in ('findstr /b /c:"set(INFERRT_DEBUG_ROOT " "cmake\ConfigInferRT.cmake"') do (
-        set "INFERRT_DEBUG_ROOT=%%A"
-    )
-)
-
-if not defined INFERRT_ROOT (
-    echo skip InferRT runtime links, INFERRT_ROOT was not found in cmake\ConfigInferRT.cmake
-    exit /b 0
-)
-
-set "INFERRT_BIN=!INFERRT_ROOT:/=\!\bin"
-set "INFERRT_DEBUG_BIN=!INFERRT_DEBUG_ROOT:/=\!\bin"
-
-for %%P in (
-    "!INFERRT_BIN!\libiomp5md.dll"
-    "!INFERRT_BIN!\mkl_*.dll"
-    "!INFERRT_BIN!\nvinfer_*.dll"
-    "!INFERRT_BIN!\nvonnxparser_*.dll"
-    "!INFERRT_BIN!\cudnn*.dll"
-    "!INFERRT_BIN!\cublas*.dll"
-    "!INFERRT_BIN!\cufft*.dll"
-    "!INFERRT_BIN!\onnxruntime*.dll"
-    "!INFERRT_BIN!\faiss.dll"
-    "!INFERRT_BIN!\inferrt_core.dll"
-    "!INFERRT_BIN!\inferrt_cvcuda.dll"
-    "!INFERRT_BIN!\inferrt_features.dll"
-    "!INFERRT_BIN!\inferrt_model.dll"
-    "!INFERRT_BIN!\inferrt_util.dll"
-    "!INFERRT_BIN!\opencv_world480.dll"
-    "!INFERRT_BIN!\faissd.dll"
-    "!INFERRT_DEBUG_BIN!\inferrt_cored.dll"
-    "!INFERRT_DEBUG_BIN!\inferrt_cvcudad.dll"
-    "!INFERRT_DEBUG_BIN!\inferrt_featuresd.dll"
-    "!INFERRT_DEBUG_BIN!\inferrt_modeld.dll"
-    "!INFERRT_DEBUG_BIN!\inferrt_utild.dll"
-    "!INFERRT_DEBUG_BIN!\opencv_world480d.dll"
-) do (
-    call :link_inferrt_pattern "%%~P"
-    if errorlevel 1 exit /b 1
-)
-
-exit /b 0
-
-:link_inferrt_pattern
-for %%F in (%~1) do (
-    call :link_inferrt_file "%%~fF"
+for /f "usebackq tokens=* delims=" %%L in ("!DEPENDENCIES_FILE!") do (
+    call :proc_dep_line "%%L"
     if errorlevel 1 exit /b 1
 )
 exit /b 0
 
-:link_inferrt_file
+:proc_dep_line
+set "LINE=%~1"
+call :trim LINE
+if not defined LINE exit /b 0
+if "!LINE:~0,1!"=="#" exit /b 0
+if "!LINE:~0,1!"==";" exit /b 0
+
+if "!LINE:~0,1!"=="[" (
+    set "DEPENDENCY_SECTION=!LINE:~1,-1!"
+    call :trim DEPENDENCY_SECTION
+    set "DEPENDENCY_CMAKE="
+    set "DEPENDENCY_ROOT_VAR="
+    set "DEPENDENCY_ROOT="
+    set "DEPENDENCY_DESTS="
+    set "DEPENDENCY_ENABLED=1"
+    exit /b 0
+)
+
+set "KEY="
+set "VALUE="
+for /f "tokens=1* delims==" %%A in ("!LINE!") do (
+    set "KEY=%%A"
+    set "VALUE=%%B"
+)
+call :trim KEY
+call :trim VALUE
+if not defined KEY exit /b 0
+
+if /i "!KEY!"=="cmake" (
+    set "DEPENDENCY_CMAKE=!VALUE:/=\!"
+    exit /b 0
+)
+
+if /i "!KEY!"=="root" (
+    set "DEPENDENCY_ROOT_SPEC=!VALUE!"
+    set "DEPENDENCY_ROOT_VAR=!VALUE!"
+    set "DEPENDENCY_ROOT="
+
+    call :is_direct_root "!DEPENDENCY_ROOT_SPEC!"
+    if not errorlevel 1 (
+        set "DEPENDENCY_ROOT=!DEPENDENCY_ROOT_SPEC!"
+        set "DEPENDENCY_ROOT=!DEPENDENCY_ROOT:/=\!"
+        set "DEPENDENCY_ENABLED=1"
+        exit /b 0
+    )
+
+    if not defined DEPENDENCY_CMAKE (
+        set "DEPENDENCY_ROOT=!DEPENDENCY_ROOT_SPEC!"
+        set "DEPENDENCY_ROOT=!DEPENDENCY_ROOT:/=\!"
+        set "DEPENDENCY_ENABLED=1"
+        exit /b 0
+    )
+
+    call :read_cmake_quoted_value "!DEPENDENCY_CMAKE!" "!DEPENDENCY_ROOT_VAR!" DEPENDENCY_ROOT
+    if not defined DEPENDENCY_ROOT (
+        echo skip dependency !DEPENDENCY_SECTION!, !DEPENDENCY_ROOT_VAR! was not found in !DEPENDENCY_CMAKE!
+        set "DEPENDENCY_ENABLED=0"
+        exit /b 0
+    )
+
+    set "DEPENDENCY_ENABLED=1"
+    exit /b 0
+)
+
+if /i "!KEY!"=="dest" (
+    set "DEST_VALUE=!VALUE:/=\!"
+    if defined DEPENDENCY_DESTS (
+        set "DEPENDENCY_DESTS=!DEPENDENCY_DESTS! !DEST_VALUE!"
+    ) else (
+        set "DEPENDENCY_DESTS=!DEST_VALUE!"
+    )
+    exit /b 0
+)
+
+if /i "!KEY!"=="windows" (
+    call :link_dep_pattern "!VALUE!"
+    exit /b %errorlevel%
+)
+
+if /i "!KEY!"=="all" (
+    call :link_dep_pattern "!VALUE!"
+    exit /b %errorlevel%
+)
+
+exit /b 0
+
+:is_direct_root
+set "ROOT_SPEC=%~1"
+if not "!ROOT_SPEC::=!"=="!ROOT_SPEC!" exit /b 0
+if not "!ROOT_SPEC:/=!"=="!ROOT_SPEC!" exit /b 0
+if not "!ROOT_SPEC:\=!"=="!ROOT_SPEC!" exit /b 0
+if "!ROOT_SPEC:~0,1!"=="." exit /b 0
+if "!ROOT_SPEC:~0,1!"=="~" exit /b 0
+exit /b 1
+
+:link_dep_pattern
+if "%~1"=="" exit /b 0
+if "!DEPENDENCY_ENABLED!"=="0" exit /b 0
+
+if not defined DEPENDENCY_ROOT (
+    echo skip dependency !DEPENDENCY_SECTION! pattern %~1, root was not configured
+    exit /b 0
+)
+
+if not defined DEPENDENCY_DESTS (
+    echo skip dependency !DEPENDENCY_SECTION! pattern %~1, destination was not configured
+    exit /b 0
+)
+
+set "REL_PATTERN=%~1"
+set "REL_PATTERN=!REL_PATTERN:/=\!"
+set "ROOT_PATH=!DEPENDENCY_ROOT:/=\!"
+set "FULL_PATTERN=!ROOT_PATH!\!REL_PATTERN!"
+
+set "WILDCARD_PATTERN=0"
+echo(!FULL_PATTERN! | findstr /l /c:"*" /c:"?" >nul
+if not errorlevel 1 set "WILDCARD_PATTERN=1"
+
+if "!WILDCARD_PATTERN!"=="0" (
+    call :link_dep_file "!FULL_PATTERN!"
+    exit /b %errorlevel%
+)
+
+set "MATCHED_ANY=0"
+call :split_pattern_path "!ROOT_PATH!" "!REL_PATTERN!"
+
+if not exist "!PATTERN_DIR!" exit /b 0
+
+for /f "delims=" %%F in ('dir /b /a-d "!PATTERN_DIR!!PATTERN_NAME!" 2^>nul') do (
+    set "MATCHED_ANY=1"
+    set "MATCHED_FILE=!PATTERN_DIR!%%F"
+    call :link_dep_file "!MATCHED_FILE!"
+    if errorlevel 1 exit /b 1
+)
+
+if "!MATCHED_ANY!"=="0" exit /b 0
+exit /b 0
+
+:split_pattern_path
+set "PATTERN_DIR=%~1\"
+set "PATTERN_NAME=%~2"
+
+:split_pattern_loop
+for /f "tokens=1* delims=\" %%A in ("!PATTERN_NAME!") do (
+    if "%%B"=="" (
+        set "PATTERN_NAME=%%A"
+        exit /b 0
+    )
+
+    set "PATTERN_DIR=!PATTERN_DIR!%%A\"
+    set "PATTERN_NAME=%%B"
+    goto split_pattern_loop
+)
+exit /b 0
+
+:link_dep_file
 set "TARGET=%~1"
-call :link_file "!TARGET!" "build\bin\%~nx1"
-if errorlevel 1 exit /b 1
-call :link_file "!TARGET!" "build\dltool\data\%~nx1"
-if errorlevel 1 exit /b 1
-if exist "build\tests\" (
-    call :link_file "!TARGET!" "build\tests\%~nx1"
+for %%I in ("!TARGET!") do set "TARGET_NAME=%%~nxI"
+for %%D in (!DEPENDENCY_DESTS!) do (
+    set "DEST_PATH=%%~D"
+    call :link_file "!TARGET!" "!DEST_PATH!\!TARGET_NAME!"
     if errorlevel 1 exit /b 1
 )
 exit /b 0
 
 :link_test
-REM 测试可执行程序运行目录不同，需要额外链接 dltool 模块目录。
 if exist "build\tests\" (
     call :link_dir "build\tests\dltool" "build\dltool"
     exit /b %errorlevel%
@@ -144,8 +230,22 @@ if exist "build\tests\" (
 echo skip test link, missing build\tests
 exit /b 0
 
+:read_cmake_quoted_value
+set "CMAKE_FILE=%~1"
+set "CMAKE_KEY=%~2"
+set "CMAKE_OUT=%~3"
+
+if not exist "!CMAKE_FILE!" exit /b 0
+
+for /f tokens^=1^,2^ delims^=^" %%A in (!CMAKE_FILE!) do (
+    set "CMAKE_PREFIX=%%A"
+    if not "!CMAKE_PREFIX:%CMAKE_KEY%=!"=="!CMAKE_PREFIX!" (
+        set "%CMAKE_OUT%=%%B"
+    )
+)
+exit /b 0
+
 :link_file
-REM 创建文件链接。目标不存在时只跳过，保留原 Python 脚本的宽松行为。
 set "TARGET=%~1"
 set "LINK=%~2"
 for %%I in ("%TARGET%") do set "TARGET_ABS=%%~fI"
@@ -159,7 +259,6 @@ if not exist "!TARGET_ABS!" (
 call :remove_existing_file_link "!LINK_ABS!"
 if errorlevel 1 exit /b 1
 
-REM 普通用户环境可能没有创建符号链接权限，所以失败后尝试 hardlink。
 for %%I in ("!LINK_ABS!") do if not exist "%%~dpI" mkdir "%%~dpI"
 mklink "!LINK_ABS!" "!TARGET_ABS!" >nul 2>nul
 if errorlevel 1 (
@@ -177,7 +276,6 @@ echo create symlink !LINK_ABS! -^> !TARGET_ABS!
 exit /b 0
 
 :link_dir
-REM 创建目录链接。目标不存在时只跳过，避免未构建某些目标时脚本失败。
 set "LINK=%~1"
 set "TARGET=%~2"
 for %%I in ("%TARGET%") do set "TARGET_ABS=%%~fI"
@@ -191,7 +289,6 @@ if not exist "!TARGET_ABS!\" (
 call :remove_existing_link "!LINK_ABS!"
 if errorlevel 1 exit /b 1
 
-REM 目录符号链接需要权限；junction 通常不需要管理员权限，适合作为回退。
 for %%I in ("!LINK_ABS!") do if not exist "%%~dpI" mkdir "%%~dpI"
 mklink /D "!LINK_ABS!" "!TARGET_ABS!" >nul 2>nul
 if errorlevel 1 (
@@ -209,7 +306,6 @@ echo create symlink !LINK_ABS! -^> !TARGET_ABS!
 exit /b 0
 
 :remove_existing_file_link
-REM 文件链接可能是 symlink 或 hardlink。这里仅处理文件路径，遇到目录则拒绝覆盖。
 set "LINK_PATH=%~1"
 if not exist "!LINK_PATH!" exit /b 0
 if exist "!LINK_PATH!\" (
@@ -221,7 +317,6 @@ del /f /q "!LINK_PATH!"
 exit /b %errorlevel%
 
 :remove_existing_link
-REM 删除旧目录链接前先确认它是 reparse point，避免误删真实目录。
 set "LINK_PATH=%~1"
 if not exist "!LINK_PATH!" if not exist "!LINK_PATH!\" exit /b 0
 
@@ -238,3 +333,18 @@ if exist "!LINK_PATH!\" (
 )
 exit /b %errorlevel%
 
+:trim
+setlocal EnableDelayedExpansion
+set "TRIM_VALUE=!%~1!"
+:trim_left
+if defined TRIM_VALUE if "!TRIM_VALUE:~0,1!"==" " (
+    set "TRIM_VALUE=!TRIM_VALUE:~1!"
+    goto trim_left
+)
+:trim_right
+if defined TRIM_VALUE if "!TRIM_VALUE:~-1!"==" " (
+    set "TRIM_VALUE=!TRIM_VALUE:~0,-1!"
+    goto trim_right
+)
+endlocal & set "%~1=%TRIM_VALUE%"
+exit /b 0

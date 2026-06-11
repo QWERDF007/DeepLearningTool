@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# DeepLearningTool Linux 依赖链接脚本。
-# 不依赖 Python，直接使用 ln -s 创建构建目录中的符号链接。
+# DeepLearningTool dependency link script for Unix-like shells.
+# Runtime dependency names are listed in tools/dependencies.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-# 统一输出警告到 stderr，便于调用方区分正常日志和异常提示。
 warn() {
     echo "warning: $*" >&2
 }
 
-# 解析绝对路径。优先使用 realpath；极简环境没有 realpath 时做基础兜底。
 abs_path() {
     local path="$1"
     if command -v realpath >/dev/null 2>&1; then
@@ -25,9 +23,22 @@ abs_path() {
     fi
 }
 
-# 创建单个路径链接。
-# 目标不存在时只提示并跳过，保持旧 Python 脚本的宽松行为。
-# 如果链接位置已经存在真实文件或目录，则拒绝覆盖，避免误删用户手工放置的内容。
+trim() {
+    local value="$1"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    printf '%s' "$value"
+}
+
+platform_key() {
+    case "$(uname -s)" in
+        Linux*) echo "linux" ;;
+        Darwin*) echo "macos" ;;
+        MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
+        *) echo "unknown" ;;
+    esac
+}
+
 link_path() {
     local target="$1"
     local link="$2"
@@ -54,15 +65,6 @@ link_path() {
     echo "create symlink $link_abs -> $target_abs"
 }
 
-# 从 cmake/ConfigSQLite.cmake 读取 CMAKE_PREFIX_PATH。
-# 项目当前用这个路径定位 sqlite 运行库。
-read_sqlite_root() {
-    local cmake_file="cmake/ConfigSQLite.cmake"
-    [[ -f "$cmake_file" ]] || return 0
-
-    sed -nE 's#^[[:space:]]*set[[:space:]]*\([[:space:]]*CMAKE_PREFIX_PATH[[:space:]]+"([^"]+)".*#\1#p' "$cmake_file" | tail -n 1
-}
-
 read_cmake_set() {
     local cmake_file="$1"
     local name="$2"
@@ -71,8 +73,6 @@ read_cmake_set() {
     sed -nE "s#^[[:space:]]*set[[:space:]]*\\([[:space:]]*${name}[[:space:]]+\"([^\"]+)\".*#\\1#p" "$cmake_file" | tail -n 1
 }
 
-# 链接项目自身模块目录。
-# build/bin/dltool 指向 build/dltool，随后把模块共享库链接到 build/bin 根目录。
 link_dltool() {
     link_path "build/dltool" "build/bin/dltool"
 
@@ -81,111 +81,152 @@ link_dltool() {
         return 0
     fi
 
-    find -L "build/bin/dltool" -type f \( -name "*.so" -o -name "*.so.*" -o -name "*.dylib" \) -print0 |
-        while IFS= read -r -d '' library; do
-            link_path "$library" "build/bin/$(basename "$library")"
-        done
-}
-
-# 链接 SQLite 运行库。
-# Linux/macOS/Windows shell 环境的库文件名不同，因此按 uname 分支处理。
-link_sqlite() {
-    local sqlite_root
-    sqlite_root="$(read_sqlite_root || true)"
-
-    if [[ -z "$sqlite_root" ]]; then
-        warn "skip sqlite link, CMAKE_PREFIX_PATH was not found in cmake/ConfigSQLite.cmake"
-        return 0
-    fi
-
-    case "$(uname -s)" in
-        Linux*)
-            if [[ -d "$sqlite_root/lib" ]]; then
-                find "$sqlite_root/lib" -maxdepth 1 -type f \( -name "libsqlite3.so" -o -name "libsqlite3.so.*" \) -print0 |
-                    while IFS= read -r -d '' library; do
-                        link_path "$library" "build/bin/$(basename "$library")"
-                    done
-            else
-                warn "skip sqlite link, missing $sqlite_root/lib"
-            fi
-            ;;
-        Darwin*)
-            link_path "$sqlite_root/lib/libsqlite3.dylib" "build/bin/libsqlite3.dylib"
-            ;;
-        MINGW*|MSYS*|CYGWIN*)
-            link_path "$sqlite_root/lib/sqlite3.dll" "build/bin/sqlite3.dll"
+    case "$(platform_key)" in
+        windows)
+            find -L "build/bin/dltool" -type f -name "dltool_*.dll" -print0 |
+                while IFS= read -r -d '' library; do
+                    link_path "$library" "build/bin/$(basename "$library")"
+                done
             ;;
         *)
-            warn "skip sqlite link, unsupported platform: $(uname -s)"
+            find -L "build/bin/dltool" -type f \( -name "libdltool_*.so" -o -name "libdltool_*.so.*" -o -name "libdltool_*.dylib" \) -print0 |
+                while IFS= read -r -d '' library; do
+                    link_path "$library" "build/bin/$(basename "$library")"
+                done
             ;;
     esac
 }
 
-# 如果测试目录存在，则让测试可执行程序也能从运行目录找到 dltool 模块。
-link_inferrt_runtime_file() {
+dependency_section=""
+dependency_cmake=""
+dependency_root_spec=""
+dependency_root_var=""
+dependency_root=""
+dependency_enabled=1
+dependency_dests=()
+
+is_direct_root() {
+    local root="$1"
+    [[ "$root" == *":"* || "$root" == *"/"* || "$root" == *"\\"* || "$root" == .* || "$root" == "~"* ]]
+}
+
+link_dependency_file() {
     local runtime="$1"
     local name
+    local dest
 
     name="$(basename "$runtime")"
-    link_path "$runtime" "build/bin/$name"
-    link_path "$runtime" "build/dltool/data/$name"
-
-    if [[ -d "build/tests" ]]; then
-        link_path "$runtime" "build/tests/$name"
-    fi
+    for dest in "${dependency_dests[@]}"; do
+        link_path "$runtime" "$dest/$name"
+    done
 }
 
-link_inferrt_runtime_pattern() {
+link_dependency_pattern() {
     local pattern="$1"
     local runtime
+    local matches
 
-    shopt -s nullglob
-    for runtime in $pattern; do
-        link_inferrt_runtime_file "$runtime"
-    done
-    shopt -u nullglob
-}
+    [[ "$dependency_enabled" == "1" ]] || return 0
 
-link_inferrt() {
-    local cmake_file="cmake/ConfigInferRT.cmake"
-    local inferrt_root
-    local inferrt_debug_root
-    local inferrt_bin
-    local inferrt_debug_bin
-
-    inferrt_root="$(read_cmake_set "$cmake_file" "INFERRT_ROOT" || true)"
-    inferrt_debug_root="$(read_cmake_set "$cmake_file" "INFERRT_DEBUG_ROOT" || true)"
-
-    if [[ -z "$inferrt_root" ]]; then
-        warn "skip InferRT runtime links, INFERRT_ROOT was not found in $cmake_file"
+    if [[ -z "$dependency_root" ]]; then
+        warn "skip dependency $dependency_section pattern $pattern, root was not configured"
         return 0
     fi
 
-    inferrt_bin="$inferrt_root/bin"
-    inferrt_debug_bin="$inferrt_debug_root/bin"
+    if [[ "${#dependency_dests[@]}" -eq 0 ]]; then
+        warn "skip dependency $dependency_section pattern $pattern, destination was not configured"
+        return 0
+    fi
 
-    link_inferrt_runtime_pattern "$inferrt_bin/libiomp5md.dll"
-    link_inferrt_runtime_pattern "$inferrt_bin/mkl_*.dll"
-    link_inferrt_runtime_pattern "$inferrt_bin/nvinfer_*.dll"
-    link_inferrt_runtime_pattern "$inferrt_bin/nvonnxparser_*.dll"
-    link_inferrt_runtime_pattern "$inferrt_bin/cudnn*.dll"
-    link_inferrt_runtime_pattern "$inferrt_bin/cublas*.dll"
-    link_inferrt_runtime_pattern "$inferrt_bin/cufft*.dll"
-    link_inferrt_runtime_pattern "$inferrt_bin/onnxruntime*.dll"
-    link_inferrt_runtime_pattern "$inferrt_bin/faiss.dll"
-    link_inferrt_runtime_pattern "$inferrt_bin/inferrt_core.dll"
-    link_inferrt_runtime_pattern "$inferrt_bin/inferrt_cvcuda.dll"
-    link_inferrt_runtime_pattern "$inferrt_bin/inferrt_features.dll"
-    link_inferrt_runtime_pattern "$inferrt_bin/inferrt_model.dll"
-    link_inferrt_runtime_pattern "$inferrt_bin/inferrt_util.dll"
-    link_inferrt_runtime_pattern "$inferrt_bin/opencv_world480.dll"
-    link_inferrt_runtime_pattern "$inferrt_bin/faissd.dll"
-    link_inferrt_runtime_pattern "$inferrt_debug_bin/inferrt_cored.dll"
-    link_inferrt_runtime_pattern "$inferrt_debug_bin/inferrt_cvcudad.dll"
-    link_inferrt_runtime_pattern "$inferrt_debug_bin/inferrt_featuresd.dll"
-    link_inferrt_runtime_pattern "$inferrt_debug_bin/inferrt_modeld.dll"
-    link_inferrt_runtime_pattern "$inferrt_debug_bin/inferrt_utild.dll"
-    link_inferrt_runtime_pattern "$inferrt_debug_bin/opencv_world480d.dll"
+    shopt -s nullglob
+    matches=( "$dependency_root"/$pattern )
+    shopt -u nullglob
+
+    if [[ "${#matches[@]}" -eq 0 && "$pattern" != *"*"* && "$pattern" != *"?"* ]]; then
+        link_dependency_file "$dependency_root/$pattern"
+        return 0
+    fi
+
+    for runtime in "${matches[@]}"; do
+        [[ -f "$runtime" ]] || continue
+        link_dependency_file "$runtime"
+    done
+}
+
+process_dependency_line() {
+    local line="$1"
+    local key
+    local value
+
+    line="${line%$'\r'}"
+    line="$(trim "$line")"
+    [[ -n "$line" ]] || return 0
+    [[ "${line:0:1}" != "#" && "${line:0:1}" != ";" ]] || return 0
+
+    if [[ "$line" == \[*\] ]]; then
+        dependency_section="${line:1:${#line}-2}"
+        dependency_cmake=""
+        dependency_root_spec=""
+        dependency_root_var=""
+        dependency_root=""
+        dependency_enabled=1
+        dependency_dests=()
+        return 0
+    fi
+
+    [[ "$line" == *"="* ]] || return 0
+    key="$(trim "${line%%=*}")"
+    value="$(trim "${line#*=}")"
+
+    case "$key" in
+        cmake)
+            dependency_cmake="$value"
+            ;;
+        root)
+            dependency_root_spec="$value"
+            dependency_root_var="$value"
+            dependency_root=""
+
+            if is_direct_root "$dependency_root_spec" || [[ -z "$dependency_cmake" ]]; then
+                dependency_root="$dependency_root_spec"
+                dependency_enabled=1
+                return 0
+            fi
+
+            dependency_root="$(read_cmake_set "$dependency_cmake" "$dependency_root_var" || true)"
+            if [[ -z "$dependency_root" ]]; then
+                warn "skip dependency $dependency_section, $dependency_root_var was not found in $dependency_cmake"
+                dependency_enabled=0
+            else
+                dependency_enabled=1
+            fi
+            ;;
+        dest)
+            dependency_dests+=("$value")
+            ;;
+        all)
+            link_dependency_pattern "$value"
+            ;;
+        windows|linux|macos)
+            if [[ "$key" == "$(platform_key)" ]]; then
+                link_dependency_pattern "$value"
+            fi
+            ;;
+    esac
+}
+
+link_external_dependencies() {
+    local dependencies_file="tools/dependencies"
+    local line
+
+    if [[ ! -f "$dependencies_file" ]]; then
+        warn "skip external dependency links, missing $dependencies_file"
+        return 0
+    fi
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        process_dependency_line "$line"
+    done < "$dependencies_file"
 }
 
 link_test() {
@@ -196,15 +237,11 @@ link_test() {
     fi
 }
 
-# 按原脚本顺序执行三类链接。每一步成功后输出一条兼容旧日志的 success 信息。
 link_dltool
 echo "link dltool dll success"
 
-link_sqlite
-echo "link sqlite3 dll success"
-
-link_inferrt
-echo "link inferrt runtime dll success"
+link_external_dependencies
+echo "link external dependencies success"
 
 link_test
 echo "link test success"
