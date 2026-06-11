@@ -17,7 +17,7 @@ Rectangle {
     property ItemSelectionModel selection: imageLabelsTable ? imageLabelsTable.selection : null
 
     property real rowHeight: 24
-    property real colWidth: horizontalHeader.columns > 0 ? horizontalHeader.width / horizontalHeader.columns : 1
+    property real colWidth: horizontalHeader.columns > 0 ? (horizontalHeader.width - 8) / horizontalHeader.columns : 1
 
     Connections {
         target: SignalHelper
@@ -69,7 +69,11 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 5
+        anchors.leftMargin: 5
+        anchors.rightMargin: 0
+        anchors.topMargin: 5
+        anchors.bottomMargin: 5
+
         // spacing: 5
         DltText {
             text: "标签实例:"

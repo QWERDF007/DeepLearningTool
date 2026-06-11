@@ -101,7 +101,11 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 5
+        anchors.leftMargin: 5
+        anchors.rightMargin: 0
+        anchors.topMargin: 5
+        anchors.bottomMargin: 5
+        
         DatasetHeader {
             Layout.fillWidth: true
             height: 32
@@ -118,7 +122,7 @@ Rectangle {
             ScrollBar.vertical: DltScrollBar {}
             delegate: DatasetDelegate {
                 height: 32
-                width: view.width
+                width: view.width - 8
                 name: model.name
                 stats: model.stats
                 dataset_id: model.dataset_id

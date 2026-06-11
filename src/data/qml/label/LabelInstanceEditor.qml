@@ -123,36 +123,42 @@ Rectangle {
         _updating = false
     }
 
-    Flickable {
+    ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 8
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        contentHeight: contentColumn.height
-        
-        ScrollBar.vertical: DltScrollBar {}
+        anchors.leftMargin: 5
+        anchors.rightMargin: 0
+        anchors.topMargin: 5
+        anchors.bottomMargin: 5
 
-        ColumnLayout {
-            id: contentColumn
-            width: parent.width
+        // 标题（固定不滚动）
+        DltText {
+            text: "编辑实例："
+            font: DltFont.Subtitle
+            Layout.fillWidth: true
+        }
 
-            // 标题
-            DltText {
-                text: "编辑实例："
-                font: DltFont.Subtitle
-                Layout.fillWidth: true
-            }
+        // 内容区域（可滚动）
+        Flickable {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            contentHeight: contentLoader.height
 
-            // 内容区域
+            ScrollBar.vertical: DltScrollBar {}
+
             Loader {
-                Layout.fillWidth: true
-                Layout.preferredHeight: {
+                id: contentLoader
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.rightMargin: 8
+                height: {
                     if (!control.hasSelection) {
                         return 60
                     } else if (control.multiSelection) {
                         return 60
                     } else {
-                        return 220
+                        return item ? item.implicitHeight : 220
                     }
                 }
                 sourceComponent: {

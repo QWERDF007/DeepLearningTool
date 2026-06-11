@@ -86,7 +86,11 @@ Rectangle {
     
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 5
+        anchors.leftMargin: 5
+        anchors.rightMargin: 0
+        anchors.topMargin: 5
+        anchors.bottomMargin: 5
+        
         LabelClassesHeader {
             Layout.fillWidth: true
             height: 32
