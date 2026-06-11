@@ -60,16 +60,16 @@ public:
         return method_;
     }
 
-    static bool registerModel(const int method, const QString &type_name, ModelFactory factory);
-    static bool registerModel(const QString &type_name, ModelFactory factory);
-    static QStringList registeredModelNames(const int method);
-    static QStringList registeredModelNames();
+    static bool                    registerModel(const int method, const QString &type_name, ModelFactory factory);
+    static bool                    registerModel(const QString &type_name, ModelFactory factory);
+    static QStringList             registeredModelNames(const int method);
+    static QStringList             registeredModelNames();
     static std::unique_ptr<IModel> createRegisteredModel(const int method, const QString &type_name);
     static std::unique_ptr<IModel> createRegisteredModel(const QString &type_name);
     static std::vector<std::unique_ptr<IModel>> registeredModels(const int method);
     static std::vector<std::unique_ptr<IModel>> registeredModels();
 
-    std::unique_ptr<IModel> createRegisteredModelInstance(const QString &type_name) const;
+    std::unique_ptr<IModel>              createRegisteredModelInstance(const QString &type_name) const;
     std::vector<std::unique_ptr<IModel>> registeredModelInstances() const;
 
 private:
@@ -80,12 +80,12 @@ private:
         QString network_structure;
         QString training_result;
         QString test_result;
-        qint64 ctime{0};
-        qint64 mtime{0};
+        qint64  ctime{0};
+        qint64  mtime{0};
     };
 
-    void init();
-    int indexOfModel(const int64_t model_id) const;
+    void    init();
+    int     indexOfModel(const int64_t model_id) const;
     QString uniqueCopyName(const QString &name) const;
 
     QVariant getModelId(const QModelIndex &index) const;
@@ -97,8 +97,13 @@ private:
     QVariant getMtime(const QModelIndex &index) const;
 
     dltool::database::ProjectDataBase *database_{nullptr};
-    int method_{-1};
-    std::vector<ModelRecord> models_;
+    int                                method_{-1};
+    std::vector<ModelRecord>           models_;
 };
 
 } // namespace dltool::model
+
+#define DLT_REGISTER_MODEL(ModelMethod, ModelClass)                              \
+    const bool ModelClass##Registered                                            \
+        = ModelManager::registerModel(ModelMethod, ModelClass::staticTypeName(), \
+                                      []() -> std::unique_ptr<IModel> { return std::make_unique<ModelClass>(); })
