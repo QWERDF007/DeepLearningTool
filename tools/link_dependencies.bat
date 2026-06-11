@@ -19,6 +19,10 @@ call :link_sqlite
 if errorlevel 1 exit /b 1
 echo link sqlite3 dll success
 
+call :link_inferrt
+if errorlevel 1 exit /b 1
+echo link inferrt runtime dll success
+
 REM 如果已经构建测试目标，则给 build\tests 创建同样的 dltool 模块目录链接。
 call :link_test
 if errorlevel 1 exit /b 1
@@ -60,6 +64,75 @@ if not defined SQLITE_ROOT (
 set "SQLITE_DLL=!SQLITE_ROOT:/=\!\lib\sqlite3.dll"
 call :link_file "!SQLITE_DLL!" "build\bin\sqlite3.dll"
 exit /b %errorlevel%
+
+:link_inferrt
+set "INFERRT_ROOT="
+set "INFERRT_DEBUG_ROOT="
+if exist "cmake\ConfigInferRT.cmake" (
+    for /f tokens^=2^ delims^=^" %%A in ('findstr /b /c:"set(INFERRT_ROOT " "cmake\ConfigInferRT.cmake"') do (
+        set "INFERRT_ROOT=%%A"
+    )
+    for /f tokens^=2^ delims^=^" %%A in ('findstr /b /c:"set(INFERRT_DEBUG_ROOT " "cmake\ConfigInferRT.cmake"') do (
+        set "INFERRT_DEBUG_ROOT=%%A"
+    )
+)
+
+if not defined INFERRT_ROOT (
+    echo skip InferRT runtime links, INFERRT_ROOT was not found in cmake\ConfigInferRT.cmake
+    exit /b 0
+)
+
+set "INFERRT_BIN=!INFERRT_ROOT:/=\!\bin"
+set "INFERRT_DEBUG_BIN=!INFERRT_DEBUG_ROOT:/=\!\bin"
+
+for %%P in (
+    "!INFERRT_BIN!\libiomp5md.dll"
+    "!INFERRT_BIN!\mkl_*.dll"
+    "!INFERRT_BIN!\nvinfer_*.dll"
+    "!INFERRT_BIN!\nvonnxparser_*.dll"
+    "!INFERRT_BIN!\cudnn*.dll"
+    "!INFERRT_BIN!\cublas*.dll"
+    "!INFERRT_BIN!\cufft*.dll"
+    "!INFERRT_BIN!\onnxruntime*.dll"
+    "!INFERRT_BIN!\faiss.dll"
+    "!INFERRT_BIN!\inferrt_core.dll"
+    "!INFERRT_BIN!\inferrt_cvcuda.dll"
+    "!INFERRT_BIN!\inferrt_features.dll"
+    "!INFERRT_BIN!\inferrt_model.dll"
+    "!INFERRT_BIN!\inferrt_util.dll"
+    "!INFERRT_BIN!\opencv_world480.dll"
+    "!INFERRT_BIN!\faissd.dll"
+    "!INFERRT_DEBUG_BIN!\inferrt_cored.dll"
+    "!INFERRT_DEBUG_BIN!\inferrt_cvcudad.dll"
+    "!INFERRT_DEBUG_BIN!\inferrt_featuresd.dll"
+    "!INFERRT_DEBUG_BIN!\inferrt_modeld.dll"
+    "!INFERRT_DEBUG_BIN!\inferrt_utild.dll"
+    "!INFERRT_DEBUG_BIN!\opencv_world480d.dll"
+) do (
+    call :link_inferrt_pattern "%%~P"
+    if errorlevel 1 exit /b 1
+)
+
+exit /b 0
+
+:link_inferrt_pattern
+for %%F in (%~1) do (
+    call :link_inferrt_file "%%~fF"
+    if errorlevel 1 exit /b 1
+)
+exit /b 0
+
+:link_inferrt_file
+set "TARGET=%~1"
+call :link_file "!TARGET!" "build\bin\%~nx1"
+if errorlevel 1 exit /b 1
+call :link_file "!TARGET!" "build\dltool\data\%~nx1"
+if errorlevel 1 exit /b 1
+if exist "build\tests\" (
+    call :link_file "!TARGET!" "build\tests\%~nx1"
+    if errorlevel 1 exit /b 1
+)
+exit /b 0
 
 :link_test
 REM 测试可执行程序运行目录不同，需要额外链接 dltool 模块目录。

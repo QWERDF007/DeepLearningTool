@@ -63,6 +63,14 @@ read_sqlite_root() {
     sed -nE 's#^[[:space:]]*set[[:space:]]*\([[:space:]]*CMAKE_PREFIX_PATH[[:space:]]+"([^"]+)".*#\1#p' "$cmake_file" | tail -n 1
 }
 
+read_cmake_set() {
+    local cmake_file="$1"
+    local name="$2"
+    [[ -f "$cmake_file" ]] || return 0
+
+    sed -nE "s#^[[:space:]]*set[[:space:]]*\\([[:space:]]*${name}[[:space:]]+\"([^\"]+)\".*#\\1#p" "$cmake_file" | tail -n 1
+}
+
 # 链接项目自身模块目录。
 # build/bin/dltool 指向 build/dltool，随后把模块共享库链接到 build/bin 根目录。
 link_dltool() {
@@ -114,6 +122,72 @@ link_sqlite() {
 }
 
 # 如果测试目录存在，则让测试可执行程序也能从运行目录找到 dltool 模块。
+link_inferrt_runtime_file() {
+    local runtime="$1"
+    local name
+
+    name="$(basename "$runtime")"
+    link_path "$runtime" "build/bin/$name"
+    link_path "$runtime" "build/dltool/data/$name"
+
+    if [[ -d "build/tests" ]]; then
+        link_path "$runtime" "build/tests/$name"
+    fi
+}
+
+link_inferrt_runtime_pattern() {
+    local pattern="$1"
+    local runtime
+
+    shopt -s nullglob
+    for runtime in $pattern; do
+        link_inferrt_runtime_file "$runtime"
+    done
+    shopt -u nullglob
+}
+
+link_inferrt() {
+    local cmake_file="cmake/ConfigInferRT.cmake"
+    local inferrt_root
+    local inferrt_debug_root
+    local inferrt_bin
+    local inferrt_debug_bin
+
+    inferrt_root="$(read_cmake_set "$cmake_file" "INFERRT_ROOT" || true)"
+    inferrt_debug_root="$(read_cmake_set "$cmake_file" "INFERRT_DEBUG_ROOT" || true)"
+
+    if [[ -z "$inferrt_root" ]]; then
+        warn "skip InferRT runtime links, INFERRT_ROOT was not found in $cmake_file"
+        return 0
+    fi
+
+    inferrt_bin="$inferrt_root/bin"
+    inferrt_debug_bin="$inferrt_debug_root/bin"
+
+    link_inferrt_runtime_pattern "$inferrt_bin/libiomp5md.dll"
+    link_inferrt_runtime_pattern "$inferrt_bin/mkl_*.dll"
+    link_inferrt_runtime_pattern "$inferrt_bin/nvinfer_*.dll"
+    link_inferrt_runtime_pattern "$inferrt_bin/nvonnxparser_*.dll"
+    link_inferrt_runtime_pattern "$inferrt_bin/cudnn*.dll"
+    link_inferrt_runtime_pattern "$inferrt_bin/cublas*.dll"
+    link_inferrt_runtime_pattern "$inferrt_bin/cufft*.dll"
+    link_inferrt_runtime_pattern "$inferrt_bin/onnxruntime*.dll"
+    link_inferrt_runtime_pattern "$inferrt_bin/faiss.dll"
+    link_inferrt_runtime_pattern "$inferrt_bin/inferrt_core.dll"
+    link_inferrt_runtime_pattern "$inferrt_bin/inferrt_cvcuda.dll"
+    link_inferrt_runtime_pattern "$inferrt_bin/inferrt_features.dll"
+    link_inferrt_runtime_pattern "$inferrt_bin/inferrt_model.dll"
+    link_inferrt_runtime_pattern "$inferrt_bin/inferrt_util.dll"
+    link_inferrt_runtime_pattern "$inferrt_bin/opencv_world480.dll"
+    link_inferrt_runtime_pattern "$inferrt_bin/faissd.dll"
+    link_inferrt_runtime_pattern "$inferrt_debug_bin/inferrt_cored.dll"
+    link_inferrt_runtime_pattern "$inferrt_debug_bin/inferrt_cvcudad.dll"
+    link_inferrt_runtime_pattern "$inferrt_debug_bin/inferrt_featuresd.dll"
+    link_inferrt_runtime_pattern "$inferrt_debug_bin/inferrt_modeld.dll"
+    link_inferrt_runtime_pattern "$inferrt_debug_bin/inferrt_utild.dll"
+    link_inferrt_runtime_pattern "$inferrt_debug_bin/opencv_world480d.dll"
+}
+
 link_test() {
     if [[ -d "build/tests" ]]; then
         link_path "build/dltool" "build/tests/dltool"
@@ -128,6 +202,9 @@ echo "link dltool dll success"
 
 link_sqlite
 echo "link sqlite3 dll success"
+
+link_inferrt
+echo "link inferrt runtime dll success"
 
 link_test
 echo "link test success"
