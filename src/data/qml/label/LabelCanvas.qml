@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 
 import dltool.ui
+import dltool.core
 import dltool.data
 import dltool.settings
 

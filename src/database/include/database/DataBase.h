@@ -1,6 +1,6 @@
 #pragma once
 
-#include "DatabaseExport.h"
+#include "dltool/database/Export.h"
 
 #include <sqlpp11/sqlite3/connection_pool.h>
 

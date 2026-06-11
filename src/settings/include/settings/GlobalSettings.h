@@ -4,7 +4,7 @@
 #include "settings/AdvancedSettings.h"
 #include "settings/DataSettings.h"
 #include "settings/ProjectSettings.h"
-#include "settings/SettingsExport.h"
+#include "dltool/settings/Export.h"
 #include "settings/UISettings.h"
 
 #include <QObject>

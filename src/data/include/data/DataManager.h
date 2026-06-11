@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "CategoryStatisticsModel.h"
-#include "DataExport.h"
+#include "dltool/data/Export.h"
 #include "DataExporter.h"
 #include "DataImporter.h"
 #include "Datasets.h"

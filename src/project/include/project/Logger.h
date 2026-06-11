@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ProjectExport.h"
+#include "dltool/project/Export.h"
 
 #include <spdlog/spdlog.h>
 

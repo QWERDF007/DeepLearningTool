@@ -1,6 +1,6 @@
 #pragma once
 
-#include "DataExport.h"
+#include "dltool/data/Export.h"
 
 #include <QColor>
 #include <QImage>

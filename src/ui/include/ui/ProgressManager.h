@@ -1,6 +1,6 @@
 #pragma once
 
-#include "UIExport.h"
+#include "dltool/ui/Export.h"
 #include "common/Singleton.h"
 
 #include <QQueue>

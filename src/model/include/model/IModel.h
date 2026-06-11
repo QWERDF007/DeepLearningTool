@@ -1,7 +1,7 @@
 #pragma once
 
 #include "IModelConfig.h"
-#include "ModelExport.h"
+#include "dltool/model/Export.h"
 
 #include <QString>
 

@@ -1,7 +1,7 @@
 #include "data/LabelData.h"
 
 #include "LabelData.h"
-#include "data/CoreDef.h"
+#include "core/CoreDef.h"
 
 #include <json.hpp>
 
@@ -14,6 +14,8 @@
 using json = nlohmann::json;
 
 namespace dltool::data {
+
+using dltool::core::DeepLearningMethod;
 
 enum EditMode
 {

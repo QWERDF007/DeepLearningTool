@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import Qt.labs.platform
 
 import dltool.ui
+import dltool.core
 import dltool.project
 import dltool.data
 

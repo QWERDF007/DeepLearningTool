@@ -1,6 +1,6 @@
 #pragma once
 
-#include "settings/SettingsExport.h"
+#include "dltool/settings/Export.h"
 
 #include <QObject>
 #include <QtQml>

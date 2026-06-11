@@ -1,10 +1,12 @@
 #include "model/ModelManager.h"
 
+#include "core/CoreDef.h"
+
 #include <memory>
 
 namespace dltool::model {
 
-constexpr int DetectionMethod = 1;
+constexpr int DetectionMethod = dltool::core::DeepLearningMethod::Detection;
 
 class YoloV5Config final : public IModelConfig
 {

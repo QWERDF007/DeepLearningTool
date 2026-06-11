@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import dltool.core
 import dltool.data
 import dltool.project
 

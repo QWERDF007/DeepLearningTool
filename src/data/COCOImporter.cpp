@@ -1,6 +1,6 @@
 #include "data/COCOImporter.h"
 
-#include "data/CoreDef.h"
+#include "core/CoreDef.h"
 #include "database/DataBase.h"
 
 #include <json.hpp>
@@ -22,6 +22,8 @@
 #include <utility>
 
 namespace dltool::data {
+
+using dltool::core::DeepLearningMethod;
 
 namespace {
 

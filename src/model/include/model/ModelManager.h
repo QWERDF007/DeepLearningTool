@@ -1,7 +1,7 @@
 #pragma once
 
 #include "IModel.h"
-#include "ModelExport.h"
+#include "dltool/model/Export.h"
 
 #include <QAbstractListModel>
 #include <QStringList>

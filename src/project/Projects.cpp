@@ -1,6 +1,6 @@
 #include "project/Projects.h"
 
-#include "data/CoreDef.h"
+#include "core/CoreDef.h"
 #include "database/DataBase.h"
 #include "model/ModelManager.h"
 
@@ -78,7 +78,7 @@ std::tuple<bool, QString> Project::isValid(const int method, const QString &path
     {
         if (file_exist)
             return {false, "项目已存在"};
-        else if (!dltool::data::DeepLearningMethod::getInstance()->getMethodTypes().contains(method))
+        else if (!dltool::core::DeepLearningMethod::isSupportedMethod(method))
             return {false, QString("项目类型非法: %1").arg(method)};
         else
             return {true, ""};
@@ -89,7 +89,7 @@ std::tuple<bool, QString> Project::isValid(const int method, const QString &path
             return {false, "项目不存在"};
         auto      info           = ProjectManager::getInstance()->getProjectInfo(path);
         const int project_method = info.value("method", -1).toInt();
-        if (!dltool::data::DeepLearningMethod::getInstance()->getMethodTypes().contains(project_method))
+        if (!dltool::core::DeepLearningMethod::isSupportedMethod(project_method))
             return {false, QString("项目类型非法: %1").arg(method)};
     }
     return {true, ""};

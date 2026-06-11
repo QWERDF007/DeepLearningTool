@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ModelExport.h"
+#include "dltool/model/Export.h"
 
 #include <QString>
 
