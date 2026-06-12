@@ -937,7 +937,7 @@ QVariantMap ImageLabelsListModel::getData(const int index) const
         return QVariantMap();
     int64_t        label_id = label_ids_[index];
     LabelInstance *instance = label_instances_->getLabelInstance(label_id);
-    if (instance == nullptr)
+    if (instance == nullptr || instance->data() == nullptr)
         return QVariantMap();
     auto data              = instance->data()->dataMap();
     data["label_id"]       = label_id;
@@ -949,6 +949,8 @@ QVariantMap ImageLabelsListModel::getData(const int index) const
 
 QVariantMap ImageLabelsListModel::getEditedData(const QVariantMap &data, const QPointF &start, const QPointF &end)
 {
+    if (label_instances_ == nullptr || label_instances_->helper() == nullptr)
+        return QVariantMap();
     auto image_instance = image_instances_->getImageInstance(image_instances_->getCurrentImageId());
     if (image_instance == nullptr)
         return QVariantMap();
@@ -965,6 +967,8 @@ std::vector<int> ImageLabelsListModel::getIndicesAt(const QPointF &pos) const
         return indices;
     QRectF image_rect = image_instance->imageRect();
     if (!image_rect.contains(pos))
+        return indices;
+    if (label_instances_ == nullptr || label_instances_->helper() == nullptr)
         return indices;
     for (int i = 0; i < static_cast<int>(label_ids_.size()); ++i)
     {
@@ -1009,6 +1013,8 @@ bool ImageLabelsListModel::isInside(const QPointF &pos, const int index) const
 {
     if (index < 0 || index >= static_cast<int>(label_ids_.size()))
         return false;
+    if (label_instances_ == nullptr || label_instances_->helper() == nullptr)
+        return false;
     auto label_instance = label_instances_->getLabelInstance(label_ids_[index]);
     if (label_instance == nullptr)
         return false;
@@ -1018,6 +1024,13 @@ bool ImageLabelsListModel::isInside(const QPointF &pos, const int index) const
 QVariantMap ImageLabelsListModel::hitTestHandle(const QPointF &pos, const int index, const double scale) const
 {
     if (index < 0 || index >= static_cast<int>(label_ids_.size()))
+    {
+        return QVariantMap{
+            {    "found", false},
+            {"direction",    ""}
+        };
+    }
+    if (label_instances_ == nullptr || label_instances_->helper() == nullptr)
     {
         return QVariantMap{
             {    "found", false},
@@ -1184,6 +1197,13 @@ ImageLabelsTableModel::~ImageLabelsTableModel() {}
 void ImageLabelsTableModel::init()
 {
     connect(selection_, &QItemSelectionModel::selectionChanged, this, &ImageLabelsTableModel::updateSelection);
+    if (label_instances_ == nullptr || label_instances_->helper() == nullptr)
+    {
+        column_headers_.clear();
+        column_keys_.clear();
+        spdlog::warn("init image labels table without label data helper");
+        return;
+    }
     auto data       = label_instances_->helper()->dataColumns();
     column_headers_ = data.first;
     column_keys_    = data.second;
@@ -1461,7 +1481,7 @@ QVariant ImageLabelsTableModel::getData(const QModelIndex &index) const
 {
     const int64_t  label_id = label_ids_[index.row()];
     LabelInstance *instance = label_instances_->getLabelInstance(label_id);
-    if (instance == nullptr)
+    if (instance == nullptr || instance->data() == nullptr)
         return QVariant();
     auto      data = instance->data()->dataMap();
     const int col  = index.column();
