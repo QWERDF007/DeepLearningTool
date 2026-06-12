@@ -2,7 +2,7 @@
 
 ## 1. 项目概述
 
-DeepLearningTool (`dltool`) 是一个 Qt 6/QML 桌面应用，主要用于深度学习数据标注。当前实现以项目文件为中心，支持数据集管理、图像导入、目标检测标注、语义分割多边形标注、图像标签、过滤、类别统计和最近项目管理。
+DeepLearningTool (`dltool`) 是一个 Qt 6/QML 桌面应用，主要用于深度学习数据标注。当前实现以 `.dlpro` 项目文件为中心，支持项目管理、数据集管理、图像导入导出、目标检测标注、语义分割多边形标注、图片标签、过滤、类别统计、图像相似搜索、智能标注、模型记录管理和训练/测试参数配置。
 
 ## 2. 技术栈
 
@@ -14,6 +14,7 @@ DeepLearningTool (`dltool`) 是一个 Qt 6/QML 桌面应用，主要用于深度
 | 数据库 | SQLite + sqlpp11 |
 | 日志 | spdlog |
 | JSON | nlohmann/json |
+| 图像搜索/智能标注 | InferRT + FAISS |
 | 资源 | Qt resource (`assets/assets.qrc`) |
 | 测试 | Qt Quick Test + CTest |
 
@@ -27,7 +28,7 @@ DeepLearningTool/
 ├── docs/                     # 项目文档
 ├── src/                      # 主源码
 ├── tests/                    # Qt Quick/UI 测试
-├── tools/                    # 辅助脚本
+├── tools/                    # 辅助脚本和打包脚本
 ├── CMakeLists.txt            # 根构建脚本
 ├── DESIGN.md                 # 产品设计说明
 └── README.md                 # 项目简介
@@ -48,15 +49,15 @@ DeepLearningTool/
 
 ```cmake
 add_subdirectory(common)
+add_subdirectory(core)
 add_subdirectory(database)
 add_subdirectory(settings)
-add_subdirectory(project)
-add_subdirectory(data)
 add_subdirectory(ui)
+add_subdirectory(model)
+add_subdirectory(data)
+add_subdirectory(project)
 add_subdirectory(tool)
 ```
-
-`src/model/` 存在但未被构建。
 
 ## 5. 模块结构
 
@@ -76,7 +77,6 @@ add_subdirectory(tool)
 ```text
 src/common/
 ├── include/common/
-│   ├── CommonExport.h
 │   ├── CrashHandler.h
 │   ├── LinuxCCrashHandler.h
 │   ├── Logger.h
@@ -87,34 +87,28 @@ src/common/
 ├── LinuxCCrashHandler.cpp
 ├── Logger.cpp
 ├── Utils.cpp
-└── WindowsCCrashHandler.cpp
+├── WindowsCCrashHandler.cpp
+└── README.md
 ```
 
-### 5.2 Settings (`dltool_settings`, URI `dltool.settings`)
+### 5.2 Core (`dltool_core`, URI `dltool.core`)
 
-位置：`src/settings/`
+位置：`src/core/`
 
 职责：
 
-- `GlobalSettings`：QML 单例，聚合项目、数据和 UI 设置，通过 `SettingsDataBase` 保存到软件目录下的 `db/settings.db`。`DataSettings` 新增特征提取设置（模型、推理后端、FAISS 后端、索引存储方式、top-K、归一化等）。
-- `ProjectSettings`：最近项目数量、自动保存间隔、自动保存开关。
-- `DataSettings`：缩略图、图像加载、标注显示、图像网格缩放、标注缩略图参数。
-- `UISettings`：图像亮度/对比度、主题、语言。
+- `DeepLearningMethod`：任务类型 QML 单例，定义图像分类、目标检测、语义分割、姿态检测、OCR 等类型。
+- `supportedMethodTypes()` 当前只启用图像分类、目标检测和语义分割。
 
 结构：
 
 ```text
-src/settings/
-├── include/settings/
-│   ├── DataSettings.h
-│   ├── GlobalSettings.h
-│   ├── ProjectSettings.h
-│   ├── SettingsExport.h
-│   └── UISettings.h
-├── DataSettings.cpp
-├── GlobalSettings.cpp
-├── ProjectSettings.cpp
-└── UISettings.cpp
+src/core/
+├── include/core/
+│   └── CoreDef.h
+├── CoreDef.cpp
+├── CMakeLists.txt
+└── README.md
 ```
 
 ### 5.3 Database (`dltool_database`)
@@ -123,8 +117,8 @@ src/settings/
 
 职责：
 
-- `DataBase`：SQLite 连接池、数据库文件创建，以及软件目录 `db/` 路径生成。
-- `ProjectDataBase`：`.dlpro` 项目库读写。
+- `DataBase`：SQLite 连接池、数据库文件创建、应用目录 `db/` 路径生成和完整性检查。
+- `ProjectDataBase`：`.dlpro` 项目库读写，包含项目元信息、数据集、图像、类别、标注、图片标签和模型记录。
 - `RecentProjectsDataBase`：最近项目 `db/history.db` 读写。
 - `SettingsDataBase`：全局设置 `db/settings.db` 读写。
 - `SqlDef` 和 `ddl/`：sqlpp11 表定义与建表 SQL。
@@ -135,69 +129,42 @@ src/settings/
 src/database/
 ├── include/database/
 │   ├── ddl/
-│   │   ├── create_datasets.sql
-│   │   ├── create_images.sql
-│   │   ├── create_label_classes.sql
-│   │   ├── create_labels.sql
-│   │   ├── create_project.sql
-│   │   ├── create_recent_projects.sql
-│   │   ├── create_settings.sql
-│   │   ├── create_tag_classes.sql
-│   │   ├── create_tags.sql
+│   │   ├── create_*.sql
 │   │   └── *Table.h
 │   ├── DataBase.h
-│   ├── DatabaseExport.h
 │   └── SqlDef.h
-└── DataBase.cpp
+├── DataBase.cpp
+└── README.md
 ```
 
-### 5.4 Data (`dltool_data`, URI `dltool.data`)
+### 5.4 Settings (`dltool_settings`, URI `dltool.settings`)
 
-位置：`src/data/`
+位置：`src/settings/`
 
 职责：
 
-- 数据模型：`DatasetsListModel`、`ImageInstancesListModel`、`LabelClassesListModel`、`ImageTagsListModel`、`LabelInstancesListModel`、`ImageLabelsListModel`、`ImageLabelsTableModel`、`ImageInfoListModel`。
-- 数据聚合：`DataManager` 统一创建和暴露模型。
-- 数据导入：`DataImporter`、`LabelMeImporter`、`COCOImporter`，通过 `DatasetIO` 复用图片扫描、JSON 扫描、bbox 与多边形点集转换等公共逻辑。
-- 数据导出：`DataExporter`、`LabelMeExporter`、`COCOExporter`。导出时 `DataManager` 先组装统一的 `ExportDataset`，格式类负责写出目录结构和标注文件；带 `points` 的标注会导出为 LabelMe polygon 或 COCO segmentation。
-- 标注数据：`LabelData_t`、`DetLabelData_t`、`SegLabelData_t`、`LabelDataHelper_t`，其中 `SegLabelDataHelper` 负责多边形命中测试、顶点拖拽和整体移动。
-- 图像搜索：`ImageSearchController` 基于 InferRT + FAISS 实现以图搜图，支持 TensorRT / OpenVINO / ONNX Runtime 等多种推理后端，结果通过 `ImageSearchFilterModule` 写入 `GlobalFilter`。
-- 过滤：`GlobalFilter`、`DatasetFilterModule`、`TagFilterModule`、`LabelClassFilterModule`、`ImageLabelClassFilterModule`、`ImageSearchFilterModule`、`FilterItemsModel`。所有过滤模块支持正向/反向过滤（invert），通过 `GlobalFilter.setFilter()` / `selectAll()` / `deselectAll()` 操作。
-- 统计：`CategoryStatisticsModel`。
-- QML 页面：Gallery、Label、Review 和公共组件，Gallery 包含 `ImageSearchDialog.qml` 图像搜索弹窗。
+- `GlobalSettings`：QML 单例，聚合项目、数据、高级和 UI 设置，通过 `SettingsDataBase` 保存到软件目录下的 `db/settings.db`。
+- `ProjectSettings`：最近项目数量、自动保存间隔、自动保存开关。
+- `DataSettings`：缩略图、图像加载、标注显示、图像网格缩放、标注缩略图参数。
+- `AdvancedSettings`：聚合 `ImageSearchSettings` 和 `SmartAnnotationSettings`。
+- `UISettings`：图像亮度/对比度、主题、语言。
 
 结构：
 
 ```text
-src/data/
-├── include/data/
-│   ├── CategoryStatisticsModel.h
-│   ├── CoreDef.h
-│   ├── DataFormat.h
-│   ├── DataExporter.h
-│   ├── DataImporter.h
-│   ├── DatasetIO.h
-│   ├── DataManager.h
-│   ├── Datasets.h
-│   ├── FilterItemsModel.h
-│   ├── GlobalFilter.h
-│   ├── ImageSearchController.h
-│   ├── ImageSearchFilterModule.h
-│   ├── Images.h
-│   ├── ImageTags.h
-│   ├── LabelClasses.h
-│   ├── LabelData.h
-│   └── Labels.h
-├── qml/
-│   ├── component/
-│   ├── gallery/
-│   ├── label/
-│   ├── review/
-│   ├── GalleryPage.qml
-│   ├── LabelPage.qml
-│   └── ReviewPage.qml
-└── *.cpp
+src/settings/
+├── include/settings/
+│   ├── AdvancedSettings.h
+│   ├── DataSettings.h
+│   ├── GlobalSettings.h
+│   ├── ProjectSettings.h
+│   └── UISettings.h
+├── AdvancedSettings.cpp
+├── DataSettings.cpp
+├── GlobalSettings.cpp
+├── ProjectSettings.cpp
+├── UISettings.cpp
+└── README.md
 ```
 
 ### 5.5 UI (`dltool_ui`, URI `dltool.ui`)
@@ -210,6 +177,7 @@ src/data/
 - `UILogger`：接收 spdlog sink 的 QML 日志单例。
 - `ProgressManager`：长任务进度和消息队列。
 - `Utils`：QML 可调用的路径/颜色/文件管理器工具。
+- `SignalHelper`：跨组件轻量信号中转。
 - `controls/`：统一样式的 QML 控件。
 
 结构：
@@ -230,23 +198,102 @@ src/ui/
 │   ├── DltCheckBox.qml
 │   ├── DltComboBox.qml
 │   ├── DltContentDialog.qml
-│   ├── DltEditor.qml
 │   ├── DltProgressBar.qml
 │   ├── DltScrollablePage.qml
 │   ├── DltSlider.qml
-│   ├── DltText*.qml
+│   ├── DltToggleSwitch.qml
 │   └── ...
-└── *.cpp
+├── *.cpp
+└── README.md
 ```
 
-### 5.6 Project (`dltool_project`, URI `dltool.project`)
+### 5.6 Model (`dltool_model`, URI `dltool.model`)
+
+位置：`src/model/`
+
+职责：
+
+- `ModelManager`：项目模型列表模型，读写项目数据库中的模型记录。
+- `IModel`、`IModelConfig`：模型结构和配置抽象。
+- `IParams`、`ITrainParams`、`ITestParams`、`ParamGroupModel`：QML 可编辑参数分组模型。
+- `ModelParamDefs`：参数定义构造 helper。
+- `DetectionModels.cpp`：注册目标检测下的 YOLOv5/YOLOv8 默认参数。
+- QML 页面：Train、Test、模型列表、模型创建弹窗、参数表单。
+
+结构：
+
+```text
+src/model/
+├── include/model/
+│   ├── IModel.h
+│   ├── IModelConfig.h
+│   ├── IParams.h
+│   ├── ModelManager.h
+│   └── ModelParamDefs.h
+├── qml/
+│   ├── component/
+│   ├── train/
+│   ├── TrainPage.qml
+│   └── TestPage.qml
+├── DetectionModels.cpp
+├── IModel.cpp
+├── IParams.cpp
+├── ModelManager.cpp
+├── ModelParamDefs.cpp
+└── README.md
+```
+
+### 5.7 Data (`dltool_data`, URI `dltool.data`)
+
+位置：`src/data/`
+
+职责：
+
+- 数据模型：`DatasetsListModel`、`ImageInstancesListModel`、`LabelClassesListModel`、`ImageTagsListModel`、`LabelInstancesListModel`、`ImageLabelsListModel`、`ImageLabelsTableModel`、`ImageInfoListModel`。
+- 数据聚合：`DataManager` 统一创建和暴露模型、过滤器、图像搜索和智能标注控制器。
+- 数据导入：`DataImporter`、`LabelMeImporter`、`COCOImporter`，通过 `DatasetIO` 复用公共逻辑。
+- 数据导出：`DataExporter`、`LabelMeExporter`、`COCOExporter`。
+- 标注数据：`LabelData_t`、`DetLabelData_t`、`SegLabelData_t`、`LabelDataHelper_t`。
+- 图像搜索：`ImageSearchController` 基于 InferRT + FAISS 实现以图搜图。
+- 智能标注：`SmartAnnotationController` 负责模型加载、缓存和推理。
+- 过滤：`GlobalFilter` 及五类过滤模块。
+- 统计：`CategoryStatisticsModel`。
+- QML 页面：Gallery、Label、Review 和公共组件。
+
+结构：
+
+```text
+src/data/
+├── include/data/
+│   ├── CategoryStatisticsModel.h
+│   ├── DataFormat.h
+│   ├── DataManager.h
+│   ├── DatasetIO.h
+│   ├── GlobalFilter.h
+│   ├── ImageSearchController.h
+│   ├── SmartAnnotationController.h
+│   ├── Labels.h
+│   └── ...
+├── qml/
+│   ├── component/
+│   ├── gallery/
+│   ├── label/
+│   ├── review/
+│   ├── GalleryPage.qml
+│   ├── LabelPage.qml
+│   └── ReviewPage.qml
+├── *.cpp
+└── README.md
+```
+
+### 5.8 Project (`dltool_project`, URI `dltool.project`)
 
 位置：`src/project/`
 
 职责：
 
-- `Project`：项目实体，持有 `ProjectDataBase` 和 `DataManager`。
-- `RectentProjects`：最近项目列表模型，保留了当前代码中的类名拼写。
+- `Project`：项目实体，持有 `ProjectDataBase`、`DataManager` 和 `ModelManager`。
+- `RectentProjects`：最近项目列表模型，保留当前代码中的类名拼写。
 - `ProjectManager`：QML 单例，负责创建、打开、关闭、删除项目和读取项目信息。
 - QML 页面：项目首页、创建器、打开器、历史列表、项目信息表单。
 
@@ -256,16 +303,16 @@ src/ui/
 src/project/
 ├── include/project/
 │   ├── Logger.h
-│   ├── ProjectExport.h
 │   └── Projects.h
 ├── qml/
 │   ├── project/
 │   └── ProjectPage.qml
 ├── Logger.cpp
-└── Projects.cpp
+├── Projects.cpp
+└── README.md
 ```
 
-### 5.7 Tool (`dltool`, URI `dltool.tool`)
+### 5.9 Tool (`dltool`, URI `dltool.tool`)
 
 位置：`src/tool/`
 
@@ -273,7 +320,7 @@ src/project/
 
 - `main.cpp`：安装崩溃处理、初始化日志、创建 `QApplication` 和 `QQmlApplicationEngine`。
 - `Main.qml`：主窗口入口。
-- `Content.qml`：主要页面容器。
+- `Content.qml`：主要页面容器，加载项目、图库、标注、复核、训练、测试页面。
 - `header/`、`footer/`：顶部导航和底部日志/进度状态区。
 - `qtquickcontrols2.conf`：Qt Quick Controls 配置。
 
@@ -287,7 +334,8 @@ src/tool/
 │   ├── Content.qml
 │   └── Main.qml
 ├── main.cpp
-└── qtquickcontrols2.conf
+├── qtquickcontrols2.conf
+└── README.md
 ```
 
 ## 6. 数据流
@@ -301,8 +349,11 @@ flowchart LR
   C --> D[ProjectDataBase]
   D --> E[(.dlpro SQLite)]
   C --> F[DataManager]
-  F --> G[Datasets/Images/Labels/Tags Models]
-  G --> A
+  C --> G[ModelManager]
+  F --> H[Datasets/Images/Labels/Tags/Filters]
+  G --> I[Model Records/Params]
+  H --> A
+  I --> A
 ```
 
 ### 6.2 标注与 UI 更新
@@ -321,7 +372,7 @@ sequenceDiagram
   Model-->>QML: begin/end rows、dataChanged、role 数据
 ```
 
-### 6.3 过滤与统计
+### 6.3 过滤、搜索与统计
 
 `GlobalFilter` 聚合五类过滤条件，各模块间按 AND 逻辑组合，模块内按 OR 逻辑组合：
 
@@ -329,25 +380,43 @@ sequenceDiagram
 - `Tag`：按图像标签过滤图像。
 - `LabelClass`：按标注类别过滤标注实例。
 - `ImageLabelClass`：按图像是否包含指定标注类别过滤图像。
-- `ImageSearch`：按图像相似度搜索结果过滤图像（由 `ImageSearchController` 驱动）。
-
-每种过滤类型均支持反向过滤（invert），启用后将反转匹配逻辑（显示不满足条件的图像）。过滤项由 `DatasetFilterItemsModel`、`TagFilterItemsModel`、`LabelClassFilterItemsModel` 提供；类别统计由 `CategoryStatisticsModel` 提供。
+- `ImageSearch`：按图像相似度搜索结果过滤图像。
 
 图像搜索流程：
-1. 用户在图库界面选中查询图像，通过 `ImageSearchDialog` 配置搜索参数（模型、后端、特征层、top-K 等）。
-2. `DataSettings` 中持久化特征提取参数（模型路径、后端类型、索引存储方式等）。
+
+1. 用户在图库界面选中查询图像，通过 `ImageSearchDialog` 配置搜索参数。
+2. `GlobalSettings.advanced.imageSearch` 持久化模型、后端、特征层、top-K、索引等参数。
 3. `ImageSearchController` 在后台线程执行特征提取与 FAISS 检索。
 4. 搜索完成后，结果图像 ID 写入 `ImageSearchFilterModule`，`GlobalFilter` 联合其他过滤条件更新可见图像列表。
+
+### 6.4 模型配置
+
+```mermaid
+sequenceDiagram
+  participant QML as Train/Test QML
+  participant PM as Project
+  participant MM as ModelManager
+  participant DB as ProjectDataBase
+  participant Registry as Registered Models
+
+  QML->>MM: addModel/renameModel/deleteModel/copyModel
+  MM->>DB: 写入 models 表
+  QML->>MM: modelForId(model_id, network_structure)
+  MM->>Registry: 创建 IModel/IModelConfig/IParams
+  Registry-->>QML: 参数分组模型
+```
 
 ## 7. 构建目标
 
 | 目标 | 类型 | QML URI | 说明 |
 |------|------|---------|------|
 | `dltool_common` | shared library | 无 | 基础设施 |
-| `dltool_settings` | shared library | `dltool.settings` | 设置 |
+| `dltool_core` | shared library | `dltool.core` | 核心定义 |
 | `dltool_database` | shared library | 无 | SQLite/sqlpp11 |
-| `dltool_data` | shared library | `dltool.data` | 数据模型和页面 |
+| `dltool_settings` | shared library | `dltool.settings` | 设置 |
 | `dltool_ui` | shared library | `dltool.ui` | UI 控件和主题 |
+| `dltool_model` | shared library | `dltool.model` | 模型记录和参数 |
+| `dltool_data` | shared library | `dltool.data` | 数据模型和页面 |
 | `dltool_project` | shared library | `dltool.project` | 项目业务 |
 | `dltool` | executable | `dltool.tool` | 应用入口 |
 | `tst_dltool_ui` | test executable | - | UI/QML 测试 |

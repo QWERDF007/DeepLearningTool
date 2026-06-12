@@ -23,11 +23,12 @@
 
 ## QML 风格
 
-- 模块 URI 与目录对应：`dltool.ui`、`dltool.data`、`dltool.project`、`dltool.settings`。
+- 模块 URI 与目录对应：`dltool.core`、`dltool.settings`、`dltool.ui`、`dltool.model`、`dltool.data`、`dltool.project`、`dltool.tool`。
 - 通用控件放在 `src/ui/controls/`，命名使用 `Dlt` 前缀。
 - 业务页面放在所属模块下：
   - 项目页：`src/project/qml/`
   - 数据页：`src/data/qml/`
+  - 模型训练/测试页：`src/model/qml/`
   - 应用框架：`src/tool/qml/`
 - 复杂业务逻辑下沉到 C++ 模型或 manager；QML 负责组合、绑定和轻量交互。
 - `QAbstractItemModel` 的 role 从 `Qt::UserRole + 1` 起，并在 `roleNames()` 中导出语义化名称。

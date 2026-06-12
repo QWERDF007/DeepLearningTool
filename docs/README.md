@@ -1,6 +1,6 @@
 # DeepLearningTool 文档索引
 
-DeepLearningTool 是一个基于 C++17、Qt 6/QML、CMake 和 SQLite 的深度学习数据标注桌面工具。当前项目主要覆盖项目管理、数据集管理、图像导入、目标检测标注、语义分割多边形标注、图像标签、多类型过滤（支持反向过滤）、图像相似度搜索（基于 InferRT + FAISS）、统计等工作流。
+DeepLearningTool 是一个基于 C++17、Qt 6/QML、CMake 和 SQLite 的深度学习数据标注桌面工具。当前项目主要覆盖项目管理、数据集管理、图像导入、目标检测标注、语义分割多边形标注、图像标签、多类型过滤（支持反向过滤）、图像相似度搜索（基于 InferRT + FAISS）、智能标注、模型记录管理、训练/测试参数配置和统计等工作流。
 
 ## 文档列表
 
@@ -33,13 +33,16 @@ DeepLearningTool 是一个基于 C++17、Qt 6/QML、CMake 和 SQLite 的深度�
 | 模块 | 位置 | 目标 | QML URI | 职责 |
 |------|------|------|---------|------|
 | Common | `src/common/` | `dltool_common` | 无 | 日志、崩溃处理、工具函数、单例模板 |
-| Settings | `src/settings/` | `dltool_settings` | `dltool.settings` | 全局/项目/数据/UI 设置与持久化 |
-| Database | `src/database/` | `dltool_database` | 无 | SQLite 连接池、项目库、最近项目库、DDL |
-| Data | `src/data/` | `dltool_data` | `dltool.data` | 数据集、图像、标注、标签、过滤、图像搜索、统计模型和数据导入导出 |
+| Core | `src/core/` | `dltool_core` | `dltool.core` | 深度学习任务类型等跨模块核心定义 |
+| Database | `src/database/` | `dltool_database` | 无 | SQLite 连接池、项目库、最近项目库、设置库、DDL |
+| Settings | `src/settings/` | `dltool_settings` | `dltool.settings` | 全局/项目/数据/高级/UI 设置与持久化 |
 | UI | `src/ui/` | `dltool_ui` | `dltool.ui` | 主题、字体、图标、日志/进度单例、自定义 QML 控件 |
-| Project | `src/project/` | `dltool_project` | `dltool.project` | 项目生命周期、最近项目、业务聚合 |
+| Model | `src/model/` | `dltool_model` | `dltool.model` | 模型记录、模型结构注册、训练/测试参数和页面骨架 |
+| Data | `src/data/` | `dltool_data` | `dltool.data` | 数据集、图像、标注、标签、过滤、图像搜索、智能标注、统计模型和数据导入导出 |
+| Project | `src/project/` | `dltool_project` | `dltool.project` | 项目生命周期、最近项目、项目级对象聚合 |
 | Tool | `src/tool/` | `dltool` | `dltool.tool` | 应用入口、顶层 QML、主窗口布局 |
-| Model | `src/model/` | `dltool_model` | `dltool.model` | 预留模块；当前未在 `src/CMakeLists.txt` 中构建 |
+
+每个 `src/` 一级模块目录下还有模块级 `README.md`，用于说明该模块的架构设计、职责边界和扩展约定。
 
 ## 常用命令
 
