@@ -16,6 +16,58 @@ Rectangle {
     property var currentModelId: -1
     property string currentModelName: ""
     property string currentNetworkStructure: ""
+    property bool componentCompleted: false
+
+    function clearCurrentModel() {
+        currentModelId = -1
+        currentModelName = ""
+        currentNetworkStructure = ""
+        if (view.currentIndex !== -1) {
+            view.currentIndex = -1
+        }
+    }
+
+    function selectModel(row) {
+        if (!modelManager || row < 0 || row >= view.count) {
+            clearCurrentModel()
+            return
+        }
+
+        const modelData = modelManager.modelAt(row)
+        if (!modelData || modelData.model_id === undefined || modelData.model_id < 0) {
+            clearCurrentModel()
+            return
+        }
+
+        if (view.currentIndex !== row) {
+            view.currentIndex = row
+        }
+        currentModelId = modelData.model_id
+        currentModelName = modelData.name || ""
+        currentNetworkStructure = modelData.network_structure || ""
+    }
+
+    function ensureCurrentModel() {
+        if (!modelManager || view.count <= 0) {
+            clearCurrentModel()
+            return
+        }
+
+        const row = view.currentIndex >= 0 && view.currentIndex < view.count ? view.currentIndex : 0
+        selectModel(row)
+    }
+
+    function requestEnsureCurrentModel() {
+        if (componentCompleted) {
+            Qt.callLater(ensureCurrentModel)
+        }
+    }
+
+    onModelManagerChanged: requestEnsureCurrentModel()
+    Component.onCompleted: {
+        componentCompleted = true
+        requestEnsureCurrentModel()
+    }
 
     DltMenu {
         id: modelMenu
@@ -36,10 +88,7 @@ Rectangle {
             onClicked: {
                 if (modelManager && modelView.currentModelId >= 0) {
                     modelManager.deleteModel(modelView.currentModelId)
-                    view.currentIndex = -1
-                    modelView.currentModelId = -1
-                    modelView.currentModelName = ""
-                    modelView.currentNetworkStructure = ""
+                    Qt.callLater(modelView.ensureCurrentModel)
                 }
             }
         }
@@ -94,6 +143,17 @@ Rectangle {
                 model: modelManager
                 spacing: 5
                 ScrollBar.vertical: DltScrollBar {}
+                onCountChanged: modelView.requestEnsureCurrentModel()
+                onModelChanged: modelView.requestEnsureCurrentModel()
+                onCurrentIndexChanged: {
+                    if (currentIndex >= 0) {
+                        Qt.callLater(function () {
+                            modelView.selectModel(view.currentIndex)
+                        })
+                    } else if (count <= 0) {
+                        modelView.clearCurrentModel()
+                    }
+                }
 
                 delegate: ModelDelegate {
                     width: view.width
@@ -108,10 +168,7 @@ Rectangle {
                         anchors.fill: parent
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
                         onClicked: function (mouse) {
-                            view.currentIndex = index
-                            modelView.currentModelId = model.model_id
-                            modelView.currentModelName = model.name
-                            modelView.currentNetworkStructure = model.network_structure
+                            modelView.selectModel(index)
                             if (mouse.button === Qt.RightButton) {
                                 modelMenu.popup()
                             }

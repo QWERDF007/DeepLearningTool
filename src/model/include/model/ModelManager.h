@@ -5,6 +5,7 @@
 
 #include <QAbstractListModel>
 #include <QStringList>
+#include <QVariantMap>
 #include <QtQml>
 #include <functional>
 #include <memory>
@@ -55,6 +56,8 @@ public:
     Q_INVOKABLE QStringList supportedNetworkStructures() const;
 
     Q_INVOKABLE QStringList availableModelNames() const;
+
+    Q_INVOKABLE QVariantMap modelAt(int row) const;
 
     Q_INVOKABLE dltool::model::IModel *modelForId(const qint64 model_id,
                                                   const QString &network_structure) const;

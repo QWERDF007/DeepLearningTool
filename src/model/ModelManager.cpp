@@ -317,6 +317,25 @@ QStringList ModelManager::availableModelNames() const
     return registeredModelNames(method_);
 }
 
+QVariantMap ModelManager::modelAt(const int row) const
+{
+    if (row < 0 || row >= rowCount())
+    {
+        return {};
+    }
+
+    const ModelRecord &model = models_.at(static_cast<size_t>(row));
+    return {
+        {          QStringLiteral("model_id"), static_cast<qint64>(model.model_id)},
+        {              QStringLiteral("name"),                       model.name},
+        { QStringLiteral("network_structure"),          model.network_structure},
+        {   QStringLiteral("training_result"),            model.training_result},
+        {       QStringLiteral("test_result"),                model.test_result},
+        {             QStringLiteral("ctime"),                      model.ctime},
+        {             QStringLiteral("mtime"),                      model.mtime},
+    };
+}
+
 IModel *ModelManager::modelForId(const qint64 model_id, const QString &network_structure) const
 {
     return cachedModelForRecord(model_id, network_structure);
