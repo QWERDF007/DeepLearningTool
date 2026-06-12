@@ -23,12 +23,13 @@ ParamGroupModel::ParamGroupModel(QObject *parent)
 }
 
 ParamGroupModel::ParamGroupModel(QString key, QString label, QString description, const bool enabled,
-                                 std::vector<ParamDefinition> params, QObject *parent)
+                                 const int part_index, std::vector<ParamDefinition> params, QObject *parent)
     : QAbstractListModel(parent)
     , key_(std::move(key))
     , label_(std::move(label))
     , description_(std::move(description))
     , enabled_(enabled)
+    , part_index_(part_index)
     , params_(std::move(params))
 {
     QQmlEngine::setObjectOwnership(this, QQmlEngine::CppOwnership);
@@ -61,6 +62,11 @@ QString ParamGroupModel::description() const
 bool ParamGroupModel::isEnabled() const
 {
     return enabled_;
+}
+
+int ParamGroupModel::partIndex() const
+{
+    return part_index_;
 }
 
 int ParamGroupModel::count() const
@@ -319,6 +325,8 @@ QVariant IParams::data(const QModelIndex &index, const int role) const
         return group->description();
     case GroupEnabledRole:
         return group->isEnabled();
+    case GroupPartIndexRole:
+        return group->partIndex();
     case GroupCountRole:
         return group->count();
     case GroupModelRole:
@@ -335,6 +343,7 @@ QHash<int, QByteArray> IParams::roleNames() const
         {        GroupLabelRole,         "label"},
         {  GroupDescriptionRole,   "description"},
         {      GroupEnabledRole,       "enabled"},
+        {    GroupPartIndexRole,     "partIndex"},
         {        GroupCountRole,         "count"},
         {        GroupModelRole,    "groupModel"},
     };
@@ -350,11 +359,12 @@ ParamGroupModel *IParams::groupAt(const int row) const
 }
 
 ParamGroupModel *IParams::addGroup(const QString &key, const QString &label, std::vector<ParamDefinition> params,
-                                   const QString &description, const bool enabled)
+                                   const QString &description, const bool enabled, const int part_index)
 {
     const int row = groupCount();
     beginInsertRows(QModelIndex(), row, row);
-    auto group = std::make_unique<ParamGroupModel>(key, label, description, enabled, std::move(params), this);
+    auto group = std::make_unique<ParamGroupModel>(key, label, description, enabled, part_index, std::move(params),
+                                                   this);
     auto *ptr = group.get();
     groups_.push_back(std::move(group));
     endInsertRows();

@@ -17,8 +17,9 @@ std::vector<ParamGroupDefinition> makeDetectionTrainGroups(const int image_size,
                                                            const bool mosaic_enabled)
 {
     ParamGroupDefinition network_group;
-    network_group.key   = QStringLiteral("network");
-    network_group.label = QStringLiteral("Network Parameters");
+    network_group.key        = QStringLiteral("network");
+    network_group.label      = QStringLiteral("Network Parameters");
+    network_group.part_index = 0;
     network_group.params = {
         makeIntegerParam(QStringLiteral("image_size"), QStringLiteral("Image Size"), image_size, 320, 1536, 32),
         makeIntegerParam(QStringLiteral("num_classes"), QStringLiteral("Classes"), 80, 1, 10000, 1),
@@ -27,8 +28,9 @@ std::vector<ParamGroupDefinition> makeDetectionTrainGroups(const int image_size,
     };
 
     ParamGroupDefinition train_group;
-    train_group.key   = QStringLiteral("training");
-    train_group.label = QStringLiteral("Training Parameters");
+    train_group.key        = QStringLiteral("training");
+    train_group.label      = QStringLiteral("Training Parameters");
+    train_group.part_index = 0;
     train_group.params = {
         makeIntegerParam(QStringLiteral("epochs"), QStringLiteral("Epochs"), 100, 1, 10000, 1),
         makeIntegerParam(QStringLiteral("batch_size"), QStringLiteral("Batch Size"), 16, 1, 512, 1),
@@ -39,8 +41,9 @@ std::vector<ParamGroupDefinition> makeDetectionTrainGroups(const int image_size,
     };
 
     ParamGroupDefinition augmentation_group;
-    augmentation_group.key   = QStringLiteral("augmentation");
-    augmentation_group.label = QStringLiteral("Data Augmentation");
+    augmentation_group.key        = QStringLiteral("augmentation");
+    augmentation_group.label      = QStringLiteral("Data Augmentation");
+    augmentation_group.part_index = 1;
     augmentation_group.params = {
         makeCheckParam(QStringLiteral("mosaic"), QStringLiteral("Mosaic"), mosaic_enabled),
         makeCheckParam(QStringLiteral("mixup"), QStringLiteral("MixUp"), false),
@@ -55,8 +58,9 @@ std::vector<ParamGroupDefinition> makeDetectionTrainGroups(const int image_size,
 std::vector<ParamGroupDefinition> makeDetectionTestGroups(const int image_size)
 {
     ParamGroupDefinition inference_group;
-    inference_group.key   = QStringLiteral("inference");
-    inference_group.label = QStringLiteral("Inference Parameters");
+    inference_group.key        = QStringLiteral("inference");
+    inference_group.label      = QStringLiteral("Inference Parameters");
+    inference_group.part_index = 0;
     inference_group.params = {
         makeIntegerParam(QStringLiteral("image_size"), QStringLiteral("Image Size"), image_size, 320, 1536, 32),
         makeSliderParam(QStringLiteral("confidence_threshold"), QStringLiteral("Confidence Threshold"), 0.25, 0.0,
@@ -66,8 +70,9 @@ std::vector<ParamGroupDefinition> makeDetectionTestGroups(const int image_size)
     };
 
     ParamGroupDefinition evaluation_group;
-    evaluation_group.key   = QStringLiteral("evaluation");
-    evaluation_group.label = QStringLiteral("Evaluation Parameters");
+    evaluation_group.key        = QStringLiteral("evaluation");
+    evaluation_group.label      = QStringLiteral("Evaluation Parameters");
+    evaluation_group.part_index = 1;
     evaluation_group.params = {
         makeIntegerParam(QStringLiteral("batch_size"), QStringLiteral("Batch Size"), 8, 1, 512, 1),
         makeComboParam(QStringLiteral("metric"), QStringLiteral("Metric"), QStringLiteral("mAP@0.5"),
@@ -85,7 +90,8 @@ public:
         auto groups = makeDetectionTrainGroups(640, QStringLiteral("SGD"), true);
         for (ParamGroupDefinition &group : groups)
         {
-            addGroup(group.key, group.label, std::move(group.params), group.description, group.enabled);
+            addGroup(group.key, group.label, std::move(group.params), group.description, group.enabled,
+                     group.part_index);
         }
     }
 
@@ -110,7 +116,8 @@ public:
         auto groups = makeDetectionTestGroups(640);
         for (ParamGroupDefinition &group : groups)
         {
-            addGroup(group.key, group.label, std::move(group.params), group.description, group.enabled);
+            addGroup(group.key, group.label, std::move(group.params), group.description, group.enabled,
+                     group.part_index);
         }
     }
 
@@ -135,7 +142,8 @@ public:
         auto groups = makeDetectionTrainGroups(640, QStringLiteral("AdamW"), true);
         for (ParamGroupDefinition &group : groups)
         {
-            addGroup(group.key, group.label, std::move(group.params), group.description, group.enabled);
+            addGroup(group.key, group.label, std::move(group.params), group.description, group.enabled,
+                     group.part_index);
         }
     }
 
@@ -160,7 +168,8 @@ public:
         auto groups = makeDetectionTestGroups(640);
         for (ParamGroupDefinition &group : groups)
         {
-            addGroup(group.key, group.label, std::move(group.params), group.description, group.enabled);
+            addGroup(group.key, group.label, std::move(group.params), group.description, group.enabled,
+                     group.part_index);
         }
     }
 

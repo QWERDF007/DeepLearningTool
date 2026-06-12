@@ -52,6 +52,7 @@ class MODEL_API ParamGroupModel : public QAbstractListModel
     Q_PROPERTY(QString label READ label CONSTANT FINAL)
     Q_PROPERTY(QString description READ description CONSTANT FINAL)
     Q_PROPERTY(bool enabled READ isEnabled CONSTANT FINAL)
+    Q_PROPERTY(int partIndex READ partIndex CONSTANT FINAL)
     Q_PROPERTY(int count READ count NOTIFY countChanged FINAL)
 
 public:
@@ -75,13 +76,14 @@ public:
 
     explicit ParamGroupModel(QObject *parent = nullptr);
     ParamGroupModel(QString key, QString label, QString description, bool enabled,
-                    std::vector<ParamDefinition> params, QObject *parent = nullptr);
+                    int part_index, std::vector<ParamDefinition> params, QObject *parent = nullptr);
     ~ParamGroupModel() override;
 
     QString key() const;
     QString label() const;
     QString description() const;
     bool    isEnabled() const;
+    int     partIndex() const;
     int     count() const;
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -108,6 +110,7 @@ private:
     QString                  label_;
     QString                  description_;
     bool                     enabled_{true};
+    int                      part_index_{0};
     std::vector<ParamDefinition> params_;
 };
 
@@ -126,6 +129,7 @@ public:
         GroupLabelRole,
         GroupDescriptionRole,
         GroupEnabledRole,
+        GroupPartIndexRole,
         GroupCountRole,
         GroupModelRole,
     };
@@ -152,7 +156,7 @@ signals:
 
 protected:
     ParamGroupModel *addGroup(const QString &key, const QString &label, std::vector<ParamDefinition> params,
-                              const QString &description = {}, bool enabled = true);
+                              const QString &description = {}, bool enabled = true, int part_index = 0);
     void clearGroups();
 
 private:

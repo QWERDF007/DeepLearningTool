@@ -14,6 +14,7 @@ struct ParamGroupDefinition
     QString                      label;
     QString                      description;
     bool                         enabled{true};
+    int                          part_index{0};
     std::vector<ParamDefinition> params;
 };
 
