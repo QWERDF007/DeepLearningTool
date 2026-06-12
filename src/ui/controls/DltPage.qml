@@ -7,24 +7,28 @@ import dltool.ui
 
 Page {
     property string url : ""
+    property bool animationEnabled: true
     id: control
     StackView.onRemoved: destroy()
     padding: 5
-    visible: false
-    opacity: visible
+
+    property bool pageShown: false
+
+    visible: !animationEnabled || pageShown
+    opacity: !animationEnabled || pageShown ? 1 : 0
     transform: Translate {
-        y: control.visible ? 0 : 80
-        Behavior on y{
-            enabled: true
-            NumberAnimation{
+        y: !animationEnabled || pageShown ? 0 : 80
+        Behavior on y {
+            enabled: control.animationEnabled
+            NumberAnimation {
                 duration: 167
                 easing.type: Easing.OutCubic
             }
         }
     }
     Behavior on opacity {
-        enabled: true
-        NumberAnimation{
+        enabled: control.animationEnabled
+        NumberAnimation {
             duration: 83
         }
     }
@@ -48,6 +52,8 @@ Page {
         }
     }
     Component.onCompleted: {
-        control.visible = true
+        if (animationEnabled) {
+            pageShown = true
+        }
     }
 }
