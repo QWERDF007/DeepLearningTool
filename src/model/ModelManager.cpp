@@ -1,12 +1,15 @@
 #include "model/ModelManager.h"
 
 #include "database/DataBase.h"
+#include "model/IParams.h"
 
 #include <spdlog/spdlog.h>
 
 #include <QDateTime>
+#include <QQmlEngine>
 
 #include <algorithm>
+#include <utility>
 
 namespace dltool::model {
 
@@ -41,6 +44,7 @@ void ModelManager::init()
 {
     beginResetModel();
     models_.clear();
+    model_instances_.clear();
 
     if (database_ == nullptr)
     {
@@ -234,6 +238,7 @@ bool ModelManager::deleteModel(const qint64 model_id)
     beginRemoveRows(QModelIndex(), row, row);
     models_.erase(models_.begin() + row);
     endRemoveRows();
+    model_instances_.erase(model_id);
     return true;
 }
 
@@ -272,6 +277,33 @@ bool ModelManager::copyModel(const qint64 model_id)
         now,
     });
     endInsertRows();
+
+    const auto source_found = model_instances_.find(model_id);
+    if (source_found != model_instances_.end() && source_found->second)
+    {
+        auto copied_model = createRegisteredModelInstance(source.network_structure);
+        if (copied_model && copied_model->config() && source_found->second->config())
+        {
+            ITrainParams *target_train_params = copied_model->config()->trainParams();
+            const ITrainParams *source_train_params = source_found->second->config()->trainParams();
+            if (target_train_params != nullptr && source_train_params != nullptr)
+            {
+                target_train_params->copyValuesFrom(*source_train_params);
+            }
+
+            ITestParams *target_test_params = copied_model->config()->testParams();
+            const ITestParams *source_test_params = source_found->second->config()->testParams();
+            if (target_test_params != nullptr && source_test_params != nullptr)
+            {
+                target_test_params->copyValuesFrom(*source_test_params);
+            }
+
+            copied_model->setParent(const_cast<ModelManager *>(this));
+            QQmlEngine::setObjectOwnership(copied_model.get(), QQmlEngine::CppOwnership);
+            model_instances_[new_model_id] = std::move(copied_model);
+        }
+    }
+
     return true;
 }
 
@@ -283,6 +315,11 @@ QStringList ModelManager::supportedNetworkStructures() const
 QStringList ModelManager::availableModelNames() const
 {
     return registeredModelNames(method_);
+}
+
+IModel *ModelManager::modelForId(const qint64 model_id, const QString &network_structure) const
+{
+    return cachedModelForRecord(model_id, network_structure);
 }
 
 bool ModelManager::registerModel(const int method, const QString &type_name, ModelFactory factory)
@@ -405,6 +442,32 @@ QString ModelManager::uniqueCopyName(const QString &name) const
         candidate = QStringLiteral("%1 %2").arg(base).arg(suffix++);
     }
     return candidate;
+}
+
+IModel *ModelManager::cachedModelForRecord(const qint64 model_id, const QString &network_structure) const
+{
+    const QString trimmed_network_structure = network_structure.trimmed();
+    if (trimmed_network_structure.isEmpty())
+    {
+        return nullptr;
+    }
+
+    if (model_id < 0 || indexOfModel(model_id) < 0)
+    {
+        return nullptr;
+    }
+
+    auto &model = model_instances_[model_id];
+    if (!model || model->typeName() != trimmed_network_structure)
+    {
+        model = createRegisteredModelInstance(trimmed_network_structure);
+        if (model)
+        {
+            model->setParent(const_cast<ModelManager *>(this));
+            QQmlEngine::setObjectOwnership(model.get(), QQmlEngine::CppOwnership);
+        }
+    }
+    return model.get();
 }
 
 QVariant ModelManager::getModelId(const QModelIndex &index) const

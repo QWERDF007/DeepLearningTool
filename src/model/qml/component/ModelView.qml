@@ -15,6 +15,7 @@ Rectangle {
     property ModelManager modelManager
     property var currentModelId: -1
     property string currentModelName: ""
+    property string currentNetworkStructure: ""
 
     DltMenu {
         id: modelMenu
@@ -38,6 +39,7 @@ Rectangle {
                     view.currentIndex = -1
                     modelView.currentModelId = -1
                     modelView.currentModelName = ""
+                    modelView.currentNetworkStructure = ""
                 }
             }
         }
@@ -109,6 +111,7 @@ Rectangle {
                             view.currentIndex = index
                             modelView.currentModelId = model.model_id
                             modelView.currentModelName = model.name
+                            modelView.currentNetworkStructure = model.network_structure
                             if (mouse.button === Qt.RightButton) {
                                 modelMenu.popup()
                             }

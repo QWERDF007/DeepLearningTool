@@ -8,6 +8,7 @@
 #include <QtQml>
 #include <functional>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 namespace dltool::database {
@@ -55,6 +56,9 @@ public:
 
     Q_INVOKABLE QStringList availableModelNames() const;
 
+    Q_INVOKABLE dltool::model::IModel *modelForId(const qint64 model_id,
+                                                  const QString &network_structure) const;
+
     int method() const
     {
         return method_;
@@ -87,6 +91,7 @@ private:
     void    init();
     int     indexOfModel(const int64_t model_id) const;
     QString uniqueCopyName(const QString &name) const;
+    IModel *cachedModelForRecord(const qint64 model_id, const QString &network_structure) const;
 
     QVariant getModelId(const QModelIndex &index) const;
     QVariant getName(const QModelIndex &index) const;
@@ -99,6 +104,7 @@ private:
     dltool::database::ProjectDataBase *database_{nullptr};
     int                                method_{-1};
     std::vector<ModelRecord>           models_;
+    mutable std::unordered_map<qint64, std::unique_ptr<IModel>> model_instances_;
 };
 
 } // namespace dltool::model
