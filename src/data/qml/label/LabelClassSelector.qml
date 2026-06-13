@@ -4,11 +4,12 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import quickui
 
-DltComboBox {
+QuiComboBox {
     id: control
 
-    normalColor: DltColor.Button
+    normalColor: QuiColor.Button
     // 公共属性
     property LabelClassesModel labelClassesModel: null
     property int currentClassId: -1
@@ -20,7 +21,7 @@ DltComboBox {
 
     // 内部状态
     property bool _updating: false
-    property color _currentColor: DltColor.Transparent
+    property color _currentColor: QuiColor.Transparent
 
     implicitWidth: 200
     implicitHeight: 32
@@ -62,7 +63,7 @@ DltComboBox {
             if (classId === currentClassId) {
                 currentIndex = i
                 var colorData = labelClassesModel.data(modelIndex, LabelClassesModel.ColorRole)
-                _currentColor = colorData ? colorData : DltColor.Transparent
+                _currentColor = colorData ? colorData : QuiColor.Transparent
                 _updating = false
                 return
             }
@@ -70,7 +71,7 @@ DltComboBox {
         
         // 未找到，重置为 -1
         currentIndex = -1
-        _currentColor = DltColor.Transparent
+        _currentColor = QuiColor.Transparent
         _updating = false
     }
 
@@ -83,7 +84,7 @@ DltComboBox {
         
         if (newClassId !== currentClassId) {
             var colorData = labelClassesModel.data(modelIndex, LabelClassesModel.ColorRole)
-            _currentColor = colorData ? colorData : DltColor.Transparent
+            _currentColor = colorData ? colorData : QuiColor.Transparent
             // 不在这里修改 currentClassId - 让父组件处理
             classChanged(newClassId)
         }
@@ -97,7 +98,7 @@ DltComboBox {
         highlighted: control.highlightedIndex === index
         hoverEnabled: control.hoverEnabled
 
-        property color delegateColor: model.color !== undefined ? model.color : DltColor.Transparent
+        property color delegateColor: model.color !== undefined ? model.color : QuiColor.Transparent
 
         contentItem: RowLayout {
             spacing: 8
@@ -116,7 +117,7 @@ DltComboBox {
             }
 
             // 类别名称
-            DltText {
+            QuiText {
                 text: model.name !== undefined ? model.name : ""
                 Layout.fillWidth: true
                 elide: Text.ElideRight
@@ -124,7 +125,7 @@ DltComboBox {
         }
 
         background: Rectangle {
-            color: delegateItem.highlighted ? DltColor.Hovered : DltColor.Transparent
+            color: delegateItem.highlighted ? QuiColor.Hovered : QuiColor.Transparent
         }
     }
 
@@ -147,11 +148,11 @@ DltComboBox {
                 visible: !control.showMultipleDifferent && control.currentIndex >= 0 && control.labelClassesModel
                 color: control._currentColor
                 border.width: visible ? 1 : 0
-                border.color: visible && control._currentColor !== DltColor.Transparent ? Qt.darker(control._currentColor, 1.3) : DltColor.Transparent
+                border.color: visible && control._currentColor !== QuiColor.Transparent ? Qt.darker(control._currentColor, 1.3) : QuiColor.Transparent
             }
 
             // 显示文本
-            DltText {
+            QuiText {
                 text: control.displayText
                 Layout.fillWidth: true
                 elide: Text.ElideRight

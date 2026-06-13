@@ -5,8 +5,9 @@ import Qt.labs.platform
 
 import dltool.ui
 import dltool.data
+import quickui
 
-DltPopup {
+QuiPopup {
     id: exportDataDialog
     width: 600
     height: 320
@@ -20,9 +21,9 @@ DltPopup {
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 10
-        DltText {
+        QuiText {
             text: "导出数据"
-            font: DltFont.Subtitle
+            font: QuiFont.Subtitle
         }
         ExportDataForm {
             id: exportDataForm
@@ -32,7 +33,7 @@ DltPopup {
         Item {
             Layout.fillWidth: true
             height: 32
-            DltButton {
+            QuiButton {
                 anchors.right: exportBtn.left
                 anchors.rightMargin: 5
                 width: parent.width / 4
@@ -43,14 +44,14 @@ DltPopup {
                 }
             }
 
-            DltButton {
+            QuiButton {
                 id: exportBtn
                 enabled: exportDataForm.output_dir.length > 0 && datasetId >= 0
                 anchors.right: parent.right
                 width: parent.width / 4
                 height: parent.height
                 text: "导出"
-                normalColor: DltColor.Highlight
+                normalColor: QuiColor.Highlight
                 onClicked: {
                     exportDataDialog.close()
                     if (dataManager) {

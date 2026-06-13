@@ -2,6 +2,8 @@
 
 #include "common/Singleton.h"
 
+#include <QItemSelectionModel>
+
 namespace dltool::ui {
 
 class SignalHelper : public QObject

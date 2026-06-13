@@ -3,8 +3,9 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import quickui
 
-DltPopup {
+QuiPopup {
     id: control
     width: 420
     height: 260
@@ -29,21 +30,21 @@ DltPopup {
         anchors.margins: 16
         spacing: 12
 
-        DltText {
+        QuiText {
             Layout.fillWidth: true
             text: "添加模型"
-            font: DltFont.Title
+            font: QuiFont.Title
         }
 
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 6
 
-            DltText {
+            QuiText {
                 text: "模型名称"
-                color: DltColor.FontDark
+                color: QuiColor.FontDark
             }
-            DltTextField {
+            QuiTextField {
                 id: nameField
                 Layout.fillWidth: true
                 placeholderText: "输入模型名称"
@@ -57,18 +58,18 @@ DltPopup {
             Layout.fillWidth: true
             spacing: 6
 
-            DltText {
+            QuiText {
                 text: "网络结构"
-                color: DltColor.FontDark
+                color: QuiColor.FontDark
             }
-            DltComboBox {
+            QuiComboBox {
                 id: networkBox
                 Layout.fillWidth: true
                 model: control.networkStructureModel
             }
         }
 
-        DltText {
+        QuiText {
             id: messageText
             Layout.fillWidth: true
             color: "#D83B01"
@@ -86,11 +87,11 @@ DltPopup {
             Item {
                 Layout.fillWidth: true
             }
-            DltButton {
+            QuiButton {
                 text: "取消"
                 onClicked: control.close()
             }
-            DltButton {
+            QuiButton {
                 text: "确认"
                 enabled: nameField.text.trim().length > 0 && networkBox.currentText.length > 0
                 onClicked: {

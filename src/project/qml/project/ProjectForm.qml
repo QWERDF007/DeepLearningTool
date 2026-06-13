@@ -5,6 +5,7 @@ import Qt.labs.platform
 
 import dltool.ui
 import dltool.project
+import quickui
 
 Item {
     id: projectForm
@@ -43,11 +44,11 @@ Item {
             anchors.left: parent.left
             height: parent.height
             width: parent.width / 4
-            DltText {
+            QuiText {
                 text: "项目名称:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
-            DltTextField {
+            QuiTextField {
                 id: nameInput
                 width: parent.width
                 text: "新项目"
@@ -64,17 +65,17 @@ Item {
                 rightMargin: 5
             }
             height: parent.height
-            DltText {
+            QuiText {
                 text: "项目路径:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
-            DltTextField {
+            QuiTextField {
                 id: pathInput
                 width: parent.width
                 // text: folder + "/" + nameInput.text + ProjectManager.projectSuffix()
             }
         }
-        DltButton {
+        QuiButton {
             id: browseBtn
             anchors {
                 bottom: parent.bottom
@@ -95,11 +96,11 @@ Item {
         height: rowH
         Column {
             anchors.fill: parent
-            DltText {
+            QuiText {
                 text: "项目描述:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
-            DltTextField {
+            QuiTextField {
                 id: descInput
                 width: parent.width
                 placeholderText: "输入项目描述"
@@ -116,12 +117,12 @@ Item {
         Column {
             anchors.fill: parent
             Row{
-                DltText {
+                QuiText {
                     text: "图像基准路径:"
-                    textColor: DltColor.FontDark
+                    textColor: QuiColor.FontDark
                 }
             }
-            DltTextField {
+            QuiTextField {
                 id: imageBasePathInput
                 width: parent.width
                 placeholderText: "输入图像基准路径"
@@ -137,7 +138,7 @@ Item {
             right: parent.right
             rightMargin: 10
         }
-        DltText {
+        QuiText {
             id: msgInput
             text: ProjectManager.isProjectValid(method, path, true)
             color: "#F9B900"

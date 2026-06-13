@@ -9,20 +9,21 @@ import dltool.project
 import "review"
 import "gallery"
 import "component"
+import quickui
 
 Rectangle {
     id: labelPage
     width: 1080
     height: 1920
-    color: DltColor.Background
+    color: QuiColor.Background
 
     property DataManager dataManager
 
-    DltSplitView {
+    QuiSplitView {
         anchors.fill: parent
         anchors.margins: 5
 
-        DltSplitView {
+        QuiSplitView {
             SplitView.fillHeight: true
             SplitView.minimumWidth: 200
             SplitView.maximumWidth: parent.width / 2
@@ -33,7 +34,7 @@ Rectangle {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: parent.height / 3
-                color: DltColor.Primary
+                color: QuiColor.Primary
                 dataManager: labelPage.dataManager
             }
 
@@ -43,7 +44,7 @@ Rectangle {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: parent.height / 3
-                color: DltColor.Primary
+                color: QuiColor.Primary
                 dataManager: labelPage.dataManager
             }
 
@@ -51,7 +52,7 @@ Rectangle {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: 240
-                color: DltColor.Primary
+                color: QuiColor.Primary
                 dataManager: labelPage.dataManager
             }
         }

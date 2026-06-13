@@ -4,10 +4,11 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Rectangle { 
     id: control
-    color: DltColor.Primary
+    color: QuiColor.Primary
 
     property DataManager dataManager
     property LabelClassesModel labelClasses: dataManager ? dataManager.labelClasses : null
@@ -55,7 +56,7 @@ Rectangle {
             clip: true
             spacing: 5
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: DltScrollBar {}
+            ScrollBar.vertical: QuiScrollBar {}
             Layout.fillHeight: true
             Layout.fillWidth: true
             model: control.labelClasses
@@ -63,7 +64,7 @@ Rectangle {
             delegate: ClassFilterDelegate {
                 width: view.width - 8
                 height: 32
-                backgroundColor: (control.activeClassId === model.label_class_id) ? DltColor.Highlight : Qt.lighter(DltColor.Primary, 1.2)
+                backgroundColor: (control.activeClassId === model.label_class_id) ? QuiColor.Highlight : Qt.lighter(QuiColor.Primary, 1.2)
                 className: model.name
                 classColor: model.color
                 classShortcut: model.shortcut

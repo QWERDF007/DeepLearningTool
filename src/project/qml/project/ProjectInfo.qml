@@ -3,13 +3,14 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import quickui
 
 Rectangle {
     id: projectInfo
     clip: true
     height: 200
     width: 200
-    color: DltColor.Primary
+    color: QuiColor.Primary
     property string path: ""
     property string description: ""
     property string image_base_path: ""
@@ -20,10 +21,10 @@ Rectangle {
 
     signal projectDescriptionChanged(string desc)
 
-    DltMenu {
+    QuiMenu {
         id: menu
         width: 200
-        DltMenuItem {
+        QuiMenuItem {
             text: "复制"
             onTriggered: {
                 copyboard.selectAll()
@@ -44,12 +45,12 @@ Rectangle {
         spacing: 10
         ColumnLayout {
             Layout.fillWidth: true
-            DltText {
+            QuiText {
                 Layout.topMargin: 5
                 text: "项目描述:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
-            DltText {
+            QuiText {
                 Layout.fillWidth: true
                 text: projectInfo.description
                 wrapMode: Text.WrapAnywhere
@@ -65,11 +66,11 @@ Rectangle {
         }
         ColumnLayout {
             Layout.fillWidth: true
-            DltText {
+            QuiText {
                 text: "项目文件:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
-            DltText {
+            QuiText {
                 Layout.fillWidth: true
                 text: projectInfo.path
                 wrapMode: Text.WrapAnywhere
@@ -85,11 +86,11 @@ Rectangle {
         }
         ColumnLayout {
             Layout.fillWidth: true
-            DltText {
+            QuiText {
                 text: "图像基准路径:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
-            DltText {
+            QuiText {
                 Layout.fillWidth: true
                 text: projectInfo.image_base_path
                 wrapMode: Text.WrapAnywhere
@@ -105,11 +106,11 @@ Rectangle {
         }
         ColumnLayout {
             Layout.fillWidth: true
-            DltText {
+            QuiText {
                 text: "标签类别:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
-            DltText {
+            QuiText {
                 Layout.fillWidth: true
                 text: projectInfo.label_classes
                 wrapMode: Text.WrapAnywhere
@@ -117,11 +118,11 @@ Rectangle {
         }
         ColumnLayout {
             Layout.fillWidth: true
-            DltText {
+            QuiText {
                 text: "标注实例 / 图像:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
-            DltText {
+            QuiText {
                 Layout.fillWidth: true
                 text: projectInfo.label_instances_images
                 wrapMode: Text.WrapAnywhere
@@ -129,11 +130,11 @@ Rectangle {
         }
         ColumnLayout {
             Layout.fillWidth: true
-            DltText {
+            QuiText {
                 text: "创建时间 / 修改时间:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
-            DltText {
+            QuiText {
                 Layout.fillWidth: true
                 text: projectInfo.ctime + " " + projectInfo.mtime
                 wrapMode: Text.WrapAnywhere
@@ -144,7 +145,7 @@ Rectangle {
         }
     }
 
-    DltTextIconButton {
+    QuiTextIconButton {
         id: editBtn
         anchors{
             top: parent.top
@@ -152,9 +153,9 @@ Rectangle {
             margins: 5
         }
         visible: projectInfo.path !== ""
-        color: hovered ? DltColor.Button : DltColor.Transparent
-        iconColor: DltColor.FontPrimary
-        iconSource: DltFontIcon.Edit
+        color: hovered ? QuiColor.Button : QuiColor.Transparent
+        iconColor: QuiColor.FontPrimary
+        iconSource: QuiFontIcon.Edit
         text: "编辑项目描述"
         onClicked: {
             editor.text = projectInfo.description
@@ -165,7 +166,7 @@ Rectangle {
         }
     }
 
-    DltEditor {
+    QuiEditor {
         id: editor
         description: editBtn.text
         onEditTextChanged: function (newDescription) {

@@ -5,13 +5,14 @@ import QtQuick.Window
 
 import dltool.data
 import dltool.ui
+import quickui
 
 Rectangle {
     id: labelClassesView
     clip: true
     width: 200
     height: 200
-    color: DltColor.Primary
+    color: QuiColor.Primary
     focus: true
     activeFocusOnTab: true
     property DataManager dataManager
@@ -71,7 +72,7 @@ Rectangle {
         }
     }
 
-    DltContentDialog {
+    QuiContentDialog {
         id: deleteConfirmDialog
         title: "删除标签类别"
         message: "确定删除选中的标签类别吗?"
@@ -101,7 +102,7 @@ Rectangle {
             clip: true
             spacing: 5
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: DltScrollBar {}
+            ScrollBar.vertical: QuiScrollBar {}
             Layout.fillHeight: true
             Layout.fillWidth: true
             model: labelClassesView.labelClasses
@@ -119,7 +120,7 @@ Rectangle {
             delegate:  LabelClassDelegate {
                 width: view.width - 8
                 height: 32
-                backgroundColor: model.selected ? DltColor.Highlight : Qt.lighter(DltColor.Primary, 1.2)
+                backgroundColor: model.selected ? QuiColor.Highlight : Qt.lighter(QuiColor.Primary, 1.2)
                 className: model.name
                 classColor: model.color
                 classShortcut: model.shortcut

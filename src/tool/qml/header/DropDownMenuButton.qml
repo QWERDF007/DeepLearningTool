@@ -4,8 +4,9 @@ import QtQuick.Controls
 
 import dltool.ui
 import dltool.data
+import quickui
 
-DltButton {
+QuiButton {
     id: control
     clip: true
 
@@ -112,9 +113,9 @@ DltButton {
         id: container
         anchors.centerIn: parent
 
-        DltTextIconButton {
+        QuiTextIconButton {
             id: dropDownBtn
-            iconSource: DltFontIcon.ChevronDown
+            iconSource: QuiFontIcon.ChevronDown
             Layout.leftMargin: 5
             Layout.alignment: Qt.AlignLeft
             normalColor: Qt.lighter(control.normalColor, 1.2)
@@ -129,7 +130,7 @@ DltButton {
                 }
             }
 
-            DltPopup {
+            QuiPopup {
                 id: popup
                 padding: 6
                 bg.border {
@@ -148,7 +149,7 @@ DltButton {
                         spacing: 5
                         Layout.fillWidth: true
 
-                        DltCheckBox {
+                        QuiCheckBox {
                             id: selectAllCheckBox
                             text: "全选"
                             checked: true
@@ -161,7 +162,7 @@ DltButton {
                             }
                         }
 
-                        DltCheckBox {
+                        QuiCheckBox {
                             id: deselectAllCheckBox
                             text: "全不选"
                             checked: false
@@ -179,7 +180,7 @@ DltButton {
                         Layout.fillWidth: true
                         height: control.showItemList ? 1 : 0
                         visible: control.showItemList
-                        color: DltColor.Border
+                        color: QuiColor.Border
                     }
 
                     ListView {
@@ -190,7 +191,7 @@ DltButton {
                         visible: control.showItemList
                         clip: true
 
-                        delegate: DltCheckBox {
+                        delegate: QuiCheckBox {
                             id: itemCheckBox
                             text: model.text
                             width: popupModel.width
@@ -226,10 +227,10 @@ DltButton {
             }
         }
 
-        DltText {
+        QuiText {
             text: control.displayText
             font: control.font
-            color: control.checked ? DltColor.FontPrimary : control.palette.brightText
+            color: control.checked ? QuiColor.FontPrimary : control.palette.brightText
             horizontalAlignment: Text.AlignLeft
             verticalAlignment: Text.AlignVCenter
             fontSizeMode: Text.Fit

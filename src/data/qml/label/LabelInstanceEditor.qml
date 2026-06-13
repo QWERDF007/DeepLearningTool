@@ -4,10 +4,11 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Rectangle {
     id: control
-    color: DltColor.Primary
+    color: QuiColor.Primary
 
     // 公共属性
     property DataManager dataManager
@@ -131,9 +132,9 @@ Rectangle {
         anchors.bottomMargin: 5
 
         // 标题（固定不滚动）
-        DltText {
+        QuiText {
             text: "编辑实例："
-            font: DltFont.Subtitle
+            font: QuiFont.Subtitle
             Layout.fillWidth: true
         }
 
@@ -145,7 +146,7 @@ Rectangle {
             boundsBehavior: Flickable.StopAtBounds
             contentHeight: contentLoader.height
 
-            ScrollBar.vertical: DltScrollBar {}
+            ScrollBar.vertical: QuiScrollBar {}
 
             Loader {
                 id: contentLoader
@@ -178,10 +179,10 @@ Rectangle {
     Component {
         id: emptyStateComponent
         Item {
-            DltText {
+            QuiText {
                 anchors.centerIn: parent
                 text: "请选择一个标注实例"
-                color: DltColor.FontDark
+                color: QuiColor.FontDark
             }
         }
     }
@@ -190,10 +191,10 @@ Rectangle {
     Component {
         id: multiSelectStateComponent
         Item {
-            DltText {
+            QuiText {
                 anchors.centerIn: parent
                 text: "已选择多个实例，不支持批量编辑"
-                color: DltColor.FontDark
+                color: QuiColor.FontDark
             }
         }
     }
@@ -208,7 +209,7 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
 
-                DltText {
+                QuiText {
                     text: "类别"
                     Layout.preferredWidth: 50
                     Layout.alignment: Qt.AlignVCenter
@@ -231,13 +232,13 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
 
-                DltText {
+                QuiText {
                     text: "X"
                     Layout.preferredWidth: 50
                     Layout.alignment: Qt.AlignVCenter
                 }
 
-                DltSpinEditor {
+                QuiSpinEditor {
                     id: xEditor
                     Layout.fillWidth: true
                     label: ""
@@ -258,13 +259,13 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
 
-                DltText {
+                QuiText {
                     text: "Y"
                     Layout.preferredWidth: 50
                     Layout.alignment: Qt.AlignVCenter
                 }
 
-                DltSpinEditor {
+                QuiSpinEditor {
                     id: yEditor
                     Layout.fillWidth: true
                     label: ""
@@ -285,13 +286,13 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
 
-                DltText {
+                QuiText {
                     text: "宽度"
                     Layout.preferredWidth: 50
                     Layout.alignment: Qt.AlignVCenter
                 }
 
-                DltSpinEditor {
+                QuiSpinEditor {
                     id: widthEditor
                     Layout.fillWidth: true
                     label: ""
@@ -312,13 +313,13 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
 
-                DltText {
+                QuiText {
                     text: "高度"
                     Layout.preferredWidth: 50
                     Layout.alignment: Qt.AlignVCenter
                 }
 
-                DltSpinEditor {
+                QuiSpinEditor {
                     id: heightEditor
                     Layout.fillWidth: true
                     label: ""

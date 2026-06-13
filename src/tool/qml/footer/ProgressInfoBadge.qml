@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import quickui
 
 // 进度信息徽章组件
 // 显示在 Footer 中，用于指示后端处理任务的进度状态
@@ -14,7 +15,7 @@ Rectangle {
     // 属性定义
     property bool checked: false
     property bool hovered: mouseArea.containsMouse
-    property color normalColor: checked ? DltColor.Highlight : DltColor.Primary
+    property color normalColor: checked ? QuiColor.Highlight : QuiColor.Primary
     property color hoverColor: Qt.lighter(normalColor, 1.2)
     
     // 背景颜色根据悬停状态变化
@@ -24,14 +25,14 @@ Rectangle {
         anchors.fill: parent
         
         // "进度" 文本标签
-        DltText {
+        QuiText {
             Layout.leftMargin: 5
             text: "进度"
             verticalAlignment: Text.AlignVCenter
         }
         
         // 进度百分比文本 - 仅在运行时显示
-        DltText {
+        QuiText {
             Layout.preferredWidth: 32
             text: ProgressManager ? ProgressManager.progress + "%" : ""
             visible: ProgressManager ? ProgressManager.isRunning : false

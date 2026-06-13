@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Item {
     id: header
@@ -13,16 +14,16 @@ Item {
 
     RowLayout {
         anchors.fill: parent
-        DltText {
+        QuiText {
             text: "类别筛选"
-            font: DltFont.Subtitle
+            font: QuiFont.Subtitle
         }
         Item {
             Layout.fillWidth: true
         }
-        DltTextIconButton {
+        QuiTextIconButton {
             id: addBtn
-            iconSource: DltFontIcon.Clear
+            iconSource: QuiFontIcon.Clear
             text: "清除筛选"
             onClicked: {
                 if (!header.dataManager || !header.dataManager.globalFilter) {

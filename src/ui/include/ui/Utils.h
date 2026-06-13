@@ -3,6 +3,8 @@
 #include "dltool/ui/Export.h"
 #include "common/Singleton.h"
 
+#include <QColor>
+
 namespace dltool::ui {
 
 class UI_API Utils : public QObject

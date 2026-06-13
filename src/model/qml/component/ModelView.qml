@@ -4,12 +4,13 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.model
+import quickui
 
 Rectangle {
     id: modelView
     width: 200
     height: 200
-    color: DltColor.Primary
+    color: QuiColor.Primary
     property alias headerTitle: header.text
     property alias addEnable: header.addEnable
     property ModelManager modelManager
@@ -69,12 +70,12 @@ Rectangle {
         requestEnsureCurrentModel()
     }
 
-    DltMenu {
+    QuiMenu {
         id: modelMenu
         width: 160
-        DltMenuItem {
+        QuiMenuItem {
             text: "重命名"
-            iconSource: DltFontIcon.Rename
+            iconSource: QuiFontIcon.Rename
             onClicked: {
                 if (modelView.currentModelId < 0)
                     return
@@ -82,9 +83,9 @@ Rectangle {
                 renameEditor.open()
             }
         }
-        DltMenuItem {
+        QuiMenuItem {
             text: "删除"
-            iconSource: DltFontIcon.Delete
+            iconSource: QuiFontIcon.Delete
             onClicked: {
                 if (modelManager && modelView.currentModelId >= 0) {
                     modelManager.deleteModel(modelView.currentModelId)
@@ -92,9 +93,9 @@ Rectangle {
                 }
             }
         }
-        DltMenuItem {
+        QuiMenuItem {
             text: "复制"
-            iconSource: DltFontIcon.Copy
+            iconSource: QuiFontIcon.Copy
             onClicked: {
                 if (modelManager && modelView.currentModelId >= 0) {
                     modelManager.copyModel(modelView.currentModelId)
@@ -103,7 +104,7 @@ Rectangle {
         }
     }
 
-    DltEditor {
+    QuiEditor {
         id: renameEditor
         description: "输入模型名称"
         onEditTextChanged: function (modelName) {
@@ -142,7 +143,7 @@ Rectangle {
                 boundsBehavior: Flickable.StopAtBounds
                 model: modelManager
                 spacing: 5
-                ScrollBar.vertical: DltScrollBar {}
+                ScrollBar.vertical: QuiScrollBar {}
                 onCountChanged: modelView.requestEnsureCurrentModel()
                 onModelChanged: modelView.requestEnsureCurrentModel()
                 onCurrentIndexChanged: {
@@ -177,12 +178,12 @@ Rectangle {
                 }
             }
 
-            DltText {
+            QuiText {
                 anchors.centerIn: parent
                 width: parent.width - 24
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.Wrap
-                color: DltColor.FontDark
+                color: QuiColor.FontDark
                 text: modelManager ? "暂无模型" : "请先打开项目"
                 visible: modelManager === null || view.count === 0
             }

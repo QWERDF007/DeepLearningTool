@@ -6,8 +6,9 @@ import Qt.labs.platform
 import dltool.ui
 import dltool.data
 import dltool.settings
+import quickui
 
-DltPopup {
+QuiPopup {
     id: dialog
 
     property DataManager dataManager
@@ -207,16 +208,16 @@ DltPopup {
             Layout.bottomMargin: 10
             spacing: 10
 
-            DltText {
+            QuiText {
                 Layout.fillWidth: true
                 text: "图像搜索"
-                font: DltFont.Title
-                color: DltColor.FontPrimary
+                font: QuiFont.Title
+                color: QuiColor.FontPrimary
             }
         }
 
-        // 可滚动内�?
-        DltScrollablePage {
+        // 可滚动内容
+        QuiScrollablePage {
             Layout.fillWidth: true
             Layout.fillHeight: true
             padding: 0
@@ -231,8 +232,8 @@ DltPopup {
                     Layout.rightMargin: 20
                     implicitHeight: searchSection.implicitHeight + 24
                     radius: 4
-                    color: DltColor.Primary
-                    border.color: DltColor.Border
+                    color: QuiColor.Primary
+                    border.color: QuiColor.Border
 
                     ColumnLayout {
                         id: searchSection
@@ -241,22 +242,22 @@ DltPopup {
                         spacing: 10
                         enabled: GlobalSettings.advanced.imageSearch.enabled
 
-                        // 搜索数据�?
+                        // 搜索数据集
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 4
 
-                            DltText {
+                            QuiText {
                                 text: "\u641c\u7d22\u6570\u636e\u96c6"
-                                color: DltColor.FontDark
+                                color: QuiColor.FontDark
                             }
 
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: Math.min(150, Math.max(48, datasetColumn.implicitHeight + 12))
                                 radius: 4
-                                color: DltColor.Background
-                                border.color: DltColor.Border
+                                color: QuiColor.Background
+                                border.color: QuiColor.Border
                                 clip: true
 
                                 Flickable {
@@ -274,7 +275,7 @@ DltPopup {
                                         Repeater {
                                             id: datasetRepeater
                                             model: dialog.dataManager ? dialog.dataManager.datasets : null
-                                            delegate: DltCheckBox {
+                                            delegate: QuiCheckBox {
                                                 property int datasetId: model.dataset_id
                                                 width: datasetColumn.width
                                                 text: model.name
@@ -291,16 +292,16 @@ DltPopup {
                             Layout.fillWidth: true
                             implicitHeight: 34
 
-                            DltText {
+                            QuiText {
                                 anchors {
                                     left: parent.left
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
                                 text: "模型"
-                                color: DltColor.FontDark
+                                color: QuiColor.FontDark
                             }
-                            DltComboBox {
+                            QuiComboBox {
                                 id: modelBox
                                 anchors {
                                     right: parent.right
@@ -324,14 +325,14 @@ DltPopup {
                             Layout.fillWidth: true
                             implicitHeight: 34
 
-                            DltText {
+                            QuiText {
                                 anchors {
                                     left: parent.left
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
                                 text: "模型路径"
-                                color: DltColor.FontDark
+                                color: QuiColor.FontDark
                             }
                             RowLayout {
                                 anchors {
@@ -341,7 +342,7 @@ DltPopup {
                                 width: parent.width * 2 / 3
                                 spacing: 8
 
-                                DltTextField {
+                                QuiTextField {
                                     id: weightsPathInput
                                     Layout.fillWidth: true
                                     placeholderText: "选择 .wts 权重文件"
@@ -349,10 +350,10 @@ DltPopup {
                                         GlobalSettings.advanced.imageSearch.modelPath = dialog.trimText(text)
                                     }
                                 }
-                                DltTextIconButton {
+                                QuiTextIconButton {
                                     Layout.preferredWidth: 34
                                     Layout.preferredHeight: 34
-                                    iconSource: DltFontIcon.OpenFile
+                                    iconSource: QuiFontIcon.OpenFile
                                     text: "打开"
                                     onClicked: weightsFileDialog.open()
                                 }
@@ -364,14 +365,14 @@ DltPopup {
                             Layout.fillWidth: true
                             implicitHeight: 34
 
-                            DltText {
+                            QuiText {
                                 anchors {
                                     left: parent.left
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
                                 text: "特征层名"
-                                color: DltColor.FontDark
+                                color: QuiColor.FontDark
                             }
                             FeatureNameComboBox {
                                 id: featureBox
@@ -394,16 +395,16 @@ DltPopup {
                             Layout.fillWidth: true
                             implicitHeight: 34
 
-                            DltText {
+                            QuiText {
                                 anchors {
                                     left: parent.left
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
                                 text: "推理后端"
-                                color: DltColor.FontDark
+                                color: QuiColor.FontDark
                             }
-                            DltComboBox {
+                            QuiComboBox {
                                 id: modelBackendBox
                                 anchors {
                                     right: parent.right
@@ -424,16 +425,16 @@ DltPopup {
                             Layout.fillWidth: true
                             implicitHeight: 34
 
-                            DltText {
+                            QuiText {
                                 anchors {
                                     left: parent.left
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
                                 text: "推理设备"
-                                color: DltColor.FontDark
+                                color: QuiColor.FontDark
                             }
-                            DltComboBox {
+                            QuiComboBox {
                                 id: modelDeviceBox
                                 anchors {
                                     right: parent.right
@@ -454,16 +455,16 @@ DltPopup {
                             Layout.fillWidth: true
                             implicitHeight: 32
 
-                            DltText {
+                            QuiText {
                                 anchors {
                                     left: parent.left
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
                                 text: "模型批次"
-                                color: DltColor.FontDark
+                                color: QuiColor.FontDark
                             }
-                            DltSpinEditor {
+                            QuiSpinEditor {
                                 id: modelBatchEditor
                                 anchors {
                                     right: parent.right
@@ -483,21 +484,21 @@ DltPopup {
                             }
                         }
 
-                        // 特征库重�?
+                        // 特征库重建
                         Item {
                             Layout.fillWidth: true
                             implicitHeight: 24
 
-                            DltText {
+                            QuiText {
                                 anchors {
                                     left: parent.left
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
                                 text: "\u7279\u5f81\u5e93\u91cd\u5efa"
-                                color: DltColor.FontDark
+                                color: QuiColor.FontDark
                             }
-                            DltToggleSwitch {
+                            QuiToggleSwitch {
                                 id: rebuildCheckBox
                                 anchors {
                                     right: parent.right
@@ -516,16 +517,16 @@ DltPopup {
                             Layout.fillWidth: true
                             implicitHeight: 32
 
-                            DltText {
+                            QuiText {
                                 anchors {
                                     left: parent.left
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
                                 text: "TopK"
-                                color: DltColor.FontDark
+                                color: QuiColor.FontDark
                             }
-                            DltSpinEditor {
+                            QuiSpinEditor {
                                 id: topKEditor
                                 anchors {
                                     right: parent.right
@@ -550,16 +551,16 @@ DltPopup {
                             Layout.fillWidth: true
                             implicitHeight: 32
 
-                            DltText {
+                            QuiText {
                                 anchors {
                                     left: parent.left
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
                                 text: "磁盘批次"
-                                color: DltColor.FontDark
+                                color: QuiColor.FontDark
                             }
-                            DltSpinEditor {
+                            QuiSpinEditor {
                                 id: diskBatchEditor
                                 anchors {
                                     right: parent.right
@@ -579,21 +580,21 @@ DltPopup {
                             }
                         }
 
-                        // 归一�?
+                        // 归一化
                         Item {
                             Layout.fillWidth: true
                             implicitHeight: 34
 
-                            DltText {
+                            QuiText {
                                 anchors {
                                     left: parent.left
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
-                                text: "\u5f52\u4e00\u5316"
-                                color: DltColor.FontDark
+                                text: "归一化"
+                                color: QuiColor.FontDark
                             }
-                            DltComboBox {
+                            QuiComboBox {
                                 id: normBox
                                 anchors {
                                     right: parent.right
@@ -609,21 +610,21 @@ DltPopup {
                             }
                         }
 
-                        // 预处�?
+                        // 预处理
                         Item {
                             Layout.fillWidth: true
                             implicitHeight: 34
 
-                            DltText {
+                            QuiText {
                                 anchors {
                                     left: parent.left
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
-                                text: "\u9884\u5904\u7406"
-                                color: DltColor.FontDark
+                                text: "预处理"
+                                color: QuiColor.FontDark
                             }
-                            DltComboBox {
+                            QuiComboBox {
                                 id: preprocessBox
                                 anchors {
                                     right: parent.right
@@ -644,16 +645,16 @@ DltPopup {
                             Layout.fillWidth: true
                             implicitHeight: 34
 
-                            DltText {
+                            QuiText {
                                 anchors {
                                     left: parent.left
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
                                 text: "Faiss"
-                                color: DltColor.FontDark
+                                color: QuiColor.FontDark
                             }
-                            DltComboBox {
+                            QuiComboBox {
                                 id: faissBackendBox
                                 anchors {
                                     right: parent.right
@@ -677,16 +678,16 @@ DltPopup {
                             Layout.fillWidth: true
                             implicitHeight: 34
 
-                            DltText {
+                            QuiText {
                                 anchors {
                                     left: parent.left
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
                                 text: "索引存储"
-                                color: DltColor.FontDark
+                                color: QuiColor.FontDark
                             }
-                            DltComboBox {
+                            QuiComboBox {
                                 id: indexStorageBox
                                 anchors {
                                     right: parent.right
@@ -716,19 +717,19 @@ DltPopup {
             Layout.bottomMargin: 10
             spacing: 10
 
-            DltText {
+            QuiText {
                 Layout.fillWidth: true
                 text: dialog.imageSearchController() ? dialog.imageSearchController().lastError : ""
                 color: "red"
                 elide: Text.ElideRight
             }
 
-            DltButton {
+            QuiButton {
                 text: "取消"
                 onClicked: dialog.close()
             }
-            DltButton {
-                text: "\u5f00\u59cb\u641c\u7d22"
+            QuiButton {
+                text: "开始搜索"
                 enabled: dialog.imageSearchController()
                          && !dialog.imageSearchController().running
                          && GlobalSettings.advanced.imageSearch.enabled

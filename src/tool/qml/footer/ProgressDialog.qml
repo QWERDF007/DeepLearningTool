@@ -4,14 +4,15 @@ import QtQuick.Layouts
 import QtQuick.Templates as T
 
 import dltool.ui
+import quickui
 
-DltPopup {
+QuiPopup {
     id: popup
     modal: false
     width: 480
     height: 320
     maskVisible: false
-    bg.color: DltColor.Primary
+    bg.color: QuiColor.Primary
     bg.border.width: 1
     bg.border.color: "black"
     Item {
@@ -29,25 +30,25 @@ DltPopup {
             spacing: 10
             
             // 标题文本
-            DltText {
+            QuiText {
                 text: "处理进度"
-                font: DltFont.Body
+                font: QuiFont.Body
                 Layout.fillWidth: true
             }
             
             // 最小化按钮
-            DltTextIconButton {
+            QuiTextIconButton {
                 id: minimizeBtn
-                iconSource: DltFontIcon.ChromeMinimize
+                iconSource: QuiFontIcon.ChromeMinimize
                 onClicked: {
                     popup.close()
                 }
             }
             
             // 关闭按钮
-            DltTextIconButton {
+            QuiTextIconButton {
                 id: closeBtn
-                iconSource: DltFontIcon.ChromeClose
+                iconSource: QuiFontIcon.ChromeClose
                 enabled: !ProgressManager.isRunning
                 onClicked: {
                     ProgressManager.reset()
@@ -69,7 +70,7 @@ DltPopup {
         }
         
         // 进度条
-        DltProgressBar {
+        QuiProgressBar {
             id: progressBar
             anchors {
                 top: line.bottom
@@ -95,11 +96,11 @@ DltPopup {
             contentHeight: messageArea.contentHeight
             clip: true
             
-            ScrollBar.vertical: DltScrollBar {
+            ScrollBar.vertical: QuiScrollBar {
                 policy: ScrollBar.AsNeeded
             }
             
-            DltTextArea {
+            QuiTextArea {
                 id: messageArea
                 width: parent.width
                 height: Math.max(parent.height, contentHeight)
@@ -107,7 +108,7 @@ DltPopup {
                 text: ProgressManager.message
                 wrapMode: Text.Wrap
                 background: Rectangle {
-                    color: DltColor.Background
+                    color: QuiColor.Background
                     border.width: 1
                     border.color: "black"
                 }

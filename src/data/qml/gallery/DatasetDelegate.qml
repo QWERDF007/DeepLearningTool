@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import quickui
 
 Item {
     id: control
@@ -20,24 +21,24 @@ Item {
         anchors.leftMargin: 5
         anchors.rightMargin: 5
         spacing: 10
-        DltText {
+        QuiText {
             text: control.name
             Layout.fillWidth: true
             Layout.minimumWidth: 60
             elide: Text.ElideRight
         }
-        DltProgressBar {
+        QuiProgressBar {
             textVisible: visualPosition > 0
             value: control.progress
             Layout.preferredWidth: 100
         }
-        DltText {
+        QuiText {
             text: control.stats
             Layout.preferredWidth: 80
         }
 
-        // DltTextIconButton {
-        //     iconSource: DltFontIcon.Picture
+        // QuiTextIconButton {
+        //     iconSource: QuiFontIcon.Picture
         //     text: "导入数据"
         //     implicitWidth: 24
         //     implicitHeight: 24

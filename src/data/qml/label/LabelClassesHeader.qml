@@ -4,22 +4,23 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Item {
     id: header
     property DataManager dataManager
     RowLayout {
         anchors.fill: parent
-        DltText {
+        QuiText {
             text: "标签类别:"
-            font: DltFont.Subtitle
+            font: QuiFont.Subtitle
         }
         Item {
             Layout.fillWidth: true
         }
-        DltTextIconButton {
+        QuiTextIconButton {
             id: addBtn
-            iconSource: DltFontIcon.Add
+            iconSource: QuiFontIcon.Add
             text: "添加标签类别"
             onClicked: {
                 let pos = mapToItem(null, 0, 0)

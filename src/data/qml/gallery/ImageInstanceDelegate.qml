@@ -6,6 +6,7 @@ import QtQuick.Effects
 import dltool.ui
 import dltool.settings
 import dltool.data
+import quickui
 
 Rectangle {
     id: imageInstanceDelegate
@@ -28,8 +29,8 @@ Rectangle {
 
     width: 320
     height: 240
-    color: DltColor.Transparent
-    border.color: selected ? DltColor.Highlight : DltColor.Border
+    color: QuiColor.Transparent
+    border.color: selected ? QuiColor.Highlight : QuiColor.Border
     border.width: 2
 
 
@@ -75,7 +76,7 @@ Rectangle {
             hoverEnabled: true
         }
         
-        DltToolTip {
+        QuiToolTip {
             visible: hoverArea.containsMouse && labelSummary !== ""
             text: labelSummary
             delay: 500

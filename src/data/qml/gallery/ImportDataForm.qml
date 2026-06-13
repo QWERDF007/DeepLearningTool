@@ -5,6 +5,7 @@ import Qt.labs.platform
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Item {
     id: importDataForm
@@ -30,17 +31,17 @@ Item {
                 rightMargin: 5
             }
             height: parent.height
-            DltText {
+            QuiText {
                 text: "图像目录:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
-            DltTextField {
+            QuiTextField {
                 id: imagePathInput
                 width: parent.width
                 placeholderText: "输入图像目录"
             }
         }
-        DltButton {
+        QuiButton {
             id: browseImageBtn
             anchors {
                 bottom: parent.bottom
@@ -66,17 +67,17 @@ Item {
                 rightMargin: 5
             }
             height: parent.height
-            DltText {
+            QuiText {
                 text: "标注目录:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
-            DltTextField {
+            QuiTextField {
                 id: labelPathInput
                 width: parent.width
                 placeholderText: "输入标注目录"
             }
         }
-        DltButton {
+        QuiButton {
             id: browseLabelBtn
             anchors {
                 bottom: parent.bottom
@@ -97,11 +98,11 @@ Item {
             spacing: 10
             width: parent.width / 2
             height: parent.height
-            DltText {
+            QuiText {
                 text: "数据格式:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
-            DltComboBox {
+            QuiComboBox {
                 id: dataFormatBox
                 width: 240
                 // model: DataFormat.getSupportedDataFormat()
@@ -116,11 +117,11 @@ Item {
             spacing: 10
             width: parent.width / 2
             height: parent.height
-            DltText {
+            QuiText {
                 text: "数据集:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
-            DltComboBox {
+            QuiComboBox {
                 id: datasetBox
                 width: 240
                 currentIndex: indexOfValue(datasetName)

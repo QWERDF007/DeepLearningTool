@@ -3,13 +3,14 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import quickui
 
 Rectangle {
     id: control
     width: 200
     height: 200
-    color: DltColor.Primary
-    border.color: selected ? DltColor.Highlight : DltColor.Background
+    color: QuiColor.Primary
+    border.color: selected ? QuiColor.Highlight : QuiColor.Background
     border.width: selected ? 2 : 1
 
     property var modelId: -1
@@ -24,10 +25,10 @@ Rectangle {
         anchors.margins: 10
         spacing: 0
 
-        DltText {
+        QuiText {
             Layout.fillWidth: true
             text: control.modelName
-            font: DltFont.BodyStrong
+            font: QuiFont.BodyStrong
             elide: Text.ElideRight
         }
 
@@ -54,13 +55,13 @@ Rectangle {
         property string value: ""
         spacing: 5
 
-        DltText {
+        QuiText {
             Layout.preferredWidth: 80
             text: title + ":"
-            color: DltColor.FontDark
+            color: QuiColor.FontDark
             elide: Text.ElideRight
         }
-        DltText {
+        QuiText {
             Layout.fillWidth: true
             text: value
             elide: Text.ElideRight

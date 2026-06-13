@@ -5,12 +5,13 @@ import Qt.labs.platform
 
 import dltool.ui
 import dltool.project
+import quickui
 
 Item {
     id: projectsView
     width: 800
     height: 600
-    // color: DltColor.Background
+    // color: QuiColor.Background
 
     property int cellWidth: 210
     property int cellHeight: 170
@@ -19,43 +20,43 @@ Item {
     property string path: ProjectManager.recentProjects ? ProjectManager.recentProjects.currentProjectPath : ""
     property ItemSelectionModel selection: ProjectManager.recentProjects ? ProjectManager.recentProjects.selection : null
 
-    DltMenu {
+    QuiMenu {
         id: projectMenu
         width: 200
 
-        DltMenuItem {
+        QuiMenuItem {
             text: "打开项目"
-            iconSource: DltFontIcon.OpenFolderHorizontal
+            iconSource: QuiFontIcon.OpenFolderHorizontal
             onClicked: {
                 ProjectManager.openProject(projectsView.path)
             }
         }
-        DltMenuItem {
+        QuiMenuItem {
             text: "删除项目"
-            iconSource: DltFontIcon.Delete
+            iconSource: QuiFontIcon.Delete
             onClicked: {
                 deleteConfirmDialog.open()
             }
         }
-        DltMenuItem {
+        QuiMenuItem {
             text: "从最近项目列表中删除"
             enabled: project ? project.path !== projectsView.path : true
 
-            iconSource: DltFontIcon.Cancel
+            iconSource: QuiFontIcon.Cancel
             onClicked: {
                 ProjectManager.removeFromRectentProjects(projectsView.path)
             }
         }
-        DltMenuItem {
+        QuiMenuItem {
             text: "在资源浏览器中打开"
-            iconSource: DltFontIcon.OpenLocal
+            iconSource: QuiFontIcon.OpenLocal
             onClicked: {
                 Utils.openInFileExplorer(projectsView.path)
             }
         }
     }
 
-    DltContentDialog {
+    QuiContentDialog {
         id: deleteConfirmDialog
         title: "删除项目"
         message: "确定删除选中的项目吗?"
@@ -69,7 +70,7 @@ Item {
     ColumnLayout {
         anchors.fill: parent
         anchors.leftMargin: 5
-        DltText {
+        QuiText {
             text: "最近项目:"
         }
 
@@ -77,7 +78,7 @@ Item {
             id: view
             clip: true
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: DltScrollBar {}
+            ScrollBar.vertical: QuiScrollBar {}
             Layout.fillHeight: true
             Layout.fillWidth: true
             cellHeight: projectsView.cellHeight + projectsView.spacing

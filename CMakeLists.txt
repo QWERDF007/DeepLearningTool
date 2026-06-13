@@ -48,6 +48,7 @@ add_subdirectory(src)
 
 # 构建测试用例
 if(DLT_BUILD_TESTS)
+    enable_testing()
     add_subdirectory(tests)
 endif()
 

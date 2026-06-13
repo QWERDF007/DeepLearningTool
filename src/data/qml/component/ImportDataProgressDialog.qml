@@ -4,8 +4,9 @@ import QtQuick.Layouts
 
 
 import dltool.ui
+import quickui
 
-DltContentDialog {
+QuiContentDialog {
     id: dialog
     implicitHeight: 800
     implicitWidth: 1200
@@ -14,11 +15,11 @@ DltContentDialog {
     contentDelegate: Component {
         ColumnLayout {
             width: parent.width
-            DltProgressBar {
+            QuiProgressBar {
                 id: _progress
                 Layout.fillWidth: true
                 Layout.margins: 10
-                backgroundColor: DltColor.Primary
+                backgroundColor: QuiColor.Primary
                 from: 0
                 to: 1
                 value: dialog.value
@@ -28,7 +29,7 @@ DltContentDialog {
                 Layout.fillWidth: true
                 Layout.leftMargin: 10
                 Layout.rightMargin: 10
-                color: DltColor.Primary
+                color: QuiColor.Primary
                 Flickable {
                     anchors.fill: parent
                     anchors.margins: 10
@@ -36,10 +37,10 @@ DltContentDialog {
                     contentHeight: text_message.height
                     contentWidth: width
                     boundsBehavior:Flickable.StopAtBounds
-                    ScrollBar.vertical: DltScrollBar {}
-                    DltText { // 消息
+                    ScrollBar.vertical: QuiScrollBar {}
+                    QuiText { // 消息
                         id: text_message
-                        font: DltFont.Body
+                        font: QuiFont.Body
                         wrapMode: Text.WrapAnywhere
                         width: parent.width
                         text: dialog.message

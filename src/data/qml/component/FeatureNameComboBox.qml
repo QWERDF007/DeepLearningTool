@@ -3,8 +3,9 @@ import QtQuick.Controls
 
 import dltool.ui
 import dltool.settings
+import quickui
 
-DltComboBox {
+QuiComboBox {
     id: control
 
     property var imageSearch: null

@@ -7,20 +7,21 @@ import dltool.data
 
 import "gallery"
 import "component"
+import quickui
 
 Rectangle {
     id: galleryPage
     width: 1080
     height: 1920
-    color: DltColor.Background
+    color: QuiColor.Background
 
     property DataManager dataManager
     
-    DltSplitView {
+    QuiSplitView {
         anchors.fill: parent
         anchors.margins: 5
 
-        DltSplitView {
+        QuiSplitView {
             SplitView.fillHeight: true
             SplitView.minimumWidth: 200
             SplitView.maximumWidth: parent.width / 2
@@ -30,14 +31,14 @@ Rectangle {
                 SplitView.fillWidth: true
                 SplitView.fillHeight: true
                 SplitView.minimumHeight: 200
-                color: DltColor.Primary
+                color: QuiColor.Primary
                 dataManager: galleryPage.dataManager
             }
             ImageInstanceInfo { // 图像属性
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: parent.height / 3
-                color: DltColor.Primary
+                color: QuiColor.Primary
                 dataManager: galleryPage.dataManager
             }
             ImageInstancesSelection {
@@ -45,14 +46,14 @@ Rectangle {
                 SplitView.minimumHeight: 100
                 SplitView.maximumHeight: 100
                 SplitView.preferredHeight: 100
-                color: DltColor.Primary
+                color: QuiColor.Primary
                 dataManager: galleryPage.dataManager
             }
             ImageTagView { // 图像标签
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: 240
-                color: DltColor.Primary
+                color: QuiColor.Primary
                 multiSelect: true
                 dataManager: galleryPage.dataManager
             }

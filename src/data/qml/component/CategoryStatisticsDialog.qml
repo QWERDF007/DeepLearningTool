@@ -5,8 +5,9 @@ import Qt.labs.qmlmodels
 
 import dltool.ui
 import dltool.data
+import quickui
 
-DltPopup {
+QuiPopup {
     id: control
     width: 800
     height: 600
@@ -40,9 +41,9 @@ DltPopup {
         spacing: 15
         
         // 标题栏
-        DltText {
+        QuiText {
             text: "类别统计"
-            font: DltFont.Title
+            font: QuiFont.Title
             Layout.fillWidth: true
         }
         
@@ -50,8 +51,8 @@ DltPopup {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: DltColor.Background
-            border.color: DltColor.Black
+            color: QuiColor.Background
+            border.color: QuiColor.Black
             border.width: 1
             radius: 4
             
@@ -92,7 +93,7 @@ DltPopup {
                         return rowHeight
                     }
                     
-                    ScrollBar.vertical: DltScrollBar {}
+                    ScrollBar.vertical: QuiScrollBar {}
                     
                     delegate: DelegateChooser {
                         // 第一列：类别名称
@@ -100,8 +101,8 @@ DltPopup {
                             column: 0
                             Rectangle {
                                 implicitHeight: rowHeight
-                                color: row % 2 === 0 ? DltColor.Background : DltColor.Primary
-                                border.color: DltColor.Black
+                                color: row % 2 === 0 ? QuiColor.Background : QuiColor.Primary
+                                border.color: QuiColor.Black
                                 border.width: 1
                                 
                                 RowLayout {
@@ -116,14 +117,14 @@ DltPopup {
                                         radius: 3
                                         color: model.categoryColor ? model.categoryColor : "#808080"
                                         border.width: 1
-                                        border.color: DltColor.Border
+                                        border.color: QuiColor.Border
                                     }
                                     
-                                    DltText {
+                                    QuiText {
                                         text: model.categoryName ? model.categoryName : ""
                                         Layout.fillWidth: true
                                         elide: Text.ElideRight
-                                        color: DltColor.FontPrimary
+                                        color: QuiColor.FontPrimary
                                     }
                                 }
                             }
@@ -134,8 +135,8 @@ DltPopup {
                             column: 1
                             Rectangle {
                                 implicitHeight: rowHeight
-                                color: row % 2 === 0 ? DltColor.Background : DltColor.Primary
-                                border.color: DltColor.Black
+                                color: row % 2 === 0 ? QuiColor.Background : QuiColor.Primary
+                                border.color: QuiColor.Black
                                 border.width: 1
                                 
                                 RowLayout {
@@ -163,7 +164,7 @@ DltPopup {
                                         }
                                     }
                                     
-                                    DltText {
+                                    QuiText {
                                         Layout.preferredWidth: 60
                                         text: {
                                             var percentage = control.currentDimension === 0 
@@ -182,8 +183,8 @@ DltPopup {
                             column: 2
                             Rectangle {
                                 implicitHeight: rowHeight
-                                color: row % 2 === 0 ? DltColor.Background : DltColor.Primary
-                                border.color: DltColor.Black
+                                color: row % 2 === 0 ? QuiColor.Background : QuiColor.Primary
+                                border.color: QuiColor.Black
                                 border.width: 1
                                 
                                 RowLayout {
@@ -195,7 +196,7 @@ DltPopup {
                                     Item { // 添加一个容器来避免文本内容的实际渲染宽度不同，可能会导致视觉上的不对齐
                                         Layout.fillHeight: true
                                         Layout.fillWidth: true
-                                        DltText {
+                                        QuiText {
                                             anchors.fill: parent
                                             text: model.instanceCount || 0
                                             horizontalAlignment: Text.AlignHCenter
@@ -205,7 +206,7 @@ DltPopup {
                                     Item {
                                         Layout.fillHeight: true
                                         Layout.fillWidth: true
-                                        DltText {
+                                        QuiText {
                                             anchors.fill: parent
                                             text: model.imageCount || 0
                                             horizontalAlignment: Text.AlignHCenter
@@ -224,7 +225,7 @@ DltPopup {
         RowLayout {
             Layout.fillWidth: true
             
-            DltCheckBox {
+            QuiCheckBox {
                 id: filterCheckBox
                 text: "应用筛选条件"
                 checked: control.applyFilter
@@ -240,7 +241,7 @@ DltPopup {
                 Layout.fillWidth: true
             }
             
-            DltButton {
+            QuiButton {
                 text: "关闭"
                 onClicked: {
                     control.close()

@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import quickui
 
 Item {
     id: methodSelection
@@ -13,10 +14,10 @@ Item {
     property alias methods: view.model
     ColumnLayout {
         anchors.fill: parent
-        DltText {
+        QuiText {
             text: "深度学习方法"
-            font: DltFont.Body
-            textColor: DltColor.FontDark
+            font: QuiFont.Body
+            textColor: QuiColor.FontDark
         }
 
         GridView {
@@ -33,10 +34,10 @@ Item {
                 property int method: modelData.method
                 Rectangle {
                     anchors.fill: parent
-                    color: DltColor.Primary
+                    color: QuiColor.Primary
                     border.width: view.currentIndex == index ? 3 : 0
-                    border.color: DltColor.Highlight
-                    DltText {
+                    border.color: QuiColor.Highlight
+                    QuiText {
                         anchors.centerIn: parent
                         text: modelData.name
                     }

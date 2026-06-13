@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import dltool.ui
 import dltool.model
+import quickui
 
 Item {
     id: control
@@ -11,7 +12,7 @@ Item {
     property int targetPartIndex: 0
     property int partSpacing: 5
 
-    DltScrollablePage {
+    QuiScrollablePage {
         anchors.fill: parent
         animationEnabled: false
         padding: 0
@@ -55,7 +56,7 @@ Item {
                         implicitHeight: groupContent.implicitHeight + 2 * control.partSpacing
                         radius: 4
                         clip: true
-                        color: DltColor.Primary
+                        color: QuiColor.Primary
 
                         ColumnLayout {
                             id: groupContent
@@ -64,20 +65,20 @@ Item {
                             anchors.margins: control.partSpacing
                             spacing: control.partSpacing
 
-                            DltText {
+                            QuiText {
                                 Layout.fillWidth: true
                                 text: groupRoot.groupLabel
-                                color: DltColor.FontPrimary
-                                font: DltFont.Title
+                                color: QuiColor.FontPrimary
+                                font: QuiFont.Title
                                 elide: Text.ElideRight
                             }
 
-                            DltText {
+                            QuiText {
                                 Layout.fillWidth: true
                                 text: groupRoot.groupDescription
                                 visible: text.length > 0
-                                color: DltColor.FontDark
-                                font: DltFont.Caption
+                                color: QuiColor.FontDark
+                                font: QuiFont.Caption
                                 wrapMode: Text.Wrap
                             }
 
@@ -165,19 +166,19 @@ Item {
                                             Layout.fillHeight: true
                                             spacing: 2
 
-                                            DltText {
+                                            QuiText {
                                                 Layout.fillWidth: true
                                                 text: delegateRoot.paramLabel
-                                                color: delegateRoot.paramEnabled ? DltColor.FontPrimary : DltColor.FontDark
+                                                color: delegateRoot.paramEnabled ? QuiColor.FontPrimary : QuiColor.FontDark
                                                 elide: Text.ElideRight
                                             }
 
-                                            DltText {
+                                            QuiText {
                                                 Layout.fillWidth: true
                                                 text: delegateRoot.paramDescription
                                                 visible: text.length > 0
-                                                color: DltColor.FontDark
-                                                font: DltFont.Caption
+                                                color: QuiColor.FontDark
+                                                font: QuiFont.Caption
                                                 elide: Text.ElideRight
                                             }
                                         }
@@ -196,11 +197,11 @@ Item {
                                                     sourceComponent: delegateRoot.editorComponent(delegateRoot.paramEditorType)
                                                 }
 
-                                                DltText {
+                                                QuiText {
                                                     Layout.preferredWidth: visible ? 36 : 0
                                                     visible: delegateRoot.paramUnit.length > 0
                                                     text: delegateRoot.paramUnit
-                                                    color: DltColor.FontDark
+                                                    color: QuiColor.FontDark
                                                     elide: Text.ElideRight
                                                 }
                                             }
@@ -212,14 +213,14 @@ Item {
                                         anchors.right: parent.right
                                         anchors.bottom: parent.bottom
                                         height: 1
-                                        color: DltColor.Border
+                                        color: QuiColor.Border
                                         opacity: 0.6
                                     }
 
                                     Component {
                                         id: spinEditorComponent
 
-                                        DltSpinEditor {
+                                        QuiSpinEditor {
                                             anchors.fill: parent
                                             enabled: delegateRoot.paramEnabled
                                             value: delegateRoot.numberValue(delegateRoot.paramValue, delegateRoot.numberValue(delegateRoot.paramDefaultValue, 0))
@@ -241,7 +242,7 @@ Item {
                                             anchors.fill: parent
                                             spacing: control.partSpacing
 
-                                            DltSlider {
+                                            QuiSlider {
                                                 id: slider
                                                 Layout.fillWidth: true
                                                 enabled: delegateRoot.paramEnabled
@@ -253,10 +254,10 @@ Item {
                                                 onMoved: delegateRoot.commitValue(value)
                                             }
 
-                                            DltText {
+                                            QuiText {
                                                 Layout.preferredWidth: 54
                                                 horizontalAlignment: Text.AlignRight
-                                                color: delegateRoot.paramEnabled ? DltColor.FontPrimary : DltColor.FontDark
+                                                color: delegateRoot.paramEnabled ? QuiColor.FontPrimary : QuiColor.FontDark
                                                 text: slider.value.toFixed(delegateRoot.paramDecimals)
                                             }
                                         }
@@ -265,7 +266,7 @@ Item {
                                     Component {
                                         id: checkEditorComponent
 
-                                        DltCheckBox {
+                                        QuiCheckBox {
                                             anchors.left: parent.left
                                             anchors.verticalCenter: parent.verticalCenter
                                             enabled: delegateRoot.paramEnabled
@@ -278,7 +279,7 @@ Item {
                                     Component {
                                         id: comboEditorComponent
 
-                                        DltComboBox {
+                                        QuiComboBox {
                                             anchors.fill: parent
                                             enabled: delegateRoot.paramEnabled
                                             model: delegateRoot.paramOptions || []
@@ -290,7 +291,7 @@ Item {
                                     Component {
                                         id: textEditorComponent
 
-                                        DltTextField {
+                                        QuiTextField {
                                             anchors.fill: parent
                                             enabled: delegateRoot.paramEnabled
                                             text: delegateRoot.stringValue(delegateRoot.paramValue)

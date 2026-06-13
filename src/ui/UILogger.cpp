@@ -1,6 +1,12 @@
 #include "ui/UILogger.h"
 
-#include "ui/Color.h"
+#pragma push_macro("SINGLETON")
+#pragma push_macro("QT_QML_SINGLETON")
+#undef SINGLETON
+#undef QT_QML_SINGLETON
+#include "quickui/Color.h"
+#pragma pop_macro("QT_QML_SINGLETON")
+#pragma pop_macro("SINGLETON")
 
 #include <QTextCursor>
 #include <QTextDocument>
@@ -60,7 +66,7 @@ QString UILogger::getColorfulMessage() const
             QTextCharFormat format;
             format.setForeground(QColor("red"));
             cursor.insertText(msg, format);
-            format.setForeground(DltColor::getInstance()->FontPrimary());
+            format.setForeground(quickui::QuiColor::getInstance()->FontPrimary());
             cursor.setCharFormat(format);
         }
         else

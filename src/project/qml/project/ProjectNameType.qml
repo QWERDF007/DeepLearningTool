@@ -3,12 +3,13 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import quickui
 
 Rectangle {
     id: projectNameType
     width: 200
     height: 200
-    color: DltColor.Primary
+    color: QuiColor.Primary
 
     property string method: ""
     property string name: ""
@@ -16,25 +17,25 @@ Rectangle {
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 5
-        DltText {
+        QuiText {
             text: projectNameType.name
             Layout.topMargin: 5
             Layout.fillWidth: true
-            font: DltFont.Subtitle
+            font: QuiFont.Subtitle
         }
         Rectangle {
             Layout.margins: 5
             Layout.fillWidth: true
             height: 2
-            color: DltColor.Background
+            color: QuiColor.Background
         }
-        DltText {
+        QuiText {
             text: projectNameType.method
             Layout.fillWidth: true
-            font: DltFont.Subtitle
+            font: QuiFont.Subtitle
         }
     }
-    DltTextIconButton {
+    QuiTextIconButton {
         id: editBtn
         anchors{
             top: parent.top
@@ -42,9 +43,9 @@ Rectangle {
             margins: 5
         }
         visible: projectNameType.name !== ""
-        color: hovered ? DltColor.Button : DltColor.Transparent
-        iconColor: DltColor.FontPrimary
-        iconSource: DltFontIcon.Edit
+        color: hovered ? QuiColor.Button : QuiColor.Transparent
+        iconColor: QuiColor.FontPrimary
+        iconSource: QuiFontIcon.Edit
         text: "编辑项目名称"
         onClicked: {
             editor.text = projectNameType.name
@@ -55,7 +56,7 @@ Rectangle {
         }
     }
 
-    DltEditor {
+    QuiEditor {
         id: editor
         description: editBtn.text
         onEditTextChanged: function(newName) {

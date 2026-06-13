@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts 
 
 import dltool.ui
+import quickui
 
 
 HorizontalHeaderView {
@@ -14,16 +15,16 @@ HorizontalHeaderView {
     delegate:  Rectangle {
         implicitWidth: colWidth
         implicitHeight: horizontalHeader.height
-        color: DltColor.Background
+        color: QuiColor.Background
         Rectangle {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             width: 2
             height: parent.height - 4
-            color: DltColor.Primary
+            color: QuiColor.Primary
         }
 
-        DltText {
+        QuiText {
             anchors.centerIn: parent
             text: horizontalHeader.textRole ?
                         (Array.isArray(horizontalHeader.model) ? modelData[horizontalHeader.textRole] : model[horizontalHeader.textRole])

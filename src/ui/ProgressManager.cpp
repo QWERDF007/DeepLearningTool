@@ -1,7 +1,5 @@
 #include "ui/ProgressManager.h"
 
-#include "ui/Color.h"
-
 #include <spdlog/spdlog.h>
 
 #include <QTextCursor>

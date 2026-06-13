@@ -5,10 +5,11 @@ import Qt.labs.qmlmodels
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Rectangle {
     id: control
-    color: DltColor.Primary
+    color: QuiColor.Primary
     width: 200
     height: 200
 
@@ -41,20 +42,20 @@ Rectangle {
         }
     }
 
-    DltMenu {
+    QuiMenu {
         id: tableViewMenu
         width: 200
-        DltMenuItem {
+        QuiMenuItem {
             text: "删除选中标签"
             enabled : selection ? selection.hasSelection : false
-            iconSource: DltFontIcon.Delete
+            iconSource: QuiFontIcon.Delete
             onClicked: {
                 deleteConfirmDialog.open()
             }
         }
     }
 
-    DltContentDialog {
+    QuiContentDialog {
         id: deleteConfirmDialog
         title: "删除标签实例"
         message: "确定删除选中的标签实例吗?"
@@ -75,9 +76,9 @@ Rectangle {
         anchors.bottomMargin: 5
 
         // spacing: 5
-        DltText {
+        QuiText {
             text: "标签实例:"
-            font: DltFont.Subtitle
+            font: QuiFont.Subtitle
         }
 
         ColumnLayout {
@@ -100,7 +101,7 @@ Rectangle {
 
                 model: imageLabelsTable
 
-                ScrollBar.vertical: DltScrollBar {}
+                ScrollBar.vertical: QuiScrollBar {}
 
                 delegate: DelegateChooser {
 

@@ -4,10 +4,11 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Rectangle {
     id: imageInstanceInfo
-    color: DltColor.Primary
+    color: QuiColor.Primary
     clip: true
     property int rowH: 64
 
@@ -17,10 +18,10 @@ Rectangle {
 
 
 
-    DltMenu {
+    QuiMenu {
         id: menu
         width: 200
-        DltMenuItem {
+        QuiMenuItem {
             text: "复制"
             onTriggered: {
                 copyboard.selectAll()
@@ -35,11 +36,11 @@ Rectangle {
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 5
-        DltText {
+        QuiText {
             Layout.fillWidth: true
             height: 32
             text: "图像属性:"
-            font: DltFont.Subtitle
+            font: QuiFont.Subtitle
         }
 
         ListView {
@@ -49,7 +50,7 @@ Rectangle {
             Layout.fillWidth: true
             boundsBehavior: Flickable.StopAtBounds
             model: imageInfo
-            ScrollBar.vertical: DltScrollBar{}
+            ScrollBar.vertical: QuiScrollBar{}
             delegate: InfoTextItem {
                 id: infoItem
                 width: view.width

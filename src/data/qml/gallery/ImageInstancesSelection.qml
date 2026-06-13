@@ -4,10 +4,11 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Rectangle {
     id: imageInstancesSelection
-    color: DltColor.Primary
+    color: QuiColor.Primary
     clip: true
 
     property DataManager dataManager
@@ -17,7 +18,7 @@ Rectangle {
     property int selected: selection ? selection.selectedIndexes.length : 0
     visible: selection ? selection.hasSelection : false
 
-    DltContentDialog {
+    QuiContentDialog {
         id: deleteConfirmDialog
         title: "删除图像"
         message: "确定删除选中的图像吗?"
@@ -34,13 +35,13 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.margins: 5
-        DltText {
-            font: DltFont.Subtitle
+        QuiText {
+            font: QuiFont.Subtitle
             text: "选中:"
             Layout.fillWidth: true
         }
-        DltTextIconButton {
-            iconSource: DltFontIcon.Clear
+        QuiTextIconButton {
+            iconSource: QuiFontIcon.Clear
             Layout.rightMargin: 5
             text: "清空选择"
             onClicked: {
@@ -56,13 +57,13 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         // height: 64
-        DltText {
+        QuiText {
             Layout.fillWidth: true
             text: selected + " / " + total + " 图像"
         }
 
-        DltTextIconButton {
-            iconSource: DltFontIcon.Delete
+        QuiTextIconButton {
+            iconSource: QuiFontIcon.Delete
             text: "删除选中图像"
             onClicked: {
                     deleteConfirmDialog.open()

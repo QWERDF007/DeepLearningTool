@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import quickui
 
 Rectangle {
     id: control
@@ -10,27 +11,27 @@ Rectangle {
     height: 20
     property bool checked: false
     property bool hovered: mouseArea.containsMouse
-    property color normalColor: checked ? DltColor.Highlight : DltColor.Primary
+    property color normalColor: checked ? QuiColor.Highlight : QuiColor.Primary
     property color hoverColor: Qt.lighter(normalColor, 1.2)
     color: hovered ? hoverColor : normalColor
 
     RowLayout {
         anchors.fill: parent
-        DltText {
+        QuiText {
             Layout.leftMargin: 5
             text: "日志"
             verticalAlignment: Text.AlignVCenter
         }
-        DltInfoBadge {
+        QuiInfoBadge {
             Layout.preferredWidth: 32
             count: UILogger.infoCount
             max: 99
         }
-        DltInfoBadge {
+        QuiInfoBadge {
             Layout.preferredWidth: 32
             count: UILogger.errorCount
             max: 99
-            icon.iconSource: DltFontIcon.ErrorBadge
+            icon.iconSource: QuiFontIcon.ErrorBadge
             contentColor: "red"
         }
         Item {

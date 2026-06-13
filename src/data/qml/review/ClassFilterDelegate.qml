@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Rectangle {
     id: control
@@ -14,7 +15,7 @@ Rectangle {
     property string className: ""
     property string classShortcut: ""
     property color classColor: "black"
-    property color backgroundColor: Qt.lighter(DltColor.Primary, 1.2)
+    property color backgroundColor: Qt.lighter(QuiColor.Primary, 1.2)
     property int classId: -1
     property int ordinalIndex: -1
     property var listView
@@ -49,13 +50,13 @@ Rectangle {
             color: control.classColor
             border.width: 1
             border.color: "black"
-            DltText {
+            QuiText {
                 text: control.classShortcut
                 color: control.getContrastColor(control.classColor)
                 anchors.centerIn: parent
             }
         }
-        DltText {
+        QuiText {
             text: control.className
             Layout.fillWidth: true
         }
@@ -71,13 +72,13 @@ Rectangle {
             rightMargin: 5
         }
         spacing: 3
-        DltTextIconButton {
-            iconSource: DltFontIcon.Edit
+        QuiTextIconButton {
+            iconSource: QuiFontIcon.Edit
             onClicked: control.editClicked()
             normalColor: control.backgroundColor
         }
-        DltTextIconButton {
-            iconSource: DltFontIcon.Delete
+        QuiTextIconButton {
+            iconSource: QuiFontIcon.Delete
             onClicked: control.deleteClicked()
             normalColor: control.backgroundColor
         }

@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import dltool.ui
 import dltool.tool
 import dltool.project
+import quickui
 
 ApplicationWindow {
     id: window
@@ -58,7 +59,7 @@ ApplicationWindow {
         exitDialog.open()
     }
 
-    DltContentDialog {
+    QuiContentDialog {
         id: exitDialog
         title: "退出程序"
         message: "确定退出程序吗?"

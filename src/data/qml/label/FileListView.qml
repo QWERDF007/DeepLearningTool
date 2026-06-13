@@ -4,10 +4,11 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Rectangle {
     id: fileListView
-    color: DltColor.Primary
+    color: QuiColor.Primary
     clip: true
     
     property DataManager dataManager
@@ -21,9 +22,9 @@ Rectangle {
         anchors.topMargin: 5
         anchors.bottomMargin: 5
         
-        DltText {
+        QuiText {
             text: "文件列表:"
-            font: DltFont.Subtitle
+            font: QuiFont.Subtitle
         }
         
         ListView {
@@ -33,7 +34,7 @@ Rectangle {
             clip: true
             spacing: 2
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: DltScrollBar {}
+            ScrollBar.vertical: QuiScrollBar {}
             model: fileListView.model
             
             delegate: FileListDelegate {

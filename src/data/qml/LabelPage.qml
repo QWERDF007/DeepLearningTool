@@ -9,22 +9,23 @@ import dltool.project
 import "label"
 import "gallery"
 import "component"
+import quickui
 
 Rectangle {
     id: labelPage
     width: 1080
     height: 1920
-    color: DltColor.Background
+    color: QuiColor.Background
 
     property DataManager dataManager
     readonly property var smartAnnotationController: dataManager ? dataManager.smartAnnotation : null
     readonly property bool smartAnnotationLoading: smartAnnotationController ? smartAnnotationController.loadingModel : false
 
-    DltSplitView {
+    QuiSplitView {
         anchors.fill: parent
         anchors.margins: 5
 
-        DltSplitView {
+        QuiSplitView {
             SplitView.fillHeight: true
             SplitView.minimumWidth: 200
             SplitView.maximumWidth: parent.width / 2
@@ -35,7 +36,7 @@ Rectangle {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: parent.height / 3
-                color: DltColor.Primary
+                color: QuiColor.Primary
                 dataManager: labelPage.dataManager
             }
 
@@ -43,7 +44,7 @@ Rectangle {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 120
                 SplitView.preferredHeight: 120
-                color: DltColor.Primary
+                color: QuiColor.Primary
                 dataManager: labelPage.dataManager
             }
 
@@ -51,7 +52,7 @@ Rectangle {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: parent.height / 3
-                color: DltColor.Primary
+                color: QuiColor.Primary
                 dataManager: labelPage.dataManager
             }
 
@@ -59,7 +60,7 @@ Rectangle {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: 240
-                color: DltColor.Primary
+                color: QuiColor.Primary
                 multiSelect: false
                 dataManager: labelPage.dataManager
             }
@@ -76,8 +77,8 @@ Rectangle {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 42
-                    color: DltColor.Primary
-                    border.color: DltColor.Border
+                    color: QuiColor.Primary
+                    border.color: QuiColor.Border
 
                     RowLayout {
                         anchors.fill: parent
@@ -85,28 +86,28 @@ Rectangle {
                         anchors.rightMargin: 8
                         spacing: 6
 
-                        DltTextIconButton {
+                        QuiTextIconButton {
                             Layout.preferredWidth: 32
                             Layout.preferredHeight: 32
-                            iconSource: DltFontIcon.Delete
+                            iconSource: QuiFontIcon.Delete
                             text: "删除"
                             enabled: labelCanvas.selection ? labelCanvas.selection.hasSelection : false
                             onClicked: labelCanvas.deleteSelectedLabels()
                         }
 
-                        DltTextIconButton {
+                        QuiTextIconButton {
                             Layout.preferredWidth: 32
                             Layout.preferredHeight: 32
-                            normalColor: labelCanvas.showBoundingBoxes ? DltColor.Highlight : DltColor.Button
-                            iconSource: DltFontIcon.View
+                            normalColor: labelCanvas.showBoundingBoxes ? QuiColor.Highlight : QuiColor.Button
+                            iconSource: QuiFontIcon.View
                             text: "显示外接矩形"
                             onClicked: labelCanvas.showBoundingBoxes = !labelCanvas.showBoundingBoxes
                         }
 
-                        DltTextIconButton {
+                        QuiTextIconButton {
                             Layout.preferredWidth: 32
                             Layout.preferredHeight: 32
-                            iconSource: DltFontIcon.Copy
+                            iconSource: QuiFontIcon.Copy
                             text: "复制"
                             enabled: labelCanvas.selection ? labelCanvas.selection.hasSelection : false
                             onClicked: labelCanvas.copySelectedLabels()
@@ -126,8 +127,8 @@ Rectangle {
                     Rectangle {
                         Layout.preferredWidth: 42
                         Layout.fillHeight: true
-                        color: DltColor.Primary
-                        border.color: DltColor.Border
+                        color: QuiColor.Primary
+                        border.color: QuiColor.Border
 
                         ColumnLayout {
                             anchors.top: parent.top
@@ -136,44 +137,44 @@ Rectangle {
                             anchors.topMargin: 8
                             spacing: 6
 
-                            DltTextIconButton {
+                            QuiTextIconButton {
                                 Layout.alignment: Qt.AlignHCenter
                                 Layout.preferredWidth: 32
                                 Layout.preferredHeight: 32
-                                normalColor: labelCanvas.toolMode === "select" ? DltColor.Highlight : DltColor.Button
-                                iconSource: DltFontIcon.TouchPointer
+                                normalColor: labelCanvas.toolMode === "select" ? QuiColor.Highlight : QuiColor.Button
+                                iconSource: QuiFontIcon.TouchPointer
                                 text: "选中"
                                 onClicked: labelCanvas.setToolMode("select")
                             }
 
-                            DltTextIconButton {
+                            QuiTextIconButton {
                                 Layout.alignment: Qt.AlignHCenter
                                 Layout.preferredWidth: 32
                                 Layout.preferredHeight: 32
-                                normalColor: labelCanvas.toolMode === "rect" ? DltColor.Highlight : DltColor.Button
-                                iconSource: DltFontIcon.RectangularClipping
+                                normalColor: labelCanvas.toolMode === "rect" ? QuiColor.Highlight : QuiColor.Button
+                                iconSource: QuiFontIcon.RectangularClipping
                                 text: "绘制矩形"
                                 onClicked: labelCanvas.setToolMode("rect")
                             }
 
-                            DltTextIconButton {
+                            QuiTextIconButton {
                                 Layout.alignment: Qt.AlignHCenter
                                 Layout.preferredWidth: 32
                                 Layout.preferredHeight: 32
                                 enabled: labelCanvas.segmentationMode
-                                normalColor: labelCanvas.toolMode === "polygon" ? DltColor.Highlight : DltColor.Button
-                                iconSource: DltFontIcon.FreeFormClipping
+                                normalColor: labelCanvas.toolMode === "polygon" ? QuiColor.Highlight : QuiColor.Button
+                                iconSource: QuiFontIcon.FreeFormClipping
                                 text: "绘制多边形"
                                 onClicked: labelCanvas.setToolMode("polygon")
                             }
 
-                            DltTextIconButton {
+                            QuiTextIconButton {
                                 Layout.alignment: Qt.AlignHCenter
                                 Layout.preferredWidth: 32
                                 Layout.preferredHeight: 32
                                 enabled: labelCanvas.smartAnnotationAvailable
-                                normalColor: labelCanvas.toolMode === "smart" ? DltColor.Highlight : DltColor.Button
-                                iconSource: DltFontIcon.Robot
+                                normalColor: labelCanvas.toolMode === "smart" ? QuiColor.Highlight : QuiColor.Button
+                                iconSource: QuiFontIcon.Robot
                                 text: "智能标注"
                                 onClicked: labelCanvas.setToolMode("smart")
                             }
@@ -219,17 +220,17 @@ Rectangle {
                         running: labelPage.smartAnnotationLoading
                     }
 
-                    DltText {
+                    QuiText {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "正在加载智能标注模型..."
                         color: "white"
-                        font: DltFont.Body
+                        font: QuiFont.Body
                     }
                 }
             }
         }
 
-        DltSplitView {
+        QuiSplitView {
             SplitView.fillHeight: true
             SplitView.minimumWidth: 200
             SplitView.maximumWidth: parent.width / 2

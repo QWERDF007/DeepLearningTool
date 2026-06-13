@@ -5,6 +5,7 @@ import Qt.labs.platform
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Item {
     id: exportDataForm
@@ -29,17 +30,17 @@ Item {
                 rightMargin: 5
             }
             height: parent.height
-            DltText {
+            QuiText {
                 text: "输出目录:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
-            DltTextField {
+            QuiTextField {
                 id: outputPathInput
                 width: parent.width
                 placeholderText: "选择导出目录"
             }
         }
-        DltButton {
+        QuiButton {
             id: browseOutputBtn
             anchors {
                 bottom: parent.bottom
@@ -61,11 +62,11 @@ Item {
             spacing: 10
             width: parent.width / 2
             height: parent.height
-            DltText {
+            QuiText {
                 text: "数据格式:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
-            DltComboBox {
+            QuiComboBox {
                 id: dataFormatBox
                 width: 240
             }
@@ -75,10 +76,10 @@ Item {
             spacing: 10
             width: parent.width / 2
             height: parent.height
-            DltText {
+            QuiText {
                 text: "数据集:"
             }
-            DltText {
+            QuiText {
                 width: 240
                 text: datasetName
                 elide: Text.ElideRight

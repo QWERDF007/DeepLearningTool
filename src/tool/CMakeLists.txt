@@ -65,11 +65,12 @@ qt_add_resources(${PROJECT_NAME} "controls2_conf"
 target_compile_definitions(${PROJECT_NAME}
 PRIVATE 
     $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:QT_QML_DEBUG>
+    DLTOOL_QML_BUILD_DIR="${CMAKE_BINARY_DIR}"
 )
 
 # 链接库
 target_link_libraries(${PROJECT_NAME}
 PRIVATE 
     Qt6::Quick Qt6::Gui Qt6::Widgets
-    dltool_common dltool_core dltool_ui dltool_project dltool_data dltool_model
+    quickui dltool_common dltool_core dltool_ui dltool_project dltool_data dltool_model
 )

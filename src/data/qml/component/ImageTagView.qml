@@ -4,10 +4,11 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Rectangle {
     id: imageTagView
-    color: DltColor.Primary
+    color: QuiColor.Primary
     property DataManager dataManager
     property ImageInstancesModel imageInstances: dataManager ? dataManager.imageInstances : null
     property ImageTagsModel imageTags: dataManager ? dataManager.imageTags : null

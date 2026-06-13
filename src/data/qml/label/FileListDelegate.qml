@@ -2,12 +2,13 @@ import QtQuick
 import QtQuick.Controls
 
 import dltool.ui
+import quickui
 
 Rectangle {
     id: delegate
     height: 24
     radius: 4
-    color: selected ? DltColor.Highlight : DltColor.Transparent
+    color: selected ? QuiColor.Highlight : QuiColor.Transparent
     
     property string filePath: ""
     property bool selected: false
@@ -25,24 +26,24 @@ Rectangle {
         Item {
             width: 16
             height: parent.height
-            DltTextIcon {
+            QuiTextIcon {
                 id: labelIcon
                 anchors.fill: parent
                 visible: delegate.hasLabels
-                iconSource: DltFontIcon.CheckMark
+                iconSource: QuiFontIcon.CheckMark
                 iconSize: 16
                 iconColor: "green"
             }
         }
         
-        DltText {
+        QuiText {
             id: pathText
             width: parent.width - (labelIcon.visible ? labelIcon.width + parent.spacing : 0)
             height: parent.height
             verticalAlignment: Text.AlignVCenter
             text: delegate.filePath
             elide: Text.ElideLeft
-            font: DltFont.Body
+            font: QuiFont.Body
         }
     }
     
@@ -53,7 +54,7 @@ Rectangle {
         onClicked: delegate.clicked()
     }
     
-    DltToolTip {
+    QuiToolTip {
         text: delegate.filePath
         visible: mouseArea.containsMouse && pathText.truncated
         delay: 500

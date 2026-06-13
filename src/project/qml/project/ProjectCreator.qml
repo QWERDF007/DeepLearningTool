@@ -5,8 +5,9 @@ import Qt.labs.platform
 
 import dltool.ui
 import dltool.project
+import quickui
 
-DltPopup {
+QuiPopup {
     id: creator
     width: 1000
     height: 600
@@ -15,9 +16,9 @@ DltPopup {
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 10
-        DltText {
+        QuiText {
             text: "创建项目"
-            font: DltFont.Subtitle
+            font: QuiFont.Subtitle
         }
 
         MethodSelection {
@@ -35,7 +36,7 @@ DltPopup {
         Item {
             Layout.fillWidth: true
             height: 32
-            DltButton {
+            QuiButton {
                 anchors.right: createBtn.left
                 anchors.rightMargin: 5
                 width: parent.width / 4
@@ -46,14 +47,14 @@ DltPopup {
                 }
             }
 
-            DltButton {
+            QuiButton {
                 id: createBtn
                 enabled: projectForm.isValid
                 anchors.right: parent.right
                 width: parent.width / 4
                 height: parent.height
                 text: " 创建项目"
-                normalColor: DltColor.Highlight
+                normalColor: QuiColor.Highlight
                 onClicked: {
                     creator.close()
                     ProjectManager.createProject(projectForm.name, methodSelection.method, projectForm.path, projectForm.description, projectForm.image_base_path)

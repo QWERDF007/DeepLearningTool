@@ -5,12 +5,13 @@ import QtQuick.Layouts
 import dltool.ui
 import dltool.project
 import dltool.data
+import quickui
 
 Rectangle {
     id: header
     width: 600
     height: 80
-    color: DltColor.Primary
+    color: QuiColor.Primary
 
     property alias currentIndex: mainTabBar.currentIndex
     property var globalFilter: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.globalFilter : null
@@ -39,12 +40,12 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     model: ["项目", "图库", "标注", "检查", "训练", "评估", "导出"]
-                    delegate: DltTabButton {
+                    delegate: QuiTabButton {
                         id: tbtn
                         width: 100
                         height: 32
                         text: modelData
-                        textColor: mainTabBar.currentIndex === index ? DltColor.Highlight : "white"
+                        textColor: mainTabBar.currentIndex === index ? QuiColor.Highlight : "white"
                         focusPolicy: Qt.NoFocus
                         enabled: modelData === "项目" || (ProjectManager.currentProject ? true : false)
                     }
@@ -53,13 +54,13 @@ Rectangle {
             ToolBar {
                 Layout.fillHeight: true
                 background: Rectangle {
-                    color: DltColor.Primary
+                    color: QuiColor.Primary
                 }
 
                 RowLayout {
                     anchors.verticalCenter: parent.verticalCenter
-                    DltTextIconButton {
-                        iconSource: DltFontIcon.AreaChart
+                    QuiTextIconButton {
+                        iconSource: QuiFontIcon.AreaChart
                         text: "统计"
                         enabled: ProjectManager.currentProject !== null
                         onClicked: {
@@ -69,24 +70,24 @@ Rectangle {
                 }
             }
             Rectangle { // splitter
-                color: DltColor.Background
+                color: QuiColor.Background
                 width: 5
                 Layout.fillHeight: true
             }
             ToolBar {
                 Layout.fillHeight: true
                 background: Rectangle {
-                    color: DltColor.Primary
+                    color: QuiColor.Primary
                 }
 
                 RowLayout {
                     anchors.verticalCenter: parent.verticalCenter
-                    DltTextIconButton {
-                        iconSource: DltFontIcon.Help
+                    QuiTextIconButton {
+                        iconSource: QuiFontIcon.Help
                         text: "帮助"
                     }
-                    DltTextIconButton {
-                        iconSource: DltFontIcon.Settings
+                    QuiTextIconButton {
+                        iconSource: QuiFontIcon.Settings
                         text: "设置"
                         onClicked: settingsDialog.open()
                     }
@@ -100,18 +101,18 @@ Rectangle {
             ToolBar {
                 Layout.fillHeight: true
                 background: Rectangle {
-                    color: DltColor.Primary
+                    color: QuiColor.Primary
                 }
                 RowLayout {
-                    DltTextIconButton {
-                        iconSource: DltFontIcon.Filter
+                    QuiTextIconButton {
+                        iconSource: QuiFontIcon.Filter
                         text: globalFilter && globalFilter.isActive 
                               ? "过滤: " + globalFilter.activeFilterCount + " 个条件"
                               : "过滤"
                     }
                     
-                    DltTextIconButton {
-                        iconSource: DltFontIcon.Clear
+                    QuiTextIconButton {
+                        iconSource: QuiFontIcon.Clear
                         text: "清除所有"
                         visible: globalFilter && globalFilter.isActive
                         onClicked: {

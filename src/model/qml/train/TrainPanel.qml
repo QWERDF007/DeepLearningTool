@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import dltool.ui
 import dltool.model
 import "../component"
+import quickui
 
 Item {
     id: control
@@ -22,14 +23,14 @@ Item {
             id: trainTabBar
             Layout.fillWidth: true
 
-            DltTabButton {
+            QuiTabButton {
                 text: qsTr("训练参数设置")
-                textColor: trainTabBar.currentIndex === 0 ? DltColor.Highlight : DltColor.FontPrimary
+                textColor: trainTabBar.currentIndex === 0 ? QuiColor.Highlight : QuiColor.FontPrimary
             }
 
-            DltTabButton {
+            QuiTabButton {
                 text: qsTr("训练结果")
-                textColor: trainTabBar.currentIndex === 1 ? DltColor.Highlight : DltColor.FontPrimary
+                textColor: trainTabBar.currentIndex === 1 ? QuiColor.Highlight : QuiColor.FontPrimary
             }
         }
 
@@ -48,26 +49,26 @@ Item {
             }
 
             Rectangle {
-                color: DltColor.Primary
+                color: QuiColor.Primary
                 radius: 4
-                border.color: DltColor.Border
+                border.color: QuiColor.Border
 
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 16
                     spacing: 10
 
-                    DltText {
+                    QuiText {
                         Layout.fillWidth: true
                         text: qsTr("训练结果")
-                        font: DltFont.Title
-                        color: DltColor.FontPrimary
+                        font: QuiFont.Title
+                        color: QuiColor.FontPrimary
                     }
 
-                    DltText {
+                    QuiText {
                         Layout.fillWidth: true
                         text: control.currentModelId >= 0 ? qsTr("暂无训练结果") : qsTr("请选择模型")
-                        color: DltColor.FontDark
+                        color: QuiColor.FontDark
                         wrapMode: Text.Wrap
                     }
 

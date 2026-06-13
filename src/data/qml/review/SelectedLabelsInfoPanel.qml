@@ -4,10 +4,11 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Rectangle {
     id: root
-    color: DltColor.Primary
+    color: QuiColor.Primary
 
     // 公共属性
     property DataManager dataManager
@@ -31,10 +32,10 @@ Rectangle {
     // 可见性绑定：只有当有选中项时才显示
     visible: selectedCount > 0
 
-    DltMenu {
+    QuiMenu {
         id: menu
         width: 200
-        DltMenuItem {
+        QuiMenuItem {
             text: "复制"
             onTriggered: {
                 copyboard.selectAll()
@@ -62,14 +63,14 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 2
 
-            DltText {
+            QuiText {
                 Layout.leftMargin: 5
                 Layout.rightMargin: 5
                 text: "选中:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
 
-            DltText {
+            QuiText {
                 Layout.fillWidth: true
                 Layout.leftMargin: 5
                 Layout.rightMargin: 5
@@ -110,11 +111,11 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 2
 
-            DltText {
+            QuiText {
                 Layout.leftMargin: 5
                 Layout.rightMargin: 5
                 text: "类别:"
-                textColor: DltColor.FontDark
+                textColor: QuiColor.FontDark
             }
 
             LabelClassSelector {

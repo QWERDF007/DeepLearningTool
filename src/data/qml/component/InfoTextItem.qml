@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 
 import dltool.ui
+import quickui
 
 ColumnLayout {
     id: root
@@ -14,14 +15,14 @@ ColumnLayout {
     
     spacing: 2
     
-    DltText {
+    QuiText {
         Layout.leftMargin: 5
         Layout.rightMargin: 5
         text: root.title
-        textColor: DltColor.FontDark
+        textColor: QuiColor.FontDark
     }
     
-    DltText {
+    QuiText {
         id: contentText
         Layout.fillWidth: true
         Layout.leftMargin: 5
@@ -29,7 +30,7 @@ ColumnLayout {
         text: root.text
         elide: Text.ElideMiddle
         
-        DltToolTip {
+        QuiToolTip {
             text: contentText.text
             delay: 200
             visible: root.showTooltip && mouseArea.containsMouse && contentText.truncated

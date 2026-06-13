@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import quickui
     
 Rectangle {
     id: control
@@ -13,7 +14,7 @@ Rectangle {
     property string tagName: ""
     property string tagStats: ""
 
-    color: tagStats === "" ? Qt.lighter(DltColor.Primary, 1.2) : DltColor.Highlight
+    color: tagStats === "" ? Qt.lighter(QuiColor.Primary, 1.2) : QuiColor.Highlight
 
     signal clicked()
 
@@ -21,7 +22,7 @@ Rectangle {
         anchors.fill: parent
         anchors.leftMargin: 5
         anchors.rightMargin: 5
-        DltText {
+        QuiText {
             id: name
             Layout.fillWidth: true
             // anchors.left: parent.left
@@ -32,7 +33,7 @@ Rectangle {
             elide: Text.ElideRight
             text: tagName
         }
-        DltText {
+        QuiText {
             id: stat
             Layout.preferredWidth: 20
             // width: 20
@@ -51,7 +52,7 @@ Rectangle {
             control.clicked()
         }
     }
-    DltToolTip {
+    QuiToolTip {
         text: tagName
         visible: name.truncated && mouse.containsMouse
         delay: 200

@@ -7,9 +7,10 @@ import dltool.ui
 import dltool.core
 import dltool.project
 import dltool.data
+import quickui
 
 Rectangle {
-    color: DltColor.Primary
+    color: QuiColor.Primary
     width: 400
     height: 200
 
@@ -28,7 +29,7 @@ Rectangle {
         }
         spacing: 8
 
-        DltButton {
+        QuiButton {
             width: parent.width
             height: 40
             text: "创建项目"
@@ -38,7 +39,7 @@ Rectangle {
             }
         }
 
-        DltButton {
+        QuiButton {
             width: parent.width
             height: 40
             text: "打开项目"

@@ -4,6 +4,7 @@ import QtQuick.Effects
 
 import dltool.ui
 import dltool.settings
+import quickui
 
 /**
  * @brief 标注实例缩略图组件
@@ -17,7 +18,7 @@ Item {
     // 公共属性
     property int labelId: -1  // 标注 ID
     property var labelData: null  // 标注数据 {x, y, width, height}
-    property color borderColor: DltColor.Transparent  // 边框颜色（从外部传入）
+    property color borderColor: QuiColor.Transparent  // 边框颜色（从外部传入）
     
     // 只读属性
     readonly property bool imageLoaded: thumbnail.status === Image.Ready
@@ -98,7 +99,7 @@ Item {
         //     visible: thumbnail.status === Image.Error
         //     width: Math.min(parent.width * 0.8, 200)
         //     height: Math.min(parent.height * 0.8, 100)
-        //     // color: DltColor.ControlStrokeColorDefault
+        //     // color: QuiColor.ControlStrokeColorDefault
         //     radius: 4
         //     border.color: "red"
         //     border.width: 1
@@ -107,19 +108,19 @@ Item {
         //         anchors.centerIn: parent
         //         spacing: 8
                 
-        //         DltTextIcon {
+        //         QuiTextIcon {
         //             anchors.horizontalCenter: parent.horizontalCenter
-        //             iconSource: DltFontIcon.ErrorBadge
+        //             iconSource: QuiFontIcon.ErrorBadge
         //             iconSize: 24
         //         }
                 
-        //         DltText {
+        //         QuiText {
         //             anchors.horizontalCenter: parent.horizontalCenter
         //             text: qsTr("Failed to load image")
         //             font.pixelSize: 12
         //         }
                 
-        //         DltText {
+        //         QuiText {
         //             anchors.horizontalCenter: parent.horizontalCenter
         //             text: qsTr("Label ID: %1").arg(root.labelId)
         //             font.pixelSize: 10

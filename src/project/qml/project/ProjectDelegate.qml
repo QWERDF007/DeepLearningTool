@@ -5,13 +5,14 @@ import Qt.labs.platform
 
 import dltool.ui
 import dltool.project
+import quickui
 
 Rectangle {
     id: control
     clip: true
     width: 160
     height: 120
-    color: DltColor.Background
+    color: QuiColor.Background
 
     property bool selected: false
     property string name: "项目名"
@@ -19,7 +20,7 @@ Rectangle {
     property string imagePath: ""
     property string msg: ""
 
-    border.color: selected ? DltColor.Highlight : DltColor.Border
+    border.color: selected ? QuiColor.Highlight : QuiColor.Border
     border.width: 2
 
     ColumnLayout {
@@ -34,7 +35,7 @@ Rectangle {
             sourceSize.width: parent.width
             sourceSize.height: parent.height
         }
-        DltText {
+        QuiText {
             Layout.fillWidth: true
             Layout.margins: 5
             verticalAlignment: Text.AlignVCenter
@@ -51,7 +52,7 @@ Rectangle {
         }
     }
 
-    DltToolTip {
+    QuiToolTip {
         text: msg
         visible: mouseArea.containsMouse
         delay: 200

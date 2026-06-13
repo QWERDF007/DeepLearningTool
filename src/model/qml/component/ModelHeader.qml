@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import quickui
 
 Item {
     id: header
@@ -12,17 +13,17 @@ Item {
 
     RowLayout {
         anchors.fill: parent
-        DltText {
+        QuiText {
             text: header.text
-            font: DltFont.Subtitle
+            font: QuiFont.Subtitle
         }
         Item {
             Layout.fillWidth: true
         }
-        DltTextIconButton {
+        QuiTextIconButton {
             id: addBtn
             visible: addEnable
-            iconSource: DltFontIcon.Add
+            iconSource: QuiFontIcon.Add
             text: "添加模型"
             onClicked: header.addClicked()
         }

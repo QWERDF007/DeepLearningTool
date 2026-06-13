@@ -5,16 +5,17 @@ import QtQuick.Layouts
 import dltool.ui
 import dltool.model
 import dltool.project
+import quickui
 
 Rectangle {
     id: labelPage
     width: 1080
     height: 1920
-    color: DltColor.Background
+    color: QuiColor.Background
 
     property ModelManager modelManager: ProjectManager.currentProject ? ProjectManager.currentProject.modelManager : null
 
-    DltSplitView {
+    QuiSplitView {
         anchors.fill: parent
         anchors.margins: 5
 

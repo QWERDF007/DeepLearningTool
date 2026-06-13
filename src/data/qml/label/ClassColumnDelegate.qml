@@ -3,12 +3,13 @@ import QtQuick.Controls
 import QtQuick.Layouts 
 
 import dltool.ui
+import quickui
 
 Rectangle {
     clip: true
     property var mdata
     property bool selected
-    color: selected ? DltColor.Highlight : row % 2 == 0 ? Qt.lighter(DltColor.Primary, 1.3) : DltColor.Primary
+    color: selected ? QuiColor.Highlight : row % 2 == 0 ? Qt.lighter(QuiColor.Primary, 1.3) : QuiColor.Primary
     RowLayout {
         anchors.fill: parent
         anchors.leftMargin: 2
@@ -21,7 +22,7 @@ Rectangle {
             border.width: 1
             border.color: "black"
         }
-        DltText {
+        QuiText {
             Layout.fillWidth: true
             Layout.fillHeight: true
             elide: Text.ElideRight

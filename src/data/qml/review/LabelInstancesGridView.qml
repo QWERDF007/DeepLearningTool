@@ -5,17 +5,18 @@ import QtQuick.Layouts
 import dltool.ui
 import dltool.data
 import dltool.settings
+import quickui
 
 // 标注实例缩略图网格视图
 Rectangle {
     id: root
-    color: DltColor.Background
+    color: QuiColor.Background
     
     property DataManager dataManager
     property LabelInstancesModel labelInstances : dataManager ? dataManager.labelInstances : null
     property ItemSelectionModel selection : labelInstances ? labelInstances.selection : null
 
-    DltContentDialog {
+    QuiContentDialog {
         id: deleteConfirmDialog
         title: "删除标注"
         message: "确定删除选中的标注吗?"
@@ -24,12 +25,12 @@ Rectangle {
         }
     }
 
-    DltMenu {
+    QuiMenu {
         id: contextMenu
         width: 200
-        DltMenuItem {
+        QuiMenuItem {
             text: "删除标注"
-            iconSource: DltFontIcon.Delete
+            iconSource: QuiFontIcon.Delete
             enabled: selection && selection.hasSelection
             onClicked: {
                 deleteConfirmDialog.open()
@@ -64,7 +65,7 @@ Rectangle {
             id: delegateItem
             width: thumbnailGridView.cellWidth - 10
             height: thumbnailGridView.cellHeight - 10
-            color: DltColor.Primary
+            color: QuiColor.Primary
             radius: 4
             
             property int labelId: model.label_id || -1
@@ -74,22 +75,22 @@ Rectangle {
             border.width: 2
             border.color: {
                 if (!dataManager || !dataManager.labelInstances) {
-                    return DltColor.Transparent
+                    return QuiColor.Transparent
                 }
                 if (!selection || !selection.hasSelection) {
-                    return DltColor.Transparent
+                    return QuiColor.Transparent
                 }
                 let currentIndex = selection.currentIndex.row
                 if (currentIndex < 0) {
-                    return DltColor.Transparent
+                    return QuiColor.Transparent
                 }
                 // 检查当前 delegate 的索引是否被选中
                 let myIndex = model.index
                 let myModelIndex = dataManager.labelInstances.index(myIndex, 0)
                 if (selection.isSelected(myModelIndex)) {
-                    return DltColor.Highlight
+                    return QuiColor.Highlight
                 }
-                return DltColor.Transparent
+                return QuiColor.Transparent
             }
             
                 
@@ -99,14 +100,14 @@ Rectangle {
                 anchors.margins: 5
                 labelId: delegateItem.labelId
                 labelData: model.data || null
-                borderColor: model.label_class_color || DltColor.Transparent
+                borderColor: model.label_class_color || QuiColor.Transparent
             }
         }
         
         boundsBehavior: Flickable.StopAtBounds
         
         // 滚动条
-        ScrollBar.vertical: DltScrollBar {
+        ScrollBar.vertical: QuiScrollBar {
             id: scrollBar
         }
         
@@ -263,7 +264,7 @@ Rectangle {
     }
     
     // 提示文本：当没有标注时显示
-    DltText {
+    QuiText {
         anchors.centerIn: parent
         visible: thumbnailGridView.count === 0
         text: "没有标注实例"

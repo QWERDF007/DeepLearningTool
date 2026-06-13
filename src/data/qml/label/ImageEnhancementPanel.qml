@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.settings
+import quickui
 
 Rectangle {
     id: control
@@ -18,7 +19,7 @@ Rectangle {
     signal fitToWindow()
     signal zoomChanged(real zoom)
     
-    color: DltColor.Primary
+    color: QuiColor.Primary
     
     ColumnLayout {
         id: mainLayout
@@ -27,9 +28,9 @@ Rectangle {
         spacing: 12
         
         // 标题
-        DltText {
+        QuiText {
             text: "图像增强："
-            font: DltFont.Subtitle
+            font: QuiFont.Subtitle
             Layout.fillWidth: true
         }
         

@@ -4,20 +4,21 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Rectangle { 
     id: labelImageFlip
     clip: true
     width: 200
     height: 200
-    color: DltColor.Primary
+    color: QuiColor.Primary
     property DataManager dataManager
     property ImageInstancesModel model: dataManager ? dataManager.imageInstances : null
     property ItemSelectionModel selection: model ? model.selection : null
     property int total: model ? model.count : 0
     property int current: selection ? selection.currentIndex.row : -1
 
-    DltContentDialog {
+    QuiContentDialog {
         id: deleteConfirmDialog
         title: "删除图像"
         message: "确定删除选中的图像吗?"
@@ -28,10 +29,10 @@ Rectangle {
         }
     }
 
-    DltMenu {
+    QuiMenu {
         id: menu
         width: 200
-        DltMenuItem {
+        QuiMenuItem {
             text: "复制"
             onTriggered: {
                 copyboard.selectAll()
@@ -52,16 +53,16 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            DltTextIcon {
+            QuiTextIcon {
                 iconSize: 32
-                iconSource: DltFontIcon.Photo
+                iconSource: QuiFontIcon.Photo
             }
-            DltText {
+            QuiText {
                 id: nameText
                 Layout.fillWidth: true
                 text: model ? model.currentImageName : ""
                 elide: Text.ElideMiddle
-                DltToolTip {
+                QuiToolTip {
                     text: nameText.text
                     delay: 200
                     visible: mouseArea.containsMouse && nameText.truncated
@@ -76,8 +77,8 @@ Rectangle {
                     }
                 }
             }
-            DltTextIconButton {
-                iconSource: DltFontIcon.Delete
+            QuiTextIconButton {
+                iconSource: QuiFontIcon.Delete
                 text: "删除图像"
                 onClicked: {
                     deleteConfirmDialog.open()
@@ -87,8 +88,8 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            DltTextIconButton {
-                iconSource: DltFontIcon.ChevronLeft
+            QuiTextIconButton {
+                iconSource: QuiFontIcon.ChevronLeft
                 text: "上一张"
                 onClicked: {
                     labelImageFlip.prevItem()
@@ -97,14 +98,14 @@ Rectangle {
             Item {
                 Layout.fillWidth: true
             }
-            DltText {
+            QuiText {
                 text: current >= 0 ? current + 1 + "/" + total : ""
             }
             Item {
                 Layout.fillWidth: true
             }
-            DltTextIconButton {
-                iconSource: DltFontIcon.ChevronRight
+            QuiTextIconButton {
+                iconSource: QuiFontIcon.ChevronRight
                 text: "下一张"
                 onClicked: {
                     labelImageFlip.nextItem()

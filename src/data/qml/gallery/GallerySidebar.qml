@@ -5,18 +5,19 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.settings
+import quickui
 
 Rectangle { // 侧边栏
     id: sidebar
-    color: DltColor.Primary
+    color: QuiColor.Primary
 
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 5
         spacing: 5
         
-        DltTextIconButton {
-            iconSource: DltFontIcon.ExploreContentSingle
+        QuiTextIconButton {
+            iconSource: QuiFontIcon.ExploreContentSingle
             text: "调整图像大小"
             onClicked: {
                 slider.from = GlobalSettings.data.imageCellScaleFrom
@@ -30,8 +31,8 @@ Rectangle { // 侧边栏
                 openPopup(x,y)
             }
         }
-        DltTextIconButton {
-            iconSource: DltFontIcon.Brightness
+        QuiTextIconButton {
+            iconSource: QuiFontIcon.Brightness
             text: "调整图像亮度"
             onClicked: {
                 slider.from = GlobalSettings.ui.imageBrightnessFrom
@@ -45,8 +46,8 @@ Rectangle { // 侧边栏
                 openPopup(x,y)
             }
         }
-        DltTextIconButton {
-            iconSource: DltFontIcon.BlueLight
+        QuiTextIconButton {
+            iconSource: QuiFontIcon.BlueLight
             text: "调整图像对比度"
             onClicked: {
                 slider.from = GlobalSettings.ui.imageContrastFrom
@@ -64,13 +65,13 @@ Rectangle { // 侧边栏
             Layout.fillHeight: true
         }
     }
-    DltPopup {
+    QuiPopup {
         id: popup
-        bgColor: DltColor.Primary
+        bgColor: QuiColor.Primary
         closePolicy: Popup.CloseOnPressOutside
         width: 200
         height: 32
-        DltSlider {
+        QuiSlider {
             id: slider
             anchors.centerIn: parent
             snapMode: Slider.SnapAlways

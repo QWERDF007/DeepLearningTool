@@ -8,15 +8,16 @@ import dltool.data
 import dltool.project
 
 import "project"
+import quickui
 
 Rectangle {
     width: 1080
     height: 1920
-    color: DltColor.Background
+    color: QuiColor.Background
 
     property Project project
 
-    DltSplitView {
+    QuiSplitView {
         anchors.fill: parent
         anchors.margins: 5
         ColumnLayout {

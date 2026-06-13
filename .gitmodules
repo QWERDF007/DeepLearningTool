@@ -6,3 +6,7 @@
 	path = 3rdparty/spdlog
 	url = https://github.com/gabime/spdlog.git
 	branch = v1.x
+[submodule "3rdparty/QuickUI"]
+	path = 3rdparty/QuickUI
+	url = https://github.com/QWERDF007/QuickUI.git
+	branch = main

@@ -1,12 +1,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import quickui
 // import QtQuick.Dialogs
 import Qt.labs.platform
 
 import dltool.ui
 
-DltPopup {
+QuiPopup {
     id: control
     closePolicy: Popup.CloseOnPressOutside
     width: 480
@@ -69,10 +70,10 @@ DltPopup {
                 Layout.preferredWidth: parent.width * 0.6
                 spacing: 5
 
-                DltText {
+                QuiText {
                     text: "名字"
                 }
-                DltTextField {
+                QuiTextField {
                     id: nameField
                     Layout.fillWidth: true
                     placeholderText: "输入类别名称"
@@ -80,10 +81,10 @@ DltPopup {
                         labelClassChanged(classId, className, classColor, classShortcut, isCreate ? -1 : ordinalIndex)
                     }
                 }
-                DltText {
+                QuiText {
                     text: "颜色"
                 }
-                DltTextField {
+                QuiTextField {
                     id: colorField
                     Layout.fillWidth: true
                     placeholderText: "#RRGGBB"
@@ -92,10 +93,10 @@ DltPopup {
                         labelClassChanged(classId, className, classColor, classShortcut, isCreate ? -1 : ordinalIndex)
                     }
                 }
-                DltText {
+                QuiText {
                     text: "快捷键"
                 }
-                DltTextField {
+                QuiTextField {
                     id: shortcutField
                     Layout.fillWidth: true
                     placeholderText: "输入快捷键"
@@ -103,11 +104,11 @@ DltPopup {
                         labelClassChanged(classId, className, classColor, classShortcut, isCreate ? -1 : ordinalIndex)
                     }
                 }
-                DltText {
+                QuiText {
                     text: "序号索引"
                     visible: !isCreate
                 }
-                DltTextField {
+                QuiTextField {
                     id: ordinalField
                     visible: !isCreate
                     Layout.fillWidth: true
@@ -128,7 +129,7 @@ DltPopup {
             ColumnLayout {
                 Layout.fillHeight: true
                 Layout.preferredWidth: parent.width * 0.4
-                DltText {
+                QuiText {
                     text: "选择颜色"
                 }
                 Rectangle {
@@ -159,14 +160,14 @@ DltPopup {
             Item {
                 Layout.fillWidth: true
             }
-            DltButton {
+            QuiButton {
                 text: "取消"
                 onClicked: {
                     clearInput()
                     control.close()
                 }
             }
-            DltButton {
+            QuiButton {
                 text: "确认"
                 enabled: !control.isError()
                 onClicked: {
@@ -177,7 +178,7 @@ DltPopup {
             }
         }
 
-        DltText {
+        QuiText {
             id: msgText
             text: control.getDisplayMsg()
             anchors {

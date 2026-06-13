@@ -5,8 +5,9 @@ import Qt.labs.platform
 
 import dltool.ui
 import dltool.data
+import quickui
 
-DltPopup {
+QuiPopup {
     id: importDataDialog
     width: 600
     height: 400
@@ -20,9 +21,9 @@ DltPopup {
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 10
-        DltText {
+        QuiText {
             text: "导入数据"
-            font: DltFont.Subtitle
+            font: QuiFont.Subtitle
         }
         ImportDataForm {
             id: importDataForm
@@ -33,7 +34,7 @@ DltPopup {
         Item {
             Layout.fillWidth: true
             height: 32
-            DltButton {
+            QuiButton {
                 anchors.right: createBtn.left
                 anchors.rightMargin: 5
                 width: parent.width / 4
@@ -44,14 +45,14 @@ DltPopup {
                 }
             }
 
-            DltButton {
+            QuiButton {
                 id: createBtn
                 enabled: importDataForm.image_dir
                 anchors.right: parent.right
                 width: parent.width / 4
                 height: parent.height
                 text: " 导入"
-                normalColor: DltColor.Highlight
+                normalColor: QuiColor.Highlight
                 onClicked: {
                     importDataDialog.close()
                     if (dataManager) {

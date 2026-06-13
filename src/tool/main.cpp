@@ -41,6 +41,8 @@ int main(int argc, char *argv[])
 
     QApplication          app(argc, argv);
     QQmlApplicationEngine engine;
+    engine.addImportPath(QStringLiteral(DLTOOL_QML_BUILD_DIR "/qml"));
+    engine.addImportPath(QCoreApplication::applicationDirPath() + QStringLiteral("/../qml"));
 
     // 将 QML 引擎设置到 ProjectManager（通过 QML 上下文属性）
     // 注意：ProjectManager 是 QML 单例，会在 QML 加载时自动创建

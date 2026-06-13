@@ -4,11 +4,12 @@ import QtQuick.Layouts
 import QtQuick.Window
 
 import dltool.ui
+import quickui
 
 Rectangle {
     width: 640
     height: 36
-    color: DltColor.Background
+    color: QuiColor.Background
     
     // 辅助函数：计算对话框位置并确保在可见区域内
     function calculateDialogPosition(badge, dialog, isProgressDialog) {
@@ -49,13 +50,13 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: DltColor.Primary
+            color: QuiColor.Primary
         }
         Rectangle {
             visible: ProgressManager ? ProgressManager.isRunning : false
             Layout.preferredWidth: 80
             Layout.fillHeight: true
-            color: DltColor.Primary
+            color: QuiColor.Primary
             ProgressInfoBadge {
                 id: progressBadge
                 anchors.fill: parent
@@ -73,7 +74,7 @@ Rectangle {
         Rectangle {
             Layout.preferredWidth: 120
             Layout.fillHeight: true
-            color: DltColor.Primary
+            color: QuiColor.Primary
             LogInfoBadge {
                 id: infoBadge
                 anchors.fill: parent

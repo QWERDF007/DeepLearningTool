@@ -4,22 +4,23 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Item {
     id: header
     property DataManager dataManager
     RowLayout {
         anchors.fill: parent
-        DltText {
+        QuiText {
             text: "数据集:"
-            font: DltFont.Subtitle
+            font: QuiFont.Subtitle
         }
         Item {
             Layout.fillWidth: true
         }
-        DltTextIconButton {
+        QuiTextIconButton {
             id: addBtn
-            iconSource: DltFontIcon.Add
+            iconSource: QuiFontIcon.Add
             text: "添加数据集"
             onClicked: {
                 editor.text = ""
@@ -30,7 +31,7 @@ Item {
             }
         }
     }
-    DltEditor {
+    QuiEditor {
         id: editor
         description: "输入数据集名称"
         onEditTextChanged: function (datasetName) {

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import dltool.ui
+import quickui
 
 Rectangle {
     id: control
@@ -10,9 +11,9 @@ Rectangle {
 
     radius: 4
     clip: true
-    color: DltColor.Primary
+    color: QuiColor.Primary
 
-    DltScrollablePage {
+    QuiScrollablePage {
         anchors.fill: parent
         anchors.leftMargin: control.partSpacing
         anchors.topMargin: control.partSpacing
@@ -20,20 +21,20 @@ Rectangle {
         anchors.bottomMargin: control.partSpacing
         animationEnabled: false
 
-        DltText {
+        QuiText {
             Layout.fillWidth: true
             Layout.rightMargin: control.scrollbarReserve
             text: qsTr("Training Dataset")
-            color: DltColor.FontPrimary
-            font: DltFont.Title
+            color: QuiColor.FontPrimary
+            font: QuiFont.Title
             elide: Text.ElideRight
         }
 
-        DltText {
+        QuiText {
             Layout.fillWidth: true
             Layout.rightMargin: control.scrollbarReserve
             text: qsTr("No dataset selected")
-            color: DltColor.FontDark
+            color: QuiColor.FontDark
             wrapMode: Text.Wrap
         }
     }

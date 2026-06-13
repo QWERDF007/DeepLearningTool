@@ -2,13 +2,14 @@ import QtQuick
 import QtQuick.Controls
 
 import dltool.ui
+import quickui
 
 TabBar {
     id: control
     width: 200
     height: 48
-    property color bgColor: DltColor.Primary
-    property color highlightColor: DltColor.Highlight
+    property color bgColor: QuiColor.Primary
+    property color highlightColor: QuiColor.Highlight
     background: Rectangle {
         color: bgColor
         height: control.height

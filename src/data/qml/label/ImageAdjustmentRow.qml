@@ -3,10 +3,11 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import quickui
 
 Item {
     id: control
-    
+
     // 属性定义
     property string label: ""
     property real value: 0.0
@@ -16,32 +17,32 @@ Item {
     property bool showResetButton: true
     property bool showFitButton: false
     property real defaultValue: 0.0
-    
+
     // 信号定义
     signal valueAdjusted(real newValue)
     signal resetClicked()
     signal fitClicked()
-    
+
     implicitWidth: rowLayout.implicitWidth
     implicitHeight: rowLayout.implicitHeight
-    
+
     RowLayout {
         id: rowLayout
         anchors.fill: parent
         spacing: 4
-        
+
         // 标签
-        DltText {
+        QuiText {
             text: control.label
             Layout.preferredWidth: 50
             Layout.alignment: Qt.AlignVCenter
         }
-        
+
         // 减少按钮
-        DltTextIconButton {
+        QuiTextIconButton {
             id: decreaseButton
-            iconSource: control.label === "缩放" ? DltFontIcon.ZoomOut : 
-                       (control.label === "亮度" ? DltFontIcon.Brightness : DltFontIcon.Light)
+            iconSource: control.label === "缩放" ? QuiFontIcon.ZoomOut :
+                       (control.label === "亮度" ? QuiFontIcon.Brightness : QuiFontIcon.Light)
             iconSize: 16
             text: "减少" + control.label
             enabled: control.value > control.from
@@ -52,9 +53,9 @@ Item {
             Layout.preferredWidth: 28
             Layout.preferredHeight: 28
         }
-        
-        // 滑动条
-        DltSlider {
+
+        // 滑块
+        QuiSlider {
             id: slider
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignVCenter
@@ -62,23 +63,23 @@ Item {
             to: control.to
             stepSize: control.stepSize
             precision: 2
-            
+
             // 使用 Binding 保持与外部 value 的同步
             Binding on value {
                 value: control.value
                 when: !slider.pressed
             }
-            
+
             onMoved: {
                 control.valueAdjusted(slider.value)
             }
         }
-        
+
         // 增加按钮
-        DltTextIconButton {
+        QuiTextIconButton {
             id: increaseButton
-            iconSource: control.label === "缩放" ? DltFontIcon.Zoom : 
-                       (control.label === "亮度" ? DltFontIcon.Brightness : DltFontIcon.Light)
+            iconSource: control.label === "缩放" ? QuiFontIcon.Zoom :
+                       (control.label === "亮度" ? QuiFontIcon.Brightness : QuiFontIcon.Light)
             iconSize: 16
             text: "增加" + control.label
             enabled: control.value < control.to
@@ -89,12 +90,12 @@ Item {
             Layout.preferredWidth: 28
             Layout.preferredHeight: 28
         }
-        
+
         // 重置按钮（可选）
-        DltTextIconButton {
+        QuiTextIconButton {
             id: resetButton
             visible: control.showResetButton
-            iconSource: DltFontIcon.Refresh
+            iconSource: QuiFontIcon.Refresh
             iconSize: 16
             text: "重置" + control.label
             onClicked: {
@@ -104,12 +105,12 @@ Item {
             Layout.preferredWidth: 28
             Layout.preferredHeight: 28
         }
-        
+
         // 适应窗口按钮（可选）
-        DltTextIconButton {
+        QuiTextIconButton {
             id: fitButton
             visible: control.showFitButton
-            iconSource: DltFontIcon.FitPage
+            iconSource: QuiFontIcon.FitPage
             iconSize: 16
             text: "适应窗口"
             onClicked: {

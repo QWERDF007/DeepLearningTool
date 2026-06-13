@@ -4,17 +4,18 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import quickui
 
 Rectangle {
     id: datasetsView
     width: 200
     height: 200
-    color: DltColor.Primary
+    color: QuiColor.Primary
     property DataManager dataManager
     property DatasetsModel datasets: dataManager ? dataManager.datasets : null
     property var curItem
 
-    DltContentDialog {
+    QuiContentDialog {
         id: deleteConfirmDialog
         title: "删除数据集"
         message: "确定删除选中的数据集吗?"
@@ -30,12 +31,12 @@ Rectangle {
         title: "导入数据"
     }
 
-    DltMenu {
+    QuiMenu {
         id: menu
         width: 200
-        DltMenuItem {
+        QuiMenuItem {
             text: "导入"
-            iconSource: DltFontIcon.ImportMirrored
+            iconSource: QuiFontIcon.ImportMirrored
             onClicked: {
                 if (dataManager && curItem) {
                     importDataDialog.dataFormatModel = DataFormat.getSupportedDataFormat()
@@ -45,9 +46,9 @@ Rectangle {
                 }
             }
         }
-        DltMenuItem {
+        QuiMenuItem {
             text: "导出"
-            iconSource: DltFontIcon.Export
+            iconSource: QuiFontIcon.Export
             onClicked: {
                 if (dataManager && curItem) {
                     exportDataDialog.dataFormatModel = DataFormat.getSupportedExportDataFormat()
@@ -57,9 +58,9 @@ Rectangle {
                 }
             }
         }
-        DltMenuItem {
+        QuiMenuItem {
             text: "修改"
-            iconSource: DltFontIcon.Edit
+            iconSource: QuiFontIcon.Edit
             onClicked: {
                 if (curItem) {
                     editor.text = ""
@@ -70,16 +71,16 @@ Rectangle {
                 }
             }
         }
-        DltMenuItem {
+        QuiMenuItem {
             text: "删除"
-            iconSource: DltFontIcon.Delete
+            iconSource: QuiFontIcon.Delete
             onClicked: {
                 deleteConfirmDialog.open()
             }
         }
     }
 
-    DltEditor {
+    QuiEditor {
         id: editor
         description: "输入数据集名称"
         onEditTextChanged: function (datasetName) {
@@ -119,7 +120,7 @@ Rectangle {
             Layout.fillWidth: true
             boundsBehavior: Flickable.StopAtBounds
             model: datasets
-            ScrollBar.vertical: DltScrollBar {}
+            ScrollBar.vertical: QuiScrollBar {}
             delegate: DatasetDelegate {
                 height: 32
                 width: view.width - 8

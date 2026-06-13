@@ -4,26 +4,27 @@ import QtQuick.Layouts
 import QtQuick.Templates as T
 
 import dltool.ui
+import quickui
 
-DltPopup {
+QuiPopup {
     id: popup
     modal: false
     width: 480
     height: 280
     maskVisible: false
-    bg.color: DltColor.Primary
+    bg.color: QuiColor.Primary
     bg.border.width: 1
     bg.border.color: "black"
     Item {
         anchors.fill: parent
         anchors.margins: 10
-        DltTextIconButton {
+        QuiTextIconButton {
             id: closeBtn
             anchors{
                 top: parent.top
                 right: parent.right
             }
-            iconSource: DltFontIcon.ChromeMinimize
+            iconSource: QuiFontIcon.ChromeMinimize
             onClicked: {
                 popup.close()
             }
@@ -46,12 +47,12 @@ DltPopup {
                 right: parent.right
                 bottom: parent.bottom
             }
-            ScrollBar.vertical: DltScrollBar {
+            ScrollBar.vertical: QuiScrollBar {
                 // snapMode: ScrollBar.SnapAlways
             }
             boundsBehavior: Flickable.StopAtBounds
             contentHeight: textArea.height
-            DltTextArea {
+            QuiTextArea {
                 id: textArea
                 readOnly: true
                 width: parent.width

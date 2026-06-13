@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import dltool.ui
 import dltool.model
+import quickui
 
 Item {
     id: control
@@ -15,12 +16,12 @@ Item {
         return control.params && control.params.count > 0;
     }
 
-    DltText {
+    QuiText {
         anchors.centerIn: parent
         width: Math.max(parent.width - 32, 0)
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.Wrap
-        color: DltColor.FontDark
+        color: QuiColor.FontDark
         text: control.emptyText
         visible: !control.hasGroups()
     }

@@ -3,14 +3,15 @@ import QtQuick.Controls
 import QtQuick.Layouts 
 
 import dltool.ui
+import quickui
 
 
 Rectangle {
     clip: true
     property var mdata
     property bool selected
-    color: selected ? DltColor.Highlight : row % 2 == 0 ? Qt.lighter(DltColor.Primary, 1.3) : DltColor.Primary
-    DltText {
+    color: selected ? QuiColor.Highlight : row % 2 == 0 ? Qt.lighter(QuiColor.Primary, 1.3) : QuiColor.Primary
+    QuiText {
         anchors.fill: parent
         anchors.leftMargin: 2
         anchors.rightMargin: 2

@@ -5,6 +5,7 @@ import dltool.ui
 import dltool.core
 import dltool.data
 import dltool.settings
+import quickui
 
 Item {
     id: labelView
@@ -37,7 +38,7 @@ Item {
     property bool smartAnnotationDirty: false
     property var polygonPoints: []
     
-    // 暴露图像缩放属�?
+    // 暴露图像缩放属性
     property real imageScale: labelImage.image.scale
 
     onToolModeChanged: handleToolModeChanged()
@@ -79,20 +80,20 @@ Item {
         onTriggered: updateSmartAnnotationPreview()
     }
 
-    DltMenu {
+    QuiMenu {
         id: labelCanvasMenu
         width: 200
-        DltMenuItem {
+        QuiMenuItem {
             text: "删除选中标签实例"
             enabled : selection ? selection.hasSelection : false
-            iconSource: DltFontIcon.Delete
+            iconSource: QuiFontIcon.Delete
             onClicked: {
                 deleteConfirmDialog.open()
             }
         }
     }
 
-    DltContentDialog {
+    QuiContentDialog {
         id: deleteConfirmDialog
         title: "删除选中标签实例"
         message: "确定删除选中的标签实例吗?"
@@ -1101,7 +1102,7 @@ Item {
             return null
         }
         // 检查是否点击在已选中的标签上（优先角、边，其次内部）
-        // 只支持单选编�?
+        // 只支持单选编辑
         let selectedIndex = imageLabelsList.getTopSelectedIndex()
         if (selectedIndex !== -1) {
             let hit = imageLabelsList.hitTestHandle(pos, selectedIndex, labelImage.image.scale)

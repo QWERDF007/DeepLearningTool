@@ -3,9 +3,10 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
+import quickui
 
 Rectangle { // 侧边栏
     id: sidebar
-    color: DltColor.Primary
+    color: QuiColor.Primary
 
 }

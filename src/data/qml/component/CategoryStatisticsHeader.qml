@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts 
 
 import dltool.ui
+import quickui
 
 HorizontalHeaderView {
     id: horizontalHeader
@@ -16,11 +17,11 @@ HorizontalHeaderView {
     
     model: ["类别名称", "分布比例", "数量"]
 
-    property color borderColor: DltColor.Black
+    property color borderColor: QuiColor.Black
     
     delegate: Rectangle {
         implicitHeight: horizontalHeader.height
-        color: DltColor.Highlight
+        color: QuiColor.Highlight
         border.color: borderColor
         border.width: 1
         
@@ -55,9 +56,9 @@ HorizontalHeaderView {
         // 普通表头文本
         Component {
             id: headerText
-            DltText {
+            QuiText {
                 text: modelData
-                font: DltFont.Subtitle
+                font: QuiFont.Subtitle
                 verticalAlignment: Text.AlignVCenter
             }
         }
@@ -70,9 +71,9 @@ HorizontalHeaderView {
                 Item { // 添加一个容器来避免文本内容的实际渲染宽度不同，可能会导致视觉上的不对齐
                     Layout.fillHeight: true
                     Layout.fillWidth: true
-                    DltText {
+                    QuiText {
                         anchors.fill: parent
-                        font: DltFont.Subtitle
+                        font: QuiFont.Subtitle
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         text: "实例"
@@ -81,9 +82,9 @@ HorizontalHeaderView {
                 Item {
                     Layout.fillHeight: true
                     Layout.fillWidth: true
-                    DltText {
+                    QuiText {
                         anchors.fill: parent
-                        font: DltFont.Subtitle
+                        font: QuiFont.Subtitle
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         text: "图像"
@@ -98,9 +99,9 @@ HorizontalHeaderView {
             RowLayout {
                 spacing: 10
                 
-                DltText {
+                QuiText {
                     text: modelData
-                    font: DltFont.Subtitle
+                    font: QuiFont.Subtitle
                     verticalAlignment: Text.AlignVCenter
                 }
                 
@@ -108,7 +109,7 @@ HorizontalHeaderView {
                     Layout.fillWidth: true
                 }
                 
-                DltComboBox {
+                QuiComboBox {
                     Layout.preferredWidth: 160
                     model: ["按标签实例统计", "按图像统计"]
                     currentIndex: horizontalHeader.currentDimension
