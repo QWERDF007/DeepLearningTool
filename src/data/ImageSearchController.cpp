@@ -98,7 +98,7 @@ QString indexDirectoryForProject(const QString &database_path, const QString &cu
 
     if (!database_path.isEmpty())
     {
-        return QFileInfo(database_path).absoluteDir().filePath(QStringLiteral(".image_search"));
+        return QFileInfo(database_path).absoluteDir().filePath(QStringLiteral("image_search"));
     }
 
     QString fallback = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -504,7 +504,7 @@ bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids
     startProgress(request);
 
     QPointer<ImageSearchController> controller(this);
-    QThread                        *work_thread = QThread::create([controller, request = std::move(request)]() mutable
+    QThread *work_thread = QThread::create([controller, request = std::move(request)]() mutable
                                            { executeSearchWorker(std::move(request), controller); });
 
     connect(work_thread, &QThread::finished, work_thread, &QObject::deleteLater);

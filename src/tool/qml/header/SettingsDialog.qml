@@ -255,7 +255,7 @@ QuiPopup {
                                     verticalCenter: parent.verticalCenter
                                 }
                                 width: parent.width / 3
-                                text: "特征提取"
+                                text: "图像搜索"
                                 font: QuiFont.Subtitle
                                 color: QuiColor.FontPrimary
                             }
