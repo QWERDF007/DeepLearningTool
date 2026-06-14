@@ -11,37 +11,49 @@ Rectangle {
     height: 36
     color: QuiColor.Background
     
-    // 辅助函数：计算对话框位置并确保在可见区域内
-    function calculateDialogPosition(badge, dialog, isProgressDialog) {
+    function calculatePopupDialogPosition(badge, dialog, avoidLogDialog) {
         let pos = badge.mapToItem(null, 0, 0)
         let dialogX = pos.x - dialog.width + 60
         let dialogY = pos.y - dialog.height - 20
-        
-        // 如果是 ProgressDialog，需要确保它在 LogDialog 的左边
-        if (isProgressDialog && log.visible) {
-            // ProgressDialog 应该在 LogDialog 左边，留出间隙
-            let logRightEdge = log.x + log.width
-            if (dialogX + dialog.width > log.x) {
-                dialogX = log.x - dialog.width - 10  // 10px 间隙
+
+        let windowItem = badge.Window.window
+        if (avoidLogDialog && log.visible && windowItem) {
+            let logX = log.x - windowItem.x
+            if (logX >= 0 && logX <= windowItem.width && dialogX + dialog.width > logX) {
+                dialogX = logX - dialog.width - 10
             }
         }
-        
-        // 边界检查：确保对话框在窗口可见区域内
-        let windowItem = badge.Window.window
+
         if (windowItem) {
-            // 左边界检查
-            dialogX = Math.max(0, dialogX)
-            
-            // 右边界检查
-            dialogX = Math.min(dialogX, windowItem.width - dialog.width)
-            
-            // 上边界检查
-            dialogY = Math.max(0, dialogY)
-            
-            // 下边界检查（虽然对话框在 footer 上方，但仍需检查）
-            dialogY = Math.min(dialogY, windowItem.height - dialog.height)
+            let maxX = Math.max(0, windowItem.width - dialog.width)
+            let maxY = Math.max(0, windowItem.height - dialog.height)
+            dialogX = Math.max(0, Math.min(dialogX, maxX))
+            dialogY = Math.max(0, Math.min(dialogY, maxY))
         }
-        
+
+        return Qt.point(dialogX, dialogY)
+    }
+
+    function calculateWindowDialogPosition(badge, dialog) {
+        let pos = badge.mapToItem(null, 0, 0)
+        let windowItem = badge.Window.window
+        let windowX = windowItem ? windowItem.x : 0
+        let windowY = windowItem ? windowItem.y : 0
+        let dialogX = windowX + pos.x - dialog.width + 60
+        let dialogY = windowY + pos.y - dialog.height - 20
+        let targetScreen = windowItem ? windowItem.screen : null
+
+        if (targetScreen) {
+            let screenX = targetScreen.virtualX
+            let screenY = targetScreen.virtualY
+            let screenWidth = targetScreen.desktopAvailableWidth > 0 ? targetScreen.desktopAvailableWidth : targetScreen.width
+            let screenHeight = targetScreen.desktopAvailableHeight > 0 ? targetScreen.desktopAvailableHeight : targetScreen.height
+            let maxX = Math.max(screenX, screenX + screenWidth - dialog.width)
+            let maxY = Math.max(screenY, screenY + screenHeight - dialog.height)
+            dialogX = Math.max(screenX, Math.min(dialogX, maxX))
+            dialogY = Math.max(screenY, Math.min(dialogY, maxY))
+        }
+
         return Qt.point(dialogX, dialogY)
     }
     
@@ -61,7 +73,7 @@ Rectangle {
                 id: progressBadge
                 anchors.fill: parent
                 onCheckedChanged: {
-                    let position = calculateDialogPosition(progressBadge, progressDialog, true)
+                    let position = calculatePopupDialogPosition(progressBadge, progressDialog, true)
                     progressDialog.x = position.x
                     progressDialog.y = position.y
                     if (checked)
@@ -79,7 +91,7 @@ Rectangle {
                 id: infoBadge
                 anchors.fill: parent
                 onCheckedChanged: {
-                    let position = calculateDialogPosition(infoBadge, log, false)
+                    let position = calculateWindowDialogPosition(infoBadge, log)
                     log.x = position.x
                     log.y = position.y
                     if (checked)
@@ -96,16 +108,18 @@ Rectangle {
 
     LogDialog {
         id: log
+        transientParent: infoBadge.Window.window
         width: 640
         height: 320
-        onClosed: {
-            infoBadge.checked = false
-        }
-        
-        // 当 LogDialog 打开时，如果 ProgressDialog 也打开，重新计算 ProgressDialog 位置
+
         onVisibleChanged: {
-            if (visible && progressDialog.visible) {
-                let position = calculateDialogPosition(progressBadge, progressDialog, true)
+            if (!visible) {
+                infoBadge.checked = false
+                return
+            }
+
+            if (progressDialog.visible) {
+                let position = calculatePopupDialogPosition(progressBadge, progressDialog, true)
                 progressDialog.x = position.x
                 progressDialog.y = position.y
             }

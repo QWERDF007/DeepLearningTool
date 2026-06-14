@@ -1,6 +1,7 @@
 ﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 
 import dltool.ui
 import dltool.project
@@ -206,6 +207,7 @@ Rectangle {
 
     SettingsDialog {
         id: settingsDialog
+        transientParent: header.Window.window
         imageSearch: header.imageSearch
         smartAnnotation: header.smartAnnotation
     }

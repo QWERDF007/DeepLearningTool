@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import Qt.labs.platform
 
 import dltool.ui
@@ -8,7 +9,7 @@ import dltool.data
 import dltool.settings
 import quickui
 
-QuiPopup {
+Window {
     id: dialog
 
     property var imageSearch: null
@@ -18,16 +19,61 @@ QuiPopup {
     property string lastSuggestedWeightsPath: ""
     property string lastSuggestedSmartModelPath: ""
 
-    implicitWidth: 1200
-    implicitHeight: 800 // Math.min(1280, contentColumn.implicitHeight)
-    focus: true
-    closePolicy: Popup.CloseOnEscape
+    visible: false
+    title: "设置"
+    width: 1200
+    height: 800
+    minimumWidth: 900
+    minimumHeight: 600
+    modality: Qt.NonModal
+    flags: Qt.Window | Qt.CustomizeWindowHint | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint
+    color: QuiColor.Background
 
-    onOpened: loadFromSettings()
-    onClosed: {
+    onClosing: function(close) {
         if (!syncing) {
             saveVisibleFields()
         }
+    }
+
+    onVisibilityChanged: {
+        if (visibility === Window.Minimized)
+            close()
+    }
+
+    Shortcut {
+        sequence: "Esc"
+        onActivated: dialog.close()
+    }
+
+    function screenGeometryFor(targetScreen) {
+        if (targetScreen) {
+            let availableWidth = targetScreen.desktopAvailableWidth > 0 ? targetScreen.desktopAvailableWidth : targetScreen.width
+            let availableHeight = targetScreen.desktopAvailableHeight > 0 ? targetScreen.desktopAvailableHeight : targetScreen.height
+            return Qt.rect(targetScreen.virtualX, targetScreen.virtualY, availableWidth, availableHeight)
+        }
+        return Qt.rect(x, y, width, height)
+    }
+
+    function centerInOwner() {
+        let owner = transientParent
+        let geometry = owner ? Qt.rect(owner.x, owner.y, owner.width, owner.height) : screenGeometryFor(dialog.screen)
+        let nextX = Math.round(geometry.x + (geometry.width - width) / 2)
+        let nextY = Math.round(geometry.y + (geometry.height - height) / 2)
+        let screenGeometry = screenGeometryFor(owner ? owner.screen : dialog.screen)
+        let maxX = Math.max(screenGeometry.x, screenGeometry.x + screenGeometry.width - width)
+        let maxY = Math.max(screenGeometry.y, screenGeometry.y + screenGeometry.height - height)
+        x = Math.max(screenGeometry.x, Math.min(nextX, maxX))
+        y = Math.max(screenGeometry.y, Math.min(nextY, maxY))
+    }
+
+    function open() {
+        if (!visible) {
+            loadFromSettings()
+            centerInOwner()
+        }
+        show()
+        raise()
+        requestActivate()
     }
 
     function trimText(value) {
