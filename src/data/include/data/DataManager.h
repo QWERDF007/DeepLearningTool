@@ -5,13 +5,14 @@
 #include "DataExporter.h"
 #include "DataImporter.h"
 #include "Datasets.h"
+#include "feature/ImageSearchController.h"
+#include "feature/ImageSearchDataProvider.h"
+#include "feature/SmartAnnotationController.h"
 #include "FilterItemsModel.h"
 #include "GlobalFilter.h"
-#include "ImageSearchController.h"
 #include "ImageTags.h"
 #include "Images.h"
 #include "Labels.h"
-#include "SmartAnnotationController.h"
 #include "labelclasses.h"
 
 #include <QObject>
@@ -28,7 +29,7 @@ class ProjectDataBase;
 
 namespace dltool::data {
 
-class DATA_API DataManager : public QObject
+class DATA_API DataManager : public QObject, public dltool::feature::ImageSearchDataProvider
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(DataManager)
@@ -42,8 +43,8 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(ImageLabelsTableModel *imageLabelsTable READ imageLabelsTable CONSTANT FINAL)
     Q_PROPERTY(ImageInfoListModel *imageInfo READ imageInfo CONSTANT FINAL)
     Q_PROPERTY(GlobalFilter *globalFilter READ globalFilter CONSTANT FINAL)
-    Q_PROPERTY(ImageSearchController *imageSearch READ imageSearch CONSTANT FINAL)
-    Q_PROPERTY(SmartAnnotationController *smartAnnotation READ smartAnnotation CONSTANT FINAL)
+    Q_PROPERTY(dltool::feature::ImageSearchController *imageSearch READ imageSearch CONSTANT FINAL)
+    Q_PROPERTY(dltool::feature::SmartAnnotationController *smartAnnotation READ smartAnnotation CONSTANT FINAL)
     Q_PROPERTY(DatasetFilterItemsModel *datasetFilterItems READ datasetFilterItems CONSTANT FINAL)
     Q_PROPERTY(TagFilterItemsModel *tagFilterItems READ tagFilterItems CONSTANT FINAL)
     Q_PROPERTY(LabelClassFilterItemsModel *labelClassFilterItems READ labelClassFilterItems CONSTANT FINAL)
@@ -99,12 +100,12 @@ public:
         return global_filter_;
     }
 
-    ImageSearchController *imageSearch() const
+    dltool::feature::ImageSearchController *imageSearch() const
     {
         return image_search_;
     }
 
-    SmartAnnotationController *smartAnnotation() const
+    dltool::feature::SmartAnnotationController *smartAnnotation() const
     {
         return smart_annotation_;
     }
@@ -187,6 +188,13 @@ public:
     Q_INVOKABLE QString getImageDatasetName(const int64_t image_id) const;
     Q_INVOKABLE QString getImageTagName(const int64_t image_id) const;
 
+    std::vector<int64_t> selectedImageIds() const override;
+    std::vector<int64_t> allImageIds() const override;
+    QString              imagePath(int64_t image_id) const override;
+    int64_t              imageDatasetId(int64_t image_id) const override;
+    void                 clearImageSearchResults() override;
+    void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter) override;
+
 private:
     struct PendingImportTask;
 
@@ -228,8 +236,8 @@ private:
     ImageInfoListModel *image_info_{nullptr};
 
     GlobalFilter *global_filter_{nullptr};
-    ImageSearchController *image_search_{nullptr};
-    SmartAnnotationController *smart_annotation_{nullptr};
+    dltool::feature::ImageSearchController     *image_search_{nullptr};
+    dltool::feature::SmartAnnotationController *smart_annotation_{nullptr};
 
     DatasetFilterItemsModel    *dataset_filter_items_{nullptr};
     TagFilterItemsModel        *tag_filter_items_{nullptr};

@@ -84,12 +84,12 @@ void DataManager::init(const int method)
     // Create GlobalFilter and initialize it with the models
     global_filter_ = new GlobalFilter(this, this);
     global_filter_->initializeFilterModules(this);
-    image_search_ = new ImageSearchController(this, this);
-    smart_annotation_ = new SmartAnnotationController(this);
+    image_search_      = new dltool::feature::ImageSearchController(this, this);
+    smart_annotation_  = new dltool::feature::SmartAnnotationController(this);
     if (auto *settings = dltool::settings::GlobalSettings::getInstance()->advanced()->smartAnnotation())
     {
         connect(settings, &dltool::settings::SmartAnnotationSettings::enabledChanged, smart_annotation_,
-                &SmartAnnotationController::clearCache);
+                &dltool::feature::SmartAnnotationController::clearCache);
     }
 
     // Create filter items models
@@ -306,6 +306,42 @@ int DataManager::getDatasetId(const QString &dataset_name) const
 QString DataManager::databasePath() const
 {
     return database_ ? database_->path() : QString();
+}
+
+std::vector<int64_t> DataManager::selectedImageIds() const
+{
+    return image_instances_ ? image_instances_->getSelectedImagesId() : std::vector<int64_t>{};
+}
+
+std::vector<int64_t> DataManager::allImageIds() const
+{
+    return image_instances_ ? image_instances_->getAllImageIds() : std::vector<int64_t>{};
+}
+
+QString DataManager::imagePath(int64_t image_id) const
+{
+    return image_instances_ ? image_instances_->getImagePath(image_id) : QString();
+}
+
+int64_t DataManager::imageDatasetId(int64_t image_id) const
+{
+    return image_instances_ ? image_instances_->getImageDatasetId(image_id) : -1;
+}
+
+void DataManager::clearImageSearchResults()
+{
+    if (global_filter_ != nullptr)
+    {
+        global_filter_->clearImageSearchResults();
+    }
+}
+
+void DataManager::setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter)
+{
+    if (global_filter_ != nullptr)
+    {
+        global_filter_->setImageSearchResults(image_ids, enable_filter);
+    }
 }
 
 QString DataManager::getDatasetName(const int dataset_id) const

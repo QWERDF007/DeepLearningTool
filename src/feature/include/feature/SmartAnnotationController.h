@@ -1,6 +1,6 @@
 #pragma once
 
-#include "dltool/data/Export.h"
+#include "dltool/feature/Export.h"
 
 #include <QObject>
 #include <QString>
@@ -15,9 +15,9 @@ namespace irt::model {
 class IModel;
 }
 
-namespace dltool::data {
+namespace dltool::feature {
 
-class DATA_API SmartAnnotationController : public QObject
+class FEATURE_API SmartAnnotationController : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(SmartAnnotationController)
@@ -75,4 +75,4 @@ private:
     QString                             last_error_;
 };
 
-} // namespace dltool::data
+} // namespace dltool::feature

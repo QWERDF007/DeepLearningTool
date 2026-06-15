@@ -1,8 +1,6 @@
-#include "data/ImageSearchController.h"
+#include "feature/ImageSearchController.h"
 
-#include "data/DataManager.h"
-#include "data/GlobalFilter.h"
-#include "data/Images.h"
+#include "feature/ImageSearchDataProvider.h"
 #include "settings/GlobalSettings.h"
 #include "ui/ProgressManager.h"
 
@@ -26,7 +24,7 @@
 #include <set>
 #include <stdexcept>
 
-namespace dltool::data {
+namespace dltool::feature {
 
 namespace {
 
@@ -348,9 +346,9 @@ struct ImageSearchController::SearchResponse
     std::vector<int64_t> result_ids;
 };
 
-ImageSearchController::ImageSearchController(DataManager *data_manager, QObject *parent)
+ImageSearchController::ImageSearchController(ImageSearchDataProvider *data_provider, QObject *parent)
     : QObject(parent)
-    , data_manager_(data_manager)
+    , data_provider_(data_provider)
 {
 }
 
@@ -457,14 +455,13 @@ bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids
         setLastError(QStringLiteral("图像搜索正在运行"));
         return false;
     }
-    if (!data_manager_ || !data_manager_->imageInstances())
+    if (!data_provider_)
     {
         setLastError(QStringLiteral("图像模型未初始化"));
         return false;
     }
 
-    ImageInstancesListModel *images    = data_manager_->imageInstances();
-    const auto               query_ids = images->getSelectedImagesId();
+    const auto query_ids = data_provider_->selectedImageIds();
     if (query_ids.empty())
     {
         setLastError(QStringLiteral("请先选择要检索的图片"));
@@ -588,15 +585,14 @@ ImageSearchController::SearchRequest ImageSearchController::buildSearchRequest(
 
 void ImageSearchController::collectGalleryImages(SearchRequest &request, const std::set<int64_t> &dataset_ids)
 {
-    ImageInstancesListModel *images  = data_manager_->imageInstances();
-    const auto               all_ids = images->getAllImageIds();
+    const auto all_ids = data_provider_->allImageIds();
 
     for (const int64_t id : all_ids)
     {
-        if (!dataset_ids.empty() && dataset_ids.find(images->getImageDatasetId(id)) == dataset_ids.end())
+        if (!dataset_ids.empty() && dataset_ids.find(data_provider_->imageDatasetId(id)) == dataset_ids.end())
             continue;
 
-        const QString path = images->getImagePath(id);
+        const QString path = data_provider_->imagePath(id);
         if (!QFileInfo::exists(path))
             continue;
 
@@ -607,10 +603,9 @@ void ImageSearchController::collectGalleryImages(SearchRequest &request, const s
 
 void ImageSearchController::collectQueryImages(SearchRequest &request, const std::vector<int64_t> &query_ids) const
 {
-    ImageInstancesListModel *images = data_manager_->imageInstances();
     for (const int64_t id : query_ids)
     {
-        const QString path = images->getImagePath(id);
+        const QString path = data_provider_->imagePath(id);
         if (QFileInfo::exists(path))
             request.query_images.push_back(toFsPath(QFileInfo(path).absoluteFilePath()));
     }
@@ -629,13 +624,12 @@ QString ImageSearchController::computeIndexPath(const SearchRequest &request) co
     std::sort(gallery_ids.begin(), gallery_ids.end());
 
     // 从 gallery_images 中反推 dataset IDs（保持原逻辑兼容）
-    std::set<int64_t>        dataset_ids;
-    ImageInstancesListModel *images = data_manager_->imageInstances();
-    for (const int64_t id : gallery_ids) dataset_ids.insert(images->getImageDatasetId(id));
+    std::set<int64_t> dataset_ids;
+    for (const int64_t id : gallery_ids) dataset_ids.insert(data_provider_->imageDatasetId(id));
 
     const std::vector<int64_t> sorted_dataset_ids(dataset_ids.begin(), dataset_ids.end());
     const QString              index_dir = indexDirectoryForProject(
-        data_manager_->databasePath(),
+        data_provider_->databasePath(),
         dltool::settings::GlobalSettings::getInstance()->advanced()->imageSearch()->indexDirectory());
 
     return indexPathForRequest(index_dir, sorted_dataset_ids, gallery_ids, request.model_name, request.feature_name,
@@ -795,8 +789,8 @@ void ImageSearchController::resetForNewSearch()
     setLastError(QString());
     last_summary_.clear();
     result_count_ = 0;
-    if (data_manager_ && data_manager_->globalFilter())
-        data_manager_->globalFilter()->clearImageSearchResults();
+    if (data_provider_)
+        data_provider_->clearImageSearchResults();
     emit resultsChanged();
 }
 
@@ -835,8 +829,8 @@ void ImageSearchController::finishSearch(const SearchResponse &response)
     result_count_ = static_cast<int>(response.result_ids.size());
     last_summary_ = response.summary;
 
-    if (data_manager_ && data_manager_->globalFilter())
-        data_manager_->globalFilter()->setImageSearchResults(response.result_ids, !response.result_ids.empty());
+    if (data_provider_)
+        data_provider_->setImageSearchResults(response.result_ids, !response.result_ids.empty());
 
     finishProgress(true, QStringLiteral("%1, 耗时 %2").arg(response.summary, formatElapsed(response.elapsed_ms)));
     emit resultsChanged();
@@ -866,4 +860,4 @@ void ImageSearchController::setLastError(const QString &last_error)
     emit lastErrorChanged();
 }
 
-} // namespace dltool::data
+} // namespace dltool::feature

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "dltool/data/Export.h"
+#include "dltool/feature/Export.h"
 
 #include <QObject>
 #include <QString>
@@ -10,9 +10,9 @@
 #include <set>
 #include <vector>
 
-namespace dltool::data {
+namespace dltool::feature {
 
-class DataManager;
+class ImageSearchDataProvider;
 
 /**
  * @brief 图像相似度搜索控制器
@@ -20,7 +20,7 @@ class DataManager;
  * 基于 InferRT 特征提取与 FAISS 索引，对当前选中的查询图像在指定数据集图库中执行相似检索。
  * 搜索在后台线程执行，完成后将结果写入 GlobalFilter 的图像搜索过滤模块。
  */
-class DATA_API ImageSearchController : public QObject
+class FEATURE_API ImageSearchController : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(ImageSearchController)
@@ -36,7 +36,7 @@ class DATA_API ImageSearchController : public QObject
     Q_PROPERTY(QString defaultFeatureName READ defaultFeatureName CONSTANT FINAL)
 
 public:
-    explicit ImageSearchController(DataManager *data_manager, QObject *parent = nullptr);
+    explicit ImageSearchController(ImageSearchDataProvider *data_provider, QObject *parent = nullptr);
     ~ImageSearchController() override = default;
 
     /**
@@ -192,11 +192,11 @@ private:
 
     // ── 数据成员 ──
 
-    DataManager *data_manager_{nullptr};
-    bool         running_{false};
-    QString      last_error_;
-    QString      last_summary_;
-    int          result_count_{0};
+    ImageSearchDataProvider *data_provider_{nullptr};
+    bool                     running_{false};
+    QString                  last_error_;
+    QString                  last_summary_;
+    int                      result_count_{0};
 };
 
-} // namespace dltool::data
+} // namespace dltool::feature

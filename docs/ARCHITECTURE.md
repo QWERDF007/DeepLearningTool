@@ -164,7 +164,8 @@ sequenceDiagram
 | `dltool.settings` | `dltool_settings` | `GlobalSettings`、`ProjectSettings`、`DataSettings`、`AdvancedSettings`、`UISettings` |
 | `dltool.ui` | `dltool_ui` | `DltColor`、`DltFont`、`DltFontIcon`、`UILogger`、`ProgressManager`、`Utils`、`controls/*.qml` |
 | `dltool.model` | `dltool_model` | `ModelManager`、`IModel`、`IModelConfig`、参数模型、Train/Test QML |
-| `dltool.data` | `dltool_data` | `DataManager`、`ImageSearchController`、`SmartAnnotationController`、数据模型、过滤模型、统计模型、Gallery/Label/Review QML |
+| `dltool.feature` | `dltool_feature` | `ImageSearchController`、`SmartAnnotationController`、图像搜索数据 provider 接口 |
+| `dltool.data` | `dltool_data` | `DataManager`、数据模型、过滤模型、统计模型、Gallery/Label/Review QML |
 | `dltool.project` | `dltool_project` | `ProjectManager`、`Project`、项目创建/打开 QML |
 | `dltool.tool` | `dltool` | 主窗口、Header、Content、Footer |
 
@@ -173,8 +174,8 @@ sequenceDiagram
 ## 构建与第三方
 
 - 根项目启用 C、C++ 和 CUDA 语言，当前 C++ 标准为 C++17。
-- `src/CMakeLists.txt` 当前构建顺序为 `common -> core -> database -> settings -> ui -> model -> data -> project -> tool`。
+- `src/CMakeLists.txt` 当前构建顺序为 `common -> core -> database -> settings -> ui -> model -> feature -> data -> project -> tool`。
 - 第三方库在 `3rdparty/` 管理：`sqlpp11`、`spdlog`、`nlohmann/json.hpp`。
-- `data` 模块通过 `setup_inferrt(${PROJECT_NAME}_data)` 接入 InferRT 相关能力。
+- `feature` 模块通过 `setup_inferrt(${PROJECT_NAME}_feature)` 接入 InferRT 相关能力。
 - `assets/assets.qrc` 通过 `qt_add_big_resources()` 链入 `dltool` 可执行程序。
 - `tests/` 当前只启用 `tests/ui`，测试目标为 `tst_dltool_ui`。

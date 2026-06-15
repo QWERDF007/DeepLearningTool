@@ -1,4 +1,4 @@
-#include "data/SmartAnnotationController.h"
+#include "feature/SmartAnnotationController.h"
 
 #include "settings/GlobalSettings.h"
 
@@ -28,7 +28,7 @@
 #include <utility>
 #include <vector>
 
-namespace dltool::data {
+namespace dltool::feature {
 
 namespace {
 
@@ -1627,4 +1627,4 @@ void SmartAnnotationController::setLastError(const QString &last_error)
     emit lastErrorChanged();
 }
 
-} // namespace dltool::data
+} // namespace dltool::feature

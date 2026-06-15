@@ -54,6 +54,7 @@ add_subdirectory(database)
 add_subdirectory(settings)
 add_subdirectory(ui)
 add_subdirectory(model)
+add_subdirectory(feature)
 add_subdirectory(data)
 add_subdirectory(project)
 add_subdirectory(tool)
@@ -243,19 +244,41 @@ src/model/
 └── README.md
 ```
 
-### 5.7 Data (`dltool_data`, URI `dltool.data`)
+### 5.7 Feature (`dltool_feature`, URI `dltool.feature`)
+
+位置：`src/feature/`
+
+职责：
+
+- 图像搜索：`ImageSearchController` 基于 InferRT + FAISS 实现以图搜图。
+- 智能标注：`SmartAnnotationController` 负责模型加载、缓存和推理。
+- 数据适配：`ImageSearchDataProvider` 定义图像搜索对宿主数据模块的最小依赖接口。
+
+结构：
+
+```text
+src/feature/
+├── include/feature/
+│   ├── ImageSearchController.h
+│   ├── ImageSearchDataProvider.h
+│   └── SmartAnnotationController.h
+├── ImageSearchController.cpp
+├── SmartAnnotationController.cpp
+└── README.md
+```
+
+### 5.8 Data (`dltool_data`, URI `dltool.data`)
 
 位置：`src/data/`
 
 职责：
 
 - 数据模型：`DatasetsListModel`、`ImageInstancesListModel`、`LabelClassesListModel`、`ImageTagsListModel`、`LabelInstancesListModel`、`ImageLabelsListModel`、`ImageLabelsTableModel`、`ImageInfoListModel`。
-- 数据聚合：`DataManager` 统一创建和暴露模型、过滤器、图像搜索和智能标注控制器。
+- 数据聚合：`DataManager` 统一创建和暴露模型、过滤器，并对接 `feature` 的图像搜索和智能标注控制器。
 - 数据导入：`DataImporter`、`LabelMeImporter`、`COCOImporter`，通过 `DatasetIO` 复用公共逻辑。
 - 数据导出：`DataExporter`、`LabelMeExporter`、`COCOExporter`。
 - 标注数据：`LabelData_t`、`DetLabelData_t`、`SegLabelData_t`、`LabelDataHelper_t`。
-- 图像搜索：`ImageSearchController` 基于 InferRT + FAISS 实现以图搜图。
-- 智能标注：`SmartAnnotationController` 负责模型加载、缓存和推理。
+- 高级功能宿主：实现 `feature::ImageSearchDataProvider`，为图像搜索提供图像列表、路径、数据集 ID、项目路径和搜索结果写回能力。
 - 过滤：`GlobalFilter` 及五类过滤模块。
 - 统计：`CategoryStatisticsModel`。
 - QML 页面：Gallery、Label、Review 和公共组件。
@@ -270,8 +293,6 @@ src/data/
 │   ├── DataManager.h
 │   ├── DatasetIO.h
 │   ├── GlobalFilter.h
-│   ├── ImageSearchController.h
-│   ├── SmartAnnotationController.h
 │   ├── Labels.h
 │   └── ...
 ├── qml/
@@ -286,7 +307,7 @@ src/data/
 └── README.md
 ```
 
-### 5.8 Project (`dltool_project`, URI `dltool.project`)
+### 5.9 Project (`dltool_project`, URI `dltool.project`)
 
 位置：`src/project/`
 
@@ -312,7 +333,7 @@ src/project/
 └── README.md
 ```
 
-### 5.9 Tool (`dltool`, URI `dltool.tool`)
+### 5.10 Tool (`dltool`, URI `dltool.tool`)
 
 位置：`src/tool/`
 
@@ -416,6 +437,7 @@ sequenceDiagram
 | `dltool_settings` | shared library | `dltool.settings` | 设置 |
 | `dltool_ui` | shared library | `dltool.ui` | UI 控件和主题 |
 | `dltool_model` | shared library | `dltool.model` | 模型记录和参数 |
+| `dltool_feature` | shared library | `dltool.feature` | 图像搜索和智能标注 |
 | `dltool_data` | shared library | `dltool.data` | 数据模型和页面 |
 | `dltool_project` | shared library | `dltool.project` | 项目业务 |
 | `dltool` | executable | `dltool.tool` | 应用入口 |
