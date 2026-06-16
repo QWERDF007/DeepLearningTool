@@ -60,6 +60,7 @@ dependencies:
     windows:
       - inferrt_core.dll
       - inferrt_cvcuda.dll
+      - inferrt_ops.dll
       - inferrt_features.dll
       - inferrt_model.dll
       - inferrt_util.dll
@@ -72,6 +73,7 @@ dependencies:
     windows:
       - inferrt_cored.dll
       - inferrt_cvcudad.dll
+      - inferrt_opsd.dll
       - inferrt_featuresd.dll
       - inferrt_modeld.dll
       - inferrt_utild.dll

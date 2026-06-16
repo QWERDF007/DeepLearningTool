@@ -9,7 +9,6 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QLineF>
-
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -71,14 +70,15 @@ bool parseJsonFile(const QString &json_path, nlohmann::json::parser_callback_t c
 }
 
 bool parseTopLevelArrayObjects(
-    const QString &json_path,
+    const QString                                                                     &json_path,
     const std::function<bool(const QString &array_key, const nlohmann::json &object)> &on_object)
 {
     QString pending_top_key;
     QString active_array_key;
 
     nlohmann::json::parser_callback_t callback
-        = [&](int depth, nlohmann::json::parse_event_t event, nlohmann::json &parsed) -> bool {
+        = [&](int depth, nlohmann::json::parse_event_t event, nlohmann::json &parsed) -> bool
+    {
         if (event == nlohmann::json::parse_event_t::key && depth == 1 && parsed.is_string())
         {
             pending_top_key = QString::fromStdString(parsed.get<std::string>());
@@ -123,10 +123,11 @@ bool parseTopLevelKeys(const QString &json_path, bool &has_images, bool &has_ann
     has_annotations = false;
     has_categories  = false;
 
-    QString pending_top_key;
-    QString active_array_key;
+    QString                           pending_top_key;
+    QString                           active_array_key;
     nlohmann::json::parser_callback_t callback
-        = [&](int depth, nlohmann::json::parse_event_t event, nlohmann::json &parsed) -> bool {
+        = [&](int depth, nlohmann::json::parse_event_t event, nlohmann::json &parsed) -> bool
+    {
         if (event == nlohmann::json::parse_event_t::key && depth == 1 && parsed.is_string())
         {
             pending_top_key = QString::fromStdString(parsed.get<std::string>());
@@ -235,15 +236,15 @@ double signedPolygonArea(const std::vector<QPointF> &points)
 
 double distanceToSegment(const QPointF &point, const QPointF &a, const QPointF &b)
 {
-    const double dx = b.x() - a.x();
-    const double dy = b.y() - a.y();
+    const double dx   = b.x() - a.x();
+    const double dy   = b.y() - a.y();
     const double len2 = dx * dx + dy * dy;
     if (len2 <= 0.000001)
     {
         return QLineF(point, a).length();
     }
 
-    const double t = std::clamp(((point.x() - a.x()) * dx + (point.y() - a.y()) * dy) / len2, 0.0, 1.0);
+    const double  t = std::clamp(((point.x() - a.x()) * dx + (point.y() - a.y()) * dy) / len2, 0.0, 1.0);
     const QPointF projection(a.x() + t * dx, a.y() + t * dy);
     return QLineF(point, projection).length();
 }
@@ -488,7 +489,8 @@ std::vector<int64_t> decodeCompressedRleCounts(const std::string &counts)
             {
                 value |= -1LL << (5 * shift);
             }
-        } while (more && pos < counts.size());
+        }
+        while (more && pos < counts.size());
 
         if (decoded.size() > 2)
         {
@@ -550,8 +552,8 @@ bool decodeRleMask(const nlohmann::json &segmentation, std::vector<uint8_t> &mas
     }
 
     mask.assign(static_cast<size_t>(total), 0);
-    int64_t offset = 0;
-    bool    fill   = false;
+    int64_t offset         = 0;
+    bool    fill           = false;
     bool    has_foreground = false;
     for (const int64_t count : counts)
     {
@@ -561,8 +563,8 @@ bool decodeRleMask(const nlohmann::json &segmentation, std::vector<uint8_t> &mas
             has_foreground = has_foreground || end > offset;
             for (int64_t index = offset; index < end; ++index)
             {
-                const int y = static_cast<int>(index % height);
-                const int x = static_cast<int>(index / height);
+                const int y                              = static_cast<int>(index % height);
+                const int x                              = static_cast<int>(index / height);
                 mask[static_cast<size_t>(y * width + x)] = 1;
             }
         }
@@ -578,10 +580,8 @@ bool decodeRleMask(const nlohmann::json &segmentation, std::vector<uint8_t> &mas
 }
 
 size_t chooseNextBoundaryEdge(const std::unordered_map<int64_t, std::vector<size_t>> &outgoing_edges,
-                              const std::vector<BoundaryEdge>                       &edges,
-                              const MaskPoint                                       &point,
-                              int                                                    width,
-                              int                                                    previous_direction)
+                              const std::vector<BoundaryEdge> &edges, const MaskPoint &point, int width,
+                              int previous_direction)
 {
     const auto outgoing_it = outgoing_edges.find(maskPointKey(point, width));
     if (outgoing_it == outgoing_edges.end())
@@ -618,14 +618,16 @@ std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mas
         return {};
     }
 
-    std::vector<BoundaryEdge> edges;
+    std::vector<BoundaryEdge>                        edges;
     std::unordered_map<int64_t, std::vector<size_t>> outgoing_edges;
 
-    const auto is_foreground = [&](int x, int y) -> bool {
+    const auto is_foreground = [&](int x, int y) -> bool
+    {
         return x >= 0 && y >= 0 && x < width && y < height && mask[static_cast<size_t>(y * width + x)] != 0;
     };
 
-    const auto add_edge = [&](const MaskPoint &from, const MaskPoint &to) {
+    const auto add_edge = [&](const MaskPoint &from, const MaskPoint &to)
+    {
         const size_t edge_index = edges.size();
         edges.push_back(BoundaryEdge{from, to, edgeDirection(from, to), false});
         outgoing_edges[maskPointKey(from, width)].push_back(edge_index);
@@ -674,9 +676,9 @@ std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mas
             continue;
         }
 
-        const MaskPoint start_point = edges[start_edge_index].from;
-        size_t          edge_index  = start_edge_index;
-        bool            closed      = false;
+        const MaskPoint        start_point = edges[start_edge_index].from;
+        size_t                 edge_index  = start_edge_index;
+        bool                   closed      = false;
         std::vector<MaskPoint> loop;
         loop.reserve(256);
 
@@ -743,8 +745,7 @@ std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mas
         }
     }
 
-    std::sort(polygons.begin(), polygons.end(), [](const std::vector<QPointF> &left,
-                                                   const std::vector<QPointF> &right)
+    std::sort(polygons.begin(), polygons.end(), [](const std::vector<QPointF> &left, const std::vector<QPointF> &right)
               { return polygonArea(left) > polygonArea(right); });
     return polygons;
 }
@@ -775,7 +776,7 @@ std::vector<std::vector<QPointF>> parseSegmentationPolygons(const nlohmann::json
         return {};
     }
 
-    const auto &segmentation = annotation_json["segmentation"];
+    const auto                       &segmentation = annotation_json["segmentation"];
     std::vector<std::vector<QPointF>> polygons;
     if (segmentation.is_array())
     {
@@ -810,8 +811,7 @@ std::vector<std::vector<QPointF>> parseSegmentationPolygons(const nlohmann::json
         }
     }
 
-    std::sort(polygons.begin(), polygons.end(), [](const std::vector<QPointF> &left,
-                                                   const std::vector<QPointF> &right)
+    std::sort(polygons.begin(), polygons.end(), [](const std::vector<QPointF> &left, const std::vector<QPointF> &right)
               { return polygonArea(left) > polygonArea(right); });
     return polygons;
 }
@@ -893,16 +893,16 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
 
     try
     {
-        updateProgress(0, QStringLiteral("正在查找 COCO 标注文件..."));
+        updateProgress(0, QString("正在查找 COCO 标注文件..."));
         const QString coco_json_path = findCocoJsonFile(data_dir);
         if (coco_json_path.isEmpty())
         {
-            updateProgress(100, QStringLiteral("未找到有效的 COCO 标注文件"));
+            updateProgress(100, QString("未找到有效的 COCO 标注文件"));
             emit importFinished(false, {}, {});
             return;
         }
 
-        updateProgress(10, QStringLiteral("正在索引图像文件..."));
+        updateProgress(10, QString("正在索引图像文件..."));
         std::map<QString, QString> image_file_index;
         for (const QString &image_path : DatasetIO::scanImageFiles(image_dir))
         {
@@ -917,9 +917,11 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
         int                             processed_image_entries = 0;
         int                             skipped_images          = 0;
 
-        updateProgress(20, QStringLiteral("正在流式解析 COCO 类别和图像..."));
+        updateProgress(20, QString("正在流式解析 COCO 类别和图像..."));
         const bool pass1_ok = parseTopLevelArrayObjects(
-            coco_json_path, [&](const QString &array_key, const nlohmann::json &object_json) -> bool {
+            coco_json_path,
+            [&](const QString &array_key, const nlohmann::json &object_json) -> bool
+            {
                 if (isCancelRequested())
                 {
                     return false;
@@ -976,8 +978,8 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
                 }
 
                 CocoImage image;
-                image.coco_id   = coco_image_id;
-                image.file_name = QString::fromStdString(object_json["file_name"].get<std::string>());
+                image.coco_id    = coco_image_id;
+                image.file_name  = QString::fromStdString(object_json["file_name"].get<std::string>());
                 image.image_path = resolveImagePath(image_dir, image.file_name, image_file_index);
                 if (image.image_path.isEmpty())
                 {
@@ -986,8 +988,9 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
                     return true;
                 }
 
-                image.width  = object_json.contains("width") ? static_cast<int>(jsonToDouble(object_json["width"])) : 0;
-                image.height = object_json.contains("height") ? static_cast<int>(jsonToDouble(object_json["height"])) : 0;
+                image.width = object_json.contains("width") ? static_cast<int>(jsonToDouble(object_json["width"])) : 0;
+                image.height
+                    = object_json.contains("height") ? static_cast<int>(jsonToDouble(object_json["height"])) : 0;
                 if (image.width <= 0 || image.height <= 0)
                 {
                     int real_width  = 0;
@@ -1006,7 +1009,7 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
 
                 if (processed_image_entries % 1000 == 0)
                 {
-                    updateProgress(20, QStringLiteral("已解析 COCO 图像 %1").arg(processed_image_entries));
+                    updateProgress(20, QString("已解析 COCO 图像 %1").arg(processed_image_entries));
                 }
                 return true;
             });
@@ -1019,7 +1022,7 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
 
         if (images.empty())
         {
-            updateProgress(100, QStringLiteral("COCO 数据中没有可导入的有效图像"));
+            updateProgress(100, QString("COCO 数据中没有可导入的有效图像"));
             emit importFinished(false, {}, {});
             return;
         }
@@ -1031,9 +1034,10 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
         batch_image_widths.reserve(DataImporter::ImportBatchImageCount);
         batch_image_heights.reserve(DataImporter::ImportBatchImageCount);
 
-        size_t emitted_images = 0;
-        bool   sent_classes   = false;
-        auto flush_image_batch = [&]() -> bool {
+        size_t emitted_images    = 0;
+        bool   sent_classes      = false;
+        auto   flush_image_batch = [&]() -> bool
+        {
             if (batch_image_paths.empty())
             {
                 return true;
@@ -1061,7 +1065,7 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
             return !isCancelRequested();
         };
 
-        updateProgress(40, QStringLiteral("正在分批写入 COCO 图像..."));
+        updateProgress(40, QString("正在分批写入 COCO 图像..."));
         for (const CocoImage &image : images)
         {
             batch_image_paths.push_back(image.image_path);
@@ -1084,14 +1088,15 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
             return;
         }
 
-        updateProgress(60, QStringLiteral("正在流式解析 COCO 标注..."));
+        updateProgress(60, QString("正在流式解析 COCO 标注..."));
         std::vector<ImportedLabel> batch_labels;
         batch_labels.reserve(DataImporter::ImportBatchImageCount);
         int processed_annotations = 0;
         int skipped_annotations   = 0;
         int imported_label_count  = 0;
 
-        auto flush_label_batch = [&]() -> bool {
+        auto flush_label_batch = [&]() -> bool
+        {
             if (batch_labels.empty())
             {
                 return true;
@@ -1105,8 +1110,10 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
         };
 
         const bool import_as_segmentation = target_method_ == DeepLearningMethod::Segmentation;
-        const bool pass2_ok = parseTopLevelArrayObjects(
-            coco_json_path, [&](const QString &array_key, const nlohmann::json &annotation_json) -> bool {
+        const bool pass2_ok               = parseTopLevelArrayObjects(
+            coco_json_path,
+            [&](const QString &array_key, const nlohmann::json &annotation_json) -> bool
+            {
                 if (isCancelRequested())
                 {
                     return false;
@@ -1141,7 +1148,7 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
                     return true;
                 }
 
-                const bool annotation_has_seg = hasSegmentationData(annotation_json);
+                const bool               annotation_has_seg = hasSegmentationData(annotation_json);
                 std::vector<QVariantMap> label_data_list;
 
                 if (import_as_segmentation && annotation_has_seg)
@@ -1164,7 +1171,7 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
                     if (import_as_segmentation && annotation_has_seg)
                     {
                         spdlog::warn("COCO segmentation 存在但无法转换为多边形，跳过标注: image_id={}, category_id={}",
-                                     coco_image_id, category_id);
+                                                   coco_image_id, category_id);
                         ++skipped_annotations;
                         return true;
                     }
@@ -1176,11 +1183,10 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
                         return true;
                     }
 
-                    const auto &bbox = annotation_json["bbox"];
-                    QVariantMap label_data
-                        = DatasetIO::bboxToLabelData(jsonToDouble(bbox[0]), jsonToDouble(bbox[1]),
-                                                     jsonToDouble(bbox[2]), jsonToDouble(bbox[3]),
-                                                     image_it->second.width, image_it->second.height);
+                    const auto &bbox       = annotation_json["bbox"];
+                    QVariantMap label_data = DatasetIO::bboxToLabelData(
+                        jsonToDouble(bbox[0]), jsonToDouble(bbox[1]), jsonToDouble(bbox[2]), jsonToDouble(bbox[3]),
+                        image_it->second.width, image_it->second.height);
                     if (!label_data.isEmpty())
                     {
                         label_data_list.push_back(label_data);
@@ -1213,7 +1219,7 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
 
                 if (processed_annotations % 1000 == 0)
                 {
-                    updateProgress(75, QStringLiteral("已解析 COCO 标注 %1").arg(processed_annotations));
+                    updateProgress(75, QString("已解析 COCO 标注 %1").arg(processed_annotations));
                 }
                 return true;
             });
@@ -1230,18 +1236,17 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
             return;
         }
 
-        updateProgress(100,
-                       QStringLiteral("导入完成: %1 个图像, %2 个标注，跳过图像 %3 个，跳过标注 %4 个")
-                           .arg(images.size())
-                           .arg(imported_label_count)
-                           .arg(skipped_images)
-                           .arg(skipped_annotations));
+        updateProgress(100, QString("导入完成: %1 个图像, %2 个标注，跳过图像 %3 个，跳过标注 %4 个")
+                                .arg(images.size())
+                                .arg(imported_label_count)
+                                .arg(skipped_images)
+                                .arg(skipped_annotations));
         emit importFinished(true, {}, {});
     }
     catch (const std::exception &e)
     {
         spdlog::error("COCO 导入过程中发生异常: {}", e.what());
-        updateProgress(100, QStringLiteral("COCO 导入失败: %1").arg(e.what()));
+        updateProgress(100, QString("COCO 导入失败: %1").arg(e.what()));
         emit importFinished(false, {}, {});
     }
 }

@@ -6,6 +6,7 @@
 #include "data/ImageLabelClassFilterModule.h"
 #include "data/ImageSearchFilterModule.h"
 #include "data/ImageTags.h"
+#include "data/LabelSearchFilterModule.h"
 #include "data/Images.h"
 #include "data/LabelClassFilterModule.h"
 #include "data/Labels.h"
@@ -31,17 +32,19 @@ void GlobalFilter::initializeFilterModules(DataManager *data_manager)
         return;
     }
 
-    dataset_filter_          = std::make_unique<DatasetFilterModule>(data_manager, this);
-    tag_filter_              = std::make_unique<TagFilterModule>(data_manager, this);
-    label_class_filter_      = std::make_unique<LabelClassFilterModule>(data_manager, this);
+    dataset_filter_           = std::make_unique<DatasetFilterModule>(data_manager, this);
+    tag_filter_               = std::make_unique<TagFilterModule>(data_manager, this);
+    label_class_filter_       = std::make_unique<LabelClassFilterModule>(data_manager, this);
     image_label_class_filter_ = std::make_unique<ImageLabelClassFilterModule>(data_manager, this);
-    image_search_filter_     = std::make_unique<ImageSearchFilterModule>(data_manager, this);
+    image_search_filter_      = std::make_unique<ImageSearchFilterModule>(data_manager, this);
+    label_search_filter_      = std::make_unique<LabelSearchFilterModule>(data_manager, this);
 
     filter_modules_[FilterType::Dataset]         = dataset_filter_.get();
     filter_modules_[FilterType::Tag]             = tag_filter_.get();
     filter_modules_[FilterType::LabelClass]      = label_class_filter_.get();
     filter_modules_[FilterType::ImageLabelClass] = image_label_class_filter_.get();
     filter_modules_[FilterType::ImageSearch]     = image_search_filter_.get();
+    filter_modules_[FilterType::LabelSearch]     = label_search_filter_.get();
 
     for (auto &[type, module] : filter_modules_)
     {
@@ -200,31 +203,34 @@ QString GlobalFilter::filterSummary() const
         switch (type)
         {
         case FilterType::Dataset:
-            type_name = QStringLiteral("数据集");
+            type_name = QString("数据集");
             break;
         case FilterType::Tag:
-            type_name = QStringLiteral("标签");
+            type_name = QString("标签");
             break;
         case FilterType::LabelClass:
-            type_name = QStringLiteral("类别");
+            type_name = QString("类别");
             break;
         case FilterType::ImageLabelClass:
-            type_name = QStringLiteral("图像类别");
+            type_name = QString("图像类别");
             break;
         case FilterType::ImageSearch:
-            type_name = QStringLiteral("图像搜索");
+            type_name = QString("图像搜索");
+            break;
+        case FilterType::LabelSearch:
+            type_name = QString("标注搜索");
             break;
         default:
-            type_name = QStringLiteral("未知");
+            type_name = QString("未知");
             break;
         }
 
-        summary_parts.append(QStringLiteral("%1: %2").arg(type_name).arg(module->getActiveCriteria().size()));
+        summary_parts.append(QString("%1: %2").arg(type_name).arg(module->getActiveCriteria().size()));
     }
 
     if (summary_parts.isEmpty())
     {
-        return QStringLiteral("无过滤");
+        return QString("无过滤");
     }
 
     return summary_parts.join(QStringLiteral(", "));
@@ -266,6 +272,13 @@ void GlobalFilter::clearAllFilters()
     {
         image_search_filter_->selectAll();
         image_search_filter_->setEnabled(false);
+        changed = true;
+    }
+
+    if (label_search_filter_)
+    {
+        label_search_filter_->selectAll();
+        label_search_filter_->setEnabled(false);
         changed = true;
     }
 
@@ -346,6 +359,74 @@ int GlobalFilter::imageSearchResultCount() const
     return image_search_filter_ ? image_search_filter_->resultCount() : 0;
 }
 
+void GlobalFilter::setLabelSearchFilterEnabled(bool enabled)
+{
+    if (!label_search_filter_)
+    {
+        return;
+    }
+
+    if (enabled && !label_search_filter_->hasResults())
+    {
+        enabled = false;
+    }
+
+    const bool was_enabled = label_search_filter_->isEnabled();
+    label_search_filter_->setEnabled(enabled);
+    if (was_enabled != enabled)
+    {
+        updateFilterCriteria();
+        force_apply_ = true;
+        applyFilters();
+        emit filterStateChanged();
+    }
+}
+
+void GlobalFilter::clearLabelSearchResults()
+{
+    if (!label_search_filter_)
+    {
+        return;
+    }
+
+    label_search_filter_->setEnabled(false);
+    label_search_filter_->clear();
+    updateFilterCriteria();
+    force_apply_ = true;
+    applyFilters();
+    emit filterStateChanged();
+}
+
+void GlobalFilter::setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter)
+{
+    if (!label_search_filter_)
+    {
+        return;
+    }
+
+    label_search_filter_->setCriteria(label_ids);
+    label_search_filter_->setEnabled(enable_filter && !label_ids.empty());
+    updateFilterCriteria();
+    force_apply_ = true;
+    applyFilters();
+    emit filterStateChanged();
+}
+
+bool GlobalFilter::hasLabelSearchResults() const
+{
+    return label_search_filter_ && label_search_filter_->hasResults();
+}
+
+bool GlobalFilter::labelSearchFilterEnabled() const
+{
+    return label_search_filter_ && label_search_filter_->isEnabled();
+}
+
+int GlobalFilter::labelSearchResultCount() const
+{
+    return label_search_filter_ ? label_search_filter_->resultCount() : 0;
+}
+
 void GlobalFilter::applyFilters()
 {
     const bool should_force_apply = force_apply_;
@@ -407,7 +488,16 @@ void GlobalFilter::applyFilters()
                 return true;
             };
 
-            label_model->applyFilter(image_filter_func, label_class_filter_func);
+            auto label_filter_func = [this](int64_t label_id) -> bool
+            {
+                if (label_search_filter_ && label_search_filter_->isEnabled())
+                {
+                    return label_search_filter_->passesLabel(label_id);
+                }
+                return true;
+            };
+
+            label_model->applyFilter(image_filter_func, label_class_filter_func, label_filter_func);
         }
     }
 
@@ -423,40 +513,48 @@ void GlobalFilter::updateFilterCriteria()
     current_criteria_.label_class_ids.clear();
     current_criteria_.image_label_class_ids.clear();
     current_criteria_.image_search_ids.clear();
+    current_criteria_.label_search_ids.clear();
     current_criteria_.dataset_inverted           = false;
     current_criteria_.tag_inverted               = false;
     current_criteria_.label_class_inverted       = false;
     current_criteria_.image_label_class_inverted = false;
     current_criteria_.image_search_inverted      = false;
+    current_criteria_.label_search_inverted      = false;
 
     if (dataset_filter_ && dataset_filter_->isActive())
     {
-        current_criteria_.dataset_ids = dataset_filter_->getActiveCriteria();
+        current_criteria_.dataset_ids      = dataset_filter_->getActiveCriteria();
         current_criteria_.dataset_inverted = dataset_filter_->isInverted();
     }
 
     if (tag_filter_ && tag_filter_->isActive())
     {
-        current_criteria_.tag_ids = tag_filter_->getActiveCriteria();
+        current_criteria_.tag_ids      = tag_filter_->getActiveCriteria();
         current_criteria_.tag_inverted = tag_filter_->isInverted();
     }
 
     if (label_class_filter_ && label_class_filter_->isActive())
     {
-        current_criteria_.label_class_ids = label_class_filter_->getActiveCriteria();
+        current_criteria_.label_class_ids      = label_class_filter_->getActiveCriteria();
         current_criteria_.label_class_inverted = label_class_filter_->isInverted();
     }
 
     if (image_label_class_filter_ && image_label_class_filter_->isActive())
     {
-        current_criteria_.image_label_class_ids = image_label_class_filter_->getActiveCriteria();
+        current_criteria_.image_label_class_ids      = image_label_class_filter_->getActiveCriteria();
         current_criteria_.image_label_class_inverted = image_label_class_filter_->isInverted();
     }
 
     if (image_search_filter_ && image_search_filter_->isActive())
     {
-        current_criteria_.image_search_ids = image_search_filter_->getActiveCriteria();
+        current_criteria_.image_search_ids      = image_search_filter_->getActiveCriteria();
         current_criteria_.image_search_inverted = image_search_filter_->isInverted();
+    }
+
+    if (label_search_filter_ && label_search_filter_->isActive())
+    {
+        current_criteria_.label_search_ids      = label_search_filter_->getActiveCriteria();
+        current_criteria_.label_search_inverted = label_search_filter_->isInverted();
     }
 }
 
@@ -483,6 +581,11 @@ bool GlobalFilter::shouldIncludeImage(int64_t image_id) const
         return false;
     }
 
+    if (label_search_filter_ && label_search_filter_->isEnabled() && !label_search_filter_->passes(image_id))
+    {
+        return false;
+    }
+
     return true;
 }
 
@@ -493,6 +596,11 @@ bool GlobalFilter::shouldIncludeLabel(int64_t label_id) const
         if (auto *label_model = data_manager_->labelInstances())
         {
             int64_t image_id = label_model->getImageId(label_id);
+            if (label_search_filter_ && label_search_filter_->isEnabled()
+                && !label_search_filter_->passesLabel(label_id))
+            {
+                return false;
+            }
             return shouldIncludeImage(image_id);
         }
     }
@@ -543,6 +651,15 @@ bool GlobalFilter::hasFilterCriteriaChanged() const
         return true;
     }
     if (current_criteria_.image_search_inverted != previous_criteria_.image_search_inverted)
+    {
+        return true;
+    }
+
+    if (current_criteria_.label_search_ids != previous_criteria_.label_search_ids)
+    {
+        return true;
+    }
+    if (current_criteria_.label_search_inverted != previous_criteria_.label_search_inverted)
     {
         return true;
     }

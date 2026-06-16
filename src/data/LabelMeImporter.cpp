@@ -7,8 +7,8 @@
 
 #include <QFile>
 #include <QFileInfo>
-
 #include <algorithm>
+
 
 namespace dltool::data {
 
@@ -39,11 +39,11 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
 
     try
     {
-        updateProgress(0, QStringLiteral("正在扫描图像文件..."));
+        updateProgress(0, QString("正在扫描图像文件..."));
         const std::vector<QString> image_files = DatasetIO::scanImageFiles(image_dir);
         if (image_files.empty())
         {
-            updateProgress(100, QStringLiteral("未找到任何图像文件"));
+            updateProgress(100, QString("未找到任何图像文件"));
             emit importFinished(false, {}, {});
             return;
         }
@@ -52,7 +52,7 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
         int                        total_json_files = 0;
         if (!data_dir.isEmpty() && QFileInfo(data_dir).exists())
         {
-            updateProgress(5, QStringLiteral("正在扫描标注文件..."));
+            updateProgress(5, QString("正在扫描标注文件..."));
             const std::vector<QString> json_files = DatasetIO::scanJsonFiles(data_dir);
             total_json_files                      = static_cast<int>(json_files.size());
             for (const QString &json_path : json_files)
@@ -80,7 +80,8 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
         int                        parsed_annotations  = 0;
         int                        skipped_annotations = 0;
 
-        auto flush_batch = [&]() -> bool {
+        auto flush_batch = [&]() -> bool
+        {
             if (batch_image_paths.empty() && batch_labels.empty())
             {
                 return true;
@@ -147,8 +148,8 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
                         auto color_it = label_class_colors.find(shape.label);
                         if (color_it == label_class_colors.end())
                         {
-                            const QString color = DatasetIO::generateDefaultColor(color_index++);
-                            color_it            = label_class_colors.emplace(shape.label, color).first;
+                            const QString color                 = DatasetIO::generateDefaultColor(color_index++);
+                            color_it                            = label_class_colors.emplace(shape.label, color).first;
                             batch_label_class_info[shape.label] = color;
                         }
 
@@ -174,8 +175,7 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
             if (processed_images % std::max(1, total_images / 10) == 0 || processed_images == total_images)
             {
                 const int progress = 10 + (processed_images * 80 / std::max(1, total_images));
-                updateProgress(progress,
-                               QStringLiteral("已处理 LabelMe 图像 %1/%2").arg(processed_images).arg(total_images));
+                updateProgress(progress, QString("已处理 LabelMe 图像 %1/%2").arg(processed_images).arg(total_images));
             }
 
             if (batch_image_paths.size() >= DataImporter::ImportBatchImageCount)
@@ -196,24 +196,23 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
 
         if (valid_images == 0)
         {
-            updateProgress(100, QStringLiteral("没有有效的图像可导入"));
+            updateProgress(100, QString("没有有效的图像可导入"));
             emit importFinished(false, {}, {});
             return;
         }
 
-        updateProgress(100,
-                       QStringLiteral("导入完成: %1 个图像, %2 个标注文件，跳过图像 %3 个，跳过标注 %4/%5")
-                           .arg(valid_images)
-                           .arg(parsed_annotations)
-                           .arg(skipped_images)
-                           .arg(skipped_annotations)
-                           .arg(total_json_files));
+        updateProgress(100, QString("导入完成: %1 个图像, %2 个标注文件，跳过图像 %3 个，跳过标注 %4/%5")
+                                .arg(valid_images)
+                                .arg(parsed_annotations)
+                                .arg(skipped_images)
+                                .arg(skipped_annotations)
+                                .arg(total_json_files));
         emit importFinished(true, {}, {});
     }
     catch (const std::exception &e)
     {
         spdlog::error("导入过程中发生异常: {}", e.what());
-        updateProgress(100, QStringLiteral("导入失败: %1").arg(e.what()));
+        updateProgress(100, QString("导入失败: %1").arg(e.what()));
         emit importFinished(false, {}, {});
     }
 }

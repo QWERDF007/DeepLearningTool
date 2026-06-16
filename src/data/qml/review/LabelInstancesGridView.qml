@@ -7,6 +7,8 @@ import dltool.data
 import dltool.settings
 import quickui
 
+import "../component"
+
 // 标注实例缩略图网格视图
 Rectangle {
     id: root
@@ -25,9 +27,23 @@ Rectangle {
         }
     }
 
+    RoiSearchDialog {
+        id: roiSearchDialog
+        dataManager: root.dataManager
+    }
+
     QuiMenu {
         id: contextMenu
         width: 200
+        QuiMenuItem {
+            text: "标注搜索"
+            iconSource: QuiFontIcon.Search
+            enabled: dataManager && dataManager.imageSearch
+                     && selection && selection.hasSelection
+                     && !dataManager.imageSearch.running
+                     && GlobalSettings.advanced.roiSearch.enabled
+            onClicked: startRoiSearchForSelectedLabels()
+        }
         QuiMenuItem {
             text: "删除标注"
             iconSource: QuiFontIcon.Delete
@@ -318,6 +334,19 @@ Rectangle {
             return
         }
         dataManager.deleteLabels(labelIds)
+    }
+
+    function startRoiSearchForSelectedLabels() {
+        if (!dataManager || !dataManager.imageSearch || !labelInstances
+                || !selection || !selection.hasSelection
+                || !GlobalSettings.advanced.roiSearch.enabled) {
+            return
+        }
+
+        let labelIds = labelInstances.getSelectedLabelIds()
+        if (labelIds.length > 0) {
+            roiSearchDialog.openForLabels(labelIds)
+        }
     }
     
     // 监听选中项变化，自动滚动到当前选中项

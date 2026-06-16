@@ -20,6 +20,7 @@ public:
         CreateTags,
         CreateModels,
         CreateFeatureSearchSettings,
+        CreateRoiSearchSettings,
         CreateSmartAnnotationSettings,
         CreateThumbnailSettings,
         CreateLabelDisplaySettings,
@@ -55,6 +56,12 @@ public:
          "training_result TEXT, test_result TEXT, ctime INTEGER NOT NULL, mtime INTEGER NOT NULL, extra_data BLOB)"},
         {CreateFeatureSearchSettings,
          "CREATE TABLE IF NOT EXISTS feature_search_settings ("
+         "id INTEGER PRIMARY KEY,"
+         "key TEXT NOT NULL UNIQUE,"
+         "value TEXT NOT NULL,"
+         "mtime INTEGER NOT NULL)"},
+        {CreateRoiSearchSettings,
+         "CREATE TABLE IF NOT EXISTS roi_search_settings ("
          "id INTEGER PRIMARY KEY,"
          "key TEXT NOT NULL UNIQUE,"
          "value TEXT NOT NULL,"

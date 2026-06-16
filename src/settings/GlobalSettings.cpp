@@ -202,6 +202,30 @@ void GlobalSettings::connectAutoSave()
     connect(image_search, &ImageSearchSettings::indexDirectoryChanged, this, &GlobalSettings::scheduleSave);
     connect(image_search, &ImageSearchSettings::customFeatureNamesChanged, this, &GlobalSettings::scheduleSave);
 
+    auto *roi_search = advanced_settings_->roiSearch();
+    connect(roi_search, &RoiSearchSettings::enabledChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::modelChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::modelPathChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::featureNameChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::rebuildIndexChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::topKChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::normChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::preprocessBackendChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::faissBackendChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::indexStorageChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::diskBuildBatchSizeChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::modelBatchSizeChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::modelBackendChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::modelDeviceChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::indexDirectoryChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::customFeatureNamesChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::pooledHeightChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::pooledWidthChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::samplingRatioChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::alignedChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::usePcaChanged, this, &GlobalSettings::scheduleSave);
+    connect(roi_search, &RoiSearchSettings::pcaDimChanged, this, &GlobalSettings::scheduleSave);
+
     auto *smart_annotation = advanced_settings_->smartAnnotation();
     connect(smart_annotation, &SmartAnnotationSettings::enabledChanged, this, &GlobalSettings::scheduleSave);
     connect(smart_annotation, &SmartAnnotationSettings::modelChanged, this, &GlobalSettings::scheduleSave);

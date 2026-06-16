@@ -17,6 +17,7 @@ Window {
     property bool advancedExpanded: false
     property bool syncing: false
     property string lastSuggestedWeightsPath: ""
+    property string lastSuggestedRoiWeightsPath: ""
     property string lastSuggestedSmartModelPath: ""
 
     visible: false
@@ -101,11 +102,43 @@ Window {
         }
     }
 
+    function normalizedPcaDim(value) {
+        let dim = Math.round(Number(value))
+        return dim > 0 ? dim : 256
+    }
+
     function suggestedWeightsPath(modelName) {
         if (imageSearch) {
             return imageSearch.suggestedWeightsPath(modelName)
         }
         return modelName === "" ? "" : "F:/models/" + modelName + ".wts"
+    }
+
+    function roiFeatureNames(modelName) {
+        return imageSearch ? imageSearch.roiFeatureNames(modelName) : []
+    }
+
+    function normalizeRoiModel(modelName) {
+        let model = trimText(modelName)
+        if (model === "" && imageSearch) {
+            model = imageSearch.defaultModelName
+        }
+        if (imageSearch && roiFeatureNames(model).length === 0) {
+            model = imageSearch.defaultModelName
+        }
+        return model
+    }
+
+    function normalizeRoiFeature(modelName, featureName) {
+        let names = roiFeatureNames(modelName)
+        let feature = trimText(featureName)
+        if (names.length > 0 && names.indexOf(feature) < 0) {
+            return imageSearch ? imageSearch.defaultRoiFeatureName(modelName) : names[names.length - 1]
+        }
+        if (feature === "" && imageSearch) {
+            return imageSearch.defaultRoiFeatureName(modelName)
+        }
+        return feature
     }
 
     function suggestedSmartModelPath(modelName, backend) {
@@ -143,6 +176,39 @@ Window {
         indexDirInput.text = GlobalSettings.advanced.imageSearch.indexDirectory
 
         lastSuggestedWeightsPath = suggestedWeightsPath(comboText(modelBox))
+
+        let storedRoiModel = trimText(GlobalSettings.advanced.roiSearch.model)
+        let roiModel = normalizeRoiModel(storedRoiModel)
+        let roiModelPath = GlobalSettings.advanced.roiSearch.modelPath
+        if (roiModelPath === "" || (storedRoiModel !== "" && storedRoiModel !== roiModel)) {
+            roiModelPath = suggestedWeightsPath(roiModel)
+        }
+        let roiFeatureName = normalizeRoiFeature(roiModel, GlobalSettings.advanced.roiSearch.featureName)
+
+        roiEnableCheckBox.checked = GlobalSettings.advanced.roiSearch.enabled
+        setComboText(roiModelBox, roiModel)
+        roiModelPathInput.text = roiModelPath
+        roiFeatureNameBox.modelName = roiModel
+        roiFeatureNameBox.featureName = roiFeatureName
+        roiFeatureNameBox.refreshFeatureNames()
+        roiRebuildCheckBox.checked = GlobalSettings.advanced.roiSearch.rebuildIndex
+        roiTopKEditor.value = GlobalSettings.advanced.roiSearch.topK
+        setComboText(roiNormBox, GlobalSettings.advanced.roiSearch.norm)
+        setComboText(roiPreprocessBox, GlobalSettings.advanced.roiSearch.preprocessBackend)
+        setComboText(roiFaissBackendBox, GlobalSettings.advanced.roiSearch.faissBackend)
+        setComboText(roiIndexStorageBox, GlobalSettings.advanced.roiSearch.indexStorage)
+        roiDiskBatchEditor.value = GlobalSettings.advanced.roiSearch.diskBuildBatchSize
+        roiModelBatchEditor.value = GlobalSettings.advanced.roiSearch.modelBatchSize
+        setComboText(roiModelBackendBox, GlobalSettings.advanced.roiSearch.modelBackend)
+        setComboText(roiModelDeviceBox, GlobalSettings.advanced.roiSearch.modelDevice)
+        roiIndexDirInput.text = GlobalSettings.advanced.roiSearch.indexDirectory
+        roiPooledHeightEditor.value = GlobalSettings.advanced.roiSearch.pooledHeight
+        roiPooledWidthEditor.value = GlobalSettings.advanced.roiSearch.pooledWidth
+        roiSamplingRatioEditor.value = GlobalSettings.advanced.roiSearch.samplingRatio
+        roiAlignedSwitch.checked = GlobalSettings.advanced.roiSearch.aligned
+        roiUsePcaSwitch.checked = GlobalSettings.advanced.roiSearch.usePca
+        roiPcaDimEditor.value = normalizedPcaDim(GlobalSettings.advanced.roiSearch.pcaDim)
+        lastSuggestedRoiWeightsPath = suggestedWeightsPath(roiModel)
 
         smartEnableCheckBox.checked = GlobalSettings.advanced.smartAnnotation.enabled
         setComboText(smartModelBox, GlobalSettings.advanced.smartAnnotation.model)
@@ -199,6 +265,33 @@ Window {
         lastSuggestedSmartModelPath = nextSuggested
     }
 
+    function updateRoiModel(value) {
+        if (syncing) {
+            return
+        }
+
+        let rawModel = trimText(value)
+        if (rawModel === "") {
+            return
+        }
+        let model = normalizeRoiModel(rawModel)
+        if (model !== rawModel) {
+            setComboText(roiModelBox, model)
+        }
+
+        let previousSuggested = lastSuggestedRoiWeightsPath
+        let nextSuggested = suggestedWeightsPath(model)
+        GlobalSettings.advanced.roiSearch.model = model
+        roiFeatureNameBox.modelName = model
+        roiFeatureNameBox.featureName = normalizeRoiFeature(model, roiFeatureNameBox.currentFeatureText())
+        if (roiModelPathInput.text === "" || roiModelPathInput.text === previousSuggested) {
+            roiModelPathInput.text = nextSuggested
+            GlobalSettings.advanced.roiSearch.modelPath = nextSuggested
+        }
+        lastSuggestedRoiWeightsPath = nextSuggested
+        roiFeatureNameBox.refreshFeatureNames()
+    }
+
     function updateSmartBackend(value) {
         if (syncing) {
             return
@@ -227,11 +320,47 @@ Window {
         GlobalSettings.advanced.imageSearch.featureName = featureName
     }
 
+    function updateRoiFeatureName(value) {
+        if (syncing) {
+            return
+        }
+
+        let featureName = normalizeRoiFeature(comboText(roiModelBox), value)
+        if (featureName === "") {
+            return
+        }
+        GlobalSettings.advanced.roiSearch.featureName = featureName
+    }
+
     function saveVisibleFields() {
         featureNameBox.rememberCurrentText()
+        roiFeatureNameBox.rememberCurrentText()
         GlobalSettings.advanced.imageSearch.model = comboText(modelBox)
         GlobalSettings.advanced.imageSearch.modelPath = trimText(modelPathInput.text)
         GlobalSettings.advanced.imageSearch.featureName = featureNameBox.currentFeatureText()
+        let roiModel = normalizeRoiModel(comboText(roiModelBox))
+        let roiFeatureName = normalizeRoiFeature(roiModel, roiFeatureNameBox.currentFeatureText())
+        GlobalSettings.advanced.roiSearch.enabled = roiEnableCheckBox.checked
+        GlobalSettings.advanced.roiSearch.model = roiModel
+        GlobalSettings.advanced.roiSearch.modelPath = trimText(roiModelPathInput.text)
+        GlobalSettings.advanced.roiSearch.featureName = roiFeatureName
+        GlobalSettings.advanced.roiSearch.rebuildIndex = roiRebuildCheckBox.checked
+        GlobalSettings.advanced.roiSearch.topK = Math.round(roiTopKEditor.value)
+        GlobalSettings.advanced.roiSearch.norm = comboText(roiNormBox)
+        GlobalSettings.advanced.roiSearch.preprocessBackend = comboText(roiPreprocessBox)
+        GlobalSettings.advanced.roiSearch.faissBackend = comboText(roiFaissBackendBox)
+        GlobalSettings.advanced.roiSearch.indexStorage = comboText(roiIndexStorageBox)
+        GlobalSettings.advanced.roiSearch.diskBuildBatchSize = Math.round(roiDiskBatchEditor.value)
+        GlobalSettings.advanced.roiSearch.modelBatchSize = Math.round(roiModelBatchEditor.value)
+        GlobalSettings.advanced.roiSearch.modelBackend = comboText(roiModelBackendBox)
+        GlobalSettings.advanced.roiSearch.modelDevice = comboText(roiModelDeviceBox)
+        GlobalSettings.advanced.roiSearch.indexDirectory = trimText(roiIndexDirInput.text)
+        GlobalSettings.advanced.roiSearch.pooledHeight = Math.round(roiPooledHeightEditor.value)
+        GlobalSettings.advanced.roiSearch.pooledWidth = Math.round(roiPooledWidthEditor.value)
+        GlobalSettings.advanced.roiSearch.samplingRatio = Math.round(roiSamplingRatioEditor.value)
+        GlobalSettings.advanced.roiSearch.aligned = roiAlignedSwitch.checked
+        GlobalSettings.advanced.roiSearch.usePca = roiUsePcaSwitch.checked
+        GlobalSettings.advanced.roiSearch.pcaDim = roiUsePcaSwitch.checked ? normalizedPcaDim(roiPcaDimEditor.value) : 0
         GlobalSettings.advanced.smartAnnotation.enabled = smartEnableCheckBox.checked
         GlobalSettings.advanced.smartAnnotation.model = comboText(smartModelBox)
         GlobalSettings.advanced.smartAnnotation.modelPath = trimText(smartModelPathInput.text)
@@ -810,6 +939,351 @@ Window {
                     Layout.fillWidth: true
                     Layout.leftMargin: 20
                     Layout.rightMargin: 20
+                    implicitHeight: roiSearchSection.implicitHeight + 24
+                    radius: 4
+                    color: QuiColor.Primary
+                    border.color: QuiColor.Border
+
+                    ColumnLayout {
+                        id: roiSearchSection
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 12
+
+                        Item {
+                            Layout.fillWidth: true
+                            implicitHeight: 24
+
+                            QuiText {
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width / 3
+                                text: "标注搜索"
+                                font: QuiFont.Subtitle
+                                color: QuiColor.FontPrimary
+                            }
+
+                            QuiToggleSwitch {
+                                id: roiEnableCheckBox
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "启用"
+                                checked: GlobalSettings.advanced.roiSearch.enabled
+                                onToggled: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.advanced.roiSearch.enabled = checked
+                                    }
+                                }
+                            }
+                        }
+
+                        GridLayout {
+                            Layout.fillWidth: true
+                            columns: 2
+                            columnSpacing: 12
+                            rowSpacing: 10
+                            enabled: roiEnableCheckBox.checked
+
+                            QuiText { text: "模型"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiComboBox {
+                                id: roiModelBox
+                                Layout.fillWidth: true
+                                editable: true
+                                model: dialog.imageSearch ? dialog.imageSearch.roiModelPresets() : []
+                                onActivated: dialog.updateRoiModel(dialog.comboText(roiModelBox))
+                                onCommit: function (text) {
+                                    editText = text
+                                    dialog.updateRoiModel(text)
+                                }
+                            }
+
+                            QuiText { text: "模型路径"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                QuiTextField {
+                                    id: roiModelPathInput
+                                    Layout.fillWidth: true
+                                    placeholderText: "选择 .wts 权重文件"
+                                    onEditingFinished: {
+                                        if (!dialog.syncing) {
+                                            GlobalSettings.advanced.roiSearch.modelPath = dialog.trimText(text)
+                                        }
+                                    }
+                                }
+                                QuiTextIconButton {
+                                    Layout.preferredWidth: 34
+                                    Layout.preferredHeight: 34
+                                    iconSource: QuiFontIcon.OpenFile
+                                    text: "打开"
+                                    onClicked: roiModelPathDialog.open()
+                                }
+                            }
+
+                            QuiText { text: "特征层名"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            FeatureNameComboBox {
+                                id: roiFeatureNameBox
+                                Layout.fillWidth: true
+                                imageSearch: dialog.imageSearch
+                                modelName: dialog.comboText(roiModelBox)
+                                featureName: GlobalSettings.advanced.roiSearch.featureName
+                                roiOnly: true
+                                rememberCustomValues: false
+                                onFeatureNameAccepted: function (featureName) {
+                                    dialog.updateRoiFeatureName(featureName)
+                                }
+                            }
+
+                            QuiText { text: "推理后端"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiComboBox {
+                                id: roiModelBackendBox
+                                Layout.fillWidth: true
+                                model: ["tensorrt", "openvino", "onnxruntime"]
+                                onActivated: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.advanced.roiSearch.modelBackend = currentText
+                                    }
+                                }
+                            }
+
+                            QuiText { text: "推理设备"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiComboBox {
+                                id: roiModelDeviceBox
+                                Layout.fillWidth: true
+                                model: ["gpu", "cpu"]
+                                onActivated: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.advanced.roiSearch.modelDevice = currentText
+                                    }
+                                }
+                            }
+
+                            QuiText { text: "模型批次"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiSpinEditor {
+                                id: roiModelBatchEditor
+                                Layout.fillWidth: true
+                                label: ""
+                                minValue: 1
+                                maxValue: 8192
+                                step: 1
+                                onValueChanged: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.advanced.roiSearch.modelBatchSize = Math.round(value)
+                                    }
+                                }
+                            }
+
+                            QuiText { text: "特征库目录"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                QuiTextField {
+                                    id: roiIndexDirInput
+                                    Layout.fillWidth: true
+                                    placeholderText: "留空则使用项目目录"
+                                    onEditingFinished: {
+                                        if (!dialog.syncing) {
+                                            GlobalSettings.advanced.roiSearch.indexDirectory = dialog.trimText(text)
+                                        }
+                                    }
+                                }
+                                QuiTextIconButton {
+                                    Layout.preferredWidth: 34
+                                    Layout.preferredHeight: 34
+                                    iconSource: QuiFontIcon.OpenFile
+                                    text: "选择"
+                                    onClicked: roiIndexDirDialog.open()
+                                }
+                            }
+
+                            QuiText { text: "特征库重建"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiToggleSwitch {
+                                id: roiRebuildCheckBox
+                                onToggled: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.advanced.roiSearch.rebuildIndex = checked
+                                    }
+                                }
+                            }
+
+                            QuiText { text: "TopK"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiSpinEditor {
+                                id: roiTopKEditor
+                                Layout.fillWidth: true
+                                label: ""
+                                minValue: 1
+                                maxValue: 1000
+                                step: 1
+                                onValueChanged: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.advanced.roiSearch.topK = Math.round(value)
+                                    }
+                                }
+                            }
+
+                            QuiText { text: "归一化"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiComboBox {
+                                id: roiNormBox
+                                Layout.fillWidth: true
+                                model: ["l2", "l1", "none"]
+                                onActivated: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.advanced.roiSearch.norm = currentText
+                                    }
+                                }
+                            }
+
+                            QuiText { text: "预处理"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiComboBox {
+                                id: roiPreprocessBox
+                                Layout.fillWidth: true
+                                model: ["cpu", "gpu"]
+                                onActivated: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.advanced.roiSearch.preprocessBackend = currentText
+                                    }
+                                }
+                            }
+
+                            QuiText { text: "Faiss"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiComboBox {
+                                id: roiFaissBackendBox
+                                Layout.fillWidth: true
+                                model: ["cpu", "gpu"]
+                                onActivated: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.advanced.roiSearch.faissBackend = currentText
+                                        if (currentText === "gpu") {
+                                            dialog.setComboText(roiIndexStorageBox, "ram")
+                                        }
+                                    }
+                                }
+                            }
+
+                            QuiText { text: "索引存储"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiComboBox {
+                                id: roiIndexStorageBox
+                                Layout.fillWidth: true
+                                enabled: roiFaissBackendBox.currentText !== "gpu"
+                                model: ["ram", "disk"]
+                                onActivated: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.advanced.roiSearch.indexStorage = currentText
+                                    }
+                                }
+                            }
+
+                            QuiText { text: "磁盘批次"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiSpinEditor {
+                                id: roiDiskBatchEditor
+                                Layout.fillWidth: true
+                                label: ""
+                                minValue: 1
+                                maxValue: 8192
+                                step: 1
+                                onValueChanged: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.advanced.roiSearch.diskBuildBatchSize = Math.round(value)
+                                    }
+                                }
+                            }
+
+                            QuiText { text: "ROIAlign高度"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiSpinEditor {
+                                id: roiPooledHeightEditor
+                                Layout.fillWidth: true
+                                label: ""
+                                minValue: 1
+                                maxValue: 64
+                                step: 1
+                                onValueChanged: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.advanced.roiSearch.pooledHeight = Math.round(value)
+                                    }
+                                }
+                            }
+
+                            QuiText { text: "ROIAlign宽度"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiSpinEditor {
+                                id: roiPooledWidthEditor
+                                Layout.fillWidth: true
+                                label: ""
+                                minValue: 1
+                                maxValue: 64
+                                step: 1
+                                onValueChanged: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.advanced.roiSearch.pooledWidth = Math.round(value)
+                                    }
+                                }
+                            }
+
+                            QuiText { text: "采样率"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiSpinEditor {
+                                id: roiSamplingRatioEditor
+                                Layout.fillWidth: true
+                                label: ""
+                                minValue: -1
+                                maxValue: 32
+                                step: 1
+                                onValueChanged: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.advanced.roiSearch.samplingRatio = Math.round(value)
+                                    }
+                                }
+                            }
+
+                            QuiText { text: "Aligned"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiToggleSwitch {
+                                id: roiAlignedSwitch
+                                onToggled: {
+                                    if (!dialog.syncing) {
+                                        GlobalSettings.advanced.roiSearch.aligned = checked
+                                    }
+                                }
+                            }
+
+                            QuiText { text: "PCA降维"; color: QuiColor.FontDark; Layout.preferredWidth: roiSearchSection.width / 3 }
+                            QuiToggleSwitch {
+                                id: roiUsePcaSwitch
+                                onToggled: {
+                                    if (!dialog.syncing) {
+                                        if (checked && roiPcaDimEditor.value <= 0) {
+                                            roiPcaDimEditor.value = 256
+                                        }
+                                        GlobalSettings.advanced.roiSearch.usePca = checked
+                                        GlobalSettings.advanced.roiSearch.pcaDim = checked ? dialog.normalizedPcaDim(roiPcaDimEditor.value) : 0
+                                    }
+                                }
+                            }
+
+                            QuiText {
+                                text: "PCA维度"
+                                color: QuiColor.FontDark
+                                Layout.preferredWidth: roiSearchSection.width / 3
+                            }
+                            QuiSpinEditor {
+                                id: roiPcaDimEditor
+                                Layout.fillWidth: true
+                                enabled: roiUsePcaSwitch.checked
+                                label: ""
+                                minValue: 1
+                                maxValue: 8192
+                                step: 1
+                                onValueChanged: {
+                                    if (!dialog.syncing && roiUsePcaSwitch.checked) {
+                                        GlobalSettings.advanced.roiSearch.pcaDim = dialog.normalizedPcaDim(value)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 20
                     implicitHeight: smartAnnotationSection.implicitHeight + 24
                     radius: 4
                     color: QuiColor.Primary
@@ -1165,12 +1639,31 @@ Window {
         }
     }
 
+    FileDialog {
+        id: roiModelPathDialog
+        title: "选择标注搜索模型权重"
+        nameFilters: ["Weights (*.wts *.onnx)", "All files (*)"]
+        onAccepted: {
+            roiModelPathInput.text = Utils.getCleanPath(roiModelPathDialog.file.toString())
+            GlobalSettings.advanced.roiSearch.modelPath = roiModelPathInput.text
+        }
+    }
+
     FolderDialog {
         id: indexDirDialog
         title: "选择特征库保存目录"
         onAccepted: {
             indexDirInput.text = Utils.getCleanPath(indexDirDialog.folder.toString())
             GlobalSettings.advanced.imageSearch.indexDirectory = indexDirInput.text
+        }
+    }
+
+    FolderDialog {
+        id: roiIndexDirDialog
+        title: "选择ROI特征库保存目录"
+        onAccepted: {
+            roiIndexDirInput.text = Utils.getCleanPath(roiIndexDirDialog.folder.toString())
+            GlobalSettings.advanced.roiSearch.indexDirectory = roiIndexDirInput.text
         }
     }
 }

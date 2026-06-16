@@ -2,11 +2,10 @@
 
 #include "settings/GlobalSettings.h"
 
+#include <cuda_runtime_api.h>
 #include <inferrt/model/IModel.h>
 #include <inferrt/model/ModelFactory.hpp>
 #include <spdlog/spdlog.h>
-
-#include <cuda_runtime_api.h>
 
 #include <QDir>
 #include <QFileInfo>
@@ -17,7 +16,6 @@
 #include <QPointer>
 #include <QRectF>
 #include <QThread>
-
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -389,14 +387,14 @@ struct SmartModelLoadRequest
 SmartModelLoadRequest buildSmartModelLoadRequest(const QString &model_name, const QString &model_path,
                                                  const QString &backend, const QString &device)
 {
-    const QFileInfo model_info(model_path);
+    const QFileInfo       model_info(model_path);
     SmartModelLoadRequest request;
     request.model_name          = normalizedModelName(model_name);
     request.backend             = normalizedBackend(backend);
     request.device              = normalizedDevice(device);
     request.absolute_model_path = model_info.absoluteFilePath();
     request.runtime_model_name  = isTensorRtBackend(request.backend) ? request.model_name : QStringLiteral("onnx");
-    request.key                 = QStringLiteral("%1|%2|%3|%4")
+    request.key                 = QString("%1|%2|%3|%4")
                       .arg(request.model_name.toLower(), request.backend, request.device,
                            QDir::cleanPath(request.absolute_model_path).toCaseFolded());
     return request;
@@ -410,12 +408,13 @@ std::unique_ptr<irt::model::IModel> loadSmartModel(const SmartModelLoadRequest &
 
     spdlog::info("Loading smart annotation model: model={}, runtime={}, backend={}, device={}, path={}",
                  request.model_name.toStdString(), request.runtime_model_name.toStdString(),
-                 request.backend.toStdString(), request.device.toStdString(), request.absolute_model_path.toStdString());
+                 request.backend.toStdString(), request.device.toStdString(),
+                 request.absolute_model_path.toStdString());
     auto model = irt::model::CreateModel(request.runtime_model_name.toStdString(), std::move(config));
     if (!model)
     {
         throw std::runtime_error(
-            QStringLiteral("Failed to create InferRT model: %1").arg(request.runtime_model_name).toStdString());
+            QString("Failed to create InferRT model: %1").arg(request.runtime_model_name).toStdString());
     }
     model->setLogLevel(nvinfer1::ILogger::Severity::kWARNING);
     model->buildOrLoad(request.absolute_model_path.toStdString());
@@ -496,7 +495,7 @@ QImage loadRgbImage(const QString &path)
     QImage image(path);
     if (image.isNull())
     {
-        throw std::runtime_error(QStringLiteral("图像加载失败: %1").arg(path).toStdString());
+        throw std::runtime_error(QString("图像加载失败: %1").arg(path).toStdString());
     }
     return image.convertToFormat(QImage::Format_RGB888);
 }
@@ -527,9 +526,8 @@ PreprocessedImage preprocessImage(const QImage &rgb_image, int input_h, int inpu
         static constexpr float kMean[3]{0.485F, 0.456F, 0.406F};
         static constexpr float kStd[3]{0.229F, 0.224F, 0.225F};
 
-        const QImage resized
-            = rgb_image.scaled(input_w, input_h, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
-                  .convertToFormat(QImage::Format_RGB888);
+        const QImage resized = rgb_image.scaled(input_w, input_h, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+                                   .convertToFormat(QImage::Format_RGB888);
         std::vector<float> tensor(static_cast<size_t>(3) * input_h * input_w);
         for (int y = 0; y < input_h; ++y)
         {
@@ -552,9 +550,8 @@ PreprocessedImage preprocessImage(const QImage &rgb_image, int input_h, int inpu
     static constexpr float kStd[3]{58.395F, 57.12F, 57.375F};
 
     const auto [resized_h, resized_w] = computeResizeShape(image_h, image_w, input_h);
-    const QImage resized
-        = rgb_image.scaled(resized_w, resized_h, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
-              .convertToFormat(QImage::Format_RGB888);
+    const QImage resized = rgb_image.scaled(resized_w, resized_h, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+                               .convertToFormat(QImage::Format_RGB888);
 
     std::vector<float> tensor(static_cast<size_t>(3) * input_h * input_w, 0.0F);
     for (int y = 0; y < resized_h; ++y)
@@ -591,8 +588,8 @@ std::vector<float> resizeBilinear(const float *src, int src_w, int src_h, int ds
     }
 
     std::vector<float> dst(static_cast<size_t>(dst_w) * dst_h, 0.0F);
-    const double x_scale = dst_w > 1 ? static_cast<double>(src_w - 1) / static_cast<double>(dst_w - 1) : 0.0;
-    const double y_scale = dst_h > 1 ? static_cast<double>(src_h - 1) / static_cast<double>(dst_h - 1) : 0.0;
+    const double       x_scale = dst_w > 1 ? static_cast<double>(src_w - 1) / static_cast<double>(dst_w - 1) : 0.0;
+    const double       y_scale = dst_h > 1 ? static_cast<double>(src_h - 1) / static_cast<double>(dst_h - 1) : 0.0;
 
     for (int y = 0; y < dst_h; ++y)
     {
@@ -613,8 +610,8 @@ std::vector<float> resizeBilinear(const float *src, int src_w, int src_h, int ds
             const float v01 = src[static_cast<size_t>(y1) * src_w + x0];
             const float v11 = src[static_cast<size_t>(y1) * src_w + x1];
 
-            const double top    = v00 * (1.0 - wx) + v10 * wx;
-            const double bottom = v01 * (1.0 - wx) + v11 * wx;
+            const double top                        = v00 * (1.0 - wx) + v10 * wx;
+            const double bottom                     = v01 * (1.0 - wx) + v11 * wx;
             dst[static_cast<size_t>(y) * dst_w + x] = static_cast<float>(top * (1.0 - wy) + bottom * wy);
         }
     }
@@ -712,7 +709,7 @@ double distanceToSegment(const QPointF &point, const QPointF &a, const QPointF &
         return QLineF(point, a).length();
     }
 
-    const double t = std::clamp(((point.x() - a.x()) * dx + (point.y() - a.y()) * dy) / len2, 0.0, 1.0);
+    const double  t = std::clamp(((point.x() - a.x()) * dx + (point.y() - a.y()) * dy) / len2, 0.0, 1.0);
     const QPointF projection(a.x() + t * dx, a.y() + t * dy);
     return QLineF(point, projection).length();
 }
@@ -905,10 +902,8 @@ int turnPriority(int previous_direction, int next_direction)
 }
 
 size_t chooseNextBoundaryEdge(const std::unordered_map<int64_t, std::vector<size_t>> &outgoing_edges,
-                              const std::vector<BoundaryEdge>                       &edges,
-                              const MaskPoint                                       &point,
-                              int                                                    width,
-                              int                                                    previous_direction)
+                              const std::vector<BoundaryEdge> &edges, const MaskPoint &point, int width,
+                              int previous_direction)
 {
     const auto outgoing_it = outgoing_edges.find(maskPointKey(point, width));
     if (outgoing_it == outgoing_edges.end())
@@ -945,7 +940,7 @@ std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mas
         return {};
     }
 
-    std::vector<BoundaryEdge> edges;
+    std::vector<BoundaryEdge>                        edges;
     std::unordered_map<int64_t, std::vector<size_t>> outgoing_edges;
 
     const auto is_foreground = [&](int x, int y) -> bool
@@ -1003,9 +998,9 @@ std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mas
             continue;
         }
 
-        const MaskPoint start_point = edges[start_edge_index].from;
-        size_t          edge_index  = start_edge_index;
-        bool            closed      = false;
+        const MaskPoint        start_point = edges[start_edge_index].from;
+        size_t                 edge_index  = start_edge_index;
+        bool                   closed      = false;
         std::vector<MaskPoint> loop;
         loop.reserve(256);
 
@@ -1072,8 +1067,7 @@ std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mas
         }
     }
 
-    std::sort(polygons.begin(), polygons.end(), [](const std::vector<QPointF> &left,
-                                                   const std::vector<QPointF> &right)
+    std::sort(polygons.begin(), polygons.end(), [](const std::vector<QPointF> &left, const std::vector<QPointF> &right)
               { return polygonArea(left) > polygonArea(right); });
     return polygons;
 }
@@ -1114,8 +1108,8 @@ QVariantList maskRunsToVariantList(const std::vector<uint8_t> &mask, int width, 
             if (run_width > 0)
             {
                 result.push_back(QVariantMap{
-                    {QStringLiteral("x"),     run_start},
-                    {QStringLiteral("y"),             y},
+                    {    QStringLiteral("x"), run_start},
+                    {    QStringLiteral("y"),         y},
                     {QStringLiteral("width"), run_width},
                 });
             }
@@ -1155,9 +1149,9 @@ int bestMaskIndex(const float *iou_values, size_t iou_count, int candidate_count
         return 0;
     }
 
-    int   best_index = 0;
-    float best_iou   = iou_values[0];
-    const int count  = std::min(candidate_count, static_cast<int>(iou_count));
+    int       best_index = 0;
+    float     best_iou   = iou_values[0];
+    const int count      = std::min(candidate_count, static_cast<int>(iou_count));
     for (int i = 1; i < count; ++i)
     {
         if (iou_values[i] > best_iou)
@@ -1257,7 +1251,7 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
     setRunning(true);
 
     QPointer<SmartAnnotationController> controller(this);
-    QThread *work_thread = QThread::create(
+    QThread                            *work_thread = QThread::create(
         [controller, request]()
         {
             auto    model_holder = std::make_shared<std::unique_ptr<irt::model::IModel>>();
@@ -1340,7 +1334,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
 
     if (running_)
     {
-        const QString error = QStringLiteral("智能标注正在运行");
+        const QString error = QString("智能标注正在运行");
         setLastError(error);
         result[QStringLiteral("error")] = error;
         return result;
@@ -1368,7 +1362,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         const QFileInfo model_info(model_path);
         if (!model_info.isFile())
         {
-            throw std::runtime_error(QStringLiteral("智能标注模型文件不存在: %1").arg(model_path).toStdString());
+            throw std::runtime_error(QString("智能标注模型文件不存在: %1").arg(model_path).toStdString());
         }
 
         const SmartModelLoadRequest request = buildSmartModelLoadRequest(model_name, model_path, backend, device);
@@ -1383,7 +1377,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
 
         setRunning(true);
 
-        const auto input_names = model_->ioTensorNames(nvinfer1::TensorIOMode::kINPUT);
+        const auto input_names  = model_->ioTensorNames(nvinfer1::TensorIOMode::kINPUT);
         const auto output_names = model_->ioTensorNames(nvinfer1::TensorIOMode::kOUTPUT);
         if (input_names.size() != 5 || output_names.size() != 3)
         {
@@ -1414,10 +1408,9 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         for (size_t i = 0; i < prompts.size(); ++i)
         {
             const PromptPoint &prompt = prompts[i];
-            point_coords[i * 2] = scalePromptCoordinate(prompt.point.x(), image.width(), preprocessed.resized_w);
-            point_coords[i * 2 + 1]
-                = scalePromptCoordinate(prompt.point.y(), image.height(), preprocessed.resized_h);
-            point_labels[i] = static_cast<float>(prompt.label);
+            point_coords[i * 2]       = scalePromptCoordinate(prompt.point.x(), image.width(), preprocessed.resized_w);
+            point_coords[i * 2 + 1]   = scalePromptCoordinate(prompt.point.y(), image.height(), preprocessed.resized_h);
+            point_labels[i]           = static_cast<float>(prompt.label);
         }
 
         std::vector<float> mask_input(static_cast<size_t>(prompt_mask_h) * prompt_mask_w, 0.0F);
@@ -1430,8 +1423,8 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         const bool         uses_tensorrt = isTensorRtBackend(backend);
         const cudaStream_t stream        = model_->resolveExecutionStream();
 
-        std::vector<GpuBuffer>         device_inputs;
-        std::vector<GpuBuffer>         device_outputs;
+        std::vector<GpuBuffer>          device_inputs;
+        std::vector<GpuBuffer>          device_outputs;
         std::vector<std::vector<float>> host_outputs;
         std::vector<void *>             buffers;
         device_inputs.reserve(input_vectors.size());
@@ -1454,7 +1447,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
 
         for (const auto &output_name : output_names)
         {
-            const auto dims = model_->tensorShape(output_name);
+            const auto dims  = model_->tensorShape(output_name);
             const auto count = elementCount(dims);
             host_outputs.emplace_back(count, 0.0F);
             if (uses_tensorrt)
@@ -1494,8 +1487,8 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
             checkCuda(cudaStreamSynchronize(stream), "cudaStreamSynchronize(SAM output)");
         }
 
-        const auto candidates = static_cast<int>(outputCandidateCount(output_mask_dims));
-        const size_t iou_count = host_outputs[1].size();
+        const auto   candidates = static_cast<int>(outputCandidateCount(output_mask_dims));
+        const size_t iou_count  = host_outputs[1].size();
         const int    mask_index = bestMaskIndex(host_outputs[1].data(), iou_count, candidates);
         const float  selected_iou
             = (mask_index >= 0 && static_cast<size_t>(mask_index) < iou_count) ? host_outputs[1][mask_index] : 0.0F;
@@ -1512,13 +1505,12 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
                              output_mask_h, input_w, input_h);
         std::vector<float> cropped_mask
             = cropTopLeft(resized_mask, input_w, preprocessed.resized_w, preprocessed.resized_h);
-        std::vector<float> original_mask
-            = resizeBilinear(cropped_mask.data(), preprocessed.resized_w, preprocessed.resized_h, image.width(),
-                             image.height());
+        std::vector<float> original_mask = resizeBilinear(cropped_mask.data(), preprocessed.resized_w,
+                                                          preprocessed.resized_h, image.width(), image.height());
 
-        const double threshold = settings->maskThreshold();
+        const double         threshold = settings->maskThreshold();
         std::vector<uint8_t> binary_mask(static_cast<size_t>(image.width()) * image.height(), 0);
-        int foreground_pixels = 0;
+        int                  foreground_pixels = 0;
         for (size_t i = 0; i < binary_mask.size(); ++i)
         {
             if (original_mask[i] > threshold)
@@ -1534,7 +1526,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
             throw std::runtime_error("SAM 没有生成有效 mask，请调整提示点或阈值");
         }
 
-        std::vector<QPointF> polygon;
+        std::vector<QPointF>              polygon;
         std::vector<std::vector<QPointF>> polygons = maskToPolygons(binary_mask, image.width(), image.height());
         if (!polygons.empty())
         {
@@ -1578,7 +1570,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
     }
     catch (const std::exception &e)
     {
-        const QString error = QString::fromUtf8(e.what());
+        const QString error               = QString::fromUtf8(e.what());
         result[QStringLiteral("success")] = false;
         result[QStringLiteral("error")]   = error;
         setLastError(error);
@@ -1586,7 +1578,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
     }
     catch (...)
     {
-        const QString error = QStringLiteral("未知智能标注错误");
+        const QString error               = QString("未知智能标注错误");
         result[QStringLiteral("success")] = false;
         result[QStringLiteral("error")]   = error;
         setLastError(error);

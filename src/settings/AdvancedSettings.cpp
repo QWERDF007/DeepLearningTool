@@ -377,6 +377,105 @@ void ImageSearchSettings::reset()
     setCustomFeatureNamesJson(QStringLiteral("{}"));
 }
 
+RoiSearchSettings::RoiSearchSettings(QObject *parent)
+    : ImageSearchSettings(parent)
+{
+}
+
+RoiSearchSettings::~RoiSearchSettings() = default;
+
+void RoiSearchSettings::setPooledHeight(int value)
+{
+    value = std::clamp(value, 1, 64);
+    if (roi_.pooled_height != value)
+    {
+        roi_.pooled_height = value;
+        emit pooledHeightChanged();
+    }
+}
+
+void RoiSearchSettings::setPooledWidth(int value)
+{
+    value = std::clamp(value, 1, 64);
+    if (roi_.pooled_width != value)
+    {
+        roi_.pooled_width = value;
+        emit pooledWidthChanged();
+    }
+}
+
+void RoiSearchSettings::setSamplingRatio(int value)
+{
+    value = std::clamp(value, -1, 32);
+    if (roi_.sampling_ratio != value)
+    {
+        roi_.sampling_ratio = value;
+        emit samplingRatioChanged();
+    }
+}
+
+void RoiSearchSettings::setAligned(bool value)
+{
+    if (roi_.aligned != value)
+    {
+        roi_.aligned = value;
+        emit alignedChanged();
+    }
+}
+
+void RoiSearchSettings::setUsePca(bool value)
+{
+    if (roi_.use_pca != value)
+    {
+        roi_.use_pca = value;
+        emit usePcaChanged();
+    }
+}
+
+void RoiSearchSettings::setPcaDim(int value)
+{
+    value = std::clamp(value, 0, 8192);
+    if (roi_.pca_dim != value)
+    {
+        roi_.pca_dim = value;
+        emit pcaDimChanged();
+    }
+}
+
+void RoiSearchSettings::load(const QVariantMap &row)
+{
+    ImageSearchSettings::load(row);
+    setPooledHeight(row.value(QStringLiteral("pooled_height"), 7).toInt());
+    setPooledWidth(row.value(QStringLiteral("pooled_width"), 7).toInt());
+    setSamplingRatio(row.value(QStringLiteral("sampling_ratio"), -1).toInt());
+    setAligned(row.value(QStringLiteral("aligned"), false).toBool());
+    setUsePca(row.value(QStringLiteral("use_pca"), false).toBool());
+    setPcaDim(row.value(QStringLiteral("pca_dim"), 0).toInt());
+}
+
+QVariantMap RoiSearchSettings::saveMap() const
+{
+    QVariantMap row = ImageSearchSettings::saveMap();
+    row.insert(QStringLiteral("pooled_height"), roi_.pooled_height);
+    row.insert(QStringLiteral("pooled_width"), roi_.pooled_width);
+    row.insert(QStringLiteral("sampling_ratio"), roi_.sampling_ratio);
+    row.insert(QStringLiteral("aligned"), roi_.aligned);
+    row.insert(QStringLiteral("use_pca"), roi_.use_pca);
+    row.insert(QStringLiteral("pca_dim"), roi_.pca_dim);
+    return row;
+}
+
+void RoiSearchSettings::reset()
+{
+    ImageSearchSettings::reset();
+    setPooledHeight(7);
+    setPooledWidth(7);
+    setSamplingRatio(-1);
+    setAligned(false);
+    setUsePca(false);
+    setPcaDim(0);
+}
+
 SmartAnnotationSettings::SmartAnnotationSettings(QObject *parent)
     : QObject(parent)
 {
@@ -539,6 +638,7 @@ void SmartAnnotationSettings::reset()
 AdvancedSettings::AdvancedSettings(QObject *parent)
     : QObject(parent)
     , image_search_(new ImageSearchSettings(this))
+    , roi_search_(new RoiSearchSettings(this))
     , smart_annotation_(new SmartAnnotationSettings(this))
 {
 }
@@ -560,6 +660,16 @@ void AdvancedSettings::load(database::SettingsDataBase *database)
             spdlog::warn("Load feature search settings failed: {}", err_msg.toUtf8().constData());
         }
         image_search_->load(row);
+    }
+
+    {
+        QString err_msg;
+        const auto row = database->loadRoiSearchSettings(err_msg);
+        if (!err_msg.isEmpty())
+        {
+            spdlog::warn("Load ROI search settings failed: {}", err_msg.toUtf8().constData());
+        }
+        roi_search_->load(row);
     }
 
     {
@@ -601,6 +711,15 @@ void AdvancedSettings::save(database::SettingsDataBase *database)
 
     {
         QString err_msg;
+        database->saveRoiSearchSettings(roi_search_->saveMap(), err_msg);
+        if (!err_msg.isEmpty())
+        {
+            spdlog::error("Save ROI search settings failed: {}", err_msg.toUtf8().constData());
+        }
+    }
+
+    {
+        QString err_msg;
         database->saveSmartAnnotationSettings(smart_annotation_->saveMap(), err_msg);
         if (!err_msg.isEmpty())
         {
@@ -612,6 +731,7 @@ void AdvancedSettings::save(database::SettingsDataBase *database)
 void AdvancedSettings::reset()
 {
     image_search_->reset();
+    roi_search_->reset();
     smart_annotation_->reset();
 }
 

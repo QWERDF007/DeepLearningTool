@@ -192,8 +192,13 @@ public:
     std::vector<int64_t> allImageIds() const override;
     QString              imagePath(int64_t image_id) const override;
     int64_t              imageDatasetId(int64_t image_id) const override;
+    std::vector<int64_t> allLabelIds() const override;
+    int64_t              labelImageId(int64_t label_id) const override;
+    QVariantMap          labelData(int64_t label_id) const override;
     void                 clearImageSearchResults() override;
     void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter) override;
+    void clearLabelSearchResults() override;
+    void setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter) override;
 
 private:
     struct PendingImportTask;

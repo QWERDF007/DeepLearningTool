@@ -14,6 +14,7 @@ QuiPopup {
     property DataManager dataManager
     property bool syncing: false
     property string lastSuggestedWeightsPath: ""
+    property var queryImageIds: []
 
     implicitWidth: 680
     implicitHeight: 720
@@ -58,6 +59,13 @@ QuiPopup {
     }
 
     function openForSearch() {
+        queryImageIds = []
+        resetDefaults()
+        open()
+    }
+
+    function openForImages(imageIds) {
+        queryImageIds = imageIds ? imageIds : []
         resetDefaults()
         open()
     }
@@ -167,21 +175,42 @@ QuiPopup {
         }
 
         persistSettings()
-        let started = controller.searchSelectedImages(
-                    selectedDatasetIds(),
-                    GlobalSettings.advanced.imageSearch.model,
-                    GlobalSettings.advanced.imageSearch.modelPath,
-                    GlobalSettings.advanced.imageSearch.featureName,
-                    GlobalSettings.advanced.imageSearch.rebuildIndex,
-                    GlobalSettings.advanced.imageSearch.topK,
-                    GlobalSettings.advanced.imageSearch.norm,
-                    GlobalSettings.advanced.imageSearch.preprocessBackend,
-                    GlobalSettings.advanced.imageSearch.faissBackend,
-                    GlobalSettings.advanced.imageSearch.indexStorage,
-                    GlobalSettings.advanced.imageSearch.diskBuildBatchSize,
-                    GlobalSettings.advanced.imageSearch.modelBatchSize,
-                    GlobalSettings.advanced.imageSearch.modelBackend,
-                    GlobalSettings.advanced.imageSearch.modelDevice)
+        let datasetIds = selectedDatasetIds()
+        let started = false
+        if (queryImageIds && queryImageIds.length > 0) {
+            started = controller.searchImages(
+                        queryImageIds,
+                        datasetIds,
+                        GlobalSettings.advanced.imageSearch.model,
+                        GlobalSettings.advanced.imageSearch.modelPath,
+                        GlobalSettings.advanced.imageSearch.featureName,
+                        GlobalSettings.advanced.imageSearch.rebuildIndex,
+                        GlobalSettings.advanced.imageSearch.topK,
+                        GlobalSettings.advanced.imageSearch.norm,
+                        GlobalSettings.advanced.imageSearch.preprocessBackend,
+                        GlobalSettings.advanced.imageSearch.faissBackend,
+                        GlobalSettings.advanced.imageSearch.indexStorage,
+                        GlobalSettings.advanced.imageSearch.diskBuildBatchSize,
+                        GlobalSettings.advanced.imageSearch.modelBatchSize,
+                        GlobalSettings.advanced.imageSearch.modelBackend,
+                        GlobalSettings.advanced.imageSearch.modelDevice)
+        } else {
+            started = controller.searchSelectedImages(
+                        datasetIds,
+                        GlobalSettings.advanced.imageSearch.model,
+                        GlobalSettings.advanced.imageSearch.modelPath,
+                        GlobalSettings.advanced.imageSearch.featureName,
+                        GlobalSettings.advanced.imageSearch.rebuildIndex,
+                        GlobalSettings.advanced.imageSearch.topK,
+                        GlobalSettings.advanced.imageSearch.norm,
+                        GlobalSettings.advanced.imageSearch.preprocessBackend,
+                        GlobalSettings.advanced.imageSearch.faissBackend,
+                        GlobalSettings.advanced.imageSearch.indexStorage,
+                        GlobalSettings.advanced.imageSearch.diskBuildBatchSize,
+                        GlobalSettings.advanced.imageSearch.modelBatchSize,
+                        GlobalSettings.advanced.imageSearch.modelBackend,
+                        GlobalSettings.advanced.imageSearch.modelDevice)
+        }
         if (started) {
             close()
         }

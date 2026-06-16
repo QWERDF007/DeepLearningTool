@@ -7,7 +7,6 @@
 
 #include <QDateTime>
 #include <QQmlEngine>
-
 #include <algorithm>
 #include <utility>
 
@@ -17,8 +16,8 @@ namespace {
 
 struct RegisteredModel
 {
-    int method{-1};
-    QString name;
+    int                        method{-1};
+    QString                    name;
     ModelManager::ModelFactory factory;
 };
 
@@ -58,9 +57,9 @@ void ModelManager::init()
     std::vector<QString> network_structures;
     std::vector<QString> training_results;
     std::vector<QString> test_results;
-    std::vector<qint64> ctimes;
-    std::vector<qint64> mtimes;
-    QString err_msg;
+    std::vector<qint64>  ctimes;
+    std::vector<qint64>  mtimes;
+    QString              err_msg;
 
     const bool ok = database_->getAllModels(model_ids, names, network_structures, training_results, test_results,
                                             ctimes, mtimes, err_msg);
@@ -124,19 +123,19 @@ QVariant ModelManager::data(const QModelIndex &index, int role) const
 QHash<int, QByteArray> ModelManager::roleNames() const
 {
     return {
-        {          ModelIdRole,          "model_id"},
-        {             NameRole,              "name"},
-        { NetworkStructureRole, "network_structure"},
-        {   TrainingResultRole,   "training_result"},
-        {       TestResultRole,       "test_result"},
-        {            CtimeRole,             "ctime"},
-        {            MtimeRole,             "mtime"},
+        {         ModelIdRole,          "model_id"},
+        {            NameRole,              "name"},
+        {NetworkStructureRole, "network_structure"},
+        {  TrainingResultRole,   "training_result"},
+        {      TestResultRole,       "test_result"},
+        {           CtimeRole,             "ctime"},
+        {           MtimeRole,             "mtime"},
     };
 }
 
 bool ModelManager::addModel(const QString &name, const QString &network_structure)
 {
-    const QString trimmed_name = name.trimmed();
+    const QString trimmed_name              = name.trimmed();
     const QString trimmed_network_structure = network_structure.trimmed();
     if (trimmed_name.isEmpty() || trimmed_network_structure.isEmpty())
     {
@@ -157,10 +156,10 @@ bool ModelManager::addModel(const QString &name, const QString &network_structur
         return false;
     }
 
-    QString err_msg;
-    int64_t model_id{-1};
+    QString      err_msg;
+    int64_t      model_id{-1};
     const qint64 now = QDateTime::currentSecsSinceEpoch();
-    const bool ok = database_->addModel(trimmed_name, trimmed_network_structure, now, now, model_id, err_msg);
+    const bool   ok  = database_->addModel(trimmed_name, trimmed_network_structure, now, now, model_id, err_msg);
     if (!ok)
     {
         spdlog::error("add model failed, name: {}, network: {}, error: {}", trimmed_name.toUtf8().constData(),
@@ -202,17 +201,16 @@ bool ModelManager::renameModel(const qint64 model_id, const QString &name)
         return false;
     }
 
-    QString err_msg;
+    QString      err_msg;
     const qint64 now = QDateTime::currentSecsSinceEpoch();
-    const bool ok = database_ != nullptr
-                        && database_->updateModelName(model_id, trimmed_name, now, err_msg);
+    const bool   ok  = database_ != nullptr && database_->updateModelName(model_id, trimmed_name, now, err_msg);
     if (!ok)
     {
         spdlog::error("rename model failed, id: {}, error: {}", model_id, err_msg.toUtf8().constData());
         return false;
     }
 
-    models_[row].name = trimmed_name;
+    models_[row].name  = trimmed_name;
     models_[row].mtime = now;
     emit dataChanged(index(row), index(row), {NameRole, MtimeRole});
     return true;
@@ -227,7 +225,7 @@ bool ModelManager::deleteModel(const qint64 model_id)
         return false;
     }
 
-    QString err_msg;
+    QString    err_msg;
     const bool ok = database_ != nullptr && database_->deleteModel(model_id, err_msg);
     if (!ok)
     {
@@ -252,13 +250,13 @@ bool ModelManager::copyModel(const qint64 model_id)
     }
 
     const ModelRecord &source = models_[row];
-    QString err_msg;
-    int64_t new_model_id{-1};
-    const qint64 now = QDateTime::currentSecsSinceEpoch();
-    const QString copied_name = uniqueCopyName(source.name);
-    const bool ok = database_ != nullptr
-                        && database_->addModel(copied_name, source.network_structure, source.training_result,
-                                               source.test_result, now, now, new_model_id, err_msg);
+    QString            err_msg;
+    int64_t            new_model_id{-1};
+    const qint64       now         = QDateTime::currentSecsSinceEpoch();
+    const QString      copied_name = uniqueCopyName(source.name);
+    const bool         ok          = database_ != nullptr
+                 && database_->addModel(copied_name, source.network_structure, source.training_result,
+                                        source.test_result, now, now, new_model_id, err_msg);
     if (!ok)
     {
         spdlog::error("copy model failed, id: {}, error: {}", model_id, err_msg.toUtf8().constData());
@@ -284,14 +282,14 @@ bool ModelManager::copyModel(const qint64 model_id)
         auto copied_model = createRegisteredModelInstance(source.network_structure);
         if (copied_model && copied_model->config() && source_found->second->config())
         {
-            ITrainParams *target_train_params = copied_model->config()->trainParams();
+            ITrainParams       *target_train_params = copied_model->config()->trainParams();
             const ITrainParams *source_train_params = source_found->second->config()->trainParams();
             if (target_train_params != nullptr && source_train_params != nullptr)
             {
                 target_train_params->copyValuesFrom(*source_train_params);
             }
 
-            ITestParams *target_test_params = copied_model->config()->testParams();
+            ITestParams       *target_test_params = copied_model->config()->testParams();
             const ITestParams *source_test_params = source_found->second->config()->testParams();
             if (target_test_params != nullptr && source_test_params != nullptr)
             {
@@ -326,13 +324,13 @@ QVariantMap ModelManager::modelAt(const int row) const
 
     const ModelRecord &model = models_.at(static_cast<size_t>(row));
     return {
-        {          QStringLiteral("model_id"), static_cast<qint64>(model.model_id)},
-        {              QStringLiteral("name"),                       model.name},
-        { QStringLiteral("network_structure"),          model.network_structure},
-        {   QStringLiteral("training_result"),            model.training_result},
-        {       QStringLiteral("test_result"),                model.test_result},
-        {             QStringLiteral("ctime"),                      model.ctime},
-        {             QStringLiteral("mtime"),                      model.mtime},
+        {         QStringLiteral("model_id"), static_cast<qint64>(model.model_id)},
+        {             QStringLiteral("name"),                          model.name},
+        {QStringLiteral("network_structure"),             model.network_structure},
+        {  QStringLiteral("training_result"),               model.training_result},
+        {      QStringLiteral("test_result"),                   model.test_result},
+        {            QStringLiteral("ctime"),                         model.ctime},
+        {            QStringLiteral("mtime"),                         model.mtime},
     };
 }
 
@@ -349,10 +347,10 @@ bool ModelManager::registerModel(const int method, const QString &type_name, Mod
         return false;
     }
 
-    auto &registry = modelRegistry();
-    const auto found = std::find_if(registry.begin(), registry.end(),
-                                    [method, &trimmed_type_name](const RegisteredModel &model)
-                                    { return model.method == method && model.name == trimmed_type_name; });
+    auto      &registry = modelRegistry();
+    const auto found
+        = std::find_if(registry.begin(), registry.end(), [method, &trimmed_type_name](const RegisteredModel &model)
+                       { return model.method == method && model.name == trimmed_type_name; });
     if (found != registry.end())
     {
         return false;
@@ -390,8 +388,7 @@ QStringList ModelManager::registeredModelNames()
 std::unique_ptr<IModel> ModelManager::createRegisteredModel(const int method, const QString &type_name)
 {
     const auto &registry = modelRegistry();
-    const auto found = std::find_if(registry.begin(), registry.end(),
-                                    [method, &type_name](const RegisteredModel &model)
+    const auto found = std::find_if(registry.begin(), registry.end(), [method, &type_name](const RegisteredModel &model)
                                     { return (method < 0 || model.method == method) && model.name == type_name; });
     if (found == registry.end() || !found->factory)
     {
@@ -408,7 +405,7 @@ std::unique_ptr<IModel> ModelManager::createRegisteredModel(const QString &type_
 std::vector<std::unique_ptr<IModel>> ModelManager::registeredModels(const int method)
 {
     std::vector<std::unique_ptr<IModel>> models;
-    const auto &registry = modelRegistry();
+    const auto                          &registry = modelRegistry();
     models.reserve(registry.size());
     for (const RegisteredModel &model : registry)
     {
@@ -447,10 +444,10 @@ int ModelManager::indexOfModel(const int64_t model_id) const
 
 QString ModelManager::uniqueCopyName(const QString &name) const
 {
-    const QString base = QStringLiteral("%1 Copy").arg(name);
-    QString candidate = base;
-    int suffix = 2;
-    auto exists = [this](const QString &candidate_name)
+    const QString base      = QString("%1 Copy").arg(name);
+    QString       candidate = base;
+    int           suffix    = 2;
+    auto          exists    = [this](const QString &candidate_name)
     {
         return std::any_of(models_.begin(), models_.end(),
                            [&candidate_name](const ModelRecord &model) { return model.name == candidate_name; });
@@ -458,7 +455,7 @@ QString ModelManager::uniqueCopyName(const QString &name) const
 
     while (exists(candidate))
     {
-        candidate = QStringLiteral("%1 %2").arg(base).arg(suffix++);
+        candidate = QString("%1 %2").arg(base).arg(suffix++);
     }
     return candidate;
 }
@@ -507,13 +504,13 @@ QVariant ModelManager::getNetworkStructure(const QModelIndex &index) const
 QVariant ModelManager::getTrainingResult(const QModelIndex &index) const
 {
     const QString &value = models_.at(index.row()).training_result;
-    return value.isEmpty() ? QStringLiteral("\u672a\u8bad\u7ec3") : value;
+    return value.isEmpty() ? QString("未训练") : value;
 }
 
 QVariant ModelManager::getTestResult(const QModelIndex &index) const
 {
     const QString &value = models_.at(index.row()).test_result;
-    return value.isEmpty() ? QStringLiteral("\u672a\u6d4b\u8bd5") : value;
+    return value.isEmpty() ? QString("未测试") : value;
 }
 
 QVariant ModelManager::getCtime(const QModelIndex &index) const

@@ -6,9 +6,9 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-
 #include <algorithm>
 #include <map>
+
 
 namespace dltool::data {
 
@@ -18,22 +18,22 @@ QString uniqueLabelMeImageName(const QString &source_path, int64_t stable_id, co
                                const std::map<QString, int> &used_stems)
 {
     const QFileInfo file_info(source_path);
-    const QString   suffix = file_info.suffix().isEmpty() ? QString() : QStringLiteral(".%1").arg(file_info.suffix());
-    const QString   stem = file_info.completeBaseName().isEmpty() ? QString::number(stable_id)
-                                                                  : file_info.completeBaseName();
-    QString         candidate = QStringLiteral("%1%2").arg(stem, suffix);
+    const QString   suffix = file_info.suffix().isEmpty() ? QString() : QString(".%1").arg(file_info.suffix());
+    const QString   stem
+        = file_info.completeBaseName().isEmpty() ? QString::number(stable_id) : file_info.completeBaseName();
+    QString candidate = QString("%1%2").arg(stem, suffix);
     if (used_names.find(candidate) == used_names.end() && used_stems.find(stem) == used_stems.end())
     {
         return candidate;
     }
 
-    QString candidate_stem = QStringLiteral("%1_%2").arg(stem).arg(stable_id);
-    candidate              = QStringLiteral("%1%2").arg(candidate_stem, suffix);
+    QString candidate_stem = QString("%1_%2").arg(stem).arg(stable_id);
+    candidate              = QString("%1%2").arg(candidate_stem, suffix);
     int index              = 1;
     while (used_names.find(candidate) != used_names.end() || used_stems.find(candidate_stem) != used_stems.end())
     {
-        candidate_stem = QStringLiteral("%1_%2_%3").arg(stem).arg(stable_id).arg(index++);
-        candidate      = QStringLiteral("%1%2").arg(candidate_stem, suffix);
+        candidate_stem = QString("%1_%2_%3").arg(stem).arg(stable_id).arg(index++);
+        candidate      = QString("%1%2").arg(candidate_stem, suffix);
     }
     return candidate;
 }
@@ -65,7 +65,7 @@ void LabelMeExporter::doExport(ExportDataset dataset, QString output_dir)
 {
     try
     {
-        QString err_msg;
+        QString       err_msg;
         const QString images_dir      = QDir(output_dir).filePath(QStringLiteral("images"));
         const QString annotations_dir = QDir(output_dir).filePath(QStringLiteral("annotations"));
         if (!DatasetIO::ensureDirectory(images_dir, err_msg) || !DatasetIO::ensureDirectory(annotations_dir, err_msg))
@@ -77,7 +77,7 @@ void LabelMeExporter::doExport(ExportDataset dataset, QString output_dir)
         std::map<QString, int>     used_image_names;
         std::map<QString, int>     used_image_stems;
         std::map<int64_t, QString> image_name_by_id;
-        const int image_count = static_cast<int>(dataset.images.size());
+        const int                  image_count = static_cast<int>(dataset.images.size());
 
         for (int i = 0; i < image_count; ++i)
         {
@@ -98,7 +98,7 @@ void LabelMeExporter::doExport(ExportDataset dataset, QString output_dir)
             if ((i + 1) % std::max(1, image_count / 10) == 0 || i + 1 == image_count)
             {
                 updateProgress((i + 1) * 45 / std::max(1, image_count),
-                               QStringLiteral("已复制图像 %1/%2").arg(i + 1).arg(image_count));
+                               QString("已复制图像 %1/%2").arg(i + 1).arg(image_count));
             }
         }
 
@@ -116,7 +116,7 @@ void LabelMeExporter::doExport(ExportDataset dataset, QString output_dir)
 
         for (int i = 0; i < image_count; ++i)
         {
-            const ExportImage &image = dataset.images[i];
+            const ExportImage &image      = dataset.images[i];
             const QString      image_name = image_name_by_id[image.image_id];
 
             nlohmann::json json_data;
@@ -145,7 +145,8 @@ void LabelMeExporter::doExport(ExportDataset dataset, QString output_dir)
                 shape["description"] = "";
                 shape["flags"]       = nlohmann::json::object();
 
-                const std::vector<QPointF> points = DatasetIO::variantListToPoints(label.data.value(QStringLiteral("points")));
+                const std::vector<QPointF> points
+                    = DatasetIO::variantListToPoints(label.data.value(QStringLiteral("points")));
                 if (points.size() >= 3)
                 {
                     nlohmann::json point_array = nlohmann::json::array();
@@ -158,18 +159,20 @@ void LabelMeExporter::doExport(ExportDataset dataset, QString output_dir)
                 }
                 else
                 {
-                    shape["points"]     = {{x, y}, {x + w, y + h}};
+                    shape["points"] = {
+                        {    x,     y},
+                        {x + w, y + h}
+                    };
                     shape["shape_type"] = "rectangle";
                 }
                 json_data["shapes"].push_back(shape);
             }
 
-            const QString annotation_name
-                = QStringLiteral("%1.json").arg(QFileInfo(image_name).completeBaseName());
-            QFile annotation_file(QDir(annotations_dir).filePath(annotation_name));
+            const QString annotation_name = QString("%1.json").arg(QFileInfo(image_name).completeBaseName());
+            QFile         annotation_file(QDir(annotations_dir).filePath(annotation_name));
             if (!annotation_file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
             {
-                emit exportFinished(false, QStringLiteral("无法写入标注文件: %1").arg(annotation_file.fileName()));
+                emit exportFinished(false, QString("无法写入标注文件: %1").arg(annotation_file.fileName()));
                 return;
             }
 
@@ -179,18 +182,18 @@ void LabelMeExporter::doExport(ExportDataset dataset, QString output_dir)
             const int progress = 45 + (i + 1) * 55 / std::max(1, image_count);
             if ((i + 1) % std::max(1, image_count / 10) == 0 || i + 1 == image_count)
             {
-                updateProgress(progress, QStringLiteral("已写入 LabelMe 标注 %1/%2").arg(i + 1).arg(image_count));
+                updateProgress(progress, QString("已写入 LabelMe 标注 %1/%2").arg(i + 1).arg(image_count));
             }
         }
 
-        emit exportFinished(true, QStringLiteral("LabelMe 导出完成: %1 个图像, %2 个标注")
-                                      .arg(dataset.images.size())
-                                      .arg(dataset.labels.size()));
+        emit exportFinished(
+            true,
+            QString("LabelMe 导出完成: %1 个图像, %2 个标注").arg(dataset.images.size()).arg(dataset.labels.size()));
     }
     catch (const std::exception &e)
     {
         spdlog::error("LabelMe 导出失败: {}", e.what());
-        emit exportFinished(false, QStringLiteral("LabelMe 导出失败: %1").arg(e.what()));
+        emit exportFinished(false, QString("LabelMe 导出失败: %1").arg(e.what()));
     }
 }
 

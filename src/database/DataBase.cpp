@@ -2,21 +2,22 @@
 
 #include "database/SqlDef.h"
 #include "database/ddl/DatasetsTable.h"
+#include "database/ddl/FeatureSearchSettingsTable.h"
+#include "database/ddl/ImageEnhanceSettingsTable.h"
 #include "database/ddl/ImagesTable.h"
 #include "database/ddl/LabelClassesTable.h"
+#include "database/ddl/LabelDisplaySettingsTable.h"
 #include "database/ddl/LabelsTable.h"
 #include "database/ddl/ModelsTable.h"
+#include "database/ddl/ProjectSettingsTable.h"
 #include "database/ddl/ProjectTable.h"
 #include "database/ddl/RecentProjectsTable.h"
+#include "database/ddl/RoiSearchSettingsTable.h"
 #include "database/ddl/SmartAnnotationSettingsTable.h"
 #include "database/ddl/TagClassesTable.h"
 #include "database/ddl/TagsTable.h"
-#include "database/ddl/FeatureSearchSettingsTable.h"
 #include "database/ddl/ThumbnailSettingsTable.h"
-#include "database/ddl/LabelDisplaySettingsTable.h"
-#include "database/ddl/ImageEnhanceSettingsTable.h"
 #include "database/ddl/UiSettingsTable.h"
-#include "database/ddl/ProjectSettingsTable.h"
 
 #include <sqlpp11/sqlpp11.h>
 
@@ -27,25 +28,26 @@
 #include <QFileInfo>
 #include <QMetaType>
 
+
 namespace dltool::database {
 
-const auto ProjectTable         = Project{};
-const auto RectentProjectsTable = RecentProjects{};
-const auto ImagesTable          = Images{};
-const auto DatasetsTable        = Datasets{};
-const auto LabelClassesTable    = LabelClasses{};
-const auto LabelsTable          = Labels{};
-const auto TagClassesTable      = TagClasses{};
+const auto ProjectTable                 = Project{};
+const auto RectentProjectsTable         = RecentProjects{};
+const auto ImagesTable                  = Images{};
+const auto DatasetsTable                = Datasets{};
+const auto LabelClassesTable            = LabelClasses{};
+const auto LabelsTable                  = Labels{};
+const auto TagClassesTable              = TagClasses{};
 const auto TagsTable                    = Tags{};
 const auto ModelsTable                  = Models{};
-const auto FeatureSearchSettingsTable    = FeatureSearchSettings{};
-const auto SmartAnnotationSettingsTable  = SmartAnnotationSettings{};
-const auto ThumbnailSettingsTable        = ThumbnailSettings{};
-const auto LabelDisplaySettingsTable     = LabelDisplaySettings{};
-const auto ImageEnhanceSettingsTable     = ImageEnhanceSettings{};
-const auto UiSettingsTable               = UiSettings{};
-const auto ProjectSettingsTable          = ProjectSettings{};
-
+const auto FeatureSearchSettingsTable   = FeatureSearchSettings{};
+const auto RoiSearchSettingsTable       = RoiSearchSettings{};
+const auto SmartAnnotationSettingsTable = SmartAnnotationSettings{};
+const auto ThumbnailSettingsTable       = ThumbnailSettings{};
+const auto LabelDisplaySettingsTable    = LabelDisplaySettings{};
+const auto ImageEnhanceSettingsTable    = ImageEnhanceSettings{};
+const auto UiSettingsTable              = UiSettings{};
+const auto ProjectSettingsTable         = ProjectSettings{};
 
 DataBase::DataBase(const QString &path, QObject *parent)
     : QObject(parent)
@@ -71,7 +73,7 @@ sqlpp::sqlite3::connection DataBase::connect(const QString &path, const int flag
 QString DataBase::applicationDatabasePath(const QString &fileName)
 {
     const QDir app_dir(QCoreApplication::applicationDirPath());
-    return app_dir.filePath(QStringLiteral("db/%1").arg(fileName));
+    return app_dir.filePath(QString("db/%1").arg(fileName));
 }
 
 bool DataBase::checkIntegrity(QString &err_msg) const
@@ -81,7 +83,7 @@ bool DataBase::checkIntegrity(QString &err_msg) const
     if (rc != SQLITE_OK)
     {
         const char *sqlite_message = db != nullptr ? sqlite3_errmsg(db) : "数据库句柄为空";
-        err_msg = QStringLiteral("无法打开数据库: %1").arg(QString::fromUtf8(sqlite_message));
+        err_msg                    = QString("无法打开数据库: %1").arg(QString::fromUtf8(sqlite_message));
         if (db != nullptr)
         {
             sqlite3_close(db);
@@ -90,10 +92,10 @@ bool DataBase::checkIntegrity(QString &err_msg) const
     }
 
     sqlite3_stmt *stmt = nullptr;
-    rc = sqlite3_prepare_v2(db, "PRAGMA quick_check", -1, &stmt, nullptr);
+    rc                 = sqlite3_prepare_v2(db, "PRAGMA quick_check", -1, &stmt, nullptr);
     if (rc != SQLITE_OK)
     {
-        err_msg = QStringLiteral("无法检查数据库: %1").arg(QString::fromUtf8(sqlite3_errmsg(db)));
+        err_msg = QString("无法检查数据库: %1").arg(QString::fromUtf8(sqlite3_errmsg(db)));
         sqlite3_close(db);
         return false;
     }
@@ -113,7 +115,7 @@ bool DataBase::checkIntegrity(QString &err_msg) const
 
     if (ok && rc != SQLITE_DONE)
     {
-        err_msg = QStringLiteral("数据库检查失败: %1").arg(QString::fromUtf8(sqlite3_errmsg(db)));
+        err_msg = QString("数据库检查失败: %1").arg(QString::fromUtf8(sqlite3_errmsg(db)));
         ok      = false;
     }
 
@@ -1020,9 +1022,9 @@ bool ProjectDataBase::deleteImagesTagsByTagsId(const std::vector<int64_t> &tag_i
 }
 
 bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<QString> &names,
-                                   std::vector<QString> &network_structures,
-                                   std::vector<QString> &training_results, std::vector<QString> &test_results,
-                                   std::vector<qint64> &ctimes, std::vector<qint64> &mtimes, QString &err_msg) const
+                                   std::vector<QString> &network_structures, std::vector<QString> &training_results,
+                                   std::vector<QString> &test_results, std::vector<qint64> &ctimes,
+                                   std::vector<qint64> &mtimes, QString &err_msg) const
 {
     try
     {
@@ -1042,12 +1044,12 @@ bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<
 
         auto db = pool_->get();
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
-        auto data = db(sqlpp::select(ModelsTable.id, ModelsTable.name, ModelsTable.networkStructure,
-                                     ModelsTable.trainingResult, ModelsTable.testResult, ModelsTable.ctime,
-                                     ModelsTable.mtime)
-                           .from(ModelsTable)
-                           .unconditionally()
-                           .order_by(ModelsTable.id.asc()));
+        auto data
+            = db(sqlpp::select(ModelsTable.id, ModelsTable.name, ModelsTable.networkStructure,
+                               ModelsTable.trainingResult, ModelsTable.testResult, ModelsTable.ctime, ModelsTable.mtime)
+                     .from(ModelsTable)
+                     .unconditionally()
+                     .order_by(ModelsTable.id.asc()));
         for (const auto &row : data)
         {
             model_ids.emplace_back(row.id);
@@ -1088,14 +1090,14 @@ bool ProjectDataBase::addModel(const QString &name, const QString &network_struc
         auto db = pool_->get();
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
 
-        const QByteArray name_bytes = name.toUtf8();
+        const QByteArray name_bytes              = name.toUtf8();
         const QByteArray network_structure_bytes = network_structure.toUtf8();
-        const QByteArray training_result_bytes = training_result.toUtf8();
-        const QByteArray test_result_bytes = test_result.toUtf8();
+        const QByteArray training_result_bytes   = training_result.toUtf8();
+        const QByteArray test_result_bytes       = test_result.toUtf8();
         db(sqlpp::insert_into(ModelsTable)
-               .set(ModelsTable.name = name_bytes.constData(),
+               .set(ModelsTable.name             = name_bytes.constData(),
                     ModelsTable.networkStructure = network_structure_bytes.constData(),
-                    ModelsTable.trainingResult = training_result_bytes.constData(),
+                    ModelsTable.trainingResult   = training_result_bytes.constData(),
                     ModelsTable.testResult = test_result_bytes.constData(), ModelsTable.ctime = ctime,
                     ModelsTable.mtime = mtime));
         model_id = static_cast<int64_t>(db.last_insert_id());
@@ -1205,7 +1207,7 @@ bool ProjectDataBase::addLabels(const std::vector<int64_t> &image_ids, const std
     if (image_ids.size() != label_class_ids.size() || image_ids.size() != label_types.size()
         || image_ids.size() != labels_data.size())
     {
-        err_msg = QStringLiteral("标注写入参数数量不一致: image_ids=%1, label_class_ids=%2, label_types=%3, labels=%4")
+        err_msg = QString("标注写入参数数量不一致: image_ids=%1, label_class_ids=%2, label_types=%3, labels=%4")
                       .arg(image_ids.size())
                       .arg(label_class_ids.size())
                       .arg(label_types.size())
@@ -1217,11 +1219,12 @@ bool ProjectDataBase::addLabels(const std::vector<int64_t> &image_ids, const std
     auto tx = sqlpp::start_transaction(db);
     try
     {
-        auto prepared_insert = db.prepare(sqlpp::insert_into(LabelsTable)
-                                              .set(LabelsTable.imageId      = sqlpp::parameter(LabelsTable.imageId),
-                                                   LabelsTable.labelClassId = sqlpp::parameter(LabelsTable.labelClassId),
-                                                   LabelsTable.regionType   = sqlpp::parameter(LabelsTable.regionType),
-                                                   LabelsTable.region       = sqlpp::parameter(LabelsTable.region)));
+        auto prepared_insert
+            = db.prepare(sqlpp::insert_into(LabelsTable)
+                             .set(LabelsTable.imageId      = sqlpp::parameter(LabelsTable.imageId),
+                                  LabelsTable.labelClassId = sqlpp::parameter(LabelsTable.labelClassId),
+                                  LabelsTable.regionType   = sqlpp::parameter(LabelsTable.regionType),
+                                  LabelsTable.region       = sqlpp::parameter(LabelsTable.region)));
 
         for (size_t i = 0; i < image_ids.size(); ++i)
         {
@@ -1253,9 +1256,8 @@ bool ProjectDataBase::updateLabelsData(const std::vector<int64_t>              &
     }
     if (label_ids.size() != labels_data.size())
     {
-        err_msg = QStringLiteral("标注更新参数数量不一致: label_ids=%1, labels=%2")
-                      .arg(label_ids.size())
-                      .arg(labels_data.size());
+        err_msg
+            = QString("标注更新参数数量不一致: label_ids=%1, labels=%2").arg(label_ids.size()).arg(labels_data.size());
         return false;
     }
 
@@ -1417,6 +1419,7 @@ SettingsDataBase::SettingsDataBase(const QString &path, QObject *parent)
     {
         auto db = pool_->get();
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateFeatureSearchSettings));
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateRoiSearchSettings));
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateSmartAnnotationSettings));
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateThumbnailSettings));
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateLabelDisplaySettings));
@@ -1440,9 +1443,8 @@ inline std::string variantToText(const QVariant &v)
 }
 
 /// 每个 key-value 表通用的 save 逻辑
-template <typename Table>
-bool saveSettingsKV(sqlpp::sqlite3::connection_pool *pool, const Table &table,
-                    const QVariantMap &row, QString &err_msg)
+template<typename Table>
+bool saveSettingsKV(sqlpp::sqlite3::connection_pool *pool, const Table &table, const QVariantMap &row, QString &err_msg)
 {
     if (!pool)
         return false;
@@ -1475,56 +1477,104 @@ bool saveSettingsKV(sqlpp::sqlite3::connection_pool *pool, const Table &table,
 // ── Load / save (key-value 表，每表结构相同) ──
 
 // 宏：简化重复的 sqlpp11 select all rows 代码
-#define LOAD_SETTINGS_KV(pool, table, err_msg)                                         \
-    [&]() -> QVariantMap {                                                             \
-        QVariantMap result;                                                            \
-        if (!(pool))                                                                   \
-            return result;                                                             \
-        try {                                                                          \
-            auto db   = (pool)->get();                                                 \
-            auto rows = db(sqlpp::select(all_of(table)).from(table).unconditionally());                  \
-            for (const auto &row : rows)                                               \
-                result.insert(QString::fromStdString(row.key),                         \
-                              QString::fromStdString(row.value));                      \
-        } catch (const std::exception &e) {                                            \
-            err_msg = e.what();                                                        \
-        }                                                                              \
-        return result;                                                                 \
+#define LOAD_SETTINGS_KV(pool, table, err_msg)                                                     \
+    [&]() -> QVariantMap                                                                           \
+    {                                                                                              \
+        QVariantMap result;                                                                        \
+        if (!(pool))                                                                               \
+            return result;                                                                         \
+        try                                                                                        \
+        {                                                                                          \
+            auto db   = (pool)->get();                                                             \
+            auto rows = db(sqlpp::select(all_of(table)).from(table).unconditionally());            \
+            for (const auto &row : rows)                                                           \
+                result.insert(QString::fromStdString(row.key), QString::fromStdString(row.value)); \
+        }                                                                                          \
+        catch (const std::exception &e)                                                            \
+        {                                                                                          \
+            err_msg = e.what();                                                                    \
+        }                                                                                          \
+        return result;                                                                             \
     }()
 
 QVariantMap SettingsDataBase::loadFeatureSearchSettings(QString &err_msg) const
-{ return LOAD_SETTINGS_KV(pool_, FeatureSearchSettingsTable, err_msg); }
+{
+    return LOAD_SETTINGS_KV(pool_, FeatureSearchSettingsTable, err_msg);
+}
+
 bool SettingsDataBase::saveFeatureSearchSettings(const QVariantMap &row, QString &err_msg) const
-{ return saveSettingsKV(pool_, FeatureSearchSettingsTable, row, err_msg); }
+{
+    return saveSettingsKV(pool_, FeatureSearchSettingsTable, row, err_msg);
+}
+
+QVariantMap SettingsDataBase::loadRoiSearchSettings(QString &err_msg) const
+{
+    return LOAD_SETTINGS_KV(pool_, RoiSearchSettingsTable, err_msg);
+}
+
+bool SettingsDataBase::saveRoiSearchSettings(const QVariantMap &row, QString &err_msg) const
+{
+    return saveSettingsKV(pool_, RoiSearchSettingsTable, row, err_msg);
+}
 
 QVariantMap SettingsDataBase::loadSmartAnnotationSettings(QString &err_msg) const
-{ return LOAD_SETTINGS_KV(pool_, SmartAnnotationSettingsTable, err_msg); }
+{
+    return LOAD_SETTINGS_KV(pool_, SmartAnnotationSettingsTable, err_msg);
+}
+
 bool SettingsDataBase::saveSmartAnnotationSettings(const QVariantMap &row, QString &err_msg) const
-{ return saveSettingsKV(pool_, SmartAnnotationSettingsTable, row, err_msg); }
+{
+    return saveSettingsKV(pool_, SmartAnnotationSettingsTable, row, err_msg);
+}
 
 QVariantMap SettingsDataBase::loadThumbnailSettings(QString &err_msg) const
-{ return LOAD_SETTINGS_KV(pool_, ThumbnailSettingsTable, err_msg); }
+{
+    return LOAD_SETTINGS_KV(pool_, ThumbnailSettingsTable, err_msg);
+}
+
 bool SettingsDataBase::saveThumbnailSettings(const QVariantMap &row, QString &err_msg) const
-{ return saveSettingsKV(pool_, ThumbnailSettingsTable, row, err_msg); }
+{
+    return saveSettingsKV(pool_, ThumbnailSettingsTable, row, err_msg);
+}
 
 QVariantMap SettingsDataBase::loadLabelDisplaySettings(QString &err_msg) const
-{ return LOAD_SETTINGS_KV(pool_, LabelDisplaySettingsTable, err_msg); }
+{
+    return LOAD_SETTINGS_KV(pool_, LabelDisplaySettingsTable, err_msg);
+}
+
 bool SettingsDataBase::saveLabelDisplaySettings(const QVariantMap &row, QString &err_msg) const
-{ return saveSettingsKV(pool_, LabelDisplaySettingsTable, row, err_msg); }
+{
+    return saveSettingsKV(pool_, LabelDisplaySettingsTable, row, err_msg);
+}
 
 QVariantMap SettingsDataBase::loadImageEnhanceSettings(QString &err_msg) const
-{ return LOAD_SETTINGS_KV(pool_, ImageEnhanceSettingsTable, err_msg); }
+{
+    return LOAD_SETTINGS_KV(pool_, ImageEnhanceSettingsTable, err_msg);
+}
+
 bool SettingsDataBase::saveImageEnhanceSettings(const QVariantMap &row, QString &err_msg) const
-{ return saveSettingsKV(pool_, ImageEnhanceSettingsTable, row, err_msg); }
+{
+    return saveSettingsKV(pool_, ImageEnhanceSettingsTable, row, err_msg);
+}
 
 QVariantMap SettingsDataBase::loadUiSettings(QString &err_msg) const
-{ return LOAD_SETTINGS_KV(pool_, UiSettingsTable, err_msg); }
+{
+    return LOAD_SETTINGS_KV(pool_, UiSettingsTable, err_msg);
+}
+
 bool SettingsDataBase::saveUiSettings(const QVariantMap &row, QString &err_msg) const
-{ return saveSettingsKV(pool_, UiSettingsTable, row, err_msg); }
+{
+    return saveSettingsKV(pool_, UiSettingsTable, row, err_msg);
+}
 
 QVariantMap SettingsDataBase::loadProjectSettings(QString &err_msg) const
-{ return LOAD_SETTINGS_KV(pool_, ProjectSettingsTable, err_msg); }
+{
+    return LOAD_SETTINGS_KV(pool_, ProjectSettingsTable, err_msg);
+}
+
 bool SettingsDataBase::saveProjectSettings(const QVariantMap &row, QString &err_msg) const
-{ return saveSettingsKV(pool_, ProjectSettingsTable, row, err_msg); }
+{
+    return saveSettingsKV(pool_, ProjectSettingsTable, row, err_msg);
+}
 
 } // namespace dltool::database

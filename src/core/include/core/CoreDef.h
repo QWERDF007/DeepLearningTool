@@ -1,14 +1,13 @@
 #pragma once
 
-#include "dltool/core/Export.h"
 #include "common/Singleton.h"
+#include "dltool/core/Export.h"
 
 #include <QList>
 #include <QObject>
 #include <QString>
-#include <QtQml>
 #include <QVariantMap>
-
+#include <QtQml>
 #include <unordered_map>
 
 namespace dltool::core {
@@ -82,19 +81,19 @@ private:
     };
 
     inline static const QList<QVariantMap> MethodsList{
-        QVariantMap{{"name", QStringLiteral("图像分类")}, {"method", Method::Classification}},
-        QVariantMap{{"name", QStringLiteral("目标检测")}, {"method", Method::Detection}},
-        QVariantMap{{"name", QStringLiteral("语义分割")}, {"method", Method::Segmentation}},
-        QVariantMap{{"name", QStringLiteral("姿态检测")}, {"method", Method::Pose}},
-        QVariantMap{{"name", QStringLiteral("OCR")}, {"method", Method::OCR}},
+        QVariantMap{{"name", QString("图像分类")}, {"method", Method::Classification}},
+        QVariantMap{{"name", QString("目标检测")},      {"method", Method::Detection}},
+        QVariantMap{{"name", QString("语义分割")},   {"method", Method::Segmentation}},
+        QVariantMap{{"name", QString("姿态检测")},           {"method", Method::Pose}},
+        QVariantMap{     {"name", QString("OCR")},            {"method", Method::OCR}},
     };
 
     inline static const std::unordered_map<int, QString> MethodToName = {
-        {Method::Classification, QStringLiteral("图像分类")},
-        {     Method::Detection, QStringLiteral("目标检测")},
-        {  Method::Segmentation, QStringLiteral("语义分割")},
-        {          Method::Pose, QStringLiteral("姿态检测")},
-        {           Method::OCR, QStringLiteral("OCR")},
+        {Method::Classification, QString("图像分类")},
+        {     Method::Detection, QString("目标检测")},
+        {  Method::Segmentation, QString("语义分割")},
+        {          Method::Pose, QString("姿态检测")},
+        {           Method::OCR,      QString("OCR")},
     };
 };
 

@@ -199,6 +199,85 @@ private:
     QHash<QString, QStringList> custom_feature_names_;
 };
 
+class SETTINGS_API RoiSearchSettings : public ImageSearchSettings
+{
+    Q_OBJECT
+    QML_NAMED_ELEMENT(RoiSearchSettings)
+    QML_UNCREATABLE("RoiSearchSettings is managed by AdvancedSettings")
+
+    Q_PROPERTY(int pooledHeight READ pooledHeight WRITE setPooledHeight NOTIFY pooledHeightChanged)
+    Q_PROPERTY(int pooledWidth READ pooledWidth WRITE setPooledWidth NOTIFY pooledWidthChanged)
+    Q_PROPERTY(int samplingRatio READ samplingRatio WRITE setSamplingRatio NOTIFY samplingRatioChanged)
+    Q_PROPERTY(bool aligned READ aligned WRITE setAligned NOTIFY alignedChanged)
+    Q_PROPERTY(bool usePca READ usePca WRITE setUsePca NOTIFY usePcaChanged)
+    Q_PROPERTY(int pcaDim READ pcaDim WRITE setPcaDim NOTIFY pcaDimChanged)
+
+public:
+    explicit RoiSearchSettings(QObject *parent = nullptr);
+    ~RoiSearchSettings() override;
+
+    int pooledHeight() const
+    {
+        return roi_.pooled_height;
+    }
+    void setPooledHeight(int value);
+
+    int pooledWidth() const
+    {
+        return roi_.pooled_width;
+    }
+    void setPooledWidth(int value);
+
+    int samplingRatio() const
+    {
+        return roi_.sampling_ratio;
+    }
+    void setSamplingRatio(int value);
+
+    bool aligned() const
+    {
+        return roi_.aligned;
+    }
+    void setAligned(bool value);
+
+    bool usePca() const
+    {
+        return roi_.use_pca;
+    }
+    void setUsePca(bool value);
+
+    int pcaDim() const
+    {
+        return roi_.pca_dim;
+    }
+    void setPcaDim(int value);
+
+    void        load(const QVariantMap &row);
+    QVariantMap saveMap() const;
+    void        reset();
+
+signals:
+    void pooledHeightChanged();
+    void pooledWidthChanged();
+    void samplingRatioChanged();
+    void alignedChanged();
+    void usePcaChanged();
+    void pcaDimChanged();
+
+private:
+    struct RoiAlignSettings
+    {
+        int  pooled_height{7};
+        int  pooled_width{7};
+        int  sampling_ratio{-1};
+        bool aligned{false};
+        bool use_pca{false};
+        int  pca_dim{0};
+    };
+
+    RoiAlignSettings roi_;
+};
+
 class SETTINGS_API SmartAnnotationSettings : public QObject
 {
     Q_OBJECT
@@ -328,6 +407,7 @@ class SETTINGS_API AdvancedSettings : public QObject
     QML_UNCREATABLE("AdvancedSettings is managed by GlobalSettings")
 
     Q_PROPERTY(ImageSearchSettings *imageSearch READ imageSearch CONSTANT)
+    Q_PROPERTY(RoiSearchSettings *roiSearch READ roiSearch CONSTANT)
     Q_PROPERTY(SmartAnnotationSettings *smartAnnotation READ smartAnnotation CONSTANT)
 
 public:
@@ -337,6 +417,11 @@ public:
     ImageSearchSettings *imageSearch() const
     {
         return image_search_;
+    }
+
+    RoiSearchSettings *roiSearch() const
+    {
+        return roi_search_;
     }
 
     SmartAnnotationSettings *smartAnnotation() const
@@ -350,6 +435,7 @@ public:
 
 private:
     ImageSearchSettings     *image_search_{nullptr};
+    RoiSearchSettings       *roi_search_{nullptr};
     SmartAnnotationSettings *smart_annotation_{nullptr};
 };
 

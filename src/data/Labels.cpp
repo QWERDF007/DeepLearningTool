@@ -177,7 +177,7 @@ bool LabelInstancesListModel::tryAddLabels(std::vector<int64_t> &label_ids, cons
 
     if (database_ == nullptr || image_instances_ == nullptr || label_data_helper_ == nullptr)
     {
-        const QString message = QStringLiteral("数据库、图像列表或标签数据工厂未初始化");
+        const QString message = QString("数据库、图像列表或标签数据工厂未初始化");
         if (err_msg != nullptr)
         {
             *err_msg = message;
@@ -188,7 +188,7 @@ bool LabelInstancesListModel::tryAddLabels(std::vector<int64_t> &label_ids, cons
 
     if (image_ids.size() != label_class_ids.size() || image_ids.size() != data.size())
     {
-        const QString message = QStringLiteral("image_ids=%1, label_class_ids=%2, data=%3 数量不一致")
+        const QString message = QString("image_ids=%1, label_class_ids=%2, data=%3 数量不一致")
                                     .arg(image_ids.size())
                                     .arg(label_class_ids.size())
                                     .arg(data.size());
@@ -204,7 +204,7 @@ bool LabelInstancesListModel::tryAddLabels(std::vector<int64_t> &label_ids, cons
     {
         if (image_instances_->getImageInstance(image_id) == nullptr)
         {
-            const QString message = QStringLiteral("图像实例不存在, image_id=%1").arg(image_id);
+            const QString message = QString("图像实例不存在, image_id=%1").arg(image_id);
             if (err_msg != nullptr)
             {
                 *err_msg = message;
@@ -217,9 +217,8 @@ bool LabelInstancesListModel::tryAddLabels(std::vector<int64_t> &label_ids, cons
     addLabels(label_ids, image_ids, label_class_ids, data, err_msg);
     if (label_ids.size() != image_ids.size())
     {
-        const QString message = QStringLiteral("写入后的标签 ID 数量 %1 与图像 ID 数量 %2 不一致")
-                                    .arg(label_ids.size())
-                                    .arg(image_ids.size());
+        const QString message
+            = QString("写入后的标签 ID 数量 %1 与图像 ID 数量 %2 不一致").arg(label_ids.size()).arg(image_ids.size());
         if (err_msg != nullptr && err_msg->isEmpty())
         {
             *err_msg = message;
@@ -240,7 +239,7 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
 
     if (database_ == nullptr)
     {
-        const QString message = QStringLiteral("数据库未初始化");
+        const QString message = QString("数据库未初始化");
         if (err_msg != nullptr)
         {
             *err_msg = message;
@@ -250,7 +249,7 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
     }
     if (image_instances_ == nullptr)
     {
-        const QString message = QStringLiteral("图像实例列表未初始化");
+        const QString message = QString("图像实例列表未初始化");
         if (err_msg != nullptr)
         {
             *err_msg = message;
@@ -261,7 +260,7 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
 
     if (label_data_helper_ == nullptr)
     {
-        const QString message = QStringLiteral("标签数据工厂未初始化");
+        const QString message = QString("标签数据工厂未初始化");
         if (err_msg != nullptr)
         {
             *err_msg = message;
@@ -272,7 +271,7 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
 
     if (image_ids.size() != label_class_ids.size() || image_ids.size() != data.size())
     {
-        const QString message = QStringLiteral("image_ids=%1, label_class_ids=%2, data=%3 数量不一致")
+        const QString message = QString("image_ids=%1, label_class_ids=%2, data=%3 数量不一致")
                                     .arg(image_ids.size())
                                     .arg(label_class_ids.size())
                                     .arg(data.size());
@@ -302,7 +301,7 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
         auto instance = image_instances_->getImageInstance(image_ids[i]);
         if (instance == nullptr)
         {
-            const QString message = QStringLiteral("图像实例不存在, image_id=%1").arg(image_ids[i]);
+            const QString message = QString("图像实例不存在, image_id=%1").arg(image_ids[i]);
             if (err_msg != nullptr)
             {
                 *err_msg = message;
@@ -315,7 +314,7 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
         LabelData label_data = label_data_helper_->createLabelData();
         if (label_data == nullptr)
         {
-            const QString message = QStringLiteral("标签数据创建失败, image_id=%1").arg(image_ids[i]);
+            const QString message = QString("标签数据创建失败, image_id=%1").arg(image_ids[i]);
             if (err_msg != nullptr)
             {
                 *err_msg = message;
@@ -331,7 +330,7 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
     }
 
     QString db_err_msg;
-    bool ok = database_->addLabels(image_ids, label_class_ids, label_types, labels_data_blob, label_ids, db_err_msg);
+    bool    ok = database_->addLabels(image_ids, label_class_ids, label_types, labels_data_blob, label_ids, db_err_msg);
     if (!ok)
     {
         if (err_msg != nullptr)
@@ -343,9 +342,8 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
     }
     if (label_ids.size() != image_ids.size())
     {
-        const QString message = QStringLiteral("标签ID数量 %1 与图像ID数量 %2 不一致")
-                                    .arg(label_ids.size())
-                                    .arg(image_ids.size());
+        const QString message
+            = QString("标签ID数量 %1 与图像ID数量 %2 不一致").arg(label_ids.size()).arg(image_ids.size());
         if (err_msg != nullptr)
         {
             *err_msg = message;
@@ -483,6 +481,19 @@ void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids
     spdlog::info("删除 {} 个标注成功", label_ids.size());
 }
 
+std::vector<int64_t> LabelInstancesListModel::getImageLabelIds(int64_t image_id) const
+{
+    std::vector<int64_t> label_ids;
+    for (const auto &[label_id, instance] : full_label_instances_)
+    {
+        if (instance != nullptr && instance->imageId() == image_id)
+        {
+            label_ids.push_back(label_id);
+        }
+    }
+    return label_ids;
+}
+
 std::vector<std::vector<int64_t>> LabelInstancesListModel::getImagesLabelIds(
     const std::vector<int64_t> &image_ids) const
 {
@@ -606,19 +617,26 @@ QVariant LabelInstancesListModel::getData(const QModelIndex &index) const
 
 void LabelInstancesListModel::applyFilter(const std::function<bool(int64_t)> &image_filter_func)
 {
-    applyFilter(image_filter_func, std::function<bool(int64_t)>());
+    applyFilter(image_filter_func, std::function<bool(int64_t)>(), std::function<bool(int64_t)>());
 }
 
 void LabelInstancesListModel::applyFilter(const std::function<bool(int64_t)> &image_filter_func,
                                           const std::function<bool(int64_t)> &label_class_filter_func)
 {
-    if (!image_filter_func && !label_class_filter_func)
+    applyFilter(image_filter_func, label_class_filter_func, std::function<bool(int64_t)>());
+}
+
+void LabelInstancesListModel::applyFilter(const std::function<bool(int64_t)> &image_filter_func,
+                                          const std::function<bool(int64_t)> &label_class_filter_func,
+                                          const std::function<bool(int64_t)> &label_filter_func)
+{
+    if (!image_filter_func && !label_class_filter_func && !label_filter_func)
     {
         qWarning() << "applyFilter called with null filter function";
         return;
     }
 
-    rebuildFilteredList(image_filter_func, label_class_filter_func);
+    rebuildFilteredList(image_filter_func, label_class_filter_func, label_filter_func);
     is_filtered_ = true;
 
     beginResetModel();
@@ -656,7 +674,8 @@ void LabelInstancesListModel::clearFilter()
 }
 
 void LabelInstancesListModel::rebuildFilteredList(const std::function<bool(int64_t)> &image_filter_func,
-                                                  const std::function<bool(int64_t)> &label_class_filter_func)
+                                                  const std::function<bool(int64_t)> &label_class_filter_func,
+                                                  const std::function<bool(int64_t)> &label_filter_func)
 {
     filtered_label_ids_.clear();
     filtered_label_ids_.reserve(full_label_instances_.size());
@@ -669,8 +688,9 @@ void LabelInstancesListModel::rebuildFilteredList(const std::function<bool(int64
 
         const bool image_ok = image_filter_func ? image_filter_func(image_id) : true;
         const bool class_ok = label_class_filter_func ? label_class_filter_func(label_class_id) : true;
+        const bool label_ok = label_filter_func ? label_filter_func(label_id) : true;
 
-        if (image_ok && class_ok)
+        if (image_ok && class_ok && label_ok)
         {
             filtered_label_ids_.push_back(label_id);
         }
@@ -747,13 +767,16 @@ void ImageLabelsListModel::resetModel()
     beginResetModel();
     label_ids_.clear();
     hovered_indices_.clear();
-    const int                          image_id  = image_instances_->getCurrentImageId();
-    const std::vector<ImageInstance *> instances = image_instances_->getImageInstances({image_id});
-    if (!instances.empty() && instances.at(0))
+
+    if (image_instances_ != nullptr && label_instances_ != nullptr)
     {
-        std::set<int64_t> label_ids = instances.at(0)->labelIds();
-        label_ids_.insert(label_ids_.end(), label_ids.begin(), label_ids.end());
+        const int64_t image_id = image_instances_->getCurrentImageId();
+        if (image_id >= 0)
+        {
+            label_ids_ = label_instances_->getImageLabelIds(image_id);
+        }
     }
+
     endResetModel();
 }
 
@@ -853,7 +876,7 @@ void ImageLabelsListModel::updateLabels(const std::vector<int64_t> &image_ids, c
         }
 
         const int row = static_cast<int>(std::distance(label_ids_.begin(), label_it));
-        emit dataChanged(index(row), index(row), {DataRole, LabelClassIdRole, LabelClassColorRole});
+        emit      dataChanged(index(row), index(row), {DataRole, LabelClassIdRole, LabelClassColorRole});
     }
 }
 
@@ -1213,19 +1236,16 @@ void ImageLabelsTableModel::resetModel()
 {
     beginResetModel();
     label_ids_.clear();
-    const int                          image_id  = image_instances_->getCurrentImageId();
-    const std::vector<ImageInstance *> instances = image_instances_->getImageInstances({image_id});
-    if (!instances.empty() && instances.at(0))
+
+    if (image_instances_ != nullptr && label_instances_ != nullptr)
     {
-        std::set<int64_t> label_ids = instances.at(0)->labelIds();
-        label_ids_.insert(label_ids_.end(), label_ids.begin(), label_ids.end());
-        for (const int64_t label_id : label_ids)
+        const int64_t image_id = image_instances_->getCurrentImageId();
+        if (image_id >= 0)
         {
-            const LabelInstance *instance = label_instances_->getLabelInstance(label_id);
-            if (instance == nullptr)
-                continue;
+            label_ids_ = label_instances_->getImageLabelIds(image_id);
         }
     }
+
     endResetModel();
 }
 
@@ -1498,8 +1518,8 @@ QVariant ImageLabelsTableModel::getClassData(const QModelIndex &index) const
         return QVariant();
     const int64_t class_id = instance->labelClassId();
     QVariantMap   data{
-        { "class_name",  label_classes_->getLabelClassName(class_id)},
-        {"class_color", label_classes_->getLabelClassColor(class_id)},
+          { "class_name",  label_classes_->getLabelClassName(class_id)},
+          {"class_color", label_classes_->getLabelClassColor(class_id)},
     };
     return data;
 }

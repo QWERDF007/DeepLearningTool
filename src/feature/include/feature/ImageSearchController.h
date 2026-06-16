@@ -94,6 +94,9 @@ public:
     Q_INVOKABLE QStringList supportedModelPresets() const;
 
     Q_INVOKABLE QStringList modelFeatureNames(const QString &model_name) const;
+    Q_INVOKABLE QStringList roiModelPresets() const;
+    Q_INVOKABLE QStringList roiFeatureNames(const QString &model_name) const;
+    Q_INVOKABLE QString     defaultRoiFeatureName(const QString &model_name) const;
 
     /**
      * @brief 根据模型名建议权重文件路径
@@ -131,6 +134,21 @@ public:
                                           int disk_build_batch_size, int model_batch_size,
                                           const QString &model_backend, const QString &model_device);
 
+    Q_INVOKABLE bool searchImages(const QVariantList &image_ids, const QVariantList &dataset_ids,
+                                  const QString &model_name, const QString &weights_file,
+                                  const QString &feature_name, bool rebuild_index, int top_k, const QString &norm,
+                                  const QString &preprocess_backend, const QString &faiss_backend,
+                                  const QString &index_storage, int disk_build_batch_size, int model_batch_size,
+                                  const QString &model_backend, const QString &model_device);
+
+    Q_INVOKABLE bool searchLabelRois(const QVariantList &label_ids, const QVariantList &dataset_ids,
+                                     const QString &model_name, const QString &weights_file,
+                                     const QString &feature_name, bool rebuild_index, int top_k, const QString &norm,
+                                     const QString &preprocess_backend, const QString &faiss_backend,
+                                     const QString &index_storage, int disk_build_batch_size, int model_batch_size,
+                                     const QString &model_backend, const QString &model_device, int pooled_height,
+                                     int pooled_width, int sampling_ratio, bool aligned, bool use_pca, int pca_dim);
+
 signals:
     /** @brief 运行状态变化（running 属性） */
     void runningChanged();
@@ -151,7 +169,8 @@ private:
     // ── 参数解析与校验 ──
 
     /// 从 QVariantList 提取生效的 dataset ID 集合
-    static std::set<int64_t> parseDatasetIds(const QVariantList &dataset_ids);
+    static std::vector<int64_t> parseInt64List(const QVariantList &ids);
+    static std::set<int64_t>    parseDatasetIds(const QVariantList &dataset_ids);
 
     /// 校验权重文件是否存在；失败时自动调用 setLastError
     bool validateWeightsFile(const QString &path);
@@ -171,6 +190,8 @@ private:
 
     /// 收集当前选中图像的查询路径
     void collectQueryImages(SearchRequest &request, const std::vector<int64_t> &query_ids) const;
+    void collectGalleryRois(SearchRequest &request, const std::set<int64_t> &dataset_ids);
+    void collectQueryRois(SearchRequest &request, const std::vector<int64_t> &query_label_ids) const;
 
     // ── 索引路径 ──
 

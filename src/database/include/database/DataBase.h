@@ -226,6 +226,11 @@ public:
     QVariantMap loadFeatureSearchSettings(QString &err_msg) const;
     bool        saveFeatureSearchSettings(const QVariantMap &row, QString &err_msg) const;
 
+    // ── ROI 搜索设置 ──
+
+    QVariantMap loadRoiSearchSettings(QString &err_msg) const;
+    bool        saveRoiSearchSettings(const QVariantMap &row, QString &err_msg) const;
+
     // ── 智能标注设置 ──
 
     QVariantMap loadSmartAnnotationSettings(QString &err_msg) const;

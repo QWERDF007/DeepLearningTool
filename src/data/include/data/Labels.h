@@ -127,6 +127,7 @@ public:
 
     void deleteLabels(const std::vector<int64_t> &label_ids);
 
+    std::vector<int64_t> getImageLabelIds(int64_t image_id) const;
     std::vector<std::vector<int64_t>> getImagesLabelIds(const std::vector<int64_t> &image_ids) const;
 
     QItemSelectionModel *selection() const
@@ -160,6 +161,9 @@ public:
     void applyFilter(const std::function<bool(int64_t)> &image_filter_func);
     void applyFilter(const std::function<bool(int64_t)> &image_filter_func,
                      const std::function<bool(int64_t)> &label_class_filter_func);
+    void applyFilter(const std::function<bool(int64_t)> &image_filter_func,
+                     const std::function<bool(int64_t)> &label_class_filter_func,
+                     const std::function<bool(int64_t)> &label_filter_func);
     void clearFilter();
 
     bool isFilterActive() const
@@ -198,7 +202,8 @@ private:
      * @brief NEW: Helper to rebuild filtered_label_ids_ based on image filter function
      */
     void rebuildFilteredList(const std::function<bool(int64_t)> &image_filter_func,
-                             const std::function<bool(int64_t)> &label_class_filter_func);
+                             const std::function<bool(int64_t)> &label_class_filter_func,
+                             const std::function<bool(int64_t)> &label_filter_func = {});
 
     dltool::database::ProjectDataBase *database_{nullptr};
     ImageInstancesListModel           *image_instances_{nullptr};

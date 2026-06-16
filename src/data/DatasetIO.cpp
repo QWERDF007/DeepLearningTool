@@ -9,7 +9,6 @@
 #include <QFileInfo>
 #include <QImageReader>
 #include <QRectF>
-
 #include <algorithm>
 #include <cmath>
 
@@ -61,8 +60,7 @@ std::vector<QString> DatasetIO::scanJsonFiles(const QString &data_path)
         return json_files;
     }
 
-    QDirIterator it(data_path, QStringList() << QStringLiteral("*.json"), QDir::Files,
-                    QDirIterator::Subdirectories);
+    QDirIterator it(data_path, QStringList() << QStringLiteral("*.json"), QDir::Files, QDirIterator::Subdirectories);
     while (it.hasNext())
     {
         json_files.push_back(it.next());
@@ -157,7 +155,7 @@ QVariantMap DatasetIO::pointsToLabelData(const std::vector<QPointF> &points, int
         return {};
     }
 
-    const QRectF image_rect(0, 0, image_width, image_height);
+    const QRectF         image_rect(0, 0, image_width, image_height);
     std::vector<QPointF> clipped_points;
     clipped_points.reserve(points.size());
     for (const QPointF &point : points)
@@ -197,13 +195,14 @@ QString DatasetIO::generateDefaultColor(int index)
     return color.name();
 }
 
-QString DatasetIO::uniqueFileName(const QString &source_path, int64_t stable_id, const std::map<QString, int> &used_names)
+QString DatasetIO::uniqueFileName(const QString &source_path, int64_t stable_id,
+                                  const std::map<QString, int> &used_names)
 {
     QFileInfo file_info(source_path);
     QString   file_name = file_info.fileName();
     if (file_name.isEmpty())
     {
-        file_name = QStringLiteral("%1.jpg").arg(stable_id);
+        file_name = QString("%1.jpg").arg(stable_id);
     }
 
     if (used_names.find(file_name) == used_names.end())
@@ -211,14 +210,14 @@ QString DatasetIO::uniqueFileName(const QString &source_path, int64_t stable_id,
         return file_name;
     }
 
-    const QString suffix    = file_info.suffix().isEmpty() ? QString() : QStringLiteral(".%1").arg(file_info.suffix());
-    const QString stem      = file_info.completeBaseName().isEmpty() ? QString::number(stable_id)
-                                                                      : file_info.completeBaseName();
-    QString       candidate = QStringLiteral("%1_%2%3").arg(stem).arg(stable_id).arg(suffix);
-    int           index     = 1;
+    const QString suffix = file_info.suffix().isEmpty() ? QString() : QString(".%1").arg(file_info.suffix());
+    const QString stem
+        = file_info.completeBaseName().isEmpty() ? QString::number(stable_id) : file_info.completeBaseName();
+    QString candidate = QString("%1_%2%3").arg(stem).arg(stable_id).arg(suffix);
+    int     index     = 1;
     while (used_names.find(candidate) != used_names.end())
     {
-        candidate = QStringLiteral("%1_%2_%3%4").arg(stem).arg(stable_id).arg(index++).arg(suffix);
+        candidate = QString("%1_%2_%3%4").arg(stem).arg(stable_id).arg(index++).arg(suffix);
     }
     return candidate;
 }
@@ -233,7 +232,7 @@ bool DatasetIO::ensureDirectory(const QString &path, QString &err_msg)
 
     if (!dir.mkpath(QStringLiteral(".")))
     {
-        err_msg = QStringLiteral("无法创建目录: %1").arg(path);
+        err_msg = QString("无法创建目录: %1").arg(path);
         return false;
     }
     return true;
@@ -243,7 +242,7 @@ bool DatasetIO::copyFile(const QString &source_path, const QString &target_path,
 {
     if (!QFile::exists(source_path))
     {
-        err_msg = QStringLiteral("源文件不存在: %1").arg(source_path);
+        err_msg = QString("源文件不存在: %1").arg(source_path);
         return false;
     }
 
@@ -255,13 +254,13 @@ bool DatasetIO::copyFile(const QString &source_path, const QString &target_path,
 
     if (QFile::exists(target_path) && !QFile::remove(target_path))
     {
-        err_msg = QStringLiteral("无法覆盖目标文件: %1").arg(target_path);
+        err_msg = QString("无法覆盖目标文件: %1").arg(target_path);
         return false;
     }
 
     if (!QFile::copy(source_path, target_path))
     {
-        err_msg = QStringLiteral("复制文件失败: %1 -> %2").arg(source_path, target_path);
+        err_msg = QString("复制文件失败: %1 -> %2").arg(source_path, target_path);
         return false;
     }
     return true;

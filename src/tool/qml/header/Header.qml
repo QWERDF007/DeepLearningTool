@@ -128,6 +128,8 @@ Rectangle {
                                 labelClassImageDropDown.selectAll(false)
                                 imageSearchDropDown.checked = false
                                 imageSearchDropDown.selectAll(false)
+                                labelSearchDropDown.checked = false
+                                labelSearchDropDown.selectAll(false)
                             }
                         }
                     }
@@ -183,6 +185,28 @@ Rectangle {
                             }
                         }
                     }
+
+                    DropDownMenuButton {
+                        id: labelSearchDropDown
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: 200
+                        text: "按标注搜索:"
+                        filterType: GlobalFilter.FilterType.LabelSearch
+                        globalFilter: header.globalFilter
+                        showItemList: false
+                        resultCount: globalFilter ? globalFilter.labelSearchResultCount : 0
+                        enabled: imageSearch && !imageSearch.running && globalFilter && globalFilter.hasLabelSearchResults
+                        Connections {
+                            target: labelSearchDropDown.globalFilter
+                            function onFilterStateChanged() {
+                                labelSearchDropDown.suppressCheckedHandler = true
+                                labelSearchDropDown.checked = labelSearchDropDown.globalFilter
+                                                             && labelSearchDropDown.globalFilter.labelSearchFilterEnabled
+                                labelSearchDropDown.suppressCheckedHandler = false
+                                labelSearchDropDown.refreshDisplayText()
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -197,6 +221,7 @@ Rectangle {
             tagDropDown.checked = false
             labelClassImageDropDown.checked = false
             imageSearchDropDown.checked = false
+            labelSearchDropDown.checked = false
         }
     }
     

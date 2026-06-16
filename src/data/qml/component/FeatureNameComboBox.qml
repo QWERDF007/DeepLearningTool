@@ -13,6 +13,7 @@ QuiComboBox {
     property string featureName: GlobalSettings.advanced.imageSearch.featureName
     property var featureNames: []
     property bool rememberCustomValues: true
+    property bool roiOnly: false
 
     signal featureNameAccepted(string featureName)
 
@@ -74,27 +75,36 @@ QuiComboBox {
     function refreshFeatureNames() {
         let names = []
         if (imageSearch) {
-            let baseNames = imageSearch.modelFeatureNames(modelName)
+            let baseNames = roiOnly ? imageSearch.roiFeatureNames(modelName) : imageSearch.modelFeatureNames(modelName)
             for (let i = 0; i < baseNames.length; ++i) {
                 appendUnique(names, baseNames[i])
             }
         }
 
-        let customNames = GlobalSettings.advanced.imageSearch.customFeatureNames(modelName)
-        for (let j = 0; j < customNames.length; ++j) {
-            appendUnique(names, customNames[j])
+        if (!roiOnly) {
+            let customNames = GlobalSettings.advanced.imageSearch.customFeatureNames(modelName)
+            for (let j = 0; j < customNames.length; ++j) {
+                appendUnique(names, customNames[j])
+            }
         }
 
-        appendUnique(names, featureName)
-        appendUnique(names, currentFeatureText())
+        if (!roiOnly || names.length === 0 || names.indexOf(featureName) >= 0) {
+            appendUnique(names, featureName)
+        }
+        if (!roiOnly || names.length === 0 || names.indexOf(currentFeatureText()) >= 0) {
+            appendUnique(names, currentFeatureText())
+        }
         featureNames = names
 
-        if (currentFeatureText() !== "") {
+        if (roiOnly && featureNames.length > 0 && featureNames.indexOf(currentFeatureText()) < 0) {
+            setFeatureName(featureNames[featureNames.length - 1])
+            featureNameAccepted(currentFeatureText())
+        } else if (currentFeatureText() !== "") {
             setFeatureName(currentFeatureText())
         } else if (featureName !== "") {
             setFeatureName(featureName)
         } else if (featureNames.length > 0) {
-            setFeatureName(featureNames[0])
+            setFeatureName(roiOnly ? featureNames[featureNames.length - 1] : featureNames[0])
         }
     }
 

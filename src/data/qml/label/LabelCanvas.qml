@@ -7,6 +7,9 @@ import dltool.data
 import dltool.settings
 import quickui
 
+import "../component"
+import "../gallery"
+
 Item {
     id: labelView
     clip: true
@@ -84,6 +87,24 @@ Item {
         id: labelCanvasMenu
         width: 200
         QuiMenuItem {
+            text: "图像搜索"
+            enabled: dataManager && dataManager.imageSearch
+                     && imageInstances && imageInstances.currentImageId >= 0
+                     && !dataManager.imageSearch.running
+                     && GlobalSettings.advanced.imageSearch.enabled
+            iconSource: QuiFontIcon.Search
+            onClicked: startImageSearchForCurrentImage()
+        }
+        QuiMenuItem {
+            text: "标注搜索"
+            enabled: dataManager && dataManager.imageSearch
+                     && selection && selection.hasSelection
+                     && !dataManager.imageSearch.running
+                     && GlobalSettings.advanced.roiSearch.enabled
+            iconSource: QuiFontIcon.Search
+            onClicked: startRoiSearchForSelectedLabels()
+        }
+        QuiMenuItem {
             text: "删除选中标签实例"
             enabled : selection ? selection.hasSelection : false
             iconSource: QuiFontIcon.Delete
@@ -103,6 +124,16 @@ Item {
                 dataManager.deleteLabels(label_ids)
             }
         }
+    }
+
+    ImageSearchDialog {
+        id: imageSearchDialog
+        dataManager: labelView.dataManager
+    }
+
+    RoiSearchDialog {
+        id: roiSearchDialog
+        dataManager: labelView.dataManager
     }
 
     LabelImage {
@@ -1075,6 +1106,29 @@ Item {
     function copySelectedLabels() {
         if (dataManager && selection && selection.hasSelection) {
             dataManager.duplicateSelectedLabels()
+        }
+    }
+
+    function startImageSearchForCurrentImage() {
+        if (!dataManager || !dataManager.imageSearch || !imageInstances
+                || imageInstances.currentImageId < 0
+                || !GlobalSettings.advanced.imageSearch.enabled) {
+            return
+        }
+
+        imageSearchDialog.openForImages([imageInstances.currentImageId])
+    }
+
+    function startRoiSearchForSelectedLabels() {
+        if (!dataManager || !dataManager.imageSearch || !imageLabelsList
+                || !selection || !selection.hasSelection
+                || !GlobalSettings.advanced.roiSearch.enabled) {
+            return
+        }
+
+        let labelIds = imageLabelsList.getSelectedLabelIds()
+        if (labelIds.length > 0) {
+            roiSearchDialog.openForLabels(labelIds)
         }
     }
 

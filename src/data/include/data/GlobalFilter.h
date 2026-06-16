@@ -20,6 +20,7 @@ class TagFilterModule;
 class LabelClassFilterModule;
 class ImageLabelClassFilterModule;
 class ImageSearchFilterModule;
+class LabelSearchFilterModule;
 class FilterModule;
 
 struct FilterCriteria
@@ -29,11 +30,13 @@ struct FilterCriteria
     std::unordered_set<int64_t> label_class_ids;
     std::unordered_set<int64_t> image_label_class_ids;
     std::unordered_set<int64_t> image_search_ids;
+    std::unordered_set<int64_t> label_search_ids;
     bool                        dataset_inverted{false};
     bool                        tag_inverted{false};
     bool                        label_class_inverted{false};
     bool                        image_label_class_inverted{false};
     bool                        image_search_inverted{false};
+    bool                        label_search_inverted{false};
 
     /**
      * @brief 检查过滤条件是否为空
@@ -42,8 +45,9 @@ struct FilterCriteria
     bool isEmpty() const
     {
         return dataset_ids.empty() && tag_ids.empty() && label_class_ids.empty() && image_label_class_ids.empty()
-            && image_search_ids.empty() && !dataset_inverted && !tag_inverted && !label_class_inverted
-            && !image_label_class_inverted && !image_search_inverted;
+            && image_search_ids.empty() && label_search_ids.empty() && !dataset_inverted && !tag_inverted
+            && !label_class_inverted && !image_label_class_inverted && !image_search_inverted
+            && !label_search_inverted;
     }
 };
 
@@ -65,6 +69,9 @@ class GlobalFilter : public QObject
     Q_PROPERTY(bool hasImageSearchResults READ hasImageSearchResults NOTIFY filterStateChanged)
     Q_PROPERTY(bool imageSearchFilterEnabled READ imageSearchFilterEnabled NOTIFY filterStateChanged)
     Q_PROPERTY(int imageSearchResultCount READ imageSearchResultCount NOTIFY filterStateChanged)
+    Q_PROPERTY(bool hasLabelSearchResults READ hasLabelSearchResults NOTIFY filterStateChanged)
+    Q_PROPERTY(bool labelSearchFilterEnabled READ labelSearchFilterEnabled NOTIFY filterStateChanged)
+    Q_PROPERTY(int labelSearchResultCount READ labelSearchResultCount NOTIFY filterStateChanged)
 
 public:
     /**
@@ -79,6 +86,7 @@ public:
         LabelClass,      // 标注类别过滤器（仅作用于标注实例）
         ImageLabelClass, // 标注类别过滤器（作用于图像：图像中包含选中类别实例则保留）
         ImageSearch,
+        LabelSearch,
     };
     Q_ENUM(FilterType)
 
@@ -167,6 +175,10 @@ public:
      */
     void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter);
 
+    Q_INVOKABLE void setLabelSearchFilterEnabled(bool enabled);
+    Q_INVOKABLE void clearLabelSearchResults();
+    void             setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter);
+
     /**
      * @brief 是否存在图像搜索结果
      * @return 有非空搜索结果时返回 true
@@ -184,6 +196,10 @@ public:
      * @return 当前搜索结果中的图像数量
      */
     int imageSearchResultCount() const;
+
+    bool hasLabelSearchResults() const;
+    bool labelSearchFilterEnabled() const;
+    int  labelSearchResultCount() const;
 
     /**
      * @brief 应用过滤器到数据模型
@@ -250,6 +266,7 @@ private:
     std::unique_ptr<LabelClassFilterModule>      label_class_filter_;       // 标注类别过滤模块
     std::unique_ptr<ImageLabelClassFilterModule> image_label_class_filter_; // 图像级标注类别过滤模块
     std::unique_ptr<ImageSearchFilterModule>     image_search_filter_;
+    std::unique_ptr<LabelSearchFilterModule>     label_search_filter_;
 
     std::unordered_map<FilterType, FilterModule *> filter_modules_; // 过滤模块映射表
 
