@@ -10,3 +10,7 @@
 	path = 3rdparty/QuickUI
 	url = https://github.com/QWERDF007/QuickUI.git
 	branch = main
+[submodule "3rdparty/yaml-cpp"]
+	path = 3rdparty/yaml-cpp
+	url = https://github.com/jbeder/yaml-cpp.git
+	branch = master
