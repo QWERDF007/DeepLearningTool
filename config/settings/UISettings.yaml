@@ -1,0 +1,39 @@
+UISettings:
+  table: ui_settings
+  label: 界面设置
+  fields:
+    - name_en: brightness
+      name_cn: 图像亮度
+      property_name: imageBrightness
+      value: 0.0
+      value_type: double
+      value_range: [-1.0, 1.0, 0.1]
+      control_type: slider
+      section: 图像
+
+    - name_en: contrast
+      name_cn: 图像对比度
+      property_name: imageContrast
+      value: 0.0
+      value_type: double
+      value_range: [-1.0, 1.0, 0.1]
+      control_type: slider
+      section: 图像
+
+    - name_en: theme
+      name_cn: 主题
+      property_name: theme
+      value: dark
+      value_type: string
+      control_type: combo
+      options: [dark, light, system]
+      section: 界面
+
+    - name_en: language
+      name_cn: 语言
+      property_name: language
+      value: zh_CN
+      value_type: string
+      control_type: combo
+      options: [zh_CN, en_US]
+      section: 界面

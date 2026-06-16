@@ -12,28 +12,22 @@ QuiComboBox {
     property string modelName: GlobalSettings.advanced.imageSearch.model
     property string featureName: GlobalSettings.advanced.imageSearch.featureName
     property var featureNames: []
-    property bool rememberCustomValues: true
     property bool roiOnly: false
 
     signal featureNameAccepted(string featureName)
 
-    editable: true
+    editable: false
     model: featureNames
 
     Component.onCompleted: refreshFeatureNames()
 
-    onImageSearchChanged: refreshFeatureNames()
     onModelNameChanged: refreshFeatureNames()
     onFeatureNameChanged: setFeatureName(featureName)
     onActivated: rememberCurrentText()
-    onCommit: function (text) {
-        editText = text
-        rememberCurrentText()
-    }
 
     Connections {
-        target: GlobalSettings.advanced.imageSearch
-        function onCustomFeatureNamesChanged() {
+        target: GlobalSettings.catalog
+        function onValueChanged() {
             control.refreshFeatureNames()
         }
     }
@@ -72,39 +66,30 @@ QuiComboBox {
         editText = text
     }
 
+    function yamlFeatureNames() {
+        let groupKey = roiOnly ? "RoiSearchSettings" : "ImageSearchSettings"
+        let names = GlobalSettings.catalog.optionsForKey(groupKey, "feature_name", modelName)
+        return names ? names : []
+    }
+
     function refreshFeatureNames() {
         let names = []
-        if (imageSearch) {
-            let baseNames = roiOnly ? imageSearch.roiFeatureNames(modelName) : imageSearch.modelFeatureNames(modelName)
-            for (let i = 0; i < baseNames.length; ++i) {
-                appendUnique(names, baseNames[i])
-            }
+        let configuredNames = yamlFeatureNames()
+        for (let k = 0; k < configuredNames.length; ++k) {
+            appendUnique(names, configuredNames[k])
         }
 
-        if (!roiOnly) {
-            let customNames = GlobalSettings.advanced.imageSearch.customFeatureNames(modelName)
-            for (let j = 0; j < customNames.length; ++j) {
-                appendUnique(names, customNames[j])
-            }
-        }
-
-        if (!roiOnly || names.length === 0 || names.indexOf(featureName) >= 0) {
-            appendUnique(names, featureName)
-        }
-        if (!roiOnly || names.length === 0 || names.indexOf(currentFeatureText()) >= 0) {
-            appendUnique(names, currentFeatureText())
-        }
         featureNames = names
 
-        if (roiOnly && featureNames.length > 0 && featureNames.indexOf(currentFeatureText()) < 0) {
-            setFeatureName(featureNames[featureNames.length - 1])
-            featureNameAccepted(currentFeatureText())
+        if (featureNames.length > 0 && featureNames.indexOf(currentFeatureText()) < 0) {
+            setFeatureName(featureNames[0])
+            featureNameAccepted(featureNames[0])
         } else if (currentFeatureText() !== "") {
             setFeatureName(currentFeatureText())
         } else if (featureName !== "") {
             setFeatureName(featureName)
         } else if (featureNames.length > 0) {
-            setFeatureName(roiOnly ? featureNames[featureNames.length - 1] : featureNames[0])
+            setFeatureName(featureNames[0])
         }
     }
 
@@ -114,12 +99,8 @@ QuiComboBox {
             return
         }
 
-        if (rememberCustomValues && featureNames.indexOf(text) < 0) {
-            GlobalSettings.advanced.imageSearch.addCustomFeatureName(modelName, text)
+        if (featureNames.indexOf(text) >= 0) {
+            featureNameAccepted(text)
         }
-        if (featureNames.indexOf(text) < 0) {
-            refreshFeatureNames()
-        }
-        featureNameAccepted(text)
     }
 }

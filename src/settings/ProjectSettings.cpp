@@ -8,6 +8,12 @@
 
 namespace dltool::settings {
 
+namespace {
+
+constexpr const char *kProjectSettingsTable = "project_settings";
+
+} // namespace
+
 ProjectSettings::ProjectSettings(QObject *parent)
     : QObject(parent)
 {
@@ -50,7 +56,7 @@ void ProjectSettings::load(database::SettingsDataBase *database)
         return;
 
     QString err_msg;
-    const auto row = database->loadProjectSettings(err_msg);
+    const auto row = database->loadSettings(QString::fromLatin1(kProjectSettingsTable), err_msg);
     if (!err_msg.isEmpty())
     {
         spdlog::warn("Load project settings failed: {}", err_msg.toUtf8().constData());
@@ -66,7 +72,8 @@ void ProjectSettings::save(database::SettingsDataBase *database)
         return;
 
     QString err_msg;
-    database->saveProjectSettings(
+    database->saveSettings(
+        QString::fromLatin1(kProjectSettingsTable),
         QVariantMap{
             {QStringLiteral("max_recent_projects"), max_recent_projects_},
             {QStringLiteral("auto_save_enabled"), auto_save_enabled_},

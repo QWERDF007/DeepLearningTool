@@ -2,7 +2,6 @@
 
 #include "dltool/settings/Export.h"
 
-#include <QHash>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -132,9 +131,6 @@ public:
     }
     void setIndexDirectory(const QString &value);
 
-    Q_INVOKABLE QStringList customFeatureNames(const QString &model_name) const;
-    Q_INVOKABLE void        addCustomFeatureName(const QString &model_name, const QString &feature_name);
-
     void        load(const QVariantMap &row);
     QVariantMap saveMap() const;
     void        reset();
@@ -155,12 +151,8 @@ signals:
     void modelBackendChanged();
     void modelDeviceChanged();
     void indexDirectoryChanged();
-    void customFeatureNamesChanged();
 
 private:
-    QString customFeatureNamesJson() const;
-    void    setCustomFeatureNamesJson(const QString &value);
-
     struct ModelSettings
     {
         QString name{QStringLiteral("resnet18")};
@@ -196,7 +188,6 @@ private:
     IndexSettings            index_;
     RuntimeSettings          runtime_;
     SearchOptions            options_;
-    QHash<QString, QStringList> custom_feature_names_;
 };
 
 class SETTINGS_API RoiSearchSettings : public ImageSearchSettings

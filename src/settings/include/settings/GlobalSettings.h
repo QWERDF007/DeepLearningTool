@@ -5,6 +5,7 @@
 #include "settings/DataSettings.h"
 #include "settings/ProjectSettings.h"
 #include "dltool/settings/Export.h"
+#include "settings/SettingsSchema.h"
 #include "settings/UISettings.h"
 
 #include <QObject>
@@ -32,6 +33,7 @@ class SETTINGS_API GlobalSettings : public QObject
     Q_PROPERTY(DataSettings *data READ data CONSTANT)
     Q_PROPERTY(AdvancedSettings *advanced READ advanced CONSTANT)
     Q_PROPERTY(UISettings *ui READ ui CONSTANT)
+    Q_PROPERTY(SettingsCatalog *catalog READ catalog CONSTANT)
 
 public:
     ProjectSettings *project() const
@@ -52,6 +54,11 @@ public:
     UISettings *ui() const
     {
         return ui_settings_;
+    }
+
+    SettingsCatalog *catalog() const
+    {
+        return settings_catalog_;
     }
 
     /**
@@ -80,6 +87,8 @@ public:
      */
     Q_INVOKABLE bool autoSaveEnabled() const;
 
+    Q_INVOKABLE bool setCatalogValue(const QString &group_key, const QString &name, const QVariant &value);
+
 private:
     explicit GlobalSettings(QObject *parent = nullptr);
     ~GlobalSettings();
@@ -94,15 +103,21 @@ private:
      */
     void connectAutoSave();
 
+    void syncCatalogFromTyped();
+    void syncTypedFromCatalog(const QString &group_key, const QString &name, const QVariant &value);
+    void setCatalogField(const QString &group_key, const QString &name, const QVariant &value);
+
     ProjectSettings *project_settings_;
     DataSettings    *data_settings_;
     AdvancedSettings *advanced_settings_;
     UISettings      *ui_settings_;
+    SettingsCatalog *settings_catalog_;
 
     database::SettingsDataBase *settings_database_; // 设置数据库
 
     QTimer *save_timer_;        // 延迟保存定时器
     bool    auto_save_enabled_; // 是否启用自动保存
+    bool    syncing_catalog_{false};
 };
 
 } // namespace dltool::settings

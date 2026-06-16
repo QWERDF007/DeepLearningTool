@@ -8,6 +8,12 @@
 
 namespace dltool::settings {
 
+namespace {
+
+constexpr const char *kDataSettingsTable = "data_settings";
+
+} // namespace
+
 DataSettings::DataSettings(QObject *parent)
     : QObject(parent)
 {
@@ -142,37 +148,25 @@ void DataSettings::load(database::SettingsDataBase *database)
         return;
     }
 
+    QString err_msg;
+    const auto row = database->loadSettings(QString::fromLatin1(kDataSettingsTable), err_msg);
+    if (!err_msg.isEmpty())
     {
-        QString err_msg;
-        const auto row = database->loadThumbnailSettings(err_msg);
-        if (!err_msg.isEmpty())
-        {
-            spdlog::warn("Load thumbnail settings failed: {}", err_msg.toUtf8().constData());
-        }
-
-        setThumbnailMargin(row.value(QStringLiteral("margin"), 10).toInt());
-        setThumbnailCacheSize(row.value(QStringLiteral("cache_size"), 100).toInt());
-        setImageLoadThreads(row.value(QStringLiteral("image_load_threads"), 4).toInt());
-        setImageCellScale(row.value(QStringLiteral("cell_scale"), 1.0).toDouble());
-        setImageCellScaleFrom(row.value(QStringLiteral("cell_scale_from"), 0.5).toDouble());
-        setImageCellScaleTo(row.value(QStringLiteral("cell_scale_to"), 4.0).toDouble());
-        setImageCellScaleStepSize(row.value(QStringLiteral("cell_scale_step"), 0.25).toDouble());
-        setLabelThumbnailScale(row.value(QStringLiteral("label_scale"), 1.0).toDouble());
-        setLabelThumbnailAspectRatio(row.value(QStringLiteral("label_aspect_ratio"), 1.0).toDouble());
-        setLabelThumbnailBorderPadding(row.value(QStringLiteral("label_border_padding"), 0.1).toDouble());
+        spdlog::warn("Load data settings failed: {}", err_msg.toUtf8().constData());
     }
 
-    {
-        QString err_msg;
-        const auto row = database->loadLabelDisplaySettings(err_msg);
-        if (!err_msg.isEmpty())
-        {
-            spdlog::warn("Load label display settings failed: {}", err_msg.toUtf8().constData());
-        }
-
-        setLabelBorderWidth(row.value(QStringLiteral("border_width"), 2).toInt());
-        setLabelFillOpacity(row.value(QStringLiteral("fill_opacity"), 30).toInt());
-    }
+    setThumbnailMargin(row.value(QStringLiteral("margin"), 10).toInt());
+    setThumbnailCacheSize(row.value(QStringLiteral("cache_size"), 100).toInt());
+    setImageLoadThreads(row.value(QStringLiteral("image_load_threads"), 4).toInt());
+    setImageCellScale(row.value(QStringLiteral("cell_scale"), 1.0).toDouble());
+    setImageCellScaleFrom(row.value(QStringLiteral("cell_scale_from"), 0.5).toDouble());
+    setImageCellScaleTo(row.value(QStringLiteral("cell_scale_to"), 4.0).toDouble());
+    setImageCellScaleStepSize(row.value(QStringLiteral("cell_scale_step"), 0.25).toDouble());
+    setLabelThumbnailScale(row.value(QStringLiteral("label_scale"), 1.0).toDouble());
+    setLabelThumbnailAspectRatio(row.value(QStringLiteral("label_aspect_ratio"), 1.0).toDouble());
+    setLabelThumbnailBorderPadding(row.value(QStringLiteral("label_border_padding"), 0.1).toDouble());
+    setLabelBorderWidth(row.value(QStringLiteral("border_width"), 2).toInt());
+    setLabelFillOpacity(row.value(QStringLiteral("fill_opacity"), 30).toInt());
 }
 
 void DataSettings::save(database::SettingsDataBase *database)
@@ -182,40 +176,27 @@ void DataSettings::save(database::SettingsDataBase *database)
         return;
     }
 
+    QString err_msg;
+    database->saveSettings(
+        QString::fromLatin1(kDataSettingsTable),
+        QVariantMap{
+            {              QStringLiteral("margin"), thumbnail_.margin},
+            {          QStringLiteral("cache_size"), thumbnail_.cache_size},
+            {  QStringLiteral("image_load_threads"), thumbnail_.image_load_threads},
+            {          QStringLiteral("cell_scale"), image_cell_.scale},
+            {     QStringLiteral("cell_scale_from"), image_cell_.scale_from},
+            {       QStringLiteral("cell_scale_to"), image_cell_.scale_to},
+            {       QStringLiteral("cell_scale_step"), image_cell_.scale_step_size},
+            {         QStringLiteral("label_scale"), label_thumbnail_.scale},
+            {  QStringLiteral("label_aspect_ratio"), label_thumbnail_.aspect_ratio},
+            {QStringLiteral("label_border_padding"), label_thumbnail_.border_padding},
+            {        QStringLiteral("border_width"), label_display_.border_width},
+            {       QStringLiteral("fill_opacity"), label_display_.fill_opacity},
+        },
+        err_msg);
+    if (!err_msg.isEmpty())
     {
-        QString err_msg;
-        database->saveThumbnailSettings(
-            QVariantMap{
-                {              QStringLiteral("margin"), thumbnail_.margin},
-                {          QStringLiteral("cache_size"), thumbnail_.cache_size},
-                {  QStringLiteral("image_load_threads"), thumbnail_.image_load_threads},
-                {          QStringLiteral("cell_scale"), image_cell_.scale},
-                {     QStringLiteral("cell_scale_from"), image_cell_.scale_from},
-                {       QStringLiteral("cell_scale_to"), image_cell_.scale_to},
-                {       QStringLiteral("cell_scale_step"), image_cell_.scale_step_size},
-                {         QStringLiteral("label_scale"), label_thumbnail_.scale},
-                {  QStringLiteral("label_aspect_ratio"), label_thumbnail_.aspect_ratio},
-                {QStringLiteral("label_border_padding"), label_thumbnail_.border_padding},
-            },
-            err_msg);
-        if (!err_msg.isEmpty())
-        {
-            spdlog::error("Save thumbnail settings failed: {}", err_msg.toUtf8().constData());
-        }
-    }
-
-    {
-        QString err_msg;
-        database->saveLabelDisplaySettings(
-            QVariantMap{
-                { QStringLiteral("border_width"), label_display_.border_width},
-                {QStringLiteral("fill_opacity"), label_display_.fill_opacity},
-            },
-            err_msg);
-        if (!err_msg.isEmpty())
-        {
-            spdlog::error("Save label display settings failed: {}", err_msg.toUtf8().constData());
-        }
+        spdlog::error("Save data settings failed: {}", err_msg.toUtf8().constData());
     }
 }
 

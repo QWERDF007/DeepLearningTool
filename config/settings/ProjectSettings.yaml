@@ -1,0 +1,29 @@
+ProjectSettings:
+  table: project_settings
+  label: 项目设置
+  fields:
+    - name_en: max_recent_projects
+      name_cn: 最近项目数量
+      property_name: maxRecentProjects
+      value: 10
+      value_type: int
+      value_range: [1, 50, 1]
+      control_type: spin
+      section: 项目
+
+    - name_en: auto_save_interval
+      name_cn: 自动保存间隔
+      property_name: autoSaveInterval
+      value: 300
+      value_type: int
+      value_range: [30, 3600, 30]
+      control_type: spin
+      section: 项目
+
+    - name_en: auto_save_enabled
+      name_cn: 启用自动保存
+      property_name: autoSaveEnabled
+      value: true
+      value_type: bool
+      control_type: checkbox
+      section: 项目

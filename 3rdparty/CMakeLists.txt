@@ -7,3 +7,6 @@ add_subdirectory(QuickUI)
 
 # spdlog
 add_subdirectory(spdlog)
+
+# yaml-cpp
+add_subdirectory(yaml-cpp)

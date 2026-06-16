@@ -1,0 +1,111 @@
+DataSettings:
+  table: data_settings
+  label: 数据设置
+  fields:
+    - name_en: margin
+      name_cn: 缩略图边距
+      property_name: thumbnailMargin
+      value: 10
+      value_type: int
+      value_range: [0, 64, 1]
+      control_type: slider
+      section: 缩略图
+
+    - name_en: cache_size
+      name_cn: 缩略图缓存
+      property_name: thumbnailCacheSize
+      value: 100
+      value_type: int
+      value_range: [1, 10000, 1]
+      control_type: spin
+      section: 缩略图
+
+    - name_en: image_load_threads
+      name_cn: 图像加载线程
+      property_name: imageLoadThreads
+      value: 4
+      value_type: int
+      value_range: [1, 16, 1]
+      control_type: spin
+      section: 缩略图
+
+    - name_en: cell_scale
+      name_cn: 图像单元缩放
+      property_name: imageCellScale
+      value: 1.0
+      value_type: double
+      value_range: [0.1, 10.0, 0.1]
+      control_type: slider
+      section: 图像单元
+
+    - name_en: cell_scale_from
+      name_cn: 图像单元缩放下限
+      property_name: imageCellScaleFrom
+      value: 0.5
+      value_type: double
+      value_range: [0.1, 10.0, 0.1]
+      control_type: slider
+      section: 图像单元
+
+    - name_en: cell_scale_to
+      name_cn: 图像单元缩放上限
+      property_name: imageCellScaleTo
+      value: 4.0
+      value_type: double
+      value_range: [0.2, 10.0, 0.1]
+      control_type: slider
+      section: 图像单元
+
+    - name_en: cell_scale_step
+      name_cn: 图像单元缩放步长
+      property_name: imageCellScaleStepSize
+      value: 0.25
+      value_type: double
+      value_range: [0.01, 2.0, 0.01]
+      control_type: spin
+      section: 图像单元
+
+    - name_en: label_scale
+      name_cn: 标注缩略图缩放
+      property_name: labelThumbnailScale
+      value: 1.0
+      value_type: double
+      value_range: [0.5, 4.0, 0.1]
+      control_type: slider
+      section: 标注显示
+
+    - name_en: label_aspect_ratio
+      name_cn: 标注缩略图宽高比
+      property_name: labelThumbnailAspectRatio
+      value: 1.0
+      value_type: double
+      value_range: [0.5, 2.0, 0.1]
+      control_type: slider
+      section: 标注显示
+
+    - name_en: label_border_padding
+      name_cn: 标注缩略图边框留白
+      property_name: labelThumbnailBorderPadding
+      value: 0.1
+      value_type: double
+      value_range: [0.0, 1.0, 0.05]
+      control_type: slider
+      section: 标注显示
+
+    - name_en: border_width
+      name_cn: 标注边框宽度
+      property_name: labelBorderWidth
+      value: 2
+      value_type: int
+      value_range: [1, 16, 1]
+      control_type: spin
+      section: 标注显示
+
+    - name_en: fill_opacity
+      name_cn: 标注填充透明度
+      property_name: labelFillOpacity
+      value: 30
+      value_type: int
+      value_range: [0, 100, 1]
+      control_type: slider
+      section: 标注显示

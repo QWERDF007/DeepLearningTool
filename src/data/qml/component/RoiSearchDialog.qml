@@ -424,7 +424,6 @@ QuiPopup {
                                 modelName: dialog.comboText(modelBox)
                                 featureName: GlobalSettings.advanced.roiSearch.featureName
                                 roiOnly: true
-                                rememberCustomValues: false
                                 onFeatureNameAccepted: function (featureName) {
                                     GlobalSettings.advanced.roiSearch.featureName = featureName
                                 }

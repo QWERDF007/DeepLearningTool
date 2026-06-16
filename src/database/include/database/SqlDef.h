@@ -19,14 +19,6 @@ public:
         CreateTagClasses,
         CreateTags,
         CreateModels,
-        CreateFeatureSearchSettings,
-        CreateRoiSearchSettings,
-        CreateSmartAnnotationSettings,
-        CreateThumbnailSettings,
-        CreateLabelDisplaySettings,
-        CreateImageEnhanceSettings,
-        CreateUISettings,
-        CreateProjectSettings,
     };
 
     // clang-format off
@@ -54,54 +46,6 @@ public:
         {CreateModels,
          "CREATE TABLE IF NOT EXISTS models (id INTEGER NOT NULL PRIMARY KEY, name TEXT, network_structure TEXT, "
          "training_result TEXT, test_result TEXT, ctime INTEGER NOT NULL, mtime INTEGER NOT NULL, extra_data BLOB)"},
-        {CreateFeatureSearchSettings,
-         "CREATE TABLE IF NOT EXISTS feature_search_settings ("
-         "id INTEGER PRIMARY KEY,"
-         "key TEXT NOT NULL UNIQUE,"
-         "value TEXT NOT NULL,"
-         "mtime INTEGER NOT NULL)"},
-        {CreateRoiSearchSettings,
-         "CREATE TABLE IF NOT EXISTS roi_search_settings ("
-         "id INTEGER PRIMARY KEY,"
-         "key TEXT NOT NULL UNIQUE,"
-         "value TEXT NOT NULL,"
-         "mtime INTEGER NOT NULL)"},
-        {CreateSmartAnnotationSettings,
-         "CREATE TABLE IF NOT EXISTS smart_annotation_settings ("
-         "id INTEGER PRIMARY KEY,"
-         "key TEXT NOT NULL UNIQUE,"
-         "value TEXT NOT NULL,"
-         "mtime INTEGER NOT NULL)"},
-        {CreateThumbnailSettings,
-         "CREATE TABLE IF NOT EXISTS thumbnail_settings ("
-         "id INTEGER PRIMARY KEY,"
-         "key TEXT NOT NULL UNIQUE,"
-         "value TEXT NOT NULL,"
-         "mtime INTEGER NOT NULL)"},
-        {CreateLabelDisplaySettings,
-         "CREATE TABLE IF NOT EXISTS label_display_settings ("
-         "id INTEGER PRIMARY KEY,"
-         "key TEXT NOT NULL UNIQUE,"
-         "value TEXT NOT NULL,"
-         "mtime INTEGER NOT NULL)"},
-        {CreateImageEnhanceSettings,
-         "CREATE TABLE IF NOT EXISTS image_enhance_settings ("
-         "id INTEGER PRIMARY KEY,"
-         "key TEXT NOT NULL UNIQUE,"
-         "value TEXT NOT NULL,"
-         "mtime INTEGER NOT NULL)"},
-        {CreateUISettings,
-         "CREATE TABLE IF NOT EXISTS ui_settings ("
-         "id INTEGER PRIMARY KEY,"
-         "key TEXT NOT NULL UNIQUE,"
-         "value TEXT NOT NULL,"
-         "mtime INTEGER NOT NULL)"},
-        {CreateProjectSettings,
-         "CREATE TABLE IF NOT EXISTS project_settings ("
-         "id INTEGER PRIMARY KEY,"
-         "key TEXT NOT NULL UNIQUE,"
-         "value TEXT NOT NULL,"
-         "mtime INTEGER NOT NULL)"},
     };
 
     // clang-format on

@@ -1,0 +1,193 @@
+RoiSearchSettings:
+  table: roi_search_settings
+  label: ROI 搜索
+  fields:
+    - name_en: enabled
+      name_cn: 启用
+      property_name: enabled
+      value: true
+      value_type: bool
+      control_type: checkbox
+      section: 基础
+
+    - name_en: model
+      name_cn: 模型
+      property_name: model
+      value: resnet18
+      value_type: string
+      control_type: combo
+      options: [resnet18, resnet34, resnet50, resnet101, mobilenet_v2, efficientnet_b0, convnext_tiny]
+      section: 模型
+
+    - name_en: model_path
+      name_cn: 模型文件
+      property_name: modelPath
+      value: F:/models/resnet18.wts
+      value_type: string
+      control_type: path
+      section: 模型
+
+    - name_en: feature_name
+      name_cn: 特征层
+      property_name: featureName
+      value: layer4
+      value_type: string
+      control_type: combo
+      options_map:
+        resnet18: [layer1, layer2, layer3, layer4]
+        resnet34: [layer1, layer2, layer3, layer4]
+        resnet50: [layer1, layer2, layer3, layer4]
+        resnet101: [layer1, layer2, layer3, layer4]
+        mobilenet_v2: [features.4, features.7, features.14, features.18]
+        efficientnet_b0: [features.2, features.3, features.5, features.8]
+        convnext_tiny: [features.1, features.3, features.5, features.7]
+      section: 模型
+
+    - name_en: rebuild_index
+      name_cn: 重建索引
+      property_name: rebuildIndex
+      value: false
+      value_type: bool
+      control_type: checkbox
+      section: 索引
+
+    - name_en: top_k
+      name_cn: 返回数量
+      property_name: topK
+      value: 5
+      value_type: int
+      value_range: [1, 1000, 1]
+      control_type: spin
+      section: 索引
+
+    - name_en: norm
+      name_cn: 特征归一化
+      property_name: norm
+      value: l2
+      value_type: string
+      control_type: combo
+      options: [l2, l1, none]
+      section: 索引
+
+    - name_en: preprocess_backend
+      name_cn: 预处理后端
+      property_name: preprocessBackend
+      value: cpu
+      value_type: string
+      control_type: combo
+      options: [cpu, gpu]
+      section: 运行时
+
+    - name_en: faiss_backend
+      name_cn: FAISS 后端
+      property_name: faissBackend
+      value: cpu
+      value_type: string
+      control_type: combo
+      options: [cpu, gpu]
+      section: 运行时
+
+    - name_en: index_storage
+      name_cn: 索引存储
+      property_name: indexStorage
+      value: ram
+      value_type: string
+      control_type: combo
+      options: [ram, disk]
+      section: 索引
+
+    - name_en: disk_build_batch_size
+      name_cn: 磁盘索引批量
+      property_name: diskBuildBatchSize
+      value: 256
+      value_type: int
+      value_range: [1, 8192, 1]
+      control_type: spin
+      section: 索引
+
+    - name_en: model_batch_size
+      name_cn: 模型批量
+      property_name: modelBatchSize
+      value: 1
+      value_type: int
+      value_range: [1, 8192, 1]
+      control_type: spin
+      section: 模型
+
+    - name_en: model_backend
+      name_cn: 推理后端
+      property_name: modelBackend
+      value: tensorrt
+      value_type: string
+      control_type: combo
+      options: [tensorrt, openvino, onnxruntime]
+      section: 运行时
+
+    - name_en: model_device
+      name_cn: 推理设备
+      property_name: modelDevice
+      value: gpu
+      value_type: string
+      control_type: combo
+      options: [gpu, cpu]
+      section: 运行时
+
+    - name_en: index_directory
+      name_cn: 索引目录
+      property_name: indexDirectory
+      value: ""
+      value_type: string
+      control_type: folder
+      section: 索引
+
+    - name_en: pooled_height
+      name_cn: ROI 输出高度
+      property_name: pooledHeight
+      value: 7
+      value_type: int
+      value_range: [1, 64, 1]
+      control_type: spin
+      section: ROI
+
+    - name_en: pooled_width
+      name_cn: ROI 输出宽度
+      property_name: pooledWidth
+      value: 7
+      value_type: int
+      value_range: [1, 64, 1]
+      control_type: spin
+      section: ROI
+
+    - name_en: sampling_ratio
+      name_cn: ROI 采样比例
+      property_name: samplingRatio
+      value: -1
+      value_type: int
+      value_range: [-1, 32, 1]
+      control_type: spin
+      section: ROI
+
+    - name_en: aligned
+      name_cn: ROI 对齐
+      property_name: aligned
+      value: false
+      value_type: bool
+      control_type: checkbox
+      section: ROI
+
+    - name_en: use_pca
+      name_cn: 启用 PCA
+      property_name: usePca
+      value: false
+      value_type: bool
+      control_type: checkbox
+      section: ROI
+
+    - name_en: pca_dim
+      name_cn: PCA 维度
+      property_name: pcaDim
+      value: 0
+      value_type: int
+      value_range: [0, 8192, 1]
+      control_type: spin
+      section: ROI

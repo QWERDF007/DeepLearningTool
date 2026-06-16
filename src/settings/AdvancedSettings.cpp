@@ -4,9 +4,6 @@
 
 #include <spdlog/spdlog.h>
 
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QVariantMap>
 
 #include <algorithm>
@@ -20,6 +17,9 @@ constexpr const char *kDefaultImageSearchModelPath   = "F:/models/resnet18.wts";
 constexpr const char *kDefaultImageSearchFeatureName = "layer4";
 constexpr const char *kDefaultSmartAnnotationModel   = "edge_sam";
 constexpr const char *kDefaultSmartAnnotationPath    = "F:/models/edge_sam.wts";
+constexpr const char *kImageSearchSettingsTable      = "image_search_settings";
+constexpr const char *kRoiSearchSettingsTable        = "roi_search_settings";
+constexpr const char *kSmartAnnotationSettingsTable  = "smart_annotation_settings";
 
 QString normalizedImageSearchModel(QString value)
 {
@@ -43,25 +43,6 @@ QString normalizedOption(QString value, const QStringList &allowed_values, const
 {
     value = value.trimmed().toLower();
     return allowed_values.contains(value) ? value : default_value;
-}
-
-void appendUnique(QStringList &values, QString value)
-{
-    value = value.trimmed();
-    if (!value.isEmpty() && !values.contains(value))
-    {
-        values.append(value);
-    }
-}
-
-QVariant valueWithFallback(const QVariantMap &row, const QString &key, const QString &legacy_key,
-                           const QVariant &default_value)
-{
-    if (row.contains(key))
-    {
-        return row.value(key);
-    }
-    return row.value(legacy_key, default_value);
 }
 
 } // namespace
@@ -237,83 +218,6 @@ void ImageSearchSettings::setIndexDirectory(const QString &value)
     }
 }
 
-QStringList ImageSearchSettings::customFeatureNames(const QString &model_name) const
-{
-    return custom_feature_names_.value(normalizedImageSearchModel(model_name));
-}
-
-void ImageSearchSettings::addCustomFeatureName(const QString &model_name, const QString &feature_name)
-{
-    const QString model   = normalizedImageSearchModel(model_name);
-    const QString feature = feature_name.trimmed();
-    if (feature.isEmpty())
-    {
-        return;
-    }
-
-    QStringList values = custom_feature_names_.value(model);
-    if (values.contains(feature))
-    {
-        return;
-    }
-
-    values.append(feature);
-    custom_feature_names_.insert(model, values);
-    emit customFeatureNamesChanged();
-}
-
-QString ImageSearchSettings::customFeatureNamesJson() const
-{
-    QJsonObject root;
-    const auto  keys = custom_feature_names_.keys();
-    for (const QString &model : keys)
-    {
-        QJsonArray names;
-        for (const QString &feature_name : custom_feature_names_.value(model))
-        {
-            names.append(feature_name);
-        }
-        root.insert(model, names);
-    }
-    return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
-}
-
-void ImageSearchSettings::setCustomFeatureNamesJson(const QString &value)
-{
-    QHash<QString, QStringList> parsed_names;
-    const QJsonDocument         document = QJsonDocument::fromJson(value.toUtf8());
-    if (document.isObject())
-    {
-        const QJsonObject root = document.object();
-        for (auto it = root.constBegin(); it != root.constEnd(); ++it)
-        {
-            QStringList names;
-            if (it.value().isArray())
-            {
-                for (const QJsonValue &entry : it.value().toArray())
-                {
-                    appendUnique(names, entry.toString());
-                }
-            }
-            else if (it.value().isString())
-            {
-                appendUnique(names, it.value().toString());
-            }
-
-            if (!names.isEmpty())
-            {
-                parsed_names.insert(normalizedImageSearchModel(it.key()), names);
-            }
-        }
-    }
-
-    if (custom_feature_names_ != parsed_names)
-    {
-        custom_feature_names_ = parsed_names;
-        emit customFeatureNamesChanged();
-    }
-}
-
 void ImageSearchSettings::load(const QVariantMap &row)
 {
     setEnabled(row.value(QStringLiteral("enabled"), true).toBool());
@@ -332,7 +236,6 @@ void ImageSearchSettings::load(const QVariantMap &row)
     setModelBackend(row.value(QStringLiteral("model_backend"), QStringLiteral("tensorrt")).toString());
     setModelDevice(row.value(QStringLiteral("model_device"), QStringLiteral("gpu")).toString());
     setIndexDirectory(row.value(QStringLiteral("index_directory"), QString()).toString());
-    setCustomFeatureNamesJson(row.value(QStringLiteral("custom_feature_names"), QStringLiteral("{}")).toString());
 }
 
 QVariantMap ImageSearchSettings::saveMap() const
@@ -353,7 +256,6 @@ QVariantMap ImageSearchSettings::saveMap() const
         {       QStringLiteral("model_backend"), runtime_.model_backend},
         {        QStringLiteral("model_device"), runtime_.model_device},
         {      QStringLiteral("index_directory"), index_.directory},
-        {   QStringLiteral("custom_feature_names"), customFeatureNamesJson()},
     };
 }
 
@@ -374,7 +276,6 @@ void ImageSearchSettings::reset()
     setModelBackend(QStringLiteral("tensorrt"));
     setModelDevice(QStringLiteral("gpu"));
     setIndexDirectory(QString());
-    setCustomFeatureNamesJson(QStringLiteral("{}"));
 }
 
 RoiSearchSettings::RoiSearchSettings(QObject *parent)
@@ -578,33 +479,15 @@ void SmartAnnotationSettings::setRefreshInterval(int value)
 
 void SmartAnnotationSettings::load(const QVariantMap &row)
 {
-    setEnabled(valueWithFallback(row, QStringLiteral("enabled"), QStringLiteral("smart_annotation_enabled"), false)
-                   .toBool());
-    setModel(valueWithFallback(row, QStringLiteral("model"), QStringLiteral("smart_annotation_model"),
-                               QString::fromLatin1(kDefaultSmartAnnotationModel))
-                 .toString());
-    setModelPath(valueWithFallback(row, QStringLiteral("model_path"), QStringLiteral("smart_annotation_model_path"),
-                                   QString::fromLatin1(kDefaultSmartAnnotationPath))
-                     .toString());
-    setModelBackend(valueWithFallback(row, QStringLiteral("model_backend"),
-                                      QStringLiteral("smart_annotation_model_backend"), QStringLiteral("tensorrt"))
-                        .toString());
-    setModelDevice(valueWithFallback(row, QStringLiteral("model_device"),
-                                     QStringLiteral("smart_annotation_model_device"), QStringLiteral("gpu"))
-                       .toString());
-    setMaskThreshold(valueWithFallback(row, QStringLiteral("mask_threshold"),
-                                       QStringLiteral("smart_annotation_mask_threshold"), 0.0)
-                         .toDouble());
-    setPolygonSimplifyEpsilon(
-        valueWithFallback(row, QStringLiteral("polygon_simplify_epsilon"),
-                          QStringLiteral("smart_annotation_polygon_simplify_epsilon"), 2.0)
-            .toDouble());
-    setMaskAlpha(
-        valueWithFallback(row, QStringLiteral("mask_alpha"), QStringLiteral("smart_annotation_mask_alpha"), 0.35)
-            .toDouble());
-    setRefreshInterval(valueWithFallback(row, QStringLiteral("refresh_interval"),
-                                         QStringLiteral("smart_annotation_refresh_interval"), 80)
-                           .toInt());
+    setEnabled(row.value(QStringLiteral("enabled"), false).toBool());
+    setModel(row.value(QStringLiteral("model"), QString::fromLatin1(kDefaultSmartAnnotationModel)).toString());
+    setModelPath(row.value(QStringLiteral("model_path"), QString::fromLatin1(kDefaultSmartAnnotationPath)).toString());
+    setModelBackend(row.value(QStringLiteral("model_backend"), QStringLiteral("tensorrt")).toString());
+    setModelDevice(row.value(QStringLiteral("model_device"), QStringLiteral("gpu")).toString());
+    setMaskThreshold(row.value(QStringLiteral("mask_threshold"), 0.0).toDouble());
+    setPolygonSimplifyEpsilon(row.value(QStringLiteral("polygon_simplify_epsilon"), 2.0).toDouble());
+    setMaskAlpha(row.value(QStringLiteral("mask_alpha"), 0.35).toDouble());
+    setRefreshInterval(row.value(QStringLiteral("refresh_interval"), 80).toInt());
 }
 
 QVariantMap SmartAnnotationSettings::saveMap() const
@@ -654,7 +537,7 @@ void AdvancedSettings::load(database::SettingsDataBase *database)
 
     {
         QString err_msg;
-        const auto row = database->loadFeatureSearchSettings(err_msg);
+        const auto row = database->loadSettings(QString::fromLatin1(kImageSearchSettingsTable), err_msg);
         if (!err_msg.isEmpty())
         {
             spdlog::warn("Load feature search settings failed: {}", err_msg.toUtf8().constData());
@@ -664,7 +547,7 @@ void AdvancedSettings::load(database::SettingsDataBase *database)
 
     {
         QString err_msg;
-        const auto row = database->loadRoiSearchSettings(err_msg);
+        const auto row = database->loadSettings(QString::fromLatin1(kRoiSearchSettingsTable), err_msg);
         if (!err_msg.isEmpty())
         {
             spdlog::warn("Load ROI search settings failed: {}", err_msg.toUtf8().constData());
@@ -674,20 +557,10 @@ void AdvancedSettings::load(database::SettingsDataBase *database)
 
     {
         QString err_msg;
-        auto    row = database->loadSmartAnnotationSettings(err_msg);
+        const auto row = database->loadSettings(QString::fromLatin1(kSmartAnnotationSettingsTable), err_msg);
         if (!err_msg.isEmpty())
         {
             spdlog::warn("Load smart annotation settings failed: {}", err_msg.toUtf8().constData());
-        }
-        if (row.isEmpty())
-        {
-            QString legacy_err_msg;
-            row = database->loadFeatureSearchSettings(legacy_err_msg);
-            if (!legacy_err_msg.isEmpty())
-            {
-                spdlog::warn("Load legacy smart annotation settings failed: {}",
-                             legacy_err_msg.toUtf8().constData());
-            }
         }
         smart_annotation_->load(row);
     }
@@ -702,7 +575,7 @@ void AdvancedSettings::save(database::SettingsDataBase *database)
 
     {
         QString err_msg;
-        database->saveFeatureSearchSettings(image_search_->saveMap(), err_msg);
+        database->saveSettings(QString::fromLatin1(kImageSearchSettingsTable), image_search_->saveMap(), err_msg);
         if (!err_msg.isEmpty())
         {
             spdlog::error("Save feature search settings failed: {}", err_msg.toUtf8().constData());
@@ -711,7 +584,7 @@ void AdvancedSettings::save(database::SettingsDataBase *database)
 
     {
         QString err_msg;
-        database->saveRoiSearchSettings(roi_search_->saveMap(), err_msg);
+        database->saveSettings(QString::fromLatin1(kRoiSearchSettingsTable), roi_search_->saveMap(), err_msg);
         if (!err_msg.isEmpty())
         {
             spdlog::error("Save ROI search settings failed: {}", err_msg.toUtf8().constData());
@@ -720,7 +593,7 @@ void AdvancedSettings::save(database::SettingsDataBase *database)
 
     {
         QString err_msg;
-        database->saveSmartAnnotationSettings(smart_annotation_->saveMap(), err_msg);
+        database->saveSettings(QString::fromLatin1(kSmartAnnotationSettingsTable), smart_annotation_->saveMap(), err_msg);
         if (!err_msg.isEmpty())
         {
             spdlog::error("Save smart annotation settings failed: {}", err_msg.toUtf8().constData());

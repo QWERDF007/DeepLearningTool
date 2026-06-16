@@ -7,6 +7,7 @@
 #include <QObject>
 #include <QString>
 #include <QVariant>
+#include <QVariantList>
 #include <QVariantMap>
 #include <utility>
 #include <vector>
@@ -221,45 +222,34 @@ public:
     SettingsDataBase(const QString &path, QObject *parent = nullptr);
     ~SettingsDataBase();
 
+    bool        ensureSettingsTable(const QString &table_name, QString &err_msg) const;
+    bool        syncSettingsSchema(const QString &table_name, const QVariantList &fields, QString &err_msg) const;
+    QVariantMap loadSettings(const QString &table_name, QString &err_msg) const;
+    bool        saveSettings(const QString &table_name, const QVariantMap &row, QString &err_msg) const;
+
     // ── 特征搜索设置 ──
 
-    QVariantMap loadFeatureSearchSettings(QString &err_msg) const;
-    bool        saveFeatureSearchSettings(const QVariantMap &row, QString &err_msg) const;
 
     // ── ROI 搜索设置 ──
 
-    QVariantMap loadRoiSearchSettings(QString &err_msg) const;
-    bool        saveRoiSearchSettings(const QVariantMap &row, QString &err_msg) const;
 
     // ── 智能标注设置 ──
 
-    QVariantMap loadSmartAnnotationSettings(QString &err_msg) const;
-    bool        saveSmartAnnotationSettings(const QVariantMap &row, QString &err_msg) const;
 
     // ── 缩略图设置 ──
 
-    QVariantMap loadThumbnailSettings(QString &err_msg) const;
-    bool        saveThumbnailSettings(const QVariantMap &row, QString &err_msg) const;
 
     // ── 标注显示设置 ──
 
-    QVariantMap loadLabelDisplaySettings(QString &err_msg) const;
-    bool        saveLabelDisplaySettings(const QVariantMap &row, QString &err_msg) const;
 
     // ── 图像增强设置 ──
 
-    QVariantMap loadImageEnhanceSettings(QString &err_msg) const;
-    bool        saveImageEnhanceSettings(const QVariantMap &row, QString &err_msg) const;
 
     // ── UI 设置 ──
 
-    QVariantMap loadUiSettings(QString &err_msg) const;
-    bool        saveUiSettings(const QVariantMap &row, QString &err_msg) const;
 
     // ── 项目设置 ──
 
-    QVariantMap loadProjectSettings(QString &err_msg) const;
-    bool        saveProjectSettings(const QVariantMap &row, QString &err_msg) const;
 };
 
 } // namespace dltool::database
