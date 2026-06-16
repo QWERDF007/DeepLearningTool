@@ -1,9 +1,10 @@
-set(INFERRT_ROOT "D:/Project/InferRT/InferRT-0.0.1" CACHE PATH "InferRT installation root" FORCE)
-set(INFERRT_INCLUDE_DIR "${INFERRT_ROOT}/include")
-set(INFERRT_LIB_DIR "${INFERRT_ROOT}/lib")
+set(INFERRT_ROOT "F:/Projects/InferRT/InferRT-0.0.1" CACHE PATH "InferRT installation root" FORCE)
+set(INFERRT_INCLUDE_DIR "${INFERRT_ROOT}/include" CACHE PATH "InferRT include directory" FORCE)
+set(INFERRT_LIB_DIR "${INFERRT_ROOT}/lib" CACHE PATH "InferRT library directory" FORCE)
+set(INFERRT_BIN_DIR "${INFERRT_ROOT}/bin" CACHE PATH "InferRT runtime directory" FORCE)
 
 # TensorRT headers (required transitively by IModelConfig.hpp)
-set(TRT_ROOT "D:/Software/dev/TensorRT-10.16.1.11" CACHE PATH "TensorRT installation directory")
+set(TRT_ROOT "D:/Software/dev/TensorRT-10.16.1.11" CACHE PATH "TensorRT installation directory" FORCE)
 
 if(NOT OpenCV_FOUND)
     include(ConfigOpenCV)
@@ -34,15 +35,16 @@ function(link_inferrt_module target module)
 endfunction()
 
 function(setup_inferrt target)
-    target_include_directories(${target} PRIVATE
+    set(TARGET_NAME "${PROJECT_NAME}_${target}")
+    target_include_directories(${TARGET_NAME} PRIVATE
         "${INFERRT_INCLUDE_DIR}"
         "${TRT_ROOT}/include"
         ${OpenCV_INCLUDE_DIRS})
 
-    target_link_libraries(${target} PRIVATE CUDA::cudart ${INFERRT_OPENCV_LIBS})
+    target_link_libraries(${TARGET_NAME} PRIVATE CUDA::cudart ${INFERRT_OPENCV_LIBS})
 
     foreach(INFERRT_MODULE IN ITEMS features model core util cvcuda)
-        link_inferrt_module(${target} ${INFERRT_MODULE})
+        link_inferrt_module(${TARGET_NAME} ${INFERRT_MODULE})
     endforeach()
 
 endfunction()

@@ -176,6 +176,6 @@ sequenceDiagram
 - 根项目启用 C、C++ 和 CUDA 语言，当前 C++ 标准为 C++17。
 - `src/CMakeLists.txt` 当前构建顺序为 `common -> core -> database -> settings -> ui -> model -> feature -> data -> project -> tool`。
 - 第三方库在 `3rdparty/` 管理：`sqlpp11`、`spdlog`、`nlohmann/json.hpp`。
-- `feature` 模块通过 `setup_inferrt(${PROJECT_NAME}_feature)` 接入 InferRT 相关能力。
+- `feature` 模块通过 `setup_inferrt(feature)` 接入 InferRT 相关能力。
 - `assets/assets.qrc` 通过 `qt_add_big_resources()` 链入 `dltool` 可执行程序。
 - `tests/` 当前只启用 `tests/ui`，测试目标为 `tst_dltool_ui`。

@@ -45,25 +45,7 @@ cmake --build build -j
 
 ## 本地打包
 
-Windows：
-
-```powershell
-tools\package_app.bat
-```
-
-Linux：
-
-```bash
-bash tools/package_app.sh
-```
-
-Windows / Linux 打包脚本默认从 `build/` 读取构建产物并输出到 `install/`。当前项目的 QML 模块已嵌入 Qt 资源，默认不复制散装的 `build/dltool` 模块目录，只复制可执行程序、项目动态库和运行时依赖。若需要调试散装 QML 模块，可在 Windows 使用 `-IncludeQmlModuleDir`，在 Linux 使用 `--include-qml-module-dir`。
-
-Linux 下还会复制 Qt QML/插件目录，并通过 `ldd` 收集 ELF 依赖。若 Qt 不在系统可发现路径中，可显式传入：
-
-```bash
-bash tools/package_app.sh --qt-root /opt/Qt/6.8.0/gcc_64
-```
+打包和依赖链接脚本说明见 [tools/README.md](../tools/README.md)。
 
 注意：
 

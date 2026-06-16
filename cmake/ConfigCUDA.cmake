@@ -19,6 +19,7 @@ list(GET CUDA_VERSION_LIST 1 CUDA_VERSION_MINOR)
 list(GET CUDA_VERSION_LIST 2 CUDA_VERSION_PATCH)
 
 find_package(CUDAToolkit ${CUDA_VERSION_MAJOR}.${CUDA_VERSION_MINOR} REQUIRED)
+set(CUDAToolkit_BIN_DIR "${CUDAToolkit_TARGET_DIR}/bin" CACHE PATH "CUDA Toolkit runtime directory" FORCE)
 
 # CUDA version requirement:
 # - to use gcc-11 (11.7)

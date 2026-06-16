@@ -16,7 +16,7 @@
 - 依赖 `settings` 读取图像搜索和智能标注配置。
 - 依赖 `ui` 的 `ProgressManager` 反馈长任务进度。
 - 通过 `ImageSearchDataProvider` 使用 `data` 的图像列表和过滤结果写回能力，不直接依赖 `data` 模块。
-- 通过 `setup_inferrt(${PROJECT_NAME}_feature)` 接入 InferRT、FAISS、CUDA 和 OpenCV 相关能力。
+- 通过 `setup_inferrt(feature)` 接入 InferRT、FAISS、CUDA 和 OpenCV 相关能力。
 
 ## 边界定义
 

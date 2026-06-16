@@ -5,4 +5,4 @@ add_plugin_library(feature
         ${CMAKE_SOURCE_DIR}/3rdparty/spdlog/include
 )
 
-setup_inferrt(${PROJECT_NAME}_feature)
+setup_inferrt(feature)

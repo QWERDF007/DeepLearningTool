@@ -1,0 +1,139 @@
+# Runtime dependency link and package list.
+# roots may be absolute paths or CMake cache/config variable names.
+dependencies:
+  - name: sqlite
+    cmake: cmake/ConfigSQLite.cmake
+    root: SQLITE_ROOT
+    destinations:
+      - build/bin
+    windows:
+      - sqlite3.dll
+    linux:
+      - lib/libsqlite3.so
+      - lib/libsqlite3.so.*
+    macos:
+      - lib/libsqlite3.dylib
+
+  - name: tensorrt
+    cmake: cmake/ConfigInferRT.cmake
+    root: INFERRT_BIN_DIR
+    destinations:
+      - build/bin
+    windows:
+      - nvinfer_*.dll
+      - nvonnxparser_*.dll
+
+  - name: cuda
+    cmake: cmake/ConfigInferRT.cmake
+    root: INFERRT_BIN_DIR
+    destinations:
+      - build/bin
+    windows:
+      - cudart64_*.dll
+      - cublas*.dll
+      - cufft*.dll
+      - cudnn*.dll
+
+  - name: opencv
+    config: release
+    cmake: cmake/ConfigInferRT.cmake
+    root: INFERRT_BIN_DIR
+    destinations:
+      - build/bin
+    windows:
+      - opencv_world480.dll
+
+  - name: opencv-debug
+    config: debug
+    root: F:/Projects/InferRT/build/bin
+    destinations:
+      - build/bin
+    windows:
+      - opencv_world480d.dll
+
+  - name: inferrt
+    config: release
+    cmake: cmake/ConfigInferRT.cmake
+    root: INFERRT_BIN_DIR
+    destinations:
+      - build/bin
+    windows:
+      - inferrt_core.dll
+      - inferrt_cvcuda.dll
+      - inferrt_features.dll
+      - inferrt_model.dll
+      - inferrt_util.dll
+
+  - name: inferrt-debug
+    config: debug
+    root: F:/Projects/InferRT/build/bin
+    destinations:
+      - build/bin
+    windows:
+      - inferrt_cored.dll
+      - inferrt_cvcudad.dll
+      - inferrt_featuresd.dll
+      - inferrt_modeld.dll
+      - inferrt_utild.dll
+
+  - name: mkl
+    cmake: cmake/ConfigInferRT.cmake
+    root: INFERRT_BIN_DIR
+    destinations:
+      - build/bin
+    windows:
+      - libiomp5md.dll
+      - mkl_avx2.2.dll
+      - mkl_core.2.dll
+      - mkl_def.2.dll
+      - mkl_intel_thread.2.dll
+
+  - name: faiss
+    config: release
+    cmake: cmake/ConfigInferRT.cmake
+    root: INFERRT_BIN_DIR
+    destinations:
+      - build/bin
+    windows:
+      - faiss.dll
+
+  - name: faiss-debug
+    config: debug
+    cmake: cmake/ConfigInferRT.cmake
+    root: INFERRT_BIN_DIR
+    destinations:
+      - build/bin
+    windows:
+      - faissd.dll
+
+  - name: onnxruntime
+    cmake: cmake/ConfigInferRT.cmake
+    root: INFERRT_BIN_DIR
+    destinations:
+      - build/bin
+    windows:
+      - onnxruntime*.dll
+
+  - name: openvino
+    cmake: cmake/ConfigInferRT.cmake
+    root: INFERRT_BIN_DIR
+    destinations:
+      - build/bin
+    windows:
+      - openvino*.dll
+
+  - name: tbb
+    cmake: cmake/ConfigInferRT.cmake
+    root: INFERRT_BIN_DIR
+    destinations:
+      - build/bin
+    windows:
+      - tbb*.dll
+
+  - name: zlib
+    cmake: cmake/ConfigInferRT.cmake
+    root: INFERRT_BIN_DIR
+    destinations:
+      - build/bin
+    windows:
+      - zlib*.dll
