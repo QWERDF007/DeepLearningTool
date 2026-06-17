@@ -347,10 +347,10 @@ bool ModelManager::registerModel(const int method, const QString &type_name, Mod
         return false;
     }
 
-    auto      &registry = modelRegistry();
-    const auto found
-        = std::find_if(registry.begin(), registry.end(), [method, &trimmed_type_name](const RegisteredModel &model)
-                       { return model.method == method && model.name == trimmed_type_name; });
+    auto       &registry = modelRegistry();
+    const auto found    = std::find_if(registry.begin(), registry.end(),
+                                    [method, &trimmed_type_name](const RegisteredModel &model)
+                                    { return model.method == method && model.name == trimmed_type_name; });
     if (found != registry.end())
     {
         return false;
@@ -372,7 +372,7 @@ QStringList ModelManager::registeredModelNames(const int method)
     names.reserve(static_cast<int>(registry.size()));
     for (const RegisteredModel &model : registry)
     {
-        if (method < 0 || model.method == method)
+        if ((method < 0 || model.method == method) && !names.contains(model.name))
         {
             names.append(model.name);
         }
@@ -387,13 +387,22 @@ QStringList ModelManager::registeredModelNames()
 
 std::unique_ptr<IModel> ModelManager::createRegisteredModel(const int method, const QString &type_name)
 {
-    const auto &registry = modelRegistry();
-    const auto found = std::find_if(registry.begin(), registry.end(), [method, &type_name](const RegisteredModel &model)
-                                    { return (method < 0 || model.method == method) && model.name == type_name; });
-    if (found == registry.end() || !found->factory)
+    const QString trimmed_type_name = type_name.trimmed();
+    if (trimmed_type_name.isEmpty())
     {
         return nullptr;
     }
+
+    const auto &registry = modelRegistry();
+    const auto found    = std::find_if(registry.begin(), registry.end(),
+                                    [method, &trimmed_type_name](const RegisteredModel &model)
+                                    {
+                                        return (method < 0 || model.method == method)
+                                               && model.name == trimmed_type_name;
+                                    });
+    if (found == registry.end() || !found->factory)
+        return nullptr;
+
     return found->factory();
 }
 

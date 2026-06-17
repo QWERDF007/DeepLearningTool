@@ -1,0 +1,144 @@
+YOLOv5:
+  method: Detection
+  train_params:
+    - key: network
+      label: Network Parameters
+      part_index: 0
+      params:
+        - key: image_size
+          label: Image Size
+          editor_type: integer
+          value: 640
+          minimum_value: 320
+          maximum_value: 1536
+          step_value: 32
+
+        - key: num_classes
+          label: Classes
+          editor_type: integer
+          value: 80
+          minimum_value: 1
+          maximum_value: 10000
+          step_value: 1
+
+        - key: pretrained
+          label: Pretrained Weights
+          editor_type: comboBox
+          value: COCO
+          options: [None, COCO, Custom]
+
+    - key: training
+      label: Training Parameters
+      part_index: 0
+      params:
+        - key: epochs
+          label: Epochs
+          editor_type: integer
+          value: 100
+          minimum_value: 1
+          maximum_value: 10000
+          step_value: 1
+
+        - key: batch_size
+          label: Batch Size
+          editor_type: integer
+          value: 16
+          minimum_value: 1
+          maximum_value: 512
+          step_value: 1
+
+        - key: learning_rate
+          label: Learning Rate
+          editor_type: double
+          value: 0.01
+          minimum_value: 0.000001
+          maximum_value: 1.0
+          step_value: 0.0001
+          decimals: 6
+
+        - key: optimizer
+          label: Optimizer
+          editor_type: comboBox
+          value: SGD
+          options: [SGD, Adam, AdamW]
+
+    - key: augmentation
+      label: Data Augmentation
+      part_index: 1
+      params:
+        - key: mosaic
+          label: Mosaic
+          editor_type: checkbox
+          value: true
+
+        - key: mixup
+          label: MixUp
+          editor_type: checkbox
+          value: false
+
+        - key: hsv_gain
+          label: HSV Gain
+          editor_type: slider
+          value: 0.015
+          minimum_value: 0.0
+          maximum_value: 0.1
+          step_value: 0.001
+          decimals: 3
+
+        - key: flip_probability
+          label: Flip Probability
+          editor_type: slider
+          value: 0.5
+          minimum_value: 0.0
+          maximum_value: 1.0
+          step_value: 0.01
+          decimals: 2
+
+  test_params:
+    - key: inference
+      label: Inference Parameters
+      part_index: 0
+      params:
+        - key: image_size
+          label: Image Size
+          editor_type: integer
+          value: 640
+          minimum_value: 320
+          maximum_value: 1536
+          step_value: 32
+
+        - key: confidence_threshold
+          label: Confidence Threshold
+          editor_type: slider
+          value: 0.25
+          minimum_value: 0.0
+          maximum_value: 1.0
+          step_value: 0.01
+          decimals: 2
+
+        - key: nms_threshold
+          label: NMS Threshold
+          editor_type: slider
+          value: 0.45
+          minimum_value: 0.0
+          maximum_value: 1.0
+          step_value: 0.01
+          decimals: 2
+
+    - key: evaluation
+      label: Evaluation Parameters
+      part_index: 1
+      params:
+        - key: batch_size
+          label: Batch Size
+          editor_type: integer
+          value: 8
+          minimum_value: 1
+          maximum_value: 512
+          step_value: 1
+
+        - key: metric
+          label: Metric
+          editor_type: comboBox
+          value: "mAP@0.5"
+          options: ["mAP@0.5", "mAP@0.5:0.95", "Recall"]

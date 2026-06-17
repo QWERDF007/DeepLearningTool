@@ -118,11 +118,11 @@ def link_tests(build_dir: Path) -> None:
 
 
 def link_settings_config(build_dir: Path) -> None:
-    source = REPO_ROOT / "config" / "settings"
+    source = REPO_ROOT / "config"
     if not source.is_dir():
         warn(f"skip settings config link, missing {source}")
         return
-    link_dir(source, build_dir / "bin" / "config" / "settings")
+    link_dir(source, build_dir / "bin" / "config")
 
 
 def main() -> int:
