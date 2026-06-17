@@ -191,7 +191,7 @@ Item {
 
     Connections {
         target: GlobalSettings.advanced.smartAnnotation
-        function onMaskAlphaChanged() { smartMaskCanvas.requestPaint() }
+        function onValueChanged(key, value) { smartMaskCanvas.requestPaint() }
     }
 
     onDrawingColorChanged: smartMaskCanvas.requestPaint()

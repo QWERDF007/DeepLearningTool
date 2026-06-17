@@ -119,11 +119,8 @@ SettingsField parseField(const YAML::Node &node, const int ordinal_index)
 QVector<QString> settingsConfigDirs()
 {
     const QDir app_dir(QCoreApplication::applicationDirPath());
-    const QDir current_dir(QDir::currentPath());
     return {
-        app_dir.filePath(QStringLiteral("config/settings")),
-        app_dir.filePath(QStringLiteral("../config/settings")),
-        current_dir.filePath(QStringLiteral("config/settings")),
+        QDir::cleanPath(app_dir.filePath(QStringLiteral("config/settings"))),
     };
 }
 
@@ -141,7 +138,10 @@ QVector<QFileInfo> settingsConfigFiles()
         {
             const bool exists = std::any_of(files.cbegin(), files.cend(),
                                             [&entry](const QFileInfo &file)
-                                            { return file.absoluteFilePath() == entry.absoluteFilePath(); });
+                                            {
+                                                return file.canonicalFilePath() == entry.canonicalFilePath()
+                                                       || file.absoluteFilePath() == entry.absoluteFilePath();
+                                            });
             if (!exists)
                 files.append(entry);
         }
@@ -177,11 +177,14 @@ SettingsFieldModel::SettingsFieldModel(QObject *parent)
 }
 
 SettingsFieldModel::SettingsFieldModel(QString group_key, QString table_name, QString label,
-                                       std::vector<SettingsField> fields, QObject *parent)
+                                       QString accessor, QString parent_accessor, std::vector<SettingsField> fields,
+                                       QObject *parent)
     : QAbstractListModel(parent)
     , group_key_(std::move(group_key))
     , table_name_(std::move(table_name))
     , label_(std::move(label))
+    , accessor_(std::move(accessor))
+    , parent_accessor_(std::move(parent_accessor))
     , fields_(std::move(fields))
 {
     QQmlEngine::setObjectOwnership(this, QQmlEngine::CppOwnership);
@@ -192,6 +195,8 @@ SettingsFieldModel::~SettingsFieldModel() = default;
 QString SettingsFieldModel::groupKey() const { return group_key_; }
 QString SettingsFieldModel::tableName() const { return table_name_; }
 QString SettingsFieldModel::label() const { return label_; }
+QString SettingsFieldModel::accessor() const { return accessor_; }
+QString SettingsFieldModel::parentAccessor() const { return parent_accessor_; }
 int SettingsFieldModel::count() const { return rowCount(); }
 
 int SettingsFieldModel::rowCount(const QModelIndex &parent) const
@@ -305,6 +310,24 @@ bool SettingsFieldModel::setValueForName(const QString &name, const QVariant &va
     return row >= 0 && setData(index(row), value, ValueRole);
 }
 
+bool SettingsFieldModel::setValueForProperty(const QString &property_name, const QVariant &value)
+{
+    const int row = indexOfProperty(property_name);
+    return row >= 0 && setData(index(row), value, ValueRole);
+}
+
+QString SettingsFieldModel::propertyForName(const QString &name) const
+{
+    const int row = indexOfName(name);
+    return row >= 0 ? fields_.at(static_cast<size_t>(row)).property_name : QString();
+}
+
+QString SettingsFieldModel::nameForProperty(const QString &property_name) const
+{
+    const int row = indexOfProperty(property_name);
+    return row >= 0 ? fields_.at(static_cast<size_t>(row)).name_en : QString();
+}
+
 QVariantMap SettingsFieldModel::fieldMap(const int row) const
 {
     if (row < 0 || row >= rowCount())
@@ -363,18 +386,27 @@ void SettingsFieldModel::resetValues()
     if (fields_.empty())
         return;
 
-    bool changed = false;
-    for (SettingsField &field : fields_)
+    QVector<int> changed_rows;
+    for (size_t row = 0; row < fields_.size(); ++row)
     {
+        SettingsField &field = fields_[row];
         const QVariant next = typedValue(field, field.default_value);
         if (field.value != next)
         {
             field.value = next;
-            changed     = true;
+            changed_rows.append(static_cast<int>(row));
         }
     }
-    if (changed)
+
+    if (!changed_rows.isEmpty())
+    {
         emit dataChanged(index(0), index(rowCount() - 1), {ValueRole, Qt::EditRole});
+        for (const int row : changed_rows)
+        {
+            const SettingsField &field = fields_.at(static_cast<size_t>(row));
+            emit valueChanged(field.name_en, field.value);
+        }
+    }
 }
 
 int SettingsFieldModel::indexOfName(const QString &name) const
@@ -504,6 +536,7 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
     {
         for (const QFileInfo &file : files)
         {
+            spdlog::info("Load settings schema: {}", file.absoluteFilePath().toUtf8().constData());
             const YAML::Node root = YAML::LoadFile(file.absoluteFilePath().toStdString());
             if (!root.IsMap())
                 continue;
@@ -516,6 +549,9 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
                 const QString table_name = group.IsMap() ? nodeString(group["table"], defaultTableName(group_key))
                                                          : defaultTableName(group_key);
                 const QString label      = group.IsMap() ? nodeString(group["label"], group_key) : group_key;
+                const QString accessor   = group.IsMap() ? nodeString(group["accessor"]) : QString();
+                const QString parent_accessor
+                    = group.IsMap() ? nodeString(firstNode(group, {"parent_accessor", "parent"})) : QString();
                 if (!fields_node || !fields_node.IsSequence())
                     continue;
 
@@ -525,9 +561,16 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
                 {
                     SettingsField field = parseField(field_node, ordinal++);
                     if (!field.name_en.isEmpty())
+                    {
+                        if (!firstNode(field_node, {"property_name", "property"}))
+                        {
+                            spdlog::warn("Settings field missing property_name: group={}, field={}",
+                                         group_key.toUtf8().constData(), field.name_en.toUtf8().constData());
+                        }
                         fields.push_back(std::move(field));
+                    }
                 }
-                addGroup(group_key, table_name, label, std::move(fields));
+                addGroup(group_key, table_name, label, accessor, parent_accessor, std::move(fields));
             }
         }
     }
@@ -593,9 +636,11 @@ void SettingsCatalog::reset()
 }
 
 SettingsFieldModel *SettingsCatalog::addGroup(QString group_key, QString table_name, QString label,
+                                              QString accessor, QString parent_accessor,
                                               std::vector<SettingsField> fields)
 {
     auto group = std::make_unique<SettingsFieldModel>(std::move(group_key), std::move(table_name), std::move(label),
+                                                      std::move(accessor), std::move(parent_accessor),
                                                       std::move(fields), this);
     SettingsFieldModel *ptr = group.get();
     connect(ptr, &SettingsFieldModel::valueChanged, this,
@@ -604,6 +649,14 @@ SettingsFieldModel *SettingsCatalog::addGroup(QString group_key, QString table_n
                 emit fieldValueChanged(ptr->groupKey(), name, value);
                 emit valueChanged();
             });
+
+    const int existing_row = indexOfGroup(ptr->groupKey());
+    if (existing_row >= 0)
+    {
+        groups_[static_cast<size_t>(existing_row)] = std::move(group);
+        return ptr;
+    }
+
     groups_.push_back(std::move(group));
     return ptr;
 }

@@ -1,13 +1,11 @@
 #pragma once
 
 #include "common/Singleton.h"
-#include "settings/AdvancedSettings.h"
-#include "settings/DataSettings.h"
-#include "settings/ProjectSettings.h"
 #include "dltool/settings/Export.h"
+#include "settings/SettingsObjects.h"
 #include "settings/SettingsSchema.h"
-#include "settings/UISettings.h"
 
+#include <QHash>
 #include <QObject>
 #include <QTimer>
 #include <QtQml>
@@ -18,106 +16,67 @@ class SettingsDataBase;
 
 namespace dltool::settings {
 
-/**
- * @brief 全局设置管理器
- *
- * 提供对所有设置的统一访问接口，负责设置的加载和保存
- */
 class SETTINGS_API GlobalSettings : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(GlobalSettings)
     QT_QML_SINGLETON(GlobalSettings)
 
-    Q_PROPERTY(ProjectSettings *project READ project CONSTANT)
-    Q_PROPERTY(DataSettings *data READ data CONSTANT)
-    Q_PROPERTY(AdvancedSettings *advanced READ advanced CONSTANT)
-    Q_PROPERTY(UISettings *ui READ ui CONSTANT)
-    Q_PROPERTY(SettingsCatalog *catalog READ catalog CONSTANT)
+    Q_PROPERTY(SettingsGroup *project READ project CONSTANT FINAL)
+    Q_PROPERTY(SettingsGroup *data READ data CONSTANT FINAL)
+    Q_PROPERTY(SettingsNamespace *advanced READ advanced CONSTANT FINAL)
+    Q_PROPERTY(SettingsGroup *ui READ ui CONSTANT FINAL)
+    Q_PROPERTY(SettingsCatalog *catalog READ catalog CONSTANT FINAL)
 
 public:
-    ProjectSettings *project() const
-    {
-        return project_settings_;
-    }
+    SettingsGroup *project() const;
+    SettingsGroup *data() const;
+    SettingsNamespace *advanced() const;
+    SettingsGroup *ui() const;
+    SettingsCatalog *catalog() const;
 
-    DataSettings *data() const
-    {
-        return data_settings_;
-    }
-
-    AdvancedSettings *advanced() const
-    {
-        return advanced_settings_;
-    }
-
-    UISettings *ui() const
-    {
-        return ui_settings_;
-    }
-
-    SettingsCatalog *catalog() const
-    {
-        return settings_catalog_;
-    }
-
-    /**
-     * @brief 加载所有设置
-     */
     Q_INVOKABLE void load();
-
-    /**
-     * @brief 保存所有设置
-     */
     Q_INVOKABLE void save();
-
-    /**
-     * @brief 重置所有设置为默认值
-     */
     Q_INVOKABLE void reset();
-
-    /**
-     * @brief 启用自动保存（设置变化时延迟保存）
-     * @param enabled 是否启用自动保存
-     */
     Q_INVOKABLE void setAutoSaveEnabled(bool enabled);
-
-    /**
-     * @brief 获取自动保存是否启用
-     */
     Q_INVOKABLE bool autoSaveEnabled() const;
 
+    Q_INVOKABLE QObject *settingsObject(const QString &accessor_path) const;
+    Q_INVOKABLE QVariant value(const QString &accessor_path, const QString &property_name,
+                               const QVariant &fallback = {}) const;
+    Q_INVOKABLE bool setValue(const QString &accessor_path, const QString &property_name, const QVariant &value);
     Q_INVOKABLE bool setCatalogValue(const QString &group_key, const QString &name, const QVariant &value);
+
+    SettingsGroup *settingsGroup(const QString &accessor_path) const;
 
 private:
     explicit GlobalSettings(QObject *parent = nullptr);
-    ~GlobalSettings();
+    ~GlobalSettings() override;
 
-    /**
-     * @brief 延迟保存（避免频繁写入磁盘）
-     */
     void scheduleSave();
-
-    /**
-     * @brief 连接所有设置的信号以触发自动保存
-     */
     void connectAutoSave();
+    void rebuildSettingsObjects();
+    void handleCatalogValueChanged(const QString &group_key, const QString &name, const QVariant &value);
 
-    void syncCatalogFromTyped();
-    void syncTypedFromCatalog(const QString &group_key, const QString &name, const QVariant &value);
-    void setCatalogField(const QString &group_key, const QString &name, const QVariant &value);
+    SettingsGroup *rootGroupForAccessor(const QString &accessor) const;
+    SettingsNamespace *ensureNamespace(const QString &accessor_path);
+    static QString joinedAccessorPath(const QString &parent_accessor, const QString &accessor);
 
-    ProjectSettings *project_settings_;
-    DataSettings    *data_settings_;
-    AdvancedSettings *advanced_settings_;
-    UISettings      *ui_settings_;
-    SettingsCatalog *settings_catalog_;
+    SettingsGroup     *project_settings_{nullptr};
+    SettingsGroup     *data_settings_{nullptr};
+    SettingsNamespace *advanced_settings_{nullptr};
+    SettingsGroup     *ui_settings_{nullptr};
+    SettingsCatalog   *settings_catalog_{nullptr};
 
-    database::SettingsDataBase *settings_database_; // 设置数据库
+    QList<SettingsGroup *>     generated_groups_;
+    QList<SettingsNamespace *> generated_namespaces_;
+    QHash<QString, SettingsGroup *> groups_by_accessor_path_;
+    QHash<QString, SettingsGroup *> groups_by_key_;
+    QHash<QString, SettingsNamespace *> namespaces_by_accessor_path_;
 
-    QTimer *save_timer_;        // 延迟保存定时器
-    bool    auto_save_enabled_; // 是否启用自动保存
-    bool    syncing_catalog_{false};
+    database::SettingsDataBase *settings_database_{nullptr};
+    QTimer *save_timer_{nullptr};
+    bool auto_save_enabled_{true};
 };
 
 } // namespace dltool::settings

@@ -85,9 +85,10 @@ void DataManager::init(const int method)
     global_filter_->initializeFilterModules(this);
     image_search_     = new dltool::feature::ImageSearchController(this, this);
     smart_annotation_ = new dltool::feature::SmartAnnotationController(this);
-    if (auto *settings = dltool::settings::GlobalSettings::getInstance()->advanced()->smartAnnotation())
+    if (auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(
+            QStringLiteral("advanced.smartAnnotation")))
     {
-        connect(settings, &dltool::settings::SmartAnnotationSettings::enabledChanged, smart_annotation_,
+        connect(settings, &dltool::settings::SettingsGroup::valueChanged, smart_annotation_,
                 &dltool::feature::SmartAnnotationController::clearCache);
     }
 

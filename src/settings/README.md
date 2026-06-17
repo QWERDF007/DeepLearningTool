@@ -1,43 +1,134 @@
-# settings 模块说明
+# settings 模块
 
-## 模块定位
+`src/settings` 提供应用级设置的加载、运行时访问、QML 暴露和持久化能力。模块目标是让设置项完全由 `config/settings/*.yaml` 描述，C++ 不再为每一类设置维护固定参数类或硬编码参数名称。
 
-`settings` 构建目标为 `dltool_settings`，QML URI 为 `dltool.settings`。它管理应用级全局配置，并通过 `SettingsDataBase` 持久化到应用目录下的设置数据库。
+## 模块边界
 
-## 架构设计
+- CMake 目标为 `dltool_settings`，QML URI 为 `dltool.settings`。
+- 依赖 Qt Core/QML、`dltool_common`、`dltool_database` 和 `yaml-cpp`。
+- YAML 配置只从应用程序目录下的 `config/settings` 读取，即 `QCoreApplication::applicationDirPath()/config/settings`。
+- 设置数据库路径由 `DataBase::applicationDatabasePath("settings.db")` 生成。
 
-- `GlobalSettings` 是 QML 单例，是所有设置对象的统一入口。
-- `ProjectSettings` 管理最近项目数量、自动保存间隔和自动保存开关。
-- `DataSettings` 管理缩略图、图片加载线程、标注显示、图库单元格缩放、标注缩略图参数。
-- `AdvancedSettings` 聚合高级能力配置，目前包含 `ImageSearchSettings` 和 `SmartAnnotationSettings`。
-- `UISettings` 管理亮度、对比度、主题和语言等界面偏好。
-- `GlobalSettings` 内部持有 `QTimer`，用于设置变化后的延迟自动保存，减少频繁写库。
+## 核心文件
 
-## 功能定义
+- `SettingsSchema.h/.cpp`：定义 YAML schema、字段模型、分组目录和数据库同步逻辑。
+- `SettingsObjects.h/.cpp`：把字段模型转换为 QML 可直接访问的动态属性对象。
+- `GlobalSettings.h/.cpp`：QML 单例入口，负责加载、保存、重置和运行时对象树重建。
 
-- 向 QML 暴露统一设置对象树：`GlobalSettings.project`、`data`、`advanced`、`ui`。
-- 提供 `load()`、`save()`、`reset()` 和自动保存开关。
-- 持久化图像搜索参数，包括模型、权重路径、特征层、索引存储、FAISS 后端、top-K 等。
-- 持久化智能标注参数，包括模型、后端、设备、mask 阈值、多边形简化参数和预览刷新间隔。
-- 为图库、标注页、设置弹窗等 UI 提供运行时配置。
+## YAML 到运行时模型
 
-## 与其他模块的关系
+`SettingsCatalog` 使用 `yaml-cpp` 解析应用目录 `config/settings` 下的 `.yaml` / `.yml` 文件。每个 YAML 顶层 group 会生成一个 `SettingsFieldModel`，并通过 catalog 暴露给设置页面。
 
-- 依赖 `database` 的 `SettingsDataBase` 完成持久化。
-- 依赖 `common` 的 QML 单例工具。
-- `data` 使用这里的显示配置、图片搜索配置和智能标注配置。
-- `tool` 的设置弹窗通过 QML 直接绑定这些属性。
-- `ui` 不应依赖具体设置项，只提供基础控件和视觉 token。
+每个 group 支持的主要元数据：
 
-## 边界定义
+- `table`：对应的数据库表名；未配置时由 group 名自动转为 snake_case，并追加 `_settings`。
+- `accessor`：运行时对象名，例如 `ui`、`data`、`project`。
+- `parent_accessor` / `parent`：可选父级命名空间，例如 `advanced`。
+- `label`：设置页面显示名称。
+- `fields`：该组下的设置项列表。
 
-- 只管理应用级偏好，不保存 `.dlpro` 项目内的数据和项目元信息。
-- 不直接修改数据集、图片、标注、模型记录。
-- 不执行图像搜索或智能标注，只保存相关参数。
-- 不把 UI 交互流程写入设置类，设置类只提供属性、加载、保存和重置。
+每个 field 支持的主要字段：
 
-## 扩展约定
+- `name_en` / `key` / `name`：字段内部名称，也是数据库保存值时使用的 key。
+- `name_cn` / `label`：界面显示文本。
+- `property_name` / `property`：运行时 QML 属性名；未配置时回退到 `name_en`。
+- `value` / `default_value`：当前默认值和重置值。
+- `value_type` / `type`：值类型，支持 `bool`、`int`、`double`、`float`、`real`、`string` 等。
+- `value_range` / `range`：数值范围，按 `[from, to, step]` 解释。
+- `control_type` / `control`：界面控件类型，例如 `slider`、`combo`、`switch`、`path`。
+- `options`：普通枚举选项。
+- `options_map` / `key_values` / `values_map`：按其它字段值切换的动态选项。
+- `section`、`description`、`visible`、`ordinal_index`：界面分组、说明、可见性和排序信息。
 
-- 新增设置项时需要同步更新 C++ 属性、默认值、load/save 映射和 `SettingsDataBase` 表字段或配置行。
-- 需要 QML 绑定的属性必须提供 `NOTIFY` 信号。
-- 需要频繁变化的设置应接入自动保存节流，不应在每次 setter 中直接写库。
+## QML 访问方式
+
+`GlobalSettings` 是 QML 侧统一入口，暴露以下固定根节点：
+
+- `GlobalSettings.project`
+- `GlobalSettings.data`
+- `GlobalSettings.ui`
+- `GlobalSettings.advanced`
+- `GlobalSettings.catalog`
+
+`project`、`data`、`ui` 是 `SettingsGroup`，`advanced` 是 `SettingsNamespace`。具体属性由 YAML 中每个 field 的 `property_name` 动态插入。例如：
+
+```qml
+GlobalSettings.ui.imageBrightness
+GlobalSettings.data.thumbnailMargin
+GlobalSettings.advanced.imageSearch.enabled
+```
+
+数值范围会自动扩展为动态属性：
+
+```qml
+GlobalSettings.ui.imageBrightnessFrom
+GlobalSettings.ui.imageBrightnessTo
+GlobalSettings.ui.imageBrightnessStepSize
+```
+
+如果需要从 C++/QML 通过字符串路径访问，可以使用：
+
+- `GlobalSettings.value(accessorPath, propertyName, fallback)`
+- `GlobalSettings.setValue(accessorPath, propertyName, value)`
+- `GlobalSettings.settingsObject(accessorPath)`
+- `SettingsGroup.valueOr(propertyName, fallback)`
+- `SettingsGroup.setValue(propertyName, value)`
+
+## 动态对象树
+
+`GlobalSettings::rebuildSettingsObjects()` 根据每个 group 的 `accessor` 和 `parent_accessor` 构建运行时对象树：
+
+- `accessor: ui` 绑定到固定根对象 `GlobalSettings.ui`。
+- `accessor: data` 绑定到固定根对象 `GlobalSettings.data`。
+- `accessor: project` 绑定到固定根对象 `GlobalSettings.project`。
+- 带 `parent_accessor: advanced` 的 group 会创建在 `GlobalSettings.advanced.<accessor>` 下。
+
+`SettingsGroup` 基于 `QQmlPropertyMap`，负责把字段值插入为动态属性。QML 直接改写动态属性时，`updateValue()` 会回写到对应的 `SettingsFieldModel`，再触发保存调度。
+
+## 设置页面数据源
+
+设置页面应以 `GlobalSettings.catalog` 作为 tab/group 数据源。每个 catalog 行提供：
+
+- `groupKey`
+- `tableName`
+- `label`
+- `fieldModel`
+
+`fieldModel` 是字段列表模型，角色包括 `nameEn`、`nameCn`、`propertyName`、`value`、`defaultValue`、`valueType`、`valueRange`、`controlType`、`options`、`optionsMap`、`section`、`description`、`visible`、`ordinalIndex`。界面应根据 `valueType` 和 `controlType` 创建对应控件，根据 `value` 赋值，根据 `valueRange` 设置范围。
+
+## 数据库持久化
+
+设置持久化由 `SettingsDataBase` 完成，底层继续走项目内的 sqlpp11 数据库封装，不在 settings 模块中直接操作 sqlite。
+
+同步流程：
+
+1. `GlobalSettings::load()` 调用 `SettingsCatalog::syncAndLoad()`。
+2. catalog 首次加载 YAML schema。
+3. 每个 group 以自己的 `table` 对应一张数据库表。
+4. 表结构使用数据库模块中的统一 settings 表模板。
+5. `syncSettingsSchema()` 同步 schema 行。
+6. `loadSettings()` 读取已保存值并覆盖 YAML 默认值。
+
+保存流程：
+
+1. 字段值变化后，`SettingsFieldModel::valueChanged` 触发 `SettingsCatalog::fieldValueChanged`。
+2. `GlobalSettings` 同步动态属性，并启动 1 秒单次自动保存定时器。
+3. `GlobalSettings::save()` 调用 `SettingsCatalog::save()`。
+4. 每个 group 通过 `saveSettings(tableName, valuesMap())` 写回数据库。
+
+## 重置行为
+
+`GlobalSettings::reset()` 会把所有字段恢复为 YAML 中的 `default_value`，如果没有单独配置 `default_value`，则使用 `value`。重置后会重新加载各 `SettingsGroup` 的动态属性，并调度自动保存。
+
+`SettingsFieldModel::resetValues()` 会对实际变化的字段发出 `valueChanged`，用于同步 QML 控件和动态属性对象。
+
+## 扩展设置项
+
+新增或删除设置项时优先修改 `config/settings/*.yaml`：
+
+1. 新增 group：添加一个 YAML 顶层 group，并配置 `table`、`accessor`、`label` 和 `fields`。
+2. 新增字段：在 group 的 `fields` 下添加 field，并配置 `name_en`、`property_name`、`value_type`、`value`、`control_type` 等。
+3. 动态列表：简单列表使用 `options`；如果列表依赖其它字段值，使用 `options_map` 这类 key-values 结构，例如按 `model` 映射到不同特征层名列表。
+4. 访问路径：通过 `accessor` 和 `parent_accessor` 决定，例如 `parent_accessor: advanced` + `accessor: roiSearch` 对应 `GlobalSettings.advanced.roiSearch`。
+
+只要 YAML schema、数据库模板和设置页面控件类型支持，对应设置无需新增 C++ 参数类。

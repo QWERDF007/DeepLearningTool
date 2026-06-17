@@ -1,5 +1,7 @@
 ImageSearchSettings:
   table: image_search_settings
+  parent_accessor: advanced
+  accessor: imageSearch
   label: 图像搜索
   fields:
     - name_en: enabled

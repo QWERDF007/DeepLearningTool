@@ -117,6 +117,14 @@ def link_tests(build_dir: Path) -> None:
         warn(f"skip test link, missing {tests_dir}")
 
 
+def link_settings_config(build_dir: Path) -> None:
+    source = REPO_ROOT / "config" / "settings"
+    if not source.is_dir():
+        warn(f"skip settings config link, missing {source}")
+        return
+    link_dir(source, build_dir / "bin" / "config" / "settings")
+
+
 def main() -> int:
     """执行依赖链接主流程。"""
 
@@ -126,6 +134,9 @@ def main() -> int:
 
     link_project_outputs(build_dir, args.config)
     print("link dltool dll success")
+
+    link_settings_config(build_dir)
+    print("link settings config success")
 
     if args.skip_external:
         print("skip external dependencies")

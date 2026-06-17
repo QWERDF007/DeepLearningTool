@@ -1,5 +1,7 @@
 RoiSearchSettings:
   table: roi_search_settings
+  parent_accessor: advanced
+  accessor: roiSearch
   label: ROI 搜索
   fields:
     - name_en: enabled

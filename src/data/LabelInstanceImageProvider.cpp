@@ -151,8 +151,9 @@ QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id, double pa
         QRectF  bbox(label_data->x, label_data->y, label_data->width, label_data->height);
 
         // 3. 获取配置参数
-        auto settings = dltool::settings::GlobalSettings::getInstance()->data();
-        int  margin   = settings->thumbnailMargin();
+        int margin = dltool::settings::GlobalSettings::getInstance()
+                         ->value(QStringLiteral("data"), QStringLiteral("thumbnailMargin"), 10)
+                         .toInt();
 
         // 4. 加载原始图像
         if (!image_instances_)

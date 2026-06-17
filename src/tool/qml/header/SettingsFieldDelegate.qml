@@ -32,6 +32,8 @@ Item {
     visible: model.visible === undefined ? true : model.visible
     implicitHeight: visible ? content.implicitHeight : 0
 
+    onCurrentValueChanged: refreshEditor()
+
     function toBool(value) {
         if (typeof value === "string") {
             let text = value.trim().toLowerCase()
@@ -142,6 +144,12 @@ Item {
         }
     }
 
+    function refreshEditor() {
+        if (editorLoader.item && editorLoader.item.refreshFromModel) {
+            editorLoader.item.refreshFromModel()
+        }
+    }
+
     ColumnLayout {
         id: content
 
@@ -238,9 +246,7 @@ Item {
         target: root.fieldModel
         function onValueChanged(changedName, value) {
             if (changedName === "model" || changedName === root.nameEn) {
-                if (editorLoader.item && editorLoader.item.refreshFromModel) {
-                    editorLoader.item.refreshFromModel()
-                }
+                root.refreshEditor()
             }
         }
     }

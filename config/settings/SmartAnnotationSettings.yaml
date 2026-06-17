@@ -1,5 +1,7 @@
 SmartAnnotationSettings:
   table: smart_annotation_settings
+  parent_accessor: advanced
+  accessor: smartAnnotation
   label: 智能标注
   fields:
     - name_en: enabled

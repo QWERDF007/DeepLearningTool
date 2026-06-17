@@ -858,7 +858,9 @@ bool ImageSearchController::searchLabelRois(const QVariantList &label_ids, const
     if (!spatial_features.isEmpty() && !spatial_features.contains(request.feature_name))
     {
         request.feature_name = spatial_features.last();
-        dltool::settings::GlobalSettings::getInstance()->advanced()->roiSearch()->setFeatureName(request.feature_name);
+        dltool::settings::GlobalSettings::getInstance()->setValue(QStringLiteral("advanced.roiSearch"),
+                                                                   QStringLiteral("featureName"),
+                                                                   request.feature_name);
     }
 
     collectGalleryRois(request, dataset_ids_set);
@@ -1079,7 +1081,9 @@ QString ImageSearchController::computeIndexPath(const SearchRequest &request) co
         const std::vector<int64_t> sorted_dataset_ids(dataset_ids.begin(), dataset_ids.end());
         const QString              index_dir = indexDirectoryForProject(
             data_provider_->databasePath(),
-            dltool::settings::GlobalSettings::getInstance()->advanced()->roiSearch()->indexDirectory(),
+            dltool::settings::GlobalSettings::getInstance()
+                ->value(QStringLiteral("advanced.roiSearch"), QStringLiteral("indexDirectory"))
+                .toString(),
             QStringLiteral("roi_search"));
 
         return roiIndexPathForRequest(index_dir, sorted_dataset_ids, gallery_label_ids, request.model_name,
@@ -1102,7 +1106,9 @@ QString ImageSearchController::computeIndexPath(const SearchRequest &request) co
     const std::vector<int64_t> sorted_dataset_ids(dataset_ids.begin(), dataset_ids.end());
     const QString              index_dir = indexDirectoryForProject(
         data_provider_->databasePath(),
-        dltool::settings::GlobalSettings::getInstance()->advanced()->imageSearch()->indexDirectory(),
+        dltool::settings::GlobalSettings::getInstance()
+            ->value(QStringLiteral("advanced.imageSearch"), QStringLiteral("indexDirectory"))
+            .toString(),
         QStringLiteral("image_search"));
 
     return indexPathForRequest(index_dir, sorted_dataset_ids, gallery_ids, request.model_name, request.feature_name,

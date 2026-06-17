@@ -1,5 +1,6 @@
 UISettings:
   table: ui_settings
+  accessor: ui
   label: 界面设置
   fields:
     - name_en: brightness

@@ -68,13 +68,15 @@ public:
     Q_ENUM(Role)
 
     explicit SettingsFieldModel(QObject *parent = nullptr);
-    SettingsFieldModel(QString group_key, QString table_name, QString label, std::vector<SettingsField> fields,
-                       QObject *parent = nullptr);
+    SettingsFieldModel(QString group_key, QString table_name, QString label, QString accessor, QString parent_accessor,
+                       std::vector<SettingsField> fields, QObject *parent = nullptr);
     ~SettingsFieldModel() override;
 
     QString groupKey() const;
     QString tableName() const;
     QString label() const;
+    QString accessor() const;
+    QString parentAccessor() const;
     int     count() const;
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -86,6 +88,9 @@ public:
     Q_INVOKABLE QVariant valueForName(const QString &name) const;
     Q_INVOKABLE QVariant valueForProperty(const QString &property_name) const;
     Q_INVOKABLE bool     setValueForName(const QString &name, const QVariant &value);
+    Q_INVOKABLE bool     setValueForProperty(const QString &property_name, const QVariant &value);
+    Q_INVOKABLE QString  propertyForName(const QString &name) const;
+    Q_INVOKABLE QString  nameForProperty(const QString &property_name) const;
     Q_INVOKABLE QVariantMap fieldMap(int row) const;
     Q_INVOKABLE QVariantList optionsForKey(const QString &name, const QString &key) const;
 
@@ -107,6 +112,8 @@ private:
     QString                    group_key_;
     QString                    table_name_;
     QString                    label_;
+    QString                    accessor_;
+    QString                    parent_accessor_;
     std::vector<SettingsField> fields_;
 };
 
@@ -151,7 +158,8 @@ signals:
     void fieldValueChanged(const QString &group_key, const QString &name, const QVariant &value);
 
 private:
-    SettingsFieldModel *addGroup(QString group_key, QString table_name, QString label, std::vector<SettingsField> fields);
+    SettingsFieldModel *addGroup(QString group_key, QString table_name, QString label, QString accessor,
+                                 QString parent_accessor, std::vector<SettingsField> fields);
     int                 indexOfGroup(const QString &group_key) const;
 
     std::vector<std::unique_ptr<SettingsFieldModel>> groups_;

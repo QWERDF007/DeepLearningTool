@@ -206,6 +206,16 @@ def copy_project_runtime(build_dir: Path, install_dir: Path, include_pdb: bool, 
             copy_file(so_file, lib_dir / so_file.name)
 
 
+def copy_settings_config(install_dir: Path) -> None:
+    source = REPO_ROOT / "config" / "settings"
+    if not source.is_dir():
+        warn(f"settings config directory was not found: {source}")
+        return
+    target = install_dir / "config" / "settings"
+    shutil.copytree(source, target, dirs_exist_ok=True)
+    print(f"copy {source} -> {target}")
+
+
 def copy_yaml_dependencies(build_dir: Path, install_dir: Path, dependency_file: Path, config: str) -> None:
     """按 YAML 清单复制第三方运行库。"""
 
@@ -624,6 +634,7 @@ def main() -> int:
     packaged_exe = install_dir / source_exe.name
     copy_file(source_exe, packaged_exe)
     copy_project_runtime(build_dir, install_dir, args.include_pdb, args.include_qml_module_dir, "release")
+    copy_settings_config(install_dir)
 
     # 外部运行库先按 YAML 复制，再由平台相关逻辑补 Qt、MSVC 或 ELF 依赖。
     if args.skip_dependencies:

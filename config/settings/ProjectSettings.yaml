@@ -1,5 +1,6 @@
 ProjectSettings:
   table: project_settings
+  accessor: project
   label: 项目设置
   fields:
     - name_en: max_recent_projects

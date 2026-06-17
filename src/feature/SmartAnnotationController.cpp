@@ -1342,18 +1342,19 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
 
     try
     {
-        auto *settings = dltool::settings::GlobalSettings::getInstance()->advanced()->smartAnnotation();
-        if (settings == nullptr || !settings->enabled())
+        auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(
+            QStringLiteral("advanced.smartAnnotation"));
+        if (settings == nullptr || !settings->valueOr(QStringLiteral("enabled"), false).toBool())
         {
             throw std::runtime_error("智能标注未启用");
         }
 
         const std::vector<PromptPoint> prompts = parsePromptPoints(prompt_points);
 
-        const QString model_name = normalizedModelName(settings->model());
-        const QString backend    = normalizedBackend(settings->modelBackend());
-        const QString device     = normalizedDevice(settings->modelDevice());
-        QString       model_path = settings->modelPath().trimmed();
+        const QString model_name = normalizedModelName(settings->valueOr(QStringLiteral("model")).toString());
+        const QString backend    = normalizedBackend(settings->valueOr(QStringLiteral("modelBackend")).toString());
+        const QString device     = normalizedDevice(settings->valueOr(QStringLiteral("modelDevice")).toString());
+        QString       model_path = settings->valueOr(QStringLiteral("modelPath")).toString().trimmed();
         if (model_path.isEmpty())
         {
             model_path = suggestedModelPath(model_name, backend);
@@ -1508,7 +1509,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         std::vector<float> original_mask = resizeBilinear(cropped_mask.data(), preprocessed.resized_w,
                                                           preprocessed.resized_h, image.width(), image.height());
 
-        const double         threshold = settings->maskThreshold();
+        const double threshold = settings->valueOr(QStringLiteral("maskThreshold"), 0.0).toDouble();
         std::vector<uint8_t> binary_mask(static_cast<size_t>(image.width()) * image.height(), 0);
         int                  foreground_pixels = 0;
         for (size_t i = 0; i < binary_mask.size(); ++i)
@@ -1537,7 +1538,8 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
             polygon = rectanglePoints(bbox);
         }
 
-        polygon = simplifyFinalPolygon(std::move(polygon), settings->polygonSimplifyEpsilon());
+        polygon = simplifyFinalPolygon(std::move(polygon),
+                                       settings->valueOr(QStringLiteral("polygonSimplifyEpsilon"), 2.0).toDouble());
         if (polygon.size() < 3)
         {
             polygon = rectanglePoints(bbox);

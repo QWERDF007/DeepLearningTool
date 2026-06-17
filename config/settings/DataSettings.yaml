@@ -1,5 +1,6 @@
 DataSettings:
   table: data_settings
+  accessor: data
   label: 数据设置
   fields:
     - name_en: margin
