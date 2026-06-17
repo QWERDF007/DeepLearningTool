@@ -858,7 +858,8 @@ bool ImageSearchController::searchLabelRois(const QVariantList &label_ids, const
     if (!spatial_features.isEmpty() && !spatial_features.contains(request.feature_name))
     {
         request.feature_name = spatial_features.last();
-        dltool::settings::GlobalSettings::getInstance()->setValue(QStringLiteral("advanced.roiSearch"),
+        dltool::settings::GlobalSettings::getInstance()->setValue(
+            dltool::settings::accessorPath(dltool::settings::accessor::Key::RoiSearch),
                                                                    QStringLiteral("featureName"),
                                                                    request.feature_name);
     }
@@ -1082,7 +1083,8 @@ QString ImageSearchController::computeIndexPath(const SearchRequest &request) co
         const QString              index_dir = indexDirectoryForProject(
             data_provider_->databasePath(),
             dltool::settings::GlobalSettings::getInstance()
-                ->value(QStringLiteral("advanced.roiSearch"), QStringLiteral("indexDirectory"))
+                ->value(dltool::settings::accessorPath(dltool::settings::accessor::Key::RoiSearch),
+                        QStringLiteral("indexDirectory"))
                 .toString(),
             QStringLiteral("roi_search"));
 
@@ -1107,7 +1109,8 @@ QString ImageSearchController::computeIndexPath(const SearchRequest &request) co
     const QString              index_dir = indexDirectoryForProject(
         data_provider_->databasePath(),
         dltool::settings::GlobalSettings::getInstance()
-            ->value(QStringLiteral("advanced.imageSearch"), QStringLiteral("indexDirectory"))
+            ->value(dltool::settings::accessorPath(dltool::settings::accessor::Key::ImageSearch),
+                    QStringLiteral("indexDirectory"))
             .toString(),
         QStringLiteral("image_search"));
 

@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -17,6 +17,8 @@ Rectangle {
     property DataManager dataManager
     property LabelInstancesModel labelInstances : dataManager ? dataManager.labelInstances : null
     property ItemSelectionModel selection : labelInstances ? labelInstances.selection : null
+    readonly property var dataSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Data)
+    readonly property var roiSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.RoiSearch)
 
     QuiContentDialog {
         id: deleteConfirmDialog
@@ -41,7 +43,7 @@ Rectangle {
             enabled: dataManager && dataManager.imageSearch
                      && selection && selection.hasSelection
                      && !dataManager.imageSearch.running
-                     && GlobalSettings.advanced.roiSearch.enabled
+                     && roiSearchSettings.enabled
             onClicked: startRoiSearchForSelectedLabels()
         }
         QuiMenuItem {
@@ -63,8 +65,8 @@ Rectangle {
         property real baseCellSize: 200
         
         // 绑定到设置
-        cellWidth: baseCellSize * GlobalSettings.data.labelThumbnailScale
-        cellHeight: cellWidth * GlobalSettings.data.labelThumbnailAspectRatio
+        cellWidth: baseCellSize * dataSettings.labelThumbnailScale
+        cellHeight: cellWidth * dataSettings.labelThumbnailAspectRatio
         
         clip: true
         
@@ -145,10 +147,10 @@ Rectangle {
         
         // 缩放视图函数
         function scaleView(event) {
-            if (event.angleDelta.y > 0 && GlobalSettings.data.labelThumbnailScale < GlobalSettings.data.labelThumbnailScaleTo) {
-                GlobalSettings.data.labelThumbnailScale += GlobalSettings.data.labelThumbnailScaleStepSize
-            } else if (event.angleDelta.y < 0 && GlobalSettings.data.labelThumbnailScale > GlobalSettings.data.labelThumbnailScaleFrom) {
-                GlobalSettings.data.labelThumbnailScale -= GlobalSettings.data.labelThumbnailScaleStepSize
+            if (event.angleDelta.y > 0 && dataSettings.labelThumbnailScale < dataSettings.labelThumbnailScaleTo) {
+                dataSettings.labelThumbnailScale += dataSettings.labelThumbnailScaleStepSize
+            } else if (event.angleDelta.y < 0 && dataSettings.labelThumbnailScale > dataSettings.labelThumbnailScaleFrom) {
+                dataSettings.labelThumbnailScale -= dataSettings.labelThumbnailScaleStepSize
             }
         }
         
@@ -339,7 +341,7 @@ Rectangle {
     function startRoiSearchForSelectedLabels() {
         if (!dataManager || !dataManager.imageSearch || !labelInstances
                 || !selection || !selection.hasSelection
-                || !GlobalSettings.advanced.roiSearch.enabled) {
+                || !roiSearchSettings.enabled) {
             return
         }
 

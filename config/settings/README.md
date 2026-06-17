@@ -1,0 +1,119 @@
+# config/settings 配置说明
+
+本目录是应用设置 schema 的配置源。`src/settings` 会在运行时读取这里的 `.yaml` / `.yml` 文件，生成设置目录、设置页字段模型、动态 QML 设置对象，并把设置值同步到 `settings.db`。
+
+## 目录职责
+
+- 每个 YAML 文件通常定义一个设置分组。
+- 顶层 key 是分组名，例如 `DataSettings`、`ImageSearchSettings`。
+- 分组通过 `accessor` 和可选的 `parent_accessor` 决定运行时访问路径。
+- 字段通过 `property_name` 暴露为 QML 动态属性。
+- 设置页和侧边栏等 UI 应优先从 catalog / accessor path 动态获取数据，避免在 QML 中硬编码分组名和字段结构。
+
+## 分组字段
+
+每个分组支持以下常用字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `table` | 数据库表名。 |
+| `accessor` | 当前分组在运行时对象树中的节点名。 |
+| `parent_accessor` | 可选父级路径，例如 `advanced`。 |
+| `category` | 设置分类，例如 `general`、`advanced`，用于 UI 分类或筛选。 |
+| `ordinal_index` | 分组排序序号。 |
+| `label` | 设置页显示名称。 |
+| `fields` | 当前分组下的设置字段列表。 |
+
+运行时路径规则：
+
+- `accessor: data` 对应 `data`。
+- `accessor: ui` 对应 `ui`。
+- `parent_accessor: advanced` + `accessor: imageSearch` 对应 `advanced.imageSearch`。
+
+推荐 QML 访问方式：
+
+```qml
+property var dataSettings: GlobalSettings.settingsObject("data")
+property var imageSearchSettings: GlobalSettings.settingsObject("advanced.imageSearch")
+
+dataSettings.imageCellScale = 1.5
+let enabled = imageSearchSettings.enabled
+```
+
+也可以使用路径式函数：
+
+```qml
+GlobalSettings.value("ui", "imageBrightness", 0.0)
+GlobalSettings.setValue("advanced.roiSearch", "topK", 10)
+```
+
+## 字段定义
+
+每个 `fields` 条目支持以下常用字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `name_en` | 持久化 key，数据库保存使用。 |
+| `name_cn` | UI 显示名称。 |
+| `property_name` | QML 动态属性名。 |
+| `value` | 默认值，也是初始值。 |
+| `default_value` | 可选重置值，未配置时使用 `value`。 |
+| `value_type` | 值类型，例如 `bool`、`int`、`double`、`string`。 |
+| `value_range` | 数值范围，格式为 `[from, to, step]`。 |
+| `control_type` | 设置页控件类型，例如 `slider`、`spin`、`combo`、`checkbox`、`path`、`folder`。 |
+| `options` | 静态选项列表。 |
+| `options_map` | 动态选项映射，常用于根据模型名切换 feature 列表。 |
+| `section` | 设置页内部分组标题。 |
+| `description` | 可选说明文本。 |
+| `visible` | 是否在设置页显示，默认 `true`。 |
+| `ordinal_index` | 字段排序序号。 |
+| `sidebar` | 可选侧边栏展示元数据。 |
+
+## 当前配置组
+
+| 文件 | 分组 | 路径 | 分类 | 表 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `ProjectSettings.yaml` | `ProjectSettings` | `project` | `general` | `project_settings` | 项目级设置，包括最近项目数量、自动保存间隔、自动保存开关。 |
+| `DataSettings.yaml` | `DataSettings` | `data` | `general` | `data_settings` | 数据与缩略图显示设置，包括缩略图边距、缓存大小、图像网格缩放、标注缩略图缩放、边框宽度、填充透明度。 |
+| `UISettings.yaml` | `UISettings` | `ui` | `general` | `ui_settings` | 界面设置，包括图像亮度、对比度、主题、语言。 |
+| `ImageSearchSettings.yaml` | `ImageSearchSettings` | `advanced.imageSearch` | `advanced` | `image_search_settings` | 图像搜索配置，包括模型、权重路径、特征层、索引、后端、设备、批量大小。 |
+| `RoiSearchSettings.yaml` | `RoiSearchSettings` | `advanced.roiSearch` | `advanced` | `roi_search_settings` | ROI/标注搜索配置，在图像搜索基础上增加 ROI Align、PCA 等参数。 |
+| `SmartAnnotationSettings.yaml` | `SmartAnnotationSettings` | `advanced.smartAnnotation` | `advanced` | `smart_annotation_settings` | 智能标注配置，包括 SAM 模型、权重路径、推理后端、mask 阈值、mask 透明度、刷新间隔。 |
+
+## 侧边栏元数据
+
+字段可通过 `sidebar` 声明被哪些侧边栏使用。当前使用的 sidebar key：
+
+| sidebar key | 使用场景 | 当前字段 |
+| --- | --- | --- |
+| `gallery` | 图像列表侧边栏 | `data.imageCellScale`、`ui.imageBrightness`、`ui.imageContrast` |
+| `review` | 标注实例预览侧边栏 | `data.labelThumbnailScale`、`data.labelThumbnailAspectRatio`、`data.labelThumbnailBorderPadding`、`ui.imageBrightness`、`ui.imageContrast` |
+
+示例：
+
+```yaml
+sidebar:
+  gallery:
+    icon: ExploreContentSingle
+    ordinal_index: 10
+    snap: false
+    from: imageCellScaleFrom
+    to: imageCellScaleTo
+    step: imageCellScaleStepSize
+```
+
+侧边栏字段说明：
+
+- `icon`：侧边栏按钮图标名。
+- `ordinal_index`：侧边栏内排序。
+- `snap`：滑块是否使用吸附。
+- `from` / `to` / `step`：可选范围字段名；未配置时默认使用 `<property_name>From`、`<property_name>To`、`<property_name>StepSize`。
+
+## 新增设置约定
+
+1. 新增分组时，优先新增一个 YAML 文件，配置 `table`、`accessor`、`label`、`category`、`ordinal_index` 和 `fields`。
+2. 新增高级设置时，使用 `parent_accessor: advanced`，例如 `advanced.myFeature`。
+3. QML 侧不要直接依赖文件名或 group key；优先使用 accessor path，例如 `GlobalSettings.settingsObject("advanced.myFeature")`。
+4. 设置页字段展示应依赖 catalog 模型；侧边栏入口应通过字段的 `sidebar` 元数据声明。
+5. 对于下拉选项，静态列表使用 `options`，依赖其他字段的列表使用 `options_map`。
+6. 数值类字段建议配置 `value_range`，这样设置页、侧边栏和动态范围属性都能复用同一份 schema。

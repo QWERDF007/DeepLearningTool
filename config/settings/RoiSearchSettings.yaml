@@ -2,6 +2,8 @@ RoiSearchSettings:
   table: roi_search_settings
   parent_accessor: advanced
   accessor: roiSearch
+  category: advanced
+  ordinal_index: 110
   label: ROI 搜索
   fields:
     - name_en: enabled

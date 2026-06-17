@@ -14,6 +14,7 @@ Rectangle {
     property real zoomFrom: 0.25
     property real zoomTo: 32.0
     property real zoomStepSize: 0.1
+    readonly property var uiSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Ui)
     
     // 信号定义
     signal fitToWindow()
@@ -60,20 +61,20 @@ Rectangle {
             id: brightnessControl
             Layout.fillWidth: true
             label: "亮度"
-            value: GlobalSettings.ui.imageBrightness
-            from: GlobalSettings.ui.imageBrightnessFrom
-            to: GlobalSettings.ui.imageBrightnessTo
-            stepSize: GlobalSettings.ui.imageBrightnessStepSize
+            value: uiSettings.imageBrightness
+            from: uiSettings.imageBrightnessFrom
+            to: uiSettings.imageBrightnessTo
+            stepSize: uiSettings.imageBrightnessStepSize
             showResetButton: true
             showFitButton: false
             defaultValue: 0.0
             
             onValueAdjusted: function(newValue) {
-                GlobalSettings.ui.imageBrightness = newValue
+                uiSettings.imageBrightness = newValue
             }
             
             onResetClicked: {
-                GlobalSettings.ui.imageBrightness = 0.0
+                uiSettings.imageBrightness = 0.0
             }
         }
         
@@ -82,20 +83,20 @@ Rectangle {
             id: contrastControl
             Layout.fillWidth: true
             label: "对比度"
-            value: GlobalSettings.ui.imageContrast
-            from: GlobalSettings.ui.imageContrastFrom
-            to: GlobalSettings.ui.imageContrastTo
-            stepSize: GlobalSettings.ui.imageContrastStepSize
+            value: uiSettings.imageContrast
+            from: uiSettings.imageContrastFrom
+            to: uiSettings.imageContrastTo
+            stepSize: uiSettings.imageContrastStepSize
             showResetButton: true
             showFitButton: false
             defaultValue: 0.0
             
             onValueAdjusted: function(newValue) {
-                GlobalSettings.ui.imageContrast = newValue
+                uiSettings.imageContrast = newValue
             }
             
             onResetClicked: {
-                GlobalSettings.ui.imageContrast = 0.0
+                uiSettings.imageContrast = 0.0
             }
         }
         

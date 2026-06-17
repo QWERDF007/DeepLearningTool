@@ -13,6 +13,7 @@
 
 - `SettingsSchema.h/.cpp`：定义 YAML schema、字段模型、分组目录和数据库同步逻辑。
 - `SettingsObjects.h/.cpp`：把字段模型转换为 QML 可直接访问的动态属性对象。
+- `SettingsKeys.h/.cpp`：定义 QML 可用的 accessor/sidebar/field 枚举，并集中映射到 YAML 中的字符串 key。
 - `GlobalSettings.h/.cpp`：QML 单例入口，负责加载、保存、重置和运行时对象树重建。
 
 ## YAML 到运行时模型
@@ -24,6 +25,9 @@
 - `table`：对应的数据库表名；未配置时由 group 名自动转为 snake_case，并追加 `_settings`。
 - `accessor`：运行时对象名，例如 `ui`、`data`、`project`。
 - `parent_accessor` / `parent`：可选父级命名空间，例如 `advanced`。
+- `category`：设置页面或其它界面可用于分类过滤的逻辑类别。
+- `ordinal_index`：设置组排序值；未配置时按加载顺序生成。
+- `sidebar`：可选的组级侧边栏或其它视图元数据。
 - `label`：设置页面显示名称。
 - `fields`：该组下的设置项列表。
 
@@ -38,39 +42,44 @@
 - `control_type` / `control`：界面控件类型，例如 `slider`、`combo`、`switch`、`path`。
 - `options`：普通枚举选项。
 - `options_map` / `key_values` / `values_map`：按其它字段值切换的动态选项。
+- `sidebar`：字段级侧边栏元数据，按 sidebar key 分组，例如 `gallery`、`review`，可配置 `icon`、`ordinal_index`、`from`、`to`、`step`、`snap` 等。
 - `section`、`description`、`visible`、`ordinal_index`：界面分组、说明、可见性和排序信息。
 
 ## QML 访问方式
 
-`GlobalSettings` 是 QML 侧统一入口，暴露以下固定根节点：
-
-- `GlobalSettings.project`
-- `GlobalSettings.data`
-- `GlobalSettings.ui`
-- `GlobalSettings.advanced`
-- `GlobalSettings.catalog`
-
-`project`、`data`、`ui` 是 `SettingsGroup`，`advanced` 是 `SettingsNamespace`。具体属性由 YAML 中每个 field 的 `property_name` 动态插入。例如：
+`GlobalSettings` 是 QML 侧统一入口，不再暴露 `project`、`data`、`ui`、`advanced` 这类固定属性。运行时对象树由 YAML 的 `accessor` 和 `parent_accessor` 动态构建，并通过 `SettingsAccessor` 枚举访问：
 
 ```qml
-GlobalSettings.ui.imageBrightness
-GlobalSettings.data.thumbnailMargin
-GlobalSettings.advanced.imageSearch.enabled
+readonly property var uiSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Ui)
+readonly property var dataSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Data)
+readonly property var imageSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.ImageSearch)
+
+uiSettings.imageBrightness
+dataSettings.thumbnailMargin
+imageSearchSettings.enabled
 ```
 
 数值范围会自动扩展为动态属性：
 
 ```qml
-GlobalSettings.ui.imageBrightnessFrom
-GlobalSettings.ui.imageBrightnessTo
-GlobalSettings.ui.imageBrightnessStepSize
+uiSettings.imageBrightnessFrom
+uiSettings.imageBrightnessTo
+uiSettings.imageBrightnessStepSize
 ```
 
-如果需要从 C++/QML 通过字符串路径访问，可以使用：
+QML 侧优先使用枚举入口，避免手写 accessor path：
 
+- `GlobalSettings.settingsObjectFor(SettingsAccessor.Ui)`
+- `GlobalSettings.valueFor(SettingsAccessor.Data, propertyName, fallback)`
+- `GlobalSettings.setValueFor(SettingsAccessor.Data, propertyName, value)`
+- `GlobalSettings.catalog.optionsForAccessorKey(SettingsAccessor.ImageSearch, SettingsFieldKey.FeatureName, modelName)`
+- `GlobalSettings.catalog.sidebarFieldsFor(SettingsSidebar.Gallery)`
+
+底层仍保留字符串路径 API，主要用于配置驱动场景或 C++ 内部适配：
+
+- `GlobalSettings.settingsObject(accessorPath)`
 - `GlobalSettings.value(accessorPath, propertyName, fallback)`
 - `GlobalSettings.setValue(accessorPath, propertyName, value)`
-- `GlobalSettings.settingsObject(accessorPath)`
 - `SettingsGroup.valueOr(propertyName, fallback)`
 - `SettingsGroup.setValue(propertyName, value)`
 
@@ -78,10 +87,10 @@ GlobalSettings.ui.imageBrightnessStepSize
 
 `GlobalSettings::rebuildSettingsObjects()` 根据每个 group 的 `accessor` 和 `parent_accessor` 构建运行时对象树：
 
-- `accessor: ui` 绑定到固定根对象 `GlobalSettings.ui`。
-- `accessor: data` 绑定到固定根对象 `GlobalSettings.data`。
-- `accessor: project` 绑定到固定根对象 `GlobalSettings.project`。
-- 带 `parent_accessor: advanced` 的 group 会创建在 `GlobalSettings.advanced.<accessor>` 下。
+- `accessor: ui` 会创建路径为 `ui` 的 `SettingsGroup`。
+- `accessor: data` 会创建路径为 `data` 的 `SettingsGroup`。
+- `parent_accessor: advanced` + `accessor: imageSearch` 会创建路径为 `advanced.imageSearch` 的 `SettingsGroup`。
+- `GlobalSettings.root` 是动态根命名空间，可通过 `root.object(name)` 取得一级对象；业务 QML 通常使用 `settingsObjectFor()`。
 
 `SettingsGroup` 基于 `QQmlPropertyMap`，负责把字段值插入为动态属性。QML 直接改写动态属性时，`updateValue()` 会回写到对应的 `SettingsFieldModel`，再触发保存调度。
 
@@ -92,9 +101,15 @@ GlobalSettings.ui.imageBrightnessStepSize
 - `groupKey`
 - `tableName`
 - `label`
+- `accessor`
+- `parentAccessor`
+- `accessorPath`
+- `category`
+- `sidebar`
+- `ordinalIndex`
 - `fieldModel`
 
-`fieldModel` 是字段列表模型，角色包括 `nameEn`、`nameCn`、`propertyName`、`value`、`defaultValue`、`valueType`、`valueRange`、`controlType`、`options`、`optionsMap`、`section`、`description`、`visible`、`ordinalIndex`。界面应根据 `valueType` 和 `controlType` 创建对应控件，根据 `value` 赋值，根据 `valueRange` 设置范围。
+`fieldModel` 是字段列表模型，角色包括 `nameEn`、`nameCn`、`propertyName`、`value`、`defaultValue`、`valueType`、`valueRange`、`controlType`、`options`、`optionsMap`、`sidebar`、`section`、`description`、`visible`、`ordinalIndex`。界面应根据 `valueType` 和 `controlType` 创建对应控件，根据 `value` 赋值，根据 `valueRange` 设置范围。
 
 ## 数据库持久化
 
@@ -129,6 +144,7 @@ GlobalSettings.ui.imageBrightnessStepSize
 1. 新增 group：添加一个 YAML 顶层 group，并配置 `table`、`accessor`、`label` 和 `fields`。
 2. 新增字段：在 group 的 `fields` 下添加 field，并配置 `name_en`、`property_name`、`value_type`、`value`、`control_type` 等。
 3. 动态列表：简单列表使用 `options`；如果列表依赖其它字段值，使用 `options_map` 这类 key-values 结构，例如按 `model` 映射到不同特征层名列表。
-4. 访问路径：通过 `accessor` 和 `parent_accessor` 决定，例如 `parent_accessor: advanced` + `accessor: roiSearch` 对应 `GlobalSettings.advanced.roiSearch`。
+4. 访问路径：通过 `accessor` 和 `parent_accessor` 决定，例如 `parent_accessor: advanced` + `accessor: roiSearch` 对应内部路径 `advanced.roiSearch`，QML 使用 `SettingsAccessor.RoiSearch` 访问。
+5. 侧边栏入口：给字段添加 `sidebar` 元数据，例如 `sidebar.gallery.icon: Brightness`，侧边栏通过 `GlobalSettings.catalog.sidebarFieldsFor(SettingsSidebar.Gallery)` 动态生成按钮。
 
 只要 YAML schema、数据库模板和设置页面控件类型支持，对应设置无需新增 C++ 参数类。

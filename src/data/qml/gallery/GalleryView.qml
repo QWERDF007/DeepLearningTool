@@ -28,8 +28,10 @@ Item {
         }
     }
 
-    property int cellWidth: 180 * GlobalSettings.data.imageCellScale
-    property int cellHeight: 240 * GlobalSettings.data.imageCellScale
+    readonly property var dataSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Data)
+    readonly property var imageSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.ImageSearch)
+    property int cellWidth: 180 * dataSettings.imageCellScale
+    property int cellHeight: 240 * dataSettings.imageCellScale
     property int spacing: 10
 
     property DataManager dataManager
@@ -45,7 +47,7 @@ Item {
             enabled: dataManager && dataManager.imageSearch
                      && selection && selection.hasSelection
                      && !dataManager.imageSearch.running
-                     && GlobalSettings.advanced.imageSearch.enabled
+                     && imageSearchSettings.enabled
             onClicked: {
                 imageSearchDialog.openForSearch()
             }
@@ -111,10 +113,10 @@ Item {
         }
 
         function scaleView(event) {
-            if (event.angleDelta.y > 0 && GlobalSettings.data.imageCellScale < GlobalSettings.data.imageCellScaleTo) {
-                GlobalSettings.data.imageCellScale += GlobalSettings.data.imageCellScaleStepSize
-            } else if (event.angleDelta.y < 0 && GlobalSettings.data.imageCellScale > GlobalSettings.data.imageCellScaleFrom) {
-                GlobalSettings.data.imageCellScale -= GlobalSettings.data.imageCellScaleStepSize
+            if (event.angleDelta.y > 0 && dataSettings.imageCellScale < dataSettings.imageCellScaleTo) {
+                dataSettings.imageCellScale += dataSettings.imageCellScaleStepSize
+            } else if (event.angleDelta.y < 0 && dataSettings.imageCellScale > dataSettings.imageCellScaleFrom) {
+                dataSettings.imageCellScale -= dataSettings.imageCellScaleStepSize
             } else {
 
             }

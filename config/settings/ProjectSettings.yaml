@@ -1,6 +1,8 @@
 ProjectSettings:
   table: project_settings
   accessor: project
+  category: general
+  ordinal_index: 10
   label: 项目设置
   fields:
     - name_en: max_recent_projects

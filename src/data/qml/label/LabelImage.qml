@@ -14,6 +14,7 @@ Item {
     property bool needFitInView: false
     property bool isDragging: mouseArea.drag.active
     property bool scalable: true
+    readonly property var uiSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Ui)
 
     property alias image: image
     
@@ -84,8 +85,8 @@ Item {
         y: image.y
         scale: image.scale
         transformOrigin: Item.TopLeft
-        brightness: GlobalSettings.ui.imageBrightness
-        contrast: GlobalSettings.ui.imageContrast
+        brightness: uiSettings.imageBrightness
+        contrast: uiSettings.imageContrast
     }
     
     MouseArea {

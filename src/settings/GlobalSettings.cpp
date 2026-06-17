@@ -13,11 +13,6 @@ QString settingsDatabasePath()
     return dltool::database::DataBase::applicationDatabasePath(QStringLiteral("settings.db"));
 }
 
-QStringList splitAccessorPath(const QString &accessor_path)
-{
-    return accessor_path.split(QLatin1Char('.'), Qt::SkipEmptyParts);
-}
-
 QString parentAccessorPath(const QString &accessor_path)
 {
     const qsizetype dot = accessor_path.lastIndexOf(QLatin1Char('.'));
@@ -34,16 +29,12 @@ QString leafAccessor(const QString &accessor_path)
 
 GlobalSettings::GlobalSettings(QObject *parent)
     : QObject(parent)
-    , project_settings_(new SettingsGroup(this))
-    , data_settings_(new SettingsGroup(this))
-    , advanced_settings_(new SettingsNamespace(this))
-    , ui_settings_(new SettingsGroup(this))
+    , root_settings_(new SettingsNamespace(this))
     , settings_catalog_(new SettingsCatalog(this))
     , settings_database_(new dltool::database::SettingsDataBase(settingsDatabasePath(), this))
     , save_timer_(new QTimer(this))
 {
-    advanced_settings_->setAccessorPath(QStringLiteral("advanced"));
-    namespaces_by_accessor_path_.insert(advanced_settings_->accessorPath(), advanced_settings_);
+    namespaces_by_accessor_path_.insert(QString(), root_settings_);
 
     save_timer_->setSingleShot(true);
     save_timer_->setInterval(1000);
@@ -87,24 +78,9 @@ GlobalSettings::~GlobalSettings()
     }
 }
 
-SettingsGroup *GlobalSettings::project() const
+SettingsNamespace *GlobalSettings::root() const
 {
-    return project_settings_;
-}
-
-SettingsGroup *GlobalSettings::data() const
-{
-    return data_settings_;
-}
-
-SettingsNamespace *GlobalSettings::advanced() const
-{
-    return advanced_settings_;
-}
-
-SettingsGroup *GlobalSettings::ui() const
-{
-    return ui_settings_;
+    return root_settings_;
 }
 
 SettingsCatalog *GlobalSettings::catalog() const
@@ -167,6 +143,11 @@ QObject *GlobalSettings::settingsObject(const QString &accessor_path) const
     return namespaces_by_accessor_path_.value(accessor_path, nullptr);
 }
 
+QObject *GlobalSettings::settingsObjectFor(const int accessor_key) const
+{
+    return settingsObject(accessorPath(static_cast<accessor::Key>(accessor_key)));
+}
+
 QVariant GlobalSettings::value(const QString &accessor_path, const QString &property_name,
                                const QVariant &fallback) const
 {
@@ -174,10 +155,20 @@ QVariant GlobalSettings::value(const QString &accessor_path, const QString &prop
     return group != nullptr ? group->valueOr(property_name, fallback) : fallback;
 }
 
+QVariant GlobalSettings::valueFor(const int accessor_key, const QString &property_name, const QVariant &fallback) const
+{
+    return value(accessorPath(static_cast<accessor::Key>(accessor_key)), property_name, fallback);
+}
+
 bool GlobalSettings::setValue(const QString &accessor_path, const QString &property_name, const QVariant &value)
 {
     SettingsGroup *group = settingsGroup(accessor_path);
     return group != nullptr && group->setValue(property_name, value);
+}
+
+bool GlobalSettings::setValueFor(const int accessor_key, const QString &property_name, const QVariant &value)
+{
+    return setValue(accessorPath(static_cast<accessor::Key>(accessor_key)), property_name, value);
 }
 
 bool GlobalSettings::setCatalogValue(const QString &group_key, const QString &name, const QVariant &value)
@@ -204,6 +195,8 @@ void GlobalSettings::connectAutoSave()
 
 void GlobalSettings::rebuildSettingsObjects()
 {
+    root_settings_->clearValues();
+
     qDeleteAll(generated_groups_);
     generated_groups_.clear();
 
@@ -214,12 +207,7 @@ void GlobalSettings::rebuildSettingsObjects()
     groups_by_key_.clear();
     namespaces_by_accessor_path_.clear();
 
-    project_settings_->bindModel(QString(), nullptr);
-    data_settings_->bindModel(QString(), nullptr);
-    ui_settings_->bindModel(QString(), nullptr);
-    advanced_settings_->clearValues();
-    advanced_settings_->setAccessorPath(QStringLiteral("advanced"));
-    namespaces_by_accessor_path_.insert(advanced_settings_->accessorPath(), advanced_settings_);
+    namespaces_by_accessor_path_.insert(QString(), root_settings_);
 
     for (int row = 0; row < settings_catalog_->rowCount(); ++row)
     {
@@ -234,21 +222,15 @@ void GlobalSettings::rebuildSettingsObjects()
             continue;
         }
 
-        const QString parent_accessor = model->parentAccessor().trimmed();
-        const QString accessor_path   = joinedAccessorPath(parent_accessor, accessor);
-        SettingsGroup *group          = rootGroupForAccessor(accessor);
-        if (group == nullptr || !parent_accessor.isEmpty())
-        {
-            group = new SettingsGroup(this);
-            generated_groups_.append(group);
-        }
+        const QString accessor_path = model->accessorPath();
+        SettingsGroup *group        = new SettingsGroup(this);
+        generated_groups_.append(group);
 
         group->bindModel(accessor_path, model);
         groups_by_accessor_path_.insert(accessor_path, group);
         groups_by_key_.insert(model->groupKey(), group);
 
-        if (!parent_accessor.isEmpty())
-            ensureNamespace(parent_accessor)->insertObject(accessor, group);
+        ensureNamespace(parentAccessorPath(accessor_path))->insertObject(leafAccessor(accessor_path), group);
     }
 }
 
@@ -258,17 +240,6 @@ void GlobalSettings::handleCatalogValueChanged(const QString &group_key, const Q
     if (group != nullptr)
         group->updateFromFieldName(name, value);
     scheduleSave();
-}
-
-SettingsGroup *GlobalSettings::rootGroupForAccessor(const QString &accessor) const
-{
-    if (accessor == QStringLiteral("project"))
-        return project_settings_;
-    if (accessor == QStringLiteral("data"))
-        return data_settings_;
-    if (accessor == QStringLiteral("ui"))
-        return ui_settings_;
-    return nullptr;
 }
 
 SettingsNamespace *GlobalSettings::ensureNamespace(const QString &accessor_path)
@@ -284,17 +255,10 @@ SettingsNamespace *GlobalSettings::ensureNamespace(const QString &accessor_path)
     const QString parent_path = parentAccessorPath(accessor_path);
     if (!parent_path.isEmpty())
         ensureNamespace(parent_path)->insertObject(leafAccessor(accessor_path), settings_namespace);
+    else
+        root_settings_->insertObject(leafAccessor(accessor_path), settings_namespace);
 
     return settings_namespace;
-}
-
-QString GlobalSettings::joinedAccessorPath(const QString &parent_accessor, const QString &accessor)
-{
-    if (parent_accessor.isEmpty())
-        return accessor;
-    if (accessor.isEmpty())
-        return parent_accessor;
-    return parent_accessor + QLatin1Char('.') + accessor;
 }
 
 } // namespace dltool::settings

@@ -1,6 +1,8 @@
 UISettings:
   table: ui_settings
   accessor: ui
+  category: general
+  ordinal_index: 30
   label: 界面设置
   fields:
     - name_en: brightness
@@ -10,6 +12,13 @@ UISettings:
       value_type: double
       value_range: [-1.0, 1.0, 0.1]
       control_type: slider
+      sidebar:
+        gallery:
+          icon: Brightness
+          ordinal_index: 20
+        review:
+          icon: Brightness
+          ordinal_index: 40
       section: 图像
 
     - name_en: contrast
@@ -19,6 +28,13 @@ UISettings:
       value_type: double
       value_range: [-1.0, 1.0, 0.1]
       control_type: slider
+      sidebar:
+        gallery:
+          icon: BlueLight
+          ordinal_index: 30
+        review:
+          icon: BlueLight
+          ordinal_index: 50
       section: 图像
 
     - name_en: theme

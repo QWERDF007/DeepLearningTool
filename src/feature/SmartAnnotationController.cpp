@@ -1343,7 +1343,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
     try
     {
         auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(
-            QStringLiteral("advanced.smartAnnotation"));
+            dltool::settings::accessorPath(dltool::settings::accessor::Key::SmartAnnotation));
         if (settings == nullptr || !settings->valueOr(QStringLiteral("enabled"), false).toBool())
         {
             throw std::runtime_error("智能标注未启用");

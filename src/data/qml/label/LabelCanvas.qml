@@ -23,10 +23,13 @@ Item {
     property point startPos: Qt.point(0, 0)
     property bool segmentationMode: dataManager ? dataManager.method === DeepLearningMethod.Segmentation : false
     property var smartAnnotation: dataManager ? dataManager.smartAnnotation : null
+    readonly property var imageSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.ImageSearch)
+    readonly property var roiSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.RoiSearch)
+    readonly property var smartAnnotationSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.SmartAnnotation)
     property string toolMode: "select"
     property bool showBoundingBoxes: false
     readonly property bool smartAnnotationAvailable: smartAnnotation
-                                                    && GlobalSettings.advanced.smartAnnotation.enabled
+                                                    && smartAnnotationSettings.enabled
                                                     && dataManager
                                                     && (dataManager.method === DeepLearningMethod.Detection
                                                         || dataManager.method === DeepLearningMethod.Segmentation)
@@ -78,7 +81,7 @@ Item {
 
     Timer {
         id: smartPreviewTimer
-        interval: Math.max(20, GlobalSettings.advanced.smartAnnotation.refreshInterval)
+        interval: Math.max(20, smartAnnotationSettings.refreshInterval)
         repeat: false
         onTriggered: updateSmartAnnotationPreview()
     }
@@ -91,7 +94,7 @@ Item {
             enabled: dataManager && dataManager.imageSearch
                      && imageInstances && imageInstances.currentImageId >= 0
                      && !dataManager.imageSearch.running
-                     && GlobalSettings.advanced.imageSearch.enabled
+                     && imageSearchSettings.enabled
             iconSource: QuiFontIcon.Search
             onClicked: startImageSearchForCurrentImage()
         }
@@ -100,7 +103,7 @@ Item {
             enabled: dataManager && dataManager.imageSearch
                      && selection && selection.hasSelection
                      && !dataManager.imageSearch.running
-                     && GlobalSettings.advanced.roiSearch.enabled
+                     && roiSearchSettings.enabled
             iconSource: QuiFontIcon.Search
             onClicked: startRoiSearchForSelectedLabels()
         }
@@ -151,7 +154,7 @@ Item {
                  && smartAnnotationResult.success === true
                  && smartAnnotationResult.mask_runs
                  && smartAnnotationResult.mask_runs.length > 0
-                 && GlobalSettings.advanced.smartAnnotation.maskAlpha > 0
+                 && smartAnnotationSettings.maskAlpha > 0
 
         onPaint: paintSmartMask()
     }
@@ -190,7 +193,7 @@ Item {
     }
 
     Connections {
-        target: GlobalSettings.advanced.smartAnnotation
+        target: smartAnnotationSettings
         function onValueChanged(key, value) { smartMaskCanvas.requestPaint() }
     }
 
@@ -271,7 +274,7 @@ Item {
         let scale = labelImage.image.scale
         let offsetX = labelImage.image.x
         let offsetY = labelImage.image.y
-        let alpha = Math.max(0, Math.min(1, GlobalSettings.advanced.smartAnnotation.maskAlpha))
+        let alpha = Math.max(0, Math.min(1, smartAnnotationSettings.maskAlpha))
         ctx.save()
         ctx.fillStyle = Qt.rgba(drawingColor.r, drawingColor.g, drawingColor.b, alpha)
         for (let run of smartAnnotationResult.mask_runs) {
@@ -1112,7 +1115,7 @@ Item {
     function startImageSearchForCurrentImage() {
         if (!dataManager || !dataManager.imageSearch || !imageInstances
                 || imageInstances.currentImageId < 0
-                || !GlobalSettings.advanced.imageSearch.enabled) {
+                || !imageSearchSettings.enabled) {
             return
         }
 
@@ -1122,7 +1125,7 @@ Item {
     function startRoiSearchForSelectedLabels() {
         if (!dataManager || !dataManager.imageSearch || !imageLabelsList
                 || !selection || !selection.hasSelection
-                || !GlobalSettings.advanced.roiSearch.enabled) {
+                || !roiSearchSettings.enabled) {
             return
         }
 

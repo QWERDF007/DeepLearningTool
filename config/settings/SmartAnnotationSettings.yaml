@@ -2,6 +2,8 @@ SmartAnnotationSettings:
   table: smart_annotation_settings
   parent_accessor: advanced
   accessor: smartAnnotation
+  category: advanced
+  ordinal_index: 120
   label: 智能标注
   fields:
     - name_en: enabled

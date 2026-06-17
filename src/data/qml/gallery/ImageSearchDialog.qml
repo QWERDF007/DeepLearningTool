@@ -15,6 +15,7 @@ QuiPopup {
     property bool syncing: false
     property string lastSuggestedWeightsPath: ""
     property var queryImageIds: []
+    readonly property var imageSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.ImageSearch)
 
     implicitWidth: 680
     implicitHeight: 720
@@ -74,19 +75,19 @@ QuiPopup {
         let controller = imageSearchController()
         syncing = true
 
-        let modelName = GlobalSettings.advanced.imageSearch.model
+        let modelName = imageSearchSettings.model
         if (modelName === "" && controller) {
             modelName = controller.defaultModelName
         }
         setComboText(modelBox, modelName)
 
-        let modelPath = GlobalSettings.advanced.imageSearch.modelPath
+        let modelPath = imageSearchSettings.modelPath
         if (modelPath === "") {
             modelPath = suggestedWeightsPath(modelName)
         }
         weightsPathInput.text = modelPath
 
-        let featureName = GlobalSettings.advanced.imageSearch.featureName
+        let featureName = imageSearchSettings.featureName
         if (featureName === "" && controller) {
             featureName = controller.defaultFeatureName
         }
@@ -94,16 +95,16 @@ QuiPopup {
         featureBox.featureName = featureName
         featureBox.refreshFeatureNames()
 
-        rebuildCheckBox.checked = GlobalSettings.advanced.imageSearch.rebuildIndex
-        topKEditor.value = GlobalSettings.advanced.imageSearch.topK
-        setComboText(normBox, GlobalSettings.advanced.imageSearch.norm)
-        setComboText(preprocessBox, GlobalSettings.advanced.imageSearch.preprocessBackend)
-        setComboText(faissBackendBox, GlobalSettings.advanced.imageSearch.faissBackend)
-        setComboText(indexStorageBox, GlobalSettings.advanced.imageSearch.indexStorage)
-        diskBatchEditor.value = GlobalSettings.advanced.imageSearch.diskBuildBatchSize
-        modelBatchEditor.value = GlobalSettings.advanced.imageSearch.modelBatchSize
-        setComboText(modelBackendBox, GlobalSettings.advanced.imageSearch.modelBackend)
-        setComboText(modelDeviceBox, GlobalSettings.advanced.imageSearch.modelDevice)
+        rebuildCheckBox.checked = imageSearchSettings.rebuildIndex
+        topKEditor.value = imageSearchSettings.topK
+        setComboText(normBox, imageSearchSettings.norm)
+        setComboText(preprocessBox, imageSearchSettings.preprocessBackend)
+        setComboText(faissBackendBox, imageSearchSettings.faissBackend)
+        setComboText(indexStorageBox, imageSearchSettings.indexStorage)
+        diskBatchEditor.value = imageSearchSettings.diskBuildBatchSize
+        modelBatchEditor.value = imageSearchSettings.modelBatchSize
+        setComboText(modelBackendBox, imageSearchSettings.modelBackend)
+        setComboText(modelDeviceBox, imageSearchSettings.modelDevice)
 
         lastSuggestedWeightsPath = suggestedWeightsPath(modelName)
         syncing = false
@@ -130,11 +131,11 @@ QuiPopup {
 
         let previousSuggested = lastSuggestedWeightsPath
         let nextSuggested = suggestedWeightsPath(modelName)
-        GlobalSettings.advanced.imageSearch.model = modelName
+        imageSearchSettings.model = modelName
         featureBox.modelName = modelName
         if (weightsPathInput.text === "" || weightsPathInput.text === previousSuggested) {
             weightsPathInput.text = nextSuggested
-            GlobalSettings.advanced.imageSearch.modelPath = nextSuggested
+            imageSearchSettings.modelPath = nextSuggested
         }
         lastSuggestedWeightsPath = nextSuggested
         featureBox.refreshFeatureNames()
@@ -142,19 +143,19 @@ QuiPopup {
 
     function persistSettings() {
         featureBox.rememberCurrentText()
-        GlobalSettings.advanced.imageSearch.model = comboText(modelBox)
-        GlobalSettings.advanced.imageSearch.modelPath = trimText(weightsPathInput.text)
-        GlobalSettings.advanced.imageSearch.featureName = featureBox.currentFeatureText()
-        GlobalSettings.advanced.imageSearch.rebuildIndex = rebuildCheckBox.checked
-        GlobalSettings.advanced.imageSearch.topK = Math.round(topKEditor.value)
-        GlobalSettings.advanced.imageSearch.norm = normBox.currentText
-        GlobalSettings.advanced.imageSearch.preprocessBackend = preprocessBox.currentText
-        GlobalSettings.advanced.imageSearch.faissBackend = faissBackendBox.currentText
-        GlobalSettings.advanced.imageSearch.indexStorage = indexStorageBox.currentText
-        GlobalSettings.advanced.imageSearch.diskBuildBatchSize = Math.round(diskBatchEditor.value)
-        GlobalSettings.advanced.imageSearch.modelBatchSize = Math.round(modelBatchEditor.value)
-        GlobalSettings.advanced.imageSearch.modelBackend = modelBackendBox.currentText
-        GlobalSettings.advanced.imageSearch.modelDevice = modelDeviceBox.currentText
+        imageSearchSettings.model = comboText(modelBox)
+        imageSearchSettings.modelPath = trimText(weightsPathInput.text)
+        imageSearchSettings.featureName = featureBox.currentFeatureText()
+        imageSearchSettings.rebuildIndex = rebuildCheckBox.checked
+        imageSearchSettings.topK = Math.round(topKEditor.value)
+        imageSearchSettings.norm = normBox.currentText
+        imageSearchSettings.preprocessBackend = preprocessBox.currentText
+        imageSearchSettings.faissBackend = faissBackendBox.currentText
+        imageSearchSettings.indexStorage = indexStorageBox.currentText
+        imageSearchSettings.diskBuildBatchSize = Math.round(diskBatchEditor.value)
+        imageSearchSettings.modelBatchSize = Math.round(modelBatchEditor.value)
+        imageSearchSettings.modelBackend = modelBackendBox.currentText
+        imageSearchSettings.modelDevice = modelDeviceBox.currentText
     }
 
     function selectedDatasetIds() {
@@ -170,7 +171,7 @@ QuiPopup {
 
     function startSearch() {
         let controller = imageSearchController()
-        if (!controller || !GlobalSettings.advanced.imageSearch.enabled) {
+        if (!controller || !imageSearchSettings.enabled) {
             return
         }
 
@@ -181,35 +182,35 @@ QuiPopup {
             started = controller.searchImages(
                         queryImageIds,
                         datasetIds,
-                        GlobalSettings.advanced.imageSearch.model,
-                        GlobalSettings.advanced.imageSearch.modelPath,
-                        GlobalSettings.advanced.imageSearch.featureName,
-                        GlobalSettings.advanced.imageSearch.rebuildIndex,
-                        GlobalSettings.advanced.imageSearch.topK,
-                        GlobalSettings.advanced.imageSearch.norm,
-                        GlobalSettings.advanced.imageSearch.preprocessBackend,
-                        GlobalSettings.advanced.imageSearch.faissBackend,
-                        GlobalSettings.advanced.imageSearch.indexStorage,
-                        GlobalSettings.advanced.imageSearch.diskBuildBatchSize,
-                        GlobalSettings.advanced.imageSearch.modelBatchSize,
-                        GlobalSettings.advanced.imageSearch.modelBackend,
-                        GlobalSettings.advanced.imageSearch.modelDevice)
+                        imageSearchSettings.model,
+                        imageSearchSettings.modelPath,
+                        imageSearchSettings.featureName,
+                        imageSearchSettings.rebuildIndex,
+                        imageSearchSettings.topK,
+                        imageSearchSettings.norm,
+                        imageSearchSettings.preprocessBackend,
+                        imageSearchSettings.faissBackend,
+                        imageSearchSettings.indexStorage,
+                        imageSearchSettings.diskBuildBatchSize,
+                        imageSearchSettings.modelBatchSize,
+                        imageSearchSettings.modelBackend,
+                        imageSearchSettings.modelDevice)
         } else {
             started = controller.searchSelectedImages(
                         datasetIds,
-                        GlobalSettings.advanced.imageSearch.model,
-                        GlobalSettings.advanced.imageSearch.modelPath,
-                        GlobalSettings.advanced.imageSearch.featureName,
-                        GlobalSettings.advanced.imageSearch.rebuildIndex,
-                        GlobalSettings.advanced.imageSearch.topK,
-                        GlobalSettings.advanced.imageSearch.norm,
-                        GlobalSettings.advanced.imageSearch.preprocessBackend,
-                        GlobalSettings.advanced.imageSearch.faissBackend,
-                        GlobalSettings.advanced.imageSearch.indexStorage,
-                        GlobalSettings.advanced.imageSearch.diskBuildBatchSize,
-                        GlobalSettings.advanced.imageSearch.modelBatchSize,
-                        GlobalSettings.advanced.imageSearch.modelBackend,
-                        GlobalSettings.advanced.imageSearch.modelDevice)
+                        imageSearchSettings.model,
+                        imageSearchSettings.modelPath,
+                        imageSearchSettings.featureName,
+                        imageSearchSettings.rebuildIndex,
+                        imageSearchSettings.topK,
+                        imageSearchSettings.norm,
+                        imageSearchSettings.preprocessBackend,
+                        imageSearchSettings.faissBackend,
+                        imageSearchSettings.indexStorage,
+                        imageSearchSettings.diskBuildBatchSize,
+                        imageSearchSettings.modelBatchSize,
+                        imageSearchSettings.modelBackend,
+                        imageSearchSettings.modelDevice)
         }
         if (started) {
             close()
@@ -269,7 +270,7 @@ QuiPopup {
                         anchors.fill: parent
                         anchors.margins: 12
                         spacing: 10
-                        enabled: GlobalSettings.advanced.imageSearch.enabled
+                        enabled: imageSearchSettings.enabled
 
                         // 搜索数据集
                         ColumnLayout {
@@ -376,7 +377,7 @@ QuiPopup {
                                     Layout.fillWidth: true
                                     placeholderText: "选择 .wts 权重文件"
                                     onEditingFinished: {
-                                        GlobalSettings.advanced.imageSearch.modelPath = dialog.trimText(text)
+                                        imageSearchSettings.modelPath = dialog.trimText(text)
                                     }
                                 }
                                 QuiTextIconButton {
@@ -412,9 +413,9 @@ QuiPopup {
                                 width: parent.width * 2 / 3
                                 imageSearch: dialog.imageSearchController()
                                 modelName: dialog.comboText(modelBox)
-                                featureName: GlobalSettings.advanced.imageSearch.featureName
+                                featureName: imageSearchSettings.featureName
                                 onFeatureNameAccepted: function (featureName) {
-                                    GlobalSettings.advanced.imageSearch.featureName = featureName
+                                    imageSearchSettings.featureName = featureName
                                 }
                             }
                         }
@@ -443,7 +444,7 @@ QuiPopup {
                                 model: ["tensorrt", "openvino", "onnxruntime"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.imageSearch.modelBackend = currentText
+                                        imageSearchSettings.modelBackend = currentText
                                     }
                                 }
                             }
@@ -473,7 +474,7 @@ QuiPopup {
                                 model: ["gpu", "cpu"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.imageSearch.modelDevice = currentText
+                                        imageSearchSettings.modelDevice = currentText
                                     }
                                 }
                             }
@@ -507,7 +508,7 @@ QuiPopup {
                                 step: 1
                                 onValueChanged: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.imageSearch.modelBatchSize = Math.round(value)
+                                        imageSearchSettings.modelBatchSize = Math.round(value)
                                     }
                                 }
                             }
@@ -535,7 +536,7 @@ QuiPopup {
                                 }
                                 onToggled: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.imageSearch.rebuildIndex = checked
+                                        imageSearchSettings.rebuildIndex = checked
                                     }
                                 }
                             }
@@ -569,7 +570,7 @@ QuiPopup {
                                 step: 1
                                 onValueChanged: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.imageSearch.topK = Math.round(value)
+                                        imageSearchSettings.topK = Math.round(value)
                                     }
                                 }
                             }
@@ -603,7 +604,7 @@ QuiPopup {
                                 step: 1
                                 onValueChanged: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.imageSearch.diskBuildBatchSize = Math.round(value)
+                                        imageSearchSettings.diskBuildBatchSize = Math.round(value)
                                     }
                                 }
                             }
@@ -633,7 +634,7 @@ QuiPopup {
                                 model: ["l2", "l1", "none"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.imageSearch.norm = currentText
+                                        imageSearchSettings.norm = currentText
                                     }
                                 }
                             }
@@ -663,7 +664,7 @@ QuiPopup {
                                 model: ["cpu", "gpu"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.imageSearch.preprocessBackend = currentText
+                                        imageSearchSettings.preprocessBackend = currentText
                                     }
                                 }
                             }
@@ -693,7 +694,7 @@ QuiPopup {
                                 model: ["cpu", "gpu"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.imageSearch.faissBackend = currentText
+                                        imageSearchSettings.faissBackend = currentText
                                         if (currentText === "gpu") {
                                             dialog.setComboText(indexStorageBox, "ram")
                                         }
@@ -727,7 +728,7 @@ QuiPopup {
                                 model: ["ram", "disk"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.imageSearch.indexStorage = currentText
+                                        imageSearchSettings.indexStorage = currentText
                                     }
                                 }
                             }
@@ -761,7 +762,7 @@ QuiPopup {
                 text: "开始搜索"
                 enabled: dialog.imageSearchController()
                          && !dialog.imageSearchController().running
-                         && GlobalSettings.advanced.imageSearch.enabled
+                         && imageSearchSettings.enabled
                 onClicked: dialog.startSearch()
             }
         }
@@ -773,7 +774,7 @@ QuiPopup {
         nameFilters: ["Weights (*.wts *.onnx)", "All files (*)"]
         onAccepted: {
             weightsPathInput.text = Utils.getCleanPath(weightsFileDialog.file.toString())
-            GlobalSettings.advanced.imageSearch.modelPath = weightsPathInput.text
+            imageSearchSettings.modelPath = weightsPathInput.text
         }
     }
 }

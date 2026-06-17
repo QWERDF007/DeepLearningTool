@@ -15,6 +15,7 @@ Rectangle {
     property bool selected: false
     property bool hasLabels: model.hasLabels || false
     property DataManager dataManager
+    readonly property var uiSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Ui)
     
     // 新增：通过 image_id 动态获取标注信息
     property string labelSummary: {
@@ -53,8 +54,8 @@ Rectangle {
     MultiEffect {
         source: image
         anchors.fill: image
-        brightness: GlobalSettings.ui.imageBrightness
-        contrast: GlobalSettings.ui.imageContrast
+        brightness: uiSettings.imageBrightness
+        contrast: uiSettings.imageContrast
     }
     
     // 标注指示器 - 显示在右上角

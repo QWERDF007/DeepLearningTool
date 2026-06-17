@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Effects
 
@@ -19,6 +19,8 @@ Item {
     property int labelId: -1  // 标注 ID
     property var labelData: null  // 标注数据 {x, y, width, height}
     property color borderColor: QuiColor.Transparent  // 边框颜色（从外部传入）
+    readonly property var dataSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Data)
+    readonly property var uiSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Ui)
     
     // 只读属性
     readonly property bool imageLoaded: thumbnail.status === Image.Ready
@@ -26,9 +28,9 @@ Item {
     readonly property bool hasValidLabelData: true //isLabelDataValid()
     
     // 配置属性（从 GlobalSettings 获取）
-    readonly property int margin: GlobalSettings.data.thumbnailMargin
-    readonly property int borderWidth: GlobalSettings.data.labelBorderWidth
-    readonly property real padding: GlobalSettings.data.labelThumbnailBorderPadding
+    readonly property int margin: dataSettings.thumbnailMargin
+    readonly property int borderWidth: dataSettings.labelBorderWidth
+    readonly property real padding: dataSettings.labelThumbnailBorderPadding
     
     // 极端尺寸处理常量
     readonly property real minVisibleSize: 4.0  // 最小可见尺寸（像素）
@@ -70,7 +72,7 @@ Item {
         // URL 包含 padding 查询参数以支持边界扩展
         source: root.labelId >= 0 
             ? "image://labelinstance/" + root.labelId 
-              + "?padding=" + GlobalSettings.data.labelThumbnailBorderPadding
+              + "?padding=" + dataSettings.labelThumbnailBorderPadding
             : ""
         
         // 缓存控制 - 启用缓存以提升性能
@@ -133,8 +135,8 @@ Item {
     MultiEffect {
         source: thumbnail
         anchors.fill: thumbnail
-        brightness: GlobalSettings.ui.imageBrightness
-        contrast: GlobalSettings.ui.imageContrast
+        brightness: uiSettings.imageBrightness
+        contrast: uiSettings.imageContrast
     }
     
     // 矩形覆盖层 - 显示标注边框

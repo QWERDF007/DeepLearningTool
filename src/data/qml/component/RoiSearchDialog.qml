@@ -15,6 +15,7 @@ QuiPopup {
     property bool syncing: false
     property string lastSuggestedWeightsPath: ""
     property var queryLabelIds: []
+    readonly property var roiSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.RoiSearch)
 
     implicitWidth: 680
     implicitHeight: 760
@@ -103,37 +104,37 @@ QuiPopup {
         let controller = imageSearchController()
         syncing = true
 
-        let storedModelName = trimText(GlobalSettings.advanced.roiSearch.model)
+        let storedModelName = trimText(roiSearchSettings.model)
         let modelName = normalizeRoiModel(storedModelName)
         setComboText(modelBox, modelName)
 
-        let modelPath = GlobalSettings.advanced.roiSearch.modelPath
+        let modelPath = roiSearchSettings.modelPath
         if (modelPath === "" || (storedModelName !== "" && storedModelName !== modelName)) {
             modelPath = suggestedWeightsPath(modelName)
         }
         weightsPathInput.text = modelPath
 
-        let featureName = normalizeRoiFeature(modelName, GlobalSettings.advanced.roiSearch.featureName)
+        let featureName = normalizeRoiFeature(modelName, roiSearchSettings.featureName)
         featureBox.modelName = modelName
         featureBox.featureName = featureName
         featureBox.refreshFeatureNames()
 
-        rebuildCheckBox.checked = GlobalSettings.advanced.roiSearch.rebuildIndex
-        topKEditor.value = GlobalSettings.advanced.roiSearch.topK
-        setComboText(normBox, GlobalSettings.advanced.roiSearch.norm)
-        setComboText(preprocessBox, GlobalSettings.advanced.roiSearch.preprocessBackend)
-        setComboText(faissBackendBox, GlobalSettings.advanced.roiSearch.faissBackend)
-        setComboText(indexStorageBox, GlobalSettings.advanced.roiSearch.indexStorage)
-        diskBatchEditor.value = GlobalSettings.advanced.roiSearch.diskBuildBatchSize
-        modelBatchEditor.value = GlobalSettings.advanced.roiSearch.modelBatchSize
-        setComboText(modelBackendBox, GlobalSettings.advanced.roiSearch.modelBackend)
-        setComboText(modelDeviceBox, GlobalSettings.advanced.roiSearch.modelDevice)
-        pooledHeightEditor.value = GlobalSettings.advanced.roiSearch.pooledHeight
-        pooledWidthEditor.value = GlobalSettings.advanced.roiSearch.pooledWidth
-        samplingRatioEditor.value = GlobalSettings.advanced.roiSearch.samplingRatio
-        alignedSwitch.checked = GlobalSettings.advanced.roiSearch.aligned
-        usePcaSwitch.checked = GlobalSettings.advanced.roiSearch.usePca
-        pcaDimEditor.value = normalizedPcaDim(GlobalSettings.advanced.roiSearch.pcaDim)
+        rebuildCheckBox.checked = roiSearchSettings.rebuildIndex
+        topKEditor.value = roiSearchSettings.topK
+        setComboText(normBox, roiSearchSettings.norm)
+        setComboText(preprocessBox, roiSearchSettings.preprocessBackend)
+        setComboText(faissBackendBox, roiSearchSettings.faissBackend)
+        setComboText(indexStorageBox, roiSearchSettings.indexStorage)
+        diskBatchEditor.value = roiSearchSettings.diskBuildBatchSize
+        modelBatchEditor.value = roiSearchSettings.modelBatchSize
+        setComboText(modelBackendBox, roiSearchSettings.modelBackend)
+        setComboText(modelDeviceBox, roiSearchSettings.modelDevice)
+        pooledHeightEditor.value = roiSearchSettings.pooledHeight
+        pooledWidthEditor.value = roiSearchSettings.pooledWidth
+        samplingRatioEditor.value = roiSearchSettings.samplingRatio
+        alignedSwitch.checked = roiSearchSettings.aligned
+        usePcaSwitch.checked = roiSearchSettings.usePca
+        pcaDimEditor.value = normalizedPcaDim(roiSearchSettings.pcaDim)
 
         lastSuggestedWeightsPath = suggestedWeightsPath(modelName)
         syncing = false
@@ -164,12 +165,12 @@ QuiPopup {
 
         let previousSuggested = lastSuggestedWeightsPath
         let nextSuggested = suggestedWeightsPath(modelName)
-        GlobalSettings.advanced.roiSearch.model = modelName
+        roiSearchSettings.model = modelName
         featureBox.modelName = modelName
         featureBox.featureName = normalizeRoiFeature(modelName, featureBox.currentFeatureText())
         if (weightsPathInput.text === "" || weightsPathInput.text === previousSuggested) {
             weightsPathInput.text = nextSuggested
-            GlobalSettings.advanced.roiSearch.modelPath = nextSuggested
+            roiSearchSettings.modelPath = nextSuggested
         }
         lastSuggestedWeightsPath = nextSuggested
         featureBox.refreshFeatureNames()
@@ -178,25 +179,25 @@ QuiPopup {
     function persistSettings() {
         featureBox.rememberCurrentText()
         let modelName = normalizeRoiModel(comboText(modelBox))
-        GlobalSettings.advanced.roiSearch.model = modelName
-        GlobalSettings.advanced.roiSearch.modelPath = trimText(weightsPathInput.text)
-        GlobalSettings.advanced.roiSearch.featureName = normalizeRoiFeature(modelName, featureBox.currentFeatureText())
-        GlobalSettings.advanced.roiSearch.rebuildIndex = rebuildCheckBox.checked
-        GlobalSettings.advanced.roiSearch.topK = Math.round(topKEditor.value)
-        GlobalSettings.advanced.roiSearch.norm = normBox.currentText
-        GlobalSettings.advanced.roiSearch.preprocessBackend = preprocessBox.currentText
-        GlobalSettings.advanced.roiSearch.faissBackend = faissBackendBox.currentText
-        GlobalSettings.advanced.roiSearch.indexStorage = indexStorageBox.currentText
-        GlobalSettings.advanced.roiSearch.diskBuildBatchSize = Math.round(diskBatchEditor.value)
-        GlobalSettings.advanced.roiSearch.modelBatchSize = Math.round(modelBatchEditor.value)
-        GlobalSettings.advanced.roiSearch.modelBackend = modelBackendBox.currentText
-        GlobalSettings.advanced.roiSearch.modelDevice = modelDeviceBox.currentText
-        GlobalSettings.advanced.roiSearch.pooledHeight = Math.round(pooledHeightEditor.value)
-        GlobalSettings.advanced.roiSearch.pooledWidth = Math.round(pooledWidthEditor.value)
-        GlobalSettings.advanced.roiSearch.samplingRatio = Math.round(samplingRatioEditor.value)
-        GlobalSettings.advanced.roiSearch.aligned = alignedSwitch.checked
-        GlobalSettings.advanced.roiSearch.usePca = usePcaSwitch.checked
-        GlobalSettings.advanced.roiSearch.pcaDim = usePcaSwitch.checked ? normalizedPcaDim(pcaDimEditor.value) : 0
+        roiSearchSettings.model = modelName
+        roiSearchSettings.modelPath = trimText(weightsPathInput.text)
+        roiSearchSettings.featureName = normalizeRoiFeature(modelName, featureBox.currentFeatureText())
+        roiSearchSettings.rebuildIndex = rebuildCheckBox.checked
+        roiSearchSettings.topK = Math.round(topKEditor.value)
+        roiSearchSettings.norm = normBox.currentText
+        roiSearchSettings.preprocessBackend = preprocessBox.currentText
+        roiSearchSettings.faissBackend = faissBackendBox.currentText
+        roiSearchSettings.indexStorage = indexStorageBox.currentText
+        roiSearchSettings.diskBuildBatchSize = Math.round(diskBatchEditor.value)
+        roiSearchSettings.modelBatchSize = Math.round(modelBatchEditor.value)
+        roiSearchSettings.modelBackend = modelBackendBox.currentText
+        roiSearchSettings.modelDevice = modelDeviceBox.currentText
+        roiSearchSettings.pooledHeight = Math.round(pooledHeightEditor.value)
+        roiSearchSettings.pooledWidth = Math.round(pooledWidthEditor.value)
+        roiSearchSettings.samplingRatio = Math.round(samplingRatioEditor.value)
+        roiSearchSettings.aligned = alignedSwitch.checked
+        roiSearchSettings.usePca = usePcaSwitch.checked
+        roiSearchSettings.pcaDim = usePcaSwitch.checked ? normalizedPcaDim(pcaDimEditor.value) : 0
     }
 
     function selectedDatasetIds() {
@@ -212,7 +213,7 @@ QuiPopup {
 
     function startSearch() {
         let controller = imageSearchController()
-        if (!controller || !GlobalSettings.advanced.roiSearch.enabled || !queryLabelIds || queryLabelIds.length === 0) {
+        if (!controller || !roiSearchSettings.enabled || !queryLabelIds || queryLabelIds.length === 0) {
             return
         }
 
@@ -220,25 +221,25 @@ QuiPopup {
         let started = controller.searchLabelRois(
                     queryLabelIds,
                     selectedDatasetIds(),
-                    GlobalSettings.advanced.roiSearch.model,
-                    GlobalSettings.advanced.roiSearch.modelPath,
-                    GlobalSettings.advanced.roiSearch.featureName,
-                    GlobalSettings.advanced.roiSearch.rebuildIndex,
-                    GlobalSettings.advanced.roiSearch.topK,
-                    GlobalSettings.advanced.roiSearch.norm,
-                    GlobalSettings.advanced.roiSearch.preprocessBackend,
-                    GlobalSettings.advanced.roiSearch.faissBackend,
-                    GlobalSettings.advanced.roiSearch.indexStorage,
-                    GlobalSettings.advanced.roiSearch.diskBuildBatchSize,
-                    GlobalSettings.advanced.roiSearch.modelBatchSize,
-                    GlobalSettings.advanced.roiSearch.modelBackend,
-                    GlobalSettings.advanced.roiSearch.modelDevice,
-                    GlobalSettings.advanced.roiSearch.pooledHeight,
-                    GlobalSettings.advanced.roiSearch.pooledWidth,
-                    GlobalSettings.advanced.roiSearch.samplingRatio,
-                    GlobalSettings.advanced.roiSearch.aligned,
-                    GlobalSettings.advanced.roiSearch.usePca,
-                    GlobalSettings.advanced.roiSearch.pcaDim)
+                    roiSearchSettings.model,
+                    roiSearchSettings.modelPath,
+                    roiSearchSettings.featureName,
+                    roiSearchSettings.rebuildIndex,
+                    roiSearchSettings.topK,
+                    roiSearchSettings.norm,
+                    roiSearchSettings.preprocessBackend,
+                    roiSearchSettings.faissBackend,
+                    roiSearchSettings.indexStorage,
+                    roiSearchSettings.diskBuildBatchSize,
+                    roiSearchSettings.modelBatchSize,
+                    roiSearchSettings.modelBackend,
+                    roiSearchSettings.modelDevice,
+                    roiSearchSettings.pooledHeight,
+                    roiSearchSettings.pooledWidth,
+                    roiSearchSettings.samplingRatio,
+                    roiSearchSettings.aligned,
+                    roiSearchSettings.usePca,
+                    roiSearchSettings.pcaDim)
         if (started) {
             close()
         }
@@ -295,7 +296,7 @@ QuiPopup {
                         anchors.fill: parent
                         anchors.margins: 12
                         spacing: 10
-                        enabled: GlobalSettings.advanced.roiSearch.enabled
+                        enabled: roiSearchSettings.enabled
 
                         ColumnLayout {
                             Layout.fillWidth: true
@@ -391,7 +392,7 @@ QuiPopup {
                                     Layout.fillWidth: true
                                     placeholderText: "选择 .wts 权重文件"
                                     onEditingFinished: {
-                                        GlobalSettings.advanced.roiSearch.modelPath = dialog.trimText(text)
+                                        roiSearchSettings.modelPath = dialog.trimText(text)
                                     }
                                 }
                                 QuiTextIconButton {
@@ -422,10 +423,10 @@ QuiPopup {
                                 width: parent.width * 2 / 3
                                 imageSearch: dialog.imageSearchController()
                                 modelName: dialog.comboText(modelBox)
-                                featureName: GlobalSettings.advanced.roiSearch.featureName
+                                featureName: roiSearchSettings.featureName
                                 roiOnly: true
                                 onFeatureNameAccepted: function (featureName) {
-                                    GlobalSettings.advanced.roiSearch.featureName = featureName
+                                    roiSearchSettings.featureName = featureName
                                 }
                             }
                         }
@@ -449,7 +450,7 @@ QuiPopup {
                                 model: ["tensorrt", "openvino", "onnxruntime"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.roiSearch.modelBackend = currentText
+                                        roiSearchSettings.modelBackend = currentText
                                     }
                                 }
                             }
@@ -474,7 +475,7 @@ QuiPopup {
                                 model: ["gpu", "cpu"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.roiSearch.modelDevice = currentText
+                                        roiSearchSettings.modelDevice = currentText
                                     }
                                 }
                             }
@@ -503,7 +504,7 @@ QuiPopup {
                                 step: 1
                                 onValueChanged: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.roiSearch.modelBatchSize = Math.round(value)
+                                        roiSearchSettings.modelBatchSize = Math.round(value)
                                     }
                                 }
                             }
@@ -526,7 +527,7 @@ QuiPopup {
                                 anchors.verticalCenter: parent.verticalCenter
                                 onToggled: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.roiSearch.rebuildIndex = checked
+                                        roiSearchSettings.rebuildIndex = checked
                                     }
                                 }
                             }
@@ -555,7 +556,7 @@ QuiPopup {
                                 step: 1
                                 onValueChanged: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.roiSearch.topK = Math.round(value)
+                                        roiSearchSettings.topK = Math.round(value)
                                     }
                                 }
                             }
@@ -584,7 +585,7 @@ QuiPopup {
                                 step: 1
                                 onValueChanged: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.roiSearch.diskBuildBatchSize = Math.round(value)
+                                        roiSearchSettings.diskBuildBatchSize = Math.round(value)
                                     }
                                 }
                             }
@@ -609,7 +610,7 @@ QuiPopup {
                                 model: ["l2", "l1", "none"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.roiSearch.norm = currentText
+                                        roiSearchSettings.norm = currentText
                                     }
                                 }
                             }
@@ -634,7 +635,7 @@ QuiPopup {
                                 model: ["cpu", "gpu"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.roiSearch.preprocessBackend = currentText
+                                        roiSearchSettings.preprocessBackend = currentText
                                     }
                                 }
                             }
@@ -659,7 +660,7 @@ QuiPopup {
                                 model: ["cpu", "gpu"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.roiSearch.faissBackend = currentText
+                                        roiSearchSettings.faissBackend = currentText
                                         if (currentText === "gpu") {
                                             dialog.setComboText(indexStorageBox, "ram")
                                         }
@@ -688,7 +689,7 @@ QuiPopup {
                                 model: ["ram", "disk"]
                                 onActivated: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.roiSearch.indexStorage = currentText
+                                        roiSearchSettings.indexStorage = currentText
                                     }
                                 }
                             }
@@ -717,7 +718,7 @@ QuiPopup {
                                 step: 1
                                 onValueChanged: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.roiSearch.pooledHeight = Math.round(value)
+                                        roiSearchSettings.pooledHeight = Math.round(value)
                                     }
                                 }
                             }
@@ -746,7 +747,7 @@ QuiPopup {
                                 step: 1
                                 onValueChanged: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.roiSearch.pooledWidth = Math.round(value)
+                                        roiSearchSettings.pooledWidth = Math.round(value)
                                     }
                                 }
                             }
@@ -775,7 +776,7 @@ QuiPopup {
                                 step: 1
                                 onValueChanged: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.roiSearch.samplingRatio = Math.round(value)
+                                        roiSearchSettings.samplingRatio = Math.round(value)
                                     }
                                 }
                             }
@@ -798,7 +799,7 @@ QuiPopup {
                                 anchors.verticalCenter: parent.verticalCenter
                                 onToggled: {
                                     if (!dialog.syncing) {
-                                        GlobalSettings.advanced.roiSearch.aligned = checked
+                                        roiSearchSettings.aligned = checked
                                     }
                                 }
                             }
@@ -824,8 +825,8 @@ QuiPopup {
                                         if (checked && pcaDimEditor.value <= 0) {
                                             pcaDimEditor.value = 256
                                         }
-                                        GlobalSettings.advanced.roiSearch.usePca = checked
-                                        GlobalSettings.advanced.roiSearch.pcaDim = checked ? dialog.normalizedPcaDim(pcaDimEditor.value) : 0
+                                        roiSearchSettings.usePca = checked
+                                        roiSearchSettings.pcaDim = checked ? dialog.normalizedPcaDim(pcaDimEditor.value) : 0
                                     }
                                 }
                             }
@@ -855,7 +856,7 @@ QuiPopup {
                                 step: 1
                                 onValueChanged: {
                                     if (!dialog.syncing && usePcaSwitch.checked) {
-                                        GlobalSettings.advanced.roiSearch.pcaDim = dialog.normalizedPcaDim(value)
+                                        roiSearchSettings.pcaDim = dialog.normalizedPcaDim(value)
                                     }
                                 }
                             }
@@ -890,7 +891,7 @@ QuiPopup {
                          && !dialog.imageSearchController().running
                          && queryLabelIds
                          && queryLabelIds.length > 0
-                         && GlobalSettings.advanced.roiSearch.enabled
+                         && roiSearchSettings.enabled
                 onClicked: dialog.startSearch()
             }
         }
@@ -902,7 +903,7 @@ QuiPopup {
         nameFilters: ["Weights (*.wts *.onnx)", "All files (*)"]
         onAccepted: {
             weightsPathInput.text = Utils.getCleanPath(weightsFileDialog.file.toString())
-            GlobalSettings.advanced.roiSearch.modelPath = weightsPathInput.text
+            roiSearchSettings.modelPath = weightsPathInput.text
         }
     }
 }

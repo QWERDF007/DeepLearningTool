@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dltool/settings/Export.h"
+#include "settings/SettingsKeys.h"
 
 #include <QAbstractListModel>
 #include <QHash>
@@ -31,6 +32,7 @@ struct SETTINGS_API SettingsField
     QString     control_type;
     QVariantList options;
     QVariantMap options_map;
+    QVariantMap sidebar;
     QString     section;
     QString     description;
     bool        visible{true};
@@ -45,6 +47,12 @@ class SETTINGS_API SettingsFieldModel : public QAbstractListModel
     Q_PROPERTY(QString groupKey READ groupKey CONSTANT FINAL)
     Q_PROPERTY(QString tableName READ tableName CONSTANT FINAL)
     Q_PROPERTY(QString label READ label CONSTANT FINAL)
+    Q_PROPERTY(QString accessor READ accessor CONSTANT FINAL)
+    Q_PROPERTY(QString parentAccessor READ parentAccessor CONSTANT FINAL)
+    Q_PROPERTY(QString accessorPath READ accessorPath CONSTANT FINAL)
+    Q_PROPERTY(QString category READ category CONSTANT FINAL)
+    Q_PROPERTY(QVariantMap sidebar READ sidebar CONSTANT FINAL)
+    Q_PROPERTY(int ordinalIndex READ ordinalIndex CONSTANT FINAL)
     Q_PROPERTY(int count READ count NOTIFY countChanged FINAL)
 
 public:
@@ -60,6 +68,7 @@ public:
         ControlTypeRole,
         OptionsRole,
         OptionsMapRole,
+        SidebarRole,
         SectionRole,
         DescriptionRole,
         VisibleRole,
@@ -69,7 +78,8 @@ public:
 
     explicit SettingsFieldModel(QObject *parent = nullptr);
     SettingsFieldModel(QString group_key, QString table_name, QString label, QString accessor, QString parent_accessor,
-                       std::vector<SettingsField> fields, QObject *parent = nullptr);
+                       QString category, QVariantMap sidebar, int ordinal_index, std::vector<SettingsField> fields,
+                       QObject *parent = nullptr);
     ~SettingsFieldModel() override;
 
     QString groupKey() const;
@@ -77,6 +87,10 @@ public:
     QString label() const;
     QString accessor() const;
     QString parentAccessor() const;
+    QString accessorPath() const;
+    QString category() const;
+    QVariantMap sidebar() const;
+    int     ordinalIndex() const;
     int     count() const;
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -93,6 +107,7 @@ public:
     Q_INVOKABLE QString  nameForProperty(const QString &property_name) const;
     Q_INVOKABLE QVariantMap fieldMap(int row) const;
     Q_INVOKABLE QVariantList optionsForKey(const QString &name, const QString &key) const;
+    Q_INVOKABLE QVariantList sidebarFields(const QString &sidebar_key) const;
 
     QVariantMap valuesMap() const;
     QVariantList schemaRows() const;
@@ -114,6 +129,9 @@ private:
     QString                    label_;
     QString                    accessor_;
     QString                    parent_accessor_;
+    QString                    category_;
+    QVariantMap                sidebar_;
+    int                        ordinal_index_{0};
     std::vector<SettingsField> fields_;
 };
 
@@ -130,6 +148,12 @@ public:
         GroupKeyRole = Qt::UserRole + 1,
         TableNameRole,
         LabelRole,
+        AccessorRole,
+        ParentAccessorRole,
+        AccessorPathRole,
+        CategoryRole,
+        SidebarRole,
+        OrdinalIndexRole,
         FieldModelRole,
     };
     Q_ENUM(Role)
@@ -144,8 +168,14 @@ public:
 
     Q_INVOKABLE SettingsFieldModel *group(const QString &group_key) const;
     Q_INVOKABLE SettingsFieldModel *groupAt(int row) const;
+    Q_INVOKABLE SettingsFieldModel *groupForAccessor(const QString &accessor_path) const;
     Q_INVOKABLE QVariant value(const QString &group_key, const QString &name, const QVariant &fallback = {}) const;
     Q_INVOKABLE QVariantList optionsForKey(const QString &group_key, const QString &name, const QString &key) const;
+    Q_INVOKABLE QVariantList optionsForAccessor(const QString &accessor_path, const QString &name,
+                                                const QString &key) const;
+    Q_INVOKABLE QVariantList optionsForAccessorKey(int accessor_key, int field_key, const QString &key) const;
+    Q_INVOKABLE QVariantList sidebarFields(const QString &sidebar_key) const;
+    Q_INVOKABLE QVariantList sidebarFieldsFor(int sidebar_key) const;
 
     bool loadFromConfig(QString &err_msg);
     void syncAndLoad(database::SettingsDataBase *database);
@@ -159,8 +189,10 @@ signals:
 
 private:
     SettingsFieldModel *addGroup(QString group_key, QString table_name, QString label, QString accessor,
-                                 QString parent_accessor, std::vector<SettingsField> fields);
+                                 QString parent_accessor, QString category, QVariantMap sidebar, int ordinal_index,
+                                 std::vector<SettingsField> fields);
     int                 indexOfGroup(const QString &group_key) const;
+    int                 indexOfAccessor(const QString &accessor_path) const;
 
     std::vector<std::unique_ptr<SettingsFieldModel>> groups_;
 };

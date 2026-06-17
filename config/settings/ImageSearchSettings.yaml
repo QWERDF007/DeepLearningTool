@@ -2,6 +2,8 @@ ImageSearchSettings:
   table: image_search_settings
   parent_accessor: advanced
   accessor: imageSearch
+  category: advanced
+  ordinal_index: 100
   label: 图像搜索
   fields:
     - name_en: enabled
