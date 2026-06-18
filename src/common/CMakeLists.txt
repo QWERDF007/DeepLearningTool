@@ -1,6 +1,6 @@
 add_plugin_library(common
     NO_QML_MODULE
-    PUBLIC_LIBS Qt6::Core spdlog::spdlog
+    PUBLIC_LIBS Qt6::Core spdlog::spdlog yaml-cpp::yaml-cpp
 )
 
 # 平台特定库

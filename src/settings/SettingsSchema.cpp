@@ -1,9 +1,9 @@
 #include "settings/SettingsSchema.h"
 
+#include "common/YamlUtils.h"
 #include "database/DataBase.h"
 
 #include <spdlog/spdlog.h>
-#include <yaml-cpp/yaml.h>
 
 #include <QCoreApplication>
 #include <QDir>
@@ -15,6 +15,11 @@
 namespace dltool::settings {
 
 namespace {
+
+using dltool::common::yaml::firstNode;
+using dltool::common::yaml::loadFile;
+using dltool::common::yaml::nodeString;
+using dltool::common::yaml::nodeVariant;
 
 QString camelToSnake(const QString &value)
 {
@@ -44,65 +49,6 @@ QString joinedAccessorPath(const QString &parent_accessor, const QString &access
     if (accessor.isEmpty())
         return parent_accessor;
     return parent_accessor + QLatin1Char('.') + accessor;
-}
-
-QString nodeString(const YAML::Node &node, const QString &fallback = {})
-{
-    if (!node || node.IsNull())
-        return fallback;
-    return QString::fromUtf8(node.as<std::string>().c_str());
-}
-
-QVariant nodeVariant(const YAML::Node &node)
-{
-    if (!node || node.IsNull())
-        return {};
-    if (node.IsScalar())
-    {
-        const QString text = QString::fromUtf8(node.as<std::string>().c_str());
-        const QString lower = text.toLower();
-        if (lower == QStringLiteral("true"))
-            return true;
-        if (lower == QStringLiteral("false"))
-            return false;
-
-        bool ok = false;
-        const qlonglong integer = text.toLongLong(&ok);
-        if (ok)
-            return integer;
-
-        const double floating = text.toDouble(&ok);
-        if (ok)
-            return floating;
-
-        return text;
-    }
-    if (node.IsSequence())
-    {
-        QVariantList list;
-        for (const YAML::Node &entry : node)
-            list.append(nodeVariant(entry));
-        return list;
-    }
-    if (node.IsMap())
-    {
-        QVariantMap map;
-        for (auto it = node.begin(); it != node.end(); ++it)
-            map.insert(nodeString(it->first), nodeVariant(it->second));
-        return map;
-    }
-    return {};
-}
-
-YAML::Node firstNode(const YAML::Node &node, std::initializer_list<const char *> keys)
-{
-    for (const char *key : keys)
-    {
-        const YAML::Node value = node[key];
-        if (value)
-            return value;
-    }
-    return {};
 }
 
 SettingsField parseField(const YAML::Node &node, const int ordinal_index)
@@ -169,7 +115,7 @@ bool sidebarContains(const QVariantMap &sidebar, const QString &sidebar_key)
                        [&sidebar_key](const QVariant &key) { return key.toString() == sidebar_key; });
 }
 
-QVector<QString> settingsConfigDirs()
+QStringList settingsConfigDirs()
 {
     const QDir app_dir(QCoreApplication::applicationDirPath());
     return {
@@ -179,27 +125,7 @@ QVector<QString> settingsConfigDirs()
 
 QVector<QFileInfo> settingsConfigFiles()
 {
-    QVector<QFileInfo> files;
-    for (const QString &path : settingsConfigDirs())
-    {
-        const QDir dir(path);
-        if (!dir.exists())
-            continue;
-        const QFileInfoList entries = dir.entryInfoList({QStringLiteral("*.yaml"), QStringLiteral("*.yml")},
-                                                        QDir::Files, QDir::Name);
-        for (const QFileInfo &entry : entries)
-        {
-            const bool exists = std::any_of(files.cbegin(), files.cend(),
-                                            [&entry](const QFileInfo &file)
-                                            {
-                                                return file.canonicalFilePath() == entry.canonicalFilePath()
-                                                       || file.absoluteFilePath() == entry.absoluteFilePath();
-                                            });
-            if (!exists)
-                files.append(entry);
-        }
-    }
-    return files;
+    return dltool::common::yaml::configFiles(settingsConfigDirs());
 }
 
 QVariant typedScalar(const QString &type, const QVariant &value)
@@ -715,7 +641,7 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
         for (const QFileInfo &file : files)
         {
             spdlog::info("Load settings schema: {}", file.absoluteFilePath().toUtf8().constData());
-            const YAML::Node root = YAML::LoadFile(file.absoluteFilePath().toStdString());
+            const YAML::Node root = loadFile(file);
             if (!root.IsMap())
                 continue;
 

@@ -5,7 +5,7 @@
 ## 模块边界
 
 - CMake 目标为 `dltool_settings`，QML URI 为 `dltool.settings`。
-- 依赖 Qt Core/QML、`dltool_common`、`dltool_database` 和 `yaml-cpp`。
+- 依赖 Qt Core/QML、`dltool_common` 和 `dltool_database`；YAML 读写工具由 `dltool_common` 统一提供。
 - YAML 配置只从应用程序目录下的 `config/settings` 读取，即 `QCoreApplication::applicationDirPath()/config/settings`。
 - 设置数据库路径由 `DataBase::applicationDatabasePath("settings.db")` 生成。
 
@@ -18,7 +18,7 @@
 
 ## YAML 到运行时模型
 
-`SettingsCatalog` 使用 `yaml-cpp` 解析应用目录 `config/settings` 下的 `.yaml` / `.yml` 文件。每个 YAML 顶层 group 会生成一个 `SettingsFieldModel`，并通过 catalog 暴露给设置页面。
+`SettingsCatalog` 通过 `dltool_common` 的 YAML 工具加载并解析应用目录 `config/settings` 下的 `.yaml` / `.yml` 文件。每个 YAML 顶层 group 会生成一个 `SettingsFieldModel`，并通过 catalog 暴露给设置页面。
 
 每个 group 支持的主要元数据：
 

@@ -1,67 +1,22 @@
 #include "model/ModelParamsSchema.h"
 
+#include "common/YamlUtils.h"
+
 #include <spdlog/spdlog.h>
-#include <yaml-cpp/yaml.h>
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 
-#include <string>
 #include <utility>
 
 namespace dltool::model {
 
 namespace {
 
-QString nodeString(const YAML::Node &node, const QString &fallback = {})
-{
-    if (!node || node.IsNull())
-        return fallback;
-    const std::string value = node.as<std::string>();
-    return QString::fromUtf8(value.c_str());
-}
-
-QVariant nodeVariant(const YAML::Node &node)
-{
-    if (!node || node.IsNull())
-        return {};
-    if (node.IsScalar())
-    {
-        const QString text  = QString::fromUtf8(node.as<std::string>().c_str());
-        const QString lower = text.toLower();
-        if (lower == QStringLiteral("true"))
-            return true;
-        if (lower == QStringLiteral("false"))
-            return false;
-
-        bool ok = false;
-        const qlonglong integer = text.toLongLong(&ok);
-        if (ok)
-            return integer;
-
-        const double floating = text.toDouble(&ok);
-        if (ok)
-            return floating;
-
-        return text;
-    }
-    if (node.IsSequence())
-    {
-        QVariantList list;
-        for (const YAML::Node &entry : node)
-            list.append(nodeVariant(entry));
-        return list;
-    }
-    if (node.IsMap())
-    {
-        QVariantMap map;
-        for (auto it = node.begin(); it != node.end(); ++it)
-            map.insert(nodeString(it->first), nodeVariant(it->second));
-        return map;
-    }
-    return {};
-}
+using dltool::common::yaml::loadFile;
+using dltool::common::yaml::nodeString;
+using dltool::common::yaml::nodeVariant;
 
 ParamDefinition parseParamDefinition(const YAML::Node &node)
 {
@@ -121,17 +76,8 @@ ParamGroupDefinition parseParamGroupDefinition(const YAML::Node &node)
 
 QFileInfo findModelConfigFile(const QString &type_name)
 {
-    const QDir config_dir(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("config/models")));
-    if (!config_dir.exists())
-        return {};
-
-    for (const QString &suffix : {QStringLiteral(".yaml"), QStringLiteral(".yml")})
-    {
-        const QFileInfo info(config_dir.filePath(type_name + suffix));
-        if (info.exists() && info.isFile())
-            return info;
-    }
-    return {};
+    return dltool::common::yaml::findConfigFile(
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("config/models")), type_name);
 }
 
 bool looksLikeModelNode(const YAML::Node &node)
@@ -174,7 +120,7 @@ ModelParamsSchema loadModelParamsSchema(const QString &type_name)
 
     try
     {
-        const YAML::Node root = YAML::LoadFile(config_file.absoluteFilePath().toStdString());
+        const YAML::Node root = loadFile(config_file);
         if (!root.IsMap())
         {
             spdlog::warn("Model config is not a map: {}", config_file.absoluteFilePath().toUtf8().constData());
