@@ -40,5 +40,5 @@
 ## 扩展约定
 
 - 新增模型结构时实现 `IModel`/`IModelConfig`/参数类，并通过 `DLT_REGISTER_MODEL` 注册到对应任务类型。
-- 新增参数编辑器类型时需要同步 `ParamEditorType`、`paramEditorTypeName()` 和 QML 参数表单渲染逻辑。
+- 新增参数控件类型时需要同步 `control_type` schema、`ui::Utils` 参数辅助函数和 QML 参数表单渲染逻辑。
 - 接入真实训练或测试流程时，应保持 `ModelManager` 负责记录管理，具体任务执行可抽象为独立服务，进度反馈接入 `ui::ProgressManager`。

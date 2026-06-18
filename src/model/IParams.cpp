@@ -22,11 +22,11 @@ ParamGroupModel::ParamGroupModel(QObject *parent)
     QQmlEngine::setObjectOwnership(this, QQmlEngine::CppOwnership);
 }
 
-ParamGroupModel::ParamGroupModel(QString key, QString label, QString description, const bool enabled,
+ParamGroupModel::ParamGroupModel(QString name_en, QString name_cn, QString description, const bool enabled,
                                  const int part_index, std::vector<ParamDefinition> params, QObject *parent)
     : QAbstractListModel(parent)
-    , key_(std::move(key))
-    , label_(std::move(label))
+    , name_en_(std::move(name_en))
+    , name_cn_(std::move(name_cn))
     , description_(std::move(description))
     , enabled_(enabled)
     , part_index_(part_index)
@@ -44,14 +44,14 @@ ParamGroupModel::ParamGroupModel(QString key, QString label, QString description
 
 ParamGroupModel::~ParamGroupModel() = default;
 
-QString ParamGroupModel::key() const
+QString ParamGroupModel::nameEn() const
 {
-    return key_;
+    return name_en_;
 }
 
-QString ParamGroupModel::label() const
+QString ParamGroupModel::nameCn() const
 {
-    return label_;
+    return name_cn_;
 }
 
 QString ParamGroupModel::description() const
@@ -93,27 +93,23 @@ QVariant ParamGroupModel::data(const QModelIndex &index, const int role) const
     const ParamDefinition &param = params_.at(index.row());
     switch (role)
     {
-    case KeyRole:
-        return param.key;
-    case LabelRole:
-        return param.label;
+    case NameEnRole:
+        return param.name_en;
+    case NameCnRole:
+        return param.name_cn;
     case DescriptionRole:
         return param.description;
-    case EditorTypeRole:
-        return paramEditorTypeName(param.editor_type);
     case ValueRole:
     case Qt::EditRole:
         return currentValue(param);
     case DefaultValueRole:
         return param.default_value;
-    case MinimumValueRole:
-        return param.minimum_value;
-    case MaximumValueRole:
-        return param.maximum_value;
-    case StepValueRole:
-        return param.step_value;
-    case DecimalsRole:
-        return param.decimals;
+    case ValueTypeRole:
+        return param.value_type;
+    case ValueRangeRole:
+        return param.value_range;
+    case ControlTypeRole:
+        return param.control_type;
     case EnabledRole:
         return enabled_ && param.enabled;
     case OptionsRole:
@@ -145,7 +141,7 @@ bool ParamGroupModel::setData(const QModelIndex &index, const QVariant &value, c
 
     param.value = value;
     emit dataChanged(index, index, {ValueRole, Qt::EditRole});
-    emit valueChanged(param.key, param.value);
+    emit valueChanged(param.name_en, param.value);
     return true;
 }
 
@@ -167,19 +163,17 @@ Qt::ItemFlags ParamGroupModel::flags(const QModelIndex &index) const
 QHash<int, QByteArray> ParamGroupModel::roleNames() const
 {
     return {
-        {            KeyRole,             "key"},
-        {          LabelRole,           "label"},
-        {    DescriptionRole,     "description"},
-        {     EditorTypeRole,      "editorType"},
-        {          ValueRole,           "value"},
-        {   DefaultValueRole,    "defaultValue"},
-        {   MinimumValueRole,    "minimumValue"},
-        {   MaximumValueRole,    "maximumValue"},
-        {      StepValueRole,       "stepValue"},
-        {       DecimalsRole,        "decimals"},
-        {        EnabledRole,         "enabled"},
-        {        OptionsRole,         "options"},
-        {           UnitRole,            "unit"},
+        {       NameEnRole,        "nameEn"},
+        {       NameCnRole,        "nameCn"},
+        {  DescriptionRole,   "description"},
+        {        ValueRole,         "value"},
+        { DefaultValueRole,  "defaultValue"},
+        {    ValueTypeRole,     "valueType"},
+        {   ValueRangeRole,    "valueRange"},
+        {  ControlTypeRole,  "controlType"},
+        {      EnabledRole,       "enabled"},
+        {      OptionsRole,       "options"},
+        {         UnitRole,          "unit"},
     };
 }
 
@@ -197,9 +191,9 @@ QVariant ParamGroupModel::valueAt(const int row) const
     return currentValue(params_.at(row));
 }
 
-QVariant ParamGroupModel::valueForKey(const QString &key) const
+QVariant ParamGroupModel::valueForName(const QString &name_en) const
 {
-    const int row = indexOfParam(key);
+    const int row = indexOfParam(name_en);
     if (row < 0)
     {
         return {};
@@ -217,7 +211,7 @@ void ParamGroupModel::copyValuesFrom(const ParamGroupModel &other)
     bool changed = false;
     for (ParamDefinition &param : params_)
     {
-        const QVariant other_value = other.valueForKey(param.key);
+        const QVariant other_value = other.valueForName(param.name_en);
         if (other_value.isValid() && param.value != other_value)
         {
             param.value = other_value;
@@ -236,10 +230,10 @@ QVariant ParamGroupModel::currentValue(const ParamDefinition &param) const
     return normalizedValue(param);
 }
 
-int ParamGroupModel::indexOfParam(const QString &key) const
+int ParamGroupModel::indexOfParam(const QString &name_en) const
 {
     const auto found = std::find_if(params_.cbegin(), params_.cend(),
-                                    [&key](const ParamDefinition &param) { return param.key == key; });
+                                    [&name_en](const ParamDefinition &param) { return param.name_en == name_en; });
     if (found == params_.cend())
     {
         return -1;
@@ -317,10 +311,10 @@ QVariant IParams::data(const QModelIndex &index, const int role) const
 
     switch (role)
     {
-    case GroupKeyRole:
-        return group->key();
-    case GroupLabelRole:
-        return group->label();
+    case GroupNameEnRole:
+        return group->nameEn();
+    case GroupNameCnRole:
+        return group->nameCn();
     case GroupDescriptionRole:
         return group->description();
     case GroupEnabledRole:
@@ -339,8 +333,8 @@ QVariant IParams::data(const QModelIndex &index, const int role) const
 QHash<int, QByteArray> IParams::roleNames() const
 {
     return {
-        {          GroupKeyRole,           "key"},
-        {        GroupLabelRole,         "label"},
+        {        GroupNameEnRole,        "nameEn"},
+        {        GroupNameCnRole,        "nameCn"},
         {  GroupDescriptionRole,   "description"},
         {      GroupEnabledRole,       "enabled"},
         {    GroupPartIndexRole,     "partIndex"},
@@ -358,12 +352,12 @@ ParamGroupModel *IParams::groupAt(const int row) const
     return groups_.at(static_cast<size_t>(row)).get();
 }
 
-ParamGroupModel *IParams::addGroup(const QString &key, const QString &label, std::vector<ParamDefinition> params,
+ParamGroupModel *IParams::addGroup(const QString &name_en, const QString &name_cn, std::vector<ParamDefinition> params,
                                    const QString &description, const bool enabled, const int part_index)
 {
     const int row = groupCount();
     beginInsertRows(QModelIndex(), row, row);
-    auto group = std::make_unique<ParamGroupModel>(key, label, description, enabled, part_index, std::move(params),
+    auto group = std::make_unique<ParamGroupModel>(name_en, name_cn, description, enabled, part_index, std::move(params),
                                                    this);
     auto *ptr = group.get();
     groups_.push_back(std::move(group));
@@ -380,7 +374,9 @@ void IParams::copyValuesFrom(const IParams &other)
     {
         const auto found = std::find_if(other_groups.cbegin(), other_groups.cend(),
                                         [group](const ParamGroupModel *other_group)
-                                        { return other_group != nullptr && other_group->key() == group->key(); });
+                                        {
+                                            return other_group != nullptr && other_group->nameEn() == group->nameEn();
+                                        });
         if (found != other_groups.cend() && *found != nullptr)
         {
             group->copyValuesFrom(**found);
@@ -409,26 +405,5 @@ ITestParams::ITestParams(QObject *parent)
 }
 
 ITestParams::~ITestParams() = default;
-
-QString paramEditorTypeName(const ParamEditorType editor_type)
-{
-    switch (editor_type)
-    {
-    case ParamEditorType::Text:
-        return QStringLiteral("text");
-    case ParamEditorType::Integer:
-        return QStringLiteral("integer");
-    case ParamEditorType::Double:
-        return QStringLiteral("double");
-    case ParamEditorType::Slider:
-        return QStringLiteral("slider");
-    case ParamEditorType::CheckBox:
-        return QStringLiteral("checkbox");
-    case ParamEditorType::ComboBox:
-        return QStringLiteral("comboBox");
-    }
-
-    return QStringLiteral("text");
-}
 
 } // namespace dltool::model

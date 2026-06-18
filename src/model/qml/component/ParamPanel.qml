@@ -23,9 +23,10 @@ Item {
             Loader {
                 id: groupLoader
 
-                property int groupPartIndex: Number(groupRole("partIndex", 0))
+                property int groupPartIndex: Utils.numberValue(groupRole("partIndex", 0), 0)
                 property var groupModel: groupRole("groupModel", null)
-                property string groupLabel: groupRole("label", groupRole("key", ""))
+                property string groupNameEn: groupRole("nameEn", "")
+                property string groupLabel: groupRole("nameCn", groupNameEn)
                 property string groupDescription: groupRole("description", "")
                 property bool groupVisible: groupPartIndex === control.targetPartIndex
 
@@ -101,17 +102,19 @@ Item {
                                     property var groupModel: groupRoot.groupModel
                                     property int rowIndex: index
                                     property real labelWidth: Math.max(0, Math.floor(width / 3))
-                                    property string paramKey: modelValue("key", "")
-                                    property string paramLabel: modelValue("label", paramKey)
+                                    property string paramNameEn: modelValue("nameEn", "")
+                                    property string paramLabel: modelValue("nameCn", paramNameEn)
                                     property string paramDescription: modelValue("description", "")
-                                    property string paramEditorType: modelValue("editorType", "text")
+                                    property string paramControlType: modelValue("controlType", "text")
+                                    property string paramValueType: modelValue("valueType", "string")
                                     property var paramValue: modelValue("value", modelValue("defaultValue", ""))
                                     property var paramDefaultValue: modelValue("defaultValue", "")
-                                    property var paramMinimumValue: modelValue("minimumValue", 0)
-                                    property var paramMaximumValue: modelValue("maximumValue", 100)
-                                    property var paramStepValue: modelValue("stepValue", 1)
-                                    property int paramDecimals: Number(modelValue("decimals", 0))
-                                    property bool paramEnabled: Boolean(modelValue("enabled", true))
+                                    property var paramValueRange: modelValue("valueRange", [])
+                                    property var paramMinimumValue: Utils.valueRangeAt(paramValueRange, 0, 0)
+                                    property var paramMaximumValue: Utils.valueRangeAt(paramValueRange, 1, 100)
+                                    property var paramStepValue: Utils.valueRangeAt(paramValueRange, 2, 1)
+                                    property int paramDecimals: Utils.paramDecimals(paramValueType, paramValueRange, paramValue, paramDefaultValue)
+                                    property bool paramEnabled: Utils.boolValue(modelValue("enabled", true), true)
                                     property var paramOptions: modelValue("options", [])
                                     property string paramUnit: modelValue("unit", "")
 
@@ -122,18 +125,6 @@ Item {
                                         return fallbackValue;
                                     }
 
-                                    function numberValue(value, fallbackValue) {
-                                        const result = Number(value);
-                                        return isNaN(result) ? fallbackValue : result;
-                                    }
-
-                                    function stringValue(value) {
-                                        if (value === undefined || value === null) {
-                                            return "";
-                                        }
-                                        return String(value);
-                                    }
-
                                     function commitValue(value) {
                                         if (groupModel && rowIndex >= 0) {
                                             groupModel.setValue(rowIndex, value);
@@ -141,7 +132,7 @@ Item {
                                     }
 
                                     function editorComponent(type) {
-                                        if (type === "integer" || type === "double") {
+                                        if (type === "spin") {
                                             return spinEditorComponent;
                                         }
                                         if (type === "slider") {
@@ -150,7 +141,7 @@ Item {
                                         if (type === "checkbox") {
                                             return checkEditorComponent;
                                         }
-                                        if (type === "comboBox") {
+                                        if (type === "combo") {
                                             return comboEditorComponent;
                                         }
                                         return textEditorComponent;
@@ -194,7 +185,7 @@ Item {
                                                 Loader {
                                                     Layout.fillWidth: true
                                                     Layout.fillHeight: true
-                                                    sourceComponent: delegateRoot.editorComponent(delegateRoot.paramEditorType)
+                                                    sourceComponent: delegateRoot.editorComponent(delegateRoot.paramControlType)
                                                 }
 
                                                 QuiText {
@@ -223,13 +214,13 @@ Item {
                                         QuiSpinEditor {
                                             anchors.fill: parent
                                             enabled: delegateRoot.paramEnabled
-                                            value: delegateRoot.numberValue(delegateRoot.paramValue, delegateRoot.numberValue(delegateRoot.paramDefaultValue, 0))
-                                            minValue: delegateRoot.numberValue(delegateRoot.paramMinimumValue, 0)
-                                            maxValue: delegateRoot.numberValue(delegateRoot.paramMaximumValue, 10000)
-                                            step: delegateRoot.numberValue(delegateRoot.paramStepValue, 1)
-                                            decimals: delegateRoot.paramEditorType === "double" ? delegateRoot.paramDecimals : 0
+                                            value: Utils.numberValue(delegateRoot.paramValue, Utils.numberValue(delegateRoot.paramDefaultValue, 0))
+                                            minValue: Utils.numberValue(delegateRoot.paramMinimumValue, 0)
+                                            maxValue: Utils.numberValue(delegateRoot.paramMaximumValue, 10000)
+                                            step: Utils.numberValue(delegateRoot.paramStepValue, 1)
+                                            decimals: Utils.isIntegerValueType(delegateRoot.paramValueType) ? 0 : delegateRoot.paramDecimals
                                             onEditingFinished: {
-                                                const nextValue = delegateRoot.paramEditorType === "integer" ? Math.round(value) : value;
+                                                const nextValue = Utils.isIntegerValueType(delegateRoot.paramValueType) ? Math.round(value) : value;
                                                 delegateRoot.commitValue(nextValue);
                                             }
                                         }
@@ -246,10 +237,10 @@ Item {
                                                 id: slider
                                                 Layout.fillWidth: true
                                                 enabled: delegateRoot.paramEnabled
-                                                from: delegateRoot.numberValue(delegateRoot.paramMinimumValue, 0)
-                                                to: delegateRoot.numberValue(delegateRoot.paramMaximumValue, 1)
-                                                value: delegateRoot.numberValue(delegateRoot.paramValue, delegateRoot.numberValue(delegateRoot.paramDefaultValue, 0))
-                                                stepSize: delegateRoot.numberValue(delegateRoot.paramStepValue, 0.01)
+                                                from: Utils.numberValue(delegateRoot.paramMinimumValue, 0)
+                                                to: Utils.numberValue(delegateRoot.paramMaximumValue, 1)
+                                                value: Utils.numberValue(delegateRoot.paramValue, Utils.numberValue(delegateRoot.paramDefaultValue, 0))
+                                                stepSize: Utils.numberValue(delegateRoot.paramStepValue, 0.01)
                                                 precision: delegateRoot.paramDecimals
                                                 onMoved: delegateRoot.commitValue(value)
                                             }
@@ -270,7 +261,7 @@ Item {
                                             anchors.left: parent.left
                                             anchors.verticalCenter: parent.verticalCenter
                                             enabled: delegateRoot.paramEnabled
-                                            checked: Boolean(delegateRoot.paramValue)
+                                            checked: Utils.boolValue(delegateRoot.paramValue, false)
                                             text: ""
                                             onToggled: delegateRoot.commitValue(checked)
                                         }
@@ -283,7 +274,7 @@ Item {
                                             anchors.fill: parent
                                             enabled: delegateRoot.paramEnabled
                                             model: delegateRoot.paramOptions || []
-                                            currentIndex: Math.max(0, (delegateRoot.paramOptions || []).indexOf(delegateRoot.stringValue(delegateRoot.paramValue)))
+                                            currentIndex: Math.max(0, (delegateRoot.paramOptions || []).indexOf(Utils.stringValue(delegateRoot.paramValue)))
                                             onActivated: delegateRoot.commitValue(currentText)
                                         }
                                     }
@@ -294,7 +285,7 @@ Item {
                                         QuiTextField {
                                             anchors.fill: parent
                                             enabled: delegateRoot.paramEnabled
-                                            text: delegateRoot.stringValue(delegateRoot.paramValue)
+                                            text: Utils.stringValue(delegateRoot.paramValue)
                                             onEditingFinished: delegateRoot.commitValue(text)
                                         }
                                     }

@@ -13,6 +13,9 @@ class UtilsTest : public QObject
 private slots:
     void withOpacityTestCase_data();
     void withOpacityTestCase();
+    void scalarValueHelpersTestCase();
+    void valueRangeAtTestCase();
+    void paramDecimalsTestCase();
 };
 
 REGISTER_TEST(UtilsTest);

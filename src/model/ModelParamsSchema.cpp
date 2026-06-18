@@ -7,7 +7,6 @@
 #include <QDir>
 #include <QFileInfo>
 
-#include <initializer_list>
 #include <string>
 #include <utility>
 
@@ -64,57 +63,25 @@ QVariant nodeVariant(const YAML::Node &node)
     return {};
 }
 
-YAML::Node firstNode(const YAML::Node &node, std::initializer_list<const char *> keys)
-{
-    for (const char *key : keys)
-    {
-        const YAML::Node value = node[key];
-        if (value)
-            return value;
-    }
-    return {};
-}
-
-ParamEditorType editorTypeFromString(const QString &text)
-{
-    const QString normalized = text.trimmed().toLower();
-    if (normalized == QStringLiteral("integer"))
-        return ParamEditorType::Integer;
-    if (normalized == QStringLiteral("double"))
-        return ParamEditorType::Double;
-    if (normalized == QStringLiteral("slider"))
-        return ParamEditorType::Slider;
-    if (normalized == QStringLiteral("checkbox"))
-        return ParamEditorType::CheckBox;
-    if (normalized == QStringLiteral("combobox") || normalized == QStringLiteral("combo"))
-        return ParamEditorType::ComboBox;
-    return ParamEditorType::Text;
-}
-
 ParamDefinition parseParamDefinition(const YAML::Node &node)
 {
     ParamDefinition param;
     if (!node || !node.IsMap())
         return param;
 
-    param.key         = nodeString(firstNode(node, {"key", "name"}));
-    param.label       = nodeString(firstNode(node, {"label", "name_cn"}), param.key);
-    param.description = nodeString(node["description"]);
-    param.editor_type = editorTypeFromString(nodeString(firstNode(node, {"editor_type", "control_type"}),
-                                                        QStringLiteral("text")));
-
-    const QVariant raw_value = nodeVariant(firstNode(node, {"value", "default_value"}));
-    param.value             = raw_value;
-    param.default_value     = nodeVariant(firstNode(node, {"default_value", "value"}));
+    param.name_en      = nodeString(node["name_en"]);
+    param.name_cn      = nodeString(node["name_cn"], param.name_en);
+    param.description  = nodeString(node["description"]);
+    param.value        = nodeVariant(node["value"]);
+    param.default_value = nodeVariant(node["default_value"]);
     if (!param.default_value.isValid())
-        param.default_value = raw_value;
+        param.default_value = param.value;
 
-    param.minimum_value = nodeVariant(node["minimum_value"]);
-    param.maximum_value = nodeVariant(node["maximum_value"]);
-    param.step_value    = nodeVariant(node["step_value"]);
-    param.decimals      = node["decimals"] ? node["decimals"].as<int>() : 0;
-    param.enabled       = node["enabled"] ? node["enabled"].as<bool>() : true;
-    param.unit          = nodeString(node["unit"]);
+    param.value_type   = nodeString(node["value_type"], QStringLiteral("string"));
+    param.value_range  = nodeVariant(node["value_range"]).toList();
+    param.control_type = nodeString(node["control_type"], QStringLiteral("text"));
+    param.enabled      = node["enabled"] ? node["enabled"].as<bool>() : true;
+    param.unit         = nodeString(node["unit"]);
 
     const YAML::Node options_node = node["options"];
     if (options_node && options_node.IsSequence())
@@ -132,8 +99,8 @@ ParamGroupDefinition parseParamGroupDefinition(const YAML::Node &node)
     if (!node || !node.IsMap())
         return group;
 
-    group.key         = nodeString(firstNode(node, {"key", "name"}));
-    group.label       = nodeString(firstNode(node, {"label", "name_cn"}), group.key);
+    group.name_en     = nodeString(node["name_en"]);
+    group.name_cn     = nodeString(node["name_cn"], group.name_en);
     group.description = nodeString(node["description"]);
     group.enabled     = node["enabled"] ? node["enabled"].as<bool>() : true;
     group.part_index  = node["part_index"] ? node["part_index"].as<int>() : 0;
@@ -144,7 +111,7 @@ ParamGroupDefinition parseParamGroupDefinition(const YAML::Node &node)
         for (const YAML::Node &param_node : params_node)
         {
             ParamDefinition param = parseParamDefinition(param_node);
-            if (!param.key.isEmpty())
+            if (!param.name_en.isEmpty())
                 group.params.push_back(std::move(param));
         }
     }
@@ -180,7 +147,7 @@ void parseGroups(const YAML::Node &groups_node, std::vector<ParamGroupDefinition
     for (const YAML::Node &group_node : groups_node)
     {
         ParamGroupDefinition group = parseParamGroupDefinition(group_node);
-        if (!group.key.isEmpty())
+        if (!group.name_en.isEmpty())
             groups.push_back(std::move(group));
     }
 }
@@ -223,8 +190,7 @@ ModelParamsSchema loadModelParamsSchema(const QString &type_name)
         }
 
         schema.config_path = config_file.absoluteFilePath();
-        schema.model_name  = nodeString(firstNode(model_node, {"model_name", "type_name", "name"}),
-                                       trimmed_type_name).trimmed();
+        schema.model_name  = nodeString(model_node["model_name"], trimmed_type_name).trimmed();
         if (schema.model_name.isEmpty())
             schema.model_name = trimmed_type_name;
         schema.method = nodeString(model_node["method"]);

@@ -4,74 +4,70 @@
 
 namespace dltool::model {
 
-ParamDefinition makeIntegerParam(const QString &key, const QString &label, const int default_value,
-                                 const int minimum_value, const int maximum_value, const int step_value,
+ParamDefinition makeIntegerParam(const QString &name_en, const QString &name_cn, const int default_value,
+                                 const int from, const int to, const int step,
                                  const QString &description)
 {
     ParamDefinition param;
-    param.key           = key;
-    param.label         = label;
+    param.name_en       = name_en;
+    param.name_cn       = name_cn;
     param.description   = description;
-    param.editor_type   = ParamEditorType::Integer;
     param.value         = default_value;
     param.default_value = default_value;
-    param.minimum_value = minimum_value;
-    param.maximum_value = maximum_value;
-    param.step_value    = step_value;
+    param.value_type    = QStringLiteral("int");
+    param.value_range   = QVariantList{from, to, step};
+    param.control_type  = QStringLiteral("spin");
     return param;
 }
 
-ParamDefinition makeDoubleParam(const QString &key, const QString &label, const double default_value,
-                                const double minimum_value, const double maximum_value, const double step_value,
-                                const int decimals, const QString &description)
+ParamDefinition makeDoubleParam(const QString &name_en, const QString &name_cn, const double default_value,
+                                const double from, const double to, const double step, const QString &description)
 {
     ParamDefinition param;
-    param.key           = key;
-    param.label         = label;
+    param.name_en       = name_en;
+    param.name_cn       = name_cn;
     param.description   = description;
-    param.editor_type   = ParamEditorType::Double;
     param.value         = default_value;
     param.default_value = default_value;
-    param.minimum_value = minimum_value;
-    param.maximum_value = maximum_value;
-    param.step_value    = step_value;
-    param.decimals      = decimals;
+    param.value_type    = QStringLiteral("double");
+    param.value_range   = QVariantList{from, to, step};
+    param.control_type  = QStringLiteral("spin");
     return param;
 }
 
-ParamDefinition makeSliderParam(const QString &key, const QString &label, const double default_value,
-                                const double minimum_value, const double maximum_value, const double step_value,
-                                const int decimals, const QString &description)
+ParamDefinition makeSliderParam(const QString &name_en, const QString &name_cn, const double default_value,
+                                const double from, const double to, const double step, const QString &description)
 {
-    ParamDefinition param = makeDoubleParam(key, label, default_value, minimum_value, maximum_value, step_value,
-                                            decimals, description);
-    param.editor_type     = ParamEditorType::Slider;
+    ParamDefinition param = makeDoubleParam(name_en, name_cn, default_value, from, to, step, description);
+    param.control_type    = QStringLiteral("slider");
     return param;
 }
 
-ParamDefinition makeCheckParam(const QString &key, const QString &label, const bool default_value,
+ParamDefinition makeCheckParam(const QString &name_en, const QString &name_cn, const bool default_value,
                                const QString &description)
 {
     ParamDefinition param;
-    param.key           = key;
-    param.label         = label;
+    param.name_en       = name_en;
+    param.name_cn       = name_cn;
     param.description   = description;
-    param.editor_type   = ParamEditorType::CheckBox;
     param.value         = default_value;
     param.default_value = default_value;
+    param.value_type    = QStringLiteral("bool");
+    param.control_type  = QStringLiteral("checkbox");
     return param;
 }
 
-ParamDefinition makeComboParam(const QString &key, const QString &label, const QString &default_value,
+ParamDefinition makeComboParam(const QString &name_en, const QString &name_cn, const QString &default_value,
                                QStringList options, const QString &description)
 {
     ParamDefinition param;
-    param.key           = key;
-    param.label         = label;
+    param.name_en       = name_en;
+    param.name_cn       = name_cn;
     param.description   = description;
-    param.editor_type   = ParamEditorType::ComboBox;
     param.value         = default_value;
     param.default_value = default_value;
+    param.value_type    = QStringLiteral("string");
+    param.control_type  = QStringLiteral("combo");
     param.options       = std::move(options);
     return param;
 }

@@ -19,7 +19,7 @@ public:
     {
         for (const ParamGroupDefinition &group : group_defs_)
         {
-            addGroup(group.key, group.label, group.params, group.description, group.enabled, group.part_index);
+            addGroup(group.name_en, group.name_cn, group.params, group.description, group.enabled, group.part_index);
         }
     }
 
@@ -49,7 +49,7 @@ public:
     {
         for (const ParamGroupDefinition &group : group_defs_)
         {
-            addGroup(group.key, group.label, group.params, group.description, group.enabled, group.part_index);
+            addGroup(group.name_en, group.name_cn, group.params, group.description, group.enabled, group.part_index);
         }
     }
 

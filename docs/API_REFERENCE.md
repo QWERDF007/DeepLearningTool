@@ -565,8 +565,8 @@ class IModelConfig : public QObject {
 
 | role | 说明 |
 |------|------|
-| `key` | 分组 key |
-| `label` | 分组显示名称 |
+| `nameEn` | 分组持久化名称 |
+| `nameCn` | 分组显示名称 |
 | `description` | 分组说明 |
 | `enabled` | 分组是否启用 |
 | `partIndex` | UI 分栏索引 |
@@ -577,16 +577,14 @@ class IModelConfig : public QObject {
 
 | role | 说明 |
 |------|------|
-| `key` | 参数 key |
-| `label` | 显示名称 |
+| `nameEn` | 参数持久化名称 |
+| `nameCn` | 参数显示名称 |
 | `description` | 参数说明 |
-| `editorType` | 编辑器类型：`text`、`integer`、`double`、`slider`、`checkbox`、`comboBox` |
 | `value` | 当前值 |
 | `defaultValue` | 默认值 |
-| `minimumValue` | 最小值 |
-| `maximumValue` | 最大值 |
-| `stepValue` | 步长 |
-| `decimals` | 小数位 |
+| `valueType` | 值类型：`bool`、`int`、`double`、`string` |
+| `valueRange` | 数值范围，格式为 `[from, to, step]` |
+| `controlType` | 控件类型：`text`、`spin`、`slider`、`checkbox`、`combo` |
 | `enabled` | 是否可编辑 |
 | `options` | 下拉选项 |
 | `unit` | 单位 |
@@ -597,7 +595,7 @@ class IModelConfig : public QObject {
 Q_INVOKABLE ParamGroupModel *groupAt(int row) const;
 Q_INVOKABLE bool setValue(int row, const QVariant &value);
 Q_INVOKABLE QVariant valueAt(int row) const;
-Q_INVOKABLE QVariant valueForKey(const QString &key) const;
+Q_INVOKABLE QVariant valueForName(const QString &name_en) const;
 ```
 
 当前 `DetectionModels.cpp` 注册了目标检测任务下的 YOLOv5 和 YOLOv8 默认模型配置。

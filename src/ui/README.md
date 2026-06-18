@@ -15,6 +15,7 @@ Reusable controls, colors, fonts, icons, and dialog button enums are provided by
 
 - Business QML should import both `quickui` and `dltool.ui` when it needs QuickUI controls plus project services.
 - C++ code that needs shared visual tokens should include QuickUI headers, for example `quickui/Color.h`.
+- Schema-driven QML should reuse `Utils` for scalar conversion, value range lookup, and display precision derivation instead of duplicating JavaScript helpers.
 - `tool/main.cpp` adds the build-tree QuickUI QML import root so `import quickui` works from local builds.
 
 ## Boundaries

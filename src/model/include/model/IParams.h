@@ -3,12 +3,12 @@
 #include "dltool/model/Export.h"
 
 #include <QAbstractListModel>
-#include <QObject>
 #include <QHash>
 #include <QList>
-#include <QVariant>
+#include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QVariant>
 #include <QtQml>
 
 #include <memory>
@@ -16,31 +16,19 @@
 
 namespace dltool::model {
 
-enum class ParamEditorType
-{
-    Text,
-    Integer,
-    Double,
-    Slider,
-    CheckBox,
-    ComboBox,
-};
-
 struct MODEL_API ParamDefinition
 {
-    QString         key;
-    QString         label;
-    QString         description;
-    ParamEditorType editor_type{ParamEditorType::Text};
-    QVariant        value;
-    QVariant        default_value;
-    QVariant        minimum_value;
-    QVariant        maximum_value;
-    QVariant        step_value;
-    int             decimals{0};
-    bool            enabled{true};
-    QStringList     options;
-    QString         unit;
+    QString      name_en;
+    QString      name_cn;
+    QString      description;
+    QVariant     value;
+    QVariant     default_value;
+    QString      value_type{QStringLiteral("string")};
+    QVariantList value_range;
+    QString      control_type{QStringLiteral("text")};
+    QStringList  options;
+    bool         enabled{true};
+    QString      unit;
 };
 
 class MODEL_API ParamGroupModel : public QAbstractListModel
@@ -48,8 +36,8 @@ class MODEL_API ParamGroupModel : public QAbstractListModel
     Q_OBJECT
     QML_NAMED_ELEMENT(ParamGroupModel)
     QML_UNCREATABLE("ParamGroupModel is owned by IParams")
-    Q_PROPERTY(QString key READ key CONSTANT FINAL)
-    Q_PROPERTY(QString label READ label CONSTANT FINAL)
+    Q_PROPERTY(QString nameEn READ nameEn CONSTANT FINAL)
+    Q_PROPERTY(QString nameCn READ nameCn CONSTANT FINAL)
     Q_PROPERTY(QString description READ description CONSTANT FINAL)
     Q_PROPERTY(bool enabled READ isEnabled CONSTANT FINAL)
     Q_PROPERTY(int partIndex READ partIndex CONSTANT FINAL)
@@ -58,16 +46,14 @@ class MODEL_API ParamGroupModel : public QAbstractListModel
 public:
     enum Role
     {
-        KeyRole = Qt::UserRole + 1,
-        LabelRole,
+        NameEnRole = Qt::UserRole + 1,
+        NameCnRole,
         DescriptionRole,
-        EditorTypeRole,
         ValueRole,
         DefaultValueRole,
-        MinimumValueRole,
-        MaximumValueRole,
-        StepValueRole,
-        DecimalsRole,
+        ValueTypeRole,
+        ValueRangeRole,
+        ControlTypeRole,
         EnabledRole,
         OptionsRole,
         UnitRole,
@@ -75,12 +61,12 @@ public:
     Q_ENUM(Role)
 
     explicit ParamGroupModel(QObject *parent = nullptr);
-    ParamGroupModel(QString key, QString label, QString description, bool enabled,
+    ParamGroupModel(QString name_en, QString name_cn, QString description, bool enabled,
                     int part_index, std::vector<ParamDefinition> params, QObject *parent = nullptr);
     ~ParamGroupModel() override;
 
-    QString key() const;
-    QString label() const;
+    QString nameEn() const;
+    QString nameCn() const;
     QString description() const;
     bool    isEnabled() const;
     int     partIndex() const;
@@ -94,20 +80,20 @@ public:
 
     Q_INVOKABLE bool setValue(int row, const QVariant &value);
     Q_INVOKABLE QVariant valueAt(int row) const;
-    Q_INVOKABLE QVariant valueForKey(const QString &key) const;
+    Q_INVOKABLE QVariant valueForName(const QString &name_en) const;
 
     void copyValuesFrom(const ParamGroupModel &other);
 
 signals:
     void countChanged();
-    void valueChanged(const QString &key, const QVariant &value);
+    void valueChanged(const QString &name_en, const QVariant &value);
 
 private:
     QVariant currentValue(const ParamDefinition &param) const;
-    int      indexOfParam(const QString &key) const;
+    int      indexOfParam(const QString &name_en) const;
 
-    QString                  key_;
-    QString                  label_;
+    QString                  name_en_;
+    QString                  name_cn_;
     QString                  description_;
     bool                     enabled_{true};
     int                      part_index_{0};
@@ -125,8 +111,8 @@ class MODEL_API IParams : public QAbstractListModel
 public:
     enum Role
     {
-        GroupKeyRole = Qt::UserRole + 1,
-        GroupLabelRole,
+        GroupNameEnRole = Qt::UserRole + 1,
+        GroupNameCnRole,
         GroupDescriptionRole,
         GroupEnabledRole,
         GroupPartIndexRole,
@@ -155,7 +141,7 @@ signals:
     void groupCountChanged();
 
 protected:
-    ParamGroupModel *addGroup(const QString &key, const QString &label, std::vector<ParamDefinition> params,
+    ParamGroupModel *addGroup(const QString &name_en, const QString &name_cn, std::vector<ParamDefinition> params,
                               const QString &description = {}, bool enabled = true, int part_index = 0);
     void clearGroups();
 
@@ -188,7 +174,4 @@ public:
 
     virtual std::unique_ptr<ITestParams> cloneTestParams() const = 0;
 };
-
-MODEL_API QString paramEditorTypeName(ParamEditorType editor_type);
-
 } // namespace dltool::model

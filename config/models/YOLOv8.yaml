@@ -1,144 +1,133 @@
 YOLOv8:
   method: Detection
   train_params:
-    - key: network
-      label: Network Parameters
+    - name_en: network
+      name_cn: 网络参数
       part_index: 0
       params:
-        - key: image_size
-          label: Image Size
-          editor_type: integer
+        - name_en: image_size
+          name_cn: 图像尺寸
           value: 640
-          minimum_value: 320
-          maximum_value: 1536
-          step_value: 32
+          value_type: int
+          value_range: [320, 1536, 32]
+          control_type: spin
 
-        - key: num_classes
-          label: Classes
-          editor_type: integer
+        - name_en: num_classes
+          name_cn: 类别数
           value: 80
-          minimum_value: 1
-          maximum_value: 10000
-          step_value: 1
+          value_type: int
+          value_range: [1, 10000, 1]
+          control_type: spin
 
-        - key: pretrained
-          label: Pretrained Weights
-          editor_type: comboBox
+        - name_en: pretrained
+          name_cn: 预训练权重
           value: COCO
-          options: [None, COCO, Custom]
+          value_type: string
+          control_type: combo
+          options: ["None", COCO, Custom]
 
-    - key: training
-      label: Training Parameters
+    - name_en: training
+      name_cn: 训练参数
       part_index: 0
       params:
-        - key: epochs
-          label: Epochs
-          editor_type: integer
+        - name_en: epochs
+          name_cn: 训练轮数
           value: 100
-          minimum_value: 1
-          maximum_value: 10000
-          step_value: 1
+          value_type: int
+          value_range: [1, 10000, 1]
+          control_type: spin
 
-        - key: batch_size
-          label: Batch Size
-          editor_type: integer
+        - name_en: batch_size
+          name_cn: 批量大小
           value: 16
-          minimum_value: 1
-          maximum_value: 512
-          step_value: 1
+          value_type: int
+          value_range: [1, 512, 1]
+          control_type: spin
 
-        - key: learning_rate
-          label: Learning Rate
-          editor_type: double
+        - name_en: learning_rate
+          name_cn: 学习率
           value: 0.01
-          minimum_value: 0.000001
-          maximum_value: 1.0
-          step_value: 0.0001
-          decimals: 6
+          value_type: double
+          value_range: [0.000001, 1.0, 0.0001]
+          control_type: spin
 
-        - key: optimizer
-          label: Optimizer
-          editor_type: comboBox
+        - name_en: optimizer
+          name_cn: 优化器
           value: AdamW
+          value_type: string
+          control_type: combo
           options: [SGD, Adam, AdamW]
 
-    - key: augmentation
-      label: Data Augmentation
+    - name_en: augmentation
+      name_cn: 数据增强
       part_index: 1
       params:
-        - key: mosaic
-          label: Mosaic
-          editor_type: checkbox
+        - name_en: mosaic
+          name_cn: Mosaic
           value: true
+          value_type: bool
+          control_type: checkbox
 
-        - key: mixup
-          label: MixUp
-          editor_type: checkbox
+        - name_en: mixup
+          name_cn: MixUp
           value: false
+          value_type: bool
+          control_type: checkbox
 
-        - key: hsv_gain
-          label: HSV Gain
-          editor_type: slider
+        - name_en: hsv_gain
+          name_cn: HSV 增益
           value: 0.015
-          minimum_value: 0.0
-          maximum_value: 0.1
-          step_value: 0.001
-          decimals: 3
+          value_type: double
+          value_range: [0.0, 0.1, 0.001]
+          control_type: slider
 
-        - key: flip_probability
-          label: Flip Probability
-          editor_type: slider
+        - name_en: flip_probability
+          name_cn: 翻转概率
           value: 0.5
-          minimum_value: 0.0
-          maximum_value: 1.0
-          step_value: 0.01
-          decimals: 2
+          value_type: double
+          value_range: [0.0, 1.0, 0.01]
+          control_type: slider
 
   test_params:
-    - key: inference
-      label: Inference Parameters
+    - name_en: inference
+      name_cn: 推理参数
       part_index: 0
       params:
-        - key: image_size
-          label: Image Size
-          editor_type: integer
+        - name_en: image_size
+          name_cn: 图像尺寸
           value: 640
-          minimum_value: 320
-          maximum_value: 1536
-          step_value: 32
+          value_type: int
+          value_range: [320, 1536, 32]
+          control_type: spin
 
-        - key: confidence_threshold
-          label: Confidence Threshold
-          editor_type: slider
+        - name_en: confidence_threshold
+          name_cn: 置信度阈值
           value: 0.25
-          minimum_value: 0.0
-          maximum_value: 1.0
-          step_value: 0.01
-          decimals: 2
+          value_type: double
+          value_range: [0.0, 1.0, 0.01]
+          control_type: slider
 
-        - key: nms_threshold
-          label: NMS Threshold
-          editor_type: slider
+        - name_en: nms_threshold
+          name_cn: NMS 阈值
           value: 0.45
-          minimum_value: 0.0
-          maximum_value: 1.0
-          step_value: 0.01
-          decimals: 2
+          value_type: double
+          value_range: [0.0, 1.0, 0.01]
+          control_type: slider
 
-    - key: evaluation
-      label: Evaluation Parameters
+    - name_en: evaluation
+      name_cn: 评估参数
       part_index: 1
       params:
-        - key: batch_size
-          label: Batch Size
-          editor_type: integer
+        - name_en: batch_size
+          name_cn: 批量大小
           value: 8
-          minimum_value: 1
-          maximum_value: 512
-          step_value: 1
+          value_type: int
+          value_range: [1, 512, 1]
+          control_type: spin
 
-        - key: metric
-          label: Metric
-          editor_type: comboBox
+        - name_en: metric
+          name_cn: 评估指标
           value: "mAP@0.5"
-          options: ["mAP@0.5", "mAP@0.5:0.95", "Recall"]
+          value_type: string
+          control_type: combo
+          options: ["mAP@0.5", "mAP@0.5:0.95", Recall]
