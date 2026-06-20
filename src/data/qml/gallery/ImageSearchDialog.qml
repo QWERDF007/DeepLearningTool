@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import Qt.labs.platform
 
 import dltool.ui
 import dltool.data
@@ -12,8 +11,6 @@ QuiPopup {
     id: dialog
 
     property DataManager dataManager
-    property bool syncing: false
-    property string lastSuggestedWeightsPath: ""
     property var queryImageIds: []
     readonly property var imageSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.ImageSearch)
 
@@ -22,93 +19,23 @@ QuiPopup {
     focus: true
     closePolicy: Popup.CloseOnEscape
 
-    function trimText(value) {
-        return value === undefined || value === null ? "" : String(value).trim()
-    }
-
-    function comboText(combo) {
-        let text = combo.editable ? trimText(combo.editText) : trimText(combo.currentText)
-        if (text === "") {
-            text = trimText(combo.currentText)
-        }
-        return text
-    }
-
-    function setComboText(combo, value) {
-        let text = trimText(value)
-        let index = combo.find(text)
-        if (index >= 0) {
-            combo.currentIndex = index
-        } else {
-            combo.currentIndex = -1
-        }
-        if (combo.editable) {
-            combo.editText = text
-        }
-    }
-
     function imageSearchController() {
         return dataManager ? dataManager.imageSearch : null
     }
 
-    function suggestedWeightsPath(modelName) {
-        let controller = imageSearchController()
-        if (controller) {
-            return controller.suggestedWeightsPath(modelName)
-        }
-        return modelName === "" ? "" : "F:/models/" + modelName + ".wts"
-    }
-
     function openForSearch() {
         queryImageIds = []
-        resetDefaults()
+        resetDatasetSelection()
         open()
     }
 
     function openForImages(imageIds) {
         queryImageIds = imageIds ? imageIds : []
-        resetDefaults()
+        resetDatasetSelection()
         open()
     }
 
-    function resetDefaults() {
-        let controller = imageSearchController()
-        syncing = true
-
-        let modelName = imageSearchSettings.model
-        if (modelName === "" && controller) {
-            modelName = controller.defaultModelName
-        }
-        setComboText(modelBox, modelName)
-
-        let modelPath = imageSearchSettings.modelPath
-        if (modelPath === "") {
-            modelPath = suggestedWeightsPath(modelName)
-        }
-        weightsPathInput.text = modelPath
-
-        let featureName = imageSearchSettings.featureName
-        if (featureName === "" && controller) {
-            featureName = controller.defaultFeatureName
-        }
-        featureBox.modelName = modelName
-        featureBox.featureName = featureName
-        featureBox.refreshFeatureNames()
-
-        rebuildCheckBox.checked = imageSearchSettings.rebuildIndex
-        topKEditor.value = imageSearchSettings.topK
-        setComboText(normBox, imageSearchSettings.norm)
-        setComboText(preprocessBox, imageSearchSettings.preprocessBackend)
-        setComboText(faissBackendBox, imageSearchSettings.faissBackend)
-        setComboText(indexStorageBox, imageSearchSettings.indexStorage)
-        diskBatchEditor.value = imageSearchSettings.diskBuildBatchSize
-        modelBatchEditor.value = imageSearchSettings.modelBatchSize
-        setComboText(modelBackendBox, imageSearchSettings.modelBackend)
-        setComboText(modelDeviceBox, imageSearchSettings.modelDevice)
-
-        lastSuggestedWeightsPath = suggestedWeightsPath(modelName)
-        syncing = false
-
+    function resetDatasetSelection() {
         Qt.callLater(function () {
             for (let i = 0; i < datasetRepeater.count; ++i) {
                 let item = datasetRepeater.itemAt(i)
@@ -117,45 +44,6 @@ QuiPopup {
                 }
             }
         })
-    }
-
-    function updateModel(value) {
-        if (syncing) {
-            return
-        }
-
-        let modelName = trimText(value)
-        if (modelName === "") {
-            return
-        }
-
-        let previousSuggested = lastSuggestedWeightsPath
-        let nextSuggested = suggestedWeightsPath(modelName)
-        imageSearchSettings.model = modelName
-        featureBox.modelName = modelName
-        if (weightsPathInput.text === "" || weightsPathInput.text === previousSuggested) {
-            weightsPathInput.text = nextSuggested
-            imageSearchSettings.modelPath = nextSuggested
-        }
-        lastSuggestedWeightsPath = nextSuggested
-        featureBox.refreshFeatureNames()
-    }
-
-    function persistSettings() {
-        featureBox.rememberCurrentText()
-        imageSearchSettings.model = comboText(modelBox)
-        imageSearchSettings.modelPath = trimText(weightsPathInput.text)
-        imageSearchSettings.featureName = featureBox.currentFeatureText()
-        imageSearchSettings.rebuildIndex = rebuildCheckBox.checked
-        imageSearchSettings.topK = Math.round(topKEditor.value)
-        imageSearchSettings.norm = normBox.currentText
-        imageSearchSettings.preprocessBackend = preprocessBox.currentText
-        imageSearchSettings.faissBackend = faissBackendBox.currentText
-        imageSearchSettings.indexStorage = indexStorageBox.currentText
-        imageSearchSettings.diskBuildBatchSize = Math.round(diskBatchEditor.value)
-        imageSearchSettings.modelBatchSize = Math.round(modelBatchEditor.value)
-        imageSearchSettings.modelBackend = modelBackendBox.currentText
-        imageSearchSettings.modelDevice = modelDeviceBox.currentText
     }
 
     function selectedDatasetIds() {
@@ -175,7 +63,6 @@ QuiPopup {
             return
         }
 
-        persistSettings()
         let datasetIds = selectedDatasetIds()
         let started = false
         if (queryImageIds && queryImageIds.length > 0) {
@@ -217,19 +104,13 @@ QuiPopup {
         }
     }
 
-    onOpened: resetDefaults()
-    onClosed: {
-        if (!syncing) {
-            persistSettings()
-        }
-    }
+    onOpened: resetDatasetSelection()
 
     ColumnLayout {
         width: parent.width
         height: parent.height
         spacing: 0
 
-        // 标题
         RowLayout {
             Layout.fillWidth: true
             Layout.leftMargin: 20
@@ -246,7 +127,6 @@ QuiPopup {
             }
         }
 
-        // 可滚动内容
         QuiScrollablePage {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -256,29 +136,33 @@ QuiPopup {
                 width: parent.width
                 spacing: 12
 
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 12
+                }
+
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.leftMargin: 20
                     Layout.rightMargin: 20
-                    implicitHeight: searchSection.implicitHeight + 24
+                    implicitHeight: datasetSection.implicitHeight + 24
                     radius: 4
                     color: QuiColor.Primary
                     border.color: QuiColor.Border
 
                     ColumnLayout {
-                        id: searchSection
+                        id: datasetSection
+
                         anchors.fill: parent
                         anchors.margins: 12
                         spacing: 10
-                        enabled: imageSearchSettings.enabled
 
-                        // 搜索数据集
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 4
 
                             QuiText {
-                                text: "\u641c\u7d22\u6570\u636e\u96c6"
+                                text: "搜索数据集"
                                 color: QuiColor.FontDark
                             }
 
@@ -299,14 +183,17 @@ QuiPopup {
 
                                     Column {
                                         id: datasetColumn
+
                                         width: parent.width
                                         spacing: 4
 
                                         Repeater {
                                             id: datasetRepeater
+
                                             model: dialog.dataManager ? dialog.dataManager.datasets : null
                                             delegate: QuiCheckBox {
                                                 property int datasetId: model.dataset_id
+
                                                 width: datasetColumn.width
                                                 text: model.name
                                                 checked: true
@@ -316,429 +203,20 @@ QuiPopup {
                                 }
                             }
                         }
-
-                        // 模型
-                        Item {
-                            Layout.fillWidth: true
-                            implicitHeight: 34
-
-                            QuiText {
-                                anchors {
-                                    left: parent.left
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width / 3
-                                text: "模型"
-                                color: QuiColor.FontDark
-                            }
-                            QuiComboBox {
-                                id: modelBox
-                                anchors {
-                                    right: parent.right
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width * 2 / 3
-                                editable: true
-                                model: dialog.imageSearchController()
-                                       ? dialog.imageSearchController().supportedModelPresets()
-                                       : []
-                                onActivated: dialog.updateModel(dialog.comboText(modelBox))
-                                onCommit: function (text) {
-                                    editText = text
-                                    dialog.updateModel(text)
-                                }
-                            }
-                        }
-
-                        // 模型路径
-                        Item {
-                            Layout.fillWidth: true
-                            implicitHeight: 34
-
-                            QuiText {
-                                anchors {
-                                    left: parent.left
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width / 3
-                                text: "模型路径"
-                                color: QuiColor.FontDark
-                            }
-                            RowLayout {
-                                anchors {
-                                    right: parent.right
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width * 2 / 3
-                                spacing: 8
-
-                                QuiTextField {
-                                    id: weightsPathInput
-                                    Layout.fillWidth: true
-                                    placeholderText: "选择 .wts 权重文件"
-                                    onEditingFinished: {
-                                        imageSearchSettings.modelPath = dialog.trimText(text)
-                                    }
-                                }
-                                QuiTextIconButton {
-                                    Layout.preferredWidth: 34
-                                    Layout.preferredHeight: 34
-                                    iconSource: QuiFontIcon.OpenFile
-                                    text: "打开"
-                                    onClicked: weightsFileDialog.open()
-                                }
-                            }
-                        }
-
-                        // 特征层名
-                        Item {
-                            Layout.fillWidth: true
-                            implicitHeight: 34
-
-                            QuiText {
-                                anchors {
-                                    left: parent.left
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width / 3
-                                text: "特征层名"
-                                color: QuiColor.FontDark
-                            }
-                            FeatureNameComboBox {
-                                id: featureBox
-                                anchors {
-                                    right: parent.right
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width * 2 / 3
-                                imageSearch: dialog.imageSearchController()
-                                modelName: dialog.comboText(modelBox)
-                                featureName: imageSearchSettings.featureName
-                                onFeatureNameAccepted: function (featureName) {
-                                    imageSearchSettings.featureName = featureName
-                                }
-                            }
-                        }
-
-                        // 推理后端
-                        Item {
-                            Layout.fillWidth: true
-                            implicitHeight: 34
-
-                            QuiText {
-                                anchors {
-                                    left: parent.left
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width / 3
-                                text: "推理后端"
-                                color: QuiColor.FontDark
-                            }
-                            QuiComboBox {
-                                id: modelBackendBox
-                                anchors {
-                                    right: parent.right
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width * 2 / 3
-                                model: ["tensorrt", "openvino", "onnxruntime"]
-                                onActivated: {
-                                    if (!dialog.syncing) {
-                                        imageSearchSettings.modelBackend = currentText
-                                    }
-                                }
-                            }
-                        }
-
-                        // 推理设备
-                        Item {
-                            Layout.fillWidth: true
-                            implicitHeight: 34
-
-                            QuiText {
-                                anchors {
-                                    left: parent.left
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width / 3
-                                text: "推理设备"
-                                color: QuiColor.FontDark
-                            }
-                            QuiComboBox {
-                                id: modelDeviceBox
-                                anchors {
-                                    right: parent.right
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width * 2 / 3
-                                model: ["gpu", "cpu"]
-                                onActivated: {
-                                    if (!dialog.syncing) {
-                                        imageSearchSettings.modelDevice = currentText
-                                    }
-                                }
-                            }
-                        }
-
-                        // 模型批次
-                        Item {
-                            Layout.fillWidth: true
-                            implicitHeight: 32
-
-                            QuiText {
-                                anchors {
-                                    left: parent.left
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width / 3
-                                text: "模型批次"
-                                color: QuiColor.FontDark
-                            }
-                            QuiSpinEditor {
-                                id: modelBatchEditor
-                                anchors {
-                                    right: parent.right
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width * 2 / 3
-                                label: ""
-                                value: 1
-                                minValue: 1
-                                maxValue: 8192
-                                step: 1
-                                onValueChanged: {
-                                    if (!dialog.syncing) {
-                                        imageSearchSettings.modelBatchSize = Math.round(value)
-                                    }
-                                }
-                            }
-                        }
-
-                        // 特征库重建
-                        Item {
-                            Layout.fillWidth: true
-                            implicitHeight: 24
-
-                            QuiText {
-                                anchors {
-                                    left: parent.left
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width / 3
-                                text: "\u7279\u5f81\u5e93\u91cd\u5efa"
-                                color: QuiColor.FontDark
-                            }
-                            QuiToggleSwitch {
-                                id: rebuildCheckBox
-                                anchors {
-                                    right: parent.right
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                onToggled: {
-                                    if (!dialog.syncing) {
-                                        imageSearchSettings.rebuildIndex = checked
-                                    }
-                                }
-                            }
-                        }
-
-                        // TopK
-                        Item {
-                            Layout.fillWidth: true
-                            implicitHeight: 32
-
-                            QuiText {
-                                anchors {
-                                    left: parent.left
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width / 3
-                                text: "TopK"
-                                color: QuiColor.FontDark
-                            }
-                            QuiSpinEditor {
-                                id: topKEditor
-                                anchors {
-                                    right: parent.right
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width * 2 / 3
-                                label: ""
-                                value: 5
-                                minValue: 1
-                                maxValue: 1000
-                                step: 1
-                                onValueChanged: {
-                                    if (!dialog.syncing) {
-                                        imageSearchSettings.topK = Math.round(value)
-                                    }
-                                }
-                            }
-                        }
-
-                        // 磁盘批次
-                        Item {
-                            Layout.fillWidth: true
-                            implicitHeight: 32
-
-                            QuiText {
-                                anchors {
-                                    left: parent.left
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width / 3
-                                text: "磁盘批次"
-                                color: QuiColor.FontDark
-                            }
-                            QuiSpinEditor {
-                                id: diskBatchEditor
-                                anchors {
-                                    right: parent.right
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width * 2 / 3
-                                label: ""
-                                value: 256
-                                minValue: 1
-                                maxValue: 8192
-                                step: 1
-                                onValueChanged: {
-                                    if (!dialog.syncing) {
-                                        imageSearchSettings.diskBuildBatchSize = Math.round(value)
-                                    }
-                                }
-                            }
-                        }
-
-                        // 归一化
-                        Item {
-                            Layout.fillWidth: true
-                            implicitHeight: 34
-
-                            QuiText {
-                                anchors {
-                                    left: parent.left
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width / 3
-                                text: "归一化"
-                                color: QuiColor.FontDark
-                            }
-                            QuiComboBox {
-                                id: normBox
-                                anchors {
-                                    right: parent.right
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width * 2 / 3
-                                model: ["l2", "l1", "none"]
-                                onActivated: {
-                                    if (!dialog.syncing) {
-                                        imageSearchSettings.norm = currentText
-                                    }
-                                }
-                            }
-                        }
-
-                        // 预处理
-                        Item {
-                            Layout.fillWidth: true
-                            implicitHeight: 34
-
-                            QuiText {
-                                anchors {
-                                    left: parent.left
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width / 3
-                                text: "预处理"
-                                color: QuiColor.FontDark
-                            }
-                            QuiComboBox {
-                                id: preprocessBox
-                                anchors {
-                                    right: parent.right
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width * 2 / 3
-                                model: ["cpu", "gpu"]
-                                onActivated: {
-                                    if (!dialog.syncing) {
-                                        imageSearchSettings.preprocessBackend = currentText
-                                    }
-                                }
-                            }
-                        }
-
-                        // Faiss
-                        Item {
-                            Layout.fillWidth: true
-                            implicitHeight: 34
-
-                            QuiText {
-                                anchors {
-                                    left: parent.left
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width / 3
-                                text: "Faiss"
-                                color: QuiColor.FontDark
-                            }
-                            QuiComboBox {
-                                id: faissBackendBox
-                                anchors {
-                                    right: parent.right
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width * 2 / 3
-                                model: ["cpu", "gpu"]
-                                onActivated: {
-                                    if (!dialog.syncing) {
-                                        imageSearchSettings.faissBackend = currentText
-                                        if (currentText === "gpu") {
-                                            dialog.setComboText(indexStorageBox, "ram")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // 索引存储
-                        Item {
-                            Layout.fillWidth: true
-                            implicitHeight: 34
-
-                            QuiText {
-                                anchors {
-                                    left: parent.left
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width / 3
-                                text: "索引存储"
-                                color: QuiColor.FontDark
-                            }
-                            QuiComboBox {
-                                id: indexStorageBox
-                                anchors {
-                                    right: parent.right
-                                    verticalCenter: parent.verticalCenter
-                                }
-                                width: parent.width * 2 / 3
-                                enabled: faissBackendBox.currentText !== "gpu"
-                                model: ["ram", "disk"]
-                                onActivated: {
-                                    if (!dialog.syncing) {
-                                        imageSearchSettings.indexStorage = currentText
-                                    }
-                                }
-                            }
-                        }
                     }
+                }
+
+                SettingsFieldsPanel {
+                    fieldModel: imageSearchSettings ? imageSearchSettings.fieldModel : null
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 16
                 }
             }
         }
 
-        // 底部按钮
         RowLayout {
             Layout.fillWidth: true
             Layout.preferredHeight: 60
@@ -765,16 +243,6 @@ QuiPopup {
                          && imageSearchSettings.enabled
                 onClicked: dialog.startSearch()
             }
-        }
-    }
-
-    FileDialog {
-        id: weightsFileDialog
-        title: "选择模型权重"
-        nameFilters: ["Weights (*.wts *.onnx)", "All files (*)"]
-        onAccepted: {
-            weightsPathInput.text = Utils.getCleanPath(weightsFileDialog.file.toString())
-            imageSearchSettings.modelPath = weightsPathInput.text
         }
     }
 }

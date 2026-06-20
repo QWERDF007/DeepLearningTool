@@ -300,9 +300,16 @@ Item {
             onActivated: root.commit(currentText)
 
             function refreshFromModel() {
-                model = root.optionValues()
+                let values = root.optionValues()
+                model = values
                 let text = root.stringValue(root.currentValue)
-                currentIndex = find(text)
+                let index = find(text)
+                if (index < 0 && root.hasOptionsMap() && values.length > 0) {
+                    currentIndex = 0
+                    root.commit(values[0])
+                } else {
+                    currentIndex = index
+                }
             }
         }
     }

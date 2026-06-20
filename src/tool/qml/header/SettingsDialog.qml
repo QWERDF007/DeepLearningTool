@@ -188,32 +188,8 @@ Window {
                             Layout.preferredHeight: 12
                         }
 
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 20
-                            Layout.rightMargin: 20
-                            implicitHeight: fieldsColumn.implicitHeight + 24
-                            radius: 4
-                            color: QuiColor.Primary
-                            border.color: QuiColor.Border
-                            clip: true
-
-                            ColumnLayout {
-                                id: fieldsColumn
-
-                                anchors.fill: parent
-                                anchors.margins: 12
-                                spacing: 0
-
-                                Repeater {
-                                    model: page.fieldModel
-
-                                    SettingsFieldDelegate {
-                                        fieldModel: page.fieldModel
-                                        Layout.fillWidth: true
-                                    }
-                                }
-                            }
+                        SettingsFieldsPanel {
+                            fieldModel: page.fieldModel
                         }
 
                         Item {

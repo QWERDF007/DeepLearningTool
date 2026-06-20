@@ -15,6 +15,7 @@ class SETTINGS_API SettingsGroup : public QQmlPropertyMap
     QML_ANONYMOUS
     Q_PROPERTY(QString accessorPath READ accessorPath CONSTANT FINAL)
     Q_PROPERTY(QString groupKey READ groupKey CONSTANT FINAL)
+    Q_PROPERTY(dltool::settings::SettingsFieldModel *fieldModel READ fieldModel CONSTANT FINAL)
 
 public:
     explicit SettingsGroup(QObject *parent = nullptr);
