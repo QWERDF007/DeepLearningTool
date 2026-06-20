@@ -157,6 +157,8 @@ public:
      */
     Q_INVOKABLE void clearAllFilters();
 
+    void refresh();
+
     /**
      * @brief 启用或禁用图像搜索过滤器
      * @param enabled 是否启用；无搜索结果时会被强制设为 false

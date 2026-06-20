@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQml.Models
 
 import dltool.ui
 import dltool.data
@@ -50,6 +51,56 @@ Item {
                      && imageSearchSettings.enabled
             onClicked: {
                 imageSearchDialog.openForSearch()
+            }
+        }
+        QuiMenu {
+            id: copyToDatasetMenu
+            title: "复制到"
+            width: 200
+
+            Instantiator {
+                model: dataManager ? dataManager.datasets : null
+                delegate: QuiMenuItem {
+                    text: model.name
+                    iconSource: QuiFontIcon.Folder
+                    enabled: dataManager && selection && selection.hasSelection
+                    onClicked: {
+                        if (dataManager) {
+                            dataManager.copySelectedImagesToDataset(model.dataset_id)
+                        }
+                    }
+                }
+                onObjectAdded: function(index, object) {
+                    copyToDatasetMenu.insertItem(index, object)
+                }
+                onObjectRemoved: function(index, object) {
+                    copyToDatasetMenu.removeItem(object)
+                }
+            }
+        }
+        QuiMenu {
+            id: moveToDatasetMenu
+            title: "移动到"
+            width: 200
+
+            Instantiator {
+                model: dataManager ? dataManager.datasets : null
+                delegate: QuiMenuItem {
+                    text: model.name
+                    iconSource: QuiFontIcon.Folder
+                    enabled: dataManager && selection && selection.hasSelection
+                    onClicked: {
+                        if (dataManager) {
+                            dataManager.moveSelectedImagesToDataset(model.dataset_id)
+                        }
+                    }
+                }
+                onObjectAdded: function(index, object) {
+                    moveToDatasetMenu.insertItem(index, object)
+                }
+                onObjectRemoved: function(index, object) {
+                    moveToDatasetMenu.removeItem(object)
+                }
             }
         }
         QuiMenuItem {

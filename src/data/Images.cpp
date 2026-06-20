@@ -207,6 +207,50 @@ bool ImageInstancesListModel::addImages(const int64_t dataset_id, const QString 
     return addImages(dataset_id, paths, image_ids);
 }
 
+bool ImageInstancesListModel::updateImagesDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id)
+{
+    if (database_ == nullptr)
+    {
+        spdlog::error("移动图像失败, 数量: {}, 数据库未初始化", image_ids.size());
+        return false;
+    }
+    if (image_ids.empty())
+    {
+        return true;
+    }
+
+    QString err_msg;
+    bool    ok = database_->updateImagesDataset(image_ids, dataset_id, err_msg);
+    if (!ok)
+    {
+        spdlog::error("移动图像失败, 数量: {}, 目标数据集: {}, error: {}", image_ids.size(), dataset_id,
+                      err_msg.toUtf8().constData());
+        return false;
+    }
+
+    std::vector<int> changed_rows = findRowsByImageIds(image_ids);
+    for (const int64_t image_id : image_ids)
+    {
+        auto found = full_image_instances_.find(image_id);
+        if (found != full_image_instances_.end())
+        {
+            found->second->setDatasetId(dataset_id);
+        }
+    }
+
+    std::sort(changed_rows.begin(), changed_rows.end());
+    const std::vector<std::pair<int, int>> ranges = mergeConsecutiveRanges(changed_rows);
+    for (const auto &[row, count] : ranges)
+    {
+        emit dataChanged(index(row), index(row + count - 1));
+    }
+
+    spdlog::info("移动图像到数据集, dataset id: {}, 数量: {}", dataset_id, image_ids.size());
+    emit statsChanged();
+    emit currentImageChanged();
+    return true;
+}
+
 bool ImageInstancesListModel::deleteImages(const std::vector<int64_t> &image_ids)
 {
     if (database_ == nullptr)

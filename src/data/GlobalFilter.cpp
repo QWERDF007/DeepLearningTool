@@ -291,6 +291,14 @@ void GlobalFilter::clearAllFilters()
     }
 }
 
+void GlobalFilter::refresh()
+{
+    updateFilterCriteria();
+    force_apply_ = true;
+    applyFilters();
+    emit filterStateChanged();
+}
+
 void GlobalFilter::setImageSearchFilterEnabled(bool enabled)
 {
     if (!image_search_filter_)

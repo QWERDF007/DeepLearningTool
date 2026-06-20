@@ -635,6 +635,160 @@ void DataManager::deleteSelectedImages()
     updateDatasetsStats();
 }
 
+void DataManager::copySelectedImagesToDataset(const int64_t dataset_id)
+{
+    if (datasets_ == nullptr || image_instances_ == nullptr || label_instances_ == nullptr || image_tags_ == nullptr)
+    {
+        return;
+    }
+    if (dataset_id < 0 || datasets_->getDatasetName(dataset_id).isEmpty())
+    {
+        spdlog::warn("复制图像失败, 目标数据集无效: {}", dataset_id);
+        return;
+    }
+
+    const std::vector<int64_t> source_image_ids = image_instances_->getSelectedImagesId();
+    if (source_image_ids.empty())
+    {
+        return;
+    }
+
+    std::vector<QString> image_paths;
+    image_paths.reserve(source_image_ids.size());
+    for (const int64_t image_id : source_image_ids)
+    {
+        const QString path = image_instances_->getImagePath(image_id);
+        if (!path.isEmpty())
+        {
+            image_paths.push_back(path);
+        }
+    }
+    if (image_paths.size() != source_image_ids.size())
+    {
+        spdlog::warn("复制图像失败, 选中图像中存在无效路径");
+        return;
+    }
+
+    std::vector<std::vector<int64_t>> source_label_ids = image_instances_->getLabelIds(source_image_ids);
+    std::vector<std::vector<int64_t>> source_tag_ids   = image_tags_->getImagesTagIds(source_image_ids);
+
+    std::vector<int64_t> copied_image_ids;
+    if (!image_instances_->addImages(dataset_id, image_paths, copied_image_ids))
+    {
+        return;
+    }
+    if (copied_image_ids.size() != source_image_ids.size())
+    {
+        spdlog::error("复制图像失败, 新图像 ID 数量不一致");
+        return;
+    }
+
+    datasets_->addImages(std::vector<int64_t>(copied_image_ids.size(), dataset_id), copied_image_ids);
+
+    std::map<int64_t, std::vector<int64_t>> copied_images_by_tag;
+    for (size_t i = 0; i < copied_image_ids.size() && i < source_tag_ids.size(); ++i)
+    {
+        for (const int64_t tag_id : source_tag_ids[i])
+        {
+            copied_images_by_tag[tag_id].push_back(copied_image_ids[i]);
+        }
+    }
+    for (const auto &[tag_id, image_ids] : copied_images_by_tag)
+    {
+        image_tags_->setImagesTag(image_ids, tag_id);
+    }
+
+    std::vector<int64_t>     copied_label_image_ids;
+    std::vector<int64_t>     copied_label_class_ids;
+    std::vector<QVariantMap> copied_label_data;
+    for (size_t i = 0; i < copied_image_ids.size() && i < source_label_ids.size(); ++i)
+    {
+        for (const int64_t label_id : source_label_ids[i])
+        {
+            const LabelInstance *label_instance = label_instances_->getLabelInstance(label_id);
+            if (label_instance == nullptr || label_instance->data() == nullptr)
+            {
+                continue;
+            }
+            copied_label_image_ids.push_back(copied_image_ids[i]);
+            copied_label_class_ids.push_back(label_instance->labelClassId());
+            copied_label_data.push_back(label_instance->data()->dataMap());
+        }
+    }
+
+    if (!copied_label_image_ids.empty())
+    {
+        if (!addLabelsInternal(copied_label_image_ids, copied_label_class_ids, copied_label_data))
+        {
+            updateDatasetsStats();
+            image_info_->updateLabelInfo();
+        }
+    }
+    else
+    {
+        updateDatasetsStats();
+        image_info_->updateLabelInfo();
+    }
+
+    if (global_filter_ != nullptr)
+    {
+        global_filter_->refresh();
+    }
+}
+
+void DataManager::moveSelectedImagesToDataset(const int64_t dataset_id)
+{
+    if (datasets_ == nullptr || image_instances_ == nullptr)
+    {
+        return;
+    }
+    if (dataset_id < 0 || datasets_->getDatasetName(dataset_id).isEmpty())
+    {
+        spdlog::warn("移动图像失败, 目标数据集无效: {}", dataset_id);
+        return;
+    }
+
+    const std::vector<int64_t> selected_image_ids = image_instances_->getSelectedImagesId();
+    if (selected_image_ids.empty())
+    {
+        return;
+    }
+
+    std::vector<int64_t> source_dataset_ids;
+    std::vector<int64_t> moved_image_ids;
+    source_dataset_ids.reserve(selected_image_ids.size());
+    moved_image_ids.reserve(selected_image_ids.size());
+    for (const int64_t image_id : selected_image_ids)
+    {
+        const int64_t source_dataset_id = image_instances_->getImageDatasetId(image_id);
+        if (source_dataset_id < 0 || source_dataset_id == dataset_id)
+        {
+            continue;
+        }
+        source_dataset_ids.push_back(source_dataset_id);
+        moved_image_ids.push_back(image_id);
+    }
+    if (moved_image_ids.empty())
+    {
+        return;
+    }
+
+    if (!image_instances_->updateImagesDataset(moved_image_ids, dataset_id))
+    {
+        return;
+    }
+
+    datasets_->deleteImages(source_dataset_ids, moved_image_ids);
+    datasets_->addImages(std::vector<int64_t>(moved_image_ids.size(), dataset_id), moved_image_ids);
+    updateDatasetsStats();
+    image_info_->onCurrentImageChanged();
+
+    if (global_filter_ != nullptr)
+    {
+        global_filter_->refresh();
+    }
+}
+
 void DataManager::addLabelClass(const QString &name, const QString &color, const QString &shortcut)
 {
     label_classes_->addLabelClass(name, color, shortcut);
