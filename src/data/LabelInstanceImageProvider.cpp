@@ -1,7 +1,7 @@
 #include "data/LabelInstanceImageProvider.h"
 
 #include "data/Images.h"
-#include "data/LabelCLasses.h"
+#include "data/LabelClasses.h"
 #include "data/LabelData.h"
 #include "data/Labels.h"
 #include "settings/GlobalSettings.h"

@@ -13,7 +13,7 @@
 #include "ImageTags.h"
 #include "Images.h"
 #include "Labels.h"
-#include "labelclasses.h"
+#include "LabelClasses.h"
 
 #include <QObject>
 #include <QtQml>
