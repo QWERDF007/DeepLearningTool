@@ -23,7 +23,7 @@
 每个 group 支持的主要元数据：
 
 - `table`：对应的数据库表名；未配置时由 group 名自动转为 snake_case，并追加 `_settings`。
-- `accessor`：运行时对象名，例如 `ui`、`data`、`project`。
+- `accessor`：运行时对象名，例如 `ui`、`data`、`software`。
 - `parent_accessor` / `parent`：可选父级命名空间，例如 `advanced`。
 - `category`：设置页面或其它界面可用于分类过滤的逻辑类别。
 - `ordinal_index`：设置组排序值；未配置时按加载顺序生成。

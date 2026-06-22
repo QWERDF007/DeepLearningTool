@@ -1,9 +1,9 @@
-ProjectSettings:
-  table: project_settings
-  accessor: project
+SoftwareSetting:
+  table: software_setting
+  accessor: software
   category: general
   ordinal_index: 10
-  label: 项目设置
+  label: 软件设置
   fields:
     - name_en: max_recent_projects
       name_cn: 最近项目数量
@@ -12,7 +12,7 @@ ProjectSettings:
       value_type: int
       value_range: [1, 50, 1]
       control_type: spin
-      section: 项目
+      section: 软件
 
     - name_en: auto_save_interval
       name_cn: 自动保存间隔
@@ -21,7 +21,7 @@ ProjectSettings:
       value_type: int
       value_range: [30, 3600, 30]
       control_type: spin
-      section: 项目
+      section: 软件
 
     - name_en: auto_save_enabled
       name_cn: 启用自动保存
@@ -29,4 +29,12 @@ ProjectSettings:
       value: true
       value_type: bool
       control_type: checkbox
-      section: 项目
+      section: 软件
+
+    - name_en: python_env_path
+      name_cn: Python 环境目录
+      property_name: pythonEnvPath
+      value: ""
+      value_type: string
+      control_type: path
+      section: 软件

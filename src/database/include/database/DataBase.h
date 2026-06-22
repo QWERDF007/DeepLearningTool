@@ -226,29 +226,7 @@ public:
     bool        syncSettingsSchema(const QString &table_name, const QVariantList &fields, QString &err_msg) const;
     QVariantMap loadSettings(const QString &table_name, QString &err_msg) const;
     bool        saveSettings(const QString &table_name, const QVariantMap &row, QString &err_msg) const;
-
-    // ── 特征搜索设置 ──
-
-
-    // ── ROI 搜索设置 ──
-
-
-    // ── 智能标注设置 ──
-
-
-    // ── 缩略图设置 ──
-
-
-    // ── 标注显示设置 ──
-
-
-    // ── 图像增强设置 ──
-
-
-    // ── UI 设置 ──
-
-
-    // ── 项目设置 ──
+    
 
 };
 

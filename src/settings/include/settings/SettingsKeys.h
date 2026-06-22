@@ -10,7 +10,7 @@ Q_NAMESPACE_EXPORT(SETTINGS_API)
 
 enum class Key
 {
-    Project = 0,
+    Software = 0,
     Data,
     Ui,
     ImageSearch,

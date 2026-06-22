@@ -73,7 +73,7 @@ GlobalSettings.setValue("advanced.roiSearch", "topK", 10)
 
 | 文件 | 分组 | 路径 | 分类 | 表 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| `ProjectSettings.yaml` | `ProjectSettings` | `project` | `general` | `project_settings` | 项目级设置，包括最近项目数量、自动保存间隔、自动保存开关。 |
+| `SoftwareSetting.yaml` | `SoftwareSetting` | `software` | `general` | `software_setting` | 软件设置，包括最近项目数量、自动保存间隔、自动保存开关、Python 环境目录。 |
 | `DataSettings.yaml` | `DataSettings` | `data` | `general` | `data_settings` | 数据与缩略图显示设置，包括缩略图边距、缓存大小、图像网格缩放、标注缩略图缩放、边框宽度、填充透明度。 |
 | `UISettings.yaml` | `UISettings` | `ui` | `general` | `ui_settings` | 界面设置，包括图像亮度、对比度、主题、语言。 |
 | `ImageSearchSettings.yaml` | `ImageSearchSettings` | `advanced.imageSearch` | `advanced` | `image_search_settings` | 图像搜索配置，包括模型、权重路径、特征层、索引、后端、设备、批量大小。 |

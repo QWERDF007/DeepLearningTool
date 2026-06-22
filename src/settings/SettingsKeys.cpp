@@ -6,8 +6,8 @@ QString accessorPath(const accessor::Key key)
 {
     switch (key)
     {
-    case accessor::Key::Project:
-        return QStringLiteral("project");
+    case accessor::Key::Software:
+        return QStringLiteral("software");
     case accessor::Key::Data:
         return QStringLiteral("data");
     case accessor::Key::Ui:
