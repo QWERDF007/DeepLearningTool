@@ -13,7 +13,7 @@
 #include "ImageTags.h"
 #include "Images.h"
 #include "Labels.h"
-#include "labelclasses.h"
+#include "LabelClasses.h"
 
 #include <QObject>
 #include <QtQml>
@@ -151,6 +151,8 @@ public:
     Q_INVOKABLE void exportDataset(const int64_t dataset_id, const int data_format, const QString &output_dir);
 
     Q_INVOKABLE void deleteSelectedImages();
+    Q_INVOKABLE void copySelectedImagesToDataset(const int64_t dataset_id);
+    Q_INVOKABLE void moveSelectedImagesToDataset(const int64_t dataset_id);
 
     Q_INVOKABLE void addLabelClass(const QString &name, const QString &color, const QString &shortcut);
 

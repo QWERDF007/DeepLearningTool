@@ -556,7 +556,7 @@ QVariant LabelClassesListModel::getLabelClassOrdinalIndex(const QModelIndex &ind
 {
     const int id = getLabelClassId(index);
     if (id != -1)
-        return label_classes_.at(id)->ordinalIndex();
+        return static_cast<qlonglong>(label_classes_.at(id)->ordinalIndex());
     return -1;
 }
 

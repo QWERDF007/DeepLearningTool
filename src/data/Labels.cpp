@@ -963,8 +963,8 @@ QVariantMap ImageLabelsListModel::getData(const int index) const
     if (instance == nullptr || instance->data() == nullptr)
         return QVariantMap();
     auto data              = instance->data()->dataMap();
-    data["label_id"]       = label_id;
-    data["label_class_id"] = instance->labelClassId();
+    data["label_id"]       = static_cast<qlonglong>(label_id);
+    data["label_class_id"] = static_cast<qlonglong>(instance->labelClassId());
     data["color"]          = label_classes_->getLabelClassColor(instance->labelClassId());
     data["index"]          = index;
     return data;
