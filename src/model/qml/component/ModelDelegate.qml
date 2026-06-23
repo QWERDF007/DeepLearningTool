@@ -20,8 +20,14 @@ Rectangle {
     property string trainingResult: ""
     property string testResult: ""
     property bool selected: false
+    property bool showTaskActions: false
+    property bool taskActionsEnabled: false
+
+    signal startClicked()
+    signal stopClicked()
 
     ColumnLayout {
+        z: 1
         anchors.fill: parent
         anchors.margins: 10
         spacing: 0
@@ -48,6 +54,34 @@ Rectangle {
 
         Item {
             Layout.fillHeight: true
+        }
+
+        RowLayout {
+            Layout.alignment: Qt.AlignHCenter
+            Layout.preferredHeight: visible ? 34 : 0
+            spacing: 8
+            visible: control.selected && control.showTaskActions
+            z: 2
+
+            QuiTextIconButton {
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 30
+                display: Button.IconOnly
+                text: "开始"
+                iconSource: QuiFontIcon.Play
+                enabled: control.taskActionsEnabled
+                onClicked: control.startClicked()
+            }
+
+            QuiTextIconButton {
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 30
+                display: Button.IconOnly
+                text: "停止"
+                iconSource: QuiFontIcon.Stop
+                enabled: control.taskActionsEnabled
+                onClicked: control.stopClicked()
+            }
         }
     }
 

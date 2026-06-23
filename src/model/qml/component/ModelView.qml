@@ -19,6 +19,9 @@ Rectangle {
     property string currentModelName: ""
     property string currentNetworkStructure: ""
     property bool componentCompleted: false
+    property var taskManager: null
+    property string taskType: ""
+    property bool taskActionsEnabled: false
 
     function clearCurrentModel() {
         currentModelId = -1
@@ -65,6 +68,20 @@ Rectangle {
         if (componentCompleted) {
             Qt.callLater(ensureCurrentModel)
         }
+    }
+
+    function startCurrentModelTask() {
+        if (!taskActionsEnabled || !taskManager || currentModelUuid.length === 0) {
+            return
+        }
+        taskManager.startModelTask(currentModelUuid, currentModelName, taskType)
+    }
+
+    function stopCurrentModelTask() {
+        if (!taskActionsEnabled || !taskManager || currentModelUuid.length === 0) {
+            return
+        }
+        taskManager.stopModelTask(currentModelUuid, taskType)
     }
 
     onModelManagerChanged: requestEnsureCurrentModel()
@@ -168,6 +185,16 @@ Rectangle {
                     trainingResult: model.training_result
                     testResult: model.test_result
                     selected: ListView.isCurrentItem
+                    showTaskActions: modelView.taskActionsEnabled
+                    taskActionsEnabled: modelView.taskManager !== null && model.uuid
+                    onStartClicked: {
+                        modelView.selectModel(index)
+                        modelView.startCurrentModelTask()
+                    }
+                    onStopClicked: {
+                        modelView.selectModel(index)
+                        modelView.stopCurrentModelTask()
+                    }
 
                     MouseArea {
                         anchors.fill: parent

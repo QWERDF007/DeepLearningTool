@@ -15,7 +15,6 @@ Item {
     property string currentModelName: ""
     property string currentNetworkStructure: ""
     property IModel selectedModel: modelManager && currentModelUuid.length > 0 ? modelManager.modelForUuid(currentModelUuid) : null
-    property var taskManager: null
     property ITrainParams trainParams: selectedModel && selectedModel.config ? selectedModel.config.trainParams : null
 
     ColumnLayout {
@@ -82,23 +81,5 @@ Item {
             }
         }
 
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 40
-
-            Item {
-                Layout.fillWidth: true
-            }
-
-            QuiButton {
-                Layout.preferredWidth: 110
-                Layout.preferredHeight: 32
-                text: qsTr("添加训练任务")
-                enabled: control.taskManager && control.currentModelUuid.length > 0
-                onClicked: {
-                    control.taskManager.addTask(control.currentModelUuid, control.currentModelName, qsTr("训练"))
-                }
-            }
-        }
     }
 }

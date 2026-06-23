@@ -258,6 +258,44 @@ bool TaskTableModel::updateTaskProgress(int task_id, int progress)
     return true;
 }
 
+int TaskTableModel::startModelTask(const QString &model_uuid, const QString &model_name, const QString &task_type)
+{
+    const QString trimmed_model_uuid = model_uuid.trimmed();
+    if (trimmed_model_uuid.isEmpty())
+        return -1;
+
+    int row = indexOfModelTask(trimmed_model_uuid, task_type.trimmed(), false);
+    int task_id{-1};
+    if (row < 0)
+    {
+        task_id = addTask(trimmed_model_uuid, model_name, task_type);
+        row     = indexOfTask(task_id);
+    }
+    else
+    {
+        task_id = tasks_.at(static_cast<size_t>(row)).task_id;
+    }
+
+    if (row < 0)
+        return -1;
+
+    TaskRecord &task = tasks_[static_cast<size_t>(row)];
+    if (task.status == Running)
+        return task.task_id;
+
+    startTask(task.task_id);
+    return task.task_id;
+}
+
+bool TaskTableModel::stopModelTask(const QString &model_uuid, const QString &task_type)
+{
+    const int row = indexOfModelTask(model_uuid.trimmed(), task_type.trimmed(), false);
+    if (row < 0)
+        return false;
+
+    return stopTask(tasks_.at(static_cast<size_t>(row)).task_id);
+}
+
 QVariantMap TaskTableModel::taskAt(int row) const
 {
     if (row < 0 || row >= rowCount())
@@ -287,6 +325,25 @@ int TaskTableModel::indexOfTask(int task_id) const
     {
         if (tasks_[static_cast<size_t>(row)].task_id == task_id)
             return row;
+    }
+    return -1;
+}
+
+int TaskTableModel::indexOfModelTask(const QString &model_uuid, const QString &task_type, bool include_finished) const
+{
+    if (model_uuid.isEmpty())
+        return -1;
+
+    for (int row = static_cast<int>(tasks_.size()) - 1; row >= 0; --row)
+    {
+        const TaskRecord &task = tasks_.at(static_cast<size_t>(row));
+        if (task.model_uuid != model_uuid)
+            continue;
+        if (!task_type.isEmpty() && task.task_type != task_type)
+            continue;
+        if (!include_finished && task.status == Finished)
+            continue;
+        return row;
     }
     return -1;
 }
@@ -435,6 +492,16 @@ bool TaskManager::deleteTask(int task_id)
 bool TaskManager::updateTaskProgress(int task_id, int progress)
 {
     return tasks_->updateTaskProgress(task_id, progress);
+}
+
+int TaskManager::startModelTask(const QString &model_uuid, const QString &model_name, const QString &task_type)
+{
+    return tasks_->startModelTask(model_uuid, model_name, task_type);
+}
+
+bool TaskManager::stopModelTask(const QString &model_uuid, const QString &task_type)
+{
+    return tasks_->stopModelTask(model_uuid, task_type);
 }
 
 } // namespace dltool::model

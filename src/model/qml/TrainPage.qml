@@ -29,6 +29,9 @@ Rectangle {
             headerTitle: "模型训练:"
             addEnable: true
             modelManager: labelPage.modelManager
+            taskManager: ProjectManager.currentProject ? ProjectManager.currentProject.taskManager : null
+            taskType: qsTr("训练")
+            taskActionsEnabled: true
         }
 
         TrainPanel {
@@ -39,7 +42,6 @@ Rectangle {
             currentModelUuid: modelView.currentModelUuid
             currentModelName: modelView.currentModelName
             currentNetworkStructure: modelView.currentNetworkStructure
-            taskManager: ProjectManager.currentProject ? ProjectManager.currentProject.taskManager : null
         }
     }
 }

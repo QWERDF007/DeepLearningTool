@@ -76,6 +76,8 @@ public:
     bool finishTask(int task_id);
     bool deleteTask(int task_id);
     bool updateTaskProgress(int task_id, int progress);
+    int  startModelTask(const QString &model_uuid, const QString &model_name, const QString &task_type = QString());
+    bool stopModelTask(const QString &model_uuid, const QString &task_type = QString());
 
     Q_INVOKABLE QVariantMap taskAt(int row) const;
 
@@ -97,6 +99,7 @@ private:
     };
 
     int  indexOfTask(int task_id) const;
+    int  indexOfModelTask(const QString &model_uuid, const QString &task_type, bool include_finished) const;
     void emitTaskChanged(int row, const QList<int> &roles = {});
     void refreshRunningTasks();
 
@@ -137,6 +140,9 @@ public:
     Q_INVOKABLE bool finishTask(int task_id);
     Q_INVOKABLE bool deleteTask(int task_id);
     Q_INVOKABLE bool updateTaskProgress(int task_id, int progress);
+    Q_INVOKABLE int  startModelTask(const QString &model_uuid, const QString &model_name,
+                                    const QString &task_type = QString());
+    Q_INVOKABLE bool stopModelTask(const QString &model_uuid, const QString &task_type = QString());
 
 private:
     TaskTableModel *tasks_{nullptr};

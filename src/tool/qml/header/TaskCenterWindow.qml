@@ -14,6 +14,7 @@ Window {
 
     property var taskManager: ProjectManager.currentProject ? ProjectManager.currentProject.taskManager : null
     property var taskModel: taskManager ? taskManager.tasks : null
+    property int selectedTaskId: -1
 
     visible: false
     title: "任务管理中心"
@@ -34,9 +35,34 @@ Window {
         target: ProjectManager
         function onCurrentProjectChanged() {
             if (!ProjectManager.currentProject) {
+                dialog.selectedTaskId = -1
                 dialog.close()
             }
         }
+    }
+
+    Connections {
+        target: dialog.taskModel
+        function onCountChanged() {
+            if (!dialog.taskModel || dialog.taskModel.count === 0) {
+                dialog.selectedTaskId = -1
+            }
+        }
+    }
+
+    function taskRowSelected(taskId) {
+        return dialog.selectedTaskId >= 0 && dialog.selectedTaskId === taskId
+    }
+
+    function taskRowColor(taskId, row) {
+        if (taskRowSelected(taskId)) {
+            return QuiColor.Highlight
+        }
+        return row % 2 === 0 ? QuiColor.Background : QuiColor.Primary
+    }
+
+    function taskTextColor(taskId) {
+        return taskRowSelected(taskId) ? "white" : QuiColor.FontPrimary
     }
 
     function screenGeometryFor(targetScreen) {
@@ -116,8 +142,8 @@ Window {
                 model: dialog.taskModel
                 rowHeight: 42
                 headerHeight: 34
-                headerColor: QuiColor.Primary
-                headerTextColor: QuiColor.FontPrimary
+                headerColor: QuiColor.Background
+                headerTextColor: "white"
                 borderColor: QuiColor.Border
                 showGridLines: true
                 minimumColumnWidth: 80
@@ -136,9 +162,13 @@ Window {
                         Rectangle {
                             implicitWidth: tableView.columnWidth(column)
                             implicitHeight: tableView.rowHeight
-                            color: row % 2 === 0 ? QuiColor.Background : QuiColor.Primary
+                            color: dialog.taskRowColor(model.task_id, row)
                             border.color: QuiColor.Border
                             border.width: 1
+
+                            TapHandler {
+                                onTapped: dialog.selectedTaskId = model.task_id
+                            }
 
                             RowLayout {
                                 anchors.fill: parent
@@ -157,6 +187,7 @@ Window {
                                 QuiText {
                                     Layout.preferredWidth: 42
                                     text: (model.progress || 0) + "%"
+                                    color: dialog.taskTextColor(model.task_id)
                                     horizontalAlignment: Text.AlignRight
                                     verticalAlignment: Text.AlignVCenter
                                 }
@@ -169,9 +200,13 @@ Window {
                         Rectangle {
                             implicitWidth: tableView.columnWidth(column)
                             implicitHeight: tableView.rowHeight
-                            color: row % 2 === 0 ? QuiColor.Background : QuiColor.Primary
+                            color: dialog.taskRowColor(model.task_id, row)
                             border.color: QuiColor.Border
                             border.width: 1
+
+                            TapHandler {
+                                onTapped: dialog.selectedTaskId = model.task_id
+                            }
 
                             RowLayout {
                                 anchors.centerIn: parent
@@ -184,7 +219,10 @@ Window {
                                     display: Button.IconOnly
                                     iconSource: QuiFontIcon.Play
                                     enabled: dialog.taskManager && (model.can_start || false)
-                                    onClicked: dialog.taskManager.startTask(model.task_id)
+                                    onClicked: {
+                                        dialog.selectedTaskId = model.task_id
+                                        dialog.taskManager.startTask(model.task_id)
+                                    }
                                 }
 
                                 QuiTextIconButton {
@@ -194,7 +232,10 @@ Window {
                                     display: Button.IconOnly
                                     iconSource: QuiFontIcon.Pause
                                     enabled: dialog.taskManager && (model.can_pause || false)
-                                    onClicked: dialog.taskManager.pauseTask(model.task_id)
+                                    onClicked: {
+                                        dialog.selectedTaskId = model.task_id
+                                        dialog.taskManager.pauseTask(model.task_id)
+                                    }
                                 }
 
                                 QuiTextIconButton {
@@ -204,7 +245,10 @@ Window {
                                     display: Button.IconOnly
                                     iconSource: QuiFontIcon.Stop
                                     enabled: dialog.taskManager && (model.can_stop || false)
-                                    onClicked: dialog.taskManager.stopTask(model.task_id)
+                                    onClicked: {
+                                        dialog.selectedTaskId = model.task_id
+                                        dialog.taskManager.stopTask(model.task_id)
+                                    }
                                 }
 
                                 QuiTextIconButton {
@@ -214,7 +258,10 @@ Window {
                                     display: Button.IconOnly
                                     iconSource: QuiFontIcon.CheckMark
                                     enabled: dialog.taskManager && (model.can_finish || false)
-                                    onClicked: dialog.taskManager.finishTask(model.task_id)
+                                    onClicked: {
+                                        dialog.selectedTaskId = model.task_id
+                                        dialog.taskManager.finishTask(model.task_id)
+                                    }
                                 }
 
                                 QuiTextIconButton {
@@ -224,7 +271,10 @@ Window {
                                     display: Button.IconOnly
                                     iconSource: QuiFontIcon.Delete
                                     enabled: dialog.taskManager !== null
-                                    onClicked: dialog.taskManager.deleteTask(model.task_id)
+                                    onClicked: {
+                                        dialog.selectedTaskId = model.task_id
+                                        dialog.taskManager.deleteTask(model.task_id)
+                                    }
                                 }
                             }
                         }
@@ -234,16 +284,20 @@ Window {
                         Rectangle {
                             implicitWidth: tableView.columnWidth(column)
                             implicitHeight: tableView.rowHeight
-                            color: row % 2 === 0 ? QuiColor.Background : QuiColor.Primary
+                            color: dialog.taskRowColor(model.task_id, row)
                             border.color: QuiColor.Border
                             border.width: 1
+
+                            TapHandler {
+                                onTapped: dialog.selectedTaskId = model.task_id
+                            }
 
                             QuiText {
                                 anchors.fill: parent
                                 anchors.leftMargin: 10
                                 anchors.rightMargin: 10
                                 text: model.display || ""
-                                color: QuiColor.FontPrimary
+                                color: dialog.taskTextColor(model.task_id)
                                 elide: Text.ElideRight
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
