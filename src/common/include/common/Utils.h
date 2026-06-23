@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dltool/common/Export.h"
+
 #include <QObject>
 #include <QString>
 #include <string>
@@ -10,19 +12,19 @@
 
 namespace dltool::common {
 
-QString uuid();
-QString toQString(const QStringList &, const QString &sep = ", ", Qt::SplitBehavior behavior = Qt::KeepEmptyParts);
+COMMON_API QString uuid();
+COMMON_API QString toQString(const QStringList &, const QString &sep = ", ", Qt::SplitBehavior behavior = Qt::KeepEmptyParts);
 
 #ifdef _WIN32
-std::string  wcharToString(const wchar_t *wstr);
-std::wstring stringToWchar(const std::string &str);
+COMMON_API std::string  wcharToString(const wchar_t *wstr);
+COMMON_API std::wstring stringToWchar(const std::string &str);
 #endif
 
-QString              getDirectory(const QString &path);
-std::vector<QString> getDirectories(const QString &path, bool recursive = false);
-std::vector<QString> getFiles(const QString &path, const QStringList &name_filters, bool recursive = false);
+COMMON_API QString              getDirectory(const QString &path);
+COMMON_API std::vector<QString> getDirectories(const QString &path, bool recursive = false);
+COMMON_API std::vector<QString> getFiles(const QString &path, const QStringList &name_filters, bool recursive = false);
 
-class FileReader : QObject
+class COMMON_API FileReader : QObject
 {
 public:
     FileReader(QObject *parent = nullptr)
