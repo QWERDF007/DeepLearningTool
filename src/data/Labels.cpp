@@ -713,6 +713,9 @@ void LabelInstancesListModel::shiftSelect(int current_index, int previous_index,
 
 void LabelInstancesListModel::selectAll()
 {
+    if (rowCount() <= 0)
+        return;
+
     QItemSelection selection;
     selection.select(index(0), index(rowCount() - 1));
     selection_->select(selection, QItemSelectionModel::Select);
@@ -1342,6 +1345,8 @@ void ImageLabelsTableModel::updateLabels(const std::vector<int64_t> &image_ids, 
     }
     if (valid_label_ids.empty())
         return;
+    if (label_ids_.empty() || column_headers_.empty())
+        return;
     emit dataChanged(index(0, 0),
                      index(static_cast<int>(label_ids_.size()) - 1, static_cast<int>(column_headers_.size()) - 1),
                      {DataRole, ClassDataRole});
@@ -1377,6 +1382,9 @@ void ImageLabelsTableModel::deleteLabels(const std::vector<int64_t> &image_ids, 
 
 void ImageLabelsTableModel::labelClassUpdated(const int64_t label_class_id)
 {
+    if (label_ids_.empty() || column_headers_.empty())
+        return;
+
     emit dataChanged(index(0, 0),
                      index(static_cast<int>(label_ids_.size()) - 1, static_cast<int>(column_headers_.size()) - 1),
                      {ClassDataRole});
@@ -1425,6 +1433,9 @@ void ImageLabelsTableModel::shiftSelect(int current_index, int previous_index,
 
 void ImageLabelsTableModel::selectAll()
 {
+    if (label_ids_.empty() || column_headers_.empty())
+        return;
+
     QItemSelection    selection;
     const QModelIndex top_left = index(0, 0);
     const QModelIndex bottom_right
@@ -1444,57 +1455,40 @@ void ImageLabelsTableModel::setLastIndex(int last_index)
 
 void ImageLabelsTableModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)
 {
-    const QModelIndexList &dselected_items = deselected.indexes();
-
-    int top{-1}, left{-1};
-    int bottom{-1}, right{-1};
-    for (const QModelIndex &index : dselected_items)
+    const auto emitSelectionChanged = [this](const QItemSelection &selection)
     {
-        const int row = index.row();
-        const int col = index.column();
-        if (top == -1)
+        const QModelIndexList items = selection.indexes();
+        int                   top{-1};
+        int                   left{-1};
+        int                   bottom{-1};
+        int                   right{-1};
+        for (const QModelIndex &index : items)
         {
-            top    = row;
-            left   = col;
-            bottom = row;
-            right  = col;
+            const int row = index.row();
+            const int col = index.column();
+            if (row < 0 || row >= rowCount() || col < 0 || col >= columnCount())
+                continue;
+            if (top == -1)
+            {
+                top    = row;
+                left   = col;
+                bottom = row;
+                right  = col;
+            }
+            else
+            {
+                top    = std::min(top, row);
+                left   = std::min(left, col);
+                bottom = std::max(bottom, row);
+                right  = std::max(right, col);
+            }
         }
-        else
-        {
-            top    = std::min(top, row);
-            left   = std::min(left, col);
-            bottom = std::max(bottom, row);
-            right  = std::max(right, col);
-        }
-    }
-    emit dataChanged(index(top, left), index(bottom, right), {SelectedRole});
+        if (top >= 0 && bottom >= top && left >= 0 && right >= left)
+            emit dataChanged(index(top, left), index(bottom, right), {SelectedRole});
+    };
 
-    top    = -1;
-    bottom = -1;
-    left   = -1;
-    right  = -1;
-
-    const QModelIndexList &selected_items = selected.indexes();
-    for (const QModelIndex &index : selected_items)
-    {
-        const int row = index.row();
-        const int col = index.column();
-        if (top == -1)
-        {
-            top    = row;
-            left   = col;
-            bottom = row;
-            right  = col;
-        }
-        else
-        {
-            top    = std::min(top, row);
-            left   = std::min(left, col);
-            bottom = std::max(bottom, row);
-            right  = std::max(right, col);
-        }
-    }
-    emit dataChanged(index(top, left), index(bottom, right), {SelectedRole});
+    emitSelectionChanged(deselected);
+    emitSelectionChanged(selected);
 }
 
 QVariant ImageLabelsTableModel::getData(const QModelIndex &index) const

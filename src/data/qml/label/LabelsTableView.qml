@@ -16,6 +16,7 @@ Rectangle {
     property DataManager dataManager
     property ImageLabelsTableModel imageLabelsTable: dataManager ? dataManager.imageLabelsTable : null
     property ItemSelectionModel selection: imageLabelsTable ? imageLabelsTable.selection : null
+    readonly property bool tableActive: dataManager !== null && imageLabelsTable !== null
 
     property real rowHeight: 24
     property real classColumnWidth: 120
@@ -24,6 +25,9 @@ Rectangle {
     function preferredColumnWidth(column) {
         if (column === 0) {
             return classColumnWidth
+        }
+        if (!tableActive) {
+            return minimumColumnWidth
         }
         let dataColumns = Math.max(1, tableView.columns - 1)
         let availableWidth = tableView.view.width - tableView.columnWidth(0) - 8
@@ -91,104 +95,113 @@ Rectangle {
             font: QuiFont.Subtitle
         }
 
-        QuiTableView {
-            id: tableView
+        Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            headerHeight: 32
-            rowHeight: control.rowHeight
-            headerColor: QuiColor.Background
-            headerTextColor: "white"
-            columnSpacing: 2
-            minimumColumnWidth: control.minimumColumnWidth
-            columnSource: [
-                {
-                    width: control.classColumnWidth,
-                    minimumWidth: control.minimumColumnWidth,
-                    frozen: true
+
+            QuiTableView {
+                id: tableView
+                anchors.fill: parent
+                headerHeight: 32
+                rowHeight: control.rowHeight
+                headerColor: QuiColor.Background
+                headerTextColor: "white"
+                columnSpacing: 2
+                minimumColumnWidth: control.minimumColumnWidth
+                columnSource: [
+                    {
+                        width: control.classColumnWidth,
+                        minimumWidth: control.minimumColumnWidth,
+                        frozen: true
+                    }
+                ]
+                model: control.tableActive ? imageLabelsTable : null
+
+                columnWidthProvider: function(column) {
+                    return control.preferredColumnWidth(column)
                 }
-            ]
-            model: imageLabelsTable
 
-            columnWidthProvider: function(column) {
-                return control.preferredColumnWidth(column)
-            }
+                rowHeightProvider: function(row) {
+                    return control.rowHeight
+                }
 
-            rowHeightProvider: function(row) {
-                return rowHeight
-            }
+                delegate: DelegateChooser {
 
-            delegate: DelegateChooser {
+                    DelegateChoice {
+                        column: 0
+                        ClassColumnDelegate {
+                            implicitWidth: tableView.columnWidth(column)
+                            implicitHeight: control.rowHeight
+                            mdata: model.class_data
+                            selected: model.selected ?? false
+                        }
+                    }
 
-                DelegateChoice {
-                    column: 0
-                    ClassColumnDelegate {
-                        implicitWidth: tableView.columnWidth(column)
-                        implicitHeight: rowHeight
-                        mdata: model.class_data
-                        selected: model.selected ?? false
+                    DelegateChoice {
+                        DataColumnDelegate {
+                            implicitWidth: tableView.columnWidth(column)
+                            implicitHeight: control.rowHeight
+                            mdata: model.data
+                            selected: model.selected ?? false
+                        }
                     }
                 }
+            }
 
-                DelegateChoice {
-                    DataColumnDelegate {
-                        implicitWidth: tableView.columnWidth(column)
-                        implicitHeight: rowHeight
-                        mdata: model.data
-                        selected: model.selected ?? false
+            MouseArea {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.topMargin: tableView.headerHeight
+                anchors.bottom: parent.bottom
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                enabled: control.tableActive
+                z: 20
+                onClicked: function(mouse) {
+                    control.forceActiveFocus()
+                    if (!control.tableActive || selection === null) {
+                        return
+                    }
+                    let pos = mapToItem(tableView.view, mouse.x, mouse.y)
+                    if (pos.x < 0 || pos.y < 0 || pos.x > tableView.view.width || pos.y > tableView.view.height) {
+                        return
+                    }
+                    let row = Math.floor((pos.y + tableView.view.contentY) / control.rowHeight)
+                    if (row < 0) {
+                        return
+                    }
+                    if (row >= imageLabelsTable.rowCount()) {
+                        control.clearSelection()
+                        return
+                    }
+                    let tmpIndex = imageLabelsTable.index(row, 0)
+                    if (imageLabelsTable.lastIndex === -1) {
+                        imageLabelsTable.lastIndex = row
+                    }
+                    if (mouse.button === Qt.LeftButton || (mouse.button === Qt.RightButton && !selection.isSelected(tmpIndex))) {
+                        if (mouse.modifiers & Qt.ShiftModifier) { // shift 多选
+                            control.shiftSelect(row, imageLabelsTable.lastIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
+                        } else if (mouse.modifiers & Qt.ControlModifier) { // ctrl 多选
+                            control.select(tmpIndex, ItemSelectionModel.Select | ItemSelectionModel.Rows)
+                        } else { // 单选
+                            control.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
+                            imageLabelsTable.lastIndex = row
+                        }
+                    }
+                    if (mouse.button === Qt.RightButton) {
+                        tableViewMenu.popup()
                     }
                 }
             }
         }
     }
 
-    Keys.enabled: control.visible
+    Keys.enabled: control.visible && control.tableActive
     Keys.onPressed: function(event) {
         if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
             control.selectAll()
         } else if (event.key === Qt.Key_Delete && selection && selection.hasSelection) {
             deleteConfirmDialog.open()
-        }
-    }
-
-    MouseArea {
-        parent: tableView.bodyOverlay
-        anchors.fill: parent
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onClicked: function(mouse) {
-            control.forceActiveFocus()
-            if (selection === null) {
-                return
-            }
-            let pos = mapToItem(tableView.view, mouse.x, mouse.y)
-            if (pos.x < 0 || pos.y < 0 || pos.x > tableView.view.width || pos.y > tableView.view.height) {
-                return
-            }
-            let row = Math.floor((pos.y + tableView.view.contentY) / rowHeight)
-            if (row < 0) {
-                return
-            }
-            if (row >= imageLabelsTable.rowCount()) {
-                control.clearSelection()
-                return
-            }
-            let tmpIndex = imageLabelsTable.index(row, 0)
-            if (imageLabelsTable.lastIndex === -1) {
-                imageLabelsTable.lastIndex = row
-            }
-            if (mouse.button === Qt.LeftButton || (mouse.button === Qt.RightButton && !selection.isSelected(tmpIndex))) {
-                if (mouse.modifiers & Qt.ShiftModifier) { // shift 多选
-                    control.shiftSelect(row, imageLabelsTable.lastIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
-                } else if (mouse.modifiers & Qt.ControlModifier) { // ctrl 多选
-                    control.select(tmpIndex, ItemSelectionModel.Select | ItemSelectionModel.Rows)
-                } else { // 单选
-                    control.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
-                    imageLabelsTable.lastIndex = row
-                }
-            }
-            if (mouse.button === Qt.RightButton) {
-                tableViewMenu.popup()
-            }
         }
     }
 
@@ -221,7 +234,7 @@ Rectangle {
     }
 
     function selectAndScrollToRow(row) {
-        if (!selection || !imageLabelsTable) {
+        if (!control.tableActive || !selection || !imageLabelsTable) {
             return
         }
         
@@ -230,11 +243,11 @@ Rectangle {
         control.select(tmpIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
         
         // Calculate the row position and scroll to make it visible
-        let rowY = row * rowHeight
+        let rowY = row * control.rowHeight
         let viewportHeight = tableView.view.height
         
         // Check if the row is not visible in the current viewport
-        if (rowY < tableView.view.contentY || rowY + rowHeight > tableView.view.contentY + viewportHeight) {
+        if (rowY < tableView.view.contentY || rowY + control.rowHeight > tableView.view.contentY + viewportHeight) {
             // Scroll to position the row in the middle of the viewport
             tableView.view.contentY = Math.max(0, rowY - viewportHeight / 2)
         }

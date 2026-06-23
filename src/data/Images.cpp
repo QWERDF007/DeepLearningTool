@@ -391,6 +391,9 @@ void ImageInstancesListModel::shiftSelect(int current_index, int previous_index,
 
 void ImageInstancesListModel::selectAll()
 {
+    if (rowCount() <= 0)
+        return;
+
     QItemSelection selection;
     selection.select(index(0), index(rowCount() - 1));
     selection_->select(selection, QItemSelectionModel::Select);
@@ -735,34 +738,28 @@ std::set<int64_t> ImageInstancesListModel::getImageTagIds(const int64_t image_id
 
 void ImageInstancesListModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)
 {
-    const QModelIndexList &dselected_items = deselected.indexes();
-    int                    top{-1};
-    int                    bottom{-1};
-    for (const QModelIndex &index : dselected_items)
+    const auto emitSelectionChanged = [this](const QItemSelection &selection)
     {
-        const int row = index.row();
-        if (top == -1)
-            top = row;
-        else
-            top = std::min(top, row);
-        bottom = std::max(bottom, row);
-    }
-    emit dataChanged(index(top), index(bottom), {SelectedRole});
+        const QModelIndexList items = selection.indexes();
+        int                   top{-1};
+        int                   bottom{-1};
+        for (const QModelIndex &index : items)
+        {
+            const int row = index.row();
+            if (row < 0 || row >= rowCount())
+                continue;
+            if (top == -1)
+                top = row;
+            else
+                top = std::min(top, row);
+            bottom = std::max(bottom, row);
+        }
+        if (top >= 0 && bottom >= top)
+            emit dataChanged(index(top), index(bottom), {SelectedRole});
+    };
 
-    top    = -1;
-    bottom = -1;
-
-    const QModelIndexList &selected_items = selected.indexes();
-    for (const QModelIndex &index : selected_items)
-    {
-        const int row = index.row();
-        if (top == -1)
-            top = row;
-        else
-            top = std::min(top, row);
-        bottom = std::max(bottom, row);
-    }
-    emit dataChanged(index(top), index(bottom), {SelectedRole});
+    emitSelectionChanged(deselected);
+    emitSelectionChanged(selected);
 }
 
 void ImageInstancesListModel::onCurrentChanged(const QModelIndex &current, const QModelIndex &previous)
