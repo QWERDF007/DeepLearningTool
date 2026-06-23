@@ -3,6 +3,7 @@
 #include "core/CoreDef.h"
 #include "database/DataBase.h"
 #include "model/ModelManager.h"
+#include "settings/GlobalSettings.h"
 
 #include <spdlog/spdlog.h>
 
@@ -13,6 +14,28 @@
 #include <chrono>
 
 namespace dltool::project {
+
+namespace {
+
+constexpr int kDefaultMaxRecentProjects = 10;
+constexpr int kMinRecentProjects        = 1;
+constexpr int kMaxRecentProjects        = 50;
+
+int configuredMaxRecentProjects()
+{
+    bool ok = false;
+    int max_recent_projects
+        = dltool::settings::GlobalSettings::getInstance()
+              ->valueForField(static_cast<int>(dltool::settings::accessor::Key::Software),
+                              static_cast<int>(dltool::settings::field::Key::MaxRecentProjects),
+                              kDefaultMaxRecentProjects)
+              .toInt(&ok);
+    if (!ok)
+        max_recent_projects = kDefaultMaxRecentProjects;
+    return std::clamp(max_recent_projects, kMinRecentProjects, kMaxRecentProjects);
+}
+
+} // namespace
 
 Project::Project(const QString &name, const int method, const QString &path, const QString &description,
                  const QString image_base_path, const qint64 ctime, const qint64 mtime, QObject *parent)
@@ -151,7 +174,7 @@ int RectentProjects::rowCount(const QModelIndex &parent) const
 {
     if (parent.isValid())
         return 0;
-    return static_cast<int>(project_infos.size());
+    return visibleProjectCount();
 }
 
 QVariant RectentProjects::data(const QModelIndex &index, int role) const
@@ -191,17 +214,22 @@ QHash<int, QByteArray> RectentProjects::roleNames() const
 
 bool RectentProjects::insertRows(int row, int count, const QModelIndex &parent)
 {
-    if (count < 1 || row < 0 || row > rowCount(parent))
+    const int visible_count = rowCount(parent);
+    if (count < 1 || row < 0 || row > visible_count)
         return false;
-    beginInsertRows(QModelIndex(), row, row + count - 1);
+    const bool notify_insert = visible_count < configuredMaxRecentProjects();
+    if (notify_insert)
+        beginInsertRows(QModelIndex(), row, row + count - 1);
     project_infos.insert(project_infos.begin() + row, count, ProjectBaseInfo{});
-    endInsertRows();
+    if (notify_insert)
+        endInsertRows();
     return true;
 }
 
 bool RectentProjects::removeRows(int row, int count, const QModelIndex &parent)
 {
-    if (count <= 0 || row < 0 || (row + count) > rowCount(parent))
+    const int visible_count = rowCount(parent);
+    if (count <= 0 || row < 0 || (row + count) > visible_count)
         return false;
     beginRemoveRows(QModelIndex(), row, row + count - 1);
     project_infos.erase(project_infos.begin() + row, project_infos.begin() + row + count);
@@ -211,19 +239,29 @@ bool RectentProjects::removeRows(int row, int count, const QModelIndex &parent)
 
 bool RectentProjects::addProject(const QString &path)
 {
-    const int row = 0;
-    if (!insertRow(row))
-        return false;
-    ProjectBaseInfo &info = project_infos[row];
-
     QString err_msg;
     bool    ok = database_->addProject(path, err_msg);
     if (ok)
     {
         spdlog::info("添加最近项目: {}", path.toUtf8().constData());
+        ProjectBaseInfo info;
         info.path = path;
         dltool::database::ProjectDataBase::getProjectBaseInfo(info.path, info.name, info.mtime, err_msg);
-        emit dataChanged(index(row), index(row), {NameRole, PathRole, ToolTipRole});
+
+        const int  old_visible_count = rowCount();
+        const bool append_visible     = old_visible_count < configuredMaxRecentProjects();
+        if (append_visible)
+            beginInsertRows(QModelIndex(), 0, 0);
+        else
+            beginResetModel();
+
+        project_infos.insert(project_infos.begin(), info);
+
+        if (append_visible)
+            endInsertRows();
+        else
+            endResetModel();
+
         selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
         selection_->setCurrentIndex(index(0), QItemSelectionModel::ClearAndSelect);
         return true;
@@ -245,7 +283,8 @@ bool RectentProjects::updateProjectBaseInfo(const QString &path, const QString &
         {
             project_infos[i].name  = new_name;
             project_infos[i].mtime = new_mtime;
-            emit dataChanged(index(i), index(i), {NameRole, ToolTipRole});
+            if (i < rowCount())
+                emit dataChanged(index(i), index(i), {NameRole, ToolTipRole});
             ok = true;
             break;
         }
@@ -263,9 +302,15 @@ bool RectentProjects::openProject(const QString &path)
         if (info.path == path) // 将对应位置的数据删除，并重新插入到队首
         {
             info.path = path;
+            const bool was_visible = i < rowCount();
+            if (!was_visible)
+                beginResetModel();
             project_infos.erase(project_infos.begin() + i);
             project_infos.insert(project_infos.begin(), info);
-            emit dataChanged(index(0), index(i), {NameRole, PathRole, ToolTipRole});
+            if (was_visible)
+                emit dataChanged(index(0), index(i), {NameRole, PathRole, ToolTipRole});
+            else
+                endResetModel();
             selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
             selection_->setCurrentIndex(index(0), QItemSelectionModel::ClearAndSelect);
             return true;
@@ -283,7 +328,22 @@ bool RectentProjects::removeProject(const QString &path)
         if (info.path == path)
         {
             const int idx = static_cast<int>(i);
-            removeRow(idx);
+            const bool was_visible = idx < rowCount();
+            const bool has_hidden_replacement = static_cast<int>(project_infos.size()) > rowCount();
+            if (was_visible && has_hidden_replacement)
+            {
+                beginResetModel();
+                project_infos.erase(project_infos.begin() + idx);
+                endResetModel();
+            }
+            else if (was_visible)
+            {
+                removeRow(idx);
+            }
+            else
+            {
+                project_infos.erase(project_infos.begin() + idx);
+            }
             if (project_infos.size() > 0)
             {
                 selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
@@ -343,6 +403,11 @@ QVariant RectentProjects::getSelected(const QModelIndex &index) const
             return true;
     }
     return false;
+}
+
+int RectentProjects::visibleProjectCount() const
+{
+    return std::min(static_cast<int>(project_infos.size()), configuredMaxRecentProjects());
 }
 
 void RectentProjects::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)

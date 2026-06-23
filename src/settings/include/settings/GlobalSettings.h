@@ -42,6 +42,7 @@ public:
                                const QVariant &fallback = {}) const;
     Q_INVOKABLE QVariant valueFor(int accessor_key, const QString &property_name,
                                   const QVariant &fallback = {}) const;
+    Q_INVOKABLE QVariant valueForField(int accessor_key, int field_key, const QVariant &fallback = {}) const;
     Q_INVOKABLE bool setValue(const QString &accessor_path, const QString &property_name, const QVariant &value);
     Q_INVOKABLE bool setValueFor(int accessor_key, const QString &property_name, const QVariant &value);
     Q_INVOKABLE bool setCatalogValue(const QString &group_key, const QString &name, const QVariant &value);
@@ -55,6 +56,7 @@ private:
     void scheduleSave();
     void connectAutoSave();
     void rebuildSettingsObjects();
+    void applyAutoSaveSettings();
     void handleCatalogValueChanged(const QString &group_key, const QString &name, const QVariant &value);
 
     SettingsNamespace *ensureNamespace(const QString &accessor_path);

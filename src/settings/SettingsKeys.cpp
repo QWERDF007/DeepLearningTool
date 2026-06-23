@@ -35,6 +35,14 @@ QString fieldName(const field::Key key)
         return QStringLiteral("model");
     case field::Key::FeatureName:
         return QStringLiteral("feature_name");
+    case field::Key::MaxRecentProjects:
+        return QStringLiteral("max_recent_projects");
+    case field::Key::AutoSaveInterval:
+        return QStringLiteral("auto_save_interval");
+    case field::Key::AutoSaveEnabled:
+        return QStringLiteral("auto_save_enabled");
+    case field::Key::PythonEnvPath:
+        return QStringLiteral("python_env_path");
     }
     return {};
 }

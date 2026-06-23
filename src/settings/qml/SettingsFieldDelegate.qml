@@ -132,10 +132,11 @@ Item {
 
     function usesPath() {
         return controlType === "path" || controlType === "file" || controlType === "folder" || controlType === "directory"
+                || controlType === "dir"
     }
 
     function usesFolderDialog() {
-        return controlType === "folder" || controlType === "directory"
+        return controlType === "folder" || controlType === "directory" || controlType === "dir"
     }
 
     function commit(value) {

@@ -144,8 +144,8 @@ src/database/
 
 职责：
 
-- `GlobalSettings`：QML 单例，聚合项目、数据、高级和 UI 设置，通过 `SettingsDataBase` 保存到软件目录下的 `db/settings.db`。
-- `ProjectSettings`：最近项目数量、自动保存间隔、自动保存开关。
+- `GlobalSettings`：QML 单例，聚合软件、数据、高级和 UI 设置，通过 `SettingsDataBase` 保存到软件目录下的 `db/settings.db`。
+- `SoftwareSetting`：最近项目数量、自动保存间隔、自动保存开关、Python 环境目录。
 - `DataSettings`：缩略图、图像加载、标注显示、图像网格缩放、标注缩略图参数。
 - `AdvancedSettings`：聚合 `ImageSearchSettings` 和 `SmartAnnotationSettings`。
 - `UISettings`：图像亮度/对比度、主题、语言。
@@ -158,12 +158,12 @@ src/settings/
 │   ├── AdvancedSettings.h
 │   ├── DataSettings.h
 │   ├── GlobalSettings.h
-│   ├── ProjectSettings.h
+│   ├── SettingsObjects.h
 │   └── UISettings.h
 ├── AdvancedSettings.cpp
 ├── DataSettings.cpp
 ├── GlobalSettings.cpp
-├── ProjectSettings.cpp
+├── SettingsObjects.cpp
 ├── UISettings.cpp
 └── README.md
 ```

@@ -129,7 +129,7 @@ sequenceDiagram
 - 项目文件后缀为 `.dlpro`，本质是 SQLite 数据库。
 - 表结构定义在 `src/database/include/database/ddl/`，包括 project、recent_projects、datasets、images、label_classes、labels、tag_classes、tags、models，以及多类设置表。
 - `ProjectDataBase` 提供项目元数据、数据集、图像、标签类别、图像标签、标注实例和模型记录的读写。
-- `SettingsDataBase` 使用软件目录下的 `db/settings.db` 保存全局设置，包括图像搜索、智能标注、缩略图、标注显示、图像增强、UI 和项目设置。
+- `SettingsDataBase` 使用软件目录下的 `db/settings.db` 保存全局设置，包括图像搜索、智能标注、缩略图、标注显示、图像增强、UI 和软件设置。
 - `RecentProjectsDataBase` 使用软件目录下的 `db/history.db` 保存最近项目列表。
 - `DataManager` 聚合数据模型，并向 QML 暴露统一入口，同时持有 `ImageSearchController` 和 `SmartAnnotationController`。
 - `ModelManager` 聚合项目模型记录，并通过注册表按任务类型实例化模型配置。
@@ -161,7 +161,7 @@ sequenceDiagram
 | URI | 目标 | 内容 |
 |-----|------|------|
 | `dltool.core` | `dltool_core` | `DeepLearningMethod` |
-| `dltool.settings` | `dltool_settings` | `GlobalSettings`、`ProjectSettings`、`DataSettings`、`AdvancedSettings`、`UISettings` |
+| `dltool.settings` | `dltool_settings` | `GlobalSettings`、`SettingsCatalog`、`SettingsGroup`、`SettingsNamespace` |
 | `dltool.ui` | `dltool_ui` | `DltColor`、`DltFont`、`DltFontIcon`、`UILogger`、`ProgressManager`、`Utils`、`controls/*.qml` |
 | `dltool.model` | `dltool_model` | `ModelManager`、`IModel`、`IModelConfig`、参数模型、Train/Test QML |
 | `dltool.feature` | `dltool_feature` | `ImageSearchController`、`SmartAnnotationController`、图像搜索数据 provider 接口 |

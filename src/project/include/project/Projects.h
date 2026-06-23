@@ -193,6 +193,7 @@ private:
     QVariant getTooltip(const QModelIndex &index) const;
     QVariant getSelected(const QModelIndex &index) const;
 
+    int visibleProjectCount() const;
     void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
     void onCurrentChanged(const QModelIndex &current, const QModelIndex &previous);
 

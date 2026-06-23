@@ -60,7 +60,7 @@ GlobalSettings.setValue("advanced.roiSearch", "topK", 10)
 | `default_value` | 可选重置值，未配置时使用 `value`。 |
 | `value_type` | 值类型，例如 `bool`、`int`、`double`、`string`。 |
 | `value_range` | 数值范围，格式为 `[from, to, step]`。 |
-| `control_type` | 设置页控件类型，例如 `slider`、`spin`、`combo`、`checkbox`、`path`、`folder`。 |
+| `control_type` | 设置页控件类型，例如 `slider`、`spin`、`combo`、`checkbox`、`path`、`dir`、`folder`。 |
 | `options` | 静态选项列表。 |
 | `options_map` | 动态选项映射，常用于根据模型名切换 feature 列表。 |
 | `section` | 设置页内部分组标题。 |

@@ -28,6 +28,10 @@ enum class Key
 {
     Model = 0,
     FeatureName,
+    MaxRecentProjects,
+    AutoSaveInterval,
+    AutoSaveEnabled,
+    PythonEnvPath,
 };
 Q_ENUM_NS(Key)
 QML_NAMED_ELEMENT(SettingsFieldKey)

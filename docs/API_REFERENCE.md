@@ -173,8 +173,8 @@ public:
     QVariantMap loadUiSettings(QString &err_msg) const;
     bool saveUiSettings(const QVariantMap &row, QString &err_msg) const;
 
-    QVariantMap loadProjectSettings(QString &err_msg) const;
-    bool saveProjectSettings(const QVariantMap &row, QString &err_msg) const;
+    QVariantMap loadSettings(const QString &table_name, QString &err_msg) const;
+    bool saveSettings(const QString &table_name, const QVariantMap &row, QString &err_msg) const;
 };
 ```
 
@@ -188,17 +188,13 @@ QML 单例：`GlobalSettings`
 
 ```cpp
 class GlobalSettings : public QObject {
-    Q_PROPERTY(ProjectSettings *project READ project CONSTANT)
-    Q_PROPERTY(DataSettings *data READ data CONSTANT)
-    Q_PROPERTY(AdvancedSettings *advanced READ advanced CONSTANT)
-    Q_PROPERTY(UISettings *ui READ ui CONSTANT)
-
 public:
     Q_INVOKABLE void load();
     Q_INVOKABLE void save();
-    Q_INVOKABLE void reset();
-    Q_INVOKABLE void setAutoSaveEnabled(bool enabled);
-    Q_INVOKABLE bool autoSaveEnabled() const;
+    Q_INVOKABLE QObject *settingsObject(const QString &accessor_path) const;
+    Q_INVOKABLE QVariant value(const QString &accessor_path, const QString &property_name,
+                               const QVariant &fallback = {}) const;
+    Q_INVOKABLE bool setValue(const QString &accessor_path, const QString &property_name, const QVariant &value);
 };
 ```
 
@@ -209,20 +205,20 @@ import dltool.settings
 
 Item {
     Component.onCompleted: {
-        GlobalSettings.data.thumbnailMargin = 12
-        GlobalSettings.advanced.imageSearch.topK = 10
-        GlobalSettings.save()
+        GlobalSettings.setValue("data", "thumbnailMargin", 12)
+        GlobalSettings.setValue("advanced.imageSearch", "topK", 10)
     }
 }
 ```
 
-### ProjectSettings
+### SoftwareSetting
 
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `maxRecentProjects` | `int` | `10` | 最近项目数量限制 |
 | `autoSaveInterval` | `int` | `300` | 自动保存间隔，单位秒 |
 | `autoSaveEnabled` | `bool` | `true` | 是否启用自动保存 |
+| `pythonEnvPath` | `string` | `""` | Python 环境目录 |
 
 ### DataSettings
 

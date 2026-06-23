@@ -4,9 +4,15 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
+
 namespace dltool::settings {
 
 namespace {
+
+constexpr int kDefaultAutoSaveIntervalSeconds = 300;
+constexpr int kMinAutoSaveIntervalSeconds     = 1;
+constexpr int kMaxAutoSaveIntervalSeconds     = 24 * 60 * 60;
 
 QString settingsDatabasePath()
 {
@@ -98,6 +104,7 @@ void GlobalSettings::load()
 
     settings_catalog_->syncAndLoad(settings_database_);
     rebuildSettingsObjects();
+    applyAutoSaveSettings();
     spdlog::info("All settings loaded successfully");
 }
 
@@ -122,6 +129,7 @@ void GlobalSettings::reset()
         if (group != nullptr)
             group->reloadFromModel();
     }
+    applyAutoSaveSettings();
     scheduleSave();
 }
 
@@ -158,6 +166,14 @@ QVariant GlobalSettings::value(const QString &accessor_path, const QString &prop
 QVariant GlobalSettings::valueFor(const int accessor_key, const QString &property_name, const QVariant &fallback) const
 {
     return value(accessorPath(static_cast<accessor::Key>(accessor_key)), property_name, fallback);
+}
+
+QVariant GlobalSettings::valueForField(const int accessor_key, const int field_key, const QVariant &fallback) const
+{
+    const QString accessor_path = accessorPath(static_cast<accessor::Key>(accessor_key));
+    const SettingsFieldModel *model = settings_catalog_ != nullptr ? settings_catalog_->groupForAccessor(accessor_path) : nullptr;
+    const QString property_name = model != nullptr ? model->propertyForName(fieldName(static_cast<field::Key>(field_key))) : QString();
+    return property_name.isEmpty() ? fallback : value(accessor_path, property_name, fallback);
 }
 
 bool GlobalSettings::setValue(const QString &accessor_path, const QString &property_name, const QVariant &value)
@@ -234,11 +250,47 @@ void GlobalSettings::rebuildSettingsObjects()
     }
 }
 
+void GlobalSettings::applyAutoSaveSettings()
+{
+    bool ok = false;
+    int interval_seconds
+        = valueForField(static_cast<int>(accessor::Key::Software), static_cast<int>(field::Key::AutoSaveInterval),
+                        kDefaultAutoSaveIntervalSeconds)
+              .toInt(&ok);
+    if (!ok || interval_seconds <= 0)
+        interval_seconds = kDefaultAutoSaveIntervalSeconds;
+
+    interval_seconds = std::clamp(interval_seconds, kMinAutoSaveIntervalSeconds, kMaxAutoSaveIntervalSeconds);
+
+    if (save_timer_ != nullptr)
+        save_timer_->setInterval(interval_seconds * 1000);
+
+    auto_save_enabled_ = valueForField(static_cast<int>(accessor::Key::Software),
+                                       static_cast<int>(field::Key::AutoSaveEnabled), auto_save_enabled_)
+                             .toBool();
+}
+
 void GlobalSettings::handleCatalogValueChanged(const QString &group_key, const QString &name, const QVariant &value)
 {
     SettingsGroup *group = groups_by_key_.value(group_key, nullptr);
     if (group != nullptr)
         group->updateFromFieldName(name, value);
+
+    const SettingsFieldModel *software_model
+        = settings_catalog_ != nullptr ? settings_catalog_->groupForAccessor(accessorPath(accessor::Key::Software)) : nullptr;
+    const bool auto_save_setting_changed
+        = software_model != nullptr && group_key == software_model->groupKey()
+          && (name == fieldName(field::Key::AutoSaveInterval) || name == fieldName(field::Key::AutoSaveEnabled));
+    if (auto_save_setting_changed)
+    {
+        applyAutoSaveSettings();
+        if (!auto_save_enabled_ || name == fieldName(field::Key::AutoSaveEnabled))
+        {
+            save();
+            return;
+        }
+    }
+
     scheduleSave();
 }
 

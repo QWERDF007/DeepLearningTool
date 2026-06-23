@@ -36,5 +36,5 @@ SoftwareSetting:
       property_name: pythonEnvPath
       value: ""
       value_type: string
-      control_type: path
+      control_type: dir
       section: 软件
