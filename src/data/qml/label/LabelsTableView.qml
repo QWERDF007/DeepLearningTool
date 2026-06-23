@@ -99,7 +99,7 @@ Rectangle {
             rowHeight: control.rowHeight
             headerColor: QuiColor.Background
             headerTextColor: "white"
-            columnSpacing: 0
+            columnSpacing: 2
             minimumColumnWidth: control.minimumColumnWidth
             columnSource: [
                 {
