@@ -18,7 +18,17 @@ Rectangle {
     property ItemSelectionModel selection: imageLabelsTable ? imageLabelsTable.selection : null
 
     property real rowHeight: 24
-    property real colWidth: horizontalHeader.columns > 0 ? (horizontalHeader.width - 8) / horizontalHeader.columns : 1
+    property real classColumnWidth: 120
+    property real minimumColumnWidth: 80
+
+    function preferredColumnWidth(column) {
+        if (column === 0) {
+            return classColumnWidth
+        }
+        let dataColumns = Math.max(1, tableView.columns - 1)
+        let availableWidth = tableView.view.width - tableView.columnWidth(0) - 8
+        return Math.max(minimumColumnWidth, availableWidth / dataColumns)
+    }
 
     Connections {
         target: SignalHelper
@@ -81,47 +91,51 @@ Rectangle {
             font: QuiFont.Subtitle
         }
 
-        ColumnLayout {
+        QuiTableView {
+            id: tableView
             Layout.fillWidth: true
             Layout.fillHeight: true
+            headerHeight: 32
+            rowHeight: control.rowHeight
+            headerColor: QuiColor.Background
+            headerTextColor: "white"
+            columnSpacing: 0
+            minimumColumnWidth: control.minimumColumnWidth
+            columnSource: [
+                {
+                    width: control.classColumnWidth,
+                    minimumWidth: control.minimumColumnWidth,
+                    frozen: true
+                }
+            ]
+            model: imageLabelsTable
 
-            LabelsTableHeader {
-                id: horizontalHeader
-                Layout.fillWidth: true
-                Layout.preferredHeight: 32
-                syncView: tableView
+            columnWidthProvider: function(column) {
+                return control.preferredColumnWidth(column)
             }
 
-            TableView {
-                id: tableView
-                clip: true
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                boundsBehavior: Flickable.StopAtBounds
+            rowHeightProvider: function(row) {
+                return rowHeight
+            }
 
-                model: imageLabelsTable
+            delegate: DelegateChooser {
 
-                ScrollBar.vertical: QuiScrollBar {}
-
-                delegate: DelegateChooser {
-
-                    DelegateChoice{
-                        column: 0
-                        ClassColumnDelegate {
-                            implicitWidth: colWidth
-                            implicitHeight: rowHeight
-                            mdata: model.class_data
-                            selected: model.selected ?? false
-                        }
+                DelegateChoice {
+                    column: 0
+                    ClassColumnDelegate {
+                        implicitWidth: tableView.columnWidth(column)
+                        implicitHeight: rowHeight
+                        mdata: model.class_data
+                        selected: model.selected ?? false
                     }
+                }
 
-                    DelegateChoice {
-                        DataColumnDelegate {
-                            implicitWidth: colWidth
-                            implicitHeight: rowHeight
-                            mdata: model.data
-                            selected: model.selected ?? false
-                        }
+                DelegateChoice {
+                    DataColumnDelegate {
+                        implicitWidth: tableView.columnWidth(column)
+                        implicitHeight: rowHeight
+                        mdata: model.data
+                        selected: model.selected ?? false
                     }
                 }
             }
@@ -138,6 +152,7 @@ Rectangle {
     }
 
     MouseArea {
+        parent: tableView.bodyOverlay
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onClicked: function(mouse) {
@@ -145,8 +160,14 @@ Rectangle {
             if (selection === null) {
                 return
             }
-            let pos = mapToItem(tableView, mouse.x, mouse.y)
-            let row = Math.floor(pos.y / rowHeight)
+            let pos = mapToItem(tableView.view, mouse.x, mouse.y)
+            if (pos.x < 0 || pos.y < 0 || pos.x > tableView.view.width || pos.y > tableView.view.height) {
+                return
+            }
+            let row = Math.floor((pos.y + tableView.view.contentY) / rowHeight)
+            if (row < 0) {
+                return
+            }
             if (row >= imageLabelsTable.rowCount()) {
                 control.clearSelection()
                 return
@@ -210,12 +231,12 @@ Rectangle {
         
         // Calculate the row position and scroll to make it visible
         let rowY = row * rowHeight
-        let viewportHeight = tableView.height
+        let viewportHeight = tableView.view.height
         
         // Check if the row is not visible in the current viewport
-        if (rowY < tableView.contentY || rowY + rowHeight > tableView.contentY + viewportHeight) {
+        if (rowY < tableView.view.contentY || rowY + rowHeight > tableView.view.contentY + viewportHeight) {
             // Scroll to position the row in the middle of the viewport
-            tableView.contentY = Math.max(0, rowY - viewportHeight / 2)
+            tableView.view.contentY = Math.max(0, rowY - viewportHeight / 2)
         }
     }
 
