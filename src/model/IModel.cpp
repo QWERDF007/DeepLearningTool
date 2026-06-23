@@ -56,4 +56,17 @@ const IModelConfig *IModel::config() const
     return config_.get();
 }
 
+QString IModel::uuid() const
+{
+    return uuid_;
+}
+
+void IModel::setUuid(const QString &uuid)
+{
+    if (uuid_ == uuid)
+        return;
+    uuid_ = uuid;
+    emit uuidChanged();
+}
+
 } // namespace dltool::model

@@ -9,6 +9,7 @@
 #include <QtQml>
 #include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -34,6 +35,7 @@ public:
     enum Role
     {
         ModelIdRole = Qt::UserRole + 1,
+        UuidRole,
         NameRole,
         NetworkStructureRole,
         TrainingResultRole,
@@ -59,8 +61,7 @@ public:
 
     Q_INVOKABLE QVariantMap modelAt(int row) const;
 
-    Q_INVOKABLE dltool::model::IModel *modelForId(const qint64 model_id,
-                                                  const QString &network_structure) const;
+    Q_INVOKABLE dltool::model::IModel *modelForUuid(const QString &uuid) const;
 
     int method() const
     {
@@ -83,6 +84,7 @@ private:
     struct ModelRecord
     {
         int64_t model_id{-1};
+        QString uuid;
         QString name;
         QString network_structure;
         QString training_result;
@@ -93,10 +95,13 @@ private:
 
     void    init();
     int     indexOfModel(const int64_t model_id) const;
+    int     indexOfUuid(const QString &uuid) const;
     QString uniqueCopyName(const QString &name) const;
-    IModel *cachedModelForRecord(const qint64 model_id, const QString &network_structure) const;
+    IModel *cachedModelForRecord(const ModelRecord &record) const;
+    static std::string instanceKey(const QString &uuid);
 
     QVariant getModelId(const QModelIndex &index) const;
+    QVariant getUuid(const QModelIndex &index) const;
     QVariant getName(const QModelIndex &index) const;
     QVariant getNetworkStructure(const QModelIndex &index) const;
     QVariant getTrainingResult(const QModelIndex &index) const;
@@ -107,7 +112,7 @@ private:
     dltool::database::ProjectDataBase *database_{nullptr};
     int                                method_{-1};
     std::vector<ModelRecord>           models_;
-    mutable std::unordered_map<qint64, std::unique_ptr<IModel>> model_instances_;
+    mutable std::unordered_map<std::string, std::unique_ptr<IModel>> model_instances_;
 };
 
 } // namespace dltool::model

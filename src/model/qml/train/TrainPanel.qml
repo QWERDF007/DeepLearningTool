@@ -11,8 +11,11 @@ Item {
 
     property ModelManager modelManager: null
     property var currentModelId: -1
+    property string currentModelUuid: ""
+    property string currentModelName: ""
     property string currentNetworkStructure: ""
-    property IModel selectedModel: modelManager && currentModelId >= 0 && currentNetworkStructure.length > 0 ? modelManager.modelForId(currentModelId, currentNetworkStructure) : null
+    property IModel selectedModel: modelManager && currentModelUuid.length > 0 ? modelManager.modelForUuid(currentModelUuid) : null
+    property var taskManager: null
     property ITrainParams trainParams: selectedModel && selectedModel.config ? selectedModel.config.trainParams : null
 
     ColumnLayout {
@@ -67,7 +70,7 @@ Item {
 
                     QuiText {
                         Layout.fillWidth: true
-                        text: control.currentModelId >= 0 ? qsTr("暂无训练结果") : qsTr("请选择模型")
+                        text: control.currentModelUuid.length > 0 ? qsTr("暂无训练结果") : qsTr("请选择模型")
                         color: QuiColor.FontDark
                         wrapMode: Text.Wrap
                     }
@@ -75,6 +78,25 @@ Item {
                     Item {
                         Layout.fillHeight: true
                     }
+                }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 40
+
+            Item {
+                Layout.fillWidth: true
+            }
+
+            QuiButton {
+                Layout.preferredWidth: 110
+                Layout.preferredHeight: 32
+                text: qsTr("添加训练任务")
+                enabled: control.taskManager && control.currentModelUuid.length > 0
+                onClicked: {
+                    control.taskManager.addTask(control.currentModelUuid, control.currentModelName, qsTr("训练"))
                 }
             }
         }

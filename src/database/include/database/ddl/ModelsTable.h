@@ -44,6 +44,22 @@ namespace database
       };
       using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::can_be_null>;
     };
+    struct Uuid
+    {
+      struct _alias_t
+      {
+        static constexpr const char _literal[] =  "uuid";
+        using _name_t = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+        template<typename T>
+        struct _member_t
+          {
+            T uuid;
+            T& operator()() { return uuid; }
+            const T& operator()() const { return uuid; }
+          };
+      };
+      using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::require_insert>;
+    };
     struct NetworkStructure
     {
       struct _alias_t
@@ -144,6 +160,7 @@ namespace database
 
   struct Models: sqlpp::table_t<Models,
                Models_::Id,
+               Models_::Uuid,
                Models_::Name,
                Models_::NetworkStructure,
                Models_::TrainingResult,

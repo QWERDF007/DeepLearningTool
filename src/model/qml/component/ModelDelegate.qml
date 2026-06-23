@@ -14,6 +14,7 @@ Rectangle {
     border.width: selected ? 2 : 1
 
     property var modelId: -1
+    property string modelUuid: ""
     property string modelName: ""
     property string networkStructure: ""
     property string trainingResult: ""

@@ -66,7 +66,8 @@ StackLayout {
     Repeater {
         model: pages
         Loader {
-            sourceComponent: modelData
+            active: index === 0 || content.project !== null
+            sourceComponent: active ? modelData : null
         }
     }
 }

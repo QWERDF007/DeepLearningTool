@@ -1,5 +1,6 @@
 #include "model/ModelManager.h"
 
+#include "common/Utils.h"
 #include "database/DataBase.h"
 #include "model/IParams.h"
 
@@ -53,6 +54,7 @@ void ModelManager::init()
     }
 
     std::vector<int64_t> model_ids;
+    std::vector<QString> uuids;
     std::vector<QString> names;
     std::vector<QString> network_structures;
     std::vector<QString> training_results;
@@ -61,7 +63,7 @@ void ModelManager::init()
     std::vector<qint64>  mtimes;
     QString              err_msg;
 
-    const bool ok = database_->getAllModels(model_ids, names, network_structures, training_results, test_results,
+    const bool ok = database_->getAllModels(model_ids, uuids, names, network_structures, training_results, test_results,
                                             ctimes, mtimes, err_msg);
     if (!ok)
     {
@@ -75,6 +77,7 @@ void ModelManager::init()
     {
         models_.push_back(ModelRecord{
             model_ids[i],
+            uuids[i],
             names[i],
             network_structures[i],
             training_results[i],
@@ -103,6 +106,8 @@ QVariant ModelManager::data(const QModelIndex &index, int role) const
     {
     case ModelIdRole:
         return getModelId(index);
+    case UuidRole:
+        return getUuid(index);
     case NameRole:
         return getName(index);
     case NetworkStructureRole:
@@ -124,6 +129,7 @@ QHash<int, QByteArray> ModelManager::roleNames() const
 {
     return {
         {         ModelIdRole,          "model_id"},
+        {            UuidRole,              "uuid"},
         {            NameRole,              "name"},
         {NetworkStructureRole, "network_structure"},
         {  TrainingResultRole,   "training_result"},
@@ -159,7 +165,9 @@ bool ModelManager::addModel(const QString &name, const QString &network_structur
     QString      err_msg;
     int64_t      model_id{-1};
     const qint64 now = QDateTime::currentSecsSinceEpoch();
-    const bool   ok  = database_->addModel(trimmed_name, trimmed_network_structure, now, now, model_id, err_msg);
+    const QString uuid = dltool::common::uuid();
+    const bool    ok   = database_->addModel(uuid, trimmed_name, trimmed_network_structure, QString(), QString(), now,
+                                             now, model_id, err_msg);
     if (!ok)
     {
         spdlog::error("add model failed, name: {}, network: {}, error: {}", trimmed_name.toUtf8().constData(),
@@ -171,6 +179,7 @@ bool ModelManager::addModel(const QString &name, const QString &network_structur
     beginInsertRows(QModelIndex(), row, row);
     models_.push_back(ModelRecord{
         model_id,
+        uuid,
         trimmed_name,
         trimmed_network_structure,
         QString(),
@@ -234,9 +243,10 @@ bool ModelManager::deleteModel(const qint64 model_id)
     }
 
     beginRemoveRows(QModelIndex(), row, row);
+    const QString uuid = models_[static_cast<size_t>(row)].uuid;
     models_.erase(models_.begin() + row);
     endRemoveRows();
-    model_instances_.erase(model_id);
+    model_instances_.erase(instanceKey(uuid));
     return true;
 }
 
@@ -254,8 +264,9 @@ bool ModelManager::copyModel(const qint64 model_id)
     int64_t            new_model_id{-1};
     const qint64       now         = QDateTime::currentSecsSinceEpoch();
     const QString      copied_name = uniqueCopyName(source.name);
+    const QString      new_uuid    = dltool::common::uuid();
     const bool         ok          = database_ != nullptr
-                 && database_->addModel(copied_name, source.network_structure, source.training_result,
+                 && database_->addModel(new_uuid, copied_name, source.network_structure, source.training_result,
                                         source.test_result, now, now, new_model_id, err_msg);
     if (!ok)
     {
@@ -267,6 +278,7 @@ bool ModelManager::copyModel(const qint64 model_id)
     beginInsertRows(QModelIndex(), insert_row, insert_row);
     models_.push_back(ModelRecord{
         new_model_id,
+        new_uuid,
         copied_name,
         source.network_structure,
         source.training_result,
@@ -276,7 +288,7 @@ bool ModelManager::copyModel(const qint64 model_id)
     });
     endInsertRows();
 
-    const auto source_found = model_instances_.find(model_id);
+    const auto source_found = model_instances_.find(instanceKey(source.uuid));
     if (source_found != model_instances_.end() && source_found->second)
     {
         auto copied_model = createRegisteredModelInstance(source.network_structure);
@@ -297,8 +309,9 @@ bool ModelManager::copyModel(const qint64 model_id)
             }
 
             copied_model->setParent(const_cast<ModelManager *>(this));
+            copied_model->setUuid(new_uuid);
             QQmlEngine::setObjectOwnership(copied_model.get(), QQmlEngine::CppOwnership);
-            model_instances_[new_model_id] = std::move(copied_model);
+            model_instances_[instanceKey(new_uuid)] = std::move(copied_model);
         }
     }
 
@@ -325,6 +338,7 @@ QVariantMap ModelManager::modelAt(const int row) const
     const ModelRecord &model = models_.at(static_cast<size_t>(row));
     return {
         {         QStringLiteral("model_id"), static_cast<qint64>(model.model_id)},
+        {             QStringLiteral("uuid"),                          model.uuid},
         {             QStringLiteral("name"),                          model.name},
         {QStringLiteral("network_structure"),             model.network_structure},
         {  QStringLiteral("training_result"),               model.training_result},
@@ -334,9 +348,12 @@ QVariantMap ModelManager::modelAt(const int row) const
     };
 }
 
-IModel *ModelManager::modelForId(const qint64 model_id, const QString &network_structure) const
+IModel *ModelManager::modelForUuid(const QString &uuid) const
 {
-    return cachedModelForRecord(model_id, network_structure);
+    const int row = indexOfUuid(uuid);
+    if (row < 0)
+        return nullptr;
+    return cachedModelForRecord(models_[static_cast<size_t>(row)]);
 }
 
 bool ModelManager::registerModel(const int method, const QString &type_name, ModelFactory factory)
@@ -451,6 +468,19 @@ int ModelManager::indexOfModel(const int64_t model_id) const
     return -1;
 }
 
+int ModelManager::indexOfUuid(const QString &uuid) const
+{
+    const QString trimmed_uuid = uuid.trimmed();
+    if (trimmed_uuid.isEmpty())
+        return -1;
+    for (int i = 0; i < static_cast<int>(models_.size()); ++i)
+    {
+        if (models_[static_cast<size_t>(i)].uuid == trimmed_uuid)
+            return i;
+    }
+    return -1;
+}
+
 QString ModelManager::uniqueCopyName(const QString &name) const
 {
     const QString base      = QString("%1 Copy").arg(name);
@@ -469,35 +499,47 @@ QString ModelManager::uniqueCopyName(const QString &name) const
     return candidate;
 }
 
-IModel *ModelManager::cachedModelForRecord(const qint64 model_id, const QString &network_structure) const
+IModel *ModelManager::cachedModelForRecord(const ModelRecord &record) const
 {
-    const QString trimmed_network_structure = network_structure.trimmed();
+    const QString trimmed_uuid              = record.uuid.trimmed();
+    const QString trimmed_network_structure = record.network_structure.trimmed();
     if (trimmed_network_structure.isEmpty())
     {
         return nullptr;
     }
 
-    if (model_id < 0 || indexOfModel(model_id) < 0)
+    if (trimmed_uuid.isEmpty() || indexOfUuid(trimmed_uuid) < 0)
     {
         return nullptr;
     }
 
-    auto &model = model_instances_[model_id];
+    auto &model = model_instances_[instanceKey(trimmed_uuid)];
     if (!model || model->typeName() != trimmed_network_structure)
     {
         model = createRegisteredModelInstance(trimmed_network_structure);
         if (model)
         {
             model->setParent(const_cast<ModelManager *>(this));
+            model->setUuid(trimmed_uuid);
             QQmlEngine::setObjectOwnership(model.get(), QQmlEngine::CppOwnership);
         }
     }
     return model.get();
 }
 
+std::string ModelManager::instanceKey(const QString &uuid)
+{
+    return uuid.toStdString();
+}
+
 QVariant ModelManager::getModelId(const QModelIndex &index) const
 {
     return static_cast<qint64>(models_.at(index.row()).model_id);
+}
+
+QVariant ModelManager::getUuid(const QModelIndex &index) const
+{
+    return models_.at(index.row()).uuid;
 }
 
 QVariant ModelManager::getName(const QModelIndex &index) const

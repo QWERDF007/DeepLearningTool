@@ -44,7 +44,7 @@ public:
          "CREATE TABLE tags (id INTEGER NOT NULL PRIMARY KEY, image_id INTEGER NOT NULL REFERENCES images(id), tag_id INTEGER NOT NULL REFERENCES tag_classes(id), "
          "extra_data BLOB, UNIQUE (image_id, tag_id))"},
         {CreateModels,
-         "CREATE TABLE IF NOT EXISTS models (id INTEGER NOT NULL PRIMARY KEY, name TEXT, network_structure TEXT, "
+         "CREATE TABLE IF NOT EXISTS models (id INTEGER NOT NULL PRIMARY KEY, uuid TEXT NOT NULL UNIQUE, name TEXT, network_structure TEXT, "
          "training_result TEXT, test_result TEXT, ctime INTEGER NOT NULL, mtime INTEGER NOT NULL, extra_data BLOB)"},
     };
 

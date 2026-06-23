@@ -15,12 +15,14 @@ Rectangle {
     property alias addEnable: header.addEnable
     property ModelManager modelManager
     property var currentModelId: -1
+    property string currentModelUuid: ""
     property string currentModelName: ""
     property string currentNetworkStructure: ""
     property bool componentCompleted: false
 
     function clearCurrentModel() {
         currentModelId = -1
+        currentModelUuid = ""
         currentModelName = ""
         currentNetworkStructure = ""
         if (view.currentIndex !== -1) {
@@ -35,7 +37,7 @@ Rectangle {
         }
 
         const modelData = modelManager.modelAt(row)
-        if (!modelData || modelData.model_id === undefined || modelData.model_id < 0) {
+        if (!modelData || modelData.model_id === undefined || modelData.model_id < 0 || !modelData.uuid) {
             clearCurrentModel()
             return
         }
@@ -44,6 +46,7 @@ Rectangle {
             view.currentIndex = row
         }
         currentModelId = modelData.model_id
+        currentModelUuid = modelData.uuid || ""
         currentModelName = modelData.name || ""
         currentNetworkStructure = modelData.network_structure || ""
     }
@@ -159,6 +162,7 @@ Rectangle {
                 delegate: ModelDelegate {
                     width: view.width
                     modelId: model.model_id
+                    modelUuid: model.uuid
                     modelName: model.name
                     networkStructure: model.network_structure
                     trainingResult: model.training_result

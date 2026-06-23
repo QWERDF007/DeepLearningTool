@@ -4,6 +4,7 @@
 #include "common/Singleton.h"
 #include "data/DataManager.h"
 #include "model/ModelManager.h"
+#include "model/TaskManager.h"
 
 #include <QAbstractListModel>
 #include <QItemSelectionModel>
@@ -31,6 +32,7 @@ class Project : public QObject
     Q_PROPERTY(QString imageBasePath READ imageBasePath NOTIFY imageBasePathChanged FINAL)
     Q_PROPERTY(data::DataManager *dataManager READ dataManager CONSTANT FINAL)
     Q_PROPERTY(model::ModelManager *modelManager READ modelManager CONSTANT FINAL)
+    Q_PROPERTY(model::TaskManager *taskManager READ taskManager CONSTANT FINAL)
 
 public:
     Project(const QString &name, const int method, const QString &path, const QString &description,
@@ -88,6 +90,11 @@ public:
         return model_manager_;
     }
 
+    model::TaskManager *taskManager() const
+    {
+        return task_manager_;
+    }
+
     /**
      * @brief 设置 QML 引擎引用
      * @param engine QML 应用引擎指针
@@ -112,6 +119,7 @@ private:
 
     data::DataManager *data_manager_{nullptr};
     model::ModelManager *model_manager_{nullptr};
+    model::TaskManager  *task_manager_{nullptr};
 
     QQmlApplicationEngine *qml_engine_{nullptr};
 

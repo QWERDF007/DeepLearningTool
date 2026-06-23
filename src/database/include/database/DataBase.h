@@ -176,13 +176,11 @@ public:
     bool deleteImagesTagsByImagesId(const std::vector<int64_t> &image_ids, QString &err_msg) const;
     bool deleteImagesTagsByTagsId(const std::vector<int64_t> &tag_ids, QString &err_msg) const;
 
-    bool getAllModels(std::vector<int64_t> &model_ids, std::vector<QString> &names,
+    bool getAllModels(std::vector<int64_t> &model_ids, std::vector<QString> &uuids, std::vector<QString> &names,
                       std::vector<QString> &network_structures, std::vector<QString> &training_results,
                       std::vector<QString> &test_results, std::vector<qint64> &ctimes, std::vector<qint64> &mtimes,
                       QString &err_msg) const;
-    bool addModel(const QString &name, const QString &network_structure, const qint64 ctime, const qint64 mtime,
-                  int64_t &model_id, QString &err_msg) const;
-    bool addModel(const QString &name, const QString &network_structure, const QString &training_result,
+    bool addModel(const QString &uuid, const QString &name, const QString &network_structure, const QString &training_result,
                   const QString &test_result, const qint64 ctime, const qint64 mtime, int64_t &model_id,
                   QString &err_msg) const;
     bool updateModelName(const int64_t model_id, const QString &name, const qint64 mtime, QString &err_msg) const;

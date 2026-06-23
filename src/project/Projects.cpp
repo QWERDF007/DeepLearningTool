@@ -10,6 +10,7 @@
 #include <QDateTime>
 #include <QFile>
 #include <QQmlApplicationEngine>
+#include <QTimer>
 #include <algorithm>
 #include <chrono>
 
@@ -58,12 +59,26 @@ Project::Project(const QString &path, QObject *parent)
     database_ = new dltool::database::ProjectDataBase(path_, this);
 }
 
-Project::~Project() {}
+Project::~Project()
+{
+    delete task_manager_;
+    task_manager_ = nullptr;
+
+    delete model_manager_;
+    model_manager_ = nullptr;
+
+    delete data_manager_;
+    data_manager_ = nullptr;
+
+    delete database_;
+    database_ = nullptr;
+}
 
 void Project::init()
 {
     data_manager_ = new data::DataManager(method_, database_, this);
     model_manager_ = new model::ModelManager(method_, database_, this);
+    task_manager_  = new model::TaskManager(this);
 
     // 初始化图像提供器（会自动从 QML 上下文获取引擎）
     data_manager_->initializeQmlEngine(qml_engine_);
@@ -330,6 +345,7 @@ bool RectentProjects::removeProject(const QString &path)
             const int idx = static_cast<int>(i);
             const bool was_visible = idx < rowCount();
             const bool has_hidden_replacement = static_cast<int>(project_infos.size()) > rowCount();
+            selection_->clear();
             if (was_visible && has_hidden_replacement)
             {
                 beginResetModel();
@@ -412,34 +428,28 @@ int RectentProjects::visibleProjectCount() const
 
 void RectentProjects::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)
 {
-    const QModelIndexList &dselected_items = deselected.indexes();
-    int                    top{-1};
-    int                    bottom{-1};
-    for (const QModelIndex &index : dselected_items)
+    const auto emitSelectionChanged = [this](const QItemSelection &selection)
     {
-        const int row = index.row();
-        if (top == -1)
-            top = row;
-        else
-            top = std::min(top, row);
-        bottom = std::max(bottom, row);
-    }
-    emit dataChanged(index(top), index(bottom), {SelectedRole});
+        const QModelIndexList items = selection.indexes();
+        int                   top{-1};
+        int                   bottom{-1};
+        for (const QModelIndex &index : items)
+        {
+            const int row = index.row();
+            if (row < 0 || row >= rowCount())
+                continue;
+            if (top == -1)
+                top = row;
+            else
+                top = std::min(top, row);
+            bottom = std::max(bottom, row);
+        }
+        if (top >= 0 && bottom >= top)
+            emit dataChanged(index(top), index(bottom), {SelectedRole});
+    };
 
-    top    = -1;
-    bottom = -1;
-
-    const QModelIndexList &selected_items = selected.indexes();
-    for (const QModelIndex &index : selected_items)
-    {
-        const int row = index.row();
-        if (top == -1)
-            top = row;
-        else
-            top = std::min(top, row);
-        bottom = std::max(bottom, row);
-    }
-    emit dataChanged(index(top), index(bottom), {SelectedRole});
+    emitSelectionChanged(deselected);
+    emitSelectionChanged(selected);
 }
 
 void RectentProjects::onCurrentChanged(const QModelIndex &current, const QModelIndex &previous)
@@ -521,12 +531,12 @@ void ProjectManager::closeProject()
 {
     if (current_project_)
     {
-        updateProjectMtime(current_project_->path());
-        spdlog::info("关闭项目: {}", current_project_->path().toUtf8().constData());
-        // current_project_->deleteLater();
-        delete current_project_;
+        Project *project = current_project_;
+        updateProjectMtime(project->path());
+        spdlog::info("关闭项目: {}", project->path().toUtf8().constData());
         current_project_ = nullptr;
         emit currentProjectChanged();
+        QTimer::singleShot(0, project, [project]() { project->deleteLater(); });
     }
     else
     {
@@ -563,17 +573,30 @@ void ProjectManager::updateProjectMtime(const QString &path)
 
 void ProjectManager::deleteProject(const QString &path)
 {
-    if (current_project_ && current_project_->path() == path)
-        closeProject();
-    spdlog::info("删除项目: {}", path.toUtf8().constData());
-    removeFromRectentProjects(path);
-    QFile file(path);
-    bool  ok = file.remove();
-    if (!ok)
+    const auto remove_project_file = [this, path]()
     {
-        spdlog::error("删除项目失败: {}, error: {}", path.toUtf8().constData(),
-                      file.errorString().toUtf8().constData());
+        spdlog::info("删除项目: {}", path.toUtf8().constData());
+        removeFromRectentProjects(path);
+        QFile file(path);
+        bool  ok = file.remove();
+        if (!ok)
+        {
+            spdlog::error("删除项目失败: {}, error: {}", path.toUtf8().constData(),
+                          file.errorString().toUtf8().constData());
+        }
+    };
+
+    if (current_project_ && current_project_->path() == path)
+    {
+        Project *project = current_project_;
+        connect(project, &QObject::destroyed, this,
+                [this, remove_project_file](QObject *) { QTimer::singleShot(0, this, remove_project_file); },
+                Qt::SingleShotConnection);
+        closeProject();
+        return;
     }
+
+    remove_project_file();
 }
 
 void ProjectManager::removeFromRectentProjects(const QString &path)

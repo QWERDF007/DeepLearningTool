@@ -36,7 +36,10 @@ Rectangle {
             SplitView.fillWidth: true
             modelManager: labelPage.modelManager
             currentModelId: modelView.currentModelId
+            currentModelUuid: modelView.currentModelUuid
+            currentModelName: modelView.currentModelName
             currentNetworkStructure: modelView.currentNetworkStructure
+            taskManager: ProjectManager.currentProject ? ProjectManager.currentProject.taskManager : null
         }
     }
 }

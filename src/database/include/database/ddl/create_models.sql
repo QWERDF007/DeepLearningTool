@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS models (
     id INTEGER NOT NULL PRIMARY KEY,
+    uuid TEXT NOT NULL UNIQUE,
     name TEXT,
     network_structure TEXT,
     training_result TEXT,

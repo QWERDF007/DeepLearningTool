@@ -1042,7 +1042,8 @@ bool ProjectDataBase::deleteImagesTagsByTagsId(const std::vector<int64_t> &tag_i
     }
 }
 
-bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<QString> &names,
+bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<QString> &uuids,
+                                   std::vector<QString> &names,
                                    std::vector<QString> &network_structures, std::vector<QString> &training_results,
                                    std::vector<QString> &test_results, std::vector<qint64> &ctimes,
                                    std::vector<qint64> &mtimes, QString &err_msg) const
@@ -1056,6 +1057,7 @@ bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<
         }
 
         model_ids.clear();
+        uuids.clear();
         names.clear();
         network_structures.clear();
         training_results.clear();
@@ -1065,15 +1067,16 @@ bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<
 
         auto db = pool_->get();
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
-        auto data
-            = db(sqlpp::select(ModelsTable.id, ModelsTable.name, ModelsTable.networkStructure,
-                               ModelsTable.trainingResult, ModelsTable.testResult, ModelsTable.ctime, ModelsTable.mtime)
-                     .from(ModelsTable)
-                     .unconditionally()
-                     .order_by(ModelsTable.id.asc()));
+        auto data = db(sqlpp::select(ModelsTable.id, ModelsTable.uuid, ModelsTable.name,
+                                     ModelsTable.networkStructure, ModelsTable.trainingResult,
+                                     ModelsTable.testResult, ModelsTable.ctime, ModelsTable.mtime)
+                           .from(ModelsTable)
+                           .unconditionally()
+                           .order_by(ModelsTable.id.asc()));
         for (const auto &row : data)
         {
             model_ids.emplace_back(row.id);
+            uuids.emplace_back(QString::fromStdString(row.uuid));
             names.emplace_back(QString::fromStdString(row.name));
             network_structures.emplace_back(QString::fromStdString(row.networkStructure));
             training_results.emplace_back(QString::fromStdString(row.trainingResult));
@@ -1090,13 +1093,8 @@ bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<
     }
 }
 
-bool ProjectDataBase::addModel(const QString &name, const QString &network_structure, const qint64 ctime,
-                               const qint64 mtime, int64_t &model_id, QString &err_msg) const
-{
-    return addModel(name, network_structure, QString(), QString(), ctime, mtime, model_id, err_msg);
-}
-
-bool ProjectDataBase::addModel(const QString &name, const QString &network_structure, const QString &training_result,
+bool ProjectDataBase::addModel(const QString &uuid, const QString &name, const QString &network_structure,
+                               const QString &training_result,
                                const QString &test_result, const qint64 ctime, const qint64 mtime, int64_t &model_id,
                                QString &err_msg) const
 {
@@ -1111,12 +1109,14 @@ bool ProjectDataBase::addModel(const QString &name, const QString &network_struc
         auto db = pool_->get();
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
 
+        const QByteArray uuid_bytes              = uuid.toUtf8();
         const QByteArray name_bytes              = name.toUtf8();
         const QByteArray network_structure_bytes = network_structure.toUtf8();
         const QByteArray training_result_bytes   = training_result.toUtf8();
         const QByteArray test_result_bytes       = test_result.toUtf8();
         db(sqlpp::insert_into(ModelsTable)
-               .set(ModelsTable.name             = name_bytes.constData(),
+               .set(ModelsTable.uuid             = uuid_bytes.constData(),
+                    ModelsTable.name             = name_bytes.constData(),
                     ModelsTable.networkStructure = network_structure_bytes.constData(),
                     ModelsTable.trainingResult   = training_result_bytes.constData(),
                     ModelsTable.testResult = test_result_bytes.constData(), ModelsTable.ctime = ctime,

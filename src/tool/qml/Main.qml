@@ -21,6 +21,11 @@ ApplicationWindow {
                 _header.currentIndex = 1
             }
         }
+        function onCurrentProjectChanged() {
+            if (!ProjectManager.currentProject) {
+                _header.currentIndex = 0
+            }
+        }
     }
 
     header: Header {

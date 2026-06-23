@@ -68,6 +68,14 @@ Rectangle {
                             categoryStatisticsDialog.open()
                         }
                     }
+                    QuiTextIconButton {
+                        iconSource: QuiFontIcon.TaskView
+                        text: "任务"
+                        enabled: ProjectManager.currentProject !== null
+                        onClicked: {
+                            taskCenterWindow.open()
+                        }
+                    }
                 }
             }
             Rectangle { // splitter
@@ -228,6 +236,11 @@ Rectangle {
     CategoryStatisticsDialog {
         id: categoryStatisticsDialog
         dataManager: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager : null
+    }
+
+    TaskCenterWindow {
+        id: taskCenterWindow
+        transientParent: header.Window.window
     }
 
     SettingsDialog {
