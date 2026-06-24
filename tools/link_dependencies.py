@@ -125,6 +125,14 @@ def link_settings_config(build_dir: Path) -> None:
     link_dir(source, build_dir / "bin" / "config")
 
 
+def link_easytrain_python_runtime(build_dir: Path) -> None:
+    source = REPO_ROOT / "3rdparty" / "EasyTrain" / "src" / "python"
+    if not source.is_dir():
+        warn(f"skip EasyTrain python runtime link, missing {source}")
+        return
+    link_dir(source, build_dir / "bin" / "python")
+
+
 def main() -> int:
     """执行依赖链接主流程。"""
 
@@ -137,6 +145,9 @@ def main() -> int:
 
     link_settings_config(build_dir)
     print("link settings config success")
+
+    link_easytrain_python_runtime(build_dir)
+    print("link EasyTrain python runtime success")
 
     if args.skip_external:
         print("skip external dependencies")
