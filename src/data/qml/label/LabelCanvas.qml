@@ -4,6 +4,7 @@ import QtQuick.Controls
 import dltool.ui
 import dltool.core
 import dltool.data
+import dltool.feature
 import dltool.settings
 import quickui
 

@@ -1,9 +1,7 @@
-#include "data/FewShotLearningController.h"
+#include "feature/FewShotLearningController.h"
 
 #include "core/CoreDef.h"
-#include "data/DataFormat.h"
-#include "data/DataManager.h"
-#include "data/DatasetIO.h"
+#include "feature/FewShotLearningDataProvider.h"
 #include "settings/SettingsKeys.h"
 #include "settings/GlobalSettings.h"
 #include "model/TaskManager.h"
@@ -20,7 +18,9 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QPainter>
+#include <QPolygonF>
 #include <QProcessEnvironment>
+#include <QPointF>
 #include <QRegularExpression>
 #include <QTextStream>
 #include <QTimer>
@@ -31,7 +31,7 @@
 #include <map>
 #include <set>
 
-namespace dltool::data {
+namespace dltool::feature {
 
 namespace {
 
@@ -156,6 +156,26 @@ bool writeTextFile(const QString &path, const QStringList &lines, QString &err_m
     return true;
 }
 
+bool copyFile(const QString &source_path, const QString &target_path, QString &err_msg)
+{
+    QFileInfo target_info(target_path);
+    if (!ensureDir(target_info.dir().absolutePath(), err_msg))
+        return false;
+
+    if (QFile::exists(target_path) && !QFile::remove(target_path))
+    {
+        err_msg = QStringLiteral("无法覆盖文件: %1").arg(target_path);
+        return false;
+    }
+
+    if (!QFile::copy(source_path, target_path))
+    {
+        err_msg = QStringLiteral("复制文件失败: %1 -> %2").arg(source_path, target_path);
+        return false;
+    }
+    return true;
+}
+
 bool copyImageToAlias(const QString &source_path, const QString &target_dir, const QString &alias, QString &copied_path,
                       QString &err_msg)
 {
@@ -165,13 +185,52 @@ bool copyImageToAlias(const QString &source_path, const QString &target_dir, con
         suffix = QStringLiteral("png");
 
     copied_path = QDir(target_dir).filePath(QStringLiteral("%1.%2").arg(alias, suffix));
-    return DatasetIO::copyFile(source_path, copied_path, err_msg);
+    return copyFile(source_path, copied_path, err_msg);
+}
+
+std::vector<QPointF> variantListToPoints(const QVariant &value)
+{
+    std::vector<QPointF> points;
+    const QVariantList   list = value.toList();
+    points.reserve(static_cast<size_t>(list.size()));
+
+    for (const QVariant &item : list)
+    {
+        if (item.canConvert<QVariantMap>())
+        {
+            const QVariantMap map = item.toMap();
+            points.emplace_back(map.value(QStringLiteral("x")).toDouble(), map.value(QStringLiteral("y")).toDouble());
+        }
+        else if (item.canConvert<QVariantList>())
+        {
+            const QVariantList pair = item.toList();
+            if (pair.size() >= 2)
+                points.emplace_back(pair[0].toDouble(), pair[1].toDouble());
+        }
+    }
+
+    return points;
+}
+
+bool getImageDimensions(const QString &image_path, int &width, int &height)
+{
+    QImageReader reader(image_path);
+    const QSize  size = reader.size();
+    if (!size.isValid())
+    {
+        spdlog::warn("无法读取图像尺寸: {}, 错误: {}", image_path.toStdString(), reader.errorString().toStdString());
+        return false;
+    }
+
+    width  = size.width();
+    height = size.height();
+    return true;
 }
 
 QPolygonF variantPointsToPolygon(const QVariant &value)
 {
     QPolygonF polygon;
-    for (const QPointF &point : DatasetIO::variantListToPoints(value))
+    for (const QPointF &point : variantListToPoints(value))
         polygon << point;
     return polygon;
 }
@@ -464,9 +523,9 @@ struct FewShotLearningController::RunContext
     std::vector<PredictionImportTarget> import_targets;
 };
 
-FewShotLearningController::FewShotLearningController(DataManager *data_manager, QObject *parent)
+FewShotLearningController::FewShotLearningController(FewShotLearningDataProvider *data_provider, QObject *parent)
     : QObject(parent)
-    , data_manager_(data_manager)
+    , data_provider_(data_provider)
 {
 }
 
@@ -559,7 +618,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
                                            const std::vector<int64_t> &label_class_ids, RunContext &context,
                                            QString &err_msg) const
 {
-    if (data_manager_ == nullptr)
+    if (data_provider_ == nullptr)
     {
         err_msg = QStringLiteral("数据管理器未初始化");
         return false;
@@ -569,8 +628,8 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         err_msg = QStringLiteral("任务管理器未初始化");
         return false;
     }
-    if (data_manager_->method() != dltool::core::DeepLearningMethod::Detection
-        && data_manager_->method() != dltool::core::DeepLearningMethod::Segmentation)
+    if (data_provider_->method() != dltool::core::DeepLearningMethod::Detection
+        && data_provider_->method() != dltool::core::DeepLearningMethod::Segmentation)
     {
         err_msg = QStringLiteral("小样本学习仅支持检测和分割项目");
         return false;
@@ -644,7 +703,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
     context.support_ratio = std::clamp(valueDouble(few_shot_settings, QStringLiteral("supportRatio"), 0.5), 0.1, 0.9);
 
     const QString output_root_setting = cleanPath(valueString(few_shot_settings, QStringLiteral("outputDir")));
-    const QString project_dir = QFileInfo(data_manager_->databasePath()).absoluteDir().absolutePath();
+    const QString project_dir = QFileInfo(data_provider_->databasePath()).absoluteDir().absolutePath();
     const QString run_id = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss_zzz"));
     context.exp_id       = QStringLiteral("dltool_%1").arg(run_id);
     context.logpath      = QStringLiteral("dltool/%1/fold0").arg(context.exp_id);
@@ -663,7 +722,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
     std::map<int64_t, ClassBuildData> classes;
     for (int64_t label_class_id : label_class_ids)
     {
-        const QString class_name = data_manager_->labelClasses()->getLabelClassName(static_cast<int>(label_class_id));
+        const QString class_name = data_provider_->labelClassName(label_class_id);
         if (class_name.isEmpty())
             continue;
         ClassBuildData data;
@@ -681,14 +740,14 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
     std::map<int64_t, QString> train_images;
     std::map<int64_t, QString> test_images;
     std::map<int64_t, int64_t> test_image_dataset_ids;
-    for (int64_t image_id : data_manager_->allImageIds())
+    for (int64_t image_id : data_provider_->allImageIds())
     {
-        const int64_t dataset_id = data_manager_->imageDatasetId(image_id);
+        const int64_t dataset_id = data_provider_->imageDatasetId(image_id);
         if (selected_train_datasets.find(dataset_id) != selected_train_datasets.end())
-            train_images[image_id] = data_manager_->imagePath(image_id);
+            train_images[image_id] = data_provider_->imagePath(image_id);
         if (selected_test_datasets.find(dataset_id) != selected_test_datasets.end())
         {
-            test_images[image_id] = data_manager_->imagePath(image_id);
+            test_images[image_id] = data_provider_->imagePath(image_id);
             test_image_dataset_ids[image_id] = dataset_id;
         }
     }
@@ -698,20 +757,20 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         return false;
     }
 
-    for (int64_t label_id : data_manager_->allLabelIds())
+    for (int64_t label_id : data_provider_->allLabelIds())
     {
-        const int64_t image_id = data_manager_->labelImageId(label_id);
+        const int64_t image_id = data_provider_->labelImageId(label_id);
         if (train_images.find(image_id) == train_images.end())
             continue;
 
-        const int64_t label_class_id = data_manager_->labelInstances()->getLabelClassId(label_id);
+        const int64_t label_class_id = data_provider_->labelClassId(label_id);
         if (selected_classes.find(label_class_id) == selected_classes.end())
             continue;
 
         const QString image_path = train_images[image_id];
         int width = 0;
         int height = 0;
-        if (!DatasetIO::getImageDimensions(image_path, width, height))
+        if (!getImageDimensions(image_path, width, height))
             continue;
 
         QImage &mask = classes[label_class_id].masks_by_image_id[image_id];
@@ -720,7 +779,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
             mask = QImage(width, height, QImage::Format_Grayscale8);
             mask.fill(0);
         }
-        paintLabelToMask(mask, data_manager_->labelData(label_id));
+        paintLabelToMask(mask, data_provider_->labelData(label_id));
     }
 
     for (const auto &[label_class_id, class_data] : classes)
@@ -809,7 +868,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         const QStringList lines = manifest_lines_by_dataset[dataset_id];
         if (lines.empty())
         {
-            err_msg = QStringLiteral("测试数据集 %1 没有图像").arg(data_manager_->getDatasetName(dataset_id));
+            err_msg = QStringLiteral("测试数据集 %1 没有图像").arg(data_provider_->datasetName(dataset_id));
             return false;
         }
 
@@ -990,9 +1049,9 @@ bool FewShotLearningController::startProcess(const RunContext &context, const QS
 
 void FewShotLearningController::finishRun()
 {
-    if (data_manager_ != nullptr)
-        disconnect(data_manager_, &DataManager::dataImportFinished, this,
-                   &FewShotLearningController::handlePredictionImportFinished);
+    if (data_provider_ != nullptr && import_finished_connection_)
+        data_provider_->disconnectImportFinished(import_finished_connection_);
+    import_finished_connection_ = {};
     active_context_.reset();
     stage_                       = RunStage::Idle;
     current_predict_class_index_ = 0;
@@ -1097,7 +1156,7 @@ void FewShotLearningController::handleProcessFinished(int exit_code, QProcess::E
 
 void FewShotLearningController::startPredictionImports()
 {
-    if (data_manager_ == nullptr || active_context_ == nullptr || active_context_->import_targets.empty())
+    if (data_provider_ == nullptr || active_context_ == nullptr || active_context_->import_targets.empty())
     {
         finishRun();
         return;
@@ -1105,14 +1164,15 @@ void FewShotLearningController::startPredictionImports()
 
     importing_predictions_ = true;
     current_import_index_  = 0;
-    connect(data_manager_, &DataManager::dataImportFinished, this,
-            &FewShotLearningController::handlePredictionImportFinished, Qt::UniqueConnection);
+    import_finished_connection_ =
+        data_provider_->connectImportFinished(this, [this](bool success, const QString &message)
+                                             { handlePredictionImportFinished(success, message); });
     startNextPredictionImport();
 }
 
 void FewShotLearningController::startNextPredictionImport()
 {
-    if (!importing_predictions_ || data_manager_ == nullptr || active_context_ == nullptr)
+    if (!importing_predictions_ || data_provider_ == nullptr || active_context_ == nullptr)
     {
         finishRun();
         return;
@@ -1120,15 +1180,16 @@ void FewShotLearningController::startNextPredictionImport()
 
     if (current_import_index_ >= static_cast<int>(active_context_->import_targets.size()))
     {
-        disconnect(data_manager_, &DataManager::dataImportFinished, this,
-                   &FewShotLearningController::handlePredictionImportFinished);
+        if (import_finished_connection_)
+            data_provider_->disconnectImportFinished(import_finished_connection_);
+        import_finished_connection_ = {};
         importing_predictions_ = false;
         finishRun();
         return;
     }
 
     const PredictionImportTarget &target = active_context_->import_targets.at(static_cast<size_t>(current_import_index_));
-    data_manager_->importData(target.dataset_id, DataFormat::Mask, target.manifest_path, prediction_output_dir_);
+    data_provider_->importMaskData(target.dataset_id, target.manifest_path, prediction_output_dir_);
 }
 
 void FewShotLearningController::handlePredictionImportFinished(bool success, const QString &message)
@@ -1139,8 +1200,9 @@ void FewShotLearningController::handlePredictionImportFinished(bool success, con
     if (!success)
     {
         setLastError(message);
-        disconnect(data_manager_, &DataManager::dataImportFinished, this,
-                   &FewShotLearningController::handlePredictionImportFinished);
+        if (data_provider_ != nullptr && import_finished_connection_)
+            data_provider_->disconnectImportFinished(import_finished_connection_);
+        import_finished_connection_ = {};
         importing_predictions_ = false;
         finishRun();
         return;
@@ -1189,4 +1251,4 @@ void FewShotLearningController::setLastError(const QString &last_error)
     emit lastErrorChanged();
 }
 
-} // namespace dltool::data
+} // namespace dltool::feature

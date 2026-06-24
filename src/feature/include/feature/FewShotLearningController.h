@@ -1,7 +1,8 @@
 #pragma once
 
-#include "dltool/data/Export.h"
+#include "dltool/feature/Export.h"
 
+#include <QMetaObject>
 #include <QObject>
 #include <QPointer>
 #include <QProcess>
@@ -16,11 +17,11 @@ namespace dltool::model {
 class TaskManager;
 }
 
-namespace dltool::data {
+namespace dltool::feature {
 
-class DataManager;
+class FewShotLearningDataProvider;
 
-class DATA_API FewShotLearningController : public QObject
+class FEATURE_API FewShotLearningController : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(FewShotLearningController)
@@ -29,7 +30,7 @@ class DATA_API FewShotLearningController : public QObject
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged FINAL)
 
 public:
-    explicit FewShotLearningController(DataManager *data_manager, QObject *parent = nullptr);
+    explicit FewShotLearningController(FewShotLearningDataProvider *data_provider, QObject *parent = nullptr);
     ~FewShotLearningController() override;
 
     bool running() const;
@@ -70,9 +71,10 @@ private:
     void setRunning(bool running);
     void setLastError(const QString &last_error);
 
-    DataManager *data_manager_{nullptr};
+    FewShotLearningDataProvider *data_provider_{nullptr};
     QPointer<dltool::model::TaskManager> task_manager_;
     QProcess *process_{nullptr};
+    QMetaObject::Connection import_finished_connection_;
 
     int train_task_id_{-1};
     int predict_task_id_{-1};
@@ -88,4 +90,4 @@ private:
     QString last_error_;
 };
 
-} // namespace dltool::data
+} // namespace dltool::feature

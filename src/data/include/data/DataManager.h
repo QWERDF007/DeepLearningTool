@@ -7,9 +7,10 @@
 #include "Datasets.h"
 #include "feature/ImageSearchController.h"
 #include "feature/ImageSearchDataProvider.h"
+#include "feature/FewShotLearningController.h"
+#include "feature/FewShotLearningDataProvider.h"
 #include "feature/SmartAnnotationController.h"
 #include "FilterItemsModel.h"
-#include "FewShotLearningController.h"
 #include "GlobalFilter.h"
 #include "ImageTags.h"
 #include "Images.h"
@@ -17,6 +18,7 @@
 #include "LabelClasses.h"
 
 #include <QObject>
+#include <QMetaObject>
 #include <QVariantList>
 #include <QtQml>
 
@@ -35,7 +37,9 @@ class TaskManager;
 
 namespace dltool::data {
 
-class DATA_API DataManager : public QObject, public dltool::feature::ImageSearchDataProvider
+class DATA_API DataManager : public QObject,
+                             public dltool::feature::ImageSearchDataProvider,
+                             public dltool::feature::FewShotLearningDataProvider
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(DataManager)
@@ -51,7 +55,7 @@ class DATA_API DataManager : public QObject, public dltool::feature::ImageSearch
     Q_PROPERTY(GlobalFilter *globalFilter READ globalFilter CONSTANT FINAL)
     Q_PROPERTY(dltool::feature::ImageSearchController *imageSearch READ imageSearch CONSTANT FINAL)
     Q_PROPERTY(dltool::feature::SmartAnnotationController *smartAnnotation READ smartAnnotation CONSTANT FINAL)
-    Q_PROPERTY(dltool::data::FewShotLearningController *fewShotLearning READ fewShotLearning CONSTANT FINAL)
+    Q_PROPERTY(dltool::feature::FewShotLearningController *fewShotLearning READ fewShotLearning CONSTANT FINAL)
     Q_PROPERTY(DatasetFilterItemsModel *datasetFilterItems READ datasetFilterItems CONSTANT FINAL)
     Q_PROPERTY(TagFilterItemsModel *tagFilterItems READ tagFilterItems CONSTANT FINAL)
     Q_PROPERTY(LabelClassFilterItemsModel *labelClassFilterItems READ labelClassFilterItems CONSTANT FINAL)
@@ -117,7 +121,7 @@ public:
         return smart_annotation_;
     }
 
-    dltool::data::FewShotLearningController *fewShotLearning() const
+    dltool::feature::FewShotLearningController *fewShotLearning() const
     {
         return few_shot_learning_;
     }
@@ -142,12 +146,12 @@ public:
         return category_statistics_model_;
     }
 
-    int method() const
+    int method() const override
     {
         return method_;
     }
 
-    QString databasePath() const;
+    QString databasePath() const override;
 
     void setTaskManager(dltool::model::TaskManager *task_manager);
 
@@ -211,7 +215,16 @@ public:
     int64_t              imageDatasetId(int64_t image_id) const override;
     std::vector<int64_t> allLabelIds() const override;
     int64_t              labelImageId(int64_t label_id) const override;
+    int64_t              labelClassId(int64_t label_id) const override;
     QVariantMap          labelData(int64_t label_id) const override;
+    QString              labelClassName(int64_t label_class_id) const override;
+    QString              datasetName(int64_t dataset_id) const override;
+    void                 importMaskData(int64_t dataset_id, const QString &image_manifest_path,
+                                        const QString &prediction_output_dir) override;
+    QMetaObject::Connection connectImportFinished(QObject *context,
+                                                  dltool::feature::FewShotLearningDataProvider::ImportFinishedHandler
+                                                      handler) override;
+    void disconnectImportFinished(const QMetaObject::Connection &connection) override;
     void                 clearImageSearchResults() override;
     void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter) override;
     void clearLabelSearchResults() override;
@@ -263,7 +276,7 @@ private:
     GlobalFilter *global_filter_{nullptr};
     dltool::feature::ImageSearchController     *image_search_{nullptr};
     dltool::feature::SmartAnnotationController *smart_annotation_{nullptr};
-    dltool::data::FewShotLearningController    *few_shot_learning_{nullptr};
+    dltool::feature::FewShotLearningController *few_shot_learning_{nullptr};
 
     DatasetFilterItemsModel    *dataset_filter_items_{nullptr};
     TagFilterItemsModel        *tag_filter_items_{nullptr};

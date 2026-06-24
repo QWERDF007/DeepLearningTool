@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <memory>
+#include <utility>
 
 namespace dltool::data {
 
@@ -99,9 +100,9 @@ void DataManager::init(const int method)
     // Create GlobalFilter and initialize it with the models
     global_filter_ = new GlobalFilter(this, this);
     global_filter_->initializeFilterModules(this);
-    image_search_     = new dltool::feature::ImageSearchController(this, this);
-    smart_annotation_ = new dltool::feature::SmartAnnotationController(this);
-    few_shot_learning_ = new dltool::data::FewShotLearningController(this, this);
+    image_search_      = new dltool::feature::ImageSearchController(this, this);
+    smart_annotation_  = new dltool::feature::SmartAnnotationController(this);
+    few_shot_learning_ = new dltool::feature::FewShotLearningController(this, this);
     if (auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(
             dltool::settings::accessorPath(dltool::settings::accessor::Key::SmartAnnotation)))
     {
@@ -391,6 +392,11 @@ int64_t DataManager::labelImageId(int64_t label_id) const
     return label_instances_ ? label_instances_->getImageId(label_id) : -1;
 }
 
+int64_t DataManager::labelClassId(int64_t label_id) const
+{
+    return label_instances_ ? label_instances_->getLabelClassId(label_id) : -1;
+}
+
 QVariantMap DataManager::labelData(int64_t label_id) const
 {
     if (label_instances_ == nullptr)
@@ -404,6 +410,33 @@ QVariantMap DataManager::labelData(int64_t label_id) const
         return {};
     }
     return instance->data()->dataMap();
+}
+
+QString DataManager::labelClassName(int64_t label_class_id) const
+{
+    return label_classes_ ? label_classes_->getLabelClassName(static_cast<int>(label_class_id)) : QString();
+}
+
+QString DataManager::datasetName(int64_t dataset_id) const
+{
+    return datasets_ ? datasets_->getDatasetName(static_cast<int>(dataset_id)) : QString();
+}
+
+void DataManager::importMaskData(int64_t dataset_id, const QString &image_manifest_path,
+                                 const QString &prediction_output_dir)
+{
+    importData(dataset_id, DataFormat::Mask, image_manifest_path, prediction_output_dir);
+}
+
+QMetaObject::Connection DataManager::connectImportFinished(
+    QObject *context, dltool::feature::FewShotLearningDataProvider::ImportFinishedHandler handler)
+{
+    return connect(this, &DataManager::dataImportFinished, context, std::move(handler));
+}
+
+void DataManager::disconnectImportFinished(const QMetaObject::Connection &connection)
+{
+    QObject::disconnect(connection);
 }
 
 void DataManager::clearImageSearchResults()

@@ -5,6 +5,7 @@ import QtQml.Models
 
 import dltool.ui
 import dltool.data
+import dltool.feature
 import dltool.settings
 import quickui
 

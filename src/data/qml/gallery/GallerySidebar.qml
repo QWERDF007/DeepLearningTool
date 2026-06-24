@@ -1,7 +1,6 @@
 import QtQuick
+import dltool.feature
 import dltool.settings
-
-import "../component"
 
 SettingsSliderSidebar {
     sidebarKey: SettingsSidebar.Gallery

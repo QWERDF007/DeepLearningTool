@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import dltool.feature
 import dltool.project
 
 import "label"

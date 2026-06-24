@@ -3,14 +3,13 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
-import dltool.data
 import dltool.settings
 import quickui
 
 QuiPopup {
     id: dialog
 
-    property DataManager dataManager
+    property var dataManager
     property var queryLabelIds: []
     readonly property var roiSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.RoiSearch)
 
