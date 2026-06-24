@@ -797,15 +797,12 @@ bool ImageSearchController::searchImages(const QVariantList &image_ids, const QV
     return true;
 }
 
-bool ImageSearchController::searchLabelRois(const QVariantList &label_ids, const QVariantList &dataset_ids,
-                                            const QString &model_name, const QString &weights_file,
-                                            const QString &feature_name, bool rebuild_index, int top_k,
-                                            const QString &norm, const QString &preprocess_backend,
-                                            const QString &faiss_backend, const QString &index_storage,
-                                            int disk_build_batch_size, int model_batch_size,
-                                            const QString &model_backend, const QString &model_device,
-                                            int pooled_height, int pooled_width, int sampling_ratio, bool aligned,
-                                            bool use_pca, int pca_dim)
+bool ImageSearchController::searchLabelRois(
+    const QVariantList &label_ids, const QVariantList &dataset_ids, const QString &model_name,
+    const QString &weights_file, const QString &feature_name, bool rebuild_index, int top_k, const QString &norm,
+    const QString &preprocess_backend, const QString &faiss_backend, const QString &index_storage,
+    int disk_build_batch_size, int model_batch_size, const QString &model_backend, const QString &model_device,
+    int pooled_height, int pooled_width, int sampling_ratio, bool aligned, bool use_pca, int pca_dim)
 {
     if (running_)
     {
@@ -845,13 +842,11 @@ bool ImageSearchController::searchLabelRois(const QVariantList &label_ids, const
     {
         if (isKnownUnsupportedRoiModel(request.model_name, defaultModelName()))
         {
-            setLastError(QString("标注搜索需要空间特征图，当前模型 %1 不支持标注搜索")
-                             .arg(request.model_name));
+            setLastError(QString("标注搜索需要空间特征图，当前模型 %1 不支持标注搜索").arg(request.model_name));
         }
         else
         {
-            setLastError(QString("标注搜索未找到当前模型 %1 的空间特征层")
-                             .arg(request.model_name));
+            setLastError(QString("标注搜索未找到当前模型 %1 的空间特征层").arg(request.model_name));
         }
         return false;
     }
@@ -859,9 +854,8 @@ bool ImageSearchController::searchLabelRois(const QVariantList &label_ids, const
     {
         request.feature_name = spatial_features.last();
         dltool::settings::GlobalSettings::getInstance()->setValue(
-            dltool::settings::accessorPath(dltool::settings::accessor::Key::RoiSearch),
-                                                                   QStringLiteral("featureName"),
-                                                                   request.feature_name);
+            dltool::settings::accessorPath(dltool::settings::accessor::Key::RoiSearch), QStringLiteral("featureName"),
+            request.feature_name);
     }
 
     collectGalleryRois(request, dataset_ids_set);
@@ -1084,7 +1078,7 @@ QString ImageSearchController::computeIndexPath(const SearchRequest &request) co
             data_provider_->databasePath(),
             dltool::settings::GlobalSettings::getInstance()
                 ->value(dltool::settings::accessorPath(dltool::settings::accessor::Key::RoiSearch),
-                        QStringLiteral("indexDirectory"))
+                                     QStringLiteral("indexDirectory"))
                 .toString(),
             QStringLiteral("roi_search"));
 
@@ -1110,7 +1104,7 @@ QString ImageSearchController::computeIndexPath(const SearchRequest &request) co
         data_provider_->databasePath(),
         dltool::settings::GlobalSettings::getInstance()
             ->value(dltool::settings::accessorPath(dltool::settings::accessor::Key::ImageSearch),
-                    QStringLiteral("indexDirectory"))
+                                 QStringLiteral("indexDirectory"))
             .toString(),
         QStringLiteral("image_search"));
 
@@ -1305,13 +1299,16 @@ void ImageSearchController::executeSearchWorker(SearchRequest request, QPointer<
                 || response.error.contains(QStringLiteral("RoiSearch requires NCHW feature tensor"))
                 || response.error.contains(QStringLiteral("RoiSearch requires NCHW feature map"))))
         {
-            response.error = QString("标注搜索需要空间特征图: CNN 模型请选择 layer4 等 NCHW 特征层，DINO 模型请选择 x_norm_patchtokens，并使用匹配的权重文件。");
+            response.error = QString(
+                "标注搜索需要空间特征图: CNN 模型请选择 layer4 等 NCHW 特征层，DINO 模型请选择 "
+                "x_norm_patchtokens，并使用匹配的权重文件。");
         }
     }
     catch (...)
     {
         response.success = false;
-        response.error   = request.mode == SearchRequest::Mode::Roi ? QString("未知标注搜索错误") : QString("未知图像搜索错误");
+        response.error
+            = request.mode == SearchRequest::Mode::Roi ? QString("未知标注搜索错误") : QString("未知图像搜索错误");
     }
 
     response.elapsed_ms = static_cast<qint64>(

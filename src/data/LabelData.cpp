@@ -6,10 +6,10 @@
 #include <json.hpp>
 
 #include <QLineF>
-
 #include <algorithm>
 #include <cmath>
 #include <limits>
+
 
 using json = nlohmann::json;
 
@@ -105,22 +105,21 @@ QRectF boundingBoxFromPoints(const std::vector<QPointF> &points)
 void updateBoundingBoxFromPoints(LabelData_t &data, const std::vector<QPointF> &points)
 {
     const QRectF bbox = boundingBoxFromPoints(points);
-    data.x           = bbox.x();
-    data.y           = bbox.y();
-    data.width       = bbox.width();
-    data.height      = bbox.height();
+    data.x            = bbox.x();
+    data.y            = bbox.y();
+    data.width        = bbox.width();
+    data.height       = bbox.height();
 }
 
 QPointF clampPointToRect(const QPointF &point, const QRectF &rect)
 {
-    return QPointF(std::clamp(point.x(), rect.left(), rect.right()),
-                   std::clamp(point.y(), rect.top(), rect.bottom()));
+    return QPointF(std::clamp(point.x(), rect.left(), rect.right()), std::clamp(point.y(), rect.top(), rect.bottom()));
 }
 
 bool isPointNearLabelBounds(const LabelData_t &data, const QPointF &point, double padding = 0.0)
 {
-    return point.x() >= data.x - padding && point.x() <= data.x + data.width + padding
-           && point.y() >= data.y - padding && point.y() <= data.y + data.height + padding;
+    return point.x() >= data.x - padding && point.x() <= data.x + data.width + padding && point.y() >= data.y - padding
+        && point.y() <= data.y + data.height + padding;
 }
 
 bool isPointInPolygon(const QPointF &point, const std::vector<QPointF> &polygon)
@@ -128,13 +127,12 @@ bool isPointInPolygon(const QPointF &point, const std::vector<QPointF> &polygon)
     bool inside = false;
     for (size_t i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++)
     {
-        const QPointF &a = polygon[i];
-        const QPointF &b = polygon[j];
-        const bool intersects = (a.y() > point.y()) != (b.y() > point.y());
+        const QPointF &a          = polygon[i];
+        const QPointF &b          = polygon[j];
+        const bool     intersects = (a.y() > point.y()) != (b.y() > point.y());
         if (intersects)
         {
-            const double x_intersection
-                = (b.x() - a.x()) * (point.y() - a.y()) / (b.y() - a.y()) + a.x();
+            const double x_intersection = (b.x() - a.x()) * (point.y() - a.y()) / (b.y() - a.y()) + a.x();
             if (point.x() < x_intersection)
             {
                 inside = !inside;
@@ -163,13 +161,13 @@ double distanceToSegment(const QPointF &point, const QPointF &a, const QPointF &
         return QLineF(point, a).length();
     }
 
-    const double ax = a.x();
-    const double ay = a.y();
-    const double bx = b.x();
-    const double by = b.y();
-    const double dx = bx - ax;
-    const double dy = by - ay;
-    const double t  = std::clamp(((point.x() - ax) * dx + (point.y() - ay) * dy) / (dx * dx + dy * dy), 0.0, 1.0);
+    const double  ax = a.x();
+    const double  ay = a.y();
+    const double  bx = b.x();
+    const double  by = b.y();
+    const double  dx = bx - ax;
+    const double  dy = by - ay;
+    const double  t  = std::clamp(((point.x() - ax) * dx + (point.y() - ay) * dy) / (dx * dx + dy * dy), 0.0, 1.0);
     const QPointF projection(ax + t * dx, ay + t * dy);
     return QLineF(point, projection).length();
 }
@@ -275,12 +273,12 @@ std::vector<uint8_t> SegLabelData_t::toBlob() const
     }
 
     json j = json{
-        {          "x",      x},
-        {          "y",      y},
-        {      "width",  width},
-        {     "height", height},
+        {          "x",             x},
+        {          "y",             y},
+        {      "width",         width},
+        {     "height",        height},
         {"point_count", points.size()},
-        {     "points", point_array},
+        {     "points",   point_array},
     };
 
     return json::to_bson(j);
@@ -348,19 +346,19 @@ void SegLabelData_t::fromQVariantMap(const QVariantMap &data, const QRectF &imag
 QVariantMap SegLabelData_t::dataMap()
 {
     return QVariantMap{
-        {          "x",                  x},
-        {          "y",                  y},
-        {      "width",              width},
-        {     "height",             height},
+        {          "x",                               x},
+        {          "y",                               y},
+        {      "width",                           width},
+        {     "height",                          height},
         {"point_count", static_cast<int>(points.size())},
-        {     "points", pointsToVariantList(points)},
+        {     "points",     pointsToVariantList(points)},
     };
 }
 
 std::pair<std::vector<QString>, std::vector<QString>> SegLabelData_t::columns()
 {
     return {
-        std::vector<QString>{          "类别", "顶点数", "X", "Y",  "宽度",   "高度"},
+        std::vector<QString>{          "类别",      "顶点数", "X", "Y",  "宽度",   "高度"},
         std::vector<QString>{"label_class_id", "point_count", "x", "y", "width", "height"}
     };
 }
@@ -687,10 +685,10 @@ QVariantMap SegLabelDataHelper::hitTestHandle(const QPointF &pos, const std::uni
         if (QLineF(pos, data->points[i]).length() <= handle_size)
         {
             return QVariantMap{
-                {    "found",                    true},
-                {     "mode",        EditMode::Resize},
-                {"direction",                       i},
-                {   "cursor",   int(Qt::CrossCursor)}
+                {    "found",                 true},
+                {     "mode",     EditMode::Resize},
+                {"direction",                    i},
+                {   "cursor", int(Qt::CrossCursor)}
             };
         }
     }
@@ -703,12 +701,12 @@ QVariantMap SegLabelDataHelper::hitTestHandle(const QPointF &pos, const std::uni
         {
             const int next_index = (i + 1) % static_cast<int>(data->points.size());
             return QVariantMap{
-                {        "found",                   true},
-                {         "mode",         EditMode::Move},
-                {    "direction",  EditDirection::Inside},
-                {   "edge_index",                      i},
+                {          "found",                   true},
+                {           "mode",         EditMode::Move},
+                {      "direction",  EditDirection::Inside},
+                {     "edge_index",                      i},
                 {"edge_next_index",             next_index},
-                {       "cursor", int(Qt::SizeAllCursor)}
+                {         "cursor", int(Qt::SizeAllCursor)}
             };
         }
     }
@@ -775,7 +773,7 @@ QVariantMap SegLabelDataHelper::getEditedData(const QVariantMap &data, const QPo
 
     const QRectF bbox = boundingBoxFromPoints(points);
 
-    QVariantMap new_data = data;
+    QVariantMap new_data    = data;
     new_data["x"]           = bbox.x();
     new_data["y"]           = bbox.y();
     new_data["width"]       = bbox.width();

@@ -131,15 +131,14 @@ public:
                                           const QString &weights_file, const QString &feature_name, bool rebuild_index,
                                           int top_k, const QString &norm, const QString &preprocess_backend,
                                           const QString &faiss_backend, const QString &index_storage,
-                                          int disk_build_batch_size, int model_batch_size,
-                                          const QString &model_backend, const QString &model_device);
+                                          int disk_build_batch_size, int model_batch_size, const QString &model_backend,
+                                          const QString &model_device);
 
     Q_INVOKABLE bool searchImages(const QVariantList &image_ids, const QVariantList &dataset_ids,
-                                  const QString &model_name, const QString &weights_file,
-                                  const QString &feature_name, bool rebuild_index, int top_k, const QString &norm,
-                                  const QString &preprocess_backend, const QString &faiss_backend,
-                                  const QString &index_storage, int disk_build_batch_size, int model_batch_size,
-                                  const QString &model_backend, const QString &model_device);
+                                  const QString &model_name, const QString &weights_file, const QString &feature_name,
+                                  bool rebuild_index, int top_k, const QString &norm, const QString &preprocess_backend,
+                                  const QString &faiss_backend, const QString &index_storage, int disk_build_batch_size,
+                                  int model_batch_size, const QString &model_backend, const QString &model_device);
 
     Q_INVOKABLE bool searchLabelRois(const QVariantList &label_ids, const QVariantList &dataset_ids,
                                      const QString &model_name, const QString &weights_file,
@@ -177,11 +176,10 @@ private:
 
     /// 将 UI 层传入的原始参数统一应用默认值并组装为 SearchRequest
     SearchRequest buildSearchRequest(const QString &model_name, const QString &weights_file,
-                                     const QString &feature_name, bool rebuild_index,
-                                     int top_k, const QString &norm, const QString &preprocess_backend,
-                                     const QString &faiss_backend, const QString &index_storage,
-                                     int disk_build_batch_size, int model_batch_size, const QString &model_backend,
-                                     const QString &model_device);
+                                     const QString &feature_name, bool rebuild_index, int top_k, const QString &norm,
+                                     const QString &preprocess_backend, const QString &faiss_backend,
+                                     const QString &index_storage, int disk_build_batch_size, int model_batch_size,
+                                     const QString &model_backend, const QString &model_device);
 
     // ── 图像收集 ──
 

@@ -2,9 +2,9 @@
 
 #include "core/CoreDef.h"
 #include "feature/FewShotLearningDataProvider.h"
-#include "settings/SettingsKeys.h"
-#include "settings/GlobalSettings.h"
 #include "model/TaskManager.h"
+#include "settings/GlobalSettings.h"
+#include "settings/SettingsKeys.h"
 
 #include <spdlog/spdlog.h>
 
@@ -18,14 +18,13 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QPainter>
+#include <QPointF>
 #include <QPolygonF>
 #include <QProcessEnvironment>
-#include <QPointF>
 #include <QRegularExpression>
 #include <QTextStream>
 #include <QTimer>
 #include <QUuid>
-
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -37,10 +36,10 @@ namespace {
 
 struct ClassBuildData
 {
-    int64_t                    label_class_id{-1};
-    QString                    label_class_name;
-    QString                    class_dir_name;
-    std::map<int64_t, QImage>  masks_by_image_id;
+    int64_t                   label_class_id{-1};
+    QString                   label_class_name;
+    QString                   class_dir_name;
+    std::map<int64_t, QImage> masks_by_image_id;
 };
 
 struct PredictionImportTarget
@@ -89,14 +88,14 @@ QString valueString(const dltool::settings::SettingsGroup *settings, const QStri
 
 int valueInt(const dltool::settings::SettingsGroup *settings, const QString &name, int fallback)
 {
-    bool ok = false;
+    bool      ok    = false;
     const int value = settings != nullptr ? settings->valueOr(name, fallback).toInt(&ok) : fallback;
     return ok ? value : fallback;
 }
 
 double valueDouble(const dltool::settings::SettingsGroup *settings, const QString &name, double fallback)
 {
-    bool ok = false;
+    bool         ok    = false;
     const double value = settings != nullptr ? settings->valueOr(name, fallback).toDouble(&ok) : fallback;
     return ok ? value : fallback;
 }
@@ -107,7 +106,7 @@ QString pythonExecutableFromEnvPath(const QString &env_path)
     if (info.isFile())
         return info.absoluteFilePath();
 
-    const QDir dir(info.absoluteFilePath());
+    const QDir        dir(info.absoluteFilePath());
     const QStringList candidates = {
         QStringLiteral("python.exe"),
         QStringLiteral("Scripts/python.exe"),
@@ -151,8 +150,7 @@ bool writeTextFile(const QString &path, const QStringList &lines, QString &err_m
 
     QTextStream stream(&file);
     stream.setEncoding(QStringConverter::Utf8);
-    for (const QString &line : lines)
-        stream << line << '\n';
+    for (const QString &line : lines) stream << line << '\n';
     return true;
 }
 
@@ -180,7 +178,7 @@ bool copyImageToAlias(const QString &source_path, const QString &target_dir, con
                       QString &err_msg)
 {
     const QFileInfo source_info(source_path);
-    QString suffix = source_info.suffix().toLower();
+    QString         suffix = source_info.suffix().toLower();
     if (suffix.isEmpty())
         suffix = QStringLiteral("png");
 
@@ -230,8 +228,7 @@ bool getImageDimensions(const QString &image_path, int &width, int &height)
 QPolygonF variantPointsToPolygon(const QVariant &value)
 {
     QPolygonF polygon;
-    for (const QPointF &point : variantListToPoints(value))
-        polygon << point;
+    for (const QPointF &point : variantListToPoints(value)) polygon << point;
     return polygon;
 }
 
@@ -252,9 +249,9 @@ void paintLabelToMask(QImage &mask, const QVariantMap &label_data)
         return;
     }
 
-    const QRectF rect(label_data.value(QStringLiteral("x")).toDouble(), label_data.value(QStringLiteral("y")).toDouble(),
-                      label_data.value(QStringLiteral("width")).toDouble(),
-                      label_data.value(QStringLiteral("height")).toDouble());
+    const QRectF rect(
+        label_data.value(QStringLiteral("x")).toDouble(), label_data.value(QStringLiteral("y")).toDouble(),
+        label_data.value(QStringLiteral("width")).toDouble(), label_data.value(QStringLiteral("height")).toDouble());
     if (rect.width() > 0 && rect.height() > 0)
         painter.fillRect(rect, Qt::white);
 }
@@ -265,7 +262,7 @@ std::vector<int64_t> variantListToIds(const QVariantList &values)
     ids.reserve(static_cast<size_t>(values.size()));
     for (const QVariant &value : values)
     {
-        bool ok = false;
+        bool            ok = false;
         const qlonglong id = value.toLongLong(&ok);
         if (ok && id >= 0)
             ids.push_back(static_cast<int64_t>(id));
@@ -469,10 +466,9 @@ QString sam2ConfigPathFromArchitecture(const QString &architecture_name, QString
         return {};
     }
 
-    const QString path = cleanPath(QDir(fixedSam2ConfigRoot())
-                                       .filePath(QStringLiteral("%1/%2")
-                                                     .arg(sam2ConfigFolder(architecture),
-                                                          sam2ConfigFileName(architecture))));
+    const QString path = cleanPath(
+        QDir(fixedSam2ConfigRoot())
+            .filePath(QStringLiteral("%1/%2").arg(sam2ConfigFolder(architecture), sam2ConfigFileName(architecture))));
     if (!QFileInfo::exists(path))
     {
         err_msg = QStringLiteral("SAM2 配置文件不存在: %1").arg(path);
@@ -505,21 +501,21 @@ struct FewShotLearningController::RunContext
     QString exp_id;
     QString logpath;
 
-    int kshot{1};
-    int epochs{50};
-    int batch_size{2};
-    int num_workers{0};
-    int image_size{1024};
+    int    kshot{1};
+    int    epochs{50};
+    int    batch_size{2};
+    int    num_workers{0};
+    int    image_size{1024};
     double lr{1e-4};
     double weight_decay{1e-6};
     double support_ratio{0.5};
 
-    int train_task_id{-1};
-    int predict_task_id{-1};
+    int     train_task_id{-1};
+    int     predict_task_id{-1};
     QString task_host;
     quint16 task_port{0};
 
-    QJsonArray classes;
+    QJsonArray                          classes;
     std::vector<PredictionImportTarget> import_targets;
 };
 
@@ -562,8 +558,7 @@ void FewShotLearningController::setTaskManager(dltool::model::TaskManager *task_
                 &FewShotLearningController::handleTaskStopRequested);
 }
 
-bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_ids,
-                                            const QVariantList &test_dataset_ids,
+bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_ids, const QVariantList &test_dataset_ids,
                                             const QVariantList &label_class_ids)
 {
     if (running_)
@@ -582,8 +577,8 @@ bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_id
         return false;
     }
 
-    active_context_ = std::make_unique<RunContext>(std::move(context));
-    stage_ = RunStage::Training;
+    active_context_              = std::make_unique<RunContext>(std::move(context));
+    stage_                       = RunStage::Training;
     current_predict_class_index_ = 0;
 
     if (!startTraining(*active_context_, err_msg))
@@ -650,13 +645,14 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         return false;
     }
 
-    auto *global_settings = dltool::settings::GlobalSettings::getInstance();
-    const auto *few_shot_settings = global_settings->settingsGroup(dltool::settings::accessorPath(
-        dltool::settings::accessor::Key::FewShotLearning));
-    const auto *software_settings = global_settings->settingsGroup(dltool::settings::accessorPath(
-        dltool::settings::accessor::Key::Software));
+    auto       *global_settings   = dltool::settings::GlobalSettings::getInstance();
+    const auto *few_shot_settings = global_settings->settingsGroup(
+        dltool::settings::accessorPath(dltool::settings::accessor::Key::FewShotLearning));
+    const auto *software_settings
+        = global_settings->settingsGroup(dltool::settings::accessorPath(dltool::settings::accessor::Key::Software));
 
-    context.python_executable = pythonExecutableFromEnvPath(valueString(software_settings, QStringLiteral("pythonEnvPath")));
+    context.python_executable
+        = pythonExecutableFromEnvPath(valueString(software_settings, QStringLiteral("pythonEnvPath")));
     if (context.python_executable.isEmpty())
     {
         err_msg = QStringLiteral("请先在软件设置中配置 Python 环境目录");
@@ -665,13 +661,13 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
 
     context.fs_sam2_root    = fixedFsSam2Root();
     context.sam2_checkpoint = runtimePath(valueString(few_shot_settings, QStringLiteral("sam2Checkpoint")));
-    const QString sam2_architecture =
-        global_settings
-            ->valueForField(static_cast<int>(dltool::settings::accessor::Key::FewShotLearning),
-                            static_cast<int>(dltool::settings::field::Key::Sam2Architecture),
-                            sam2ArchitectureName(Sam2Architecture::Sam21HieraSmall))
-            .toString()
-            .trimmed();
+    const QString sam2_architecture
+        = global_settings
+              ->valueForField(static_cast<int>(dltool::settings::accessor::Key::FewShotLearning),
+                              static_cast<int>(dltool::settings::field::Key::Sam2Architecture),
+                              sam2ArchitectureName(Sam2Architecture::Sam21HieraSmall))
+              .toString()
+              .trimmed();
     context.sam2_cfg = sam2ConfigPathFromArchitecture(sam2_architecture, err_msg);
     if (context.sam2_cfg.isEmpty())
         return false;
@@ -703,22 +699,22 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
     context.support_ratio = std::clamp(valueDouble(few_shot_settings, QStringLiteral("supportRatio"), 0.5), 0.1, 0.9);
 
     const QString output_root_setting = cleanPath(valueString(few_shot_settings, QStringLiteral("outputDir")));
-    const QString project_dir = QFileInfo(data_provider_->databasePath()).absoluteDir().absolutePath();
-    const QString run_id = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss_zzz"));
-    context.exp_id       = QStringLiteral("dltool_%1").arg(run_id);
-    context.logpath      = QStringLiteral("dltool/%1/fold0").arg(context.exp_id);
-    context.run_dir      = output_root_setting.isEmpty()
-                         ? QDir(project_dir).filePath(QStringLiteral(".dltool/few_shot/%1").arg(run_id))
-                         : QDir(output_root_setting).filePath(run_id);
-    context.custom_dataset_dir = QDir(context.run_dir).filePath(QStringLiteral("custom"));
-    context.query_dir          = QDir(context.run_dir).filePath(QStringLiteral("query"));
-    context.output_dir         = QDir(context.run_dir).filePath(QStringLiteral("predictions"));
-    context.query_txt_path      = QDir(context.query_dir).filePath(QStringLiteral("query.txt"));
-    context.checkpoint_path     = checkpointPath(context.fs_sam2_root, context.logpath);
+    const QString project_dir         = QFileInfo(data_provider_->databasePath()).absoluteDir().absolutePath();
+    const QString run_id              = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss_zzz"));
+    context.exp_id                    = QStringLiteral("dltool_%1").arg(run_id);
+    context.logpath                   = QStringLiteral("dltool/%1/fold0").arg(context.exp_id);
+    context.run_dir                   = output_root_setting.isEmpty()
+                                          ? QDir(project_dir).filePath(QStringLiteral(".dltool/few_shot/%1").arg(run_id))
+                                          : QDir(output_root_setting).filePath(run_id);
+    context.custom_dataset_dir        = QDir(context.run_dir).filePath(QStringLiteral("custom"));
+    context.query_dir                 = QDir(context.run_dir).filePath(QStringLiteral("query"));
+    context.output_dir                = QDir(context.run_dir).filePath(QStringLiteral("predictions"));
+    context.query_txt_path            = QDir(context.query_dir).filePath(QStringLiteral("query.txt"));
+    context.checkpoint_path           = checkpointPath(context.fs_sam2_root, context.logpath);
 
-    const std::set<int64_t> selected_classes(label_class_ids.begin(), label_class_ids.end());
-    const std::set<int64_t> selected_train_datasets(train_dataset_ids.begin(), train_dataset_ids.end());
-    const std::set<int64_t> selected_test_datasets(test_dataset_ids.begin(), test_dataset_ids.end());
+    const std::set<int64_t>           selected_classes(label_class_ids.begin(), label_class_ids.end());
+    const std::set<int64_t>           selected_train_datasets(train_dataset_ids.begin(), train_dataset_ids.end());
+    const std::set<int64_t>           selected_test_datasets(test_dataset_ids.begin(), test_dataset_ids.end());
     std::map<int64_t, ClassBuildData> classes;
     for (int64_t label_class_id : label_class_ids)
     {
@@ -747,7 +743,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
             train_images[image_id] = data_provider_->imagePath(image_id);
         if (selected_test_datasets.find(dataset_id) != selected_test_datasets.end())
         {
-            test_images[image_id] = data_provider_->imagePath(image_id);
+            test_images[image_id]            = data_provider_->imagePath(image_id);
             test_image_dataset_ids[image_id] = dataset_id;
         }
     }
@@ -768,8 +764,8 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
             continue;
 
         const QString image_path = train_images[image_id];
-        int width = 0;
-        int height = 0;
+        int           width      = 0;
+        int           height     = 0;
         if (!getImageDimensions(image_path, width, height))
             continue;
 
@@ -813,7 +809,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         for (const auto &[image_id, mask] : class_data.masks_by_image_id)
         {
             const QString alias = QStringLiteral("img_%1").arg(image_id);
-            QString copied_path;
+            QString       copied_path;
             if (!copyImageToAlias(train_images[image_id], image_dir, alias, copied_path, err_msg))
                 return false;
             if (!mask.save(QDir(mask_dir).filePath(alias + QStringLiteral(".png"))))
@@ -824,8 +820,8 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
             entries.push_back(QStringLiteral("%1,%1").arg(alias));
         }
 
-        const int support_count = std::clamp(static_cast<int>(std::round(entries.size() * context.support_ratio)),
-                                             context.kshot, static_cast<int>(entries.size()) - 1);
+        const int   support_count   = std::clamp(static_cast<int>(std::round(entries.size() * context.support_ratio)),
+                                                 context.kshot, static_cast<int>(entries.size()) - 1);
         QStringList support_entries = entries.mid(0, support_count);
         QStringList query_entries   = entries.mid(support_count);
         if (query_entries.empty())
@@ -844,12 +840,12 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         context.classes.append(class_object);
     }
 
-    QStringList query_lines;
+    QStringList                    query_lines;
     std::map<int64_t, QStringList> manifest_lines_by_dataset;
     for (const auto &[image_id, image_path] : test_images)
     {
         const QString alias = QStringLiteral("img_%1").arg(image_id);
-        QString copied_path;
+        QString       copied_path;
         if (!copyImageToAlias(image_path, context.query_dir, alias, copied_path, err_msg))
             return false;
         const QString line = QStringLiteral("%1,%2").arg(alias, image_path);
@@ -872,7 +868,8 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
             return false;
         }
 
-        const QString manifest_path = QDir(context.run_dir).filePath(QStringLiteral("test_images_%1.txt").arg(dataset_id));
+        const QString manifest_path
+            = QDir(context.run_dir).filePath(QStringLiteral("test_images_%1.txt").arg(dataset_id));
         if (!writeTextFile(manifest_path, lines, err_msg))
             return false;
         context.import_targets.push_back(PredictionImportTarget{dataset_id, manifest_path});
@@ -886,12 +883,10 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
     }
 
     const QString task_uuid = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    context.train_task_id
-        = task_manager_->addExternalTask(task_uuid, fewShotTaskName(FewShotTaskKind::Train),
-                                         fewShotTaskType(FewShotTaskKind::Train));
-    context.predict_task_id
-        = task_manager_->addExternalTask(task_uuid, fewShotTaskName(FewShotTaskKind::Predict),
-                                         fewShotTaskType(FewShotTaskKind::Predict));
+    context.train_task_id   = task_manager_->addExternalTask(task_uuid, fewShotTaskName(FewShotTaskKind::Train),
+                                                             fewShotTaskType(FewShotTaskKind::Train));
+    context.predict_task_id = task_manager_->addExternalTask(task_uuid, fewShotTaskName(FewShotTaskKind::Predict),
+                                                             fewShotTaskType(FewShotTaskKind::Predict));
     if (context.train_task_id < 0 || context.predict_task_id < 0)
     {
         err_msg = QStringLiteral("创建任务中心任务失败");
@@ -1162,11 +1157,10 @@ void FewShotLearningController::startPredictionImports()
         return;
     }
 
-    importing_predictions_ = true;
-    current_import_index_  = 0;
-    import_finished_connection_ =
-        data_provider_->connectImportFinished(this, [this](bool success, const QString &message)
-                                             { handlePredictionImportFinished(success, message); });
+    importing_predictions_      = true;
+    current_import_index_       = 0;
+    import_finished_connection_ = data_provider_->connectImportFinished(
+        this, [this](bool success, const QString &message) { handlePredictionImportFinished(success, message); });
     startNextPredictionImport();
 }
 
@@ -1183,12 +1177,13 @@ void FewShotLearningController::startNextPredictionImport()
         if (import_finished_connection_)
             data_provider_->disconnectImportFinished(import_finished_connection_);
         import_finished_connection_ = {};
-        importing_predictions_ = false;
+        importing_predictions_      = false;
         finishRun();
         return;
     }
 
-    const PredictionImportTarget &target = active_context_->import_targets.at(static_cast<size_t>(current_import_index_));
+    const PredictionImportTarget &target
+        = active_context_->import_targets.at(static_cast<size_t>(current_import_index_));
     data_provider_->importMaskData(target.dataset_id, target.manifest_path, prediction_output_dir_);
 }
 
@@ -1203,7 +1198,7 @@ void FewShotLearningController::handlePredictionImportFinished(bool success, con
         if (data_provider_ != nullptr && import_finished_connection_)
             data_provider_->disconnectImportFinished(import_finished_connection_);
         import_finished_connection_ = {};
-        importing_predictions_ = false;
+        importing_predictions_      = false;
         finishRun();
         return;
     }

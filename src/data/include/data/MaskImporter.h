@@ -5,7 +5,6 @@
 #include <QPointF>
 #include <QRect>
 #include <QString>
-
 #include <map>
 #include <vector>
 
@@ -33,11 +32,15 @@ private:
     void doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir);
 
     std::vector<QString> scanMaskFiles(const QString &mask_dir) const;
-    bool                 readMaskGeometry(const QString &mask_path, MaskGeometry &geometry) const;
-    QVariantMap          maskToLabelData(const MaskGeometry &geometry, int image_width, int image_height) const;
-    QString              labelClassNameForMask(const QString &mask_path, const QString &mask_root) const;
-    QString              imageStemForMask(const QString &mask_path, const QString &mask_root,
-                                          const QString &mask_stem) const;
+
+    bool readMaskGeometry(const QString &mask_path, MaskGeometry &geometry) const;
+
+    QVariantMap maskToLabelData(const MaskGeometry &geometry, int image_width, int image_height) const;
+
+    QString labelClassNameForMask(const QString &mask_path, const QString &mask_root) const;
+
+    QString imageStemForMask(const QString &mask_path, const QString &mask_root, const QString &mask_stem) const;
+
     std::map<QString, QString> loadQueryNameMap(const QString &dir_path) const;
 };
 

@@ -114,20 +114,20 @@ QVariant TaskTableModel::headerData(int section, Qt::Orientation orientation, in
 QHash<int, QByteArray> TaskTableModel::roleNames() const
 {
     return {
-        {       Qt::DisplayRole,        "display"},
-        {          TaskIdRole,        "task_id"},
-        {       ModelUuidRole,     "model_uuid"},
-        {       ModelNameRole,     "model_name"},
-        {        TaskTypeRole,      "task_type"},
-        {          StatusRole,         "status"},
-        {     StatusValueRole,   "status_value"},
-        {       CreatedAtRole,     "created_at"},
-        {     RunningTimeRole,   "running_time"},
-        {        ProgressRole,       "progress"},
-        {         CanStartRole,      "can_start"},
-        {         CanPauseRole,      "can_pause"},
-        {          CanStopRole,       "can_stop"},
-        {        CanFinishRole,     "can_finish"},
+        {Qt::DisplayRole,      "display"},
+        {     TaskIdRole,      "task_id"},
+        {  ModelUuidRole,   "model_uuid"},
+        {  ModelNameRole,   "model_name"},
+        {   TaskTypeRole,    "task_type"},
+        {     StatusRole,       "status"},
+        {StatusValueRole, "status_value"},
+        {  CreatedAtRole,   "created_at"},
+        {RunningTimeRole, "running_time"},
+        {   ProgressRole,     "progress"},
+        {   CanStartRole,    "can_start"},
+        {   CanPauseRole,    "can_pause"},
+        {    CanStopRole,     "can_stop"},
+        {  CanFinishRole,   "can_finish"},
     };
 }
 
@@ -334,19 +334,19 @@ QVariantMap TaskTableModel::taskAt(int row) const
 
     const TaskRecord &task = tasks_.at(static_cast<size_t>(row));
     return {
-        {     QStringLiteral("task_id"),                       task.task_id},
-        {  QStringLiteral("model_uuid"),                    task.model_uuid},
-        {  QStringLiteral("model_name"),                    task.model_name},
-        {   QStringLiteral("task_type"),                     task.task_type},
-        {      QStringLiteral("status"),                   statusText(task)},
-        {QStringLiteral("status_value"),                         task.status},
-        {  QStringLiteral("created_at"),                 createdAtText(task)},
-        {QStringLiteral("running_time"),              runningTimeText(task)},
-        {    QStringLiteral("progress"),                       task.progress},
-        {   QStringLiteral("can_start"),                     canStart(task)},
-        {   QStringLiteral("can_pause"),                     canPause(task)},
-        {    QStringLiteral("can_stop"),                       canStop(task)},
-        {  QStringLiteral("can_finish"),                   canFinish(task)},
+        {     QStringLiteral("task_id"),          task.task_id},
+        {  QStringLiteral("model_uuid"),       task.model_uuid},
+        {  QStringLiteral("model_name"),       task.model_name},
+        {   QStringLiteral("task_type"),        task.task_type},
+        {      QStringLiteral("status"),      statusText(task)},
+        {QStringLiteral("status_value"),           task.status},
+        {  QStringLiteral("created_at"),   createdAtText(task)},
+        {QStringLiteral("running_time"), runningTimeText(task)},
+        {    QStringLiteral("progress"),         task.progress},
+        {   QStringLiteral("can_start"),        canStart(task)},
+        {   QStringLiteral("can_pause"),        canPause(task)},
+        {    QStringLiteral("can_stop"),         canStop(task)},
+        {  QStringLiteral("can_finish"),       canFinish(task)},
     };
 }
 
@@ -447,8 +447,8 @@ QString TaskTableModel::createdAtText(const TaskRecord &task) const
 
 QString TaskTableModel::runningTimeText(const TaskRecord &task) const
 {
-    qint64 seconds = runningTimeSeconds(task);
-    const qint64 hours = seconds / 3600;
+    qint64       seconds = runningTimeSeconds(task);
+    const qint64 hours   = seconds / 3600;
     seconds %= 3600;
     const qint64 minutes = seconds / 60;
     seconds %= 60;

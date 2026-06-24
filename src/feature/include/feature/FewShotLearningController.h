@@ -9,7 +9,6 @@
 #include <QString>
 #include <QVariantList>
 #include <QtQml>
-
 #include <memory>
 #include <vector>
 
@@ -33,7 +32,7 @@ public:
     explicit FewShotLearningController(FewShotLearningDataProvider *data_provider, QObject *parent = nullptr);
     ~FewShotLearningController() override;
 
-    bool running() const;
+    bool    running() const;
     QString lastError() const;
 
     void setTaskManager(dltool::model::TaskManager *task_manager);
@@ -71,23 +70,23 @@ private:
     void setRunning(bool running);
     void setLastError(const QString &last_error);
 
-    FewShotLearningDataProvider *data_provider_{nullptr};
+    FewShotLearningDataProvider         *data_provider_{nullptr};
     QPointer<dltool::model::TaskManager> task_manager_;
-    QProcess *process_{nullptr};
-    QMetaObject::Connection import_finished_connection_;
+    QProcess                            *process_{nullptr};
+    QMetaObject::Connection              import_finished_connection_;
 
-    int train_task_id_{-1};
-    int predict_task_id_{-1};
-    QString prediction_output_dir_;
-    QString checkpoint_path_;
+    int                         train_task_id_{-1};
+    int                         predict_task_id_{-1};
+    QString                     prediction_output_dir_;
+    QString                     checkpoint_path_;
     std::unique_ptr<RunContext> active_context_;
-    RunStage stage_{RunStage::Idle};
-    int current_predict_class_index_{0};
-    int current_import_index_{0};
-    bool importing_predictions_{false};
-    bool running_{false};
-    bool stop_requested_{false};
-    QString last_error_;
+    RunStage                    stage_{RunStage::Idle};
+    int                         current_predict_class_index_{0};
+    int                         current_import_index_{0};
+    bool                        importing_predictions_{false};
+    bool                        running_{false};
+    bool                        stop_requested_{false};
+    QString                     last_error_;
 };
 
 } // namespace dltool::feature

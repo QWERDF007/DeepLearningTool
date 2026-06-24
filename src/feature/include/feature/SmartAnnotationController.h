@@ -8,7 +8,6 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml>
-
 #include <memory>
 
 namespace irt::model {

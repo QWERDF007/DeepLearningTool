@@ -5,8 +5,7 @@
 namespace dltool::model {
 
 ParamDefinition makeIntegerParam(const QString &name_en, const QString &name_cn, const int default_value,
-                                 const int from, const int to, const int step,
-                                 const QString &description)
+                                 const int from, const int to, const int step, const QString &description)
 {
     ParamDefinition param;
     param.name_en       = name_en;

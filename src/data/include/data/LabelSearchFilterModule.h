@@ -26,7 +26,9 @@ public:
     void setEnabled(bool enabled) override;
     bool isEnabled() const override;
     bool isActive() const override;
+
     std::unordered_set<int64_t> getActiveCriteria() const override;
+
     bool isInverted() const override;
     bool passes(int64_t image_id) const override;
     bool passesLabel(int64_t label_id) const;

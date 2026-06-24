@@ -157,11 +157,11 @@ bool TaskCommunicationServer::start(QString *err_msg)
     {
         if (err_msg != nullptr)
             *err_msg = server_->errorString();
-        spdlog::error("任务通信服务启动失败: {}", server_->errorString().toStdString());
+        spdlog::error("任务通信服务启动失败: {}", server_->errorString().toUtf8().constData());
         return false;
     }
 
-    spdlog::info("任务通信服务已启动: {}:{}", host().toStdString(), port());
+    spdlog::info("任务通信服务已启动: {}:{}", host().toUtf8().constData(), port());
     return true;
 }
 
@@ -184,7 +184,7 @@ bool TaskCommunicationServer::sendCommand(int task_id, TaskCommand command, cons
     if (command_name.isEmpty())
         return false;
 
-    QVariantMap message = payload;
+    QVariantMap message                                        = payload;
     message[taskProtocolFieldName(TaskProtocolField::Type)]    = taskMessageTypeName(TaskMessageType::Command);
     message[taskProtocolFieldName(TaskProtocolField::TaskId)]  = task_id;
     message[taskProtocolFieldName(TaskProtocolField::Command)] = command_name;
@@ -263,11 +263,11 @@ void TaskCommunicationServer::handleDisconnected(QTcpSocket *socket)
 
 void TaskCommunicationServer::processLine(QTcpSocket *socket, const QByteArray &line)
 {
-    QJsonParseError error;
+    QJsonParseError     error;
     const QJsonDocument document = QJsonDocument::fromJson(line, &error);
     if (error.error != QJsonParseError::NoError || !document.isObject())
     {
-        spdlog::warn("忽略无效任务通信消息: {}", line.toStdString());
+        spdlog::warn("忽略无效任务通信消息: {}", line.toUtf8().constData());
         return;
     }
 
@@ -283,8 +283,8 @@ void TaskCommunicationServer::processLine(QTcpSocket *socket, const QByteArray &
 
     if (message.task_id >= 0 && socket != nullptr)
     {
-        task_by_socket_[socket]             = message.task_id;
-        socket_by_task_[message.task_id]    = socket;
+        task_by_socket_[socket]          = message.task_id;
+        socket_by_task_[message.task_id] = socket;
     }
 
     emit messageReceived(message);

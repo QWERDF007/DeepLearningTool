@@ -7,7 +7,6 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
-
 #include <utility>
 
 namespace dltool::model {
@@ -24,10 +23,10 @@ ParamDefinition parseParamDefinition(const YAML::Node &node)
     if (!node || !node.IsMap())
         return param;
 
-    param.name_en      = nodeString(node["name_en"]);
-    param.name_cn      = nodeString(node["name_cn"], param.name_en);
-    param.description  = nodeString(node["description"]);
-    param.value        = nodeVariant(node["value"]);
+    param.name_en       = nodeString(node["name_en"]);
+    param.name_cn       = nodeString(node["name_cn"], param.name_en);
+    param.description   = nodeString(node["description"]);
+    param.value         = nodeVariant(node["value"]);
     param.default_value = nodeVariant(node["default_value"]);
     if (!param.default_value.isValid())
         param.default_value = param.value;
@@ -41,8 +40,7 @@ ParamDefinition parseParamDefinition(const YAML::Node &node)
     const YAML::Node options_node = node["options"];
     if (options_node && options_node.IsSequence())
     {
-        for (const YAML::Node &entry : options_node)
-            param.options.append(nodeString(entry));
+        for (const YAML::Node &entry : options_node) param.options.append(nodeString(entry));
     }
 
     return param;
@@ -102,7 +100,7 @@ void parseGroups(const YAML::Node &groups_node, std::vector<ParamGroupDefinition
 
 ModelParamsSchema loadModelParamsSchema(const QString &type_name)
 {
-    const QString trimmed_type_name = type_name.trimmed();
+    const QString     trimmed_type_name = type_name.trimmed();
     ModelParamsSchema schema;
     schema.model_name = trimmed_type_name;
 
@@ -112,25 +110,25 @@ ModelParamsSchema loadModelParamsSchema(const QString &type_name)
     const QFileInfo config_file = findModelConfigFile(trimmed_type_name);
     if (!config_file.exists())
     {
-        spdlog::warn("Model config file not found for: {}", trimmed_type_name.toUtf8().constData());
+        spdlog::warn("未找到 {} 的模型配置文件", trimmed_type_name.toUtf8().constData());
         return schema;
     }
 
-    spdlog::info("Load model params schema: {}", config_file.absoluteFilePath().toUtf8().constData());
+    spdlog::info("加载模型参数配置: {}", config_file.absoluteFilePath().toUtf8().constData());
 
     try
     {
         const YAML::Node root = loadFile(config_file);
         if (!root.IsMap())
         {
-            spdlog::warn("Model config is not a map: {}", config_file.absoluteFilePath().toUtf8().constData());
+            spdlog::warn("模型配置不是 map 类型: {}", config_file.absoluteFilePath().toUtf8().constData());
             return schema;
         }
 
         const YAML::Node model_node = looksLikeModelNode(root) ? root : root[trimmed_type_name.toStdString()];
         if (!model_node || !model_node.IsMap())
         {
-            spdlog::warn("Model config missing model '{}': {}", trimmed_type_name.toUtf8().constData(),
+            spdlog::warn("模型配置中缺少模型 '{}': {}", trimmed_type_name.toUtf8().constData(),
                          config_file.absoluteFilePath().toUtf8().constData());
             return schema;
         }
@@ -146,8 +144,7 @@ ModelParamsSchema loadModelParamsSchema(const QString &type_name)
     }
     catch (const std::exception &e)
     {
-        spdlog::error("Failed to parse model config '{}': {}", config_file.absoluteFilePath().toUtf8().constData(),
-                      e.what());
+        spdlog::error("解析模型配置失败 '{}': {}", config_file.absoluteFilePath().toUtf8().constData(), e.what());
         schema.train_groups.clear();
         schema.test_groups.clear();
     }

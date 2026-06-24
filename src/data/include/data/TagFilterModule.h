@@ -22,13 +22,15 @@ public:
     explicit TagFilterModule(DataManager *data_manager, QObject *parent = nullptr);
     ~TagFilterModule() override = default;
 
-    void                        setCriteria(const std::vector<int64_t> &tag_ids) override;
-    void                        clear() override;
-    void                        setEnabled(bool enabled) override;
-    bool                        isEnabled() const override;
-    bool                        isActive() const override;
+    void setCriteria(const std::vector<int64_t> &tag_ids) override;
+    void clear() override;
+    void setEnabled(bool enabled) override;
+    bool isEnabled() const override;
+    bool isActive() const override;
+
     std::unordered_set<int64_t> getActiveCriteria() const override;
-    bool                        isInverted() const override;
+
+    bool isInverted() const override;
 
     /**
      * @brief 检查图像是否拥有任一选中的标签

@@ -50,16 +50,16 @@ GlobalSettings::GlobalSettings(QObject *parent)
     try
     {
         load();
-        spdlog::info("Settings loaded successfully from: {}", settingsDatabasePath().toUtf8().constData());
+        spdlog::info("成功加载设置: {}", settingsDatabasePath().toUtf8().constData());
     }
     catch (const std::exception &e)
     {
-        spdlog::error("Failed to load settings: {}. Using default values.", e.what());
+        spdlog::error("加载设置失败: {}. 使用默认值.", e.what());
         reset();
     }
     catch (...)
     {
-        spdlog::error("Unknown error occurred while loading settings. Using default values.");
+        spdlog::error("加载设置时发生未知错误. 使用默认值.");
         reset();
     }
 }
@@ -71,15 +71,15 @@ GlobalSettings::~GlobalSettings()
         try
         {
             save();
-            spdlog::info("Settings saved on application exit");
+            spdlog::info("应用退出时自动保存设置成功");
         }
         catch (const std::exception &e)
         {
-            spdlog::error("Failed to save settings on exit: {}", e.what());
+            spdlog::error("自动保存设置时失败: {}", e.what());
         }
         catch (...)
         {
-            spdlog::error("Unknown error while saving settings on exit");
+            spdlog::error("自动保存设置时发生未知错误");
         }
     }
 }
@@ -98,26 +98,26 @@ void GlobalSettings::load()
 {
     if (settings_database_ == nullptr)
     {
-        spdlog::error("Cannot load settings: database object is null");
+        spdlog::error("无法加载设置：数据库对象为空");
         return;
     }
 
     settings_catalog_->syncAndLoad(settings_database_);
     rebuildSettingsObjects();
     applyAutoSaveSettings();
-    spdlog::info("All settings loaded successfully");
+    spdlog::info("所有设置加载成功");
 }
 
 void GlobalSettings::save()
 {
     if (settings_database_ == nullptr)
     {
-        spdlog::error("Cannot save settings: database object is null");
+        spdlog::error("无法保持设置: 数据库对象为空");
         return;
     }
 
     settings_catalog_->save(settings_database_);
-    spdlog::info("Settings saved successfully to: {}", settingsDatabasePath().toUtf8().constData());
+    spdlog::info("设置成功保存到: {}", settingsDatabasePath().toUtf8().constData());
 }
 
 void GlobalSettings::reset()

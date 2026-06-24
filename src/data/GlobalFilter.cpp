@@ -6,13 +6,14 @@
 #include "data/ImageLabelClassFilterModule.h"
 #include "data/ImageSearchFilterModule.h"
 #include "data/ImageTags.h"
-#include "data/LabelSearchFilterModule.h"
 #include "data/Images.h"
 #include "data/LabelClassFilterModule.h"
+#include "data/LabelSearchFilterModule.h"
 #include "data/Labels.h"
 #include "data/TagFilterModule.h"
 
 #include <QStringList>
+
 
 namespace dltool::data {
 

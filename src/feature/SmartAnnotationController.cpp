@@ -406,10 +406,10 @@ std::unique_ptr<irt::model::IModel> loadSmartModel(const SmartModelLoadRequest &
     config->setBackend(parseModelBackend(request.backend));
     config->setDevice(parseModelDevice(request.device));
 
-    spdlog::info("Loading smart annotation model: model={}, runtime={}, backend={}, device={}, path={}",
-                 request.model_name.toStdString(), request.runtime_model_name.toStdString(),
-                 request.backend.toStdString(), request.device.toStdString(),
-                 request.absolute_model_path.toStdString());
+    spdlog::info("加载智能标注模型，模型: {}, 运行时: {}, 后端: {}, 设备: {}, 模型路径: {}",
+                 request.model_name.toUtf8().constData(), request.runtime_model_name.toUtf8().constData(),
+                 request.backend.toUtf8().constData(), request.device.toUtf8().constData(),
+                 request.absolute_model_path.toUtf8().constData());
     auto model = irt::model::CreateModel(request.runtime_model_name.toStdString(), std::move(config));
     if (!model)
     {
@@ -418,9 +418,7 @@ std::unique_ptr<irt::model::IModel> loadSmartModel(const SmartModelLoadRequest &
     }
     model->setLogLevel(nvinfer1::ILogger::Severity::kWARNING);
     model->buildOrLoad(request.absolute_model_path.toStdString());
-    spdlog::info("Smart annotation model loaded: model={}, backend={}, device={}, path={}",
-                 request.model_name.toStdString(), request.backend.toStdString(), request.device.toStdString(),
-                 request.absolute_model_path.toStdString());
+    spdlog::info("加载智能标注模型完成");
     return model;
 }
 
@@ -1266,12 +1264,12 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
             catch (const std::exception &e)
             {
                 error = QString::fromUtf8(e.what());
-                spdlog::error("Smart annotation model load failed: {}", error.toStdString());
+                spdlog::error("加载智能标注模型失败: {}", error.toUtf8().constData());
             }
             catch (...)
             {
                 error = QStringLiteral("Unknown smart annotation model load error");
-                spdlog::error("Smart annotation model load failed with unknown error");
+                spdlog::error("加载智能标注模型失败: {}", error.toUtf8().constData());
             }
 
             if (!controller)
@@ -1509,7 +1507,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         std::vector<float> original_mask = resizeBilinear(cropped_mask.data(), preprocessed.resized_w,
                                                           preprocessed.resized_h, image.width(), image.height());
 
-        const double threshold = settings->valueOr(QStringLiteral("maskThreshold"), 0.0).toDouble();
+        const double         threshold = settings->valueOr(QStringLiteral("maskThreshold"), 0.0).toDouble();
         std::vector<uint8_t> binary_mask(static_cast<size_t>(image.width()) * image.height(), 0);
         int                  foreground_pixels = 0;
         for (size_t i = 0; i < binary_mask.size(); ++i)

@@ -1,7 +1,6 @@
 #include "common/YamlUtils.h"
 
 #include <QDir>
-
 #include <algorithm>
 #include <string>
 
@@ -38,7 +37,7 @@ QVariant nodeVariant(const YAML::Node &node)
             return false;
         }
 
-        bool ok = false;
+        bool            ok      = false;
         const qlonglong integer = text.toLongLong(&ok);
         if (ok)
         {
@@ -132,7 +131,7 @@ QVector<QFileInfo> configFiles(const QStringList &directories, const QStringList
                                             [&entry](const QFileInfo &file)
                                             {
                                                 return file.canonicalFilePath() == entry.canonicalFilePath()
-                                                       || file.absoluteFilePath() == entry.absoluteFilePath();
+                                                    || file.absoluteFilePath() == entry.absoluteFilePath();
                                             });
             if (!exists)
             {

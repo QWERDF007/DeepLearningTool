@@ -9,7 +9,6 @@
 #include <QFileInfo>
 #include <algorithm>
 
-
 namespace dltool::data {
 
 LabelMeImporter::LabelMeImporter(dltool::database::ProjectDataBase *database, QObject *parent)

@@ -1,29 +1,29 @@
 ﻿#pragma once
 
 #include "CategoryStatisticsModel.h"
-#include "dltool/data/Export.h"
 #include "DataExporter.h"
 #include "DataImporter.h"
 #include "Datasets.h"
-#include "feature/ImageSearchController.h"
-#include "feature/ImageSearchDataProvider.h"
-#include "feature/FewShotLearningController.h"
-#include "feature/FewShotLearningDataProvider.h"
-#include "feature/SmartAnnotationController.h"
 #include "FilterItemsModel.h"
 #include "GlobalFilter.h"
 #include "ImageTags.h"
 #include "Images.h"
-#include "Labels.h"
 #include "LabelClasses.h"
+#include "Labels.h"
+#include "dltool/data/Export.h"
+#include "feature/FewShotLearningController.h"
+#include "feature/FewShotLearningDataProvider.h"
+#include "feature/ImageSearchController.h"
+#include "feature/ImageSearchDataProvider.h"
+#include "feature/SmartAnnotationController.h"
 
-#include <QObject>
 #include <QMetaObject>
+#include <QObject>
 #include <QVariantList>
 #include <QtQml>
-
 #include <memory>
 #include <vector>
+
 
 class QQmlApplicationEngine;
 
@@ -37,9 +37,10 @@ class TaskManager;
 
 namespace dltool::data {
 
-class DATA_API DataManager : public QObject,
-                             public dltool::feature::ImageSearchDataProvider,
-                             public dltool::feature::FewShotLearningDataProvider
+class DATA_API DataManager
+    : public QObject
+    , public dltool::feature::ImageSearchDataProvider
+    , public dltool::feature::FewShotLearningDataProvider
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(DataManager)
@@ -156,7 +157,7 @@ public:
     void setTaskManager(dltool::model::TaskManager *task_manager);
 
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
-    Q_INVOKABLE QVariantList getAllLabelClassIds() const;
+    Q_INVOKABLE QVariantList   getAllLabelClassIds() const;
 
     Q_INVOKABLE int     getDatasetId(const QString &dataset_name) const;
     Q_INVOKABLE QString getDatasetName(const int dataset_id) const;
@@ -209,23 +210,22 @@ public:
     Q_INVOKABLE QString getImageDatasetName(const int64_t image_id) const;
     Q_INVOKABLE QString getImageTagName(const int64_t image_id) const;
 
-    std::vector<int64_t> selectedImageIds() const override;
-    std::vector<int64_t> allImageIds() const override;
-    QString              imagePath(int64_t image_id) const override;
-    int64_t              imageDatasetId(int64_t image_id) const override;
-    std::vector<int64_t> allLabelIds() const override;
-    int64_t              labelImageId(int64_t label_id) const override;
-    int64_t              labelClassId(int64_t label_id) const override;
-    QVariantMap          labelData(int64_t label_id) const override;
-    QString              labelClassName(int64_t label_class_id) const override;
-    QString              datasetName(int64_t dataset_id) const override;
-    void                 importMaskData(int64_t dataset_id, const QString &image_manifest_path,
-                                        const QString &prediction_output_dir) override;
-    QMetaObject::Connection connectImportFinished(QObject *context,
-                                                  dltool::feature::FewShotLearningDataProvider::ImportFinishedHandler
-                                                      handler) override;
+    std::vector<int64_t>    selectedImageIds() const override;
+    std::vector<int64_t>    allImageIds() const override;
+    QString                 imagePath(int64_t image_id) const override;
+    int64_t                 imageDatasetId(int64_t image_id) const override;
+    std::vector<int64_t>    allLabelIds() const override;
+    int64_t                 labelImageId(int64_t label_id) const override;
+    int64_t                 labelClassId(int64_t label_id) const override;
+    QVariantMap             labelData(int64_t label_id) const override;
+    QString                 labelClassName(int64_t label_class_id) const override;
+    QString                 datasetName(int64_t dataset_id) const override;
+    void                    importMaskData(int64_t dataset_id, const QString &image_manifest_path,
+                                           const QString &prediction_output_dir) override;
+    QMetaObject::Connection connectImportFinished(
+        QObject *context, dltool::feature::FewShotLearningDataProvider::ImportFinishedHandler handler) override;
     void disconnectImportFinished(const QMetaObject::Connection &connection) override;
-    void                 clearImageSearchResults() override;
+    void clearImageSearchResults() override;
     void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter) override;
     void clearLabelSearchResults() override;
     void setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter) override;
@@ -249,16 +249,15 @@ private:
     /**
      * @brief 处理导入器解析出的单个数据批次
      */
-    void handleDataBatchReady(int64_t dataset_id, std::vector<QString> image_paths,
-                              std::vector<int64_t> image_widths, std::vector<int64_t> image_heights,
-                              std::map<QString, QString> label_class_info, std::vector<ImportedLabel> labels,
-                              int64_t processed_images, int64_t total_images);
+    void handleDataBatchReady(int64_t dataset_id, std::vector<QString> image_paths, std::vector<int64_t> image_widths,
+                              std::vector<int64_t> image_heights, std::map<QString, QString> label_class_info,
+                              std::vector<ImportedLabel> labels, int64_t processed_images, int64_t total_images);
     void handleImportFinished(bool success, std::vector<int64_t> image_ids, std::vector<int64_t> label_class_ids);
     bool addLabelsInternal(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                            const std::vector<QVariantMap> &data, QString *err_msg = nullptr);
     bool writeImportBatch(int64_t dataset_id, const std::vector<QString> &image_paths,
-                          const std::map<QString, QString> &label_class_info,
-                          const std::vector<ImportedLabel> &labels, QString &err_msg);
+                          const std::map<QString, QString> &label_class_info, const std::vector<ImportedLabel> &labels,
+                          QString &err_msg);
     void finishBatchedImport(bool success, const QString &message);
 
     dltool::database::ProjectDataBase *database_{nullptr};
@@ -273,7 +272,7 @@ private:
 
     ImageInfoListModel *image_info_{nullptr};
 
-    GlobalFilter *global_filter_{nullptr};
+    GlobalFilter                               *global_filter_{nullptr};
     dltool::feature::ImageSearchController     *image_search_{nullptr};
     dltool::feature::SmartAnnotationController *smart_annotation_{nullptr};
     dltool::feature::FewShotLearningController *few_shot_learning_{nullptr};

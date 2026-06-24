@@ -3,14 +3,14 @@
 #include "dltool/data/Export.h"
 
 #include <QPointF>
+#include <QString>
 #include <QVariant>
 #include <QVariantList>
 #include <QVariantMap>
-#include <QString>
-
 #include <cstdint>
 #include <map>
 #include <vector>
+
 
 namespace dltool::data {
 
@@ -64,13 +64,12 @@ public:
                                                 int image_height);
     static QVariantList         pointsToVariantList(const std::vector<QPointF> &points);
     static std::vector<QPointF> variantListToPoints(const QVariant &value);
-    static QVariantMap          pointsToLabelData(const std::vector<QPointF> &points, int image_width,
-                                                  int image_height);
-    static QString              generateDefaultColor(int index);
-    static QString              uniqueFileName(const QString &source_path, int64_t stable_id,
-                                                const std::map<QString, int> &used_names);
-    static bool                 ensureDirectory(const QString &path, QString &err_msg);
-    static bool                 copyFile(const QString &source_path, const QString &target_path, QString &err_msg);
+    static QVariantMap pointsToLabelData(const std::vector<QPointF> &points, int image_width, int image_height);
+    static QString     generateDefaultColor(int index);
+    static QString     uniqueFileName(const QString &source_path, int64_t stable_id,
+                                      const std::map<QString, int> &used_names);
+    static bool        ensureDirectory(const QString &path, QString &err_msg);
+    static bool        copyFile(const QString &source_path, const QString &target_path, QString &err_msg);
 };
 
 } // namespace dltool::data

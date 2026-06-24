@@ -22,13 +22,15 @@ public:
     explicit LabelClassFilterModule(DataManager *data_manager, QObject *parent = nullptr);
     ~LabelClassFilterModule() override = default;
 
-    void                        setCriteria(const std::vector<int64_t> &label_class_ids) override;
-    void                        clear() override;
-    void                        setEnabled(bool enabled) override;
-    bool                        isEnabled() const override;
-    bool                        isActive() const override;
+    void setCriteria(const std::vector<int64_t> &label_class_ids) override;
+    void clear() override;
+    void setEnabled(bool enabled) override;
+    bool isEnabled() const override;
+    bool isActive() const override;
+
     std::unordered_set<int64_t> getActiveCriteria() const override;
-    bool                        isInverted() const override;
+
+    bool isInverted() const override;
 
     /**
      * @brief 检查标注类别是否匹配

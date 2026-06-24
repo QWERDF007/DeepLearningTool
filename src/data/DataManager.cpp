@@ -1174,7 +1174,8 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
             {
                 new_image_paths.push_back(image_path);
                 new_normalized_paths.push_back(normalized_path);
-                pending_it = pending_raw_paths_by_normalized_path.emplace(normalized_path, std::vector<QString>{}).first;
+                pending_it
+                    = pending_raw_paths_by_normalized_path.emplace(normalized_path, std::vector<QString>{}).first;
             }
             pending_it->second.push_back(image_path);
         }
@@ -1205,8 +1206,7 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
             if (pending_it == pending_raw_paths_by_normalized_path.end())
                 continue;
 
-            for (const QString &raw_path : pending_it->second)
-                task.image_path_to_id[raw_path] = image_ids[i];
+            for (const QString &raw_path : pending_it->second) task.image_path_to_id[raw_path] = image_ids[i];
         }
     }
 

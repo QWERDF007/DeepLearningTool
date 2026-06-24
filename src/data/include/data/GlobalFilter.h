@@ -46,8 +46,7 @@ struct FilterCriteria
     {
         return dataset_ids.empty() && tag_ids.empty() && label_class_ids.empty() && image_label_class_ids.empty()
             && image_search_ids.empty() && label_search_ids.empty() && !dataset_inverted && !tag_inverted
-            && !label_class_inverted && !image_label_class_inverted && !image_search_inverted
-            && !label_search_inverted;
+            && !label_class_inverted && !image_label_class_inverted && !image_search_inverted && !label_search_inverted;
     }
 };
 

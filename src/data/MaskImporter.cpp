@@ -44,8 +44,7 @@ double perpendicularDistance(const QPointF &point, const QPointF &line_start, co
         return std::sqrt(px * px + py * py);
     }
 
-    return std::abs(dy * point.x() - dx * point.y() + line_end.x() * line_start.y()
-                    - line_end.y() * line_start.x())
+    return std::abs(dy * point.x() - dx * point.y() + line_end.x() * line_start.y() - line_end.y() * line_start.x())
          / std::sqrt(dx * dx + dy * dy);
 }
 
@@ -59,9 +58,8 @@ void simplifyDouglasPeucker(const std::vector<QPointF> &points, int first, int l
     int    index        = first;
     for (int i = first + 1; i < last; ++i)
     {
-        const double distance = perpendicularDistance(points[static_cast<size_t>(i)],
-                                                      points[static_cast<size_t>(first)],
-                                                      points[static_cast<size_t>(last)]);
+        const double distance = perpendicularDistance(
+            points[static_cast<size_t>(i)], points[static_cast<size_t>(first)], points[static_cast<size_t>(last)]);
         if (distance > max_distance)
         {
             max_distance = distance;
@@ -101,8 +99,7 @@ std::vector<QPointF> simplifyPolygon(const std::vector<QPointF> &points, double 
         const QPointF &prev = compact[(i + compact.size() - 1) % compact.size()];
         const QPointF &cur  = compact[i];
         const QPointF &next = compact[(i + 1) % compact.size()];
-        const double cross = (cur.x() - prev.x()) * (next.y() - cur.y())
-                           - (cur.y() - prev.y()) * (next.x() - cur.x());
+        const double cross  = (cur.x() - prev.x()) * (next.y() - cur.y()) - (cur.y() - prev.y()) * (next.x() - cur.x());
         if (std::abs(cross) > 1e-6)
             no_collinear.push_back(cur);
     }
@@ -149,7 +146,7 @@ bool isForeground(const QImage &image, int x, int y)
 std::map<QString, QString> loadImageMap(const QString &image_dir)
 {
     std::map<QString, QString> image_by_stem;
-    const QFileInfo image_info(image_dir);
+    const QFileInfo            image_info(image_dir);
     if (image_info.isFile())
     {
         QFile file(image_info.absoluteFilePath());
@@ -179,8 +176,7 @@ std::map<QString, QString> loadImageMap(const QString &image_dir)
     }
 
     const std::vector<QString> image_files = DatasetIO::scanImageFiles(image_dir);
-    for (const QString &image_path : image_files)
-        image_by_stem[QFileInfo(image_path).completeBaseName()] = image_path;
+    for (const QString &image_path : image_files) image_by_stem[QFileInfo(image_path).completeBaseName()] = image_path;
     return image_by_stem;
 }
 
@@ -196,9 +192,9 @@ MaskImporter::~MaskImporter() = default;
 void MaskImporter::startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir)
 {
     QThread *worker_thread = new QThread();
-    connect(worker_thread, &QThread::started, this,
-            [this, dataset_id, image_dir, data_dir]() { doImport(dataset_id, image_dir, data_dir); },
-            Qt::DirectConnection);
+    connect(
+        worker_thread, &QThread::started, this,
+        [this, dataset_id, image_dir, data_dir]() { doImport(dataset_id, image_dir, data_dir); }, Qt::DirectConnection);
     connect(this, &MaskImporter::importFinished, worker_thread, &QThread::quit);
     connect(worker_thread, &QThread::finished, worker_thread, &QThread::deleteLater);
     worker_thread->start();
@@ -210,7 +206,7 @@ void MaskImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
     {
         updateProgress(0, QStringLiteral("正在扫描图像和 Mask..."));
         const std::map<QString, QString> image_by_stem = loadImageMap(image_dir);
-        const std::vector<QString> mask_files          = scanMaskFiles(data_dir);
+        const std::vector<QString>       mask_files    = scanMaskFiles(data_dir);
         if (image_by_stem.empty() || mask_files.empty())
         {
             updateProgress(100, QStringLiteral("图像目录或 Mask 目录为空"));
@@ -316,7 +312,8 @@ void MaskImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
                 || processed_masks == static_cast<int>(mask_files.size()))
             {
                 const int progress = 10 + processed_masks * 80 / std::max<int>(1, static_cast<int>(mask_files.size()));
-                updateProgress(progress, QStringLiteral("已处理 Mask %1/%2").arg(processed_masks).arg(mask_files.size()));
+                updateProgress(progress,
+                               QStringLiteral("已处理 Mask %1/%2").arg(processed_masks).arg(mask_files.size()));
             }
 
             if (batch_image_paths.size() >= DataImporter::ImportBatchImageCount)
@@ -335,9 +332,8 @@ void MaskImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
             return;
         }
 
-        updateProgress(100, QStringLiteral("Mask 导入完成: 有效 %1 个，跳过 %2 个")
-                                .arg(valid_masks)
-                                .arg(skipped_masks));
+        updateProgress(100,
+                       QStringLiteral("Mask 导入完成: 有效 %1 个，跳过 %2 个").arg(valid_masks).arg(skipped_masks));
         emit importFinished(valid_masks > 0, {}, {});
     }
     catch (const std::exception &e)
@@ -351,16 +347,15 @@ void MaskImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
 std::vector<QString> MaskImporter::scanMaskFiles(const QString &mask_dir) const
 {
     std::vector<QString> masks;
-    QDir dir(mask_dir);
+    QDir                 dir(mask_dir);
     if (!dir.exists())
         return masks;
 
-    const QStringList filters{QStringLiteral("*.png"),  QStringLiteral("*.bmp"),  QStringLiteral("*.tif"),
-                              QStringLiteral("*.tiff"), QStringLiteral("*.PNG"),  QStringLiteral("*.BMP"),
+    const QStringList filters{QStringLiteral("*.png"),  QStringLiteral("*.bmp"), QStringLiteral("*.tif"),
+                              QStringLiteral("*.tiff"), QStringLiteral("*.PNG"), QStringLiteral("*.BMP"),
                               QStringLiteral("*.TIF"),  QStringLiteral("*.TIFF")};
-    QDirIterator it(mask_dir, filters, QDir::Files, QDirIterator::Subdirectories);
-    while (it.hasNext())
-        masks.push_back(it.next());
+    QDirIterator      it(mask_dir, filters, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) masks.push_back(it.next());
     return masks;
 }
 
@@ -382,7 +377,7 @@ bool MaskImporter::readMaskGeometry(const QString &mask_path, MaskGeometry &geom
     int y_max = -1;
 
     std::map<qint64, std::vector<qint64>> edges;
-    const auto add_edge = [&edges](int x1, int y1, int x2, int y2)
+    const auto                            add_edge = [&edges](int x1, int y1, int x2, int y2)
     {
         edges[pointKey(x1, y1)].push_back(pointKey(x2, y2));
     };
@@ -419,8 +414,8 @@ bool MaskImporter::readMaskGeometry(const QString &mask_path, MaskGeometry &geom
     double               best_area = 0.0;
     while (!edges.empty())
     {
-        const qint64 start = edges.begin()->first;
-        qint64       cur   = start;
+        const qint64         start = edges.begin()->first;
+        qint64               cur   = start;
         std::vector<QPointF> polygon;
         std::set<qint64>     seen;
 
@@ -443,7 +438,7 @@ bool MaskImporter::readMaskGeometry(const QString &mask_path, MaskGeometry &geom
                 break;
         }
 
-        polygon = simplifyPolygon(polygon, 2.0);
+        polygon           = simplifyPolygon(polygon, 2.0);
         const double area = polygonArea(polygon);
         if (polygon.size() >= 3 && area > best_area)
         {
@@ -466,17 +461,15 @@ QVariantMap MaskImporter::maskToLabelData(const MaskGeometry &geometry, int imag
 
     if (target_method_ == dltool::core::DeepLearningMethod::Detection)
     {
-        return DatasetIO::bboxToLabelData(geometry.bbox.x() * sx, geometry.bbox.y() * sy,
-                                          geometry.bbox.width() * sx, geometry.bbox.height() * sy,
-                                          image_width, image_height);
+        return DatasetIO::bboxToLabelData(geometry.bbox.x() * sx, geometry.bbox.y() * sy, geometry.bbox.width() * sx,
+                                          geometry.bbox.height() * sy, image_width, image_height);
     }
 
     if (target_method_ == dltool::core::DeepLearningMethod::Segmentation)
     {
         std::vector<QPointF> scaled_points;
         scaled_points.reserve(geometry.polygon.size());
-        for (const QPointF &point : geometry.polygon)
-            scaled_points.emplace_back(point.x() * sx, point.y() * sy);
+        for (const QPointF &point : geometry.polygon) scaled_points.emplace_back(point.x() * sx, point.y() * sy);
         return DatasetIO::pointsToLabelData(scaled_points, image_width, image_height);
     }
 
@@ -486,7 +479,7 @@ QVariantMap MaskImporter::maskToLabelData(const MaskGeometry &geometry, int imag
 
 QString MaskImporter::labelClassNameForMask(const QString &mask_path, const QString &mask_root) const
 {
-    QDir root_dir(mask_root);
+    QDir    root_dir(mask_root);
     QString rel_path = QDir::fromNativeSeparators(root_dir.relativeFilePath(QFileInfo(mask_path).absoluteFilePath()));
     const QStringList parts = rel_path.split(QLatin1Char('/'), Qt::SkipEmptyParts);
     if (parts.size() > 1)
@@ -494,16 +487,17 @@ QString MaskImporter::labelClassNameForMask(const QString &mask_path, const QStr
     return QFileInfo(mask_root).completeBaseName();
 }
 
-QString MaskImporter::imageStemForMask(const QString &mask_path, const QString &mask_root, const QString &mask_stem) const
+QString MaskImporter::imageStemForMask(const QString &mask_path, const QString &mask_root,
+                                       const QString &mask_stem) const
 {
-    const QFileInfo mask_info(mask_path);
+    const QFileInfo                  mask_info(mask_path);
     const std::map<QString, QString> local_map = loadQueryNameMap(mask_info.dir().absolutePath());
-    const auto local_it = local_map.find(mask_stem);
+    const auto                       local_it  = local_map.find(mask_stem);
     if (local_it != local_map.end())
         return local_it->second;
 
     const std::map<QString, QString> root_map = loadQueryNameMap(mask_root);
-    const auto root_it = root_map.find(mask_stem);
+    const auto                       root_it  = root_map.find(mask_stem);
     if (root_it != root_map.end())
         return root_it->second;
 
@@ -513,7 +507,7 @@ QString MaskImporter::imageStemForMask(const QString &mask_path, const QString &
 std::map<QString, QString> MaskImporter::loadQueryNameMap(const QString &dir_path) const
 {
     std::map<QString, QString> result;
-    QFile file(QDir(dir_path).filePath(QStringLiteral("query.txt")));
+    QFile                      file(QDir(dir_path).filePath(QStringLiteral("query.txt")));
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
         return result;
 

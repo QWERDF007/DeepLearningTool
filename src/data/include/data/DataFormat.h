@@ -1,7 +1,7 @@
 #pragma once
 
-#include "dltool/data/Export.h"
 #include "common/Singleton.h"
+#include "dltool/data/Export.h"
 
 #include <unordered_map>
 
@@ -70,8 +70,8 @@ private:
 
     inline static const std::unordered_map<int, QString> IdToName = {
         {LabelMe, "LabelMe"},
-        {  COCO,    "COCO"},
-        {  Mask,    "Mask"},
+        {   COCO,    "COCO"},
+        {   Mask,    "Mask"},
     };
 
     inline static const std::unordered_map<QString, int> NameToId = {

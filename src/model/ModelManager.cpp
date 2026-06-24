@@ -49,7 +49,7 @@ void ModelManager::init()
     if (database_ == nullptr)
     {
         endResetModel();
-        spdlog::error("init model manager failed: database is null");
+        spdlog::error("初始化模型管理器失败: 数据库对象为空");
         return;
     }
 
@@ -68,7 +68,7 @@ void ModelManager::init()
     if (!ok)
     {
         endResetModel();
-        spdlog::error("query all models failed, error: {}", err_msg.toUtf8().constData());
+        spdlog::error("查询所有模型失败, 错误: {}", err_msg.toUtf8().constData());
         return;
     }
 
@@ -145,32 +145,32 @@ bool ModelManager::addModel(const QString &name, const QString &network_structur
     const QString trimmed_network_structure = network_structure.trimmed();
     if (trimmed_name.isEmpty() || trimmed_network_structure.isEmpty())
     {
-        spdlog::warn("add model failed: model name or network structure is empty");
+        spdlog::warn("添加模型失败: 模型名称或网络结构为空");
         return false;
     }
 
     if (!registeredModelNames(method_).contains(trimmed_network_structure))
     {
-        spdlog::warn("add model failed: model is not registered for method {}, network: {}", method_,
+        spdlog::warn("添加模型失败: 模型未注册, 方法: {}, 网络结构: {}", method_,
                      trimmed_network_structure.toUtf8().constData());
         return false;
     }
 
     if (database_ == nullptr)
     {
-        spdlog::error("add model failed: database is null");
+        spdlog::error("添加模型失败: 数据库对象为空");
         return false;
     }
 
-    QString      err_msg;
-    int64_t      model_id{-1};
-    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    QString       err_msg;
+    int64_t       model_id{-1};
+    const qint64  now  = QDateTime::currentSecsSinceEpoch();
     const QString uuid = dltool::common::uuid();
-    const bool    ok   = database_->addModel(uuid, trimmed_name, trimmed_network_structure, QString(), QString(), now,
-                                             now, model_id, err_msg);
+    const bool ok = database_->addModel(uuid, trimmed_name, trimmed_network_structure, QString(), QString(), now, now,
+                                        model_id, err_msg);
     if (!ok)
     {
-        spdlog::error("add model failed, name: {}, network: {}, error: {}", trimmed_name.toUtf8().constData(),
+        spdlog::error("添加模型失败, 名称: {}, 网络结构: {}, 错误: {}", trimmed_name.toUtf8().constData(),
                       trimmed_network_structure.toUtf8().constData(), err_msg.toUtf8().constData());
         return false;
     }
@@ -189,7 +189,7 @@ bool ModelManager::addModel(const QString &name, const QString &network_structur
     });
     endInsertRows();
 
-    spdlog::info("add model succeeded, id: {}, name: {}, network: {}", model_id, trimmed_name.toUtf8().constData(),
+    spdlog::info("模型添加成功, id: {}, 模型名称: {}, 网络结构: {}", model_id, trimmed_name.toUtf8().constData(),
                  trimmed_network_structure.toUtf8().constData());
     return true;
 }
@@ -199,14 +199,14 @@ bool ModelManager::renameModel(const qint64 model_id, const QString &name)
     const QString trimmed_name = name.trimmed();
     if (trimmed_name.isEmpty())
     {
-        spdlog::warn("rename model failed: model name is empty");
+        spdlog::warn("模型重命名失败: 模型名称为空");
         return false;
     }
 
     const int row = indexOfModel(model_id);
     if (row < 0)
     {
-        spdlog::warn("rename model failed: model {} not found", model_id);
+        spdlog::warn("模型重命名失败: 模型 {} 不存在", model_id);
         return false;
     }
 
@@ -215,7 +215,7 @@ bool ModelManager::renameModel(const qint64 model_id, const QString &name)
     const bool   ok  = database_ != nullptr && database_->updateModelName(model_id, trimmed_name, now, err_msg);
     if (!ok)
     {
-        spdlog::error("rename model failed, id: {}, error: {}", model_id, err_msg.toUtf8().constData());
+        spdlog::error("重命名模型失败, id: {}, 错误: {}", model_id, err_msg.toUtf8().constData());
         return false;
     }
 
@@ -230,7 +230,7 @@ bool ModelManager::deleteModel(const qint64 model_id)
     const int row = indexOfModel(model_id);
     if (row < 0)
     {
-        spdlog::warn("delete model failed: model {} not found", model_id);
+        spdlog::warn("删除模型失败: 模型 {} 不存在", model_id);
         return false;
     }
 
@@ -238,7 +238,7 @@ bool ModelManager::deleteModel(const qint64 model_id)
     const bool ok = database_ != nullptr && database_->deleteModel(model_id, err_msg);
     if (!ok)
     {
-        spdlog::error("delete model failed, id: {}, error: {}", model_id, err_msg.toUtf8().constData());
+        spdlog::error("删除模型失败, id: {}, 错误: {}", model_id, err_msg.toUtf8().constData());
         return false;
     }
 
@@ -255,7 +255,7 @@ bool ModelManager::copyModel(const qint64 model_id)
     const int row = indexOfModel(model_id);
     if (row < 0)
     {
-        spdlog::warn("copy model failed: model {} not found", model_id);
+        spdlog::warn("复制模型失败: 模型 {} 不存在", model_id);
         return false;
     }
 
@@ -270,7 +270,7 @@ bool ModelManager::copyModel(const qint64 model_id)
                                         source.test_result, now, now, new_model_id, err_msg);
     if (!ok)
     {
-        spdlog::error("copy model failed, id: {}, error: {}", model_id, err_msg.toUtf8().constData());
+        spdlog::error("复制模型失败, id: {}, 错误: {}", model_id, err_msg.toUtf8().constData());
         return false;
     }
 
@@ -364,10 +364,10 @@ bool ModelManager::registerModel(const int method, const QString &type_name, Mod
         return false;
     }
 
-    auto       &registry = modelRegistry();
-    const auto found    = std::find_if(registry.begin(), registry.end(),
-                                    [method, &trimmed_type_name](const RegisteredModel &model)
-                                    { return model.method == method && model.name == trimmed_type_name; });
+    auto      &registry = modelRegistry();
+    const auto found
+        = std::find_if(registry.begin(), registry.end(), [method, &trimmed_type_name](const RegisteredModel &model)
+                       { return model.method == method && model.name == trimmed_type_name; });
     if (found != registry.end())
     {
         return false;
@@ -411,12 +411,9 @@ std::unique_ptr<IModel> ModelManager::createRegisteredModel(const int method, co
     }
 
     const auto &registry = modelRegistry();
-    const auto found    = std::find_if(registry.begin(), registry.end(),
-                                    [method, &trimmed_type_name](const RegisteredModel &model)
-                                    {
-                                        return (method < 0 || model.method == method)
-                                               && model.name == trimmed_type_name;
-                                    });
+    const auto  found
+        = std::find_if(registry.begin(), registry.end(), [method, &trimmed_type_name](const RegisteredModel &model)
+                       { return (method < 0 || model.method == method) && model.name == trimmed_type_name; });
     if (found == registry.end() || !found->factory)
         return nullptr;
 
