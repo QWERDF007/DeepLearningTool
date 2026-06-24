@@ -267,7 +267,7 @@ void TaskCommunicationServer::processLine(QTcpSocket *socket, const QByteArray &
     const QJsonDocument document = QJsonDocument::fromJson(line, &error);
     if (error.error != QJsonParseError::NoError || !document.isObject())
     {
-        spdlog::warn("忽略无效任务通信消息: {}", line.toUtf8().constData());
+        spdlog::warn("忽略无效任务通信消息: {}", line.toStdString());
         return;
     }
 

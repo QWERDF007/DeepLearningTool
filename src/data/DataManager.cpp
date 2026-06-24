@@ -993,6 +993,10 @@ void DataManager::deleteLabels(const std::vector<int64_t> &label_ids)
     image_labels_table_->deleteLabels(image_ids, label_ids);
     updateDatasetsStats();
     image_info_->updateLabelInfo();
+    if (global_filter_ != nullptr)
+    {
+        global_filter_->refresh();
+    }
 }
 
 void DataManager::duplicateSelectedLabels()

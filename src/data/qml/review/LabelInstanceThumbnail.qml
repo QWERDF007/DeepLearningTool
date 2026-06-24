@@ -9,7 +9,7 @@ import quickui
 /**
  * @brief 标注实例缩略图组件
  * 
- * 显示单个标注的裁剪区域图像，包含边距和矩形框。
+ * 显示单个标注的裁剪区域图像，包含边距和标注轮廓。
  * 边距从 Settings 获取，颜色从 LabelClasses 获取
  */
 Item {
@@ -25,7 +25,11 @@ Item {
     // 只读属性
     readonly property bool imageLoaded: thumbnail.status === Image.Ready
     readonly property bool imageError: thumbnail.status === Image.Error
-    readonly property bool hasValidLabelData: true //isLabelDataValid()
+    readonly property bool hasValidLabelData: isLabelDataValid()
+    readonly property bool hasPolygonLabelData: hasValidLabelData
+                                                && labelData.points !== undefined
+                                                && labelData.points !== null
+                                                && labelData.points.length >= 3
     
     // 配置属性（从 GlobalSettings 获取）
     readonly property int margin: dataSettings.thumbnailMargin
@@ -35,6 +39,14 @@ Item {
     // 极端尺寸处理常量
     readonly property real minVisibleSize: 4.0  // 最小可见尺寸（像素）
     readonly property real minBboxSize: 1.0     // 最小 bbox 尺寸（原始坐标）
+
+    onLabelDataChanged: annotationOverlay.requestPaint()
+    onBorderColorChanged: annotationOverlay.requestPaint()
+    onBorderWidthChanged: annotationOverlay.requestPaint()
+    onMarginChanged: annotationOverlay.requestPaint()
+    onPaddingChanged: annotationOverlay.requestPaint()
+    onHasValidLabelDataChanged: annotationOverlay.requestPaint()
+    onHasPolygonLabelDataChanged: annotationOverlay.requestPaint()
     
     // 验证 labelData 是否有效
     function isLabelDataValid() {
@@ -86,7 +98,12 @@ Item {
             if (status === Image.Error) {
                 console.warn("[LabelInstanceThumbnail] Image load error for labelId:", root.labelId);
             }
+            annotationOverlay.requestPaint()
         }
+
+        onPaintedWidthChanged: annotationOverlay.requestPaint()
+        onPaintedHeightChanged: annotationOverlay.requestPaint()
+        onSourceSizeChanged: annotationOverlay.requestPaint()
         
         // 加载状态指示
         BusyIndicator {
@@ -139,29 +156,47 @@ Item {
         contrast: uiSettings.imageContrast
     }
     
-    // 矩形覆盖层 - 显示标注边框
+    // 标注覆盖层 - 分割显示多边形，检测显示矩形框
     // 仅在以下条件全部满足时显示：
     // 1. labelData 有效 (hasValidLabelData)
     // 2. 图像加载成功 (imageLoaded)
     // 3. 图像没有错误 (!imageError)
     // 4. 图像已绘制 (paintedWidth > 0 && paintedHeight > 0)
     // 5. 图像源尺寸有效 (sourceSize.width > 0 && sourceSize.height > 0)
-    Rectangle {
-        id: boundingBox
+    Canvas {
+        id: annotationOverlay
+
+        anchors.fill: parent
         visible: hasValidLabelData && imageLoaded && !imageError && 
                  thumbnail.paintedWidth > 0 && thumbnail.paintedHeight > 0 &&
                  thumbnail.sourceSize.width > 0 && thumbnail.sourceSize.height > 0
-        
-        // 使用计算函数绑定位置和尺寸
-        x: calculateX()
-        y: calculateY()
-        width: calculateWidth()
-        height: calculateHeight()
-        
-        // 透明背景，只显示边框
-        color: "transparent"
-        border.color: root.borderColor
-        border.width: root.borderWidth
+
+        onVisibleChanged: requestPaint()
+        onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
+
+        onPaint: {
+            let ctx = getContext("2d")
+            ctx.clearRect(0, 0, width, height)
+
+            if (!visible) {
+                return
+            }
+
+            let lineWidth = Math.max(1, root.borderWidth)
+            ctx.save()
+            ctx.lineWidth = lineWidth
+            ctx.strokeStyle = String(root.borderColor)
+            ctx.fillStyle = "transparent"
+
+            if (root.hasPolygonLabelData) {
+                drawPolygon(ctx)
+            } else {
+                drawRectangle(ctx, lineWidth)
+            }
+
+            ctx.restore()
+        }
     }
     
     // 位置计算函数
@@ -291,5 +326,62 @@ Item {
         }
         
         return Math.max(0, height)
+    }
+
+    function drawRectangle(ctx, lineWidth) {
+        let x = calculateX()
+        let y = calculateY()
+        let width = calculateWidth()
+        let height = calculateHeight()
+        if (width <= 0 || height <= 0) {
+            return
+        }
+
+        let inset = lineWidth / 2
+        ctx.strokeRect(x + inset, y + inset,
+                       Math.max(0, width - lineWidth),
+                       Math.max(0, height - lineWidth))
+    }
+
+    function drawPolygon(ctx) {
+        let points = labelData.points
+        if (!points || points.length < 3) {
+            return
+        }
+
+        let first = mapLabelPointToThumbnail(points[0])
+        if (!first.valid) {
+            return
+        }
+
+        ctx.beginPath()
+        ctx.moveTo(first.x, first.y)
+
+        for (let i = 1; i < points.length; ++i) {
+            let point = mapLabelPointToThumbnail(points[i])
+            if (point.valid) {
+                ctx.lineTo(point.x, point.y)
+            }
+        }
+
+        ctx.closePath()
+        ctx.stroke()
+    }
+
+    function mapLabelPointToThumbnail(point) {
+        if (!point || typeof point.x !== "number" || typeof point.y !== "number"
+                || isNaN(point.x) || isNaN(point.y)) {
+            return { valid: false, x: 0, y: 0 }
+        }
+
+        let scale = calculateScale()
+        let offsetX = calculateImageOffsetX()
+        let offsetY = calculateImageOffsetY()
+        let extendedMargin = calculateExtendedMargin()
+        return {
+            valid: true,
+            x: offsetX + (point.x - labelData.x + extendedMargin) * scale,
+            y: offsetY + (point.y - labelData.y + extendedMargin) * scale
+        }
     }
 }

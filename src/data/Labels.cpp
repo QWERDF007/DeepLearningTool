@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <set>
 
 namespace dltool::data {
 
@@ -462,22 +463,45 @@ void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids
         spdlog::error("删除 {} 个标注失败: {}", label_ids.size(), err_msg.toUtf8().constData());
         return;
     }
-    for (const auto &label_id : label_ids)
-    {
-        full_label_instances_.erase(label_id);
-    }
-    std::vector<int64_t> new_label_ids;
-    new_label_ids.reserve(full_label_instances_.size());
-    for (const auto &[label_id, _] : full_label_instances_)
-    {
-        new_label_ids.push_back(label_id);
-    }
-    std::reverse(new_label_ids.begin(), new_label_ids.end());
+    const std::set<int64_t> deleted_label_ids(label_ids.begin(), label_ids.end());
+
     beginResetModel();
-    // TODO: 只刷新需要更新的数据, 而不是全部数据
-    label_ids_ = new_label_ids;
+
+    for (const auto &label_id : deleted_label_ids)
+    {
+        auto found = full_label_instances_.find(label_id);
+        if (found == full_label_instances_.end())
+            continue;
+
+        delete found->second;
+        full_label_instances_.erase(found);
+    }
+
+    if (is_filtered_)
+    {
+        filtered_label_ids_.erase(std::remove_if(filtered_label_ids_.begin(), filtered_label_ids_.end(),
+                                                 [&deleted_label_ids](int64_t label_id)
+                                                 { return deleted_label_ids.find(label_id) != deleted_label_ids.end(); }),
+                                  filtered_label_ids_.end());
+        label_ids_ = filtered_label_ids_;
+    }
+    else
+    {
+        label_ids_.clear();
+        label_ids_.reserve(full_label_instances_.size());
+        for (const auto &[label_id, _] : full_label_instances_)
+        {
+            label_ids_.push_back(label_id);
+        }
+        std::reverse(label_ids_.begin(), label_ids_.end());
+    }
+
+    if (selection_)
+        selection_->clear();
+    last_index_ = -1;
+
     endResetModel();
-    // TODO: 更新选中状态
+    emit lastIndexChanged();
     spdlog::info("删除 {} 个标注成功", label_ids.size());
 }
 
