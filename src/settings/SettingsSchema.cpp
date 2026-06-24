@@ -9,7 +9,6 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QQmlEngine>
-
 #include <algorithm>
 
 namespace dltool::settings {
@@ -83,7 +82,9 @@ QVariantMap sidebarEntry(const QVariantMap &sidebar, const QString &sidebar_key)
         if (direct.userType() == QMetaType::Bool)
             return direct.toBool() ? QVariantMap{} : QVariantMap{{QStringLiteral("enabled"), false}};
         if (direct.userType() == QMetaType::QString)
-            return {{QStringLiteral("label"), direct.toString()}};
+            return {
+                {QStringLiteral("label"), direct.toString()}
+            };
         return direct.toMap();
     }
 
@@ -142,7 +143,8 @@ QVariant typedScalar(const QString &type, const QVariant &value)
     }
     if (normalized == QStringLiteral("int") || normalized == QStringLiteral("integer"))
         return value.toInt();
-    if (normalized == QStringLiteral("double") || normalized == QStringLiteral("float") || normalized == QStringLiteral("real"))
+    if (normalized == QStringLiteral("double") || normalized == QStringLiteral("float")
+        || normalized == QStringLiteral("real"))
         return value.toDouble();
     return value.toString();
 }
@@ -155,10 +157,9 @@ SettingsFieldModel::SettingsFieldModel(QObject *parent)
     QQmlEngine::setObjectOwnership(this, QQmlEngine::CppOwnership);
 }
 
-SettingsFieldModel::SettingsFieldModel(QString group_key, QString table_name, QString label,
-                                       QString accessor, QString parent_accessor, QString category,
-                                       QVariantMap sidebar, const int ordinal_index,
-                                       std::vector<SettingsField> fields, QObject *parent)
+SettingsFieldModel::SettingsFieldModel(QString group_key, QString table_name, QString label, QString accessor,
+                                       QString parent_accessor, QString category, QVariantMap sidebar,
+                                       const int ordinal_index, std::vector<SettingsField> fields, QObject *parent)
     : QAbstractListModel(parent)
     , group_key_(std::move(group_key))
     , table_name_(std::move(table_name))
@@ -175,16 +176,55 @@ SettingsFieldModel::SettingsFieldModel(QString group_key, QString table_name, QS
 
 SettingsFieldModel::~SettingsFieldModel() = default;
 
-QString SettingsFieldModel::groupKey() const { return group_key_; }
-QString SettingsFieldModel::tableName() const { return table_name_; }
-QString SettingsFieldModel::label() const { return label_; }
-QString SettingsFieldModel::accessor() const { return accessor_; }
-QString SettingsFieldModel::parentAccessor() const { return parent_accessor_; }
-QString SettingsFieldModel::accessorPath() const { return joinedAccessorPath(parent_accessor_, accessor_); }
-QString SettingsFieldModel::category() const { return category_; }
-QVariantMap SettingsFieldModel::sidebar() const { return sidebar_; }
-int SettingsFieldModel::ordinalIndex() const { return ordinal_index_; }
-int SettingsFieldModel::count() const { return rowCount(); }
+QString SettingsFieldModel::groupKey() const
+{
+    return group_key_;
+}
+
+QString SettingsFieldModel::tableName() const
+{
+    return table_name_;
+}
+
+QString SettingsFieldModel::label() const
+{
+    return label_;
+}
+
+QString SettingsFieldModel::accessor() const
+{
+    return accessor_;
+}
+
+QString SettingsFieldModel::parentAccessor() const
+{
+    return parent_accessor_;
+}
+
+QString SettingsFieldModel::accessorPath() const
+{
+    return joinedAccessorPath(parent_accessor_, accessor_);
+}
+
+QString SettingsFieldModel::category() const
+{
+    return category_;
+}
+
+QVariantMap SettingsFieldModel::sidebar() const
+{
+    return sidebar_;
+}
+
+int SettingsFieldModel::ordinalIndex() const
+{
+    return ordinal_index_;
+}
+
+int SettingsFieldModel::count() const
+{
+    return rowCount();
+}
 
 int SettingsFieldModel::rowCount(const QModelIndex &parent) const
 {
@@ -366,14 +406,14 @@ QVariantList SettingsFieldModel::sidebarFields(const QString &sidebar_key) const
     std::sort(rows.begin(), rows.end(),
               [](const QVariant &lhs, const QVariant &rhs)
               {
-                  const QVariantMap lhs_map = lhs.toMap();
-                  const QVariantMap rhs_map = rhs.toMap();
-                  const int lhs_order = lhs_map.value(QStringLiteral("sidebar_order")).toInt();
-                  const int rhs_order = rhs_map.value(QStringLiteral("sidebar_order")).toInt();
+                  const QVariantMap lhs_map   = lhs.toMap();
+                  const QVariantMap rhs_map   = rhs.toMap();
+                  const int         lhs_order = lhs_map.value(QStringLiteral("sidebar_order")).toInt();
+                  const int         rhs_order = rhs_map.value(QStringLiteral("sidebar_order")).toInt();
                   if (lhs_order != rhs_order)
                       return lhs_order < rhs_order;
                   return lhs_map.value(QStringLiteral("property_name")).toString()
-                         < rhs_map.value(QStringLiteral("property_name")).toString();
+                       < rhs_map.value(QStringLiteral("property_name")).toString();
               });
     return rows;
 }
@@ -381,16 +421,14 @@ QVariantList SettingsFieldModel::sidebarFields(const QString &sidebar_key) const
 QVariantMap SettingsFieldModel::valuesMap() const
 {
     QVariantMap values;
-    for (const SettingsField &field : fields_)
-        values.insert(field.name_en, field.value);
+    for (const SettingsField &field : fields_) values.insert(field.name_en, field.value);
     return values;
 }
 
 QVariantList SettingsFieldModel::schemaRows() const
 {
     QVariantList rows;
-    for (const SettingsField &field : fields_)
-        rows.append(toMap(field));
+    for (const SettingsField &field : fields_) rows.append(toMap(field));
     return rows;
 }
 
@@ -425,7 +463,7 @@ void SettingsFieldModel::resetValues()
     for (size_t row = 0; row < fields_.size(); ++row)
     {
         SettingsField &field = fields_[row];
-        const QVariant next = typedValue(field, field.default_value);
+        const QVariant next  = typedValue(field, field.default_value);
         if (field.value != next)
         {
             field.value = next;
@@ -439,7 +477,7 @@ void SettingsFieldModel::resetValues()
         for (const int row : changed_rows)
         {
             const SettingsField &field = fields_.at(static_cast<size_t>(row));
-            emit valueChanged(field.name_en, field.value);
+            emit                 valueChanged(field.name_en, field.value);
         }
     }
 }
@@ -453,8 +491,7 @@ int SettingsFieldModel::indexOfName(const QString &name) const
 
 int SettingsFieldModel::indexOfProperty(const QString &property_name) const
 {
-    const auto found = std::find_if(fields_.cbegin(), fields_.cend(),
-                                    [&property_name](const SettingsField &field)
+    const auto found = std::find_if(fields_.cbegin(), fields_.cend(), [&property_name](const SettingsField &field)
                                     { return field.property_name == property_name; });
     return found == fields_.cend() ? -1 : static_cast<int>(std::distance(fields_.cbegin(), found));
 }
@@ -467,21 +504,21 @@ QVariant SettingsFieldModel::typedValue(const SettingsField &field, const QVaria
 QVariantMap SettingsFieldModel::toMap(const SettingsField &field) const
 {
     return {
-        {       QStringLiteral("name_en"), field.name_en},
-        {       QStringLiteral("name_cn"), field.name_cn},
-        { QStringLiteral("property_name"), field.property_name},
-        {         QStringLiteral("value"), field.value},
-        { QStringLiteral("default_value"), field.default_value},
-        {    QStringLiteral("value_type"), field.value_type},
-        {   QStringLiteral("value_range"), field.value_range},
-        {  QStringLiteral("control_type"), field.control_type},
-        {       QStringLiteral("options"), field.options},
-        {   QStringLiteral("options_map"), field.options_map},
-        {       QStringLiteral("sidebar"), field.sidebar},
-        {       QStringLiteral("section"), field.section},
-        {   QStringLiteral("description"), field.description},
-        {       QStringLiteral("visible"), field.visible},
-        { QStringLiteral("ordinal_index"), field.ordinal_index},
+        {      QStringLiteral("name_en"),       field.name_en},
+        {      QStringLiteral("name_cn"),       field.name_cn},
+        {QStringLiteral("property_name"), field.property_name},
+        {        QStringLiteral("value"),         field.value},
+        {QStringLiteral("default_value"), field.default_value},
+        {   QStringLiteral("value_type"),    field.value_type},
+        {  QStringLiteral("value_range"),   field.value_range},
+        { QStringLiteral("control_type"),  field.control_type},
+        {      QStringLiteral("options"),       field.options},
+        {  QStringLiteral("options_map"),   field.options_map},
+        {      QStringLiteral("sidebar"),       field.sidebar},
+        {      QStringLiteral("section"),       field.section},
+        {  QStringLiteral("description"),   field.description},
+        {      QStringLiteral("visible"),       field.visible},
+        {QStringLiteral("ordinal_index"), field.ordinal_index},
     };
 }
 
@@ -493,7 +530,10 @@ SettingsCatalog::SettingsCatalog(QObject *parent)
 
 SettingsCatalog::~SettingsCatalog() = default;
 
-int SettingsCatalog::count() const { return rowCount(); }
+int SettingsCatalog::count() const
+{
+    return rowCount();
+}
 
 int SettingsCatalog::rowCount(const QModelIndex &parent) const
 {
@@ -536,16 +576,16 @@ QVariant SettingsCatalog::data(const QModelIndex &index, const int role) const
 QHash<int, QByteArray> SettingsCatalog::roleNames() const
 {
     return {
-        {   GroupKeyRole,    "groupKey"},
-        {  TableNameRole,   "tableName"},
-        {      LabelRole,       "label"},
-        {   AccessorRole,    "accessor"},
+        {      GroupKeyRole,       "groupKey"},
+        {     TableNameRole,      "tableName"},
+        {         LabelRole,          "label"},
+        {      AccessorRole,       "accessor"},
         {ParentAccessorRole, "parentAccessor"},
-        {AccessorPathRole, "accessorPath"},
-        {   CategoryRole,    "category"},
-        {    SidebarRole,     "sidebar"},
-        {OrdinalIndexRole, "ordinalIndex"},
-        { FieldModelRole,  "fieldModel"},
+        {  AccessorPathRole,   "accessorPath"},
+        {      CategoryRole,       "category"},
+        {       SidebarRole,        "sidebar"},
+        {  OrdinalIndexRole,   "ordinalIndex"},
+        {    FieldModelRole,     "fieldModel"},
     };
 }
 
@@ -601,21 +641,20 @@ QVariantList SettingsCatalog::sidebarFields(const QString &sidebar_key) const
     for (const auto &group_ptr : groups_)
     {
         const QVariantList group_rows = group_ptr->sidebarFields(sidebar_key);
-        for (const QVariant &row : group_rows)
-            rows.append(row);
+        for (const QVariant &row : group_rows) rows.append(row);
     }
 
     std::sort(rows.begin(), rows.end(),
               [](const QVariant &lhs, const QVariant &rhs)
               {
-                  const QVariantMap lhs_map = lhs.toMap();
-                  const QVariantMap rhs_map = rhs.toMap();
-                  const int lhs_order = lhs_map.value(QStringLiteral("sidebar_order")).toInt();
-                  const int rhs_order = rhs_map.value(QStringLiteral("sidebar_order")).toInt();
+                  const QVariantMap lhs_map   = lhs.toMap();
+                  const QVariantMap rhs_map   = rhs.toMap();
+                  const int         lhs_order = lhs_map.value(QStringLiteral("sidebar_order")).toInt();
+                  const int         rhs_order = rhs_map.value(QStringLiteral("sidebar_order")).toInt();
                   if (lhs_order != rhs_order)
                       return lhs_order < rhs_order;
                   return lhs_map.value(QStringLiteral("accessor_path")).toString()
-                         < rhs_map.value(QStringLiteral("accessor_path")).toString();
+                       < rhs_map.value(QStringLiteral("accessor_path")).toString();
               });
     return rows;
 }
@@ -647,24 +686,24 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
 
             for (auto it = root.begin(); it != root.end(); ++it)
             {
-                const QString group_key  = nodeString(it->first);
-                const YAML::Node group   = it->second;
-                YAML::Node fields_node   = group.IsSequence() ? group : group["fields"];
-                const QString table_name = group.IsMap() ? nodeString(group["table"], defaultTableName(group_key))
-                                                         : defaultTableName(group_key);
-                const QString label      = group.IsMap() ? nodeString(group["label"], group_key) : group_key;
-                const QString accessor   = group.IsMap() ? nodeString(group["accessor"]) : QString();
-                const QString parent_accessor
+                const QString    group_key   = nodeString(it->first);
+                const YAML::Node group       = it->second;
+                YAML::Node       fields_node = group.IsSequence() ? group : group["fields"];
+                const QString    table_name  = group.IsMap() ? nodeString(group["table"], defaultTableName(group_key))
+                                                             : defaultTableName(group_key);
+                const QString    label       = group.IsMap() ? nodeString(group["label"], group_key) : group_key;
+                const QString    accessor    = group.IsMap() ? nodeString(group["accessor"]) : QString();
+                const QString    parent_accessor
                     = group.IsMap() ? nodeString(firstNode(group, {"parent_accessor", "parent"})) : QString();
-                const QString category = group.IsMap() ? nodeString(group["category"]) : QString();
-                const QVariantMap sidebar = group.IsMap() ? nodeVariant(group["sidebar"]).toMap() : QVariantMap{};
-                const int group_ordinal = group.IsMap() && group["ordinal_index"] ? group["ordinal_index"].as<int>()
-                                                                                  : groups_.size();
+                const QString     category = group.IsMap() ? nodeString(group["category"]) : QString();
+                const QVariantMap sidebar  = group.IsMap() ? nodeVariant(group["sidebar"]).toMap() : QVariantMap{};
+                const int         group_ordinal
+                    = group.IsMap() && group["ordinal_index"] ? group["ordinal_index"].as<int>() : groups_.size();
                 if (!fields_node || !fields_node.IsSequence())
                     continue;
 
                 std::vector<SettingsField> fields;
-                int ordinal = 0;
+                int                        ordinal = 0;
                 for (const YAML::Node &field_node : fields_node)
                 {
                     SettingsField field = parseField(field_node, ordinal++);
@@ -684,8 +723,7 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
         }
 
         std::sort(groups_.begin(), groups_.end(),
-                  [](const std::unique_ptr<SettingsFieldModel> &lhs,
-                     const std::unique_ptr<SettingsFieldModel> &rhs)
+                  [](const std::unique_ptr<SettingsFieldModel> &lhs, const std::unique_ptr<SettingsFieldModel> &rhs)
                   {
                       if (lhs->ordinalIndex() != rhs->ordinalIndex())
                           return lhs->ordinalIndex() < rhs->ordinalIndex();
@@ -720,7 +758,7 @@ void SettingsCatalog::syncAndLoad(database::SettingsDataBase *database)
     for (const auto &group_ptr : groups_)
     {
         SettingsFieldModel *model = group_ptr.get();
-        QString sync_err;
+        QString             sync_err;
         if (!database->syncSettingsSchema(model->tableName(), model->schemaRows(), sync_err) && !sync_err.isEmpty())
             spdlog::warn("Sync settings schema failed for {}: {}", model->tableName().toUtf8().constData(),
                          sync_err.toUtf8().constData());
@@ -749,19 +787,16 @@ void SettingsCatalog::save(database::SettingsDataBase *database) const
 
 void SettingsCatalog::reset()
 {
-    for (const auto &group_ptr : groups_)
-        group_ptr->resetValues();
+    for (const auto &group_ptr : groups_) group_ptr->resetValues();
 }
 
-SettingsFieldModel *SettingsCatalog::addGroup(QString group_key, QString table_name, QString label,
-                                              QString accessor, QString parent_accessor, QString category,
-                                              QVariantMap sidebar, const int ordinal_index,
-                                              std::vector<SettingsField> fields)
+SettingsFieldModel *SettingsCatalog::addGroup(QString group_key, QString table_name, QString label, QString accessor,
+                                              QString parent_accessor, QString category, QVariantMap sidebar,
+                                              const int ordinal_index, std::vector<SettingsField> fields)
 {
-    auto group = std::make_unique<SettingsFieldModel>(std::move(group_key), std::move(table_name), std::move(label),
-                                                      std::move(accessor), std::move(parent_accessor),
-                                                      std::move(category), std::move(sidebar), ordinal_index,
-                                                      std::move(fields), this);
+    auto group = std::make_unique<SettingsFieldModel>(
+        std::move(group_key), std::move(table_name), std::move(label), std::move(accessor), std::move(parent_accessor),
+        std::move(category), std::move(sidebar), ordinal_index, std::move(fields), this);
     SettingsFieldModel *ptr = group.get();
     connect(ptr, &SettingsFieldModel::valueChanged, this,
             [this, ptr](const QString &name, const QVariant &value)
@@ -783,9 +818,9 @@ SettingsFieldModel *SettingsCatalog::addGroup(QString group_key, QString table_n
 
 int SettingsCatalog::indexOfGroup(const QString &group_key) const
 {
-    const auto found = std::find_if(groups_.cbegin(), groups_.cend(),
-                                    [&group_key](const std::unique_ptr<SettingsFieldModel> &group)
-                                    { return group->groupKey() == group_key; });
+    const auto found
+        = std::find_if(groups_.cbegin(), groups_.cend(), [&group_key](const std::unique_ptr<SettingsFieldModel> &group)
+                       { return group->groupKey() == group_key; });
     return found == groups_.cend() ? -1 : static_cast<int>(std::distance(groups_.cbegin(), found));
 }
 
