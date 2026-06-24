@@ -16,6 +16,7 @@ enum class Key
     ImageSearch,
     RoiSearch,
     SmartAnnotation,
+    FewShotLearning,
 };
 Q_ENUM_NS(Key)
 QML_NAMED_ELEMENT(SettingsAccessor)
@@ -32,6 +33,17 @@ enum class Key
     AutoSaveInterval,
     AutoSaveEnabled,
     PythonEnvPath,
+    Sam2Checkpoint,
+    Sam2Architecture,
+    KShot,
+    Epochs,
+    BatchSize,
+    NumWorkers,
+    ImageSize,
+    LearningRate,
+    WeightDecay,
+    SupportRatio,
+    OutputDir,
 };
 Q_ENUM_NS(Key)
 QML_NAMED_ELEMENT(SettingsFieldKey)

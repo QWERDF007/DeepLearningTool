@@ -9,6 +9,7 @@
 #include "feature/ImageSearchDataProvider.h"
 #include "feature/SmartAnnotationController.h"
 #include "FilterItemsModel.h"
+#include "FewShotLearningController.h"
 #include "GlobalFilter.h"
 #include "ImageTags.h"
 #include "Images.h"
@@ -16,6 +17,7 @@
 #include "LabelClasses.h"
 
 #include <QObject>
+#include <QVariantList>
 #include <QtQml>
 
 #include <memory>
@@ -26,6 +28,10 @@ class QQmlApplicationEngine;
 namespace dltool::database {
 class ProjectDataBase;
 } // namespace dltool::database
+
+namespace dltool::model {
+class TaskManager;
+} // namespace dltool::model
 
 namespace dltool::data {
 
@@ -45,6 +51,7 @@ class DATA_API DataManager : public QObject, public dltool::feature::ImageSearch
     Q_PROPERTY(GlobalFilter *globalFilter READ globalFilter CONSTANT FINAL)
     Q_PROPERTY(dltool::feature::ImageSearchController *imageSearch READ imageSearch CONSTANT FINAL)
     Q_PROPERTY(dltool::feature::SmartAnnotationController *smartAnnotation READ smartAnnotation CONSTANT FINAL)
+    Q_PROPERTY(dltool::data::FewShotLearningController *fewShotLearning READ fewShotLearning CONSTANT FINAL)
     Q_PROPERTY(DatasetFilterItemsModel *datasetFilterItems READ datasetFilterItems CONSTANT FINAL)
     Q_PROPERTY(TagFilterItemsModel *tagFilterItems READ tagFilterItems CONSTANT FINAL)
     Q_PROPERTY(LabelClassFilterItemsModel *labelClassFilterItems READ labelClassFilterItems CONSTANT FINAL)
@@ -110,6 +117,11 @@ public:
         return smart_annotation_;
     }
 
+    dltool::data::FewShotLearningController *fewShotLearning() const
+    {
+        return few_shot_learning_;
+    }
+
     DatasetFilterItemsModel *datasetFilterItems() const
     {
         return dataset_filter_items_;
@@ -137,7 +149,10 @@ public:
 
     QString databasePath() const;
 
+    void setTaskManager(dltool::model::TaskManager *task_manager);
+
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
+    Q_INVOKABLE QVariantList getAllLabelClassIds() const;
 
     Q_INVOKABLE int     getDatasetId(const QString &dataset_name) const;
     Q_INVOKABLE QString getDatasetName(const int dataset_id) const;
@@ -202,6 +217,9 @@ public:
     void clearLabelSearchResults() override;
     void setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter) override;
 
+signals:
+    void dataImportFinished(bool success, const QString &message);
+
 private:
     struct PendingImportTask;
 
@@ -245,6 +263,7 @@ private:
     GlobalFilter *global_filter_{nullptr};
     dltool::feature::ImageSearchController     *image_search_{nullptr};
     dltool::feature::SmartAnnotationController *smart_annotation_{nullptr};
+    dltool::data::FewShotLearningController    *few_shot_learning_{nullptr};
 
     DatasetFilterItemsModel    *dataset_filter_items_{nullptr};
     TagFilterItemsModel        *tag_filter_items_{nullptr};

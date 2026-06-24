@@ -1,0 +1,1192 @@
+#include "data/FewShotLearningController.h"
+
+#include "core/CoreDef.h"
+#include "data/DataFormat.h"
+#include "data/DataManager.h"
+#include "data/DatasetIO.h"
+#include "settings/SettingsKeys.h"
+#include "settings/GlobalSettings.h"
+#include "model/TaskManager.h"
+
+#include <spdlog/spdlog.h>
+
+#include <QCoreApplication>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QImage>
+#include <QImageReader>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QPainter>
+#include <QProcessEnvironment>
+#include <QRegularExpression>
+#include <QTextStream>
+#include <QTimer>
+#include <QUuid>
+
+#include <algorithm>
+#include <cmath>
+#include <map>
+#include <set>
+
+namespace dltool::data {
+
+namespace {
+
+struct ClassBuildData
+{
+    int64_t                    label_class_id{-1};
+    QString                    label_class_name;
+    QString                    class_dir_name;
+    std::map<int64_t, QImage>  masks_by_image_id;
+};
+
+struct PredictionImportTarget
+{
+    int64_t dataset_id{-1};
+    QString manifest_path;
+};
+
+QString cleanPath(const QString &path)
+{
+    return QDir::cleanPath(QDir::fromNativeSeparators(path.trimmed()));
+}
+
+QString runtimePath(const QString &path)
+{
+    const QString cleaned = cleanPath(path);
+    if (cleaned.isEmpty() || QFileInfo(cleaned).isAbsolute())
+        return cleaned;
+    return cleanPath(QDir(QCoreApplication::applicationDirPath()).filePath(cleaned));
+}
+
+QString fixedFsSam2Root()
+{
+    return runtimePath(QStringLiteral("python/fornib/FS-SAM2"));
+}
+
+QString fixedSam2ConfigRoot()
+{
+    return runtimePath(QStringLiteral("python/facebookresearch/sam2/sam2/configs"));
+}
+
+QString sanitizeFileName(QString value, const QString &fallback)
+{
+    value = value.trimmed();
+    if (value.isEmpty())
+        value = fallback;
+    value.replace(QRegularExpression(QStringLiteral(R"([\\/:*?"<>|])")), QStringLiteral("_"));
+    value.replace(QRegularExpression(QStringLiteral("\\s+")), QStringLiteral("_"));
+    return value.isEmpty() ? fallback : value;
+}
+
+QString valueString(const dltool::settings::SettingsGroup *settings, const QString &name, const QString &fallback = {})
+{
+    return settings != nullptr ? settings->valueOr(name, fallback).toString().trimmed() : fallback;
+}
+
+int valueInt(const dltool::settings::SettingsGroup *settings, const QString &name, int fallback)
+{
+    bool ok = false;
+    const int value = settings != nullptr ? settings->valueOr(name, fallback).toInt(&ok) : fallback;
+    return ok ? value : fallback;
+}
+
+double valueDouble(const dltool::settings::SettingsGroup *settings, const QString &name, double fallback)
+{
+    bool ok = false;
+    const double value = settings != nullptr ? settings->valueOr(name, fallback).toDouble(&ok) : fallback;
+    return ok ? value : fallback;
+}
+
+QString pythonExecutableFromEnvPath(const QString &env_path)
+{
+    const QFileInfo info(cleanPath(env_path));
+    if (info.isFile())
+        return info.absoluteFilePath();
+
+    const QDir dir(info.absoluteFilePath());
+    const QStringList candidates = {
+        QStringLiteral("python.exe"),
+        QStringLiteral("Scripts/python.exe"),
+        QStringLiteral("bin/python"),
+        QStringLiteral("python"),
+    };
+    for (const QString &candidate : candidates)
+    {
+        const QString path = dir.filePath(candidate);
+        if (QFileInfo::exists(path))
+            return cleanPath(path);
+    }
+    return {};
+}
+
+bool ensureDir(const QString &path, QString &err_msg)
+{
+    QDir dir(path);
+    if (dir.exists())
+        return true;
+    if (!dir.mkpath(QStringLiteral(".")))
+    {
+        err_msg = QStringLiteral("无法创建目录: %1").arg(path);
+        return false;
+    }
+    return true;
+}
+
+bool writeTextFile(const QString &path, const QStringList &lines, QString &err_msg)
+{
+    QFileInfo info(path);
+    if (!ensureDir(info.dir().absolutePath(), err_msg))
+        return false;
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+    {
+        err_msg = QStringLiteral("无法写入文件: %1, %2").arg(path, file.errorString());
+        return false;
+    }
+
+    QTextStream stream(&file);
+    stream.setEncoding(QStringConverter::Utf8);
+    for (const QString &line : lines)
+        stream << line << '\n';
+    return true;
+}
+
+bool copyImageToAlias(const QString &source_path, const QString &target_dir, const QString &alias, QString &copied_path,
+                      QString &err_msg)
+{
+    const QFileInfo source_info(source_path);
+    QString suffix = source_info.suffix().toLower();
+    if (suffix.isEmpty())
+        suffix = QStringLiteral("png");
+
+    copied_path = QDir(target_dir).filePath(QStringLiteral("%1.%2").arg(alias, suffix));
+    return DatasetIO::copyFile(source_path, copied_path, err_msg);
+}
+
+QPolygonF variantPointsToPolygon(const QVariant &value)
+{
+    QPolygonF polygon;
+    for (const QPointF &point : DatasetIO::variantListToPoints(value))
+        polygon << point;
+    return polygon;
+}
+
+void paintLabelToMask(QImage &mask, const QVariantMap &label_data)
+{
+    if (mask.isNull())
+        return;
+
+    QPainter painter(&mask);
+    painter.setRenderHint(QPainter::Antialiasing, false);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(Qt::white);
+
+    const QPolygonF polygon = variantPointsToPolygon(label_data.value(QStringLiteral("points")));
+    if (polygon.size() >= 3)
+    {
+        painter.drawPolygon(polygon);
+        return;
+    }
+
+    const QRectF rect(label_data.value(QStringLiteral("x")).toDouble(), label_data.value(QStringLiteral("y")).toDouble(),
+                      label_data.value(QStringLiteral("width")).toDouble(),
+                      label_data.value(QStringLiteral("height")).toDouble());
+    if (rect.width() > 0 && rect.height() > 0)
+        painter.fillRect(rect, Qt::white);
+}
+
+std::vector<int64_t> variantListToIds(const QVariantList &values)
+{
+    std::vector<int64_t> ids;
+    ids.reserve(static_cast<size_t>(values.size()));
+    for (const QVariant &value : values)
+    {
+        bool ok = false;
+        const qlonglong id = value.toLongLong(&ok);
+        if (ok && id >= 0)
+            ids.push_back(static_cast<int64_t>(id));
+    }
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    return ids;
+}
+
+enum class FsSam2Script
+{
+    Train,
+    Predict,
+};
+
+enum class FewShotTaskKind
+{
+    Train,
+    Predict,
+};
+
+enum class FewShotClassField
+{
+    Id,
+    Name,
+    Dir,
+};
+
+enum class Sam2Architecture
+{
+    Sam2HieraTiny,
+    Sam2HieraSmall,
+    Sam2HieraBasePlus,
+    Sam2HieraLarge,
+    Sam21HieraTiny,
+    Sam21HieraSmall,
+    Sam21HieraBasePlus,
+    Sam21HieraLarge,
+    Unknown,
+};
+
+QString fsSam2ScriptName(FsSam2Script script)
+{
+    switch (script)
+    {
+    case FsSam2Script::Train:
+        return QStringLiteral("train.py");
+    case FsSam2Script::Predict:
+        return QStringLiteral("predict.py");
+    default:
+        return {};
+    }
+}
+
+QString fsSam2ScriptPath(const QString &fs_sam2_root, FsSam2Script script)
+{
+    return cleanPath(QDir(fs_sam2_root).filePath(fsSam2ScriptName(script)));
+}
+
+QString fewShotTaskName(FewShotTaskKind kind)
+{
+    switch (kind)
+    {
+    case FewShotTaskKind::Train:
+        return QStringLiteral("FS-SAM2 训练");
+    case FewShotTaskKind::Predict:
+        return QStringLiteral("FS-SAM2 推理");
+    default:
+        return {};
+    }
+}
+
+QString fewShotTaskType(FewShotTaskKind kind)
+{
+    switch (kind)
+    {
+    case FewShotTaskKind::Train:
+        return QStringLiteral("few-shot-train");
+    case FewShotTaskKind::Predict:
+        return QStringLiteral("few-shot-predict");
+    default:
+        return {};
+    }
+}
+
+QString fewShotClassFieldName(FewShotClassField field)
+{
+    switch (field)
+    {
+    case FewShotClassField::Id:
+        return QStringLiteral("id");
+    case FewShotClassField::Name:
+        return QStringLiteral("name");
+    case FewShotClassField::Dir:
+        return QStringLiteral("dir");
+    default:
+        return {};
+    }
+}
+
+QString sam2ArchitectureName(Sam2Architecture architecture)
+{
+    switch (architecture)
+    {
+    case Sam2Architecture::Sam2HieraTiny:
+        return QStringLiteral("sam2_hiera_tiny");
+    case Sam2Architecture::Sam2HieraSmall:
+        return QStringLiteral("sam2_hiera_small");
+    case Sam2Architecture::Sam2HieraBasePlus:
+        return QStringLiteral("sam2_hiera_base_plus");
+    case Sam2Architecture::Sam2HieraLarge:
+        return QStringLiteral("sam2_hiera_large");
+    case Sam2Architecture::Sam21HieraTiny:
+        return QStringLiteral("sam2.1_hiera_tiny");
+    case Sam2Architecture::Sam21HieraSmall:
+        return QStringLiteral("sam2.1_hiera_small");
+    case Sam2Architecture::Sam21HieraBasePlus:
+        return QStringLiteral("sam2.1_hiera_base_plus");
+    case Sam2Architecture::Sam21HieraLarge:
+        return QStringLiteral("sam2.1_hiera_large");
+    case Sam2Architecture::Unknown:
+    default:
+        return {};
+    }
+}
+
+Sam2Architecture sam2ArchitectureFromName(const QString &name)
+{
+    const QString value = name.trimmed();
+    if (value == sam2ArchitectureName(Sam2Architecture::Sam2HieraTiny))
+        return Sam2Architecture::Sam2HieraTiny;
+    if (value == sam2ArchitectureName(Sam2Architecture::Sam2HieraSmall))
+        return Sam2Architecture::Sam2HieraSmall;
+    if (value == sam2ArchitectureName(Sam2Architecture::Sam2HieraBasePlus))
+        return Sam2Architecture::Sam2HieraBasePlus;
+    if (value == sam2ArchitectureName(Sam2Architecture::Sam2HieraLarge))
+        return Sam2Architecture::Sam2HieraLarge;
+    if (value == sam2ArchitectureName(Sam2Architecture::Sam21HieraTiny))
+        return Sam2Architecture::Sam21HieraTiny;
+    if (value == sam2ArchitectureName(Sam2Architecture::Sam21HieraSmall))
+        return Sam2Architecture::Sam21HieraSmall;
+    if (value == sam2ArchitectureName(Sam2Architecture::Sam21HieraBasePlus))
+        return Sam2Architecture::Sam21HieraBasePlus;
+    if (value == sam2ArchitectureName(Sam2Architecture::Sam21HieraLarge))
+        return Sam2Architecture::Sam21HieraLarge;
+    return Sam2Architecture::Unknown;
+}
+
+QString sam2ConfigFolder(Sam2Architecture architecture)
+{
+    switch (architecture)
+    {
+    case Sam2Architecture::Sam2HieraTiny:
+    case Sam2Architecture::Sam2HieraSmall:
+    case Sam2Architecture::Sam2HieraBasePlus:
+    case Sam2Architecture::Sam2HieraLarge:
+        return QStringLiteral("sam2");
+    case Sam2Architecture::Sam21HieraTiny:
+    case Sam2Architecture::Sam21HieraSmall:
+    case Sam2Architecture::Sam21HieraBasePlus:
+    case Sam2Architecture::Sam21HieraLarge:
+        return QStringLiteral("sam2.1");
+    case Sam2Architecture::Unknown:
+    default:
+        return {};
+    }
+}
+
+QString sam2ConfigFileName(Sam2Architecture architecture)
+{
+    switch (architecture)
+    {
+    case Sam2Architecture::Sam2HieraTiny:
+        return QStringLiteral("sam2_hiera_t.yaml");
+    case Sam2Architecture::Sam2HieraSmall:
+        return QStringLiteral("sam2_hiera_s.yaml");
+    case Sam2Architecture::Sam2HieraBasePlus:
+        return QStringLiteral("sam2_hiera_b+.yaml");
+    case Sam2Architecture::Sam2HieraLarge:
+        return QStringLiteral("sam2_hiera_l.yaml");
+    case Sam2Architecture::Sam21HieraTiny:
+        return QStringLiteral("sam2.1_hiera_t.yaml");
+    case Sam2Architecture::Sam21HieraSmall:
+        return QStringLiteral("sam2.1_hiera_s.yaml");
+    case Sam2Architecture::Sam21HieraBasePlus:
+        return QStringLiteral("sam2.1_hiera_b+.yaml");
+    case Sam2Architecture::Sam21HieraLarge:
+        return QStringLiteral("sam2.1_hiera_l.yaml");
+    case Sam2Architecture::Unknown:
+    default:
+        return {};
+    }
+}
+
+QString sam2ConfigPathFromArchitecture(const QString &architecture_name, QString &err_msg)
+{
+    const Sam2Architecture architecture = sam2ArchitectureFromName(architecture_name);
+    if (architecture == Sam2Architecture::Unknown)
+    {
+        err_msg = QStringLiteral("不支持的 SAM2 架构: %1").arg(architecture_name);
+        return {};
+    }
+
+    const QString path = cleanPath(QDir(fixedSam2ConfigRoot())
+                                       .filePath(QStringLiteral("%1/%2")
+                                                     .arg(sam2ConfigFolder(architecture),
+                                                          sam2ConfigFileName(architecture))));
+    if (!QFileInfo::exists(path))
+    {
+        err_msg = QStringLiteral("SAM2 配置文件不存在: %1").arg(path);
+        return {};
+    }
+    return path;
+}
+
+QString checkpointPath(const QString &fs_sam2_root, const QString &logpath)
+{
+    return cleanPath(QDir(fs_sam2_root).filePath(QStringLiteral("logs/%1.log/best_model.pt").arg(logpath)));
+}
+
+} // namespace
+
+struct FewShotLearningController::RunContext
+{
+    QString python_executable;
+    QString fs_sam2_root;
+    QString sam2_checkpoint;
+    QString sam2_cfg;
+    QString run_dir;
+    QString custom_dataset_dir;
+    QString query_dir;
+    QString output_dir;
+    QString query_txt_path;
+    QString train_script;
+    QString predict_script;
+    QString checkpoint_path;
+    QString exp_id;
+    QString logpath;
+
+    int kshot{1};
+    int epochs{50};
+    int batch_size{2};
+    int num_workers{0};
+    int image_size{1024};
+    double lr{1e-4};
+    double weight_decay{1e-6};
+    double support_ratio{0.5};
+
+    int train_task_id{-1};
+    int predict_task_id{-1};
+    QString task_host;
+    quint16 task_port{0};
+
+    QJsonArray classes;
+    std::vector<PredictionImportTarget> import_targets;
+};
+
+FewShotLearningController::FewShotLearningController(DataManager *data_manager, QObject *parent)
+    : QObject(parent)
+    , data_manager_(data_manager)
+{
+}
+
+FewShotLearningController::~FewShotLearningController()
+{
+    if (process_ != nullptr)
+    {
+        process_->kill();
+        process_->deleteLater();
+        process_ = nullptr;
+    }
+}
+
+bool FewShotLearningController::running() const
+{
+    return running_;
+}
+
+QString FewShotLearningController::lastError() const
+{
+    return last_error_;
+}
+
+void FewShotLearningController::setTaskManager(dltool::model::TaskManager *task_manager)
+{
+    if (task_manager_ == task_manager)
+        return;
+    if (task_manager_)
+        disconnect(task_manager_, &dltool::model::TaskManager::taskStopRequested, this,
+                   &FewShotLearningController::handleTaskStopRequested);
+    task_manager_ = task_manager;
+    if (task_manager_)
+        connect(task_manager_, &dltool::model::TaskManager::taskStopRequested, this,
+                &FewShotLearningController::handleTaskStopRequested);
+}
+
+bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_ids,
+                                            const QVariantList &test_dataset_ids,
+                                            const QVariantList &label_class_ids)
+{
+    if (running_)
+        return false;
+
+    setLastError({});
+    stop_requested_ = false;
+
+    RunContext context;
+    QString    err_msg;
+    if (!prepareRun(variantListToIds(train_dataset_ids), variantListToIds(test_dataset_ids),
+                    variantListToIds(label_class_ids), context, err_msg))
+    {
+        setLastError(err_msg);
+        spdlog::error("启动小样本学习失败: {}", err_msg.toStdString());
+        return false;
+    }
+
+    active_context_ = std::make_unique<RunContext>(std::move(context));
+    stage_ = RunStage::Training;
+    current_predict_class_index_ = 0;
+
+    if (!startTraining(*active_context_, err_msg))
+    {
+        active_context_.reset();
+        stage_ = RunStage::Idle;
+        setLastError(err_msg);
+        spdlog::error("启动小样本学习失败: {}", err_msg.toStdString());
+        return false;
+    }
+
+    const RunContext &started_context = *active_context_;
+    train_task_id_                    = started_context.train_task_id;
+    predict_task_id_                  = started_context.predict_task_id;
+    prediction_output_dir_            = started_context.output_dir;
+    checkpoint_path_                  = started_context.checkpoint_path;
+    setRunning(true);
+    return true;
+}
+
+void FewShotLearningController::cancel()
+{
+    stop_requested_ = true;
+    if (task_manager_ && train_task_id_ >= 0)
+        task_manager_->stopTask(train_task_id_);
+    if (task_manager_ && predict_task_id_ >= 0)
+        task_manager_->stopTask(predict_task_id_);
+}
+
+bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dataset_ids,
+                                           const std::vector<int64_t> &test_dataset_ids,
+                                           const std::vector<int64_t> &label_class_ids, RunContext &context,
+                                           QString &err_msg) const
+{
+    if (data_manager_ == nullptr)
+    {
+        err_msg = QStringLiteral("数据管理器未初始化");
+        return false;
+    }
+    if (task_manager_ == nullptr)
+    {
+        err_msg = QStringLiteral("任务管理器未初始化");
+        return false;
+    }
+    if (data_manager_->method() != dltool::core::DeepLearningMethod::Detection
+        && data_manager_->method() != dltool::core::DeepLearningMethod::Segmentation)
+    {
+        err_msg = QStringLiteral("小样本学习仅支持检测和分割项目");
+        return false;
+    }
+    if (label_class_ids.size() < 2)
+    {
+        err_msg = QStringLiteral("FS-SAM2 训练至少需要选择 2 个类别");
+        return false;
+    }
+    if (train_dataset_ids.empty())
+    {
+        err_msg = QStringLiteral("请至少选择一个训练数据集");
+        return false;
+    }
+    if (test_dataset_ids.empty())
+    {
+        err_msg = QStringLiteral("请至少选择一个测试数据集");
+        return false;
+    }
+
+    auto *global_settings = dltool::settings::GlobalSettings::getInstance();
+    const auto *few_shot_settings = global_settings->settingsGroup(dltool::settings::accessorPath(
+        dltool::settings::accessor::Key::FewShotLearning));
+    const auto *software_settings = global_settings->settingsGroup(dltool::settings::accessorPath(
+        dltool::settings::accessor::Key::Software));
+
+    context.python_executable = pythonExecutableFromEnvPath(valueString(software_settings, QStringLiteral("pythonEnvPath")));
+    if (context.python_executable.isEmpty())
+    {
+        err_msg = QStringLiteral("请先在软件设置中配置 Python 环境目录");
+        return false;
+    }
+
+    context.fs_sam2_root    = fixedFsSam2Root();
+    context.sam2_checkpoint = runtimePath(valueString(few_shot_settings, QStringLiteral("sam2Checkpoint")));
+    const QString sam2_architecture =
+        global_settings
+            ->valueForField(static_cast<int>(dltool::settings::accessor::Key::FewShotLearning),
+                            static_cast<int>(dltool::settings::field::Key::Sam2Architecture),
+                            sam2ArchitectureName(Sam2Architecture::Sam21HieraSmall))
+            .toString()
+            .trimmed();
+    context.sam2_cfg = sam2ConfigPathFromArchitecture(sam2_architecture, err_msg);
+    if (context.sam2_cfg.isEmpty())
+        return false;
+    if (!QDir(context.fs_sam2_root).exists())
+    {
+        err_msg = QStringLiteral("FS-SAM2 目录不存在: %1").arg(context.fs_sam2_root);
+        return false;
+    }
+    context.train_script   = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::Train);
+    context.predict_script = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::Predict);
+    if (!QFileInfo::exists(context.train_script) || !QFileInfo::exists(context.predict_script))
+    {
+        err_msg = QStringLiteral("FS-SAM2 目录缺少 train.py 或 predict.py: %1").arg(context.fs_sam2_root);
+        return false;
+    }
+    if (!context.sam2_checkpoint.isEmpty() && !QFileInfo::exists(context.sam2_checkpoint))
+    {
+        err_msg = QStringLiteral("SAM2 checkpoint 不存在: %1").arg(context.sam2_checkpoint);
+        return false;
+    }
+
+    context.kshot         = std::clamp(valueInt(few_shot_settings, QStringLiteral("kshot"), 1), 1, 16);
+    context.epochs        = std::clamp(valueInt(few_shot_settings, QStringLiteral("epochs"), 50), 1, 10000);
+    context.batch_size    = std::clamp(valueInt(few_shot_settings, QStringLiteral("batchSize"), 2), 1, 128);
+    context.num_workers   = std::clamp(valueInt(few_shot_settings, QStringLiteral("numWorkers"), 0), 0, 128);
+    context.image_size    = std::clamp(valueInt(few_shot_settings, QStringLiteral("imageSize"), 1024), 64, 8192);
+    context.lr            = valueDouble(few_shot_settings, QStringLiteral("learningRate"), 1e-4);
+    context.weight_decay  = valueDouble(few_shot_settings, QStringLiteral("weightDecay"), 1e-6);
+    context.support_ratio = std::clamp(valueDouble(few_shot_settings, QStringLiteral("supportRatio"), 0.5), 0.1, 0.9);
+
+    const QString output_root_setting = cleanPath(valueString(few_shot_settings, QStringLiteral("outputDir")));
+    const QString project_dir = QFileInfo(data_manager_->databasePath()).absoluteDir().absolutePath();
+    const QString run_id = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss_zzz"));
+    context.exp_id       = QStringLiteral("dltool_%1").arg(run_id);
+    context.logpath      = QStringLiteral("dltool/%1/fold0").arg(context.exp_id);
+    context.run_dir      = output_root_setting.isEmpty()
+                         ? QDir(project_dir).filePath(QStringLiteral(".dltool/few_shot/%1").arg(run_id))
+                         : QDir(output_root_setting).filePath(run_id);
+    context.custom_dataset_dir = QDir(context.run_dir).filePath(QStringLiteral("custom"));
+    context.query_dir          = QDir(context.run_dir).filePath(QStringLiteral("query"));
+    context.output_dir         = QDir(context.run_dir).filePath(QStringLiteral("predictions"));
+    context.query_txt_path      = QDir(context.query_dir).filePath(QStringLiteral("query.txt"));
+    context.checkpoint_path     = checkpointPath(context.fs_sam2_root, context.logpath);
+
+    const std::set<int64_t> selected_classes(label_class_ids.begin(), label_class_ids.end());
+    const std::set<int64_t> selected_train_datasets(train_dataset_ids.begin(), train_dataset_ids.end());
+    const std::set<int64_t> selected_test_datasets(test_dataset_ids.begin(), test_dataset_ids.end());
+    std::map<int64_t, ClassBuildData> classes;
+    for (int64_t label_class_id : label_class_ids)
+    {
+        const QString class_name = data_manager_->labelClasses()->getLabelClassName(static_cast<int>(label_class_id));
+        if (class_name.isEmpty())
+            continue;
+        ClassBuildData data;
+        data.label_class_id   = label_class_id;
+        data.label_class_name = class_name;
+        data.class_dir_name   = sanitizeFileName(class_name, QStringLiteral("class_%1").arg(label_class_id));
+        classes.emplace(label_class_id, std::move(data));
+    }
+    if (classes.size() < 2)
+    {
+        err_msg = QStringLiteral("有效类别不足 2 个");
+        return false;
+    }
+
+    std::map<int64_t, QString> train_images;
+    std::map<int64_t, QString> test_images;
+    std::map<int64_t, int64_t> test_image_dataset_ids;
+    for (int64_t image_id : data_manager_->allImageIds())
+    {
+        const int64_t dataset_id = data_manager_->imageDatasetId(image_id);
+        if (selected_train_datasets.find(dataset_id) != selected_train_datasets.end())
+            train_images[image_id] = data_manager_->imagePath(image_id);
+        if (selected_test_datasets.find(dataset_id) != selected_test_datasets.end())
+        {
+            test_images[image_id] = data_manager_->imagePath(image_id);
+            test_image_dataset_ids[image_id] = dataset_id;
+        }
+    }
+    if (train_images.empty() || test_images.empty())
+    {
+        err_msg = QStringLiteral("训练数据集或测试数据集没有图像");
+        return false;
+    }
+
+    for (int64_t label_id : data_manager_->allLabelIds())
+    {
+        const int64_t image_id = data_manager_->labelImageId(label_id);
+        if (train_images.find(image_id) == train_images.end())
+            continue;
+
+        const int64_t label_class_id = data_manager_->labelInstances()->getLabelClassId(label_id);
+        if (selected_classes.find(label_class_id) == selected_classes.end())
+            continue;
+
+        const QString image_path = train_images[image_id];
+        int width = 0;
+        int height = 0;
+        if (!DatasetIO::getImageDimensions(image_path, width, height))
+            continue;
+
+        QImage &mask = classes[label_class_id].masks_by_image_id[image_id];
+        if (mask.isNull())
+        {
+            mask = QImage(width, height, QImage::Format_Grayscale8);
+            mask.fill(0);
+        }
+        paintLabelToMask(mask, data_manager_->labelData(label_id));
+    }
+
+    for (const auto &[label_class_id, class_data] : classes)
+    {
+        Q_UNUSED(label_class_id)
+        if (class_data.masks_by_image_id.size() < static_cast<size_t>(context.kshot + 1))
+        {
+            err_msg = QStringLiteral("类别 %1 至少需要 %2 张带标注图像")
+                          .arg(class_data.label_class_name)
+                          .arg(context.kshot + 1);
+            return false;
+        }
+    }
+
+    if (!ensureDir(context.custom_dataset_dir, err_msg) || !ensureDir(context.query_dir, err_msg)
+        || !ensureDir(context.output_dir, err_msg))
+    {
+        return false;
+    }
+
+    for (const auto &[label_class_id, class_data] : classes)
+    {
+        Q_UNUSED(label_class_id)
+        const QString class_dir = QDir(context.custom_dataset_dir).filePath(class_data.class_dir_name);
+        const QString image_dir = QDir(class_dir).filePath(QStringLiteral("images"));
+        const QString mask_dir  = QDir(class_dir).filePath(QStringLiteral("masks"));
+        if (!ensureDir(image_dir, err_msg) || !ensureDir(mask_dir, err_msg))
+            return false;
+
+        QStringList entries;
+        for (const auto &[image_id, mask] : class_data.masks_by_image_id)
+        {
+            const QString alias = QStringLiteral("img_%1").arg(image_id);
+            QString copied_path;
+            if (!copyImageToAlias(train_images[image_id], image_dir, alias, copied_path, err_msg))
+                return false;
+            if (!mask.save(QDir(mask_dir).filePath(alias + QStringLiteral(".png"))))
+            {
+                err_msg = QStringLiteral("写入训练 Mask 失败: %1").arg(alias);
+                return false;
+            }
+            entries.push_back(QStringLiteral("%1,%1").arg(alias));
+        }
+
+        const int support_count = std::clamp(static_cast<int>(std::round(entries.size() * context.support_ratio)),
+                                             context.kshot, static_cast<int>(entries.size()) - 1);
+        QStringList support_entries = entries.mid(0, support_count);
+        QStringList query_entries   = entries.mid(support_count);
+        if (query_entries.empty())
+            query_entries.push_back(entries.back());
+
+        if (!writeTextFile(QDir(class_dir).filePath(QStringLiteral("support.txt")), support_entries, err_msg)
+            || !writeTextFile(QDir(class_dir).filePath(QStringLiteral("query.txt")), query_entries, err_msg))
+        {
+            return false;
+        }
+
+        QJsonObject class_object;
+        class_object[fewShotClassFieldName(FewShotClassField::Id)]   = static_cast<qint64>(class_data.label_class_id);
+        class_object[fewShotClassFieldName(FewShotClassField::Name)] = class_data.label_class_name;
+        class_object[fewShotClassFieldName(FewShotClassField::Dir)]  = class_data.class_dir_name;
+        context.classes.append(class_object);
+    }
+
+    QStringList query_lines;
+    std::map<int64_t, QStringList> manifest_lines_by_dataset;
+    for (const auto &[image_id, image_path] : test_images)
+    {
+        const QString alias = QStringLiteral("img_%1").arg(image_id);
+        QString copied_path;
+        if (!copyImageToAlias(image_path, context.query_dir, alias, copied_path, err_msg))
+            return false;
+        const QString line = QStringLiteral("%1,%2").arg(alias, image_path);
+        manifest_lines_by_dataset[test_image_dataset_ids[image_id]].push_back(line);
+        query_lines.push_back(QStringLiteral("%1,%1").arg(alias));
+    }
+
+    if (!writeTextFile(context.query_txt_path, query_lines, err_msg)
+        || !writeTextFile(QDir(context.output_dir).filePath(QStringLiteral("query.txt")), query_lines, err_msg))
+    {
+        return false;
+    }
+
+    for (int64_t dataset_id : test_dataset_ids)
+    {
+        const QStringList lines = manifest_lines_by_dataset[dataset_id];
+        if (lines.empty())
+        {
+            err_msg = QStringLiteral("测试数据集 %1 没有图像").arg(data_manager_->getDatasetName(dataset_id));
+            return false;
+        }
+
+        const QString manifest_path = QDir(context.run_dir).filePath(QStringLiteral("test_images_%1.txt").arg(dataset_id));
+        if (!writeTextFile(manifest_path, lines, err_msg))
+            return false;
+        context.import_targets.push_back(PredictionImportTarget{dataset_id, manifest_path});
+    }
+
+    QString server_err;
+    if (!task_manager_->ensureTaskServer(&server_err))
+    {
+        err_msg = QStringLiteral("任务通信服务启动失败: %1").arg(server_err);
+        return false;
+    }
+
+    const QString task_uuid = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    context.train_task_id
+        = task_manager_->addExternalTask(task_uuid, fewShotTaskName(FewShotTaskKind::Train),
+                                         fewShotTaskType(FewShotTaskKind::Train));
+    context.predict_task_id
+        = task_manager_->addExternalTask(task_uuid, fewShotTaskName(FewShotTaskKind::Predict),
+                                         fewShotTaskType(FewShotTaskKind::Predict));
+    if (context.train_task_id < 0 || context.predict_task_id < 0)
+    {
+        err_msg = QStringLiteral("创建任务中心任务失败");
+        return false;
+    }
+    context.task_host = task_manager_->taskServerHost();
+    context.task_port = task_manager_->taskServerPort();
+    return true;
+}
+
+bool FewShotLearningController::startTraining(const RunContext &context, QString &err_msg)
+{
+    QStringList arguments = {
+        context.train_script,
+        QStringLiteral("--datapath"),
+        context.custom_dataset_dir,
+        QStringLiteral("--benchmark"),
+        QStringLiteral("custom"),
+        QStringLiteral("--kshot"),
+        QString::number(context.kshot),
+        QStringLiteral("--epochs"),
+        QString::number(context.epochs),
+        QStringLiteral("--lr"),
+        QString::number(context.lr, 'g', 16),
+        QStringLiteral("--weight_decay"),
+        QString::number(context.weight_decay, 'g', 16),
+        QStringLiteral("--bsz"),
+        QString::number(context.batch_size),
+        QStringLiteral("--nworker"),
+        QString::number(context.num_workers),
+        QStringLiteral("--img_size"),
+        QString::number(context.image_size),
+        QStringLiteral("--exp_id"),
+        context.exp_id,
+        QStringLiteral("--fold"),
+        QStringLiteral("0"),
+        QStringLiteral("--logpath"),
+        context.logpath,
+        QStringLiteral("--sam2_cfg"),
+        context.sam2_cfg,
+        QStringLiteral("--dltool_task_host"),
+        context.task_host,
+        QStringLiteral("--dltool_task_port"),
+        QString::number(context.task_port),
+        QStringLiteral("--dltool_task_id"),
+        QString::number(context.train_task_id),
+    };
+    if (!context.sam2_checkpoint.isEmpty())
+        arguments << QStringLiteral("--sam2_checkpoint") << context.sam2_checkpoint;
+
+    return startProcess(context, arguments, err_msg);
+}
+
+bool FewShotLearningController::startPrediction(const RunContext &context, int class_index, QString &err_msg)
+{
+    const int class_count = static_cast<int>(context.classes.size());
+    if (class_index < 0 || class_index >= class_count)
+    {
+        err_msg = QStringLiteral("推理类别索引无效: %1").arg(class_index);
+        return false;
+    }
+
+    const QJsonObject class_object = context.classes.at(class_index).toObject();
+    const QString     class_dir    = class_object.value(fewShotClassFieldName(FewShotClassField::Dir)).toString();
+    if (class_dir.isEmpty())
+    {
+        err_msg = QStringLiteral("推理类别目录为空");
+        return false;
+    }
+
+    const QString support_dir = QDir(context.custom_dataset_dir).filePath(class_dir);
+    const QString output_dir  = QDir(context.output_dir).filePath(class_dir);
+    if (!ensureDir(output_dir, err_msg))
+        return false;
+
+    const int safe_class_count = std::max(1, class_count);
+    const int base             = class_index * 100 / safe_class_count;
+    const int end              = (class_index + 1) * 100 / safe_class_count;
+    const int span             = std::max(1, end - base);
+
+    QStringList arguments = {
+        context.predict_script,
+        QStringLiteral("--support_dir"),
+        support_dir,
+        QStringLiteral("--query_dir"),
+        context.query_dir,
+        QStringLiteral("--output_dir"),
+        output_dir,
+        QStringLiteral("--checkpoint"),
+        context.checkpoint_path,
+        QStringLiteral("--sam2_cfg"),
+        context.sam2_cfg,
+        QStringLiteral("--kshot"),
+        QString::number(context.kshot),
+        QStringLiteral("--img_size"),
+        QString::number(context.image_size),
+        QStringLiteral("--dltool_task_host"),
+        context.task_host,
+        QStringLiteral("--dltool_task_port"),
+        QString::number(context.task_port),
+        QStringLiteral("--dltool_task_id"),
+        QString::number(context.predict_task_id),
+        QStringLiteral("--dltool_progress_base"),
+        QString::number(base),
+        QStringLiteral("--dltool_progress_span"),
+        QString::number(span),
+    };
+    if (!context.sam2_checkpoint.isEmpty())
+        arguments << QStringLiteral("--sam2_checkpoint") << context.sam2_checkpoint;
+    if (class_index + 1 == class_count)
+        arguments << QStringLiteral("--dltool_finish_on_complete");
+
+    return startProcess(context, arguments, err_msg);
+}
+
+bool FewShotLearningController::startProcess(const RunContext &context, const QStringList &arguments, QString &err_msg)
+{
+    if (process_ != nullptr && process_->state() != QProcess::NotRunning)
+    {
+        err_msg = QStringLiteral("已有小样本学习进程正在运行");
+        return false;
+    }
+
+    auto *process = new QProcess(this);
+    process_      = process;
+    process->setProgram(context.python_executable);
+    process->setArguments(arguments);
+    process->setWorkingDirectory(context.fs_sam2_root);
+
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
+    env.insert(QStringLiteral("PYTHONUNBUFFERED"), QStringLiteral("1"));
+    process->setProcessEnvironment(env);
+    process->setProcessChannelMode(QProcess::MergedChannels);
+
+    connect(process, &QProcess::readyReadStandardOutput, this,
+            [process]()
+            {
+                const QString output = QString::fromUtf8(process->readAllStandardOutput()).trimmed();
+                if (!output.isEmpty())
+                    spdlog::info("FS-SAM2: {}", output.toStdString());
+            });
+    connect(process, &QProcess::finished, this, &FewShotLearningController::handleProcessFinished);
+
+    process->start();
+    if (!process->waitForStarted(5000))
+    {
+        err_msg = QStringLiteral("启动小样本学习进程失败: %1").arg(process->errorString());
+        process->deleteLater();
+        process_ = nullptr;
+        return false;
+    }
+    return true;
+}
+
+void FewShotLearningController::finishRun()
+{
+    if (data_manager_ != nullptr)
+        disconnect(data_manager_, &DataManager::dataImportFinished, this,
+                   &FewShotLearningController::handlePredictionImportFinished);
+    active_context_.reset();
+    stage_                       = RunStage::Idle;
+    current_predict_class_index_ = 0;
+    current_import_index_        = 0;
+    importing_predictions_       = false;
+    train_task_id_               = -1;
+    predict_task_id_             = -1;
+    prediction_output_dir_.clear();
+    checkpoint_path_.clear();
+    setRunning(false);
+}
+
+void FewShotLearningController::handleProcessFinished(int exit_code, QProcess::ExitStatus exit_status)
+{
+    auto *finished_process = qobject_cast<QProcess *>(sender());
+    if (finished_process != nullptr)
+    {
+        if (process_ == finished_process)
+            process_ = nullptr;
+        finished_process->deleteLater();
+    }
+
+    const bool success = exit_status == QProcess::NormalExit && exit_code == 0 && !stop_requested_;
+    if (!success)
+    {
+        const QString message = stop_requested_ ? QStringLiteral("小样本学习任务已停止")
+                                                : QStringLiteral("小样本学习进程异常退出: %1").arg(exit_code);
+        setLastError(message);
+        if (task_manager_ && !stop_requested_)
+        {
+            if (stage_ == RunStage::Training)
+                task_manager_->failTask(train_task_id_);
+            if (stage_ == RunStage::Training || stage_ == RunStage::Predicting)
+                task_manager_->failTask(predict_task_id_);
+        }
+        finishRun();
+        return;
+    }
+
+    if (active_context_ == nullptr)
+    {
+        finishRun();
+        return;
+    }
+
+    if (stage_ == RunStage::Training)
+    {
+        if (!QFileInfo::exists(active_context_->checkpoint_path))
+        {
+            const QString message = QStringLiteral("未找到训练模型: %1").arg(active_context_->checkpoint_path);
+            setLastError(message);
+            if (task_manager_)
+            {
+                task_manager_->failTask(train_task_id_);
+                task_manager_->failTask(predict_task_id_);
+            }
+            finishRun();
+            return;
+        }
+
+        if (task_manager_)
+            task_manager_->finishTask(train_task_id_);
+
+        stage_                       = RunStage::Predicting;
+        current_predict_class_index_ = 0;
+
+        QString err_msg;
+        if (!startPrediction(*active_context_, current_predict_class_index_, err_msg))
+        {
+            setLastError(err_msg);
+            if (task_manager_)
+                task_manager_->failTask(predict_task_id_);
+            finishRun();
+        }
+        return;
+    }
+
+    if (stage_ == RunStage::Predicting)
+    {
+        ++current_predict_class_index_;
+        if (current_predict_class_index_ < static_cast<int>(active_context_->classes.size()))
+        {
+            QString err_msg;
+            if (!startPrediction(*active_context_, current_predict_class_index_, err_msg))
+            {
+                setLastError(err_msg);
+                if (task_manager_)
+                    task_manager_->failTask(predict_task_id_);
+                finishRun();
+            }
+            return;
+        }
+
+        if (task_manager_)
+            task_manager_->finishTask(predict_task_id_);
+        startPredictionImports();
+        return;
+    }
+
+    finishRun();
+}
+
+void FewShotLearningController::startPredictionImports()
+{
+    if (data_manager_ == nullptr || active_context_ == nullptr || active_context_->import_targets.empty())
+    {
+        finishRun();
+        return;
+    }
+
+    importing_predictions_ = true;
+    current_import_index_  = 0;
+    connect(data_manager_, &DataManager::dataImportFinished, this,
+            &FewShotLearningController::handlePredictionImportFinished, Qt::UniqueConnection);
+    startNextPredictionImport();
+}
+
+void FewShotLearningController::startNextPredictionImport()
+{
+    if (!importing_predictions_ || data_manager_ == nullptr || active_context_ == nullptr)
+    {
+        finishRun();
+        return;
+    }
+
+    if (current_import_index_ >= static_cast<int>(active_context_->import_targets.size()))
+    {
+        disconnect(data_manager_, &DataManager::dataImportFinished, this,
+                   &FewShotLearningController::handlePredictionImportFinished);
+        importing_predictions_ = false;
+        finishRun();
+        return;
+    }
+
+    const PredictionImportTarget &target = active_context_->import_targets.at(static_cast<size_t>(current_import_index_));
+    data_manager_->importData(target.dataset_id, DataFormat::Mask, target.manifest_path, prediction_output_dir_);
+}
+
+void FewShotLearningController::handlePredictionImportFinished(bool success, const QString &message)
+{
+    if (!importing_predictions_)
+        return;
+
+    if (!success)
+    {
+        setLastError(message);
+        disconnect(data_manager_, &DataManager::dataImportFinished, this,
+                   &FewShotLearningController::handlePredictionImportFinished);
+        importing_predictions_ = false;
+        finishRun();
+        return;
+    }
+
+    ++current_import_index_;
+    startNextPredictionImport();
+}
+
+void FewShotLearningController::handleTaskStopRequested(int task_id)
+{
+    if (task_id != train_task_id_ && task_id != predict_task_id_)
+        return;
+
+    stop_requested_ = true;
+    if (process_ == nullptr || process_->state() == QProcess::NotRunning)
+        return;
+
+    QTimer::singleShot(3000, this,
+                       [this]()
+                       {
+                           if (process_ != nullptr && process_->state() != QProcess::NotRunning)
+                               process_->terminate();
+                       });
+    QTimer::singleShot(8000, this,
+                       [this]()
+                       {
+                           if (process_ != nullptr && process_->state() != QProcess::NotRunning)
+                               process_->kill();
+                       });
+}
+
+void FewShotLearningController::setRunning(bool running)
+{
+    if (running_ == running)
+        return;
+    running_ = running;
+    emit runningChanged();
+}
+
+void FewShotLearningController::setLastError(const QString &last_error)
+{
+    if (last_error_ == last_error)
+        return;
+    last_error_ = last_error;
+    emit lastErrorChanged();
+}
+
+} // namespace dltool::data

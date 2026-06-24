@@ -15,6 +15,7 @@
 #include <spdlog/spdlog.h>
 
 #include <QColor>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QMetaType>
@@ -35,6 +36,20 @@ bool isFatalDatabaseError(const QString &message)
         || message.contains(QStringLiteral("file is not a database"), Qt::CaseInsensitive);
 }
 
+QString normalizedImagePath(const QString &path)
+{
+    QFileInfo file_info(path);
+    QString   normalized = file_info.exists() ? file_info.canonicalFilePath() : file_info.absoluteFilePath();
+    if (normalized.isEmpty())
+        normalized = path;
+
+    normalized = QDir::cleanPath(QDir::fromNativeSeparators(normalized));
+#ifdef Q_OS_WIN
+    normalized = normalized.toCaseFolded();
+#endif
+    return normalized;
+}
+
 } // namespace
 
 struct DataManager::PendingImportTask
@@ -45,6 +60,7 @@ struct DataManager::PendingImportTask
 
     std::map<QString, int64_t> label_class_map;
     std::map<QString, int64_t> image_path_to_id;
+    std::map<QString, int64_t> normalized_image_path_to_id;
 
     size_t  total_images{0};
     size_t  processed_images{0};
@@ -85,6 +101,7 @@ void DataManager::init(const int method)
     global_filter_->initializeFilterModules(this);
     image_search_     = new dltool::feature::ImageSearchController(this, this);
     smart_annotation_ = new dltool::feature::SmartAnnotationController(this);
+    few_shot_learning_ = new dltool::data::FewShotLearningController(this, this);
     if (auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(
             dltool::settings::accessorPath(dltool::settings::accessor::Key::SmartAnnotation)))
     {
@@ -302,6 +319,20 @@ QList<QString> DataManager::getAllDatasetsName() const
     return datasets_->getAllDatasetsName();
 }
 
+QVariantList DataManager::getAllLabelClassIds() const
+{
+    QVariantList ids;
+    if (label_classes_ == nullptr)
+        return ids;
+
+    ids.reserve(label_classes_->rowCount());
+    for (int row = 0; row < label_classes_->rowCount(); ++row)
+    {
+        ids.push_back(label_classes_->data(label_classes_->index(row, 0), LabelClassesListModel::LabelClassIdRole));
+    }
+    return ids;
+}
+
 int DataManager::getDatasetId(const QString &dataset_name) const
 {
     return datasets_->getDatasetId(dataset_name);
@@ -310,6 +341,12 @@ int DataManager::getDatasetId(const QString &dataset_name) const
 QString DataManager::databasePath() const
 {
     return database_ ? database_->path() : QString();
+}
+
+void DataManager::setTaskManager(dltool::model::TaskManager *task_manager)
+{
+    if (few_shot_learning_ != nullptr)
+        few_shot_learning_->setTaskManager(task_manager);
 }
 
 std::vector<int64_t> DataManager::selectedImageIds() const
@@ -431,19 +468,23 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
 
     if (import_running_)
     {
+        const QString message = QStringLiteral("已有导入任务正在运行");
         spdlog::warn("导入数据失败, 已有导入任务正在运行");
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
                                   Q_ARG(QString, "导入数据"));
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                  Q_ARG(int, spdlog::level::warn), Q_ARG(QString, "已有导入任务正在运行"));
+                                  Q_ARG(int, spdlog::level::warn), Q_ARG(QString, message));
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+        emit dataImportFinished(false, message);
         return;
     }
 
     // 验证数据格式是否支持
     if (!data::DataFormat::isDataFormatSupported(data_format))
     {
+        const QString message = QStringLiteral("数据格式不支持");
         spdlog::error("导入数据失败, 数据格式不支持: {}", data_format);
+        emit dataImportFinished(false, message);
         return;
     }
 
@@ -461,6 +502,7 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
                                   Q_ARG(int, spdlog::level::err), Q_ARG(QString, message));
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+        emit dataImportFinished(false, message);
         return;
     }
 
@@ -470,10 +512,12 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
     DataImporter *importer = DataImporter::createImporter(data_format, database_, this);
     if (!importer)
     {
+        const QString message = QStringLiteral("不支持的数据格式");
         spdlog::error("无法为格式 {} 创建导入器", data_format);
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, "不支持的数据格式"));
+                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, message));
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+        emit dataImportFinished(false, message);
         return;
     }
     importer->setTargetMethod(method_);
@@ -1065,7 +1109,44 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
     std::vector<int64_t> image_ids;
     if (!image_paths.empty())
     {
-        if (!image_instances_->addImages(task.dataset_id, image_paths, image_ids))
+        if (task.normalized_image_path_to_id.empty())
+        {
+            for (const int64_t image_id : image_instances_->getAllImageIds())
+            {
+                if (image_instances_->getImageDatasetId(image_id) != task.dataset_id)
+                    continue;
+
+                const QString normalized_path = normalizedImagePath(image_instances_->getImagePath(image_id));
+                if (!normalized_path.isEmpty())
+                    task.normalized_image_path_to_id[normalized_path] = image_id;
+            }
+        }
+
+        std::vector<QString>                    new_image_paths;
+        std::vector<QString>                    new_normalized_paths;
+        std::map<QString, std::vector<QString>> pending_raw_paths_by_normalized_path;
+
+        for (const QString &image_path : image_paths)
+        {
+            const QString normalized_path = normalizedImagePath(image_path);
+            const auto    existing_it     = task.normalized_image_path_to_id.find(normalized_path);
+            if (existing_it != task.normalized_image_path_to_id.end())
+            {
+                task.image_path_to_id[image_path] = existing_it->second;
+                continue;
+            }
+
+            auto pending_it = pending_raw_paths_by_normalized_path.find(normalized_path);
+            if (pending_it == pending_raw_paths_by_normalized_path.end())
+            {
+                new_image_paths.push_back(image_path);
+                new_normalized_paths.push_back(normalized_path);
+                pending_it = pending_raw_paths_by_normalized_path.emplace(normalized_path, std::vector<QString>{}).first;
+            }
+            pending_it->second.push_back(image_path);
+        }
+
+        if (!new_image_paths.empty() && !image_instances_->addImages(task.dataset_id, new_image_paths, image_ids))
         {
             err_msg = QString("添加图像失败，当前批次已跳过。已导入 %1 个图像, %2 个标注")
                           .arg(task.imported_images)
@@ -1073,7 +1154,7 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
             return false;
         }
 
-        if (image_ids.size() != image_paths.size())
+        if (image_ids.size() != new_image_paths.size())
         {
             err_msg = QString("添加图像失败，返回的图像 ID 数量不一致");
             return false;
@@ -1084,9 +1165,15 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
         std::vector<int64_t> dataset_ids(image_ids.size(), task.dataset_id);
         datasets_->addImages(dataset_ids, image_ids);
 
-        for (size_t i = 0; i < image_paths.size(); ++i)
+        for (size_t i = 0; i < new_image_paths.size(); ++i)
         {
-            task.image_path_to_id[image_paths[i]] = image_ids[i];
+            task.normalized_image_path_to_id[new_normalized_paths[i]] = image_ids[i];
+            const auto pending_it = pending_raw_paths_by_normalized_path.find(new_normalized_paths[i]);
+            if (pending_it == pending_raw_paths_by_normalized_path.end())
+                continue;
+
+            for (const QString &raw_path : pending_it->second)
+                task.image_path_to_id[raw_path] = image_ids[i];
         }
     }
 
@@ -1224,6 +1311,7 @@ void DataManager::finishBatchedImport(bool success, const QString &message)
     }
     pending_import_task_.reset();
     import_running_ = false;
+    emit dataImportFinished(success, message);
 }
 
 void DataManager::initializeQmlEngine(QQmlApplicationEngine *engine)

@@ -79,6 +79,7 @@ GlobalSettings.setValue("advanced.roiSearch", "topK", 10)
 | `ImageSearchSettings.yaml` | `ImageSearchSettings` | `advanced.imageSearch` | `advanced` | `image_search_settings` | 图像搜索配置，包括模型、权重路径、特征层、索引、后端、设备、批量大小。 |
 | `RoiSearchSettings.yaml` | `RoiSearchSettings` | `advanced.roiSearch` | `advanced` | `roi_search_settings` | ROI/标注搜索配置，在图像搜索基础上增加 ROI Align、PCA 等参数。 |
 | `SmartAnnotationSettings.yaml` | `SmartAnnotationSettings` | `advanced.smartAnnotation` | `advanced` | `smart_annotation_settings` | 智能标注配置，包括 SAM 模型、权重路径、推理后端、mask 阈值、mask 透明度、刷新间隔。 |
+| `FewShotLearningSettings.yaml` | `FewShotLearningSettings` | `advanced.fewShotLearning` | `advanced` | `few_shot_learning_settings` | 小样本学习配置，包括 SAM2 权重、训练参数和输出目录。 |
 
 ## 侧边栏元数据
 

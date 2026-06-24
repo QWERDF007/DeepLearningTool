@@ -24,12 +24,12 @@ DataExporter *DataExporter::createExporter(int data_format, QObject *parent)
         return nullptr;
     }
 
-    if (data_format == DataFormat::getDataFormat("LabelMe"))
+    if (data_format == DataFormat::LabelMe)
     {
         return new LabelMeExporter(parent);
     }
 
-    if (data_format == DataFormat::getDataFormat("COCO"))
+    if (data_format == DataFormat::COCO)
     {
         return new COCOExporter(parent);
     }

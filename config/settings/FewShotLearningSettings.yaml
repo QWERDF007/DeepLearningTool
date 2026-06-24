@@ -1,0 +1,104 @@
+FewShotLearningSettings:
+  table: few_shot_learning_settings
+  parent_accessor: advanced
+  accessor: fewShotLearning
+  category: advanced
+  ordinal_index: 130
+  label: 小样本学习
+  fields:
+    - name_en: sam2_checkpoint
+      name_cn: SAM2 权重
+      property_name: sam2Checkpoint
+      value: python/fornib/FS-SAM2/checkpoint/sam2.1_hiera_base_plus.pt
+      value_type: string
+      control_type: path
+      section: FS-SAM2
+
+    - name_en: sam2_architecture
+      name_cn: SAM2 架构
+      property_name: sam2Architecture
+      value: sam2.1_hiera_small
+      value_type: string
+      control_type: combo
+      options: [sam2_hiera_tiny, sam2_hiera_small, sam2_hiera_base_plus, sam2_hiera_large, sam2.1_hiera_tiny, sam2.1_hiera_small, sam2.1_hiera_base_plus, sam2.1_hiera_large]
+      section: FS-SAM2
+
+    - name_en: kshot
+      name_cn: K-shot
+      property_name: kshot
+      value: 1
+      value_type: int
+      value_range: [1, 16, 1]
+      control_type: spin
+      section: 训练
+
+    - name_en: epochs
+      name_cn: 训练轮数
+      property_name: epochs
+      value: 50
+      value_type: int
+      value_range: [1, 10000, 1]
+      control_type: spin
+      section: 训练
+
+    - name_en: batch_size
+      name_cn: Batch Size
+      property_name: batchSize
+      value: 2
+      value_type: int
+      value_range: [1, 128, 1]
+      control_type: spin
+      section: 训练
+
+    - name_en: num_workers
+      name_cn: 数据线程数
+      property_name: numWorkers
+      value: 0
+      value_type: int
+      value_range: [0, 128, 1]
+      control_type: spin
+      section: 训练
+
+    - name_en: image_size
+      name_cn: 图像尺寸
+      property_name: imageSize
+      value: 1024
+      value_type: int
+      value_range: [64, 8192, 64]
+      control_type: spin
+      section: 训练
+
+    - name_en: learning_rate
+      name_cn: 学习率
+      property_name: learningRate
+      value: 0.0001
+      value_type: double
+      value_range: [0.000001, 0.01, 0.000001]
+      control_type: spin
+      section: 训练
+
+    - name_en: weight_decay
+      name_cn: Weight Decay
+      property_name: weightDecay
+      value: 0.000001
+      value_type: double
+      value_range: [0.0, 0.01, 0.000001]
+      control_type: spin
+      section: 训练
+
+    - name_en: support_ratio
+      name_cn: Support 比例
+      property_name: supportRatio
+      value: 0.5
+      value_type: double
+      value_range: [0.1, 0.9, 0.05]
+      control_type: slider
+      section: 数据
+
+    - name_en: output_dir
+      name_cn: 输出目录
+      property_name: outputDir
+      value: ""
+      value_type: string
+      control_type: dir
+      section: 输出

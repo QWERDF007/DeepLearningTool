@@ -178,6 +178,16 @@ Rectangle {
                                 text: "智能标注"
                                 onClicked: labelCanvas.setToolMode("smart")
                             }
+
+                            QuiTextIconButton {
+                                Layout.alignment: Qt.AlignHCenter
+                                Layout.preferredWidth: 32
+                                Layout.preferredHeight: 32
+                                enabled: labelPage.dataManager !== null
+                                iconSource: QuiFontIcon.TaskView
+                                text: "小样本学习"
+                                onClicked: fewShotLearningDialog.openForStart()
+                            }
                         }
                     }
 
@@ -188,6 +198,11 @@ Rectangle {
                         dataManager: labelPage.dataManager
                     }
                 }
+            }
+
+            FewShotLearningDialog {
+                id: fewShotLearningDialog
+                dataManager: labelPage.dataManager
             }
 
             Connections {

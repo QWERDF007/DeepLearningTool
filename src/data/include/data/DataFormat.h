@@ -13,14 +13,22 @@ class DATA_API DataFormat : public QObject
     QML_NAMED_ELEMENT(DataFormat)
     QT_QML_SINGLETON(DataFormat)
 public:
+    enum SupportedDataFormat
+    {
+        LabelMe = 0,
+        COCO    = 1,
+        Mask    = 2,
+    };
+    Q_ENUM(SupportedDataFormat)
+
     static Q_INVOKABLE QList<QString> getSupportedDataFormat()
     {
-        return DataFormatList;
+        return ImportDataFormatList;
     }
 
     static Q_INVOKABLE QList<QString> getSupportedExportDataFormat()
     {
-        return DataFormatList;
+        return ExportDataFormatList;
     }
 
     static Q_INVOKABLE QList<QString> getSupportedImageFormat()
@@ -49,13 +57,13 @@ private:
 
     ~DataFormat() {}
 
-    enum SupportedDataFormat
-    {
-        LabelMe = 0,
-        COCO    = 1,
+    inline static const QList<QString> ImportDataFormatList = {
+        "LabelMe",
+        "COCO",
+        "Mask",
     };
 
-    inline static const QList<QString> DataFormatList = {
+    inline static const QList<QString> ExportDataFormatList = {
         "LabelMe",
         "COCO",
     };
@@ -63,11 +71,13 @@ private:
     inline static const std::unordered_map<int, QString> IdToName = {
         {LabelMe, "LabelMe"},
         {  COCO,    "COCO"},
+        {  Mask,    "Mask"},
     };
 
     inline static const std::unordered_map<QString, int> NameToId = {
         {"LabelMe", LabelMe},
         {   "COCO",    COCO},
+        {   "Mask",    Mask},
     };
 
     inline static const QList<QString> ImageFormatList = {

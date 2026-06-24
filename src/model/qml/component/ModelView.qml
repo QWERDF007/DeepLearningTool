@@ -84,6 +84,13 @@ Rectangle {
         taskManager.stopModelTask(currentModelUuid, taskType)
     }
 
+    function addCurrentModelTask() {
+        if (!taskActionsEnabled || !taskManager || currentModelUuid.length === 0) {
+            return
+        }
+        taskManager.addTask(currentModelUuid, currentModelName, taskType)
+    }
+
     onModelManagerChanged: requestEnsureCurrentModel()
     Component.onCompleted: {
         componentCompleted = true
@@ -93,6 +100,13 @@ Rectangle {
     QuiMenu {
         id: modelMenu
         width: 160
+        QuiMenuItem {
+            text: "添加到任务"
+            iconSource: QuiFontIcon.TaskView
+            visible: modelView.taskActionsEnabled
+            enabled: modelView.taskManager && modelView.currentModelUuid.length > 0
+            onClicked: modelView.addCurrentModelTask()
+        }
         QuiMenuItem {
             text: "重命名"
             iconSource: QuiFontIcon.Rename

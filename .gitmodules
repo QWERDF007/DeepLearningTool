@@ -14,3 +14,7 @@
 	path = 3rdparty/yaml-cpp
 	url = https://github.com/jbeder/yaml-cpp.git
 	branch = master
+[submodule "3rdparty/EasyTrain"]
+	path = 3rdparty/EasyTrain
+	url = https://github.com/QWERDF007/EasyTrain.git
+	branch = main

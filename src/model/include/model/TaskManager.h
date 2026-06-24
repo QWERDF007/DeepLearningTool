@@ -10,6 +10,9 @@
 
 namespace dltool::model {
 
+class TaskCommunicationServer;
+struct TaskMessage;
+
 class MODEL_API TaskTableModel : public QAbstractTableModel
 {
     Q_OBJECT
@@ -39,6 +42,7 @@ public:
         Paused,
         Stopped,
         Finished,
+        Failed,
     };
     Q_ENUM(TaskStatus)
 
@@ -69,11 +73,14 @@ public:
 
     QHash<int, QByteArray> roleNames() const override;
 
-    int addTask(const QString &model_uuid, const QString &model_name, const QString &task_type = QString());
+    int addTask(const QString &model_uuid, const QString &model_name, const QString &task_type = QString(),
+                bool external_process = false, bool supports_pause = true);
     bool startTask(int task_id);
     bool pauseTask(int task_id);
     bool stopTask(int task_id);
     bool finishTask(int task_id);
+    bool failTask(int task_id);
+    bool setTaskStatus(int task_id, TaskStatus status);
     bool deleteTask(int task_id);
     bool updateTaskProgress(int task_id, int progress);
     int  startModelTask(const QString &model_uuid, const QString &model_name, const QString &task_type = QString());
@@ -96,6 +103,8 @@ private:
         qint64     started_at{0};
         qint64     accumulated_seconds{0};
         int        progress{0};
+        bool       external_process{false};
+        bool       supports_pause{true};
     };
 
     int  indexOfTask(int task_id) const;
@@ -112,6 +121,7 @@ private:
     bool     canPause(const TaskRecord &task) const;
     bool     canStop(const TaskRecord &task) const;
     bool     canFinish(const TaskRecord &task) const;
+    bool     isTerminal(const TaskRecord &task) const;
 
     std::vector<TaskRecord> tasks_;
     int                     next_task_id_{1};
@@ -134,18 +144,31 @@ public:
     }
 
     Q_INVOKABLE int  addTask(const QString &model_uuid, const QString &model_name, const QString &task_type = QString());
+    int              addExternalTask(const QString &model_uuid, const QString &model_name,
+                                     const QString &task_type = QString());
     Q_INVOKABLE bool startTask(int task_id);
     Q_INVOKABLE bool pauseTask(int task_id);
     Q_INVOKABLE bool stopTask(int task_id);
     Q_INVOKABLE bool finishTask(int task_id);
+    bool             failTask(int task_id);
     Q_INVOKABLE bool deleteTask(int task_id);
     Q_INVOKABLE bool updateTaskProgress(int task_id, int progress);
     Q_INVOKABLE int  startModelTask(const QString &model_uuid, const QString &model_name,
                                     const QString &task_type = QString());
     Q_INVOKABLE bool stopModelTask(const QString &model_uuid, const QString &task_type = QString());
 
+    bool    ensureTaskServer(QString *err_msg = nullptr);
+    QString taskServerHost() const;
+    quint16 taskServerPort() const;
+
+signals:
+    void taskStopRequested(int task_id);
+
 private:
     TaskTableModel *tasks_{nullptr};
+    TaskCommunicationServer *communication_server_{nullptr};
+
+    void handleTaskMessage(const dltool::model::TaskMessage &message);
 };
 
 } // namespace dltool::model

@@ -18,6 +18,8 @@ QString accessorPath(const accessor::Key key)
         return QStringLiteral("advanced.roiSearch");
     case accessor::Key::SmartAnnotation:
         return QStringLiteral("advanced.smartAnnotation");
+    case accessor::Key::FewShotLearning:
+        return QStringLiteral("advanced.fewShotLearning");
     }
     return {};
 }
@@ -43,6 +45,28 @@ QString fieldName(const field::Key key)
         return QStringLiteral("auto_save_enabled");
     case field::Key::PythonEnvPath:
         return QStringLiteral("python_env_path");
+    case field::Key::Sam2Checkpoint:
+        return QStringLiteral("sam2_checkpoint");
+    case field::Key::Sam2Architecture:
+        return QStringLiteral("sam2_architecture");
+    case field::Key::KShot:
+        return QStringLiteral("kshot");
+    case field::Key::Epochs:
+        return QStringLiteral("epochs");
+    case field::Key::BatchSize:
+        return QStringLiteral("batch_size");
+    case field::Key::NumWorkers:
+        return QStringLiteral("num_workers");
+    case field::Key::ImageSize:
+        return QStringLiteral("image_size");
+    case field::Key::LearningRate:
+        return QStringLiteral("learning_rate");
+    case field::Key::WeightDecay:
+        return QStringLiteral("weight_decay");
+    case field::Key::SupportRatio:
+        return QStringLiteral("support_ratio");
+    case field::Key::OutputDir:
+        return QStringLiteral("output_dir");
     }
     return {};
 }

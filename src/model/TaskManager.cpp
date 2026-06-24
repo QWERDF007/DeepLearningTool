@@ -1,5 +1,7 @@
 #include "model/TaskManager.h"
 
+#include "model/TaskCommunication.h"
+
 #include <QDateTime>
 #include <algorithm>
 
@@ -129,7 +131,8 @@ QHash<int, QByteArray> TaskTableModel::roleNames() const
     };
 }
 
-int TaskTableModel::addTask(const QString &model_uuid, const QString &model_name, const QString &task_type)
+int TaskTableModel::addTask(const QString &model_uuid, const QString &model_name, const QString &task_type,
+                            bool external_process, bool supports_pause)
 {
     const QString trimmed_model_uuid = model_uuid.trimmed();
     const QString trimmed_model_name = model_name.trimmed();
@@ -149,6 +152,8 @@ int TaskTableModel::addTask(const QString &model_uuid, const QString &model_name
         0,
         0,
         0,
+        external_process,
+        supports_pause,
     });
     endInsertRows();
     emit countChanged();
@@ -225,6 +230,32 @@ bool TaskTableModel::finishTask(int task_id)
     task.started_at = 0;
     task.status     = Finished;
     task.progress   = 100;
+    emitTaskChanged(row);
+    return true;
+}
+
+bool TaskTableModel::failTask(int task_id)
+{
+    return setTaskStatus(task_id, Failed);
+}
+
+bool TaskTableModel::setTaskStatus(int task_id, TaskStatus status)
+{
+    const int row = indexOfTask(task_id);
+    if (row < 0)
+        return false;
+
+    TaskRecord &task = tasks_[static_cast<size_t>(row)];
+    if (task.status == status)
+        return true;
+
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    if (task.status == Running && task.started_at > 0)
+        task.accumulated_seconds += std::max<qint64>(0, now - task.started_at);
+    task.started_at = status == Running ? now : 0;
+    task.status     = status;
+    if (status == Finished)
+        task.progress = 100;
     emitTaskChanged(row);
     return true;
 }
@@ -402,6 +433,8 @@ QString TaskTableModel::statusText(const TaskRecord &task) const
         return QStringLiteral("已停止");
     case Finished:
         return QStringLiteral("已结束");
+    case Failed:
+        return QStringLiteral("失败");
     default:
         return QStringLiteral("未知");
     }
@@ -435,33 +468,53 @@ qint64 TaskTableModel::runningTimeSeconds(const TaskRecord &task) const
 
 bool TaskTableModel::canStart(const TaskRecord &task) const
 {
+    if (task.external_process)
+        return false;
     return task.status == Pending || task.status == Paused || task.status == Stopped;
 }
 
 bool TaskTableModel::canPause(const TaskRecord &task) const
 {
+    if (!task.supports_pause)
+        return false;
     return task.status == Running;
 }
 
 bool TaskTableModel::canStop(const TaskRecord &task) const
 {
+    if (task.external_process)
+        return !isTerminal(task);
     return task.status == Running || task.status == Paused;
 }
 
 bool TaskTableModel::canFinish(const TaskRecord &task) const
 {
+    if (task.external_process)
+        return false;
     return task.status == Running || task.status == Paused || task.status == Stopped;
+}
+
+bool TaskTableModel::isTerminal(const TaskRecord &task) const
+{
+    return task.status == Stopped || task.status == Finished || task.status == Failed;
 }
 
 TaskManager::TaskManager(QObject *parent)
     : QObject(parent)
     , tasks_(new TaskTableModel(this))
+    , communication_server_(new TaskCommunicationServer(this))
 {
+    connect(communication_server_, &TaskCommunicationServer::messageReceived, this, &TaskManager::handleTaskMessage);
 }
 
 int TaskManager::addTask(const QString &model_uuid, const QString &model_name, const QString &task_type)
 {
     return tasks_->addTask(model_uuid, model_name, task_type);
+}
+
+int TaskManager::addExternalTask(const QString &model_uuid, const QString &model_name, const QString &task_type)
+{
+    return tasks_->addTask(model_uuid, model_name, task_type, true, false);
 }
 
 bool TaskManager::startTask(int task_id)
@@ -476,12 +529,21 @@ bool TaskManager::pauseTask(int task_id)
 
 bool TaskManager::stopTask(int task_id)
 {
-    return tasks_->stopTask(task_id);
+    const bool changed = tasks_->stopTask(task_id);
+    if (communication_server_ != nullptr)
+        communication_server_->sendCommand(task_id, TaskCommand::Stop);
+    emit taskStopRequested(task_id);
+    return changed;
 }
 
 bool TaskManager::finishTask(int task_id)
 {
     return tasks_->finishTask(task_id);
+}
+
+bool TaskManager::failTask(int task_id)
+{
+    return tasks_->failTask(task_id);
 }
 
 bool TaskManager::deleteTask(int task_id)
@@ -502,6 +564,52 @@ int TaskManager::startModelTask(const QString &model_uuid, const QString &model_
 bool TaskManager::stopModelTask(const QString &model_uuid, const QString &task_type)
 {
     return tasks_->stopModelTask(model_uuid, task_type);
+}
+
+bool TaskManager::ensureTaskServer(QString *err_msg)
+{
+    return communication_server_ != nullptr && communication_server_->start(err_msg);
+}
+
+QString TaskManager::taskServerHost() const
+{
+    return communication_server_ ? communication_server_->host() : QStringLiteral("127.0.0.1");
+}
+
+quint16 TaskManager::taskServerPort() const
+{
+    return communication_server_ ? communication_server_->port() : 0;
+}
+
+void TaskManager::handleTaskMessage(const TaskMessage &message)
+{
+    if (message.task_id < 0)
+        return;
+
+    if (message.progress >= 0)
+        tasks_->updateTaskProgress(message.task_id, message.progress);
+
+    switch (message.status)
+    {
+    case TaskProtocolStatus::Running:
+        tasks_->setTaskStatus(message.task_id, TaskTableModel::Running);
+        break;
+    case TaskProtocolStatus::Paused:
+        tasks_->setTaskStatus(message.task_id, TaskTableModel::Paused);
+        break;
+    case TaskProtocolStatus::Stopped:
+        tasks_->setTaskStatus(message.task_id, TaskTableModel::Stopped);
+        break;
+    case TaskProtocolStatus::Finished:
+        tasks_->setTaskStatus(message.task_id, TaskTableModel::Finished);
+        break;
+    case TaskProtocolStatus::Failed:
+    case TaskProtocolStatus::Error:
+        tasks_->failTask(message.task_id);
+        break;
+    default:
+        break;
+    }
 }
 
 } // namespace dltool::model

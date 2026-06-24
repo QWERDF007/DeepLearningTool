@@ -1576,7 +1576,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         result[QStringLiteral("success")] = false;
         result[QStringLiteral("error")]   = error;
         setLastError(error);
-        spdlog::error("Smart annotation failed: {}", error.toStdString());
+        spdlog::error("智能标注失败: {}", error.toUtf8().constData());
     }
     catch (...)
     {
@@ -1584,7 +1584,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         result[QStringLiteral("success")] = false;
         result[QStringLiteral("error")]   = error;
         setLastError(error);
-        spdlog::error("Smart annotation failed with unknown error");
+        spdlog::error("智能标注失败: {}", error.toUtf8().constData());
     }
 
     setRunning(false);
