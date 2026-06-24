@@ -22,7 +22,7 @@ Window {
     height: 640
     minimumWidth: 900
     minimumHeight: 480
-    color: QuiColor.Background
+    color: QuiColor.Primary
     modality: Qt.NonModal
     flags: Qt.Window | Qt.CustomizeWindowHint | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint
 
@@ -58,11 +58,7 @@ Window {
         if (taskRowSelected(taskId)) {
             return QuiColor.Highlight
         }
-        return row % 2 === 0 ? QuiColor.Background : QuiColor.Primary
-    }
-
-    function taskTextColor(taskId) {
-        return taskRowSelected(taskId) ? "white" : QuiColor.FontPrimary
+        return Qt.lighter(QuiColor.Primary, 1.3)
     }
 
     function screenGeometryFor(targetScreen) {
@@ -113,22 +109,14 @@ Window {
                 Layout.fillWidth: true
                 text: "任务管理中心"
                 font: QuiFont.Title
-                color: QuiColor.FontPrimary
                 elide: Text.ElideRight
-            }
-
-            QuiButton {
-                Layout.preferredWidth: 84
-                Layout.preferredHeight: 32
-                text: "关闭"
-                onClicked: dialog.close()
             }
         }
 
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 1
-            color: QuiColor.Border
+            color: QuiColor.Background
         }
 
         Item {
@@ -143,7 +131,6 @@ Window {
                 rowHeight: 42
                 headerHeight: 34
                 headerColor: QuiColor.Background
-                headerTextColor: "white"
                 borderColor: QuiColor.Border
                 showGridLines: true
                 minimumColumnWidth: 80
@@ -188,7 +175,6 @@ Window {
                                 QuiText {
                                     Layout.preferredWidth: 42
                                     text: (model.progress || 0) + "%"
-                                    color: dialog.taskTextColor(model.task_id)
                                     horizontalAlignment: Text.AlignRight
                                     verticalAlignment: Text.AlignVCenter
                                 }
@@ -257,7 +243,7 @@ Window {
                                     height: 28
                                     text: "结束"
                                     display: Button.IconOnly
-                                    iconSource: QuiFontIcon.CheckMark
+                                    iconSource: QuiFontIcon.Cancel
                                     enabled: dialog.taskManager && (model.can_finish || false)
                                     onClicked: {
                                         dialog.selectedTaskId = model.task_id
@@ -298,7 +284,6 @@ Window {
                                 anchors.leftMargin: 10
                                 anchors.rightMargin: 10
                                 text: model.display || ""
-                                color: dialog.taskTextColor(model.task_id)
                                 elide: Text.ElideRight
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
@@ -306,15 +291,6 @@ Window {
                         }
                     }
                 }
-            }
-
-            QuiText {
-                anchors.centerIn: parent
-                width: parent.width - 40
-                text: ProjectManager.currentProject ? "暂无运行中的模型任务" : "请先打开项目"
-                color: QuiColor.FontDark
-                horizontalAlignment: Text.AlignHCenter
-                visible: !dialog.taskModel || dialog.taskModel.count === 0
             }
         }
     }

@@ -46,7 +46,7 @@ Rectangle {
                         width: 100
                         height: 32
                         text: modelData
-                        textColor: mainTabBar.currentIndex === index ? QuiColor.Highlight : "white"
+                        textColor: mainTabBar.currentIndex === index ? QuiColor.Highlight : QuiColor.FontPrimary
                         focusPolicy: Qt.NoFocus
                         enabled: modelData === "项目" || (ProjectManager.currentProject ? true : false)
                     }
@@ -69,7 +69,7 @@ Rectangle {
                         }
                     }
                     QuiTextIconButton {
-                        iconSource: QuiFontIcon.TaskView
+                        iconSource: QuiFontIcon.AllApps
                         text: "任务"
                         enabled: ProjectManager.currentProject !== null
                         onClicked: {

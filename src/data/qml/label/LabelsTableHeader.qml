@@ -29,7 +29,6 @@ HorizontalHeaderView {
             text: horizontalHeader.textRole ?
                         (Array.isArray(horizontalHeader.model) ? modelData[horizontalHeader.textRole] : model[horizontalHeader.textRole])
                     : modelData
-            color: "white"
         }
     }
 }

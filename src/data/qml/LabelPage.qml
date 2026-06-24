@@ -41,13 +41,13 @@ Rectangle {
                 dataManager: labelPage.dataManager
             }
 
-            LabelImageFlip {
-                SplitView.fillWidth: true
-                SplitView.minimumHeight: 120
-                SplitView.preferredHeight: 120
-                color: QuiColor.Primary
-                dataManager: labelPage.dataManager
-            }
+            // LabelImageFlip {
+            //     SplitView.fillWidth: true
+            //     SplitView.minimumHeight: 120
+            //     SplitView.preferredHeight: 120
+            //     color: QuiColor.Primary
+            //     dataManager: labelPage.dataManager
+            // }
 
             LabelClassesView {
                 SplitView.fillWidth: true
@@ -75,49 +75,15 @@ Rectangle {
                 anchors.fill: parent
                 spacing: 4
 
-                Rectangle {
+                LabelTSidebar {
                     Layout.fillWidth: true
+                    Layout.leftMargin: 42
                     Layout.preferredHeight: 42
-                    color: QuiColor.Primary
-                    border.color: QuiColor.Border
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 8
-                        anchors.rightMargin: 8
-                        spacing: 6
-
-                        QuiTextIconButton {
-                            Layout.preferredWidth: 32
-                            Layout.preferredHeight: 32
-                            iconSource: QuiFontIcon.Delete
-                            text: "删除"
-                            enabled: labelCanvas.selection ? labelCanvas.selection.hasSelection : false
-                            onClicked: labelCanvas.deleteSelectedLabels()
-                        }
-
-                        QuiTextIconButton {
-                            Layout.preferredWidth: 32
-                            Layout.preferredHeight: 32
-                            normalColor: labelCanvas.showBoundingBoxes ? QuiColor.Highlight : QuiColor.Button
-                            iconSource: QuiFontIcon.View
-                            text: "显示外接矩形"
-                            onClicked: labelCanvas.showBoundingBoxes = !labelCanvas.showBoundingBoxes
-                        }
-
-                        QuiTextIconButton {
-                            Layout.preferredWidth: 32
-                            Layout.preferredHeight: 32
-                            iconSource: QuiFontIcon.Copy
-                            text: "复制"
-                            enabled: labelCanvas.selection ? labelCanvas.selection.hasSelection : false
-                            onClicked: labelCanvas.copySelectedLabels()
-                        }
-
-                        Item {
-                            Layout.fillWidth: true
-                        }
-                    }
+                    hasSelection: labelCanvas.selection ? labelCanvas.selection.hasSelection : false
+                    showBoundingBoxes: labelCanvas.showBoundingBoxes
+                    onDeleteSelected: labelCanvas.deleteSelectedLabels()
+                    onToggleBoundingBoxes: labelCanvas.showBoundingBoxes = !labelCanvas.showBoundingBoxes
+                    onCopySelected: labelCanvas.copySelectedLabels()
                 }
 
                 RowLayout {
@@ -125,71 +91,15 @@ Rectangle {
                     Layout.fillHeight: true
                     spacing: 4
 
-                    Rectangle {
+                    LabelLSidebar {
                         Layout.preferredWidth: 42
                         Layout.fillHeight: true
-                        color: QuiColor.Primary
-                        border.color: QuiColor.Border
-
-                        ColumnLayout {
-                            anchors.top: parent.top
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.topMargin: 8
-                            spacing: 6
-
-                            QuiTextIconButton {
-                                Layout.alignment: Qt.AlignHCenter
-                                Layout.preferredWidth: 32
-                                Layout.preferredHeight: 32
-                                normalColor: labelCanvas.toolMode === "select" ? QuiColor.Highlight : QuiColor.Button
-                                iconSource: QuiFontIcon.TouchPointer
-                                text: "选中"
-                                onClicked: labelCanvas.setToolMode("select")
-                            }
-
-                            QuiTextIconButton {
-                                Layout.alignment: Qt.AlignHCenter
-                                Layout.preferredWidth: 32
-                                Layout.preferredHeight: 32
-                                normalColor: labelCanvas.toolMode === "rect" ? QuiColor.Highlight : QuiColor.Button
-                                iconSource: QuiFontIcon.RectangularClipping
-                                text: "绘制矩形"
-                                onClicked: labelCanvas.setToolMode("rect")
-                            }
-
-                            QuiTextIconButton {
-                                Layout.alignment: Qt.AlignHCenter
-                                Layout.preferredWidth: 32
-                                Layout.preferredHeight: 32
-                                enabled: labelCanvas.segmentationMode
-                                normalColor: labelCanvas.toolMode === "polygon" ? QuiColor.Highlight : QuiColor.Button
-                                iconSource: QuiFontIcon.FreeFormClipping
-                                text: "绘制多边形"
-                                onClicked: labelCanvas.setToolMode("polygon")
-                            }
-
-                            QuiTextIconButton {
-                                Layout.alignment: Qt.AlignHCenter
-                                Layout.preferredWidth: 32
-                                Layout.preferredHeight: 32
-                                enabled: labelCanvas.smartAnnotationAvailable
-                                normalColor: labelCanvas.toolMode === "smart" ? QuiColor.Highlight : QuiColor.Button
-                                iconSource: QuiFontIcon.Robot
-                                text: "智能标注"
-                                onClicked: labelCanvas.setToolMode("smart")
-                            }
-
-                            QuiTextIconButton {
-                                Layout.alignment: Qt.AlignHCenter
-                                Layout.preferredWidth: 32
-                                Layout.preferredHeight: 32
-                                enabled: labelPage.dataManager !== null
-                                iconSource: QuiFontIcon.TaskView
-                                text: "小样本学习"
-                                onClicked: fewShotLearningDialog.openForStart()
-                            }
-                        }
+                        currentTool: labelCanvas.toolMode
+                        segmentationMode: labelCanvas.segmentationMode
+                        smartAnnotationAvailable: labelCanvas.smartAnnotationAvailable
+                        dataManagerAvailable: labelPage.dataManager !== null
+                        onToolSelected: labelCanvas.setToolMode(mode)
+                        onOpenFewShotLearning: fewShotLearningDialog.openForStart()
                     }
 
                     LabelCanvas {
@@ -239,7 +149,6 @@ Rectangle {
                     QuiText {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "正在加载智能标注模型..."
-                        color: "white"
                         font: QuiFont.Body
                     }
                 }
@@ -264,9 +173,7 @@ Rectangle {
                     labelCanvas.fitImageInView()
                 }
 
-                onZoomChanged: function(zoom) {
-                    labelCanvas.setImageScale(zoom)
-                }
+                onZoomChanged: labelCanvas.setImageScale(zoom)
             }
 
             LabelsTableView {
