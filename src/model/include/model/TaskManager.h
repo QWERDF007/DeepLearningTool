@@ -5,7 +5,6 @@
 #include <QAbstractTableModel>
 #include <QTimer>
 #include <QtQml>
-
 #include <vector>
 
 namespace dltool::model {
@@ -73,8 +72,8 @@ public:
 
     QHash<int, QByteArray> roleNames() const override;
 
-    int addTask(const QString &model_uuid, const QString &model_name, const QString &task_type = QString(),
-                bool external_process = false, bool supports_pause = true);
+    int  addTask(const QString &model_uuid, const QString &model_name, const QString &task_type = QString(),
+                 bool external_process = false, bool supports_pause = true);
     bool startTask(int task_id);
     bool pauseTask(int task_id);
     bool stopTask(int task_id);
@@ -143,9 +142,8 @@ public:
         return tasks_;
     }
 
-    Q_INVOKABLE int  addTask(const QString &model_uuid, const QString &model_name, const QString &task_type = QString());
-    int              addExternalTask(const QString &model_uuid, const QString &model_name,
-                                     const QString &task_type = QString());
+    Q_INVOKABLE int addTask(const QString &model_uuid, const QString &model_name, const QString &task_type = QString());
+    int addExternalTask(const QString &model_uuid, const QString &model_name, const QString &task_type = QString());
     Q_INVOKABLE bool startTask(int task_id);
     Q_INVOKABLE bool pauseTask(int task_id);
     Q_INVOKABLE bool stopTask(int task_id);
@@ -165,7 +163,7 @@ signals:
     void taskStopRequested(int task_id);
 
 private:
-    TaskTableModel *tasks_{nullptr};
+    TaskTableModel          *tasks_{nullptr};
     TaskCommunicationServer *communication_server_{nullptr};
 
     void handleTaskMessage(const dltool::model::TaskMessage &message);

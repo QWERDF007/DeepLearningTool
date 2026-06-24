@@ -7,7 +7,6 @@
 #include <QStandardPaths>
 #include <QStringList>
 #include <QVariant>
-
 #include <algorithm>
 
 namespace dltool::ui {
@@ -60,7 +59,7 @@ int decimalCount(const QVariant &value)
         const int     exponent = text.mid(exponent_index + 1).toInt(&ok);
         if (ok)
         {
-            const int dot_index = mantissa.indexOf(QLatin1Char('.'));
+            const int dot_index         = mantissa.indexOf(QLatin1Char('.'));
             const int mantissa_decimals = dot_index >= 0 ? mantissa.size() - dot_index - 1 : 0;
             return exponent < 0 ? mantissa_decimals - exponent : std::max(0, mantissa_decimals - exponent);
         }
@@ -159,7 +158,7 @@ bool Utils::isIntegerValueType(const QString &value_type) const
 {
     const QString normalized = value_type.trimmed().toLower();
     return normalized == QStringLiteral("int") || normalized == QStringLiteral("integer")
-           || normalized == QStringLiteral("long");
+        || normalized == QStringLiteral("long");
 }
 
 QVariant Utils::valueRangeAt(const QVariant &value_range, const int index, const QVariant &fallback_value) const
@@ -168,8 +167,8 @@ QVariant Utils::valueRangeAt(const QVariant &value_range, const int index, const
     return index >= 0 && index < range.size() ? range.at(index) : fallback_value;
 }
 
-int Utils::paramDecimals(const QString &value_type, const QVariant &value_range,
-                         const QVariant &value, const QVariant &default_value) const
+int Utils::paramDecimals(const QString &value_type, const QVariant &value_range, const QVariant &value,
+                         const QVariant &default_value) const
 {
     if (isIntegerValueType(value_type))
     {

@@ -170,9 +170,11 @@ QVariant GlobalSettings::valueFor(const int accessor_key, const QString &propert
 
 QVariant GlobalSettings::valueForField(const int accessor_key, const int field_key, const QVariant &fallback) const
 {
-    const QString accessor_path = accessorPath(static_cast<accessor::Key>(accessor_key));
-    const SettingsFieldModel *model = settings_catalog_ != nullptr ? settings_catalog_->groupForAccessor(accessor_path) : nullptr;
-    const QString property_name = model != nullptr ? model->propertyForName(fieldName(static_cast<field::Key>(field_key))) : QString();
+    const QString             accessor_path = accessorPath(static_cast<accessor::Key>(accessor_key));
+    const SettingsFieldModel *model
+        = settings_catalog_ != nullptr ? settings_catalog_->groupForAccessor(accessor_path) : nullptr;
+    const QString property_name
+        = model != nullptr ? model->propertyForName(fieldName(static_cast<field::Key>(field_key))) : QString();
     return property_name.isEmpty() ? fallback : value(accessor_path, property_name, fallback);
 }
 
@@ -238,8 +240,8 @@ void GlobalSettings::rebuildSettingsObjects()
             continue;
         }
 
-        const QString accessor_path = model->accessorPath();
-        SettingsGroup *group        = new SettingsGroup(this);
+        const QString  accessor_path = model->accessorPath();
+        SettingsGroup *group         = new SettingsGroup(this);
         generated_groups_.append(group);
 
         group->bindModel(accessor_path, model);
@@ -253,7 +255,7 @@ void GlobalSettings::rebuildSettingsObjects()
 void GlobalSettings::applyAutoSaveSettings()
 {
     bool ok = false;
-    int interval_seconds
+    int  interval_seconds
         = valueForField(static_cast<int>(accessor::Key::Software), static_cast<int>(field::Key::AutoSaveInterval),
                         kDefaultAutoSaveIntervalSeconds)
               .toInt(&ok);
@@ -277,10 +279,11 @@ void GlobalSettings::handleCatalogValueChanged(const QString &group_key, const Q
         group->updateFromFieldName(name, value);
 
     const SettingsFieldModel *software_model
-        = settings_catalog_ != nullptr ? settings_catalog_->groupForAccessor(accessorPath(accessor::Key::Software)) : nullptr;
+        = settings_catalog_ != nullptr ? settings_catalog_->groupForAccessor(accessorPath(accessor::Key::Software))
+                                       : nullptr;
     const bool auto_save_setting_changed
         = software_model != nullptr && group_key == software_model->groupKey()
-          && (name == fieldName(field::Key::AutoSaveInterval) || name == fieldName(field::Key::AutoSaveEnabled));
+       && (name == fieldName(field::Key::AutoSaveInterval) || name == fieldName(field::Key::AutoSaveEnabled));
     if (auto_save_setting_changed)
     {
         applyAutoSaveSettings();

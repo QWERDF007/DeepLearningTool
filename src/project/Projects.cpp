@@ -24,13 +24,12 @@ constexpr int kMaxRecentProjects        = 50;
 
 int configuredMaxRecentProjects()
 {
-    bool ok = false;
-    int max_recent_projects
-        = dltool::settings::GlobalSettings::getInstance()
-              ->valueForField(static_cast<int>(dltool::settings::accessor::Key::Software),
-                              static_cast<int>(dltool::settings::field::Key::MaxRecentProjects),
-                              kDefaultMaxRecentProjects)
-              .toInt(&ok);
+    bool ok                  = false;
+    int  max_recent_projects = dltool::settings::GlobalSettings::getInstance()
+                                  ->valueForField(static_cast<int>(dltool::settings::accessor::Key::Software),
+                                                  static_cast<int>(dltool::settings::field::Key::MaxRecentProjects),
+                                                  kDefaultMaxRecentProjects)
+                                  .toInt(&ok);
     if (!ok)
         max_recent_projects = kDefaultMaxRecentProjects;
     return std::clamp(max_recent_projects, kMinRecentProjects, kMaxRecentProjects);
@@ -76,7 +75,7 @@ Project::~Project()
 
 void Project::init()
 {
-    task_manager_  = new model::TaskManager(this);
+    task_manager_ = new model::TaskManager(this);
     data_manager_ = new data::DataManager(method_, database_, this);
     data_manager_->setTaskManager(task_manager_);
     model_manager_ = new model::ModelManager(method_, database_, this);
@@ -265,7 +264,7 @@ bool RectentProjects::addProject(const QString &path)
         dltool::database::ProjectDataBase::getProjectBaseInfo(info.path, info.name, info.mtime, err_msg);
 
         const int  old_visible_count = rowCount();
-        const bool append_visible     = old_visible_count < configuredMaxRecentProjects();
+        const bool append_visible    = old_visible_count < configuredMaxRecentProjects();
         if (append_visible)
             beginInsertRows(QModelIndex(), 0, 0);
         else
@@ -317,7 +316,7 @@ bool RectentProjects::openProject(const QString &path)
         ProjectBaseInfo info = project_infos[i];
         if (info.path == path) // 将对应位置的数据删除，并重新插入到队首
         {
-            info.path = path;
+            info.path              = path;
             const bool was_visible = i < rowCount();
             if (!was_visible)
                 beginResetModel();
@@ -343,8 +342,8 @@ bool RectentProjects::removeProject(const QString &path)
         const ProjectBaseInfo &info = project_infos[i];
         if (info.path == path)
         {
-            const int idx = static_cast<int>(i);
-            const bool was_visible = idx < rowCount();
+            const int  idx                    = static_cast<int>(i);
+            const bool was_visible            = idx < rowCount();
             const bool has_hidden_replacement = static_cast<int>(project_infos.size()) > rowCount();
             selection_->clear();
             if (was_visible && has_hidden_replacement)
@@ -464,8 +463,8 @@ void RectentProjects::onCurrentChanged(const QModelIndex &current, const QModelI
 
 ProjectManager::ProjectManager(QObject *parent)
     : QObject(parent)
-    , recent_projects_(new RectentProjects(
-          dltool::database::DataBase::applicationDatabasePath(QStringLiteral("history.db")), this))
+    , recent_projects_(
+          new RectentProjects(dltool::database::DataBase::applicationDatabasePath(QStringLiteral("history.db")), this))
 {
     // 尝试从 QML 上下文获取引擎
     QQmlEngine *qmlEngine = QQmlEngine::contextForObject(this) ? QQmlEngine::contextForObject(this)->engine() : nullptr;
@@ -590,9 +589,9 @@ void ProjectManager::deleteProject(const QString &path)
     if (current_project_ && current_project_->path() == path)
     {
         Project *project = current_project_;
-        connect(project, &QObject::destroyed, this,
-                [this, remove_project_file](QObject *) { QTimer::singleShot(0, this, remove_project_file); },
-                Qt::SingleShotConnection);
+        connect(
+            project, &QObject::destroyed, this, [this, remove_project_file](QObject *)
+            { QTimer::singleShot(0, this, remove_project_file); }, Qt::SingleShotConnection);
         closeProject();
         return;
     }

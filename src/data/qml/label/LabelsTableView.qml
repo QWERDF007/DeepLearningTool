@@ -84,13 +84,15 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.leftMargin: 5
+        anchors.leftMargin: 0
         anchors.rightMargin: 0
         anchors.topMargin: 5
         anchors.bottomMargin: 5
 
         // spacing: 5
         QuiText {
+            Layout.leftMargin: 5
+            Layout.rightMargin: 5
             text: "标签实例:"
             font: QuiFont.Subtitle
         }
@@ -107,19 +109,17 @@ Rectangle {
                 headerColor: QuiColor.Background
                 headerTextColor: "white"
                 columnSpacing: 2
+                fitColumnsToWidth: true
                 minimumColumnWidth: control.minimumColumnWidth
                 columnSource: [
                     {
                         width: control.classColumnWidth,
                         minimumWidth: control.minimumColumnWidth,
+                        stretch: false,
                         frozen: true
                     }
                 ]
                 model: control.tableActive ? imageLabelsTable : null
-
-                columnWidthProvider: function(column) {
-                    return control.preferredColumnWidth(column)
-                }
 
                 rowHeightProvider: function(row) {
                     return control.rowHeight

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "dltool/ui/Export.h"
 #include "common/Singleton.h"
+#include "dltool/ui/Export.h"
 
 #include <spdlog/sinks/base_sink.h>
 

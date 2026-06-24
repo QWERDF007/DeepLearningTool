@@ -10,7 +10,6 @@
 #include <cmath>
 #include <limits>
 
-
 using json = nlohmann::json;
 
 namespace dltool::data {

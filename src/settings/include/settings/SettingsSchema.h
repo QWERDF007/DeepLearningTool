@@ -10,7 +10,6 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml>
-
 #include <memory>
 #include <vector>
 
@@ -22,21 +21,21 @@ namespace dltool::settings {
 
 struct SETTINGS_API SettingsField
 {
-    QString     name_en;
-    QString     name_cn;
-    QString     property_name;
-    QVariant    value;
-    QVariant    default_value;
-    QString     value_type;
+    QString      name_en;
+    QString      name_cn;
+    QString      property_name;
+    QVariant     value;
+    QVariant     default_value;
+    QString      value_type;
     QVariantList value_range;
-    QString     control_type;
+    QString      control_type;
     QVariantList options;
-    QVariantMap options_map;
-    QVariantMap sidebar;
-    QString     section;
-    QString     description;
-    bool        visible{true};
-    int         ordinal_index{0};
+    QVariantMap  options_map;
+    QVariantMap  sidebar;
+    QString      section;
+    QString      description;
+    bool         visible{true};
+    int          ordinal_index{0};
 };
 
 class SETTINGS_API SettingsFieldModel : public QAbstractListModel
@@ -82,37 +81,37 @@ public:
                        QObject *parent = nullptr);
     ~SettingsFieldModel() override;
 
-    QString groupKey() const;
-    QString tableName() const;
-    QString label() const;
-    QString accessor() const;
-    QString parentAccessor() const;
-    QString accessorPath() const;
-    QString category() const;
+    QString     groupKey() const;
+    QString     tableName() const;
+    QString     label() const;
+    QString     accessor() const;
+    QString     parentAccessor() const;
+    QString     accessorPath() const;
+    QString     category() const;
     QVariantMap sidebar() const;
-    int     ordinalIndex() const;
-    int     count() const;
+    int         ordinalIndex() const;
+    int         count() const;
 
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
-    bool setData(const QModelIndex &index, const QVariant &value, int role = Qt::EditRole) override;
-    Qt::ItemFlags flags(const QModelIndex &index) const override;
+    int                    rowCount(const QModelIndex &parent = QModelIndex()) const override;
+    QVariant               data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+    bool                   setData(const QModelIndex &index, const QVariant &value, int role = Qt::EditRole) override;
+    Qt::ItemFlags          flags(const QModelIndex &index) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    Q_INVOKABLE QVariant valueForName(const QString &name) const;
-    Q_INVOKABLE QVariant valueForProperty(const QString &property_name) const;
-    Q_INVOKABLE bool     setValueForName(const QString &name, const QVariant &value);
-    Q_INVOKABLE bool     setValueForProperty(const QString &property_name, const QVariant &value);
-    Q_INVOKABLE QString  propertyForName(const QString &name) const;
-    Q_INVOKABLE QString  nameForProperty(const QString &property_name) const;
-    Q_INVOKABLE QVariantMap fieldMap(int row) const;
+    Q_INVOKABLE QVariant     valueForName(const QString &name) const;
+    Q_INVOKABLE QVariant     valueForProperty(const QString &property_name) const;
+    Q_INVOKABLE bool         setValueForName(const QString &name, const QVariant &value);
+    Q_INVOKABLE bool         setValueForProperty(const QString &property_name, const QVariant &value);
+    Q_INVOKABLE QString      propertyForName(const QString &name) const;
+    Q_INVOKABLE QString      nameForProperty(const QString &property_name) const;
+    Q_INVOKABLE QVariantMap  fieldMap(int row) const;
     Q_INVOKABLE QVariantList optionsForKey(const QString &name, const QString &key) const;
     Q_INVOKABLE QVariantList sidebarFields(const QString &sidebar_key) const;
 
-    QVariantMap valuesMap() const;
+    QVariantMap  valuesMap() const;
     QVariantList schemaRows() const;
-    void loadValues(const QVariantMap &values);
-    void resetValues();
+    void         loadValues(const QVariantMap &values);
+    void         resetValues();
 
 signals:
     void countChanged();
@@ -161,15 +160,15 @@ public:
     explicit SettingsCatalog(QObject *parent = nullptr);
     ~SettingsCatalog() override;
 
-    int count() const;
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+    int                    count() const;
+    int                    rowCount(const QModelIndex &parent = QModelIndex()) const override;
+    QVariant               data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
 
     Q_INVOKABLE SettingsFieldModel *group(const QString &group_key) const;
     Q_INVOKABLE SettingsFieldModel *groupAt(int row) const;
     Q_INVOKABLE SettingsFieldModel *groupForAccessor(const QString &accessor_path) const;
-    Q_INVOKABLE QVariant value(const QString &group_key, const QString &name, const QVariant &fallback = {}) const;
+    Q_INVOKABLE QVariant     value(const QString &group_key, const QString &name, const QVariant &fallback = {}) const;
     Q_INVOKABLE QVariantList optionsForKey(const QString &group_key, const QString &name, const QString &key) const;
     Q_INVOKABLE QVariantList optionsForAccessor(const QString &accessor_path, const QString &name,
                                                 const QString &key) const;

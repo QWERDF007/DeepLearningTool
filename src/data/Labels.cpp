@@ -479,10 +479,11 @@ void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids
 
     if (is_filtered_)
     {
-        filtered_label_ids_.erase(std::remove_if(filtered_label_ids_.begin(), filtered_label_ids_.end(),
-                                                 [&deleted_label_ids](int64_t label_id)
-                                                 { return deleted_label_ids.find(label_id) != deleted_label_ids.end(); }),
-                                  filtered_label_ids_.end());
+        filtered_label_ids_.erase(
+            std::remove_if(filtered_label_ids_.begin(), filtered_label_ids_.end(),
+                           [&deleted_label_ids](int64_t label_id)
+                           { return deleted_label_ids.find(label_id) != deleted_label_ids.end(); }),
+            filtered_label_ids_.end());
         label_ids_ = filtered_label_ids_;
     }
     else

@@ -223,7 +223,7 @@ bool LabelMeImporter::parseLabelMeJson(const QString &json_path, LabelMeData &da
         QFile file(json_path);
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
         {
-            spdlog::error("无法打开 LabelMe JSON 文件: {}", json_path.toStdString());
+            spdlog::error("无法打开 LabelMe JSON 文件: {}", json_path.toUtf8().constData());
             return false;
         }
 
@@ -273,7 +273,7 @@ bool LabelMeImporter::parseLabelMeJson(const QString &json_path, LabelMeData &da
     }
     catch (const std::exception &e)
     {
-        spdlog::error("解析 LabelMe JSON 失败: {}, 错误: {}", json_path.toStdString(), e.what());
+        spdlog::error("解析 LabelMe JSON 失败: {}, 错误: {}", json_path.toUtf8().constData(), e.what());
         return false;
     }
 }
@@ -314,8 +314,8 @@ QVariantMap LabelMeImporter::convertShapeToLabelData(const LabelMeShape &shape, 
         return label_data;
     }
 
-    spdlog::warn("不支持的 LabelMe shape_type: {}, label: {}", shape.shape_type.toStdString(),
-                 shape.label.toStdString());
+    spdlog::warn("不支持的 LabelMe shape_type: {}, label: {}", shape.shape_type.toUtf8().constData(),
+                 shape.label.toUtf8().constData());
     return {};
 }
 

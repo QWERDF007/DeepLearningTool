@@ -6,7 +6,6 @@
 #include <QObject>
 #include <QString>
 
-
 namespace dltool::data {
 
 /**

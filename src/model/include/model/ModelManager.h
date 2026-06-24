@@ -93,11 +93,11 @@ private:
         qint64  mtime{0};
     };
 
-    void    init();
-    int     indexOfModel(const int64_t model_id) const;
-    int     indexOfUuid(const QString &uuid) const;
-    QString uniqueCopyName(const QString &name) const;
-    IModel *cachedModelForRecord(const ModelRecord &record) const;
+    void               init();
+    int                indexOfModel(const int64_t model_id) const;
+    int                indexOfUuid(const QString &uuid) const;
+    QString            uniqueCopyName(const QString &name) const;
+    IModel            *cachedModelForRecord(const ModelRecord &record) const;
     static std::string instanceKey(const QString &uuid);
 
     QVariant getModelId(const QModelIndex &index) const;
@@ -109,9 +109,9 @@ private:
     QVariant getCtime(const QModelIndex &index) const;
     QVariant getMtime(const QModelIndex &index) const;
 
-    dltool::database::ProjectDataBase *database_{nullptr};
-    int                                method_{-1};
-    std::vector<ModelRecord>           models_;
+    dltool::database::ProjectDataBase                               *database_{nullptr};
+    int                                                              method_{-1};
+    std::vector<ModelRecord>                                         models_;
     mutable std::unordered_map<std::string, std::unique_ptr<IModel>> model_instances_;
 };
 

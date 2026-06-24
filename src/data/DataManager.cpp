@@ -277,7 +277,7 @@ void DataManager::handleAsyncLabelsLoaded(std::shared_ptr<std::vector<LoadedLabe
 
     if (!success || labels == nullptr)
     {
-        spdlog::error("后台加载项目标注失败: {}", err_msg.toStdString());
+        spdlog::error("后台加载项目标注失败: {}", err_msg.toUtf8().constData());
         return;
     }
 
@@ -515,7 +515,7 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
     // 验证数据格式是否支持
     if (!data::DataFormat::isDataFormatSupported(data_format))
     {
-        const QString message = QStringLiteral("数据格式不支持");
+        const QString message = QString("数据格式不支持");
         spdlog::error("导入数据失败, 数据格式不支持: {}", data_format);
         emit dataImportFinished(false, message);
         return;
@@ -531,7 +531,7 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
     if (database_ == nullptr || !database_->checkIntegrity(db_check_err_msg))
     {
         const QString message = QString("项目数据库检查失败，无法导入数据: %1").arg(db_check_err_msg);
-        spdlog::error("{}", message.toStdString());
+        spdlog::error("{}", message.toUtf8().constData());
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
                                   Q_ARG(int, spdlog::level::err), Q_ARG(QString, message));
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
@@ -1099,7 +1099,7 @@ void DataManager::handleDataBatchReady(int64_t dataset_id, std::vector<QString> 
         const QString progress_message = task.fatal_error
                                            ? task.first_error_message
                                            : QString("批次写入失败，已跳过当前批次并继续导入后续数据: %1").arg(err_msg);
-        spdlog::error("{}", progress_message.toStdString());
+        spdlog::error("{}", progress_message.toUtf8().constData());
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
                                   Q_ARG(int, spdlog::level::err), Q_ARG(QString, progress_message));
         return;
@@ -1134,7 +1134,7 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
         {
             addLabelClass(label_name, color, QString());
             label_class_id = label_classes_->getLabelClassId(label_name);
-            spdlog::debug("创建新标签类别: {}, ID: {}", label_name.toStdString(), label_class_id);
+            spdlog::debug("创建新标签类别: {}, ID: {}", label_name.toUtf8().constData(), label_class_id);
         }
 
         if (label_class_id >= 0)
@@ -1223,8 +1223,8 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
         auto image_it = task.image_path_to_id.find(label.image_path);
         if (image_it == task.image_path_to_id.end())
         {
-            spdlog::warn("未找到图像路径对应的 ID，跳过标注: {}, 标签类别: {}", label.image_path.toStdString(),
-                         label.label_class_name.toStdString());
+            spdlog::warn("未找到图像路径对应的 ID，跳过标注: {}, 标签类别: {}", label.image_path.toUtf8().constData(),
+                         label.label_class_name.toUtf8().constData());
             task.skipped_labels++;
             continue;
         }
@@ -1245,16 +1245,16 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
 
         if (class_it == task.label_class_map.end())
         {
-            spdlog::warn("未找到标签类别，跳过标注: {}, 图像: {}", label.label_class_name.toStdString(),
-                         label.image_path.toStdString());
+            spdlog::warn("未找到标签类别，跳过标注: {}, 图像: {}", label.label_class_name.toUtf8().constData(),
+                         label.image_path.toUtf8().constData());
             task.skipped_labels++;
             continue;
         }
 
         if (label.data.isEmpty())
         {
-            spdlog::warn("跳过空的标注数据: label_class={}, 图像: {}", label.label_class_name.toStdString(),
-                         label.image_path.toStdString());
+            spdlog::warn("跳过空的标注数据: label_class={}, 图像: {}", label.label_class_name.toUtf8().constData(),
+                         label.image_path.toUtf8().constData());
             task.skipped_labels++;
             continue;
         }

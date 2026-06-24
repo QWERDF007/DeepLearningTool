@@ -127,7 +127,7 @@ public:
 
     void deleteLabels(const std::vector<int64_t> &label_ids);
 
-    std::vector<int64_t> getImageLabelIds(int64_t image_id) const;
+    std::vector<int64_t>              getImageLabelIds(int64_t image_id) const;
     std::vector<std::vector<int64_t>> getImagesLabelIds(const std::vector<int64_t> &image_ids) const;
 
     QItemSelectionModel *selection() const

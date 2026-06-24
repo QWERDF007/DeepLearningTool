@@ -1,8 +1,8 @@
 #pragma once
 
-#include "dltool/project/Export.h"
 #include "common/Singleton.h"
 #include "data/DataManager.h"
+#include "dltool/project/Export.h"
 #include "model/ModelManager.h"
 #include "model/TaskManager.h"
 
@@ -117,7 +117,7 @@ private:
 
     dltool::database::ProjectDataBase *database_{nullptr};
 
-    data::DataManager *data_manager_{nullptr};
+    data::DataManager   *data_manager_{nullptr};
     model::ModelManager *model_manager_{nullptr};
     model::TaskManager  *task_manager_{nullptr};
 
@@ -201,7 +201,7 @@ private:
     QVariant getTooltip(const QModelIndex &index) const;
     QVariant getSelected(const QModelIndex &index) const;
 
-    int visibleProjectCount() const;
+    int  visibleProjectCount() const;
     void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
     void onCurrentChanged(const QModelIndex &current, const QModelIndex &previous);
 

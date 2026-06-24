@@ -6,7 +6,8 @@ namespace dltool::database::ddl {
 
 inline std::string createSettingsTableSql(const std::string &table_name)
 {
-    return "CREATE TABLE IF NOT EXISTS " + table_name + " ("
+    return "CREATE TABLE IF NOT EXISTS " + table_name
+         + " ("
            "id INTEGER PRIMARY KEY,"
            "name_en TEXT NOT NULL UNIQUE,"
            "name_cn TEXT,"

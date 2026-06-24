@@ -48,8 +48,7 @@ void SettingsGroup::bindModel(QString accessor_path, SettingsFieldModel *model)
 void SettingsGroup::clearValues()
 {
     const QStringList existing_keys = keys();
-    for (const QString &key : existing_keys)
-        clear(key);
+    for (const QString &key : existing_keys) clear(key);
 }
 
 void SettingsGroup::reloadFromModel()
@@ -60,8 +59,8 @@ void SettingsGroup::reloadFromModel()
     {
         for (int row = 0; row < field_model_->rowCount(); ++row)
         {
-            const QVariantMap field = field_model_->fieldMap(row);
-            const QString property_name = field.value(QStringLiteral("property_name")).toString();
+            const QVariantMap field         = field_model_->fieldMap(row);
+            const QString     property_name = field.value(QStringLiteral("property_name")).toString();
             if (property_name.isEmpty())
                 continue;
 
@@ -143,8 +142,7 @@ void SettingsNamespace::setAccessorPath(QString accessor_path)
 void SettingsNamespace::clearValues()
 {
     const QStringList existing_keys = keys();
-    for (const QString &key : existing_keys)
-        clear(key);
+    for (const QString &key : existing_keys) clear(key);
 }
 
 void SettingsNamespace::insertObject(const QString &accessor, QObject *object)

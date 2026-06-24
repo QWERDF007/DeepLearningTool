@@ -28,7 +28,7 @@ class SETTINGS_API GlobalSettings : public QObject
 
 public:
     SettingsNamespace *root() const;
-    SettingsCatalog *catalog() const;
+    SettingsCatalog   *catalog() const;
 
     Q_INVOKABLE void load();
     Q_INVOKABLE void save();
@@ -40,12 +40,11 @@ public:
     Q_INVOKABLE QObject *settingsObjectFor(int accessor_key) const;
     Q_INVOKABLE QVariant value(const QString &accessor_path, const QString &property_name,
                                const QVariant &fallback = {}) const;
-    Q_INVOKABLE QVariant valueFor(int accessor_key, const QString &property_name,
-                                  const QVariant &fallback = {}) const;
+    Q_INVOKABLE QVariant valueFor(int accessor_key, const QString &property_name, const QVariant &fallback = {}) const;
     Q_INVOKABLE QVariant valueForField(int accessor_key, int field_key, const QVariant &fallback = {}) const;
-    Q_INVOKABLE bool setValue(const QString &accessor_path, const QString &property_name, const QVariant &value);
-    Q_INVOKABLE bool setValueFor(int accessor_key, const QString &property_name, const QVariant &value);
-    Q_INVOKABLE bool setCatalogValue(const QString &group_key, const QString &name, const QVariant &value);
+    Q_INVOKABLE bool     setValue(const QString &accessor_path, const QString &property_name, const QVariant &value);
+    Q_INVOKABLE bool     setValueFor(int accessor_key, const QString &property_name, const QVariant &value);
+    Q_INVOKABLE bool     setCatalogValue(const QString &group_key, const QString &name, const QVariant &value);
 
     SettingsGroup *settingsGroup(const QString &accessor_path) const;
 
@@ -64,15 +63,15 @@ private:
     SettingsNamespace *root_settings_{nullptr};
     SettingsCatalog   *settings_catalog_{nullptr};
 
-    QList<SettingsGroup *>     generated_groups_;
-    QList<SettingsNamespace *> generated_namespaces_;
-    QHash<QString, SettingsGroup *> groups_by_accessor_path_;
-    QHash<QString, SettingsGroup *> groups_by_key_;
+    QList<SettingsGroup *>              generated_groups_;
+    QList<SettingsNamespace *>          generated_namespaces_;
+    QHash<QString, SettingsGroup *>     groups_by_accessor_path_;
+    QHash<QString, SettingsGroup *>     groups_by_key_;
     QHash<QString, SettingsNamespace *> namespaces_by_accessor_path_;
 
     database::SettingsDataBase *settings_database_{nullptr};
-    QTimer *save_timer_{nullptr};
-    bool auto_save_enabled_{true};
+    QTimer                     *save_timer_{nullptr};
+    bool                        auto_save_enabled_{true};
 };
 
 } // namespace dltool::settings

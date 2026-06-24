@@ -669,7 +669,7 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
     const QVector<QFileInfo> files = settingsConfigFiles();
     if (files.isEmpty())
     {
-        err_msg = QStringLiteral("settings config directory not found");
+        err_msg = QString("设置配置目录未找到");
         return false;
     }
 
@@ -679,7 +679,7 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
     {
         for (const QFileInfo &file : files)
         {
-            spdlog::info("Load settings schema: {}", file.absoluteFilePath().toUtf8().constData());
+            spdlog::info("加载设置配置: {}", file.absoluteFilePath().toUtf8().constData());
             const YAML::Node root = loadFile(file);
             if (!root.IsMap())
                 continue;
@@ -751,7 +751,7 @@ void SettingsCatalog::syncAndLoad(database::SettingsDataBase *database)
     QString err_msg;
     if (groups_.empty() && !loadFromConfig(err_msg))
     {
-        spdlog::warn("Load settings config failed: {}", err_msg.toUtf8().constData());
+        spdlog::warn("加载设置配置失败: {}", err_msg.toUtf8().constData());
         return;
     }
 
@@ -760,13 +760,13 @@ void SettingsCatalog::syncAndLoad(database::SettingsDataBase *database)
         SettingsFieldModel *model = group_ptr.get();
         QString             sync_err;
         if (!database->syncSettingsSchema(model->tableName(), model->schemaRows(), sync_err) && !sync_err.isEmpty())
-            spdlog::warn("Sync settings schema failed for {}: {}", model->tableName().toUtf8().constData(),
+            spdlog::warn("同步设置模式失败: {}: {}", model->tableName().toUtf8().constData(),
                          sync_err.toUtf8().constData());
 
         QString load_err;
         model->loadValues(database->loadSettings(model->tableName(), load_err));
         if (!load_err.isEmpty())
-            spdlog::warn("Load settings values failed for {}: {}", model->tableName().toUtf8().constData(),
+            spdlog::warn("加载设置值失败: {}: {}", model->tableName().toUtf8().constData(),
                          load_err.toUtf8().constData());
     }
 }

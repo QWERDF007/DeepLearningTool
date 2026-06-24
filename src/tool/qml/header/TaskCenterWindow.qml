@@ -147,6 +147,7 @@ Window {
                 borderColor: QuiColor.Border
                 showGridLines: true
                 minimumColumnWidth: 80
+                fitColumnsToWidth: true
                 columnSource: [
                     { width: 180, minimumWidth: 120 },
                     { width: 120, minimumWidth: 90 },

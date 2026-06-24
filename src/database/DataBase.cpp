@@ -29,18 +29,17 @@
 #include <QRegularExpression>
 #include <QSet>
 
-
 namespace dltool::database {
 
-const auto ProjectTable                 = Project{};
-const auto RectentProjectsTable         = RecentProjects{};
-const auto ImagesTable                  = Images{};
-const auto DatasetsTable                = Datasets{};
-const auto LabelClassesTable            = LabelClasses{};
-const auto LabelsTable                  = Labels{};
-const auto TagClassesTable              = TagClasses{};
-const auto TagsTable                    = Tags{};
-const auto ModelsTable                  = Models{};
+const auto ProjectTable         = Project{};
+const auto RectentProjectsTable = RecentProjects{};
+const auto ImagesTable          = Images{};
+const auto DatasetsTable        = Datasets{};
+const auto LabelClassesTable    = LabelClasses{};
+const auto LabelsTable          = Labels{};
+const auto TagClassesTable      = TagClasses{};
+const auto TagsTable            = Tags{};
+const auto ModelsTable          = Models{};
 
 DataBase::DataBase(const QString &path, QObject *parent)
     : QObject(parent)
@@ -1043,10 +1042,9 @@ bool ProjectDataBase::deleteImagesTagsByTagsId(const std::vector<int64_t> &tag_i
 }
 
 bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<QString> &uuids,
-                                   std::vector<QString> &names,
-                                   std::vector<QString> &network_structures, std::vector<QString> &training_results,
-                                   std::vector<QString> &test_results, std::vector<qint64> &ctimes,
-                                   std::vector<qint64> &mtimes, QString &err_msg) const
+                                   std::vector<QString> &names, std::vector<QString> &network_structures,
+                                   std::vector<QString> &training_results, std::vector<QString> &test_results,
+                                   std::vector<qint64> &ctimes, std::vector<qint64> &mtimes, QString &err_msg) const
 {
     try
     {
@@ -1067,12 +1065,12 @@ bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<
 
         auto db = pool_->get();
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
-        auto data = db(sqlpp::select(ModelsTable.id, ModelsTable.uuid, ModelsTable.name,
-                                     ModelsTable.networkStructure, ModelsTable.trainingResult,
-                                     ModelsTable.testResult, ModelsTable.ctime, ModelsTable.mtime)
-                           .from(ModelsTable)
-                           .unconditionally()
-                           .order_by(ModelsTable.id.asc()));
+        auto data
+            = db(sqlpp::select(ModelsTable.id, ModelsTable.uuid, ModelsTable.name, ModelsTable.networkStructure,
+                               ModelsTable.trainingResult, ModelsTable.testResult, ModelsTable.ctime, ModelsTable.mtime)
+                     .from(ModelsTable)
+                     .unconditionally()
+                     .order_by(ModelsTable.id.asc()));
         for (const auto &row : data)
         {
             model_ids.emplace_back(row.id);
@@ -1094,9 +1092,8 @@ bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<
 }
 
 bool ProjectDataBase::addModel(const QString &uuid, const QString &name, const QString &network_structure,
-                               const QString &training_result,
-                               const QString &test_result, const qint64 ctime, const qint64 mtime, int64_t &model_id,
-                               QString &err_msg) const
+                               const QString &training_result, const QString &test_result, const qint64 ctime,
+                               const qint64 mtime, int64_t &model_id, QString &err_msg) const
 {
     try
     {
@@ -1115,8 +1112,7 @@ bool ProjectDataBase::addModel(const QString &uuid, const QString &name, const Q
         const QByteArray training_result_bytes   = training_result.toUtf8();
         const QByteArray test_result_bytes       = test_result.toUtf8();
         db(sqlpp::insert_into(ModelsTable)
-               .set(ModelsTable.uuid             = uuid_bytes.constData(),
-                    ModelsTable.name             = name_bytes.constData(),
+               .set(ModelsTable.uuid = uuid_bytes.constData(), ModelsTable.name = name_bytes.constData(),
                     ModelsTable.networkStructure = network_structure_bytes.constData(),
                     ModelsTable.trainingResult   = training_result_bytes.constData(),
                     ModelsTable.testResult = test_result_bytes.constData(), ModelsTable.ctime = ctime,
@@ -1498,27 +1494,24 @@ QString buildInsertSettingsRowSql(const QString &table_name, const QVariantMap &
 {
     const QString name          = fieldText(field, QStringLiteral("name_en"));
     const QString property_name = fieldText(field, QStringLiteral("property_name"), name);
-    const QString default_value = fieldText(field, QStringLiteral("default_value"), fieldText(field, QStringLiteral("value")));
-    const QString value         = fieldText(field, QStringLiteral("value"), default_value);
-    const int     visible       = field.value(QStringLiteral("visible"), true).toBool() ? 1 : 0;
+    const QString default_value
+        = fieldText(field, QStringLiteral("default_value"), fieldText(field, QStringLiteral("value")));
+    const QString value   = fieldText(field, QStringLiteral("value"), default_value);
+    const int     visible = field.value(QStringLiteral("visible"), true).toBool() ? 1 : 0;
 
-    return QStringLiteral("INSERT INTO %1 (name_en, name_cn, property_name, value, default_value, value_type, "
-                          "value_range, control_type, options, options_map, section, description, visible, ordinal_index, mtime) "
-                          "VALUES (%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16)")
-        .arg(table_name,
-             sqlString(name),
-             sqlNullableString(fieldText(field, QStringLiteral("name_cn"))),
-             sqlNullableString(property_name),
-             sqlString(value),
-             sqlNullableString(default_value),
+    return QStringLiteral(
+               "INSERT INTO %1 (name_en, name_cn, property_name, value, default_value, value_type, "
+               "value_range, control_type, options, options_map, section, description, visible, ordinal_index, mtime) "
+               "VALUES (%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16)")
+        .arg(table_name, sqlString(name), sqlNullableString(fieldText(field, QStringLiteral("name_cn"))),
+             sqlNullableString(property_name), sqlString(value), sqlNullableString(default_value),
              sqlString(fieldText(field, QStringLiteral("value_type"), QStringLiteral("string"))),
              sqlNullableString(fieldText(field, QStringLiteral("value_range"))),
              sqlNullableString(fieldText(field, QStringLiteral("control_type"), QStringLiteral("text"))),
              sqlNullableString(fieldText(field, QStringLiteral("options"))),
              sqlNullableString(fieldText(field, QStringLiteral("options_map"))),
              sqlNullableString(fieldText(field, QStringLiteral("section"))),
-             sqlNullableString(fieldText(field, QStringLiteral("description"))),
-             QString::number(visible),
+             sqlNullableString(fieldText(field, QStringLiteral("description"))), QString::number(visible),
              QString::number(fieldInt(field, QStringLiteral("ordinal_index"), 0)),
              QString::number(QDateTime::currentSecsSinceEpoch()));
 }
@@ -1527,39 +1520,36 @@ QString buildUpdateSettingsSchemaSql(const QString &table_name, const QVariantMa
 {
     const QString name          = fieldText(field, QStringLiteral("name_en"));
     const QString property_name = fieldText(field, QStringLiteral("property_name"), name);
-    const QString default_value = fieldText(field, QStringLiteral("default_value"), fieldText(field, QStringLiteral("value")));
-    const int     visible       = field.value(QStringLiteral("visible"), true).toBool() ? 1 : 0;
+    const QString default_value
+        = fieldText(field, QStringLiteral("default_value"), fieldText(field, QStringLiteral("value")));
+    const int visible = field.value(QStringLiteral("visible"), true).toBool() ? 1 : 0;
 
-    return QStringLiteral("UPDATE %1 SET name_cn = %2, property_name = %3, default_value = %4, value_type = %5, "
-                          "value_range = %6, control_type = %7, options = %8, options_map = %9, section = %10, "
-                          "description = %11, visible = %12, ordinal_index = %13, mtime = %14 WHERE name_en = %15")
-        .arg(table_name,
-             sqlNullableString(fieldText(field, QStringLiteral("name_cn"))),
-             sqlNullableString(property_name),
-             sqlNullableString(default_value),
+    return QStringLiteral(
+               "UPDATE %1 SET name_cn = %2, property_name = %3, default_value = %4, value_type = %5, "
+               "value_range = %6, control_type = %7, options = %8, options_map = %9, section = %10, "
+               "description = %11, visible = %12, ordinal_index = %13, mtime = %14 WHERE name_en = %15")
+        .arg(table_name, sqlNullableString(fieldText(field, QStringLiteral("name_cn"))),
+             sqlNullableString(property_name), sqlNullableString(default_value),
              sqlString(fieldText(field, QStringLiteral("value_type"), QStringLiteral("string"))),
              sqlNullableString(fieldText(field, QStringLiteral("value_range"))),
              sqlNullableString(fieldText(field, QStringLiteral("control_type"), QStringLiteral("text"))),
              sqlNullableString(fieldText(field, QStringLiteral("options"))),
              sqlNullableString(fieldText(field, QStringLiteral("options_map"))),
              sqlNullableString(fieldText(field, QStringLiteral("section"))),
-             sqlNullableString(fieldText(field, QStringLiteral("description"))),
-             QString::number(visible),
+             sqlNullableString(fieldText(field, QStringLiteral("description"))), QString::number(visible),
              QString::number(fieldInt(field, QStringLiteral("ordinal_index"), 0)),
-             QString::number(QDateTime::currentSecsSinceEpoch()),
-             sqlString(name));
+             QString::number(QDateTime::currentSecsSinceEpoch()), sqlString(name));
 }
 
-template <typename Database>
+template<typename Database>
 bool tableColumns(Database &db, const QString &table_name, QSet<QString> &columns, QString &err_msg)
 {
     try
     {
-        const QString sql = QStringLiteral("SELECT name AS a FROM pragma_table_info(%1)").arg(sqlString(table_name));
-        auto rows = db(sqlpp::custom_query(sqlpp::verbatim(sql.toStdString()))
-                           .with_result_type_of(sqlpp::select(sqlpp::value("").as(sqlpp::alias::a))));
-        for (const auto &row : rows)
-            columns.insert(QString::fromStdString(row.a));
+        const QString sql  = QStringLiteral("SELECT name AS a FROM pragma_table_info(%1)").arg(sqlString(table_name));
+        auto          rows = db(sqlpp::custom_query(sqlpp::verbatim(sql.toStdString()))
+                                    .with_result_type_of(sqlpp::select(sqlpp::value("").as(sqlpp::alias::a))));
+        for (const auto &row : rows) columns.insert(QString::fromStdString(row.a));
         return true;
     }
     catch (const std::exception &e)
@@ -1572,22 +1562,22 @@ bool tableColumns(Database &db, const QString &table_name, QSet<QString> &column
 QVector<QPair<QString, QString>> expectedSettingsColumns()
 {
     return {
-        {      QStringLiteral("id"),           QStringLiteral("INTEGER")},
-        { QStringLiteral("name_en"),              QStringLiteral("TEXT")},
-        { QStringLiteral("name_cn"),              QStringLiteral("TEXT")},
-        {QStringLiteral("property_name"),         QStringLiteral("TEXT")},
-        {   QStringLiteral("value"),              QStringLiteral("TEXT")},
-        {QStringLiteral("default_value"),         QStringLiteral("TEXT")},
-        {QStringLiteral("value_type"),            QStringLiteral("TEXT")},
-        {QStringLiteral("value_range"),           QStringLiteral("TEXT")},
-        {QStringLiteral("control_type"),          QStringLiteral("TEXT")},
-        { QStringLiteral("options"),              QStringLiteral("TEXT")},
-        {QStringLiteral("options_map"),           QStringLiteral("TEXT")},
-        { QStringLiteral("section"),              QStringLiteral("TEXT")},
-        {QStringLiteral("description"),           QStringLiteral("TEXT")},
-        { QStringLiteral("visible"),           QStringLiteral("INTEGER")},
-        {QStringLiteral("ordinal_index"),      QStringLiteral("INTEGER")},
-        {   QStringLiteral("mtime"),           QStringLiteral("INTEGER")},
+        {           QStringLiteral("id"), QStringLiteral("INTEGER")},
+        {      QStringLiteral("name_en"),    QStringLiteral("TEXT")},
+        {      QStringLiteral("name_cn"),    QStringLiteral("TEXT")},
+        {QStringLiteral("property_name"),    QStringLiteral("TEXT")},
+        {        QStringLiteral("value"),    QStringLiteral("TEXT")},
+        {QStringLiteral("default_value"),    QStringLiteral("TEXT")},
+        {   QStringLiteral("value_type"),    QStringLiteral("TEXT")},
+        {  QStringLiteral("value_range"),    QStringLiteral("TEXT")},
+        { QStringLiteral("control_type"),    QStringLiteral("TEXT")},
+        {      QStringLiteral("options"),    QStringLiteral("TEXT")},
+        {  QStringLiteral("options_map"),    QStringLiteral("TEXT")},
+        {      QStringLiteral("section"),    QStringLiteral("TEXT")},
+        {  QStringLiteral("description"),    QStringLiteral("TEXT")},
+        {      QStringLiteral("visible"), QStringLiteral("INTEGER")},
+        {QStringLiteral("ordinal_index"), QStringLiteral("INTEGER")},
+        {        QStringLiteral("mtime"), QStringLiteral("INTEGER")},
     };
 }
 
@@ -1603,7 +1593,7 @@ bool hasExpectedSettingsColumns(const QSet<QString> &columns)
     return true;
 }
 
-template <typename Database>
+template<typename Database>
 bool validateSettingsColumns(Database &db, const QString &table_name, QString &err_msg)
 {
     QSet<QString> columns;
@@ -1617,12 +1607,13 @@ bool validateSettingsColumns(Database &db, const QString &table_name, QString &e
     return true;
 }
 
-template <typename Database>
+template<typename Database>
 bool rowExists(Database &db, const QString &table_name, const QString &name, QString &err_msg)
 {
     try
     {
-        const QString sql = QStringLiteral("SELECT COUNT(*) AS a FROM %1 WHERE name_en = %2").arg(table_name, sqlString(name));
+        const QString sql
+            = QStringLiteral("SELECT COUNT(*) AS a FROM %1 WHERE name_en = %2").arg(table_name, sqlString(name));
         auto rows = db(sqlpp::custom_query(sqlpp::verbatim(sql.toStdString()))
                            .with_result_type_of(sqlpp::select(sqlpp::value(0).as(sqlpp::alias::a))));
         return !rows.empty() && rows.front().a > 0;
@@ -1654,7 +1645,7 @@ bool SettingsDataBase::ensureSettingsTable(const QString &table_name, QString &e
 
     try
     {
-        auto db = pool_->get();
+        auto          db = pool_->get();
         QSet<QString> columns;
         if (!tableColumns(db, table_name, columns, err_msg))
             return false;
@@ -1717,14 +1708,13 @@ QVariantMap SettingsDataBase::loadSettings(const QString &table_name, QString &e
 
     try
     {
-        auto db = pool_->get();
+        auto          db  = pool_->get();
         const QString sql = QStringLiteral("SELECT name_en AS a, value AS b FROM %1 ORDER BY ordinal_index ASC, id ASC")
                                 .arg(table_name);
         auto rows = db(sqlpp::custom_query(sqlpp::verbatim(sql.toStdString()))
                            .with_result_type_of(sqlpp::select(sqlpp::value("").as(sqlpp::alias::a),
                                                               sqlpp::value("").as(sqlpp::alias::b))));
-        for (const auto &row : rows)
-            result.insert(QString::fromStdString(row.a), QString::fromStdString(row.b));
+        for (const auto &row : rows) result.insert(QString::fromStdString(row.a), QString::fromStdString(row.b));
     }
     catch (const std::exception &e)
     {
@@ -1754,22 +1744,20 @@ bool SettingsDataBase::saveSettings(const QString &table_name, const QVariantMap
                 if (rowExists(db, table_name, name, err_msg))
                 {
                     const QString sql = QStringLiteral("UPDATE %1 SET value = %2, mtime = %3 WHERE name_en = %4")
-                                            .arg(table_name,
-                                                 sqlString(value),
-                                                 QString::number(QDateTime::currentSecsSinceEpoch()),
-                                                 sqlString(name));
+                                            .arg(table_name, sqlString(value),
+                                                 QString::number(QDateTime::currentSecsSinceEpoch()), sqlString(name));
                     db.execute(sql.toStdString());
                 }
                 else
                 {
                     const QVariantMap field{
-                        {       QStringLiteral("name_en"), name},
-                        {         QStringLiteral("value"), value},
-                        { QStringLiteral("default_value"), value},
-                        {    QStringLiteral("value_type"), QStringLiteral("string")},
-                        {  QStringLiteral("control_type"), QStringLiteral("text")},
-                        {      QStringLiteral("visible"), true},
-                        {QStringLiteral("ordinal_index"), 0},
+                        {      QStringLiteral("name_en"),                     name},
+                        {        QStringLiteral("value"),                    value},
+                        {QStringLiteral("default_value"),                    value},
+                        {   QStringLiteral("value_type"), QStringLiteral("string")},
+                        { QStringLiteral("control_type"),   QStringLiteral("text")},
+                        {      QStringLiteral("visible"),                     true},
+                        {QStringLiteral("ordinal_index"),                        0},
                     };
                     db.execute(buildInsertSettingsRowSql(table_name, field).toStdString());
                 }
@@ -1789,6 +1777,5 @@ bool SettingsDataBase::saveSettings(const QString &table_name, const QVariantMap
         return false;
     }
 }
-
 
 } // namespace dltool::database

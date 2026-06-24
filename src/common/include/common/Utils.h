@@ -13,14 +13,15 @@
 namespace dltool::common {
 
 COMMON_API QString uuid();
-COMMON_API QString toQString(const QStringList &, const QString &sep = ", ", Qt::SplitBehavior behavior = Qt::KeepEmptyParts);
+COMMON_API QString toQString(const QStringList &, const QString &sep = ", ",
+                             Qt::SplitBehavior behavior = Qt::KeepEmptyParts);
 
 #ifdef _WIN32
-COMMON_API std::string  wcharToString(const wchar_t *wstr);
+COMMON_API std::string wcharToString(const wchar_t *wstr);
 COMMON_API std::wstring stringToWchar(const std::string &str);
 #endif
 
-COMMON_API QString              getDirectory(const QString &path);
+COMMON_API QString getDirectory(const QString &path);
 COMMON_API std::vector<QString> getDirectories(const QString &path, bool recursive = false);
 COMMON_API std::vector<QString> getFiles(const QString &path, const QStringList &name_filters, bool recursive = false);
 

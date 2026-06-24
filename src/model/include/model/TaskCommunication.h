@@ -51,13 +51,13 @@ enum class TaskCommand
     Stop,
 };
 
-MODEL_API QString taskProtocolFieldName(TaskProtocolField field);
-MODEL_API QString taskMessageTypeName(TaskMessageType type);
-MODEL_API QString taskProtocolStatusName(TaskProtocolStatus status);
-MODEL_API QString taskCommandName(TaskCommand command);
-MODEL_API TaskMessageType taskMessageTypeFromName(const QString &name);
+MODEL_API QString            taskProtocolFieldName(TaskProtocolField field);
+MODEL_API QString            taskMessageTypeName(TaskMessageType type);
+MODEL_API QString            taskProtocolStatusName(TaskProtocolStatus status);
+MODEL_API QString            taskCommandName(TaskCommand command);
+MODEL_API TaskMessageType    taskMessageTypeFromName(const QString &name);
 MODEL_API TaskProtocolStatus taskProtocolStatusFromName(const QString &name);
-MODEL_API TaskCommand taskCommandFromName(const QString &name);
+MODEL_API TaskCommand        taskCommandFromName(const QString &name);
 
 struct MODEL_API TaskMessage
 {
@@ -94,10 +94,10 @@ private:
     void processLine(QTcpSocket *socket, const QByteArray &line);
     void writeJson(QTcpSocket *socket, const QVariantMap &message);
 
-    QTcpServer                         *server_{nullptr};
-    QHash<QTcpSocket *, QByteArray>     buffers_;
-    QHash<QTcpSocket *, int>            task_by_socket_;
-    QHash<int, QPointer<QTcpSocket>>    socket_by_task_;
+    QTcpServer                      *server_{nullptr};
+    QHash<QTcpSocket *, QByteArray>  buffers_;
+    QHash<QTcpSocket *, int>         task_by_socket_;
+    QHash<int, QPointer<QTcpSocket>> socket_by_task_;
 };
 
 } // namespace dltool::model

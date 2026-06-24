@@ -257,7 +257,7 @@ void MaskImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
             if (image_it == image_by_stem.end())
             {
                 ++skipped_masks;
-                spdlog::warn("Mask 未找到匹配图像，跳过: {}", mask_path.toStdString());
+                spdlog::warn("Mask 未找到匹配图像，跳过: {}", mask_path.toUtf8().constData());
                 continue;
             }
 
@@ -364,7 +364,7 @@ bool MaskImporter::readMaskGeometry(const QString &mask_path, MaskGeometry &geom
     const QImage mask = QImage(mask_path).convertToFormat(QImage::Format_Grayscale8);
     if (mask.isNull())
     {
-        spdlog::warn("无法读取 Mask: {}", mask_path.toStdString());
+        spdlog::warn("无法读取 Mask: {}", mask_path.toUtf8().constData());
         return false;
     }
 

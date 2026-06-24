@@ -210,12 +210,12 @@ void CategoryStatisticsModel::refreshData(bool applyFilter)
         emit totalInstancesChanged();
         emit totalImagesChanged();
 
-        spdlog::debug("CategoryStatisticsModel refreshed with applyFilter={}, {} categories, {} instances, {} images",
-                      applyFilter, statistics_.size(), total_instances_, total_images_);
+        spdlog::debug("CategoryStatisticsModel 刷新完成: applyFilter={}, {} 个类别, {} 个实例, {} 个图像", applyFilter,
+                      statistics_.size(), total_instances_, total_images_);
     }
     catch (const std::exception &e)
     {
-        spdlog::error("Failed to refresh CategoryStatisticsModel: {}", e.what());
+        spdlog::error("刷新 CategoryStatisticsModel 失败: {}", e.what());
         endResetModel();
     }
 }

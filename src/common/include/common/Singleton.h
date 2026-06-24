@@ -60,7 +60,7 @@ public:                                                            \
  * @brief Qt QML 单例
  */
 #define QT_QML_SINGLETON(Class)                                      \
-QML_SINGLETON                                                        \
+    QML_SINGLETON                                                    \
 private:                                                             \
     friend class dltool::common::Singleton<Class>;                   \
                                                                      \

@@ -185,8 +185,6 @@ void DatasetFilterItemsModel::populateFromDatasets(QAbstractItemModel *datasets_
             append(dataset_id, dataset_name, checked);
         }
     }
-
-    spdlog::info("DatasetFilterItemsModel populated with {} datasets", items_.size());
 }
 
 // ============================================================================
@@ -239,8 +237,6 @@ void TagFilterItemsModel::populateFromTags(QAbstractItemModel *tags_model)
             append(tag_id, tag_name, checked);
         }
     }
-
-    spdlog::info("TagFilterItemsModel populated with {} tags", items_.size());
 }
 
 // ============================================================================
@@ -290,8 +286,6 @@ void LabelClassFilterItemsModel::populateFromLabelClasses(QAbstractItemModel *la
             append(label_class_id, name, checked);
         }
     }
-
-    spdlog::info("LabelClassFilterItemsModel populated with {} label classes", items_.size());
 }
 
 } // namespace dltool::data

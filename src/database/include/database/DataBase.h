@@ -141,8 +141,7 @@ public:
 
     bool addImages(const int64_t dataset_id, const std::vector<QString> &paths, std::vector<int64_t> &image_ids,
                    QString &err_msg) const;
-    bool updateImagesDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id,
-                             QString &err_msg) const;
+    bool updateImagesDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id, QString &err_msg) const;
     bool getImage(const int64_t image_id, std::pair<int64_t, QString> &image, QString &err_msg) const;
     bool getImages(const std::vector<int64_t> &image_ids, std::vector<std::pair<int64_t, QString>> &images,
                    QString &err_msg) const;
@@ -180,9 +179,9 @@ public:
                       std::vector<QString> &network_structures, std::vector<QString> &training_results,
                       std::vector<QString> &test_results, std::vector<qint64> &ctimes, std::vector<qint64> &mtimes,
                       QString &err_msg) const;
-    bool addModel(const QString &uuid, const QString &name, const QString &network_structure, const QString &training_result,
-                  const QString &test_result, const qint64 ctime, const qint64 mtime, int64_t &model_id,
-                  QString &err_msg) const;
+    bool addModel(const QString &uuid, const QString &name, const QString &network_structure,
+                  const QString &training_result, const QString &test_result, const qint64 ctime, const qint64 mtime,
+                  int64_t &model_id, QString &err_msg) const;
     bool updateModelName(const int64_t model_id, const QString &name, const qint64 mtime, QString &err_msg) const;
     bool deleteModel(const int64_t model_id, QString &err_msg) const;
 
@@ -226,8 +225,6 @@ public:
     bool        syncSettingsSchema(const QString &table_name, const QVariantList &fields, QString &err_msg) const;
     QVariantMap loadSettings(const QString &table_name, QString &err_msg) const;
     bool        saveSettings(const QString &table_name, const QVariantMap &row, QString &err_msg) const;
-    
-
 };
 
 } // namespace dltool::database

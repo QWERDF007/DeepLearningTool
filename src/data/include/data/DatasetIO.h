@@ -11,7 +11,6 @@
 #include <map>
 #include <vector>
 
-
 namespace dltool::data {
 
 struct DATA_API ImageData

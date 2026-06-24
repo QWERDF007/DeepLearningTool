@@ -14,7 +14,6 @@
 
 #include <QStringList>
 
-
 namespace dltool::data {
 
 GlobalFilter::GlobalFilter(DataManager *data_manager, QObject *parent)

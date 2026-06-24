@@ -10,7 +10,6 @@
 #include <QStringList>
 #include <QVariant>
 #include <QtQml>
-
 #include <memory>
 #include <vector>
 
@@ -61,8 +60,8 @@ public:
     Q_ENUM(Role)
 
     explicit ParamGroupModel(QObject *parent = nullptr);
-    ParamGroupModel(QString name_en, QString name_cn, QString description, bool enabled,
-                    int part_index, std::vector<ParamDefinition> params, QObject *parent = nullptr);
+    ParamGroupModel(QString name_en, QString name_cn, QString description, bool enabled, int part_index,
+                    std::vector<ParamDefinition> params, QObject *parent = nullptr);
     ~ParamGroupModel() override;
 
     QString nameEn() const;
@@ -72,13 +71,13 @@ public:
     int     partIndex() const;
     int     count() const;
 
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
-    bool setData(const QModelIndex &index, const QVariant &value, int role = Qt::EditRole) override;
-    Qt::ItemFlags flags(const QModelIndex &index) const override;
+    int                    rowCount(const QModelIndex &parent = QModelIndex()) const override;
+    QVariant               data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+    bool                   setData(const QModelIndex &index, const QVariant &value, int role = Qt::EditRole) override;
+    Qt::ItemFlags          flags(const QModelIndex &index) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    Q_INVOKABLE bool setValue(int row, const QVariant &value);
+    Q_INVOKABLE bool     setValue(int row, const QVariant &value);
     Q_INVOKABLE QVariant valueAt(int row) const;
     Q_INVOKABLE QVariant valueForName(const QString &name_en) const;
 
@@ -92,11 +91,11 @@ private:
     QVariant currentValue(const ParamDefinition &param) const;
     int      indexOfParam(const QString &name_en) const;
 
-    QString                  name_en_;
-    QString                  name_cn_;
-    QString                  description_;
-    bool                     enabled_{true};
-    int                      part_index_{0};
+    QString                      name_en_;
+    QString                      name_cn_;
+    QString                      description_;
+    bool                         enabled_{true};
+    int                          part_index_{0};
     std::vector<ParamDefinition> params_;
 };
 
@@ -124,18 +123,18 @@ public:
     explicit IParams(QObject *parent = nullptr);
     ~IParams() override;
 
-    virtual QString typeName() const = 0;
+    virtual QString                typeName() const = 0;
     QList<ParamGroupModel *>       groups();
     QList<const ParamGroupModel *> groups() const;
     QList<QObject *>               groupObjects() const;
     int                            groupCount() const;
 
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+    int                    rowCount(const QModelIndex &parent = QModelIndex()) const override;
+    QVariant               data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
 
     Q_INVOKABLE ParamGroupModel *groupAt(int row) const;
-    void copyValuesFrom(const IParams &other);
+    void                         copyValuesFrom(const IParams &other);
 
 signals:
     void groupCountChanged();
@@ -143,7 +142,7 @@ signals:
 protected:
     ParamGroupModel *addGroup(const QString &name_en, const QString &name_cn, std::vector<ParamDefinition> params,
                               const QString &description = {}, bool enabled = true, int part_index = 0);
-    void clearGroups();
+    void             clearGroups();
 
 private:
     std::vector<std::unique_ptr<ParamGroupModel>> groups_;

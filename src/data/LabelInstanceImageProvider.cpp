@@ -75,7 +75,7 @@ QImage LabelInstanceImageProvider::requestImage(const QString &id, QSize *size, 
                     }
                     else
                     {
-                        spdlog::debug("[LabelInstanceImageProvider] Invalid padding value: {}, using default 0.1",
+                        spdlog::debug("[LabelInstanceImageProvider] 无效的 padding 值: {}, 使用默认值 0.1",
                                       key_value[1].toStdString());
                     }
                     break;
@@ -89,7 +89,7 @@ QImage LabelInstanceImageProvider::requestImage(const QString &id, QSize *size, 
 
         if (!ok || label_id < 0)
         {
-            spdlog::debug("[LabelInstanceImageProvider] Invalid label_id: {}", id_part.toStdString());
+            spdlog::debug("[LabelInstanceImageProvider] 无效的 label_id: {}", id_part.toStdString());
             QImage empty_image = createEmptyImage();
             if (size)
                 *size = empty_image.size();
@@ -105,7 +105,7 @@ QImage LabelInstanceImageProvider::requestImage(const QString &id, QSize *size, 
     }
     catch (const std::exception &e)
     {
-        spdlog::error("[LabelInstanceImageProvider] Exception in requestImage: {}", e.what());
+        spdlog::error("[LabelInstanceImageProvider] 请求图像发生异常: {}", e.what());
         QImage empty_image = createEmptyImage();
         if (size)
             *size = empty_image.size();
@@ -113,7 +113,7 @@ QImage LabelInstanceImageProvider::requestImage(const QString &id, QSize *size, 
     }
     catch (...)
     {
-        spdlog::error("[LabelInstanceImageProvider] Unknown exception in requestImage");
+        spdlog::error("[LabelInstanceImageProvider] 请求图像发生未知异常");
         QImage empty_image = createEmptyImage();
         if (size)
             *size = empty_image.size();
@@ -128,7 +128,7 @@ QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id, double pa
         // 1. 验证输入参数
         if (label_id < 0 || !label_instances_)
         {
-            spdlog::debug("[LabelInstanceImageProvider] Invalid label_id: {} or label_instances_ is null", label_id);
+            spdlog::debug("[LabelInstanceImageProvider] 无效的 label_id: {} 或 label_instances_ 为空", label_id);
             return createEmptyImage();
         }
 
@@ -136,14 +136,14 @@ QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id, double pa
         LabelInstance *label_instance = label_instances_->getLabelInstance(label_id);
         if (!label_instance)
         {
-            spdlog::debug("[LabelInstanceImageProvider] Label instance not found: {}", label_id);
+            spdlog::debug("[LabelInstanceImageProvider] 未找到标注实例: {}", label_id);
             return createEmptyImage();
         }
 
         const LabelData &label_data = label_instance->data();
         if (!label_data)
         {
-            spdlog::debug("[LabelInstanceImageProvider] Label data is null for label_id: {}", label_id);
+            spdlog::debug("[LabelInstanceImageProvider] 标注数据为空: {}", label_id);
             return createEmptyImage();
         }
 
@@ -158,22 +158,21 @@ QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id, double pa
         // 4. 加载原始图像
         if (!image_instances_)
         {
-            spdlog::error("[LabelInstanceImageProvider] Image instances model is null");
+            spdlog::error("[LabelInstanceImageProvider] 图像实例模型 image_instances_ 为空");
             return createErrorPlaceholder();
         }
 
         ImageInstance *image_instance = image_instances_->getImageInstance(image_id);
         if (!image_instance)
         {
-            spdlog::error("[LabelInstanceImageProvider] Image instance not found: {}", image_id);
+            spdlog::error("[LabelInstanceImageProvider] 未找到图像实例: {}", image_id);
             return createErrorPlaceholder();
         }
 
         QImage source_image(image_instance->path());
         if (source_image.isNull())
         {
-            spdlog::error("[LabelInstanceImageProvider] Failed to load image: {}",
-                          image_instance->path().toStdString());
+            spdlog::error("[LabelInstanceImageProvider] 加载图像失败: {}", image_instance->path().toStdString());
             return createErrorPlaceholder();
         }
 
@@ -193,7 +192,7 @@ QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id, double pa
     }
     catch (const std::exception &e)
     {
-        spdlog::error("[LabelInstanceImageProvider] Exception in generateThumbnail: {}", e.what());
+        spdlog::error("[LabelInstanceImageProvider] 生成缩略图时发生异常: {}", e.what());
         return createEmptyImage();
     }
 }

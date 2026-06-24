@@ -216,7 +216,8 @@ bool getImageDimensions(const QString &image_path, int &width, int &height)
     const QSize  size = reader.size();
     if (!size.isValid())
     {
-        spdlog::warn("无法读取图像尺寸: {}, 错误: {}", image_path.toStdString(), reader.errorString().toStdString());
+        spdlog::warn("无法读取图像尺寸: {}, 错误: {}", image_path.toUtf8().constData(),
+                     reader.errorString().toUtf8().constData());
         return false;
     }
 
@@ -573,7 +574,7 @@ bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_id
                     variantListToIds(label_class_ids), context, err_msg))
     {
         setLastError(err_msg);
-        spdlog::error("启动小样本学习失败: {}", err_msg.toStdString());
+        spdlog::error("启动小样本学习失败: {}", err_msg.toUtf8().constData());
         return false;
     }
 
@@ -586,7 +587,7 @@ bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_id
         active_context_.reset();
         stage_ = RunStage::Idle;
         setLastError(err_msg);
-        spdlog::error("启动小样本学习失败: {}", err_msg.toStdString());
+        spdlog::error("启动小样本学习失败: {}", err_msg.toUtf8().constData());
         return false;
     }
 
@@ -1027,7 +1028,7 @@ bool FewShotLearningController::startProcess(const RunContext &context, const QS
             {
                 const QString output = QString::fromUtf8(process->readAllStandardOutput()).trimmed();
                 if (!output.isEmpty())
-                    spdlog::info("FS-SAM2: {}", output.toStdString());
+                    spdlog::info("FS-SAM2: {}", output.toUtf8().constData());
             });
     connect(process, &QProcess::finished, this, &FewShotLearningController::handleProcessFinished);
 

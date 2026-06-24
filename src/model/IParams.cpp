@@ -1,7 +1,6 @@
 #include "model/IParams.h"
 
 #include <QQmlEngine>
-
 #include <algorithm>
 #include <utility>
 
@@ -163,17 +162,17 @@ Qt::ItemFlags ParamGroupModel::flags(const QModelIndex &index) const
 QHash<int, QByteArray> ParamGroupModel::roleNames() const
 {
     return {
-        {       NameEnRole,        "nameEn"},
-        {       NameCnRole,        "nameCn"},
-        {  DescriptionRole,   "description"},
-        {        ValueRole,         "value"},
-        { DefaultValueRole,  "defaultValue"},
-        {    ValueTypeRole,     "valueType"},
-        {   ValueRangeRole,    "valueRange"},
-        {  ControlTypeRole,  "controlType"},
-        {      EnabledRole,       "enabled"},
-        {      OptionsRole,       "options"},
-        {         UnitRole,          "unit"},
+        {      NameEnRole,       "nameEn"},
+        {      NameCnRole,       "nameCn"},
+        { DescriptionRole,  "description"},
+        {       ValueRole,        "value"},
+        {DefaultValueRole, "defaultValue"},
+        {   ValueTypeRole,    "valueType"},
+        {  ValueRangeRole,   "valueRange"},
+        { ControlTypeRole,  "controlType"},
+        {     EnabledRole,      "enabled"},
+        {     OptionsRole,      "options"},
+        {        UnitRole,         "unit"},
     };
 }
 
@@ -215,7 +214,7 @@ void ParamGroupModel::copyValuesFrom(const ParamGroupModel &other)
         if (other_value.isValid() && param.value != other_value)
         {
             param.value = other_value;
-            changed = true;
+            changed     = true;
         }
     }
 
@@ -333,13 +332,13 @@ QVariant IParams::data(const QModelIndex &index, const int role) const
 QHash<int, QByteArray> IParams::roleNames() const
 {
     return {
-        {        GroupNameEnRole,        "nameEn"},
-        {        GroupNameCnRole,        "nameCn"},
-        {  GroupDescriptionRole,   "description"},
-        {      GroupEnabledRole,       "enabled"},
-        {    GroupPartIndexRole,     "partIndex"},
-        {        GroupCountRole,         "count"},
-        {        GroupModelRole,    "groupModel"},
+        {     GroupNameEnRole,      "nameEn"},
+        {     GroupNameCnRole,      "nameCn"},
+        {GroupDescriptionRole, "description"},
+        {    GroupEnabledRole,     "enabled"},
+        {  GroupPartIndexRole,   "partIndex"},
+        {      GroupCountRole,       "count"},
+        {      GroupModelRole,  "groupModel"},
     };
 }
 
@@ -357,9 +356,9 @@ ParamGroupModel *IParams::addGroup(const QString &name_en, const QString &name_c
 {
     const int row = groupCount();
     beginInsertRows(QModelIndex(), row, row);
-    auto group = std::make_unique<ParamGroupModel>(name_en, name_cn, description, enabled, part_index, std::move(params),
-                                                   this);
-    auto *ptr = group.get();
+    auto  group = std::make_unique<ParamGroupModel>(name_en, name_cn, description, enabled, part_index,
+                                                    std::move(params), this);
+    auto *ptr   = group.get();
     groups_.push_back(std::move(group));
     endInsertRows();
     emit groupCountChanged();
@@ -372,11 +371,9 @@ void IParams::copyValuesFrom(const IParams &other)
     const QList<const ParamGroupModel *> other_groups = other.groups();
     for (ParamGroupModel *group : local_groups)
     {
-        const auto found = std::find_if(other_groups.cbegin(), other_groups.cend(),
-                                        [group](const ParamGroupModel *other_group)
-                                        {
-                                            return other_group != nullptr && other_group->nameEn() == group->nameEn();
-                                        });
+        const auto found
+            = std::find_if(other_groups.cbegin(), other_groups.cend(), [group](const ParamGroupModel *other_group)
+                           { return other_group != nullptr && other_group->nameEn() == group->nameEn(); });
         if (found != other_groups.cend() && *found != nullptr)
         {
             group->copyValuesFrom(**found);

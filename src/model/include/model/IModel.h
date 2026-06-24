@@ -6,7 +6,6 @@
 #include <QObject>
 #include <QString>
 #include <QtQml>
-
 #include <memory>
 
 namespace dltool::model {
@@ -25,15 +24,15 @@ public:
     explicit IModel(std::unique_ptr<IModelConfig> config, QObject *parent = nullptr);
     ~IModel() override;
 
-    IModelConfig *config();
+    IModelConfig       *config();
     const IModelConfig *config() const;
 
     QString uuid() const;
     void    setUuid(const QString &uuid);
 
-    virtual int method() const = 0;
-    virtual QString typeName() const = 0;
-    virtual std::unique_ptr<IModel> clone() const = 0;
+    virtual int                     method() const   = 0;
+    virtual QString                 typeName() const = 0;
+    virtual std::unique_ptr<IModel> clone() const    = 0;
 
 signals:
     void uuidChanged();

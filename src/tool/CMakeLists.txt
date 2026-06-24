@@ -72,5 +72,5 @@ PRIVATE
 target_link_libraries(${PROJECT_NAME}
 PRIVATE 
     Qt6::Quick Qt6::Gui Qt6::Widgets
-    quickui dltool_common dltool_core dltool_ui dltool_project dltool_data dltool_model
+    quickui dltool_common dltool_core dltool_ui dltool_project dltool_data dltool_model dltool_settings
 )

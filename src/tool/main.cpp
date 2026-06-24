@@ -1,8 +1,12 @@
 #include "common/CrashHandler.h"
 #include "common/Logger.h"
 #include "data/Logger.h"
+#include "feature/Logger.h"
+#include "model/Logger.h"
 #include "project/Logger.h"
 #include "project/Projects.h"
+#include "settings/Logger.h"
+#include "ui/Logger.h"
 #include "ui/UILogger.h"
 
 #include <QApplication>
@@ -22,8 +26,12 @@ void InitLogger()
         logger->set_level(spdlog::level::debug);
         logger->set_pattern("[%Y/%m/%d %T.%e] [%n] [%^%L%$] [%t] %v");
         spdlog::set_default_logger(logger);
-        dltool::project::registerLogger(logger);
         dltool::data::registerLogger(logger);
+        dltool::feature::registerLogger(logger);
+        dltool::model::registerLogger(logger);
+        dltool::project::registerLogger(logger);
+        dltool::settings::registerLogger(logger);
+        dltool::ui::registerLogger(logger);
     }
     catch (const std::exception &e)
     {

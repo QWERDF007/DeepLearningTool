@@ -1,21 +1,20 @@
 #pragma once
 
-#include "model/ModelParamDefs.h"
 #include "dltool/model/Export.h"
+#include "model/ModelParamDefs.h"
 
 #include <QString>
-
 #include <vector>
 
 namespace dltool::model {
 
 struct MODEL_API ModelParamsSchema
 {
-    QString                            model_name;
-    QString                            method;
-    QString                            config_path;
-    std::vector<ParamGroupDefinition>  train_groups;
-    std::vector<ParamGroupDefinition>  test_groups;
+    QString                           model_name;
+    QString                           method;
+    QString                           config_path;
+    std::vector<ParamGroupDefinition> train_groups;
+    std::vector<ParamGroupDefinition> test_groups;
 };
 
 /// Load one model parameter schema by model name from applicationDirPath()/config/models.

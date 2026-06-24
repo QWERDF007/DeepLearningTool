@@ -410,14 +410,14 @@ std::unique_ptr<irt::model::IModel> loadSmartModel(const SmartModelLoadRequest &
                  request.model_name.toUtf8().constData(), request.runtime_model_name.toUtf8().constData(),
                  request.backend.toUtf8().constData(), request.device.toUtf8().constData(),
                  request.absolute_model_path.toUtf8().constData());
-    auto model = irt::model::CreateModel(request.runtime_model_name.toStdString(), std::move(config));
+    auto model = irt::model::CreateModel(request.runtime_model_name.toUtf8().constData(), std::move(config));
     if (!model)
     {
         throw std::runtime_error(
-            QString("Failed to create InferRT model: %1").arg(request.runtime_model_name).toStdString());
+            QString("创建 InferRT 模型失败: %1").arg(request.runtime_model_name).toUtf8().constData());
     }
     model->setLogLevel(nvinfer1::ILogger::Severity::kWARNING);
-    model->buildOrLoad(request.absolute_model_path.toStdString());
+    model->buildOrLoad(request.absolute_model_path.toUtf8().constData());
     spdlog::info("加载智能标注模型完成");
     return model;
 }

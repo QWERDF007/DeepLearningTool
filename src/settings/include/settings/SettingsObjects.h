@@ -25,10 +25,10 @@ public:
     QString groupKey() const;
 
     SettingsFieldModel *fieldModel() const;
-    void bindModel(QString accessor_path, SettingsFieldModel *model);
-    void clearValues();
-    void reloadFromModel();
-    void updateFromFieldName(const QString &name, const QVariant &value);
+    void                bindModel(QString accessor_path, SettingsFieldModel *model);
+    void                clearValues();
+    void                reloadFromModel();
+    void                updateFromFieldName(const QString &name, const QVariant &value);
 
     Q_INVOKABLE QVariant valueOr(const QString &property_name, const QVariant &fallback = {}) const;
     Q_INVOKABLE bool     setValue(const QString &property_name, const QVariant &value);
@@ -55,10 +55,10 @@ public:
     explicit SettingsNamespace(QObject *parent = nullptr);
     ~SettingsNamespace() override;
 
-    QString accessorPath() const;
-    void setAccessorPath(QString accessor_path);
-    void clearValues();
-    void insertObject(const QString &accessor, QObject *object);
+    QString              accessorPath() const;
+    void                 setAccessorPath(QString accessor_path);
+    void                 clearValues();
+    void                 insertObject(const QString &accessor, QObject *object);
     Q_INVOKABLE QObject *object(const QString &accessor) const;
 
 private:

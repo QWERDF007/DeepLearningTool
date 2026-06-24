@@ -6,7 +6,6 @@
 #include <QObject>
 #include <QString>
 #include <QtQml>
-
 #include <memory>
 
 namespace dltool::model {
@@ -25,12 +24,12 @@ public:
     explicit IModelConfig(QObject *parent = nullptr);
     ~IModelConfig() override;
 
-    virtual int method() const = 0;
-    virtual QString typeName() const = 0;
-    virtual ITrainParams *trainParams();
-    virtual ITestParams *testParams();
-    virtual const ITrainParams *trainParams() const;
-    virtual const ITestParams *testParams() const;
+    virtual int                           method() const   = 0;
+    virtual QString                       typeName() const = 0;
+    virtual ITrainParams                 *trainParams();
+    virtual ITestParams                  *testParams();
+    virtual const ITrainParams           *trainParams() const;
+    virtual const ITestParams            *testParams() const;
     virtual std::unique_ptr<IModelConfig> clone() const = 0;
 };
 

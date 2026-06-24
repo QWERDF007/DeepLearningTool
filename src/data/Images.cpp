@@ -405,7 +405,7 @@ int ImageInstancesListModel::findRowByImageId(int64_t image_id) const
     auto it = full_image_instances_.find(image_id);
     if (it == full_image_instances_.end())
     {
-        spdlog::warn("Image ID not found: {}", image_id);
+        spdlog::warn("Image ID 不存在: {}", image_id);
         return -1;
     }
 
@@ -413,7 +413,7 @@ int ImageInstancesListModel::findRowByImageId(int64_t image_id) const
     auto row_it = std::find(image_ids_.begin(), image_ids_.end(), image_id);
     if (row_it == image_ids_.end())
     {
-        spdlog::warn("Image ID not in image_ids_ vector: {}", image_id);
+        spdlog::warn("Image ID 不在 image_ids_ vector 中: {}", image_id);
         return -1;
     }
 
@@ -894,7 +894,7 @@ void ImageInstancesListModel::applyFilter(const std::function<bool(int64_t)> &fi
 {
     if (!filter_func)
     {
-        spdlog::warn("applyFilter called with null filter function");
+        spdlog::warn("applyFilter 调用时过滤函数为空");
         return;
     }
 
