@@ -6,7 +6,6 @@
 
 #include <inferrt/features/ImageSearch.hpp>
 #include <inferrt/features/RoiSearch.hpp>
-#include <inferrt/model/ModelFeatures.hpp>
 #include <spdlog/spdlog.h>
 
 #include <QCryptographicHash>
@@ -72,97 +71,38 @@ QString sanitizeFilePart(QString value)
     return value;
 }
 
-QString normalizedModelName(QString model_name, const QString &fallback)
+QStringList variantListToStringList(const QVariantList &values)
 {
-    model_name = model_name.trimmed().toLower();
-    return model_name.isEmpty() ? fallback.toLower() : model_name;
-}
-
-bool startsWithAny(const QString &value, std::initializer_list<const char *> prefixes)
-{
-    for (const char *prefix : prefixes)
+    QStringList result;
+    for (const QVariant &value : values)
     {
-        if (value.startsWith(QString::fromLatin1(prefix)))
+        const QString text = value.toString().trimmed();
+        if (!text.isEmpty() && !result.contains(text))
         {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool containsAny(const QString &value, std::initializer_list<const char *> fragments)
-{
-    for (const char *fragment : fragments)
-    {
-        if (value.contains(QString::fromLatin1(fragment)))
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool isKnownTokenFeatureModel(const QString &model_name, const QString &fallback_model)
-{
-    const QString model = normalizedModelName(model_name, fallback_model);
-    return startsWithAny(model, {"vit_"}) || model == "vit";
-}
-
-bool isKnownDinoRoiModel(const QString &model_name, const QString &fallback_model)
-{
-    const QString model = normalizedModelName(model_name, fallback_model);
-    return startsWithAny(model, {"dinov2_", "dinov3_", "timmdinov2_", "timmdinov3_"})
-        || containsAny(model, {"_dinov2", "_dinov3"});
-}
-
-bool isKnownUnsupportedRoiModel(const QString &model_name, const QString &fallback_model)
-{
-    const QString model = normalizedModelName(model_name, fallback_model);
-    return model == QStringLiteral("onnx") || isKnownTokenFeatureModel(model, fallback_model);
-}
-
-QStringList knownRoiFeatureNames(const QString &model_name, const QString &fallback_model)
-{
-    const QString model = normalizedModelName(model_name, fallback_model);
-
-    if (isKnownDinoRoiModel(model, fallback_model))
-    {
-        return {QStringLiteral("x_norm_patchtokens")};
-    }
-
-    if (startsWithAny(model, {"resnet", "wide_resnet"}))
-    {
-        return {QStringLiteral("layer1"), QStringLiteral("layer2"), QStringLiteral("layer3"), QStringLiteral("layer4")};
-    }
-
-    if (startsWithAny(model, {"mobilenet_v2", "mobilenet_v3"}) || containsAny(model, {"mobilenetv2", "mobilenetv3"}))
-    {
-        return {QStringLiteral("features.5"), QStringLiteral("features.11"), QStringLiteral("features.16")};
-    }
-
-    QStringList                    result;
-    const std::vector<std::string> feature_names = irt::model::modelFeatureNames(model.toStdString());
-    for (const std::string &feature_name : feature_names)
-    {
-        const QString name  = QString::fromStdString(feature_name);
-        const QString lower = name.toLower();
-        if (lower == QStringLiteral("x_norm_patchtokens"))
-        {
-            result.append(name);
-            continue;
-        }
-        if (name.isEmpty() || containsAny(lower, {"avgpool", "flatten", "classifier", "fc", "cls", "token", "norm"}))
-        {
-            continue;
-        }
-        if (lower.startsWith(QStringLiteral("layer")) || lower.startsWith(QStringLiteral("features."))
-            || lower.startsWith(QStringLiteral("backbone.feature"))
-            || lower.startsWith(QStringLiteral("image_encoder.features.")))
-        {
-            result.append(name);
+            result.append(text);
         }
     }
     return result;
+}
+
+QStringList configuredFeatureNames(dltool::settings::accessor::Key accessor_key, const QString &model_name)
+{
+    const QString model = model_name.trimmed();
+    if (model.isEmpty())
+    {
+        return {};
+    }
+
+    auto *settings = dltool::settings::GlobalSettings::getInstance();
+    if (settings == nullptr || settings->catalog() == nullptr)
+    {
+        return {};
+    }
+
+    const QVariantList options = settings->catalog()->optionsForAccessor(
+        dltool::settings::accessorPath(accessor_key),
+        dltool::settings::fieldName(dltool::settings::field::Key::FeatureName), model);
+    return variantListToStringList(options);
 }
 
 QString datasetHash(const std::vector<int64_t> &dataset_ids, const std::vector<int64_t> &gallery_image_ids)
@@ -562,105 +502,6 @@ QString ImageSearchController::defaultInferRtRoot() const
     return QString::fromLatin1(kInferRtRoot);
 }
 
-QString ImageSearchController::defaultModelName() const
-{
-    return QString::fromLatin1(irt::features::ImageSearch::kDefaultModelName);
-}
-
-QString ImageSearchController::defaultFeatureName() const
-{
-    return QString::fromLatin1(irt::features::ImageSearch::kDefaultFeatureName);
-}
-
-QStringList ImageSearchController::supportedModelPresets() const
-{
-    return {
-        QStringLiteral("resnet18"),
-        QStringLiteral("resnet34"),
-        QStringLiteral("resnet50"),
-        QStringLiteral("mobilenet_v3_small"),
-        QStringLiteral("mobilenet_v3_large"),
-        QStringLiteral("dinov2_vits14"),
-        QStringLiteral("dinov2_vitb14"),
-        QStringLiteral("dinov2_vitl14"),
-        QStringLiteral("dinov2_vitg14"),
-        QStringLiteral("dinov2_vits14_reg"),
-        QStringLiteral("dinov2_vitb14_reg"),
-        QStringLiteral("dinov2_vitl14_reg"),
-        QStringLiteral("dinov2_vitg14_reg"),
-        QStringLiteral("dinov2_vits14_reg4"),
-        QStringLiteral("dinov2_vitb14_reg4"),
-        QStringLiteral("dinov2_vitl14_reg4"),
-        QStringLiteral("dinov2_vitg14_reg4"),
-        QStringLiteral("dinov3_vits16"),
-        QStringLiteral("dinov3_vits16plus"),
-        QStringLiteral("dinov3_vitb16"),
-        QStringLiteral("dinov3_vitl16"),
-        QStringLiteral("dinov3_vitl16plus"),
-        QStringLiteral("dinov3_vith16plus"),
-        QStringLiteral("dinov3_vit7b16"),
-        QStringLiteral("vit_base_patch16_224"),
-        QStringLiteral("onnx"),
-    };
-}
-
-QStringList ImageSearchController::modelFeatureNames(const QString &model_name) const
-{
-    const QString model = model_name.trimmed().isEmpty() ? defaultModelName() : model_name.trimmed();
-
-    QStringList                    names;
-    const std::vector<std::string> feature_names = irt::model::modelFeatureNames(model.toStdString());
-    for (const std::string &feature_name : feature_names)
-    {
-        const QString name = QString::fromStdString(feature_name);
-        if (!name.isEmpty() && !names.contains(name))
-        {
-            names.append(name);
-        }
-    }
-
-    if (names.isEmpty())
-    {
-        names.append(defaultFeatureName());
-    }
-
-    return names;
-}
-
-QStringList ImageSearchController::roiModelPresets() const
-{
-    QStringList presets;
-    for (const QString &model : supportedModelPresets())
-    {
-        if (!roiFeatureNames(model).isEmpty() && !presets.contains(model))
-        {
-            presets.append(model);
-        }
-    }
-    return presets;
-}
-
-QStringList ImageSearchController::roiFeatureNames(const QString &model_name) const
-{
-    return knownRoiFeatureNames(model_name, defaultModelName());
-}
-
-QString ImageSearchController::defaultRoiFeatureName(const QString &model_name) const
-{
-    const QStringList names = roiFeatureNames(model_name);
-    if (!names.isEmpty())
-    {
-        return names.last();
-    }
-    return defaultFeatureName();
-}
-
-QString ImageSearchController::suggestedWeightsPath(const QString &model_name) const
-{
-    const QString model = model_name.trimmed().isEmpty() ? defaultModelName() : model_name.trimmed();
-    return QDir(QString("F:/models")).filePath(model + QString(".wts"));
-}
-
 // ────────────────────────────────────────────────────────────
 //  公开接口
 // ────────────────────────────────────────────────────────────
@@ -694,6 +535,16 @@ bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids
 
     // 2. 解析参数 & 构建请求
     const auto dataset_ids_set = parseDatasetIds(dataset_ids);
+    if (model_name.trimmed().isEmpty())
+    {
+        setLastError(QString("请先配置图像搜索模型"));
+        return false;
+    }
+    if (feature_name.trimmed().isEmpty())
+    {
+        setLastError(QString("请先配置图像搜索特征层"));
+        return false;
+    }
     if (!validateWeightsFile(weights_file))
         return false;
 
@@ -760,6 +611,16 @@ bool ImageSearchController::searchImages(const QVariantList &image_ids, const QV
     }
 
     const auto dataset_ids_set = parseDatasetIds(dataset_ids);
+    if (model_name.trimmed().isEmpty())
+    {
+        setLastError(QString("请先配置图像搜索模型"));
+        return false;
+    }
+    if (feature_name.trimmed().isEmpty())
+    {
+        setLastError(QString("请先配置图像搜索特征层"));
+        return false;
+    }
     if (!validateWeightsFile(weights_file))
         return false;
 
@@ -823,6 +684,16 @@ bool ImageSearchController::searchLabelRois(
     }
 
     const auto dataset_ids_set = parseDatasetIds(dataset_ids);
+    if (model_name.trimmed().isEmpty())
+    {
+        setLastError(QString("请先配置标注搜索模型"));
+        return false;
+    }
+    if (feature_name.trimmed().isEmpty())
+    {
+        setLastError(QString("请先配置标注搜索特征层"));
+        return false;
+    }
     if (!validateWeightsFile(weights_file))
         return false;
 
@@ -837,20 +708,14 @@ bool ImageSearchController::searchLabelRois(
     request.use_pca        = use_pca;
     request.pca_dim        = use_pca ? std::clamp(pca_dim, 1, 8192) : 0;
 
-    const QStringList spatial_features = roiFeatureNames(request.model_name);
+    const QStringList spatial_features
+        = configuredFeatureNames(dltool::settings::accessor::Key::RoiSearch, request.model_name);
     if (spatial_features.isEmpty())
     {
-        if (isKnownUnsupportedRoiModel(request.model_name, defaultModelName()))
-        {
-            setLastError(QString("标注搜索需要空间特征图，当前模型 %1 不支持标注搜索").arg(request.model_name));
-        }
-        else
-        {
-            setLastError(QString("标注搜索未找到当前模型 %1 的空间特征层").arg(request.model_name));
-        }
+        setLastError(QString("标注搜索未在配置中找到模型 %1 的空间特征层").arg(request.model_name));
         return false;
     }
-    if (!spatial_features.isEmpty() && !spatial_features.contains(request.feature_name))
+    if (!spatial_features.contains(request.feature_name))
     {
         request.feature_name = spatial_features.last();
         dltool::settings::GlobalSettings::getInstance()->setValue(
@@ -943,8 +808,8 @@ ImageSearchController::SearchRequest ImageSearchController::buildSearchRequest(
     QFileInfo weights_info(weights_file);
 
     SearchRequest req;
-    req.model_name    = effective(model_name, QString::fromLatin1(irt::features::ImageSearch::kDefaultModelName));
-    req.feature_name  = effective(feature_name, QString::fromLatin1(irt::features::ImageSearch::kDefaultFeatureName));
+    req.model_name    = model_name.trimmed();
+    req.feature_name  = feature_name.trimmed();
     req.weights_file  = weights_info.absoluteFilePath();
     req.rebuild_index = rebuild_index;
     req.top_k         = std::max(1, top_k);
@@ -1299,9 +1164,7 @@ void ImageSearchController::executeSearchWorker(SearchRequest request, QPointer<
                 || response.error.contains(QStringLiteral("RoiSearch requires NCHW feature tensor"))
                 || response.error.contains(QStringLiteral("RoiSearch requires NCHW feature map"))))
         {
-            response.error = QString(
-                "标注搜索需要空间特征图: CNN 模型请选择 layer4 等 NCHW 特征层，DINO 模型请选择 "
-                "x_norm_patchtokens，并使用匹配的权重文件。");
+            response.error = QString("标注搜索需要空间特征图，请在配置中选择当前模型对应的 NCHW 特征层并使用匹配的权重文件。");
         }
     }
     catch (...)

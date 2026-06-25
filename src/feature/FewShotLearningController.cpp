@@ -292,19 +292,6 @@ enum class FewShotClassField
     Dir,
 };
 
-enum class Sam2Architecture
-{
-    Sam2HieraTiny,
-    Sam2HieraSmall,
-    Sam2HieraBasePlus,
-    Sam2HieraLarge,
-    Sam21HieraTiny,
-    Sam21HieraSmall,
-    Sam21HieraBasePlus,
-    Sam21HieraLarge,
-    Unknown,
-};
-
 QString fsSam2ScriptName(FsSam2Script script)
 {
     switch (script)
@@ -364,104 +351,60 @@ QString fewShotClassFieldName(FewShotClassField field)
     }
 }
 
-QString sam2ArchitectureName(Sam2Architecture architecture)
+struct Sam2ConfigNameParts
 {
-    switch (architecture)
+    QString prefix;
+    QString size_token;
+};
+
+Sam2ConfigNameParts sam2ConfigNameParts(const QString &architecture_name)
+{
+    const QString architecture = architecture_name.trimmed();
+    const QString sam21_prefix = QStringLiteral("sam2.1_hiera_");
+    const QString sam2_prefix  = QStringLiteral("sam2_hiera_");
+
+    QString prefix;
+    QString size_name;
+    if (architecture.startsWith(sam21_prefix))
     {
-    case Sam2Architecture::Sam2HieraTiny:
-        return QStringLiteral("sam2_hiera_tiny");
-    case Sam2Architecture::Sam2HieraSmall:
-        return QStringLiteral("sam2_hiera_small");
-    case Sam2Architecture::Sam2HieraBasePlus:
-        return QStringLiteral("sam2_hiera_base_plus");
-    case Sam2Architecture::Sam2HieraLarge:
-        return QStringLiteral("sam2_hiera_large");
-    case Sam2Architecture::Sam21HieraTiny:
-        return QStringLiteral("sam2.1_hiera_tiny");
-    case Sam2Architecture::Sam21HieraSmall:
-        return QStringLiteral("sam2.1_hiera_small");
-    case Sam2Architecture::Sam21HieraBasePlus:
-        return QStringLiteral("sam2.1_hiera_base_plus");
-    case Sam2Architecture::Sam21HieraLarge:
-        return QStringLiteral("sam2.1_hiera_large");
-    case Sam2Architecture::Unknown:
-    default:
+        prefix    = QStringLiteral("sam2.1");
+        size_name = architecture.mid(sam21_prefix.size());
+    }
+    else if (architecture.startsWith(sam2_prefix))
+    {
+        prefix    = QStringLiteral("sam2");
+        size_name = architecture.mid(sam2_prefix.size());
+    }
+    else
+    {
         return {};
     }
-}
 
-Sam2Architecture sam2ArchitectureFromName(const QString &name)
-{
-    const QString value = name.trimmed();
-    if (value == sam2ArchitectureName(Sam2Architecture::Sam2HieraTiny))
-        return Sam2Architecture::Sam2HieraTiny;
-    if (value == sam2ArchitectureName(Sam2Architecture::Sam2HieraSmall))
-        return Sam2Architecture::Sam2HieraSmall;
-    if (value == sam2ArchitectureName(Sam2Architecture::Sam2HieraBasePlus))
-        return Sam2Architecture::Sam2HieraBasePlus;
-    if (value == sam2ArchitectureName(Sam2Architecture::Sam2HieraLarge))
-        return Sam2Architecture::Sam2HieraLarge;
-    if (value == sam2ArchitectureName(Sam2Architecture::Sam21HieraTiny))
-        return Sam2Architecture::Sam21HieraTiny;
-    if (value == sam2ArchitectureName(Sam2Architecture::Sam21HieraSmall))
-        return Sam2Architecture::Sam21HieraSmall;
-    if (value == sam2ArchitectureName(Sam2Architecture::Sam21HieraBasePlus))
-        return Sam2Architecture::Sam21HieraBasePlus;
-    if (value == sam2ArchitectureName(Sam2Architecture::Sam21HieraLarge))
-        return Sam2Architecture::Sam21HieraLarge;
-    return Sam2Architecture::Unknown;
-}
-
-QString sam2ConfigFolder(Sam2Architecture architecture)
-{
-    switch (architecture)
+    QString size_token;
+    if (size_name == QStringLiteral("tiny"))
     {
-    case Sam2Architecture::Sam2HieraTiny:
-    case Sam2Architecture::Sam2HieraSmall:
-    case Sam2Architecture::Sam2HieraBasePlus:
-    case Sam2Architecture::Sam2HieraLarge:
-        return QStringLiteral("sam2");
-    case Sam2Architecture::Sam21HieraTiny:
-    case Sam2Architecture::Sam21HieraSmall:
-    case Sam2Architecture::Sam21HieraBasePlus:
-    case Sam2Architecture::Sam21HieraLarge:
-        return QStringLiteral("sam2.1");
-    case Sam2Architecture::Unknown:
-    default:
-        return {};
+        size_token = QStringLiteral("t");
     }
-}
-
-QString sam2ConfigFileName(Sam2Architecture architecture)
-{
-    switch (architecture)
+    else if (size_name == QStringLiteral("small"))
     {
-    case Sam2Architecture::Sam2HieraTiny:
-        return QStringLiteral("sam2_hiera_t.yaml");
-    case Sam2Architecture::Sam2HieraSmall:
-        return QStringLiteral("sam2_hiera_s.yaml");
-    case Sam2Architecture::Sam2HieraBasePlus:
-        return QStringLiteral("sam2_hiera_b+.yaml");
-    case Sam2Architecture::Sam2HieraLarge:
-        return QStringLiteral("sam2_hiera_l.yaml");
-    case Sam2Architecture::Sam21HieraTiny:
-        return QStringLiteral("sam2.1_hiera_t.yaml");
-    case Sam2Architecture::Sam21HieraSmall:
-        return QStringLiteral("sam2.1_hiera_s.yaml");
-    case Sam2Architecture::Sam21HieraBasePlus:
-        return QStringLiteral("sam2.1_hiera_b+.yaml");
-    case Sam2Architecture::Sam21HieraLarge:
-        return QStringLiteral("sam2.1_hiera_l.yaml");
-    case Sam2Architecture::Unknown:
-    default:
-        return {};
+        size_token = QStringLiteral("s");
     }
+    else if (size_name == QStringLiteral("base_plus"))
+    {
+        size_token = QStringLiteral("b+");
+    }
+    else if (size_name == QStringLiteral("large"))
+    {
+        size_token = QStringLiteral("l");
+    }
+
+    return size_token.isEmpty() ? Sam2ConfigNameParts{} : Sam2ConfigNameParts{prefix, size_token};
 }
 
 QString sam2ConfigPathFromArchitecture(const QString &architecture_name, QString &err_msg)
 {
-    const Sam2Architecture architecture = sam2ArchitectureFromName(architecture_name);
-    if (architecture == Sam2Architecture::Unknown)
+    const Sam2ConfigNameParts parts = sam2ConfigNameParts(architecture_name);
+    if (parts.prefix.isEmpty() || parts.size_token.isEmpty())
     {
         err_msg = QString("不支持的 SAM2 架构: %1").arg(architecture_name);
         return {};
@@ -469,7 +412,7 @@ QString sam2ConfigPathFromArchitecture(const QString &architecture_name, QString
 
     const QString path = cleanPath(
         QDir(fixedSam2ConfigRoot())
-            .filePath(QString("%1/%2").arg(sam2ConfigFolder(architecture), sam2ConfigFileName(architecture))));
+            .filePath(QString("%1/%1_hiera_%2.yaml").arg(parts.prefix, parts.size_token)));
     if (!QFileInfo::exists(path))
     {
         err_msg = QString("SAM2 配置文件不存在: %1").arg(path);
@@ -665,10 +608,14 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
     const QString sam2_architecture
         = global_settings
               ->valueForField(static_cast<int>(dltool::settings::accessor::Key::FewShotLearning),
-                              static_cast<int>(dltool::settings::field::Key::Sam2Architecture),
-                              sam2ArchitectureName(Sam2Architecture::Sam21HieraSmall))
+                              static_cast<int>(dltool::settings::field::Key::Sam2Architecture))
               .toString()
               .trimmed();
+    if (sam2_architecture.isEmpty())
+    {
+        err_msg = QString("请先配置 SAM2 架构");
+        return false;
+    }
     context.sam2_cfg = sam2ConfigPathFromArchitecture(sam2_architecture, err_msg);
     if (context.sam2_cfg.isEmpty())
         return false;

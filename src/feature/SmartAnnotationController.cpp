@@ -31,8 +31,6 @@ namespace dltool::feature {
 namespace {
 
 constexpr int         kSamMaxPoints        = 16;
-constexpr const char *kDefaultModelName    = "edge_sam";
-constexpr const char *kDefaultModelRoot    = "F:/models";
 constexpr const char *kTensorRtBackendName = "tensorrt";
 
 struct PromptPoint
@@ -308,8 +306,7 @@ private:
 
 QString normalizedModelName(QString value)
 {
-    value = value.trimmed();
-    return value.isEmpty() ? QString::fromLatin1(kDefaultModelName) : value;
+    return value.trimmed();
 }
 
 QString normalizedBackend(QString value)
@@ -1183,33 +1180,6 @@ SmartAnnotationController::SmartAnnotationController(QObject *parent)
 
 SmartAnnotationController::~SmartAnnotationController() = default;
 
-QStringList SmartAnnotationController::supportedModelPresets() const
-{
-    return {
-        QStringLiteral("edge_sam"),
-        QStringLiteral("sam"),
-        QStringLiteral("sam_vit_b"),
-        QStringLiteral("sam_vit_l"),
-        QStringLiteral("sam_vit_h"),
-        QStringLiteral("sam2"),
-        QStringLiteral("sam2_hiera_tiny"),
-        QStringLiteral("sam2_hiera_small"),
-        QStringLiteral("sam2_hiera_base_plus"),
-        QStringLiteral("sam2_hiera_large"),
-        QStringLiteral("sam2_1_hiera_tiny"),
-        QStringLiteral("sam2_1_hiera_small"),
-        QStringLiteral("sam2_1_hiera_base_plus"),
-        QStringLiteral("sam2_1_hiera_large"),
-    };
-}
-
-QString SmartAnnotationController::suggestedModelPath(const QString &model_name, const QString &backend) const
-{
-    const QString model     = normalizedModelName(model_name);
-    const QString extension = isTensorRtBackend(backend) ? QStringLiteral(".wts") : QStringLiteral(".onnx");
-    return QDir(QString::fromLatin1(kDefaultModelRoot)).filePath(model + extension);
-}
-
 void SmartAnnotationController::clearCache()
 {
     model_.reset();
@@ -1353,9 +1323,13 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         const QString backend    = normalizedBackend(settings->valueOr(QStringLiteral("modelBackend")).toString());
         const QString device     = normalizedDevice(settings->valueOr(QStringLiteral("modelDevice")).toString());
         QString       model_path = settings->valueOr(QStringLiteral("modelPath")).toString().trimmed();
+        if (model_name.isEmpty())
+        {
+            throw std::runtime_error("智能标注模型未配置");
+        }
         if (model_path.isEmpty())
         {
-            model_path = suggestedModelPath(model_name, backend);
+            throw std::runtime_error("智能标注模型文件未配置");
         }
 
         const QFileInfo model_info(model_path);

@@ -32,8 +32,6 @@ class FEATURE_API ImageSearchController : public QObject
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged FINAL)
     Q_PROPERTY(QString lastSummary READ lastSummary NOTIFY resultsChanged FINAL)
     Q_PROPERTY(QString defaultInferRtRoot READ defaultInferRtRoot CONSTANT FINAL)
-    Q_PROPERTY(QString defaultModelName READ defaultModelName CONSTANT FINAL)
-    Q_PROPERTY(QString defaultFeatureName READ defaultFeatureName CONSTANT FINAL)
 
 public:
     explicit ImageSearchController(ImageSearchDataProvider *data_provider, QObject *parent = nullptr);
@@ -74,36 +72,6 @@ public:
      * @return InferRT 根路径，供 QML 展示或拼接资源路径
      */
     QString defaultInferRtRoot() const;
-
-    /**
-     * @brief 默认特征提取模型名称
-     * @return InferRT ImageSearch 内置的默认模型名
-     */
-    QString defaultModelName() const;
-
-    /**
-     * @brief 默认特征层名称
-     * @return InferRT ImageSearch 内置的默认特征名
-     */
-    QString defaultFeatureName() const;
-
-    /**
-     * @brief 获取支持的模型预设列表
-     * @return 可供 UI 选择的模型名称列表（如 resnet50、dinov2 等）
-     */
-    Q_INVOKABLE QStringList supportedModelPresets() const;
-
-    Q_INVOKABLE QStringList modelFeatureNames(const QString &model_name) const;
-    Q_INVOKABLE QStringList roiModelPresets() const;
-    Q_INVOKABLE QStringList roiFeatureNames(const QString &model_name) const;
-    Q_INVOKABLE QString     defaultRoiFeatureName(const QString &model_name) const;
-
-    /**
-     * @brief 根据模型名建议权重文件路径
-     * @param model_name 模型名称；为空时使用默认模型名
-     * @return 建议的 .wts 权重文件路径
-     */
-    Q_INVOKABLE QString suggestedWeightsPath(const QString &model_name) const;
 
     /**
      * @brief 对当前选中的图像执行相似度搜索

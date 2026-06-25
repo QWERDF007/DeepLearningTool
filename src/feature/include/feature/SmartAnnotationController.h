@@ -45,9 +45,6 @@ public:
         return last_error_;
     }
 
-    Q_INVOKABLE QStringList supportedModelPresets() const;
-    Q_INVOKABLE QString     suggestedModelPath(const QString &model_name, const QString &backend) const;
-
     Q_INVOKABLE QVariantMap infer(const QString &image_path, const QVariantList &prompt_points);
     Q_INVOKABLE void        clearCache();
 
