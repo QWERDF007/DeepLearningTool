@@ -315,9 +315,9 @@ QString fewShotTaskName(FewShotTaskKind kind)
     switch (kind)
     {
     case FewShotTaskKind::Train:
-        return QString("FS-SAM2 训练");
+        return QString("小样本学习 训练");
     case FewShotTaskKind::Predict:
-        return QString("FS-SAM2 推理");
+        return QString("小样本学习 推理");
     default:
         return {};
     }
@@ -411,8 +411,7 @@ QString sam2ConfigPathFromArchitecture(const QString &architecture_name, QString
     }
 
     const QString path = cleanPath(
-        QDir(fixedSam2ConfigRoot())
-            .filePath(QString("%1/%1_hiera_%2.yaml").arg(parts.prefix, parts.size_token)));
+        QDir(fixedSam2ConfigRoot()).filePath(QString("%1/%1_hiera_%2.yaml").arg(parts.prefix, parts.size_token)));
     if (!QFileInfo::exists(path))
     {
         err_msg = QString("SAM2 配置文件不存在: %1").arg(path);
@@ -571,11 +570,6 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         && data_provider_->method() != dltool::core::DeepLearningMethod::Segmentation)
     {
         err_msg = QString("小样本学习仅支持检测和分割项目");
-        return false;
-    }
-    if (label_class_ids.size() < 2)
-    {
-        err_msg = QString("FS-SAM2 训练至少需要选择 2 个类别");
         return false;
     }
     if (train_dataset_ids.empty())

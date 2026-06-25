@@ -34,8 +34,6 @@ Item {
                                                     && dataManager
                                                     && (dataManager.method === DeepLearningMethod.Detection
                                                         || dataManager.method === DeepLearningMethod.Segmentation)
-    readonly property var fewShotLearningSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.FewShotLearning)
-    readonly property bool fewShotLearningAvailable: dataManager !== null && fewShotLearningSettings.enabled
     property bool smartAnnotationMode: toolMode === "smart" && smartAnnotationAvailable
     property bool selectToolMode: toolMode === "select"
     property bool rectangleToolMode: toolMode === "rect"
@@ -336,6 +334,7 @@ Item {
         }
         if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier)) {
             imageLabelsList.selectAll()
+            SignalHelper.imageLabelListSelectAll()
             return
         }
         if (event.key === Qt.Key_Delete && selection && selection.hasSelection) {

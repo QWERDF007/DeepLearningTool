@@ -6,6 +6,7 @@ import dltool.ui
 import dltool.data
 import dltool.feature
 import dltool.project
+import dltool.settings
 
 import "label"
 import "gallery"
@@ -21,6 +22,8 @@ Rectangle {
     property DataManager dataManager
     readonly property var smartAnnotationController: dataManager ? dataManager.smartAnnotation : null
     readonly property bool smartAnnotationLoading: smartAnnotationController ? smartAnnotationController.loadingModel : false
+    readonly property var fewShotLearningSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.FewShotLearning)
+    readonly property bool fewShotLearningAvailable: dataManager !== null && fewShotLearningSettings.enabled
 
     QuiSplitView {
         anchors.fill: parent
@@ -98,7 +101,7 @@ Rectangle {
                         segmentationMode: labelCanvas.segmentationMode
                         smartAnnotationAvailable: labelCanvas.smartAnnotationAvailable
                         dataManagerAvailable: labelPage.dataManager !== null
-                        fewShotLearningAvailable: labelCanvas.fewShotLearningAvailable
+                        fewShotLearningAvailable: labelPage.fewShotLearningAvailable
                         onToolSelected: function(mode) {
                             labelCanvas.setToolMode(mode)
                         }
