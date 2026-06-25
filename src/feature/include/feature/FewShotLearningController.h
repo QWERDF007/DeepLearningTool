@@ -49,6 +49,7 @@ private:
     enum class RunStage
     {
         Idle,
+        PreparingMask,
         Training,
         Predicting,
     };
@@ -58,6 +59,7 @@ private:
     bool prepareRun(const std::vector<int64_t> &train_dataset_ids, const std::vector<int64_t> &test_dataset_ids,
                     const std::vector<int64_t> &label_class_ids, RunContext &context, QString &err_msg) const;
     bool startTraining(const RunContext &context, QString &err_msg);
+    bool startBoxToMask(const RunContext &context, int class_index, QString &err_msg);
     bool startPrediction(const RunContext &context, int class_index, QString &err_msg);
     bool startProcess(const RunContext &context, const QStringList &arguments, QString &err_msg);
     void startPredictionImports();
@@ -77,10 +79,12 @@ private:
 
     int                         train_task_id_{-1};
     int                         predict_task_id_{-1};
+    int                         box_to_mask_task_id_{-1};
     QString                     prediction_output_dir_;
     QString                     checkpoint_path_;
     std::unique_ptr<RunContext> active_context_;
     RunStage                    stage_{RunStage::Idle};
+    int                         current_prepare_class_index_{0};
     int                         current_predict_class_index_{0};
     int                         current_import_index_{0};
     bool                        importing_predictions_{false};

@@ -2,6 +2,8 @@
 
 #include "model/TaskCommunication.h"
 
+#include <spdlog/spdlog.h>
+
 #include <QDateTime>
 #include <algorithm>
 
@@ -94,8 +96,12 @@ QVariant TaskTableModel::headerData(int section, Qt::Orientation orientation, in
 
     switch (section)
     {
+    case TaskIdColumn:
+        return QStringLiteral("任务ID");
     case ModelNameColumn:
         return QStringLiteral("模型名称");
+    case TaskTypeColumn:
+        return QStringLiteral("任务类型");
     case StatusColumn:
         return QStringLiteral("任务状态");
     case CreatedAtColumn:
@@ -402,8 +408,12 @@ QVariant TaskTableModel::dataForColumn(const TaskRecord &task, int column) const
 {
     switch (column)
     {
+    case TaskIdColumn:
+        return task.task_id;
     case ModelNameColumn:
         return task.model_name;
+    case TaskTypeColumn:
+        return task.task_type;
     case StatusColumn:
         return statusText(task);
     case CreatedAtColumn:
@@ -605,6 +615,7 @@ void TaskManager::handleTaskMessage(const TaskMessage &message)
         break;
     case TaskProtocolStatus::Failed:
     case TaskProtocolStatus::Error:
+        spdlog::error("任务 {} 失败: {}", message.task_id, message.message.toUtf8().constData());
         tasks_->failTask(message.task_id);
         break;
     default:

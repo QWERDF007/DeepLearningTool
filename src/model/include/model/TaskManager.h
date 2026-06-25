@@ -24,7 +24,9 @@ public:
 
     enum Column
     {
-        ModelNameColumn = 0,
+        TaskIdColumn = 0,
+        ModelNameColumn,
+        TaskTypeColumn,
         StatusColumn,
         CreatedAtColumn,
         RunningTimeColumn,

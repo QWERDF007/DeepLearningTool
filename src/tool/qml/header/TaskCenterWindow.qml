@@ -136,7 +136,9 @@ Window {
                 minimumColumnWidth: 80
                 fitColumnsToWidth: true
                 columnSource: [
+                    { width: 70, minimumWidth: 50 },
                     { width: 180, minimumWidth: 120 },
+                    { width: 140, minimumWidth: 100 },
                     { width: 120, minimumWidth: 90 },
                     { width: 170, minimumWidth: 140 },
                     { width: 110, minimumWidth: 90 },
@@ -235,19 +237,6 @@ Window {
                                     onClicked: {
                                         dialog.selectedTaskId = model.task_id
                                         dialog.taskManager.stopTask(model.task_id)
-                                    }
-                                }
-
-                                QuiTextIconButton {
-                                    width: 30
-                                    height: 28
-                                    text: "结束"
-                                    display: Button.IconOnly
-                                    iconSource: QuiFontIcon.Cancel
-                                    enabled: dialog.taskManager && (model.can_finish || false)
-                                    onClicked: {
-                                        dialog.selectedTaskId = model.task_id
-                                        dialog.taskManager.finishTask(model.task_id)
                                     }
                                 }
 

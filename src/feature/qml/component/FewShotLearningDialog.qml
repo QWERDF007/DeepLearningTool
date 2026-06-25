@@ -31,21 +31,9 @@ QuiPopup {
     function resetSelections() {
         Qt.callLater(function () {
             datasetNames = dataManager ? dataManager.getAllDatasetsName() : []
-            let trainMap = {}
-            let testMap = {}
-            if (datasetNames.length > 0) {
-                trainMap[String(dataManager.getDatasetId(datasetNames[0]))] = true
-                testMap[String(dataManager.getDatasetId(datasetNames.length > 1 ? datasetNames[1] : datasetNames[0]))] = true
-            }
-            selectedTrainDatasetMap = trainMap
-            selectedTestDatasetMap = testMap
-
-            let map = {}
-            let ids = dataManager ? dataManager.getAllLabelClassIds() : []
-            for (let i = 0; i < ids.length; ++i) {
-                map[String(ids[i])] = true
-            }
-            selectedClassMap = map
+            selectedTrainDatasetMap = {}
+            selectedTestDatasetMap = {}
+            selectedClassMap = {}
         })
     }
 
@@ -126,7 +114,7 @@ QuiPopup {
                 && dataManager
                 && selectedTrainDatasetIds().length > 0
                 && selectedTestDatasetIds().length > 0
-                && selectedClassIds().length >= 2
+                && selectedClassIds().length >= 1
                 && softwareSettings
                 && String(softwareSettings.pythonEnvPath || "").length > 0
     }

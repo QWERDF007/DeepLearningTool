@@ -16,6 +16,7 @@
 #include <QImage>
 #include <QImageReader>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QPainter>
 #include <QPointF>
@@ -40,6 +41,7 @@ struct ClassBuildData
     QString                   label_class_name;
     QString                   class_dir_name;
     std::map<int64_t, QImage> masks_by_image_id;
+    std::map<int64_t, QJsonArray> boxes_by_image_id;
 };
 
 struct PredictionImportTarget
@@ -277,12 +279,14 @@ enum class FsSam2Script
 {
     Train,
     Predict,
+    BoxToMask,
 };
 
 enum class FewShotTaskKind
 {
     Train,
     Predict,
+    BoxToMask,
 };
 
 enum class FewShotClassField
@@ -300,6 +304,8 @@ QString fsSam2ScriptName(FsSam2Script script)
         return QStringLiteral("train.py");
     case FsSam2Script::Predict:
         return QStringLiteral("predict.py");
+    case FsSam2Script::BoxToMask:
+        return QStringLiteral("box_to_mask.py");
     default:
         return {};
     }
@@ -318,6 +324,8 @@ QString fewShotTaskName(FewShotTaskKind kind)
         return QString("小样本学习 训练");
     case FewShotTaskKind::Predict:
         return QString("小样本学习 推理");
+    case FewShotTaskKind::BoxToMask:
+        return QString("小样本学习 框转Mask");
     default:
         return {};
     }
@@ -331,6 +339,8 @@ QString fewShotTaskType(FewShotTaskKind kind)
         return QStringLiteral("few-shot-train");
     case FewShotTaskKind::Predict:
         return QStringLiteral("few-shot-predict");
+    case FewShotTaskKind::BoxToMask:
+        return QStringLiteral("few-shot-box-to-mask");
     default:
         return {};
     }
@@ -440,6 +450,8 @@ struct FewShotLearningController::RunContext
     QString query_txt_path;
     QString train_script;
     QString predict_script;
+    QString box_to_mask_script;
+    int     box_to_mask_task_id{-1};
     QString checkpoint_path;
     QString exp_id;
     QString logpath;
@@ -520,11 +532,29 @@ bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_id
         return false;
     }
 
-    active_context_              = std::make_unique<RunContext>(std::move(context));
-    stage_                       = RunStage::Training;
-    current_predict_class_index_ = 0;
+    active_context_ = std::make_unique<RunContext>(std::move(context));
+    const RunContext &started_context = *active_context_;
+    train_task_id_                    = started_context.train_task_id;
+    predict_task_id_                  = started_context.predict_task_id;
+    box_to_mask_task_id_              = started_context.box_to_mask_task_id;
+    prediction_output_dir_            = started_context.output_dir;
+    checkpoint_path_                  = started_context.checkpoint_path;
 
-    if (!startTraining(*active_context_, err_msg))
+    bool started = false;
+    if (data_provider_->method() == dltool::core::DeepLearningMethod::Detection)
+    {
+        stage_                       = RunStage::PreparingMask;
+        current_prepare_class_index_ = 0;
+        started                      = startBoxToMask(*active_context_, 0, err_msg);
+    }
+    else
+    {
+        stage_                       = RunStage::Training;
+        current_predict_class_index_ = 0;
+        started                      = startTraining(*active_context_, err_msg);
+    }
+
+    if (!started)
     {
         active_context_.reset();
         stage_ = RunStage::Idle;
@@ -533,11 +563,6 @@ bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_id
         return false;
     }
 
-    const RunContext &started_context = *active_context_;
-    train_task_id_                    = started_context.train_task_id;
-    predict_task_id_                  = started_context.predict_task_id;
-    prediction_output_dir_            = started_context.output_dir;
-    checkpoint_path_                  = started_context.checkpoint_path;
     setRunning(true);
     return true;
 }
@@ -545,6 +570,8 @@ bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_id
 void FewShotLearningController::cancel()
 {
     stop_requested_ = true;
+    if (task_manager_ && box_to_mask_task_id_ >= 0)
+        task_manager_->stopTask(box_to_mask_task_id_);
     if (task_manager_ && train_task_id_ >= 0)
         task_manager_->stopTask(train_task_id_);
     if (task_manager_ && predict_task_id_ >= 0)
@@ -618,8 +645,9 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         err_msg = QString("FS-SAM2 目录不存在: %1").arg(context.fs_sam2_root);
         return false;
     }
-    context.train_script   = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::Train);
-    context.predict_script = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::Predict);
+    context.train_script        = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::Train);
+    context.predict_script      = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::Predict);
+    context.box_to_mask_script  = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::BoxToMask);
     if (!QFileInfo::exists(context.train_script) || !QFileInfo::exists(context.predict_script))
     {
         err_msg = QString("FS-SAM2 目录缺少 train.py 或 predict.py: %1").arg(context.fs_sam2_root);
@@ -669,9 +697,9 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         data.class_dir_name   = sanitizeFileName(class_name, QStringLiteral("class_%1").arg(label_class_id));
         classes.emplace(label_class_id, std::move(data));
     }
-    if (classes.size() < 2)
+    if (classes.empty())
     {
-        err_msg = QString("有效类别不足 2 个");
+        err_msg = QString("没有有效类别");
         return false;
     }
 
@@ -695,6 +723,8 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         return false;
     }
 
+    const bool is_detection = data_provider_->method() == dltool::core::DeepLearningMethod::Detection;
+
     for (int64_t label_id : data_provider_->allLabelIds())
     {
         const int64_t image_id = data_provider_->labelImageId(label_id);
@@ -705,25 +735,41 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         if (selected_classes.find(label_class_id) == selected_classes.end())
             continue;
 
-        const QString image_path = train_images[image_id];
-        int           width      = 0;
-        int           height     = 0;
-        if (!getImageDimensions(image_path, width, height))
-            continue;
-
-        QImage &mask = classes[label_class_id].masks_by_image_id[image_id];
-        if (mask.isNull())
+        if (is_detection)
         {
-            mask = QImage(width, height, QImage::Format_Grayscale8);
-            mask.fill(0);
+            const QVariantMap label_data = data_provider_->labelData(label_id);
+            QJsonObject box;
+            box[QStringLiteral("x")]      = label_data.value(QStringLiteral("x")).toDouble();
+            box[QStringLiteral("y")]      = label_data.value(QStringLiteral("y")).toDouble();
+            box[QStringLiteral("width")]  = label_data.value(QStringLiteral("width")).toDouble();
+            box[QStringLiteral("height")] = label_data.value(QStringLiteral("height")).toDouble();
+            classes[label_class_id].boxes_by_image_id[image_id].append(box);
         }
-        paintLabelToMask(mask, data_provider_->labelData(label_id));
+        else
+        {
+            const QString image_path = train_images[image_id];
+            int           width      = 0;
+            int           height     = 0;
+            if (!getImageDimensions(image_path, width, height))
+                continue;
+
+            QImage &mask = classes[label_class_id].masks_by_image_id[image_id];
+            if (mask.isNull())
+            {
+                mask = QImage(width, height, QImage::Format_Grayscale8);
+                mask.fill(0);
+            }
+            paintLabelToMask(mask, data_provider_->labelData(label_id));
+        }
     }
 
     for (const auto &[label_class_id, class_data] : classes)
     {
         Q_UNUSED(label_class_id)
-        if (class_data.masks_by_image_id.size() < static_cast<size_t>(context.kshot + 1))
+        const size_t image_count = is_detection
+            ? class_data.boxes_by_image_id.size()
+            : class_data.masks_by_image_id.size();
+        if (image_count < static_cast<size_t>(context.kshot + 1))
         {
             err_msg
                 = QString("类别 %1 至少需要 %2 张带标注图像").arg(class_data.label_class_name).arg(context.kshot + 1);
@@ -747,18 +793,44 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
             return false;
 
         QStringList entries;
-        for (const auto &[image_id, mask] : class_data.masks_by_image_id)
+
+        if (is_detection)
         {
-            const QString alias = QStringLiteral("img_%1").arg(image_id);
-            QString       copied_path;
-            if (!copyImageToAlias(train_images[image_id], image_dir, alias, copied_path, err_msg))
-                return false;
-            if (!mask.save(QDir(mask_dir).filePath(alias + QStringLiteral(".png"))))
+            QJsonObject boxes_json;
+            for (const auto &[image_id, boxes] : class_data.boxes_by_image_id)
             {
-                err_msg = QString("写入训练 Mask 失败: %1").arg(alias);
+                const QString alias = QStringLiteral("img_%1").arg(image_id);
+                QString       copied_path;
+                if (!copyImageToAlias(train_images[image_id], image_dir, alias, copied_path, err_msg))
+                    return false;
+                boxes_json[alias] = boxes;
+                entries.push_back(QString("%1,%1").arg(alias));
+            }
+
+            QFile boxes_file(QDir(class_dir).filePath(QStringLiteral("boxes.json")));
+            if (!boxes_file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            {
+                err_msg = QString("无法写入 boxes.json: %1, %2")
+                    .arg(boxes_file.fileName(), boxes_file.errorString());
                 return false;
             }
-            entries.push_back(QString("%1,%1").arg(alias));
+            boxes_file.write(QJsonDocument(boxes_json).toJson(QJsonDocument::Indented));
+        }
+        else
+        {
+            for (const auto &[image_id, mask] : class_data.masks_by_image_id)
+            {
+                const QString alias = QStringLiteral("img_%1").arg(image_id);
+                QString       copied_path;
+                if (!copyImageToAlias(train_images[image_id], image_dir, alias, copied_path, err_msg))
+                    return false;
+                if (!mask.save(QDir(mask_dir).filePath(alias + QStringLiteral(".png"))))
+                {
+                    err_msg = QString("写入训练 Mask 失败: %1").arg(alias);
+                    return false;
+                }
+                entries.push_back(QString("%1,%1").arg(alias));
+            }
         }
 
         const int   support_count   = std::clamp(static_cast<int>(std::round(entries.size() * context.support_ratio)),
@@ -828,7 +900,13 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
                                                              fewShotTaskType(FewShotTaskKind::Train));
     context.predict_task_id = task_manager_->addExternalTask(task_uuid, fewShotTaskName(FewShotTaskKind::Predict),
                                                              fewShotTaskType(FewShotTaskKind::Predict));
-    if (context.train_task_id < 0 || context.predict_task_id < 0)
+    if (is_detection)
+    {
+        context.box_to_mask_task_id = task_manager_->addExternalTask(task_uuid,
+            fewShotTaskName(FewShotTaskKind::BoxToMask), fewShotTaskType(FewShotTaskKind::BoxToMask));
+    }
+    if (context.train_task_id < 0 || context.predict_task_id < 0
+        || (is_detection && context.box_to_mask_task_id < 0))
     {
         err_msg = QString("创建任务中心任务失败");
         return false;
@@ -943,6 +1021,55 @@ bool FewShotLearningController::startPrediction(const RunContext &context, int c
     return startProcess(context, arguments, err_msg);
 }
 
+bool FewShotLearningController::startBoxToMask(const RunContext &context, int class_index, QString &err_msg)
+{
+    const int class_count = static_cast<int>(context.classes.size());
+    if (class_index < 0 || class_index >= class_count)
+    {
+        err_msg = QString("预处理类别索引无效: %1").arg(class_index);
+        return false;
+    }
+
+    const QJsonObject class_object = context.classes.at(class_index).toObject();
+    const QString     class_dir_name
+        = class_object.value(fewShotClassFieldName(FewShotClassField::Dir)).toString();
+    if (class_dir_name.isEmpty())
+    {
+        err_msg = QString("预处理类别目录为空");
+        return false;
+    }
+
+    const QString support_dir = QDir(context.custom_dataset_dir).filePath(class_dir_name);
+    const int     safe_class_count = std::max(1, class_count);
+    const int     base             = class_index * 100 / safe_class_count;
+    const int     end              = (class_index + 1) * 100 / safe_class_count;
+    const int     span             = std::max(1, end - base);
+
+    QStringList arguments = {
+        context.box_to_mask_script,
+        QStringLiteral("--support_dir"),
+        support_dir,
+        QStringLiteral("--sam2_checkpoint"),
+        context.sam2_checkpoint,
+        QStringLiteral("--sam2_cfg"),
+        context.sam2_cfg,
+        QStringLiteral("--img_size"),
+        QString::number(context.image_size),
+        QStringLiteral("--dltool_task_host"),
+        context.task_host,
+        QStringLiteral("--dltool_task_port"),
+        QString::number(context.task_port),
+        QStringLiteral("--dltool_task_id"),
+        QString::number(context.box_to_mask_task_id),
+        QStringLiteral("--dltool_progress_base"),
+        QString::number(base),
+        QStringLiteral("--dltool_progress_span"),
+        QString::number(span),
+    };
+
+    return startProcess(context, arguments, err_msg);
+}
+
 bool FewShotLearningController::startProcess(const RunContext &context, const QStringList &arguments, QString &err_msg)
 {
     if (process_ != nullptr && process_->state() != QProcess::NotRunning)
@@ -990,11 +1117,13 @@ void FewShotLearningController::finishRun()
     import_finished_connection_ = {};
     active_context_.reset();
     stage_                       = RunStage::Idle;
+    current_prepare_class_index_ = 0;
     current_predict_class_index_ = 0;
     current_import_index_        = 0;
     importing_predictions_       = false;
     train_task_id_               = -1;
     predict_task_id_             = -1;
+    box_to_mask_task_id_         = -1;
     prediction_output_dir_.clear();
     checkpoint_path_.clear();
     setRunning(false);
@@ -1018,9 +1147,12 @@ void FewShotLearningController::handleProcessFinished(int exit_code, QProcess::E
         setLastError(message);
         if (task_manager_ && !stop_requested_)
         {
+            if (stage_ == RunStage::PreparingMask)
+                task_manager_->failTask(box_to_mask_task_id_);
             if (stage_ == RunStage::Training)
                 task_manager_->failTask(train_task_id_);
-            if (stage_ == RunStage::Training || stage_ == RunStage::Predicting)
+            if (stage_ == RunStage::PreparingMask || stage_ == RunStage::Training
+                || stage_ == RunStage::Predicting)
                 task_manager_->failTask(predict_task_id_);
         }
         finishRun();
@@ -1030,6 +1162,46 @@ void FewShotLearningController::handleProcessFinished(int exit_code, QProcess::E
     if (active_context_ == nullptr)
     {
         finishRun();
+        return;
+    }
+
+    if (stage_ == RunStage::PreparingMask)
+    {
+        ++current_prepare_class_index_;
+        if (current_prepare_class_index_ < static_cast<int>(active_context_->classes.size()))
+        {
+            QString err_msg;
+            if (!startBoxToMask(*active_context_, current_prepare_class_index_, err_msg))
+            {
+                setLastError(err_msg);
+                if (task_manager_)
+                {
+                    task_manager_->failTask(box_to_mask_task_id_);
+                    task_manager_->failTask(train_task_id_);
+                    task_manager_->failTask(predict_task_id_);
+                }
+                finishRun();
+            }
+            return;
+        }
+
+        if (task_manager_)
+            task_manager_->finishTask(box_to_mask_task_id_);
+
+        stage_                       = RunStage::Training;
+        current_predict_class_index_ = 0;
+
+        QString err_msg;
+        if (!startTraining(*active_context_, err_msg))
+        {
+            setLastError(err_msg);
+            if (task_manager_)
+            {
+                task_manager_->failTask(train_task_id_);
+                task_manager_->failTask(predict_task_id_);
+            }
+            finishRun();
+        }
         return;
     }
 
@@ -1150,7 +1322,7 @@ void FewShotLearningController::handlePredictionImportFinished(bool success, con
 
 void FewShotLearningController::handleTaskStopRequested(int task_id)
 {
-    if (task_id != train_task_id_ && task_id != predict_task_id_)
+    if (task_id != train_task_id_ && task_id != predict_task_id_ && task_id != box_to_mask_task_id_)
         return;
 
     stop_requested_ = true;
