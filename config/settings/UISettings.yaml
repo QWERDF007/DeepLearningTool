@@ -36,21 +36,3 @@ UISettings:
           icon: BlueLight
           ordinal_index: 50
       section: 图像
-
-    - name_en: theme
-      name_cn: 主题
-      property_name: theme
-      value: dark
-      value_type: string
-      control_type: combo
-      options: [dark, light, system]
-      section: 界面
-
-    - name_en: language
-      name_cn: 语言
-      property_name: language
-      value: zh_CN
-      value_type: string
-      control_type: combo
-      options: [zh_CN, en_US]
-      section: 界面
