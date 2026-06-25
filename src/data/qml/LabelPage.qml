@@ -98,6 +98,7 @@ Rectangle {
                         segmentationMode: labelCanvas.segmentationMode
                         smartAnnotationAvailable: labelCanvas.smartAnnotationAvailable
                         dataManagerAvailable: labelPage.dataManager !== null
+                        fewShotLearningAvailable: labelCanvas.fewShotLearningAvailable
                         onToolSelected: function(mode) {
                             labelCanvas.setToolMode(mode)
                         }

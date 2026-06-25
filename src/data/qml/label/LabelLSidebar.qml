@@ -14,6 +14,7 @@ Rectangle {
     property bool segmentationMode: false
     property bool smartAnnotationAvailable: false
     property bool dataManagerAvailable: false
+    property bool fewShotLearningAvailable: false
 
     signal toolSelected(string mode)
     signal openFewShotLearning()
@@ -71,7 +72,7 @@ Rectangle {
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredWidth: 32
             Layout.preferredHeight: 32
-            enabled: sidebar.dataManagerAvailable
+            enabled: sidebar.fewShotLearningAvailable
             iconSource: QuiFontIcon.Robot
             text: "小样本学习"
             onClicked: sidebar.openFewShotLearning()

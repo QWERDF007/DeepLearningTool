@@ -14,6 +14,8 @@ Rectangle {
     property DataManager dataManager
     property ImageInstancesModel model: dataManager ? dataManager.imageInstances : null
     property ItemSelectionModel selection: model ? model.selection : null
+    property int total: model ? model.count : 0
+    property int current: selection ? selection.currentIndex.row : -1
     
     ColumnLayout {
         anchors.fill: parent
@@ -22,9 +24,20 @@ Rectangle {
         anchors.topMargin: 5
         anchors.bottomMargin: 5
         
-        QuiText {
-            text: "文件列表:"
-            font: QuiFont.Subtitle
+        RowLayout {
+            Layout.fillWidth: true
+            QuiText {
+                text: "文件列表:"
+                font: QuiFont.Subtitle
+            }
+            Item {
+                Layout.fillWidth: true
+            }
+            QuiText {
+                Layout.rightMargin: 10
+                text: current >= 0 ? (current + 1) + " / " + total : ""
+                font: QuiFont.Subtitle
+            }
         }
         
         ListView {
@@ -64,6 +77,28 @@ Rectangle {
             selection.select(newIndex, ItemSelectionModel.ClearAndSelect)
             selection.setCurrentIndex(newIndex, ItemSelectionModel.Select)
             fileListView.model.lastIndex = index
+        }
+    }
+
+    Shortcut {
+        enabled: fileListView.visible
+        sequences: ["Up", "Left"]
+        onActivated: {
+            if (selection && total > 0) {
+                let row = Math.max(0, current - 1)
+                fileListView.switchToImage(row)
+            }
+        }
+    }
+
+    Shortcut {
+        enabled: fileListView.visible
+        sequences: ["Down", "Right"]
+        onActivated: {
+            if (selection && total > 0) {
+                let row = Math.min(total - 1, current + 1)
+                fileListView.switchToImage(row)
+            }
         }
     }
 }
