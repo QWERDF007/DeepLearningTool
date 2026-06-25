@@ -41,6 +41,11 @@ Rectangle {
                 selection.select(index, command)
             }
         }
+        function onImageLabelListSelectAll() {
+            if (imageLabelsTable) {
+                imageLabelsTable.selectAll()
+            }
+        }
         function onSelectLabel(label_id) {
             if (imageLabelsTable) {
                 control.selectLabelById(label_id)
