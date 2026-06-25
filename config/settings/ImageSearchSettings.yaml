@@ -20,7 +20,7 @@ ImageSearchSettings:
       value: resnet18
       value_type: string
       control_type: combo
-      options: [resnet18, resnet34, resnet50, resnet101, mobilenet_v2, efficientnet_b0, convnext_tiny]
+      options: [resnet18, resnet34, resnet50, resnet101, mobilenet_v2, dinov2_vits14, dinov2_vitb14, dinov2_vitl14, dinov3_vits16, dinov3_vitb16, dinov3_vitl16]
       section: 模型
 
     - name_en: model_path
@@ -43,8 +43,12 @@ ImageSearchSettings:
         resnet50: [layer1, layer2, layer3, layer4]
         resnet101: [layer1, layer2, layer3, layer4]
         mobilenet_v2: [features.4, features.7, features.14, features.18]
-        efficientnet_b0: [features.2, features.3, features.5, features.8]
-        convnext_tiny: [features.1, features.3, features.5, features.7]
+        dinov2_vits14: [x_norm_patchtokens]
+        dinov2_vitb14: [x_norm_patchtokens]
+        dinov2_vitl14: [x_norm_patchtokens]
+        dinov3_vits16: [x_norm_patchtokens]
+        dinov3_vitb16: [x_norm_patchtokens]
+        dinov2_vitl16: [x_norm_patchtokens]
       section: 模型
 
     - name_en: rebuild_index
