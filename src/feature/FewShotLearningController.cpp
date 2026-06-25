@@ -129,7 +129,7 @@ bool ensureDir(const QString &path, QString &err_msg)
         return true;
     if (!dir.mkpath(QStringLiteral(".")))
     {
-        err_msg = QStringLiteral("无法创建目录: %1").arg(path);
+        err_msg = QString("无法创建目录: %1").arg(path);
         return false;
     }
     return true;
@@ -144,7 +144,7 @@ bool writeTextFile(const QString &path, const QStringList &lines, QString &err_m
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
     {
-        err_msg = QStringLiteral("无法写入文件: %1, %2").arg(path, file.errorString());
+        err_msg = QString("无法写入文件: %1, %2").arg(path, file.errorString());
         return false;
     }
 
@@ -162,13 +162,13 @@ bool copyFile(const QString &source_path, const QString &target_path, QString &e
 
     if (QFile::exists(target_path) && !QFile::remove(target_path))
     {
-        err_msg = QStringLiteral("无法覆盖文件: %1").arg(target_path);
+        err_msg = QString("无法覆盖文件: %1").arg(target_path);
         return false;
     }
 
     if (!QFile::copy(source_path, target_path))
     {
-        err_msg = QStringLiteral("复制文件失败: %1 -> %2").arg(source_path, target_path);
+        err_msg = QString("复制文件失败: %1 -> %2").arg(source_path, target_path);
         return false;
     }
     return true;
@@ -182,7 +182,7 @@ bool copyImageToAlias(const QString &source_path, const QString &target_dir, con
     if (suffix.isEmpty())
         suffix = QStringLiteral("png");
 
-    copied_path = QDir(target_dir).filePath(QStringLiteral("%1.%2").arg(alias, suffix));
+    copied_path = QDir(target_dir).filePath(QString("%1.%2").arg(alias, suffix));
     return copyFile(source_path, copied_path, err_msg);
 }
 
@@ -328,9 +328,9 @@ QString fewShotTaskName(FewShotTaskKind kind)
     switch (kind)
     {
     case FewShotTaskKind::Train:
-        return QStringLiteral("FS-SAM2 训练");
+        return QString("FS-SAM2 训练");
     case FewShotTaskKind::Predict:
-        return QStringLiteral("FS-SAM2 推理");
+        return QString("FS-SAM2 推理");
     default:
         return {};
     }
@@ -463,16 +463,16 @@ QString sam2ConfigPathFromArchitecture(const QString &architecture_name, QString
     const Sam2Architecture architecture = sam2ArchitectureFromName(architecture_name);
     if (architecture == Sam2Architecture::Unknown)
     {
-        err_msg = QStringLiteral("不支持的 SAM2 架构: %1").arg(architecture_name);
+        err_msg = QString("不支持的 SAM2 架构: %1").arg(architecture_name);
         return {};
     }
 
     const QString path = cleanPath(
         QDir(fixedSam2ConfigRoot())
-            .filePath(QStringLiteral("%1/%2").arg(sam2ConfigFolder(architecture), sam2ConfigFileName(architecture))));
+            .filePath(QString("%1/%2").arg(sam2ConfigFolder(architecture), sam2ConfigFileName(architecture))));
     if (!QFileInfo::exists(path))
     {
-        err_msg = QStringLiteral("SAM2 配置文件不存在: %1").arg(path);
+        err_msg = QString("SAM2 配置文件不存在: %1").arg(path);
         return {};
     }
     return path;
@@ -480,7 +480,7 @@ QString sam2ConfigPathFromArchitecture(const QString &architecture_name, QString
 
 QString checkpointPath(const QString &fs_sam2_root, const QString &logpath)
 {
-    return cleanPath(QDir(fs_sam2_root).filePath(QStringLiteral("logs/%1.log/best_model.pt").arg(logpath)));
+    return cleanPath(QDir(fs_sam2_root).filePath(QString("logs/%1.log/best_model.pt").arg(logpath)));
 }
 
 } // namespace
@@ -616,33 +616,33 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
 {
     if (data_provider_ == nullptr)
     {
-        err_msg = QStringLiteral("数据管理器未初始化");
+        err_msg = QString("数据管理器未初始化");
         return false;
     }
     if (task_manager_ == nullptr)
     {
-        err_msg = QStringLiteral("任务管理器未初始化");
+        err_msg = QString("任务管理器未初始化");
         return false;
     }
     if (data_provider_->method() != dltool::core::DeepLearningMethod::Detection
         && data_provider_->method() != dltool::core::DeepLearningMethod::Segmentation)
     {
-        err_msg = QStringLiteral("小样本学习仅支持检测和分割项目");
+        err_msg = QString("小样本学习仅支持检测和分割项目");
         return false;
     }
     if (label_class_ids.size() < 2)
     {
-        err_msg = QStringLiteral("FS-SAM2 训练至少需要选择 2 个类别");
+        err_msg = QString("FS-SAM2 训练至少需要选择 2 个类别");
         return false;
     }
     if (train_dataset_ids.empty())
     {
-        err_msg = QStringLiteral("请至少选择一个训练数据集");
+        err_msg = QString("请至少选择一个训练数据集");
         return false;
     }
     if (test_dataset_ids.empty())
     {
-        err_msg = QStringLiteral("请至少选择一个测试数据集");
+        err_msg = QString("请至少选择一个测试数据集");
         return false;
     }
 
@@ -656,7 +656,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         = pythonExecutableFromEnvPath(valueString(software_settings, QStringLiteral("pythonEnvPath")));
     if (context.python_executable.isEmpty())
     {
-        err_msg = QStringLiteral("请先在软件设置中配置 Python 环境目录");
+        err_msg = QString("请先在软件设置中配置 Python 环境目录");
         return false;
     }
 
@@ -674,19 +674,19 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         return false;
     if (!QDir(context.fs_sam2_root).exists())
     {
-        err_msg = QStringLiteral("FS-SAM2 目录不存在: %1").arg(context.fs_sam2_root);
+        err_msg = QString("FS-SAM2 目录不存在: %1").arg(context.fs_sam2_root);
         return false;
     }
     context.train_script   = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::Train);
     context.predict_script = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::Predict);
     if (!QFileInfo::exists(context.train_script) || !QFileInfo::exists(context.predict_script))
     {
-        err_msg = QStringLiteral("FS-SAM2 目录缺少 train.py 或 predict.py: %1").arg(context.fs_sam2_root);
+        err_msg = QString("FS-SAM2 目录缺少 train.py 或 predict.py: %1").arg(context.fs_sam2_root);
         return false;
     }
     if (!context.sam2_checkpoint.isEmpty() && !QFileInfo::exists(context.sam2_checkpoint))
     {
-        err_msg = QStringLiteral("SAM2 checkpoint 不存在: %1").arg(context.sam2_checkpoint);
+        err_msg = QString("SAM2 checkpoint 不存在: %1").arg(context.sam2_checkpoint);
         return false;
     }
 
@@ -730,7 +730,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
     }
     if (classes.size() < 2)
     {
-        err_msg = QStringLiteral("有效类别不足 2 个");
+        err_msg = QString("有效类别不足 2 个");
         return false;
     }
 
@@ -750,7 +750,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
     }
     if (train_images.empty() || test_images.empty())
     {
-        err_msg = QStringLiteral("训练数据集或测试数据集没有图像");
+        err_msg = QString("训练数据集或测试数据集没有图像");
         return false;
     }
 
@@ -784,9 +784,8 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         Q_UNUSED(label_class_id)
         if (class_data.masks_by_image_id.size() < static_cast<size_t>(context.kshot + 1))
         {
-            err_msg = QStringLiteral("类别 %1 至少需要 %2 张带标注图像")
-                          .arg(class_data.label_class_name)
-                          .arg(context.kshot + 1);
+            err_msg
+                = QString("类别 %1 至少需要 %2 张带标注图像").arg(class_data.label_class_name).arg(context.kshot + 1);
             return false;
         }
     }
@@ -815,10 +814,10 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
                 return false;
             if (!mask.save(QDir(mask_dir).filePath(alias + QStringLiteral(".png"))))
             {
-                err_msg = QStringLiteral("写入训练 Mask 失败: %1").arg(alias);
+                err_msg = QString("写入训练 Mask 失败: %1").arg(alias);
                 return false;
             }
-            entries.push_back(QStringLiteral("%1,%1").arg(alias));
+            entries.push_back(QString("%1,%1").arg(alias));
         }
 
         const int   support_count   = std::clamp(static_cast<int>(std::round(entries.size() * context.support_ratio)),
@@ -849,9 +848,9 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         QString       copied_path;
         if (!copyImageToAlias(image_path, context.query_dir, alias, copied_path, err_msg))
             return false;
-        const QString line = QStringLiteral("%1,%2").arg(alias, image_path);
+        const QString line = QString("%1,%2").arg(alias, image_path);
         manifest_lines_by_dataset[test_image_dataset_ids[image_id]].push_back(line);
-        query_lines.push_back(QStringLiteral("%1,%1").arg(alias));
+        query_lines.push_back(QString("%1,%1").arg(alias));
     }
 
     if (!writeTextFile(context.query_txt_path, query_lines, err_msg)
@@ -865,7 +864,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         const QStringList lines = manifest_lines_by_dataset[dataset_id];
         if (lines.empty())
         {
-            err_msg = QStringLiteral("测试数据集 %1 没有图像").arg(data_provider_->datasetName(dataset_id));
+            err_msg = QString("测试数据集 %1 没有图像").arg(data_provider_->datasetName(dataset_id));
             return false;
         }
 
@@ -879,7 +878,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
     QString server_err;
     if (!task_manager_->ensureTaskServer(&server_err))
     {
-        err_msg = QStringLiteral("任务通信服务启动失败: %1").arg(server_err);
+        err_msg = QString("任务通信服务启动失败: %1").arg(server_err);
         return false;
     }
 
@@ -890,7 +889,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
                                                              fewShotTaskType(FewShotTaskKind::Predict));
     if (context.train_task_id < 0 || context.predict_task_id < 0)
     {
-        err_msg = QStringLiteral("创建任务中心任务失败");
+        err_msg = QString("创建任务中心任务失败");
         return false;
     }
     context.task_host = task_manager_->taskServerHost();
@@ -946,7 +945,7 @@ bool FewShotLearningController::startPrediction(const RunContext &context, int c
     const int class_count = static_cast<int>(context.classes.size());
     if (class_index < 0 || class_index >= class_count)
     {
-        err_msg = QStringLiteral("推理类别索引无效: %1").arg(class_index);
+        err_msg = QString("推理类别索引无效: %1").arg(class_index);
         return false;
     }
 
@@ -954,7 +953,7 @@ bool FewShotLearningController::startPrediction(const RunContext &context, int c
     const QString     class_dir    = class_object.value(fewShotClassFieldName(FewShotClassField::Dir)).toString();
     if (class_dir.isEmpty())
     {
-        err_msg = QStringLiteral("推理类别目录为空");
+        err_msg = QString("推理类别目录为空");
         return false;
     }
 
@@ -1007,7 +1006,7 @@ bool FewShotLearningController::startProcess(const RunContext &context, const QS
 {
     if (process_ != nullptr && process_->state() != QProcess::NotRunning)
     {
-        err_msg = QStringLiteral("已有小样本学习进程正在运行");
+        err_msg = QString("已有小样本学习进程正在运行");
         return false;
     }
 
@@ -1035,7 +1034,7 @@ bool FewShotLearningController::startProcess(const RunContext &context, const QS
     process->start();
     if (!process->waitForStarted(5000))
     {
-        err_msg = QStringLiteral("启动小样本学习进程失败: %1").arg(process->errorString());
+        err_msg = QString("启动小样本学习进程失败: %1").arg(process->errorString());
         process->deleteLater();
         process_ = nullptr;
         return false;
@@ -1073,8 +1072,8 @@ void FewShotLearningController::handleProcessFinished(int exit_code, QProcess::E
     const bool success = exit_status == QProcess::NormalExit && exit_code == 0 && !stop_requested_;
     if (!success)
     {
-        const QString message = stop_requested_ ? QStringLiteral("小样本学习任务已停止")
-                                                : QStringLiteral("小样本学习进程异常退出: %1").arg(exit_code);
+        const QString message
+            = stop_requested_ ? QString("小样本学习任务已停止") : QString("小样本学习进程异常退出: %1").arg(exit_code);
         setLastError(message);
         if (task_manager_ && !stop_requested_)
         {
@@ -1097,7 +1096,7 @@ void FewShotLearningController::handleProcessFinished(int exit_code, QProcess::E
     {
         if (!QFileInfo::exists(active_context_->checkpoint_path))
         {
-            const QString message = QStringLiteral("未找到训练模型: %1").arg(active_context_->checkpoint_path);
+            const QString message = QString("未找到训练模型: %1").arg(active_context_->checkpoint_path);
             setLastError(message);
             if (task_manager_)
             {

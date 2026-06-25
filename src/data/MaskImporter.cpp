@@ -204,12 +204,12 @@ void MaskImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
 {
     try
     {
-        updateProgress(0, QStringLiteral("正在扫描图像和 Mask..."));
+        updateProgress(0, QString("正在扫描图像和 Mask..."));
         const std::map<QString, QString> image_by_stem = loadImageMap(image_dir);
         const std::vector<QString>       mask_files    = scanMaskFiles(data_dir);
         if (image_by_stem.empty() || mask_files.empty())
         {
-            updateProgress(100, QStringLiteral("图像目录或 Mask 目录为空"));
+            updateProgress(100, QString("图像目录或 Mask 目录为空"));
             emit importFinished(false, {}, {});
             return;
         }
@@ -312,8 +312,7 @@ void MaskImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
                 || processed_masks == static_cast<int>(mask_files.size()))
             {
                 const int progress = 10 + processed_masks * 80 / std::max<int>(1, static_cast<int>(mask_files.size()));
-                updateProgress(progress,
-                               QStringLiteral("已处理 Mask %1/%2").arg(processed_masks).arg(mask_files.size()));
+                updateProgress(progress, QString("已处理 Mask %1/%2").arg(processed_masks).arg(mask_files.size()));
             }
 
             if (batch_image_paths.size() >= DataImporter::ImportBatchImageCount)
@@ -332,14 +331,13 @@ void MaskImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
             return;
         }
 
-        updateProgress(100,
-                       QStringLiteral("Mask 导入完成: 有效 %1 个，跳过 %2 个").arg(valid_masks).arg(skipped_masks));
+        updateProgress(100, QString("Mask 导入完成: 有效 %1 个，跳过 %2 个").arg(valid_masks).arg(skipped_masks));
         emit importFinished(valid_masks > 0, {}, {});
     }
     catch (const std::exception &e)
     {
         spdlog::error("Mask 导入失败: {}", e.what());
-        updateProgress(100, QStringLiteral("Mask 导入失败: %1").arg(e.what()));
+        updateProgress(100, QString("Mask 导入失败: %1").arg(e.what()));
         emit importFinished(false, {}, {});
     }
 }
