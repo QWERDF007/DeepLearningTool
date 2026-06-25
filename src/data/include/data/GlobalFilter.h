@@ -64,7 +64,6 @@ class GlobalFilter : public QObject
 
     Q_PROPERTY(bool isActive READ isActive NOTIFY filterStateChanged)
     Q_PROPERTY(int activeFilterCount READ activeFilterCount NOTIFY filterStateChanged)
-    Q_PROPERTY(QString filterSummary READ filterSummary NOTIFY filterStateChanged)
     Q_PROPERTY(bool hasImageSearchResults READ hasImageSearchResults NOTIFY filterStateChanged)
     Q_PROPERTY(bool imageSearchFilterEnabled READ imageSearchFilterEnabled NOTIFY filterStateChanged)
     Q_PROPERTY(int imageSearchResultCount READ imageSearchResultCount NOTIFY filterStateChanged)
@@ -112,12 +111,6 @@ public:
      * @return 激活的过滤器数量
      */
     int activeFilterCount() const;
-
-    /**
-     * @brief 获取过滤器摘要信息
-     * @return 过滤器摘要字符串
-     */
-    QString filterSummary() const;
 
     // 通用过滤器接口方法
 
