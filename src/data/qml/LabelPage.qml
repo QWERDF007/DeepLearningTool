@@ -98,7 +98,9 @@ Rectangle {
                         segmentationMode: labelCanvas.segmentationMode
                         smartAnnotationAvailable: labelCanvas.smartAnnotationAvailable
                         dataManagerAvailable: labelPage.dataManager !== null
-                        onToolSelected: labelCanvas.setToolMode(mode)
+                        onToolSelected: function(mode) {
+                            labelCanvas.setToolMode(mode)
+                        }
                         onOpenFewShotLearning: fewShotLearningDialog.openForStart()
                     }
 
@@ -173,7 +175,9 @@ Rectangle {
                     labelCanvas.fitImageInView()
                 }
 
-                onZoomChanged: labelCanvas.setImageScale(zoom)
+                onZoomChanged: function(zoom) {
+                    labelCanvas.setImageScale(zoom)
+                }
             }
 
             LabelsTableView {
