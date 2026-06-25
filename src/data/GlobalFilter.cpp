@@ -188,54 +188,6 @@ int GlobalFilter::activeFilterCount() const
     return count;
 }
 
-QString GlobalFilter::filterSummary() const
-{
-    QStringList summary_parts;
-
-    for (const auto &[type, module] : filter_modules_)
-    {
-        if (!module || !module->isActive())
-        {
-            continue;
-        }
-
-        QString type_name;
-        switch (type)
-        {
-        case FilterType::Dataset:
-            type_name = QString("数据集");
-            break;
-        case FilterType::Tag:
-            type_name = QString("标签");
-            break;
-        case FilterType::LabelClass:
-            type_name = QString("类别");
-            break;
-        case FilterType::ImageLabelClass:
-            type_name = QString("图像类别");
-            break;
-        case FilterType::ImageSearch:
-            type_name = QString("图像搜索");
-            break;
-        case FilterType::LabelSearch:
-            type_name = QString("标注搜索");
-            break;
-        default:
-            type_name = QString("未知");
-            break;
-        }
-
-        summary_parts.append(QString("%1: %2").arg(type_name).arg(module->getActiveCriteria().size()));
-    }
-
-    if (summary_parts.isEmpty())
-    {
-        return QString("无过滤");
-    }
-
-    return summary_parts.join(QStringLiteral(", "));
-}
-
 void GlobalFilter::clearAllFilters()
 {
     bool changed = false;
