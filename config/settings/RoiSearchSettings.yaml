@@ -4,7 +4,7 @@ RoiSearchSettings:
   accessor: roiSearch
   category: advanced
   ordinal_index: 110
-  label: ROI 搜索
+  label: 标注搜索
   fields:
     - name_en: enabled
       name_cn: 启用
