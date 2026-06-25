@@ -14,6 +14,7 @@ StackLayout {
 
     property Project project : ProjectManager.currentProject
     property DataManager dataManager: project ? project.dataManager : null
+    property bool shuttingDown: false
 
     Component {
         id: project_com
@@ -66,7 +67,7 @@ StackLayout {
     Repeater {
         model: pages
         Loader {
-            active: index === 0 || content.project !== null
+            active: !content.shuttingDown && (index === 0 || content.project !== null)
             sourceComponent: active ? modelData : null
         }
     }

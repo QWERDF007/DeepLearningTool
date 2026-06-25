@@ -71,7 +71,10 @@ ApplicationWindow {
         positiveText: "退出"
         negativeText: "取消"
         onPositiveClicked: function () {
-            Qt.exit(0)
+            content.shuttingDown = true
+            Qt.callLater(function () {
+                Qt.exit(0)
+            })
         }
     }
 }

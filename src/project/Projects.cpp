@@ -477,7 +477,13 @@ ProjectManager::ProjectManager(QObject *parent)
 ProjectManager::~ProjectManager()
 {
     if (current_project_)
-        closeProject();
+    {
+        Project *project = current_project_;
+        updateProjectMtime(project->path());
+        spdlog::info("关闭项目: {}", project->path().toUtf8().constData());
+        current_project_ = nullptr;
+        delete project;
+    }
 }
 
 Project *ProjectManager::createProject(const QString &name, const int method, const QString &path,
