@@ -20,7 +20,23 @@ RoiSearchSettings:
       value: resnet18
       value_type: string
       control_type: combo
-      options: [resnet18, resnet34, resnet50, resnet101, mobilenet_v2, dinov2_vits14, dinov2_vitb14, dinov2_vitl14, dinov3_vits16, dinov3_vitb16, dinov3_vitl16]
+      options:
+        - resnet18
+        - resnet34
+        - resnet50
+        - resnet101
+        - mobilenet_v2
+        - dinov2_vits14
+        - dinov2_vitb14
+        - dinov2_vitl14
+        - dinov2_vitg14
+        - dinov2_vits14_reg
+        - dinov2_vitb14_reg
+        - dinov2_vitl14_reg
+        - dinov2_vitg14_reg
+        - dinov3_vits16
+        - dinov3_vitb16
+        - dinov3_vitl16
       section: 模型
 
     - name_en: model_path
@@ -46,9 +62,14 @@ RoiSearchSettings:
         dinov2_vits14: [x_norm_patchtokens]
         dinov2_vitb14: [x_norm_patchtokens]
         dinov2_vitl14: [x_norm_patchtokens]
+        dinov2_vitg14: [x_norm_patchtokens]
+        dinov2_vits14_reg: [x_norm_patchtokens]
+        dinov2_vitb14_reg: [x_norm_patchtokens]
+        dinov2_vitl14_reg: [x_norm_patchtokens]
+        dinov2_vitg14_reg: [x_norm_patchtokens]
         dinov3_vits16: [x_norm_patchtokens]
         dinov3_vitb16: [x_norm_patchtokens]
-        dinov2_vitl16: [x_norm_patchtokens]
+        dinov3_vitl16: [x_norm_patchtokens]
       section: 模型
 
     - name_en: rebuild_index
@@ -102,15 +123,6 @@ RoiSearchSettings:
       value_type: string
       control_type: combo
       options: [ram, disk]
-      section: 索引
-
-    - name_en: disk_build_batch_size
-      name_cn: 磁盘索引批量
-      property_name: diskBuildBatchSize
-      value: 256
-      value_type: int
-      value_range: [1, 8192, 1]
-      control_type: spin
       section: 索引
 
     - name_en: model_batch_size

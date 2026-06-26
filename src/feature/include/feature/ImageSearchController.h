@@ -89,7 +89,6 @@ public:
      * @param preprocess_backend 预处理后端（cpu / gpu）
      * @param faiss_backend FAISS 计算后端（cpu / gpu）；为 gpu 时索引强制使用内存
      * @param index_storage 索引存储方式（ram / disk）
-     * @param disk_build_batch_size 磁盘索引构建时的批大小
      * @param model_batch_size 特征提取模型推理批大小
      * @param model_backend 模型推理后端（tensorrt / openvino / onnxruntime）
      * @param model_device 模型运行设备（cpu / gpu）
@@ -99,22 +98,22 @@ public:
                                           const QString &weights_file, const QString &feature_name, bool rebuild_index,
                                           int top_k, const QString &norm, const QString &preprocess_backend,
                                           const QString &faiss_backend, const QString &index_storage,
-                                          int disk_build_batch_size, int model_batch_size, const QString &model_backend,
+                                          int model_batch_size, const QString &model_backend,
                                           const QString &model_device);
 
     Q_INVOKABLE bool searchImages(const QVariantList &image_ids, const QVariantList &dataset_ids,
                                   const QString &model_name, const QString &weights_file, const QString &feature_name,
                                   bool rebuild_index, int top_k, const QString &norm, const QString &preprocess_backend,
-                                  const QString &faiss_backend, const QString &index_storage, int disk_build_batch_size,
+                                  const QString &faiss_backend, const QString &index_storage,
                                   int model_batch_size, const QString &model_backend, const QString &model_device);
 
     Q_INVOKABLE bool searchLabelRois(const QVariantList &label_ids, const QVariantList &dataset_ids,
                                      const QString &model_name, const QString &weights_file,
                                      const QString &feature_name, bool rebuild_index, int top_k, const QString &norm,
                                      const QString &preprocess_backend, const QString &faiss_backend,
-                                     const QString &index_storage, int disk_build_batch_size, int model_batch_size,
-                                     const QString &model_backend, const QString &model_device, int pooled_height,
-                                     int pooled_width, int sampling_ratio, bool aligned, bool use_pca, int pca_dim);
+                                     const QString &index_storage,
+                                     int model_batch_size, const QString &model_backend, const QString &model_device,
+                                     int pooled_height, int pooled_width, int sampling_ratio, bool aligned, bool use_pca, int pca_dim);
 
 signals:
     /** @brief 运行状态变化（running 属性） */
@@ -146,7 +145,7 @@ private:
     SearchRequest buildSearchRequest(const QString &model_name, const QString &weights_file,
                                      const QString &feature_name, bool rebuild_index, int top_k, const QString &norm,
                                      const QString &preprocess_backend, const QString &faiss_backend,
-                                     const QString &index_storage, int disk_build_batch_size, int model_batch_size,
+                                     const QString &index_storage, int model_batch_size,
                                      const QString &model_backend, const QString &model_device);
 
     // ── 图像收集 ──

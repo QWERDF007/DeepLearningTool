@@ -77,7 +77,6 @@ QuiPopup {
                         imageSearchSettings.preprocessBackend,
                         imageSearchSettings.faissBackend,
                         imageSearchSettings.indexStorage,
-                        imageSearchSettings.diskBuildBatchSize,
                         imageSearchSettings.modelBatchSize,
                         imageSearchSettings.modelBackend,
                         imageSearchSettings.modelDevice)
@@ -93,7 +92,6 @@ QuiPopup {
                         imageSearchSettings.preprocessBackend,
                         imageSearchSettings.faissBackend,
                         imageSearchSettings.indexStorage,
-                        imageSearchSettings.diskBuildBatchSize,
                         imageSearchSettings.modelBatchSize,
                         imageSearchSettings.modelBackend,
                         imageSearchSettings.modelDevice)

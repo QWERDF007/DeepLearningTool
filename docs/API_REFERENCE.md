@@ -262,7 +262,6 @@ Q_PROPERTY(SmartAnnotationSettings *smartAnnotation READ smartAnnotation CONSTAN
 | `preprocessBackend` | `QString` | `"cpu"` | 预处理后端（cpu / gpu） |
 | `faissBackend` | `QString` | `"cpu"` | FAISS 计算后端（cpu / gpu） |
 | `indexStorage` | `QString` | `"ram"` | 索引存储方式（ram / disk） |
-| `diskBuildBatchSize` | `int` | `256` | 磁盘索引构建批大小 |
 | `modelBatchSize` | `int` | `1` | 特征提取推理批大小 |
 | `modelBackend` | `QString` | `"tensorrt"` | 模型推理后端 |
 | `modelDevice` | `QString` | `"gpu"` | 模型运行设备 |
@@ -464,7 +463,6 @@ Q_INVOKABLE bool searchSelectedImages(const QVariantList &dataset_ids,
                                       const QString &preprocess_backend,
                                       const QString &faiss_backend,
                                       const QString &index_storage,
-                                      int disk_build_batch_size,
                                       int model_batch_size,
                                       const QString &model_backend,
                                       const QString &model_device);

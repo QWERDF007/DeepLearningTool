@@ -68,7 +68,6 @@ QuiPopup {
                     roiSearchSettings.preprocessBackend,
                     roiSearchSettings.faissBackend,
                     roiSearchSettings.indexStorage,
-                    roiSearchSettings.diskBuildBatchSize,
                     roiSearchSettings.modelBatchSize,
                     roiSearchSettings.modelBackend,
                     roiSearchSettings.modelDevice,
