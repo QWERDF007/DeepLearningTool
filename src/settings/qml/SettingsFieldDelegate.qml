@@ -27,6 +27,7 @@ Item {
     property string controlType: String(model.controlType || "").toLowerCase()
     property var valueRange: model.valueRange || []
     property var configuredOptions: model.options || []
+    property var configuredOptionsValueMap: model.optionsValueMap || ({})
     property string optionsKeyField: String(model.optionsKeyField || "")
     property var currentValue: model.value
 
@@ -85,7 +86,32 @@ Item {
         return map && Object.keys(map).length > 0
     }
 
-    function optionValues() {
+    function optionEntry(raw) {
+        if (raw && typeof raw === "object") {
+            let label = raw.label !== undefined ? raw.label
+                                                : raw.key !== undefined ? raw.key
+                                                                        : raw.text !== undefined ? raw.text
+                                                                                                 : raw.name !== undefined ? raw.name : raw.value
+            let value = raw.value !== undefined ? raw.value : optionValueForLabel(label, label)
+            return {
+                "label": String(label),
+                "value": value
+            }
+        }
+
+        let label = String(raw)
+        return {
+            "label": label,
+            "value": optionValueForLabel(label, raw)
+        }
+    }
+
+    function optionValueForLabel(label, fallback) {
+        let key = String(label)
+        return configuredOptionsValueMap && configuredOptionsValueMap[key] !== undefined ? configuredOptionsValueMap[key] : fallback
+    }
+
+    function optionEntries() {
         let values = []
         if (fieldModel && hasOptionsMap()) {
             if (root.optionsKeyField !== "") {
@@ -101,14 +127,34 @@ Item {
         }
 
         let result = []
+        let labels = []
         for (let i = 0; i < values.length; ++i) {
-            let text = String(values[i])
-            if (result.indexOf(text) < 0) {
-                result.push(text)
+            let entry = optionEntry(values[i])
+            if (labels.indexOf(entry.label) < 0) {
+                labels.push(entry.label)
+                result.push(entry)
             }
         }
 
         return result
+    }
+
+    function optionValuesEqual(lhs, rhs) {
+        let leftNumber = Number(lhs)
+        let rightNumber = Number(rhs)
+        if (isFinite(leftNumber) && isFinite(rightNumber) && String(lhs).trim() !== "" && String(rhs).trim() !== "") {
+            return leftNumber === rightNumber
+        }
+        return String(lhs) === String(rhs)
+    }
+
+    function optionIndexForValue(value, entries) {
+        for (let i = 0; i < entries.length; ++i) {
+            if (optionValuesEqual(entries[i].value, value)) {
+                return i
+            }
+        }
+        return -1
     }
 
     function usesBool() {
@@ -299,18 +345,23 @@ Item {
             anchors.fill: parent
             editable: false
             model: []
+            textRole: "label"
+            valueRole: "value"
 
             Component.onCompleted: refreshFromModel()
-            onActivated: root.commit(currentText)
+            onActivated: {
+                if (currentIndex >= 0) {
+                    root.commit(combo.currentValue)
+                }
+            }
 
             function refreshFromModel() {
-                let values = root.optionValues()
+                let values = root.optionEntries()
                 model = values
-                let text = root.stringValue(root.currentValue)
-                let index = find(text)
+                let index = root.optionIndexForValue(root.currentValue, values)
                 if (index < 0 && root.hasOptionsMap() && values.length > 0) {
                     currentIndex = 0
-                    root.commit(values[0])
+                    root.commit(combo.currentValue)
                 } else {
                     currentIndex = index
                 }

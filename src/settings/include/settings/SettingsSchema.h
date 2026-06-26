@@ -39,6 +39,7 @@ struct SETTINGS_API SettingsField
     QVariantList value_range;       ///< 值域范围。
     QString      control_type;      ///< 控件类型，例如 text、slider、combo。
     QVariantList options;           ///< 选项列表。
+    QVariantMap  options_value_map; ///< 选项显示值到实际值的映射。
     QVariantMap  options_map;       ///< 选项键值映射。
     QString      options_key_field; ///< options_map 使用的键字段 name_en。
     QVariantMap  sidebar;           ///< 侧边栏展示配置。
@@ -83,6 +84,7 @@ public:
         ValueRangeRole,                ///< 值域范围。
         ControlTypeRole,               ///< 控件类型。
         OptionsRole,                   ///< 选项列表。
+        OptionsValueMapRole,           ///< 选项显示值到实际值的映射。
         OptionsMapRole,                ///< 选项映射。
         OptionsKeyFieldRole,           ///< 动态选项键字段。
         SidebarRole,                   ///< 侧边栏配置。

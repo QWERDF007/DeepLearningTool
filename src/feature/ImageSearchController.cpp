@@ -149,38 +149,6 @@ QString roiIndexPathForRequest(const QString &index_dir_path, const QString &mod
         QString("%1_%2.roi.faiss").arg(sanitizeFilePart(model_name), sanitizeFilePart(feature_name)));
 }
 
-irt::features::ImageSearchFeatureNorm parseNorm(const QString &norm)
-{
-    const QString value = norm.trimmed().toLower();
-    if (value == QStringLiteral("none"))
-    {
-        return irt::features::ImageSearchFeatureNorm::None;
-    }
-    if (value == QStringLiteral("l1"))
-    {
-        return irt::features::ImageSearchFeatureNorm::L1;
-    }
-    return irt::features::ImageSearchFeatureNorm::L2;
-}
-
-irt::features::ImageSearchPreprocessBackend parsePreprocessBackend(const QString &backend)
-{
-    return backend.trimmed().toLower() == QStringLiteral("gpu") ? irt::features::ImageSearchPreprocessBackend::GPU
-                                                                : irt::features::ImageSearchPreprocessBackend::CPU;
-}
-
-irt::features::ImageSearchFaissBackend parseFaissBackend(const QString &backend)
-{
-    return backend.trimmed().toLower() == QStringLiteral("gpu") ? irt::features::ImageSearchFaissBackend::GPU
-                                                                : irt::features::ImageSearchFaissBackend::CPU;
-}
-
-irt::features::ImageSearchIndexStorage parseIndexStorage(const QString &storage)
-{
-    return storage.trimmed().toLower() == QStringLiteral("disk") ? irt::features::ImageSearchIndexStorage::Disk
-                                                                 : irt::features::ImageSearchIndexStorage::RAM;
-}
-
 QString progressTimestamp()
 {
     return QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-hh:mm:ss"));
@@ -676,77 +644,80 @@ bool ImageSearchController::ensureSearchSettingsEnabled(const dltool::settings::
 ImageSearchController::SearchRequest ImageSearchController::buildSearchRequest(
     const dltool::settings::generated::AccessorKey accessor_key)
 {
-    const auto effective = [](const QString &value, const QString &fallback) -> QString
-    {
-        return value.trimmed().isEmpty() ? fallback : value.trimmed();
-    };
-
-    const auto *settings = dltool::settings::GlobalSettings::getInstance();
-
-    auto readRequest
-        = [&](const auto model_key, const auto model_path_key, const auto feature_name_key, const auto norm_key,
-              const auto preprocess_backend_key, const auto faiss_backend_key, const auto index_storage_key,
-              const auto model_backend_key, const auto model_device_key, const auto rebuild_index_key,
-              const auto top_k_key, const auto model_batch_size_key) -> SearchRequest
-    {
-        const QString model_name   = settingString(settings, model_key);
-        const QString weights_file = settingString(settings, model_path_key);
-        const QString feature_name = settingString(settings, feature_name_key);
-
-        const QString norm               = settingString(settings, norm_key, QStringLiteral("l2"));
-        const QString preprocess_backend = settingString(settings, preprocess_backend_key, QStringLiteral("cpu"));
-        const QString faiss_backend      = settingString(settings, faiss_backend_key, QStringLiteral("cpu"));
-        const QString index_storage      = settingString(settings, index_storage_key, QStringLiteral("ram"));
-        const QString model_backend      = settingString(settings, model_backend_key, QStringLiteral("tensorrt"));
-        const QString model_device       = settingString(settings, model_device_key, QStringLiteral("gpu"));
-
-        const QString effective_norm    = effective(norm, QStringLiteral("l2")).toLower();
-        QString       effective_faiss   = effective(faiss_backend, QStringLiteral("cpu")).toLower();
-        QString       effective_storage = effective(index_storage, QStringLiteral("ram")).toLower();
-        if (effective_faiss == QStringLiteral("gpu"))
-            effective_storage = QStringLiteral("ram");
-
-        const QString cleaned_weights_file = weights_file.trimmed();
-
-        SearchRequest req;
-        req.weights_file
-            = cleaned_weights_file.isEmpty() ? QString() : QFileInfo(cleaned_weights_file).absoluteFilePath();
-        req.rebuild_index = settingBool(settings, rebuild_index_key, false);
-        req.top_k         = std::max(1, settingInt(settings, top_k_key, 5));
-
-        auto apply_common_config = [&](irt::features::ImageSearchConfig &config)
-        {
-            config.model_name         = model_name.toStdString();
-            config.feature_name       = feature_name.toStdString();
-            config.preprocess_backend = parsePreprocessBackend(preprocess_backend);
-            config.norm               = parseNorm(effective_norm);
-            config.faiss_backend      = parseFaissBackend(effective_faiss);
-            config.index_storage      = parseIndexStorage(effective_storage);
-            config.model_batch_size   = static_cast<size_t>(std::max(1, settingInt(settings, model_batch_size_key, 1)));
-            config.model_backend      = parseModelBackend(model_backend);
-            config.model_device       = parseModelDevice(model_device);
-        };
-        apply_common_config(req.image_config);
-        apply_common_config(req.roi_config);
-        return req;
-    };
-
+    const auto *settings      = dltool::settings::GlobalSettings::getInstance();
     namespace generated_field = dltool::settings::generated::field;
-    if (accessor_key == dltool::settings::generated::AccessorKey::RoiSearch)
+
+    SearchRequest req;
+    auto          apply_common_config = [](irt::features::ImageSearchConfig &config, const QString &model_name,
+                                  const QString &feature_name, int norm, int preprocess_backend, int faiss_backend,
+                                  int index_storage, int model_backend, int model_device, int model_batch_size)
     {
-        return readRequest(generated_field::RoiSearch::Model, generated_field::RoiSearch::ModelPath,
-                           generated_field::RoiSearch::FeatureName, generated_field::RoiSearch::Norm,
-                           generated_field::RoiSearch::PreprocessBackend, generated_field::RoiSearch::FaissBackend,
-                           generated_field::RoiSearch::IndexStorage, generated_field::RoiSearch::ModelBackend,
-                           generated_field::RoiSearch::ModelDevice, generated_field::RoiSearch::RebuildIndex,
-                           generated_field::RoiSearch::TopK, generated_field::RoiSearch::ModelBatchSize);
+        const auto parsed_faiss_backend = static_cast<irt::features::ImageSearchFaissBackend>(faiss_backend);
+        auto       parsed_index_storage = static_cast<irt::features::ImageSearchIndexStorage>(index_storage);
+        if (parsed_faiss_backend == irt::features::ImageSearchFaissBackend::GPU)
+            parsed_index_storage = irt::features::ImageSearchIndexStorage::RAM;
+
+        config.model_name         = model_name.toStdString();
+        config.feature_name       = feature_name.toStdString();
+        config.preprocess_backend = static_cast<irt::features::ImageSearchPreprocessBackend>(preprocess_backend);
+        config.norm               = static_cast<irt::features::ImageSearchFeatureNorm>(norm);
+        config.faiss_backend      = parsed_faiss_backend;
+        config.index_storage      = parsed_index_storage;
+        config.model_batch_size   = static_cast<size_t>(model_batch_size);
+        config.model_backend      = static_cast<irt::model::ModelBackend>(model_backend);
+        config.model_device       = static_cast<irt::model::ModelDevice>(model_device);
+    };
+
+    switch (accessor_key)
+    {
+    case dltool::settings::generated::AccessorKey::RoiSearch:
+    {
+        const QString weights_file = settingString(settings, generated_field::RoiSearch::ModelPath);
+        req.weights_file           = weights_file.isEmpty() ? QString() : QFileInfo(weights_file).absoluteFilePath();
+        req.rebuild_index          = settings->valueForField(generated_field::RoiSearch::RebuildIndex).toBool();
+        req.top_k                  = settings->valueForField(generated_field::RoiSearch::TopK).toInt();
+
+        const QString model_name     = settingString(settings, generated_field::RoiSearch::Model);
+        const QString feature_name   = settingString(settings, generated_field::RoiSearch::FeatureName);
+        const int     norm           = settings->valueForField(generated_field::RoiSearch::Norm).toInt();
+        const int preprocess_backend = settings->valueForField(generated_field::RoiSearch::PreprocessBackend).toInt();
+        const int faiss_backend      = settings->valueForField(generated_field::RoiSearch::FaissBackend).toInt();
+        const int index_storage      = settings->valueForField(generated_field::RoiSearch::IndexStorage).toInt();
+        const int model_backend      = settings->valueForField(generated_field::RoiSearch::ModelBackend).toInt();
+        const int model_device       = settings->valueForField(generated_field::RoiSearch::ModelDevice).toInt();
+        const int model_batch_size   = settings->valueForField(generated_field::RoiSearch::ModelBatchSize).toInt();
+        apply_common_config(req.image_config, model_name, feature_name, norm, preprocess_backend, faiss_backend,
+                            index_storage, model_backend, model_device, model_batch_size);
+        apply_common_config(req.roi_config, model_name, feature_name, norm, preprocess_backend, faiss_backend,
+                            index_storage, model_backend, model_device, model_batch_size);
+        break;
     }
-    return readRequest(generated_field::ImageSearch::Model, generated_field::ImageSearch::ModelPath,
-                       generated_field::ImageSearch::FeatureName, generated_field::ImageSearch::Norm,
-                       generated_field::ImageSearch::PreprocessBackend, generated_field::ImageSearch::FaissBackend,
-                       generated_field::ImageSearch::IndexStorage, generated_field::ImageSearch::ModelBackend,
-                       generated_field::ImageSearch::ModelDevice, generated_field::ImageSearch::RebuildIndex,
-                       generated_field::ImageSearch::TopK, generated_field::ImageSearch::ModelBatchSize);
+    case dltool::settings::generated::AccessorKey::ImageSearch:
+    default:
+    {
+        const QString weights_file = settingString(settings, generated_field::ImageSearch::ModelPath);
+        req.weights_file           = weights_file.isEmpty() ? QString() : QFileInfo(weights_file).absoluteFilePath();
+        req.rebuild_index          = settings->valueForField(generated_field::ImageSearch::RebuildIndex).toBool();
+        req.top_k                  = settings->valueForField(generated_field::ImageSearch::TopK).toInt();
+
+        const QString model_name     = settingString(settings, generated_field::ImageSearch::Model);
+        const QString feature_name   = settingString(settings, generated_field::ImageSearch::FeatureName);
+        const int     norm           = settings->valueForField(generated_field::ImageSearch::Norm).toInt();
+        const int preprocess_backend = settings->valueForField(generated_field::ImageSearch::PreprocessBackend).toInt();
+        const int faiss_backend      = settings->valueForField(generated_field::ImageSearch::FaissBackend).toInt();
+        const int index_storage      = settings->valueForField(generated_field::ImageSearch::IndexStorage).toInt();
+        const int model_backend      = settings->valueForField(generated_field::ImageSearch::ModelBackend).toInt();
+        const int model_device       = settings->valueForField(generated_field::ImageSearch::ModelDevice).toInt();
+        const int model_batch_size   = settings->valueForField(generated_field::ImageSearch::ModelBatchSize).toInt();
+        apply_common_config(req.image_config, model_name, feature_name, norm, preprocess_backend, faiss_backend,
+                            index_storage, model_backend, model_device, model_batch_size);
+        apply_common_config(req.roi_config, model_name, feature_name, norm, preprocess_backend, faiss_backend,
+                            index_storage, model_backend, model_device, model_batch_size);
+        break;
+    }
+    }
+
+    return req;
 }
 
 // ────────────────────────────────────────────────────────────

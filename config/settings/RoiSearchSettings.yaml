@@ -93,37 +93,50 @@ RoiSearchSettings:
     - name_en: norm
       name_cn: 特征归一化
       property_name: norm
-      value: l2
-      value_type: string
+      value: 2
+      value_type: int
       control_type: combo
-      options: [l2, l1, none]
+      options: [none, l1, l2]
+      options_values:
+        none: 0
+        l1: 1
+        l2: 2
       section: 索引
 
     - name_en: preprocess_backend
       name_cn: 预处理后端
       property_name: preprocessBackend
-      value: cpu
-      value_type: string
+      value: 0
+      value_type: int
       control_type: combo
       options: [cpu, gpu]
+      options_values:
+        cpu: 0
+        gpu: 1
       section: 运行时
 
     - name_en: faiss_backend
       name_cn: FAISS 后端
       property_name: faissBackend
-      value: cpu
-      value_type: string
+      value: 0
+      value_type: int
       control_type: combo
       options: [cpu, gpu]
+      options_values:
+        cpu: 0
+        gpu: 1
       section: 运行时
 
     - name_en: index_storage
       name_cn: 索引存储
       property_name: indexStorage
-      value: ram
-      value_type: string
+      value: 0
+      value_type: int
       control_type: combo
       options: [ram, disk]
+      options_values:
+        ram: 0
+        disk: 1
       section: 索引
 
     - name_en: model_batch_size
@@ -138,19 +151,26 @@ RoiSearchSettings:
     - name_en: model_backend
       name_cn: 推理后端
       property_name: modelBackend
-      value: tensorrt
-      value_type: string
+      value: 0
+      value_type: int
       control_type: combo
       options: [tensorrt, openvino, onnxruntime]
+      options_values:
+        tensorrt: 0
+        openvino: 1
+        onnxruntime: 2
       section: 运行时
 
     - name_en: model_device
       name_cn: 推理设备
       property_name: modelDevice
-      value: gpu
-      value_type: string
+      value: 1
+      value_type: int
       control_type: combo
       options: [gpu, cpu]
+      options_values:
+        cpu: 0
+        gpu: 1
       section: 运行时
 
     - name_en: index_directory

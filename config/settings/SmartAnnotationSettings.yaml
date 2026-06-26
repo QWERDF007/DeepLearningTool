@@ -34,19 +34,26 @@ SmartAnnotationSettings:
     - name_en: model_backend
       name_cn: 推理后端
       property_name: modelBackend
-      value: tensorrt
-      value_type: string
+      value: 0
+      value_type: int
       control_type: combo
       options: [tensorrt, openvino, onnxruntime]
+      options_values:
+        tensorrt: 0
+        openvino: 1
+        onnxruntime: 2
       section: 运行时
 
     - name_en: model_device
       name_cn: 推理设备
       property_name: modelDevice
-      value: gpu
-      value_type: string
+      value: 1
+      value_type: int
       control_type: combo
       options: [gpu, cpu]
+      options_values:
+        cpu: 0
+        gpu: 1
       section: 运行时
 
     - name_en: mask_threshold

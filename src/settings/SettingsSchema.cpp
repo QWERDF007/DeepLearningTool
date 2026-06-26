@@ -53,15 +53,17 @@ QString joinedAccessorPath(const QString &parent_accessor, const QString &access
 SettingsField parseField(const YAML::Node &node, const int ordinal_index)
 {
     SettingsField field;
-    field.name_en           = nodeString(firstNode(node, {"name_en", "key", "name"}));
-    field.name_cn           = nodeString(firstNode(node, {"name_cn", "label"}));
-    field.property_name     = nodeString(firstNode(node, {"property_name", "property"}), field.name_en);
-    field.value             = nodeVariant(firstNode(node, {"value", "default_value"}));
-    field.default_value     = nodeVariant(firstNode(node, {"default_value", "value"}));
-    field.value_type        = nodeString(firstNode(node, {"value_type", "type"}), QStringLiteral("string"));
-    field.value_range       = nodeVariant(firstNode(node, {"value_range", "range"})).toList();
-    field.control_type      = nodeString(firstNode(node, {"control_type", "control"}), QStringLiteral("text"));
-    field.options           = nodeVariant(node["options"]).toList();
+    field.name_en       = nodeString(firstNode(node, {"name_en", "key", "name"}));
+    field.name_cn       = nodeString(firstNode(node, {"name_cn", "label"}));
+    field.property_name = nodeString(firstNode(node, {"property_name", "property"}), field.name_en);
+    field.value         = nodeVariant(firstNode(node, {"value", "default_value"}));
+    field.default_value = nodeVariant(firstNode(node, {"default_value", "value"}));
+    field.value_type    = nodeString(firstNode(node, {"value_type", "type"}), QStringLiteral("string"));
+    field.value_range   = nodeVariant(firstNode(node, {"value_range", "range"})).toList();
+    field.control_type  = nodeString(firstNode(node, {"control_type", "control"}), QStringLiteral("text"));
+    field.options       = nodeVariant(node["options"]).toList();
+    field.options_value_map
+        = nodeVariant(firstNode(node, {"options_values", "option_values", "options_value_map"})).toMap();
     field.options_map       = nodeVariant(firstNode(node, {"options_map", "key_values", "values_map"})).toMap();
     field.options_key_field = nodeString(firstNode(node, {"options_key_field", "options_key", "options_source_field"}));
     field.sidebar           = nodeVariant(node["sidebar"]).toMap();
@@ -259,6 +261,8 @@ QVariant SettingsFieldModel::data(const QModelIndex &index, const int role) cons
         return field.control_type;
     case OptionsRole:
         return field.options;
+    case OptionsValueMapRole:
+        return field.options_value_map;
     case OptionsMapRole:
         return field.options_map;
     case OptionsKeyFieldRole:
@@ -316,6 +320,7 @@ QHash<int, QByteArray> SettingsFieldModel::roleNames() const
         {     ValueRangeRole,      "valueRange"},
         {    ControlTypeRole,     "controlType"},
         {        OptionsRole,         "options"},
+        {OptionsValueMapRole, "optionsValueMap"},
         {     OptionsMapRole,      "optionsMap"},
         {OptionsKeyFieldRole, "optionsKeyField"},
         {        SidebarRole,         "sidebar"},
@@ -516,6 +521,7 @@ QVariantMap SettingsFieldModel::toMap(const SettingsField &field) const
         {      QStringLiteral("value_range"),       field.value_range},
         {     QStringLiteral("control_type"),      field.control_type},
         {          QStringLiteral("options"),           field.options},
+        {   QStringLiteral("options_values"), field.options_value_map},
         {      QStringLiteral("options_map"),       field.options_map},
         {QStringLiteral("options_key_field"), field.options_key_field},
         {          QStringLiteral("sidebar"),           field.sidebar},
@@ -701,8 +707,8 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
                     = group.IsMap() ? nodeString(firstNode(group, {"parent_accessor", "parent"})) : QString();
                 const QString     category = group.IsMap() ? nodeString(group["category"]) : QString();
                 const QVariantMap sidebar  = group.IsMap() ? nodeVariant(group["sidebar"]).toMap() : QVariantMap{};
-                const int         group_ordinal
-                    = group.IsMap() && group["ordinal_index"] ? group["ordinal_index"].as<int>() : groups_.size();
+                const int group_ordinal    = group.IsMap() && group["ordinal_index"] ? group["ordinal_index"].as<int>()
+                                                                                     : static_cast<int>(groups_.size());
                 if (!fields_node || !fields_node.IsSequence())
                     continue;
 

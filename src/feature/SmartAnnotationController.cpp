@@ -32,8 +32,7 @@ namespace dltool::feature {
 
 namespace {
 
-constexpr int         kSamMaxPoints        = 16;
-constexpr const char *kTensorRtBackendName = "tensorrt";
+constexpr int kSamMaxPoints = 16;
 
 using dltool::settings::settingBool;
 using dltool::settings::settingDouble;
@@ -315,9 +314,9 @@ QString normalizedModelName(QString value)
     return value.trimmed();
 }
 
-bool isTensorRtBackend(const QString &backend)
+bool isTensorRtBackend(const irt::model::ModelBackend backend)
 {
-    return normalizedBackend(backend) == QString::fromLatin1(kTensorRtBackendName);
+    return backend == irt::model::ModelBackend::TensorRT;
 }
 
 bool isSam2Model(const QString &model_name)
@@ -327,26 +326,29 @@ bool isSam2Model(const QString &model_name)
 
 struct SmartModelLoadRequest
 {
-    QString model_name;
-    QString backend;
-    QString device;
-    QString absolute_model_path;
-    QString runtime_model_name;
-    QString key;
+    QString                  model_name;
+    irt::model::ModelBackend backend{irt::model::ModelBackend::TensorRT};
+    irt::model::ModelDevice  device{irt::model::ModelDevice::GPU};
+    QString                  absolute_model_path;
+    QString                  runtime_model_name;
+    QString                  key;
 };
 
 SmartModelLoadRequest buildSmartModelLoadRequest(const QString &model_name, const QString &model_path,
-                                                 const QString &backend, const QString &device)
+                                                 const irt::model::ModelBackend backend,
+                                                 const irt::model::ModelDevice  device)
 {
     const QFileInfo       model_info(model_path);
     SmartModelLoadRequest request;
     request.model_name          = normalizedModelName(model_name);
-    request.backend             = normalizedBackend(backend);
-    request.device              = normalizedDevice(device);
+    request.backend             = backend;
+    request.device              = device;
     request.absolute_model_path = model_info.absoluteFilePath();
     request.runtime_model_name  = isTensorRtBackend(request.backend) ? request.model_name : QStringLiteral("onnx");
+    const QString backend_name  = QString::fromLatin1(irt::model::modelBackendName(request.backend));
+    const QString device_name   = QString::fromLatin1(irt::model::modelDeviceName(request.device));
     request.key                 = QString("%1|%2|%3|%4")
-                      .arg(request.model_name.toLower(), request.backend, request.device,
+                      .arg(request.model_name.toLower(), backend_name, device_name,
                            QDir::cleanPath(request.absolute_model_path).toCaseFolded());
     return request;
 }
@@ -354,12 +356,12 @@ SmartModelLoadRequest buildSmartModelLoadRequest(const QString &model_name, cons
 std::unique_ptr<irt::model::IModel> loadSmartModel(const SmartModelLoadRequest &request)
 {
     auto config = std::make_unique<SmartModelConfig>();
-    config->setBackend(parseModelBackend(request.backend));
-    config->setDevice(parseModelDevice(request.device));
+    config->setBackend(request.backend);
+    config->setDevice(request.device);
 
     spdlog::info("加载智能标注模型，模型: {}, 运行时: {}, 后端: {}, 设备: {}, 模型路径: {}",
                  request.model_name.toUtf8().constData(), request.runtime_model_name.toUtf8().constData(),
-                 request.backend.toUtf8().constData(), request.device.toUtf8().constData(),
+                 irt::model::modelBackendName(request.backend), irt::model::modelDeviceName(request.device),
                  request.absolute_model_path.toUtf8().constData());
     auto model = irt::model::CreateModel(request.runtime_model_name.toUtf8().constData(), std::move(config));
     if (!model)
@@ -1143,23 +1145,9 @@ void SmartAnnotationController::clearCache()
     setRunning(false);
 }
 
-bool SmartAnnotationController::ensureModel(const QString &model_name, const QString &model_path,
-                                            const QString &backend, const QString &device)
-{
-    const SmartModelLoadRequest request = buildSmartModelLoadRequest(model_name, model_path, backend, device);
-
-    if (model_ != nullptr && cached_model_key_ == request.key)
-    {
-        return true;
-    }
-
-    model_            = loadSmartModel(request);
-    cached_model_key_ = request.key;
-    return true;
-}
-
 void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, const QString &model_path,
-                                                    const QString &backend, const QString &device)
+                                                    const irt::model::ModelBackend backend,
+                                                    const irt::model::ModelDevice  device)
 {
     const SmartModelLoadRequest request = buildSmartModelLoadRequest(model_name, model_path, backend, device);
     if (loading_model_ && loading_model_key_ == request.key)
@@ -1278,10 +1266,11 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
 
         const QString model_name
             = normalizedModelName(settingString(settings, generated_field::SmartAnnotation::Model));
-        const QString backend
-            = normalizedBackend(settingString(settings, generated_field::SmartAnnotation::ModelBackend));
-        const QString device = normalizedDevice(settingString(settings, generated_field::SmartAnnotation::ModelDevice));
-        QString       model_path = settingString(settings, generated_field::SmartAnnotation::ModelPath);
+        const auto backend = static_cast<irt::model::ModelBackend>(
+            settings->valueForField(generated_field::SmartAnnotation::ModelBackend).toInt());
+        const auto device = static_cast<irt::model::ModelDevice>(
+            settings->valueForField(generated_field::SmartAnnotation::ModelDevice).toInt());
+        QString model_path = settingString(settings, generated_field::SmartAnnotation::ModelPath);
         if (model_name.isEmpty())
         {
             throw std::runtime_error("智能标注模型未配置");
@@ -1480,8 +1469,8 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         result[QStringLiteral("error")]            = QString();
         result[QStringLiteral("model_name")]       = model_name;
         result[QStringLiteral("model_path")]       = model_info.absoluteFilePath();
-        result[QStringLiteral("backend")]          = backend;
-        result[QStringLiteral("device")]           = device;
+        result[QStringLiteral("backend")]          = QString::fromLatin1(irt::model::modelBackendName(backend));
+        result[QStringLiteral("device")]           = QString::fromLatin1(irt::model::modelDeviceName(device));
         result[QStringLiteral("image_path")]       = image_path;
         result[QStringLiteral("image_width")]      = image.width();
         result[QStringLiteral("image_height")]     = image.height();

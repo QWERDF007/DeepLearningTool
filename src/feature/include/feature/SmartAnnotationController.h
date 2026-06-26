@@ -12,7 +12,9 @@
 
 namespace irt::model {
 class IModel;
-}
+enum class ModelBackend;
+enum class ModelDevice;
+} // namespace irt::model
 
 namespace dltool::feature {
 
@@ -55,10 +57,8 @@ signals:
     void modelLoadFinished(bool success);
 
 private:
-    bool ensureModel(const QString &model_name, const QString &model_path, const QString &backend,
-                     const QString &device);
-    void startAsyncModelLoad(const QString &model_name, const QString &model_path, const QString &backend,
-                             const QString &device);
+    void startAsyncModelLoad(const QString &model_name, const QString &model_path, irt::model::ModelBackend backend,
+                             irt::model::ModelDevice device);
     void setRunning(bool running);
     void setLoadingModel(bool loading_model);
     void setLastError(const QString &last_error);
