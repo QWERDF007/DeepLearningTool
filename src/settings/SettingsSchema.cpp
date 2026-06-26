@@ -53,21 +53,22 @@ QString joinedAccessorPath(const QString &parent_accessor, const QString &access
 SettingsField parseField(const YAML::Node &node, const int ordinal_index)
 {
     SettingsField field;
-    field.name_en       = nodeString(firstNode(node, {"name_en", "key", "name"}));
-    field.name_cn       = nodeString(firstNode(node, {"name_cn", "label"}));
-    field.property_name = nodeString(firstNode(node, {"property_name", "property"}), field.name_en);
-    field.value         = nodeVariant(firstNode(node, {"value", "default_value"}));
-    field.default_value = nodeVariant(firstNode(node, {"default_value", "value"}));
-    field.value_type    = nodeString(firstNode(node, {"value_type", "type"}), QStringLiteral("string"));
-    field.value_range   = nodeVariant(firstNode(node, {"value_range", "range"})).toList();
-    field.control_type  = nodeString(firstNode(node, {"control_type", "control"}), QStringLiteral("text"));
-    field.options       = nodeVariant(node["options"]).toList();
-    field.options_map   = nodeVariant(firstNode(node, {"options_map", "key_values", "values_map"})).toMap();
-    field.sidebar       = nodeVariant(node["sidebar"]).toMap();
-    field.section       = nodeString(node["section"]);
-    field.description   = nodeString(node["description"]);
-    field.visible       = node["visible"] ? node["visible"].as<bool>() : true;
-    field.ordinal_index = node["ordinal_index"] ? node["ordinal_index"].as<int>() : ordinal_index;
+    field.name_en           = nodeString(firstNode(node, {"name_en", "key", "name"}));
+    field.name_cn           = nodeString(firstNode(node, {"name_cn", "label"}));
+    field.property_name     = nodeString(firstNode(node, {"property_name", "property"}), field.name_en);
+    field.value             = nodeVariant(firstNode(node, {"value", "default_value"}));
+    field.default_value     = nodeVariant(firstNode(node, {"default_value", "value"}));
+    field.value_type        = nodeString(firstNode(node, {"value_type", "type"}), QStringLiteral("string"));
+    field.value_range       = nodeVariant(firstNode(node, {"value_range", "range"})).toList();
+    field.control_type      = nodeString(firstNode(node, {"control_type", "control"}), QStringLiteral("text"));
+    field.options           = nodeVariant(node["options"]).toList();
+    field.options_map       = nodeVariant(firstNode(node, {"options_map", "key_values", "values_map"})).toMap();
+    field.options_key_field = nodeString(firstNode(node, {"options_key_field", "options_key", "options_source_field"}));
+    field.sidebar           = nodeVariant(node["sidebar"]).toMap();
+    field.section           = nodeString(node["section"]);
+    field.description       = nodeString(node["description"]);
+    field.visible           = node["visible"] ? node["visible"].as<bool>() : true;
+    field.ordinal_index     = node["ordinal_index"] ? node["ordinal_index"].as<int>() : ordinal_index;
     return field;
 }
 
@@ -260,6 +261,8 @@ QVariant SettingsFieldModel::data(const QModelIndex &index, const int role) cons
         return field.options;
     case OptionsMapRole:
         return field.options_map;
+    case OptionsKeyFieldRole:
+        return field.options_key_field;
     case SidebarRole:
         return field.sidebar;
     case SectionRole:
@@ -304,21 +307,22 @@ Qt::ItemFlags SettingsFieldModel::flags(const QModelIndex &index) const
 QHash<int, QByteArray> SettingsFieldModel::roleNames() const
 {
     return {
-        {      NameEnRole,       "nameEn"},
-        {      NameCnRole,       "nameCn"},
-        {PropertyNameRole, "propertyName"},
-        {       ValueRole,        "value"},
-        {DefaultValueRole, "defaultValue"},
-        {   ValueTypeRole,    "valueType"},
-        {  ValueRangeRole,   "valueRange"},
-        { ControlTypeRole,  "controlType"},
-        {     OptionsRole,      "options"},
-        {  OptionsMapRole,   "optionsMap"},
-        {     SidebarRole,      "sidebar"},
-        {     SectionRole,      "section"},
-        { DescriptionRole,  "description"},
-        {     VisibleRole,      "visible"},
-        {OrdinalIndexRole, "ordinalIndex"},
+        {         NameEnRole,          "nameEn"},
+        {         NameCnRole,          "nameCn"},
+        {   PropertyNameRole,    "propertyName"},
+        {          ValueRole,           "value"},
+        {   DefaultValueRole,    "defaultValue"},
+        {      ValueTypeRole,       "valueType"},
+        {     ValueRangeRole,      "valueRange"},
+        {    ControlTypeRole,     "controlType"},
+        {        OptionsRole,         "options"},
+        {     OptionsMapRole,      "optionsMap"},
+        {OptionsKeyFieldRole, "optionsKeyField"},
+        {        SidebarRole,         "sidebar"},
+        {        SectionRole,         "section"},
+        {    DescriptionRole,     "description"},
+        {        VisibleRole,         "visible"},
+        {   OrdinalIndexRole,    "ordinalIndex"},
     };
 }
 
@@ -352,17 +356,16 @@ QString SettingsFieldModel::propertyForName(const QString &name) const
     return row >= 0 ? fields_.at(static_cast<size_t>(row)).property_name : QString();
 }
 
-QString SettingsFieldModel::nameForProperty(const QString &property_name) const
-{
-    const int row = indexOfProperty(property_name);
-    return row >= 0 ? fields_.at(static_cast<size_t>(row)).name_en : QString();
-}
-
 QVariantMap SettingsFieldModel::fieldMap(const int row) const
 {
     if (row < 0 || row >= rowCount())
         return {};
     return toMap(fields_.at(static_cast<size_t>(row)));
+}
+
+QVariantMap SettingsFieldModel::fieldMapForName(const QString &name) const
+{
+    return fieldMap(indexOfName(name));
 }
 
 QVariantList SettingsFieldModel::optionsForKey(const QString &name, const QString &key) const
@@ -504,21 +507,22 @@ QVariant SettingsFieldModel::typedValue(const SettingsField &field, const QVaria
 QVariantMap SettingsFieldModel::toMap(const SettingsField &field) const
 {
     return {
-        {      QStringLiteral("name_en"),       field.name_en},
-        {      QStringLiteral("name_cn"),       field.name_cn},
-        {QStringLiteral("property_name"), field.property_name},
-        {        QStringLiteral("value"),         field.value},
-        {QStringLiteral("default_value"), field.default_value},
-        {   QStringLiteral("value_type"),    field.value_type},
-        {  QStringLiteral("value_range"),   field.value_range},
-        { QStringLiteral("control_type"),  field.control_type},
-        {      QStringLiteral("options"),       field.options},
-        {  QStringLiteral("options_map"),   field.options_map},
-        {      QStringLiteral("sidebar"),       field.sidebar},
-        {      QStringLiteral("section"),       field.section},
-        {  QStringLiteral("description"),   field.description},
-        {      QStringLiteral("visible"),       field.visible},
-        {QStringLiteral("ordinal_index"), field.ordinal_index},
+        {          QStringLiteral("name_en"),           field.name_en},
+        {          QStringLiteral("name_cn"),           field.name_cn},
+        {    QStringLiteral("property_name"),     field.property_name},
+        {            QStringLiteral("value"),             field.value},
+        {    QStringLiteral("default_value"),     field.default_value},
+        {       QStringLiteral("value_type"),        field.value_type},
+        {      QStringLiteral("value_range"),       field.value_range},
+        {     QStringLiteral("control_type"),      field.control_type},
+        {          QStringLiteral("options"),           field.options},
+        {      QStringLiteral("options_map"),       field.options_map},
+        {QStringLiteral("options_key_field"), field.options_key_field},
+        {          QStringLiteral("sidebar"),           field.sidebar},
+        {          QStringLiteral("section"),           field.section},
+        {      QStringLiteral("description"),       field.description},
+        {          QStringLiteral("visible"),           field.visible},
+        {    QStringLiteral("ordinal_index"),     field.ordinal_index},
     };
 }
 
@@ -628,11 +632,11 @@ QVariantList SettingsCatalog::optionsForAccessor(const QString &accessor_path, c
     return model != nullptr ? model->optionsForKey(name, key) : QVariantList{};
 }
 
-QVariantList SettingsCatalog::optionsForAccessorKey(const int accessor_key, const int field_key,
-                                                    const QString &key) const
+QVariantList SettingsCatalog::optionsForField(const int accessor_key, const int field_key, const QString &key) const
 {
-    return optionsForAccessor(accessorPath(static_cast<accessor::Key>(accessor_key)),
-                              fieldName(static_cast<field::Key>(field_key)), key);
+    const generated::AccessorKey generated_accessor = static_cast<generated::AccessorKey>(accessor_key);
+    return optionsForAccessor(toQString(generated::accessorPath(generated_accessor)),
+                              toQString(generated::fieldName(generated_accessor, field_key)), key);
 }
 
 QVariantList SettingsCatalog::sidebarFields(const QString &sidebar_key) const

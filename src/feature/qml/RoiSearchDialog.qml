@@ -11,6 +11,7 @@ QuiPopup {
 
     property var dataManager
     property var queryLabelIds: []
+    property bool roiSearchEnabled: true
     readonly property var roiSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.RoiSearch)
 
     implicitWidth: 680
@@ -50,9 +51,16 @@ QuiPopup {
         return ids
     }
 
+    function refreshRoiSearchEnabled() {
+        roiSearchEnabled = GlobalSettings.valueForField(
+                    SettingsAccessor.RoiSearch,
+                    RoiSearchField.Enabled,
+                    true)
+    }
+
     function startSearch() {
         let controller = imageSearchController()
-        if (!controller || !roiSearchSettings.enabled || !queryLabelIds || queryLabelIds.length === 0) {
+        if (!controller || !roiSearchEnabled || !queryLabelIds || queryLabelIds.length === 0) {
             return
         }
 
@@ -64,7 +72,18 @@ QuiPopup {
         }
     }
 
-    onOpened: resetDatasetSelection()
+    onOpened: {
+        resetDatasetSelection()
+        refreshRoiSearchEnabled()
+    }
+
+    Connections {
+        target: roiSearchSettings ? roiSearchSettings.fieldModel : null
+
+        function onValueChanged(name, value) {
+            dialog.refreshRoiSearchEnabled()
+        }
+    }
 
     ColumnLayout {
         width: parent.width
@@ -202,7 +221,7 @@ QuiPopup {
                          && !dialog.imageSearchController().running
                          && queryLabelIds
                          && queryLabelIds.length > 0
-                         && roiSearchSettings.enabled
+                         && dialog.roiSearchEnabled
                 onClicked: dialog.startSearch()
             }
         }

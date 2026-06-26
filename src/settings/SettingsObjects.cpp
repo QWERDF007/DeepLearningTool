@@ -86,19 +86,6 @@ void SettingsGroup::updateFromFieldName(const QString &name, const QVariant &val
     updating_ = false;
 }
 
-QVariant SettingsGroup::valueOr(const QString &property_name, const QVariant &fallback) const
-{
-    const QVariant current = value(property_name);
-    return current.isValid() ? current : fallback;
-}
-
-bool SettingsGroup::setValue(const QString &property_name, const QVariant &value)
-{
-    if (field_model_ == nullptr)
-        return false;
-    return field_model_->setValueForProperty(property_name, value);
-}
-
 QVariant SettingsGroup::updateValue(const QString &key, const QVariant &input)
 {
     if (!updating_ && field_model_ != nullptr && field_model_->setValueForProperty(key, input))

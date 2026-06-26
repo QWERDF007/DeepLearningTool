@@ -70,18 +70,15 @@ uiSettings.imageBrightnessStepSize
 QML 侧优先使用枚举入口，避免手写 accessor path：
 
 - `GlobalSettings.settingsObjectFor(SettingsAccessor.Ui)`
-- `GlobalSettings.valueFor(SettingsAccessor.Data, propertyName, fallback)`
-- `GlobalSettings.setValueFor(SettingsAccessor.Data, propertyName, value)`
-- `GlobalSettings.catalog.optionsForAccessorKey(SettingsAccessor.ImageSearch, SettingsFieldKey.FeatureName, modelName)`
+- `GlobalSettings.valueForField(SettingsAccessor.Data, DataField.CellScale, fallback)`
+- `GlobalSettings.setFieldValue(SettingsAccessor.Data, DataField.CellScale, value)`
+- `GlobalSettings.catalog.optionsForField(SettingsAccessor.ImageSearch, ImageSearchField.FeatureName, modelName)`
 - `GlobalSettings.catalog.sidebarFieldsFor(SettingsSidebar.Gallery)`
 
-底层仍保留字符串路径 API，主要用于配置驱动场景或 C++ 内部适配：
+配置驱动场景使用 schema 行中的 `group_key/name_en`，不再通过 QML 属性名读写：
 
-- `GlobalSettings.settingsObject(accessorPath)`
-- `GlobalSettings.value(accessorPath, propertyName, fallback)`
-- `GlobalSettings.setValue(accessorPath, propertyName, value)`
-- `SettingsGroup.valueOr(propertyName, fallback)`
-- `SettingsGroup.setValue(propertyName, value)`
+- `GlobalSettings.catalog.value(groupKey, nameEn, fallback)`
+- `GlobalSettings.setCatalogValue(groupKey, nameEn, value)`
 
 ## 动态对象树
 

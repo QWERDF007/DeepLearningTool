@@ -33,18 +33,18 @@
 推荐 QML 访问方式：
 
 ```qml
-property var dataSettings: GlobalSettings.settingsObject("data")
-property var imageSearchSettings: GlobalSettings.settingsObject("advanced.imageSearch")
+property var dataSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Data)
+property var imageSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.ImageSearch)
 
 dataSettings.imageCellScale = 1.5
 let enabled = imageSearchSettings.enabled
 ```
 
-也可以使用路径式函数：
+固定字段读写使用生成枚举：
 
 ```qml
-GlobalSettings.value("ui", "imageBrightness", 0.0)
-GlobalSettings.setValue("advanced.roiSearch", "topK", 10)
+GlobalSettings.valueForField(SettingsAccessor.Ui, UiField.Brightness, 0.0)
+GlobalSettings.setFieldValue(SettingsAccessor.RoiSearch, RoiSearchField.TopK, 10)
 ```
 
 ## 字段定义
@@ -62,7 +62,8 @@ GlobalSettings.setValue("advanced.roiSearch", "topK", 10)
 | `value_range` | 数值范围，格式为 `[from, to, step]`。 |
 | `control_type` | 设置页控件类型，例如 `slider`、`spin`、`combo`、`checkbox`、`path`、`dir`、`folder`。 |
 | `options` | 静态选项列表。 |
-| `options_map` | 动态选项映射，常用于根据模型名切换 feature 列表。 |
+| `options_map` | 动态选项映射。 |
+| `options_key_field` | `options_map` 使用的键字段 `name_en`。 |
 | `section` | 设置页内部分组标题。 |
 | `description` | 可选说明文本。 |
 | `visible` | 是否在设置页显示，默认 `true`。 |
@@ -98,9 +99,9 @@ sidebar:
     icon: ExploreContentSingle
     ordinal_index: 10
     snap: false
-    from: imageCellScaleFrom
-    to: imageCellScaleTo
-    step: imageCellScaleStepSize
+    from: cell_scale_from
+    to: cell_scale_to
+    step: cell_scale_step
 ```
 
 侧边栏字段说明：
@@ -108,13 +109,13 @@ sidebar:
 - `icon`：侧边栏按钮图标名。
 - `ordinal_index`：侧边栏内排序。
 - `snap`：滑块是否使用吸附。
-- `from` / `to` / `step`：可选范围字段名；未配置时默认使用 `<property_name>From`、`<property_name>To`、`<property_name>StepSize`。
+- `from` / `to` / `step`：可选范围字段 `name_en`；未配置时默认使用 `<name_en>_from`、`<name_en>_to`、`<name_en>_step`。
 
 ## 新增设置约定
 
 1. 新增分组时，优先新增一个 YAML 文件，配置 `table`、`accessor`、`label`、`category`、`ordinal_index` 和 `fields`。
 2. 新增高级设置时，使用 `parent_accessor: advanced`，例如 `advanced.myFeature`。
-3. QML 侧不要直接依赖文件名或 group key；优先使用 accessor path，例如 `GlobalSettings.settingsObject("advanced.myFeature")`。
+3. QML/C++ 侧不要直接依赖文件名、group key 或属性名；固定字段优先使用生成的 `SettingsAccessor` 和 `*Field` 枚举。
 4. 设置页字段展示应依赖 catalog 模型；侧边栏入口应通过字段的 `sidebar` 元数据声明。
-5. 对于下拉选项，静态列表使用 `options`，依赖其他字段的列表使用 `options_map`。
+5. 对于下拉选项，静态列表使用 `options`，依赖其他字段的列表使用 `options_map` 和 `options_key_field`。
 6. 数值类字段建议配置 `value_range`，这样设置页、侧边栏和动态范围属性都能复用同一份 schema。

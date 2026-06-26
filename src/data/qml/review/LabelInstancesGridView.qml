@@ -18,8 +18,12 @@ Rectangle {
     property DataManager dataManager
     property LabelInstancesModel labelInstances : dataManager ? dataManager.labelInstances : null
     property ItemSelectionModel selection : labelInstances ? labelInstances.selection : null
-    readonly property var dataSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Data)
-    readonly property var roiSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.RoiSearch)
+    property bool roiSearchEnabled: true
+    property real labelThumbnailScale: 1.0
+    property real labelThumbnailScaleFrom: 0.5
+    property real labelThumbnailScaleTo: 4.0
+    property real labelThumbnailScaleStepSize: 0.1
+    property real labelThumbnailAspectRatio: 1.0
 
     QuiContentDialog {
         id: deleteConfirmDialog
@@ -44,7 +48,7 @@ Rectangle {
             enabled: dataManager && dataManager.imageSearch
                      && selection && selection.hasSelection
                      && !dataManager.imageSearch.running
-                     && roiSearchSettings.enabled
+                     && roiSearchEnabled
             onClicked: startRoiSearchForSelectedLabels()
         }
         QuiMenuItem {
@@ -66,8 +70,8 @@ Rectangle {
         property real baseCellSize: 200
         
         // 绑定到设置
-        cellWidth: baseCellSize * dataSettings.labelThumbnailScale
-        cellHeight: cellWidth * dataSettings.labelThumbnailAspectRatio
+        cellWidth: baseCellSize * root.labelThumbnailScale
+        cellHeight: cellWidth * root.labelThumbnailAspectRatio
         
         clip: true
         
@@ -148,10 +152,10 @@ Rectangle {
         
         // 缩放视图函数
         function scaleView(event) {
-            if (event.angleDelta.y > 0 && dataSettings.labelThumbnailScale < dataSettings.labelThumbnailScaleTo) {
-                dataSettings.labelThumbnailScale += dataSettings.labelThumbnailScaleStepSize
-            } else if (event.angleDelta.y < 0 && dataSettings.labelThumbnailScale > dataSettings.labelThumbnailScaleFrom) {
-                dataSettings.labelThumbnailScale -= dataSettings.labelThumbnailScaleStepSize
+            if (event.angleDelta.y > 0 && root.labelThumbnailScale < root.labelThumbnailScaleTo) {
+                root.setDataField(DataField.LabelScale, root.labelThumbnailScale + root.labelThumbnailScaleStepSize)
+            } else if (event.angleDelta.y < 0 && root.labelThumbnailScale > root.labelThumbnailScaleFrom) {
+                root.setDataField(DataField.LabelScale, root.labelThumbnailScale - root.labelThumbnailScaleStepSize)
             }
         }
         
@@ -342,13 +346,36 @@ Rectangle {
     function startRoiSearchForSelectedLabels() {
         if (!dataManager || !dataManager.imageSearch || !labelInstances
                 || !selection || !selection.hasSelection
-                || !roiSearchSettings.enabled) {
+                || !roiSearchEnabled) {
             return
         }
 
         let labelIds = labelInstances.getSelectedLabelIds()
         if (labelIds.length > 0) {
             roiSearchDialog.openForLabels(labelIds)
+        }
+    }
+
+    function refreshSettings() {
+        roiSearchEnabled = GlobalSettings.valueForField(SettingsAccessor.RoiSearch, RoiSearchField.Enabled, true)
+        labelThumbnailScale = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.LabelScale, 1.0)
+        let scaleRange = GlobalSettings.valueRangeForField(SettingsAccessor.Data, DataField.LabelScale)
+        labelThumbnailScaleFrom = scaleRange && scaleRange.length > 0 ? scaleRange[0] : 0.5
+        labelThumbnailScaleTo = scaleRange && scaleRange.length > 1 ? scaleRange[1] : 4.0
+        labelThumbnailScaleStepSize = scaleRange && scaleRange.length > 2 ? scaleRange[2] : 0.1
+        labelThumbnailAspectRatio = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.LabelAspectRatio, 1.0)
+    }
+
+    function setDataField(field, value) {
+        GlobalSettings.setFieldValue(SettingsAccessor.Data, field, value)
+    }
+
+    Component.onCompleted: refreshSettings()
+
+    Connections {
+        target: GlobalSettings.catalog
+        function onValueChanged() {
+            root.refreshSettings()
         }
     }
     

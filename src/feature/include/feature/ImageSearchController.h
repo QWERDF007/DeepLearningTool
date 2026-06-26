@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dltool/feature/Export.h"
+#include "settings/SettingsKeys.h"
 
 #include <QObject>
 #include <QString>
@@ -109,10 +110,11 @@ private:
     bool validateWeightsFile(const QString &path);
 
     /// 从设置分组读取参数快照并组装为 SearchRequest
-    SearchRequest buildSearchRequest(const QString &accessor_path);
+    SearchRequest buildSearchRequest(dltool::settings::generated::AccessorKey accessor_key);
 
     /// 确认设置分组已加载且对应搜索功能已启用
-    bool ensureSearchSettingsEnabled(const QString &accessor_path, const QString &display_name);
+    bool ensureSearchSettingsEnabled(dltool::settings::generated::AccessorKey accessor_key,
+                                     const QString                           &display_name);
 
     /// 使用指定查询图像启动图像搜索
     bool startImageSearch(const std::vector<int64_t> &query_ids, const QVariantList &dataset_ids,

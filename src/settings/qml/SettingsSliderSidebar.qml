@@ -62,7 +62,7 @@ Rectangle {
             snapMode: Slider.SnapAlways
             onMoved: {
                 if (popup.itemData) {
-                    GlobalSettings.setValue(popup.itemData.accessor_path, popup.itemData.property_name, value)
+                    GlobalSettings.setCatalogValue(popup.itemData.group_key, popup.itemData.name_en, value)
                 }
             }
         }
@@ -80,12 +80,12 @@ Rectangle {
         return value === undefined || value === null ? fallback : value
     }
 
-    function rangeProperty(item, key, suffix) {
+    function rangeField(item, key, suffix) {
         let configured = sidebarValue(item, key, "")
         if (configured !== "") {
             return String(configured)
         }
-        return String(item.property_name) + suffix
+        return String(item.name_en) + suffix
     }
 
     function numberValue(value, fallback) {
@@ -93,22 +93,22 @@ Rectangle {
         return isFinite(next) ? next : fallback
     }
 
-    function settingNumber(item, propertyName, fallback) {
-        return numberValue(GlobalSettings.value(item.accessor_path, propertyName, fallback), fallback)
+    function settingNumber(item, fieldName, fallback) {
+        return numberValue(GlobalSettings.catalog.value(item.group_key, fieldName, fallback), fallback)
     }
 
     function openSlider(item, x, y) {
         popup.itemData = item
 
-        let valueProperty = String(item.property_name)
-        let fromProperty = rangeProperty(item, "from", "From")
-        let toProperty = rangeProperty(item, "to", "To")
-        let stepProperty = rangeProperty(item, "step", "StepSize")
+        let valueField = String(item.name_en)
+        let fromField = rangeField(item, "from", "_from")
+        let toField = rangeField(item, "to", "_to")
+        let stepField = rangeField(item, "step", "_step")
 
-        slider.from = settingNumber(item, fromProperty, 0)
-        slider.to = settingNumber(item, toProperty, 100)
-        slider.value = settingNumber(item, valueProperty, slider.from)
-        slider.stepSize = settingNumber(item, stepProperty, 1)
+        slider.from = settingNumber(item, fromField, 0)
+        slider.to = settingNumber(item, toField, 100)
+        slider.value = settingNumber(item, valueField, slider.from)
+        slider.stepSize = settingNumber(item, stepField, 1)
         slider.snapMode = sidebar.sidebarValue(item, "snap", true) ? Slider.SnapAlways : Slider.NoSnap
 
         let pos = sidebar.mapToItem(null, x, y)

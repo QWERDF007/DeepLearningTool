@@ -12,7 +12,7 @@ QuiPopup {
     property var dataManager
     readonly property var controller: dataManager ? dataManager.fewShotLearning : null
     readonly property var fewShotSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.FewShotLearning)
-    readonly property var softwareSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Software)
+    property string pythonEnvPath: ""
     property var datasetNames: []
     property var selectedTrainDatasetMap: ({})
     property var selectedTestDatasetMap: ({})
@@ -115,8 +115,7 @@ QuiPopup {
                 && selectedTrainDatasetIds().length > 0
                 && selectedTestDatasetIds().length > 0
                 && selectedClassIds().length >= 1
-                && softwareSettings
-                && String(softwareSettings.pythonEnvPath || "").length > 0
+                && String(pythonEnvPath || "").length > 0
     }
 
     function startFewShot() {
@@ -128,7 +127,24 @@ QuiPopup {
         }
     }
 
-    onOpened: resetSelections()
+    onOpened: {
+        resetSelections()
+        refreshSettings()
+    }
+
+    function refreshSettings() {
+        pythonEnvPath = GlobalSettings.valueForField(
+                    SettingsAccessor.Software,
+                    SoftwareField.PythonEnvPath,
+                    "")
+    }
+
+    Connections {
+        target: GlobalSettings.catalog
+        function onValueChanged() {
+            dialog.refreshSettings()
+        }
+    }
 
     ColumnLayout {
         width: parent.width
@@ -324,7 +340,7 @@ QuiPopup {
                 Layout.fillWidth: true
                 text: controller && controller.lastError.length > 0
                       ? controller.lastError
-                      : (!softwareSettings || String(softwareSettings.pythonEnvPath || "").length === 0
+                      : (String(pythonEnvPath || "").length === 0
                          ? "请先在软件设置中配置 Python 环境目录"
                          : "")
                 color: "red"

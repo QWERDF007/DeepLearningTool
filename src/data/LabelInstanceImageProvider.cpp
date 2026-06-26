@@ -152,7 +152,7 @@ QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id, double pa
 
         // 3. 获取配置参数
         int margin = dltool::settings::GlobalSettings::getInstance()
-                         ->value(QStringLiteral("data"), QStringLiteral("thumbnailMargin"), 10)
+                         ->valueForField(dltool::settings::generated::field::Data::Margin, 10)
                          .toInt();
 
         // 4. 加载原始图像

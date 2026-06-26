@@ -6,6 +6,7 @@
 #include "model/TaskManager.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsKeys.h"
+#include "settings/SettingsValue.h"
 
 #include <spdlog/spdlog.h>
 
@@ -84,24 +85,9 @@ QString sanitizeFileName(QString value, const QString &fallback)
     return value.isEmpty() ? fallback : value;
 }
 
-QString valueString(const dltool::settings::SettingsGroup *settings, const QString &name, const QString &fallback = {})
-{
-    return settings != nullptr ? settings->valueOr(name, fallback).toString().trimmed() : fallback;
-}
-
-int valueInt(const dltool::settings::SettingsGroup *settings, const QString &name, int fallback)
-{
-    bool      ok    = false;
-    const int value = settings != nullptr ? settings->valueOr(name, fallback).toInt(&ok) : fallback;
-    return ok ? value : fallback;
-}
-
-double valueDouble(const dltool::settings::SettingsGroup *settings, const QString &name, double fallback)
-{
-    bool         ok    = false;
-    const double value = settings != nullptr ? settings->valueOr(name, fallback).toDouble(&ok) : fallback;
-    return ok ? value : fallback;
-}
+using dltool::settings::settingDouble;
+using dltool::settings::settingInt;
+using dltool::settings::settingString;
 
 QString pythonExecutableFromEnvPath(const QString &env_path)
 {
@@ -595,28 +581,23 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         return false;
     }
 
-    auto       *global_settings   = dltool::settings::GlobalSettings::getInstance();
-    const auto *few_shot_settings = global_settings->settingsGroup(
-        dltool::settings::accessorPath(dltool::settings::accessor::Key::FewShotLearning));
-    const auto *software_settings
-        = global_settings->settingsGroup(dltool::settings::accessorPath(dltool::settings::accessor::Key::Software));
+    namespace generated_field = dltool::settings::generated::field;
+
+    auto *global_settings = dltool::settings::GlobalSettings::getInstance();
 
     context.python_executable
-        = pythonExecutableFromEnvPath(valueString(software_settings, QStringLiteral("pythonEnvPath")));
+        = pythonExecutableFromEnvPath(settingString(global_settings, generated_field::Software::PythonEnvPath));
     if (context.python_executable.isEmpty())
     {
         err_msg = QString("请先在软件设置中配置 Python 环境目录");
         return false;
     }
 
-    context.fs_sam2_root    = fixedFsSam2Root();
-    context.sam2_checkpoint = runtimePath(valueString(few_shot_settings, QStringLiteral("sam2Checkpoint")));
+    context.fs_sam2_root = fixedFsSam2Root();
+    context.sam2_checkpoint
+        = runtimePath(settingString(global_settings, generated_field::FewShotLearning::Sam2Checkpoint));
     const QString sam2_architecture
-        = global_settings
-              ->valueForField(static_cast<int>(dltool::settings::accessor::Key::FewShotLearning),
-                              static_cast<int>(dltool::settings::field::Key::Sam2Architecture))
-              .toString()
-              .trimmed();
+        = settingString(global_settings, generated_field::FewShotLearning::Sam2Architecture);
     if (sam2_architecture.isEmpty())
     {
         err_msg = QString("请先配置 SAM2 架构");
@@ -644,28 +625,33 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         return false;
     }
 
-    context.kshot         = std::clamp(valueInt(few_shot_settings, QStringLiteral("kshot"), 1), 1, 16);
-    context.epochs        = std::clamp(valueInt(few_shot_settings, QStringLiteral("epochs"), 50), 1, 10000);
-    context.batch_size    = std::clamp(valueInt(few_shot_settings, QStringLiteral("batchSize"), 2), 1, 128);
-    context.num_workers   = std::clamp(valueInt(few_shot_settings, QStringLiteral("numWorkers"), 0), 0, 128);
-    context.image_size    = std::clamp(valueInt(few_shot_settings, QStringLiteral("imageSize"), 1024), 64, 8192);
-    context.lr            = valueDouble(few_shot_settings, QStringLiteral("learningRate"), 1e-4);
-    context.weight_decay  = valueDouble(few_shot_settings, QStringLiteral("weightDecay"), 1e-6);
-    context.support_ratio = std::clamp(valueDouble(few_shot_settings, QStringLiteral("supportRatio"), 0.5), 0.1, 0.9);
+    context.kshot  = std::clamp(settingInt(global_settings, generated_field::FewShotLearning::Kshot, 1), 1, 16);
+    context.epochs = std::clamp(settingInt(global_settings, generated_field::FewShotLearning::Epochs, 50), 1, 10000);
+    context.batch_size
+        = std::clamp(settingInt(global_settings, generated_field::FewShotLearning::BatchSize, 2), 1, 128);
+    context.num_workers
+        = std::clamp(settingInt(global_settings, generated_field::FewShotLearning::NumWorkers, 0), 0, 128);
+    context.image_size
+        = std::clamp(settingInt(global_settings, generated_field::FewShotLearning::ImageSize, 1024), 64, 8192);
+    context.lr           = settingDouble(global_settings, generated_field::FewShotLearning::LearningRate, 1e-4);
+    context.weight_decay = settingDouble(global_settings, generated_field::FewShotLearning::WeightDecay, 1e-6);
+    context.support_ratio
+        = std::clamp(settingDouble(global_settings, generated_field::FewShotLearning::SupportRatio, 0.5), 0.1, 0.9);
 
-    const QString output_root_setting = cleanPath(valueString(few_shot_settings, QStringLiteral("outputDir")));
-    const QString project_dir         = QFileInfo(data_provider_->databasePath()).absoluteDir().absolutePath();
-    const QString run_id              = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss_zzz"));
-    context.exp_id                    = QStringLiteral("dltool_%1").arg(run_id);
-    context.logpath                   = QStringLiteral("dltool/%1/fold0").arg(context.exp_id);
-    context.run_dir                   = output_root_setting.isEmpty()
-                                          ? QDir(project_dir).filePath(QStringLiteral(".dltool/few_shot/%1").arg(run_id))
-                                          : QDir(output_root_setting).filePath(run_id);
-    context.custom_dataset_dir        = QDir(context.run_dir).filePath(QStringLiteral("custom"));
-    context.query_dir                 = QDir(context.run_dir).filePath(QStringLiteral("query"));
-    context.output_dir                = QDir(context.run_dir).filePath(QStringLiteral("predictions"));
-    context.query_txt_path            = QDir(context.query_dir).filePath(QStringLiteral("query.txt"));
-    context.checkpoint_path           = checkpointPath(context.fs_sam2_root, context.logpath);
+    const QString output_root_setting
+        = cleanPath(settingString(global_settings, generated_field::FewShotLearning::OutputDir));
+    const QString project_dir  = QFileInfo(data_provider_->databasePath()).absoluteDir().absolutePath();
+    const QString run_id       = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss_zzz"));
+    context.exp_id             = QStringLiteral("dltool_%1").arg(run_id);
+    context.logpath            = QStringLiteral("dltool/%1/fold0").arg(context.exp_id);
+    context.run_dir            = output_root_setting.isEmpty()
+                                   ? QDir(project_dir).filePath(QStringLiteral(".dltool/few_shot/%1").arg(run_id))
+                                   : QDir(output_root_setting).filePath(run_id);
+    context.custom_dataset_dir = QDir(context.run_dir).filePath(QStringLiteral("custom"));
+    context.query_dir          = QDir(context.run_dir).filePath(QStringLiteral("query"));
+    context.output_dir         = QDir(context.run_dir).filePath(QStringLiteral("predictions"));
+    context.query_txt_path     = QDir(context.query_dir).filePath(QStringLiteral("query.txt"));
+    context.checkpoint_path    = checkpointPath(context.fs_sam2_root, context.logpath);
 
     const std::set<int64_t>           selected_classes(label_class_ids.begin(), label_class_ids.end());
     const std::set<int64_t>           selected_train_datasets(train_dataset_ids.begin(), train_dataset_ids.end());

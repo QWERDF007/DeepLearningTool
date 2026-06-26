@@ -15,7 +15,8 @@ Rectangle {
     property bool selected: false
     property bool hasLabels: model.hasLabels || false
     property DataManager dataManager
-    readonly property var uiSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Ui)
+    property real imageBrightness: 0.0
+    property real imageContrast: 0.0
     
     // 新增：通过 image_id 动态获取标注信息
     property string labelSummary: {
@@ -54,8 +55,22 @@ Rectangle {
     MultiEffect {
         source: image
         anchors.fill: image
-        brightness: uiSettings.imageBrightness
-        contrast: uiSettings.imageContrast
+        brightness: imageInstanceDelegate.imageBrightness
+        contrast: imageInstanceDelegate.imageContrast
+    }
+
+    function refreshSettings() {
+        imageBrightness = GlobalSettings.valueForField(SettingsAccessor.Ui, UiField.Brightness, 0.0)
+        imageContrast = GlobalSettings.valueForField(SettingsAccessor.Ui, UiField.Contrast, 0.0)
+    }
+
+    Component.onCompleted: refreshSettings()
+
+    Connections {
+        target: GlobalSettings.catalog
+        function onValueChanged() {
+            imageInstanceDelegate.refreshSettings()
+        }
     }
     
     // 标注指示器 - 显示在右上角

@@ -44,9 +44,9 @@ DataSettings:
           icon: ExploreContentSingle
           ordinal_index: 10
           snap: false
-          from: imageCellScaleFrom
-          to: imageCellScaleTo
-          step: imageCellScaleStepSize
+          from: cell_scale_from
+          to: cell_scale_to
+          step: cell_scale_step
       section: 图像单元
 
     - name_en: cell_scale_from

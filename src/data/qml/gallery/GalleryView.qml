@@ -30,10 +30,13 @@ Item {
         }
     }
 
-    readonly property var dataSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Data)
-    readonly property var imageSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.ImageSearch)
-    property int cellWidth: 180 * dataSettings.imageCellScale
-    property int cellHeight: 240 * dataSettings.imageCellScale
+    property real imageCellScale: 1.0
+    property real imageCellScaleFrom: 0.5
+    property real imageCellScaleTo: 4.0
+    property real imageCellScaleStepSize: 0.25
+    property bool imageSearchEnabled: true
+    property int cellWidth: 180 * imageCellScale
+    property int cellHeight: 240 * imageCellScale
     property int spacing: 10
 
     property DataManager dataManager
@@ -49,7 +52,7 @@ Item {
             enabled: dataManager && dataManager.imageSearch
                      && selection && selection.hasSelection
                      && !dataManager.imageSearch.running
-                     && imageSearchSettings.enabled
+                     && imageSearchEnabled
             onClicked: {
                 imageSearchDialog.openForSearch()
             }
@@ -165,10 +168,12 @@ Item {
         }
 
         function scaleView(event) {
-            if (event.angleDelta.y > 0 && dataSettings.imageCellScale < dataSettings.imageCellScaleTo) {
-                dataSettings.imageCellScale += dataSettings.imageCellScaleStepSize
-            } else if (event.angleDelta.y < 0 && dataSettings.imageCellScale > dataSettings.imageCellScaleFrom) {
-                dataSettings.imageCellScale -= dataSettings.imageCellScaleStepSize
+            if (event.angleDelta.y > 0 && instancesView.imageCellScale < instancesView.imageCellScaleTo) {
+                instancesView.setDataField(DataField.CellScale,
+                                           instancesView.imageCellScale + instancesView.imageCellScaleStepSize)
+            } else if (event.angleDelta.y < 0 && instancesView.imageCellScale > instancesView.imageCellScaleFrom) {
+                instancesView.setDataField(DataField.CellScale,
+                                           instancesView.imageCellScale - instancesView.imageCellScaleStepSize)
             } else {
 
             }
@@ -296,6 +301,27 @@ Item {
             selection.select(tmpIndex, ItemSelectionModel.ClearAndSelect)
             selection.setCurrentIndex(tmpIndex, ItemSelectionModel.Select)
             imageInstances.lastIndex = newIndex
+        }
+    }
+
+    function refreshSettings() {
+        imageCellScale = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.CellScale, 1.0)
+        imageCellScaleFrom = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.CellScaleFrom, 0.5)
+        imageCellScaleTo = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.CellScaleTo, 4.0)
+        imageCellScaleStepSize = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.CellScaleStep, 0.25)
+        imageSearchEnabled = GlobalSettings.valueForField(SettingsAccessor.ImageSearch, ImageSearchField.Enabled, true)
+    }
+
+    function setDataField(field, value) {
+        GlobalSettings.setFieldValue(SettingsAccessor.Data, field, value)
+    }
+
+    Component.onCompleted: refreshSettings()
+
+    Connections {
+        target: GlobalSettings.catalog
+        function onValueChanged() {
+            instancesView.refreshSettings()
         }
     }
 

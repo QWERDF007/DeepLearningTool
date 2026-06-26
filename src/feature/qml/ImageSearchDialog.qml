@@ -11,6 +11,7 @@ QuiPopup {
 
     property var dataManager
     property var queryImageIds: []
+    property bool imageSearchEnabled: true
     readonly property var imageSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.ImageSearch)
 
     implicitWidth: 680
@@ -56,6 +57,13 @@ QuiPopup {
         return ids
     }
 
+    function refreshImageSearchEnabled() {
+        imageSearchEnabled = GlobalSettings.valueForField(
+                    SettingsAccessor.ImageSearch,
+                    ImageSearchField.Enabled,
+                    true)
+    }
+
     function startSearch() {
         let controller = imageSearchController()
         if (!controller) {
@@ -74,7 +82,18 @@ QuiPopup {
         }
     }
 
-    onOpened: resetDatasetSelection()
+    onOpened: {
+        resetDatasetSelection()
+        refreshImageSearchEnabled()
+    }
+
+    Connections {
+        target: imageSearchSettings ? imageSearchSettings.fieldModel : null
+
+        function onValueChanged(name, value) {
+            dialog.refreshImageSearchEnabled()
+        }
+    }
 
     ColumnLayout {
         width: parent.width
@@ -210,6 +229,7 @@ QuiPopup {
                 text: "开始搜索"
                 enabled: dialog.imageSearchController()
                          && !dialog.imageSearchController().running
+                         && dialog.imageSearchEnabled
                 onClicked: dialog.startSearch()
             }
         }

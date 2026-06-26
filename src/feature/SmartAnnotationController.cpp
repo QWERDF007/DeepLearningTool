@@ -2,6 +2,7 @@
 
 #include "feature/Utils.h"
 #include "settings/GlobalSettings.h"
+#include "settings/SettingsValue.h"
 
 #include <cuda_runtime_api.h>
 #include <inferrt/model/IModel.h>
@@ -33,6 +34,10 @@ namespace {
 
 constexpr int         kSamMaxPoints        = 16;
 constexpr const char *kTensorRtBackendName = "tensorrt";
+
+using dltool::settings::settingBool;
+using dltool::settings::settingDouble;
+using dltool::settings::settingString;
 
 struct PromptPoint
 {
@@ -1259,19 +1264,24 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
 
     try
     {
-        auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(
-            dltool::settings::accessorPath(dltool::settings::accessor::Key::SmartAnnotation));
-        if (settings == nullptr || !settings->valueOr(QStringLiteral("enabled"), false).toBool())
+        namespace generated_field = dltool::settings::generated::field;
+
+        auto *settings = dltool::settings::GlobalSettings::getInstance();
+        if (settings == nullptr
+            || settings->settingsGroup(dltool::settings::generated::AccessorKey::SmartAnnotation) == nullptr
+            || !settingBool(settings, generated_field::SmartAnnotation::Enabled, false))
         {
             throw std::runtime_error("智能标注未启用");
         }
 
         const std::vector<PromptPoint> prompts = parsePromptPoints(prompt_points);
 
-        const QString model_name = normalizedModelName(settings->valueOr(QStringLiteral("model")).toString());
-        const QString backend    = normalizedBackend(settings->valueOr(QStringLiteral("modelBackend")).toString());
-        const QString device     = normalizedDevice(settings->valueOr(QStringLiteral("modelDevice")).toString());
-        QString       model_path = settings->valueOr(QStringLiteral("modelPath")).toString().trimmed();
+        const QString model_name
+            = normalizedModelName(settingString(settings, generated_field::SmartAnnotation::Model));
+        const QString backend
+            = normalizedBackend(settingString(settings, generated_field::SmartAnnotation::ModelBackend));
+        const QString device = normalizedDevice(settingString(settings, generated_field::SmartAnnotation::ModelDevice));
+        QString       model_path = settingString(settings, generated_field::SmartAnnotation::ModelPath);
         if (model_name.isEmpty())
         {
             throw std::runtime_error("智能标注模型未配置");
@@ -1430,7 +1440,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         std::vector<float> original_mask = resizeBilinear(cropped_mask.data(), preprocessed.resized_w,
                                                           preprocessed.resized_h, image.width(), image.height());
 
-        const double         threshold = settings->valueOr(QStringLiteral("maskThreshold"), 0.0).toDouble();
+        const double         threshold = settingDouble(settings, generated_field::SmartAnnotation::MaskThreshold, 0.0);
         std::vector<uint8_t> binary_mask(static_cast<size_t>(image.width()) * image.height(), 0);
         int                  foreground_pixels = 0;
         for (size_t i = 0; i < binary_mask.size(); ++i)
@@ -1459,8 +1469,8 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
             polygon = rectanglePoints(bbox);
         }
 
-        polygon = simplifyFinalPolygon(std::move(polygon),
-                                       settings->valueOr(QStringLiteral("polygonSimplifyEpsilon"), 2.0).toDouble());
+        polygon = simplifyFinalPolygon(
+            std::move(polygon), settingDouble(settings, generated_field::SmartAnnotation::PolygonSimplifyEpsilon, 2.0));
         if (polygon.size() < 3)
         {
             polygon = rectanglePoints(bbox);

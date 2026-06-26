@@ -1,5 +1,5 @@
 # 设置 Qt 的 cmake 文件目录
-set(Qt6_ROOT "E:/Softwares/Qt/6.7.2/msvc2019_64")
+set(Qt6_ROOT "D:/Software/Qt6/6.6.2/msvc2019_64")
 set(Qt6_CMAKE_DIR  "${Qt6_ROOT}/lib/cmake")
 set(Qt6_DIR  "${Qt6_CMAKE_DIR}/Qt6")
 set(Qt6QmlTools_DIR  "${Qt6_CMAKE_DIR}/Qt6QmlTools")
@@ -7,7 +7,7 @@ set(QT_QML_IMPORT_DIR "${Qt6_ROOT}/qml")
 
 
 # 寻找Qt6的组件
-find_package(Qt6  REQUIRED COMPONENTS Core Gui Quick Widgets Charts)
+find_package(Qt6  REQUIRED COMPONENTS Core Gui Quick Widgets Charts Network)
 
 # 寻找Qt6的测试组件
 find_package(Qt6  REQUIRED COMPONENTS QuickTest)

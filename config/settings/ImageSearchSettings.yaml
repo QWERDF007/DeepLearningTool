@@ -53,6 +53,7 @@ ImageSearchSettings:
       value: layer4
       value_type: string
       control_type: combo
+      options_key_field: model
       options_map:
         resnet18: [layer1, layer2, layer3, layer4]
         resnet34: [layer1, layer2, layer3, layer4]

@@ -15,6 +15,7 @@
 #include <QObject>
 #include <QTimer>
 #include <QtQml>
+#include <string_view>
 
 namespace dltool::database {
 class SettingsDataBase;
@@ -76,64 +77,81 @@ public:
     Q_INVOKABLE bool autoSaveEnabled() const;
 
     /**
-     * @brief 根据访问器路径获取设置对象。
-     * @param accessor_path 访问器路径，例如 advanced.imageSearch。
-     * @return 找到时返回 QObject 指针，否则返回 nullptr。
-     */
-    Q_INVOKABLE QObject *settingsObject(const QString &accessor_path) const;
-
-    /**
      * @brief 根据访问器枚举键获取设置对象。
-     * @param accessor_key SettingsAccessor 对应的整数键。
+     * @param accessor_key 生成 SettingsAccessor 对应的整数键。
      * @return 找到时返回 QObject 指针，否则返回 nullptr。
      */
     Q_INVOKABLE QObject *settingsObjectFor(int accessor_key) const;
 
     /**
-     * @brief 读取指定访问器路径下的属性值。
-     * @param accessor_path 访问器路径。
-     * @param property_name 属性名。
-     * @param fallback 属性不存在时返回的备用值。
-     * @return 属性值或备用值。
-     */
-    Q_INVOKABLE QVariant value(const QString &accessor_path, const QString &property_name,
-                               const QVariant &fallback = {}) const;
-
-    /**
-     * @brief 通过访问器枚举键读取属性值。
-     * @param accessor_key SettingsAccessor 对应的整数键。
-     * @param property_name 属性名。
-     * @param fallback 属性不存在时返回的备用值。
-     * @return 属性值或备用值。
-     */
-    Q_INVOKABLE QVariant valueFor(int accessor_key, const QString &property_name, const QVariant &fallback = {}) const;
-
-    /**
      * @brief 通过访问器键和字段键读取属性值。
-     * @param accessor_key SettingsAccessor 对应的整数键。
-     * @param field_key SettingsFieldKey 对应的整数键。
+     * @param accessor_key 生成 SettingsAccessor 对应的整数键。
+     * @param field_key 对应访问器的生成字段枚举整数值。
      * @param fallback 属性不存在时返回的备用值。
      * @return 属性值或备用值。
      */
     Q_INVOKABLE QVariant valueForField(int accessor_key, int field_key, const QVariant &fallback = {}) const;
 
     /**
-     * @brief 设置指定访问器路径下的属性值。
-     * @param accessor_path 访问器路径。
-     * @param property_name 属性名。
-     * @param value 新属性值。
-     * @return 设置成功返回 true，否则返回 false。
+     * @brief 读取指定生成字段的值域范围。
+     * @param accessor_key 生成 SettingsAccessor 对应的整数键。
+     * @param field_key 对应访问器的生成字段枚举整数值。
+     * @return YAML value_range 列表；字段不存在时返回空列表。
      */
-    Q_INVOKABLE bool setValue(const QString &accessor_path, const QString &property_name, const QVariant &value);
+    Q_INVOKABLE QVariantList valueRangeForField(int accessor_key, int field_key) const;
 
     /**
-     * @brief 通过访问器枚举键设置属性值。
-     * @param accessor_key SettingsAccessor 对应的整数键。
-     * @param property_name 属性名。
-     * @param value 新属性值。
+     * @brief 通过生成设置访问器和字段英文键名读取字段值。
+     * @param accessor_key 生成访问器键。
+     * @param field_name 字段英文键名。
+     * @param fallback 字段不存在时返回的备用值。
+     * @return 字段值或备用值。
+     */
+    QVariant valueForGeneratedField(generated::AccessorKey accessor_key, std::string_view field_name,
+                                    const QVariant &fallback = {}) const;
+
+    /**
+     * @brief 通过生成字段键读取字段值。
+     * @param field_key 生成字段键，例如 generated::field::ImageSearch::ModelPath。
+     * @param fallback 字段不存在时返回的备用值。
+     * @return 字段值或备用值。
+     */
+    template<typename FieldKey>
+    QVariant valueForField(FieldKey field_key, const QVariant &fallback = {}) const
+    {
+        return valueForGeneratedField(generated::accessorFor(field_key), generated::fieldName(field_key), fallback);
+    }
+
+    /**
+     * @brief 通过生成设置访问器和字段英文键名设置字段值。
+     * @param accessor_key 生成访问器键。
+     * @param field_name 字段英文键名。
+     * @param value 新字段值。
      * @return 设置成功返回 true，否则返回 false。
      */
-    Q_INVOKABLE bool setValueFor(int accessor_key, const QString &property_name, const QVariant &value);
+    bool setGeneratedFieldValue(generated::AccessorKey accessor_key, std::string_view field_name,
+                                const QVariant &value);
+
+    /**
+     * @brief 通过生成访问器和字段枚举设置字段值。
+     * @param accessor_key 生成 SettingsAccessor 对应的整数键。
+     * @param field_key 对应访问器的生成字段枚举整数值。
+     * @param value 新字段值。
+     * @return 设置成功返回 true，否则返回 false。
+     */
+    Q_INVOKABLE bool setFieldValue(int accessor_key, int field_key, const QVariant &value);
+
+    /**
+     * @brief 通过生成字段键设置字段值。
+     * @param field_key 生成字段键，例如 generated::field::ImageSearch::FeatureName。
+     * @param value 新字段值。
+     * @return 设置成功返回 true，否则返回 false。
+     */
+    template<typename FieldKey>
+    bool setFieldValue(FieldKey field_key, const QVariant &value)
+    {
+        return setGeneratedFieldValue(generated::accessorFor(field_key), generated::fieldName(field_key), value);
+    }
 
     /**
      * @brief 设置目录模型中的字段值。
@@ -150,6 +168,13 @@ public:
      * @return 找到时返回 SettingsGroup 指针，否则返回 nullptr。
      */
     SettingsGroup *settingsGroup(const QString &accessor_path) const;
+
+    /**
+     * @brief 根据生成访问器键获取设置分组对象。
+     * @param accessor_key 生成访问器键。
+     * @return 找到时返回 SettingsGroup 指针，否则返回 nullptr。
+     */
+    SettingsGroup *settingsGroup(generated::AccessorKey accessor_key) const;
 
 private:
     /**
@@ -190,6 +215,13 @@ private:
      * @param value 新字段值。
      */
     void handleCatalogValueChanged(const QString &group_key, const QString &name, const QVariant &value);
+
+    /**
+     * @brief 根据访问器路径获取设置对象。
+     * @param accessor_path 访问器路径，例如 advanced.imageSearch。
+     * @return 找到时返回 QObject 指针，否则返回 nullptr。
+     */
+    QObject *settingsObjectByPath(const QString &accessor_path) const;
 
     /**
      * @brief 确保指定路径上的命名空间存在。

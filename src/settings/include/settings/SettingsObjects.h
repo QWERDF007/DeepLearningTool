@@ -80,22 +80,6 @@ public:
      */
     void updateFromFieldName(const QString &name, const QVariant &value);
 
-    /**
-     * @brief 获取属性值，属性不存在时返回备用值。
-     * @param property_name 属性名。
-     * @param fallback 属性不存在或值无效时返回的备用值。
-     * @return 属性值或备用值。
-     */
-    Q_INVOKABLE QVariant valueOr(const QString &property_name, const QVariant &fallback = {}) const;
-
-    /**
-     * @brief 设置指定属性的值。
-     * @param property_name 属性名。
-     * @param value 新属性值。
-     * @return 设置成功返回 true，否则返回 false。
-     */
-    Q_INVOKABLE bool setValue(const QString &property_name, const QVariant &value);
-
 protected:
     /**
      * @brief QQmlPropertyMap 属性更新回调。

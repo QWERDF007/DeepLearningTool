@@ -3,6 +3,7 @@
 #include "feature/ImageSearchDataProvider.h"
 #include "feature/Utils.h"
 #include "settings/GlobalSettings.h"
+#include "settings/SettingsValue.h"
 #include "ui/ProgressManager.h"
 
 #include <inferrt/features/ImageSearch.hpp>
@@ -24,6 +25,7 @@
 #include <map>
 #include <set>
 #include <stdexcept>
+#include <string_view>
 
 namespace dltool::feature {
 
@@ -83,25 +85,12 @@ QStringList variantListToStringList(const QVariantList &values)
     return result;
 }
 
-QString settingString(const dltool::settings::SettingsGroup *settings, const QString &property_name,
-                      const QString &fallback = {})
-{
-    return settings != nullptr ? settings->valueOr(property_name, fallback).toString().trimmed() : fallback;
-}
+using dltool::settings::settingBool;
+using dltool::settings::settingInt;
+using dltool::settings::settingString;
 
-int settingInt(const dltool::settings::SettingsGroup *settings, const QString &property_name, int fallback)
-{
-    bool      ok    = false;
-    const int value = settings != nullptr ? settings->valueOr(property_name, fallback).toInt(&ok) : fallback;
-    return ok ? value : fallback;
-}
-
-bool settingBool(const dltool::settings::SettingsGroup *settings, const QString &property_name, bool fallback)
-{
-    return settings != nullptr ? settings->valueOr(property_name, fallback).toBool() : fallback;
-}
-
-QStringList configuredFeatureNames(dltool::settings::accessor::Key accessor_key, const QString &model_name)
+QStringList configuredFeatureNames(dltool::settings::generated::AccessorKey accessor_key, std::string_view field_name,
+                                   const QString &model_name)
 {
     const QString model = model_name.trimmed();
     if (model.isEmpty())
@@ -116,8 +105,8 @@ QStringList configuredFeatureNames(dltool::settings::accessor::Key accessor_key,
     }
 
     const QVariantList options = settings->catalog()->optionsForAccessor(
-        dltool::settings::accessorPath(accessor_key),
-        dltool::settings::fieldName(dltool::settings::field::Key::FeatureName), model);
+        dltool::settings::toQString(dltool::settings::generated::accessorPath(accessor_key)),
+        dltool::settings::toQString(field_name), model);
     return variantListToStringList(options);
 }
 
@@ -469,7 +458,7 @@ bool ImageSearchController::startImageSearch(const std::vector<int64_t> &query_i
         return false;
     }
 
-    const QString settings_accessor = dltool::settings::accessorPath(dltool::settings::accessor::Key::ImageSearch);
+    const auto settings_accessor = dltool::settings::generated::AccessorKey::ImageSearch;
     if (!ensureSearchSettingsEnabled(settings_accessor, QString("图像搜索")))
     {
         return false;
@@ -544,7 +533,7 @@ bool ImageSearchController::searchLabelRois(const QVariantList &label_ids, const
         return false;
     }
 
-    const QString settings_accessor = dltool::settings::accessorPath(dltool::settings::accessor::Key::RoiSearch);
+    const auto settings_accessor = dltool::settings::generated::AccessorKey::RoiSearch;
     if (!ensureSearchSettingsEnabled(settings_accessor, QString("标注搜索")))
     {
         return false;
@@ -570,16 +559,23 @@ bool ImageSearchController::searchLabelRois(const QVariantList &label_ids, const
     if (!validateWeightsFile(request.weights_file))
         return false;
 
-    const auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(settings_accessor);
-    request.roi_config.pooled_height  = std::clamp(settingInt(settings, QStringLiteral("pooledHeight"), 7), 1, 64);
-    request.roi_config.pooled_width   = std::clamp(settingInt(settings, QStringLiteral("pooledWidth"), 7), 1, 64);
-    request.roi_config.sampling_ratio = std::clamp(settingInt(settings, QStringLiteral("samplingRatio"), -1), -1, 32);
-    request.roi_config.aligned        = settingBool(settings, QStringLiteral("aligned"), false);
-    request.roi_config.use_pca        = settingBool(settings, QStringLiteral("usePca"), false);
-    request.roi_config.pca_dim
-        = request.roi_config.use_pca ? std::clamp(settingInt(settings, QStringLiteral("pcaDim"), 0), 1, 8192) : 0;
+    namespace generated_field = dltool::settings::generated::field;
+    const auto *settings      = dltool::settings::GlobalSettings::getInstance();
+    request.roi_config.pooled_height
+        = std::clamp(settingInt(settings, generated_field::RoiSearch::PooledHeight, 7), 1, 64);
+    request.roi_config.pooled_width
+        = std::clamp(settingInt(settings, generated_field::RoiSearch::PooledWidth, 7), 1, 64);
+    request.roi_config.sampling_ratio
+        = std::clamp(settingInt(settings, generated_field::RoiSearch::SamplingRatio, -1), -1, 32);
+    request.roi_config.aligned = settingBool(settings, generated_field::RoiSearch::Aligned, false);
+    request.roi_config.use_pca = settingBool(settings, generated_field::RoiSearch::UsePca, false);
+    request.roi_config.pca_dim = request.roi_config.use_pca
+                                   ? std::clamp(settingInt(settings, generated_field::RoiSearch::PcaDim, 0), 1, 8192)
+                                   : 0;
 
-    const QStringList spatial_features = configuredFeatureNames(dltool::settings::accessor::Key::RoiSearch, model_name);
+    const QStringList spatial_features = configuredFeatureNames(
+        dltool::settings::generated::AccessorKey::RoiSearch,
+        dltool::settings::generated::fieldName(generated_field::RoiSearch::FeatureName), model_name);
     if (spatial_features.isEmpty())
     {
         setLastError(QString("标注搜索未在配置中找到模型 %1 的空间特征层").arg(model_name));
@@ -589,9 +585,8 @@ bool ImageSearchController::searchLabelRois(const QVariantList &label_ids, const
     {
         const QString effective_feature_name = spatial_features.last();
         request.roi_config.feature_name      = effective_feature_name.toStdString();
-        dltool::settings::GlobalSettings::getInstance()->setValue(
-            dltool::settings::accessorPath(dltool::settings::accessor::Key::RoiSearch), QStringLiteral("featureName"),
-            effective_feature_name);
+        dltool::settings::GlobalSettings::getInstance()->setFieldValue(generated_field::RoiSearch::FeatureName,
+                                                                       effective_feature_name);
     }
 
     collectGalleryRois(request, dataset_ids_set);
@@ -644,15 +639,33 @@ bool ImageSearchController::validateWeightsFile(const QString &path)
     return true;
 }
 
-bool ImageSearchController::ensureSearchSettingsEnabled(const QString &accessor_path, const QString &display_name)
+bool ImageSearchController::ensureSearchSettingsEnabled(const dltool::settings::generated::AccessorKey accessor_key,
+                                                        const QString                                 &display_name)
 {
-    const auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(accessor_path);
-    if (settings == nullptr)
+    namespace generated_field = dltool::settings::generated::field;
+
+    const auto *settings = dltool::settings::GlobalSettings::getInstance();
+    if (settings == nullptr || settings->settingsGroup(accessor_key) == nullptr)
     {
         setLastError(QString("%1设置未加载").arg(display_name));
         return false;
     }
-    if (!settingBool(settings, QStringLiteral("enabled"), true))
+
+    bool enabled = true;
+    switch (accessor_key)
+    {
+    case dltool::settings::generated::AccessorKey::ImageSearch:
+        enabled = settingBool(settings, generated_field::ImageSearch::Enabled, true);
+        break;
+    case dltool::settings::generated::AccessorKey::RoiSearch:
+        enabled = settingBool(settings, generated_field::RoiSearch::Enabled, true);
+        break;
+    default:
+        enabled = true;
+        break;
+    }
+
+    if (!enabled)
     {
         setLastError(QString("%1未启用").arg(display_name));
         return false;
@@ -660,56 +673,80 @@ bool ImageSearchController::ensureSearchSettingsEnabled(const QString &accessor_
     return true;
 }
 
-ImageSearchController::SearchRequest ImageSearchController::buildSearchRequest(const QString &accessor_path)
+ImageSearchController::SearchRequest ImageSearchController::buildSearchRequest(
+    const dltool::settings::generated::AccessorKey accessor_key)
 {
     const auto effective = [](const QString &value, const QString &fallback) -> QString
     {
         return value.trimmed().isEmpty() ? fallback : value.trimmed();
     };
 
-    const auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(accessor_path);
+    const auto *settings = dltool::settings::GlobalSettings::getInstance();
 
-    const QString model_name   = settingString(settings, QStringLiteral("model"));
-    const QString weights_file = settingString(settings, QStringLiteral("modelPath"));
-    const QString feature_name = settingString(settings, QStringLiteral("featureName"));
-
-    const QString norm = settingString(settings, QStringLiteral("norm"), QStringLiteral("l2"));
-    const QString preprocess_backend
-        = settingString(settings, QStringLiteral("preprocessBackend"), QStringLiteral("cpu"));
-    const QString faiss_backend = settingString(settings, QStringLiteral("faissBackend"), QStringLiteral("cpu"));
-    const QString index_storage = settingString(settings, QStringLiteral("indexStorage"), QStringLiteral("ram"));
-    const QString model_backend = settingString(settings, QStringLiteral("modelBackend"), QStringLiteral("tensorrt"));
-    const QString model_device  = settingString(settings, QStringLiteral("modelDevice"), QStringLiteral("gpu"));
-
-    const QString effective_norm    = effective(norm, QStringLiteral("l2")).toLower();
-    QString       effective_faiss   = effective(faiss_backend, QStringLiteral("cpu")).toLower();
-    QString       effective_storage = effective(index_storage, QStringLiteral("ram")).toLower();
-    if (effective_faiss == QStringLiteral("gpu"))
-        effective_storage = QStringLiteral("ram");
-
-    const QString cleaned_weights_file = weights_file.trimmed();
-
-    SearchRequest req;
-    req.weights_file  = cleaned_weights_file.isEmpty() ? QString() : QFileInfo(cleaned_weights_file).absoluteFilePath();
-    req.rebuild_index = settingBool(settings, QStringLiteral("rebuildIndex"), false);
-    req.top_k         = std::max(1, settingInt(settings, QStringLiteral("topK"), 5));
-
-    auto apply_common_config = [&](irt::features::ImageSearchConfig &config)
+    auto readRequest
+        = [&](const auto model_key, const auto model_path_key, const auto feature_name_key, const auto norm_key,
+              const auto preprocess_backend_key, const auto faiss_backend_key, const auto index_storage_key,
+              const auto model_backend_key, const auto model_device_key, const auto rebuild_index_key,
+              const auto top_k_key, const auto model_batch_size_key) -> SearchRequest
     {
-        config.model_name         = model_name.toStdString();
-        config.feature_name       = feature_name.toStdString();
-        config.preprocess_backend = parsePreprocessBackend(preprocess_backend);
-        config.norm               = parseNorm(effective_norm);
-        config.faiss_backend      = parseFaissBackend(effective_faiss);
-        config.index_storage      = parseIndexStorage(effective_storage);
-        config.model_batch_size
-            = static_cast<size_t>(std::max(1, settingInt(settings, QStringLiteral("modelBatchSize"), 1)));
-        config.model_backend = parseModelBackend(model_backend);
-        config.model_device  = parseModelDevice(model_device);
+        const QString model_name   = settingString(settings, model_key);
+        const QString weights_file = settingString(settings, model_path_key);
+        const QString feature_name = settingString(settings, feature_name_key);
+
+        const QString norm               = settingString(settings, norm_key, QStringLiteral("l2"));
+        const QString preprocess_backend = settingString(settings, preprocess_backend_key, QStringLiteral("cpu"));
+        const QString faiss_backend      = settingString(settings, faiss_backend_key, QStringLiteral("cpu"));
+        const QString index_storage      = settingString(settings, index_storage_key, QStringLiteral("ram"));
+        const QString model_backend      = settingString(settings, model_backend_key, QStringLiteral("tensorrt"));
+        const QString model_device       = settingString(settings, model_device_key, QStringLiteral("gpu"));
+
+        const QString effective_norm    = effective(norm, QStringLiteral("l2")).toLower();
+        QString       effective_faiss   = effective(faiss_backend, QStringLiteral("cpu")).toLower();
+        QString       effective_storage = effective(index_storage, QStringLiteral("ram")).toLower();
+        if (effective_faiss == QStringLiteral("gpu"))
+            effective_storage = QStringLiteral("ram");
+
+        const QString cleaned_weights_file = weights_file.trimmed();
+
+        SearchRequest req;
+        req.weights_file
+            = cleaned_weights_file.isEmpty() ? QString() : QFileInfo(cleaned_weights_file).absoluteFilePath();
+        req.rebuild_index = settingBool(settings, rebuild_index_key, false);
+        req.top_k         = std::max(1, settingInt(settings, top_k_key, 5));
+
+        auto apply_common_config = [&](irt::features::ImageSearchConfig &config)
+        {
+            config.model_name         = model_name.toStdString();
+            config.feature_name       = feature_name.toStdString();
+            config.preprocess_backend = parsePreprocessBackend(preprocess_backend);
+            config.norm               = parseNorm(effective_norm);
+            config.faiss_backend      = parseFaissBackend(effective_faiss);
+            config.index_storage      = parseIndexStorage(effective_storage);
+            config.model_batch_size   = static_cast<size_t>(std::max(1, settingInt(settings, model_batch_size_key, 1)));
+            config.model_backend      = parseModelBackend(model_backend);
+            config.model_device       = parseModelDevice(model_device);
+        };
+        apply_common_config(req.image_config);
+        apply_common_config(req.roi_config);
+        return req;
     };
-    apply_common_config(req.image_config);
-    apply_common_config(req.roi_config);
-    return req;
+
+    namespace generated_field = dltool::settings::generated::field;
+    if (accessor_key == dltool::settings::generated::AccessorKey::RoiSearch)
+    {
+        return readRequest(generated_field::RoiSearch::Model, generated_field::RoiSearch::ModelPath,
+                           generated_field::RoiSearch::FeatureName, generated_field::RoiSearch::Norm,
+                           generated_field::RoiSearch::PreprocessBackend, generated_field::RoiSearch::FaissBackend,
+                           generated_field::RoiSearch::IndexStorage, generated_field::RoiSearch::ModelBackend,
+                           generated_field::RoiSearch::ModelDevice, generated_field::RoiSearch::RebuildIndex,
+                           generated_field::RoiSearch::TopK, generated_field::RoiSearch::ModelBatchSize);
+    }
+    return readRequest(generated_field::ImageSearch::Model, generated_field::ImageSearch::ModelPath,
+                       generated_field::ImageSearch::FeatureName, generated_field::ImageSearch::Norm,
+                       generated_field::ImageSearch::PreprocessBackend, generated_field::ImageSearch::FaissBackend,
+                       generated_field::ImageSearch::IndexStorage, generated_field::ImageSearch::ModelBackend,
+                       generated_field::ImageSearch::ModelDevice, generated_field::ImageSearch::RebuildIndex,
+                       generated_field::ImageSearch::TopK, generated_field::ImageSearch::ModelBatchSize);
 }
 
 // ────────────────────────────────────────────────────────────
@@ -810,16 +847,15 @@ void ImageSearchController::collectQueryRois(SearchRequest &request, const std::
 
 QString ImageSearchController::computeIndexPath(const SearchRequest &request) const
 {
+    namespace generated_field = dltool::settings::generated::field;
+    const auto *settings      = dltool::settings::GlobalSettings::getInstance();
+
     if (request.mode == SearchRequest::Mode::Roi)
     {
         const QString model_name   = QString::fromStdString(request.roi_config.model_name);
         const QString feature_name = QString::fromStdString(request.roi_config.feature_name);
         const QString index_dir    = indexDirectoryForProject(
-            data_provider_->databasePath(),
-            dltool::settings::GlobalSettings::getInstance()
-                ->value(dltool::settings::accessorPath(dltool::settings::accessor::Key::RoiSearch),
-                           QStringLiteral("indexDirectory"))
-                .toString(),
+            data_provider_->databasePath(), settingString(settings, generated_field::RoiSearch::IndexDirectory),
             QStringLiteral("roi_search"));
 
         return roiIndexPathForRequest(index_dir, model_name, feature_name);
@@ -828,11 +864,7 @@ QString ImageSearchController::computeIndexPath(const SearchRequest &request) co
     const QString model_name   = QString::fromStdString(request.image_config.model_name);
     const QString feature_name = QString::fromStdString(request.image_config.feature_name);
     const QString index_dir    = indexDirectoryForProject(
-        data_provider_->databasePath(),
-        dltool::settings::GlobalSettings::getInstance()
-            ->value(dltool::settings::accessorPath(dltool::settings::accessor::Key::ImageSearch),
-                       QStringLiteral("indexDirectory"))
-            .toString(),
+        data_provider_->databasePath(), settingString(settings, generated_field::ImageSearch::IndexDirectory),
         QStringLiteral("image_search"));
 
     return indexPathForRequest(index_dir, model_name, feature_name);

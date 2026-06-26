@@ -124,6 +124,14 @@ dependencies:
     windows:
       - openvino*.dll
 
+  - name: openvino-debug
+    config: debug
+    root: D:/Software/openvino_toolkit/runtime/bin/intel64/Debug
+    destinations:
+      - build/bin
+    windows:
+      - openvinod.dll
+
   - name: tbb
     cmake: cmake/ConfigInferRT.cmake
     root: INFERRT_BIN_DIR

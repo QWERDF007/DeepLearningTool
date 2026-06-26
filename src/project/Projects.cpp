@@ -26,8 +26,7 @@ int configuredMaxRecentProjects()
 {
     bool ok                  = false;
     int  max_recent_projects = dltool::settings::GlobalSettings::getInstance()
-                                  ->valueForField(static_cast<int>(dltool::settings::accessor::Key::Software),
-                                                  static_cast<int>(dltool::settings::field::Key::MaxRecentProjects),
+                                  ->valueForField(dltool::settings::generated::field::Software::MaxRecentProjects,
                                                   kDefaultMaxRecentProjects)
                                   .toInt(&ok);
     if (!ok)

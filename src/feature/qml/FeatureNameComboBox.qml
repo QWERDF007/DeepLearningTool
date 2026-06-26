@@ -10,9 +10,11 @@ QuiComboBox {
 
     property var imageSearch: null
     property int settingsAccessor: roiOnly ? SettingsAccessor.RoiSearch : SettingsAccessor.ImageSearch
+    property int modelField: roiOnly ? RoiSearchField.Model : ImageSearchField.Model
+    property int featureNameField: roiOnly ? RoiSearchField.FeatureName : ImageSearchField.FeatureName
     property var searchSettings: GlobalSettings.settingsObjectFor(settingsAccessor)
-    property string modelName: searchSettings ? searchSettings.model : ""
-    property string featureName: searchSettings ? searchSettings.featureName : ""
+    property string modelName: GlobalSettings.valueForField(settingsAccessor, modelField, "")
+    property string featureName: GlobalSettings.valueForField(settingsAccessor, featureNameField, "")
     property var featureNames: []
     property bool roiOnly: false
 
@@ -30,6 +32,8 @@ QuiComboBox {
     Connections {
         target: GlobalSettings.catalog
         function onValueChanged() {
+            control.modelName = GlobalSettings.valueForField(control.settingsAccessor, control.modelField, "")
+            control.featureName = GlobalSettings.valueForField(control.settingsAccessor, control.featureNameField, "")
             control.refreshFeatureNames()
         }
     }
@@ -69,7 +73,7 @@ QuiComboBox {
     }
 
     function yamlFeatureNames() {
-        let names = GlobalSettings.catalog.optionsForAccessorKey(settingsAccessor, SettingsFieldKey.FeatureName, modelName)
+        let names = GlobalSettings.catalog.optionsForField(settingsAccessor, featureNameField, modelName)
         return names ? names : []
     }
 

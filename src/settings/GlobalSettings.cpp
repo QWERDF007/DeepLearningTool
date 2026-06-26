@@ -144,7 +144,7 @@ bool GlobalSettings::autoSaveEnabled() const
     return auto_save_enabled_;
 }
 
-QObject *GlobalSettings::settingsObject(const QString &accessor_path) const
+QObject *GlobalSettings::settingsObjectByPath(const QString &accessor_path) const
 {
     if (SettingsGroup *group = settingsGroup(accessor_path); group != nullptr)
         return group;
@@ -153,40 +153,69 @@ QObject *GlobalSettings::settingsObject(const QString &accessor_path) const
 
 QObject *GlobalSettings::settingsObjectFor(const int accessor_key) const
 {
-    return settingsObject(accessorPath(static_cast<accessor::Key>(accessor_key)));
-}
-
-QVariant GlobalSettings::value(const QString &accessor_path, const QString &property_name,
-                               const QVariant &fallback) const
-{
-    const SettingsGroup *group = settingsGroup(accessor_path);
-    return group != nullptr ? group->valueOr(property_name, fallback) : fallback;
-}
-
-QVariant GlobalSettings::valueFor(const int accessor_key, const QString &property_name, const QVariant &fallback) const
-{
-    return value(accessorPath(static_cast<accessor::Key>(accessor_key)), property_name, fallback);
+    return settingsObjectByPath(toQString(generated::accessorPath(static_cast<generated::AccessorKey>(accessor_key))));
 }
 
 QVariant GlobalSettings::valueForField(const int accessor_key, const int field_key, const QVariant &fallback) const
 {
-    const QString             accessor_path = accessorPath(static_cast<accessor::Key>(accessor_key));
+    const generated::AccessorKey generated_accessor = static_cast<generated::AccessorKey>(accessor_key);
+    const QString                accessor_path      = toQString(generated::accessorPath(generated_accessor));
+    const SettingsFieldModel    *model
+        = settings_catalog_ != nullptr ? settings_catalog_->groupForAccessor(accessor_path) : nullptr;
+    if (model == nullptr)
+        return fallback;
+
+    const QVariant result = model->valueForName(toQString(generated::fieldName(generated_accessor, field_key)));
+    return result.isValid() ? result : fallback;
+}
+
+QVariantList GlobalSettings::valueRangeForField(const int accessor_key, const int field_key) const
+{
+    const generated::AccessorKey generated_accessor = static_cast<generated::AccessorKey>(accessor_key);
+    const QString                accessor_path      = toQString(generated::accessorPath(generated_accessor));
+    const SettingsFieldModel    *model
+        = settings_catalog_ != nullptr ? settings_catalog_->groupForAccessor(accessor_path) : nullptr;
+    if (model == nullptr)
+        return {};
+
+    return model->fieldMapForName(toQString(generated::fieldName(generated_accessor, field_key)))
+        .value(QStringLiteral("value_range"))
+        .toList();
+}
+
+QVariant GlobalSettings::valueForGeneratedField(const generated::AccessorKey accessor_key,
+                                                const std::string_view field_name, const QVariant &fallback) const
+{
+    const QString             accessor_path = toQString(generated::accessorPath(accessor_key));
     const SettingsFieldModel *model
         = settings_catalog_ != nullptr ? settings_catalog_->groupForAccessor(accessor_path) : nullptr;
-    const QString property_name
-        = model != nullptr ? model->propertyForName(fieldName(static_cast<field::Key>(field_key))) : QString();
-    return property_name.isEmpty() ? fallback : value(accessor_path, property_name, fallback);
+    if (model == nullptr)
+        return fallback;
+
+    const QVariant value = model->valueForName(toQString(field_name));
+    return value.isValid() ? value : fallback;
 }
 
-bool GlobalSettings::setValue(const QString &accessor_path, const QString &property_name, const QVariant &value)
+bool GlobalSettings::setGeneratedFieldValue(const generated::AccessorKey accessor_key,
+                                            const std::string_view field_name, const QVariant &value)
 {
-    SettingsGroup *group = settingsGroup(accessor_path);
-    return group != nullptr && group->setValue(property_name, value);
+    const QString       accessor_path = toQString(generated::accessorPath(accessor_key));
+    SettingsFieldModel *model
+        = settings_catalog_ != nullptr ? settings_catalog_->groupForAccessor(accessor_path) : nullptr;
+    return model != nullptr && model->setValueForName(toQString(field_name), value);
 }
 
-bool GlobalSettings::setValueFor(const int accessor_key, const QString &property_name, const QVariant &value)
+bool GlobalSettings::setFieldValue(const int accessor_key, const int field_key, const QVariant &value)
 {
-    return setValue(accessorPath(static_cast<accessor::Key>(accessor_key)), property_name, value);
+    const generated::AccessorKey generated_accessor = static_cast<generated::AccessorKey>(accessor_key);
+    const QString                name               = toQString(generated::fieldName(generated_accessor, field_key));
+    if (name.isEmpty())
+        return false;
+
+    const QString       accessor_path = toQString(generated::accessorPath(generated_accessor));
+    SettingsFieldModel *model
+        = settings_catalog_ != nullptr ? settings_catalog_->groupForAccessor(accessor_path) : nullptr;
+    return model != nullptr && model->setValueForName(name, value);
 }
 
 bool GlobalSettings::setCatalogValue(const QString &group_key, const QString &name, const QVariant &value)
@@ -198,6 +227,11 @@ bool GlobalSettings::setCatalogValue(const QString &group_key, const QString &na
 SettingsGroup *GlobalSettings::settingsGroup(const QString &accessor_path) const
 {
     return groups_by_accessor_path_.value(accessor_path, nullptr);
+}
+
+SettingsGroup *GlobalSettings::settingsGroup(const generated::AccessorKey accessor_key) const
+{
+    return settingsGroup(toQString(generated::accessorPath(accessor_key)));
 }
 
 void GlobalSettings::scheduleSave()
@@ -254,11 +288,11 @@ void GlobalSettings::rebuildSettingsObjects()
 
 void GlobalSettings::applyAutoSaveSettings()
 {
+    namespace generated_field = generated::field;
+
     bool ok = false;
     int  interval_seconds
-        = valueForField(static_cast<int>(accessor::Key::Software), static_cast<int>(field::Key::AutoSaveInterval),
-                        kDefaultAutoSaveIntervalSeconds)
-              .toInt(&ok);
+        = valueForField(generated_field::Software::AutoSaveInterval, kDefaultAutoSaveIntervalSeconds).toInt(&ok);
     if (!ok || interval_seconds <= 0)
         interval_seconds = kDefaultAutoSaveIntervalSeconds;
 
@@ -267,27 +301,29 @@ void GlobalSettings::applyAutoSaveSettings()
     if (save_timer_ != nullptr)
         save_timer_->setInterval(interval_seconds * 1000);
 
-    auto_save_enabled_ = valueForField(static_cast<int>(accessor::Key::Software),
-                                       static_cast<int>(field::Key::AutoSaveEnabled), auto_save_enabled_)
-                             .toBool();
+    auto_save_enabled_ = valueForField(generated_field::Software::AutoSaveEnabled, auto_save_enabled_).toBool();
 }
 
 void GlobalSettings::handleCatalogValueChanged(const QString &group_key, const QString &name, const QVariant &value)
 {
+    namespace generated_field = generated::field;
+
     SettingsGroup *group = groups_by_key_.value(group_key, nullptr);
     if (group != nullptr)
         group->updateFromFieldName(name, value);
 
     const SettingsFieldModel *software_model
-        = settings_catalog_ != nullptr ? settings_catalog_->groupForAccessor(accessorPath(accessor::Key::Software))
-                                       : nullptr;
+        = settings_catalog_ != nullptr
+            ? settings_catalog_->groupForAccessor(toQString(generated::accessorPath(generated::AccessorKey::Software)))
+            : nullptr;
     const bool auto_save_setting_changed
         = software_model != nullptr && group_key == software_model->groupKey()
-       && (name == fieldName(field::Key::AutoSaveInterval) || name == fieldName(field::Key::AutoSaveEnabled));
+       && (name == toQString(generated::fieldName(generated_field::Software::AutoSaveInterval))
+           || name == toQString(generated::fieldName(generated_field::Software::AutoSaveEnabled)));
     if (auto_save_setting_changed)
     {
         applyAutoSaveSettings();
-        if (!auto_save_enabled_ || name == fieldName(field::Key::AutoSaveEnabled))
+        if (!auto_save_enabled_ || name == toQString(generated::fieldName(generated_field::Software::AutoSaveEnabled)))
         {
             save();
             return;

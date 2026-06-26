@@ -30,21 +30,22 @@ namespace dltool::settings {
  */
 struct SETTINGS_API SettingsField
 {
-    QString      name_en;          ///< 英文键名，用于配置和代码侧索引字段。
-    QString      name_cn;          ///< 中文显示名，用于界面展示。
-    QString      property_name;    ///< 绑定到外部对象或 QML 的属性名.
-    QVariant     value;            ///< 当前值.
-    QVariant     default_value;    ///< 默认值.
-    QString      value_type;       ///< 值类型，例如 string、bool、int、double.
-    QVariantList value_range;      ///< 值域范围。
-    QString      control_type;     ///< 控件类型，例如 text、slider、combo。
-    QVariantList options;          ///< 选项列表。
-    QVariantMap  options_map;      ///< 选项键值映射。
-    QVariantMap  sidebar;          ///< 侧边栏展示配置。
-    QString      section;          ///< 所属分区名称。
-    QString      description;      ///< 说明文本。
-    bool         visible{true};    ///< 是否在界面中显示。
-    int          ordinal_index{0}; ///< 分组内排序索引。
+    QString      name_en;           ///< 英文键名，用于配置和代码侧索引字段。
+    QString      name_cn;           ///< 中文显示名，用于界面展示。
+    QString      property_name;     ///< 绑定到外部对象或 QML 的属性名.
+    QVariant     value;             ///< 当前值.
+    QVariant     default_value;     ///< 默认值.
+    QString      value_type;        ///< 值类型，例如 string、bool、int、double.
+    QVariantList value_range;       ///< 值域范围。
+    QString      control_type;      ///< 控件类型，例如 text、slider、combo。
+    QVariantList options;           ///< 选项列表。
+    QVariantMap  options_map;       ///< 选项键值映射。
+    QString      options_key_field; ///< options_map 使用的键字段 name_en。
+    QVariantMap  sidebar;           ///< 侧边栏展示配置。
+    QString      section;           ///< 所属分区名称。
+    QString      description;       ///< 说明文本。
+    bool         visible{true};     ///< 是否在界面中显示。
+    int          ordinal_index{0};  ///< 分组内排序索引。
 };
 
 /**
@@ -83,6 +84,7 @@ public:
         ControlTypeRole,               ///< 控件类型。
         OptionsRole,                   ///< 选项列表。
         OptionsMapRole,                ///< 选项映射。
+        OptionsKeyFieldRole,           ///< 动态选项键字段。
         SidebarRole,                   ///< 侧边栏配置。
         SectionRole,                   ///< 分区名称。
         DescriptionRole,               ///< 描述文本。
@@ -227,7 +229,7 @@ public:
      * @param property_name 属性名。
      * @return 字段值；未找到时返回空 QVariant。
      */
-    Q_INVOKABLE QVariant valueForProperty(const QString &property_name) const;
+    QVariant valueForProperty(const QString &property_name) const;
 
     /**
      * @brief 通过英文键名设置字段值。
@@ -243,21 +245,14 @@ public:
      * @param value 新字段值。
      * @return 设置成功返回 true，否则返回 false。
      */
-    Q_INVOKABLE bool setValueForProperty(const QString &property_name, const QVariant &value);
+    bool setValueForProperty(const QString &property_name, const QVariant &value);
 
     /**
      * @brief 通过英文键名获取属性名。
      * @param name 字段英文键名。
      * @return 属性名；未找到时返回空字符串。
      */
-    Q_INVOKABLE QString propertyForName(const QString &name) const;
-
-    /**
-     * @brief 通过属性名获取英文键名。
-     * @param property_name 属性名。
-     * @return 字段英文键名；未找到时返回空字符串。
-     */
-    Q_INVOKABLE QString nameForProperty(const QString &property_name) const;
+    QString propertyForName(const QString &name) const;
 
     /**
      * @brief 获取指定行的字段字典。
@@ -265,6 +260,13 @@ public:
      * @return 字段映射；行号无效时返回空映射。
      */
     Q_INVOKABLE QVariantMap fieldMap(int row) const;
+
+    /**
+     * @brief 通过英文键名获取字段字典。
+     * @param name 字段英文键名。
+     * @return 字段映射；字段不存在时返回空映射。
+     */
+    Q_INVOKABLE QVariantMap fieldMapForName(const QString &name) const;
 
     /**
      * @brief 获取某个字段在指定键下的选项列表。
@@ -476,13 +478,13 @@ public:
                                                 const QString &key) const;
 
     /**
-     * @brief 通过枚举键获取字段选项列表。
-     * @param accessor_key SettingsAccessor 对应的整数键。
-     * @param field_key SettingsFieldKey 对应的整数键。
+     * @brief 通过生成访问器和字段枚举获取字段选项列表。
+     * @param accessor_key 生成 SettingsAccessor 对应的整数键。
+     * @param field_key 对应访问器的生成字段枚举整数值。
      * @param key 选项映射键。
      * @return 选项列表；键无效或配置不存在时返回空列表。
      */
-    Q_INVOKABLE QVariantList optionsForAccessorKey(int accessor_key, int field_key, const QString &key) const;
+    Q_INVOKABLE QVariantList optionsForField(int accessor_key, int field_key, const QString &key) const;
 
     /**
      * @brief 获取指定侧边栏关键字的字段列表。

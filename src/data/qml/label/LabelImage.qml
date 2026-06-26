@@ -14,7 +14,8 @@ Item {
     property bool needFitInView: false
     property bool isDragging: mouseArea.drag.active
     property bool scalable: true
-    readonly property var uiSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Ui)
+    property real imageBrightness: 0.0
+    property real imageContrast: 0.0
 
     property alias image: image
     
@@ -85,8 +86,8 @@ Item {
         y: image.y
         scale: image.scale
         transformOrigin: Item.TopLeft
-        brightness: uiSettings.imageBrightness
-        contrast: uiSettings.imageContrast
+        brightness: labelImage.imageBrightness
+        contrast: labelImage.imageContrast
     }
     
     MouseArea {
@@ -201,5 +202,18 @@ Item {
         }
     }
     Component.onCompleted: {
+        refreshSettings()
+    }
+
+    function refreshSettings() {
+        imageBrightness = GlobalSettings.valueForField(SettingsAccessor.Ui, UiField.Brightness, 0.0)
+        imageContrast = GlobalSettings.valueForField(SettingsAccessor.Ui, UiField.Contrast, 0.0)
+    }
+
+    Connections {
+        target: GlobalSettings.catalog
+        function onValueChanged() {
+            labelImage.refreshSettings()
+        }
     }
 }

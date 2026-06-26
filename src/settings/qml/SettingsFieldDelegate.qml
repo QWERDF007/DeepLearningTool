@@ -27,6 +27,7 @@ Item {
     property string controlType: String(model.controlType || "").toLowerCase()
     property var valueRange: model.valueRange || []
     property var configuredOptions: model.options || []
+    property string optionsKeyField: String(model.optionsKeyField || "")
     property var currentValue: model.value
 
     visible: model.visible === undefined ? true : model.visible
@@ -87,10 +88,12 @@ Item {
     function optionValues() {
         let values = []
         if (fieldModel && hasOptionsMap()) {
-            let modelName = String(fieldModel.valueForName("model") || "")
-            let mapped = fieldModel.optionsForKey(nameEn, modelName)
-            if (mapped && mapped.length > 0) {
-                values = mapped
+            if (root.optionsKeyField !== "") {
+                let optionsKey = String(fieldModel.valueForName(root.optionsKeyField) || "")
+                let mapped = fieldModel.optionsForKey(nameEn, optionsKey)
+                if (mapped && mapped.length > 0) {
+                    values = mapped
+                }
             }
         }
         if (values.length === 0 && configuredOptions) {
@@ -246,7 +249,7 @@ Item {
     Connections {
         target: root.fieldModel
         function onValueChanged(changedName, value) {
-            if (changedName === "model" || changedName === root.nameEn) {
+            if (changedName === root.optionsKeyField || changedName === root.nameEn) {
                 root.refreshEditor()
             }
         }

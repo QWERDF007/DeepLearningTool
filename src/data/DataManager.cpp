@@ -104,7 +104,7 @@ void DataManager::init(const int method)
     smart_annotation_  = new dltool::feature::SmartAnnotationController(this);
     few_shot_learning_ = new dltool::feature::FewShotLearningController(this, this);
     if (auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(
-            dltool::settings::accessorPath(dltool::settings::accessor::Key::SmartAnnotation)))
+            dltool::settings::generated::AccessorKey::SmartAnnotation))
     {
         connect(settings, &dltool::settings::SettingsGroup::valueChanged, smart_annotation_,
                 &dltool::feature::SmartAnnotationController::clearCache);

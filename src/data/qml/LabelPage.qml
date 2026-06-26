@@ -22,8 +22,8 @@ Rectangle {
     property DataManager dataManager
     readonly property var smartAnnotationController: dataManager ? dataManager.smartAnnotation : null
     readonly property bool smartAnnotationLoading: smartAnnotationController ? smartAnnotationController.loadingModel : false
-    readonly property var fewShotLearningSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.FewShotLearning)
-    readonly property bool fewShotLearningAvailable: dataManager !== null && fewShotLearningSettings.enabled
+    property bool fewShotLearningEnabled: true
+    readonly property bool fewShotLearningAvailable: dataManager !== null && fewShotLearningEnabled
 
     QuiSplitView {
         anchors.fill: parent
@@ -206,6 +206,22 @@ Rectangle {
                 SplitView.preferredHeight: parent.height / 4 - 20
                 dataManager: labelPage.dataManager
             }
+        }
+    }
+
+    function refreshSettings() {
+        fewShotLearningEnabled = GlobalSettings.valueForField(
+                    SettingsAccessor.FewShotLearning,
+                    FewShotLearningField.Enabled,
+                    true)
+    }
+
+    Component.onCompleted: refreshSettings()
+
+    Connections {
+        target: GlobalSettings.catalog
+        function onValueChanged() {
+            labelPage.refreshSettings()
         }
     }
 }

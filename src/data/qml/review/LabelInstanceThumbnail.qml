@@ -19,8 +19,11 @@ Item {
     property int labelId: -1  // 标注 ID
     property var labelData: null  // 标注数据 {x, y, width, height}
     property color borderColor: QuiColor.Transparent  // 边框颜色（从外部传入）
-    readonly property var dataSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Data)
-    readonly property var uiSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.Ui)
+    property int margin: 10
+    property int borderWidth: 2
+    property real padding: 0.1
+    property real imageBrightness: 0.0
+    property real imageContrast: 0.0
     
     // 只读属性
     readonly property bool imageLoaded: thumbnail.status === Image.Ready
@@ -30,11 +33,6 @@ Item {
                                                 && labelData.points !== undefined
                                                 && labelData.points !== null
                                                 && labelData.points.length >= 3
-    
-    // 配置属性（从 GlobalSettings 获取）
-    readonly property int margin: dataSettings.thumbnailMargin
-    readonly property int borderWidth: dataSettings.labelBorderWidth
-    readonly property real padding: dataSettings.labelThumbnailBorderPadding
     
     // 极端尺寸处理常量
     readonly property real minVisibleSize: 4.0  // 最小可见尺寸（像素）
@@ -84,7 +82,7 @@ Item {
         // URL 包含 padding 查询参数以支持边界扩展
         source: root.labelId >= 0 
             ? "image://labelinstance/" + root.labelId 
-              + "?padding=" + dataSettings.labelThumbnailBorderPadding
+              + "?padding=" + root.padding
             : ""
         
         // 缓存控制 - 启用缓存以提升性能
@@ -152,8 +150,8 @@ Item {
     MultiEffect {
         source: thumbnail
         anchors.fill: thumbnail
-        brightness: uiSettings.imageBrightness
-        contrast: uiSettings.imageContrast
+        brightness: root.imageBrightness
+        contrast: root.imageContrast
     }
     
     // 标注覆盖层 - 分割显示多边形，检测显示矩形框
@@ -382,6 +380,23 @@ Item {
             valid: true,
             x: offsetX + (point.x - labelData.x + extendedMargin) * scale,
             y: offsetY + (point.y - labelData.y + extendedMargin) * scale
+        }
+    }
+
+    function refreshSettings() {
+        margin = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.Margin, 10)
+        borderWidth = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.BorderWidth, 2)
+        padding = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.LabelBorderPadding, 0.1)
+        imageBrightness = GlobalSettings.valueForField(SettingsAccessor.Ui, UiField.Brightness, 0.0)
+        imageContrast = GlobalSettings.valueForField(SettingsAccessor.Ui, UiField.Contrast, 0.0)
+    }
+
+    Component.onCompleted: refreshSettings()
+
+    Connections {
+        target: GlobalSettings.catalog
+        function onValueChanged() {
+            root.refreshSettings()
         }
     }
 }

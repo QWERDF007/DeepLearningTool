@@ -2,78 +2,14 @@
 
 namespace dltool::settings {
 
-QString accessorPath(const accessor::Key key)
+QString toQString(const std::string_view value)
 {
-    switch (key)
-    {
-    case accessor::Key::Software:
-        return QStringLiteral("software");
-    case accessor::Key::Data:
-        return QStringLiteral("data");
-    case accessor::Key::Ui:
-        return QStringLiteral("ui");
-    case accessor::Key::ImageSearch:
-        return QStringLiteral("advanced.imageSearch");
-    case accessor::Key::RoiSearch:
-        return QStringLiteral("advanced.roiSearch");
-    case accessor::Key::SmartAnnotation:
-        return QStringLiteral("advanced.smartAnnotation");
-    case accessor::Key::FewShotLearning:
-        return QStringLiteral("advanced.fewShotLearning");
-    }
-    return {};
+    return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
 }
 
-QString accessorPath(const int key)
+QString fieldName(const generated::AccessorKey accessor_key, const int field_key)
 {
-    return accessorPath(static_cast<accessor::Key>(key));
-}
-
-QString fieldName(const field::Key key)
-{
-    switch (key)
-    {
-    case field::Key::Model:
-        return QStringLiteral("model");
-    case field::Key::FeatureName:
-        return QStringLiteral("feature_name");
-    case field::Key::MaxRecentProjects:
-        return QStringLiteral("max_recent_projects");
-    case field::Key::AutoSaveInterval:
-        return QStringLiteral("auto_save_interval");
-    case field::Key::AutoSaveEnabled:
-        return QStringLiteral("auto_save_enabled");
-    case field::Key::PythonEnvPath:
-        return QStringLiteral("python_env_path");
-    case field::Key::Sam2Checkpoint:
-        return QStringLiteral("sam2_checkpoint");
-    case field::Key::Sam2Architecture:
-        return QStringLiteral("sam2_architecture");
-    case field::Key::KShot:
-        return QStringLiteral("kshot");
-    case field::Key::Epochs:
-        return QStringLiteral("epochs");
-    case field::Key::BatchSize:
-        return QStringLiteral("batch_size");
-    case field::Key::NumWorkers:
-        return QStringLiteral("num_workers");
-    case field::Key::ImageSize:
-        return QStringLiteral("image_size");
-    case field::Key::LearningRate:
-        return QStringLiteral("learning_rate");
-    case field::Key::WeightDecay:
-        return QStringLiteral("weight_decay");
-    case field::Key::SupportRatio:
-        return QStringLiteral("support_ratio");
-    case field::Key::OutputDir:
-        return QStringLiteral("output_dir");
-    }
-    return {};
-}
-
-QString fieldName(const int key)
-{
-    return fieldName(static_cast<field::Key>(key));
+    return toQString(generated::fieldName(accessor_key, field_key));
 }
 
 QString sidebarName(const sidebar::Key key)

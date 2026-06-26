@@ -24,13 +24,15 @@ Item {
     property point startPos: Qt.point(0, 0)
     property bool segmentationMode: dataManager ? dataManager.method === DeepLearningMethod.Segmentation : false
     property var smartAnnotation: dataManager ? dataManager.smartAnnotation : null
-    readonly property var imageSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.ImageSearch)
-    readonly property var roiSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.RoiSearch)
-    readonly property var smartAnnotationSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.SmartAnnotation)
+    property bool imageSearchEnabled: true
+    property bool roiSearchEnabled: true
+    property bool smartAnnotationEnabled: false
+    property int smartAnnotationRefreshInterval: 80
+    property real smartAnnotationMaskAlpha: 0.35
     property string toolMode: "select"
     property bool showBoundingBoxes: false
     readonly property bool smartAnnotationAvailable: smartAnnotation
-                                                    && smartAnnotationSettings.enabled
+                                                    && smartAnnotationEnabled
                                                     && dataManager
                                                     && (dataManager.method === DeepLearningMethod.Detection
                                                         || dataManager.method === DeepLearningMethod.Segmentation)
@@ -82,7 +84,7 @@ Item {
 
     Timer {
         id: smartPreviewTimer
-        interval: Math.max(20, smartAnnotationSettings.refreshInterval)
+        interval: Math.max(20, labelView.smartAnnotationRefreshInterval)
         repeat: false
         onTriggered: updateSmartAnnotationPreview()
     }
@@ -95,7 +97,7 @@ Item {
             enabled: dataManager && dataManager.imageSearch
                      && imageInstances && imageInstances.currentImageId >= 0
                      && !dataManager.imageSearch.running
-                     && imageSearchSettings.enabled
+                     && imageSearchEnabled
             iconSource: QuiFontIcon.Search
             onClicked: startImageSearchForCurrentImage()
         }
@@ -104,7 +106,7 @@ Item {
             enabled: dataManager && dataManager.imageSearch
                      && selection && selection.hasSelection
                      && !dataManager.imageSearch.running
-                     && roiSearchSettings.enabled
+                     && roiSearchEnabled
             iconSource: QuiFontIcon.Search
             onClicked: startRoiSearchForSelectedLabels()
         }
@@ -155,7 +157,7 @@ Item {
                  && smartAnnotationResult.success === true
                  && smartAnnotationResult.mask_runs
                  && smartAnnotationResult.mask_runs.length > 0
-                 && smartAnnotationSettings.maskAlpha > 0
+                 && smartAnnotationMaskAlpha > 0
 
         onPaint: paintSmartMask()
     }
@@ -194,8 +196,11 @@ Item {
     }
 
     Connections {
-        target: smartAnnotationSettings
-        function onValueChanged(key, value) { smartMaskCanvas.requestPaint() }
+        target: GlobalSettings.catalog
+        function onValueChanged() {
+            labelView.refreshSettings()
+            smartMaskCanvas.requestPaint()
+        }
     }
 
     onDrawingColorChanged: smartMaskCanvas.requestPaint()
@@ -275,7 +280,7 @@ Item {
         let scale = labelImage.image.scale
         let offsetX = labelImage.image.x
         let offsetY = labelImage.image.y
-        let alpha = Math.max(0, Math.min(1, smartAnnotationSettings.maskAlpha))
+        let alpha = Math.max(0, Math.min(1, smartAnnotationMaskAlpha))
         ctx.save()
         ctx.fillStyle = Qt.rgba(drawingColor.r, drawingColor.g, drawingColor.b, alpha)
         for (let run of smartAnnotationResult.mask_runs) {
@@ -1117,7 +1122,7 @@ Item {
     function startImageSearchForCurrentImage() {
         if (!dataManager || !dataManager.imageSearch || !imageInstances
                 || imageInstances.currentImageId < 0
-                || !imageSearchSettings.enabled) {
+                || !imageSearchEnabled) {
             return
         }
 
@@ -1127,7 +1132,7 @@ Item {
     function startRoiSearchForSelectedLabels() {
         if (!dataManager || !dataManager.imageSearch || !imageLabelsList
                 || !selection || !selection.hasSelection
-                || !roiSearchSettings.enabled) {
+                || !roiSearchEnabled) {
             return
         }
 
@@ -1181,4 +1186,23 @@ Item {
     function setImageScale(scale) {
         labelImage.scaleInCenter(scale)
     }
+
+    function refreshSettings() {
+        imageSearchEnabled = GlobalSettings.valueForField(SettingsAccessor.ImageSearch, ImageSearchField.Enabled, true)
+        roiSearchEnabled = GlobalSettings.valueForField(SettingsAccessor.RoiSearch, RoiSearchField.Enabled, true)
+        smartAnnotationEnabled = GlobalSettings.valueForField(
+                    SettingsAccessor.SmartAnnotation,
+                    SmartAnnotationField.Enabled,
+                    false)
+        smartAnnotationRefreshInterval = GlobalSettings.valueForField(
+                    SettingsAccessor.SmartAnnotation,
+                    SmartAnnotationField.RefreshInterval,
+                    80)
+        smartAnnotationMaskAlpha = GlobalSettings.valueForField(
+                    SettingsAccessor.SmartAnnotation,
+                    SmartAnnotationField.MaskAlpha,
+                    0.35)
+    }
+
+    Component.onCompleted: refreshSettings()
 }
