@@ -25,12 +25,9 @@
 #include <set>
 #include <stdexcept>
 
-
 namespace dltool::feature {
 
 namespace {
-
-constexpr const char *kInferRtRoot = "F:/Projects/InferRT/InferRT-0.0.1";
 
 std::filesystem::path toFsPath(const QString &path)
 {
@@ -84,6 +81,24 @@ QStringList variantListToStringList(const QVariantList &values)
         }
     }
     return result;
+}
+
+QString settingString(const dltool::settings::SettingsGroup *settings, const QString &property_name,
+                      const QString &fallback = {})
+{
+    return settings != nullptr ? settings->valueOr(property_name, fallback).toString().trimmed() : fallback;
+}
+
+int settingInt(const dltool::settings::SettingsGroup *settings, const QString &property_name, int fallback)
+{
+    bool      ok    = false;
+    const int value = settings != nullptr ? settings->valueOr(property_name, fallback).toInt(&ok) : fallback;
+    return ok ? value : fallback;
+}
+
+bool settingBool(const dltool::settings::SettingsGroup *settings, const QString &property_name, bool fallback)
+{
+    return settings != nullptr ? settings->valueOr(property_name, fallback).toBool() : fallback;
 }
 
 QStringList configuredFeatureNames(dltool::settings::accessor::Key accessor_key, const QString &model_name)
@@ -348,39 +363,20 @@ struct ImageSearchController::SearchRequest
 
     Mode mode{Mode::Image};
 
-    QString model_name;
-    QString feature_name;
     QString weights_file;
     QString index_file;
-    QString norm;
-    QString faiss_backend;
-    QString index_storage;
 
     bool rebuild_index{false};
     int  top_k{5};
-    int  model_batch_size{1};
 
-    irt::features::ImageSearchPreprocessBackend preprocess_backend{irt::features::ImageSearchPreprocessBackend::CPU};
-    irt::features::ImageSearchFeatureNorm       norm_mode{irt::features::ImageSearchFeatureNorm::L2};
-    irt::features::ImageSearchFaissBackend      faiss_backend_mode{irt::features::ImageSearchFaissBackend::CPU};
-    irt::features::ImageSearchIndexStorage      index_storage_mode{irt::features::ImageSearchIndexStorage::RAM};
-    irt::model::ModelBackend                    model_backend{irt::model::ModelBackend::TensorRT};
-    irt::model::ModelDevice                     model_device{irt::model::ModelDevice::GPU};
+    irt::features::ImageSearchConfig image_config;
+    irt::features::RoiSearchConfig   roi_config;
 
-    QString                               model_backend_str;
-    QString                               model_device_str;
     std::chrono::steady_clock::time_point started_at;
 
     std::vector<std::filesystem::path> query_images;
     std::vector<std::filesystem::path> gallery_images;
     QHash<QString, int64_t>            path_to_image_id;
-
-    int  pooled_height{7};
-    int  pooled_width{7};
-    int  sampling_ratio{-1};
-    bool aligned{false};
-    bool use_pca{false};
-    int  pca_dim{0};
 
     std::vector<irt::features::RoiSearchItem> query_rois;
     std::vector<irt::features::RoiSearchItem> gallery_rois;
@@ -429,28 +425,12 @@ QString ImageSearchController::lastSummary() const
     return last_summary_;
 }
 
-QString ImageSearchController::defaultInferRtRoot() const
-{
-    return QString::fromLatin1(kInferRtRoot);
-}
-
 // ────────────────────────────────────────────────────────────
 //  公开接口
 // ────────────────────────────────────────────────────────────
 
-bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids, const QString &model_name,
-                                                 const QString &weights_file, const QString &feature_name,
-                                                 bool rebuild_index, int top_k, const QString &norm,
-                                                 const QString &preprocess_backend, const QString &faiss_backend,
-                                                 const QString &index_storage, int model_batch_size,
-                                                 const QString &model_backend, const QString &model_device)
+bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids)
 {
-    // 1. 前置校验
-    if (running_)
-    {
-        setLastError(QString("图像搜索正在运行"));
-        return false;
-    }
     if (!data_provider_)
     {
         setLastError(QString("图像模型未初始化"));
@@ -458,70 +438,19 @@ bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids
     }
 
     const auto query_ids = data_provider_->selectedImageIds();
-    if (query_ids.empty())
-    {
-        setLastError(QString("请先选择要检索的图片"));
-        return false;
-    }
-
-    // 2. 解析参数 & 构建请求
-    const auto dataset_ids_set = parseDatasetIds(dataset_ids);
-    if (model_name.trimmed().isEmpty())
-    {
-        setLastError(QString("请先配置图像搜索模型"));
-        return false;
-    }
-    if (feature_name.trimmed().isEmpty())
-    {
-        setLastError(QString("请先配置图像搜索特征层"));
-        return false;
-    }
-    if (!validateWeightsFile(weights_file))
-        return false;
-
-    SearchRequest request
-        = buildSearchRequest(model_name, weights_file, feature_name, rebuild_index, top_k, norm, preprocess_backend,
-                             faiss_backend, index_storage, model_batch_size, model_backend, model_device);
-
-    // 3. 收集图像
-    collectGalleryImages(request, dataset_ids_set);
-    if (request.gallery_images.empty())
-    {
-        setLastError(QString("选定数据集中没有可搜索的图像"));
-        return false;
-    }
-
-    collectQueryImages(request, query_ids);
-    if (request.query_images.empty())
-    {
-        setLastError(QString("选中的查询图片文件不存在"));
-        return false;
-    }
-
-    // 4. 计算索引路径
-    request.index_file = computeIndexPath(request);
-    request.started_at = std::chrono::steady_clock::now();
-
-    // 5. 清理状态并启动后台搜索
-    resetForNewSearch();
-    startProgress(request);
-
-    QPointer<ImageSearchController> controller(this);
-    QThread                        *work_thread = QThread::create([controller, request = std::move(request)]() mutable
-                                           { executeSearchWorker(std::move(request), controller); });
-
-    connect(work_thread, &QThread::finished, work_thread, &QObject::deleteLater);
-    work_thread->start();
-    return true;
+    return startImageSearch(query_ids, dataset_ids, QString("请先选择要检索的图片"),
+                            QString("选中的查询图片文件不存在"));
 }
 
-bool ImageSearchController::searchImages(const QVariantList &image_ids, const QVariantList &dataset_ids,
-                                         const QString &model_name, const QString &weights_file,
-                                         const QString &feature_name, bool rebuild_index, int top_k,
-                                         const QString &norm, const QString &preprocess_backend,
-                                         const QString &faiss_backend, const QString &index_storage,
-                                         int model_batch_size, const QString &model_backend,
-                                         const QString &model_device)
+bool ImageSearchController::searchImages(const QVariantList &image_ids, const QVariantList &dataset_ids)
+{
+    return startImageSearch(parseInt64Ids(image_ids), dataset_ids, QString("请先选择要搜索的图像"),
+                            QString("选中的查询图像文件不存在"));
+}
+
+bool ImageSearchController::startImageSearch(const std::vector<int64_t> &query_ids, const QVariantList &dataset_ids,
+                                             const QString &empty_query_message,
+                                             const QString &missing_query_file_message)
 {
     if (running_)
     {
@@ -534,31 +463,37 @@ bool ImageSearchController::searchImages(const QVariantList &image_ids, const QV
         return false;
     }
 
-    const auto query_ids = parseInt64Ids(image_ids);
     if (query_ids.empty())
     {
-        setLastError(QString("请先选择要搜索的图像"));
+        setLastError(empty_query_message);
+        return false;
+    }
+
+    const QString settings_accessor = dltool::settings::accessorPath(dltool::settings::accessor::Key::ImageSearch);
+    if (!ensureSearchSettingsEnabled(settings_accessor, QString("图像搜索")))
+    {
         return false;
     }
 
     const auto dataset_ids_set = parseDatasetIds(dataset_ids);
+
+    SearchRequest request = buildSearchRequest(settings_accessor);
+    request.mode          = SearchRequest::Mode::Image;
+
+    const QString model_name = QString::fromStdString(request.image_config.model_name);
     if (model_name.trimmed().isEmpty())
     {
         setLastError(QString("请先配置图像搜索模型"));
         return false;
     }
+    const QString feature_name = QString::fromStdString(request.image_config.feature_name);
     if (feature_name.trimmed().isEmpty())
     {
         setLastError(QString("请先配置图像搜索特征层"));
         return false;
     }
-    if (!validateWeightsFile(weights_file))
+    if (!validateWeightsFile(request.weights_file))
         return false;
-
-    SearchRequest request
-        = buildSearchRequest(model_name, weights_file, feature_name, rebuild_index, top_k, norm, preprocess_backend,
-                             faiss_backend, index_storage, model_batch_size, model_backend, model_device);
-    request.mode = SearchRequest::Mode::Image;
 
     collectGalleryImages(request, dataset_ids_set);
     if (request.gallery_images.empty())
@@ -570,7 +505,7 @@ bool ImageSearchController::searchImages(const QVariantList &image_ids, const QV
     collectQueryImages(request, query_ids);
     if (request.query_images.empty())
     {
-        setLastError(QString("选中的查询图像文件不存在"));
+        setLastError(missing_query_file_message);
         return false;
     }
 
@@ -589,14 +524,7 @@ bool ImageSearchController::searchImages(const QVariantList &image_ids, const QV
     return true;
 }
 
-bool ImageSearchController::searchLabelRois(const QVariantList &label_ids, const QVariantList &dataset_ids,
-                                            const QString &model_name, const QString &weights_file,
-                                            const QString &feature_name, bool rebuild_index, int top_k,
-                                            const QString &norm, const QString &preprocess_backend,
-                                            const QString &faiss_backend, const QString &index_storage,
-                                            int model_batch_size, const QString &model_backend,
-                                            const QString &model_device, int pooled_height, int pooled_width,
-                                            int sampling_ratio, bool aligned, bool use_pca, int pca_dim)
+bool ImageSearchController::searchLabelRois(const QVariantList &label_ids, const QVariantList &dataset_ids)
 {
     if (running_)
     {
@@ -616,44 +544,54 @@ bool ImageSearchController::searchLabelRois(const QVariantList &label_ids, const
         return false;
     }
 
+    const QString settings_accessor = dltool::settings::accessorPath(dltool::settings::accessor::Key::RoiSearch);
+    if (!ensureSearchSettingsEnabled(settings_accessor, QString("标注搜索")))
+    {
+        return false;
+    }
+
     const auto dataset_ids_set = parseDatasetIds(dataset_ids);
+
+    SearchRequest request = buildSearchRequest(settings_accessor);
+    request.mode          = SearchRequest::Mode::Roi;
+
+    const QString model_name = QString::fromStdString(request.roi_config.model_name);
     if (model_name.trimmed().isEmpty())
     {
         setLastError(QString("请先配置标注搜索模型"));
         return false;
     }
+    const QString feature_name = QString::fromStdString(request.roi_config.feature_name);
     if (feature_name.trimmed().isEmpty())
     {
         setLastError(QString("请先配置标注搜索特征层"));
         return false;
     }
-    if (!validateWeightsFile(weights_file))
+    if (!validateWeightsFile(request.weights_file))
         return false;
 
-    SearchRequest request
-        = buildSearchRequest(model_name, weights_file, feature_name, rebuild_index, top_k, norm, preprocess_backend,
-                             faiss_backend, index_storage, model_batch_size, model_backend, model_device);
-    request.mode           = SearchRequest::Mode::Roi;
-    request.pooled_height  = std::clamp(pooled_height, 1, 64);
-    request.pooled_width   = std::clamp(pooled_width, 1, 64);
-    request.sampling_ratio = std::clamp(sampling_ratio, -1, 32);
-    request.aligned        = aligned;
-    request.use_pca        = use_pca;
-    request.pca_dim        = use_pca ? std::clamp(pca_dim, 1, 8192) : 0;
+    const auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(settings_accessor);
+    request.roi_config.pooled_height  = std::clamp(settingInt(settings, QStringLiteral("pooledHeight"), 7), 1, 64);
+    request.roi_config.pooled_width   = std::clamp(settingInt(settings, QStringLiteral("pooledWidth"), 7), 1, 64);
+    request.roi_config.sampling_ratio = std::clamp(settingInt(settings, QStringLiteral("samplingRatio"), -1), -1, 32);
+    request.roi_config.aligned        = settingBool(settings, QStringLiteral("aligned"), false);
+    request.roi_config.use_pca        = settingBool(settings, QStringLiteral("usePca"), false);
+    request.roi_config.pca_dim
+        = request.roi_config.use_pca ? std::clamp(settingInt(settings, QStringLiteral("pcaDim"), 0), 1, 8192) : 0;
 
-    const QStringList spatial_features
-        = configuredFeatureNames(dltool::settings::accessor::Key::RoiSearch, request.model_name);
+    const QStringList spatial_features = configuredFeatureNames(dltool::settings::accessor::Key::RoiSearch, model_name);
     if (spatial_features.isEmpty())
     {
-        setLastError(QString("标注搜索未在配置中找到模型 %1 的空间特征层").arg(request.model_name));
+        setLastError(QString("标注搜索未在配置中找到模型 %1 的空间特征层").arg(model_name));
         return false;
     }
-    if (!spatial_features.contains(request.feature_name))
+    if (!spatial_features.contains(feature_name))
     {
-        request.feature_name = spatial_features.last();
+        const QString effective_feature_name = spatial_features.last();
+        request.roi_config.feature_name      = effective_feature_name.toStdString();
         dltool::settings::GlobalSettings::getInstance()->setValue(
             dltool::settings::accessorPath(dltool::settings::accessor::Key::RoiSearch), QStringLiteral("featureName"),
-            request.feature_name);
+            effective_feature_name);
     }
 
     collectGalleryRois(request, dataset_ids_set);
@@ -706,15 +644,42 @@ bool ImageSearchController::validateWeightsFile(const QString &path)
     return true;
 }
 
-ImageSearchController::SearchRequest ImageSearchController::buildSearchRequest(
-    const QString &model_name, const QString &weights_file, const QString &feature_name, bool rebuild_index, int top_k,
-    const QString &norm, const QString &preprocess_backend, const QString &faiss_backend, const QString &index_storage,
-    int model_batch_size, const QString &model_backend, const QString &model_device)
+bool ImageSearchController::ensureSearchSettingsEnabled(const QString &accessor_path, const QString &display_name)
+{
+    const auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(accessor_path);
+    if (settings == nullptr)
+    {
+        setLastError(QString("%1设置未加载").arg(display_name));
+        return false;
+    }
+    if (!settingBool(settings, QStringLiteral("enabled"), true))
+    {
+        setLastError(QString("%1未启用").arg(display_name));
+        return false;
+    }
+    return true;
+}
+
+ImageSearchController::SearchRequest ImageSearchController::buildSearchRequest(const QString &accessor_path)
 {
     const auto effective = [](const QString &value, const QString &fallback) -> QString
     {
         return value.trimmed().isEmpty() ? fallback : value.trimmed();
     };
+
+    const auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(accessor_path);
+
+    const QString model_name   = settingString(settings, QStringLiteral("model"));
+    const QString weights_file = settingString(settings, QStringLiteral("modelPath"));
+    const QString feature_name = settingString(settings, QStringLiteral("featureName"));
+
+    const QString norm = settingString(settings, QStringLiteral("norm"), QStringLiteral("l2"));
+    const QString preprocess_backend
+        = settingString(settings, QStringLiteral("preprocessBackend"), QStringLiteral("cpu"));
+    const QString faiss_backend = settingString(settings, QStringLiteral("faissBackend"), QStringLiteral("cpu"));
+    const QString index_storage = settingString(settings, QStringLiteral("indexStorage"), QStringLiteral("ram"));
+    const QString model_backend = settingString(settings, QStringLiteral("modelBackend"), QStringLiteral("tensorrt"));
+    const QString model_device  = settingString(settings, QStringLiteral("modelDevice"), QStringLiteral("gpu"));
 
     const QString effective_norm    = effective(norm, QStringLiteral("l2")).toLower();
     QString       effective_faiss   = effective(faiss_backend, QStringLiteral("cpu")).toLower();
@@ -722,26 +687,28 @@ ImageSearchController::SearchRequest ImageSearchController::buildSearchRequest(
     if (effective_faiss == QStringLiteral("gpu"))
         effective_storage = QStringLiteral("ram");
 
-    QFileInfo weights_info(weights_file);
+    const QString cleaned_weights_file = weights_file.trimmed();
 
     SearchRequest req;
-    req.model_name         = model_name.trimmed();
-    req.feature_name       = feature_name.trimmed();
-    req.weights_file       = weights_info.absoluteFilePath();
-    req.rebuild_index      = rebuild_index;
-    req.top_k              = std::max(1, top_k);
-    req.model_batch_size   = static_cast<int>(std::max(1, model_batch_size));
-    req.norm               = effective_norm;
-    req.faiss_backend      = effective_faiss;
-    req.index_storage      = effective_storage;
-    req.preprocess_backend = parsePreprocessBackend(preprocess_backend);
-    req.norm_mode          = parseNorm(effective_norm);
-    req.faiss_backend_mode = parseFaissBackend(effective_faiss);
-    req.index_storage_mode = parseIndexStorage(effective_storage);
-    req.model_backend      = parseModelBackend(model_backend);
-    req.model_device       = parseModelDevice(model_device);
-    req.model_backend_str  = model_backend.trimmed().toLower();
-    req.model_device_str   = model_device.trimmed().toLower();
+    req.weights_file  = cleaned_weights_file.isEmpty() ? QString() : QFileInfo(cleaned_weights_file).absoluteFilePath();
+    req.rebuild_index = settingBool(settings, QStringLiteral("rebuildIndex"), false);
+    req.top_k         = std::max(1, settingInt(settings, QStringLiteral("topK"), 5));
+
+    auto apply_common_config = [&](irt::features::ImageSearchConfig &config)
+    {
+        config.model_name         = model_name.toStdString();
+        config.feature_name       = feature_name.toStdString();
+        config.preprocess_backend = parsePreprocessBackend(preprocess_backend);
+        config.norm               = parseNorm(effective_norm);
+        config.faiss_backend      = parseFaissBackend(effective_faiss);
+        config.index_storage      = parseIndexStorage(effective_storage);
+        config.model_batch_size
+            = static_cast<size_t>(std::max(1, settingInt(settings, QStringLiteral("modelBatchSize"), 1)));
+        config.model_backend = parseModelBackend(model_backend);
+        config.model_device  = parseModelDevice(model_device);
+    };
+    apply_common_config(req.image_config);
+    apply_common_config(req.roi_config);
     return req;
 }
 
@@ -845,26 +812,30 @@ QString ImageSearchController::computeIndexPath(const SearchRequest &request) co
 {
     if (request.mode == SearchRequest::Mode::Roi)
     {
-        const QString index_dir = indexDirectoryForProject(
+        const QString model_name   = QString::fromStdString(request.roi_config.model_name);
+        const QString feature_name = QString::fromStdString(request.roi_config.feature_name);
+        const QString index_dir    = indexDirectoryForProject(
             data_provider_->databasePath(),
             dltool::settings::GlobalSettings::getInstance()
                 ->value(dltool::settings::accessorPath(dltool::settings::accessor::Key::RoiSearch),
-                        QStringLiteral("indexDirectory"))
+                           QStringLiteral("indexDirectory"))
                 .toString(),
             QStringLiteral("roi_search"));
 
-        return roiIndexPathForRequest(index_dir, request.model_name, request.feature_name);
+        return roiIndexPathForRequest(index_dir, model_name, feature_name);
     }
 
-    const QString index_dir = indexDirectoryForProject(
+    const QString model_name   = QString::fromStdString(request.image_config.model_name);
+    const QString feature_name = QString::fromStdString(request.image_config.feature_name);
+    const QString index_dir    = indexDirectoryForProject(
         data_provider_->databasePath(),
         dltool::settings::GlobalSettings::getInstance()
             ->value(dltool::settings::accessorPath(dltool::settings::accessor::Key::ImageSearch),
-                    QStringLiteral("indexDirectory"))
+                       QStringLiteral("indexDirectory"))
             .toString(),
         QStringLiteral("image_search"));
 
-    return indexPathForRequest(index_dir, request.model_name, request.feature_name);
+    return indexPathForRequest(index_dir, model_name, feature_name);
 }
 
 // ────────────────────────────────────────────────────────────
@@ -917,24 +888,7 @@ void ImageSearchController::executeSearchWorker(SearchRequest request, QPointer<
     {
         if (request.mode == SearchRequest::Mode::Roi)
         {
-            irt::features::RoiSearchConfig config;
-            config.model_name         = request.model_name.toStdString();
-            config.feature_name       = request.feature_name.toStdString();
-            config.preprocess_backend = request.preprocess_backend;
-            config.norm               = request.norm_mode;
-            config.faiss_backend      = request.faiss_backend_mode;
-            config.index_storage      = request.index_storage_mode;
-            config.model_batch_size   = static_cast<size_t>(request.model_batch_size);
-            config.model_backend      = request.model_backend;
-            config.model_device       = request.model_device;
-            config.pooled_height      = request.pooled_height;
-            config.pooled_width       = request.pooled_width;
-            config.sampling_ratio     = request.sampling_ratio;
-            config.aligned            = request.aligned;
-            config.use_pca            = request.use_pca;
-            config.pca_dim            = request.pca_dim;
-
-            irt::features::RoiSearch search(config);
+            irt::features::RoiSearch search(request.roi_config);
             const auto               weights_path = toFsPath(request.weights_file);
             const auto               index_path   = toFsPath(request.index_file);
 
@@ -973,18 +927,7 @@ void ImageSearchController::executeSearchWorker(SearchRequest request, QPointer<
         }
         else
         {
-            irt::features::ImageSearchConfig config;
-            config.model_name         = request.model_name.toStdString();
-            config.feature_name       = request.feature_name.toStdString();
-            config.preprocess_backend = request.preprocess_backend;
-            config.norm               = request.norm_mode;
-            config.faiss_backend      = request.faiss_backend_mode;
-            config.index_storage      = request.index_storage_mode;
-            config.model_batch_size   = static_cast<size_t>(request.model_batch_size);
-            config.model_backend      = request.model_backend;
-            config.model_device       = request.model_device;
-
-            irt::features::ImageSearch search(config);
+            irt::features::ImageSearch search(request.image_config);
             const auto                 weights_path = toFsPath(request.weights_file);
             const auto                 index_path   = toFsPath(request.index_file);
 

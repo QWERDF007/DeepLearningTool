@@ -58,25 +58,7 @@ QuiPopup {
 
         let started = controller.searchLabelRois(
                     queryLabelIds,
-                    selectedDatasetIds(),
-                    roiSearchSettings.model,
-                    roiSearchSettings.modelPath,
-                    roiSearchSettings.featureName,
-                    roiSearchSettings.rebuildIndex,
-                    roiSearchSettings.topK,
-                    roiSearchSettings.norm,
-                    roiSearchSettings.preprocessBackend,
-                    roiSearchSettings.faissBackend,
-                    roiSearchSettings.indexStorage,
-                    roiSearchSettings.modelBatchSize,
-                    roiSearchSettings.modelBackend,
-                    roiSearchSettings.modelDevice,
-                    roiSearchSettings.pooledHeight,
-                    roiSearchSettings.pooledWidth,
-                    roiSearchSettings.samplingRatio,
-                    roiSearchSettings.aligned,
-                    roiSearchSettings.usePca,
-                    roiSearchSettings.pcaDim)
+                    selectedDatasetIds())
         if (started) {
             close()
         }

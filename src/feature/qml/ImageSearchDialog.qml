@@ -58,43 +58,16 @@ QuiPopup {
 
     function startSearch() {
         let controller = imageSearchController()
-        if (!controller || !imageSearchSettings.enabled) {
+        if (!controller) {
             return
         }
 
         let datasetIds = selectedDatasetIds()
         let started = false
         if (queryImageIds && queryImageIds.length > 0) {
-            started = controller.searchImages(
-                        queryImageIds,
-                        datasetIds,
-                        imageSearchSettings.model,
-                        imageSearchSettings.modelPath,
-                        imageSearchSettings.featureName,
-                        imageSearchSettings.rebuildIndex,
-                        imageSearchSettings.topK,
-                        imageSearchSettings.norm,
-                        imageSearchSettings.preprocessBackend,
-                        imageSearchSettings.faissBackend,
-                        imageSearchSettings.indexStorage,
-                        imageSearchSettings.modelBatchSize,
-                        imageSearchSettings.modelBackend,
-                        imageSearchSettings.modelDevice)
+            started = controller.searchImages(queryImageIds, datasetIds)
         } else {
-            started = controller.searchSelectedImages(
-                        datasetIds,
-                        imageSearchSettings.model,
-                        imageSearchSettings.modelPath,
-                        imageSearchSettings.featureName,
-                        imageSearchSettings.rebuildIndex,
-                        imageSearchSettings.topK,
-                        imageSearchSettings.norm,
-                        imageSearchSettings.preprocessBackend,
-                        imageSearchSettings.faissBackend,
-                        imageSearchSettings.indexStorage,
-                        imageSearchSettings.modelBatchSize,
-                        imageSearchSettings.modelBackend,
-                        imageSearchSettings.modelDevice)
+            started = controller.searchSelectedImages(datasetIds)
         }
         if (started) {
             close()
@@ -237,7 +210,6 @@ QuiPopup {
                 text: "开始搜索"
                 enabled: dialog.imageSearchController()
                          && !dialog.imageSearchController().running
-                         && imageSearchSettings.enabled
                 onClicked: dialog.startSearch()
             }
         }

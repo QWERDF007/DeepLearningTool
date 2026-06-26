@@ -31,7 +31,6 @@ class FEATURE_API ImageSearchController : public QObject
     Q_PROPERTY(int resultCount READ resultCount NOTIFY resultsChanged FINAL)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged FINAL)
     Q_PROPERTY(QString lastSummary READ lastSummary NOTIFY resultsChanged FINAL)
-    Q_PROPERTY(QString defaultInferRtRoot READ defaultInferRtRoot CONSTANT FINAL)
 
 public:
     explicit ImageSearchController(ImageSearchDataProvider *data_provider, QObject *parent = nullptr);
@@ -68,52 +67,21 @@ public:
     QString lastSummary() const;
 
     /**
-     * @brief 默认 InferRT 安装根目录
-     * @return InferRT 根路径，供 QML 展示或拼接资源路径
-     */
-    QString defaultInferRtRoot() const;
-
-    /**
      * @brief 对当前选中的图像执行相似度搜索
      *
      * 以图像列表中已勾选的图像为查询，在指定数据集（或全部）构成的图库中检索相似图像。
      * 成功后在后台完成时自动更新 GlobalFilter 的搜索结果；若已有任务在运行则拒绝新请求。
      *
      * @param dataset_ids 限定图库的数据集 ID 列表；为空表示使用全部图像
-     * @param model_name 特征模型名称；为空时使用默认值
-     * @param weights_file 模型权重文件路径（.wts）
-     * @param feature_name 特征层名称；为空时使用默认值
-     * @param rebuild_index 为 true 时强制重建 FAISS 索引，否则尝试加载已有索引
-     * @param top_k 每张查询图返回的最近邻数量
-     * @param norm 特征归一化方式（none / l1 / l2）
-     * @param preprocess_backend 预处理后端（cpu / gpu）
-     * @param faiss_backend FAISS 计算后端（cpu / gpu）；为 gpu 时索引强制使用内存
-     * @param index_storage 索引存储方式（ram / disk）
-     * @param model_batch_size 特征提取模型推理批大小
-     * @param model_backend 模型推理后端（tensorrt / openvino / onnxruntime）
-     * @param model_device 模型运行设备（cpu / gpu）
+     * @details 图像搜索模型、索引、后端和运行时参数从 GlobalSettings 的图像搜索分组读取。
+     *
      * @return 任务成功提交到后台线程时返回 true
      */
-    Q_INVOKABLE bool searchSelectedImages(const QVariantList &dataset_ids, const QString &model_name,
-                                          const QString &weights_file, const QString &feature_name, bool rebuild_index,
-                                          int top_k, const QString &norm, const QString &preprocess_backend,
-                                          const QString &faiss_backend, const QString &index_storage,
-                                          int model_batch_size, const QString &model_backend,
-                                          const QString &model_device);
+    Q_INVOKABLE bool searchSelectedImages(const QVariantList &dataset_ids);
 
-    Q_INVOKABLE bool searchImages(const QVariantList &image_ids, const QVariantList &dataset_ids,
-                                  const QString &model_name, const QString &weights_file, const QString &feature_name,
-                                  bool rebuild_index, int top_k, const QString &norm, const QString &preprocess_backend,
-                                  const QString &faiss_backend, const QString &index_storage,
-                                  int model_batch_size, const QString &model_backend, const QString &model_device);
+    Q_INVOKABLE bool searchImages(const QVariantList &image_ids, const QVariantList &dataset_ids);
 
-    Q_INVOKABLE bool searchLabelRois(const QVariantList &label_ids, const QVariantList &dataset_ids,
-                                     const QString &model_name, const QString &weights_file,
-                                     const QString &feature_name, bool rebuild_index, int top_k, const QString &norm,
-                                     const QString &preprocess_backend, const QString &faiss_backend,
-                                     const QString &index_storage,
-                                     int model_batch_size, const QString &model_backend, const QString &model_device,
-                                     int pooled_height, int pooled_width, int sampling_ratio, bool aligned, bool use_pca, int pca_dim);
+    Q_INVOKABLE bool searchLabelRois(const QVariantList &label_ids, const QVariantList &dataset_ids);
 
 signals:
     /** @brief 运行状态变化（running 属性） */
@@ -140,12 +108,15 @@ private:
     /// 校验权重文件是否存在；失败时自动调用 setLastError
     bool validateWeightsFile(const QString &path);
 
-    /// 将 UI 层传入的原始参数统一应用默认值并组装为 SearchRequest
-    SearchRequest buildSearchRequest(const QString &model_name, const QString &weights_file,
-                                     const QString &feature_name, bool rebuild_index, int top_k, const QString &norm,
-                                     const QString &preprocess_backend, const QString &faiss_backend,
-                                     const QString &index_storage, int model_batch_size,
-                                     const QString &model_backend, const QString &model_device);
+    /// 从设置分组读取参数快照并组装为 SearchRequest
+    SearchRequest buildSearchRequest(const QString &accessor_path);
+
+    /// 确认设置分组已加载且对应搜索功能已启用
+    bool ensureSearchSettingsEnabled(const QString &accessor_path, const QString &display_name);
+
+    /// 使用指定查询图像启动图像搜索
+    bool startImageSearch(const std::vector<int64_t> &query_ids, const QVariantList &dataset_ids,
+                          const QString &empty_query_message, const QString &missing_query_file_message);
 
     // ── 图像收集 ──
 
