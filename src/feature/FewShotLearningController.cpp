@@ -2,6 +2,7 @@
 
 #include "core/CoreDef.h"
 #include "feature/FewShotLearningDataProvider.h"
+#include "feature/Utils.h"
 #include "model/TaskManager.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsKeys.h"
@@ -37,10 +38,10 @@ namespace {
 
 struct ClassBuildData
 {
-    int64_t                   label_class_id{-1};
-    QString                   label_class_name;
-    QString                   class_dir_name;
-    std::map<int64_t, QImage> masks_by_image_id;
+    int64_t                       label_class_id{-1};
+    QString                       label_class_name;
+    QString                       class_dir_name;
+    std::map<int64_t, QImage>     masks_by_image_id;
     std::map<int64_t, QJsonArray> boxes_by_image_id;
 };
 
@@ -257,22 +258,6 @@ void paintLabelToMask(QImage &mask, const QVariantMap &label_data)
         label_data.value(QStringLiteral("width")).toDouble(), label_data.value(QStringLiteral("height")).toDouble());
     if (rect.width() > 0 && rect.height() > 0)
         painter.fillRect(rect, Qt::white);
-}
-
-std::vector<int64_t> variantListToIds(const QVariantList &values)
-{
-    std::vector<int64_t> ids;
-    ids.reserve(static_cast<size_t>(values.size()));
-    for (const QVariant &value : values)
-    {
-        bool            ok = false;
-        const qlonglong id = value.toLongLong(&ok);
-        if (ok && id >= 0)
-            ids.push_back(static_cast<int64_t>(id));
-    }
-    std::sort(ids.begin(), ids.end());
-    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
-    return ids;
 }
 
 enum class FsSam2Script
@@ -524,15 +509,15 @@ bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_id
 
     RunContext context;
     QString    err_msg;
-    if (!prepareRun(variantListToIds(train_dataset_ids), variantListToIds(test_dataset_ids),
-                    variantListToIds(label_class_ids), context, err_msg))
+    if (!prepareRun(parseInt64Ids(train_dataset_ids, true, true), parseInt64Ids(test_dataset_ids, true, true),
+                    parseInt64Ids(label_class_ids, true, true), context, err_msg))
     {
         setLastError(err_msg);
         spdlog::error("启动小样本学习失败: {}", err_msg.toUtf8().constData());
         return false;
     }
 
-    active_context_ = std::make_unique<RunContext>(std::move(context));
+    active_context_                   = std::make_unique<RunContext>(std::move(context));
     const RunContext &started_context = *active_context_;
     train_task_id_                    = started_context.train_task_id;
     predict_task_id_                  = started_context.predict_task_id;
@@ -645,9 +630,9 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         err_msg = QString("FS-SAM2 目录不存在: %1").arg(context.fs_sam2_root);
         return false;
     }
-    context.train_script        = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::Train);
-    context.predict_script      = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::Predict);
-    context.box_to_mask_script  = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::BoxToMask);
+    context.train_script       = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::Train);
+    context.predict_script     = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::Predict);
+    context.box_to_mask_script = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::BoxToMask);
     if (!QFileInfo::exists(context.train_script) || !QFileInfo::exists(context.predict_script))
     {
         err_msg = QString("FS-SAM2 目录缺少 train.py 或 predict.py: %1").arg(context.fs_sam2_root);
@@ -738,7 +723,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         if (is_detection)
         {
             const QVariantMap label_data = data_provider_->labelData(label_id);
-            QJsonObject box;
+            QJsonObject       box;
             box[QStringLiteral("x")]      = label_data.value(QStringLiteral("x")).toDouble();
             box[QStringLiteral("y")]      = label_data.value(QStringLiteral("y")).toDouble();
             box[QStringLiteral("width")]  = label_data.value(QStringLiteral("width")).toDouble();
@@ -766,9 +751,8 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
     for (const auto &[label_class_id, class_data] : classes)
     {
         Q_UNUSED(label_class_id)
-        const size_t image_count = is_detection
-            ? class_data.boxes_by_image_id.size()
-            : class_data.masks_by_image_id.size();
+        const size_t image_count
+            = is_detection ? class_data.boxes_by_image_id.size() : class_data.masks_by_image_id.size();
         if (image_count < static_cast<size_t>(context.kshot + 1))
         {
             err_msg
@@ -810,8 +794,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
             QFile boxes_file(QDir(class_dir).filePath(QStringLiteral("boxes.json")));
             if (!boxes_file.open(QIODevice::WriteOnly | QIODevice::Truncate))
             {
-                err_msg = QString("无法写入 boxes.json: %1, %2")
-                    .arg(boxes_file.fileName(), boxes_file.errorString());
+                err_msg = QString("无法写入 boxes.json: %1, %2").arg(boxes_file.fileName(), boxes_file.errorString());
                 return false;
             }
             boxes_file.write(QJsonDocument(boxes_json).toJson(QJsonDocument::Indented));
@@ -902,11 +885,10 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
                                                              fewShotTaskType(FewShotTaskKind::Predict));
     if (is_detection)
     {
-        context.box_to_mask_task_id = task_manager_->addExternalTask(task_uuid,
-            fewShotTaskName(FewShotTaskKind::BoxToMask), fewShotTaskType(FewShotTaskKind::BoxToMask));
+        context.box_to_mask_task_id = task_manager_->addExternalTask(
+            task_uuid, fewShotTaskName(FewShotTaskKind::BoxToMask), fewShotTaskType(FewShotTaskKind::BoxToMask));
     }
-    if (context.train_task_id < 0 || context.predict_task_id < 0
-        || (is_detection && context.box_to_mask_task_id < 0))
+    if (context.train_task_id < 0 || context.predict_task_id < 0 || (is_detection && context.box_to_mask_task_id < 0))
     {
         err_msg = QString("创建任务中心任务失败");
         return false;
@@ -1030,16 +1012,15 @@ bool FewShotLearningController::startBoxToMask(const RunContext &context, int cl
         return false;
     }
 
-    const QJsonObject class_object = context.classes.at(class_index).toObject();
-    const QString     class_dir_name
-        = class_object.value(fewShotClassFieldName(FewShotClassField::Dir)).toString();
+    const QJsonObject class_object   = context.classes.at(class_index).toObject();
+    const QString     class_dir_name = class_object.value(fewShotClassFieldName(FewShotClassField::Dir)).toString();
     if (class_dir_name.isEmpty())
     {
         err_msg = QString("预处理类别目录为空");
         return false;
     }
 
-    const QString support_dir = QDir(context.custom_dataset_dir).filePath(class_dir_name);
+    const QString support_dir      = QDir(context.custom_dataset_dir).filePath(class_dir_name);
     const int     safe_class_count = std::max(1, class_count);
     const int     base             = class_index * 100 / safe_class_count;
     const int     end              = (class_index + 1) * 100 / safe_class_count;
@@ -1151,8 +1132,7 @@ void FewShotLearningController::handleProcessFinished(int exit_code, QProcess::E
                 task_manager_->failTask(box_to_mask_task_id_);
             if (stage_ == RunStage::Training)
                 task_manager_->failTask(train_task_id_);
-            if (stage_ == RunStage::PreparingMask || stage_ == RunStage::Training
-                || stage_ == RunStage::Predicting)
+            if (stage_ == RunStage::PreparingMask || stage_ == RunStage::Training || stage_ == RunStage::Predicting)
                 task_manager_->failTask(predict_task_id_);
         }
         finishRun();

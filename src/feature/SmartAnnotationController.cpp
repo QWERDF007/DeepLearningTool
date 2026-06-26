@@ -1,5 +1,6 @@
 #include "feature/SmartAnnotationController.h"
 
+#include "feature/Utils.h"
 #include "settings/GlobalSettings.h"
 
 #include <cuda_runtime_api.h>
@@ -309,38 +310,6 @@ QString normalizedModelName(QString value)
     return value.trimmed();
 }
 
-QString normalizedBackend(QString value)
-{
-    value = value.trimmed().toLower();
-    if (value == QStringLiteral("trt"))
-    {
-        return QStringLiteral("tensorrt");
-    }
-    if (value == QStringLiteral("onnx") || value == QStringLiteral("ort"))
-    {
-        return QStringLiteral("onnxruntime");
-    }
-    if (value == QStringLiteral("ov"))
-    {
-        return QStringLiteral("openvino");
-    }
-    if (value == QStringLiteral("openvino") || value == QStringLiteral("onnxruntime"))
-    {
-        return value;
-    }
-    return QStringLiteral("tensorrt");
-}
-
-QString normalizedDevice(QString value)
-{
-    value = value.trimmed().toLower();
-    if (value == QStringLiteral("cpu"))
-    {
-        return QStringLiteral("cpu");
-    }
-    return QStringLiteral("gpu");
-}
-
 bool isTensorRtBackend(const QString &backend)
 {
     return normalizedBackend(backend) == QString::fromLatin1(kTensorRtBackendName);
@@ -349,26 +318,6 @@ bool isTensorRtBackend(const QString &backend)
 bool isSam2Model(const QString &model_name)
 {
     return normalizedModelName(model_name).toLower().startsWith(QStringLiteral("sam2"));
-}
-
-irt::model::ModelBackend parseModelBackend(const QString &backend)
-{
-    const QString value = normalizedBackend(backend);
-    if (value == QStringLiteral("openvino"))
-    {
-        return irt::model::ModelBackend::OpenVINO;
-    }
-    if (value == QStringLiteral("onnxruntime"))
-    {
-        return irt::model::ModelBackend::ONNXRuntime;
-    }
-    return irt::model::ModelBackend::TensorRT;
-}
-
-irt::model::ModelDevice parseModelDevice(const QString &device)
-{
-    return normalizedDevice(device) == QStringLiteral("cpu") ? irt::model::ModelDevice::CPU
-                                                             : irt::model::ModelDevice::GPU;
 }
 
 struct SmartModelLoadRequest

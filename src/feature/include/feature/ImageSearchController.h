@@ -135,8 +135,7 @@ private:
     // ── 参数解析与校验 ──
 
     /// 从 QVariantList 提取生效的 dataset ID 集合
-    static std::vector<int64_t> parseInt64List(const QVariantList &ids);
-    static std::set<int64_t>    parseDatasetIds(const QVariantList &dataset_ids);
+    static std::set<int64_t> parseDatasetIds(const QVariantList &dataset_ids);
 
     /// 校验权重文件是否存在；失败时自动调用 setLastError
     bool validateWeightsFile(const QString &path);
