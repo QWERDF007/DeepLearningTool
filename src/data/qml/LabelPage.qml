@@ -22,8 +22,7 @@ Rectangle {
     property DataManager dataManager
     readonly property var smartAnnotationController: dataManager ? dataManager.smartAnnotation : null
     readonly property bool smartAnnotationLoading: smartAnnotationController ? smartAnnotationController.loadingModel : false
-    property bool fewShotLearningEnabled: true
-    readonly property bool fewShotLearningAvailable: dataManager !== null && fewShotLearningEnabled
+    readonly property bool fewShotLearningAvailable: dataManager !== null && dataManager.fewShotLearning.enabled
 
     QuiSplitView {
         anchors.fill: parent
@@ -209,19 +208,4 @@ Rectangle {
         }
     }
 
-    function refreshSettings() {
-        fewShotLearningEnabled = GlobalSettings.valueForField(
-                    SettingsAccessor.FewShotLearning,
-                    FewShotLearningField.Enabled,
-                    true)
-    }
-
-    Component.onCompleted: refreshSettings()
-
-    Connections {
-        target: GlobalSettings.catalog
-        function onValueChanged() {
-            labelPage.refreshSettings()
-        }
-    }
 }

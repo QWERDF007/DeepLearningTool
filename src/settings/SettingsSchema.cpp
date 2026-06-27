@@ -15,7 +15,7 @@ namespace dltool::settings {
 
 namespace {
 
-using dltool::common::yaml::firstNode;
+
 using dltool::common::yaml::loadFile;
 using dltool::common::yaml::nodeString;
 using dltool::common::yaml::nodeVariant;
@@ -53,19 +53,18 @@ QString joinedAccessorPath(const QString &parent_accessor, const QString &access
 SettingsField parseField(const YAML::Node &node, const int ordinal_index)
 {
     SettingsField field;
-    field.name_en       = nodeString(firstNode(node, {"name_en", "key", "name"}));
-    field.name_cn       = nodeString(firstNode(node, {"name_cn", "label"}));
-    field.property_name = nodeString(firstNode(node, {"property_name", "property"}), field.name_en);
-    field.value         = nodeVariant(firstNode(node, {"value", "default_value"}));
-    field.default_value = nodeVariant(firstNode(node, {"default_value", "value"}));
-    field.value_type    = nodeString(firstNode(node, {"value_type", "type"}), QStringLiteral("string"));
-    field.value_range   = nodeVariant(firstNode(node, {"value_range", "range"})).toList();
-    field.control_type  = nodeString(firstNode(node, {"control_type", "control"}), QStringLiteral("text"));
+    field.name_en       = nodeString(node["name_en"]);
+    field.name_cn       = nodeString(node["name_cn"]);
+    field.property_name = nodeString(node["property_name"], field.name_en);
+    field.value         = nodeVariant(node["value"]);
+    field.default_value = field.value;
+    field.value_type    = nodeString(node["value_type"], QStringLiteral("string"));
+    field.value_range   = nodeVariant(node["value_range"]).toList();
+    field.control_type  = nodeString(node["control_type"], QStringLiteral("text"));
     field.options       = nodeVariant(node["options"]).toList();
-    field.options_value_map
-        = nodeVariant(firstNode(node, {"options_values", "option_values", "options_value_map"})).toMap();
-    field.options_map       = nodeVariant(firstNode(node, {"options_map", "key_values", "values_map"})).toMap();
-    field.options_key_field = nodeString(firstNode(node, {"options_key_field", "options_key", "options_source_field"}));
+    field.options_value_map = nodeVariant(node["options_values"]).toMap();
+    field.options_map       = nodeVariant(node["options_map"]).toMap();
+    field.options_key_field = nodeString(node["options_key_field"]);
     field.sidebar           = nodeVariant(node["sidebar"]).toMap();
     field.section           = nodeString(node["section"]);
     field.description       = nodeString(node["description"]);
@@ -704,7 +703,7 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
                 const QString    label       = group.IsMap() ? nodeString(group["label"], group_key) : group_key;
                 const QString    accessor    = group.IsMap() ? nodeString(group["accessor"]) : QString();
                 const QString    parent_accessor
-                    = group.IsMap() ? nodeString(firstNode(group, {"parent_accessor", "parent"})) : QString();
+                    = group.IsMap() ? nodeString(group["parent_accessor"]) : QString();
                 const QString     category = group.IsMap() ? nodeString(group["category"]) : QString();
                 const QVariantMap sidebar  = group.IsMap() ? nodeVariant(group["sidebar"]).toMap() : QVariantMap{};
                 const int group_ordinal    = group.IsMap() && group["ordinal_index"] ? group["ordinal_index"].as<int>()
@@ -719,7 +718,7 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
                     SettingsField field = parseField(field_node, ordinal++);
                     if (!field.name_en.isEmpty())
                     {
-                        if (!firstNode(field_node, {"property_name", "property"}))
+                        if (!field_node["property_name"])
                         {
                             spdlog::warn("Settings field missing property_name: group={}, field={}",
                                          group_key.toUtf8().constData(), field.name_en.toUtf8().constData());

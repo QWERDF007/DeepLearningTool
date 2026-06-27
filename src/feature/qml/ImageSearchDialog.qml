@@ -73,7 +73,7 @@ QuiPopup {
         let datasetIds = selectedDatasetIds()
         let started = false
         if (queryImageIds && queryImageIds.length > 0) {
-            started = controller.searchImages(queryImageIds, datasetIds)
+            started = controller.search(queryImageIds, datasetIds)
         } else {
             started = controller.searchSelectedImages(datasetIds)
         }

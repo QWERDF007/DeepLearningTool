@@ -24,15 +24,13 @@ Item {
     property point startPos: Qt.point(0, 0)
     property bool segmentationMode: dataManager ? dataManager.method === DeepLearningMethod.Segmentation : false
     property var smartAnnotation: dataManager ? dataManager.smartAnnotation : null
-    property bool imageSearchEnabled: true
     property bool roiSearchEnabled: true
-    property bool smartAnnotationEnabled: false
     property int smartAnnotationRefreshInterval: 80
     property real smartAnnotationMaskAlpha: 0.35
     property string toolMode: "select"
     property bool showBoundingBoxes: false
     readonly property bool smartAnnotationAvailable: smartAnnotation
-                                                    && smartAnnotationEnabled
+                                                    && smartAnnotation.enabled
                                                     && dataManager
                                                     && (dataManager.method === DeepLearningMethod.Detection
                                                         || dataManager.method === DeepLearningMethod.Segmentation)
@@ -97,8 +95,8 @@ Item {
             enabled: dataManager && dataManager.imageSearch
                      && imageInstances && imageInstances.currentImageId >= 0
                      && !dataManager.imageSearch.running
-                     && imageSearchEnabled
-            iconSource: QuiFontIcon.Search
+                     && dataManager.imageSearch.enabled
+iconSource: QuiFontIcon.Search
             onClicked: startImageSearchForCurrentImage()
         }
         QuiMenuItem {
@@ -1122,7 +1120,7 @@ Item {
     function startImageSearchForCurrentImage() {
         if (!dataManager || !dataManager.imageSearch || !imageInstances
                 || imageInstances.currentImageId < 0
-                || !imageSearchEnabled) {
+                || !dataManager.imageSearch.enabled) {
             return
         }
 
@@ -1188,12 +1186,7 @@ Item {
     }
 
     function refreshSettings() {
-        imageSearchEnabled = GlobalSettings.valueForField(SettingsAccessor.ImageSearch, ImageSearchField.Enabled, true)
         roiSearchEnabled = GlobalSettings.valueForField(SettingsAccessor.RoiSearch, RoiSearchField.Enabled, true)
-        smartAnnotationEnabled = GlobalSettings.valueForField(
-                    SettingsAccessor.SmartAnnotation,
-                    SmartAnnotationField.Enabled,
-                    false)
         smartAnnotationRefreshInterval = GlobalSettings.valueForField(
                     SettingsAccessor.SmartAnnotation,
                     SmartAnnotationField.RefreshInterval,

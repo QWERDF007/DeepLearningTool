@@ -76,18 +76,6 @@ QVariant nodeVariant(const YAML::Node &node)
     return {};
 }
 
-YAML::Node firstNode(const YAML::Node &node, std::initializer_list<const char *> keys)
-{
-    for (const char *key : keys)
-    {
-        const YAML::Node value = node[key];
-        if (value)
-        {
-            return value;
-        }
-    }
-    return {};
-}
 
 YAML::Node loadFile(const QFileInfo &file)
 {

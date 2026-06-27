@@ -41,7 +41,7 @@ struct SETTINGS_API SettingsField
     QVariantList options;           ///< 选项列表。
     QVariantMap  options_value_map; ///< 选项显示值到实际值的映射。
     QVariantMap  options_map;       ///< 选项键值映射。
-    QString      options_key_field; ///< options_map 使用的键字段 name_en。
+    QString      options_key_field; ///< options_map 的联动字段的 name_en。
     QVariantMap  sidebar;           ///< 侧边栏展示配置。
     QString      section;           ///< 所属分区名称。
     QString      description;       ///< 说明文本。

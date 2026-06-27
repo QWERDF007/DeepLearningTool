@@ -3,11 +3,21 @@
 #include "dltool/feature/Export.h"
 #include "settings/SettingsKeys.h"
 
+#include <inferrt/features/ImageSearch.hpp>
+#include <inferrt/features/RoiSearch.hpp>
+
+#include <QHash>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
 #include <QtQml>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <functional>
 #include <set>
 #include <vector>
 
@@ -15,18 +25,13 @@ namespace dltool::feature {
 
 class ImageSearchDataProvider;
 
-/**
- * @brief 图像相似度搜索控制器
- *
- * 基于 InferRT 特征提取与 FAISS 索引，对当前选中的查询图像在指定数据集图库中执行相似检索。
- * 搜索在后台线程执行，完成后将结果写入 GlobalFilter 的图像搜索过滤模块。
- */
 class FEATURE_API ImageSearchController : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(ImageSearchController)
     QML_UNCREATABLE("Can not create ImageSearchController directly!")
 
+    Q_PROPERTY(bool enabled READ enabled NOTIFY enabledChanged FINAL)
     Q_PROPERTY(bool running READ isRunning NOTIFY runningChanged FINAL)
     Q_PROPERTY(bool hasResults READ hasResults NOTIFY resultsChanged FINAL)
     Q_PROPERTY(int resultCount READ resultCount NOTIFY resultsChanged FINAL)
@@ -34,127 +39,311 @@ class FEATURE_API ImageSearchController : public QObject
     Q_PROPERTY(QString lastSummary READ lastSummary NOTIFY resultsChanged FINAL)
 
 public:
+    /**
+     * @brief 构造函数（默认使用图像搜索设置）
+     * @param data_provider 图像搜索数据提供者
+     * @param parent 父对象
+     */
     explicit ImageSearchController(ImageSearchDataProvider *data_provider, QObject *parent = nullptr);
     ~ImageSearchController() override = default;
 
     /**
-     * @brief 搜索任务是否正在运行
-     * @return 后台线程执行搜索时返回 true
+     * @brief 功能是否启用
+     * @return 启用返回 true
+     */
+    bool enabled() const;
+
+    /**
+     * @brief 是否正在运行搜索
+     * @return 运行中返回 true
      */
     bool isRunning() const;
 
     /**
-     * @brief 是否存在最近一次搜索的命中结果
-     * @return 结果数量大于 0 时返回 true
+     * @brief 是否有搜索结果
+     * @return 有结果返回 true
      */
     bool hasResults() const;
 
     /**
-     * @brief 获取最近一次搜索命中的图像数量
-     * @return 命中图像数量
+     * @brief 获取搜索结果数量
+     * @return 结果数量
      */
     int resultCount() const;
 
     /**
-     * @brief 获取最近一次错误或校验失败信息
-     * @return 错误描述；无错误时为空字符串
+     * @brief 获取最后一次错误信息
+     * @return 错误信息文本
      */
     QString lastError() const;
 
     /**
-     * @brief 获取最近一次成功搜索的摘要信息
-     * @return 例如命中数量的说明文本；未成功或无结果时为空
+     * @brief 获取最后一次搜索摘要
+     * @return 搜索摘要文本
      */
     QString lastSummary() const;
 
     /**
-     * @brief 对当前选中的图像执行相似度搜索
-     *
-     * 以图像列表中已勾选的图像为查询，在指定数据集（或全部）构成的图库中检索相似图像。
-     * 成功后在后台完成时自动更新 GlobalFilter 的搜索结果；若已有任务在运行则拒绝新请求。
-     *
-     * @param dataset_ids 限定图库的数据集 ID 列表；为空表示使用全部图像
-     * @details 图像搜索模型、索引、后端和运行时参数从 GlobalSettings 的图像搜索分组读取。
-     *
-     * @return 任务成功提交到后台线程时返回 true
+     * @brief 以当前选中的图像作为查询进行搜索
+     * @param dataset_ids 数据集 ID 列表
+     * @return 启动成功返回 true
      */
     Q_INVOKABLE bool searchSelectedImages(const QVariantList &dataset_ids);
 
-    Q_INVOKABLE bool searchImages(const QVariantList &image_ids, const QVariantList &dataset_ids);
-
-    Q_INVOKABLE bool searchLabelRois(const QVariantList &label_ids, const QVariantList &dataset_ids);
+    /**
+     * @brief 以指定 ID 列表作为查询进行搜索
+     * @param ids 图像/标注 ID 列表
+     * @param dataset_ids 数据集 ID 列表
+     * @return 启动成功返回 true
+     */
+    Q_INVOKABLE virtual bool search(const QVariantList &ids, const QVariantList &dataset_ids);
 
 signals:
-    /** @brief 运行状态变化（running 属性） */
+    void enabledChanged();
     void runningChanged();
-
-    /** @brief 搜索结果或命中数量变化 */
     void resultsChanged();
-
-    /** @brief 最近一次错误信息变化 */
     void lastErrorChanged();
 
-    /** @brief 特征库构建进度更新 */
+    /**
+     * @brief 构建进度变化信号
+     * @param processedCount 已处理数量
+     * @param totalCount 总数量
+     */
     void buildProgressChanged(int processedCount, int totalCount);
 
-private:
-    struct SearchRequest;
-    struct SearchResponse;
+protected:
+    /**
+     * @brief 构造函数（子类指定设置访问键）
+     * @param data_provider 图像搜索数据提供者
+     * @param settings_accessor 设置访问键
+     * @param parent 父对象
+     */
+    explicit ImageSearchController(ImageSearchDataProvider                 *data_provider,
+                                   dltool::settings::generated::AccessorKey settings_accessor,
+                                   QObject                                 *parent = nullptr);
 
-    // ── 参数解析与校验 ──
+    /// 搜索请求结构体
+    struct SearchRequest
+    {
+        QString weights_file; ///< 模型权重文件路径
+        QString index_file;   ///< 特征索引文件路径
 
-    /// 从 QVariantList 提取生效的 dataset ID 集合
+        bool rebuild_index{false}; ///< 是否重建索引
+        int  top_k{5};             ///< 返回结果数量
+
+        irt::features::ImageSearchConfig image_config; ///< 图像搜索配置
+        irt::features::RoiSearchConfig   roi_config;   ///< ROI 搜索配置
+
+        std::chrono::steady_clock::time_point started_at; ///< 搜索开始时间
+
+        std::vector<std::filesystem::path> query_images;     ///< 查询图像路径列表
+        std::vector<std::filesystem::path> gallery_images;   ///< 搜索库图像路径列表
+        QHash<QString, int64_t>            path_to_image_id; ///< 路径到图像 ID 的映射
+
+        std::vector<irt::features::RoiSearchItem> query_rois;            ///< 查询 ROI 列表
+        std::vector<irt::features::RoiSearchItem> gallery_rois;          ///< 搜索库 ROI 列表
+        std::vector<int64_t>                      gallery_roi_label_ids; ///< 搜索库 ROI 对应的标注 ID
+        std::vector<int64_t>                      gallery_roi_image_ids; ///< 搜索库 ROI 对应的图像 ID
+
+        QPointer<ImageSearchController> controller; ///< 控制器指针（线程安全）
+    };
+
+    /// 搜索响应结构体
+    struct SearchResponse
+    {
+        bool                 success{false}; ///< 是否成功
+        QString              error;          ///< 错误信息
+        QString              summary;        ///< 搜索摘要
+        qint64               elapsed_ms{0};  ///< 耗时（毫秒）
+        std::vector<int64_t> result_ids;     ///< 结果 ID 列表
+    };
+
+    using BuildProgressCallback = std::function<void(const irt::features::ImageSearchBuildProgress &)>;
+
+    ImageSearchDataProvider *data_provider_{nullptr}; ///< 数据提供者
+
+    /**
+     * @brief 解析数据集 ID 列表
+     * @param dataset_ids QVariantList 格式的数据集 ID
+     * @return 去重后的数据集 ID 集合
+     */
     static std::set<int64_t> parseDatasetIds(const QVariantList &dataset_ids);
 
-    /// 校验权重文件是否存在；失败时自动调用 setLastError
+    /**
+     * @brief 验证权重文件是否存在
+     * @param path 权重文件路径
+     * @return 文件存在返回 true
+     */
     bool validateWeightsFile(const QString &path);
 
-    /// 从设置分组读取参数快照并组装为 SearchRequest
-    SearchRequest buildSearchRequest(dltool::settings::generated::AccessorKey accessor_key);
+    /**
+     * @brief 获取当前控制器对应的设置访问键
+     * @return 设置访问键
+     */
+    virtual dltool::settings::generated::AccessorKey settingsAccessor() const;
+    /**
+     * @brief 获取请求对应的模型名称
+     * @param req 搜索请求
+     * @return 模型名称
+     */
+    virtual QString                                  modelNameForRequest(const SearchRequest &req) const;
 
-    /// 确认设置分组已加载且对应搜索功能已启用
-    bool ensureSearchSettingsEnabled(dltool::settings::generated::AccessorKey accessor_key,
-                                     const QString                           &display_name);
+    /**
+     * @brief 获取请求对应的特征层名称
+     * @param req 搜索请求
+     * @return 特征层名称
+     */
+    virtual QString featureNameForRequest(const SearchRequest &req) const;
 
-    /// 使用指定查询图像启动图像搜索
-    bool startImageSearch(const std::vector<int64_t> &query_ids, const QVariantList &dataset_ids,
-                          const QString &empty_query_message, const QString &missing_query_file_message);
+    /**
+     * @brief 验证搜索请求参数
+     * @param req 搜索请求
+     * @return 验证通过返回 true
+     */
+    virtual bool validateSearchRequest(SearchRequest &req);
 
-    // ── 图像收集 ──
+    /**
+     * @brief 构建搜索请求配置参数
+     * @param req 搜索请求
+     * 
+     */
+    virtual void buildSearchRequest(SearchRequest &req);
 
-    /// 按数据集过滤并收集图库图像路径及 ID 映射
-    void collectGalleryImages(SearchRequest &request, const std::set<int64_t> &dataset_ids);
+    /**
+     * @brief 计算特征索引文件路径
+     * @param request 搜索请求
+     * @return 索引文件路径
+     */
+    virtual QString computeIndexPath(const SearchRequest &request) const;
 
-    /// 收集当前选中图像的查询路径
-    void collectQueryImages(SearchRequest &request, const std::vector<int64_t> &query_ids) const;
-    void collectGalleryRois(SearchRequest &request, const std::set<int64_t> &dataset_ids);
-    void collectQueryRois(SearchRequest &request, const std::vector<int64_t> &query_label_ids) const;
+    /**
+     * @brief 从数据集中收集图像/标注作为搜索库
+     * @param request 搜索请求
+     * @param dataset_ids 数据集 ID 集合
+     */
+    virtual void collectGallery(SearchRequest &request, const std::set<int64_t> &dataset_ids);
 
-    // ── 索引路径 ──
+    /**
+     * @brief 收集查询项的路径信息
+     * @param request 搜索请求
+     * @param ids 图像/标注 ID 列表
+     */
+    virtual void collectQuery(SearchRequest &request, const std::vector<int64_t> &ids);
 
-    /// 计算当前搜索请求对应的 FAISS 索引文件路径
-    QString computeIndexPath(const SearchRequest &request) const;
+    /**
+     * @brief 执行搜索
+     * @param request 搜索请求
+     * @param response 搜索响应
+     */
+    virtual void executeSearch(const SearchRequest &request, SearchResponse &response);
 
-    // ── 后台搜索 ──
+    /**
+     * @brief 获取搜索功能的显示名称
+     * @return 显示名称
+     */
+    virtual QString searchDisplayName() const;
 
-    static void executeSearchWorker(SearchRequest request, QPointer<ImageSearchController> controller);
+    /**
+     * @brief 获取查询为空时的错误提示
+     * @return 错误提示文本
+     */
+    virtual QString emptyQuerySelectionErrorMessage() const;
 
-    // ── UI 反馈 ──
+    /**
+     * @brief 获取搜索库为空时的错误提示
+     * @return 错误提示文本
+     */
+    virtual QString emptyGalleryErrorMessage() const;
 
+    /**
+     * @brief 获取查询准备为空时的错误提示
+     * @return 错误提示文本
+     */
+    virtual QString emptyPreparedQueryErrorMessage() const;
+
+    /**
+     * @brief 获取查询项数量
+     * @param request 搜索请求
+     * @return 查询项数量
+     */
+    virtual size_t queryItemCount(const SearchRequest &request) const;
+
+    /**
+     * @brief 获取搜索库项数量
+     * @param request 搜索请求
+     * @return 搜索库项数量
+     */
+    virtual size_t galleryItemCount(const SearchRequest &request) const;
+
+    /**
+     * @brief 获取模型可用的特征层选项
+     * @param model_name 模型名称
+     * @return 特征层名称列表
+     */
+    virtual QStringList featureOptionsForModel(const QString &model_name) const;
+
+    /**
+     * @brief 重置状态以开始新搜索
+     */
     void resetForNewSearch();
+
+    /**
+     * @brief 启动进度显示
+     * @param request 搜索请求
+     */
     void startProgress(const SearchRequest &request);
+
+    /**
+     * @brief 结束进度显示
+     * @param success 是否成功
+     * @param message 日志消息
+     */
     void finishProgress(bool success, const QString &message);
-    void setRunning(bool running);
-    void setLastError(const QString &last_error);
+
+    /**
+     * @brief 完成搜索并处理结果
+     * @param response 搜索响应
+     */
     void finishSearch(const SearchResponse &response);
 
-    // ── 数据成员 ──
+    /**
+     * @brief 创建构建进度报告回调
+     * @param controller 控制器指针
+     * @param gallery_count 搜索库项数量
+     * @return 进度回调函数
+     */
+    static BuildProgressCallback createBuildProgressReporter(QPointer<ImageSearchController> controller,
+                                                             size_t                          gallery_count);
 
-    ImageSearchDataProvider *data_provider_{nullptr};
-    bool                     running_{false};
-    QString                  last_error_;
-    QString                  last_summary_;
-    int                      result_count_{0};
+    /**
+     * @brief 将搜索结果应用到数据提供者
+     * @param response 搜索响应
+     */
+    virtual void applyResults(const SearchResponse &response);
+
+    void setRunning(bool running);
+
+    void setLastError(const QString &last_error);
+
+    // ponytail: base class resets both image+label results; subclasses override if needed
+    /// 清除数据提供者的搜索结果
+    virtual void clearProviderResults();
+
+    /**
+     * @brief 确认搜索设置已启用
+     * @param display_name 搜索功能显示名称
+     * @return 已启用返回 true
+     */
+    bool ensureSearchSettingsEnabled(const QString &display_name);
+
+    dltool::settings::generated::AccessorKey settings_accessor_{
+        dltool::settings::generated::AccessorKey::ImageSearch}; ///< 设置访问键
+
+    bool    enabled_{true};   ///< 功能是否启用
+    bool    running_{false};  ///< 是否正在运行
+    QString last_error_;      ///< 最后一次错误信息
+    QString last_summary_;    ///< 最后一次搜索摘要
+    int     result_count_{0}; ///< 搜索结果数量
 };
 
 } // namespace dltool::feature

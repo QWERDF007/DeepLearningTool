@@ -32,74 +32,54 @@ namespace dltool::feature {
 
 namespace {
 
-constexpr int kSamMaxPoints = 16;
+constexpr int kSamMaxPoints = 16; ///< SAM 模型最大提示点数
 
 using dltool::settings::settingBool;
 using dltool::settings::settingDouble;
 using dltool::settings::settingString;
 
+/// 提示点结构
 struct PromptPoint
 {
-    QPointF point;
-    int     label{1};
+    QPointF point;   ///< 坐标
+    int     label{1}; ///< 标签（1=前景，0=背景）
 };
 
+/// 预处理后的图像数据
 struct PreprocessedImage
 {
-    std::vector<float> tensor;
-    int                resized_h{0};
-    int                resized_w{0};
+    std::vector<float> tensor; ///< 张量数据
+    int                resized_h{0}; ///< 缩放后的高度
+    int                resized_w{0}; ///< 缩放后的宽度
 };
 
+/**
+ * @brief 智能标注模型配置实现
+ *
+ * 实现 IModelConfig 接口，用于配置 SAM 推理模型的各种参数。
+ */
 class SmartModelConfig : public irt::model::IModelConfig
 {
 public:
-    void setNumClasses(int num_classes) override
-    {
-        num_classes_ = num_classes;
-    }
-
+    void setNumClasses(int num_classes) override { num_classes_ = num_classes; }
     void setInputShape(const nvinfer1::Dims4 &input_shape) override
     {
         if (input_shapes_.empty())
-        {
             input_shapes_.push_back(input_shape);
-        }
         else
-        {
             input_shapes_.front() = input_shape;
-        }
         syncDynamicBatch(input_shape.d[0]);
     }
-
     void setInputShapes(std::vector<nvinfer1::Dims4> input_shapes) override
     {
         input_shapes_ = std::move(input_shapes);
         if (!input_shapes_.empty())
-        {
             syncDynamicBatch(input_shapes_.front().d[0]);
-        }
     }
-
-    void setInputTensorNames(std::vector<std::string> input_tensor_names) override
-    {
-        input_tensor_names_ = std::move(input_tensor_names);
-    }
-
-    void setOutputTensorNames(std::vector<std::string> output_tensor_names) override
-    {
-        output_tensor_names_ = std::move(output_tensor_names);
-    }
-
-    void setFeatureTensorNames(std::vector<std::string> feature_tensor_names) override
-    {
-        feature_tensor_names_ = std::move(feature_tensor_names);
-    }
-
-    void setFeatureOnly(bool feature_only) override
-    {
-        feature_only_ = feature_only;
-    }
+    void setInputTensorNames(std::vector<std::string> input_tensor_names) override { input_tensor_names_ = std::move(input_tensor_names); }
+    void setOutputTensorNames(std::vector<std::string> output_tensor_names) override { output_tensor_names_ = std::move(output_tensor_names); }
+    void setFeatureTensorNames(std::vector<std::string> feature_tensor_names) override { feature_tensor_names_ = std::move(feature_tensor_names); }
+    void setFeatureOnly(bool feature_only) override { feature_only_ = feature_only; }
 
     void setDynamicBatch(bool dynamic_batch) noexcept override
     {
@@ -110,9 +90,7 @@ public:
             return;
         }
         if (!dynamic_batch_range_explicit_ && !input_shapes_.empty())
-        {
             syncDynamicBatch(input_shapes_.front().d[0]);
-        }
     }
 
     void setDynamicBatchRange(int min_batch, int opt_batch, int max_batch) noexcept override
@@ -124,104 +102,47 @@ public:
         max_batch_size_               = max_batch;
     }
 
-    void setBackend(irt::model::ModelBackend backend) noexcept override
-    {
-        backend_ = backend;
-    }
+    void setBackend(irt::model::ModelBackend backend) noexcept override { backend_ = backend; }
+    void setDevice(irt::model::ModelDevice device) noexcept override { device_ = device; }
 
-    void setDevice(irt::model::ModelDevice device) noexcept override
-    {
-        device_ = device;
-    }
-
-    int numClasses() const noexcept override
-    {
-        return num_classes_;
-    }
-
-    const nvinfer1::Dims4 &inputShape() const noexcept override
-    {
-        return input_shapes_.front();
-    }
-
-    const std::vector<nvinfer1::Dims4> &inputShapes() const noexcept override
-    {
-        return input_shapes_;
-    }
-
-    const std::vector<std::string> &inputTensorNames() const noexcept override
-    {
-        return input_tensor_names_;
-    }
-
-    const std::vector<std::string> &outputTensorNames() const noexcept override
-    {
-        return output_tensor_names_;
-    }
-
-    const std::vector<std::string> &featureTensorNames() const noexcept override
-    {
-        return feature_tensor_names_;
-    }
-
-    bool featureOnly() const noexcept override
-    {
-        return feature_only_;
-    }
-
-    bool dynamicBatch() const noexcept override
-    {
-        return dynamic_batch_;
-    }
-
-    int minBatchSize() const noexcept override
-    {
-        return min_batch_size_;
-    }
-
-    int optBatchSize() const noexcept override
-    {
-        return opt_batch_size_;
-    }
-
-    int maxBatchSize() const noexcept override
-    {
-        return max_batch_size_;
-    }
-
-    irt::model::ModelBackend backend() const noexcept override
-    {
-        return backend_;
-    }
-
-    irt::model::ModelDevice device() const noexcept override
-    {
-        return device_;
-    }
+    int                      numClasses() const noexcept override { return num_classes_; }
+    const nvinfer1::Dims4   &inputShape() const noexcept override { return input_shapes_.front(); }
+    const std::vector<nvinfer1::Dims4> &inputShapes() const noexcept override { return input_shapes_; }
+    const std::vector<std::string>     &inputTensorNames() const noexcept override { return input_tensor_names_; }
+    const std::vector<std::string>     &outputTensorNames() const noexcept override { return output_tensor_names_; }
+    const std::vector<std::string>     &featureTensorNames() const noexcept override { return feature_tensor_names_; }
+    bool featureOnly() const noexcept override { return feature_only_; }
+    bool dynamicBatch() const noexcept override { return dynamic_batch_; }
+    int  minBatchSize() const noexcept override { return min_batch_size_; }
+    int  optBatchSize() const noexcept override { return opt_batch_size_; }
+    int  maxBatchSize() const noexcept override { return max_batch_size_; }
+    irt::model::ModelBackend backend() const noexcept override { return backend_; }
+    irt::model::ModelDevice  device() const noexcept override { return device_; }
 
 private:
+    /**
+     * @brief 同步动态批处理大小
+     * @param input_batch 输入批次大小
+     */
     void syncDynamicBatch(int64_t input_batch) noexcept
     {
         if (!dynamic_batch_ || dynamic_batch_range_explicit_ || input_batch <= 0
             || input_batch > std::numeric_limits<int>::max())
-        {
             return;
-        }
 
         const int batch = static_cast<int>(input_batch);
         min_batch_size_ = 1;
         opt_batch_size_ = batch;
         if (max_batch_size_ < opt_batch_size_)
-        {
             max_batch_size_ = opt_batch_size_;
-        }
     }
 };
 
+/// Mask 像素坐标点
 struct MaskPoint
 {
-    int x{0};
-    int y{0};
+    int x{0}; ///< X 坐标
+    int y{0}; ///< Y 坐标
 };
 
 bool operator==(const MaskPoint &left, const MaskPoint &right)
@@ -229,36 +150,34 @@ bool operator==(const MaskPoint &left, const MaskPoint &right)
     return left.x == right.x && left.y == right.y;
 }
 
+/// Mask 边界边
 struct BoundaryEdge
 {
-    MaskPoint from;
-    MaskPoint to;
-    int       direction{0};
-    bool      used{false};
+    MaskPoint from;       ///< 起点
+    MaskPoint to;         ///< 终点
+    int       direction{0}; ///< 方向（0=右, 1=下, 2=左, 3=上）
+    bool      used{false};  ///< 是否已被追踪使用
 };
 
+/**
+ * @brief GPU 显存缓冲区（RAII 管理）
+ */
 class GpuBuffer
 {
 public:
-    explicit GpuBuffer(size_t bytes)
-    {
-        allocate(bytes);
-    }
+    explicit GpuBuffer(size_t bytes) { allocate(bytes); }
 
     ~GpuBuffer()
     {
         if (data_ != nullptr)
-        {
             cudaFree(data_);
-        }
     }
 
     GpuBuffer(const GpuBuffer &)            = delete;
     GpuBuffer &operator=(const GpuBuffer &) = delete;
 
     GpuBuffer(GpuBuffer &&other) noexcept
-        : data_(other.data_)
-        , bytes_(other.bytes_)
+        : data_(other.data_), bytes_(other.bytes_)
     {
         other.data_  = nullptr;
         other.bytes_ = 0;
@@ -268,10 +187,7 @@ public:
     {
         if (this != &other)
         {
-            if (data_ != nullptr)
-            {
-                cudaFree(data_);
-            }
+            if (data_ != nullptr) cudaFree(data_);
             data_        = other.data_;
             bytes_       = other.bytes_;
             other.data_  = nullptr;
@@ -280,28 +196,16 @@ public:
         return *this;
     }
 
-    void *data() const
-    {
-        return data_;
-    }
-
-    size_t sizeBytes() const
-    {
-        return bytes_;
-    }
+    void *data() const { return data_; }
+    size_t sizeBytes() const { return bytes_; }
 
 private:
     void allocate(size_t bytes)
     {
-        if (bytes == 0)
-        {
-            return;
-        }
+        if (bytes == 0) return;
         cudaError_t status = cudaMalloc(&data_, bytes);
         if (status != cudaSuccess)
-        {
             throw std::runtime_error(std::string("cudaMalloc failed: ") + cudaGetErrorString(status));
-        }
         bytes_ = bytes;
     }
 
@@ -309,31 +213,55 @@ private:
     size_t bytes_{0};
 };
 
+/**
+ * @brief 规范化模型名称（去除首尾空白）
+ * @param value 模型名称
+ * @return 规范化后的名称
+ */
 QString normalizedModelName(QString value)
 {
     return value.trimmed();
 }
 
+/**
+ * @brief 判断是否为 TensorRT 后端
+ * @param backend 模型后端类型
+ * @return 是 TensorRT 返回 true
+ */
 bool isTensorRtBackend(const irt::model::ModelBackend backend)
 {
     return backend == irt::model::ModelBackend::TensorRT;
 }
 
+/**
+ * @brief 判断是否为 SAM2 模型
+ * @param model_name 模型名称
+ * @return 是 SAM2 模型返回 true
+ */
 bool isSam2Model(const QString &model_name)
 {
     return normalizedModelName(model_name).toLower().startsWith(QStringLiteral("sam2"));
 }
 
+/// 智能标注模型加载请求
 struct SmartModelLoadRequest
 {
-    QString                  model_name;
-    irt::model::ModelBackend backend{irt::model::ModelBackend::TensorRT};
-    irt::model::ModelDevice  device{irt::model::ModelDevice::GPU};
-    QString                  absolute_model_path;
-    QString                  runtime_model_name;
-    QString                  key;
+    QString                  model_name;          ///< 模型名称
+    irt::model::ModelBackend backend{irt::model::ModelBackend::TensorRT}; ///< 推理后端
+    irt::model::ModelDevice  device{irt::model::ModelDevice::GPU};        ///< 推理设备
+    QString                  absolute_model_path; ///< 模型文件绝对路径
+    QString                  runtime_model_name;  ///< 运行时模型名称
+    QString                  key;                 ///< 缓存唯一标识
 };
 
+/**
+ * @brief 构建模型加载请求
+ * @param model_name 模型名称
+ * @param model_path 模型文件路径
+ * @param backend 推理后端
+ * @param device 推理设备
+ * @return 模型加载请求
+ */
 SmartModelLoadRequest buildSmartModelLoadRequest(const QString &model_name, const QString &model_path,
                                                  const irt::model::ModelBackend backend,
                                                  const irt::model::ModelDevice  device)
@@ -353,6 +281,12 @@ SmartModelLoadRequest buildSmartModelLoadRequest(const QString &model_name, cons
     return request;
 }
 
+/**
+ * @brief 加载智能标注模型
+ * @param request 模型加载请求
+ * @return 加载完成的模型实例
+ * @throws std::runtime_error 加载失败时抛出
+ */
 std::unique_ptr<irt::model::IModel> loadSmartModel(const SmartModelLoadRequest &request)
 {
     auto config = std::make_unique<SmartModelConfig>();
@@ -365,43 +299,53 @@ std::unique_ptr<irt::model::IModel> loadSmartModel(const SmartModelLoadRequest &
                  request.absolute_model_path.toUtf8().constData());
     auto model = irt::model::CreateModel(request.runtime_model_name.toUtf8().constData(), std::move(config));
     if (!model)
-    {
         throw std::runtime_error(
             QString("创建 InferRT 模型失败: %1").arg(request.runtime_model_name).toUtf8().constData());
-    }
     model->setLogLevel(nvinfer1::ILogger::Severity::kWARNING);
     model->buildOrLoad(request.absolute_model_path.toUtf8().constData());
     spdlog::info("加载智能标注模型完成");
     return model;
 }
 
+/**
+ * @brief 检查 CUDA 操作状态，失败则抛出异常
+ * @param status CUDA 状态码
+ * @param operation 操作名称
+ * @throws std::runtime_error 操作失败时抛出
+ */
 void checkCuda(cudaError_t status, const char *operation)
 {
     if (status != cudaSuccess)
-    {
         throw std::runtime_error(std::string(operation) + " failed: " + cudaGetErrorString(status));
-    }
 }
 
+/**
+ * @brief 计算张量元素总数
+ * @param dims 张量维度
+ * @return 元素总数
+ * @throws std::runtime_error 维度无效或动态时抛出
+ */
 size_t elementCount(const nvinfer1::Dims &dims)
 {
     if (dims.nbDims <= 0)
-    {
         throw std::runtime_error("Invalid tensor shape");
-    }
 
     size_t count = 1;
     for (int i = 0; i < dims.nbDims; ++i)
     {
         if (dims.d[i] <= 0)
-        {
             throw std::runtime_error("Dynamic or invalid tensor shape is not supported for smart annotation");
-        }
         count *= static_cast<size_t>(dims.d[i]);
     }
     return count;
 }
 
+/**
+ * @brief 解析 QML 传入的提示点列表
+ * @param prompt_points QVariantList 格式的提示点
+ * @return 解析后的提示点列表
+ * @throws std::runtime_error 提示点无效时抛出
+ */
 std::vector<PromptPoint> parsePromptPoints(const QVariantList &prompt_points)
 {
     std::vector<PromptPoint> points;
@@ -411,46 +355,45 @@ std::vector<PromptPoint> parsePromptPoints(const QVariantList &prompt_points)
     for (const QVariant &entry : prompt_points)
     {
         const QVariantMap map = entry.toMap();
-        if (map.isEmpty())
-        {
-            continue;
-        }
+        if (map.isEmpty()) continue;
 
         PromptPoint point;
         point.point = QPointF(map.value(QStringLiteral("x")).toDouble(), map.value(QStringLiteral("y")).toDouble());
         point.label = map.value(QStringLiteral("label"), 1).toInt() > 0 ? 1 : 0;
-        if (point.label == 1)
-        {
-            ++positive_count;
-        }
+        if (point.label == 1) ++positive_count;
         points.push_back(point);
     }
 
     if (points.empty())
-    {
         throw std::runtime_error("请先添加智能标注提示点");
-    }
     if (positive_count == 0)
-    {
         throw std::runtime_error("智能标注至少需要一个 positive 点");
-    }
     if (points.size() > static_cast<size_t>(kSamMaxPoints))
-    {
         throw std::runtime_error("智能标注最多支持 16 个提示点");
-    }
     return points;
 }
 
+/**
+ * @brief 加载 RGB 图像
+ * @param path 图像文件路径
+ * @return RGB888 格式图像
+ * @throws std::runtime_error 加载失败时抛出
+ */
 QImage loadRgbImage(const QString &path)
 {
     QImage image(path);
     if (image.isNull())
-    {
         throw std::runtime_error(QString("图像加载失败: %1").arg(path).toStdString());
-    }
     return image.convertToFormat(QImage::Format_RGB888);
 }
 
+/**
+ * @brief 计算图像缩放后的尺寸（保持长宽比，长边对齐目标尺寸）
+ * @param original_h 原始高度
+ * @param original_w 原始宽度
+ * @param target_size 目标尺寸（长边）
+ * @return 缩放后的 (高度, 宽度)
+ */
 std::pair<int, int> computeResizeShape(int original_h, int original_w, int target_size)
 {
     const double scale = static_cast<double>(target_size) / static_cast<double>(std::max(original_h, original_w));
@@ -458,19 +401,24 @@ std::pair<int, int> computeResizeShape(int original_h, int original_w, int targe
             std::max(1, static_cast<int>(std::floor(static_cast<double>(original_w) * scale + 0.5)))};
 }
 
+/**
+ * @brief 图像预处理：缩放并归一化为张量
+ * @param rgb_image RGB 输入图像
+ * @param input_h 模型输入高度
+ * @param input_w 模型输入宽度
+ * @param use_sam2_preprocess 是否使用 SAM2 预处理参数
+ * @return 预处理后的图像张量
+ * @throws std::runtime_error 输入尺寸无效时抛出
+ */
 PreprocessedImage preprocessImage(const QImage &rgb_image, int input_h, int input_w, bool use_sam2_preprocess)
 {
     if (input_h <= 0 || input_w <= 0 || input_h != input_w)
-    {
         throw std::runtime_error("SAM input must be a valid square tensor");
-    }
 
     const int image_h = rgb_image.height();
     const int image_w = rgb_image.width();
     if (image_h <= 0 || image_w <= 0)
-    {
         throw std::runtime_error("Invalid source image size");
-    }
 
     if (use_sam2_preprocess)
     {
@@ -488,8 +436,7 @@ PreprocessedImage preprocessImage(const QImage &rgb_image, int input_h, int inpu
                 const auto *pixel = row + x * 3;
                 for (int c = 0; c < 3; ++c)
                 {
-                    const size_t offset
-                        = static_cast<size_t>(c) * input_h * input_w + static_cast<size_t>(y) * input_w + x;
+                    const size_t offset = static_cast<size_t>(c) * input_h * input_w + static_cast<size_t>(y) * input_w + x;
                     tensor[offset] = (static_cast<float>(pixel[c]) / 255.0F - kMean[c]) / kStd[c];
                 }
             }
@@ -514,29 +461,39 @@ PreprocessedImage preprocessImage(const QImage &rgb_image, int input_h, int inpu
             for (int c = 0; c < 3; ++c)
             {
                 const size_t offset = static_cast<size_t>(c) * input_h * input_w + static_cast<size_t>(y) * input_w + x;
-                tensor[offset]      = (static_cast<float>(pixel[c]) - kMean[c]) / kStd[c];
+                tensor[offset] = (static_cast<float>(pixel[c]) - kMean[c]) / kStd[c];
             }
         }
     }
     return {std::move(tensor), resized_h, resized_w};
 }
 
+/**
+ * @brief 将提示点坐标从原始图像空间缩放到模型输入空间
+ * @param value 原始坐标值
+ * @param original_size 原始图像尺寸
+ * @param resized_size 缩放后尺寸
+ * @return 缩放后的坐标值
+ */
 float scalePromptCoordinate(double value, int original_size, int resized_size)
 {
-    if (original_size <= 0 || resized_size <= 0)
-    {
-        return 0.0F;
-    }
+    if (original_size <= 0 || resized_size <= 0) return 0.0F;
     const double clamped = std::clamp(value, 0.0, static_cast<double>(std::max(0, original_size - 1)));
     return static_cast<float>(clamped * static_cast<double>(resized_size) / static_cast<double>(original_size));
 }
 
+/**
+ * @brief 双线性插值缩放
+ * @param src 源数据
+ * @param src_w 源宽度
+ * @param src_h 源高度
+ * @param dst_w 目标宽度
+ * @param dst_h 目标高度
+ * @return 缩放后的数据
+ */
 std::vector<float> resizeBilinear(const float *src, int src_w, int src_h, int dst_w, int dst_h)
 {
-    if (src == nullptr || src_w <= 0 || src_h <= 0 || dst_w <= 0 || dst_h <= 0)
-    {
-        return {};
-    }
+    if (src == nullptr || src_w <= 0 || src_h <= 0 || dst_w <= 0 || dst_h <= 0) return {};
 
     std::vector<float> dst(static_cast<size_t>(dst_w) * dst_h, 0.0F);
     const double       x_scale = dst_w > 1 ? static_cast<double>(src_w - 1) / static_cast<double>(dst_w - 1) : 0.0;
@@ -561,20 +518,25 @@ std::vector<float> resizeBilinear(const float *src, int src_w, int src_h, int ds
             const float v01 = src[static_cast<size_t>(y1) * src_w + x0];
             const float v11 = src[static_cast<size_t>(y1) * src_w + x1];
 
-            const double top                        = v00 * (1.0 - wx) + v10 * wx;
-            const double bottom                     = v01 * (1.0 - wx) + v11 * wx;
+            const double top    = v00 * (1.0 - wx) + v10 * wx;
+            const double bottom = v01 * (1.0 - wx) + v11 * wx;
             dst[static_cast<size_t>(y) * dst_w + x] = static_cast<float>(top * (1.0 - wy) + bottom * wy);
         }
     }
     return dst;
 }
 
+/**
+ * @brief 从左上角裁剪图像区域
+ * @param src 源数据
+ * @param src_w 源宽度
+ * @param crop_w 裁剪宽度
+ * @param crop_h 裁剪高度
+ * @return 裁剪后的数据
+ */
 std::vector<float> cropTopLeft(const std::vector<float> &src, int src_w, int crop_w, int crop_h)
 {
-    if (src_w <= 0 || crop_w <= 0 || crop_h <= 0)
-    {
-        return {};
-    }
+    if (src_w <= 0 || crop_w <= 0 || crop_h <= 0) return {};
 
     std::vector<float> dst(static_cast<size_t>(crop_w) * crop_h, 0.0F);
     for (int y = 0; y < crop_h; ++y)
@@ -587,21 +549,22 @@ std::vector<float> cropTopLeft(const std::vector<float> &src, int src_w, int cro
     return dst;
 }
 
+/**
+ * @brief 从二值 Mask 中计算外接矩形
+ * @param mask 二值 Mask 数据
+ * @param width 图像宽度
+ * @param height 图像高度
+ * @return 外接矩形，无前景时返回空矩形
+ */
 QRectF boundingBoxFromMask(const std::vector<uint8_t> &mask, int width, int height)
 {
-    int x_min = width;
-    int y_min = height;
-    int x_max = -1;
-    int y_max = -1;
+    int x_min = width, y_min = height, x_max = -1, y_max = -1;
 
     for (int y = 0; y < height; ++y)
     {
         for (int x = 0; x < width; ++x)
         {
-            if (mask[static_cast<size_t>(y) * width + x] == 0)
-            {
-                continue;
-            }
+            if (mask[static_cast<size_t>(y) * width + x] == 0) continue;
             x_min = std::min(x_min, x);
             y_min = std::min(y_min, y);
             x_max = std::max(x_max, x);
@@ -609,19 +572,18 @@ QRectF boundingBoxFromMask(const std::vector<uint8_t> &mask, int width, int heig
         }
     }
 
-    if (x_max < x_min || y_max < y_min)
-    {
-        return {};
-    }
+    if (x_max < x_min || y_max < y_min) return {};
     return QRectF(x_min, y_min, x_max - x_min + 1, y_max - y_min + 1);
 }
 
+/**
+ * @brief 计算多边形面积（绝对值）
+ * @param points 多边形顶点
+ * @return 面积
+ */
 double polygonArea(const std::vector<QPointF> &points)
 {
-    if (points.size() < 3)
-    {
-        return 0.0;
-    }
+    if (points.size() < 3) return 0.0;
 
     double area = 0.0;
     for (size_t i = 0; i < points.size(); ++i)
@@ -633,12 +595,14 @@ double polygonArea(const std::vector<QPointF> &points)
     return std::abs(area) / 2.0;
 }
 
+/**
+ * @brief 计算多边形有向面积
+ * @param points 多边形顶点
+ * @return 有向面积（正值表示逆时针）
+ */
 double signedPolygonArea(const std::vector<QPointF> &points)
 {
-    if (points.size() < 3)
-    {
-        return 0.0;
-    }
+    if (points.size() < 3) return 0.0;
 
     double area = 0.0;
     for (size_t i = 0; i < points.size(); ++i)
@@ -650,52 +614,55 @@ double signedPolygonArea(const std::vector<QPointF> &points)
     return area / 2.0;
 }
 
+/**
+ * @brief 计算点到线段的距离
+ * @param point 目标点
+ * @param a 线段起点
+ * @param b 线段终点
+ * @return 最短距离
+ */
 double distanceToSegment(const QPointF &point, const QPointF &a, const QPointF &b)
 {
-    const double dx   = b.x() - a.x();
-    const double dy   = b.y() - a.y();
+    const double dx = b.x() - a.x(), dy = b.y() - a.y();
     const double len2 = dx * dx + dy * dy;
-    if (len2 <= 0.000001)
-    {
-        return QLineF(point, a).length();
-    }
+    if (len2 <= 0.000001) return QLineF(point, a).length();
 
     const double  t = std::clamp(((point.x() - a.x()) * dx + (point.y() - a.y()) * dy) / len2, 0.0, 1.0);
     const QPointF projection(a.x() + t * dx, a.y() + t * dy);
     return QLineF(point, projection).length();
 }
 
+/**
+ * @brief 规范化多边形：去重、验证最小面积
+ * @param points 原始多边形顶点
+ * @return 规范化后的多边形，无效时返回空
+ */
 std::vector<QPointF> normalizePolygon(std::vector<QPointF> points)
 {
     std::vector<QPointF> normalized;
     normalized.reserve(points.size());
     for (const QPointF &point : points)
     {
-        if (!normalized.empty() && QLineF(normalized.back(), point).length() < 0.001)
-        {
-            continue;
-        }
+        if (!normalized.empty() && QLineF(normalized.back(), point).length() < 0.001) continue;
         normalized.push_back(point);
     }
 
     if (normalized.size() > 1 && QLineF(normalized.front(), normalized.back()).length() < 0.001)
-    {
         normalized.pop_back();
-    }
 
-    if (normalized.size() < 3 || polygonArea(normalized) <= 0.5)
-    {
-        return {};
-    }
+    if (normalized.size() < 3 || polygonArea(normalized) <= 0.5) return {};
     return normalized;
 }
 
+/**
+ * @brief 移除共线点
+ * @param points 原始多边形顶点
+ * @param tolerance 共线判定容差
+ * @return 移除共线点后的多边形
+ */
 std::vector<QPointF> removeCollinearPoints(const std::vector<QPointF> &points, double tolerance)
 {
-    if (points.size() < 4)
-    {
-        return points;
-    }
+    if (points.size() < 4) return points;
 
     std::vector<QPointF> filtered;
     filtered.reserve(points.size());
@@ -704,22 +671,21 @@ std::vector<QPointF> removeCollinearPoints(const std::vector<QPointF> &points, d
         const QPointF &prev = points[(i + points.size() - 1) % points.size()];
         const QPointF &curr = points[i];
         const QPointF &next = points[(i + 1) % points.size()];
-        if (distanceToSegment(curr, prev, next) <= tolerance)
-        {
-            continue;
-        }
+        if (distanceToSegment(curr, prev, next) <= tolerance) continue;
         filtered.push_back(curr);
     }
-
     return filtered.size() >= 3 ? filtered : points;
 }
 
+/**
+ * @brief Douglas-Peucker 算法简化开放折线
+ * @param points 原始折线顶点
+ * @param epsilon 简化阈值
+ * @return 简化后的折线
+ */
 std::vector<QPointF> simplifyOpenPolyline(const std::vector<QPointF> &points, double epsilon)
 {
-    if (points.size() <= 2)
-    {
-        return points;
-    }
+    if (points.size() <= 2) return points;
 
     std::vector<uint8_t> keep(points.size(), 0);
     keep.front() = 1;
@@ -732,22 +698,14 @@ std::vector<QPointF> simplifyOpenPolyline(const std::vector<QPointF> &points, do
     {
         const auto [first, last] = ranges.back();
         ranges.pop_back();
-
-        if (last <= first + 1)
-        {
-            continue;
-        }
+        if (last <= first + 1) continue;
 
         double max_distance = 0.0;
         size_t max_index    = first;
         for (size_t i = first + 1; i < last; ++i)
         {
             const double distance = distanceToSegment(points[i], points[first], points[last]);
-            if (distance > max_distance)
-            {
-                max_distance = distance;
-                max_index    = i;
-            }
+            if (distance > max_distance) { max_distance = distance; max_index = i; }
         }
 
         if (max_distance > epsilon)
@@ -761,38 +719,29 @@ std::vector<QPointF> simplifyOpenPolyline(const std::vector<QPointF> &points, do
     std::vector<QPointF> simplified;
     simplified.reserve(points.size());
     for (size_t i = 0; i < points.size(); ++i)
-    {
-        if (keep[i] != 0)
-        {
-            simplified.push_back(points[i]);
-        }
-    }
+        if (keep[i] != 0) simplified.push_back(points[i]);
     return simplified;
 }
 
+/**
+ * @brief Douglas-Peucker 算法简化闭合多边形
+ * @param points 原始多边形顶点
+ * @param epsilon 简化阈值
+ * @return 简化后的多边形
+ */
 std::vector<QPointF> simplifyClosedPolygon(const std::vector<QPointF> &points, double epsilon)
 {
-    if (points.size() < 6)
-    {
-        return points;
-    }
+    if (points.size() < 6) return points;
 
     size_t split_index  = 1;
     double max_distance = 0.0;
     for (size_t i = 1; i < points.size(); ++i)
     {
         const double distance = QLineF(points.front(), points[i]).length();
-        if (distance > max_distance)
-        {
-            max_distance = distance;
-            split_index  = i;
-        }
+        if (distance > max_distance) { max_distance = distance; split_index = i; }
     }
 
-    if (split_index == 0 || split_index >= points.size())
-    {
-        return points;
-    }
+    if (split_index == 0 || split_index >= points.size()) return points;
 
     std::vector<QPointF> first_chain(points.begin(), points.begin() + static_cast<std::ptrdiff_t>(split_index) + 1);
     std::vector<QPointF> second_chain(points.begin() + static_cast<std::ptrdiff_t>(split_index), points.end());
@@ -805,102 +754,99 @@ std::vector<QPointF> simplifyClosedPolygon(const std::vector<QPointF> &points, d
     simplified.reserve(first_chain.size() + second_chain.size());
     simplified.insert(simplified.end(), first_chain.begin(), first_chain.end());
     for (size_t i = 1; i + 1 < second_chain.size(); ++i)
-    {
         simplified.push_back(second_chain[i]);
-    }
 
     return normalizePolygon(simplified);
 }
 
+/**
+ * @brief 计算边界边的方向
+ * @param from 起点
+ * @param to 终点
+ * @return 方向码（0=右, 1=下, 2=左, 3=上）
+ */
 int edgeDirection(const MaskPoint &from, const MaskPoint &to)
 {
-    if (to.x > from.x)
-    {
-        return 0;
-    }
-    if (to.y > from.y)
-    {
-        return 1;
-    }
-    if (to.x < from.x)
-    {
-        return 2;
-    }
+    if (to.x > from.x) return 0;
+    if (to.y > from.y) return 1;
+    if (to.x < from.x) return 2;
     return 3;
 }
 
+/**
+ * @brief 计算 MaskPoint 的唯一键值
+ * @param point 坐标点
+ * @param width 图像宽度
+ * @return 唯一键值
+ */
 int64_t maskPointKey(const MaskPoint &point, int width)
 {
     return static_cast<int64_t>(point.y) * static_cast<int64_t>(width + 1) + point.x;
 }
 
+/**
+ * @brief 计算转向优先级（用于边界追踪的最右转规则）
+ * @param previous_direction 之前的方向
+ * @param next_direction 候选方向
+ * @return 优先级（数值越大越优先）
+ */
 int turnPriority(int previous_direction, int next_direction)
 {
     const int turn = (next_direction - previous_direction + 4) % 4;
-    if (turn == 1)
-    {
-        return 3;
-    }
-    if (turn == 0)
-    {
-        return 2;
-    }
-    if (turn == 3)
-    {
-        return 1;
-    }
-    return 0;
+    if (turn == 1) return 3; // 右转
+    if (turn == 0) return 2; // 直行
+    if (turn == 3) return 1; // 左转
+    return 0;                // 掉头
 }
 
+/**
+ * @brief 选择下一个要追踪的边界边
+ * @param outgoing_edges 出发边索引表
+ * @param edges 所有边界边
+ * @param point 当前点
+ * @param width 图像宽度
+ * @param previous_direction 上一个方向
+ * @return 选中的边索引，无有效边时返回 max
+ */
 size_t chooseNextBoundaryEdge(const std::unordered_map<int64_t, std::vector<size_t>> &outgoing_edges,
                               const std::vector<BoundaryEdge> &edges, const MaskPoint &point, int width,
                               int previous_direction)
 {
     const auto outgoing_it = outgoing_edges.find(maskPointKey(point, width));
-    if (outgoing_it == outgoing_edges.end())
-    {
-        return std::numeric_limits<size_t>::max();
-    }
+    if (outgoing_it == outgoing_edges.end()) return std::numeric_limits<size_t>::max();
 
     size_t best_index    = std::numeric_limits<size_t>::max();
     int    best_priority = -1;
     for (const size_t edge_index : outgoing_it->second)
     {
         const BoundaryEdge &edge = edges[edge_index];
-        if (edge.used)
-        {
-            continue;
-        }
-
+        if (edge.used) continue;
         const int priority = turnPriority(previous_direction, edge.direction);
-        if (priority > best_priority)
-        {
-            best_priority = priority;
-            best_index    = edge_index;
-        }
+        if (priority > best_priority) { best_priority = priority; best_index = edge_index; }
     }
-
     return best_index;
 }
 
+/**
+ * @brief 将二值 Mask 转换为多边形轮廓（Moore 边界追踪）
+ * @param mask 二值 Mask 数据
+ * @param width 图像宽度
+ * @param height 图像高度
+ * @return 多边形轮廓列表（按面积降序排列）
+ */
 std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mask, int width, int height)
 {
     const int64_t total = static_cast<int64_t>(width) * static_cast<int64_t>(height);
-    if (width <= 0 || height <= 0 || total <= 0 || mask.size() < static_cast<size_t>(total))
-    {
-        return {};
-    }
+    if (width <= 0 || height <= 0 || total <= 0 || mask.size() < static_cast<size_t>(total)) return {};
 
     std::vector<BoundaryEdge>                        edges;
     std::unordered_map<int64_t, std::vector<size_t>> outgoing_edges;
 
-    const auto is_foreground = [&](int x, int y) -> bool
-    {
+    const auto is_foreground = [&](int x, int y) -> bool {
         return x >= 0 && y >= 0 && x < width && y < height && mask[static_cast<size_t>(y * width + x)] != 0;
     };
 
-    const auto add_edge = [&](const MaskPoint &from, const MaskPoint &to)
-    {
+    const auto add_edge = [&](const MaskPoint &from, const MaskPoint &to) {
         const size_t edge_index = edges.size();
         edges.push_back(BoundaryEdge{from, to, edgeDirection(from, to), false});
         outgoing_edges[maskPointKey(from, width)].push_back(edge_index);
@@ -910,44 +856,22 @@ std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mas
     {
         for (int x = 0; x < width; ++x)
         {
-            if (!is_foreground(x, y))
-            {
-                continue;
-            }
-
-            if (!is_foreground(x, y - 1))
-            {
-                add_edge(MaskPoint{x, y}, MaskPoint{x + 1, y});
-            }
-            if (!is_foreground(x + 1, y))
-            {
-                add_edge(MaskPoint{x + 1, y}, MaskPoint{x + 1, y + 1});
-            }
-            if (!is_foreground(x, y + 1))
-            {
-                add_edge(MaskPoint{x + 1, y + 1}, MaskPoint{x, y + 1});
-            }
-            if (!is_foreground(x - 1, y))
-            {
-                add_edge(MaskPoint{x, y + 1}, MaskPoint{x, y});
-            }
+            if (!is_foreground(x, y)) continue;
+            if (!is_foreground(x, y - 1))   add_edge(MaskPoint{x, y}, MaskPoint{x + 1, y});
+            if (!is_foreground(x + 1, y))   add_edge(MaskPoint{x + 1, y}, MaskPoint{x + 1, y + 1});
+            if (!is_foreground(x, y + 1))   add_edge(MaskPoint{x + 1, y + 1}, MaskPoint{x, y + 1});
+            if (!is_foreground(x - 1, y))   add_edge(MaskPoint{x, y + 1}, MaskPoint{x, y});
         }
     }
 
-    if (edges.empty())
-    {
-        return {};
-    }
+    if (edges.empty()) return {};
 
     std::vector<std::vector<QPointF>> polygons;
     polygons.reserve(8);
 
     for (size_t start_edge_index = 0; start_edge_index < edges.size(); ++start_edge_index)
     {
-        if (edges[start_edge_index].used)
-        {
-            continue;
-        }
+        if (edges[start_edge_index].used) continue;
 
         const MaskPoint        start_point = edges[start_edge_index].from;
         size_t                 edge_index  = start_edge_index;
@@ -958,85 +882,65 @@ std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mas
         for (size_t guard = 0; edge_index != std::numeric_limits<size_t>::max() && guard <= edges.size(); ++guard)
         {
             BoundaryEdge &edge = edges[edge_index];
-            if (edge.used)
-            {
-                break;
-            }
+            if (edge.used) break;
 
             edge.used = true;
-            if (loop.empty())
-            {
-                loop.push_back(edge.from);
-            }
+            if (loop.empty()) loop.push_back(edge.from);
             loop.push_back(edge.to);
 
-            if (edge.to == start_point)
-            {
-                closed = true;
-                break;
-            }
-
+            if (edge.to == start_point) { closed = true; break; }
             edge_index = chooseNextBoundaryEdge(outgoing_edges, edges, edge.to, width, edge.direction);
         }
 
-        if (!closed || loop.size() < 4)
-        {
-            continue;
-        }
-        if (loop.back() == loop.front())
-        {
-            loop.pop_back();
-        }
+        if (!closed || loop.size() < 4) continue;
+        if (loop.back() == loop.front()) loop.pop_back();
 
         std::vector<QPointF> points;
         points.reserve(loop.size());
-        for (const MaskPoint &point : loop)
-        {
-            points.emplace_back(point.x, point.y);
-        }
+        for (const MaskPoint &point : loop) points.emplace_back(point.x, point.y);
 
         points = normalizePolygon(std::move(points));
-        if (points.empty() || signedPolygonArea(points) <= 0.5)
-        {
-            continue;
-        }
+        if (points.empty() || signedPolygonArea(points) <= 0.5) continue;
 
         points = removeCollinearPoints(points, 0.001);
         points = normalizePolygon(std::move(points));
-        if (points.empty() || signedPolygonArea(points) <= 0.5)
-        {
-            continue;
-        }
+        if (points.empty() || signedPolygonArea(points) <= 0.5) continue;
 
         const double epsilon = std::clamp(std::sqrt(polygonArea(points)) * 0.01, 1.0, 3.0);
-        points               = simplifyClosedPolygon(points, epsilon);
-        points               = removeCollinearPoints(points, 0.01);
-        points               = normalizePolygon(std::move(points));
+        points = simplifyClosedPolygon(points, epsilon);
+        points = removeCollinearPoints(points, 0.01);
+        points = normalizePolygon(std::move(points));
         if (!points.empty() && signedPolygonArea(points) > 0.5)
-        {
             polygons.push_back(std::move(points));
-        }
     }
 
-    std::sort(polygons.begin(), polygons.end(), [](const std::vector<QPointF> &left, const std::vector<QPointF> &right)
-              { return polygonArea(left) > polygonArea(right); });
+    std::sort(polygons.begin(), polygons.end(), [](const std::vector<QPointF> &left, const std::vector<QPointF> &right) {
+        return polygonArea(left) > polygonArea(right);
+    });
     return polygons;
 }
 
+/**
+ * @brief 将多边形顶点转换为 QVariantList
+ * @param points 多边形顶点
+ * @return QVariantList 格式的顶点数据
+ */
 QVariantList pointsToVariantList(const std::vector<QPointF> &points)
 {
     QVariantList result;
     result.reserve(static_cast<int>(points.size()));
     for (const QPointF &point : points)
-    {
-        result.push_back(QVariantMap{
-            {QStringLiteral("x"), point.x()},
-            {QStringLiteral("y"), point.y()},
-        });
-    }
+        result.push_back(QVariantMap{{QStringLiteral("x"), point.x()}, {QStringLiteral("y"), point.y()}});
     return result;
 }
 
+/**
+ * @brief 将 Mask 数据转换为行程编码格式（RLE）
+ * @param mask 二值 Mask 数据
+ * @param width 图像宽度
+ * @param height 图像高度
+ * @return RLE 格式的 QVariantList
+ */
 QVariantList maskRunsToVariantList(const std::vector<uint8_t> &mask, int width, int height)
 {
     QVariantList result;
@@ -1046,84 +950,73 @@ QVariantList maskRunsToVariantList(const std::vector<uint8_t> &mask, int width, 
         int          x          = 0;
         while (x < width)
         {
-            while (x < width && mask[row_offset + static_cast<size_t>(x)] == 0)
-            {
-                ++x;
-            }
+            while (x < width && mask[row_offset + static_cast<size_t>(x)] == 0) ++x;
             const int run_start = x;
-            while (x < width && mask[row_offset + static_cast<size_t>(x)] != 0)
-            {
-                ++x;
-            }
+            while (x < width && mask[row_offset + static_cast<size_t>(x)] != 0) ++x;
             const int run_width = x - run_start;
             if (run_width > 0)
-            {
-                result.push_back(QVariantMap{
-                    {    QStringLiteral("x"), run_start},
-                    {    QStringLiteral("y"),         y},
-                    {QStringLiteral("width"), run_width},
-                });
-            }
+                result.push_back(QVariantMap{{QStringLiteral("x"), run_start}, {QStringLiteral("y"), y}, {QStringLiteral("width"), run_width}});
         }
     }
     return result;
 }
 
+/**
+ * @brief 将矩形转换为四个顶点
+ * @param rect 矩形
+ * @return 矩形顶点列表（左上、右上、右下、左下）
+ */
 std::vector<QPointF> rectanglePoints(const QRectF &rect)
 {
-    return {
-        QPointF(rect.left(), rect.top()),
-        QPointF(rect.right(), rect.top()),
-        QPointF(rect.right(), rect.bottom()),
-        QPointF(rect.left(), rect.bottom()),
-    };
+    return {QPointF(rect.left(), rect.top()), QPointF(rect.right(), rect.top()),
+            QPointF(rect.right(), rect.bottom()), QPointF(rect.left(), rect.bottom())};
 }
 
+/**
+ * @brief 对最终多边形进行简化和规范化
+ * @param polygon 原始多边形
+ * @param epsilon 简化阈值
+ * @return 简化后的多边形，简化失败则返回原始多边形
+ */
 std::vector<QPointF> simplifyFinalPolygon(std::vector<QPointF> polygon, double epsilon)
 {
     polygon = normalizePolygon(std::move(polygon));
-    if (polygon.empty() || epsilon <= 0.0)
-    {
-        return polygon;
-    }
+    if (polygon.empty() || epsilon <= 0.0) return polygon;
 
     std::vector<QPointF> simplified = simplifyClosedPolygon(polygon, epsilon);
-    simplified                      = removeCollinearPoints(simplified, epsilon);
-    simplified                      = normalizePolygon(std::move(simplified));
+    simplified = removeCollinearPoints(simplified, epsilon);
+    simplified = normalizePolygon(std::move(simplified));
     return simplified.empty() ? polygon : simplified;
 }
 
+/**
+ * @brief 从 IoU 值中选择最佳 Mask 索引
+ * @param iou_values IoU 值数组
+ * @param iou_count IoU 数组大小
+ * @param candidate_count 候选数量
+ * @return 最佳 Mask 索引
+ */
 int bestMaskIndex(const float *iou_values, size_t iou_count, int candidate_count)
 {
-    if (iou_values == nullptr || iou_count == 0 || candidate_count <= 1)
-    {
-        return 0;
-    }
+    if (iou_values == nullptr || iou_count == 0 || candidate_count <= 1) return 0;
 
     int       best_index = 0;
     float     best_iou   = iou_values[0];
     const int count      = std::min(candidate_count, static_cast<int>(iou_count));
     for (int i = 1; i < count; ++i)
-    {
-        if (iou_values[i] > best_iou)
-        {
-            best_iou   = iou_values[i];
-            best_index = i;
-        }
-    }
+        if (iou_values[i] > best_iou) { best_iou = iou_values[i]; best_index = i; }
     return best_index;
 }
 
+/**
+ * @brief 从输出维度中推断候选 Mask 数量
+ * @param dims 输出维度
+ * @return 候选数量
+ */
 size_t outputCandidateCount(const nvinfer1::Dims &dims)
 {
-    if (dims.nbDims >= 4)
-    {
-        return static_cast<size_t>(std::max<int64_t>(1, dims.d[1]));
-    }
-    if (dims.nbDims == 3)
-    {
-        return 1;
-    }
+    if (dims.nbDims >= 4) return static_cast<size_t>(std::max<int64_t>(1, dims.d[1]));
+    if (dims.nbDims == 3) return 1;
     return 1;
 }
 
@@ -1132,10 +1025,22 @@ size_t outputCandidateCount(const nvinfer1::Dims &dims)
 SmartAnnotationController::SmartAnnotationController(QObject *parent)
     : QObject(parent)
 {
+    auto *gs = dltool::settings::GlobalSettings::getInstance();
+    enabled_ = gs->valueForField(dltool::settings::generated::field::SmartAnnotation::Key::Enabled, false).toBool();
+
+    connect(gs->catalog(), &dltool::settings::SettingsCatalog::fieldValueChanged, this,
+            [this](const QString &group_key, const QString &name, const QVariant &value) {
+                if (group_key == QStringLiteral("SmartAnnotationSettings") && name == QStringLiteral("enabled"))
+                {
+                    const bool v = value.toBool();
+                    if (v != enabled_) { enabled_ = v; emit enabledChanged(); }
+                }
+            });
 }
 
 SmartAnnotationController::~SmartAnnotationController() = default;
 
+/// 清除模型缓存并重置状态
 void SmartAnnotationController::clearCache()
 {
     model_.reset();
@@ -1145,15 +1050,19 @@ void SmartAnnotationController::clearCache()
     setRunning(false);
 }
 
+/**
+ * @brief 启动异步模型加载
+ * @param model_name 模型名称
+ * @param model_path 模型文件路径
+ * @param backend 推理后端
+ * @param device 推理设备
+ */
 void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, const QString &model_path,
                                                     const irt::model::ModelBackend backend,
                                                     const irt::model::ModelDevice  device)
 {
     const SmartModelLoadRequest request = buildSmartModelLoadRequest(model_name, model_path, backend, device);
-    if (loading_model_ && loading_model_key_ == request.key)
-    {
-        return;
-    }
+    if (loading_model_ && loading_model_key_ == request.key) return;
 
     loading_model_key_ = request.key;
     setLastError(QString());
@@ -1184,24 +1093,14 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
                 spdlog::error("加载智能标注模型失败: {}", error.toUtf8().constData());
             }
 
-            if (!controller)
-            {
-                return;
-            }
+            if (!controller) return;
 
             QMetaObject::invokeMethod(
                 controller.data(),
                 [controller, request, model_holder, error, success]() mutable
                 {
-                    if (!controller)
-                    {
-                        return;
-                    }
-
-                    if (controller->loading_model_key_ != request.key)
-                    {
-                        return;
-                    }
+                    if (!controller) return;
+                    if (controller->loading_model_key_ != request.key) return;
 
                     controller->loading_model_key_.clear();
                     if (success)
@@ -1228,13 +1127,15 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
     work_thread->start();
 }
 
+/**
+ * @brief 执行智能标注推理
+ * @param image_path 输入图像路径
+ * @param prompt_points 提示点列表
+ * @return 包含推理结果的 QVariantMap
+ */
 QVariantMap SmartAnnotationController::infer(const QString &image_path, const QVariantList &prompt_points)
 {
-    QVariantMap result{
-        {QStringLiteral("success"), false},
-        {  QStringLiteral("error"),    {}},
-        {QStringLiteral("loading"), false}
-    };
+    QVariantMap result{{QStringLiteral("success"), false}, {QStringLiteral("error"), {}}, {QStringLiteral("loading"), false}};
 
     if (loading_model_)
     {
@@ -1258,33 +1159,22 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         if (settings == nullptr
             || settings->settingsGroup(dltool::settings::generated::AccessorKey::SmartAnnotation) == nullptr
             || !settingBool(settings, generated_field::SmartAnnotation::Enabled, false))
-        {
             throw std::runtime_error("智能标注未启用");
-        }
 
         const std::vector<PromptPoint> prompts = parsePromptPoints(prompt_points);
 
-        const QString model_name
-            = normalizedModelName(settingString(settings, generated_field::SmartAnnotation::Model));
+        const QString model_name = normalizedModelName(settingString(settings, generated_field::SmartAnnotation::Model));
         const auto backend = static_cast<irt::model::ModelBackend>(
             settings->valueForField(generated_field::SmartAnnotation::ModelBackend).toInt());
         const auto device = static_cast<irt::model::ModelDevice>(
             settings->valueForField(generated_field::SmartAnnotation::ModelDevice).toInt());
         QString model_path = settingString(settings, generated_field::SmartAnnotation::ModelPath);
-        if (model_name.isEmpty())
-        {
-            throw std::runtime_error("智能标注模型未配置");
-        }
-        if (model_path.isEmpty())
-        {
-            throw std::runtime_error("智能标注模型文件未配置");
-        }
+        if (model_name.isEmpty()) throw std::runtime_error("智能标注模型未配置");
+        if (model_path.isEmpty()) throw std::runtime_error("智能标注模型文件未配置");
 
         const QFileInfo model_info(model_path);
         if (!model_info.isFile())
-        {
             throw std::runtime_error(QString("智能标注模型文件不存在: %1").arg(model_path).toStdString());
-        }
 
         const SmartModelLoadRequest request = buildSmartModelLoadRequest(model_name, model_path, backend, device);
         if (model_ == nullptr || cached_model_key_ != request.key)
@@ -1295,15 +1185,12 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         }
 
         const QImage image = loadRgbImage(image_path);
-
         setRunning(true);
 
         const auto input_names  = model_->ioTensorNames(nvinfer1::TensorIOMode::kINPUT);
         const auto output_names = model_->ioTensorNames(nvinfer1::TensorIOMode::kOUTPUT);
         if (input_names.size() != 5 || output_names.size() != 3)
-        {
             throw std::runtime_error("InferRT SAM model must expose the 5-input/3-output contract");
-        }
 
         const auto image_dims       = model_->tensorShape(input_names[0]);
         const auto prompt_mask_dims = model_->tensorShape(input_names[3]);
@@ -1311,16 +1198,11 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         const auto iou_dims         = model_->tensorShape(output_names[1]);
 
         if (image_dims.nbDims != 4 || prompt_mask_dims.nbDims != 4 || output_mask_dims.nbDims != 4)
-        {
             throw std::runtime_error("Invalid SAM tensor shape");
-        }
 
-        const int input_h       = static_cast<int>(image_dims.d[2]);
-        const int input_w       = static_cast<int>(image_dims.d[3]);
-        const int prompt_mask_h = static_cast<int>(prompt_mask_dims.d[2]);
-        const int prompt_mask_w = static_cast<int>(prompt_mask_dims.d[3]);
-        const int output_mask_h = static_cast<int>(output_mask_dims.d[2]);
-        const int output_mask_w = static_cast<int>(output_mask_dims.d[3]);
+        const int input_h = static_cast<int>(image_dims.d[2]), input_w = static_cast<int>(image_dims.d[3]);
+        const int prompt_mask_h = static_cast<int>(prompt_mask_dims.d[2]), prompt_mask_w = static_cast<int>(prompt_mask_dims.d[3]);
+        const int output_mask_h = static_cast<int>(output_mask_dims.d[2]), output_mask_w = static_cast<int>(output_mask_dims.d[3]);
 
         PreprocessedImage preprocessed = preprocessImage(image, input_h, input_w, isSam2Model(model_name));
 
@@ -1329,17 +1211,15 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         for (size_t i = 0; i < prompts.size(); ++i)
         {
             const PromptPoint &prompt = prompts[i];
-            point_coords[i * 2]       = scalePromptCoordinate(prompt.point.x(), image.width(), preprocessed.resized_w);
-            point_coords[i * 2 + 1]   = scalePromptCoordinate(prompt.point.y(), image.height(), preprocessed.resized_h);
-            point_labels[i]           = static_cast<float>(prompt.label);
+            point_coords[i * 2]     = scalePromptCoordinate(prompt.point.x(), image.width(), preprocessed.resized_w);
+            point_coords[i * 2 + 1] = scalePromptCoordinate(prompt.point.y(), image.height(), preprocessed.resized_h);
+            point_labels[i]         = static_cast<float>(prompt.label);
         }
 
         std::vector<float> mask_input(static_cast<size_t>(prompt_mask_h) * prompt_mask_w, 0.0F);
         std::vector<float> has_mask_input{0.0F};
 
-        const std::vector<std::vector<float> *> input_vectors{
-            &preprocessed.tensor, &point_coords, &point_labels, &mask_input, &has_mask_input,
-        };
+        const std::vector<std::vector<float> *> input_vectors{&preprocessed.tensor, &point_coords, &point_labels, &mask_input, &has_mask_input};
 
         const bool         uses_tensorrt = isTensorRtBackend(backend);
         const cudaStream_t stream        = model_->resolveExecutionStream();
@@ -1355,15 +1235,8 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
 
         for (const auto *values : input_vectors)
         {
-            if (uses_tensorrt)
-            {
-                device_inputs.emplace_back(values->size() * sizeof(float));
-                buffers.push_back(device_inputs.back().data());
-            }
-            else
-            {
-                buffers.push_back(const_cast<float *>(values->data()));
-            }
+            if (uses_tensorrt) { device_inputs.emplace_back(values->size() * sizeof(float)); buffers.push_back(device_inputs.back().data()); }
+            else buffers.push_back(const_cast<float *>(values->data()));
         }
 
         for (const auto &output_name : output_names)
@@ -1371,15 +1244,8 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
             const auto dims  = model_->tensorShape(output_name);
             const auto count = elementCount(dims);
             host_outputs.emplace_back(count, 0.0F);
-            if (uses_tensorrt)
-            {
-                device_outputs.emplace_back(count * sizeof(float));
-                buffers.push_back(device_outputs.back().data());
-            }
-            else
-            {
-                buffers.push_back(host_outputs.back().data());
-            }
+            if (uses_tensorrt) { device_outputs.emplace_back(count * sizeof(float)); buffers.push_back(device_outputs.back().data()); }
+            else buffers.push_back(host_outputs.back().data());
         }
 
         if (uses_tensorrt)
@@ -1388,8 +1254,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
             {
                 const auto *values = input_vectors[i];
                 checkCuda(cudaMemcpyAsync(device_inputs[i].data(), values->data(), values->size() * sizeof(float),
-                                          cudaMemcpyHostToDevice, stream),
-                          "cudaMemcpyAsync(SAM input)");
+                                          cudaMemcpyHostToDevice, stream), "cudaMemcpyAsync(SAM input)");
             }
             checkCuda(cudaStreamSynchronize(stream), "cudaStreamSynchronize(SAM input)");
         }
@@ -1400,70 +1265,47 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         {
             checkCuda(cudaStreamSynchronize(stream), "cudaStreamSynchronize(SAM inference)");
             for (size_t i = 0; i < host_outputs.size(); ++i)
-            {
                 checkCuda(cudaMemcpyAsync(host_outputs[i].data(), device_outputs[i].data(),
                                           host_outputs[i].size() * sizeof(float), cudaMemcpyDeviceToHost, stream),
                           "cudaMemcpyAsync(SAM output)");
-            }
             checkCuda(cudaStreamSynchronize(stream), "cudaStreamSynchronize(SAM output)");
         }
 
-        const auto   candidates = static_cast<int>(outputCandidateCount(output_mask_dims));
-        const size_t iou_count  = host_outputs[1].size();
-        const int    mask_index = bestMaskIndex(host_outputs[1].data(), iou_count, candidates);
-        const float  selected_iou
-            = (mask_index >= 0 && static_cast<size_t>(mask_index) < iou_count) ? host_outputs[1][mask_index] : 0.0F;
+        const auto   candidates   = static_cast<int>(outputCandidateCount(output_mask_dims));
+        const size_t iou_count    = host_outputs[1].size();
+        const int    mask_index   = bestMaskIndex(host_outputs[1].data(), iou_count, candidates);
+        const float  selected_iou = (mask_index >= 0 && static_cast<size_t>(mask_index) < iou_count) ? host_outputs[1][mask_index] : 0.0F;
 
         const size_t single_mask_count = static_cast<size_t>(output_mask_h) * output_mask_w;
         const size_t mask_offset       = static_cast<size_t>(mask_index) * single_mask_count;
         if (mask_offset + single_mask_count > host_outputs[0].size())
-        {
             throw std::runtime_error("SAM mask output shape does not match candidate count");
-        }
 
-        std::vector<float> resized_mask
-            = resizeBilinear(host_outputs[0].data() + static_cast<std::ptrdiff_t>(mask_offset), output_mask_w,
-                             output_mask_h, input_w, input_h);
-        std::vector<float> cropped_mask
-            = cropTopLeft(resized_mask, input_w, preprocessed.resized_w, preprocessed.resized_h);
-        std::vector<float> original_mask = resizeBilinear(cropped_mask.data(), preprocessed.resized_w,
-                                                          preprocessed.resized_h, image.width(), image.height());
+        std::vector<float> resized_mask  = resizeBilinear(host_outputs[0].data() + static_cast<std::ptrdiff_t>(mask_offset),
+                                                          output_mask_w, output_mask_h, input_w, input_h);
+        std::vector<float> cropped_mask  = cropTopLeft(resized_mask, input_w, preprocessed.resized_w, preprocessed.resized_h);
+        std::vector<float> original_mask = resizeBilinear(cropped_mask.data(), preprocessed.resized_w, preprocessed.resized_h,
+                                                          image.width(), image.height());
 
         const double         threshold = settingDouble(settings, generated_field::SmartAnnotation::MaskThreshold, 0.0);
         std::vector<uint8_t> binary_mask(static_cast<size_t>(image.width()) * image.height(), 0);
         int                  foreground_pixels = 0;
         for (size_t i = 0; i < binary_mask.size(); ++i)
         {
-            if (original_mask[i] > threshold)
-            {
-                binary_mask[i] = 1;
-                ++foreground_pixels;
-            }
+            if (original_mask[i] > threshold) { binary_mask[i] = 1; ++foreground_pixels; }
         }
 
         const QRectF bbox = boundingBoxFromMask(binary_mask, image.width(), image.height());
-        if (bbox.isEmpty())
-        {
-            throw std::runtime_error("SAM 没有生成有效 mask，请调整提示点或阈值");
-        }
+        if (bbox.isEmpty()) throw std::runtime_error("SAM 没有生成有效 mask，请调整提示点或阈值");
 
         std::vector<QPointF>              polygon;
         std::vector<std::vector<QPointF>> polygons = maskToPolygons(binary_mask, image.width(), image.height());
-        if (!polygons.empty())
-        {
-            polygon = std::move(polygons.front());
-        }
-        else
-        {
-            polygon = rectanglePoints(bbox);
-        }
+        if (!polygons.empty()) polygon = std::move(polygons.front());
+        else polygon = rectanglePoints(bbox);
 
-        polygon = simplifyFinalPolygon(
-            std::move(polygon), settingDouble(settings, generated_field::SmartAnnotation::PolygonSimplifyEpsilon, 2.0));
-        if (polygon.size() < 3)
-        {
-            polygon = rectanglePoints(bbox);
-        }
+        polygon = simplifyFinalPolygon(std::move(polygon),
+                                       settingDouble(settings, generated_field::SmartAnnotation::PolygonSimplifyEpsilon, 2.0));
+        if (polygon.size() < 3) polygon = rectanglePoints(bbox);
 
         result[QStringLiteral("success")]          = true;
         result[QStringLiteral("error")]            = QString();
@@ -1492,7 +1334,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
     }
     catch (const std::exception &e)
     {
-        const QString error               = QString::fromUtf8(e.what());
+        const QString error = QString::fromUtf8(e.what());
         result[QStringLiteral("success")] = false;
         result[QStringLiteral("error")]   = error;
         setLastError(error);
@@ -1500,7 +1342,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
     }
     catch (...)
     {
-        const QString error               = QString("未知智能标注错误");
+        const QString error = QString("未知智能标注错误");
         result[QStringLiteral("success")] = false;
         result[QStringLiteral("error")]   = error;
         setLastError(error);
@@ -1513,30 +1355,21 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
 
 void SmartAnnotationController::setRunning(bool running)
 {
-    if (running_ == running)
-    {
-        return;
-    }
+    if (running_ == running) return;
     running_ = running;
     emit runningChanged();
 }
 
 void SmartAnnotationController::setLoadingModel(bool loading_model)
 {
-    if (loading_model_ == loading_model)
-    {
-        return;
-    }
+    if (loading_model_ == loading_model) return;
     loading_model_ = loading_model;
     emit loadingModelChanged();
 }
 
 void SmartAnnotationController::setLastError(const QString &last_error)
 {
-    if (last_error_ == last_error)
-    {
-        return;
-    }
+    if (last_error_ == last_error) return;
     last_error_ = last_error;
     emit lastErrorChanged();
 }

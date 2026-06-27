@@ -19,8 +19,8 @@ QuiPopup {
     focus: true
     closePolicy: Popup.CloseOnEscape
 
-    function imageSearchController() {
-        return dataManager ? dataManager.imageSearch : null
+    function roiSearchController() {
+        return dataManager ? dataManager.roiSearch : null
     }
 
     function openForLabels(labelIds) {
@@ -59,14 +59,12 @@ QuiPopup {
     }
 
     function startSearch() {
-        let controller = imageSearchController()
+        let controller = roiSearchController()
         if (!controller || !roiSearchEnabled || !queryLabelIds || queryLabelIds.length === 0) {
             return
         }
 
-        let started = controller.searchLabelRois(
-                    queryLabelIds,
-                    selectedDatasetIds())
+        let started = controller.search(queryLabelIds, selectedDatasetIds())
         if (started) {
             close()
         }
@@ -206,7 +204,7 @@ QuiPopup {
 
             QuiText {
                 Layout.fillWidth: true
-                text: dialog.imageSearchController() ? dialog.imageSearchController().lastError : ""
+                text: dialog.roiSearchController() ? dialog.roiSearchController().lastError : ""
                 color: "red"
                 elide: Text.ElideRight
             }
@@ -217,8 +215,8 @@ QuiPopup {
             }
             QuiButton {
                 text: "开始搜索"
-                enabled: dialog.imageSearchController()
-                         && !dialog.imageSearchController().running
+                enabled: dialog.roiSearchController()
+                         && !dialog.roiSearchController().running
                          && queryLabelIds
                          && queryLabelIds.length > 0
                          && dialog.roiSearchEnabled

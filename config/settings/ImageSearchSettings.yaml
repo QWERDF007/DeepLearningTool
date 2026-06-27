@@ -17,7 +17,7 @@ ImageSearchSettings:
     - name_en: model
       name_cn: 模型
       property_name: model
-      value: resnet18
+      value: dinov2_vits14
       value_type: string
       control_type: combo
       options:
@@ -50,7 +50,7 @@ ImageSearchSettings:
     - name_en: feature_name
       name_cn: 特征层
       property_name: featureName
-      value: layer4
+      value: x_norm_clstoken
       value_type: string
       control_type: combo
       options_key_field: model
@@ -60,17 +60,17 @@ ImageSearchSettings:
         resnet50: [layer1, layer2, layer3, layer4]
         resnet101: [layer1, layer2, layer3, layer4]
         mobilenet_v2: [features.4, features.7, features.14, features.18]
-        dinov2_vits14: [x_norm_patchtokens]
-        dinov2_vitb14: [x_norm_patchtokens]
-        dinov2_vitl14: [x_norm_patchtokens]
-        dinov2_vitg14: [x_norm_patchtokens]
-        dinov2_vits14_reg: [x_norm_patchtokens]
-        dinov2_vitb14_reg: [x_norm_patchtokens]
-        dinov2_vitl14_reg: [x_norm_patchtokens]
-        dinov2_vitg14_reg: [x_norm_patchtokens]
-        dinov3_vits16: [x_norm_patchtokens]
-        dinov3_vitb16: [x_norm_patchtokens]
-        dinov3_vitl16: [x_norm_patchtokens]
+        dinov2_vits14: [x_norm_clstoken, x_norm_patchtokens]
+        dinov2_vitb14: [x_norm_clstoken, x_norm_patchtokens]
+        dinov2_vitl14: [x_norm_clstoken, x_norm_patchtokens]
+        dinov2_vitg14: [x_norm_clstoken, x_norm_patchtokens]
+        dinov2_vits14_reg: [x_norm_clstoken, x_norm_patchtokens]
+        dinov2_vitb14_reg: [x_norm_clstoken, x_norm_patchtokens]
+        dinov2_vitl14_reg: [x_norm_clstoken, x_norm_patchtokens]
+        dinov2_vitg14_reg: [x_norm_clstoken, x_norm_patchtokens]
+        dinov3_vits16: [x_norm_clstoken, x_norm_patchtokens]
+        dinov3_vitb16: [x_norm_clstoken, x_norm_patchtokens]
+        dinov3_vitl16: [x_norm_clstoken, x_norm_patchtokens]
       section: 模型
 
     - name_en: rebuild_index

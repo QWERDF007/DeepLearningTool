@@ -34,7 +34,8 @@ Item {
     property real imageCellScaleFrom: 0.5
     property real imageCellScaleTo: 4.0
     property real imageCellScaleStepSize: 0.25
-    property bool imageSearchEnabled: true
+
+
     property int cellWidth: 180 * imageCellScale
     property int cellHeight: 240 * imageCellScale
     property int spacing: 10
@@ -52,7 +53,7 @@ Item {
             enabled: dataManager && dataManager.imageSearch
                      && selection && selection.hasSelection
                      && !dataManager.imageSearch.running
-                     && imageSearchEnabled
+                     && dataManager.imageSearch.enabled
             onClicked: {
                 imageSearchDialog.openForSearch()
             }
@@ -309,7 +310,7 @@ Item {
         imageCellScaleFrom = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.CellScaleFrom, 0.5)
         imageCellScaleTo = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.CellScaleTo, 4.0)
         imageCellScaleStepSize = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.CellScaleStep, 0.25)
-        imageSearchEnabled = GlobalSettings.valueForField(SettingsAccessor.ImageSearch, ImageSearchField.Enabled, true)
+
     }
 
     function setDataField(field, value) {

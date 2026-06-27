@@ -15,6 +15,7 @@
 #include "feature/FewShotLearningDataProvider.h"
 #include "feature/ImageSearchController.h"
 #include "feature/ImageSearchDataProvider.h"
+#include "feature/RoiSearchController.h"
 #include "feature/SmartAnnotationController.h"
 
 #include <QMetaObject>
@@ -54,6 +55,7 @@ class DATA_API DataManager
     Q_PROPERTY(ImageInfoListModel *imageInfo READ imageInfo CONSTANT FINAL)
     Q_PROPERTY(GlobalFilter *globalFilter READ globalFilter CONSTANT FINAL)
     Q_PROPERTY(dltool::feature::ImageSearchController *imageSearch READ imageSearch CONSTANT FINAL)
+    Q_PROPERTY(dltool::feature::RoiSearchController *roiSearch READ roiSearch CONSTANT FINAL)
     Q_PROPERTY(dltool::feature::SmartAnnotationController *smartAnnotation READ smartAnnotation CONSTANT FINAL)
     Q_PROPERTY(dltool::feature::FewShotLearningController *fewShotLearning READ fewShotLearning CONSTANT FINAL)
     Q_PROPERTY(DatasetFilterItemsModel *datasetFilterItems READ datasetFilterItems CONSTANT FINAL)
@@ -114,6 +116,11 @@ public:
     dltool::feature::ImageSearchController *imageSearch() const
     {
         return image_search_;
+    }
+
+    dltool::feature::RoiSearchController *roiSearch() const
+    {
+        return roi_search_;
     }
 
     dltool::feature::SmartAnnotationController *smartAnnotation() const
@@ -273,6 +280,7 @@ private:
 
     GlobalFilter                               *global_filter_{nullptr};
     dltool::feature::ImageSearchController     *image_search_{nullptr};
+    dltool::feature::RoiSearchController       *roi_search_{nullptr};
     dltool::feature::SmartAnnotationController *smart_annotation_{nullptr};
     dltool::feature::FewShotLearningController *few_shot_learning_{nullptr};
 

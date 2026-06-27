@@ -101,6 +101,7 @@ void DataManager::init(const int method)
     global_filter_ = new GlobalFilter(this, this);
     global_filter_->initializeFilterModules(this);
     image_search_      = new dltool::feature::ImageSearchController(this, this);
+    roi_search_        = new dltool::feature::RoiSearchController(this, this);
     smart_annotation_  = new dltool::feature::SmartAnnotationController(this);
     few_shot_learning_ = new dltool::feature::FewShotLearningController(this, this);
     if (auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(

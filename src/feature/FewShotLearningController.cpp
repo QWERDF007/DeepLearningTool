@@ -37,26 +37,38 @@ namespace dltool::feature {
 
 namespace {
 
+/// 类别构建数据结构
 struct ClassBuildData
 {
-    int64_t                       label_class_id{-1};
-    QString                       label_class_name;
-    QString                       class_dir_name;
-    std::map<int64_t, QImage>     masks_by_image_id;
-    std::map<int64_t, QJsonArray> boxes_by_image_id;
+    int64_t                       label_class_id{-1};       ///< 类别 ID
+    QString                       label_class_name;         ///< 类别名称
+    QString                       class_dir_name;           ///< 类别目录名
+    std::map<int64_t, QImage>     masks_by_image_id;        ///< 按图像 ID 映射的 Mask
+    std::map<int64_t, QJsonArray> boxes_by_image_id;        ///< 按图像 ID 映射的检测框
 };
 
+/// 预测结果导入目标
 struct PredictionImportTarget
 {
-    int64_t dataset_id{-1};
-    QString manifest_path;
+    int64_t dataset_id{-1};       ///< 数据集 ID
+    QString manifest_path;        ///< 图像清单文件路径
 };
 
+/**
+ * @brief 清理并规范化路径
+ * @param path 原始路径
+ * @return 规范化后的路径
+ */
 QString cleanPath(const QString &path)
 {
     return QDir::cleanPath(QDir::fromNativeSeparators(path.trimmed()));
 }
 
+/**
+ * @brief 将相对路径转换为运行时绝对路径
+ * @param path 输入路径
+ * @return 如果输入为绝对路径则直接返回，否则相对于应用程序目录解析
+ */
 QString runtimePath(const QString &path)
 {
     const QString cleaned = cleanPath(path);
@@ -65,16 +77,30 @@ QString runtimePath(const QString &path)
     return cleanPath(QDir(QCoreApplication::applicationDirPath()).filePath(cleaned));
 }
 
+/**
+ * @brief 获取 FS-SAM2 固定根目录
+ * @return FS-SAM2 根目录绝对路径
+ */
 QString fixedFsSam2Root()
 {
     return runtimePath(QStringLiteral("python/fornib/FS-SAM2"));
 }
 
+/**
+ * @brief 获取 SAM2 配置文件根目录
+ * @return SAM2 配置根目录绝对路径
+ */
 QString fixedSam2ConfigRoot()
 {
     return runtimePath(QStringLiteral("python/facebookresearch/sam2/sam2/configs"));
 }
 
+/**
+ * @brief 清理文件名中的非法字符
+ * @param value 原始文件名
+ * @param fallback 清理后为空时使用的回退值
+ * @return 安全的文件名
+ */
 QString sanitizeFileName(QString value, const QString &fallback)
 {
     value = value.trimmed();
@@ -89,6 +115,11 @@ using dltool::settings::settingDouble;
 using dltool::settings::settingInt;
 using dltool::settings::settingString;
 
+/**
+ * @brief 从环境路径中查找 Python 可执行文件
+ * @param env_path Python 环境目录路径
+ * @return Python 可执行文件的绝对路径，未找到则返回空字符串
+ */
 QString pythonExecutableFromEnvPath(const QString &env_path)
 {
     const QFileInfo info(cleanPath(env_path));
@@ -111,6 +142,12 @@ QString pythonExecutableFromEnvPath(const QString &env_path)
     return {};
 }
 
+/**
+ * @brief 确保目录存在，不存在则创建
+ * @param path 目录路径
+ * @param err_msg 错误信息（输出）
+ * @return 成功返回 true
+ */
 bool ensureDir(const QString &path, QString &err_msg)
 {
     QDir dir(path);
@@ -124,6 +161,13 @@ bool ensureDir(const QString &path, QString &err_msg)
     return true;
 }
 
+/**
+ * @brief 写入文本文件
+ * @param path 文件路径
+ * @param lines 要写入的文本行
+ * @param err_msg 错误信息（输出）
+ * @return 成功返回 true
+ */
 bool writeTextFile(const QString &path, const QStringList &lines, QString &err_msg)
 {
     QFileInfo info(path);
@@ -143,6 +187,13 @@ bool writeTextFile(const QString &path, const QStringList &lines, QString &err_m
     return true;
 }
 
+/**
+ * @brief 复制文件
+ * @param source_path 源文件路径
+ * @param target_path 目标文件路径
+ * @param err_msg 错误信息（输出）
+ * @return 成功返回 true
+ */
 bool copyFile(const QString &source_path, const QString &target_path, QString &err_msg)
 {
     QFileInfo target_info(target_path);
@@ -163,6 +214,15 @@ bool copyFile(const QString &source_path, const QString &target_path, QString &e
     return true;
 }
 
+/**
+ * @brief 复制图像文件并按别名重命名
+ * @param source_path 源图像路径
+ * @param target_dir 目标目录
+ * @param alias 文件别名（不含后缀）
+ * @param copied_path 复制后的完整路径（输出）
+ * @param err_msg 错误信息（输出）
+ * @return 成功返回 true
+ */
 bool copyImageToAlias(const QString &source_path, const QString &target_dir, const QString &alias, QString &copied_path,
                       QString &err_msg)
 {
@@ -175,6 +235,11 @@ bool copyImageToAlias(const QString &source_path, const QString &target_dir, con
     return copyFile(source_path, copied_path, err_msg);
 }
 
+/**
+ * @brief 将 QVariant 转换为 PointF 向量
+ * @param value 包含点数据的 QVariant
+ * @return PointF 向量
+ */
 std::vector<QPointF> variantListToPoints(const QVariant &value)
 {
     std::vector<QPointF> points;
@@ -199,6 +264,13 @@ std::vector<QPointF> variantListToPoints(const QVariant &value)
     return points;
 }
 
+/**
+ * @brief 获取图像的宽度和高度
+ * @param image_path 图像文件路径
+ * @param width 宽度（输出）
+ * @param height 高度（输出）
+ * @return 成功返回 true
+ */
 bool getImageDimensions(const QString &image_path, int &width, int &height)
 {
     QImageReader reader(image_path);
@@ -215,6 +287,11 @@ bool getImageDimensions(const QString &image_path, int &width, int &height)
     return true;
 }
 
+/**
+ * @brief 将 QVariant 点数据转换为 QPolygonF
+ * @param value 包含点数据的 QVariant
+ * @return 多边形
+ */
 QPolygonF variantPointsToPolygon(const QVariant &value)
 {
     QPolygonF polygon;
@@ -222,6 +299,11 @@ QPolygonF variantPointsToPolygon(const QVariant &value)
     return polygon;
 }
 
+/**
+ * @brief 将标注数据绘制到 Mask 图像上
+ * @param mask Mask 图像
+ * @param label_data 标注数据
+ */
 void paintLabelToMask(QImage &mask, const QVariantMap &label_data)
 {
     if (mask.isNull())
@@ -246,27 +328,35 @@ void paintLabelToMask(QImage &mask, const QVariantMap &label_data)
         painter.fillRect(rect, Qt::white);
 }
 
+/// FS-SAM2 脚本类型枚举
 enum class FsSam2Script
 {
-    Train,
-    Predict,
-    BoxToMask,
+    Train,       ///< 训练脚本
+    Predict,     ///< 推理脚本
+    BoxToMask,   ///< 框转 Mask 脚本
 };
 
+/// 小样本学习任务类型枚举
 enum class FewShotTaskKind
 {
-    Train,
-    Predict,
-    BoxToMask,
+    Train,       ///< 训练
+    Predict,     ///< 推理
+    BoxToMask,   ///< 框转 Mask
 };
 
+/// 小样本学习类别字段枚举
 enum class FewShotClassField
 {
-    Id,
-    Name,
-    Dir,
+    Id,    ///< 类别 ID
+    Name,  ///< 类别名称
+    Dir,   ///< 类别目录
 };
 
+/**
+ * @brief 获取 FS-SAM2 脚本文件名
+ * @param script 脚本类型
+ * @return 脚本文件名
+ */
 QString fsSam2ScriptName(FsSam2Script script)
 {
     switch (script)
@@ -282,11 +372,22 @@ QString fsSam2ScriptName(FsSam2Script script)
     }
 }
 
+/**
+ * @brief 获取 FS-SAM2 脚本的完整路径
+ * @param fs_sam2_root FS-SAM2 根目录
+ * @param script 脚本类型
+ * @return 脚本完整路径
+ */
 QString fsSam2ScriptPath(const QString &fs_sam2_root, FsSam2Script script)
 {
     return cleanPath(QDir(fs_sam2_root).filePath(fsSam2ScriptName(script)));
 }
 
+/**
+ * @brief 获取小样本学习任务的中文显示名称
+ * @param kind 任务类型
+ * @return 任务显示名称
+ */
 QString fewShotTaskName(FewShotTaskKind kind)
 {
     switch (kind)
@@ -302,6 +403,11 @@ QString fewShotTaskName(FewShotTaskKind kind)
     }
 }
 
+/**
+ * @brief 获取小样本学习任务的类型标识
+ * @param kind 任务类型
+ * @return 任务类型字符串
+ */
 QString fewShotTaskType(FewShotTaskKind kind)
 {
     switch (kind)
@@ -317,6 +423,11 @@ QString fewShotTaskType(FewShotTaskKind kind)
     }
 }
 
+/**
+ * @brief 获取类别字段的 JSON 键名
+ * @param field 字段类型
+ * @return JSON 键名
+ */
 QString fewShotClassFieldName(FewShotClassField field)
 {
     switch (field)
@@ -332,12 +443,18 @@ QString fewShotClassFieldName(FewShotClassField field)
     }
 }
 
+/// SAM2 配置名称解析结果
 struct Sam2ConfigNameParts
 {
-    QString prefix;
-    QString size_token;
+    QString prefix;      ///< 版本前缀（sam2 或 sam2.1）
+    QString size_token;  ///< 模型尺寸标识（t/s/b+/l）
 };
 
+/**
+ * @brief 解析 SAM2 架构名称，提取版本前缀和尺寸标识
+ * @param architecture_name 架构名称
+ * @return 配置名称解析结果
+ */
 Sam2ConfigNameParts sam2ConfigNameParts(const QString &architecture_name)
 {
     const QString architecture = architecture_name.trimmed();
@@ -382,6 +499,12 @@ Sam2ConfigNameParts sam2ConfigNameParts(const QString &architecture_name)
     return size_token.isEmpty() ? Sam2ConfigNameParts{} : Sam2ConfigNameParts{prefix, size_token};
 }
 
+/**
+ * @brief 根据架构名称获取 SAM2 配置文件路径
+ * @param architecture_name 架构名称
+ * @param err_msg 错误信息（输出）
+ * @return 配置文件路径
+ */
 QString sam2ConfigPathFromArchitecture(const QString &architecture_name, QString &err_msg)
 {
     const Sam2ConfigNameParts parts = sam2ConfigNameParts(architecture_name);
@@ -401,6 +524,12 @@ QString sam2ConfigPathFromArchitecture(const QString &architecture_name, QString
     return path;
 }
 
+/**
+ * @brief 获取训练检查点文件路径
+ * @param fs_sam2_root FS-SAM2 根目录
+ * @param logpath 日志路径
+ * @return 检查点文件路径
+ */
 QString checkpointPath(const QString &fs_sam2_root, const QString &logpath)
 {
     return cleanPath(QDir(fs_sam2_root).filePath(QString("logs/%1.log/best_model.pt").arg(logpath)));
@@ -410,45 +539,60 @@ QString checkpointPath(const QString &fs_sam2_root, const QString &logpath)
 
 struct FewShotLearningController::RunContext
 {
-    QString python_executable;
-    QString fs_sam2_root;
-    QString sam2_checkpoint;
-    QString sam2_cfg;
-    QString run_dir;
-    QString custom_dataset_dir;
-    QString query_dir;
-    QString output_dir;
-    QString query_txt_path;
-    QString train_script;
-    QString predict_script;
-    QString box_to_mask_script;
-    int     box_to_mask_task_id{-1};
-    QString checkpoint_path;
-    QString exp_id;
-    QString logpath;
+    QString python_executable;     ///< Python 可执行文件路径
+    QString fs_sam2_root;          ///< FS-SAM2 根目录
+    QString sam2_checkpoint;       ///< SAM2 检查点文件路径
+    QString sam2_cfg;              ///< SAM2 配置文件路径
+    QString run_dir;               ///< 本次运行目录
+    QString custom_dataset_dir;    ///< 自定义数据集目录
+    QString query_dir;             ///< 查询图像目录
+    QString output_dir;            ///< 输出目录
+    QString query_txt_path;        ///< 查询清单文件路径
+    QString train_script;          ///< 训练脚本路径
+    QString predict_script;        ///< 推理脚本路径
+    QString box_to_mask_script;    ///< 框转 Mask 脚本路径
+    int     box_to_mask_task_id{-1}; ///< 框转 Mask 任务 ID
+    QString checkpoint_path;       ///< 训练检查点路径
+    QString exp_id;                ///< 实验 ID
+    QString logpath;               ///< 日志路径
 
-    int    kshot{1};
-    int    epochs{50};
-    int    batch_size{2};
-    int    num_workers{0};
-    int    image_size{1024};
-    double lr{1e-4};
-    double weight_decay{1e-6};
-    double support_ratio{0.5};
+    int    kshot{1};          ///< K-shot 数量
+    int    epochs{50};        ///< 训练轮数
+    int    batch_size{2};     ///< 批处理大小
+    int    num_workers{0};    ///< 数据加载线程数
+    int    image_size{1024};  ///< 图像尺寸
+    double lr{1e-4};          ///< 学习率
+    double weight_decay{1e-6}; ///< 权重衰减
+    double support_ratio{0.5}; ///< 支持集比例
 
-    int     train_task_id{-1};
-    int     predict_task_id{-1};
-    QString task_host;
-    quint16 task_port{0};
+    int     train_task_id{-1};     ///< 训练任务 ID
+    int     predict_task_id{-1};   ///< 推理任务 ID
+    QString task_host;             ///< 任务服务主机
+    quint16 task_port{0};          ///< 任务服务端口
 
-    QJsonArray                          classes;
-    std::vector<PredictionImportTarget> import_targets;
+    QJsonArray                          classes;         ///< 类别 JSON 数组
+    std::vector<PredictionImportTarget> import_targets;   ///< 预测结果导入目标列表
 };
 
 FewShotLearningController::FewShotLearningController(FewShotLearningDataProvider *data_provider, QObject *parent)
     : QObject(parent)
     , data_provider_(data_provider)
 {
+    auto *gs = dltool::settings::GlobalSettings::getInstance();
+    enabled_ = gs->valueForField(dltool::settings::generated::field::FewShotLearning::Key::Enabled, true).toBool();
+
+    connect(gs->catalog(), &dltool::settings::SettingsCatalog::fieldValueChanged, this,
+            [this](const QString &group_key, const QString &name, const QVariant &value) {
+                if (group_key == QStringLiteral("FewShotLearningSettings") && name == QStringLiteral("enabled"))
+                {
+                    const bool v = value.toBool();
+                    if (v != enabled_)
+                    {
+                        enabled_ = v;
+                        emit enabledChanged();
+                    }
+                }
+            });
 }
 
 FewShotLearningController::~FewShotLearningController()
@@ -461,16 +605,14 @@ FewShotLearningController::~FewShotLearningController()
     }
 }
 
-bool FewShotLearningController::running() const
-{
-    return running_;
-}
+bool    FewShotLearningController::enabled() const   { return enabled_; }
+bool    FewShotLearningController::running() const   { return running_; }
+QString FewShotLearningController::lastError() const { return last_error_; }
 
-QString FewShotLearningController::lastError() const
-{
-    return last_error_;
-}
-
+/**
+ * @brief 设置任务管理器并连接停止信号
+ * @param task_manager 任务管理器实例
+ */
 void FewShotLearningController::setTaskManager(dltool::model::TaskManager *task_manager)
 {
     if (task_manager_ == task_manager)
@@ -484,6 +626,13 @@ void FewShotLearningController::setTaskManager(dltool::model::TaskManager *task_
                 &FewShotLearningController::handleTaskStopRequested);
 }
 
+/**
+ * @brief 启动小样本学习流程（FS-SAM2）
+ * @param train_dataset_ids 训练数据集 ID 列表
+ * @param test_dataset_ids 测试数据集 ID 列表
+ * @param label_class_ids 标注类别 ID 列表
+ * @return 启动成功返回 true
+ */
 bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_ids, const QVariantList &test_dataset_ids,
                                             const QVariantList &label_class_ids)
 {
@@ -538,6 +687,7 @@ bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_id
     return true;
 }
 
+/// 取消当前运行的小样本学习任务
 void FewShotLearningController::cancel()
 {
     stop_requested_ = true;
@@ -549,6 +699,15 @@ void FewShotLearningController::cancel()
         task_manager_->stopTask(predict_task_id_);
 }
 
+/**
+ * @brief 准备运行环境：验证参数、配置路径、收集数据、注册任务
+ * @param train_dataset_ids 训练数据集 ID
+ * @param test_dataset_ids 测试数据集 ID
+ * @param label_class_ids 标注类别 ID
+ * @param context 运行上下文（输出）
+ * @param err_msg 错误信息（输出）
+ * @return 准备成功返回 true
+ */
 bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dataset_ids,
                                            const std::vector<int64_t> &test_dataset_ids,
                                            const std::vector<int64_t> &label_class_ids, RunContext &context,
@@ -884,6 +1043,12 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
     return true;
 }
 
+/**
+ * @brief 启动训练子进程
+ * @param context 运行上下文
+ * @param err_msg 错误信息（输出）
+ * @return 启动成功返回 true
+ */
 bool FewShotLearningController::startTraining(const RunContext &context, QString &err_msg)
 {
     QStringList arguments = {
@@ -927,6 +1092,13 @@ bool FewShotLearningController::startTraining(const RunContext &context, QString
     return startProcess(context, arguments, err_msg);
 }
 
+/**
+ * @brief 启动推理子进程
+ * @param context 运行上下文
+ * @param class_index 当前类别索引
+ * @param err_msg 错误信息（输出）
+ * @return 启动成功返回 true
+ */
 bool FewShotLearningController::startPrediction(const RunContext &context, int class_index, QString &err_msg)
 {
     const int class_count = static_cast<int>(context.classes.size());
@@ -989,6 +1161,13 @@ bool FewShotLearningController::startPrediction(const RunContext &context, int c
     return startProcess(context, arguments, err_msg);
 }
 
+/**
+ * @brief 启动框转 Mask 预处理子进程
+ * @param context 运行上下文
+ * @param class_index 当前类别索引
+ * @param err_msg 错误信息（输出）
+ * @return 启动成功返回 true
+ */
 bool FewShotLearningController::startBoxToMask(const RunContext &context, int class_index, QString &err_msg)
 {
     const int class_count = static_cast<int>(context.classes.size());
@@ -1037,6 +1216,13 @@ bool FewShotLearningController::startBoxToMask(const RunContext &context, int cl
     return startProcess(context, arguments, err_msg);
 }
 
+/**
+ * @brief 启动 Python 子进程
+ * @param context 运行上下文
+ * @param arguments 命令行参数
+ * @param err_msg 错误信息（输出）
+ * @return 启动成功返回 true
+ */
 bool FewShotLearningController::startProcess(const RunContext &context, const QStringList &arguments, QString &err_msg)
 {
     if (process_ != nullptr && process_->state() != QProcess::NotRunning)
@@ -1077,6 +1263,7 @@ bool FewShotLearningController::startProcess(const RunContext &context, const QS
     return true;
 }
 
+/// 结束运行并重置所有状态
 void FewShotLearningController::finishRun()
 {
     if (data_provider_ != nullptr && import_finished_connection_)
@@ -1096,6 +1283,11 @@ void FewShotLearningController::finishRun()
     setRunning(false);
 }
 
+/**
+ * @brief 处理子进程结束事件，根据当前阶段决定下一步操作
+ * @param exit_code 退出码
+ * @param exit_status 退出状态
+ */
 void FewShotLearningController::handleProcessFinished(int exit_code, QProcess::ExitStatus exit_status)
 {
     auto *finished_process = qobject_cast<QProcess *>(sender());
@@ -1228,6 +1420,7 @@ void FewShotLearningController::handleProcessFinished(int exit_code, QProcess::E
     finishRun();
 }
 
+/// 开始导入预测结果
 void FewShotLearningController::startPredictionImports()
 {
     if (data_provider_ == nullptr || active_context_ == nullptr || active_context_->import_targets.empty())
@@ -1243,6 +1436,7 @@ void FewShotLearningController::startPredictionImports()
     startNextPredictionImport();
 }
 
+/// 开始导入下一个预测结果
 void FewShotLearningController::startNextPredictionImport()
 {
     if (!importing_predictions_ || data_provider_ == nullptr || active_context_ == nullptr)
@@ -1266,6 +1460,11 @@ void FewShotLearningController::startNextPredictionImport()
     data_provider_->importMaskData(target.dataset_id, target.manifest_path, prediction_output_dir_);
 }
 
+/**
+ * @brief 处理预测结果导入完成
+ * @param success 是否成功
+ * @param message 导入消息
+ */
 void FewShotLearningController::handlePredictionImportFinished(bool success, const QString &message)
 {
     if (!importing_predictions_)
@@ -1286,6 +1485,10 @@ void FewShotLearningController::handlePredictionImportFinished(bool success, con
     startNextPredictionImport();
 }
 
+/**
+ * @brief 处理任务管理器请求停止任务
+ * @param task_id 任务 ID
+ */
 void FewShotLearningController::handleTaskStopRequested(int task_id)
 {
     if (task_id != train_task_id_ && task_id != predict_task_id_ && task_id != box_to_mask_task_id_)

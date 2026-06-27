@@ -8,6 +8,13 @@
 
 namespace dltool::feature {
 
+/**
+ * @brief 将 QVariantList 解析为 int64_t 向量
+ * @param values 包含数值的 QVariantList
+ * @param filterNonNegative 是否过滤掉负数
+ * @param sortAndUnique 是否排序并去重
+ * @return 解析后的 int64_t 向量
+ */
 inline std::vector<int64_t> parseInt64Ids(const QVariantList &values, bool filterNonNegative = false,
                                           bool sortAndUnique = false)
 {
