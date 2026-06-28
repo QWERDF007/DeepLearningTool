@@ -10,8 +10,11 @@
 #include <QtQml>
 #include <memory>
 
+namespace irt::features {
+class SAMImagePredictor;
+} // namespace irt::features
+
 namespace irt::model {
-class IModel;
 enum class ModelBackend;
 enum class ModelDevice;
 } // namespace irt::model
@@ -110,7 +113,7 @@ private:
     void setLoadingModel(bool loading_model);
     void setLastError(const QString &last_error);
 
-    std::unique_ptr<irt::model::IModel> model_; ///< 加载的推理模型实例
+    std::unique_ptr<irt::features::SAMImagePredictor> predictor_; ///< 加载的 SAM 预测器实例
 
     QString cached_model_key_;     ///< 当前缓存模型的唯一标识
     QString loading_model_key_;    ///< 正在加载的模型标识
