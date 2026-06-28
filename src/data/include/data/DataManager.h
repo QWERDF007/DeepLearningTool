@@ -11,12 +11,8 @@
 #include "LabelClasses.h"
 #include "Labels.h"
 #include "dltool/data/Export.h"
-#include "feature/FewShotLearningController.h"
 #include "feature/FewShotLearningDataProvider.h"
-#include "feature/ImageSearchController.h"
 #include "feature/ImageSearchDataProvider.h"
-#include "feature/RoiSearchController.h"
-#include "feature/SmartAnnotationController.h"
 
 #include <QMetaObject>
 #include <QObject>
@@ -30,10 +26,6 @@ class QQmlApplicationEngine;
 namespace dltool::database {
 class ProjectDataBase;
 } // namespace dltool::database
-
-namespace dltool::model {
-class TaskManager;
-} // namespace dltool::model
 
 namespace dltool::data {
 
@@ -54,10 +46,6 @@ class DATA_API DataManager
     Q_PROPERTY(ImageLabelsTableModel *imageLabelsTable READ imageLabelsTable CONSTANT FINAL)
     Q_PROPERTY(ImageInfoListModel *imageInfo READ imageInfo CONSTANT FINAL)
     Q_PROPERTY(GlobalFilter *globalFilter READ globalFilter CONSTANT FINAL)
-    Q_PROPERTY(dltool::feature::ImageSearchController *imageSearch READ imageSearch CONSTANT FINAL)
-    Q_PROPERTY(dltool::feature::RoiSearchController *roiSearch READ roiSearch CONSTANT FINAL)
-    Q_PROPERTY(dltool::feature::SmartAnnotationController *smartAnnotation READ smartAnnotation CONSTANT FINAL)
-    Q_PROPERTY(dltool::feature::FewShotLearningController *fewShotLearning READ fewShotLearning CONSTANT FINAL)
     Q_PROPERTY(DatasetFilterItemsModel *datasetFilterItems READ datasetFilterItems CONSTANT FINAL)
     Q_PROPERTY(TagFilterItemsModel *tagFilterItems READ tagFilterItems CONSTANT FINAL)
     Q_PROPERTY(LabelClassFilterItemsModel *labelClassFilterItems READ labelClassFilterItems CONSTANT FINAL)
@@ -113,26 +101,6 @@ public:
         return global_filter_;
     }
 
-    dltool::feature::ImageSearchController *imageSearch() const
-    {
-        return image_search_;
-    }
-
-    dltool::feature::RoiSearchController *roiSearch() const
-    {
-        return roi_search_;
-    }
-
-    dltool::feature::SmartAnnotationController *smartAnnotation() const
-    {
-        return smart_annotation_;
-    }
-
-    dltool::feature::FewShotLearningController *fewShotLearning() const
-    {
-        return few_shot_learning_;
-    }
-
     DatasetFilterItemsModel *datasetFilterItems() const
     {
         return dataset_filter_items_;
@@ -159,8 +127,6 @@ public:
     }
 
     QString databasePath() const override;
-
-    void setTaskManager(dltool::model::TaskManager *task_manager);
 
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
     Q_INVOKABLE QVariantList   getAllLabelClassIds() const;
@@ -278,11 +244,7 @@ private:
 
     ImageInfoListModel *image_info_{nullptr};
 
-    GlobalFilter                               *global_filter_{nullptr};
-    dltool::feature::ImageSearchController     *image_search_{nullptr};
-    dltool::feature::RoiSearchController       *roi_search_{nullptr};
-    dltool::feature::SmartAnnotationController *smart_annotation_{nullptr};
-    dltool::feature::FewShotLearningController *few_shot_learning_{nullptr};
+    GlobalFilter *global_filter_{nullptr};
 
     DatasetFilterItemsModel    *dataset_filter_items_{nullptr};
     TagFilterItemsModel        *tag_filter_items_{nullptr};

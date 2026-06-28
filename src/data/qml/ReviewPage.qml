@@ -1,14 +1,11 @@
-import QtQuick
+﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
-import dltool.data
 import dltool.project
-
-import "review"
-import "gallery"
-import "component"
+import dltool.data
+import dltool.feature
 import quickui
 
 Rectangle {
@@ -18,6 +15,7 @@ Rectangle {
     color: QuiColor.Background
 
     property DataManager dataManager
+    property FeatureManager featureManager
 
     QuiSplitView {
         anchors.fill: parent
@@ -65,6 +63,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 dataManager: labelPage.dataManager
+                featureManager: labelPage.featureManager
             }
 
             ReviewSidebar { // 侧边栏

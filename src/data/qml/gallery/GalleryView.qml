@@ -41,8 +41,10 @@ Item {
     property int spacing: 10
 
     property DataManager dataManager
+    property FeatureManager featureManager
     property ImageInstancesModel imageInstances: dataManager ? dataManager.imageInstances : null
     property ItemSelectionModel selection: imageInstances ? imageInstances.selection : null
+    property ImageSearchController controller: featureManager ? featureManager.imageSearch : null
 
     QuiMenu {
         id: imageInstanceMenu
@@ -50,10 +52,8 @@ Item {
         QuiMenuItem {
             text: "图像搜索"
             iconSource: QuiFontIcon.Search
-            enabled: dataManager && dataManager.imageSearch
+            enabled: dataManager && controller && !controller.running && controller.enabled
                      && selection && selection.hasSelection
-                     && !dataManager.imageSearch.running
-                     && dataManager.imageSearch.enabled
             onClicked: {
                 imageSearchDialog.openForSearch()
             }
@@ -131,6 +131,7 @@ Item {
     ImageSearchDialog {
         id: imageSearchDialog
         dataManager: instancesView.dataManager
+        featureManager: instancesView.featureManager
     }
 
     GridView {

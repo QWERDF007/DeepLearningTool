@@ -3,6 +3,7 @@
 #include "common/Singleton.h"
 #include "data/DataManager.h"
 #include "dltool/project/Export.h"
+#include "feature/FeatureManager.h"
 #include "model/ModelManager.h"
 #include "model/TaskManager.h"
 
@@ -31,6 +32,7 @@ class Project : public QObject
     Q_PROPERTY(QString description READ description NOTIFY descriptionChanged FINAL)
     Q_PROPERTY(QString imageBasePath READ imageBasePath NOTIFY imageBasePathChanged FINAL)
     Q_PROPERTY(data::DataManager *dataManager READ dataManager CONSTANT FINAL)
+    Q_PROPERTY(dltool::feature::FeatureManager *featureManager READ featureManager CONSTANT FINAL)
     Q_PROPERTY(model::ModelManager *modelManager READ modelManager CONSTANT FINAL)
     Q_PROPERTY(model::TaskManager *taskManager READ taskManager CONSTANT FINAL)
 
@@ -85,6 +87,11 @@ public:
         return data_manager_;
     }
 
+    dltool::feature::FeatureManager *featureManager() const
+    {
+        return feature_manager_;
+    }
+
     model::ModelManager *modelManager() const
     {
         return model_manager_;
@@ -117,9 +124,10 @@ private:
 
     dltool::database::ProjectDataBase *database_{nullptr};
 
-    data::DataManager   *data_manager_{nullptr};
-    model::ModelManager *model_manager_{nullptr};
-    model::TaskManager  *task_manager_{nullptr};
+    data::DataManager                 *data_manager_{nullptr};
+    dltool::feature::FeatureManager   *feature_manager_{nullptr};
+    model::ModelManager               *model_manager_{nullptr};
+    model::TaskManager                *task_manager_{nullptr};
 
     QQmlApplicationEngine *qml_engine_{nullptr};
 

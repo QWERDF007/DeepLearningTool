@@ -1,16 +1,19 @@
-import QtQuick
+﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
 import dltool.settings
+import dltool.data
+import dltool.feature
 import quickui
 
 QuiPopup {
     id: dialog
 
-    property var dataManager
-    readonly property var controller: dataManager ? dataManager.fewShotLearning : null
+    property DataManager dataManager
+    property FeatureManager featureManager
+    readonly property FewShotLearningController controller: featureManager ? featureManager.fewShotLearning : null
     readonly property var fewShotSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.FewShotLearning)
     property string pythonEnvPath: ""
     property var datasetNames: []

@@ -4,12 +4,15 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.settings
+import dltool.data
+import dltool.feature
 import quickui
 
 QuiPopup {
     id: dialog
 
-    property var dataManager
+    property DataManager dataManager
+    property FeatureManager featureManager
     property var queryLabelIds: []
     property bool roiSearchEnabled: true
     readonly property var roiSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.RoiSearch)
@@ -20,7 +23,7 @@ QuiPopup {
     closePolicy: Popup.CloseOnEscape
 
     function roiSearchController() {
-        return dataManager ? dataManager.roiSearch : null
+        return featureManager ? featureManager.roiSearch : null
     }
 
     function openForLabels(labelIds) {

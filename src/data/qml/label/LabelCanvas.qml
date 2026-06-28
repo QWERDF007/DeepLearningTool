@@ -8,14 +8,12 @@ import dltool.feature
 import dltool.settings
 import quickui
 
-import "../component"
-import "../gallery"
-
 Item {
     id: labelView
     clip: true
 
     property DataManager dataManager
+    property FeatureManager featureManager
     property ImageInstancesModel imageInstances: dataManager ? dataManager.imageInstances : null
     property LabelClassesModel labelClasses: dataManager ? dataManager.labelClasses : null
     property ImageLabelsListModel imageLabelsList: dataManager ? dataManager.imageLabelsList : null
@@ -23,17 +21,16 @@ Item {
     property color drawingColor: labelClasses ? labelClasses.currentLabelClassColor : "red"
     property point startPos: Qt.point(0, 0)
     property bool segmentationMode: dataManager ? dataManager.method === DeepLearningMethod.Segmentation : false
-    property var smartAnnotation: dataManager ? dataManager.smartAnnotation : null
+    property ImageSearchController imageSearch: featureManager ? featureManager.imageSearch : null
+    property RoiSearchController roiSearch: featureManager ? featureManager.roiSearch : null
+    property SmartAnnotationController smartAnnotation: featureManager ? featureManager.smartAnnotation : null
     property bool roiSearchEnabled: true
     property int smartAnnotationRefreshInterval: 80
     property real smartAnnotationMaskAlpha: 0.35
     property string toolMode: "select"
     property bool showBoundingBoxes: false
-    readonly property bool smartAnnotationAvailable: smartAnnotation
-                                                    && smartAnnotation.enabled
-                                                    && dataManager
-                                                    && (dataManager.method === DeepLearningMethod.Detection
-                                                        || dataManager.method === DeepLearningMethod.Segmentation)
+    readonly property bool smartAnnotationAvailable: smartAnnotation && smartAnnotation.enabled && dataManager
+                                                    && (dataManager.method === DeepLearningMethod.Detection || dataManager.method === DeepLearningMethod.Segmentation)
     property bool smartAnnotationMode: toolMode === "smart" && smartAnnotationAvailable
     property bool selectToolMode: toolMode === "select"
     property bool rectangleToolMode: toolMode === "rect"
@@ -92,19 +89,15 @@ Item {
         width: 200
         QuiMenuItem {
             text: "图像搜索"
-            enabled: dataManager && dataManager.imageSearch
+            enabled: dataManager && imageSearch && !imageSearch.running && imageSearch.enabled
                      && imageInstances && imageInstances.currentImageId >= 0
-                     && !dataManager.imageSearch.running
-                     && dataManager.imageSearch.enabled
-iconSource: QuiFontIcon.Search
+            iconSource: QuiFontIcon.Search
             onClicked: startImageSearchForCurrentImage()
         }
         QuiMenuItem {
             text: "标注搜索"
-            enabled: dataManager && dataManager.imageSearch
+            enabled: dataManager && roiSearch && !roiSearch.running && roiSearchEnabled
                      && selection && selection.hasSelection
-                     && !dataManager.imageSearch.running
-                     && roiSearchEnabled
             iconSource: QuiFontIcon.Search
             onClicked: startRoiSearchForSelectedLabels()
         }
@@ -133,11 +126,13 @@ iconSource: QuiFontIcon.Search
     ImageSearchDialog {
         id: imageSearchDialog
         dataManager: labelView.dataManager
+        featureManager: labelView.featureManager
     }
 
     RoiSearchDialog {
         id: roiSearchDialog
         dataManager: labelView.dataManager
+        featureManager: labelView.featureManager
     }
 
     LabelImage {
@@ -1118,9 +1113,7 @@ iconSource: QuiFontIcon.Search
     }
 
     function startImageSearchForCurrentImage() {
-        if (!dataManager || !dataManager.imageSearch || !imageInstances
-                || imageInstances.currentImageId < 0
-                || !dataManager.imageSearch.enabled) {
+        if (!dataManager || !imageSearch || !imageSearch.enabled || !imageInstances || imageInstances.currentImageId < 0) {
             return
         }
 
@@ -1128,9 +1121,7 @@ iconSource: QuiFontIcon.Search
     }
 
     function startRoiSearchForSelectedLabels() {
-        if (!dataManager || !dataManager.imageSearch || !imageLabelsList
-                || !selection || !selection.hasSelection
-                || !roiSearchEnabled) {
+        if (!dataManager || !roiSearch || !roiSearchEnabled || !imageLabelsList || !selection || !selection.hasSelection) {
             return
         }
 

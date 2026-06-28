@@ -6,6 +6,7 @@ import QtQuick.Window
 import dltool.ui
 import dltool.project
 import dltool.data
+import dltool.feature
 import quickui
 
 Rectangle {
@@ -16,8 +17,10 @@ Rectangle {
 
     property alias currentIndex: mainTabBar.currentIndex
     property var globalFilter: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.globalFilter : null
-    property var imageSearch: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.imageSearch : null
-    property var smartAnnotation: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.smartAnnotation : null
+    property FeatureManager featureManager: ProjectManager.currentProject ? ProjectManager.currentProject.featureManager : null
+    property var imageSearch: featureManager ? featureManager.imageSearch : null
+    property var roiSearch: featureManager ? featureManager.roiSearch : null
+    property var smartAnnotation: featureManager ? featureManager.smartAnnotation : null
 
     Connections {
         target: SignalHelper
@@ -203,7 +206,7 @@ Rectangle {
                         globalFilter: header.globalFilter
                         showItemList: false
                         resultCount: globalFilter ? globalFilter.labelSearchResultCount : 0
-                        enabled: imageSearch && !imageSearch.running && globalFilter && globalFilter.hasLabelSearchResults
+                        enabled: roiSearch && !roiSearch.running && globalFilter && globalFilter.hasLabelSearchResults
                         Connections {
                             target: labelSearchDropDown.globalFilter
                             function onFilterStateChanged() {

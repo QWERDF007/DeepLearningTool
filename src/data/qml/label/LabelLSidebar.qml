@@ -1,8 +1,10 @@
-import QtQuick
+﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
+import dltool.core
 import dltool.ui
+import dltool.feature
 import quickui
 
 Rectangle {
@@ -12,12 +14,11 @@ Rectangle {
 
     property string currentTool: "select"
     property bool segmentationMode: false
-    property bool smartAnnotationAvailable: false
-    property bool dataManagerAvailable: false
-    property bool fewShotLearningAvailable: false
+
+    property FeatureManager featureManager: null
+    property DataManager dataManager: null
 
     signal toolSelected(string mode)
-    signal openFewShotLearning()
 
     ColumnLayout {
         anchors.top: parent.top
@@ -61,7 +62,8 @@ Rectangle {
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredWidth: 32
             Layout.preferredHeight: 32
-            enabled: sidebar.smartAnnotationAvailable
+            enabled: sidebar.featureManager !== null && sidebar.featureManager.smartAnnotation && sidebar.featureManager.smartAnnotation.enabled
+                     && dataManager && (dataManager.method === DeepLearningMethod.Detection || dataManager.method === DeepLearningMethod.Segmentation)
             normalColor: sidebar.currentTool === "smart" ? QuiColor.Highlight : QuiColor.Button
             iconSource: QuiFontIcon.Touchscreen
             text: "智能标注"
@@ -72,10 +74,16 @@ Rectangle {
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredWidth: 32
             Layout.preferredHeight: 32
-            enabled: sidebar.fewShotLearningAvailable
+            enabled: sidebar.featureManager !== null && sidebar.featureManager.fewShotLearning && sidebar.featureManager.fewShotLearning.enabled
             iconSource: QuiFontIcon.Robot
             text: "小样本学习"
-            onClicked: sidebar.openFewShotLearning()
+            onClicked: fewShotLearningDialog.openForStart()
         }
+    }
+
+    FewShotLearningDialog {
+        id: fewShotLearningDialog
+        dataManager: sidebar.dataManager
+        featureManager: sidebar.featureManager
     }
 }

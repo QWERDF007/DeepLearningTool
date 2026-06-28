@@ -13,7 +13,7 @@ QuiPopup {
     height: 600
     modal: true
     
-    property var dataManager: null
+    property DataManager dataManager: null
     property var statisticsModel: dataManager ? dataManager.categoryStatisticsModel : null
     property bool applyFilter: false
     property int currentDimension: 0  // 0: instance dimension, 1: image dimension

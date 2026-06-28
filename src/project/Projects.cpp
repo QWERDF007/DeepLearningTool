@@ -2,6 +2,7 @@
 
 #include "core/CoreDef.h"
 #include "database/DataBase.h"
+#include "feature/FeatureManager.h"
 #include "model/ModelManager.h"
 #include "settings/GlobalSettings.h"
 
@@ -59,6 +60,9 @@ Project::Project(const QString &path, QObject *parent)
 
 Project::~Project()
 {
+    delete feature_manager_;
+    feature_manager_ = nullptr;
+
     delete task_manager_;
     task_manager_ = nullptr;
 
@@ -76,7 +80,8 @@ void Project::init()
 {
     task_manager_ = new model::TaskManager(this);
     data_manager_ = new data::DataManager(method_, database_, this);
-    data_manager_->setTaskManager(task_manager_);
+    feature_manager_ = new dltool::feature::FeatureManager(data_manager_, data_manager_, this);
+    feature_manager_->setTaskManager(task_manager_);
     model_manager_ = new model::ModelManager(method_, database_, this);
 
     // 初始化图像提供器（会自动从 QML 上下文获取引擎）

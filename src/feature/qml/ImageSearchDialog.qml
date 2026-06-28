@@ -1,15 +1,17 @@
-import QtQuick
+﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
 import dltool.settings
+import dltool.data
 import quickui
 
 QuiPopup {
     id: dialog
 
-    property var dataManager
+    property DataManager dataManager
+    property FeatureManager featureManager
     property var queryImageIds: []
     property bool imageSearchEnabled: true
     readonly property var imageSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.ImageSearch)
@@ -20,7 +22,7 @@ QuiPopup {
     closePolicy: Popup.CloseOnEscape
 
     function imageSearchController() {
-        return dataManager ? dataManager.imageSearch : null
+        return featureManager ? featureManager.imageSearch : null
     }
 
     function openForSearch() {

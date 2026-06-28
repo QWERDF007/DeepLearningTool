@@ -20,10 +20,9 @@ Rectangle {
     color: QuiColor.Background
 
     property DataManager dataManager
-    readonly property var smartAnnotationController: dataManager ? dataManager.smartAnnotation : null
-    readonly property bool smartAnnotationLoading: smartAnnotationController ? smartAnnotationController.loadingModel : false
-    readonly property bool fewShotLearningAvailable: dataManager !== null && dataManager.fewShotLearning.enabled
-
+    property FeatureManager featureManager
+    readonly property SmartAnnotationController controller: featureManager ? featureManager.smartAnnotation : null
+    readonly property bool smartAnnotationLoading: controller ? controller.loadingModel : false
     QuiSplitView {
         anchors.fill: parent
         anchors.margins: 5
@@ -98,13 +97,11 @@ Rectangle {
                         Layout.fillHeight: true
                         currentTool: labelCanvas.toolMode
                         segmentationMode: labelCanvas.segmentationMode
-                        smartAnnotationAvailable: labelCanvas.smartAnnotationAvailable
-                        dataManagerAvailable: labelPage.dataManager !== null
-                        fewShotLearningAvailable: labelPage.fewShotLearningAvailable
+                        featureManager: labelPage.featureManager
+                        dataManager: labelPage.dataManager
                         onToolSelected: function(mode) {
                             labelCanvas.setToolMode(mode)
                         }
-                        onOpenFewShotLearning: fewShotLearningDialog.openForStart()
                     }
 
                     LabelCanvas {
@@ -112,17 +109,14 @@ Rectangle {
                         Layout.fillHeight: true
                         Layout.fillWidth: true
                         dataManager: labelPage.dataManager
+                        featureManager: labelPage.featureManager
                     }
                 }
             }
 
-            FewShotLearningDialog {
-                id: fewShotLearningDialog
-                dataManager: labelPage.dataManager
-            }
 
             Connections {
-                target: labelPage.smartAnnotationController
+                target: labelPage.controller
                 function onModelLoadFinished(success) {
                     if (success && labelCanvas.smartAnnotationMode) {
                         labelCanvas.updateSmartAnnotationPreview()

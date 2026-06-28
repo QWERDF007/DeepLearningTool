@@ -1,12 +1,10 @@
-import QtQuick
+﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
-
-import "gallery"
-import "component"
+import dltool.feature
 import quickui
 
 Rectangle {
@@ -16,6 +14,7 @@ Rectangle {
     color: QuiColor.Background
 
     property DataManager dataManager
+    property FeatureManager featureManager
     
     QuiSplitView {
         anchors.fill: parent
@@ -68,6 +67,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 dataManager: galleryPage.dataManager
+                featureManager: galleryPage.featureManager
             }
 
             GallerySidebar { // 侧边栏

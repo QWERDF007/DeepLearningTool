@@ -9,7 +9,6 @@
 #include "data/LabelData.h"
 #include "data/LabelInstanceImageProvider.h"
 #include "database/DataBase.h"
-#include "settings/GlobalSettings.h"
 #include "ui/ProgressManager.h"
 
 #include <spdlog/spdlog.h>
@@ -100,16 +99,6 @@ void DataManager::init(const int method)
     // Create GlobalFilter and initialize it with the models
     global_filter_ = new GlobalFilter(this, this);
     global_filter_->initializeFilterModules(this);
-    image_search_      = new dltool::feature::ImageSearchController(this, this);
-    roi_search_        = new dltool::feature::RoiSearchController(this, this);
-    smart_annotation_  = new dltool::feature::SmartAnnotationController(this);
-    few_shot_learning_ = new dltool::feature::FewShotLearningController(this, this);
-    if (auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(
-            dltool::settings::generated::AccessorKey::SmartAnnotation))
-    {
-        connect(settings, &dltool::settings::SettingsGroup::valueChanged, smart_annotation_,
-                &dltool::feature::SmartAnnotationController::clearCache);
-    }
 
     // Create filter items models
     dataset_filter_items_     = new DatasetFilterItemsModel(this);
@@ -343,12 +332,6 @@ int DataManager::getDatasetId(const QString &dataset_name) const
 QString DataManager::databasePath() const
 {
     return database_ ? database_->path() : QString();
-}
-
-void DataManager::setTaskManager(dltool::model::TaskManager *task_manager)
-{
-    if (few_shot_learning_ != nullptr)
-        few_shot_learning_->setTaskManager(task_manager);
 }
 
 std::vector<int64_t> DataManager::selectedImageIds() const

@@ -6,6 +6,7 @@ import dltool.ui
 import dltool.project
 import dltool.data
 import dltool.model
+import dltool.feature
 
 StackLayout {
     id: content
@@ -14,6 +15,7 @@ StackLayout {
 
     property Project project : ProjectManager.currentProject
     property DataManager dataManager: project ? project.dataManager : null
+    property FeatureManager featureManager: project ? project.featureManager : null
     property bool shuttingDown: false
 
     Component {
@@ -29,6 +31,7 @@ StackLayout {
         GalleryPage {
             anchors.fill: parent
             dataManager: content.dataManager
+            featureManager: content.featureManager
         }
     }
 
@@ -37,6 +40,7 @@ StackLayout {
         LabelPage {
             anchors.fill: parent
             dataManager: content.dataManager
+            featureManager: content.featureManager
         }
     }
 
@@ -45,6 +49,7 @@ StackLayout {
         ReviewPage {
             anchors.fill: parent
             dataManager: content.dataManager
+            featureManager: content.featureManager
         }
     }
 

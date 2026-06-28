@@ -16,8 +16,10 @@ Rectangle {
     color: QuiColor.Background
     
     property DataManager dataManager
+    property FeatureManager featureManager
     property LabelInstancesModel labelInstances : dataManager ? dataManager.labelInstances : null
     property ItemSelectionModel selection : labelInstances ? labelInstances.selection : null
+    property var roiSearch: featureManager ? featureManager.roiSearch : null
     property bool roiSearchEnabled: true
     property real labelThumbnailScale: 1.0
     property real labelThumbnailScaleFrom: 0.5
@@ -37,6 +39,7 @@ Rectangle {
     RoiSearchDialog {
         id: roiSearchDialog
         dataManager: root.dataManager
+        featureManager: root.featureManager
     }
 
     QuiMenu {
@@ -45,9 +48,9 @@ Rectangle {
         QuiMenuItem {
             text: "标注搜索"
             iconSource: QuiFontIcon.Search
-            enabled: dataManager && dataManager.imageSearch
+            enabled: dataManager && roiSearch
                      && selection && selection.hasSelection
-                     && !dataManager.imageSearch.running
+                     && !roiSearch.running
                      && roiSearchEnabled
             onClicked: startRoiSearchForSelectedLabels()
         }
@@ -344,7 +347,7 @@ Rectangle {
     }
 
     function startRoiSearchForSelectedLabels() {
-        if (!dataManager || !dataManager.imageSearch || !labelInstances
+        if (!dataManager || !roiSearch || !labelInstances
                 || !selection || !selection.hasSelection
                 || !roiSearchEnabled) {
             return
