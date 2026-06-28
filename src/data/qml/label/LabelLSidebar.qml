@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.core
+import dltool.data
 import dltool.ui
 import dltool.feature
 import quickui
@@ -12,13 +13,13 @@ Rectangle {
     color: QuiColor.Primary
     border.color: QuiColor.Border
 
-    property string currentTool: "select"
+    property int currentTool: LabelCanvasEnums.SelectTool
     property bool segmentationMode: false
 
     property FeatureManager featureManager: null
     property DataManager dataManager: null
 
-    signal toolSelected(string mode)
+    signal toolSelected(int mode)
 
     ColumnLayout {
         anchors.top: parent.top
@@ -31,20 +32,20 @@ Rectangle {
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredWidth: 32
             Layout.preferredHeight: 32
-            normalColor: sidebar.currentTool === "select" ? QuiColor.Highlight : QuiColor.Button
+            normalColor: sidebar.currentTool === LabelCanvasEnums.SelectTool ? QuiColor.Highlight : QuiColor.Button
             iconSource: QuiFontIcon.TouchPointer
             text: "选中"
-            onClicked: sidebar.toolSelected("select")
+            onClicked: sidebar.toolSelected(LabelCanvasEnums.SelectTool)
         }
 
         QuiTextIconButton {
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredWidth: 32
             Layout.preferredHeight: 32
-            normalColor: sidebar.currentTool === "rect" ? QuiColor.Highlight : QuiColor.Button
+            normalColor: sidebar.currentTool === LabelCanvasEnums.RectangleTool ? QuiColor.Highlight : QuiColor.Button
             iconSource: QuiFontIcon.RectangularClipping
             text: "绘制矩形"
-            onClicked: sidebar.toolSelected("rect")
+            onClicked: sidebar.toolSelected(LabelCanvasEnums.RectangleTool)
         }
 
         QuiTextIconButton {
@@ -52,10 +53,10 @@ Rectangle {
             Layout.preferredWidth: 32
             Layout.preferredHeight: 32
             enabled: sidebar.segmentationMode
-            normalColor: sidebar.currentTool === "polygon" ? QuiColor.Highlight : QuiColor.Button
+            normalColor: sidebar.currentTool === LabelCanvasEnums.PolygonTool ? QuiColor.Highlight : QuiColor.Button
             iconSource: QuiFontIcon.FreeFormClipping
             text: "绘制多边形"
-            onClicked: sidebar.toolSelected("polygon")
+            onClicked: sidebar.toolSelected(LabelCanvasEnums.PolygonTool)
         }
 
         QuiTextIconButton {
@@ -64,10 +65,10 @@ Rectangle {
             Layout.preferredHeight: 32
             enabled: sidebar.featureManager !== null && sidebar.featureManager.smartAnnotation && sidebar.featureManager.smartAnnotation.enabled
                      && dataManager && (dataManager.method === DeepLearningMethod.Detection || dataManager.method === DeepLearningMethod.Segmentation)
-            normalColor: sidebar.currentTool === "smart" ? QuiColor.Highlight : QuiColor.Button
+            normalColor: sidebar.currentTool === LabelCanvasEnums.SmartTool ? QuiColor.Highlight : QuiColor.Button
             iconSource: QuiFontIcon.Touchscreen
             text: "智能标注"
-            onClicked: sidebar.toolSelected("smart")
+            onClicked: sidebar.toolSelected(LabelCanvasEnums.SmartTool)
         }
 
         QuiTextIconButton {
