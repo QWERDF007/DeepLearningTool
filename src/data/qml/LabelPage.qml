@@ -21,8 +21,8 @@ Rectangle {
 
     property DataManager dataManager
     property FeatureManager featureManager
-    readonly property SmartAnnotationController controller: featureManager ? featureManager.smartAnnotation : null
-    readonly property bool smartAnnotationLoading: controller ? controller.loadingModel : false
+    readonly property SmartAnnotationController smartAnnotation: featureManager ? featureManager.smartAnnotation : null
+    readonly property bool smartAnnotationLoading: smartAnnotation ? smartAnnotation.loadingModel : false
     QuiSplitView {
         anchors.fill: parent
         anchors.margins: 5
@@ -82,9 +82,9 @@ Rectangle {
                     Layout.preferredHeight: 42
                     hasSelection: labelCanvas.selection ? labelCanvas.selection.hasSelection : false
                     showBoundingBoxes: labelCanvas.showBoundingBoxes
-                    onDeleteSelected: labelCanvas.deleteSelectedLabels()
+                    onDeleteSelected: labelCanvas.actions.deleteSelectedLabels()
                     onToggleBoundingBoxes: labelCanvas.showBoundingBoxes = !labelCanvas.showBoundingBoxes
-                    onCopySelected: labelCanvas.copySelectedLabels()
+                    onCopySelected: if (labelCanvas.dataManager) labelCanvas.dataManager.duplicateSelectedLabels()
                 }
 
                 RowLayout {
@@ -110,16 +110,6 @@ Rectangle {
                         Layout.fillWidth: true
                         dataManager: labelPage.dataManager
                         featureManager: labelPage.featureManager
-                    }
-                }
-            }
-
-
-            Connections {
-                target: labelPage.controller
-                function onModelLoadFinished(success) {
-                    if (success && labelCanvas.smartAnnotationMode) {
-                        labelCanvas.updateSmartAnnotationPreview()
                     }
                 }
             }
@@ -166,14 +156,14 @@ Rectangle {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: 200
-                zoomValue: labelCanvas.imageScale
+                zoomValue: labelCanvas.imageView.image.scale
 
                 onFitToWindow: {
-                    labelCanvas.fitImageInView()
+                    labelCanvas.imageView.fitInView()
                 }
 
                 onZoomChanged: function(zoom) {
-                    labelCanvas.setImageScale(zoom)
+                    labelCanvas.imageView.scaleInCenter(zoom)
                 }
             }
 

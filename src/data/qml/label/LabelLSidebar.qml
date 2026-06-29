@@ -21,6 +21,13 @@ Rectangle {
 
     signal toolSelected(int mode)
 
+    readonly property bool smartAnnotationEnabled: sidebar.featureManager !== null
+                                                   && sidebar.featureManager.smartAnnotation !== null
+                                                   && sidebar.featureManager.smartAnnotation.enabled
+                                                   && sidebar.dataManager !== null
+                                                   && (sidebar.dataManager.method === DeepLearningMethod.Detection
+                                                       || sidebar.dataManager.method === DeepLearningMethod.Segmentation)
+
     ColumnLayout {
         anchors.top: parent.top
         anchors.left: parent.left
@@ -63,8 +70,7 @@ Rectangle {
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredWidth: 32
             Layout.preferredHeight: 32
-            enabled: sidebar.featureManager !== null && sidebar.featureManager.smartAnnotation && sidebar.featureManager.smartAnnotation.enabled
-                     && dataManager && (dataManager.method === DeepLearningMethod.Detection || dataManager.method === DeepLearningMethod.Segmentation)
+            enabled: sidebar.smartAnnotationEnabled
             normalColor: sidebar.currentTool === LabelCanvasEnums.SmartTool ? QuiColor.Highlight : QuiColor.Button
             iconSource: QuiFontIcon.Touchscreen
             text: "智能标注"

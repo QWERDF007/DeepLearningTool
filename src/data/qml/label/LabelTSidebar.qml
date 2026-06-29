@@ -27,7 +27,7 @@ Rectangle {
             Layout.preferredWidth: 32
             Layout.preferredHeight: 32
             iconSource: QuiFontIcon.Delete
-            text: "删除"
+            text: "删除选中标签实例"
             enabled: sidebar.hasSelection
             onClicked: sidebar.deleteSelected()
         }
@@ -45,7 +45,7 @@ Rectangle {
             Layout.preferredWidth: 32
             Layout.preferredHeight: 32
             iconSource: QuiFontIcon.Copy
-            text: "复制"
+            text: "复制选中标签实例"
             enabled: sidebar.hasSelection
             onClicked: sidebar.copySelected()
         }

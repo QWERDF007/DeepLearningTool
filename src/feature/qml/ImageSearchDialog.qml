@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import dltool.ui
 import dltool.settings
 import dltool.data
+import dltool.feature
 import quickui
 
 QuiPopup {
