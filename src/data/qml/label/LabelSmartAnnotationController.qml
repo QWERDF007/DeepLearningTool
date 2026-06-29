@@ -3,6 +3,7 @@ import QtQuick
 import dltool.core
 import dltool.data
 import dltool.feature
+import dltool.settings
 
 Item {
     id: controller
@@ -24,6 +25,7 @@ Item {
     property bool hoverPointValid: false
     property var result: ({})
     property bool dirty: false
+    property bool useViewportInput: false
     readonly property bool available: smartAnnotation && smartAnnotation.enabled && dataManager
                                       && (dataManager.method === DeepLearningMethod.Detection
                                           || dataManager.method === DeepLearningMethod.Segmentation)
@@ -36,6 +38,31 @@ Item {
     }
 
     onDrawingColorChanged: refreshDrawingPreview()
+    onUseViewportInputChanged: {
+        dirty = true
+        if (active && promptPoints().length > 0) {
+            previewTimer.restart()
+        }
+    }
+
+    Connections {
+        target: geometry ? geometry.imageItem : null
+        function onXChanged() { invalidateViewportInput() }
+        function onYChanged() { invalidateViewportInput() }
+        function onScaleChanged() { invalidateViewportInput() }
+        function onStatusChanged() { invalidateViewportInput() }
+    }
+
+    Connections {
+        target: geometry && geometry.imageItem ? geometry.imageItem.parent : null
+        function onWidthChanged() { invalidateViewportInput() }
+        function onHeightChanged() { invalidateViewportInput() }
+    }
+
+    Connections {
+        target: GlobalSettings.catalog
+        function onValueChanged() { refreshSettings() }
+    }
 
     function handlePress(pos, button) {
         if (!active || (button !== Qt.LeftButton && button !== Qt.RightButton)) {
@@ -125,6 +152,54 @@ Item {
         return promptList
     }
 
+    function inferenceOptions() {
+        let viewport = useViewportInput ? visibleViewportInput() : ({})
+        return {
+            use_viewport_input: useViewportInput && viewport.width > 0 && viewport.height > 0,
+            viewport: viewport
+        }
+    }
+
+    function visibleViewportInput() {
+        let imageItem = geometry ? geometry.imageItem : null
+        if (!imageItem || !imageItem.parent || imageItem.status !== Image.Ready || imageItem.scale <= 0) {
+            return ({})
+        }
+
+        let scale = imageItem.scale
+        let sourceWidth = imageItem.sourceSize.width
+        let sourceHeight = imageItem.sourceSize.height
+        let left = Math.max(0, Math.floor(-imageItem.x / scale))
+        let top = Math.max(0, Math.floor(-imageItem.y / scale))
+        let right = Math.min(sourceWidth, Math.ceil((imageItem.parent.width - imageItem.x) / scale))
+        let bottom = Math.min(sourceHeight, Math.ceil((imageItem.parent.height - imageItem.y) / scale))
+        let width = right - left
+        let height = bottom - top
+        if (width <= 0 || height <= 0) {
+            return ({})
+        }
+
+        return {
+            x: left,
+            y: top,
+            width: width,
+            height: height,
+            input_width: Math.max(1, Math.round(width * scale)),
+            input_height: Math.max(1, Math.round(height * scale))
+        }
+    }
+
+    function invalidateViewportInput() {
+        if (!useViewportInput || !active) {
+            return
+        }
+
+        dirty = true
+        if (promptPoints().length > 0) {
+            previewTimer.restart()
+        }
+    }
+
     function updatePreview() {
         previewTimer.stop()
         let prompts = promptPoints()
@@ -133,7 +208,7 @@ Item {
             return
         }
 
-        let inferResult = smartAnnotation.infer(imageInstances.currentImagePath, prompts)
+        let inferResult = smartAnnotation.infer(imageInstances.currentImagePath, prompts, inferenceOptions())
         if (!isValidResult(inferResult)) {
             clearPreview()
             return
@@ -256,4 +331,13 @@ Item {
             drawingItem.clearItem()
         }
     }
+
+    function refreshSettings() {
+        useViewportInput = GlobalSettings.valueForField(
+                    SettingsAccessor.SmartAnnotation,
+                    SmartAnnotationField.UseViewportInput,
+                    false)
+    }
+
+    Component.onCompleted: refreshSettings()
 }

@@ -29,10 +29,11 @@ Canvas {
         ctx.save()
         ctx.fillStyle = Qt.rgba(fillColor.r, fillColor.g, fillColor.b, alpha)
         for (let run of result.mask_runs) {
+            let runHeight = run.height === undefined ? 1 : run.height
             ctx.fillRect(imageItem.x + run.x * scale,
                          imageItem.y + run.y * scale,
                          Math.max(1, run.width * scale),
-                         Math.max(1, scale))
+                         Math.max(1, runHeight * scale))
         }
         ctx.restore()
     }

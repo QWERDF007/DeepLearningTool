@@ -8,12 +8,15 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QImage>
 #include <QLineF>
 #include <QMetaObject>
 #include <QPointF>
 #include <QPointer>
 #include <QRectF>
+#include <QSize>
 #include <QThread>
+#include <QTemporaryFile>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -41,6 +44,18 @@ struct PromptPoint
 {
     QPointF point;   ///< 坐标
     int     label{1}; ///< 标签（1=前景，0=背景）
+};
+
+struct InferenceImageInput
+{
+    QString                         path;                 ///< 实际送入 SAM 的图像路径
+    QRectF                          source_rect;          ///< 输入图像对应的原图区域
+    QSize                           source_size;          ///< 原图尺寸
+    QSize                           input_size;           ///< 输入图像尺寸
+    double                          scale_x{1.0};         ///< 原图到输入图像的 X 缩放
+    double                          scale_y{1.0};         ///< 原图到输入图像的 Y 缩放
+    bool                            viewport_input{false}; ///< 是否使用可视窗口输入
+    std::unique_ptr<QTemporaryFile> temporary_file;        ///< 临时输入图文件
 };
 
 /// Mask 像素坐标点
@@ -196,6 +211,129 @@ irt::features::SAMImagePredictOptions buildPredictOptions(dltool::settings::Glob
     options.mask_threshold = static_cast<float>(
         settingDouble(settings, generated_field::SmartAnnotation::MaskThreshold, 0.0));
     return options;
+}
+
+bool optionBool(const QVariantMap &options, const QString &key, bool fallback)
+{
+    if (!options.contains(key)) return fallback;
+    return options.value(key).toBool();
+}
+
+double optionDouble(const QVariantMap &options, const QString &key, double fallback)
+{
+    bool ok    = false;
+    const auto value = options.value(key).toDouble(&ok);
+    return ok && std::isfinite(value) ? value : fallback;
+}
+
+int optionInt(const QVariantMap &options, const QString &key, int fallback)
+{
+    bool ok    = false;
+    const int value = options.value(key).toInt(&ok);
+    return ok ? value : fallback;
+}
+
+QRect viewportSourceRect(const QVariantMap &viewport, const QSize &source_size)
+{
+    const int x      = static_cast<int>(std::floor(optionDouble(viewport, QStringLiteral("x"), 0.0)));
+    const int y      = static_cast<int>(std::floor(optionDouble(viewport, QStringLiteral("y"), 0.0)));
+    const int width  = static_cast<int>(std::ceil(optionDouble(viewport, QStringLiteral("width"), 0.0)));
+    const int height = static_cast<int>(std::ceil(optionDouble(viewport, QStringLiteral("height"), 0.0)));
+
+    if (width <= 0 || height <= 0) return {};
+    return QRect(x, y, width, height).intersected(QRect(QPoint(0, 0), source_size));
+}
+
+InferenceImageInput prepareInferenceImageInput(const QString &image_path, const QVariantMap &options)
+{
+    InferenceImageInput input;
+    input.path = image_path;
+
+    if (!optionBool(options, QStringLiteral("use_viewport_input"), false)) return input;
+
+    QImage source(image_path);
+    if (source.isNull())
+        throw std::runtime_error(QString("读取可视窗口输入图像失败: %1").arg(image_path).toStdString());
+
+    const QVariantMap viewport = options.value(QStringLiteral("viewport")).toMap();
+    const QRect       source_rect = viewportSourceRect(viewport, source.size());
+    if (source_rect.isEmpty()) throw std::runtime_error("智能标注可视窗口区域无效");
+
+    QSize input_size(optionInt(viewport, QStringLiteral("input_width"), source_rect.width()),
+                     optionInt(viewport, QStringLiteral("input_height"), source_rect.height()));
+    input_size.setWidth(std::max(1, input_size.width()));
+    input_size.setHeight(std::max(1, input_size.height()));
+
+    QImage viewport_image = source.copy(source_rect);
+    if (viewport_image.size() != input_size)
+        viewport_image = viewport_image.scaled(input_size, Qt::IgnoreAspectRatio, Qt::FastTransformation);
+
+    auto temporary_file
+        = std::make_unique<QTemporaryFile>(QDir::tempPath() + QStringLiteral("/dltool_smart_view_XXXXXX.png"));
+    if (!temporary_file->open()) throw std::runtime_error("创建智能标注可视窗口临时图像失败");
+    if (!viewport_image.save(temporary_file.get(), "PNG"))
+        throw std::runtime_error("保存智能标注可视窗口临时图像失败");
+    temporary_file->close();
+
+    input.path           = temporary_file->fileName();
+    input.source_rect    = QRectF(source_rect);
+    input.source_size    = source.size();
+    input.input_size     = input_size;
+    input.scale_x        = static_cast<double>(input_size.width()) / static_cast<double>(source_rect.width());
+    input.scale_y        = static_cast<double>(input_size.height()) / static_cast<double>(source_rect.height());
+    input.viewport_input = true;
+    input.temporary_file = std::move(temporary_file);
+    return input;
+}
+
+QPointF mapInputPointToSource(const QPointF &point, const InferenceImageInput &input)
+{
+    if (!input.viewport_input) return point;
+    return QPointF(input.source_rect.x() + point.x() / input.scale_x,
+                   input.source_rect.y() + point.y() / input.scale_y);
+}
+
+QRectF mapInputRectToSource(const QRectF &rect, const InferenceImageInput &input)
+{
+    if (!input.viewport_input) return rect;
+    return QRectF(input.source_rect.x() + rect.x() / input.scale_x,
+                  input.source_rect.y() + rect.y() / input.scale_y,
+                  rect.width() / input.scale_x,
+                  rect.height() / input.scale_y);
+}
+
+std::vector<QPointF> mapInputPolygonToSource(const std::vector<QPointF> &polygon, const InferenceImageInput &input)
+{
+    if (!input.viewport_input) return polygon;
+
+    std::vector<QPointF> mapped;
+    mapped.reserve(polygon.size());
+    for (const QPointF &point : polygon) mapped.push_back(mapInputPointToSource(point, input));
+    return mapped;
+}
+
+std::vector<PromptPoint> mapPromptsToInferenceInput(const std::vector<PromptPoint> &prompts,
+                                                    const InferenceImageInput        &input)
+{
+    if (!input.viewport_input) return prompts;
+
+    std::vector<PromptPoint> mapped;
+    mapped.reserve(prompts.size());
+    const QRectF source_rect = input.source_rect.adjusted(-0.5, -0.5, 0.5, 0.5);
+    for (const PromptPoint &prompt : prompts)
+    {
+        if (!source_rect.contains(prompt.point))
+            throw std::runtime_error("智能标注提示点不在当前可视窗口内");
+
+        PromptPoint point;
+        point.point = QPointF(std::clamp((prompt.point.x() - input.source_rect.x()) * input.scale_x,
+                                         0.0, static_cast<double>(input.input_size.width())),
+                              std::clamp((prompt.point.y() - input.source_rect.y()) * input.scale_y,
+                                         0.0, static_cast<double>(input.input_size.height())));
+        point.label = prompt.label;
+        mapped.push_back(point);
+    }
+    return mapped;
 }
 
 /**
@@ -590,7 +728,19 @@ QVariantList pointsToVariantList(const std::vector<QPointF> &points)
  * @param height 图像高度
  * @return RLE 格式的 QVariantList
  */
-QVariantList maskRunsToVariantList(const std::vector<uint8_t> &mask, int width, int height)
+QVariantMap maskRunToVariantMap(int x, int y, int width, const InferenceImageInput &input)
+{
+    if (!input.viewport_input)
+        return QVariantMap{{QStringLiteral("x"), x}, {QStringLiteral("y"), y}, {QStringLiteral("width"), width}};
+
+    return QVariantMap{{QStringLiteral("x"), input.source_rect.x() + static_cast<double>(x) / input.scale_x},
+                       {QStringLiteral("y"), input.source_rect.y() + static_cast<double>(y) / input.scale_y},
+                       {QStringLiteral("width"), static_cast<double>(width) / input.scale_x},
+                       {QStringLiteral("height"), 1.0 / input.scale_y}};
+}
+
+QVariantList maskRunsToVariantList(const std::vector<uint8_t> &mask, int width, int height,
+                                   const InferenceImageInput &input)
 {
     QVariantList result;
     for (int y = 0; y < height; ++y)
@@ -604,9 +754,7 @@ QVariantList maskRunsToVariantList(const std::vector<uint8_t> &mask, int width, 
             while (x < width && mask[row_offset + static_cast<size_t>(x)] != 0) ++x;
             const int run_width = x - run_start;
             if (run_width > 0)
-                result.push_back(QVariantMap{{QStringLiteral("x"), run_start},
-                                             {QStringLiteral("y"), y},
-                                             {QStringLiteral("width"), run_width}});
+                result.push_back(maskRunToVariantMap(run_start, y, run_width, input));
         }
     }
     return result;
@@ -795,7 +943,8 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
  * @param prompt_points 提示点列表
  * @return 包含推理结果的 QVariantMap
  */
-QVariantMap SmartAnnotationController::infer(const QString &image_path, const QVariantList &prompt_points)
+QVariantMap SmartAnnotationController::infer(const QString &image_path, const QVariantList &prompt_points,
+                                             const QVariantMap &options)
 {
     QVariantMap result{{QStringLiteral("success"), false}, {QStringLiteral("error"), {}}, {QStringLiteral("loading"), false}};
 
@@ -848,29 +997,41 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
 
         setRunning(true);
 
+        const InferenceImageInput      image_input = prepareInferenceImageInput(image_path, options);
+        const std::vector<PromptPoint> input_prompts = mapPromptsToInferenceInput(prompts, image_input);
         const irt::features::SAMImagePrediction prediction = predictor_->predict(
-            toFilesystemPath(image_path), buildImagePrompt(prompts), buildPredictOptions(settings));
+            toFilesystemPath(image_input.path), buildImagePrompt(input_prompts), buildPredictOptions(settings));
         const int   mask_index   = bestMaskIndex(prediction.iou_predictions, prediction.mask_count);
         const float selected_iou = (mask_index >= 0 && static_cast<size_t>(mask_index) < prediction.iou_predictions.size())
                                        ? prediction.iou_predictions[mask_index]
                                        : 0.0F;
-        const int image_width  = prediction.width;
-        const int image_height = prediction.height;
+        const int input_image_width  = prediction.width;
+        const int input_image_height = prediction.height;
+        const int image_width
+            = image_input.viewport_input ? image_input.source_size.width() : input_image_width;
+        const int image_height
+            = image_input.viewport_input ? image_input.source_size.height() : input_image_height;
 
         std::vector<uint8_t> binary_mask = selectedBinaryMask(prediction, mask_index);
         const int foreground_pixels = static_cast<int>(std::count(binary_mask.begin(), binary_mask.end(), uint8_t{1}));
 
-        const QRectF bbox = boundingBoxFromMask(binary_mask, image_width, image_height);
-        if (bbox.isEmpty()) throw std::runtime_error("SAM 没有生成有效 mask，请调整提示点或阈值");
+        const QRectF input_bbox = boundingBoxFromMask(binary_mask, input_image_width, input_image_height);
+        if (input_bbox.isEmpty()) throw std::runtime_error("SAM 没有生成有效 mask，请调整提示点或阈值");
 
         std::vector<QPointF>              polygon;
-        std::vector<std::vector<QPointF>> polygons = maskToPolygons(binary_mask, image_width, image_height);
+        std::vector<std::vector<QPointF>> polygons = maskToPolygons(binary_mask, input_image_width, input_image_height);
         if (!polygons.empty()) polygon = std::move(polygons.front());
-        else polygon = rectanglePoints(bbox);
+        else polygon = rectanglePoints(input_bbox);
 
-        polygon = simplifyFinalPolygon(std::move(polygon),
-                                       settingDouble(settings, generated_field::SmartAnnotation::PolygonSimplifyEpsilon, 2.0));
-        if (polygon.size() < 3) polygon = rectanglePoints(bbox);
+        const QRectF         bbox = mapInputRectToSource(input_bbox, image_input);
+        std::vector<QPointF> output_polygon = mapInputPolygonToSource(polygon, image_input);
+        output_polygon = simplifyFinalPolygon(
+            std::move(output_polygon),
+            settingDouble(settings, generated_field::SmartAnnotation::PolygonSimplifyEpsilon, 2.0));
+        if (output_polygon.size() < 3) output_polygon = rectanglePoints(bbox);
+
+        const QVariantList mask_runs
+            = maskRunsToVariantList(binary_mask, input_image_width, input_image_height, image_input);
 
         result[QStringLiteral("success")]          = true;
         result[QStringLiteral("error")]            = QString();
@@ -885,15 +1046,15 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         result[QStringLiteral("y")]                = bbox.y();
         result[QStringLiteral("width")]            = bbox.width();
         result[QStringLiteral("height")]           = bbox.height();
-        result[QStringLiteral("points")]           = pointsToVariantList(polygon);
-        result[QStringLiteral("point_count")]      = static_cast<int>(polygon.size());
+        result[QStringLiteral("points")]           = pointsToVariantList(output_polygon);
+        result[QStringLiteral("point_count")]      = static_cast<int>(output_polygon.size());
         result[QStringLiteral("prompt_count")]     = static_cast<int>(prompts.size());
         result[QStringLiteral("mask_index")]       = mask_index;
         result[QStringLiteral("iou")]              = selected_iou;
         result[QStringLiteral("mask_pixel_count")] = foreground_pixels;
         result[QStringLiteral("mask_width")]       = image_width;
         result[QStringLiteral("mask_height")]      = image_height;
-        result[QStringLiteral("mask_runs")]        = maskRunsToVariantList(binary_mask, image_width, image_height);
+        result[QStringLiteral("mask_runs")]        = mask_runs;
 
         setLastError(QString());
     }

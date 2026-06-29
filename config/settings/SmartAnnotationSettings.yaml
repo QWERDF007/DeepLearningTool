@@ -91,3 +91,11 @@ SmartAnnotationSettings:
       value_range: [20, 5000, 10]
       control_type: spin
       section: 预览
+
+    - name_en: use_viewport_input
+      name_cn: 使用可视窗口
+      property_name: useViewportInput
+      value: false
+      value_type: bool
+      control_type: checkbox
+      section: 预览

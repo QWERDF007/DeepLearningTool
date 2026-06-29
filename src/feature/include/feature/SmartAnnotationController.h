@@ -80,9 +80,11 @@ public:
      * @brief 执行智能标注推理
      * @param image_path 输入图像路径
      * @param prompt_points 提示点列表
+     * @param options 输入图像选项
      * @return 包含推理结果的 QVariantMap
      */
-    Q_INVOKABLE QVariantMap infer(const QString &image_path, const QVariantList &prompt_points);
+    Q_INVOKABLE QVariantMap infer(const QString &image_path, const QVariantList &prompt_points,
+                                  const QVariantMap &options);
 
     /// 清除模型缓存
     Q_INVOKABLE void clearCache();
