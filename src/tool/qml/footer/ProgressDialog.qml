@@ -1,116 +1,96 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Templates as T
+import QtQuick.Window
 
 import dltool.ui
 import quickui
 
-QuiPopup {
-    id: popup
-    modal: false
-    width: 480
+Window {
+    id: dialog
+    visible: false
+    modality: Qt.NonModal
+    flags: Qt.Window | Qt.CustomizeWindowHint | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint
+    color: QuiColor.Primary
+    title: "处理进度"
+    width: 640
     height: 320
-    maskVisible: false
-    bg.color: QuiColor.Primary
-    bg.border.width: 1
-    bg.border.color: "black"
-    Item {
+    minimumWidth: 360
+    minimumHeight: 220
+
+    function open() {
+        show()
+        raise()
+        requestActivate()
+    }
+
+    onClosing: {
+        if (!ProgressManager.isRunning) {
+            ProgressManager.reset()
+        }
+    }
+
+    onVisibilityChanged: {
+        if (visibility === Window.Minimized)
+            close()
+    }
+
+    QuiMenu {
+        id: copyMenu
+        width: 150
+
+        QuiMenuItem {
+            text: "复制"
+            iconSource: QuiFontIcon.Copy
+            enabled: textArea.selectedText.length > 0
+            onTriggered: textArea.copy()
+        }
+    }
+
+    ColumnLayout {
         anchors.fill: parent
         anchors.margins: 10
-        
-        // 标题栏
-        RowLayout {
-            id: titleBar
-            anchors {
-                top: parent.top
-                left: parent.left
-                right: parent.right
-            }
-            spacing: 10
-            
-            // 标题文本
-            QuiText {
-                text: "处理进度"
-                font: QuiFont.Body
-                Layout.fillWidth: true
-            }
-            
-            // 最小化按钮
-            QuiTextIconButton {
-                id: minimizeBtn
-                iconSource: QuiFontIcon.ChromeMinimize
-                onClicked: {
-                    popup.close()
-                }
-            }
-            
-            // 关闭按钮
-            QuiTextIconButton {
-                id: closeBtn
-                iconSource: QuiFontIcon.ChromeClose
-                enabled: !ProgressManager.isRunning
-                onClicked: {
-                    ProgressManager.reset()
-                    popup.close()
-                }
-            }
-        }
-        
-        // 分隔线
-        Rectangle {
-            id: line
-            anchors {
-                top: titleBar.bottom
-                topMargin: 10
-            }
-            width: parent.width
-            height: 1
-            color: "black"
-        }
-        
-        // 进度条
+        spacing: 10
+
         QuiProgressBar {
-            id: progressBar
-            anchors {
-                top: line.bottom
-                topMargin: 15
-                left: parent.left
-                right: parent.right
-            }
+            Layout.fillWidth: true
             value: ProgressManager.progress / 100.0
             textVisible: true
         }
-        
-        // 消息区域
+
         Flickable {
             id: messageFlickable
-            anchors {
-                top: progressBar.bottom
-                topMargin: 15
-                left: parent.left
-                right: parent.right
-                bottom: parent.bottom
-            }
-            contentWidth: width
-            contentHeight: messageArea.contentHeight
+            Layout.fillWidth: true
+            Layout.fillHeight: true
             clip: true
-            
+            boundsBehavior: Flickable.StopAtBounds
+            contentWidth: width
+            contentHeight: textArea.height
+
             ScrollBar.vertical: QuiScrollBar {
                 policy: ScrollBar.AsNeeded
             }
-            
+
             QuiTextArea {
-                id: messageArea
-                width: parent.width
-                height: Math.max(parent.height, contentHeight)
+                id: textArea
                 readOnly: true
+                selectByMouse: true
+                width: messageFlickable.width
+                height: Math.max(messageFlickable.height, contentHeight)
+                textFormat: Text.AutoText
                 text: ProgressManager.message
                 wrapMode: Text.Wrap
-                background: Rectangle {
-                    color: QuiColor.Background
-                    border.width: 1
-                    border.color: "black"
+
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.RightButton
+                    onClicked: function(mouse) {
+                        let pos = mapToItem(null, mouse.x, mouse.y)
+                        textArea.forceActiveFocus()
+                        copyMenu.x = pos.x
+                        copyMenu.y = pos.y
+                        copyMenu.popup()
+                    }
                 }
             }
         }

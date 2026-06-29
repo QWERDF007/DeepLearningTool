@@ -11,30 +11,7 @@ Rectangle {
     height: 36
     color: QuiColor.Background
     
-    function calculatePopupDialogPosition(badge, dialog, avoidLogDialog) {
-        let pos = badge.mapToItem(null, 0, 0)
-        let dialogX = pos.x - dialog.width + 60
-        let dialogY = pos.y - dialog.height - 20
-
-        let windowItem = badge.Window.window
-        if (avoidLogDialog && log.visible && windowItem) {
-            let logX = log.x - windowItem.x
-            if (logX >= 0 && logX <= windowItem.width && dialogX + dialog.width > logX) {
-                dialogX = logX - dialog.width - 10
-            }
-        }
-
-        if (windowItem) {
-            let maxX = Math.max(0, windowItem.width - dialog.width)
-            let maxY = Math.max(0, windowItem.height - dialog.height)
-            dialogX = Math.max(0, Math.min(dialogX, maxX))
-            dialogY = Math.max(0, Math.min(dialogY, maxY))
-        }
-
-        return Qt.point(dialogX, dialogY)
-    }
-
-    function calculateWindowDialogPosition(badge, dialog) {
+    function calculateWindowDialogPosition(badge, dialog, avoidLogDialog) {
         let pos = badge.mapToItem(null, 0, 0)
         let windowItem = badge.Window.window
         let windowX = windowItem ? windowItem.x : 0
@@ -42,6 +19,10 @@ Rectangle {
         let dialogX = windowX + pos.x - dialog.width + 60
         let dialogY = windowY + pos.y - dialog.height - 20
         let targetScreen = windowItem ? windowItem.screen : null
+
+        if (avoidLogDialog && log.visible && dialogX < log.x + log.width && dialogX + dialog.width > log.x) {
+            dialogX = log.x - dialog.width - 10
+        }
 
         if (targetScreen) {
             let screenX = targetScreen.virtualX
@@ -73,7 +54,7 @@ Rectangle {
                 id: progressBadge
                 anchors.fill: parent
                 onCheckedChanged: {
-                    let position = calculatePopupDialogPosition(progressBadge, progressDialog, true)
+                    let position = calculateWindowDialogPosition(progressBadge, progressDialog, true)
                     progressDialog.x = position.x
                     progressDialog.y = position.y
                     if (checked)
@@ -91,7 +72,7 @@ Rectangle {
                 id: infoBadge
                 anchors.fill: parent
                 onCheckedChanged: {
-                    let position = calculateWindowDialogPosition(infoBadge, log)
+                    let position = calculateWindowDialogPosition(infoBadge, log, false)
                     log.x = position.x
                     log.y = position.y
                     if (checked)
@@ -119,7 +100,7 @@ Rectangle {
             }
 
             if (progressDialog.visible) {
-                let position = calculatePopupDialogPosition(progressBadge, progressDialog, true)
+                let position = calculateWindowDialogPosition(progressBadge, progressDialog, true)
                 progressDialog.x = position.x
                 progressDialog.y = position.y
             }
@@ -128,8 +109,12 @@ Rectangle {
 
     ProgressDialog {
         id: progressDialog
-        onClosed: {
-            progressBadge.checked = false
+        transientParent: progressBadge.Window.window
+
+        onVisibleChanged: {
+            if (!visible) {
+                progressBadge.checked = false
+            }
         }
     }
 }

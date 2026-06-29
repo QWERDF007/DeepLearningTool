@@ -28,6 +28,18 @@ Window {
             close()
     }
 
+    QuiMenu {
+        id: copyMenu
+        width: 150
+
+        QuiMenuItem {
+            text: "复制"
+            iconSource: QuiFontIcon.Copy
+            enabled: textArea.selectedText.length > 0
+            onTriggered: textArea.copy()
+        }
+    }
+
     Flickable {
         id: logFlickable
         anchors.fill: parent
@@ -44,11 +56,24 @@ Window {
         QuiTextArea {
             id: textArea
             readOnly: true
+            selectByMouse: true
             width: logFlickable.width
             height: Math.max(logFlickable.height, contentHeight)
             textFormat: Text.AutoText
             text: UILogger.message
             wrapMode: Text.Wrap
+
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.RightButton
+                onClicked: function(mouse) {
+                    let pos = mapToItem(null, mouse.x, mouse.y)
+                    textArea.forceActiveFocus()
+                    copyMenu.x = pos.x
+                    copyMenu.y = pos.y
+                    copyMenu.popup()
+                }
+            }
         }
     }
 }
