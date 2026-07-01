@@ -13,6 +13,7 @@ FeatureManager::FeatureManager(ImageSearchDataProvider *image_search_provider,
 {
     image_search_ = new ImageSearchController(image_search_provider, this);
     roi_search_ = new RoiSearchController(image_search_provider, this);
+    image_cluster_ = new ImageClusterController(image_search_provider, this);
     smart_annotation_ = new SmartAnnotationController(this);
     few_shot_learning_ = new FewShotLearningController(few_shot_provider, this);
 
@@ -32,6 +33,11 @@ ImageSearchController *FeatureManager::imageSearch() const
 RoiSearchController *FeatureManager::roiSearch() const
 {
     return roi_search_;
+}
+
+ImageClusterController *FeatureManager::imageCluster() const
+{
+    return image_cluster_;
 }
 
 SmartAnnotationController *FeatureManager::smartAnnotation() const

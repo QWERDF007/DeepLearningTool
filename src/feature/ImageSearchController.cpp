@@ -404,8 +404,7 @@ void ImageSearchController::collectGallery(SearchRequest &request, const std::se
         if (!QFileInfo::exists(path))
             continue;
 
-        request.gallery_images.push_back(toFsPath(QFileInfo(path).absoluteFilePath()));
-        request.path_to_image_id.insert(normalizedPathKey(path), id);
+        request.gallery_images.push_back({id, toFsPath(QFileInfo(path).absoluteFilePath())});
     }
 }
 
@@ -442,39 +441,16 @@ void ImageSearchController::executeSearch(const SearchRequest &request, SearchRe
         const auto                 weights_path = toFsPath(request.weights_file);
         const auto                 index_path   = toFsPath(request.index_file);
 
-        bool loaded = false;
-        if (!request.rebuild_index && std::filesystem::exists(index_path))
-        {
-            try
-            {
-                search.load(weights_path, index_path.parent_path(), index_path);
-                loaded = true;
-                addProgressMessage(spdlog::level::info, QString("已加载图像搜索特征库: %1").arg(request.index_file));
-            }
-            catch (const std::exception &e)
-            {
-                addProgressMessage(spdlog::level::warn,
-                                   QString("加载既有特征库失败，将重新构建: %1").arg(QString::fromUtf8(e.what())));
-            }
-        }
-
-        if (!loaded)
-        {
-            addProgressMessage(spdlog::level::info,
-                               QString("正在构建图像搜索特征库: %1 张图像").arg(request.gallery_images.size()));
-            search.build(weights_path, request.gallery_images, index_path, reportProgress);
-        }
+        addProgressMessage(spdlog::level::info,
+                           QString("正在准备图像搜索特征库: %1 张图像").arg(request.gallery_images.size()));
+        search.buildOrLoad(weights_path, request.gallery_images, index_path, request.rebuild_index, reportProgress);
 
         std::map<int64_t, float> result_scores;
         for (const auto &query_image : request.query_images)
         {
             for (const auto &result : search.search(query_image, request.top_k))
             {
-                const auto found = request.path_to_image_id.constFind(normalizedPathKey(fromFsPath(result.image_path)));
-                if (found == request.path_to_image_id.constEnd())
-                    continue;
-
-                const int64_t image_id = found.value();
+                const int64_t image_id = result.image_id;
                 auto          it       = result_scores.find(image_id);
                 if (it == result_scores.end() || result.score > it->second)
                     result_scores[image_id] = result.score;

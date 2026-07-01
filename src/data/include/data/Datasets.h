@@ -4,6 +4,7 @@
 #include <QtQml>
 #include <map>
 #include <set>
+#include <vector>
 
 namespace dltool::database {
 class ProjectDataBase;
@@ -102,6 +103,7 @@ public:
     bool removeRows(int row, int count, const QModelIndex &parent = QModelIndex()) override;
 
     bool addDataset(const QString &name);
+    bool addDatasets(const std::vector<QString> &names, std::vector<int64_t> &dataset_ids);
     bool updateDataset(const int64_t dataset_id, const QString &name);
     bool deleteDataset(const int64_t dataset_id);
 
@@ -112,6 +114,9 @@ public:
 
     void addImages(const std::vector<int64_t> &dataset_id, const std::vector<int64_t> &image_ids);
     void deleteImages(const std::vector<int64_t> &dataset_id, const std::vector<int64_t> &image_ids);
+    void moveImages(const std::vector<int64_t> &source_dataset_ids, const std::vector<int64_t> &target_dataset_ids,
+                    const std::vector<int64_t> &image_ids,
+                    const std::vector<std::vector<int64_t>> &images_label_ids);
 
     void setStats(const std::vector<int64_t> &dataset_ids, const std::vector<int64_t> &image_ids,
                   const std::vector<std::vector<int64_t>> &images_labels_count);

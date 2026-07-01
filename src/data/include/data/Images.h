@@ -166,8 +166,11 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     bool addImages(const int64_t dataset_id, const std::vector<QString> &paths, std::vector<int64_t> &image_ids);
+    bool addImages(const std::vector<int64_t> &dataset_ids, const std::vector<QString> &paths,
+                   std::vector<int64_t> &image_ids);
     bool addImages(const int64_t dataset_id, const QString &image_idr, std::vector<int64_t> &image_ids);
     bool updateImagesDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id);
+    bool updateImagesDataset(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &dataset_ids);
     bool deleteImages(const std::vector<int64_t> &image_ids);
     bool deleteImages(const int64_t dataset_id, std::vector<int64_t> &image_ids);
 

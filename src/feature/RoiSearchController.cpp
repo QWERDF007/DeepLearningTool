@@ -142,9 +142,7 @@ void RoiSearchController::collectGallery(SearchRequest &request, const std::set<
         if (!roiFromLabelData(data_provider_->labelData(label_id), roi))
             continue;
 
-        request.gallery_rois.push_back({toFsPath(QFileInfo(path).absoluteFilePath()), roi});
-        request.gallery_roi_label_ids.push_back(label_id);
-        request.gallery_roi_image_ids.push_back(image_id);
+        request.gallery_rois.push_back({label_id, toFsPath(QFileInfo(path).absoluteFilePath()), roi});
     }
 }
 
@@ -164,7 +162,7 @@ void RoiSearchController::collectQuery(SearchRequest &request, const std::vector
         if (!roiFromLabelData(data_provider_->labelData(label_id), roi))
             continue;
 
-        request.query_rois.push_back({toFsPath(QFileInfo(path).absoluteFilePath()), roi});
+        request.query_rois.push_back({label_id, toFsPath(QFileInfo(path).absoluteFilePath()), roi});
     }
 }
 
@@ -188,9 +186,7 @@ void RoiSearchController::executeSearch(const SearchRequest &request, SearchResp
         {
             for (const auto &result : search.search(query_item.image_path, query_item.roi, request.top_k))
             {
-                if (result.item_index >= request.gallery_roi_label_ids.size())
-                    continue;
-                const int64_t label_id = request.gallery_roi_label_ids[result.item_index];
+                const int64_t label_id = result.roi_id;
                 auto          it       = result_scores.find(label_id);
                 if (it == result_scores.end() || result.score > it->second)
                     result_scores[label_id] = result.score;

@@ -28,6 +28,7 @@
 #include <QMetaType>
 #include <QRegularExpression>
 #include <QSet>
+#include <map>
 
 namespace dltool::database {
 
@@ -423,6 +424,49 @@ bool ProjectDataBase::addDataset(const QString &name, int64_t &dataset_id, QStri
     }
 }
 
+bool ProjectDataBase::addDatasets(const std::vector<QString> &names, std::vector<int64_t> &dataset_ids,
+                                  QString &err_msg) const
+{
+    dataset_ids.clear();
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        if (names.empty())
+        {
+            return true;
+        }
+
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        try
+        {
+            dataset_ids.reserve(names.size());
+            for (const QString &name : names)
+            {
+                db(sqlpp::insert_into(DatasetsTable).set(DatasetsTable.name = name.toUtf8().constData()));
+                dataset_ids.emplace_back(static_cast<int64_t>(db.last_insert_id()));
+            }
+            tx.commit();
+            return true;
+        }
+        catch (...)
+        {
+            tx.rollback();
+            throw;
+        }
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        dataset_ids.clear();
+        return false;
+    }
+}
+
 // std::optional<int64_t> ProjectDataBase::getDatasetId(const QString &name, QString &err_msg) const
 // {
 //     try
@@ -544,6 +588,54 @@ bool ProjectDataBase::addImages(const int64_t dataset_id, const std::vector<QStr
     }
 }
 
+bool ProjectDataBase::addImages(const std::vector<int64_t> &dataset_ids, const std::vector<QString> &paths,
+                                std::vector<int64_t> &image_ids, QString &err_msg) const
+{
+    image_ids.clear();
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        if (dataset_ids.size() != paths.size())
+        {
+            err_msg = QString("添加图像失败: 数据集 ID 和路径数量不一致");
+            return false;
+        }
+        if (paths.empty())
+        {
+            return true;
+        }
+
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        try
+        {
+            image_ids.reserve(paths.size());
+            for (size_t i = 0; i < paths.size(); ++i)
+            {
+                db(sqlpp::insert_into(ImagesTable)
+                       .set(ImagesTable.datasetId = dataset_ids[i], ImagesTable.path = paths[i].toUtf8().constData()));
+                image_ids.emplace_back(static_cast<int64_t>(db.last_insert_id()));
+            }
+            tx.commit();
+            return true;
+        }
+        catch (...)
+        {
+            tx.rollback();
+            throw;
+        }
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
 bool ProjectDataBase::updateImagesDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id,
                                           QString &err_msg) const
 {
@@ -564,6 +656,58 @@ bool ProjectDataBase::updateImagesDataset(const std::vector<int64_t> &image_ids,
                .set(ImagesTable.datasetId = dataset_id)
                .where(ImagesTable.id.in(sqlpp::value_list(image_ids))));
         return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::updateImagesDataset(const std::vector<int64_t> &image_ids,
+                                          const std::vector<int64_t> &dataset_ids, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败: %1").arg(path_);
+            return false;
+        }
+        if (image_ids.size() != dataset_ids.size())
+        {
+            err_msg = QString("移动图像失败: 图像 ID 和数据集 ID 数量不一致");
+            return false;
+        }
+        if (image_ids.empty())
+        {
+            return true;
+        }
+
+        std::map<int64_t, std::vector<int64_t>> image_ids_by_dataset;
+        for (size_t i = 0; i < image_ids.size(); ++i)
+        {
+            image_ids_by_dataset[dataset_ids[i]].push_back(image_ids[i]);
+        }
+
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        try
+        {
+            for (const auto &[dataset_id, ids] : image_ids_by_dataset)
+            {
+                db(sqlpp::update(ImagesTable)
+                       .set(ImagesTable.datasetId = dataset_id)
+                       .where(ImagesTable.id.in(sqlpp::value_list(ids))));
+            }
+            tx.commit();
+            return true;
+        }
+        catch (...)
+        {
+            tx.rollback();
+            throw;
+        }
     }
     catch (const std::exception &e)
     {

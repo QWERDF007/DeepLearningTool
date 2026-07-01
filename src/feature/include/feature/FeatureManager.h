@@ -2,6 +2,7 @@
 
 #include "dltool/feature/Export.h"
 #include "feature/FewShotLearningController.h"
+#include "feature/ImageClusterController.h"
 #include "feature/ImageSearchController.h"
 #include "feature/RoiSearchController.h"
 #include "feature/SmartAnnotationController.h"
@@ -26,6 +27,7 @@ class FEATURE_API FeatureManager : public QObject
 
     Q_PROPERTY(dltool::feature::ImageSearchController *imageSearch READ imageSearch CONSTANT FINAL)
     Q_PROPERTY(dltool::feature::RoiSearchController *roiSearch READ roiSearch CONSTANT FINAL)
+    Q_PROPERTY(dltool::feature::ImageClusterController *imageCluster READ imageCluster CONSTANT FINAL)
     Q_PROPERTY(dltool::feature::SmartAnnotationController *smartAnnotation READ smartAnnotation CONSTANT FINAL)
     Q_PROPERTY(dltool::feature::FewShotLearningController *fewShotLearning READ fewShotLearning CONSTANT FINAL)
 
@@ -36,6 +38,7 @@ public:
 
     ImageSearchController *imageSearch() const;
     RoiSearchController *roiSearch() const;
+    ImageClusterController *imageCluster() const;
     SmartAnnotationController *smartAnnotation() const;
     FewShotLearningController *fewShotLearning() const;
 
@@ -44,6 +47,7 @@ public:
 private:
     ImageSearchController *image_search_{nullptr};
     RoiSearchController *roi_search_{nullptr};
+    ImageClusterController *image_cluster_{nullptr};
     SmartAnnotationController *smart_annotation_{nullptr};
     FewShotLearningController *few_shot_learning_{nullptr};
 };

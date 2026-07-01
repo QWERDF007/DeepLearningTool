@@ -132,6 +132,7 @@ public:
     bool getAllDatasets(std::vector<int64_t> &dataset_ids, std::vector<QString> &names, QString &err_msg) const;
 
     bool addDataset(const QString &name, int64_t &dataset_id, QString &err_msg) const;
+    bool addDatasets(const std::vector<QString> &names, std::vector<int64_t> &dataset_ids, QString &err_msg) const;
     bool updateDataset(const int64_t dataset_id, const QString &name, QString &err_msg) const;
     bool deleteDataset(const int64_t dataset_id, QString &err_msg) const;
 
@@ -141,7 +142,11 @@ public:
 
     bool addImages(const int64_t dataset_id, const std::vector<QString> &paths, std::vector<int64_t> &image_ids,
                    QString &err_msg) const;
+    bool addImages(const std::vector<int64_t> &dataset_ids, const std::vector<QString> &paths,
+                   std::vector<int64_t> &image_ids, QString &err_msg) const;
     bool updateImagesDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id, QString &err_msg) const;
+    bool updateImagesDataset(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &dataset_ids,
+                             QString &err_msg) const;
     bool getImage(const int64_t image_id, std::pair<int64_t, QString> &image, QString &err_msg) const;
     bool getImages(const std::vector<int64_t> &image_ids, std::vector<std::pair<int64_t, QString>> &images,
                    QString &err_msg) const;

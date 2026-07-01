@@ -6,7 +6,6 @@
 #include <inferrt/features/ImageSearch.hpp>
 #include <inferrt/features/RoiSearch.hpp>
 
-#include <QHash>
 #include <QObject>
 #include <QPointer>
 #include <QString>
@@ -136,14 +135,11 @@ protected:
 
         std::chrono::steady_clock::time_point started_at; ///< 搜索开始时间
 
-        std::vector<std::filesystem::path> query_images;     ///< 查询图像路径列表
-        std::vector<std::filesystem::path> gallery_images;   ///< 搜索库图像路径列表
-        QHash<QString, int64_t>            path_to_image_id; ///< 路径到图像 ID 的映射
+        std::vector<std::filesystem::path>          query_images;   ///< 查询图像路径列表
+        std::vector<irt::features::ImageSearchItem> gallery_images; ///< 搜索库图像条目列表
 
-        std::vector<irt::features::RoiSearchItem> query_rois;            ///< 查询 ROI 列表
-        std::vector<irt::features::RoiSearchItem> gallery_rois;          ///< 搜索库 ROI 列表
-        std::vector<int64_t>                      gallery_roi_label_ids; ///< 搜索库 ROI 对应的标注 ID
-        std::vector<int64_t>                      gallery_roi_image_ids; ///< 搜索库 ROI 对应的图像 ID
+        std::vector<irt::features::RoiSearchItem> query_rois;   ///< 查询 ROI 列表
+        std::vector<irt::features::RoiSearchItem> gallery_rois; ///< 搜索库 ROI 列表
 
         QPointer<ImageSearchController> controller; ///< 控制器指针（线程安全）
     };

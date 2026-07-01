@@ -3,6 +3,7 @@
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsKeys.h"
 
+#include <inferrt/features/ImageCluster.hpp>
 #include <inferrt/features/ImageSearch.hpp>
 #include <inferrt/features/RoiSearch.hpp>
 
@@ -35,6 +36,27 @@ struct ImageSearchBaseSettings
     int  model_batch_size{1};   ///< 模型批处理大小
 };
 
+/// 图像聚类设置
+struct ImageClusterSettings
+{
+    ImageSearchBaseSettings base;
+
+    bool use_pca{false};
+    int  pca_dim{0};
+    bool include_noise{false};
+    int  apply_mode{0};
+
+    int64_t min_cluster_size{irt::ops::kDefaultHDBSCANMinClusterSize};
+    int64_t min_samples{irt::ops::kDefaultHDBSCANMinSamples};
+    double  cluster_selection_epsilon{irt::ops::kDefaultHDBSCANClusterSelectionEpsilon};
+    int64_t max_cluster_size{irt::ops::kDefaultHDBSCANMaxClusterSize};
+    double  alpha{irt::ops::kDefaultHDBSCANAlpha};
+    int     algorithm{static_cast<int>(irt::ops::ClusteringAlgorithm::Auto)};
+    int64_t leaf_size{irt::ops::kDefaultClusteringLeafSize};
+    int     cluster_selection_method{static_cast<int>(irt::ops::HDBSCANClusterSelectionMethod::Eom)};
+    bool    allow_single_cluster{false};
+};
+
 /**
  * @brief 将 QString 转换为 std::filesystem::path
  * @param path 输入路径
@@ -42,19 +64,6 @@ struct ImageSearchBaseSettings
  */
 std::filesystem::path toFsPath(const QString &path);
 
-/**
- * @brief 将 std::filesystem::path 转换为 QString
- * @param path 文件系统路径
- * @return QString 路径
- */
-QString fromFsPath(const std::filesystem::path &path);
-
-/**
- * @brief 获取规范化的路径键（用于哈希查找）
- * @param path 输入路径
- * @return 规范化后的路径字符串
- */
-QString normalizedPathKey(const QString &path);
 
 /**
  * @brief 从全局设置中读取搜索基础配置
@@ -65,6 +74,13 @@ QString normalizedPathKey(const QString &path);
 ImageSearchBaseSettings readImageSearchBaseSettings(
     const dltool::settings::GlobalSettings *settings,
     dltool::settings::generated::AccessorKey accessor);
+
+/**
+ * @brief 从全局设置中读取图像聚类配置
+ * @param settings 全局设置实例
+ * @return 图像聚类配置
+ */
+ImageClusterSettings readImageClusterSettings(const dltool::settings::GlobalSettings *settings);
 
 /**
  * @brief 将基础设置应用到 ImageSearchConfig
@@ -79,6 +95,12 @@ void applyImageSearchBaseConfig(irt::features::ImageSearchConfig &config, const 
  * @param settings 基础设置
  */
 void applyImageSearchBaseConfig(irt::features::RoiSearchConfig &config, const ImageSearchBaseSettings &settings);
+
+/**
+ * @brief 将图像聚类设置应用到 ImageClusterConfig
+ */
+void applyImageClusterConfig(irt::features::ImageClusterConfig &config,
+                             const ImageClusterSettings &settings);
 
 /**
  * @brief 检查搜索功能是否在设置中启用

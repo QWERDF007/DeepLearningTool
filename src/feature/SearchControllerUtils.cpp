@@ -162,6 +162,44 @@ ImageSearchBaseSettings readRoiSearchSettings(const dltool::settings::GlobalSett
     return result;
 }
 
+ImageClusterSettings readImageClusterSettingsImpl(const dltool::settings::GlobalSettings *settings)
+{
+    namespace generated_field = dltool::settings::generated::field;
+
+    ImageClusterSettings result;
+    result.base.weights_file = settingString(settings, generated_field::ImageCluster::ModelPath);
+    result.base.model_name   = settingString(settings, generated_field::ImageCluster::Model);
+    result.base.feature_name = settingString(settings, generated_field::ImageCluster::FeatureName);
+    result.base.norm         = valueForField(settings, generated_field::ImageCluster::Norm, 2).toInt();
+    result.base.preprocess_backend
+        = valueForField(settings, generated_field::ImageCluster::PreprocessBackend, 0).toInt();
+    result.base.model_backend    = valueForField(settings, generated_field::ImageCluster::ModelBackend, 0).toInt();
+    result.base.model_device     = valueForField(settings, generated_field::ImageCluster::ModelDevice, 1).toInt();
+    result.base.model_batch_size = valueForField(settings, generated_field::ImageCluster::ModelBatchSize, 1).toInt();
+
+    result.use_pca       = valueForField(settings, generated_field::ImageCluster::UsePca, false).toBool();
+    result.pca_dim       = valueForField(settings, generated_field::ImageCluster::PcaDim, 0).toInt();
+    result.include_noise = valueForField(settings, generated_field::ImageCluster::IncludeNoise, false).toBool();
+    result.apply_mode    = valueForField(settings, generated_field::ImageCluster::ApplyMode, 0).toInt();
+
+    result.min_cluster_size = valueForField(settings, generated_field::ImageCluster::MinClusterSize,
+                                            static_cast<qlonglong>(irt::ops::kDefaultHDBSCANMinClusterSize))
+                                  .toLongLong();
+    result.min_samples = valueForField(settings, generated_field::ImageCluster::MinSamples,
+                                       static_cast<qlonglong>(irt::ops::kDefaultHDBSCANMinSamples))
+                             .toLongLong();
+    result.cluster_selection_epsilon = valueForField(settings, generated_field::ImageCluster::ClusterSelectionEpsilon,
+                                                     irt::ops::kDefaultHDBSCANClusterSelectionEpsilon)
+                                           .toDouble();
+    result.max_cluster_size = valueForField(settings, generated_field::ImageCluster::MaxClusterSize,
+                                            static_cast<qlonglong>(irt::ops::kDefaultHDBSCANMaxClusterSize))
+                                  .toLongLong();
+    result.algorithm = valueForField(settings, generated_field::ImageCluster::Algorithm, 0).toInt();
+    result.cluster_selection_method
+        = valueForField(settings, generated_field::ImageCluster::ClusterSelectionMethod, 0).toInt();
+    return result;
+}
+
 } // namespace
 
 /**
@@ -179,53 +217,29 @@ std::filesystem::path toFsPath(const QString &path)
 }
 
 /**
- * @brief 将 std::filesystem::path 转换为 QString
- * @param path 文件系统路径
- * @return QString 路径
- */
-QString fromFsPath(const std::filesystem::path &path)
-{
-#ifdef _WIN32
-    return QString::fromStdWString(path.wstring());
-#else
-    return QString::fromStdString(path.string());
-#endif
-}
-
-/**
- * @brief 获取规范化的路径键（用于哈希查找）
- * @param path 输入路径
- * @return 规范化后的路径字符串
- */
-QString normalizedPathKey(const QString &path)
-{
-    QFileInfo info(path);
-    QString   normalized = info.exists() ? info.canonicalFilePath() : info.absoluteFilePath();
-    normalized           = QDir::cleanPath(normalized);
-#ifdef _WIN32
-    normalized = normalized.toCaseFolded();
-#endif
-    return normalized;
-}
-
-/**
  * @brief 根据访问键读取对应的搜索基础设置
  * @param settings 全局设置实例
  * @param accessor 设置访问键
  * @return 搜索基础设置
  */
-ImageSearchBaseSettings readImageSearchBaseSettings(
-    const dltool::settings::GlobalSettings *settings,
-    dltool::settings::generated::AccessorKey accessor)
+ImageSearchBaseSettings readImageSearchBaseSettings(const dltool::settings::GlobalSettings  *settings,
+                                                    dltool::settings::generated::AccessorKey accessor)
 {
     switch (accessor)
     {
     case dltool::settings::generated::AccessorKey::RoiSearch:
         return readRoiSearchSettings(settings);
+    case dltool::settings::generated::AccessorKey::ImageCluster:
+        return readImageClusterSettingsImpl(settings).base;
     case dltool::settings::generated::AccessorKey::ImageSearch:
     default:
         return readImageSearchSettings(settings);
     }
+}
+
+ImageClusterSettings readImageClusterSettings(const dltool::settings::GlobalSettings *settings)
+{
+    return readImageClusterSettingsImpl(settings);
 }
 
 /**
@@ -248,13 +262,30 @@ void applyImageSearchBaseConfig(irt::features::RoiSearchConfig &config, const Im
     applyBaseConfig(config, settings);
 }
 
+void applyImageClusterConfig(irt::features::ImageClusterConfig &config, const ImageClusterSettings &settings)
+{
+    applyBaseConfig(config, settings.base);
+    config.use_pca                           = settings.use_pca;
+    config.pca_dim                           = settings.pca_dim;
+    config.hdbscan.min_cluster_size          = settings.min_cluster_size;
+    config.hdbscan.min_samples               = settings.min_samples;
+    config.hdbscan.cluster_selection_epsilon = settings.cluster_selection_epsilon;
+    config.hdbscan.max_cluster_size          = settings.max_cluster_size;
+    // config.hdbscan.alpha                              = settings.alpha;
+    config.hdbscan.algorithm = static_cast<irt::ops::ClusteringAlgorithm>(settings.algorithm);
+    // config.hdbscan.leaf_size                          = settings.leaf_size;
+    config.hdbscan.cluster_selection_method
+        = static_cast<irt::ops::HDBSCANClusterSelectionMethod>(settings.cluster_selection_method);
+    // config.hdbscan.allow_single_cluster = settings.allow_single_cluster;
+}
+
 /**
  * @brief 检查搜索功能是否在设置中启用
  * @param settings 全局设置实例
  * @param accessor 设置访问键
  * @return 已启用返回 true
  */
-bool searchSettingsEnabled(const dltool::settings::GlobalSettings *settings,
+bool searchSettingsEnabled(const dltool::settings::GlobalSettings  *settings,
                            dltool::settings::generated::AccessorKey accessor)
 {
     namespace generated_field = dltool::settings::generated::field;
@@ -262,6 +293,8 @@ bool searchSettingsEnabled(const dltool::settings::GlobalSettings *settings,
     {
     case dltool::settings::generated::AccessorKey::RoiSearch:
         return settingBool(settings, generated_field::RoiSearch::Enabled, true);
+    case dltool::settings::generated::AccessorKey::ImageCluster:
+        return settingBool(settings, generated_field::ImageCluster::Enabled, true);
     case dltool::settings::generated::AccessorKey::ImageSearch:
     default:
         return settingBool(settings, generated_field::ImageSearch::Enabled, true);

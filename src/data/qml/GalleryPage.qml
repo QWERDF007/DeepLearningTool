@@ -32,6 +32,7 @@ Rectangle {
                 SplitView.minimumHeight: 200
                 color: QuiColor.Primary
                 dataManager: galleryPage.dataManager
+                featureManager: galleryPage.featureManager
             }
             ImageInstanceInfo { // 图像属性
                 SplitView.fillWidth: true

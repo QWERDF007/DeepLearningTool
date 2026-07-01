@@ -195,6 +195,69 @@ bool ImageInstancesListModel::addImages(const int64_t dataset_id, const std::vec
     return true;
 }
 
+bool ImageInstancesListModel::addImages(const std::vector<int64_t> &dataset_ids, const std::vector<QString> &paths,
+                                        std::vector<int64_t> &image_ids)
+{
+    if (database_ == nullptr)
+    {
+        spdlog::error("批量添加图像失败, 数量: {}, 数据库未初始化", paths.size());
+        return false;
+    }
+    if (dataset_ids.size() != paths.size())
+    {
+        spdlog::error("批量添加图像失败: 数据集 ID 和路径数量不一致");
+        return false;
+    }
+    if (paths.empty())
+    {
+        image_ids.clear();
+        return true;
+    }
+
+    QString err_msg;
+    bool    ok = database_->addImages(dataset_ids, paths, image_ids, err_msg);
+    if (!ok)
+    {
+        spdlog::error("批量添加图像失败, 数量: {}, error: {}", paths.size(), err_msg.toUtf8().constData());
+        return false;
+    }
+    if (image_ids.size() != paths.size())
+    {
+        spdlog::error("批量添加图像失败: 返回图像 ID 数量不一致");
+        return false;
+    }
+    spdlog::info("批量添加图像到多个数据集, 数量: {}", image_ids.size());
+
+    QModelIndexList selected_indexes = selection_->selectedIndexes();
+    QModelIndex     current_index    = selection_->currentIndex();
+
+    int count = static_cast<int>(image_ids.size() - 1);
+    beginInsertRows(QModelIndex(), 0, count);
+    for (size_t i = 0; i < image_ids.size(); ++i)
+    {
+        full_image_instances_.emplace(image_ids[i], new ImageInstance(dataset_ids[i], image_ids[i], paths[i], this));
+    }
+    std::vector<int64_t> sorted_image_ids(image_ids.begin(), image_ids.end());
+    std::sort(sorted_image_ids.begin(), sorted_image_ids.end(), std::greater<int64_t>());
+    image_ids_.insert(image_ids_.begin(), sorted_image_ids.begin(), sorted_image_ids.end());
+    endInsertRows();
+
+    if (!selected_indexes.empty())
+    {
+        int offset = static_cast<int>(image_ids.size());
+        for (const auto &selected_index : selected_indexes)
+        {
+            QModelIndex new_index = index(selected_index.row() + offset);
+            selection_->select(new_index, QItemSelectionModel::ClearAndSelect);
+        }
+        QModelIndex new_index = index(current_index.row() + offset);
+        selection_->setCurrentIndex(new_index, QItemSelectionModel::Select);
+    }
+
+    emit statsChanged();
+    return true;
+}
+
 bool ImageInstancesListModel::addImages(const int64_t dataset_id, const QString &image_idr,
                                         std::vector<int64_t> &image_ids)
 {
@@ -246,6 +309,55 @@ bool ImageInstancesListModel::updateImagesDataset(const std::vector<int64_t> &im
     }
 
     spdlog::info("移动图像到数据集, dataset id: {}, 数量: {}", dataset_id, image_ids.size());
+    emit statsChanged();
+    emit currentImageChanged();
+    return true;
+}
+
+bool ImageInstancesListModel::updateImagesDataset(const std::vector<int64_t> &image_ids,
+                                                  const std::vector<int64_t> &dataset_ids)
+{
+    if (database_ == nullptr)
+    {
+        spdlog::error("批量移动图像失败, 数量: {}, 数据库未初始化", image_ids.size());
+        return false;
+    }
+    if (image_ids.size() != dataset_ids.size())
+    {
+        spdlog::error("批量移动图像失败: 图像 ID 和数据集 ID 数量不一致");
+        return false;
+    }
+    if (image_ids.empty())
+    {
+        return true;
+    }
+
+    QString err_msg;
+    bool    ok = database_->updateImagesDataset(image_ids, dataset_ids, err_msg);
+    if (!ok)
+    {
+        spdlog::error("批量移动图像失败, 数量: {}, error: {}", image_ids.size(), err_msg.toUtf8().constData());
+        return false;
+    }
+
+    std::vector<int> changed_rows = findRowsByImageIds(image_ids);
+    for (size_t i = 0; i < image_ids.size(); ++i)
+    {
+        auto found = full_image_instances_.find(image_ids[i]);
+        if (found != full_image_instances_.end())
+        {
+            found->second->setDatasetId(dataset_ids[i]);
+        }
+    }
+
+    std::sort(changed_rows.begin(), changed_rows.end());
+    const std::vector<std::pair<int, int>> ranges = mergeConsecutiveRanges(changed_rows);
+    for (const auto &[row, count] : ranges)
+    {
+        emit dataChanged(index(row), index(row + count - 1));
+    }
+
+    spdlog::info("批量移动图像到聚类数据集, 数量: {}", image_ids.size());
     emit statsChanged();
     emit currentImageChanged();
     return true;

@@ -45,6 +45,7 @@ Item {
     property ImageInstancesModel imageInstances: dataManager ? dataManager.imageInstances : null
     property ItemSelectionModel selection: imageInstances ? imageInstances.selection : null
     property ImageSearchController controller: featureManager ? featureManager.imageSearch : null
+    property ImageClusterController imageClusterController: featureManager ? featureManager.imageCluster : null
 
     QuiMenu {
         id: imageInstanceMenu
@@ -56,6 +57,18 @@ Item {
                      && selection && selection.hasSelection
             onClicked: {
                 imageSearchDialog.openForSearch()
+            }
+        }
+        QuiMenuItem {
+            text: "图像聚类"
+            iconSource: QuiFontIcon.AreaChart
+            enabled: dataManager && imageClusterController && !imageClusterController.running
+                     && imageClusterController.enabled
+                     && selection && selection.hasSelection
+            onClicked: {
+                if (imageInstances) {
+                    imageClusterDialog.openForImages(imageInstances.getSelectedImagesId())
+                }
             }
         }
         QuiMenu {
@@ -130,6 +143,12 @@ Item {
 
     ImageSearchDialog {
         id: imageSearchDialog
+        dataManager: instancesView.dataManager
+        featureManager: instancesView.featureManager
+    }
+
+    ImageClusterDialog {
+        id: imageClusterDialog
         dataManager: instancesView.dataManager
         featureManager: instancesView.featureManager
     }

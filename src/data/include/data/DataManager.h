@@ -200,6 +200,11 @@ public:
     void clearImageSearchResults() override;
     void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter) override;
     void clearLabelSearchResults() override;
+    bool applyImageClusterAssignments(
+        const std::vector<dltool::feature::ImageSearchDataProvider::ImageClusterAssignment> &assignments,
+        bool include_noise, dltool::feature::ImageSearchDataProvider::ImageClusterApplyMode apply_mode,
+        dltool::feature::ImageSearchDataProvider::ImageClusterApplyResult &result,
+        QString &err_msg) override;
     void setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter) override;
 
 signals:

@@ -4,6 +4,7 @@
 
 #include <QString>
 #include <QVariantMap>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -11,6 +12,28 @@ namespace dltool::feature {
 
 class FEATURE_API ImageSearchDataProvider
 {
+public:
+    enum class ImageClusterApplyMode
+    {
+        Move = 0,
+        Copy = 1,
+    };
+
+    struct ImageClusterAssignment
+    {
+        int64_t image_id{0};
+        int64_t cluster_id{-1};
+        double  probability{0.0};
+    };
+
+    struct ImageClusterApplyResult
+    {
+        size_t moved_image_count{0};
+        size_t copied_image_count{0};
+        size_t target_dataset_count{0};
+        size_t skipped_noise_count{0};
+    };
+
 public:
     virtual ~ImageSearchDataProvider() = default;
 
@@ -85,6 +108,15 @@ public:
      * @param enable_filter 是否启用过滤
      */
     virtual void setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter) = 0;
+
+    /**
+     * @brief 按图像聚类结果创建目标数据集并移动图像
+     */
+    virtual bool applyImageClusterAssignments(const std::vector<ImageClusterAssignment> &assignments,
+                                              bool include_noise,
+                                              ImageClusterApplyMode apply_mode,
+                                              ImageClusterApplyResult &result,
+                                              QString &err_msg) = 0;
 };
 
 } // namespace dltool::feature

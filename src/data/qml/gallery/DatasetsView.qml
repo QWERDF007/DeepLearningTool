@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 import dltool.ui
 import dltool.data
+import dltool.feature
 import quickui
 
 Rectangle {
@@ -12,6 +13,7 @@ Rectangle {
     height: 200
     color: QuiColor.Primary
     property DataManager dataManager
+    property FeatureManager featureManager
     property DatasetsModel datasets: dataManager ? dataManager.datasets : null
     property var curItem
 
@@ -72,6 +74,19 @@ Rectangle {
             }
         }
         QuiMenuItem {
+            text: "图像聚类"
+            iconSource: QuiFontIcon.AreaChart
+            enabled: dataManager && featureManager && featureManager.imageCluster
+                     && featureManager.imageCluster.enabled
+                     && !featureManager.imageCluster.running
+                     && curItem
+            onClicked: {
+                if (curItem) {
+                    imageClusterDialog.openForDatasets([curItem.dataset_id])
+                }
+            }
+        }
+        QuiMenuItem {
             text: "删除"
             iconSource: QuiFontIcon.Delete
             onClicked: {
@@ -98,6 +113,12 @@ Rectangle {
     ExportDataDialog {
         id: exportDataDialog
         dataManager: datasetsView.dataManager
+    }
+
+    ImageClusterDialog {
+        id: imageClusterDialog
+        dataManager: datasetsView.dataManager
+        featureManager: datasetsView.featureManager
     }
 
     ColumnLayout {
