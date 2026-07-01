@@ -102,6 +102,18 @@ void GlobalFilter::setFilterEnabled(FilterType type, bool enabled)
     emit filterStateChanged();
 }
 
+bool GlobalFilter::isFilterEnabled(FilterType type) const
+{
+    FilterModule *module = getFilterModule(type);
+    return module && module->isEnabled();
+}
+
+bool GlobalFilter::isFilterInverted(FilterType type) const
+{
+    FilterModule *module = getFilterModule(type);
+    return module && module->isInverted();
+}
+
 void GlobalFilter::clearFilter(FilterType type)
 {
     FilterModule *module = getFilterModule(type);

@@ -128,6 +128,10 @@ public:
      */
     Q_INVOKABLE void setFilterEnabled(FilterType type, bool enabled);
 
+    Q_INVOKABLE bool isFilterEnabled(FilterType type) const;
+
+    Q_INVOKABLE bool isFilterInverted(FilterType type) const;
+
     /**
      * @brief 清除过滤器（通用方法）
      * @param type 过滤器类型

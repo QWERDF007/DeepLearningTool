@@ -4,11 +4,14 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
+
 namespace dltool::data {
 
 DatasetsListModel::DatasetsListModel(dltool::database::ProjectDataBase *database, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
+    , selection_(new QItemSelectionModel(this))
 {
     init();
 }
@@ -17,6 +20,7 @@ DatasetsListModel::~DatasetsListModel() {}
 
 void DatasetsListModel::init()
 {
+    connect(selection_, &QItemSelectionModel::selectionChanged, this, &DatasetsListModel::updateSelection);
     if (database_)
     {
         QString              err_msg;
@@ -59,6 +63,8 @@ QVariant DatasetsListModel::data(const QModelIndex &index, int role) const
         return getStats(index);
     case ProgressRole:
         return getProgress(index);
+    case SelectedRole:
+        return getSelected(index);
     default:
         return QVariant();
     }
@@ -76,6 +82,7 @@ QHash<int, QByteArray> DatasetsListModel::roleNames() const
         {     NameRole,       "name"},
         {    StatsRole,      "stats"},
         { ProgressRole,   "progress"},
+        { SelectedRole,   "selected"},
     };
 }
 
@@ -232,11 +239,66 @@ bool DatasetsListModel::deleteDataset(const int64_t dataset_id)
             delete dataset;
             datasets_.erase(dataset_id);
             endRemoveRows();
+            if (last_index_ >= rowCount())
+            {
+                setLastIndex(rowCount() - 1);
+            }
             break;
         }
         ++idx;
     }
     return true;
+}
+
+void DatasetsListModel::shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command)
+{
+    if (rowCount() <= 0)
+        return;
+
+    const int top    = std::max(0, std::min(current_index, previous_index));
+    const int bottom = std::min(rowCount() - 1, std::max(current_index, previous_index));
+    if (top > bottom)
+        return;
+
+    QItemSelection selection;
+    selection.select(index(top), index(bottom));
+    selection_->select(selection, command);
+}
+
+void DatasetsListModel::selectAll()
+{
+    if (rowCount() <= 0)
+        return;
+
+    QItemSelection selection;
+    selection.select(index(0), index(rowCount() - 1));
+    selection_->select(selection, QItemSelectionModel::Select);
+}
+
+std::vector<int64_t> DatasetsListModel::getSelectedDatasetIds() const
+{
+    const QModelIndexList selected_indexes = selection_->selectedIndexes();
+
+    std::vector<int64_t> dataset_ids;
+    dataset_ids.reserve(selected_indexes.size());
+    for (const QModelIndex &selected_index : selected_indexes)
+    {
+        const int dataset_id = getDatasetId(selected_index);
+        if (dataset_id >= 0)
+        {
+            dataset_ids.push_back(dataset_id);
+        }
+    }
+    return dataset_ids;
+}
+
+void DatasetsListModel::setLastIndex(int last_index)
+{
+    if (last_index_ == last_index)
+        return;
+
+    last_index_ = last_index;
+    emit lastSelectedIndexChanged();
 }
 
 QList<QString> DatasetsListModel::getAllDatasetsName() const
@@ -469,10 +531,41 @@ QVariant DatasetsListModel::getProgress(const QModelIndex &index) const
     return QVariant();
 }
 
+QVariant DatasetsListModel::getSelected(const QModelIndex &index) const
+{
+    return selection_ && index.isValid() && selection_->isSelected(index);
+}
+
 void DatasetsListModel::onStatsChanged()
 {
     if (rowCount() > 0)
         emit dataChanged(index(0), index(rowCount() - 1), {StatsRole, ProgressRole});
+}
+
+void DatasetsListModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)
+{
+    const auto emitSelectionChanged = [this](const QItemSelection &selection)
+    {
+        const QModelIndexList items = selection.indexes();
+        int                   top{-1};
+        int                   bottom{-1};
+        for (const QModelIndex &index : items)
+        {
+            const int row = index.row();
+            if (row < 0 || row >= rowCount())
+                continue;
+            if (top == -1)
+                top = row;
+            else
+                top = std::min(top, row);
+            bottom = std::max(bottom, row);
+        }
+        if (top >= 0 && bottom >= top)
+            emit dataChanged(index(top), index(bottom), {SelectedRole});
+    };
+
+    emitSelectionChanged(deselected);
+    emitSelectionChanged(selected);
 }
 
 } // namespace dltool::data

@@ -35,7 +35,7 @@ Item {
         id: editor
         description: "输入数据集名称"
         onEditTextChanged: function (datasetName) {
-            if (dataManager) {
+            if (dataManager && dataManager.isValidDatasetName(datasetName, -1).length === 0) {
                 dataManager.addDataset(datasetName)
             }
         }

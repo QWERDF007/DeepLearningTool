@@ -134,13 +134,17 @@ public:
     Q_INVOKABLE int     getDatasetId(const QString &dataset_name) const;
     Q_INVOKABLE QString getDatasetName(const int dataset_id) const;
 
+    Q_INVOKABLE QString isValidName(const QString &name) const;
+    Q_INVOKABLE QString isValidDatasetName(const QString &name, const int64_t dataset_id = -1) const;
+    Q_INVOKABLE QString isValidClassName(const QString &name, const int64_t label_class_id = -1) const;
+
     Q_INVOKABLE void addDataset(const QString &name);
     Q_INVOKABLE void updateDataset(const int64_t dataset_id, const QString &name);
-    Q_INVOKABLE void deleteDataset(const int64_t dataset_id);
+    Q_INVOKABLE void deleteDatasets(const QVariantList &dataset_ids);
 
     Q_INVOKABLE void importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
                                 const QString &data_dir);
-    Q_INVOKABLE void exportDataset(const int64_t dataset_id, const int data_format, const QString &output_dir);
+    Q_INVOKABLE void exportDatasets(const QVariantList &dataset_ids, const int data_format, const QString &output_dir);
 
     Q_INVOKABLE void deleteSelectedImages();
     Q_INVOKABLE void copySelectedImagesToDataset(const int64_t dataset_id);

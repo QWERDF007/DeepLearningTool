@@ -23,6 +23,7 @@
 #include <QThread>
 #include <algorithm>
 #include <cstddef>
+#include <functional>
 #include <map>
 #include <memory>
 #include <set>
@@ -52,11 +53,35 @@ QString normalizedImagePath(const QString &path)
     return normalized;
 }
 
+std::vector<int64_t> parseInt64List(const QVariantList &values)
+{
+    std::vector<int64_t> result;
+    result.reserve(static_cast<size_t>(values.size()));
+    for (const QVariant &value : values)
+    {
+        bool          ok = false;
+        const int64_t id = value.toLongLong(&ok);
+        if (ok && id >= 0)
+        {
+            result.push_back(id);
+        }
+    }
+    std::sort(result.begin(), result.end());
+    result.erase(std::unique(result.begin(), result.end()), result.end());
+    return result;
+}
+
+void addProgressMessage(int level, const QString &message)
+{
+    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection, Q_ARG(int, level),
+                              Q_ARG(QString, message));
+}
+
 QString clusterDatasetName(const QString &source_dataset_name, const int64_t cluster_id)
 {
     if (cluster_id < 0)
-        return QStringLiteral("%1-noise").arg(source_dataset_name);
-    return QStringLiteral("%1-%2").arg(source_dataset_name).arg(cluster_id);
+        return QString("%1-noise").arg(source_dataset_name);
+    return QString("%1-%2").arg(source_dataset_name).arg(cluster_id);
 }
 
 } // namespace
@@ -466,22 +491,20 @@ void DataManager::setLabelSearchResults(const std::vector<int64_t> &label_ids, b
 
 bool DataManager::applyImageClusterAssignments(
     const std::vector<dltool::feature::ImageSearchDataProvider::ImageClusterAssignment> &assignments,
-    const bool include_noise,
-    dltool::feature::ImageSearchDataProvider::ImageClusterApplyMode apply_mode,
-    dltool::feature::ImageSearchDataProvider::ImageClusterApplyResult &result,
-    QString &err_msg)
+    const bool include_noise, dltool::feature::ImageSearchDataProvider::ImageClusterApplyMode apply_mode,
+    dltool::feature::ImageSearchDataProvider::ImageClusterApplyResult &result, QString &err_msg)
 {
     result = {};
     err_msg.clear();
 
     if (datasets_ == nullptr || image_instances_ == nullptr)
     {
-        err_msg = QStringLiteral("数据模型未初始化");
+        err_msg = QString("数据模型未初始化");
         return false;
     }
     if (assignments.empty())
     {
-        err_msg = QStringLiteral("没有图像聚类结果");
+        err_msg = QString("没有图像聚类结果");
         return false;
     }
 
@@ -523,10 +546,10 @@ bool DataManager::applyImageClusterAssignments(
         auto source_name_it = source_dataset_names.find(source_dataset_id);
         if (source_name_it == source_dataset_names.end())
         {
-            source_name_it = source_dataset_names
-                                 .emplace(source_dataset_id,
-                                          datasets_->getDatasetName(static_cast<int>(source_dataset_id)))
-                                 .first;
+            source_name_it
+                = source_dataset_names
+                      .emplace(source_dataset_id, datasets_->getDatasetName(static_cast<int>(source_dataset_id)))
+                      .first;
         }
 
         const QString &source_dataset_name = source_name_it->second;
@@ -560,12 +583,12 @@ bool DataManager::applyImageClusterAssignments(
         std::vector<int64_t> created_dataset_ids;
         if (!datasets_->addDatasets(missing_dataset_names, created_dataset_ids))
         {
-            err_msg = QStringLiteral("批量创建聚类数据集失败");
+            err_msg = QString("批量创建聚类数据集失败");
             return false;
         }
         if (created_dataset_ids.size() != missing_dataset_names.size())
         {
-            err_msg = QStringLiteral("批量创建聚类数据集后返回数量不一致");
+            err_msg = QString("批量创建聚类数据集后返回数量不一致");
             return false;
         }
         for (size_t i = 0; i < missing_dataset_names.size(); ++i)
@@ -583,7 +606,7 @@ bool DataManager::applyImageClusterAssignments(
         const auto target_it = target_dataset_ids_by_name.find(pending_image.target_dataset_name);
         if (target_it == target_dataset_ids_by_name.end())
         {
-            err_msg = QStringLiteral("未找到聚类目标数据集: %1").arg(pending_image.target_dataset_name);
+            err_msg = QString("未找到聚类目标数据集: %1").arg(pending_image.target_dataset_name);
             return false;
         }
 
@@ -598,7 +621,7 @@ bool DataManager::applyImageClusterAssignments(
     {
         if (label_instances_ == nullptr || image_tags_ == nullptr)
         {
-            err_msg = QStringLiteral("标签或标注模型未初始化");
+            err_msg = QString("标签或标注模型未初始化");
             return false;
         }
 
@@ -614,7 +637,7 @@ bool DataManager::applyImageClusterAssignments(
             const PendingClusterImage &pending_image = pending_images[i];
             if (pending_image.path.isEmpty())
             {
-                err_msg = QStringLiteral("复制聚类图像失败，图像路径为空: image_id=%1").arg(pending_image.image_id);
+                err_msg = QString("复制聚类图像失败，图像路径为空: image_id=%1").arg(pending_image.image_id);
                 return false;
             }
             copy_source_image_ids.push_back(pending_image.image_id);
@@ -630,12 +653,12 @@ bool DataManager::applyImageClusterAssignments(
             std::vector<int64_t> copied_image_ids;
             if (!image_instances_->addImages(copy_target_dataset_ids, copy_paths, copied_image_ids))
             {
-                err_msg = QStringLiteral("批量复制聚类图像到数据集失败");
+                err_msg = QString("批量复制聚类图像到数据集失败");
                 return false;
             }
             if (copied_image_ids.size() != copy_source_image_ids.size())
             {
-                err_msg = QStringLiteral("批量复制聚类图像后返回数量不一致");
+                err_msg = QString("批量复制聚类图像后返回数量不一致");
                 return false;
             }
 
@@ -659,7 +682,7 @@ bool DataManager::applyImageClusterAssignments(
                         image_info_->updateLabelInfo();
                     if (global_filter_ != nullptr)
                         global_filter_->refresh();
-                    err_msg = QStringLiteral("复制聚类图像标签失败: tag_id=%1").arg(tag_id);
+                    err_msg = QString("复制聚类图像标签失败: tag_id=%1").arg(tag_id);
                     return false;
                 }
             }
@@ -693,9 +716,9 @@ bool DataManager::applyImageClusterAssignments(
                         image_info_->updateLabelInfo();
                     if (global_filter_ != nullptr)
                         global_filter_->refresh();
-                    err_msg = QStringLiteral("复制聚类图像标注失败");
+                    err_msg = QString("复制聚类图像标注失败");
                     if (!label_err_msg.isEmpty())
-                        err_msg += QStringLiteral(": %1").arg(label_err_msg);
+                        err_msg += QString(": %1").arg(label_err_msg);
                     return false;
                 }
             }
@@ -718,7 +741,7 @@ bool DataManager::applyImageClusterAssignments(
 
         for (size_t i = 0; i < pending_images.size(); ++i)
         {
-            const PendingClusterImage &pending_image = pending_images[i];
+            const PendingClusterImage &pending_image     = pending_images[i];
             const int64_t              target_dataset_id = planned_target_dataset_ids[i];
             if (target_dataset_id == pending_image.source_dataset_id)
                 continue;
@@ -733,7 +756,7 @@ bool DataManager::applyImageClusterAssignments(
             const auto moved_images_label_ids = image_instances_->getLabelIds(moved_image_ids);
             if (!image_instances_->updateImagesDataset(moved_image_ids, target_dataset_ids))
             {
-                err_msg = QStringLiteral("批量移动聚类图像到数据集失败");
+                err_msg = QString("批量移动聚类图像到数据集失败");
                 return false;
             }
 
@@ -746,7 +769,31 @@ bool DataManager::applyImageClusterAssignments(
         image_info_->onCurrentImageChanged();
 
     if (global_filter_ != nullptr)
+    {
+        const auto filter_type = GlobalFilter::FilterType::Dataset;
+        if (global_filter_->isFilterEnabled(filter_type) && !global_filter_->isFilterInverted(filter_type))
+        {
+            std::set<int64_t> visible_dataset_ids;
+            const auto        active_ids = global_filter_->getActiveIds(filter_type);
+            visible_dataset_ids.insert(active_ids.begin(), active_ids.end());
+
+            bool changed = false;
+            for (const int64_t dataset_id : unique_target_dataset_ids)
+            {
+                if (visible_dataset_ids.insert(dataset_id).second)
+                {
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                global_filter_->setFilter(filter_type,
+                                          std::vector<int64_t>(visible_dataset_ids.begin(), visible_dataset_ids.end()));
+            }
+        }
         global_filter_->refresh();
+    }
 
     return true;
 }
@@ -758,30 +805,95 @@ QString DataManager::getDatasetName(const int dataset_id) const
 
 void DataManager::addDataset(const QString &name)
 {
+    const QString validation_error = isValidDatasetName(name);
+    if (!validation_error.isEmpty())
+    {
+        spdlog::warn("添加数据集失败: {}", validation_error.toUtf8().constData());
+        return;
+    }
     datasets_->addDataset(name);
 }
 
 void DataManager::updateDataset(const int64_t dataset_id, const QString &name)
 {
+    const QString validation_error = isValidDatasetName(name, dataset_id);
+    if (!validation_error.isEmpty())
+    {
+        spdlog::warn("更新数据集失败: {}", validation_error.toUtf8().constData());
+        return;
+    }
     datasets_->updateDataset(dataset_id, name);
 }
 
-void DataManager::deleteDataset(const int64_t dataset_id)
+QString DataManager::isValidName(const QString &name) const
 {
-    std::vector<int64_t> image_ids;
-    image_instances_->deleteImages(dataset_id, image_ids);
-    datasets_->deleteDataset(dataset_id);
+    if (name.isEmpty())
+    {
+        return QString("error:名称不能为空");
+    }
+
+    for (const QChar &ch : name)
+    {
+        const ushort value = ch.unicode();
+        const bool   valid = (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z')
+                        || (value >= '0' && value <= '9') || value == '-' || value == '_';
+        if (!valid)
+        {
+            return QString("error:名称只能使用字母、数字、-、_");
+        }
+    }
+    return QString();
+}
+
+QString DataManager::isValidDatasetName(const QString &name, const int64_t dataset_id) const
+{
+    const QString name_error = isValidName(name);
+    if (!name_error.isEmpty())
+    {
+        return name_error;
+    }
+
+    const int existing_dataset_id = datasets_ ? datasets_->getDatasetId(name) : -1;
+    if (existing_dataset_id != -1 && existing_dataset_id != dataset_id)
+    {
+        return QString("error:数据集名称已存在");
+    }
+    return QString();
+}
+
+QString DataManager::isValidClassName(const QString &name, const int64_t label_class_id) const
+{
+    const QString name_error = isValidName(name);
+    if (!name_error.isEmpty())
+    {
+        return name_error;
+    }
+
+    const int existing_label_class_id = label_classes_ ? label_classes_->getLabelClassId(name) : -1;
+    if (existing_label_class_id != -1 && existing_label_class_id != label_class_id)
+    {
+        return QString("error:类别名称已存在");
+    }
+    return QString();
+}
+
+void DataManager::deleteDatasets(const QVariantList &dataset_ids)
+{
+    const std::vector<int64_t> ids = parseInt64List(dataset_ids);
+    for (const int64_t dataset_id : ids)
+    {
+        std::vector<int64_t> image_ids;
+        image_instances_->deleteImages(dataset_id, image_ids);
+        datasets_->deleteDataset(dataset_id);
+    }
 }
 
 void DataManager::importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
                              const QString &data_dir)
 {
-    qInfo() << __FUNCTION__ << __LINE__ << "dataset_id" << dataset_id << "data_format" << data_format << "image_dir"
-            << image_dir << "data_dir" << data_dir;
-
     if (import_running_)
     {
-        const QString message = QStringLiteral("已有导入任务正在运行");
+        const QString message = QString("已有导入任务正在运行");
         spdlog::warn("导入数据失败, 已有导入任务正在运行");
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
                                   Q_ARG(QString, "导入数据"));
@@ -825,7 +937,7 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
     DataImporter *importer = DataImporter::createImporter(data_format, database_, this);
     if (!importer)
     {
-        const QString message = QStringLiteral("不支持的数据格式");
+        const QString message = QString("不支持的数据格式");
         spdlog::error("无法为格式 {} 创建导入器", data_format);
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
                                   Q_ARG(int, spdlog::level::err), Q_ARG(QString, message));
@@ -854,10 +966,9 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
     importer->startImport(dataset_id, image_dir, data_dir);
 }
 
-void DataManager::exportDataset(const int64_t dataset_id, const int data_format, const QString &output_dir)
+void DataManager::exportDatasets(const QVariantList &dataset_ids, const int data_format, const QString &output_dir)
 {
-    qInfo() << __FUNCTION__ << __LINE__ << "dataset_id" << dataset_id << "data_format" << data_format << "output_dir"
-            << output_dir;
+    const std::vector<int64_t> ids = parseInt64List(dataset_ids);
 
     if (!data::DataFormat::isDataFormatSupported(data_format))
     {
@@ -871,43 +982,125 @@ void DataManager::exportDataset(const int64_t dataset_id, const int data_format,
         return;
     }
 
-    ExportDataset dataset = buildExportDataset(dataset_id);
-    if (dataset.images.empty())
+    if (ids.empty())
     {
-        spdlog::warn("导出数据失败, 数据集为空: {}", dataset_id);
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
-                                  Q_ARG(QString, "导出数据"));
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, "数据集没有可导出的图像"));
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+        spdlog::warn("导出数据失败, 未选择数据集");
+        return;
+    }
+
+    QString err_msg;
+    if (!DatasetIO::ensureDirectory(output_dir, err_msg))
+    {
+        spdlog::error("导出数据失败, {}", err_msg.toUtf8().constData());
         return;
     }
 
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
                               Q_ARG(QString, "导出数据"));
 
-    DataExporter *exporter = DataExporter::createExporter(data_format, this);
-    if (!exporter)
+    struct ExportBatchItem
     {
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, "不支持的数据格式"));
+        ExportDataset dataset;
+        QString       output_dir;
+    };
+
+    struct ExportBatchState
+    {
+        std::vector<ExportBatchItem> items;
+        int                          current{0};
+        int                          success_count{0};
+        int                          failed_count{0};
+    };
+
+    auto state = std::make_shared<ExportBatchState>();
+    for (const int64_t dataset_id : ids)
+    {
+        ExportDataset dataset = buildExportDataset(dataset_id);
+        if (dataset.dataset_name.isEmpty())
+        {
+            addProgressMessage(spdlog::level::warn, QString("跳过不存在的数据集: %1").arg(dataset_id));
+            continue;
+        }
+        if (dataset.images.empty())
+        {
+            spdlog::warn("跳过空数据集导出: {}", dataset_id);
+            addProgressMessage(spdlog::level::warn, QString("跳过空数据集: %1").arg(dataset.dataset_name));
+            continue;
+        }
+
+        const QString dataset_output_dir = QDir(output_dir).filePath(dataset.dataset_name);
+        if (!DatasetIO::ensureDirectory(dataset_output_dir, err_msg))
+        {
+            spdlog::error("创建数据集导出目录失败: {}", err_msg.toUtf8().constData());
+            addProgressMessage(spdlog::level::err, err_msg);
+            ++state->failed_count;
+            continue;
+        }
+
+        state->items.push_back(ExportBatchItem{std::move(dataset), dataset_output_dir});
+    }
+
+    if (state->items.empty())
+    {
+        addProgressMessage(spdlog::level::err, QString("没有可导出的数据集"));
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
         return;
     }
 
-    connect(
-        exporter, &DataExporter::exportFinished, this,
-        [exporter](bool success, const QString &message)
+    auto                                 start_next      = std::make_shared<std::function<void()>>();
+    std::weak_ptr<std::function<void()>> weak_start_next = start_next;
+    *start_next                                          = [this, data_format, state, weak_start_next]()
+    {
+        if (state->current >= static_cast<int>(state->items.size()))
         {
-            const int level = success ? spdlog::level::info : spdlog::level::err;
-            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                      Q_ARG(int, level), Q_ARG(QString, message));
+            const QString message
+                = QString("导出完成: 成功 %1 个, 失败 %2 个").arg(state->success_count).arg(state->failed_count);
+            addProgressMessage(state->failed_count == 0 ? spdlog::level::info : spdlog::level::warn, message);
             QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
-            exporter->deleteLater();
-        },
-        Qt::QueuedConnection);
+            return;
+        }
 
-    exporter->startExport(dataset, output_dir);
+        const ExportBatchItem item = state->items[static_cast<size_t>(state->current++)];
+        addProgressMessage(spdlog::level::info,
+                           QString("开始导出数据集: %1 -> %2").arg(item.dataset.dataset_name, item.output_dir));
+
+        DataExporter *exporter = DataExporter::createExporter(data_format, this);
+        if (!exporter)
+        {
+            addProgressMessage(spdlog::level::err, QString("不支持的数据格式"));
+            ++state->failed_count;
+            if (auto next = weak_start_next.lock())
+            {
+                (*next)();
+            }
+            return;
+        }
+
+        connect(
+            exporter, &DataExporter::exportFinished, this,
+            [exporter, state, start_next = weak_start_next.lock()](bool success, const QString &message)
+            {
+                if (success)
+                {
+                    ++state->success_count;
+                }
+                else
+                {
+                    ++state->failed_count;
+                }
+                addProgressMessage(success ? spdlog::level::info : spdlog::level::err, message);
+                exporter->deleteLater();
+                if (start_next)
+                {
+                    (*start_next)();
+                }
+            },
+            Qt::QueuedConnection);
+
+        exporter->startExport(item.dataset, item.output_dir);
+    };
+
+    (*start_next)();
 }
 
 ExportDataset DataManager::buildExportDataset(const int64_t dataset_id) const
@@ -1148,12 +1341,25 @@ void DataManager::moveSelectedImagesToDataset(const int64_t dataset_id)
 
 void DataManager::addLabelClass(const QString &name, const QString &color, const QString &shortcut)
 {
+    const QString validation_error = isValidClassName(name);
+    if (!validation_error.isEmpty())
+    {
+        spdlog::warn("添加标签类别失败: {}", validation_error.toUtf8().constData());
+        return;
+    }
     label_classes_->addLabelClass(name, color, shortcut);
 }
 
 void DataManager::updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
                                    const QString &shortcut, const int64_t ordinal_index)
 {
+    const QString validation_error = isValidClassName(name, label_class_id);
+    if (!validation_error.isEmpty())
+    {
+        spdlog::warn("更新标签类别失败: {}", validation_error.toUtf8().constData());
+        return;
+    }
+
     // 获取当前的 ordinal_index
     int64_t current_ordinal = -1;
     for (int i = 0; i < label_classes_->rowCount(); ++i)

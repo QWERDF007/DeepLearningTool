@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QItemSelectionModel>
 #include <QtQml>
 #include <map>
 #include <set>
@@ -79,6 +80,8 @@ class DatasetsListModel : public QAbstractListModel
     Q_OBJECT
     QML_NAMED_ELEMENT(DatasetsModel)
     QML_UNCREATABLE("Can not create DatasetsModel directly!")
+    Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
+    Q_PROPERTY(int lastIndex READ lastIndex WRITE setLastIndex NOTIFY lastSelectedIndexChanged)
 public:
     DatasetsListModel(dltool::database::ProjectDataBase *database, QObject *parent = nullptr);
     ~DatasetsListModel();
@@ -89,7 +92,9 @@ public:
         NameRole,
         StatsRole,
         ProgressRole,
+        SelectedRole,
     };
+    Q_ENUM(Role)
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
 
@@ -106,6 +111,22 @@ public:
     bool addDatasets(const std::vector<QString> &names, std::vector<int64_t> &dataset_ids);
     bool updateDataset(const int64_t dataset_id, const QString &name);
     bool deleteDataset(const int64_t dataset_id);
+
+    QItemSelectionModel *selection() const
+    {
+        return selection_;
+    }
+
+    Q_INVOKABLE void shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command);
+    Q_INVOKABLE void selectAll();
+    Q_INVOKABLE std::vector<int64_t> getSelectedDatasetIds() const;
+
+    int lastIndex() const
+    {
+        return last_index_;
+    }
+
+    void setLastIndex(int last_index);
 
     QList<QString> getAllDatasetsName() const;
 
@@ -129,8 +150,10 @@ private:
     QVariant getName(const QModelIndex &index) const;
     QVariant getStats(const QModelIndex &index) const;
     QVariant getProgress(const QModelIndex &index) const;
+    QVariant getSelected(const QModelIndex &index) const;
 
     void onStatsChanged();
+    void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
 
     dltool::database::ProjectDataBase *database_{nullptr};
 
@@ -138,8 +161,12 @@ private:
 
     std::map<int64_t, int64_t> labelled_image_stats_;
 
+    QItemSelectionModel *selection_{nullptr};
+    int                  last_index_{-1};
+
 signals:
     void statsChanged();
+    void lastSelectedIndexChanged();
 };
 
 } // namespace dltool::data

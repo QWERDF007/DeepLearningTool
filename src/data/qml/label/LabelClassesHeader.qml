@@ -34,12 +34,19 @@ Item {
         id: editor
         isCreate: true
         onLabelClassChanged: function (classId, className, classColor, classShortcut, ordinalIndex) {
+            if (dataManager) {
+                let nameMsg = dataManager.isValidClassName(className, classId)
+                if (nameMsg.length > 0) {
+                    editor.msg = nameMsg
+                    return
+                }
+            }
             if (labelClasses) {
                 editor.msg = labelClasses.isValid(classId, className, classShortcut, -1)
             }
         }
         onLabelClassChangedAccepted: function (classId, className, classColor, classShortcut, ordinalIndex) {
-            if (dataManager) {
+            if (dataManager && dataManager.isValidClassName(className, classId).length === 0) {
                 dataManager.addLabelClass(className, classColor, classShortcut)
             }
         }

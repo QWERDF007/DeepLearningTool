@@ -13,7 +13,7 @@ QuiPopup {
     height: 320
 
     property DataManager dataManager
-    property int datasetId: -1
+    property var datasetIds: []
 
     property alias datasetName: exportDataForm.datasetName
     property alias dataFormatModel: exportDataForm.dataFormatModel
@@ -46,7 +46,7 @@ QuiPopup {
 
             QuiButton {
                 id: exportBtn
-                enabled: exportDataForm.output_dir.length > 0 && datasetId >= 0
+                enabled: exportDataForm.output_dir.length > 0 && datasetIds.length > 0
                 anchors.right: parent.right
                 width: parent.width / 4
                 height: parent.height
@@ -56,7 +56,7 @@ QuiPopup {
                     exportDataDialog.close()
                     if (dataManager) {
                         let data_format = DataFormat.getDataFormat(exportDataForm.dataFormat)
-                        dataManager.exportDataset(datasetId, data_format, exportDataForm.output_dir)
+                        dataManager.exportDatasets(datasetIds, data_format, exportDataForm.output_dir)
                     }
                 }
             }

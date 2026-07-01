@@ -28,6 +28,18 @@ QuiButton {
     onTextChanged: refreshDisplayText()
     onResultCountChanged: refreshDisplayText()
 
+    onGlobalFilterChanged: {
+        if (showItemList) {
+            Qt.callLater(syncFromGlobalFilter)
+        }
+    }
+
+    onFilterTypeChanged: {
+        if (showItemList) {
+            Qt.callLater(syncFromGlobalFilter)
+        }
+    }
+
     onModelChanged: {
         if (!showItemList) {
             refreshDisplayText()
@@ -41,11 +53,22 @@ QuiButton {
                     control.allDeselected = false
                 }
                 control.initialized = true
-                control.updateCheckedIds()
+                if (control.globalFilter && control.globalFilter.isFilterEnabled(control.filterType)) {
+                    control.syncFromGlobalFilter()
+                } else {
+                    control.updateCheckedIds()
+                }
             })
         } else {
             control.initialized = false
             control.refreshDisplayText()
+        }
+    }
+
+    Connections {
+        target: control.showItemList ? control.globalFilter : null
+        function onFilterStateChanged() {
+            control.syncFromGlobalFilter()
         }
     }
 
@@ -266,6 +289,31 @@ QuiButton {
         globalFilter.setFilterEnabled(filterType, true)
     }
 
+    function syncFromGlobalFilter() {
+        if (!control.showItemList) {
+            control.refreshDisplayText()
+            return
+        }
+
+        if (!globalFilter) {
+            control.refreshDisplayText()
+            return
+        }
+
+        let filterEnabled = globalFilter.isFilterEnabled(filterType)
+        control.suppressCheckedHandler = true
+        control.checked = filterEnabled
+        control.suppressCheckedHandler = false
+
+        if (filterEnabled && model) {
+            control.setModelCheckedIds(globalFilter.getActiveIds(filterType),
+                                       globalFilter.isFilterInverted(filterType))
+        }
+
+        control.syncBulkControlsFromModel()
+        control.refreshDisplayText()
+    }
+
     function setAllModelChecked(checked) {
         if (!model) {
             return
@@ -275,6 +323,21 @@ QuiButton {
         for (let i = 0; i < model.rowCount(); i++) {
             let idx = model.index(i, 0)
             model.setData(idx, checked, FilterItemsModel.CheckedRole)
+        }
+        control.bulkUpdating = false
+    }
+
+    function setModelCheckedIds(ids, inverted) {
+        if (!model) {
+            return
+        }
+
+        control.bulkUpdating = true
+        for (let i = 0; i < model.rowCount(); i++) {
+            let idx = model.index(i, 0)
+            let id = model.data(idx, FilterItemsModel.IdRole)
+            let matched = control.containsId(ids, id)
+            model.setData(idx, inverted ? !matched : matched, FilterItemsModel.CheckedRole)
         }
         control.bulkUpdating = false
     }
@@ -316,8 +379,17 @@ QuiButton {
             return
         }
 
+        control.syncBulkControlsFromModel()
+
+        if (control.checked && globalFilter) {
+            control.applyCurrentSelection()
+        }
+
+        control.refreshDisplayText()
+    }
+
+    function syncBulkControlsFromModel() {
         if (!model) {
-            control.refreshDisplayText()
             return
         }
 
@@ -336,12 +408,6 @@ QuiButton {
             control.allDeselected = false
             control.setBulkControls(false, false)
         }
-
-        if (control.checked && globalFilter) {
-            control.applyCurrentSelection()
-        }
-
-        control.refreshDisplayText()
     }
 
     function applyCurrentSelection() {
@@ -428,6 +494,15 @@ QuiButton {
             }
         }
         return ids
+    }
+
+    function containsId(ids, id) {
+        for (let i = 0; i < ids.length; i++) {
+            if (ids[i] === id) {
+                return true
+            }
+        }
+        return false
     }
 
     function refreshDisplayText() {

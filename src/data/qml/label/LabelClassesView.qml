@@ -61,12 +61,19 @@ Rectangle {
         isCreate: false
         maxOrdinalIndex: view.count
         onLabelClassChanged: function (classId, className, classColor, classShortcut, ordinalIndex) {
+            if (dataManager) {
+                let nameMsg = dataManager.isValidClassName(className, classId)
+                if (nameMsg.length > 0) {
+                    editor.msg = nameMsg
+                    return
+                }
+            }
             if (labelClasses) {
                 editor.msg = labelClasses.isValid(classId, className, classShortcut, ordinalIndex)
             }
         }
         onLabelClassChangedAccepted: function (classId, className, classColor, classShortcut, ordinalIndex) {
-            if (dataManager) {
+            if (dataManager && dataManager.isValidClassName(className, classId).length === 0) {
                 dataManager.updateLabelClass(classId, className, classColor, classShortcut, ordinalIndex)
             }
         }
