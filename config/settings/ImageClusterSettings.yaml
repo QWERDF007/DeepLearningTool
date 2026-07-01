@@ -135,19 +135,10 @@ ImageClusterSettings:
       control_type: spin
       section: HDBSCAN
 
-    - name_en: alpha
-      name_cn: Alpha
-      property_name: alpha
-      value: 1.0
-      value_type: double
-      value_range: [0.000001, 1000000.0, 0.1]
-      control_type: spin
-      section: HDBSCAN
-
     - name_en: algorithm
       name_cn: 邻居搜索
       property_name: algorithm
-      value: 0
+      value: 2
       value_type: int
       control_type: combo
       options: [auto, brute, kd_tree, ball_tree]
@@ -157,16 +148,7 @@ ImageClusterSettings:
         kd_tree: 2
         ball_tree: 3
       section: HDBSCAN
-
-    - name_en: leaf_size
-      name_cn: 叶子大小
-      property_name: leafSize
-      value: 30
-      value_type: int
-      value_range: [1, 1000000, 1]
-      control_type: spin
-      section: HDBSCAN
-
+    
     - name_en: cluster_selection_method
       name_cn: 簇选择方法
       property_name: clusterSelectionMethod
@@ -179,18 +161,10 @@ ImageClusterSettings:
         leaf: 1
       section: HDBSCAN
 
-    - name_en: allow_single_cluster
-      name_cn: 允许单簇
-      property_name: allowSingleCluster
-      value: false
-      value_type: bool
-      control_type: checkbox
-      section: HDBSCAN
-
     - name_en: include_noise
       name_cn: 导出噪声簇
       property_name: includeNoise
-      value: false
+      value: true
       value_type: bool
       control_type: checkbox
       section: 输出
