@@ -66,6 +66,7 @@ private:
     inline static const QList<QString> ExportDataFormatList = {
         "LabelMe",
         "COCO",
+        "Mask",
     };
 
     inline static const std::unordered_map<int, QString> IdToName = {

@@ -4,10 +4,12 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QProcess>
+#include <QSet>
 #include <QStandardPaths>
 #include <QStringList>
 #include <QVariant>
 #include <algorithm>
+#include <cmath>
 
 namespace dltool::ui {
 
@@ -36,6 +38,33 @@ QVariantList toVariantList(const QVariant &value)
     }
 
     return {};
+}
+
+QStringList recommendedLabelColorList()
+{
+    return {
+        QStringLiteral("#e6194b"), QStringLiteral("#3cb44b"), QStringLiteral("#4363d8"),
+        QStringLiteral("#f58231"), QStringLiteral("#911eb4"), QStringLiteral("#46f0f0"),
+        QStringLiteral("#f032e6"), QStringLiteral("#bcf60c"), QStringLiteral("#fabebe"),
+        QStringLiteral("#008080"), QStringLiteral("#e6beff"), QStringLiteral("#9a6324"),
+        QStringLiteral("#fffac8"), QStringLiteral("#800000"), QStringLiteral("#aaffc3"),
+        QStringLiteral("#808000"), QStringLiteral("#ffd8b1"), QStringLiteral("#000075"),
+        QStringLiteral("#808080"), QStringLiteral("#ffe119"), QStringLiteral("#469990"),
+        QStringLiteral("#dcbeff"), QStringLiteral("#a9a9a9"), QStringLiteral("#ff6f61"),
+    };
+}
+
+QString normalizedColorName(const QVariant &color)
+{
+    const QColor parsed(color.toString().trimmed());
+    return parsed.isValid() ? parsed.name(QColor::HexRgb).toLower() : QString();
+}
+
+QString generatedLabelColor(const int index)
+{
+    constexpr double kGoldenRatioConjugate = 0.618033988749895;
+    const double     hue                   = std::fmod(index * kGoldenRatioConjugate, 1.0);
+    return QColor::fromHslF(hue, 0.72, 0.5).name(QColor::HexRgb);
 }
 
 int decimalCount(const QVariant &value)
@@ -182,6 +211,54 @@ int Utils::paramDecimals(const QString &value_type, const QVariant &value_range,
         result = std::max(result, decimalCount(entry));
     }
     return result;
+}
+
+QVariantList Utils::recommendedLabelColors() const
+{
+    QVariantList result;
+    const auto   colors = recommendedLabelColorList();
+    result.reserve(colors.size());
+    for (const QString &color : colors)
+    {
+        result.append(color);
+    }
+    return result;
+}
+
+QString Utils::nextRecommendedColor(const QVariant &used_colors) const
+{
+    const QVariantList used_list = toVariantList(used_colors);
+    QSet<QString>      used;
+    for (const QVariant &color : used_list)
+    {
+        const QString normalized = normalizedColorName(color);
+        if (!normalized.isEmpty())
+        {
+            used.insert(normalized);
+        }
+    }
+
+    for (const QString &color : recommendedLabelColorList())
+    {
+        const QString normalized = normalizedColorName(color);
+        if (!used.contains(normalized))
+        {
+            return color;
+        }
+    }
+
+    const int offset = used.size();
+    for (int i = 0; i < 256; ++i)
+    {
+        const QString color      = generatedLabelColor(offset + i);
+        const QString normalized = normalizedColorName(color);
+        if (!used.contains(normalized))
+        {
+            return color;
+        }
+    }
+
+    return QStringLiteral("#808080");
 }
 
 } // namespace dltool::ui

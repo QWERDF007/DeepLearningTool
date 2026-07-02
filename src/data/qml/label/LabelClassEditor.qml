@@ -171,6 +171,10 @@ QuiPopup {
                 text: "确认"
                 enabled: !control.isError()
                 onClicked: {
+                    labelClassChanged(classId, nameField.text, colorField.text, shortcutField.text, isCreate ? -1 : ordinalField.text)
+                    if (control.isError()) {
+                        return
+                    }
                     labelClassChangedAccepted(classId, nameField.text, colorField.text, shortcutField.text, isCreate ? maxOrdinalIndex : ordinalField.text)
                     clearInput()
                     control.close()
@@ -197,12 +201,22 @@ QuiPopup {
         title: "选择颜色"
         onAccepted: {
             colorField.text = colorDialog.currentColor
+            labelClassChanged(classId, className, classColor, classShortcut, isCreate ? -1 : ordinalIndex)
         }
     }
 
-    function clearInput() {
+    function openForCreate(defaultColor) {
+        clearInput(defaultColor)
+        control.classId = -1
+        control.isCreate = true
+        colorDialog.currentColor = defaultColor
+        colorField.text = defaultColor
+        control.open()
+    }
+
+    function clearInput(defaultColor) {
         nameField.text = ""
-        colorField.text = "#000000"
+        colorField.text = defaultColor !== undefined ? defaultColor : "#000000"
         shortcutField.text = ""
         ordinalField.text = ""
         control.msg = ""

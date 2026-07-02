@@ -10,12 +10,16 @@ import quickui
 Item {
     id: exportDataForm
     width: 400
-    height: 180
+    height: 240
 
     property int rowH: 64
     property string datasetName: ""
     property alias dataFormatModel: dataFormatBox.model
     property string dataFormat: dataFormatBox.currentText
+    property int maskOutputMode: maskOutputModeBox.currentIndex < 0 ? 0 : maskOutputModeBox.currentIndex
+    property var exportOptions: ({
+        "mask_output_mode": maskOutputMode
+    })
     property string output_dir: outputPathInput.text
 
     Item {
@@ -54,6 +58,7 @@ Item {
     }
 
     Row {
+        id: formatRow
         anchors.top: outputForm.bottom
         anchors.topMargin: 20
         width: parent.width
@@ -83,6 +88,29 @@ Item {
                 width: 240
                 text: datasetName
                 elide: Text.ElideRight
+            }
+        }
+    }
+
+    Row {
+        id: maskOptionsRow
+        visible: dataFormat === "Mask"
+        anchors.top: formatRow.bottom
+        anchors.topMargin: 12
+        width: parent.width
+        height: rowH
+        Column {
+            spacing: 10
+            width: parent.width / 2
+            height: parent.height
+            QuiText {
+                text: "Mask导出格式:"
+                textColor: QuiColor.FontDark
+            }
+            QuiComboBox {
+                id: maskOutputModeBox
+                width: 240
+                model: ["全255", "按类别 + 1"]
             }
         }
     }

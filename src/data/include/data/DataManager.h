@@ -17,6 +17,7 @@
 #include <QMetaObject>
 #include <QObject>
 #include <QVariantList>
+#include <QVariantMap>
 #include <QtQml>
 #include <memory>
 #include <vector>
@@ -144,7 +145,8 @@ public:
 
     Q_INVOKABLE void importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
                                 const QString &data_dir);
-    Q_INVOKABLE void exportDatasets(const QVariantList &dataset_ids, const int data_format, const QString &output_dir);
+    Q_INVOKABLE void exportDatasets(const QVariantList &dataset_ids, const int data_format, const QString &output_dir,
+                                    const QVariantMap &options = {});
 
     Q_INVOKABLE void deleteSelectedImages();
     Q_INVOKABLE void copySelectedImagesToDataset(const int64_t dataset_id);

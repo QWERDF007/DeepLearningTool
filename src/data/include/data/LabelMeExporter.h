@@ -21,7 +21,7 @@ public:
     explicit LabelMeExporter(QObject *parent = nullptr);
     ~LabelMeExporter() override;
 
-    void startExport(const ExportDataset &dataset, const QString &output_dir) override;
+    void startExport(const ExportDataset &dataset, const QString &output_dir, const QVariantMap &options = {}) override;
 
 private:
     void doExport(ExportDataset dataset, QString output_dir);

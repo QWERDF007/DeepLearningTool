@@ -69,11 +69,13 @@ Rectangle {
                 }
             }
             if (labelClasses) {
-                editor.msg = labelClasses.isValid(classId, className, classShortcut, ordinalIndex)
+                editor.msg = labelClasses.isValid(classId, className, classColor, classShortcut, ordinalIndex)
             }
         }
         onLabelClassChangedAccepted: function (classId, className, classColor, classShortcut, ordinalIndex) {
-            if (dataManager && dataManager.isValidClassName(className, classId).length === 0) {
+            if (dataManager
+                    && dataManager.isValidClassName(className, classId).length === 0
+                    && (!labelClasses || !labelClasses.isValid(classId, className, classColor, classShortcut, ordinalIndex).startsWith("error:"))) {
                 dataManager.updateLabelClass(classId, className, classColor, classShortcut, ordinalIndex)
             }
         }
@@ -103,6 +105,7 @@ Rectangle {
             Layout.fillWidth: true
             height: 32
             dataManager: labelClassesView.dataManager
+            labelClasses: labelClassesView.labelClasses
         }
         ListView {
             id: view

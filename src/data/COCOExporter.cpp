@@ -41,8 +41,10 @@ COCOExporter::COCOExporter(QObject *parent)
 
 COCOExporter::~COCOExporter() {}
 
-void COCOExporter::startExport(const ExportDataset &dataset, const QString &output_dir)
+void COCOExporter::startExport(const ExportDataset &dataset, const QString &output_dir, const QVariantMap &options)
 {
+    Q_UNUSED(options)
+
     QThread *worker_thread = new QThread();
 
     connect(

@@ -3,6 +3,7 @@
 #include "data/COCOExporter.h"
 #include "data/DataFormat.h"
 #include "data/LabelMeExporter.h"
+#include "data/MaskExporter.h"
 #include "ui/ProgressManager.h"
 
 #include <spdlog/spdlog.h>
@@ -32,6 +33,11 @@ DataExporter *DataExporter::createExporter(int data_format, QObject *parent)
     if (data_format == DataFormat::COCO)
     {
         return new COCOExporter(parent);
+    }
+
+    if (data_format == DataFormat::Mask)
+    {
+        return new MaskExporter(parent);
     }
 
     spdlog::error("未实现的数据导出格式: {}", data_format);

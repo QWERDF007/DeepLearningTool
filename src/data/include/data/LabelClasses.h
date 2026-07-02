@@ -110,11 +110,13 @@ public:
      * @brief 验证标签类别的有效性
      * @param label_class_id 标签类别ID（编辑时排除自身）
      * @param name 类别名称
+     * @param color 标签颜色
      * @param shortcut 快捷键
      * @param ordinal_index 排序索引
      * @return 错误信息，空字符串表示有效
      */
-    Q_INVOKABLE QString isValid(const int label_class_id, const QString &name, const QString &shortcut,
+    Q_INVOKABLE QString isValid(const int label_class_id, const QString &name, const QString &color,
+                                const QString &shortcut,
                                 const int ordinal_index) const;
 
     /**

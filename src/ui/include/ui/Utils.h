@@ -24,6 +24,8 @@ public:
     Q_INVOKABLE QVariant valueRangeAt(const QVariant &value_range, int index, const QVariant &fallback_value) const;
     Q_INVOKABLE int paramDecimals(const QString &value_type, const QVariant &value_range, const QVariant &value = {},
                                   const QVariant &default_value = {}) const;
+    Q_INVOKABLE QVariantList recommendedLabelColors() const;
+    Q_INVOKABLE QString      nextRecommendedColor(const QVariant &used_colors) const;
 
 private:
     explicit Utils(QObject *parent = nullptr);

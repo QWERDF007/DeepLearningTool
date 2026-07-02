@@ -10,7 +10,7 @@ import quickui
 QuiPopup {
     id: exportDataDialog
     width: 600
-    height: 320
+    height: 380
 
     property DataManager dataManager
     property var datasetIds: []
@@ -56,7 +56,8 @@ QuiPopup {
                     exportDataDialog.close()
                     if (dataManager) {
                         let data_format = DataFormat.getDataFormat(exportDataForm.dataFormat)
-                        dataManager.exportDatasets(datasetIds, data_format, exportDataForm.output_dir)
+                        dataManager.exportDatasets(datasetIds, data_format, exportDataForm.output_dir,
+                                                   exportDataForm.exportOptions)
                     }
                 }
             }

@@ -46,8 +46,10 @@ LabelMeExporter::LabelMeExporter(QObject *parent)
 
 LabelMeExporter::~LabelMeExporter() {}
 
-void LabelMeExporter::startExport(const ExportDataset &dataset, const QString &output_dir)
+void LabelMeExporter::startExport(const ExportDataset &dataset, const QString &output_dir, const QVariantMap &options)
 {
+    Q_UNUSED(options)
+
     QThread *worker_thread = new QThread();
 
     connect(

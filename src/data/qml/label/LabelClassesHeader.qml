@@ -9,6 +9,28 @@ import quickui
 Item {
     id: header
     property DataManager dataManager
+    property LabelClassesModel labelClasses: null
+
+    function usedColors() {
+        let used = []
+        if (!labelClasses) {
+            return used
+        }
+
+        for (let row = 0; row < labelClasses.rowCount(); ++row) {
+            let modelIndex = labelClasses.index(row, 0)
+            let color = labelClasses.data(modelIndex, LabelClassesModel.ColorRole)
+            if (color) {
+                used.push(color)
+            }
+        }
+        return used
+    }
+
+    function nextRecommendedColor() {
+        return Utils.nextRecommendedColor(usedColors())
+    }
+
     RowLayout {
         anchors.fill: parent
         QuiText {
@@ -26,7 +48,7 @@ Item {
                 let pos = mapToItem(null, 0, 0)
                 editor.x = pos.x + 20
                 editor.y = pos.y + 20
-                editor.open()
+                editor.openForCreate(nextRecommendedColor())
             }
         }
     }
@@ -42,11 +64,13 @@ Item {
                 }
             }
             if (labelClasses) {
-                editor.msg = labelClasses.isValid(classId, className, classShortcut, -1)
+                editor.msg = labelClasses.isValid(classId, className, classColor, classShortcut, -1)
             }
         }
         onLabelClassChangedAccepted: function (classId, className, classColor, classShortcut, ordinalIndex) {
-            if (dataManager && dataManager.isValidClassName(className, classId).length === 0) {
+            if (dataManager
+                    && dataManager.isValidClassName(className, classId).length === 0
+                    && (!labelClasses || !labelClasses.isValid(classId, className, classColor, classShortcut, -1).startsWith("error:"))) {
                 dataManager.addLabelClass(className, classColor, classShortcut)
             }
         }

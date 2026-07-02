@@ -4,7 +4,19 @@
 
 #include <spdlog/spdlog.h>
 
+#include <QColor>
+
 namespace dltool::data {
+
+namespace {
+
+QString normalizedColorName(const QString &color)
+{
+    const QColor parsed(color.trimmed());
+    return parsed.isValid() ? parsed.name(QColor::HexRgb).toLower() : QString();
+}
+
+} // namespace
 
 LabelClass::LabelClass(const int64_t id, const QString &name, const QString &color, const QString &shortcut,
                        const int64_t ordinal_index, QObject *parent)
@@ -472,19 +484,28 @@ QString LabelClassesListModel::getCurrentLabelClassColor() const
     return getLabelClassColor(index).toString();
 }
 
-QString LabelClassesListModel::isValid(const int label_class_id, const QString &name, const QString &shortcut,
-                                       const int ordinal_index) const
+QString LabelClassesListModel::isValid(const int label_class_id, const QString &name, const QString &color,
+                                       const QString &shortcut, const int ordinal_index) const
 {
     // 新建类别时（label_class_id == -1），ordinal_index 为 -1 表示不验证序号
     if (label_class_id != -1 && (ordinal_index > static_cast<int>(label_classes_.size()) - 1 || ordinal_index < 0))
         return "error:标签序号索引超出范围";
+
+    const QString normalized_color = normalizedColorName(color);
+    if (normalized_color.isEmpty())
+        return "error:标签颜色无效";
+    if (shortcut.size() > 1)
+        return "error:标签快捷键只能是单个字符";
+
     for (const auto &[_, label_class] : label_classes_)
     {
         if (label_class->id() == label_class_id)
             continue;
         if (label_class->name() == name)
             return "error:标签名称已存在";
-        if (!shortcut.isEmpty() && label_class->shortcut() == shortcut)
+        if (normalizedColorName(label_class->color()) == normalized_color)
+            return "error:标签颜色已存在";
+        if (!shortcut.isEmpty() && label_class->shortcut().compare(shortcut, Qt::CaseInsensitive) == 0)
             return "error:标签快捷键已存在";
         if (ordinal_index >= 0 && label_class->ordinalIndex() == ordinal_index)
             return "warning:修改序号将重新排序标签类别";

@@ -5,6 +5,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QVariantMap>
 
 namespace dltool::data {
 
@@ -24,7 +25,8 @@ public:
 
     static DataExporter *createExporter(int data_format, QObject *parent = nullptr);
 
-    virtual void startExport(const ExportDataset &dataset, const QString &output_dir) = 0;
+    virtual void startExport(const ExportDataset &dataset, const QString &output_dir,
+                             const QVariantMap &options = {}) = 0;
 
 signals:
     void exportFinished(bool success, const QString &message);

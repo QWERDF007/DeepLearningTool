@@ -964,7 +964,8 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
     importer->startImport(dataset_id, image_dir, data_dir);
 }
 
-void DataManager::exportDatasets(const QVariantList &dataset_ids, const int data_format, const QString &output_dir)
+void DataManager::exportDatasets(const QVariantList &dataset_ids, const int data_format, const QString &output_dir,
+                                 const QVariantMap &options)
 {
     const std::vector<int64_t> ids = parseInt64List(dataset_ids);
 
@@ -1047,7 +1048,7 @@ void DataManager::exportDatasets(const QVariantList &dataset_ids, const int data
 
     auto                                 start_next      = std::make_shared<std::function<void()>>();
     std::weak_ptr<std::function<void()>> weak_start_next = start_next;
-    *start_next                                          = [this, data_format, state, weak_start_next]()
+    *start_next                                          = [this, data_format, options, state, weak_start_next]()
     {
         if (state->current >= static_cast<int>(state->items.size()))
         {
@@ -1095,7 +1096,7 @@ void DataManager::exportDatasets(const QVariantList &dataset_ids, const int data
             },
             Qt::QueuedConnection);
 
-        exporter->startExport(item.dataset, item.output_dir);
+        exporter->startExport(item.dataset, item.output_dir, options);
     };
 
     (*start_next)();
@@ -1154,12 +1155,25 @@ ExportDataset DataManager::buildExportDataset(const int64_t dataset_id) const
         label_class_ids.insert(export_label.label_class_id);
     }
 
-    for (const int64_t label_class_id : label_class_ids)
+    if (label_classes_ == nullptr)
     {
+        return dataset;
+    }
+
+    for (int row = 0; row < label_classes_->rowCount(); ++row)
+    {
+        const QModelIndex index = label_classes_->index(row, 0);
+        const int64_t     label_class_id
+            = label_classes_->data(index, LabelClassesListModel::LabelClassIdRole).toLongLong();
+        if (label_class_ids.find(label_class_id) == label_class_ids.end())
+        {
+            continue;
+        }
+
         ExportLabelClass export_class;
         export_class.id    = label_class_id;
-        export_class.name  = label_classes_->getLabelClassName(label_class_id);
-        export_class.color = label_classes_->getLabelClassColor(label_class_id);
+        export_class.name  = label_classes_->data(index, LabelClassesListModel::NameRole).toString();
+        export_class.color = label_classes_->data(index, LabelClassesListModel::ColorRole).toString();
         dataset.label_classes.push_back(export_class);
     }
 
@@ -1345,6 +1359,15 @@ void DataManager::addLabelClass(const QString &name, const QString &color, const
         spdlog::warn("添加标签类别失败: {}", validation_error.toUtf8().constData());
         return;
     }
+    if (label_classes_ != nullptr)
+    {
+        const QString label_error = label_classes_->isValid(-1, name, color, shortcut, -1);
+        if (label_error.startsWith(QStringLiteral("error:")))
+        {
+            spdlog::warn("添加标签类别失败: {}", label_error.toUtf8().constData());
+            return;
+        }
+    }
     label_classes_->addLabelClass(name, color, shortcut);
 }
 
@@ -1356,6 +1379,17 @@ void DataManager::updateLabelClass(const int64_t label_class_id, const QString &
     {
         spdlog::warn("更新标签类别失败: {}", validation_error.toUtf8().constData());
         return;
+    }
+    if (label_classes_ != nullptr)
+    {
+        const QString label_error
+            = label_classes_->isValid(static_cast<int>(label_class_id), name, color, shortcut,
+                                      static_cast<int>(ordinal_index));
+        if (label_error.startsWith(QStringLiteral("error:")))
+        {
+            spdlog::warn("更新标签类别失败: {}", label_error.toUtf8().constData());
+            return;
+        }
     }
 
     // 获取当前的 ordinal_index
