@@ -68,6 +68,7 @@ SettingsField parseField(const YAML::Node &node, const QString &section, const i
     field.options_key_field = nodeString(node["options_key_field"]);
     field.sidebar           = nodeVariant(node["sidebar"]).toMap();
     field.section           = section;
+    field.desc              = nodeString(node["desc"]);
     field.description       = nodeString(node["description"]);
     field.visible           = node["visible"] ? node["visible"].as<bool>() : true;
     field.ordinal_index     = node["ordinal_index"] ? node["ordinal_index"].as<int>() : ordinal_index;
@@ -271,6 +272,8 @@ QVariant SettingsFieldModel::data(const QModelIndex &index, const int role) cons
         return field.sidebar;
     case SectionRole:
         return field.section;
+    case DescRole:
+        return field.desc;
     case DescriptionRole:
         return field.description;
     case VisibleRole:
@@ -325,6 +328,7 @@ QHash<int, QByteArray> SettingsFieldModel::roleNames() const
         {OptionsKeyFieldRole, "optionsKeyField"},
         {        SidebarRole,         "sidebar"},
         {        SectionRole,         "section"},
+        {           DescRole,            "desc"},
         {    DescriptionRole,     "description"},
         {        VisibleRole,         "visible"},
         {   OrdinalIndexRole,    "ordinalIndex"},
@@ -526,6 +530,7 @@ QVariantMap SettingsFieldModel::toMap(const SettingsField &field) const
         {QStringLiteral("options_key_field"), field.options_key_field},
         {          QStringLiteral("sidebar"),           field.sidebar},
         {          QStringLiteral("section"),           field.section},
+        {             QStringLiteral("desc"),              field.desc},
         {      QStringLiteral("description"),       field.description},
         {          QStringLiteral("visible"),           field.visible},
         {    QStringLiteral("ordinal_index"),     field.ordinal_index},

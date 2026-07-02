@@ -78,6 +78,7 @@ sections:
 | `options_values` | 可选的 combo 显示值到实际值映射；未配置时实际值等于 `options` 中的显示值。 |
 | `options_map` | 动态选项映射。 |
 | `options_key_field` | `options_map` 使用的键字段 `name_en`。 |
+| `desc` | 配置项简短说明，用于设置页 tooltip。 |
 | `description` | 可选说明文本。 |
 | `visible` | 是否在设置页显示，默认 `true`。 |
 | `ordinal_index` | 字段排序序号。 |
@@ -130,5 +131,6 @@ sidebar:
 2. 新增高级设置时，使用 `parent_accessor: advanced`，例如 `advanced.myFeature`。
 3. QML/C++ 侧不要直接依赖文件名、group key 或属性名；固定字段优先使用生成的 `SettingsAccessor` 和 `*Field` 枚举。
 4. 设置页字段展示应依赖 catalog 模型；侧边栏入口应通过字段的 `sidebar` 元数据声明。
-5. 对于下拉选项，静态列表使用 `options`；需要显示值和保存值不一致时，使用 `options_values` 声明 key-value，例如 `options: [cpu, gpu]` 搭配 `options_values: {cpu: 0, gpu: 1}`。
-6. 数值类字段建议配置 `value_range`，这样设置页、侧边栏和动态范围属性都能复用同一份 schema。
+5. 每个字段应配置 `desc`，设置页会把它作为左侧文字区域的 tooltip。
+6. 对于下拉选项，静态列表使用 `options`；需要显示值和保存值不一致时，使用 `options_values` 声明 key-value，例如 `options: [cpu, gpu]` 搭配 `options_values: {cpu: 0, gpu: 1}`。
+7. 数值类字段建议配置 `value_range`，这样设置页、侧边栏和动态范围属性都能复用同一份 schema。

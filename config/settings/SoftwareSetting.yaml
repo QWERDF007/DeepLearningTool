@@ -8,6 +8,7 @@ SoftwareSetting:
     软件:
       - name_en: max_recent_projects
         name_cn: 最近项目数量
+        desc: 用于配置软件设置中软件相关的最近项目数量。
         property_name: maxRecentProjects
         value: 10
         value_type: int
@@ -16,6 +17,7 @@ SoftwareSetting:
 
       - name_en: auto_save_interval
         name_cn: 自动保存间隔
+        desc: 用于配置软件设置中软件相关的自动保存间隔。
         property_name: autoSaveInterval
         value: 300
         value_type: int
@@ -24,6 +26,7 @@ SoftwareSetting:
 
       - name_en: auto_save_enabled
         name_cn: 启用自动保存
+        desc: 用于配置软件设置中软件相关的启用自动保存。
         property_name: autoSaveEnabled
         value: true
         value_type: bool
@@ -31,6 +34,7 @@ SoftwareSetting:
 
       - name_en: python_env_path
         name_cn: Python 环境目录
+        desc: 用于配置软件设置中软件相关的Python 环境目录。
         property_name: pythonEnvPath
         value: ""
         value_type: string

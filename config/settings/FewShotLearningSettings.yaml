@@ -9,6 +9,7 @@ FewShotLearningSettings:
     基础:
       - name_en: enabled
         name_cn: 启用
+        desc: 用于配置小样本学习中基础相关的启用。
         property_name: enabled
         value: true
         value_type: bool
@@ -17,6 +18,7 @@ FewShotLearningSettings:
     模型:
       - name_en: sam2_architecture
         name_cn: SAM2 架构
+        desc: 用于配置小样本学习中模型相关的SAM2 架构。
         property_name: sam2Architecture
         value: sam2.1_hiera_small
         value_type: string
@@ -25,6 +27,7 @@ FewShotLearningSettings:
 
       - name_en: sam2_checkpoint
         name_cn: SAM2 权重
+        desc: 用于配置小样本学习中模型相关的SAM2 权重。
         property_name: sam2Checkpoint
         value: python/fornib/FS-SAM2/checkpoint/sam2.1_hiera_base_plus.pt
         value_type: string
@@ -33,6 +36,7 @@ FewShotLearningSettings:
     训练参数:
       - name_en: kshot
         name_cn: K-shot
+        desc: 用于配置小样本学习中训练参数相关的K-shot。
         property_name: kshot
         value: 1
         value_type: int
@@ -41,6 +45,7 @@ FewShotLearningSettings:
 
       - name_en: epochs
         name_cn: 训练轮数
+        desc: 用于配置小样本学习中训练参数相关的训练轮数。
         property_name: epochs
         value: 50
         value_type: int
@@ -49,6 +54,7 @@ FewShotLearningSettings:
 
       - name_en: batch_size
         name_cn: Batch Size
+        desc: 用于配置小样本学习中训练参数相关的Batch Size。
         property_name: batchSize
         value: 2
         value_type: int
@@ -57,6 +63,7 @@ FewShotLearningSettings:
 
       - name_en: num_workers
         name_cn: 数据线程数
+        desc: 用于配置小样本学习中训练参数相关的数据线程数。
         property_name: numWorkers
         value: 0
         value_type: int
@@ -65,6 +72,7 @@ FewShotLearningSettings:
 
       - name_en: image_size
         name_cn: 图像尺寸
+        desc: 用于配置小样本学习中训练参数相关的图像尺寸。
         property_name: imageSize
         value: 1024
         value_type: int
@@ -73,6 +81,7 @@ FewShotLearningSettings:
 
       - name_en: learning_rate
         name_cn: 学习率
+        desc: 用于配置小样本学习中训练参数相关的学习率。
         property_name: learningRate
         value: 0.0001
         value_type: double
@@ -81,6 +90,7 @@ FewShotLearningSettings:
 
       - name_en: weight_decay
         name_cn: Weight Decay
+        desc: 用于配置小样本学习中训练参数相关的Weight Decay。
         property_name: weightDecay
         value: 0.000001
         value_type: double
@@ -90,6 +100,7 @@ FewShotLearningSettings:
     数据:
       - name_en: support_ratio
         name_cn: Support 比例
+        desc: 用于配置小样本学习中数据相关的Support 比例。
         property_name: supportRatio
         value: 0.5
         value_type: double
@@ -99,6 +110,7 @@ FewShotLearningSettings:
     输出:
       - name_en: output_dir
         name_cn: 输出目录
+        desc: 用于配置小样本学习中输出相关的输出目录。
         property_name: outputDir
         value: ""
         value_type: string

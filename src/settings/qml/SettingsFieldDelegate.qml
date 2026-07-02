@@ -13,6 +13,7 @@ Item {
     property int rowIndex: typeof index === "number" ? index : -1
     property string nameEn: model.nameEn || ""
     property string labelText: model.nameCn && model.nameCn.length > 0 ? model.nameCn : model.nameEn
+    property string descText: model.desc ? String(model.desc) : ""
     property string descriptionText: model.description ? String(model.description) : ""
     property string sectionText: model.section ? String(model.section) : ""
     property string previousSectionText: {
@@ -230,10 +231,23 @@ Item {
                 spacing: 16
 
                 ColumnLayout {
+                    id: labelColumn
+
                     Layout.preferredWidth: Math.min(280, Math.max(160, root.width * 0.3))
                     Layout.maximumWidth: Math.min(280, Math.max(160, root.width * 0.3))
                     Layout.fillHeight: true
                     spacing: 2
+
+                    HoverHandler {
+                        id: labelHover
+
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    }
+
+                    ToolTip.visible: labelHover.hovered && root.descText.length > 0
+                    ToolTip.delay: 500
+                    ToolTip.timeout: -1
+                    ToolTip.text: root.descText
 
                     Item {
                         Layout.fillHeight: true

@@ -8,6 +8,7 @@ UISettings:
     图像:
       - name_en: brightness
         name_cn: 图像亮度
+        desc: 用于配置界面设置中图像相关的图像亮度。
         property_name: imageBrightness
         value: 0.0
         value_type: double
@@ -23,6 +24,7 @@ UISettings:
 
       - name_en: contrast
         name_cn: 图像对比度
+        desc: 用于配置界面设置中图像相关的图像对比度。
         property_name: imageContrast
         value: 0.0
         value_type: double

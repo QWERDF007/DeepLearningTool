@@ -9,6 +9,7 @@ SmartAnnotationSettings:
     基础:
       - name_en: enabled
         name_cn: 启用
+        desc: 用于配置智能标注中基础相关的启用。
         property_name: enabled
         value: false
         value_type: bool
@@ -17,6 +18,7 @@ SmartAnnotationSettings:
     模型:
       - name_en: model
         name_cn: 模型
+        desc: 用于配置智能标注中模型相关的模型。
         property_name: model
         value: edge_sam
         value_type: string
@@ -25,6 +27,7 @@ SmartAnnotationSettings:
 
       - name_en: model_path
         name_cn: 模型文件
+        desc: 用于配置智能标注中模型相关的模型文件。
         property_name: modelPath
         value: F:/models/edge_sam.wts
         value_type: string
@@ -33,6 +36,7 @@ SmartAnnotationSettings:
     运行时:
       - name_en: model_backend
         name_cn: 推理后端
+        desc: 用于配置智能标注中运行时相关的推理后端。
         property_name: modelBackend
         value: 0
         value_type: int
@@ -45,6 +49,7 @@ SmartAnnotationSettings:
 
       - name_en: model_device
         name_cn: 推理设备
+        desc: 用于配置智能标注中运行时相关的推理设备。
         property_name: modelDevice
         value: 1
         value_type: int
@@ -57,6 +62,7 @@ SmartAnnotationSettings:
     Mask:
       - name_en: mask_threshold
         name_cn: Mask 阈值
+        desc: 用于配置智能标注中Mask相关的Mask 阈值。
         property_name: maskThreshold
         value: 0.0
         value_type: double
@@ -65,6 +71,7 @@ SmartAnnotationSettings:
 
       - name_en: polygon_simplify_epsilon
         name_cn: 轮廓简化
+        desc: 用于配置智能标注中Mask相关的轮廓简化。
         property_name: polygonSimplifyEpsilon
         value: 2.0
         value_type: double
@@ -73,6 +80,7 @@ SmartAnnotationSettings:
 
       - name_en: mask_alpha
         name_cn: Mask 透明度
+        desc: 用于配置智能标注中Mask相关的Mask 透明度。
         property_name: maskAlpha
         value: 0.35
         value_type: double
@@ -82,6 +90,7 @@ SmartAnnotationSettings:
     预览:
       - name_en: refresh_interval
         name_cn: 刷新间隔
+        desc: 用于配置智能标注中预览相关的刷新间隔。
         property_name: refreshInterval
         value: 80
         value_type: int
@@ -90,6 +99,7 @@ SmartAnnotationSettings:
 
       - name_en: use_viewport_input
         name_cn: 使用可视窗口
+        desc: 用于配置智能标注中预览相关的使用可视窗口。
         property_name: useViewportInput
         value: false
         value_type: bool

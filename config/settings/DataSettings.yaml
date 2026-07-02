@@ -8,6 +8,7 @@ DataSettings:
     缩略图:
       - name_en: margin
         name_cn: 缩略图边距
+        desc: 用于配置数据设置中缩略图相关的缩略图边距。
         property_name: thumbnailMargin
         value: 10
         value_type: int
@@ -16,6 +17,7 @@ DataSettings:
 
       - name_en: cache_size
         name_cn: 缩略图缓存
+        desc: 用于配置数据设置中缩略图相关的缩略图缓存。
         property_name: thumbnailCacheSize
         value: 100
         value_type: int
@@ -24,6 +26,7 @@ DataSettings:
 
       - name_en: image_load_threads
         name_cn: 图像加载线程
+        desc: 用于配置数据设置中缩略图相关的图像加载线程。
         property_name: imageLoadThreads
         value: 4
         value_type: int
@@ -33,6 +36,7 @@ DataSettings:
     图像单元:
       - name_en: cell_scale
         name_cn: 图像单元缩放
+        desc: 用于配置数据设置中图像单元相关的图像单元缩放。
         property_name: imageCellScale
         value: 1.0
         value_type: double
@@ -49,6 +53,7 @@ DataSettings:
 
       - name_en: cell_scale_from
         name_cn: 图像单元缩放下限
+        desc: 用于配置数据设置中图像单元相关的图像单元缩放下限。
         property_name: imageCellScaleFrom
         value: 0.5
         value_type: double
@@ -57,6 +62,7 @@ DataSettings:
 
       - name_en: cell_scale_to
         name_cn: 图像单元缩放上限
+        desc: 用于配置数据设置中图像单元相关的图像单元缩放上限。
         property_name: imageCellScaleTo
         value: 4.0
         value_type: double
@@ -65,6 +71,7 @@ DataSettings:
 
       - name_en: cell_scale_step
         name_cn: 图像单元缩放步长
+        desc: 用于配置数据设置中图像单元相关的图像单元缩放步长。
         property_name: imageCellScaleStepSize
         value: 0.25
         value_type: double
@@ -74,6 +81,7 @@ DataSettings:
     标注显示:
       - name_en: label_scale
         name_cn: 标注缩略图缩放
+        desc: 用于配置数据设置中标注显示相关的标注缩略图缩放。
         property_name: labelThumbnailScale
         value: 1.0
         value_type: double
@@ -87,6 +95,7 @@ DataSettings:
 
       - name_en: label_aspect_ratio
         name_cn: 标注缩略图宽高比
+        desc: 用于配置数据设置中标注显示相关的标注缩略图宽高比。
         property_name: labelThumbnailAspectRatio
         value: 1.0
         value_type: double
@@ -99,6 +108,7 @@ DataSettings:
 
       - name_en: label_border_padding
         name_cn: 标注缩略图边框留白
+        desc: 用于配置数据设置中标注显示相关的标注缩略图边框留白。
         property_name: labelThumbnailBorderPadding
         value: 0.1
         value_type: double
@@ -111,6 +121,7 @@ DataSettings:
 
       - name_en: border_width
         name_cn: 标注边框宽度
+        desc: 用于配置数据设置中标注显示相关的标注边框宽度。
         property_name: labelBorderWidth
         value: 2
         value_type: int
@@ -119,6 +130,7 @@ DataSettings:
 
       - name_en: fill_opacity
         name_cn: 标注填充透明度
+        desc: 用于配置数据设置中标注显示相关的标注填充透明度。
         property_name: labelFillOpacity
         value: 30
         value_type: int

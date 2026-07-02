@@ -9,6 +9,7 @@ ImageClusterSettings:
     基础:
       - name_en: enabled
         name_cn: 启用
+        desc: 用于配置图像聚类中基础相关的启用。
         property_name: enabled
         value: true
         value_type: bool
@@ -17,6 +18,7 @@ ImageClusterSettings:
     模型:
       - name_en: model
         name_cn: 模型
+        desc: 用于配置图像聚类中模型相关的模型。
         property_name: model
         value: dinov2_vits14
         value_type: string
@@ -39,6 +41,7 @@ ImageClusterSettings:
 
       - name_en: model_path
         name_cn: 模型文件
+        desc: 用于配置图像聚类中模型相关的模型文件。
         property_name: modelPath
         value: ""
         value_type: string
@@ -46,6 +49,7 @@ ImageClusterSettings:
 
       - name_en: feature_name
         name_cn: 特征层
+        desc: 用于配置图像聚类中模型相关的特征层。
         property_name: featureName
         value: x_norm_clstoken
         value_type: string
@@ -69,6 +73,7 @@ ImageClusterSettings:
 
       - name_en: model_batch_size
         name_cn: 模型批量
+        desc: 用于配置图像聚类中模型相关的模型批量。
         property_name: modelBatchSize
         value: 1
         value_type: int
@@ -78,6 +83,7 @@ ImageClusterSettings:
     特征:
       - name_en: norm
         name_cn: 特征归一化
+        desc: 用于配置图像聚类中特征相关的特征归一化。
         property_name: norm
         value: 2
         value_type: int
@@ -90,6 +96,7 @@ ImageClusterSettings:
 
       - name_en: use_pca
         name_cn: 启用 PCA
+        desc: 用于配置图像聚类中特征相关的启用 PCA。
         property_name: usePca
         value: false
         value_type: bool
@@ -97,6 +104,7 @@ ImageClusterSettings:
 
       - name_en: pca_dim
         name_cn: PCA 维度
+        desc: 用于配置图像聚类中特征相关的PCA 维度。
         property_name: pcaDim
         value: 0
         value_type: int
@@ -106,14 +114,16 @@ ImageClusterSettings:
     HDBSCAN:
       - name_en: min_cluster_size
         name_cn: 最小簇大小
+        desc: 用于配置图像聚类中HDBSCAN相关的最小簇大小。
         property_name: minClusterSize
         value: 5
         value_type: int
-        value_range: [1, 1000000, 1]
+        value_range: [2, 1000000, 1]
         control_type: spin
 
       - name_en: min_samples
         name_cn: 最小样本数
+        desc: 用于配置图像聚类中HDBSCAN相关的最小样本数。
         property_name: minSamples
         value: 0
         value_type: int
@@ -122,6 +132,7 @@ ImageClusterSettings:
 
       - name_en: cluster_selection_epsilon
         name_cn: 簇选择 Epsilon
+        desc: 用于配置图像聚类中HDBSCAN相关的簇选择 Epsilon。
         property_name: clusterSelectionEpsilon
         value: 0.0
         value_type: double
@@ -130,6 +141,7 @@ ImageClusterSettings:
 
       - name_en: max_cluster_size
         name_cn: 最大簇大小
+        desc: 用于配置图像聚类中HDBSCAN相关的最大簇大小。
         property_name: maxClusterSize
         value: 0
         value_type: int
@@ -138,6 +150,7 @@ ImageClusterSettings:
 
       - name_en: algorithm
         name_cn: 邻居搜索
+        desc: 用于配置图像聚类中HDBSCAN相关的邻居搜索。
         property_name: algorithm
         value: 2
         value_type: int
@@ -151,6 +164,7 @@ ImageClusterSettings:
 
       - name_en: cluster_selection_method
         name_cn: 簇选择方法
+        desc: 用于配置图像聚类中HDBSCAN相关的簇选择方法。
         property_name: clusterSelectionMethod
         value: 0
         value_type: int
@@ -163,6 +177,7 @@ ImageClusterSettings:
     输出:
       - name_en: include_noise
         name_cn: 导出噪声簇
+        desc: 用于配置图像聚类中输出相关的导出噪声簇。
         property_name: includeNoise
         value: true
         value_type: bool
@@ -170,6 +185,7 @@ ImageClusterSettings:
 
       - name_en: apply_mode
         name_cn: 输出方式
+        desc: 用于配置图像聚类中输出相关的输出方式。
         property_name: applyMode
         value: 0
         value_type: int
@@ -182,6 +198,7 @@ ImageClusterSettings:
     运行时:
       - name_en: preprocess_backend
         name_cn: 预处理后端
+        desc: 用于配置图像聚类中运行时相关的预处理后端。
         property_name: preprocessBackend
         value: 0
         value_type: int
@@ -193,6 +210,7 @@ ImageClusterSettings:
 
       - name_en: model_backend
         name_cn: 推理后端
+        desc: 用于配置图像聚类中运行时相关的推理后端。
         property_name: modelBackend
         value: 0
         value_type: int
@@ -205,6 +223,7 @@ ImageClusterSettings:
 
       - name_en: model_device
         name_cn: 推理设备
+        desc: 用于配置图像聚类中运行时相关的推理设备。
         property_name: modelDevice
         value: 1
         value_type: int

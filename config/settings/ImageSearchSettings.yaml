@@ -9,6 +9,7 @@ ImageSearchSettings:
     基础:
       - name_en: enabled
         name_cn: 启用
+        desc: 用于配置图像搜索中基础相关的启用。
         property_name: enabled
         value: true
         value_type: bool
@@ -17,6 +18,7 @@ ImageSearchSettings:
     模型:
       - name_en: model
         name_cn: 模型
+        desc: 用于配置图像搜索中模型相关的模型。
         property_name: model
         value: dinov2_vits14
         value_type: string
@@ -39,6 +41,7 @@ ImageSearchSettings:
 
       - name_en: model_path
         name_cn: 模型文件
+        desc: 用于配置图像搜索中模型相关的模型文件。
         property_name: modelPath
         value: ""
         value_type: string
@@ -46,6 +49,7 @@ ImageSearchSettings:
 
       - name_en: feature_name
         name_cn: 特征层
+        desc: 用于配置图像搜索中模型相关的特征层。
         property_name: featureName
         value: x_norm_clstoken
         value_type: string
@@ -69,6 +73,7 @@ ImageSearchSettings:
 
       - name_en: model_batch_size
         name_cn: 模型批量
+        desc: 用于配置图像搜索中模型相关的模型批量。
         property_name: modelBatchSize
         value: 1
         value_type: int
@@ -78,6 +83,7 @@ ImageSearchSettings:
     索引:
       - name_en: rebuild_index
         name_cn: 重建索引
+        desc: 用于配置图像搜索中索引相关的重建索引。
         property_name: rebuildIndex
         value: false
         value_type: bool
@@ -85,6 +91,7 @@ ImageSearchSettings:
 
       - name_en: top_k
         name_cn: 返回数量
+        desc: 用于配置图像搜索中索引相关的返回数量。
         property_name: topK
         value: 5
         value_type: int
@@ -93,6 +100,7 @@ ImageSearchSettings:
 
       - name_en: norm
         name_cn: 特征归一化
+        desc: 用于配置图像搜索中索引相关的特征归一化。
         property_name: norm
         value: 2
         value_type: int
@@ -105,6 +113,7 @@ ImageSearchSettings:
 
       - name_en: index_storage
         name_cn: 索引存储
+        desc: 用于配置图像搜索中索引相关的索引存储。
         property_name: indexStorage
         value: 0
         value_type: int
@@ -116,6 +125,7 @@ ImageSearchSettings:
 
       - name_en: index_directory
         name_cn: 索引目录
+        desc: 用于配置图像搜索中索引相关的索引目录。
         property_name: indexDirectory
         value: ""
         value_type: string
@@ -124,6 +134,7 @@ ImageSearchSettings:
     运行时:
       - name_en: preprocess_backend
         name_cn: 预处理后端
+        desc: 用于配置图像搜索中运行时相关的预处理后端。
         property_name: preprocessBackend
         value: 0
         value_type: int
@@ -135,6 +146,7 @@ ImageSearchSettings:
 
       - name_en: faiss_backend
         name_cn: FAISS 后端
+        desc: 用于配置图像搜索中运行时相关的FAISS 后端。
         property_name: faissBackend
         value: 0
         value_type: int
@@ -146,6 +158,7 @@ ImageSearchSettings:
 
       - name_en: model_backend
         name_cn: 推理后端
+        desc: 用于配置图像搜索中运行时相关的推理后端。
         property_name: modelBackend
         value: 0
         value_type: int
@@ -158,6 +171,7 @@ ImageSearchSettings:
 
       - name_en: model_device
         name_cn: 推理设备
+        desc: 用于配置图像搜索中运行时相关的推理设备。
         property_name: modelDevice
         value: 1
         value_type: int

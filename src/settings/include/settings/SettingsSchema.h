@@ -44,6 +44,7 @@ struct SETTINGS_API SettingsField
     QString      options_key_field; ///< options_map 的联动字段的 name_en。
     QVariantMap  sidebar;           ///< 侧边栏展示配置。
     QString      section;           ///< 所属分区名称。
+    QString      desc;              ///< 简短说明，用于 tooltip。
     QString      description;       ///< 说明文本。
     bool         visible{true};     ///< 是否在界面中显示。
     int          ordinal_index{0};  ///< 分组内排序索引。
@@ -89,6 +90,7 @@ public:
         OptionsKeyFieldRole,           ///< 动态选项键字段。
         SidebarRole,                   ///< 侧边栏配置。
         SectionRole,                   ///< 分区名称。
+        DescRole,                      ///< tooltip 说明文本。
         DescriptionRole,               ///< 描述文本。
         VisibleRole,                   ///< 可见性。
         OrdinalIndexRole,              ///< 排序索引。
