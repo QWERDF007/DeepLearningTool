@@ -5,97 +5,92 @@ SmartAnnotationSettings:
   category: advanced
   ordinal_index: 120
   label: 智能标注
-  fields:
-    - name_en: enabled
-      name_cn: 启用
-      property_name: enabled
-      value: false
-      value_type: bool
-      control_type: checkbox
-      section: 基础
+  sections:
+    基础:
+      - name_en: enabled
+        name_cn: 启用
+        property_name: enabled
+        value: false
+        value_type: bool
+        control_type: checkbox
 
-    - name_en: model
-      name_cn: 模型
-      property_name: model
-      value: edge_sam
-      value_type: string
-      control_type: combo
-      options: [edge_sam, sam_vit_b, sam_vit_l, sam_vit_h, sam2_hiera_tiny, sam2_hiera_small, sam2_hiera_base_plus, sam2_hiera_large, sam2_1_hiera_tiny, sam2_1_hiera_small, sam2_1_hiera_base_plus, sam2_1_hiera_large]
-      section: 模型
+    模型:
+      - name_en: model
+        name_cn: 模型
+        property_name: model
+        value: edge_sam
+        value_type: string
+        control_type: combo
+        options: [edge_sam, sam_vit_b, sam_vit_l, sam_vit_h, sam2_hiera_tiny, sam2_hiera_small, sam2_hiera_base_plus, sam2_hiera_large, sam2_1_hiera_tiny, sam2_1_hiera_small, sam2_1_hiera_base_plus, sam2_1_hiera_large]
 
-    - name_en: model_path
-      name_cn: 模型文件
-      property_name: modelPath
-      value: F:/models/edge_sam.wts
-      value_type: string
-      control_type: path
-      section: 模型
+      - name_en: model_path
+        name_cn: 模型文件
+        property_name: modelPath
+        value: F:/models/edge_sam.wts
+        value_type: string
+        control_type: path
 
-    - name_en: model_backend
-      name_cn: 推理后端
-      property_name: modelBackend
-      value: 0
-      value_type: int
-      control_type: combo
-      options: [tensorrt, openvino, onnxruntime]
-      options_values:
-        tensorrt: 0
-        openvino: 1
-        onnxruntime: 2
-      section: 运行时
+    运行时:
+      - name_en: model_backend
+        name_cn: 推理后端
+        property_name: modelBackend
+        value: 0
+        value_type: int
+        control_type: combo
+        options: [tensorrt, openvino, onnxruntime]
+        options_values:
+          tensorrt: 0
+          openvino: 1
+          onnxruntime: 2
 
-    - name_en: model_device
-      name_cn: 推理设备
-      property_name: modelDevice
-      value: 1
-      value_type: int
-      control_type: combo
-      options: [gpu, cpu]
-      options_values:
-        cpu: 0
-        gpu: 1
-      section: 运行时
+      - name_en: model_device
+        name_cn: 推理设备
+        property_name: modelDevice
+        value: 1
+        value_type: int
+        control_type: combo
+        options: [gpu, cpu]
+        options_values:
+          cpu: 0
+          gpu: 1
 
-    - name_en: mask_threshold
-      name_cn: Mask 阈值
-      property_name: maskThreshold
-      value: 0.0
-      value_type: double
-      value_range: [-20.0, 20.0, 0.1]
-      control_type: slider
-      section: Mask
+    Mask:
+      - name_en: mask_threshold
+        name_cn: Mask 阈值
+        property_name: maskThreshold
+        value: 0.0
+        value_type: double
+        value_range: [-20.0, 20.0, 0.1]
+        control_type: slider
 
-    - name_en: polygon_simplify_epsilon
-      name_cn: 轮廓简化
-      property_name: polygonSimplifyEpsilon
-      value: 2.0
-      value_type: double
-      value_range: [0.0, 50.0, 0.5]
-      control_type: slider
-      section: Mask
+      - name_en: polygon_simplify_epsilon
+        name_cn: 轮廓简化
+        property_name: polygonSimplifyEpsilon
+        value: 2.0
+        value_type: double
+        value_range: [0.0, 50.0, 0.5]
+        control_type: slider
 
-    - name_en: mask_alpha
-      name_cn: Mask 透明度
-      property_name: maskAlpha
-      value: 0.35
-      value_type: double
-      value_range: [0.0, 1.0, 0.05]
-      control_type: slider
-      section: Mask
+      - name_en: mask_alpha
+        name_cn: Mask 透明度
+        property_name: maskAlpha
+        value: 0.35
+        value_type: double
+        value_range: [0.0, 1.0, 0.05]
+        control_type: slider
 
-    - name_en: refresh_interval
-      name_cn: 刷新间隔
-      property_name: refreshInterval
-      value: 80
-      value_type: int
-      value_range: [20, 5000, 10]
-      control_type: spin
-      section: 预览
+    预览:
+      - name_en: refresh_interval
+        name_cn: 刷新间隔
+        property_name: refreshInterval
+        value: 80
+        value_type: int
+        value_range: [20, 5000, 10]
+        control_type: spin
 
-    - name_en: use_viewport_input
-      name_cn: 使用可视窗口
-      property_name: useViewportInput
-      value: false
-      value_type: bool
-      control_type: checkbox
-      section: 预览
+      - name_en: use_viewport_input
+        name_cn: 使用可视窗口
+        property_name: useViewportInput
+        value: false
+        value_type: bool
+        control_type: checkbox

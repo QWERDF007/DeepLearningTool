@@ -22,7 +22,7 @@
 | `category` | 设置分类，例如 `general`、`advanced`，用于 UI 分类或筛选。 |
 | `ordinal_index` | 分组排序序号。 |
 | `label` | 设置页显示名称。 |
-| `fields` | 当前分组下的设置字段列表。 |
+| `sections` | 当前分组下的设置页分区。key 是分区标题，value 是该分区的字段列表。 |
 
 运行时路径规则：
 
@@ -47,9 +47,22 @@ GlobalSettings.valueForField(SettingsAccessor.Ui, UiField.Brightness, 0.0)
 GlobalSettings.setFieldValue(SettingsAccessor.RoiSearch, RoiSearchField.TopK, 10)
 ```
 
-## 字段定义
+## Section 与字段定义
 
-每个 `fields` 条目支持以下常用字段：
+`sections` 必须是 map。每个 section 节点作为字段列表父节点，同一个 section 的字段放在一起：
+
+```yaml
+sections:
+  缩略图:
+    - name_en: margin
+      name_cn: 缩略图边距
+      property_name: thumbnailMargin
+      value: 10
+      value_type: int
+      control_type: slider
+```
+
+每个 section 下的字段条目支持以下常用字段：
 
 | 字段 | 说明 |
 | --- | --- |
@@ -65,7 +78,6 @@ GlobalSettings.setFieldValue(SettingsAccessor.RoiSearch, RoiSearchField.TopK, 10
 | `options_values` | 可选的 combo 显示值到实际值映射；未配置时实际值等于 `options` 中的显示值。 |
 | `options_map` | 动态选项映射。 |
 | `options_key_field` | `options_map` 使用的键字段 `name_en`。 |
-| `section` | 设置页内部分组标题。 |
 | `description` | 可选说明文本。 |
 | `visible` | 是否在设置页显示，默认 `true`。 |
 | `ordinal_index` | 字段排序序号。 |
@@ -114,7 +126,7 @@ sidebar:
 
 ## 新增设置约定
 
-1. 新增分组时，优先新增一个 YAML 文件，配置 `table`、`accessor`、`label`、`category`、`ordinal_index` 和 `fields`。
+1. 新增分组时，优先新增一个 YAML 文件，配置 `table`、`accessor`、`label`、`category`、`ordinal_index` 和 `sections`。
 2. 新增高级设置时，使用 `parent_accessor: advanced`，例如 `advanced.myFeature`。
 3. QML/C++ 侧不要直接依赖文件名、group key 或属性名；固定字段优先使用生成的 `SettingsAccessor` 和 `*Field` 枚举。
 4. 设置页字段展示应依赖 catalog 模型；侧边栏入口应通过字段的 `sidebar` 元数据声明。

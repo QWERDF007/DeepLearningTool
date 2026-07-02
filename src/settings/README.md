@@ -29,7 +29,7 @@
 - `ordinal_index`：设置组排序值；未配置时按加载顺序生成。
 - `sidebar`：可选的组级侧边栏或其它视图元数据。
 - `label`：设置页面显示名称。
-- `fields`：该组下的设置项列表。
+- `sections`：该组下的设置页分区。key 是分区标题，value 是该分区的字段列表。
 
 每个 field 支持的主要字段：
 
@@ -44,7 +44,7 @@
 - `options_values` / `option_values` / `options_value_map`：可选的 combo 显示值到实际值映射；未配置时实际值等于 `options` 中的显示值。
 - `options_map` / `key_values` / `values_map`：按其它字段值切换的动态选项。
 - `sidebar`：字段级侧边栏元数据，按 sidebar key 分组，例如 `gallery`、`review`，可配置 `icon`、`ordinal_index`、`from`、`to`、`step`、`snap` 等。
-- `section`、`description`、`visible`、`ordinal_index`：界面分组、说明、可见性和排序信息。
+- `description`、`visible`、`ordinal_index`：说明、可见性和排序信息。字段的 `section` 角色由父 section 节点名生成。
 
 ## QML 访问方式
 
@@ -139,8 +139,8 @@ QML 侧优先使用枚举入口，避免手写 accessor path：
 
 新增或删除设置项时优先修改 `config/settings/*.yaml`：
 
-1. 新增 group：添加一个 YAML 顶层 group，并配置 `table`、`accessor`、`label` 和 `fields`。
-2. 新增字段：在 group 的 `fields` 下添加 field，并配置 `name_en`、`property_name`、`value_type`、`value`、`control_type` 等。
+1. 新增 group：添加一个 YAML 顶层 group，并配置 `table`、`accessor`、`label` 和 `sections`。
+2. 新增字段：在 group 的对应 section 节点下添加 field，并配置 `name_en`、`property_name`、`value_type`、`value`、`control_type` 等。
 3. 动态列表：简单列表使用 `options`；需要显示值和保存值不一致时，使用 `options_values`；如果列表依赖其它字段值，使用 `options_map` 这类 key-values 结构，例如按 `model` 映射到不同特征层名列表。
 4. 访问路径：通过 `accessor` 和 `parent_accessor` 决定，例如 `parent_accessor: advanced` + `accessor: roiSearch` 对应内部路径 `advanced.roiSearch`，QML 使用 `SettingsAccessor.RoiSearch` 访问。
 5. 侧边栏入口：给字段添加 `sidebar` 元数据，例如 `sidebar.gallery.icon: Brightness`，侧边栏通过 `GlobalSettings.catalog.sidebarFieldsFor(SettingsSidebar.Gallery)` 动态生成按钮。

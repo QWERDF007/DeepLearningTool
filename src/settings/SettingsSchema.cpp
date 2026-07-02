@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QQmlEngine>
 #include <algorithm>
+#include <stdexcept>
 
 namespace dltool::settings {
 
@@ -50,7 +51,7 @@ QString joinedAccessorPath(const QString &parent_accessor, const QString &access
     return parent_accessor + QLatin1Char('.') + accessor;
 }
 
-SettingsField parseField(const YAML::Node &node, const int ordinal_index)
+SettingsField parseField(const YAML::Node &node, const QString &section, const int ordinal_index)
 {
     SettingsField field;
     field.name_en       = nodeString(node["name_en"]);
@@ -66,7 +67,7 @@ SettingsField parseField(const YAML::Node &node, const int ordinal_index)
     field.options_map       = nodeVariant(node["options_map"]).toMap();
     field.options_key_field = nodeString(node["options_key_field"]);
     field.sidebar           = nodeVariant(node["sidebar"]).toMap();
-    field.section           = nodeString(node["section"]);
+    field.section           = section;
     field.description       = nodeString(node["description"]);
     field.visible           = node["visible"] ? node["visible"].as<bool>() : true;
     field.ordinal_index     = node["ordinal_index"] ? node["ordinal_index"].as<int>() : ordinal_index;
@@ -695,35 +696,71 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
 
             for (auto it = root.begin(); it != root.end(); ++it)
             {
-                const QString    group_key   = nodeString(it->first);
-                const YAML::Node group       = it->second;
-                YAML::Node       fields_node = group.IsSequence() ? group : group["fields"];
-                const QString    table_name  = group.IsMap() ? nodeString(group["table"], defaultTableName(group_key))
-                                                             : defaultTableName(group_key);
-                const QString    label       = group.IsMap() ? nodeString(group["label"], group_key) : group_key;
-                const QString    accessor    = group.IsMap() ? nodeString(group["accessor"]) : QString();
-                const QString    parent_accessor
-                    = group.IsMap() ? nodeString(group["parent_accessor"]) : QString();
-                const QString     category = group.IsMap() ? nodeString(group["category"]) : QString();
-                const QVariantMap sidebar  = group.IsMap() ? nodeVariant(group["sidebar"]).toMap() : QVariantMap{};
-                const int group_ordinal    = group.IsMap() && group["ordinal_index"] ? group["ordinal_index"].as<int>()
-                                                                                     : static_cast<int>(groups_.size());
-                if (!fields_node || !fields_node.IsSequence())
-                    continue;
+                const QString    group_key = nodeString(it->first);
+                const YAML::Node group     = it->second;
+                if (!group || !group.IsMap())
+                {
+                    const QString message
+                        = QStringLiteral("%1: group %2 must be a map").arg(file.absoluteFilePath(), group_key);
+                    throw std::runtime_error(message.toStdString());
+                }
+
+                const YAML::Node sections_node = group["sections"];
+                if (!sections_node || !sections_node.IsMap())
+                {
+                    const QString message = QStringLiteral("%1: group %2 missing sections map")
+                                                .arg(file.absoluteFilePath(), group_key);
+                    throw std::runtime_error(message.toStdString());
+                }
+
+                const QString     table_name      = nodeString(group["table"], defaultTableName(group_key));
+                const QString     label           = nodeString(group["label"], group_key);
+                const QString     accessor        = nodeString(group["accessor"]);
+                const QString     parent_accessor = nodeString(group["parent_accessor"]);
+                const QString     category        = nodeString(group["category"]);
+                const QVariantMap sidebar         = nodeVariant(group["sidebar"]).toMap();
+                const int         group_ordinal   = group["ordinal_index"] ? group["ordinal_index"].as<int>()
+                                                                            : static_cast<int>(groups_.size());
 
                 std::vector<SettingsField> fields;
                 int                        ordinal = 0;
-                for (const YAML::Node &field_node : fields_node)
+                for (auto section_it = sections_node.begin(); section_it != sections_node.end(); ++section_it)
                 {
-                    SettingsField field = parseField(field_node, ordinal++);
-                    if (!field.name_en.isEmpty())
+                    if (!section_it->first.IsScalar())
                     {
-                        if (!field_node["property_name"])
+                        const QString message = QStringLiteral("%1: group %2 section key must be a scalar")
+                                                    .arg(file.absoluteFilePath(), group_key);
+                        throw std::runtime_error(message.toStdString());
+                    }
+
+                    const QString    section_name = nodeString(section_it->first);
+                    const YAML::Node section_node = section_it->second;
+                    if (!section_node || !section_node.IsSequence())
+                    {
+                        const QString message = QStringLiteral("%1: group %2 section %3 must be a field sequence")
+                                                    .arg(file.absoluteFilePath(), group_key, section_name);
+                        throw std::runtime_error(message.toStdString());
+                    }
+
+                    for (const YAML::Node &field_node : section_node)
+                    {
+                        if (!field_node || !field_node.IsMap())
                         {
-                            spdlog::warn("Settings field missing property_name: group={}, field={}",
-                                         group_key.toUtf8().constData(), field.name_en.toUtf8().constData());
+                            const QString message = QStringLiteral("%1: group %2 section %3 contains a non-map field")
+                                                        .arg(file.absoluteFilePath(), group_key, section_name);
+                            throw std::runtime_error(message.toStdString());
                         }
-                        fields.push_back(std::move(field));
+
+                        SettingsField field = parseField(field_node, section_name, ordinal++);
+                        if (!field.name_en.isEmpty())
+                        {
+                            if (!field_node["property_name"])
+                            {
+                                spdlog::warn("Settings field missing property_name: group={}, field={}",
+                                             group_key.toUtf8().constData(), field.name_en.toUtf8().constData());
+                            }
+                            fields.push_back(std::move(field));
+                        }
                     }
                 }
                 addGroup(group_key, table_name, label, accessor, parent_accessor, category, sidebar, group_ordinal,

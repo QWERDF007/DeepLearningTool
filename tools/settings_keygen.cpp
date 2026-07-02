@@ -202,47 +202,63 @@ GroupInfo parseGroup(const std::filesystem::path &file, const std::string &yaml_
     group.accessor        = scalar(node, "accessor", context);
     group.parent_accessor = scalar(node, "parent_accessor", context, false);
     group.accessor_path = group.parent_accessor.empty() ? group.accessor : group.parent_accessor + "." + group.accessor;
-    const YAML::Node fields = node["fields"];
-    if (!fields || !fields.IsSequence())
+    const YAML::Node sections = node["sections"];
+    if (!sections || !sections.IsMap())
     {
-        fail(context + ": missing fields sequence");
+        fail(context + ": missing sections map");
     }
 
     std::set<std::string> field_enum_names;
     std::set<std::string> field_names;
     std::set<std::string> property_names;
 
-    for (std::size_t i = 0; i < fields.size(); ++i)
+    for (YAML::const_iterator section_it = sections.begin(); section_it != sections.end(); ++section_it)
     {
-        const YAML::Node field_node = fields[i];
-        if (!field_node || !field_node.IsMap())
+        if (!section_it->first.IsScalar())
         {
-            fail(context + ": field #" + std::to_string(i) + " is not a map");
+            fail(context + ": section key must be a scalar");
         }
 
-        const std::string field_context = context + ".fields[" + std::to_string(i) + "]";
-        FieldInfo         field;
-        field.name_en       = scalar(field_node, "name_en", field_context);
-        field.property_name = scalar(field_node, "property_name", field_context);
-        field.value_type    = scalar(field_node, "value_type", field_context);
-        field.enum_name     = field_node["key"]
-                                ? toPascalIdentifier(field_node["key"].as<std::string>(), field_context + ".key")
-                                : toPascalIdentifier(field.name_en, field_context + ".name_en");
-
-        if (!field_enum_names.insert(field.enum_name).second)
+        const std::string section_name    = section_it->first.as<std::string>();
+        const YAML::Node  section_fields  = section_it->second;
+        const std::string section_context = context + ".sections[" + section_name + "]";
+        if (!section_fields || !section_fields.IsSequence())
         {
-            fail(field_context + ": duplicate field key '" + field.enum_name + "'");
-        }
-        if (!field_names.insert(field.name_en).second)
-        {
-            fail(field_context + ": duplicate name_en '" + field.name_en + "'");
-        }
-        if (!property_names.insert(field.property_name).second)
-        {
-            fail(field_context + ": duplicate property_name '" + field.property_name + "'");
+            fail(section_context + ": expected field sequence");
         }
 
-        group.fields.push_back(std::move(field));
+        for (std::size_t i = 0; i < section_fields.size(); ++i)
+        {
+            const YAML::Node field_node = section_fields[i];
+            if (!field_node || !field_node.IsMap())
+            {
+                fail(section_context + ": field #" + std::to_string(i) + " is not a map");
+            }
+
+            const std::string field_context = section_context + "[" + std::to_string(i) + "]";
+            FieldInfo         field;
+            field.name_en       = scalar(field_node, "name_en", field_context);
+            field.property_name = scalar(field_node, "property_name", field_context);
+            field.value_type    = scalar(field_node, "value_type", field_context);
+            field.enum_name     = field_node["key"]
+                                    ? toPascalIdentifier(field_node["key"].as<std::string>(), field_context + ".key")
+                                    : toPascalIdentifier(field.name_en, field_context + ".name_en");
+
+            if (!field_enum_names.insert(field.enum_name).second)
+            {
+                fail(field_context + ": duplicate field key '" + field.enum_name + "'");
+            }
+            if (!field_names.insert(field.name_en).second)
+            {
+                fail(field_context + ": duplicate name_en '" + field.name_en + "'");
+            }
+            if (!property_names.insert(field.property_name).second)
+            {
+                fail(field_context + ": duplicate property_name '" + field.property_name + "'");
+            }
+
+            group.fields.push_back(std::move(field));
+        }
     }
 
     return group;

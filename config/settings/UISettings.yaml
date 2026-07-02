@@ -4,35 +4,34 @@ UISettings:
   category: general
   ordinal_index: 30
   label: 界面设置
-  fields:
-    - name_en: brightness
-      name_cn: 图像亮度
-      property_name: imageBrightness
-      value: 0.0
-      value_type: double
-      value_range: [-1.0, 1.0, 0.1]
-      control_type: slider
-      sidebar:
-        gallery:
-          icon: Brightness
-          ordinal_index: 20
-        review:
-          icon: Brightness
-          ordinal_index: 40
-      section: 图像
+  sections:
+    图像:
+      - name_en: brightness
+        name_cn: 图像亮度
+        property_name: imageBrightness
+        value: 0.0
+        value_type: double
+        value_range: [-1.0, 1.0, 0.1]
+        control_type: slider
+        sidebar:
+          gallery:
+            icon: Brightness
+            ordinal_index: 20
+          review:
+            icon: Brightness
+            ordinal_index: 40
 
-    - name_en: contrast
-      name_cn: 图像对比度
-      property_name: imageContrast
-      value: 0.0
-      value_type: double
-      value_range: [-1.0, 1.0, 0.1]
-      control_type: slider
-      sidebar:
-        gallery:
-          icon: BlueLight
-          ordinal_index: 30
-        review:
-          icon: BlueLight
-          ordinal_index: 50
-      section: 图像
+      - name_en: contrast
+        name_cn: 图像对比度
+        property_name: imageContrast
+        value: 0.0
+        value_type: double
+        value_range: [-1.0, 1.0, 0.1]
+        control_type: slider
+        sidebar:
+          gallery:
+            icon: BlueLight
+            ordinal_index: 30
+          review:
+            icon: BlueLight
+            ordinal_index: 50

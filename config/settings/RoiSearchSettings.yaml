@@ -5,226 +5,211 @@ RoiSearchSettings:
   category: advanced
   ordinal_index: 110
   label: 标注搜索
-  fields:
-    - name_en: enabled
-      name_cn: 启用
-      property_name: enabled
-      value: true
-      value_type: bool
-      control_type: checkbox
-      section: 基础
+  sections:
+    基础:
+      - name_en: enabled
+        name_cn: 启用
+        property_name: enabled
+        value: true
+        value_type: bool
+        control_type: checkbox
 
-    - name_en: model
-      name_cn: 模型
-      property_name: model
-      value: dinov2_vits14_reg
-      value_type: string
-      control_type: combo
-      options:
-        - resnet18
-        - resnet34
-        - resnet50
-        - dinov2_vits14
-        - dinov2_vitb14
-        - dinov2_vitl14
-        - dinov2_vitg14
-        - dinov2_vits14_reg
-        - dinov2_vitb14_reg
-        - dinov2_vitl14_reg
-        - dinov2_vitg14_reg
-        - dinov3_vits16
-        - dinov3_vitb16
-        - dinov3_vitl16
-      section: 模型
+    模型:
+      - name_en: model
+        name_cn: 模型
+        property_name: model
+        value: dinov2_vits14_reg
+        value_type: string
+        control_type: combo
+        options:
+          - resnet18
+          - resnet34
+          - resnet50
+          - dinov2_vits14
+          - dinov2_vitb14
+          - dinov2_vitl14
+          - dinov2_vitg14
+          - dinov2_vits14_reg
+          - dinov2_vitb14_reg
+          - dinov2_vitl14_reg
+          - dinov2_vitg14_reg
+          - dinov3_vits16
+          - dinov3_vitb16
+          - dinov3_vitl16
 
-    - name_en: model_path
-      name_cn: 模型文件
-      property_name: modelPath
-      value: ""
-      value_type: string
-      control_type: path
-      section: 模型
+      - name_en: model_path
+        name_cn: 模型文件
+        property_name: modelPath
+        value: ""
+        value_type: string
+        control_type: path
 
-    - name_en: feature_name
-      name_cn: 特征层
-      property_name: featureName
-      value: x_norm_patchtokens
-      value_type: string
-      control_type: combo
-      options_key_field: model
-      options_map:
-        resnet18: [layer1, layer2, layer3, layer4]
-        resnet34: [layer1, layer2, layer3, layer4]
-        resnet50: [layer1, layer2, layer3, layer4]
-        dinov2_vits14: [x_norm_patchtokens]
-        dinov2_vitb14: [x_norm_patchtokens]
-        dinov2_vitl14: [x_norm_patchtokens]
-        dinov2_vitg14: [x_norm_patchtokens]
-        dinov2_vits14_reg: [x_norm_patchtokens]
-        dinov2_vitb14_reg: [x_norm_patchtokens]
-        dinov2_vitl14_reg: [x_norm_patchtokens]
-        dinov2_vitg14_reg: [x_norm_patchtokens]
-        dinov3_vits16: [x_norm_patchtokens]
-        dinov3_vitb16: [x_norm_patchtokens]
-        dinov3_vitl16: [x_norm_patchtokens]
-      section: 模型
+      - name_en: feature_name
+        name_cn: 特征层
+        property_name: featureName
+        value: x_norm_patchtokens
+        value_type: string
+        control_type: combo
+        options_key_field: model
+        options_map:
+          resnet18: [layer1, layer2, layer3, layer4]
+          resnet34: [layer1, layer2, layer3, layer4]
+          resnet50: [layer1, layer2, layer3, layer4]
+          dinov2_vits14: [x_norm_patchtokens]
+          dinov2_vitb14: [x_norm_patchtokens]
+          dinov2_vitl14: [x_norm_patchtokens]
+          dinov2_vitg14: [x_norm_patchtokens]
+          dinov2_vits14_reg: [x_norm_patchtokens]
+          dinov2_vitb14_reg: [x_norm_patchtokens]
+          dinov2_vitl14_reg: [x_norm_patchtokens]
+          dinov2_vitg14_reg: [x_norm_patchtokens]
+          dinov3_vits16: [x_norm_patchtokens]
+          dinov3_vitb16: [x_norm_patchtokens]
+          dinov3_vitl16: [x_norm_patchtokens]
 
-    - name_en: rebuild_index
-      name_cn: 重建索引
-      property_name: rebuildIndex
-      value: false
-      value_type: bool
-      control_type: checkbox
-      section: 索引
+      - name_en: model_batch_size
+        name_cn: 模型批量
+        property_name: modelBatchSize
+        value: 1
+        value_type: int
+        value_range: [1, 8192, 1]
+        control_type: spin
 
-    - name_en: top_k
-      name_cn: 返回数量
-      property_name: topK
-      value: 5
-      value_type: int
-      value_range: [1, 1000, 1]
-      control_type: spin
-      section: 索引
+    索引:
+      - name_en: rebuild_index
+        name_cn: 重建索引
+        property_name: rebuildIndex
+        value: false
+        value_type: bool
+        control_type: checkbox
 
-    - name_en: norm
-      name_cn: 特征归一化
-      property_name: norm
-      value: 2
-      value_type: int
-      control_type: combo
-      options: [none, l1, l2]
-      options_values:
-        none: 0
-        l1: 1
-        l2: 2
-      section: 索引
+      - name_en: top_k
+        name_cn: 返回数量
+        property_name: topK
+        value: 5
+        value_type: int
+        value_range: [1, 1000, 1]
+        control_type: spin
 
-    - name_en: preprocess_backend
-      name_cn: 预处理后端
-      property_name: preprocessBackend
-      value: 0
-      value_type: int
-      control_type: combo
-      options: [cpu, gpu]
-      options_values:
-        cpu: 0
-        gpu: 1
-      section: 运行时
+      - name_en: norm
+        name_cn: 特征归一化
+        property_name: norm
+        value: 2
+        value_type: int
+        control_type: combo
+        options: [none, l1, l2]
+        options_values:
+          none: 0
+          l1: 1
+          l2: 2
 
-    - name_en: faiss_backend
-      name_cn: FAISS 后端
-      property_name: faissBackend
-      value: 0
-      value_type: int
-      control_type: combo
-      options: [cpu, gpu]
-      options_values:
-        cpu: 0
-        gpu: 1
-      section: 运行时
+      - name_en: index_storage
+        name_cn: 索引存储
+        property_name: indexStorage
+        value: 0
+        value_type: int
+        control_type: combo
+        options: [ram, disk]
+        options_values:
+          ram: 0
+          disk: 1
 
-    - name_en: index_storage
-      name_cn: 索引存储
-      property_name: indexStorage
-      value: 0
-      value_type: int
-      control_type: combo
-      options: [ram, disk]
-      options_values:
-        ram: 0
-        disk: 1
-      section: 索引
+      - name_en: index_directory
+        name_cn: 索引目录
+        property_name: indexDirectory
+        value: ""
+        value_type: string
+        control_type: folder
 
-    - name_en: model_batch_size
-      name_cn: 模型批量
-      property_name: modelBatchSize
-      value: 1
-      value_type: int
-      value_range: [1, 8192, 1]
-      control_type: spin
-      section: 模型
+    运行时:
+      - name_en: preprocess_backend
+        name_cn: 预处理后端
+        property_name: preprocessBackend
+        value: 0
+        value_type: int
+        control_type: combo
+        options: [cpu, gpu]
+        options_values:
+          cpu: 0
+          gpu: 1
 
-    - name_en: model_backend
-      name_cn: 推理后端
-      property_name: modelBackend
-      value: 0
-      value_type: int
-      control_type: combo
-      options: [tensorrt, openvino, onnxruntime]
-      options_values:
-        tensorrt: 0
-        openvino: 1
-        onnxruntime: 2
-      section: 运行时
+      - name_en: faiss_backend
+        name_cn: FAISS 后端
+        property_name: faissBackend
+        value: 0
+        value_type: int
+        control_type: combo
+        options: [cpu, gpu]
+        options_values:
+          cpu: 0
+          gpu: 1
 
-    - name_en: model_device
-      name_cn: 推理设备
-      property_name: modelDevice
-      value: 1
-      value_type: int
-      control_type: combo
-      options: [gpu, cpu]
-      options_values:
-        cpu: 0
-        gpu: 1
-      section: 运行时
+      - name_en: model_backend
+        name_cn: 推理后端
+        property_name: modelBackend
+        value: 0
+        value_type: int
+        control_type: combo
+        options: [tensorrt, openvino, onnxruntime]
+        options_values:
+          tensorrt: 0
+          openvino: 1
+          onnxruntime: 2
 
-    - name_en: index_directory
-      name_cn: 索引目录
-      property_name: indexDirectory
-      value: ""
-      value_type: string
-      control_type: folder
-      section: 索引
+      - name_en: model_device
+        name_cn: 推理设备
+        property_name: modelDevice
+        value: 1
+        value_type: int
+        control_type: combo
+        options: [gpu, cpu]
+        options_values:
+          cpu: 0
+          gpu: 1
 
-    - name_en: pooled_height
-      name_cn: ROI 输出高度
-      property_name: pooledHeight
-      value: 7
-      value_type: int
-      value_range: [1, 64, 1]
-      control_type: spin
-      section: ROI
+    ROI:
+      - name_en: pooled_height
+        name_cn: ROI 输出高度
+        property_name: pooledHeight
+        value: 7
+        value_type: int
+        value_range: [1, 64, 1]
+        control_type: spin
 
-    - name_en: pooled_width
-      name_cn: ROI 输出宽度
-      property_name: pooledWidth
-      value: 7
-      value_type: int
-      value_range: [1, 64, 1]
-      control_type: spin
-      section: ROI
+      - name_en: pooled_width
+        name_cn: ROI 输出宽度
+        property_name: pooledWidth
+        value: 7
+        value_type: int
+        value_range: [1, 64, 1]
+        control_type: spin
 
-    - name_en: sampling_ratio
-      name_cn: ROI 采样比例
-      property_name: samplingRatio
-      value: -1
-      value_type: int
-      value_range: [-1, 32, 1]
-      control_type: spin
-      section: ROI
+      - name_en: sampling_ratio
+        name_cn: ROI 采样比例
+        property_name: samplingRatio
+        value: -1
+        value_type: int
+        value_range: [-1, 32, 1]
+        control_type: spin
 
-    - name_en: aligned
-      name_cn: ROI 对齐
-      property_name: aligned
-      value: false
-      value_type: bool
-      control_type: checkbox
-      section: ROI
+      - name_en: aligned
+        name_cn: ROI 对齐
+        property_name: aligned
+        value: false
+        value_type: bool
+        control_type: checkbox
 
-    - name_en: use_pca
-      name_cn: 启用 PCA
-      property_name: usePca
-      value: false
-      value_type: bool
-      control_type: checkbox
-      section: ROI
+      - name_en: use_pca
+        name_cn: 启用 PCA
+        property_name: usePca
+        value: false
+        value_type: bool
+        control_type: checkbox
 
-    - name_en: pca_dim
-      name_cn: PCA 维度
-      property_name: pcaDim
-      value: 0
-      value_type: int
-      value_range: [0, 8192, 1]
-      control_type: spin
-      section: ROI
+      - name_en: pca_dim
+        name_cn: PCA 维度
+        property_name: pcaDim
+        value: 0
+        value_type: int
+        value_range: [0, 8192, 1]
+        control_type: spin
