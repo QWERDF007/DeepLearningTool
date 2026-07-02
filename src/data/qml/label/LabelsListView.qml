@@ -9,6 +9,7 @@ Repeater {
     property real offsetY: 0
     property real factor: 0
     property bool showBoundingBoxes: false
+    property real fillOpacity: 0.3
 
     delegate: Item {
         id: labelDelegate
@@ -69,6 +70,7 @@ Repeater {
             target: repeater
             function onFactorChanged() { canvas.requestPaint() }
             function onShowBoundingBoxesChanged() { canvas.requestPaint() }
+            function onFillOpacityChanged() { canvas.requestPaint() }
         }
 
         function toScreen(point) {
@@ -99,7 +101,7 @@ Repeater {
                     ctx.lineTo(point.x, point.y)
                 }
                 ctx.closePath()
-                ctx.globalAlpha = labelSelected || labelHovered ? 0.18 : 0.1
+                ctx.globalAlpha = Math.max(0, Math.min(1, repeater.fillOpacity))
                 ctx.fill()
                 ctx.globalAlpha = 1
                 ctx.stroke()
@@ -126,6 +128,12 @@ Repeater {
                     ctx.restore()
                 }
             } else {
+                ctx.globalAlpha = Math.max(0, Math.min(1, repeater.fillOpacity))
+                ctx.fillRect((labelData.x - labelDelegate.visibleLeft) * labelDelegate.safeFactor,
+                             (labelData.y - labelDelegate.visibleTop) * labelDelegate.safeFactor,
+                             labelData.width * labelDelegate.safeFactor,
+                             labelData.height * labelDelegate.safeFactor)
+                ctx.globalAlpha = 1
                 ctx.strokeRect((labelData.x - labelDelegate.visibleLeft) * labelDelegate.safeFactor,
                                (labelData.y - labelDelegate.visibleTop) * labelDelegate.safeFactor,
                                labelData.width * labelDelegate.safeFactor,

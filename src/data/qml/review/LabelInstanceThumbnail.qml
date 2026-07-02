@@ -22,6 +22,7 @@ Item {
     property int margin: 10
     property int borderWidth: 2
     property real padding: 0.1
+    property real fillOpacity: 0.3
     property real imageBrightness: 0.0
     property real imageContrast: 0.0
     
@@ -43,6 +44,7 @@ Item {
     onBorderWidthChanged: annotationOverlay.requestPaint()
     onMarginChanged: annotationOverlay.requestPaint()
     onPaddingChanged: annotationOverlay.requestPaint()
+    onFillOpacityChanged: annotationOverlay.requestPaint()
     onHasValidLabelDataChanged: annotationOverlay.requestPaint()
     onHasPolygonLabelDataChanged: annotationOverlay.requestPaint()
     
@@ -185,7 +187,7 @@ Item {
             ctx.save()
             ctx.lineWidth = lineWidth
             ctx.strokeStyle = String(root.borderColor)
-            ctx.fillStyle = "transparent"
+            ctx.fillStyle = String(root.borderColor)
 
             if (root.hasPolygonLabelData) {
                 drawPolygon(ctx)
@@ -336,6 +338,11 @@ Item {
         }
 
         let inset = lineWidth / 2
+        ctx.globalAlpha = Math.max(0, Math.min(1, root.fillOpacity))
+        ctx.fillRect(x + inset, y + inset,
+                     Math.max(0, width - lineWidth),
+                     Math.max(0, height - lineWidth))
+        ctx.globalAlpha = 1
         ctx.strokeRect(x + inset, y + inset,
                        Math.max(0, width - lineWidth),
                        Math.max(0, height - lineWidth))
@@ -363,6 +370,9 @@ Item {
         }
 
         ctx.closePath()
+        ctx.globalAlpha = Math.max(0, Math.min(1, root.fillOpacity))
+        ctx.fill()
+        ctx.globalAlpha = 1
         ctx.stroke()
     }
 
@@ -387,6 +397,10 @@ Item {
         margin = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.Margin, 10)
         borderWidth = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.BorderWidth, 2)
         padding = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.LabelBorderPadding, 0.1)
+        fillOpacity = Math.max(0, Math.min(1, GlobalSettings.valueForField(
+                    SettingsAccessor.Data,
+                    DataField.FillOpacity,
+                    30) / 100.0))
         imageBrightness = GlobalSettings.valueForField(SettingsAccessor.Ui, UiField.Brightness, 0.0)
         imageContrast = GlobalSettings.valueForField(SettingsAccessor.Ui, UiField.Contrast, 0.0)
     }

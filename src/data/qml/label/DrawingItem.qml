@@ -20,6 +20,9 @@ Item {
     property real iheight: 0
     property var polygonPoints: []
     property color strokeColor: "red"
+    property real fillOpacity: 0.3
+
+    onFillOpacityChanged: canvas.requestPaint()
 
     Canvas {
         id: canvas
@@ -144,7 +147,7 @@ Item {
             }
             if (drawItem.polygonPoints.length >= 3) {
                 ctx.closePath()
-                ctx.globalAlpha = 0.16
+                ctx.globalAlpha = Math.max(0, Math.min(1, drawItem.fillOpacity))
                 ctx.fill()
                 ctx.globalAlpha = 1
             }
@@ -155,6 +158,12 @@ Item {
                 ctx.fillRect(screenPoint.x - 3, screenPoint.y - 3, 6, 6)
             }
         } else if (drawItem.iwidth > 0 || drawItem.iheight > 0) {
+            ctx.globalAlpha = Math.max(0, Math.min(1, drawItem.fillOpacity))
+            ctx.fillRect(drawItem.offsetX + drawItem.ix * drawItem.factor,
+                         drawItem.offsetY + drawItem.iy * drawItem.factor,
+                         drawItem.iwidth * drawItem.factor,
+                         drawItem.iheight * drawItem.factor)
+            ctx.globalAlpha = 1
             ctx.strokeRect(drawItem.offsetX + drawItem.ix * drawItem.factor,
                            drawItem.offsetY + drawItem.iy * drawItem.factor,
                            drawItem.iwidth * drawItem.factor,

@@ -24,6 +24,7 @@ Item {
     property bool roiSearchEnabled: true
     property int smartAnnotationRefreshInterval: 80
     property real smartAnnotationMaskAlpha: 0.35
+    property real labelFillOpacity: 0.3
     property int toolMode: LabelCanvasEnums.SelectTool
     property bool showBoundingBoxes: false
     readonly property bool smartAnnotationMode: toolMode === LabelCanvasEnums.SmartTool && smartAnnotationAvailable
@@ -171,6 +172,7 @@ Item {
         offsetY: labelImage.image.y
         factor: labelImage.image.scale
         showBoundingBoxes: labelView.showBoundingBoxes
+        fillOpacity: labelView.labelFillOpacity
         model: labelImage.image.status === Image.Ready ? imageLabelsList : null
     }
 
@@ -179,6 +181,7 @@ Item {
         offsetX: labelImage.image.x
         offsetY: labelImage.image.y
         factor: labelImage.image.scale
+        fillOpacity: labelView.labelFillOpacity
     }
 
     LabelSmartPromptCanvas {
@@ -641,6 +644,10 @@ Item {
                     SettingsAccessor.SmartAnnotation,
                     SmartAnnotationField.MaskAlpha,
                     0.35)
+        labelFillOpacity = Math.max(0, Math.min(1, GlobalSettings.valueForField(
+                    SettingsAccessor.Data,
+                    DataField.FillOpacity,
+                    30) / 100.0))
     }
 
     function newDraftLabelData(fields) {
