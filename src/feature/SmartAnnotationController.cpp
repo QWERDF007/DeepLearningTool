@@ -4,6 +4,7 @@
 #include "settings/SettingsValue.h"
 
 #include <inferrt/features/SAMImagePredictor.hpp>
+#include <opencv2/imgproc.hpp>
 #include <spdlog/spdlog.h>
 
 #include <QDir>
@@ -21,11 +22,9 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
-#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -58,27 +57,6 @@ struct InferenceImageInput
     double                          scale_y{1.0};          ///< 原图到输入图像的 Y 缩放
     bool                            viewport_input{false}; ///< 是否使用可视窗口输入
     std::unique_ptr<QTemporaryFile> temporary_file;        ///< 临时输入图文件
-};
-
-/// Mask 像素坐标点
-struct MaskPoint
-{
-    int x{0}; ///< X 坐标
-    int y{0}; ///< Y 坐标
-};
-
-bool operator==(const MaskPoint &left, const MaskPoint &right)
-{
-    return left.x == right.x && left.y == right.y;
-}
-
-/// Mask 边界边
-struct BoundaryEdge
-{
-    MaskPoint from;         ///< 起点
-    MaskPoint to;           ///< 终点
-    int       direction{0}; ///< 方向（0=右, 1=下, 2=左, 3=上）
-    bool      used{false};  ///< 是否已被追踪使用
 };
 
 /**
@@ -581,194 +559,184 @@ std::vector<QPointF> simplifyClosedPolygon(const std::vector<QPointF> &points, d
 }
 
 /**
- * @brief 计算边界边的方向
- * @param from 起点
- * @param to 终点
- * @return 方向码（0=右, 1=下, 2=左, 3=上）
- */
-int edgeDirection(const MaskPoint &from, const MaskPoint &to)
-{
-    if (to.x > from.x)
-        return 0;
-    if (to.y > from.y)
-        return 1;
-    if (to.x < from.x)
-        return 2;
-    return 3;
-}
-
-/**
- * @brief 计算 MaskPoint 的唯一键值
- * @param point 坐标点
- * @param width 图像宽度
- * @return 唯一键值
- */
-int64_t maskPointKey(const MaskPoint &point, int width)
-{
-    return static_cast<int64_t>(point.y) * static_cast<int64_t>(width + 1) + point.x;
-}
-
-/**
- * @brief 计算转向优先级（用于边界追踪的最右转规则）
- * @param previous_direction 之前的方向
- * @param next_direction 候选方向
- * @return 优先级（数值越大越优先）
- */
-int turnPriority(int previous_direction, int next_direction)
-{
-    const int turn = (next_direction - previous_direction + 4) % 4;
-    if (turn == 1)
-        return 3; // 右转
-    if (turn == 0)
-        return 2; // 直行
-    if (turn == 3)
-        return 1; // 左转
-    return 0;     // 掉头
-}
-
-/**
- * @brief 选择下一个要追踪的边界边
- * @param outgoing_edges 出发边索引表
- * @param edges 所有边界边
- * @param point 当前点
- * @param width 图像宽度
- * @param previous_direction 上一个方向
- * @return 选中的边索引，无有效边时返回 max
- */
-size_t chooseNextBoundaryEdge(const std::unordered_map<int64_t, std::vector<size_t>> &outgoing_edges,
-                              const std::vector<BoundaryEdge> &edges, const MaskPoint &point, int width,
-                              int previous_direction)
-{
-    const auto outgoing_it = outgoing_edges.find(maskPointKey(point, width));
-    if (outgoing_it == outgoing_edges.end())
-        return std::numeric_limits<size_t>::max();
-
-    size_t best_index    = std::numeric_limits<size_t>::max();
-    int    best_priority = -1;
-    for (const size_t edge_index : outgoing_it->second)
-    {
-        const BoundaryEdge &edge = edges[edge_index];
-        if (edge.used)
-            continue;
-        const int priority = turnPriority(previous_direction, edge.direction);
-        if (priority > best_priority)
-        {
-            best_priority = priority;
-            best_index    = edge_index;
-        }
-    }
-    return best_index;
-}
-
-/**
- * @brief 将二值 Mask 转换为多边形轮廓（Moore 边界追踪）
+ * @brief 将二值 Mask 转换为带 1 像素背景边框的 OpenCV Mat
  * @param mask 二值 Mask 数据
  * @param width 图像宽度
  * @param height 图像高度
- * @return 多边形轮廓列表（按面积降序排列）
+ * @return CV_8UC1 Mask，前景为 255
  */
-std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mask, int width, int height)
+cv::Mat maskToPaddedMat(const std::vector<uint8_t> &mask, int width, int height)
 {
     const int64_t total = static_cast<int64_t>(width) * static_cast<int64_t>(height);
     if (width <= 0 || height <= 0 || total <= 0 || mask.size() < static_cast<size_t>(total))
         return {};
 
-    std::vector<BoundaryEdge>                        edges;
-    std::unordered_map<int64_t, std::vector<size_t>> outgoing_edges;
-
-    const auto is_foreground = [&](int x, int y) -> bool
-    {
-        return x >= 0 && y >= 0 && x < width && y < height && mask[static_cast<size_t>(y * width + x)] != 0;
-    };
-
-    const auto add_edge = [&](const MaskPoint &from, const MaskPoint &to)
-    {
-        const size_t edge_index = edges.size();
-        edges.push_back(BoundaryEdge{from, to, edgeDirection(from, to), false});
-        outgoing_edges[maskPointKey(from, width)].push_back(edge_index);
-    };
-
+    cv::Mat padded(height + 2, width + 2, CV_8UC1, cv::Scalar(0));
     for (int y = 0; y < height; ++y)
     {
+        uchar       *dst        = padded.ptr<uchar>(y + 1) + 1;
+        const size_t row_offset = static_cast<size_t>(y) * width;
         for (int x = 0; x < width; ++x)
+            dst[x] = mask[row_offset + static_cast<size_t>(x)] != 0 ? uchar{255} : uchar{0};
+    }
+    return padded;
+}
+
+/**
+ * @brief 计算签名距离场，Mask 内为正，Mask 外为负
+ * @param padded_mask 带背景边框的 CV_8UC1 Mask
+ * @return CV_32FC1 签名距离场
+ */
+cv::Mat signedDistanceField(const cv::Mat &padded_mask)
+{
+    cv::Mat inside_distance;
+    cv::distanceTransform(padded_mask, inside_distance, cv::DIST_L2, cv::DIST_MASK_PRECISE);
+
+    cv::Mat inverted_mask;
+    cv::bitwise_not(padded_mask, inverted_mask);
+
+    cv::Mat outside_distance;
+    cv::distanceTransform(inverted_mask, outside_distance, cv::DIST_L2, cv::DIST_MASK_PRECISE);
+
+    cv::Mat signed_distance;
+    cv::subtract(inside_distance, outside_distance, signed_distance);
+    return signed_distance;
+}
+
+/**
+ * @brief 用距离场将 findContours 的整数边界点修正到亚像素边界
+ * @param signed_distance 签名距离场
+ * @param point findContours 输出点
+ * @param width 原始 Mask 宽度
+ * @param height 原始 Mask 高度
+ * @return 原始 Mask 坐标系中的亚像素点
+ */
+QPointF refineContourPoint(const cv::Mat &signed_distance, const cv::Point &point, int width, int height)
+{
+    const float inside_value = signed_distance.at<float>(point.y, point.x);
+    cv::Point   best_outside = point;
+    float       best_value   = 0.0F;
+    bool        found        = false;
+
+    for (int dy = -1; dy <= 1; ++dy)
+    {
+        const int y = point.y + dy;
+        if (y < 0 || y >= signed_distance.rows)
+            continue;
+        for (int dx = -1; dx <= 1; ++dx)
         {
-            if (!is_foreground(x, y))
+            if (dx == 0 && dy == 0)
                 continue;
-            if (!is_foreground(x, y - 1))
-                add_edge(MaskPoint{x, y}, MaskPoint{x + 1, y});
-            if (!is_foreground(x + 1, y))
-                add_edge(MaskPoint{x + 1, y}, MaskPoint{x + 1, y + 1});
-            if (!is_foreground(x, y + 1))
-                add_edge(MaskPoint{x + 1, y + 1}, MaskPoint{x, y + 1});
-            if (!is_foreground(x - 1, y))
-                add_edge(MaskPoint{x, y + 1}, MaskPoint{x, y});
+            const int x = point.x + dx;
+            if (x < 0 || x >= signed_distance.cols)
+                continue;
+
+            const float value = signed_distance.at<float>(y, x);
+            if (value <= 0.0F && (!found || value > best_value))
+            {
+                found        = true;
+                best_value   = value;
+                best_outside = cv::Point(x, y);
+            }
         }
     }
 
-    if (edges.empty())
+    double x = static_cast<double>(point.x);
+    double y = static_cast<double>(point.y);
+    if (found && inside_value > best_value)
+    {
+        const double t = static_cast<double>(inside_value) / static_cast<double>(inside_value - best_value);
+        x += t * static_cast<double>(best_outside.x - point.x);
+        y += t * static_cast<double>(best_outside.y - point.y);
+    }
+    else
+    {
+        const int left   = std::max(point.x - 1, 0);
+        const int right  = std::min(point.x + 1, signed_distance.cols - 1);
+        const int top    = std::max(point.y - 1, 0);
+        const int bottom = std::min(point.y + 1, signed_distance.rows - 1);
+        const double dx  = 0.5
+                         * static_cast<double>(signed_distance.at<float>(point.y, right)
+                                               - signed_distance.at<float>(point.y, left));
+        const double dy  = 0.5
+                         * static_cast<double>(signed_distance.at<float>(bottom, point.x)
+                                               - signed_distance.at<float>(top, point.x));
+        const double denom = dx * dx + dy * dy;
+        if (denom > 0.000001)
+        {
+            x -= static_cast<double>(inside_value) * dx / denom;
+            y -= static_cast<double>(inside_value) * dy / denom;
+        }
+    }
+
+    return QPointF(std::clamp(x - 0.5, 0.0, static_cast<double>(width)),
+                   std::clamp(y - 0.5, 0.0, static_cast<double>(height)));
+}
+
+std::vector<QPointF> contourToPolygon(const std::vector<cv::Point> &contour, const cv::Mat &signed_distance, int width,
+                                      int height)
+{
+    std::vector<QPointF> points;
+    points.reserve(contour.size());
+    for (const cv::Point &point : contour) points.push_back(refineContourPoint(signed_distance, point, width, height));
+
+    points = normalizePolygon(std::move(points));
+    if (!points.empty() && signedPolygonArea(points) < 0.0)
+        std::reverse(points.begin(), points.end());
+    return points;
+}
+
+/**
+ * @brief 将二值 Mask 转换为最大外轮廓多边形（距离场 + OpenCV findContours）
+ * @param mask 二值 Mask 数据
+ * @param width 图像宽度
+ * @param height 图像高度
+ * @return 最大多边形轮廓列表，最多包含一个外轮廓
+ */
+std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mask, int width, int height)
+{
+    const cv::Mat padded_mask = maskToPaddedMat(mask, width, height);
+    if (padded_mask.empty())
         return {};
 
+    const cv::Mat signed_distance = signedDistanceField(padded_mask);
+    cv::Mat       foreground;
+    cv::compare(signed_distance, 0.0F, foreground, cv::CMP_GT);
+
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(foreground, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+    if (contours.empty())
+        return {};
+
+    const auto best_it = std::max_element(contours.begin(), contours.end(),
+                                          [](const std::vector<cv::Point> &left,
+                                             const std::vector<cv::Point> &right)
+                                          { return std::abs(cv::contourArea(left)) < std::abs(cv::contourArea(right)); });
+    if (best_it == contours.end() || std::abs(cv::contourArea(*best_it)) <= 0.5)
+        return {};
+
+    std::vector<QPointF> points = contourToPolygon(*best_it, signed_distance, width, height);
+    if (points.empty())
+        return {};
+
+    points = removeCollinearPoints(points, 0.001);
+    points = normalizePolygon(std::move(points));
+    if (points.empty())
+        return {};
+    if (signedPolygonArea(points) < 0.0)
+        std::reverse(points.begin(), points.end());
+
+    const double epsilon = std::clamp(std::sqrt(polygonArea(points)) * 0.01, 1.0, 3.0);
+    points               = simplifyClosedPolygon(points, epsilon);
+    points               = removeCollinearPoints(points, 0.01);
+    points               = normalizePolygon(std::move(points));
+    if (points.empty())
+        return {};
+    if (signedPolygonArea(points) < 0.0)
+        std::reverse(points.begin(), points.end());
+
     std::vector<std::vector<QPointF>> polygons;
-    polygons.reserve(8);
-
-    for (size_t start_edge_index = 0; start_edge_index < edges.size(); ++start_edge_index)
-    {
-        if (edges[start_edge_index].used)
-            continue;
-
-        const MaskPoint        start_point = edges[start_edge_index].from;
-        size_t                 edge_index  = start_edge_index;
-        bool                   closed      = false;
-        std::vector<MaskPoint> loop;
-        loop.reserve(256);
-
-        for (size_t guard = 0; edge_index != std::numeric_limits<size_t>::max() && guard <= edges.size(); ++guard)
-        {
-            BoundaryEdge &edge = edges[edge_index];
-            if (edge.used)
-                break;
-
-            edge.used = true;
-            if (loop.empty())
-                loop.push_back(edge.from);
-            loop.push_back(edge.to);
-
-            if (edge.to == start_point)
-            {
-                closed = true;
-                break;
-            }
-            edge_index = chooseNextBoundaryEdge(outgoing_edges, edges, edge.to, width, edge.direction);
-        }
-
-        if (!closed || loop.size() < 4)
-            continue;
-        if (loop.back() == loop.front())
-            loop.pop_back();
-
-        std::vector<QPointF> points;
-        points.reserve(loop.size());
-        for (const MaskPoint &point : loop) points.emplace_back(point.x, point.y);
-
-        points = normalizePolygon(std::move(points));
-        if (points.empty() || signedPolygonArea(points) <= 0.5)
-            continue;
-
-        points = removeCollinearPoints(points, 0.001);
-        points = normalizePolygon(std::move(points));
-        if (points.empty() || signedPolygonArea(points) <= 0.5)
-            continue;
-
-        const double epsilon = std::clamp(std::sqrt(polygonArea(points)) * 0.01, 1.0, 3.0);
-        points               = simplifyClosedPolygon(points, epsilon);
-        points               = removeCollinearPoints(points, 0.01);
-        points               = normalizePolygon(std::move(points));
-        if (!points.empty() && signedPolygonArea(points) > 0.5)
-            polygons.push_back(std::move(points));
-    }
-
-    std::sort(polygons.begin(), polygons.end(), [](const std::vector<QPointF> &left, const std::vector<QPointF> &right)
-              { return polygonArea(left) > polygonArea(right); });
+    polygons.push_back(std::move(points));
     return polygons;
 }
 
@@ -861,21 +829,6 @@ std::vector<QPointF> simplifyFinalPolygon(std::vector<QPointF> polygon, double e
     simplified                      = removeCollinearPoints(simplified, epsilon);
     simplified                      = normalizePolygon(std::move(simplified));
     return simplified.empty() ? polygon : simplified;
-}
-
-/**
- * @brief 从 IoU 值中选择最佳 Mask 索引
- * @param iou_values IoU 值数组
- * @param candidate_count 候选数量
- * @return 最佳 Mask 索引
- */
-int bestMaskIndex(const std::vector<float> &iou_values, int candidate_count)
-{
-    if (iou_values.empty() || candidate_count <= 1)
-        return 0;
-
-    const int count = std::min(candidate_count, static_cast<int>(iou_values.size()));
-    return static_cast<int>(std::max_element(iou_values.begin(), iou_values.begin() + count) - iou_values.begin());
 }
 
 std::vector<uint8_t> selectedBinaryMask(const irt::features::SAMImagePrediction &prediction, int mask_index)
@@ -1093,7 +1046,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         const std::vector<PromptPoint>          input_prompts = mapPromptsToInferenceInput(prompts, image_input);
         const irt::features::SAMImagePrediction prediction    = predictor_->predict(
             toFilesystemPath(image_input.path), buildImagePrompt(input_prompts), buildPredictOptions(settings));
-        const int   mask_index = bestMaskIndex(prediction.iou_predictions, prediction.mask_count);
+        const int   mask_index = 0;
         const float selected_iou
             = (mask_index >= 0 && static_cast<size_t>(mask_index) < prediction.iou_predictions.size())
                 ? prediction.iou_predictions[mask_index]
