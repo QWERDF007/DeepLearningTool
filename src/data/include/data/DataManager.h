@@ -149,8 +149,8 @@ public:
                                     const QVariantMap &options = {});
 
     Q_INVOKABLE void deleteSelectedImages();
-    Q_INVOKABLE void copySelectedImagesToDataset(const int64_t dataset_id);
-    Q_INVOKABLE void moveSelectedImagesToDataset(const int64_t dataset_id);
+    Q_INVOKABLE void copyToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id);
+    Q_INVOKABLE void moveToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id);
 
     Q_INVOKABLE void addLabelClass(const QString &name, const QString &color, const QString &shortcut);
 

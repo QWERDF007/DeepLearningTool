@@ -138,6 +138,7 @@ public:
     Q_INVOKABLE void shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command);
     Q_INVOKABLE void selectAll();
     Q_INVOKABLE std::vector<int64_t> getSelectedLabelIds() const;
+    Q_INVOKABLE std::vector<int64_t> getSelectedImageIds() const;
 
     int lastIndex() const
     {

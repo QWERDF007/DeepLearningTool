@@ -764,6 +764,16 @@ std::vector<int64_t> LabelInstancesListModel::getSelectedLabelIds() const
     return label_ids;
 }
 
+std::vector<int64_t> LabelInstancesListModel::getSelectedImageIds() const
+{
+    std::vector<int64_t> image_ids = getImageIds(getSelectedLabelIds());
+    image_ids.erase(std::remove_if(image_ids.begin(), image_ids.end(), [](const int64_t image_id) { return image_id < 0; }),
+                    image_ids.end());
+    std::sort(image_ids.begin(), image_ids.end());
+    image_ids.erase(std::unique(image_ids.begin(), image_ids.end()), image_ids.end());
+    return image_ids;
+}
+
 void LabelInstancesListModel::setLastIndex(int last_index)
 {
     if (last_index_ != last_index)

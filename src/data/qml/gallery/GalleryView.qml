@@ -83,8 +83,8 @@ Item {
                     iconSource: QuiFontIcon.Folder
                     enabled: dataManager && selection && selection.hasSelection
                     onClicked: {
-                        if (dataManager) {
-                            dataManager.copySelectedImagesToDataset(model.dataset_id)
+                        if (dataManager && imageInstances) {
+                            dataManager.copyToDataset(imageInstances.getSelectedImagesId(), model.dataset_id)
                         }
                     }
                 }
@@ -108,8 +108,8 @@ Item {
                     iconSource: QuiFontIcon.Folder
                     enabled: dataManager && selection && selection.hasSelection
                     onClicked: {
-                        if (dataManager) {
-                            dataManager.moveSelectedImagesToDataset(model.dataset_id)
+                        if (dataManager && imageInstances) {
+                            dataManager.moveToDataset(imageInstances.getSelectedImagesId(), model.dataset_id)
                         }
                     }
                 }

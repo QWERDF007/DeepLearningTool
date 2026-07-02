@@ -1197,7 +1197,7 @@ void DataManager::deleteSelectedImages()
     updateDatasetsStats();
 }
 
-void DataManager::copySelectedImagesToDataset(const int64_t dataset_id)
+void DataManager::copyToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id)
 {
     if (datasets_ == nullptr || image_instances_ == nullptr || label_instances_ == nullptr || image_tags_ == nullptr)
     {
@@ -1209,7 +1209,12 @@ void DataManager::copySelectedImagesToDataset(const int64_t dataset_id)
         return;
     }
 
-    const std::vector<int64_t> source_image_ids = image_instances_->getSelectedImagesId();
+    std::vector<int64_t> source_image_ids = image_ids;
+    source_image_ids.erase(std::remove_if(source_image_ids.begin(), source_image_ids.end(),
+                                          [](const int64_t image_id) { return image_id < 0; }),
+                           source_image_ids.end());
+    std::sort(source_image_ids.begin(), source_image_ids.end());
+    source_image_ids.erase(std::unique(source_image_ids.begin(), source_image_ids.end()), source_image_ids.end());
     if (source_image_ids.empty())
     {
         return;
@@ -1255,9 +1260,9 @@ void DataManager::copySelectedImagesToDataset(const int64_t dataset_id)
             copied_images_by_tag[tag_id].push_back(copied_image_ids[i]);
         }
     }
-    for (const auto &[tag_id, image_ids] : copied_images_by_tag)
+    for (const auto &[tag_id, tagged_image_ids] : copied_images_by_tag)
     {
-        image_tags_->setImagesTag(image_ids, tag_id);
+        image_tags_->setImagesTag(tagged_image_ids, tag_id);
     }
 
     std::vector<int64_t>     copied_label_image_ids;
@@ -1298,7 +1303,7 @@ void DataManager::copySelectedImagesToDataset(const int64_t dataset_id)
     }
 }
 
-void DataManager::moveSelectedImagesToDataset(const int64_t dataset_id)
+void DataManager::moveToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id)
 {
     if (datasets_ == nullptr || image_instances_ == nullptr)
     {
@@ -1310,7 +1315,13 @@ void DataManager::moveSelectedImagesToDataset(const int64_t dataset_id)
         return;
     }
 
-    const std::vector<int64_t> selected_image_ids = image_instances_->getSelectedImagesId();
+    std::vector<int64_t> selected_image_ids = image_ids;
+    selected_image_ids.erase(std::remove_if(selected_image_ids.begin(), selected_image_ids.end(),
+                                            [](const int64_t image_id) { return image_id < 0; }),
+                             selected_image_ids.end());
+    std::sort(selected_image_ids.begin(), selected_image_ids.end());
+    selected_image_ids.erase(std::unique(selected_image_ids.begin(), selected_image_ids.end()),
+                             selected_image_ids.end());
     if (selected_image_ids.empty())
     {
         return;
