@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQml.Models
 
 import dltool.ui
@@ -251,12 +252,39 @@ Item {
         onDoubleClicked: function(event) { handleMouseDoubleClicked(event) }
     }
 
+    Shortcut {
+        enabled: labelView.visible
+        sequence: "F1"
+        onActivated: labelView.activateToolMode(LabelCanvasEnums.SelectTool)
+    }
+
+    Shortcut {
+        enabled: labelView.visible
+        sequence: "F2"
+        onActivated: labelView.activateToolMode(LabelCanvasEnums.RectangleTool)
+    }
+
+    Shortcut {
+        enabled: labelView.visible && labelView.segmentationMode
+        sequence: "F3"
+        onActivated: labelView.activateToolMode(LabelCanvasEnums.PolygonTool)
+    }
+
+    Shortcut {
+        enabled: labelView.visible && labelView.smartAnnotationAvailable
+        sequence: "F4"
+        onActivated: labelView.activateToolMode(LabelCanvasEnums.SmartTool)
+    }
+
     function requestSmartOverlayPaint() {
         smartMaskCanvas.requestPaint()
         smartPromptCanvas.requestPaint()
     }
 
     function handleKeyPressed(event) {
+        if (handleToolShortcut(event)) {
+            return
+        }
         if (smartAnnotationMode && event.key === Qt.Key_Escape) {
             if (smartAnnotationController.points.length > 0) {
                 smartAnnotationController.clear()
@@ -295,7 +323,39 @@ Item {
             event.accepted = true
             return
         }
+        if (event.key === Qt.Key_Escape
+                && (rectangleToolMode || polygonToolMode)
+                && mouseArea.interactionState === LabelCanvasEnums.Idle) {
+            setToolMode(LabelCanvasEnums.SelectTool)
+            event.accepted = true
+            return
+        }
         handleLabelClassShortcut(event)
+    }
+
+    function handleToolShortcut(event) {
+        if (event.modifiers !== Qt.NoModifier) {
+            return false
+        }
+
+        let mode = -1
+        if (event.key === Qt.Key_F1) {
+            mode = LabelCanvasEnums.SelectTool
+        } else if (event.key === Qt.Key_F2) {
+            mode = LabelCanvasEnums.RectangleTool
+        } else if (event.key === Qt.Key_F3) {
+            mode = LabelCanvasEnums.PolygonTool
+        } else if (event.key === Qt.Key_F4) {
+            mode = LabelCanvasEnums.SmartTool
+        } else {
+            return false
+        }
+
+        if (activateToolMode(mode)) {
+            event.accepted = true
+            return true
+        }
+        return false
     }
 
     function handleLabelClassShortcut(event) {
@@ -605,6 +665,19 @@ Item {
             mode = LabelCanvasEnums.SelectTool
         }
         toolMode = mode
+    }
+
+    function activateToolMode(mode) {
+        if (mode === LabelCanvasEnums.PolygonTool && !segmentationMode) {
+            return false
+        }
+        if (mode === LabelCanvasEnums.SmartTool && !smartAnnotationAvailable) {
+            return false
+        }
+
+        setToolMode(mode)
+        forceActiveFocus()
+        return true
     }
 
     function moveImage(event) {

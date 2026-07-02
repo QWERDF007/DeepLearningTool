@@ -22,6 +22,10 @@ Rectangle {
     property real imageContrastFrom: -1.0
     property real imageContrastTo: 1.0
     property real imageContrastStepSize: 0.1
+    property real labelFillOpacity: 30
+    property real labelFillOpacityFrom: 0
+    property real labelFillOpacityTo: 100
+    property real labelFillOpacityStepSize: 1
     
     // 信号定义
     signal fitToWindow()
@@ -106,6 +110,27 @@ Rectangle {
                 control.setUiField(UiField.Contrast, 0.0)
             }
         }
+
+        ImageAdjustmentRow {
+            id: fillOpacityControl
+            Layout.fillWidth: true
+            label: "透明度"
+            value: control.labelFillOpacity
+            from: control.labelFillOpacityFrom
+            to: control.labelFillOpacityTo
+            stepSize: control.labelFillOpacityStepSize
+            showResetButton: true
+            showFitButton: false
+            defaultValue: 30
+
+            onValueAdjusted: function(newValue) {
+                control.setDataField(DataField.FillOpacity, Math.round(newValue))
+            }
+
+            onResetClicked: {
+                control.setDataField(DataField.FillOpacity, 30)
+            }
+        }
         
         // 填充剩余空间
         Item {
@@ -125,10 +150,20 @@ Rectangle {
         imageContrastFrom = contrastRange && contrastRange.length > 0 ? contrastRange[0] : -1.0
         imageContrastTo = contrastRange && contrastRange.length > 1 ? contrastRange[1] : 1.0
         imageContrastStepSize = contrastRange && contrastRange.length > 2 ? contrastRange[2] : 0.1
+
+        labelFillOpacity = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.FillOpacity, 30)
+        let fillOpacityRange = GlobalSettings.valueRangeForField(SettingsAccessor.Data, DataField.FillOpacity)
+        labelFillOpacityFrom = fillOpacityRange && fillOpacityRange.length > 0 ? fillOpacityRange[0] : 0
+        labelFillOpacityTo = fillOpacityRange && fillOpacityRange.length > 1 ? fillOpacityRange[1] : 100
+        labelFillOpacityStepSize = fillOpacityRange && fillOpacityRange.length > 2 ? fillOpacityRange[2] : 1
     }
 
     function setUiField(field, value) {
         GlobalSettings.setFieldValue(SettingsAccessor.Ui, field, value)
+    }
+
+    function setDataField(field, value) {
+        GlobalSettings.setFieldValue(SettingsAccessor.Data, field, value)
     }
 
     Component.onCompleted: refreshSettings()

@@ -27,6 +27,9 @@ Rectangle {
                                                    && sidebar.dataManager !== null
                                                    && (sidebar.dataManager.method === DeepLearningMethod.Detection
                                                        || sidebar.dataManager.method === DeepLearningMethod.Segmentation)
+    readonly property bool fewShotLearningEnabled: sidebar.featureManager !== null
+                                                   && sidebar.featureManager.fewShotLearning !== null
+                                                   && sidebar.featureManager.fewShotLearning.enabled
 
     ColumnLayout {
         anchors.top: parent.top
@@ -41,7 +44,7 @@ Rectangle {
             Layout.preferredHeight: 32
             normalColor: sidebar.currentTool === LabelCanvasEnums.SelectTool ? QuiColor.Highlight : QuiColor.Button
             iconSource: QuiFontIcon.TouchPointer
-            text: "选中"
+            text: "选中 (F1)"
             onClicked: sidebar.toolSelected(LabelCanvasEnums.SelectTool)
         }
 
@@ -51,7 +54,7 @@ Rectangle {
             Layout.preferredHeight: 32
             normalColor: sidebar.currentTool === LabelCanvasEnums.RectangleTool ? QuiColor.Highlight : QuiColor.Button
             iconSource: QuiFontIcon.RectangularClipping
-            text: "绘制矩形"
+            text: "绘制矩形 (F2)"
             onClicked: sidebar.toolSelected(LabelCanvasEnums.RectangleTool)
         }
 
@@ -62,7 +65,7 @@ Rectangle {
             enabled: sidebar.segmentationMode
             normalColor: sidebar.currentTool === LabelCanvasEnums.PolygonTool ? QuiColor.Highlight : QuiColor.Button
             iconSource: QuiFontIcon.FreeFormClipping
-            text: "绘制多边形"
+            text: "绘制多边形 (F3)"
             onClicked: sidebar.toolSelected(LabelCanvasEnums.PolygonTool)
         }
 
@@ -73,7 +76,7 @@ Rectangle {
             enabled: sidebar.smartAnnotationEnabled
             normalColor: sidebar.currentTool === LabelCanvasEnums.SmartTool ? QuiColor.Highlight : QuiColor.Button
             iconSource: QuiFontIcon.Touchscreen
-            text: "智能标注"
+            text: "智能标注 (F4)"
             onClicked: sidebar.toolSelected(LabelCanvasEnums.SmartTool)
         }
 
@@ -81,11 +84,17 @@ Rectangle {
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredWidth: 32
             Layout.preferredHeight: 32
-            enabled: sidebar.featureManager !== null && sidebar.featureManager.fewShotLearning && sidebar.featureManager.fewShotLearning.enabled
+            enabled: sidebar.fewShotLearningEnabled
             iconSource: QuiFontIcon.Robot
-            text: "小样本学习"
+            text: "小样本学习 (F5)"
             onClicked: fewShotLearningDialog.openForStart()
         }
+    }
+
+    Shortcut {
+        enabled: sidebar.visible && sidebar.fewShotLearningEnabled
+        sequence: "F5"
+        onActivated: fewShotLearningDialog.openForStart()
     }
 
     FewShotLearningDialog {

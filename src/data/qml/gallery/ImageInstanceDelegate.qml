@@ -33,14 +33,14 @@ Rectangle {
     height: 240
     color: QuiColor.Transparent
     border.color: selected ? QuiColor.Highlight : QuiColor.Border
-    border.width: 2
+    border.width: 3
 
 
     Image {
         id: image
         visible: false
         anchors.fill: parent
-        anchors.margins: 2
+        anchors.margins: 5
         fillMode: Image.PreserveAspectFit
         sourceSize.width: image.width
         sourceSize.height: image.height

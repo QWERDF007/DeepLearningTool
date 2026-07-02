@@ -154,8 +154,8 @@ Rectangle {
             ImageEnhancementPanel {
                 id: imageEnhancementPanel
                 SplitView.fillWidth: true
-                SplitView.minimumHeight: 200
-                SplitView.preferredHeight: 200
+                SplitView.minimumHeight: 240
+                SplitView.preferredHeight: 240
                 zoomValue: labelCanvas.imageView.image.scale
 
                 onFitToWindow: {
