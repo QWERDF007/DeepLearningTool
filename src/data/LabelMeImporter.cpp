@@ -1,5 +1,6 @@
 #include "data/LabelMeImporter.h"
 
+#include "core/CoreDef.h"
 #include "database/DataBase.h"
 
 #include <json.hpp>
@@ -10,6 +11,32 @@
 #include <algorithm>
 
 namespace dltool::data {
+
+namespace {
+
+std::vector<QPointF> rectangleToPolygon(const QPointF &p1, const QPointF &p2)
+{
+    const double x_min = std::min(p1.x(), p2.x());
+    const double y_min = std::min(p1.y(), p2.y());
+    const double x_max = std::max(p1.x(), p2.x());
+    const double y_max = std::max(p1.y(), p2.y());
+
+    return {
+        QPointF(x_min, y_min),
+        QPointF(x_max, y_min),
+        QPointF(x_max, y_max),
+        QPointF(x_min, y_max),
+    };
+}
+
+bool containsOnlyRectangleShapes(const LabelMeImporter::LabelMeData &data)
+{
+    return !data.shapes.empty()
+           && std::all_of(data.shapes.begin(), data.shapes.end(), [](const LabelMeImporter::LabelMeShape &shape)
+                          { return shape.shape_type == QStringLiteral("rectangle"); });
+}
+
+} // namespace
 
 LabelMeImporter::LabelMeImporter(dltool::database::ProjectDataBase *database, QObject *parent)
     : DataImporter(database, parent)
@@ -137,9 +164,20 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
                     data.image_height = height;
                     ++parsed_annotations;
 
+                    const bool convert_rectangles_to_polygons
+                        = target_method_ == dltool::core::DeepLearningMethod::Segmentation
+                          && containsOnlyRectangleShapes(data);
+
                     for (const LabelMeShape &shape : data.shapes)
                     {
                         if (shape.label.isEmpty())
+                        {
+                            continue;
+                        }
+
+                        const QVariantMap label_data
+                            = convertShapeToLabelData(shape, width, height, convert_rectangles_to_polygons);
+                        if (label_data.isEmpty())
                         {
                             continue;
                         }
@@ -150,12 +188,6 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
                             const QString color                 = DatasetIO::generateDefaultColor(color_index++);
                             color_it                            = label_class_colors.emplace(shape.label, color).first;
                             batch_label_class_info[shape.label] = color;
-                        }
-
-                        const QVariantMap label_data = convertShapeToLabelData(shape, width, height);
-                        if (label_data.isEmpty())
-                        {
-                            continue;
                         }
 
                         ImportedLabel imported_label;
@@ -278,7 +310,8 @@ bool LabelMeImporter::parseLabelMeJson(const QString &json_path, LabelMeData &da
     }
 }
 
-QVariantMap LabelMeImporter::convertShapeToLabelData(const LabelMeShape &shape, int image_width, int image_height)
+QVariantMap LabelMeImporter::convertShapeToLabelData(const LabelMeShape &shape, int image_width, int image_height,
+                                                     bool convert_rectangle_to_polygon)
 {
     if (shape.shape_type == QStringLiteral("rectangle"))
     {
@@ -290,6 +323,23 @@ QVariantMap LabelMeImporter::convertShapeToLabelData(const LabelMeShape &shape, 
 
         const QPointF p1    = shape.points[0];
         const QPointF p2    = shape.points[1];
+        if (target_method_ == dltool::core::DeepLearningMethod::Segmentation)
+        {
+            if (!convert_rectangle_to_polygon)
+            {
+                return {};
+            }
+
+            const std::vector<QPointF> polygon = rectangleToPolygon(p1, p2);
+            const QVariantMap          label_data = DatasetIO::pointsToLabelData(polygon, image_width, image_height);
+            if (label_data.isEmpty())
+            {
+                spdlog::warn("rectangle 标注无法转换为四点多边形: label={}", shape.label.toUtf8().constData());
+                return {};
+            }
+            return label_data;
+        }
+
         const double  x_min = std::min(p1.x(), p2.x());
         const double  y_min = std::min(p1.y(), p2.y());
         const double  x_max = std::max(p1.x(), p2.x());

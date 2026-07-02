@@ -834,12 +834,10 @@ QString DataManager::isValidName(const QString &name) const
 
     for (const QChar &ch : name)
     {
-        const ushort value = ch.unicode();
-        const bool   valid = (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z')
-                        || (value >= '0' && value <= '9') || value == '-' || value == '_';
+        const bool valid = ch.isLetterOrNumber() || ch == QLatin1Char('-') || ch == QLatin1Char('_');
         if (!valid)
         {
-            return QString("error:名称只能使用字母、数字、-、_");
+            return QString("error:名称只能使用字母、数字、中文、-、_");
         }
     }
     return QString();
@@ -1613,20 +1611,49 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
         return false;
     }
 
-    for (const auto &[label_name, color] : label_class_info)
+    auto ensure_label_class = [&](const QString &label_name, const QString &color) -> int64_t
     {
-        int64_t label_class_id = label_classes_->getLabelClassId(label_name);
-        if (label_class_id < 0)
+        if (label_name.isEmpty())
         {
-            addLabelClass(label_name, color, QString());
-            label_class_id = label_classes_->getLabelClassId(label_name);
-            spdlog::debug("创建新标签类别: {}, ID: {}", label_name.toUtf8().constData(), label_class_id);
+            return -1;
+        }
+
+        auto cached_it = task.label_class_map.find(label_name);
+        if (cached_it != task.label_class_map.end())
+        {
+            return cached_it->second;
+        }
+
+        int64_t label_class_id = label_classes_ ? label_classes_->getLabelClassId(label_name) : -1;
+        if (label_class_id < 0 && label_classes_ != nullptr)
+        {
+            const QString validation_error = isValidClassName(label_name);
+            if (!validation_error.isEmpty())
+            {
+                spdlog::warn("导入时创建标签类别失败: {}, {}", label_name.toUtf8().constData(),
+                             validation_error.toUtf8().constData());
+            }
+            else if (label_classes_->addLabelClass(label_name, color, QString()))
+            {
+                label_class_id = label_classes_->getLabelClassId(label_name);
+                spdlog::info("导入时创建新标签类别: {}, ID: {}", label_name.toUtf8().constData(), label_class_id);
+            }
+            else
+            {
+                spdlog::warn("导入时创建标签类别失败: {}", label_name.toUtf8().constData());
+            }
         }
 
         if (label_class_id >= 0)
         {
             task.label_class_map[label_name] = label_class_id;
         }
+        return label_class_id;
+    };
+
+    for (const auto &[label_name, color] : label_class_info)
+    {
+        ensure_label_class(label_name, color);
     }
 
     std::vector<int64_t> image_ids;
@@ -1715,21 +1742,9 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
             continue;
         }
 
-        auto class_it = task.label_class_map.find(label.label_class_name);
-        if (class_it == task.label_class_map.end())
-        {
-            const QString fallback_color
-                = DatasetIO::generateDefaultColor(static_cast<int>(task.label_class_map.size()));
-            addLabelClass(label.label_class_name, fallback_color, QString());
-            const int64_t label_class_id = label_classes_->getLabelClassId(label.label_class_name);
-            if (label_class_id >= 0)
-            {
-                task.label_class_map[label.label_class_name] = label_class_id;
-                class_it                                     = task.label_class_map.find(label.label_class_name);
-            }
-        }
-
-        if (class_it == task.label_class_map.end())
+        const QString fallback_color = DatasetIO::generateDefaultColor(static_cast<int>(task.label_class_map.size()));
+        const int64_t label_class_id = ensure_label_class(label.label_class_name, fallback_color);
+        if (label_class_id < 0)
         {
             spdlog::warn("未找到标签类别，跳过标注: {}, 图像: {}", label.label_class_name.toUtf8().constData(),
                          label.image_path.toUtf8().constData());
@@ -1746,7 +1761,7 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
         }
 
         batch_label_image_ids.push_back(image_it->second);
-        batch_label_class_ids.push_back(class_it->second);
+        batch_label_class_ids.push_back(label_class_id);
         batch_label_data.push_back(label.data);
     }
 
