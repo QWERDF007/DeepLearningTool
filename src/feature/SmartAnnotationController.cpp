@@ -38,6 +38,7 @@ constexpr int kSamMaxPoints = 16; ///< SAM 模型最大提示点数
 
 using dltool::settings::settingBool;
 using dltool::settings::settingDouble;
+using dltool::settings::settingInt;
 using dltool::settings::settingString;
 
 /// 提示点结构
@@ -213,6 +214,8 @@ irt::features::SAMImagePredictOptions buildPredictOptions(dltool::settings::Glob
     options.mask_output_mode = irt::features::SAMMaskOutputMode::Single;
     options.mask_threshold
         = static_cast<float>(settingDouble(settings, generated_field::SmartAnnotation::MaskThreshold, 0.0));
+    options.max_hole_area = settingInt(settings, generated_field::SmartAnnotation::MaxHoleArea, 0);
+    options.max_sprinkle_area = settingInt(settings, generated_field::SmartAnnotation::MaxSprinkleArea, 0);
     return options;
 }
 

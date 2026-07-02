@@ -51,8 +51,9 @@ struct ImageClusterSettings
     double  cluster_selection_epsilon{irt::ops::kDefaultHDBSCANClusterSelectionEpsilon};
     int64_t max_cluster_size{irt::ops::kDefaultHDBSCANMaxClusterSize};
     double  alpha{irt::ops::kDefaultHDBSCANAlpha};
-    int     algorithm{static_cast<int>(irt::ops::ClusteringAlgorithm::Auto)};
+    int     algorithm{static_cast<int>(irt::ops::ClusteringAlgorithm::KDTree)};
     int64_t leaf_size{irt::ops::kDefaultClusteringLeafSize};
+    int     metric{static_cast<int>(irt::ops::kDefaultHDBSCANMetric)};
     int     cluster_selection_method{static_cast<int>(irt::ops::HDBSCANClusterSelectionMethod::Eom)};
     bool    allow_single_cluster{false};
 };

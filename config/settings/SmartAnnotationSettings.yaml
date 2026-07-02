@@ -69,6 +69,24 @@ SmartAnnotationSettings:
         value_range: [-20.0, 20.0, 0.1]
         control_type: slider
 
+      - name_en: max_hole_area
+        name_cn: 最大填洞面积
+        desc: 用于配置智能标注中Mask相关的最大填洞面积；0 表示不填充背景洞。
+        property_name: maxHoleArea
+        value: 0
+        value_type: int
+        value_range: [0, 1000000, 1]
+        control_type: spin
+
+      - name_en: max_sprinkle_area
+        name_cn: 最大去噪面积
+        desc: 用于配置智能标注中Mask相关的最大去噪面积；0 表示不移除前景噪点。
+        property_name: maxSprinkleArea
+        value: 0
+        value_type: int
+        value_range: [0, 1000000, 1]
+        control_type: spin
+
       - name_en: polygon_simplify_epsilon
         name_cn: 轮廓简化
         desc: 用于配置智能标注中Mask相关的轮廓简化。

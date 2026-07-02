@@ -194,7 +194,12 @@ ImageClusterSettings readImageClusterSettingsImpl(const dltool::settings::Global
     result.max_cluster_size = valueForField(settings, generated_field::ImageCluster::MaxClusterSize,
                                             static_cast<qlonglong>(irt::ops::kDefaultHDBSCANMaxClusterSize))
                                   .toLongLong();
-    result.algorithm = valueForField(settings, generated_field::ImageCluster::Algorithm, 0).toInt();
+    result.algorithm = valueForField(settings, generated_field::ImageCluster::Algorithm,
+                                     static_cast<int>(irt::ops::ClusteringAlgorithm::KDTree))
+                           .toInt();
+    result.metric = valueForField(settings, generated_field::ImageCluster::Metric,
+                                  static_cast<int>(irt::ops::kDefaultHDBSCANMetric))
+                        .toInt();
     result.cluster_selection_method
         = valueForField(settings, generated_field::ImageCluster::ClusterSelectionMethod, 0).toInt();
     return result;
@@ -274,6 +279,7 @@ void applyImageClusterConfig(irt::features::ImageClusterConfig &config, const Im
     // config.hdbscan.alpha                              = settings.alpha;
     config.hdbscan.algorithm = static_cast<irt::ops::ClusteringAlgorithm>(settings.algorithm);
     // config.hdbscan.leaf_size                          = settings.leaf_size;
+    config.hdbscan.metric = static_cast<irt::ops::ClusteringMetric>(settings.metric);
     config.hdbscan.cluster_selection_method
         = static_cast<irt::ops::HDBSCANClusterSelectionMethod>(settings.cluster_selection_method);
     // config.hdbscan.allow_single_cluster = settings.allow_single_cluster;

@@ -152,15 +152,29 @@ ImageClusterSettings:
         name_cn: 邻居搜索
         desc: 用于配置图像聚类中HDBSCAN相关的邻居搜索。
         property_name: algorithm
-        value: 2
+        value: 1
         value_type: int
         control_type: combo
-        options: [auto, brute, kd_tree, ball_tree]
+        options: [brute, kd_tree, ball_tree]
         options_values:
-          auto: 0
-          brute: 1
-          kd_tree: 2
-          ball_tree: 3
+          brute: 0
+          kd_tree: 1
+          ball_tree: 2
+
+      - name_en: metric
+        name_cn: 距离度量
+        desc: 用于配置图像聚类中HDBSCAN相关的距离度量。
+        property_name: metric
+        value: 0
+        value_type: int
+        control_type: combo
+        options: [euclidean, cosine, manhattan, chebyshev, minkowski]
+        options_values:
+          euclidean: 0
+          cosine: 1
+          manhattan: 2
+          chebyshev: 3
+          minkowski: 4
 
       - name_en: cluster_selection_method
         name_cn: 簇选择方法
