@@ -1,5 +1,6 @@
 #include "feature/SmartAnnotationController.h"
 
+#include "common/MaskPolygonUtils.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsValue.h"
 
@@ -388,21 +389,6 @@ QRectF boundingBoxFromMask(const std::vector<uint8_t> &mask, int width, int heig
  * @param points 多边形顶点
  * @return 面积
  */
-double polygonArea(const std::vector<QPointF> &points)
-{
-    if (points.size() < 3)
-        return 0.0;
-
-    double area = 0.0;
-    for (size_t i = 0; i < points.size(); ++i)
-    {
-        const QPointF &a = points[i];
-        const QPointF &b = points[(i + 1) % points.size()];
-        area += a.x() * b.y() - b.x() * a.y();
-    }
-    return std::abs(area) / 2.0;
-}
-
 /**
  * @brief 计算多边形有向面积
  * @param points 多边形顶点
@@ -442,7 +428,7 @@ std::vector<QPointF> normalizePolygon(std::vector<QPointF> points)
     if (normalized.size() > 1 && QLineF(normalized.front(), normalized.back()).length() < 0.001)
         normalized.pop_back();
 
-    if (normalized.size() < 3 || polygonArea(normalized) <= 0.5)
+    if (normalized.size() < 3 || dltool::common::polygonArea(normalized) <= 0.5)
         return {};
     return normalized;
 }
@@ -544,178 +530,6 @@ std::vector<QPointF> postprocessContourPolygon(std::vector<QPointF> polygon, con
     if (polygon.empty() || !options.spline_enabled)
         return polygon;
     return splineFitClosedPolygon(std::move(polygon), options);
-}
-
-/**
- * @brief 将二值 Mask 转换为带 1 像素背景边框的 OpenCV Mat
- * @param mask 二值 Mask 数据
- * @param width 图像宽度
- * @param height 图像高度
- * @return CV_8UC1 Mask，前景为 255
- */
-cv::Mat maskToPaddedMat(const std::vector<uint8_t> &mask, int width, int height)
-{
-    const int64_t total = static_cast<int64_t>(width) * static_cast<int64_t>(height);
-    if (width <= 0 || height <= 0 || total <= 0 || mask.size() < static_cast<size_t>(total))
-        return {};
-
-    cv::Mat padded(height + 2, width + 2, CV_8UC1, cv::Scalar(0));
-    for (int y = 0; y < height; ++y)
-    {
-        uchar       *dst        = padded.ptr<uchar>(y + 1) + 1;
-        const size_t row_offset = static_cast<size_t>(y) * width;
-        for (int x = 0; x < width; ++x)
-            dst[x] = mask[row_offset + static_cast<size_t>(x)] != 0 ? uchar{255} : uchar{0};
-    }
-    return padded;
-}
-
-/**
- * @brief 计算签名距离场，Mask 内为正，Mask 外为负
- * @param padded_mask 带背景边框的 CV_8UC1 Mask
- * @return CV_32FC1 签名距离场
- */
-cv::Mat signedDistanceField(const cv::Mat &padded_mask)
-{
-    cv::Mat inside_distance;
-    cv::distanceTransform(padded_mask, inside_distance, cv::DIST_L2, cv::DIST_MASK_PRECISE);
-
-    cv::Mat inverted_mask;
-    cv::bitwise_not(padded_mask, inverted_mask);
-
-    cv::Mat outside_distance;
-    cv::distanceTransform(inverted_mask, outside_distance, cv::DIST_L2, cv::DIST_MASK_PRECISE);
-
-    cv::Mat signed_distance;
-    cv::subtract(inside_distance, outside_distance, signed_distance);
-    return signed_distance;
-}
-
-/**
- * @brief 用距离场将 findContours 的整数边界点修正到亚像素边界
- * @param signed_distance 签名距离场
- * @param point findContours 输出点
- * @param width 原始 Mask 宽度
- * @param height 原始 Mask 高度
- * @return 原始 Mask 坐标系中的亚像素点
- */
-QPointF refineContourPoint(const cv::Mat &signed_distance, const cv::Point &point, int width, int height)
-{
-    const float inside_value = signed_distance.at<float>(point.y, point.x);
-    cv::Point   best_outside = point;
-    float       best_value   = 0.0F;
-    bool        found        = false;
-
-    for (int dy = -1; dy <= 1; ++dy)
-    {
-        const int y = point.y + dy;
-        if (y < 0 || y >= signed_distance.rows)
-            continue;
-        for (int dx = -1; dx <= 1; ++dx)
-        {
-            if (dx == 0 && dy == 0)
-                continue;
-            const int x = point.x + dx;
-            if (x < 0 || x >= signed_distance.cols)
-                continue;
-
-            const float value = signed_distance.at<float>(y, x);
-            if (value <= 0.0F && (!found || value > best_value))
-            {
-                found        = true;
-                best_value   = value;
-                best_outside = cv::Point(x, y);
-            }
-        }
-    }
-
-    double x = static_cast<double>(point.x);
-    double y = static_cast<double>(point.y);
-    if (found && inside_value > best_value)
-    {
-        const double t = static_cast<double>(inside_value) / static_cast<double>(inside_value - best_value);
-        x += t * static_cast<double>(best_outside.x - point.x);
-        y += t * static_cast<double>(best_outside.y - point.y);
-    }
-    else
-    {
-        const int left   = std::max(point.x - 1, 0);
-        const int right  = std::min(point.x + 1, signed_distance.cols - 1);
-        const int top    = std::max(point.y - 1, 0);
-        const int bottom = std::min(point.y + 1, signed_distance.rows - 1);
-        const double dx  = 0.5
-                         * static_cast<double>(signed_distance.at<float>(point.y, right)
-                                               - signed_distance.at<float>(point.y, left));
-        const double dy  = 0.5
-                         * static_cast<double>(signed_distance.at<float>(bottom, point.x)
-                                               - signed_distance.at<float>(top, point.x));
-        const double denom = dx * dx + dy * dy;
-        if (denom > 0.000001)
-        {
-            x -= static_cast<double>(inside_value) * dx / denom;
-            y -= static_cast<double>(inside_value) * dy / denom;
-        }
-    }
-
-    return QPointF(std::clamp(x - 0.5, 0.0, static_cast<double>(width)),
-                   std::clamp(y - 0.5, 0.0, static_cast<double>(height)));
-}
-
-std::vector<QPointF> contourToPolygon(const std::vector<cv::Point> &contour, const cv::Mat &signed_distance, int width,
-                                      int height)
-{
-    std::vector<QPointF> points;
-    points.reserve(contour.size());
-    for (const cv::Point &point : contour) points.push_back(refineContourPoint(signed_distance, point, width, height));
-
-    points = normalizePolygon(std::move(points));
-    if (!points.empty() && signedPolygonArea(points) < 0.0)
-        std::reverse(points.begin(), points.end());
-    return points;
-}
-
-/**
- * @brief 将二值 Mask 转换为最大外轮廓多边形（距离场 + OpenCV findContours）
- * @param mask 二值 Mask 数据
- * @param width 图像宽度
- * @param height 图像高度
- * @return 最大多边形轮廓列表，最多包含一个外轮廓
- */
-std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mask, int width, int height)
-{
-    const cv::Mat padded_mask = maskToPaddedMat(mask, width, height);
-    if (padded_mask.empty())
-        return {};
-
-    const cv::Mat signed_distance = signedDistanceField(padded_mask);
-    cv::Mat       foreground;
-    cv::compare(signed_distance, 0.0F, foreground, cv::CMP_GT);
-
-    std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(foreground, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
-    if (contours.empty())
-        return {};
-
-    const auto best_it = std::max_element(contours.begin(), contours.end(),
-                                          [](const std::vector<cv::Point> &left,
-                                             const std::vector<cv::Point> &right)
-                                          { return std::abs(cv::contourArea(left)) < std::abs(cv::contourArea(right)); });
-    if (best_it == contours.end() || std::abs(cv::contourArea(*best_it)) <= 0.5)
-        return {};
-
-    std::vector<QPointF> points = contourToPolygon(*best_it, signed_distance, width, height);
-    if (points.empty())
-        return {};
-
-    points = normalizePolygon(std::move(points));
-    if (points.empty())
-        return {};
-    if (signedPolygonArea(points) < 0.0)
-        std::reverse(points.begin(), points.end());
-
-    std::vector<std::vector<QPointF>> polygons;
-    polygons.push_back(std::move(points));
-    return polygons;
 }
 
 /**
@@ -1024,7 +838,8 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
             throw std::runtime_error("SAM 没有生成有效 mask，请调整提示点或阈值");
 
         std::vector<QPointF>              polygon;
-        std::vector<std::vector<QPointF>> polygons = maskToPolygons(binary_mask, input_image_width, input_image_height);
+        std::vector<std::vector<QPointF>> polygons
+            = dltool::common::maskToPolygons(binary_mask, input_image_width, input_image_height, true);
         if (!polygons.empty())
             polygon = std::move(polygons.front());
         else

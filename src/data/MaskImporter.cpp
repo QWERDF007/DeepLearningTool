@@ -1,5 +1,6 @@
 #include "data/MaskImporter.h"
 
+#include "common/MaskPolygonUtils.h"
 #include "core/CoreDef.h"
 #include "data/DataNameUtils.h"
 #include "data/DatasetIO.h"
@@ -11,12 +12,11 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
+#include <QImageReader>
 #include <QTextStream>
 #include <QThread>
 #include <algorithm>
-#include <cmath>
 #include <map>
-#include <set>
 
 namespace dltool::data {
 
@@ -24,124 +24,37 @@ namespace {
 
 constexpr int kMaskThreshold = 128;
 
-qint64 pointKey(int x, int y)
-{
-    return (static_cast<qint64>(x) << 32) | static_cast<quint32>(y);
-}
-
-QPoint pointFromKey(qint64 key)
-{
-    return QPoint(static_cast<int>(key >> 32), static_cast<int>(key & 0xffffffff));
-}
-
-double perpendicularDistance(const QPointF &point, const QPointF &line_start, const QPointF &line_end)
-{
-    const double dx = line_end.x() - line_start.x();
-    const double dy = line_end.y() - line_start.y();
-    if (std::abs(dx) < 1e-9 && std::abs(dy) < 1e-9)
-    {
-        const double px = point.x() - line_start.x();
-        const double py = point.y() - line_start.y();
-        return std::sqrt(px * px + py * py);
-    }
-
-    return std::abs(dy * point.x() - dx * point.y() + line_end.x() * line_start.y() - line_end.y() * line_start.x())
-         / std::sqrt(dx * dx + dy * dy);
-}
-
-void simplifyDouglasPeucker(const std::vector<QPointF> &points, int first, int last, double epsilon,
-                            std::vector<bool> &keep)
-{
-    if (last <= first + 1)
-        return;
-
-    double max_distance = 0.0;
-    int    index        = first;
-    for (int i = first + 1; i < last; ++i)
-    {
-        const double distance = perpendicularDistance(
-            points[static_cast<size_t>(i)], points[static_cast<size_t>(first)], points[static_cast<size_t>(last)]);
-        if (distance > max_distance)
-        {
-            max_distance = distance;
-            index        = i;
-        }
-    }
-
-    if (max_distance > epsilon)
-    {
-        keep[static_cast<size_t>(index)] = true;
-        simplifyDouglasPeucker(points, first, index, epsilon, keep);
-        simplifyDouglasPeucker(points, index, last, epsilon, keep);
-    }
-}
-
-std::vector<QPointF> simplifyPolygon(const std::vector<QPointF> &points, double epsilon)
-{
-    if (points.size() <= 3)
-        return points;
-
-    std::vector<QPointF> compact;
-    compact.reserve(points.size());
-    for (const QPointF &point : points)
-    {
-        if (compact.empty() || compact.back() != point)
-            compact.push_back(point);
-    }
-    if (compact.size() > 1 && compact.front() == compact.back())
-        compact.pop_back();
-    if (compact.size() <= 3)
-        return compact;
-
-    std::vector<QPointF> no_collinear;
-    no_collinear.reserve(compact.size());
-    for (size_t i = 0; i < compact.size(); ++i)
-    {
-        const QPointF &prev = compact[(i + compact.size() - 1) % compact.size()];
-        const QPointF &cur  = compact[i];
-        const QPointF &next = compact[(i + 1) % compact.size()];
-        const double cross  = (cur.x() - prev.x()) * (next.y() - cur.y()) - (cur.y() - prev.y()) * (next.x() - cur.x());
-        if (std::abs(cross) > 1e-6)
-            no_collinear.push_back(cur);
-    }
-    if (no_collinear.size() <= 3)
-        return no_collinear;
-
-    std::vector<QPointF> open_points = no_collinear;
-    open_points.push_back(no_collinear.front());
-    std::vector<bool> keep(open_points.size(), false);
-    keep.front() = true;
-    keep.back()  = true;
-    simplifyDouglasPeucker(open_points, 0, static_cast<int>(open_points.size() - 1), epsilon, keep);
-
-    std::vector<QPointF> simplified;
-    for (size_t i = 0; i + 1 < open_points.size(); ++i)
-    {
-        if (keep[i])
-            simplified.push_back(open_points[i]);
-    }
-    return simplified.size() >= 3 ? simplified : no_collinear;
-}
-
-double polygonArea(const std::vector<QPointF> &points)
-{
-    if (points.size() < 3)
-        return 0.0;
-    double area = 0.0;
-    for (size_t i = 0; i < points.size(); ++i)
-    {
-        const QPointF &a = points[i];
-        const QPointF &b = points[(i + 1) % points.size()];
-        area += a.x() * b.y() - b.x() * a.y();
-    }
-    return std::abs(area) * 0.5;
-}
-
 bool isForeground(const QImage &image, int x, int y)
 {
     if (x < 0 || y < 0 || x >= image.width() || y >= image.height())
         return false;
     return qGray(image.pixel(x, y)) >= kMaskThreshold;
+}
+
+QRect foregroundBoundingBox(const QImage &mask)
+{
+    int x_min = mask.width();
+    int y_min = mask.height();
+    int x_max = -1;
+    int y_max = -1;
+
+    for (int y = 0; y < mask.height(); ++y)
+    {
+        for (int x = 0; x < mask.width(); ++x)
+        {
+            if (!isForeground(mask, x, y))
+                continue;
+
+            x_min = std::min(x_min, x);
+            y_min = std::min(y_min, y);
+            x_max = std::max(x_max, x);
+            y_max = std::max(y_max, y);
+        }
+    }
+
+    if (x_max < x_min || y_max < y_min)
+        return {};
+    return QRect(QPoint(x_min, y_min), QPoint(x_max + 1, y_max + 1));
 }
 
 std::map<QString, QString> loadImageMap(const QString &image_dir)
@@ -370,83 +283,28 @@ bool MaskImporter::readMaskGeometry(const QString &mask_path, MaskGeometry &geom
     geometry.mask_width  = mask.width();
     geometry.mask_height = mask.height();
 
-    int x_min = mask.width();
-    int y_min = mask.height();
-    int x_max = -1;
-    int y_max = -1;
-
-    std::map<qint64, std::vector<qint64>> edges;
-    const auto                            add_edge = [&edges](int x1, int y1, int x2, int y2)
-    {
-        edges[pointKey(x1, y1)].push_back(pointKey(x2, y2));
-    };
-
-    for (int y = 0; y < mask.height(); ++y)
-    {
-        for (int x = 0; x < mask.width(); ++x)
-        {
-            if (!isForeground(mask, x, y))
-                continue;
-
-            x_min = std::min(x_min, x);
-            y_min = std::min(y_min, y);
-            x_max = std::max(x_max, x);
-            y_max = std::max(y_max, y);
-
-            if (!isForeground(mask, x, y - 1))
-                add_edge(x, y, x + 1, y);
-            if (!isForeground(mask, x + 1, y))
-                add_edge(x + 1, y, x + 1, y + 1);
-            if (!isForeground(mask, x, y + 1))
-                add_edge(x + 1, y + 1, x, y + 1);
-            if (!isForeground(mask, x - 1, y))
-                add_edge(x, y + 1, x, y);
-        }
-    }
-
-    if (x_max < x_min || y_max < y_min)
+    geometry.bbox = foregroundBoundingBox(mask);
+    if (geometry.bbox.isNull() || geometry.bbox.isEmpty())
         return false;
 
-    geometry.bbox = QRect(QPoint(x_min, y_min), QPoint(x_max + 1, y_max + 1));
-
-    std::vector<QPointF> best_polygon;
-    double               best_area = 0.0;
-    while (!edges.empty())
+    std::vector<uint8_t> binary_mask;
+    binary_mask.reserve(static_cast<size_t>(mask.width()) * static_cast<size_t>(mask.height()));
+    for (int y = 0; y < mask.height(); ++y)
     {
-        const qint64         start = edges.begin()->first;
-        qint64               cur   = start;
-        std::vector<QPointF> polygon;
-        std::set<qint64>     seen;
-
-        for (int guard = 0; guard < mask.width() * mask.height() * 4 + 16; ++guard)
+        const uchar *row = mask.constScanLine(y);
+        for (int x = 0; x < mask.width(); ++x)
         {
-            polygon.push_back(pointFromKey(cur));
-            auto edge_it = edges.find(cur);
-            if (edge_it == edges.end() || edge_it->second.empty())
-                break;
-
-            const qint64 next = edge_it->second.back();
-            edge_it->second.pop_back();
-            if (edge_it->second.empty())
-                edges.erase(edge_it);
-
-            cur = next;
-            if (cur == start)
-                break;
-            if (!seen.insert(cur).second)
-                break;
-        }
-
-        polygon           = simplifyPolygon(polygon, 2.0);
-        const double area = polygonArea(polygon);
-        if (polygon.size() >= 3 && area > best_area)
-        {
-            best_area    = area;
-            best_polygon = std::move(polygon);
+            binary_mask.push_back(row[x] >= kMaskThreshold ? uint8_t{1} : uint8_t{0});
         }
     }
 
-    geometry.polygon = std::move(best_polygon);
+    std::vector<std::vector<QPointF>> polygons
+        = dltool::common::maskToPolygons(binary_mask, mask.width(), mask.height(), false);
+    if (!polygons.empty())
+        geometry.polygon = std::move(polygons.front());
+    else
+        geometry.polygon.clear();
+
     return true;
 }
 

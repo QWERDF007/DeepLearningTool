@@ -3,6 +3,8 @@ add_plugin_library(common
     PUBLIC_LIBS Qt6::Core spdlog::spdlog yaml-cpp::yaml-cpp
 )
 
+target_link_libraries(dltool_common PUBLIC ${OpenCV_LIBS})
+
 # 平台特定库
 if(WIN32)
     target_link_libraries(dltool_common PRIVATE Dbghelp)
