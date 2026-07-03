@@ -1,6 +1,8 @@
 #include "feature/FewShotLearningController.h"
 
 #include "core/CoreDef.h"
+#include "data/DataSelectionTreeModel.h"
+#include "data/DatasetViewModelFactory.h"
 #include "feature/FewShotLearningDataProvider.h"
 #include "feature/Utils.h"
 #include "model/TaskManager.h"
@@ -273,6 +275,32 @@ std::vector<QPointF> variantListToPoints(const QVariant &value)
     }
 
     return points;
+}
+
+QVariantList variantListFromViewModel(QObject *view_model, const char *method_name)
+{
+    if (view_model == nullptr)
+        return {};
+
+    QVariantList ids;
+    QMetaObject::invokeMethod(view_model, method_name, Q_RETURN_ARG(QVariantList, ids));
+    return ids;
+}
+
+QVariantList selectedDatasetIdsFromViewModel(QObject *view_model)
+{
+    QVariantList ids = variantListFromViewModel(view_model, "selectedDatasetIds");
+    if (ids.empty())
+        ids = variantListFromViewModel(view_model, "selectedIds");
+    return ids;
+}
+
+QVariantList selectedLabelClassIdsFromViewModel(QObject *view_model)
+{
+    QVariantList ids = variantListFromViewModel(view_model, "selectedLabelClassIds");
+    if (ids.empty())
+        ids = variantListFromViewModel(view_model, "selectedIds");
+    return ids;
 }
 
 /**
@@ -878,12 +906,27 @@ struct FewShotLearningController::RunContext
     std::vector<PredictionImportTarget> import_targets;   ///< 预测结果导入目标列表
 };
 
-FewShotLearningController::FewShotLearningController(FewShotLearningDataProvider *data_provider, QObject *parent)
+FewShotLearningController::FewShotLearningController(FewShotLearningDataProvider *data_provider,
+                                                     dltool::data::DataManager *data_manager,
+                                                     dltool::model::TaskManager *task_manager,
+                                                     QObject *parent)
     : QObject(parent)
     , data_provider_(data_provider)
+    , task_manager_(task_manager)
 {
     auto *gs = dltool::settings::GlobalSettings::getInstance();
     enabled_ = gs->valueForField(dltool::settings::generated::field::FewShotLearning::Key::Enabled, true).toBool();
+
+    setTrainDatasetViewModel(dltool::data::DatasetViewModelFactory::createDatasetSelectionModel(data_manager, this));
+    setValidationDatasetViewModel(
+        dltool::data::DatasetViewModelFactory::createDatasetSelectionModel(data_manager, this));
+    setTestDatasetViewModel(dltool::data::DatasetViewModelFactory::createDatasetSelectionModel(data_manager, this));
+
+    if (task_manager_)
+    {
+        connect(task_manager_, &dltool::model::TaskManager::taskStopRequested, this,
+                &FewShotLearningController::handleTaskStopRequested);
+    }
 
     connect(gs->catalog(), &dltool::settings::SettingsCatalog::fieldValueChanged, this,
             [this](const QString &group_key, const QString &name, const QVariant &value) {
@@ -913,34 +956,85 @@ bool    FewShotLearningController::enabled() const   { return enabled_; }
 bool    FewShotLearningController::running() const   { return running_; }
 QString FewShotLearningController::lastError() const { return last_error_; }
 
-/**
- * @brief 设置任务管理器并连接停止信号
- * @param task_manager 任务管理器实例
- */
-void FewShotLearningController::setTaskManager(dltool::model::TaskManager *task_manager)
+QObject *FewShotLearningController::trainDatasetViewModel() const
 {
-    if (task_manager_ == task_manager)
+    return train_dataset_view_model_;
+}
+
+void FewShotLearningController::setTrainDatasetViewModel(QObject *view_model)
+{
+    if (train_dataset_view_model_ == view_model)
         return;
-    if (task_manager_)
-        disconnect(task_manager_, &dltool::model::TaskManager::taskStopRequested, this,
-                   &FewShotLearningController::handleTaskStopRequested);
-    task_manager_ = task_manager;
-    if (task_manager_)
-        connect(task_manager_, &dltool::model::TaskManager::taskStopRequested, this,
-                &FewShotLearningController::handleTaskStopRequested);
+    train_dataset_view_model_ = view_model;
+    if (view_model != nullptr && view_model->parent() == nullptr)
+        view_model->setParent(this);
+    emit trainDatasetViewModelChanged();
+}
+
+QObject *FewShotLearningController::validationDatasetViewModel() const
+{
+    return validation_dataset_view_model_;
+}
+
+void FewShotLearningController::setValidationDatasetViewModel(QObject *view_model)
+{
+    if (validation_dataset_view_model_ == view_model)
+        return;
+    validation_dataset_view_model_ = view_model;
+    if (view_model != nullptr && view_model->parent() == nullptr)
+        view_model->setParent(this);
+    emit validationDatasetViewModelChanged();
+}
+
+QObject *FewShotLearningController::testDatasetViewModel() const
+{
+    return test_dataset_view_model_;
+}
+
+void FewShotLearningController::setTestDatasetViewModel(QObject *view_model)
+{
+    if (test_dataset_view_model_ == view_model)
+        return;
+    test_dataset_view_model_ = view_model;
+    if (view_model != nullptr && view_model->parent() == nullptr)
+        view_model->setParent(this);
+    emit testDatasetViewModelChanged();
+}
+
+QObject *FewShotLearningController::labelClassViewModel() const
+{
+    return label_class_view_model_;
+}
+
+void FewShotLearningController::setLabelClassViewModel(QObject *view_model)
+{
+    if (label_class_view_model_ == view_model)
+        return;
+    label_class_view_model_ = view_model;
+    if (view_model != nullptr && view_model->parent() == nullptr)
+        view_model->setParent(this);
+    emit labelClassViewModelChanged();
 }
 
 /**
- * @brief 启动小样本学习流程（FS-SAM2）
- * @param train_dataset_ids 训练数据集 ID 列表
- * @param validation_dataset_ids 验证数据集 ID 列表；为空时复用训练数据集
- * @param test_dataset_ids 测试数据集 ID 列表
- * @param label_class_ids 标注类别 ID 列表
+ * @brief 启动小样本学习流程（FS-SAM2），从控制器持有的 ViewModel 中读取选择
  * @return 启动成功返回 true
  */
-bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_ids,
-                                            const QVariantList &validation_dataset_ids,
-                                            const QVariantList &test_dataset_ids, const QVariantList &label_class_ids)
+bool FewShotLearningController::startFsSam2()
+{
+    QVariantList label_class_ids = selectedLabelClassIdsFromViewModel(train_dataset_view_model_);
+    if (label_class_ids.empty())
+        label_class_ids = selectedLabelClassIdsFromViewModel(label_class_view_model_);
+
+    return startFsSam2WithIds(selectedDatasetIdsFromViewModel(train_dataset_view_model_),
+                              selectedDatasetIdsFromViewModel(validation_dataset_view_model_),
+                              selectedDatasetIdsFromViewModel(test_dataset_view_model_), label_class_ids);
+}
+
+bool FewShotLearningController::startFsSam2WithIds(const QVariantList &train_dataset_ids,
+                                                   const QVariantList &validation_dataset_ids,
+                                                   const QVariantList &test_dataset_ids,
+                                                   const QVariantList &label_class_ids)
 {
     if (running_)
         return false;

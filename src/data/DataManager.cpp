@@ -447,8 +447,7 @@ void DataManager::importMaskData(int64_t dataset_id, const QString &image_manife
     importData(dataset_id, DataFormat::Mask, image_manifest_path, prediction_output_dir);
 }
 
-QMetaObject::Connection DataManager::connectImportFinished(
-    QObject *context, dltool::feature::FewShotLearningDataProvider::ImportFinishedHandler handler)
+QMetaObject::Connection DataManager::connectImportFinished(QObject *context, ImportFinishedHandler handler)
 {
     return connect(this, &DataManager::dataImportFinished, context, std::move(handler));
 }
@@ -491,9 +490,11 @@ void DataManager::setLabelSearchResults(const std::vector<int64_t> &label_ids, b
 }
 
 bool DataManager::applyImageClusterAssignments(
-    const std::vector<dltool::feature::ImageSearchDataProvider::ImageClusterAssignment> &assignments,
-    const bool include_noise, dltool::feature::ImageSearchDataProvider::ImageClusterApplyMode apply_mode,
-    dltool::feature::ImageSearchDataProvider::ImageClusterApplyResult &result, QString &err_msg)
+    const std::vector<ImageClusterAssignment> &assignments,
+    const bool include_noise,
+    ImageClusterApplyMode apply_mode,
+    ImageClusterApplyResult &result,
+    QString &err_msg)
 {
     result = {};
     err_msg.clear();
@@ -618,7 +619,7 @@ bool DataManager::applyImageClusterAssignments(
 
     result.target_dataset_count = unique_target_dataset_ids.size();
 
-    if (apply_mode == dltool::feature::ImageSearchDataProvider::ImageClusterApplyMode::Copy)
+    if (apply_mode == ImageClusterApplyMode::Copy)
     {
         if (label_instances_ == nullptr || image_tags_ == nullptr)
         {

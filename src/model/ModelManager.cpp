@@ -1,6 +1,8 @@
 #include "model/ModelManager.h"
 
 #include "common/Utils.h"
+#include "data/DataSelectionTreeModel.h"
+#include "data/DatasetViewModelFactory.h"
 #include "database/DataBase.h"
 #include "model/IParams.h"
 
@@ -30,9 +32,13 @@ std::vector<RegisteredModel> &modelRegistry()
 
 } // namespace
 
-ModelManager::ModelManager(const int method, dltool::database::ProjectDataBase *database, QObject *parent)
+ModelManager::ModelManager(const int method,
+                           dltool::database::ProjectDataBase *database,
+                           dltool::data::DataManager *data_manager,
+                           QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
+    , data_manager_(data_manager)
     , method_(method)
 {
     init();
@@ -447,7 +453,9 @@ std::vector<std::unique_ptr<IModel>> ModelManager::registeredModels()
 
 std::unique_ptr<IModel> ModelManager::createRegisteredModelInstance(const QString &type_name) const
 {
-    return createRegisteredModel(method_, type_name);
+    auto model = createRegisteredModel(method_, type_name);
+    initializeDatasetViewModels(model.get());
+    return model;
 }
 
 std::vector<std::unique_ptr<IModel>> ModelManager::registeredModelInstances() const
@@ -522,6 +530,28 @@ IModel *ModelManager::cachedModelForRecord(const ModelRecord &record) const
         }
     }
     return model.get();
+}
+
+void ModelManager::initializeDatasetViewModels(IModel *model) const
+{
+    if (model == nullptr || data_manager_ == nullptr)
+        return;
+
+    if (model->trainDatasetViewModel() == nullptr)
+    {
+        model->setTrainDatasetViewModel(
+            dltool::data::DatasetViewModelFactory::createDatasetSelectionModel(data_manager_, model));
+    }
+    if (model->validationDatasetViewModel() == nullptr)
+    {
+        model->setValidationDatasetViewModel(
+            dltool::data::DatasetViewModelFactory::createDatasetSelectionModel(data_manager_, model));
+    }
+    if (model->testDatasetViewModel() == nullptr)
+    {
+        model->setTestDatasetViewModel(
+            dltool::data::DatasetViewModelFactory::createDatasetSelectionModel(data_manager_, model));
+    }
 }
 
 std::string ModelManager::instanceKey(const QString &uuid)

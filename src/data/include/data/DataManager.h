@@ -11,14 +11,14 @@
 #include "LabelClasses.h"
 #include "Labels.h"
 #include "dltool/data/Export.h"
-#include "feature/FewShotLearningDataProvider.h"
-#include "feature/ImageSearchDataProvider.h"
 
 #include <QMetaObject>
 #include <QObject>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml>
+#include <cstddef>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -30,10 +30,7 @@ class ProjectDataBase;
 
 namespace dltool::data {
 
-class DATA_API DataManager
-    : public QObject
-    , public dltool::feature::ImageSearchDataProvider
-    , public dltool::feature::FewShotLearningDataProvider
+class DATA_API DataManager : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(DataManager)
@@ -54,6 +51,29 @@ class DATA_API DataManager
     Q_PROPERTY(int method READ method CONSTANT FINAL)
 
 public:
+    using ImportFinishedHandler = std::function<void(bool, const QString &)>;
+
+    enum class ImageClusterApplyMode
+    {
+        Move = 0,
+        Copy = 1,
+    };
+
+    struct ImageClusterAssignment
+    {
+        int64_t image_id{0};
+        int64_t cluster_id{-1};
+        double  probability{0.0};
+    };
+
+    struct ImageClusterApplyResult
+    {
+        size_t moved_image_count{0};
+        size_t copied_image_count{0};
+        size_t target_dataset_count{0};
+        size_t skipped_noise_count{0};
+    };
+
     DataManager(const int method, dltool::database::ProjectDataBase *database, QObject *parent = nullptr);
     ~DataManager();
 
@@ -122,12 +142,12 @@ public:
         return category_statistics_model_;
     }
 
-    int method() const override
+    int method() const
     {
         return method_;
     }
 
-    QString databasePath() const override;
+    QString databasePath() const;
 
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
     Q_INVOKABLE QVariantList   getAllLabelClassIds() const;
@@ -188,30 +208,29 @@ public:
     Q_INVOKABLE QString getImageDatasetName(const int64_t image_id) const;
     Q_INVOKABLE QString getImageTagName(const int64_t image_id) const;
 
-    std::vector<int64_t>    selectedImageIds() const override;
-    std::vector<int64_t>    allImageIds() const override;
-    QString                 imagePath(int64_t image_id) const override;
-    int64_t                 imageDatasetId(int64_t image_id) const override;
-    std::vector<int64_t>    allLabelIds() const override;
-    int64_t                 labelImageId(int64_t label_id) const override;
-    int64_t                 labelClassId(int64_t label_id) const override;
-    QVariantMap             labelData(int64_t label_id) const override;
-    QString                 labelClassName(int64_t label_class_id) const override;
-    QString                 datasetName(int64_t dataset_id) const override;
+    std::vector<int64_t>    selectedImageIds() const;
+    std::vector<int64_t>    allImageIds() const;
+    QString                 imagePath(int64_t image_id) const;
+    int64_t                 imageDatasetId(int64_t image_id) const;
+    std::vector<int64_t>    allLabelIds() const;
+    int64_t                 labelImageId(int64_t label_id) const;
+    int64_t                 labelClassId(int64_t label_id) const;
+    QVariantMap             labelData(int64_t label_id) const;
+    QString                 labelClassName(int64_t label_class_id) const;
+    QString                 datasetName(int64_t dataset_id) const;
     void                    importMaskData(int64_t dataset_id, const QString &image_manifest_path,
-                                           const QString &prediction_output_dir) override;
-    QMetaObject::Connection connectImportFinished(
-        QObject *context, dltool::feature::FewShotLearningDataProvider::ImportFinishedHandler handler) override;
-    void disconnectImportFinished(const QMetaObject::Connection &connection) override;
-    void clearImageSearchResults() override;
-    void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter) override;
-    void clearLabelSearchResults() override;
-    bool applyImageClusterAssignments(
-        const std::vector<dltool::feature::ImageSearchDataProvider::ImageClusterAssignment> &assignments,
-        bool include_noise, dltool::feature::ImageSearchDataProvider::ImageClusterApplyMode apply_mode,
-        dltool::feature::ImageSearchDataProvider::ImageClusterApplyResult &result,
-        QString &err_msg) override;
-    void setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter) override;
+                                           const QString &prediction_output_dir);
+    QMetaObject::Connection connectImportFinished(QObject *context, ImportFinishedHandler handler);
+    void disconnectImportFinished(const QMetaObject::Connection &connection);
+    void clearImageSearchResults();
+    void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter);
+    void clearLabelSearchResults();
+    bool applyImageClusterAssignments(const std::vector<ImageClusterAssignment> &assignments,
+                                      bool include_noise,
+                                      ImageClusterApplyMode apply_mode,
+                                      ImageClusterApplyResult &result,
+                                      QString &err_msg);
+    void setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter);
 
 signals:
     void dataImportFinished(bool success, const QString &message);

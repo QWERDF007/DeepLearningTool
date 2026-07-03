@@ -16,11 +16,6 @@ QuiPopup {
     readonly property FewShotLearningController controller: featureManager ? featureManager.fewShotLearning : null
     readonly property var fewShotSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.FewShotLearning)
     property string pythonEnvPath: ""
-    property var datasetNames: []
-    property var selectedTrainDatasetMap: ({})
-    property var selectedValidationDatasetMap: ({})
-    property var selectedTestDatasetMap: ({})
-    property var selectedClassMap: ({})
     readonly property var datasetSelectorSpecs: [
         { "title": "训练数据集", "selection": "train" },
         { "title": "验证数据集", "selection": "validation" },
@@ -36,118 +31,33 @@ QuiPopup {
         if (controller && !controller.running) {
             controller.clearLastError()
         }
-        refreshDataLists()
         open()
     }
 
-    function availableDatasetNames() {
-        return dataManager ? dataManager.getAllDatasetsName() : []
-    }
-
-    function refreshDataLists() {
-        Qt.callLater(function () {
-            datasetNames = availableDatasetNames()
-        })
-    }
-
-    function selectedDatasetIds(selectionMap) {
-        let ids = []
-        if (!dataManager) {
-            return ids
-        }
-        for (let i = 0; i < datasetNames.length; ++i) {
-            let id = dataManager.getDatasetId(datasetNames[i])
-            if (selectionMap[String(id)] === true) {
-                ids.push(id)
-            }
-        }
-        return ids
-    }
-
-    function datasetSelectionMap(selectionMapName) {
+    function datasetSelectionModel(selectionMapName) {
         if (selectionMapName === "train") {
-            return selectedTrainDatasetMap
+            return controller ? controller.trainDatasetViewModel : null
         }
         if (selectionMapName === "validation") {
-            return selectedValidationDatasetMap
+            return controller ? controller.validationDatasetViewModel : null
         }
-        return selectedTestDatasetMap
+        return controller ? controller.testDatasetViewModel : null
     }
 
-    function selectedTrainDatasetIds() {
-        return selectedDatasetIds(selectedTrainDatasetMap)
+    function selectedCount(viewModel) {
+        return viewModel ? viewModel.selectedCount : 0
     }
 
-    function selectedValidationDatasetIds() {
-        return selectedDatasetIds(selectedValidationDatasetMap)
-    }
-
-    function selectedTestDatasetIds() {
-        return selectedDatasetIds(selectedTestDatasetMap)
-    }
-
-    function selectedClassIds() {
-        let ids = []
-        let allIds = dataManager ? dataManager.getAllLabelClassIds() : []
-        for (let i = 0; i < allIds.length; ++i) {
-            if (classSelected(allIds[i])) {
-                ids.push(allIds[i])
-            }
-        }
-        return ids
-    }
-
-    function datasetSelected(selectionMap, datasetName) {
-        if (!dataManager) {
-            return false
-        }
-        let id = dataManager.getDatasetId(datasetName)
-        return selectionMap[String(id)] === true
-    }
-
-    function setDatasetSelected(selectionMapName, datasetName, selected) {
-        if (!dataManager) {
-            return
-        }
-        let source = selectionMapName === "train"
-                ? selectedTrainDatasetMap
-                : selectionMapName === "validation"
-                  ? selectedValidationDatasetMap
-                  : selectedTestDatasetMap
-        let next = {}
-        for (let key in source) {
-            next[key] = source[key]
-        }
-        next[String(dataManager.getDatasetId(datasetName))] = selected
-        if (selectionMapName === "train") {
-            selectedTrainDatasetMap = next
-        } else if (selectionMapName === "validation") {
-            selectedValidationDatasetMap = next
-        } else {
-            selectedTestDatasetMap = next
-        }
-    }
-
-    function classSelected(labelClassId) {
-        return selectedClassMap[String(labelClassId)] === true
-    }
-
-    function setClassSelected(labelClassId, selected) {
-        let next = {}
-        for (let key in selectedClassMap) {
-            next[key] = selectedClassMap[key]
-        }
-        next[String(labelClassId)] = selected
-        selectedClassMap = next
+    function selectedLabelClassCount(viewModel) {
+        return viewModel ? viewModel.selectedLabelClassCount : 0
     }
 
     function canStart() {
         return controller
                 && !controller.running
-                && dataManager
-                && selectedTrainDatasetIds().length > 0
-                && selectedTestDatasetIds().length > 0
-                && selectedClassIds().length >= 1
+                && selectedCount(controller.trainDatasetViewModel) > 0
+                && selectedCount(controller.testDatasetViewModel) > 0
+                && selectedLabelClassCount(controller.trainDatasetViewModel) > 0
                 && String(pythonEnvPath || "").length > 0
     }
 
@@ -155,14 +65,12 @@ QuiPopup {
         if (!canStart()) {
             return
         }
-        if (controller.startFsSam2(selectedTrainDatasetIds(), selectedValidationDatasetIds(),
-                                   selectedTestDatasetIds(), selectedClassIds())) {
+        if (controller.startFsSam2()) {
             close()
         }
     }
 
     onOpened: {
-        refreshDataLists()
         refreshSettings()
     }
 
@@ -230,90 +138,13 @@ QuiPopup {
                         Repeater {
                             model: dialog.datasetSelectorSpecs
 
-                            delegate: ColumnLayout {
-                                id: datasetSelector
-
+                            delegate: DatasetSelectionTreeView {
                                 required property var modelData
-                                property string selectionName: modelData.selection
 
                                 Layout.fillWidth: true
-                                spacing: 4
-
-                                QuiText {
-                                    text: datasetSelector.modelData.title
-                                    color: QuiColor.FontDark
-                                }
-
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: 176
-                                    radius: 4
-                                    color: QuiColor.Background
-                                    border.color: QuiColor.Border
-                                    clip: true
-
-                                    ListView {
-                                        id: datasetList
-
-                                        anchors.fill: parent
-                                        anchors.margins: 6
-                                        boundsBehavior: Flickable.StopAtBounds
-                                        clip: true
-                                        model: dialog.datasetNames
-
-                                        ScrollBar.vertical: ScrollBar {}
-
-                                        delegate: QuiCheckBox {
-                                            width: datasetList.width
-                                            height: 30
-                                            text: modelData
-                                            checked: dialog.datasetSelected(
-                                                         dialog.datasetSelectionMap(datasetSelector.selectionName),
-                                                         modelData)
-                                            onToggled: dialog.setDatasetSelected(datasetSelector.selectionName,
-                                                                                modelData, checked)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 4
-
-                            QuiText {
-                                text: "类别"
-                                color: QuiColor.FontDark
-                            }
-
-                            Rectangle {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 176
-                                radius: 4
-                                color: QuiColor.Background
-                                border.color: QuiColor.Border
-                                clip: true
-
-                                ListView {
-                                    id: classList
-
-                                    anchors.fill: parent
-                                    anchors.margins: 6
-                                    boundsBehavior: Flickable.StopAtBounds
-                                    clip: true
-                                    model: dialog.dataManager ? dialog.dataManager.labelClasses : null
-
-                                    ScrollBar.vertical: ScrollBar {}
-
-                                    delegate: QuiCheckBox {
-                                        width: classList.width
-                                        height: 30
-                                        text: model.name
-                                        checked: dialog.classSelected(model.label_class_id)
-                                        onToggled: dialog.setClassSelected(model.label_class_id, checked)
-                                    }
-                                }
+                                roleTitle: modelData.title + "/类别"
+                                selectionModel: dialog.datasetSelectionModel(modelData.selection)
+                                treeHeight: 150
                             }
                         }
                     }

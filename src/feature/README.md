@@ -104,13 +104,13 @@
 
 `FewShotLearningController` 当前通过 FS-SAM2 执行小样本训练、推理和结果导入，流程如下：
 
-1. QML 调用 `startFsSam2(train_dataset_ids, test_dataset_ids, label_class_ids)`。
-2. 控制器检查是否已有任务运行，并调用 `prepareRun()` 准备运行环境。
-3. `prepareRun()` 校验 data provider、任务管理器、项目类型、训练数据集、测试数据集和类别列表。项目类型仅支持检测和分割。
+1. QML 创建并绑定训练、验证、测试数据集和类别选择 ViewModel，然后调用无参 `startFsSam2()`。
+2. 控制器从持有的 ViewModel 中读取选择，检查是否已有任务运行，并调用 `prepareRun()` 准备运行环境。
+3. `prepareRun()` 校验 data provider、任务管理器、项目类型、训练数据集、验证数据集、测试数据集和类别列表。项目类型仅支持检测和分割。
 4. 从设置读取 Python 环境、SAM2 checkpoint、SAM2 架构、K-shot、训练轮数、batch size、worker 数、图像尺寸、学习率、权重衰减、support/query 划分比例和输出目录。
 5. 固定使用应用程序目录下的 `python/fornib/FS-SAM2` 作为 FS-SAM2 根目录，固定使用应用程序目录下的 `python/facebookresearch/sam2/sam2/configs` 查找 SAM2 配置文件。
 6. 为本次运行创建 `run_dir`，默认位于项目目录 `.dltool/few_shot/<run_id>`；其中包含 `custom` 训练数据目录、`query` 测试图像目录和 `predictions` 预测输出目录。
-7. 控制器从训练数据集中收集图像，从测试数据集中收集待预测图像，并按 `label_class_ids` 收集训练标注。
+7. 控制器从训练数据集中收集图像，从测试数据集中收集待预测图像，并按所选类别收集训练标注；验证数据集为空时复用训练数据集。
 8. 对检测项目，训练标注会按类别和图像写入 `boxes.json`；每张训练图像会复制到对应类别目录的 `images` 下。
 9. 对分割项目，训练标注会绘制为灰度 mask，保存到对应类别目录的 `masks` 下；训练图像复制到对应类别目录的 `images` 下。
 10. 每个类别至少需要 `kshot + 1` 张带标注图像。

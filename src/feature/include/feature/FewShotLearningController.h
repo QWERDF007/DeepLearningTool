@@ -16,6 +16,10 @@ namespace dltool::model {
 class TaskManager;
 }
 
+namespace dltool::data {
+class DataManager;
+}
+
 namespace dltool::feature {
 
 class FewShotLearningDataProvider;
@@ -28,6 +32,14 @@ class FEATURE_API FewShotLearningController : public QObject
     Q_PROPERTY(bool enabled READ enabled NOTIFY enabledChanged FINAL)
     Q_PROPERTY(bool running READ running NOTIFY runningChanged FINAL)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged FINAL)
+    Q_PROPERTY(QObject *trainDatasetViewModel READ trainDatasetViewModel WRITE setTrainDatasetViewModel NOTIFY
+                   trainDatasetViewModelChanged FINAL)
+    Q_PROPERTY(QObject *validationDatasetViewModel READ validationDatasetViewModel WRITE setValidationDatasetViewModel
+                   NOTIFY validationDatasetViewModelChanged FINAL)
+    Q_PROPERTY(QObject *testDatasetViewModel READ testDatasetViewModel WRITE setTestDatasetViewModel NOTIFY
+                   testDatasetViewModelChanged FINAL)
+    Q_PROPERTY(QObject *labelClassViewModel READ labelClassViewModel WRITE setLabelClassViewModel NOTIFY
+                   labelClassViewModelChanged FINAL)
 
 public:
     /**
@@ -35,7 +47,10 @@ public:
      * @param data_provider 小样本学习数据提供者
      * @param parent 父对象
      */
-    explicit FewShotLearningController(FewShotLearningDataProvider *data_provider, QObject *parent = nullptr);
+    explicit FewShotLearningController(FewShotLearningDataProvider *data_provider,
+                                       dltool::data::DataManager *data_manager,
+                                       dltool::model::TaskManager *task_manager,
+                                       QObject *parent = nullptr);
     ~FewShotLearningController() override;
 
     /**
@@ -56,22 +71,23 @@ public:
      */
     QString lastError() const;
 
-    /**
-     * @brief 设置任务管理器
-     * @param task_manager 任务管理器实例
-     */
-    void setTaskManager(dltool::model::TaskManager *task_manager);
+    QObject *trainDatasetViewModel() const;
+    void     setTrainDatasetViewModel(QObject *view_model);
+
+    QObject *validationDatasetViewModel() const;
+    void     setValidationDatasetViewModel(QObject *view_model);
+
+    QObject *testDatasetViewModel() const;
+    void     setTestDatasetViewModel(QObject *view_model);
+
+    QObject *labelClassViewModel() const;
+    void     setLabelClassViewModel(QObject *view_model);
 
     /**
-     * @brief 启动小样本学习流程（FS-SAM2）
-     * @param train_dataset_ids 训练数据集 ID 列表
-     * @param validation_dataset_ids 验证数据集 ID 列表；为空时复用训练数据集
-     * @param test_dataset_ids 测试数据集 ID 列表
-     * @param label_class_ids 标注类别 ID 列表
+     * @brief 启动小样本学习流程（FS-SAM2），数据集和类别从控制器持有的 ViewModel 读取
      * @return 启动成功返回 true
      */
-    Q_INVOKABLE bool startFsSam2(const QVariantList &train_dataset_ids, const QVariantList &validation_dataset_ids,
-                                 const QVariantList &test_dataset_ids, const QVariantList &label_class_ids);
+    Q_INVOKABLE bool startFsSam2();
 
     /// 清除最后一次错误信息
     Q_INVOKABLE void clearLastError();
@@ -83,6 +99,10 @@ signals:
     void enabledChanged();
     void runningChanged();
     void lastErrorChanged();
+    void trainDatasetViewModelChanged();
+    void validationDatasetViewModelChanged();
+    void testDatasetViewModelChanged();
+    void labelClassViewModelChanged();
 
 private:
     /// 运行阶段枚举
@@ -110,6 +130,9 @@ private:
                     const std::vector<int64_t> &validation_dataset_ids,
                     const std::vector<int64_t> &test_dataset_ids, const std::vector<int64_t> &label_class_ids,
                     RunContext &context, QString &err_msg) const;
+
+    bool startFsSam2WithIds(const QVariantList &train_dataset_ids, const QVariantList &validation_dataset_ids,
+                            const QVariantList &test_dataset_ids, const QVariantList &label_class_ids);
 
     /**
      * @brief 启动训练流程
@@ -204,6 +227,11 @@ private:
     bool stop_requested_{false};        ///< 是否已请求停止
 
     QString last_error_; ///< 最后一次错误信息
+
+    QPointer<QObject> train_dataset_view_model_;
+    QPointer<QObject> validation_dataset_view_model_;
+    QPointer<QObject> test_dataset_view_model_;
+    QPointer<QObject> label_class_view_model_;
 };
 
 } // namespace dltool::feature

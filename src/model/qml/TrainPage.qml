@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import dltool.ui
+import dltool.data
 import dltool.model
 import dltool.project
 import "train"
@@ -14,6 +15,7 @@ Rectangle {
     color: QuiColor.Background
 
     property ModelManager modelManager: ProjectManager.currentProject ? ProjectManager.currentProject.modelManager : null
+    property DataManager dataManager: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager : null
 
     QuiSplitView {
         anchors.fill: parent
@@ -37,6 +39,7 @@ Rectangle {
         TrainPanel {
             SplitView.fillHeight: true
             SplitView.fillWidth: true
+            dataManager: labelPage.dataManager
             modelManager: labelPage.modelManager
             currentModelId: modelView.currentModelId
             currentModelUuid: modelView.currentModelUuid

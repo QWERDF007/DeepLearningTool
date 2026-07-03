@@ -69,4 +69,49 @@ void IModel::setUuid(const QString &uuid)
     emit uuidChanged();
 }
 
+QObject *IModel::trainDatasetViewModel() const
+{
+    return train_dataset_view_model_;
+}
+
+void IModel::setTrainDatasetViewModel(QObject *view_model)
+{
+    if (train_dataset_view_model_ == view_model)
+        return;
+    train_dataset_view_model_ = view_model;
+    if (view_model != nullptr && view_model->parent() == nullptr)
+        view_model->setParent(this);
+    emit trainDatasetViewModelChanged();
+}
+
+QObject *IModel::validationDatasetViewModel() const
+{
+    return validation_dataset_view_model_;
+}
+
+void IModel::setValidationDatasetViewModel(QObject *view_model)
+{
+    if (validation_dataset_view_model_ == view_model)
+        return;
+    validation_dataset_view_model_ = view_model;
+    if (view_model != nullptr && view_model->parent() == nullptr)
+        view_model->setParent(this);
+    emit validationDatasetViewModelChanged();
+}
+
+QObject *IModel::testDatasetViewModel() const
+{
+    return test_dataset_view_model_;
+}
+
+void IModel::setTestDatasetViewModel(QObject *view_model)
+{
+    if (test_dataset_view_model_ == view_model)
+        return;
+    test_dataset_view_model_ = view_model;
+    if (view_model != nullptr && view_model->parent() == nullptr)
+        view_model->setParent(this);
+    emit testDatasetViewModelChanged();
+}
+
 } // namespace dltool::model

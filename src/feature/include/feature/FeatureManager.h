@@ -9,15 +9,17 @@
 
 #include <QObject>
 #include <QtQml>
+#include <memory>
+
+namespace dltool::data {
+class DataManager;
+} // namespace dltool::data
 
 namespace dltool::model {
 class TaskManager;
 } // namespace dltool::model
 
 namespace dltool::feature {
-
-class FewShotLearningDataProvider;
-class ImageSearchDataProvider;
 
 class FEATURE_API FeatureManager : public QObject
 {
@@ -32,9 +34,10 @@ class FEATURE_API FeatureManager : public QObject
     Q_PROPERTY(dltool::feature::FewShotLearningController *fewShotLearning READ fewShotLearning CONSTANT FINAL)
 
 public:
-    explicit FeatureManager(ImageSearchDataProvider *image_search_provider,
-                            FewShotLearningDataProvider *few_shot_provider,
+    explicit FeatureManager(dltool::data::DataManager *data_manager,
+                            dltool::model::TaskManager *task_manager,
                             QObject *parent = nullptr);
+    ~FeatureManager() override;
 
     ImageSearchController *imageSearch() const;
     RoiSearchController *roiSearch() const;
@@ -42,9 +45,11 @@ public:
     SmartAnnotationController *smartAnnotation() const;
     FewShotLearningController *fewShotLearning() const;
 
-    void setTaskManager(dltool::model::TaskManager *task_manager);
-
 private:
+    class DataManagerDataProvider;
+
+    std::unique_ptr<DataManagerDataProvider> data_provider_;
+
     ImageSearchController *image_search_{nullptr};
     RoiSearchController *roi_search_{nullptr};
     ImageClusterController *image_cluster_{nullptr};

@@ -17,6 +17,10 @@ namespace dltool::database {
 class ProjectDataBase;
 } // namespace dltool::database
 
+namespace dltool::data {
+class DataManager;
+} // namespace dltool::data
+
 namespace dltool::model {
 
 class MODEL_API ModelManager : public QAbstractListModel
@@ -27,7 +31,10 @@ class MODEL_API ModelManager : public QAbstractListModel
 public:
     using ModelFactory = std::function<std::unique_ptr<IModel>()>;
 
-    explicit ModelManager(const int method, dltool::database::ProjectDataBase *database, QObject *parent = nullptr);
+    explicit ModelManager(const int method,
+                          dltool::database::ProjectDataBase *database,
+                          dltool::data::DataManager *data_manager,
+                          QObject *parent = nullptr);
     ~ModelManager();
 
     Q_PROPERTY(int method READ method CONSTANT FINAL)
@@ -98,6 +105,7 @@ private:
     int                indexOfUuid(const QString &uuid) const;
     QString            uniqueCopyName(const QString &name) const;
     IModel            *cachedModelForRecord(const ModelRecord &record) const;
+    void               initializeDatasetViewModels(IModel *model) const;
     static std::string instanceKey(const QString &uuid);
 
     QVariant getModelId(const QModelIndex &index) const;
@@ -110,6 +118,7 @@ private:
     QVariant getMtime(const QModelIndex &index) const;
 
     dltool::database::ProjectDataBase                               *database_{nullptr};
+    dltool::data::DataManager                                        *data_manager_{nullptr};
     int                                                              method_{-1};
     std::vector<ModelRecord>                                         models_;
     mutable std::unordered_map<std::string, std::unique_ptr<IModel>> model_instances_;

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import dltool.ui
+import dltool.data
 import dltool.model
 import "../component"
 import quickui
@@ -10,6 +11,7 @@ Item {
     id: control
 
     property ModelManager modelManager: null
+    property DataManager dataManager: null
     property var currentModelId: -1
     property string currentModelUuid: ""
     property string currentModelName: ""
@@ -46,6 +48,8 @@ Item {
                 ParamsForm {
                     anchors.fill: parent
                     params: control.trainParams
+                    dataManager: control.dataManager
+                    selectedModel: control.selectedModel
                     emptyText: control.modelManager ? qsTr("请选择模型后设置训练参数") : qsTr("请先打开项目")
                 }
             }

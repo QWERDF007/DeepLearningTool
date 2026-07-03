@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import dltool.data
 import dltool.ui
 import dltool.model
 import quickui
@@ -8,6 +9,8 @@ Item {
     id: control
 
     property IParams params: null
+    property DataManager dataManager: null
+    property IModel selectedModel: null
     property string emptyText: qsTr("Select a model")
     property int partSpacing: 5
     property int scrollbarReserve: 8
@@ -35,6 +38,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 0
+            selectedModel: control.selectedModel
             partSpacing: control.partSpacing
             scrollbarReserve: control.scrollbarReserve
         }
