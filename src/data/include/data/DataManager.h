@@ -17,7 +17,6 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml>
-#include <cstddef>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -52,27 +51,6 @@ class DATA_API DataManager : public QObject
 
 public:
     using ImportFinishedHandler = std::function<void(bool, const QString &)>;
-
-    enum class ImageClusterApplyMode
-    {
-        Move = 0,
-        Copy = 1,
-    };
-
-    struct ImageClusterAssignment
-    {
-        int64_t image_id{0};
-        int64_t cluster_id{-1};
-        double  probability{0.0};
-    };
-
-    struct ImageClusterApplyResult
-    {
-        size_t moved_image_count{0};
-        size_t copied_image_count{0};
-        size_t target_dataset_count{0};
-        size_t skipped_noise_count{0};
-    };
 
     DataManager(const int method, dltool::database::ProjectDataBase *database, QObject *parent = nullptr);
     ~DataManager();
@@ -225,11 +203,6 @@ public:
     void clearImageSearchResults();
     void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter);
     void clearLabelSearchResults();
-    bool applyImageClusterAssignments(const std::vector<ImageClusterAssignment> &assignments,
-                                      bool include_noise,
-                                      ImageClusterApplyMode apply_mode,
-                                      ImageClusterApplyResult &result,
-                                      QString &err_msg);
     void setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter);
 
 signals:

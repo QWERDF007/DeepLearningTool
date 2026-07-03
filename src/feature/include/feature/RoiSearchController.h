@@ -1,30 +1,35 @@
 #pragma once
 
-#include "feature/ImageSearchController.h"
 #include "dltool/feature/Export.h"
+#include "feature/SearchControllerBase.h"
 
 #include <QtQml>
 
 namespace dltool::feature {
 
+class RoiSearchDataProvider;
+class FeatureDataProvider;
+
 /**
- * @brief ROI 标注搜索控制器，基于 ImageSearchController 扩展标注级别的特征检索
+ * @brief ROI 标注搜索控制器
  */
-class FEATURE_API RoiSearchController : public ImageSearchController
+class FEATURE_API RoiSearchController : public SearchControllerBase
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(RoiSearchController)
     QML_UNCREATABLE("Can not create RoiSearchController directly!")
 
 public:
-    /**
+     /**
      * @brief 构造函数
-     * @param data_provider 图像搜索数据提供者
+     * @param data_provider ROI 搜索数据提供者
      * @param parent 父对象
      */
-    explicit RoiSearchController(ImageSearchDataProvider *data_provider, QObject *parent = nullptr);
+    explicit RoiSearchController(RoiSearchDataProvider *data_provider, QObject *parent = nullptr);
 
 protected:
+    FeatureDataProvider *dataProvider() const override;
+
     /**
      * @brief 获取请求对应的模型名称
      * @param request 搜索请求
@@ -126,6 +131,9 @@ protected:
      * @param response 搜索响应
      */
     void applyResults(const SearchResponse &response) override;
+
+private:
+    RoiSearchDataProvider *data_provider_{nullptr};
 };
 
 } // namespace dltool::feature

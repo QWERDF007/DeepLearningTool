@@ -46,9 +46,15 @@ public:
     FewShotLearningController *fewShotLearning() const;
 
 private:
-    class DataManagerDataProvider;
+    class ImageSearchProvider;
+    class RoiSearchProvider;
+    class ImageClusterProvider;
+    class FewShotLearningProvider;
 
-    std::unique_ptr<DataManagerDataProvider> data_provider_;
+    std::unique_ptr<ImageSearchProvider> image_search_provider_;
+    std::unique_ptr<RoiSearchProvider> roi_search_provider_;
+    std::unique_ptr<ImageClusterProvider> image_cluster_provider_;
+    std::unique_ptr<FewShotLearningProvider> few_shot_learning_provider_;
 
     ImageSearchController *image_search_{nullptr};
     RoiSearchController *roi_search_{nullptr};

@@ -1,6 +1,7 @@
 #include "feature/ImageClusterController.h"
 
 #include "SearchControllerUtils.h"
+#include "data/DataManager.h"
 #include "feature/Utils.h"
 #include "settings/GlobalSettings.h"
 #include "ui/ProgressManager.h"
@@ -64,31 +65,52 @@ QString imageClusterProgressMessage(const irt::features::ImageClusterProgress &p
     return QStringLiteral("聚类阶段 [%1]").arg(stage_name);
 }
 
-QString clusterSummary(const QString &base_summary,
-                       const ImageSearchDataProvider::ImageClusterApplyResult &apply_result,
-                       ImageSearchDataProvider::ImageClusterApplyMode apply_mode)
+QString clusterTargetDatasetName(const QString &source_dataset_name, const int64_t cluster_id)
 {
-    const size_t applied_count = apply_result.moved_image_count + apply_result.copied_image_count;
-    const QString action = apply_mode == ImageSearchDataProvider::ImageClusterApplyMode::Copy
-                               ? QStringLiteral("复制")
-                               : QStringLiteral("移动");
+    if (cluster_id < 0)
+        return QStringLiteral("%1-noise").arg(source_dataset_name);
+    return QStringLiteral("%1-%2").arg(source_dataset_name).arg(cluster_id);
+}
+
+size_t plannedImageCount(const std::map<int64_t, std::vector<int64_t>> &image_ids_by_target_dataset)
+{
+    size_t count = 0;
+    for (const auto &[_, image_ids] : image_ids_by_target_dataset)
+    {
+        count += image_ids.size();
+    }
+    return count;
+}
+
+QString clusterSummary(const QString &base_summary,
+                       size_t moved_image_count,
+                       size_t copied_image_count,
+                       size_t target_dataset_count,
+                       size_t skipped_noise_count,
+                       bool copy_mode)
+{
+    const size_t applied_count = moved_image_count + copied_image_count;
+    const QString action       = copy_mode ? QStringLiteral("复制") : QStringLiteral("移动");
     QString summary = QStringLiteral("%1，已%2 %3 张图像到 %4 个数据集")
                           .arg(base_summary)
                           .arg(action)
                           .arg(static_cast<qlonglong>(applied_count))
-                          .arg(static_cast<qlonglong>(apply_result.target_dataset_count));
-    if (apply_result.skipped_noise_count > 0)
+                          .arg(static_cast<qlonglong>(target_dataset_count));
+    if (skipped_noise_count > 0)
     {
-        summary += QStringLiteral("，跳过噪声 %1 张").arg(static_cast<qlonglong>(apply_result.skipped_noise_count));
+        summary += QStringLiteral("，跳过噪声 %1 张").arg(static_cast<qlonglong>(skipped_noise_count));
     }
     return summary;
 }
 
 } // namespace
 
-ImageClusterController::ImageClusterController(ImageSearchDataProvider *data_provider, QObject *parent)
+ImageClusterController::ImageClusterController(ImageClusterDataProvider *data_provider,
+                                               dltool::data::DataManager *data_manager,
+                                               QObject *parent)
     : QObject(parent)
     , data_provider_(data_provider)
+    , data_manager_(data_manager)
 {
     auto *gs = dltool::settings::GlobalSettings::getInstance();
     enabled_ = searchSettingsEnabled(gs, kSettingsAccessor);
@@ -146,6 +168,11 @@ bool ImageClusterController::clusterSelectedImages()
         setLastError(QStringLiteral("图像聚类模型未初始化"));
         return false;
     }
+    if (data_manager_ == nullptr)
+    {
+        setLastError(QStringLiteral("数据管理器未初始化"));
+        return false;
+    }
 
     const auto selected_ids = data_provider_->selectedImageIds();
     if (selected_ids.empty())
@@ -170,6 +197,11 @@ bool ImageClusterController::cluster(const QVariantList &image_ids, const QVaria
     if (data_provider_ == nullptr)
     {
         setLastError(QStringLiteral("图像聚类模型未初始化"));
+        return false;
+    }
+    if (data_manager_ == nullptr)
+    {
+        setLastError(QStringLiteral("数据管理器未初始化"));
         return false;
     }
 
@@ -262,10 +294,9 @@ void ImageClusterController::buildClusterRequest(ClusterRequest &request)
     request.weights_file
         = settings.base.weights_file.isEmpty() ? QString() : QFileInfo(settings.base.weights_file).absoluteFilePath();
     request.include_noise = settings.include_noise;
-    request.apply_mode    = settings.apply_mode
-                                 == static_cast<int>(ImageSearchDataProvider::ImageClusterApplyMode::Copy)
-                              ? ImageSearchDataProvider::ImageClusterApplyMode::Copy
-                              : ImageSearchDataProvider::ImageClusterApplyMode::Move;
+    request.apply_mode    = settings.apply_mode == static_cast<int>(ImageClusterApplyMode::Copy)
+                              ? ImageClusterApplyMode::Copy
+                              : ImageClusterApplyMode::Move;
     applyImageClusterConfig(request.config, settings);
 }
 
@@ -360,6 +391,130 @@ void ImageClusterController::executeCluster(const ClusterRequest &request, Clust
     }
 }
 
+bool ImageClusterController::ensureClusterTargetDataset(const QString &target_dataset_name,
+                                                        int64_t &dataset_id,
+                                                        QString &err_msg)
+{
+    dataset_id = -1;
+    err_msg.clear();
+
+    if (data_manager_ == nullptr)
+    {
+        err_msg = QStringLiteral("数据管理器未初始化");
+        return false;
+    }
+
+    dataset_id = data_manager_->getDatasetId(target_dataset_name);
+    if (dataset_id >= 0)
+        return true;
+
+    data_manager_->addDataset(target_dataset_name);
+    dataset_id = data_manager_->getDatasetId(target_dataset_name);
+    if (dataset_id < 0)
+    {
+        err_msg = QStringLiteral("创建聚类目标数据集失败: %1").arg(target_dataset_name);
+        return false;
+    }
+    return true;
+}
+
+bool ImageClusterController::buildClusterApplyPlan(const std::vector<ImageClusterAssignment> &assignments,
+                                                   const bool include_noise,
+                                                   ClusterApplyPlan &plan,
+                                                   QString &err_msg)
+{
+    plan = {};
+    err_msg.clear();
+
+    if (data_provider_ == nullptr || data_manager_ == nullptr)
+    {
+        err_msg = QStringLiteral("数据管理器未初始化");
+        return false;
+    }
+    if (assignments.empty())
+    {
+        err_msg = QStringLiteral("没有图像聚类结果");
+        return false;
+    }
+
+    std::map<int64_t, QString> source_dataset_names;
+    std::map<QString, int64_t> target_dataset_ids;
+
+    for (const ImageClusterAssignment &assignment : assignments)
+    {
+        if (assignment.cluster_id < 0 && !include_noise)
+        {
+            ++plan.skipped_noise_count;
+            continue;
+        }
+
+        const int64_t source_dataset_id = data_provider_->imageDatasetId(assignment.image_id);
+        if (source_dataset_id < 0 || source_dataset_id > std::numeric_limits<int>::max())
+        {
+            spdlog::warn("跳过无效聚类图像数据集: image_id={}", assignment.image_id);
+            continue;
+        }
+
+        auto source_name_it = source_dataset_names.find(source_dataset_id);
+        if (source_name_it == source_dataset_names.end())
+        {
+            source_name_it = source_dataset_names
+                                 .emplace(source_dataset_id,
+                                          data_manager_->getDatasetName(static_cast<int>(source_dataset_id)))
+                                 .first;
+        }
+
+        const QString &source_dataset_name = source_name_it->second;
+        if (source_dataset_name.isEmpty())
+        {
+            spdlog::warn("跳过无效聚类图像数据集名称: image_id={}, dataset_id={}", assignment.image_id,
+                         source_dataset_id);
+            continue;
+        }
+
+        const QString target_dataset_name = clusterTargetDatasetName(source_dataset_name, assignment.cluster_id);
+        auto          target_it           = target_dataset_ids.find(target_dataset_name);
+        if (target_it == target_dataset_ids.end())
+        {
+            int64_t target_dataset_id = -1;
+            if (!ensureClusterTargetDataset(target_dataset_name, target_dataset_id, err_msg))
+                return false;
+            target_it = target_dataset_ids.emplace(target_dataset_name, target_dataset_id).first;
+        }
+
+        plan.image_ids_by_target_dataset[target_it->second].push_back(assignment.image_id);
+    }
+
+    return true;
+}
+
+ImageClusterController::ImageClusterApplyResult ImageClusterController::applyClusterPlan(
+    const ClusterApplyPlan &plan, ImageClusterApplyMode apply_mode)
+{
+    ImageClusterApplyResult result;
+    result.skipped_noise_count  = plan.skipped_noise_count;
+    result.target_dataset_count = plan.image_ids_by_target_dataset.size();
+
+    const size_t image_count = plannedImageCount(plan.image_ids_by_target_dataset);
+    for (const auto &[target_dataset_id, image_ids] : plan.image_ids_by_target_dataset)
+    {
+        if (apply_mode == ImageClusterApplyMode::Copy)
+        {
+            data_manager_->copyToDataset(image_ids, target_dataset_id);
+        }
+        else
+        {
+            data_manager_->moveToDataset(image_ids, target_dataset_id);
+        }
+    }
+
+    if (apply_mode == ImageClusterApplyMode::Copy)
+        result.copied_image_count = image_count;
+    else
+        result.moved_image_count = image_count;
+    return result;
+}
+
 void ImageClusterController::resetForNewCluster()
 {
     setLastError(QString());
@@ -397,10 +552,9 @@ void ImageClusterController::finishCluster(const ClusterResponse &response)
         return;
     }
 
-    ImageSearchDataProvider::ImageClusterApplyResult apply_result;
-    QString                                          err_msg;
-    if (!data_provider_->applyImageClusterAssignments(response.assignments, response.include_noise, response.apply_mode,
-                                                      apply_result, err_msg))
+    ClusterApplyPlan apply_plan;
+    QString          err_msg;
+    if (!buildClusterApplyPlan(response.assignments, response.include_noise, apply_plan, err_msg))
     {
         result_count_ = 0;
         last_summary_.clear();
@@ -410,11 +564,18 @@ void ImageClusterController::finishCluster(const ClusterResponse &response)
         return;
     }
 
+    const ImageClusterApplyResult apply_result = applyClusterPlan(apply_plan, response.apply_mode);
+
     setLastError(QString());
     result_count_ = static_cast<int>(std::min<size_t>(apply_result.moved_image_count
                                                           + apply_result.copied_image_count,
                                                       static_cast<size_t>(std::numeric_limits<int>::max())));
-    last_summary_ = clusterSummary(response.summary, apply_result, response.apply_mode);
+    last_summary_ = clusterSummary(response.summary,
+                                   apply_result.moved_image_count,
+                                   apply_result.copied_image_count,
+                                   apply_result.target_dataset_count,
+                                   apply_result.skipped_noise_count,
+                                   response.apply_mode == ImageClusterApplyMode::Copy);
 
     finishProgress(true, QStringLiteral("%1, 耗时 %2").arg(last_summary_, formatElapsed(response.elapsed_ms)));
     emit resultsChanged();

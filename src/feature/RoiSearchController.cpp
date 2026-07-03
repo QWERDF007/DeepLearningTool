@@ -1,7 +1,7 @@
 #include "feature/RoiSearchController.h"
 
 #include "SearchControllerUtils.h"
-#include "feature/ImageSearchDataProvider.h"
+#include "feature/RoiSearchDataProvider.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsValue.h"
 
@@ -18,9 +18,15 @@ using dltool::settings::settingInt;
 
 namespace dltool::feature {
 
-RoiSearchController::RoiSearchController(ImageSearchDataProvider *data_provider, QObject *parent)
-    : ImageSearchController(data_provider, dltool::settings::generated::AccessorKey::RoiSearch, parent)
+RoiSearchController::RoiSearchController(RoiSearchDataProvider *data_provider, QObject *parent)
+    : SearchControllerBase(dltool::settings::generated::AccessorKey::RoiSearch, parent)
+    , data_provider_(data_provider)
 {
+}
+
+FeatureDataProvider *RoiSearchController::dataProvider() const
+{
+    return data_provider_;
 }
 
 QString RoiSearchController::searchDisplayName() const
@@ -40,7 +46,7 @@ QString RoiSearchController::featureNameForRequest(const SearchRequest &request)
 
 bool RoiSearchController::validateSearchRequest(SearchRequest &request)
 {
-    if (!ImageSearchController::validateSearchRequest(request))
+    if (!SearchControllerBase::validateSearchRequest(request))
         return false;
 
     namespace generated_field    = dltool::settings::generated::field;

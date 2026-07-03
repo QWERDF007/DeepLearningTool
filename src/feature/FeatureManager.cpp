@@ -2,183 +2,130 @@
 
 #include "data/DataManager.h"
 #include "feature/FewShotLearningDataProvider.h"
+#include "feature/ImageClusterDataProvider.h"
 #include "feature/ImageSearchDataProvider.h"
+#include "feature/RoiSearchDataProvider.h"
 #include "settings/GlobalSettings.h"
 
-#include <QPointer>
 #include <utility>
 
 namespace dltool::feature {
 
-class FeatureManager::DataManagerDataProvider final
-    : public ImageSearchDataProvider
-    , public FewShotLearningDataProvider
+class FeatureManager::ImageSearchProvider final : public ImageSearchDataProvider
 {
 public:
-    explicit DataManagerDataProvider(dltool::data::DataManager *data_manager)
-        : data_manager_(data_manager)
+    explicit ImageSearchProvider(dltool::data::DataManager *data_manager)
+        : ImageSearchDataProvider(data_manager)
+    {
+    }
+
+    std::vector<int64_t> selectedImageIds() const override
+    {
+        auto *manager = dataManager();
+        return manager ? manager->selectedImageIds() : std::vector<int64_t>{};
+    }
+
+    void clearImageSearchResults() override
+    {
+        if (auto *manager = dataManager())
+            manager->clearImageSearchResults();
+    }
+
+    void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter) override
+    {
+        if (auto *manager = dataManager())
+            manager->setImageSearchResults(image_ids, enable_filter);
+    }
+};
+
+class FeatureManager::RoiSearchProvider final : public RoiSearchDataProvider
+{
+public:
+    explicit RoiSearchProvider(dltool::data::DataManager *data_manager)
+        : RoiSearchDataProvider(data_manager)
+    {
+    }
+
+    void clearLabelSearchResults() override
+    {
+        if (auto *manager = dataManager())
+            manager->clearLabelSearchResults();
+    }
+
+    void setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter) override
+    {
+        if (auto *manager = dataManager())
+            manager->setLabelSearchResults(label_ids, enable_filter);
+    }
+};
+
+class FeatureManager::ImageClusterProvider final : public ImageClusterDataProvider
+{
+public:
+    explicit ImageClusterProvider(dltool::data::DataManager *data_manager)
+        : ImageClusterDataProvider(data_manager)
+    {
+    }
+
+    std::vector<int64_t> selectedImageIds() const override
+    {
+        auto *manager = dataManager();
+        return manager ? manager->selectedImageIds() : std::vector<int64_t>{};
+    }
+};
+
+class FeatureManager::FewShotLearningProvider final : public FewShotLearningDataProvider
+{
+public:
+    explicit FewShotLearningProvider(dltool::data::DataManager *data_manager)
+        : FewShotLearningDataProvider(data_manager)
     {
     }
 
     int method() const override
     {
-        return data_manager_ ? data_manager_->method() : 0;
-    }
-
-    std::vector<int64_t> selectedImageIds() const override
-    {
-        return data_manager_ ? data_manager_->selectedImageIds() : std::vector<int64_t>{};
-    }
-
-    std::vector<int64_t> allImageIds() const override
-    {
-        return data_manager_ ? data_manager_->allImageIds() : std::vector<int64_t>{};
-    }
-
-    QString imagePath(int64_t image_id) const override
-    {
-        return data_manager_ ? data_manager_->imagePath(image_id) : QString();
-    }
-
-    int64_t imageDatasetId(int64_t image_id) const override
-    {
-        return data_manager_ ? data_manager_->imageDatasetId(image_id) : -1;
-    }
-
-    QString databasePath() const override
-    {
-        return data_manager_ ? data_manager_->databasePath() : QString();
-    }
-
-    std::vector<int64_t> allLabelIds() const override
-    {
-        return data_manager_ ? data_manager_->allLabelIds() : std::vector<int64_t>{};
-    }
-
-    int64_t labelImageId(int64_t label_id) const override
-    {
-        return data_manager_ ? data_manager_->labelImageId(label_id) : -1;
-    }
-
-    int64_t labelClassId(int64_t label_id) const override
-    {
-        return data_manager_ ? data_manager_->labelClassId(label_id) : -1;
-    }
-
-    QVariantMap labelData(int64_t label_id) const override
-    {
-        return data_manager_ ? data_manager_->labelData(label_id) : QVariantMap();
-    }
-
-    QString labelClassName(int64_t label_class_id) const override
-    {
-        return data_manager_ ? data_manager_->labelClassName(label_class_id) : QString();
-    }
-
-    QString datasetName(int64_t dataset_id) const override
-    {
-        return data_manager_ ? data_manager_->datasetName(dataset_id) : QString();
+        auto *manager = dataManager();
+        return manager ? manager->method() : 0;
     }
 
     void importMaskData(int64_t dataset_id, const QString &image_manifest_path,
                         const QString &prediction_output_dir) override
     {
-        if (data_manager_)
-            data_manager_->importMaskData(dataset_id, image_manifest_path, prediction_output_dir);
+        if (auto *manager = dataManager())
+            manager->importMaskData(dataset_id, image_manifest_path, prediction_output_dir);
     }
 
     QMetaObject::Connection connectImportFinished(
         QObject *context, FewShotLearningDataProvider::ImportFinishedHandler handler) override
     {
-        if (!data_manager_)
+        auto *manager = dataManager();
+        if (!manager)
             return {};
-        return data_manager_->connectImportFinished(context, std::move(handler));
+        return manager->connectImportFinished(context, std::move(handler));
     }
 
     void disconnectImportFinished(const QMetaObject::Connection &connection) override
     {
-        if (data_manager_)
-            data_manager_->disconnectImportFinished(connection);
+        if (auto *manager = dataManager())
+            manager->disconnectImportFinished(connection);
     }
-
-    void clearImageSearchResults() override
-    {
-        if (data_manager_)
-            data_manager_->clearImageSearchResults();
-    }
-
-    void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter) override
-    {
-        if (data_manager_)
-            data_manager_->setImageSearchResults(image_ids, enable_filter);
-    }
-
-    void clearLabelSearchResults() override
-    {
-        if (data_manager_)
-            data_manager_->clearLabelSearchResults();
-    }
-
-    void setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter) override
-    {
-        if (data_manager_)
-            data_manager_->setLabelSearchResults(label_ids, enable_filter);
-    }
-
-    bool applyImageClusterAssignments(const std::vector<ImageClusterAssignment> &assignments,
-                                      bool include_noise,
-                                      ImageClusterApplyMode apply_mode,
-                                      ImageClusterApplyResult &result,
-                                      QString &err_msg) override
-    {
-        if (!data_manager_)
-        {
-            err_msg = QStringLiteral("数据管理器未初始化");
-            return false;
-        }
-
-        std::vector<dltool::data::DataManager::ImageClusterAssignment> data_assignments;
-        data_assignments.reserve(assignments.size());
-        for (const ImageClusterAssignment &assignment : assignments)
-        {
-            data_assignments.push_back({
-                assignment.image_id,
-                assignment.cluster_id,
-                assignment.probability,
-            });
-        }
-
-        dltool::data::DataManager::ImageClusterApplyResult data_result;
-        const auto data_apply_mode = apply_mode == ImageClusterApplyMode::Copy
-                                         ? dltool::data::DataManager::ImageClusterApplyMode::Copy
-                                         : dltool::data::DataManager::ImageClusterApplyMode::Move;
-        const bool ok = data_manager_->applyImageClusterAssignments(data_assignments, include_noise, data_apply_mode,
-                                                                    data_result, err_msg);
-        result.moved_image_count     = data_result.moved_image_count;
-        result.copied_image_count    = data_result.copied_image_count;
-        result.target_dataset_count  = data_result.target_dataset_count;
-        result.skipped_noise_count   = data_result.skipped_noise_count;
-        return ok;
-    }
-
-private:
-    QPointer<dltool::data::DataManager> data_manager_;
 };
 
 FeatureManager::FeatureManager(dltool::data::DataManager *data_manager,
                                dltool::model::TaskManager *task_manager,
                                QObject *parent)
     : QObject(parent)
-    , data_provider_(std::make_unique<DataManagerDataProvider>(data_manager))
+    , image_search_provider_(std::make_unique<ImageSearchProvider>(data_manager))
+    , roi_search_provider_(std::make_unique<RoiSearchProvider>(data_manager))
+    , image_cluster_provider_(std::make_unique<ImageClusterProvider>(data_manager))
+    , few_shot_learning_provider_(std::make_unique<FewShotLearningProvider>(data_manager))
 {
-    auto *image_search_provider = data_provider_.get();
-    auto *few_shot_provider     = data_provider_.get();
-
-    image_search_ = new ImageSearchController(image_search_provider, this);
-    roi_search_ = new RoiSearchController(image_search_provider, this);
-    image_cluster_ = new ImageClusterController(image_search_provider, this);
+    image_search_ = new ImageSearchController(image_search_provider_.get(), this);
+    roi_search_ = new RoiSearchController(roi_search_provider_.get(), this);
+    image_cluster_ = new ImageClusterController(image_cluster_provider_.get(), data_manager, this);
     smart_annotation_ = new SmartAnnotationController(this);
-    few_shot_learning_ = new FewShotLearningController(few_shot_provider, data_manager, task_manager, this);
+    few_shot_learning_ = new FewShotLearningController(few_shot_learning_provider_.get(), data_manager, task_manager,
+                                                       this);
 
     if (auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(
             dltool::settings::generated::AccessorKey::SmartAnnotation))
@@ -200,7 +147,10 @@ FeatureManager::~FeatureManager()
     roi_search_ = nullptr;
     delete image_search_;
     image_search_ = nullptr;
-    data_provider_.reset();
+    few_shot_learning_provider_.reset();
+    image_cluster_provider_.reset();
+    roi_search_provider_.reset();
+    image_search_provider_.reset();
 }
 
 ImageSearchController *FeatureManager::imageSearch() const

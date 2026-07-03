@@ -1,7 +1,7 @@
 #pragma once
 
 #include "dltool/feature/Export.h"
-#include "feature/ImageSearchDataProvider.h"
+#include "feature/ImageClusterDataProvider.h"
 
 #include <inferrt/features/ImageCluster.hpp>
 
@@ -11,9 +11,15 @@
 #include <QVariantList>
 #include <QtQml>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <map>
 #include <set>
 #include <vector>
+
+namespace dltool::data {
+class DataManager;
+} // namespace dltool::data
 
 namespace dltool::feature {
 
@@ -31,7 +37,9 @@ class FEATURE_API ImageClusterController : public QObject
     Q_PROPERTY(QString lastSummary READ lastSummary NOTIFY resultsChanged FINAL)
 
 public:
-    explicit ImageClusterController(ImageSearchDataProvider *data_provider, QObject *parent = nullptr);
+    explicit ImageClusterController(ImageClusterDataProvider *data_provider,
+                                    dltool::data::DataManager *data_manager,
+                                    QObject *parent = nullptr);
     ~ImageClusterController() override = default;
 
     bool enabled() const;
@@ -53,12 +61,38 @@ signals:
     void buildProgressChanged(int processedCount, int totalCount);
 
 private:
+    enum class ImageClusterApplyMode
+    {
+        Move = 0,
+        Copy = 1,
+    };
+
+    struct ImageClusterAssignment
+    {
+        int64_t image_id{0};
+        int64_t cluster_id{-1};
+        double  probability{0.0};
+    };
+
+    struct ImageClusterApplyResult
+    {
+        size_t moved_image_count{0};
+        size_t copied_image_count{0};
+        size_t target_dataset_count{0};
+        size_t skipped_noise_count{0};
+    };
+
+    struct ClusterApplyPlan
+    {
+        std::map<int64_t, std::vector<int64_t>> image_ids_by_target_dataset;
+        size_t                                  skipped_noise_count{0};
+    };
+
     struct ClusterRequest
     {
         QString weights_file;
         bool    include_noise{false};
-        ImageSearchDataProvider::ImageClusterApplyMode apply_mode{
-            ImageSearchDataProvider::ImageClusterApplyMode::Move};
+        ImageClusterApplyMode apply_mode{ImageClusterApplyMode::Move};
 
         irt::features::ImageClusterConfig config;
         std::vector<irt::features::ImageClusterItem> items;
@@ -75,13 +109,12 @@ private:
         qint64  elapsed_ms{0};
 
         bool    include_noise{false};
-        ImageSearchDataProvider::ImageClusterApplyMode apply_mode{
-            ImageSearchDataProvider::ImageClusterApplyMode::Move};
+        ImageClusterApplyMode apply_mode{ImageClusterApplyMode::Move};
         int     feature_dim{0};
         int64_t cluster_count{0};
         int64_t noise_count{0};
 
-        std::vector<ImageSearchDataProvider::ImageClusterAssignment> assignments;
+        std::vector<ImageClusterAssignment> assignments;
     };
 
     static std::set<int64_t> parseDatasetIds(const QVariantList &dataset_ids);
@@ -91,6 +124,12 @@ private:
     void collectClusterItems(ClusterRequest &request, const std::vector<int64_t> &image_ids,
                              const std::set<int64_t> &dataset_ids);
     void executeCluster(const ClusterRequest &request, ClusterResponse &response);
+    bool buildClusterApplyPlan(const std::vector<ImageClusterAssignment> &assignments,
+                               bool include_noise,
+                               ClusterApplyPlan &plan,
+                               QString &err_msg);
+    bool ensureClusterTargetDataset(const QString &target_dataset_name, int64_t &dataset_id, QString &err_msg);
+    ImageClusterApplyResult applyClusterPlan(const ClusterApplyPlan &plan, ImageClusterApplyMode apply_mode);
 
     void resetForNewCluster();
     void startProgress(const ClusterRequest &request);
@@ -103,7 +142,8 @@ private:
     void setRunning(bool running);
     void setLastError(const QString &last_error);
 
-    ImageSearchDataProvider *data_provider_{nullptr};
+    ImageClusterDataProvider *data_provider_{nullptr};
+    QPointer<dltool::data::DataManager> data_manager_;
 
     bool    enabled_{true};
     bool    running_{false};
