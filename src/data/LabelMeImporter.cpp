@@ -1,6 +1,7 @@
 #include "data/LabelMeImporter.h"
 
 #include "core/CoreDef.h"
+#include "data/DataNameUtils.h"
 #include "database/DataBase.h"
 
 #include <json.hpp>
@@ -174,6 +175,11 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
                         {
                             continue;
                         }
+                        const QString label_class_name = sanitizeName(shape.label);
+                        if (label_class_name.isEmpty())
+                        {
+                            continue;
+                        }
 
                         const QVariantMap label_data
                             = convertShapeToLabelData(shape, width, height, convert_rectangles_to_polygons);
@@ -182,16 +188,16 @@ void LabelMeImporter::doImport(int64_t dataset_id, const QString &image_dir, con
                             continue;
                         }
 
-                        auto color_it = label_class_colors.find(shape.label);
+                        auto color_it = label_class_colors.find(label_class_name);
                         if (color_it == label_class_colors.end())
                         {
                             const QString color                 = DatasetIO::generateDefaultColor(color_index++);
-                            color_it                            = label_class_colors.emplace(shape.label, color).first;
-                            batch_label_class_info[shape.label] = color;
+                            color_it = label_class_colors.emplace(label_class_name, color).first;
+                            batch_label_class_info[label_class_name] = color;
                         }
 
                         ImportedLabel imported_label;
-                        imported_label.label_class_name = shape.label;
+                        imported_label.label_class_name = label_class_name;
                         imported_label.data             = label_data;
                         imported_label.image_path       = image_path;
                         batch_labels.push_back(imported_label);

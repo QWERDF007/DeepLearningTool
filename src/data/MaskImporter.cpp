@@ -1,6 +1,7 @@
 #include "data/MaskImporter.h"
 
 #include "core/CoreDef.h"
+#include "data/DataNameUtils.h"
 #include "data/DatasetIO.h"
 
 #include <spdlog/spdlog.h>
@@ -283,7 +284,7 @@ void MaskImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
                 continue;
             }
 
-            const QString label_class_name = labelClassNameForMask(mask_path, data_dir);
+            const QString label_class_name = sanitizeName(labelClassNameForMask(mask_path, data_dir));
             if (label_class_name.isEmpty())
             {
                 ++skipped_masks;

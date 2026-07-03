@@ -4,6 +4,7 @@
 #include "data/DataExporter.h"
 #include "data/DataFormat.h"
 #include "data/DataImporter.h"
+#include "data/DataNameUtils.h"
 #include "data/DatasetIO.h"
 #include "data/GlobalFilter.h"
 #include "data/LabelData.h"
@@ -827,20 +828,7 @@ void DataManager::updateDataset(const int64_t dataset_id, const QString &name)
 
 QString DataManager::isValidName(const QString &name) const
 {
-    if (name.isEmpty())
-    {
-        return QString("error:名称不能为空");
-    }
-
-    for (const QChar &ch : name)
-    {
-        const bool valid = ch.isLetterOrNumber() || ch == QLatin1Char('-') || ch == QLatin1Char('_');
-        if (!valid)
-        {
-            return QString("error:名称只能使用字母、数字、中文、-、_");
-        }
-    }
-    return QString();
+    return invalidNameError(name);
 }
 
 QString DataManager::isValidDatasetName(const QString &name, const int64_t dataset_id) const

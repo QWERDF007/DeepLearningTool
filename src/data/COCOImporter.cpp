@@ -1,6 +1,7 @@
 #include "data/COCOImporter.h"
 
 #include "core/CoreDef.h"
+#include "data/DataNameUtils.h"
 #include "database/DataBase.h"
 
 #include <json.hpp>
@@ -943,7 +944,7 @@ void COCOImporter::doImport(int64_t dataset_id, const QString &image_dir, const 
 
                     CocoCategory category;
                     category.id   = category_id;
-                    category.name = QString::fromStdString(object_json["name"].get<std::string>());
+                    category.name = sanitizeName(QString::fromStdString(object_json["name"].get<std::string>()));
                     if (category.name.isEmpty())
                     {
                         return true;
