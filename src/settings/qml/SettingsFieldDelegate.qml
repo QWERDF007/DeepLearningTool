@@ -14,7 +14,6 @@ Item {
     property string nameEn: model.nameEn || ""
     property string labelText: model.nameCn && model.nameCn.length > 0 ? model.nameCn : model.nameEn
     property string descText: model.desc ? String(model.desc) : ""
-    property string descriptionText: model.description ? String(model.description) : ""
     property string sectionText: model.section ? String(model.section) : ""
     property string previousSectionText: {
         if (!fieldModel || rowIndex <= 0) {
@@ -216,7 +215,7 @@ Item {
             visible: root.showSectionHeader
             text: root.sectionText
             font: QuiFont.Subtitle
-            color: QuiColor.Highlight
+            color: QuiColor.FontDark
             elide: Text.ElideRight
         }
 
@@ -224,7 +223,7 @@ Item {
             id: fieldRow
 
             Layout.fillWidth: true
-            implicitHeight: Math.max(root.descriptionText.length > 0 ? 58 : 42, editorLoader.implicitHeight + 12)
+            implicitHeight: Math.max(42, editorLoader.implicitHeight + 12)
 
             RowLayout {
                 anchors.fill: parent
@@ -244,11 +243,6 @@ Item {
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                     }
 
-                    ToolTip.visible: labelHover.hovered && root.descText.length > 0
-                    ToolTip.delay: 500
-                    ToolTip.timeout: -1
-                    ToolTip.text: root.descText
-
                     Item {
                         Layout.fillHeight: true
                     }
@@ -256,20 +250,14 @@ Item {
                     QuiText {
                         Layout.fillWidth: true
                         text: root.labelText
-                        color: QuiColor.FontPrimary
                         elide: Text.ElideRight
                         verticalAlignment: Text.AlignVCenter
-                    }
-
-                    QuiText {
-                        Layout.fillWidth: true
-                        visible: root.descriptionText.length > 0
-                        text: root.descriptionText
-                        color: QuiColor.FontDark
-                        font: QuiFont.Caption
-                        elide: Text.ElideRight
-                    }
-
+                        QuiToolTip {
+                            text: root.descText
+                            visible: labelHover.hovered && root.labelText.length > 0
+                            delay: 200
+                        }
+                    }   
                     Item {
                         Layout.fillHeight: true
                     }
@@ -281,17 +269,23 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 34
                     Layout.alignment: Qt.AlignVCenter
-                    sourceComponent: root.usesSwitch()
-                                     ? switchEditor
-                                     : root.usesBool()
-                                       ? boolEditor
-                                       : root.usesCombo()
-                                         ? comboEditor
-                                         : root.usesNumber()
-                                           ? (root.usesSlider() ? sliderEditor : numberEditor)
-                                           : root.usesPath()
-                                             ? pathEditor
-                                             : textEditor
+                    sourceComponent: {
+                        if (root.usesSwitch()) {
+                            return switchEditor
+                        } else if (root.usesBool()) {
+                            return boolEditor
+                        } else if (root.usesCombo()) {
+                            return comboEditor
+                        } else if (root.usesNumber()) {
+                            if (root.usesSlider()) {
+                                return sliderEditor
+                            }
+                            return numberEditor
+                        } else if (root.usesPath()) {
+                            return pathEditor
+                        }
+                        return textEditor
+                    }
                 }
             }
 

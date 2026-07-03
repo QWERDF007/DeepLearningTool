@@ -87,14 +87,43 @@ SmartAnnotationSettings:
         value_range: [0, 1000000, 1]
         control_type: spin
 
-      - name_en: polygon_simplify_epsilon
-        name_cn: 轮廓简化
-        desc: 用于配置智能标注中Mask相关的轮廓简化。
-        property_name: polygonSimplifyEpsilon
+      - name_en: polygon_approx_epsilon
+        name_cn: 轮廓拟合 Epsilon
+        desc: 用于配置智能标注中Mask相关的 OpenCV approxPolyDP 轮廓拟合阈值；0 表示不压缩轮廓点。
+        property_name: polygonApproxEpsilon
         value: 2.0
         value_type: double
         value_range: [0.0, 50.0, 0.5]
         control_type: slider
+
+      - name_en: polygon_spline_enabled
+        name_cn: 启用轮廓 B 样条
+        desc: 用于配置智能标注中Mask相关的是否在 OpenCV 多边形拟合后继续执行 B 样条拟合。
+        property_name: polygonSplineEnabled
+        value: false
+        value_type: bool
+        control_type: checkbox
+
+      - name_en: polygon_spline_smoothing
+        name_cn: 轮廓 B 样条平滑
+        desc: 用于配置智能标注中Mask相关的轮廓 B 样条平滑残差预算；0 表示插值拟合。
+        property_name: polygonSplineSmoothing
+        value: 0.0
+        value_type: double
+        value_range: [0.0, 100000.0, 10.0]
+        control_type: slider
+
+      - name_en: polygon_spline_degree
+        name_cn: 轮廓 B 样条阶数
+        desc: 用于配置智能标注中Mask相关的轮廓 B 样条阶数。
+        property_name: polygonSplineDegree
+        value: 3
+        value_type: int
+        control_type: combo
+        options: [linear, cubic]
+        options_values:
+          linear: 1
+          cubic: 3
 
       - name_en: mask_alpha
         name_cn: Mask 透明度

@@ -182,17 +182,13 @@ ImageClusterSettings readImageClusterSettingsImpl(const dltool::settings::Global
     result.include_noise = valueForField(settings, generated_field::ImageCluster::IncludeNoise, false).toBool();
     result.apply_mode    = valueForField(settings, generated_field::ImageCluster::ApplyMode, 0).toInt();
 
-    result.min_cluster_size = valueForField(settings, generated_field::ImageCluster::MinClusterSize,
-                                            static_cast<qlonglong>(irt::ops::kDefaultHDBSCANMinClusterSize))
+    result.min_cluster_size = valueForField(settings, generated_field::ImageCluster::MinClusterSize,5)
                                   .toLongLong();
-    result.min_samples = valueForField(settings, generated_field::ImageCluster::MinSamples,
-                                       static_cast<qlonglong>(irt::ops::kDefaultHDBSCANMinSamples))
+    result.min_samples = valueForField(settings, generated_field::ImageCluster::MinSamples, 0)
                              .toLongLong();
-    result.cluster_selection_epsilon = valueForField(settings, generated_field::ImageCluster::ClusterSelectionEpsilon,
-                                                     irt::ops::kDefaultHDBSCANClusterSelectionEpsilon)
+    result.cluster_selection_epsilon = valueForField(settings, generated_field::ImageCluster::ClusterSelectionEpsilon, 0.0)
                                            .toDouble();
-    result.max_cluster_size = valueForField(settings, generated_field::ImageCluster::MaxClusterSize,
-                                            static_cast<qlonglong>(irt::ops::kDefaultHDBSCANMaxClusterSize))
+    result.max_cluster_size = valueForField(settings, generated_field::ImageCluster::MaxClusterSize, 0)
                                   .toLongLong();
     result.algorithm = valueForField(settings, generated_field::ImageCluster::Algorithm,
                                      static_cast<int>(irt::ops::ClusteringAlgorithm::KDTree))

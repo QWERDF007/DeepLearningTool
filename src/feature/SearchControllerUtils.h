@@ -46,13 +46,13 @@ struct ImageClusterSettings
     bool include_noise{false};
     int  apply_mode{0};
 
-    int64_t min_cluster_size{irt::ops::kDefaultHDBSCANMinClusterSize};
-    int64_t min_samples{irt::ops::kDefaultHDBSCANMinSamples};
-    double  cluster_selection_epsilon{irt::ops::kDefaultHDBSCANClusterSelectionEpsilon};
-    int64_t max_cluster_size{irt::ops::kDefaultHDBSCANMaxClusterSize};
-    double  alpha{irt::ops::kDefaultHDBSCANAlpha};
+    int64_t min_cluster_size{5};
+    int64_t min_samples{0};
+    double  cluster_selection_epsilon{0.0};
+    int64_t max_cluster_size{0};
+    double  alpha{1.0};
     int     algorithm{static_cast<int>(irt::ops::ClusteringAlgorithm::KDTree)};
-    int64_t leaf_size{irt::ops::kDefaultClusteringLeafSize};
+    int64_t leaf_size{40};
     int     metric{static_cast<int>(irt::ops::kDefaultHDBSCANMetric)};
     int     cluster_selection_method{static_cast<int>(irt::ops::HDBSCANClusterSelectionMethod::Eom)};
     bool    allow_single_cluster{false};

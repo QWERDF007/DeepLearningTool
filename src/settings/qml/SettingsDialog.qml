@@ -162,6 +162,7 @@ Window {
         }
 
         StackLayout {
+            Layout.topMargin: 5
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: Math.max(0, Math.min(dialog.currentGroupIndex, GlobalSettings.catalog.count - 1))

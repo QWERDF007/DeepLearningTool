@@ -7,6 +7,7 @@ import dltool.ui
 import dltool.project
 import dltool.data
 import dltool.feature
+import dltool.settings
 import quickui
 
 Rectangle {

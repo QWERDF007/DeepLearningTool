@@ -4,6 +4,7 @@
 #include "settings/SettingsValue.h"
 
 #include <inferrt/features/SAMImagePredictor.hpp>
+#include <inferrt/ops/BSplineInterp.hpp>
 #include <opencv2/imgproc.hpp>
 #include <spdlog/spdlog.h>
 
@@ -57,6 +58,14 @@ struct InferenceImageInput
     double                          scale_y{1.0};          ///< 原图到输入图像的 Y 缩放
     bool                            viewport_input{false}; ///< 是否使用可视窗口输入
     std::unique_ptr<QTemporaryFile> temporary_file;        ///< 临时输入图文件
+};
+
+struct ContourPostprocessOptions
+{
+    double approx_epsilon{2.0};
+    bool   spline_enabled{false};
+    float  spline_smoothing{0.0F};
+    int    spline_degree{3};
 };
 
 /**
@@ -194,6 +203,24 @@ irt::features::SAMImagePredictOptions buildPredictOptions(dltool::settings::Glob
         = static_cast<float>(settingDouble(settings, generated_field::SmartAnnotation::MaskThreshold, 0.0));
     options.max_hole_area = settingInt(settings, generated_field::SmartAnnotation::MaxHoleArea, 0);
     options.max_sprinkle_area = settingInt(settings, generated_field::SmartAnnotation::MaxSprinkleArea, 0);
+    return options;
+}
+
+ContourPostprocessOptions buildContourPostprocessOptions(dltool::settings::GlobalSettings *settings)
+{
+    namespace generated_field = dltool::settings::generated::field;
+
+    ContourPostprocessOptions options;
+    const double approx_epsilon
+        = settingDouble(settings, generated_field::SmartAnnotation::PolygonApproxEpsilon, 2.0);
+    options.approx_epsilon
+        = std::isfinite(approx_epsilon) ? std::max(0.0, approx_epsilon) : 2.0;
+    options.spline_enabled = settingBool(settings, generated_field::SmartAnnotation::PolygonSplineEnabled, false);
+
+    const double smoothing = settingDouble(settings, generated_field::SmartAnnotation::PolygonSplineSmoothing, 0.0);
+    options.spline_smoothing
+        = static_cast<float>(std::isfinite(smoothing) ? std::max(0.0, smoothing) : 0.0);
+    options.spline_degree = settingInt(settings, generated_field::SmartAnnotation::PolygonSplineDegree, 3) == 1 ? 1 : 3;
     return options;
 }
 
@@ -397,25 +424,6 @@ double signedPolygonArea(const std::vector<QPointF> &points)
 }
 
 /**
- * @brief 计算点到线段的距离
- * @param point 目标点
- * @param a 线段起点
- * @param b 线段终点
- * @return 最短距离
- */
-double distanceToSegment(const QPointF &point, const QPointF &a, const QPointF &b)
-{
-    const double dx = b.x() - a.x(), dy = b.y() - a.y();
-    const double len2 = dx * dx + dy * dy;
-    if (len2 <= 0.000001)
-        return QLineF(point, a).length();
-
-    const double  t = std::clamp(((point.x() - a.x()) * dx + (point.y() - a.y()) * dy) / len2, 0.0, 1.0);
-    const QPointF projection(a.x() + t * dx, a.y() + t * dy);
-    return QLineF(point, projection).length();
-}
-
-/**
  * @brief 规范化多边形：去重、验证最小面积
  * @param points 原始多边形顶点
  * @return 规范化后的多边形，无效时返回空
@@ -439,123 +447,103 @@ std::vector<QPointF> normalizePolygon(std::vector<QPointF> points)
     return normalized;
 }
 
-/**
- * @brief 移除共线点
- * @param points 原始多边形顶点
- * @param tolerance 共线判定容差
- * @return 移除共线点后的多边形
- */
-std::vector<QPointF> removeCollinearPoints(const std::vector<QPointF> &points, double tolerance)
+std::vector<cv::Point2f> polygonToCvPoints(const std::vector<QPointF> &points)
 {
-    if (points.size() < 4)
-        return points;
-
-    std::vector<QPointF> filtered;
-    filtered.reserve(points.size());
-    for (size_t i = 0; i < points.size(); ++i)
-    {
-        const QPointF &prev = points[(i + points.size() - 1) % points.size()];
-        const QPointF &curr = points[i];
-        const QPointF &next = points[(i + 1) % points.size()];
-        if (distanceToSegment(curr, prev, next) <= tolerance)
-            continue;
-        filtered.push_back(curr);
-    }
-    return filtered.size() >= 3 ? filtered : points;
+    std::vector<cv::Point2f> cv_points;
+    cv_points.reserve(points.size());
+    for (const QPointF &point : points)
+        cv_points.emplace_back(static_cast<float>(point.x()), static_cast<float>(point.y()));
+    return cv_points;
 }
 
-/**
- * @brief Douglas-Peucker 算法简化开放折线
- * @param points 原始折线顶点
- * @param epsilon 简化阈值
- * @return 简化后的折线
- */
-std::vector<QPointF> simplifyOpenPolyline(const std::vector<QPointF> &points, double epsilon)
+std::vector<QPointF> cvPointsToPolygon(const std::vector<cv::Point2f> &points)
 {
-    if (points.size() <= 2)
-        return points;
-
-    std::vector<uint8_t> keep(points.size(), 0);
-    keep.front() = 1;
-    keep.back()  = 1;
-
-    std::vector<std::pair<size_t, size_t>> ranges;
-    ranges.emplace_back(0, points.size() - 1);
-
-    while (!ranges.empty())
-    {
-        const auto [first, last] = ranges.back();
-        ranges.pop_back();
-        if (last <= first + 1)
-            continue;
-
-        double max_distance = 0.0;
-        size_t max_index    = first;
-        for (size_t i = first + 1; i < last; ++i)
-        {
-            const double distance = distanceToSegment(points[i], points[first], points[last]);
-            if (distance > max_distance)
-            {
-                max_distance = distance;
-                max_index    = i;
-            }
-        }
-
-        if (max_distance > epsilon)
-        {
-            keep[max_index] = 1;
-            ranges.emplace_back(first, max_index);
-            ranges.emplace_back(max_index, last);
-        }
-    }
-
-    std::vector<QPointF> simplified;
-    simplified.reserve(points.size());
-    for (size_t i = 0; i < points.size(); ++i)
-        if (keep[i] != 0)
-            simplified.push_back(points[i]);
-    return simplified;
+    std::vector<QPointF> polygon;
+    polygon.reserve(points.size());
+    for (const cv::Point2f &point : points)
+        polygon.emplace_back(static_cast<double>(point.x), static_cast<double>(point.y));
+    return polygon;
 }
 
-/**
- * @brief Douglas-Peucker 算法简化闭合多边形
- * @param points 原始多边形顶点
- * @param epsilon 简化阈值
- * @return 简化后的多边形
- */
-std::vector<QPointF> simplifyClosedPolygon(const std::vector<QPointF> &points, double epsilon)
+std::vector<QPointF> approximateClosedPolygon(std::vector<QPointF> polygon, double epsilon)
 {
-    if (points.size() < 6)
-        return points;
+    polygon = normalizePolygon(std::move(polygon));
+    if (polygon.empty() || epsilon <= 0.0)
+        return polygon;
 
-    size_t split_index  = 1;
-    double max_distance = 0.0;
-    for (size_t i = 1; i < points.size(); ++i)
+    std::vector<cv::Point2f> input = polygonToCvPoints(polygon);
+    std::vector<cv::Point2f> fitted;
+    cv::approxPolyDP(input, fitted, epsilon, true);
+
+    std::vector<QPointF> result = normalizePolygon(cvPointsToPolygon(fitted));
+    if (result.empty())
+        return polygon;
+    if (signedPolygonArea(result) < 0.0)
+        std::reverse(result.begin(), result.end());
+    return result;
+}
+
+std::vector<float> pointsToSplineInput(const std::vector<QPointF> &points)
+{
+    std::vector<float> input;
+    input.reserve((points.size() + 1) * 2);
+    for (const QPointF &point : points)
     {
-        const double distance = QLineF(points.front(), points[i]).length();
-        if (distance > max_distance)
-        {
-            max_distance = distance;
-            split_index  = i;
-        }
+        input.push_back(static_cast<float>(point.x()));
+        input.push_back(static_cast<float>(point.y()));
     }
+    input.push_back(static_cast<float>(points.front().x()));
+    input.push_back(static_cast<float>(points.front().y()));
+    return input;
+}
 
-    if (split_index == 0 || split_index >= points.size())
-        return points;
+std::vector<QPointF> splineFitClosedPolygon(std::vector<QPointF> polygon, const ContourPostprocessOptions &options)
+{
+    polygon = normalizePolygon(std::move(polygon));
+    if (polygon.empty())
+        return {};
 
-    std::vector<QPointF> first_chain(points.begin(), points.begin() + static_cast<std::ptrdiff_t>(split_index) + 1);
-    std::vector<QPointF> second_chain(points.begin() + static_cast<std::ptrdiff_t>(split_index), points.end());
-    second_chain.push_back(points.front());
+    const int64_t num_points = static_cast<int64_t>(polygon.size() + 1);
+    int           degree     = options.spline_degree == 1 ? 1 : 3;
+    if (num_points < degree + 1)
+        degree = 1;
+    if (num_points < degree + 1)
+        return polygon;
 
-    first_chain  = simplifyOpenPolyline(first_chain, epsilon);
-    second_chain = simplifyOpenPolyline(second_chain, epsilon);
+    try
+    {
+        const std::vector<float> spline_input = pointsToSplineInput(polygon);
+        const auto spline = irt::ops::splPrep(spline_input.data(), num_points, 2, options.spline_smoothing, degree);
+        const int64_t            num_coefficients
+            = static_cast<int64_t>(spline.coefficients.size()) / std::max<int64_t>(1, spline.dimensions);
+        const std::vector<float> sampled = irt::ops::evaluateBSpline(
+            spline.knots.data(), static_cast<int64_t>(spline.knots.size()), spline.coefficients.data(),
+            num_coefficients, spline.dimensions, spline.degree, spline.parameters.data(),
+            static_cast<int64_t>(spline.parameters.size()));
 
-    std::vector<QPointF> simplified;
-    simplified.reserve(first_chain.size() + second_chain.size());
-    simplified.insert(simplified.end(), first_chain.begin(), first_chain.end());
-    for (size_t i = 1; i + 1 < second_chain.size(); ++i) simplified.push_back(second_chain[i]);
+        std::vector<QPointF> result;
+        result.reserve(spline.parameters.size());
+        for (size_t i = 0; i + 1 < sampled.size(); i += 2)
+            result.emplace_back(static_cast<double>(sampled[i]), static_cast<double>(sampled[i + 1]));
 
-    return normalizePolygon(simplified);
+        result = normalizePolygon(std::move(result));
+        if (!result.empty() && signedPolygonArea(result) < 0.0)
+            std::reverse(result.begin(), result.end());
+        return result.empty() ? polygon : result;
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::warn("B 样条轮廓拟合失败，使用原始轮廓: {}", e.what());
+        return polygon;
+    }
+}
+
+std::vector<QPointF> postprocessContourPolygon(std::vector<QPointF> polygon, const ContourPostprocessOptions &options)
+{
+    polygon = approximateClosedPolygon(std::move(polygon), options.approx_epsilon);
+    if (polygon.empty() || !options.spline_enabled)
+        return polygon;
+    return splineFitClosedPolygon(std::move(polygon), options);
 }
 
 /**
@@ -719,17 +707,7 @@ std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mas
     if (points.empty())
         return {};
 
-    points = removeCollinearPoints(points, 0.001);
     points = normalizePolygon(std::move(points));
-    if (points.empty())
-        return {};
-    if (signedPolygonArea(points) < 0.0)
-        std::reverse(points.begin(), points.end());
-
-    const double epsilon = std::clamp(std::sqrt(polygonArea(points)) * 0.01, 1.0, 3.0);
-    points               = simplifyClosedPolygon(points, epsilon);
-    points               = removeCollinearPoints(points, 0.01);
-    points               = normalizePolygon(std::move(points));
     if (points.empty())
         return {};
     if (signedPolygonArea(points) < 0.0)
@@ -811,24 +789,6 @@ std::vector<QPointF> rectanglePoints(const QRectF &rect)
 {
     return {QPointF(rect.left(), rect.top()), QPointF(rect.right(), rect.top()), QPointF(rect.right(), rect.bottom()),
             QPointF(rect.left(), rect.bottom())};
-}
-
-/**
- * @brief 对最终多边形进行简化和规范化
- * @param polygon 原始多边形
- * @param epsilon 简化阈值
- * @return 简化后的多边形，简化失败则返回原始多边形
- */
-std::vector<QPointF> simplifyFinalPolygon(std::vector<QPointF> polygon, double epsilon)
-{
-    polygon = normalizePolygon(std::move(polygon));
-    if (polygon.empty() || epsilon <= 0.0)
-        return polygon;
-
-    std::vector<QPointF> simplified = simplifyClosedPolygon(polygon, epsilon);
-    simplified                      = removeCollinearPoints(simplified, epsilon);
-    simplified                      = normalizePolygon(std::move(simplified));
-    return simplified.empty() ? polygon : simplified;
 }
 
 std::vector<uint8_t> selectedBinaryMask(const irt::features::SAMImagePrediction &prediction, int mask_index)
@@ -1070,11 +1030,10 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         else
             polygon = rectanglePoints(input_bbox);
 
-        const QRectF         bbox           = mapInputRectToSource(input_bbox, image_input);
-        std::vector<QPointF> output_polygon = mapInputPolygonToSource(polygon, image_input);
-        output_polygon                      = simplifyFinalPolygon(
-            std::move(output_polygon),
-            settingDouble(settings, generated_field::SmartAnnotation::PolygonSimplifyEpsilon, 2.0));
+        const QRectF                    bbox           = mapInputRectToSource(input_bbox, image_input);
+        const ContourPostprocessOptions contour_options = buildContourPostprocessOptions(settings);
+        std::vector<QPointF>            output_polygon  = mapInputPolygonToSource(polygon, image_input);
+        output_polygon = postprocessContourPolygon(std::move(output_polygon), contour_options);
         if (output_polygon.size() < 3)
             output_polygon = rectanglePoints(bbox);
 
