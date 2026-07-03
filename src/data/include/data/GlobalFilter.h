@@ -31,6 +31,7 @@ struct FilterCriteria
     std::unordered_set<int64_t> image_label_class_ids;
     std::unordered_set<int64_t> image_search_ids;
     std::unordered_set<int64_t> label_search_ids;
+    QString                     file_name_text;
     bool                        dataset_inverted{false};
     bool                        tag_inverted{false};
     bool                        label_class_inverted{false};
@@ -45,8 +46,9 @@ struct FilterCriteria
     bool isEmpty() const
     {
         return dataset_ids.empty() && tag_ids.empty() && label_class_ids.empty() && image_label_class_ids.empty()
-            && image_search_ids.empty() && label_search_ids.empty() && !dataset_inverted && !tag_inverted
-            && !label_class_inverted && !image_label_class_inverted && !image_search_inverted && !label_search_inverted;
+            && image_search_ids.empty() && label_search_ids.empty() && file_name_text.isEmpty() && !dataset_inverted
+            && !tag_inverted && !label_class_inverted && !image_label_class_inverted && !image_search_inverted
+            && !label_search_inverted;
     }
 };
 
@@ -70,6 +72,7 @@ class GlobalFilter : public QObject
     Q_PROPERTY(bool hasLabelSearchResults READ hasLabelSearchResults NOTIFY filterStateChanged)
     Q_PROPERTY(bool labelSearchFilterEnabled READ labelSearchFilterEnabled NOTIFY filterStateChanged)
     Q_PROPERTY(int labelSearchResultCount READ labelSearchResultCount NOTIFY filterStateChanged)
+    Q_PROPERTY(QString fileNameFilterText READ fileNameFilterText WRITE setFileNameFilterText NOTIFY filterStateChanged)
 
 public:
     /**
@@ -198,6 +201,12 @@ public:
     bool hasLabelSearchResults() const;
     bool labelSearchFilterEnabled() const;
     int  labelSearchResultCount() const;
+    QString fileNameFilterText() const
+    {
+        return file_name_filter_text_;
+    }
+
+    Q_INVOKABLE void setFileNameFilterText(const QString &text);
 
     /**
      * @brief 应用过滤器到数据模型
@@ -270,6 +279,7 @@ private:
 
     FilterCriteria current_criteria_;  // 当前过滤条件
     FilterCriteria previous_criteria_; // 上一次过滤条件（用于避免不必要的过滤）
+    QString        file_name_filter_text_;
 
     bool force_apply_{false}; // 强制重新应用过滤（跳过条件未变的优化）
 };

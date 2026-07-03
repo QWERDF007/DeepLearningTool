@@ -61,10 +61,17 @@ Item {
         anchors.rightMargin: 5
         spacing: 10
         QuiText {
+            id: datasetName
             text: control.name
             Layout.fillWidth: true
             Layout.minimumWidth: 60
             elide: Text.ElideRight
+
+            QuiToolTip {
+                text: control.name
+                delay: 200
+                visible: control.hovered && datasetName.truncated
+            }
         }
         QuiProgressBar {
             textVisible: visualPosition > 0

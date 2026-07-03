@@ -183,7 +183,7 @@ bool GlobalFilter::isActive() const
             return true;
         }
     }
-    return false;
+    return !file_name_filter_text_.isEmpty();
 }
 
 int GlobalFilter::activeFilterCount() const
@@ -196,6 +196,10 @@ int GlobalFilter::activeFilterCount() const
         {
             count++;
         }
+    }
+    if (!file_name_filter_text_.isEmpty())
+    {
+        count++;
     }
     return count;
 }
@@ -243,6 +247,12 @@ void GlobalFilter::clearAllFilters()
     {
         label_search_filter_->selectAll();
         label_search_filter_->setEnabled(false);
+        changed = true;
+    }
+
+    if (!file_name_filter_text_.isEmpty())
+    {
+        file_name_filter_text_.clear();
         changed = true;
     }
 
@@ -399,6 +409,21 @@ int GlobalFilter::labelSearchResultCount() const
     return label_search_filter_ ? label_search_filter_->resultCount() : 0;
 }
 
+void GlobalFilter::setFileNameFilterText(const QString &text)
+{
+    const QString normalized_text = text.trimmed();
+    if (file_name_filter_text_ == normalized_text)
+    {
+        return;
+    }
+
+    file_name_filter_text_ = normalized_text;
+    updateFilterCriteria();
+    force_apply_ = true;
+    applyFilters();
+    emit filterStateChanged();
+}
+
 void GlobalFilter::applyFilters()
 {
     const bool should_force_apply = force_apply_;
@@ -486,6 +511,7 @@ void GlobalFilter::updateFilterCriteria()
     current_criteria_.image_label_class_ids.clear();
     current_criteria_.image_search_ids.clear();
     current_criteria_.label_search_ids.clear();
+    current_criteria_.file_name_text.clear();
     current_criteria_.dataset_inverted           = false;
     current_criteria_.tag_inverted               = false;
     current_criteria_.label_class_inverted       = false;
@@ -528,6 +554,8 @@ void GlobalFilter::updateFilterCriteria()
         current_criteria_.label_search_ids      = label_search_filter_->getActiveCriteria();
         current_criteria_.label_search_inverted = label_search_filter_->isInverted();
     }
+
+    current_criteria_.file_name_text = file_name_filter_text_;
 }
 
 bool GlobalFilter::shouldIncludeImage(int64_t image_id) const
@@ -556,6 +584,20 @@ bool GlobalFilter::shouldIncludeImage(int64_t image_id) const
     if (label_search_filter_ && label_search_filter_->isEnabled() && !label_search_filter_->passes(image_id))
     {
         return false;
+    }
+
+    if (!file_name_filter_text_.isEmpty())
+    {
+        if (!data_manager_ || !data_manager_->imageInstances())
+        {
+            return false;
+        }
+
+        const QString file_name = data_manager_->imageInstances()->getImageName(image_id);
+        if (!file_name.contains(file_name_filter_text_, Qt::CaseInsensitive))
+        {
+            return false;
+        }
     }
 
     return true;
@@ -632,6 +674,11 @@ bool GlobalFilter::hasFilterCriteriaChanged() const
         return true;
     }
     if (current_criteria_.label_search_inverted != previous_criteria_.label_search_inverted)
+    {
+        return true;
+    }
+
+    if (current_criteria_.file_name_text != previous_criteria_.file_name_text)
     {
         return true;
     }

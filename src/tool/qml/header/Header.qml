@@ -23,6 +23,15 @@ Rectangle {
     property var roiSearch: featureManager ? featureManager.roiSearch : null
     property var smartAnnotation: featureManager ? featureManager.smartAnnotation : null
 
+    onGlobalFilterChanged: syncFileNameFilterField()
+
+    function syncFileNameFilterField() {
+        const nextText = globalFilter ? globalFilter.fileNameFilterText : ""
+        if (fileNameFilterField.text !== nextText) {
+            fileNameFilterField.text = nextText
+        }
+    }
+
     Connections {
         target: SignalHelper
         function onChangeTabBarIndex(index) {
@@ -142,12 +151,13 @@ Rectangle {
                                 imageSearchDropDown.selectAll(false)
                                 labelSearchDropDown.checked = false
                                 labelSearchDropDown.selectAll(false)
+                                fileNameFilterField.text = ""
                             }
                         }
                     }
 
                     
-                    
+
                     DropDownMenuButton {
                         id: datasetDropDown
                         Layout.fillHeight: true
@@ -219,6 +229,20 @@ Rectangle {
                             }
                         }
                     }
+
+                    QuiTextField {
+                        id: fileNameFilterField
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: 180
+                        placeholderText: "按文件名过滤"
+                        enabled: globalFilter !== null
+                        selectByMouse: true
+                        onTextChanged: {
+                            if (globalFilter && text !== globalFilter.fileNameFilterText) {
+                                globalFilter.fileNameFilterText = text
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -234,6 +258,15 @@ Rectangle {
             labelClassImageDropDown.checked = false
             imageSearchDropDown.checked = false
             labelSearchDropDown.checked = false
+            header.syncFileNameFilterField()
+        }
+    }
+
+    Connections {
+        target: header.globalFilter
+        ignoreUnknownSignals: true
+        function onFilterStateChanged() {
+            header.syncFileNameFilterField()
         }
     }
     
