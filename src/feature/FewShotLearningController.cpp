@@ -994,6 +994,12 @@ bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_id
     return true;
 }
 
+/// 清除最后一次错误信息
+void FewShotLearningController::clearLastError()
+{
+    setLastError({});
+}
+
 /// 取消当前运行的小样本学习任务
 void FewShotLearningController::cancel()
 {

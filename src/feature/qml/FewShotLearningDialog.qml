@@ -33,17 +33,20 @@ QuiPopup {
     closePolicy: Popup.CloseOnEscape
 
     function openForStart() {
-        resetSelections()
+        if (controller && !controller.running) {
+            controller.clearLastError()
+        }
+        refreshDataLists()
         open()
     }
 
-    function resetSelections() {
+    function availableDatasetNames() {
+        return dataManager ? dataManager.getAllDatasetsName() : []
+    }
+
+    function refreshDataLists() {
         Qt.callLater(function () {
-            datasetNames = dataManager ? dataManager.getAllDatasetsName() : []
-            selectedTrainDatasetMap = {}
-            selectedValidationDatasetMap = {}
-            selectedTestDatasetMap = {}
-            selectedClassMap = {}
+            datasetNames = availableDatasetNames()
         })
     }
 
@@ -159,7 +162,7 @@ QuiPopup {
     }
 
     onOpened: {
-        resetSelections()
+        refreshDataLists()
         refreshSettings()
     }
 

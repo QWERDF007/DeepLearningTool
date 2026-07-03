@@ -73,6 +73,9 @@ public:
     Q_INVOKABLE bool startFsSam2(const QVariantList &train_dataset_ids, const QVariantList &validation_dataset_ids,
                                  const QVariantList &test_dataset_ids, const QVariantList &label_class_ids);
 
+    /// 清除最后一次错误信息
+    Q_INVOKABLE void clearLastError();
+
     /// 取消当前运行的小样本学习任务
     Q_INVOKABLE void cancel();
 
