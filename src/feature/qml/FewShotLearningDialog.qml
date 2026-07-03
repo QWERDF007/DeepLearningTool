@@ -18,8 +18,14 @@ QuiPopup {
     property string pythonEnvPath: ""
     property var datasetNames: []
     property var selectedTrainDatasetMap: ({})
+    property var selectedValidationDatasetMap: ({})
     property var selectedTestDatasetMap: ({})
     property var selectedClassMap: ({})
+    readonly property var datasetSelectorSpecs: [
+        { "title": "训练数据集", "selection": "train" },
+        { "title": "验证数据集", "selection": "validation" },
+        { "title": "测试数据集", "selection": "test" },
+    ]
 
     implicitWidth: 720
     implicitHeight: 780
@@ -35,6 +41,7 @@ QuiPopup {
         Qt.callLater(function () {
             datasetNames = dataManager ? dataManager.getAllDatasetsName() : []
             selectedTrainDatasetMap = {}
+            selectedValidationDatasetMap = {}
             selectedTestDatasetMap = {}
             selectedClassMap = {}
         })
@@ -54,8 +61,22 @@ QuiPopup {
         return ids
     }
 
+    function datasetSelectionMap(selectionMapName) {
+        if (selectionMapName === "train") {
+            return selectedTrainDatasetMap
+        }
+        if (selectionMapName === "validation") {
+            return selectedValidationDatasetMap
+        }
+        return selectedTestDatasetMap
+    }
+
     function selectedTrainDatasetIds() {
         return selectedDatasetIds(selectedTrainDatasetMap)
+    }
+
+    function selectedValidationDatasetIds() {
+        return selectedDatasetIds(selectedValidationDatasetMap)
     }
 
     function selectedTestDatasetIds() {
@@ -85,7 +106,11 @@ QuiPopup {
         if (!dataManager) {
             return
         }
-        let source = selectionMapName === "train" ? selectedTrainDatasetMap : selectedTestDatasetMap
+        let source = selectionMapName === "train"
+                ? selectedTrainDatasetMap
+                : selectionMapName === "validation"
+                  ? selectedValidationDatasetMap
+                  : selectedTestDatasetMap
         let next = {}
         for (let key in source) {
             next[key] = source[key]
@@ -93,6 +118,8 @@ QuiPopup {
         next[String(dataManager.getDatasetId(datasetName))] = selected
         if (selectionMapName === "train") {
             selectedTrainDatasetMap = next
+        } else if (selectionMapName === "validation") {
+            selectedValidationDatasetMap = next
         } else {
             selectedTestDatasetMap = next
         }
@@ -125,7 +152,8 @@ QuiPopup {
         if (!canStart()) {
             return
         }
-        if (controller.startFsSam2(selectedTrainDatasetIds(), selectedTestDatasetIds(), selectedClassIds())) {
+        if (controller.startFsSam2(selectedTrainDatasetIds(), selectedValidationDatasetIds(),
+                                   selectedTestDatasetIds(), selectedClassIds())) {
             close()
         }
     }
@@ -196,79 +224,52 @@ QuiPopup {
                         anchors.margins: 12
                         spacing: 12
 
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 4
+                        Repeater {
+                            model: dialog.datasetSelectorSpecs
 
-                            QuiText {
-                                text: "训练数据集"
-                                color: QuiColor.FontDark
-                            }
+                            delegate: ColumnLayout {
+                                id: datasetSelector
 
-                            Rectangle {
+                                required property var modelData
+                                property string selectionName: modelData.selection
+
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 176
-                                radius: 4
-                                color: QuiColor.Background
-                                border.color: QuiColor.Border
-                                clip: true
+                                spacing: 4
 
-                                ListView {
-                                    id: trainDatasetList
-
-                                    anchors.fill: parent
-                                    anchors.margins: 6
-                                    boundsBehavior: Flickable.StopAtBounds
-                                    clip: true
-                                    model: dialog.datasetNames
-
-                                    ScrollBar.vertical: ScrollBar {}
-
-                                    delegate: QuiCheckBox {
-                                        width: trainDatasetList.width
-                                        height: 30
-                                        text: modelData
-                                        checked: dialog.datasetSelected(dialog.selectedTrainDatasetMap, modelData)
-                                        onToggled: dialog.setDatasetSelected("train", modelData, checked)
-                                    }
+                                QuiText {
+                                    text: datasetSelector.modelData.title
+                                    color: QuiColor.FontDark
                                 }
-                            }
-                        }
 
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 4
-
-                            QuiText {
-                                text: "测试数据集"
-                                color: QuiColor.FontDark
-                            }
-
-                            Rectangle {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 176
-                                radius: 4
-                                color: QuiColor.Background
-                                border.color: QuiColor.Border
-                                clip: true
-
-                                ListView {
-                                    id: testDatasetList
-
-                                    anchors.fill: parent
-                                    anchors.margins: 6
-                                    boundsBehavior: Flickable.StopAtBounds
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 176
+                                    radius: 4
+                                    color: QuiColor.Background
+                                    border.color: QuiColor.Border
                                     clip: true
-                                    model: dialog.datasetNames
 
-                                    ScrollBar.vertical: ScrollBar {}
+                                    ListView {
+                                        id: datasetList
 
-                                    delegate: QuiCheckBox {
-                                        width: testDatasetList.width
-                                        height: 30
-                                        text: modelData
-                                        checked: dialog.datasetSelected(dialog.selectedTestDatasetMap, modelData)
-                                        onToggled: dialog.setDatasetSelected("test", modelData, checked)
+                                        anchors.fill: parent
+                                        anchors.margins: 6
+                                        boundsBehavior: Flickable.StopAtBounds
+                                        clip: true
+                                        model: dialog.datasetNames
+
+                                        ScrollBar.vertical: ScrollBar {}
+
+                                        delegate: QuiCheckBox {
+                                            width: datasetList.width
+                                            height: 30
+                                            text: modelData
+                                            checked: dialog.datasetSelected(
+                                                         dialog.datasetSelectionMap(datasetSelector.selectionName),
+                                                         modelData)
+                                            onToggled: dialog.setDatasetSelected(datasetSelector.selectionName,
+                                                                                modelData, checked)
+                                        }
                                     }
                                 }
                             }

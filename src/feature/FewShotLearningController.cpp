@@ -47,6 +47,17 @@ struct ClassBuildData
     std::map<int64_t, QJsonArray> boxes_by_image_id;        ///< 按图像 ID 映射的检测框
 };
 
+using ClassBuildMap = std::map<int64_t, ClassBuildData>;
+
+/// 按训练、验证、测试用途拆分的图像集合
+struct FewShotImageSelection
+{
+    std::map<int64_t, QString> train_images;              ///< 训练图像 ID 到路径
+    std::map<int64_t, QString> validation_images;         ///< 验证图像 ID 到路径
+    std::map<int64_t, QString> test_images;               ///< 测试图像 ID 到路径
+    std::map<int64_t, int64_t> test_image_dataset_ids;    ///< 测试图像 ID 到数据集 ID
+};
+
 /// 预测结果导入目标
 struct PredictionImportTarget
 {
@@ -328,6 +339,283 @@ void paintLabelToMask(QImage &mask, const QVariantMap &label_data)
         painter.fillRect(rect, Qt::white);
 }
 
+QJsonObject boxFromLabelData(const QVariantMap &label_data)
+{
+    QJsonObject box;
+    box[QStringLiteral("x")]      = label_data.value(QStringLiteral("x")).toDouble();
+    box[QStringLiteral("y")]      = label_data.value(QStringLiteral("y")).toDouble();
+    box[QStringLiteral("width")]  = label_data.value(QStringLiteral("width")).toDouble();
+    box[QStringLiteral("height")] = label_data.value(QStringLiteral("height")).toDouble();
+    return box;
+}
+
+bool appendMaskLabel(ClassBuildData &class_data, int64_t image_id, const QString &image_path,
+                     const QVariantMap &label_data)
+{
+    int width  = 0;
+    int height = 0;
+    if (!getImageDimensions(image_path, width, height))
+        return false;
+
+    QImage &mask = class_data.masks_by_image_id[image_id];
+    if (mask.isNull())
+    {
+        mask = QImage(width, height, QImage::Format_Grayscale8);
+        mask.fill(0);
+    }
+    paintLabelToMask(mask, label_data);
+    return true;
+}
+
+bool buildClassTemplates(FewShotLearningDataProvider *data_provider, const std::vector<int64_t> &label_class_ids,
+                         ClassBuildMap &classes, QString &err_msg)
+{
+    for (int64_t label_class_id : label_class_ids)
+    {
+        const QString class_name = data_provider->labelClassName(label_class_id);
+        if (class_name.isEmpty())
+            continue;
+
+        ClassBuildData data;
+        data.label_class_id   = label_class_id;
+        data.label_class_name = class_name;
+        data.class_dir_name   = sanitizeFileName(class_name, QStringLiteral("class_%1").arg(label_class_id));
+        classes.emplace(label_class_id, std::move(data));
+    }
+
+    if (classes.empty())
+    {
+        err_msg = QString("没有有效类别");
+        return false;
+    }
+    return true;
+}
+
+FewShotImageSelection collectImagesByDataset(FewShotLearningDataProvider *data_provider,
+                                             const std::set<int64_t> &selected_train_datasets,
+                                             const std::set<int64_t> &selected_validation_datasets,
+                                             const std::set<int64_t> &selected_test_datasets)
+{
+    FewShotImageSelection selection;
+    for (int64_t image_id : data_provider->allImageIds())
+    {
+        const int64_t dataset_id = data_provider->imageDatasetId(image_id);
+        const QString image_path = data_provider->imagePath(image_id);
+
+        if (selected_train_datasets.find(dataset_id) != selected_train_datasets.end())
+            selection.train_images[image_id] = image_path;
+        if (!selected_validation_datasets.empty()
+            && selected_validation_datasets.find(dataset_id) != selected_validation_datasets.end())
+        {
+            selection.validation_images[image_id] = image_path;
+        }
+        if (selected_test_datasets.find(dataset_id) != selected_test_datasets.end())
+        {
+            selection.test_images[image_id]            = image_path;
+            selection.test_image_dataset_ids[image_id] = dataset_id;
+        }
+    }
+    return selection;
+}
+
+void collectClassLabels(FewShotLearningDataProvider *data_provider, const std::set<int64_t> &selected_classes,
+                        const FewShotImageSelection &image_selection, bool is_detection, ClassBuildMap &train_classes,
+                        ClassBuildMap &validation_classes)
+{
+    for (int64_t label_id : data_provider->allLabelIds())
+    {
+        const int64_t image_id            = data_provider->labelImageId(label_id);
+        const auto    train_image_it      = image_selection.train_images.find(image_id);
+        const auto    validation_image_it = image_selection.validation_images.find(image_id);
+        const bool    in_train            = train_image_it != image_selection.train_images.end();
+        const bool    in_validation       = validation_image_it != image_selection.validation_images.end();
+        if (!in_train && !in_validation)
+            continue;
+
+        const int64_t label_class_id = data_provider->labelClassId(label_id);
+        if (selected_classes.find(label_class_id) == selected_classes.end())
+            continue;
+
+        const QVariantMap label_data = data_provider->labelData(label_id);
+        if (is_detection)
+        {
+            const QJsonObject box = boxFromLabelData(label_data);
+            if (in_train)
+                train_classes[label_class_id].boxes_by_image_id[image_id].append(box);
+            if (in_validation)
+                validation_classes[label_class_id].boxes_by_image_id[image_id].append(box);
+            continue;
+        }
+
+        if (in_train)
+            appendMaskLabel(train_classes[label_class_id], image_id, train_image_it->second, label_data);
+        if (in_validation)
+            appendMaskLabel(validation_classes[label_class_id], image_id, validation_image_it->second, label_data);
+    }
+}
+
+bool validateClassBuildData(const ClassBuildMap &classes, bool is_detection, int kshot, const QString &dataset_label,
+                            QString &err_msg)
+{
+    for (const auto &[label_class_id, class_data] : classes)
+    {
+        Q_UNUSED(label_class_id)
+        const size_t image_count
+            = is_detection ? class_data.boxes_by_image_id.size() : class_data.masks_by_image_id.size();
+        if (image_count < static_cast<size_t>(kshot + 1))
+        {
+            err_msg = QString("%1中类别 %2 至少需要 %3 张带标注图像")
+                          .arg(dataset_label, class_data.label_class_name)
+                          .arg(kshot + 1);
+            return false;
+        }
+    }
+    return true;
+}
+
+bool writeBoxesJson(const QString &class_dir, const QJsonObject &boxes_json, QString &err_msg)
+{
+    QFile boxes_file(QDir(class_dir).filePath(QStringLiteral("boxes.json")));
+    if (!boxes_file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    {
+        err_msg = QString("无法写入 boxes.json: %1, %2").arg(boxes_file.fileName(), boxes_file.errorString());
+        return false;
+    }
+    boxes_file.write(QJsonDocument(boxes_json).toJson(QJsonDocument::Indented));
+    return true;
+}
+
+bool writeCustomClassData(const QString &class_dir, const ClassBuildData &class_data,
+                          const std::map<int64_t, QString> &source_images, bool is_detection, QStringList &entries,
+                          QString &err_msg)
+{
+    const QString image_dir = QDir(class_dir).filePath(QStringLiteral("images"));
+    const QString mask_dir  = QDir(class_dir).filePath(QStringLiteral("masks"));
+    if (!ensureDir(image_dir, err_msg) || !ensureDir(mask_dir, err_msg))
+        return false;
+
+    if (is_detection)
+    {
+        QJsonObject boxes_json;
+        for (const auto &[image_id, boxes] : class_data.boxes_by_image_id)
+        {
+            const auto image_it = source_images.find(image_id);
+            if (image_it == source_images.end())
+                continue;
+
+            const QString alias = QStringLiteral("img_%1").arg(image_id);
+            QString       copied_path;
+            if (!copyImageToAlias(image_it->second, image_dir, alias, copied_path, err_msg))
+                return false;
+            boxes_json[alias] = boxes;
+            entries.push_back(QString("%1,%1").arg(alias));
+        }
+        return writeBoxesJson(class_dir, boxes_json, err_msg);
+    }
+
+    for (const auto &[image_id, mask] : class_data.masks_by_image_id)
+    {
+        const auto image_it = source_images.find(image_id);
+        if (image_it == source_images.end())
+            continue;
+
+        const QString alias = QStringLiteral("img_%1").arg(image_id);
+        QString       copied_path;
+        if (!copyImageToAlias(image_it->second, image_dir, alias, copied_path, err_msg))
+            return false;
+        if (!mask.save(QDir(mask_dir).filePath(alias + QStringLiteral(".png"))))
+        {
+            err_msg = QString("写入训练 Mask 失败: %1").arg(alias);
+            return false;
+        }
+        entries.push_back(QString("%1,%1").arg(alias));
+    }
+    return true;
+}
+
+bool writeSupportQueryFiles(const QString &class_dir, const QStringList &entries, int kshot, double support_ratio,
+                            QString &err_msg)
+{
+    const int entry_count = static_cast<int>(entries.size());
+    if (entry_count <= kshot)
+    {
+        err_msg = QString("类别样本数量不足，至少需要 %1 张图像").arg(kshot + 1);
+        return false;
+    }
+
+    const int   support_count
+        = std::clamp(static_cast<int>(std::round(entry_count * support_ratio)), kshot, entry_count - 1);
+    QStringList support_entries = entries.mid(0, support_count);
+    QStringList query_entries   = entries.mid(support_count);
+    if (query_entries.empty())
+        query_entries.push_back(entries.back());
+
+    return writeTextFile(QDir(class_dir).filePath(QStringLiteral("support.txt")), support_entries, err_msg)
+        && writeTextFile(QDir(class_dir).filePath(QStringLiteral("query.txt")), query_entries, err_msg);
+}
+
+bool writeCustomDataset(const QString &dataset_dir, const ClassBuildMap &classes,
+                        const std::map<int64_t, QString> &source_images, bool is_detection, int kshot,
+                        double support_ratio, QString &err_msg)
+{
+    for (const auto &[label_class_id, class_data] : classes)
+    {
+        Q_UNUSED(label_class_id)
+        const QString class_dir = QDir(dataset_dir).filePath(class_data.class_dir_name);
+        QStringList   entries;
+        if (!writeCustomClassData(class_dir, class_data, source_images, is_detection, entries, err_msg)
+            || !writeSupportQueryFiles(class_dir, entries, kshot, support_ratio, err_msg))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool writePredictionQueryInputs(FewShotLearningDataProvider *data_provider, const QString &run_dir,
+                                const QString &query_dir, const QString &output_dir, const QString &query_txt_path,
+                                const std::vector<int64_t> &test_dataset_ids,
+                                const std::map<int64_t, QString> &test_images,
+                                const std::map<int64_t, int64_t> &test_image_dataset_ids,
+                                std::vector<PredictionImportTarget> &import_targets, QString &err_msg)
+{
+    QStringList                    query_lines;
+    std::map<int64_t, QStringList> manifest_lines_by_dataset;
+    for (const auto &[image_id, image_path] : test_images)
+    {
+        const QString alias = QStringLiteral("img_%1").arg(image_id);
+        QString       copied_path;
+        if (!copyImageToAlias(image_path, query_dir, alias, copied_path, err_msg))
+            return false;
+
+        const QString line = QString("%1,%2").arg(alias, image_path);
+        manifest_lines_by_dataset[test_image_dataset_ids.at(image_id)].push_back(line);
+        query_lines.push_back(QString("%1,%1").arg(alias));
+    }
+
+    if (!writeTextFile(query_txt_path, query_lines, err_msg)
+        || !writeTextFile(QDir(output_dir).filePath(QStringLiteral("query.txt")), query_lines, err_msg))
+    {
+        return false;
+    }
+
+    for (int64_t dataset_id : test_dataset_ids)
+    {
+        const QStringList lines = manifest_lines_by_dataset[dataset_id];
+        if (lines.empty())
+        {
+            err_msg = QString("测试数据集 %1 没有图像").arg(data_provider->datasetName(dataset_id));
+            return false;
+        }
+
+        const QString manifest_path = QDir(run_dir).filePath(QStringLiteral("test_images_%1.txt").arg(dataset_id));
+        if (!writeTextFile(manifest_path, lines, err_msg))
+            return false;
+        import_targets.push_back(PredictionImportTarget{dataset_id, manifest_path});
+    }
+    return true;
+}
+
 /// FS-SAM2 脚本类型枚举
 enum class FsSam2Script
 {
@@ -443,6 +731,21 @@ QString fewShotClassFieldName(FewShotClassField field)
     }
 }
 
+QJsonArray classObjectsFromBuildData(const ClassBuildMap &classes)
+{
+    QJsonArray objects;
+    for (const auto &[label_class_id, class_data] : classes)
+    {
+        Q_UNUSED(label_class_id)
+        QJsonObject class_object;
+        class_object[fewShotClassFieldName(FewShotClassField::Id)]   = static_cast<qint64>(class_data.label_class_id);
+        class_object[fewShotClassFieldName(FewShotClassField::Name)] = class_data.label_class_name;
+        class_object[fewShotClassFieldName(FewShotClassField::Dir)]  = class_data.class_dir_name;
+        objects.append(class_object);
+    }
+    return objects;
+}
+
 /// SAM2 配置名称解析结果
 struct Sam2ConfigNameParts
 {
@@ -545,6 +848,7 @@ struct FewShotLearningController::RunContext
     QString sam2_cfg;              ///< SAM2 配置文件路径
     QString run_dir;               ///< 本次运行目录
     QString custom_dataset_dir;    ///< 自定义数据集目录
+    QString validation_dataset_dir; ///< 验证数据集目录；为空时使用 custom_dataset_dir
     QString query_dir;             ///< 查询图像目录
     QString output_dir;            ///< 输出目录
     QString query_txt_path;        ///< 查询清单文件路径
@@ -629,12 +933,14 @@ void FewShotLearningController::setTaskManager(dltool::model::TaskManager *task_
 /**
  * @brief 启动小样本学习流程（FS-SAM2）
  * @param train_dataset_ids 训练数据集 ID 列表
+ * @param validation_dataset_ids 验证数据集 ID 列表；为空时复用训练数据集
  * @param test_dataset_ids 测试数据集 ID 列表
  * @param label_class_ids 标注类别 ID 列表
  * @return 启动成功返回 true
  */
-bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_ids, const QVariantList &test_dataset_ids,
-                                            const QVariantList &label_class_ids)
+bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_ids,
+                                            const QVariantList &validation_dataset_ids,
+                                            const QVariantList &test_dataset_ids, const QVariantList &label_class_ids)
 {
     if (running_)
         return false;
@@ -644,7 +950,8 @@ bool FewShotLearningController::startFsSam2(const QVariantList &train_dataset_id
 
     RunContext context;
     QString    err_msg;
-    if (!prepareRun(parseInt64Ids(train_dataset_ids, true, true), parseInt64Ids(test_dataset_ids, true, true),
+    if (!prepareRun(parseInt64Ids(train_dataset_ids, true, true),
+                    parseInt64Ids(validation_dataset_ids, true, true), parseInt64Ids(test_dataset_ids, true, true),
                     parseInt64Ids(label_class_ids, true, true), context, err_msg))
     {
         setLastError(err_msg);
@@ -702,6 +1009,7 @@ void FewShotLearningController::cancel()
 /**
  * @brief 准备运行环境：验证参数、配置路径、收集数据、注册任务
  * @param train_dataset_ids 训练数据集 ID
+ * @param validation_dataset_ids 验证数据集 ID；为空时复用训练数据集
  * @param test_dataset_ids 测试数据集 ID
  * @param label_class_ids 标注类别 ID
  * @param context 运行上下文（输出）
@@ -709,6 +1017,7 @@ void FewShotLearningController::cancel()
  * @return 准备成功返回 true
  */
 bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dataset_ids,
+                                           const std::vector<int64_t> &validation_dataset_ids,
                                            const std::vector<int64_t> &test_dataset_ids,
                                            const std::vector<int64_t> &label_class_ids, RunContext &context,
                                            QString &err_msg) const
@@ -806,104 +1115,51 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
     context.run_dir            = output_root_setting.isEmpty()
                                    ? QDir(project_dir).filePath(QStringLiteral(".dltool/few_shot/%1").arg(run_id))
                                    : QDir(output_root_setting).filePath(run_id);
-    context.custom_dataset_dir = QDir(context.run_dir).filePath(QStringLiteral("custom"));
-    context.query_dir          = QDir(context.run_dir).filePath(QStringLiteral("query"));
-    context.output_dir         = QDir(context.run_dir).filePath(QStringLiteral("predictions"));
-    context.query_txt_path     = QDir(context.query_dir).filePath(QStringLiteral("query.txt"));
-    context.checkpoint_path    = checkpointPath(context.fs_sam2_root, context.logpath);
+    context.custom_dataset_dir
+        = QDir(context.run_dir).filePath(QStringLiteral("custom/train"));
+    context.validation_dataset_dir
+        = validation_dataset_ids.empty() ? context.custom_dataset_dir
+                                         : QDir(context.run_dir).filePath(QStringLiteral("custom/val"));
+    context.query_dir       = QDir(context.run_dir).filePath(QStringLiteral("query"));
+    context.output_dir      = QDir(context.run_dir).filePath(QStringLiteral("predictions"));
+    context.query_txt_path  = QDir(context.query_dir).filePath(QStringLiteral("query.txt"));
+    context.checkpoint_path = checkpointPath(context.fs_sam2_root, context.logpath);
 
-    const std::set<int64_t>           selected_classes(label_class_ids.begin(), label_class_ids.end());
-    const std::set<int64_t>           selected_train_datasets(train_dataset_ids.begin(), train_dataset_ids.end());
-    const std::set<int64_t>           selected_test_datasets(test_dataset_ids.begin(), test_dataset_ids.end());
-    std::map<int64_t, ClassBuildData> classes;
-    for (int64_t label_class_id : label_class_ids)
-    {
-        const QString class_name = data_provider_->labelClassName(label_class_id);
-        if (class_name.isEmpty())
-            continue;
-        ClassBuildData data;
-        data.label_class_id   = label_class_id;
-        data.label_class_name = class_name;
-        data.class_dir_name   = sanitizeFileName(class_name, QStringLiteral("class_%1").arg(label_class_id));
-        classes.emplace(label_class_id, std::move(data));
-    }
-    if (classes.empty())
-    {
-        err_msg = QString("没有有效类别");
+    const std::set<int64_t> selected_classes(label_class_ids.begin(), label_class_ids.end());
+    const std::set<int64_t> selected_train_datasets(train_dataset_ids.begin(), train_dataset_ids.end());
+    const std::set<int64_t> selected_validation_datasets(
+        validation_dataset_ids.begin(), validation_dataset_ids.end());
+    const std::set<int64_t> selected_test_datasets(test_dataset_ids.begin(), test_dataset_ids.end());
+
+    ClassBuildMap classes;
+    if (!buildClassTemplates(data_provider_, label_class_ids, classes, err_msg))
         return false;
-    }
 
-    std::map<int64_t, QString> train_images;
-    std::map<int64_t, QString> test_images;
-    std::map<int64_t, int64_t> test_image_dataset_ids;
-    for (int64_t image_id : data_provider_->allImageIds())
-    {
-        const int64_t dataset_id = data_provider_->imageDatasetId(image_id);
-        if (selected_train_datasets.find(dataset_id) != selected_train_datasets.end())
-            train_images[image_id] = data_provider_->imagePath(image_id);
-        if (selected_test_datasets.find(dataset_id) != selected_test_datasets.end())
-        {
-            test_images[image_id]            = data_provider_->imagePath(image_id);
-            test_image_dataset_ids[image_id] = dataset_id;
-        }
-    }
-    if (train_images.empty() || test_images.empty())
+    ClassBuildMap validation_classes = classes;
+    FewShotImageSelection image_selection
+        = collectImagesByDataset(data_provider_, selected_train_datasets, selected_validation_datasets,
+                                 selected_test_datasets);
+    if (image_selection.train_images.empty() || image_selection.test_images.empty())
     {
         err_msg = QString("训练数据集或测试数据集没有图像");
         return false;
     }
-
-    const bool is_detection = data_provider_->method() == dltool::core::DeepLearningMethod::Detection;
-
-    for (int64_t label_id : data_provider_->allLabelIds())
+    if (!selected_validation_datasets.empty() && image_selection.validation_images.empty())
     {
-        const int64_t image_id = data_provider_->labelImageId(label_id);
-        if (train_images.find(image_id) == train_images.end())
-            continue;
-
-        const int64_t label_class_id = data_provider_->labelClassId(label_id);
-        if (selected_classes.find(label_class_id) == selected_classes.end())
-            continue;
-
-        if (is_detection)
-        {
-            const QVariantMap label_data = data_provider_->labelData(label_id);
-            QJsonObject       box;
-            box[QStringLiteral("x")]      = label_data.value(QStringLiteral("x")).toDouble();
-            box[QStringLiteral("y")]      = label_data.value(QStringLiteral("y")).toDouble();
-            box[QStringLiteral("width")]  = label_data.value(QStringLiteral("width")).toDouble();
-            box[QStringLiteral("height")] = label_data.value(QStringLiteral("height")).toDouble();
-            classes[label_class_id].boxes_by_image_id[image_id].append(box);
-        }
-        else
-        {
-            const QString image_path = train_images[image_id];
-            int           width      = 0;
-            int           height     = 0;
-            if (!getImageDimensions(image_path, width, height))
-                continue;
-
-            QImage &mask = classes[label_class_id].masks_by_image_id[image_id];
-            if (mask.isNull())
-            {
-                mask = QImage(width, height, QImage::Format_Grayscale8);
-                mask.fill(0);
-            }
-            paintLabelToMask(mask, data_provider_->labelData(label_id));
-        }
+        err_msg = QString("验证数据集没有图像");
+        return false;
     }
 
-    for (const auto &[label_class_id, class_data] : classes)
+    const bool is_detection = data_provider_->method() == dltool::core::DeepLearningMethod::Detection;
+    collectClassLabels(data_provider_, selected_classes, image_selection, is_detection, classes, validation_classes);
+
+    if (!validateClassBuildData(classes, is_detection, context.kshot, QStringLiteral("训练数据集"), err_msg))
+        return false;
+    if (!selected_validation_datasets.empty()
+        && !validateClassBuildData(validation_classes, is_detection, context.kshot, QStringLiteral("验证数据集"),
+                                   err_msg))
     {
-        Q_UNUSED(label_class_id)
-        const size_t image_count
-            = is_detection ? class_data.boxes_by_image_id.size() : class_data.masks_by_image_id.size();
-        if (image_count < static_cast<size_t>(context.kshot + 1))
-        {
-            err_msg
-                = QString("类别 %1 至少需要 %2 张带标注图像").arg(class_data.label_class_name).arg(context.kshot + 1);
-            return false;
-        }
+        return false;
     }
 
     if (!ensureDir(context.custom_dataset_dir, err_msg) || !ensureDir(context.query_dir, err_msg)
@@ -912,109 +1168,23 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         return false;
     }
 
-    for (const auto &[label_class_id, class_data] : classes)
-    {
-        Q_UNUSED(label_class_id)
-        const QString class_dir = QDir(context.custom_dataset_dir).filePath(class_data.class_dir_name);
-        const QString image_dir = QDir(class_dir).filePath(QStringLiteral("images"));
-        const QString mask_dir  = QDir(class_dir).filePath(QStringLiteral("masks"));
-        if (!ensureDir(image_dir, err_msg) || !ensureDir(mask_dir, err_msg))
-            return false;
-
-        QStringList entries;
-
-        if (is_detection)
-        {
-            QJsonObject boxes_json;
-            for (const auto &[image_id, boxes] : class_data.boxes_by_image_id)
-            {
-                const QString alias = QStringLiteral("img_%1").arg(image_id);
-                QString       copied_path;
-                if (!copyImageToAlias(train_images[image_id], image_dir, alias, copied_path, err_msg))
-                    return false;
-                boxes_json[alias] = boxes;
-                entries.push_back(QString("%1,%1").arg(alias));
-            }
-
-            QFile boxes_file(QDir(class_dir).filePath(QStringLiteral("boxes.json")));
-            if (!boxes_file.open(QIODevice::WriteOnly | QIODevice::Truncate))
-            {
-                err_msg = QString("无法写入 boxes.json: %1, %2").arg(boxes_file.fileName(), boxes_file.errorString());
-                return false;
-            }
-            boxes_file.write(QJsonDocument(boxes_json).toJson(QJsonDocument::Indented));
-        }
-        else
-        {
-            for (const auto &[image_id, mask] : class_data.masks_by_image_id)
-            {
-                const QString alias = QStringLiteral("img_%1").arg(image_id);
-                QString       copied_path;
-                if (!copyImageToAlias(train_images[image_id], image_dir, alias, copied_path, err_msg))
-                    return false;
-                if (!mask.save(QDir(mask_dir).filePath(alias + QStringLiteral(".png"))))
-                {
-                    err_msg = QString("写入训练 Mask 失败: %1").arg(alias);
-                    return false;
-                }
-                entries.push_back(QString("%1,%1").arg(alias));
-            }
-        }
-
-        const int   support_count   = std::clamp(static_cast<int>(std::round(entries.size() * context.support_ratio)),
-                                                 context.kshot, static_cast<int>(entries.size()) - 1);
-        QStringList support_entries = entries.mid(0, support_count);
-        QStringList query_entries   = entries.mid(support_count);
-        if (query_entries.empty())
-            query_entries.push_back(entries.back());
-
-        if (!writeTextFile(QDir(class_dir).filePath(QStringLiteral("support.txt")), support_entries, err_msg)
-            || !writeTextFile(QDir(class_dir).filePath(QStringLiteral("query.txt")), query_entries, err_msg))
-        {
-            return false;
-        }
-
-        QJsonObject class_object;
-        class_object[fewShotClassFieldName(FewShotClassField::Id)]   = static_cast<qint64>(class_data.label_class_id);
-        class_object[fewShotClassFieldName(FewShotClassField::Name)] = class_data.label_class_name;
-        class_object[fewShotClassFieldName(FewShotClassField::Dir)]  = class_data.class_dir_name;
-        context.classes.append(class_object);
-    }
-
-    QStringList                    query_lines;
-    std::map<int64_t, QStringList> manifest_lines_by_dataset;
-    for (const auto &[image_id, image_path] : test_images)
-    {
-        const QString alias = QStringLiteral("img_%1").arg(image_id);
-        QString       copied_path;
-        if (!copyImageToAlias(image_path, context.query_dir, alias, copied_path, err_msg))
-            return false;
-        const QString line = QString("%1,%2").arg(alias, image_path);
-        manifest_lines_by_dataset[test_image_dataset_ids[image_id]].push_back(line);
-        query_lines.push_back(QString("%1,%1").arg(alias));
-    }
-
-    if (!writeTextFile(context.query_txt_path, query_lines, err_msg)
-        || !writeTextFile(QDir(context.output_dir).filePath(QStringLiteral("query.txt")), query_lines, err_msg))
+    if (!writeCustomDataset(context.custom_dataset_dir, classes, image_selection.train_images, is_detection,
+                            context.kshot, context.support_ratio, err_msg))
     {
         return false;
     }
-
-    for (int64_t dataset_id : test_dataset_ids)
+    if (!selected_validation_datasets.empty()
+        && !writeCustomDataset(context.validation_dataset_dir, validation_classes, image_selection.validation_images,
+                               is_detection, context.kshot, context.support_ratio, err_msg))
     {
-        const QStringList lines = manifest_lines_by_dataset[dataset_id];
-        if (lines.empty())
-        {
-            err_msg = QString("测试数据集 %1 没有图像").arg(data_provider_->datasetName(dataset_id));
-            return false;
-        }
-
-        const QString manifest_path
-            = QDir(context.run_dir).filePath(QStringLiteral("test_images_%1.txt").arg(dataset_id));
-        if (!writeTextFile(manifest_path, lines, err_msg))
-            return false;
-        context.import_targets.push_back(PredictionImportTarget{dataset_id, manifest_path});
+        return false;
     }
+    context.classes = classObjectsFromBuildData(classes);
+
+    if (!writePredictionQueryInputs(data_provider_, context.run_dir, context.query_dir, context.output_dir,
+                                    context.query_txt_path, test_dataset_ids, image_selection.test_images,
+                                    image_selection.test_image_dataset_ids, context.import_targets, err_msg))
+        return false;
 
     QString server_err;
     if (!task_manager_->ensureTaskServer(&server_err))
@@ -1055,6 +1225,8 @@ bool FewShotLearningController::startTraining(const RunContext &context, QString
         context.train_script,
         QStringLiteral("--datapath"),
         context.custom_dataset_dir,
+        QStringLiteral("--val_datapath"),
+        context.validation_dataset_dir.isEmpty() ? context.custom_dataset_dir : context.validation_dataset_dir,
         QStringLiteral("--benchmark"),
         QStringLiteral("custom"),
         QStringLiteral("--kshot"),
@@ -1171,13 +1343,18 @@ bool FewShotLearningController::startPrediction(const RunContext &context, int c
 bool FewShotLearningController::startBoxToMask(const RunContext &context, int class_index, QString &err_msg)
 {
     const int class_count = static_cast<int>(context.classes.size());
-    if (class_index < 0 || class_index >= class_count)
+    const int dataset_count
+        = context.validation_dataset_dir == context.custom_dataset_dir ? 1 : 2;
+    const int prepare_count = class_count * dataset_count;
+    if (class_index < 0 || class_index >= prepare_count)
     {
         err_msg = QString("预处理类别索引无效: %1").arg(class_index);
         return false;
     }
 
-    const QJsonObject class_object   = context.classes.at(class_index).toObject();
+    const int         actual_class_index = class_index % class_count;
+    const int         dataset_index      = class_index / class_count;
+    const QJsonObject class_object   = context.classes.at(actual_class_index).toObject();
     const QString     class_dir_name = class_object.value(fewShotClassFieldName(FewShotClassField::Dir)).toString();
     if (class_dir_name.isEmpty())
     {
@@ -1185,10 +1362,12 @@ bool FewShotLearningController::startBoxToMask(const RunContext &context, int cl
         return false;
     }
 
-    const QString support_dir      = QDir(context.custom_dataset_dir).filePath(class_dir_name);
-    const int     safe_class_count = std::max(1, class_count);
-    const int     base             = class_index * 100 / safe_class_count;
-    const int     end              = (class_index + 1) * 100 / safe_class_count;
+    const QString dataset_dir
+        = dataset_index == 0 ? context.custom_dataset_dir : context.validation_dataset_dir;
+    const QString support_dir      = QDir(dataset_dir).filePath(class_dir_name);
+    const int     safe_prepare_count = std::max(1, prepare_count);
+    const int     base             = class_index * 100 / safe_prepare_count;
+    const int     end              = (class_index + 1) * 100 / safe_prepare_count;
     const int     span             = std::max(1, end - base);
 
     QStringList arguments = {
@@ -1326,7 +1505,10 @@ void FewShotLearningController::handleProcessFinished(int exit_code, QProcess::E
     if (stage_ == RunStage::PreparingMask)
     {
         ++current_prepare_class_index_;
-        if (current_prepare_class_index_ < static_cast<int>(active_context_->classes.size()))
+        const int class_count = static_cast<int>(active_context_->classes.size());
+        const int dataset_count = active_context_->validation_dataset_dir == active_context_->custom_dataset_dir ? 1 : 2;
+        const int prepare_count = class_count * dataset_count;
+        if (current_prepare_class_index_ < prepare_count)
         {
             QString err_msg;
             if (!startBoxToMask(*active_context_, current_prepare_class_index_, err_msg))

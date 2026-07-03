@@ -65,12 +65,13 @@ public:
     /**
      * @brief 启动小样本学习流程（FS-SAM2）
      * @param train_dataset_ids 训练数据集 ID 列表
+     * @param validation_dataset_ids 验证数据集 ID 列表；为空时复用训练数据集
      * @param test_dataset_ids 测试数据集 ID 列表
      * @param label_class_ids 标注类别 ID 列表
      * @return 启动成功返回 true
      */
-    Q_INVOKABLE bool startFsSam2(const QVariantList &train_dataset_ids, const QVariantList &test_dataset_ids,
-                                 const QVariantList &label_class_ids);
+    Q_INVOKABLE bool startFsSam2(const QVariantList &train_dataset_ids, const QVariantList &validation_dataset_ids,
+                                 const QVariantList &test_dataset_ids, const QVariantList &label_class_ids);
 
     /// 取消当前运行的小样本学习任务
     Q_INVOKABLE void cancel();
@@ -95,14 +96,17 @@ private:
     /**
      * @brief 准备运行环境
      * @param train_dataset_ids 训练数据集 ID
+     * @param validation_dataset_ids 验证数据集 ID；为空时复用训练数据集
      * @param test_dataset_ids 测试数据集 ID
      * @param label_class_ids 标注类别 ID
      * @param context 运行上下文（输出）
      * @param err_msg 错误信息（输出）
      * @return 准备成功返回 true
      */
-    bool prepareRun(const std::vector<int64_t> &train_dataset_ids, const std::vector<int64_t> &test_dataset_ids,
-                    const std::vector<int64_t> &label_class_ids, RunContext &context, QString &err_msg) const;
+    bool prepareRun(const std::vector<int64_t> &train_dataset_ids,
+                    const std::vector<int64_t> &validation_dataset_ids,
+                    const std::vector<int64_t> &test_dataset_ids, const std::vector<int64_t> &label_class_ids,
+                    RunContext &context, QString &err_msg) const;
 
     /**
      * @brief 启动训练流程
