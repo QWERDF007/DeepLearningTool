@@ -1,9 +1,8 @@
 ﻿#include "data/DataManager.h"
 
 #include "data/CategoryStatisticsModel.h"
-#include "data/DataExporter.h"
+#include "data/DataIO.h"
 #include "data/DataFormat.h"
-#include "data/DataImporter.h"
 #include "data/DataNameUtils.h"
 #include "data/DatasetIO.h"
 #include "data/GlobalFilter.h"
@@ -82,7 +81,7 @@ void addProgressMessage(int level, const QString &message)
 
 struct DataManager::PendingImportTask
 {
-    DataImporter *importer{nullptr};
+    DataIO *importer{nullptr};
 
     int64_t dataset_id{0};
 
@@ -603,7 +602,7 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
     // 使用工厂函数创建导入器
     // 重构后：DataManager 不再直接实例化具体的导入器类
     // 而是通过工厂函数获取，实现了依赖倒置原则
-    DataImporter *importer = DataImporter::createImporter(data_format, database_, this);
+    DataIO *importer = DataIO::createIO(data_format, database_, this);
     if (!importer)
     {
         const QString message = QString("不支持的数据格式");
@@ -627,9 +626,9 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
 
     // 导入器每解析出一批数据就交给 DataManager 写库。
     // BlockingQueuedConnection 可以限制后台线程速度，避免批次在主线程事件队列中大量堆积。
-    connect(importer, &DataImporter::dataBatchReady, this, &DataManager::handleDataBatchReady,
+    connect(importer, &DataIO::dataBatchReady, this, &DataManager::handleDataBatchReady,
             Qt::BlockingQueuedConnection);
-    connect(importer, &DataImporter::importFinished, this, &DataManager::handleImportFinished, Qt::QueuedConnection);
+    connect(importer, &DataIO::importFinished, this, &DataManager::handleImportFinished, Qt::QueuedConnection);
 
     // 启动导入
     importer->startImport(dataset_id, image_dir, data_dir);
@@ -734,7 +733,7 @@ void DataManager::exportDatasets(const QVariantList &dataset_ids, const int data
         addProgressMessage(spdlog::level::info,
                            QString("开始导出数据集: %1 -> %2").arg(item.dataset.dataset_name, item.output_dir));
 
-        DataExporter *exporter = DataExporter::createExporter(data_format, this);
+        DataIO *exporter = DataIO::createIO(data_format, nullptr, this);
         if (!exporter)
         {
             addProgressMessage(spdlog::level::err, QString("不支持的数据格式"));
@@ -747,7 +746,7 @@ void DataManager::exportDatasets(const QVariantList &dataset_ids, const int data
         }
 
         connect(
-            exporter, &DataExporter::exportFinished, this,
+            exporter, &DataIO::exportFinished, this,
             [exporter, state, start_next = weak_start_next.lock()](bool success, const QString &message)
             {
                 if (success)
@@ -1263,7 +1262,7 @@ void DataManager::handleDataBatchReady(int64_t dataset_id, std::vector<QString> 
     Q_UNUSED(image_widths)
     Q_UNUSED(image_heights)
 
-    DataImporter *importer = qobject_cast<DataImporter *>(sender());
+    DataIO *importer = qobject_cast<DataIO *>(sender());
     if (!pending_import_task_ || pending_import_task_->importer != importer)
     {
         return;
@@ -1547,7 +1546,7 @@ void DataManager::handleImportFinished(bool success, std::vector<int64_t> image_
 
 void DataManager::finishBatchedImport(bool success, const QString &message)
 {
-    DataImporter *importer = pending_import_task_ ? pending_import_task_->importer : nullptr;
+    DataIO *importer = pending_import_task_ ? pending_import_task_->importer : nullptr;
 
     const int level = success ? spdlog::level::info : spdlog::level::err;
     if (success)
