@@ -13,20 +13,23 @@ Rectangle {
     color: QuiColor.Primary
     border.color: QuiColor.Border
 
-    property int currentTool: LabelCanvasEnums.SelectTool
-    property bool segmentationMode: false
-
     property FeatureManager featureManager: null
     property DataManager dataManager: null
+    property int currentTool: LabelCanvasEnums.SelectTool
+
+    readonly property int method: dataManager ? dataManager.method : -1
+    readonly property bool classificationMode: method === DeepLearningMethod.Classification
+    readonly property bool detectionMode: method === DeepLearningMethod.Detection
+    readonly property bool segmentationMode: method === DeepLearningMethod.Segmentation
+    readonly property bool rectangleToolEnabled: detectionMode || segmentationMode
+    readonly property bool polygonToolEnabled: segmentationMode
 
     signal toolSelected(int mode)
 
     readonly property bool smartAnnotationEnabled: sidebar.featureManager !== null
                                                    && sidebar.featureManager.smartAnnotation !== null
                                                    && sidebar.featureManager.smartAnnotation.enabled
-                                                   && sidebar.dataManager !== null
-                                                   && (sidebar.dataManager.method === DeepLearningMethod.Detection
-                                                       || sidebar.dataManager.method === DeepLearningMethod.Segmentation)
+                                                   && (sidebar.detectionMode || sidebar.segmentationMode)
     readonly property bool fewShotLearningEnabled: sidebar.featureManager !== null
                                                    && sidebar.featureManager.fewShotLearning !== null
                                                    && sidebar.featureManager.fewShotLearning.enabled
@@ -55,6 +58,7 @@ Rectangle {
             normalColor: sidebar.currentTool === LabelCanvasEnums.RectangleTool ? QuiColor.Highlight : QuiColor.Button
             iconSource: QuiFontIcon.RectangularClipping
             text: "绘制矩形 (F2)"
+            enabled: sidebar.rectangleToolEnabled
             onClicked: sidebar.toolSelected(LabelCanvasEnums.RectangleTool)
         }
 
@@ -62,7 +66,7 @@ Rectangle {
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredWidth: 32
             Layout.preferredHeight: 32
-            enabled: sidebar.segmentationMode
+            enabled: sidebar.polygonToolEnabled
             normalColor: sidebar.currentTool === LabelCanvasEnums.PolygonTool ? QuiColor.Highlight : QuiColor.Button
             iconSource: QuiFontIcon.FreeFormClipping
             text: "绘制多边形 (F3)"

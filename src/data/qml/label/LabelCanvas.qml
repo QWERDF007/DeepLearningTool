@@ -21,8 +21,8 @@ Item {
     readonly property ItemSelectionModel selection: imageLabelsList ? imageLabelsList.selection : null
     readonly property color drawingColor: labelClasses ? labelClasses.currentLabelClassColor : "red"
     property point startPos: Qt.point(0, 0)
-    readonly property bool segmentationMode: dataManager ? dataManager.method === DeepLearningMethod.Segmentation : false
-    readonly property bool classificationMode: dataManager ? dataManager.method === DeepLearningMethod.Classification : false
+    property bool segmentationMode: dataManager ? dataManager.method === DeepLearningMethod.Segmentation : false
+    property bool classificationMode: dataManager ? dataManager.method === DeepLearningMethod.Classification : false
     property bool roiSearchEnabled: true
     property int smartAnnotationRefreshInterval: 80
     property real smartAnnotationMaskAlpha: 0.35
@@ -34,6 +34,9 @@ Item {
     readonly property bool rectangleToolMode: toolMode === LabelCanvasEnums.RectangleTool
     readonly property bool polygonToolMode: toolMode === LabelCanvasEnums.PolygonTool && segmentationMode
     readonly property bool smartAnnotationAvailable: smartAnnotationController.available
+    readonly property bool rectangleToolAvailable: !classificationMode
+    readonly property bool polygonToolAvailable: segmentationMode
+    readonly property bool smartToolAvailable: smartAnnotationAvailable
     property var classificationBadgeData: null
     property alias imageView: labelImage
     property alias actions: labelCanvasActions
@@ -59,7 +62,12 @@ Item {
         }
     }
     onSegmentationModeChanged: {
-        if (!segmentationMode && toolMode === LabelCanvasEnums.PolygonTool) {
+        if (!polygonToolAvailable && toolMode === LabelCanvasEnums.PolygonTool) {
+            setToolMode(LabelCanvasEnums.SelectTool)
+        }
+    }
+    onRectangleToolAvailableChanged: {
+        if (!rectangleToolAvailable && toolMode === LabelCanvasEnums.RectangleTool) {
             setToolMode(LabelCanvasEnums.SelectTool)
         }
     }
@@ -303,19 +311,19 @@ Item {
     }
 
     Shortcut {
-        enabled: labelView.visible
+        enabled: labelView.visible && labelView.rectangleToolAvailable
         sequence: "F2"
         onActivated: labelView.activateToolMode(LabelCanvasEnums.RectangleTool)
     }
 
     Shortcut {
-        enabled: labelView.visible && labelView.segmentationMode
+        enabled: labelView.visible && labelView.polygonToolAvailable
         sequence: "F3"
         onActivated: labelView.activateToolMode(LabelCanvasEnums.PolygonTool)
     }
 
     Shortcut {
-        enabled: labelView.visible && labelView.smartAnnotationAvailable
+        enabled: labelView.visible && labelView.smartToolAvailable
         sequence: "F4"
         onActivated: labelView.activateToolMode(LabelCanvasEnums.SmartTool)
     }
@@ -733,20 +741,26 @@ Item {
     }
 
     function setToolMode(mode) {
-        if (mode === LabelCanvasEnums.SmartTool && !smartAnnotationAvailable) {
+        if (mode === LabelCanvasEnums.RectangleTool && !rectangleToolAvailable) {
             mode = LabelCanvasEnums.SelectTool
         }
-        if (mode === LabelCanvasEnums.PolygonTool && !segmentationMode) {
+        if (mode === LabelCanvasEnums.SmartTool && !smartToolAvailable) {
+            mode = LabelCanvasEnums.SelectTool
+        }
+        if (mode === LabelCanvasEnums.PolygonTool && !polygonToolAvailable) {
             mode = LabelCanvasEnums.SelectTool
         }
         toolMode = mode
     }
 
     function activateToolMode(mode) {
-        if (mode === LabelCanvasEnums.PolygonTool && !segmentationMode) {
+        if (mode === LabelCanvasEnums.RectangleTool && !rectangleToolAvailable) {
             return false
         }
-        if (mode === LabelCanvasEnums.SmartTool && !smartAnnotationAvailable) {
+        if (mode === LabelCanvasEnums.PolygonTool && !polygonToolAvailable) {
+            return false
+        }
+        if (mode === LabelCanvasEnums.SmartTool && !smartToolAvailable) {
             return false
         }
 

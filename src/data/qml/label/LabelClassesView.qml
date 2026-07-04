@@ -21,7 +21,9 @@ Rectangle {
     property ItemSelectionModel selection: dataManager ? dataManager.labelClasses.selection : null
     readonly property var imageInstances: dataManager ? dataManager.imageInstances : null
     readonly property var imageLabelsList: dataManager ? dataManager.imageLabelsList : null
-    readonly property bool classificationMode: dataManager ? dataManager.method === DeepLearningMethod.Classification : false
+    property bool selectionFollowsCurrentImageClass: dataManager
+                                                    ? dataManager.method === DeepLearningMethod.Classification
+                                                    : false
     property int _label_class_id: -1
     property bool syncingClassSelection: false
 
@@ -59,7 +61,7 @@ Rectangle {
         }
     }
 
-    onClassificationModeChanged: syncSelectionToCurrentImageClass()
+    onSelectionFollowsCurrentImageClassChanged: syncSelectionToCurrentImageClass()
     onDataManagerChanged: syncSelectionToCurrentImageClass()
 
     Connections {
@@ -80,7 +82,7 @@ Rectangle {
     Connections {
         target: labelClassesView.selection
         function onCurrentChanged(current, previous) {
-            if (!labelClassesView.classificationMode || labelClassesView.syncingClassSelection) {
+            if (!labelClassesView.selectionFollowsCurrentImageClass || labelClassesView.syncingClassSelection) {
                 return
             }
 
@@ -233,14 +235,14 @@ Rectangle {
         selection.setCurrentIndex(modelIndex, ItemSelectionModel.Select)
         syncingClassSelection = wasSyncing
 
-        if (applyToImage && classificationMode) {
+        if (applyToImage && selectionFollowsCurrentImageClass) {
             applyClassToCurrentImage(classIdAt(row))
         }
         return true
     }
 
     function syncSelectionToCurrentImageClass() {
-        if (!classificationMode || !labelClasses || !selection) {
+        if (!selectionFollowsCurrentImageClass || !labelClasses || !selection) {
             return
         }
 
@@ -260,7 +262,7 @@ Rectangle {
     }
 
     function applyClassToCurrentImage(classId) {
-        if (!classificationMode || !dataManager || !imageInstances || classId < 0) {
+        if (!selectionFollowsCurrentImageClass || !dataManager || !imageInstances || classId < 0) {
             return false
         }
 
