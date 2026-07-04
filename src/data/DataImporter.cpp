@@ -2,6 +2,7 @@
 
 #include "data/COCOImporter.h"
 #include "data/DataFormat.h"
+#include "data/FolderImporter.h"
 #include "data/LabelMeImporter.h"
 #include "data/MaskImporter.h"
 #include "database/DataBase.h"
@@ -60,6 +61,11 @@ DataImporter *DataImporter::createImporter(int data_format, dltool::database::Pr
     {
         spdlog::info("创建 MaskImporter 实例");
         importer = new MaskImporter(database, parent);
+    }
+    else if (data_format == DataFormat::Folder)
+    {
+        spdlog::info("创建 FolderImporter 实例");
+        importer = new FolderImporter(database, parent);
     }
     else
     {

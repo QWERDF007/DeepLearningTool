@@ -11,7 +11,7 @@ SmartAnnotationSettings:
         name_cn: 启用
         desc: 用于配置智能标注中基础相关的启用。
         property_name: enabled
-        value: false
+        value: true
         value_type: bool
         control_type: checkbox
 

@@ -362,6 +362,23 @@ std::pair<std::vector<QString>, std::vector<QString>> SegLabelData_t::columns()
     };
 }
 
+ClsLabelData_t::ClsLabelData_t() {}
+
+ClsLabelData_t::~ClsLabelData_t() {}
+
+int ClsLabelData_t::type() const
+{
+    return DeepLearningMethod::Classification;
+}
+
+std::pair<std::vector<QString>, std::vector<QString>> ClsLabelData_t::columns()
+{
+    return {
+        std::vector<QString>{           "类别"},
+        std::vector<QString>{"label_class_id"}
+    };
+}
+
 LabelDataHelper_t::LabelDataHelper_t(const int type)
     : type_(type)
 {
@@ -782,10 +799,60 @@ QVariantMap SegLabelDataHelper::getEditedData(const QVariantMap &data, const QPo
     return new_data;
 }
 
+ClsLabelDataHelper::ClsLabelDataHelper(const int type)
+    : LabelDataHelper_t(type)
+{
+}
+
+ClsLabelDataHelper::~ClsLabelDataHelper() {}
+
+std::unique_ptr<LabelData_t> ClsLabelDataHelper::createLabelData() const
+{
+    return std::make_unique<ClsLabelData_t>();
+}
+
+std::pair<std::vector<QString>, std::vector<QString>> ClsLabelDataHelper::dataColumns() const
+{
+    return ClsLabelData_t::columns();
+}
+
+bool ClsLabelDataHelper::isInside(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr) const
+{
+    return label_data_ptr != nullptr;
+}
+
+QVariantMap ClsLabelDataHelper::hitTestHandle(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr,
+                                              const double scale) const
+{
+    if (label_data_ptr == nullptr)
+    {
+        return QVariantMap{
+            {    "found",                  false},
+            {     "mode",     EditMode::NoneMode},
+            {"direction", EditDirection::NoneDir},
+            {   "cursor",   int(Qt::ArrowCursor)}
+        };
+    }
+    return QVariantMap{
+        {    "found",                   true},
+        {     "mode",         EditMode::Move},
+        {"direction",  EditDirection::Inside},
+        {   "cursor", int(Qt::SizeAllCursor)}
+    };
+}
+
+QVariantMap ClsLabelDataHelper::getEditedData(const QVariantMap &data, const QPointF &start, const QPointF &end,
+                                              const QRectF &image_rect) const
+{
+    return data;
+}
+
 std::unique_ptr<LabelDataHelper_t> createLabelDataHelper(const int type)
 {
     switch (type)
     {
+    case DeepLearningMethod::Classification:
+        return std::make_unique<ClsLabelDataHelper>(type);
     case DeepLearningMethod::Detection:
         return std::make_unique<DetLabelDataHelper>(type);
     case DeepLearningMethod::Segmentation:

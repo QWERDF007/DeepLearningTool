@@ -2,6 +2,7 @@
 
 #include "data/COCOExporter.h"
 #include "data/DataFormat.h"
+#include "data/FolderExporter.h"
 #include "data/LabelMeExporter.h"
 #include "data/MaskExporter.h"
 #include "ui/ProgressManager.h"
@@ -38,6 +39,11 @@ DataExporter *DataExporter::createExporter(int data_format, QObject *parent)
     if (data_format == DataFormat::Mask)
     {
         return new MaskExporter(parent);
+    }
+
+    if (data_format == DataFormat::Folder)
+    {
+        return new FolderExporter(parent);
     }
 
     spdlog::error("未实现的数据导出格式: {}", data_format);

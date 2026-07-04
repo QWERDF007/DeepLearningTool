@@ -66,6 +66,17 @@ public:
     std::vector<QPointF> points;
 };
 
+class DATA_API ClsLabelData_t : public LabelData_t
+{
+public:
+    ClsLabelData_t();
+    ~ClsLabelData_t();
+
+    int type() const override;
+
+    static std::pair<std::vector<QString>, std::vector<QString>> columns();
+};
+
 class DATA_API LabelDataHelper_t
 {
 public:
@@ -114,6 +125,25 @@ class DATA_API SegLabelDataHelper final : public LabelDataHelper_t
 public:
     SegLabelDataHelper(const int type);
     ~SegLabelDataHelper();
+
+    std::unique_ptr<LabelData_t> createLabelData() const override;
+
+    std::pair<std::vector<QString>, std::vector<QString>> dataColumns() const override;
+
+    bool isInside(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr) const override;
+
+    QVariantMap hitTestHandle(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr,
+                              const double scale) const override;
+
+    QVariantMap getEditedData(const QVariantMap &data, const QPointF &start, const QPointF &end,
+                              const QRectF &image_rect) const override;
+};
+
+class DATA_API ClsLabelDataHelper final : public LabelDataHelper_t
+{
+public:
+    ClsLabelDataHelper(const int type);
+    ~ClsLabelDataHelper();
 
     std::unique_ptr<LabelData_t> createLabelData() const override;
 

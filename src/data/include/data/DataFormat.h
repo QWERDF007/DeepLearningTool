@@ -18,6 +18,7 @@ public:
         LabelMe = 0,
         COCO    = 1,
         Mask    = 2,
+        Folder  = 3,
     };
     Q_ENUM(SupportedDataFormat)
 
@@ -61,24 +62,28 @@ private:
         "LabelMe",
         "COCO",
         "Mask",
+        "Folder",
     };
 
     inline static const QList<QString> ExportDataFormatList = {
         "LabelMe",
         "COCO",
         "Mask",
+        "Folder",
     };
 
     inline static const std::unordered_map<int, QString> IdToName = {
         {LabelMe, "LabelMe"},
         {   COCO,    "COCO"},
         {   Mask,    "Mask"},
+        { Folder,  "Folder"},
     };
 
     inline static const std::unordered_map<QString, int> NameToId = {
         {"LabelMe", LabelMe},
         {   "COCO",    COCO},
         {   "Mask",    Mask},
+        {"Folder",  Folder},
     };
 
     inline static const QList<QString> ImageFormatList = {
