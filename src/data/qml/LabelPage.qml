@@ -5,6 +5,7 @@ import dltool.feature
 import dltool.ui
 
 import "label"
+import quickui
 
 Rectangle {
     id: labelPage
