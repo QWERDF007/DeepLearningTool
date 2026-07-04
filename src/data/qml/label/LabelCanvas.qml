@@ -22,6 +22,7 @@ Item {
     readonly property color drawingColor: labelClasses ? labelClasses.currentLabelClassColor : "red"
     property point startPos: Qt.point(0, 0)
     readonly property bool segmentationMode: dataManager ? dataManager.method === DeepLearningMethod.Segmentation : false
+    readonly property bool classificationMode: dataManager ? dataManager.method === DeepLearningMethod.Classification : false
     property bool roiSearchEnabled: true
     property int smartAnnotationRefreshInterval: 80
     property real smartAnnotationMaskAlpha: 0.35
@@ -33,6 +34,7 @@ Item {
     readonly property bool rectangleToolMode: toolMode === LabelCanvasEnums.RectangleTool
     readonly property bool polygonToolMode: toolMode === LabelCanvasEnums.PolygonTool && segmentationMode
     readonly property bool smartAnnotationAvailable: smartAnnotationController.available
+    property var classificationBadgeData: null
     property alias imageView: labelImage
     property alias actions: labelCanvasActions
 
@@ -98,7 +100,16 @@ Item {
         function onCurrentImageChanged() {
             polygonTool.cancelDrawing()
             smartAnnotationController.clear()
+            refreshClassificationBadge()
         }
+    }
+
+    Connections {
+        target: imageLabelsList
+        function onRowsInserted(parent, first, last) { refreshClassificationBadge() }
+        function onRowsRemoved(parent, first, last) { refreshClassificationBadge() }
+        function onDataChanged(topLeft, bottomRight, roles) { refreshClassificationBadge() }
+        function onModelReset() { refreshClassificationBadge() }
     }
 
     LabelCanvasGeometry {
@@ -157,6 +168,38 @@ Item {
         currentImagePath: imageInstances ? imageInstances.currentImagePath : ""
     }
 
+    Rectangle {
+        id: classificationBadge
+        visible: labelView.classificationMode
+                 && labelImage.image.status === Image.Ready
+                 && labelView.classificationBadgeData !== null
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.margins: 4
+        width: Math.max(56, badgeText.implicitWidth + 14)
+        height: Math.max(22, badgeText.implicitHeight + 6)
+        radius: 2
+        color: labelView.classificationBadgeData ? labelView.classificationBadgeData.color : labelView.drawingColor
+        border.color: Qt.rgba(1, 1, 1, 0.18)
+        border.width: 1
+        z: 30
+
+        QuiText {
+            id: badgeText
+            anchors.fill: parent
+            anchors.leftMargin: 7
+            anchors.rightMargin: 7
+            anchors.topMargin: 2
+            anchors.bottomMargin: 2
+            text: labelView.classificationBadgeData ? String(labelView.classificationBadgeData.label_class_name ?? "") : ""
+            textColor: "white"
+            font.pixelSize: 12
+            elide: Text.ElideRight
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+    }
+
     LabelSmartMaskCanvas {
         id: smartMaskCanvas
         anchors.fill: parent
@@ -174,7 +217,7 @@ Item {
         factor: labelImage.image.scale
         showBoundingBoxes: labelView.showBoundingBoxes
         fillOpacity: labelView.labelFillOpacity
-        model: labelImage.image.status === Image.Ready ? imageLabelsList : null
+        model: !labelView.classificationMode && labelImage.image.status === Image.Ready ? imageLabelsList : null
     }
 
     DrawingItem {
@@ -246,6 +289,7 @@ Item {
 
         onPressed: function(event) { handleMousePressed(event) }
         onReleased: function(event) { handleMouseReleased(event) }
+        onCanceled: function() { resetDragState() }
         onPositionChanged: function(event) { handleMousePositionChanged(event) }
         onEntered: labelView.forceActiveFocus()
         onExited: smartAnnotationController.handleExited()
@@ -279,6 +323,15 @@ Item {
     function requestSmartOverlayPaint() {
         smartMaskCanvas.requestPaint()
         smartPromptCanvas.requestPaint()
+    }
+
+    function refreshClassificationBadge() {
+        if (!classificationMode || !imageLabelsList || imageLabelsList.rowCount() <= 0) {
+            classificationBadgeData = null
+            return
+        }
+
+        classificationBadgeData = imageLabelsList.getData(0)
     }
 
     function handleKeyPressed(event) {
@@ -380,6 +433,9 @@ Item {
             mouseArea.interactionState = LabelCanvasEnums.Dragging
             return
         }
+        if (classificationMode) {
+            return
+        }
         let pos = canvasGeometry.getPosOnImage(event)
         if (smartAnnotationController.handlePress(pos, event.button)) {
             event.accepted = true
@@ -400,6 +456,13 @@ Item {
         if (consumeSuppressedRelease()) {
             return
         }
+        if (mouseArea.interactionState === LabelCanvasEnums.Dragging) {
+            finishImageDragging(event)
+            return
+        }
+        if (classificationMode) {
+            return
+        }
         if (smartAnnotationMode && mouseArea.interactionState === LabelCanvasEnums.Idle
                 && (event.button === Qt.LeftButton || event.button === Qt.RightButton)) {
             return
@@ -418,9 +481,6 @@ Item {
 
         if (mouseArea.interactionState === LabelCanvasEnums.Drawing) {
             finishRectangleDrawing()
-        } else if (mouseArea.interactionState === LabelCanvasEnums.Dragging) {
-            setIdleCursor(event.modifiers)
-            startPos = Qt.point(event.x, event.y)
         } else if (mouseArea.interactionState === LabelCanvasEnums.Editing) {
             finishLabelEditing(event)
         } else if (mouseArea.interactionState === LabelCanvasEnums.ReadyEdit) {
@@ -431,7 +491,16 @@ Item {
         mouseArea.interactionState = LabelCanvasEnums.Idle
     }
 
+    function finishImageDragging(event) {
+        setIdleCursor(event.modifiers)
+        startPos = Qt.point(event.x, event.y)
+        mouseArea.interactionState = LabelCanvasEnums.Idle
+    }
+
     function handleMousePositionChanged(event) {
+        if (classificationMode && mouseArea.interactionState === LabelCanvasEnums.Idle) {
+            return
+        }
         let pos = canvasGeometry.getPosOnImage(event)
         if (smartAnnotationMode && mouseArea.interactionState === LabelCanvasEnums.Idle) {
             smartAnnotationController.handleHover(pos, true)
@@ -452,6 +521,9 @@ Item {
     }
 
     function handleMouseDoubleClicked(event) {
+        if (classificationMode) {
+            return
+        }
         if (polygonTool.handleDoubleClicked(event)) {
             mouseArea.suppressNextRelease = true
             return
@@ -617,6 +689,9 @@ Item {
         if (!imageLabelsList) {
             return
         }
+        if (classificationMode) {
+            return
+        }
         if (!hitTest(pos)) {
             mouseArea.cursorShape = Qt.ArrowCursor
             imageLabelsList.setHovered(imageLabelsList.getIndicesAt(pos))
@@ -688,8 +763,16 @@ Item {
         startPos = Qt.point(event.x, event.y)
     }
 
+    function resetDragState() {
+        if (mouseArea.interactionState === LabelCanvasEnums.Dragging) {
+            mouseArea.cursorShape = Qt.ArrowCursor
+        }
+        mouseArea.interactionState = LabelCanvasEnums.Idle
+        mouseArea.suppressNextRelease = false
+    }
+
     function hitTest(pos) {
-        if (!selectToolMode || !imageLabelsList) {
+        if (classificationMode || !selectToolMode || !imageLabelsList) {
             return null
         }
         if (selection === null || !selection.hasSelection) {
@@ -731,5 +814,8 @@ Item {
         return data
     }
 
-    Component.onCompleted: refreshSettings()
+    Component.onCompleted: {
+        refreshSettings()
+        refreshClassificationBadge()
+    }
 }

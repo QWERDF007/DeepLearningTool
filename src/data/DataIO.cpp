@@ -651,6 +651,102 @@ void DataIO::runInThread(std::function<void()> work)
     thread->start();
 }
 
+bool DataIO::importImagesOnly(int64_t dataset_id, const QString &image_dir, const QString &format_name)
+{
+    updateProgress(0, QString("正在扫描图像文件..."));
+    const std::vector<QString> image_files = DatasetIO::scanImageFiles(image_dir);
+    if (image_files.empty())
+    {
+        updateProgress(100, QString("未找到任何图像文件"));
+        emit importFinished(false, {}, {});
+        return false;
+    }
+
+    std::vector<QString> batch_image_paths;
+    std::vector<int64_t> batch_image_widths;
+    std::vector<int64_t> batch_image_heights;
+    batch_image_paths.reserve(DataIO::ImportBatchImageCount);
+    batch_image_widths.reserve(DataIO::ImportBatchImageCount);
+    batch_image_heights.reserve(DataIO::ImportBatchImageCount);
+
+    const int total_images = static_cast<int>(image_files.size());
+    int       processed    = 0;
+    int       valid_images = 0;
+    int       skipped      = 0;
+
+    auto flush_batch = [&]() -> bool
+    {
+        if (batch_image_paths.empty())
+            return true;
+
+        emit dataBatchReady(dataset_id, std::move(batch_image_paths), std::move(batch_image_widths),
+                            std::move(batch_image_heights), {}, {}, processed, total_images);
+
+        batch_image_paths.clear();
+        batch_image_widths.clear();
+        batch_image_heights.clear();
+        batch_image_paths.reserve(DataIO::ImportBatchImageCount);
+        batch_image_widths.reserve(DataIO::ImportBatchImageCount);
+        batch_image_heights.reserve(DataIO::ImportBatchImageCount);
+        return !isCancelRequested();
+    };
+
+    for (const QString &image_path : image_files)
+    {
+        if (isCancelRequested())
+        {
+            emit importFinished(false, {}, {});
+            return false;
+        }
+
+        ++processed;
+        int width  = 0;
+        int height = 0;
+        if (!DatasetIO::getImageDimensions(image_path, width, height))
+        {
+            ++skipped;
+            continue;
+        }
+
+        ++valid_images;
+        batch_image_paths.push_back(image_path);
+        batch_image_widths.push_back(width);
+        batch_image_heights.push_back(height);
+
+        if (batch_image_paths.size() >= DataIO::ImportBatchImageCount && !flush_batch())
+        {
+            emit importFinished(false, {}, {});
+            return false;
+        }
+
+        if (processed % std::max(1, total_images / 10) == 0 || processed == total_images)
+        {
+            const int progress = 10 + processed * 80 / std::max(1, total_images);
+            updateProgress(progress, QString("已处理图像 %1/%2").arg(processed).arg(total_images));
+        }
+    }
+
+    if (!flush_batch())
+    {
+        emit importFinished(false, {}, {});
+        return false;
+    }
+
+    if (valid_images == 0)
+    {
+        updateProgress(100, QString("没有有效的图像可导入"));
+        emit importFinished(false, {}, {});
+        return false;
+    }
+
+    updateProgress(100, QString("%1 导入完成: %2 个图像，无标注，跳过图像 %3 个")
+                            .arg(format_name)
+                            .arg(valid_images)
+                            .arg(skipped));
+    emit importFinished(true, {}, {});
+    return true;
+}
+
 // ============================================================================
 // COCOIO
 // ============================================================================
@@ -710,8 +806,15 @@ void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
 
     try
     {
+        const QString annotation_dir = data_dir.trimmed();
+        if (annotation_dir.isEmpty())
+        {
+            importImagesOnly(dataset_id, image_dir, QStringLiteral("COCO"));
+            return;
+        }
+
         updateProgress(0, QString("正在查找 COCO 标注文件..."));
-        const QString coco_json_path = findCocoJsonFile(data_dir);
+        const QString coco_json_path = findCocoJsonFile(annotation_dir);
         if (coco_json_path.isEmpty())
         {
             updateProgress(100, QString("未找到有效的 COCO 标注文件"));
@@ -1292,6 +1395,7 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
 
     try
     {
+        const QString annotation_dir = data_dir.trimmed();
         updateProgress(0, QString("正在扫描图像文件..."));
         const std::vector<QString> image_files = DatasetIO::scanImageFiles(image_dir);
         if (image_files.empty())
@@ -1303,10 +1407,10 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
 
         std::map<QString, QString> annotation_files_by_name;
         int                        total_json_files = 0;
-        if (!data_dir.isEmpty() && QFileInfo(data_dir).exists())
+        if (!annotation_dir.isEmpty() && QFileInfo(annotation_dir).exists())
         {
             updateProgress(5, QString("正在扫描标注文件..."));
-            const std::vector<QString> json_files = DatasetIO::scanJsonFiles(data_dir);
+            const std::vector<QString> json_files = DatasetIO::scanJsonFiles(annotation_dir);
             total_json_files                      = static_cast<int>(json_files.size());
             for (const QString &json_path : json_files)
                 annotation_files_by_name[QFileInfo(json_path).baseName()] = json_path;
@@ -1610,9 +1714,16 @@ void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
 {
     try
     {
+        const QString annotation_dir = data_dir.trimmed();
+        if (annotation_dir.isEmpty())
+        {
+            importImagesOnly(dataset_id, image_dir, QStringLiteral("Mask"));
+            return;
+        }
+
         updateProgress(0, QString("正在扫描图像和 Mask..."));
         const std::map<QString, QString> image_by_stem = loadImageMap(image_dir);
-        const std::vector<QString>       mask_files    = scanMaskFiles(data_dir);
+        const std::vector<QString>       mask_files    = scanMaskFiles(annotation_dir);
         if (image_by_stem.empty() || mask_files.empty())
         {
             updateProgress(100, QString("图像目录或 Mask 目录为空"));

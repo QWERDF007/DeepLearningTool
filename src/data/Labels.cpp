@@ -1003,6 +1003,7 @@ QVariantMap ImageLabelsListModel::getData(const int index) const
     auto data              = instance->data()->dataMap();
     data["label_id"]       = static_cast<qlonglong>(label_id);
     data["label_class_id"] = static_cast<qlonglong>(instance->labelClassId());
+    data["label_class_name"] = label_classes_ ? label_classes_->getLabelClassName(instance->labelClassId()) : QString();
     data["color"]          = label_classes_->getLabelClassColor(instance->labelClassId());
     data["index"]          = index;
     return data;

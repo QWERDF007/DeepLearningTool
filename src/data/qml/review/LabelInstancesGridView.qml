@@ -176,6 +176,9 @@ Rectangle {
                 anchors.fill: parent
                 anchors.margins: 5
                 labelId: delegateItem.labelId
+                imageId: delegateItem.imageId
+                method: dataManager ? dataManager.method : -1
+                labelClassName: model.label_class_name || ""
                 labelData: model.data || null
                 borderColor: model.label_class_color || QuiColor.Transparent
             }

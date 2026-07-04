@@ -6,6 +6,7 @@
 #include "data/DataNameUtils.h"
 #include "data/DatasetIO.h"
 #include "data/GlobalFilter.h"
+#include "data/ImageInstanceImageProvider.h"
 #include "data/LabelData.h"
 #include "data/LabelInstanceImageProvider.h"
 #include "database/DataBase.h"
@@ -572,11 +573,11 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
         return;
     }
 
-    // 验证数据格式是否支持
-    if (!data::DataFormat::isDataFormatSupported(data_format))
+    // 验证数据格式是否支持当前项目类型
+    if (!data::DataFormat::isImportDataFormatSupported(method_, data_format))
     {
-        const QString message = QString("数据格式不支持");
-        spdlog::error("导入数据失败, 数据格式不支持: {}", data_format);
+        const QString message = QString("当前项目类型不支持该导入格式");
+        spdlog::error("导入数据失败, 项目类型 {} 不支持数据格式: {}", method_, data_format);
         emit dataImportFinished(false, message);
         return;
     }
@@ -639,9 +640,9 @@ void DataManager::exportDatasets(const QVariantList &dataset_ids, const int data
 {
     const std::vector<int64_t> ids = parseInt64List(dataset_ids);
 
-    if (!data::DataFormat::isDataFormatSupported(data_format))
+    if (!data::DataFormat::isExportDataFormatSupported(method_, data_format))
     {
-        spdlog::error("导出数据失败, 数据格式不支持: {}", data_format);
+        spdlog::error("导出数据失败, 项目类型 {} 不支持数据格式: {}", method_, data_format);
         return;
     }
 
@@ -744,6 +745,7 @@ void DataManager::exportDatasets(const QVariantList &dataset_ids, const int data
             }
             return;
         }
+        exporter->setTargetMethod(method_);
 
         connect(
             exporter, &DataIO::exportFinished, this,
@@ -1585,10 +1587,13 @@ void DataManager::initializeQmlEngine(QQmlApplicationEngine *engine)
         }
     }
 
+    auto *image_instance_provider = new ImageInstanceImageProvider(image_instances_);
+
     // 创建 LabelInstanceImageProvider 实例，传入三个模型指针
     auto *label_instance_provider = new LabelInstanceImageProvider(label_instances_, image_instances_, label_classes_);
 
     // 注册到 QML 引擎（使用小写名称，因为 QML Image 会自动转换为小写）
+    engine->addImageProvider("imageinstance", image_instance_provider);
     engine->addImageProvider("labelinstance", label_instance_provider);
 }
 

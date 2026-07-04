@@ -160,6 +160,7 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         cellWidth: instancesView.cellWidth + instancesView.spacing
         cellHeight: instancesView.cellHeight + instancesView.spacing
+        cacheBuffer: Math.max(cellHeight * 2, 400)
         ScrollBar.vertical: QuiScrollBar {
             id: scrollBar
         }
@@ -169,8 +170,12 @@ Item {
         delegate: ImageInstanceDelegate {
             width: instancesView.cellWidth
             height: instancesView.cellHeight
-            image.source: model.path? "file:///" + model.path : ""
-            image_id: model.image_id ? model.image_id : -1
+            image.source: model.image_id >= 0
+                          ? "image://imageinstance/" + model.image_id
+                            + "?w=" + Math.round(width)
+                            + "&h=" + Math.round(height)
+                          : ""
+            image_id: model.image_id >= 0 ? model.image_id : -1
             selected: model.selected ? model.selected : false
             dataManager: instancesView.dataManager
         }

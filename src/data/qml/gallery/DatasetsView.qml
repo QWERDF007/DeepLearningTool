@@ -178,11 +178,6 @@ Rectangle {
         }
     }
 
-    ImportDataProgressDialog {
-        id: progressDialog
-        title: "导入数据"
-    }
-
     QuiMenu {
         id: menu
         width: 200
@@ -192,7 +187,6 @@ Rectangle {
             enabled: selectedCount === 1 && hasCurItem()
             onClicked: {
                 if (dataManager && curItem) {
-                    importDataDialog.dataFormatModel = DataFormat.getSupportedDataFormat()
                     importDataDialog.datasetsModel = dataManager.getAllDatasetsName()
                     importDataDialog.datasetName = curItem.name
                     importDataDialog.open()
@@ -206,7 +200,6 @@ Rectangle {
             onClicked: {
                 let ids = selectedDatasetIds()
                 if (dataManager && ids.length > 0) {
-                    exportDataDialog.dataFormatModel = DataFormat.getSupportedExportDataFormat()
                     exportDataDialog.datasetIds = ids
                     exportDataDialog.datasetName = ids.length === 1 && curItem ? curItem.name : ids.length + " 个数据集"
                     exportDataDialog.open()
@@ -264,13 +257,15 @@ Rectangle {
         }
     }
 
-    ImportDataDialog {
+    DatasetDataIODialog {
         id: importDataDialog
+        ioMode: DatasetDataIODialog.Import
         dataManager: datasetsView.dataManager
     }
 
-    ExportDataDialog {
+    DatasetDataIODialog {
         id: exportDataDialog
+        ioMode: DatasetDataIODialog.Export
         dataManager: datasetsView.dataManager
     }
 

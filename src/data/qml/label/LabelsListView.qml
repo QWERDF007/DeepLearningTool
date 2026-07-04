@@ -1,7 +1,4 @@
 import QtQuick
-import QtQuick.Controls
-
-import dltool.ui
 
 Repeater {
     id: repeater
@@ -37,14 +34,12 @@ Repeater {
         property real visibleTop: Math.max(rawTop, viewportTop)
         property real visibleRight: Math.min(rawRight, viewportRight)
         property real visibleBottom: Math.min(rawBottom, viewportBottom)
-
         x: repeater.offsetX + visibleLeft * safeFactor
         y: repeater.offsetY + visibleTop * safeFactor
         width: Math.max(1, (visibleRight - visibleLeft) * safeFactor)
         height: Math.max(1, (visibleBottom - visibleTop) * safeFactor)
         visible: labelData !== undefined && labelData !== null
-                 && visibleRight > visibleLeft
-                 && visibleBottom > visibleTop
+                 && visibleRight > visibleLeft && visibleBottom > visibleTop
 
         Canvas {
             id: canvas

@@ -62,6 +62,7 @@ protected:
 
     void updateProgress(int progress, const QString &message);
     void runInThread(std::function<void()> work);
+    bool importImagesOnly(int64_t dataset_id, const QString &image_dir, const QString &format_name);
 };
 
 // ============================================================================

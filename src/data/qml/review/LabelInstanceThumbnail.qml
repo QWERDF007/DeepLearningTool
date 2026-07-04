@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Effects
 
+import dltool.core
 import dltool.ui
 import dltool.settings
 import quickui
@@ -17,6 +18,9 @@ Item {
     
     // 公共属性
     property int labelId: -1  // 标注 ID
+    property int imageId: -1
+    property int method: -1
+    property string labelClassName: ""
     property var labelData: null  // 标注数据 {x, y, width, height}
     property color borderColor: QuiColor.Transparent  // 边框颜色（从外部传入）
     property int margin: 10
@@ -29,8 +33,9 @@ Item {
     // 只读属性
     readonly property bool imageLoaded: thumbnail.status === Image.Ready
     readonly property bool imageError: thumbnail.status === Image.Error
-    readonly property bool hasValidLabelData: isLabelDataValid()
-    readonly property bool hasPolygonLabelData: hasValidLabelData
+    readonly property bool classificationMode: method === DeepLearningMethod.Classification
+    readonly property bool hasValidLabelData: classificationMode || isLabelDataValid()
+    readonly property bool hasPolygonLabelData: !classificationMode && hasValidLabelData
                                                 && labelData.points !== undefined
                                                 && labelData.points !== null
                                                 && labelData.points.length >= 3
@@ -39,14 +44,20 @@ Item {
     readonly property real minVisibleSize: 4.0  // 最小可见尺寸（像素）
     readonly property real minBboxSize: 1.0     // 最小 bbox 尺寸（原始坐标）
 
-    onLabelDataChanged: annotationOverlay.requestPaint()
-    onBorderColorChanged: annotationOverlay.requestPaint()
-    onBorderWidthChanged: annotationOverlay.requestPaint()
-    onMarginChanged: annotationOverlay.requestPaint()
-    onPaddingChanged: annotationOverlay.requestPaint()
-    onFillOpacityChanged: annotationOverlay.requestPaint()
-    onHasValidLabelDataChanged: annotationOverlay.requestPaint()
-    onHasPolygonLabelDataChanged: annotationOverlay.requestPaint()
+    onLabelDataChanged: requestOverlayPaint()
+    onBorderColorChanged: requestOverlayPaint()
+    onBorderWidthChanged: requestOverlayPaint()
+    onMarginChanged: requestOverlayPaint()
+    onPaddingChanged: requestOverlayPaint()
+    onFillOpacityChanged: requestOverlayPaint()
+    onHasValidLabelDataChanged: requestOverlayPaint()
+    onHasPolygonLabelDataChanged: requestOverlayPaint()
+
+    function requestOverlayPaint() {
+        if (annotationOverlay) {
+            annotationOverlay.requestPaint()
+        }
+    }
     
     // 验证 labelData 是否有效
     function isLabelDataValid() {
@@ -82,10 +93,18 @@ Item {
         fillMode: Image.PreserveAspectFit
         
         // URL 包含 padding 查询参数以支持边界扩展
-        source: root.labelId >= 0 
-            ? "image://labelinstance/" + root.labelId 
-              + "?padding=" + root.padding
-            : ""
+        source: {
+            if (root.classificationMode && root.imageId >= 0) {
+                return "image://imageinstance/" + root.imageId
+                       + "?w=" + Math.round(thumbnail.width)
+                       + "&h=" + Math.round(thumbnail.height)
+            }
+            return root.labelId >= 0
+                    ? "image://labelinstance/" + root.labelId + "?padding=" + root.padding
+                    : ""
+        }
+        sourceSize.width: width
+        sourceSize.height: height
         
         // 缓存控制 - 启用缓存以提升性能
         cache: true
@@ -98,12 +117,12 @@ Item {
             if (status === Image.Error) {
                 console.warn("[LabelInstanceThumbnail] Image load error for labelId:", root.labelId);
             }
-            annotationOverlay.requestPaint()
+            requestOverlayPaint()
         }
 
-        onPaintedWidthChanged: annotationOverlay.requestPaint()
-        onPaintedHeightChanged: annotationOverlay.requestPaint()
-        onSourceSizeChanged: annotationOverlay.requestPaint()
+        onPaintedWidthChanged: requestOverlayPaint()
+        onPaintedHeightChanged: requestOverlayPaint()
+        onSourceSizeChanged: requestOverlayPaint()
         
         // 加载状态指示
         BusyIndicator {
@@ -155,6 +174,37 @@ Item {
         brightness: root.imageBrightness
         contrast: root.imageContrast
     }
+
+    Rectangle {
+        id: classIndicator
+        visible: root.classificationMode && root.labelClassName.length > 0
+        implicitWidth: classText.implicitWidth + 14
+        implicitHeight: classText.implicitHeight + 6
+        radius: 2
+        color: root.borderColor
+        border.color: Qt.rgba(1, 1, 1, 0.18)
+        border.width: 1
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.margins: 4
+        z: 2
+
+        Text {
+            id: classText
+            anchors.fill: parent
+            anchors.leftMargin: 7
+            anchors.rightMargin: 7
+            anchors.topMargin: 2
+            anchors.bottomMargin: 2
+            text: root.labelClassName
+            color: "white"
+            font.pixelSize: 12
+            font.weight: Font.Medium
+            elide: Text.ElideRight
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+    }
     
     // 标注覆盖层 - 分割显示多边形，检测显示矩形框
     // 仅在以下条件全部满足时显示：
@@ -167,7 +217,8 @@ Item {
         id: annotationOverlay
 
         anchors.fill: parent
-        visible: hasValidLabelData && imageLoaded && !imageError && 
+        visible: !root.classificationMode &&
+                 hasValidLabelData && imageLoaded && !imageError &&
                  thumbnail.paintedWidth > 0 && thumbnail.paintedHeight > 0 &&
                  thumbnail.sourceSize.width > 0 && thumbnail.sourceSize.height > 0
 
