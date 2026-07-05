@@ -23,6 +23,7 @@ Item {
     property point startPos: Qt.point(0, 0)
     property bool segmentationMode: dataManager ? dataManager.method === DeepLearningMethod.Segmentation : false
     property bool classificationMode: dataManager ? dataManager.method === DeepLearningMethod.Classification : false
+    property bool anomalyMode: dataManager ? dataManager.method === DeepLearningMethod.AnomalyDetection : false
     property bool roiSearchEnabled: true
     property int smartAnnotationRefreshInterval: 80
     property real smartAnnotationMaskAlpha: 0.35
@@ -32,10 +33,11 @@ Item {
     readonly property bool smartAnnotationMode: toolMode === LabelCanvasEnums.SmartTool && smartAnnotationAvailable
     readonly property bool selectToolMode: toolMode === LabelCanvasEnums.SelectTool
     readonly property bool rectangleToolMode: toolMode === LabelCanvasEnums.RectangleTool
-    readonly property bool polygonToolMode: toolMode === LabelCanvasEnums.PolygonTool && segmentationMode
+    readonly property bool polygonRegionMode: segmentationMode || anomalyMode
+    readonly property bool polygonToolMode: toolMode === LabelCanvasEnums.PolygonTool && polygonRegionMode
     readonly property bool smartAnnotationAvailable: smartAnnotationController.available
-    readonly property bool rectangleToolAvailable: !classificationMode
-    readonly property bool polygonToolAvailable: segmentationMode
+    readonly property bool rectangleToolAvailable: !classificationMode && !anomalyMode
+    readonly property bool polygonToolAvailable: polygonRegionMode
     readonly property bool smartToolAvailable: smartAnnotationAvailable
     property var classificationBadgeData: null
     property alias imageView: labelImage
@@ -120,6 +122,12 @@ Item {
         function onModelReset() { refreshClassificationBadge() }
     }
 
+    Connections {
+        target: labelClasses
+        function onDataChanged(topLeft, bottomRight, roles) { refreshClassificationBadge() }
+        function onModelReset() { refreshClassificationBadge() }
+    }
+
     LabelCanvasGeometry {
         id: canvasGeometry
         imageItem: labelImage.image
@@ -134,7 +142,7 @@ Item {
         geometry: canvasGeometry
         drawingItem: drawingItem
         active: labelView.smartAnnotationMode
-        segmentationMode: labelView.segmentationMode
+        segmentationMode: labelView.polygonRegionMode
         drawingPolygon: polygonTool.drawingPolygon
         drawingColor: labelView.drawingColor
         refreshInterval: labelView.smartAnnotationRefreshInterval
@@ -178,7 +186,7 @@ Item {
 
     Rectangle {
         id: classificationBadge
-        visible: labelView.classificationMode
+        visible: (labelView.classificationMode || labelView.anomalyMode)
                  && labelImage.image.status === Image.Ready
                  && labelView.classificationBadgeData !== null
         anchors.left: parent.left
@@ -199,7 +207,7 @@ Item {
             anchors.rightMargin: 7
             anchors.topMargin: 2
             anchors.bottomMargin: 2
-            text: labelView.classificationBadgeData ? String(labelView.classificationBadgeData.label_class_name ?? "") : ""
+            text: labelView.badgeLabelText()
             textColor: "white"
             font.pixelSize: 12
             elide: Text.ElideRight
@@ -334,12 +342,35 @@ Item {
     }
 
     function refreshClassificationBadge() {
-        if (!classificationMode || !imageLabelsList || imageLabelsList.rowCount() <= 0) {
-            classificationBadgeData = null
+        if (classificationMode) {
+            if (!imageLabelsList || imageLabelsList.rowCount() <= 0) {
+                classificationBadgeData = null
+                return
+            }
+
+            classificationBadgeData = imageLabelsList.getData(0)
             return
         }
 
-        classificationBadgeData = imageLabelsList.getData(0)
+        if (anomalyMode) {
+            if (!dataManager || !imageInstances || imageInstances.currentImageId < 0) {
+                classificationBadgeData = null
+                return
+            }
+
+            let data = dataManager.getImageLevelLabelData(imageInstances.currentImageId)
+            classificationBadgeData = data && data.label_class_id !== undefined ? data : null
+            return
+        }
+
+        classificationBadgeData = null
+    }
+
+    function badgeLabelText() {
+        if (!classificationBadgeData) {
+            return ""
+        }
+        return String(classificationBadgeData.label_class_name ?? "")
     }
 
     function handleKeyPressed(event) {
@@ -536,7 +567,7 @@ Item {
             mouseArea.suppressNextRelease = true
             return
         }
-        if (selectToolMode && segmentationMode && event.button === Qt.LeftButton) {
+        if (selectToolMode && polygonRegionMode && event.button === Qt.LeftButton) {
             let pos = canvasGeometry.getPosOnImage(event)
             if (polygonTool.insertPointOnSelectedPolygonEdge(pos)) {
                 mouseArea.interactionState = LabelCanvasEnums.Idle
@@ -737,7 +768,11 @@ Item {
             return false
         }
 
-        return dataManager.addLabel(imageId, labelClassId, data)
+        let added = dataManager.addLabel(imageId, labelClassId, data)
+        if (added && anomalyMode) {
+            dataManager.setImageLabelClass(imageId, labelClassId)
+        }
+        return added
     }
 
     function setToolMode(mode) {

@@ -820,7 +820,8 @@ bool ProjectDataBase::getImages(const int64_t dataset_id, std::vector<int64_t> &
 }
 
 bool ProjectDataBase::getAllImages(std::vector<int64_t> &dataset_ids, std::vector<int64_t> &image_ids,
-                                   std::vector<QString> &paths, QString &err_msg) const
+                                   std::vector<QString> &paths, std::vector<std::vector<uint8_t>> &extra_data,
+                                   QString &err_msg) const
 {
     try
     {
@@ -830,13 +831,15 @@ bool ProjectDataBase::getAllImages(std::vector<int64_t> &dataset_ids, std::vecto
             return false;
         }
         auto db   = pool_->get();
-        auto data = db(
-            sqlpp::select(ImagesTable.id, ImagesTable.datasetId, ImagesTable.path).from(ImagesTable).unconditionally());
+        auto data = db(sqlpp::select(ImagesTable.id, ImagesTable.datasetId, ImagesTable.path, ImagesTable.extraData)
+                           .from(ImagesTable)
+                           .unconditionally());
         for (const auto &row : data)
         {
             dataset_ids.emplace_back(row.datasetId);
             image_ids.emplace_back(row.id);
             paths.emplace_back(QString::fromStdString(row.path));
+            extra_data.emplace_back(row.extraData.is_null() ? std::vector<uint8_t>{} : row.extraData.value());
         }
         return true;
     }
@@ -847,9 +850,49 @@ bool ProjectDataBase::getAllImages(std::vector<int64_t> &dataset_ids, std::vecto
     }
 }
 
+bool ProjectDataBase::updateImagesExtraData(const std::vector<int64_t>              &image_ids,
+                                            const std::vector<std::vector<uint8_t>> &extra_data,
+                                            QString                                &err_msg) const
+{
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
+    }
+    if (image_ids.size() != extra_data.size())
+    {
+        err_msg = QString("图像ID数量与扩展数据数量不一致");
+        return false;
+    }
+
+    auto db = pool_->get();
+    auto tx = sqlpp::start_transaction(db);
+    try
+    {
+        auto prepared_update = db.prepare(sqlpp::update(ImagesTable)
+                                              .set(ImagesTable.extraData = sqlpp::parameter(ImagesTable.extraData))
+                                              .where(ImagesTable.id == sqlpp::parameter(ImagesTable.id)));
+        for (size_t i = 0; i < image_ids.size(); ++i)
+        {
+            prepared_update.params.extraData = extra_data[i];
+            prepared_update.params.id        = image_ids[i];
+            db(prepared_update);
+        }
+        tx.commit();
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        tx.rollback();
+        err_msg = e.what();
+        return false;
+    }
+}
+
 bool ProjectDataBase::getAllLabelClasses(std::vector<int64_t> &label_class_ids, std::vector<QString> &names,
                                          std::vector<QString> &colors, std::vector<QString> &shortcuts,
-                                         std::vector<int64_t> &ordinal_indices, QString &err_msg) const
+                                         std::vector<int64_t> &ordinal_indices,
+                                         std::vector<std::vector<uint8_t>> &extra_data, QString &err_msg) const
 {
     try
     {
@@ -860,7 +903,8 @@ bool ProjectDataBase::getAllLabelClasses(std::vector<int64_t> &label_class_ids, 
         }
         auto db   = pool_->get();
         auto data = db(sqlpp::select(LabelClassesTable.id, LabelClassesTable.name, LabelClassesTable.color,
-                                     LabelClassesTable.shortcut, LabelClassesTable.ordinalIndex)
+                                     LabelClassesTable.shortcut, LabelClassesTable.ordinalIndex,
+                                     LabelClassesTable.extraData)
                            .from(LabelClassesTable)
                            .unconditionally());
         for (const auto &row : data)
@@ -870,6 +914,7 @@ bool ProjectDataBase::getAllLabelClasses(std::vector<int64_t> &label_class_ids, 
             colors.emplace_back(QString::fromStdString(row.color));
             shortcuts.emplace_back(QString::fromStdString(row.shortcut));
             ordinal_indices.emplace_back(row.ordinalIndex);
+            extra_data.emplace_back(row.extraData.is_null() ? std::vector<uint8_t>{} : row.extraData.value());
         }
         return true;
     }
@@ -881,7 +926,8 @@ bool ProjectDataBase::getAllLabelClasses(std::vector<int64_t> &label_class_ids, 
 }
 
 bool ProjectDataBase::addLabelClass(const QString &name, const QString &color, const QString &shortcut,
-                                    const int64_t ordinal_index, int64_t &label_class_id, QString &err_msg) const
+                                    const int64_t ordinal_index, const std::vector<uint8_t> &extra_data,
+                                    int64_t &label_class_id, QString &err_msg) const
 {
     try
     {
@@ -895,7 +941,8 @@ bool ProjectDataBase::addLabelClass(const QString &name, const QString &color, c
                .set(LabelClassesTable.name         = name.toUtf8().constData(),
                     LabelClassesTable.color        = color.toUtf8().constData(),
                     LabelClassesTable.shortcut     = shortcut.toUtf8().constData(),
-                    LabelClassesTable.ordinalIndex = ordinal_index));
+                    LabelClassesTable.ordinalIndex = ordinal_index,
+                    LabelClassesTable.extraData    = extra_data));
         label_class_id = static_cast<int64_t>(db.last_insert_id());
         return true;
     }
@@ -907,7 +954,8 @@ bool ProjectDataBase::addLabelClass(const QString &name, const QString &color, c
 }
 
 bool ProjectDataBase::updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
-                                       const QString &shortcut, const int64_t ordinal_index, QString &err_msg) const
+                                       const QString &shortcut, const int64_t ordinal_index,
+                                       const std::vector<uint8_t> &extra_data, QString &err_msg) const
 {
     try
     {
@@ -921,7 +969,8 @@ bool ProjectDataBase::updateLabelClass(const int64_t label_class_id, const QStri
                .set(LabelClassesTable.name         = name.toUtf8().constData(),
                     LabelClassesTable.color        = color.toUtf8().constData(),
                     LabelClassesTable.shortcut     = shortcut.toUtf8().constData(),
-                    LabelClassesTable.ordinalIndex = ordinal_index)
+                    LabelClassesTable.ordinalIndex = ordinal_index,
+                    LabelClassesTable.extraData    = extra_data)
                .where(LabelClassesTable.id == label_class_id));
         return true;
     }

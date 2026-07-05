@@ -10,6 +10,8 @@
 
 #include <QDebug>
 #include <QPainter>
+#include <algorithm>
+#include <limits>
 
 namespace dltool::data {
 
@@ -29,6 +31,34 @@ QImage createEmptyImage()
     QImage empty_image(EMPTY_IMAGE_SIZE, EMPTY_IMAGE_SIZE, QImage::Format_ARGB32);
     empty_image.fill(Qt::transparent);
     return empty_image;
+}
+
+QRectF effectiveLabelBounds(const LabelData_t *label_data)
+{
+    if (label_data == nullptr)
+        return {};
+
+    if (const auto *seg_data = dynamic_cast<const SegLabelData_t *>(label_data);
+        seg_data != nullptr && seg_data->points.size() >= 3)
+    {
+        double min_x = std::numeric_limits<double>::max();
+        double min_y = std::numeric_limits<double>::max();
+        double max_x = std::numeric_limits<double>::lowest();
+        double max_y = std::numeric_limits<double>::lowest();
+
+        for (const QPointF &point : seg_data->points)
+        {
+            min_x = std::min(min_x, point.x());
+            min_y = std::min(min_y, point.y());
+            max_x = std::max(max_x, point.x());
+            max_y = std::max(max_y, point.y());
+        }
+
+        if (max_x > min_x && max_y > min_y)
+            return QRectF(QPointF(min_x, min_y), QPointF(max_x, max_y));
+    }
+
+    return QRectF(label_data->x, label_data->y, label_data->width, label_data->height);
 }
 
 } // anonymous namespace
@@ -51,7 +81,8 @@ QImage LabelInstanceImageProvider::requestImage(const QString &id, QSize *size, 
     {
         // 解析 URL: "label_id?padding=value"
         QString id_part = id;
-        double  padding = 0.1; // 默认值
+        double  padding = 0.0; // 额外像素边距
+        int     margin_override = -1;
 
         // 检查是否包含查询参数
         int query_pos = id.indexOf('?');
@@ -69,16 +100,22 @@ QImage LabelInstanceImageProvider::requestImage(const QString &id, QSize *size, 
                 {
                     bool   ok             = false;
                     double parsed_padding = key_value[1].toDouble(&ok);
-                    if (ok && parsed_padding >= 0.0 && parsed_padding <= 1.0)
+                    if (ok && parsed_padding >= 0.0)
                     {
                         padding = parsed_padding;
                     }
                     else
                     {
-                        spdlog::debug("[LabelInstanceImageProvider] 无效的 padding 值: {}, 使用默认值 0.1",
+                        spdlog::debug("[LabelInstanceImageProvider] 无效的 padding 值: {}, 使用默认值 0",
                                       key_value[1].toStdString());
                     }
-                    break;
+                }
+                if (key_value.size() == 2 && key_value[0] == "margin")
+                {
+                    bool parsed = false;
+                    const int margin = key_value[1].toInt(&parsed);
+                    if (parsed && margin >= 0)
+                        margin_override = margin;
                 }
             }
         }
@@ -97,7 +134,7 @@ QImage LabelInstanceImageProvider::requestImage(const QString &id, QSize *size, 
         }
 
         // 生成缩略图
-        QImage result = generateThumbnail(label_id, padding);
+        QImage result = generateThumbnail(label_id, padding, margin_override);
         if (size)
             *size = result.size();
 
@@ -121,7 +158,7 @@ QImage LabelInstanceImageProvider::requestImage(const QString &id, QSize *size, 
     }
 }
 
-QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id, double padding) const
+QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id, double padding, int margin_override) const
 {
     try
     {
@@ -148,12 +185,19 @@ QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id, double pa
         }
 
         int64_t image_id = label_instance->imageId();
-        QRectF  bbox(label_data->x, label_data->y, label_data->width, label_data->height);
+        QRectF  bbox = effectiveLabelBounds(label_data.get());
+        if (bbox.width() <= 0 || bbox.height() <= 0)
+        {
+            spdlog::debug("[LabelInstanceImageProvider] 标注 bbox 无效: {}", label_id);
+            return createEmptyImage();
+        }
 
         // 3. 获取配置参数
-        int margin = dltool::settings::GlobalSettings::getInstance()
-                         ->valueForField(dltool::settings::generated::field::Data::Margin, 10)
-                         .toInt();
+        int margin = margin_override >= 0
+                       ? margin_override
+                       : dltool::settings::GlobalSettings::getInstance()
+                           ->valueForField(dltool::settings::generated::field::Data::Margin, 10)
+                           .toInt();
 
         // 4. 加载原始图像
         if (!image_instances_)
@@ -179,11 +223,9 @@ QImage LabelInstanceImageProvider::generateThumbnail(int64_t label_id, double pa
         // 5. 获取填充颜色
         QColor fill_color(DEFAULT_FILL_COLOR);
 
-        // 6. 根据 padding 参数计算扩展的边距
-        // padding 是相对于 bbox 尺寸的比例（0.0 - 1.0）
-        // 计算额外的边距：padding * max(width, height)
-        double max_dimension   = qMax(bbox.width(), bbox.height());
-        int    extended_margin = margin + static_cast<int>(padding * max_dimension);
+        // 6. 根据 padding 参数计算扩展边距。
+        // padding 使用像素单位，避免标注越大边距变化越剧烈。
+        int extended_margin = margin + qRound(padding);
 
         // 7. 裁剪图像（不绘制矩形边框，边框由 QML 层负责）
         QImage cropped_image = cropImageWithMargin(source_image, bbox, extended_margin, fill_color);

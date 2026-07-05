@@ -120,15 +120,17 @@ private:
     };
 
     inline static const std::unordered_map<int, QList<int>> ImportFormatsByMethod = {
-        {dltool::core::DeepLearningMethod::Classification, QList<int>{Folder}},
-        {     dltool::core::DeepLearningMethod::Detection, QList<int>{COCO, LabelMe, Mask}},
-        {  dltool::core::DeepLearningMethod::Segmentation, QList<int>{COCO, LabelMe, Mask}},
+        {    dltool::core::DeepLearningMethod::Classification, QList<int>{Folder}},
+        {         dltool::core::DeepLearningMethod::Detection, QList<int>{COCO, LabelMe, Mask}},
+        {      dltool::core::DeepLearningMethod::Segmentation, QList<int>{COCO, LabelMe, Mask}},
+        {  dltool::core::DeepLearningMethod::AnomalyDetection, QList<int>{Folder, COCO, LabelMe, Mask}},
     };
 
     inline static const std::unordered_map<int, QList<int>> ExportFormatsByMethod = {
-        {dltool::core::DeepLearningMethod::Classification, QList<int>{Folder}},
-        {     dltool::core::DeepLearningMethod::Detection, QList<int>{COCO, LabelMe, Mask}},
-        {  dltool::core::DeepLearningMethod::Segmentation, QList<int>{COCO, LabelMe, Mask}},
+        {    dltool::core::DeepLearningMethod::Classification, QList<int>{Folder}},
+        {         dltool::core::DeepLearningMethod::Detection, QList<int>{COCO, LabelMe, Mask}},
+        {      dltool::core::DeepLearningMethod::Segmentation, QList<int>{COCO, LabelMe, Mask}},
+        {  dltool::core::DeepLearningMethod::AnomalyDetection, QList<int>{COCO, LabelMe, Mask}},
     };
 
     inline static const QList<QString> ImageFormatList = {

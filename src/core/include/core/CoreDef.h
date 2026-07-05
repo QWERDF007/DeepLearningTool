@@ -25,6 +25,7 @@ public:
         Segmentation,
         Pose,
         OCR,
+        AnomalyDetection,
     };
     Q_ENUM(Method)
 
@@ -78,22 +79,25 @@ private:
         Method::Classification,
         Method::Detection,
         Method::Segmentation,
+        Method::AnomalyDetection,
     };
 
     inline static const QList<QVariantMap> MethodsList{
-        QVariantMap{{"name", QString("图像分类")}, {"method", Method::Classification}},
-        QVariantMap{{"name", QString("目标检测")},      {"method", Method::Detection}},
-        QVariantMap{{"name", QString("语义分割")},   {"method", Method::Segmentation}},
-        QVariantMap{{"name", QString("姿态检测")},           {"method", Method::Pose}},
-        QVariantMap{     {"name", QString("OCR")},            {"method", Method::OCR}},
+        QVariantMap{{"name", QString("图像分类")},     {"method", Method::Classification}},
+        QVariantMap{{"name", QString("目标检测")},          {"method", Method::Detection}},
+        QVariantMap{{"name", QString("语义分割")},       {"method", Method::Segmentation}},
+        QVariantMap{{"name", QString("异常检测")}, {"method", Method::AnomalyDetection}},
+        QVariantMap{{"name", QString("姿态检测")},               {"method", Method::Pose}},
+        QVariantMap{     {"name", QString("OCR")},                {"method", Method::OCR}},
     };
 
     inline static const std::unordered_map<int, QString> MethodToName = {
-        {Method::Classification, QString("图像分类")},
-        {     Method::Detection, QString("目标检测")},
-        {  Method::Segmentation, QString("语义分割")},
-        {          Method::Pose, QString("姿态检测")},
-        {           Method::OCR,      QString("OCR")},
+        {    Method::Classification, QString("图像分类")},
+        {         Method::Detection, QString("目标检测")},
+        {      Method::Segmentation, QString("语义分割")},
+        {  Method::AnomalyDetection, QString("异常检测")},
+        {              Method::Pose, QString("姿态检测")},
+        {               Method::OCR,      QString("OCR")},
     };
 };
 

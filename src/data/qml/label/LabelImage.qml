@@ -27,6 +27,7 @@ Item {
         }
         return 1.0
     }
+    readonly property bool imageReady: currentImagePath.length > 0 && image.status === Image.Ready
 
     property real stepSize: {
         // 基于图像原始大小和当前显示大小计算基础步长
@@ -47,6 +48,8 @@ Item {
 
     property real from: 0.25
     property real to: 32
+
+    onCurrentImagePathChanged: resetViewState()
     
         
     Image {
@@ -85,6 +88,7 @@ Item {
         x: image.x
         y: image.y
         scale: image.scale
+        visible: labelImage.imageReady
         transformOrigin: Item.TopLeft
         brightness: labelImage.imageBrightness
         contrast: labelImage.imageContrast
@@ -93,7 +97,7 @@ Item {
     MouseArea {
         id: mouseArea
         anchors.fill: parent
-        enabled: labelImage.visible && image.status === Image.Ready
+        enabled: labelImage.visible && labelImage.imageReady
         drag.target: null
         drag.axis: Drag.XAndYAxis
         acceptedButtons: Qt.AllButtons
@@ -161,6 +165,17 @@ Item {
      */
     function updateImagePos() {
         scaledImagePos = mapFromItem(image, 0, 0)
+    }
+
+    function resetViewState() {
+        if (typeof image === "undefined" || image === null) {
+            return
+        }
+        needFitInView = false
+        image.x = 0
+        image.y = 0
+        image.scale = 1.0
+        scaledImagePos = Qt.point(0, 0)
     }
 
     /**

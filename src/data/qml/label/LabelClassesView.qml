@@ -21,8 +21,10 @@ Rectangle {
     property ItemSelectionModel selection: dataManager ? dataManager.labelClasses.selection : null
     readonly property var imageInstances: dataManager ? dataManager.imageInstances : null
     readonly property var imageLabelsList: dataManager ? dataManager.imageLabelsList : null
+    readonly property bool anomalyMode: dataManager ? dataManager.method === DeepLearningMethod.AnomalyDetection : false
     property bool selectionFollowsCurrentImageClass: dataManager
                                                     ? dataManager.method === DeepLearningMethod.Classification
+                                                      || dataManager.method === DeepLearningMethod.AnomalyDetection
                                                     : false
     property int _label_class_id: -1
     property bool syncingClassSelection: false
@@ -97,7 +99,8 @@ Rectangle {
         id: editor
         isCreate: false
         maxOrdinalIndex: view.count
-        onLabelClassChanged: function (classId, className, classColor, classShortcut, ordinalIndex) {
+        groupEditable: labelClassesView.anomalyMode
+        onLabelClassChanged: function (classId, className, classColor, classShortcut, ordinalIndex, classGroup) {
             if (dataManager) {
                 let nameMsg = dataManager.isValidClassName(className, classId)
                 if (nameMsg.length > 0) {
@@ -109,11 +112,15 @@ Rectangle {
                 editor.msg = labelClasses.isValid(classId, className, classColor, classShortcut, ordinalIndex)
             }
         }
-        onLabelClassChangedAccepted: function (classId, className, classColor, classShortcut, ordinalIndex) {
+        onLabelClassChangedAccepted: function (classId, className, classColor, classShortcut, ordinalIndex, classGroup) {
             if (dataManager
                     && dataManager.isValidClassName(className, classId).length === 0
                     && (!labelClasses || !labelClasses.isValid(classId, className, classColor, classShortcut, ordinalIndex).startsWith("error:"))) {
-                dataManager.updateLabelClass(classId, className, classColor, classShortcut, ordinalIndex)
+                if (labelClassesView.anomalyMode) {
+                    dataManager.updateLabelClassWithGroup(classId, className, classColor, classShortcut, ordinalIndex, classGroup)
+                } else {
+                    dataManager.updateLabelClass(classId, className, classColor, classShortcut, ordinalIndex)
+                }
             }
         }
     }
@@ -153,6 +160,20 @@ Rectangle {
             Layout.fillHeight: true
             Layout.fillWidth: true
             model: labelClassesView.labelClasses
+            section.property: labelClassesView.anomalyMode ? "group_name" : ""
+            section.criteria: ViewSection.FullString
+            section.delegate: Rectangle {
+                width: view.width - 8
+                height: labelClassesView.anomalyMode ? 24 : 0
+                color: QuiColor.Primary
+                QuiText {
+                    anchors.fill: parent
+                    anchors.leftMargin: 4
+                    text: section
+                    textColor: QuiColor.FontDark
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
             
             // 添加位移动画
             displaced: Transition {
@@ -213,6 +234,7 @@ Rectangle {
                     editor.classColor = model.color
                     editor.classShortcut = model.shortcut
                     editor.ordinalIndex = model.ordinal_index
+                    editor.classGroup = model.group
                     editor.open()
                 }
                 onDeleteClicked: function () {
@@ -271,6 +293,10 @@ Rectangle {
             return false
         }
 
+        if (anomalyMode) {
+            return dataManager.setImageLabelClass(imageId, classId)
+        }
+
         let labelData = currentImageLabelData()
         let labelId = labelData ? Number(labelData.label_id ?? -1) : -1
         let currentClassId = labelData ? Number(labelData.label_class_id ?? -1) : -1
@@ -286,6 +312,9 @@ Rectangle {
     }
 
     function currentImageClassId() {
+        if (anomalyMode) {
+            return imageInstances ? Number(imageInstances.currentImageLabelClassId ?? -1) : -1
+        }
         let labelData = currentImageLabelData()
         return labelData ? Number(labelData.label_class_id ?? -1) : -1
     }

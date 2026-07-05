@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
+import dltool.core
 import dltool.ui
 import dltool.data
 import quickui
@@ -10,6 +11,7 @@ Item {
     id: header
     property DataManager dataManager
     property LabelClassesModel labelClasses: null
+    readonly property bool anomalyMode: dataManager ? dataManager.method === DeepLearningMethod.AnomalyDetection : false
 
     function usedColors() {
         let used = []
@@ -48,14 +50,15 @@ Item {
                 let pos = mapToItem(null, 0, 0)
                 editor.x = pos.x + 20
                 editor.y = pos.y + 20
-                editor.openForCreate(nextRecommendedColor())
+                editor.openForCreate(nextRecommendedColor(), "anomaly")
             }
         }
     }
     LabelClassEditor {
         id: editor
         isCreate: true
-        onLabelClassChanged: function (classId, className, classColor, classShortcut, ordinalIndex) {
+        groupEditable: header.anomalyMode
+        onLabelClassChanged: function (classId, className, classColor, classShortcut, ordinalIndex, classGroup) {
             if (dataManager) {
                 let nameMsg = dataManager.isValidClassName(className, classId)
                 if (nameMsg.length > 0) {
@@ -67,11 +70,15 @@ Item {
                 editor.msg = labelClasses.isValid(classId, className, classColor, classShortcut, -1)
             }
         }
-        onLabelClassChangedAccepted: function (classId, className, classColor, classShortcut, ordinalIndex) {
+        onLabelClassChangedAccepted: function (classId, className, classColor, classShortcut, ordinalIndex, classGroup) {
             if (dataManager
                     && dataManager.isValidClassName(className, classId).length === 0
                     && (!labelClasses || !labelClasses.isValid(classId, className, classColor, classShortcut, -1).startsWith("error:"))) {
-                dataManager.addLabelClass(className, classColor, classShortcut)
+                if (header.anomalyMode) {
+                    dataManager.addLabelClassWithGroup(className, classColor, classShortcut, classGroup)
+                } else {
+                    dataManager.addLabelClass(className, classColor, classShortcut)
+                }
             }
         }
     }

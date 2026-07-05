@@ -260,6 +260,11 @@ int SegLabelData_t::type() const
     return DeepLearningMethod::Segmentation;
 }
 
+int AnomalyLabelData_t::type() const
+{
+    return DeepLearningMethod::AnomalyDetection;
+}
+
 std::vector<uint8_t> SegLabelData_t::toBlob() const
 {
     json point_array = json::array();
@@ -799,6 +804,18 @@ QVariantMap SegLabelDataHelper::getEditedData(const QVariantMap &data, const QPo
     return new_data;
 }
 
+AnomalyLabelDataHelper::AnomalyLabelDataHelper(const int type)
+    : SegLabelDataHelper(type)
+{
+}
+
+AnomalyLabelDataHelper::~AnomalyLabelDataHelper() {}
+
+std::unique_ptr<LabelData_t> AnomalyLabelDataHelper::createLabelData() const
+{
+    return std::make_unique<dltool::data::AnomalyLabelData_t>();
+}
+
 ClsLabelDataHelper::ClsLabelDataHelper(const int type)
     : LabelDataHelper_t(type)
 {
@@ -857,6 +874,8 @@ std::unique_ptr<LabelDataHelper_t> createLabelDataHelper(const int type)
         return std::make_unique<DetLabelDataHelper>(type);
     case DeepLearningMethod::Segmentation:
         return std::make_unique<SegLabelDataHelper>(type);
+    case DeepLearningMethod::AnomalyDetection:
+        return std::make_unique<AnomalyLabelDataHelper>(type);
     default:
         return nullptr;
     }

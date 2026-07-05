@@ -97,18 +97,29 @@ Rectangle {
         return numberValue(GlobalSettings.catalog.value(item.group_key, fieldName, fallback), fallback)
     }
 
+    function rangeValue(item, index, fallback) {
+        let range = item && item.value_range ? item.value_range : []
+        return range.length > index ? numberValue(range[index], fallback) : fallback
+    }
+
     function openSlider(item, x, y) {
         popup.itemData = item
 
         let valueField = String(item.name_en)
-        let fromField = rangeField(item, "from", "_from")
-        let toField = rangeField(item, "to", "_to")
-        let stepField = rangeField(item, "step", "_step")
+        let configuredFrom = sidebarValue(item, "from", "")
+        let configuredTo = sidebarValue(item, "to", "")
+        let configuredStep = sidebarValue(item, "step", "")
+        let fromField = configuredFrom !== "" ? String(configuredFrom) : ""
+        let toField = configuredTo !== "" ? String(configuredTo) : ""
+        let stepField = configuredStep !== "" ? String(configuredStep) : ""
 
-        slider.from = settingNumber(item, fromField, 0)
-        slider.to = settingNumber(item, toField, 100)
+        slider.from = fromField.length > 0 ? settingNumber(item, fromField, rangeValue(item, 0, 0))
+                                            : rangeValue(item, 0, 0)
+        slider.to = toField.length > 0 ? settingNumber(item, toField, rangeValue(item, 1, 100))
+                                        : rangeValue(item, 1, 100)
         slider.value = settingNumber(item, valueField, slider.from)
-        slider.stepSize = settingNumber(item, stepField, 1)
+        slider.stepSize = stepField.length > 0 ? settingNumber(item, stepField, rangeValue(item, 2, 1))
+                                                : rangeValue(item, 2, 1)
         slider.snapMode = sidebar.sidebarValue(item, "snap", true) ? Slider.SnapAlways : Slider.NoSnap
 
         let pos = sidebar.mapToItem(null, x, y)

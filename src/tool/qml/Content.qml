@@ -17,6 +17,9 @@ StackLayout {
     property DataManager dataManager: project ? project.dataManager : null
     property FeatureManager featureManager: project ? project.featureManager : null
     property bool shuttingDown: false
+    property int projectGeneration: 0
+
+    onProjectChanged: projectGeneration += 1
 
     Component {
         id: project_com
@@ -72,8 +75,20 @@ StackLayout {
     Repeater {
         model: pages
         Loader {
-            active: !content.shuttingDown && (index === 0 || content.project !== null)
-            sourceComponent: active ? modelData : null
+            id: pageLoader
+            readonly property bool shouldLoad: !content.shuttingDown && (index === 0 || content.project !== null)
+            readonly property int reloadGeneration: content.projectGeneration
+
+            Component.onCompleted: syncSource()
+            onShouldLoadChanged: syncSource()
+            onReloadGenerationChanged: syncSource()
+
+            function syncSource() {
+                sourceComponent = null
+                if (shouldLoad) {
+                    sourceComponent = modelData
+                }
+            }
         }
     }
 }

@@ -10,11 +10,17 @@ class ProjectDataBase;
 
 namespace dltool::data {
 
+QString normalizeLabelClassGroup(const QString &group);
+QString labelClassGroupDisplayName(const QString &group);
+QString defaultLabelClassGroup();
+QString anomalyLabelClassGroup();
+QString goodLabelClassGroup();
+
 class LabelClass : public QObject
 {
 public:
     LabelClass(const int64_t id, const QString &name, const QString &color, const QString &shortcut,
-               const int64_t ordinal_index, QObject *parent = nullptr);
+               const int64_t ordinal_index, const QString &group, QObject *parent = nullptr);
     ~LabelClass();
 
     int64_t id() const
@@ -50,6 +56,13 @@ public:
 
     bool setOrdinalIndex(const int64_t ordinal_index);
 
+    QString group() const
+    {
+        return group_;
+    }
+
+    bool setGroup(const QString &group);
+
 private:
     int64_t id_;
     int64_t ordinal_index_;
@@ -57,6 +70,7 @@ private:
     QString name_;
     QString color_;
     QString shortcut_;
+    QString group_;
 };
 
 class LabelClassesListModel : public QAbstractListModel
@@ -67,6 +81,7 @@ class LabelClassesListModel : public QAbstractListModel
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
     Q_PROPERTY(int currentLabelClassId READ getCurrentLabelClassId NOTIFY currentLabelClassChanged)
     Q_PROPERTY(QString currentLabelClassColor READ getCurrentLabelClassColor NOTIFY currentLabelClassChanged FINAL)
+    Q_PROPERTY(QString currentLabelClassGroup READ getCurrentLabelClassGroup NOTIFY currentLabelClassChanged FINAL)
 public:
     LabelClassesListModel(dltool::database::ProjectDataBase *database, QObject *parent = nullptr);
     ~LabelClassesListModel();
@@ -77,6 +92,8 @@ public:
         NameRole,
         ColorRole,
         ShortcutRole,
+        GroupRole,
+        GroupNameRole,
         OrdinalIndexRole,
         SelectedRole,
     };
@@ -88,15 +105,18 @@ public:
 
     QHash<int, QByteArray> roleNames() const override;
 
-    bool addLabelClass(const QString &name, const QString &color, const QString &shortcut);
+    bool addLabelClass(const QString &name, const QString &color, const QString &shortcut, const QString &group);
     bool updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
-                          const QString &shortcut, const int64_t ordinal_index);
+                          const QString &shortcut, const int64_t ordinal_index, const QString &group);
     bool updateLabelClass(const std::vector<int64_t> &label_class_ids, const std::vector<int64_t> &ordinal_indexes);
     bool deleteLabelClass(const int64_t label_class_id);
 
     int     getLabelClassId(const QString &name) const;
     QString getLabelClassName(const int label_class_id) const;
     QString getLabelClassColor(const int label_class_id) const;
+    QString getLabelClassGroup(const int label_class_id) const;
+    QString getLabelClassGroupName(const int label_class_id) const;
+    bool    isAnomalyLabelClass(const int label_class_id) const;
 
     QItemSelectionModel *selection() const
     {
@@ -105,6 +125,7 @@ public:
 
     int     getCurrentLabelClassId() const;
     QString getCurrentLabelClassColor() const;
+    QString getCurrentLabelClassGroup() const;
 
     /**
      * @brief 验证标签类别的有效性
@@ -126,6 +147,7 @@ public:
      * @return 是否成功
      */
     Q_INVOKABLE bool reorderLabelClass(const int64_t label_class_id, const int64_t new_ordinal_index);
+    Q_INVOKABLE bool updateLabelClassGroup(const int64_t label_class_id, const QString &group);
 
     /**
      * @brief 根据快捷键查找标签类别
@@ -149,6 +171,8 @@ private:
     QVariant getLabelClassName(const QModelIndex &index) const;
     QVariant getLabelClassColor(const QModelIndex &index) const;
     QVariant getLabelClassShortcut(const QModelIndex &index) const;
+    QVariant getLabelClassGroup(const QModelIndex &index) const;
+    QVariant getLabelClassGroupName(const QModelIndex &index) const;
     QVariant getLabelClassOrdinalIndex(const QModelIndex &index) const;
     QVariant getLabelClassSelected(const QModelIndex &index) const;
 

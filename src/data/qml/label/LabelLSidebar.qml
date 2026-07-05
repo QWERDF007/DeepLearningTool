@@ -21,15 +21,16 @@ Rectangle {
     readonly property bool classificationMode: method === DeepLearningMethod.Classification
     readonly property bool detectionMode: method === DeepLearningMethod.Detection
     readonly property bool segmentationMode: method === DeepLearningMethod.Segmentation
+    readonly property bool anomalyMode: method === DeepLearningMethod.AnomalyDetection
     readonly property bool rectangleToolEnabled: detectionMode || segmentationMode
-    readonly property bool polygonToolEnabled: segmentationMode
+    readonly property bool polygonToolEnabled: segmentationMode || anomalyMode
 
     signal toolSelected(int mode)
 
     readonly property bool smartAnnotationEnabled: sidebar.featureManager !== null
                                                    && sidebar.featureManager.smartAnnotation !== null
                                                    && sidebar.featureManager.smartAnnotation.enabled
-                                                   && (sidebar.detectionMode || sidebar.segmentationMode)
+                                                   && (sidebar.detectionMode || sidebar.segmentationMode || sidebar.anomalyMode)
     readonly property bool fewShotLearningEnabled: sidebar.featureManager !== null
                                                    && sidebar.featureManager.fewShotLearning !== null
                                                    && sidebar.featureManager.fewShotLearning.enabled

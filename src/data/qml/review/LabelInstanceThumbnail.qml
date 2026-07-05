@@ -25,10 +25,11 @@ Item {
     property color borderColor: QuiColor.Transparent  // 边框颜色（从外部传入）
     property int margin: 10
     property int borderWidth: 2
-    property real padding: 0.1
+    property real padding: 10.0
     property real fillOpacity: 0.3
     property real imageBrightness: 0.0
     property real imageContrast: 0.0
+    property string providerCacheKey: ""
     
     // 只读属性
     readonly property bool imageLoaded: thumbnail.status === Image.Ready
@@ -58,32 +59,75 @@ Item {
             annotationOverlay.requestPaint()
         }
     }
+
+    function polygonBounds() {
+        if (!labelData || !labelData.points || labelData.points.length < 3) {
+            return { valid: false, x: 0, y: 0, width: 0, height: 0 }
+        }
+
+        let minX = Number.POSITIVE_INFINITY
+        let minY = Number.POSITIVE_INFINITY
+        let maxX = Number.NEGATIVE_INFINITY
+        let maxY = Number.NEGATIVE_INFINITY
+        for (let i = 0; i < labelData.points.length; ++i) {
+            let point = labelData.points[i]
+            if (!point || typeof point.x !== "number" || typeof point.y !== "number"
+                    || isNaN(point.x) || isNaN(point.y)) {
+                continue
+            }
+            minX = Math.min(minX, point.x)
+            minY = Math.min(minY, point.y)
+            maxX = Math.max(maxX, point.x)
+            maxY = Math.max(maxY, point.y)
+        }
+
+        if (!isFinite(minX) || !isFinite(minY) || maxX <= minX || maxY <= minY) {
+            return { valid: false, x: 0, y: 0, width: 0, height: 0 }
+        }
+        return { valid: true, x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+    }
+
+    function effectiveLabelBounds() {
+        let bounds = polygonBounds()
+        if (bounds.valid) {
+            return bounds
+        }
+
+        if (!labelData || typeof labelData.x !== "number" || typeof labelData.y !== "number"
+                || typeof labelData.width !== "number" || typeof labelData.height !== "number"
+                || isNaN(labelData.x) || isNaN(labelData.y)
+                || isNaN(labelData.width) || isNaN(labelData.height)
+                || labelData.width <= 0 || labelData.height <= 0) {
+            return { valid: false, x: 0, y: 0, width: 0, height: 0 }
+        }
+
+        return { valid: true, x: labelData.x, y: labelData.y,
+                 width: labelData.width, height: labelData.height }
+    }
     
     // 验证 labelData 是否有效
     function isLabelDataValid() {
-        if (!labelData) {
-            return false
+        return effectiveLabelBounds().valid
+    }
+
+    function extendedMarginForBounds(bounds) {
+        if (!bounds.valid) {
+            return margin
         }
-        
-        // 检查必需的属性是否存在且为有效数值
-        if (typeof labelData.x !== 'number' || isNaN(labelData.x)) {
-            console.warn("[LabelInstanceThumbnail] Invalid labelData.x:", labelData.x)
-            return false
+        return Math.max(0, margin) + Math.round(Math.max(0, padding))
+    }
+
+    function cropSize() {
+        let bounds = effectiveLabelBounds()
+        if (!bounds.valid) {
+            return { valid: false, width: 0, height: 0 }
         }
-        if (typeof labelData.y !== 'number' || isNaN(labelData.y)) {
-            console.warn("[LabelInstanceThumbnail] Invalid labelData.y:", labelData.y)
-            return false
+        let extendedMargin = extendedMarginForBounds(bounds)
+        return {
+            valid: true,
+            width: Math.max(1, Math.round(bounds.width + 2 * extendedMargin)),
+            height: Math.max(1, Math.round(bounds.height + 2 * extendedMargin))
         }
-        if (typeof labelData.width !== 'number' || isNaN(labelData.width) || labelData.width <= 0) {
-            console.warn("[LabelInstanceThumbnail] Invalid labelData.width:", labelData.width)
-            return false
-        }
-        if (typeof labelData.height !== 'number' || isNaN(labelData.height) || labelData.height <= 0) {
-            console.warn("[LabelInstanceThumbnail] Invalid labelData.height:", labelData.height)
-            return false
-        }
-        
-        return true
     }
     
     // 图像组件
@@ -98,16 +142,19 @@ Item {
                 return "image://imageinstance/" + root.imageId
                        + "?w=" + Math.round(thumbnail.width)
                        + "&h=" + Math.round(thumbnail.height)
+                       + "&project=" + root.providerCacheKey
             }
             return root.labelId >= 0
-                    ? "image://labelinstance/" + root.labelId + "?padding=" + root.padding
+                    ? "image://labelinstance/" + root.labelId
+                      + "?padding=" + root.padding
+                      + "&margin=" + root.margin
+                      + "&project=" + root.providerCacheKey
                     : ""
         }
-        sourceSize.width: width
-        sourceSize.height: height
+        sourceSize.width: root.classificationMode ? width : 0
+        sourceSize.height: root.classificationMode ? height : 0
         
-        // 缓存控制 - 启用缓存以提升性能
-        cache: true
+        cache: false
         
         // 异步加载
         asynchronous: true
@@ -171,6 +218,7 @@ Item {
     MultiEffect {
         source: thumbnail
         anchors.fill: thumbnail
+        visible: thumbnail.status === Image.Ready && thumbnail.source.toString().length > 0
         brightness: root.imageBrightness
         contrast: root.imageContrast
     }
@@ -220,7 +268,7 @@ Item {
         visible: !root.classificationMode &&
                  hasValidLabelData && imageLoaded && !imageError &&
                  thumbnail.paintedWidth > 0 && thumbnail.paintedHeight > 0 &&
-                 thumbnail.sourceSize.width > 0 && thumbnail.sourceSize.height > 0
+                 cropSize().valid
 
         onVisibleChanged: requestPaint()
         onWidthChanged: requestPaint()
@@ -255,21 +303,21 @@ Item {
         if (!hasValidLabelData) {
             return margin
         }
-        let maxDimension = Math.max(labelData.width, labelData.height)
-        // 注意：C++ 端使用 static_cast<int>，所以这里也要使用 Math.floor 来保持一致
-        return margin + Math.floor(padding * maxDimension)
+        let bounds = effectiveLabelBounds()
+        return extendedMarginForBounds(bounds)
     }
     
     function calculateScale() {
         // 计算图像在 Image 组件中的实际缩放比例
-        if (!hasValidLabelData || thumbnail.sourceSize.width === 0 || thumbnail.sourceSize.height === 0) {
+        let size = cropSize()
+        if (!hasValidLabelData || !size.valid) {
             return 1.0
         }
         
         // Image 使用 PreserveAspectFit，所以实际显示的图像可能比 Item 小
         // paintedWidth 和 paintedHeight 是实际绘制的图像尺寸
-        let scaleX = thumbnail.paintedWidth / thumbnail.sourceSize.width
-        let scaleY = thumbnail.paintedHeight / thumbnail.sourceSize.height
+        let scaleX = thumbnail.paintedWidth / size.width
+        let scaleY = thumbnail.paintedHeight / size.height
         
         // 由于是 PreserveAspectFit，两个缩放比例应该相同
         return Math.min(scaleX, scaleY)
@@ -334,9 +382,10 @@ Item {
     function calculateWidth() {
         if (!hasValidLabelData) return 0
         let scale = calculateScale()
+        let bounds = effectiveLabelBounds()
         
         // 矩形宽度保持与原始 bbox 相同，然后应用缩放
-        let width = labelData.width * scale
+        let width = bounds.width * scale
         
         // 确保极小 bbox 仍然可见
         if (width > 0 && width < minVisibleSize) {
@@ -358,9 +407,10 @@ Item {
     function calculateHeight() {
         if (!hasValidLabelData) return 0
         let scale = calculateScale()
+        let bounds = effectiveLabelBounds()
         
         // 矩形高度应该完美贴合 bbox，不包含 padding
-        let height = labelData.height * scale
+        let height = bounds.height * scale
         
         // 确保极小 bbox 仍然可见
         if (height > 0 && height < minVisibleSize) {
@@ -437,17 +487,18 @@ Item {
         let offsetX = calculateImageOffsetX()
         let offsetY = calculateImageOffsetY()
         let extendedMargin = calculateExtendedMargin()
+        let bounds = effectiveLabelBounds()
         return {
             valid: true,
-            x: offsetX + (point.x - labelData.x + extendedMargin) * scale,
-            y: offsetY + (point.y - labelData.y + extendedMargin) * scale
+            x: offsetX + (point.x - bounds.x + extendedMargin) * scale,
+            y: offsetY + (point.y - bounds.y + extendedMargin) * scale
         }
     }
 
     function refreshSettings() {
         margin = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.Margin, 10)
         borderWidth = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.BorderWidth, 2)
-        padding = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.LabelBorderPadding, 0.1)
+        padding = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.LabelBorderPadding, 10.0)
         fillOpacity = Math.max(0, Math.min(1, GlobalSettings.valueForField(
                     SettingsAccessor.Data,
                     DataField.FillOpacity,

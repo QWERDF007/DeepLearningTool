@@ -27,6 +27,7 @@ Rectangle {
     property real labelThumbnailScaleTo: 4.0
     property real labelThumbnailScaleStepSize: 0.1
     property real labelThumbnailAspectRatio: 1.0
+    readonly property string providerCacheKey: dataManager ? encodeURIComponent(dataManager.providerCacheKey) : ""
 
     QuiContentDialog {
         id: deleteConfirmDialog
@@ -181,6 +182,7 @@ Rectangle {
                 labelClassName: model.label_class_name || ""
                 labelData: model.data || null
                 borderColor: model.label_class_color || QuiColor.Transparent
+                providerCacheKey: root.providerCacheKey
             }
         }
         

@@ -28,7 +28,8 @@ Item {
     property bool useViewportInput: false
     readonly property bool available: smartAnnotation && smartAnnotation.enabled && dataManager
                                       && (dataManager.method === DeepLearningMethod.Detection
-                                          || dataManager.method === DeepLearningMethod.Segmentation)
+                                          || dataManager.method === DeepLearningMethod.Segmentation
+                                          || dataManager.method === DeepLearningMethod.AnomalyDetection)
 
     Timer {
         id: previewTimer

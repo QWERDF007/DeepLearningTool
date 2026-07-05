@@ -11,7 +11,7 @@ QuiPopup {
     id: control
     closePolicy: Popup.CloseOnPressOutside
     width: 480
-    height: 360
+    height: groupEditable ? 410 : 360
     maskOpacity: 0.2
 
     property int classId: -1
@@ -19,10 +19,19 @@ QuiPopup {
     property alias classColor: colorField.text
     property alias classShortcut: shortcutField.text
     property alias ordinalIndex: ordinalField.text
+    property string classGroup: "anomaly"
+    property bool groupEditable: false
     property string msg: ""
     property int maxOrdinalIndex: 0
 
     property bool isCreate: true
+
+    onClassGroupChanged: {
+        let idx = groupIndex(classGroup)
+        if (groupBox.currentIndex !== idx) {
+            groupBox.currentIndex = idx
+        }
+    }
     
     // 判断消息是否为错误（阻止提交）
     function isError() {
@@ -49,8 +58,20 @@ QuiPopup {
         return "red"
     }
 
-    signal labelClassChanged(int classId, string className, string classColor, string classShortcut, int ordinalIndex)
-    signal labelClassChangedAccepted(int classId, string className, string classColor, string classShortcut, int ordinalIndex)
+    function normalizedGroup(group) {
+        return group === "good" || group === "良好" ? "good" : "anomaly"
+    }
+
+    function groupIndex(group) {
+        return normalizedGroup(group) === "good" ? 1 : 0
+    }
+
+    function notifyChanged() {
+        labelClassChanged(classId, className, classColor, classShortcut, isCreate ? -1 : ordinalIndex, classGroup)
+    }
+
+    signal labelClassChanged(int classId, string className, string classColor, string classShortcut, int ordinalIndex, string classGroup)
+    signal labelClassChangedAccepted(int classId, string className, string classColor, string classShortcut, int ordinalIndex, string classGroup)
 
     Item {
         anchors.fill: parent
@@ -78,7 +99,7 @@ QuiPopup {
                     Layout.fillWidth: true
                     placeholderText: "输入类别名称"
                     onTextEdited: {
-                        labelClassChanged(classId, className, classColor, classShortcut, isCreate ? -1 : ordinalIndex)
+                        notifyChanged()
                     }
                 }
                 QuiText {
@@ -90,7 +111,7 @@ QuiPopup {
                     placeholderText: "#RRGGBB"
                     text: colorDialog.currentColor
                     onTextEdited: {
-                        labelClassChanged(classId, className, classColor, classShortcut, isCreate ? -1 : ordinalIndex)
+                        notifyChanged()
                     }
                 }
                 QuiText {
@@ -101,7 +122,22 @@ QuiPopup {
                     Layout.fillWidth: true
                     placeholderText: "输入快捷键"
                     onTextEdited: {
-                        labelClassChanged(classId, className, classColor, classShortcut, isCreate ? -1 : ordinalIndex)
+                        notifyChanged()
+                    }
+                }
+                QuiText {
+                    text: "分组"
+                    visible: groupEditable
+                }
+                QuiComboBox {
+                    id: groupBox
+                    visible: groupEditable
+                    Layout.fillWidth: true
+                    model: ["异常", "良好"]
+                    currentIndex: control.groupIndex(control.classGroup)
+                    onActivated: function(index) {
+                        control.classGroup = index === 1 ? "good" : "anomaly"
+                        control.notifyChanged()
                     }
                 }
                 QuiText {
@@ -118,7 +154,7 @@ QuiPopup {
                         top: maxOrdinalIndex
                     }
                     onTextEdited: {
-                        labelClassChanged(classId, className, classColor, classShortcut, isCreate ? -1 : ordinalIndex)
+                        notifyChanged()
                     }
                 }
                 Item {
@@ -171,11 +207,11 @@ QuiPopup {
                 text: "确认"
                 enabled: !control.isError()
                 onClicked: {
-                    labelClassChanged(classId, nameField.text, colorField.text, shortcutField.text, isCreate ? -1 : ordinalField.text)
+                    labelClassChanged(classId, nameField.text, colorField.text, shortcutField.text, isCreate ? -1 : ordinalField.text, classGroup)
                     if (control.isError()) {
                         return
                     }
-                    labelClassChangedAccepted(classId, nameField.text, colorField.text, shortcutField.text, isCreate ? maxOrdinalIndex : ordinalField.text)
+                    labelClassChangedAccepted(classId, nameField.text, colorField.text, shortcutField.text, isCreate ? maxOrdinalIndex : ordinalField.text, classGroup)
                     clearInput()
                     control.close()
                 }
@@ -201,12 +237,12 @@ QuiPopup {
         title: "选择颜色"
         onAccepted: {
             colorField.text = colorDialog.currentColor
-            labelClassChanged(classId, className, classColor, classShortcut, isCreate ? -1 : ordinalIndex)
+            notifyChanged()
         }
     }
 
-    function openForCreate(defaultColor) {
-        clearInput(defaultColor)
+    function openForCreate(defaultColor, defaultGroup) {
+        clearInput(defaultColor, defaultGroup)
         control.classId = -1
         control.isCreate = true
         colorDialog.currentColor = defaultColor
@@ -214,11 +250,12 @@ QuiPopup {
         control.open()
     }
 
-    function clearInput(defaultColor) {
+    function clearInput(defaultColor, defaultGroup) {
         nameField.text = ""
         colorField.text = defaultColor !== undefined ? defaultColor : "#000000"
         shortcutField.text = ""
         ordinalField.text = ""
+        classGroup = defaultGroup !== undefined ? normalizedGroup(defaultGroup) : "anomaly"
         control.msg = ""
     }
 }

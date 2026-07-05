@@ -45,6 +45,7 @@ Rectangle {
         sourceSize.width: image.width
         sourceSize.height: image.height
         asynchronous: true
+        cache: false
     }
     
     BusyIndicator {
@@ -55,6 +56,7 @@ Rectangle {
     MultiEffect {
         source: image
         anchors.fill: image
+        visible: image.status === Image.Ready && image.source.toString().length > 0
         brightness: imageInstanceDelegate.imageBrightness
         contrast: imageInstanceDelegate.imageContrast
     }

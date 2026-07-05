@@ -46,6 +46,7 @@ Item {
     property ItemSelectionModel selection: imageInstances ? imageInstances.selection : null
     property ImageSearchController controller: featureManager ? featureManager.imageSearch : null
     property ImageClusterController imageClusterController: featureManager ? featureManager.imageCluster : null
+    readonly property string providerCacheKey: dataManager ? encodeURIComponent(dataManager.providerCacheKey) : ""
 
     QuiMenu {
         id: imageInstanceMenu
@@ -174,6 +175,7 @@ Item {
                           ? "image://imageinstance/" + model.image_id
                             + "?w=" + Math.round(width)
                             + "&h=" + Math.round(height)
+                            + "&project=" + instancesView.providerCacheKey
                           : ""
             image_id: model.image_id >= 0 ? model.image_id : -1
             selected: model.selected ? model.selected : false

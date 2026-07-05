@@ -108,11 +108,11 @@ DataSettings:
 
       - name_en: label_border_padding
         name_cn: 标注缩略图边框留白
-        desc: 用于配置数据设置中标注显示相关的标注缩略图边框留白。
+        desc: 用于配置数据设置中标注显示相关的标注缩略图边框留白，单位为像素。
         property_name: labelThumbnailBorderPadding
-        value: 0.1
+        value: 10.0
         value_type: double
-        value_range: [0.0, 1.0, 0.05]
+        value_range: [0.0, 200.0, 10.0]
         control_type: slider
         sidebar:
           review:

@@ -11,14 +11,61 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <algorithm>
 
 namespace dltool::data {
-ImageInstance::ImageInstance(const int64_t dataset_id, const int64_t image_id, const QString &path, QObject *parent)
+
+namespace {
+
+constexpr const char *kImageLabelClassIdKey = "image_label_class_id";
+
+int64_t imageLabelClassIdFromExtraData(const std::vector<uint8_t> &blob)
+{
+    if (blob.empty())
+    {
+        return -1;
+    }
+
+    const QByteArray bytes(reinterpret_cast<const char *>(blob.data()), static_cast<qsizetype>(blob.size()));
+    QJsonParseError  parse_error;
+    const QJsonDocument document = QJsonDocument::fromJson(bytes, &parse_error);
+    if (parse_error.error != QJsonParseError::NoError || !document.isObject())
+    {
+        return -1;
+    }
+
+    return document.object().value(QString::fromUtf8(kImageLabelClassIdKey)).toInteger(-1);
+}
+
+std::vector<uint8_t> extraDataForImageLabelClassId(const int64_t label_class_id)
+{
+    QJsonObject object;
+    if (label_class_id >= 0)
+    {
+        object.insert(QString::fromUtf8(kImageLabelClassIdKey), static_cast<qint64>(label_class_id));
+    }
+
+    const QByteArray json = QJsonDocument(object).toJson(QJsonDocument::Compact);
+    std::vector<uint8_t> blob;
+    blob.reserve(static_cast<size_t>(json.size()));
+    for (char ch : json)
+    {
+        blob.push_back(static_cast<uint8_t>(ch));
+    }
+    return blob;
+}
+
+} // namespace
+
+ImageInstance::ImageInstance(const int64_t dataset_id, const int64_t image_id, const QString &path,
+                             const int64_t image_label_class_id, QObject *parent)
     : QObject(parent)
     , dataset_id_(dataset_id)
     , image_id_(image_id)
     , path_(path)
+    , image_label_class_id_(image_label_class_id)
 {
     name_ = QFileInfo(path_).fileName();
 }
@@ -66,11 +113,15 @@ void ImageInstancesListModel::init()
     std::vector<int64_t> dataset_ids;
     std::vector<int64_t> image_ids;
     std::vector<QString> paths;
-    database_->getAllImages(dataset_ids, image_ids, paths, err_msg);
+    std::vector<std::vector<uint8_t>> extra_data;
+    database_->getAllImages(dataset_ids, image_ids, paths, extra_data, err_msg);
 
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        full_image_instances_.emplace(image_ids[i], new ImageInstance(dataset_ids[i], image_ids[i], paths[i], this));
+        full_image_instances_.emplace(
+            image_ids[i],
+            new ImageInstance(dataset_ids[i], image_ids[i], paths[i],
+                              i < extra_data.size() ? imageLabelClassIdFromExtraData(extra_data[i]) : -1, this));
     }
     std::sort(image_ids.begin(), image_ids.end(), std::greater<int64_t>());
     image_ids_.insert(image_ids_.begin(), image_ids.begin(), image_ids.end());
@@ -101,6 +152,8 @@ QVariant ImageInstancesListModel::data(const QModelIndex &index, int role) const
         return getIsCurrent(index);
     case HasLabelsRole:
         return getHasLabels(index);
+    case ImageLabelClassIdRole:
+        return getImageLabelClassId(index);
     default:
         return QVariant();
     }
@@ -114,6 +167,7 @@ QHash<int, QByteArray> ImageInstancesListModel::roleNames() const
         {     PathRole,      "path"},
         { SelectedRole,  "selected"},
         {HasLabelsRole, "hasLabels"},
+        {ImageLabelClassIdRole, "image_label_class_id"},
     };
 }
 
@@ -170,7 +224,7 @@ bool ImageInstancesListModel::addImages(const int64_t dataset_id, const std::vec
     beginInsertRows(QModelIndex(), 0, count);
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        full_image_instances_.emplace(image_ids[i], new ImageInstance(dataset_id, image_ids[i], paths[i], this));
+        full_image_instances_.emplace(image_ids[i], new ImageInstance(dataset_id, image_ids[i], paths[i], -1, this));
     }
     // 注意：为了 UI 显示，我们需要将 image_ids 从大到小排序后插入到 image_ids_ 列表
     // 但不能修改传出的 image_ids 参数，因为调用者依赖于 image_ids 和 paths 的顺序对应关系
@@ -235,7 +289,7 @@ bool ImageInstancesListModel::addImages(const std::vector<int64_t> &dataset_ids,
     beginInsertRows(QModelIndex(), 0, count);
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        full_image_instances_.emplace(image_ids[i], new ImageInstance(dataset_ids[i], image_ids[i], paths[i], this));
+        full_image_instances_.emplace(image_ids[i], new ImageInstance(dataset_ids[i], image_ids[i], paths[i], -1, this));
     }
     std::vector<int64_t> sorted_image_ids(image_ids.begin(), image_ids.end());
     std::sort(sorted_image_ids.begin(), sorted_image_ids.end(), std::greater<int64_t>());
@@ -548,6 +602,14 @@ QString ImageInstancesListModel::currentImagePath() const
     return getImagePath(index).toString();
 }
 
+int ImageInstancesListModel::currentImageLabelClassId() const
+{
+    QModelIndex index = selection_->currentIndex();
+    if (index.row() < 0 || index.row() >= rowCount())
+        return -1;
+    return getImageLabelClassId(index).toInt();
+}
+
 int ImageInstancesListModel::getImageId(const QModelIndex &index) const
 {
     return image_ids_[index.row()];
@@ -584,6 +646,12 @@ QVariant ImageInstancesListModel::getHasLabels(const QModelIndex &index) const
         return !it->second->labelIds().empty();
     }
     return false;
+}
+
+QVariant ImageInstancesListModel::getImageLabelClassId(const QModelIndex &index) const
+{
+    const int64_t image_id = image_ids_[index.row()];
+    return static_cast<qlonglong>(getImageLabelClassId(image_id));
 }
 
 int ImageInstancesListModel::getCurrentImageId() const
@@ -742,6 +810,17 @@ void ImageInstancesListModel::notifyHasLabelsChanged(int64_t image_id)
     }
 }
 
+void ImageInstancesListModel::notifyImageLabelClassChanged(int64_t image_id)
+{
+    auto it = std::find(image_ids_.begin(), image_ids_.end(), image_id);
+    if (it != image_ids_.end())
+    {
+        const int   row = static_cast<int>(std::distance(image_ids_.begin(), it));
+        QModelIndex idx = index(row, 0);
+        emit        dataChanged(idx, idx, {ImageLabelClassIdRole});
+    }
+}
+
 void ImageInstancesListModel::addImagesTagIds(const std::vector<int64_t> &image_ids,
                                               const std::vector<int64_t> &tag_ids)
 {
@@ -787,6 +866,78 @@ std::vector<int64_t> ImageInstancesListModel::getAllImageIds() const
     return image_ids;
 }
 
+bool ImageInstancesListModel::setImageLabelClassId(const int64_t image_id, const int64_t label_class_id)
+{
+    return setImageLabelClassIds({image_id}, {label_class_id});
+}
+
+bool ImageInstancesListModel::setImageLabelClassIds(const std::vector<int64_t> &image_ids,
+                                                    const std::vector<int64_t> &label_class_ids)
+{
+    if (database_ == nullptr)
+    {
+        spdlog::error("更新图像级类别失败: 数据库未初始化");
+        return false;
+    }
+    if (image_ids.size() != label_class_ids.size())
+    {
+        spdlog::error("更新图像级类别失败: 图像 ID 和类别 ID 数量不一致");
+        return false;
+    }
+    if (image_ids.empty())
+    {
+        return true;
+    }
+
+    std::vector<int64_t>              valid_image_ids;
+    std::vector<int64_t>              valid_label_class_ids;
+    std::vector<std::vector<uint8_t>> extra_data;
+    valid_image_ids.reserve(image_ids.size());
+    valid_label_class_ids.reserve(label_class_ids.size());
+    extra_data.reserve(image_ids.size());
+
+    for (size_t i = 0; i < image_ids.size(); ++i)
+    {
+        ImageInstance *image_instance = getImageInstance(image_ids[i]);
+        if (image_instance == nullptr)
+        {
+            continue;
+        }
+        valid_image_ids.push_back(image_ids[i]);
+        valid_label_class_ids.push_back(label_class_ids[i]);
+        extra_data.push_back(extraDataForImageLabelClassId(label_class_ids[i]));
+    }
+
+    if (valid_image_ids.empty())
+    {
+        return true;
+    }
+
+    QString err_msg;
+    if (!database_->updateImagesExtraData(valid_image_ids, extra_data, err_msg))
+    {
+        spdlog::error("更新图像级类别失败: {}", err_msg.toUtf8().constData());
+        return false;
+    }
+
+    for (size_t i = 0; i < valid_image_ids.size(); ++i)
+    {
+        ImageInstance *image_instance = getImageInstance(valid_image_ids[i]);
+        if (image_instance == nullptr)
+        {
+            continue;
+        }
+        image_instance->setImageLabelClassId(valid_label_class_ids[i]);
+        notifyImageLabelClassChanged(valid_image_ids[i]);
+    }
+
+    if (std::find(valid_image_ids.begin(), valid_image_ids.end(), getCurrentImageId()) != valid_image_ids.end())
+    {
+        emit currentImageChanged();
+    }
+    return true;
+}
+
 std::vector<int64_t> ImageInstancesListModel::getImagesDatasetIds(const std::vector<int64_t> &image_ids) const
 {
     std::vector<int64_t> dataset_ids;
@@ -830,6 +981,14 @@ QString ImageInstancesListModel::getImagePath(const int64_t image_id) const
     if (found == full_image_instances_.end())
         return QString();
     return found->second->path();
+}
+
+int64_t ImageInstancesListModel::getImageLabelClassId(const int64_t image_id) const
+{
+    auto found = full_image_instances_.find(image_id);
+    if (found == full_image_instances_.end())
+        return -1;
+    return found->second->imageLabelClassId();
 }
 
 int64_t ImageInstancesListModel::getImageDatasetId(const int64_t image_id) const
@@ -1115,7 +1274,7 @@ int ImageInfoListModel::rowCount(const QModelIndex &parent) const
 {
     if (parent.isValid())
         return 0;
-    return 5;
+    return 6;
 }
 
 QVariant ImageInfoListModel::data(const QModelIndex &index, int role) const
@@ -1148,7 +1307,7 @@ void ImageInfoListModel::onCurrentImageChanged()
 
 void ImageInfoListModel::updateLabelInfo()
 {
-    emit dataChanged(index(4), index(4), {ValueRole});
+    emit dataChanged(index(4), index(5), {ValueRole});
 }
 
 void ImageInfoListModel::resetModel()
@@ -1172,6 +1331,8 @@ QVariant ImageInfoListModel::getTitle(const QModelIndex &index) const
     case 3:
         return "所属数据集:";
     case 4:
+        return "图像类别:";
+    case 5:
         return "标签实例:";
     default:
         return QVariant();
@@ -1199,6 +1360,16 @@ QVariant ImageInfoListModel::getValue(const QModelIndex &index) const
     case 3:
         return datasets_->getDatasetName(instance->datasetId());
     case 4:
+    {
+        const int64_t class_id = instance->imageLabelClassId();
+        if (class_id < 0)
+        {
+            return QString();
+        }
+        const QString class_name = label_classes_->getLabelClassName(static_cast<int>(class_id));
+        return class_name;
+    }
+    case 5:
     {
         std::set<int64_t>      label_ids = instance->labelIds();
         std::map<QString, int> classes_count;

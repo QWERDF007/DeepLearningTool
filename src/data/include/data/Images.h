@@ -22,7 +22,8 @@ class LabelInstancesListModel;
 class ImageInstance : public QObject
 {
 public:
-    ImageInstance(const int64_t dataset_id, const int64_t image_id, const QString &path, QObject *parent = nullptr);
+    ImageInstance(const int64_t dataset_id, const int64_t image_id, const QString &path,
+                  const int64_t image_label_class_id = -1, QObject *parent = nullptr);
     ~ImageInstance();
 
     int64_t datasetId() const
@@ -48,6 +49,16 @@ public:
     QString path() const
     {
         return path_;
+    }
+
+    int64_t imageLabelClassId() const
+    {
+        return image_label_class_id_;
+    }
+
+    void setImageLabelClassId(const int64_t label_class_id)
+    {
+        image_label_class_id_ = label_class_id;
     }
 
     void addTagIds(const std::vector<int64_t> &tag_ids)
@@ -123,6 +134,8 @@ private:
 
     QString name_;
 
+    int64_t image_label_class_id_{-1};
+
     std::set<int64_t> tag_ids_;
 
     std::set<int64_t> label_ids_;
@@ -140,6 +153,7 @@ class ImageInstancesListModel : public QAbstractListModel
     Q_PROPERTY(int currentImageId READ getCurrentImageId NOTIFY currentImageChanged)
     Q_PROPERTY(QString currentImageName READ currentImageName NOTIFY currentImageChanged)
     Q_PROPERTY(QString currentImagePath READ currentImagePath NOTIFY currentImageChanged)
+    Q_PROPERTY(int currentImageLabelClassId READ currentImageLabelClassId NOTIFY currentImageChanged)
     Q_PROPERTY(int count READ count NOTIFY statsChanged)
     Q_PROPERTY(int lastIndex READ lastIndex WRITE setLastIndex NOTIFY lastSelectedIndexChanged)
 public:
@@ -160,6 +174,7 @@ public:
         SelectedRole,
         IsCurrentRole,
         HasLabelsRole,
+        ImageLabelClassIdRole,
     };
     Q_ENUM(Role)
 
@@ -193,6 +208,7 @@ public:
 
     QString currentImageName() const;
     QString currentImagePath() const;
+    int     currentImageLabelClassId() const;
 
     int count() const
     {
@@ -242,6 +258,9 @@ public:
     void addImagesTagIds(const std::vector<int64_t> &image_ids, const std::vector<std::vector<int64_t>> &tag_ids);
 
     std::vector<int64_t> getAllImageIds() const;
+    bool                 setImageLabelClassId(const int64_t image_id, const int64_t label_class_id);
+    bool                 setImageLabelClassIds(const std::vector<int64_t> &image_ids,
+                                               const std::vector<int64_t> &label_class_ids);
 
     std::vector<int64_t> getImagesDatasetIds(const std::vector<int64_t> &image_ids) const;
 
@@ -250,6 +269,7 @@ public:
 
     QString           getImageName(const int64_t image_id) const;
     QString           getImagePath(const int64_t image_id) const;
+    int64_t           getImageLabelClassId(const int64_t image_id) const;
     int64_t           getImageDatasetId(const int64_t image_id) const;
     std::set<int64_t> getImageTagIds(const int64_t image_id) const;
 
@@ -290,8 +310,10 @@ private:
     QVariant getSelected(const QModelIndex &index) const;
     QVariant getIsCurrent(const QModelIndex &index) const;
     QVariant getHasLabels(const QModelIndex &index) const;
+    QVariant getImageLabelClassId(const QModelIndex &index) const;
 
     void notifyHasLabelsChanged(int64_t image_id);
+    void notifyImageLabelClassChanged(int64_t image_id);
 
     void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
 

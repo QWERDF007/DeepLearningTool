@@ -47,6 +47,7 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(LabelClassFilterItemsModel *labelClassFilterItems READ labelClassFilterItems CONSTANT FINAL)
     Q_PROPERTY(CategoryStatisticsModel *categoryStatisticsModel READ categoryStatisticsModel CONSTANT FINAL)
     Q_PROPERTY(int method READ method CONSTANT FINAL)
+    Q_PROPERTY(QString providerCacheKey READ providerCacheKey CONSTANT FINAL)
 
 public:
     using ImportFinishedHandler = std::function<void(bool, const QString &)>;
@@ -125,6 +126,7 @@ public:
     }
 
     QString databasePath() const;
+    QString providerCacheKey() const;
 
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
     Q_INVOKABLE QVariantList   getAllLabelClassIds() const;
@@ -142,6 +144,10 @@ public:
 
     Q_INVOKABLE void importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
                                 const QString &data_dir);
+    Q_INVOKABLE void scanImportLabelClasses(const int data_format, const QString &image_dir, const QString &data_dir);
+    Q_INVOKABLE void importDataWithLabelClassGroups(const int64_t dataset_id, const int data_format,
+                                                    const QString &image_dir, const QString &data_dir,
+                                                    const QVariantMap &label_class_groups);
     Q_INVOKABLE void exportDatasets(const QVariantList &dataset_ids, const int data_format, const QString &output_dir,
                                     const QVariantMap &options = {});
 
@@ -150,6 +156,8 @@ public:
     Q_INVOKABLE void moveToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id);
 
     Q_INVOKABLE void addLabelClass(const QString &name, const QString &color, const QString &shortcut);
+    Q_INVOKABLE void addLabelClassWithGroup(const QString &name, const QString &color, const QString &shortcut,
+                                            const QString &group);
 
     /**
      * @brief 更新标签类别的名称、颜色、快捷键、序号索引
@@ -161,6 +169,10 @@ public:
      */
     Q_INVOKABLE void updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
                                       const QString &shortcut, const int64_t ordinal_index);
+    Q_INVOKABLE void updateLabelClassWithGroup(const int64_t label_class_id, const QString &name,
+                                               const QString &color, const QString &shortcut,
+                                               const int64_t ordinal_index, const QString &group);
+    Q_INVOKABLE void updateLabelClassGroup(const int64_t label_class_id, const QString &group);
     Q_INVOKABLE void deleteLabelClass(const int64_t label_class_id);
 
     Q_INVOKABLE void addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
@@ -171,6 +183,10 @@ public:
                                        const std::vector<int64_t> &label_class_ids);
     Q_INVOKABLE void deleteLabels(const std::vector<int64_t> &label_ids);
     Q_INVOKABLE void duplicateSelectedLabels();
+    Q_INVOKABLE bool setImageLabelClass(const int64_t image_id, const int64_t label_class_id);
+    Q_INVOKABLE QVariantMap getImageLevelLabelData(const int64_t image_id) const;
+    Q_INVOKABLE void refreshAnomalyImageClassesFromPolygons(const QVariantList &image_ids,
+                                                            bool only_unset = false);
 
     Q_INVOKABLE void addTagClass(const QString &name);
 
@@ -206,6 +222,7 @@ public:
 
 signals:
     void dataImportFinished(bool success, const QString &message);
+    void importLabelClassesScanned(bool success, QVariantList label_classes, const QString &message);
 
 private:
     struct PendingImportTask;
@@ -227,6 +244,8 @@ private:
                               std::vector<int64_t> image_heights, std::map<QString, QString> label_class_info,
                               std::vector<ImportedLabel> labels, int64_t processed_images, int64_t total_images);
     void handleImportFinished(bool success, std::vector<int64_t> image_ids, std::vector<int64_t> label_class_ids);
+    void startImportData(const int64_t dataset_id, const int data_format, const QString &image_dir,
+                         const QString &data_dir, const std::map<QString, QString> &label_class_groups);
     bool addLabelsInternal(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                            const std::vector<QVariantMap> &data, QString *err_msg = nullptr);
     bool writeImportBatch(int64_t dataset_id, const std::vector<QString> &image_paths,

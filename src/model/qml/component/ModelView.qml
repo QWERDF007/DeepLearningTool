@@ -23,7 +23,7 @@ Rectangle {
     property string taskType: ""
     property bool taskActionsEnabled: false
 
-    function clearCurrentModel() {
+    function resetCurrentModelState() {
         currentModelId = -1
         currentModelUuid = ""
         currentModelName = ""
@@ -35,13 +35,13 @@ Rectangle {
 
     function selectModel(row) {
         if (!modelManager || row < 0 || row >= view.count) {
-            clearCurrentModel()
+            resetCurrentModelState()
             return
         }
 
         const modelData = modelManager.modelAt(row)
         if (!modelData || modelData.model_id === undefined || modelData.model_id < 0 || !modelData.uuid) {
-            clearCurrentModel()
+            resetCurrentModelState()
             return
         }
 
@@ -56,7 +56,7 @@ Rectangle {
 
     function ensureCurrentModel() {
         if (!modelManager || view.count <= 0) {
-            clearCurrentModel()
+            resetCurrentModelState()
             return
         }
 
@@ -66,7 +66,7 @@ Rectangle {
 
     function requestEnsureCurrentModel() {
         if (componentCompleted) {
-            Qt.callLater(ensureCurrentModel)
+            ensureCurrentModel()
         }
     }
 
@@ -123,7 +123,7 @@ Rectangle {
             onClicked: {
                 if (modelManager && modelView.currentModelId >= 0) {
                     modelManager.deleteModel(modelView.currentModelId)
-                    Qt.callLater(modelView.ensureCurrentModel)
+                    modelView.requestEnsureCurrentModel()
                 }
             }
         }
@@ -182,11 +182,9 @@ Rectangle {
                 onModelChanged: modelView.requestEnsureCurrentModel()
                 onCurrentIndexChanged: {
                     if (currentIndex >= 0) {
-                        Qt.callLater(function () {
-                            modelView.selectModel(view.currentIndex)
-                        })
+                        modelView.selectModel(currentIndex)
                     } else if (count <= 0) {
-                        modelView.clearCurrentModel()
+                        modelView.resetCurrentModelState()
                     }
                 }
 

@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import Qt.labs.platform
 
 import dltool.ui
+import dltool.core
 import dltool.data
 import quickui
 
@@ -22,8 +23,16 @@ QuiPopup {
     property var datasetIds: []
     property var datasetsModel: []
     property string datasetName: ""
+    property bool waitingForClassScan: false
+    property int pendingDatasetId: -1
+    property int pendingDataFormat: -1
+    property string pendingImageDir: ""
+    property string pendingDataDir: ""
 
     readonly property bool importing: ioMode === DatasetDataIODialog.Import
+    readonly property bool anomalyImport: importing
+                                          && dataManager
+                                          && dataManager.method === DeepLearningMethod.AnomalyDetection
     readonly property var dataFormatModel: dataManager
             ? (importing
                ? DataFormat.getSupportedImportDataFormat(dataManager.method)
@@ -49,6 +58,54 @@ QuiPopup {
 
     onDataFormatModelChanged: resetFormatSelection()
     Component.onCompleted: resetFormatSelection()
+
+    function normalizedGroup(group) {
+        return group === "good" || group === "良好" ? "good" : "anomaly"
+    }
+
+    function beginImport(dataFormat) {
+        pendingDatasetId = dataManager.getDatasetId(datasetName)
+        pendingDataFormat = dataFormat
+        pendingImageDir = imagePathInput.text.trim()
+        pendingDataDir = needsDataDir ? dataPathInput.text.trim() : ""
+
+        if (anomalyImport) {
+            waitingForClassScan = true
+            dataManager.scanImportLabelClasses(pendingDataFormat, pendingImageDir, pendingDataDir)
+            return
+        }
+
+        dataManager.importData(pendingDatasetId, pendingDataFormat, pendingImageDir, pendingDataDir)
+    }
+
+    function importWithGroups(groups) {
+        if (!dataManager || pendingDatasetId < 0 || pendingDataFormat < 0) {
+            return
+        }
+        dataManager.importDataWithLabelClassGroups(pendingDatasetId, pendingDataFormat,
+                                                   pendingImageDir, pendingDataDir, groups)
+    }
+
+    Connections {
+        target: dialog.dataManager
+        function onImportLabelClassesScanned(success, labelClasses, message) {
+            if (!dialog.waitingForClassScan) {
+                return
+            }
+            dialog.waitingForClassScan = false
+            if (!success) {
+                return
+            }
+
+            let classes = labelClasses ? Array.from(labelClasses) : []
+            if (classes.length === 0) {
+                dialog.close()
+                dialog.importWithGroups({})
+            } else {
+                classGroupDialog.openForClasses(classes)
+            }
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -268,14 +325,14 @@ QuiPopup {
                 text: dialog.importing ? "导入" : "导出"
                 normalColor: QuiColor.Highlight
                 onClicked: {
-                    dialog.close()
                     let data_format = DataFormat.getDataFormat(dialog.dataFormat)
                     if (dialog.importing) {
-                        let dataset_id = dialog.dataManager.getDatasetId(dialog.datasetName)
-                        dialog.dataManager.importData(dataset_id, data_format,
-                                                      imagePathInput.text.trim(),
-                                                      dialog.needsDataDir ? dataPathInput.text.trim() : "")
+                        if (!dialog.anomalyImport) {
+                            dialog.close()
+                        }
+                        dialog.beginImport(data_format)
                     } else {
+                        dialog.close()
                         dialog.dataManager.exportDatasets(dialog.datasetIds, data_format,
                                                           outputPathInput.text.trim(),
                                                           dialog.exportOptions)
@@ -301,5 +358,114 @@ QuiPopup {
         id: outputDialog
         folder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
         onAccepted: outputPathInput.text = Utils.getCleanPath(outputDialog.folder.toString())
+    }
+
+    QuiPopup {
+        id: classGroupDialog
+        width: 520
+        height: 420
+        maskOpacity: 0.2
+
+        property var pendingClasses: []
+
+        function openForClasses(labelClasses) {
+            pendingClasses = labelClasses ? Array.from(labelClasses) : []
+            if (pendingClasses.length > 0) {
+                open()
+            }
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 10
+
+            QuiText {
+                text: "设置类别分组"
+                font: QuiFont.Subtitle
+            }
+
+            ListView {
+                id: classGroupList
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                spacing: 6
+                model: classGroupDialog.pendingClasses
+                ScrollBar.vertical: QuiScrollBar {}
+
+                delegate: Rectangle {
+                    width: classGroupList.width
+                    height: 40
+                    radius: 3
+                    color: Qt.lighter(QuiColor.Primary, 1.1)
+                    border.width: 1
+                    border.color: QuiColor.Border
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 6
+                        spacing: 8
+
+                        Rectangle {
+                            Layout.preferredWidth: 22
+                            Layout.preferredHeight: 22
+                            radius: 3
+                            color: modelData.color || "#cc3333"
+                            border.width: 1
+                            border.color: "#222222"
+                        }
+
+                        QuiText {
+                            Layout.fillWidth: true
+                            text: modelData.name || ""
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        QuiComboBox {
+                            Layout.preferredWidth: 120
+                            model: ["异常", "良好"]
+                            currentIndex: dialog.normalizedGroup(modelData.group) === "good" ? 1 : 0
+                            onActivated: function(idx) {
+                                classGroupDialog.pendingClasses[index].group = idx === 1 ? "good" : "anomaly"
+                            }
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                QuiButton {
+                    text: "取消"
+                    onClicked: classGroupDialog.close()
+                }
+
+                QuiButton {
+                    text: "导入"
+                    normalColor: QuiColor.Highlight
+                    onClicked: {
+                        let groups = ({})
+                        for (let i = 0; i < classGroupDialog.pendingClasses.length; ++i) {
+                            let item = classGroupDialog.pendingClasses[i]
+                            let name = String(item.name ?? "")
+                            if (name.length > 0) {
+                                groups[name] = dialog.normalizedGroup(item.group)
+                            }
+                        }
+                        classGroupDialog.close()
+                        dialog.close()
+                        dialog.importWithGroups(groups)
+                    }
+                }
+            }
+        }
     }
 }

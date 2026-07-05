@@ -30,6 +30,7 @@
 #include <functional>
 #include <limits>
 #include <map>
+#include <set>
 #include <unordered_map>
 #include <utility>
 
@@ -64,6 +65,15 @@ QString uniqueImageName(const QString &source_path, int64_t stable_id, const std
         candidate      = QString("%1%2").arg(candidate_stem, suffix);
     }
     return candidate;
+}
+
+void addScannedLabelClass(std::map<QString, QString> &label_class_info, const QString &raw_name, int &color_index)
+{
+    const QString name = sanitizeName(raw_name);
+    if (name.isEmpty() || label_class_info.find(name) != label_class_info.end())
+        return;
+
+    label_class_info[name] = DatasetIO::generateDefaultColor(color_index++);
 }
 
 // ============================================================================
@@ -625,6 +635,13 @@ void DataIO::startImport(int64_t dataset_id, const QString &image_dir, const QSt
     Q_UNUSED(data_dir)
 }
 
+void DataIO::startScanLabelClasses(const QString &image_dir, const QString &data_dir)
+{
+    Q_UNUSED(image_dir)
+    Q_UNUSED(data_dir)
+    emit labelClassesScanned(true, {}, QString());
+}
+
 void DataIO::startExport(const ExportDataset &dataset, const QString &output_dir, const QVariantMap &options)
 {
     Q_UNUSED(dataset)
@@ -646,6 +663,7 @@ void DataIO::runInThread(std::function<void()> work)
     auto *thread = new QThread();
     connect(thread, &QThread::started, this, std::move(work), Qt::DirectConnection);
     connect(this, &DataIO::importFinished, thread, &QThread::quit);
+    connect(this, &DataIO::labelClassesScanned, thread, &QThread::quit);
     connect(this, &DataIO::exportFinished, thread, &QThread::quit);
     connect(thread, &QThread::finished, thread, &QThread::deleteLater);
     thread->start();
@@ -756,6 +774,12 @@ void COCOIO::startImport(int64_t dataset_id, const QString &image_dir, const QSt
     runInThread([this, dataset_id, image_dir, data_dir]() { doImport(dataset_id, image_dir, data_dir); });
 }
 
+void COCOIO::startScanLabelClasses(const QString &image_dir, const QString &data_dir)
+{
+    Q_UNUSED(image_dir)
+    runInThread([this, data_dir]() { doScanLabelClasses(data_dir); });
+}
+
 void COCOIO::startExport(const ExportDataset &dataset, const QString &output_dir, const QVariantMap &options)
 {
     Q_UNUSED(options)
@@ -798,6 +822,60 @@ QString COCOIO::resolveImagePath(const QString &image_dir, const QString &file_n
         return found->second;
 
     return QString();
+}
+
+void COCOIO::doScanLabelClasses(const QString &data_dir)
+{
+    try
+    {
+        const QString annotation_dir = data_dir.trimmed();
+        if (annotation_dir.isEmpty())
+        {
+            emit labelClassesScanned(true, {}, QStringLiteral("未提供 COCO 标注目录"));
+            return;
+        }
+
+        updateProgress(0, QStringLiteral("正在扫描 COCO 类别..."));
+        const QString coco_json_path = findCocoJsonFile(annotation_dir);
+        if (coco_json_path.isEmpty())
+        {
+            emit labelClassesScanned(false, {}, QStringLiteral("未找到有效的 COCO 标注文件"));
+            return;
+        }
+
+        std::map<QString, QString> label_class_info;
+        int                        color_index = 0;
+        const bool ok = parseTopLevelArrayObjects(
+            coco_json_path,
+            [&](const QString &array_key, const nlohmann::json &object_json) -> bool
+            {
+                if (isCancelRequested())
+                    return false;
+
+                if (array_key != QStringLiteral("categories"))
+                    return true;
+
+                if (object_json.contains("name") && object_json["name"].is_string())
+                    addScannedLabelClass(label_class_info,
+                                         QString::fromStdString(object_json["name"].get<std::string>()),
+                                         color_index);
+                return true;
+            });
+
+        if (!ok || isCancelRequested())
+        {
+            emit labelClassesScanned(false, {}, QStringLiteral("COCO 类别扫描已取消或失败"));
+            return;
+        }
+
+        updateProgress(100, QStringLiteral("COCO 类别扫描完成: %1 个类别").arg(label_class_info.size()));
+        emit labelClassesScanned(true, label_class_info, QString());
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("COCO 类别扫描失败: {}", e.what());
+        emit labelClassesScanned(false, {}, QString("COCO 类别扫描失败: %1").arg(e.what()));
+    }
 }
 
 void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir)
@@ -1006,7 +1084,8 @@ void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
             return !isCancelRequested();
         };
 
-        const bool import_as_segmentation = target_method_ == DeepLearningMethod::Segmentation;
+        const bool import_as_segmentation = target_method_ == DeepLearningMethod::Segmentation
+                                          || target_method_ == DeepLearningMethod::AnomalyDetection;
         const bool pass2_ok               = parseTopLevelArrayObjects(
             coco_json_path,
             [&](const QString &array_key, const nlohmann::json &annotation_json) -> bool
@@ -1273,6 +1352,11 @@ void LabelMeIO::startImport(int64_t dataset_id, const QString &image_dir, const 
     runInThread([this, dataset_id, image_dir, data_dir]() { doImport(dataset_id, image_dir, data_dir); });
 }
 
+void LabelMeIO::startScanLabelClasses(const QString &image_dir, const QString &data_dir)
+{
+    runInThread([this, image_dir, data_dir]() { doScanLabelClasses(image_dir, data_dir); });
+}
+
 void LabelMeIO::startExport(const ExportDataset &dataset, const QString &output_dir, const QVariantMap &options)
 {
     Q_UNUSED(options)
@@ -1333,7 +1417,7 @@ bool LabelMeIO::parseLabelMeJson(const QString &json_path, LabelMeData &data)
 }
 
 QVariantMap LabelMeIO::convertShapeToLabelData(const LabelMeShape &shape, int image_width, int image_height,
-                                                bool convert_rectangle_to_polygon)
+                                               bool convert_rectangle_to_polygon)
 {
     if (shape.shape_type == QStringLiteral("rectangle"))
     {
@@ -1345,7 +1429,8 @@ QVariantMap LabelMeIO::convertShapeToLabelData(const LabelMeShape &shape, int im
 
         const QPointF p1 = shape.points[0];
         const QPointF p2 = shape.points[1];
-        if (target_method_ == DeepLearningMethod::Segmentation)
+        if (target_method_ == DeepLearningMethod::Segmentation
+            || target_method_ == DeepLearningMethod::AnomalyDetection)
         {
             if (!convert_rectangle_to_polygon)
                 return {};
@@ -1387,6 +1472,77 @@ QVariantMap LabelMeIO::convertShapeToLabelData(const LabelMeShape &shape, int im
     spdlog::warn("不支持的 LabelMe shape_type: {}, label: {}", shape.shape_type.toUtf8().constData(),
                  shape.label.toUtf8().constData());
     return {};
+}
+
+void LabelMeIO::doScanLabelClasses(const QString &image_dir, const QString &data_dir)
+{
+    try
+    {
+        const QString annotation_dir = data_dir.trimmed();
+        if (annotation_dir.isEmpty())
+        {
+            emit labelClassesScanned(true, {}, QStringLiteral("未提供 LabelMe 标注目录"));
+            return;
+        }
+
+        updateProgress(0, QStringLiteral("正在扫描 LabelMe 类别..."));
+        const std::vector<QString> json_files = DatasetIO::scanJsonFiles(annotation_dir);
+        if (json_files.empty())
+        {
+            emit labelClassesScanned(true, {}, QStringLiteral("未找到 LabelMe 标注文件"));
+            return;
+        }
+
+        std::set<QString> image_stems;
+        if (!image_dir.trimmed().isEmpty())
+        {
+            for (const QString &image_path : DatasetIO::scanImageFiles(image_dir))
+                image_stems.insert(QFileInfo(image_path).baseName());
+        }
+
+        std::map<QString, QString> label_class_info;
+        int                        color_index      = 0;
+        int                        processed_files  = 0;
+        int                        skipped_files    = 0;
+        for (const QString &json_path : json_files)
+        {
+            if (isCancelRequested())
+            {
+                emit labelClassesScanned(false, {}, QStringLiteral("LabelMe 类别扫描已取消"));
+                return;
+            }
+
+            ++processed_files;
+            if (!image_stems.empty() && image_stems.find(QFileInfo(json_path).baseName()) == image_stems.end())
+            {
+                ++skipped_files;
+                continue;
+            }
+
+            LabelMeData data;
+            if (!parseLabelMeJson(json_path, data))
+            {
+                ++skipped_files;
+                continue;
+            }
+
+            for (const LabelMeShape &shape : data.shapes)
+                addScannedLabelClass(label_class_info, shape.label, color_index);
+
+            if (processed_files % 500 == 0)
+                updateProgress(50, QStringLiteral("已扫描 LabelMe 标注 %1").arg(processed_files));
+        }
+
+        updateProgress(100, QStringLiteral("LabelMe 类别扫描完成: %1 个类别，跳过 %2 个文件")
+                                .arg(label_class_info.size())
+                                .arg(skipped_files));
+        emit labelClassesScanned(true, label_class_info, QString());
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("LabelMe 类别扫描失败: {}", e.what());
+        emit labelClassesScanned(false, {}, QString("LabelMe 类别扫描失败: %1").arg(e.what()));
+    }
 }
 
 void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir)
@@ -1491,7 +1647,8 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
                     ++parsed_annotations;
 
                     const bool convert_rectangles_to_polygons
-                        = target_method_ == DeepLearningMethod::Segmentation
+                        = (target_method_ == DeepLearningMethod::Segmentation
+                           || target_method_ == DeepLearningMethod::AnomalyDetection)
                           && containsOnlyRectangleShapes(data);
 
                     for (const LabelMeShape &shape : data.shapes)
@@ -1705,9 +1862,61 @@ void MaskIO::startImport(int64_t dataset_id, const QString &image_dir, const QSt
     runInThread([this, dataset_id, image_dir, data_dir]() { doImport(dataset_id, image_dir, data_dir); });
 }
 
+void MaskIO::startScanLabelClasses(const QString &image_dir, const QString &data_dir)
+{
+    Q_UNUSED(image_dir)
+    runInThread([this, data_dir]() { doScanLabelClasses(data_dir); });
+}
+
 void MaskIO::startExport(const ExportDataset &dataset, const QString &output_dir, const QVariantMap &options)
 {
     runInThread([this, dataset, output_dir, options]() { doExport(dataset, output_dir, options); });
+}
+
+void MaskIO::doScanLabelClasses(const QString &data_dir)
+{
+    try
+    {
+        const QString annotation_dir = data_dir.trimmed();
+        if (annotation_dir.isEmpty())
+        {
+            emit labelClassesScanned(true, {}, QStringLiteral("未提供 Mask 标注目录"));
+            return;
+        }
+
+        updateProgress(0, QStringLiteral("正在扫描 Mask 类别..."));
+        const std::vector<QString> mask_files = scanMaskFiles(annotation_dir);
+        if (mask_files.empty())
+        {
+            emit labelClassesScanned(true, {}, QStringLiteral("未找到 Mask 文件"));
+            return;
+        }
+
+        std::map<QString, QString> label_class_info;
+        int                        color_index = 0;
+        int                        processed   = 0;
+        for (const QString &mask_path : mask_files)
+        {
+            if (isCancelRequested())
+            {
+                emit labelClassesScanned(false, {}, QStringLiteral("Mask 类别扫描已取消"));
+                return;
+            }
+
+            ++processed;
+            addScannedLabelClass(label_class_info, labelClassNameForMask(mask_path, annotation_dir), color_index);
+            if (processed % 1000 == 0)
+                updateProgress(50, QStringLiteral("已扫描 Mask %1").arg(processed));
+        }
+
+        updateProgress(100, QStringLiteral("Mask 类别扫描完成: %1 个类别").arg(label_class_info.size()));
+        emit labelClassesScanned(true, label_class_info, QString());
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("Mask 类别扫描失败: {}", e.what());
+        emit labelClassesScanned(false, {}, QString("Mask 类别扫描失败: %1").arg(e.what()));
+    }
 }
 
 void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir)
@@ -1920,7 +2129,8 @@ QVariantMap MaskIO::maskToLabelData(const MaskGeometry &geometry, int image_widt
         return DatasetIO::bboxToLabelData(geometry.bbox.x() * sx, geometry.bbox.y() * sy, geometry.bbox.width() * sx,
                                           geometry.bbox.height() * sy, image_width, image_height);
 
-    if (target_method_ == DeepLearningMethod::Segmentation)
+    if (target_method_ == DeepLearningMethod::Segmentation
+        || target_method_ == DeepLearningMethod::AnomalyDetection)
     {
         std::vector<QPointF> scaled_points;
         scaled_points.reserve(geometry.polygon.size());
@@ -1929,7 +2139,7 @@ QVariantMap MaskIO::maskToLabelData(const MaskGeometry &geometry, int image_widt
         return DatasetIO::pointsToLabelData(scaled_points, image_width, image_height);
     }
 
-    spdlog::warn("Mask 导入仅支持检测和分割项目，当前项目类型: {}", target_method_);
+    spdlog::warn("Mask 导入仅支持检测、分割和异常检测项目，当前项目类型: {}", target_method_);
     return {};
 }
 
@@ -2117,10 +2327,63 @@ void FolderIO::startImport(int64_t dataset_id, const QString &image_dir, const Q
     runInThread([this, dataset_id, image_dir]() { doImport(dataset_id, image_dir); });
 }
 
+void FolderIO::startScanLabelClasses(const QString &image_dir, const QString &data_dir)
+{
+    Q_UNUSED(data_dir)
+    runInThread([this, image_dir]() { doScanLabelClasses(image_dir); });
+}
+
 void FolderIO::startExport(const ExportDataset &dataset, const QString &output_dir, const QVariantMap &options)
 {
     Q_UNUSED(options)
     runInThread([this, dataset, output_dir]() { doExport(dataset, output_dir); });
+}
+
+void FolderIO::doScanLabelClasses(const QString &image_dir)
+{
+    try
+    {
+        updateProgress(0, QStringLiteral("正在扫描类别目录..."));
+
+        const QDir root_dir(image_dir);
+        if (!root_dir.exists())
+        {
+            emit labelClassesScanned(false, {}, QString("图像目录不存在: %1").arg(image_dir));
+            return;
+        }
+
+        std::map<QString, QString> label_class_info;
+        int                        color_index = 0;
+        const QStringList class_dirs = root_dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+        for (const QString &dir_name : class_dirs)
+        {
+            if (isCancelRequested())
+            {
+                emit labelClassesScanned(false, {}, QStringLiteral("类别目录扫描已取消"));
+                return;
+            }
+
+            const QDir class_dir(root_dir.filePath(dir_name));
+            if (DatasetIO::scanImageFiles(class_dir.absolutePath()).empty())
+                continue;
+
+            addScannedLabelClass(label_class_info, dir_name, color_index);
+        }
+
+        if (label_class_info.empty())
+        {
+            emit labelClassesScanned(false, {}, QStringLiteral("未找到包含图像的类别子目录"));
+            return;
+        }
+
+        updateProgress(100, QStringLiteral("类别目录扫描完成: %1 个类别").arg(label_class_info.size()));
+        emit labelClassesScanned(true, label_class_info, QString());
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::error("类别目录扫描失败: {}", e.what());
+        emit labelClassesScanned(false, {}, QString("类别目录扫描失败: %1").arg(e.what()));
+    }
 }
 
 void FolderIO::doImport(int64_t dataset_id, const QString &image_dir)

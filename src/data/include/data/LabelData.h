@@ -66,6 +66,12 @@ public:
     std::vector<QPointF> points;
 };
 
+class DATA_API AnomalyLabelData_t final : public SegLabelData_t
+{
+public:
+    int type() const override;
+};
+
 class DATA_API ClsLabelData_t : public LabelData_t
 {
 public:
@@ -120,7 +126,7 @@ public:
                               const QRectF &image_rect) const override;
 };
 
-class DATA_API SegLabelDataHelper final : public LabelDataHelper_t
+class DATA_API SegLabelDataHelper : public LabelDataHelper_t
 {
 public:
     SegLabelDataHelper(const int type);
@@ -137,6 +143,15 @@ public:
 
     QVariantMap getEditedData(const QVariantMap &data, const QPointF &start, const QPointF &end,
                               const QRectF &image_rect) const override;
+};
+
+class DATA_API AnomalyLabelDataHelper final : public SegLabelDataHelper
+{
+public:
+    AnomalyLabelDataHelper(const int type);
+    ~AnomalyLabelDataHelper();
+
+    std::unique_ptr<LabelData_t> createLabelData() const override;
 };
 
 class DATA_API ClsLabelDataHelper final : public LabelDataHelper_t

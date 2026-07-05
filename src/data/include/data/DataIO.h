@@ -45,6 +45,7 @@ public:
     bool isCancelRequested() const;
 
     virtual void startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir);
+    virtual void startScanLabelClasses(const QString &image_dir, const QString &data_dir);
     virtual void startExport(const ExportDataset &dataset, const QString &output_dir,
                              const QVariantMap &options = {});
 
@@ -53,6 +54,7 @@ signals:
     void dataBatchReady(int64_t dataset_id, std::vector<QString> image_paths, std::vector<int64_t> image_widths,
                         std::vector<int64_t> image_heights, std::map<QString, QString> label_class_info,
                         std::vector<ImportedLabel> labels, int64_t processed_images, int64_t total_images);
+    void labelClassesScanned(bool success, std::map<QString, QString> label_class_info, const QString &message);
     void exportFinished(bool success, const QString &message);
 
 protected:
@@ -77,6 +79,7 @@ public:
     using DataIO::DataIO;
 
     void startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir) override;
+    void startScanLabelClasses(const QString &image_dir, const QString &data_dir) override;
     void startExport(const ExportDataset &dataset, const QString &output_dir,
                      const QVariantMap &options = {}) override;
 
@@ -97,6 +100,7 @@ private:
     };
 
     void doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir);
+    void doScanLabelClasses(const QString &data_dir);
     void doExport(ExportDataset dataset, QString output_dir);
 
     QString findCocoJsonFile(const QString &data_path) const;
@@ -132,11 +136,13 @@ public:
     using DataIO::DataIO;
 
     void startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir) override;
+    void startScanLabelClasses(const QString &image_dir, const QString &data_dir) override;
     void startExport(const ExportDataset &dataset, const QString &output_dir,
                      const QVariantMap &options = {}) override;
 
 private:
     void doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir);
+    void doScanLabelClasses(const QString &image_dir, const QString &data_dir);
     void doExport(ExportDataset dataset, QString output_dir);
 
     bool        parseLabelMeJson(const QString &json_path, LabelMeData &data);
@@ -156,6 +162,7 @@ public:
     using DataIO::DataIO;
 
     void startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir) override;
+    void startScanLabelClasses(const QString &image_dir, const QString &data_dir) override;
     void startExport(const ExportDataset &dataset, const QString &output_dir,
                      const QVariantMap &options = {}) override;
 
@@ -169,6 +176,7 @@ private:
     };
 
     void doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir);
+    void doScanLabelClasses(const QString &data_dir);
     void doExport(ExportDataset dataset, QString output_dir, QVariantMap options);
 
     std::vector<QString>        scanMaskFiles(const QString &mask_dir) const;
@@ -192,11 +200,13 @@ public:
     using DataIO::DataIO;
 
     void startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir) override;
+    void startScanLabelClasses(const QString &image_dir, const QString &data_dir) override;
     void startExport(const ExportDataset &dataset, const QString &output_dir,
                      const QVariantMap &options = {}) override;
 
 private:
     void doImport(int64_t dataset_id, const QString &image_dir);
+    void doScanLabelClasses(const QString &image_dir);
     void doExport(ExportDataset dataset, QString output_dir);
 };
 

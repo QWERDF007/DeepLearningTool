@@ -23,6 +23,7 @@ Rectangle {
     readonly property int method: dataManager ? dataManager.method : -1
     readonly property bool classificationMode: method === DeepLearningMethod.Classification
     readonly property bool segmentationMode: method === DeepLearningMethod.Segmentation
+    readonly property bool anomalyMode: method === DeepLearningMethod.AnomalyDetection
     readonly property bool annotationToolbarVisible: !classificationMode
     readonly property bool labelInstanceEditorVisible: !classificationMode
     readonly property SmartAnnotationController smartAnnotation: featureManager ? featureManager.smartAnnotation : null
@@ -52,7 +53,7 @@ Rectangle {
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: parent.height / 3
                 dataManager: page.dataManager
-                selectionFollowsCurrentImageClass: page.classificationMode
+                selectionFollowsCurrentImageClass: page.classificationMode || page.anomalyMode
             }
 
             ImageTagView {
@@ -109,6 +110,7 @@ Rectangle {
                         featureManager: page.featureManager
                         classificationMode: page.classificationMode
                         segmentationMode: page.segmentationMode
+                        anomalyMode: page.anomalyMode
                     }
                 }
             }
