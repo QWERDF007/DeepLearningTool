@@ -42,11 +42,11 @@ namespace {
 /// 类别构建数据结构
 struct ClassBuildData
 {
-    int64_t                       label_class_id{-1};       ///< 类别 ID
-    QString                       label_class_name;         ///< 类别名称
-    QString                       class_dir_name;           ///< 类别目录名
-    std::map<int64_t, QImage>     masks_by_image_id;        ///< 按图像 ID 映射的 Mask
-    std::map<int64_t, QJsonArray> boxes_by_image_id;        ///< 按图像 ID 映射的检测框
+    int64_t                       label_class_id{-1}; ///< 类别 ID
+    QString                       label_class_name;   ///< 类别名称
+    QString                       class_dir_name;     ///< 类别目录名
+    std::map<int64_t, QImage>     masks_by_image_id;  ///< 按图像 ID 映射的 Mask
+    std::map<int64_t, QJsonArray> boxes_by_image_id;  ///< 按图像 ID 映射的检测框
 };
 
 using ClassBuildMap = std::map<int64_t, ClassBuildData>;
@@ -54,17 +54,17 @@ using ClassBuildMap = std::map<int64_t, ClassBuildData>;
 /// 按训练、验证、测试用途拆分的图像集合
 struct FewShotImageSelection
 {
-    std::map<int64_t, QString> train_images;              ///< 训练图像 ID 到路径
-    std::map<int64_t, QString> validation_images;         ///< 验证图像 ID 到路径
-    std::map<int64_t, QString> test_images;               ///< 测试图像 ID 到路径
-    std::map<int64_t, int64_t> test_image_dataset_ids;    ///< 测试图像 ID 到数据集 ID
+    std::map<int64_t, QString> train_images;           ///< 训练图像 ID 到路径
+    std::map<int64_t, QString> validation_images;      ///< 验证图像 ID 到路径
+    std::map<int64_t, QString> test_images;            ///< 测试图像 ID 到路径
+    std::map<int64_t, int64_t> test_image_dataset_ids; ///< 测试图像 ID 到数据集 ID
 };
 
 /// 预测结果导入目标
 struct PredictionImportTarget
 {
-    int64_t dataset_id{-1};       ///< 数据集 ID
-    QString manifest_path;        ///< 图像清单文件路径
+    int64_t dataset_id{-1}; ///< 数据集 ID
+    QString manifest_path;  ///< 图像清单文件路径
 };
 
 /**
@@ -420,9 +420,9 @@ bool buildClassTemplates(FewShotLearningDataProvider *data_provider, const std::
 }
 
 FewShotImageSelection collectImagesByDataset(FewShotLearningDataProvider *data_provider,
-                                             const std::set<int64_t> &selected_train_datasets,
-                                             const std::set<int64_t> &selected_validation_datasets,
-                                             const std::set<int64_t> &selected_test_datasets)
+                                             const std::set<int64_t>     &selected_train_datasets,
+                                             const std::set<int64_t>     &selected_validation_datasets,
+                                             const std::set<int64_t>     &selected_test_datasets)
 {
     FewShotImageSelection selection;
     for (int64_t image_id : data_provider->allImageIds())
@@ -571,7 +571,7 @@ bool writeSupportQueryFiles(const QString &class_dir, const QStringList &entries
         return false;
     }
 
-    const int   support_count
+    const int support_count
         = std::clamp(static_cast<int>(std::round(entry_count * support_ratio)), kshot, entry_count - 1);
     QStringList support_entries = entries.mid(0, support_count);
     QStringList query_entries   = entries.mid(support_count);
@@ -602,9 +602,9 @@ bool writeCustomDataset(const QString &dataset_dir, const ClassBuildMap &classes
 
 bool writePredictionQueryInputs(FewShotLearningDataProvider *data_provider, const QString &run_dir,
                                 const QString &query_dir, const QString &output_dir, const QString &query_txt_path,
-                                const std::vector<int64_t> &test_dataset_ids,
-                                const std::map<int64_t, QString> &test_images,
-                                const std::map<int64_t, int64_t> &test_image_dataset_ids,
+                                const std::vector<int64_t>          &test_dataset_ids,
+                                const std::map<int64_t, QString>    &test_images,
+                                const std::map<int64_t, int64_t>    &test_image_dataset_ids,
                                 std::vector<PredictionImportTarget> &import_targets, QString &err_msg)
 {
     QStringList                    query_lines;
@@ -647,25 +647,25 @@ bool writePredictionQueryInputs(FewShotLearningDataProvider *data_provider, cons
 /// FS-SAM2 脚本类型枚举
 enum class FsSam2Script
 {
-    Train,       ///< 训练脚本
-    Predict,     ///< 推理脚本
-    BoxToMask,   ///< 框转 Mask 脚本
+    Train,     ///< 训练脚本
+    Predict,   ///< 推理脚本
+    BoxToMask, ///< 框转 Mask 脚本
 };
 
 /// 小样本学习任务类型枚举
 enum class FewShotTaskKind
 {
-    Train,       ///< 训练
-    Predict,     ///< 推理
-    BoxToMask,   ///< 框转 Mask
+    Train,     ///< 训练
+    Predict,   ///< 推理
+    BoxToMask, ///< 框转 Mask
 };
 
 /// 小样本学习类别字段枚举
 enum class FewShotClassField
 {
-    Id,    ///< 类别 ID
-    Name,  ///< 类别名称
-    Dir,   ///< 类别目录
+    Id,   ///< 类别 ID
+    Name, ///< 类别名称
+    Dir,  ///< 类别目录
 };
 
 /**
@@ -777,8 +777,8 @@ QJsonArray classObjectsFromBuildData(const ClassBuildMap &classes)
 /// SAM2 配置名称解析结果
 struct Sam2ConfigNameParts
 {
-    QString prefix;      ///< 版本前缀（sam2 或 sam2.1）
-    QString size_token;  ///< 模型尺寸标识（t/s/b+/l）
+    QString prefix;     ///< 版本前缀（sam2 或 sam2.1）
+    QString size_token; ///< 模型尺寸标识（t/s/b+/l）
 };
 
 /**
@@ -870,46 +870,45 @@ QString checkpointPath(const QString &fs_sam2_root, const QString &logpath)
 
 struct FewShotLearningController::RunContext
 {
-    QString python_executable;     ///< Python 可执行文件路径
-    QString fs_sam2_root;          ///< FS-SAM2 根目录
-    QString sam2_checkpoint;       ///< SAM2 检查点文件路径
-    QString sam2_cfg;              ///< SAM2 配置文件路径
-    QString run_dir;               ///< 本次运行目录
-    QString custom_dataset_dir;    ///< 自定义数据集目录
-    QString validation_dataset_dir; ///< 验证数据集目录；为空时使用 custom_dataset_dir
-    QString query_dir;             ///< 查询图像目录
-    QString output_dir;            ///< 输出目录
-    QString query_txt_path;        ///< 查询清单文件路径
-    QString train_script;          ///< 训练脚本路径
-    QString predict_script;        ///< 推理脚本路径
-    QString box_to_mask_script;    ///< 框转 Mask 脚本路径
+    QString python_executable;       ///< Python 可执行文件路径
+    QString fs_sam2_root;            ///< FS-SAM2 根目录
+    QString sam2_checkpoint;         ///< SAM2 检查点文件路径
+    QString sam2_cfg;                ///< SAM2 配置文件路径
+    QString run_dir;                 ///< 本次运行目录
+    QString custom_dataset_dir;      ///< 自定义数据集目录
+    QString validation_dataset_dir;  ///< 验证数据集目录；为空时使用 custom_dataset_dir
+    QString query_dir;               ///< 查询图像目录
+    QString output_dir;              ///< 输出目录
+    QString query_txt_path;          ///< 查询清单文件路径
+    QString train_script;            ///< 训练脚本路径
+    QString predict_script;          ///< 推理脚本路径
+    QString box_to_mask_script;      ///< 框转 Mask 脚本路径
     int     box_to_mask_task_id{-1}; ///< 框转 Mask 任务 ID
-    QString checkpoint_path;       ///< 训练检查点路径
-    QString exp_id;                ///< 实验 ID
-    QString logpath;               ///< 日志路径
+    QString checkpoint_path;         ///< 训练检查点路径
+    QString exp_id;                  ///< 实验 ID
+    QString logpath;                 ///< 日志路径
 
-    int    kshot{1};          ///< K-shot 数量
-    int    epochs{50};        ///< 训练轮数
-    int    batch_size{2};     ///< 批处理大小
-    int    num_workers{0};    ///< 数据加载线程数
-    int    image_size{1024};  ///< 图像尺寸
-    double lr{1e-4};          ///< 学习率
+    int    kshot{1};           ///< K-shot 数量
+    int    epochs{50};         ///< 训练轮数
+    int    batch_size{2};      ///< 批处理大小
+    int    num_workers{0};     ///< 数据加载线程数
+    int    image_size{1024};   ///< 图像尺寸
+    double lr{1e-4};           ///< 学习率
     double weight_decay{1e-6}; ///< 权重衰减
     double support_ratio{0.5}; ///< 支持集比例
 
-    int     train_task_id{-1};     ///< 训练任务 ID
-    int     predict_task_id{-1};   ///< 推理任务 ID
-    QString task_host;             ///< 任务服务主机
-    quint16 task_port{0};          ///< 任务服务端口
+    int     train_task_id{-1};   ///< 训练任务 ID
+    int     predict_task_id{-1}; ///< 推理任务 ID
+    QString task_host;           ///< 任务服务主机
+    quint16 task_port{0};        ///< 任务服务端口
 
-    QJsonArray                          classes;         ///< 类别 JSON 数组
-    std::vector<PredictionImportTarget> import_targets;   ///< 预测结果导入目标列表
+    QJsonArray                          classes;        ///< 类别 JSON 数组
+    std::vector<PredictionImportTarget> import_targets; ///< 预测结果导入目标列表
 };
 
 FewShotLearningController::FewShotLearningController(FewShotLearningDataProvider *data_provider,
-                                                     dltool::data::DataManager *data_manager,
-                                                     dltool::model::TaskManager *task_manager,
-                                                     QObject *parent)
+                                                     dltool::data::DataManager   *data_manager,
+                                                     dltool::model::TaskManager *task_manager, QObject *parent)
     : QObject(parent)
     , data_provider_(data_provider)
     , task_manager_(task_manager)
@@ -929,7 +928,8 @@ FewShotLearningController::FewShotLearningController(FewShotLearningDataProvider
     }
 
     connect(gs->catalog(), &dltool::settings::SettingsCatalog::fieldValueChanged, this,
-            [this](const QString &group_key, const QString &name, const QVariant &value) {
+            [this](const QString &group_key, const QString &name, const QVariant &value)
+            {
                 if (group_key == QStringLiteral("FewShotLearningSettings") && name == QStringLiteral("enabled"))
                 {
                     const bool v = value.toBool();
@@ -952,9 +952,20 @@ FewShotLearningController::~FewShotLearningController()
     }
 }
 
-bool    FewShotLearningController::enabled() const   { return enabled_; }
-bool    FewShotLearningController::running() const   { return running_; }
-QString FewShotLearningController::lastError() const { return last_error_; }
+bool FewShotLearningController::enabled() const
+{
+    return enabled_;
+}
+
+bool FewShotLearningController::running() const
+{
+    return running_;
+}
+
+QString FewShotLearningController::lastError() const
+{
+    return last_error_;
+}
 
 QObject *FewShotLearningController::trainDatasetViewModel() const
 {
@@ -1044,9 +1055,9 @@ bool FewShotLearningController::startFsSam2WithIds(const QVariantList &train_dat
 
     RunContext context;
     QString    err_msg;
-    if (!prepareRun(parseInt64Ids(train_dataset_ids, true, true),
-                    parseInt64Ids(validation_dataset_ids, true, true), parseInt64Ids(test_dataset_ids, true, true),
-                    parseInt64Ids(label_class_ids, true, true), context, err_msg))
+    if (!prepareRun(parseInt64Ids(train_dataset_ids, true, true), parseInt64Ids(validation_dataset_ids, true, true),
+                    parseInt64Ids(test_dataset_ids, true, true), parseInt64Ids(label_class_ids, true, true), context,
+                    err_msg))
     {
         setLastError(err_msg);
         spdlog::error("启动小样本学习失败: {}", err_msg.toUtf8().constData());
@@ -1133,7 +1144,8 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         return false;
     }
     if (data_provider_->method() != dltool::core::DeepLearningMethod::Detection
-        && data_provider_->method() != dltool::core::DeepLearningMethod::Segmentation)
+        && data_provider_->method() != dltool::core::DeepLearningMethod::Segmentation
+        && data_provider_->method() != dltool::core::DeepLearningMethod::AnomalyDetection)
     {
         err_msg = QString("小样本学习仅支持检测和分割项目");
         return false;
@@ -1208,37 +1220,34 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
 
     const QString output_root_setting
         = cleanPath(settingString(global_settings, generated_field::FewShotLearning::OutputDir));
-    const QString project_dir  = QFileInfo(data_provider_->databasePath()).absoluteDir().absolutePath();
-    const QString run_id       = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss_zzz"));
-    context.exp_id             = QStringLiteral("dltool_%1").arg(run_id);
-    context.logpath            = QStringLiteral("dltool/%1/fold0").arg(context.exp_id);
-    context.run_dir            = output_root_setting.isEmpty()
-                                   ? QDir(project_dir).filePath(QStringLiteral(".dltool/few_shot/%1").arg(run_id))
-                                   : QDir(output_root_setting).filePath(run_id);
-    context.custom_dataset_dir
-        = QDir(context.run_dir).filePath(QStringLiteral("custom/train"));
-    context.validation_dataset_dir
-        = validation_dataset_ids.empty() ? context.custom_dataset_dir
-                                         : QDir(context.run_dir).filePath(QStringLiteral("custom/val"));
-    context.query_dir       = QDir(context.run_dir).filePath(QStringLiteral("query"));
-    context.output_dir      = QDir(context.run_dir).filePath(QStringLiteral("predictions"));
-    context.query_txt_path  = QDir(context.query_dir).filePath(QStringLiteral("query.txt"));
-    context.checkpoint_path = checkpointPath(context.fs_sam2_root, context.logpath);
+    const QString project_dir      = QFileInfo(data_provider_->databasePath()).absoluteDir().absolutePath();
+    const QString run_id           = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss_zzz"));
+    context.exp_id                 = QStringLiteral("dltool_%1").arg(run_id);
+    context.logpath                = QStringLiteral("dltool/%1/fold0").arg(context.exp_id);
+    context.run_dir                = output_root_setting.isEmpty()
+                                       ? QDir(project_dir).filePath(QStringLiteral(".dltool/few_shot/%1").arg(run_id))
+                                       : QDir(output_root_setting).filePath(run_id);
+    context.custom_dataset_dir     = QDir(context.run_dir).filePath(QStringLiteral("custom/train"));
+    context.validation_dataset_dir = validation_dataset_ids.empty()
+                                       ? context.custom_dataset_dir
+                                       : QDir(context.run_dir).filePath(QStringLiteral("custom/val"));
+    context.query_dir              = QDir(context.run_dir).filePath(QStringLiteral("query"));
+    context.output_dir             = QDir(context.run_dir).filePath(QStringLiteral("predictions"));
+    context.query_txt_path         = QDir(context.query_dir).filePath(QStringLiteral("query.txt"));
+    context.checkpoint_path        = checkpointPath(context.fs_sam2_root, context.logpath);
 
     const std::set<int64_t> selected_classes(label_class_ids.begin(), label_class_ids.end());
     const std::set<int64_t> selected_train_datasets(train_dataset_ids.begin(), train_dataset_ids.end());
-    const std::set<int64_t> selected_validation_datasets(
-        validation_dataset_ids.begin(), validation_dataset_ids.end());
+    const std::set<int64_t> selected_validation_datasets(validation_dataset_ids.begin(), validation_dataset_ids.end());
     const std::set<int64_t> selected_test_datasets(test_dataset_ids.begin(), test_dataset_ids.end());
 
     ClassBuildMap classes;
     if (!buildClassTemplates(data_provider_, label_class_ids, classes, err_msg))
         return false;
 
-    ClassBuildMap validation_classes = classes;
-    FewShotImageSelection image_selection
-        = collectImagesByDataset(data_provider_, selected_train_datasets, selected_validation_datasets,
-                                 selected_test_datasets);
+    ClassBuildMap         validation_classes = classes;
+    FewShotImageSelection image_selection    = collectImagesByDataset(
+        data_provider_, selected_train_datasets, selected_validation_datasets, selected_test_datasets);
     if (image_selection.train_images.empty() || image_selection.test_images.empty())
     {
         err_msg = QString("训练数据集或测试数据集没有图像");
@@ -1442,9 +1451,8 @@ bool FewShotLearningController::startPrediction(const RunContext &context, int c
  */
 bool FewShotLearningController::startBoxToMask(const RunContext &context, int class_index, QString &err_msg)
 {
-    const int class_count = static_cast<int>(context.classes.size());
-    const int dataset_count
-        = context.validation_dataset_dir == context.custom_dataset_dir ? 1 : 2;
+    const int class_count   = static_cast<int>(context.classes.size());
+    const int dataset_count = context.validation_dataset_dir == context.custom_dataset_dir ? 1 : 2;
     const int prepare_count = class_count * dataset_count;
     if (class_index < 0 || class_index >= prepare_count)
     {
@@ -1454,21 +1462,20 @@ bool FewShotLearningController::startBoxToMask(const RunContext &context, int cl
 
     const int         actual_class_index = class_index % class_count;
     const int         dataset_index      = class_index / class_count;
-    const QJsonObject class_object   = context.classes.at(actual_class_index).toObject();
-    const QString     class_dir_name = class_object.value(fewShotClassFieldName(FewShotClassField::Dir)).toString();
+    const QJsonObject class_object       = context.classes.at(actual_class_index).toObject();
+    const QString     class_dir_name     = class_object.value(fewShotClassFieldName(FewShotClassField::Dir)).toString();
     if (class_dir_name.isEmpty())
     {
         err_msg = QString("预处理类别目录为空");
         return false;
     }
 
-    const QString dataset_dir
-        = dataset_index == 0 ? context.custom_dataset_dir : context.validation_dataset_dir;
-    const QString support_dir      = QDir(dataset_dir).filePath(class_dir_name);
+    const QString dataset_dir        = dataset_index == 0 ? context.custom_dataset_dir : context.validation_dataset_dir;
+    const QString support_dir        = QDir(dataset_dir).filePath(class_dir_name);
     const int     safe_prepare_count = std::max(1, prepare_count);
-    const int     base             = class_index * 100 / safe_prepare_count;
-    const int     end              = (class_index + 1) * 100 / safe_prepare_count;
-    const int     span             = std::max(1, end - base);
+    const int     base               = class_index * 100 / safe_prepare_count;
+    const int     end                = (class_index + 1) * 100 / safe_prepare_count;
+    const int     span               = std::max(1, end - base);
 
     QStringList arguments = {
         context.box_to_mask_script,
@@ -1606,7 +1613,8 @@ void FewShotLearningController::handleProcessFinished(int exit_code, QProcess::E
     {
         ++current_prepare_class_index_;
         const int class_count = static_cast<int>(active_context_->classes.size());
-        const int dataset_count = active_context_->validation_dataset_dir == active_context_->custom_dataset_dir ? 1 : 2;
+        const int dataset_count
+            = active_context_->validation_dataset_dir == active_context_->custom_dataset_dir ? 1 : 2;
         const int prepare_count = class_count * dataset_count;
         if (current_prepare_class_index_ < prepare_count)
         {

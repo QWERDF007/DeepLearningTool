@@ -80,14 +80,6 @@ Rectangle {
         return value === undefined || value === null ? fallback : value
     }
 
-    function rangeField(item, key, suffix) {
-        let configured = sidebarValue(item, key, "")
-        if (configured !== "") {
-            return String(configured)
-        }
-        return String(item.name_en) + suffix
-    }
-
     function numberValue(value, fallback) {
         let next = Number(value)
         return isFinite(next) ? next : fallback
@@ -106,20 +98,11 @@ Rectangle {
         popup.itemData = item
 
         let valueField = String(item.name_en)
-        let configuredFrom = sidebarValue(item, "from", "")
-        let configuredTo = sidebarValue(item, "to", "")
-        let configuredStep = sidebarValue(item, "step", "")
-        let fromField = configuredFrom !== "" ? String(configuredFrom) : ""
-        let toField = configuredTo !== "" ? String(configuredTo) : ""
-        let stepField = configuredStep !== "" ? String(configuredStep) : ""
 
-        slider.from = fromField.length > 0 ? settingNumber(item, fromField, rangeValue(item, 0, 0))
-                                            : rangeValue(item, 0, 0)
-        slider.to = toField.length > 0 ? settingNumber(item, toField, rangeValue(item, 1, 100))
-                                        : rangeValue(item, 1, 100)
+        slider.from = rangeValue(item, 0, 0)
+        slider.to = rangeValue(item, 1, 100)
         slider.value = settingNumber(item, valueField, slider.from)
-        slider.stepSize = stepField.length > 0 ? settingNumber(item, stepField, rangeValue(item, 2, 1))
-                                                : rangeValue(item, 2, 1)
+        slider.stepSize = rangeValue(item, 2, 1)
         slider.snapMode = sidebar.sidebarValue(item, "snap", true) ? Slider.SnapAlways : Slider.NoSnap
 
         let pos = sidebar.mapToItem(null, x, y)

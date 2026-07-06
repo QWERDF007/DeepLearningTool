@@ -31,9 +31,9 @@ Item {
     }
 
     property real imageCellScale: 1.0
-    property real imageCellScaleFrom: 0.5
-    property real imageCellScaleTo: 4.0
-    property real imageCellScaleStepSize: 0.25
+    property real cellScaleMin: 0.5
+    property real cellScaleMax: 4.0
+    property real cellScaleStep: 0.25
 
 
     property int cellWidth: 180 * imageCellScale
@@ -196,12 +196,14 @@ Item {
         }
 
         function scaleView(event) {
-            if (event.angleDelta.y > 0 && instancesView.imageCellScale < instancesView.imageCellScaleTo) {
+            if (event.angleDelta.y > 0 && instancesView.imageCellScale < instancesView.cellScaleMax) {
                 instancesView.setDataField(DataField.CellScale,
-                                           instancesView.imageCellScale + instancesView.imageCellScaleStepSize)
-            } else if (event.angleDelta.y < 0 && instancesView.imageCellScale > instancesView.imageCellScaleFrom) {
+                                           Math.min(instancesView.cellScaleMax,
+                                                    instancesView.imageCellScale + instancesView.cellScaleStep))
+            } else if (event.angleDelta.y < 0 && instancesView.imageCellScale > instancesView.cellScaleMin) {
                 instancesView.setDataField(DataField.CellScale,
-                                           instancesView.imageCellScale - instancesView.imageCellScaleStepSize)
+                                           Math.max(instancesView.cellScaleMin,
+                                                    instancesView.imageCellScale - instancesView.cellScaleStep))
             } else {
 
             }
@@ -334,9 +336,10 @@ Item {
 
     function refreshSettings() {
         imageCellScale = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.CellScale, 1.0)
-        imageCellScaleFrom = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.CellScaleFrom, 0.5)
-        imageCellScaleTo = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.CellScaleTo, 4.0)
-        imageCellScaleStepSize = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.CellScaleStep, 0.25)
+        let scaleRange = GlobalSettings.valueRangeForField(SettingsAccessor.Data, DataField.CellScale)
+        cellScaleMin = scaleRange.length > 0 ? Number(scaleRange[0]) : 0.5
+        cellScaleMax = scaleRange.length > 1 ? Number(scaleRange[1]) : 4.0
+        cellScaleStep = scaleRange.length > 2 ? Number(scaleRange[2]) : 0.25
 
     }
 

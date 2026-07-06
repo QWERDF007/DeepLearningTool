@@ -30,6 +30,7 @@ public:
         StatusColumn,
         CreatedAtColumn,
         RunningTimeColumn,
+        EtaColumn,
         ProgressColumn,
         ActionsColumn,
         ColumnCount,
@@ -57,6 +58,7 @@ public:
         StatusValueRole,
         CreatedAtRole,
         RunningTimeRole,
+        EtaRole,
         ProgressRole,
         CanStartRole,
         CanPauseRole,
@@ -84,6 +86,7 @@ public:
     bool setTaskStatus(int task_id, TaskStatus status);
     bool deleteTask(int task_id);
     bool updateTaskProgress(int task_id, int progress);
+    bool updateTaskEta(int task_id, qint64 eta_seconds);
     int  startModelTask(const QString &model_uuid, const QString &model_name, const QString &task_type = QString());
     bool stopModelTask(const QString &model_uuid, const QString &task_type = QString());
 
@@ -103,6 +106,7 @@ private:
         qint64     created_at{0};
         qint64     started_at{0};
         qint64     accumulated_seconds{0};
+        qint64     eta_seconds{-1};
         int        progress{0};
         bool       external_process{false};
         bool       supports_pause{true};
@@ -117,7 +121,9 @@ private:
     QString  statusText(const TaskRecord &task) const;
     QString  createdAtText(const TaskRecord &task) const;
     QString  runningTimeText(const TaskRecord &task) const;
+    QString  etaText(const TaskRecord &task) const;
     qint64   runningTimeSeconds(const TaskRecord &task) const;
+    qint64   etaSeconds(const TaskRecord &task) const;
     bool     canStart(const TaskRecord &task) const;
     bool     canPause(const TaskRecord &task) const;
     bool     canStop(const TaskRecord &task) const;
@@ -153,6 +159,7 @@ public:
     bool             failTask(int task_id);
     Q_INVOKABLE bool deleteTask(int task_id);
     Q_INVOKABLE bool updateTaskProgress(int task_id, int progress);
+    bool             updateTaskEta(int task_id, qint64 eta_seconds);
     Q_INVOKABLE int  startModelTask(const QString &model_uuid, const QString &model_name,
                                     const QString &task_type = QString());
     Q_INVOKABLE bool stopModelTask(const QString &model_uuid, const QString &task_type = QString());

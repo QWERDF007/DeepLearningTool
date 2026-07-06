@@ -18,6 +18,19 @@ int boundedProgress(int progress)
     return std::clamp(progress, 0, 100);
 }
 
+QString durationText(qint64 seconds)
+{
+    seconds = std::max<qint64>(0, seconds);
+    const qint64 hours = seconds / 3600;
+    seconds %= 3600;
+    const qint64 minutes = seconds / 60;
+    seconds %= 60;
+    return QStringLiteral("%1:%2:%3")
+        .arg(hours, 2, 10, QLatin1Char('0'))
+        .arg(minutes, 2, 10, QLatin1Char('0'))
+        .arg(seconds, 2, 10, QLatin1Char('0'));
+}
+
 } // namespace
 
 TaskTableModel::TaskTableModel(QObject *parent)
@@ -74,6 +87,8 @@ QVariant TaskTableModel::data(const QModelIndex &index, int role) const
         return createdAtText(task);
     case RunningTimeRole:
         return runningTimeText(task);
+    case EtaRole:
+        return etaText(task);
     case ProgressRole:
         return task.progress;
     case CanStartRole:
@@ -108,6 +123,8 @@ QVariant TaskTableModel::headerData(int section, Qt::Orientation orientation, in
         return QStringLiteral("任务创建时间");
     case RunningTimeColumn:
         return QStringLiteral("运行时间");
+    case EtaColumn:
+        return QStringLiteral("ETA");
     case ProgressColumn:
         return QStringLiteral("进度");
     case ActionsColumn:
@@ -129,6 +146,7 @@ QHash<int, QByteArray> TaskTableModel::roleNames() const
         {StatusValueRole, "status_value"},
         {  CreatedAtRole,   "created_at"},
         {RunningTimeRole, "running_time"},
+        {       EtaRole,          "eta"},
         {   ProgressRole,     "progress"},
         {   CanStartRole,    "can_start"},
         {   CanPauseRole,    "can_pause"},
@@ -157,6 +175,7 @@ int TaskTableModel::addTask(const QString &model_uuid, const QString &model_name
         QDateTime::currentSecsSinceEpoch(),
         0,
         0,
+        -1,
         0,
         external_process,
         supports_pause,
@@ -178,6 +197,7 @@ bool TaskTableModel::startTask(int task_id)
 
     task.status     = Running;
     task.started_at = QDateTime::currentSecsSinceEpoch();
+    task.eta_seconds = -1;
     emitTaskChanged(row);
     return true;
 }
@@ -216,6 +236,7 @@ bool TaskTableModel::stopTask(int task_id)
         task.accumulated_seconds += std::max<qint64>(0, now - task.started_at);
     task.started_at = 0;
     task.status     = Stopped;
+    task.eta_seconds = -1;
     emitTaskChanged(row);
     return true;
 }
@@ -236,6 +257,7 @@ bool TaskTableModel::finishTask(int task_id)
     task.started_at = 0;
     task.status     = Finished;
     task.progress   = 100;
+    task.eta_seconds = 0;
     emitTaskChanged(row);
     return true;
 }
@@ -261,7 +283,14 @@ bool TaskTableModel::setTaskStatus(int task_id, TaskStatus status)
     task.started_at = status == Running ? now : 0;
     task.status     = status;
     if (status == Finished)
+    {
         task.progress = 100;
+        task.eta_seconds = 0;
+    }
+    else if (status == Stopped || status == Failed)
+    {
+        task.eta_seconds = -1;
+    }
     emitTaskChanged(row);
     return true;
 }
@@ -287,11 +316,38 @@ bool TaskTableModel::updateTaskProgress(int task_id, int progress)
 
     TaskRecord &task    = tasks_[static_cast<size_t>(row)];
     const int   bounded = boundedProgress(progress);
-    if (task.progress == bounded)
+    bool eta_changed = false;
+    if (bounded >= 100 && task.eta_seconds != 0)
+    {
+        task.eta_seconds = 0;
+        eta_changed = true;
+    }
+
+    if (task.progress == bounded && !eta_changed)
         return true;
 
     task.progress = bounded;
-    emit dataChanged(index(row, ProgressColumn), index(row, ProgressColumn), {ProgressRole, Qt::DisplayRole});
+    if (eta_changed)
+        emit dataChanged(index(row, EtaColumn), index(row, ProgressColumn),
+                         {EtaRole, ProgressRole, Qt::DisplayRole});
+    else
+        emit dataChanged(index(row, ProgressColumn), index(row, ProgressColumn), {ProgressRole, Qt::DisplayRole});
+    return true;
+}
+
+bool TaskTableModel::updateTaskEta(int task_id, qint64 eta_seconds)
+{
+    const int row = indexOfTask(task_id);
+    if (row < 0)
+        return false;
+
+    TaskRecord &task    = tasks_[static_cast<size_t>(row)];
+    const qint64 bounded = eta_seconds < 0 ? -1 : eta_seconds;
+    if (task.eta_seconds == bounded)
+        return true;
+
+    task.eta_seconds = bounded;
+    emit dataChanged(index(row, EtaColumn), index(row, EtaColumn), {EtaRole, Qt::DisplayRole});
     return true;
 }
 
@@ -348,6 +404,7 @@ QVariantMap TaskTableModel::taskAt(int row) const
         {QStringLiteral("status_value"),           task.status},
         {  QStringLiteral("created_at"),   createdAtText(task)},
         {QStringLiteral("running_time"), runningTimeText(task)},
+        {         QStringLiteral("eta"),       etaText(task)},
         {    QStringLiteral("progress"),         task.progress},
         {   QStringLiteral("can_start"),        canStart(task)},
         {   QStringLiteral("can_pause"),        canPause(task)},
@@ -420,6 +477,8 @@ QVariant TaskTableModel::dataForColumn(const TaskRecord &task, int column) const
         return createdAtText(task);
     case RunningTimeColumn:
         return runningTimeText(task);
+    case EtaColumn:
+        return etaText(task);
     case ProgressColumn:
         return task.progress;
     case ActionsColumn:
@@ -457,15 +516,13 @@ QString TaskTableModel::createdAtText(const TaskRecord &task) const
 
 QString TaskTableModel::runningTimeText(const TaskRecord &task) const
 {
-    qint64       seconds = runningTimeSeconds(task);
-    const qint64 hours   = seconds / 3600;
-    seconds %= 3600;
-    const qint64 minutes = seconds / 60;
-    seconds %= 60;
-    return QStringLiteral("%1:%2:%3")
-        .arg(hours, 2, 10, QLatin1Char('0'))
-        .arg(minutes, 2, 10, QLatin1Char('0'))
-        .arg(seconds, 2, 10, QLatin1Char('0'));
+    return durationText(runningTimeSeconds(task));
+}
+
+QString TaskTableModel::etaText(const TaskRecord &task) const
+{
+    const qint64 seconds = etaSeconds(task);
+    return seconds >= 0 ? durationText(seconds) : QStringLiteral("-");
 }
 
 qint64 TaskTableModel::runningTimeSeconds(const TaskRecord &task) const
@@ -474,6 +531,13 @@ qint64 TaskTableModel::runningTimeSeconds(const TaskRecord &task) const
     if (task.status == Running && task.started_at > 0)
         seconds += std::max<qint64>(0, QDateTime::currentSecsSinceEpoch() - task.started_at);
     return seconds;
+}
+
+qint64 TaskTableModel::etaSeconds(const TaskRecord &task) const
+{
+    if (task.status == Finished || task.progress >= 100)
+        return 0;
+    return task.eta_seconds;
 }
 
 bool TaskTableModel::canStart(const TaskRecord &task) const
@@ -566,6 +630,11 @@ bool TaskManager::updateTaskProgress(int task_id, int progress)
     return tasks_->updateTaskProgress(task_id, progress);
 }
 
+bool TaskManager::updateTaskEta(int task_id, qint64 eta_seconds)
+{
+    return tasks_->updateTaskEta(task_id, eta_seconds);
+}
+
 int TaskManager::startModelTask(const QString &model_uuid, const QString &model_name, const QString &task_type)
 {
     return tasks_->startModelTask(model_uuid, model_name, task_type);
@@ -598,6 +667,8 @@ void TaskManager::handleTaskMessage(const TaskMessage &message)
 
     if (message.progress >= 0)
         tasks_->updateTaskProgress(message.task_id, message.progress);
+    if (message.payload.contains(taskProtocolFieldName(TaskProtocolField::EtaSeconds)))
+        tasks_->updateTaskEta(message.task_id, message.eta_seconds);
 
     switch (message.status)
     {

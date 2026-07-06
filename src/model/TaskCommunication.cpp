@@ -30,6 +30,8 @@ QString taskProtocolFieldName(TaskProtocolField field)
         return QStringLiteral("status");
     case TaskProtocolField::Progress:
         return QStringLiteral("progress");
+    case TaskProtocolField::EtaSeconds:
+        return QStringLiteral("eta_seconds");
     case TaskProtocolField::Message:
         return QStringLiteral("message");
     case TaskProtocolField::Command:
@@ -278,6 +280,7 @@ void TaskCommunicationServer::processLine(QTcpSocket *socket, const QByteArray &
     message.status
         = taskProtocolStatusFromName(object.value(taskProtocolFieldName(TaskProtocolField::Status)).toString());
     message.progress = object.value(taskProtocolFieldName(TaskProtocolField::Progress), -1).toInt();
+    message.eta_seconds = object.value(taskProtocolFieldName(TaskProtocolField::EtaSeconds), -1).toLongLong();
     message.message  = object.value(taskProtocolFieldName(TaskProtocolField::Message)).toString();
     message.payload  = object;
 

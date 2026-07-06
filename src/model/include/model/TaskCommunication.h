@@ -19,6 +19,7 @@ enum class TaskProtocolField
     Type,
     Status,
     Progress,
+    EtaSeconds,
     Message,
     Command,
 };
@@ -65,6 +66,7 @@ struct MODEL_API TaskMessage
     TaskMessageType    type{TaskMessageType::Unknown};
     TaskProtocolStatus status{TaskProtocolStatus::Unknown};
     int                progress{-1};
+    qint64             eta_seconds{-1};
     QString            message;
     QVariantMap        payload;
 };

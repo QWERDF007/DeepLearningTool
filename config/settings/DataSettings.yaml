@@ -40,43 +40,13 @@ DataSettings:
         property_name: imageCellScale
         value: 1.0
         value_type: double
-        value_range: [0.1, 10.0, 0.1]
+        value_range: [0.5, 4.0, 0.25]
         control_type: slider
         sidebar:
           gallery:
             icon: ExploreContentSingle
             ordinal_index: 10
             snap: false
-            from: cell_scale_from
-            to: cell_scale_to
-            step: cell_scale_step
-
-      - name_en: cell_scale_from
-        name_cn: 图像单元缩放下限
-        desc: 用于配置数据设置中图像单元相关的图像单元缩放下限。
-        property_name: imageCellScaleFrom
-        value: 0.5
-        value_type: double
-        value_range: [0.1, 10.0, 0.1]
-        control_type: slider
-
-      - name_en: cell_scale_to
-        name_cn: 图像单元缩放上限
-        desc: 用于配置数据设置中图像单元相关的图像单元缩放上限。
-        property_name: imageCellScaleTo
-        value: 4.0
-        value_type: double
-        value_range: [0.2, 10.0, 0.1]
-        control_type: slider
-
-      - name_en: cell_scale_step
-        name_cn: 图像单元缩放步长
-        desc: 用于配置数据设置中图像单元相关的图像单元缩放步长。
-        property_name: imageCellScaleStepSize
-        value: 0.25
-        value_type: double
-        value_range: [0.01, 2.0, 0.01]
-        control_type: spin
 
     标注显示:
       - name_en: label_scale

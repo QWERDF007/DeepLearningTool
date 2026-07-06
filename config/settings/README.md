@@ -113,9 +113,6 @@ sidebar:
     icon: ExploreContentSingle
     ordinal_index: 10
     snap: false
-    from: cell_scale_from
-    to: cell_scale_to
-    step: cell_scale_step
 ```
 
 侧边栏字段说明：
@@ -123,7 +120,7 @@ sidebar:
 - `icon`：侧边栏按钮图标名。
 - `ordinal_index`：侧边栏内排序。
 - `snap`：滑块是否使用吸附。
-- `from` / `to` / `step`：可选范围字段 `name_en`；未配置时默认使用 `<name_en>_from`、`<name_en>_to`、`<name_en>_step`。
+- 侧边栏滑块范围直接使用字段自己的 `value_range`。
 
 ## 新增设置约定
 

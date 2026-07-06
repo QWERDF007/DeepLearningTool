@@ -142,6 +142,7 @@ Window {
                     { width: 120, minimumWidth: 90 },
                     { width: 170, minimumWidth: 140 },
                     { width: 110, minimumWidth: 90 },
+                    { width: 110, minimumWidth: 90 },
                     { width: 180, minimumWidth: 140 },
                     { width: 300, minimumWidth: 260 }
                 ]
