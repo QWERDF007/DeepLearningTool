@@ -53,21 +53,8 @@ Rectangle {
         return false
     }
 
-    function allDatasetIds() {
-        let ids = []
-        if (!datasets) {
-            return ids
-        }
-
-        for (let i = 0; i < datasets.rowCount(); ++i) {
-            let modelIndex = datasets.index(i, 0)
-            ids.push(datasets.data(modelIndex, DatasetsModel.DatasetIdRole))
-        }
-        return ids
-    }
-
     function visibleDatasetIds() {
-        let allIds = allDatasetIds()
+        let allIds = dataManager ? dataManager.getAllDatasetIds() : []
         if (!datasetFilterEnabled) {
             return allIds
         }
@@ -91,7 +78,7 @@ Rectangle {
             return
         }
 
-        let allIds = allDatasetIds()
+        let allIds = dataManager.getAllDatasetIds()
         if (allIds.length === 0) {
             return
         }
@@ -202,6 +189,19 @@ Rectangle {
                 if (dataManager && ids.length > 0) {
                     exportDataDialog.datasetIds = ids
                     exportDataDialog.datasetName = ids.length === 1 && curItem ? curItem.name : ids.length + " 个数据集"
+                    exportDataDialog.open()
+                }
+            }
+        }
+        QuiMenuItem {
+            text: "导出全部"
+            iconSource: QuiFontIcon.Export
+            enabled: dataManager && datasets && datasets.rowCount() > 0
+            onClicked: {
+                let ids = dataManager.getAllDatasetIds()
+                if (dataManager && ids.length > 0) {
+                    exportDataDialog.datasetIds = ids
+                    exportDataDialog.datasetName = "全部数据集"
                     exportDataDialog.open()
                 }
             }
@@ -320,11 +320,36 @@ Rectangle {
                 onClicked: function(row, button, modifiers) {
                     handleDatasetClicked(row, button, modifiers)
                 }
-                onHoverChanged: function(row, hovered) {
-                    view.hoveredIndex = hovered ? row : -1
-                }
                 onFilterClicked: function(datasetId) {
                     toggleDatasetFilter(datasetId)
+                }
+            }
+
+            MouseArea {
+                id: hoverTracker
+                anchors.fill: parent
+                acceptedButtons: Qt.NoButton
+                hoverEnabled: true
+                z: 10
+
+                function updateHoveredIndex(mouseX, mouseY) {
+                    let row = view.indexAt(mouseX + view.contentX, mouseY + view.contentY)
+                    view.hoveredIndex = row >= 0 ? row : -1
+                }
+
+                onPositionChanged: function(mouse) {
+                    updateHoveredIndex(mouse.x, mouse.y)
+                }
+                onEntered: updateHoveredIndex(mouseX, mouseY)
+                onExited: view.hoveredIndex = -1
+
+                Connections {
+                    target: view
+                    function onContentYChanged() {
+                        if (hoverTracker.containsMouse) {
+                            hoverTracker.updateHoveredIndex(hoverTracker.mouseX, hoverTracker.mouseY)
+                        }
+                    }
                 }
             }
 

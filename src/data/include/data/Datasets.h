@@ -129,6 +129,7 @@ public:
     void setLastIndex(int last_index);
 
     QList<QString> getAllDatasetsName() const;
+    std::vector<int64_t> getAllDatasetIds() const;
 
     int     getDatasetId(const QString &dataset_name) const;
     QString getDatasetName(const int dataset_id) const;

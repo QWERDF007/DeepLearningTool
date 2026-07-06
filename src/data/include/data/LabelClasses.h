@@ -3,6 +3,7 @@
 #include <QAbstractListModel>
 #include <QtQml>
 #include <map>
+#include <vector>
 
 namespace dltool::database {
 class ProjectDataBase;
@@ -112,6 +113,7 @@ public:
     bool deleteLabelClass(const int64_t label_class_id);
 
     int     getLabelClassId(const QString &name) const;
+    std::vector<int64_t> getAllLabelClassIds() const;
     QString getLabelClassName(const int label_class_id) const;
     QString getLabelClassColor(const int label_class_id) const;
     QString getLabelClassGroup(const int label_class_id) const;

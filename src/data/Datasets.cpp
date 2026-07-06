@@ -311,6 +311,17 @@ QList<QString> DatasetsListModel::getAllDatasetsName() const
     return list;
 }
 
+std::vector<int64_t> DatasetsListModel::getAllDatasetIds() const
+{
+    std::vector<int64_t> ids;
+    ids.reserve(datasets_.size());
+    for (const auto &[id, dataset] : datasets_)
+    {
+        ids.push_back(id);
+    }
+    return ids;
+}
+
 int DatasetsListModel::getDatasetId(const QString &dataset_name) const
 {
     for (const auto &[id, dataset] : datasets_)
@@ -410,9 +421,9 @@ void DatasetsListModel::deleteImages(const std::vector<int64_t> &dataset_ids, co
     emit statsChanged();
 }
 
-void DatasetsListModel::moveImages(const std::vector<int64_t> &source_dataset_ids,
-                                   const std::vector<int64_t> &target_dataset_ids,
-                                   const std::vector<int64_t> &image_ids,
+void DatasetsListModel::moveImages(const std::vector<int64_t>              &source_dataset_ids,
+                                   const std::vector<int64_t>              &target_dataset_ids,
+                                   const std::vector<int64_t>              &image_ids,
                                    const std::vector<std::vector<int64_t>> &images_label_ids)
 {
     if (source_dataset_ids.size() != image_ids.size() || target_dataset_ids.size() != image_ids.size()

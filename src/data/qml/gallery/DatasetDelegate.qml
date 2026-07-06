@@ -21,7 +21,6 @@ Item {
     property int row: -1
 
     signal clicked(int row, int button, int modifiers)
-    signal hoverChanged(int row, bool hovered)
     signal filterClicked(int datasetId)
 
     Rectangle {
@@ -43,14 +42,12 @@ Item {
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        hoverEnabled: true
+        hoverEnabled: false
         z: 0
 
         onClicked: function(mouse) {
             control.clicked(control.row, mouse.button, mouse.modifiers)
         }
-        onEntered: control.hoverChanged(control.row, true)
-        onExited: control.hoverChanged(control.row, false)
     }
 
     RowLayout {

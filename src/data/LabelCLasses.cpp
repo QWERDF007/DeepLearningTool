@@ -24,8 +24,10 @@ QString normalizedColorName(const QString &color)
 
 std::vector<uint8_t> extraDataForGroup(const QString &group)
 {
-    const QJsonObject  object{{QString::fromUtf8(kGroupKey), normalizeLabelClassGroup(group)}};
-    const QByteArray   json = QJsonDocument(object).toJson(QJsonDocument::Compact);
+    const QJsonObject object{
+        {QString::fromUtf8(kGroupKey), normalizeLabelClassGroup(group)}
+    };
+    const QByteArray     json = QJsonDocument(object).toJson(QJsonDocument::Compact);
     std::vector<uint8_t> blob;
     blob.reserve(static_cast<size_t>(json.size()));
     for (char ch : json)
@@ -42,8 +44,8 @@ QString groupFromExtraData(const std::vector<uint8_t> &blob)
         return defaultLabelClassGroup();
     }
 
-    const QByteArray bytes(reinterpret_cast<const char *>(blob.data()), static_cast<qsizetype>(blob.size()));
-    QJsonParseError  parse_error;
+    const QByteArray    bytes(reinterpret_cast<const char *>(blob.data()), static_cast<qsizetype>(blob.size()));
+    QJsonParseError     parse_error;
     const QJsonDocument document = QJsonDocument::fromJson(bytes, &parse_error);
     if (parse_error.error != QJsonParseError::NoError || !document.isObject())
     {
@@ -58,7 +60,7 @@ QString groupFromExtraData(const std::vector<uint8_t> &blob)
 QString normalizeLabelClassGroup(const QString &group)
 {
     const QString normalized = group.trimmed().toLower();
-    if (normalized == QString::fromUtf8(kGoodGroup) || normalized == QStringLiteral("良好")
+    if (normalized == QString::fromUtf8(kGoodGroup) || normalized == QString("良好")
         || normalized == QStringLiteral("good"))
     {
         return QString::fromUtf8(kGoodGroup);
@@ -68,8 +70,7 @@ QString normalizeLabelClassGroup(const QString &group)
 
 QString labelClassGroupDisplayName(const QString &group)
 {
-    return normalizeLabelClassGroup(group) == QString::fromUtf8(kGoodGroup) ? QStringLiteral("良好")
-                                                                            : QStringLiteral("异常");
+    return normalizeLabelClassGroup(group) == QString::fromUtf8(kGoodGroup) ? QString("良好") : QString("异常");
 }
 
 QString defaultLabelClassGroup()
@@ -185,8 +186,8 @@ bool LabelClassesListModel::reorderLabelClass(const int64_t label_class_id, cons
     // 注意：由于 ordinalIndex 改变后，行与数据的映射关系改变了
     // 需要通知整个受影响范围的所有角色
     emit dataChanged(index(minRow), index(maxRow),
-                     {LabelClassIdRole, NameRole, ColorRole, ShortcutRole, GroupRole, GroupNameRole,
-                      OrdinalIndexRole, SelectedRole});
+                     {LabelClassIdRole, NameRole, ColorRole, ShortcutRole, GroupRole, GroupNameRole, OrdinalIndexRole,
+                      SelectedRole});
 
     // 恢复选中状态
     if (selectedClassId != -1)
@@ -259,20 +260,19 @@ void LabelClassesListModel::init()
     {
         return;
     }
-    QString              err_msg;
-    std::vector<int64_t> label_class_ids, ordinal_indices;
-    std::vector<QString> names, colors, shortcuts;
+    QString                           err_msg;
+    std::vector<int64_t>              label_class_ids, ordinal_indices;
+    std::vector<QString>              names, colors, shortcuts;
     std::vector<std::vector<uint8_t>> extra_data;
     if (database_->getAllLabelClasses(label_class_ids, names, colors, shortcuts, ordinal_indices, extra_data, err_msg))
     {
         for (size_t i = 0; i < label_class_ids.size(); ++i)
         {
-            label_classes_.emplace(label_class_ids[i], new LabelClass(label_class_ids[i], names[i], colors[i],
-                                                                      shortcuts[i], ordinal_indices[i],
-                                                                      i < extra_data.size()
-                                                                          ? groupFromExtraData(extra_data[i])
-                                                                          : defaultLabelClassGroup(),
-                                                                      this));
+            label_classes_.emplace(
+                label_class_ids[i],
+                new LabelClass(label_class_ids[i], names[i], colors[i], shortcuts[i], ordinal_indices[i],
+                               i < extra_data.size() ? groupFromExtraData(extra_data[i]) : defaultLabelClassGroup(),
+                               this));
         }
         if (label_class_ids.size() > 0)
         {
@@ -342,12 +342,12 @@ bool LabelClassesListModel::addLabelClass(const QString &name, const QString &co
         spdlog::error("添加标签类别 [{}] 失败, 数据库未初始化", name.toUtf8().constData());
         return false;
     }
-    const int row = static_cast<int>(label_classes_.size());
-    QString   err_msg;
-    int64_t   label_class_id{-1};
+    const int     row = static_cast<int>(label_classes_.size());
+    QString       err_msg;
+    int64_t       label_class_id{-1};
     const QString normalized_group = normalizeLabelClassGroup(group);
-    bool          ok = database_->addLabelClass(name, color, shortcut, row, extraDataForGroup(normalized_group),
-                                                label_class_id, err_msg);
+    bool ok = database_->addLabelClass(name, color, shortcut, row, extraDataForGroup(normalized_group), label_class_id,
+                                       err_msg);
     if (!ok)
     {
         spdlog::error("添加标签类别 [{}] 失败: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
@@ -368,18 +368,17 @@ bool LabelClassesListModel::addLabelClass(const QString &name, const QString &co
 }
 
 bool LabelClassesListModel::updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
-                                             const QString &shortcut, const int64_t ordinal_index,
-                                             const QString &group)
+                                             const QString &shortcut, const int64_t ordinal_index, const QString &group)
 {
     if (database_ == nullptr)
     {
         spdlog::error("更新标签类别 [{}] 失败, 数据库未初始化", name.toUtf8().constData());
         return false;
     }
-    QString err_msg;
+    QString       err_msg;
     const QString normalized_group = normalizeLabelClassGroup(group);
-    bool          ok = database_->updateLabelClass(label_class_id, name, color, shortcut, ordinal_index,
-                                                   extraDataForGroup(normalized_group), err_msg);
+    bool          ok               = database_->updateLabelClass(label_class_id, name, color, shortcut, ordinal_index,
+                                                                 extraDataForGroup(normalized_group), err_msg);
     if (!ok)
     {
         spdlog::error("更新标签类别 [{}] 失败: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
@@ -423,10 +422,9 @@ bool LabelClassesListModel::updateLabelClass(const int64_t label_class_id, const
         }
 
         spdlog::info("更新标签类别 {} -> {}, {} -> {}, {} -> {}, {} -> {}, {} -> {} 成功",
-                     old_name.toUtf8().constData(),
-                     name.toUtf8().constData(), old_color.toUtf8().constData(), color.toUtf8().constData(),
-                     old_shortcut.toUtf8().constData(), shortcut.toUtf8().constData(), old_group.toUtf8().constData(),
-                     normalized_group.toUtf8().constData(), old_ordinal, ordinal_index);
+                     old_name.toUtf8().constData(), name.toUtf8().constData(), old_color.toUtf8().constData(),
+                     color.toUtf8().constData(), old_shortcut.toUtf8().constData(), shortcut.toUtf8().constData(),
+                     old_group.toUtf8().constData(), normalized_group.toUtf8().constData(), old_ordinal, ordinal_index);
     }
     return true;
 }
@@ -544,6 +542,17 @@ int LabelClassesListModel::getLabelClassId(const QString &name) const
             return label_class_id;
     }
     return -1;
+}
+
+std::vector<int64_t> LabelClassesListModel::getAllLabelClassIds() const
+{
+    std::vector<int64_t> ids;
+    ids.reserve(label_classes_.size());
+    for (const auto &[id, label_class] : label_classes_)
+    {
+        ids.push_back(id);
+    }
+    return ids;
 }
 
 int LabelClassesListModel::getLabelClassId(const QModelIndex &index) const

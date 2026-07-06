@@ -129,7 +129,8 @@ public:
     QString providerCacheKey() const;
 
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
-    Q_INVOKABLE QVariantList   getAllLabelClassIds() const;
+    Q_INVOKABLE std::vector<int64_t> getAllDatasetIds() const;
+    Q_INVOKABLE std::vector<int64_t> getAllLabelClassIds() const;
 
     Q_INVOKABLE int     getDatasetId(const QString &dataset_name) const;
     Q_INVOKABLE QString getDatasetName(const int dataset_id) const;
@@ -140,7 +141,7 @@ public:
 
     Q_INVOKABLE void addDataset(const QString &name);
     Q_INVOKABLE void updateDataset(const int64_t dataset_id, const QString &name);
-    Q_INVOKABLE void deleteDatasets(const QVariantList &dataset_ids);
+    Q_INVOKABLE void deleteDatasets(const std::vector<int64_t> &dataset_ids);
 
     Q_INVOKABLE void importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
                                 const QString &data_dir);
@@ -148,8 +149,8 @@ public:
     Q_INVOKABLE void importDataWithLabelClassGroups(const int64_t dataset_id, const int data_format,
                                                     const QString &image_dir, const QString &data_dir,
                                                     const QVariantMap &label_class_groups);
-    Q_INVOKABLE void exportDatasets(const QVariantList &dataset_ids, const int data_format, const QString &output_dir,
-                                    const QVariantMap &options = {});
+    Q_INVOKABLE void exportDatasets(const std::vector<int64_t> &dataset_ids, const int data_format,
+                                    const QString &output_dir, const QVariantMap &options = {});
 
     Q_INVOKABLE void deleteSelectedImages();
     Q_INVOKABLE void copyToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id);
@@ -185,7 +186,7 @@ public:
     Q_INVOKABLE void duplicateSelectedLabels();
     Q_INVOKABLE bool setImageLabelClass(const int64_t image_id, const int64_t label_class_id);
     Q_INVOKABLE QVariantMap getImageLevelLabelData(const int64_t image_id) const;
-    Q_INVOKABLE void refreshAnomalyImageClassesFromPolygons(const QVariantList &image_ids,
+    Q_INVOKABLE void refreshAnomalyImageClassesFromPolygons(const std::vector<int64_t> &image_ids,
                                                             bool only_unset = false);
 
     Q_INVOKABLE void addTagClass(const QString &name);

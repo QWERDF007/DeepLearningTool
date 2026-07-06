@@ -1,8 +1,8 @@
 ﻿#include "data/DataManager.h"
 
 #include "data/CategoryStatisticsModel.h"
-#include "data/DataIO.h"
 #include "data/DataFormat.h"
+#include "data/DataIO.h"
 #include "data/DataNameUtils.h"
 #include "data/DatasetIO.h"
 #include "data/GlobalFilter.h"
@@ -30,6 +30,7 @@
 #include <set>
 #include <utility>
 
+
 namespace dltool::data {
 
 namespace {
@@ -52,24 +53,6 @@ QString normalizedImagePath(const QString &path)
     normalized = normalized.toCaseFolded();
 #endif
     return normalized;
-}
-
-std::vector<int64_t> parseInt64List(const QVariantList &values)
-{
-    std::vector<int64_t> result;
-    result.reserve(static_cast<size_t>(values.size()));
-    for (const QVariant &value : values)
-    {
-        bool          ok = false;
-        const int64_t id = value.toLongLong(&ok);
-        if (ok && id >= 0)
-        {
-            result.push_back(id);
-        }
-    }
-    std::sort(result.begin(), result.end());
-    result.erase(std::unique(result.begin(), result.end()), result.end());
-    return result;
 }
 
 void addProgressMessage(int level, const QString &message)
@@ -358,18 +341,18 @@ QList<QString> DataManager::getAllDatasetsName() const
     return datasets_->getAllDatasetsName();
 }
 
-QVariantList DataManager::getAllLabelClassIds() const
+std::vector<int64_t> DataManager::getAllDatasetIds() const
 {
-    QVariantList ids;
-    if (label_classes_ == nullptr)
-        return ids;
+    if (datasets_ == nullptr)
+        return {};
+    return datasets_->getAllDatasetIds();
+}
 
-    ids.reserve(label_classes_->rowCount());
-    for (int row = 0; row < label_classes_->rowCount(); ++row)
-    {
-        ids.push_back(label_classes_->data(label_classes_->index(row, 0), LabelClassesListModel::LabelClassIdRole));
-    }
-    return ids;
+std::vector<int64_t> DataManager::getAllLabelClassIds() const
+{
+    if (label_classes_ == nullptr)
+        return {};
+    return label_classes_->getAllLabelClassIds();
 }
 
 int DataManager::getDatasetId(const QString &dataset_name) const
@@ -571,10 +554,9 @@ QString DataManager::isValidClassName(const QString &name, const int64_t label_c
     return QString();
 }
 
-void DataManager::deleteDatasets(const QVariantList &dataset_ids)
+void DataManager::deleteDatasets(const std::vector<int64_t> &dataset_ids)
 {
-    const std::vector<int64_t> ids = parseInt64List(dataset_ids);
-    for (const int64_t dataset_id : ids)
+    for (const int64_t dataset_id : dataset_ids)
     {
         std::vector<int64_t> image_ids;
         image_instances_->deleteImages(dataset_id, image_ids);
@@ -615,45 +597,44 @@ void DataManager::scanImportLabelClasses(const int data_format, const QString &i
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
                               Q_ARG(QString, "扫描导入类别"));
 
-    connect(scanner, &DataIO::labelClassesScanned, this,
-            [this, scanner](bool success, const std::map<QString, QString> &label_class_info, const QString &message)
+    connect(
+        scanner, &DataIO::labelClassesScanned, this,
+        [this, scanner](bool success, const std::map<QString, QString> &label_class_info, const QString &message)
+        {
+            QVariantList label_classes;
+            if (success)
             {
-                QVariantList label_classes;
-                if (success)
+                for (const auto &[name, color] : label_class_info)
                 {
-                    for (const auto &[name, color] : label_class_info)
-                    {
-                        const int label_class_id = label_classes_ ? label_classes_->getLabelClassId(name) : -1;
-                        const QString effective_color
-                            = label_class_id >= 0 && label_classes_
-                                ? label_classes_->getLabelClassColor(label_class_id)
-                                : color;
-                        const QString group = label_class_id >= 0 && label_classes_
-                                                ? label_classes_->getLabelClassGroup(label_class_id)
-                                                : defaultLabelClassGroup();
+                    const int     label_class_id  = label_classes_ ? label_classes_->getLabelClassId(name) : -1;
+                    const QString effective_color = label_class_id >= 0 && label_classes_
+                                                      ? label_classes_->getLabelClassColor(label_class_id)
+                                                      : color;
+                    const QString group           = label_class_id >= 0 && label_classes_
+                                                      ? label_classes_->getLabelClassGroup(label_class_id)
+                                                      : defaultLabelClassGroup();
 
-                        QVariantMap item;
-                        item.insert(QStringLiteral("label_class_id"), label_class_id);
-                        item.insert(QStringLiteral("name"), name);
-                        item.insert(QStringLiteral("color"), effective_color);
-                        item.insert(QStringLiteral("group"), normalizeLabelClassGroup(group));
-                        item.insert(QStringLiteral("group_name"), labelClassGroupDisplayName(group));
-                        item.insert(QStringLiteral("existing"), label_class_id >= 0);
-                        label_classes.append(item);
-                    }
+                    QVariantMap item;
+                    item.insert(QStringLiteral("label_class_id"), label_class_id);
+                    item.insert(QStringLiteral("name"), name);
+                    item.insert(QStringLiteral("color"), effective_color);
+                    item.insert(QStringLiteral("group"), normalizeLabelClassGroup(group));
+                    item.insert(QStringLiteral("group_name"), labelClassGroupDisplayName(group));
+                    item.insert(QStringLiteral("existing"), label_class_id >= 0);
+                    label_classes.append(item);
                 }
+            }
 
-                const int level = success ? spdlog::level::info : spdlog::level::err;
-                const QString progress_message
-                    = message.isEmpty() ? QStringLiteral("导入类别扫描完成") : message;
-                QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                          Q_ARG(int, level), Q_ARG(QString, progress_message));
-                QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+            const int     level            = success ? spdlog::level::info : spdlog::level::err;
+            const QString progress_message = message.isEmpty() ? QStringLiteral("导入类别扫描完成") : message;
+            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
+                                      Q_ARG(int, level), Q_ARG(QString, progress_message));
+            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
 
-                emit importLabelClassesScanned(success, label_classes, message);
-                scanner->deleteLater();
-            },
-            Qt::QueuedConnection);
+            emit importLabelClassesScanned(success, label_classes, message);
+            scanner->deleteLater();
+        },
+        Qt::QueuedConnection);
 
     scanner->startScanLabelClasses(image_dir, data_dir);
 }
@@ -723,11 +704,11 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
         return;
     }
     importer->setTargetMethod(method_);
-    import_running_                  = true;
-    pending_import_task_             = std::make_unique<PendingImportTask>();
-    pending_import_task_->importer   = importer;
-    pending_import_task_->dataset_id = dataset_id;
-    pending_import_task_->data_format = data_format;
+    import_running_                             = true;
+    pending_import_task_                        = std::make_unique<PendingImportTask>();
+    pending_import_task_->importer              = importer;
+    pending_import_task_->dataset_id            = dataset_id;
+    pending_import_task_->data_format           = data_format;
     pending_import_task_->label_class_group_map = label_class_groups;
 
     qRegisterMetaType<std::vector<QString>>("std::vector<QString>");
@@ -737,19 +718,16 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
 
     // 导入器每解析出一批数据就交给 DataManager 写库。
     // BlockingQueuedConnection 可以限制后台线程速度，避免批次在主线程事件队列中大量堆积。
-    connect(importer, &DataIO::dataBatchReady, this, &DataManager::handleDataBatchReady,
-            Qt::BlockingQueuedConnection);
+    connect(importer, &DataIO::dataBatchReady, this, &DataManager::handleDataBatchReady, Qt::BlockingQueuedConnection);
     connect(importer, &DataIO::importFinished, this, &DataManager::handleImportFinished, Qt::QueuedConnection);
 
     // 启动导入
     importer->startImport(dataset_id, image_dir, data_dir);
 }
 
-void DataManager::exportDatasets(const QVariantList &dataset_ids, const int data_format, const QString &output_dir,
-                                 const QVariantMap &options)
+void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const int data_format,
+                                 const QString &output_dir, const QVariantMap &options)
 {
-    const std::vector<int64_t> ids = parseInt64List(dataset_ids);
-
     if (!data::DataFormat::isExportDataFormatSupported(method_, data_format))
     {
         spdlog::error("导出数据失败, 项目类型 {} 不支持数据格式: {}", method_, data_format);
@@ -762,7 +740,7 @@ void DataManager::exportDatasets(const QVariantList &dataset_ids, const int data
         return;
     }
 
-    if (ids.empty())
+    if (dataset_ids.empty())
     {
         spdlog::warn("导出数据失败, 未选择数据集");
         return;
@@ -793,7 +771,7 @@ void DataManager::exportDatasets(const QVariantList &dataset_ids, const int data
     };
 
     auto state = std::make_shared<ExportBatchState>();
-    for (const int64_t dataset_id : ids)
+    for (const int64_t dataset_id : dataset_ids)
     {
         ExportDataset dataset = buildExportDataset(dataset_id);
         if (dataset.dataset_name.isEmpty())
@@ -1186,8 +1164,7 @@ void DataManager::updateLabelClass(const int64_t label_class_id, const QString &
 }
 
 void DataManager::updateLabelClassWithGroup(const int64_t label_class_id, const QString &name, const QString &color,
-                                            const QString &shortcut, const int64_t ordinal_index,
-                                            const QString &group)
+                                            const QString &shortcut, const int64_t ordinal_index, const QString &group)
 {
     const QString validation_error = isValidClassName(name, label_class_id);
     if (!validation_error.isEmpty())
@@ -1197,9 +1174,8 @@ void DataManager::updateLabelClassWithGroup(const int64_t label_class_id, const 
     }
     if (label_classes_ != nullptr)
     {
-        const QString label_error
-            = label_classes_->isValid(static_cast<int>(label_class_id), name, color, shortcut,
-                                      static_cast<int>(ordinal_index));
+        const QString label_error = label_classes_->isValid(static_cast<int>(label_class_id), name, color, shortcut,
+                                                            static_cast<int>(ordinal_index));
         if (label_error.startsWith(QStringLiteral("error:")))
         {
             spdlog::warn("更新标签类别失败: {}", label_error.toUtf8().constData());
@@ -1465,7 +1441,7 @@ QVariantMap DataManager::getImageLevelLabelData(const int64_t image_id) const
     return data;
 }
 
-void DataManager::refreshAnomalyImageClassesFromPolygons(const QVariantList &image_ids, bool only_unset)
+void DataManager::refreshAnomalyImageClassesFromPolygons(const std::vector<int64_t> &image_ids, bool only_unset)
 {
     if (method_ != core::DeepLearningMethod::AnomalyDetection || image_instances_ == nullptr
         || label_instances_ == nullptr || label_classes_ == nullptr)
@@ -1473,18 +1449,17 @@ void DataManager::refreshAnomalyImageClassesFromPolygons(const QVariantList &ima
         return;
     }
 
-    const std::vector<int64_t> ids = parseInt64List(image_ids);
-    if (ids.empty())
+    if (image_ids.empty())
     {
         return;
     }
 
     std::vector<int64_t> images_to_update;
     std::vector<int64_t> classes_to_set;
-    images_to_update.reserve(ids.size());
-    classes_to_set.reserve(ids.size());
+    images_to_update.reserve(image_ids.size());
+    classes_to_set.reserve(image_ids.size());
 
-    for (const int64_t image_id : ids)
+    for (const int64_t image_id : image_ids)
     {
         if (only_unset && image_instances_->getImageLabelClassId(image_id) >= 0)
         {
@@ -1633,7 +1608,7 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
             return cached_it->second;
         }
 
-        const auto group_it = task.label_class_group_map.find(label_name);
+        const auto    group_it       = task.label_class_group_map.find(label_name);
         const QString selected_group = group_it != task.label_class_group_map.end()
                                          ? normalizeLabelClassGroup(group_it->second)
                                          : defaultLabelClassGroup();
@@ -1751,9 +1726,9 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
         }
     }
 
-    std::vector<int64_t>     batch_label_image_ids;
-    std::vector<int64_t>     batch_label_class_ids;
-    std::vector<QVariantMap> batch_label_data;
+    std::vector<int64_t>       batch_label_image_ids;
+    std::vector<int64_t>       batch_label_class_ids;
+    std::vector<QVariantMap>   batch_label_data;
     std::map<int64_t, int64_t> batch_image_level_class_updates;
 
     for (const ImportedLabel &label : labels)
@@ -1812,11 +1787,10 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
                 task.first_anomaly_polygon_class_by_image_id[image_id] = label_class_id;
             }
 
-            const auto anomaly_it = task.first_anomaly_polygon_class_by_image_id.find(image_id);
-            batch_image_level_class_updates[image_id]
-                = anomaly_it != task.first_anomaly_polygon_class_by_image_id.end()
-                    ? anomaly_it->second
-                    : task.first_polygon_class_by_image_id[image_id];
+            const auto anomaly_it                     = task.first_anomaly_polygon_class_by_image_id.find(image_id);
+            batch_image_level_class_updates[image_id] = anomaly_it != task.first_anomaly_polygon_class_by_image_id.end()
+                                                          ? anomaly_it->second
+                                                          : task.first_polygon_class_by_image_id[image_id];
         }
 
         batch_label_image_ids.push_back(image_id);
@@ -1860,7 +1834,8 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
             image_level_class_ids.push_back(class_id);
         }
 
-        if (!image_level_image_ids.empty() && image_instances_->setImageLabelClassIds(image_level_image_ids, image_level_class_ids)
+        if (!image_level_image_ids.empty()
+            && image_instances_->setImageLabelClassIds(image_level_image_ids, image_level_class_ids)
             && image_info_ != nullptr)
         {
             image_info_->updateLabelInfo();

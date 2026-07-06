@@ -28,6 +28,7 @@ QuiPopup {
     property int pendingDataFormat: -1
     property string pendingImageDir: ""
     property string pendingDataDir: ""
+    property var pendingClassGroupClasses: []
 
     readonly property bool importing: ioMode === DatasetDataIODialog.Import
     readonly property bool anomalyImport: importing
@@ -58,6 +59,13 @@ QuiPopup {
 
     onDataFormatModelChanged: resetFormatSelection()
     Component.onCompleted: resetFormatSelection()
+    onClosed: {
+        if (pendingClassGroupClasses.length > 0) {
+            let classes = pendingClassGroupClasses
+            pendingClassGroupClasses = []
+            classGroupDialog.openForClasses(classes)
+        }
+    }
 
     function normalizedGroup(group) {
         return group === "good" || group === "良好" ? "good" : "anomaly"
@@ -102,7 +110,8 @@ QuiPopup {
                 dialog.close()
                 dialog.importWithGroups({})
             } else {
-                classGroupDialog.openForClasses(classes)
+                pendingClassGroupClasses = classes
+                dialog.close()
             }
         }
     }
@@ -423,12 +432,36 @@ QuiPopup {
                             verticalAlignment: Text.AlignVCenter
                         }
 
-                        QuiComboBox {
-                            Layout.preferredWidth: 120
-                            model: ["异常", "良好"]
-                            currentIndex: dialog.normalizedGroup(modelData.group) === "good" ? 1 : 0
-                            onActivated: function(idx) {
-                                classGroupDialog.pendingClasses[index].group = idx === 1 ? "good" : "anomaly"
+                        RowLayout {
+                            id: groupSelector
+                            Layout.preferredWidth: 132
+                            Layout.preferredHeight: 30
+                            spacing: 4
+
+                            function setGroup(group) {
+                                classGroupDialog.pendingClasses[index].group = group
+                                anomalyButton.checked = group === "anomaly"
+                                goodButton.checked = group === "good"
+                            }
+
+                            Component.onCompleted: setGroup(dialog.normalizedGroup(modelData.group))
+
+                            QuiButton {
+                                id: anomalyButton
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                text: "异常"
+                                checkable: true
+                                onClicked: groupSelector.setGroup("anomaly")
+                            }
+
+                            QuiButton {
+                                id: goodButton
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                text: "良好"
+                                checkable: true
+                                onClicked: groupSelector.setGroup("good")
                             }
                         }
                     }
