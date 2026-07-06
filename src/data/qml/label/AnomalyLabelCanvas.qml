@@ -23,11 +23,5 @@ ClassificationLabelCanvas {
         canvas: labelCanvas
         rectangleToolAvailable: false
         polygonRegionMode: true
-        imageLevelLabelMode: true
-        afterLabelAdded: function(imageId, labelClassId, data) {
-            if (labelCanvas.dataManager) {
-                labelCanvas.dataManager.setImageLabelClass(imageId, labelClassId)
-            }
-        }
     }
 }

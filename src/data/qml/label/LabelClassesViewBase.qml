@@ -69,13 +69,7 @@ Rectangle {
     }
 
     Keys.onPressed: function(event) {
-        if (!labelClasses || !selection || !event.text || event.text.length === 0) {
-            return
-        }
-
-        let matchIndex = labelClasses.findByShortcut(event.text)
-        if (matchIndex >= 0) {
-            selectClassIndex(matchIndex, true)
+        if (handleShortcutEvent(event)) {
             event.accepted = true
         }
     }
@@ -442,6 +436,30 @@ Rectangle {
             }
         }
         return -1
+    }
+
+    function handleShortcutEvent(event) {
+        if (!event || event.accepted || (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
+            return false
+        }
+        return handleShortcutText(event.text)
+    }
+
+    function handleShortcutText(shortcut) {
+        if (shortcutEditorOpen() || !labelClasses || !selection || !shortcut || shortcut.length === 0) {
+            return false
+        }
+
+        let matchIndex = labelClasses.findByShortcut(shortcut)
+        if (matchIndex < 0) {
+            return false
+        }
+        return selectClassIndex(matchIndex, true)
+    }
+
+    function shortcutEditorOpen() {
+        let editor = editorLoader.item
+        return editor ? editor.visible : false
     }
 
     Component.onCompleted: {

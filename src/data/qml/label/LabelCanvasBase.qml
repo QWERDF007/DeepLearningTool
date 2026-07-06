@@ -111,7 +111,8 @@ Item {
     }
 
     function handleLabelClassShortcut(event) {
-        if (!labelClasses || !event.text || event.text.length <= 0) {
+        if (!labelClasses || !event.text || event.text.length <= 0
+                || (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
             return false
         }
         if (labelClasses.selectByShortcut(event.text)) {

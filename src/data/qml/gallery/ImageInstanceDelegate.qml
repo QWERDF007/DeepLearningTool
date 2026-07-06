@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Effects
 
+import dltool.core
 import dltool.ui
 import dltool.settings
 import dltool.data
@@ -11,22 +12,35 @@ import quickui
 Rectangle {
     id: imageInstanceDelegate
     property alias image: image
-    property int image_id: -1
+    property var image_id: -1
+    property var imageLevelLabelClassId: model.image_label_class_id !== undefined ? Number(model.image_label_class_id) : -1
     property bool selected: false
     property bool hasLabels: model.hasLabels || false
     property DataManager dataManager
     property real imageBrightness: 0.0
     property real imageContrast: 0.0
+    property int labelClassesRevision: 0
+    readonly property bool imageLevelBadgeMode: dataManager && dataManager.method === DeepLearningMethod.AnomalyDetection
+    readonly property var imageLevelLabelData: findImageLevelLabelData()
     
-    // 新增：通过 image_id 动态获取标注信息
     property string labelSummary: {
-        if (!hasLabels || image_id < 0 || !dataManager || !dataManager.imageLabelsList) return "";
-        return dataManager.imageLabelsList.getLabelSummaryForImage(image_id);
+        if (imageLevelBadgeMode) {
+            return imageLevelLabelData ? String(imageLevelLabelData.name || "") : ""
+        }
+        if (!hasLabels || image_id < 0 || !dataManager || !dataManager.imageLabelsList) {
+            return ""
+        }
+        return dataManager.imageLabelsList.getLabelSummaryForImage(image_id)
     }
-    
+
     property string labelColor: {
-        if (!hasLabels || image_id < 0 || !dataManager || !dataManager.imageLabelsList) return "";
-        return dataManager.imageLabelsList.getLabelColorForImage(image_id);
+        if (imageLevelBadgeMode) {
+            return imageLevelLabelData ? String(imageLevelLabelData.color || "") : ""
+        }
+        if (!hasLabels || image_id < 0 || !dataManager || !dataManager.imageLabelsList) {
+            return ""
+        }
+        return dataManager.imageLabelsList.getLabelColorForImage(image_id)
     }
 
     width: 320
@@ -66,6 +80,40 @@ Rectangle {
         imageContrast = GlobalSettings.valueForField(SettingsAccessor.Ui, UiField.Contrast, 0.0)
     }
 
+    function findImageLevelLabelData() {
+        let revision = labelClassesRevision
+        if (revision < 0 || !imageLevelBadgeMode || !dataManager || imageLevelLabelClassId < 0) {
+            return null
+        }
+
+        let labelClasses = dataManager.labelClasses
+        if (!labelClasses) {
+            return null
+        }
+
+        let classId = Number(imageLevelLabelClassId)
+        for (let row = 0; row < labelClasses.rowCount(); ++row) {
+            let modelIndex = labelClasses.index(row, 0)
+            let rowClassId = Number(labelClasses.data(modelIndex, LabelClassesModel.LabelClassIdRole))
+            if (rowClassId !== classId) {
+                continue
+            }
+
+            return {
+                "name": String(labelClasses.data(modelIndex, LabelClassesModel.NameRole) || ""),
+                "color": String(labelClasses.data(modelIndex, LabelClassesModel.ColorRole) || "")
+            }
+        }
+        return null
+    }
+
+    function badgeVisible() {
+        if (imageLevelBadgeMode) {
+            return labelSummary !== "" && labelColor !== ""
+        }
+        return hasLabels && labelColor !== ""
+    }
+
     Component.onCompleted: refreshSettings()
 
     Connections {
@@ -74,11 +122,19 @@ Rectangle {
             imageInstanceDelegate.refreshSettings()
         }
     }
+
+    Connections {
+        target: imageInstanceDelegate.dataManager ? imageInstanceDelegate.dataManager.labelClasses : null
+        function onRowsInserted(parent, first, last) { imageInstanceDelegate.labelClassesRevision += 1 }
+        function onRowsRemoved(parent, first, last) { imageInstanceDelegate.labelClassesRevision += 1 }
+        function onDataChanged(topLeft, bottomRight, roles) { imageInstanceDelegate.labelClassesRevision += 1 }
+        function onModelReset() { imageInstanceDelegate.labelClassesRevision += 1 }
+    }
     
     // 标注指示器 - 显示在右上角
     Rectangle {
         id: annotationIndicator
-        visible: hasLabels && labelColor !== ""
+        visible: imageInstanceDelegate.badgeVisible()
         width: 12
         height: 12
         radius: 2

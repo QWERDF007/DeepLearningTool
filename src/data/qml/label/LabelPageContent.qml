@@ -16,6 +16,7 @@ Rectangle {
     width: 1080
     height: 1920
     color: QuiColor.Background
+    focus: true
 
     property DataManager dataManager
     property FeatureManager featureManager
@@ -29,6 +30,13 @@ Rectangle {
     readonly property SmartAnnotationController smartAnnotation: featureManager ? featureManager.smartAnnotation : null
     readonly property bool smartAnnotationLoading: smartAnnotation ? smartAnnotation.loadingModel : false
     readonly property var activeLabelCanvas: labelCanvasLoader.item
+
+    Keys.priority: Keys.AfterItem
+    Keys.onPressed: function(event) {
+        if (page.handleLabelClassShortcut(event)) {
+            event.accepted = true
+        }
+    }
 
     QuiSplitView {
         anchors.fill: parent
@@ -71,6 +79,7 @@ Rectangle {
                 AnomalyLabelClassesView {
                     anchors.fill: parent
                     dataManager: page.dataManager
+                    imageLevelClassEditing: page.anomalyImageLevelClassEditing()
                 }
             }
 
@@ -286,5 +295,20 @@ Rectangle {
             return segmentationLabelCanvasComponent
         }
         return detectionLabelCanvasComponent
+    }
+
+    function anomalyImageLevelClassEditing() {
+        if (!anomalyMode || !activeLabelCanvas) {
+            return true
+        }
+        return activeLabelCanvas.toolMode !== LabelCanvasEnums.PolygonTool
+    }
+
+    function handleLabelClassShortcut(event) {
+        if (!event || event.accepted || !labelClassesLoader.item
+                || !labelClassesLoader.item.handleShortcutEvent) {
+            return false
+        }
+        return labelClassesLoader.item.handleShortcutEvent(event)
     }
 }

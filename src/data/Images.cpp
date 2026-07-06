@@ -643,7 +643,7 @@ QVariant ImageInstancesListModel::getHasLabels(const QModelIndex &index) const
     auto          it       = full_image_instances_.find(image_id);
     if (it != full_image_instances_.end())
     {
-        return !it->second->labelIds().empty();
+        return !it->second->labelIds().empty() || it->second->imageLabelClassId() >= 0;
     }
     return false;
 }
@@ -817,7 +817,7 @@ void ImageInstancesListModel::notifyImageLabelClassChanged(int64_t image_id)
     {
         const int   row = static_cast<int>(std::distance(image_ids_.begin(), it));
         QModelIndex idx = index(row, 0);
-        emit        dataChanged(idx, idx, {ImageLabelClassIdRole});
+        emit        dataChanged(idx, idx, {ImageLabelClassIdRole, HasLabelsRole});
     }
 }
 

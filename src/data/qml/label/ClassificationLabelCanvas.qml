@@ -7,6 +7,8 @@ LabelCanvasBase {
     id: labelCanvas
 
     property var classificationBadgeData: null
+    property string classificationBadgeName: ""
+    property string classificationBadgeColor: "#ff0000"
     property var badgeDataProvider: function() {
         if (!imageLabelsList || imageLabelsList.rowCount() <= 0) {
             return null
@@ -48,9 +50,7 @@ LabelCanvasBase {
         width: Math.max(56, badgeText.implicitWidth + 14)
         height: Math.max(22, badgeText.implicitHeight + 6)
         radius: 2
-        color: labelCanvas.classificationBadgeData && labelCanvas.classificationBadgeData.color
-               ? labelCanvas.classificationBadgeData.color
-               : labelCanvas.drawingColor
+        color: labelCanvas.classificationBadgeColor
         border.color: Qt.rgba(1, 1, 1, 0.18)
         border.width: 1
         z: 30
@@ -74,21 +74,42 @@ LabelCanvasBase {
     function refreshClassificationBadge() {
         let provider = badgeDataProvider
         if (!provider) {
-            classificationBadgeData = null
+            clearClassificationBadge()
             return
         }
 
         let data = provider()
-        classificationBadgeData = data && data.label_class_id !== undefined ? data : null
+        if (!data || data.label_class_id === undefined) {
+            clearClassificationBadge()
+            return
+        }
+
+        classificationBadgeData = data
+        classificationBadgeName = stringField(data.label_class_name)
+
+        let color = stringField(data.color)
+        if (color.length > 0) {
+            classificationBadgeColor = color
+        } else {
+            classificationBadgeColor = "#ff0000"
+        }
     }
 
     function badgeLabelText() {
-        if (!classificationBadgeData) {
+        return classificationBadgeName
+    }
+
+    function clearClassificationBadge() {
+        classificationBadgeData = null
+        classificationBadgeName = ""
+        classificationBadgeColor = "#ff0000"
+    }
+
+    function stringField(value) {
+        if (value === undefined || value === null) {
             return ""
         }
-
-        let name = classificationBadgeData.label_class_name
-        return name === undefined || name === null ? "" : String(name)
+        return String(value)
     }
 
     Component.onCompleted: refreshClassificationBadge()
