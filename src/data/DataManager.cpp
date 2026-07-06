@@ -137,7 +137,7 @@ void DataManager::init(const int method)
     label_class_filter_items_ = new LabelClassFilterItemsModel(this);
 
     // Create CategoryStatisticsModel
-    category_statistics_model_ = new CategoryStatisticsModel(label_instances_, label_classes_, this);
+    category_statistics_model_ = new CategoryStatisticsModel(label_instances_, label_classes_, image_instances_, this);
 
     // Populate filter items models from datasets and tags
     dataset_filter_items_->populateFromDatasets(datasets_);
@@ -186,10 +186,16 @@ void DataManager::init(const int method)
     std::vector<int64_t> dataset_ids = image_instances_->getImagesDatasetIds(image_ids);
 
     std::vector<std::vector<int64_t>> images_label_ids(image_ids.size());
+    std::vector<int64_t>              image_label_class_ids;
+    image_label_class_ids.reserve(image_ids.size());
+    for (const int64_t image_id : image_ids)
+    {
+        image_label_class_ids.push_back(image_instances_->getImageLabelClassId(image_id));
+    }
     std::vector<std::vector<int64_t>> images_tag_ids = image_tags_->getImagesTagIds(image_ids);
 
     datasets_->addImages(dataset_ids, image_ids);
-    datasets_->setStats(dataset_ids, image_ids, images_label_ids);
+    datasets_->setStats(dataset_ids, image_ids, images_label_ids, image_label_class_ids);
 
     image_instances_->setImagesLabelIds(image_ids, images_label_ids);
     image_instances_->addImagesTagIds(image_ids, images_tag_ids);
@@ -318,9 +324,15 @@ void DataManager::rebuildLabelRelations()
     std::vector<int64_t>              image_ids        = image_instances_->getAllImageIds();
     std::vector<int64_t>              dataset_ids      = image_instances_->getImagesDatasetIds(image_ids);
     std::vector<std::vector<int64_t>> images_label_ids = label_instances_->getImagesLabelIds(image_ids);
+    std::vector<int64_t>              image_label_class_ids;
+    image_label_class_ids.reserve(image_ids.size());
+    for (const int64_t image_id : image_ids)
+    {
+        image_label_class_ids.push_back(image_instances_->getImageLabelClassId(image_id));
+    }
 
     image_instances_->setImagesLabelIds(image_ids, images_label_ids);
-    datasets_->setStats(dataset_ids, image_ids, images_label_ids);
+    datasets_->setStats(dataset_ids, image_ids, images_label_ids, image_label_class_ids);
 
     if (image_labels_list_ != nullptr)
     {
@@ -1404,10 +1416,20 @@ bool DataManager::setImageLabelClass(const int64_t image_id, const int64_t label
         return false;
     }
 
-    const bool ok = image_instances_->setImageLabelClassId(image_id, label_class_id);
-    if (ok && image_info_ != nullptr)
+    const int64_t effective_label_class_id
+        = method_ == core::DeepLearningMethod::AnomalyDetection && label_class_id >= 0
+              && label_classes_->isUnlabeledLabelClass(static_cast<int>(label_class_id))
+            ? -1
+            : label_class_id;
+
+    const bool ok = image_instances_->setImageLabelClassId(image_id, effective_label_class_id);
+    if (ok)
     {
-        image_info_->updateLabelInfo();
+        updateDatasetsStats();
+        if (image_info_ != nullptr)
+        {
+            image_info_->updateLabelInfo();
+        }
     }
     return ok;
 }
@@ -1471,11 +1493,15 @@ void DataManager::refreshAnomalyImageClassesFromPolygons(const std::vector<int64
         for (const int64_t label_id : label_instances_->getImageLabelIds(image_id))
         {
             const int64_t label_class_id = label_instances_->getLabelClassId(label_id);
-            if (label_class_id >= 0 && first_class_id < 0)
+            if (label_class_id < 0 || label_classes_->isUnlabeledLabelClass(static_cast<int>(label_class_id)))
+            {
+                continue;
+            }
+            if (first_class_id < 0)
             {
                 first_class_id = label_class_id;
             }
-            if (label_class_id >= 0 && label_classes_->isAnomalyLabelClass(static_cast<int>(label_class_id)))
+            if (label_classes_->isAnomalyLabelClass(static_cast<int>(label_class_id)))
             {
                 first_anomaly_class_id = label_class_id;
                 break;
@@ -1483,17 +1509,20 @@ void DataManager::refreshAnomalyImageClassesFromPolygons(const std::vector<int64
         }
 
         const int64_t target_class_id = first_anomaly_class_id >= 0 ? first_anomaly_class_id : first_class_id;
-        if (target_class_id >= 0 && image_instances_->getImageLabelClassId(image_id) != target_class_id)
+        if (image_instances_->getImageLabelClassId(image_id) != target_class_id)
         {
             images_to_update.push_back(image_id);
             classes_to_set.push_back(target_class_id);
         }
     }
 
-    if (!images_to_update.empty() && image_instances_->setImageLabelClassIds(images_to_update, classes_to_set)
-        && image_info_ != nullptr)
+    if (!images_to_update.empty() && image_instances_->setImageLabelClassIds(images_to_update, classes_to_set))
     {
-        image_info_->updateLabelInfo();
+        updateDatasetsStats();
+        if (image_info_ != nullptr)
+        {
+            image_info_->updateLabelInfo();
+        }
     }
 }
 
@@ -1509,7 +1538,13 @@ void DataManager::updateDatasetsStats()
     std::vector<int64_t>              dataset_ids, image_ids;
     std::vector<std::vector<int64_t>> images_label_ids;
     image_instances_->getAllDatasetsImagesLabels(dataset_ids, image_ids, images_label_ids);
-    datasets_->setStats(dataset_ids, image_ids, images_label_ids);
+    std::vector<int64_t> image_label_class_ids;
+    image_label_class_ids.reserve(image_ids.size());
+    for (const int64_t image_id : image_ids)
+    {
+        image_label_class_ids.push_back(image_instances_->getImageLabelClassId(image_id));
+    }
+    datasets_->setStats(dataset_ids, image_ids, images_label_ids, image_label_class_ids);
 }
 
 void DataManager::handleDataBatchReady(int64_t dataset_id, std::vector<QString> image_paths,
@@ -1756,10 +1791,13 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
 
         if (anomaly_project && folder_import)
         {
+            const int64_t image_level_class_id = label_classes_->isUnlabeledLabelClass(static_cast<int>(label_class_id))
+                                                   ? -1
+                                                   : label_class_id;
             auto folder_class_it = task.folder_class_by_image_id.find(image_id);
             if (folder_class_it == task.folder_class_by_image_id.end())
             {
-                folder_class_it = task.folder_class_by_image_id.emplace(image_id, label_class_id).first;
+                folder_class_it = task.folder_class_by_image_id.emplace(image_id, image_level_class_id).first;
             }
             batch_image_level_class_updates[image_id] = folder_class_it->second;
             task.imported_labels++;
@@ -1835,10 +1873,13 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
         }
 
         if (!image_level_image_ids.empty()
-            && image_instances_->setImageLabelClassIds(image_level_image_ids, image_level_class_ids)
-            && image_info_ != nullptr)
+            && image_instances_->setImageLabelClassIds(image_level_image_ids, image_level_class_ids))
         {
-            image_info_->updateLabelInfo();
+            updateDatasetsStats();
+            if (image_info_ != nullptr)
+            {
+                image_info_->updateLabelInfo();
+            }
         }
     }
 

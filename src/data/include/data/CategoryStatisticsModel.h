@@ -12,6 +12,7 @@ namespace dltool::data {
 
 class LabelInstancesListModel;
 class LabelClassesListModel;
+class ImageInstancesListModel;
 
 class CategoryStatisticsModel : public QAbstractListModel
 {
@@ -36,7 +37,7 @@ public:
     Q_ENUM(Role)
 
     explicit CategoryStatisticsModel(LabelInstancesListModel *labelInstances, LabelClassesListModel *labelClasses,
-                                     QObject *parent = nullptr);
+                                     ImageInstancesListModel *imageInstances, QObject *parent = nullptr);
     ~CategoryStatisticsModel() = default;
 
     // QAbstractListModel interface
@@ -84,6 +85,7 @@ private:
 
     LabelInstancesListModel        *label_instances_;
     LabelClassesListModel          *label_classes_;
+    ImageInstancesListModel        *image_instances_;
     std::vector<CategoryStatistics> statistics_;
     int                             total_instances_;
     int                             total_images_;

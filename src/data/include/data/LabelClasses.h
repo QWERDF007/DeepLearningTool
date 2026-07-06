@@ -14,6 +14,7 @@ namespace dltool::data {
 QString normalizeLabelClassGroup(const QString &group);
 QString labelClassGroupDisplayName(const QString &group);
 QString defaultLabelClassGroup();
+QString unlabeledLabelClassGroup();
 QString anomalyLabelClassGroup();
 QString goodLabelClassGroup();
 
@@ -112,12 +113,14 @@ public:
     bool updateLabelClass(const std::vector<int64_t> &label_class_ids, const std::vector<int64_t> &ordinal_indexes);
     bool deleteLabelClass(const int64_t label_class_id);
 
-    int     getLabelClassId(const QString &name) const;
+    int                  getLabelClassId(const QString &name) const;
     std::vector<int64_t> getAllLabelClassIds() const;
+
     QString getLabelClassName(const int label_class_id) const;
     QString getLabelClassColor(const int label_class_id) const;
     QString getLabelClassGroup(const int label_class_id) const;
     QString getLabelClassGroupName(const int label_class_id) const;
+    bool    isUnlabeledLabelClass(const int label_class_id) const;
     bool    isAnomalyLabelClass(const int label_class_id) const;
 
     QItemSelectionModel *selection() const
@@ -139,8 +142,7 @@ public:
      * @return 错误信息，空字符串表示有效
      */
     Q_INVOKABLE QString isValid(const int label_class_id, const QString &name, const QString &color,
-                                const QString &shortcut,
-                                const int ordinal_index) const;
+                                const QString &shortcut, const int ordinal_index) const;
 
     /**
      * @brief 重新排序标签类别

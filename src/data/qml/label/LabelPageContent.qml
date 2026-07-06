@@ -28,6 +28,7 @@ Rectangle {
     readonly property bool labelInstanceEditorVisible: !classificationMode
     readonly property SmartAnnotationController smartAnnotation: featureManager ? featureManager.smartAnnotation : null
     readonly property bool smartAnnotationLoading: smartAnnotation ? smartAnnotation.loadingModel : false
+    readonly property var activeLabelCanvas: labelCanvasLoader.item
 
     QuiSplitView {
         anchors.fill: parent
@@ -48,12 +49,29 @@ Rectangle {
                 dataManager: page.dataManager
             }
 
-            LabelClassesView {
+            Loader {
+                id: labelClassesLoader
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: parent.height / 3
-                dataManager: page.dataManager
-                selectionFollowsCurrentImageClass: page.classificationMode || page.anomalyMode
+                sourceComponent: page.anomalyMode ? anomalyLabelClassesViewComponent : defaultLabelClassesViewComponent
+            }
+
+            Component {
+                id: defaultLabelClassesViewComponent
+                LabelClassesViewBase {
+                    anchors.fill: parent
+                    dataManager: page.dataManager
+                    selectionFollowsCurrentImageClass: page.classificationMode
+                }
+            }
+
+            Component {
+                id: anomalyLabelClassesViewComponent
+                AnomalyLabelClassesView {
+                    anchors.fill: parent
+                    dataManager: page.dataManager
+                }
             }
 
             ImageTagView {
@@ -79,11 +97,11 @@ Rectangle {
                     Layout.leftMargin: 42
                     Layout.preferredHeight: visible ? 42 : 0
                     visible: page.annotationToolbarVisible
-                    hasSelection: labelCanvas.selection ? labelCanvas.selection.hasSelection : false
-                    showBoundingBoxes: labelCanvas.showBoundingBoxes
-                    onDeleteSelected: labelCanvas.actions.deleteSelectedLabels()
-                    onToggleBoundingBoxes: labelCanvas.showBoundingBoxes = !labelCanvas.showBoundingBoxes
-                    onCopySelected: if (labelCanvas.dataManager) labelCanvas.dataManager.duplicateSelectedLabels()
+                    hasSelection: page.activeLabelCanvas && page.activeLabelCanvas.selection ? page.activeLabelCanvas.selection.hasSelection : false
+                    showBoundingBoxes: page.currentShowBoundingBoxes()
+                    onDeleteSelected: page.deleteSelectedLabels()
+                    onToggleBoundingBoxes: page.toggleBoundingBoxes()
+                    onCopySelected: if (page.activeLabelCanvas && page.activeLabelCanvas.dataManager) page.activeLabelCanvas.dataManager.duplicateSelectedLabels()
                 }
 
                 RowLayout {
@@ -94,23 +112,56 @@ Rectangle {
                     LabelLSidebar {
                         Layout.preferredWidth: 42
                         Layout.fillHeight: true
-                        currentTool: labelCanvas.toolMode
+                        currentTool: page.activeLabelCanvas ? page.activeLabelCanvas.toolMode : LabelCanvasEnums.SelectTool
                         featureManager: page.featureManager
                         dataManager: page.dataManager
                         onToolSelected: function(mode) {
-                            labelCanvas.setToolMode(mode)
+                            if (page.activeLabelCanvas) {
+                                page.activeLabelCanvas.setToolMode(mode)
+                            }
                         }
                     }
 
-                    LabelCanvas {
-                        id: labelCanvas
+                    Loader {
+                        id: labelCanvasLoader
                         Layout.fillHeight: true
                         Layout.fillWidth: true
-                        dataManager: page.dataManager
-                        featureManager: page.featureManager
-                        classificationMode: page.classificationMode
-                        segmentationMode: page.segmentationMode
-                        anomalyMode: page.anomalyMode
+                        sourceComponent: page.labelCanvasComponent()
+                    }
+
+                    Component {
+                        id: detectionLabelCanvasComponent
+                        DetectionLabelCanvas {
+                            anchors.fill: parent
+                            dataManager: page.dataManager
+                            featureManager: page.featureManager
+                        }
+                    }
+
+                    Component {
+                        id: classificationLabelCanvasComponent
+                        ClassificationLabelCanvas {
+                            anchors.fill: parent
+                            dataManager: page.dataManager
+                        }
+                    }
+
+                    Component {
+                        id: segmentationLabelCanvasComponent
+                        SegmentationLabelCanvas {
+                            anchors.fill: parent
+                            dataManager: page.dataManager
+                            featureManager: page.featureManager
+                        }
+                    }
+
+                    Component {
+                        id: anomalyLabelCanvasComponent
+                        AnomalyLabelCanvas {
+                            anchors.fill: parent
+                            dataManager: page.dataManager
+                            featureManager: page.featureManager
+                        }
                     }
                 }
             }
@@ -156,14 +207,18 @@ Rectangle {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 240
                 SplitView.preferredHeight: 240
-                zoomValue: labelCanvas.imageView.image.scale
+                zoomValue: page.activeLabelCanvas ? page.activeLabelCanvas.imageView.image.scale : 1
 
                 onFitToWindow: {
-                    labelCanvas.imageView.fitInView()
+                    if (page.activeLabelCanvas) {
+                        page.activeLabelCanvas.imageView.fitInView()
+                    }
                 }
 
                 onZoomChanged: function(zoom) {
-                    labelCanvas.imageView.scaleInCenter(zoom)
+                    if (page.activeLabelCanvas) {
+                        page.activeLabelCanvas.imageView.scaleInCenter(zoom)
+                    }
                 }
             }
 
@@ -189,5 +244,47 @@ Rectangle {
                 dataManager: page.dataManager
             }
         }
+    }
+
+    function currentShowBoundingBoxes() {
+        if (!annotationToolbarVisible || !activeLabelCanvas) {
+            return false
+        }
+
+        let value = activeLabelCanvas.showBoundingBoxes
+        return value === undefined ? false : value
+    }
+
+    function deleteSelectedLabels() {
+        if (!annotationToolbarVisible || !activeLabelCanvas || !activeLabelCanvas.actions) {
+            return
+        }
+
+        activeLabelCanvas.actions.deleteSelectedLabels()
+    }
+
+    function toggleBoundingBoxes() {
+        if (!annotationToolbarVisible || !activeLabelCanvas) {
+            return
+        }
+
+        let value = activeLabelCanvas.showBoundingBoxes
+        if (value === undefined) {
+            return
+        }
+        activeLabelCanvas.showBoundingBoxes = !value
+    }
+
+    function labelCanvasComponent() {
+        if (classificationMode) {
+            return classificationLabelCanvasComponent
+        }
+        if (anomalyMode) {
+            return anomalyLabelCanvasComponent
+        }
+        if (segmentationMode) {
+            return segmentationLabelCanvasComponent
+        }
+        return detectionLabelCanvasComponent
     }
 }

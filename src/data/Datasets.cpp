@@ -424,10 +424,11 @@ void DatasetsListModel::deleteImages(const std::vector<int64_t> &dataset_ids, co
 void DatasetsListModel::moveImages(const std::vector<int64_t>              &source_dataset_ids,
                                    const std::vector<int64_t>              &target_dataset_ids,
                                    const std::vector<int64_t>              &image_ids,
-                                   const std::vector<std::vector<int64_t>> &images_label_ids)
+                                   const std::vector<std::vector<int64_t>> &images_label_ids,
+                                   const std::vector<int64_t>              &image_label_class_ids)
 {
     if (source_dataset_ids.size() != image_ids.size() || target_dataset_ids.size() != image_ids.size()
-        || images_label_ids.size() != image_ids.size())
+        || images_label_ids.size() != image_ids.size() || image_label_class_ids.size() != image_ids.size())
     {
         spdlog::error("移动图像失败: 数据集id、图像id和标签数量不一致");
         return;
@@ -449,7 +450,7 @@ void DatasetsListModel::moveImages(const std::vector<int64_t>              &sour
         source_images[source_dataset_ids[i]].push_back(image_ids[i]);
         target_images[target_dataset_ids[i]].push_back(image_ids[i]);
 
-        if (!images_label_ids[i].empty())
+        if (!images_label_ids[i].empty() || image_label_class_ids[i] >= 0)
         {
             auto source_stats = labelled_image_stats_.find(source_dataset_ids[i]);
             if (source_stats != labelled_image_stats_.end() && source_stats->second > 0)
@@ -486,22 +487,28 @@ void DatasetsListModel::moveImages(const std::vector<int64_t>              &sour
 }
 
 void DatasetsListModel::setStats(const std::vector<int64_t> &dataset_ids, const std::vector<int64_t> &image_ids,
-                                 const std::vector<std::vector<int64_t>> &images_label_ids)
+                                 const std::vector<std::vector<int64_t>> &images_label_ids,
+                                 const std::vector<int64_t> &image_label_class_ids)
 {
-    Q_UNUSED(image_ids)
+    if (dataset_ids.size() != image_ids.size() || images_label_ids.size() != image_ids.size()
+        || image_label_class_ids.size() != image_ids.size())
+    {
+        spdlog::error("更新数据集标注统计失败: 数据集id、图像id和标签数量不一致");
+        return;
+    }
+
     labelled_image_stats_.clear();
     for (size_t i = 0; i < dataset_ids.size(); ++i)
     {
         const int64_t dataset_id = dataset_ids[i];
-        // const int64_t image_id           = image_ids[i];
-        const size_t  image_labels_count = images_label_ids[i].size();
+        const bool    has_label  = !images_label_ids[i].empty() || image_label_class_ids[i] >= 0;
 
         auto found = labelled_image_stats_.find(dataset_id);
         if (found == labelled_image_stats_.end())
         {
             labelled_image_stats_[dataset_id] = 0;
         }
-        if (image_labels_count <= 0)
+        if (!has_label)
             continue;
         labelled_image_stats_[dataset_id] += 1;
     }

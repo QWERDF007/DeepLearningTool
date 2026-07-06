@@ -68,7 +68,13 @@ QuiPopup {
     }
 
     function normalizedGroup(group) {
-        return group === "good" || group === "良好" ? "good" : "anomaly"
+        if (group === "unlabeled" || group === "未标注") {
+            return "unlabeled"
+        }
+        if (group === "good" || group === "良好") {
+            return "good"
+        }
+        return "anomaly"
     }
 
     function beginImport(dataFormat) {
@@ -154,7 +160,7 @@ QuiPopup {
                     QuiTextField {
                         id: imagePathInput
                         width: parent.width
-                        placeholderText: dialog.dataFormat === "Folder" ? "选择按类别分组的图像目录" : "选择图像目录"
+                        placeholderText: dialog.dataFormat === "Folder" ? "选择类别目录或图像根目录" : "选择图像目录"
                     }
                 }
 
@@ -434,25 +440,27 @@ QuiPopup {
 
                         RowLayout {
                             id: groupSelector
-                            Layout.preferredWidth: 132
+                            Layout.preferredWidth: 204
                             Layout.preferredHeight: 30
                             spacing: 4
 
                             function setGroup(group) {
-                                classGroupDialog.pendingClasses[index].group = group
-                                anomalyButton.checked = group === "anomaly"
-                                goodButton.checked = group === "good"
+                                let normalized = dialog.normalizedGroup(group)
+                                classGroupDialog.pendingClasses[index].group = normalized
+                                unlabeledButton.checked = normalized === "unlabeled"
+                                goodButton.checked = normalized === "good"
+                                anomalyButton.checked = normalized === "anomaly"
                             }
 
                             Component.onCompleted: setGroup(dialog.normalizedGroup(modelData.group))
 
                             QuiButton {
-                                id: anomalyButton
+                                id: unlabeledButton
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                text: "异常"
+                                text: "未标注"
                                 checkable: true
-                                onClicked: groupSelector.setGroup("anomaly")
+                                onClicked: groupSelector.setGroup("unlabeled")
                             }
 
                             QuiButton {
@@ -462,6 +470,15 @@ QuiPopup {
                                 text: "良好"
                                 checkable: true
                                 onClicked: groupSelector.setGroup("good")
+                            }
+
+                            QuiButton {
+                                id: anomalyButton
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                text: "异常"
+                                checkable: true
+                                onClicked: groupSelector.setGroup("anomaly")
                             }
                         }
                     }

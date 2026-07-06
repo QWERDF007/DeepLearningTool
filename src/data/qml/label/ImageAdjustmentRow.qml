@@ -41,8 +41,7 @@ Item {
         // 减少按钮
         QuiTextIconButton {
             id: decreaseButton
-            iconSource: control.label === "缩放" ? QuiFontIcon.ZoomOut :
-                       (control.label === "亮度" ? QuiFontIcon.Brightness : QuiFontIcon.Light)
+            iconSource: control.decreaseIconSource()
             iconSize: 16
             text: "减少" + control.label
             enabled: control.value > control.from
@@ -78,8 +77,7 @@ Item {
         // 增加按钮
         QuiTextIconButton {
             id: increaseButton
-            iconSource: control.label === "缩放" ? QuiFontIcon.Zoom :
-                       (control.label === "亮度" ? QuiFontIcon.Brightness : QuiFontIcon.Light)
+            iconSource: control.increaseIconSource()
             iconSize: 16
             text: "增加" + control.label
             enabled: control.value < control.to
@@ -119,5 +117,25 @@ Item {
             Layout.preferredWidth: 28
             Layout.preferredHeight: 28
         }
+    }
+
+    function decreaseIconSource() {
+        if (label === "缩放") {
+            return QuiFontIcon.ZoomOut
+        }
+        if (label === "亮度") {
+            return QuiFontIcon.Brightness
+        }
+        return QuiFontIcon.Light
+    }
+
+    function increaseIconSource() {
+        if (label === "缩放") {
+            return QuiFontIcon.Zoom
+        }
+        if (label === "亮度") {
+            return QuiFontIcon.Brightness
+        }
+        return QuiFontIcon.Light
     }
 }

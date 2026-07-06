@@ -13,13 +13,13 @@ Repeater {
 
         property var labelData: model.data
         property color labelColor: model.color
-        property bool labelSelected: model.selected ?? false
-        property bool labelHovered: model.hovered ?? false
-        property real bboxX: labelData ? (labelData.x ?? 0) : 0
-        property real bboxY: labelData ? (labelData.y ?? 0) : 0
-        property real bboxWidth: labelData ? (labelData.width ?? 0) : 0
-        property real bboxHeight: labelData ? (labelData.height ?? 0) : 0
-        property real screenMargin: labelSelected ? 8 : labelHovered ? 6 : 4
+        property bool labelSelected: modelBool(model.selected)
+        property bool labelHovered: modelBool(model.hovered)
+        property real bboxX: dataNumber("x")
+        property real bboxY: dataNumber("y")
+        property real bboxWidth: dataNumber("width")
+        property real bboxHeight: dataNumber("height")
+        property real screenMargin: currentScreenMargin()
         property real safeFactor: Math.max(repeater.factor, 0.0001)
         property real imageMargin: screenMargin / safeFactor
         property real rawLeft: bboxX - imageMargin
@@ -73,14 +73,60 @@ Repeater {
                             (point.y - labelDelegate.visibleTop) * labelDelegate.safeFactor)
         }
 
+        function modelBool(value) {
+            if (value === undefined || value === null) {
+                return false
+            }
+            return value
+        }
+
+        function dataNumber(fieldName) {
+            if (!labelData) {
+                return 0
+            }
+
+            let value = labelData[fieldName]
+            if (value === undefined || value === null) {
+                return 0
+            }
+            return value
+        }
+
+        function labelPoints() {
+            if (!labelData || !labelData.points) {
+                return []
+            }
+            return labelData.points
+        }
+
+        function currentScreenMargin() {
+            if (labelSelected) {
+                return 8
+            }
+            if (labelHovered) {
+                return 6
+            }
+            return 4
+        }
+
+        function strokeLineWidth() {
+            if (labelSelected) {
+                return 3
+            }
+            if (labelHovered) {
+                return 2
+            }
+            return 1
+        }
+
         function paint(ctx) {
             ctx.clearRect(0, 0, canvas.width, canvas.height)
             if (!labelData) {
                 return
             }
 
-            let lineWidth = labelSelected ? 3 : labelHovered ? 2 : 1
-            let points = labelData.points ?? []
+            let lineWidth = strokeLineWidth()
+            let points = labelPoints()
 
             ctx.save()
             ctx.strokeStyle = labelColor

@@ -76,6 +76,74 @@ void addScannedLabelClass(std::map<QString, QString> &label_class_info, const QS
     label_class_info[name] = DatasetIO::generateDefaultColor(color_index++);
 }
 
+QStringList imageNameFilters()
+{
+    return {
+        "*.jpg",  "*.jpeg", "*.png",  "*.bmp",  "*.gif",  "*.tiff", "*.tif",  "*.webp",
+        "*.JPG",  "*.JPEG", "*.PNG",  "*.BMP",  "*.GIF",  "*.TIFF", "*.TIF",  "*.WEBP",
+    };
+}
+
+std::vector<QString> scanImmediateImageFiles(const QString &image_dir)
+{
+    std::vector<QString> image_files;
+    const QDir           dir(image_dir);
+    if (!dir.exists())
+        return image_files;
+
+    const QFileInfoList files = dir.entryInfoList(imageNameFilters(), QDir::Files, QDir::Name);
+    image_files.reserve(static_cast<size_t>(files.size()));
+    for (const QFileInfo &file : files)
+    {
+        image_files.push_back(file.absoluteFilePath());
+    }
+    return image_files;
+}
+
+struct FolderClassInfo
+{
+    QString              name;
+    std::vector<QString> image_paths;
+};
+
+std::vector<FolderClassInfo> collectFolderClasses(const QDir &root_dir)
+{
+    std::vector<FolderClassInfo> classes;
+    std::map<QString, size_t>    class_index_by_name;
+
+    auto append_class = [&](QString raw_name, std::vector<QString> images)
+    {
+        if (images.empty())
+            return;
+
+        QString class_name = sanitizeName(raw_name);
+        if (class_name.isEmpty())
+            class_name = QStringLiteral("root");
+
+        const auto found = class_index_by_name.find(class_name);
+        if (found != class_index_by_name.end())
+        {
+            auto &existing_images = classes[found->second].image_paths;
+            existing_images.insert(existing_images.end(), images.begin(), images.end());
+            return;
+        }
+
+        class_index_by_name[class_name] = classes.size();
+        classes.push_back({class_name, std::move(images)});
+    };
+
+    append_class(root_dir.dirName(), scanImmediateImageFiles(root_dir.absolutePath()));
+
+    const QStringList class_dirs = root_dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QString &dir_name : class_dirs)
+    {
+        const QDir class_dir(root_dir.filePath(dir_name));
+        append_class(dir_name, DatasetIO::scanImageFiles(class_dir.absolutePath()));
+    }
+
+    return classes;
+}
+
 // ============================================================================
 // COCO helpers
 // ============================================================================
@@ -2354,25 +2422,21 @@ void FolderIO::doScanLabelClasses(const QString &image_dir)
 
         std::map<QString, QString> label_class_info;
         int                        color_index = 0;
-        const QStringList class_dirs = root_dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
-        for (const QString &dir_name : class_dirs)
+        const std::vector<FolderClassInfo> classes = collectFolderClasses(root_dir);
+        for (const FolderClassInfo &cls : classes)
         {
             if (isCancelRequested())
             {
-                emit labelClassesScanned(false, {}, QStringLiteral("类别目录扫描已取消"));
+                emit labelClassesScanned(false, {}, QStringLiteral("类别扫描已取消"));
                 return;
             }
 
-            const QDir class_dir(root_dir.filePath(dir_name));
-            if (DatasetIO::scanImageFiles(class_dir.absolutePath()).empty())
-                continue;
-
-            addScannedLabelClass(label_class_info, dir_name, color_index);
+            addScannedLabelClass(label_class_info, cls.name, color_index);
         }
 
         if (label_class_info.empty())
         {
-            emit labelClassesScanned(false, {}, QStringLiteral("未找到包含图像的类别子目录"));
+            emit labelClassesScanned(false, {}, QStringLiteral("未找到包含图像的目录"));
             return;
         }
 
@@ -2402,47 +2466,29 @@ void FolderIO::doImport(int64_t dataset_id, const QString &image_dir)
             return;
         }
 
-        const QDir::Filters dir_filters = QDir::Dirs | QDir::NoDotAndDotDot;
-        const QStringList    class_dirs = root_dir.entryList(dir_filters, QDir::Name);
-        if (class_dirs.isEmpty())
-        {
-            updateProgress(100, QString("未找到任何类别子目录"));
-            emit importFinished(false, {}, {});
-            return;
-        }
+        std::vector<FolderClassInfo> classes;
+        int                          total_images = 0;
 
-        struct ClassInfo
+        for (FolderClassInfo &cls : collectFolderClasses(root_dir))
         {
-            QString              name;
-            std::vector<QString> image_paths;
-        };
-        std::vector<ClassInfo> classes;
-        int                    total_images = 0;
-
-        for (const QString &dir_name : class_dirs)
-        {
-            const QString class_name = sanitizeName(dir_name);
-            if (class_name.isEmpty())
+            if (cls.name.isEmpty())
             {
-                spdlog::warn("子目录名称无效，跳过: {}", dir_name.toUtf8().constData());
+                spdlog::warn("类别名称无效，跳过");
+                continue;
+            }
+            if (cls.image_paths.empty())
+            {
+                spdlog::warn("类别目录中无图像，跳过: {}", cls.name.toUtf8().constData());
                 continue;
             }
 
-            const QDir                 class_dir(root_dir.filePath(dir_name));
-            const std::vector<QString> images = DatasetIO::scanImageFiles(class_dir.absolutePath());
-            if (images.empty())
-            {
-                spdlog::warn("类别目录中无图像，跳过: {}", class_name.toUtf8().constData());
-                continue;
-            }
-
-            classes.push_back({class_name, images});
-            total_images += static_cast<int>(images.size());
+            total_images += static_cast<int>(cls.image_paths.size());
+            classes.push_back(std::move(cls));
         }
 
         if (classes.empty())
         {
-            updateProgress(100, QString("没有有效的类别目录"));
+            updateProgress(100, QString("没有有效的类别目录或根目录图像"));
             emit importFinished(false, {}, {});
             return;
         }
@@ -2482,7 +2528,7 @@ void FolderIO::doImport(int64_t dataset_id, const QString &image_dir)
             return !isCancelRequested();
         };
 
-        for (const ClassInfo &cls : classes)
+        for (const FolderClassInfo &cls : classes)
         {
             if (class_colors.find(cls.name) == class_colors.end())
             {

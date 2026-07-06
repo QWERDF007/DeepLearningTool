@@ -9,7 +9,7 @@ Rectangle {
     clip: true
     property var mdata
     property bool selected
-    color: selected ? QuiColor.Highlight : row % 2 == 0 ? Qt.lighter(QuiColor.Primary, 1.3) : QuiColor.Primary
+    color: rowBackgroundColor()
     RowLayout {
         anchors.fill: parent
         anchors.leftMargin: 2
@@ -30,4 +30,14 @@ Rectangle {
             verticalAlignment: Text.AlignVCenter
         }    
     }   
+
+    function rowBackgroundColor() {
+        if (selected) {
+            return QuiColor.Highlight
+        }
+        if (row % 2 == 0) {
+            return Qt.lighter(QuiColor.Primary, 1.3)
+        }
+        return QuiColor.Primary
+    }
 }

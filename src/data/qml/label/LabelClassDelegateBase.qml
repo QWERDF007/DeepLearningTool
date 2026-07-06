@@ -11,7 +11,7 @@ Rectangle {
     width: parent ? parent.width : 200
     height: 32
     color: backgroundColor
-    
+
     property string className: ""
     property string classShortcut: ""
     property color classColor: "black"
@@ -20,13 +20,12 @@ Rectangle {
     property int ordinalIndex: -1
     property var listView
     property LabelClassesModel labelClasses
+    property bool dragEnabled: false
 
     signal editClicked
     signal deleteClicked
     signal clicked
 
-    // 计算对比色：根据背景色亮度决定使用黑色或白色文本
-    // 使用相对亮度公式: L = 0.299*R + 0.587*G + 0.114*B
     function getContrastColor(bgColor) {
         var r = bgColor.r
         var g = bgColor.g
@@ -35,97 +34,87 @@ Rectangle {
         return luminance > 0.5 ? "black" : "white"
     }
 
-    // 拖拽状态
     property bool held: false
     property real dragStartY: 0
     property int dragStartIndex: -1
-    
-    // 拖拽时的视觉效果
+
     z: held ? 100 : 1
     opacity: held ? 0.9 : 1.0
 
-    Drag.active: held
+    Drag.active: held && dragEnabled
     Drag.source: control
     Drag.hotSpot.x: width / 2
     Drag.hotSpot.y: height / 2
 
-    // 拖拽区域放在最底层
     MouseArea {
         id: dragArea
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton
         hoverEnabled: true
-        drag.target: held ? control : undefined
+        drag.target: held && control.dragEnabled ? control : undefined
         drag.axis: Drag.YAxis
         pressAndHoldInterval: 200
-        
+
         onClicked: function(mouse) {
             control.clicked()
         }
-        
+
         onPressAndHold: function(mouse) {
-            // 如果未选中，先选中该项
+            if (!control.dragEnabled) {
+                return
+            }
+
             control.clicked()
-            
             control.dragStartIndex = control.ordinalIndex
             control.dragStartY = control.y
             control.held = true
         }
-        
+
         onReleased: function(mouse) {
-            if (control.held) {
-                control.held = false
-                
-                if (!listView || !labelClasses) {
-                    control.y = control.dragStartY
-                    return
-                }
-                
-                // 使用 mapToItem 获取在 contentItem 中的绝对位置
-                let posInList = control.mapToItem(listView.contentItem, 0, 0)
-                let itemHeight = control.height + listView.spacing
-                
-                // 计算拖拽项中心位置
-                let dragCenterY = posInList.y + control.height / 2
-                
-                // 计算目标位置：拖拽项中心超过目标项中心才交换
-                let targetIndex = control.dragStartIndex
-                
-                if (dragCenterY < control.dragStartIndex * itemHeight + itemHeight / 2) {
-                    // 向上拖拽：找到第一个中心位置大于拖拽项中心的项
-                    for (let i = control.dragStartIndex - 1; i >= 0; i--) {
-                        let targetCenterY = i * itemHeight + itemHeight / 2
-                        if (dragCenterY < targetCenterY) {
-                            targetIndex = i
-                        } else {
-                            break
-                        }
-                    }
-                } else if (dragCenterY > control.dragStartIndex * itemHeight + itemHeight / 2) {
-                    // 向下拖拽：找到最后一个中心位置小于拖拽项中心的项
-                    for (let i = control.dragStartIndex + 1; i < listView.count; i++) {
-                        let targetCenterY = i * itemHeight + itemHeight / 2
-                        if (dragCenterY > targetCenterY) {
-                            targetIndex = i
-                        } else {
-                            break
-                        }
-                    }
-                }
-                
-                // 边界检查
-                targetIndex = Math.max(0, Math.min(listView.count - 1, targetIndex))
-                
-                // 重置位置
+            if (!control.held) {
+                return
+            }
+
+            control.held = false
+
+            if (!listView || !labelClasses) {
                 control.y = control.dragStartY
-                
-                // 执行重排序
-                if (targetIndex !== control.dragStartIndex) {
-                    labelClasses.reorderLabelClass(control.classId, targetIndex)
+                return
+            }
+
+            let posInList = control.mapToItem(listView.contentItem, 0, 0)
+            let itemHeight = control.height + listView.spacing
+            let dragCenterY = posInList.y + control.height / 2
+            let targetIndex = control.dragStartIndex
+
+            if (dragCenterY < control.dragStartIndex * itemHeight + itemHeight / 2) {
+                for (let i = control.dragStartIndex - 1; i >= 0; i--) {
+                    let targetCenterY = i * itemHeight + itemHeight / 2
+                    if (dragCenterY < targetCenterY) {
+                        targetIndex = i
+                    } else {
+                        break
+                    }
+                }
+            } else if (dragCenterY > control.dragStartIndex * itemHeight + itemHeight / 2) {
+                for (let i = control.dragStartIndex + 1; i < listView.count; i++) {
+                    let targetCenterY = i * itemHeight + itemHeight / 2
+                    if (dragCenterY > targetCenterY) {
+                        targetIndex = i
+                    } else {
+                        break
+                    }
                 }
             }
+
+            targetIndex = Math.max(0, Math.min(listView.count - 1, targetIndex))
+            control.y = control.dragStartY
+
+            if (targetIndex !== control.dragStartIndex) {
+                labelClasses.reorderLabelClass(control.classId, targetIndex)
+            }
         }
-        
+
         onCanceled: {
             if (control.held) {
                 control.held = false
@@ -137,6 +126,7 @@ Rectangle {
     RowLayout {
         anchors.fill: parent
         anchors.margins: 5
+
         Rectangle {
             Layout.fillHeight: true
             Layout.preferredWidth: height
@@ -144,19 +134,20 @@ Rectangle {
             color: control.classColor
             border.width: 1
             border.color: "black"
+
             QuiText {
                 text: control.classShortcut
                 color: control.getContrastColor(control.classColor)
                 anchors.centerIn: parent
             }
         }
+
         QuiText {
             text: control.className
             Layout.fillWidth: true
         }
     }
-    
-    // 按钮放在最上层，可以接收点击事件
+
     RowLayout {
         anchors {
             top: parent.top
@@ -165,11 +156,13 @@ Rectangle {
             rightMargin: 5
         }
         spacing: 3
+
         QuiTextIconButton {
             iconSource: QuiFontIcon.Edit
             onClicked: control.editClicked()
             normalColor: control.backgroundColor
         }
+
         QuiTextIconButton {
             iconSource: QuiFontIcon.Delete
             onClicked: control.deleteClicked()

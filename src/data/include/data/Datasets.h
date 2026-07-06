@@ -128,7 +128,7 @@ public:
 
     void setLastIndex(int last_index);
 
-    QList<QString> getAllDatasetsName() const;
+    QList<QString>       getAllDatasetsName() const;
     std::vector<int64_t> getAllDatasetIds() const;
 
     int     getDatasetId(const QString &dataset_name) const;
@@ -137,11 +137,12 @@ public:
     void addImages(const std::vector<int64_t> &dataset_id, const std::vector<int64_t> &image_ids);
     void deleteImages(const std::vector<int64_t> &dataset_id, const std::vector<int64_t> &image_ids);
     void moveImages(const std::vector<int64_t> &source_dataset_ids, const std::vector<int64_t> &target_dataset_ids,
-                    const std::vector<int64_t> &image_ids,
-                    const std::vector<std::vector<int64_t>> &images_label_ids);
+                    const std::vector<int64_t> &image_ids, const std::vector<std::vector<int64_t>> &images_label_ids,
+                    const std::vector<int64_t> &image_label_class_ids);
 
     void setStats(const std::vector<int64_t> &dataset_ids, const std::vector<int64_t> &image_ids,
-                  const std::vector<std::vector<int64_t>> &images_labels_count);
+                  const std::vector<std::vector<int64_t>> &images_labels_count,
+                  const std::vector<int64_t>              &image_label_class_ids);
 
 private:
     void init();

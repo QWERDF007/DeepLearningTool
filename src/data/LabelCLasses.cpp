@@ -12,9 +12,10 @@ namespace dltool::data {
 
 namespace {
 
-constexpr const char *kGoodGroup    = "good";
-constexpr const char *kAnomalyGroup = "anomaly";
-constexpr const char *kGroupKey     = "group";
+constexpr const char *kUnlabeledGroup = "unlabeled";
+constexpr const char *kGoodGroup      = "good";
+constexpr const char *kAnomalyGroup   = "anomaly";
+constexpr const char *kGroupKey       = "group";
 
 QString normalizedColorName(const QString &color)
 {
@@ -60,6 +61,11 @@ QString groupFromExtraData(const std::vector<uint8_t> &blob)
 QString normalizeLabelClassGroup(const QString &group)
 {
     const QString normalized = group.trimmed().toLower();
+    if (normalized == QString::fromUtf8(kUnlabeledGroup) || normalized == QString("未标注")
+        || normalized == QStringLiteral("unlabelled"))
+    {
+        return QString::fromUtf8(kUnlabeledGroup);
+    }
     if (normalized == QString::fromUtf8(kGoodGroup) || normalized == QString("良好")
         || normalized == QStringLiteral("good"))
     {
@@ -70,12 +76,20 @@ QString normalizeLabelClassGroup(const QString &group)
 
 QString labelClassGroupDisplayName(const QString &group)
 {
-    return normalizeLabelClassGroup(group) == QString::fromUtf8(kGoodGroup) ? QString("良好") : QString("异常");
+    const QString normalized = normalizeLabelClassGroup(group);
+    if (normalized == QString::fromUtf8(kUnlabeledGroup))
+        return QString("未标注");
+    return normalized == QString::fromUtf8(kGoodGroup) ? QString("良好") : QString("异常");
 }
 
 QString defaultLabelClassGroup()
 {
     return anomalyLabelClassGroup();
+}
+
+QString unlabeledLabelClassGroup()
+{
+    return QString::fromUtf8(kUnlabeledGroup);
 }
 
 QString anomalyLabelClassGroup()
@@ -594,6 +608,11 @@ QString LabelClassesListModel::getLabelClassGroup(const int label_class_id) cons
 QString LabelClassesListModel::getLabelClassGroupName(const int label_class_id) const
 {
     return labelClassGroupDisplayName(getLabelClassGroup(label_class_id));
+}
+
+bool LabelClassesListModel::isUnlabeledLabelClass(const int label_class_id) const
+{
+    return getLabelClassGroup(label_class_id) == unlabeledLabelClassGroup();
 }
 
 bool LabelClassesListModel::isAnomalyLabelClass(const int label_class_id) const

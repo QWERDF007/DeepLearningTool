@@ -1,5 +1,6 @@
 #include "data/CategoryStatisticsModel.h"
 
+#include "data/Images.h"
 #include "data/LabelClasses.h"
 #include "data/Labels.h"
 
@@ -11,10 +12,12 @@
 namespace dltool::data {
 
 CategoryStatisticsModel::CategoryStatisticsModel(LabelInstancesListModel *labelInstances,
-                                                 LabelClassesListModel *labelClasses, QObject *parent)
+                                                 LabelClassesListModel *labelClasses,
+                                                 ImageInstancesListModel *imageInstances, QObject *parent)
     : QAbstractListModel(parent)
     , label_instances_(labelInstances)
     , label_classes_(labelClasses)
+    , image_instances_(imageInstances)
     , total_instances_(0)
     , total_images_(0)
 {
@@ -92,6 +95,7 @@ void CategoryStatisticsModel::calculatePercentages()
 void CategoryStatisticsModel::calculateInstanceStatistics(bool applyFilter)
 {
     std::map<int64_t, int> category_counts; // category_id -> instance_count
+    std::set<int64_t>      images_with_label_instances;
     total_instances_ = 0;
 
     if (applyFilter)
@@ -104,6 +108,8 @@ void CategoryStatisticsModel::calculateInstanceStatistics(bool applyFilter)
             int64_t     class_id = label_instances_->getLabelClassId(label_id);
 
             category_counts[class_id]++;
+            images_with_label_instances.insert(
+                label_instances_->data(index, LabelInstancesListModel::ImageIdRole).toLongLong());
             total_instances_++;
         }
     }
@@ -115,6 +121,39 @@ void CategoryStatisticsModel::calculateInstanceStatistics(bool applyFilter)
         {
             int64_t class_id = instance->labelClassId();
             category_counts[class_id]++;
+            images_with_label_instances.insert(instance->imageId());
+            total_instances_++;
+        }
+    }
+
+    if (image_instances_ != nullptr)
+    {
+        const int image_count = applyFilter ? image_instances_->rowCount() : image_instances_->totalCount();
+        const std::vector<int64_t> all_image_ids = applyFilter ? std::vector<int64_t>{}
+                                                               : image_instances_->getAllImageIds();
+        for (int i = 0; i < image_count; ++i)
+        {
+            int64_t image_id       = -1;
+            int64_t label_class_id = -1;
+            if (applyFilter)
+            {
+                const QModelIndex index = image_instances_->index(i, 0);
+                image_id = image_instances_->data(index, ImageInstancesListModel::ImageIdRole).toLongLong();
+                label_class_id
+                    = image_instances_->data(index, ImageInstancesListModel::ImageLabelClassIdRole).toLongLong();
+            }
+            else
+            {
+                if (i >= static_cast<int>(all_image_ids.size()))
+                    break;
+                image_id       = all_image_ids[static_cast<size_t>(i)];
+                label_class_id = image_instances_->getImageLabelClassId(image_id);
+            }
+
+            if (label_class_id < 0 || images_with_label_instances.find(image_id) != images_with_label_instances.end())
+                continue;
+
+            category_counts[label_class_id]++;
             total_instances_++;
         }
     }
@@ -156,6 +195,38 @@ void CategoryStatisticsModel::calculateImageStatistics(bool applyFilter)
             int64_t image_id = instance->imageId();
 
             category_images[class_id].insert(image_id);
+            all_images.insert(image_id);
+        }
+    }
+
+    if (image_instances_ != nullptr)
+    {
+        const int image_count = applyFilter ? image_instances_->rowCount() : image_instances_->totalCount();
+        const std::vector<int64_t> all_image_ids = applyFilter ? std::vector<int64_t>{}
+                                                               : image_instances_->getAllImageIds();
+        for (int i = 0; i < image_count; ++i)
+        {
+            int64_t image_id       = -1;
+            int64_t label_class_id = -1;
+            if (applyFilter)
+            {
+                const QModelIndex index = image_instances_->index(i, 0);
+                image_id = image_instances_->data(index, ImageInstancesListModel::ImageIdRole).toLongLong();
+                label_class_id
+                    = image_instances_->data(index, ImageInstancesListModel::ImageLabelClassIdRole).toLongLong();
+            }
+            else
+            {
+                if (i >= static_cast<int>(all_image_ids.size()))
+                    break;
+                image_id       = all_image_ids[static_cast<size_t>(i)];
+                label_class_id = image_instances_->getImageLabelClassId(image_id);
+            }
+
+            if (label_class_id < 0)
+                continue;
+
+            category_images[label_class_id].insert(image_id);
             all_images.insert(image_id);
         }
     }
