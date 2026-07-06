@@ -44,6 +44,7 @@ LabelInstancesListModel::~LabelInstancesListModel() {}
 
 void LabelInstancesListModel::init(bool load_from_database)
 {
+    connect(selection_, &QItemSelectionModel::selectionChanged, this, &LabelInstancesListModel::updateSelection);
     if (load_from_database)
     {
         loadLabelsFromDatabase();
@@ -145,6 +146,8 @@ QVariant LabelInstancesListModel::data(const QModelIndex &index, int role) const
         return getLabelClassColor(index);
     case DataRole:
         return getData(index);
+    case SelectedRole:
+        return getSelected(index);
     default:
         return QVariant();
     }
@@ -159,6 +162,7 @@ QHash<int, QByteArray> LabelInstancesListModel::roleNames() const
         { LabelClassNameRole,  "label_class_name"},
         {LabelClassColorRole, "label_class_color"},
         {           DataRole,              "data"},
+        {       SelectedRole,          "selected"},
     };
 }
 
@@ -640,6 +644,11 @@ QVariant LabelInstancesListModel::getData(const QModelIndex &index) const
     return found->second->data()->dataMap();
 }
 
+QVariant LabelInstancesListModel::getSelected(const QModelIndex &index) const
+{
+    return selection_ != nullptr && index.isValid() && selection_->isSelected(index);
+}
+
 void LabelInstancesListModel::applyFilter(const std::function<bool(int64_t)> &image_filter_func)
 {
     applyFilter(image_filter_func, std::function<bool(int64_t)>(), std::function<bool(int64_t)>());
@@ -744,6 +753,32 @@ void LabelInstancesListModel::selectAll()
     QItemSelection selection;
     selection.select(index(0), index(rowCount() - 1));
     selection_->select(selection, QItemSelectionModel::Select);
+}
+
+void LabelInstancesListModel::updateSelection(const QItemSelection &selected, const QItemSelection &deselected)
+{
+    const auto emitSelectionChanged = [this](const QItemSelection &selection)
+    {
+        const QModelIndexList items = selection.indexes();
+        int                   top{-1};
+        int                   bottom{-1};
+        for (const QModelIndex &index : items)
+        {
+            const int row = index.row();
+            if (row < 0 || row >= rowCount())
+                continue;
+            if (top == -1)
+                top = row;
+            else
+                top = std::min(top, row);
+            bottom = std::max(bottom, row);
+        }
+        if (top >= 0 && bottom >= top)
+            emit dataChanged(index(top), index(bottom), {SelectedRole});
+    };
+
+    emitSelectionChanged(deselected);
+    emitSelectionChanged(selected);
 }
 
 std::vector<int64_t> LabelInstancesListModel::getSelectedLabelIds() const
