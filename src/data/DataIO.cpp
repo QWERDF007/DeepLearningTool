@@ -44,6 +44,8 @@ namespace dltool::data {
 
 namespace {
 
+constexpr double kMaskImportPolygonApproxRatio = 0.01;
+
 // ponytail: 统一 LabelMe / Mask 导出的唯一文件名生成
 QString uniqueImageName(const QString &source_path, int64_t stable_id, const std::map<QString, int> &used_names,
                         const std::map<QString, int> &used_stems)
@@ -453,7 +455,7 @@ std::vector<std::vector<QPointF>> parseSegmentationPolygons(const nlohmann::json
         int                  width  = 0;
         int                  height = 0;
         if (decodeRleMask(segmentation, mask, width, height))
-            polygons = dltool::common::maskToPolygons(mask, width, height, false);
+            polygons = dltool::common::maskToPolygons(mask, width, height, false, kMaskImportPolygonApproxRatio);
     }
 
     std::sort(polygons.begin(), polygons.end(),
@@ -2175,8 +2177,8 @@ bool MaskIO::readMaskGeometry(const QString &mask_path, MaskGeometry &geometry) 
             binary_mask.push_back(row[x] >= kMaskThreshold ? uint8_t{1} : uint8_t{0});
     }
 
-    std::vector<std::vector<QPointF>> polygons
-        = dltool::common::maskToPolygons(binary_mask, mask.width(), mask.height(), false);
+    std::vector<std::vector<QPointF>> polygons = dltool::common::maskToPolygons(
+        binary_mask, mask.width(), mask.height(), false, kMaskImportPolygonApproxRatio);
     if (!polygons.empty())
         geometry.polygon = std::move(polygons.front());
     else

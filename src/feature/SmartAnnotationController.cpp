@@ -6,7 +6,6 @@
 
 #include <inferrt/features/SAMImagePredictor.hpp>
 #include <inferrt/ops/BSplineInterp.hpp>
-#include <opencv2/imgproc.hpp>
 #include <spdlog/spdlog.h>
 
 #include <QDir>
@@ -29,7 +28,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
 
 namespace dltool::feature {
 
@@ -63,7 +61,7 @@ struct InferenceImageInput
 
 struct ContourPostprocessOptions
 {
-    double approx_epsilon{2.0};
+    double approx_epsilon_ratio{0.01};
     bool   spline_enabled{false};
     float  spline_smoothing{0.0F};
     int    spline_degree{3};
@@ -119,8 +117,8 @@ SmartModelLoadRequest buildSmartModelLoadRequest(const QString &model_name, cons
     const QString backend_name  = QString::fromLatin1(irt::model::modelBackendName(request.backend));
     const QString device_name   = QString::fromLatin1(irt::model::modelDeviceName(request.device));
     request.key                 = QString("%1|%2|%3|%4")
-                      .arg(request.model_name.toLower(), backend_name, device_name,
-                           QDir::cleanPath(request.absolute_model_path).toCaseFolded());
+                                      .arg(request.model_name.toLower(), backend_name, device_name,
+                                           QDir::cleanPath(request.absolute_model_path).toCaseFolded());
     return request;
 }
 
@@ -202,7 +200,7 @@ irt::features::SAMImagePredictOptions buildPredictOptions(dltool::settings::Glob
     options.mask_output_mode = irt::features::SAMMaskOutputMode::Single;
     options.mask_threshold
         = static_cast<float>(settingDouble(settings, generated_field::SmartAnnotation::MaskThreshold, 0.0));
-    options.max_hole_area = settingInt(settings, generated_field::SmartAnnotation::MaxHoleArea, 0);
+    options.max_hole_area     = settingInt(settings, generated_field::SmartAnnotation::MaxHoleArea, 0);
     options.max_sprinkle_area = settingInt(settings, generated_field::SmartAnnotation::MaxSprinkleArea, 0);
     return options;
 }
@@ -212,15 +210,13 @@ ContourPostprocessOptions buildContourPostprocessOptions(dltool::settings::Globa
     namespace generated_field = dltool::settings::generated::field;
 
     ContourPostprocessOptions options;
-    const double approx_epsilon
-        = settingDouble(settings, generated_field::SmartAnnotation::PolygonApproxEpsilon, 2.0);
-    options.approx_epsilon
-        = std::isfinite(approx_epsilon) ? std::max(0.0, approx_epsilon) : 2.0;
-    options.spline_enabled = settingBool(settings, generated_field::SmartAnnotation::PolygonSplineEnabled, false);
+    const double              approx_epsilon_ratio
+        = settingDouble(settings, generated_field::SmartAnnotation::PolygonApproxEpsilon, 0.01);
+    options.approx_epsilon_ratio = std::isfinite(approx_epsilon_ratio) ? std::max(0.0, approx_epsilon_ratio) : 0.01;
+    options.spline_enabled       = settingBool(settings, generated_field::SmartAnnotation::PolygonSplineEnabled, false);
 
-    const double smoothing = settingDouble(settings, generated_field::SmartAnnotation::PolygonSplineSmoothing, 0.0);
-    options.spline_smoothing
-        = static_cast<float>(std::isfinite(smoothing) ? std::max(0.0, smoothing) : 0.0);
+    const double smoothing   = settingDouble(settings, generated_field::SmartAnnotation::PolygonSplineSmoothing, 0.0);
+    options.spline_smoothing = static_cast<float>(std::isfinite(smoothing) ? std::max(0.0, smoothing) : 0.0);
     options.spline_degree = settingInt(settings, generated_field::SmartAnnotation::PolygonSplineDegree, 3) == 1 ? 1 : 3;
     return options;
 }
@@ -433,42 +429,6 @@ std::vector<QPointF> normalizePolygon(std::vector<QPointF> points)
     return normalized;
 }
 
-std::vector<cv::Point2f> polygonToCvPoints(const std::vector<QPointF> &points)
-{
-    std::vector<cv::Point2f> cv_points;
-    cv_points.reserve(points.size());
-    for (const QPointF &point : points)
-        cv_points.emplace_back(static_cast<float>(point.x()), static_cast<float>(point.y()));
-    return cv_points;
-}
-
-std::vector<QPointF> cvPointsToPolygon(const std::vector<cv::Point2f> &points)
-{
-    std::vector<QPointF> polygon;
-    polygon.reserve(points.size());
-    for (const cv::Point2f &point : points)
-        polygon.emplace_back(static_cast<double>(point.x), static_cast<double>(point.y));
-    return polygon;
-}
-
-std::vector<QPointF> approximateClosedPolygon(std::vector<QPointF> polygon, double epsilon)
-{
-    polygon = normalizePolygon(std::move(polygon));
-    if (polygon.empty() || epsilon <= 0.0)
-        return polygon;
-
-    std::vector<cv::Point2f> input = polygonToCvPoints(polygon);
-    std::vector<cv::Point2f> fitted;
-    cv::approxPolyDP(input, fitted, epsilon, true);
-
-    std::vector<QPointF> result = normalizePolygon(cvPointsToPolygon(fitted));
-    if (result.empty())
-        return polygon;
-    if (signedPolygonArea(result) < 0.0)
-        std::reverse(result.begin(), result.end());
-    return result;
-}
-
 std::vector<float> pointsToSplineInput(const std::vector<QPointF> &points)
 {
     std::vector<float> input;
@@ -499,13 +459,13 @@ std::vector<QPointF> splineFitClosedPolygon(std::vector<QPointF> polygon, const 
     try
     {
         const std::vector<float> spline_input = pointsToSplineInput(polygon);
-        const auto spline = irt::ops::splPrep(spline_input.data(), num_points, 2, options.spline_smoothing, degree);
-        const int64_t            num_coefficients
+        const auto    spline = irt::ops::splPrep(spline_input.data(), num_points, 2, options.spline_smoothing, degree);
+        const int64_t num_coefficients
             = static_cast<int64_t>(spline.coefficients.size()) / std::max<int64_t>(1, spline.dimensions);
-        const std::vector<float> sampled = irt::ops::evaluateBSpline(
-            spline.knots.data(), static_cast<int64_t>(spline.knots.size()), spline.coefficients.data(),
-            num_coefficients, spline.dimensions, spline.degree, spline.parameters.data(),
-            static_cast<int64_t>(spline.parameters.size()));
+        const std::vector<float> sampled
+            = irt::ops::evaluateBSpline(spline.knots.data(), static_cast<int64_t>(spline.knots.size()),
+                                        spline.coefficients.data(), num_coefficients, spline.dimensions, spline.degree,
+                                        spline.parameters.data(), static_cast<int64_t>(spline.parameters.size()));
 
         std::vector<QPointF> result;
         result.reserve(spline.parameters.size());
@@ -526,7 +486,9 @@ std::vector<QPointF> splineFitClosedPolygon(std::vector<QPointF> polygon, const 
 
 std::vector<QPointF> postprocessContourPolygon(std::vector<QPointF> polygon, const ContourPostprocessOptions &options)
 {
-    polygon = approximateClosedPolygon(std::move(polygon), options.approx_epsilon);
+    polygon = normalizePolygon(std::move(polygon));
+    if (!polygon.empty() && signedPolygonArea(polygon) < 0.0)
+        std::reverse(polygon.begin(), polygon.end());
     if (polygon.empty() || !options.spline_enabled)
         return polygon;
     return splineFitClosedPolygon(std::move(polygon), options);
@@ -837,18 +799,18 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         if (input_bbox.isEmpty())
             throw std::runtime_error("SAM 没有生成有效 mask，请调整提示点或阈值");
 
+        const ContourPostprocessOptions   contour_options = buildContourPostprocessOptions(settings);
         std::vector<QPointF>              polygon;
-        std::vector<std::vector<QPointF>> polygons
-            = dltool::common::maskToPolygons(binary_mask, input_image_width, input_image_height, true);
+        std::vector<std::vector<QPointF>> polygons = dltool::common::maskToPolygons(
+            binary_mask, input_image_width, input_image_height, true, contour_options.approx_epsilon_ratio);
         if (!polygons.empty())
             polygon = std::move(polygons.front());
         else
             polygon = rectanglePoints(input_bbox);
 
-        const QRectF                    bbox           = mapInputRectToSource(input_bbox, image_input);
-        const ContourPostprocessOptions contour_options = buildContourPostprocessOptions(settings);
-        std::vector<QPointF>            output_polygon  = mapInputPolygonToSource(polygon, image_input);
-        output_polygon = postprocessContourPolygon(std::move(output_polygon), contour_options);
+        const QRectF         bbox           = mapInputRectToSource(input_bbox, image_input);
+        std::vector<QPointF> output_polygon = mapInputPolygonToSource(polygon, image_input);
+        output_polygon                      = postprocessContourPolygon(std::move(output_polygon), contour_options);
         if (output_polygon.size() < 3)
             output_polygon = rectanglePoints(bbox);
 

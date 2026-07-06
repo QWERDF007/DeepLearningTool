@@ -88,12 +88,12 @@ SmartAnnotationSettings:
         control_type: spin
 
       - name_en: polygon_approx_epsilon
-        name_cn: 轮廓拟合 Epsilon
-        desc: 用于配置智能标注中Mask相关的 OpenCV approxPolyDP 轮廓拟合阈值；0 表示不压缩轮廓点。
+        name_cn: 轮廓拟合系数
+        desc: 用于配置智能标注中Mask相关的 OpenCV approxPolyDP 轮廓拟合系数；epsilon = 系数 * arcLength(contour, true)，0 表示不压缩轮廓点。
         property_name: polygonApproxEpsilon
-        value: 2.0
+        value: 0.01
         value_type: double
-        value_range: [0.0, 50.0, 0.5]
+        value_range: [0.0, 0.1, 0.001]
         control_type: slider
 
       - name_en: polygon_spline_enabled

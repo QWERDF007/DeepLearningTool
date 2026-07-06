@@ -90,14 +90,14 @@
 5. `signedDistanceField()` 分别对前景和背景执行 `cv::distanceTransform()`，相减得到 signed distance field。
 6. 通过 `cv::compare(signed_distance, 0.0F, ..., cv::CMP_GT)` 从距离场恢复前景区域。
 7. `cv::findContours(..., cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE)` 提取所有外轮廓，并只保留面积最大的外轮廓。
-8. `contourToPolygon()` 对 `findContours` 返回的整数轮廓点逐点调用 `refineContourPoint()`，利用距离场将点修正到零等值线附近，得到亚像素轮廓点。
-9. `normalizePolygon()` 去除连续近重复点和闭合重复点，过滤无效小面积轮廓，并保证轮廓方向为逆时针。
-10. 轮廓点先处于 SAM 输入图坐标系，随后通过 `mapInputPolygonToSource()` 映射回原图坐标系。
-11. `buildContourPostprocessOptions()` 读取轮廓后处理配置：`polygon_approx_epsilon`、`polygon_spline_enabled`、B 样条平滑值和 B 样条阶数。
-12. `approximateClosedPolygon()` 先对映射后的闭合轮廓执行 OpenCV `cv::approxPolyDP()` 多边形拟合；`polygon_approx_epsilon` 为 `0` 时跳过点压缩。
-13. 如果 `polygon_spline_enabled` 为 `false`，最终 polygon 直接使用 OpenCV 多边形拟合结果。
-14. 如果 `polygon_spline_enabled` 为 `true`，再将 OpenCV 拟合后的 polygon 送入 `irt::ops::splPrep()` 做 B 样条拟合。
-15. B 样条阶段使用 `splPrep()` 返回的 `parameters` 调用 `irt::ops::evaluateBSpline()` 得到最终 polygon 点；拟合失败时回退到 OpenCV 拟合后的 polygon。
+8. `buildContourPostprocessOptions()` 读取 `polygon_approx_epsilon`；`maskToPolygons()` 在轮廓转点前执行 OpenCV `cv::approxPolyDP()`，用该系数计算 `epsilon = polygon_approx_epsilon * arcLength(contour, true)`，为 `0` 时跳过点压缩。
+9. `contourToPolygon()` 对拟合后的整数轮廓点逐点调用 `refineContourPoint()`，利用距离场将点修正到零等值线附近，得到亚像素轮廓点。
+10. `normalizePolygon()` 去除连续近重复点和闭合重复点，过滤无效小面积轮廓，并保证轮廓方向为逆时针。
+11. 轮廓点先处于 SAM 输入图坐标系，随后通过 `mapInputPolygonToSource()` 映射回原图坐标系。
+12. `postprocessContourPolygon()` 对映射后的 polygon 做规范化，并根据配置决定是否继续执行 B 样条。
+13. 如果 `polygon_spline_enabled` 为 `false`，最终 polygon 直接使用映射后的 OpenCV 多边形拟合结果。
+14. 如果 `polygon_spline_enabled` 为 `true`，再将 polygon 送入 `irt::ops::splPrep()` 做 B 样条拟合。
+15. B 样条阶段使用 `splPrep()` 返回的 `parameters` 调用 `irt::ops::evaluateBSpline()` 得到最终 polygon 点；拟合失败时回退到映射后的 polygon。
 16. 如果最终 polygon 少于 3 个点，则回退为 mask 外接矩形。
 
 ## 小样本学习流程

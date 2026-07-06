@@ -39,8 +39,7 @@ cv::Mat maskToPaddedMat(const std::vector<uint8_t> &mask, int width, int height)
     {
         uchar       *dst        = padded.ptr<uchar>(y + 1) + 1;
         const size_t row_offset = static_cast<size_t>(y) * width;
-        for (int x = 0; x < width; ++x)
-            dst[x] = mask[row_offset + static_cast<size_t>(x)] != 0 ? uchar{255} : uchar{0};
+        for (int x = 0; x < width; ++x) dst[x] = mask[row_offset + static_cast<size_t>(x)] != 0 ? uchar{255} : uchar{0};
     }
     return padded;
 }
@@ -102,16 +101,16 @@ QPointF refineContourPoint(const cv::Mat &signed_distance, const cv::Point &poin
     }
     else
     {
-        const int left   = std::max(point.x - 1, 0);
-        const int right  = std::min(point.x + 1, signed_distance.cols - 1);
-        const int top    = std::max(point.y - 1, 0);
-        const int bottom = std::min(point.y + 1, signed_distance.rows - 1);
-        const double dx  = 0.5
-                         * static_cast<double>(signed_distance.at<float>(point.y, right)
-                                               - signed_distance.at<float>(point.y, left));
-        const double dy  = 0.5
-                         * static_cast<double>(signed_distance.at<float>(bottom, point.x)
-                                               - signed_distance.at<float>(top, point.x));
+        const int    left   = std::max(point.x - 1, 0);
+        const int    right  = std::min(point.x + 1, signed_distance.cols - 1);
+        const int    top    = std::max(point.y - 1, 0);
+        const int    bottom = std::min(point.y + 1, signed_distance.rows - 1);
+        const double dx
+            = 0.5
+            * static_cast<double>(signed_distance.at<float>(point.y, right) - signed_distance.at<float>(point.y, left));
+        const double dy
+            = 0.5
+            * static_cast<double>(signed_distance.at<float>(bottom, point.x) - signed_distance.at<float>(top, point.x));
         const double denom = dx * dx + dy * dy;
         if (denom > 0.000001)
         {
@@ -135,6 +134,22 @@ std::vector<QPointF> contourToPolygon(const std::vector<cv::Point> &contour, con
     if (!points.empty() && signedPolygonArea(points) < 0.0)
         std::reverse(points.begin(), points.end());
     return points;
+}
+
+std::vector<cv::Point> approximateContour(const std::vector<cv::Point> &contour, double epsilon_ratio)
+{
+    if (contour.size() < 3 || !std::isfinite(epsilon_ratio) || epsilon_ratio <= 0.0)
+        return contour;
+
+    const double epsilon = epsilon_ratio * cv::arcLength(contour, true);
+    if (!std::isfinite(epsilon) || epsilon <= 0.0)
+        return contour;
+
+    std::vector<cv::Point> fitted;
+    cv::approxPolyDP(contour, fitted, epsilon, true);
+    if (fitted.size() < 3 || std::abs(cv::contourArea(fitted)) <= 0.5)
+        return contour;
+    return fitted;
 }
 
 } // namespace
@@ -173,8 +188,8 @@ std::vector<QPointF> normalizePolygon(std::vector<QPointF> points)
     return normalized;
 }
 
-std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mask, int width, int height,
-                                                 bool keep_max)
+std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mask, int width, int height, bool keep_max,
+                                                 double polygon_approx_epsilon_ratio)
 {
     const cv::Mat padded_mask = maskToPaddedMat(mask, width, height);
     if (padded_mask.empty())
@@ -191,13 +206,16 @@ std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mas
 
     std::vector<std::vector<QPointF>> polygons;
     polygons.reserve(keep_max ? 1 : contours.size());
+    const double epsilon_ratio
+        = std::isfinite(polygon_approx_epsilon_ratio) ? std::max(0.0, polygon_approx_epsilon_ratio) : 0.0;
 
     for (const std::vector<cv::Point> &contour : contours)
     {
         if (std::abs(cv::contourArea(contour)) <= 0.5)
             continue;
 
-        std::vector<QPointF> points = contourToPolygon(contour, signed_distance, width, height);
+        const std::vector<cv::Point> fitted_contour = approximateContour(contour, epsilon_ratio);
+        std::vector<QPointF>         points         = contourToPolygon(fitted_contour, signed_distance, width, height);
         if (points.empty())
             continue;
 
