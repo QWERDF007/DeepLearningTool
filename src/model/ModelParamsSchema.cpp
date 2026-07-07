@@ -72,10 +72,10 @@ ParamGroupDefinition parseParamGroupDefinition(const YAML::Node &node)
     return group;
 }
 
-QFileInfo findModelConfigFile(const QString &type_name)
+QFileInfo findModelConfigFile(const QString &framework_name, const QString &model_architecture)
 {
-    return dltool::common::yaml::findConfigFile(
-        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("config/models")), type_name);
+    const QString config_root = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("config/models"));
+    return dltool::common::yaml::findConfigFile(QDir(config_root).filePath(framework_name), model_architecture);
 }
 
 bool looksLikeModelNode(const YAML::Node &node)
@@ -98,19 +98,23 @@ void parseGroups(const YAML::Node &groups_node, std::vector<ParamGroupDefinition
 
 } // namespace
 
-ModelParamsSchema loadModelParamsSchema(const QString &type_name)
+ModelParamsSchema loadModelParamsSchema(const QString &framework_name, const QString &model_architecture)
 {
-    const QString     trimmed_type_name = type_name.trimmed();
+    const QString     trimmed_framework_name      = framework_name.trimmed();
+    const QString     trimmed_model_architecture  = model_architecture.trimmed();
     ModelParamsSchema schema;
-    schema.model_name = trimmed_type_name;
+    schema.framework_name      = trimmed_framework_name;
+    schema.model_architecture  = trimmed_model_architecture;
+    schema.model_name          = trimmed_model_architecture;
 
-    if (trimmed_type_name.isEmpty())
+    if (trimmed_framework_name.isEmpty() || trimmed_model_architecture.isEmpty())
         return schema;
 
-    const QFileInfo config_file = findModelConfigFile(trimmed_type_name);
+    const QFileInfo config_file = findModelConfigFile(trimmed_framework_name, trimmed_model_architecture);
     if (!config_file.exists())
     {
-        spdlog::warn("未找到 {} 的模型配置文件", trimmed_type_name.toUtf8().constData());
+        spdlog::warn("未找到 {}/{} 的模型配置文件", trimmed_framework_name.toUtf8().constData(),
+                     trimmed_model_architecture.toUtf8().constData());
         return schema;
     }
 
@@ -125,18 +129,24 @@ ModelParamsSchema loadModelParamsSchema(const QString &type_name)
             return schema;
         }
 
-        const YAML::Node model_node = looksLikeModelNode(root) ? root : root[trimmed_type_name.toStdString()];
+        const YAML::Node model_node = looksLikeModelNode(root) ? root : root[trimmed_model_architecture.toStdString()];
         if (!model_node || !model_node.IsMap())
         {
-            spdlog::warn("模型配置中缺少模型 '{}': {}", trimmed_type_name.toUtf8().constData(),
+            spdlog::warn("模型配置中缺少模型 '{}': {}", trimmed_model_architecture.toUtf8().constData(),
                          config_file.absoluteFilePath().toUtf8().constData());
             return schema;
         }
 
-        schema.config_path = config_file.absoluteFilePath();
-        schema.model_name  = nodeString(model_node["model_name"], trimmed_type_name).trimmed();
+        schema.config_path         = config_file.absoluteFilePath();
+        schema.framework_name      = nodeString(model_node["framework"], trimmed_framework_name).trimmed();
+        schema.model_architecture  = nodeString(model_node["model_architecture"], trimmed_model_architecture).trimmed();
+        schema.model_name          = nodeString(model_node["model_name"], trimmed_model_architecture).trimmed();
+        if (schema.framework_name.isEmpty())
+            schema.framework_name = trimmed_framework_name;
+        if (schema.model_architecture.isEmpty())
+            schema.model_architecture = trimmed_model_architecture;
         if (schema.model_name.isEmpty())
-            schema.model_name = trimmed_type_name;
+            schema.model_name = trimmed_model_architecture;
         schema.method = nodeString(model_node["method"]);
 
         parseGroups(model_node["train_params"], schema.train_groups);

@@ -200,6 +200,19 @@ QVariant ParamGroupModel::valueForName(const QString &name_en) const
     return currentValue(params_.at(row));
 }
 
+QVariantMap ParamGroupModel::valuesMap() const
+{
+    QVariantMap values;
+    for (const ParamDefinition &param : params_)
+    {
+        if (!param.name_en.isEmpty())
+        {
+            values.insert(param.name_en, currentValue(param));
+        }
+    }
+    return values;
+}
+
 void ParamGroupModel::copyValuesFrom(const ParamGroupModel &other)
 {
     if (params_.empty())
@@ -222,6 +235,47 @@ void ParamGroupModel::copyValuesFrom(const ParamGroupModel &other)
     {
         emit dataChanged(index(0), index(rowCount() - 1), {ValueRole, Qt::EditRole});
     }
+}
+
+bool ParamGroupModel::setValuesMap(const QVariantMap &values)
+{
+    if (params_.empty() || values.isEmpty())
+    {
+        return false;
+    }
+
+    int first_changed = -1;
+    int last_changed  = -1;
+    for (int i = 0; i < static_cast<int>(params_.size()); ++i)
+    {
+        ParamDefinition &param = params_[static_cast<size_t>(i)];
+        if (param.name_en.isEmpty() || !values.contains(param.name_en))
+        {
+            continue;
+        }
+
+        const QVariant next_value = values.value(param.name_en);
+        if (!next_value.isValid() || param.value == next_value)
+        {
+            continue;
+        }
+
+        param.value = next_value;
+        if (first_changed < 0)
+        {
+            first_changed = i;
+        }
+        last_changed = i;
+        emit valueChanged(param.name_en, param.value);
+    }
+
+    if (first_changed < 0)
+    {
+        return false;
+    }
+
+    emit dataChanged(index(first_changed), index(last_changed), {ValueRole, Qt::EditRole});
+    return true;
 }
 
 QVariant ParamGroupModel::currentValue(const ParamDefinition &param) const
@@ -351,6 +405,20 @@ ParamGroupModel *IParams::groupAt(const int row) const
     return groups_.at(static_cast<size_t>(row)).get();
 }
 
+QVariantMap IParams::valuesMap() const
+{
+    QVariantMap values;
+    for (const auto &group : groups_)
+    {
+        if (group == nullptr)
+        {
+            continue;
+        }
+        values.insert(group->nameEn(), group->valuesMap());
+    }
+    return values;
+}
+
 ParamGroupModel *IParams::addGroup(const QString &name_en, const QString &name_cn, std::vector<ParamDefinition> params,
                                    const QString &description, const bool enabled, const int part_index)
 {
@@ -379,6 +447,30 @@ void IParams::copyValuesFrom(const IParams &other)
             group->copyValuesFrom(**found);
         }
     }
+}
+
+bool IParams::setValuesMap(const QVariantMap &values)
+{
+    if (values.isEmpty())
+    {
+        return false;
+    }
+
+    bool changed = false;
+    for (ParamGroupModel *group : groups())
+    {
+        if (group == nullptr || group->nameEn().isEmpty() || !values.contains(group->nameEn()))
+        {
+            continue;
+        }
+
+        const QVariantMap group_values = values.value(group->nameEn()).toMap();
+        if (!group_values.isEmpty())
+        {
+            changed = group->setValuesMap(group_values) || changed;
+        }
+    }
+    return changed;
 }
 
 void IParams::clearGroups()

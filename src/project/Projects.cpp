@@ -63,7 +63,8 @@ Project::~Project()
     delete feature_manager_;
     feature_manager_ = nullptr;
 
-    delete task_manager_;
+    if (task_manager_ != nullptr)
+        task_manager_->setModelManager(nullptr);
     task_manager_ = nullptr;
 
     delete model_manager_;
@@ -78,10 +79,10 @@ Project::~Project()
 
 void Project::init()
 {
-    task_manager_ = new model::TaskManager(this);
-    data_manager_ = new data::DataManager(method_, database_, this);
-    feature_manager_ = new dltool::feature::FeatureManager(data_manager_, task_manager_, this);
+    data_manager_  = new data::DataManager(method_, database_, this);
     model_manager_ = new model::ModelManager(method_, database_, data_manager_, this);
+    model::TaskManager::getInstance()->setModelManager(model_manager_);
+    feature_manager_ = new dltool::feature::FeatureManager(data_manager_, this);
 
     // 初始化图像提供器（会自动从 QML 上下文获取引擎）
     data_manager_->initializeQmlEngine(qml_engine_);

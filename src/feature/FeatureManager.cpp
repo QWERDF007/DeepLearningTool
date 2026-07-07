@@ -111,9 +111,7 @@ public:
     }
 };
 
-FeatureManager::FeatureManager(dltool::data::DataManager *data_manager,
-                               dltool::model::TaskManager *task_manager,
-                               QObject *parent)
+FeatureManager::FeatureManager(dltool::data::DataManager *data_manager, QObject *parent)
     : QObject(parent)
     , image_search_provider_(std::make_unique<ImageSearchProvider>(data_manager))
     , roi_search_provider_(std::make_unique<RoiSearchProvider>(data_manager))
@@ -124,8 +122,7 @@ FeatureManager::FeatureManager(dltool::data::DataManager *data_manager,
     roi_search_ = new RoiSearchController(roi_search_provider_.get(), this);
     image_cluster_ = new ImageClusterController(image_cluster_provider_.get(), data_manager, this);
     smart_annotation_ = new SmartAnnotationController(this);
-    few_shot_learning_ = new FewShotLearningController(few_shot_learning_provider_.get(), data_manager, task_manager,
-                                                       this);
+    few_shot_learning_ = new FewShotLearningController(few_shot_learning_provider_.get(), data_manager, this);
 
     if (auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(
             dltool::settings::generated::AccessorKey::SmartAnnotation))

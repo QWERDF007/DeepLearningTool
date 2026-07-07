@@ -170,9 +170,9 @@ public:
      */
     Q_INVOKABLE void updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
                                       const QString &shortcut, const int64_t ordinal_index);
-    Q_INVOKABLE void updateLabelClassWithGroup(const int64_t label_class_id, const QString &name,
-                                               const QString &color, const QString &shortcut,
-                                               const int64_t ordinal_index, const QString &group);
+    Q_INVOKABLE void updateLabelClassWithGroup(const int64_t label_class_id, const QString &name, const QString &color,
+                                               const QString &shortcut, const int64_t ordinal_index,
+                                               const QString &group);
     Q_INVOKABLE void updateLabelClassGroup(const int64_t label_class_id, const QString &group);
     Q_INVOKABLE void deleteLabelClass(const int64_t label_class_id);
 
@@ -186,8 +186,8 @@ public:
     Q_INVOKABLE void duplicateSelectedLabels();
     Q_INVOKABLE bool setImageLabelClass(const int64_t image_id, const int64_t label_class_id);
     Q_INVOKABLE QVariantMap getImageLevelLabelData(const int64_t image_id) const;
-    Q_INVOKABLE void refreshAnomalyImageClassesFromPolygons(const std::vector<int64_t> &image_ids,
-                                                            bool only_unset = false);
+    Q_INVOKABLE void        refreshAnomalyImageClassesFromPolygons(const std::vector<int64_t> &image_ids,
+                                                                   bool                        only_unset = false);
 
     Q_INVOKABLE void addTagClass(const QString &name);
 
@@ -202,19 +202,22 @@ public:
     Q_INVOKABLE QString getImageDatasetName(const int64_t image_id) const;
     Q_INVOKABLE QString getImageTagName(const int64_t image_id) const;
 
-    std::vector<int64_t>    selectedImageIds() const;
-    std::vector<int64_t>    allImageIds() const;
-    QString                 imagePath(int64_t image_id) const;
-    int64_t                 imageDatasetId(int64_t image_id) const;
-    std::vector<int64_t>    allLabelIds() const;
-    int64_t                 labelImageId(int64_t label_id) const;
-    int64_t                 labelClassId(int64_t label_id) const;
-    QVariantMap             labelData(int64_t label_id) const;
-    QString                 labelClassName(int64_t label_class_id) const;
-    QString                 datasetName(int64_t dataset_id) const;
-    void                    importMaskData(int64_t dataset_id, const QString &image_manifest_path,
-                                           const QString &prediction_output_dir);
+    std::vector<int64_t> selectedImageIds() const;
+    std::vector<int64_t> allImageIds() const;
+    QString              imagePath(int64_t image_id) const;
+    int64_t              imageDatasetId(int64_t image_id) const;
+    std::vector<int64_t> allLabelIds() const;
+    int64_t              labelImageId(int64_t label_id) const;
+    int64_t              labelClassId(int64_t label_id) const;
+    QVariantMap          labelData(int64_t label_id) const;
+    QString              labelClassName(int64_t label_class_id) const;
+    QString              labelClassGroup(int64_t label_class_id) const;
+    QString              datasetName(int64_t dataset_id) const;
+    std::vector<int64_t> imageLabelIds(int64_t image_id) const;
+
+    void importMaskData(int64_t dataset_id, const QString &image_manifest_path, const QString &prediction_output_dir);
     QMetaObject::Connection connectImportFinished(QObject *context, ImportFinishedHandler handler);
+
     void disconnectImportFinished(const QMetaObject::Connection &connection);
     void clearImageSearchResults();
     void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter);

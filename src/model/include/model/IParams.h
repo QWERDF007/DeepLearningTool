@@ -9,6 +9,7 @@
 #include <QString>
 #include <QStringList>
 #include <QVariant>
+#include <QVariantMap>
 #include <QtQml>
 #include <memory>
 #include <vector>
@@ -80,8 +81,10 @@ public:
     Q_INVOKABLE bool     setValue(int row, const QVariant &value);
     Q_INVOKABLE QVariant valueAt(int row) const;
     Q_INVOKABLE QVariant valueForName(const QString &name_en) const;
+    Q_INVOKABLE QVariantMap valuesMap() const;
 
     void copyValuesFrom(const ParamGroupModel &other);
+    bool setValuesMap(const QVariantMap &values);
 
 signals:
     void countChanged();
@@ -134,7 +137,9 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     Q_INVOKABLE ParamGroupModel *groupAt(int row) const;
+    QVariantMap                  valuesMap() const;
     void                         copyValuesFrom(const IParams &other);
+    bool                         setValuesMap(const QVariantMap &values);
 
 signals:
     void groupCountChanged();

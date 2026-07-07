@@ -15,7 +15,8 @@ Item {
     property var currentModelId: -1
     property string currentModelUuid: ""
     property string currentModelName: ""
-    property string currentNetworkStructure: ""
+    property string currentFrameworkName: ""
+    property string currentModelArchitecture: ""
     property IModel selectedModel: modelManager && currentModelUuid.length > 0 ? modelManager.modelForUuid(currentModelUuid) : null
     property ITrainParams trainParams: selectedModel && selectedModel.config ? selectedModel.config.trainParams : null
 

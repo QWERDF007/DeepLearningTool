@@ -49,7 +49,6 @@ public:
      */
     explicit FewShotLearningController(FewShotLearningDataProvider *data_provider,
                                        dltool::data::DataManager *data_manager,
-                                       dltool::model::TaskManager *task_manager,
                                        QObject *parent = nullptr);
     ~FewShotLearningController() override;
 

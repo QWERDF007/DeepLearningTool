@@ -16,12 +16,15 @@ Rectangle {
     property var modelId: -1
     property string modelUuid: ""
     property string modelName: ""
-    property string networkStructure: ""
+    property string frameworkName: ""
+    property string modelArchitecture: ""
     property string trainingResult: ""
     property string testResult: ""
     property bool selected: false
     property bool showTaskActions: false
     property bool taskActionsEnabled: false
+    property bool startTaskEnabled: taskActionsEnabled
+    property bool stopTaskEnabled: taskActionsEnabled
 
     signal startClicked()
     signal stopClicked()
@@ -40,8 +43,12 @@ Rectangle {
         }
 
         InfoRow {
-            title: "网络结构"
-            value: control.networkStructure
+            title: "框架"
+            value: control.frameworkName
+        }
+        InfoRow {
+            title: "模型架构"
+            value: control.modelArchitecture
         }
         InfoRow {
             title: "训练结果"
@@ -69,7 +76,7 @@ Rectangle {
                 display: Button.IconOnly
                 text: "开始"
                 iconSource: QuiFontIcon.Play
-                enabled: control.taskActionsEnabled
+                enabled: control.startTaskEnabled
                 onClicked: control.startClicked()
             }
 
@@ -79,7 +86,7 @@ Rectangle {
                 display: Button.IconOnly
                 text: "停止"
                 iconSource: QuiFontIcon.Stop
-                enabled: control.taskActionsEnabled
+                enabled: control.stopTaskEnabled
                 onClicked: control.stopClicked()
             }
         }

@@ -1,7 +1,9 @@
 #include "common/YamlUtils.h"
 
 #include <QDir>
+#include <QFile>
 #include <algorithm>
+#include <stdexcept>
 #include <string>
 
 namespace dltool::common::yaml {
@@ -79,7 +81,16 @@ QVariant nodeVariant(const YAML::Node &node)
 
 YAML::Node loadFile(const QFileInfo &file)
 {
-    return YAML::LoadFile(file.absoluteFilePath().toStdString());
+    QFile yaml_file(file.absoluteFilePath());
+    if (!yaml_file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        const QString message = QStringLiteral("open yaml failed: %1, %2").arg(file.absoluteFilePath(),
+                                                                               yaml_file.errorString());
+        throw std::runtime_error(message.toUtf8().constData());
+    }
+
+    const QByteArray content = yaml_file.readAll();
+    return YAML::Load(std::string(content.constData(), static_cast<size_t>(content.size())));
 }
 
 QFileInfo findConfigFile(const QString &directory, const QString &base_name, const QStringList &suffixes)

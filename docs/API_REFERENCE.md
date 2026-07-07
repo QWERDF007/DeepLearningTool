@@ -86,6 +86,7 @@ enum Method {
     Segmentation,
     Pose,
     OCR,
+    AnomalyDetection,
 };
 
 Q_INVOKABLE QList<QVariantMap> getMethods() const;
@@ -98,7 +99,7 @@ static bool isSupportedMethod(const int method);
 static QString methodName(const int method);
 ```
 
-当前 `supportedMethodTypes()` 返回 `Classification`、`Detection` 和 `Segmentation`，项目有效性校验接受这三类。`Pose` 和 `OCR` 已在枚举和展示列表中保留，但当前不是已支持任务类型。
+当前 `supportedMethodTypes()` 返回 `Classification`、`Detection`、`Segmentation` 和 `AnomalyDetection`，项目有效性校验接受这四类。`Pose` 和 `OCR` 已在枚举和展示列表中保留，但当前不是已支持任务类型。
 
 ## 3. Database
 
@@ -510,16 +511,18 @@ QML 类型：`ModelManager`，不可直接创建；通过 `Project.modelManager`
 ```cpp
 Q_PROPERTY(int method READ method CONSTANT)
 
-Q_INVOKABLE bool addModel(const QString &name, const QString &network_structure);
+Q_INVOKABLE bool addModel(const QString &name,
+                          const QString &framework_name,
+                          const QString &model_architecture);
 Q_INVOKABLE bool renameModel(const qint64 model_id, const QString &name);
 Q_INVOKABLE bool deleteModel(const qint64 model_id);
 Q_INVOKABLE bool copyModel(const qint64 model_id);
 
-Q_INVOKABLE QStringList supportedNetworkStructures() const;
+Q_INVOKABLE QStringList supportedFrameworks() const;
+Q_INVOKABLE QStringList supportedModelArchitectures(const QString &framework_name) const;
 Q_INVOKABLE QStringList availableModelNames() const;
 Q_INVOKABLE QVariantMap modelAt(int row) const;
-Q_INVOKABLE dltool::model::IModel *modelForId(const qint64 model_id,
-                                              const QString &network_structure) const;
+Q_INVOKABLE dltool::model::IModel *modelForUuid(const QString &uuid) const;
 ```
 
 Role：
@@ -527,8 +530,10 @@ Role：
 | role | 说明 |
 |------|------|
 | `model_id` | 模型记录 ID |
+| `uuid` | 模型 UUID |
 | `name` | 模型名称 |
-| `network_structure` | 网络结构名称，例如 YOLOv5 |
+| `framework_name` | 框架名称，例如 `ultralytics`、`anomalib` |
+| `model_architecture` | 模型架构名称，例如 `YOLOv5`、`patchcore` |
 | `training_result` | 训练结果记录 |
 | `test_result` | 测试结果记录 |
 | `ctime` | 创建时间 |
@@ -540,12 +545,16 @@ Role：
 class IModel : public QObject {
     Q_PROPERTY(int method READ method CONSTANT)
     Q_PROPERTY(QString typeName READ typeName CONSTANT)
+    Q_PROPERTY(QString frameworkName READ frameworkName CONSTANT)
+    Q_PROPERTY(QString modelArchitecture READ modelArchitecture CONSTANT)
     Q_PROPERTY(dltool::model::IModelConfig *config READ config CONSTANT)
 };
 
 class IModelConfig : public QObject {
     Q_PROPERTY(int method READ method CONSTANT)
     Q_PROPERTY(QString typeName READ typeName CONSTANT)
+    Q_PROPERTY(QString frameworkName READ frameworkName CONSTANT)
+    Q_PROPERTY(QString modelArchitecture READ modelArchitecture CONSTANT)
     Q_PROPERTY(dltool::model::ITrainParams *trainParams READ trainParams CONSTANT)
     Q_PROPERTY(dltool::model::ITestParams *testParams READ testParams CONSTANT)
 };
@@ -592,7 +601,7 @@ Q_INVOKABLE QVariant valueAt(int row) const;
 Q_INVOKABLE QVariant valueForName(const QString &name_en) const;
 ```
 
-当前 `DetectionModels.cpp` 注册了目标检测任务下的 YOLOv5 和 YOLOv8 默认模型配置。
+当前模型注册按“框架/模型架构”组织：目标检测注册 `ultralytics/YOLOv5`、`ultralytics/YOLOv8`，异常检测注册 `anomalib/patchcore`、`anomalib/dinomaly2`。参数配置文件位于 `config/models/<framework>/<model_architecture>.yaml`。
 
 ## 7. Project (`dltool.project`)
 

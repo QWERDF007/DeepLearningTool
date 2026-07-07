@@ -17,17 +17,20 @@ Rectangle {
     property var currentModelId: -1
     property string currentModelUuid: ""
     property string currentModelName: ""
-    property string currentNetworkStructure: ""
+    property string currentFrameworkName: ""
+    property string currentModelArchitecture: ""
     property bool componentCompleted: false
     property var taskManager: null
     property string taskType: ""
     property bool taskActionsEnabled: false
+    property int taskRevision: taskManager && taskManager.tasks ? taskManager.tasks.revision : 0
 
     function resetCurrentModelState() {
         currentModelId = -1
         currentModelUuid = ""
         currentModelName = ""
-        currentNetworkStructure = ""
+        currentFrameworkName = ""
+        currentModelArchitecture = ""
         if (view.currentIndex !== -1) {
             view.currentIndex = -1
         }
@@ -51,7 +54,8 @@ Rectangle {
         currentModelId = modelData.model_id
         currentModelUuid = modelData.uuid || ""
         currentModelName = modelData.name || ""
-        currentNetworkStructure = modelData.network_structure || ""
+        currentFrameworkName = modelData.framework_name || ""
+        currentModelArchitecture = modelData.model_architecture || ""
     }
 
     function ensureCurrentModel() {
@@ -71,14 +75,14 @@ Rectangle {
     }
 
     function startCurrentModelTask() {
-        if (!taskActionsEnabled || !taskManager || currentModelUuid.length === 0) {
+        if (!canStartModelTask(currentModelUuid)) {
             return
         }
         taskManager.startModelTask(currentModelUuid, currentModelName, taskType)
     }
 
     function stopCurrentModelTask() {
-        if (!taskActionsEnabled || !taskManager || currentModelUuid.length === 0) {
+        if (!canStopModelTask(currentModelUuid)) {
             return
         }
         taskManager.stopModelTask(currentModelUuid, taskType)
@@ -88,7 +92,37 @@ Rectangle {
         if (!taskActionsEnabled || !taskManager || currentModelUuid.length === 0) {
             return
         }
-        taskManager.addTask(currentModelUuid, currentModelName, taskType)
+        taskManager.addModelTask(currentModelUuid, currentModelName, taskType)
+    }
+
+    function taskForModel(uuid) {
+        const revision = taskRevision
+        if (!taskManager || !taskManager.tasks || !uuid || String(uuid).length === 0) {
+            return ({})
+        }
+        return taskManager.tasks.taskForModel(uuid, taskType, false)
+    }
+
+    function hasTask(task) {
+        return task && task.task_id !== undefined && task.task_id >= 0
+    }
+
+    function canStartModelTask(uuid) {
+        if (!taskActionsEnabled || !taskManager || !uuid || String(uuid).length === 0) {
+            return false
+        }
+
+        const task = taskForModel(uuid)
+        return hasTask(task) ? task.can_start === true : true
+    }
+
+    function canStopModelTask(uuid) {
+        if (!taskActionsEnabled || !taskManager || !uuid || String(uuid).length === 0) {
+            return false
+        }
+
+        const task = taskForModel(uuid)
+        return hasTask(task) ? task.can_stop === true : false
     }
 
     onModelManagerChanged: requestEnsureCurrentModel()
@@ -159,7 +193,11 @@ Rectangle {
             height: 32
             onAddClicked: {
                 if (modelManager) {
-                    modelFormDialog.networkStructureModel = modelManager.supportedNetworkStructures()
+                    modelFormDialog.frameworkModel = modelManager.supportedFrameworks()
+                    const firstFramework = modelFormDialog.frameworkModel.length > 0 ? modelFormDialog.frameworkModel[0] : ""
+                    modelFormDialog.architectureModel = firstFramework.length > 0
+                                                        ? modelManager.supportedModelArchitectures(firstFramework)
+                                                        : []
                     modelFormDialog.openForm()
                 }
             }
@@ -193,12 +231,15 @@ Rectangle {
                     modelId: model.model_id
                     modelUuid: model.uuid
                     modelName: model.name
-                    networkStructure: model.network_structure
+                    frameworkName: model.framework_name
+                    modelArchitecture: model.model_architecture
                     trainingResult: model.training_result
                     testResult: model.test_result
                     selected: ListView.isCurrentItem
                     showTaskActions: modelView.taskActionsEnabled
                     taskActionsEnabled: modelView.taskManager !== null && model.uuid
+                    startTaskEnabled: modelView.canStartModelTask(model.uuid)
+                    stopTaskEnabled: modelView.canStopModelTask(model.uuid)
                     onStartClicked: {
                         modelView.selectModel(index)
                         modelView.startCurrentModelTask()
@@ -235,9 +276,14 @@ Rectangle {
 
     ModelFormDialog {
         id: modelFormDialog
-        onSubmitted: function (modelName, networkStructure) {
+        onFrameworkChanged: function (frameworkName) {
             if (modelManager) {
-                modelManager.addModel(modelName, networkStructure)
+                modelFormDialog.architectureModel = modelManager.supportedModelArchitectures(frameworkName)
+            }
+        }
+        onSubmitted: function (modelName, frameworkName, modelArchitecture) {
+            if (modelManager) {
+                modelManager.addModel(modelName, frameworkName, modelArchitecture)
             }
         }
     }

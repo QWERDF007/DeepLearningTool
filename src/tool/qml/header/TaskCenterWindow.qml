@@ -12,7 +12,7 @@ import quickui
 Window {
     id: dialog
 
-    property var taskManager: ProjectManager.currentProject ? ProjectManager.currentProject.taskManager : null
+    property var taskManager: TaskManager
     property var taskModel: taskManager ? taskManager.tasks : null
     property int selectedTaskId: -1
 

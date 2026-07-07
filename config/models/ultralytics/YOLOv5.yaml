@@ -1,4 +1,7 @@
 YOLOv5:
+  framework: ultralytics
+  model_architecture: YOLOv5
+  model_name: YOLOv5
   method: Detection
   train_params:
     - name_en: network

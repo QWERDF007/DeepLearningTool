@@ -1,0 +1,156 @@
+framework: anomalib
+model_architecture: dinomaly2
+model_name: Dinomaly2
+method: AnomalyDetection
+train_params:
+  - name_en: data
+    name_cn: 数据参数
+    part_index: 0
+    params:
+      - name_en: train_batch_size
+        name_cn: 训练批量
+        value: 8
+        value_type: int
+        value_range: [1, 128, 1]
+        control_type: spin
+
+      - name_en: eval_batch_size
+        name_cn: 评估批量
+        value: 8
+        value_type: int
+        value_range: [1, 128, 1]
+        control_type: spin
+
+      - name_en: num_workers
+        name_cn: 加载线程
+        value: 8
+        value_type: int
+        value_range: [0, 64, 1]
+        control_type: spin
+
+  - name_en: trainer
+    name_cn: 训练器参数
+    part_index: 0
+    params:
+      - name_en: accelerator
+        name_cn: 加速器
+        value: auto
+        value_type: string
+        control_type: combo
+        options: [auto, cpu, gpu, cuda]
+
+      - name_en: devices
+        name_cn: 设备数
+        value: 1
+        value_type: int
+        value_range: [1, 16, 1]
+        control_type: spin
+
+      - name_en: max_steps
+        name_cn: 最大步数
+        value: 5000
+        value_type: int
+        value_range: [1, 200000, 1]
+        control_type: spin
+
+      - name_en: seed
+        name_cn: 随机种子
+        value: 42
+        value_type: int
+        value_range: [0, 2147483647, 1]
+        control_type: spin
+
+  - name_en: model
+    name_cn: 模型参数
+    part_index: 1
+    params:
+      - name_en: encoder_name
+        name_cn: 编码器
+        value: dinov2reg_vit_base_14
+        value_type: string
+        control_type: combo
+        options: [dinov2reg_vit_small_14, dinov2reg_vit_base_14, dinov2reg_vit_large_14]
+
+      - name_en: decoder_depth
+        name_cn: 解码器深度
+        value: 8
+        value_type: int
+        value_range: [1, 24, 1]
+        control_type: spin
+
+      - name_en: bottleneck_dropout
+        name_cn: 瓶颈 Dropout
+        value: 0.2
+        value_type: double
+        value_range: [0.0, 0.9, 0.01]
+        control_type: spin
+
+      - name_en: use_context_recentering
+        name_cn: 上下文重居中
+        value: true
+        value_type: bool
+        control_type: checkbox
+
+      - name_en: image_size
+        name_cn: 输入尺寸
+        value: 448
+        value_type: int
+        value_range: [128, 2048, 1]
+        control_type: spin
+
+      - name_en: crop_size
+        name_cn: 裁剪尺寸
+        value: 392
+        value_type: int
+        value_range: [64, 2048, 1]
+        control_type: spin
+
+      - name_en: precision
+        name_cn: 精度
+        value: float32
+        value_type: string
+        control_type: combo
+        options: [float32, float16]
+
+test_params:
+  - name_en: data
+    name_cn: 测试数据
+    part_index: 0
+    params:
+      - name_en: eval_batch_size
+        name_cn: 评估批量
+        value: 8
+        value_type: int
+        value_range: [1, 128, 1]
+        control_type: spin
+
+      - name_en: num_workers
+        name_cn: 加载线程
+        value: 8
+        value_type: int
+        value_range: [0, 64, 1]
+        control_type: spin
+
+  - name_en: inference
+    name_cn: 推理参数
+    part_index: 1
+    params:
+      - name_en: checkpoint_path
+        name_cn: 检查点路径
+        value: ""
+        value_type: string
+        control_type: file
+
+      - name_en: accelerator
+        name_cn: 加速器
+        value: auto
+        value_type: string
+        control_type: combo
+        options: [auto, cpu, gpu, cuda]
+
+      - name_en: devices
+        name_cn: 设备数
+        value: 1
+        value_type: int
+        value_range: [1, 16, 1]
+        control_type: spin

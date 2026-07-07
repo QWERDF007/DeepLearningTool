@@ -10,6 +10,8 @@ namespace dltool::model {
 
 struct MODEL_API ModelParamsSchema
 {
+    QString                           framework_name;
+    QString                           model_architecture;
     QString                           model_name;
     QString                           method;
     QString                           config_path;
@@ -17,8 +19,8 @@ struct MODEL_API ModelParamsSchema
     std::vector<ParamGroupDefinition> test_groups;
 };
 
-/// Load one model parameter schema by model name from applicationDirPath()/config/models.
+/// Load one model parameter schema by framework/model architecture from applicationDirPath()/config/models.
 /// Returns an empty schema (with a spdlog warning) if the file is not found or cannot be parsed.
-MODEL_API ModelParamsSchema loadModelParamsSchema(const QString &type_name);
+MODEL_API ModelParamsSchema loadModelParamsSchema(const QString &framework_name, const QString &model_architecture);
 
 } // namespace dltool::model

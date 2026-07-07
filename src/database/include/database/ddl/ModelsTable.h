@@ -89,26 +89,53 @@ struct Uuid
     using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::require_insert>;
 };
 
-struct NetworkStructure
+struct FrameworkName
 {
     struct _alias_t
     {
-        static constexpr const char _literal[] = "network_structure";
+        static constexpr const char _literal[] = "framework_name";
         using _name_t                          = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
 
         template<typename T>
         struct _member_t
         {
-            T networkStructure;
+            T frameworkName;
 
             T &operator()()
             {
-                return networkStructure;
+                return frameworkName;
             }
 
             const T &operator()() const
             {
-                return networkStructure;
+                return frameworkName;
+            }
+        };
+    };
+
+    using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::can_be_null>;
+};
+
+struct ModelArchitecture
+{
+    struct _alias_t
+    {
+        static constexpr const char _literal[] = "model_architecture";
+        using _name_t                          = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+
+        template<typename T>
+        struct _member_t
+        {
+            T modelArchitecture;
+
+            T &operator()()
+            {
+                return modelArchitecture;
+            }
+
+            const T &operator()() const
+            {
+                return modelArchitecture;
             }
         };
     };
@@ -253,8 +280,9 @@ struct ExtraData
 } // namespace Models_
 
 struct Models
-    : sqlpp::table_t<Models, Models_::Id, Models_::Uuid, Models_::Name, Models_::NetworkStructure,
-                     Models_::TrainingResult, Models_::TestResult, Models_::Ctime, Models_::Mtime, Models_::ExtraData>
+    : sqlpp::table_t<Models, Models_::Id, Models_::Uuid, Models_::Name, Models_::FrameworkName,
+                     Models_::ModelArchitecture, Models_::TrainingResult, Models_::TestResult, Models_::Ctime,
+                     Models_::Mtime, Models_::ExtraData>
 {
     struct _alias_t
     {

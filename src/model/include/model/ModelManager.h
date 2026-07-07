@@ -4,6 +4,8 @@
 #include "dltool/model/Export.h"
 
 #include <QAbstractListModel>
+#include <QHash>
+#include <QPointer>
 #include <QStringList>
 #include <QVariantMap>
 #include <QtQml>
@@ -11,7 +13,10 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
+
+class QProcess;
 
 namespace dltool::database {
 class ProjectDataBase;
@@ -31,10 +36,20 @@ class MODEL_API ModelManager : public QAbstractListModel
 public:
     using ModelFactory = std::function<std::unique_ptr<IModel>()>;
 
-    explicit ModelManager(const int method,
-                          dltool::database::ProjectDataBase *database,
-                          dltool::data::DataManager *data_manager,
-                          QObject *parent = nullptr);
+    struct FrameworkDefinition
+    {
+        int                     method{-1};
+        QString                 name;
+        QString                 root;
+        QString                 train_script;
+        QString                 predict_script;
+        QHash<QString, QString> scripts;
+        QStringList             python_paths;
+        bool                    visible_for_model_creation{true};
+    };
+
+    explicit ModelManager(const int method, dltool::database::ProjectDataBase *database,
+                          dltool::data::DataManager *data_manager, QObject *parent = nullptr);
     ~ModelManager();
 
     Q_PROPERTY(int method READ method CONSTANT FINAL)
@@ -44,7 +59,8 @@ public:
         ModelIdRole = Qt::UserRole + 1,
         UuidRole,
         NameRole,
-        NetworkStructureRole,
+        FrameworkNameRole,
+        ModelArchitectureRole,
         TrainingResultRole,
         TestResultRole,
         CtimeRole,
@@ -57,12 +73,13 @@ public:
 
     QHash<int, QByteArray> roleNames() const override;
 
-    Q_INVOKABLE bool addModel(const QString &name, const QString &network_structure);
+    Q_INVOKABLE bool addModel(const QString &name, const QString &framework_name, const QString &model_architecture);
     Q_INVOKABLE bool renameModel(const qint64 model_id, const QString &name);
     Q_INVOKABLE bool deleteModel(const qint64 model_id);
     Q_INVOKABLE bool copyModel(const qint64 model_id);
 
-    Q_INVOKABLE QStringList supportedNetworkStructures() const;
+    Q_INVOKABLE QStringList supportedFrameworks() const;
+    Q_INVOKABLE QStringList supportedModelArchitectures(const QString &framework_name) const;
 
     Q_INVOKABLE QStringList availableModelNames() const;
 
@@ -70,21 +87,37 @@ public:
 
     Q_INVOKABLE dltool::model::IModel *modelForUuid(const QString &uuid) const;
 
+    Q_INVOKABLE int  addModelTask(const QString &model_uuid, const QString &model_name,
+                                  const QString &task_type = QString());
+    Q_INVOKABLE int  startModelTask(const QString &model_uuid, const QString &model_name,
+                                    const QString &task_type = QString());
+    Q_INVOKABLE bool stopModelTask(const QString &model_uuid, const QString &task_type = QString());
+    Q_INVOKABLE bool deleteModelTask(const QString &model_uuid, const QString &task_type = QString());
+
+    bool    hasTaskHandler(int task_id) const;
+    bool    modelTaskSupportsPause(const QString &model_uuid, const QString &task_type) const;
+    bool    startTask(int task_id);
+    bool    stopTask(int task_id);
+    bool    deleteTask(int task_id);
+
     int method() const
     {
         return method_;
     }
 
-    static bool                    registerModel(const int method, const QString &type_name, ModelFactory factory);
-    static bool                    registerModel(const QString &type_name, ModelFactory factory);
-    static QStringList             registeredModelNames(const int method);
-    static QStringList             registeredModelNames();
-    static std::unique_ptr<IModel> createRegisteredModel(const int method, const QString &type_name);
-    static std::unique_ptr<IModel> createRegisteredModel(const QString &type_name);
+    static bool registerFramework(int method, const FrameworkDefinition &definition);
+    static bool registerModel(int method, const QString &framework_name, const QString &model_architecture,
+                              ModelFactory factory);
+    static FrameworkDefinition                  registeredFramework(int method, const QString &framework_name);
+    static QStringList                          registeredFrameworkNames(int method);
+    static QStringList                          registeredModelArchitectures(int method, const QString &framework_name);
+    static QStringList                          registeredModelNames(int method);
+    static std::unique_ptr<IModel>              createRegisteredModel(int method, const QString &framework_name,
+                                                                      const QString &model_architecture);
     static std::vector<std::unique_ptr<IModel>> registeredModels(const int method);
-    static std::vector<std::unique_ptr<IModel>> registeredModels();
 
-    std::unique_ptr<IModel>              createRegisteredModelInstance(const QString &type_name) const;
+    std::unique_ptr<IModel>              createRegisteredModelInstance(const QString &framework_name,
+                                                                       const QString &model_architecture) const;
     std::vector<std::unique_ptr<IModel>> registeredModelInstances() const;
 
 private:
@@ -93,40 +126,62 @@ private:
         int64_t model_id{-1};
         QString uuid;
         QString name;
-        QString network_structure;
+        QString framework_name;
+        QString model_architecture;
         QString training_result;
         QString test_result;
         qint64  ctime{0};
         qint64  mtime{0};
     };
 
-    void               init();
-    int                indexOfModel(const int64_t model_id) const;
-    int                indexOfUuid(const QString &uuid) const;
-    QString            uniqueCopyName(const QString &name) const;
-    IModel            *cachedModelForRecord(const ModelRecord &record) const;
-    void               initializeDatasetViewModels(IModel *model) const;
+    void    init();
+    int     indexOfModel(const int64_t model_id) const;
+    int     indexOfUuid(const QString &uuid) const;
+    QString uniqueCopyName(const QString &name) const;
+    IModel *cachedModelForRecord(const ModelRecord &record) const;
+    void    initializeDatasetViewModels(IModel *model) const;
+    int     startExternalModelTask(const QString &model_uuid, const QString &model_name, const QString &task_type,
+                                   int task_id);
+    bool    frameworkHasScript(const FrameworkDefinition &framework, const QString &task_type) const;
+    QString scriptForTask(const FrameworkDefinition &framework, const QString &task_type) const;
+    void    requestModelTaskConfigLoad(const QString &model_uuid) const;
+    void    applyLoadedModelTaskConfigs(const QString &model_uuid, const QVariantMap &train_params,
+                                        const QVariantMap &test_params, const QVariantMap &dataset_selections);
     static std::string instanceKey(const QString &uuid);
 
     QVariant getModelId(const QModelIndex &index) const;
     QVariant getUuid(const QModelIndex &index) const;
     QVariant getName(const QModelIndex &index) const;
-    QVariant getNetworkStructure(const QModelIndex &index) const;
+    QVariant getFrameworkName(const QModelIndex &index) const;
+    QVariant getModelArchitecture(const QModelIndex &index) const;
     QVariant getTrainingResult(const QModelIndex &index) const;
     QVariant getTestResult(const QModelIndex &index) const;
     QVariant getCtime(const QModelIndex &index) const;
     QVariant getMtime(const QModelIndex &index) const;
 
     dltool::database::ProjectDataBase                               *database_{nullptr};
-    dltool::data::DataManager                                        *data_manager_{nullptr};
+    dltool::data::DataManager                                       *data_manager_{nullptr};
     int                                                              method_{-1};
     std::vector<ModelRecord>                                         models_;
     mutable std::unordered_map<std::string, std::unique_ptr<IModel>> model_instances_;
+    mutable std::unordered_set<std::string>                           config_load_started_;
+    std::unordered_map<int, QPointer<QProcess>>                      external_processes_;
+    std::unordered_set<int>                                          stop_requested_tasks_;
 };
 
 } // namespace dltool::model
 
-#define DLT_REGISTER_MODEL(ModelMethod, ModelClass)                              \
-    const bool ModelClass##Registered                                            \
-        = ModelManager::registerModel(ModelMethod, ModelClass::staticTypeName(), \
+#define DLT_REGISTER_FRAMEWORK(ModelMethod, RegistrationName, FrameworkDefinitionExpr) \
+    const bool RegistrationName##FrameworkRegistered                                   \
+        = ModelManager::registerFramework(ModelMethod, FrameworkDefinitionExpr)
+
+#define DLT_REGISTER_MODEL(ModelMethod, FrameworkName, ModelClass)                                               \
+    const bool ModelClass##Registered                                                                            \
+        = ModelManager::registerModel(ModelMethod, QStringLiteral(#FrameworkName), ModelClass::staticTypeName(), \
                                       []() -> std::unique_ptr<IModel> { return std::make_unique<ModelClass>(); })
+
+#define DLT_REGISTER_YAML_MODEL(ModelMethod, RegistrationName, FrameworkName, ModelArchitecture)              \
+    const bool RegistrationName##Registered = ModelManager::registerModel(                                    \
+        ModelMethod, QStringLiteral(FrameworkName), QStringLiteral(ModelArchitecture),                         \
+        []() -> std::unique_ptr<IModel>                                                                       \
+        { return createYamlModel(ModelMethod, QStringLiteral(FrameworkName), QStringLiteral(ModelArchitecture)); })

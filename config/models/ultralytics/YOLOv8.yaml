@@ -1,4 +1,7 @@
 YOLOv8:
+  framework: ultralytics
+  model_architecture: YOLOv8
+  model_name: YOLOv8
   method: Detection
   train_params:
     - name_en: network

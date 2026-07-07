@@ -5,6 +5,7 @@
 #include "data/DatasetViewModelFactory.h"
 #include "feature/FewShotLearningDataProvider.h"
 #include "feature/Utils.h"
+#include "model/ModelManager.h"
 #include "model/TaskManager.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsKeys.h"
@@ -90,14 +91,7 @@ QString runtimePath(const QString &path)
     return cleanPath(QDir(QCoreApplication::applicationDirPath()).filePath(cleaned));
 }
 
-/**
- * @brief 获取 FS-SAM2 固定根目录
- * @return FS-SAM2 根目录绝对路径
- */
-QString fixedFsSam2Root()
-{
-    return runtimePath(QStringLiteral("python/fornib/FS-SAM2"));
-}
+constexpr const char *kFsSam2FrameworkName = "FS-SAM2";
 
 /**
  * @brief 获取 SAM2 配置文件根目录
@@ -644,14 +638,6 @@ bool writePredictionQueryInputs(FewShotLearningDataProvider *data_provider, cons
     return true;
 }
 
-/// FS-SAM2 脚本类型枚举
-enum class FsSam2Script
-{
-    Train,     ///< 训练脚本
-    Predict,   ///< 推理脚本
-    BoxToMask, ///< 框转 Mask 脚本
-};
-
 /// 小样本学习任务类型枚举
 enum class FewShotTaskKind
 {
@@ -667,37 +653,6 @@ enum class FewShotClassField
     Name, ///< 类别名称
     Dir,  ///< 类别目录
 };
-
-/**
- * @brief 获取 FS-SAM2 脚本文件名
- * @param script 脚本类型
- * @return 脚本文件名
- */
-QString fsSam2ScriptName(FsSam2Script script)
-{
-    switch (script)
-    {
-    case FsSam2Script::Train:
-        return QStringLiteral("train.py");
-    case FsSam2Script::Predict:
-        return QStringLiteral("predict.py");
-    case FsSam2Script::BoxToMask:
-        return QStringLiteral("box_to_mask.py");
-    default:
-        return {};
-    }
-}
-
-/**
- * @brief 获取 FS-SAM2 脚本的完整路径
- * @param fs_sam2_root FS-SAM2 根目录
- * @param script 脚本类型
- * @return 脚本完整路径
- */
-QString fsSam2ScriptPath(const QString &fs_sam2_root, FsSam2Script script)
-{
-    return cleanPath(QDir(fs_sam2_root).filePath(fsSam2ScriptName(script)));
-}
 
 /**
  * @brief 获取小样本学习任务的中文显示名称
@@ -870,23 +825,24 @@ QString checkpointPath(const QString &fs_sam2_root, const QString &logpath)
 
 struct FewShotLearningController::RunContext
 {
-    QString python_executable;       ///< Python 可执行文件路径
-    QString fs_sam2_root;            ///< FS-SAM2 根目录
-    QString sam2_checkpoint;         ///< SAM2 检查点文件路径
-    QString sam2_cfg;                ///< SAM2 配置文件路径
-    QString run_dir;                 ///< 本次运行目录
-    QString custom_dataset_dir;      ///< 自定义数据集目录
-    QString validation_dataset_dir;  ///< 验证数据集目录；为空时使用 custom_dataset_dir
-    QString query_dir;               ///< 查询图像目录
-    QString output_dir;              ///< 输出目录
-    QString query_txt_path;          ///< 查询清单文件路径
-    QString train_script;            ///< 训练脚本路径
-    QString predict_script;          ///< 推理脚本路径
-    QString box_to_mask_script;      ///< 框转 Mask 脚本路径
-    int     box_to_mask_task_id{-1}; ///< 框转 Mask 任务 ID
-    QString checkpoint_path;         ///< 训练检查点路径
-    QString exp_id;                  ///< 实验 ID
-    QString logpath;                 ///< 日志路径
+    QString     python_executable;       ///< Python 可执行文件路径
+    QString     fs_sam2_root;            ///< FS-SAM2 根目录
+    QString     sam2_checkpoint;         ///< SAM2 检查点文件路径
+    QString     sam2_cfg;                ///< SAM2 配置文件路径
+    QString     run_dir;                 ///< 本次运行目录
+    QString     custom_dataset_dir;      ///< 自定义数据集目录
+    QString     validation_dataset_dir;  ///< 验证数据集目录；为空时使用 custom_dataset_dir
+    QString     query_dir;               ///< 查询图像目录
+    QString     output_dir;              ///< 输出目录
+    QString     query_txt_path;          ///< 查询清单文件路径
+    QString     train_script;            ///< 训练脚本路径
+    QString     predict_script;          ///< 推理脚本路径
+    QString     box_to_mask_script;      ///< 框转 Mask 脚本路径
+    QStringList python_paths;            ///< 额外 Python 搜索路径
+    int         box_to_mask_task_id{-1}; ///< 框转 Mask 任务 ID
+    QString     checkpoint_path;         ///< 训练检查点路径
+    QString     exp_id;                  ///< 实验 ID
+    QString     logpath;                 ///< 日志路径
 
     int    kshot{1};           ///< K-shot 数量
     int    epochs{50};         ///< 训练轮数
@@ -908,10 +864,10 @@ struct FewShotLearningController::RunContext
 
 FewShotLearningController::FewShotLearningController(FewShotLearningDataProvider *data_provider,
                                                      dltool::data::DataManager   *data_manager,
-                                                     dltool::model::TaskManager *task_manager, QObject *parent)
+                                                     QObject *parent)
     : QObject(parent)
     , data_provider_(data_provider)
-    , task_manager_(task_manager)
+    , task_manager_(dltool::model::TaskManager::getInstance())
 {
     auto *gs = dltool::settings::GlobalSettings::getInstance();
     enabled_ = gs->valueForField(dltool::settings::generated::field::FewShotLearning::Key::Enabled, true).toBool();
@@ -1173,7 +1129,15 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         return false;
     }
 
-    context.fs_sam2_root = fixedFsSam2Root();
+    const auto fs_sam2_framework = dltool::model::ModelManager::registeredFramework(
+        data_provider_->method(), QString::fromUtf8(kFsSam2FrameworkName));
+    if (fs_sam2_framework.name.isEmpty())
+    {
+        err_msg = QString("FS-SAM2 框架未注册");
+        return false;
+    }
+
+    context.fs_sam2_root = fs_sam2_framework.root;
     context.sam2_checkpoint
         = runtimePath(settingString(global_settings, generated_field::FewShotLearning::Sam2Checkpoint));
     const QString sam2_architecture
@@ -1191,9 +1155,10 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         err_msg = QString("FS-SAM2 目录不存在: %1").arg(context.fs_sam2_root);
         return false;
     }
-    context.train_script       = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::Train);
-    context.predict_script     = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::Predict);
-    context.box_to_mask_script = fsSam2ScriptPath(context.fs_sam2_root, FsSam2Script::BoxToMask);
+    context.train_script       = fs_sam2_framework.train_script;
+    context.predict_script     = fs_sam2_framework.predict_script;
+    context.box_to_mask_script = fs_sam2_framework.scripts.value(QStringLiteral("box_to_mask"));
+    context.python_paths       = fs_sam2_framework.python_paths;
     if (!QFileInfo::exists(context.train_script) || !QFileInfo::exists(context.predict_script))
     {
         err_msg = QString("FS-SAM2 目录缺少 train.py 或 predict.py: %1").arg(context.fs_sam2_root);
@@ -1260,6 +1225,11 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
     }
 
     const bool is_detection = data_provider_->method() == dltool::core::DeepLearningMethod::Detection;
+    if (is_detection && !QFileInfo::exists(context.box_to_mask_script))
+    {
+        err_msg = QString("FS-SAM2 目录缺少 box_to_mask.py: %1").arg(context.fs_sam2_root);
+        return false;
+    }
     collectClassLabels(data_provider_, selected_classes, image_selection, is_detection, classes, validation_classes);
 
     if (!validateClassBuildData(classes, is_detection, context.kshot, QStringLiteral("训练数据集"), err_msg))
@@ -1296,21 +1266,21 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         return false;
 
     QString server_err;
-    if (!task_manager_->ensureTaskServer(&server_err))
+    if (task_manager_.isNull() || !task_manager_->ensureTaskServer(&server_err))
     {
         err_msg = QString("任务通信服务启动失败: %1").arg(server_err);
         return false;
     }
 
     const QString task_uuid = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    context.train_task_id   = task_manager_->addExternalTask(task_uuid, fewShotTaskName(FewShotTaskKind::Train),
-                                                             fewShotTaskType(FewShotTaskKind::Train));
-    context.predict_task_id = task_manager_->addExternalTask(task_uuid, fewShotTaskName(FewShotTaskKind::Predict),
-                                                             fewShotTaskType(FewShotTaskKind::Predict));
+    context.train_task_id   = task_manager_->addTask(task_uuid, fewShotTaskName(FewShotTaskKind::Train),
+                                                     fewShotTaskType(FewShotTaskKind::Train), false);
+    context.predict_task_id = task_manager_->addTask(task_uuid, fewShotTaskName(FewShotTaskKind::Predict),
+                                                     fewShotTaskType(FewShotTaskKind::Predict), false);
     if (is_detection)
     {
-        context.box_to_mask_task_id = task_manager_->addExternalTask(
-            task_uuid, fewShotTaskName(FewShotTaskKind::BoxToMask), fewShotTaskType(FewShotTaskKind::BoxToMask));
+        context.box_to_mask_task_id = task_manager_->addTask(task_uuid, fewShotTaskName(FewShotTaskKind::BoxToMask),
+                                                             fewShotTaskType(FewShotTaskKind::BoxToMask), false);
     }
     if (context.train_task_id < 0 || context.predict_task_id < 0 || (is_detection && context.box_to_mask_task_id < 0))
     {
@@ -1523,7 +1493,13 @@ bool FewShotLearningController::startProcess(const RunContext &context, const QS
     process->setArguments(arguments);
     process->setWorkingDirectory(context.fs_sam2_root);
 
-    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    QProcessEnvironment env               = QProcessEnvironment::systemEnvironment();
+    const QString       old_python_path   = env.value(QStringLiteral("PYTHONPATH"));
+    QStringList         python_path_parts = context.python_paths;
+    if (!old_python_path.isEmpty())
+        python_path_parts.append(old_python_path);
+    if (!python_path_parts.isEmpty())
+        env.insert(QStringLiteral("PYTHONPATH"), python_path_parts.join(QDir::listSeparator()));
     env.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
     env.insert(QStringLiteral("PYTHONUNBUFFERED"), QStringLiteral("1"));
     process->setProcessEnvironment(env);

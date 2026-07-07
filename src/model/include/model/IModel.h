@@ -18,6 +18,8 @@ class MODEL_API IModel : public QObject
     QML_UNCREATABLE("IModel is an abstract interface")
     Q_PROPERTY(QString uuid READ uuid WRITE setUuid NOTIFY uuidChanged FINAL)
     Q_PROPERTY(int method READ method CONSTANT FINAL)
+    Q_PROPERTY(QString frameworkName READ frameworkName CONSTANT FINAL)
+    Q_PROPERTY(QString modelArchitecture READ modelArchitecture CONSTANT FINAL)
     Q_PROPERTY(QString typeName READ typeName CONSTANT FINAL)
     Q_PROPERTY(dltool::model::IModelConfig *config READ config CONSTANT FINAL)
     Q_PROPERTY(QObject *trainDatasetViewModel READ trainDatasetViewModel WRITE setTrainDatasetViewModel NOTIFY
@@ -47,6 +49,8 @@ public:
     void     setTestDatasetViewModel(QObject *view_model);
 
     virtual int                     method() const   = 0;
+    virtual QString                 frameworkName() const = 0;
+    virtual QString                 modelArchitecture() const = 0;
     virtual QString                 typeName() const = 0;
     virtual std::unique_ptr<IModel> clone() const    = 0;
 

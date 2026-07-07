@@ -449,9 +449,19 @@ QString DataManager::labelClassName(int64_t label_class_id) const
     return label_classes_ ? label_classes_->getLabelClassName(static_cast<int>(label_class_id)) : QString();
 }
 
+QString DataManager::labelClassGroup(int64_t label_class_id) const
+{
+    return label_classes_ ? label_classes_->getLabelClassGroup(static_cast<int>(label_class_id)) : QString();
+}
+
 QString DataManager::datasetName(int64_t dataset_id) const
 {
     return datasets_ ? datasets_->getDatasetName(static_cast<int>(dataset_id)) : QString();
+}
+
+std::vector<int64_t> DataManager::imageLabelIds(int64_t image_id) const
+{
+    return label_instances_ ? label_instances_->getImageLabelIds(image_id) : std::vector<int64_t>{};
 }
 
 void DataManager::importMaskData(int64_t dataset_id, const QString &image_manifest_path,

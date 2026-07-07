@@ -8,17 +8,23 @@ import quickui
 QuiPopup {
     id: control
     width: 420
-    height: 260
+    height: 330
     maskOpacity: 0.2
 
-    property var networkStructureModel: []
+    property var frameworkModel: []
+    property var architectureModel: []
 
-    signal submitted(string modelName, string networkStructure)
+    signal frameworkChanged(string frameworkName)
+    signal submitted(string modelName, string frameworkName, string modelArchitecture)
 
     function openForm() {
         nameField.text = ""
-        if (networkBox.count > 0) {
-            networkBox.currentIndex = 0
+        if (frameworkBox.count > 0) {
+            frameworkBox.currentIndex = 0
+            control.frameworkChanged(frameworkBox.currentText)
+        }
+        if (architectureBox.count > 0) {
+            architectureBox.currentIndex = 0
         }
         messageText.text = ""
         open()
@@ -59,13 +65,34 @@ QuiPopup {
             spacing: 6
 
             QuiText {
-                text: "网络结构"
+                text: "框架"
                 color: QuiColor.FontDark
             }
             QuiComboBox {
-                id: networkBox
+                id: frameworkBox
                 Layout.fillWidth: true
-                model: control.networkStructureModel
+                model: control.frameworkModel
+                onActivated: {
+                    control.frameworkChanged(currentText)
+                    if (architectureBox.count > 0) {
+                        architectureBox.currentIndex = 0
+                    }
+                }
+            }
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 6
+
+            QuiText {
+                text: "模型架构"
+                color: QuiColor.FontDark
+            }
+            QuiComboBox {
+                id: architectureBox
+                Layout.fillWidth: true
+                model: control.architectureModel
             }
         }
 
@@ -93,14 +120,15 @@ QuiPopup {
             }
             QuiButton {
                 text: "确认"
-                enabled: nameField.text.trim().length > 0 && networkBox.currentText.length > 0
+                enabled: nameField.text.trim().length > 0 && frameworkBox.currentText.length > 0
+                         && architectureBox.currentText.length > 0
                 onClicked: {
                     const modelName = nameField.text.trim()
                     if (modelName.length === 0) {
                         messageText.text = "请输入模型名称"
                         return
                     }
-                    control.submitted(modelName, networkBox.currentText)
+                    control.submitted(modelName, frameworkBox.currentText, architectureBox.currentText)
                     control.close()
                 }
             }

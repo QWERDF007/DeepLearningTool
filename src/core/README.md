@@ -9,7 +9,7 @@
 - 模块体量很小，核心类型集中在 `include/core/CoreDef.h`。
 - `DeepLearningMethod` 是 QML 单例，向 QML 暴露任务类型枚举和显示名称。
 - 枚举包含 `Classification`、`Detection`、`Segmentation`、`Pose`、`OCR`。
-- 当前 `supportedMethodTypes()` 只把图像分类、目标检测、语义分割作为已支持类型；姿态检测和 OCR 作为可展示但未启用的扩展类型。
+- 当前 `supportedMethodTypes()` 把图像分类、目标检测、语义分割、异常检测作为已支持类型；姿态检测和 OCR 作为可展示但未启用的扩展类型。
 
 ## 功能定义
 

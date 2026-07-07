@@ -1,0 +1,162 @@
+framework: anomalib
+model_architecture: patchcore
+model_name: PatchCore
+method: AnomalyDetection
+train_params:
+  - name_en: data
+    name_cn: 数据参数
+    part_index: 0
+    params:
+      - name_en: train_batch_size
+        name_cn: 训练批量
+        value: 32
+        value_type: int
+        value_range: [1, 512, 1]
+        control_type: spin
+
+      - name_en: eval_batch_size
+        name_cn: 评估批量
+        value: 32
+        value_type: int
+        value_range: [1, 512, 1]
+        control_type: spin
+
+      - name_en: num_workers
+        name_cn: 加载线程
+        value: 8
+        value_type: int
+        value_range: [0, 64, 1]
+        control_type: spin
+
+  - name_en: trainer
+    name_cn: 训练器参数
+    part_index: 0
+    params:
+      - name_en: accelerator
+        name_cn: 加速器
+        value: auto
+        value_type: string
+        control_type: combo
+        options: [auto, cpu, gpu, cuda]
+
+      - name_en: devices
+        name_cn: 设备数
+        value: 1
+        value_type: int
+        value_range: [1, 16, 1]
+        control_type: spin
+
+      - name_en: max_epochs
+        name_cn: 最大轮数
+        value: 1
+        value_type: int
+        value_range: [1, 10000, 1]
+        control_type: spin
+
+      - name_en: seed
+        name_cn: 随机种子
+        value: 42
+        value_type: int
+        value_range: [0, 2147483647, 1]
+        control_type: spin
+
+  - name_en: model
+    name_cn: 模型参数
+    part_index: 1
+    params:
+      - name_en: backbone
+        name_cn: 骨干网络
+        value: wide_resnet50_2
+        value_type: string
+        control_type: combo
+        options: [wide_resnet50_2, resnet18, resnet50]
+
+      - name_en: layers
+        name_cn: 特征层
+        value: layer2,layer3
+        value_type: string
+        control_type: text
+
+      - name_en: pre_trained
+        name_cn: 预训练
+        value: true
+        value_type: bool
+        control_type: checkbox
+
+      - name_en: coreset_sampling_ratio
+        name_cn: Coreset 采样率
+        value: 0.1
+        value_type: double
+        value_range: [0.001, 1.0, 0.001]
+        control_type: spin
+
+      - name_en: num_neighbors
+        name_cn: 近邻数量
+        value: 9
+        value_type: int
+        value_range: [1, 100, 1]
+        control_type: spin
+
+      - name_en: image_size
+        name_cn: 输入尺寸
+        value: 256
+        value_type: int
+        value_range: [64, 2048, 1]
+        control_type: spin
+
+      - name_en: center_crop_size
+        name_cn: 中心裁剪
+        value: 224
+        value_type: int
+        value_range: [0, 2048, 1]
+        control_type: spin
+
+      - name_en: precision
+        name_cn: 精度
+        value: float32
+        value_type: string
+        control_type: combo
+        options: [float32, float16]
+
+test_params:
+  - name_en: data
+    name_cn: 测试数据
+    part_index: 0
+    params:
+      - name_en: eval_batch_size
+        name_cn: 评估批量
+        value: 32
+        value_type: int
+        value_range: [1, 512, 1]
+        control_type: spin
+
+      - name_en: num_workers
+        name_cn: 加载线程
+        value: 8
+        value_type: int
+        value_range: [0, 64, 1]
+        control_type: spin
+
+  - name_en: inference
+    name_cn: 推理参数
+    part_index: 1
+    params:
+      - name_en: checkpoint_path
+        name_cn: 检查点路径
+        value: ""
+        value_type: string
+        control_type: file
+
+      - name_en: accelerator
+        name_cn: 加速器
+        value: auto
+        value_type: string
+        control_type: combo
+        options: [auto, cpu, gpu, cuda]
+
+      - name_en: devices
+        name_cn: 设备数
+        value: 1
+        value_type: int
+        value_range: [1, 16, 1]
+        control_type: spin

@@ -15,10 +15,6 @@ namespace dltool::data {
 class DataManager;
 } // namespace dltool::data
 
-namespace dltool::model {
-class TaskManager;
-} // namespace dltool::model
-
 namespace dltool::feature {
 
 class FEATURE_API FeatureManager : public QObject
@@ -34,9 +30,7 @@ class FEATURE_API FeatureManager : public QObject
     Q_PROPERTY(dltool::feature::FewShotLearningController *fewShotLearning READ fewShotLearning CONSTANT FINAL)
 
 public:
-    explicit FeatureManager(dltool::data::DataManager *data_manager,
-                            dltool::model::TaskManager *task_manager,
-                            QObject *parent = nullptr);
+    explicit FeatureManager(dltool::data::DataManager *data_manager, QObject *parent = nullptr);
     ~FeatureManager() override;
 
     ImageSearchController *imageSearch() const;

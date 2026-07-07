@@ -6,6 +6,7 @@ import dltool.ui
 import dltool.data
 import dltool.model
 import dltool.project
+import "component"
 import quickui
 
 Rectangle {
@@ -29,6 +30,9 @@ Rectangle {
             headerTitle: "模型测试:"
             addEnable: false
             modelManager: labelPage.modelManager
+            taskManager: TaskManager
+            taskType: qsTr("测试")
+            taskActionsEnabled: true
         }
 
         Rectangle {
@@ -43,22 +47,60 @@ Rectangle {
             property IModel selectedModel: labelPage.modelManager && modelView.currentModelUuid.length > 0
                                            ? labelPage.modelManager.modelForUuid(modelView.currentModelUuid)
                                            : null
+            property ITestParams testParams: selectedModel && selectedModel.config ? selectedModel.config.testParams : null
 
-            ColumnLayout {
+            RowLayout {
                 anchors.fill: parent
                 anchors.margins: 12
                 spacing: 10
 
-                DatasetSelectionTreeView {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 240
-                    roleTitle: qsTr("测试数据集/类别")
-                    selectionModel: testPanel.selectedModel ? testPanel.selectedModel.testDatasetViewModel : null
-                    treeHeight: 190
+                Item {
+                    Layout.fillHeight: true
+                    Layout.preferredWidth: Math.max(260, Math.floor(testPanel.width * 0.32))
+                    Layout.minimumWidth: 220
+
+                    DatasetSelectionTreeView {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        roleTitle: qsTr("测试数据集/类别")
+                        selectionModel: testPanel.selectedModel ? testPanel.selectedModel.testDatasetViewModel : null
+                        treeHeight: 240
+                    }
                 }
 
                 Item {
+                    Layout.fillWidth: true
                     Layout.fillHeight: true
+
+                    QuiText {
+                        anchors.centerIn: parent
+                        width: Math.max(parent.width - 32, 0)
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.Wrap
+                        color: QuiColor.FontDark
+                        text: modelView.currentModelUuid.length > 0 ? qsTr("暂无测试参数") : qsTr("请选择模型")
+                        visible: !testPanel.testParams || testPanel.testParams.count <= 0
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        visible: testPanel.testParams && testPanel.testParams.count > 0
+                        spacing: 5
+
+                        Repeater {
+                            model: 2
+
+                            ParamPanel {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                Layout.minimumWidth: 0
+                                params: testPanel.testParams
+                                targetPartIndex: index
+                                partSpacing: 5
+                            }
+                        }
+                    }
                 }
             }
         }

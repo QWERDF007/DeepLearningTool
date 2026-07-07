@@ -541,6 +541,21 @@ void DataSelectionTreeModel::rebuildDatasetClassTree()
         return;
 
     std::map<qint64, std::set<qint64>> dataset_class_ids;
+    auto addDatasetClass = [&dataset_class_ids](qint64 dataset_id, qint64 label_class_id)
+    {
+        if (dataset_id >= 0 && label_class_id >= 0)
+            dataset_class_ids[dataset_id].insert(label_class_id);
+    };
+
+    if (image_instances_model_ != nullptr)
+    {
+        for (const qint64 image_id : image_instances_model_->getAllImageIds())
+        {
+            addDatasetClass(image_instances_model_->getImageDatasetId(image_id),
+                            image_instances_model_->getImageLabelClassId(image_id));
+        }
+    }
+
     if (label_instances_model_ != nullptr && image_instances_model_ != nullptr)
     {
         for (const auto &[label_id, label_instance] : label_instances_model_->getAllLabelInstances())
@@ -551,8 +566,7 @@ void DataSelectionTreeModel::rebuildDatasetClassTree()
             const qint64 image_id       = label_instance->imageId();
             const qint64 dataset_id     = image_instances_model_->getImageDatasetId(image_id);
             const qint64 label_class_id = label_instance->labelClassId();
-            if (dataset_id >= 0 && label_class_id >= 0)
-                dataset_class_ids[dataset_id].insert(label_class_id);
+            addDatasetClass(dataset_id, label_class_id);
         }
     }
 

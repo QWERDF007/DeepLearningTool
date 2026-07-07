@@ -99,7 +99,7 @@ src/common/
 职责：
 
 - `DeepLearningMethod`：任务类型 QML 单例，定义图像分类、目标检测、语义分割、姿态检测、OCR 等类型。
-- `supportedMethodTypes()` 当前只启用图像分类、目标检测和语义分割。
+- `supportedMethodTypes()` 当前启用图像分类、目标检测、语义分割和异常检测。
 
 结构：
 
@@ -218,7 +218,8 @@ src/ui/
 - `IModel`、`IModelConfig`：模型结构和配置抽象。
 - `IParams`、`ITrainParams`、`ITestParams`、`ParamGroupModel`：QML 可编辑参数分组模型。
 - `ModelParamDefs`：参数定义构造 helper。
-- `DetectionModels.cpp`：注册目标检测下的 YOLOv5/YOLOv8 默认参数。
+- `DetectionModels.cpp`：注册模型框架和模型架构，当前包含 `ultralytics/YOLOv5`、`ultralytics/YOLOv8`、`anomalib/patchcore`、`anomalib/dinomaly2`。
+- `TaskCommunication`、`TaskManager`：任务中心模型任务和外部训练/测试进程的 TCP 通信。
 - QML 页面：Train、Test、模型列表、模型创建弹窗、参数表单。
 
 结构：
@@ -422,8 +423,9 @@ sequenceDiagram
 
   QML->>MM: addModel/renameModel/deleteModel/copyModel
   MM->>DB: 写入 models 表
-  QML->>MM: modelForId(model_id, network_structure)
-  MM->>Registry: 创建 IModel/IModelConfig/IParams
+  QML->>MM: 选择 framework/model_architecture
+  QML->>MM: modelForUuid(uuid)
+  MM->>Registry: 按 framework/model_architecture 创建 IModel/IModelConfig/IParams
   Registry-->>QML: 参数分组模型
 ```
 
