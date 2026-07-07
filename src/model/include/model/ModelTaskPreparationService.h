@@ -21,7 +21,6 @@ public:
     struct Request
     {
         int                               task_id{-1};
-        QString                           model_uuid;
         QString                           model_name;
         ModelTaskType                     task_type{ModelTaskType::Unknown};
         IModel                           *model{nullptr};

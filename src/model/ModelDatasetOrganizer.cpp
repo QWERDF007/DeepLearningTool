@@ -2,10 +2,7 @@
 
 #include "common/MaskPolygonUtils.h"
 #include "common/YamlUtils.h"
-#include "data/DataManager.h"
-#include "data/DataSelectionTreeModel.h"
 #include "data/DatasetIO.h"
-#include "model/IModel.h"
 #include "model/ModelTaskTypes.h"
 
 #include <yaml-cpp/yaml.h>
@@ -15,8 +12,6 @@
 #include <QDir>
 #include <QImage>
 #include <QPointF>
-#include <QSet>
-#include <QVariantList>
 #include <algorithm>
 #include <map>
 #include <vector>
@@ -296,20 +291,6 @@ FrameworkDatasetLayout datasetLayout(const QString &framework_name)
     return found != layouts.end() ? found->second : FrameworkDatasetLayout::Generic;
 }
 
-QSet<qint64> variantIdSet(const QVariantList &ids)
-{
-    QSet<qint64> result;
-    result.reserve(ids.size());
-    for (const QVariant &id_value : ids)
-    {
-        bool         ok = false;
-        const qint64 id = id_value.toLongLong(&ok);
-        if (ok && id >= 0)
-            result.insert(id);
-    }
-    return result;
-}
-
 bool ensureDirectory(const QString &path, QString *err_msg)
 {
     const QString cleaned = QDir::cleanPath(QDir::fromNativeSeparators(path.trimmed()));
@@ -347,29 +328,9 @@ void setBool(YAML::Node &node, ManifestField field, bool value)
     node[manifestKey(field)] = value;
 }
 
-QString labelClassGroup(dltool::data::DataManager *data_manager, qint64 label_class_id)
-{
-    return data_manager != nullptr && label_class_id >= 0 ? data_manager->labelClassGroup(label_class_id) : QString();
-}
-
-QString labelClassName(dltool::data::DataManager *data_manager, qint64 label_class_id)
-{
-    return data_manager != nullptr && label_class_id >= 0 ? data_manager->labelClassName(label_class_id) : QString();
-}
-
 bool isAnomalyGroup(const QString &group)
 {
     return group.compare(labelGroupName(LabelGroupName::Anomaly), Qt::CaseInsensitive) == 0;
-}
-
-bool selectedForClass(dltool::data::DataSelectionTreeModel *selection_model, qint64 dataset_id,
-                      qint64 label_class_id, bool full_dataset_selected)
-{
-    if (selection_model == nullptr || dataset_id < 0)
-        return false;
-    if (full_dataset_selected)
-        return true;
-    return label_class_id >= 0 && selection_model->isNodeSelected(dataset_id, label_class_id);
 }
 
 int classIndex(qint64 label_class_id, std::map<qint64, int> &class_indices)
@@ -493,14 +454,14 @@ QString writeAnomalibImageMask(const std::vector<std::vector<QPointF>> &polygons
     return file_name;
 }
 
-YAML::Node labelNode(dltool::data::DataManager *data_manager, FrameworkDatasetLayout layout, qint64 label_id,
+YAML::Node labelNode(const IModelDatasetSource *source, FrameworkDatasetLayout layout, qint64 label_id,
                      int image_width, int image_height, std::map<qint64, int> &class_indices)
 {
     YAML::Node node(YAML::NodeType::Map);
-    const qint64 label_class_id = data_manager->labelClassId(label_id);
-    const QString class_name    = labelClassName(data_manager, label_class_id);
-    const QString class_group   = labelClassGroup(data_manager, label_class_id);
-    const QVariantMap data      = data_manager->labelData(label_id);
+    const qint64 label_class_id = source->labelClassId(label_id);
+    const QString class_name    = label_class_id >= 0 ? source->labelClassName(label_class_id) : QString();
+    const QString class_group   = label_class_id >= 0 ? source->labelClassGroup(label_class_id) : QString();
+    const QVariantMap data      = source->labelData(label_id);
 
     setInteger(node, ManifestField::LabelId, label_id);
     setInteger(node, ManifestField::LabelClassId, label_class_id);
@@ -518,59 +479,49 @@ YAML::Node labelNode(dltool::data::DataManager *data_manager, FrameworkDatasetLa
     return node;
 }
 
-QVariantMap exportSplit(const ModelDatasetExportContext &context, DatasetSplit split, bool required,
+QVariantMap exportSplit(const ModelDatasetExportRequest &request, DatasetSplit split, bool required,
                         QString *err_msg)
 {
-    auto *model = context.model;
-    auto *data_manager = context.data_manager;
-    if (model == nullptr || data_manager == nullptr)
+    const IModelDatasetSource *source = request.source;
+    if (source == nullptr)
     {
         if (err_msg != nullptr)
-            *err_msg = QStringLiteral("模型或数据管理器为空");
+            *err_msg = QStringLiteral("模型数据源为空");
         return {};
     }
 
-    QObject *selection_object = nullptr;
+    const ModelDatasetSelection *selection = nullptr;
     switch (split)
     {
     case DatasetSplit::Train:
-        selection_object = model->trainDatasetViewModel();
+        selection = &request.selections.train;
         break;
     case DatasetSplit::Validation:
-        selection_object = model->validationDatasetViewModel();
+        selection = &request.selections.validation;
         break;
     case DatasetSplit::Test:
-        selection_object = model->testDatasetViewModel();
+        selection = &request.selections.test;
         break;
     }
 
-    auto *selection_model = qobject_cast<dltool::data::DataSelectionTreeModel *>(selection_object);
-    if (selection_model == nullptr)
-    {
-        if (required && err_msg != nullptr)
-            *err_msg = QStringLiteral("模型数据集选择模型为空: %1").arg(datasetSplitName(split));
-        return {};
-    }
-
-    const QSet<qint64> selected_dataset_ids = variantIdSet(selection_model->selectedDatasetIds());
-    if (selected_dataset_ids.isEmpty())
+    if (selection == nullptr || selection->isEmpty())
     {
         if (required && err_msg != nullptr)
             *err_msg = QStringLiteral("未选择%1数据集").arg(datasetSplitName(split));
         return {};
     }
 
-    const FrameworkDatasetLayout layout = datasetLayout(context.framework_name);
+    const FrameworkDatasetLayout layout = datasetLayout(request.framework_name);
     const QString                split_name = datasetSplitName(split);
     const QString                split_dir
-        = layout == FrameworkDatasetLayout::Anomalib ? context.dataset_dir : QDir(context.dataset_dir).filePath(split_name);
+        = layout == FrameworkDatasetLayout::Anomalib ? request.dataset_dir : QDir(request.dataset_dir).filePath(split_name);
     if (!ensureDirectory(split_dir, err_msg))
         return {};
 
     QString                      masks_dir;
     if (layout == FrameworkDatasetLayout::Anomalib)
     {
-        masks_dir = QDir(context.dataset_dir).filePath(datasetSubdirName(DatasetSubdir::Masks));
+        masks_dir = QDir(request.dataset_dir).filePath(datasetSubdirName(DatasetSubdir::Masks));
         if (!ensureDirectory(masks_dir, err_msg))
             return {};
     }
@@ -583,10 +534,10 @@ QVariantMap exportSplit(const ModelDatasetExportContext &context, DatasetSplit s
 
     YAML::Node manifest(YAML::NodeType::Map);
     setInteger(manifest, ManifestField::Version, 1);
-    setInteger(manifest, ManifestField::Method, context.method);
-    setString(manifest, ManifestField::Framework, context.framework_name);
-    setString(manifest, ManifestField::ModelArchitecture, context.model_architecture);
-    setString(manifest, ManifestField::ModelUuid, context.model_uuid);
+    setInteger(manifest, ManifestField::Method, request.method);
+    setString(manifest, ManifestField::Framework, request.framework_name);
+    setString(manifest, ManifestField::ModelArchitecture, request.model_architecture);
+    setString(manifest, ManifestField::ModelUuid, request.model_uuid);
     setString(manifest, ManifestField::Split, split_name);
 
     YAML::Node images(YAML::NodeType::Sequence);
@@ -595,16 +546,15 @@ QVariantMap exportSplit(const ModelDatasetExportContext &context, DatasetSplit s
     int image_count = 0;
     int label_count = 0;
 
-    std::vector<int64_t> all_image_ids = data_manager->allImageIds();
+    std::vector<int64_t> all_image_ids = source->allImageIds();
     std::sort(all_image_ids.begin(), all_image_ids.end());
     for (const int64_t image_id : all_image_ids)
     {
-        const qint64 dataset_id = data_manager->imageDatasetId(image_id);
-        if (!selected_dataset_ids.contains(dataset_id))
+        const qint64 dataset_id = source->imageDatasetId(image_id);
+        if (!selection->containsDataset(dataset_id))
             continue;
 
-        const bool full_dataset_selected = selection_model->isNodeSelected(dataset_id, -1);
-        const QString image_path = data_manager->imagePath(image_id);
+        const QString image_path = source->imagePath(image_id);
         if (image_path.trimmed().isEmpty())
             continue;
 
@@ -612,7 +562,7 @@ QVariantMap exportSplit(const ModelDatasetExportContext &context, DatasetSplit s
         int image_height = 0;
         dltool::data::DatasetIO::getImageDimensions(image_path, image_width, image_height);
 
-        QVariantMap image_level_label = data_manager->getImageLevelLabelData(image_id);
+        QVariantMap image_level_label = source->imageLevelLabelData(image_id);
         const qint64 image_label_class_id
             = image_level_label.value(manifestFieldName(ManifestField::LabelClassId), -1).toLongLong();
         const QString image_label_class_name
@@ -622,15 +572,15 @@ QVariantMap exportSplit(const ModelDatasetExportContext &context, DatasetSplit s
         YAML::Node labels(YAML::NodeType::Sequence);
         bool       has_anomaly_label = isAnomalyGroup(image_label_group);
         std::vector<std::vector<QPointF>> anomaly_polygons;
-        for (const int64_t label_id : data_manager->imageLabelIds(image_id))
+        for (const int64_t label_id : source->imageLabelIds(image_id))
         {
-            const qint64 label_class_id = data_manager->labelClassId(label_id);
-            if (!selectedForClass(selection_model, dataset_id, label_class_id, full_dataset_selected))
+            const qint64 label_class_id = source->labelClassId(label_id);
+            if (!selection->contains(dataset_id, label_class_id))
                 continue;
 
-            const QString class_group = labelClassGroup(data_manager, label_class_id);
-            const QVariantMap label_data = data_manager->labelData(label_id);
-            YAML::Node        label = labelNode(data_manager, layout, label_id, image_width, image_height, class_indices);
+            const QString class_group = label_class_id >= 0 ? source->labelClassGroup(label_class_id) : QString();
+            const QVariantMap label_data = source->labelData(label_id);
+            YAML::Node        label = labelNode(source, layout, label_id, image_width, image_height, class_indices);
             if (layout == FrameworkDatasetLayout::FsSam2)
             {
                 QString mask_err;
@@ -659,8 +609,7 @@ QVariantMap exportSplit(const ModelDatasetExportContext &context, DatasetSplit s
             ++label_count;
         }
 
-        const bool image_selected_by_image_label
-            = selectedForClass(selection_model, dataset_id, image_label_class_id, full_dataset_selected);
+        const bool image_selected_by_image_label = selection->contains(dataset_id, image_label_class_id);
         if (!image_selected_by_image_label && labels.size() == 0)
             continue;
 
@@ -697,7 +646,7 @@ QVariantMap exportSplit(const ModelDatasetExportContext &context, DatasetSplit s
         setInteger(image, ManifestField::Id, image_id);
         setString(image, ManifestField::Path, QDir::cleanPath(QDir::fromNativeSeparators(image_path)));
         setInteger(image, ManifestField::DatasetId, dataset_id);
-        setString(image, ManifestField::DatasetName, data_manager->datasetName(dataset_id));
+        setString(image, ManifestField::DatasetName, source->datasetName(dataset_id));
         setInteger(image, ManifestField::Width, image_width);
         setInteger(image, ManifestField::Height, image_height);
         setInteger(image, ManifestField::ImageLabelClassId, image_label_class_id);
@@ -721,15 +670,15 @@ QVariantMap exportSplit(const ModelDatasetExportContext &context, DatasetSplit s
     {
         YAML::Node file_list(YAML::NodeType::Map);
         setInteger(file_list, ManifestField::Version, 1);
-        setInteger(file_list, ManifestField::Method, context.method);
-        setString(file_list, ManifestField::Framework, context.framework_name);
-        setString(file_list, ManifestField::ModelArchitecture, context.model_architecture);
-        setString(file_list, ManifestField::ModelUuid, context.model_uuid);
+        setInteger(file_list, ManifestField::Method, request.method);
+        setString(file_list, ManifestField::Framework, request.framework_name);
+        setString(file_list, ManifestField::ModelArchitecture, request.model_architecture);
+        setString(file_list, ManifestField::ModelUuid, request.model_uuid);
         setString(file_list, ManifestField::Split, split_name);
         setString(file_list, ManifestField::MasksDir, QDir::cleanPath(QDir::fromNativeSeparators(masks_dir)));
         file_list[manifestKey(ManifestField::Samples)] = samples;
 
-        const QString file_list_path = anomalibFileListPath(context.dataset_dir, split_name);
+        const QString file_list_path = anomalibFileListPath(request.dataset_dir, split_name);
         if (!dltool::common::yaml::writeFile(file_list_path, file_list, err_msg,
                                              QStringLiteral("写入数据集清单失败"),
                                              QStringLiteral("生成数据集清单 YAML 失败")))
@@ -759,35 +708,35 @@ QVariantMap exportSplit(const ModelDatasetExportContext &context, DatasetSplit s
 
 } // namespace
 
-QVariantMap ModelDatasetOrganizer::organize(const ModelDatasetExportContext &context, QString *err_msg)
+QVariantMap ModelDatasetOrganizer::organize(const ModelDatasetExportRequest &request, QString *err_msg)
 {
     QVariantMap datasets;
-    if (context.dataset_dir.trimmed().isEmpty())
+    if (request.dataset_dir.trimmed().isEmpty())
     {
         if (err_msg != nullptr)
             *err_msg = QStringLiteral("模型数据集目录为空");
         return {};
     }
-    if (!ensureDirectory(context.dataset_dir, err_msg))
+    if (!ensureDirectory(request.dataset_dir, err_msg))
         return {};
 
-    if (isTrainModelTask(context.task_type))
+    if (isTrainModelTask(request.task_type))
     {
-        const QVariantMap train = exportSplit(context, DatasetSplit::Train, true, err_msg);
+        const QVariantMap train = exportSplit(request, DatasetSplit::Train, true, err_msg);
         if (train.isEmpty())
             return {};
         datasets.insert(datasetConfigFieldName(DatasetConfigField::Train), train);
 
         QString     validation_err;
-        QVariantMap validation = exportSplit(context, DatasetSplit::Validation, false, &validation_err);
+        QVariantMap validation = exportSplit(request, DatasetSplit::Validation, false, &validation_err);
         if (!validation.isEmpty())
             datasets.insert(datasetConfigFieldName(DatasetConfigField::Validation), validation);
         else if (!validation_err.isEmpty())
             spdlog::debug("跳过验证数据集导出: {}", validation_err.toUtf8().constData());
     }
-    else if (isTestModelTask(context.task_type))
+    else if (isTestModelTask(request.task_type))
     {
-        const QVariantMap test = exportSplit(context, DatasetSplit::Test, true, err_msg);
+        const QVariantMap test = exportSplit(request, DatasetSplit::Test, true, err_msg);
         if (test.isEmpty())
             return {};
         datasets.insert(datasetConfigFieldName(DatasetConfigField::Test), test);

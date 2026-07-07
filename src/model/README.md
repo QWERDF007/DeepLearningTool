@@ -18,8 +18,9 @@
 - `TaskCommunicationServer` 提供本机 TCP JSON 行协议，接收脚本上报的状态、进度、ETA 和日志事件，并向脚本下发命令。
 - `ModelTaskTypes` 提供 QML/C++ 共用的强类型任务枚举，并统一任务 key、显示名、配置文件命名、日志命名和数据集导出需求。
 - `ModelStorageService` 统一模型目录路径计算、目录创建和模型目录删除。
-- `ModelTaskConfigService` 统一任务 YAML 读写、字段名、参数落盘和 `dataset_selections` 恢复。
-- `ModelTaskPreparationService` 统一外部任务启动前的脚本选择、目录准备、数据集导出、YAML 配置写入、Python 解释器解析和运行参数生成。
+- `ModelDatasetSelection` 统一训练/验证/测试数据集选择快照、`dataset_selections` 序列化和恢复。
+- `ModelTaskConfigService` 统一任务 YAML 读写、字段名和参数落盘。
+- `ModelTaskPreparationService` 统一外部任务启动前的脚本选择、目录准备、选择快照生成、数据集导出、YAML 配置写入、Python 解释器解析和运行参数生成。
 - `ExternalModelTaskRunner` 统一已准备外部 Python 进程的启动、环境变量、stdout/stderr 日志、停止/删除和退出状态映射。
 - `IModel`/`IModelConfig`/`IParams`/`ParamGroupModel` 定义模型实例、参数配置和 QML 参数编辑数据模型。
 - `ModelParamsSchema` 和 `YamlModel` 从 `config/models/<framework>/<model>.yaml` 加载参数 schema，并生成 `ITrainParams`/`ITestParams`。
@@ -40,8 +41,10 @@
   模型任务类型描述，集中维护 `ModelTaskTypes::Type` 枚举、任务 key、显示名、日志名、配置名和是否需要导出数据集。
 - `include/model/ModelStorageService.h`、`ModelStorageService.cpp`
   模型目录服务，集中维护 `models/<uuid>/` 及其 `configs`、`datasets`、`logs`、`results`、`weights` 子目录。
+- `include/model/ModelDatasetSelection.h`、`ModelDatasetSelection.cpp`
+  数据集选择快照，集中处理训练/验证/测试选择状态读取、YAML map 序列化和恢复。
 - `include/model/ModelTaskConfigService.h`、`ModelTaskConfigService.cpp`
-  任务配置服务，集中维护 YAML 字段名、`train.yaml`/`test.yaml` 读写、参数序列化和数据集选择恢复。
+  任务配置服务，集中维护 YAML 字段名、`train.yaml`/`test.yaml` 读写和参数序列化。
 - `include/model/ModelTaskPreparationService.h`、`ModelTaskPreparationService.cpp`
   外部任务准备服务，将模型任务请求转换为可直接启动的 `PreparedExternalModelTask`。
 - `include/model/PreparedExternalModelTask.h`
@@ -55,7 +58,7 @@
 - `YamlModel.*`
   YAML 配置驱动的模型实现。
 - `include/model/ModelDatasetOrganizer.h`、`ModelDatasetOrganizer.cpp`
-  将 UI 选择的数据集按框架需要导出为训练/验证/测试文件列表或 `manifest.yaml`，必要时生成派生标注文件。
+  将数据集选择快照按框架需要导出为训练/验证/测试文件列表或 `manifest.yaml`，必要时生成派生标注文件。
 - `include/model/Logger.h`、`Logger.cpp`
   注册模块级 `spdlog` logger，并设置默认 logger。
 - `DetectionFramework.cpp`
@@ -278,9 +281,11 @@ QML 参数面板按 `part_index` 拆成两列渲染。当前已使用的控件�
 
 `ModelStorageService` 是模型存储入口。它接收项目目录，计算模型根目录和 `configs`、`datasets`、`logs`、`results`、`weights` 子目录，负责创建完整模型目录和安全删除单个模型目录。它不持有项目数据库。
 
-`ModelTaskConfigService` 是任务 YAML 入口。它集中维护配置字段名，负责读取历史 `train.yaml`/`test.yaml`，把参数和 `dataset_selections` 应用回模型实例，并在任务启动前构造和写入当前任务配置。
+`ModelDatasetSelection` 是数据集选择入口。它从模型的训练/验证/测试选择 ViewModel 生成快照，并负责把快照序列化为 `dataset_selections` 或从历史配置恢复回 ViewModel。数据集导出和任务配置写入共用这一个快照入口。
 
-`ModelTaskPreparationService` 是外部任务准备入口。它接收模型、任务类型、框架定义和项目目录上下文，负责脚本路径判断、任务通信服务启动检查、Python 环境解析、数据集导出、配置写入，并生成 `PreparedExternalModelTask`。
+`ModelTaskConfigService` 是任务 YAML 入口。它集中维护配置字段名，负责读取历史 `train.yaml`/`test.yaml`，并在任务启动前构造和写入当前任务配置。
+
+`ModelTaskPreparationService` 是外部任务准备入口。它接收模型、任务类型、框架定义和项目目录上下文，负责脚本路径判断、任务通信服务启动检查、Python 环境解析、数据集选择快照生成、数据集导出、配置写入，并生成 `PreparedExternalModelTask`。
 
 `ExternalModelTaskRunner` 是纯进程运行入口。它只接收 `PreparedExternalModelTask`，负责启动进程、设置环境变量、stdout/stderr 日志落盘、停止/删除处理，以及退出状态映射。进程正常退出码 `0` 视为完成，退出码 `2` 或显式停止请求视为停止，其他退出视为失败。
 
@@ -320,11 +325,11 @@ dataset_selections:
     label_classes: []
 ```
 
-`dataset_ids` 表示完整勾选的数据集节点，`label_classes` 表示按数据集/类别单独勾选的子节点。启动任务前，`ModelDatasetOrganizer` 仍会基于这些内存选择生成框架需要的 `datasets` 导出结果。
+`dataset_ids` 表示完整勾选的数据集节点，`label_classes` 表示按数据集/类别单独勾选的子节点。启动任务前，`ModelTaskPreparationService` 会先生成 `ModelDatasetSelections` 快照，再交给 `ModelDatasetOrganizer` 生成框架需要的 `datasets` 导出结果。
 
 ## 数据集组织
 
-`ModelDatasetOrganizer` 在启动训练/测试前读取模型上的训练、验证、测试数据集选择 ViewModel，并按框架输出数据组织文件。训练/预测判断来自 `ModelTaskTypes`，因此数据集导出规则和任务配置文件命名使用同一套任务语义。
+`ModelDatasetOrganizer` 不直接读取模型或 UI 选择 ViewModel。它接收 `ModelDatasetExportRequest`，其中包含 `ModelDatasetSelections` 快照和 `IModelDatasetSource` 只读数据源，并按框架输出数据组织文件。训练/预测判断来自 `ModelTaskTypes`，因此数据集导出规则和任务配置文件命名使用同一套任务语义。
 
 导出规则：
 
@@ -433,9 +438,11 @@ models/<uuid>/datasets/<split>/manifest.yaml
 - `ModelTaskPreparationService` 负责外部脚本选择、Python 解释器解析、任务通信参数、数据集导出编排和配置写入编排。
 - `ExternalModelTaskRunner` 负责已准备外部进程、运行环境、任务日志、停止请求和退出状态映射。
 - `ModelStorageService` 负责模型存储路径、目录创建和模型目录删除。
-- `ModelTaskConfigService` 负责任务配置字段、YAML 读写、参数序列化和数据集选择持久化。
+- `ModelDatasetSelection` 负责数据集选择快照、`dataset_selections` map 序列化和恢复。
+- `ModelTaskConfigService` 负责任务配置字段、YAML 读写和参数序列化。
 - `ModelTaskTypes` 负责任务类型枚举、任务 key、显示名、配置文件名、日志文件名前缀和数据集导出需求。
-- `ModelDatasetOrganizer` 负责把内存中的数据集选择导出为框架可消费的数据清单和派生 mask，不负责进程启动或任务配置写入。
+- `ModelDatasetOrganizer` 负责把数据集选择快照导出为框架可消费的数据清单和派生 mask，不负责读取 UI 模型、进程启动或任务配置写入。
+- `IModelDatasetSource` 是数据集导出所需的只读数据接口，避免导出器依赖完整 `DataManager`。
 - 框架层定义 root、脚本和运行环境。
 - 模型层定义参数和模型架构。
 - 原始数据集、标注编辑、图像导入导出属于 `data` 或 `feature`；模型任务启动前的数据集 manifest 组织属于 `model`。

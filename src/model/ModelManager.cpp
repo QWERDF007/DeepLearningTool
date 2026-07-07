@@ -6,6 +6,7 @@
 #include "model/ExternalModelTaskRunner.h"
 #include "model/IModelConfig.h"
 #include "model/IParams.h"
+#include "model/ModelDatasetSelection.h"
 #include "model/ModelStorageService.h"
 #include "model/ModelTaskConfigService.h"
 #include "model/ModelTaskPreparationService.h"
@@ -783,7 +784,6 @@ int ModelManager::startExternalModelTask(const QString &model_uuid, const QStrin
 
     ModelTaskPreparationService::Request request;
     request.task_id    = task_id;
-    request.model_uuid = model_uuid;
     request.model_name = model_name;
     request.task_type  = task_type;
     request.model      = model;

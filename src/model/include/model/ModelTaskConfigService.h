@@ -6,7 +6,6 @@
 
 #include <QString>
 #include <QVariantMap>
-#include <vector>
 
 namespace dltool::model {
 
@@ -38,13 +37,6 @@ enum class ModelTaskConfigField
     OutputDir,
 };
 
-enum class ModelDatasetSplit
-{
-    Train,
-    Validation,
-    Test,
-};
-
 struct MODEL_API LoadedModelTaskConfigs
 {
     QString     model_uuid;
@@ -55,10 +47,6 @@ struct MODEL_API LoadedModelTaskConfigs
 
 MODEL_API QString                        modelTaskConfigFileName(ModelTaskConfigFile file);
 MODEL_API QString                        modelTaskConfigFieldName(ModelTaskConfigField field);
-MODEL_API QString                        modelDatasetSplitName(ModelDatasetSplit split);
-MODEL_API std::vector<ModelDatasetSplit> modelDatasetSplits();
-MODEL_API QVariantMap                    modelDatasetSelections(IModel *model);
-MODEL_API void                           applyModelDatasetSelections(IModel *model, const QVariantMap &dataset_selections);
 
 class MODEL_API ModelTaskConfigService
 {

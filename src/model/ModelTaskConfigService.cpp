@@ -1,10 +1,10 @@
 #include "model/ModelTaskConfigService.h"
 
 #include "common/YamlUtils.h"
-#include "data/DataSelectionTreeModel.h"
 #include "model/IModel.h"
 #include "model/IModelConfig.h"
 #include "model/IParams.h"
+#include "model/ModelDatasetSelection.h"
 #include "model/ModelTaskTypes.h"
 
 #include <yaml-cpp/yaml.h>
@@ -13,8 +13,6 @@
 
 #include <QDir>
 #include <QFileInfo>
-#include <QModelIndex>
-#include <QVariantList>
 #include <array>
 #include <map>
 #include <utility>
@@ -22,14 +20,6 @@
 namespace dltool::model {
 
 namespace {
-
-enum class ModelDatasetSelectionField
-{
-    DatasetIds,
-    LabelClasses,
-    DatasetId,
-    LabelClassId,
-};
 
 const std::map<ModelTaskConfigFile, QString> &taskConfigFileNames()
 {
@@ -61,142 +51,6 @@ const std::map<ModelTaskConfigField, QString> &taskConfigFieldNames()
         {       ModelTaskConfigField::OutputDir, QStringLiteral("output_dir")},
     };
     return names;
-}
-
-const std::map<ModelDatasetSplit, QString> &datasetSplitNames()
-{
-    static const std::map<ModelDatasetSplit, QString> names = {
-        {     ModelDatasetSplit::Train,      QStringLiteral("train")},
-        {ModelDatasetSplit::Validation, QStringLiteral("validation")},
-        {      ModelDatasetSplit::Test,       QStringLiteral("test")},
-    };
-    return names;
-}
-
-const std::map<ModelDatasetSelectionField, QString> &datasetSelectionFieldNames()
-{
-    static const std::map<ModelDatasetSelectionField, QString> names = {
-        {    ModelDatasetSelectionField::DatasetIds,     QStringLiteral("dataset_ids")},
-        {  ModelDatasetSelectionField::LabelClasses,   QStringLiteral("label_classes")},
-        {     ModelDatasetSelectionField::DatasetId,      QStringLiteral("dataset_id")},
-        {ModelDatasetSelectionField::LabelClassId, QStringLiteral("label_class_id")},
-    };
-    return names;
-}
-
-QString datasetSelectionFieldName(ModelDatasetSelectionField field)
-{
-    const auto &names = datasetSelectionFieldNames();
-    const auto  found = names.find(field);
-    return found != names.end() ? found->second : QString();
-}
-
-QObject *datasetSelectionObject(IModel *model, ModelDatasetSplit split)
-{
-    if (model == nullptr)
-        return nullptr;
-
-    switch (split)
-    {
-    case ModelDatasetSplit::Train:
-        return model->trainDatasetViewModel();
-    case ModelDatasetSplit::Validation:
-        return model->validationDatasetViewModel();
-    case ModelDatasetSplit::Test:
-        return model->testDatasetViewModel();
-    }
-    return nullptr;
-}
-
-QVariantMap datasetSelectionMap(QObject *selection_object)
-{
-    auto *selection_model = qobject_cast<dltool::data::DataSelectionTreeModel *>(selection_object);
-    QVariantList dataset_ids;
-    QVariantList label_classes;
-    if (selection_model == nullptr)
-    {
-        return {
-            {  datasetSelectionFieldName(ModelDatasetSelectionField::DatasetIds),   dataset_ids},
-            {datasetSelectionFieldName(ModelDatasetSelectionField::LabelClasses), label_classes},
-        };
-    }
-
-    for (int dataset_row = 0; dataset_row < selection_model->rowCount(); ++dataset_row)
-    {
-        const QModelIndex dataset_index = selection_model->index(dataset_row, 0);
-        bool              dataset_ok = false;
-        qint64            dataset_id
-            = selection_model->data(dataset_index, dltool::data::DataSelectionTreeModel::DatasetIdRole).toLongLong(
-                &dataset_ok);
-        if (!dataset_ok || dataset_id < 0)
-        {
-            dataset_id
-                = selection_model->data(dataset_index, dltool::data::DataSelectionTreeModel::ItemIdRole).toLongLong(
-                    &dataset_ok);
-        }
-        if (!dataset_ok || dataset_id < 0)
-            continue;
-
-        if (selection_model->isNodeSelected(dataset_id, -1))
-        {
-            dataset_ids.append(dataset_id);
-            continue;
-        }
-
-        for (int class_row = 0; class_row < selection_model->rowCount(dataset_index); ++class_row)
-        {
-            const QModelIndex class_index = selection_model->index(class_row, 0, dataset_index);
-            bool              class_ok = false;
-            const qint64      label_class_id
-                = selection_model->data(class_index, dltool::data::DataSelectionTreeModel::LabelClassIdRole)
-                      .toLongLong(&class_ok);
-            if (!class_ok || label_class_id < 0 || !selection_model->isNodeSelected(dataset_id, label_class_id))
-                continue;
-
-            label_classes.append(QVariantMap{
-                {     datasetSelectionFieldName(ModelDatasetSelectionField::DatasetId),      dataset_id},
-                {datasetSelectionFieldName(ModelDatasetSelectionField::LabelClassId), label_class_id},
-            });
-        }
-    }
-
-    return {
-        {  datasetSelectionFieldName(ModelDatasetSelectionField::DatasetIds),   dataset_ids},
-        {datasetSelectionFieldName(ModelDatasetSelectionField::LabelClasses), label_classes},
-    };
-}
-
-void applyDatasetSelectionMap(QObject *selection_object, const QVariantMap &selection)
-{
-    auto *selection_model = qobject_cast<dltool::data::DataSelectionTreeModel *>(selection_object);
-    if (selection_model == nullptr)
-        return;
-
-    selection_model->clearSelection();
-    const QVariantList dataset_ids
-        = selection.value(datasetSelectionFieldName(ModelDatasetSelectionField::DatasetIds)).toList();
-    for (const QVariant &dataset_value : dataset_ids)
-    {
-        bool         ok = false;
-        const qint64 dataset_id = dataset_value.toLongLong(&ok);
-        if (ok && dataset_id >= 0)
-            selection_model->setNodeSelected(dataset_id, -1, true);
-    }
-
-    const QVariantList label_classes
-        = selection.value(datasetSelectionFieldName(ModelDatasetSelectionField::LabelClasses)).toList();
-    for (const QVariant &entry : label_classes)
-    {
-        const QVariantMap map = entry.toMap();
-        bool              dataset_ok = false;
-        bool              class_ok = false;
-        const qint64      dataset_id
-            = map.value(datasetSelectionFieldName(ModelDatasetSelectionField::DatasetId)).toLongLong(&dataset_ok);
-        const qint64 label_class_id
-            = map.value(datasetSelectionFieldName(ModelDatasetSelectionField::LabelClassId)).toLongLong(&class_ok);
-        if (dataset_ok && class_ok && dataset_id >= 0 && label_class_id >= 0)
-            selection_model->setNodeSelected(dataset_id, label_class_id, true);
-    }
 }
 
 QString resolveModelOutputPath(const QString &model_dir, const QString &path, const QString &fallback)
@@ -235,50 +89,6 @@ QString modelTaskConfigFieldName(ModelTaskConfigField field)
     const auto &names = taskConfigFieldNames();
     const auto  found = names.find(field);
     return found != names.end() ? found->second : QString();
-}
-
-QString modelDatasetSplitName(ModelDatasetSplit split)
-{
-    const auto &names = datasetSplitNames();
-    const auto  found = names.find(split);
-    return found != names.end() ? found->second : QString();
-}
-
-std::vector<ModelDatasetSplit> modelDatasetSplits()
-{
-    return {
-        ModelDatasetSplit::Train,
-        ModelDatasetSplit::Validation,
-        ModelDatasetSplit::Test,
-    };
-}
-
-QVariantMap modelDatasetSelections(IModel *model)
-{
-    QVariantMap selections;
-    if (model == nullptr)
-        return selections;
-
-    for (const ModelDatasetSplit split : modelDatasetSplits())
-    {
-        QObject *selection_object = datasetSelectionObject(model, split);
-        if (selection_object != nullptr)
-            selections.insert(modelDatasetSplitName(split), datasetSelectionMap(selection_object));
-    }
-    return selections;
-}
-
-void applyModelDatasetSelections(IModel *model, const QVariantMap &dataset_selections)
-{
-    if (model == nullptr || dataset_selections.isEmpty())
-        return;
-
-    for (const ModelDatasetSplit split : modelDatasetSplits())
-    {
-        const QString split_name = modelDatasetSplitName(split);
-        if (dataset_selections.contains(split_name))
-            applyDatasetSelectionMap(datasetSelectionObject(model, split), dataset_selections.value(split_name).toMap());
-    }
 }
 
 ModelTaskConfigService::ModelTaskConfigService(QString project_dir)
