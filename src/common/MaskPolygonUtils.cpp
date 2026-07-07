@@ -188,6 +188,56 @@ std::vector<QPointF> normalizePolygon(std::vector<QPointF> points)
     return normalized;
 }
 
+std::vector<uint8_t> polygons2Mask(const std::vector<std::vector<QPointF>> &polygons, int width, int height,
+                                   uint8_t foreground_value)
+{
+    const int64_t total = static_cast<int64_t>(width) * static_cast<int64_t>(height);
+    if (width <= 0 || height <= 0 || total <= 0)
+        return {};
+
+    cv::Mat mask(height, width, CV_8UC1, cv::Scalar(0));
+    if (!polygons.empty() && foreground_value > 0)
+    {
+        std::vector<std::vector<cv::Point>> cv_polygons;
+        cv_polygons.reserve(polygons.size());
+        for (const std::vector<QPointF> &polygon : polygons)
+        {
+            std::vector<QPointF> normalized = normalizePolygon(polygon);
+            if (normalized.empty())
+                continue;
+
+            std::vector<cv::Point> cv_polygon;
+            cv_polygon.reserve(normalized.size());
+            for (const QPointF &point : normalized)
+            {
+                const int x = std::clamp(static_cast<int>(std::lround(point.x())), 0, width - 1);
+                const int y = std::clamp(static_cast<int>(std::lround(point.y())), 0, height - 1);
+                cv_polygon.emplace_back(x, y);
+            }
+            if (cv_polygon.size() >= 3)
+                cv_polygons.push_back(std::move(cv_polygon));
+        }
+
+        if (!cv_polygons.empty())
+            cv::fillPoly(mask, cv_polygons, cv::Scalar(foreground_value));
+    }
+
+    std::vector<uint8_t> result(static_cast<size_t>(total));
+    if (mask.isContinuous())
+    {
+        std::copy(mask.data, mask.data + total, result.begin());
+    }
+    else
+    {
+        for (int y = 0; y < height; ++y)
+        {
+            const uchar *row = mask.ptr<uchar>(y);
+            std::copy(row, row + width, result.begin() + static_cast<size_t>(y) * width);
+        }
+    }
+    return result;
+}
+
 std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mask, int width, int height, bool keep_max,
                                                  double polygon_approx_epsilon_ratio)
 {
