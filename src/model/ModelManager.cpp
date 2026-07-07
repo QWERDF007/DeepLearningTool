@@ -1,34 +1,24 @@
 #include "model/ModelManager.h"
 
 #include "common/Utils.h"
-#include "data/DataSelectionTreeModel.h"
 #include "data/DatasetViewModelFactory.h"
 #include "database/DataBase.h"
+#include "model/ExternalModelTaskRunner.h"
 #include "model/IModelConfig.h"
 #include "model/IParams.h"
-#include "model/ModelDatasetOrganizer.h"
+#include "model/ModelStorageService.h"
+#include "model/ModelTaskConfigService.h"
+#include "model/ModelTaskPreparationService.h"
 #include "model/TaskManager.h"
-#include "common/YamlUtils.h"
-#include "settings/GlobalSettings.h"
-#include "settings/SettingsKeys.h"
-#include "settings/SettingsValue.h"
-
-#include <yaml-cpp/yaml.h>
 
 #include <spdlog/spdlog.h>
 
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
-#include <QFile>
 #include <QFileInfo>
-#include <QProcess>
-#include <QProcessEnvironment>
-#include <QTimer>
 #include <QQmlEngine>
-#include <QPointer>
 #include <algorithm>
-#include <map>
 #include <utility>
 
 namespace dltool::model {
@@ -48,66 +38,6 @@ struct RegisteredFramework
     ModelManager::FrameworkDefinition definition;
 };
 
-struct LoadedModelTaskConfigs
-{
-    QString     model_uuid;
-    QVariantMap train_params;
-    QVariantMap test_params;
-    QVariantMap dataset_selections;
-};
-
-enum class ModelStoragePath
-{
-    ModelsRoot,
-    ModelRoot,
-    Results,
-    Logs,
-    Weights,
-    Datasets,
-    Configs,
-};
-
-enum class ModelTaskConfigFile
-{
-    Train,
-    Test,
-};
-
-enum class ModelTaskConfigField
-{
-    ModelUuid,
-    ModelName,
-    TaskType,
-    Framework,
-    ModelArchitecture,
-    ModelDir,
-    ResultDir,
-    LogDir,
-    WeightDir,
-    Datasets,
-    DatasetSelections,
-    TrainParams,
-    TestParams,
-    Trainer,
-    Inference,
-    OutputDir,
-};
-
-enum class ModelDatasetSplit
-{
-    Train,
-    Validation,
-    Test,
-};
-
-enum class ModelDatasetSelectionField
-{
-    DatasetIds,
-    LabelClasses,
-    DatasetId,
-    LabelClassId,
-};
-
 std::vector<RegisteredModel> &modelRegistry()
 {
     static std::vector<RegisteredModel> registry;
@@ -118,130 +48,6 @@ std::vector<RegisteredFramework> &frameworkRegistry()
 {
     static std::vector<RegisteredFramework> registry;
     return registry;
-}
-
-const std::map<ModelStoragePath, QString> &modelStoragePathNames()
-{
-    static const std::map<ModelStoragePath, QString> names = {
-        {ModelStoragePath::ModelsRoot, QStringLiteral("models")},
-        { ModelStoragePath::ModelRoot,                 {}},
-        {   ModelStoragePath::Results, QStringLiteral("results")},
-        {      ModelStoragePath::Logs, QStringLiteral("logs")},
-        {   ModelStoragePath::Weights, QStringLiteral("weights")},
-        {  ModelStoragePath::Datasets, QStringLiteral("datasets")},
-        {   ModelStoragePath::Configs, QStringLiteral("configs")},
-    };
-    return names;
-}
-
-const std::map<ModelTaskConfigFile, QString> &modelTaskConfigFileNames()
-{
-    static const std::map<ModelTaskConfigFile, QString> names = {
-        {ModelTaskConfigFile::Train, QStringLiteral("train.yaml")},
-        { ModelTaskConfigFile::Test,  QStringLiteral("test.yaml")},
-    };
-    return names;
-}
-
-const std::map<ModelTaskConfigField, QString> &modelTaskConfigFieldNames()
-{
-    static const std::map<ModelTaskConfigField, QString> names = {
-        {      ModelTaskConfigField::ModelUuid, QStringLiteral("model_uuid")},
-        {      ModelTaskConfigField::ModelName, QStringLiteral("model_name")},
-        {       ModelTaskConfigField::TaskType, QStringLiteral("task_type")},
-        {      ModelTaskConfigField::Framework, QStringLiteral("framework")},
-        {ModelTaskConfigField::ModelArchitecture, QStringLiteral("model_architecture")},
-        {       ModelTaskConfigField::ModelDir, QStringLiteral("model_dir")},
-        {      ModelTaskConfigField::ResultDir, QStringLiteral("result_dir")},
-        {         ModelTaskConfigField::LogDir, QStringLiteral("log_dir")},
-        {      ModelTaskConfigField::WeightDir, QStringLiteral("weight_dir")},
-        {      ModelTaskConfigField::Datasets, QStringLiteral("datasets")},
-        {ModelTaskConfigField::DatasetSelections, QStringLiteral("dataset_selections")},
-        {    ModelTaskConfigField::TrainParams, QStringLiteral("train_params")},
-        {     ModelTaskConfigField::TestParams, QStringLiteral("test_params")},
-        {         ModelTaskConfigField::Trainer, QStringLiteral("trainer")},
-        {       ModelTaskConfigField::Inference, QStringLiteral("inference")},
-        {       ModelTaskConfigField::OutputDir, QStringLiteral("output_dir")},
-    };
-    return names;
-}
-
-const std::map<ModelDatasetSplit, QString> &modelDatasetSplitNames()
-{
-    static const std::map<ModelDatasetSplit, QString> names = {
-        {     ModelDatasetSplit::Train,      QStringLiteral("train")},
-        {ModelDatasetSplit::Validation, QStringLiteral("validation")},
-        {      ModelDatasetSplit::Test,       QStringLiteral("test")},
-    };
-    return names;
-}
-
-const std::map<ModelDatasetSelectionField, QString> &modelDatasetSelectionFieldNames()
-{
-    static const std::map<ModelDatasetSelectionField, QString> names = {
-        {    ModelDatasetSelectionField::DatasetIds,     QStringLiteral("dataset_ids")},
-        {  ModelDatasetSelectionField::LabelClasses,   QStringLiteral("label_classes")},
-        {     ModelDatasetSelectionField::DatasetId,      QStringLiteral("dataset_id")},
-        {ModelDatasetSelectionField::LabelClassId, QStringLiteral("label_class_id")},
-    };
-    return names;
-}
-
-QString modelStoragePathName(ModelStoragePath path)
-{
-    const auto &names = modelStoragePathNames();
-    const auto  found = names.find(path);
-    return found != names.end() ? found->second : QString();
-}
-
-QString modelTaskConfigFileName(ModelTaskConfigFile file)
-{
-    const auto &names = modelTaskConfigFileNames();
-    const auto  found = names.find(file);
-    return found != names.end() ? found->second : QString();
-}
-
-QString modelTaskConfigFieldName(ModelTaskConfigField field)
-{
-    const auto &names = modelTaskConfigFieldNames();
-    const auto  found = names.find(field);
-    return found != names.end() ? found->second : QString();
-}
-
-QString modelDatasetSplitName(ModelDatasetSplit split)
-{
-    const auto &names = modelDatasetSplitNames();
-    const auto  found = names.find(split);
-    return found != names.end() ? found->second : QString();
-}
-
-QString modelDatasetSelectionFieldName(ModelDatasetSelectionField field)
-{
-    const auto &names = modelDatasetSelectionFieldNames();
-    const auto  found = names.find(field);
-    return found != names.end() ? found->second : QString();
-}
-
-const std::vector<ModelStoragePath> &modelStorageChildPaths()
-{
-    static const std::vector<ModelStoragePath> paths = {
-        ModelStoragePath::Results,
-        ModelStoragePath::Logs,
-        ModelStoragePath::Weights,
-        ModelStoragePath::Datasets,
-        ModelStoragePath::Configs,
-    };
-    return paths;
-}
-
-const std::vector<ModelDatasetSplit> &modelDatasetSplits()
-{
-    static const std::vector<ModelDatasetSplit> splits = {
-        ModelDatasetSplit::Train,
-        ModelDatasetSplit::Validation,
-        ModelDatasetSplit::Test,
-    };
-    return splits;
 }
 
 QString cleanPath(const QString &path)
@@ -268,460 +74,6 @@ QString resolvePath(const QString &base_dir, const QString &path)
     return cleanPath(QDir(base_dir).filePath(cleaned));
 }
 
-QString pythonExecutableFromEnvPath(const QString &env_path)
-{
-    const QFileInfo info(cleanPath(env_path));
-    if (info.isFile())
-        return info.absoluteFilePath();
-
-    const QDir dir(info.absoluteFilePath());
-    for (const QString &candidate :
-         {QStringLiteral("python.exe"), QStringLiteral("Scripts/python.exe"), QStringLiteral("bin/python"),
-          QStringLiteral("python")})
-    {
-        const QString path = dir.filePath(candidate);
-        if (QFileInfo::exists(path))
-            return cleanPath(path);
-    }
-    return {};
-}
-
-bool isTrainTask(const QString &task_type)
-{
-    const QString value = task_type.trimmed().toLower();
-    return value.contains(QStringLiteral("train")) || value.contains(QStringLiteral("训练"));
-}
-
-bool isPredictTask(const QString &task_type)
-{
-    const QString value = task_type.trimmed().toLower();
-    return value.contains(QStringLiteral("test")) || value.contains(QStringLiteral("predict"))
-        || value.contains(QStringLiteral("测试")) || value.contains(QStringLiteral("推理"));
-}
-
-QString taskLogStem(const QString &task_type, int task_id)
-{
-    Q_UNUSED(task_id)
-    QString kind = QStringLiteral("task");
-    if (isTrainTask(task_type))
-        kind = QStringLiteral("train");
-    else if (isPredictTask(task_type))
-        kind = QStringLiteral("test");
-    return kind;
-}
-
-QString taskConfigFileName(const QString &task_type)
-{
-    if (isTrainTask(task_type))
-        return modelTaskConfigFileName(ModelTaskConfigFile::Train);
-    if (isPredictTask(task_type))
-        return modelTaskConfigFileName(ModelTaskConfigFile::Test);
-    return {};
-}
-
-QString projectDirectory(dltool::database::ProjectDataBase *database)
-{
-    if (database == nullptr)
-        return {};
-    const QFileInfo project_file(database->path());
-    return project_file.absoluteDir().absolutePath();
-}
-
-QString modelStoragePath(dltool::database::ProjectDataBase *database, const QString &uuid, ModelStoragePath path)
-{
-    const QString project_dir = projectDirectory(database);
-    if (project_dir.isEmpty())
-        return {};
-
-    const QString root = cleanPath(QDir(project_dir).filePath(modelStoragePathName(ModelStoragePath::ModelsRoot)));
-    if (path == ModelStoragePath::ModelsRoot)
-        return root;
-
-    const QString trimmed_uuid = uuid.trimmed();
-    if (trimmed_uuid.isEmpty())
-        return {};
-
-    const QString model_dir = cleanPath(QDir(root).filePath(trimmed_uuid));
-    if (path == ModelStoragePath::ModelRoot)
-        return model_dir;
-
-    const QString child_name = modelStoragePathName(path);
-    if (child_name.isEmpty())
-        return {};
-    return cleanPath(QDir(model_dir).filePath(child_name));
-}
-
-QString modelTaskConfigPath(dltool::database::ProjectDataBase *database, const QString &uuid,
-                            ModelTaskConfigFile file)
-{
-    const QString config_dir = modelStoragePath(database, uuid, ModelStoragePath::Configs);
-    const QString file_name  = modelTaskConfigFileName(file);
-    if (config_dir.isEmpty() || file_name.isEmpty())
-        return {};
-    return cleanPath(QDir(config_dir).filePath(file_name));
-}
-
-bool ensureDirectory(const QString &path, QString *err_msg)
-{
-    const QString cleaned = cleanPath(path);
-    if (cleaned.isEmpty())
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("目录路径为空");
-        return false;
-    }
-
-    QDir dir(cleaned);
-    if (dir.exists())
-        return true;
-    if (!dir.mkpath(QStringLiteral(".")))
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("创建目录失败: %1").arg(cleaned);
-        return false;
-    }
-    return true;
-}
-
-bool ensureModelStorage(dltool::database::ProjectDataBase *database, const QString &uuid, QString *err_msg = nullptr)
-{
-    const QString model_dir = modelStoragePath(database, uuid, ModelStoragePath::ModelRoot);
-    if (!ensureDirectory(model_dir, err_msg))
-        return false;
-
-    for (const ModelStoragePath child_path : modelStorageChildPaths())
-    {
-        if (!ensureDirectory(modelStoragePath(database, uuid, child_path), err_msg))
-            return false;
-    }
-    return true;
-}
-
-bool removeModelStorage(dltool::database::ProjectDataBase *database, const QString &uuid, QString *err_msg = nullptr)
-{
-    const QString root = cleanPath(QFileInfo(modelStoragePath(database, {}, ModelStoragePath::ModelsRoot)).absoluteFilePath());
-    const QString target
-        = cleanPath(QFileInfo(modelStoragePath(database, uuid, ModelStoragePath::ModelRoot)).absoluteFilePath());
-    if (root.isEmpty() || target.isEmpty() || target == root
-        || !target.startsWith(root + QStringLiteral("/"), Qt::CaseInsensitive))
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("拒绝删除非法模型目录: %1").arg(target);
-        return false;
-    }
-
-    QDir dir(target);
-    if (!dir.exists())
-        return true;
-    if (!dir.removeRecursively())
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("删除模型目录失败: %1").arg(target);
-        return false;
-    }
-    return true;
-}
-
-QString resolveModelOutputPath(const QString &model_dir, const QString &path, const QString &fallback)
-{
-    QString value = cleanPath(path);
-    if (value.isEmpty())
-        value = fallback;
-    if (QFileInfo(value).isAbsolute())
-        return value;
-    return cleanPath(QDir(model_dir).filePath(value));
-}
-
-void normalizeOutputDir(QVariantMap &groups, const QString &group_name, const QString &model_dir, const QString &fallback)
-{
-    QVariantMap group = groups.value(group_name).toMap();
-    if (group.isEmpty())
-        return;
-    const QString output_dir = modelTaskConfigFieldName(ModelTaskConfigField::OutputDir);
-    group.insert(output_dir, resolveModelOutputPath(model_dir, group.value(output_dir).toString(), fallback));
-    groups.insert(group_name, group);
-}
-
-YAML::Node variantToYaml(const QVariant &value)
-{
-    if (!value.isValid() || value.isNull())
-        return {};
-
-    const int type_id = value.typeId();
-    if (type_id == QMetaType::QVariantMap)
-    {
-        YAML::Node node(YAML::NodeType::Map);
-        const QVariantMap map = value.toMap();
-        for (auto it = map.constBegin(); it != map.constEnd(); ++it)
-            node[it.key().toStdString()] = variantToYaml(it.value());
-        return node;
-    }
-
-    if (type_id == QMetaType::QVariantHash)
-    {
-        YAML::Node node(YAML::NodeType::Map);
-        const QVariantHash hash = value.toHash();
-        for (auto it = hash.constBegin(); it != hash.constEnd(); ++it)
-            node[it.key().toStdString()] = variantToYaml(it.value());
-        return node;
-    }
-
-    if (type_id == QMetaType::QVariantList)
-    {
-        YAML::Node node(YAML::NodeType::Sequence);
-        const QVariantList list = value.toList();
-        for (const QVariant &entry : list)
-            node.push_back(variantToYaml(entry));
-        return node;
-    }
-
-    if (type_id == QMetaType::QStringList)
-    {
-        YAML::Node node(YAML::NodeType::Sequence);
-        const QStringList list = value.toStringList();
-        for (const QString &entry : list)
-            node.push_back(entry.toStdString());
-        return node;
-    }
-
-    switch (type_id)
-    {
-    case QMetaType::Bool:
-        return YAML::Node(value.toBool());
-    case QMetaType::Int:
-    case QMetaType::UInt:
-    case QMetaType::LongLong:
-    case QMetaType::ULongLong:
-        return YAML::Node(value.toLongLong());
-    case QMetaType::Double:
-    case QMetaType::Float:
-        return YAML::Node(value.toDouble());
-    default:
-        return YAML::Node(value.toString().toStdString());
-    }
-}
-
-QVariantMap taskParamsFromConfigFile(const QString &path, ModelTaskConfigField field)
-{
-    const QFileInfo file_info(cleanPath(path));
-    if (!file_info.exists() || !file_info.isFile())
-        return {};
-
-    try
-    {
-        const YAML::Node root = dltool::common::yaml::loadFile(file_info);
-        if (!root || !root.IsMap())
-            return {};
-
-        return dltool::common::yaml::nodeVariant(root[modelTaskConfigFieldName(field).toStdString()]).toMap();
-    }
-    catch (const std::exception &e)
-    {
-        spdlog::error("读取模型任务配置失败 '{}': {}", file_info.absoluteFilePath().toUtf8().constData(), e.what());
-        return {};
-    }
-}
-
-QVariantMap taskDatasetSelectionsFromConfigFile(const QString &path)
-{
-    const QFileInfo file_info(cleanPath(path));
-    if (!file_info.exists() || !file_info.isFile())
-        return {};
-
-    try
-    {
-        const YAML::Node root = dltool::common::yaml::loadFile(file_info);
-        if (!root || !root.IsMap())
-            return {};
-
-        return dltool::common::yaml::nodeVariant(
-                   root[modelTaskConfigFieldName(ModelTaskConfigField::DatasetSelections).toStdString()])
-            .toMap();
-    }
-    catch (const std::exception &e)
-    {
-        spdlog::error("读取模型数据集选择配置失败 '{}': {}", file_info.absoluteFilePath().toUtf8().constData(),
-                      e.what());
-        return {};
-    }
-}
-
-LoadedModelTaskConfigs loadModelTaskConfigs(const QString &model_uuid, const QString &train_config_path,
-                                            const QString &test_config_path)
-{
-    LoadedModelTaskConfigs configs;
-    configs.model_uuid = model_uuid;
-    configs.train_params = taskParamsFromConfigFile(train_config_path, ModelTaskConfigField::TrainParams);
-    configs.test_params  = taskParamsFromConfigFile(test_config_path, ModelTaskConfigField::TestParams);
-
-    if (configs.train_params.isEmpty())
-        configs.train_params = taskParamsFromConfigFile(test_config_path, ModelTaskConfigField::TrainParams);
-    if (configs.test_params.isEmpty())
-        configs.test_params = taskParamsFromConfigFile(train_config_path, ModelTaskConfigField::TestParams);
-
-    const QVariantMap train_dataset_selections = taskDatasetSelectionsFromConfigFile(train_config_path);
-    const QVariantMap test_dataset_selections  = taskDatasetSelectionsFromConfigFile(test_config_path);
-    if (!train_dataset_selections.isEmpty() && !test_dataset_selections.isEmpty())
-    {
-        const QFileInfo train_info(cleanPath(train_config_path));
-        const QFileInfo test_info(cleanPath(test_config_path));
-        configs.dataset_selections
-            = test_info.lastModified() > train_info.lastModified() ? test_dataset_selections : train_dataset_selections;
-    }
-    else
-    {
-        configs.dataset_selections
-            = !test_dataset_selections.isEmpty() ? test_dataset_selections : train_dataset_selections;
-    }
-    return configs;
-}
-
-QObject *datasetSelectionObject(IModel *model, ModelDatasetSplit split)
-{
-    if (model == nullptr)
-        return nullptr;
-
-    switch (split)
-    {
-    case ModelDatasetSplit::Train:
-        return model->trainDatasetViewModel();
-    case ModelDatasetSplit::Validation:
-        return model->validationDatasetViewModel();
-    case ModelDatasetSplit::Test:
-        return model->testDatasetViewModel();
-    }
-    return nullptr;
-}
-
-QVariantMap datasetSelectionMap(QObject *selection_object)
-{
-    auto *selection_model = qobject_cast<dltool::data::DataSelectionTreeModel *>(selection_object);
-    QVariantList dataset_ids;
-    QVariantList label_classes;
-    if (selection_model == nullptr)
-    {
-        return {
-            {  modelDatasetSelectionFieldName(ModelDatasetSelectionField::DatasetIds),   dataset_ids},
-            {modelDatasetSelectionFieldName(ModelDatasetSelectionField::LabelClasses), label_classes},
-        };
-    }
-
-    for (int dataset_row = 0; dataset_row < selection_model->rowCount(); ++dataset_row)
-    {
-        const QModelIndex dataset_index = selection_model->index(dataset_row, 0);
-        bool              dataset_ok    = false;
-        qint64            dataset_id
-            = selection_model->data(dataset_index, dltool::data::DataSelectionTreeModel::DatasetIdRole).toLongLong(
-                &dataset_ok);
-        if (!dataset_ok || dataset_id < 0)
-        {
-            dataset_id
-                = selection_model->data(dataset_index, dltool::data::DataSelectionTreeModel::ItemIdRole).toLongLong(
-                    &dataset_ok);
-        }
-        if (!dataset_ok || dataset_id < 0)
-            continue;
-
-        if (selection_model->isNodeSelected(dataset_id, -1))
-        {
-            dataset_ids.append(dataset_id);
-            continue;
-        }
-
-        for (int class_row = 0; class_row < selection_model->rowCount(dataset_index); ++class_row)
-        {
-            const QModelIndex class_index = selection_model->index(class_row, 0, dataset_index);
-            bool              class_ok    = false;
-            const qint64      label_class_id
-                = selection_model->data(class_index, dltool::data::DataSelectionTreeModel::LabelClassIdRole)
-                      .toLongLong(&class_ok);
-            if (!class_ok || label_class_id < 0 || !selection_model->isNodeSelected(dataset_id, label_class_id))
-                continue;
-
-            label_classes.append(QVariantMap{
-                {    modelDatasetSelectionFieldName(ModelDatasetSelectionField::DatasetId),      dataset_id},
-                {modelDatasetSelectionFieldName(ModelDatasetSelectionField::LabelClassId), label_class_id},
-            });
-        }
-    }
-
-    return {
-        {  modelDatasetSelectionFieldName(ModelDatasetSelectionField::DatasetIds),   dataset_ids},
-        {modelDatasetSelectionFieldName(ModelDatasetSelectionField::LabelClasses), label_classes},
-    };
-}
-
-QVariantMap modelDatasetSelections(IModel *model)
-{
-    QVariantMap selections;
-    for (const ModelDatasetSplit split : modelDatasetSplits())
-    {
-        QObject *selection_object = datasetSelectionObject(model, split);
-        if (selection_object != nullptr)
-            selections.insert(modelDatasetSplitName(split), datasetSelectionMap(selection_object));
-    }
-    return selections;
-}
-
-void applyDatasetSelectionMap(QObject *selection_object, const QVariantMap &selection)
-{
-    auto *selection_model = qobject_cast<dltool::data::DataSelectionTreeModel *>(selection_object);
-    if (selection_model == nullptr)
-        return;
-
-    selection_model->clearSelection();
-    const QVariantList dataset_ids
-        = selection.value(modelDatasetSelectionFieldName(ModelDatasetSelectionField::DatasetIds)).toList();
-    for (const QVariant &value : dataset_ids)
-    {
-        bool         ok = false;
-        const qint64 dataset_id = value.toLongLong(&ok);
-        if (ok && dataset_id >= 0)
-            selection_model->setNodeSelected(dataset_id, -1, true);
-    }
-
-    const QVariantList label_classes
-        = selection.value(modelDatasetSelectionFieldName(ModelDatasetSelectionField::LabelClasses)).toList();
-    for (const QVariant &entry : label_classes)
-    {
-        const QVariantMap label_class = entry.toMap();
-        bool              dataset_ok = false;
-        bool              class_ok   = false;
-        const qint64      dataset_id
-            = label_class.value(modelDatasetSelectionFieldName(ModelDatasetSelectionField::DatasetId)).toLongLong(
-                &dataset_ok);
-        const qint64 label_class_id
-            = label_class.value(modelDatasetSelectionFieldName(ModelDatasetSelectionField::LabelClassId))
-                  .toLongLong(&class_ok);
-        if (dataset_ok && class_ok && dataset_id >= 0 && label_class_id >= 0)
-            selection_model->setNodeSelected(dataset_id, label_class_id, true);
-    }
-}
-
-QFile *openProcessLogFile(const QString &path, QObject *parent, QString *err_msg)
-{
-    const QString cleaned = cleanPath(path);
-    if (cleaned.isEmpty())
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("日志路径为空");
-        return nullptr;
-    }
-
-    if (!ensureDirectory(QFileInfo(cleaned).absolutePath(), err_msg))
-        return nullptr;
-
-    auto *file = new QFile(cleaned, parent);
-    if (!file->open(QIODevice::WriteOnly | QIODevice::Truncate))
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("打开日志文件失败: %1, %2").arg(cleaned, file->errorString());
-        delete file;
-        return nullptr;
-    }
-    return file;
-}
-
 ModelManager::FrameworkDefinition resolvedFrameworkDefinition(
     const ModelManager::FrameworkDefinition &definition)
 {
@@ -740,102 +92,6 @@ ModelManager::FrameworkDefinition resolvedFrameworkDefinition(
     return resolved;
 }
 
-QVariantMap modelTaskConfig(IModel *model, const QString &model_name, const QString &task_type,
-                            dltool::database::ProjectDataBase *database, const QVariantMap &datasets)
-{
-    QVariantMap config;
-    if (model == nullptr)
-        return config;
-
-    const QString model_dir = modelStoragePath(database, model->uuid(), ModelStoragePath::ModelRoot);
-    const QString result_dir = modelStoragePath(database, model->uuid(), ModelStoragePath::Results);
-    const QString log_dir = modelStoragePath(database, model->uuid(), ModelStoragePath::Logs);
-    const QString weight_dir = modelStoragePath(database, model->uuid(), ModelStoragePath::Weights);
-
-    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::ModelUuid), model->uuid());
-    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::ModelName), model_name);
-    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::TaskType), task_type);
-    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::Framework), model->frameworkName());
-    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::ModelArchitecture), model->modelArchitecture());
-    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::ModelDir), model_dir);
-    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::ResultDir), result_dir);
-    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::LogDir), log_dir);
-    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::WeightDir), weight_dir);
-    if (!datasets.isEmpty())
-        config.insert(modelTaskConfigFieldName(ModelTaskConfigField::Datasets), datasets);
-    const QVariantMap dataset_selections = modelDatasetSelections(model);
-    if (!dataset_selections.isEmpty())
-        config.insert(modelTaskConfigFieldName(ModelTaskConfigField::DatasetSelections), dataset_selections);
-    if (IModelConfig *model_config = model->config(); model_config != nullptr)
-    {
-        if (ITrainParams *train_params = model_config->trainParams(); train_params != nullptr)
-        {
-            QVariantMap train_values = train_params->valuesMap();
-            normalizeOutputDir(train_values, modelTaskConfigFieldName(ModelTaskConfigField::Trainer), model_dir,
-                               modelStoragePathName(ModelStoragePath::Results));
-            config.insert(modelTaskConfigFieldName(ModelTaskConfigField::TrainParams), train_values);
-        }
-        if (ITestParams *test_params = model_config->testParams(); test_params != nullptr)
-        {
-            QVariantMap test_values = test_params->valuesMap();
-            normalizeOutputDir(test_values, modelTaskConfigFieldName(ModelTaskConfigField::Inference), model_dir,
-                               modelStoragePathName(ModelStoragePath::Results));
-            config.insert(modelTaskConfigFieldName(ModelTaskConfigField::TestParams), test_values);
-        }
-    }
-    return config;
-}
-
-QString writeTaskConfigFile(const QString &config_dir, const QString &task_type, const QVariantMap &config,
-                            QString *err_msg)
-{
-    const QString cleaned_dir = cleanPath(config_dir);
-    if (cleaned_dir.isEmpty())
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("任务配置目录为空");
-        return {};
-    }
-
-    const QString file_name = taskConfigFileName(task_type);
-    if (file_name.isEmpty())
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("未知任务配置类型: %1").arg(task_type);
-        return {};
-    }
-
-    QDir dir(cleaned_dir);
-    if (!dir.exists() && !dir.mkpath(QStringLiteral(".")))
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("创建任务配置目录失败: %1").arg(cleaned_dir);
-        return {};
-    }
-
-    const QString path = dir.filePath(file_name);
-    QFile         file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("写入任务配置失败: %1").arg(file.errorString());
-        return {};
-    }
-
-    YAML::Emitter out;
-    out << variantToYaml(config);
-    if (!out.good())
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("生成任务 YAML 配置失败: %1").arg(QString::fromUtf8(out.GetLastError().c_str()));
-        return {};
-    }
-
-    file.write(out.c_str());
-    file.write("\n");
-    return path;
-}
-
 } // namespace
 
 ModelManager::ModelManager(const int method,
@@ -846,6 +102,8 @@ ModelManager::ModelManager(const int method,
     , database_(database)
     , data_manager_(data_manager)
     , method_(method)
+    , project_dir_(database != nullptr ? cleanPath(QFileInfo(database->path()).absoluteDir().absolutePath()) : QString())
+    , external_task_runner_(std::make_unique<ExternalModelTaskRunner>(this))
 {
     init();
 }
@@ -981,11 +239,12 @@ bool ModelManager::addModel(const QString &name, const QString &framework_name, 
         return false;
     }
 
-    QString       err_msg;
-    int64_t       model_id{-1};
-    const qint64  now  = QDateTime::currentSecsSinceEpoch();
-    const QString uuid = dltool::common::uuid();
-    if (!ensureModelStorage(database_, uuid, &err_msg))
+    QString             err_msg;
+    int64_t             model_id{-1};
+    const qint64        now  = QDateTime::currentSecsSinceEpoch();
+    const QString       uuid = dltool::common::uuid();
+    ModelStorageService storage(project_dir_);
+    if (!storage.ensureModelStorage(uuid, &err_msg))
     {
         spdlog::error("添加模型失败, 创建模型目录失败: {}", err_msg.toUtf8().constData());
         return false;
@@ -996,7 +255,7 @@ bool ModelManager::addModel(const QString &name, const QString &framework_name, 
     if (!ok)
     {
         QString remove_err;
-        removeModelStorage(database_, uuid, &remove_err);
+        storage.removeModelStorage(uuid, &remove_err);
         spdlog::error("添加模型失败, 名称: {}, 框架: {}, 模型架构: {}, 错误: {}", trimmed_name.toUtf8().constData(),
                       trimmed_framework_name.toUtf8().constData(), trimmed_model_architecture.toUtf8().constData(),
                       err_msg.toUtf8().constData());
@@ -1078,7 +337,8 @@ bool ModelManager::deleteModel(const qint64 model_id)
     endRemoveRows();
     model_instances_.erase(instanceKey(uuid));
     config_load_started_.erase(instanceKey(uuid));
-    if (!removeModelStorage(database_, uuid, &err_msg))
+    ModelStorageService storage(project_dir_);
+    if (!storage.removeModelStorage(uuid, &err_msg))
     {
         spdlog::error("删除模型目录失败, uuid: {}, 错误: {}", uuid.toUtf8().constData(), err_msg.toUtf8().constData());
     }
@@ -1100,7 +360,8 @@ bool ModelManager::copyModel(const qint64 model_id)
     const qint64       now         = QDateTime::currentSecsSinceEpoch();
     const QString      copied_name = uniqueCopyName(source.name);
     const QString      new_uuid    = dltool::common::uuid();
-    if (!ensureModelStorage(database_, new_uuid, &err_msg))
+    ModelStorageService storage(project_dir_);
+    if (!storage.ensureModelStorage(new_uuid, &err_msg))
     {
         spdlog::error("复制模型失败, 创建模型目录失败: {}", err_msg.toUtf8().constData());
         return false;
@@ -1112,7 +373,7 @@ bool ModelManager::copyModel(const qint64 model_id)
     if (!ok)
     {
         QString remove_err;
-        removeModelStorage(database_, new_uuid, &remove_err);
+        storage.removeModelStorage(new_uuid, &remove_err);
         spdlog::error("复制模型失败, id: {}, 错误: {}", model_id, err_msg.toUtf8().constData());
         return false;
     }
@@ -1211,22 +472,22 @@ IModel *ModelManager::modelForUuid(const QString &uuid) const
     return model;
 }
 
-int ModelManager::addModelTask(const QString &model_uuid, const QString &model_name, const QString &task_type)
+int ModelManager::addModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type)
 {
     return TaskManager::getInstance()->addModelTask(model_uuid, model_name, task_type);
 }
 
-int ModelManager::startModelTask(const QString &model_uuid, const QString &model_name, const QString &task_type)
+int ModelManager::startModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type)
 {
     return TaskManager::getInstance()->startModelTask(model_uuid, model_name, task_type);
 }
 
-bool ModelManager::stopModelTask(const QString &model_uuid, const QString &task_type)
+bool ModelManager::stopModelTask(const QString &model_uuid, ModelTaskType task_type)
 {
     return TaskManager::getInstance()->stopModelTask(model_uuid, task_type);
 }
 
-bool ModelManager::deleteModelTask(const QString &model_uuid, const QString &task_type)
+bool ModelManager::deleteModelTask(const QString &model_uuid, ModelTaskType task_type)
 {
     return TaskManager::getInstance()->deleteModelTask(model_uuid, task_type);
 }
@@ -1242,9 +503,8 @@ void ModelManager::requestModelTaskConfigLoad(const QString &model_uuid) const
         return;
     config_load_started_.insert(key);
 
-    const LoadedModelTaskConfigs configs = loadModelTaskConfigs(
-        trimmed_uuid, modelTaskConfigPath(database_, trimmed_uuid, ModelTaskConfigFile::Train),
-        modelTaskConfigPath(database_, trimmed_uuid, ModelTaskConfigFile::Test));
+    const ModelTaskConfigService config_service(project_dir_);
+    const dltool::model::LoadedModelTaskConfigs configs = config_service.load(trimmed_uuid);
     const_cast<ModelManager *>(this)->applyLoadedModelTaskConfigs(configs.model_uuid, configs.train_params,
                                                                   configs.test_params,
                                                                   configs.dataset_selections);
@@ -1270,13 +530,7 @@ void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const 
         if (ITestParams *params = model_config->testParams(); params != nullptr)
             params->setValuesMap(test_params);
     }
-    for (const ModelDatasetSplit split : modelDatasetSplits())
-    {
-        const QString split_name = modelDatasetSplitName(split);
-        if (dataset_selections.contains(split_name))
-            applyDatasetSelectionMap(datasetSelectionObject(model, split),
-                                     dataset_selections.value(split_name).toMap());
-    }
+    applyModelDatasetSelections(model, dataset_selections);
 }
 
 bool ModelManager::hasTaskHandler(int task_id) const
@@ -1290,14 +544,14 @@ bool ModelManager::hasTaskHandler(int task_id) const
     return !model_uuid.isEmpty() && modelForUuid(model_uuid) != nullptr;
 }
 
-bool ModelManager::modelTaskSupportsPause(const QString &model_uuid, const QString &task_type) const
+bool ModelManager::modelTaskSupportsPause(const QString &model_uuid, ModelTaskType task_type) const
 {
     IModel *model = modelForUuid(model_uuid);
     if (model == nullptr)
         return true;
 
     const FrameworkDefinition framework = registeredFramework(method_, model->frameworkName());
-    return !frameworkHasScript(framework, task_type.trimmed());
+    return !ModelTaskPreparationService::frameworkHasScript(framework, task_type);
 }
 
 bool ModelManager::startTask(int task_id)
@@ -1313,13 +567,13 @@ bool ModelManager::startTask(int task_id)
 
     const QString model_uuid = task.value(QStringLiteral("model_uuid")).toString().trimmed();
     const QString model_name = task.value(QStringLiteral("model_name")).toString().trimmed();
-    const QString task_type = task.value(QStringLiteral("task_type")).toString().trimmed();
+    const auto task_type = static_cast<ModelTaskType>(task.value(QStringLiteral("task_type"), 0).toInt());
     IModel *model = modelForUuid(model_uuid);
     if (model == nullptr)
         return false;
 
     const FrameworkDefinition framework = registeredFramework(method_, model->frameworkName());
-    if (frameworkHasScript(framework, task_type))
+    if (ModelTaskPreparationService::frameworkHasScript(framework, task_type))
         return startExternalModelTask(model_uuid, model_name, task_type, task_id) >= 0;
 
     return true;
@@ -1331,24 +585,7 @@ bool ModelManager::stopTask(int task_id)
     if (task_manager == nullptr || task_manager->tasks() == nullptr || !hasTaskHandler(task_id))
         return false;
 
-    const auto found = external_processes_.find(task_id);
-    if (found != external_processes_.end() && found->second)
-    {
-        stop_requested_tasks_.insert(task_id);
-        QProcess *process = found->second;
-        if (process->state() != QProcess::NotRunning)
-        {
-            process->terminate();
-            QTimer::singleShot(5000, process,
-                               [process]()
-                               {
-                                   if (process->state() != QProcess::NotRunning)
-                                       process->kill();
-                               });
-        }
-    }
-
-    return true;
+    return external_task_runner_ != nullptr && external_task_runner_->stop(task_id);
 }
 
 bool ModelManager::deleteTask(int task_id)
@@ -1357,10 +594,7 @@ bool ModelManager::deleteTask(int task_id)
     if (task_manager == nullptr || task_manager->tasks() == nullptr || !hasTaskHandler(task_id))
         return false;
 
-    stopTask(task_id);
-    external_processes_.erase(task_id);
-    stop_requested_tasks_.erase(task_id);
-    return true;
+    return external_task_runner_ != nullptr && external_task_runner_->deleteTask(task_id);
 }
 
 bool ModelManager::registerFramework(const int method, const FrameworkDefinition &definition)
@@ -1537,212 +771,36 @@ std::vector<std::unique_ptr<IModel>> ModelManager::registeredModelInstances() co
 }
 
 int ModelManager::startExternalModelTask(const QString &model_uuid, const QString &model_name,
-                                         const QString &task_type, int task_id)
+                                         ModelTaskType task_type, int task_id)
 {
-    auto *task_manager = TaskManager::getInstance();
-    if (task_manager == nullptr || task_manager->tasks() == nullptr)
-        return -1;
-
     IModel *model = modelForUuid(model_uuid);
     if (model == nullptr)
         return -1;
 
-    QString storage_err;
-    if (!ensureModelStorage(database_, model_uuid, &storage_err))
-    {
-        spdlog::error("启动模型任务失败: 创建模型目录失败: {}", storage_err.toUtf8().constData());
-        task_manager->tasks()->failTask(task_id);
-        return task_id;
-    }
-
     const FrameworkDefinition framework = registeredFramework(method_, model->frameworkName());
-    const QString script_path = scriptForTask(framework, task_type);
-    const auto running_process = external_processes_.find(task_id);
-    if (running_process != external_processes_.end() && running_process->second
-        && running_process->second->state() != QProcess::NotRunning)
-    {
-        return task_id;
-    }
-
-    if (script_path.isEmpty())
-    {
-        spdlog::warn("启动模型任务失败: 框架未定义脚本, 框架: {}, 任务: {}",
-                     model->frameworkName().toUtf8().constData(), task_type.toUtf8().constData());
+    if (external_task_runner_ == nullptr)
         return -1;
-    }
-    if (!QFileInfo::exists(script_path))
+
+    ModelTaskPreparationService::Request request;
+    request.task_id    = task_id;
+    request.model_uuid = model_uuid;
+    request.model_name = model_name;
+    request.task_type  = task_type;
+    request.model      = model;
+    request.framework  = framework;
+
+    PreparedExternalModelTask      prepared;
+    QString                        err_msg;
+    const ModelTaskPreparationService preparation(method_, project_dir_, data_manager_);
+    if (!preparation.prepare(request, prepared, &err_msg))
     {
-        spdlog::error("启动模型任务失败: 脚本不存在 {}", script_path.toUtf8().constData());
-        task_manager->tasks()->failTask(task_id);
+        spdlog::error("启动模型任务失败: {}", err_msg.toUtf8().constData());
+        if (auto *task_manager = TaskManager::getInstance(); task_manager != nullptr && task_manager->tasks() != nullptr)
+            task_manager->tasks()->failTask(task_id);
         return task_id;
     }
 
-    QString server_err;
-    if (!task_manager->ensureTaskServer(&server_err))
-    {
-        spdlog::error("启动模型任务失败: 任务通信服务启动失败: {}", server_err.toUtf8().constData());
-        task_manager->tasks()->failTask(task_id);
-        return task_id;
-    }
-
-    namespace generated_field = dltool::settings::generated::field;
-    const QString python_executable = pythonExecutableFromEnvPath(dltool::settings::settingString(
-        dltool::settings::GlobalSettings::getInstance(), generated_field::Software::PythonEnvPath));
-    if (python_executable.isEmpty())
-    {
-        spdlog::error("启动模型任务失败: 未配置 Python 环境目录");
-        task_manager->tasks()->failTask(task_id);
-        return task_id;
-    }
-
-    QString dataset_err;
-    ModelDatasetExportContext dataset_context;
-    dataset_context.method             = method_;
-    dataset_context.framework_name     = model->frameworkName();
-    dataset_context.model_architecture = model->modelArchitecture();
-    dataset_context.model_uuid         = model_uuid;
-    dataset_context.task_type          = task_type;
-    dataset_context.dataset_dir        = modelStoragePath(database_, model_uuid, ModelStoragePath::Datasets);
-    dataset_context.model              = model;
-    dataset_context.data_manager       = data_manager_;
-    const QVariantMap datasets = ModelDatasetOrganizer::organize(dataset_context, &dataset_err);
-    if (datasets.isEmpty() && (isTrainTask(task_type) || isPredictTask(task_type)))
-    {
-        spdlog::error("启动模型任务失败: 数据集组织失败: {}", dataset_err.toUtf8().constData());
-        task_manager->tasks()->failTask(task_id);
-        return task_id;
-    }
-
-    QString config_err;
-    const QString config_path = writeTaskConfigFile(
-        modelStoragePath(database_, model_uuid, ModelStoragePath::Configs), task_type,
-        modelTaskConfig(model, model_name, task_type, database_, datasets), &config_err);
-    if (config_path.isEmpty())
-    {
-        spdlog::error("启动模型任务失败: {}", config_err.toUtf8().constData());
-        task_manager->tasks()->failTask(task_id);
-        return task_id;
-    }
-
-    auto *process = new QProcess(this);
-    const QString log_dir = modelStoragePath(database_, model_uuid, ModelStoragePath::Logs);
-    const QString log_stem = taskLogStem(task_type, task_id);
-    QString       log_err;
-    auto         *process_log = openProcessLogFile(QDir(log_dir).filePath(log_stem + QStringLiteral(".log")),
-                                                   process, &log_err);
-    if (process_log == nullptr)
-    {
-        spdlog::error("启动模型任务失败: {}", log_err.toUtf8().constData());
-        task_manager->tasks()->failTask(task_id);
-        process->deleteLater();
-        return task_id;
-    }
-
-    process->setProgram(python_executable);
-    process->setArguments({
-        script_path,
-        QStringLiteral("--config"),
-        config_path,
-        QStringLiteral("--dltool_task_host"),
-        task_manager->taskServerHost(),
-        QStringLiteral("--dltool_task_port"),
-        QString::number(task_manager->taskServerPort()),
-        QStringLiteral("--dltool_task_id"),
-        QString::number(task_id),
-    });
-    process->setWorkingDirectory(framework.root);
-
-    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    const QString old_python_path = env.value(QStringLiteral("PYTHONPATH"));
-    QStringList python_path_parts = framework.python_paths;
-    if (!old_python_path.isEmpty())
-        python_path_parts.append(old_python_path);
-    if (!python_path_parts.isEmpty())
-        env.insert(QStringLiteral("PYTHONPATH"), python_path_parts.join(QDir::listSeparator()));
-    env.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
-    env.insert(QStringLiteral("PYTHONUNBUFFERED"), QStringLiteral("1"));
-    process->setProcessEnvironment(env);
-    process->setProcessChannelMode(QProcess::SeparateChannels);
-
-    connect(process, &QProcess::readyReadStandardOutput, this,
-            [process, log_file = QPointer<QFile>(process_log)]()
-            {
-                const QByteArray output = process->readAllStandardOutput();
-                if (log_file != nullptr && !output.isEmpty())
-                {
-                    log_file->write(output);
-                    log_file->flush();
-                }
-            });
-    connect(process, &QProcess::readyReadStandardError, this,
-            [process, log_file = QPointer<QFile>(process_log)]()
-            {
-                const QByteArray output = process->readAllStandardError();
-                if (log_file != nullptr && !output.isEmpty())
-                {
-                    log_file->write(output);
-                    log_file->flush();
-                }
-            });
-    connect(process, &QProcess::finished, this,
-            [this, process, task_id, log_file = QPointer<QFile>(process_log)](int exit_code,
-                                                                              QProcess::ExitStatus exit_status)
-            {
-                external_processes_.erase(task_id);
-                const bool stop_requested = stop_requested_tasks_.erase(task_id) > 0;
-                auto *task_manager = TaskManager::getInstance();
-                if (task_manager != nullptr && task_manager->tasks() != nullptr)
-                {
-                    if (stop_requested)
-                        task_manager->tasks()->setTaskStatus(task_id, TaskTableModel::Stopped);
-                    else if (exit_status == QProcess::NormalExit && exit_code == 0)
-                        task_manager->tasks()->setTaskStatus(task_id, TaskTableModel::Finished);
-                    else if (exit_status == QProcess::NormalExit && exit_code == 2)
-                        task_manager->tasks()->setTaskStatus(task_id, TaskTableModel::Stopped);
-                    else
-                        task_manager->tasks()->setTaskStatus(task_id, TaskTableModel::Failed);
-                }
-                if (log_file != nullptr)
-                    log_file->close();
-                process->deleteLater();
-            });
-
-    external_processes_[task_id] = process;
-    task_manager->tasks()->setTaskStatus(task_id, TaskTableModel::Running);
-    process->start();
-    if (!process->waitForStarted(5000))
-    {
-        const QString error = process->errorString();
-        if (process_log != nullptr)
-        {
-            process_log->write(error.toUtf8());
-            process_log->write("\n");
-            process_log->close();
-        }
-        spdlog::error("启动模型任务失败: {}", error.toUtf8().constData());
-        external_processes_.erase(task_id);
-        task_manager->tasks()->setTaskStatus(task_id, TaskTableModel::Failed);
-        process->deleteLater();
-    }
-    return task_id;
-}
-
-bool ModelManager::frameworkHasScript(const FrameworkDefinition &framework, const QString &task_type) const
-{
-    return !scriptForTask(framework, task_type).isEmpty();
-}
-
-QString ModelManager::scriptForTask(const FrameworkDefinition &framework, const QString &task_type) const
-{
-    if (framework.name.isEmpty())
-        return {};
-
-    if (isTrainTask(task_type))
-        return framework.train_script;
-    if (isPredictTask(task_type))
-        return framework.predict_script;
-    const QString key = task_type.trimmed();
-    return framework.scripts.value(key);
+    return external_task_runner_->start(prepared);
 }
 
 int ModelManager::indexOfModel(const int64_t model_id) const

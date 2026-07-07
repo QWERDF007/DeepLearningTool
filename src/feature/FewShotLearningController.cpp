@@ -6,6 +6,7 @@
 #include "feature/FewShotLearningDataProvider.h"
 #include "feature/Utils.h"
 #include "model/ModelManager.h"
+#include "model/ModelTaskTypes.h"
 #include "model/TaskManager.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsKeys.h"
@@ -675,22 +676,22 @@ QString fewShotTaskName(FewShotTaskKind kind)
 }
 
 /**
- * @brief 获取小样本学习任务的类型标识
+ * @brief 获取小样本学习任务的强类型任务类型
  * @param kind 任务类型
- * @return 任务类型字符串
+ * @return 任务类型枚举
  */
-QString fewShotTaskType(FewShotTaskKind kind)
+dltool::model::ModelTaskType fewShotTaskType(FewShotTaskKind kind)
 {
     switch (kind)
     {
     case FewShotTaskKind::Train:
-        return QStringLiteral("few-shot-train");
+        return dltool::model::ModelTaskType::Train;
     case FewShotTaskKind::Predict:
-        return QStringLiteral("few-shot-predict");
+        return dltool::model::ModelTaskType::Test;
     case FewShotTaskKind::BoxToMask:
-        return QStringLiteral("few-shot-box-to-mask");
+        return dltool::model::ModelTaskType::BoxToMask;
     default:
-        return {};
+        return dltool::model::ModelTaskType::Unknown;
     }
 }
 

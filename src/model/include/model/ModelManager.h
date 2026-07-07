@@ -2,10 +2,10 @@
 
 #include "IModel.h"
 #include "dltool/model/Export.h"
+#include "model/ModelTaskTypes.h"
 
 #include <QAbstractListModel>
 #include <QHash>
-#include <QPointer>
 #include <QStringList>
 #include <QVariantMap>
 #include <QtQml>
@@ -16,8 +16,6 @@
 #include <unordered_set>
 #include <vector>
 
-class QProcess;
-
 namespace dltool::database {
 class ProjectDataBase;
 } // namespace dltool::database
@@ -27,6 +25,8 @@ class DataManager;
 } // namespace dltool::data
 
 namespace dltool::model {
+
+class ExternalModelTaskRunner;
 
 class MODEL_API ModelManager : public QAbstractListModel
 {
@@ -88,14 +88,14 @@ public:
     Q_INVOKABLE dltool::model::IModel *modelForUuid(const QString &uuid) const;
 
     Q_INVOKABLE int  addModelTask(const QString &model_uuid, const QString &model_name,
-                                  const QString &task_type = QString());
+                                  ModelTaskTypes::Type task_type);
     Q_INVOKABLE int  startModelTask(const QString &model_uuid, const QString &model_name,
-                                    const QString &task_type = QString());
-    Q_INVOKABLE bool stopModelTask(const QString &model_uuid, const QString &task_type = QString());
-    Q_INVOKABLE bool deleteModelTask(const QString &model_uuid, const QString &task_type = QString());
+                                    ModelTaskTypes::Type task_type);
+    Q_INVOKABLE bool stopModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type);
+    Q_INVOKABLE bool deleteModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type);
 
     bool    hasTaskHandler(int task_id) const;
-    bool    modelTaskSupportsPause(const QString &model_uuid, const QString &task_type) const;
+    bool    modelTaskSupportsPause(const QString &model_uuid, ModelTaskType task_type) const;
     bool    startTask(int task_id);
     bool    stopTask(int task_id);
     bool    deleteTask(int task_id);
@@ -140,10 +140,8 @@ private:
     QString uniqueCopyName(const QString &name) const;
     IModel *cachedModelForRecord(const ModelRecord &record) const;
     void    initializeDatasetViewModels(IModel *model) const;
-    int     startExternalModelTask(const QString &model_uuid, const QString &model_name, const QString &task_type,
+    int     startExternalModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type,
                                    int task_id);
-    bool    frameworkHasScript(const FrameworkDefinition &framework, const QString &task_type) const;
-    QString scriptForTask(const FrameworkDefinition &framework, const QString &task_type) const;
     void    requestModelTaskConfigLoad(const QString &model_uuid) const;
     void    applyLoadedModelTaskConfigs(const QString &model_uuid, const QVariantMap &train_params,
                                         const QVariantMap &test_params, const QVariantMap &dataset_selections);
@@ -162,11 +160,11 @@ private:
     dltool::database::ProjectDataBase                               *database_{nullptr};
     dltool::data::DataManager                                       *data_manager_{nullptr};
     int                                                              method_{-1};
+    QString                                                          project_dir_;
     std::vector<ModelRecord>                                         models_;
+    std::unique_ptr<ExternalModelTaskRunner>                         external_task_runner_;
     mutable std::unordered_map<std::string, std::unique_ptr<IModel>> model_instances_;
     mutable std::unordered_set<std::string>                           config_load_started_;
-    std::unordered_map<int, QPointer<QProcess>>                      external_processes_;
-    std::unordered_set<int>                                          stop_requested_tasks_;
 };
 
 } // namespace dltool::model

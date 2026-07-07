@@ -1,18 +1,18 @@
 #include "model/ModelDatasetOrganizer.h"
 
 #include "common/MaskPolygonUtils.h"
+#include "common/YamlUtils.h"
 #include "data/DataManager.h"
 #include "data/DataSelectionTreeModel.h"
 #include "data/DatasetIO.h"
 #include "model/IModel.h"
+#include "model/ModelTaskTypes.h"
 
 #include <yaml-cpp/yaml.h>
 
 #include <spdlog/spdlog.h>
 
 #include <QDir>
-#include <QFile>
-#include <QFileInfo>
 #include <QImage>
 #include <QPointF>
 #include <QSet>
@@ -288,19 +288,6 @@ QString labelGroupName(LabelGroupName group)
     return found != names.end() ? found->second : QString();
 }
 
-bool isTrainTask(const QString &task_type)
-{
-    const QString value = task_type.trimmed().toLower();
-    return value.contains(QStringLiteral("train")) || value.contains(QStringLiteral("训练"));
-}
-
-bool isPredictTask(const QString &task_type)
-{
-    const QString value = task_type.trimmed().toLower();
-    return value.contains(QStringLiteral("test")) || value.contains(QStringLiteral("predict"))
-        || value.contains(QStringLiteral("测试")) || value.contains(QStringLiteral("推理"));
-}
-
 FrameworkDatasetLayout datasetLayout(const QString &framework_name)
 {
     const QString key = framework_name.trimmed().toLower();
@@ -345,65 +332,6 @@ bool ensureDirectory(const QString &path, QString *err_msg)
     return true;
 }
 
-YAML::Node variantToYaml(const QVariant &value)
-{
-    if (!value.isValid() || value.isNull())
-        return {};
-
-    const int type_id = value.typeId();
-    if (type_id == QMetaType::QVariantMap)
-    {
-        YAML::Node node(YAML::NodeType::Map);
-        const QVariantMap map = value.toMap();
-        for (auto it = map.constBegin(); it != map.constEnd(); ++it)
-            node[it.key().toStdString()] = variantToYaml(it.value());
-        return node;
-    }
-
-    if (type_id == QMetaType::QVariantHash)
-    {
-        YAML::Node node(YAML::NodeType::Map);
-        const QVariantHash hash = value.toHash();
-        for (auto it = hash.constBegin(); it != hash.constEnd(); ++it)
-            node[it.key().toStdString()] = variantToYaml(it.value());
-        return node;
-    }
-
-    if (type_id == QMetaType::QVariantList)
-    {
-        YAML::Node node(YAML::NodeType::Sequence);
-        const QVariantList list = value.toList();
-        for (const QVariant &entry : list)
-            node.push_back(variantToYaml(entry));
-        return node;
-    }
-
-    if (type_id == QMetaType::QStringList)
-    {
-        YAML::Node node(YAML::NodeType::Sequence);
-        const QStringList list = value.toStringList();
-        for (const QString &entry : list)
-            node.push_back(entry.toStdString());
-        return node;
-    }
-
-    switch (type_id)
-    {
-    case QMetaType::Bool:
-        return YAML::Node(value.toBool());
-    case QMetaType::Int:
-    case QMetaType::UInt:
-    case QMetaType::LongLong:
-    case QMetaType::ULongLong:
-        return YAML::Node(value.toLongLong());
-    case QMetaType::Double:
-    case QMetaType::Float:
-        return YAML::Node(value.toDouble());
-    default:
-        return YAML::Node(value.toString().toStdString());
-    }
-}
-
 void setString(YAML::Node &node, ManifestField field, const QString &value)
 {
     node[manifestKey(field)] = value.toStdString();
@@ -417,30 +345,6 @@ void setInteger(YAML::Node &node, ManifestField field, qint64 value)
 void setBool(YAML::Node &node, ManifestField field, bool value)
 {
     node[manifestKey(field)] = value;
-}
-
-bool writeYamlFile(const QString &path, const YAML::Node &node, QString *err_msg)
-{
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("写入数据集清单失败: %1, %2").arg(path, file.errorString());
-        return false;
-    }
-
-    YAML::Emitter out;
-    out << node;
-    if (!out.good())
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("生成数据集清单 YAML 失败: %1").arg(QString::fromUtf8(out.GetLastError().c_str()));
-        return false;
-    }
-
-    file.write(out.c_str());
-    file.write("\n");
-    return true;
 }
 
 QString labelClassGroup(dltool::data::DataManager *data_manager, qint64 label_class_id)
@@ -603,13 +507,13 @@ YAML::Node labelNode(dltool::data::DataManager *data_manager, FrameworkDatasetLa
     setString(node, ManifestField::LabelClassName, class_name);
     setString(node, ManifestField::LabelClassGroup, class_group);
     setInteger(node, ManifestField::ClassIndex, classIndex(label_class_id, class_indices));
-    node[manifestKey(ManifestField::Data)] = variantToYaml(data);
+    node[manifestKey(ManifestField::Data)] = dltool::common::yaml::variantToYaml(data);
 
     if (layout == FrameworkDatasetLayout::Ultralytics)
     {
         const QVariantMap yolo = labelYoloData(data, image_width, image_height);
         if (!yolo.isEmpty())
-            node[manifestKey(ManifestField::Yolo)] = variantToYaml(yolo);
+            node[manifestKey(ManifestField::Yolo)] = dltool::common::yaml::variantToYaml(yolo);
     }
     return node;
 }
@@ -826,7 +730,9 @@ QVariantMap exportSplit(const ModelDatasetExportContext &context, DatasetSplit s
         file_list[manifestKey(ManifestField::Samples)] = samples;
 
         const QString file_list_path = anomalibFileListPath(context.dataset_dir, split_name);
-        if (!writeYamlFile(file_list_path, file_list, err_msg))
+        if (!dltool::common::yaml::writeFile(file_list_path, file_list, err_msg,
+                                             QStringLiteral("写入数据集清单失败"),
+                                             QStringLiteral("生成数据集清单 YAML 失败")))
             return {};
 
         return {
@@ -839,7 +745,9 @@ QVariantMap exportSplit(const ModelDatasetExportContext &context, DatasetSplit s
 
     manifest[manifestKey(ManifestField::Images)] = images;
     const QString manifest_path = QDir(split_dir).filePath(datasetFileName(DatasetFileName::Manifest));
-    if (!writeYamlFile(manifest_path, manifest, err_msg))
+    if (!dltool::common::yaml::writeFile(manifest_path, manifest, err_msg,
+                                         QStringLiteral("写入数据集清单失败"),
+                                         QStringLiteral("生成数据集清单 YAML 失败")))
         return {};
 
     return {
@@ -863,7 +771,7 @@ QVariantMap ModelDatasetOrganizer::organize(const ModelDatasetExportContext &con
     if (!ensureDirectory(context.dataset_dir, err_msg))
         return {};
 
-    if (isTrainTask(context.task_type))
+    if (isTrainModelTask(context.task_type))
     {
         const QVariantMap train = exportSplit(context, DatasetSplit::Train, true, err_msg);
         if (train.isEmpty())
@@ -877,7 +785,7 @@ QVariantMap ModelDatasetOrganizer::organize(const ModelDatasetExportContext &con
         else if (!validation_err.isEmpty())
             spdlog::debug("跳过验证数据集导出: {}", validation_err.toUtf8().constData());
     }
-    else if (isPredictTask(context.task_type))
+    else if (isTestModelTask(context.task_type))
     {
         const QVariantMap test = exportSplit(context, DatasetSplit::Test, true, err_msg);
         if (test.isEmpty())

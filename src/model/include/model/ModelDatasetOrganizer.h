@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dltool/model/Export.h"
+#include "model/ModelTaskTypes.h"
 
 #include <QString>
 #include <QVariantMap>
@@ -19,7 +20,7 @@ struct ModelDatasetExportContext
     QString                   framework_name;
     QString                   model_architecture;
     QString                   model_uuid;
-    QString                   task_type;
+    ModelTaskType             task_type{ModelTaskType::Unknown};
     QString                   dataset_dir;
     IModel                   *model{nullptr};
     dltool::data::DataManager *data_manager{nullptr};

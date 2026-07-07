@@ -84,7 +84,9 @@ QVariant TaskTableModel::data(const QModelIndex &index, int role) const
     case ModelNameRole:
         return task.model_name;
     case TaskTypeRole:
-        return task.task_type;
+        return static_cast<int>(task.task_type);
+    case TaskTypeTextRole:
+        return modelTaskDisplayName(task.task_type);
     case StatusRole:
         return statusText(task);
     case StatusValueRole:
@@ -148,6 +150,7 @@ QHash<int, QByteArray> TaskTableModel::roleNames() const
         {  ModelUuidRole,   "model_uuid"},
         {  ModelNameRole,   "model_name"},
         {   TaskTypeRole,    "task_type"},
+        {TaskTypeTextRole, "task_type_text"},
         {     StatusRole,       "status"},
         {StatusValueRole, "status_value"},
         {  CreatedAtRole,   "created_at"},
@@ -161,12 +164,12 @@ QHash<int, QByteArray> TaskTableModel::roleNames() const
     };
 }
 
-int TaskTableModel::addTask(const QString &model_uuid, const QString &model_name, const QString &task_type,
+int TaskTableModel::addTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type,
                             bool supports_pause)
 {
     const QString trimmed_model_uuid = model_uuid.trimmed();
     const QString trimmed_model_name = model_name.trimmed();
-    if (trimmed_model_uuid.isEmpty() || trimmed_model_name.isEmpty())
+    if (trimmed_model_uuid.isEmpty() || trimmed_model_name.isEmpty() || !isKnownModelTask(task_type))
         return -1;
 
     const int row = rowCount();
@@ -176,7 +179,7 @@ int TaskTableModel::addTask(const QString &model_uuid, const QString &model_name
         task_id,
         trimmed_model_uuid,
         trimmed_model_name,
-        task_type.trimmed(),
+        task_type,
         Pending,
         QDateTime::currentSecsSinceEpoch(),
         0,
@@ -371,13 +374,13 @@ void TaskTableModel::clearTasks()
     bumpRevision();
 }
 
-int TaskTableModel::startModelTask(const QString &model_uuid, const QString &model_name, const QString &task_type)
+int TaskTableModel::startModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type)
 {
     const QString trimmed_model_uuid = model_uuid.trimmed();
-    if (trimmed_model_uuid.isEmpty())
+    if (trimmed_model_uuid.isEmpty() || !isKnownModelTask(task_type))
         return -1;
 
-    int row = indexOfModelTask(trimmed_model_uuid, task_type.trimmed(), false);
+    int row = indexOfModelTask(trimmed_model_uuid, task_type, false);
     int task_id{-1};
     if (row < 0)
     {
@@ -400,18 +403,18 @@ int TaskTableModel::startModelTask(const QString &model_uuid, const QString &mod
     return task.task_id;
 }
 
-bool TaskTableModel::stopModelTask(const QString &model_uuid, const QString &task_type)
+bool TaskTableModel::stopModelTask(const QString &model_uuid, ModelTaskType task_type)
 {
-    const int row = indexOfModelTask(model_uuid.trimmed(), task_type.trimmed(), false);
+    const int row = indexOfModelTask(model_uuid.trimmed(), task_type, false);
     if (row < 0)
         return false;
 
     return stopTask(tasks_.at(static_cast<size_t>(row)).task_id);
 }
 
-int TaskTableModel::findModelTask(const QString &model_uuid, const QString &task_type, bool include_finished) const
+int TaskTableModel::findModelTask(const QString &model_uuid, ModelTaskType task_type, bool include_finished) const
 {
-    const int row = indexOfModelTask(model_uuid.trimmed(), task_type.trimmed(), include_finished);
+    const int row = indexOfModelTask(model_uuid.trimmed(), task_type, include_finished);
     if (row < 0)
         return -1;
     return tasks_.at(static_cast<size_t>(row)).task_id;
@@ -425,10 +428,10 @@ QVariantMap TaskTableModel::taskForId(int task_id) const
     return taskAt(row);
 }
 
-QVariantMap TaskTableModel::taskForModel(const QString &model_uuid, const QString &task_type,
+QVariantMap TaskTableModel::taskForModel(const QString &model_uuid, ModelTaskType task_type,
                                          bool include_finished) const
 {
-    const int row = indexOfModelTask(model_uuid.trimmed(), task_type.trimmed(), include_finished);
+    const int row = indexOfModelTask(model_uuid.trimmed(), task_type, include_finished);
     if (row < 0)
         return {};
     return taskAt(row);
@@ -444,7 +447,8 @@ QVariantMap TaskTableModel::taskAt(int row) const
         {     QStringLiteral("task_id"),          task.task_id},
         {  QStringLiteral("model_uuid"),       task.model_uuid},
         {  QStringLiteral("model_name"),       task.model_name},
-        {   QStringLiteral("task_type"),        task.task_type},
+        {   QStringLiteral("task_type"), static_cast<int>(task.task_type)},
+        {QStringLiteral("task_type_text"), modelTaskDisplayName(task.task_type)},
         {      QStringLiteral("status"),      statusText(task)},
         {QStringLiteral("status_value"),           task.status},
         {  QStringLiteral("created_at"),   createdAtText(task)},
@@ -468,9 +472,9 @@ int TaskTableModel::indexOfTask(int task_id) const
     return -1;
 }
 
-int TaskTableModel::indexOfModelTask(const QString &model_uuid, const QString &task_type, bool include_finished) const
+int TaskTableModel::indexOfModelTask(const QString &model_uuid, ModelTaskType task_type, bool include_finished) const
 {
-    if (model_uuid.isEmpty())
+    if (model_uuid.isEmpty() || !isKnownModelTask(task_type))
         return -1;
 
     for (int row = static_cast<int>(tasks_.size()) - 1; row >= 0; --row)
@@ -478,7 +482,7 @@ int TaskTableModel::indexOfModelTask(const QString &model_uuid, const QString &t
         const TaskRecord &task = tasks_.at(static_cast<size_t>(row));
         if (task.model_uuid != model_uuid)
             continue;
-        if (!task_type.isEmpty() && task.task_type != task_type)
+        if (task.task_type != task_type)
             continue;
         if (!include_finished && task.status == Finished)
             continue;
@@ -522,7 +526,7 @@ QVariant TaskTableModel::dataForColumn(const TaskRecord &task, int column) const
     case ModelNameColumn:
         return task.model_name;
     case TaskTypeColumn:
-        return task.task_type;
+        return modelTaskDisplayName(task.task_type);
     case StatusColumn:
         return statusText(task);
     case CreatedAtColumn:
@@ -636,31 +640,30 @@ void TaskManager::setModelManager(ModelManager *model_manager)
     tasks_->clearTasks();
 }
 
-int TaskManager::addTask(const QString &model_uuid, const QString &model_name, const QString &task_type)
+int TaskManager::addTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type)
 {
     return tasks_->addTask(model_uuid, model_name, task_type);
 }
 
-int TaskManager::addTask(const QString &model_uuid, const QString &model_name, const QString &task_type,
+int TaskManager::addTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type,
                          bool supports_pause)
 {
     return tasks_->addTask(model_uuid, model_name, task_type, supports_pause);
 }
 
-int TaskManager::addModelTask(const QString &model_uuid, const QString &model_name, const QString &task_type)
+int TaskManager::addModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type)
 {
     const QString trimmed_model_uuid = model_uuid.trimmed();
-    const QString trimmed_task_type  = task_type.trimmed();
-    if (trimmed_model_uuid.isEmpty())
+    if (trimmed_model_uuid.isEmpty() || !isKnownModelTask(task_type))
         return -1;
 
-    const int existing_task_id = tasks_->findModelTask(trimmed_model_uuid, trimmed_task_type, false);
+    const int existing_task_id = tasks_->findModelTask(trimmed_model_uuid, task_type, false);
     if (existing_task_id >= 0)
         return existing_task_id;
 
     const bool supports_pause
-        = model_manager_ != nullptr ? model_manager_->modelTaskSupportsPause(trimmed_model_uuid, trimmed_task_type) : true;
-    return tasks_->addTask(trimmed_model_uuid, model_name, trimmed_task_type, supports_pause);
+        = model_manager_ != nullptr ? model_manager_->modelTaskSupportsPause(trimmed_model_uuid, task_type) : true;
+    return tasks_->addTask(trimmed_model_uuid, model_name, task_type, supports_pause);
 }
 
 bool TaskManager::startTask(int task_id)
@@ -730,7 +733,7 @@ bool TaskManager::updateTaskEta(int task_id, qint64 eta_seconds)
     return tasks_->updateTaskEta(task_id, eta_seconds);
 }
 
-int TaskManager::startModelTask(const QString &model_uuid, const QString &model_name, const QString &task_type)
+int TaskManager::startModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type)
 {
     const int task_id = addModelTask(model_uuid, model_name, task_type);
     if (task_id < 0)
@@ -739,17 +742,17 @@ int TaskManager::startModelTask(const QString &model_uuid, const QString &model_
     return task_id;
 }
 
-bool TaskManager::stopModelTask(const QString &model_uuid, const QString &task_type)
+bool TaskManager::stopModelTask(const QString &model_uuid, ModelTaskType task_type)
 {
-    const int task_id = tasks_->findModelTask(model_uuid.trimmed(), task_type.trimmed(), false);
+    const int task_id = tasks_->findModelTask(model_uuid.trimmed(), task_type, false);
     if (task_id < 0)
         return false;
     return stopTask(task_id);
 }
 
-bool TaskManager::deleteModelTask(const QString &model_uuid, const QString &task_type)
+bool TaskManager::deleteModelTask(const QString &model_uuid, ModelTaskType task_type)
 {
-    const int task_id = tasks_->findModelTask(model_uuid.trimmed(), task_type.trimmed(), false);
+    const int task_id = tasks_->findModelTask(model_uuid.trimmed(), task_type, false);
     if (task_id < 0)
         return false;
     return deleteTask(task_id);

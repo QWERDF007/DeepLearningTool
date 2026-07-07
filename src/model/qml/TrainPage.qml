@@ -32,7 +32,7 @@ Rectangle {
             addEnable: true
             modelManager: labelPage.modelManager
             taskManager: TaskManager
-            taskType: qsTr("训练")
+            taskType: ModelTaskTypes.Train
             taskActionsEnabled: true
         }
 

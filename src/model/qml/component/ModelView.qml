@@ -21,7 +21,7 @@ Rectangle {
     property string currentModelArchitecture: ""
     property bool componentCompleted: false
     property var taskManager: null
-    property string taskType: ""
+    property int taskType: ModelTaskTypes.Unknown
     property bool taskActionsEnabled: false
     property int taskRevision: taskManager && taskManager.tasks ? taskManager.tasks.revision : 0
 

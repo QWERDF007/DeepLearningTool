@@ -31,7 +31,7 @@ Rectangle {
             addEnable: false
             modelManager: labelPage.modelManager
             taskManager: TaskManager
-            taskType: qsTr("测试")
+            taskType: ModelTaskTypes.Test
             taskActionsEnabled: true
         }
 
