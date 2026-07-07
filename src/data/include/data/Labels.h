@@ -191,6 +191,7 @@ public:
 private:
     void init(bool load_from_database);
     void loadLabelsFromDatabase();
+    void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
 
     int      getLabelId(const QModelIndex &index) const;
     int      getImageId(const QModelIndex &index) const;
@@ -198,6 +199,7 @@ private:
     QString  getLabelClassName(const QModelIndex &index) const;
     QString  getLabelClassColor(const QModelIndex &index) const;
     QVariant getData(const QModelIndex &index) const;
+    QVariant getSelected(const QModelIndex &index) const;
 
     /**
      * @brief NEW: Helper to rebuild filtered_label_ids_ based on image filter function

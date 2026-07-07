@@ -151,25 +151,7 @@ Rectangle {
             
             // 边框：选中时高亮
             border.width: 2
-            border.color: {
-                if (!dataManager || !dataManager.labelInstances) {
-                    return QuiColor.Transparent
-                }
-                if (!selection || !selection.hasSelection) {
-                    return QuiColor.Transparent
-                }
-                let currentIndex = selection.currentIndex.row
-                if (currentIndex < 0) {
-                    return QuiColor.Transparent
-                }
-                // 检查当前 delegate 的索引是否被选中
-                let myIndex = model.index
-                let myModelIndex = dataManager.labelInstances.index(myIndex, 0)
-                if (selection.isSelected(myModelIndex)) {
-                    return QuiColor.Highlight
-                }
-                return QuiColor.Transparent
-            }
+            border.color: model.selected ? QuiColor.Highlight : QuiColor.Transparent
             
                 
             // 缩略图
