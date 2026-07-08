@@ -1,5 +1,7 @@
 #include "data/DatasetIO.h"
 
+#include "common/Utils.h"
+
 #include <spdlog/spdlog.h>
 
 #include <QColor>
@@ -222,22 +224,6 @@ QString DatasetIO::uniqueFileName(const QString &source_path, int64_t stable_id,
     return candidate;
 }
 
-bool DatasetIO::ensureDirectory(const QString &path, QString &err_msg)
-{
-    QDir dir(path);
-    if (dir.exists())
-    {
-        return true;
-    }
-
-    if (!dir.mkpath(QStringLiteral(".")))
-    {
-        err_msg = QString("无法创建目录: %1").arg(path);
-        return false;
-    }
-    return true;
-}
-
 bool DatasetIO::copyFile(const QString &source_path, const QString &target_path, QString &err_msg)
 {
     if (!QFile::exists(source_path))
@@ -247,7 +233,7 @@ bool DatasetIO::copyFile(const QString &source_path, const QString &target_path,
     }
 
     QFileInfo target_info(target_path);
-    if (!ensureDirectory(target_info.dir().path(), err_msg))
+    if (!common::ensureDirectory(target_info.dir().path(), err_msg))
     {
         return false;
     }

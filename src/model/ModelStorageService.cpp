@@ -91,12 +91,14 @@ QString ModelStorageService::path(const QString &uuid, ModelStorageLocation loca
 bool ModelStorageService::ensureModelStorage(const QString &uuid, QString *err_msg) const
 {
     const QString model_dir = path(uuid, ModelStorageLocation::ModelRoot);
-    if (!ensureDirectory(model_dir, err_msg))
+    if (!dltool::common::ensureDirectory(model_dir, err_msg, QStringLiteral("目录路径为空"),
+                                         QStringLiteral("创建目录失败: %1")))
         return false;
 
     for (const ModelStorageLocation child_location : modelChildLocations())
     {
-        if (!ensureDirectory(path(uuid, child_location), err_msg))
+        if (!dltool::common::ensureDirectory(path(uuid, child_location), err_msg, QStringLiteral("目录路径为空"),
+                                             QStringLiteral("创建目录失败: %1")))
             return false;
     }
     return true;
@@ -121,28 +123,6 @@ bool ModelStorageService::removeModelStorage(const QString &uuid, QString *err_m
     {
         if (err_msg != nullptr)
             *err_msg = QStringLiteral("删除模型目录失败: %1").arg(target);
-        return false;
-    }
-    return true;
-}
-
-bool ModelStorageService::ensureDirectory(const QString &path, QString *err_msg) const
-{
-    const QString cleaned = cleanModelPath(path);
-    if (cleaned.isEmpty())
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("目录路径为空");
-        return false;
-    }
-
-    QDir dir(cleaned);
-    if (dir.exists())
-        return true;
-    if (!dir.mkpath(QStringLiteral(".")))
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("创建目录失败: %1").arg(cleaned);
         return false;
     }
     return true;

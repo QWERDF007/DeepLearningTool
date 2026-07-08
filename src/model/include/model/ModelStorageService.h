@@ -34,8 +34,6 @@ public:
     bool removeModelStorage(const QString &uuid, QString *err_msg = nullptr) const;
 
 private:
-    bool ensureDirectory(const QString &path, QString *err_msg) const;
-
     QString project_dir_;
 };
 

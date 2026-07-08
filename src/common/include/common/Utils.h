@@ -22,6 +22,12 @@ COMMON_API QString runtimePath(const QString &path);
 COMMON_API QString resolvePath(const QString &base_dir, const QString &path);
 COMMON_API QString pythonExecutableFromEnvPath(const QString &env_path);
 
+COMMON_API bool ensureDirectory(const QString &path, QString *err_msg = nullptr, const QString &empty_message = {},
+                                const QString &create_failed_message = {});
+
+COMMON_API bool ensureDirectory(const QString &path, QString &err_msg, const QString &empty_message = {},
+                                const QString &create_failed_message = {});
+
 #ifdef _WIN32
 COMMON_API std::string wcharToString(const wchar_t *wstr);
 COMMON_API std::wstring stringToWchar(const std::string &str);

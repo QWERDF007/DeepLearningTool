@@ -96,28 +96,10 @@ QString sanitizeFileName(QString value, const QString &fallback)
     return value.isEmpty() ? fallback : value;
 }
 
+using dltool::common::ensureDirectory;
 using dltool::settings::settingDouble;
 using dltool::settings::settingInt;
 using dltool::settings::settingString;
-
-/**
- * @brief 确保目录存在，不存在则创建
- * @param path 目录路径
- * @param err_msg 错误信息（输出）
- * @return 成功返回 true
- */
-bool ensureDir(const QString &path, QString &err_msg)
-{
-    QDir dir(path);
-    if (dir.exists())
-        return true;
-    if (!dir.mkpath(QStringLiteral(".")))
-    {
-        err_msg = QString("无法创建目录: %1").arg(path);
-        return false;
-    }
-    return true;
-}
 
 /**
  * @brief 写入文本文件
@@ -129,7 +111,7 @@ bool ensureDir(const QString &path, QString &err_msg)
 bool writeTextFile(const QString &path, const QStringList &lines, QString &err_msg)
 {
     QFileInfo info(path);
-    if (!ensureDir(info.dir().absolutePath(), err_msg))
+    if (!ensureDirectory(info.dir().absolutePath(), err_msg))
         return false;
 
     QFile file(path);
@@ -451,7 +433,7 @@ bool writeCustomManifest(const QString &dataset_dir, const QString &split_name, 
                          const std::map<int64_t, QString> &source_images, bool is_detection,
                          FewShotLearningDataProvider *data_provider, QString &err_msg)
 {
-    if (!ensureDir(dataset_dir, err_msg))
+    if (!ensureDirectory(dataset_dir, err_msg))
         return false;
 
     std::map<int64_t, YAML::Node> images_by_id;
@@ -499,7 +481,7 @@ bool writeCustomManifest(const QString &dataset_dir, const QString &split_name, 
 
             ++label_index;
             const QString saved_mask_path = maskPath(dataset_dir, image_id, label_index);
-            if (!ensureDir(QFileInfo(saved_mask_path).dir().absolutePath(), err_msg) || !mask.save(saved_mask_path))
+            if (!ensureDirectory(QFileInfo(saved_mask_path).dir().absolutePath(), err_msg) || !mask.save(saved_mask_path))
             {
                 err_msg = QString("写入训练 Mask 失败: %1").arg(saved_mask_path);
                 return false;
@@ -1163,8 +1145,8 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         return false;
     }
 
-    if (!ensureDir(context.train_dataset_dir, err_msg) || !ensureDir(context.test_dataset_dir, err_msg)
-        || !ensureDir(context.output_dir, err_msg))
+    if (!ensureDirectory(context.train_dataset_dir, err_msg) || !ensureDirectory(context.test_dataset_dir, err_msg)
+        || !ensureDirectory(context.output_dir, err_msg))
     {
         return false;
     }
@@ -1271,7 +1253,7 @@ bool FewShotLearningController::startTraining(const RunContext &context, QString
  */
 bool FewShotLearningController::startPrediction(const RunContext &context, QString &err_msg)
 {
-    if (!ensureDir(context.output_dir, err_msg))
+    if (!ensureDirectory(context.output_dir, err_msg))
         return false;
 
     QStringList arguments = {

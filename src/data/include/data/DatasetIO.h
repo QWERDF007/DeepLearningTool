@@ -67,7 +67,6 @@ public:
     static QString     generateDefaultColor(int index);
     static QString     uniqueFileName(const QString &source_path, int64_t stable_id,
                                       const std::map<QString, int> &used_names);
-    static bool        ensureDirectory(const QString &path, QString &err_msg);
     static bool        copyFile(const QString &source_path, const QString &target_path, QString &err_msg);
 };
 

@@ -31,6 +31,8 @@
 #include <set>
 #include <utility>
 
+using dltool::common::ensureDirectory;
+
 namespace dltool::data {
 
 namespace {
@@ -769,7 +771,7 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
     }
 
     QString err_msg;
-    if (!DatasetIO::ensureDirectory(output_dir, err_msg))
+    if (!ensureDirectory(output_dir, err_msg))
     {
         spdlog::error("导出数据失败, {}", err_msg.toUtf8().constData());
         return;
@@ -809,7 +811,7 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
         }
 
         const QString dataset_output_dir = QDir(output_dir).filePath(dataset.dataset_name);
-        if (!DatasetIO::ensureDirectory(dataset_output_dir, err_msg))
+        if (!ensureDirectory(dataset_output_dir, err_msg))
         {
             spdlog::error("创建数据集导出目录失败: {}", err_msg.toUtf8().constData());
             addProgressMessage(spdlog::level::err, err_msg);

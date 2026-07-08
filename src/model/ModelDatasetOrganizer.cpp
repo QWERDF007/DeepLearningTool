@@ -18,6 +18,7 @@
 #include <vector>
 
 using dltool::common::cleanPath;
+using dltool::common::ensureDirectory;
 using dltool::common::yaml::setMapValue;
 using dltool::common::yaml::variantToYaml;
 
@@ -345,28 +346,6 @@ FrameworkDatasetLayout datasetLayout(const QString &framework_name)
     return mappedValue(frameworkDatasetLayouts(), key, FrameworkDatasetLayout::Generic);
 }
 
-bool ensureDirectory(const QString &path, QString *err_msg)
-{
-    const QString cleaned = cleanPath(path);
-    if (cleaned.isEmpty())
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("数据集目录为空");
-        return false;
-    }
-
-    QDir dir(cleaned);
-    if (dir.exists())
-        return true;
-    if (!dir.mkpath(QStringLiteral(".")))
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("创建数据集目录失败: %1").arg(cleaned);
-        return false;
-    }
-    return true;
-}
-
 bool isAnomalyGroup(const QString &group)
 {
     return group.compare(mappedValue(labelGroupNames(), LabelGroupName::Anomaly), Qt::CaseInsensitive) == 0;
@@ -621,7 +600,7 @@ protected:
 
     virtual bool prepareSplit(SplitExportContext &ctx, QString *err_msg) const
     {
-        return ensureDirectory(ctx.split_dir, err_msg);
+        return ensureDirectory(ctx.split_dir, err_msg, QString("数据集目录为空"), QString("创建数据集目录失败: %1"));
     }
 
     virtual LabelExportDecision augmentLabel(SplitExportContext &ctx, ImageExportContext &image, qint64 label_id,
@@ -810,7 +789,7 @@ protected:
         if (!GenericDatasetOrganizer::prepareSplit(ctx, err_msg))
             return false;
         ctx.masks_dir = QDir(ctx.split_dir).filePath(mappedValue(datasetSubdirNames(), DatasetSubdir::Masks));
-        return ensureDirectory(ctx.masks_dir, err_msg);
+        return ensureDirectory(ctx.masks_dir, err_msg, QString("数据集目录为空"), QString("创建数据集目录失败: %1"));
     }
 
     LabelExportDecision augmentLabel(SplitExportContext &ctx, ImageExportContext &image, qint64 label_id,
@@ -852,7 +831,8 @@ protected:
             return false;
         ctx.masks_dir
             = QDir(ctx.request->dataset_dir).filePath(mappedValue(datasetSubdirNames(), DatasetSubdir::Masks));
-        return ensureDirectory(ctx.masks_dir, err_msg);
+        return ensureDirectory(ctx.masks_dir, err_msg, QStringLiteral("数据集目录为空"),
+                               QStringLiteral("创建数据集目录失败: %1"));
     }
 
     LabelExportDecision augmentLabel(SplitExportContext &ctx, ImageExportContext &image, qint64 label_id,
@@ -954,7 +934,8 @@ QVariantMap ModelDatasetOrganizer::organize(const ModelDatasetExportRequest &req
             *err_msg = QStringLiteral("模型数据集目录为空");
         return {};
     }
-    if (!ensureDirectory(request.dataset_dir, err_msg))
+    if (!ensureDirectory(request.dataset_dir, err_msg, QStringLiteral("数据集目录为空"),
+                         QStringLiteral("创建数据集目录失败: %1")))
         return {};
 
     const std::unique_ptr<DatasetOrganizerBase> organizer = createDatasetOrganizer(request.framework_name);

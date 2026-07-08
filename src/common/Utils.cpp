@@ -77,6 +77,41 @@ QString pythonExecutableFromEnvPath(const QString &env_path)
     return {};
 }
 
+bool ensureDirectory(const QString &path, QString *err_msg, const QString &empty_message,
+                     const QString &create_failed_message)
+{
+    const QString cleaned = cleanPath(path);
+    if (cleaned.isEmpty())
+    {
+        if (err_msg != nullptr)
+            *err_msg = empty_message.isEmpty() ? QStringLiteral("目录路径为空") : empty_message;
+        return false;
+    }
+
+    QDir dir(cleaned);
+    if (dir.exists())
+        return true;
+
+    if (!dir.mkpath(QStringLiteral(".")))
+    {
+        if (err_msg != nullptr)
+        {
+            const QString message = create_failed_message.isEmpty()
+                                      ? QStringLiteral("无法创建目录: %1")
+                                      : create_failed_message;
+            *err_msg = message.arg(cleaned);
+        }
+        return false;
+    }
+    return true;
+}
+
+bool ensureDirectory(const QString &path, QString &err_msg, const QString &empty_message,
+                     const QString &create_failed_message)
+{
+    return ensureDirectory(path, &err_msg, empty_message, create_failed_message);
+}
+
 #ifdef _WIN32
 
 std::string wcharToString(const wchar_t *wstr)

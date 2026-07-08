@@ -35,6 +35,7 @@
 #include <unordered_map>
 #include <utility>
 
+using dltool::common::ensureDirectory;
 using dltool::core::DeepLearningMethod;
 
 namespace dltool::data {
@@ -1291,7 +1292,7 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir)
         QString       err_msg;
         const QString images_dir      = QDir(output_dir).filePath(QStringLiteral("images"));
         const QString annotations_dir = QDir(output_dir).filePath(QStringLiteral("annotations"));
-        if (!DatasetIO::ensureDirectory(images_dir, err_msg) || !DatasetIO::ensureDirectory(annotations_dir, err_msg))
+        if (!ensureDirectory(images_dir, err_msg) || !ensureDirectory(annotations_dir, err_msg))
         {
             emit exportFinished(false, err_msg);
             return;
@@ -1806,7 +1807,7 @@ void LabelMeIO::doExport(ExportDataset dataset, QString output_dir)
         QString       err_msg;
         const QString images_dir      = QDir(output_dir).filePath(QStringLiteral("images"));
         const QString annotations_dir = QDir(output_dir).filePath(QStringLiteral("annotations"));
-        if (!DatasetIO::ensureDirectory(images_dir, err_msg) || !DatasetIO::ensureDirectory(annotations_dir, err_msg))
+        if (!ensureDirectory(images_dir, err_msg) || !ensureDirectory(annotations_dir, err_msg))
         {
             emit exportFinished(false, err_msg);
             return;
@@ -2265,7 +2266,7 @@ void MaskIO::doExport(ExportDataset dataset, QString output_dir, QVariantMap opt
         QString       err_msg;
         const QString images_dir = QDir(output_dir).filePath(QStringLiteral("images"));
         const QString masks_dir  = QDir(output_dir).filePath(QStringLiteral("masks"));
-        if (!DatasetIO::ensureDirectory(images_dir, err_msg) || !DatasetIO::ensureDirectory(masks_dir, err_msg))
+        if (!ensureDirectory(images_dir, err_msg) || !ensureDirectory(masks_dir, err_msg))
         {
             emit exportFinished(false, err_msg);
             return;
@@ -2607,7 +2608,7 @@ void FolderIO::doExport(ExportDataset dataset, QString output_dir)
     try
     {
         QString err_msg;
-        if (!DatasetIO::ensureDirectory(output_dir, err_msg))
+        if (!ensureDirectory(output_dir, err_msg))
         {
             emit exportFinished(false, err_msg);
             return;
@@ -2637,7 +2638,7 @@ void FolderIO::doExport(ExportDataset dataset, QString output_dir)
             }
 
             const QString class_dir = QDir(output_dir).filePath(class_name);
-            if (!DatasetIO::ensureDirectory(class_dir, err_msg))
+            if (!ensureDirectory(class_dir, err_msg))
             {
                 emit exportFinished(false, err_msg);
                 return;
