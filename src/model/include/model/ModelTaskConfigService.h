@@ -29,7 +29,6 @@ enum class ModelTaskConfigField
     LogDir,
     WeightDir,
     Datasets,
-    DatasetSelections,
     TrainParams,
     TestParams,
     Trainer,
@@ -42,7 +41,6 @@ struct MODEL_API LoadedModelTaskConfigs
     QString     model_uuid;
     QVariantMap train_params;
     QVariantMap test_params;
-    QVariantMap dataset_selections;
 };
 
 MODEL_API QString                        modelTaskConfigFileName(ModelTaskConfigFile file);
@@ -64,7 +62,6 @@ public:
 
 private:
     QVariantMap readParams(const QString &path, ModelTaskConfigField field) const;
-    QVariantMap readDatasetSelections(const QString &path) const;
 
     ModelStorageService storage_;
 };

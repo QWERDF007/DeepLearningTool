@@ -142,14 +142,19 @@ bool ModelTaskPreparationService::prepare(const ExternalModelTaskRequest &reques
 
         QString                   dataset_err;
         DataManagerDatasetSource  source(*data_manager_);
+        const ModelDatasetSelections selections = modelDatasetSelectionsSnapshot(request.model);
+        const QString                dataset_dir = storage.path(model_uuid, ModelStorageLocation::Datasets);
+        if (!writeModelDatasetSelectionsFile(dataset_dir, selections, &dataset_err))
+            return setError(err_msg, QStringLiteral("写入数据集选择配置失败: %1").arg(dataset_err));
+
         ModelDatasetExportRequest dataset_request;
         dataset_request.method             = method_;
         dataset_request.framework_name     = request.model->frameworkName();
         dataset_request.model_architecture = request.model->modelArchitecture();
         dataset_request.model_uuid         = model_uuid;
         dataset_request.task_type          = request.task_type;
-        dataset_request.dataset_dir        = storage.path(model_uuid, ModelStorageLocation::Datasets);
-        dataset_request.selections         = modelDatasetSelectionsSnapshot(request.model);
+        dataset_request.dataset_dir        = dataset_dir;
+        dataset_request.selections         = selections;
         dataset_request.source             = &source;
         datasets                           = ModelDatasetOrganizer::organize(dataset_request, &dataset_err);
         if (datasets.isEmpty())

@@ -449,11 +449,11 @@ void ModelManager::requestModelTaskConfigLoad(const QString &model_uuid) const
     const ModelTaskConfigService                config_service(project_dir_);
     const dltool::model::LoadedModelTaskConfigs configs = config_service.load(trimmed_uuid);
     const_cast<ModelManager *>(this)->applyLoadedModelTaskConfigs(configs.model_uuid, configs.train_params,
-                                                                  configs.test_params, configs.dataset_selections);
+                                                                  configs.test_params);
 }
 
 void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const QVariantMap &train_params,
-                                               const QVariantMap &test_params, const QVariantMap &dataset_selections)
+                                               const QVariantMap &test_params)
 {
     const auto found = model_instances_.find(instanceKey(model_uuid));
     if (found == model_instances_.end() || !found->second || found->second->config() == nullptr)
@@ -471,6 +471,9 @@ void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const 
         if (ITestParams *params = model_config->testParams(); params != nullptr)
             params->setValuesMap(test_params);
     }
+    const ModelStorageService storage(project_dir_);
+    const QVariantMap         dataset_selections
+        = readModelDatasetSelectionsFile(storage.path(model_uuid, ModelStorageLocation::Datasets));
     applyModelDatasetSelections(model, dataset_selections);
 }
 

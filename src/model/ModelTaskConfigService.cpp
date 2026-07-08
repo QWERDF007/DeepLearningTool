@@ -4,7 +4,6 @@
 #include "model/IModel.h"
 #include "model/IModelConfig.h"
 #include "model/IParams.h"
-#include "model/ModelDatasetSelection.h"
 #include "model/ModelTaskTypes.h"
 
 #include <spdlog/spdlog.h>
@@ -42,7 +41,6 @@ const std::map<ModelTaskConfigField, QString> &taskConfigFieldNames()
         {           ModelTaskConfigField::LogDir,            QStringLiteral("log_dir")},
         {        ModelTaskConfigField::WeightDir,         QStringLiteral("weight_dir")},
         {         ModelTaskConfigField::Datasets,           QStringLiteral("datasets")},
-        {ModelTaskConfigField::DatasetSelections, QStringLiteral("dataset_selections")},
         {      ModelTaskConfigField::TrainParams,       QStringLiteral("train_params")},
         {       ModelTaskConfigField::TestParams,        QStringLiteral("test_params")},
         {          ModelTaskConfigField::Trainer,            QStringLiteral("trainer")},
@@ -124,20 +122,6 @@ LoadedModelTaskConfigs ModelTaskConfigService::load(const QString &model_uuid) c
     if (configs.test_params.isEmpty())
         configs.test_params = readParams(train_config_path, ModelTaskConfigField::TestParams);
 
-    const QVariantMap train_dataset_selections = readDatasetSelections(train_config_path);
-    const QVariantMap test_dataset_selections  = readDatasetSelections(test_config_path);
-    if (!train_dataset_selections.isEmpty() && !test_dataset_selections.isEmpty())
-    {
-        const QFileInfo train_info(cleanModelPath(train_config_path));
-        const QFileInfo test_info(cleanModelPath(test_config_path));
-        configs.dataset_selections
-            = test_info.lastModified() > train_info.lastModified() ? test_dataset_selections : train_dataset_selections;
-    }
-    else
-    {
-        configs.dataset_selections
-            = !test_dataset_selections.isEmpty() ? test_dataset_selections : train_dataset_selections;
-    }
     return configs;
 }
 
@@ -164,10 +148,6 @@ QVariantMap ModelTaskConfigService::build(IModel *model, const QString &model_na
     config.insert(modelTaskConfigFieldName(ModelTaskConfigField::WeightDir), weight_dir);
     if (!datasets.isEmpty())
         config.insert(modelTaskConfigFieldName(ModelTaskConfigField::Datasets), datasets);
-
-    const QVariantMap dataset_selections = modelDatasetSelections(model);
-    if (!dataset_selections.isEmpty())
-        config.insert(modelTaskConfigFieldName(ModelTaskConfigField::DatasetSelections), dataset_selections);
 
     if (IModelConfig *model_config = model->config(); model_config != nullptr)
     {
@@ -241,30 +221,6 @@ QVariantMap ModelTaskConfigService::readParams(const QString &path, ModelTaskCon
     catch (const std::exception &e)
     {
         spdlog::error("读取模型任务配置失败 '{}': {}", file_info.absoluteFilePath().toUtf8().constData(), e.what());
-        return {};
-    }
-}
-
-QVariantMap ModelTaskConfigService::readDatasetSelections(const QString &path) const
-{
-    const QFileInfo file_info(cleanModelPath(path));
-    if (!file_info.exists() || !file_info.isFile())
-        return {};
-
-    try
-    {
-        const YAML::Node root = dltool::common::yaml::loadFile(file_info);
-        if (!root || !root.IsMap())
-            return {};
-
-        return dltool::common::yaml::nodeVariant(root[dltool::common::yaml::toYamlString(modelTaskConfigFieldName(
-                                                     ModelTaskConfigField::DatasetSelections))])
-            .toMap();
-    }
-    catch (const std::exception &e)
-    {
-        spdlog::error("读取模型数据集选择配置失败 '{}': {}", file_info.absoluteFilePath().toUtf8().constData(),
-                      e.what());
         return {};
     }
 }

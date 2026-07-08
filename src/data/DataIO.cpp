@@ -526,6 +526,31 @@ QRect foregroundBoundingBox(const QImage &mask)
     return QRect(QPoint(x_min, y_min), QPoint(x_max + 1, y_max + 1));
 }
 
+void addImageMapEntry(std::map<QString, QString> &image_by_stem, const QString &key, const QString &image_path)
+{
+    const QString trimmed_key  = key.trimmed();
+    const QString trimmed_path = image_path.trimmed();
+    if (trimmed_key.isEmpty() || trimmed_path.isEmpty())
+        return;
+
+    image_by_stem[trimmed_key] = trimmed_path;
+
+    const QString cleaned_key = dltool::common::cleanPath(trimmed_key);
+    if (!cleaned_key.isEmpty())
+        image_by_stem[cleaned_key] = trimmed_path;
+}
+
+void addImagePathAliases(std::map<QString, QString> &image_by_stem, const QString &image_path)
+{
+    const QString trimmed_path = image_path.trimmed();
+    if (trimmed_path.isEmpty())
+        return;
+
+    addImageMapEntry(image_by_stem, QFileInfo(trimmed_path).completeBaseName(), trimmed_path);
+    addImageMapEntry(image_by_stem, trimmed_path, trimmed_path);
+    addImageMapEntry(image_by_stem, QFileInfo(trimmed_path).absoluteFilePath(), trimmed_path);
+}
+
 std::map<QString, QString> loadImageMap(const QString &image_dir)
 {
     std::map<QString, QString> image_by_stem;
@@ -549,16 +574,22 @@ std::map<QString, QString> loadImageMap(const QString &image_dir)
                 const QString alias = line.left(comma).trimmed();
                 const QString path  = line.mid(comma + 1).trimmed();
                 if (!alias.isEmpty() && !path.isEmpty())
-                    image_by_stem[alias] = path;
+                {
+                    addImageMapEntry(image_by_stem, alias, path);
+                    addImagePathAliases(image_by_stem, path);
+                }
                 continue;
             }
-            image_by_stem[QFileInfo(line).completeBaseName()] = line;
+            addImagePathAliases(image_by_stem, line);
         }
         return image_by_stem;
     }
 
     const std::vector<QString> image_files = DatasetIO::scanImageFiles(image_dir);
-    for (const QString &image_path : image_files) image_by_stem[QFileInfo(image_path).completeBaseName()] = image_path;
+    for (const QString &image_path : image_files)
+    {
+        addImagePathAliases(image_by_stem, image_path);
+    }
     return image_by_stem;
 }
 

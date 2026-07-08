@@ -19,7 +19,7 @@
 - `TaskCommunicationServer` 提供本机 TCP JSON 行协议，接收脚本上报的状态、进度、ETA 和日志事件，并向脚本下发命令。
 - `ModelTaskTypes` 提供 QML/C++ 共用的强类型任务枚举，并统一任务 key、显示名、配置文件命名、日志命名和数据集导出需求。
 - `ModelStorageService` 统一模型目录路径计算、目录创建和模型目录删除。
-- `ModelDatasetSelection` 统一训练/验证/测试数据集选择快照、`dataset_selections` 序列化和恢复。
+- `ModelDatasetSelection` 统一训练/验证/测试数据集选择快照、`datasets/datasets.yaml` 序列化和恢复。
 - `ModelTaskConfigService` 统一任务 YAML 读写、字段名和参数落盘。
 - `ModelTaskPreparationService` 统一外部任务启动前的目录准备、选择快照生成、数据集导出、YAML 配置写入、Python 解释器解析和进程规格生成。
 - `ExternalModelTaskRunner` 统一外部 Python 进程的启动、环境变量、stdout/stderr 日志、停止/删除和进程退出通知。
@@ -184,7 +184,7 @@ QML 参数面板按 `part_index` 拆成两列渲染。当前已使用的控件�
 6. 打开模型时，`ModelManager.modelForUuid(uuid)` 根据 `framework_name + model_architecture` 懒创建并缓存模型实例。
 7. `ModelManager` 为模型实例挂载训练、验证、测试数据集选择 ViewModel。
 8. `YamlModel` 从 `config/models/<framework>/<model>.yaml` 构造训练/测试参数。
-9. 如果存在历史 `configs/train.yaml` 或 `configs/test.yaml`，`ModelManager` 通过 `ModelTaskConfigService` 懒加载参数和 `dataset_selections`，恢复到内存模型。
+9. 如果存在历史 `configs/train.yaml` 或 `configs/test.yaml`，`ModelManager` 通过 `ModelTaskConfigService` 懒加载参数；数据集选择从 `datasets/datasets.yaml` 恢复到内存模型。
 
 `visible_for_model_creation = false` 的框架不会出现在模型创建 UI 中，例如 `FS-SAM2`。
 
@@ -209,7 +209,7 @@ flowchart TD
     J --> K[ModelManager 挂载训练/验证/测试数据集选择 ViewModel]
     K --> L[YamlModel 加载参数 schema]
     L --> M[ModelTaskConfigService 懒加载历史 train/test 配置]
-    M --> N[恢复参数值和 dataset_selections]
+    M --> N[恢复参数值和数据集选择]
 
     N --> O{用户启动训练/测试?}
     O -->|否| P[继续编辑参数和数据集选择]
@@ -253,7 +253,7 @@ flowchart TD
 6. 如果框架没有为该任务定义脚本，`ModelManager.startTask()` 返回成功，任务只进入 `TaskTableModel` 的普通运行状态，不启动 Python 进程，也不生成任务配置。
 7. 如果框架定义了脚本，`TaskManager` 先确保 TCP 通信服务已启动，`ModelManager` 再构造 `ExternalModelTaskRequest` 并交给准备服务。
 8. `ModelTaskPreparationService` 通过 `ModelStorageService` 确保 `models/<uuid>/configs`、`results`、`logs`、`weights`、`datasets` 目录存在。
-9. `ModelTaskPreparationService` 调用 `ModelDatasetOrganizer` 将 UI 选择的数据集导出到 `models/<uuid>/datasets`。训练任务要求训练集非空，测试/预测任务要求测试集非空；验证集为空时会跳过。
+9. `ModelTaskPreparationService` 将 UI 数据集选择快照写入 `models/<uuid>/datasets/datasets.yaml`，再调用 `ModelDatasetOrganizer` 将所选数据集导出到 `models/<uuid>/datasets`。训练任务要求训练集非空，测试/预测任务要求测试集非空；验证集为空时会跳过。
 10. `ModelTaskPreparationService` 通过 `ModelTaskConfigService` 写出 YAML 任务配置。当前配置文件名由 `ModelTaskTypes` 决定：训练写 `train.yaml`，测试/预测写 `test.yaml`；无配置文件名的任务不会作为外部模型脚本启动。
 11. `ModelTaskPreparationService` 生成 `ExternalProcessSpec`，`ExternalModelTaskRunner` 启动 Python 子进程，传入：
    - `--config`
@@ -336,7 +336,7 @@ flowchart TD
 
 `ModelStorageService` 是模型存储入口。它接收项目目录，计算模型根目录和 `configs`、`datasets`、`logs`、`results`、`weights` 子目录，负责创建完整模型目录和安全删除单个模型目录。它不持有项目数据库。
 
-`ModelDatasetSelection` 是数据集选择入口。它从模型的训练/验证/测试选择 ViewModel 生成快照，并负责把快照序列化为 `dataset_selections` 或从历史配置恢复回 ViewModel。数据集导出和任务配置写入共用这一个快照入口。
+`ModelDatasetSelection` 是数据集选择入口。它从模型的训练/验证/测试选择 ViewModel 生成快照，并负责把快照序列化到 `datasets/datasets.yaml` 或从该文件恢复回 ViewModel。数据集导出复用同一个快照入口。
 
 `ModelTaskConfigService` 是任务 YAML 入口。它集中维护配置字段名，负责读取历史 `train.yaml`/`test.yaml`，并在任务启动前构造和写入当前任务配置。
 
@@ -363,11 +363,11 @@ flowchart TD
 
 删除模型记录时会同时通过 `ModelStorageService` 删除对应的 `models/<uuid>/` 目录。
 
-任务配置由 `ModelTaskConfigService` 使用 YAML 写入模型目录下的 `models/<uuid>/configs/train.yaml` 或 `models/<uuid>/configs/test.yaml`。配置包含模型 uuid、模型名、任务类型、框架、模型架构、模型目录、结果目录、日志目录、权重目录、数据集文件路径、数据集选择，以及训练/测试参数。
+任务配置由 `ModelTaskConfigService` 使用 YAML 写入模型目录下的 `models/<uuid>/configs/train.yaml` 或 `models/<uuid>/configs/test.yaml`。配置包含模型 uuid、模型名、任务类型、框架、模型架构、模型目录、结果目录、日志目录、权重目录、框架消费的数据集文件路径，以及训练/测试参数。
 
-模型列表初始化时不批量读取任务配置。界面选中模型并创建模型实例时，`ModelManager` 才通过 `ModelTaskConfigService` lazy 读取 `configs/train.yaml` 和 `configs/test.yaml`，将其中的 `train_params`、`test_params` 应用到内存中的参数模型，并将 `dataset_selections` 恢复到训练、验证、测试数据集选择树。参数和数据集选择编辑只修改内存值；启动训练或测试任务时，`ModelTaskPreparationService` 才通过 `ModelTaskConfigService` 把当前内存参数和数据集选择写回对应 YAML 文件。
+模型列表初始化时不批量读取任务配置。界面选中模型并创建模型实例时，`ModelManager` 才通过 `ModelTaskConfigService` lazy 读取 `configs/train.yaml` 和 `configs/test.yaml`，将其中的 `train_params`、`test_params` 应用到内存中的参数模型，并从 `datasets/datasets.yaml` 恢复训练、验证、测试数据集选择树。参数和数据集选择编辑只修改内存值；启动训练或测试任务时，`ModelTaskPreparationService` 写回当前内存参数，并将数据集选择写入 `datasets/datasets.yaml`。
 
-`dataset_selections` 保存 UI 勾选状态，不是框架训练脚本直接消费的数据清单：
+`datasets/datasets.yaml` 中的 `dataset_selections` 保存 UI 勾选状态，不是框架训练脚本直接消费的数据清单：
 
 ```yaml
 dataset_selections:
@@ -498,7 +498,7 @@ models/<uuid>/datasets/<split>/manifest.yaml
 - `ModelTaskPreparationService` 负责外部脚本选择、Python 解释器解析、任务通信参数、数据集导出编排和配置写入编排，并输出 `ExternalProcessSpec`。
 - `ExternalModelTaskRunner` 负责已准备外部进程、运行环境、任务日志、停止请求和进程退出通知。
 - `ModelStorageService` 负责模型存储路径、目录创建和模型目录删除。
-- `ModelDatasetSelection` 负责数据集选择快照、`dataset_selections` map 序列化和恢复。
+- `ModelDatasetSelection` 负责数据集选择快照、`datasets/datasets.yaml` 序列化和恢复。
 - `ModelTaskConfigService` 负责任务配置字段、YAML 读写和参数序列化。
 - `ModelTaskTypes` 负责任务类型枚举、任务 key、显示名、配置文件名、日志文件名前缀和数据集导出需求。
 - `ModelDatasetOrganizer` 负责把数据集选择快照导出为框架可消费的数据清单和派生 mask，不负责读取 UI 模型、进程启动或任务配置写入。

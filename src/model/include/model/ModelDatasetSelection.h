@@ -29,7 +29,14 @@ struct MODEL_API ModelDatasetSelections
 };
 
 MODEL_API ModelDatasetSelections modelDatasetSelectionsSnapshot(IModel *model);
-MODEL_API QVariantMap            modelDatasetSelections(IModel *model);
-MODEL_API void                   applyModelDatasetSelections(IModel *model, const QVariantMap &dataset_selections);
+
+MODEL_API QString modelDatasetSelectionsPath(const QString &dataset_dir);
+
+MODEL_API bool writeModelDatasetSelectionsFile(const QString &dataset_dir, const ModelDatasetSelections &selections,
+                                               QString *err_msg = nullptr);
+
+MODEL_API QVariantMap readModelDatasetSelectionsFile(const QString &dataset_dir);
+
+MODEL_API void applyModelDatasetSelections(IModel *model, const QVariantMap &dataset_selections);
 
 } // namespace dltool::model

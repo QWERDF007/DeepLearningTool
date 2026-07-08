@@ -117,7 +117,7 @@ private:
                                    int task_id);
     void    requestModelTaskConfigLoad(const QString &model_uuid) const;
     void    applyLoadedModelTaskConfigs(const QString &model_uuid, const QVariantMap &train_params,
-                                        const QVariantMap &test_params, const QVariantMap &dataset_selections);
+                                        const QVariantMap &test_params);
     static std::string instanceKey(const QString &uuid);
 
     QVariant getModelId(const QModelIndex &index) const;
