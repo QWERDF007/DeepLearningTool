@@ -36,6 +36,7 @@
 using dltool::common::yaml::setMapValue;
 
 namespace dltool::model {
+using common::setError;
 
 namespace {
 
@@ -65,13 +66,6 @@ struct Sam2ConfigNameParts
     QString prefix;
     QString size_token;
 };
-
-bool setError(QString *err_msg, const QString &message)
-{
-    if (err_msg != nullptr)
-        *err_msg = message;
-    return false;
-}
 
 QString fixedSam2ConfigRoot()
 {

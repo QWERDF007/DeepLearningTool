@@ -16,7 +16,10 @@
 #include <QVariantMap>
 #include <utility>
 
+using dltool::common::cleanPath;
+
 namespace dltool::model {
+using common::setError;
 
 namespace {
 
@@ -82,19 +85,12 @@ private:
     dltool::data::DataManager &data_manager_;
 };
 
-bool setError(QString *err_msg, const QString &message)
-{
-    if (err_msg != nullptr)
-        *err_msg = message;
-    return false;
-}
-
 } // namespace
 
 ModelTaskPreparationService::ModelTaskPreparationService(int method, QString project_dir,
                                                          dltool::data::DataManager *data_manager)
     : method_(method)
-    , project_dir_(cleanModelPath(std::move(project_dir)))
+    , project_dir_(cleanPath(project_dir))
     , data_manager_(data_manager)
 {
 }
@@ -109,8 +105,8 @@ bool ModelTaskPreparationService::prepare(const ModelTaskContext &context, Exter
     if (context.task_server_host.trimmed().isEmpty() || context.task_server_port == 0)
         return setError(err_msg, QString("任务通信端点无效"));
 
-    const QString model_uuid = context.model_uuid.trimmed().isEmpty() ? context.model->uuid().trimmed()
-                                                                      : context.model_uuid.trimmed();
+    const QString model_uuid
+        = context.model_uuid.trimmed().isEmpty() ? context.model->uuid().trimmed() : context.model_uuid.trimmed();
     if (model_uuid.isEmpty())
         return setError(err_msg, QString("模型 uuid 为空"));
 
@@ -141,9 +137,9 @@ bool ModelTaskPreparationService::prepare(const ModelTaskContext &context, Exter
         if (data_manager_ == nullptr)
             return setError(err_msg, QString("数据管理器为空"));
 
-        QString                   dataset_err;
-        DataManagerDatasetSource  source(*data_manager_);
-        const ModelDatasetSelections selections = modelDatasetSelectionsSnapshot(context.model);
+        QString                      dataset_err;
+        DataManagerDatasetSource     source(*data_manager_);
+        const ModelDatasetSelections selections  = modelDatasetSelectionsSnapshot(context.model);
         const QString                dataset_dir = storage.path(model_uuid, ModelStorageLocation::Datasets);
         if (!writeModelDatasetSelectionsFile(dataset_dir, selections, &dataset_err))
             return setError(err_msg, QString("写入数据集选择配置失败: %1").arg(dataset_err));
@@ -170,9 +166,8 @@ bool ModelTaskPreparationService::prepare(const ModelTaskContext &context, Exter
     if (config_path.isEmpty())
         return setError(err_msg, config_err);
 
-    const QString log_path
-        = cleanModelPath(QDir(storage.path(model_uuid, ModelStorageLocation::Logs))
-                             .filePath(modelTaskLogStem(context.task_type) + QStringLiteral(".log")));
+    const QString log_path = cleanPath(QDir(storage.path(model_uuid, ModelStorageLocation::Logs))
+                                           .filePath(modelTaskLogStem(context.task_type) + QStringLiteral(".log")));
     if (log_path.isEmpty())
         return setError(err_msg, QString("日志路径为空"));
 

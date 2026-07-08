@@ -106,3 +106,13 @@ DataSettings:
         value_type: int
         value_range: [0, 100, 1]
         control_type: slider
+
+    导入:
+      - name_en: polygon_approx_epsilon_ratio
+        name_cn: 导入轮廓拟合系数
+        desc: 用于配置 COCO RLE / Mask 导入时 maskToPolygons 的 OpenCV approxPolyDP 轮廓拟合系数；epsilon = 系数 * arcLength(contour, true)，0 表示不压缩轮廓点。
+        property_name: polygonApproxEpsilonRatio
+        value: 0.01
+        value_type: double
+        value_range: [0.0, 0.1, 0.001]
+        control_type: slider

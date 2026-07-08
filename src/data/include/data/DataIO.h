@@ -99,7 +99,8 @@ private:
         QString name;
     };
 
-    void doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir);
+    void doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir,
+                  double polygon_approx_epsilon_ratio);
     void doScanLabelClasses(const QString &data_dir);
     void doExport(ExportDataset dataset, QString output_dir);
 
@@ -175,12 +176,14 @@ private:
         int                  mask_height{0};
     };
 
-    void doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir);
+    void doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir,
+                  double polygon_approx_epsilon_ratio);
     void doScanLabelClasses(const QString &data_dir);
     void doExport(ExportDataset dataset, QString output_dir, QVariantMap options);
 
     std::vector<QString>        scanMaskFiles(const QString &mask_dir) const;
-    bool                        readMaskGeometry(const QString &mask_path, MaskGeometry &geometry) const;
+    bool                        readMaskGeometry(const QString &mask_path, MaskGeometry &geometry,
+                                                 double polygon_approx_epsilon_ratio) const;
     QVariantMap                 maskToLabelData(const MaskGeometry &geometry, int image_width, int image_height) const;
     QString                     labelClassNameForMask(const QString &mask_path, const QString &mask_root) const;
     QString                     imageStemForMask(const QString &mask_path, const QString &mask_root,

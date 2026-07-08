@@ -1,5 +1,6 @@
 #include "model/ModelTaskController.h"
 
+#include "common/Utils.h"
 #include "data/DataManager.h"
 #include "model/ExternalModelTaskRunner.h"
 #include "model/IModel.h"
@@ -15,17 +16,7 @@
 #include <utility>
 
 namespace dltool::model {
-
-namespace {
-
-bool setError(QString *err_msg, const QString &message)
-{
-    if (err_msg != nullptr)
-        *err_msg = message;
-    return false;
-}
-
-} // namespace
+using common::setError;
 
 ModelTaskController::ModelTaskController(int method, QString project_dir, ModelManager *model_manager,
                                          dltool::data::DataManager *data_manager, TaskManager *task_manager,

@@ -7,6 +7,9 @@
 #include <array>
 #include <map>
 
+using dltool::common::cleanPath;
+using dltool::common::ensureDirectory;
+
 namespace dltool::model {
 
 namespace {
@@ -36,11 +39,6 @@ const std::array<ModelStorageLocation, 5> &modelChildLocations()
 
 } // namespace
 
-QString cleanModelPath(const QString &path)
-{
-    return dltool::common::cleanPath(path);
-}
-
 QString modelStorageLocationName(ModelStorageLocation location)
 {
     const auto &names = storageLocationNames();
@@ -49,13 +47,13 @@ QString modelStorageLocationName(ModelStorageLocation location)
 }
 
 ModelStorageService::ModelStorageService(QString project_dir)
-    : project_dir_(cleanModelPath(project_dir))
+    : project_dir_(cleanPath(project_dir))
 {
 }
 
 void ModelStorageService::setProjectDirectory(const QString &project_dir)
 {
-    project_dir_ = cleanModelPath(project_dir);
+    project_dir_ = cleanPath(project_dir);
 }
 
 QString ModelStorageService::projectDirectory() const
@@ -70,7 +68,7 @@ QString ModelStorageService::path(const QString &uuid, ModelStorageLocation loca
         return {};
 
     const QString root
-        = cleanModelPath(QDir(project_dir).filePath(modelStorageLocationName(ModelStorageLocation::ModelsRoot)));
+        = cleanPath(QDir(project_dir).filePath(modelStorageLocationName(ModelStorageLocation::ModelsRoot)));
     if (location == ModelStorageLocation::ModelsRoot)
         return root;
 
@@ -78,27 +76,26 @@ QString ModelStorageService::path(const QString &uuid, ModelStorageLocation loca
     if (trimmed_uuid.isEmpty())
         return {};
 
-    const QString model_dir = cleanModelPath(QDir(root).filePath(trimmed_uuid));
+    const QString model_dir = cleanPath(QDir(root).filePath(trimmed_uuid));
     if (location == ModelStorageLocation::ModelRoot)
         return model_dir;
 
     const QString child_name = modelStorageLocationName(location);
     if (child_name.isEmpty())
         return {};
-    return cleanModelPath(QDir(model_dir).filePath(child_name));
+    return cleanPath(QDir(model_dir).filePath(child_name));
 }
 
 bool ModelStorageService::ensureModelStorage(const QString &uuid, QString *err_msg) const
 {
     const QString model_dir = path(uuid, ModelStorageLocation::ModelRoot);
-    if (!dltool::common::ensureDirectory(model_dir, err_msg, QStringLiteral("目录路径为空"),
-                                         QStringLiteral("创建目录失败: %1")))
+    if (!ensureDirectory(model_dir, err_msg, QStringLiteral("目录路径为空"), QStringLiteral("创建目录失败: %1")))
         return false;
 
     for (const ModelStorageLocation child_location : modelChildLocations())
     {
-        if (!dltool::common::ensureDirectory(path(uuid, child_location), err_msg, QStringLiteral("目录路径为空"),
-                                             QStringLiteral("创建目录失败: %1")))
+        if (!ensureDirectory(path(uuid, child_location), err_msg, QStringLiteral("目录路径为空"),
+                             QStringLiteral("创建目录失败: %1")))
             return false;
     }
     return true;
@@ -106,8 +103,8 @@ bool ModelStorageService::ensureModelStorage(const QString &uuid, QString *err_m
 
 bool ModelStorageService::removeModelStorage(const QString &uuid, QString *err_msg) const
 {
-    const QString root   = cleanModelPath(QFileInfo(path({}, ModelStorageLocation::ModelsRoot)).absoluteFilePath());
-    const QString target = cleanModelPath(QFileInfo(path(uuid, ModelStorageLocation::ModelRoot)).absoluteFilePath());
+    const QString root   = cleanPath(QFileInfo(path({}, ModelStorageLocation::ModelsRoot)).absoluteFilePath());
+    const QString target = cleanPath(QFileInfo(path(uuid, ModelStorageLocation::ModelRoot)).absoluteFilePath());
     if (root.isEmpty() || target.isEmpty() || target == root
         || !target.startsWith(root + QStringLiteral("/"), Qt::CaseInsensitive))
     {

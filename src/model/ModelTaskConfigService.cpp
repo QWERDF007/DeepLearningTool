@@ -1,6 +1,7 @@
 #include "model/ModelTaskConfigService.h"
 
 #include "common/YamlUtils.h"
+#include "common/Utils.h"
 #include "model/IModel.h"
 #include "model/IModelConfig.h"
 #include "model/IParams.h"
@@ -11,9 +12,10 @@
 
 #include <QDir>
 #include <QFileInfo>
-#include <array>
 #include <map>
 #include <utility>
+
+using dltool::common::cleanPath;
 
 namespace dltool::model {
 
@@ -52,12 +54,12 @@ const std::map<ModelTaskConfigField, QString> &taskConfigFieldNames()
 
 QString resolveModelOutputPath(const QString &model_dir, const QString &path, const QString &fallback)
 {
-    QString value = cleanModelPath(path);
+    QString value = cleanPath(path);
     if (value.isEmpty())
         value = fallback;
     if (QFileInfo(value).isAbsolute())
         return value;
-    return cleanModelPath(QDir(model_dir).filePath(value));
+    return cleanPath(QDir(model_dir).filePath(value));
 }
 
 void normalizeOutputDir(QVariantMap &groups, const QString &group_name, const QString &model_dir,
@@ -104,7 +106,7 @@ QString ModelTaskConfigService::configPath(const QString &model_uuid, ModelTaskC
     const QString file_name  = modelTaskConfigFileName(file);
     if (config_dir.isEmpty() || file_name.isEmpty())
         return {};
-    return cleanModelPath(QDir(config_dir).filePath(file_name));
+    return cleanPath(QDir(config_dir).filePath(file_name));
 }
 
 LoadedModelTaskConfigs ModelTaskConfigService::load(const QString &model_uuid) const
@@ -204,7 +206,7 @@ QString ModelTaskConfigService::write(const QString &model_uuid, ModelTaskType t
 
 QVariantMap ModelTaskConfigService::readParams(const QString &path, ModelTaskConfigField field) const
 {
-    const QFileInfo file_info(cleanModelPath(path));
+    const QFileInfo file_info(cleanPath(path));
     if (!file_info.exists() || !file_info.isFile())
         return {};
 

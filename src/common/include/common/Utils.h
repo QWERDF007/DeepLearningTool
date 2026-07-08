@@ -22,6 +22,13 @@ COMMON_API QString runtimePath(const QString &path);
 COMMON_API QString resolvePath(const QString &base_dir, const QString &path);
 COMMON_API QString pythonExecutableFromEnvPath(const QString &env_path);
 
+inline bool setError(QString *err_msg, const QString &message)
+{
+    if (err_msg != nullptr)
+        *err_msg = message;
+    return false;
+}
+
 COMMON_API bool ensureDirectory(const QString &path, QString *err_msg = nullptr, const QString &empty_message = {},
                                 const QString &create_failed_message = {});
 

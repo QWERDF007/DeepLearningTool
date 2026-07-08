@@ -6,6 +6,8 @@
 #include "data/DataFormat.h"
 #include "data/DataNameUtils.h"
 #include "database/DataBase.h"
+#include "settings/GlobalSettings.h"
+#include "settings/SettingsValue.h"
 #include "ui/ProgressManager.h"
 
 #include <json.hpp>
@@ -46,7 +48,21 @@ namespace dltool::data {
 
 namespace {
 
-constexpr double kMaskImportPolygonApproxRatio = 0.01;
+constexpr double kDefaultMaskImportPolygonApproxRatio = 0.01;
+
+double normalizedMaskImportPolygonApproxRatio(const double ratio)
+{
+    return std::isfinite(ratio) ? std::max(0.0, ratio) : kDefaultMaskImportPolygonApproxRatio;
+}
+
+double maskImportPolygonApproxRatio()
+{
+    namespace generated_field = dltool::settings::generated::field;
+
+    return normalizedMaskImportPolygonApproxRatio(dltool::settings::settingDouble(
+        dltool::settings::GlobalSettings::getInstance(), generated_field::Data::PolygonApproxEpsilonRatio,
+        kDefaultMaskImportPolygonApproxRatio));
+}
 
 // ponytail: 统一 LabelMe / Mask 导出的唯一文件名生成
 QString uniqueImageName(const QString &source_path, int64_t stable_id, const std::map<QString, int> &used_names,
@@ -430,7 +446,8 @@ bool hasSegmentationData(const nlohmann::json &annotation_json)
     return false;
 }
 
-std::vector<std::vector<QPointF>> parseSegmentationPolygons(const nlohmann::json &annotation_json)
+std::vector<std::vector<QPointF>> parseSegmentationPolygons(const nlohmann::json &annotation_json,
+                                                            const double         polygon_approx_epsilon_ratio)
 {
     if (!hasSegmentationData(annotation_json))
         return {};
@@ -461,7 +478,7 @@ std::vector<std::vector<QPointF>> parseSegmentationPolygons(const nlohmann::json
         int                  width  = 0;
         int                  height = 0;
         if (decodeRleMask(segmentation, mask, width, height))
-            polygons = dltool::common::maskToPolygons(mask, width, height, false, kMaskImportPolygonApproxRatio);
+            polygons = dltool::common::maskToPolygons(mask, width, height, false, polygon_approx_epsilon_ratio);
     }
 
     std::sort(polygons.begin(), polygons.end(), [](const std::vector<QPointF> &left, const std::vector<QPointF> &right)
@@ -872,7 +889,9 @@ bool DataIO::importImagesOnly(int64_t dataset_id, const QString &image_dir, cons
 
 void COCOIO::startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir)
 {
-    runInThread([this, dataset_id, image_dir, data_dir]() { doImport(dataset_id, image_dir, data_dir); });
+    const double polygon_approx_epsilon_ratio = maskImportPolygonApproxRatio();
+    runInThread([this, dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio]()
+                { doImport(dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio); });
 }
 
 void COCOIO::startScanLabelClasses(const QString &image_dir, const QString &data_dir)
@@ -978,7 +997,8 @@ void COCOIO::doScanLabelClasses(const QString &data_dir)
     }
 }
 
-void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir)
+void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir,
+                      const double polygon_approx_epsilon_ratio)
 {
     spdlog::info("开始解析 COCO 数据: dataset_id={}", dataset_id);
 
@@ -1227,7 +1247,7 @@ void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
                 if (import_as_segmentation && annotation_has_seg)
                 {
                     const std::vector<std::vector<QPointF>> segmentation_polygons
-                        = parseSegmentationPolygons(annotation_json);
+                        = parseSegmentationPolygons(annotation_json, polygon_approx_epsilon_ratio);
                     for (const std::vector<QPointF> &polygon : segmentation_polygons)
                     {
                         QVariantMap label_data
@@ -1957,7 +1977,9 @@ void LabelMeIO::doExport(ExportDataset dataset, QString output_dir)
 
 void MaskIO::startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir)
 {
-    runInThread([this, dataset_id, image_dir, data_dir]() { doImport(dataset_id, image_dir, data_dir); });
+    const double polygon_approx_epsilon_ratio = maskImportPolygonApproxRatio();
+    runInThread([this, dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio]()
+                { doImport(dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio); });
 }
 
 void MaskIO::startScanLabelClasses(const QString &image_dir, const QString &data_dir)
@@ -2017,7 +2039,8 @@ void MaskIO::doScanLabelClasses(const QString &data_dir)
     }
 }
 
-void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir)
+void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir,
+                      const double polygon_approx_epsilon_ratio)
 {
     try
     {
@@ -2094,7 +2117,7 @@ void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
             }
 
             MaskGeometry geometry;
-            if (!readMaskGeometry(mask_path, geometry))
+            if (!readMaskGeometry(mask_path, geometry, polygon_approx_epsilon_ratio))
             {
                 ++skipped_masks;
                 continue;
@@ -2179,7 +2202,8 @@ std::vector<QString> MaskIO::scanMaskFiles(const QString &mask_dir) const
     return masks;
 }
 
-bool MaskIO::readMaskGeometry(const QString &mask_path, MaskGeometry &geometry) const
+bool MaskIO::readMaskGeometry(const QString &mask_path, MaskGeometry &geometry,
+                              const double polygon_approx_epsilon_ratio) const
 {
     const QImage mask = QImage(mask_path).convertToFormat(QImage::Format_Grayscale8);
     if (mask.isNull())
@@ -2205,7 +2229,7 @@ bool MaskIO::readMaskGeometry(const QString &mask_path, MaskGeometry &geometry) 
     }
 
     std::vector<std::vector<QPointF>> polygons = dltool::common::maskToPolygons(
-        binary_mask, mask.width(), mask.height(), false, kMaskImportPolygonApproxRatio);
+        binary_mask, mask.width(), mask.height(), false, polygon_approx_epsilon_ratio);
     if (!polygons.empty())
         geometry.polygon = std::move(polygons.front());
     else

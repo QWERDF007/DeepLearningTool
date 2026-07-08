@@ -835,12 +835,16 @@ std::pair<std::vector<QString>, std::vector<QString>> ClsLabelDataHelper::dataCo
 
 bool ClsLabelDataHelper::isInside(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr) const
 {
+    Q_UNUSED(pos)
     return label_data_ptr != nullptr;
 }
 
 QVariantMap ClsLabelDataHelper::hitTestHandle(const QPointF &pos, const std::unique_ptr<LabelData_t> &label_data_ptr,
                                               const double scale) const
 {
+    Q_UNUSED(pos)
+    Q_UNUSED(scale)
+
     if (label_data_ptr == nullptr)
     {
         return QVariantMap{
@@ -861,6 +865,9 @@ QVariantMap ClsLabelDataHelper::hitTestHandle(const QPointF &pos, const std::uni
 QVariantMap ClsLabelDataHelper::getEditedData(const QVariantMap &data, const QPointF &start, const QPointF &end,
                                               const QRectF &image_rect) const
 {
+    Q_UNUSED(start)
+    Q_UNUSED(end)
+    Q_UNUSED(image_rect)
     return data;
 }
 

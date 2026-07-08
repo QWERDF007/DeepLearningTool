@@ -106,12 +106,3 @@ FewShotLearningSettings:
         value_type: double
         value_range: [0.1, 0.9, 0.05]
         control_type: slider
-
-    输出:
-      - name_en: output_dir
-        name_cn: 输出目录
-        desc: 用于配置小样本学习中输出相关的输出目录。
-        property_name: outputDir
-        value: ""
-        value_type: string
-        control_type: dir
