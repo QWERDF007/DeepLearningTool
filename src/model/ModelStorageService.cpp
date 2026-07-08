@@ -1,5 +1,7 @@
 #include "model/ModelStorageService.h"
 
+#include "common/Utils.h"
+
 #include <QDir>
 #include <QFileInfo>
 #include <array>
@@ -12,13 +14,13 @@ namespace {
 const std::map<ModelStorageLocation, QString> &storageLocationNames()
 {
     static const std::map<ModelStorageLocation, QString> names = {
-        {ModelStorageLocation::ModelsRoot, QStringLiteral("models")},
-        { ModelStorageLocation::ModelRoot,                 {}},
-        {   ModelStorageLocation::Results, QStringLiteral("results")},
-        {      ModelStorageLocation::Logs, QStringLiteral("logs")},
-        {   ModelStorageLocation::Weights, QStringLiteral("weights")},
+        {ModelStorageLocation::ModelsRoot,   QStringLiteral("models")},
+        { ModelStorageLocation::ModelRoot,                         {}},
+        {   ModelStorageLocation::Results,  QStringLiteral("results")},
+        {      ModelStorageLocation::Logs,     QStringLiteral("logs")},
+        {   ModelStorageLocation::Weights,  QStringLiteral("weights")},
         {  ModelStorageLocation::Datasets, QStringLiteral("datasets")},
-        {   ModelStorageLocation::Configs, QStringLiteral("configs")},
+        {   ModelStorageLocation::Configs,  QStringLiteral("configs")},
     };
     return names;
 }
@@ -26,11 +28,8 @@ const std::map<ModelStorageLocation, QString> &storageLocationNames()
 const std::array<ModelStorageLocation, 5> &modelChildLocations()
 {
     static const std::array<ModelStorageLocation, 5> locations = {
-        ModelStorageLocation::Results,
-        ModelStorageLocation::Logs,
-        ModelStorageLocation::Weights,
-        ModelStorageLocation::Datasets,
-        ModelStorageLocation::Configs,
+        ModelStorageLocation::Results,  ModelStorageLocation::Logs,    ModelStorageLocation::Weights,
+        ModelStorageLocation::Datasets, ModelStorageLocation::Configs,
     };
     return locations;
 }
@@ -39,10 +38,7 @@ const std::array<ModelStorageLocation, 5> &modelChildLocations()
 
 QString cleanModelPath(const QString &path)
 {
-    const QString trimmed = path.trimmed();
-    if (trimmed.isEmpty())
-        return {};
-    return QDir::cleanPath(QDir::fromNativeSeparators(trimmed));
+    return dltool::common::cleanPath(path);
 }
 
 QString modelStorageLocationName(ModelStorageLocation location)
@@ -73,8 +69,8 @@ QString ModelStorageService::path(const QString &uuid, ModelStorageLocation loca
     if (project_dir.isEmpty())
         return {};
 
-    const QString root =
-        cleanModelPath(QDir(project_dir).filePath(modelStorageLocationName(ModelStorageLocation::ModelsRoot)));
+    const QString root
+        = cleanModelPath(QDir(project_dir).filePath(modelStorageLocationName(ModelStorageLocation::ModelsRoot)));
     if (location == ModelStorageLocation::ModelsRoot)
         return root;
 
@@ -108,7 +104,7 @@ bool ModelStorageService::ensureModelStorage(const QString &uuid, QString *err_m
 
 bool ModelStorageService::removeModelStorage(const QString &uuid, QString *err_msg) const
 {
-    const QString root = cleanModelPath(QFileInfo(path({}, ModelStorageLocation::ModelsRoot)).absoluteFilePath());
+    const QString root   = cleanModelPath(QFileInfo(path({}, ModelStorageLocation::ModelsRoot)).absoluteFilePath());
     const QString target = cleanModelPath(QFileInfo(path(uuid, ModelStorageLocation::ModelRoot)).absoluteFilePath());
     if (root.isEmpty() || target.isEmpty() || target == root
         || !target.startsWith(root + QStringLiteral("/"), Qt::CaseInsensitive))

@@ -1,12 +1,11 @@
 #include "settings/SettingsSchema.h"
 
+#include "common/Utils.h"
 #include "common/YamlUtils.h"
 #include "database/DataBase.h"
 
 #include <spdlog/spdlog.h>
 
-#include <QCoreApplication>
-#include <QDir>
 #include <QFileInfo>
 #include <QQmlEngine>
 #include <algorithm>
@@ -15,7 +14,6 @@
 namespace dltool::settings {
 
 namespace {
-
 
 using dltool::common::yaml::loadFile;
 using dltool::common::yaml::nodeString;
@@ -54,15 +52,15 @@ QString joinedAccessorPath(const QString &parent_accessor, const QString &access
 SettingsField parseField(const YAML::Node &node, const QString &section, const int ordinal_index)
 {
     SettingsField field;
-    field.name_en       = nodeString(node["name_en"]);
-    field.name_cn       = nodeString(node["name_cn"]);
-    field.property_name = nodeString(node["property_name"], field.name_en);
-    field.value         = nodeVariant(node["value"]);
-    field.default_value = field.value;
-    field.value_type    = nodeString(node["value_type"], QStringLiteral("string"));
-    field.value_range   = nodeVariant(node["value_range"]).toList();
-    field.control_type  = nodeString(node["control_type"], QStringLiteral("text"));
-    field.options       = nodeVariant(node["options"]).toList();
+    field.name_en           = nodeString(node["name_en"]);
+    field.name_cn           = nodeString(node["name_cn"]);
+    field.property_name     = nodeString(node["property_name"], field.name_en);
+    field.value             = nodeVariant(node["value"]);
+    field.default_value     = field.value;
+    field.value_type        = nodeString(node["value_type"], QStringLiteral("string"));
+    field.value_range       = nodeVariant(node["value_range"]).toList();
+    field.control_type      = nodeString(node["control_type"], QStringLiteral("text"));
+    field.options           = nodeVariant(node["options"]).toList();
     field.options_value_map = nodeVariant(node["options_values"]).toMap();
     field.options_map       = nodeVariant(node["options_map"]).toMap();
     field.options_key_field = nodeString(node["options_key_field"]);
@@ -122,9 +120,8 @@ bool sidebarContains(const QVariantMap &sidebar, const QString &sidebar_key)
 
 QStringList settingsConfigDirs()
 {
-    const QDir app_dir(QCoreApplication::applicationDirPath());
     return {
-        QDir::cleanPath(app_dir.filePath(QStringLiteral("config/settings"))),
+        dltool::common::runtimePath(QStringLiteral("config/settings")),
     };
 }
 
@@ -713,8 +710,8 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
                 const YAML::Node sections_node = group["sections"];
                 if (!sections_node || !sections_node.IsMap())
                 {
-                    const QString message = QStringLiteral("%1: group %2 missing sections map")
-                                                .arg(file.absoluteFilePath(), group_key);
+                    const QString message
+                        = QStringLiteral("%1: group %2 missing sections map").arg(file.absoluteFilePath(), group_key);
                     throw std::runtime_error(message.toStdString());
                 }
 
@@ -724,8 +721,8 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
                 const QString     parent_accessor = nodeString(group["parent_accessor"]);
                 const QString     category        = nodeString(group["category"]);
                 const QVariantMap sidebar         = nodeVariant(group["sidebar"]).toMap();
-                const int         group_ordinal   = group["ordinal_index"] ? group["ordinal_index"].as<int>()
-                                                                            : static_cast<int>(groups_.size());
+                const int         group_ordinal
+                    = group["ordinal_index"] ? group["ordinal_index"].as<int>() : static_cast<int>(groups_.size());
 
                 std::vector<SettingsField> fields;
                 int                        ordinal = 0;

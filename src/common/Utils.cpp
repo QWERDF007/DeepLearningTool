@@ -1,5 +1,6 @@
 #include "common/Utils.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 #include <QStringList>
@@ -28,6 +29,52 @@ QString toQString(const QStringList &str_list, const QString &sep, Qt::SplitBeha
     }
     str += str_list[size];
     return str;
+}
+
+QString cleanPath(const QString &path)
+{
+    const QString trimmed = path.trimmed();
+    if (trimmed.isEmpty())
+        return {};
+    return QDir::cleanPath(QDir::fromNativeSeparators(trimmed));
+}
+
+QString runtimePath(const QString &path)
+{
+    const QString cleaned = cleanPath(path);
+    if (cleaned.isEmpty() || QFileInfo(cleaned).isAbsolute())
+        return cleaned;
+    return cleanPath(QDir(QCoreApplication::applicationDirPath()).filePath(cleaned));
+}
+
+QString resolvePath(const QString &base_dir, const QString &path)
+{
+    const QString cleaned = cleanPath(path);
+    if (cleaned.isEmpty() || QFileInfo(cleaned).isAbsolute())
+        return cleaned;
+    return cleanPath(QDir(base_dir).filePath(cleaned));
+}
+
+QString pythonExecutableFromEnvPath(const QString &env_path)
+{
+    const QFileInfo info(cleanPath(env_path));
+    if (info.isFile())
+        return info.absoluteFilePath();
+
+    const QDir        dir(info.absoluteFilePath());
+    const QStringList candidates = {
+        QStringLiteral("python.exe"),
+        QStringLiteral("Scripts/python.exe"),
+        QStringLiteral("bin/python"),
+        QStringLiteral("python"),
+    };
+    for (const QString &candidate : candidates)
+    {
+        const QString path = dir.filePath(candidate);
+        if (QFileInfo::exists(path))
+            return cleanPath(path);
+    }
+    return {};
 }
 
 #ifdef _WIN32

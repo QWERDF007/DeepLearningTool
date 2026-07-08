@@ -9,14 +9,20 @@
 #include <QStringList>
 #include <QVariant>
 #include <QVector>
-
+#include <string>
 
 namespace dltool::common::yaml {
 
 COMMON_API QString  nodeString(const YAML::Node &node, const QString &fallback = {});
 COMMON_API QVariant nodeVariant(const YAML::Node &node);
+COMMON_API std::string toYamlString(const QString &value);
+COMMON_API YAML::Node scalarNode(const QString &value);
 COMMON_API YAML::Node variantToYaml(const QVariant &value);
-
+COMMON_API void       setMapValue(YAML::Node &node, const QString &key, const YAML::Node &value);
+COMMON_API void       setMapValue(YAML::Node &node, const QString &key, const QString &value);
+COMMON_API void       setMapValue(YAML::Node &node, const QString &key, int value);
+COMMON_API void       setMapValue(YAML::Node &node, const QString &key, qint64 value);
+COMMON_API void       setMapValue(YAML::Node &node, const QString &key, bool value);
 
 COMMON_API YAML::Node loadFile(const QFileInfo &file);
 COMMON_API bool       writeFile(const QString &path, const YAML::Node &node, QString *err_msg = nullptr,

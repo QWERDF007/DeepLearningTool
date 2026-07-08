@@ -16,7 +16,6 @@
 #include <spdlog/spdlog.h>
 
 #include <QDateTime>
-#include <QDir>
 #include <QFileInfo>
 #include <QQmlEngine>
 #include <algorithm>
@@ -24,27 +23,15 @@
 
 namespace dltool::model {
 
-namespace {
-
-QString cleanPath(const QString &path)
-{
-    const QString trimmed = path.trimmed();
-    if (trimmed.isEmpty())
-        return {};
-    return QDir::cleanPath(QDir::fromNativeSeparators(trimmed));
-}
-
-} // namespace
-
-ModelManager::ModelManager(const int method,
-                           dltool::database::ProjectDataBase *database,
-                           dltool::data::DataManager *data_manager,
-                           QObject *parent)
+ModelManager::ModelManager(const int method, dltool::database::ProjectDataBase *database,
+                           dltool::data::DataManager *data_manager, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
     , data_manager_(data_manager)
     , method_(method)
-    , project_dir_(database != nullptr ? cleanPath(QFileInfo(database->path()).absoluteDir().absolutePath()) : QString())
+    , project_dir_(database != nullptr
+                       ? dltool::common::cleanPath(QFileInfo(database->path()).absoluteDir().absolutePath())
+                       : QString())
     , external_task_runner_(std::make_unique<ExternalModelTaskRunner>(this))
 {
     connect(external_task_runner_.get(), &ExternalModelTaskRunner::taskFinished, this,
@@ -159,15 +146,15 @@ QVariant ModelManager::data(const QModelIndex &index, int role) const
 QHash<int, QByteArray> ModelManager::roleNames() const
 {
     return {
-        {       ModelIdRole,            "model_id"},
-        {          UuidRole,                "uuid"},
-        {          NameRole,                "name"},
-        { FrameworkNameRole,      "framework_name"},
+        {          ModelIdRole,           "model_id"},
+        {             UuidRole,               "uuid"},
+        {             NameRole,               "name"},
+        {    FrameworkNameRole,     "framework_name"},
         {ModelArchitectureRole, "model_architecture"},
-        {TrainingResultRole,     "training_result"},
-        {    TestResultRole,         "test_result"},
-        {         CtimeRole,               "ctime"},
-        {         MtimeRole,               "mtime"},
+        {   TrainingResultRole,    "training_result"},
+        {       TestResultRole,        "test_result"},
+        {            CtimeRole,              "ctime"},
+        {            MtimeRole,              "mtime"},
     };
 }
 
@@ -279,9 +266,9 @@ bool ModelManager::deleteModel(const qint64 model_id)
         return false;
     }
 
-    QString    err_msg;
+    QString       err_msg;
     const QString uuid = models_[static_cast<size_t>(row)].uuid;
-    const bool ok = database_ != nullptr && database_->deleteModel(model_id, err_msg);
+    const bool    ok   = database_ != nullptr && database_->deleteModel(model_id, err_msg);
     if (!ok)
     {
         spdlog::error("删除模型失败, id: {}, 错误: {}", model_id, err_msg.toUtf8().constData());
@@ -310,12 +297,12 @@ bool ModelManager::copyModel(const qint64 model_id)
         return false;
     }
 
-    const ModelRecord &source = models_[row];
-    QString            err_msg;
-    int64_t            new_model_id{-1};
-    const qint64       now         = QDateTime::currentSecsSinceEpoch();
-    const QString      copied_name = uniqueCopyName(source.name);
-    const QString      new_uuid    = dltool::common::uuid();
+    const ModelRecord  &source = models_[row];
+    QString             err_msg;
+    int64_t             new_model_id{-1};
+    const qint64        now         = QDateTime::currentSecsSinceEpoch();
+    const QString       copied_name = uniqueCopyName(source.name);
+    const QString       new_uuid    = dltool::common::uuid();
     ModelStorageService storage(project_dir_);
     if (!storage.ensureModelStorage(new_uuid, &err_msg))
     {
@@ -323,7 +310,7 @@ bool ModelManager::copyModel(const qint64 model_id)
         return false;
     }
 
-    const bool         ok          = database_ != nullptr
+    const bool ok = database_ != nullptr
                  && database_->addModel(new_uuid, copied_name, source.framework_name, source.model_architecture,
                                         source.training_result, source.test_result, now, now, new_model_id, err_msg);
     if (!ok)
@@ -404,15 +391,15 @@ QVariantMap ModelManager::modelAt(const int row) const
 
     const ModelRecord &model = models_.at(static_cast<size_t>(row));
     return {
-        {         QStringLiteral("model_id"), static_cast<qint64>(model.model_id)},
-        {             QStringLiteral("uuid"),                          model.uuid},
-        {             QStringLiteral("name"),                          model.name},
-        {   QStringLiteral("framework_name"),                model.framework_name},
-        {QStringLiteral("model_architecture"),          model.model_architecture},
-        {  QStringLiteral("training_result"),               model.training_result},
-        {      QStringLiteral("test_result"),                   model.test_result},
-        {            QStringLiteral("ctime"),                         model.ctime},
-        {            QStringLiteral("mtime"),                         model.mtime},
+        {          QStringLiteral("model_id"), static_cast<qint64>(model.model_id)},
+        {              QStringLiteral("uuid"),                          model.uuid},
+        {              QStringLiteral("name"),                          model.name},
+        {    QStringLiteral("framework_name"),                model.framework_name},
+        {QStringLiteral("model_architecture"),            model.model_architecture},
+        {   QStringLiteral("training_result"),               model.training_result},
+        {       QStringLiteral("test_result"),                   model.test_result},
+        {             QStringLiteral("ctime"),                         model.ctime},
+        {             QStringLiteral("mtime"),                         model.mtime},
     };
 }
 
@@ -459,22 +446,20 @@ void ModelManager::requestModelTaskConfigLoad(const QString &model_uuid) const
         return;
     config_load_started_.insert(key);
 
-    const ModelTaskConfigService config_service(project_dir_);
+    const ModelTaskConfigService                config_service(project_dir_);
     const dltool::model::LoadedModelTaskConfigs configs = config_service.load(trimmed_uuid);
     const_cast<ModelManager *>(this)->applyLoadedModelTaskConfigs(configs.model_uuid, configs.train_params,
-                                                                  configs.test_params,
-                                                                  configs.dataset_selections);
+                                                                  configs.test_params, configs.dataset_selections);
 }
 
 void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const QVariantMap &train_params,
-                                               const QVariantMap &test_params,
-                                               const QVariantMap &dataset_selections)
+                                               const QVariantMap &test_params, const QVariantMap &dataset_selections)
 {
     const auto found = model_instances_.find(instanceKey(model_uuid));
     if (found == model_instances_.end() || !found->second || found->second->config() == nullptr)
         return;
 
-    IModel *model = found->second.get();
+    IModel       *model        = found->second.get();
     IModelConfig *model_config = found->second->config();
     if (!train_params.isEmpty())
     {
@@ -495,8 +480,8 @@ bool ModelManager::hasTaskHandler(int task_id) const
     if (task_manager == nullptr || task_manager->tasks() == nullptr)
         return false;
 
-    const QVariantMap task = task_manager->tasks()->taskForId(task_id);
-    const QString model_uuid = task.value(QStringLiteral("model_uuid")).toString().trimmed();
+    const QVariantMap task       = task_manager->tasks()->taskForId(task_id);
+    const QString     model_uuid = task.value(QStringLiteral("model_uuid")).toString().trimmed();
     return !model_uuid.isEmpty() && modelForUuid(model_uuid) != nullptr;
 }
 
@@ -516,15 +501,15 @@ bool ModelManager::startTask(int task_id)
     if (task_manager == nullptr || task_manager->tasks() == nullptr)
         return false;
 
-    const QVariantMap task = task_manager->tasks()->taskForId(task_id);
-    const int status_value = task.value(QStringLiteral("status_value"), TaskTableModel::Pending).toInt();
+    const QVariantMap task         = task_manager->tasks()->taskForId(task_id);
+    const int         status_value = task.value(QStringLiteral("status_value"), TaskTableModel::Pending).toInt();
     if (status_value == TaskTableModel::Running)
         return true;
 
     const QString model_uuid = task.value(QStringLiteral("model_uuid")).toString().trimmed();
     const QString model_name = task.value(QStringLiteral("model_name")).toString().trimmed();
-    const auto task_type = static_cast<ModelTaskType>(task.value(QStringLiteral("task_type"), 0).toInt());
-    IModel *model = modelForUuid(model_uuid);
+    const auto    task_type  = static_cast<ModelTaskType>(task.value(QStringLiteral("task_type"), 0).toInt());
+    IModel       *model      = modelForUuid(model_uuid);
     if (model == nullptr)
         return false;
 
@@ -566,8 +551,8 @@ std::vector<std::unique_ptr<IModel>> ModelManager::registeredModelInstances() co
     return registeredModels(method_);
 }
 
-bool ModelManager::startExternalModelTask(const QString &model_uuid, const QString &model_name,
-                                          ModelTaskType task_type, int task_id)
+bool ModelManager::startExternalModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type,
+                                          int task_id)
 {
     IModel *model = modelForUuid(model_uuid);
     if (model == nullptr)
@@ -599,8 +584,8 @@ bool ModelManager::startExternalModelTask(const QString &model_uuid, const QStri
     request.task_server_host = task_manager->taskServerHost();
     request.task_server_port = task_manager->taskServerPort();
 
-    ExternalProcessSpec            process_spec;
-    QString                        err_msg;
+    ExternalProcessSpec               process_spec;
+    QString                           err_msg;
     const ModelTaskPreparationService preparation(method_, project_dir_, data_manager_);
     if (!preparation.prepare(request, process_spec, &err_msg))
     {

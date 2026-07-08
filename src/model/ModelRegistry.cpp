@@ -1,10 +1,8 @@
 #include "model/ModelRegistry.h"
 
+#include "common/Utils.h"
 #include "model/IModel.h"
 
-#include <QCoreApplication>
-#include <QDir>
-#include <QFileInfo>
 #include <algorithm>
 #include <utility>
 
@@ -53,44 +51,20 @@ std::vector<RegisteredFramework> &frameworkRegistry()
     return registry;
 }
 
-QString cleanPath(const QString &path)
-{
-    const QString trimmed = path.trimmed();
-    if (trimmed.isEmpty())
-        return {};
-    return QDir::cleanPath(QDir::fromNativeSeparators(trimmed));
-}
-
-QString runtimePath(const QString &path)
-{
-    const QString cleaned = cleanPath(path);
-    if (cleaned.isEmpty() || QFileInfo(cleaned).isAbsolute())
-        return cleaned;
-    return cleanPath(QDir(QCoreApplication::applicationDirPath()).filePath(cleaned));
-}
-
-QString resolvePath(const QString &base_dir, const QString &path)
-{
-    const QString cleaned = cleanPath(path);
-    if (cleaned.isEmpty() || QFileInfo(cleaned).isAbsolute())
-        return cleaned;
-    return cleanPath(QDir(base_dir).filePath(cleaned));
-}
-
 FrameworkDefinition resolvedFrameworkDefinition(const FrameworkDefinition &definition)
 {
     FrameworkDefinition resolved = definition;
-    resolved.root               = runtimePath(definition.root);
-    resolved.train_script       = resolvePath(resolved.root, definition.train_script);
-    resolved.predict_script     = resolvePath(resolved.root, definition.predict_script);
+    resolved.root                = dltool::common::runtimePath(definition.root);
+    resolved.train_script        = dltool::common::resolvePath(resolved.root, definition.train_script);
+    resolved.predict_script      = dltool::common::resolvePath(resolved.root, definition.predict_script);
 
     resolved.scripts.clear();
     for (auto it = definition.scripts.constBegin(); it != definition.scripts.constEnd(); ++it)
-        resolved.scripts.insert(it.key(), resolvePath(resolved.root, it.value()));
+        resolved.scripts.insert(it.key(), dltool::common::resolvePath(resolved.root, it.value()));
 
     resolved.python_paths.clear();
     for (const QString &path : definition.python_paths)
-        resolved.python_paths.append(resolvePath(resolved.root, path));
+        resolved.python_paths.append(dltool::common::resolvePath(resolved.root, path));
     return resolved;
 }
 
@@ -98,21 +72,17 @@ FrameworkDefinition resolvedFrameworkDefinition(const FrameworkDefinition &defin
 
 bool registerFramework(const int method, const FrameworkDefinition &definition)
 {
-    FrameworkDefinition normalized = definition;
-    normalized.method              = method;
-    normalized.name                = definition.name.trimmed();
+    FrameworkDefinition normalized       = definition;
+    normalized.method                    = method;
+    normalized.name                      = definition.name.trimmed();
     const QString trimmed_framework_name = normalized.name;
     if (trimmed_framework_name.isEmpty())
         return false;
 
     auto      &registry = frameworkRegistry();
-    const auto found
-        = std::find_if(registry.begin(), registry.end(),
-                       [method, &trimmed_framework_name](const RegisteredFramework &framework)
-                       {
-                           return framework.definition.method == method
-                               && framework.definition.name == trimmed_framework_name;
-                       });
+    const auto found    = std::find_if(
+        registry.begin(), registry.end(), [method, &trimmed_framework_name](const RegisteredFramework &framework)
+        { return framework.definition.method == method && framework.definition.name == trimmed_framework_name; });
     if (found != registry.end())
         return false;
 
@@ -139,8 +109,7 @@ bool registerModel(const int method, const QString &framework_name, const QStrin
     if (found != registry.end())
         return false;
 
-    registry.push_back(
-        RegisteredModel{method, trimmed_framework_name, trimmed_model_architecture, std::move(factory)});
+    registry.push_back(RegisteredModel{method, trimmed_framework_name, trimmed_model_architecture, std::move(factory)});
     return true;
 }
 
@@ -151,13 +120,12 @@ FrameworkDefinition registeredFramework(const int method, const QString &framewo
         return {};
 
     const auto &registry = frameworkRegistry();
-    const auto  found
-        = std::find_if(registry.begin(), registry.end(),
-                       [method, &trimmed_framework_name](const RegisteredFramework &framework)
-                       {
-                           return (method < 0 || framework.definition.method == method)
-                               && framework.definition.name == trimmed_framework_name;
-                       });
+    const auto  found    = std::find_if(registry.begin(), registry.end(),
+                                        [method, &trimmed_framework_name](const RegisteredFramework &framework)
+                                        {
+                                        return (method < 0 || framework.definition.method == method)
+                                            && framework.definition.name == trimmed_framework_name;
+                                    });
     if (found == registry.end())
         return {};
     return resolvedFrameworkDefinition(found->definition);
@@ -218,13 +186,13 @@ std::unique_ptr<IModel> createRegisteredModel(const int method, const QString &f
         return nullptr;
 
     const auto &registry = modelRegistry();
-    const auto  found
-        = std::find_if(registry.begin(), registry.end(),
-                       [method, &trimmed_framework_name, &trimmed_model_architecture](const RegisteredModel &model)
-                       {
-                           return (method < 0 || model.method == method) && model.framework_name == trimmed_framework_name
-                               && model.model_architecture == trimmed_model_architecture;
-                       });
+    const auto  found    = std::find_if(
+        registry.begin(), registry.end(),
+        [method, &trimmed_framework_name, &trimmed_model_architecture](const RegisteredModel &model)
+        {
+            return (method < 0 || model.method == method) && model.framework_name == trimmed_framework_name
+                && model.model_architecture == trimmed_model_architecture;
+        });
     if (found == registry.end() || !found->factory)
         return nullptr;
 

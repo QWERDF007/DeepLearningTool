@@ -1,5 +1,6 @@
 #include "model/ModelTaskPreparationService.h"
 
+#include "common/Utils.h"
 #include "data/DataManager.h"
 #include "model/IModel.h"
 #include "model/ModelDatasetOrganizer.h"
@@ -88,24 +89,6 @@ bool setError(QString *err_msg, const QString &message)
     return false;
 }
 
-QString pythonExecutableFromEnvPath(const QString &env_path)
-{
-    const QFileInfo info(cleanModelPath(env_path));
-    if (info.isFile())
-        return info.absoluteFilePath();
-
-    const QDir dir(info.absoluteFilePath());
-    for (const QString &candidate :
-         {QStringLiteral("python.exe"), QStringLiteral("Scripts/python.exe"), QStringLiteral("bin/python"),
-          QStringLiteral("python")})
-    {
-        const QString path = dir.filePath(candidate);
-        if (QFileInfo::exists(path))
-            return cleanModelPath(path);
-    }
-    return {};
-}
-
 } // namespace
 
 ModelTaskPreparationService::ModelTaskPreparationService(int method, QString project_dir,
@@ -144,21 +127,21 @@ bool ModelTaskPreparationService::prepare(const ExternalModelTaskRequest &reques
     if (!QFileInfo::exists(script_path))
         return setError(err_msg, QStringLiteral("脚本不存在: %1").arg(script_path));
 
-    namespace generated_field = dltool::settings::generated::field;
-    const QString python_executable = pythonExecutableFromEnvPath(dltool::settings::settingString(
+    namespace generated_field       = dltool::settings::generated::field;
+    const QString python_executable = dltool::common::pythonExecutableFromEnvPath(dltool::settings::settingString(
         dltool::settings::GlobalSettings::getInstance(), generated_field::Software::PythonEnvPath));
     if (python_executable.isEmpty())
         return setError(err_msg, QStringLiteral("未配置 Python 环境目录"));
 
-    QVariantMap datasets;
+    QVariantMap               datasets;
     const ModelTaskDescriptor task_descriptor = describeModelTask(request.task_type);
     if (task_descriptor.requires_dataset_export)
     {
         if (data_manager_ == nullptr)
             return setError(err_msg, QStringLiteral("数据管理器为空"));
 
-        QString dataset_err;
-        DataManagerDatasetSource source(*data_manager_);
+        QString                   dataset_err;
+        DataManagerDatasetSource  source(*data_manager_);
         ModelDatasetExportRequest dataset_request;
         dataset_request.method             = method_;
         dataset_request.framework_name     = request.model->frameworkName();
@@ -168,7 +151,7 @@ bool ModelTaskPreparationService::prepare(const ExternalModelTaskRequest &reques
         dataset_request.dataset_dir        = storage.path(model_uuid, ModelStorageLocation::Datasets);
         dataset_request.selections         = modelDatasetSelectionsSnapshot(request.model);
         dataset_request.source             = &source;
-        datasets = ModelDatasetOrganizer::organize(dataset_request, &dataset_err);
+        datasets                           = ModelDatasetOrganizer::organize(dataset_request, &dataset_err);
         if (datasets.isEmpty())
             return setError(err_msg, QStringLiteral("数据集组织失败: %1").arg(dataset_err));
     }
@@ -181,15 +164,15 @@ bool ModelTaskPreparationService::prepare(const ExternalModelTaskRequest &reques
     if (config_path.isEmpty())
         return setError(err_msg, config_err);
 
-    const QString log_path =
-        cleanModelPath(QDir(storage.path(model_uuid, ModelStorageLocation::Logs))
-                           .filePath(modelTaskLogStem(request.task_type) + QStringLiteral(".log")));
+    const QString log_path
+        = cleanModelPath(QDir(storage.path(model_uuid, ModelStorageLocation::Logs))
+                             .filePath(modelTaskLogStem(request.task_type) + QStringLiteral(".log")));
     if (log_path.isEmpty())
         return setError(err_msg, QStringLiteral("日志路径为空"));
 
-    process_spec.task_id           = request.task_id;
-    process_spec.program           = python_executable;
-    process_spec.arguments         = {
+    process_spec.task_id   = request.task_id;
+    process_spec.program   = python_executable;
+    process_spec.arguments = {
         script_path,
         QStringLiteral("--config"),
         config_path,

@@ -1,5 +1,7 @@
 #include "model/ExternalModelTaskRunner.h"
 
+#include "common/Utils.h"
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -12,17 +14,9 @@ namespace dltool::model {
 
 namespace {
 
-QString cleanProcessPath(const QString &path)
-{
-    const QString trimmed = path.trimmed();
-    if (trimmed.isEmpty())
-        return {};
-    return QDir::cleanPath(QDir::fromNativeSeparators(trimmed));
-}
-
 QFile *openProcessLogFile(const QString &path, QObject *parent, QString *err_msg)
 {
-    const QString cleaned = cleanProcessPath(path);
+    const QString cleaned = dltool::common::cleanPath(path);
     if (cleaned.isEmpty())
     {
         if (err_msg != nullptr)
@@ -88,7 +82,7 @@ bool ExternalModelTaskRunner::start(const ExternalProcessSpec &process_spec, QSt
         return false;
     }
 
-    auto *process = new QProcess(this);
+    auto   *process = new QProcess(this);
     QString log_err;
     auto   *process_log = openProcessLogFile(process_spec.log_path, process, &log_err);
     if (process_log == nullptr)
@@ -103,8 +97,8 @@ bool ExternalModelTaskRunner::start(const ExternalProcessSpec &process_spec, QSt
     process->setArguments(process_spec.arguments);
     process->setWorkingDirectory(process_spec.working_directory);
 
-    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    const QString       old_python_path = env.value(QStringLiteral("PYTHONPATH"));
+    QProcessEnvironment env               = QProcessEnvironment::systemEnvironment();
+    const QString       old_python_path   = env.value(QStringLiteral("PYTHONPATH"));
     QStringList         python_path_parts = process_spec.python_paths;
     if (!old_python_path.isEmpty())
         python_path_parts.append(old_python_path);

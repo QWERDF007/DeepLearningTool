@@ -1,5 +1,6 @@
 #include "SearchControllerUtils.h"
 
+#include "common/Utils.h"
 #include "settings/SettingsValue.h"
 #include "ui/ProgressManager.h"
 
@@ -182,16 +183,13 @@ ImageClusterSettings readImageClusterSettingsImpl(const dltool::settings::Global
     result.include_noise = valueForField(settings, generated_field::ImageCluster::IncludeNoise, false).toBool();
     result.apply_mode    = valueForField(settings, generated_field::ImageCluster::ApplyMode, 0).toInt();
 
-    result.min_cluster_size = valueForField(settings, generated_field::ImageCluster::MinClusterSize,5)
-                                  .toLongLong();
-    result.min_samples = valueForField(settings, generated_field::ImageCluster::MinSamples, 0)
-                             .toLongLong();
-    result.cluster_selection_epsilon = valueForField(settings, generated_field::ImageCluster::ClusterSelectionEpsilon, 0.0)
-                                           .toDouble();
-    result.max_cluster_size = valueForField(settings, generated_field::ImageCluster::MaxClusterSize, 0)
-                                  .toLongLong();
-    result.algorithm = valueForField(settings, generated_field::ImageCluster::Algorithm,
-                                     static_cast<int>(irt::ops::ClusteringAlgorithm::KDTree))
+    result.min_cluster_size = valueForField(settings, generated_field::ImageCluster::MinClusterSize, 5).toLongLong();
+    result.min_samples      = valueForField(settings, generated_field::ImageCluster::MinSamples, 0).toLongLong();
+    result.cluster_selection_epsilon
+        = valueForField(settings, generated_field::ImageCluster::ClusterSelectionEpsilon, 0.0).toDouble();
+    result.max_cluster_size = valueForField(settings, generated_field::ImageCluster::MaxClusterSize, 0).toLongLong();
+    result.algorithm        = valueForField(settings, generated_field::ImageCluster::Algorithm,
+                                            static_cast<int>(irt::ops::ClusteringAlgorithm::KDTree))
                            .toInt();
     result.metric = valueForField(settings, generated_field::ImageCluster::Metric,
                                   static_cast<int>(irt::ops::kDefaultHDBSCANMetric))
@@ -314,7 +312,7 @@ QString indexDirectoryForProject(const QString &database_path, const QString &cu
                                  const QString &default_subdirectory)
 {
     if (!custom_directory.trimmed().isEmpty())
-        return QDir::cleanPath(custom_directory.trimmed());
+        return dltool::common::cleanPath(custom_directory);
 
     if (!database_path.isEmpty())
         return QFileInfo(database_path).absoluteDir().filePath(default_subdirectory);

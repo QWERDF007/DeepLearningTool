@@ -4,7 +4,9 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <string>
+#include <vector>
 
 #ifdef _WIN32
 #    include <Windows.h>
@@ -15,6 +17,10 @@ namespace dltool::common {
 COMMON_API QString uuid();
 COMMON_API QString toQString(const QStringList &, const QString &sep = ", ",
                              Qt::SplitBehavior behavior = Qt::KeepEmptyParts);
+COMMON_API QString cleanPath(const QString &path);
+COMMON_API QString runtimePath(const QString &path);
+COMMON_API QString resolvePath(const QString &base_dir, const QString &path);
+COMMON_API QString pythonExecutableFromEnvPath(const QString &env_path);
 
 #ifdef _WIN32
 COMMON_API std::string wcharToString(const wchar_t *wstr);

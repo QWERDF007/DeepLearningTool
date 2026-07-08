@@ -1,5 +1,6 @@
 #include "common/YamlUtils.h"
 
+#include <QByteArray>
 #include <QDir>
 #include <QFile>
 #include <QMetaType>
@@ -17,7 +18,7 @@ QString nodeString(const YAML::Node &node, const QString &fallback)
     }
 
     const std::string value = node.as<std::string>();
-    return QString::fromUtf8(value.c_str());
+    return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
 }
 
 QVariant nodeVariant(const YAML::Node &node)
@@ -79,6 +80,17 @@ QVariant nodeVariant(const YAML::Node &node)
     return {};
 }
 
+std::string toYamlString(const QString &value)
+{
+    const QByteArray bytes = value.toUtf8();
+    return std::string(bytes.constData(), static_cast<size_t>(bytes.size()));
+}
+
+YAML::Node scalarNode(const QString &value)
+{
+    return YAML::Node(toYamlString(value));
+}
+
 YAML::Node variantToYaml(const QVariant &value)
 {
     if (!value.isValid() || value.isNull())
@@ -93,7 +105,7 @@ YAML::Node variantToYaml(const QVariant &value)
         const QVariantMap map = value.toMap();
         for (auto it = map.constBegin(); it != map.constEnd(); ++it)
         {
-            node[it.key().toStdString()] = variantToYaml(it.value());
+            node[toYamlString(it.key())] = variantToYaml(it.value());
         }
         return node;
     }
@@ -104,7 +116,7 @@ YAML::Node variantToYaml(const QVariant &value)
         const QVariantHash hash = value.toHash();
         for (auto it = hash.constBegin(); it != hash.constEnd(); ++it)
         {
-            node[it.key().toStdString()] = variantToYaml(it.value());
+            node[toYamlString(it.key())] = variantToYaml(it.value());
         }
         return node;
     }
@@ -122,11 +134,11 @@ YAML::Node variantToYaml(const QVariant &value)
 
     if (type_id == QMetaType::QStringList)
     {
-        YAML::Node       node(YAML::NodeType::Sequence);
+        YAML::Node        node(YAML::NodeType::Sequence);
         const QStringList list = value.toStringList();
         for (const QString &entry : list)
         {
-            node.push_back(entry.toStdString());
+            node.push_back(scalarNode(entry));
         }
         return node;
     }
@@ -144,8 +156,33 @@ YAML::Node variantToYaml(const QVariant &value)
     case QMetaType::Float:
         return YAML::Node(value.toDouble());
     default:
-        return YAML::Node(value.toString().toStdString());
+        return scalarNode(value.toString());
     }
+}
+
+void setMapValue(YAML::Node &node, const QString &key, const YAML::Node &value)
+{
+    node[toYamlString(key)] = value;
+}
+
+void setMapValue(YAML::Node &node, const QString &key, const QString &value)
+{
+    node[toYamlString(key)] = scalarNode(value);
+}
+
+void setMapValue(YAML::Node &node, const QString &key, int value)
+{
+    node[toYamlString(key)] = value;
+}
+
+void setMapValue(YAML::Node &node, const QString &key, qint64 value)
+{
+    node[toYamlString(key)] = static_cast<long long>(value);
+}
+
+void setMapValue(YAML::Node &node, const QString &key, bool value)
+{
+    node[toYamlString(key)] = value;
 }
 
 YAML::Node loadFile(const QFileInfo &file)
@@ -153,8 +190,8 @@ YAML::Node loadFile(const QFileInfo &file)
     QFile yaml_file(file.absoluteFilePath());
     if (!yaml_file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
-        const QString message = QStringLiteral("open yaml failed: %1, %2").arg(file.absoluteFilePath(),
-                                                                               yaml_file.errorString());
+        const QString message
+            = QStringLiteral("open yaml failed: %1, %2").arg(file.absoluteFilePath(), yaml_file.errorString());
         throw std::runtime_error(message.toUtf8().constData());
     }
 
@@ -183,9 +220,8 @@ bool writeFile(const QString &path, const YAML::Node &node, QString *err_msg, co
     {
         if (err_msg != nullptr)
         {
-            const QString prefix
-                = emit_error_prefix.isEmpty() ? QStringLiteral("emit yaml failed") : emit_error_prefix;
-            *err_msg = QStringLiteral("%1: %2").arg(prefix, QString::fromUtf8(out.GetLastError().c_str()));
+            const QString prefix = emit_error_prefix.isEmpty() ? QStringLiteral("emit yaml failed") : emit_error_prefix;
+            *err_msg             = QStringLiteral("%1: %2").arg(prefix, QString::fromUtf8(out.GetLastError().c_str()));
         }
         return false;
     }

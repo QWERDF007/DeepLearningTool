@@ -1,5 +1,6 @@
 #include "feature/FewShotLearningController.h"
 
+#include "common/Utils.h"
 #include "core/CoreDef.h"
 #include "data/DataSelectionTreeModel.h"
 #include "data/DatasetViewModelFactory.h"
@@ -14,7 +15,6 @@
 
 #include <spdlog/spdlog.h>
 
-#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -69,29 +69,6 @@ struct PredictionImportTarget
     QString manifest_path;  ///< 图像清单文件路径
 };
 
-/**
- * @brief 清理并规范化路径
- * @param path 原始路径
- * @return 规范化后的路径
- */
-QString cleanPath(const QString &path)
-{
-    return QDir::cleanPath(QDir::fromNativeSeparators(path.trimmed()));
-}
-
-/**
- * @brief 将相对路径转换为运行时绝对路径
- * @param path 输入路径
- * @return 如果输入为绝对路径则直接返回，否则相对于应用程序目录解析
- */
-QString runtimePath(const QString &path)
-{
-    const QString cleaned = cleanPath(path);
-    if (cleaned.isEmpty() || QFileInfo(cleaned).isAbsolute())
-        return cleaned;
-    return cleanPath(QDir(QCoreApplication::applicationDirPath()).filePath(cleaned));
-}
-
 constexpr const char *kFsSam2FrameworkName = "FS-SAM2";
 
 /**
@@ -100,7 +77,7 @@ constexpr const char *kFsSam2FrameworkName = "FS-SAM2";
  */
 QString fixedSam2ConfigRoot()
 {
-    return runtimePath(QStringLiteral("python/facebookresearch/sam2/sam2/configs"));
+    return dltool::common::runtimePath(QStringLiteral("python/facebookresearch/sam2/sam2/configs"));
 }
 
 /**
@@ -122,33 +99,6 @@ QString sanitizeFileName(QString value, const QString &fallback)
 using dltool::settings::settingDouble;
 using dltool::settings::settingInt;
 using dltool::settings::settingString;
-
-/**
- * @brief 从环境路径中查找 Python 可执行文件
- * @param env_path Python 环境目录路径
- * @return Python 可执行文件的绝对路径，未找到则返回空字符串
- */
-QString pythonExecutableFromEnvPath(const QString &env_path)
-{
-    const QFileInfo info(cleanPath(env_path));
-    if (info.isFile())
-        return info.absoluteFilePath();
-
-    const QDir        dir(info.absoluteFilePath());
-    const QStringList candidates = {
-        QStringLiteral("python.exe"),
-        QStringLiteral("Scripts/python.exe"),
-        QStringLiteral("bin/python"),
-        QStringLiteral("python"),
-    };
-    for (const QString &candidate : candidates)
-    {
-        const QString path = dir.filePath(candidate);
-        if (QFileInfo::exists(path))
-            return cleanPath(path);
-    }
-    return {};
-}
 
 /**
  * @brief 确保目录存在，不存在则创建
@@ -801,7 +751,7 @@ QString sam2ConfigPathFromArchitecture(const QString &architecture_name, QString
         return {};
     }
 
-    const QString path = cleanPath(
+    const QString path = dltool::common::cleanPath(
         QDir(fixedSam2ConfigRoot()).filePath(QString("%1/%1_hiera_%2.yaml").arg(parts.prefix, parts.size_token)));
     if (!QFileInfo::exists(path))
     {
@@ -819,7 +769,7 @@ QString sam2ConfigPathFromArchitecture(const QString &architecture_name, QString
  */
 QString checkpointPath(const QString &fs_sam2_root, const QString &logpath)
 {
-    return cleanPath(QDir(fs_sam2_root).filePath(QString("logs/%1.log/best_model.pt").arg(logpath)));
+    return dltool::common::cleanPath(QDir(fs_sam2_root).filePath(QString("logs/%1.log/best_model.pt").arg(logpath)));
 }
 
 } // namespace
@@ -864,8 +814,7 @@ struct FewShotLearningController::RunContext
 };
 
 FewShotLearningController::FewShotLearningController(FewShotLearningDataProvider *data_provider,
-                                                     dltool::data::DataManager   *data_manager,
-                                                     QObject *parent)
+                                                     dltool::data::DataManager *data_manager, QObject *parent)
     : QObject(parent)
     , data_provider_(data_provider)
     , task_manager_(dltool::model::TaskManager::getInstance())
@@ -1122,16 +1071,16 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
 
     auto *global_settings = dltool::settings::GlobalSettings::getInstance();
 
-    context.python_executable
-        = pythonExecutableFromEnvPath(settingString(global_settings, generated_field::Software::PythonEnvPath));
+    context.python_executable = dltool::common::pythonExecutableFromEnvPath(
+        settingString(global_settings, generated_field::Software::PythonEnvPath));
     if (context.python_executable.isEmpty())
     {
         err_msg = QString("请先在软件设置中配置 Python 环境目录");
         return false;
     }
 
-    const auto fs_sam2_framework = dltool::model::ModelManager::registeredFramework(
-        data_provider_->method(), QString::fromUtf8(kFsSam2FrameworkName));
+    const auto fs_sam2_framework
+        = dltool::model::registeredFramework(data_provider_->method(), QString::fromUtf8(kFsSam2FrameworkName));
     if (fs_sam2_framework.name.isEmpty())
     {
         err_msg = QString("FS-SAM2 框架未注册");
@@ -1140,7 +1089,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
 
     context.fs_sam2_root = fs_sam2_framework.root;
     context.sam2_checkpoint
-        = runtimePath(settingString(global_settings, generated_field::FewShotLearning::Sam2Checkpoint));
+        = dltool::common::runtimePath(settingString(global_settings, generated_field::FewShotLearning::Sam2Checkpoint));
     const QString sam2_architecture
         = settingString(global_settings, generated_field::FewShotLearning::Sam2Architecture);
     if (sam2_architecture.isEmpty())
@@ -1185,7 +1134,7 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         = std::clamp(settingDouble(global_settings, generated_field::FewShotLearning::SupportRatio, 0.5), 0.1, 0.9);
 
     const QString output_root_setting
-        = cleanPath(settingString(global_settings, generated_field::FewShotLearning::OutputDir));
+        = dltool::common::cleanPath(settingString(global_settings, generated_field::FewShotLearning::OutputDir));
     const QString project_dir      = QFileInfo(data_provider_->databasePath()).absoluteDir().absolutePath();
     const QString run_id           = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss_zzz"));
     context.exp_id                 = QStringLiteral("dltool_%1").arg(run_id);

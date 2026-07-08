@@ -1,6 +1,7 @@
 #include "feature/SmartAnnotationController.h"
 
 #include "common/MaskPolygonUtils.h"
+#include "common/Utils.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsValue.h"
 
@@ -117,8 +118,8 @@ SmartModelLoadRequest buildSmartModelLoadRequest(const QString &model_name, cons
     const QString backend_name  = QString::fromLatin1(irt::model::modelBackendName(request.backend));
     const QString device_name   = QString::fromLatin1(irt::model::modelDeviceName(request.device));
     request.key                 = QString("%1|%2|%3|%4")
-                                      .arg(request.model_name.toLower(), backend_name, device_name,
-                                           QDir::cleanPath(request.absolute_model_path).toCaseFolded());
+                      .arg(request.model_name.toLower(), backend_name, device_name,
+                           dltool::common::cleanPath(request.absolute_model_path).toCaseFolded());
     return request;
 }
 

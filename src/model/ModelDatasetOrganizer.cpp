@@ -1,13 +1,13 @@
 #include "model/ModelDatasetOrganizer.h"
 
 #include "common/MaskPolygonUtils.h"
+#include "common/Utils.h"
 #include "common/YamlUtils.h"
 #include "data/DatasetIO.h"
 #include "model/ModelTaskTypes.h"
 
-#include <yaml-cpp/yaml.h>
-
 #include <spdlog/spdlog.h>
+#include <yaml-cpp/yaml.h>
 
 #include <QDir>
 #include <QImage>
@@ -116,9 +116,9 @@ enum class LabelGroupName
 const std::map<QString, FrameworkDatasetLayout> &frameworkDatasetLayouts()
 {
     static const std::map<QString, FrameworkDatasetLayout> layouts = {
-        {   QStringLiteral("anomalib"), FrameworkDatasetLayout::Anomalib},
+        {   QStringLiteral("anomalib"),    FrameworkDatasetLayout::Anomalib},
         {QStringLiteral("ultralytics"), FrameworkDatasetLayout::Ultralytics},
-        {   QStringLiteral("fs-sam2"),  FrameworkDatasetLayout::FsSam2},
+        {    QStringLiteral("fs-sam2"),      FrameworkDatasetLayout::FsSam2},
     };
     return layouts;
 }
@@ -136,12 +136,12 @@ const std::map<DatasetSplit, QString> &datasetSplitNames()
 const std::map<DatasetConfigField, QString> &datasetConfigFieldNames()
 {
     static const std::map<DatasetConfigField, QString> names = {
-        {     DatasetConfigField::Train,      QStringLiteral("train")},
-        {DatasetConfigField::Validation, QStringLiteral("validation")},
-        {      DatasetConfigField::Test,       QStringLiteral("test")},
-        {  DatasetConfigField::Manifest,   QStringLiteral("manifest")},
-        {  DatasetConfigField::FileList,  QStringLiteral("file_list")},
-        {  DatasetConfigField::MasksDir,  QStringLiteral("masks_dir")},
+        {     DatasetConfigField::Train,       QStringLiteral("train")},
+        {DatasetConfigField::Validation,  QStringLiteral("validation")},
+        {      DatasetConfigField::Test,        QStringLiteral("test")},
+        {  DatasetConfigField::Manifest,    QStringLiteral("manifest")},
+        {  DatasetConfigField::FileList,   QStringLiteral("file_list")},
+        {  DatasetConfigField::MasksDir,   QStringLiteral("masks_dir")},
         {DatasetConfigField::ImageCount, QStringLiteral("image_count")},
         {DatasetConfigField::LabelCount, QStringLiteral("label_count")},
     };
@@ -159,10 +159,10 @@ const std::map<DatasetSubdir, QString> &datasetSubdirNames()
 const std::map<DatasetFileName, QString> &datasetFileNames()
 {
     static const std::map<DatasetFileName, QString> names = {
-        {      DatasetFileName::Manifest,        QStringLiteral("manifest.yaml")},
-        {          DatasetFileName::Mask, QStringLiteral("image_%1_label_%2.png")},
-        {     DatasetFileName::ImageMask,              QStringLiteral("%1.png")},
-        { DatasetFileName::SplitFileList,              QStringLiteral("%1.yaml")},
+        {     DatasetFileName::Manifest,         QStringLiteral("manifest.yaml")},
+        {         DatasetFileName::Mask, QStringLiteral("image_%1_label_%2.png")},
+        {    DatasetFileName::ImageMask,                QStringLiteral("%1.png")},
+        {DatasetFileName::SplitFileList,               QStringLiteral("%1.yaml")},
     };
     return names;
 }
@@ -170,11 +170,11 @@ const std::map<DatasetFileName, QString> &datasetFileNames()
 const std::map<LabelDataField, QString> &labelDataFieldNames()
 {
     static const std::map<LabelDataField, QString> names = {
-        { LabelDataField::Points, QStringLiteral("points")},
-        {      LabelDataField::X,      QStringLiteral("x")},
-        {      LabelDataField::Y,      QStringLiteral("y")},
-        {  LabelDataField::Width,  QStringLiteral("width")},
-        { LabelDataField::Height, QStringLiteral("height")},
+        {LabelDataField::Points, QStringLiteral("points")},
+        {     LabelDataField::X,      QStringLiteral("x")},
+        {     LabelDataField::Y,      QStringLiteral("y")},
+        { LabelDataField::Width,  QStringLiteral("width")},
+        {LabelDataField::Height, QStringLiteral("height")},
     };
     return names;
 }
@@ -182,41 +182,41 @@ const std::map<LabelDataField, QString> &labelDataFieldNames()
 const std::map<ManifestField, QString> &manifestFieldNames()
 {
     static const std::map<ManifestField, QString> names = {
-        {          ManifestField::Version,             QStringLiteral("version")},
-        {           ManifestField::Method,              QStringLiteral("method")},
-        {        ManifestField::Framework,           QStringLiteral("framework")},
-        {ManifestField::ModelArchitecture,  QStringLiteral("model_architecture")},
-        {        ManifestField::ModelUuid,          QStringLiteral("model_uuid")},
-        {            ManifestField::Split,               QStringLiteral("split")},
-        {           ManifestField::Images,              QStringLiteral("images")},
-        {          ManifestField::Samples,             QStringLiteral("samples")},
-        {               ManifestField::Id,                  QStringLiteral("id")},
-        {             ManifestField::Path,                QStringLiteral("path")},
-        {             ManifestField::Mask,                QStringLiteral("mask")},
-        {         ManifestField::MasksDir,           QStringLiteral("masks_dir")},
-        {        ManifestField::DatasetId,          QStringLiteral("dataset_id")},
-        {      ManifestField::DatasetName,        QStringLiteral("dataset_name")},
-        {            ManifestField::Width,               QStringLiteral("width")},
-        {           ManifestField::Height,              QStringLiteral("height")},
-        { ManifestField::ImageLabelClassId, QStringLiteral("image_label_class_id")},
+        {            ManifestField::Version,                QStringLiteral("version")},
+        {             ManifestField::Method,                 QStringLiteral("method")},
+        {          ManifestField::Framework,              QStringLiteral("framework")},
+        {  ManifestField::ModelArchitecture,     QStringLiteral("model_architecture")},
+        {          ManifestField::ModelUuid,             QStringLiteral("model_uuid")},
+        {              ManifestField::Split,                  QStringLiteral("split")},
+        {             ManifestField::Images,                 QStringLiteral("images")},
+        {            ManifestField::Samples,                QStringLiteral("samples")},
+        {                 ManifestField::Id,                     QStringLiteral("id")},
+        {               ManifestField::Path,                   QStringLiteral("path")},
+        {               ManifestField::Mask,                   QStringLiteral("mask")},
+        {           ManifestField::MasksDir,              QStringLiteral("masks_dir")},
+        {          ManifestField::DatasetId,             QStringLiteral("dataset_id")},
+        {        ManifestField::DatasetName,           QStringLiteral("dataset_name")},
+        {              ManifestField::Width,                  QStringLiteral("width")},
+        {             ManifestField::Height,                 QStringLiteral("height")},
+        {  ManifestField::ImageLabelClassId,   QStringLiteral("image_label_class_id")},
         {ManifestField::ImageLabelClassName, QStringLiteral("image_label_class_name")},
-        {  ManifestField::ImageLabelGroup,    QStringLiteral("image_label_group")},
-        {       ManifestField::LabelIndex,         QStringLiteral("label_index")},
-        {          ManifestField::Anomaly,             QStringLiteral("anomaly")},
-        {           ManifestField::Labels,              QStringLiteral("labels")},
-        {          ManifestField::LabelId,            QStringLiteral("label_id")},
-        {    ManifestField::LabelClassId,      QStringLiteral("label_class_id")},
-        {  ManifestField::LabelClassName,    QStringLiteral("label_class_name")},
-        { ManifestField::LabelClassGroup,   QStringLiteral("label_class_group")},
-        {       ManifestField::ClassIndex,         QStringLiteral("class_index")},
-        {             ManifestField::Data,                QStringLiteral("data")},
-        {         ManifestField::MaskPath,           QStringLiteral("mask_path")},
-        {             ManifestField::Yolo,                QStringLiteral("yolo")},
-        {                ManifestField::X,                   QStringLiteral("x")},
-        {                ManifestField::Y,                   QStringLiteral("y")},
-        {               ManifestField::Cx,                  QStringLiteral("cx")},
-        {               ManifestField::Cy,                  QStringLiteral("cy")},
-        {            ManifestField::Group,               QStringLiteral("group")},
+        {    ManifestField::ImageLabelGroup,      QStringLiteral("image_label_group")},
+        {         ManifestField::LabelIndex,            QStringLiteral("label_index")},
+        {            ManifestField::Anomaly,                QStringLiteral("anomaly")},
+        {             ManifestField::Labels,                 QStringLiteral("labels")},
+        {            ManifestField::LabelId,               QStringLiteral("label_id")},
+        {       ManifestField::LabelClassId,         QStringLiteral("label_class_id")},
+        {     ManifestField::LabelClassName,       QStringLiteral("label_class_name")},
+        {    ManifestField::LabelClassGroup,      QStringLiteral("label_class_group")},
+        {         ManifestField::ClassIndex,            QStringLiteral("class_index")},
+        {               ManifestField::Data,                   QStringLiteral("data")},
+        {           ManifestField::MaskPath,              QStringLiteral("mask_path")},
+        {               ManifestField::Yolo,                   QStringLiteral("yolo")},
+        {                  ManifestField::X,                      QStringLiteral("x")},
+        {                  ManifestField::Y,                      QStringLiteral("y")},
+        {                 ManifestField::Cx,                     QStringLiteral("cx")},
+        {                 ManifestField::Cy,                     QStringLiteral("cy")},
+        {              ManifestField::Group,                  QStringLiteral("group")},
     };
     return names;
 }
@@ -271,11 +271,6 @@ QString manifestFieldName(ManifestField field)
     return found != names.end() ? found->second : QString();
 }
 
-std::string manifestKey(ManifestField field)
-{
-    return manifestFieldName(field).toStdString();
-}
-
 QString labelGroupName(LabelGroupName group)
 {
     const auto &names = labelGroupNames();
@@ -285,15 +280,15 @@ QString labelGroupName(LabelGroupName group)
 
 FrameworkDatasetLayout datasetLayout(const QString &framework_name)
 {
-    const QString key = framework_name.trimmed().toLower();
+    const QString key     = framework_name.trimmed().toLower();
     const auto   &layouts = frameworkDatasetLayouts();
-    const auto    found = layouts.find(key);
+    const auto    found   = layouts.find(key);
     return found != layouts.end() ? found->second : FrameworkDatasetLayout::Generic;
 }
 
 bool ensureDirectory(const QString &path, QString *err_msg)
 {
-    const QString cleaned = QDir::cleanPath(QDir::fromNativeSeparators(path.trimmed()));
+    const QString cleaned = dltool::common::cleanPath(path);
     if (cleaned.isEmpty())
     {
         if (err_msg != nullptr)
@@ -315,17 +310,17 @@ bool ensureDirectory(const QString &path, QString *err_msg)
 
 void setString(YAML::Node &node, ManifestField field, const QString &value)
 {
-    node[manifestKey(field)] = value.toStdString();
+    dltool::common::yaml::setMapValue(node, manifestFieldName(field), value);
 }
 
 void setInteger(YAML::Node &node, ManifestField field, qint64 value)
 {
-    node[manifestKey(field)] = static_cast<long long>(value);
+    dltool::common::yaml::setMapValue(node, manifestFieldName(field), value);
 }
 
 void setBool(YAML::Node &node, ManifestField field, bool value)
 {
-    node[manifestKey(field)] = value;
+    dltool::common::yaml::setMapValue(node, manifestFieldName(field), value);
 }
 
 bool isAnomalyGroup(const QString &group)
@@ -358,10 +353,10 @@ QVariantMap labelYoloData(const QVariantMap &label_data, int image_width, int im
         return {};
 
     return {
-        {    manifestFieldName(ManifestField::Cx), (bbox_x + width / 2.0) / image_width},
+        {    manifestFieldName(ManifestField::Cx),   (bbox_x + width / 2.0) / image_width},
         {    manifestFieldName(ManifestField::Cy), (bbox_y + height / 2.0) / image_height},
-        { manifestFieldName(ManifestField::Width),                     width / image_width},
-        {manifestFieldName(ManifestField::Height),                   height / image_height},
+        { manifestFieldName(ManifestField::Width),                    width / image_width},
+        {manifestFieldName(ManifestField::Height),                  height / image_height},
     };
 }
 
@@ -402,8 +397,8 @@ QString anomalibFileListPath(const QString &dataset_dir, const QString &split_na
     return QDir(dataset_dir).filePath(datasetFileName(DatasetFileName::SplitFileList).arg(split_name));
 }
 
-QString writeFsSam2LabelMask(const QVariantMap &label_data, int image_width, int image_height,
-                             const QString &masks_dir, qint64 image_id, qint64 label_id, QString *err_msg)
+QString writeFsSam2LabelMask(const QVariantMap &label_data, int image_width, int image_height, const QString &masks_dir,
+                             qint64 image_id, qint64 label_id, QString *err_msg)
 {
     const std::vector<QPointF> polygon = labelPolygon(label_data);
     if (polygon.size() < 3)
@@ -414,14 +409,14 @@ QString writeFsSam2LabelMask(const QVariantMap &label_data, int image_width, int
         return {};
 
     const QString path = fsSam2MaskPath(masks_dir, image_id, label_id);
-    QImage image(mask.data(), image_width, image_height, image_width, QImage::Format_Grayscale8);
+    QImage        image(mask.data(), image_width, image_height, image_width, QImage::Format_Grayscale8);
     if (image.isNull() || !image.save(path))
     {
         if (err_msg != nullptr)
             *err_msg = QStringLiteral("写入 FS-SAM2 mask 失败: %1").arg(path);
         return {};
     }
-    return QDir::cleanPath(QDir::fromNativeSeparators(path));
+    return dltool::common::cleanPath(path);
 }
 
 QString writeAnomalibImageMask(const std::vector<std::vector<QPointF>> &polygons, int image_width, int image_height,
@@ -454,33 +449,34 @@ QString writeAnomalibImageMask(const std::vector<std::vector<QPointF>> &polygons
     return file_name;
 }
 
-YAML::Node labelNode(const IModelDatasetSource *source, FrameworkDatasetLayout layout, qint64 label_id,
-                     int image_width, int image_height, std::map<qint64, int> &class_indices)
+YAML::Node labelNode(const IModelDatasetSource *source, FrameworkDatasetLayout layout, qint64 label_id, int image_width,
+                     int image_height, std::map<qint64, int> &class_indices)
 {
-    YAML::Node node(YAML::NodeType::Map);
-    const qint64 label_class_id = source->labelClassId(label_id);
-    const QString class_name    = label_class_id >= 0 ? source->labelClassName(label_class_id) : QString();
-    const QString class_group   = label_class_id >= 0 ? source->labelClassGroup(label_class_id) : QString();
-    const QVariantMap data      = source->labelData(label_id);
+    YAML::Node        node(YAML::NodeType::Map);
+    const qint64      label_class_id = source->labelClassId(label_id);
+    const QString     class_name     = label_class_id >= 0 ? source->labelClassName(label_class_id) : QString();
+    const QString     class_group    = label_class_id >= 0 ? source->labelClassGroup(label_class_id) : QString();
+    const QVariantMap data           = source->labelData(label_id);
 
     setInteger(node, ManifestField::LabelId, label_id);
     setInteger(node, ManifestField::LabelClassId, label_class_id);
     setString(node, ManifestField::LabelClassName, class_name);
     setString(node, ManifestField::LabelClassGroup, class_group);
     setInteger(node, ManifestField::ClassIndex, classIndex(label_class_id, class_indices));
-    node[manifestKey(ManifestField::Data)] = dltool::common::yaml::variantToYaml(data);
+    dltool::common::yaml::setMapValue(node, manifestFieldName(ManifestField::Data),
+                                      dltool::common::yaml::variantToYaml(data));
 
     if (layout == FrameworkDatasetLayout::Ultralytics)
     {
         const QVariantMap yolo = labelYoloData(data, image_width, image_height);
         if (!yolo.isEmpty())
-            node[manifestKey(ManifestField::Yolo)] = dltool::common::yaml::variantToYaml(yolo);
+            dltool::common::yaml::setMapValue(node, manifestFieldName(ManifestField::Yolo),
+                                              dltool::common::yaml::variantToYaml(yolo));
     }
     return node;
 }
 
-QVariantMap exportSplit(const ModelDatasetExportRequest &request, DatasetSplit split, bool required,
-                        QString *err_msg)
+QVariantMap exportSplit(const ModelDatasetExportRequest &request, DatasetSplit split, bool required, QString *err_msg)
 {
     const IModelDatasetSource *source = request.source;
     if (source == nullptr)
@@ -511,14 +507,15 @@ QVariantMap exportSplit(const ModelDatasetExportRequest &request, DatasetSplit s
         return {};
     }
 
-    const FrameworkDatasetLayout layout = datasetLayout(request.framework_name);
+    const FrameworkDatasetLayout layout     = datasetLayout(request.framework_name);
     const QString                split_name = datasetSplitName(split);
-    const QString                split_dir
-        = layout == FrameworkDatasetLayout::Anomalib ? request.dataset_dir : QDir(request.dataset_dir).filePath(split_name);
+    const QString                split_dir  = layout == FrameworkDatasetLayout::Anomalib
+                                                ? request.dataset_dir
+                                                : QDir(request.dataset_dir).filePath(split_name);
     if (!ensureDirectory(split_dir, err_msg))
         return {};
 
-    QString                      masks_dir;
+    QString masks_dir;
     if (layout == FrameworkDatasetLayout::Anomalib)
     {
         masks_dir = QDir(request.dataset_dir).filePath(datasetSubdirName(DatasetSubdir::Masks));
@@ -540,11 +537,11 @@ QVariantMap exportSplit(const ModelDatasetExportRequest &request, DatasetSplit s
     setString(manifest, ManifestField::ModelUuid, request.model_uuid);
     setString(manifest, ManifestField::Split, split_name);
 
-    YAML::Node images(YAML::NodeType::Sequence);
-    YAML::Node samples(YAML::NodeType::Sequence);
+    YAML::Node            images(YAML::NodeType::Sequence);
+    YAML::Node            samples(YAML::NodeType::Sequence);
     std::map<qint64, int> class_indices;
-    int image_count = 0;
-    int label_count = 0;
+    int                   image_count = 0;
+    int                   label_count = 0;
 
     std::vector<int64_t> all_image_ids = source->allImageIds();
     std::sort(all_image_ids.begin(), all_image_ids.end());
@@ -558,19 +555,19 @@ QVariantMap exportSplit(const ModelDatasetExportRequest &request, DatasetSplit s
         if (image_path.trimmed().isEmpty())
             continue;
 
-        int image_width = 0;
+        int image_width  = 0;
         int image_height = 0;
         dltool::data::DatasetIO::getImageDimensions(image_path, image_width, image_height);
 
-        QVariantMap image_level_label = source->imageLevelLabelData(image_id);
+        QVariantMap  image_level_label = source->imageLevelLabelData(image_id);
         const qint64 image_label_class_id
             = image_level_label.value(manifestFieldName(ManifestField::LabelClassId), -1).toLongLong();
         const QString image_label_class_name
             = image_level_label.value(manifestFieldName(ManifestField::LabelClassName)).toString();
         const QString image_label_group = image_level_label.value(manifestFieldName(ManifestField::Group)).toString();
 
-        YAML::Node labels(YAML::NodeType::Sequence);
-        bool       has_anomaly_label = isAnomalyGroup(image_label_group);
+        YAML::Node                        labels(YAML::NodeType::Sequence);
+        bool                              has_anomaly_label = isAnomalyGroup(image_label_group);
         std::vector<std::vector<QPointF>> anomaly_polygons;
         for (const int64_t label_id : source->imageLabelIds(image_id))
         {
@@ -578,15 +575,14 @@ QVariantMap exportSplit(const ModelDatasetExportRequest &request, DatasetSplit s
             if (!selection->contains(dataset_id, label_class_id))
                 continue;
 
-            const QString class_group = label_class_id >= 0 ? source->labelClassGroup(label_class_id) : QString();
-            const QVariantMap label_data = source->labelData(label_id);
+            const QString     class_group = label_class_id >= 0 ? source->labelClassGroup(label_class_id) : QString();
+            const QVariantMap label_data  = source->labelData(label_id);
             YAML::Node        label = labelNode(source, layout, label_id, image_width, image_height, class_indices);
             if (layout == FrameworkDatasetLayout::FsSam2)
             {
-                QString mask_err;
-                const QString mask_path
-                    = writeFsSam2LabelMask(label_data, image_width, image_height, masks_dir, image_id, label_id,
-                                           &mask_err);
+                QString       mask_err;
+                const QString mask_path = writeFsSam2LabelMask(label_data, image_width, image_height, masks_dir,
+                                                               image_id, label_id, &mask_err);
                 if (!mask_err.isEmpty())
                 {
                     if (err_msg != nullptr)
@@ -617,14 +613,13 @@ QVariantMap exportSplit(const ModelDatasetExportRequest &request, DatasetSplit s
         {
             YAML::Node sample(YAML::NodeType::Map);
             setInteger(sample, ManifestField::Id, image_id);
-            setString(sample, ManifestField::Path, QDir::cleanPath(QDir::fromNativeSeparators(image_path)));
+            setString(sample, ManifestField::Path, dltool::common::cleanPath(image_path));
             setInteger(sample, ManifestField::LabelIndex, has_anomaly_label ? 1 : 0);
             if (has_anomaly_label)
             {
-                QString mask_err;
-                const QString mask_file
-                    = writeAnomalibImageMask(anomaly_polygons, image_width, image_height, masks_dir, image_id,
-                                             &mask_err);
+                QString       mask_err;
+                const QString mask_file = writeAnomalibImageMask(anomaly_polygons, image_width, image_height, masks_dir,
+                                                                 image_id, &mask_err);
                 if (!mask_err.isEmpty())
                 {
                     if (err_msg != nullptr)
@@ -644,7 +639,7 @@ QVariantMap exportSplit(const ModelDatasetExportRequest &request, DatasetSplit s
 
         YAML::Node image(YAML::NodeType::Map);
         setInteger(image, ManifestField::Id, image_id);
-        setString(image, ManifestField::Path, QDir::cleanPath(QDir::fromNativeSeparators(image_path)));
+        setString(image, ManifestField::Path, dltool::common::cleanPath(image_path));
         setInteger(image, ManifestField::DatasetId, dataset_id);
         setString(image, ManifestField::DatasetName, source->datasetName(dataset_id));
         setInteger(image, ManifestField::Width, image_width);
@@ -654,7 +649,7 @@ QVariantMap exportSplit(const ModelDatasetExportRequest &request, DatasetSplit s
         setString(image, ManifestField::ImageLabelGroup, image_label_group);
         setBool(image, ManifestField::Anomaly, has_anomaly_label);
         setInteger(image, ManifestField::LabelIndex, has_anomaly_label ? 1 : 0);
-        image[manifestKey(ManifestField::Labels)] = labels;
+        dltool::common::yaml::setMapValue(image, manifestFieldName(ManifestField::Labels), labels);
         images.push_back(image);
         ++image_count;
     }
@@ -675,34 +670,32 @@ QVariantMap exportSplit(const ModelDatasetExportRequest &request, DatasetSplit s
         setString(file_list, ManifestField::ModelArchitecture, request.model_architecture);
         setString(file_list, ManifestField::ModelUuid, request.model_uuid);
         setString(file_list, ManifestField::Split, split_name);
-        setString(file_list, ManifestField::MasksDir, QDir::cleanPath(QDir::fromNativeSeparators(masks_dir)));
-        file_list[manifestKey(ManifestField::Samples)] = samples;
+        setString(file_list, ManifestField::MasksDir, dltool::common::cleanPath(masks_dir));
+        dltool::common::yaml::setMapValue(file_list, manifestFieldName(ManifestField::Samples), samples);
 
         const QString file_list_path = anomalibFileListPath(request.dataset_dir, split_name);
-        if (!dltool::common::yaml::writeFile(file_list_path, file_list, err_msg,
-                                             QStringLiteral("写入数据集清单失败"),
+        if (!dltool::common::yaml::writeFile(file_list_path, file_list, err_msg, QStringLiteral("写入数据集清单失败"),
                                              QStringLiteral("生成数据集清单 YAML 失败")))
             return {};
 
         return {
-            {datasetConfigFieldName(DatasetConfigField::FileList), file_list_path},
-            {datasetConfigFieldName(DatasetConfigField::MasksDir),  QDir::cleanPath(QDir::fromNativeSeparators(masks_dir))},
-            {datasetConfigFieldName(DatasetConfigField::ImageCount), image_count},
-            {datasetConfigFieldName(DatasetConfigField::LabelCount), label_count},
+            {  datasetConfigFieldName(DatasetConfigField::FileList),                       file_list_path},
+            {  datasetConfigFieldName(DatasetConfigField::MasksDir), dltool::common::cleanPath(masks_dir)},
+            {datasetConfigFieldName(DatasetConfigField::ImageCount),                          image_count},
+            {datasetConfigFieldName(DatasetConfigField::LabelCount),                          label_count},
         };
     }
 
-    manifest[manifestKey(ManifestField::Images)] = images;
+    dltool::common::yaml::setMapValue(manifest, manifestFieldName(ManifestField::Images), images);
     const QString manifest_path = QDir(split_dir).filePath(datasetFileName(DatasetFileName::Manifest));
-    if (!dltool::common::yaml::writeFile(manifest_path, manifest, err_msg,
-                                         QStringLiteral("写入数据集清单失败"),
+    if (!dltool::common::yaml::writeFile(manifest_path, manifest, err_msg, QStringLiteral("写入数据集清单失败"),
                                          QStringLiteral("生成数据集清单 YAML 失败")))
         return {};
 
     return {
-        { datasetConfigFieldName(DatasetConfigField::Manifest), manifest_path},
-        {datasetConfigFieldName(DatasetConfigField::ImageCount), image_count},
-        {datasetConfigFieldName(DatasetConfigField::LabelCount), label_count},
+        {  datasetConfigFieldName(DatasetConfigField::Manifest), manifest_path},
+        {datasetConfigFieldName(DatasetConfigField::ImageCount),   image_count},
+        {datasetConfigFieldName(DatasetConfigField::LabelCount),   label_count},
     };
 }
 

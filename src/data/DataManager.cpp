@@ -1,5 +1,6 @@
 ﻿#include "data/DataManager.h"
 
+#include "common/Utils.h"
 #include "data/CategoryStatisticsModel.h"
 #include "data/DataFormat.h"
 #include "data/DataIO.h"
@@ -30,7 +31,6 @@
 #include <set>
 #include <utility>
 
-
 namespace dltool::data {
 
 namespace {
@@ -48,7 +48,7 @@ QString normalizedImagePath(const QString &path)
     if (normalized.isEmpty())
         normalized = path;
 
-    normalized = QDir::cleanPath(QDir::fromNativeSeparators(normalized));
+    normalized = dltool::common::cleanPath(normalized);
 #ifdef Q_OS_WIN
     normalized = normalized.toCaseFolded();
 #endif
@@ -1428,7 +1428,7 @@ bool DataManager::setImageLabelClass(const int64_t image_id, const int64_t label
 
     const int64_t effective_label_class_id
         = method_ == core::DeepLearningMethod::AnomalyDetection && label_class_id >= 0
-              && label_classes_->isUnlabeledLabelClass(static_cast<int>(label_class_id))
+               && label_classes_->isUnlabeledLabelClass(static_cast<int>(label_class_id))
             ? -1
             : label_class_id;
 
@@ -1801,9 +1801,8 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
 
         if (anomaly_project && folder_import)
         {
-            const int64_t image_level_class_id = label_classes_->isUnlabeledLabelClass(static_cast<int>(label_class_id))
-                                                   ? -1
-                                                   : label_class_id;
+            const int64_t image_level_class_id
+                = label_classes_->isUnlabeledLabelClass(static_cast<int>(label_class_id)) ? -1 : label_class_id;
             auto folder_class_it = task.folder_class_by_image_id.find(image_id);
             if (folder_class_it == task.folder_class_by_image_id.end())
             {

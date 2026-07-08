@@ -7,9 +7,8 @@
 #include "model/ModelDatasetSelection.h"
 #include "model/ModelTaskTypes.h"
 
-#include <yaml-cpp/yaml.h>
-
 #include <spdlog/spdlog.h>
+#include <yaml-cpp/yaml.h>
 
 #include <QDir>
 #include <QFileInfo>
@@ -33,22 +32,22 @@ const std::map<ModelTaskConfigFile, QString> &taskConfigFileNames()
 const std::map<ModelTaskConfigField, QString> &taskConfigFieldNames()
 {
     static const std::map<ModelTaskConfigField, QString> names = {
-        {      ModelTaskConfigField::ModelUuid, QStringLiteral("model_uuid")},
-        {      ModelTaskConfigField::ModelName, QStringLiteral("model_name")},
-        {       ModelTaskConfigField::TaskType, QStringLiteral("task_type")},
-        {      ModelTaskConfigField::Framework, QStringLiteral("framework")},
+        {        ModelTaskConfigField::ModelUuid,         QStringLiteral("model_uuid")},
+        {        ModelTaskConfigField::ModelName,         QStringLiteral("model_name")},
+        {         ModelTaskConfigField::TaskType,          QStringLiteral("task_type")},
+        {        ModelTaskConfigField::Framework,          QStringLiteral("framework")},
         {ModelTaskConfigField::ModelArchitecture, QStringLiteral("model_architecture")},
-        {       ModelTaskConfigField::ModelDir, QStringLiteral("model_dir")},
-        {      ModelTaskConfigField::ResultDir, QStringLiteral("result_dir")},
-        {         ModelTaskConfigField::LogDir, QStringLiteral("log_dir")},
-        {      ModelTaskConfigField::WeightDir, QStringLiteral("weight_dir")},
-        {      ModelTaskConfigField::Datasets, QStringLiteral("datasets")},
+        {         ModelTaskConfigField::ModelDir,          QStringLiteral("model_dir")},
+        {        ModelTaskConfigField::ResultDir,         QStringLiteral("result_dir")},
+        {           ModelTaskConfigField::LogDir,            QStringLiteral("log_dir")},
+        {        ModelTaskConfigField::WeightDir,         QStringLiteral("weight_dir")},
+        {         ModelTaskConfigField::Datasets,           QStringLiteral("datasets")},
         {ModelTaskConfigField::DatasetSelections, QStringLiteral("dataset_selections")},
-        {    ModelTaskConfigField::TrainParams, QStringLiteral("train_params")},
-        {     ModelTaskConfigField::TestParams, QStringLiteral("test_params")},
-        {         ModelTaskConfigField::Trainer, QStringLiteral("trainer")},
-        {       ModelTaskConfigField::Inference, QStringLiteral("inference")},
-        {       ModelTaskConfigField::OutputDir, QStringLiteral("output_dir")},
+        {      ModelTaskConfigField::TrainParams,       QStringLiteral("train_params")},
+        {       ModelTaskConfigField::TestParams,        QStringLiteral("test_params")},
+        {          ModelTaskConfigField::Trainer,            QStringLiteral("trainer")},
+        {        ModelTaskConfigField::Inference,          QStringLiteral("inference")},
+        {        ModelTaskConfigField::OutputDir,         QStringLiteral("output_dir")},
     };
     return names;
 }
@@ -116,7 +115,7 @@ LoadedModelTaskConfigs ModelTaskConfigService::load(const QString &model_uuid) c
     const QString test_config_path  = configPath(model_uuid, ModelTaskConfigFile::Test);
 
     LoadedModelTaskConfigs configs;
-    configs.model_uuid    = model_uuid;
+    configs.model_uuid   = model_uuid;
     configs.train_params = readParams(train_config_path, ModelTaskConfigField::TrainParams);
     configs.test_params  = readParams(test_config_path, ModelTaskConfigField::TestParams);
 
@@ -218,8 +217,7 @@ QString ModelTaskConfigService::write(const QString &model_uuid, ModelTaskType t
 
     const QString path = dir.filePath(file_name);
     if (!dltool::common::yaml::writeFile(path, dltool::common::yaml::variantToYaml(config), err_msg,
-                                         QStringLiteral("写入任务配置失败"),
-                                         QStringLiteral("生成任务 YAML 配置失败")))
+                                         QStringLiteral("写入任务配置失败"), QStringLiteral("生成任务 YAML 配置失败")))
         return {};
     return path;
 }
@@ -236,7 +234,9 @@ QVariantMap ModelTaskConfigService::readParams(const QString &path, ModelTaskCon
         if (!root || !root.IsMap())
             return {};
 
-        return dltool::common::yaml::nodeVariant(root[modelTaskConfigFieldName(field).toStdString()]).toMap();
+        return dltool::common::yaml::nodeVariant(
+                   root[dltool::common::yaml::toYamlString(modelTaskConfigFieldName(field))])
+            .toMap();
     }
     catch (const std::exception &e)
     {
@@ -257,8 +257,8 @@ QVariantMap ModelTaskConfigService::readDatasetSelections(const QString &path) c
         if (!root || !root.IsMap())
             return {};
 
-        return dltool::common::yaml::nodeVariant(
-                   root[modelTaskConfigFieldName(ModelTaskConfigField::DatasetSelections).toStdString()])
+        return dltool::common::yaml::nodeVariant(root[dltool::common::yaml::toYamlString(modelTaskConfigFieldName(
+                                                     ModelTaskConfigField::DatasetSelections))])
             .toMap();
     }
     catch (const std::exception &e)
