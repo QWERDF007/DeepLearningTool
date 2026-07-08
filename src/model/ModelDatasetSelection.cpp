@@ -194,7 +194,7 @@ ModelDatasetSelection modelDatasetSelection(QObject *selection_object)
     return selection;
 }
 
-ModelDatasetSelections modelDatasetSelectionsSnapshot(IModel *model)
+ModelDatasetSelections readModelDatasetSelections(IModel *model)
 {
     ModelDatasetSelections selections;
     if (model == nullptr)
@@ -231,9 +231,14 @@ QVariantMap modelDatasetSelectionMap(const ModelDatasetSelection &selection)
 
 } // namespace
 
+ModelDatasetSelections modelDatasetSelectionsSnapshot(IModel *model)
+{
+    return readModelDatasetSelections(model);
+}
+
 QVariantMap modelDatasetSelections(IModel *model)
 {
-    const ModelDatasetSelections selections = modelDatasetSelectionsSnapshot(model);
+    const ModelDatasetSelections selections = readModelDatasetSelections(model);
     QVariantMap                  result;
     result.insert(datasetSelectionSplitName(DatasetSelectionSplit::Train), modelDatasetSelectionMap(selections.train));
     result.insert(datasetSelectionSplitName(DatasetSelectionSplit::Validation),

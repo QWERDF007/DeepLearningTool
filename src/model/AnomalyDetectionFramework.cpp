@@ -1,13 +1,13 @@
 #include "core/CoreDef.h"
-#include "model/ModelManager.h"
+#include "model/ModelRegistry.h"
 
 namespace dltool::model { namespace {
 
 using dltool::core::DeepLearningMethod;
 
-ModelManager::FrameworkDefinition anomalibFramework()
+FrameworkDefinition anomalibFramework()
 {
-    ModelManager::FrameworkDefinition framework;
+    FrameworkDefinition framework;
     framework.name = QStringLiteral("anomalib");
     framework.root = QStringLiteral("python/open-edge-platform/anomalib");
     framework.train_script = QStringLiteral("train.py");

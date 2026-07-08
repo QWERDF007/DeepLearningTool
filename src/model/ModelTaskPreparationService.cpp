@@ -6,7 +6,6 @@
 #include "model/ModelDatasetSelection.h"
 #include "model/ModelStorageService.h"
 #include "model/ModelTaskConfigService.h"
-#include "model/TaskManager.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsKeys.h"
 #include "settings/SettingsValue.h"
@@ -117,16 +116,15 @@ ModelTaskPreparationService::ModelTaskPreparationService(int method, QString pro
 {
 }
 
-bool ModelTaskPreparationService::prepare(const Request &request, PreparedExternalModelTask &prepared,
+bool ModelTaskPreparationService::prepare(const ExternalModelTaskRequest &request, ExternalProcessSpec &process_spec,
                                           QString *err_msg) const
 {
-    prepared = {};
+    process_spec = {};
 
-    auto *task_manager = TaskManager::getInstance();
-    if (task_manager == nullptr)
-        return setError(err_msg, QStringLiteral("任务管理器为空"));
     if (request.model == nullptr)
         return setError(err_msg, QStringLiteral("模型实例为空"));
+    if (request.task_server_host.trimmed().isEmpty() || request.task_server_port == 0)
+        return setError(err_msg, QStringLiteral("任务通信端点无效"));
 
     const QString model_uuid = request.model->uuid().trimmed();
     if (model_uuid.isEmpty())
@@ -137,7 +135,7 @@ bool ModelTaskPreparationService::prepare(const Request &request, PreparedExtern
     if (!storage.ensureModelStorage(model_uuid, &storage_err))
         return setError(err_msg, QStringLiteral("创建模型目录失败: %1").arg(storage_err));
 
-    const QString script_path = scriptForTask(request.framework, request.task_type);
+    const QString script_path = request.framework.scriptFor(request.task_type);
     if (script_path.isEmpty())
     {
         return setError(err_msg, QStringLiteral("框架未定义脚本, 框架: %1, 任务: %2")
@@ -145,10 +143,6 @@ bool ModelTaskPreparationService::prepare(const Request &request, PreparedExtern
     }
     if (!QFileInfo::exists(script_path))
         return setError(err_msg, QStringLiteral("脚本不存在: %1").arg(script_path));
-
-    QString server_err;
-    if (!task_manager->ensureTaskServer(&server_err))
-        return setError(err_msg, QStringLiteral("任务通信服务启动失败: %1").arg(server_err));
 
     namespace generated_field = dltool::settings::generated::field;
     const QString python_executable = pythonExecutableFromEnvPath(dltool::settings::settingString(
@@ -193,42 +187,23 @@ bool ModelTaskPreparationService::prepare(const Request &request, PreparedExtern
     if (log_path.isEmpty())
         return setError(err_msg, QStringLiteral("日志路径为空"));
 
-    prepared.task_id           = request.task_id;
-    prepared.program           = python_executable;
-    prepared.arguments         = {
+    process_spec.task_id           = request.task_id;
+    process_spec.program           = python_executable;
+    process_spec.arguments         = {
         script_path,
         QStringLiteral("--config"),
         config_path,
         QStringLiteral("--dltool_task_host"),
-        task_manager->taskServerHost(),
+        request.task_server_host,
         QStringLiteral("--dltool_task_port"),
-        QString::number(task_manager->taskServerPort()),
+        QString::number(request.task_server_port),
         QStringLiteral("--dltool_task_id"),
         QString::number(request.task_id),
     };
-    prepared.working_directory = request.framework.root;
-    prepared.python_paths      = request.framework.python_paths;
-    prepared.log_path          = log_path;
+    process_spec.working_directory = request.framework.root;
+    process_spec.python_paths      = request.framework.python_paths;
+    process_spec.log_path          = log_path;
     return true;
-}
-
-bool ModelTaskPreparationService::frameworkHasScript(const ModelManager::FrameworkDefinition &framework,
-                                                     ModelTaskType task_type)
-{
-    return !scriptForTask(framework, task_type).isEmpty();
-}
-
-QString ModelTaskPreparationService::scriptForTask(const ModelManager::FrameworkDefinition &framework,
-                                                   ModelTaskType task_type)
-{
-    if (framework.name.isEmpty())
-        return {};
-
-    if (task_type == ModelTaskType::Train)
-        return framework.train_script;
-    if (task_type == ModelTaskType::Test)
-        return framework.predict_script;
-    return {};
 }
 
 } // namespace dltool::model

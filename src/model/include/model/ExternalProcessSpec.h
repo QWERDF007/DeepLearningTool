@@ -7,7 +7,7 @@
 
 namespace dltool::model {
 
-struct MODEL_API PreparedExternalModelTask
+struct MODEL_API ExternalProcessSpec
 {
     int         task_id{-1};
     QString     program;

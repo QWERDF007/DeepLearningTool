@@ -1,13 +1,13 @@
 #include "core/CoreDef.h"
-#include "model/ModelManager.h"
+#include "model/ModelRegistry.h"
 
 namespace dltool::model { namespace {
 
 using dltool::core::DeepLearningMethod;
 
-ModelManager::FrameworkDefinition fsSam2Framework()
+FrameworkDefinition fsSam2Framework()
 {
-    ModelManager::FrameworkDefinition framework;
+    FrameworkDefinition framework;
     framework.name = QStringLiteral("FS-SAM2");
     framework.root = QStringLiteral("python/fornib/FS-SAM2");
     framework.train_script = QStringLiteral("train.py");

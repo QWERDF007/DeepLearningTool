@@ -1,13 +1,13 @@
 #include "core/CoreDef.h"
-#include "model/ModelManager.h"
+#include "model/ModelRegistry.h"
 
 namespace dltool::model { namespace {
 
 using dltool::core::DeepLearningMethod;
 
-ModelManager::FrameworkDefinition ultralyticsFramework()
+FrameworkDefinition ultralyticsFramework()
 {
-    ModelManager::FrameworkDefinition framework;
+    FrameworkDefinition framework;
     framework.name = QStringLiteral("ultralytics");
     return framework;
 }

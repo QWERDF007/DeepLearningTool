@@ -2,14 +2,13 @@
 
 #include "IModel.h"
 #include "dltool/model/Export.h"
+#include "model/ModelRegistry.h"
 #include "model/ModelTaskTypes.h"
 
 #include <QAbstractListModel>
-#include <QHash>
 #include <QStringList>
 #include <QVariantMap>
 #include <QtQml>
-#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -34,20 +33,6 @@ class MODEL_API ModelManager : public QAbstractListModel
     QML_NAMED_ELEMENT(ModelManager)
     QML_UNCREATABLE("Can not create ModelManager directly!")
 public:
-    using ModelFactory = std::function<std::unique_ptr<IModel>()>;
-
-    struct FrameworkDefinition
-    {
-        int                     method{-1};
-        QString                 name;
-        QString                 root;
-        QString                 train_script;
-        QString                 predict_script;
-        QHash<QString, QString> scripts;
-        QStringList             python_paths;
-        bool                    visible_for_model_creation{true};
-    };
-
     explicit ModelManager(const int method, dltool::database::ProjectDataBase *database,
                           dltool::data::DataManager *data_manager, QObject *parent = nullptr);
     ~ModelManager();
@@ -104,23 +89,6 @@ public:
         return method_;
     }
 
-    static bool registerFramework(int method, const FrameworkDefinition &definition);
-    static bool registerModel(int method, const QString &framework_name, const QString &model_architecture,
-                              ModelFactory factory);
-
-    static FrameworkDefinition registeredFramework(int method, const QString &framework_name);
-
-    static QStringList registeredFrameworkNames(int method);
-
-    static QStringList registeredModelArchitectures(int method, const QString &framework_name);
-
-    static QStringList registeredModelNames(int method);
-
-    static std::unique_ptr<IModel> createRegisteredModel(int method, const QString &framework_name,
-                                                         const QString &model_architecture);
-
-    static std::vector<std::unique_ptr<IModel>> registeredModels(const int method);
-
     std::unique_ptr<IModel>              createRegisteredModelInstance(const QString &framework_name,
                                                                        const QString &model_architecture) const;
     std::vector<std::unique_ptr<IModel>> registeredModelInstances() const;
@@ -145,7 +113,7 @@ private:
     QString uniqueCopyName(const QString &name) const;
     IModel *cachedModelForRecord(const ModelRecord &record) const;
     void    initializeDatasetViewModels(IModel *model) const;
-    int     startExternalModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type,
+    bool    startExternalModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type,
                                    int task_id);
     void    requestModelTaskConfigLoad(const QString &model_uuid) const;
     void    applyLoadedModelTaskConfigs(const QString &model_uuid, const QVariantMap &train_params,
@@ -180,17 +148,3 @@ private:
 };
 
 } // namespace dltool::model
-
-#define DLT_REGISTER_FRAMEWORK(ModelMethod, RegistrationName, FrameworkDefinitionExpr) \
-    const bool RegistrationName##FrameworkRegistered                                   \
-        = ModelManager::registerFramework(ModelMethod, FrameworkDefinitionExpr)
-
-#define DLT_REGISTER_MODEL(ModelMethod, FrameworkName, ModelClass)                                               \
-    const bool ModelClass##Registered                                                                            \
-        = ModelManager::registerModel(ModelMethod, QStringLiteral(#FrameworkName), ModelClass::staticTypeName(), \
-                                      []() -> std::unique_ptr<IModel> { return std::make_unique<ModelClass>(); })
-
-#define DLT_REGISTER_YAML_MODEL(ModelMethod, RegistrationName, FrameworkName, ModelArchitecture)                       \
-    const bool RegistrationName##Registered = ModelManager::registerModel(                                             \
-        ModelMethod, QStringLiteral(FrameworkName), QStringLiteral(ModelArchitecture), []() -> std::unique_ptr<IModel> \
-        { return createYamlModel(ModelMethod, QStringLiteral(FrameworkName), QStringLiteral(ModelArchitecture)); })

@@ -1,6 +1,7 @@
 #include "model/ModelManager.h"
 
 #include "common/Utils.h"
+#include "data/DataSelectionTreeModel.h"
 #include "data/DatasetViewModelFactory.h"
 #include "database/DataBase.h"
 #include "model/ExternalModelTaskRunner.h"
@@ -14,7 +15,6 @@
 
 #include <spdlog/spdlog.h>
 
-#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
@@ -26,71 +26,12 @@ namespace dltool::model {
 
 namespace {
 
-struct RegisteredModel
-{
-    int                        method{-1};
-    QString                    framework_name;
-    QString                    model_architecture;
-    ModelManager::ModelFactory factory;
-};
-
-struct RegisteredFramework
-{
-    ModelManager::FrameworkDefinition definition;
-};
-
-std::vector<RegisteredModel> &modelRegistry()
-{
-    static std::vector<RegisteredModel> registry;
-    return registry;
-}
-
-std::vector<RegisteredFramework> &frameworkRegistry()
-{
-    static std::vector<RegisteredFramework> registry;
-    return registry;
-}
-
 QString cleanPath(const QString &path)
 {
     const QString trimmed = path.trimmed();
     if (trimmed.isEmpty())
         return {};
     return QDir::cleanPath(QDir::fromNativeSeparators(trimmed));
-}
-
-QString runtimePath(const QString &path)
-{
-    const QString cleaned = cleanPath(path);
-    if (cleaned.isEmpty() || QFileInfo(cleaned).isAbsolute())
-        return cleaned;
-    return cleanPath(QDir(QCoreApplication::applicationDirPath()).filePath(cleaned));
-}
-
-QString resolvePath(const QString &base_dir, const QString &path)
-{
-    const QString cleaned = cleanPath(path);
-    if (cleaned.isEmpty() || QFileInfo(cleaned).isAbsolute())
-        return cleaned;
-    return cleanPath(QDir(base_dir).filePath(cleaned));
-}
-
-ModelManager::FrameworkDefinition resolvedFrameworkDefinition(
-    const ModelManager::FrameworkDefinition &definition)
-{
-    ModelManager::FrameworkDefinition resolved = definition;
-    resolved.root = runtimePath(definition.root);
-    resolved.train_script = resolvePath(resolved.root, definition.train_script);
-    resolved.predict_script = resolvePath(resolved.root, definition.predict_script);
-
-    resolved.scripts.clear();
-    for (auto it = definition.scripts.constBegin(); it != definition.scripts.constEnd(); ++it)
-        resolved.scripts.insert(it.key(), resolvePath(resolved.root, it.value()));
-
-    resolved.python_paths.clear();
-    for (const QString &path : definition.python_paths)
-        resolved.python_paths.append(resolvePath(resolved.root, path));
-    return resolved;
 }
 
 } // namespace
@@ -106,6 +47,20 @@ ModelManager::ModelManager(const int method,
     , project_dir_(database != nullptr ? cleanPath(QFileInfo(database->path()).absoluteDir().absolutePath()) : QString())
     , external_task_runner_(std::make_unique<ExternalModelTaskRunner>(this))
 {
+    connect(external_task_runner_.get(), &ExternalModelTaskRunner::taskFinished, this,
+            [](int task_id, int exit_code, bool normal_exit, bool stop_requested)
+            {
+                auto *task_manager = TaskManager::getInstance();
+                if (task_manager == nullptr || task_manager->tasks() == nullptr)
+                    return;
+
+                if (stop_requested || (normal_exit && exit_code == 2))
+                    task_manager->tasks()->setTaskStatus(task_id, TaskTableModel::Stopped);
+                else if (normal_exit && exit_code == 0)
+                    task_manager->tasks()->setTaskStatus(task_id, TaskTableModel::Finished);
+                else
+                    task_manager->tasks()->setTaskStatus(task_id, TaskTableModel::Failed);
+            });
     init();
 }
 
@@ -552,7 +507,7 @@ bool ModelManager::modelTaskSupportsPause(const QString &model_uuid, ModelTaskTy
         return true;
 
     const FrameworkDefinition framework = registeredFramework(method_, model->frameworkName());
-    return !ModelTaskPreparationService::frameworkHasScript(framework, task_type);
+    return !framework.supportsExternalTask(task_type);
 }
 
 bool ModelManager::startTask(int task_id)
@@ -574,8 +529,8 @@ bool ModelManager::startTask(int task_id)
         return false;
 
     const FrameworkDefinition framework = registeredFramework(method_, model->frameworkName());
-    if (ModelTaskPreparationService::frameworkHasScript(framework, task_type))
-        return startExternalModelTask(model_uuid, model_name, task_type, task_id) >= 0;
+    if (framework.supportsExternalTask(task_type))
+        return startExternalModelTask(model_uuid, model_name, task_type, task_id);
 
     return true;
 }
@@ -598,166 +553,6 @@ bool ModelManager::deleteTask(int task_id)
     return external_task_runner_ != nullptr && external_task_runner_->deleteTask(task_id);
 }
 
-bool ModelManager::registerFramework(const int method, const FrameworkDefinition &definition)
-{
-    FrameworkDefinition normalized = definition;
-    normalized.method = method;
-    normalized.name = definition.name.trimmed();
-    const QString trimmed_framework_name = normalized.name;
-    if (trimmed_framework_name.isEmpty())
-    {
-        return false;
-    }
-
-    auto      &registry = frameworkRegistry();
-    const auto found
-        = std::find_if(registry.begin(), registry.end(),
-                       [method, &trimmed_framework_name](const RegisteredFramework &framework)
-                       {
-                           return framework.definition.method == method
-                               && framework.definition.name == trimmed_framework_name;
-                       });
-    if (found != registry.end())
-    {
-        return false;
-    }
-
-    registry.push_back(RegisteredFramework{normalized});
-    return true;
-}
-
-bool ModelManager::registerModel(const int method, const QString &framework_name, const QString &model_architecture,
-                                 ModelFactory factory)
-{
-    const QString trimmed_framework_name     = framework_name.trimmed();
-    const QString trimmed_model_architecture = model_architecture.trimmed();
-    if (trimmed_framework_name.isEmpty() || trimmed_model_architecture.isEmpty() || !factory)
-    {
-        return false;
-    }
-
-    auto      &registry = modelRegistry();
-    const auto found
-        = std::find_if(registry.begin(), registry.end(),
-                       [method, &trimmed_framework_name, &trimmed_model_architecture](const RegisteredModel &model)
-                       {
-                           return model.method == method && model.framework_name == trimmed_framework_name
-                               && model.model_architecture == trimmed_model_architecture;
-                       });
-    if (found != registry.end())
-    {
-        return false;
-    }
-
-    registry.push_back(
-        RegisteredModel{method, trimmed_framework_name, trimmed_model_architecture, std::move(factory)});
-    return true;
-}
-
-ModelManager::FrameworkDefinition ModelManager::registeredFramework(const int method, const QString &framework_name)
-{
-    const QString trimmed_framework_name = framework_name.trimmed();
-    if (trimmed_framework_name.isEmpty())
-        return {};
-
-    const auto &registry = frameworkRegistry();
-    const auto  found
-        = std::find_if(registry.begin(), registry.end(),
-                       [method, &trimmed_framework_name](const RegisteredFramework &framework)
-                       {
-                           return (method < 0 || framework.definition.method == method)
-                               && framework.definition.name == trimmed_framework_name;
-                       });
-    if (found == registry.end())
-        return {};
-    return resolvedFrameworkDefinition(found->definition);
-}
-
-QStringList ModelManager::registeredFrameworkNames(const int method)
-{
-    QStringList names;
-    const auto &registry = frameworkRegistry();
-    names.reserve(static_cast<int>(registry.size()));
-    for (const RegisteredFramework &framework : registry)
-    {
-        if ((method < 0 || framework.definition.method == method) && framework.definition.visible_for_model_creation
-            && !names.contains(framework.definition.name))
-        {
-            names.append(framework.definition.name);
-        }
-    }
-    return names;
-}
-
-QStringList ModelManager::registeredModelArchitectures(const int method, const QString &framework_name)
-{
-    const QString trimmed_framework_name = framework_name.trimmed();
-    QStringList   names;
-    const auto   &registry = modelRegistry();
-    names.reserve(static_cast<int>(registry.size()));
-    for (const RegisteredModel &model : registry)
-    {
-        if ((method < 0 || model.method == method) && model.framework_name == trimmed_framework_name
-            && !names.contains(model.model_architecture))
-        {
-            names.append(model.model_architecture);
-        }
-    }
-    return names;
-}
-
-QStringList ModelManager::registeredModelNames(const int method)
-{
-    QStringList names;
-    const auto &registry = modelRegistry();
-    names.reserve(static_cast<int>(registry.size()));
-    for (const RegisteredModel &model : registry)
-    {
-        if ((method < 0 || model.method == method) && !names.contains(model.model_architecture))
-        {
-            names.append(model.model_architecture);
-        }
-    }
-    return names;
-}
-
-std::unique_ptr<IModel> ModelManager::createRegisteredModel(const int method, const QString &framework_name,
-                                                            const QString &model_architecture)
-{
-    const QString trimmed_framework_name     = framework_name.trimmed();
-    const QString trimmed_model_architecture = model_architecture.trimmed();
-    if (trimmed_framework_name.isEmpty() || trimmed_model_architecture.isEmpty())
-        return nullptr;
-
-    const auto &registry = modelRegistry();
-    const auto  found
-        = std::find_if(registry.begin(), registry.end(),
-                       [method, &trimmed_framework_name, &trimmed_model_architecture](const RegisteredModel &model)
-                       {
-                           return (method < 0 || model.method == method) && model.framework_name == trimmed_framework_name
-                               && model.model_architecture == trimmed_model_architecture;
-                       });
-    if (found == registry.end() || !found->factory)
-        return nullptr;
-
-    return found->factory();
-}
-
-std::vector<std::unique_ptr<IModel>> ModelManager::registeredModels(const int method)
-{
-    std::vector<std::unique_ptr<IModel>> models;
-    const auto                          &registry = modelRegistry();
-    models.reserve(registry.size());
-    for (const RegisteredModel &model : registry)
-    {
-        if ((method < 0 || model.method == method) && model.factory)
-        {
-            models.emplace_back(model.factory());
-        }
-    }
-    return models;
-}
-
 std::unique_ptr<IModel> ModelManager::createRegisteredModelInstance(const QString &framework_name,
                                                                     const QString &model_architecture) const
 {
@@ -771,36 +566,58 @@ std::vector<std::unique_ptr<IModel>> ModelManager::registeredModelInstances() co
     return registeredModels(method_);
 }
 
-int ModelManager::startExternalModelTask(const QString &model_uuid, const QString &model_name,
-                                         ModelTaskType task_type, int task_id)
+bool ModelManager::startExternalModelTask(const QString &model_uuid, const QString &model_name,
+                                          ModelTaskType task_type, int task_id)
 {
     IModel *model = modelForUuid(model_uuid);
     if (model == nullptr)
-        return -1;
+        return false;
 
     const FrameworkDefinition framework = registeredFramework(method_, model->frameworkName());
     if (external_task_runner_ == nullptr)
-        return -1;
+        return false;
 
-    ModelTaskPreparationService::Request request;
-    request.task_id    = task_id;
-    request.model_name = model_name;
-    request.task_type  = task_type;
-    request.model      = model;
-    request.framework  = framework;
+    auto *task_manager = TaskManager::getInstance();
+    if (task_manager == nullptr)
+        return false;
 
-    PreparedExternalModelTask      prepared;
-    QString                        err_msg;
-    const ModelTaskPreparationService preparation(method_, project_dir_, data_manager_);
-    if (!preparation.prepare(request, prepared, &err_msg))
+    QString server_err;
+    if (!task_manager->ensureTaskServer(&server_err))
     {
-        spdlog::error("启动模型任务失败: {}", err_msg.toUtf8().constData());
-        if (auto *task_manager = TaskManager::getInstance(); task_manager != nullptr && task_manager->tasks() != nullptr)
+        spdlog::error("启动模型任务失败: 任务通信服务启动失败: {}", server_err.toUtf8().constData());
+        if (task_manager->tasks() != nullptr)
             task_manager->tasks()->failTask(task_id);
-        return task_id;
+        return false;
     }
 
-    return external_task_runner_->start(prepared);
+    ExternalModelTaskRequest request;
+    request.task_id          = task_id;
+    request.model_name       = model_name;
+    request.task_type        = task_type;
+    request.model            = model;
+    request.framework        = framework;
+    request.task_server_host = task_manager->taskServerHost();
+    request.task_server_port = task_manager->taskServerPort();
+
+    ExternalProcessSpec            process_spec;
+    QString                        err_msg;
+    const ModelTaskPreparationService preparation(method_, project_dir_, data_manager_);
+    if (!preparation.prepare(request, process_spec, &err_msg))
+    {
+        spdlog::error("启动模型任务失败: {}", err_msg.toUtf8().constData());
+        if (task_manager->tasks() != nullptr)
+            task_manager->tasks()->failTask(task_id);
+        return false;
+    }
+
+    if (!external_task_runner_->start(process_spec, &err_msg))
+    {
+        spdlog::error("启动模型任务失败: {}", err_msg.toUtf8().constData());
+        if (task_manager->tasks() != nullptr)
+            task_manager->tasks()->failTask(task_id);
+        return false;
+    }
+    return true;
 }
 
 int ModelManager::indexOfModel(const int64_t model_id) const
