@@ -14,7 +14,12 @@
 #include <QPointF>
 #include <algorithm>
 #include <map>
+#include <memory>
 #include <vector>
+
+using dltool::common::cleanPath;
+using dltool::common::yaml::setMapValue;
+using dltool::common::yaml::variantToYaml;
 
 namespace dltool::model {
 
@@ -69,7 +74,7 @@ enum class LabelDataField
     Height,
 };
 
-enum class ManifestField
+enum class ManifestMetaField
 {
     Version,
     Method,
@@ -77,12 +82,17 @@ enum class ManifestField
     ModelArchitecture,
     ModelUuid,
     Split,
+};
+
+enum class GenericManifestField
+{
     Images,
-    Samples,
+};
+
+enum class GenericImageField
+{
     Id,
     Path,
-    Mask,
-    MasksDir,
     DatasetId,
     DatasetName,
     Width,
@@ -93,18 +103,50 @@ enum class ManifestField
     LabelIndex,
     Anomaly,
     Labels,
+};
+
+enum class GenericLabelField
+{
     LabelId,
     LabelClassId,
     LabelClassName,
     LabelClassGroup,
     ClassIndex,
     Data,
-    MaskPath,
+};
+
+enum class YoloLabelField
+{
     Yolo,
-    X,
-    Y,
     Cx,
     Cy,
+    Width,
+    Height,
+};
+
+enum class FsSam2LabelField
+{
+    MaskPath,
+};
+
+enum class AnomalibFileListField
+{
+    MasksDir,
+    Samples,
+};
+
+enum class AnomalibSampleField
+{
+    Id,
+    Path,
+    LabelIndex,
+    Mask,
+};
+
+enum class ImageLevelLabelField
+{
+    LabelClassId,
+    LabelClassName,
     Group,
 };
 
@@ -179,44 +221,105 @@ const std::map<LabelDataField, QString> &labelDataFieldNames()
     return names;
 }
 
-const std::map<ManifestField, QString> &manifestFieldNames()
+const std::map<ManifestMetaField, QString> &manifestMetaFieldNames()
 {
-    static const std::map<ManifestField, QString> names = {
-        {            ManifestField::Version,                QStringLiteral("version")},
-        {             ManifestField::Method,                 QStringLiteral("method")},
-        {          ManifestField::Framework,              QStringLiteral("framework")},
-        {  ManifestField::ModelArchitecture,     QStringLiteral("model_architecture")},
-        {          ManifestField::ModelUuid,             QStringLiteral("model_uuid")},
-        {              ManifestField::Split,                  QStringLiteral("split")},
-        {             ManifestField::Images,                 QStringLiteral("images")},
-        {            ManifestField::Samples,                QStringLiteral("samples")},
-        {                 ManifestField::Id,                     QStringLiteral("id")},
-        {               ManifestField::Path,                   QStringLiteral("path")},
-        {               ManifestField::Mask,                   QStringLiteral("mask")},
-        {           ManifestField::MasksDir,              QStringLiteral("masks_dir")},
-        {          ManifestField::DatasetId,             QStringLiteral("dataset_id")},
-        {        ManifestField::DatasetName,           QStringLiteral("dataset_name")},
-        {              ManifestField::Width,                  QStringLiteral("width")},
-        {             ManifestField::Height,                 QStringLiteral("height")},
-        {  ManifestField::ImageLabelClassId,   QStringLiteral("image_label_class_id")},
-        {ManifestField::ImageLabelClassName, QStringLiteral("image_label_class_name")},
-        {    ManifestField::ImageLabelGroup,      QStringLiteral("image_label_group")},
-        {         ManifestField::LabelIndex,            QStringLiteral("label_index")},
-        {            ManifestField::Anomaly,                QStringLiteral("anomaly")},
-        {             ManifestField::Labels,                 QStringLiteral("labels")},
-        {            ManifestField::LabelId,               QStringLiteral("label_id")},
-        {       ManifestField::LabelClassId,         QStringLiteral("label_class_id")},
-        {     ManifestField::LabelClassName,       QStringLiteral("label_class_name")},
-        {    ManifestField::LabelClassGroup,      QStringLiteral("label_class_group")},
-        {         ManifestField::ClassIndex,            QStringLiteral("class_index")},
-        {               ManifestField::Data,                   QStringLiteral("data")},
-        {           ManifestField::MaskPath,              QStringLiteral("mask_path")},
-        {               ManifestField::Yolo,                   QStringLiteral("yolo")},
-        {                  ManifestField::X,                      QStringLiteral("x")},
-        {                  ManifestField::Y,                      QStringLiteral("y")},
-        {                 ManifestField::Cx,                     QStringLiteral("cx")},
-        {                 ManifestField::Cy,                     QStringLiteral("cy")},
-        {              ManifestField::Group,                  QStringLiteral("group")},
+    static const std::map<ManifestMetaField, QString> names = {
+        {          ManifestMetaField::Version,            QStringLiteral("version")},
+        {           ManifestMetaField::Method,             QStringLiteral("method")},
+        {        ManifestMetaField::Framework,          QStringLiteral("framework")},
+        {ManifestMetaField::ModelArchitecture, QStringLiteral("model_architecture")},
+        {        ManifestMetaField::ModelUuid,         QStringLiteral("model_uuid")},
+        {            ManifestMetaField::Split,              QStringLiteral("split")},
+    };
+    return names;
+}
+
+const std::map<GenericManifestField, QString> &genericManifestFieldNames()
+{
+    static const std::map<GenericManifestField, QString> names = {
+        {GenericManifestField::Images, QStringLiteral("images")},
+    };
+    return names;
+}
+
+const std::map<GenericImageField, QString> &genericImageFieldNames()
+{
+    static const std::map<GenericImageField, QString> names = {
+        {                 GenericImageField::Id,                     QStringLiteral("id")},
+        {               GenericImageField::Path,                   QStringLiteral("path")},
+        {          GenericImageField::DatasetId,             QStringLiteral("dataset_id")},
+        {        GenericImageField::DatasetName,           QStringLiteral("dataset_name")},
+        {              GenericImageField::Width,                  QStringLiteral("width")},
+        {             GenericImageField::Height,                 QStringLiteral("height")},
+        {  GenericImageField::ImageLabelClassId,   QStringLiteral("image_label_class_id")},
+        {GenericImageField::ImageLabelClassName, QStringLiteral("image_label_class_name")},
+        {    GenericImageField::ImageLabelGroup,      QStringLiteral("image_label_group")},
+        {         GenericImageField::LabelIndex,            QStringLiteral("label_index")},
+        {            GenericImageField::Anomaly,                QStringLiteral("anomaly")},
+        {             GenericImageField::Labels,                 QStringLiteral("labels")},
+    };
+    return names;
+}
+
+const std::map<GenericLabelField, QString> &genericLabelFieldNames()
+{
+    static const std::map<GenericLabelField, QString> names = {
+        {        GenericLabelField::LabelId,          QStringLiteral("label_id")},
+        {   GenericLabelField::LabelClassId,    QStringLiteral("label_class_id")},
+        { GenericLabelField::LabelClassName,  QStringLiteral("label_class_name")},
+        {GenericLabelField::LabelClassGroup, QStringLiteral("label_class_group")},
+        {     GenericLabelField::ClassIndex,       QStringLiteral("class_index")},
+        {           GenericLabelField::Data,              QStringLiteral("data")},
+    };
+    return names;
+}
+
+const std::map<YoloLabelField, QString> &yoloLabelFieldNames()
+{
+    static const std::map<YoloLabelField, QString> names = {
+        {  YoloLabelField::Yolo,   QStringLiteral("yolo")},
+        {    YoloLabelField::Cx,     QStringLiteral("cx")},
+        {    YoloLabelField::Cy,     QStringLiteral("cy")},
+        { YoloLabelField::Width,  QStringLiteral("width")},
+        {YoloLabelField::Height, QStringLiteral("height")},
+    };
+    return names;
+}
+
+const std::map<FsSam2LabelField, QString> &fsSam2LabelFieldNames()
+{
+    static const std::map<FsSam2LabelField, QString> names = {
+        {FsSam2LabelField::MaskPath, QStringLiteral("mask_path")},
+    };
+    return names;
+}
+
+const std::map<AnomalibFileListField, QString> &anomalibFileListFieldNames()
+{
+    static const std::map<AnomalibFileListField, QString> names = {
+        {AnomalibFileListField::MasksDir, QStringLiteral("masks_dir")},
+        { AnomalibFileListField::Samples,   QStringLiteral("samples")},
+    };
+    return names;
+}
+
+const std::map<AnomalibSampleField, QString> &anomalibSampleFieldNames()
+{
+    static const std::map<AnomalibSampleField, QString> names = {
+        {        AnomalibSampleField::Id,          QStringLiteral("id")},
+        {      AnomalibSampleField::Path,        QStringLiteral("path")},
+        {AnomalibSampleField::LabelIndex, QStringLiteral("label_index")},
+        {      AnomalibSampleField::Mask,        QStringLiteral("mask")},
+    };
+    return names;
+}
+
+const std::map<ImageLevelLabelField, QString> &imageLevelLabelFieldNames()
+{
+    static const std::map<ImageLevelLabelField, QString> names = {
+        {  ImageLevelLabelField::LabelClassId,   QStringLiteral("label_class_id")},
+        {ImageLevelLabelField::LabelClassName, QStringLiteral("label_class_name")},
+        {         ImageLevelLabelField::Group,            QStringLiteral("group")},
     };
     return names;
 }
@@ -229,66 +332,22 @@ const std::map<LabelGroupName, QString> &labelGroupNames()
     return names;
 }
 
-QString datasetSplitName(DatasetSplit split)
+template<typename Key, typename Value>
+Value mappedValue(const std::map<Key, Value> &values, const Key &key, const Value &fallback = Value())
 {
-    const auto &names = datasetSplitNames();
-    const auto  found = names.find(split);
-    return found != names.end() ? found->second : QString();
-}
-
-QString datasetConfigFieldName(DatasetConfigField field)
-{
-    const auto &names = datasetConfigFieldNames();
-    const auto  found = names.find(field);
-    return found != names.end() ? found->second : QString();
-}
-
-QString datasetSubdirName(DatasetSubdir subdir)
-{
-    const auto &names = datasetSubdirNames();
-    const auto  found = names.find(subdir);
-    return found != names.end() ? found->second : QString();
-}
-
-QString datasetFileName(DatasetFileName name)
-{
-    const auto &names = datasetFileNames();
-    const auto  found = names.find(name);
-    return found != names.end() ? found->second : QString();
-}
-
-QString labelDataFieldName(LabelDataField field)
-{
-    const auto &names = labelDataFieldNames();
-    const auto  found = names.find(field);
-    return found != names.end() ? found->second : QString();
-}
-
-QString manifestFieldName(ManifestField field)
-{
-    const auto &names = manifestFieldNames();
-    const auto  found = names.find(field);
-    return found != names.end() ? found->second : QString();
-}
-
-QString labelGroupName(LabelGroupName group)
-{
-    const auto &names = labelGroupNames();
-    const auto  found = names.find(group);
-    return found != names.end() ? found->second : QString();
+    const auto found = values.find(key);
+    return found != values.end() ? found->second : fallback;
 }
 
 FrameworkDatasetLayout datasetLayout(const QString &framework_name)
 {
-    const QString key     = framework_name.trimmed().toLower();
-    const auto   &layouts = frameworkDatasetLayouts();
-    const auto    found   = layouts.find(key);
-    return found != layouts.end() ? found->second : FrameworkDatasetLayout::Generic;
+    const QString key = framework_name.trimmed().toLower();
+    return mappedValue(frameworkDatasetLayouts(), key, FrameworkDatasetLayout::Generic);
 }
 
 bool ensureDirectory(const QString &path, QString *err_msg)
 {
-    const QString cleaned = dltool::common::cleanPath(path);
+    const QString cleaned = cleanPath(path);
     if (cleaned.isEmpty())
     {
         if (err_msg != nullptr)
@@ -308,24 +367,9 @@ bool ensureDirectory(const QString &path, QString *err_msg)
     return true;
 }
 
-void setString(YAML::Node &node, ManifestField field, const QString &value)
-{
-    dltool::common::yaml::setMapValue(node, manifestFieldName(field), value);
-}
-
-void setInteger(YAML::Node &node, ManifestField field, qint64 value)
-{
-    dltool::common::yaml::setMapValue(node, manifestFieldName(field), value);
-}
-
-void setBool(YAML::Node &node, ManifestField field, bool value)
-{
-    dltool::common::yaml::setMapValue(node, manifestFieldName(field), value);
-}
-
 bool isAnomalyGroup(const QString &group)
 {
-    return group.compare(labelGroupName(LabelGroupName::Anomaly), Qt::CaseInsensitive) == 0;
+    return group.compare(mappedValue(labelGroupNames(), LabelGroupName::Anomaly), Qt::CaseInsensitive) == 0;
 }
 
 int classIndex(qint64 label_class_id, std::map<qint64, int> &class_indices)
@@ -345,32 +389,32 @@ QVariantMap labelYoloData(const QVariantMap &label_data, int image_width, int im
     if (image_width <= 0 || image_height <= 0)
         return {};
 
-    const double bbox_x = label_data.value(labelDataFieldName(LabelDataField::X)).toDouble();
-    const double bbox_y = label_data.value(labelDataFieldName(LabelDataField::Y)).toDouble();
-    const double width  = label_data.value(labelDataFieldName(LabelDataField::Width)).toDouble();
-    const double height = label_data.value(labelDataFieldName(LabelDataField::Height)).toDouble();
+    const double bbox_x = label_data.value(mappedValue(labelDataFieldNames(), LabelDataField::X)).toDouble();
+    const double bbox_y = label_data.value(mappedValue(labelDataFieldNames(), LabelDataField::Y)).toDouble();
+    const double width  = label_data.value(mappedValue(labelDataFieldNames(), LabelDataField::Width)).toDouble();
+    const double height = label_data.value(mappedValue(labelDataFieldNames(), LabelDataField::Height)).toDouble();
     if (width <= 0 || height <= 0)
         return {};
 
     return {
-        {    manifestFieldName(ManifestField::Cx),   (bbox_x + width / 2.0) / image_width},
-        {    manifestFieldName(ManifestField::Cy), (bbox_y + height / 2.0) / image_height},
-        { manifestFieldName(ManifestField::Width),                    width / image_width},
-        {manifestFieldName(ManifestField::Height),                  height / image_height},
+        {mappedValue(yoloLabelFieldNames(),     YoloLabelField::Cx),   (bbox_x + width / 2.0) / image_width},
+        {mappedValue(yoloLabelFieldNames(),     YoloLabelField::Cy), (bbox_y + height / 2.0) / image_height},
+        {mappedValue(yoloLabelFieldNames(),  YoloLabelField::Width),                    width / image_width},
+        {mappedValue(yoloLabelFieldNames(), YoloLabelField::Height),                  height / image_height},
     };
 }
 
 std::vector<QPointF> labelPolygon(const QVariantMap &label_data)
 {
-    std::vector<QPointF> points
-        = dltool::data::DatasetIO::variantListToPoints(label_data.value(labelDataFieldName(LabelDataField::Points)));
+    std::vector<QPointF> points = dltool::data::DatasetIO::variantListToPoints(
+        label_data.value(mappedValue(labelDataFieldNames(), LabelDataField::Points)));
     if (points.size() >= 3)
         return points;
 
-    const double x = label_data.value(labelDataFieldName(LabelDataField::X)).toDouble();
-    const double y = label_data.value(labelDataFieldName(LabelDataField::Y)).toDouble();
-    const double w = label_data.value(labelDataFieldName(LabelDataField::Width)).toDouble();
-    const double h = label_data.value(labelDataFieldName(LabelDataField::Height)).toDouble();
+    const double x = label_data.value(mappedValue(labelDataFieldNames(), LabelDataField::X)).toDouble();
+    const double y = label_data.value(mappedValue(labelDataFieldNames(), LabelDataField::Y)).toDouble();
+    const double w = label_data.value(mappedValue(labelDataFieldNames(), LabelDataField::Width)).toDouble();
+    const double h = label_data.value(mappedValue(labelDataFieldNames(), LabelDataField::Height)).toDouble();
     if (w <= 0.0 || h <= 0.0)
         return {};
 
@@ -384,17 +428,17 @@ std::vector<QPointF> labelPolygon(const QVariantMap &label_data)
 
 QString fsSam2MaskPath(const QString &masks_dir, qint64 image_id, qint64 label_id)
 {
-    return QDir(masks_dir).filePath(datasetFileName(DatasetFileName::Mask).arg(image_id).arg(label_id));
+    return QDir(masks_dir).filePath(mappedValue(datasetFileNames(), DatasetFileName::Mask).arg(image_id).arg(label_id));
 }
 
 QString anomalibMaskFileName(qint64 image_id)
 {
-    return datasetFileName(DatasetFileName::ImageMask).arg(image_id);
+    return mappedValue(datasetFileNames(), DatasetFileName::ImageMask).arg(image_id);
 }
 
 QString anomalibFileListPath(const QString &dataset_dir, const QString &split_name)
 {
-    return QDir(dataset_dir).filePath(datasetFileName(DatasetFileName::SplitFileList).arg(split_name));
+    return QDir(dataset_dir).filePath(mappedValue(datasetFileNames(), DatasetFileName::SplitFileList).arg(split_name));
 }
 
 QString writeFsSam2LabelMask(const QVariantMap &label_data, int image_width, int image_height, const QString &masks_dir,
@@ -416,7 +460,7 @@ QString writeFsSam2LabelMask(const QVariantMap &label_data, int image_width, int
             *err_msg = QStringLiteral("写入 FS-SAM2 mask 失败: %1").arg(path);
         return {};
     }
-    return dltool::common::cleanPath(path);
+    return cleanPath(path);
 }
 
 QString writeAnomalibImageMask(const std::vector<std::vector<QPointF>> &polygons, int image_width, int image_height,
@@ -449,254 +493,454 @@ QString writeAnomalibImageMask(const std::vector<std::vector<QPointF>> &polygons
     return file_name;
 }
 
-YAML::Node labelNode(const IModelDatasetSource *source, FrameworkDatasetLayout layout, qint64 label_id, int image_width,
-                     int image_height, std::map<qint64, int> &class_indices)
+enum class LabelExportDecision
 {
-    YAML::Node        node(YAML::NodeType::Map);
-    const qint64      label_class_id = source->labelClassId(label_id);
-    const QString     class_name     = label_class_id >= 0 ? source->labelClassName(label_class_id) : QString();
-    const QString     class_group    = label_class_id >= 0 ? source->labelClassGroup(label_class_id) : QString();
-    const QVariantMap data           = source->labelData(label_id);
+    Keep,
+    Skip,
+    Error,
+};
 
-    setInteger(node, ManifestField::LabelId, label_id);
-    setInteger(node, ManifestField::LabelClassId, label_class_id);
-    setString(node, ManifestField::LabelClassName, class_name);
-    setString(node, ManifestField::LabelClassGroup, class_group);
-    setInteger(node, ManifestField::ClassIndex, classIndex(label_class_id, class_indices));
-    dltool::common::yaml::setMapValue(node, manifestFieldName(ManifestField::Data),
-                                      dltool::common::yaml::variantToYaml(data));
-
-    if (layout == FrameworkDatasetLayout::Ultralytics)
-    {
-        const QVariantMap yolo = labelYoloData(data, image_width, image_height);
-        if (!yolo.isEmpty())
-            dltool::common::yaml::setMapValue(node, manifestFieldName(ManifestField::Yolo),
-                                              dltool::common::yaml::variantToYaml(yolo));
-    }
-    return node;
-}
-
-QVariantMap exportSplit(const ModelDatasetExportRequest &request, DatasetSplit split, bool required, QString *err_msg)
+struct SplitExportContext
 {
-    const IModelDatasetSource *source = request.source;
-    if (source == nullptr)
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("模型数据源为空");
-        return {};
-    }
+    const ModelDatasetExportRequest *request{};
+    const IModelDatasetSource       *source{};
+    const ModelDatasetSelection     *selection{};
+    DatasetSplit                     split{DatasetSplit::Train};
+    QString                          split_name;
+    QString                          split_dir;
+    QString                          masks_dir;
+    YAML::Node                       manifest{YAML::NodeType::Map};
+    YAML::Node                       images{YAML::NodeType::Sequence};
+    YAML::Node                       samples{YAML::NodeType::Sequence};
+    std::map<qint64, int>            class_indices;
+    int                              image_count{0};
+    int                              label_count{0};
+};
 
-    const ModelDatasetSelection *selection = nullptr;
+struct ImageExportContext
+{
+    qint64                            image_id{-1};
+    qint64                            dataset_id{-1};
+    QString                           image_path;
+    int                               width{0};
+    int                               height{0};
+    QVariantMap                       image_level_label;
+    qint64                            image_label_class_id{-1};
+    QString                           image_label_class_name;
+    QString                           image_label_group;
+    bool                              has_anomaly_label{false};
+    bool                              selected_by_image_label{false};
+    std::vector<std::vector<QPointF>> anomaly_polygons;
+};
+
+const ModelDatasetSelection *selectionForSplit(const ModelDatasetExportRequest &request, DatasetSplit split)
+{
     switch (split)
     {
     case DatasetSplit::Train:
-        selection = &request.selections.train;
-        break;
+        return &request.selections.train;
     case DatasetSplit::Validation:
-        selection = &request.selections.validation;
-        break;
+        return &request.selections.validation;
     case DatasetSplit::Test:
-        selection = &request.selections.test;
-        break;
+        return &request.selections.test;
     }
+    return nullptr;
+}
 
-    if (selection == nullptr || selection->isEmpty())
+class DatasetOrganizerBase
+{
+public:
+    virtual ~DatasetOrganizerBase() = default;
+
+    QVariantMap exportSplit(const ModelDatasetExportRequest &request, DatasetSplit split, bool required,
+                            QString *err_msg) const
     {
-        if (required && err_msg != nullptr)
-            *err_msg = QStringLiteral("未选择%1数据集").arg(datasetSplitName(split));
-        return {};
-    }
-
-    const FrameworkDatasetLayout layout     = datasetLayout(request.framework_name);
-    const QString                split_name = datasetSplitName(split);
-    const QString                split_dir  = layout == FrameworkDatasetLayout::Anomalib
-                                                ? request.dataset_dir
-                                                : QDir(request.dataset_dir).filePath(split_name);
-    if (!ensureDirectory(split_dir, err_msg))
-        return {};
-
-    QString masks_dir;
-    if (layout == FrameworkDatasetLayout::Anomalib)
-    {
-        masks_dir = QDir(request.dataset_dir).filePath(datasetSubdirName(DatasetSubdir::Masks));
-        if (!ensureDirectory(masks_dir, err_msg))
-            return {};
-    }
-    else if (layout == FrameworkDatasetLayout::FsSam2)
-    {
-        masks_dir = QDir(split_dir).filePath(datasetSubdirName(DatasetSubdir::Masks));
-        if (!ensureDirectory(masks_dir, err_msg))
-            return {};
-    }
-
-    YAML::Node manifest(YAML::NodeType::Map);
-    setInteger(manifest, ManifestField::Version, 1);
-    setInteger(manifest, ManifestField::Method, request.method);
-    setString(manifest, ManifestField::Framework, request.framework_name);
-    setString(manifest, ManifestField::ModelArchitecture, request.model_architecture);
-    setString(manifest, ManifestField::ModelUuid, request.model_uuid);
-    setString(manifest, ManifestField::Split, split_name);
-
-    YAML::Node            images(YAML::NodeType::Sequence);
-    YAML::Node            samples(YAML::NodeType::Sequence);
-    std::map<qint64, int> class_indices;
-    int                   image_count = 0;
-    int                   label_count = 0;
-
-    std::vector<int64_t> all_image_ids = source->allImageIds();
-    std::sort(all_image_ids.begin(), all_image_ids.end());
-    for (const int64_t image_id : all_image_ids)
-    {
-        const qint64 dataset_id = source->imageDatasetId(image_id);
-        if (!selection->containsDataset(dataset_id))
-            continue;
-
-        const QString image_path = source->imagePath(image_id);
-        if (image_path.trimmed().isEmpty())
-            continue;
-
-        int image_width  = 0;
-        int image_height = 0;
-        dltool::data::DatasetIO::getImageDimensions(image_path, image_width, image_height);
-
-        QVariantMap  image_level_label = source->imageLevelLabelData(image_id);
-        const qint64 image_label_class_id
-            = image_level_label.value(manifestFieldName(ManifestField::LabelClassId), -1).toLongLong();
-        const QString image_label_class_name
-            = image_level_label.value(manifestFieldName(ManifestField::LabelClassName)).toString();
-        const QString image_label_group = image_level_label.value(manifestFieldName(ManifestField::Group)).toString();
-
-        YAML::Node                        labels(YAML::NodeType::Sequence);
-        bool                              has_anomaly_label = isAnomalyGroup(image_label_group);
-        std::vector<std::vector<QPointF>> anomaly_polygons;
-        for (const int64_t label_id : source->imageLabelIds(image_id))
+        if (request.source == nullptr)
         {
-            const qint64 label_class_id = source->labelClassId(label_id);
-            if (!selection->contains(dataset_id, label_class_id))
+            if (err_msg != nullptr)
+                *err_msg = QStringLiteral("模型数据源为空");
+            return {};
+        }
+
+        const ModelDatasetSelection *selection = selectionForSplit(request, split);
+        if (selection == nullptr || selection->isEmpty())
+        {
+            if (required && err_msg != nullptr)
+                *err_msg = QStringLiteral("未选择%1数据集").arg(mappedValue(datasetSplitNames(), split));
+            return {};
+        }
+
+        SplitExportContext ctx;
+        ctx.request    = &request;
+        ctx.source     = request.source;
+        ctx.selection  = selection;
+        ctx.split      = split;
+        ctx.split_name = mappedValue(datasetSplitNames(), split);
+        ctx.split_dir  = splitDirectory(request, ctx.split_name);
+        initializeManifest(ctx);
+
+        if (!prepareSplit(ctx, err_msg))
+            return {};
+
+        std::vector<int64_t> all_image_ids = request.source->allImageIds();
+        std::sort(all_image_ids.begin(), all_image_ids.end());
+        for (const int64_t image_id : all_image_ids)
+        {
+            ImageExportContext image;
+            if (!readSelectedImage(ctx, image_id, image))
                 continue;
 
-            const QString     class_group = label_class_id >= 0 ? source->labelClassGroup(label_class_id) : QString();
-            const QVariantMap label_data  = source->labelData(label_id);
-            YAML::Node        label = labelNode(source, layout, label_id, image_width, image_height, class_indices);
-            if (layout == FrameworkDatasetLayout::FsSam2)
-            {
-                QString       mask_err;
-                const QString mask_path = writeFsSam2LabelMask(label_data, image_width, image_height, masks_dir,
-                                                               image_id, label_id, &mask_err);
-                if (!mask_err.isEmpty())
-                {
-                    if (err_msg != nullptr)
-                        *err_msg = mask_err;
-                    return {};
-                }
-                if (mask_path.isEmpty())
-                    continue;
-                setString(label, ManifestField::MaskPath, mask_path);
-            }
+            YAML::Node labels(YAML::NodeType::Sequence);
+            if (!appendSelectedLabels(ctx, image, labels, err_msg))
+                return {};
 
-            has_anomaly_label = has_anomaly_label || isAnomalyGroup(class_group);
-            if (layout == FrameworkDatasetLayout::Anomalib && isAnomalyGroup(class_group))
-            {
-                std::vector<QPointF> polygon = labelPolygon(label_data);
-                if (polygon.size() >= 3)
-                    anomaly_polygons.push_back(std::move(polygon));
-            }
-            labels.push_back(label);
-            ++label_count;
+            image.selected_by_image_label = selection->contains(image.dataset_id, image.image_label_class_id);
+            if (!image.selected_by_image_label && labels.size() == 0)
+                continue;
+
+            if (!appendImage(ctx, image, labels, err_msg))
+                return {};
+            ++ctx.image_count;
         }
 
-        const bool image_selected_by_image_label = selection->contains(dataset_id, image_label_class_id);
-        if (!image_selected_by_image_label && labels.size() == 0)
-            continue;
-
-        if (layout == FrameworkDatasetLayout::Anomalib)
+        if (ctx.image_count <= 0)
         {
-            YAML::Node sample(YAML::NodeType::Map);
-            setInteger(sample, ManifestField::Id, image_id);
-            setString(sample, ManifestField::Path, dltool::common::cleanPath(image_path));
-            setInteger(sample, ManifestField::LabelIndex, has_anomaly_label ? 1 : 0);
-            if (has_anomaly_label)
-            {
-                QString       mask_err;
-                const QString mask_file = writeAnomalibImageMask(anomaly_polygons, image_width, image_height, masks_dir,
-                                                                 image_id, &mask_err);
-                if (!mask_err.isEmpty())
-                {
-                    if (err_msg != nullptr)
-                        *err_msg = mask_err;
-                    return {};
-                }
-                setString(sample, ManifestField::Mask, mask_file);
-            }
-            else
-            {
-                setString(sample, ManifestField::Mask, QString());
-            }
-            samples.push_back(sample);
-            ++image_count;
-            continue;
+            if (required && err_msg != nullptr)
+                *err_msg = QStringLiteral("%1数据集没有可用图像").arg(ctx.split_name);
+            return {};
         }
 
-        YAML::Node image(YAML::NodeType::Map);
-        setInteger(image, ManifestField::Id, image_id);
-        setString(image, ManifestField::Path, dltool::common::cleanPath(image_path));
-        setInteger(image, ManifestField::DatasetId, dataset_id);
-        setString(image, ManifestField::DatasetName, source->datasetName(dataset_id));
-        setInteger(image, ManifestField::Width, image_width);
-        setInteger(image, ManifestField::Height, image_height);
-        setInteger(image, ManifestField::ImageLabelClassId, image_label_class_id);
-        setString(image, ManifestField::ImageLabelClassName, image_label_class_name);
-        setString(image, ManifestField::ImageLabelGroup, image_label_group);
-        setBool(image, ManifestField::Anomaly, has_anomaly_label);
-        setInteger(image, ManifestField::LabelIndex, has_anomaly_label ? 1 : 0);
-        dltool::common::yaml::setMapValue(image, manifestFieldName(ManifestField::Labels), labels);
-        images.push_back(image);
-        ++image_count;
+        return finishSplit(ctx, err_msg);
     }
 
-    if (image_count <= 0)
+protected:
+    virtual QString splitDirectory(const ModelDatasetExportRequest &request, const QString &split_name) const
     {
-        if (required && err_msg != nullptr)
-            *err_msg = QStringLiteral("%1数据集没有可用图像").arg(split_name);
-        return {};
+        return QDir(request.dataset_dir).filePath(split_name);
     }
 
-    if (layout == FrameworkDatasetLayout::Anomalib)
+    virtual bool prepareSplit(SplitExportContext &ctx, QString *err_msg) const
     {
-        YAML::Node file_list(YAML::NodeType::Map);
-        setInteger(file_list, ManifestField::Version, 1);
-        setInteger(file_list, ManifestField::Method, request.method);
-        setString(file_list, ManifestField::Framework, request.framework_name);
-        setString(file_list, ManifestField::ModelArchitecture, request.model_architecture);
-        setString(file_list, ManifestField::ModelUuid, request.model_uuid);
-        setString(file_list, ManifestField::Split, split_name);
-        setString(file_list, ManifestField::MasksDir, dltool::common::cleanPath(masks_dir));
-        dltool::common::yaml::setMapValue(file_list, manifestFieldName(ManifestField::Samples), samples);
+        return ensureDirectory(ctx.split_dir, err_msg);
+    }
 
-        const QString file_list_path = anomalibFileListPath(request.dataset_dir, split_name);
+    virtual LabelExportDecision augmentLabel(SplitExportContext &ctx, ImageExportContext &image, qint64 label_id,
+                                             qint64 label_class_id, const QString &class_group,
+                                             const QVariantMap &label_data, YAML::Node &label, QString *err_msg) const
+    {
+        Q_UNUSED(ctx)
+        Q_UNUSED(image)
+        Q_UNUSED(label_id)
+        Q_UNUSED(label_class_id)
+        Q_UNUSED(class_group)
+        Q_UNUSED(label_data)
+        Q_UNUSED(label)
+        Q_UNUSED(err_msg)
+        return LabelExportDecision::Keep;
+    }
+
+    virtual bool appendImage(SplitExportContext &ctx, const ImageExportContext &image, const YAML::Node &labels,
+                             QString *err_msg) const
+        = 0;
+
+    virtual QVariantMap finishSplit(SplitExportContext &ctx, QString *err_msg) const = 0;
+
+    YAML::Node baseLabelNode(SplitExportContext &ctx, qint64 label_id, qint64 label_class_id, const QString &class_name,
+                             const QString &class_group, const QVariantMap &label_data) const
+    {
+        YAML::Node node(YAML::NodeType::Map);
+        setMapValue(node, mappedValue(genericLabelFieldNames(), GenericLabelField::LabelId), label_id);
+        setMapValue(node, mappedValue(genericLabelFieldNames(), GenericLabelField::LabelClassId), label_class_id);
+        setMapValue(node, mappedValue(genericLabelFieldNames(), GenericLabelField::LabelClassName), class_name);
+        setMapValue(node, mappedValue(genericLabelFieldNames(), GenericLabelField::LabelClassGroup), class_group);
+        setMapValue(node, mappedValue(genericLabelFieldNames(), GenericLabelField::ClassIndex),
+                    classIndex(label_class_id, ctx.class_indices));
+        setMapValue(node, mappedValue(genericLabelFieldNames(), GenericLabelField::Data), variantToYaml(label_data));
+        return node;
+    }
+
+private:
+    void initializeManifest(SplitExportContext &ctx) const
+    {
+        ctx.manifest = YAML::Node(YAML::NodeType::Map);
+        setMapValue(ctx.manifest, mappedValue(manifestMetaFieldNames(), ManifestMetaField::Version), 1);
+        setMapValue(ctx.manifest, mappedValue(manifestMetaFieldNames(), ManifestMetaField::Method),
+                    ctx.request->method);
+        setMapValue(ctx.manifest, mappedValue(manifestMetaFieldNames(), ManifestMetaField::Framework),
+                    ctx.request->framework_name);
+        setMapValue(ctx.manifest, mappedValue(manifestMetaFieldNames(), ManifestMetaField::ModelArchitecture),
+                    ctx.request->model_architecture);
+        setMapValue(ctx.manifest, mappedValue(manifestMetaFieldNames(), ManifestMetaField::ModelUuid),
+                    ctx.request->model_uuid);
+        setMapValue(ctx.manifest, mappedValue(manifestMetaFieldNames(), ManifestMetaField::Split), ctx.split_name);
+    }
+
+    bool readSelectedImage(const SplitExportContext &ctx, qint64 image_id, ImageExportContext &image) const
+    {
+        image.image_id   = image_id;
+        image.dataset_id = ctx.source->imageDatasetId(image_id);
+        if (!ctx.selection->containsDataset(image.dataset_id))
+            return false;
+
+        image.image_path = ctx.source->imagePath(image_id);
+        if (image.image_path.trimmed().isEmpty())
+            return false;
+
+        dltool::data::DatasetIO::getImageDimensions(image.image_path, image.width, image.height);
+
+        image.image_level_label = ctx.source->imageLevelLabelData(image_id);
+        image.image_label_class_id
+            = image.image_level_label
+                  .value(mappedValue(imageLevelLabelFieldNames(), ImageLevelLabelField::LabelClassId), -1)
+                  .toLongLong();
+        image.image_label_class_name
+            = image.image_level_label
+                  .value(mappedValue(imageLevelLabelFieldNames(), ImageLevelLabelField::LabelClassName))
+                  .toString();
+        image.image_label_group
+            = image.image_level_label.value(mappedValue(imageLevelLabelFieldNames(), ImageLevelLabelField::Group))
+                  .toString();
+        image.has_anomaly_label = isAnomalyGroup(image.image_label_group);
+        return true;
+    }
+
+    bool appendSelectedLabels(SplitExportContext &ctx, ImageExportContext &image, YAML::Node &labels,
+                              QString *err_msg) const
+    {
+        for (const int64_t label_id : ctx.source->imageLabelIds(image.image_id))
+        {
+            const qint64 label_class_id = ctx.source->labelClassId(label_id);
+            if (!ctx.selection->contains(image.dataset_id, label_class_id))
+                continue;
+
+            const QString class_name  = label_class_id >= 0 ? ctx.source->labelClassName(label_class_id) : QString();
+            const QString class_group = label_class_id >= 0 ? ctx.source->labelClassGroup(label_class_id) : QString();
+            const QVariantMap label_data = ctx.source->labelData(label_id);
+            YAML::Node        label = baseLabelNode(ctx, label_id, label_class_id, class_name, class_group, label_data);
+
+            const LabelExportDecision decision
+                = augmentLabel(ctx, image, label_id, label_class_id, class_group, label_data, label, err_msg);
+            if (decision == LabelExportDecision::Error)
+                return false;
+            if (decision == LabelExportDecision::Skip)
+                continue;
+
+            image.has_anomaly_label = image.has_anomaly_label || isAnomalyGroup(class_group);
+            labels.push_back(label);
+            ++ctx.label_count;
+        }
+        return true;
+    }
+};
+
+class GenericDatasetOrganizer : public DatasetOrganizerBase
+{
+protected:
+    bool appendImage(SplitExportContext &ctx, const ImageExportContext &image, const YAML::Node &labels,
+                     QString *err_msg) const override
+    {
+        Q_UNUSED(err_msg)
+
+        YAML::Node image_node(YAML::NodeType::Map);
+        setMapValue(image_node, mappedValue(genericImageFieldNames(), GenericImageField::Id), image.image_id);
+        setMapValue(image_node, mappedValue(genericImageFieldNames(), GenericImageField::Path),
+                    cleanPath(image.image_path));
+        setMapValue(image_node, mappedValue(genericImageFieldNames(), GenericImageField::DatasetId), image.dataset_id);
+        setMapValue(image_node, mappedValue(genericImageFieldNames(), GenericImageField::DatasetName),
+                    ctx.source->datasetName(image.dataset_id));
+        setMapValue(image_node, mappedValue(genericImageFieldNames(), GenericImageField::Width), image.width);
+        setMapValue(image_node, mappedValue(genericImageFieldNames(), GenericImageField::Height), image.height);
+        setMapValue(image_node, mappedValue(genericImageFieldNames(), GenericImageField::ImageLabelClassId),
+                    image.image_label_class_id);
+        setMapValue(image_node, mappedValue(genericImageFieldNames(), GenericImageField::ImageLabelClassName),
+                    image.image_label_class_name);
+        setMapValue(image_node, mappedValue(genericImageFieldNames(), GenericImageField::ImageLabelGroup),
+                    image.image_label_group);
+        setMapValue(image_node, mappedValue(genericImageFieldNames(), GenericImageField::Anomaly),
+                    image.has_anomaly_label);
+        setMapValue(image_node, mappedValue(genericImageFieldNames(), GenericImageField::LabelIndex),
+                    image.has_anomaly_label ? 1 : 0);
+        setMapValue(image_node, mappedValue(genericImageFieldNames(), GenericImageField::Labels), labels);
+        ctx.images.push_back(image_node);
+        return true;
+    }
+
+    QVariantMap finishSplit(SplitExportContext &ctx, QString *err_msg) const override
+    {
+        setMapValue(ctx.manifest, mappedValue(genericManifestFieldNames(), GenericManifestField::Images), ctx.images);
+        const QString manifest_path
+            = QDir(ctx.split_dir).filePath(mappedValue(datasetFileNames(), DatasetFileName::Manifest));
+        if (!dltool::common::yaml::writeFile(manifest_path, ctx.manifest, err_msg, QStringLiteral("写入数据集清单失败"),
+                                             QStringLiteral("生成数据集清单 YAML 失败")))
+            return {};
+
+        return {
+            {mappedValue(datasetConfigFieldNames(),   DatasetConfigField::Manifest),   manifest_path},
+            {mappedValue(datasetConfigFieldNames(), DatasetConfigField::ImageCount), ctx.image_count},
+            {mappedValue(datasetConfigFieldNames(), DatasetConfigField::LabelCount), ctx.label_count},
+        };
+    }
+};
+
+class UltralyticsDatasetOrganizer final : public GenericDatasetOrganizer
+{
+protected:
+    LabelExportDecision augmentLabel(SplitExportContext &ctx, ImageExportContext &image, qint64 label_id,
+                                     qint64 label_class_id, const QString &class_group, const QVariantMap &label_data,
+                                     YAML::Node &label, QString *err_msg) const override
+    {
+        Q_UNUSED(ctx)
+        Q_UNUSED(label_id)
+        Q_UNUSED(label_class_id)
+        Q_UNUSED(class_group)
+        Q_UNUSED(err_msg)
+
+        const QVariantMap yolo = labelYoloData(label_data, image.width, image.height);
+        if (!yolo.isEmpty())
+            setMapValue(label, mappedValue(yoloLabelFieldNames(), YoloLabelField::Yolo), variantToYaml(yolo));
+        return LabelExportDecision::Keep;
+    }
+};
+
+class FsSam2DatasetOrganizer final : public GenericDatasetOrganizer
+{
+protected:
+    bool prepareSplit(SplitExportContext &ctx, QString *err_msg) const override
+    {
+        if (!GenericDatasetOrganizer::prepareSplit(ctx, err_msg))
+            return false;
+        ctx.masks_dir = QDir(ctx.split_dir).filePath(mappedValue(datasetSubdirNames(), DatasetSubdir::Masks));
+        return ensureDirectory(ctx.masks_dir, err_msg);
+    }
+
+    LabelExportDecision augmentLabel(SplitExportContext &ctx, ImageExportContext &image, qint64 label_id,
+                                     qint64 label_class_id, const QString &class_group, const QVariantMap &label_data,
+                                     YAML::Node &label, QString *err_msg) const override
+    {
+        Q_UNUSED(label_class_id)
+        Q_UNUSED(class_group)
+
+        QString       mask_err;
+        const QString mask_path = writeFsSam2LabelMask(label_data, image.width, image.height, ctx.masks_dir,
+                                                       image.image_id, label_id, &mask_err);
+        if (!mask_err.isEmpty())
+        {
+            if (err_msg != nullptr)
+                *err_msg = mask_err;
+            return LabelExportDecision::Error;
+        }
+        if (mask_path.isEmpty())
+            return LabelExportDecision::Skip;
+
+        setMapValue(label, mappedValue(fsSam2LabelFieldNames(), FsSam2LabelField::MaskPath), mask_path);
+        return LabelExportDecision::Keep;
+    }
+};
+
+class AnomalibDatasetOrganizer final : public DatasetOrganizerBase
+{
+protected:
+    QString splitDirectory(const ModelDatasetExportRequest &request, const QString &split_name) const override
+    {
+        Q_UNUSED(split_name)
+        return request.dataset_dir;
+    }
+
+    bool prepareSplit(SplitExportContext &ctx, QString *err_msg) const override
+    {
+        if (!DatasetOrganizerBase::prepareSplit(ctx, err_msg))
+            return false;
+        ctx.masks_dir
+            = QDir(ctx.request->dataset_dir).filePath(mappedValue(datasetSubdirNames(), DatasetSubdir::Masks));
+        return ensureDirectory(ctx.masks_dir, err_msg);
+    }
+
+    LabelExportDecision augmentLabel(SplitExportContext &ctx, ImageExportContext &image, qint64 label_id,
+                                     qint64 label_class_id, const QString &class_group, const QVariantMap &label_data,
+                                     YAML::Node &label, QString *err_msg) const override
+    {
+        Q_UNUSED(ctx)
+        Q_UNUSED(label_id)
+        Q_UNUSED(label_class_id)
+        Q_UNUSED(label)
+        Q_UNUSED(err_msg)
+
+        if (isAnomalyGroup(class_group))
+        {
+            std::vector<QPointF> polygon = labelPolygon(label_data);
+            if (polygon.size() >= 3)
+                image.anomaly_polygons.push_back(std::move(polygon));
+        }
+        return LabelExportDecision::Keep;
+    }
+
+    bool appendImage(SplitExportContext &ctx, const ImageExportContext &image, const YAML::Node &labels,
+                     QString *err_msg) const override
+    {
+        Q_UNUSED(labels)
+
+        YAML::Node sample(YAML::NodeType::Map);
+        setMapValue(sample, mappedValue(anomalibSampleFieldNames(), AnomalibSampleField::Id), image.image_id);
+        setMapValue(sample, mappedValue(anomalibSampleFieldNames(), AnomalibSampleField::Path),
+                    cleanPath(image.image_path));
+        setMapValue(sample, mappedValue(anomalibSampleFieldNames(), AnomalibSampleField::LabelIndex),
+                    image.has_anomaly_label ? 1 : 0);
+        if (image.has_anomaly_label)
+        {
+            QString       mask_err;
+            const QString mask_file = writeAnomalibImageMask(image.anomaly_polygons, image.width, image.height,
+                                                             ctx.masks_dir, image.image_id, &mask_err);
+            if (!mask_err.isEmpty())
+            {
+                if (err_msg != nullptr)
+                    *err_msg = mask_err;
+                return false;
+            }
+            setMapValue(sample, mappedValue(anomalibSampleFieldNames(), AnomalibSampleField::Mask), mask_file);
+        }
+        else
+        {
+            setMapValue(sample, mappedValue(anomalibSampleFieldNames(), AnomalibSampleField::Mask), QString());
+        }
+        ctx.samples.push_back(sample);
+        return true;
+    }
+
+    QVariantMap finishSplit(SplitExportContext &ctx, QString *err_msg) const override
+    {
+        YAML::Node file_list = ctx.manifest;
+        setMapValue(file_list, mappedValue(anomalibFileListFieldNames(), AnomalibFileListField::MasksDir),
+                    cleanPath(ctx.masks_dir));
+        setMapValue(file_list, mappedValue(anomalibFileListFieldNames(), AnomalibFileListField::Samples), ctx.samples);
+
+        const QString file_list_path = anomalibFileListPath(ctx.request->dataset_dir, ctx.split_name);
         if (!dltool::common::yaml::writeFile(file_list_path, file_list, err_msg, QStringLiteral("写入数据集清单失败"),
                                              QStringLiteral("生成数据集清单 YAML 失败")))
             return {};
 
         return {
-            {  datasetConfigFieldName(DatasetConfigField::FileList),                       file_list_path},
-            {  datasetConfigFieldName(DatasetConfigField::MasksDir), dltool::common::cleanPath(masks_dir)},
-            {datasetConfigFieldName(DatasetConfigField::ImageCount),                          image_count},
-            {datasetConfigFieldName(DatasetConfigField::LabelCount),                          label_count},
+            {mappedValue(datasetConfigFieldNames(),   DatasetConfigField::FileList),           file_list_path},
+            {mappedValue(datasetConfigFieldNames(),   DatasetConfigField::MasksDir), cleanPath(ctx.masks_dir)},
+            {mappedValue(datasetConfigFieldNames(), DatasetConfigField::ImageCount),          ctx.image_count},
+            {mappedValue(datasetConfigFieldNames(), DatasetConfigField::LabelCount),          ctx.label_count},
         };
     }
+};
 
-    dltool::common::yaml::setMapValue(manifest, manifestFieldName(ManifestField::Images), images);
-    const QString manifest_path = QDir(split_dir).filePath(datasetFileName(DatasetFileName::Manifest));
-    if (!dltool::common::yaml::writeFile(manifest_path, manifest, err_msg, QStringLiteral("写入数据集清单失败"),
-                                         QStringLiteral("生成数据集清单 YAML 失败")))
-        return {};
-
-    return {
-        {  datasetConfigFieldName(DatasetConfigField::Manifest), manifest_path},
-        {datasetConfigFieldName(DatasetConfigField::ImageCount),   image_count},
-        {datasetConfigFieldName(DatasetConfigField::LabelCount),   label_count},
-    };
+std::unique_ptr<DatasetOrganizerBase> createDatasetOrganizer(const QString &framework_name)
+{
+    switch (datasetLayout(framework_name))
+    {
+    case FrameworkDatasetLayout::Anomalib:
+        return std::make_unique<AnomalibDatasetOrganizer>();
+    case FrameworkDatasetLayout::Ultralytics:
+        return std::make_unique<UltralyticsDatasetOrganizer>();
+    case FrameworkDatasetLayout::FsSam2:
+        return std::make_unique<FsSam2DatasetOrganizer>();
+    case FrameworkDatasetLayout::Generic:
+    default:
+        return std::make_unique<GenericDatasetOrganizer>();
+    }
 }
 
 } // namespace
@@ -713,26 +957,27 @@ QVariantMap ModelDatasetOrganizer::organize(const ModelDatasetExportRequest &req
     if (!ensureDirectory(request.dataset_dir, err_msg))
         return {};
 
+    const std::unique_ptr<DatasetOrganizerBase> organizer = createDatasetOrganizer(request.framework_name);
     if (isTrainModelTask(request.task_type))
     {
-        const QVariantMap train = exportSplit(request, DatasetSplit::Train, true, err_msg);
+        const QVariantMap train = organizer->exportSplit(request, DatasetSplit::Train, true, err_msg);
         if (train.isEmpty())
             return {};
-        datasets.insert(datasetConfigFieldName(DatasetConfigField::Train), train);
+        datasets.insert(mappedValue(datasetConfigFieldNames(), DatasetConfigField::Train), train);
 
         QString     validation_err;
-        QVariantMap validation = exportSplit(request, DatasetSplit::Validation, false, &validation_err);
+        QVariantMap validation = organizer->exportSplit(request, DatasetSplit::Validation, false, &validation_err);
         if (!validation.isEmpty())
-            datasets.insert(datasetConfigFieldName(DatasetConfigField::Validation), validation);
+            datasets.insert(mappedValue(datasetConfigFieldNames(), DatasetConfigField::Validation), validation);
         else if (!validation_err.isEmpty())
             spdlog::debug("跳过验证数据集导出: {}", validation_err.toUtf8().constData());
     }
     else if (isTestModelTask(request.task_type))
     {
-        const QVariantMap test = exportSplit(request, DatasetSplit::Test, true, err_msg);
+        const QVariantMap test = organizer->exportSplit(request, DatasetSplit::Test, true, err_msg);
         if (test.isEmpty())
             return {};
-        datasets.insert(datasetConfigFieldName(DatasetConfigField::Test), test);
+        datasets.insert(mappedValue(datasetConfigFieldNames(), DatasetConfigField::Test), test);
     }
 
     return datasets;

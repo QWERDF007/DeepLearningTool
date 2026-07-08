@@ -1,6 +1,7 @@
 #include "feature/FewShotLearningController.h"
 
 #include "common/Utils.h"
+#include "common/YamlUtils.h"
 #include "core/CoreDef.h"
 #include "data/DataSelectionTreeModel.h"
 #include "data/DatasetViewModelFactory.h"
@@ -22,7 +23,6 @@
 #include <QImage>
 #include <QImageReader>
 #include <QJsonArray>
-#include <QJsonDocument>
 #include <QJsonObject>
 #include <QPainter>
 #include <QPointF>
@@ -143,54 +143,6 @@ bool writeTextFile(const QString &path, const QStringList &lines, QString &err_m
     stream.setEncoding(QStringConverter::Utf8);
     for (const QString &line : lines) stream << line << '\n';
     return true;
-}
-
-/**
- * @brief 复制文件
- * @param source_path 源文件路径
- * @param target_path 目标文件路径
- * @param err_msg 错误信息（输出）
- * @return 成功返回 true
- */
-bool copyFile(const QString &source_path, const QString &target_path, QString &err_msg)
-{
-    QFileInfo target_info(target_path);
-    if (!ensureDir(target_info.dir().absolutePath(), err_msg))
-        return false;
-
-    if (QFile::exists(target_path) && !QFile::remove(target_path))
-    {
-        err_msg = QString("无法覆盖文件: %1").arg(target_path);
-        return false;
-    }
-
-    if (!QFile::copy(source_path, target_path))
-    {
-        err_msg = QString("复制文件失败: %1 -> %2").arg(source_path, target_path);
-        return false;
-    }
-    return true;
-}
-
-/**
- * @brief 复制图像文件并按别名重命名
- * @param source_path 源图像路径
- * @param target_dir 目标目录
- * @param alias 文件别名（不含后缀）
- * @param copied_path 复制后的完整路径（输出）
- * @param err_msg 错误信息（输出）
- * @return 成功返回 true
- */
-bool copyImageToAlias(const QString &source_path, const QString &target_dir, const QString &alias, QString &copied_path,
-                      QString &err_msg)
-{
-    const QFileInfo source_info(source_path);
-    QString         suffix = source_info.suffix().toLower();
-    if (suffix.isEmpty())
-        suffix = QStringLiteral("png");
-
-    copied_path = QDir(target_dir).filePath(QString("%1.%2").arg(alias, suffix));
-    return copyFile(source_path, copied_path, err_msg);
 }
 
 /**
@@ -446,131 +398,193 @@ bool validateClassBuildData(const ClassBuildMap &classes, bool is_detection, int
     return true;
 }
 
-bool writeBoxesJson(const QString &class_dir, const QJsonObject &boxes_json, QString &err_msg)
+QString fewShotImageAlias(int64_t image_id)
 {
-    QFile boxes_file(QDir(class_dir).filePath(QStringLiteral("boxes.json")));
-    if (!boxes_file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    return QStringLiteral("img_%1").arg(image_id);
+}
+
+QString manifestPath(const QString &dataset_dir)
+{
+    return QDir(dataset_dir).filePath(QStringLiteral("manifest.yaml"));
+}
+
+QString maskPath(const QString &dataset_dir, int64_t image_id, int label_index)
+{
+    return QDir(QDir(dataset_dir).filePath(QStringLiteral("masks")))
+        .filePath(QStringLiteral("image_%1_label_%2.png").arg(image_id).arg(label_index));
+}
+
+QVariantMap boxVariantMap(const QJsonValue &box)
+{
+    return box.toObject().toVariantMap();
+}
+
+bool appendManifestImage(std::map<int64_t, YAML::Node> &images_by_id, int64_t image_id, const QString &image_path,
+                         FewShotLearningDataProvider *data_provider, QString &err_msg)
+{
+    if (images_by_id.find(image_id) != images_by_id.end())
+        return true;
+
+    int width  = 0;
+    int height = 0;
+    if (!getImageDimensions(image_path, width, height))
     {
-        err_msg = QString("无法写入 boxes.json: %1, %2").arg(boxes_file.fileName(), boxes_file.errorString());
+        err_msg = QString("无法读取图像尺寸: %1").arg(image_path);
         return false;
     }
-    boxes_file.write(QJsonDocument(boxes_json).toJson(QJsonDocument::Indented));
+
+    YAML::Node labels(YAML::NodeType::Sequence);
+    YAML::Node image(YAML::NodeType::Map);
+    dltool::common::yaml::setMapValue(image, QStringLiteral("id"), image_id);
+    dltool::common::yaml::setMapValue(image, QStringLiteral("path"), dltool::common::cleanPath(image_path));
+    dltool::common::yaml::setMapValue(image, QStringLiteral("dataset_id"), data_provider->imageDatasetId(image_id));
+    dltool::common::yaml::setMapValue(image, QStringLiteral("dataset_name"),
+                                      data_provider->datasetName(data_provider->imageDatasetId(image_id)));
+    dltool::common::yaml::setMapValue(image, QStringLiteral("width"), width);
+    dltool::common::yaml::setMapValue(image, QStringLiteral("height"), height);
+    dltool::common::yaml::setMapValue(image, QStringLiteral("labels"), labels);
+    images_by_id.emplace(image_id, image);
     return true;
 }
 
-bool writeCustomClassData(const QString &class_dir, const ClassBuildData &class_data,
-                          const std::map<int64_t, QString> &source_images, bool is_detection, QStringList &entries,
-                          QString &err_msg)
+bool writeCustomManifest(const QString &dataset_dir, const QString &split_name, const ClassBuildMap &classes,
+                         const std::map<int64_t, QString> &source_images, bool is_detection,
+                         FewShotLearningDataProvider *data_provider, QString &err_msg)
 {
-    const QString image_dir = QDir(class_dir).filePath(QStringLiteral("images"));
-    const QString mask_dir  = QDir(class_dir).filePath(QStringLiteral("masks"));
-    if (!ensureDir(image_dir, err_msg) || !ensureDir(mask_dir, err_msg))
+    if (!ensureDir(dataset_dir, err_msg))
         return false;
 
-    if (is_detection)
+    std::map<int64_t, YAML::Node> images_by_id;
+    int                           label_index = 0;
+    for (const auto &[label_class_id, class_data] : classes)
     {
-        QJsonObject boxes_json;
-        for (const auto &[image_id, boxes] : class_data.boxes_by_image_id)
+        if (is_detection)
+        {
+            for (const auto &[image_id, boxes] : class_data.boxes_by_image_id)
+            {
+                const auto image_it = source_images.find(image_id);
+                if (image_it == source_images.end())
+                    continue;
+                if (!appendManifestImage(images_by_id, image_id, image_it->second, data_provider, err_msg))
+                    return false;
+
+                YAML::Node labels = images_by_id[image_id][QStringLiteral("labels").toStdString()];
+                for (const QJsonValue &box : boxes)
+                {
+                    ++label_index;
+                    YAML::Node label(YAML::NodeType::Map);
+                    dltool::common::yaml::setMapValue(label, QStringLiteral("label_id"), label_index);
+                    dltool::common::yaml::setMapValue(label, QStringLiteral("label_class_id"), label_class_id);
+                    dltool::common::yaml::setMapValue(label, QStringLiteral("label_class_name"),
+                                                      class_data.class_dir_name);
+                    dltool::common::yaml::setMapValue(label, QStringLiteral("label_class_group"), QString());
+                    dltool::common::yaml::setMapValue(label, QStringLiteral("data"),
+                                                      dltool::common::yaml::variantToYaml(boxVariantMap(box)));
+                    dltool::common::yaml::setMapValue(label, QStringLiteral("mask_path"),
+                                                      dltool::common::cleanPath(maskPath(dataset_dir, image_id,
+                                                                                        label_index)));
+                    labels.push_back(label);
+                }
+            }
+            continue;
+        }
+
+        for (const auto &[image_id, mask] : class_data.masks_by_image_id)
         {
             const auto image_it = source_images.find(image_id);
             if (image_it == source_images.end())
                 continue;
-
-            const QString alias = QStringLiteral("img_%1").arg(image_id);
-            QString       copied_path;
-            if (!copyImageToAlias(image_it->second, image_dir, alias, copied_path, err_msg))
+            if (!appendManifestImage(images_by_id, image_id, image_it->second, data_provider, err_msg))
                 return false;
-            boxes_json[alias] = boxes;
-            entries.push_back(QString("%1,%1").arg(alias));
-        }
-        return writeBoxesJson(class_dir, boxes_json, err_msg);
-    }
 
-    for (const auto &[image_id, mask] : class_data.masks_by_image_id)
-    {
-        const auto image_it = source_images.find(image_id);
-        if (image_it == source_images.end())
-            continue;
+            ++label_index;
+            const QString saved_mask_path = maskPath(dataset_dir, image_id, label_index);
+            if (!ensureDir(QFileInfo(saved_mask_path).dir().absolutePath(), err_msg) || !mask.save(saved_mask_path))
+            {
+                err_msg = QString("写入训练 Mask 失败: %1").arg(saved_mask_path);
+                return false;
+            }
 
-        const QString alias = QStringLiteral("img_%1").arg(image_id);
-        QString       copied_path;
-        if (!copyImageToAlias(image_it->second, image_dir, alias, copied_path, err_msg))
-            return false;
-        if (!mask.save(QDir(mask_dir).filePath(alias + QStringLiteral(".png"))))
-        {
-            err_msg = QString("写入训练 Mask 失败: %1").arg(alias);
-            return false;
-        }
-        entries.push_back(QString("%1,%1").arg(alias));
-    }
-    return true;
-}
-
-bool writeSupportQueryFiles(const QString &class_dir, const QStringList &entries, int kshot, double support_ratio,
-                            QString &err_msg)
-{
-    const int entry_count = static_cast<int>(entries.size());
-    if (entry_count <= kshot)
-    {
-        err_msg = QString("类别样本数量不足，至少需要 %1 张图像").arg(kshot + 1);
-        return false;
-    }
-
-    const int support_count
-        = std::clamp(static_cast<int>(std::round(entry_count * support_ratio)), kshot, entry_count - 1);
-    QStringList support_entries = entries.mid(0, support_count);
-    QStringList query_entries   = entries.mid(support_count);
-    if (query_entries.empty())
-        query_entries.push_back(entries.back());
-
-    return writeTextFile(QDir(class_dir).filePath(QStringLiteral("support.txt")), support_entries, err_msg)
-        && writeTextFile(QDir(class_dir).filePath(QStringLiteral("query.txt")), query_entries, err_msg);
-}
-
-bool writeCustomDataset(const QString &dataset_dir, const ClassBuildMap &classes,
-                        const std::map<int64_t, QString> &source_images, bool is_detection, int kshot,
-                        double support_ratio, QString &err_msg)
-{
-    for (const auto &[label_class_id, class_data] : classes)
-    {
-        Q_UNUSED(label_class_id)
-        const QString class_dir = QDir(dataset_dir).filePath(class_data.class_dir_name);
-        QStringList   entries;
-        if (!writeCustomClassData(class_dir, class_data, source_images, is_detection, entries, err_msg)
-            || !writeSupportQueryFiles(class_dir, entries, kshot, support_ratio, err_msg))
-        {
-            return false;
+            YAML::Node label(YAML::NodeType::Map);
+            dltool::common::yaml::setMapValue(label, QStringLiteral("label_id"), label_index);
+            dltool::common::yaml::setMapValue(label, QStringLiteral("label_class_id"), label_class_id);
+            dltool::common::yaml::setMapValue(label, QStringLiteral("label_class_name"), class_data.class_dir_name);
+            dltool::common::yaml::setMapValue(label, QStringLiteral("label_class_group"), QString());
+            dltool::common::yaml::setMapValue(label, QStringLiteral("mask_path"),
+                                              dltool::common::cleanPath(saved_mask_path));
+            images_by_id[image_id][QStringLiteral("labels").toStdString()].push_back(label);
         }
     }
-    return true;
+
+    YAML::Node manifest(YAML::NodeType::Map);
+    YAML::Node images(YAML::NodeType::Sequence);
+    dltool::common::yaml::setMapValue(manifest, QStringLiteral("version"), 1);
+    dltool::common::yaml::setMapValue(manifest, QStringLiteral("framework"), QStringLiteral("FS-SAM2"));
+    dltool::common::yaml::setMapValue(manifest, QStringLiteral("split"), split_name);
+    for (const auto &[image_id, image] : images_by_id)
+    {
+        Q_UNUSED(image_id)
+        images.push_back(image);
+    }
+    dltool::common::yaml::setMapValue(manifest, QStringLiteral("images"), images);
+
+    return dltool::common::yaml::writeFile(manifestPath(dataset_dir), manifest, &err_msg,
+                                           QStringLiteral("写入 FS-SAM2 manifest 失败"),
+                                           QStringLiteral("生成 FS-SAM2 manifest 失败"));
 }
 
-bool writePredictionQueryInputs(FewShotLearningDataProvider *data_provider, const QString &run_dir,
-                                const QString &query_dir, const QString &output_dir, const QString &query_txt_path,
-                                const std::vector<int64_t>          &test_dataset_ids,
-                                const std::map<int64_t, QString>    &test_images,
-                                const std::map<int64_t, int64_t>    &test_image_dataset_ids,
-                                std::vector<PredictionImportTarget> &import_targets, QString &err_msg)
+bool writeQueryManifest(FewShotLearningDataProvider *data_provider, const QString &manifest_path,
+                        const QString &output_dir,
+                        const std::vector<int64_t>       &test_dataset_ids,
+                        const std::map<int64_t, QString> &test_images,
+                        const std::map<int64_t, int64_t> &test_image_dataset_ids,
+                        std::vector<PredictionImportTarget> &import_targets, QString &err_msg)
 {
+    YAML::Node manifest(YAML::NodeType::Map);
+    YAML::Node images(YAML::NodeType::Sequence);
     QStringList                    query_lines;
     std::map<int64_t, QStringList> manifest_lines_by_dataset;
+
     for (const auto &[image_id, image_path] : test_images)
     {
-        const QString alias = QStringLiteral("img_%1").arg(image_id);
-        QString       copied_path;
-        if (!copyImageToAlias(image_path, query_dir, alias, copied_path, err_msg))
+        const QString alias = fewShotImageAlias(image_id);
+        int           width = 0;
+        int           height = 0;
+        if (!getImageDimensions(image_path, width, height))
+        {
+            err_msg = QString("无法读取测试图像尺寸: %1").arg(image_path);
             return false;
+        }
+
+        YAML::Node labels(YAML::NodeType::Sequence);
+        YAML::Node image(YAML::NodeType::Map);
+        dltool::common::yaml::setMapValue(image, QStringLiteral("id"), alias);
+        dltool::common::yaml::setMapValue(image, QStringLiteral("path"), dltool::common::cleanPath(image_path));
+        dltool::common::yaml::setMapValue(image, QStringLiteral("dataset_id"), test_image_dataset_ids.at(image_id));
+        dltool::common::yaml::setMapValue(image, QStringLiteral("dataset_name"),
+                                          data_provider->datasetName(test_image_dataset_ids.at(image_id)));
+        dltool::common::yaml::setMapValue(image, QStringLiteral("width"), width);
+        dltool::common::yaml::setMapValue(image, QStringLiteral("height"), height);
+        dltool::common::yaml::setMapValue(image, QStringLiteral("labels"), labels);
+        images.push_back(image);
 
         const QString line = QString("%1,%2").arg(alias, image_path);
         manifest_lines_by_dataset[test_image_dataset_ids.at(image_id)].push_back(line);
-        query_lines.push_back(QString("%1,%1").arg(alias));
+        query_lines.push_back(line);
     }
 
-    if (!writeTextFile(query_txt_path, query_lines, err_msg)
-        || !writeTextFile(QDir(output_dir).filePath(QStringLiteral("query.txt")), query_lines, err_msg))
+    dltool::common::yaml::setMapValue(manifest, QStringLiteral("version"), 1);
+    dltool::common::yaml::setMapValue(manifest, QStringLiteral("framework"), QStringLiteral("FS-SAM2"));
+    dltool::common::yaml::setMapValue(manifest, QStringLiteral("split"), QStringLiteral("test"));
+    dltool::common::yaml::setMapValue(manifest, QStringLiteral("images"), images);
+    if (!dltool::common::yaml::writeFile(manifest_path, manifest, &err_msg,
+                                         QStringLiteral("写入 FS-SAM2 测试 manifest 失败"),
+                                         QStringLiteral("生成 FS-SAM2 测试 manifest 失败")))
     {
         return false;
     }
+    if (!writeTextFile(QDir(output_dir).filePath(QStringLiteral("query.txt")), query_lines, err_msg))
+        return false;
 
     for (int64_t dataset_id : test_dataset_ids)
     {
@@ -581,10 +595,11 @@ bool writePredictionQueryInputs(FewShotLearningDataProvider *data_provider, cons
             return false;
         }
 
-        const QString manifest_path = QDir(run_dir).filePath(QStringLiteral("test_images_%1.txt").arg(dataset_id));
-        if (!writeTextFile(manifest_path, lines, err_msg))
+        const QString import_manifest_path =
+            QFileInfo(manifest_path).absoluteDir().filePath(QStringLiteral("test_images_%1.txt").arg(dataset_id));
+        if (!writeTextFile(import_manifest_path, lines, err_msg))
             return false;
-        import_targets.push_back(PredictionImportTarget{dataset_id, manifest_path});
+        import_targets.push_back(PredictionImportTarget{dataset_id, import_manifest_path});
     }
     return true;
 }
@@ -595,14 +610,6 @@ enum class FewShotTaskKind
     Train,     ///< 训练
     Predict,   ///< 推理
     BoxToMask, ///< 框转 Mask
-};
-
-/// 小样本学习类别字段枚举
-enum class FewShotClassField
-{
-    Id,   ///< 类别 ID
-    Name, ///< 类别名称
-    Dir,  ///< 类别目录
 };
 
 /**
@@ -643,41 +650,6 @@ dltool::model::ModelTaskType fewShotTaskType(FewShotTaskKind kind)
     default:
         return dltool::model::ModelTaskType::Unknown;
     }
-}
-
-/**
- * @brief 获取类别字段的 JSON 键名
- * @param field 字段类型
- * @return JSON 键名
- */
-QString fewShotClassFieldName(FewShotClassField field)
-{
-    switch (field)
-    {
-    case FewShotClassField::Id:
-        return QStringLiteral("id");
-    case FewShotClassField::Name:
-        return QStringLiteral("name");
-    case FewShotClassField::Dir:
-        return QStringLiteral("dir");
-    default:
-        return {};
-    }
-}
-
-QJsonArray classObjectsFromBuildData(const ClassBuildMap &classes)
-{
-    QJsonArray objects;
-    for (const auto &[label_class_id, class_data] : classes)
-    {
-        Q_UNUSED(label_class_id)
-        QJsonObject class_object;
-        class_object[fewShotClassFieldName(FewShotClassField::Id)]   = static_cast<qint64>(class_data.label_class_id);
-        class_object[fewShotClassFieldName(FewShotClassField::Name)] = class_data.label_class_name;
-        class_object[fewShotClassFieldName(FewShotClassField::Dir)]  = class_data.class_dir_name;
-        objects.append(class_object);
-    }
-    return objects;
 }
 
 /// SAM2 配置名称解析结果
@@ -781,11 +753,13 @@ struct FewShotLearningController::RunContext
     QString     sam2_checkpoint;         ///< SAM2 检查点文件路径
     QString     sam2_cfg;                ///< SAM2 配置文件路径
     QString     run_dir;                 ///< 本次运行目录
-    QString     custom_dataset_dir;      ///< 自定义数据集目录
-    QString     validation_dataset_dir;  ///< 验证数据集目录；为空时使用 custom_dataset_dir
-    QString     query_dir;               ///< 查询图像目录
+    QString     train_dataset_dir;       ///< 训练 manifest 目录
+    QString     validation_dataset_dir;  ///< 验证 manifest 目录；为空时使用 train_dataset_dir
+    QString     test_dataset_dir;        ///< 测试 manifest 目录
     QString     output_dir;              ///< 输出目录
-    QString     query_txt_path;          ///< 查询清单文件路径
+    QString     train_manifest_path;     ///< 训练 manifest
+    QString     validation_manifest_path;///< 验证 manifest
+    QString     test_manifest_path;      ///< 测试 manifest
     QString     train_script;            ///< 训练脚本路径
     QString     predict_script;          ///< 推理脚本路径
     QString     box_to_mask_script;      ///< 框转 Mask 脚本路径
@@ -802,14 +776,12 @@ struct FewShotLearningController::RunContext
     int    image_size{1024};   ///< 图像尺寸
     double lr{1e-4};           ///< 学习率
     double weight_decay{1e-6}; ///< 权重衰减
-    double support_ratio{0.5}; ///< 支持集比例
 
     int     train_task_id{-1};   ///< 训练任务 ID
     int     predict_task_id{-1}; ///< 推理任务 ID
     QString task_host;           ///< 任务服务主机
     quint16 task_port{0};        ///< 任务服务端口
 
-    QJsonArray                          classes;        ///< 类别 JSON 数组
     std::vector<PredictionImportTarget> import_targets; ///< 预测结果导入目标列表
 };
 
@@ -982,14 +954,13 @@ bool FewShotLearningController::startFsSam2WithIds(const QVariantList &train_dat
     if (data_provider_->method() == dltool::core::DeepLearningMethod::Detection)
     {
         stage_                       = RunStage::PreparingMask;
-        current_prepare_class_index_ = 0;
+        current_prepare_split_index_ = 0;
         started                      = startBoxToMask(*active_context_, 0, err_msg);
     }
     else
     {
-        stage_                       = RunStage::Training;
-        current_predict_class_index_ = 0;
-        started                      = startTraining(*active_context_, err_msg);
+        stage_  = RunStage::Training;
+        started = startTraining(*active_context_, err_msg);
     }
 
     if (!started)
@@ -1130,9 +1101,6 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         = std::clamp(settingInt(global_settings, generated_field::FewShotLearning::ImageSize, 1024), 64, 8192);
     context.lr           = settingDouble(global_settings, generated_field::FewShotLearning::LearningRate, 1e-4);
     context.weight_decay = settingDouble(global_settings, generated_field::FewShotLearning::WeightDecay, 1e-6);
-    context.support_ratio
-        = std::clamp(settingDouble(global_settings, generated_field::FewShotLearning::SupportRatio, 0.5), 0.1, 0.9);
-
     const QString output_root_setting
         = dltool::common::cleanPath(settingString(global_settings, generated_field::FewShotLearning::OutputDir));
     const QString project_dir      = QFileInfo(data_provider_->databasePath()).absoluteDir().absolutePath();
@@ -1142,13 +1110,17 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
     context.run_dir                = output_root_setting.isEmpty()
                                        ? QDir(project_dir).filePath(QStringLiteral(".dltool/few_shot/%1").arg(run_id))
                                        : QDir(output_root_setting).filePath(run_id);
-    context.custom_dataset_dir     = QDir(context.run_dir).filePath(QStringLiteral("custom/train"));
+    context.train_dataset_dir      = QDir(context.run_dir).filePath(QStringLiteral("datasets/train"));
     context.validation_dataset_dir = validation_dataset_ids.empty()
-                                       ? context.custom_dataset_dir
-                                       : QDir(context.run_dir).filePath(QStringLiteral("custom/val"));
-    context.query_dir              = QDir(context.run_dir).filePath(QStringLiteral("query"));
+                                       ? context.train_dataset_dir
+                                       : QDir(context.run_dir).filePath(QStringLiteral("datasets/validation"));
+    context.test_dataset_dir       = QDir(context.run_dir).filePath(QStringLiteral("datasets/test"));
     context.output_dir             = QDir(context.run_dir).filePath(QStringLiteral("predictions"));
-    context.query_txt_path         = QDir(context.query_dir).filePath(QStringLiteral("query.txt"));
+    context.train_manifest_path    = manifestPath(context.train_dataset_dir);
+    context.validation_manifest_path = validation_dataset_ids.empty()
+                                         ? context.train_manifest_path
+                                         : manifestPath(context.validation_dataset_dir);
+    context.test_manifest_path     = manifestPath(context.test_dataset_dir);
     context.checkpoint_path        = checkpointPath(context.fs_sam2_root, context.logpath);
 
     const std::set<int64_t> selected_classes(label_class_ids.begin(), label_class_ids.end());
@@ -1191,28 +1163,26 @@ bool FewShotLearningController::prepareRun(const std::vector<int64_t> &train_dat
         return false;
     }
 
-    if (!ensureDir(context.custom_dataset_dir, err_msg) || !ensureDir(context.query_dir, err_msg)
+    if (!ensureDir(context.train_dataset_dir, err_msg) || !ensureDir(context.test_dataset_dir, err_msg)
         || !ensureDir(context.output_dir, err_msg))
     {
         return false;
     }
 
-    if (!writeCustomDataset(context.custom_dataset_dir, classes, image_selection.train_images, is_detection,
-                            context.kshot, context.support_ratio, err_msg))
+    if (!writeCustomManifest(context.train_dataset_dir, QStringLiteral("train"), classes, image_selection.train_images,
+                             is_detection, data_provider_, err_msg))
     {
         return false;
     }
     if (!selected_validation_datasets.empty()
-        && !writeCustomDataset(context.validation_dataset_dir, validation_classes, image_selection.validation_images,
-                               is_detection, context.kshot, context.support_ratio, err_msg))
+        && !writeCustomManifest(context.validation_dataset_dir, QStringLiteral("validation"), validation_classes,
+                                image_selection.validation_images, is_detection, data_provider_, err_msg))
     {
         return false;
     }
-    context.classes = classObjectsFromBuildData(classes);
-
-    if (!writePredictionQueryInputs(data_provider_, context.run_dir, context.query_dir, context.output_dir,
-                                    context.query_txt_path, test_dataset_ids, image_selection.test_images,
-                                    image_selection.test_image_dataset_ids, context.import_targets, err_msg))
+    if (!writeQueryManifest(data_provider_, context.test_manifest_path, context.output_dir, test_dataset_ids,
+                            image_selection.test_images, image_selection.test_image_dataset_ids,
+                            context.import_targets, err_msg))
         return false;
 
     QString server_err;
@@ -1253,9 +1223,9 @@ bool FewShotLearningController::startTraining(const RunContext &context, QString
     QStringList arguments = {
         context.train_script,
         QStringLiteral("--datapath"),
-        context.custom_dataset_dir,
+        context.train_manifest_path,
         QStringLiteral("--val_datapath"),
-        context.validation_dataset_dir.isEmpty() ? context.custom_dataset_dir : context.validation_dataset_dir,
+        context.validation_manifest_path.isEmpty() ? context.train_manifest_path : context.validation_manifest_path,
         QStringLiteral("--benchmark"),
         QStringLiteral("custom"),
         QStringLiteral("--kshot"),
@@ -1296,45 +1266,22 @@ bool FewShotLearningController::startTraining(const RunContext &context, QString
 /**
  * @brief 启动推理子进程
  * @param context 运行上下文
- * @param class_index 当前类别索引
  * @param err_msg 错误信息（输出）
  * @return 启动成功返回 true
  */
-bool FewShotLearningController::startPrediction(const RunContext &context, int class_index, QString &err_msg)
+bool FewShotLearningController::startPrediction(const RunContext &context, QString &err_msg)
 {
-    const int class_count = static_cast<int>(context.classes.size());
-    if (class_index < 0 || class_index >= class_count)
-    {
-        err_msg = QString("推理类别索引无效: %1").arg(class_index);
+    if (!ensureDir(context.output_dir, err_msg))
         return false;
-    }
-
-    const QJsonObject class_object = context.classes.at(class_index).toObject();
-    const QString     class_dir    = class_object.value(fewShotClassFieldName(FewShotClassField::Dir)).toString();
-    if (class_dir.isEmpty())
-    {
-        err_msg = QString("推理类别目录为空");
-        return false;
-    }
-
-    const QString support_dir = QDir(context.custom_dataset_dir).filePath(class_dir);
-    const QString output_dir  = QDir(context.output_dir).filePath(class_dir);
-    if (!ensureDir(output_dir, err_msg))
-        return false;
-
-    const int safe_class_count = std::max(1, class_count);
-    const int base             = class_index * 100 / safe_class_count;
-    const int end              = (class_index + 1) * 100 / safe_class_count;
-    const int span             = std::max(1, end - base);
 
     QStringList arguments = {
         context.predict_script,
-        QStringLiteral("--support_dir"),
-        support_dir,
-        QStringLiteral("--query_dir"),
-        context.query_dir,
+        QStringLiteral("--support_manifest"),
+        context.train_manifest_path,
+        QStringLiteral("--query_manifest"),
+        context.test_manifest_path,
         QStringLiteral("--output_dir"),
-        output_dir,
+        context.output_dir,
         QStringLiteral("--checkpoint"),
         context.checkpoint_path,
         QStringLiteral("--sam2_cfg"),
@@ -1350,14 +1297,13 @@ bool FewShotLearningController::startPrediction(const RunContext &context, int c
         QStringLiteral("--dltool_task_id"),
         QString::number(context.predict_task_id),
         QStringLiteral("--dltool_progress_base"),
-        QString::number(base),
+        QStringLiteral("0"),
         QStringLiteral("--dltool_progress_span"),
-        QString::number(span),
+        QStringLiteral("100"),
+        QStringLiteral("--dltool_finish_on_complete"),
     };
     if (!context.sam2_checkpoint.isEmpty())
         arguments << QStringLiteral("--sam2_checkpoint") << context.sam2_checkpoint;
-    if (class_index + 1 == class_count)
-        arguments << QStringLiteral("--dltool_finish_on_complete");
 
     return startProcess(context, arguments, err_msg);
 }
@@ -1365,48 +1311,34 @@ bool FewShotLearningController::startPrediction(const RunContext &context, int c
 /**
  * @brief 启动框转 Mask 预处理子进程
  * @param context 运行上下文
- * @param class_index 当前类别索引
+ * @param split_index 当前数据集拆分索引
  * @param err_msg 错误信息（输出）
  * @return 启动成功返回 true
  */
-bool FewShotLearningController::startBoxToMask(const RunContext &context, int class_index, QString &err_msg)
+bool FewShotLearningController::startBoxToMask(const RunContext &context, int split_index, QString &err_msg)
 {
-    const int class_count   = static_cast<int>(context.classes.size());
-    const int dataset_count = context.validation_dataset_dir == context.custom_dataset_dir ? 1 : 2;
-    const int prepare_count = class_count * dataset_count;
-    if (class_index < 0 || class_index >= prepare_count)
+    const int dataset_count = context.validation_dataset_dir == context.train_dataset_dir ? 1 : 2;
+    if (split_index < 0 || split_index >= dataset_count)
     {
-        err_msg = QString("预处理类别索引无效: %1").arg(class_index);
+        err_msg = QString("预处理数据集拆分索引无效: %1").arg(split_index);
         return false;
     }
 
-    const int         actual_class_index = class_index % class_count;
-    const int         dataset_index      = class_index / class_count;
-    const QJsonObject class_object       = context.classes.at(actual_class_index).toObject();
-    const QString     class_dir_name     = class_object.value(fewShotClassFieldName(FewShotClassField::Dir)).toString();
-    if (class_dir_name.isEmpty())
-    {
-        err_msg = QString("预处理类别目录为空");
-        return false;
-    }
-
-    const QString dataset_dir        = dataset_index == 0 ? context.custom_dataset_dir : context.validation_dataset_dir;
-    const QString support_dir        = QDir(dataset_dir).filePath(class_dir_name);
-    const int     safe_prepare_count = std::max(1, prepare_count);
-    const int     base               = class_index * 100 / safe_prepare_count;
-    const int     end                = (class_index + 1) * 100 / safe_prepare_count;
-    const int     span               = std::max(1, end - base);
+    const QString manifest_path = split_index == 0 ? context.train_manifest_path : context.validation_manifest_path;
+    const int     base          = split_index * 100 / dataset_count;
+    const int     end           = (split_index + 1) * 100 / dataset_count;
+    const int     span          = std::max(1, end - base);
 
     QStringList arguments = {
         context.box_to_mask_script,
-        QStringLiteral("--support_dir"),
-        support_dir,
+        QStringLiteral("--manifest"),
+        manifest_path,
+        QStringLiteral("--output_manifest"),
+        manifest_path,
         QStringLiteral("--sam2_checkpoint"),
         context.sam2_checkpoint,
         QStringLiteral("--sam2_cfg"),
         context.sam2_cfg,
-        QStringLiteral("--img_size"),
-        QString::number(context.image_size),
         QStringLiteral("--dltool_task_host"),
         context.task_host,
         QStringLiteral("--dltool_task_port"),
@@ -1483,8 +1415,7 @@ void FewShotLearningController::finishRun()
     import_finished_connection_ = {};
     active_context_.reset();
     stage_                       = RunStage::Idle;
-    current_prepare_class_index_ = 0;
-    current_predict_class_index_ = 0;
+    current_prepare_split_index_ = 0;
     current_import_index_        = 0;
     importing_predictions_       = false;
     train_task_id_               = -1;
@@ -1537,15 +1468,14 @@ void FewShotLearningController::handleProcessFinished(int exit_code, QProcess::E
 
     if (stage_ == RunStage::PreparingMask)
     {
-        ++current_prepare_class_index_;
-        const int class_count = static_cast<int>(active_context_->classes.size());
+        ++current_prepare_split_index_;
         const int dataset_count
-            = active_context_->validation_dataset_dir == active_context_->custom_dataset_dir ? 1 : 2;
-        const int prepare_count = class_count * dataset_count;
-        if (current_prepare_class_index_ < prepare_count)
+            = active_context_->validation_dataset_dir == active_context_->train_dataset_dir ? 1 : 2;
+        const int prepare_count = dataset_count;
+        if (current_prepare_split_index_ < prepare_count)
         {
             QString err_msg;
-            if (!startBoxToMask(*active_context_, current_prepare_class_index_, err_msg))
+            if (!startBoxToMask(*active_context_, current_prepare_split_index_, err_msg))
             {
                 setLastError(err_msg);
                 if (task_manager_)
@@ -1562,8 +1492,7 @@ void FewShotLearningController::handleProcessFinished(int exit_code, QProcess::E
         if (task_manager_)
             task_manager_->finishTask(box_to_mask_task_id_);
 
-        stage_                       = RunStage::Training;
-        current_predict_class_index_ = 0;
+        stage_ = RunStage::Training;
 
         QString err_msg;
         if (!startTraining(*active_context_, err_msg))
@@ -1597,11 +1526,10 @@ void FewShotLearningController::handleProcessFinished(int exit_code, QProcess::E
         if (task_manager_)
             task_manager_->finishTask(train_task_id_);
 
-        stage_                       = RunStage::Predicting;
-        current_predict_class_index_ = 0;
+        stage_ = RunStage::Predicting;
 
         QString err_msg;
-        if (!startPrediction(*active_context_, current_predict_class_index_, err_msg))
+        if (!startPrediction(*active_context_, err_msg))
         {
             setLastError(err_msg);
             if (task_manager_)
@@ -1613,20 +1541,6 @@ void FewShotLearningController::handleProcessFinished(int exit_code, QProcess::E
 
     if (stage_ == RunStage::Predicting)
     {
-        ++current_predict_class_index_;
-        if (current_predict_class_index_ < static_cast<int>(active_context_->classes.size()))
-        {
-            QString err_msg;
-            if (!startPrediction(*active_context_, current_predict_class_index_, err_msg))
-            {
-                setLastError(err_msg);
-                if (task_manager_)
-                    task_manager_->failTask(predict_task_id_);
-                finishRun();
-            }
-            return;
-        }
-
         if (task_manager_)
             task_manager_->finishTask(predict_task_id_);
         startPredictionImports();

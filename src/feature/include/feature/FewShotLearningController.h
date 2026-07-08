@@ -144,20 +144,19 @@ private:
     /**
      * @brief 启动框转 Mask 预处理
      * @param context 运行上下文
-     * @param class_index 当前类别索引
+     * @param split_index 当前数据集拆分索引
      * @param err_msg 错误信息（输出）
      * @return 启动成功返回 true
      */
-    bool startBoxToMask(const RunContext &context, int class_index, QString &err_msg);
+    bool startBoxToMask(const RunContext &context, int split_index, QString &err_msg);
 
     /**
      * @brief 启动推理流程
      * @param context 运行上下文
-     * @param class_index 当前类别索引
      * @param err_msg 错误信息（输出）
      * @return 启动成功返回 true
      */
-    bool startPrediction(const RunContext &context, int class_index, QString &err_msg);
+    bool startPrediction(const RunContext &context, QString &err_msg);
 
     /**
      * @brief 启动 Python 子进程
@@ -216,8 +215,7 @@ private:
 
     RunStage stage_{RunStage::Idle}; ///< 当前运行阶段
 
-    int current_prepare_class_index_{0}; ///< 当前预处理类别索引
-    int current_predict_class_index_{0}; ///< 当前推理类别索引
+    int current_prepare_split_index_{0}; ///< 当前预处理数据集拆分索引
     int current_import_index_{0};        ///< 当前导入索引
 
     bool importing_predictions_{false}; ///< 是否正在导入预测结果
