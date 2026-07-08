@@ -8,15 +8,33 @@
 
 namespace dltool::model {
 
+FrameworkTaskCapability FrameworkDefinition::taskCapability(ModelTaskType task_type) const
+{
+    if (name.isEmpty() || !isKnownModelTask(task_type))
+        return {};
+
+    for (const FrameworkTaskCapability &capability : task_capabilities)
+    {
+        if (capability.task_type == task_type && capability.isValid())
+            return capability;
+    }
+
+    FrameworkTaskCapability capability;
+    capability.task_type = task_type;
+    if (task_type == ModelTaskType::Train)
+        capability.script = train_script;
+    else if (task_type == ModelTaskType::Test)
+        capability.script = predict_script;
+
+    return capability.isValid() ? capability : FrameworkTaskCapability{};
+}
+
 QString FrameworkDefinition::scriptFor(ModelTaskType task_type) const
 {
-    if (name.isEmpty())
+    const FrameworkTaskCapability capability = taskCapability(task_type);
+    if (!capability.isValid())
         return {};
-    if (task_type == ModelTaskType::Train)
-        return train_script;
-    if (task_type == ModelTaskType::Test)
-        return predict_script;
-    return {};
+    return capability.script;
 }
 
 bool FrameworkDefinition::supportsExternalTask(ModelTaskType task_type) const
@@ -57,6 +75,25 @@ FrameworkDefinition resolvedFrameworkDefinition(const FrameworkDefinition &defin
     resolved.root                = dltool::common::runtimePath(definition.root);
     resolved.train_script        = dltool::common::resolvePath(resolved.root, definition.train_script);
     resolved.predict_script      = dltool::common::resolvePath(resolved.root, definition.predict_script);
+
+    resolved.task_capabilities.clear();
+    auto append_capability = [&resolved](ModelTaskType task_type, const QString &script)
+    {
+        if (!isKnownModelTask(task_type) || script.trimmed().isEmpty())
+            return;
+
+        const auto found = std::find_if(
+            resolved.task_capabilities.begin(), resolved.task_capabilities.end(),
+            [task_type](const FrameworkTaskCapability &capability) { return capability.task_type == task_type; });
+        if (found == resolved.task_capabilities.end())
+            resolved.task_capabilities.push_back(FrameworkTaskCapability{task_type, script});
+    };
+    for (const FrameworkTaskCapability &capability : definition.task_capabilities)
+    {
+        append_capability(capability.task_type, dltool::common::resolvePath(resolved.root, capability.script));
+    }
+    append_capability(ModelTaskType::Train, resolved.train_script);
+    append_capability(ModelTaskType::Test, resolved.predict_script);
 
     resolved.scripts.clear();
     for (auto it = definition.scripts.constBegin(); it != definition.scripts.constEnd(); ++it)

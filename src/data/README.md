@@ -11,8 +11,8 @@
 - 标注数据抽象在 `LabelData_t` 和 `LabelDataHelper_t` 中，当前支持检测框和分割多边形两类数据编辑逻辑。
 - 导入导出以 `DataImporter`/`DataExporter` 为扩展点，当前实现 LabelMe 和 COCO，公共文件扫描、尺寸读取、bbox/points 转换、文件复制放在 `DatasetIO`。
 - `GlobalFilter` 聚合数据集、图片标签、标注类别、图像级类别和图像搜索过滤模块，对图像和标注模型统一应用过滤。
-- `DataManager` 实现 `feature::ImageSearchDataProvider` 和 `feature::FewShotLearningDataProvider`，为 feature 模块提供图像、标签、类别、数据集、项目路径、结果写回和 Mask 导入能力。
-- 图像搜索、智能标注和小样本学习控制器位于 `feature` 模块，`DataManager` 继续通过 `imageSearch`、`smartAnnotation` 和 `fewShotLearning` 属性向 QML 暴露它们。
+- `DataManager` 为图像搜索 provider 提供项目图像、数据集、项目路径和结果写回能力；小样本学习由 `model::ModelTaskController` 在项目上下文中直接读取数据并触发 Mask 导入。
+- 图像搜索、智能标注和小样本学习入口位于 `feature` 模块，由 `FeatureManager` 通过 `imageSearch`、`smartAnnotation` 和 `fewShotLearning` 属性向 QML 暴露。
 - `LabelInstanceImageProvider` 为 QML 提供标注实例缩略图。
 - `qml/` 下包含 Gallery、Label、Review 三个数据工作区页面及其子组件。
 
@@ -27,7 +27,7 @@
 - 提供图片选择、标注选择、当前图片信息、类别统计和过滤后的可见列表。
 - 对接图像相似度搜索和标注 ROI 搜索，并将搜索结果纳入全局过滤。
 - 对接智能标注推理，为标注页面提供辅助分割结果。
-- 对接小样本学习预测结果导入，具体训练/推理流程由 `feature` 模块控制。
+- 对接小样本学习预测结果导入，具体训练/推理流程由 `model` 模块的任务编排层控制。
 
 ## 与其他模块的关系
 
@@ -37,7 +37,7 @@
 - 依赖 `settings` 获取缩略图、显示、图像搜索和智能标注配置。
 - 依赖 `ui` 的控件、日志和进度管理能力。
 - 依赖 nlohmann/json 解析和生成 LabelMe/COCO JSON。
-- 依赖 `feature` 提供图像搜索、智能标注和小样本学习控制器。
+- 被 `feature` 的图像搜索能力读取图像数据并写回过滤结果；被 `model` 的小样本学习任务编排层读取训练/测试数据并触发预测结果导入。
 
 ## 边界定义
 

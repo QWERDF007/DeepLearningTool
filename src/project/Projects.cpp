@@ -4,6 +4,7 @@
 #include "database/DataBase.h"
 #include "feature/FeatureManager.h"
 #include "model/ModelManager.h"
+#include "model/ModelTaskController.h"
 #include "settings/GlobalSettings.h"
 
 #include <spdlog/spdlog.h>
@@ -63,8 +64,9 @@ Project::~Project()
     delete feature_manager_;
     feature_manager_ = nullptr;
 
-    if (task_manager_ != nullptr)
-        task_manager_->setModelManager(nullptr);
+    delete model_task_controller_;
+    model_task_controller_ = nullptr;
+
     task_manager_ = nullptr;
 
     delete model_manager_;
@@ -79,10 +81,13 @@ Project::~Project()
 
 void Project::init()
 {
-    data_manager_  = new data::DataManager(method_, database_, this);
+    data_manager_ = new data::DataManager(method_, database_, this);
     model_manager_ = new model::ModelManager(method_, database_, data_manager_, this);
-    model::TaskManager::getInstance()->setModelManager(model_manager_);
-    feature_manager_ = new dltool::feature::FeatureManager(data_manager_, this);
+    task_manager_ = model::TaskManager::getInstance();
+    task_manager_->clearTasks();
+    model_task_controller_ = new model::ModelTaskController(method_, model_manager_->projectDirectory(), model_manager_,
+                                                            data_manager_, task_manager_, this);
+    feature_manager_ = new dltool::feature::FeatureManager(data_manager_, model_task_controller_, this);
 
     // 初始化图像提供器（会自动从 QML 上下文获取引擎）
     data_manager_->initializeQmlEngine(qml_engine_);
@@ -544,6 +549,8 @@ void ProjectManager::closeProject()
         Project *project = current_project_;
         updateProjectMtime(project->path());
         spdlog::info("关闭项目: {}", project->path().toUtf8().constData());
+        if (project->taskManager() != nullptr)
+            project->taskManager()->clearTasks();
         current_project_ = nullptr;
         emit currentProjectChanged();
         QTimer::singleShot(0, project, [project]() { project->deleteLater(); });

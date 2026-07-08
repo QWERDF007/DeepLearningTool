@@ -5,6 +5,7 @@
 #include "dltool/project/Export.h"
 #include "feature/FeatureManager.h"
 #include "model/ModelManager.h"
+#include "model/ModelTaskController.h"
 #include "model/TaskManager.h"
 
 #include <QAbstractListModel>
@@ -34,6 +35,7 @@ class Project : public QObject
     Q_PROPERTY(data::DataManager *dataManager READ dataManager CONSTANT FINAL)
     Q_PROPERTY(dltool::feature::FeatureManager *featureManager READ featureManager CONSTANT FINAL)
     Q_PROPERTY(model::ModelManager *modelManager READ modelManager CONSTANT FINAL)
+    Q_PROPERTY(model::ModelTaskController *modelTaskController READ modelTaskController CONSTANT FINAL)
     Q_PROPERTY(model::TaskManager *taskManager READ taskManager CONSTANT FINAL)
 
 public:
@@ -97,6 +99,11 @@ public:
         return model_manager_;
     }
 
+    model::ModelTaskController *modelTaskController() const
+    {
+        return model_task_controller_;
+    }
+
     model::TaskManager *taskManager() const
     {
         return task_manager_;
@@ -127,6 +134,7 @@ private:
     data::DataManager                 *data_manager_{nullptr};
     dltool::feature::FeatureManager   *feature_manager_{nullptr};
     model::ModelManager               *model_manager_{nullptr};
+    model::ModelTaskController        *model_task_controller_{nullptr};
     model::TaskManager                *task_manager_{nullptr};
 
     QQmlApplicationEngine *qml_engine_{nullptr};

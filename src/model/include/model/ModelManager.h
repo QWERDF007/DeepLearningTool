@@ -3,7 +3,6 @@
 #include "IModel.h"
 #include "dltool/model/Export.h"
 #include "model/ModelRegistry.h"
-#include "model/ModelTaskTypes.h"
 
 #include <QAbstractListModel>
 #include <QStringList>
@@ -24,8 +23,6 @@ class DataManager;
 } // namespace dltool::data
 
 namespace dltool::model {
-
-class ExternalModelTaskRunner;
 
 class MODEL_API ModelManager : public QAbstractListModel
 {
@@ -52,6 +49,24 @@ public:
         MtimeRole,
     };
 
+    struct ModelRecordView
+    {
+        int64_t model_id{-1};
+        QString uuid;
+        QString name;
+        QString framework_name;
+        QString model_architecture;
+        QString training_result;
+        QString test_result;
+        qint64  ctime{0};
+        qint64  mtime{0};
+
+        bool isValid() const
+        {
+            return model_id >= 0 && !uuid.trimmed().isEmpty();
+        }
+    };
+
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
 
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
@@ -69,24 +84,19 @@ public:
     Q_INVOKABLE QStringList availableModelNames() const;
 
     Q_INVOKABLE QVariantMap modelAt(int row) const;
+    QVariantMap             modelRecordForUuid(const QString &uuid) const;
+    ModelRecordView         modelRecordViewForUuid(const QString &uuid) const;
 
     Q_INVOKABLE dltool::model::IModel *modelForUuid(const QString &uuid) const;
-
-    Q_INVOKABLE int  addModelTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type);
-    Q_INVOKABLE int  startModelTask(const QString &model_uuid, const QString &model_name,
-                                    ModelTaskTypes::Type task_type);
-    Q_INVOKABLE bool stopModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type);
-    Q_INVOKABLE bool deleteModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type);
-
-    bool hasTaskHandler(int task_id) const;
-    bool modelTaskSupportsPause(const QString &model_uuid, ModelTaskType task_type) const;
-    bool startTask(int task_id);
-    bool stopTask(int task_id);
-    bool deleteTask(int task_id);
 
     int method() const
     {
         return method_;
+    }
+
+    QString projectDirectory() const
+    {
+        return project_dir_;
     }
 
     std::unique_ptr<IModel>              createRegisteredModelInstance(const QString &framework_name,
@@ -112,9 +122,8 @@ private:
     int     indexOfUuid(const QString &uuid) const;
     QString uniqueCopyName(const QString &name) const;
     IModel *cachedModelForRecord(const ModelRecord &record) const;
+    static ModelRecordView toRecordView(const ModelRecord &record);
     void    initializeDatasetViewModels(IModel *model) const;
-    bool    startExternalModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type,
-                                   int task_id);
     void    requestModelTaskConfigLoad(const QString &model_uuid) const;
     void    applyLoadedModelTaskConfigs(const QString &model_uuid, const QVariantMap &train_params,
                                         const QVariantMap &test_params);
@@ -139,8 +148,6 @@ private:
     QString project_dir_;
 
     std::vector<ModelRecord> models_;
-
-    std::unique_ptr<ExternalModelTaskRunner> external_task_runner_;
 
     mutable std::unordered_map<std::string, std::unique_ptr<IModel>> model_instances_;
 

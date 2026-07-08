@@ -16,6 +16,7 @@ Rectangle {
     color: QuiColor.Background
 
     property ModelManager modelManager: ProjectManager.currentProject ? ProjectManager.currentProject.modelManager : null
+    property ModelTaskController modelTaskController: ProjectManager.currentProject ? ProjectManager.currentProject.modelTaskController : null
     QuiSplitView {
         anchors.fill: parent
         anchors.margins: 5
@@ -31,6 +32,7 @@ Rectangle {
             addEnable: false
             modelManager: labelPage.modelManager
             taskManager: TaskManager
+            taskController: labelPage.modelTaskController
             taskType: ModelTaskTypes.Test
             taskActionsEnabled: true
         }

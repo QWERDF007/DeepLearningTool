@@ -21,6 +21,7 @@ Rectangle {
     property string currentModelArchitecture: ""
     property bool componentCompleted: false
     property var taskManager: null
+    property ModelTaskController taskController: null
     property int taskType: ModelTaskTypes.Unknown
     property bool taskActionsEnabled: false
     property int taskRevision: taskManager && taskManager.tasks ? taskManager.tasks.revision : 0
@@ -78,21 +79,21 @@ Rectangle {
         if (!canStartModelTask(currentModelUuid)) {
             return
         }
-        taskManager.startModelTask(currentModelUuid, currentModelName, taskType)
+        taskController.startModelTask(currentModelUuid, taskType)
     }
 
     function stopCurrentModelTask() {
         if (!canStopModelTask(currentModelUuid)) {
             return
         }
-        taskManager.stopModelTask(currentModelUuid, taskType)
+        taskController.stopModelTask(currentModelUuid, taskType)
     }
 
     function addCurrentModelTask() {
-        if (!taskActionsEnabled || !taskManager || currentModelUuid.length === 0) {
+        if (!taskActionsEnabled || !taskController || currentModelUuid.length === 0) {
             return
         }
-        taskManager.addModelTask(currentModelUuid, currentModelName, taskType)
+        taskController.addModelTask(currentModelUuid, taskType)
     }
 
     function taskForModel(uuid) {
@@ -108,7 +109,7 @@ Rectangle {
     }
 
     function canStartModelTask(uuid) {
-        if (!taskActionsEnabled || !taskManager || !uuid || String(uuid).length === 0) {
+        if (!taskActionsEnabled || !taskController || !taskManager || !uuid || String(uuid).length === 0) {
             return false
         }
 
@@ -117,7 +118,7 @@ Rectangle {
     }
 
     function canStopModelTask(uuid) {
-        if (!taskActionsEnabled || !taskManager || !uuid || String(uuid).length === 0) {
+        if (!taskActionsEnabled || !taskController || !taskManager || !uuid || String(uuid).length === 0) {
             return false
         }
 
@@ -138,7 +139,7 @@ Rectangle {
             text: "添加到任务"
             iconSource: QuiFontIcon.TaskView
             visible: modelView.taskActionsEnabled
-            enabled: modelView.taskManager && modelView.currentModelUuid.length > 0
+            enabled: modelView.taskController && modelView.currentModelUuid.length > 0
             onClicked: modelView.addCurrentModelTask()
         }
         QuiMenuItem {
@@ -237,7 +238,7 @@ Rectangle {
                     testResult: model.test_result
                     selected: ListView.isCurrentItem
                     showTaskActions: modelView.taskActionsEnabled
-                    taskActionsEnabled: modelView.taskManager !== null && model.uuid
+                    taskActionsEnabled: modelView.taskController !== null && model.uuid
                     startTaskEnabled: modelView.canStartModelTask(model.uuid)
                     stopTaskEnabled: modelView.canStopModelTask(model.uuid)
                     onStartClicked: {

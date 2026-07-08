@@ -8,24 +8,24 @@
 
 - `ImageSearchController` 基于 InferRT + FAISS 执行以图搜图。
 - `SmartAnnotationController` 负责智能标注模型加载、缓存和推理请求，返回 QML 可消费的 mask/polygon 结果。
-- `FewShotLearningController` 负责小样本学习数据准备、FS-SAM2 训练/推理进程调度、任务中心对接和预测结果导入触发。
+- `FewShotLearningController` 是小样本学习的 QML 适配层，负责读取页面选择并调用项目级 `model::ModelTaskController`。
 - `ImageSearchDataProvider` 是图像搜索对宿主数据模块的最小依赖接口，提供图像 ID、路径、数据集 ID、项目数据库路径以及搜索结果写回能力。
-- `FewShotLearningDataProvider` 是小样本学习对宿主数据模块的最小依赖接口，提供图像、标签、类别、数据集、Mask 导入和导入完成回调能力。
-- `data::DataManager` 实现 feature 侧 provider，继续向 QML 暴露 `imageSearch`、`smartAnnotation` 和 `fewShotLearning` 属性，保持页面调用方式稳定。
+- 小样本学习的数据准备、FS-SAM2 进程、任务中心状态、预测结果导入和项目目录落盘由 `model::ModelTaskController` 与 `FewShotLearningTaskService` 统一负责。
+- `FeatureManager` 继续向 QML 暴露 `imageSearch`、`smartAnnotation` 和 `fewShotLearning` 属性，保持页面调用方式稳定。
 
 ## 与其他模块的关系
 
 - 依赖 `settings` 读取图像搜索、智能标注和小样本学习配置。
 - 依赖 `model` 的任务中心接口对接外部训练/推理任务。
 - 依赖 `ui` 和 `quickui` 提供 feature QML 组件使用的基础控件。
-- 通过 provider 使用 `data` 的图像列表、标签数据、过滤结果写回和 Mask 导入能力，不直接依赖 `data` 模块。
+- 图像搜索通过 provider 使用 `data` 的图像列表、过滤结果写回能力；小样本学习通过模型编排层读取 `DataManager`，避免在 feature 层维护第二套训练/推理流程。
 - 通过 `setup_inferrt(feature)` 接入 InferRT、FAISS、CUDA 和 OpenCV 相关能力。
 
 ## 边界定义
 
 - 本模块不管理项目数据库 schema，也不直接修改数据模型。
 - 图像搜索结果过滤仍属于 `data::GlobalFilter`，由 `DataManager` 作为 provider 写回。
-- 小样本学习预测结果导入仍属于 `data`，由 `DataManager` 作为 provider 触发。
+- 小样本学习预测结果导入仍属于 `data`，由 `ModelTaskController` 在导入阶段调用 `DataManager` 触发。
 - 新增模型推理类功能优先放在本模块，数据集、标注、标签、导入导出和过滤模型仍放在 `data`。
 
 # 高级功能流程
@@ -102,25 +102,13 @@
 
 ## 小样本学习流程
 
-`FewShotLearningController` 当前通过 FS-SAM2 执行小样本训练、推理和结果导入，流程如下：
+`FewShotLearningController` 不再维护独立训练/推理流程，只作为 QML 适配层：
 
 1. QML 创建并绑定训练、验证、测试数据集和类别选择 ViewModel，然后调用无参 `startFsSam2()`。
-2. 控制器从持有的 ViewModel 中读取选择，检查是否已有任务运行，并调用 `prepareRun()` 准备运行环境。
-3. `prepareRun()` 校验 data provider、任务管理器、项目类型、训练数据集、验证数据集、测试数据集和类别列表。项目类型仅支持检测和分割。
-4. 从设置读取 Python 环境、SAM2 checkpoint、SAM2 架构、K-shot、训练轮数、batch size、worker 数、图像尺寸、学习率、权重衰减、support/query 划分比例和输出目录。
-5. 固定使用应用程序目录下的 `python/fornib/FS-SAM2` 作为 FS-SAM2 根目录，固定使用应用程序目录下的 `python/facebookresearch/sam2/sam2/configs` 查找 SAM2 配置文件。
-6. 为本次运行创建 `run_dir`，默认位于项目目录 `.dltool/few_shot/<run_id>`；其中包含 `custom` 训练数据目录、`query` 测试图像目录和 `predictions` 预测输出目录。
-7. 控制器从训练数据集中收集图像，从测试数据集中收集待预测图像，并按所选类别收集训练标注；验证数据集为空时复用训练数据集。
-8. 对检测项目，训练标注会按类别和图像写入 `boxes.json`；每张训练图像会复制到对应类别目录的 `images` 下。
-9. 对分割项目，训练标注会绘制为灰度 mask，保存到对应类别目录的 `masks` 下；训练图像复制到对应类别目录的 `images` 下。
-10. 每个类别至少需要 `kshot + 1` 张带标注图像。
-11. 每个类别目录写入 `support.txt` 和 `query.txt`，按配置的 `support_ratio` 划分支持集和训练查询集。
-12. 测试图像复制到本次运行的 `query` 目录，并写入总 `query.txt`、预测输出目录的 `query.txt`，以及按测试数据集拆分的 `test_images_<dataset_id>.txt` 导入清单。
-13. 控制器通过 `TaskManager` 启动任务通信服务，并注册训练任务、推理任务；检测项目还会额外注册框转 Mask 任务。
-14. 如果当前项目是检测，先逐类别运行 `box_to_mask.py`，将检测框转换为训练 mask；分割项目直接进入训练。
-15. 训练阶段运行 `train.py`，参数包含 custom 数据目录、K-shot、epoch、学习率、权重衰减、batch size、worker 数、图像尺寸、SAM2 配置、可选 checkpoint 和任务中心通信参数。
-16. 训练完成后检查 FS-SAM2 日志目录下的 `best_model.pt` 是否存在。
-17. 推理阶段逐类别运行 `predict.py`，使用当前类别 support 目录、测试 query 目录、训练 checkpoint 和 SAM2 配置输出预测结果。
-18. 所有类别推理完成后，`startPredictionImports()` 按测试数据集逐个调用 `data_provider_->importMaskData(dataset_id, manifest_path, prediction_output_dir)`。
-19. data 模块导入预测 mask 后通过导入完成回调通知控制器；全部导入完成后清理运行状态。
-20. 如果用户在任务中心请求停止，控制器会标记停止状态，并对当前 Python 进程先 `terminate()`，超时后再 `kill()`。
+2. `FewShotLearningController` 从 ViewModel 读取选择，构造 `model::FewShotLearningRequest`。
+3. 控制器调用项目级 `ModelTaskController.startFewShotLearning()`，并通过其信号同步 `running` 和 `lastError`。
+4. `ModelTaskController` 调用 `FewShotLearningTaskService` 校验设置、生成 manifest、创建任务和构造外部进程规格。
+5. 本次运行的训练数据、日志、权重和预测结果保存到项目目录 `models/<task_uuid>/`，其中预测结果位于 `results/predictions/`，训练权重位于 `weights/best_model.pt`。
+6. 检测项目会先运行 `box_to_mask.py`，再运行 `train.py` 和 `predict.py`；分割和异常检测项目直接进入训练。
+7. 任务中心停止请求统一进入 `ModelTaskController`，由共享的 `ExternalModelTaskRunner` 终止当前 FS-SAM2 进程。
+8. 推理完成后，`ModelTaskController` 按测试数据集调用 `DataManager.importMaskData()` 导入预测 mask，并等待导入完成回调。

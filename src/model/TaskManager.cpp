@@ -1,9 +1,7 @@
 #include "model/TaskManager.h"
 
-#include "model/ModelManager.h"
 #include "model/TaskCommunication.h"
-
-#include <spdlog/spdlog.h>
+#include "model/TaskEventRouter.h"
 
 #include <QDateTime>
 #include <algorithm>
@@ -120,23 +118,23 @@ QVariant TaskTableModel::headerData(int section, Qt::Orientation orientation, in
     switch (section)
     {
     case TaskIdColumn:
-        return QStringLiteral("任务ID");
+        return QString("任务ID");
     case ModelNameColumn:
-        return QStringLiteral("模型名称");
+        return QString("模型名称");
     case TaskTypeColumn:
-        return QStringLiteral("任务类型");
+        return QString("任务类型");
     case StatusColumn:
-        return QStringLiteral("任务状态");
+        return QString("任务状态");
     case CreatedAtColumn:
-        return QStringLiteral("任务创建时间");
+        return QString("任务创建时间");
     case RunningTimeColumn:
-        return QStringLiteral("运行时间");
+        return QString("运行时间");
     case EtaColumn:
         return QStringLiteral("ETA");
     case ProgressColumn:
-        return QStringLiteral("进度");
+        return QString("进度");
     case ActionsColumn:
-        return QStringLiteral("操作");
+        return QString("操作");
     default:
         return QVariant();
     }
@@ -240,11 +238,9 @@ bool TaskTableModel::stopTask(int task_id)
     if (!canStop(task))
         return false;
 
-    const qint64 now = QDateTime::currentSecsSinceEpoch();
-    if (task.status == Running && task.started_at > 0)
-        task.accumulated_seconds += std::max<qint64>(0, now - task.started_at);
-    task.started_at = 0;
-    task.status     = Stopped;
+    if (task.status == Running && task.started_at <= 0)
+        task.started_at = QDateTime::currentSecsSinceEpoch();
+    task.status      = Stopping;
     task.eta_seconds = -1;
     emitTaskChanged(row);
     return true;
@@ -261,7 +257,7 @@ bool TaskTableModel::finishTask(int task_id)
         return false;
 
     const qint64 now = QDateTime::currentSecsSinceEpoch();
-    if (task.status == Running && task.started_at > 0)
+    if ((task.status == Running || task.status == Stopping) && task.started_at > 0)
         task.accumulated_seconds += std::max<qint64>(0, now - task.started_at);
     task.started_at = 0;
     task.status     = Finished;
@@ -286,17 +282,32 @@ bool TaskTableModel::setTaskStatus(int task_id, TaskStatus status)
     if (task.status == status)
         return true;
 
-    const qint64 now = QDateTime::currentSecsSinceEpoch();
-    if (task.status == Running && task.started_at > 0)
+    const qint64 now          = QDateTime::currentSecsSinceEpoch();
+    const bool   was_counting = (task.status == Running || task.status == Stopping) && task.started_at > 0;
+    const bool   will_count   = status == Running || status == Stopping;
+    if (was_counting && !will_count)
         task.accumulated_seconds += std::max<qint64>(0, now - task.started_at);
-    task.started_at = status == Running ? now : 0;
+    if (status == Running)
+    {
+        if (task.started_at <= 0)
+            task.started_at = now;
+    }
+    else if (status == Stopping)
+    {
+        if (task.status == Running && task.started_at <= 0)
+            task.started_at = now;
+    }
+    else
+    {
+        task.started_at = 0;
+    }
     task.status     = status;
     if (status == Finished)
     {
         task.progress = 100;
         task.eta_seconds = 0;
     }
-    else if (status == Stopped || status == Failed)
+    else if (status == Stopping || status == Stopped || status == Failed)
     {
         task.eta_seconds = -1;
     }
@@ -374,50 +385,29 @@ void TaskTableModel::clearTasks()
     bumpRevision();
 }
 
-int TaskTableModel::startModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type)
-{
-    const QString trimmed_model_uuid = model_uuid.trimmed();
-    if (trimmed_model_uuid.isEmpty() || !isKnownModelTask(task_type))
-        return -1;
-
-    int row = indexOfModelTask(trimmed_model_uuid, task_type, false);
-    int task_id{-1};
-    if (row < 0)
-    {
-        task_id = addTask(trimmed_model_uuid, model_name, task_type);
-        row     = indexOfTask(task_id);
-    }
-    else
-    {
-        task_id = tasks_.at(static_cast<size_t>(row)).task_id;
-    }
-
-    if (row < 0)
-        return -1;
-
-    TaskRecord &task = tasks_[static_cast<size_t>(row)];
-    if (task.status == Running)
-        return task.task_id;
-
-    startTask(task.task_id);
-    return task.task_id;
-}
-
-bool TaskTableModel::stopModelTask(const QString &model_uuid, ModelTaskType task_type)
-{
-    const int row = indexOfModelTask(model_uuid.trimmed(), task_type, false);
-    if (row < 0)
-        return false;
-
-    return stopTask(tasks_.at(static_cast<size_t>(row)).task_id);
-}
-
 int TaskTableModel::findModelTask(const QString &model_uuid, ModelTaskType task_type, bool include_finished) const
 {
     const int row = indexOfModelTask(model_uuid.trimmed(), task_type, include_finished);
     if (row < 0)
         return -1;
     return tasks_.at(static_cast<size_t>(row)).task_id;
+}
+
+TaskTableModel::TaskSnapshot TaskTableModel::taskSnapshotForId(int task_id) const
+{
+    const int row = indexOfTask(task_id);
+    if (row < 0)
+        return {};
+    return snapshotForRow(row);
+}
+
+TaskTableModel::TaskSnapshot TaskTableModel::taskSnapshotForModel(const QString &model_uuid, ModelTaskType task_type,
+                                                                  bool include_finished) const
+{
+    const int row = indexOfModelTask(model_uuid.trimmed(), task_type, include_finished);
+    if (row < 0)
+        return {};
+    return snapshotForRow(row);
 }
 
 QVariantMap TaskTableModel::taskForId(int task_id) const
@@ -491,6 +481,31 @@ int TaskTableModel::indexOfModelTask(const QString &model_uuid, ModelTaskType ta
     return -1;
 }
 
+TaskTableModel::TaskSnapshot TaskTableModel::snapshotForRow(int row) const
+{
+    if (row < 0 || row >= rowCount())
+        return {};
+
+    const TaskRecord &task = tasks_.at(static_cast<size_t>(row));
+    return TaskSnapshot{
+        task.task_id,
+        task.model_uuid,
+        task.model_name,
+        task.task_type,
+        task.status,
+        task.created_at,
+        task.started_at,
+        task.accumulated_seconds,
+        etaSeconds(task),
+        task.progress,
+        task.supports_pause,
+        canStart(task),
+        canPause(task),
+        canStop(task),
+        canFinish(task),
+    };
+}
+
 void TaskTableModel::emitTaskChanged(int row, const QList<int> &roles)
 {
     if (row < 0 || row >= rowCount())
@@ -509,7 +524,8 @@ void TaskTableModel::refreshRunningTasks()
 {
     for (int row = 0; row < static_cast<int>(tasks_.size()); ++row)
     {
-        if (tasks_[static_cast<size_t>(row)].status == Running)
+        const TaskStatus status = tasks_[static_cast<size_t>(row)].status;
+        if (status == Running || status == Stopping)
         {
             emit dataChanged(index(row, RunningTimeColumn), index(row, RunningTimeColumn),
                              {RunningTimeRole, Qt::DisplayRole});
@@ -549,19 +565,21 @@ QString TaskTableModel::statusText(const TaskRecord &task) const
     switch (task.status)
     {
     case Pending:
-        return QStringLiteral("等待中");
+        return QString("等待中");
     case Running:
-        return QStringLiteral("运行中");
+        return QString("运行中");
     case Paused:
-        return QStringLiteral("已暂停");
+        return QString("已暂停");
+    case Stopping:
+        return QString("停止中");
     case Stopped:
-        return QStringLiteral("已停止");
+        return QString("已停止");
     case Finished:
-        return QStringLiteral("已结束");
+        return QString("已结束");
     case Failed:
-        return QStringLiteral("失败");
+        return QString("失败");
     default:
-        return QStringLiteral("未知");
+        return QString("未知");
     }
 }
 
@@ -584,7 +602,7 @@ QString TaskTableModel::etaText(const TaskRecord &task) const
 qint64 TaskTableModel::runningTimeSeconds(const TaskRecord &task) const
 {
     qint64 seconds = task.accumulated_seconds;
-    if (task.status == Running && task.started_at > 0)
+    if ((task.status == Running || task.status == Stopping) && task.started_at > 0)
         seconds += std::max<qint64>(0, QDateTime::currentSecsSinceEpoch() - task.started_at);
     return seconds;
 }
@@ -615,7 +633,7 @@ bool TaskTableModel::canStop(const TaskRecord &task) const
 
 bool TaskTableModel::canFinish(const TaskRecord &task) const
 {
-    return task.status == Running || task.status == Paused || task.status == Stopped;
+    return task.status == Running || task.status == Paused || task.status == Stopping || task.status == Stopped;
 }
 
 bool TaskTableModel::isTerminal(const TaskRecord &task) const
@@ -627,17 +645,10 @@ TaskManager::TaskManager(QObject *parent)
     : QObject(parent)
     , tasks_(new TaskTableModel(this))
     , communication_server_(new TaskCommunicationServer(this))
+    , event_router_(new TaskEventRouter(this, this))
 {
-    connect(communication_server_, &TaskCommunicationServer::messageReceived, this, &TaskManager::handleTaskMessage);
-}
-
-void TaskManager::setModelManager(ModelManager *model_manager)
-{
-    if (model_manager_ == model_manager)
-        return;
-
-    model_manager_ = model_manager;
-    tasks_->clearTasks();
+    connect(communication_server_, &TaskCommunicationServer::messageReceived, event_router_,
+            &TaskEventRouter::handleTaskMessage);
 }
 
 int TaskManager::addTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type)
@@ -651,30 +662,8 @@ int TaskManager::addTask(const QString &model_uuid, const QString &model_name, M
     return tasks_->addTask(model_uuid, model_name, task_type, supports_pause);
 }
 
-int TaskManager::addModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type)
-{
-    const QString trimmed_model_uuid = model_uuid.trimmed();
-    if (trimmed_model_uuid.isEmpty() || !isKnownModelTask(task_type))
-        return -1;
-
-    const int existing_task_id = tasks_->findModelTask(trimmed_model_uuid, task_type, false);
-    if (existing_task_id >= 0)
-        return existing_task_id;
-
-    const bool supports_pause
-        = model_manager_ != nullptr ? model_manager_->modelTaskSupportsPause(trimmed_model_uuid, task_type) : true;
-    return tasks_->addTask(trimmed_model_uuid, model_name, task_type, supports_pause);
-}
-
 bool TaskManager::startTask(int task_id)
 {
-    if (model_manager_ != nullptr && model_manager_->hasTaskHandler(task_id))
-    {
-        const bool started = model_manager_->startTask(task_id);
-        if (started)
-            tasks_->startTask(task_id);
-        return started;
-    }
     return tasks_->startTask(task_id);
 }
 
@@ -685,20 +674,12 @@ bool TaskManager::pauseTask(int task_id)
 
 bool TaskManager::stopTask(int task_id)
 {
+    const bool changed = tasks_->stopTask(task_id);
+    if (!changed)
+        return false;
     requestStopTask(task_id);
-
-    bool changed = false;
-    if (model_manager_ != nullptr && model_manager_->hasTaskHandler(task_id))
-    {
-        const bool stopped = model_manager_->stopTask(task_id);
-        changed = tasks_->stopTask(task_id) || stopped;
-    }
-    else
-    {
-        changed = tasks_->stopTask(task_id);
-    }
     emit taskStopRequested(task_id);
-    return changed;
+    return true;
 }
 
 bool TaskManager::finishTask(int task_id)
@@ -711,16 +692,19 @@ bool TaskManager::failTask(int task_id)
     return tasks_->failTask(task_id);
 }
 
+bool TaskManager::markTaskStopped(int task_id)
+{
+    return tasks_->setTaskStatus(task_id, TaskTableModel::Stopped);
+}
+
 bool TaskManager::deleteTask(int task_id)
 {
-    bool handled = true;
-    if (model_manager_ != nullptr && model_manager_->hasTaskHandler(task_id))
-    {
-        requestStopTask(task_id);
-        handled = model_manager_->deleteTask(task_id);
-    }
+    const TaskTableModel::TaskSnapshot task = tasks_->taskSnapshotForId(task_id);
+    requestStopTask(task_id);
+    if (task.can_stop || task.status == TaskTableModel::Stopping)
+        emit taskStopRequested(task_id);
     const bool deleted = tasks_->deleteTask(task_id);
-    return handled && deleted;
+    return deleted;
 }
 
 bool TaskManager::updateTaskProgress(int task_id, int progress)
@@ -733,29 +717,9 @@ bool TaskManager::updateTaskEta(int task_id, qint64 eta_seconds)
     return tasks_->updateTaskEta(task_id, eta_seconds);
 }
 
-int TaskManager::startModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type)
+void TaskManager::clearTasks()
 {
-    const int task_id = addModelTask(model_uuid, model_name, task_type);
-    if (task_id < 0)
-        return -1;
-    startTask(task_id);
-    return task_id;
-}
-
-bool TaskManager::stopModelTask(const QString &model_uuid, ModelTaskType task_type)
-{
-    const int task_id = tasks_->findModelTask(model_uuid.trimmed(), task_type, false);
-    if (task_id < 0)
-        return false;
-    return stopTask(task_id);
-}
-
-bool TaskManager::deleteModelTask(const QString &model_uuid, ModelTaskType task_type)
-{
-    const int task_id = tasks_->findModelTask(model_uuid.trimmed(), task_type, false);
-    if (task_id < 0)
-        return false;
-    return deleteTask(task_id);
+    tasks_->clearTasks();
 }
 
 bool TaskManager::ensureTaskServer(QString *err_msg)
@@ -778,47 +742,6 @@ bool TaskManager::requestStopTask(int task_id)
     if (communication_server_ == nullptr)
         return false;
     return communication_server_->sendCommand(task_id, TaskCommand::Stop);
-}
-
-void TaskManager::handleTaskMessage(const TaskMessage &message)
-{
-    if (message.task_id < 0)
-        return;
-
-    if (message.type == TaskMessageType::Log)
-    {
-        if (!message.message.isEmpty())
-            spdlog::info("任务 {}: {}", message.task_id, message.message.toUtf8().constData());
-        return;
-    }
-
-    if (message.progress >= 0)
-        tasks_->updateTaskProgress(message.task_id, message.progress);
-    if (message.payload.contains(taskProtocolFieldName(TaskProtocolField::EtaSeconds)))
-        tasks_->updateTaskEta(message.task_id, message.eta_seconds);
-
-    switch (message.status)
-    {
-    case TaskProtocolStatus::Running:
-        tasks_->setTaskStatus(message.task_id, TaskTableModel::Running);
-        break;
-    case TaskProtocolStatus::Paused:
-        tasks_->setTaskStatus(message.task_id, TaskTableModel::Paused);
-        break;
-    case TaskProtocolStatus::Stopped:
-        tasks_->setTaskStatus(message.task_id, TaskTableModel::Stopped);
-        break;
-    case TaskProtocolStatus::Finished:
-        tasks_->setTaskStatus(message.task_id, TaskTableModel::Finished);
-        break;
-    case TaskProtocolStatus::Failed:
-    case TaskProtocolStatus::Error:
-        spdlog::error("任务 {} 失败: {}", message.task_id, message.message.toUtf8().constData());
-        tasks_->failTask(message.task_id);
-        break;
-    default:
-        break;
-    }
 }
 
 } // namespace dltool::model

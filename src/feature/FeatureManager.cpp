@@ -1,13 +1,10 @@
 #include "feature/FeatureManager.h"
 
 #include "data/DataManager.h"
-#include "feature/FewShotLearningDataProvider.h"
 #include "feature/ImageClusterDataProvider.h"
 #include "feature/ImageSearchDataProvider.h"
 #include "feature/RoiSearchDataProvider.h"
 #include "settings/GlobalSettings.h"
-
-#include <utility>
 
 namespace dltool::feature {
 
@@ -74,55 +71,19 @@ public:
     }
 };
 
-class FeatureManager::FewShotLearningProvider final : public FewShotLearningDataProvider
-{
-public:
-    explicit FewShotLearningProvider(dltool::data::DataManager *data_manager)
-        : FewShotLearningDataProvider(data_manager)
-    {
-    }
-
-    int method() const override
-    {
-        auto *manager = dataManager();
-        return manager ? manager->method() : 0;
-    }
-
-    void importMaskData(int64_t dataset_id, const QString &image_manifest_path,
-                        const QString &prediction_output_dir) override
-    {
-        if (auto *manager = dataManager())
-            manager->importMaskData(dataset_id, image_manifest_path, prediction_output_dir);
-    }
-
-    QMetaObject::Connection connectImportFinished(
-        QObject *context, FewShotLearningDataProvider::ImportFinishedHandler handler) override
-    {
-        auto *manager = dataManager();
-        if (!manager)
-            return {};
-        return manager->connectImportFinished(context, std::move(handler));
-    }
-
-    void disconnectImportFinished(const QMetaObject::Connection &connection) override
-    {
-        if (auto *manager = dataManager())
-            manager->disconnectImportFinished(connection);
-    }
-};
-
-FeatureManager::FeatureManager(dltool::data::DataManager *data_manager, QObject *parent)
+FeatureManager::FeatureManager(dltool::data::DataManager *data_manager,
+                               dltool::model::ModelTaskController *model_task_controller,
+                               QObject *parent)
     : QObject(parent)
     , image_search_provider_(std::make_unique<ImageSearchProvider>(data_manager))
     , roi_search_provider_(std::make_unique<RoiSearchProvider>(data_manager))
     , image_cluster_provider_(std::make_unique<ImageClusterProvider>(data_manager))
-    , few_shot_learning_provider_(std::make_unique<FewShotLearningProvider>(data_manager))
 {
     image_search_ = new ImageSearchController(image_search_provider_.get(), this);
     roi_search_ = new RoiSearchController(roi_search_provider_.get(), this);
     image_cluster_ = new ImageClusterController(image_cluster_provider_.get(), data_manager, this);
     smart_annotation_ = new SmartAnnotationController(this);
-    few_shot_learning_ = new FewShotLearningController(few_shot_learning_provider_.get(), data_manager, this);
+    few_shot_learning_ = new FewShotLearningController(data_manager, model_task_controller, this);
 
     if (auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(
             dltool::settings::generated::AccessorKey::SmartAnnotation))
@@ -144,7 +105,6 @@ FeatureManager::~FeatureManager()
     roi_search_ = nullptr;
     delete image_search_;
     image_search_ = nullptr;
-    few_shot_learning_provider_.reset();
     image_cluster_provider_.reset();
     roi_search_provider_.reset();
     image_search_provider_.reset();

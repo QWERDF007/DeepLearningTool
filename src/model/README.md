@@ -14,14 +14,17 @@
 当前职责划分：
 
 - `ModelRegistry` 管理框架定义、模型工厂注册、框架路径解析和模型实例创建。
-- `ModelManager` 是项目级模型列表模型，管理数据库模型记录、懒加载模型实例和训练/验证/测试数据集选择 ViewModel，并编排模型任务分发。
-- `TaskTableModel` 和 `TaskManager` 管任务表、任务状态、任务中心 QML 单例、任务去重、任务启动/停止/删除，以及 TCP 停止命令。
+- `ModelManager` 是项目级模型列表模型，管理数据库模型记录、懒加载模型实例和训练/验证/测试数据集选择 ViewModel。
+- `ModelTaskController` 是项目级模型任务编排层，负责模型任务新增、启动、停止、删除、外部任务准备、进程启动和退出状态映射。
+- `TaskTableModel` 和 `TaskManager` 管任务表、任务状态、任务中心 QML 单例、通用任务启动/停止/删除，以及 TCP 停止命令。
 - `TaskCommunicationServer` 提供本机 TCP JSON 行协议，接收脚本上报的状态、进度、ETA 和日志事件，并向脚本下发命令。
+- `TaskEventRouter` 将 TCP 任务消息翻译为任务表状态变化，避免 `TaskManager` 直接承载协议映射逻辑。
 - `ModelTaskTypes` 提供 QML/C++ 共用的强类型任务枚举，并统一任务 key、显示名、配置文件命名、日志命名和数据集导出需求。
 - `ModelStorageService` 统一模型目录路径计算、目录创建和模型目录删除。
 - `ModelDatasetSelection` 统一训练/验证/测试数据集选择快照、`datasets/datasets.yaml` 序列化和恢复。
 - `ModelTaskConfigService` 统一任务 YAML 读写、字段名和参数落盘。
-- `ModelTaskPreparationService` 统一外部任务启动前的目录准备、选择快照生成、数据集导出、YAML 配置写入、Python 解释器解析和进程规格生成。
+- `ModelTaskPreparationService` 统一外部任务启动前的目录准备、选择快照生成、数据集导出、YAML 配置写入、Python 解释器解析和进程规格生成，输入为共享的 `ModelTaskContext`。
+- `FewShotLearningTaskService` 负责 FS-SAM2 小样本学习的请求校验、数据集 manifest 生成、进程规格生成和项目模型目录落盘。
 - `ExternalModelTaskRunner` 统一外部 Python 进程的启动、环境变量、stdout/stderr 日志、停止/删除和进程退出通知。
 - `IModel`/`IModelConfig`/`IParams`/`ParamGroupModel` 定义模型实例、参数配置和 QML 参数编辑数据模型。
 - `ModelParamsSchema` 和 `YamlModel` 从 `config/models/<framework>/<model>.yaml` 加载参数 schema，并生成 `ITrainParams`/`ITestParams`。
@@ -33,11 +36,15 @@
 - `CMakeLists.txt`
   声明 `model` 插件库、QML 模块和依赖库。
 - `include/model/ModelManager.h`、`ModelManager.cpp`
-  模型列表模型，负责数据库中的模型记录、模型实例缓存、数据集 ViewModel 初始化和模型任务分发。
+  模型列表模型，负责数据库中的模型记录、模型实例缓存和数据集 ViewModel 初始化。
+- `include/model/ModelTaskController.h`、`ModelTaskController.cpp`
+  项目级模型任务编排入口。QML 通过 `Project.currentProject.modelTaskController` 启动、停止或删除模型任务。
 - `include/model/ModelRegistry.h`、`ModelRegistry.cpp`
   框架和模型注册入口，负责框架定义、模型工厂、模型架构查询和框架相对路径解析。
 - `include/model/TaskManager.h`、`TaskManager.cpp`
-  任务表模型和任务管理器。`TaskManager` 使用 `QT_QML_SINGLETON(TaskManager)` 注册为 QML 单例。
+  任务表模型和通用任务管理器。`TaskManager` 使用 `QT_QML_SINGLETON(TaskManager)` 注册为 QML 单例。
+- `include/model/TaskEventRouter.h`、`TaskEventRouter.cpp`
+  TCP 任务消息路由器，负责将脚本上报的运行、暂停、停止、完成、失败、进度和 ETA 事件更新到任务表。
 - `include/model/TaskCommunication.h`、`TaskCommunication.cpp`
   基于 TCP 的任务通信服务，接收训练/预测脚本上报的状态、进度、ETA，并向脚本发送停止命令。
 - `include/model/ModelTaskTypes.h`、`ModelTaskTypes.cpp`
@@ -49,7 +56,9 @@
 - `include/model/ModelTaskConfigService.h`、`ModelTaskConfigService.cpp`
   任务配置服务，集中维护 YAML 字段名、`train.yaml`/`test.yaml` 读写和参数序列化。
 - `include/model/ModelTaskPreparationService.h`、`ModelTaskPreparationService.cpp`
-  外部任务准备服务，将 `ExternalModelTaskRequest` 转换为可直接启动的 `ExternalProcessSpec`。
+  外部任务准备服务，将 `ModelTaskContext` 转换为可直接启动的 `ExternalProcessSpec`。
+- `include/model/FewShotLearningTaskService.h`、`FewShotLearningTaskService.cpp`
+  FS-SAM2 小样本学习准备服务，生成训练/验证/测试 manifest、框转 Mask/训练/推理进程规格，并使用 `ModelStorageService` 写入项目模型目录。
 - `include/model/ExternalProcessSpec.h`
   外部进程运行规格，包含 task id、程序、参数、工作目录、Python path 和日志路径。
 - `include/model/ExternalModelTaskRunner.h`、`ExternalModelTaskRunner.cpp`
@@ -97,8 +106,9 @@ DLT_REGISTER_FRAMEWORK(DeepLearningMethod::AnomalyDetection, FsSam2Anomaly, fsSa
 
 - `name`：框架名，例如 `ultralytics`、`anomalib`、`FS-SAM2`。
 - `root`：框架运行根目录。相对路径会按 `QCoreApplication::applicationDirPath()` 解析。
-- `train_script`：训练脚本。相对路径会按 `root` 解析。
-- `predict_script`：预测脚本。相对路径会按 `root` 解析。
+- `train_script`：训练脚本。相对路径会按 `root` 解析，兼容旧注册写法。
+- `predict_script`：预测脚本。相对路径会按 `root` 解析，兼容旧注册写法。
+- `task_capabilities`：按 `ModelTaskTypes::Type` 声明外部任务脚本。`FrameworkDefinition::taskCapability()` 和 `scriptFor()` 会优先使用该列表，再回退到 `train_script`/`predict_script`。
 - `scripts`：额外脚本，例如 `box_to_mask`。
 - `python_paths`：启动脚本时追加到 `PYTHONPATH` 的路径。相对路径会按 `root` 解析，并保留原系统 `PYTHONPATH`。
 - `visible_for_model_creation`：是否允许在训练页面模型创建 UI 中展示。
@@ -214,14 +224,15 @@ flowchart TD
     N --> O{用户启动训练/测试?}
     O -->|否| P[继续编辑参数和数据集选择]
     P --> O
-    O -->|是| Q[TaskManager 创建或复用任务记录]
-    Q --> R[TaskManager 转发给 ModelManager.startTask]
-    R --> S[ModelManager 查询 FrameworkDefinition]
+    O -->|是| Q[ModelTaskController 接收模型任务命令]
+    Q --> Q1[TaskManager 创建或复用任务记录]
+    Q1 --> R[ModelManager 查询模型记录和模型实例]
+    R --> S[ModelTaskController 查询 FrameworkDefinition]
     S --> T{框架是否支持该外部任务?}
 
     T -->|否| U[任务进入普通运行状态]
     T -->|是| V[TaskManager 启动 TCP 通信服务]
-    V --> W[ModelManager 构造 ExternalModelTaskRequest]
+    V --> W[ModelTaskController 补齐 ModelTaskContext]
     W --> X[ModelTaskPreparationService 准备任务]
     X --> X1[ModelStorageService 确保目录]
     X1 --> X2[ModelDatasetSelection 读取当前选择]
@@ -232,62 +243,84 @@ flowchart TD
     Y --> Z[stdout/stderr 写入模型日志]
     Y --> AA[脚本通过 TCP 上报状态、进度、ETA 和错误]
     AA --> AB[TaskCommunicationServer 解析 JSON 行消息]
-    AB --> AC[TaskManager 更新 TaskTableModel]
-    Y --> AD[进程退出信号返回 ModelManager]
-    AD --> AE[ModelManager 按退出码映射完成/停止/失败]
-    AE --> AC
+    AB --> AC[TaskEventRouter 翻译协议事件]
+    AC --> AF[TaskManager/TaskTableModel 更新状态]
+    Y --> AD[进程退出信号返回 ModelTaskController]
+    AD --> AE[ModelTaskController 按退出码映射完成/停止/失败]
+    AE --> AF
 ```
 
 ## 训练/测试任务流程
 
-任务入口统一经过 `TaskManager`。
+模型任务入口统一经过项目级 `ModelTaskController`。`TaskManager` 只负责通用任务表和 TCP 通信，`ModelManager` 只负责模型记录、模型实例和参数/数据集 ViewModel。
 
-1. UI 调用 `TaskManager.startModelTask(model_uuid, model_name, ModelTaskTypes.Type)`。
-2. `TaskManager` 检查任务表中是否已有同一模型和任务类型的非终态任务。
-3. 如果没有任务，则 `TaskManager.addModelTask()` 创建任务记录。
-4. `TaskManager.startTask(task_id)` 如果当前项目 `ModelManager` 能处理该模型任务，则转发给 `ModelManager.startTask(task_id)`。
-5. `ModelManager` 查出模型实例和框架定义，并通过 `FrameworkDefinition::supportsExternalTask()` 判断是否存在外部脚本：
-   - `ModelTaskTypes.Train` 使用 `train_script`。
-   - `ModelTaskTypes.Test` 使用 `predict_script`。
-   - `ModelTaskTypes.BoxToMask` 是普通任务表枚举，不由 `ExternalModelTaskRunner` 启动。
-6. 如果框架没有为该任务定义脚本，`ModelManager.startTask()` 返回成功，任务只进入 `TaskTableModel` 的普通运行状态，不启动 Python 进程，也不生成任务配置。
-7. 如果框架定义了脚本，`TaskManager` 先确保 TCP 通信服务已启动，`ModelManager` 再构造 `ExternalModelTaskRequest` 并交给准备服务。
-8. `ModelTaskPreparationService` 通过 `ModelStorageService` 确保 `models/<uuid>/configs`、`results`、`logs`、`weights`、`datasets` 目录存在。
-9. `ModelTaskPreparationService` 将 UI 数据集选择快照写入 `models/<uuid>/datasets/datasets.yaml`，再调用 `ModelDatasetOrganizer` 将所选数据集导出到 `models/<uuid>/datasets`。训练任务要求训练集非空，测试/预测任务要求测试集非空；验证集为空时会跳过。
-10. `ModelTaskPreparationService` 通过 `ModelTaskConfigService` 写出 YAML 任务配置。当前配置文件名由 `ModelTaskTypes` 决定：训练写 `train.yaml`，测试/预测写 `test.yaml`；无配置文件名的任务不会作为外部模型脚本启动。
-11. `ModelTaskPreparationService` 生成 `ExternalProcessSpec`，`ExternalModelTaskRunner` 启动 Python 子进程，传入：
-   - `--config`
-   - `--dltool_task_host`
-   - `--dltool_task_port`
-   - `--dltool_task_id`
-12. 子进程工作目录为框架 `root`，环境变量会设置 `PYTHONPATH`、`PYTHONUTF8=1`、`PYTHONUNBUFFERED=1`。
-13. 子进程 stdout/stderr 统一写入 `models/<uuid>/logs/train.log`、`test.log` 或 `task.log`。
-14. 外部脚本通过 TCP 向 `TaskManager` 上报状态、进度和 ETA。
-15. `TaskManager` 根据 TCP 消息更新 `TaskTableModel`，任务中心 UI 自动刷新。
-16. Python 进程退出时，`ExternalModelTaskRunner` 发出退出通知，`ModelManager` 将退出码映射为完成、停止或失败。
+1. UI 调用 `Project.currentProject.modelTaskController.startModelTask(model_uuid, ModelTaskTypes.Type)`。
+2. `ModelTaskController` 通过 `ModelManager.modelRecordViewForUuid()` 和 `ModelManager.modelForUuid()` 查询强类型模型记录与模型实例。
+3. `ModelTaskController` 查询 `FrameworkDefinition`，并通过 `FrameworkDefinition::taskCapability()`/`supportsExternalTask()` 判断是否存在该 `ModelTaskTypes::Type` 的外部脚本。
+4. `ModelTaskController` 检查 `TaskTableModel` 中是否已有同一模型和任务类型的非终态任务；没有则通过 `TaskManager.addTask()` 创建任务记录。C++ 内部读取任务时使用 `TaskSnapshot`，QML 仍可使用 `taskForModel()` 返回的 `QVariantMap`。
+5. 如果框架没有为该任务定义脚本，`ModelTaskController` 只把任务置为运行状态，不启动 Python 进程，也不生成任务配置。
+6. 如果框架定义了脚本，`ModelTaskController` 先通过 `TaskManager` 确保 TCP 通信服务已启动，再补齐 `ModelTaskContext` 的通信端点并交给准备服务。
+7. `ModelTaskPreparationService` 通过 `ModelStorageService` 确保 `models/<uuid>/configs`、`results`、`logs`、`weights`、`datasets` 目录存在。
+8. `ModelTaskPreparationService` 将 UI 数据集选择快照写入 `models/<uuid>/datasets/datasets.yaml`，再调用 `ModelDatasetOrganizer` 将所选数据集导出到 `models/<uuid>/datasets`。训练任务要求训练集非空，测试/预测任务要求测试集非空；验证集为空时会跳过。
+9. `ModelTaskPreparationService` 通过 `ModelTaskConfigService` 写出 YAML 任务配置。当前配置文件名由 `ModelTaskTypes` 决定：训练写 `train.yaml`，测试/预测写 `test.yaml`；无配置文件名的任务不会作为外部模型脚本启动。
+10. `ModelTaskPreparationService` 生成 `ExternalProcessSpec`，`ModelTaskController` 交给 `ExternalModelTaskRunner` 启动 Python 子进程，传入：
+    - `--config`
+    - `--dltool_task_host`
+    - `--dltool_task_port`
+    - `--dltool_task_id`
+11. 子进程工作目录为框架 `root`，环境变量会设置 `PYTHONPATH`、`PYTHONUTF8=1`、`PYTHONUNBUFFERED=1`。
+12. 子进程 stdout/stderr 统一写入 `models/<uuid>/logs/train.log`、`test.log` 或 `task.log`。
+13. 外部脚本通过 TCP 向 `TaskCommunicationServer` 上报状态、进度和 ETA。
+14. `TaskEventRouter` 根据 TCP 消息更新 `TaskTableModel`，任务中心 UI 自动刷新。
+15. Python 进程退出时，`ExternalModelTaskRunner` 发出退出通知，`ModelTaskController` 将退出码映射为完成、停止或失败。
 
 注意：Python/Lightning 等库可能把普通运行信息和 warning 写到 stderr。`ExternalModelTaskRunner` 不从 stdout/stderr 转发界面日志，所有打印统一落到日志文件；界面错误只来自脚本 try/catch 后通过 TCP 上报的异常信息。
 
 停止流程：
 
-1. UI 调用 `TaskManager.stopTask(task_id)` 或 `TaskManager.stopModelTask(...)`。
-2. `TaskManager` 通过 TCP 发送 `stop` 命令；如果脚本尚未绑定 task socket，会广播到当前连接。
-3. `TaskManager` 转发给 `ModelManager.stopTask(task_id)`。
-4. `ModelManager` 委托 `ExternalModelTaskRunner` 对外部进程先 `terminate()`，5 秒后仍未退出则 `kill()`。
-5. `TaskManager` 更新任务状态并发出 `taskStopRequested`。
+1. UI 调用 `ModelTaskController.stopModelTask(model_uuid, task_type)`。
+2. `ModelTaskController` 查找对应任务 id。
+3. `TaskManager` 先把任务表状态置为 `Stopping`，再通过 TCP 发送 `stop` 命令；如果脚本尚未绑定 task socket，会广播到当前连接，并发出 `taskStopRequested`。
+4. `ModelTaskController` 监听 `taskStopRequested`，对属于当前项目模型管理器的任务委托 `ExternalModelTaskRunner` 先 `terminate()`，5 秒后仍未退出则 `kill()`；从任务中心直接停止或删除任务也会走这条信号链。
+5. 进程退出后，`ModelTaskController` 根据退出码或显式停止请求确认最终任务状态为 `Stopped`、`Finished` 或 `Failed`。没有外部进程的普通任务会从 `Stopping` 立即收敛到 `Stopped`。
 
 暂停只由 `TaskTableModel` 管理状态。定义了外部脚本的模型任务当前不支持暂停按钮；没有外部脚本的普通任务可以暂停/恢复。
 
+## 小样本学习任务流程
+
+小样本学习也统一经过项目级 `ModelTaskController`，feature 层的 `FewShotLearningController` 只负责从 QML 选择模型中读取训练、验证、测试数据集和类别，并组装 `FewShotLearningRequest`。
+
+1. `FewShotLearningController.startFsSam2()` 调用 `ModelTaskController.startFewShotLearning()`。
+2. `ModelTaskController` 通过 `FewShotLearningTaskService.prepare()` 校验项目类型、Python 环境、FS-SAM2 框架、SAM2 checkpoint、数据集和类别。
+3. `FewShotLearningTaskService` 为本次运行生成 `task_uuid`，并通过 `ModelStorageService` 创建：
+
+```text
+<project_dir>/models/<task_uuid>/
+  datasets/
+  logs/
+  results/predictions/
+  weights/
+  configs/
+```
+
+4. 训练、验证、测试 manifest 写入 `datasets/train`、`datasets/validation`、`datasets/test`；检测项目先生成框数据，再通过 `box_to_mask.py` 转成训练 mask。
+5. `ModelTaskController` 在任务中心注册框转 Mask、训练、推理任务，并复用 `ExternalModelTaskRunner` 启动 FS-SAM2 脚本。
+6. stdout/stderr 写入 `models/<task_uuid>/logs/box_to_mask.log`、`train.log`、`predict.log`。
+7. FS-SAM2 训练脚本仍会先把 `best_model.pt` 产出到框架日志目录；训练完成后 `ModelTaskController` 会复制到 `models/<task_uuid>/weights/best_model.pt`，推理阶段使用项目目录里的权重。
+8. 推理结果写入 `models/<task_uuid>/results/predictions/`，之后按测试数据集调用 `DataManager.importMaskData()` 导入预测 mask。
+9. 停止、进度、退出码映射和普通模型外部任务一致，任务中心发起的停止请求也由同一个 `ModelTaskController` 路由到当前进程。
+
 ## TaskManager
 
-`TaskManager` 是 QML 单例，主要职责：
+`TaskManager` 是软件级 QML 单例，主要职责：
 
 - 持有 `TaskTableModel`。
 - 管理任务新增、启动、暂停、停止、完成、失败、删除。
 - 持有 `TaskCommunicationServer`。
-- 接收外部脚本 TCP 消息并更新任务表。
+- 通过 `TaskEventRouter` 接收外部脚本 TCP 消息并更新任务表。
 - 向外部脚本发送停止命令。
-- 通过 `setModelManager(ModelManager*)` 绑定当前项目的 `ModelManager`，用于转发模型任务启动/停止；切换项目时会清空当前任务表。
+- 不持有 `ModelManager*`，也不负责模型任务准备或外部进程启动。
+- 项目打开和关闭时由 `project::Project` 清空当前任务表。
 
 `TaskTableModel` 的核心字段：
 
@@ -308,7 +341,27 @@ flowchart TD
 - `can_stop`
 - `can_finish`
 
+任务状态包括 `Pending`、`Running`、`Paused`、`Stopping`、`Stopped`、`Finished` 和 `Failed`。用户请求停止时先进入 `Stopping`，等脚本 TCP 状态、外部进程退出回调或本地停止确认后再进入 `Stopped`。
+
+`TaskTableModel` 同时提供强类型 `TaskSnapshot` 给 C++ 编排层使用，避免 controller 从 `QVariantMap` 读取字符串 key；`taskAt()`、`taskForId()` 和 `taskForModel()` 保留给 QML 和兼容调用。
+
 任务 ID 只在当前 `TaskTableModel` 生命周期内递增；任务表当前不做数据库持久化。
+
+## ModelTaskController
+
+`ModelTaskController` 是项目级对象，由 `project::Project` 创建并通过 `Project.currentProject.modelTaskController` 暴露给 QML。它不做软件级单例，因为它持有当前项目的 `method`、`project_dir`、`ModelManager`、`DataManager` 和 `ExternalModelTaskRunner`，这些上下文会随项目打开/关闭变化。
+
+主要职责：
+
+- 接收模型任务命令：新增、启动、停止、删除。
+- 通过 `ModelManager` 查询模型记录和模型实例。
+- 通过 `TaskManager` 创建或复用任务表记录，并使用任务通信服务。
+- 查询 `FrameworkDefinition`，判断任务是否需要外部脚本。
+- 对外部脚本任务补齐共享 `ModelTaskContext`，调用 `ModelTaskPreparationService` 准备目录、数据集、配置和进程规格。
+- 持有项目级 `ExternalModelTaskRunner`，负责启动和停止当前项目模型任务进程。
+- 监听 `TaskManager::taskStopRequested`，把任务中心或其他通用入口发出的停止请求路由到当前项目的外部进程。
+- 接收外部进程退出信号，并把退出码 `0` 映射为完成、退出码 `2` 或显式停止请求映射为停止，其他退出映射为失败。
+- 统一编排 FS-SAM2 小样本学习的框转 Mask、训练、推理、预测结果导入和权重落盘。
 
 ## ModelManager
 
@@ -319,18 +372,13 @@ flowchart TD
 - 懒创建并缓存模型实例。
 - 为模型实例绑定训练/验证/测试数据集选择 ViewModel。
 - 懒加载历史任务配置，把参数和数据集选择恢复到内存模型。
-- 判断模型任务是否由当前项目处理。
-- 保存项目目录上下文，并对定义了外部脚本的任务构造 `ExternalModelTaskRequest`；框架未定义脚本时，只让任务进入普通任务状态。
-- 将准备服务生成的 `ExternalProcessSpec` 交给 `ExternalModelTaskRunner` 启动。
-- 接收外部进程退出通知，并把正常退出码 `0` 映射为完成、退出码 `2` 或显式停止请求映射为停止，其他退出映射为失败。
+- 提供项目目录上下文和模型记录查询给 `ModelTaskController`。
 
-`ModelManager` 不持有 `TaskManager*` 成员。需要访问任务表或 TCP 服务时，直接使用 `TaskManager::getInstance()`。
-
-外部进程不再由 `ModelManager` 自己维护。`ModelManager` 只持有一个 `ExternalModelTaskRunner`，具体的 `QProcess`、停止请求和日志文件都在运行器内部处理。
+`ModelManager` 不持有 `TaskManager*`，不启动外部进程，也不解释任务退出码。
 
 ## 抽象服务
 
-`ModelRegistry` 是框架和模型注册入口。它集中维护 `FrameworkDefinition`、模型工厂、可创建框架列表、模型架构列表和框架相对路径解析。`ModelManager`、注册文件和任务准备链都通过它访问注册信息，不依赖彼此。
+`ModelRegistry` 是框架和模型注册入口。它集中维护 `FrameworkDefinition`、模型工厂、可创建框架列表、模型架构列表、任务脚本能力和框架相对路径解析。`ModelManager`、注册文件和任务准备链都通过它访问注册信息，不依赖彼此。
 
 `ModelTaskTypes` 是任务语义入口。UI、任务表和 C++ 调用链传递 `ModelTaskTypes::Type` 枚举，不再传递任务类型字符串。当前枚举包括 `Unknown`、`Train`、`Test` 和 `BoxToMask`。它统一给出任务 key、显示名、配置文件名、日志文件名前缀和是否要求数据集导出。
 
@@ -340,13 +388,15 @@ flowchart TD
 
 `ModelTaskConfigService` 是任务 YAML 入口。它集中维护配置字段名，负责读取历史 `train.yaml`/`test.yaml`，并在任务启动前构造和写入当前任务配置。
 
-`ExternalModelTaskRequest` 是外部模型任务准备输入。它只在准备阶段同步使用，包含 task id、模型名、任务类型、当前模型实例、框架定义和任务通信端点；准备服务不会保存该对象。
+`ModelTaskContext` 是模型任务编排和外部任务准备共用的强类型上下文。它包含 task id、模型 uuid、模型名、任务类型、当前模型实例、框架定义和任务通信端点；准备服务只在同步准备阶段读取该对象，不保存它。
 
-`ModelTaskPreparationService` 是外部任务准备入口。它接收 `ExternalModelTaskRequest`，负责脚本路径判断、Python 环境解析、数据集选择快照生成、数据集导出、配置写入，并生成 `ExternalProcessSpec`。
+`ModelTaskPreparationService` 是外部任务准备入口。它接收 `ModelTaskContext`，负责脚本路径判断、Python 环境解析、数据集选择快照生成、数据集导出、配置写入，并生成 `ExternalProcessSpec`。
 
 `ExternalProcessSpec` 是纯进程运行规格。它只包含 task id、程序、参数、工作目录、Python path 和日志路径，不包含模型、框架、数据集或任务表对象。
 
-`ExternalModelTaskRunner` 是纯进程运行入口。它只接收 `ExternalProcessSpec`，负责启动进程、设置环境变量、stdout/stderr 日志落盘、停止/删除处理，并在进程退出时发出通知；任务表状态由上层映射。
+`ExternalModelTaskRunner` 是纯进程运行入口。它只接收 `ExternalProcessSpec`，负责启动进程、设置环境变量、stdout/stderr 日志落盘、停止/删除处理，并在进程退出时发出通知；任务表状态由 `ModelTaskController` 映射。
+
+`FewShotLearningTaskService` 是 FS-SAM2 小样本学习准备入口。它不持有任务表和进程对象，只在同步准备阶段读取 `DataManager`、框架注册信息和设置项，输出 `FewShotLearningRunContext` 与 `ExternalProcessSpec`。运行编排、停止、失败收敛和导入结果由 `ModelTaskController` 负责。
 
 ## 模型目录与配置
 
@@ -362,6 +412,8 @@ flowchart TD
 ```
 
 删除模型记录时会同时通过 `ModelStorageService` 删除对应的 `models/<uuid>/` 目录。
+
+FS-SAM2 小样本学习不写入数据库模型记录，但每次运行都会使用独立 `task_uuid` 创建同样结构的 `models/<task_uuid>/` 目录。训练数据 manifest、运行日志、复制后的 `weights/best_model.pt` 和预测结果都会保留在项目目录下，便于和普通模型任务产物一起管理。
 
 任务配置由 `ModelTaskConfigService` 使用 YAML 写入模型目录下的 `models/<uuid>/configs/train.yaml` 或 `models/<uuid>/configs/test.yaml`。配置包含模型 uuid、模型名、任务类型、框架、模型架构、模型目录、结果目录、日志目录、权重目录、框架消费的数据集文件路径，以及训练/测试参数。
 
@@ -417,6 +469,8 @@ models/<uuid>/datasets/<split>/manifest.yaml
 ## TCP 任务协议
 
 `TaskCommunicationServer` 监听 `127.0.0.1` 的随机端口，接收 JSON 行协议。外部脚本连接后，每条消息以换行结尾。无效 JSON 会被忽略并记录 warning。
+
+`TaskEventRouter` 订阅 `TaskCommunicationServer::messageReceived`，把协议状态映射到 `TaskTableModel`：`running`、`paused`、`stopped`、`finished`、`failed` 和 `error` 分别落到对应任务状态；`stopped` 会调用 `TaskManager.markTaskStopped()`，避免再次发送停止命令。
 
 核心字段由 `TaskProtocolField` 定义：
 
@@ -478,7 +532,7 @@ models/<uuid>/datasets/<split>/manifest.yaml
 ## 与其他模块的关系
 
 - `project`
-  创建项目级 `ModelManager`，并将其绑定到 `TaskManager` 单例。
+  创建项目级 `ModelManager`、`ModelTaskController`，并在项目打开/关闭时清空 `TaskManager` 任务表。
 - `database`
   持久化模型记录。
 - `data`
@@ -493,8 +547,10 @@ models/<uuid>/datasets/<split>/manifest.yaml
 ## 边界定义
 
 - `ModelRegistry` 负责框架定义、模型工厂注册、注册信息查询和框架路径解析。
-- `ModelManager` 负责模型记录、模型实例缓存、项目目录上下文、数据集 ViewModel 绑定和模型任务分发，不直接管理进程、目录细节、YAML 字段或注册表。
-- `TaskManager` 负责任务表和任务通信，不负责具体模型参数、目录、配置写入或进程启动细节。
+- `ModelManager` 负责模型记录、模型实例缓存、项目目录上下文和数据集 ViewModel 绑定，不直接管理任务表、进程、目录细节、YAML 字段或注册表。
+- `ModelTaskController` 负责模型任务命令编排，连接 `ModelManager`、`TaskManager`、`ModelTaskPreparationService` 和 `ExternalModelTaskRunner`。
+- `TaskManager` 负责任务表、任务通信服务和停止命令，不负责具体模型参数、目录、配置写入、协议事件翻译或进程启动细节。
+- `TaskEventRouter` 负责把 TCP 协议消息翻译为任务表状态、进度和 ETA 更新，不负责启动通信服务或发送命令。
 - `ModelTaskPreparationService` 负责外部脚本选择、Python 解释器解析、任务通信参数、数据集导出编排和配置写入编排，并输出 `ExternalProcessSpec`。
 - `ExternalModelTaskRunner` 负责已准备外部进程、运行环境、任务日志、停止请求和进程退出通知。
 - `ModelStorageService` 负责模型存储路径、目录创建和模型目录删除。
@@ -503,7 +559,7 @@ models/<uuid>/datasets/<split>/manifest.yaml
 - `ModelTaskTypes` 负责任务类型枚举、任务 key、显示名、配置文件名、日志文件名前缀和数据集导出需求。
 - `ModelDatasetOrganizer` 负责把数据集选择快照导出为框架可消费的数据清单和派生 mask，不负责读取 UI 模型、进程启动或任务配置写入。
 - `IModelDatasetSource` 是数据集导出所需的只读数据接口，避免导出器依赖完整 `DataManager`。
-- 框架层通过 `FrameworkDefinition` 定义 root、脚本和运行环境。
+- 框架层通过 `FrameworkDefinition` 定义 root、任务脚本能力、额外脚本和运行环境。
 - 模型层定义参数和模型架构。
 - 原始数据集、标注编辑、图像导入导出属于 `data` 或 `feature`；模型任务启动前的数据集 manifest 组织属于 `model`。
 
@@ -513,7 +569,7 @@ models/<uuid>/datasets/<split>/manifest.yaml
 
 1. 在对应业务文件中定义 `FrameworkDefinition`。
 2. 使用 `DLT_REGISTER_FRAMEWORK` 注册。
-3. 如需训练/预测脚本，定义 `root`、`train_script`、`predict_script` 和 `python_paths`；不定义脚本时，该框架任务只进入普通任务表状态，不会启动外部进程。
+3. 如需训练/预测脚本，可继续定义 `root`、`train_script`、`predict_script` 和 `python_paths`；也可以在 `task_capabilities` 中按任务类型声明脚本。不定义脚本时，该框架任务只进入普通任务表状态，不会启动外部进程。
 
 新增 YAML 模型：
 
@@ -536,7 +592,7 @@ models/<uuid>/datasets/<split>/manifest.yaml
 
 新增外部脚本任务：
 
-1. 训练任务放到 `train_script`，测试/预测任务放到 `predict_script`。新增外部脚本任务需要先扩展 `ModelTaskTypes::Type` 和 `FrameworkDefinition::scriptFor()`。
+1. 在 `ModelTaskTypes::Type` 和 `describeModelTask()` 中定义任务语义，再在框架的 `task_capabilities` 中绑定该任务脚本。训练/测试任务仍可使用 `train_script`/`predict_script` 兼容字段。
 2. 脚本支持 `--config`、`--dltool_task_host`、`--dltool_task_port`、`--dltool_task_id`。
 3. 脚本通过 TCP 上报 `task_id`、`type`、`status`、`progress`、`eta_seconds` 和错误 `message`。
-4. 脚本处理 `stop` 命令并正常退出；如以退出码 `2` 结束，`ModelManager` 会把任务视为已停止。
+4. 脚本处理 `stop` 命令并正常退出；如以退出码 `2` 结束，`ModelTaskController` 会把任务视为已停止。

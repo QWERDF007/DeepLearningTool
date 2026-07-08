@@ -4,14 +4,11 @@
 #include "data/DataSelectionTreeModel.h"
 #include "data/DatasetViewModelFactory.h"
 #include "database/DataBase.h"
-#include "model/ExternalModelTaskRunner.h"
 #include "model/IModelConfig.h"
 #include "model/IParams.h"
 #include "model/ModelDatasetSelection.h"
 #include "model/ModelStorageService.h"
 #include "model/ModelTaskConfigService.h"
-#include "model/ModelTaskPreparationService.h"
-#include "model/TaskManager.h"
 
 #include <spdlog/spdlog.h>
 
@@ -32,22 +29,7 @@ ModelManager::ModelManager(const int method, dltool::database::ProjectDataBase *
     , project_dir_(database != nullptr
                        ? dltool::common::cleanPath(QFileInfo(database->path()).absoluteDir().absolutePath())
                        : QString())
-    , external_task_runner_(std::make_unique<ExternalModelTaskRunner>(this))
 {
-    connect(external_task_runner_.get(), &ExternalModelTaskRunner::taskFinished, this,
-            [](int task_id, int exit_code, bool normal_exit, bool stop_requested)
-            {
-                auto *task_manager = TaskManager::getInstance();
-                if (task_manager == nullptr || task_manager->tasks() == nullptr)
-                    return;
-
-                if (stop_requested || (normal_exit && exit_code == 2))
-                    task_manager->tasks()->setTaskStatus(task_id, TaskTableModel::Stopped);
-                else if (normal_exit && exit_code == 0)
-                    task_manager->tasks()->setTaskStatus(task_id, TaskTableModel::Finished);
-                else
-                    task_manager->tasks()->setTaskStatus(task_id, TaskTableModel::Failed);
-            });
     init();
 }
 
@@ -403,6 +385,22 @@ QVariantMap ModelManager::modelAt(const int row) const
     };
 }
 
+QVariantMap ModelManager::modelRecordForUuid(const QString &uuid) const
+{
+    const int row = indexOfUuid(uuid);
+    if (row < 0)
+        return {};
+    return modelAt(row);
+}
+
+ModelManager::ModelRecordView ModelManager::modelRecordViewForUuid(const QString &uuid) const
+{
+    const int row = indexOfUuid(uuid);
+    if (row < 0)
+        return {};
+    return toRecordView(models_.at(static_cast<size_t>(row)));
+}
+
 IModel *ModelManager::modelForUuid(const QString &uuid) const
 {
     const int row = indexOfUuid(uuid);
@@ -413,26 +411,6 @@ IModel *ModelManager::modelForUuid(const QString &uuid) const
     if (model != nullptr)
         requestModelTaskConfigLoad(models_[static_cast<size_t>(row)].uuid);
     return model;
-}
-
-int ModelManager::addModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type)
-{
-    return TaskManager::getInstance()->addModelTask(model_uuid, model_name, task_type);
-}
-
-int ModelManager::startModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type)
-{
-    return TaskManager::getInstance()->startModelTask(model_uuid, model_name, task_type);
-}
-
-bool ModelManager::stopModelTask(const QString &model_uuid, ModelTaskType task_type)
-{
-    return TaskManager::getInstance()->stopModelTask(model_uuid, task_type);
-}
-
-bool ModelManager::deleteModelTask(const QString &model_uuid, ModelTaskType task_type)
-{
-    return TaskManager::getInstance()->deleteModelTask(model_uuid, task_type);
 }
 
 void ModelManager::requestModelTaskConfigLoad(const QString &model_uuid) const
@@ -477,70 +455,6 @@ void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const 
     applyModelDatasetSelections(model, dataset_selections);
 }
 
-bool ModelManager::hasTaskHandler(int task_id) const
-{
-    auto *task_manager = TaskManager::getInstance();
-    if (task_manager == nullptr || task_manager->tasks() == nullptr)
-        return false;
-
-    const QVariantMap task       = task_manager->tasks()->taskForId(task_id);
-    const QString     model_uuid = task.value(QStringLiteral("model_uuid")).toString().trimmed();
-    return !model_uuid.isEmpty() && modelForUuid(model_uuid) != nullptr;
-}
-
-bool ModelManager::modelTaskSupportsPause(const QString &model_uuid, ModelTaskType task_type) const
-{
-    IModel *model = modelForUuid(model_uuid);
-    if (model == nullptr)
-        return true;
-
-    const FrameworkDefinition framework = registeredFramework(method_, model->frameworkName());
-    return !framework.supportsExternalTask(task_type);
-}
-
-bool ModelManager::startTask(int task_id)
-{
-    auto *task_manager = TaskManager::getInstance();
-    if (task_manager == nullptr || task_manager->tasks() == nullptr)
-        return false;
-
-    const QVariantMap task         = task_manager->tasks()->taskForId(task_id);
-    const int         status_value = task.value(QStringLiteral("status_value"), TaskTableModel::Pending).toInt();
-    if (status_value == TaskTableModel::Running)
-        return true;
-
-    const QString model_uuid = task.value(QStringLiteral("model_uuid")).toString().trimmed();
-    const QString model_name = task.value(QStringLiteral("model_name")).toString().trimmed();
-    const auto    task_type  = static_cast<ModelTaskType>(task.value(QStringLiteral("task_type"), 0).toInt());
-    IModel       *model      = modelForUuid(model_uuid);
-    if (model == nullptr)
-        return false;
-
-    const FrameworkDefinition framework = registeredFramework(method_, model->frameworkName());
-    if (framework.supportsExternalTask(task_type))
-        return startExternalModelTask(model_uuid, model_name, task_type, task_id);
-
-    return true;
-}
-
-bool ModelManager::stopTask(int task_id)
-{
-    auto *task_manager = TaskManager::getInstance();
-    if (task_manager == nullptr || task_manager->tasks() == nullptr || !hasTaskHandler(task_id))
-        return false;
-
-    return external_task_runner_ != nullptr && external_task_runner_->stop(task_id);
-}
-
-bool ModelManager::deleteTask(int task_id)
-{
-    auto *task_manager = TaskManager::getInstance();
-    if (task_manager == nullptr || task_manager->tasks() == nullptr || !hasTaskHandler(task_id))
-        return false;
-
-    return external_task_runner_ != nullptr && external_task_runner_->deleteTask(task_id);
-}
-
 std::unique_ptr<IModel> ModelManager::createRegisteredModelInstance(const QString &framework_name,
                                                                     const QString &model_architecture) const
 {
@@ -552,60 +466,6 @@ std::unique_ptr<IModel> ModelManager::createRegisteredModelInstance(const QStrin
 std::vector<std::unique_ptr<IModel>> ModelManager::registeredModelInstances() const
 {
     return registeredModels(method_);
-}
-
-bool ModelManager::startExternalModelTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type,
-                                          int task_id)
-{
-    IModel *model = modelForUuid(model_uuid);
-    if (model == nullptr)
-        return false;
-
-    const FrameworkDefinition framework = registeredFramework(method_, model->frameworkName());
-    if (external_task_runner_ == nullptr)
-        return false;
-
-    auto *task_manager = TaskManager::getInstance();
-    if (task_manager == nullptr)
-        return false;
-
-    QString server_err;
-    if (!task_manager->ensureTaskServer(&server_err))
-    {
-        spdlog::error("启动模型任务失败: 任务通信服务启动失败: {}", server_err.toUtf8().constData());
-        if (task_manager->tasks() != nullptr)
-            task_manager->tasks()->failTask(task_id);
-        return false;
-    }
-
-    ExternalModelTaskRequest request;
-    request.task_id          = task_id;
-    request.model_name       = model_name;
-    request.task_type        = task_type;
-    request.model            = model;
-    request.framework        = framework;
-    request.task_server_host = task_manager->taskServerHost();
-    request.task_server_port = task_manager->taskServerPort();
-
-    ExternalProcessSpec               process_spec;
-    QString                           err_msg;
-    const ModelTaskPreparationService preparation(method_, project_dir_, data_manager_);
-    if (!preparation.prepare(request, process_spec, &err_msg))
-    {
-        spdlog::error("启动模型任务失败: {}", err_msg.toUtf8().constData());
-        if (task_manager->tasks() != nullptr)
-            task_manager->tasks()->failTask(task_id);
-        return false;
-    }
-
-    if (!external_task_runner_->start(process_spec, &err_msg))
-    {
-        spdlog::error("启动模型任务失败: {}", err_msg.toUtf8().constData());
-        if (task_manager->tasks() != nullptr)
-            task_manager->tasks()->failTask(task_id);
-        return false;
-    }
-    return true;
 }
 
 int ModelManager::indexOfModel(const int64_t model_id) const
@@ -677,6 +537,21 @@ IModel *ModelManager::cachedModelForRecord(const ModelRecord &record) const
         }
     }
     return model.get();
+}
+
+ModelManager::ModelRecordView ModelManager::toRecordView(const ModelRecord &record)
+{
+    return ModelRecordView{
+        record.model_id,
+        record.uuid,
+        record.name,
+        record.framework_name,
+        record.model_architecture,
+        record.training_result,
+        record.test_result,
+        record.ctime,
+        record.mtime,
+    };
 }
 
 void ModelManager::initializeDatasetViewModels(IModel *model) const

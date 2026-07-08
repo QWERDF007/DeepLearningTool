@@ -12,7 +12,7 @@
 namespace dltool::model {
 
 class TaskCommunicationServer;
-class ModelManager;
+class TaskEventRouter;
 struct TaskMessage;
 
 class MODEL_API TaskTableModel : public QAbstractTableModel
@@ -46,6 +46,7 @@ public:
         Pending = 0,
         Running,
         Paused,
+        Stopping,
         Stopped,
         Finished,
         Failed,
@@ -72,6 +73,30 @@ public:
     };
     Q_ENUM(Role)
 
+    struct TaskSnapshot
+    {
+        int           task_id{-1};
+        QString       model_uuid;
+        QString       model_name;
+        ModelTaskType task_type{ModelTaskType::Unknown};
+        TaskStatus    status{Pending};
+        qint64        created_at{0};
+        qint64        started_at{0};
+        qint64        accumulated_seconds{0};
+        qint64        eta_seconds{-1};
+        int           progress{0};
+        bool          supports_pause{true};
+        bool          can_start{false};
+        bool          can_pause{false};
+        bool          can_stop{false};
+        bool          can_finish{false};
+
+        bool isValid() const
+        {
+            return task_id >= 0;
+        }
+    };
+
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     int columnCount(const QModelIndex &parent = QModelIndex()) const override;
     int count() const;
@@ -94,12 +119,13 @@ public:
     bool updateTaskProgress(int task_id, int progress);
     bool updateTaskEta(int task_id, qint64 eta_seconds);
     void clearTasks();
-    int  startModelTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type);
-    bool stopModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type);
     int  findModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type, bool include_finished = false) const;
-    QVariantMap taskForId(int task_id) const;
+    TaskSnapshot taskSnapshotForId(int task_id) const;
+    TaskSnapshot taskSnapshotForModel(const QString &model_uuid, ModelTaskTypes::Type task_type,
+                                      bool include_finished = false) const;
 
     Q_INVOKABLE QVariantMap taskAt(int row) const;
+    Q_INVOKABLE QVariantMap taskForId(int task_id) const;
     Q_INVOKABLE QVariantMap taskForModel(const QString &model_uuid, ModelTaskTypes::Type task_type,
                                          bool include_finished = false) const;
 
@@ -125,6 +151,7 @@ private:
 
     int  indexOfTask(int task_id) const;
     int  indexOfModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type, bool include_finished) const;
+    TaskSnapshot snapshotForRow(int row) const;
     void emitTaskChanged(int row, const QList<int> &roles = {});
     void bumpRevision();
     void refreshRunningTasks();
@@ -162,25 +189,19 @@ public:
         return tasks_;
     }
 
-    void setModelManager(ModelManager *model_manager);
-
     Q_INVOKABLE int addTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type);
     int              addTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type,
                              bool supports_pause);
-    Q_INVOKABLE int  addModelTask(const QString &model_uuid, const QString &model_name,
-                                  ModelTaskTypes::Type task_type);
     Q_INVOKABLE bool startTask(int task_id);
     Q_INVOKABLE bool pauseTask(int task_id);
     Q_INVOKABLE bool stopTask(int task_id);
     Q_INVOKABLE bool finishTask(int task_id);
     bool             failTask(int task_id);
+    bool             markTaskStopped(int task_id);
     Q_INVOKABLE bool deleteTask(int task_id);
     Q_INVOKABLE bool updateTaskProgress(int task_id, int progress);
     bool             updateTaskEta(int task_id, qint64 eta_seconds);
-    Q_INVOKABLE int  startModelTask(const QString &model_uuid, const QString &model_name,
-                                    ModelTaskTypes::Type task_type);
-    Q_INVOKABLE bool stopModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type);
-    Q_INVOKABLE bool deleteModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type);
+    void             clearTasks();
     bool             ensureTaskServer(QString *err_msg = nullptr);
     QString          taskServerHost() const;
     quint16          taskServerPort() const;
@@ -194,9 +215,8 @@ private:
 
     TaskTableModel          *tasks_{nullptr};
     TaskCommunicationServer *communication_server_{nullptr};
-    ModelManager            *model_manager_{nullptr};
+    TaskEventRouter         *event_router_{nullptr};
 
-    void handleTaskMessage(const dltool::model::TaskMessage &message);
 };
 
 } // namespace dltool::model

@@ -16,15 +16,22 @@ namespace dltool::model {
 
 class IModel;
 
-struct MODEL_API ExternalModelTaskRequest
+struct MODEL_API ModelTaskContext
 {
     int                 task_id{-1};
+    QString             model_uuid;
     QString             model_name;
     ModelTaskType       task_type{ModelTaskType::Unknown};
     IModel             *model{nullptr};
     FrameworkDefinition framework;
     QString             task_server_host;
     quint16             task_server_port{0};
+
+    bool isValid() const
+    {
+        return task_id >= 0 && !model_uuid.trimmed().isEmpty() && !model_name.trimmed().isEmpty()
+            && isKnownModelTask(task_type) && model != nullptr;
+    }
 };
 
 class MODEL_API ModelTaskPreparationService
@@ -32,7 +39,7 @@ class MODEL_API ModelTaskPreparationService
 public:
     ModelTaskPreparationService(int method, QString project_dir, dltool::data::DataManager *data_manager);
 
-    bool prepare(const ExternalModelTaskRequest &request, ExternalProcessSpec &process_spec,
+    bool prepare(const ModelTaskContext &context, ExternalProcessSpec &process_spec,
                  QString *err_msg = nullptr) const;
 
 private:

@@ -16,6 +16,17 @@ class IModel;
 
 using ModelFactory = std::function<std::unique_ptr<IModel>()>;
 
+struct MODEL_API FrameworkTaskCapability
+{
+    ModelTaskType task_type{ModelTaskType::Unknown};
+    QString       script;
+
+    bool isValid() const
+    {
+        return isKnownModelTask(task_type) && !script.trimmed().isEmpty();
+    }
+};
+
 struct MODEL_API FrameworkDefinition
 {
     int                     method{-1};
@@ -23,12 +34,14 @@ struct MODEL_API FrameworkDefinition
     QString                 root;
     QString                 train_script;
     QString                 predict_script;
+    std::vector<FrameworkTaskCapability> task_capabilities;
     QHash<QString, QString> scripts;
     QStringList             python_paths;
     bool                    visible_for_model_creation{true};
 
-    QString scriptFor(ModelTaskType task_type) const;
-    bool    supportsExternalTask(ModelTaskType task_type) const;
+    FrameworkTaskCapability taskCapability(ModelTaskType task_type) const;
+    QString                 scriptFor(ModelTaskType task_type) const;
+    bool                    supportsExternalTask(ModelTaskType task_type) const;
 };
 
 MODEL_API bool registerFramework(int method, const FrameworkDefinition &definition);
