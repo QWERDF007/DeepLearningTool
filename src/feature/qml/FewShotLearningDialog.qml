@@ -142,7 +142,7 @@ QuiPopup {
                                 required property var modelData
 
                                 Layout.fillWidth: true
-                                roleTitle: modelData.title + "/类别"
+                                roleTitle: modelData.title
                                 selectionModel: dialog.datasetSelectionModel(modelData.selection)
                                 treeHeight: 150
                             }

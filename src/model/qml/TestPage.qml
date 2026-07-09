@@ -65,7 +65,7 @@ Rectangle {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.top: parent.top
-                        roleTitle: qsTr("测试数据集/类别")
+                        roleTitle: qsTr("测试数据集")
                         selectionModel: testPanel.selectedModel ? testPanel.selectedModel.testDatasetViewModel : null
                         treeHeight: 240
                     }
