@@ -238,6 +238,7 @@ bool DatasetsListModel::deleteDataset(const int64_t dataset_id)
             beginRemoveRows(QModelIndex(), idx, idx);
             delete dataset;
             datasets_.erase(dataset_id);
+            labelled_image_stats_.erase(dataset_id);
             endRemoveRows();
             if (last_index_ >= rowCount())
             {

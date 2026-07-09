@@ -30,7 +30,7 @@ public:
         {CreateRecentProjects,
          "CREATE TABLE IF NOT EXISTS recent_projects (id INTEGER NOT NULL PRIMARY KEY, path TEXT, extra_data BLOB)"},
         {CreateDatasets,
-         "CREATE TABLE datasets (id INTEGER NOT NULL PRIMARY KEY, name TEXT, extra_data BLOB)"},
+         "CREATE TABLE datasets (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, name TEXT, extra_data BLOB)"},
         {CreateImages,
          "CREATE TABLE images (id INTEGER NOT NULL PRIMARY KEY, dataset_id INTEGER NOT NULL REFERENCES datasets(id), path TEXT, extra_data BLOB)"},
         {CreateLabelClasses,

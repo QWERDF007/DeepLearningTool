@@ -114,5 +114,5 @@ DataSettings:
         property_name: polygonApproxEpsilonRatio
         value: 0.01
         value_type: double
-        value_range: [0.0, 0.1, 0.001]
-        control_type: slider
+        value_range: [0.0, 100, 0.001]
+        control_type: spin

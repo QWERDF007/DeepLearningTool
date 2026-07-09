@@ -93,8 +93,8 @@ SmartAnnotationSettings:
         property_name: polygonApproxEpsilon
         value: 0.01
         value_type: double
-        value_range: [0.0, 0.1, 0.001]
-        control_type: slider
+        value_range: [0.0, 100, 0.001]
+        control_type: spin
 
       - name_en: polygon_spline_enabled
         name_cn: 启用轮廓 B 样条
