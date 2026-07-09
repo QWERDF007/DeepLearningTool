@@ -143,60 +143,6 @@ struct ModelArchitecture
     using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::can_be_null>;
 };
 
-struct TrainingResult
-{
-    struct _alias_t
-    {
-        static constexpr const char _literal[] = "training_result";
-        using _name_t                          = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
-
-        template<typename T>
-        struct _member_t
-        {
-            T trainingResult;
-
-            T &operator()()
-            {
-                return trainingResult;
-            }
-
-            const T &operator()() const
-            {
-                return trainingResult;
-            }
-        };
-    };
-
-    using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::can_be_null>;
-};
-
-struct TestResult
-{
-    struct _alias_t
-    {
-        static constexpr const char _literal[] = "test_result";
-        using _name_t                          = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
-
-        template<typename T>
-        struct _member_t
-        {
-            T testResult;
-
-            T &operator()()
-            {
-                return testResult;
-            }
-
-            const T &operator()() const
-            {
-                return testResult;
-            }
-        };
-    };
-
-    using _traits = sqlpp::make_traits<sqlpp::text, sqlpp::tag::can_be_null>;
-};
-
 struct Ctime
 {
     struct _alias_t
@@ -281,8 +227,7 @@ struct ExtraData
 
 struct Models
     : sqlpp::table_t<Models, Models_::Id, Models_::Uuid, Models_::Name, Models_::FrameworkName,
-                     Models_::ModelArchitecture, Models_::TrainingResult, Models_::TestResult, Models_::Ctime,
-                     Models_::Mtime, Models_::ExtraData>
+                     Models_::ModelArchitecture, Models_::Ctime, Models_::Mtime, Models_::ExtraData>
 {
     struct _alias_t
     {

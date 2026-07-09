@@ -9,6 +9,9 @@ LabelCanvasBase {
     property var classificationBadgeData: null
     property string classificationBadgeName: ""
     property string classificationBadgeColor: "#ff0000"
+    labelClassShortcutHandler: function(classId, event) {
+        return applyClassToCurrentImage(classId)
+    }
     property var badgeDataProvider: function() {
         if (!imageLabelsList || imageLabelsList.rowCount() <= 0) {
             return null
@@ -110,6 +113,37 @@ LabelCanvasBase {
             return ""
         }
         return String(value)
+    }
+
+    function applyClassToCurrentImage(classId) {
+        if (!dataManager || !imageInstances || classId < 0) {
+            return false
+        }
+
+        let imageId = imageInstances.currentImageId !== undefined ? Number(imageInstances.currentImageId) : -1
+        if (imageId < 0) {
+            return false
+        }
+
+        let labelData = currentImageLabelData()
+        let labelId = labelData && labelData.label_id !== undefined ? Number(labelData.label_id) : -1
+        let currentClassId = labelData && labelData.label_class_id !== undefined ? Number(labelData.label_class_id) : -1
+
+        if (labelId >= 0) {
+            if (currentClassId !== classId) {
+                dataManager.updateLabelsClass([labelId], [classId])
+            }
+            return true
+        }
+
+        return dataManager.addLabel(imageId, classId, {})
+    }
+
+    function currentImageLabelData() {
+        if (!imageLabelsList || imageLabelsList.rowCount() <= 0) {
+            return null
+        }
+        return imageLabelsList.getData(0)
     }
 
     Component.onCompleted: refreshClassificationBadge()

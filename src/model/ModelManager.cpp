@@ -55,14 +55,12 @@ void ModelManager::init()
     std::vector<QString> names;
     std::vector<QString> framework_names;
     std::vector<QString> model_architectures;
-    std::vector<QString> training_results;
-    std::vector<QString> test_results;
     std::vector<qint64>  ctimes;
     std::vector<qint64>  mtimes;
     QString              err_msg;
 
     const bool ok = database_->getAllModels(model_ids, uuids, names, framework_names, model_architectures,
-                                            training_results, test_results, ctimes, mtimes, err_msg);
+                                            ctimes, mtimes, err_msg);
     if (!ok)
     {
         endResetModel();
@@ -79,8 +77,6 @@ void ModelManager::init()
             names[i],
             framework_names[i],
             model_architectures[i],
-            training_results[i],
-            test_results[i],
             ctimes[i],
             mtimes[i],
         });
@@ -113,10 +109,6 @@ QVariant ModelManager::data(const QModelIndex &index, int role) const
         return getFrameworkName(index);
     case ModelArchitectureRole:
         return getModelArchitecture(index);
-    case TrainingResultRole:
-        return getTrainingResult(index);
-    case TestResultRole:
-        return getTestResult(index);
     case CtimeRole:
         return getCtime(index);
     case MtimeRole:
@@ -134,8 +126,6 @@ QHash<int, QByteArray> ModelManager::roleNames() const
         {             NameRole,               "name"},
         {    FrameworkNameRole,     "framework_name"},
         {ModelArchitectureRole, "model_architecture"},
-        {   TrainingResultRole,    "training_result"},
-        {       TestResultRole,        "test_result"},
         {            CtimeRole,              "ctime"},
         {            MtimeRole,              "mtime"},
     };
@@ -190,8 +180,8 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
         return {};
     }
 
-    const bool ok = database_->addModel(uuid, trimmed_name, trimmed_framework_name, trimmed_model_architecture,
-                                        QString(), QString(), now, now, model_id, local_err_msg);
+    const bool ok = database_->addModel(uuid, trimmed_name, trimmed_framework_name, trimmed_model_architecture, now,
+                                        now, model_id, local_err_msg);
     if (!ok)
     {
         QString remove_err;
@@ -203,10 +193,7 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
         return {};
     }
 
-    const ModelRecord record{
-        model_id,  uuid, trimmed_name, trimmed_framework_name, trimmed_model_architecture, QString(),
-        QString(), now,  now,
-    };
+    const ModelRecord record{model_id, uuid, trimmed_name, trimmed_framework_name, trimmed_model_architecture, now, now};
     const int row = rowCount();
     beginInsertRows(QModelIndex(), row, row);
     models_.push_back(record);
@@ -304,7 +291,7 @@ bool ModelManager::copyModel(const qint64 model_id)
 
     const bool ok = database_ != nullptr
                  && database_->addModel(new_uuid, copied_name, source.framework_name, source.model_architecture,
-                                        source.training_result, source.test_result, now, now, new_model_id, err_msg);
+                                        now, now, new_model_id, err_msg);
     if (!ok)
     {
         QString remove_err;
@@ -321,8 +308,6 @@ bool ModelManager::copyModel(const qint64 model_id)
         copied_name,
         source.framework_name,
         source.model_architecture,
-        source.training_result,
-        source.test_result,
         now,
         now,
     });
@@ -388,10 +373,8 @@ QVariantMap ModelManager::modelAt(const int row) const
         {              QStringLiteral("name"),                          model.name},
         {    QStringLiteral("framework_name"),                model.framework_name},
         {QStringLiteral("model_architecture"),            model.model_architecture},
-        {   QStringLiteral("training_result"),               model.training_result},
-        {       QStringLiteral("test_result"),                   model.test_result},
-        {             QStringLiteral("ctime"),                         model.ctime},
-        {             QStringLiteral("mtime"),                         model.mtime},
+        {             QStringLiteral("ctime"),           formatTimestamp(model.ctime)},
+        {             QStringLiteral("mtime"),           formatTimestamp(model.mtime)},
     };
 }
 
@@ -552,8 +535,8 @@ IModel *ModelManager::cachedModelForRecord(const ModelRecord &record) const
 ModelManager::ModelRecordView ModelManager::toRecordView(const ModelRecord &record)
 {
     return ModelRecordView{
-        record.model_id,        record.uuid,        record.name,  record.framework_name, record.model_architecture,
-        record.training_result, record.test_result, record.ctime, record.mtime,
+        record.model_id, record.uuid, record.name, record.framework_name, record.model_architecture, record.ctime,
+        record.mtime,
     };
 }
 
@@ -609,26 +592,21 @@ QVariant ModelManager::getModelArchitecture(const QModelIndex &index) const
     return models_.at(index.row()).model_architecture;
 }
 
-QVariant ModelManager::getTrainingResult(const QModelIndex &index) const
-{
-    const QString &value = models_.at(index.row()).training_result;
-    return value.isEmpty() ? QString("未训练") : value;
-}
-
-QVariant ModelManager::getTestResult(const QModelIndex &index) const
-{
-    const QString &value = models_.at(index.row()).test_result;
-    return value.isEmpty() ? QString("未测试") : value;
-}
-
 QVariant ModelManager::getCtime(const QModelIndex &index) const
 {
-    return QDateTime::fromSecsSinceEpoch(models_.at(index.row()).ctime).toString(QStringLiteral("yyyy/MM/dd hh:mm"));
+    return formatTimestamp(models_.at(index.row()).ctime);
 }
 
 QVariant ModelManager::getMtime(const QModelIndex &index) const
 {
-    return QDateTime::fromSecsSinceEpoch(models_.at(index.row()).mtime).toString(QStringLiteral("yyyy/MM/dd hh:mm"));
+    return formatTimestamp(models_.at(index.row()).mtime);
+}
+
+QString ModelManager::formatTimestamp(qint64 timestamp)
+{
+    if (timestamp <= 0)
+        return QString();
+    return QDateTime::fromSecsSinceEpoch(timestamp).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
 }
 
 } // namespace dltool::model

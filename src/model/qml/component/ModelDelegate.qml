@@ -18,8 +18,8 @@ Rectangle {
     property string modelName: ""
     property string frameworkName: ""
     property string modelArchitecture: ""
-    property string trainingResult: ""
-    property string testResult: ""
+    property string createdTime: ""
+    property string modifiedTime: ""
     property bool selected: false
     property bool showTaskActions: false
     property bool taskActionsEnabled: false
@@ -51,12 +51,12 @@ Rectangle {
             value: control.modelArchitecture
         }
         InfoRow {
-            title: "训练结果"
-            value: control.trainingResult
+            title: "创建时间"
+            value: control.createdTime
         }
         InfoRow {
-            title: "测试结果"
-            value: control.testResult
+            title: "修改时间"
+            value: control.modifiedTime
         }
 
         Item {

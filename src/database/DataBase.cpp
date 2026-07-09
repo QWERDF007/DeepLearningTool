@@ -1237,7 +1237,6 @@ bool ProjectDataBase::deleteImagesTagsByTagsId(const std::vector<int64_t> &tag_i
 bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<QString> &uuids,
                                    std::vector<QString> &names, std::vector<QString> &framework_names,
                                    std::vector<QString> &model_architectures,
-                                   std::vector<QString> &training_results, std::vector<QString> &test_results,
                                    std::vector<qint64> &ctimes, std::vector<qint64> &mtimes, QString &err_msg) const
 {
     try
@@ -1253,8 +1252,6 @@ bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<
         names.clear();
         framework_names.clear();
         model_architectures.clear();
-        training_results.clear();
-        test_results.clear();
         ctimes.clear();
         mtimes.clear();
 
@@ -1262,8 +1259,7 @@ bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
         auto data
             = db(sqlpp::select(ModelsTable.id, ModelsTable.uuid, ModelsTable.name, ModelsTable.frameworkName,
-                               ModelsTable.modelArchitecture, ModelsTable.trainingResult, ModelsTable.testResult,
-                               ModelsTable.ctime, ModelsTable.mtime)
+                               ModelsTable.modelArchitecture, ModelsTable.ctime, ModelsTable.mtime)
                      .from(ModelsTable)
                      .unconditionally()
                      .order_by(ModelsTable.id.asc()));
@@ -1274,8 +1270,6 @@ bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<
             names.emplace_back(QString::fromStdString(row.name));
             framework_names.emplace_back(QString::fromStdString(row.frameworkName));
             model_architectures.emplace_back(QString::fromStdString(row.modelArchitecture));
-            training_results.emplace_back(QString::fromStdString(row.trainingResult));
-            test_results.emplace_back(QString::fromStdString(row.testResult));
             ctimes.emplace_back(row.ctime);
             mtimes.emplace_back(row.mtime);
         }
@@ -1289,8 +1283,7 @@ bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<
 }
 
 bool ProjectDataBase::addModel(const QString &uuid, const QString &name, const QString &framework_name,
-                               const QString &model_architecture, const QString &training_result,
-                               const QString &test_result, const qint64 ctime, const qint64 mtime,
+                               const QString &model_architecture, const qint64 ctime, const qint64 mtime,
                                int64_t &model_id, QString &err_msg) const
 {
     try
@@ -1308,15 +1301,11 @@ bool ProjectDataBase::addModel(const QString &uuid, const QString &name, const Q
         const QByteArray name_bytes               = name.toUtf8();
         const QByteArray framework_name_bytes     = framework_name.toUtf8();
         const QByteArray model_architecture_bytes = model_architecture.toUtf8();
-        const QByteArray training_result_bytes    = training_result.toUtf8();
-        const QByteArray test_result_bytes        = test_result.toUtf8();
         db(sqlpp::insert_into(ModelsTable)
                .set(ModelsTable.uuid = uuid_bytes.constData(), ModelsTable.name = name_bytes.constData(),
                     ModelsTable.frameworkName     = framework_name_bytes.constData(),
                     ModelsTable.modelArchitecture = model_architecture_bytes.constData(),
-                    ModelsTable.trainingResult    = training_result_bytes.constData(),
-                    ModelsTable.testResult = test_result_bytes.constData(), ModelsTable.ctime = ctime,
-                    ModelsTable.mtime = mtime));
+                    ModelsTable.ctime = ctime, ModelsTable.mtime = mtime));
         model_id = static_cast<int64_t>(db.last_insert_id());
         return true;
     }

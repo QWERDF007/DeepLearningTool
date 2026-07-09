@@ -37,6 +37,7 @@ Item {
     property var toolMouseReleasedHandler: function(event) { return false }
     property var toolMousePositionChangedHandler: function(event) { return false }
     property var toolMouseDoubleClickedHandler: function(event) { return false }
+    property var labelClassShortcutHandler: null
 
     onToolModeChanged: {
         resetInteractionState()
@@ -111,15 +112,48 @@ Item {
     }
 
     function handleLabelClassShortcut(event) {
-        if (!labelClasses || !event.text || event.text.length <= 0
+        if (!event || event.accepted || !labelClasses || !event.text || event.text.length <= 0
                 || (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
             return false
         }
+
+        let classId = labelClassIdForShortcut(event.text)
+        if (classId < 0) {
+            return false
+        }
+
+        if (labelClassShortcutHandler) {
+            if (labelClassShortcutHandler(classId, event)) {
+                event.accepted = true
+                return true
+            }
+            return false
+        }
+
         if (labelClasses.selectByShortcut(event.text)) {
             event.accepted = true
             return true
         }
         return false
+    }
+
+    function labelClassIdForShortcut(shortcut) {
+        if (!labelClasses || !shortcut || shortcut.length <= 0) {
+            return -1
+        }
+
+        let row = labelClasses.findByShortcut(shortcut)
+        return labelClassIdAt(row)
+    }
+
+    function labelClassIdAt(row) {
+        if (!labelClasses || row < 0 || row >= labelClasses.rowCount()) {
+            return -1
+        }
+
+        let modelIndex = labelClasses.index(row, 0)
+        let classId = labelClasses.data(modelIndex, LabelClassesModel.LabelClassIdRole)
+        return classId === undefined || classId === null ? -1 : Number(classId)
     }
 
     function handleMousePressed(event) {

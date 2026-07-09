@@ -19,6 +19,8 @@ Rectangle {
     property string currentModelName: ""
     property string currentFrameworkName: ""
     property string currentModelArchitecture: ""
+    property string currentModelCtime: ""
+    property string currentModelMtime: ""
     property bool componentCompleted: false
     property var taskManager: null
     property ModelTaskController taskController: null
@@ -32,6 +34,8 @@ Rectangle {
         currentModelName = ""
         currentFrameworkName = ""
         currentModelArchitecture = ""
+        currentModelCtime = ""
+        currentModelMtime = ""
         if (view.currentIndex !== -1) {
             view.currentIndex = -1
         }
@@ -57,6 +61,8 @@ Rectangle {
         currentModelName = modelData.name || ""
         currentFrameworkName = modelData.framework_name || ""
         currentModelArchitecture = modelData.model_architecture || ""
+        currentModelCtime = modelData.ctime || ""
+        currentModelMtime = modelData.mtime || ""
     }
 
     function ensureCurrentModel() {
@@ -234,8 +240,8 @@ Rectangle {
                     modelName: model.name
                     frameworkName: model.framework_name
                     modelArchitecture: model.model_architecture
-                    trainingResult: model.training_result
-                    testResult: model.test_result
+                    createdTime: model.ctime
+                    modifiedTime: model.mtime
                     selected: ListView.isCurrentItem
                     showTaskActions: modelView.taskActionsEnabled
                     taskActionsEnabled: modelView.taskController !== null && model.uuid

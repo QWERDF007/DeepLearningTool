@@ -1227,7 +1227,6 @@ void DataManager::updateLabelClassWithGroup(const int64_t label_class_id, const 
 
     // 更新其他属性（名称、颜色、快捷键），使用新的 ordinal_index
     label_classes_->updateLabelClass(label_class_id, name, color, shortcut, ordinal_index, group);
-    label_instances_->labelClassUpdated(label_class_id);
     image_labels_list_->labelClassUpdated(label_class_id);
     image_labels_table_->labelClassUpdated(label_class_id);
     image_info_->updateLabelInfo();
@@ -1243,7 +1242,6 @@ void DataManager::updateLabelClassGroup(const int64_t label_class_id, const QStr
     {
         return;
     }
-    label_instances_->labelClassUpdated(label_class_id);
     image_labels_list_->labelClassUpdated(label_class_id);
     image_labels_table_->labelClassUpdated(label_class_id);
     image_info_->updateLabelInfo();

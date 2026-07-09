@@ -448,11 +448,6 @@ void LabelInstancesListModel::updateLabelsClass(const std::vector<int64_t> &labe
     spdlog::info("更新 {} 个标注类别成功", label_ids.size());
 }
 
-void LabelInstancesListModel::labelClassUpdated(const int64_t label_class_id)
-{
-    // TODO:
-}
-
 void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids)
 {
     if (database_ == nullptr)

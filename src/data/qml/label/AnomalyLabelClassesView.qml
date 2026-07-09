@@ -261,4 +261,41 @@ LabelClassesViewBase {
 
         return dataManager.setImageLabelClass(imageId, classId)
     }
+
+    function handleShortcutText(shortcut) {
+        if (shortcutEditorOpen() || !labelClasses || !shortcut || shortcut.length === 0) {
+            return false
+        }
+
+        let matchIndex = labelClasses.findByShortcut(shortcut)
+        if (matchIndex < 0) {
+            return false
+        }
+
+        let selectedIds = selectedLabelIds()
+        if (selectedIds.length > 0) {
+            return applyClassToSelectedLabels(selectedIds, classIdAt(matchIndex))
+        }
+
+        return selectClassIndex(matchIndex, true)
+    }
+
+    function selectedLabelIds() {
+        if (!imageLabelsList) {
+            return []
+        }
+
+        let ids = imageLabelsList.getSelectedLabelIds()
+        return ids ? ids : []
+    }
+
+    function applyClassToSelectedLabels(labelIds, classId) {
+        if (!dataManager || !labelIds || labelIds.length <= 0 || classId < 0) {
+            return false
+        }
+
+        let classIds = new Array(labelIds.length).fill(classId)
+        dataManager.updateLabelsClass(labelIds, classIds)
+        return true
+    }
 }

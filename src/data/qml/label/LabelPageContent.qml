@@ -305,8 +305,20 @@ Rectangle {
     }
 
     function handleLabelClassShortcut(event) {
-        if (!event || event.accepted || !labelClassesLoader.item
-                || !labelClassesLoader.item.handleShortcutEvent) {
+        if (!event || event.accepted) {
+            return false
+        }
+
+        if ((classificationMode || anomalyMode)
+                && activeLabelCanvas && activeLabelCanvas.handleLabelClassShortcut
+                && !(labelClassesLoader.item && labelClassesLoader.item.shortcutEditorOpen
+                     && labelClassesLoader.item.shortcutEditorOpen())) {
+            if (activeLabelCanvas.handleLabelClassShortcut(event)) {
+                return true
+            }
+        }
+
+        if (!labelClassesLoader.item || !labelClassesLoader.item.handleShortcutEvent) {
             return false
         }
         return labelClassesLoader.item.handleShortcutEvent(event)

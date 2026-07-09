@@ -123,8 +123,6 @@ public:
 
     void updateLabelsClass(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &label_class_ids);
 
-    void labelClassUpdated(const int64_t label_class_id);
-
     void deleteLabels(const std::vector<int64_t> &label_ids);
 
     std::vector<int64_t>              getImageLabelIds(int64_t image_id) const;

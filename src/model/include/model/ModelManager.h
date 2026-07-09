@@ -43,8 +43,6 @@ public:
         NameRole,
         FrameworkNameRole,
         ModelArchitectureRole,
-        TrainingResultRole,
-        TestResultRole,
         CtimeRole,
         MtimeRole,
     };
@@ -56,8 +54,6 @@ public:
         QString name;
         QString framework_name;
         QString model_architecture;
-        QString training_result;
-        QString test_result;
         qint64  ctime{0};
         qint64  mtime{0};
 
@@ -114,8 +110,6 @@ private:
         QString name;
         QString framework_name;
         QString model_architecture;
-        QString training_result;
-        QString test_result;
         qint64  ctime{0};
         qint64  mtime{0};
     };
@@ -146,10 +140,9 @@ private:
     QVariant getName(const QModelIndex &index) const;
     QVariant getFrameworkName(const QModelIndex &index) const;
     QVariant getModelArchitecture(const QModelIndex &index) const;
-    QVariant getTrainingResult(const QModelIndex &index) const;
-    QVariant getTestResult(const QModelIndex &index) const;
     QVariant getCtime(const QModelIndex &index) const;
     QVariant getMtime(const QModelIndex &index) const;
+    static QString formatTimestamp(qint64 timestamp);
 
     dltool::database::ProjectDataBase *database_{nullptr};
 
