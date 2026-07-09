@@ -1,21 +1,53 @@
 #include "feature/FewShotLearningController.h"
 
+#include "common/Utils.h"
+#include "core/CoreDef.h"
 #include "data/DataManager.h"
 #include "data/DataSelectionTreeModel.h"
 #include "data/DatasetViewModelFactory.h"
 #include "feature/Utils.h"
-#include "model/FewShotLearningTaskService.h"
+#include "model/IModel.h"
+#include "model/IModelConfig.h"
+#include "model/IParams.h"
+#include "model/ModelManager.h"
+#include "model/ModelStorageService.h"
 #include "model/ModelTaskController.h"
+#include "model/TaskManager.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsKeys.h"
+#include "settings/SettingsValue.h"
 
 #include <spdlog/spdlog.h>
 
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QMetaObject>
+#include <QStringConverter>
+#include <QTextStream>
+#include <algorithm>
+#include <map>
+#include <set>
+#include <utility>
 
 namespace dltool::feature {
 
+using dltool::common::cleanPath;
+using dltool::common::ensureDirectory;
+using dltool::common::runtimePath;
+using dltool::common::setError;
+
 namespace {
+
+constexpr const char *kFsSam2FrameworkName = "FS-SAM2";
+constexpr const char *kFsSam2ModelName     = "FS-SAM2";
+
+struct Sam2ConfigNameParts
+{
+    QString prefix;
+    QString size_token;
+};
 
 QVariantList variantListFromViewModel(QObject *view_model, const char *method_name)
 {
@@ -43,14 +75,131 @@ QVariantList selectedLabelClassIdsFromViewModel(QObject *view_model)
     return ids;
 }
 
+dltool::data::DataSelectionTreeModel *selectionTree(QObject *view_model)
+{
+    return qobject_cast<dltool::data::DataSelectionTreeModel *>(view_model);
+}
+
+void selectDatasetClasses(dltool::data::DataSelectionTreeModel *model, const std::vector<int64_t> &dataset_ids,
+                          const std::vector<int64_t> &label_class_ids)
+{
+    if (model == nullptr)
+        return;
+
+    model->clearSelection();
+    for (int64_t dataset_id : dataset_ids)
+    {
+        for (int64_t label_class_id : label_class_ids)
+            model->setNodeSelected(dataset_id, label_class_id, true);
+    }
+}
+
+void selectDatasets(dltool::data::DataSelectionTreeModel *model, const std::vector<int64_t> &dataset_ids)
+{
+    if (model == nullptr)
+        return;
+
+    model->clearSelection();
+    for (int64_t dataset_id : dataset_ids) model->setNodeSelected(dataset_id, -1, true);
+}
+
+QString fixedSam2ConfigRoot()
+{
+    return runtimePath(QStringLiteral("python/facebookresearch/sam2/sam2/configs"));
+}
+
+Sam2ConfigNameParts sam2ConfigNameParts(const QString &architecture_name)
+{
+    const QString architecture = architecture_name.trimmed();
+    const QString sam21_prefix = QStringLiteral("sam2.1_hiera_");
+    const QString sam2_prefix  = QStringLiteral("sam2_hiera_");
+
+    QString prefix;
+    QString size_name;
+    if (architecture.startsWith(sam21_prefix))
+    {
+        prefix    = QStringLiteral("sam2.1");
+        size_name = architecture.mid(sam21_prefix.size());
+    }
+    else if (architecture.startsWith(sam2_prefix))
+    {
+        prefix    = QStringLiteral("sam2");
+        size_name = architecture.mid(sam2_prefix.size());
+    }
+    else
+    {
+        return {};
+    }
+
+    QString size_token;
+    if (size_name == QStringLiteral("tiny"))
+        size_token = QStringLiteral("t");
+    else if (size_name == QStringLiteral("small"))
+        size_token = QStringLiteral("s");
+    else if (size_name == QStringLiteral("base_plus"))
+        size_token = QStringLiteral("b+");
+    else if (size_name == QStringLiteral("large"))
+        size_token = QStringLiteral("l");
+
+    return size_token.isEmpty() ? Sam2ConfigNameParts{} : Sam2ConfigNameParts{prefix, size_token};
+}
+
+QString sam2ConfigPathFromArchitecture(const QString &architecture_name, QString *err_msg)
+{
+    const Sam2ConfigNameParts parts = sam2ConfigNameParts(architecture_name);
+    if (parts.prefix.isEmpty() || parts.size_token.isEmpty())
+    {
+        setError(err_msg, QString("不支持的 SAM2 架构: %1").arg(architecture_name));
+        return {};
+    }
+
+    const QString path = cleanPath(
+        QDir(fixedSam2ConfigRoot()).filePath(QStringLiteral("%1/%1_hiera_%2.yaml").arg(parts.prefix, parts.size_token)));
+    if (!QFileInfo::exists(path))
+    {
+        setError(err_msg, QString("SAM2 配置文件不存在: %1").arg(path));
+        return {};
+    }
+    return path;
+}
+
+bool writeTextFile(const QString &path, const QStringList &lines, QString *err_msg)
+{
+    QFileInfo file_info(path);
+    if (!ensureDirectory(file_info.dir().absolutePath(), err_msg, QString("目录路径为空"),
+                         QString("创建目录失败: %1")))
+    {
+        return false;
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+        return setError(err_msg, QString("无法写入文件: %1, %2").arg(path, file.errorString()));
+
+    QTextStream stream(&file);
+    stream.setEncoding(QStringConverter::Utf8);
+    for (const QString &line : lines) stream << line << '\n';
+    return true;
+}
+
+bool isTerminalStatus(dltool::model::TaskTableModel::TaskStatus status)
+{
+    using Status = dltool::model::TaskTableModel::TaskStatus;
+    return status == Status::Finished || status == Status::Failed || status == Status::Stopped;
+}
+
 } // namespace
 
 FewShotLearningController::FewShotLearningController(dltool::data::DataManager          *data_manager,
+                                                     dltool::model::ModelManager        *model_manager,
                                                      dltool::model::ModelTaskController *model_task_controller,
+                                                     dltool::model::TaskManager         *task_manager,
                                                      QObject                            *parent)
     : QObject(parent)
     , data_manager_(data_manager)
+    , model_manager_(model_manager)
     , model_task_controller_(model_task_controller)
+    , task_manager_(task_manager)
 {
     auto *gs = dltool::settings::GlobalSettings::getInstance();
     enabled_ = gs->valueForField(dltool::settings::generated::field::FewShotLearning::Key::Enabled, true).toBool();
@@ -60,19 +209,10 @@ FewShotLearningController::FewShotLearningController(dltool::data::DataManager  
         dltool::data::DatasetViewModelFactory::createDatasetSelectionModel(data_manager, this));
     setTestDatasetViewModel(dltool::data::DatasetViewModelFactory::createDatasetSelectionModel(data_manager, this));
 
-    if (model_task_controller_ != nullptr)
+    if (task_manager_ != nullptr && task_manager_->tasks() != nullptr)
     {
-        connect(model_task_controller_, &dltool::model::ModelTaskController::fewShotLearningRunningChanged, this,
-                [this](bool running) { setRunning(running); });
-        connect(model_task_controller_, &dltool::model::ModelTaskController::fewShotLearningLastErrorChanged, this,
-                [this](const QString &message) { setLastError(message); });
-        connect(model_task_controller_, &dltool::model::ModelTaskController::fewShotLearningFinished, this,
-                [this](bool success, const QString &message)
-                {
-                    setRunning(false);
-                    if (!success && !message.isEmpty())
-                        setLastError(message);
-                });
+        connect(task_manager_->tasks(), &dltool::model::TaskTableModel::revisionChanged, this,
+                &FewShotLearningController::handleTaskTableRevision);
     }
 
     connect(gs->catalog(), &dltool::settings::SettingsCatalog::fieldValueChanged, this,
@@ -90,7 +230,10 @@ FewShotLearningController::FewShotLearningController(dltool::data::DataManager  
             });
 }
 
-FewShotLearningController::~FewShotLearningController() = default;
+FewShotLearningController::~FewShotLearningController()
+{
+    disconnectPredictionImport();
+}
 
 bool FewShotLearningController::enabled() const
 {
@@ -187,20 +330,12 @@ bool FewShotLearningController::startFsSam2WithIds(const QVariantList &train_dat
         return false;
 
     setLastError({});
-    if (model_task_controller_ == nullptr)
-    {
-        setLastError(QString("模型任务控制器未初始化"));
-        return false;
-    }
-
-    dltool::model::FewShotLearningRequest request;
-    request.train_dataset_ids      = parseInt64Ids(train_dataset_ids, true, true);
-    request.validation_dataset_ids = parseInt64Ids(validation_dataset_ids, true, true);
-    request.test_dataset_ids       = parseInt64Ids(test_dataset_ids, true, true);
-    request.label_class_ids        = parseInt64Ids(label_class_ids, true, true);
 
     QString err_msg;
-    if (!model_task_controller_->startFewShotLearning(request, &err_msg))
+    if (!startRun(parseInt64Ids(train_dataset_ids, true, true),
+                  parseInt64Ids(validation_dataset_ids, true, true),
+                  parseInt64Ids(test_dataset_ids, true, true),
+                  parseInt64Ids(label_class_ids, true, true), &err_msg))
     {
         setLastError(err_msg);
         spdlog::error("启动小样本学习失败: {}", err_msg.toUtf8().constData());
@@ -218,8 +353,457 @@ void FewShotLearningController::clearLastError()
 
 void FewShotLearningController::cancel()
 {
-    if (model_task_controller_ != nullptr)
-        model_task_controller_->stopFewShotLearning();
+    if (!running_)
+        return;
+
+    current_run_.stop_requested = true;
+    stopRunTasks();
+    finishRun(false, QString("小样本学习任务已停止"));
+}
+
+bool FewShotLearningController::startRun(const std::vector<int64_t> &train_dataset_ids,
+                                         const std::vector<int64_t> &validation_dataset_ids,
+                                         const std::vector<int64_t> &test_dataset_ids,
+                                         const std::vector<int64_t> &label_class_ids, QString *err_msg)
+{
+    if (data_manager_ == nullptr)
+        return setError(err_msg, QString("数据管理器未初始化"));
+    if (model_manager_ == nullptr)
+        return setError(err_msg, QString("模型管理器未初始化"));
+    if (model_task_controller_ == nullptr)
+        return setError(err_msg, QString("模型任务控制器未初始化"));
+    if (task_manager_ == nullptr || task_manager_->tasks() == nullptr)
+        return setError(err_msg, QString("任务管理器未初始化"));
+
+    const int method = data_manager_->method();
+    if (method != dltool::core::DeepLearningMethod::Detection
+        && method != dltool::core::DeepLearningMethod::Segmentation
+        && method != dltool::core::DeepLearningMethod::AnomalyDetection)
+    {
+        return setError(err_msg, QString("小样本学习仅支持检测、分割和异常检测项目"));
+    }
+    if (train_dataset_ids.empty())
+        return setError(err_msg, QString("请至少选择一个训练数据集"));
+    if (test_dataset_ids.empty())
+        return setError(err_msg, QString("请至少选择一个测试数据集"));
+    if (label_class_ids.empty())
+        return setError(err_msg, QString("请至少选择一个类别"));
+
+    QString model_err;
+    const QString model_name = QString("FS-SAM2 小样本 %1")
+                                   .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss_zzz")));
+    const dltool::model::ModelManager::ModelRecordView record
+        = model_manager_->addModelRecord(model_name, QString::fromUtf8(kFsSam2FrameworkName),
+                                         QString::fromUtf8(kFsSam2ModelName), &model_err);
+    if (!record.isValid())
+        return setError(err_msg, model_err.isEmpty() ? QString("创建 FS-SAM2 模型记录失败") : model_err);
+
+    RunState run;
+    run.model_uuid = record.uuid;
+    if (!configureFsSam2Model(record.uuid, train_dataset_ids, validation_dataset_ids, test_dataset_ids,
+                              label_class_ids, run, err_msg))
+    {
+        model_manager_->deleteModel(record.model_id);
+        return false;
+    }
+
+    const bool requires_box_to_mask = method == dltool::core::DeepLearningMethod::Detection;
+    if (requires_box_to_mask)
+    {
+        run.box_to_mask_task_id
+            = addOrdinaryTask(record.uuid, dltool::model::ModelTaskType::BoxToMask, err_msg);
+        if (run.box_to_mask_task_id < 0)
+        {
+            model_manager_->deleteModel(record.model_id);
+            return false;
+        }
+    }
+
+    run.train_task_id = addOrdinaryTask(record.uuid, dltool::model::ModelTaskType::Train, err_msg);
+    run.predict_task_id = addOrdinaryTask(record.uuid, dltool::model::ModelTaskType::Test, err_msg);
+    if (run.train_task_id < 0 || run.predict_task_id < 0)
+    {
+        model_manager_->deleteModel(record.model_id);
+        return false;
+    }
+
+    current_run_       = std::move(run);
+    current_run_.stage = requires_box_to_mask ? RunStage::PreparingMask : RunStage::Training;
+
+    const dltool::model::ModelTaskType first_task_type
+        = requires_box_to_mask ? dltool::model::ModelTaskType::BoxToMask : dltool::model::ModelTaskType::Train;
+    const int first_task_id = requires_box_to_mask ? current_run_.box_to_mask_task_id : current_run_.train_task_id;
+    if (!startOrdinaryTask(first_task_type, first_task_id, err_msg))
+    {
+        finishRun(false, err_msg != nullptr ? *err_msg : QString());
+        return false;
+    }
+    return true;
+}
+
+bool FewShotLearningController::configureFsSam2Model(const QString &model_uuid,
+                                                     const std::vector<int64_t> &train_dataset_ids,
+                                                     const std::vector<int64_t> &validation_dataset_ids,
+                                                     const std::vector<int64_t> &test_dataset_ids,
+                                                     const std::vector<int64_t> &label_class_ids, RunState &run,
+                                                     QString *err_msg)
+{
+    dltool::model::IModel *model = model_manager_ != nullptr ? model_manager_->modelForUuid(model_uuid) : nullptr;
+    if (model == nullptr || model->config() == nullptr)
+        return setError(err_msg, QString("无法创建 FS-SAM2 模型实例"));
+
+    auto *train_selection = selectionTree(model->trainDatasetViewModel());
+    auto *validation_selection = selectionTree(model->validationDatasetViewModel());
+    auto *test_selection = selectionTree(model->testDatasetViewModel());
+    if (train_selection == nullptr || validation_selection == nullptr || test_selection == nullptr)
+        return setError(err_msg, QString("FS-SAM2 模型数据选择模型未初始化"));
+
+    selectDatasetClasses(train_selection, train_dataset_ids, label_class_ids);
+    selectDatasetClasses(validation_selection, validation_dataset_ids, label_class_ids);
+    selectDatasets(test_selection, test_dataset_ids);
+
+    namespace generated_field = dltool::settings::generated::field;
+    auto *settings = dltool::settings::GlobalSettings::getInstance();
+
+    const QString sam2_checkpoint = runtimePath(
+        dltool::settings::settingString(settings, generated_field::FewShotLearning::Sam2Checkpoint));
+    if (sam2_checkpoint.trimmed().isEmpty())
+        return setError(err_msg, QString("请先配置 SAM2 权重"));
+    if (!QFileInfo::exists(sam2_checkpoint))
+        return setError(err_msg, QString("SAM2 checkpoint 不存在: %1").arg(sam2_checkpoint));
+
+    const QString sam2_architecture
+        = dltool::settings::settingString(settings, generated_field::FewShotLearning::Sam2Architecture);
+    if (sam2_architecture.trimmed().isEmpty())
+        return setError(err_msg, QString("请先配置 SAM2 架构"));
+
+    QString sam2_cfg_err;
+    const QString sam2_cfg = sam2ConfigPathFromArchitecture(sam2_architecture, &sam2_cfg_err);
+    if (sam2_cfg.isEmpty())
+        return setError(err_msg, sam2_cfg_err);
+
+    const int kshot
+        = std::clamp(dltool::settings::settingInt(settings, generated_field::FewShotLearning::Kshot, 1), 1, 16);
+    const int epochs
+        = std::clamp(dltool::settings::settingInt(settings, generated_field::FewShotLearning::Epochs, 50), 1, 10000);
+    const int batch_size = std::clamp(
+        dltool::settings::settingInt(settings, generated_field::FewShotLearning::BatchSize, 2), 1, 128);
+    const int num_workers = std::clamp(
+        dltool::settings::settingInt(settings, generated_field::FewShotLearning::NumWorkers, 0), 0, 128);
+    const int image_size = std::clamp(
+        dltool::settings::settingInt(settings, generated_field::FewShotLearning::ImageSize, 1024), 64, 8192);
+    const double learning_rate
+        = dltool::settings::settingDouble(settings, generated_field::FewShotLearning::LearningRate, 1e-4);
+    const double weight_decay
+        = dltool::settings::settingDouble(settings, generated_field::FewShotLearning::WeightDecay, 1e-6);
+
+    const dltool::model::ModelStorageService storage(model_manager_->projectDirectory());
+    const QString output_dir = cleanPath(QDir(storage.path(model_uuid, dltool::model::ModelStorageLocation::Results))
+                                             .filePath(QStringLiteral("predictions")));
+    const QString checkpoint_path
+        = cleanPath(QDir(storage.path(model_uuid, dltool::model::ModelStorageLocation::Weights))
+                        .filePath(QStringLiteral("fs_sam2/best_model.pt")));
+    QString dir_err;
+    if (!ensureDirectory(output_dir, &dir_err, QString("目录路径为空"), QString("创建目录失败: %1")))
+        return setError(err_msg, dir_err);
+
+    QVariantMap train_model;
+    train_model.insert(QStringLiteral("sam2_checkpoint"), sam2_checkpoint);
+    train_model.insert(QStringLiteral("sam2_cfg"), sam2_cfg);
+
+    QVariantMap training;
+    training.insert(QStringLiteral("kshot"), kshot);
+    training.insert(QStringLiteral("epochs"), epochs);
+    training.insert(QStringLiteral("batch_size"), batch_size);
+    training.insert(QStringLiteral("num_workers"), num_workers);
+    training.insert(QStringLiteral("learning_rate"), learning_rate);
+    training.insert(QStringLiteral("weight_decay"), weight_decay);
+
+    QVariantMap network;
+    network.insert(QStringLiteral("image_size"), image_size);
+
+    QVariantMap train_params;
+    train_params.insert(QStringLiteral("model"), train_model);
+    train_params.insert(QStringLiteral("training"), training);
+    train_params.insert(QStringLiteral("network"), network);
+
+    QVariantMap inference;
+    inference.insert(QStringLiteral("checkpoint_path"), checkpoint_path);
+    inference.insert(QStringLiteral("output_dir"), output_dir);
+    inference.insert(QStringLiteral("kshot"), kshot);
+    inference.insert(QStringLiteral("image_size"), image_size);
+
+    QVariantMap test_params;
+    test_params.insert(QStringLiteral("model"), train_model);
+    test_params.insert(QStringLiteral("inference"), inference);
+
+    dltool::model::IModelConfig *config = model->config();
+    if (config->trainParams() == nullptr || config->testParams() == nullptr)
+        return setError(err_msg, QString("FS-SAM2 模型参数未初始化"));
+
+    config->trainParams()->setValuesMap(train_params);
+    config->testParams()->setValuesMap(test_params);
+
+    run.output_dir = output_dir;
+    return writePredictionImportTargets(model_uuid, test_dataset_ids, run, err_msg);
+}
+
+bool FewShotLearningController::writePredictionImportTargets(const QString &model_uuid,
+                                                             const std::vector<int64_t> &test_dataset_ids,
+                                                             RunState &run, QString *err_msg) const
+{
+    if (data_manager_ == nullptr || model_manager_ == nullptr)
+        return setError(err_msg, QString("数据管理器或模型管理器未初始化"));
+
+    const dltool::model::ModelStorageService storage(model_manager_->projectDirectory());
+    const QString datasets_dir = storage.path(model_uuid, dltool::model::ModelStorageLocation::Datasets);
+    if (!ensureDirectory(datasets_dir, err_msg, QString("目录路径为空"), QString("创建目录失败: %1")))
+        return false;
+
+    const std::set<int64_t> selected_test_datasets(test_dataset_ids.begin(), test_dataset_ids.end());
+    std::map<int64_t, QStringList> lines_by_dataset;
+    for (int64_t dataset_id : test_dataset_ids) lines_by_dataset[dataset_id] = {};
+
+    for (int64_t image_id : data_manager_->allImageIds())
+    {
+        const int64_t dataset_id = data_manager_->imageDatasetId(image_id);
+        if (selected_test_datasets.find(dataset_id) == selected_test_datasets.end())
+            continue;
+
+        const QString image_path = data_manager_->imagePath(image_id);
+        if (image_path.trimmed().isEmpty())
+            continue;
+
+        lines_by_dataset[dataset_id].push_back(QStringLiteral("%1,%2").arg(image_id).arg(cleanPath(image_path)));
+    }
+
+    run.import_targets.clear();
+    for (int64_t dataset_id : test_dataset_ids)
+    {
+        const QStringList lines = lines_by_dataset[dataset_id];
+        if (lines.empty())
+        {
+            const QString dataset_name = data_manager_->datasetName(dataset_id);
+            return setError(err_msg, QString("测试数据集 %1 没有图像")
+                                         .arg(dataset_name.isEmpty() ? QString::number(dataset_id) : dataset_name));
+        }
+
+        const QString import_manifest_path
+            = cleanPath(QDir(datasets_dir).filePath(QStringLiteral("test_images_%1.txt").arg(dataset_id)));
+        if (!writeTextFile(import_manifest_path, lines, err_msg))
+            return false;
+        run.import_targets.push_back(PredictionImportTarget{dataset_id, import_manifest_path});
+    }
+    return true;
+}
+
+int FewShotLearningController::addOrdinaryTask(const QString &model_uuid, dltool::model::ModelTaskType task_type,
+                                               QString *err_msg) const
+{
+    if (model_task_controller_ == nullptr)
+    {
+        setError(err_msg, QString("模型任务控制器未初始化"));
+        return -1;
+    }
+
+    const int task_id = model_task_controller_->addModelTask(model_uuid, task_type);
+    if (task_id < 0)
+        setError(err_msg, QString("创建模型任务失败: %1").arg(dltool::model::modelTaskDisplayName(task_type)));
+    return task_id;
+}
+
+bool FewShotLearningController::startOrdinaryTask(dltool::model::ModelTaskType task_type, int expected_task_id,
+                                                  QString *err_msg)
+{
+    if (model_task_controller_ == nullptr)
+        return setError(err_msg, QString("模型任务控制器未初始化"));
+    if (current_run_.model_uuid.trimmed().isEmpty())
+        return setError(err_msg, QString("小样本学习模型 uuid 为空"));
+
+    const int task_id = model_task_controller_->startModelTask(current_run_.model_uuid, task_type);
+    if (task_id < 0)
+        return setError(err_msg, QString("启动模型任务失败: %1").arg(dltool::model::modelTaskDisplayName(task_type)));
+    if (expected_task_id >= 0 && task_id != expected_task_id)
+    {
+        return setError(err_msg, QString("启动模型任务不匹配: 期望 %1, 实际 %2").arg(expected_task_id).arg(task_id));
+    }
+    return true;
+}
+
+void FewShotLearningController::handleTaskTableRevision()
+{
+    if (!running_ || current_run_.stage == RunStage::Idle || task_manager_ == nullptr
+        || task_manager_->tasks() == nullptr)
+    {
+        return;
+    }
+
+    using Status = dltool::model::TaskTableModel::TaskStatus;
+    auto snapshot = [this](int task_id)
+    { return task_manager_->tasks()->taskSnapshotForId(task_id); };
+
+    if (current_run_.stage == RunStage::PreparingMask)
+    {
+        const auto task = snapshot(current_run_.box_to_mask_task_id);
+        if (!task.isValid())
+        {
+            finishRun(false, QString("框转 Mask 任务不存在"));
+            return;
+        }
+        if (!isTerminalStatus(task.status))
+            return;
+        if (task.status == Status::Finished)
+        {
+            advanceFinishedTask(dltool::model::ModelTaskType::Train, current_run_.train_task_id, RunStage::Training);
+            return;
+        }
+        finishRun(false, task.status == Status::Stopped ? QString("小样本学习任务已停止")
+                                                        : QString("框转 Mask 任务失败"));
+        return;
+    }
+
+    if (current_run_.stage == RunStage::Training)
+    {
+        const auto task = snapshot(current_run_.train_task_id);
+        if (!task.isValid())
+        {
+            finishRun(false, QString("小样本训练任务不存在"));
+            return;
+        }
+        if (!isTerminalStatus(task.status))
+            return;
+        if (task.status == Status::Finished)
+        {
+            advanceFinishedTask(dltool::model::ModelTaskType::Test, current_run_.predict_task_id, RunStage::Predicting);
+            return;
+        }
+        finishRun(false, task.status == Status::Stopped ? QString("小样本学习任务已停止")
+                                                        : QString("小样本训练任务失败"));
+        return;
+    }
+
+    if (current_run_.stage == RunStage::Predicting)
+    {
+        const auto task = snapshot(current_run_.predict_task_id);
+        if (!task.isValid())
+        {
+            finishRun(false, QString("小样本推理任务不存在"));
+            return;
+        }
+        if (!isTerminalStatus(task.status))
+            return;
+        if (task.status == Status::Finished)
+        {
+            finishRun(true);
+            return;
+        }
+        finishRun(false, task.status == Status::Stopped ? QString("小样本学习任务已停止")
+                                                        : QString("小样本推理任务失败"));
+    }
+}
+
+void FewShotLearningController::advanceFinishedTask(dltool::model::ModelTaskType next_task_type, int next_task_id,
+                                                    RunStage next_stage)
+{
+    current_run_.stage = next_stage;
+    QString err_msg;
+    if (!startOrdinaryTask(next_task_type, next_task_id, &err_msg))
+        finishRun(false, err_msg);
+}
+
+void FewShotLearningController::finishRun(bool success, const QString &message)
+{
+    std::vector<PredictionImportTarget> import_targets;
+    QString                             output_dir;
+    if (success)
+    {
+        import_targets = current_run_.import_targets;
+        output_dir     = current_run_.output_dir;
+    }
+
+    if (!success && !message.isEmpty())
+    {
+        stopRunTasks();
+        setLastError(message);
+        spdlog::error("小样本学习任务失败: {}", message.toUtf8().constData());
+    }
+
+    current_run_ = {};
+    setRunning(false);
+
+    if (success)
+        startPredictionImports(std::move(import_targets), output_dir);
+}
+
+void FewShotLearningController::stopRunTasks()
+{
+    if (model_task_controller_ == nullptr || current_run_.model_uuid.trimmed().isEmpty())
+        return;
+
+    if (current_run_.box_to_mask_task_id >= 0)
+        model_task_controller_->stopModelTask(current_run_.model_uuid, dltool::model::ModelTaskType::BoxToMask);
+    if (current_run_.train_task_id >= 0)
+        model_task_controller_->stopModelTask(current_run_.model_uuid, dltool::model::ModelTaskType::Train);
+    if (current_run_.predict_task_id >= 0)
+        model_task_controller_->stopModelTask(current_run_.model_uuid, dltool::model::ModelTaskType::Test);
+}
+
+void FewShotLearningController::startPredictionImports(std::vector<PredictionImportTarget> targets,
+                                                       const QString &output_dir)
+{
+    if (data_manager_ == nullptr || targets.empty() || output_dir.trimmed().isEmpty())
+        return;
+
+    disconnectPredictionImport();
+    pending_import_targets_    = std::move(targets);
+    pending_import_output_dir_ = output_dir;
+    current_import_index_      = 0;
+    prediction_import_connection_ = data_manager_->connectImportFinished(
+        this, [this](bool success, const QString &message)
+        { handlePredictionImportFinished(success, message); });
+    startNextPredictionImport();
+}
+
+void FewShotLearningController::startNextPredictionImport()
+{
+    if (data_manager_ == nullptr)
+    {
+        disconnectPredictionImport();
+        return;
+    }
+    if (current_import_index_ >= static_cast<int>(pending_import_targets_.size()))
+    {
+        disconnectPredictionImport();
+        return;
+    }
+
+    const PredictionImportTarget &target =
+        pending_import_targets_.at(static_cast<size_t>(current_import_index_));
+    data_manager_->importMaskData(target.dataset_id, target.manifest_path, pending_import_output_dir_);
+}
+
+void FewShotLearningController::handlePredictionImportFinished(bool success, const QString &message)
+{
+    if (!success)
+    {
+        if (!message.isEmpty())
+            spdlog::error("导入小样本预测结果失败: {}", message.toUtf8().constData());
+        disconnectPredictionImport();
+        return;
+    }
+
+    ++current_import_index_;
+    startNextPredictionImport();
+}
+
+void FewShotLearningController::disconnectPredictionImport()
+{
+    if (data_manager_ != nullptr && prediction_import_connection_)
+        data_manager_->disconnectImportFinished(prediction_import_connection_);
+    prediction_import_connection_ = {};
+    pending_import_targets_.clear();
+    pending_import_output_dir_.clear();
+    current_import_index_ = 0;
 }
 
 void FewShotLearningController::setRunning(bool running)

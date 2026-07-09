@@ -12,6 +12,7 @@ FrameworkDefinition fsSam2Framework()
     framework.root = QStringLiteral("python/fornib/FS-SAM2");
     framework.train_script = QStringLiteral("train.py");
     framework.predict_script = QStringLiteral("predict.py");
+    framework.task_capabilities.push_back({dltool::model::ModelTaskType::BoxToMask, QStringLiteral("box_to_mask.py")});
     framework.scripts.insert(QStringLiteral("box_to_mask"), QStringLiteral("box_to_mask.py"));
     framework.python_paths = {
         QStringLiteral("."),

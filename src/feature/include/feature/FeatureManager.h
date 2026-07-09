@@ -16,7 +16,9 @@ class DataManager;
 } // namespace dltool::data
 
 namespace dltool::model {
+class ModelManager;
 class ModelTaskController;
+class TaskManager;
 } // namespace dltool::model
 
 namespace dltool::feature {
@@ -35,7 +37,9 @@ class FEATURE_API FeatureManager : public QObject
 
 public:
     explicit FeatureManager(dltool::data::DataManager *data_manager,
+                            dltool::model::ModelManager *model_manager,
                             dltool::model::ModelTaskController *model_task_controller,
+                            dltool::model::TaskManager *task_manager,
                             QObject *parent = nullptr);
     ~FeatureManager() override;
 

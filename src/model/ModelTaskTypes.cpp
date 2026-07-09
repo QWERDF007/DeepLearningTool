@@ -24,9 +24,11 @@ ModelTaskDescriptor describeModelTask(ModelTaskType task_type)
         descriptor.requires_dataset_export = true;
         break;
     case ModelTaskType::BoxToMask:
-        descriptor.key          = QStringLiteral("box_to_mask");
-        descriptor.display_name = QStringLiteral("框转 Mask");
-        descriptor.log_stem     = QStringLiteral("box_to_mask");
+        descriptor.key                     = QStringLiteral("box_to_mask");
+        descriptor.display_name            = QStringLiteral("框转 Mask");
+        descriptor.config_file_name        = QStringLiteral("box_to_mask.yaml");
+        descriptor.log_stem                = QStringLiteral("box_to_mask");
+        descriptor.requires_dataset_export = true;
         break;
     case ModelTaskType::Unknown:
     default:

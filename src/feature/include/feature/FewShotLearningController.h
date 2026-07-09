@@ -1,15 +1,20 @@
 #pragma once
 
 #include "dltool/feature/Export.h"
+#include "model/ModelTaskTypes.h"
 
+#include <QMetaObject>
 #include <QObject>
 #include <QPointer>
 #include <QString>
 #include <QVariantList>
 #include <QtQml>
+#include <vector>
 
 namespace dltool::model {
+class ModelManager;
 class ModelTaskController;
+class TaskManager;
 }
 
 namespace dltool::data {
@@ -41,7 +46,9 @@ public:
      * @param parent 父对象
      */
     explicit FewShotLearningController(dltool::data::DataManager          *data_manager,
+                                       dltool::model::ModelManager        *model_manager,
                                        dltool::model::ModelTaskController *model_task_controller,
+                                       dltool::model::TaskManager         *task_manager,
                                        QObject                            *parent = nullptr);
     ~FewShotLearningController() override;
 
@@ -100,11 +107,59 @@ private:
     bool startFsSam2WithIds(const QVariantList &train_dataset_ids, const QVariantList &validation_dataset_ids,
                             const QVariantList &test_dataset_ids, const QVariantList &label_class_ids);
 
+    struct PredictionImportTarget
+    {
+        qint64  dataset_id{-1};
+        QString manifest_path;
+    };
+
+    enum class RunStage
+    {
+        Idle,
+        PreparingMask,
+        Training,
+        Predicting,
+    };
+
+    struct RunState
+    {
+        QString                             model_uuid;
+        QString                             output_dir;
+        int                                 box_to_mask_task_id{-1};
+        int                                 train_task_id{-1};
+        int                                 predict_task_id{-1};
+        RunStage                            stage{RunStage::Idle};
+        bool                                stop_requested{false};
+        std::vector<PredictionImportTarget> import_targets;
+    };
+
     void setRunning(bool running);
     void setLastError(const QString &last_error);
+    bool startRun(const std::vector<int64_t> &train_dataset_ids,
+                  const std::vector<int64_t> &validation_dataset_ids,
+                  const std::vector<int64_t> &test_dataset_ids,
+                  const std::vector<int64_t> &label_class_ids, QString *err_msg);
+    bool configureFsSam2Model(const QString &model_uuid, const std::vector<int64_t> &train_dataset_ids,
+                              const std::vector<int64_t> &validation_dataset_ids,
+                              const std::vector<int64_t> &test_dataset_ids,
+                              const std::vector<int64_t> &label_class_ids, RunState &run, QString *err_msg);
+    bool writePredictionImportTargets(const QString &model_uuid, const std::vector<int64_t> &test_dataset_ids,
+                                      RunState &run, QString *err_msg) const;
+    int  addOrdinaryTask(const QString &model_uuid, dltool::model::ModelTaskType task_type, QString *err_msg) const;
+    bool startOrdinaryTask(dltool::model::ModelTaskType task_type, int expected_task_id, QString *err_msg);
+    void handleTaskTableRevision();
+    void advanceFinishedTask(dltool::model::ModelTaskType next_task_type, int next_task_id, RunStage next_stage);
+    void finishRun(bool success, const QString &message = {});
+    void stopRunTasks();
+    void startPredictionImports(std::vector<PredictionImportTarget> targets, const QString &output_dir);
+    void startNextPredictionImport();
+    void handlePredictionImportFinished(bool success, const QString &message);
+    void disconnectPredictionImport();
 
     QPointer<dltool::data::DataManager>          data_manager_;
+    QPointer<dltool::model::ModelManager>        model_manager_;
     QPointer<dltool::model::ModelTaskController> model_task_controller_;
+    QPointer<dltool::model::TaskManager>         task_manager_;
 
     bool enabled_{true};  ///< 功能是否启用
     bool running_{false}; ///< 是否正在运行
@@ -115,6 +170,12 @@ private:
     QPointer<QObject> validation_dataset_view_model_;
     QPointer<QObject> test_dataset_view_model_;
     QPointer<QObject> label_class_view_model_;
+
+    RunState current_run_;
+    std::vector<PredictionImportTarget> pending_import_targets_;
+    QString pending_import_output_dir_;
+    QMetaObject::Connection prediction_import_connection_;
+    int current_import_index_{0};
 };
 
 } // namespace dltool::feature

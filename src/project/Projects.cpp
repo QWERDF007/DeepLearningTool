@@ -87,7 +87,8 @@ void Project::init()
     task_manager_->clearTasks();
     model_task_controller_ = new model::ModelTaskController(method_, model_manager_->projectDirectory(), model_manager_,
                                                             data_manager_, task_manager_, this);
-    feature_manager_ = new dltool::feature::FeatureManager(data_manager_, model_task_controller_, this);
+    feature_manager_ = new dltool::feature::FeatureManager(data_manager_, model_manager_, model_task_controller_,
+                                                           task_manager_, this);
 
     // 初始化图像提供器（会自动从 QML 上下文获取引擎）
     data_manager_->initializeQmlEngine(qml_engine_);

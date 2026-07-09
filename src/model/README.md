@@ -24,7 +24,7 @@
 - `ModelDatasetSelection` 统一训练/验证/测试数据集选择快照、`datasets/datasets.yaml` 序列化和恢复。
 - `ModelTaskConfigService` 统一任务 YAML 读写、字段名和参数落盘。
 - `ModelTaskPreparationService` 统一外部任务启动前的目录准备、选择快照生成、数据集导出、YAML 配置写入、Python 解释器解析和进程规格生成，输入为共享的 `ModelTaskContext`。
-- `FewShotLearningTaskService` 负责 FS-SAM2 小样本学习的请求校验、数据集 manifest 生成、进程规格生成和项目模型目录落盘。
+- FS-SAM2 小样本学习通过内部创建的普通模型记录和普通任务链路运行，复用 `ModelTaskController`、`ModelTaskPreparationService`、`ModelDatasetOrganizer` 和 `ModelTaskConfigService`。
 - `ExternalModelTaskRunner` 统一外部 Python 进程的启动、环境变量、stdout/stderr 日志、停止/删除和进程退出通知。
 - `IModel`/`IModelConfig`/`IParams`/`ParamGroupModel` 定义模型实例、参数配置和 QML 参数编辑数据模型。
 - `ModelParamsSchema` 和 `YamlModel` 从 `config/models/<framework>/<model>.yaml` 加载参数 schema，并生成 `ITrainParams`/`ITestParams`。
@@ -57,8 +57,6 @@
   任务配置服务，集中维护 YAML 字段名、`train.yaml`/`test.yaml` 读写和参数序列化。
 - `include/model/ModelTaskPreparationService.h`、`ModelTaskPreparationService.cpp`
   外部任务准备服务，将 `ModelTaskContext` 转换为可直接启动的 `ExternalProcessSpec`。
-- `include/model/FewShotLearningTaskService.h`、`FewShotLearningTaskService.cpp`
-  FS-SAM2 小样本学习准备服务，生成训练/验证/测试 manifest、框转 Mask/训练/推理进程规格，并使用 `ModelStorageService` 写入项目模型目录。
 - `include/model/ExternalProcessSpec.h`
   外部进程运行规格，包含 task id、程序、参数、工作目录、Python path 和日志路径。
 - `include/model/ExternalModelTaskRunner.h`、`ExternalModelTaskRunner.cpp`
@@ -79,6 +77,8 @@
   注册异常检测框架 `anomalib`。
 - `FsSam2Framework.cpp`
   注册内部框架 `FS-SAM2`，覆盖检测、分割、异常检测方法，用于小样本学习流程，不在训练页面的模型创建 UI 中展示。
+- `FsSam2Models.cpp`
+  注册内部 YAML 模型 `FS-SAM2`，仅供小样本学习流程在 C++ 内部创建模型记录。
 - `DetectionModels.cpp`
   注册检测模型 `YOLOv5`、`YOLOv8`。
 - `AnomalyDetectionModels.cpp`
@@ -288,14 +288,14 @@ flowchart TD
 
 ## 小样本学习任务流程
 
-小样本学习也统一经过项目级 `ModelTaskController`，feature 层的 `FewShotLearningController` 只负责从 QML 选择模型中读取训练、验证、测试数据集和类别，并组装 `FewShotLearningRequest`。
+小样本学习复用普通模型记录和普通模型任务。`ModelTaskController` 不暴露小样本专用 API，只负责模型任务的新增、启动、停止、删除和外部进程状态收敛；feature 层的 `FewShotLearningController` 负责创建隐藏的 FS-SAM2 模型记录、写入模型参数和按任务表状态串联任务。
 
-1. `FewShotLearningController.startFsSam2()` 调用 `ModelTaskController.startFewShotLearning()`。
-2. `ModelTaskController` 通过 `FewShotLearningTaskService.prepare()` 校验项目类型、Python 环境、FS-SAM2 框架、SAM2 checkpoint、数据集和类别。
-3. `FewShotLearningTaskService` 为本次运行生成 `task_uuid`，并通过 `ModelStorageService` 创建：
+1. `FewShotLearningController.startFsSam2()` 从 QML 选择模型读取训练、验证、测试数据集和类别。
+2. `FewShotLearningController` 校验项目类型、FS-SAM2 设置、数据集和类别，并通过 `ModelManager.addModelRecord()` 创建隐藏的 `FS-SAM2` 普通模型记录。
+3. 普通模型目录由 `ModelStorageService` 创建：
 
 ```text
-<project_dir>/models/<task_uuid>/
+<project_dir>/models/<model_uuid>/
   datasets/
   logs/
   results/predictions/
@@ -303,11 +303,11 @@ flowchart TD
   configs/
 ```
 
-4. 训练、验证、测试 manifest 写入 `datasets/train`、`datasets/validation`、`datasets/test`；检测项目先生成框数据，再通过 `box_to_mask.py` 转成训练 mask。
-5. `ModelTaskController` 在任务中心注册框转 Mask、训练、推理任务，并复用 `ExternalModelTaskRunner` 启动 FS-SAM2 脚本。
-6. stdout/stderr 写入 `models/<task_uuid>/logs/box_to_mask.log`、`train.log`、`predict.log`。
-7. FS-SAM2 训练脚本仍会先把 `best_model.pt` 产出到框架日志目录；训练完成后 `ModelTaskController` 会复制到 `models/<task_uuid>/weights/best_model.pt`，推理阶段使用项目目录里的权重。
-8. 推理结果写入 `models/<task_uuid>/results/predictions/`，之后按测试数据集调用 `DataManager.importMaskData()` 导入预测 mask。
+4. `FewShotLearningController` 通过 `ModelTaskController.addModelTask()` 在任务中心注册框转 Mask、训练、推理普通模型任务，并通过 `startModelTask()` 按顺序启动。
+5. `ModelTaskPreparationService` 按普通任务流程写入数据集选择、导出 manifest、生成 `box_to_mask.yaml`/`train.yaml`/`test.yaml`，并构造进程规格。
+6. 检测项目的 FS-SAM2 manifest 保留框数据和 `mask_path`，由 `box_to_mask.py` 生成训练 mask；分割和异常检测项目直接导出 mask。
+7. FS-SAM2 训练脚本把 `best_model.pt` 写入 `models/<model_uuid>/weights/fs_sam2/best_model.pt`，推理任务从同一路径加载。
+8. 推理结果写入 `models/<model_uuid>/results/predictions/`；测试任务完成后，`FewShotLearningController` 监听任务表状态并触发 `DataManager.importMaskData()`，导入状态归普通数据导入流程维护。
 9. 停止、进度、退出码映射和普通模型外部任务一致，任务中心发起的停止请求也由同一个 `ModelTaskController` 路由到当前进程。
 
 ## TaskManager
@@ -361,7 +361,7 @@ flowchart TD
 - 持有项目级 `ExternalModelTaskRunner`，负责启动和停止当前项目模型任务进程。
 - 监听 `TaskManager::taskStopRequested`，把任务中心或其他通用入口发出的停止请求路由到当前项目的外部进程。
 - 接收外部进程退出信号，并把退出码 `0` 映射为完成、退出码 `2` 或显式停止请求映射为停止，其他退出映射为失败。
-- 统一编排 FS-SAM2 小样本学习的框转 Mask、训练、推理、预测结果导入和权重落盘。
+- 统一编排 FS-SAM2 小样本学习的内部模型记录创建、框转 Mask、训练和推理任务链路。
 
 ## ModelManager
 
@@ -396,8 +396,6 @@ flowchart TD
 
 `ExternalModelTaskRunner` 是纯进程运行入口。它只接收 `ExternalProcessSpec`，负责启动进程、设置环境变量、stdout/stderr 日志落盘、停止/删除处理，并在进程退出时发出通知；任务表状态由 `ModelTaskController` 映射。
 
-`FewShotLearningTaskService` 是 FS-SAM2 小样本学习准备入口。它不持有任务表和进程对象，只在同步准备阶段读取 `DataManager`、框架注册信息和设置项，输出 `FewShotLearningRunContext` 与 `ExternalProcessSpec`。运行编排、停止、失败收敛和导入结果由 `ModelTaskController` 负责。
-
 ## 模型目录与配置
 
 每个模型在项目目录下使用独立 uuid 目录。路径计算、目录创建和删除由 `ModelStorageService` 统一处理：
@@ -413,7 +411,7 @@ flowchart TD
 
 删除模型记录时会同时通过 `ModelStorageService` 删除对应的 `models/<uuid>/` 目录。
 
-FS-SAM2 小样本学习不写入数据库模型记录，但每次运行都会使用独立 `task_uuid` 创建同样结构的 `models/<task_uuid>/` 目录。训练数据 manifest、运行日志、复制后的 `weights/best_model.pt` 和预测结果都会保留在项目目录下，便于和普通模型任务产物一起管理。
+FS-SAM2 小样本学习会写入普通数据库模型记录，并使用同样结构的 `models/<model_uuid>/` 目录。FS-SAM2 模型类型不在模型创建 UI 中展示，因此只能由小样本流程内部创建。训练数据 manifest、运行日志、`weights/fs_sam2/best_model.pt` 和预测结果都会保留在项目目录下，便于和普通模型任务产物一起管理。
 
 任务配置由 `ModelTaskConfigService` 使用 YAML 写入模型目录下的 `models/<uuid>/configs/train.yaml` 或 `models/<uuid>/configs/test.yaml`。配置包含模型 uuid、模型名、任务类型、框架、模型架构、模型目录、结果目录、日志目录、权重目录、框架消费的数据集文件路径，以及训练/测试参数。
 

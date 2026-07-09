@@ -103,6 +103,9 @@ public:
                                                                        const QString &model_architecture) const;
     std::vector<std::unique_ptr<IModel>> registeredModelInstances() const;
 
+    ModelRecordView addModelRecord(const QString &name, const QString &framework_name,
+                                   const QString &model_architecture, QString *err_msg = nullptr);
+
 private:
     struct ModelRecord
     {
@@ -117,16 +120,25 @@ private:
         qint64  mtime{0};
     };
 
-    void    init();
-    int     indexOfModel(const int64_t model_id) const;
-    int     indexOfUuid(const QString &uuid) const;
+    void init();
+
+    int indexOfModel(const int64_t model_id) const;
+
+    int indexOfUuid(const QString &uuid) const;
+
     QString uniqueCopyName(const QString &name) const;
+
     IModel *cachedModelForRecord(const ModelRecord &record) const;
+
     static ModelRecordView toRecordView(const ModelRecord &record);
-    void    initializeDatasetViewModels(IModel *model) const;
-    void    requestModelTaskConfigLoad(const QString &model_uuid) const;
-    void    applyLoadedModelTaskConfigs(const QString &model_uuid, const QVariantMap &train_params,
-                                        const QVariantMap &test_params);
+
+    void initializeDatasetViewModels(IModel *model) const;
+
+    void requestModelTaskConfigLoad(const QString &model_uuid) const;
+
+    void applyLoadedModelTaskConfigs(const QString &model_uuid, const QVariantMap &train_params,
+                                     const QVariantMap &test_params);
+
     static std::string instanceKey(const QString &uuid);
 
     QVariant getModelId(const QModelIndex &index) const;

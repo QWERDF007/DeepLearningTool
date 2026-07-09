@@ -3,6 +3,7 @@
 #include "common/MaskPolygonUtils.h"
 #include "common/Utils.h"
 #include "common/YamlUtils.h"
+#include "core/CoreDef.h"
 #include "data/DatasetIO.h"
 #include "model/ModelTaskTypes.h"
 
@@ -410,6 +411,18 @@ QString fsSam2MaskPath(const QString &masks_dir, qint64 image_id, qint64 label_i
     return QDir(masks_dir).filePath(mappedValue(datasetFileNames(), DatasetFileName::Mask).arg(image_id).arg(label_id));
 }
 
+bool hasFsSam2BoxPrompt(const QVariantMap &label_data)
+{
+    const double width  = label_data.value(mappedValue(labelDataFieldNames(), LabelDataField::Width)).toDouble();
+    const double height = label_data.value(mappedValue(labelDataFieldNames(), LabelDataField::Height)).toDouble();
+    if (width > 0.0 && height > 0.0)
+        return true;
+
+    const std::vector<QPointF> points = dltool::data::DatasetIO::variantListToPoints(
+        label_data.value(mappedValue(labelDataFieldNames(), LabelDataField::Points)));
+    return points.size() >= 2;
+}
+
 QString anomalibMaskFileName(qint64 image_id)
 {
     return mappedValue(datasetFileNames(), DatasetFileName::ImageMask).arg(image_id);
@@ -799,6 +812,16 @@ protected:
         Q_UNUSED(label_class_id)
         Q_UNUSED(class_group)
 
+        if (ctx.request != nullptr && ctx.request->method == dltool::core::DeepLearningMethod::Detection)
+        {
+            if (!hasFsSam2BoxPrompt(label_data))
+                return LabelExportDecision::Skip;
+
+            const QString mask_path = cleanPath(fsSam2MaskPath(ctx.masks_dir, image.image_id, label_id));
+            setMapValue(label, mappedValue(fsSam2LabelFieldNames(), FsSam2LabelField::MaskPath), mask_path);
+            return LabelExportDecision::Keep;
+        }
+
         QString       mask_err;
         const QString mask_path = writeFsSam2LabelMask(label_data, image.width, image.height, ctx.masks_dir,
                                                        image.image_id, label_id, &mask_err);
@@ -938,8 +961,9 @@ QVariantMap ModelDatasetOrganizer::organize(const ModelDatasetExportRequest &req
                          QStringLiteral("创建数据集目录失败: %1")))
         return {};
 
+    const bool fs_sam2_layout = datasetLayout(request.framework_name) == FrameworkDatasetLayout::FsSam2;
     const std::unique_ptr<DatasetOrganizerBase> organizer = createDatasetOrganizer(request.framework_name);
-    if (isTrainModelTask(request.task_type))
+    if (isTrainModelTask(request.task_type) || request.task_type == ModelTaskType::BoxToMask)
     {
         const QVariantMap train = organizer->exportSplit(request, DatasetSplit::Train, true, err_msg);
         if (train.isEmpty())
@@ -955,6 +979,14 @@ QVariantMap ModelDatasetOrganizer::organize(const ModelDatasetExportRequest &req
     }
     else if (isTestModelTask(request.task_type))
     {
+        if (fs_sam2_layout)
+        {
+            const QVariantMap train = organizer->exportSplit(request, DatasetSplit::Train, true, err_msg);
+            if (train.isEmpty())
+                return {};
+            datasets.insert(mappedValue(datasetConfigFieldNames(), DatasetConfigField::Train), train);
+        }
+
         const QVariantMap test = organizer->exportSplit(request, DatasetSplit::Test, true, err_msg);
         if (test.isEmpty())
             return {};

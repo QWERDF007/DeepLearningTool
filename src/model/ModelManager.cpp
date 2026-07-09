@@ -19,6 +19,7 @@
 #include <utility>
 
 namespace dltool::model {
+using common::setError;
 
 ModelManager::ModelManager(const int method, dltool::database::ProjectDataBase *database,
                            dltool::data::DataManager *data_manager, QObject *parent)
@@ -142,70 +143,79 @@ QHash<int, QByteArray> ModelManager::roleNames() const
 
 bool ModelManager::addModel(const QString &name, const QString &framework_name, const QString &model_architecture)
 {
+    return addModelRecord(name, framework_name, model_architecture).isValid();
+}
+
+ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, const QString &framework_name,
+                                                           const QString &model_architecture, QString *err_msg)
+{
     const QString trimmed_name               = name.trimmed();
     const QString trimmed_framework_name     = framework_name.trimmed();
     const QString trimmed_model_architecture = model_architecture.trimmed();
     if (trimmed_name.isEmpty() || trimmed_framework_name.isEmpty() || trimmed_model_architecture.isEmpty())
     {
-        spdlog::warn("添加模型失败: 模型名称、框架或模型架构为空");
-        return false;
+        const QString message = QString("模型名称、框架或模型架构为空");
+        setError(err_msg, message);
+        spdlog::warn("添加模型失败: {}", message.toUtf8().constData());
+        return {};
     }
 
     if (!registeredModelArchitectures(method_, trimmed_framework_name).contains(trimmed_model_architecture))
     {
-        spdlog::warn("添加模型失败: 模型未注册, 方法: {}, 框架: {}, 模型架构: {}", method_,
-                     trimmed_framework_name.toUtf8().constData(), trimmed_model_architecture.toUtf8().constData());
-        return false;
+        const QString message = QString("模型未注册, 方法: %1, 框架: %2, 模型架构: %3")
+                                    .arg(method_)
+                                    .arg(trimmed_framework_name, trimmed_model_architecture);
+        setError(err_msg, message);
+        spdlog::warn("添加模型失败: {}", message.toUtf8().constData());
+        return {};
     }
 
     if (database_ == nullptr)
     {
-        spdlog::error("添加模型失败: 数据库对象为空");
-        return false;
+        const QString message = QString("数据库对象为空");
+        setError(err_msg, message);
+        spdlog::error("添加模型失败: {}", message.toUtf8().constData());
+        return {};
     }
 
-    QString             err_msg;
+    QString             local_err_msg;
     int64_t             model_id{-1};
     const qint64        now  = QDateTime::currentSecsSinceEpoch();
     const QString       uuid = dltool::common::uuid();
     ModelStorageService storage(project_dir_);
-    if (!storage.ensureModelStorage(uuid, &err_msg))
+    if (!storage.ensureModelStorage(uuid, &local_err_msg))
     {
-        spdlog::error("添加模型失败, 创建模型目录失败: {}", err_msg.toUtf8().constData());
-        return false;
+        setError(err_msg, QString("创建模型目录失败: %1").arg(local_err_msg));
+        spdlog::error("添加模型失败, 创建模型目录失败: {}", local_err_msg.toUtf8().constData());
+        return {};
     }
 
     const bool ok = database_->addModel(uuid, trimmed_name, trimmed_framework_name, trimmed_model_architecture,
-                                        QString(), QString(), now, now, model_id, err_msg);
+                                        QString(), QString(), now, now, model_id, local_err_msg);
     if (!ok)
     {
         QString remove_err;
         storage.removeModelStorage(uuid, &remove_err);
+        setError(err_msg, local_err_msg);
         spdlog::error("添加模型失败, 名称: {}, 框架: {}, 模型架构: {}, 错误: {}", trimmed_name.toUtf8().constData(),
                       trimmed_framework_name.toUtf8().constData(), trimmed_model_architecture.toUtf8().constData(),
-                      err_msg.toUtf8().constData());
-        return false;
+                      local_err_msg.toUtf8().constData());
+        return {};
     }
 
+    const ModelRecord record{
+        model_id,  uuid, trimmed_name, trimmed_framework_name, trimmed_model_architecture, QString(),
+        QString(), now,  now,
+    };
     const int row = rowCount();
     beginInsertRows(QModelIndex(), row, row);
-    models_.push_back(ModelRecord{
-        model_id,
-        uuid,
-        trimmed_name,
-        trimmed_framework_name,
-        trimmed_model_architecture,
-        QString(),
-        QString(),
-        now,
-        now,
-    });
+    models_.push_back(record);
     endInsertRows();
 
     spdlog::info("模型添加成功, id: {}, 模型名称: {}, 框架: {}, 模型架构: {}", model_id,
                  trimmed_name.toUtf8().constData(), trimmed_framework_name.toUtf8().constData(),
                  trimmed_model_architecture.toUtf8().constData());
-    return true;
+    return toRecordView(record);
 }
 
 bool ModelManager::renameModel(const qint64 model_id, const QString &name)
@@ -542,15 +552,8 @@ IModel *ModelManager::cachedModelForRecord(const ModelRecord &record) const
 ModelManager::ModelRecordView ModelManager::toRecordView(const ModelRecord &record)
 {
     return ModelRecordView{
-        record.model_id,
-        record.uuid,
-        record.name,
-        record.framework_name,
-        record.model_architecture,
-        record.training_result,
-        record.test_result,
-        record.ctime,
-        record.mtime,
+        record.model_id,        record.uuid,        record.name,  record.framework_name, record.model_architecture,
+        record.training_result, record.test_result, record.ctime, record.mtime,
     };
 }
 
