@@ -95,6 +95,13 @@ Item {
             return
         }
 
+        if (canvas.toolMode === LabelCanvasEnums.RectangleTool
+                || canvas.toolMode === LabelCanvasEnums.PolygonTool) {
+            canvas.canvasMouseArea.cursorShape = Qt.CrossCursor
+        } else {
+            canvas.canvasMouseArea.cursorShape = Qt.ArrowCursor
+        }
+
         if (polygonLayer && canvas.toolMode !== LabelCanvasEnums.PolygonTool) {
             polygonLayer.cancelDrawing()
         }
@@ -189,6 +196,9 @@ Item {
                 && canvas.interactionState === LabelCanvasEnums.Idle) {
             polygonLayer.updatePreview(pos)
             return true
+        }
+        if ((rectangleToolMode || polygonToolMode) && canvas.interactionState === LabelCanvasEnums.Idle) {
+            canvas.canvasMouseArea.cursorShape = Qt.CrossCursor
         }
         return shapeEditor ? shapeEditor.handleMousePositionChanged(event, pos) : false
     }

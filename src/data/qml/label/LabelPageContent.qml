@@ -80,6 +80,9 @@ Rectangle {
                     anchors.fill: parent
                     dataManager: page.dataManager
                     imageLevelClassEditing: page.anomalyImageLevelClassEditing()
+                    drawingToolActive: page.activeLabelCanvas
+                        && (page.activeLabelCanvas.toolMode === LabelCanvasEnums.RectangleTool
+                            || page.activeLabelCanvas.toolMode === LabelCanvasEnums.PolygonTool)
                 }
             }
 

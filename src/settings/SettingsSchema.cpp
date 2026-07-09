@@ -434,13 +434,6 @@ QVariantMap SettingsFieldModel::valuesMap() const
     return values;
 }
 
-QVariantList SettingsFieldModel::schemaRows() const
-{
-    QVariantList rows;
-    for (const SettingsField &field : fields_) rows.append(toMap(field));
-    return rows;
-}
-
 void SettingsFieldModel::loadValues(const QVariantMap &values)
 {
     if (fields_.empty())
@@ -807,7 +800,7 @@ void SettingsCatalog::syncAndLoad(database::SettingsDataBase *database)
     {
         SettingsFieldModel *model = group_ptr.get();
         QString             sync_err;
-        if (!database->syncSettingsSchema(model->tableName(), model->schemaRows(), sync_err) && !sync_err.isEmpty())
+        if (!database->ensureSettingsTable(model->tableName(), sync_err) && !sync_err.isEmpty())
             spdlog::warn("同步设置模式失败: {}: {}", model->tableName().toUtf8().constData(),
                          sync_err.toUtf8().constData());
 

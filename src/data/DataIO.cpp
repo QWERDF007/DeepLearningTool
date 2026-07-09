@@ -1674,7 +1674,8 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
     {
         const QString annotation_dir = data_dir.trimmed();
         updateProgress(0, QString("正在扫描图像文件..."));
-        const std::vector<QString> image_files = DatasetIO::scanImageFiles(image_dir);
+        const QString    image_root_dir = QFileInfo(image_dir).absoluteFilePath();
+        const std::vector<QString> image_files = DatasetIO::scanImageFiles(image_root_dir);
         if (image_files.empty())
         {
             updateProgress(100, QString("未找到任何图像文件"));
@@ -1682,15 +1683,27 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
             return;
         }
 
-        std::map<QString, QString> annotation_files_by_name;
+        std::map<QString, QString> annotation_files_by_relative_name;
         int                        total_json_files = 0;
-        if (!annotation_dir.isEmpty() && QFileInfo(annotation_dir).exists())
+        const QString              annotation_root_dir
+            = annotation_dir.isEmpty() ? QString() : QFileInfo(annotation_dir).absoluteFilePath();
+        if (!annotation_root_dir.isEmpty() && QFileInfo(annotation_root_dir).exists())
         {
             updateProgress(5, QString("正在扫描标注文件..."));
-            const std::vector<QString> json_files = DatasetIO::scanJsonFiles(annotation_dir);
+            const std::vector<QString> json_files = DatasetIO::scanJsonFiles(annotation_root_dir);
             total_json_files                      = static_cast<int>(json_files.size());
             for (const QString &json_path : json_files)
-                annotation_files_by_name[QFileInfo(json_path).baseName()] = json_path;
+            {
+                const QString relative = dltool::common::relativePath(annotation_root_dir, json_path);
+                const QString key      = QFileInfo(relative).completeBaseName();
+                auto          existing = annotation_files_by_relative_name.find(key);
+                if (existing != annotation_files_by_relative_name.end())
+                {
+                    spdlog::warn("LabelMe 标注文件名冲突，后发现的将覆盖前者: {} vs {}",
+                                 existing->second.toUtf8().constData(), json_path.toUtf8().constData());
+                }
+                annotation_files_by_relative_name[key] = json_path;
+            }
         }
 
         const int total_images = static_cast<int>(image_files.size());
@@ -1755,9 +1768,10 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
             batch_image_widths.push_back(width);
             batch_image_heights.push_back(height);
 
-            const QString image_name = QFileInfo(image_path).baseName();
-            auto          json_it    = annotation_files_by_name.find(image_name);
-            if (json_it != annotation_files_by_name.end())
+            const QString image_relative = dltool::common::relativePath(image_root_dir, image_path);
+            const QString image_key      = QFileInfo(image_relative).completeBaseName();
+            auto          json_it        = annotation_files_by_relative_name.find(image_key);
+            if (json_it != annotation_files_by_relative_name.end())
             {
                 LabelMeData data;
                 if (parseLabelMeJson(json_it->second, data))

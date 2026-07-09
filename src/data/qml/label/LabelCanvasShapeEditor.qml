@@ -195,6 +195,7 @@ Item {
 
     function beginLabelEditing(pos) {
         canvas.interactionState = LabelCanvasEnums.Editing
+        canvas.canvasMouseArea.cursorShape = Qt.SizeAllCursor
         let hit = hitTest(pos)
         let index = imageLabelsList.getTopSelectedIndex()
         let item = labelsListView ? labelsListView.itemAt(index) : null

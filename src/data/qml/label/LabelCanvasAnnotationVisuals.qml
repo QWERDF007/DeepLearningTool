@@ -73,6 +73,8 @@ Item {
                  && visuals.canvas.imageView.image.status === Image.Ready
                  && visuals.canvas.interactionState !== LabelCanvasEnums.Dragging
                  && visuals.canvas.interactionState !== LabelCanvasEnums.Editing
+                 && (visuals.canvas.toolMode === LabelCanvasEnums.RectangleTool
+                     || visuals.canvas.toolMode === LabelCanvasEnums.PolygonTool)
         mousePos: visuals.canvas ? Qt.point(visuals.canvas.canvasMouseArea.mouseX,
                                             visuals.canvas.canvasMouseArea.mouseY)
                                   : Qt.point(0, 0)

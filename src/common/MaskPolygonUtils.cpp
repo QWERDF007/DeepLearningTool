@@ -147,8 +147,8 @@ std::vector<cv::Point> approximateContour(const std::vector<cv::Point> &contour,
 
     std::vector<cv::Point> fitted;
     cv::approxPolyDP(contour, fitted, epsilon, true);
-    if (fitted.size() < 3 || std::abs(cv::contourArea(fitted)) <= 0.5)
-        return contour;
+    // if (fitted.size() < 3 || std::abs(cv::contourArea(fitted)) <= 0.5)
+    //     return contour;
     return fitted;
 }
 

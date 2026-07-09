@@ -294,12 +294,6 @@ public:
     QVariantMap valuesMap() const;
 
     /**
-     * @brief 获取当前 schema 的行数据。
-     * @return 可同步到数据库的字段 schema 行列表。
-     */
-    QVariantList schemaRows() const;
-
-    /**
      * @brief 从值映射加载字段值。
      * @param values 字段英文键名到值的映射。
      */

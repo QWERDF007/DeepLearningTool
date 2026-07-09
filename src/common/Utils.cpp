@@ -55,6 +55,12 @@ QString resolvePath(const QString &base_dir, const QString &path)
     return cleanPath(QDir(base_dir).filePath(cleaned));
 }
 
+QString relativePath(const QString &root_dir, const QString &path)
+{
+    const QString relative = QDir(root_dir).relativeFilePath(path);
+    return relative.isEmpty() ? QFileInfo(path).fileName() : relative;
+}
+
 QString pythonExecutableFromEnvPath(const QString &env_path)
 {
     const QFileInfo info(cleanPath(env_path));

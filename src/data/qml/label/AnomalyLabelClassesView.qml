@@ -11,9 +11,10 @@ LabelClassesViewBase {
     editorComponent: anomalyEditorComponent
     rowDelegateComponent: anomalyRowDelegateComponent
     createDefaultGroup: "anomaly"
-    selectionFollowsCurrentImageClass: imageLevelClassEditing
+    selectionFollowsCurrentImageClass: imageLevelClassEditing && !drawingToolActive
 
     property bool imageLevelClassEditing: true
+    property bool _applyingClass: false
 
     ListModel {
         id: groupedLabelClassesModel
@@ -32,7 +33,9 @@ LabelClassesViewBase {
     Connections {
         target: root.imageInstances
         function onCurrentImageChanged() {
-            root.refreshViewModel()
+            if (!root._applyingClass) {
+                root.refreshViewModel()
+            }
         }
     }
 
@@ -106,7 +109,15 @@ LabelClassesViewBase {
                 ordinalIndex: rowDelegate.headerRow ? -1 : Number(model.ordinal_index)
                 listView: root.listView
                 labelClasses: root.labelClasses
-                onClicked: root.selectClassIndex(rowDelegate.sourceRow, true)
+                onClicked: {
+                    let selectedIds = root.selectedLabelIds()
+                    if (selectedIds.length > 0) {
+                        root.applyClassToSelectedLabels(selectedIds, root.classIdAt(rowDelegate.sourceRow))
+                    } else {
+                        root.selectClassIndex(rowDelegate.sourceRow, true)
+                    }
+                    root.ensureSourceRowVisible(rowDelegate.sourceRow)
+                }
                 onEditClicked: root.openEditorForClass(this, Number(model.label_class_id), model.name || "",
                                                        model.color || "black", model.shortcut || "",
                                                        Number(model.ordinal_index), model.group || "anomaly")
@@ -188,8 +199,13 @@ LabelClassesViewBase {
         })
     }
 
-    function refreshViewModel() {
+    function refreshViewModel(topLeft, bottomRight, roles) {
         if (!groupedLabelClassesModel) {
+            return
+        }
+
+        if (isSelectedRoleOnlyChange(roles) && groupedLabelClassesModel.count > 0) {
+            updateSelectionState()
             return
         }
 
@@ -213,6 +229,53 @@ LabelClassesViewBase {
                 }
             }
         }
+    }
+
+    function isSelectedRoleOnlyChange(roles) {
+        return roles && roles.length === 1 && Number(roles[0]) === LabelClassesModel.SelectedRole
+    }
+
+    function updateSelectionState() {
+        if (!groupedLabelClassesModel || !labelClasses) {
+            return
+        }
+
+        for (let row = 0; row < groupedLabelClassesModel.count; ++row) {
+            let item = groupedLabelClassesModel.get(row)
+            let selected = false
+            if (Boolean(item.isUnlabeledAction)) {
+                selected = currentImageClassId() < 0
+            } else if (!Boolean(item.isHeader)) {
+                let sourceRow = Number(item.sourceRow)
+                if (sourceRow >= 0 && sourceRow < labelClasses.rowCount()) {
+                    let modelIndex = labelClasses.index(sourceRow, 0)
+                    selected = Boolean(labelClasses.data(modelIndex, LabelClassesModel.SelectedRole))
+                }
+            }
+            if (Boolean(item.selected) !== selected) {
+                groupedLabelClassesModel.setProperty(row, "selected", selected)
+            }
+        }
+    }
+
+    function ensureSourceRowVisible(sourceRow) {
+        if (!listView || sourceRow < 0) {
+            return
+        }
+
+        Qt.callLater(function() {
+            if (!listView || !groupedLabelClassesModel) {
+                return
+            }
+            for (let row = 0; row < groupedLabelClassesModel.count; ++row) {
+                let item = groupedLabelClassesModel.get(row)
+                if (!Boolean(item.isHeader) && !Boolean(item.isUnlabeledAction)
+                        && Number(item.sourceRow) === sourceRow) {
+                    listView.positionViewAtIndex(row, ListView.Contain)
+                    return
+                }
+            }
+        })
     }
 
     function addLabelClass(className, classColor, classShortcut, classGroup) {
@@ -259,7 +322,10 @@ LabelClassesViewBase {
             return false
         }
 
-        return dataManager.setImageLabelClass(imageId, classId)
+        _applyingClass = true
+        let result = dataManager.setImageLabelClass(imageId, classId)
+        _applyingClass = false
+        return result
     }
 
     function handleShortcutText(shortcut) {
@@ -277,7 +343,11 @@ LabelClassesViewBase {
             return applyClassToSelectedLabels(selectedIds, classIdAt(matchIndex))
         }
 
-        return selectClassIndex(matchIndex, true)
+        let selected = selectClassIndex(matchIndex, true)
+        if (selected) {
+            ensureSourceRowVisible(matchIndex)
+        }
+        return selected
     }
 
     function selectedLabelIds() {

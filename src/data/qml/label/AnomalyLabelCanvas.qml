@@ -8,7 +8,12 @@ ClassificationLabelCanvas {
     property FeatureManager featureManager
     property alias showBoundingBoxes: annotationLayer.showBoundingBoxes
     property alias actions: annotationLayer.actions
+    readonly property bool drawingToolActive: annotationLayer.rectangleToolMode || annotationLayer.polygonToolMode
     labelClassShortcutHandler: function(classId, event) {
+        if (drawingToolActive) {
+            return selectDrawingClassByShortcut(event)
+        }
+
         let selectedIds = selectedLabelIds()
         return selectedIds.length > 0
                 ? applyClassToSelectedLabels(selectedIds, classId)
@@ -48,6 +53,13 @@ ClassificationLabelCanvas {
         let classIds = new Array(labelIds.length).fill(classId)
         dataManager.updateLabelsClass(labelIds, classIds)
         return true
+    }
+
+    function selectDrawingClassByShortcut(event) {
+        if (!labelClasses || !event || !event.text || event.text.length <= 0) {
+            return false
+        }
+        return labelClasses.selectByShortcut(event.text)
     }
 
     function applyClassToCurrentImage(classId) {

@@ -22,6 +22,7 @@ Rectangle {
     readonly property var imageInstances: dataManager ? dataManager.imageInstances : null
     readonly property var imageLabelsList: dataManager ? dataManager.imageLabelsList : null
     property bool selectionFollowsCurrentImageClass: false
+    property bool drawingToolActive: false
     property var viewModel: labelClasses
     property Component rowDelegateComponent: defaultRowDelegateComponent
     property Component editorComponent: defaultEditorComponent
@@ -110,7 +111,7 @@ Rectangle {
             labelClassesView.syncSelectionToCurrentImageClass()
         }
         function onDataChanged(topLeft, bottomRight, roles) {
-            labelClassesView.refreshViewModel()
+            labelClassesView.refreshViewModel(topLeft, bottomRight, roles)
             labelClassesView.syncSelectionToCurrentImageClass()
         }
         function onModelReset() {
@@ -354,7 +355,7 @@ Rectangle {
         selection.setCurrentIndex(modelIndex, ItemSelectionModel.Select)
         syncingClassSelection = wasSyncing
 
-        if (applyToImage && selectionFollowsCurrentImageClass) {
+        if (applyToImage && selectionFollowsCurrentImageClass && !drawingToolActive) {
             applyClassToCurrentImage(classIdAt(row))
         }
         return true

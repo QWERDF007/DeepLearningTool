@@ -20,6 +20,7 @@ COMMON_API QString toQString(const QStringList &, const QString &sep = ", ",
 COMMON_API QString cleanPath(const QString &path);
 COMMON_API QString runtimePath(const QString &path);
 COMMON_API QString resolvePath(const QString &base_dir, const QString &path);
+COMMON_API QString relativePath(const QString &root_dir, const QString &path);
 COMMON_API QString pythonExecutableFromEnvPath(const QString &env_path);
 
 inline bool setError(QString *err_msg, const QString &message)

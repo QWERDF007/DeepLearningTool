@@ -727,7 +727,7 @@ QVariantMap SegLabelDataHelper::hitTestHandle(const QPointF &pos, const std::uni
                 {      "direction",  EditDirection::Inside},
                 {     "edge_index",                      i},
                 {"edge_next_index",             next_index},
-                {         "cursor", int(Qt::SizeAllCursor)}
+                {         "cursor", int(Qt::PointingHandCursor)}
             };
         }
     }
