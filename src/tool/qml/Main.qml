@@ -48,6 +48,28 @@ ApplicationWindow {
         currentIndex: _header.currentIndex
     }
 
+    QuiInfoBar {
+        id: infoBar
+        root: window
+        layoutY: _header.height + 12
+    }
+
+    Connections {
+        target: SignalHelper
+        function onSuccess(title, message, duration) {
+            infoBar.showSuccess(title || "", duration, message || "")
+        }
+        function onInfo(title, message, duration) {
+            infoBar.showInfo(title || "", duration, message || "")
+        }
+        function onWarn(title, message, duration) {
+            infoBar.showWarning(title || "", duration, message || "")
+        }
+        function onError(title, message, duration) {
+            infoBar.showError(title || "", duration, message || "")
+        }
+    }
+
 
     footer: Footer {
         id: _footer

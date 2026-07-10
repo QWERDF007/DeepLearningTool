@@ -4,6 +4,7 @@
 #include "common/Utils.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsValue.h"
+#include "ui/SignalHelper.h"
 
 #include <inferrt/features/SAMImagePredictor.hpp>
 #include <inferrt/ops/BSplineInterp.hpp>
@@ -699,6 +700,7 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
                         controller->predictor_.reset();
                         controller->cached_model_key_.clear();
                         controller->setLastError(error);
+                        ui::SignalHelper::notifyError(QString("智能标注模型加载失败"), error);
                     }
 
                     controller->setLoadingModel(false);
@@ -850,6 +852,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         result[QStringLiteral("error")]   = error;
         setLastError(error);
         spdlog::error("智能标注失败: {}", error.toUtf8().constData());
+        ui::SignalHelper::notifyError(QString("智能标注失败"), error);
     }
     catch (...)
     {
@@ -858,6 +861,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         result[QStringLiteral("error")]   = error;
         setLastError(error);
         spdlog::error("智能标注失败: {}", error.toUtf8().constData());
+        ui::SignalHelper::notifyError(QString("智能标注失败"), error);
     }
 
     setRunning(false);

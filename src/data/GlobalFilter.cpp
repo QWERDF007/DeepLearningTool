@@ -593,8 +593,8 @@ bool GlobalFilter::shouldIncludeImage(int64_t image_id) const
             return false;
         }
 
-        const QString file_name = data_manager_->imageInstances()->getImageName(image_id);
-        if (!file_name.contains(file_name_filter_text_, Qt::CaseInsensitive))
+        const QString file_path = data_manager_->imageInstances()->getImagePath(image_id);
+        if (!file_path.contains(file_name_filter_text_, Qt::CaseInsensitive))
         {
             return false;
         }

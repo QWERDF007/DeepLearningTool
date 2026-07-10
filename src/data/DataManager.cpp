@@ -12,6 +12,7 @@
 #include "data/LabelInstanceImageProvider.h"
 #include "database/DataBase.h"
 #include "ui/ProgressManager.h"
+#include "ui/SignalHelper.h"
 
 #include <spdlog/spdlog.h>
 
@@ -598,20 +599,26 @@ void DataManager::scanImportLabelClasses(const int data_format, const QString &i
 {
     if (import_running_)
     {
-        emit importLabelClassesScanned(false, {}, QStringLiteral("已有导入任务正在运行"));
+        const QString message = QString("已有导入任务正在运行");
+        ui::SignalHelper::notifyWarn(QString("导入失败"), message);
+        emit importLabelClassesScanned(false, {}, message);
         return;
     }
 
     if (!data::DataFormat::isImportDataFormatSupported(method_, data_format))
     {
-        emit importLabelClassesScanned(false, {}, QStringLiteral("当前项目类型不支持该导入格式"));
+        const QString message = QString("当前项目类型不支持该导入格式");
+        ui::SignalHelper::notifyError(QString("导入失败"), message);
+        emit importLabelClassesScanned(false, {}, message);
         return;
     }
 
     DataIO *scanner = DataIO::createIO(data_format, database_, this);
     if (!scanner)
     {
-        emit importLabelClassesScanned(false, {}, QStringLiteral("不支持的数据格式"));
+        const QString message = QString("不支持的数据格式");
+        ui::SignalHelper::notifyError(QString("导入失败"), message);
+        emit importLabelClassesScanned(false, {}, message);
         return;
     }
 
@@ -650,10 +657,16 @@ void DataManager::scanImportLabelClasses(const int data_format, const QString &i
             }
 
             const int     level            = success ? spdlog::level::info : spdlog::level::err;
-            const QString progress_message = message.isEmpty() ? QStringLiteral("导入类别扫描完成") : message;
+            const QString progress_message = message.isEmpty() ? QString("导入类别扫描完成") : message;
             QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
                                       Q_ARG(int, level), Q_ARG(QString, progress_message));
             QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+
+            if (!success)
+            {
+                ui::SignalHelper::notifyError(QString("导入失败"),
+                                              message.isEmpty() ? QString("扫描导入类别失败") : message);
+            }
 
             emit importLabelClassesScanned(success, label_classes, message);
             scanner->deleteLater();
@@ -682,6 +695,7 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
                                   Q_ARG(int, spdlog::level::warn), Q_ARG(QString, message));
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+        ui::SignalHelper::notifyWarn(QString("导入失败"), message);
         emit dataImportFinished(false, message);
         return;
     }
@@ -691,6 +705,7 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
     {
         const QString message = QString("当前项目类型不支持该导入格式");
         spdlog::error("导入数据失败, 项目类型 {} 不支持数据格式: {}", method_, data_format);
+        ui::SignalHelper::notifyError(QString("导入失败"), message);
         emit dataImportFinished(false, message);
         return;
     }
@@ -709,6 +724,7 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
                                   Q_ARG(int, spdlog::level::err), Q_ARG(QString, message));
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+        ui::SignalHelper::notifyError(QString("导入失败"), message);
         emit dataImportFinished(false, message);
         return;
     }
@@ -724,6 +740,7 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
                                   Q_ARG(int, spdlog::level::err), Q_ARG(QString, message));
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+        ui::SignalHelper::notifyError(QString("导入失败"), message);
         emit dataImportFinished(false, message);
         return;
     }
@@ -754,19 +771,25 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
 {
     if (!data::DataFormat::isExportDataFormatSupported(method_, data_format))
     {
+        const QString message = QString("当前项目类型不支持该导出格式");
         spdlog::error("导出数据失败, 项目类型 {} 不支持数据格式: {}", method_, data_format);
+        ui::SignalHelper::notifyError(QString("导出失败"), message);
         return;
     }
 
     if (output_dir.isEmpty())
     {
-        spdlog::error("导出数据失败, 输出目录为空");
+        const QString message = QString("输出目录为空");
+        spdlog::error("导出数据失败, {}", message.toUtf8().constData());
+        ui::SignalHelper::notifyError(QString("导出失败"), message);
         return;
     }
 
     if (dataset_ids.empty())
     {
-        spdlog::warn("导出数据失败, 未选择数据集");
+        const QString message = QString("未选择数据集");
+        spdlog::warn("导出数据失败, {}", message.toUtf8().constData());
+        ui::SignalHelper::notifyWarn(QString("导出失败"), message);
         return;
     }
 
@@ -774,6 +797,7 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
     if (!ensureDirectory(output_dir, err_msg))
     {
         spdlog::error("导出数据失败, {}", err_msg.toUtf8().constData());
+        ui::SignalHelper::notifyError(QString("导出失败"), err_msg);
         return;
     }
 
@@ -824,8 +848,10 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
 
     if (state->items.empty())
     {
-        addProgressMessage(spdlog::level::err, QString("没有可导出的数据集"));
+        const QString message = QString("没有可导出的数据集");
+        addProgressMessage(spdlog::level::err, message);
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+        ui::SignalHelper::notifyError(QString("导出失败"), message);
         return;
     }
 
@@ -837,8 +863,15 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
         {
             const QString message
                 = QString("导出完成: 成功 %1 个, 失败 %2 个").arg(state->success_count).arg(state->failed_count);
+            const bool success = state->success_count > 0 && state->failed_count == 0;
             addProgressMessage(state->failed_count == 0 ? spdlog::level::info : spdlog::level::warn, message);
             QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+            if (success)
+                ui::SignalHelper::notifySuccess(QString("导出完成"), message);
+            else if (state->success_count > 0)
+                ui::SignalHelper::notifyWarn(QString("导出完成"), message);
+            else
+                ui::SignalHelper::notifyError(QString("导出失败"), message);
             return;
         }
 
@@ -1938,7 +1971,8 @@ void DataManager::handleImportFinished(bool success, std::vector<int64_t> image_
 
 void DataManager::finishBatchedImport(bool success, const QString &message)
 {
-    DataIO *importer = pending_import_task_ ? pending_import_task_->importer : nullptr;
+    DataIO    *importer     = pending_import_task_ ? pending_import_task_->importer : nullptr;
+    const bool has_warnings = success && pending_import_task_ && pending_import_task_->failed_batches > 0;
 
     const int level = success ? spdlog::level::info : spdlog::level::err;
     if (success)
@@ -1949,6 +1983,13 @@ void DataManager::finishBatchedImport(bool success, const QString &message)
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection, Q_ARG(int, level),
                               Q_ARG(QString, message));
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
+
+    if (success && has_warnings)
+        ui::SignalHelper::notifyWarn(QString("导入完成"), message);
+    else if (success)
+        ui::SignalHelper::notifySuccess(QString("导入完成"), message);
+    else
+        ui::SignalHelper::notifyError(QString("导入失败"), message);
 
     if (importer)
     {

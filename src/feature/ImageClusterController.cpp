@@ -5,6 +5,7 @@
 #include "feature/Utils.h"
 #include "settings/GlobalSettings.h"
 #include "ui/ProgressManager.h"
+#include "ui/SignalHelper.h"
 
 #include <spdlog/spdlog.h>
 
@@ -549,6 +550,7 @@ void ImageClusterController::finishCluster(const ClusterResponse &response)
         emit resultsChanged();
         setLastError(response.error);
         finishProgress(false, QStringLiteral("%1, 耗时 %2").arg(response.error, formatElapsed(response.elapsed_ms)));
+        ui::SignalHelper::notifyError(QString("图像聚类失败"), response.error);
         return;
     }
 
@@ -561,6 +563,7 @@ void ImageClusterController::finishCluster(const ClusterResponse &response)
         emit resultsChanged();
         setLastError(err_msg);
         finishProgress(false, QStringLiteral("%1, 耗时 %2").arg(err_msg, formatElapsed(response.elapsed_ms)));
+        ui::SignalHelper::notifyError(QString("图像聚类失败"), err_msg);
         return;
     }
 
@@ -578,6 +581,7 @@ void ImageClusterController::finishCluster(const ClusterResponse &response)
                                    response.apply_mode == ImageClusterApplyMode::Copy);
 
     finishProgress(true, QStringLiteral("%1, 耗时 %2").arg(last_summary_, formatElapsed(response.elapsed_ms)));
+    ui::SignalHelper::notifySuccess(QString("图像聚类完成"), last_summary_);
     emit resultsChanged();
 }
 

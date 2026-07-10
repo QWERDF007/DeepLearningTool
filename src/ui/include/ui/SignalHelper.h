@@ -1,12 +1,15 @@
 #pragma once
 
 #include "common/Singleton.h"
+#include "dltool/ui/Export.h"
 
 #include <QItemSelectionModel>
+#include <QObject>
+#include <QString>
 
 namespace dltool::ui {
 
-class SignalHelper : public QObject
+class UI_API SignalHelper : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(SignalHelper)
@@ -19,7 +22,33 @@ private:
 
     ~SignalHelper() {}
 
+public:
+    static void notifySuccess(const QString &title, const QString &message = QString(), int duration = 3500)
+    {
+        emit getInstance()->success(title, message, duration);
+    }
+
+    static void notifyInfo(const QString &title, const QString &message = QString(), int duration = 3500)
+    {
+        emit getInstance()->info(title, message, duration);
+    }
+
+    static void notifyWarn(const QString &title, const QString &message = QString(), int duration = 0)
+    {
+        emit getInstance()->warn(title, message, duration);
+    }
+
+    static void notifyError(const QString &title, const QString &message = QString(), int duration = 0)
+    {
+        emit getInstance()->error(title, message, duration);
+    }
+
 signals:
+    void success(const QString &title, const QString &message = QString(), int duration = 3500);
+    void info(const QString &title, const QString &message = QString(), int duration = 3500);
+    void warn(const QString &title, const QString &message = QString(), int duration = 0);
+    void error(const QString &title, const QString &message = QString(), int duration = 0);
+
     void changeTabBarIndex(int index);
 
     void imageLabelListSelectionChanged(const QModelIndex &index, QItemSelectionModel::SelectionFlags command);
