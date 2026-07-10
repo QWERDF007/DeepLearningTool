@@ -147,6 +147,8 @@ Rectangle {
                                 tagDropDown.selectAll(false)
                                 labelClassImageDropDown.checked = false
                                 labelClassImageDropDown.selectAll(false)
+                                customFilterDropDown.checked = false
+                                customFilterDropDown.selectAll(false)
                                 imageSearchDropDown.checked = false
                                 imageSearchDropDown.selectAll(false)
                                 labelSearchDropDown.checked = false
@@ -184,6 +186,16 @@ Rectangle {
                         filterType: GlobalFilter.FilterType.ImageLabelClass
                         globalFilter: header.globalFilter
                         model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.labelClassFilterItems : null
+                    }
+
+                    DropDownMenuButton {
+                        id: customFilterDropDown
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: 200
+                        text: "自定义过滤"
+                        filterType: GlobalFilter.FilterType.Custom
+                        globalFilter: header.globalFilter
+                        model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.customFilterItems : null
                     }
 
                     DropDownMenuButton {
@@ -256,6 +268,7 @@ Rectangle {
             datasetDropDown.checked = false
             tagDropDown.checked = false
             labelClassImageDropDown.checked = false
+            customFilterDropDown.checked = false
             imageSearchDropDown.checked = false
             labelSearchDropDown.checked = false
             header.syncFileNameFilterField()

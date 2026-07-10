@@ -1,5 +1,6 @@
 #include "data/GlobalFilter.h"
 
+#include "data/CustomFilterModule.h"
 #include "data/DataManager.h"
 #include "data/DatasetFilterModule.h"
 #include "data/Datasets.h"
@@ -36,6 +37,7 @@ void GlobalFilter::initializeFilterModules(DataManager *data_manager)
     tag_filter_               = std::make_unique<TagFilterModule>(data_manager, this);
     label_class_filter_       = std::make_unique<LabelClassFilterModule>(data_manager, this);
     image_label_class_filter_ = std::make_unique<ImageLabelClassFilterModule>(data_manager, this);
+    custom_filter_            = std::make_unique<CustomFilterModule>(data_manager, this);
     image_search_filter_      = std::make_unique<ImageSearchFilterModule>(data_manager, this);
     label_search_filter_      = std::make_unique<LabelSearchFilterModule>(data_manager, this);
 
@@ -43,6 +45,7 @@ void GlobalFilter::initializeFilterModules(DataManager *data_manager)
     filter_modules_[FilterType::Tag]             = tag_filter_.get();
     filter_modules_[FilterType::LabelClass]      = label_class_filter_.get();
     filter_modules_[FilterType::ImageLabelClass] = image_label_class_filter_.get();
+    filter_modules_[FilterType::Custom]          = custom_filter_.get();
     filter_modules_[FilterType::ImageSearch]     = image_search_filter_.get();
     filter_modules_[FilterType::LabelSearch]     = label_search_filter_.get();
 
@@ -233,6 +236,13 @@ void GlobalFilter::clearAllFilters()
     {
         image_label_class_filter_->clear();
         image_label_class_filter_->setEnabled(false);
+        changed = true;
+    }
+
+    if (custom_filter_)
+    {
+        custom_filter_->clear();
+        custom_filter_->setEnabled(false);
         changed = true;
     }
 
@@ -509,6 +519,7 @@ void GlobalFilter::updateFilterCriteria()
     current_criteria_.tag_ids.clear();
     current_criteria_.label_class_ids.clear();
     current_criteria_.image_label_class_ids.clear();
+    current_criteria_.custom_condition_ids.clear();
     current_criteria_.image_search_ids.clear();
     current_criteria_.label_search_ids.clear();
     current_criteria_.file_name_text.clear();
@@ -516,6 +527,7 @@ void GlobalFilter::updateFilterCriteria()
     current_criteria_.tag_inverted               = false;
     current_criteria_.label_class_inverted       = false;
     current_criteria_.image_label_class_inverted = false;
+    current_criteria_.custom_condition_inverted  = false;
     current_criteria_.image_search_inverted      = false;
     current_criteria_.label_search_inverted      = false;
 
@@ -541,6 +553,12 @@ void GlobalFilter::updateFilterCriteria()
     {
         current_criteria_.image_label_class_ids      = image_label_class_filter_->getActiveCriteria();
         current_criteria_.image_label_class_inverted = image_label_class_filter_->isInverted();
+    }
+
+    if (custom_filter_ && custom_filter_->isActive())
+    {
+        current_criteria_.custom_condition_ids      = custom_filter_->getActiveCriteria();
+        current_criteria_.custom_condition_inverted = custom_filter_->isInverted();
     }
 
     if (image_search_filter_ && image_search_filter_->isActive())
@@ -572,6 +590,11 @@ bool GlobalFilter::shouldIncludeImage(int64_t image_id) const
 
     if (image_label_class_filter_ && image_label_class_filter_->isEnabled()
         && !image_label_class_filter_->passes(image_id))
+    {
+        return false;
+    }
+
+    if (custom_filter_ && custom_filter_->isEnabled() && !custom_filter_->passes(image_id))
     {
         return false;
     }
@@ -656,6 +679,15 @@ bool GlobalFilter::hasFilterCriteriaChanged() const
         return true;
     }
     if (current_criteria_.image_label_class_inverted != previous_criteria_.image_label_class_inverted)
+    {
+        return true;
+    }
+
+    if (current_criteria_.custom_condition_ids != previous_criteria_.custom_condition_ids)
+    {
+        return true;
+    }
+    if (current_criteria_.custom_condition_inverted != previous_criteria_.custom_condition_inverted)
     {
         return true;
     }

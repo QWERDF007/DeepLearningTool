@@ -45,6 +45,7 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(DatasetFilterItemsModel *datasetFilterItems READ datasetFilterItems CONSTANT FINAL)
     Q_PROPERTY(TagFilterItemsModel *tagFilterItems READ tagFilterItems CONSTANT FINAL)
     Q_PROPERTY(LabelClassFilterItemsModel *labelClassFilterItems READ labelClassFilterItems CONSTANT FINAL)
+    Q_PROPERTY(CustomFilterItemsModel *customFilterItems READ customFilterItems CONSTANT FINAL)
     Q_PROPERTY(CategoryStatisticsModel *categoryStatisticsModel READ categoryStatisticsModel CONSTANT FINAL)
     Q_PROPERTY(int method READ method CONSTANT FINAL)
     Q_PROPERTY(QString providerCacheKey READ providerCacheKey CONSTANT FINAL)
@@ -113,6 +114,11 @@ public:
     LabelClassFilterItemsModel *labelClassFilterItems() const
     {
         return label_class_filter_items_;
+    }
+
+    CustomFilterItemsModel *customFilterItems() const
+    {
+        return custom_filter_items_;
     }
 
     CategoryStatisticsModel *categoryStatisticsModel() const
@@ -274,6 +280,7 @@ private:
     DatasetFilterItemsModel    *dataset_filter_items_{nullptr};
     TagFilterItemsModel        *tag_filter_items_{nullptr};
     LabelClassFilterItemsModel *label_class_filter_items_{nullptr};
+    CustomFilterItemsModel     *custom_filter_items_{nullptr};
 
     CategoryStatisticsModel *category_statistics_model_{nullptr};
 

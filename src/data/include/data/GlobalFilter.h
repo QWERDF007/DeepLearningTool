@@ -15,6 +15,7 @@ class LabelInstancesListModel;
 class DatasetsListModel;
 class ImageTagsListModel;
 class LabelClassesListModel;
+class CustomFilterModule;
 class DatasetFilterModule;
 class TagFilterModule;
 class LabelClassFilterModule;
@@ -29,6 +30,7 @@ struct FilterCriteria
     std::unordered_set<int64_t> tag_ids;
     std::unordered_set<int64_t> label_class_ids;
     std::unordered_set<int64_t> image_label_class_ids;
+    std::unordered_set<int64_t> custom_condition_ids;
     std::unordered_set<int64_t> image_search_ids;
     std::unordered_set<int64_t> label_search_ids;
     QString                     file_name_text;
@@ -36,6 +38,7 @@ struct FilterCriteria
     bool                        tag_inverted{false};
     bool                        label_class_inverted{false};
     bool                        image_label_class_inverted{false};
+    bool                        custom_condition_inverted{false};
     bool                        image_search_inverted{false};
     bool                        label_search_inverted{false};
 
@@ -46,8 +49,9 @@ struct FilterCriteria
     bool isEmpty() const
     {
         return dataset_ids.empty() && tag_ids.empty() && label_class_ids.empty() && image_label_class_ids.empty()
-            && image_search_ids.empty() && label_search_ids.empty() && file_name_text.isEmpty() && !dataset_inverted
-            && !tag_inverted && !label_class_inverted && !image_label_class_inverted && !image_search_inverted
+            && custom_condition_ids.empty() && image_search_ids.empty() && label_search_ids.empty()
+            && file_name_text.isEmpty() && !dataset_inverted && !tag_inverted && !label_class_inverted
+            && !image_label_class_inverted && !custom_condition_inverted && !image_search_inverted
             && !label_search_inverted;
     }
 };
@@ -86,6 +90,7 @@ public:
         Tag,             // 标签过滤器
         LabelClass,      // 标注类别过滤器（仅作用于标注实例）
         ImageLabelClass, // 标注类别过滤器（作用于图像：图像中包含选中类别实例则保留）
+        Custom,          // 自定义条件过滤器
         ImageSearch,
         LabelSearch,
     };
@@ -272,6 +277,7 @@ private:
     std::unique_ptr<TagFilterModule>             tag_filter_;               // 标签过滤模块
     std::unique_ptr<LabelClassFilterModule>      label_class_filter_;       // 标注类别过滤模块
     std::unique_ptr<ImageLabelClassFilterModule> image_label_class_filter_; // 图像级标注类别过滤模块
+    std::unique_ptr<CustomFilterModule>          custom_filter_;
     std::unique_ptr<ImageSearchFilterModule>     image_search_filter_;
     std::unique_ptr<LabelSearchFilterModule>     label_search_filter_;
 

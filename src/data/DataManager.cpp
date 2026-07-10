@@ -138,6 +138,7 @@ void DataManager::init(const int method)
     dataset_filter_items_     = new DatasetFilterItemsModel(this);
     tag_filter_items_         = new TagFilterItemsModel(this);
     label_class_filter_items_ = new LabelClassFilterItemsModel(this);
+    custom_filter_items_      = new CustomFilterItemsModel(this);
 
     // Create CategoryStatisticsModel
     category_statistics_model_ = new CategoryStatisticsModel(label_instances_, label_classes_, image_instances_, this);
@@ -146,6 +147,7 @@ void DataManager::init(const int method)
     dataset_filter_items_->populateFromDatasets(datasets_);
     tag_filter_items_->populateFromTags(image_tags_);
     label_class_filter_items_->populateFromLabelClasses(label_classes_);
+    custom_filter_items_->populateFromCustomConditions();
 
     // Connect source model changes to refresh filter items models
     connect(datasets_, &QAbstractItemModel::rowsInserted, this,

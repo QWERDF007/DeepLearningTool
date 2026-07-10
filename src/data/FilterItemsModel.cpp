@@ -1,5 +1,6 @@
 #include "data/FilterItemsModel.h"
 
+#include "data/CustomFilterModule.h"
 #include "data/Datasets.h"
 #include "data/ImageTags.h"
 #include "data/LabelClasses.h"
@@ -285,6 +286,35 @@ void LabelClassFilterItemsModel::populateFromLabelClasses(QAbstractItemModel *la
             bool checked = unchecked_ids.find(label_class_id) == unchecked_ids.end();
             append(label_class_id, name, checked);
         }
+    }
+}
+
+// ============================================================================
+// CustomFilterItemsModel 实现
+// ============================================================================
+
+CustomFilterItemsModel::CustomFilterItemsModel(QObject *parent)
+    : FilterItemsModel(parent)
+{
+}
+
+void CustomFilterItemsModel::populateFromCustomConditions()
+{
+    std::unordered_set<int64_t> unchecked_ids;
+    for (const auto &item : items_)
+    {
+        if (!item.checked)
+        {
+            unchecked_ids.insert(item.id);
+        }
+    }
+
+    clear();
+
+    for (const CustomFilterModule::ConditionSpec &condition : CustomFilterModule::availableConditions())
+    {
+        const bool checked = unchecked_ids.find(condition.id) == unchecked_ids.end();
+        append(condition.id, condition.text, checked);
     }
 }
 

@@ -151,4 +151,17 @@ public:
     void populateFromLabelClasses(QAbstractItemModel *label_classes_model);
 };
 
+class CustomFilterItemsModel : public FilterItemsModel
+{
+    Q_OBJECT
+    QML_NAMED_ELEMENT(CustomFilterItemsModel)
+    QML_UNCREATABLE("Cannot create CustomFilterItemsModel directly!")
+
+public:
+    explicit CustomFilterItemsModel(QObject *parent = nullptr);
+    ~CustomFilterItemsModel() override = default;
+
+    void populateFromCustomConditions();
+};
+
 } // namespace dltool::data
