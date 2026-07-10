@@ -4,9 +4,24 @@
 #include "data/Images.h"
 
 #include <QAbstractItemModel>
+#include <QDir>
+#include <QFileInfo>
 #include <QHash>
 
 namespace dltool::data {
+
+namespace {
+
+QString normalizedPath(const QString &path)
+{
+    if (path.isEmpty())
+    {
+        return {};
+    }
+    return QDir::fromNativeSeparators(QDir::cleanPath(QFileInfo(path).absoluteFilePath())).toCaseFolded();
+}
+
+} // namespace
 
 CustomFilterModule::CustomFilterModule(DataManager *data_manager, QObject *parent)
     : FilterModule(data_manager, parent)
@@ -17,20 +32,32 @@ CustomFilterModule::CustomFilterModule(DataManager *data_manager, QObject *paren
         return;
     }
 
-    connect(image_model, &QAbstractItemModel::modelReset, this, [this]() { invalidateCaches(); });
     connect(image_model, &QAbstractItemModel::rowsInserted, this,
             [this](const QModelIndex &, int, int) { invalidateCaches(); });
     connect(image_model, &QAbstractItemModel::rowsRemoved, this,
             [this](const QModelIndex &, int, int) { invalidateCaches(); });
     connect(image_model, &QAbstractItemModel::dataChanged, this,
-            [this](const QModelIndex &, const QModelIndex &, const QList<int> &) { invalidateCaches(); });
+            [this](const QModelIndex &, const QModelIndex &, const QList<int> &roles)
+            {
+                if (roles.isEmpty() || roles.contains(ImageInstancesListModel::NameRole)
+                    || roles.contains(ImageInstancesListModel::PathRole))
+                {
+                    invalidateCaches();
+                }
+            });
 }
 
 std::vector<CustomFilterModule::ConditionSpec> CustomFilterModule::availableConditions()
 {
     return {
         {static_cast<int64_t>(Condition::DuplicateFileName), QStringLiteral("重复文件名")},
+        {static_cast<int64_t>(Condition::DuplicatePath), QStringLiteral("重复路径")},
     };
+}
+
+void CustomFilterModule::prepare(const std::vector<int64_t> &image_ids)
+{
+    rebuildDuplicateCaches(image_ids);
 }
 
 void CustomFilterModule::setCriteria(const std::vector<int64_t> &condition_ids)
@@ -129,62 +156,83 @@ bool CustomFilterModule::passesCondition(int64_t condition_id, int64_t image_id)
     {
     case Condition::DuplicateFileName:
         return hasDuplicateFileName(image_id);
+    case Condition::DuplicatePath:
+        return hasDuplicatePath(image_id);
     }
     return false;
 }
 
 bool CustomFilterModule::hasDuplicateFileName(int64_t image_id) const
 {
-    if (!duplicate_file_name_cache_valid_)
+    if (!duplicate_cache_valid_)
     {
-        rebuildDuplicateFileNameCache();
+        DataManager *dm = dataManager();
+        rebuildDuplicateCaches(dm && dm->imageInstances() ? dm->imageInstances()->getAllImageIds()
+                                                          : std::vector<int64_t>{});
     }
     return duplicate_file_name_image_ids_.find(image_id) != duplicate_file_name_image_ids_.end();
 }
 
-void CustomFilterModule::rebuildDuplicateFileNameCache() const
+bool CustomFilterModule::hasDuplicatePath(int64_t image_id) const
+{
+    if (!duplicate_cache_valid_)
+    {
+        DataManager *dm = dataManager();
+        rebuildDuplicateCaches(dm && dm->imageInstances() ? dm->imageInstances()->getAllImageIds()
+                                                          : std::vector<int64_t>{});
+    }
+    return duplicate_path_image_ids_.find(image_id) != duplicate_path_image_ids_.end();
+}
+
+void CustomFilterModule::rebuildDuplicateCaches(const std::vector<int64_t> &image_ids) const
 {
     duplicate_file_name_image_ids_.clear();
+    duplicate_path_image_ids_.clear();
 
     DataManager *dm = dataManager();
-    if (!dm || !dm->imageInstances())
+    ImageInstancesListModel *image_model = dm ? dm->imageInstances() : nullptr;
+    if (!image_model)
     {
-        duplicate_file_name_cache_valid_ = true;
+        duplicate_cache_valid_ = true;
         return;
     }
 
-    ImageInstancesListModel *image_model = dm->imageInstances();
-    const std::vector<int64_t> image_ids = image_model->getAllImageIds();
-
     QHash<QString, int> file_name_counts;
+    QHash<QString, int> path_counts;
     for (const int64_t image_id : image_ids)
     {
         const QString file_name = image_model->getImageName(image_id).toCaseFolded();
+        const QString path      = normalizedPath(image_model->getImagePath(image_id));
         if (!file_name.isEmpty())
         {
             file_name_counts[file_name]++;
         }
+        if (!path.isEmpty())
+        {
+            path_counts[path]++;
+        }
     }
 
     for (const int64_t image_id : image_ids)
     {
         const QString file_name = image_model->getImageName(image_id).toCaseFolded();
+        const QString path      = normalizedPath(image_model->getImagePath(image_id));
         if (!file_name.isEmpty() && file_name_counts.value(file_name) > 1)
         {
             duplicate_file_name_image_ids_.insert(image_id);
         }
+        if (!path.isEmpty() && path_counts.value(path) > 1)
+        {
+            duplicate_path_image_ids_.insert(image_id);
+        }
     }
 
-    duplicate_file_name_cache_valid_ = true;
+    duplicate_cache_valid_ = true;
 }
 
 void CustomFilterModule::invalidateCaches()
 {
-    duplicate_file_name_cache_valid_ = false;
-    if (enabled_)
-    {
-        emit criteriaChanged();
-    }
+    duplicate_cache_valid_ = false;
 }
 
 } // namespace dltool::data

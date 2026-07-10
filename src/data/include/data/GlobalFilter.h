@@ -256,6 +256,9 @@ private:
      */
     bool shouldIncludeImage(int64_t image_id) const;
 
+    /// 判断图像是否通过除自定义重复条件以外的过滤器。
+    bool shouldIncludeImageWithoutCustom(int64_t image_id) const;
+
     /**
      * @brief 判断标注是否应该被包含在过滤结果中
      * @param label_id 标注ID
@@ -288,6 +291,7 @@ private:
     QString        file_name_filter_text_;
 
     bool force_apply_{false}; // 强制重新应用过滤（跳过条件未变的优化）
+    bool applying_filters_{false}; // 防止模型重置信号导致过滤递归重入
 };
 
 } // namespace dltool::data

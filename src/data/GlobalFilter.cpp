@@ -13,6 +13,7 @@
 #include "data/Labels.h"
 #include "data/TagFilterModule.h"
 
+#include <QScopedValueRollback>
 #include <QStringList>
 
 namespace dltool::data {
@@ -436,6 +437,12 @@ void GlobalFilter::setFileNameFilterText(const QString &text)
 
 void GlobalFilter::applyFilters()
 {
+    if (applying_filters_)
+    {
+        return;
+    }
+    QScopedValueRollback<bool> applying_guard(applying_filters_, true);
+
     const bool should_force_apply = force_apply_;
     force_apply_                  = false;
 
@@ -468,6 +475,19 @@ void GlobalFilter::applyFilters()
     {
         if (auto *image_model = data_manager_->imageInstances())
         {
+            if (custom_filter_ && custom_filter_->isEnabled())
+            {
+                std::vector<int64_t> candidate_ids;
+                for (const int64_t image_id : image_model->getAllImageIds())
+                {
+                    if (shouldIncludeImageWithoutCustom(image_id))
+                    {
+                        candidate_ids.push_back(image_id);
+                    }
+                }
+                custom_filter_->prepare(candidate_ids);
+            }
+
             auto image_filter_func = [this](int64_t image_id) -> bool
             {
                 return shouldIncludeImage(image_id);
@@ -578,6 +598,21 @@ void GlobalFilter::updateFilterCriteria()
 
 bool GlobalFilter::shouldIncludeImage(int64_t image_id) const
 {
+    if (!shouldIncludeImageWithoutCustom(image_id))
+    {
+        return false;
+    }
+
+    if (custom_filter_ && custom_filter_->isEnabled() && !custom_filter_->passes(image_id))
+    {
+        return false;
+    }
+
+    return true;
+}
+
+bool GlobalFilter::shouldIncludeImageWithoutCustom(int64_t image_id) const
+{
     if (dataset_filter_ && dataset_filter_->isEnabled() && !dataset_filter_->passes(image_id))
     {
         return false;
@@ -590,11 +625,6 @@ bool GlobalFilter::shouldIncludeImage(int64_t image_id) const
 
     if (image_label_class_filter_ && image_label_class_filter_->isEnabled()
         && !image_label_class_filter_->passes(image_id))
-    {
-        return false;
-    }
-
-    if (custom_filter_ && custom_filter_->isEnabled() && !custom_filter_->passes(image_id))
     {
         return false;
     }
