@@ -8,6 +8,7 @@ ClassificationLabelCanvas {
     property FeatureManager featureManager
     property alias showBoundingBoxes: annotationLayer.showBoundingBoxes
     property alias actions: annotationLayer.actions
+    property alias smartPromptMode: annotationLayer.smartPromptMode
     readonly property bool drawingToolActive: annotationLayer.rectangleToolMode || annotationLayer.polygonToolMode
     labelClassShortcutHandler: function(classId, event) {
         if (drawingToolActive) {

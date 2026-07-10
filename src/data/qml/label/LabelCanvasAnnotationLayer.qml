@@ -14,6 +14,7 @@ Item {
     property bool imageLevelLabelMode: false
     property var afterLabelAdded: function(imageId, labelClassId, data) {}
     property bool showBoundingBoxes: false
+    property int smartPromptMode: LabelCanvasEnums.PointPrompt
     property alias actions: labelCanvasActions
 
     readonly property ImageInstancesModel imageInstances: canvas ? canvas.imageInstances : null
@@ -57,6 +58,8 @@ Item {
         smartPoints: smartLayer.points
         smartHoverPoint: smartLayer.hoverPoint
         smartHoverPointValid: smartLayer.hoverPointValid
+        smartBox: smartLayer.box
+        smartBoxValid: smartLayer.boxValid
         smartMaskAlpha: annotationSettings.smartAnnotationMaskAlpha
     }
 
@@ -85,6 +88,7 @@ Item {
         segmentationMode: annotationLayer.polygonRegionMode
         drawingPolygon: polygonLayer.drawingPolygon
         refreshInterval: annotationSettings.smartAnnotationRefreshInterval
+        promptMode: annotationLayer.smartPromptMode
         addLabelHandler: function(data) {
             return inputRouter.addCurrentLabel(data)
         }

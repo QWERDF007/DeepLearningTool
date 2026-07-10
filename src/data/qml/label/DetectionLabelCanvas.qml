@@ -10,6 +10,7 @@ LabelCanvasBase {
     property alias polygonRegionMode: annotationLayer.polygonRegionMode
     property alias showBoundingBoxes: annotationLayer.showBoundingBoxes
     property alias actions: annotationLayer.actions
+    property alias smartPromptMode: annotationLayer.smartPromptMode
 
     LabelCanvasAnnotationLayer {
         id: annotationLayer

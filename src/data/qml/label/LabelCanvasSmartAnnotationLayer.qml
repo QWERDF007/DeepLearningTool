@@ -13,6 +13,7 @@ Item {
     property bool segmentationMode: false
     property bool drawingPolygon: false
     property int refreshInterval: 80
+    property int promptMode: LabelCanvasEnums.PointPrompt
     property var addLabelHandler: function(data) { return false }
 
     readonly property bool active: canvas && canvas.toolMode === LabelCanvasEnums.SmartTool
@@ -22,6 +23,8 @@ Item {
     property alias points: smartAnnotationController.points
     property alias hoverPoint: smartAnnotationController.hoverPoint
     property alias hoverPointValid: smartAnnotationController.hoverPointValid
+    property alias box: smartAnnotationController.box
+    property alias boxValid: smartAnnotationController.boxValid
 
     readonly property ImageInstancesModel imageInstances: canvas ? canvas.imageInstances : null
     readonly property LabelClassesModel labelClasses: canvas ? canvas.labelClasses : null
@@ -41,6 +44,7 @@ Item {
         drawingPolygon: smartLayer.drawingPolygon
         drawingColor: smartLayer.canvas ? smartLayer.canvas.drawingColor : "red"
         refreshInterval: smartLayer.refreshInterval
+        promptMode: smartLayer.promptMode
     }
 
     Connections {
@@ -70,6 +74,16 @@ Item {
         }
     }
 
+    function handlePromptModeChanged() {
+        smartAnnotationController.clearHoverPoint()
+        if (canvas && active) {
+            canvas.canvasMouseArea.cursorShape = promptMode === LabelCanvasEnums.BoxPrompt
+                                                 ? Qt.CrossCursor : Qt.ArrowCursor
+        }
+    }
+
+    onPromptModeChanged: handlePromptModeChanged()
+
     function handleCurrentImageChanged() {
         smartAnnotationController.clear()
     }
@@ -88,7 +102,7 @@ Item {
         }
 
         if (event.key === Qt.Key_Escape) {
-            if (smartAnnotationController.points.length > 0) {
+            if (smartAnnotationController.points.length > 0 || smartAnnotationController.boxValid) {
                 smartAnnotationController.clear()
             } else if (canvas) {
                 canvas.setToolMode(LabelCanvasEnums.SelectTool)
@@ -112,7 +126,21 @@ Item {
     }
 
     function handleMousePressed(pos, button) {
-        return smartAnnotationController.handlePress(pos, button)
+        let handled = smartAnnotationController.handlePress(pos, button)
+        if (handled && promptMode === LabelCanvasEnums.BoxPrompt && button === Qt.LeftButton) {
+            canvas.interactionState = LabelCanvasEnums.ReadyDraw
+        }
+        return handled
+    }
+
+    function handleMouseReleased(pos, button) {
+        if (!active || promptMode !== LabelCanvasEnums.BoxPrompt || button !== Qt.LeftButton
+                || !smartAnnotationController.drawingBox) {
+            return false
+        }
+        smartAnnotationController.finishBox(pos)
+        canvas.interactionState = LabelCanvasEnums.Idle
+        return true
     }
 
     function shouldConsumeIdleRelease(button) {
@@ -123,6 +151,11 @@ Item {
     }
 
     function handleMousePositionChanged(pos) {
+        if (active && promptMode === LabelCanvasEnums.BoxPrompt && smartAnnotationController.drawingBox) {
+            canvas.interactionState = LabelCanvasEnums.Drawing
+            smartAnnotationController.updateBox(pos)
+            return true
+        }
         if (active && canvas && canvas.interactionState === LabelCanvasEnums.Idle) {
             smartAnnotationController.handleHover(pos, true)
             return true

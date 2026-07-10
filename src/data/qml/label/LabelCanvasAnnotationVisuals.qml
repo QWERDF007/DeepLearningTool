@@ -16,6 +16,8 @@ Item {
     property var smartPoints: []
     property var smartHoverPoint: ({})
     property bool smartHoverPointValid: false
+    property var smartBox: ({})
+    property bool smartBoxValid: false
     property real smartMaskAlpha: 0.35
 
     property alias labelsListView: labelsOverlay
@@ -65,6 +67,8 @@ Item {
         points: visuals.smartPoints
         hoverPoint: visuals.smartHoverPoint
         hoverPointValid: visuals.smartHoverPointValid
+        box: visuals.smartBox
+        boxValid: visuals.smartBoxValid
     }
 
     CrosshairCanvas {

@@ -31,10 +31,8 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
-#include <limits>
 #include <map>
 #include <set>
-#include <unordered_map>
 #include <utility>
 
 using dltool::common::ensureDirectory;
@@ -447,7 +445,7 @@ bool hasSegmentationData(const nlohmann::json &annotation_json)
 }
 
 std::vector<std::vector<QPointF>> parseSegmentationPolygons(const nlohmann::json &annotation_json,
-                                                            const double         polygon_approx_epsilon_ratio)
+                                                            const double          polygon_approx_epsilon_ratio)
 {
     if (!hasSegmentationData(annotation_json))
         return {};
@@ -1674,8 +1672,8 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
     {
         const QString annotation_dir = data_dir.trimmed();
         updateProgress(0, QString("正在扫描图像文件..."));
-        const QString    image_root_dir = QFileInfo(image_dir).absoluteFilePath();
-        const std::vector<QString> image_files = DatasetIO::scanImageFiles(image_root_dir);
+        const QString              image_root_dir = QFileInfo(image_dir).absoluteFilePath();
+        const std::vector<QString> image_files    = DatasetIO::scanImageFiles(image_root_dir);
         if (image_files.empty())
         {
             updateProgress(100, QString("未找到任何图像文件"));
@@ -2242,8 +2240,8 @@ bool MaskIO::readMaskGeometry(const QString &mask_path, MaskGeometry &geometry,
             binary_mask.push_back(row[x] >= kMaskThreshold ? uint8_t{1} : uint8_t{0});
     }
 
-    std::vector<std::vector<QPointF>> polygons = dltool::common::maskToPolygons(
-        binary_mask, mask.width(), mask.height(), false, polygon_approx_epsilon_ratio);
+    std::vector<std::vector<QPointF>> polygons
+        = dltool::common::maskToPolygons(binary_mask, mask.width(), mask.height(), false, polygon_approx_epsilon_ratio);
     if (!polygons.empty())
         geometry.polygon = std::move(polygons.front());
     else

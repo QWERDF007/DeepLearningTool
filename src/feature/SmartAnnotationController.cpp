@@ -26,6 +26,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -151,7 +152,7 @@ std::unique_ptr<irt::features::SAMImagePredictor> loadSmartPredictor(const Smart
  * @return 解析后的提示点列表
  * @throws std::runtime_error 提示点无效时抛出
  */
-std::vector<PromptPoint> parsePromptPoints(const QVariantList &prompt_points)
+std::vector<PromptPoint> parsePromptPoints(const QVariantList &prompt_points, bool has_box)
 {
     std::vector<PromptPoint> points;
     points.reserve(static_cast<size_t>(prompt_points.size()));
@@ -171,16 +172,36 @@ std::vector<PromptPoint> parsePromptPoints(const QVariantList &prompt_points)
         points.push_back(point);
     }
 
-    if (points.empty())
-        throw std::runtime_error("请先添加智能标注提示点");
-    if (positive_count == 0)
+    if (points.empty() && !has_box)
+        throw std::runtime_error("请先添加智能标注提示点或提示框");
+    if (positive_count == 0 && !has_box)
         throw std::runtime_error("智能标注至少需要一个 positive 点");
     if (points.size() > static_cast<size_t>(kSamMaxPoints))
         throw std::runtime_error("智能标注最多支持 16 个提示点");
     return points;
 }
 
-irt::features::SAMImagePrompt buildImagePrompt(const std::vector<PromptPoint> &prompts)
+std::optional<QRectF> parsePromptBox(const QVariantMap &options)
+{
+    const QVariantMap map = options.value(QStringLiteral("prompt_box")).toMap();
+    if (map.isEmpty())
+        return std::nullopt;
+
+    const double x      = map.value(QStringLiteral("x")).toDouble();
+    const double y      = map.value(QStringLiteral("y")).toDouble();
+    const double width  = map.value(QStringLiteral("width")).toDouble();
+    const double height = map.value(QStringLiteral("height")).toDouble();
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width) || !std::isfinite(height))
+        throw std::runtime_error("智能标注提示框坐标无效");
+
+    const QRectF box(x, y, width, height);
+    if (!box.isValid() || box.width() <= 1.0 || box.height() <= 1.0)
+        throw std::runtime_error("智能标注提示框无效");
+    return box.normalized();
+}
+
+irt::features::SAMImagePrompt buildImagePrompt(const std::vector<PromptPoint> &prompts,
+                                               const std::optional<QRectF>    &box)
 {
     irt::features::SAMImagePrompt prompt;
     prompt.coordinate_mode = irt::features::SAMPromptCoordinateMode::ImagePixels;
@@ -189,6 +210,11 @@ irt::features::SAMImagePrompt buildImagePrompt(const std::vector<PromptPoint> &p
     {
         prompt.points.push_back(irt::features::SAMPromptPoint{static_cast<float>(point.point.x()),
                                                               static_cast<float>(point.point.y()), point.label});
+    }
+    if (box)
+    {
+        prompt.box = irt::features::SAMPromptBox{static_cast<float>(box->left()), static_cast<float>(box->top()),
+                                                 static_cast<float>(box->right()), static_cast<float>(box->bottom())};
     }
     return prompt;
 }
@@ -351,6 +377,20 @@ std::vector<PromptPoint> mapPromptsToInferenceInput(const std::vector<PromptPoin
         mapped.push_back(point);
     }
     return mapped;
+}
+
+std::optional<QRectF> mapPromptBoxToInferenceInput(const std::optional<QRectF> &box, const InferenceImageInput &input)
+{
+    if (!box || !input.viewport_input)
+        return box;
+
+    const QRectF source_rect = input.source_rect.adjusted(-0.5, -0.5, 0.5, 0.5);
+    if (!source_rect.contains(box->topLeft()) || !source_rect.contains(box->bottomRight()))
+        throw std::runtime_error("智能标注提示框不在当前可视窗口内");
+
+    return QRectF((box->x() - input.source_rect.x()) * input.scale_x,
+                  (box->y() - input.source_rect.y()) * input.scale_y, box->width() * input.scale_x,
+                  box->height() * input.scale_y);
 }
 
 /**
@@ -753,7 +793,8 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
             || !settingBool(settings, generated_field::SmartAnnotation::Enabled, false))
             throw std::runtime_error("智能标注未启用");
 
-        const std::vector<PromptPoint> prompts = parsePromptPoints(prompt_points);
+        const std::optional<QRectF>    prompt_box = parsePromptBox(options);
+        const std::vector<PromptPoint> prompts    = parsePromptPoints(prompt_points, prompt_box.has_value());
 
         const QString model_name
             = normalizedModelName(settingString(settings, generated_field::SmartAnnotation::Model));
@@ -781,10 +822,12 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
 
         setRunning(true);
 
-        const InferenceImageInput               image_input   = prepareInferenceImageInput(image_path, options);
-        const std::vector<PromptPoint>          input_prompts = mapPromptsToInferenceInput(prompts, image_input);
-        const irt::features::SAMImagePrediction prediction    = predictor_->predict(
-            toFilesystemPath(image_input.path), buildImagePrompt(input_prompts), buildPredictOptions(settings));
+        const InferenceImageInput      image_input      = prepareInferenceImageInput(image_path, options);
+        const std::vector<PromptPoint> input_prompts    = mapPromptsToInferenceInput(prompts, image_input);
+        const std::optional<QRectF>    input_prompt_box = mapPromptBoxToInferenceInput(prompt_box, image_input);
+        const irt::features::SAMImagePrediction prediction
+            = predictor_->predict(toFilesystemPath(image_input.path), buildImagePrompt(input_prompts, input_prompt_box),
+                                  buildPredictOptions(settings));
         const int   mask_index = 0;
         const float selected_iou
             = (mask_index >= 0 && static_cast<size_t>(mask_index) < prediction.iou_predictions.size())
@@ -836,6 +879,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         result[QStringLiteral("points")]           = pointsToVariantList(output_polygon);
         result[QStringLiteral("point_count")]      = static_cast<int>(output_polygon.size());
         result[QStringLiteral("prompt_count")]     = static_cast<int>(prompts.size());
+        result[QStringLiteral("has_box_prompt")]   = prompt_box.has_value();
         result[QStringLiteral("mask_index")]       = mask_index;
         result[QStringLiteral("iou")]              = selected_iou;
         result[QStringLiteral("mask_pixel_count")] = foreground_pixels;

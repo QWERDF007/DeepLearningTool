@@ -96,7 +96,9 @@ Item {
         }
 
         if (canvas.toolMode === LabelCanvasEnums.RectangleTool
-                || canvas.toolMode === LabelCanvasEnums.PolygonTool) {
+                || canvas.toolMode === LabelCanvasEnums.PolygonTool
+                || (canvas.toolMode === LabelCanvasEnums.SmartTool
+                    && smartLayer && smartLayer.promptMode === LabelCanvasEnums.BoxPrompt)) {
             canvas.canvasMouseArea.cursorShape = Qt.CrossCursor
         } else {
             canvas.canvasMouseArea.cursorShape = Qt.ArrowCursor
@@ -174,6 +176,9 @@ Item {
 
     function handleToolMouseReleased(event) {
         if (consumeSuppressedRelease()) {
+            return true
+        }
+        if (smartLayer && smartLayer.handleMouseReleased(canvas.geometry.getPosOnImage(event), event.button)) {
             return true
         }
         if (smartLayer && smartLayer.shouldConsumeIdleRelease(event.button)) {

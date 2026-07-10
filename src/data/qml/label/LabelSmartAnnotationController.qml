@@ -20,7 +20,12 @@ Item {
     property bool drawingPolygon: false
     property color drawingColor: "red"
     property int refreshInterval: 80
+    property int promptMode: LabelCanvasEnums.PointPrompt
     property var points: []
+    property var box: ({})
+    property bool boxValid: false
+    property bool drawingBox: false
+    property var boxStart: ({})
     property var hoverPoint: ({})
     property bool hoverPointValid: false
     property var result: ({})
@@ -39,9 +44,13 @@ Item {
     }
 
     onDrawingColorChanged: refreshDrawingPreview()
+    onPromptModeChanged: {
+        clearHoverPoint()
+        drawingBox = false
+    }
     onUseViewportInputChanged: {
         dirty = true
-        if (active && promptPoints().length > 0) {
+        if (active && (promptPoints().length > 0 || boxValid)) {
             previewTimer.restart()
         }
     }
@@ -69,6 +78,10 @@ Item {
         if (!active || (button !== Qt.LeftButton && button !== Qt.RightButton)) {
             return false
         }
+        if (promptMode === LabelCanvasEnums.BoxPrompt && button === Qt.LeftButton) {
+            beginBox(pos)
+            return true
+        }
         appendPoint(pos,
                     button === Qt.LeftButton ? LabelCanvasEnums.ForegroundPrompt
                                              : LabelCanvasEnums.BackgroundPrompt)
@@ -79,7 +92,43 @@ Item {
         if (!active) {
             return
         }
-        setHoverPoint(pos, schedulePreview)
+        if (promptMode === LabelCanvasEnums.PointPrompt) {
+            setHoverPoint(pos, schedulePreview)
+        } else if (hoverPointValid) {
+            clearHoverPoint()
+        }
+    }
+
+    function beginBox(pos) {
+        if (!geometry || !geometry.isPointInsideImage(pos)) {
+            return
+        }
+        boxStart = geometry.clampPointToImage(pos)
+        drawingBox = true
+        clearHoverPoint()
+        updateBox(pos)
+    }
+
+    function updateBox(pos) {
+        if (!drawingBox || !geometry) {
+            return
+        }
+        let end = geometry.clampPointToImage(pos)
+        box = geometry.rectFromPoints(boxStart, end)
+        boxValid = box.width > 1 && box.height > 1
+        dirty = true
+    }
+
+    function finishBox(pos) {
+        updateBox(pos)
+        drawingBox = false
+        if (boxValid) {
+            updatePreview()
+        } else if (points.length > 0) {
+            updatePreview()
+        } else {
+            clearPreview()
+        }
     }
 
     function handleExited() {
@@ -157,7 +206,8 @@ Item {
         let viewport = useViewportInput ? visibleViewportInput() : ({})
         return {
             use_viewport_input: useViewportInput && viewport.width > 0 && viewport.height > 0,
-            viewport: viewport
+            viewport: viewport,
+            prompt_box: boxValid ? box : ({})
         }
     }
 
@@ -196,7 +246,7 @@ Item {
         }
 
         dirty = true
-        if (promptPoints().length > 0) {
+        if (promptPoints().length > 0 || boxValid) {
             previewTimer.restart()
         }
     }
@@ -219,7 +269,7 @@ Item {
     }
 
     function canRun(prompts) {
-        return active && smartAnnotation && imageInstances && prompts.length > 0
+        return active && smartAnnotation && imageInstances && (prompts.length > 0 || boxValid)
     }
 
     function isValidResult(inferResult) {
@@ -285,7 +335,8 @@ Item {
     }
 
     function ensurePromptFromMouse(mouseInside, mouseX, mouseY) {
-        if (!hoverPointValid && points.length === 0 && mouseInside && geometry) {
+        if (promptMode === LabelCanvasEnums.PointPrompt && !hoverPointValid && points.length === 0
+                && !boxValid && mouseInside && geometry) {
             setHoverPoint(geometry.getPosOnImagePoint(mouseX, mouseY), false)
         }
     }
@@ -324,6 +375,10 @@ Item {
     function clear() {
         previewTimer.stop()
         points = []
+        box = ({})
+        boxValid = false
+        drawingBox = false
+        boxStart = ({})
         hoverPoint = ({})
         hoverPointValid = false
         result = ({})

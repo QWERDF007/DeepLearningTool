@@ -40,6 +40,13 @@ public:
         ForegroundPrompt = 1,
     };
     Q_ENUM(SmartPromptLabel)
+
+    enum SmartPromptMode
+    {
+        PointPrompt = 0,
+        BoxPrompt   = 1,
+    };
+    Q_ENUM(SmartPromptMode)
 };
 
 } // namespace dltool::data

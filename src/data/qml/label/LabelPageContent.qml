@@ -125,11 +125,19 @@ Rectangle {
                         Layout.preferredWidth: 42
                         Layout.fillHeight: true
                         currentTool: page.activeLabelCanvas ? page.activeLabelCanvas.toolMode : LabelCanvasEnums.SelectTool
+                        smartPromptMode: page.activeLabelCanvas && page.activeLabelCanvas.smartPromptMode !== undefined
+                                         ? page.activeLabelCanvas.smartPromptMode : LabelCanvasEnums.PointPrompt
                         featureManager: page.featureManager
                         dataManager: page.dataManager
                         onToolSelected: function(mode) {
                             if (page.activeLabelCanvas) {
                                 page.activeLabelCanvas.setToolMode(mode)
+                            }
+                        }
+                        onSmartPromptModeSelected: function(mode) {
+                            if (page.activeLabelCanvas && page.activeLabelCanvas.smartPromptMode !== undefined) {
+                                page.activeLabelCanvas.smartPromptMode = mode
+                                page.activeLabelCanvas.setToolMode(LabelCanvasEnums.SmartTool)
                             }
                         }
                     }
