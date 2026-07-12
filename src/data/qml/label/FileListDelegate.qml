@@ -15,6 +15,7 @@ Rectangle {
     property bool hasLabels: false
     
     signal clicked()
+    signal rightClicked()
     
     Row {
         anchors.fill: parent
@@ -51,7 +52,14 @@ Rectangle {
         id: mouseArea
         anchors.fill: parent
         hoverEnabled: true
-        onClicked: delegate.clicked()
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: function(mouse) {
+            if (mouse.button === Qt.RightButton) {
+                delegate.rightClicked()
+            } else {
+                delegate.clicked()
+            }
+        }
     }
     
     QuiToolTip {

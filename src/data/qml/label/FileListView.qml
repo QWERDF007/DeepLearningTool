@@ -16,6 +16,52 @@ Rectangle {
     property ItemSelectionModel selection: model ? model.selection : null
     property int total: model ? model.count : 0
     property int current: selection ? selection.currentIndex.row : -1
+    property string contextFileName: ""
+    property string contextFilePath: ""
+
+    QuiMenu {
+        id: fileContextMenu
+        width: 200
+
+        QuiMenuItem {
+            text: "复制图像文件名"
+            iconSource: QuiFontIcon.Copy
+            enabled: fileListView.contextFileName.length > 0
+            onTriggered: fileListView.copyText(fileListView.contextFileName)
+        }
+
+        QuiMenuItem {
+            text: "复制图像文件路径"
+            iconSource: QuiFontIcon.Copy
+            enabled: fileListView.contextFilePath.length > 0
+            onTriggered: fileListView.copyText(fileListView.contextFilePath)
+        }
+
+        QuiMenuItem {
+            text: "删除图像"
+            iconSource: QuiFontIcon.Delete
+            enabled: fileListView.dataManager !== null && fileListView.current >= 0
+            onTriggered: deleteConfirmDialog.open()
+        }
+    }
+
+    TextEdit {
+        id: clipboard
+        visible: false
+    }
+
+    QuiContentDialog {
+        id: deleteConfirmDialog
+        title: "删除图像"
+        message: fileListView.contextFileName.length > 0
+                 ? "确定删除图像 “" + fileListView.contextFileName + "” 吗?"
+                 : "确定删除当前图像吗?"
+        onPositiveClicked: function() {
+            if (fileListView.dataManager) {
+                fileListView.dataManager.deleteSelectedImages()
+            }
+        }
+    }
     
     ColumnLayout {
         anchors.fill: parent
@@ -57,6 +103,12 @@ Rectangle {
                 selected: model.selected ? model.selected : false
                 hasLabels: model.hasLabels ? model.hasLabels : false
                 onClicked: fileListView.switchToImage(index)
+                onRightClicked: {
+                    fileListView.switchToImage(index)
+                    fileListView.contextFileName = model.name ? model.name : ""
+                    fileListView.contextFilePath = model.path ? model.path : ""
+                    fileContextMenu.popup()
+                }
             }
             
             // 当前项改变时自动滚动
@@ -78,6 +130,12 @@ Rectangle {
             selection.setCurrentIndex(newIndex, ItemSelectionModel.Select)
             fileListView.model.lastIndex = index
         }
+    }
+
+    function copyText(text) {
+        clipboard.text = text
+        clipboard.selectAll()
+        clipboard.copy()
     }
 
     Shortcut {
