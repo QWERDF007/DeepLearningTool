@@ -616,7 +616,7 @@ qint64 TaskTableModel::etaSeconds(const TaskRecord &task) const
 
 bool TaskTableModel::canStart(const TaskRecord &task) const
 {
-    return task.status == Pending || task.status == Paused || task.status == Stopped;
+    return task.status == Pending || task.status == Paused || task.status == Stopped || task.status == Failed;
 }
 
 bool TaskTableModel::canPause(const TaskRecord &task) const

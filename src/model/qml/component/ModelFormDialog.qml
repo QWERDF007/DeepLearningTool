@@ -7,26 +7,44 @@ import quickui
 
 QuiPopup {
     id: control
-    width: 420
-    height: 330
+    width: 600
+    height: 480
     maskOpacity: 0.2
 
     property var frameworkModel: []
     property var architectureModel: []
 
+    property string title: "添加模型"
+    property bool metadataEditable: true
+    property var nameValidator: null
+    property string nameError: ""
     signal frameworkChanged(string frameworkName)
     signal submitted(string modelName, string frameworkName, string modelArchitecture)
 
-    function openForm() {
-        nameField.text = ""
+    function validateName() {
+        const modelName = nameField.text.trim()
+        if (modelName.length === 0) {
+            nameError = "请输入模型名称"
+            return false
+        }
+        nameError = nameValidator ? nameValidator(modelName) : ""
+        return nameError.length === 0
+    }
+
+    function openForm(modelName, frameworkName, modelArchitecture) {
+        nameField.text = modelName === undefined ? "" : modelName
         if (frameworkBox.count > 0) {
-            frameworkBox.currentIndex = 0
-            control.frameworkChanged(frameworkBox.currentText)
+            frameworkBox.currentIndex = frameworkName === undefined || frameworkName.length === 0
+                                      ? 0 : Math.max(0, frameworkBox.find(frameworkName))
+            if (metadataEditable) {
+                control.frameworkChanged(frameworkBox.currentText)
+            }
         }
         if (architectureBox.count > 0) {
-            architectureBox.currentIndex = 0
+            architectureBox.currentIndex = modelArchitecture === undefined || modelArchitecture.length === 0
+                                        ? 0 : Math.max(0, architectureBox.find(modelArchitecture))
         }
-        messageText.text = ""
+        validateName()
         open()
         nameField.forceActiveFocus()
     }
@@ -38,7 +56,7 @@ QuiPopup {
 
         QuiText {
             Layout.fillWidth: true
-            text: "添加模型"
+            text: control.title
             font: QuiFont.Title
         }
 
@@ -54,9 +72,7 @@ QuiPopup {
                 id: nameField
                 Layout.fillWidth: true
                 placeholderText: "输入模型名称"
-                onTextEdited: {
-                    messageText.text = ""
-                }
+                onTextChanged: control.validateName()
             }
         }
 
@@ -72,6 +88,7 @@ QuiPopup {
                 id: frameworkBox
                 Layout.fillWidth: true
                 model: control.frameworkModel
+                enabled: control.metadataEditable
                 onActivated: {
                     control.frameworkChanged(currentText)
                     if (architectureBox.count > 0) {
@@ -93,14 +110,24 @@ QuiPopup {
                 id: architectureBox
                 Layout.fillWidth: true
                 model: control.architectureModel
+                enabled: control.metadataEditable
             }
         }
 
-        QuiText {
-            id: messageText
+        Item {
             Layout.fillWidth: true
-            color: "#D83B01"
-            visible: text.length > 0
+            Layout.minimumHeight: 32
+            Layout.preferredHeight: 32
+
+            QuiText {
+                id: messageText
+                anchors.fill: parent
+                text: control.nameError
+                color: "#D83B01"
+                wrapMode: Text.Wrap
+                verticalAlignment: Text.AlignTop
+                visible: text.length > 0
+            }
         }
 
         Item {
@@ -120,16 +147,15 @@ QuiPopup {
             }
             QuiButton {
                 text: "确认"
-                enabled: nameField.text.trim().length > 0 && frameworkBox.currentText.length > 0
+                enabled: control.nameError.length === 0 && nameField.text.trim().length > 0
+                         && frameworkBox.currentText.length > 0
                          && architectureBox.currentText.length > 0
                 onClicked: {
                     const modelName = nameField.text.trim()
-                    if (modelName.length === 0) {
-                        messageText.text = "请输入模型名称"
+                    if (!control.validateName())
                         return
-                    }
-                    control.submitted(modelName, frameworkBox.currentText, architectureBox.currentText)
                     control.close()
+                    control.submitted(modelName, frameworkBox.currentText, architectureBox.currentText)
                 }
             }
         }

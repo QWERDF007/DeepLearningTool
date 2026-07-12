@@ -7,6 +7,7 @@
 #include "model/ModelManager.h"
 #include "model/ModelTaskPreparationService.h"
 #include "model/TaskManager.h"
+#include "ui/SignalHelper.h"
 
 #include <spdlog/spdlog.h>
 
@@ -262,7 +263,10 @@ bool ModelTaskController::taskBelongsToCurrentModelManager(int task_id) const
 void ModelTaskController::failTask(int task_id, const QString &message) const
 {
     if (!message.isEmpty())
+    {
         spdlog::error("模型任务 {} 失败: {}", task_id, message.toUtf8().constData());
+        ui::SignalHelper::notifyError(QString("模型任务 %1 失败").arg(task_id), message);
+    }
     if (task_manager_ != nullptr)
         task_manager_->failTask(task_id);
 }
@@ -284,7 +288,19 @@ void ModelTaskController::handleExternalTaskFinished(int task_id, int exit_code,
     else if (normal_exit && exit_code == 0)
         task_manager_->finishTask(task_id);
     else
-        task_manager_->failTask(task_id);
+    {
+        const TaskTableModel::TaskSnapshot task = task_manager_->tasks()->taskSnapshotForId(task_id);
+        // A task process may report an error through the task server before it exits. In that
+        // case the router has already reported the failure, so do not display the same alert twice.
+        if (task.status != TaskTableModel::Failed)
+        {
+            const QString task_name = task.isValid() ? modelTaskDisplayName(task.task_type) : QString("模型任务");
+            const QString message   = normal_exit
+                                        ? QString("%1失败（退出码 %2），请查看模型日志。").arg(task_name).arg(exit_code)
+                                        : QString("%1异常退出，请查看模型日志。").arg(task_name);
+            failTask(task_id, message);
+        }
+    }
 }
 
 } // namespace dltool::model

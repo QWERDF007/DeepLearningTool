@@ -15,6 +15,7 @@ Rectangle {
     property alias addEnable: header.addEnable
     property ModelManager modelManager
     property var currentModelId: -1
+    property var editingModelId: -1
     property string currentModelUuid: ""
     property string currentModelName: ""
     property string currentFrameworkName: ""
@@ -154,8 +155,13 @@ Rectangle {
             onClicked: {
                 if (modelView.currentModelId < 0)
                     return
-                renameEditor.text = modelView.currentModelName
-                renameEditor.open()
+                modelView.editingModelId = modelView.currentModelId
+                modelFormDialog.title = "重命名"
+                modelFormDialog.metadataEditable = false
+                modelFormDialog.frameworkModel = [modelView.currentFrameworkName]
+                modelFormDialog.architectureModel = [modelView.currentModelArchitecture]
+                modelFormDialog.openForm(modelView.currentModelName, modelView.currentFrameworkName,
+                                         modelView.currentModelArchitecture)
             }
         }
         QuiMenuItem {
@@ -179,18 +185,6 @@ Rectangle {
         }
     }
 
-    QuiEditor {
-        id: renameEditor
-        description: "输入模型名称"
-        onEditTextChanged: function (modelName) {
-            if (modelManager && modelView.currentModelId >= 0) {
-                if (modelManager.renameModel(modelView.currentModelId, modelName)) {
-                    modelView.currentModelName = modelName
-                }
-            }
-        }
-    }
-
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 5
@@ -201,6 +195,9 @@ Rectangle {
             onAddClicked: {
                 if (modelManager) {
                     modelFormDialog.frameworkModel = modelManager.supportedFrameworks()
+                    modelView.editingModelId = -1
+                    modelFormDialog.title = "添加模型"
+                    modelFormDialog.metadataEditable = true
                     const firstFramework = modelFormDialog.frameworkModel.length > 0 ? modelFormDialog.frameworkModel[0] : ""
                     modelFormDialog.architectureModel = firstFramework.length > 0
                                                         ? modelManager.supportedModelArchitectures(firstFramework)
@@ -283,13 +280,26 @@ Rectangle {
 
     ModelFormDialog {
         id: modelFormDialog
+        nameValidator: function (modelName) {
+            if (!modelManager) {
+                return "模型管理器不可用"
+            }
+            return modelManager.validateModelName(modelName)
+        }
         onFrameworkChanged: function (frameworkName) {
             if (modelManager) {
                 modelFormDialog.architectureModel = modelManager.supportedModelArchitectures(frameworkName)
             }
         }
         onSubmitted: function (modelName, frameworkName, modelArchitecture) {
-            if (modelManager) {
+            if (!modelManager) {
+                return
+            }
+            if (modelView.editingModelId >= 0) {
+                if (modelManager.renameModel(modelView.editingModelId, modelName)) {
+                    modelView.currentModelName = modelName
+                }
+            } else {
                 modelManager.addModel(modelName, frameworkName, modelArchitecture)
             }
         }

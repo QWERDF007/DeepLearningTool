@@ -2,6 +2,7 @@
 
 #include "model/TaskCommunication.h"
 #include "model/TaskManager.h"
+#include "ui/SignalHelper.h"
 
 #include <spdlog/spdlog.h>
 
@@ -20,8 +21,16 @@ void TaskEventRouter::handleTaskMessage(const TaskMessage &message)
 
     if (message.type == TaskMessageType::Log)
     {
-        if (!message.message.isEmpty())
+        const QString error_prefix = QStringLiteral("[DLTOOL_ERROR] ");
+        if (message.message.startsWith(error_prefix))
+        {
+            const QString detail = message.message.sliced(error_prefix.size());
+            spdlog::error("任务 {} 失败详情: {}", message.task_id, detail.toUtf8().constData());
+        }
+        else if (!message.message.isEmpty())
+        {
             spdlog::info("任务 {}: {}", message.task_id, message.message.toUtf8().constData());
+        }
         return;
     }
 
@@ -48,6 +57,9 @@ void TaskEventRouter::handleTaskMessage(const TaskMessage &message)
     case TaskProtocolStatus::Failed:
     case TaskProtocolStatus::Error:
         spdlog::error("任务 {} 失败: {}", message.task_id, message.message.toUtf8().constData());
+        ui::SignalHelper::notifyError(
+            QString("模型任务 %1 失败").arg(message.task_id),
+            message.message.isEmpty() ? QString("任务执行失败，请查看模型日志。") : message.message);
         task_manager_->failTask(message.task_id);
         break;
     default:

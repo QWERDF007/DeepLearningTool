@@ -14,6 +14,7 @@
 
 #include <QDateTime>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QQmlEngine>
 #include <algorithm>
 #include <utility>
@@ -131,6 +132,23 @@ QHash<int, QByteArray> ModelManager::roleNames() const
     };
 }
 
+QString ModelManager::validateModelName(const QString &name) const
+{
+    const QString trimmed_name = name.trimmed();
+    if (trimmed_name.isEmpty())
+        return QStringLiteral("模型名称不能为空");
+
+    static const QRegularExpression valid_name_pattern(QStringLiteral("^[\\p{Han}A-Za-z0-9_-]+$"));
+    if (!valid_name_pattern.match(trimmed_name).hasMatch())
+        return QStringLiteral("模型名称仅支持中文、英文、数字、下划线和连字符");
+
+    for (const ModelRecord &model : models_)
+    {
+        if (model.name == trimmed_name)
+            return QStringLiteral("模型名称已存在");
+    }
+    return {};
+}
 bool ModelManager::addModel(const QString &name, const QString &framework_name, const QString &model_architecture)
 {
     return addModelRecord(name, framework_name, model_architecture).isValid();
@@ -142,9 +160,16 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
     const QString trimmed_name               = name.trimmed();
     const QString trimmed_framework_name     = framework_name.trimmed();
     const QString trimmed_model_architecture = model_architecture.trimmed();
-    if (trimmed_name.isEmpty() || trimmed_framework_name.isEmpty() || trimmed_model_architecture.isEmpty())
+    const QString name_error = validateModelName(name);
+    if (!name_error.isEmpty())
     {
-        const QString message = QString("模型名称、框架或模型架构为空");
+        setError(err_msg, name_error);
+        spdlog::warn("添加模型失败: {}", name_error.toUtf8().constData());
+        return {};
+    }
+    if (trimmed_framework_name.isEmpty() || trimmed_model_architecture.isEmpty())
+    {
+        const QString message = QStringLiteral("模型框架或模型架构为空");
         setError(err_msg, message);
         spdlog::warn("添加模型失败: {}", message.toUtf8().constData());
         return {};
@@ -207,12 +232,13 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
 
 bool ModelManager::renameModel(const qint64 model_id, const QString &name)
 {
-    const QString trimmed_name = name.trimmed();
-    if (trimmed_name.isEmpty())
+    const QString name_error = validateModelName(name);
+    if (!name_error.isEmpty())
     {
-        spdlog::warn("模型重命名失败: 模型名称为空");
+        spdlog::warn("模型重命名失败: {}", name_error.toUtf8().constData());
         return false;
     }
+    const QString trimmed_name = name.trimmed();
 
     const int row = indexOfModel(model_id);
     if (row < 0)

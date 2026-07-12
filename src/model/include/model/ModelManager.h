@@ -71,6 +71,7 @@ public:
 
     Q_INVOKABLE bool addModel(const QString &name, const QString &framework_name, const QString &model_architecture);
     Q_INVOKABLE bool renameModel(const qint64 model_id, const QString &name);
+    Q_INVOKABLE QString validateModelName(const QString &name) const;
     Q_INVOKABLE bool deleteModel(const qint64 model_id);
     Q_INVOKABLE bool copyModel(const qint64 model_id);
 
