@@ -109,10 +109,13 @@ bool ModelTaskPreparationService::prepare(const ModelTaskContext &context, Exter
         = context.model_uuid.trimmed().isEmpty() ? context.model->uuid().trimmed() : context.model_uuid.trimmed();
     if (model_uuid.isEmpty())
         return setError(err_msg, QString("模型 uuid 为空"));
+    const QString model_name = context.model_name.trimmed();
+    if (model_name.isEmpty())
+        return setError(err_msg, QString("模型名称为空"));
 
     ModelStorageService storage(project_dir_);
     QString             storage_err;
-    if (!storage.ensureModelStorage(model_uuid, &storage_err))
+    if (!storage.ensureModelStorage(model_name, &storage_err))
         return setError(err_msg, QString("创建模型目录失败: %1").arg(storage_err));
 
     const QString script_path = context.framework.scriptFor(context.task_type);
@@ -140,7 +143,7 @@ bool ModelTaskPreparationService::prepare(const ModelTaskContext &context, Exter
         QString                      dataset_err;
         DataManagerDatasetSource     source(*data_manager_);
         const ModelDatasetSelections selections  = modelDatasetSelectionsSnapshot(context.model);
-        const QString                dataset_dir = storage.path(model_uuid, ModelStorageLocation::Datasets);
+        const QString                dataset_dir = storage.path(model_name, ModelStorageLocation::Datasets);
         if (!writeModelDatasetSelectionsFile(dataset_dir, selections, &dataset_err))
             return setError(err_msg, QString("写入数据集选择配置失败: %1").arg(dataset_err));
 
@@ -161,12 +164,12 @@ bool ModelTaskPreparationService::prepare(const ModelTaskContext &context, Exter
     ModelTaskConfigService config_service(project_dir_);
     QString                config_err;
     const QString          config_path = config_service.write(
-        model_uuid, context.task_type,
+        model_name, context.task_type,
         config_service.build(context.model, context.model_name, context.task_type, datasets), &config_err);
     if (config_path.isEmpty())
         return setError(err_msg, config_err);
 
-    const QString log_path = cleanPath(QDir(storage.path(model_uuid, ModelStorageLocation::Logs))
+    const QString log_path = cleanPath(QDir(storage.path(model_name, ModelStorageLocation::Logs))
                                            .filePath(modelTaskLogStem(context.task_type) + QStringLiteral(".log")));
     if (log_path.isEmpty())
         return setError(err_msg, QString("日志路径为空"));

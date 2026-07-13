@@ -137,8 +137,8 @@ private:
 
     void requestModelTaskConfigLoad(const QString &model_uuid) const;
 
-    void applyLoadedModelTaskConfigs(const QString &model_uuid, const QVariantMap &train_params,
-                                     const QVariantMap &test_params);
+    void applyLoadedModelTaskConfigs(const QString &model_uuid, const QString &model_name,
+                                     const QVariantMap &train_params, const QVariantMap &test_params);
 
     static std::string instanceKey(const QString &uuid);
 

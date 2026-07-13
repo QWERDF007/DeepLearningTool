@@ -61,7 +61,7 @@ QString ModelStorageService::projectDirectory() const
     return project_dir_;
 }
 
-QString ModelStorageService::path(const QString &uuid, ModelStorageLocation location) const
+QString ModelStorageService::path(const QString &model_name, ModelStorageLocation location) const
 {
     const QString project_dir = projectDirectory();
     if (project_dir.isEmpty())
@@ -72,11 +72,13 @@ QString ModelStorageService::path(const QString &uuid, ModelStorageLocation loca
     if (location == ModelStorageLocation::ModelsRoot)
         return root;
 
-    const QString trimmed_uuid = uuid.trimmed();
-    if (trimmed_uuid.isEmpty())
+    const QString trimmed_model_name = model_name.trimmed();
+    if (trimmed_model_name.isEmpty())
         return {};
 
-    const QString model_dir = cleanPath(QDir(root).filePath(trimmed_uuid));
+    const QString model_dir = cleanPath(QDir(root).filePath(trimmed_model_name));
+    if (model_dir == root || !model_dir.startsWith(root + QStringLiteral("/"), Qt::CaseInsensitive))
+        return {};
     if (location == ModelStorageLocation::ModelRoot)
         return model_dir;
 
@@ -86,25 +88,26 @@ QString ModelStorageService::path(const QString &uuid, ModelStorageLocation loca
     return cleanPath(QDir(model_dir).filePath(child_name));
 }
 
-bool ModelStorageService::ensureModelStorage(const QString &uuid, QString *err_msg) const
+bool ModelStorageService::ensureModelStorage(const QString &model_name, QString *err_msg) const
 {
-    const QString model_dir = path(uuid, ModelStorageLocation::ModelRoot);
+    const QString model_dir = path(model_name, ModelStorageLocation::ModelRoot);
     if (!ensureDirectory(model_dir, err_msg, QStringLiteral("目录路径为空"), QStringLiteral("创建目录失败: %1")))
         return false;
 
     for (const ModelStorageLocation child_location : modelChildLocations())
     {
-        if (!ensureDirectory(path(uuid, child_location), err_msg, QStringLiteral("目录路径为空"),
+        if (!ensureDirectory(path(model_name, child_location), err_msg, QStringLiteral("目录路径为空"),
                              QStringLiteral("创建目录失败: %1")))
             return false;
     }
     return true;
 }
 
-bool ModelStorageService::removeModelStorage(const QString &uuid, QString *err_msg) const
+bool ModelStorageService::removeModelStorage(const QString &model_name, QString *err_msg) const
 {
     const QString root   = cleanPath(QFileInfo(path({}, ModelStorageLocation::ModelsRoot)).absoluteFilePath());
-    const QString target = cleanPath(QFileInfo(path(uuid, ModelStorageLocation::ModelRoot)).absoluteFilePath());
+    const QString target
+        = cleanPath(QFileInfo(path(model_name, ModelStorageLocation::ModelRoot)).absoluteFilePath());
     if (root.isEmpty() || target.isEmpty() || target == root
         || !target.startsWith(root + QStringLiteral("/"), Qt::CaseInsensitive))
     {
@@ -120,6 +123,42 @@ bool ModelStorageService::removeModelStorage(const QString &uuid, QString *err_m
     {
         if (err_msg != nullptr)
             *err_msg = QStringLiteral("删除模型目录失败: %1").arg(target);
+        return false;
+    }
+    return true;
+}
+
+bool ModelStorageService::renameModelStorage(const QString &old_model_name, const QString &new_model_name,
+                                             QString *err_msg) const
+{
+    const QString source = path(old_model_name, ModelStorageLocation::ModelRoot);
+    const QString target = path(new_model_name, ModelStorageLocation::ModelRoot);
+    if (source.isEmpty() || target.isEmpty())
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("模型目录路径为空");
+        return false;
+    }
+    if (source == target)
+        return true;
+    if (!QDir(source).exists())
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("模型目录不存在: %1").arg(source);
+        return false;
+    }
+    if (QDir(target).exists())
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("目标模型目录已存在: %1").arg(target);
+        return false;
+    }
+
+    const QDir parent_dir(QFileInfo(source).absoluteDir());
+    if (!parent_dir.rename(QFileInfo(source).fileName(), QFileInfo(target).fileName()))
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("重命名模型目录失败: %1 -> %2").arg(source, target);
         return false;
     }
     return true;

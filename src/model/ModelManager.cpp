@@ -231,7 +231,15 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
     const qint64        now  = QDateTime::currentSecsSinceEpoch();
     const QString       uuid = dltool::common::uuid();
     ModelStorageService storage(project_dir_);
-    if (!storage.ensureModelStorage(uuid, &local_err_msg))
+    const QString model_dir = storage.path(trimmed_name, ModelStorageLocation::ModelRoot);
+    if (QFileInfo::exists(model_dir))
+    {
+        const QString message = QString("模型目录已存在: %1").arg(model_dir);
+        setError(err_msg, message);
+        spdlog::warn("添加模型失败: {}", message.toUtf8().constData());
+        return {};
+    }
+    if (!storage.ensureModelStorage(trimmed_name, &local_err_msg))
     {
         setError(err_msg, QString("创建模型目录失败: %1").arg(local_err_msg));
         spdlog::error("添加模型失败, 创建模型目录失败: {}", local_err_msg.toUtf8().constData());
@@ -243,7 +251,7 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
     if (!ok)
     {
         QString remove_err;
-        storage.removeModelStorage(uuid, &remove_err);
+        storage.removeModelStorage(trimmed_name, &remove_err);
         setError(err_msg, local_err_msg);
         spdlog::error("添加模型失败, 名称: {}, 框架: {}, 模型架构: {}, 错误: {}", trimmed_name.toUtf8().constData(),
                       trimmed_framework_name.toUtf8().constData(), trimmed_model_architecture.toUtf8().constData(),
@@ -280,11 +288,22 @@ bool ModelManager::renameModel(const qint64 model_id, const QString &name)
         return false;
     }
 
-    QString      err_msg;
+    const QString old_name = models_[static_cast<size_t>(row)].name;
+    ModelStorageService storage(project_dir_);
+    QString             err_msg;
+    if (!storage.renameModelStorage(old_name, trimmed_name, &err_msg))
+    {
+        spdlog::error("重命名模型目录失败, id: {}, 错误: {}", model_id, err_msg.toUtf8().constData());
+        return false;
+    }
+
     const qint64 now = QDateTime::currentSecsSinceEpoch();
     const bool   ok  = database_ != nullptr && database_->updateModelName(model_id, trimmed_name, now, err_msg);
     if (!ok)
     {
+        QString rollback_err;
+        if (!storage.renameModelStorage(trimmed_name, old_name, &rollback_err))
+            spdlog::error("回滚模型目录重命名失败, id: {}, 错误: {}", model_id, rollback_err.toUtf8().constData());
         spdlog::error("重命名模型失败, id: {}, 错误: {}", model_id, err_msg.toUtf8().constData());
         return false;
     }
@@ -306,6 +325,7 @@ bool ModelManager::deleteModel(const qint64 model_id)
 
     QString       err_msg;
     const QString uuid = models_[static_cast<size_t>(row)].uuid;
+    const QString name = models_[static_cast<size_t>(row)].name;
     const bool    ok   = database_ != nullptr && database_->deleteModel(model_id, err_msg);
     if (!ok)
     {
@@ -319,9 +339,9 @@ bool ModelManager::deleteModel(const qint64 model_id)
     model_instances_.erase(instanceKey(uuid));
     config_load_started_.erase(instanceKey(uuid));
     ModelStorageService storage(project_dir_);
-    if (!storage.removeModelStorage(uuid, &err_msg))
+    if (!storage.removeModelStorage(name, &err_msg))
     {
-        spdlog::error("删除模型目录失败, uuid: {}, 错误: {}", uuid.toUtf8().constData(), err_msg.toUtf8().constData());
+        spdlog::error("删除模型目录失败, 名称: {}, 错误: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
     }
     return true;
 }
@@ -342,7 +362,13 @@ bool ModelManager::copyModel(const qint64 model_id)
     const QString       copied_name = uniqueCopyName(source.name);
     const QString       new_uuid    = dltool::common::uuid();
     ModelStorageService storage(project_dir_);
-    if (!storage.ensureModelStorage(new_uuid, &err_msg))
+    if (QFileInfo::exists(storage.path(copied_name, ModelStorageLocation::ModelRoot)))
+    {
+        spdlog::error("复制模型失败, 模型目录已存在: {}",
+                      storage.path(copied_name, ModelStorageLocation::ModelRoot).toUtf8().constData());
+        return false;
+    }
+    if (!storage.ensureModelStorage(copied_name, &err_msg))
     {
         spdlog::error("复制模型失败, 创建模型目录失败: {}", err_msg.toUtf8().constData());
         return false;
@@ -354,7 +380,7 @@ bool ModelManager::copyModel(const qint64 model_id)
     if (!ok)
     {
         QString remove_err;
-        storage.removeModelStorage(new_uuid, &remove_err);
+        storage.removeModelStorage(copied_name, &remove_err);
         spdlog::error("复制模型失败, id: {}, 错误: {}", model_id, err_msg.toUtf8().constData());
         return false;
     }
@@ -493,14 +519,19 @@ void ModelManager::requestModelTaskConfigLoad(const QString &model_uuid) const
         return;
     config_load_started_.insert(key);
 
+    const int model_row = indexOfUuid(trimmed_uuid);
+    if (model_row < 0)
+        return;
+
+    const QString model_name = models_[static_cast<size_t>(model_row)].name;
     const ModelTaskConfigService                config_service(project_dir_);
-    const dltool::model::LoadedModelTaskConfigs configs = config_service.load(trimmed_uuid);
-    const_cast<ModelManager *>(this)->applyLoadedModelTaskConfigs(configs.model_uuid, configs.train_params,
+    const dltool::model::LoadedModelTaskConfigs configs = config_service.load(trimmed_uuid, model_name);
+    const_cast<ModelManager *>(this)->applyLoadedModelTaskConfigs(configs.model_uuid, model_name, configs.train_params,
                                                                   configs.test_params);
 }
 
-void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const QVariantMap &train_params,
-                                               const QVariantMap &test_params)
+void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const QString &model_name,
+                                               const QVariantMap &train_params, const QVariantMap &test_params)
 {
     const auto found = model_instances_.find(instanceKey(model_uuid));
     if (found == model_instances_.end() || !found->second || found->second->config() == nullptr)
@@ -520,7 +551,7 @@ void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const 
     }
     const ModelStorageService storage(project_dir_);
     const QVariantMap         dataset_selections
-        = readModelDatasetSelectionsFile(storage.path(model_uuid, ModelStorageLocation::Datasets));
+        = readModelDatasetSelectionsFile(storage.path(model_name, ModelStorageLocation::Datasets));
     applyModelDatasetSelections(model, dataset_selections);
 }
 

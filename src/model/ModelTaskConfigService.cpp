@@ -100,19 +100,19 @@ void ModelTaskConfigService::setProjectDirectory(const QString &project_dir)
     storage_.setProjectDirectory(project_dir);
 }
 
-QString ModelTaskConfigService::configPath(const QString &model_uuid, ModelTaskConfigFile file) const
+QString ModelTaskConfigService::configPath(const QString &model_name, ModelTaskConfigFile file) const
 {
-    const QString config_dir = storage_.path(model_uuid, ModelStorageLocation::Configs);
+    const QString config_dir = storage_.path(model_name, ModelStorageLocation::Configs);
     const QString file_name  = modelTaskConfigFileName(file);
     if (config_dir.isEmpty() || file_name.isEmpty())
         return {};
     return cleanPath(QDir(config_dir).filePath(file_name));
 }
 
-LoadedModelTaskConfigs ModelTaskConfigService::load(const QString &model_uuid) const
+LoadedModelTaskConfigs ModelTaskConfigService::load(const QString &model_uuid, const QString &model_name) const
 {
-    const QString train_config_path = configPath(model_uuid, ModelTaskConfigFile::Train);
-    const QString test_config_path  = configPath(model_uuid, ModelTaskConfigFile::Test);
+    const QString train_config_path = configPath(model_name, ModelTaskConfigFile::Train);
+    const QString test_config_path  = configPath(model_name, ModelTaskConfigFile::Test);
 
     LoadedModelTaskConfigs configs;
     configs.model_uuid   = model_uuid;
@@ -134,10 +134,10 @@ QVariantMap ModelTaskConfigService::build(IModel *model, const QString &model_na
     if (model == nullptr)
         return config;
 
-    const QString model_dir  = storage_.path(model->uuid(), ModelStorageLocation::ModelRoot);
-    const QString result_dir = storage_.path(model->uuid(), ModelStorageLocation::Results);
-    const QString log_dir    = storage_.path(model->uuid(), ModelStorageLocation::Logs);
-    const QString weight_dir = storage_.path(model->uuid(), ModelStorageLocation::Weights);
+    const QString model_dir  = storage_.path(model_name, ModelStorageLocation::ModelRoot);
+    const QString result_dir = storage_.path(model_name, ModelStorageLocation::Results);
+    const QString log_dir    = storage_.path(model_name, ModelStorageLocation::Logs);
+    const QString weight_dir = storage_.path(model_name, ModelStorageLocation::Weights);
 
     config.insert(modelTaskConfigFieldName(ModelTaskConfigField::ModelUuid), model->uuid());
     config.insert(modelTaskConfigFieldName(ModelTaskConfigField::ModelName), model_name);
@@ -171,10 +171,10 @@ QVariantMap ModelTaskConfigService::build(IModel *model, const QString &model_na
     return config;
 }
 
-QString ModelTaskConfigService::write(const QString &model_uuid, ModelTaskType task_type, const QVariantMap &config,
+QString ModelTaskConfigService::write(const QString &model_name, ModelTaskType task_type, const QVariantMap &config,
                                       QString *err_msg) const
 {
-    const QString config_dir = storage_.path(model_uuid, ModelStorageLocation::Configs);
+    const QString config_dir = storage_.path(model_name, ModelStorageLocation::Configs);
     const QString file_name  = dltool::model::modelTaskConfigFileName(task_type);
     if (config_dir.isEmpty())
     {

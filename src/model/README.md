@@ -50,7 +50,7 @@
 - `include/model/ModelTaskTypes.h`、`ModelTaskTypes.cpp`
   模型任务类型描述，集中维护 `ModelTaskTypes::Type` 枚举、任务 key、显示名、日志名、配置名和是否需要导出数据集。
 - `include/model/ModelStorageService.h`、`ModelStorageService.cpp`
-  模型目录服务，集中维护 `models/<uuid>/` 及其 `configs`、`datasets`、`logs`、`results`、`weights` 子目录。
+  模型目录服务，集中维护 `models/<model_name>/` 及其 `configs`、`datasets`、`logs`、`results`、`weights` 子目录。
 - `include/model/ModelDatasetSelection.h`、`ModelDatasetSelection.cpp`
   数据集选择快照，集中处理训练/验证/测试选择状态读取、YAML map 序列化和恢复。
 - `include/model/ModelTaskConfigService.h`、`ModelTaskConfigService.cpp`
@@ -190,7 +190,7 @@ QML 参数面板按 `part_index` 拆成两列渲染。当前已使用的控件�
 2. 用户选择框架后，通过 `ModelManager.supportedModelArchitectures(framework)` 获取该框架下的模型架构。
 3. QML 调用 `ModelManager.addModel(name, framework, architecture)`。
 4. `ModelManager` 校验名称、框架和模型架构非空，并确认 `framework + architecture` 已注册。
-5. `ModelManager` 创建模型 uuid，通过 `ModelStorageService` 创建 `models/<uuid>/` 及子目录，然后写入数据库 `models` 表。
+5. `ModelManager` 创建模型 uuid，通过 `ModelStorageService` 创建 `models/<model_name>/` 及子目录，然后写入数据库 `models` 表。
 6. 打开模型时，`ModelManager.modelForUuid(uuid)` 根据 `framework_name + model_architecture` 懒创建并缓存模型实例。
 7. `ModelManager` 为模型实例挂载训练、验证、测试数据集选择 ViewModel。
 8. `YamlModel` 从 `config/models/<framework>/<model>.yaml` 构造训练/测试参数。
@@ -210,7 +210,7 @@ flowchart TD
 
     D --> E{用户创建或打开模型?}
     E -->|创建| F[ModelManager 校验框架和模型架构]
-    F --> G[ModelStorageService 创建 models/uuid 目录]
+    F --> G[ModelStorageService 创建 models/model_name 目录]
     G --> H[数据库写入模型记录]
     E -->|打开| I[ModelManager 按 uuid 查找模型记录]
     H --> I
@@ -260,8 +260,8 @@ flowchart TD
 4. `ModelTaskController` 检查 `TaskTableModel` 中是否已有同一模型和任务类型的非终态任务；没有则通过 `TaskManager.addTask()` 创建任务记录。C++ 内部读取任务时使用 `TaskSnapshot`，QML 仍可使用 `taskForModel()` 返回的 `QVariantMap`。
 5. 如果框架没有为该任务定义脚本，`ModelTaskController` 只把任务置为运行状态，不启动 Python 进程，也不生成任务配置。
 6. 如果框架定义了脚本，`ModelTaskController` 先通过 `TaskManager` 确保 TCP 通信服务已启动，再补齐 `ModelTaskContext` 的通信端点并交给准备服务。
-7. `ModelTaskPreparationService` 通过 `ModelStorageService` 确保 `models/<uuid>/configs`、`results`、`logs`、`weights`、`datasets` 目录存在。
-8. `ModelTaskPreparationService` 将 UI 数据集选择快照写入 `models/<uuid>/datasets/datasets.yaml`，再调用 `ModelDatasetOrganizer` 将所选数据集导出到 `models/<uuid>/datasets`。训练任务要求训练集非空，测试/预测任务要求测试集非空；验证集为空时会跳过。
+7. `ModelTaskPreparationService` 通过 `ModelStorageService` 确保 `models/<model_name>/configs`、`results`、`logs`、`weights`、`datasets` 目录存在。
+8. `ModelTaskPreparationService` 将 UI 数据集选择快照写入 `models/<model_name>/datasets/datasets.yaml`，再调用 `ModelDatasetOrganizer` 将所选数据集导出到 `models/<model_name>/datasets`。训练任务要求训练集非空，测试/预测任务要求测试集非空；验证集为空时会跳过。
 9. `ModelTaskPreparationService` 通过 `ModelTaskConfigService` 写出 YAML 任务配置。当前配置文件名由 `ModelTaskTypes` 决定：训练写 `train.yaml`，测试/预测写 `test.yaml`；无配置文件名的任务不会作为外部模型脚本启动。
 10. `ModelTaskPreparationService` 生成 `ExternalProcessSpec`，`ModelTaskController` 交给 `ExternalModelTaskRunner` 启动 Python 子进程，传入：
     - `--config`
@@ -269,7 +269,7 @@ flowchart TD
     - `--dltool_task_port`
     - `--dltool_task_id`
 11. 子进程工作目录为框架 `root`，环境变量会设置 `PYTHONPATH`、`PYTHONUTF8=1`、`PYTHONUNBUFFERED=1`。
-12. 子进程 stdout/stderr 统一写入 `models/<uuid>/logs/train.log`、`test.log` 或 `task.log`。
+12. 子进程 stdout/stderr 统一写入 `models/<model_name>/logs/train.log`、`test.log` 或 `task.log`。
 13. 外部脚本通过 TCP 向 `TaskCommunicationServer` 上报状态、进度和 ETA。
 14. `TaskEventRouter` 根据 TCP 消息更新 `TaskTableModel`，任务中心 UI 自动刷新。
 15. Python 进程退出时，`ExternalModelTaskRunner` 发出退出通知，`ModelTaskController` 将退出码映射为完成、停止或失败。
@@ -295,7 +295,7 @@ flowchart TD
 3. 普通模型目录由 `ModelStorageService` 创建：
 
 ```text
-<project_dir>/models/<model_uuid>/
+<project_dir>/models/<model_name>/
   datasets/
   logs/
   results/predictions/
@@ -306,8 +306,8 @@ flowchart TD
 4. `FewShotLearningController` 通过 `ModelTaskController.addModelTask()` 在任务中心注册框转 Mask、训练、推理普通模型任务，并通过 `startModelTask()` 按顺序启动。
 5. `ModelTaskPreparationService` 按普通任务流程写入数据集选择、导出 manifest、生成 `box_to_mask.yaml`/`train.yaml`/`test.yaml`，并构造进程规格。
 6. 检测项目的 FS-SAM2 manifest 保留框数据和 `mask_path`，由 `box_to_mask.py` 生成训练 mask；分割和异常检测项目直接导出 mask。
-7. FS-SAM2 训练脚本把 `best_model.pt` 写入 `models/<model_uuid>/weights/fs_sam2/best_model.pt`，推理任务从同一路径加载。
-8. 推理结果写入 `models/<model_uuid>/results/predictions/`；测试任务完成后，`FewShotLearningController` 监听任务表状态并触发 `DataManager.importMaskData()`，导入状态归普通数据导入流程维护。
+7. FS-SAM2 训练脚本把 `best_model.pt` 写入 `models/<model_name>/weights/fs_sam2/best_model.pt`，推理任务从同一路径加载。
+8. 推理结果写入 `models/<model_name>/results/predictions/`；测试任务完成后，`FewShotLearningController` 监听任务表状态并触发 `DataManager.importMaskData()`，导入状态归普通数据导入流程维护。
 9. 停止、进度、退出码映射和普通模型外部任务一致，任务中心发起的停止请求也由同一个 `ModelTaskController` 路由到当前进程。
 
 ## TaskManager
@@ -398,10 +398,10 @@ flowchart TD
 
 ## 模型目录与配置
 
-每个模型在项目目录下使用独立 uuid 目录。路径计算、目录创建和删除由 `ModelStorageService` 统一处理：
+每个模型在项目目录下使用模型名称作为目录。路径计算、目录创建、重命名和删除由 `ModelStorageService` 统一处理：
 
 ```text
-<project_dir>/models/<uuid>/
+<project_dir>/models/<model_name>/
   configs/
   datasets/
   logs/
@@ -409,11 +409,11 @@ flowchart TD
   weights/
 ```
 
-删除模型记录时会同时通过 `ModelStorageService` 删除对应的 `models/<uuid>/` 目录。
+重命名模型时会同步重命名目录；删除模型记录时会同时通过 `ModelStorageService` 删除对应的 `models/<model_name>/` 目录。
 
-FS-SAM2 小样本学习会写入普通数据库模型记录，并使用同样结构的 `models/<model_uuid>/` 目录。FS-SAM2 模型类型不在模型创建 UI 中展示，因此只能由小样本流程内部创建。训练数据 manifest、运行日志、`weights/fs_sam2/best_model.pt` 和预测结果都会保留在项目目录下，便于和普通模型任务产物一起管理。
+FS-SAM2 小样本学习会写入普通数据库模型记录，并使用同样结构的 `models/<model_name>/` 目录。FS-SAM2 模型类型不在模型创建 UI 中展示，因此只能由小样本流程内部创建。训练数据 manifest、运行日志、`weights/fs_sam2/best_model.pt` 和预测结果都会保留在项目目录下，便于和普通模型任务产物一起管理。
 
-任务配置由 `ModelTaskConfigService` 使用 YAML 写入模型目录下的 `models/<uuid>/configs/train.yaml` 或 `models/<uuid>/configs/test.yaml`。配置包含模型 uuid、模型名、任务类型、框架、模型架构、模型目录、结果目录、日志目录、权重目录、框架消费的数据集文件路径，以及训练/测试参数。
+任务配置由 `ModelTaskConfigService` 使用 YAML 写入模型目录下的 `models/<model_name>/configs/train.yaml` 或 `models/<model_name>/configs/test.yaml`。配置包含模型 uuid、模型名、任务类型、框架、模型架构、模型目录、结果目录、日志目录、权重目录、框架消费的数据集文件路径，以及训练/测试参数。
 
 模型列表初始化时不批量读取任务配置。界面选中模型并创建模型实例时，`ModelManager` 才通过 `ModelTaskConfigService` lazy 读取 `configs/train.yaml` 和 `configs/test.yaml`，将其中的 `train_params`、`test_params` 应用到内存中的参数模型，并从 `datasets/datasets.yaml` 恢复训练、验证、测试数据集选择树。参数和数据集选择编辑只修改内存值；启动训练或测试任务时，`ModelTaskPreparationService` 写回当前内存参数，并将数据集选择写入 `datasets/datasets.yaml`。
 
@@ -450,7 +450,7 @@ dataset_selections:
 通用布局、`ultralytics` 和 `FS-SAM2` 按 split 输出：
 
 ```text
-models/<uuid>/datasets/<split>/manifest.yaml
+models/<model_name>/datasets/<split>/manifest.yaml
 ```
 
 `manifest.yaml` 记录图像和标注元数据，图像只保存原始路径，不复制图像文件。图像条目包含 `id`、`path`、`dataset_id`、`dataset_name`、`width`、`height`、图像级标签和 `labels`。
@@ -458,11 +458,11 @@ models/<uuid>/datasets/<split>/manifest.yaml
 标注条目包含 `label_id`、`label_class_id`、`label_class_name`、`label_class_group`、`class_index` 和原始标注 `data`。框架可以追加自己的字段：
 
 - `anomalib`
-  不写 split 子目录的 `manifest.yaml`，而是输出 `models/<uuid>/datasets/train.yaml`、`validation.yaml`、`test.yaml` 作为文件列表，并输出共享 `models/<uuid>/datasets/masks/<id>.png`。文件列表包含 `samples` 和 `masks_dir`，sample 包含 `id`、`path`、`label_index`、`mask`；`mask` 只保存文件名。
+  不写 split 子目录的 `manifest.yaml`，而是输出 `models/<model_name>/datasets/train.yaml`、`validation.yaml`、`test.yaml` 作为文件列表，并输出共享 `models/<model_name>/datasets/masks/<id>.png`。文件列表包含 `samples` 和 `masks_dir`，sample 包含 `id`、`path`、`label_index`、`mask`；`mask` 只保存文件名。
 - `ultralytics`
   标注条目额外输出归一化 `yolo` bbox，供后续检测脚本消费。
 - `FS-SAM2`
-  C++ 数据集组织阶段将 polygon/bbox 标注转换为 mask PNG，写入 `models/<uuid>/datasets/<split>/masks/`，并在 label 上写入 `mask_path`。Python 训练/预测脚本只读取 `mask_path`，不再执行 polygon 到 mask 的转换。
+  C++ 数据集组织阶段将 polygon/bbox 标注转换为 mask PNG，写入 `models/<model_name>/datasets/<split>/masks/`，并在 label 上写入 `mask_path`。Python 训练/预测脚本只读取 `mask_path`，不再执行 polygon 到 mask 的转换。
 
 ## TCP 任务协议
 

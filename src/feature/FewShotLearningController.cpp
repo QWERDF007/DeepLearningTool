@@ -451,6 +451,12 @@ bool FewShotLearningController::configureFsSam2Model(const QString              
                                                      const std::vector<int64_t> &label_class_ids, RunState &run,
                                                      QString *err_msg)
 {
+    const dltool::model::ModelManager::ModelRecordView record
+        = model_manager_ != nullptr ? model_manager_->modelRecordViewForUuid(model_uuid)
+                                  : dltool::model::ModelManager::ModelRecordView{};
+    if (!record.isValid() || record.name.trimmed().isEmpty())
+        return setError(err_msg, QString("FS-SAM2 模型记录不存在"));
+
     dltool::model::IModel *model = model_manager_ != nullptr ? model_manager_->modelForUuid(model_uuid) : nullptr;
     if (model == nullptr || model->config() == nullptr)
         return setError(err_msg, QString("无法创建 FS-SAM2 模型实例"));
@@ -501,10 +507,10 @@ bool FewShotLearningController::configureFsSam2Model(const QString              
         = dltool::settings::settingDouble(settings, generated_field::FewShotLearning::WeightDecay, 1e-6);
 
     const dltool::model::ModelStorageService storage(model_manager_->projectDirectory());
-    const QString output_dir = cleanPath(QDir(storage.path(model_uuid, dltool::model::ModelStorageLocation::Results))
+    const QString output_dir = cleanPath(QDir(storage.path(record.name, dltool::model::ModelStorageLocation::Results))
                                              .filePath(QStringLiteral("predictions")));
     const QString checkpoint_path
-        = cleanPath(QDir(storage.path(model_uuid, dltool::model::ModelStorageLocation::Weights))
+        = cleanPath(QDir(storage.path(record.name, dltool::model::ModelStorageLocation::Weights))
                         .filePath(QStringLiteral("fs_sam2/best_model.pt")));
     QString dir_err;
     if (!ensureDirectory(output_dir, &dir_err, QString("目录路径为空"), QString("创建目录失败: %1")))
@@ -558,8 +564,12 @@ bool FewShotLearningController::writePredictionImportTargets(const QString      
     if (data_manager_ == nullptr || model_manager_ == nullptr)
         return setError(err_msg, QString("数据管理器或模型管理器未初始化"));
 
+    const dltool::model::ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(model_uuid);
+    if (!record.isValid() || record.name.trimmed().isEmpty())
+        return setError(err_msg, QString("FS-SAM2 模型记录不存在"));
+
     const dltool::model::ModelStorageService storage(model_manager_->projectDirectory());
-    const QString datasets_dir = storage.path(model_uuid, dltool::model::ModelStorageLocation::Datasets);
+    const QString datasets_dir = storage.path(record.name, dltool::model::ModelStorageLocation::Datasets);
     if (!ensureDirectory(datasets_dir, err_msg, QString("目录路径为空"), QString("创建目录失败: %1")))
         return false;
 

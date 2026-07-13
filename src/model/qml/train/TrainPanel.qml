@@ -12,7 +12,7 @@ Item {
 
     property ModelManager modelManager: null
     property DataManager dataManager: null
-    property var currentModelId: -1
+    property int currentModelId: -1
     property string currentModelUuid: ""
     property string currentModelName: ""
     property string currentFrameworkName: ""
@@ -27,6 +27,8 @@ Item {
         TabBar {
             id: trainTabBar
             Layout.fillWidth: true
+
+            background: Item{}
 
             QuiTabButton {
                 text: qsTr("训练参数设置")

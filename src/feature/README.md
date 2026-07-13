@@ -108,7 +108,7 @@
 2. `FewShotLearningController` 从 ViewModel 读取选择，通过 `ModelManager.addModelRecord()` 创建隐藏的 `FS-SAM2` 普通模型记录。
 3. 控制器把训练/验证/测试数据选择和全局小样本设置写入该模型的普通 train/test 参数。
 4. 控制器调用 `ModelTaskController.addModelTask()` 和 `startModelTask()` 添加并启动框转 Mask、训练、推理任务。
-5. 本次运行的训练数据、日志、权重和预测结果保存到项目目录 `models/<model_uuid>/`，其中预测结果位于 `results/predictions/`，训练权重位于 `weights/fs_sam2/best_model.pt`。
+5. 本次运行的训练数据、日志、权重和预测结果保存到项目目录 `models/<model_name>/`，其中预测结果位于 `results/predictions/`，训练权重位于 `weights/fs_sam2/best_model.pt`。
 6. 检测项目会先运行 `box_to_mask.py`，再运行 `train.py` 和 `predict.py`；分割和异常检测项目直接进入训练。
 7. `FewShotLearningController` 监听任务表状态推进下一步；任务停止和进程退出仍走普通 `ModelTaskController`/`ExternalModelTaskRunner` 链路。
 8. 测试任务完成后，`FewShotLearningController` 按测试数据集调用 `DataManager.importMaskData()` 导入预测 mask；小样本 UI 的运行状态在测试任务完成时结束，导入状态归普通导入流程维护。
