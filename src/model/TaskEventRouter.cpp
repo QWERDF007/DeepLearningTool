@@ -37,7 +37,7 @@ void TaskEventRouter::handleTaskMessage(const TaskMessage &message)
     TaskTableModel *tasks = task_manager_->tasks();
     if (message.progress >= 0)
         tasks->updateTaskProgress(message.task_id, message.progress);
-    if (message.payload.contains(taskProtocolFieldName(TaskProtocolField::EtaSeconds)))
+    if (message.payload.contains(taskProtocolFieldName(TaskProtocolField::EtaSeconds)) && message.eta_seconds >= 0)
         tasks->updateTaskEta(message.task_id, message.eta_seconds);
 
     switch (message.status)

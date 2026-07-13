@@ -3,6 +3,8 @@
 #include "model/TaskCommunication.h"
 #include "model/TaskEventRouter.h"
 
+#include <spdlog/spdlog.h>
+
 #include <QDateTime>
 #include <algorithm>
 
@@ -653,32 +655,49 @@ TaskManager::TaskManager(QObject *parent)
 
 int TaskManager::addTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type)
 {
-    return tasks_->addTask(model_uuid, model_name, task_type);
+    const int task_id = tasks_->addTask(model_uuid, model_name, task_type);
+    spdlog::info("通用任务添加{}, task_id: {}, 模型: {}, 类型: {}", task_id >= 0 ? "成功" : "失败", task_id,
+                 model_name.toUtf8().constData(), modelTaskKey(task_type).toUtf8().constData());
+    return task_id;
 }
 
 int TaskManager::addTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type,
                          bool supports_pause)
 {
-    return tasks_->addTask(model_uuid, model_name, task_type, supports_pause);
+    const int task_id = tasks_->addTask(model_uuid, model_name, task_type, supports_pause);
+    spdlog::info("通用任务添加{}, task_id: {}, 模型: {}, 类型: {}", task_id >= 0 ? "成功" : "失败", task_id,
+                 model_name.toUtf8().constData(), modelTaskKey(task_type).toUtf8().constData());
+    return task_id;
 }
 
 bool TaskManager::startTask(int task_id)
 {
-    return tasks_->startTask(task_id);
+    const bool started = tasks_->startTask(task_id);
+    spdlog::info("通用任务启动{}, task_id: {}", started ? "成功" : "失败", task_id);
+    return started;
 }
 
 bool TaskManager::pauseTask(int task_id)
 {
-    return tasks_->pauseTask(task_id);
+    const bool paused = tasks_->pauseTask(task_id);
+    spdlog::info("通用任务暂停{}, task_id: {}", paused ? "成功" : "失败", task_id);
+    return paused;
 }
 
 bool TaskManager::stopTask(int task_id)
 {
+    const TaskTableModel::TaskSnapshot task = tasks_->taskSnapshotForId(task_id);
+    spdlog::info("通用任务停止请求, task_id: {}, 模型: {}, 类型: {}", task_id,
+                 task.model_name.toUtf8().constData(), modelTaskKey(task.task_type).toUtf8().constData());
     const bool changed = tasks_->stopTask(task_id);
     if (!changed)
+    {
+        spdlog::warn("通用任务停止失败, task_id: {}", task_id);
         return false;
-    requestStopTask(task_id);
+    }
+    const bool command_sent = requestStopTask(task_id);
     emit taskStopRequested(task_id);
+    spdlog::info("通用任务停止命令已发送, task_id: {}, 通信命令: {}", task_id, command_sent ? "成功" : "未发送");
     return true;
 }
 
@@ -700,10 +719,14 @@ bool TaskManager::markTaskStopped(int task_id)
 bool TaskManager::deleteTask(int task_id)
 {
     const TaskTableModel::TaskSnapshot task = tasks_->taskSnapshotForId(task_id);
-    requestStopTask(task_id);
+    spdlog::info("通用任务删除请求, task_id: {}, 模型: {}, 类型: {}", task_id,
+                 task.model_name.toUtf8().constData(), modelTaskKey(task.task_type).toUtf8().constData());
+    const bool command_sent = requestStopTask(task_id);
     if (task.can_stop || task.status == TaskTableModel::Stopping)
         emit taskStopRequested(task_id);
     const bool deleted = tasks_->deleteTask(task_id);
+    spdlog::info("通用任务删除{}, task_id: {}, 停止命令: {}", deleted ? "成功" : "失败", task_id,
+                 command_sent ? "已发送" : "未发送");
     return deleted;
 }
 
