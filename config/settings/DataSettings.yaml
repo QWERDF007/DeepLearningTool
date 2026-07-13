@@ -42,11 +42,6 @@ DataSettings:
         value_type: double
         value_range: [0.5, 4.0, 0.25]
         control_type: slider
-        sidebar:
-          gallery:
-            icon: ExploreContentSingle
-            ordinal_index: 10
-            snap: false
 
     标注显示:
       - name_en: label_scale
@@ -57,11 +52,6 @@ DataSettings:
         value_type: double
         value_range: [0.5, 4.0, 0.1]
         control_type: slider
-        sidebar:
-          review:
-            icon: ExploreContentSingle
-            ordinal_index: 10
-            snap: false
 
       - name_en: label_aspect_ratio
         name_cn: 标注缩略图宽高比
@@ -71,10 +61,6 @@ DataSettings:
         value_type: double
         value_range: [0.5, 2.0, 0.1]
         control_type: slider
-        sidebar:
-          review:
-            icon: Zoom
-            ordinal_index: 20
 
       - name_en: label_border_padding
         name_cn: 标注缩略图边框留白
@@ -84,10 +70,6 @@ DataSettings:
         value_type: double
         value_range: [0.0, 200.0, 10.0]
         control_type: slider
-        sidebar:
-          review:
-            icon: FitPage
-            ordinal_index: 30
 
       - name_en: border_width
         name_cn: 标注边框宽度

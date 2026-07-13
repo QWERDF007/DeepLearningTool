@@ -24,7 +24,7 @@ Rectangle {
             SplitView.fillHeight: true
             SplitView.minimumWidth: 200
             SplitView.maximumWidth: parent.width / 2
-            SplitView.preferredWidth: 300
+            SplitView.preferredWidth: 260
             orientation: Qt.Vertical
             DatasetsView { // 数据集
                 SplitView.fillWidth: true
@@ -34,10 +34,32 @@ Rectangle {
                 dataManager: galleryPage.dataManager
                 featureManager: galleryPage.featureManager
             }
-            ImageInstanceInfo { // 图像属性
+            
+        }
+
+        GalleryView { // 图像列表
+            id: imagesView
+            SplitView.fillHeight: true
+            SplitView.fillWidth: true
+            dataManager: galleryPage.dataManager
+            featureManager: galleryPage.featureManager
+        }
+
+        QuiSplitView {
+            SplitView.fillHeight: true
+            SplitView.minimumWidth: 200
+            SplitView.maximumWidth: parent.width / 2
+            SplitView.preferredWidth: 260
+            orientation: Qt.Vertical
+            GalleryAdjustmentPanel { // 图库显示
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
-                SplitView.preferredHeight: parent.height / 3
+                SplitView.preferredHeight: 200
+            }
+            ImageInstanceInfo { // 图像属性
+                SplitView.fillWidth: true
+                SplitView.fillHeight: true
+                SplitView.minimumHeight: 200
                 color: QuiColor.Primary
                 dataManager: galleryPage.dataManager
             }
@@ -52,28 +74,10 @@ Rectangle {
             ImageTagView { // 图像标签
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
-                SplitView.preferredHeight: 240
+                SplitView.preferredHeight: 200
                 color: QuiColor.Primary
                 multiSelect: true
                 dataManager: galleryPage.dataManager
-            }
-        }
-
-        RowLayout {
-            SplitView.fillHeight: true
-            SplitView.fillWidth: true
-
-            GalleryView { // 图像列表
-                id: imagesView
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                dataManager: galleryPage.dataManager
-                featureManager: galleryPage.featureManager
-            }
-
-            GallerySidebar { // 侧边栏
-                Layout.preferredWidth: 40
-                Layout.fillHeight: true
             }
         }
     }

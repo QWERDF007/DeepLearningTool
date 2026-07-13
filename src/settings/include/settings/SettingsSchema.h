@@ -42,7 +42,6 @@ struct SETTINGS_API SettingsField
     QVariantMap  options_value_map; ///< 选项显示值到实际值的映射。
     QVariantMap  options_map;       ///< 选项键值映射。
     QString      options_key_field; ///< options_map 的联动字段的 name_en。
-    QVariantMap  sidebar;           ///< 侧边栏展示配置。
     QString      section;           ///< 所属分区名称。
     QString      desc;              ///< 简短说明，用于 tooltip。
     QString      description;       ///< 说明文本。
@@ -52,7 +51,7 @@ struct SETTINGS_API SettingsField
 
 /**
  * @brief 单个设置分组的字段列表模型。
- * @details 向 QML 暴露一组设置项及其分组元信息，支持按名称、属性名和侧边栏关键字访问。
+ * @details 向 QML 暴露一组设置项及其分组元信息，支持按名称和属性名访问。
  */
 class SETTINGS_API SettingsFieldModel : public QAbstractListModel
 {
@@ -66,7 +65,6 @@ class SETTINGS_API SettingsFieldModel : public QAbstractListModel
     Q_PROPERTY(QString parentAccessor READ parentAccessor CONSTANT FINAL)
     Q_PROPERTY(QString accessorPath READ accessorPath CONSTANT FINAL)
     Q_PROPERTY(QString category READ category CONSTANT FINAL)
-    Q_PROPERTY(QVariantMap sidebar READ sidebar CONSTANT FINAL)
     Q_PROPERTY(int ordinalIndex READ ordinalIndex CONSTANT FINAL)
     Q_PROPERTY(int count READ count NOTIFY countChanged FINAL)
 
@@ -88,7 +86,6 @@ public:
         OptionsValueMapRole,           ///< 选项显示值到实际值的映射。
         OptionsMapRole,                ///< 选项映射。
         OptionsKeyFieldRole,           ///< 动态选项键字段。
-        SidebarRole,                   ///< 侧边栏配置。
         SectionRole,                   ///< 分区名称。
         DescRole,                      ///< tooltip 说明文本。
         DescriptionRole,               ///< 描述文本。
@@ -111,13 +108,12 @@ public:
      * @param accessor 分组访问器。
      * @param parent_accessor 父级访问器。
      * @param category 分类名称。
-     * @param sidebar 侧边栏配置。
      * @param ordinal_index 排序索引。
      * @param fields 字段列表。
      * @param parent QObject 父对象。
      */
     SettingsFieldModel(QString group_key, QString table_name, QString label, QString accessor, QString parent_accessor,
-                       QString category, QVariantMap sidebar, int ordinal_index, std::vector<SettingsField> fields,
+                       QString category, int ordinal_index, std::vector<SettingsField> fields,
                        QObject *parent = nullptr);
     /**
      * @brief 销毁设置分组模型。
@@ -165,12 +161,6 @@ public:
      * @return 分类名称。
      */
     QString category() const;
-
-    /**
-     * @brief 获取侧边栏配置。
-     * @return 侧边栏配置映射。
-     */
-    QVariantMap sidebar() const;
 
     /**
      * @brief 获取排序索引。
@@ -281,13 +271,6 @@ public:
     Q_INVOKABLE QVariantList optionsForKey(const QString &name, const QString &key) const;
 
     /**
-     * @brief 获取指定侧边栏关键字对应的字段列表。
-     * @param sidebar_key 侧边栏关键字。
-     * @return 侧边栏字段列表。
-     */
-    Q_INVOKABLE QVariantList sidebarFields(const QString &sidebar_key) const;
-
-    /**
      * @brief 获取当前所有字段的值映射。
      * @return 字段英文键名到当前值的映射。
      */
@@ -353,14 +336,13 @@ private:
     QString                    accessor_;
     QString                    parent_accessor_;
     QString                    category_;
-    QVariantMap                sidebar_;
     int                        ordinal_index_{0};
     std::vector<SettingsField> fields_;
 };
 
 /**
  * @brief 设置分组目录模型。
- * @details 聚合所有 SettingsFieldModel，提供按分组键、访问器和侧边栏关键字的查询接口。
+ * @details 聚合所有 SettingsFieldModel，提供按分组键和访问器的查询接口。
  */
 class SETTINGS_API SettingsCatalog : public QAbstractListModel
 {
@@ -382,7 +364,6 @@ public:
         ParentAccessorRole,              ///< 父级访问器。
         AccessorPathRole,                ///< 完整访问器路径。
         CategoryRole,                    ///< 分类名称。
-        SidebarRole,                     ///< 侧边栏配置。
         OrdinalIndexRole,                ///< 排序索引。
         FieldModelRole,                  ///< 字段模型对象。
     };
@@ -485,20 +466,6 @@ public:
     Q_INVOKABLE QVariantList optionsForField(int accessor_key, int field_key, const QString &key) const;
 
     /**
-     * @brief 获取指定侧边栏关键字的字段列表。
-     * @param sidebar_key 侧边栏关键字。
-     * @return 所有分组中匹配该侧边栏的字段列表。
-     */
-    Q_INVOKABLE QVariantList sidebarFields(const QString &sidebar_key) const;
-
-    /**
-     * @brief 通过枚举键获取指定侧边栏关键字的字段列表。
-     * @param sidebar_key SettingsSidebar 对应的整数键。
-     * @return 所有分组中匹配该侧边栏的字段列表。
-     */
-    Q_INVOKABLE QVariantList sidebarFieldsFor(int sidebar_key) const;
-
-    /**
      * @brief 从配置文件加载设置模式。
      * @param err_msg 加载失败时输出错误信息。
      * @return 加载成功返回 true，否则返回 false。
@@ -550,13 +517,12 @@ private:
      * @param accessor 分组访问器。
      * @param parent_accessor 父级访问器。
      * @param category 分类名称。
-     * @param sidebar 侧边栏配置。
      * @param ordinal_index 排序索引。
      * @param fields 字段列表。
      * @return 新增或替换后的 SettingsFieldModel 指针。
      */
     SettingsFieldModel *addGroup(QString group_key, QString table_name, QString label, QString accessor,
-                                 QString parent_accessor, QString category, QVariantMap sidebar, int ordinal_index,
+                                 QString parent_accessor, QString category, int ordinal_index,
                                  std::vector<SettingsField> fields);
 
     /**

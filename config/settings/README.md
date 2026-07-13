@@ -8,7 +8,7 @@
 - 顶层 key 是分组名，例如 `DataSettings`、`ImageSearchSettings`。
 - 分组通过 `accessor` 和可选的 `parent_accessor` 决定运行时访问路径。
 - 字段通过 `property_name` 暴露为 QML 动态属性。
-- 设置页和侧边栏等 UI 应优先从 catalog / accessor path 动态获取数据，避免在 QML 中硬编码分组名和字段结构。
+- 设置页等 UI 应优先从 catalog / accessor path 动态获取数据，避免在 QML 中硬编码分组名和字段结构。
 
 ## 分组字段
 
@@ -82,8 +82,6 @@ sections:
 | `description` | 可选说明文本。 |
 | `visible` | 是否在设置页显示，默认 `true`。 |
 | `ordinal_index` | 字段排序序号。 |
-| `sidebar` | 可选侧边栏展示元数据。 |
-
 ## 当前配置组
 
 | 文件 | 分组 | 路径 | 分类 | 表 | 说明 |
@@ -96,38 +94,12 @@ sections:
 | `SmartAnnotationSettings.yaml` | `SmartAnnotationSettings` | `advanced.smartAnnotation` | `advanced` | `smart_annotation_settings` | 智能标注配置，包括 SAM 模型、权重路径、推理后端、mask 阈值、mask 透明度、刷新间隔。 |
 | `FewShotLearningSettings.yaml` | `FewShotLearningSettings` | `advanced.fewShotLearning` | `advanced` | `few_shot_learning_settings` | 小样本学习配置，包括 SAM2 权重和训练参数。 |
 
-## 侧边栏元数据
-
-字段可通过 `sidebar` 声明被哪些侧边栏使用。当前使用的 sidebar key：
-
-| sidebar key | 使用场景 | 当前字段 |
-| --- | --- | --- |
-| `gallery` | 图像列表侧边栏 | `data.imageCellScale`、`ui.imageBrightness`、`ui.imageContrast` |
-| `review` | 标注实例预览侧边栏 | `data.labelThumbnailScale`、`data.labelThumbnailAspectRatio`、`data.labelThumbnailBorderPadding`、`ui.imageBrightness`、`ui.imageContrast` |
-
-示例：
-
-```yaml
-sidebar:
-  gallery:
-    icon: ExploreContentSingle
-    ordinal_index: 10
-    snap: false
-```
-
-侧边栏字段说明：
-
-- `icon`：侧边栏按钮图标名。
-- `ordinal_index`：侧边栏内排序。
-- `snap`：滑块是否使用吸附。
-- 侧边栏滑块范围直接使用字段自己的 `value_range`。
-
 ## 新增设置约定
 
 1. 新增分组时，优先新增一个 YAML 文件，配置 `table`、`accessor`、`label`、`category`、`ordinal_index` 和 `sections`。
 2. 新增高级设置时，使用 `parent_accessor: advanced`，例如 `advanced.myFeature`。
 3. QML/C++ 侧不要直接依赖文件名、group key 或属性名；固定字段优先使用生成的 `SettingsAccessor` 和 `*Field` 枚举。
-4. 设置页字段展示应依赖 catalog 模型；侧边栏入口应通过字段的 `sidebar` 元数据声明。
+4. 设置页字段展示应依赖 catalog 模型。
 5. 每个字段应配置 `desc`，设置页会把它作为左侧文字区域的 tooltip。
 6. 对于下拉选项，静态列表使用 `options`；需要显示值和保存值不一致时，使用 `options_values` 声明 key-value，例如 `options: [cpu, gpu]` 搭配 `options_values: {cpu: 0, gpu: 1}`。
-7. 数值类字段建议配置 `value_range`，这样设置页、侧边栏和动态范围属性都能复用同一份 schema。
+7. 数值类字段建议配置 `value_range`，这样设置页和动态范围属性都能复用同一份 schema。

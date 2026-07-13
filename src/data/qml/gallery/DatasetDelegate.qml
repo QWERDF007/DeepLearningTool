@@ -73,7 +73,7 @@ Item {
         QuiProgressBar {
             textVisible: visualPosition > 0
             value: control.progress
-            Layout.preferredWidth: 80
+            Layout.preferredWidth: 70
         }
         QuiText {
             text: control.stats

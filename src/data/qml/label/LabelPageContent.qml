@@ -60,8 +60,8 @@ Rectangle {
             Loader {
                 id: labelClassesLoader
                 SplitView.fillWidth: true
+                SplitView.fillHeight: true
                 SplitView.minimumHeight: 200
-                SplitView.preferredHeight: parent.height / 3
                 sourceComponent: page.anomalyMode ? anomalyLabelClassesViewComponent : defaultLabelClassesViewComponent
             }
 
@@ -89,7 +89,7 @@ Rectangle {
             ImageTagView {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
-                SplitView.preferredHeight: 240
+                SplitView.preferredHeight: 200
                 color: QuiColor.Primary
                 multiSelect: false
                 dataManager: page.dataManager

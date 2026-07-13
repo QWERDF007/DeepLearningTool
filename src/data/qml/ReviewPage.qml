@@ -36,8 +36,6 @@ Rectangle {
                 dataManager: labelPage.dataManager
             }
 
-            
-
             ClassFilterView { // 类别筛选
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
@@ -45,30 +43,35 @@ Rectangle {
                 color: QuiColor.Primary
                 dataManager: labelPage.dataManager
             }
+        }
+
+        LabelInstancesGridView {
+            SplitView.fillHeight: true
+            SplitView.fillWidth: true
+            dataManager: labelPage.dataManager
+            featureManager: labelPage.featureManager
+        }
+
+        
+        QuiSplitView {
+            SplitView.fillHeight: true
+            SplitView.minimumWidth: 200
+            SplitView.maximumWidth: parent.width / 2
+            SplitView.preferredWidth: 300
+            orientation: Qt.Vertical
+
+            ReviewAdjustmentPanel { // 复核显示
+                SplitView.fillWidth: true
+                SplitView.minimumHeight: 260
+                SplitView.preferredHeight: 260
+            }
 
             SelectedLabelsInfoPanel { // 所选标注信息
                 SplitView.fillWidth: true
-                SplitView.minimumHeight: 200
-                SplitView.preferredHeight: 240
+                SplitView.minimumHeight: visible ? 200 : 0
+                SplitView.preferredHeight: visible ? 240 : 0
                 color: QuiColor.Primary
                 dataManager: labelPage.dataManager
-            }
-        }
-
-        RowLayout {
-            SplitView.fillHeight: true
-            SplitView.fillWidth: true
-
-            LabelInstancesGridView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                dataManager: labelPage.dataManager
-                featureManager: labelPage.featureManager
-            }
-
-            ReviewSidebar { // 侧边栏
-                Layout.preferredWidth: 40
-                Layout.fillHeight: true
             }
         }
     }

@@ -2,34 +2,14 @@
 
 /**
  * @file SettingsKeys.h
- * @brief 生成设置键入口和侧边栏枚举声明。
+ * @brief 生成设置键入口声明。
  */
 
 #include "dltool/settings/Export.h"
 #include "dltool/settings/SettingsKeys.hpp"
 
 #include <QString>
-#include <QtQml>
 #include <string_view>
-
-/**
- * @namespace dltool::settings::sidebar
- * @brief 侧边栏场景枚举命名空间。
- */
-namespace dltool::settings::sidebar {
-Q_NAMESPACE_EXPORT(SETTINGS_API)
-
-/**
- * @brief 设置侧边栏键。
- */
-enum class Key
-{
-    Gallery = 0, ///< 图库页面侧边栏。
-    Review,      ///< 复核页面侧边栏。
-};
-Q_ENUM_NS(Key)
-QML_NAMED_ELEMENT(SettingsSidebar)
-} // namespace dltool::settings::sidebar
 
 namespace dltool::settings {
 
@@ -47,19 +27,5 @@ SETTINGS_API QString toQString(std::string_view value);
  * @return 字段英文键名；未知键返回空字符串。
  */
 SETTINGS_API QString fieldName(generated::AccessorKey accessor_key, int field_key);
-
-/**
- * @brief 获取侧边栏枚举对应的名称。
- * @param key 侧边栏枚举键。
- * @return 侧边栏名称；未知键返回空字符串。
- */
-SETTINGS_API QString sidebarName(sidebar::Key key);
-
-/**
- * @brief 获取侧边栏整数键对应的名称。
- * @param key 侧边栏整数键。
- * @return 侧边栏名称；未知键返回空字符串。
- */
-SETTINGS_API QString sidebarName(int key);
 
 } // namespace dltool::settings

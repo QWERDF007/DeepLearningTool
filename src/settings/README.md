@@ -13,7 +13,7 @@
 
 - `SettingsSchema.h/.cpp`：定义 YAML schema、字段模型、分组目录和数据库同步逻辑。
 - `SettingsObjects.h/.cpp`：把字段模型转换为 QML 可直接访问的动态属性对象。
-- `SettingsKeys.h/.cpp`：定义 QML 可用的 accessor/sidebar/field 枚举，并集中映射到 YAML 中的字符串 key。
+- `SettingsKeys.h/.cpp`：定义 QML 可用的 accessor/field 枚举，并集中映射到 YAML 中的字符串 key。
 - `GlobalSettings.h/.cpp`：QML 单例入口，负责加载、保存、重置和运行时对象树重建。
 
 ## YAML 到运行时模型
@@ -27,7 +27,6 @@
 - `parent_accessor` / `parent`：可选父级命名空间，例如 `advanced`。
 - `category`：设置页面或其它界面可用于分类过滤的逻辑类别。
 - `ordinal_index`：设置组排序值；未配置时按加载顺序生成。
-- `sidebar`：可选的组级侧边栏或其它视图元数据。
 - `label`：设置页面显示名称。
 - `sections`：该组下的设置页分区。key 是分区标题，value 是该分区的字段列表。
 
@@ -43,7 +42,6 @@
 - `options`：普通枚举选项。
 - `options_values` / `option_values` / `options_value_map`：可选的 combo 显示值到实际值映射；未配置时实际值等于 `options` 中的显示值。
 - `options_map` / `key_values` / `values_map`：按其它字段值切换的动态选项。
-- `sidebar`：字段级侧边栏元数据，按 sidebar key 分组，例如 `gallery`、`review`，可配置 `icon`、`ordinal_index`、`from`、`to`、`step`、`snap` 等。
 - `desc`：配置项简短说明，设置页在左侧文字区域显示 tooltip 时使用。
 - `description`、`visible`、`ordinal_index`：说明、可见性和排序信息。字段的 `section` 角色由父 section 节点名生成。
 
@@ -75,7 +73,6 @@ QML 侧优先使用枚举入口，避免手写 accessor path：
 - `GlobalSettings.valueForField(SettingsAccessor.Data, DataField.CellScale, fallback)`
 - `GlobalSettings.setFieldValue(SettingsAccessor.Data, DataField.CellScale, value)`
 - `GlobalSettings.catalog.optionsForField(SettingsAccessor.ImageSearch, ImageSearchField.FeatureName, modelName)`
-- `GlobalSettings.catalog.sidebarFieldsFor(SettingsSidebar.Gallery)`
 
 配置驱动场景使用 schema 行中的 `group_key/name_en`，不再通过 QML 属性名读写：
 
@@ -104,11 +101,10 @@ QML 侧优先使用枚举入口，避免手写 accessor path：
 - `parentAccessor`
 - `accessorPath`
 - `category`
-- `sidebar`
 - `ordinalIndex`
 - `fieldModel`
 
-`fieldModel` 是字段列表模型，角色包括 `nameEn`、`nameCn`、`propertyName`、`value`、`defaultValue`、`valueType`、`valueRange`、`controlType`、`options`、`optionsValueMap`、`optionsMap`、`sidebar`、`section`、`desc`、`description`、`visible`、`ordinalIndex`。界面应根据 `valueType` 和 `controlType` 创建对应控件，根据 `value` 赋值，根据 `valueRange` 设置范围。
+`fieldModel` 是字段列表模型，角色包括 `nameEn`、`nameCn`、`propertyName`、`value`、`defaultValue`、`valueType`、`valueRange`、`controlType`、`options`、`optionsValueMap`、`optionsMap`、`section`、`desc`、`description`、`visible`、`ordinalIndex`。界面应根据 `valueType` 和 `controlType` 创建对应控件，根据 `value` 赋值，根据 `valueRange` 设置范围。
 
 ## 数据库持久化
 
@@ -144,6 +140,5 @@ QML 侧优先使用枚举入口，避免手写 accessor path：
 2. 新增字段：在 group 的对应 section 节点下添加 field，并配置 `name_en`、`property_name`、`desc`、`value_type`、`value`、`control_type` 等。
 3. 动态列表：简单列表使用 `options`；需要显示值和保存值不一致时，使用 `options_values`；如果列表依赖其它字段值，使用 `options_map` 这类 key-values 结构，例如按 `model` 映射到不同特征层名列表。
 4. 访问路径：通过 `accessor` 和 `parent_accessor` 决定，例如 `parent_accessor: advanced` + `accessor: roiSearch` 对应内部路径 `advanced.roiSearch`，QML 使用 `SettingsAccessor.RoiSearch` 访问。
-5. 侧边栏入口：给字段添加 `sidebar` 元数据，例如 `sidebar.gallery.icon: Brightness`，侧边栏通过 `GlobalSettings.catalog.sidebarFieldsFor(SettingsSidebar.Gallery)` 动态生成按钮。
 
 只要 YAML schema、数据库模板和设置页面控件类型支持，对应设置无需新增 C++ 参数类。

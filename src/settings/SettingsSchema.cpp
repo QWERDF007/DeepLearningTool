@@ -64,58 +64,12 @@ SettingsField parseField(const YAML::Node &node, const QString &section, const i
     field.options_value_map = nodeVariant(node["options_values"]).toMap();
     field.options_map       = nodeVariant(node["options_map"]).toMap();
     field.options_key_field = nodeString(node["options_key_field"]);
-    field.sidebar           = nodeVariant(node["sidebar"]).toMap();
     field.section           = section;
     field.desc              = nodeString(node["desc"]);
     field.description       = nodeString(node["description"]);
     field.visible           = node["visible"] ? node["visible"].as<bool>() : true;
     field.ordinal_index     = node["ordinal_index"] ? node["ordinal_index"].as<int>() : ordinal_index;
     return field;
-}
-
-QVariantMap sidebarEntry(const QVariantMap &sidebar, const QString &sidebar_key)
-{
-    if (sidebar_key.isEmpty() || sidebar.isEmpty())
-        return {};
-
-    const QVariant direct = sidebar.value(sidebar_key);
-    if (direct.isValid())
-    {
-        if (direct.userType() == QMetaType::Bool)
-            return direct.toBool() ? QVariantMap{} : QVariantMap{{QStringLiteral("enabled"), false}};
-        if (direct.userType() == QMetaType::QString)
-            return {
-                {QStringLiteral("label"), direct.toString()}
-            };
-        return direct.toMap();
-    }
-
-    const QVariant keys = sidebar.value(QStringLiteral("keys"));
-    if (keys.toStringList().contains(sidebar_key))
-        return {};
-    const QVariantList key_list = keys.toList();
-    for (const QVariant &key : key_list)
-    {
-        if (key.toString() == sidebar_key)
-            return {};
-    }
-
-    return {};
-}
-
-bool sidebarContains(const QVariantMap &sidebar, const QString &sidebar_key)
-{
-    if (sidebar_key.isEmpty() || sidebar.isEmpty())
-        return false;
-    if (sidebar.contains(sidebar_key))
-        return true;
-
-    const QVariant keys = sidebar.value(QStringLiteral("keys"));
-    if (keys.toStringList().contains(sidebar_key))
-        return true;
-    const QVariantList key_list = keys.toList();
-    return std::any_of(key_list.cbegin(), key_list.cend(),
-                       [&sidebar_key](const QVariant &key) { return key.toString() == sidebar_key; });
 }
 
 QStringList settingsConfigDirs()
@@ -159,8 +113,8 @@ SettingsFieldModel::SettingsFieldModel(QObject *parent)
 }
 
 SettingsFieldModel::SettingsFieldModel(QString group_key, QString table_name, QString label, QString accessor,
-                                       QString parent_accessor, QString category, QVariantMap sidebar,
-                                       const int ordinal_index, std::vector<SettingsField> fields, QObject *parent)
+                                       QString parent_accessor, QString category, const int ordinal_index,
+                                       std::vector<SettingsField> fields, QObject *parent)
     : QAbstractListModel(parent)
     , group_key_(std::move(group_key))
     , table_name_(std::move(table_name))
@@ -168,7 +122,6 @@ SettingsFieldModel::SettingsFieldModel(QString group_key, QString table_name, QS
     , accessor_(std::move(accessor))
     , parent_accessor_(std::move(parent_accessor))
     , category_(std::move(category))
-    , sidebar_(std::move(sidebar))
     , ordinal_index_(ordinal_index)
     , fields_(std::move(fields))
 {
@@ -210,11 +163,6 @@ QString SettingsFieldModel::accessorPath() const
 QString SettingsFieldModel::category() const
 {
     return category_;
-}
-
-QVariantMap SettingsFieldModel::sidebar() const
-{
-    return sidebar_;
 }
 
 int SettingsFieldModel::ordinalIndex() const
@@ -265,8 +213,6 @@ QVariant SettingsFieldModel::data(const QModelIndex &index, const int role) cons
         return field.options_map;
     case OptionsKeyFieldRole:
         return field.options_key_field;
-    case SidebarRole:
-        return field.sidebar;
     case SectionRole:
         return field.section;
     case DescRole:
@@ -323,7 +269,6 @@ QHash<int, QByteArray> SettingsFieldModel::roleNames() const
         {OptionsValueMapRole, "optionsValueMap"},
         {     OptionsMapRole,      "optionsMap"},
         {OptionsKeyFieldRole, "optionsKeyField"},
-        {        SidebarRole,         "sidebar"},
         {        SectionRole,         "section"},
         {           DescRole,            "desc"},
         {    DescriptionRole,     "description"},
@@ -380,51 +325,6 @@ QVariantList SettingsFieldModel::optionsForKey(const QString &name, const QStrin
     if (row < 0)
         return {};
     return fields_.at(static_cast<size_t>(row)).options_map.value(key).toList();
-}
-
-QVariantList SettingsFieldModel::sidebarFields(const QString &sidebar_key) const
-{
-    QVariantList rows;
-    for (const SettingsField &field : fields_)
-    {
-        if (!sidebarContains(field.sidebar, sidebar_key))
-            continue;
-
-        QVariantMap sidebar = sidebarEntry(field.sidebar, sidebar_key);
-        if (sidebar.value(QStringLiteral("enabled"), true).toBool() == false)
-            continue;
-
-        QVariantMap row = toMap(field);
-        row.insert(QStringLiteral("group_key"), group_key_);
-        row.insert(QStringLiteral("table_name"), table_name_);
-        row.insert(QStringLiteral("group_label"), label_);
-        row.insert(QStringLiteral("accessor"), accessor_);
-        row.insert(QStringLiteral("parent_accessor"), parent_accessor_);
-        row.insert(QStringLiteral("accessor_path"), accessorPath());
-        row.insert(QStringLiteral("category"), category_);
-        row.insert(QStringLiteral("sidebar_key"), sidebar_key);
-        row.insert(QStringLiteral("sidebar"), sidebar);
-        row.insert(QStringLiteral("sidebar_label"),
-                   sidebar.value(QStringLiteral("label"), field.name_cn.isEmpty() ? field.name_en : field.name_cn));
-        row.insert(QStringLiteral("sidebar_icon"), sidebar.value(QStringLiteral("icon")));
-        row.insert(QStringLiteral("sidebar_order"),
-                   sidebar.value(QStringLiteral("ordinal_index"), field.ordinal_index));
-        rows.append(row);
-    }
-
-    std::sort(rows.begin(), rows.end(),
-              [](const QVariant &lhs, const QVariant &rhs)
-              {
-                  const QVariantMap lhs_map   = lhs.toMap();
-                  const QVariantMap rhs_map   = rhs.toMap();
-                  const int         lhs_order = lhs_map.value(QStringLiteral("sidebar_order")).toInt();
-                  const int         rhs_order = rhs_map.value(QStringLiteral("sidebar_order")).toInt();
-                  if (lhs_order != rhs_order)
-                      return lhs_order < rhs_order;
-                  return lhs_map.value(QStringLiteral("property_name")).toString()
-                       < rhs_map.value(QStringLiteral("property_name")).toString();
-              });
-    return rows;
 }
 
 QVariantMap SettingsFieldModel::valuesMap() const
@@ -518,7 +418,6 @@ QVariantMap SettingsFieldModel::toMap(const SettingsField &field) const
         {   QStringLiteral("options_values"), field.options_value_map},
         {      QStringLiteral("options_map"),       field.options_map},
         {QStringLiteral("options_key_field"), field.options_key_field},
-        {          QStringLiteral("sidebar"),           field.sidebar},
         {          QStringLiteral("section"),           field.section},
         {             QStringLiteral("desc"),              field.desc},
         {      QStringLiteral("description"),       field.description},
@@ -567,8 +466,6 @@ QVariant SettingsCatalog::data(const QModelIndex &index, const int role) const
         return group->accessorPath();
     case CategoryRole:
         return group->category();
-    case SidebarRole:
-        return group->sidebar();
     case OrdinalIndexRole:
         return group->ordinalIndex();
     case FieldModelRole:
@@ -588,7 +485,6 @@ QHash<int, QByteArray> SettingsCatalog::roleNames() const
         {ParentAccessorRole, "parentAccessor"},
         {  AccessorPathRole,   "accessorPath"},
         {      CategoryRole,       "category"},
-        {       SidebarRole,        "sidebar"},
         {  OrdinalIndexRole,   "ordinalIndex"},
         {    FieldModelRole,     "fieldModel"},
     };
@@ -640,35 +536,6 @@ QVariantList SettingsCatalog::optionsForField(const int accessor_key, const int 
                               toQString(generated::fieldName(generated_accessor, field_key)), key);
 }
 
-QVariantList SettingsCatalog::sidebarFields(const QString &sidebar_key) const
-{
-    QVariantList rows;
-    for (const auto &group_ptr : groups_)
-    {
-        const QVariantList group_rows = group_ptr->sidebarFields(sidebar_key);
-        for (const QVariant &row : group_rows) rows.append(row);
-    }
-
-    std::sort(rows.begin(), rows.end(),
-              [](const QVariant &lhs, const QVariant &rhs)
-              {
-                  const QVariantMap lhs_map   = lhs.toMap();
-                  const QVariantMap rhs_map   = rhs.toMap();
-                  const int         lhs_order = lhs_map.value(QStringLiteral("sidebar_order")).toInt();
-                  const int         rhs_order = rhs_map.value(QStringLiteral("sidebar_order")).toInt();
-                  if (lhs_order != rhs_order)
-                      return lhs_order < rhs_order;
-                  return lhs_map.value(QStringLiteral("accessor_path")).toString()
-                       < rhs_map.value(QStringLiteral("accessor_path")).toString();
-              });
-    return rows;
-}
-
-QVariantList SettingsCatalog::sidebarFieldsFor(const int sidebar_key) const
-{
-    return sidebarFields(sidebarName(static_cast<sidebar::Key>(sidebar_key)));
-}
-
 bool SettingsCatalog::loadFromConfig(QString &err_msg)
 {
     const QVector<QFileInfo> files = settingsConfigFiles();
@@ -713,7 +580,6 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
                 const QString     accessor        = nodeString(group["accessor"]);
                 const QString     parent_accessor = nodeString(group["parent_accessor"]);
                 const QString     category        = nodeString(group["category"]);
-                const QVariantMap sidebar         = nodeVariant(group["sidebar"]).toMap();
                 const int         group_ordinal
                     = group["ordinal_index"] ? group["ordinal_index"].as<int>() : static_cast<int>(groups_.size());
 
@@ -758,7 +624,7 @@ bool SettingsCatalog::loadFromConfig(QString &err_msg)
                         }
                     }
                 }
-                addGroup(group_key, table_name, label, accessor, parent_accessor, category, sidebar, group_ordinal,
+                addGroup(group_key, table_name, label, accessor, parent_accessor, category, group_ordinal,
                          std::move(fields));
             }
         }
@@ -832,12 +698,12 @@ void SettingsCatalog::reset()
 }
 
 SettingsFieldModel *SettingsCatalog::addGroup(QString group_key, QString table_name, QString label, QString accessor,
-                                              QString parent_accessor, QString category, QVariantMap sidebar,
-                                              const int ordinal_index, std::vector<SettingsField> fields)
+                                              QString parent_accessor, QString category, const int ordinal_index,
+                                              std::vector<SettingsField> fields)
 {
     auto group = std::make_unique<SettingsFieldModel>(
         std::move(group_key), std::move(table_name), std::move(label), std::move(accessor), std::move(parent_accessor),
-        std::move(category), std::move(sidebar), ordinal_index, std::move(fields), this);
+        std::move(category), ordinal_index, std::move(fields), this);
     SettingsFieldModel *ptr = group.get();
     connect(ptr, &SettingsFieldModel::valueChanged, this,
             [this, ptr](const QString &name, const QVariant &value)
