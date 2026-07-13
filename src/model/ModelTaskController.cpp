@@ -39,6 +39,8 @@ ModelTaskController::~ModelTaskController() = default;
 
 int ModelTaskController::addModelTask(const QString &model_uuid, ModelTaskType task_type)
 {
+    spdlog::info("添加模型任务请求, uuid: {}, 类型: {}", model_uuid.toUtf8().constData(),
+                 modelTaskKey(task_type).toUtf8().constData());
     ModelTaskContext context;
     QString          err_msg;
     if (!buildContext(model_uuid, task_type, -1, context, &err_msg))
@@ -46,11 +48,17 @@ int ModelTaskController::addModelTask(const QString &model_uuid, ModelTaskType t
         spdlog::error("添加模型任务失败: {}", err_msg.toUtf8().constData());
         return -1;
     }
-    return ensureTaskRecord(context);
+    const int task_id = ensureTaskRecord(context);
+    if (task_id >= 0)
+        spdlog::info("模型任务添加成功, task_id: {}, 模型: {}, 类型: {}", task_id,
+                     context.model_name.toUtf8().constData(), modelTaskKey(task_type).toUtf8().constData());
+    return task_id;
 }
 
 int ModelTaskController::startModelTask(const QString &model_uuid, ModelTaskType task_type)
 {
+    spdlog::info("启动模型任务请求, uuid: {}, 类型: {}", model_uuid.toUtf8().constData(),
+                 modelTaskKey(task_type).toUtf8().constData());
     ModelTaskContext context;
     QString          err_msg;
     if (!buildContext(model_uuid, task_type, -1, context, &err_msg))
@@ -63,30 +71,45 @@ int ModelTaskController::startModelTask(const QString &model_uuid, ModelTaskType
     if (task_id < 0)
         return -1;
 
-    startTask(task_id);
+    if (!startTask(task_id))
+    {
+        spdlog::error("启动模型任务失败, task_id: {}, 模型: {}, 类型: {}", task_id,
+                      context.model_name.toUtf8().constData(), modelTaskKey(task_type).toUtf8().constData());
+        return -1;
+    }
+    spdlog::info("模型任务启动成功, task_id: {}, 模型: {}, 类型: {}", task_id,
+                 context.model_name.toUtf8().constData(), modelTaskKey(task_type).toUtf8().constData());
     return task_id;
 }
 
 bool ModelTaskController::stopModelTask(const QString &model_uuid, ModelTaskType task_type)
 {
+    spdlog::info("停止模型任务请求, uuid: {}, 类型: {}", model_uuid.toUtf8().constData(),
+                 modelTaskKey(task_type).toUtf8().constData());
     if (task_manager_ == nullptr || task_manager_->tasks() == nullptr)
         return false;
 
     const int task_id = task_manager_->tasks()->findModelTask(model_uuid.trimmed(), task_type, false);
     if (task_id < 0)
         return false;
-    return stopTask(task_id);
+    const bool stopped = stopTask(task_id);
+    spdlog::info("停止模型任务{}, task_id: {}", stopped ? "成功" : "失败", task_id);
+    return stopped;
 }
 
 bool ModelTaskController::deleteModelTask(const QString &model_uuid, ModelTaskType task_type)
 {
+    spdlog::info("删除模型任务请求, uuid: {}, 类型: {}", model_uuid.toUtf8().constData(),
+                 modelTaskKey(task_type).toUtf8().constData());
     if (task_manager_ == nullptr || task_manager_->tasks() == nullptr)
         return false;
 
     const int task_id = task_manager_->tasks()->findModelTask(model_uuid.trimmed(), task_type, false);
     if (task_id < 0)
         return false;
-    return deleteTask(task_id);
+    const bool deleted = deleteTask(task_id);
+    spdlog::info("删除模型任务{}, task_id: {}", deleted ? "成功" : "失败", task_id);
+    return deleted;
 }
 
 bool ModelTaskController::buildContext(const QString &model_uuid, ModelTaskType task_type, int task_id,
@@ -193,6 +216,8 @@ bool ModelTaskController::stopTask(int task_id)
     const bool stop_requested = task_manager_->stopTask(task_id);
     if (stop_requested && !had_external_process)
         task_manager_->markTaskStopped(task_id);
+    if (stop_requested)
+        spdlog::info("模型任务停止信号已发送, task_id: {}", task_id);
     return stop_requested;
 }
 
@@ -204,10 +229,13 @@ bool ModelTaskController::deleteTask(int task_id)
         const bool deleted_from_runner = external_task_runner_->deleteTask(task_id);
         if (deleted_from_table)
             owned_task_ids_.erase(task_id);
+        spdlog::info("模型任务删除{}, task_id: {}", deleted_from_runner && deleted_from_table ? "成功" : "失败",
+                     task_id);
         return deleted_from_runner && deleted_from_table;
     }
     if (deleted_from_table)
         owned_task_ids_.erase(task_id);
+    spdlog::info("模型任务删除{}, task_id: {}", deleted_from_table ? "成功" : "失败", task_id);
     return deleted_from_table;
 }
 

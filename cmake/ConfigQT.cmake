@@ -7,7 +7,7 @@ set(QT_QML_IMPORT_DIR "${Qt6_ROOT}/qml")
 
 
 # 寻找Qt6的组件
-find_package(Qt6  REQUIRED COMPONENTS Core Gui Quick Widgets Charts Network)
+find_package(Qt6  REQUIRED COMPONENTS Core Gui Quick Widgets Charts Network WebEngineQuick)
 
 # 寻找Qt6的测试组件
 find_package(Qt6  REQUIRED COMPONENTS QuickTest)

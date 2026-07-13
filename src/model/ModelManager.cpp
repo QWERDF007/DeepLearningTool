@@ -9,12 +9,17 @@
 #include "model/ModelDatasetSelection.h"
 #include "model/ModelStorageService.h"
 #include "model/ModelTaskConfigService.h"
+#include "settings/GlobalSettings.h"
+#include "settings/SettingsKeys.h"
+#include "settings/SettingsValue.h"
 
 #include <spdlog/spdlog.h>
 
 #include <QDateTime>
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <QProcess>
+#include <QProcessEnvironment>
 #include <QQmlEngine>
 #include <QSortFilterProxyModel>
 #include <algorithm>
@@ -68,7 +73,15 @@ ModelManager::ModelManager(const int method, dltool::database::ProjectDataBase *
     init();
 }
 
-ModelManager::~ModelManager() {}
+ModelManager::~ModelManager()
+{
+    if (tensorboard_process_ != nullptr && tensorboard_process_->state() != QProcess::NotRunning)
+    {
+        tensorboard_process_->terminate();
+        if (!tensorboard_process_->waitForFinished(2000))
+            tensorboard_process_->kill();
+    }
+}
 
 void ModelManager::init()
 {
@@ -528,6 +541,103 @@ void ModelManager::requestModelTaskConfigLoad(const QString &model_uuid) const
     const dltool::model::LoadedModelTaskConfigs configs = config_service.load(trimmed_uuid, model_name);
     const_cast<ModelManager *>(this)->applyLoadedModelTaskConfigs(configs.model_uuid, model_name, configs.train_params,
                                                                   configs.test_params);
+}
+
+QString ModelManager::startTensorBoard(const QString &model_uuid)
+{
+    const ModelRecordView record = modelRecordViewForUuid(model_uuid);
+    if (!record.isValid() || record.name.trimmed().isEmpty())
+    {
+        spdlog::error("启动 TensorBoard 失败: 模型记录不存在, uuid: {}", model_uuid.toUtf8().constData());
+        return {};
+    }
+
+    if (tensorboard_process_ != nullptr && tensorboard_process_->state() != QProcess::NotRunning
+        && tensorboard_model_uuid_ == record.uuid)
+    {
+        spdlog::debug("TensorBoard 已在运行, 模型: {}", record.name.toUtf8().constData());
+        return QStringLiteral("http://127.0.0.1:6006/");
+    }
+
+    if (tensorboard_process_ != nullptr && tensorboard_process_->state() != QProcess::NotRunning)
+    {
+        spdlog::info("切换 TensorBoard 模型, 停止旧进程: {}", tensorboard_model_uuid_.toUtf8().constData());
+        tensorboard_process_->kill();
+    }
+
+    namespace generated_field = dltool::settings::generated::field;
+    const QString python_env_path = dltool::settings::settingString(
+        dltool::settings::GlobalSettings::getInstance(), generated_field::Software::PythonEnvPath);
+    const QFileInfo python_env_info(dltool::common::cleanPath(python_env_path));
+    const QString python = (!python_env_path.trimmed().isEmpty() && python_env_info.exists()
+                            && python_env_info.isDir())
+                               ? dltool::common::pythonExecutableFromEnvPath(python_env_path)
+                               : QString();
+    const QString log_dir = ModelStorageService(project_dir_).path(record.name, ModelStorageLocation::Logs);
+    if (python_env_path.trimmed().isEmpty())
+    {
+        spdlog::error("启动 TensorBoard 失败: 未配置 Python 环境目录");
+        return {};
+    }
+    if (!python_env_info.exists() || !python_env_info.isDir())
+    {
+        spdlog::error("启动 TensorBoard 失败: Python 环境目录无效: {}", python_env_path.toUtf8().constData());
+        return {};
+    }
+    if (python.isEmpty())
+    {
+        spdlog::error("启动 TensorBoard 失败: Python 可执行文件不存在, 环境目录: {}",
+                      python_env_path.toUtf8().constData());
+        return {};
+    }
+    if (log_dir.isEmpty())
+    {
+        spdlog::error("启动 TensorBoard 失败: 模型日志目录为空, 模型: {}", record.name.toUtf8().constData());
+        return {};
+    }
+    QString directory_error;
+    if (!dltool::common::ensureDirectory(log_dir, &directory_error))
+    {
+        spdlog::error("启动 TensorBoard 失败: 创建模型日志目录失败, 目录: {}, 原因: {}",
+                      log_dir.toUtf8().constData(), directory_error.toUtf8().constData());
+        return {};
+    }
+
+    if (tensorboard_process_ != nullptr)
+        tensorboard_process_->deleteLater();
+    tensorboard_process_ = new QProcess(this);
+    tensorboard_process_->setProgram(python);
+    tensorboard_process_->setArguments({QStringLiteral("-m"), QStringLiteral("tensorboard.main"),
+                                        QStringLiteral("--logdir"), log_dir, QStringLiteral("--host"),
+                                        QStringLiteral("127.0.0.1"), QStringLiteral("--port"), QStringLiteral("6006")});
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
+    tensorboard_process_->setProcessEnvironment(env);
+    QProcess *process = tensorboard_process_;
+    connect(process, &QProcess::readyReadStandardError, this,
+            [process]()
+            {
+                const QByteArray output = process->readAllStandardError();
+                if (!output.isEmpty())
+                    spdlog::error("TensorBoard: {}", QString::fromLocal8Bit(output).trimmed().toUtf8().constData());
+            });
+    connect(process, &QProcess::errorOccurred, this,
+            [process](QProcess::ProcessError)
+            {
+                spdlog::error("TensorBoard 进程错误: {}", process->errorString().toUtf8().constData());
+            });
+    connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+            [process](int exit_code, QProcess::ExitStatus exit_status)
+            {
+                if (exit_code != 0 || exit_status != QProcess::NormalExit)
+                    spdlog::error("TensorBoard 异常退出, 退出码: {}, 状态: {}", exit_code,
+                                  exit_status == QProcess::NormalExit ? "normal" : "crashed");
+            });
+    tensorboard_model_uuid_ = record.uuid;
+    spdlog::info("启动 TensorBoard, 模型: {}, 日志目录: {}", record.name.toUtf8().constData(),
+                 log_dir.toUtf8().constData());
+    tensorboard_process_->start();
+    return QStringLiteral("http://127.0.0.1:6006/");
 }
 
 void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const QString &model_name,

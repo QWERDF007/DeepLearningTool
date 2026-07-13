@@ -15,6 +15,7 @@
 #include <vector>
 
 class QSortFilterProxyModel;
+class QProcess;
 
 namespace dltool::database {
 class ProjectDataBase;
@@ -89,6 +90,7 @@ public:
     ModelRecordView         modelRecordViewForUuid(const QString &uuid) const;
 
     Q_INVOKABLE dltool::model::IModel *modelForUuid(const QString &uuid) const;
+    Q_INVOKABLE QString startTensorBoard(const QString &model_uuid);
 
     int method() const
     {
@@ -156,6 +158,8 @@ private:
     dltool::data::DataManager *data_manager_{nullptr};
 
     QSortFilterProxyModel *user_visible_model_{nullptr};
+    QProcess               *tensorboard_process_{nullptr};
+    QString                 tensorboard_model_uuid_;
 
     int method_{-1};
 

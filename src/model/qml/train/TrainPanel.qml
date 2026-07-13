@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtWebEngine
 import dltool.ui
 import dltool.data
 import dltool.model
@@ -19,6 +20,22 @@ Item {
     property string currentModelArchitecture: ""
     property IModel selectedModel: modelManager && currentModelUuid.length > 0 ? modelManager.modelForUuid(currentModelUuid) : null
     property ITrainParams trainParams: selectedModel && selectedModel.config ? selectedModel.config.trainParams : null
+    property url tensorBoardUrl: ""
+
+    function openTensorBoard() {
+        tensorBoardUrl = modelManager && currentModelUuid.length > 0
+                         ? modelManager.startTensorBoard(currentModelUuid) : ""
+    }
+
+    onCurrentModelUuidChanged: openTensorBoard()
+    Component.onCompleted: openTensorBoard()
+    onTensorBoardUrlChanged: tensorBoardReload.restart()
+
+    Timer {
+        id: tensorBoardReload
+        interval: 1500
+        onTriggered: tensorBoardView.reload()
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -57,33 +74,19 @@ Item {
                 }
             }
 
-            Rectangle {
-                color: QuiColor.Primary
-                radius: 4
-                border.color: QuiColor.Border
-
-                ColumnLayout {
+            Item {
+                WebEngineView {
+                    id: tensorBoardView
                     anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 10
+                    url: control.tensorBoardUrl
+                    visible: control.tensorBoardUrl.toString().length > 0
+                }
 
-                    QuiText {
-                        Layout.fillWidth: true
-                        text: qsTr("训练结果")
-                        font: QuiFont.Title
-                        color: QuiColor.FontPrimary
-                    }
-
-                    QuiText {
-                        Layout.fillWidth: true
-                        text: control.currentModelUuid.length > 0 ? qsTr("暂无训练结果") : qsTr("请选择模型")
-                        color: QuiColor.FontDark
-                        wrapMode: Text.Wrap
-                    }
-
-                    Item {
-                        Layout.fillHeight: true
-                    }
+                QuiText {
+                    anchors.centerIn: parent
+                    text: control.currentModelUuid.length > 0 ? qsTr("无法启动 TensorBoard") : qsTr("请选择模型")
+                    color: QuiColor.FontDark
+                    visible: !tensorBoardView.visible
                 }
             }
         }

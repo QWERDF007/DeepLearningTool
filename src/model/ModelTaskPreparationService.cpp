@@ -126,10 +126,17 @@ bool ModelTaskPreparationService::prepare(const ModelTaskContext &context, Exter
     }
     if (!QFileInfo::exists(script_path))
         return setError(err_msg, QString("脚本不存在: %1").arg(script_path));
-
     namespace generated_field       = dltool::settings::generated::field;
-    const QString python_executable = dltool::common::pythonExecutableFromEnvPath(dltool::settings::settingString(
-        dltool::settings::GlobalSettings::getInstance(), generated_field::Software::PythonEnvPath));
+    const QString python_env_path = dltool::settings::settingString(
+        dltool::settings::GlobalSettings::getInstance(), generated_field::Software::PythonEnvPath);
+    if (python_env_path.trimmed().isEmpty())
+        return setError(err_msg, QString("未配置 Python 环境目录"));
+
+    const QFileInfo python_env_info(dltool::common::cleanPath(python_env_path));
+    if (!python_env_info.exists() || !python_env_info.isDir())
+        return setError(err_msg, QString("Python 环境目录无效: %1").arg(python_env_path));
+
+    const QString python_executable = dltool::common::pythonExecutableFromEnvPath(python_env_path);
     if (python_executable.isEmpty())
         return setError(err_msg, QString("未配置 Python 环境目录"));
 

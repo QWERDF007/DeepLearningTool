@@ -11,6 +11,7 @@
 
 #include <QApplication>
 #include <QQmlApplicationEngine>
+#include <QtWebEngineQuick/qtwebenginequickglobal.h>
 
 void InitLogger()
 {
@@ -44,10 +45,12 @@ int main(int argc, char *argv[])
     dltool::common::CrashHandler crash_handler;
     crash_handler.setup();
 
+    QApplication          app(argc, argv);
+    QtWebEngineQuick::initialize();
+
     InitLogger();
     spdlog::info("Welcome to dltool!");
 
-    QApplication          app(argc, argv);
     QQmlApplicationEngine engine;
     engine.addImportPath(QStringLiteral(DLTOOL_QML_BUILD_DIR "/qml"));
     engine.addImportPath(QCoreApplication::applicationDirPath() + QStringLiteral("/../qml"));
