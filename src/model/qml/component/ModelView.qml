@@ -48,7 +48,7 @@ Rectangle {
             return
         }
 
-        const modelData = modelManager.modelAt(row)
+        const modelData = modelManager.userVisibleModelAt(row)
         if (!modelData || modelData.model_id === undefined || modelData.model_id < 0 || !modelData.uuid) {
             resetCurrentModelState()
             return
@@ -217,7 +217,7 @@ Rectangle {
                 clip: true
                 currentIndex: -1
                 boundsBehavior: Flickable.StopAtBounds
-                model: modelManager
+                model: modelManager ? modelManager.userVisibleModel : null
                 spacing: 5
                 ScrollBar.vertical: QuiScrollBar {}
                 onCountChanged: modelView.requestEnsureCurrentModel()

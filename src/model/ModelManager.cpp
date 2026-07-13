@@ -16,11 +16,40 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QQmlEngine>
+#include <QSortFilterProxyModel>
 #include <algorithm>
 #include <utility>
 
 namespace dltool::model {
 using common::setError;
+
+namespace {
+
+class UserVisibleModelProxy final : public QSortFilterProxyModel
+{
+public:
+    explicit UserVisibleModelProxy(QObject *parent = nullptr)
+        : QSortFilterProxyModel(parent)
+    {
+    }
+
+protected:
+    bool filterAcceptsRow(const int source_row, const QModelIndex &source_parent) const override
+    {
+        const auto *manager = qobject_cast<const ModelManager *>(sourceModel());
+        if (manager == nullptr)
+            return false;
+
+        const QModelIndex source_index = manager->index(source_row, 0, source_parent);
+        const QString       framework_name = manager->data(source_index, ModelManager::FrameworkNameRole).toString();
+        if (framework_name.trimmed().isEmpty())
+            return false;
+
+        return registeredFramework(manager->method(), framework_name).visible_for_model_creation;
+    }
+};
+
+} // namespace
 
 ModelManager::ModelManager(const int method, dltool::database::ProjectDataBase *database,
                            dltool::data::DataManager *data_manager, QObject *parent)
@@ -32,6 +61,10 @@ ModelManager::ModelManager(const int method, dltool::database::ProjectDataBase *
                        ? dltool::common::cleanPath(QFileInfo(database->path()).absoluteDir().absolutePath())
                        : QString())
 {
+    user_visible_model_ = new UserVisibleModelProxy(this);
+    user_visible_model_->setSourceModel(this);
+    user_visible_model_->setFilterRole(FrameworkNameRole);
+    user_visible_model_->setDynamicSortFilter(true);
     init();
 }
 
@@ -402,6 +435,23 @@ QVariantMap ModelManager::modelAt(const int row) const
         {             QStringLiteral("ctime"),           formatTimestamp(model.ctime)},
         {             QStringLiteral("mtime"),           formatTimestamp(model.mtime)},
     };
+}
+
+QVariantMap ModelManager::userVisibleModelAt(const int row) const
+{
+    if (user_visible_model_ == nullptr || row < 0 || row >= user_visible_model_->rowCount())
+        return {};
+
+    const QModelIndex source_index = user_visible_model_->mapToSource(user_visible_model_->index(row, 0));
+    if (!source_index.isValid())
+        return {};
+
+    return modelAt(source_index.row());
+}
+
+QAbstractItemModel *ModelManager::userVisibleModel() const
+{
+    return user_visible_model_;
 }
 
 QVariantMap ModelManager::modelRecordForUuid(const QString &uuid) const

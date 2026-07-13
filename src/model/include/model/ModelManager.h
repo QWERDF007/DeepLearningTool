@@ -14,6 +14,8 @@
 #include <unordered_set>
 #include <vector>
 
+class QSortFilterProxyModel;
+
 namespace dltool::database {
 class ProjectDataBase;
 } // namespace dltool::database
@@ -35,6 +37,7 @@ public:
     ~ModelManager();
 
     Q_PROPERTY(int method READ method CONSTANT FINAL)
+    Q_PROPERTY(QAbstractItemModel *userVisibleModel READ userVisibleModel CONSTANT FINAL)
 
     enum Role
     {
@@ -81,6 +84,7 @@ public:
     Q_INVOKABLE QStringList availableModelNames() const;
 
     Q_INVOKABLE QVariantMap modelAt(int row) const;
+    Q_INVOKABLE QVariantMap userVisibleModelAt(int row) const;
     QVariantMap             modelRecordForUuid(const QString &uuid) const;
     ModelRecordView         modelRecordViewForUuid(const QString &uuid) const;
 
@@ -90,6 +94,8 @@ public:
     {
         return method_;
     }
+
+    QAbstractItemModel *userVisibleModel() const;
 
     QString projectDirectory() const
     {
@@ -148,6 +154,8 @@ private:
     dltool::database::ProjectDataBase *database_{nullptr};
 
     dltool::data::DataManager *data_manager_{nullptr};
+
+    QSortFilterProxyModel *user_visible_model_{nullptr};
 
     int method_{-1};
 
