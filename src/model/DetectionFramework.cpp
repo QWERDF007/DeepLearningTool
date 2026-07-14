@@ -5,6 +5,10 @@ namespace dltool::model { namespace {
 
 using dltool::core::DeepLearningMethod;
 
+/**
+ * @brief 构建 ultralytics 框架定义
+ * @return 框架定义
+ */
 FrameworkDefinition ultralyticsFramework()
 {
     FrameworkDefinition framework;

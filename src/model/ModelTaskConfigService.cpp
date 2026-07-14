@@ -1,7 +1,7 @@
 #include "model/ModelTaskConfigService.h"
 
-#include "common/YamlUtils.h"
 #include "common/Utils.h"
+#include "common/YamlUtils.h"
 #include "model/IModel.h"
 #include "model/IModelConfig.h"
 #include "model/IParams.h"
@@ -21,6 +21,10 @@ namespace dltool::model {
 
 namespace {
 
+/**
+ * @brief 获取任务配置文件名映射表
+ * @return 文件名映射
+ */
 const std::map<ModelTaskConfigFile, QString> &taskConfigFileNames()
 {
     static const std::map<ModelTaskConfigFile, QString> names = {
@@ -30,6 +34,10 @@ const std::map<ModelTaskConfigFile, QString> &taskConfigFileNames()
     return names;
 }
 
+/**
+ * @brief 获取任务配置字段名映射表
+ * @return 字段名映射
+ */
 const std::map<ModelTaskConfigField, QString> &taskConfigFieldNames()
 {
     static const std::map<ModelTaskConfigField, QString> names = {
@@ -52,6 +60,13 @@ const std::map<ModelTaskConfigField, QString> &taskConfigFieldNames()
     return names;
 }
 
+/**
+ * @brief 解析输出目录路径（绝对路径直接返回，相对路径基于 model_dir 拼接）
+ * @param model_dir 模型目录
+ * @param path 配置路径
+ * @param fallback 回退路径
+ * @return 解析后的绝对路径
+ */
 QString resolveModelOutputPath(const QString &model_dir, const QString &path, const QString &fallback)
 {
     QString value = cleanPath(path);
@@ -62,6 +77,13 @@ QString resolveModelOutputPath(const QString &model_dir, const QString &path, co
     return cleanPath(QDir(model_dir).filePath(value));
 }
 
+/**
+ * @brief 规范化参数组中的输出目录路径
+ * @param groups 参数组键值对
+ * @param group_name 组名称
+ * @param model_dir 模型目录
+ * @param fallback 回退路径
+ */
 void normalizeOutputDir(QVariantMap &groups, const QString &group_name, const QString &model_dir,
                         const QString &fallback)
 {

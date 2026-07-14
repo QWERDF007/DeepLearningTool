@@ -77,8 +77,8 @@ int ModelTaskController::startModelTask(const QString &model_uuid, ModelTaskType
                       context.model_name.toUtf8().constData(), modelTaskKey(task_type).toUtf8().constData());
         return -1;
     }
-    spdlog::info("模型任务启动成功, task_id: {}, 模型: {}, 类型: {}", task_id,
-                 context.model_name.toUtf8().constData(), modelTaskKey(task_type).toUtf8().constData());
+    spdlog::info("模型任务启动成功, task_id: {}, 模型: {}, 类型: {}", task_id, context.model_name.toUtf8().constData(),
+                 modelTaskKey(task_type).toUtf8().constData());
     return task_id;
 }
 

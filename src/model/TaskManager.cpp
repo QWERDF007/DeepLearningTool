@@ -14,14 +14,24 @@ namespace {
 
 constexpr int kRuntimeRefreshIntervalMs = 1000;
 
+/**
+ * @brief 将进度值限制在 0-100 范围
+ * @param progress 原始进度值
+ * @return 限制后的进度值
+ */
 int boundedProgress(int progress)
 {
     return std::clamp(progress, 0, 100);
 }
 
+/**
+ * @brief 将秒数格式化为 HH:MM:SS 字符串
+ * @param seconds 秒数
+ * @return 格式化的时间字符串
+ */
 QString durationText(qint64 seconds)
 {
-    seconds = std::max<qint64>(0, seconds);
+    seconds            = std::max<qint64>(0, seconds);
     const qint64 hours = seconds / 3600;
     seconds %= 3600;
     const qint64 minutes = seconds / 60;
@@ -145,22 +155,22 @@ QVariant TaskTableModel::headerData(int section, Qt::Orientation orientation, in
 QHash<int, QByteArray> TaskTableModel::roleNames() const
 {
     return {
-        {Qt::DisplayRole,      "display"},
-        {     TaskIdRole,      "task_id"},
-        {  ModelUuidRole,   "model_uuid"},
-        {  ModelNameRole,   "model_name"},
-        {   TaskTypeRole,    "task_type"},
+        { Qt::DisplayRole,        "display"},
+        {      TaskIdRole,        "task_id"},
+        {   ModelUuidRole,     "model_uuid"},
+        {   ModelNameRole,     "model_name"},
+        {    TaskTypeRole,      "task_type"},
         {TaskTypeTextRole, "task_type_text"},
-        {     StatusRole,       "status"},
-        {StatusValueRole, "status_value"},
-        {  CreatedAtRole,   "created_at"},
-        {RunningTimeRole, "running_time"},
-        {       EtaRole,          "eta"},
-        {   ProgressRole,     "progress"},
-        {   CanStartRole,    "can_start"},
-        {   CanPauseRole,    "can_pause"},
-        {    CanStopRole,     "can_stop"},
-        {  CanFinishRole,   "can_finish"},
+        {      StatusRole,         "status"},
+        { StatusValueRole,   "status_value"},
+        {   CreatedAtRole,     "created_at"},
+        { RunningTimeRole,   "running_time"},
+        {         EtaRole,            "eta"},
+        {    ProgressRole,       "progress"},
+        {    CanStartRole,      "can_start"},
+        {    CanPauseRole,      "can_pause"},
+        {     CanStopRole,       "can_stop"},
+        {   CanFinishRole,     "can_finish"},
     };
 }
 
@@ -204,8 +214,8 @@ bool TaskTableModel::startTask(int task_id)
     if (!canStart(task))
         return false;
 
-    task.status     = Running;
-    task.started_at = QDateTime::currentSecsSinceEpoch();
+    task.status      = Running;
+    task.started_at  = QDateTime::currentSecsSinceEpoch();
     task.eta_seconds = -1;
     emitTaskChanged(row);
     return true;
@@ -261,9 +271,9 @@ bool TaskTableModel::finishTask(int task_id)
     const qint64 now = QDateTime::currentSecsSinceEpoch();
     if ((task.status == Running || task.status == Stopping) && task.started_at > 0)
         task.accumulated_seconds += std::max<qint64>(0, now - task.started_at);
-    task.started_at = 0;
-    task.status     = Finished;
-    task.progress   = 100;
+    task.started_at  = 0;
+    task.status      = Finished;
+    task.progress    = 100;
     task.eta_seconds = 0;
     emitTaskChanged(row);
     return true;
@@ -303,10 +313,10 @@ bool TaskTableModel::setTaskStatus(int task_id, TaskStatus status)
     {
         task.started_at = 0;
     }
-    task.status     = status;
+    task.status = status;
     if (status == Finished)
     {
-        task.progress = 100;
+        task.progress    = 100;
         task.eta_seconds = 0;
     }
     else if (status == Stopping || status == Stopped || status == Failed)
@@ -337,13 +347,13 @@ bool TaskTableModel::updateTaskProgress(int task_id, int progress)
     if (row < 0)
         return false;
 
-    TaskRecord &task    = tasks_[static_cast<size_t>(row)];
-    const int   bounded = boundedProgress(progress);
-    bool eta_changed = false;
+    TaskRecord &task        = tasks_[static_cast<size_t>(row)];
+    const int   bounded     = boundedProgress(progress);
+    bool        eta_changed = false;
     if (bounded >= 100 && task.eta_seconds != 0)
     {
         task.eta_seconds = 0;
-        eta_changed = true;
+        eta_changed      = true;
     }
 
     if (task.progress == bounded && !eta_changed)
@@ -351,8 +361,7 @@ bool TaskTableModel::updateTaskProgress(int task_id, int progress)
 
     task.progress = bounded;
     if (eta_changed)
-        emit dataChanged(index(row, EtaColumn), index(row, ProgressColumn),
-                         {EtaRole, ProgressRole, Qt::DisplayRole});
+        emit dataChanged(index(row, EtaColumn), index(row, ProgressColumn), {EtaRole, ProgressRole, Qt::DisplayRole});
     else
         emit dataChanged(index(row, ProgressColumn), index(row, ProgressColumn), {ProgressRole, Qt::DisplayRole});
     return true;
@@ -364,7 +373,7 @@ bool TaskTableModel::updateTaskEta(int task_id, qint64 eta_seconds)
     if (row < 0)
         return false;
 
-    TaskRecord &task    = tasks_[static_cast<size_t>(row)];
+    TaskRecord  &task    = tasks_[static_cast<size_t>(row)];
     const qint64 bounded = eta_seconds < 0 ? -1 : eta_seconds;
     if (task.eta_seconds == bounded)
         return true;
@@ -436,21 +445,21 @@ QVariantMap TaskTableModel::taskAt(int row) const
 
     const TaskRecord &task = tasks_.at(static_cast<size_t>(row));
     return {
-        {     QStringLiteral("task_id"),          task.task_id},
-        {  QStringLiteral("model_uuid"),       task.model_uuid},
-        {  QStringLiteral("model_name"),       task.model_name},
-        {   QStringLiteral("task_type"), static_cast<int>(task.task_type)},
+        {       QStringLiteral("task_id"),                         task.task_id},
+        {    QStringLiteral("model_uuid"),                      task.model_uuid},
+        {    QStringLiteral("model_name"),                      task.model_name},
+        {     QStringLiteral("task_type"),     static_cast<int>(task.task_type)},
         {QStringLiteral("task_type_text"), modelTaskDisplayName(task.task_type)},
-        {      QStringLiteral("status"),      statusText(task)},
-        {QStringLiteral("status_value"),           task.status},
-        {  QStringLiteral("created_at"),   createdAtText(task)},
-        {QStringLiteral("running_time"), runningTimeText(task)},
-        {         QStringLiteral("eta"),       etaText(task)},
-        {    QStringLiteral("progress"),         task.progress},
-        {   QStringLiteral("can_start"),        canStart(task)},
-        {   QStringLiteral("can_pause"),        canPause(task)},
-        {    QStringLiteral("can_stop"),         canStop(task)},
-        {  QStringLiteral("can_finish"),       canFinish(task)},
+        {        QStringLiteral("status"),                     statusText(task)},
+        {  QStringLiteral("status_value"),                          task.status},
+        {    QStringLiteral("created_at"),                  createdAtText(task)},
+        {  QStringLiteral("running_time"),                runningTimeText(task)},
+        {           QStringLiteral("eta"),                        etaText(task)},
+        {      QStringLiteral("progress"),                        task.progress},
+        {     QStringLiteral("can_start"),                       canStart(task)},
+        {     QStringLiteral("can_pause"),                       canPause(task)},
+        {      QStringLiteral("can_stop"),                        canStop(task)},
+        {    QStringLiteral("can_finish"),                      canFinish(task)},
     };
 }
 
@@ -490,21 +499,9 @@ TaskTableModel::TaskSnapshot TaskTableModel::snapshotForRow(int row) const
 
     const TaskRecord &task = tasks_.at(static_cast<size_t>(row));
     return TaskSnapshot{
-        task.task_id,
-        task.model_uuid,
-        task.model_name,
-        task.task_type,
-        task.status,
-        task.created_at,
-        task.started_at,
-        task.accumulated_seconds,
-        etaSeconds(task),
-        task.progress,
-        task.supports_pause,
-        canStart(task),
-        canPause(task),
-        canStop(task),
-        canFinish(task),
+        task.task_id,        task.model_uuid, task.model_name,          task.task_type,   task.status,
+        task.created_at,     task.started_at, task.accumulated_seconds, etaSeconds(task), task.progress,
+        task.supports_pause, canStart(task),  canPause(task),           canStop(task),    canFinish(task),
     };
 }
 
@@ -687,8 +684,8 @@ bool TaskManager::pauseTask(int task_id)
 bool TaskManager::stopTask(int task_id)
 {
     const TaskTableModel::TaskSnapshot task = tasks_->taskSnapshotForId(task_id);
-    spdlog::info("通用任务停止请求, task_id: {}, 模型: {}, 类型: {}", task_id,
-                 task.model_name.toUtf8().constData(), modelTaskKey(task.task_type).toUtf8().constData());
+    spdlog::info("通用任务停止请求, task_id: {}, 模型: {}, 类型: {}", task_id, task.model_name.toUtf8().constData(),
+                 modelTaskKey(task.task_type).toUtf8().constData());
     const bool changed = tasks_->stopTask(task_id);
     if (!changed)
     {
@@ -696,7 +693,7 @@ bool TaskManager::stopTask(int task_id)
         return false;
     }
     const bool command_sent = requestStopTask(task_id);
-    emit taskStopRequested(task_id);
+    emit       taskStopRequested(task_id);
     spdlog::info("通用任务停止命令已发送, task_id: {}, 通信命令: {}", task_id, command_sent ? "成功" : "未发送");
     return true;
 }
@@ -719,8 +716,8 @@ bool TaskManager::markTaskStopped(int task_id)
 bool TaskManager::deleteTask(int task_id)
 {
     const TaskTableModel::TaskSnapshot task = tasks_->taskSnapshotForId(task_id);
-    spdlog::info("通用任务删除请求, task_id: {}, 模型: {}, 类型: {}", task_id,
-                 task.model_name.toUtf8().constData(), modelTaskKey(task.task_type).toUtf8().constData());
+    spdlog::info("通用任务删除请求, task_id: {}, 模型: {}, 类型: {}", task_id, task.model_name.toUtf8().constData(),
+                 modelTaskKey(task.task_type).toUtf8().constData());
     const bool command_sent = requestStopTask(task_id);
     if (task.can_stop || task.status == TaskTableModel::Stopping)
         emit taskStopRequested(task_id);

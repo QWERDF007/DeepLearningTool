@@ -11,6 +11,11 @@ namespace dltool::model {
 
 namespace {
 
+/**
+ * @brief 规范化字符串（去除首尾空白并转小写）
+ * @param value 原始字符串
+ * @return 规范化后的字符串
+ */
 QString normalized(const QString &value)
 {
     return value.trimmed().toLower();
@@ -279,10 +284,10 @@ void TaskCommunicationServer::processLine(QTcpSocket *socket, const QByteArray &
     message.type    = taskMessageTypeFromName(object.value(taskProtocolFieldName(TaskProtocolField::Type)).toString());
     message.status
         = taskProtocolStatusFromName(object.value(taskProtocolFieldName(TaskProtocolField::Status)).toString());
-    message.progress = object.value(taskProtocolFieldName(TaskProtocolField::Progress), -1).toInt();
+    message.progress    = object.value(taskProtocolFieldName(TaskProtocolField::Progress), -1).toInt();
     message.eta_seconds = object.value(taskProtocolFieldName(TaskProtocolField::EtaSeconds), -1).toLongLong();
-    message.message  = object.value(taskProtocolFieldName(TaskProtocolField::Message)).toString();
-    message.payload  = object;
+    message.message     = object.value(taskProtocolFieldName(TaskProtocolField::Message)).toString();
+    message.payload     = object;
 
     if (message.task_id >= 0 && socket != nullptr)
     {

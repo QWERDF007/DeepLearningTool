@@ -8,6 +8,11 @@ namespace dltool::model {
 
 namespace {
 
+/**
+ * @brief 获取参数当前有效值（优先使用设定值，否则使用默认值）
+ * @param param 参数定义
+ * @return 有效值
+ */
 QVariant normalizedValue(const ParamDefinition &param)
 {
     return param.value.isValid() ? param.value : param.default_value;

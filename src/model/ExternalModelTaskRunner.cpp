@@ -14,6 +14,13 @@ namespace dltool::model {
 
 namespace {
 
+/**
+ * @brief 打开进程日志文件
+ * @param path 日志文件路径
+ * @param parent 父对象
+ * @param err_msg 错误信息输出
+ * @return 文件指针，失败返回 nullptr
+ */
 QFile *openProcessLogFile(const QString &path, QObject *parent, QString *err_msg)
 {
     const QString cleaned = dltool::common::cleanPath(path);

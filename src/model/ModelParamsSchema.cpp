@@ -17,6 +17,11 @@ using dltool::common::yaml::loadFile;
 using dltool::common::yaml::nodeString;
 using dltool::common::yaml::nodeVariant;
 
+/**
+ * @brief 从 YAML 节点解析单个参数定义
+ * @param node YAML 节点
+ * @return 参数定义
+ */
 ParamDefinition parseParamDefinition(const YAML::Node &node)
 {
     ParamDefinition param;
@@ -46,6 +51,11 @@ ParamDefinition parseParamDefinition(const YAML::Node &node)
     return param;
 }
 
+/**
+ * @brief 从 YAML 节点解析参数组定义
+ * @param node YAML 节点
+ * @return 参数组定义
+ */
 ParamGroupDefinition parseParamGroupDefinition(const YAML::Node &node)
 {
     ParamGroupDefinition group;
@@ -72,17 +82,33 @@ ParamGroupDefinition parseParamGroupDefinition(const YAML::Node &node)
     return group;
 }
 
+/**
+ * @brief 查找模型配置文件
+ * @param framework_name 框架名称
+ * @param model_architecture 模型架构名称
+ * @return 配置文件信息
+ */
 QFileInfo findModelConfigFile(const QString &framework_name, const QString &model_architecture)
 {
     const QString config_root = dltool::common::runtimePath(QStringLiteral("config/models"));
     return dltool::common::yaml::findConfigFile(QDir(config_root).filePath(framework_name), model_architecture);
 }
 
+/**
+ * @brief 检查 YAML 节点是否像模型配置节点
+ * @param node YAML 节点
+ * @return 像模型节点返回 true
+ */
 bool looksLikeModelNode(const YAML::Node &node)
 {
     return node && node.IsMap() && (node["method"] || node["train_params"] || node["test_params"]);
 }
 
+/**
+ * @brief 解析参数组列表
+ * @param groups_node YAML 节点
+ * @param groups 输出：参数组定义列表
+ */
 void parseGroups(const YAML::Node &groups_node, std::vector<ParamGroupDefinition> &groups)
 {
     if (!groups_node || !groups_node.IsSequence())

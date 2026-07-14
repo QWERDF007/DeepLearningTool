@@ -23,9 +23,16 @@ using common::setError;
 
 namespace {
 
+/**
+ * @brief 基于 DataManager 的数据集源适配器，将 DataManager 接口适配为 IModelDatasetSource
+ */
 class DataManagerDatasetSource final : public IModelDatasetSource
 {
 public:
+    /**
+     * @brief 构造适配器
+     * @param data_manager 数据管理器引用
+     */
     explicit DataManagerDatasetSource(dltool::data::DataManager &data_manager)
         : data_manager_(data_manager)
     {
@@ -126,9 +133,9 @@ bool ModelTaskPreparationService::prepare(const ModelTaskContext &context, Exter
     }
     if (!QFileInfo::exists(script_path))
         return setError(err_msg, QString("脚本不存在: %1").arg(script_path));
-    namespace generated_field       = dltool::settings::generated::field;
-    const QString python_env_path = dltool::settings::settingString(
-        dltool::settings::GlobalSettings::getInstance(), generated_field::Software::PythonEnvPath);
+    namespace generated_field     = dltool::settings::generated::field;
+    const QString python_env_path = dltool::settings::settingString(dltool::settings::GlobalSettings::getInstance(),
+                                                                    generated_field::Software::PythonEnvPath);
     if (python_env_path.trimmed().isEmpty())
         return setError(err_msg, QString("未配置 Python 环境目录"));
 

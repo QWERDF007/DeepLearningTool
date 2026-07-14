@@ -14,6 +14,10 @@ namespace dltool::model {
 
 namespace {
 
+/**
+ * @brief 获取存储位置名称映射表
+ * @return 位置名映射
+ */
 const std::map<ModelStorageLocation, QString> &storageLocationNames()
 {
     static const std::map<ModelStorageLocation, QString> names = {
@@ -28,6 +32,10 @@ const std::map<ModelStorageLocation, QString> &storageLocationNames()
     return names;
 }
 
+/**
+ * @brief 获取模型子目录位置列表
+ * @return 子目录位置数组
+ */
 const std::array<ModelStorageLocation, 5> &modelChildLocations()
 {
     static const std::array<ModelStorageLocation, 5> locations = {

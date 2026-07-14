@@ -5,12 +5,16 @@ namespace dltool::model { namespace {
 
 using dltool::core::DeepLearningMethod;
 
+/**
+ * @brief 构建 FS-SAM2 框架定义
+ * @return 框架定义
+ */
 FrameworkDefinition fsSam2Framework()
 {
     FrameworkDefinition framework;
-    framework.name = QStringLiteral("FS-SAM2");
-    framework.root = QStringLiteral("python/fornib/FS-SAM2");
-    framework.train_script = QStringLiteral("train.py");
+    framework.name           = QStringLiteral("FS-SAM2");
+    framework.root           = QStringLiteral("python/fornib/FS-SAM2");
+    framework.train_script   = QStringLiteral("train.py");
     framework.predict_script = QStringLiteral("predict.py");
     framework.task_capabilities.push_back({dltool::model::ModelTaskType::BoxToMask, QStringLiteral("box_to_mask.py")});
     framework.scripts.insert(QStringLiteral("box_to_mask"), QStringLiteral("box_to_mask.py"));
@@ -19,7 +23,7 @@ FrameworkDefinition fsSam2Framework()
         QStringLiteral("../../task"),
     };
     framework.visible_for_model_creation = false;
-    framework.write_to_database = false;
+    framework.write_to_database          = false;
     return framework;
 }
 

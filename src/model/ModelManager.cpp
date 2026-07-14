@@ -17,10 +17,10 @@
 
 #include <QDateTime>
 #include <QFileInfo>
-#include <QRegularExpression>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QQmlEngine>
+#include <QRegularExpression>
 #include <QSortFilterProxyModel>
 #include <algorithm>
 #include <utility>
@@ -45,8 +45,8 @@ protected:
         if (manager == nullptr)
             return false;
 
-        const QModelIndex source_index = manager->index(source_row, 0, source_parent);
-        const QString       framework_name = manager->data(source_index, ModelManager::FrameworkNameRole).toString();
+        const QModelIndex source_index   = manager->index(source_row, 0, source_parent);
+        const QString     framework_name = manager->data(source_index, ModelManager::FrameworkNameRole).toString();
         if (framework_name.trimmed().isEmpty())
             return false;
 
@@ -106,8 +106,8 @@ void ModelManager::init()
     std::vector<qint64>  mtimes;
     QString              err_msg;
 
-    const bool ok = database_->getAllModels(model_ids, uuids, names, framework_names, model_architectures,
-                                            ctimes, mtimes, err_msg);
+    const bool ok = database_->getAllModels(model_ids, uuids, names, framework_names, model_architectures, ctimes,
+                                            mtimes, err_msg);
     if (!ok)
     {
         endResetModel();
@@ -195,6 +195,7 @@ QString ModelManager::validateModelName(const QString &name) const
     }
     return {};
 }
+
 bool ModelManager::addModel(const QString &name, const QString &framework_name, const QString &model_architecture)
 {
     return addModelRecord(name, framework_name, model_architecture).isValid();
@@ -206,7 +207,7 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
     const QString trimmed_name               = name.trimmed();
     const QString trimmed_framework_name     = framework_name.trimmed();
     const QString trimmed_model_architecture = model_architecture.trimmed();
-    const QString name_error = validateModelName(name);
+    const QString name_error                 = validateModelName(name);
     if (!name_error.isEmpty())
     {
         setError(err_msg, name_error);
@@ -248,18 +249,17 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
         return {};
     }
 
-    QString             local_err_msg;
-    int64_t             model_id{-1};
-    const qint64        now  = QDateTime::currentSecsSinceEpoch();
-    const QString       uuid = dltool::common::uuid();
+    QString       local_err_msg;
+    int64_t       model_id{-1};
+    const qint64  now  = QDateTime::currentSecsSinceEpoch();
+    const QString uuid = dltool::common::uuid();
     if (!write_to_database)
     {
-        while (indexOfModel(model_id) >= 0)
-            --model_id;
+        while (indexOfModel(model_id) >= 0) --model_id;
     }
 
     ModelStorageService storage(project_dir_);
-    const QString model_dir = storage.path(trimmed_name, ModelStorageLocation::ModelRoot);
+    const QString       model_dir = storage.path(trimmed_name, ModelStorageLocation::ModelRoot);
     if (QFileInfo::exists(model_dir))
     {
         const QString message = QString("模型目录已存在: %1").arg(model_dir);
@@ -288,16 +288,15 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
         return {};
     }
 
-    const ModelRecord record{
-        model_id, uuid, trimmed_name, trimmed_framework_name, trimmed_model_architecture, now, now};
-    const int row = rowCount();
+    const ModelRecord record{model_id, uuid, trimmed_name, trimmed_framework_name, trimmed_model_architecture,
+                             now,      now};
+    const int         row = rowCount();
     beginInsertRows(QModelIndex(), row, row);
     models_.push_back(record);
     endInsertRows();
 
     spdlog::info("模型添加成功, id: {}, 写入数据库: {}, 模型名称: {}, 框架: {}, 模型架构: {}", model_id,
-                 write_to_database,
-                 trimmed_name.toUtf8().constData(), trimmed_framework_name.toUtf8().constData(),
+                 write_to_database, trimmed_name.toUtf8().constData(), trimmed_framework_name.toUtf8().constData(),
                  trimmed_model_architecture.toUtf8().constData());
     return toRecordView(record);
 }
@@ -319,7 +318,7 @@ bool ModelManager::renameModel(const qint64 model_id, const QString &name)
         return false;
     }
 
-    const QString old_name = models_[static_cast<size_t>(row)].name;
+    const QString       old_name = models_[static_cast<size_t>(row)].name;
     ModelStorageService storage(project_dir_);
     QString             err_msg;
     if (!storage.renameModelStorage(old_name, trimmed_name, &err_msg))
@@ -354,12 +353,12 @@ bool ModelManager::deleteModel(const qint64 model_id)
         return false;
     }
 
-    const ModelRecord record = models_[static_cast<size_t>(row)];
-    QString            err_msg;
-    const QString      uuid = record.uuid;
-    const QString      name = record.name;
-    const FrameworkDefinition framework = registeredFramework(method_, record.framework_name);
-    const bool write_to_database = framework.name.isEmpty() || framework.write_to_database;
+    const ModelRecord         record = models_[static_cast<size_t>(row)];
+    QString                   err_msg;
+    const QString             uuid              = record.uuid;
+    const QString             name              = record.name;
+    const FrameworkDefinition framework         = registeredFramework(method_, record.framework_name);
+    const bool                write_to_database = framework.name.isEmpty() || framework.write_to_database;
     const bool ok = !write_to_database || (database_ != nullptr && database_->deleteModel(model_id, err_msg));
     if (!ok)
     {
@@ -411,8 +410,8 @@ bool ModelManager::copyModel(const qint64 model_id)
     }
 
     const bool ok = database_ != nullptr
-                 && database_->addModel(new_uuid, copied_name, source.framework_name, source.model_architecture,
-                                        now, now, new_model_id, err_msg);
+                 && database_->addModel(new_uuid, copied_name, source.framework_name, source.model_architecture, now,
+                                        now, new_model_id, err_msg);
     if (!ok)
     {
         QString remove_err;
@@ -494,8 +493,8 @@ QVariantMap ModelManager::modelAt(const int row) const
         {              QStringLiteral("name"),                          model.name},
         {    QStringLiteral("framework_name"),                model.framework_name},
         {QStringLiteral("model_architecture"),            model.model_architecture},
-        {             QStringLiteral("ctime"),           formatTimestamp(model.ctime)},
-        {             QStringLiteral("mtime"),           formatTimestamp(model.mtime)},
+        {             QStringLiteral("ctime"),        formatTimestamp(model.ctime)},
+        {             QStringLiteral("mtime"),        formatTimestamp(model.mtime)},
     };
 }
 
@@ -559,7 +558,7 @@ void ModelManager::requestModelTaskConfigLoad(const QString &model_uuid) const
     if (model_row < 0)
         return;
 
-    const QString model_name = models_[static_cast<size_t>(model_row)].name;
+    const QString                               model_name = models_[static_cast<size_t>(model_row)].name;
     const ModelTaskConfigService                config_service(project_dir_);
     const dltool::model::LoadedModelTaskConfigs configs = config_service.load(trimmed_uuid, model_name);
     const_cast<ModelManager *>(this)->applyLoadedModelTaskConfigs(configs.model_uuid, model_name, configs.train_params,
@@ -588,14 +587,13 @@ QString ModelManager::startTensorBoard(const QString &model_uuid)
         tensorboard_process_->kill();
     }
 
-    namespace generated_field = dltool::settings::generated::field;
-    const QString python_env_path = dltool::settings::settingString(
-        dltool::settings::GlobalSettings::getInstance(), generated_field::Software::PythonEnvPath);
+    namespace generated_field       = dltool::settings::generated::field;
+    const QString   python_env_path = dltool::settings::settingString(dltool::settings::GlobalSettings::getInstance(),
+                                                                      generated_field::Software::PythonEnvPath);
     const QFileInfo python_env_info(dltool::common::cleanPath(python_env_path));
-    const QString python = (!python_env_path.trimmed().isEmpty() && python_env_info.exists()
-                            && python_env_info.isDir())
-                               ? dltool::common::pythonExecutableFromEnvPath(python_env_path)
-                               : QString();
+    const QString python = (!python_env_path.trimmed().isEmpty() && python_env_info.exists() && python_env_info.isDir())
+                             ? dltool::common::pythonExecutableFromEnvPath(python_env_path)
+                             : QString();
     const QString log_dir = ModelStorageService(project_dir_).path(record.name, ModelStorageLocation::Logs);
     if (python_env_path.trimmed().isEmpty())
     {
@@ -621,8 +619,8 @@ QString ModelManager::startTensorBoard(const QString &model_uuid)
     QString directory_error;
     if (!dltool::common::ensureDirectory(log_dir, &directory_error))
     {
-        spdlog::error("启动 TensorBoard 失败: 创建模型日志目录失败, 目录: {}, 原因: {}",
-                      log_dir.toUtf8().constData(), directory_error.toUtf8().constData());
+        spdlog::error("启动 TensorBoard 失败: 创建模型日志目录失败, 目录: {}, 原因: {}", log_dir.toUtf8().constData(),
+                      directory_error.toUtf8().constData());
         return {};
     }
 
@@ -644,11 +642,8 @@ QString ModelManager::startTensorBoard(const QString &model_uuid)
                 if (!output.isEmpty())
                     spdlog::error("TensorBoard: {}", QString::fromLocal8Bit(output).trimmed().toUtf8().constData());
             });
-    connect(process, &QProcess::errorOccurred, this,
-            [process](QProcess::ProcessError)
-            {
-                spdlog::error("TensorBoard 进程错误: {}", process->errorString().toUtf8().constData());
-            });
+    connect(process, &QProcess::errorOccurred, this, [process](QProcess::ProcessError)
+            { spdlog::error("TensorBoard 进程错误: {}", process->errorString().toUtf8().constData()); });
     connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
             [process](int exit_code, QProcess::ExitStatus exit_status)
             {
@@ -775,8 +770,8 @@ IModel *ModelManager::cachedModelForRecord(const ModelRecord &record) const
 ModelManager::ModelRecordView ModelManager::toRecordView(const ModelRecord &record)
 {
     return ModelRecordView{
-        record.model_id, record.uuid, record.name, record.framework_name, record.model_architecture, record.ctime,
-        record.mtime,
+        record.model_id,           record.uuid,  record.name,  record.framework_name,
+        record.model_architecture, record.ctime, record.mtime,
     };
 }
 

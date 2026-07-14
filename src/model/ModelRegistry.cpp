@@ -57,18 +57,31 @@ struct RegisteredFramework
     FrameworkDefinition definition;
 };
 
+/**
+ * @brief 获取模型注册表（单例）
+ * @return 模型注册表引用
+ */
 std::vector<RegisteredModel> &modelRegistry()
 {
     static std::vector<RegisteredModel> registry;
     return registry;
 }
 
+/**
+ * @brief 获取框架注册表（单例）
+ * @return 框架注册表引用
+ */
 std::vector<RegisteredFramework> &frameworkRegistry()
 {
     static std::vector<RegisteredFramework> registry;
     return registry;
 }
 
+/**
+ * @brief 解析框架定义中的相对路径为绝对路径
+ * @param definition 原始框架定义
+ * @return 解析后的框架定义
+ */
 FrameworkDefinition resolvedFrameworkDefinition(const FrameworkDefinition &definition)
 {
     FrameworkDefinition resolved = definition;
@@ -82,9 +95,9 @@ FrameworkDefinition resolvedFrameworkDefinition(const FrameworkDefinition &defin
         if (!isKnownModelTask(task_type) || script.trimmed().isEmpty())
             return;
 
-        const auto found = std::find_if(
-            resolved.task_capabilities.begin(), resolved.task_capabilities.end(),
-            [task_type](const FrameworkTaskCapability &capability) { return capability.task_type == task_type; });
+        const auto found = std::find_if(resolved.task_capabilities.begin(), resolved.task_capabilities.end(),
+                                        [task_type](const FrameworkTaskCapability &capability)
+                                        { return capability.task_type == task_type; });
         if (found == resolved.task_capabilities.end())
             resolved.task_capabilities.push_back(FrameworkTaskCapability{task_type, script});
     };

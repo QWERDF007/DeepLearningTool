@@ -36,6 +36,10 @@ enum class DatasetSelectionSplit
     Test,
 };
 
+/**
+ * @brief 获取数据集选择字段名称映射表
+ * @return 字段名映射
+ */
 const std::map<DatasetSelectionField, QString> &datasetSelectionFieldNames()
 {
     static const std::map<DatasetSelectionField, QString> names = {
@@ -48,6 +52,10 @@ const std::map<DatasetSelectionField, QString> &datasetSelectionFieldNames()
     return names;
 }
 
+/**
+ * @brief 获取数据集划分名称映射表
+ * @return 划分名映射
+ */
 const std::map<DatasetSelectionSplit, QString> &datasetSelectionSplitNames()
 {
     static const std::map<DatasetSelectionSplit, QString> names = {
@@ -58,6 +66,11 @@ const std::map<DatasetSelectionSplit, QString> &datasetSelectionSplitNames()
     return names;
 }
 
+/**
+ * @brief 获取选择字段名称
+ * @param field 字段枚举
+ * @return 字段名称
+ */
 QString datasetSelectionFieldName(DatasetSelectionField field)
 {
     const auto &names = datasetSelectionFieldNames();
@@ -65,6 +78,11 @@ QString datasetSelectionFieldName(DatasetSelectionField field)
     return found != names.end() ? found->second : QString();
 }
 
+/**
+ * @brief 获取划分名称
+ * @param split 划分枚举
+ * @return 划分名称
+ */
 QString datasetSelectionSplitName(DatasetSelectionSplit split)
 {
     const auto &names = datasetSelectionSplitNames();
@@ -72,6 +90,12 @@ QString datasetSelectionSplitName(DatasetSelectionSplit split)
     return found != names.end() ? found->second : QString();
 }
 
+/**
+ * @brief 获取指定划分的数据集选择视图对象
+ * @param model 模型实例
+ * @param split 划分类型
+ * @return 视图对象指针
+ */
 QObject *datasetSelectionObject(IModel *model, DatasetSelectionSplit split)
 {
     if (model == nullptr)
@@ -89,6 +113,11 @@ QObject *datasetSelectionObject(IModel *model, DatasetSelectionSplit split)
     return nullptr;
 }
 
+/**
+ * @brief 将数据集选择键值对应用到选择视图对象
+ * @param selection_object 选择视图对象
+ * @param selection 选择键值对
+ */
 void applyDatasetSelectionMap(QObject *selection_object, const QVariantMap &selection)
 {
     auto *selection_model = qobject_cast<data::DataSelectionTreeModel *>(selection_object);
@@ -124,40 +153,11 @@ void applyDatasetSelectionMap(QObject *selection_object, const QVariantMap &sele
     }
 }
 
-} // namespace
-
-bool ModelDatasetSelection::isEmpty() const
-{
-    return dataset_ids.empty() && label_classes.empty();
-}
-
-bool ModelDatasetSelection::containsDataset(qint64 dataset_id) const
-{
-    if (dataset_id < 0)
-        return false;
-    if (dataset_ids.find(dataset_id) != dataset_ids.end())
-        return true;
-    return std::any_of(label_classes.begin(), label_classes.end(),
-                       [dataset_id](const auto &entry) { return entry.first == dataset_id; });
-}
-
-bool ModelDatasetSelection::containsLabelClass(qint64 dataset_id, qint64 label_class_id) const
-{
-    return dataset_id >= 0 && label_class_id >= 0
-        && label_classes.find({dataset_id, label_class_id}) != label_classes.end();
-}
-
-bool ModelDatasetSelection::contains(qint64 dataset_id, qint64 label_class_id) const
-{
-    if (dataset_id < 0)
-        return false;
-    if (dataset_ids.find(dataset_id) != dataset_ids.end())
-        return true;
-    return containsLabelClass(dataset_id, label_class_id);
-}
-
-namespace {
-
+/**
+ * @brief 从选择视图对象提取选择状态
+ * @param selection_object 选择视图对象
+ * @return 数据集选择
+ */
 ModelDatasetSelection modelDatasetSelection(QObject *selection_object)
 {
     ModelDatasetSelection selection;
@@ -205,6 +205,11 @@ ModelDatasetSelection modelDatasetSelection(QObject *selection_object)
     return selection;
 }
 
+/**
+ * @brief 从模型读取完整的数据集选择
+ * @param model 模型实例
+ * @return 数据集选择集合
+ */
 ModelDatasetSelections readModelDatasetSelections(IModel *model)
 {
     ModelDatasetSelections selections;
@@ -217,6 +222,11 @@ ModelDatasetSelections readModelDatasetSelections(IModel *model)
     return selections;
 }
 
+/**
+ * @brief 将选择转为键值对
+ * @param selection 数据集选择
+ * @return 键值对
+ */
 QVariantMap modelDatasetSelectionMap(const ModelDatasetSelection &selection)
 {
     QVariantList dataset_ids;
@@ -239,6 +249,11 @@ QVariantMap modelDatasetSelectionMap(const ModelDatasetSelection &selection)
     };
 }
 
+/**
+ * @brief 将完整选择集合转为键值对
+ * @param selections 数据集选择集合
+ * @return 键值对
+ */
 QVariantMap modelDatasetSelectionsMap(const ModelDatasetSelections &selections)
 {
     QVariantMap result;
@@ -250,6 +265,36 @@ QVariantMap modelDatasetSelectionsMap(const ModelDatasetSelections &selections)
 }
 
 } // namespace
+
+bool ModelDatasetSelection::isEmpty() const
+{
+    return dataset_ids.empty() && label_classes.empty();
+}
+
+bool ModelDatasetSelection::containsDataset(qint64 dataset_id) const
+{
+    if (dataset_id < 0)
+        return false;
+    if (dataset_ids.find(dataset_id) != dataset_ids.end())
+        return true;
+    return std::any_of(label_classes.begin(), label_classes.end(),
+                       [dataset_id](const auto &entry) { return entry.first == dataset_id; });
+}
+
+bool ModelDatasetSelection::containsLabelClass(qint64 dataset_id, qint64 label_class_id) const
+{
+    return dataset_id >= 0 && label_class_id >= 0
+        && label_classes.find({dataset_id, label_class_id}) != label_classes.end();
+}
+
+bool ModelDatasetSelection::contains(qint64 dataset_id, qint64 label_class_id) const
+{
+    if (dataset_id < 0)
+        return false;
+    if (dataset_ids.find(dataset_id) != dataset_ids.end())
+        return true;
+    return containsLabelClass(dataset_id, label_class_id);
+}
 
 ModelDatasetSelections modelDatasetSelectionsSnapshot(IModel *model)
 {
