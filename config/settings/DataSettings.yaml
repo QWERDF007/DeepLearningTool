@@ -43,6 +43,18 @@ DataSettings:
         value_range: [0.5, 4.0, 0.25]
         control_type: slider
 
+      - name_en: image_sort_order
+        name_cn: 图像排序
+        desc: 用于配置图库中图像的展示顺序，可按添加时间或文件名排序。
+        property_name: imageSortOrder
+        value: 0
+        value_type: int
+        control_type: combo
+        options: [添加时间, 文件名]
+        options_values:
+          添加时间: 0
+          文件名: 1
+
     标注显示:
       - name_en: label_scale
         name_cn: 标注缩略图缩放

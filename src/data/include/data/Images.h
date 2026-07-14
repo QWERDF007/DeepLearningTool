@@ -160,6 +160,13 @@ public:
     ImageInstancesListModel(dltool::database::ProjectDataBase *database, QObject *parent = nullptr);
     ~ImageInstancesListModel();
 
+    enum class ImageSortOrder
+    {
+        AddedTime = 0,
+        FileName   = 1,
+    };
+    Q_ENUM(ImageSortOrder)
+
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
 
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
@@ -205,6 +212,7 @@ public:
     Q_INVOKABLE void shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command);
     Q_INVOKABLE void selectAll();
     Q_INVOKABLE int  findRowByImageId(int64_t image_id) const;
+    Q_INVOKABLE void setImageSortOrder(int sort_order);
 
     QString currentImageName() const;
     QString currentImagePath() const;
@@ -276,6 +284,10 @@ public:
 private:
     void init();
 
+    void sortImageIds(std::vector<int64_t> &image_ids) const;
+    void rebuildImageIds();
+    void restoreSelection(const std::vector<int64_t> &selected_image_ids, int64_t current_image_id);
+
     int getImageId(const QModelIndex &index) const;
 
     /**
@@ -324,8 +336,9 @@ private:
     dltool::database::ProjectDataBase *database_{nullptr};
 
     /**
-     * @brief 图像实例 {image_id, ImageInstance}，按照 image_id 排序
-     * MODIFIED: Renamed from image_instances_ to indicate it's the full dataset
+     * @brief 全部图像实例 {image_id, ImageInstance}，按 image_id 降序保存。
+     *
+     * 显示顺序由 image_ids_ 和 sort_order_ 控制。
      */
     std::map<int64_t, ImageInstance *, std::greater<int64_t>> full_image_instances_;
 
@@ -345,6 +358,8 @@ private:
      * @brief NEW: Flag indicating if filter is active
      */
     bool is_filtered_{false};
+
+    ImageSortOrder sort_order_{ImageSortOrder::AddedTime};
 
     QItemSelectionModel *selection_{nullptr};
 

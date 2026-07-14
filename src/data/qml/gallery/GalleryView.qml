@@ -31,6 +31,7 @@ Item {
     }
 
     property real imageCellScale: 1.0
+    property int imageSortOrder: 0
     property real cellScaleMin: 0.5
     property real cellScaleMax: 4.0
     property real cellScaleStep: 0.25
@@ -341,7 +342,20 @@ Item {
         cellScaleMax = scaleRange.length > 1 ? Number(scaleRange[1]) : 4.0
         cellScaleStep = scaleRange.length > 2 ? Number(scaleRange[2]) : 0.25
 
+        let configuredSortOrder = Number(GlobalSettings.valueForField(SettingsAccessor.Data,
+                                                                      DataField.ImageSortOrder,
+                                                                      0))
+        imageSortOrder = isFinite(configuredSortOrder) ? Math.round(configuredSortOrder) : 0
+        applyImageSortOrder()
     }
+
+    function applyImageSortOrder() {
+        if (imageInstances) {
+            imageInstances.setImageSortOrder(imageSortOrder)
+        }
+    }
+
+    onImageInstancesChanged: applyImageSortOrder()
 
     function setDataField(field, value) {
         GlobalSettings.setFieldValue(SettingsAccessor.Data, field, value)
