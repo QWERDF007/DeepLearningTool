@@ -38,6 +38,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 0
+            dataManager: control.dataManager
             selectedModel: control.selectedModel
             partSpacing: control.partSpacing
             scrollbarReserve: control.scrollbarReserve

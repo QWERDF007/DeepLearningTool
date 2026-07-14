@@ -3,6 +3,7 @@
 #include "data/Images.h"
 #include "data/LabelClasses.h"
 #include "data/Labels.h"
+#include "data/DataSelectionTreeModel.h"
 
 #include <spdlog/spdlog.h>
 
@@ -105,11 +106,13 @@ void CategoryStatisticsModel::calculateInstanceStatistics(bool applyFilter)
         {
             QModelIndex index    = label_instances_->index(i, 0);
             int64_t     label_id = label_instances_->data(index, LabelInstancesListModel::LabelIdRole).toLongLong();
+            int64_t     image_id = label_instances_->data(index, LabelInstancesListModel::ImageIdRole).toLongLong();
             int64_t     class_id = label_instances_->getLabelClassId(label_id);
+            if (!isImageIncluded(image_id, class_id))
+                continue;
 
             category_counts[class_id]++;
-            images_with_label_instances.insert(
-                label_instances_->data(index, LabelInstancesListModel::ImageIdRole).toLongLong());
+            images_with_label_instances.insert(image_id);
             total_instances_++;
         }
     }
@@ -119,6 +122,8 @@ void CategoryStatisticsModel::calculateInstanceStatistics(bool applyFilter)
         const auto &all_instances = label_instances_->getAllLabelInstances();
         for (const auto &[label_id, instance] : all_instances)
         {
+            if (instance == nullptr || !isImageIncluded(instance->imageId(), instance->labelClassId()))
+                continue;
             int64_t class_id = instance->labelClassId();
             category_counts[class_id]++;
             images_with_label_instances.insert(instance->imageId());
@@ -152,6 +157,8 @@ void CategoryStatisticsModel::calculateInstanceStatistics(bool applyFilter)
 
             if (label_class_id < 0 || images_with_label_instances.find(image_id) != images_with_label_instances.end())
                 continue;
+            if (!isImageIncluded(image_id, label_class_id))
+                continue;
 
             category_counts[label_class_id]++;
             total_instances_++;
@@ -180,6 +187,8 @@ void CategoryStatisticsModel::calculateImageStatistics(bool applyFilter)
             int64_t     label_id = label_instances_->data(index, LabelInstancesListModel::LabelIdRole).toLongLong();
             int64_t     class_id = label_instances_->getLabelClassId(label_id);
             int64_t     image_id = label_instances_->data(index, LabelInstancesListModel::ImageIdRole).toLongLong();
+            if (!isImageIncluded(image_id, class_id))
+                continue;
 
             category_images[class_id].insert(image_id);
             all_images.insert(image_id);
@@ -191,8 +200,12 @@ void CategoryStatisticsModel::calculateImageStatistics(bool applyFilter)
         const auto &all_instances = label_instances_->getAllLabelInstances();
         for (const auto &[label_id, instance] : all_instances)
         {
+            if (instance == nullptr)
+                continue;
             int64_t class_id = instance->labelClassId();
             int64_t image_id = instance->imageId();
+            if (!isImageIncluded(image_id, class_id))
+                continue;
 
             category_images[class_id].insert(image_id);
             all_images.insert(image_id);
@@ -223,7 +236,7 @@ void CategoryStatisticsModel::calculateImageStatistics(bool applyFilter)
                 label_class_id = image_instances_->getImageLabelClassId(image_id);
             }
 
-            if (label_class_id < 0)
+            if (label_class_id < 0 || !isImageIncluded(image_id, label_class_id))
                 continue;
 
             category_images[label_class_id].insert(image_id);
@@ -240,7 +253,115 @@ void CategoryStatisticsModel::calculateImageStatistics(bool applyFilter)
     }
 }
 
+bool CategoryStatisticsModel::isImageIncluded(const int64_t image_id, const int64_t label_class_id) const
+{
+    if (image_instances_ == nullptr)
+        return false;
+
+    const int64_t dataset_id = image_instances_->getImageDatasetId(image_id);
+
+    if (selection_model_ != nullptr)
+    {
+        if (label_class_id >= 0)
+            return selection_model_->isNodeSelected(dataset_id, label_class_id);
+        return selection_model_->isNodeSelected(dataset_id, -1);
+    }
+
+    if (!use_dataset_filter_)
+        return true;
+
+    return selected_dataset_ids_.find(dataset_id) != selected_dataset_ids_.end();
+}
+
 void CategoryStatisticsModel::refreshData(bool applyFilter)
+{
+    selection_model_ = nullptr;
+    selected_dataset_ids_.clear();
+    use_dataset_filter_ = false;
+    refreshDataInternal(applyFilter);
+}
+
+void CategoryStatisticsModel::refreshForDatasets(const QVariantList &datasetIds)
+{
+    selection_model_ = nullptr;
+    selected_dataset_ids_.clear();
+    for (const QVariant &value : datasetIds)
+    {
+        bool          ok         = false;
+        const int64_t dataset_id = value.toLongLong(&ok);
+        if (ok && dataset_id >= 0)
+            selected_dataset_ids_.insert(dataset_id);
+    }
+
+    use_dataset_filter_ = true;
+    refreshDataInternal(false);
+}
+
+void CategoryStatisticsModel::refreshForSelection(DataSelectionTreeModel *selectionModel)
+{
+    selection_model_ = selectionModel;
+    selected_dataset_ids_.clear();
+    use_dataset_filter_ = false;
+    refreshDataInternal(false);
+}
+
+QVariantList CategoryStatisticsModel::pieChartData(const bool imageDimension) const
+{
+    QVariantList result;
+    result.reserve(static_cast<int>(statistics_.size()));
+
+    for (const CategoryStatistics &stat : statistics_)
+    {
+        const int count = imageDimension ? stat.image_count : stat.instance_count;
+        if (count <= 0)
+            continue;
+
+        QVariantMap item;
+        item.insert(QStringLiteral("label"), stat.name);
+        item.insert(QStringLiteral("value"), count);
+        item.insert(QStringLiteral("count"), count);
+        item.insert(QStringLiteral("color"), stat.color);
+        item.insert(QStringLiteral("percentage"),
+                    imageDimension ? stat.image_percentage : stat.instance_percentage);
+        result.push_back(item);
+    }
+
+    return result;
+}
+
+QVariantMap CategoryStatisticsModel::chartData(const bool imageDimension) const
+{
+    QVariantList labels;
+    QVariantList values;
+    QVariantList colors;
+
+    for (const CategoryStatistics &stat : statistics_)
+    {
+        const int count = imageDimension ? stat.image_count : stat.instance_count;
+        if (count <= 0)
+            continue;
+
+        labels.push_back(stat.name);
+        values.push_back(count);
+        colors.push_back(stat.color);
+    }
+
+    QVariantMap dataset;
+    dataset.insert(QStringLiteral("label"), imageDimension ? QStringLiteral("图像") : QStringLiteral("实例"));
+    dataset.insert(QStringLiteral("data"), values);
+    dataset.insert(QStringLiteral("backgroundColor"), colors);
+    dataset.insert(QStringLiteral("hoverOffset"), 4);
+
+    QVariantList datasets;
+    datasets.push_back(dataset);
+
+    QVariantMap result;
+    result.insert(QStringLiteral("labels"), labels);
+    result.insert(QStringLiteral("datasets"), datasets);
+    return result;
+}
+
+void CategoryStatisticsModel::refreshDataInternal(bool applyFilter)
 {
     try
     {
@@ -280,6 +401,7 @@ void CategoryStatisticsModel::refreshData(bool applyFilter)
 
         emit totalInstancesChanged();
         emit totalImagesChanged();
+        emit chartDataChanged();
 
         spdlog::debug("CategoryStatisticsModel 刷新完成: applyFilter={}, {} 个类别, {} 个实例, {} 个图像", applyFilter,
                       statistics_.size(), total_instances_, total_images_);

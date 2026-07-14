@@ -1,8 +1,14 @@
 #pragma once
 
+#include "DataSelectionTreeModel.h"
+
 #include <QAbstractListModel>
+#include <QVariantList>
+#include <QVariantMap>
 #include <QtQml>
+#include <set>
 #include <vector>
+
 
 namespace dltool::data {
 class DataManager;
@@ -22,6 +28,8 @@ class CategoryStatisticsModel : public QAbstractListModel
 
     Q_PROPERTY(int totalInstances READ totalInstances NOTIFY totalInstancesChanged)
     Q_PROPERTY(int totalImages READ totalImages NOTIFY totalImagesChanged)
+    Q_PROPERTY(QVariantMap imageChartData READ imageChartData NOTIFY chartDataChanged FINAL)
+    Q_PROPERTY(QVariantMap instanceChartData READ instanceChartData NOTIFY chartDataChanged FINAL)
 
 public:
     enum Role
@@ -46,8 +54,13 @@ public:
     QVariant               data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    // Data refresh method
-    Q_INVOKABLE void refreshData(bool applyFilter);
+    // TODO: 将饼图所需的数据从本类中拆离或者基于本类重新设计，抽离公共基类
+    // Data refresh methods
+    Q_INVOKABLE void         refreshData(bool applyFilter);
+    Q_INVOKABLE void         refreshForDatasets(const QVariantList &datasetIds);
+    Q_INVOKABLE void         refreshForSelection(DataSelectionTreeModel *selectionModel);
+    Q_INVOKABLE QVariantList pieChartData(bool imageDimension) const;
+    Q_INVOKABLE QVariantMap  chartData(bool imageDimension) const;
 
     // Property accessors
     int totalInstances() const
@@ -60,9 +73,20 @@ public:
         return total_images_;
     }
 
+    QVariantMap imageChartData() const
+    {
+        return chartData(true);
+    }
+
+    QVariantMap instanceChartData() const
+    {
+        return chartData(false);
+    }
+
 signals:
     void totalInstancesChanged();
     void totalImagesChanged();
+    void chartDataChanged();
 
 private:
     struct CategoryStatistics
@@ -82,11 +106,16 @@ private:
     // Statistics calculation methods
     void calculateInstanceStatistics(bool applyFilter);
     void calculateImageStatistics(bool applyFilter);
+    void refreshDataInternal(bool applyFilter);
+    bool isImageIncluded(int64_t image_id, int64_t label_class_id = -1) const;
 
     LabelInstancesListModel        *label_instances_;
     LabelClassesListModel          *label_classes_;
     ImageInstancesListModel        *image_instances_;
+    DataSelectionTreeModel         *selection_model_{nullptr};
     std::vector<CategoryStatistics> statistics_;
+    std::set<int64_t>               selected_dataset_ids_;
+    bool                            use_dataset_filter_{false};
     int                             total_instances_;
     int                             total_images_;
 };
