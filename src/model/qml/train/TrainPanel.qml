@@ -20,6 +20,7 @@ Item {
     property IModel selectedModel: modelManager && currentModelUuid.length > 0 ? modelManager.modelForUuid(currentModelUuid) : null
     property ITrainParams trainParams: selectedModel && selectedModel.config ? selectedModel.config.trainParams : null
     property url tensorBoardUrl: ""
+    property bool tensorBoardPanelVisible: visible && trainTabBar.currentIndex === 1
     property var currentModelData: ({})
     property var trainState: currentModelData && currentModelData.extra_data
                               ? currentModelData.extra_data.train || ({}) : ({})
@@ -27,8 +28,13 @@ Item {
                              ? currentModelData.extra_data.test || ({}) : ({})
 
     function openTensorBoard() {
-        tensorBoardUrl = modelManager && currentModelUuid.length > 0
-                         ? modelManager.startTensorBoard(currentModelUuid) : ""
+        if (!tensorBoardPanelVisible || !modelManager || currentModelUuid.length === 0) {
+            tensorBoardUrl = ""
+            return
+        }
+
+        tensorBoardUrl = modelManager.startTensorBoard(currentModelUuid)
+        tensorBoardReload.restart()
     }
 
     function refreshCurrentModelData() {
@@ -38,14 +44,19 @@ Item {
 
     onCurrentModelUuidChanged: {
         refreshCurrentModelData()
+        tensorBoardUrl = ""
+        if (tensorBoardPanelVisible)
+            openTensorBoard()
+    }
+    onModelManagerChanged: {
+        refreshCurrentModelData()
         openTensorBoard()
     }
-    onModelManagerChanged: refreshCurrentModelData()
     Component.onCompleted: {
         refreshCurrentModelData()
         openTensorBoard()
     }
-    onTensorBoardUrlChanged: tensorBoardReload.restart()
+    onTensorBoardPanelVisibleChanged: openTensorBoard()
 
     Connections {
         target: control.modelManager
@@ -59,7 +70,10 @@ Item {
     Timer {
         id: tensorBoardReload
         interval: 1500
-        onTriggered: tensorBoardView.reload()
+        onTriggered: {
+            if (tensorBoardView.visible)
+                tensorBoardView.reload()
+        }
     }
 
     ColumnLayout {
@@ -135,7 +149,7 @@ Item {
                         id: tensorBoardView
                         anchors.fill: parent
                         url: control.tensorBoardUrl
-                        visible: control.tensorBoardUrl.toString().length > 0
+                        visible: control.tensorBoardPanelVisible && control.tensorBoardUrl.toString().length > 0
                     }
 
                     QuiText {

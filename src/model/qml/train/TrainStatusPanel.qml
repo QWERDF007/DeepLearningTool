@@ -34,7 +34,7 @@ Rectangle {
             value: control.stateData.iter || "-"
         }
         ModelStatusRow {
-            label: "LR"
+            label: "学习率"
             value: control.stateData.lr || "-"
         }
         ModelStatusRow {
@@ -42,8 +42,13 @@ Rectangle {
             value: control.stateData.loss || "-"
         }
         ModelStatusRow {
-            label: "Elapsed Time"
+            label: "运行时间"
             value: control.stateData.elapsed || "-"
+        }
+
+        ModelStatusRow {
+            label: "剩余时间"
+            value: control.stateData.eta || "-"
         }
 
         Item { Layout.fillHeight: true }

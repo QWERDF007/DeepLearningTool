@@ -274,13 +274,11 @@ void ModelTaskController::handleTaskMessage(const TaskMessage &message)
     if (message.status == TaskProtocolStatus::Running || message.payload.contains(QStringLiteral("started")))
         updates.insert(QStringLiteral("started"),
                        message.payload.value(QStringLiteral("started"), true).toBool());
-    if (message.payload.contains(QStringLiteral("phase_progress")))
-        updates.insert(QStringLiteral("progress"), message.payload.value(QStringLiteral("phase_progress")).toInt());
-    else if (message.progress >= 0)
+    if (message.progress >= 0)
         updates.insert(QStringLiteral("progress"), message.progress);
 
     for (const QString &key : {QStringLiteral("epoch"), QStringLiteral("iter"), QStringLiteral("lr"),
-                               QStringLiteral("loss"), QStringLiteral("elapsed")})
+                               QStringLiteral("loss"), QStringLiteral("elapsed"), QStringLiteral("eta")})
     {
         if (message.payload.contains(key))
             updates.insert(key, message.payload.value(key).toString());

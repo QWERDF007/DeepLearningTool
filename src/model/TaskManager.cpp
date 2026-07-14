@@ -142,7 +142,7 @@ QVariant TaskTableModel::headerData(int section, Qt::Orientation orientation, in
     case RunningTimeColumn:
         return QString("运行时间");
     case EtaColumn:
-        return QStringLiteral("ETA");
+        return QStringLiteral("剩余时间");
     case ProgressColumn:
         return QString("进度");
     case ActionsColumn:
@@ -648,8 +648,7 @@ TaskManager::TaskManager(QObject *parent)
 {
     connect(communication_server_, &TaskCommunicationServer::messageReceived, event_router_,
             &TaskEventRouter::handleTaskMessage);
-    connect(communication_server_, &TaskCommunicationServer::messageReceived, this,
-            &TaskManager::taskMessageReceived);
+    connect(communication_server_, &TaskCommunicationServer::messageReceived, this, &TaskManager::taskMessageReceived);
 }
 
 int TaskManager::addTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type)

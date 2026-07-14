@@ -12,7 +12,10 @@
 #include "settings/SettingsValue.h"
 
 #include <QDir>
+#include <QDirIterator>
+#include <QFile>
 #include <QFileInfo>
+#include <QStringList>
 #include <QVariantMap>
 #include <utility>
 
@@ -91,6 +94,42 @@ public:
 private:
     dltool::data::DataManager &data_manager_;
 };
+
+bool clearTensorBoardEventFiles(const QString &log_dir, QString *err_msg)
+{
+    const QString root = cleanPath(QFileInfo(log_dir).absoluteFilePath());
+    if (root.isEmpty())
+        return setError(err_msg, QStringLiteral("TensorBoard 日志目录为空"));
+
+    const QFileInfo root_info(root);
+    if (!root_info.exists())
+        return true;
+    if (!root_info.isDir())
+        return setError(err_msg, QString("TensorBoard 日志路径不是目录: %1").arg(root));
+
+    QStringList failed_files;
+    QDirIterator iterator(root, {QStringLiteral("events.out.tfevents.*")}, QDir::Files | QDir::NoSymLinks,
+                          QDirIterator::Subdirectories);
+    while (iterator.hasNext())
+    {
+        const QString event_file = cleanPath(QFileInfo(iterator.next()).absoluteFilePath());
+        if (event_file.isEmpty() || (event_file != root && !event_file.startsWith(root + QStringLiteral("/"),
+                                                                       Qt::CaseInsensitive)))
+        {
+            failed_files.push_back(event_file);
+            continue;
+        }
+        if (!QFile::remove(event_file))
+            failed_files.push_back(event_file);
+    }
+
+    if (!failed_files.isEmpty())
+    {
+        return setError(err_msg, QString("删除 TensorBoard 历史 event 文件失败: %1")
+                                   .arg(failed_files.join(QStringLiteral(", "))));
+    }
+    return true;
+}
 
 } // namespace
 
@@ -183,8 +222,13 @@ bool ModelTaskPreparationService::prepare(const ModelTaskContext &context, Exter
     if (config_path.isEmpty())
         return setError(err_msg, config_err);
 
-    const QString log_path = cleanPath(QDir(storage.path(model_name, ModelStorageLocation::Logs))
-                                           .filePath(modelTaskLogStem(context.task_type) + QStringLiteral(".log")));
+    const QString log_dir = cleanPath(storage.path(model_name, ModelStorageLocation::Logs));
+    QString       tensorboard_err;
+    if (!clearTensorBoardEventFiles(log_dir, &tensorboard_err))
+        return setError(err_msg, tensorboard_err);
+
+    const QString log_path = cleanPath(QDir(log_dir).filePath(modelTaskLogStem(context.task_type)
+                                                                  + QStringLiteral(".log")));
     if (log_path.isEmpty())
         return setError(err_msg, QString("日志路径为空"));
 

@@ -8,7 +8,7 @@ import quickui
 Rectangle {
     id: control
     width: 200
-    height: 240
+    height: 200
     color: QuiColor.Primary
     border.color: selected ? QuiColor.Highlight : QuiColor.Background
     border.width: selected ? 2 : 1

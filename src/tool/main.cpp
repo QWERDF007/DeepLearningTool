@@ -45,8 +45,8 @@ int main(int argc, char *argv[])
     dltool::common::CrashHandler crash_handler;
     crash_handler.setup();
 
-    QApplication          app(argc, argv);
     QtWebEngineQuick::initialize();
+    QApplication          app(argc, argv);
 
     InitLogger();
     spdlog::info("Welcome to dltool!");
