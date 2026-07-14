@@ -648,6 +648,8 @@ TaskManager::TaskManager(QObject *parent)
 {
     connect(communication_server_, &TaskCommunicationServer::messageReceived, event_router_,
             &TaskEventRouter::handleTaskMessage);
+    connect(communication_server_, &TaskCommunicationServer::messageReceived, this,
+            &TaskManager::taskMessageReceived);
 }
 
 int TaskManager::addTask(const QString &model_uuid, const QString &model_name, ModelTaskType task_type)

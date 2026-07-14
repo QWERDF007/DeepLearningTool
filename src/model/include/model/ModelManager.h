@@ -59,6 +59,7 @@ public:
         ModelArchitectureRole,
         CtimeRole,
         MtimeRole,
+        ExtraDataRole,
     };
 
     /**
@@ -181,7 +182,7 @@ public:
      * @param uuid 模型 UUID
      * @return 模型数据键值对
      */
-    QVariantMap modelRecordForUuid(const QString &uuid) const;
+    Q_INVOKABLE QVariantMap modelRecordForUuid(const QString &uuid) const;
 
     /**
      * @brief 根据 UUID 获取模型记录视图
@@ -254,6 +255,30 @@ public:
     ModelRecordView addModelRecord(const QString &name, const QString &framework_name,
                                    const QString &model_architecture, QString *err_msg = nullptr);
 
+    /**
+     * @brief 合并并持久化模型扩展数据
+     * @param model_uuid 模型 UUID
+     * @param updates 要合并到 extra_data 顶层的数据
+     * @param err_msg 错误信息输出
+     * @return 更新成功返回 true
+     */
+    bool updateModelExtraData(const QString &model_uuid, const QVariantMap &updates, QString *err_msg = nullptr);
+
+    /**
+     * @brief 更新模型修改时间
+     * @param model_uuid 模型 UUID
+     * @param err_msg 错误信息输出
+     * @return 更新成功返回 true
+     */
+    bool touchModelModifiedTime(const QString &model_uuid, QString *err_msg = nullptr);
+
+signals:
+    /**
+     * @brief 模型扩展数据发生变化
+     * @param model_uuid 发生变化的模型 UUID
+     */
+    void modelExtraDataChanged(const QString &model_uuid);
+
 private:
     struct ModelRecord
     {
@@ -264,6 +289,7 @@ private:
         QString model_architecture;
         qint64  ctime{0};
         qint64  mtime{0};
+        QVariantMap extra_data;
     };
 
     /**
@@ -383,6 +409,13 @@ private:
      * @return 修改时间文本
      */
     QVariant getMtime(const QModelIndex &index) const;
+
+    /**
+     * @brief 获取扩展数据
+     * @param index 模型索引
+     * @return 扩展数据
+     */
+    QVariant getExtraData(const QModelIndex &index) const;
 
     /**
      * @brief 格式化时间戳为字符串

@@ -186,11 +186,15 @@ public:
 
     bool getAllModels(std::vector<int64_t> &model_ids, std::vector<QString> &uuids, std::vector<QString> &names,
                       std::vector<QString> &framework_names, std::vector<QString> &model_architectures,
-                      std::vector<qint64> &ctimes, std::vector<qint64> &mtimes, QString &err_msg) const;
+                      std::vector<qint64> &ctimes, std::vector<qint64> &mtimes,
+                      std::vector<std::vector<uint8_t>> &extra_data, QString &err_msg) const;
     bool addModel(const QString &uuid, const QString &name, const QString &framework_name,
                   const QString &model_architecture, const qint64 ctime, const qint64 mtime, int64_t &model_id,
                   QString &err_msg) const;
     bool updateModelName(const int64_t model_id, const QString &name, const qint64 mtime, QString &err_msg) const;
+    bool updateModelExtraData(const int64_t model_id, const std::vector<uint8_t> &extra_data,
+                              QString &err_msg) const;
+    bool updateModelMtime(const int64_t model_id, const qint64 mtime, QString &err_msg) const;
     bool deleteModel(const int64_t model_id, QString &err_msg) const;
 
     bool getAllLabels(std::vector<int64_t> &label_ids, std::vector<int64_t> &image_ids,

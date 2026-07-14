@@ -3,6 +3,7 @@
 #include "dltool/model/Export.h"
 #include "model/ModelTaskPreparationService.h"
 #include "model/ModelTaskTypes.h"
+#include "model/TaskCommunication.h"
 
 #include <QMetaObject>
 #include <QObject>
@@ -139,7 +140,19 @@ private:
      */
     void failTask(int task_id, const QString &message) const;
 
+    /**
+     * @brief 更新任务对应模型的修改时间
+     * @param task_id 任务 ID
+     */
+    void touchTaskModelModifiedTime(int task_id) const;
+
 private slots:
+    /**
+     * @brief 处理外部任务状态消息并保存模型状态
+     * @param message 任务消息
+     */
+    void handleTaskMessage(const dltool::model::TaskMessage &message);
+
     /**
      * @brief 处理任务停止请求
      * @param task_id 任务 ID

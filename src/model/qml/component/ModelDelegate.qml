@@ -8,7 +8,7 @@ import quickui
 Rectangle {
     id: control
     width: 200
-    height: 200
+    height: 240
     color: QuiColor.Primary
     border.color: selected ? QuiColor.Highlight : QuiColor.Background
     border.width: selected ? 2 : 1
@@ -20,6 +20,7 @@ Rectangle {
     property string modelArchitecture: ""
     property string createdTime: ""
     property string modifiedTime: ""
+    property var extraData: ({})
     property bool selected: false
     property bool showTaskActions: false
     property bool taskActionsEnabled: false
@@ -57,6 +58,29 @@ Rectangle {
         InfoRow {
             title: "修改时间"
             value: control.modifiedTime
+        }
+
+        RowLayout {
+            id: progressInfo
+            property var stateData: control.extraData || ({})
+            readonly property bool started: progressInfo.stateData && progressInfo.stateData.started === true
+
+            visible: progressInfo.started
+            Layout.preferredHeight: visible ? 34 : 0
+            spacing: 2
+
+            QuiText {
+                Layout.preferredWidth: 80
+                text: "进度: "
+                color: QuiColor.FontDark
+                elide: Text.ElideRight
+            }
+
+            QuiProgressBar {
+                Layout.fillWidth: true
+                value: Math.max(0, Math.min(100, Number(progressInfo.stateData.progress || 0))) / 100
+                textVisible: true
+            }
         }
 
         Item {

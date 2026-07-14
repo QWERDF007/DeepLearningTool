@@ -5,7 +5,6 @@ import QtWebEngine
 import dltool.ui
 import dltool.data
 import dltool.model
-import "../component"
 import quickui
 
 Item {
@@ -21,15 +20,41 @@ Item {
     property IModel selectedModel: modelManager && currentModelUuid.length > 0 ? modelManager.modelForUuid(currentModelUuid) : null
     property ITrainParams trainParams: selectedModel && selectedModel.config ? selectedModel.config.trainParams : null
     property url tensorBoardUrl: ""
+    property var currentModelData: ({})
+    property var trainState: currentModelData && currentModelData.extra_data
+                              ? currentModelData.extra_data.train || ({}) : ({})
+    property var testState: currentModelData && currentModelData.extra_data
+                             ? currentModelData.extra_data.test || ({}) : ({})
 
     function openTensorBoard() {
         tensorBoardUrl = modelManager && currentModelUuid.length > 0
                          ? modelManager.startTensorBoard(currentModelUuid) : ""
     }
 
-    onCurrentModelUuidChanged: openTensorBoard()
-    Component.onCompleted: openTensorBoard()
+    function refreshCurrentModelData() {
+        currentModelData = modelManager && currentModelUuid.length > 0
+                           ? modelManager.modelRecordForUuid(currentModelUuid) : ({})
+    }
+
+    onCurrentModelUuidChanged: {
+        refreshCurrentModelData()
+        openTensorBoard()
+    }
+    onModelManagerChanged: refreshCurrentModelData()
+    Component.onCompleted: {
+        refreshCurrentModelData()
+        openTensorBoard()
+    }
     onTensorBoardUrlChanged: tensorBoardReload.restart()
+
+    Connections {
+        target: control.modelManager
+
+        function onModelExtraDataChanged(modelUuid) {
+            if (modelUuid === control.currentModelUuid)
+                control.refreshCurrentModelData()
+        }
+    }
 
     Timer {
         id: tensorBoardReload
@@ -74,22 +99,55 @@ Item {
                 }
             }
 
-            Item {
-                WebEngineView {
-                    id: tensorBoardView
-                    anchors.fill: parent
-                    url: control.tensorBoardUrl
-                    visible: control.tensorBoardUrl.toString().length > 0
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 10
+
+                ColumnLayout { // 状态面板
+                    Layout.fillHeight: true
+                    Layout.minimumWidth: 250
+                    Layout.preferredWidth: 300
+                    Layout.maximumWidth: 360
+                    spacing: 8
+
+                    TrainStatusPanel {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.minimumHeight: 230
+                        stateData: control.trainState
+                    }
+
+                    EvaluationStatusPanel {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.minimumHeight: 170
+                        metricText: control.testState.metrics || ""
+                    }
                 }
 
-                QuiText {
-                    anchors.centerIn: parent
-                    text: control.currentModelUuid.length > 0 ? qsTr("无法启动 TensorBoard") : qsTr("请选择模型")
-                    color: QuiColor.FontDark
-                    visible: !tensorBoardView.visible
+                Item { // TensorBoard 区域
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumWidth: 280
+
+                    WebEngineView {
+                        id: tensorBoardView
+                        anchors.fill: parent
+                        url: control.tensorBoardUrl
+                        visible: control.tensorBoardUrl.toString().length > 0
+                    }
+
+                    QuiText {
+                        anchors.centerIn: parent
+                        text: control.currentModelUuid.length > 0 ? qsTr("无法启动 TensorBoard") : qsTr("请选择模型")
+                        color: QuiColor.FontDark
+                        visible: !tensorBoardView.visible
+                    }
                 }
             }
         }
 
     }
+
 }

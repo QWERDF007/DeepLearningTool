@@ -6,6 +6,7 @@
 #include "model/IModel.h"
 #include "model/ModelManager.h"
 #include "model/ModelTaskPreparationService.h"
+#include "model/TaskCommunication.h"
 #include "model/TaskManager.h"
 #include "ui/SignalHelper.h"
 
@@ -32,6 +33,7 @@ ModelTaskController::ModelTaskController(int method, QString project_dir, ModelM
     if (task_manager_ != nullptr)
     {
         connect(task_manager_, &TaskManager::taskStopRequested, this, &ModelTaskController::handleTaskStopRequested);
+        connect(task_manager_, &TaskManager::taskMessageReceived, this, &ModelTaskController::handleTaskMessage);
     }
 }
 
@@ -200,8 +202,13 @@ bool ModelTaskController::startTask(int task_id)
     if (!task_manager_->startTask(task_id))
         return false;
 
+    touchTaskModelModifiedTime(task_id);
+
     if (context.framework.supportsExternalTask(context.task_type) && !startExternalTask(context))
+    {
+        touchTaskModelModifiedTime(task_id);
         return false;
+    }
 
     return true;
 }
@@ -215,7 +222,10 @@ bool ModelTaskController::stopTask(int task_id)
         = external_task_runner_ != nullptr && external_task_runner_->hasRunningTask(task_id);
     const bool stop_requested = task_manager_->stopTask(task_id);
     if (stop_requested && !had_external_process)
+    {
         task_manager_->markTaskStopped(task_id);
+        touchTaskModelModifiedTime(task_id);
+    }
     if (stop_requested)
         spdlog::info("模型任务停止信号已发送, task_id: {}", task_id);
     return stop_requested;
@@ -237,6 +247,77 @@ bool ModelTaskController::deleteTask(int task_id)
         owned_task_ids_.erase(task_id);
     spdlog::info("模型任务删除{}, task_id: {}", deleted_from_table ? "成功" : "失败", task_id);
     return deleted_from_table;
+}
+
+void ModelTaskController::handleTaskMessage(const TaskMessage &message)
+{
+    if (model_manager_ == nullptr || task_manager_ == nullptr || task_manager_->tasks() == nullptr
+        || message.task_id < 0)
+        return;
+    if (message.type == TaskMessageType::Log || message.type == TaskMessageType::Command)
+        return;
+
+    const TaskTableModel::TaskSnapshot task = task_manager_->tasks()->taskSnapshotForId(message.task_id);
+    if (!task.isValid() || (!isTrainModelTask(task.task_type) && !isTestModelTask(task.task_type)))
+        return;
+
+    const ModelManager::ModelRecordView model_record = model_manager_->modelRecordViewForUuid(task.model_uuid);
+    const FrameworkDefinition          framework     = registeredFramework(method_, model_record.framework_name);
+    if (!framework.name.isEmpty() && !framework.write_to_database)
+        return;
+
+    QString phase = message.payload.value(QStringLiteral("phase")).toString().trimmed().toLower();
+    if (phase != QStringLiteral("train") && phase != QStringLiteral("test"))
+        phase = isTrainModelTask(task.task_type) ? QStringLiteral("train") : QStringLiteral("test");
+
+    QVariantMap updates;
+    if (message.status == TaskProtocolStatus::Running || message.payload.contains(QStringLiteral("started")))
+        updates.insert(QStringLiteral("started"),
+                       message.payload.value(QStringLiteral("started"), true).toBool());
+    if (message.payload.contains(QStringLiteral("phase_progress")))
+        updates.insert(QStringLiteral("progress"), message.payload.value(QStringLiteral("phase_progress")).toInt());
+    else if (message.progress >= 0)
+        updates.insert(QStringLiteral("progress"), message.progress);
+
+    for (const QString &key : {QStringLiteral("epoch"), QStringLiteral("iter"), QStringLiteral("lr"),
+                               QStringLiteral("loss"), QStringLiteral("elapsed")})
+    {
+        if (message.payload.contains(key))
+            updates.insert(key, message.payload.value(key).toString());
+    }
+    if (message.payload.contains(QStringLiteral("metrics")))
+        updates.insert(QStringLiteral("metrics"), message.payload.value(QStringLiteral("metrics")).toString());
+    if (!message.message.isEmpty())
+        updates.insert(QStringLiteral("message"), message.message);
+
+    const QString status = taskProtocolStatusName(message.status);
+    if (!status.isEmpty())
+        updates.insert(QStringLiteral("status"), status);
+
+    const bool terminal = message.status == TaskProtocolStatus::Stopped
+                       || message.status == TaskProtocolStatus::Finished
+                       || message.status == TaskProtocolStatus::Failed
+                       || message.status == TaskProtocolStatus::Error;
+    if (terminal && !framework.supportsExternalTask(task.task_type))
+        touchTaskModelModifiedTime(message.task_id);
+
+    if (updates.isEmpty())
+        return;
+
+    const QVariantMap current_model = model_manager_->modelRecordForUuid(task.model_uuid);
+    const QVariantMap extra_data    = current_model.value(QStringLiteral("extra_data")).toMap();
+    QVariantMap       section       = extra_data.value(phase).toMap();
+    for (auto it = updates.cbegin(); it != updates.cend(); ++it)
+        section.insert(it.key(), it.value());
+
+    QVariantMap state_update;
+    state_update.insert(phase, section);
+    QString err_msg;
+    if (!model_manager_->updateModelExtraData(task.model_uuid, state_update, &err_msg))
+    {
+        spdlog::error("保存模型任务状态失败, task_id: {}, uuid: {}, 错误: {}", message.task_id,
+                      task.model_uuid.toUtf8().constData(), err_msg.toUtf8().constData());
+    }
 }
 
 bool ModelTaskController::startExternalTask(const ModelTaskContext &context)
@@ -299,6 +380,23 @@ void ModelTaskController::failTask(int task_id, const QString &message) const
         task_manager_->failTask(task_id);
 }
 
+void ModelTaskController::touchTaskModelModifiedTime(const int task_id) const
+{
+    if (task_manager_ == nullptr || task_manager_->tasks() == nullptr || model_manager_ == nullptr)
+        return;
+
+    const TaskTableModel::TaskSnapshot task = task_manager_->tasks()->taskSnapshotForId(task_id);
+    if (!task.isValid())
+        return;
+
+    QString err_msg;
+    if (!model_manager_->touchModelModifiedTime(task.model_uuid, &err_msg))
+    {
+        spdlog::error("更新任务对应模型修改时间失败, task_id: {}, uuid: {}, 错误: {}", task_id,
+                      task.model_uuid.toUtf8().constData(), err_msg.toUtf8().constData());
+    }
+}
+
 void ModelTaskController::handleTaskStopRequested(int task_id)
 {
     if (external_task_runner_ == nullptr || !taskBelongsToCurrentModelManager(task_id))
@@ -310,6 +408,8 @@ void ModelTaskController::handleExternalTaskFinished(int task_id, int exit_code,
 {
     if (task_manager_ == nullptr || task_manager_->tasks() == nullptr || !taskBelongsToCurrentModelManager(task_id))
         return;
+
+    touchTaskModelModifiedTime(task_id);
 
     if (stop_requested || (normal_exit && exit_code == 2))
         task_manager_->markTaskStopped(task_id);

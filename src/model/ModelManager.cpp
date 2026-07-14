@@ -17,6 +17,8 @@
 
 #include <QDateTime>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonParseError>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QQmlEngine>
@@ -53,6 +55,29 @@ protected:
         return registeredFramework(manager->method(), framework_name).visible_for_model_creation;
     }
 };
+
+QVariantMap extraDataFromBlob(const std::vector<uint8_t> &data)
+{
+    if (data.empty())
+        return {};
+
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(
+        QByteArray(reinterpret_cast<const char *>(data.data()), static_cast<int>(data.size())), &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject())
+        return {};
+    return document.object().toVariantMap();
+}
+
+std::vector<uint8_t> extraDataToBlob(const QVariantMap &data)
+{
+    const QByteArray serialized = QJsonDocument::fromVariant(data).toJson(QJsonDocument::Compact);
+    std::vector<uint8_t> result;
+    result.reserve(static_cast<size_t>(serialized.size()));
+    for (const char byte : serialized)
+        result.push_back(static_cast<uint8_t>(byte));
+    return result;
+}
 
 } // namespace
 
@@ -104,10 +129,11 @@ void ModelManager::init()
     std::vector<QString> model_architectures;
     std::vector<qint64>  ctimes;
     std::vector<qint64>  mtimes;
+    std::vector<std::vector<uint8_t>> extra_data;
     QString              err_msg;
 
     const bool ok = database_->getAllModels(model_ids, uuids, names, framework_names, model_architectures, ctimes,
-                                            mtimes, err_msg);
+                                            mtimes, extra_data, err_msg);
     if (!ok)
     {
         endResetModel();
@@ -126,6 +152,7 @@ void ModelManager::init()
             model_architectures[i],
             ctimes[i],
             mtimes[i],
+            i < extra_data.size() ? extraDataFromBlob(extra_data[i]) : QVariantMap{},
         });
     }
 
@@ -160,6 +187,8 @@ QVariant ModelManager::data(const QModelIndex &index, int role) const
         return getCtime(index);
     case MtimeRole:
         return getMtime(index);
+    case ExtraDataRole:
+        return getExtraData(index);
     default:
         return QVariant();
     }
@@ -175,6 +204,7 @@ QHash<int, QByteArray> ModelManager::roleNames() const
         {ModelArchitectureRole, "model_architecture"},
         {            CtimeRole,              "ctime"},
         {            MtimeRole,              "mtime"},
+        {        ExtraDataRole,          "extra_data"},
     };
 }
 
@@ -495,6 +525,7 @@ QVariantMap ModelManager::modelAt(const int row) const
         {QStringLiteral("model_architecture"),            model.model_architecture},
         {             QStringLiteral("ctime"),        formatTimestamp(model.ctime)},
         {             QStringLiteral("mtime"),        formatTimestamp(model.mtime)},
+        {        QStringLiteral("extra_data"),                 model.extra_data},
     };
 }
 
@@ -521,6 +552,88 @@ QVariantMap ModelManager::modelRecordForUuid(const QString &uuid) const
     if (row < 0)
         return {};
     return modelAt(row);
+}
+
+bool ModelManager::updateModelExtraData(const QString &model_uuid, const QVariantMap &updates, QString *err_msg)
+{
+    const int row = indexOfUuid(model_uuid.trimmed());
+    if (row < 0)
+    {
+        const QString message = QString("模型不存在: %1").arg(model_uuid);
+        setError(err_msg, message);
+        return false;
+    }
+
+    if (updates.isEmpty())
+        return true;
+
+    ModelRecord &record = models_[static_cast<size_t>(row)];
+    QVariantMap  merged = record.extra_data;
+    for (auto it = updates.cbegin(); it != updates.cend(); ++it)
+        merged.insert(it.key(), it.value());
+
+    if (merged == record.extra_data)
+        return true;
+
+    const FrameworkDefinition framework         = registeredFramework(method_, record.framework_name);
+    const bool                write_to_database = framework.name.isEmpty() || framework.write_to_database;
+    QString                   local_err_msg;
+    if (write_to_database)
+    {
+        if (database_ == nullptr)
+        {
+            setError(err_msg, QStringLiteral("数据库对象为空"));
+            return false;
+        }
+        if (!database_->updateModelExtraData(record.model_id, extraDataToBlob(merged), local_err_msg))
+        {
+            setError(err_msg, local_err_msg);
+            spdlog::error("更新模型扩展数据失败, uuid: {}, 错误: {}", record.uuid.toUtf8().constData(),
+                          local_err_msg.toUtf8().constData());
+            return false;
+        }
+    }
+
+    record.extra_data = merged;
+    emit dataChanged(index(row), index(row), {ExtraDataRole});
+    emit modelExtraDataChanged(record.uuid);
+    return true;
+}
+
+bool ModelManager::touchModelModifiedTime(const QString &model_uuid, QString *err_msg)
+{
+    const int row = indexOfUuid(model_uuid.trimmed());
+    if (row < 0)
+    {
+        const QString message = QString("模型不存在: %1").arg(model_uuid);
+        setError(err_msg, message);
+        return false;
+    }
+
+    ModelRecord &record = models_[static_cast<size_t>(row)];
+    const qint64 now   = QDateTime::currentSecsSinceEpoch();
+    const FrameworkDefinition framework         = registeredFramework(method_, record.framework_name);
+    const bool                write_to_database = framework.name.isEmpty() || framework.write_to_database;
+    QString                   local_err_msg;
+    if (write_to_database)
+    {
+        if (database_ == nullptr)
+        {
+            setError(err_msg, QStringLiteral("数据库对象为空"));
+            return false;
+        }
+        if (!database_->updateModelMtime(record.model_id, now, local_err_msg))
+        {
+            setError(err_msg, local_err_msg);
+            spdlog::error("更新模型修改时间失败, uuid: {}, 错误: {}", record.uuid.toUtf8().constData(),
+                          local_err_msg.toUtf8().constData());
+            return false;
+        }
+    }
+
+    record.mtime = now;
+    emit dataChanged(index(row), index(row), {MtimeRole});
+    return true;
 }
 
 ModelManager::ModelRecordView ModelManager::modelRecordViewForUuid(const QString &uuid) const
@@ -835,6 +948,11 @@ QVariant ModelManager::getCtime(const QModelIndex &index) const
 QVariant ModelManager::getMtime(const QModelIndex &index) const
 {
     return formatTimestamp(models_.at(index.row()).mtime);
+}
+
+QVariant ModelManager::getExtraData(const QModelIndex &index) const
+{
+    return models_.at(index.row()).extra_data;
 }
 
 QString ModelManager::formatTimestamp(qint64 timestamp)

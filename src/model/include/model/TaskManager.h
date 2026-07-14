@@ -582,6 +582,7 @@ public:
 
 signals:
     void taskStopRequested(int task_id);
+    void taskMessageReceived(const dltool::model::TaskMessage &message);
 
 private:
     /**

@@ -1237,7 +1237,8 @@ bool ProjectDataBase::deleteImagesTagsByTagsId(const std::vector<int64_t> &tag_i
 bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<QString> &uuids,
                                    std::vector<QString> &names, std::vector<QString> &framework_names,
                                    std::vector<QString> &model_architectures,
-                                   std::vector<qint64> &ctimes, std::vector<qint64> &mtimes, QString &err_msg) const
+                                   std::vector<qint64> &ctimes, std::vector<qint64> &mtimes,
+                                   std::vector<std::vector<uint8_t>> &extra_data, QString &err_msg) const
 {
     try
     {
@@ -1254,12 +1255,14 @@ bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<
         model_architectures.clear();
         ctimes.clear();
         mtimes.clear();
+        extra_data.clear();
 
         auto db = pool_->get();
         db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
         auto data
             = db(sqlpp::select(ModelsTable.id, ModelsTable.uuid, ModelsTable.name, ModelsTable.frameworkName,
-                               ModelsTable.modelArchitecture, ModelsTable.ctime, ModelsTable.mtime)
+                               ModelsTable.modelArchitecture, ModelsTable.ctime, ModelsTable.mtime,
+                               ModelsTable.extraData)
                      .from(ModelsTable)
                      .unconditionally()
                      .order_by(ModelsTable.id.asc()));
@@ -1272,6 +1275,7 @@ bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<
             model_architectures.emplace_back(QString::fromStdString(row.modelArchitecture));
             ctimes.emplace_back(row.ctime);
             mtimes.emplace_back(row.mtime);
+            extra_data.emplace_back(row.extraData.is_null() ? std::vector<uint8_t>{} : row.extraData.value());
         }
         return true;
     }
@@ -1333,6 +1337,55 @@ bool ProjectDataBase::updateModelName(const int64_t model_id, const QString &nam
         const QByteArray name_bytes = name.toUtf8();
         db(sqlpp::update(ModelsTable)
                .set(ModelsTable.name = name_bytes.constData(), ModelsTable.mtime = mtime)
+               .where(ModelsTable.id == model_id));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::updateModelExtraData(const int64_t model_id, const std::vector<uint8_t> &extra_data,
+                                           QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("open database failed: %1").arg(path_);
+            return false;
+        }
+
+        auto db = pool_->get();
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
+        db(sqlpp::update(ModelsTable)
+               .set(ModelsTable.extraData = extra_data)
+               .where(ModelsTable.id == model_id));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::updateModelMtime(const int64_t model_id, const qint64 mtime, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("open database failed: %1").arg(path_);
+            return false;
+        }
+
+        auto db = pool_->get();
+        db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
+        db(sqlpp::update(ModelsTable)
+               .set(ModelsTable.mtime = mtime)
                .where(ModelsTable.id == model_id));
         return true;
     }

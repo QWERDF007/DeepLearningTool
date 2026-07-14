@@ -29,6 +29,17 @@ Rectangle {
     property bool taskActionsEnabled: false
     property int taskRevision: taskManager && taskManager.tasks ? taskManager.tasks.revision : 0
 
+    function taskExtraData(modelData) {
+        if (!modelData || !modelData.extra_data)
+            return ({})
+
+        if (taskType === ModelTaskTypes.Train)
+            return modelData.extra_data.train || ({})
+        if (taskType === ModelTaskTypes.Test)
+            return modelData.extra_data.test || ({})
+        return ({})
+    }
+
     function resetCurrentModelState() {
         currentModelId = -1
         currentModelUuid = ""
@@ -239,6 +250,7 @@ Rectangle {
                     modelArchitecture: model.model_architecture
                     createdTime: model.ctime
                     modifiedTime: model.mtime
+                    extraData: modelView.taskExtraData(model)
                     selected: ListView.isCurrentItem
                     showTaskActions: modelView.taskActionsEnabled
                     taskActionsEnabled: modelView.taskController !== null && model.uuid
