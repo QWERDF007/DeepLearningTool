@@ -38,6 +38,7 @@ struct MODEL_API FrameworkDefinition
     QHash<QString, QString> scripts;
     QStringList             python_paths;
     bool                    visible_for_model_creation{true};
+    bool                    write_to_database{true};
 
     FrameworkTaskCapability taskCapability(ModelTaskType task_type) const;
     QString                 scriptFor(ModelTaskType task_type) const;

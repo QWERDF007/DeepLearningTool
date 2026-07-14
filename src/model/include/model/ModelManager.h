@@ -63,7 +63,7 @@ public:
 
         bool isValid() const
         {
-            return model_id >= 0 && !uuid.trimmed().isEmpty();
+            return !uuid.trimmed().isEmpty();
         }
     };
 

@@ -231,7 +231,16 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
         return {};
     }
 
-    if (database_ == nullptr)
+    const FrameworkDefinition framework = registeredFramework(method_, trimmed_framework_name);
+    if (framework.name.isEmpty())
+    {
+        const QString message = QString("框架未注册: %1").arg(trimmed_framework_name);
+        setError(err_msg, message);
+        spdlog::warn("添加模型失败: {}", message.toUtf8().constData());
+        return {};
+    }
+    const bool write_to_database = framework.write_to_database;
+    if (write_to_database && database_ == nullptr)
     {
         const QString message = QString("数据库对象为空");
         setError(err_msg, message);
@@ -243,6 +252,12 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
     int64_t             model_id{-1};
     const qint64        now  = QDateTime::currentSecsSinceEpoch();
     const QString       uuid = dltool::common::uuid();
+    if (!write_to_database)
+    {
+        while (indexOfModel(model_id) >= 0)
+            --model_id;
+    }
+
     ModelStorageService storage(project_dir_);
     const QString model_dir = storage.path(trimmed_name, ModelStorageLocation::ModelRoot);
     if (QFileInfo::exists(model_dir))
@@ -252,6 +267,7 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
         spdlog::warn("添加模型失败: {}", message.toUtf8().constData());
         return {};
     }
+
     if (!storage.ensureModelStorage(trimmed_name, &local_err_msg))
     {
         setError(err_msg, QString("创建模型目录失败: %1").arg(local_err_msg));
@@ -259,9 +275,9 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
         return {};
     }
 
-    const bool ok = database_->addModel(uuid, trimmed_name, trimmed_framework_name, trimmed_model_architecture, now,
-                                        now, model_id, local_err_msg);
-    if (!ok)
+    if (write_to_database
+        && !database_->addModel(uuid, trimmed_name, trimmed_framework_name, trimmed_model_architecture, now, now,
+                                model_id, local_err_msg))
     {
         QString remove_err;
         storage.removeModelStorage(trimmed_name, &remove_err);
@@ -272,13 +288,15 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
         return {};
     }
 
-    const ModelRecord record{model_id, uuid, trimmed_name, trimmed_framework_name, trimmed_model_architecture, now, now};
+    const ModelRecord record{
+        model_id, uuid, trimmed_name, trimmed_framework_name, trimmed_model_architecture, now, now};
     const int row = rowCount();
     beginInsertRows(QModelIndex(), row, row);
     models_.push_back(record);
     endInsertRows();
 
-    spdlog::info("模型添加成功, id: {}, 模型名称: {}, 框架: {}, 模型架构: {}", model_id,
+    spdlog::info("模型添加成功, id: {}, 写入数据库: {}, 模型名称: {}, 框架: {}, 模型架构: {}", model_id,
+                 write_to_database,
                  trimmed_name.toUtf8().constData(), trimmed_framework_name.toUtf8().constData(),
                  trimmed_model_architecture.toUtf8().constData());
     return toRecordView(record);
@@ -336,10 +354,13 @@ bool ModelManager::deleteModel(const qint64 model_id)
         return false;
     }
 
-    QString       err_msg;
-    const QString uuid = models_[static_cast<size_t>(row)].uuid;
-    const QString name = models_[static_cast<size_t>(row)].name;
-    const bool    ok   = database_ != nullptr && database_->deleteModel(model_id, err_msg);
+    const ModelRecord record = models_[static_cast<size_t>(row)];
+    QString            err_msg;
+    const QString      uuid = record.uuid;
+    const QString      name = record.name;
+    const FrameworkDefinition framework = registeredFramework(method_, record.framework_name);
+    const bool write_to_database = framework.name.isEmpty() || framework.write_to_database;
+    const bool ok = !write_to_database || (database_ != nullptr && database_->deleteModel(model_id, err_msg));
     if (!ok)
     {
         spdlog::error("删除模型失败, id: {}, 错误: {}", model_id, err_msg.toUtf8().constData());
@@ -356,6 +377,8 @@ bool ModelManager::deleteModel(const qint64 model_id)
     {
         spdlog::error("删除模型目录失败, 名称: {}, 错误: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
     }
+    spdlog::info("模型删除成功, id: {}, 写入数据库: {}, 模型名称: {}", model_id, write_to_database,
+                 name.toUtf8().constData());
     return true;
 }
 
