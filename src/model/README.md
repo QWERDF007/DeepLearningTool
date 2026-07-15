@@ -195,11 +195,11 @@ QML 参数面板按 `part_index` 拆成两列渲染。当前已使用的展示�
   value_type: string
   param_type: dynamic
   display_type: combo
-  backend_key: hwinfo.compute_devices
+  backend_key: inferrt.compute_devices
 ```
 
-当前支持的硬件 provider key 为 `hwinfo.cpu_devices`、`hwinfo.gpu_devices` 和
-`hwinfo.compute_devices`。provider 抽象和全局注册表位于 `dltool_parameter`，模型、设置和 feature 模块共享同一套动态选项接口；新增 provider 只需继承 `DynamicOptionsProvider` 并注册。provider 在加载 schema 时生成显示名称和实际值的映射；QML 只显示名称，任务配置保存实际值（例如 `gpu:0`）。计算设备默认选择第一块 GPU；没有 GPU 时选择第一块 CPU。
+当前支持的硬件 provider key 为 `inferrt.cpu_devices`、`inferrt.gpu_devices` 和
+`inferrt.compute_devices`。provider 抽象和全局注册表位于 `dltool_parameter`，模型、设置和 feature 模块共享同一套动态选项接口；新增 provider 只需继承 `DynamicOptionsProvider` 并注册。provider 在加载 schema 时生成显示名称和实际值的映射；QML 只显示名称，任务配置保存实际值（例如 `cuda:0`）。计算设备默认选择第一块 GPU；没有 GPU 时选择第一块 CPU。
 
 ## 创建模型流程
 

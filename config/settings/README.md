@@ -115,7 +115,7 @@ sections:
   value_type: string
   param_type: dynamic
   display_type: combo
-  backend_key: hwinfo.compute_devices
+  backend_key: inferrt.compute_devices
 ```
 
 动态 provider 由 `dltool_parameter` 的全局注册表管理；model、settings 和 feature 可以共享同一套 provider。provider 返回显示值和实际值，设置页面显示前者，数据库保存后者。

@@ -34,10 +34,11 @@ train_params:
     params:
       - name_en: device
         name_cn: 计算设备
+        value: cuda:0
         value_type: string
         param_type: dynamic
         display_type: combo
-        backend_key: hwinfo.compute_devices
+        backend_key: inferrt.compute_devices
 
       - name_en: accelerator
         name_cn: 加速器
@@ -144,10 +145,11 @@ test_params:
     params:
       - name_en: device
         name_cn: 计算设备
+        value: cuda:0
         value_type: string
         param_type: dynamic
         display_type: combo
-        backend_key: hwinfo.compute_devices
+        backend_key: inferrt.compute_devices
 
       - name_en: checkpoint_path
         name_cn: 检查点路径

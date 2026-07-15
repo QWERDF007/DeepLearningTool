@@ -32,11 +32,11 @@ public:
 
 内置硬件 provider 使用以下 key：
 
-- `hwinfo.cpu_devices`
-- `hwinfo.gpu_devices`
-- `hwinfo.compute_devices`
+- `inferrt.cpu_devices`
+- `inferrt.gpu_devices`
+- `inferrt.compute_devices`
 
-`hwinfo.compute_devices` 将 GPU 排在 CPU 前面，并推荐第一块 GPU；没有 GPU 时推荐第一块 CPU。
+`inferrt.compute_devices` 将 GPU 排在 CPU 前面，并推荐第一块 GPU；没有 GPU 时推荐第一块 CPU。
 
 ## YAML 兼容性
 
@@ -45,7 +45,7 @@ public:
 ```yaml
 param_type: dynamic
 display_type: combo
-backend_key: hwinfo.compute_devices
+backend_key: inferrt.compute_devices
 ```
 
 settings 和 model 只解析自己的分组/业务字段，公共参数字段统一由本模块解析。

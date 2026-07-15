@@ -37,7 +37,7 @@ train_params:
         value_type: string
         param_type: dynamic
         display_type: combo
-        backend_key: hwinfo.compute_devices
+        backend_key: inferrt.compute_devices
 
       - name_en: accelerator
         name_cn: 加速器
@@ -153,7 +153,7 @@ test_params:
         value_type: string
         param_type: dynamic
         display_type: combo
-        backend_key: hwinfo.compute_devices
+        backend_key: inferrt.compute_devices
 
       - name_en: checkpoint_path
         name_cn: 检查点路径

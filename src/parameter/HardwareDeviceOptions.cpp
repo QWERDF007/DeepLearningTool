@@ -1,8 +1,8 @@
 #include "parameter/DynamicOptions.h"
 
-#include <hwinfo/cpu.h>
-#include <hwinfo/gpu.h>
+#include <inferrt/util/Device.hpp>
 
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -10,30 +10,30 @@ namespace dltool::parameter {
 
 namespace {
 
+ParameterOption makeDeviceOption(const QString &name, const QString &type, const int index)
+{
+    const QString actualValue = QStringLiteral("%1:%2").arg(type).arg(index);
+    const QString displayName = name.trimmed().isEmpty() ? type.toUpper() : name.trimmed();
+    return {QStringLiteral("%1 (%2)").arg(displayName, actualValue), actualValue};
+}
+
 QVector<ParameterOption> cpuOptions()
 {
     QVector<ParameterOption> options;
-    const std::vector<hwinfo::CPU> cpus = hwinfo::getAllCPUs();
-    options.reserve(static_cast<qsizetype>(cpus.size()));
-    for (const hwinfo::CPU &cpu : cpus)
-    {
-        const QString id    = QString::number(cpu.id());
-        const QString model = QString::fromStdString(cpu.modelName());
-        options.push_back({QStringLiteral("CPU %1 · %2").arg(id, model), QStringLiteral("cpu:%1").arg(id)});
-    }
+    options.push_back(makeDeviceOption(QString::fromStdString(irt::util::getCPUDeviceName()), QStringLiteral("cpu"),
+                                       0));
     return options;
 }
 
 QVector<ParameterOption> gpuOptions()
 {
     QVector<ParameterOption> options;
-    const std::vector<hwinfo::GPU> gpus = hwinfo::getAllGPUs();
+    const std::vector<std::string> gpus = irt::util::getGPUDeviceNames();
     options.reserve(static_cast<qsizetype>(gpus.size()));
-    for (const hwinfo::GPU &gpu : gpus)
+    for (int index = 0; index < static_cast<int>(gpus.size()); ++index)
     {
-        const QString id   = QString::number(gpu.id());
-        const QString name = QString::fromStdString(gpu.name());
-        options.push_back({QStringLiteral("GPU %1 · %2").arg(id, name), QStringLiteral("gpu:%1").arg(id)});
+        options.push_back(makeDeviceOption(QString::fromStdString(gpus.at(static_cast<std::size_t>(index))),
+                                            QStringLiteral("cuda"), index));
     }
     return options;
 }
@@ -49,7 +49,7 @@ DynamicOptionsData makeResult(QVector<ParameterOption> options)
 class CpuDeviceProvider final : public DynamicOptionsProvider
 {
 public:
-    QString key() const override { return QStringLiteral("hwinfo.cpu_devices"); }
+    QString key() const override { return QStringLiteral("inferrt.cpu_devices"); }
 
     DynamicOptionsData query(const QVariantMap &context) const override
     {
@@ -61,7 +61,7 @@ public:
 class GpuDeviceProvider final : public DynamicOptionsProvider
 {
 public:
-    QString key() const override { return QStringLiteral("hwinfo.gpu_devices"); }
+    QString key() const override { return QStringLiteral("inferrt.gpu_devices"); }
 
     DynamicOptionsData query(const QVariantMap &context) const override
     {
@@ -73,7 +73,7 @@ public:
 class ComputeDeviceProvider final : public DynamicOptionsProvider
 {
 public:
-    QString key() const override { return QStringLiteral("hwinfo.compute_devices"); }
+    QString key() const override { return QStringLiteral("inferrt.compute_devices"); }
 
     DynamicOptionsData query(const QVariantMap &context) const override
     {

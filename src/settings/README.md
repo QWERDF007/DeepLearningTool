@@ -116,7 +116,7 @@ QML 侧优先使用枚举入口，避免手写 accessor path：
   value_type: string
   param_type: dynamic
   display_type: combo
-  backend_key: hwinfo.compute_devices
+  backend_key: inferrt.compute_devices
 ```
 
 provider 抽象和全局注册表位于 `dltool_parameter`，模型、设置和 feature 模块可以共享；新增 provider 只需继承 `DynamicOptionsProvider` 并注册即可。显示值只用于界面，实际值用于数据库和后端配置。

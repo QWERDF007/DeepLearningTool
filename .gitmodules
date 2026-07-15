@@ -18,7 +18,3 @@
 	path = 3rdparty/EasyTrain
 	url = https://github.com/QWERDF007/EasyTrain.git
 	branch = main
-[submodule "3rdparty/hwinfo"]
-	path = 3rdparty/hwinfo
-	url = https://github.com/lfreist/hwinfo.git
-	branch = main

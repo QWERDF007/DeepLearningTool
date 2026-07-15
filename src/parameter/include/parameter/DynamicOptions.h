@@ -36,7 +36,7 @@ class PARAMETER_API DynamicOptionsProvider
 public:
     virtual ~DynamicOptionsProvider() = default;
 
-    /** provider key，例如 hwinfo.compute_devices。 */
+    /** provider key，例如 inferrt.compute_devices。 */
     virtual QString key() const = 0;
 
     /** 查询当前可用选项和推荐实际值。 */

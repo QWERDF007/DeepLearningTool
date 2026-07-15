@@ -32,7 +32,6 @@ flowchart TB
   qt["Qt6::Core/Gui/Quick/Widgets"]
   spdlog["spdlog::spdlog"]
   yaml["yaml-cpp"]
-  hwinfo["hwinfo"]
   sqlpp["sqlpp11::sqlite3"]
   nlohmann["nlohmann/json headers"]
   inferrt["InferRT / FAISS"]
@@ -58,7 +57,7 @@ flowchart TB
 
   common --> parameter
   yaml --> parameter
-  hwinfo --> parameter
+  inferrt --> parameter
 
   qt --> database
   sqlpp --> database
