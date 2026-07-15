@@ -1,4 +1,5 @@
 add_plugin_library(model
+    PUBLIC_LIBS dltool_parameter
     PRIVATE_LIBS 
         Qt6::Core Qt6::Gui Qt6::Quick Qt6::Network Qt6::WebEngineQuick
         quickui dltool_common dltool_core dltool_ui dltool_settings dltool_database dltool_data

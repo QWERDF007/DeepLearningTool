@@ -3,6 +3,8 @@
 #include "model/IParams.h"
 
 #include <QString>
+#include <QVariant>
+#include <QVariantList>
 #include <vector>
 
 namespace dltool::model {
@@ -83,6 +85,20 @@ ParamDefinition makeCheckParam(const QString &name_en, const QString &name_cn, b
  * @return 参数定义
  */
 ParamDefinition makeComboParam(const QString &name_en, const QString &name_cn, const QString &default_value,
-                               QStringList options, const QString &description = {});
+                               QVariantList options, const QString &description = {});
+
+/**
+ * @brief 创建并解析由后端 provider 动态提供选项的参数。
+ * @param name_en 英文名称
+ * @param name_cn 中文名称
+ * @param default_value 默认值
+ * @param display_type 展示类型，例如 combo
+ * @param backend_key 动态数据 provider key
+ * @param description 描述
+ * @return 动态参数定义
+ */
+ParamDefinition makeDynamicParam(const QString &name_en, const QString &name_cn, const QVariant &default_value,
+                                 const QString &display_type, const QString &backend_key,
+                                 const QString &description = {});
 
 } // namespace dltool::model

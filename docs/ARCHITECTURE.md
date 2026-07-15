@@ -9,6 +9,7 @@ DeepLearningTool 采用“基础设施 + 核心定义 + 数据库 + 设置 + UI 
 | 基础设施 | `dltool_common` | `src/common/` | 日志、崩溃处理、通用文件工具、单例模板；不依赖业务模块 |
 | 核心定义 | `dltool_core` | `src/core/` | 深度学习任务类型、跨模块共享枚举和名称映射 |
 | 数据库 | `dltool_database` | `src/database/` | SQLite 连接池、项目数据库、最近项目数据库、设置数据库、DDL 和 sqlpp11 表定义 |
+| 参数基础 | `dltool_parameter` | `src/parameter/` | 公共参数 schema、动态 provider、显示值/实际值映射和值解析；不依赖业务模块 |
 | 配置 | `dltool_settings` | `src/settings/` | `GlobalSettings` 聚合项目/数据/高级/UI 设置，通过 `SettingsDataBase` 持久化到 `db/settings.db` |
 | UI 组件 | `dltool_ui` | `src/ui/` | 主题、字体、图标、日志/进度单例和通用 QML 控件 |
 | 模型管理 | `dltool_model` | `src/model/` | 项目内模型记录、模型结构注册、训练/测试参数模型和训练/测试页面骨架 |
@@ -30,17 +31,21 @@ DeepLearningTool 采用“基础设施 + 核心定义 + 数据库 + 设置 + UI 
 flowchart TB
   qt["Qt6::Core/Gui/Quick/Widgets"]
   spdlog["spdlog::spdlog"]
+  yaml["yaml-cpp"]
+  hwinfo["hwinfo"]
   sqlpp["sqlpp11::sqlite3"]
   nlohmann["nlohmann/json headers"]
   inferrt["InferRT / FAISS"]
   assets["assets/assets.qrc"]
 
   common["dltool_common"]
+  parameter["dltool_parameter"]
   core["dltool_core\nURI: dltool.core"]
   database["dltool_database"]
   settings["dltool_settings\nURI: dltool.settings"]
   ui["dltool_ui\nURI: dltool.ui"]
   model["dltool_model\nURI: dltool.model"]
+  feature["dltool_feature\nURI: dltool.feature"]
   data["dltool_data\nURI: dltool.data"]
   project["dltool_project\nURI: dltool.project"]
   tool["dltool executable\nURI: dltool.tool"]
@@ -51,10 +56,15 @@ flowchart TB
   common --> core
   qt --> core
 
+  common --> parameter
+  yaml --> parameter
+  hwinfo --> parameter
+
   qt --> database
   sqlpp --> database
 
   common --> settings
+  parameter --> settings
   database --> settings
   qt --> settings
 
@@ -62,12 +72,22 @@ flowchart TB
   qt --> ui
 
   common --> model
+  parameter --> model
   core --> model
   ui --> model
   settings --> model
   database --> model
   qt --> model
   nlohmann --> model
+
+  common --> feature
+  parameter --> feature
+  core --> feature
+  ui --> feature
+  settings --> feature
+  model --> feature
+  data --> feature
+  inferrt --> feature
 
   common --> data
   core --> data
@@ -83,16 +103,20 @@ flowchart TB
   ui --> project
   data --> project
   model --> project
+  feature --> project
   database --> project
   settings --> project
   qt --> project
   nlohmann --> project
 
   common --> tool
+  parameter --> tool
+  settings --> tool
   core --> tool
   ui --> tool
   data --> tool
   model --> tool
+  feature --> tool
   project --> tool
   assets --> tool
 ```

@@ -74,6 +74,9 @@ sections:
 | `value_type` | 值类型，例如 `bool`、`int`、`double`、`string`。 |
 | `value_range` | 数值范围，格式为 `[from, to, step]`。 |
 | `control_type` | 设置页控件类型，例如 `slider`、`spin`、`combo`、`checkbox`、`path`、`dir`、`folder`。 |
+| `display_type` | 界面展示类型；未配置时回退到 `control_type`。 |
+| `param_type` | 设置为 `dynamic` 时由动态 provider 提供选项。 |
+| `backend_key` | 动态 provider 注册表中的接口 key。 |
 | `options` | 静态选项列表。 |
 | `options_values` | 可选的 combo 显示值到实际值映射；未配置时实际值等于 `options` 中的显示值。 |
 | `options_map` | 动态选项映射。 |
@@ -103,3 +106,16 @@ sections:
 5. 每个字段应配置 `desc`，设置页会把它作为左侧文字区域的 tooltip。
 6. 对于下拉选项，静态列表使用 `options`；需要显示值和保存值不一致时，使用 `options_values` 声明 key-value，例如 `options: [cpu, gpu]` 搭配 `options_values: {cpu: 0, gpu: 1}`。
 7. 数值类字段建议配置 `value_range`，这样设置页和动态范围属性都能复用同一份 schema。
+
+动态字段示例：
+
+```yaml
+- name_en: device
+  name_cn: 计算设备
+  value_type: string
+  param_type: dynamic
+  display_type: combo
+  backend_key: hwinfo.compute_devices
+```
+
+动态 provider 由 `dltool_parameter` 的全局注册表管理；model、settings 和 feature 可以共享同一套 provider。provider 返回显示值和实际值，设置页面显示前者，数据库保存后者。

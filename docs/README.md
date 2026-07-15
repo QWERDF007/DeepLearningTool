@@ -35,6 +35,7 @@ DeepLearningTool 是一个基于 C++17、Qt 6/QML、CMake 和 SQLite 的深度�
 | Common | `src/common/` | `dltool_common` | 无 | 日志、崩溃处理、工具函数、单例模板 |
 | Core | `src/core/` | `dltool_core` | `dltool.core` | 深度学习任务类型等跨模块核心定义 |
 | Database | `src/database/` | `dltool_database` | 无 | SQLite 连接池、项目库、最近项目库、设置库、DDL |
+| Parameter | `src/parameter/` | `dltool_parameter` | 无 | 公共参数 schema、动态 provider、选项映射和值解析 |
 | Settings | `src/settings/` | `dltool_settings` | `dltool.settings` | 全局/项目/数据/高级/UI 设置与持久化 |
 | UI | `src/ui/` | `dltool_ui` | `dltool.ui` | 主题、字体、图标、日志/进度单例、自定义 QML 控件 |
 | Model | `src/model/` | `dltool_model` | `dltool.model` | 模型记录、模型结构注册、训练/测试参数和页面骨架 |

@@ -5,7 +5,7 @@
 ## 模块边界
 
 - CMake 目标为 `dltool_settings`，QML URI 为 `dltool.settings`。
-- 依赖 Qt Core/QML、`dltool_common` 和 `dltool_database`；YAML 读写工具由 `dltool_common` 统一提供。
+- 依赖 Qt Core/QML、`dltool_common`、`dltool_parameter` 和 `dltool_database`；YAML 读写工具由 `dltool_common` 统一提供。
 - YAML 配置只从应用程序目录下的 `config/settings` 读取，即 `QCoreApplication::applicationDirPath()/config/settings`。
 - 设置数据库路径由 `DataBase::applicationDatabasePath("settings.db")` 生成。
 
@@ -39,6 +39,8 @@
 - `value_type` / `type`：值类型，支持 `bool`、`int`、`double`、`float`、`real`、`string` 等。
 - `value_range` / `range`：数值范围，按 `[from, to, step]` 解释。
 - `control_type` / `control`：界面控件类型，例如 `slider`、`combo`、`switch`、`path`。
+- `display_type`：展示类型；未配置时回退到 `control_type`。
+- `param_type: dynamic`、`backend_key`：通过 `dltool_parameter` 动态 provider 注册表生成选项。
 - `options`：普通枚举选项。
 - `options_values` / `option_values` / `options_value_map`：可选的 combo 显示值到实际值映射；未配置时实际值等于 `options` 中的显示值。
 - `options_map` / `key_values` / `values_map`：按其它字段值切换的动态选项。
@@ -104,7 +106,20 @@ QML 侧优先使用枚举入口，避免手写 accessor path：
 - `ordinalIndex`
 - `fieldModel`
 
-`fieldModel` 是字段列表模型，角色包括 `nameEn`、`nameCn`、`propertyName`、`value`、`defaultValue`、`valueType`、`valueRange`、`controlType`、`options`、`optionsValueMap`、`optionsMap`、`section`、`desc`、`description`、`visible`、`ordinalIndex`。界面应根据 `valueType` 和 `controlType` 创建对应控件，根据 `value` 赋值，根据 `valueRange` 设置范围。
+`fieldModel` 是字段列表模型，角色包括 `nameEn`、`nameCn`、`propertyName`、`value`、`defaultValue`、`valueType`、`valueRange`、`displayType`、`backendKey`、`paramKind`、`options`、`optionsValueMap`、`optionsMap`、`section`、`desc`、`description`、`visible`、`ordinalIndex`。界面根据 `displayType` 和 `valueType` 创建对应控件，根据 `value` 赋值，根据 `valueRange` 设置范围。
+
+动态设置示例：
+
+```yaml
+- name_en: device
+  name_cn: 计算设备
+  value_type: string
+  param_type: dynamic
+  display_type: combo
+  backend_key: hwinfo.compute_devices
+```
+
+provider 抽象和全局注册表位于 `dltool_parameter`，模型、设置和 feature 模块可以共享；新增 provider 只需继承 `DynamicOptionsProvider` 并注册即可。显示值只用于界面，实际值用于数据库和后端配置。
 
 ## 数据库持久化
 

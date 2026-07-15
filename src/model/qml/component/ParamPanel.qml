@@ -105,7 +105,7 @@ Item {
                                     property string paramNameEn: modelValue("nameEn", "")
                                     property string paramLabel: modelValue("nameCn", paramNameEn)
                                     property string paramDescription: modelValue("description", "")
-                                    property string paramControlType: modelValue("controlType", "text")
+                                    property string paramDisplayType: modelValue("displayType", "text")
                                     property string paramValueType: modelValue("valueType", "string")
                                     property var paramValue: modelValue("value", modelValue("defaultValue", ""))
                                     property var paramDefaultValue: modelValue("defaultValue", "")
@@ -116,6 +116,7 @@ Item {
                                     property int paramDecimals: Utils.paramDecimals(paramValueType, paramValueRange, paramValue, paramDefaultValue)
                                     property bool paramEnabled: Utils.boolValue(modelValue("enabled", true), true)
                                     property var paramOptions: modelValue("options", [])
+                                    property var paramOptionsValueMap: modelValue("optionsValueMap", ({}))
                                     property string paramUnit: modelValue("unit", "")
 
                                     function modelValue(roleName, fallbackValue) {
@@ -129,6 +130,38 @@ Item {
                                         if (groupModel && rowIndex >= 0) {
                                             groupModel.setValue(rowIndex, value);
                                         }
+                                    }
+
+                                    function optionLabel(option) {
+                                        if (option && typeof option === "object") {
+                                            if (option.label !== undefined)
+                                                return String(option.label)
+                                            if (option.text !== undefined)
+                                                return String(option.text)
+                                            if (option.name !== undefined)
+                                                return String(option.name)
+                                            if (option.value !== undefined)
+                                                return String(option.value)
+                                        }
+                                        return String(option)
+                                    }
+
+                                    function optionValue(option) {
+                                        if (option && typeof option === "object" && option.value !== undefined)
+                                            return option.value
+
+                                        const key = optionLabel(option)
+                                        return paramOptionsValueMap && paramOptionsValueMap[key] !== undefined
+                                                ? paramOptionsValueMap[key] : option
+                                    }
+
+                                    function optionIndexForValue(value) {
+                                        const options = paramOptions || []
+                                        for (let i = 0; i < options.length; ++i) {
+                                            if (String(optionValue(options[i])) === String(value))
+                                                return i
+                                        }
+                                        return -1
                                     }
 
                                     function editorComponent(type) {
@@ -185,7 +218,7 @@ Item {
                                                 Loader {
                                                     Layout.fillWidth: true
                                                     Layout.fillHeight: true
-                                                    sourceComponent: delegateRoot.editorComponent(delegateRoot.paramControlType)
+                                            sourceComponent: delegateRoot.editorComponent(delegateRoot.paramDisplayType)
                                                 }
 
                                                 QuiText {
@@ -274,8 +307,8 @@ Item {
                                             anchors.fill: parent
                                             enabled: delegateRoot.paramEnabled
                                             model: delegateRoot.paramOptions || []
-                                            currentIndex: Math.max(0, (delegateRoot.paramOptions || []).indexOf(Utils.stringValue(delegateRoot.paramValue)))
-                                            onActivated: delegateRoot.commitValue(currentText)
+                                            currentIndex: Math.max(0, delegateRoot.optionIndexForValue(delegateRoot.paramValue))
+                                            onActivated: delegateRoot.commitValue(delegateRoot.optionValue(currentText))
                                         }
                                     }
 

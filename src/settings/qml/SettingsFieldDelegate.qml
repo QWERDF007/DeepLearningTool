@@ -24,7 +24,7 @@ Item {
     }
     property bool showSectionHeader: sectionText.length > 0 && sectionText !== previousSectionText
     property string valueType: String(model.valueType || "string").toLowerCase()
-    property string controlType: String(model.controlType || "").toLowerCase()
+    property string displayType: String(model.displayType || "text").toLowerCase()
     property var valueRange: model.valueRange || []
     property var configuredOptions: model.options || []
     property var configuredOptionsValueMap: model.optionsValueMap || ({})
@@ -158,16 +158,16 @@ Item {
     }
 
     function usesBool() {
-        return controlType === "checkbox" || controlType === "switch" || controlType === "toggle"
+        return displayType === "checkbox" || displayType === "switch" || displayType === "toggle"
                 || valueType === "bool" || valueType === "boolean"
     }
 
     function usesSwitch() {
-        return controlType === "switch" || controlType === "toggle"
+        return displayType === "switch" || displayType === "toggle"
     }
 
     function usesCombo() {
-        return controlType === "combo" || controlType === "combobox" || controlType === "select" || hasOptionsMap()
+        return displayType === "combo" || displayType === "combobox" || displayType === "select" || hasOptionsMap()
                 || (configuredOptions && configuredOptions.length > 0)
     }
 
@@ -176,16 +176,16 @@ Item {
     }
 
     function usesSlider() {
-        return controlType === "slider"
+        return displayType === "slider"
     }
 
     function usesPath() {
-        return controlType === "path" || controlType === "file" || controlType === "folder" || controlType === "directory"
-                || controlType === "dir"
+        return displayType === "path" || displayType === "file" || displayType === "folder" || displayType === "directory"
+                || displayType === "dir"
     }
 
     function usesFolderDialog() {
-        return controlType === "folder" || controlType === "directory" || controlType === "dir"
+        return displayType === "folder" || displayType === "directory" || displayType === "dir"
     }
 
     function commit(value) {

@@ -1,13 +1,13 @@
 #pragma once
 
 #include "dltool/model/Export.h"
+#include "parameter/ParameterTypes.h"
 
 #include <QAbstractListModel>
 #include <QHash>
 #include <QList>
 #include <QObject>
 #include <QString>
-#include <QStringList>
 #include <QVariant>
 #include <QVariantMap>
 #include <QtQml>
@@ -16,22 +16,14 @@
 
 namespace dltool::model {
 
+/** 模型参数选项的生成方式。 */
+using ParamKind = dltool::parameter::ParameterKind;
+
 /**
  * @brief 单个参数定义，描述一个超参数的名称、类型、默认值、控件类型等元信息
  */
-struct MODEL_API ParamDefinition
+struct MODEL_API ParamDefinition : public dltool::parameter::ParameterSpec
 {
-    QString      name_en;                              ///< 英文名称
-    QString      name_cn;                              ///< 中文名称
-    QString      description;                          ///< 描述
-    QVariant     value;                                ///< 当前值
-    QVariant     default_value;                        ///< 默认值
-    QString      value_type{QStringLiteral("string")}; ///< 值类型（int/double/bool/string）
-    QVariantList value_range;                          ///< 值范围
-    QString      control_type{QStringLiteral("text")}; ///< UI 控件类型（spin/slider/checkbox/combo/text）
-    QStringList  options;                              ///< 下拉选项列表
-    bool         enabled{true};                        ///< 是否启用
-    QString      unit;                                 ///< 单位
 };
 
 /**
@@ -59,9 +51,12 @@ public:
         DefaultValueRole,
         ValueTypeRole,
         ValueRangeRole,
-        ControlTypeRole,
         EnabledRole,
         OptionsRole,
+        OptionsValueMapRole,
+        ParamKindRole,
+        DisplayTypeRole,
+        BackendKeyRole,
         UnitRole,
     };
     Q_ENUM(Role)

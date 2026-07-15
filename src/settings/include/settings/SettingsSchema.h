@@ -6,6 +6,7 @@
  */
 
 #include "dltool/settings/Export.h"
+#include "parameter/ParameterTypes.h"
 #include "settings/SettingsKeys.h"
 
 #include <QAbstractListModel>
@@ -28,23 +29,13 @@ namespace dltool::settings {
  * @brief 单个设置字段的元数据。
  * @details 对应配置文件中的一条字段定义，保存显示名、属性名、取值和界面控制信息。
  */
-struct SETTINGS_API SettingsField
+struct SETTINGS_API SettingsField : public dltool::parameter::ParameterSpec
 {
-    QString      name_en;           ///< 英文键名，用于配置和代码侧索引字段。
-    QString      name_cn;           ///< 中文显示名，用于界面展示。
-    QString      property_name;     ///< 绑定到外部对象或 QML 的属性名.
-    QVariant     value;             ///< 当前值.
-    QVariant     default_value;     ///< 默认值.
-    QString      value_type;        ///< 值类型，例如 string、bool、int、double.
-    QVariantList value_range;       ///< 值域范围。
-    QString      control_type;      ///< 控件类型，例如 text、slider、combo。
-    QVariantList options;           ///< 选项列表。
-    QVariantMap  options_value_map; ///< 选项显示值到实际值的映射。
+    QString     property_name;      ///< 绑定到外部对象或 QML 的属性名。
     QVariantMap  options_map;       ///< 选项键值映射。
     QString      options_key_field; ///< options_map 的联动字段的 name_en。
     QString      section;           ///< 所属分区名称。
     QString      desc;              ///< 简短说明，用于 tooltip。
-    QString      description;       ///< 说明文本。
     bool         visible{true};     ///< 是否在界面中显示。
     int          ordinal_index{0};  ///< 分组内排序索引。
 };
@@ -70,7 +61,7 @@ class SETTINGS_API SettingsFieldModel : public QAbstractListModel
 
 public:
     /**
-     * @brief 模型角色定义。
+     * @brief 设置字段角色定义。
      */
     enum Role
     {
@@ -81,7 +72,9 @@ public:
         DefaultValueRole,              ///< 默认值。
         ValueTypeRole,                 ///< 值类型。
         ValueRangeRole,                ///< 值域范围。
-        ControlTypeRole,               ///< 控件类型。
+        DisplayTypeRole,                ///< 展示类型。
+        BackendKeyRole,                 ///< 动态选项 provider key。
+        ParamKindRole,                  ///< 参数选项生成方式。
         OptionsRole,                   ///< 选项列表。
         OptionsValueMapRole,           ///< 选项显示值到实际值的映射。
         OptionsMapRole,                ///< 选项映射。

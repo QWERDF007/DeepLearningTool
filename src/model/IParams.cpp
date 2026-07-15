@@ -1,5 +1,7 @@
 #include "model/IParams.h"
 
+#include "parameter/ParameterSchema.h"
+
 #include <QQmlEngine>
 #include <algorithm>
 #include <utility>
@@ -16,6 +18,11 @@ namespace {
 QVariant normalizedValue(const ParamDefinition &param)
 {
     return param.value.isValid() ? param.value : param.default_value;
+}
+
+QVariant normalizeDynamicValue(const ParamDefinition &param, const QVariant &value)
+{
+    return dltool::parameter::normalizeParameterValue(param, value);
 }
 
 } // namespace
@@ -112,12 +119,18 @@ QVariant ParamGroupModel::data(const QModelIndex &index, const int role) const
         return param.value_type;
     case ValueRangeRole:
         return param.value_range;
-    case ControlTypeRole:
-        return param.control_type;
     case EnabledRole:
         return enabled_ && param.enabled;
     case OptionsRole:
         return param.options;
+    case OptionsValueMapRole:
+        return param.options_value_map;
+    case ParamKindRole:
+        return static_cast<int>(param.kind);
+    case DisplayTypeRole:
+        return param.display_type;
+    case BackendKeyRole:
+        return param.backend_key;
     case UnitRole:
         return param.unit;
     default:
@@ -137,13 +150,14 @@ bool ParamGroupModel::setData(const QModelIndex &index, const QVariant &value, c
         return false;
     }
 
-    ParamDefinition &param = params_[index.row()];
-    if (param.value == value)
+    ParamDefinition &param      = params_[index.row()];
+    const QVariant  next_value = normalizeDynamicValue(param, value);
+    if (param.value == next_value)
     {
         return true;
     }
 
-    param.value = value;
+    param.value = next_value;
     emit dataChanged(index, index, {ValueRole, Qt::EditRole});
     emit valueChanged(param.name_en, param.value);
     return true;
@@ -174,9 +188,12 @@ QHash<int, QByteArray> ParamGroupModel::roleNames() const
         {DefaultValueRole, "defaultValue"},
         {   ValueTypeRole,    "valueType"},
         {  ValueRangeRole,   "valueRange"},
-        { ControlTypeRole,  "controlType"},
         {     EnabledRole,      "enabled"},
         {     OptionsRole,      "options"},
+        {OptionsValueMapRole, "optionsValueMap"},
+        {  ParamKindRole,      "paramKind"},
+        {DisplayTypeRole,      "displayType"},
+        { BackendKeyRole,      "backendKey"},
         {        UnitRole,         "unit"},
     };
 }
@@ -229,9 +246,10 @@ void ParamGroupModel::copyValuesFrom(const ParamGroupModel &other)
     for (ParamDefinition &param : params_)
     {
         const QVariant other_value = other.valueForName(param.name_en);
-        if (other_value.isValid() && param.value != other_value)
+        const QVariant next_value = normalizeDynamicValue(param, other_value);
+        if (other_value.isValid() && param.value != next_value)
         {
-            param.value = other_value;
+            param.value = next_value;
             changed     = true;
         }
     }
@@ -259,7 +277,7 @@ bool ParamGroupModel::setValuesMap(const QVariantMap &values)
             continue;
         }
 
-        const QVariant next_value = values.value(param.name_en);
+        const QVariant next_value = normalizeDynamicValue(param, values.value(param.name_en));
         if (!next_value.isValid() || param.value == next_value)
         {
             continue;

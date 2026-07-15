@@ -2,6 +2,7 @@ set(PLUGIN_NAME settings)
 
 add_plugin_library(${PLUGIN_NAME}
     QML_URI "dltool.settings"
+    PUBLIC_LIBS dltool_parameter
     PRIVATE_LIBS Qt6::Core Qt6::Qml Qt6::Quick quickui dltool_common dltool_database dltool_ui yaml-cpp::yaml-cpp
 )
 

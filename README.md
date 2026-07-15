@@ -20,6 +20,8 @@
     ↓
 表现层 (dltool_ui) + 数据层 (dltool_data)
     ↓
+参数基础层 (dltool_parameter)
+    ↓
 配置层 (dltool_settings)
     ↓
 基础设施层 (dltool_common)

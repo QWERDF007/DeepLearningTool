@@ -587,9 +587,12 @@ class IModelConfig : public QObject {
 | `defaultValue` | 默认值 |
 | `valueType` | 值类型：`bool`、`int`、`double`、`string` |
 | `valueRange` | 数值范围，格式为 `[from, to, step]` |
-| `controlType` | 控件类型：`text`、`spin`、`slider`、`checkbox`、`combo` |
+| `displayType` | 展示类型：`text`、`spin`、`slider`、`checkbox`、`combo` |
+| `backendKey` | 动态选项 provider key |
+| `paramKind` | 参数选项生成方式：static 或 dynamic |
 | `enabled` | 是否可编辑 |
-| `options` | 下拉选项 |
+| `options` | 下拉显示选项 |
+| `optionsValueMap` | 显示值到实际值的映射 |
 | `unit` | 单位 |
 
 主要方法：

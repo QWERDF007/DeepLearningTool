@@ -2,6 +2,7 @@
 
 #include "common/Utils.h"
 #include "common/YamlUtils.h"
+#include "parameter/ParameterSchema.h"
 
 #include <spdlog/spdlog.h>
 
@@ -15,8 +16,6 @@ namespace {
 
 using dltool::common::yaml::loadFile;
 using dltool::common::yaml::nodeString;
-using dltool::common::yaml::nodeVariant;
-
 /**
  * @brief 从 YAML 节点解析单个参数定义
  * @param node YAML 节点
@@ -25,29 +24,7 @@ using dltool::common::yaml::nodeVariant;
 ParamDefinition parseParamDefinition(const YAML::Node &node)
 {
     ParamDefinition param;
-    if (!node || !node.IsMap())
-        return param;
-
-    param.name_en       = nodeString(node["name_en"]);
-    param.name_cn       = nodeString(node["name_cn"], param.name_en);
-    param.description   = nodeString(node["description"]);
-    param.value         = nodeVariant(node["value"]);
-    param.default_value = nodeVariant(node["default_value"]);
-    if (!param.default_value.isValid())
-        param.default_value = param.value;
-
-    param.value_type   = nodeString(node["value_type"], QStringLiteral("string"));
-    param.value_range  = nodeVariant(node["value_range"]).toList();
-    param.control_type = nodeString(node["control_type"], QStringLiteral("text"));
-    param.enabled      = node["enabled"] ? node["enabled"].as<bool>() : true;
-    param.unit         = nodeString(node["unit"]);
-
-    const YAML::Node options_node = node["options"];
-    if (options_node && options_node.IsSequence())
-    {
-        for (const YAML::Node &entry : options_node) param.options.append(nodeString(entry));
-    }
-
+    static_cast<dltool::parameter::ParameterSpec &>(param) = dltool::parameter::parseParameterSpec(node);
     return param;
 }
 

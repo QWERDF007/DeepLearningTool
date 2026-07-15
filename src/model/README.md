@@ -7,7 +7,7 @@
 主要依赖：
 
 - Qt Core/Gui/Quick/Network 和 QML 注册机制。
-- `quickui`、`dltool_common`、`dltool_core`、`dltool_ui`、`dltool_settings`、`dltool_database`、`dltool_data`。
+- `quickui`、`dltool_common`、`dltool_parameter`、`dltool_core`、`dltool_ui`、`dltool_settings`、`dltool_database`、`dltool_data`。
 - `yaml-cpp` 读写模型参数、任务配置和数据集清单。
 - `spdlog` 记录 C++ 侧日志。
 
@@ -177,12 +177,29 @@ config/models/anomalib/dinomaly2.yaml
 - `default_value`
 - `value_type`
 - `value_range`
-- `control_type`
+- `display_type`
 - `options`
+- `options_values`
+- `param_type`
+- `backend_key`
 - `enabled`
 - `unit`
 
-QML 参数面板按 `part_index` 拆成两列渲染。当前已使用的控件类型包括 `text`、`spin`、`slider`、`checkbox` 和 `combo`。
+QML 参数面板按 `part_index` 拆成两列渲染。当前已使用的展示类型包括 `text`、`spin`、`slider`、`checkbox` 和 `combo`。
+
+动态参数使用 `param_type: dynamic`，并通过 `display_type` 指定控件、`backend_key` 指定后端 provider。例如：
+
+```yaml
+- name_en: device
+  name_cn: 计算设备
+  value_type: string
+  param_type: dynamic
+  display_type: combo
+  backend_key: hwinfo.compute_devices
+```
+
+当前支持的硬件 provider key 为 `hwinfo.cpu_devices`、`hwinfo.gpu_devices` 和
+`hwinfo.compute_devices`。provider 抽象和全局注册表位于 `dltool_parameter`，模型、设置和 feature 模块共享同一套动态选项接口；新增 provider 只需继承 `DynamicOptionsProvider` 并注册。provider 在加载 schema 时生成显示名称和实际值的映射；QML 只显示名称，任务配置保存实际值（例如 `gpu:0`）。计算设备默认选择第一块 GPU；没有 GPU 时选择第一块 CPU。
 
 ## 创建模型流程
 

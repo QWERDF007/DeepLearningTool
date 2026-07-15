@@ -3,6 +3,7 @@
 #include "common/Utils.h"
 #include "common/YamlUtils.h"
 #include "database/DataBase.h"
+#include "parameter/ParameterSchema.h"
 
 #include <spdlog/spdlog.h>
 
@@ -52,16 +53,8 @@ QString joinedAccessorPath(const QString &parent_accessor, const QString &access
 SettingsField parseField(const YAML::Node &node, const QString &section, const int ordinal_index)
 {
     SettingsField field;
-    field.name_en           = nodeString(node["name_en"]);
-    field.name_cn           = nodeString(node["name_cn"]);
+    static_cast<dltool::parameter::ParameterSpec &>(field) = dltool::parameter::parseParameterSpec(node);
     field.property_name     = nodeString(node["property_name"], field.name_en);
-    field.value             = nodeVariant(node["value"]);
-    field.default_value     = field.value;
-    field.value_type        = nodeString(node["value_type"], QStringLiteral("string"));
-    field.value_range       = nodeVariant(node["value_range"]).toList();
-    field.control_type      = nodeString(node["control_type"], QStringLiteral("text"));
-    field.options           = nodeVariant(node["options"]).toList();
-    field.options_value_map = nodeVariant(node["options_values"]).toMap();
     field.options_map       = nodeVariant(node["options_map"]).toMap();
     field.options_key_field = nodeString(node["options_key_field"]);
     field.section           = section;
@@ -82,26 +75,6 @@ QStringList settingsConfigDirs()
 QVector<QFileInfo> settingsConfigFiles()
 {
     return dltool::common::yaml::configFiles(settingsConfigDirs());
-}
-
-QVariant typedScalar(const QString &type, const QVariant &value)
-{
-    const QString normalized = type.trimmed().toLower();
-    if (normalized == QStringLiteral("bool") || normalized == QStringLiteral("boolean"))
-    {
-        if (value.userType() == QMetaType::QString)
-        {
-            const QString text = value.toString().trimmed().toLower();
-            return text == QStringLiteral("true") || text == QStringLiteral("1") || text == QStringLiteral("yes");
-        }
-        return value.toBool();
-    }
-    if (normalized == QStringLiteral("int") || normalized == QStringLiteral("integer"))
-        return value.toInt();
-    if (normalized == QStringLiteral("double") || normalized == QStringLiteral("float")
-        || normalized == QStringLiteral("real"))
-        return value.toDouble();
-    return value.toString();
 }
 
 } // namespace
@@ -203,8 +176,12 @@ QVariant SettingsFieldModel::data(const QModelIndex &index, const int role) cons
         return field.value_type;
     case ValueRangeRole:
         return field.value_range;
-    case ControlTypeRole:
-        return field.control_type;
+    case DisplayTypeRole:
+        return field.display_type;
+    case BackendKeyRole:
+        return field.backend_key;
+    case ParamKindRole:
+        return static_cast<int>(field.kind);
     case OptionsRole:
         return field.options;
     case OptionsValueMapRole:
@@ -264,7 +241,9 @@ QHash<int, QByteArray> SettingsFieldModel::roleNames() const
         {   DefaultValueRole,    "defaultValue"},
         {      ValueTypeRole,       "valueType"},
         {     ValueRangeRole,      "valueRange"},
-        {    ControlTypeRole,     "controlType"},
+        {    DisplayTypeRole,     "displayType"},
+        {     BackendKeyRole,      "backendKey"},
+        {     ParamKindRole,        "paramKind"},
         {        OptionsRole,         "options"},
         {OptionsValueMapRole, "optionsValueMap"},
         {     OptionsMapRole,      "optionsMap"},
@@ -400,7 +379,7 @@ int SettingsFieldModel::indexOfProperty(const QString &property_name) const
 
 QVariant SettingsFieldModel::typedValue(const SettingsField &field, const QVariant &value) const
 {
-    return typedScalar(field.value_type, value);
+    return dltool::parameter::normalizeParameterValue(field, value);
 }
 
 QVariantMap SettingsFieldModel::toMap(const SettingsField &field) const
@@ -413,7 +392,11 @@ QVariantMap SettingsFieldModel::toMap(const SettingsField &field) const
         {    QStringLiteral("default_value"),     field.default_value},
         {       QStringLiteral("value_type"),        field.value_type},
         {      QStringLiteral("value_range"),       field.value_range},
-        {     QStringLiteral("control_type"),      field.control_type},
+        {     QStringLiteral("display_type"),      field.display_type},
+        {      QStringLiteral("backend_key"),       field.backend_key},
+        {      QStringLiteral("param_type"),       field.kind == dltool::parameter::ParameterKind::Dynamic
+                                                     ? QStringLiteral("dynamic")
+                                                     : QStringLiteral("static")},
         {          QStringLiteral("options"),           field.options},
         {   QStringLiteral("options_values"), field.options_value_map},
         {      QStringLiteral("options_map"),       field.options_map},

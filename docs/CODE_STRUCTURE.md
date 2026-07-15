@@ -51,8 +51,9 @@ DeepLearningTool/
 add_subdirectory(common)
 add_subdirectory(core)
 add_subdirectory(database)
-add_subdirectory(settings)
 add_subdirectory(ui)
+add_subdirectory(parameter)
+add_subdirectory(settings)
 add_subdirectory(model)
 add_subdirectory(feature)
 add_subdirectory(data)
@@ -92,7 +93,33 @@ src/common/
 └── README.md
 ```
 
-### 5.2 Core (`dltool_core`, URI `dltool.core`)
+### 5.2 Parameter (`dltool_parameter`)
+
+位置：`src/parameter/`
+
+职责：
+
+- `ParameterSpec`：settings、model 和 feature 共用的参数公共元数据。
+- `DynamicOptionsProvider` / `DynamicOptionsRegistry`：动态选项 provider 抽象和进程级注册表。
+- `ParameterOption`：动态选项的显示值与实际值组合；界面使用显示值，配置持久化使用实际值。
+- `ParameterSchema`：复用 `common::yaml` 工具解析公共 YAML 字段，并统一类型转换和动态值规范化。
+
+结构：
+
+```text
+src/parameter/
+├── include/parameter/
+│   ├── DynamicOptions.h
+│   ├── ParameterTypes.h
+│   └── ParameterSchema.h
+├── DynamicOptions.cpp
+├── HardwareDeviceOptions.cpp
+├── ParameterSchema.cpp
+├── CMakeLists.txt
+└── README.md
+```
+
+### 5.3 Core (`dltool_core`, URI `dltool.core`)
 
 位置：`src/core/`
 
@@ -112,7 +139,7 @@ src/core/
 └── README.md
 ```
 
-### 5.3 Database (`dltool_database`)
+### 5.4 Database (`dltool_database`)
 
 位置：`src/database/`
 
@@ -138,7 +165,7 @@ src/database/
 └── README.md
 ```
 
-### 5.4 Settings (`dltool_settings`, URI `dltool.settings`)
+### 5.5 Settings (`dltool_settings`, URI `dltool.settings`)
 
 位置：`src/settings/`
 
@@ -168,7 +195,7 @@ src/settings/
 └── README.md
 ```
 
-### 5.5 UI (`dltool_ui`, URI `dltool.ui`)
+### 5.6 UI (`dltool_ui`, URI `dltool.ui`)
 
 位置：`src/ui/`
 
@@ -208,7 +235,7 @@ src/ui/
 └── README.md
 ```
 
-### 5.6 Model (`dltool_model`, URI `dltool.model`)
+### 5.7 Model (`dltool_model`, URI `dltool.model`)
 
 位置：`src/model/`
 
@@ -245,7 +272,7 @@ src/model/
 └── README.md
 ```
 
-### 5.7 Feature (`dltool_feature`, URI `dltool.feature`)
+### 5.8 Feature (`dltool_feature`, URI `dltool.feature`)
 
 位置：`src/feature/`
 
@@ -268,7 +295,7 @@ src/feature/
 └── README.md
 ```
 
-### 5.8 Data (`dltool_data`, URI `dltool.data`)
+### 5.9 Data (`dltool_data`, URI `dltool.data`)
 
 位置：`src/data/`
 
@@ -308,7 +335,7 @@ src/data/
 └── README.md
 ```
 
-### 5.9 Project (`dltool_project`, URI `dltool.project`)
+### 5.10 Project (`dltool_project`, URI `dltool.project`)
 
 位置：`src/project/`
 
@@ -334,7 +361,7 @@ src/project/
 └── README.md
 ```
 
-### 5.10 Tool (`dltool`, URI `dltool.tool`)
+### 5.11 Tool (`dltool`, URI `dltool.tool`)
 
 位置：`src/tool/`
 
