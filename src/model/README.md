@@ -523,7 +523,9 @@ models/<model_name>/datasets/<split>/manifest.yaml
 - `component/ParamPanel.qml`
   参数分组和参数控件渲染。
 - `component/DatasetPanel.qml`
-  训练、验证数据集选择。
+  单个训练、验证或测试数据集的选择和类别统计图表。
+- `component/DatasetsPanel.qml`
+  训练和验证数据集选择组合及其“数据集选择”标题。
 - `train/TrainPanel.qml`
   训练参数和训练结果 tab。
 

@@ -14,6 +14,7 @@ Item {
     property string emptyText: qsTr("Select a model")
     property int partSpacing: 5
     property int scrollbarReserve: 8
+    readonly property real columnWidth: Math.max(0, (control.width - control.partSpacing * 2) / 3)
 
     function hasGroups() {
         return control.params && control.params.count > 0;
@@ -34,7 +35,7 @@ Item {
         visible: control.hasGroups()
         spacing: control.partSpacing
 
-        DatasetPanel {
+        DatasetsPanel {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 0

@@ -126,8 +126,6 @@ public:
         return category_statistics_model_;
     }
 
-    Q_INVOKABLE CategoryStatisticsModel *createCategoryStatisticsModel(QObject *parent = nullptr);
-
     int method() const
     {
         return method_;

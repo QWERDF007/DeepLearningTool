@@ -17,6 +17,7 @@ Rectangle {
 
     property ModelManager modelManager: ProjectManager.currentProject ? ProjectManager.currentProject.modelManager : null
     property ModelTaskController modelTaskController: ProjectManager.currentProject ? ProjectManager.currentProject.modelTaskController : null
+    property DataManager dataManager: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager : null
     QuiSplitView {
         anchors.fill: parent
         anchors.margins: 5
@@ -61,11 +62,10 @@ Rectangle {
                     Layout.preferredWidth: Math.max(260, Math.floor(testPanel.width * 0.32))
                     Layout.minimumWidth: 220
 
-                    DatasetSelectionTreeView {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.top: parent.top
+                    DatasetPanel {
+                        anchors.fill: parent
                         roleTitle: qsTr("测试数据集")
+                        dataManager: labelPage.dataManager
                         selectionModel: testPanel.selectedModel ? testPanel.selectedModel.testDatasetViewModel : null
                         treeHeight: 240
                     }

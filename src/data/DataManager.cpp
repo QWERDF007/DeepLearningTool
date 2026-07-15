@@ -119,14 +119,6 @@ DataManager::DataManager(const int method, dltool::database::ProjectDataBase *da
 
 DataManager::~DataManager() {}
 
-CategoryStatisticsModel *DataManager::createCategoryStatisticsModel(QObject *parent)
-{
-    auto *model = new CategoryStatisticsModel(label_instances_, label_classes_, image_instances_,
-                                               parent != nullptr ? parent : this);
-    QQmlEngine::setObjectOwnership(model, QQmlEngine::CppOwnership);
-    return model;
-}
-
 void DataManager::init(const int method)
 {
     datasets_           = new DatasetsListModel(database_, this);
