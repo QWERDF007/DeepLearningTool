@@ -319,7 +319,7 @@ Item {
         }
 
         ensurePromptFromMouse(mouseInside, mouseX, mouseY)
-        if (promptPoints().length === 0) {
+        if (promptPoints().length === 0 && !boxValid) {
             return null
         }
 

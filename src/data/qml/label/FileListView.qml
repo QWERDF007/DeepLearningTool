@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQml.Models
 
 import dltool.ui
 import dltool.data
@@ -35,6 +36,58 @@ Rectangle {
             iconSource: QuiFontIcon.Copy
             enabled: fileListView.contextFilePath.length > 0
             onTriggered: fileListView.copyText(fileListView.contextFilePath)
+        }
+
+        QuiMenu {
+            id: copyToDatasetMenu
+            title: "复制到"
+            width: 200
+
+            Instantiator {
+                model: fileListView.dataManager ? fileListView.dataManager.datasets : null
+                delegate: QuiMenuItem {
+                    text: model.name
+                    iconSource: QuiFontIcon.Folder
+                    enabled: fileListView.dataManager && fileListView.selection && fileListView.selection.hasSelection
+                    onClicked: {
+                        if (fileListView.dataManager && fileListView.model) {
+                            fileListView.dataManager.copyToDataset(fileListView.model.getSelectedImagesId(), model.dataset_id)
+                        }
+                    }
+                }
+                onObjectAdded: function(index, object) {
+                    copyToDatasetMenu.insertItem(index, object)
+                }
+                onObjectRemoved: function(index, object) {
+                    copyToDatasetMenu.removeItem(object)
+                }
+            }
+        }
+
+        QuiMenu {
+            id: moveToDatasetMenu
+            title: "移动到"
+            width: 200
+
+            Instantiator {
+                model: fileListView.dataManager ? fileListView.dataManager.datasets : null
+                delegate: QuiMenuItem {
+                    text: model.name
+                    iconSource: QuiFontIcon.Folder
+                    enabled: fileListView.dataManager && fileListView.selection && fileListView.selection.hasSelection
+                    onClicked: {
+                        if (fileListView.dataManager && fileListView.model) {
+                            fileListView.dataManager.moveToDataset(fileListView.model.getSelectedImagesId(), model.dataset_id)
+                        }
+                    }
+                }
+                onObjectAdded: function(index, object) {
+                    moveToDatasetMenu.insertItem(index, object)
+                }
+                onObjectRemoved: function(index, object) {
+                    moveToDatasetMenu.removeItem(object)
+                }
+            }
         }
 
         QuiMenuItem {
