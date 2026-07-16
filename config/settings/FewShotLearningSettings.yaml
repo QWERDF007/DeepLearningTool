@@ -106,3 +106,99 @@ FewShotLearningSettings:
         value_type: double
         value_range: [0.1, 0.9, 0.05]
         control_type: slider
+
+    预测增强:
+      - name_en: prediction_enhancement_enabled
+        name_cn: 启用预测增强投票
+        desc: 对原图和固定增强图分别预测并通过 IoU 投票融合，默认关闭以保持原有预测流程。
+        property_name: predictionEnhancementEnabled
+        value: false
+        value_type: bool
+        control_type: checkbox
+
+      - name_en: box_to_mask_prediction_enhancement_enabled
+        name_cn: 启用 BoxToMask 预测增强投票
+        desc: 对 BoxToMask 的原图和固定增强图分别预测并通过 IoU 投票融合，默认关闭以保持原有流程。
+        property_name: boxToMaskPredictionEnhancementEnabled
+        value: false
+        value_type: bool
+        control_type: checkbox
+
+      - name_en: prediction_horizontal_flip
+        name_cn: 左右翻转
+        desc: 固定执行左右翻转，关闭表示不使用左右翻转。
+        property_name: predictionHorizontalFlip
+        value: false
+        value_type: bool
+        control_type: checkbox
+
+      - name_en: prediction_vertical_flip
+        name_cn: 上下翻转
+        desc: 固定执行上下翻转，关闭表示不使用上下翻转。
+        property_name: predictionVerticalFlip
+        value: false
+        value_type: bool
+        control_type: checkbox
+
+      - name_en: prediction_scale
+        name_cn: 固定缩放幅度
+        desc: 固定缩放幅度，实际缩放因子为 1 加上该值，0 表示不使用缩放。
+        property_name: predictionScale
+        value: 0.0
+        value_type: double
+        value_range: [-0.9, 1.0, 0.05]
+        control_type: slider
+
+      - name_en: prediction_brightness
+        name_cn: 固定亮度调整
+        desc: 固定亮度调整幅度，实际亮度因子为 1 加上该值，0 表示不使用亮度调整。
+        property_name: predictionBrightness
+        value: 0.0
+        value_type: double
+        value_range: [-1.0, 1.0, 0.05]
+        control_type: slider
+
+      - name_en: prediction_contrast
+        name_cn: 固定对比度调整
+        desc: 固定对比度调整幅度，实际对比度因子为 1 加上该值，0 表示不使用对比度调整。
+        property_name: predictionContrast
+        value: 0.0
+        value_type: double
+        value_range: [-1.0, 1.0, 0.05]
+        control_type: slider
+
+      - name_en: prediction_hue
+        name_cn: 固定色调调整
+        desc: 固定色调调整幅度，实际色调偏移为该值，0 表示不使用色调调整。
+        property_name: predictionHue
+        value: 0.0
+        value_type: double
+        value_range: [-0.5, 0.5, 0.01]
+        control_type: slider
+
+      - name_en: prediction_rotation
+        name_cn: 固定旋转角度
+        desc: 固定旋转角度，单位为度，正值逆时针旋转，0 表示不使用旋转。
+        property_name: predictionRotation
+        value: 0.0
+        value_type: double
+        value_range: [-180.0, 180.0, 5.0]
+        control_type: slider
+
+      - name_en: prediction_iou_threshold
+        name_cn: 预测 IoU 阈值
+        desc: 增强预测结果被视为同一区域时使用的 IoU 阈值，默认值为 0.5。
+        property_name: predictionIouThreshold
+        value: 0.5
+        value_type: double
+        value_range: [0.0, 1.0, 0.05]
+        control_type: slider
+
+      - name_en: prediction_min_vote_count
+        name_cn: 最少一致投票数
+        desc: 至少有多少个预测结果彼此重合才保留该区域，达到该阈值才视为有效区域；最大值为 7 类增强加原图共 8 个结果。
+        property_name: predictionMinVoteCount
+        value: 2
+        value_type: int
+        value_range: [1, 8, 1]
+        control_type: spin

@@ -320,7 +320,7 @@ flowchart TD
   configs/
 ```
 
-4. `FewShotLearningController` 通过 `ModelTaskController.addModelTask()` 在任务中心注册框转 Mask、训练、推理普通模型任务，并通过 `startModelTask()` 按顺序启动。
+4. `FewShotLearningController` 通过 `ModelTaskController.addModelTask()` 在任务中心注册 BoxToMask、训练、推理普通模型任务，并通过 `startModelTask()` 按顺序启动。
 5. `ModelTaskPreparationService` 按普通任务流程写入数据集选择、导出 manifest、生成 `box_to_mask.yaml`/`train.yaml`/`test.yaml`，并构造进程规格。
 6. 检测项目的 FS-SAM2 manifest 保留框数据和 `mask_path`，由 `box_to_mask.py` 生成训练 mask；分割和异常检测项目直接导出 mask。
 7. FS-SAM2 训练脚本把 `best_model.pt` 写入 `models/<model_name>/weights/fs_sam2/best_model.pt`，推理任务从同一路径加载。
@@ -378,7 +378,7 @@ flowchart TD
 - 持有项目级 `ExternalModelTaskRunner`，负责启动和停止当前项目模型任务进程。
 - 监听 `TaskManager::taskStopRequested`，把任务中心或其他通用入口发出的停止请求路由到当前项目的外部进程。
 - 接收外部进程退出信号，并把退出码 `0` 映射为完成、退出码 `2` 或显式停止请求映射为停止，其他退出映射为失败。
-- 统一编排 FS-SAM2 小样本学习的内部模型记录创建、框转 Mask、训练和推理任务链路。
+- 统一编排 FS-SAM2 小样本学习的内部模型记录创建、BoxToMask、训练和推理任务链路。
 
 ## ModelManager
 

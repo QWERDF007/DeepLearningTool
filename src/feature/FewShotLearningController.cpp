@@ -505,6 +505,34 @@ bool FewShotLearningController::configureFsSam2Model(const QString              
         = dltool::settings::settingDouble(settings, generated_field::FewShotLearning::LearningRate, 1e-4);
     const double weight_decay
         = dltool::settings::settingDouble(settings, generated_field::FewShotLearning::WeightDecay, 1e-6);
+    const bool prediction_enhancement_enabled
+        = dltool::settings::settingBool(settings, generated_field::FewShotLearning::PredictionEnhancementEnabled, false);
+    const bool box_to_mask_prediction_enhancement_enabled = dltool::settings::settingBool(
+        settings, generated_field::FewShotLearning::BoxToMaskPredictionEnhancementEnabled, false);
+    const bool prediction_horizontal_flip
+        = dltool::settings::settingBool(settings, generated_field::FewShotLearning::PredictionHorizontalFlip, false);
+    const bool prediction_vertical_flip
+        = dltool::settings::settingBool(settings, generated_field::FewShotLearning::PredictionVerticalFlip, false);
+    const double prediction_scale
+        = std::clamp(dltool::settings::settingDouble(settings, generated_field::FewShotLearning::PredictionScale, 0.0),
+                     -0.9, 1.0);
+    const double prediction_brightness
+        = std::clamp(dltool::settings::settingDouble(settings, generated_field::FewShotLearning::PredictionBrightness, 0.0),
+                     -1.0, 1.0);
+    const double prediction_contrast
+        = std::clamp(dltool::settings::settingDouble(settings, generated_field::FewShotLearning::PredictionContrast, 0.0),
+                     -1.0, 1.0);
+    const double prediction_hue
+        = std::clamp(dltool::settings::settingDouble(settings, generated_field::FewShotLearning::PredictionHue, 0.0),
+                     -0.5, 0.5);
+    const double prediction_rotation = std::clamp(
+        dltool::settings::settingDouble(settings, generated_field::FewShotLearning::PredictionRotation, 0.0), -180.0,
+        180.0);
+    const double prediction_iou_threshold = std::clamp(
+        dltool::settings::settingDouble(settings, generated_field::FewShotLearning::PredictionIouThreshold, 0.5), 0.0,
+        1.0);
+    const int prediction_min_vote_count
+        = dltool::settings::settingInt(settings, generated_field::FewShotLearning::PredictionMinVoteCount, 2);
 
     const dltool::model::ModelStorageService storage(model_manager_->projectDirectory());
     const QString output_dir = cleanPath(QDir(storage.path(record.name, dltool::model::ModelStorageLocation::Results))
@@ -519,6 +547,17 @@ bool FewShotLearningController::configureFsSam2Model(const QString              
     QVariantMap train_model;
     train_model.insert(QStringLiteral("sam2_checkpoint"), sam2_checkpoint);
     train_model.insert(QStringLiteral("sam2_cfg"), sam2_cfg);
+    train_model.insert(QStringLiteral("box_to_mask_prediction_enhancement_enabled"),
+                       box_to_mask_prediction_enhancement_enabled);
+    train_model.insert(QStringLiteral("prediction_horizontal_flip"), prediction_horizontal_flip);
+    train_model.insert(QStringLiteral("prediction_vertical_flip"), prediction_vertical_flip);
+    train_model.insert(QStringLiteral("prediction_scale"), prediction_scale);
+    train_model.insert(QStringLiteral("prediction_brightness"), prediction_brightness);
+    train_model.insert(QStringLiteral("prediction_contrast"), prediction_contrast);
+    train_model.insert(QStringLiteral("prediction_hue"), prediction_hue);
+    train_model.insert(QStringLiteral("prediction_rotation"), prediction_rotation);
+    train_model.insert(QStringLiteral("prediction_iou_threshold"), prediction_iou_threshold);
+    train_model.insert(QStringLiteral("prediction_min_vote_count"), prediction_min_vote_count);
 
     QVariantMap training;
     training.insert(QStringLiteral("kshot"), kshot);
@@ -541,6 +580,16 @@ bool FewShotLearningController::configureFsSam2Model(const QString              
     inference.insert(QStringLiteral("output_dir"), output_dir);
     inference.insert(QStringLiteral("kshot"), kshot);
     inference.insert(QStringLiteral("image_size"), image_size);
+    inference.insert(QStringLiteral("prediction_enhancement_enabled"), prediction_enhancement_enabled);
+    inference.insert(QStringLiteral("prediction_horizontal_flip"), prediction_horizontal_flip);
+    inference.insert(QStringLiteral("prediction_vertical_flip"), prediction_vertical_flip);
+    inference.insert(QStringLiteral("prediction_scale"), prediction_scale);
+    inference.insert(QStringLiteral("prediction_brightness"), prediction_brightness);
+    inference.insert(QStringLiteral("prediction_contrast"), prediction_contrast);
+    inference.insert(QStringLiteral("prediction_hue"), prediction_hue);
+    inference.insert(QStringLiteral("prediction_rotation"), prediction_rotation);
+    inference.insert(QStringLiteral("prediction_iou_threshold"), prediction_iou_threshold);
+    inference.insert(QStringLiteral("prediction_min_vote_count"), prediction_min_vote_count);
 
     QVariantMap test_params;
     test_params.insert(QStringLiteral("model"), train_model);
@@ -662,7 +711,7 @@ void FewShotLearningController::handleTaskTableRevision()
         const auto task = snapshot(current_run_.box_to_mask_task_id);
         if (!task.isValid())
         {
-            finishRun(false, QString("框转 Mask 任务不存在"));
+            finishRun(false, QString("BoxToMask 任务不存在"));
             return;
         }
         if (!isTerminalStatus(task.status))
@@ -673,7 +722,7 @@ void FewShotLearningController::handleTaskTableRevision()
             return;
         }
         finishRun(false,
-                  task.status == Status::Stopped ? QString("小样本学习任务已停止") : QString("框转 Mask 任务失败"));
+                  task.status == Status::Stopped ? QString("小样本学习任务已停止") : QString("BoxToMask 任务失败"));
         return;
     }
 

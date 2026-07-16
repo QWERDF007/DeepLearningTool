@@ -23,7 +23,7 @@ public:
         Unknown = 0, ///< 未知
         Train,       ///< 训练
         Test,        ///< 测试
-        BoxToMask,   ///< 框转 Mask
+        BoxToMask,   ///< BoxToMask
     };
     Q_ENUM(Type)
 };
