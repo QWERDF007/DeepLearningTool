@@ -16,6 +16,7 @@
 #include <QLineF>
 #include <QMetaObject>
 #include <QPointF>
+#include <QPolygonF>
 #include <QPointer>
 #include <QRectF>
 #include <QSize>
@@ -391,6 +392,63 @@ std::optional<QRectF> mapPromptBoxToInferenceInput(const std::optional<QRectF> &
     return QRectF((box->x() - input.source_rect.x()) * input.scale_x,
                   (box->y() - input.source_rect.y()) * input.scale_y, box->width() * input.scale_x,
                   box->height() * input.scale_y);
+}
+
+/**
+ * @brief 将二值 Mask 限制在提示框与图像的相交区域内
+ * @param mask 二值 Mask 数据
+ * @param width Mask 宽度
+ * @param height Mask 高度
+ * @param box 输入图像坐标系中的提示框
+ */
+void intersectMaskWithBox(std::vector<uint8_t> &mask, int width, int height, const QRectF &box)
+{
+    if (width <= 0 || height <= 0 || mask.size() < static_cast<size_t>(width) * static_cast<size_t>(height))
+        return;
+
+    const QRectF normalized_box = box.normalized();
+    const int    left           = std::clamp(static_cast<int>(std::floor(normalized_box.left())), 0, width);
+    const int    top            = std::clamp(static_cast<int>(std::floor(normalized_box.top())), 0, height);
+    const int    right = std::clamp(static_cast<int>(std::ceil(normalized_box.x() + normalized_box.width())), 0, width);
+    const int    bottom
+        = std::clamp(static_cast<int>(std::ceil(normalized_box.y() + normalized_box.height())), 0, height);
+
+    for (int y = 0; y < height; ++y)
+    {
+        const size_t row_offset = static_cast<size_t>(y) * width;
+        if (y < top || y >= bottom || left >= right)
+        {
+            std::fill(mask.begin() + static_cast<std::ptrdiff_t>(row_offset),
+                      mask.begin() + static_cast<std::ptrdiff_t>(row_offset + width), uint8_t{0});
+            continue;
+        }
+
+        std::fill(mask.begin() + static_cast<std::ptrdiff_t>(row_offset),
+                  mask.begin() + static_cast<std::ptrdiff_t>(row_offset + left), uint8_t{0});
+        std::fill(mask.begin() + static_cast<std::ptrdiff_t>(row_offset + right),
+                  mask.begin() + static_cast<std::ptrdiff_t>(row_offset + width), uint8_t{0});
+    }
+}
+
+/**
+ * @brief 统计多边形内的 positive 提示点数量
+ * @param polygon 待判断的多边形
+ * @param prompts 输入图像坐标系中的提示点
+ * @return 落在多边形内的 positive 点数量
+ */
+int positivePointOverlapCount(const std::vector<QPointF> &polygon, const std::vector<PromptPoint> &prompts)
+{
+    QPolygonF qpolygon;
+    qpolygon.reserve(static_cast<int>(polygon.size()));
+    for (const QPointF &point : polygon) qpolygon << point;
+
+    int count = 0;
+    for (const PromptPoint &prompt : prompts)
+    {
+        if (prompt.label == 1 && qpolygon.containsPoint(prompt.point, Qt::OddEvenFill))
+            ++count;
+    }
+    return count;
 }
 
 /**
@@ -839,6 +897,9 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         const int image_height = image_input.viewport_input ? image_input.source_size.height() : input_image_height;
 
         std::vector<uint8_t> binary_mask = selectedBinaryMask(prediction, mask_index);
+        if (input_prompt_box)
+            intersectMaskWithBox(binary_mask, input_image_width, input_image_height, *input_prompt_box);
+
         const int foreground_pixels = static_cast<int>(std::count(binary_mask.begin(), binary_mask.end(), uint8_t{1}));
 
         const QRectF input_bbox = boundingBoxFromMask(binary_mask, input_image_width, input_image_height);
@@ -848,11 +909,29 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         const ContourPostprocessOptions   contour_options = buildContourPostprocessOptions(settings);
         std::vector<QPointF>              polygon;
         std::vector<std::vector<QPointF>> polygons = dltool::common::maskToPolygons(
-            binary_mask, input_image_width, input_image_height, true, contour_options.approx_epsilon_ratio);
+            binary_mask, input_image_width, input_image_height, false, contour_options.approx_epsilon_ratio);
         if (!polygons.empty())
-            polygon = std::move(polygons.front());
+        {
+            size_t selected_polygon_index = 0;
+            if (!input_prompt_box)
+            {
+                int best_positive_count = -1;
+                for (size_t index = 0; index < polygons.size(); ++index)
+                {
+                    const int positive_count = positivePointOverlapCount(polygons[index], input_prompts);
+                    if (positive_count > best_positive_count)
+                    {
+                        best_positive_count   = positive_count;
+                        selected_polygon_index = index;
+                    }
+                }
+            }
+            polygon = std::move(polygons[selected_polygon_index]);
+        }
         else
+        {
             polygon = rectanglePoints(input_bbox);
+        }
 
         const QRectF         bbox           = mapInputRectToSource(input_bbox, image_input);
         std::vector<QPointF> output_polygon = mapInputPolygonToSource(polygon, image_input);
