@@ -31,8 +31,8 @@ struct ImageSearchBaseSettings
     int  preprocess_backend{0}; ///< 预处理后端
     int  faiss_backend{0};      ///< Faiss 后端
     int  index_storage{0};      ///< 索引存储方式
-    int  model_backend{0};      ///< 模型推理后端
-    int  model_device{0};       ///< 模型推理设备
+    QString model_runtime;      ///< 模型推理运行时
+    int  model_precision{0};    ///< 模型推理精度
     int  model_batch_size{1};   ///< 模型批处理大小
 };
 

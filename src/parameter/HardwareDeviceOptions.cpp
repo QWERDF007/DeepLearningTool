@@ -10,18 +10,19 @@ namespace dltool::parameter {
 
 namespace {
 
-ParameterOption makeDeviceOption(const QString &name, const QString &type, const int index)
+ParameterOption makeRuntimeOption(const QString &name, const QString &backend, const QString &device)
 {
-    const QString actualValue = QStringLiteral("%1:%2").arg(type).arg(index);
-    const QString displayName = name.trimmed().isEmpty() ? type.toUpper() : name.trimmed();
+    const QString actualValue = QStringLiteral("%1:%2").arg(backend, device);
+    const QString displayName = name.trimmed().isEmpty() ? device.toUpper() : name.trimmed();
     return {QStringLiteral("%1 (%2)").arg(displayName, actualValue), actualValue};
 }
 
 QVector<ParameterOption> cpuOptions()
 {
     QVector<ParameterOption> options;
-    options.push_back(makeDeviceOption(QString::fromStdString(irt::util::getCPUDeviceName()), QStringLiteral("cpu"),
-                                       0));
+    const QString cpuName = QString::fromStdString(irt::util::getCPUDeviceName());
+    for (const QString &backend : {QStringLiteral("onnxruntime"), QStringLiteral("openvino")})
+        options.push_back(makeRuntimeOption(cpuName, backend, QStringLiteral("cpu")));
     return options;
 }
 
@@ -29,11 +30,14 @@ QVector<ParameterOption> gpuOptions()
 {
     QVector<ParameterOption> options;
     const std::vector<std::string> gpus = irt::util::getGPUDeviceNames();
-    options.reserve(static_cast<qsizetype>(gpus.size()));
+    options.reserve(static_cast<qsizetype>(gpus.size() * 3));
     for (int index = 0; index < static_cast<int>(gpus.size()); ++index)
     {
-        options.push_back(makeDeviceOption(QString::fromStdString(gpus.at(static_cast<std::size_t>(index))),
-                                            QStringLiteral("cuda"), index));
+        const QString gpuName = QString::fromStdString(gpus.at(static_cast<std::size_t>(index)));
+        const QString device  = QString::number(index);
+        for (const QString &backend : {QStringLiteral("tensorrt"), QStringLiteral("onnxruntime"),
+                                       QStringLiteral("openvino")})
+            options.push_back(makeRuntimeOption(gpuName, backend, device));
     }
     return options;
 }

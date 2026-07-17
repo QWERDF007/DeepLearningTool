@@ -156,27 +156,23 @@ ImageSearchSettings:
           cpu: 0
           gpu: 1
 
-      - name_en: model_backend
-        name_cn: 推理后端
-        desc: 用于配置图像搜索中运行时相关的推理后端。
-        property_name: modelBackend
+      - name_en: model_runtime
+        name_cn: 运行时
+        desc: 用于配置图像搜索中模型推理的后端和设备。
+        property_name: modelRuntime
+        value_type: string
+        param_type: dynamic
+        display_type: combo
+        backend_key: inferrt.compute_devices
+
+      - name_en: model_precision
+        name_cn: 推理精度
+        desc: 用于配置图像搜索中 TensorRT 模型的推理精度。
+        property_name: modelPrecision
         value: 0
         value_type: int
         control_type: combo
-        options: [tensorrt, openvino, onnxruntime]
+        options: [FP32, FP16]
         options_values:
-          tensorrt: 0
-          openvino: 1
-          onnxruntime: 2
-
-      - name_en: model_device
-        name_cn: 推理设备
-        desc: 用于配置图像搜索中运行时相关的推理设备。
-        property_name: modelDevice
-        value: 1
-        value_type: int
-        control_type: combo
-        options: [gpu, cpu]
-        options_values:
-          cpu: 0
-          gpu: 1
+          FP32: 0
+          FP16: 1

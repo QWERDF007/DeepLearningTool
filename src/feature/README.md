@@ -36,7 +36,7 @@
 
 1. QML 调用 `searchSelectedImages()` 或 `search(ids, dataset_ids)`。前者从 `ImageSearchDataProvider::selectedImageIds()` 获取当前选中图像，再转入通用搜索入口。
 2. 控制器检查是否已有任务运行、数据 provider 是否存在、查询图像 ID 是否有效，以及 `ImageSearch` 设置是否已加载并启用。
-3. `buildSearchRequest()` 从全局设置读取模型名称、权重文件、特征层、TopK、索引目录、是否重建索引、归一化方式、预处理后端、FAISS 后端、索引存储方式、推理后端、推理设备和 batch size。
+3. `buildSearchRequest()` 从全局设置读取模型名称、权重文件、特征层、TopK、索引目录、是否重建索引、归一化方式、预处理后端、FAISS 后端、索引存储方式、推理运行时、推理精度和 batch size。
 4. `validateSearchRequest()` 校验模型名、特征层和权重文件。
 5. `collectGallery()` 从所有图像中收集图库图像；如果传入 `dataset_ids`，只收集这些数据集内存在文件的图像。
 6. `collectQuery()` 将查询图像 ID 转换为存在的图像文件路径。
@@ -52,7 +52,7 @@
 `RoiSearchController` 继承 `ImageSearchController`，复用搜索调度、线程和进度逻辑，但查询对象和图库对象从图像改为标注 ROI：
 
 1. QML 调用 `search(ids, dataset_ids)`，其中 `ids` 是标注实例 ID。
-2. 控制器读取 `RoiSearch` 设置，包含模型、权重、空间特征层、TopK、索引配置，以及 ROIAlign 参数 `pooled_height`、`pooled_width`、`sampling_ratio`、`aligned`、PCA 开关和 PCA 维度。
+2. 控制器读取 `RoiSearch` 设置，包含模型、权重、空间特征层、TopK、索引配置、推理运行时、推理精度，以及 ROIAlign 参数 `pooled_height`、`pooled_width`、`sampling_ratio`、`aligned`、PCA 开关和 PCA 维度。
 3. `validateSearchRequest()` 先执行图像搜索基础校验，再根据当前模型从设置 schema 中获取可用空间特征层。如果配置的特征层不可用，会回退到该模型最后一个可用空间特征层并写回设置。
 4. `collectGallery()` 遍历所有标注 ID，找到对应图像和数据集，过滤不存在的图像文件，并通过 `roiFromLabelData()` 从标注数据中的 `x/y/width/height` 构造 `RoiSearchBox`。
 5. 如果传入 `dataset_ids`，图库只保留这些数据集里的标注 ROI。
@@ -68,7 +68,7 @@
 
 1. QML 调用 `clusterSelectedImages()` 或 `cluster(image_ids, dataset_ids)`。前者从当前选中图像构造 `image_ids`，后者可以按指定图像或指定数据集聚类。
 2. 控制器检查是否已有聚类任务运行、data provider 是否存在、输入范围是否非空，以及 `ImageCluster` 设置是否已加载并启用。
-3. `buildClusterRequest()` 从全局设置读取模型、权重、特征层、归一化、预处理后端、推理后端、推理设备、batch size、PCA 参数、是否包含噪声点、结果应用方式，以及 HDBSCAN 参数。
+3. `buildClusterRequest()` 从全局设置读取模型、权重、特征层、归一化、预处理后端、推理运行时、推理精度、batch size、PCA 参数、是否包含噪声点、结果应用方式，以及 HDBSCAN 参数。
 4. `validateClusterRequest()` 校验模型名、特征层和权重文件。
 5. `collectClusterItems()` 收集要聚类的图像。如果传入 `image_ids`，直接使用这些图像；否则遍历所有图像并按 `dataset_ids` 过滤。不存在的图像文件会被跳过。
 6. 聚类至少需要 2 张有效图像。

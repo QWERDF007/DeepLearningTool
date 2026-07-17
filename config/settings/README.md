@@ -92,9 +92,10 @@ sections:
 | `SoftwareSetting.yaml` | `SoftwareSetting` | `software` | `general` | `software_setting` | 软件设置，包括最近项目数量、自动保存间隔、自动保存开关、Python 环境目录。 |
 | `DataSettings.yaml` | `DataSettings` | `data` | `general` | `data_settings` | 数据与缩略图显示设置，包括缩略图边距、缓存大小、图像网格缩放、标注缩略图缩放、边框宽度、填充透明度和导入轮廓拟合系数。 |
 | `UISettings.yaml` | `UISettings` | `ui` | `general` | `ui_settings` | 界面设置，包括图像亮度、对比度、主题、语言。 |
-| `ImageSearchSettings.yaml` | `ImageSearchSettings` | `advanced.imageSearch` | `advanced` | `image_search_settings` | 图像搜索配置，包括模型、权重路径、特征层、索引、后端、设备、批量大小。 |
-| `RoiSearchSettings.yaml` | `RoiSearchSettings` | `advanced.roiSearch` | `advanced` | `roi_search_settings` | ROI/标注搜索配置，在图像搜索基础上增加 ROI Align、PCA 等参数。 |
-| `SmartAnnotationSettings.yaml` | `SmartAnnotationSettings` | `advanced.smartAnnotation` | `advanced` | `smart_annotation_settings` | 智能标注配置，包括 SAM 模型、权重路径、推理后端、mask 阈值、mask 透明度、刷新间隔。 |
+| `ImageClusterSettings.yaml` | `ImageClusterSettings` | `advanced.imageCluster` | `advanced` | `image_cluster_settings` | 图像聚类配置，包括模型、特征层、推理运行时、精度、批量、PCA 和 HDBSCAN 参数。 |
+| `ImageSearchSettings.yaml` | `ImageSearchSettings` | `advanced.imageSearch` | `advanced` | `image_search_settings` | 图像搜索配置，包括模型、权重路径、特征层、索引、推理运行时、精度、批量大小。 |
+| `RoiSearchSettings.yaml` | `RoiSearchSettings` | `advanced.roiSearch` | `advanced` | `roi_search_settings` | ROI/标注搜索配置，在图像搜索基础上增加推理运行时、精度、ROI Align、PCA 等参数。 |
+| `SmartAnnotationSettings.yaml` | `SmartAnnotationSettings` | `advanced.smartAnnotation` | `advanced` | `smart_annotation_settings` | 智能标注配置，包括 SAM 模型、权重路径、推理运行时、精度、mask 阈值、mask 透明度、刷新间隔。 |
 | `FewShotLearningSettings.yaml` | `FewShotLearningSettings` | `advanced.fewShotLearning` | `advanced` | `few_shot_learning_settings` | 小样本学习配置，包括 SAM2 权重和训练参数。 |
 
 ## 新增设置约定
@@ -110,12 +111,12 @@ sections:
 动态字段示例：
 
 ```yaml
-- name_en: device
-  name_cn: 计算设备
+- name_en: model_runtime
+  name_cn: 模型运行时
   value_type: string
   param_type: dynamic
   display_type: combo
   backend_key: inferrt.compute_devices
 ```
 
-动态 provider 由 `dltool_parameter` 的全局注册表管理；model、settings 和 feature 可以共享同一套 provider。provider 返回显示值和实际值，设置页面显示前者，数据库保存后者。
+动态 provider 由 `dltool_parameter` 的全局注册表管理；model、settings 和 feature 可以共享同一套 provider。provider 返回显示值和实际值，设置页面显示前者，数据库保存后者，例如 `NVIDIA GeForce RTX 4060 (tensorrt:0)` 的实际值为 `tensorrt:0`。

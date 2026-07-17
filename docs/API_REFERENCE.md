@@ -264,8 +264,8 @@ Q_PROPERTY(SmartAnnotationSettings *smartAnnotation READ smartAnnotation CONSTAN
 | `faissBackend` | `QString` | `"cpu"` | FAISS 计算后端（cpu / gpu） |
 | `indexStorage` | `QString` | `"ram"` | 索引存储方式（ram / disk） |
 | `modelBatchSize` | `int` | `1` | 特征提取推理批大小 |
-| `modelBackend` | `QString` | `"tensorrt"` | 模型推理后端 |
-| `modelDevice` | `QString` | `"gpu"` | 模型运行设备 |
+| `modelRuntime` | `QString` | `"tensorrt:0"` | 模型推理运行时，例如 `tensorrt:0` |
+| `modelPrecision` | `int` | `0` | TensorRT 模型推理精度（0=FP32，1=FP16） |
 | `indexDirectory` | `QString` | `""` | 特征库索引目录 |
 
 方法：
@@ -283,8 +283,8 @@ Q_INVOKABLE void addCustomFeatureName(const QString &model_name,
 | `enabled` | `bool` | `false` | 是否启用智能标注默认配置 |
 | `model` | `QString` | `"edge_sam"` | 默认智能标注模型 |
 | `modelPath` | `QString` | `"F:/models/edge_sam.wts"` | 模型权重文件路径 |
-| `modelBackend` | `QString` | `"tensorrt"` | 模型后端 |
-| `modelDevice` | `QString` | `"gpu"` | 模型运行设备 |
+| `modelRuntime` | `QString` | `"tensorrt:0"` | 模型推理运行时，例如 `tensorrt:0` |
+| `modelPrecision` | `int` | `0` | TensorRT 模型推理精度（0=FP32，1=FP16） |
 | `maskThreshold` | `double` | `0.0` | mask 阈值 |
 | `polygonSimplifyEpsilon` | `double` | `2.0` | 多边形简化参数 |
 | `maskAlpha` | `double` | `0.35` | 预览 mask 透明度 |
@@ -465,8 +465,8 @@ Q_INVOKABLE bool searchSelectedImages(const QVariantList &dataset_ids,
                                       const QString &faiss_backend,
                                       const QString &index_storage,
                                       int model_batch_size,
-                                      const QString &model_backend,
-                                      const QString &model_device);
+                                      const QString &model_runtime,
+                                      int model_precision);
 ```
 
 信号：

@@ -36,7 +36,10 @@ public:
 - `inferrt.gpu_devices`
 - `inferrt.compute_devices`
 
-`inferrt.compute_devices` 将 GPU 排在 CPU 前面，并推荐第一块 GPU；没有 GPU 时推荐第一块 CPU。
+这些 provider 返回 InferRT `ModelRuntime` 字符串。GPU 运行时包含 `tensorrt:<id>`、
+`onnxruntime:<id>` 和 `openvino:<id>`，CPU 运行时包含 `onnxruntime:cpu` 和
+`openvino:cpu`。`inferrt.compute_devices` 将 GPU 运行时排在 CPU 运行时前面，并推荐第一块 GPU 的
+TensorRT 运行时；没有 GPU 时推荐 CPU 的 ONNX Runtime。
 
 ## YAML 兼容性
 

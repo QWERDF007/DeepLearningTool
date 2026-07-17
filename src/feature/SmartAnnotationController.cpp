@@ -93,53 +93,56 @@ std::filesystem::path toFilesystemPath(const QString &path)
 /// 智能标注模型加载请求
 struct SmartModelLoadRequest
 {
-    QString                  model_name;                                  ///< 模型名称
-    irt::model::ModelBackend backend{irt::model::ModelBackend::TensorRT}; ///< 推理后端
-    irt::model::ModelDevice  device{irt::model::ModelDevice::GPU};        ///< 推理设备
-    QString                  absolute_model_path;                         ///< 模型文件绝对路径
-    QString                  key;                                         ///< 缓存唯一标识
+    QString                    model_name;                                  ///< 模型名称
+    irt::model::ModelRuntime   runtime{};                                   ///< 模型运行时
+    irt::model::ModelPrecision precision{irt::model::ModelPrecision::FP32}; ///< 推理精度
+    QString                    absolute_model_path;                         ///< 模型文件绝对路径
+    QString                    key;                                         ///< 缓存唯一标识
 };
 
 /**
  * @brief 构建模型加载请求
  * @param model_name 模型名称
  * @param model_path 模型文件路径
- * @param backend 推理后端
- * @param device 推理设备
+ * @param runtime 模型运行时
+ * @param precision 推理精度
  * @return 模型加载请求
  */
 SmartModelLoadRequest buildSmartModelLoadRequest(const QString &model_name, const QString &model_path,
-                                                 const irt::model::ModelBackend backend,
-                                                 const irt::model::ModelDevice  device)
+                                                 const irt::model::ModelRuntime &runtime,
+                                                 const irt::model::ModelPrecision precision)
 {
     const QFileInfo       model_info(model_path);
     SmartModelLoadRequest request;
     request.model_name          = normalizedModelName(model_name);
-    request.backend             = backend;
-    request.device              = device;
+    request.runtime             = runtime;
+    request.precision           = precision;
     request.absolute_model_path = model_info.absoluteFilePath();
-    const QString backend_name  = QString::fromLatin1(irt::model::modelBackendName(request.backend));
-    const QString device_name   = QString::fromLatin1(irt::model::modelDeviceName(request.device));
-    request.key                 = QString("%1|%2|%3|%4")
-                      .arg(request.model_name.toLower(), backend_name, device_name,
-                           dltool::common::cleanPath(request.absolute_model_path).toCaseFolded());
+    const QString runtime_name  = QString::fromStdString(request.runtime.toString());
+    const QString precision_name = QString::fromLatin1(irt::model::modelPrecisionName(request.precision));
+    request.key                  = QStringLiteral("%1|%2|%3|%4")
+                      .arg(request.model_name.toLower())
+                      .arg(runtime_name)
+                      .arg(precision_name)
+                      .arg(dltool::common::cleanPath(request.absolute_model_path).toCaseFolded());
     return request;
 }
 
 irt::features::SAMImagePredictorConfig buildPredictorConfig(const SmartModelLoadRequest &request)
 {
     irt::features::SAMImagePredictorConfig config;
-    config.model_name    = request.model_name.toStdString();
-    config.model_backend = request.backend;
-    config.model_device  = request.device;
+    config.model_name      = request.model_name.toStdString();
+    config.model_runtime   = request.runtime;
+    config.model_precision = request.precision;
     return config;
 }
 
 std::unique_ptr<irt::features::SAMImagePredictor> loadSmartPredictor(const SmartModelLoadRequest &request)
 {
-    spdlog::info("加载智能标注 SAM 预测器，模型: {}, 后端: {}, 设备: {}, 模型路径: {}",
-                 request.model_name.toUtf8().constData(), irt::model::modelBackendName(request.backend),
-                 irt::model::modelDeviceName(request.device), request.absolute_model_path.toUtf8().constData());
+    spdlog::info("加载智能标注 SAM 预测器，模型: {}, 运行时: {}, 精度: {}, 模型路径: {}",
+                 request.model_name.toUtf8().constData(), request.runtime.toString(),
+                 irt::model::modelPrecisionName(request.precision),
+                 request.absolute_model_path.toUtf8().constData());
 
     auto predictor = std::make_unique<irt::features::SAMImagePredictor>(buildPredictorConfig(request));
     predictor->load(toFilesystemPath(request.absolute_model_path));
@@ -734,14 +737,15 @@ void SmartAnnotationController::clearCache()
  * @brief 启动异步模型加载
  * @param model_name 模型名称
  * @param model_path 模型文件路径
- * @param backend 推理后端
- * @param device 推理设备
+ * @param runtime 模型运行时
+ * @param precision 推理精度
  */
 void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, const QString &model_path,
-                                                    const irt::model::ModelBackend backend,
-                                                    const irt::model::ModelDevice  device)
+                                                    const irt::model::ModelRuntime &runtime,
+                                                    const irt::model::ModelPrecision precision)
 {
-    const SmartModelLoadRequest request = buildSmartModelLoadRequest(model_name, model_path, backend, device);
+    const SmartModelLoadRequest request
+        = buildSmartModelLoadRequest(model_name, model_path, runtime, precision);
     if (loading_model_ && loading_model_key_ == request.key)
         return;
 
@@ -856,10 +860,12 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
 
         const QString model_name
             = normalizedModelName(settingString(settings, generated_field::SmartAnnotation::Model));
-        const auto backend = static_cast<irt::model::ModelBackend>(
-            settings->valueForField(generated_field::SmartAnnotation::ModelBackend).toInt());
-        const auto device = static_cast<irt::model::ModelDevice>(
-            settings->valueForField(generated_field::SmartAnnotation::ModelDevice).toInt());
+        const QString runtime_text = settingString(settings, generated_field::SmartAnnotation::ModelRuntime);
+        const auto runtime = runtime_text.isEmpty() ? irt::model::ModelRuntime{}
+                                                    : irt::model::ModelRuntime::parse(runtime_text.toStdString());
+        const auto precision = static_cast<irt::model::ModelPrecision>(
+            settingInt(settings, generated_field::SmartAnnotation::ModelPrecision,
+                       static_cast<int>(irt::model::ModelPrecision::FP32)));
         QString model_path = settingString(settings, generated_field::SmartAnnotation::ModelPath);
         if (model_name.isEmpty())
             throw std::runtime_error("智能标注模型未配置");
@@ -870,10 +876,11 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         if (!model_info.isFile())
             throw std::runtime_error(QString("智能标注模型文件不存在: %1").arg(model_path).toStdString());
 
-        const SmartModelLoadRequest request = buildSmartModelLoadRequest(model_name, model_path, backend, device);
+        const SmartModelLoadRequest request
+            = buildSmartModelLoadRequest(model_name, model_path, runtime, precision);
         if (predictor_ == nullptr || !predictor_->isReady() || cached_model_key_ != request.key)
         {
-            startAsyncModelLoad(model_name, model_path, backend, device);
+            startAsyncModelLoad(model_name, model_path, runtime, precision);
             result[QStringLiteral("loading")] = true;
             return result;
         }
@@ -946,8 +953,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         result[QStringLiteral("error")]            = QString();
         result[QStringLiteral("model_name")]       = model_name;
         result[QStringLiteral("model_path")]       = model_info.absoluteFilePath();
-        result[QStringLiteral("backend")]          = QString::fromLatin1(irt::model::modelBackendName(backend));
-        result[QStringLiteral("device")]           = QString::fromLatin1(irt::model::modelDeviceName(device));
+        result[QStringLiteral("runtime")]          = QString::fromStdString(runtime.toString());
         result[QStringLiteral("image_path")]       = image_path;
         result[QStringLiteral("image_width")]      = image_width;
         result[QStringLiteral("image_height")]     = image_height;

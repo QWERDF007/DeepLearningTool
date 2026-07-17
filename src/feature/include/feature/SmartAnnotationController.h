@@ -2,6 +2,8 @@
 
 #include "dltool/feature/Export.h"
 
+#include <inferrt/model/ModelRuntime.hpp>
+
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -15,8 +17,7 @@ class SAMImagePredictor;
 } // namespace irt::features
 
 namespace irt::model {
-enum class ModelBackend;
-enum class ModelDevice;
+enum class ModelPrecision;
 } // namespace irt::model
 
 namespace dltool::feature {
@@ -106,11 +107,11 @@ private:
      * @brief 启动异步模型加载
      * @param model_name 模型名称
      * @param model_path 模型文件路径
-     * @param backend 推理后端
-     * @param device 推理设备
+     * @param runtime 模型运行时
+     * @param precision 推理精度
      */
-    void startAsyncModelLoad(const QString &model_name, const QString &model_path, irt::model::ModelBackend backend,
-                             irt::model::ModelDevice device);
+    void startAsyncModelLoad(const QString &model_name, const QString &model_path,
+                             const irt::model::ModelRuntime &runtime, irt::model::ModelPrecision precision);
     void setRunning(bool running);
     void setLoadingModel(bool loading_model);
     void setLastError(const QString &last_error);

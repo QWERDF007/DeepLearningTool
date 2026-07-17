@@ -10,6 +10,7 @@
 #include <QMetaObject>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <inferrt/model/ModelRuntime.hpp>
 #include <algorithm>
 #include <cmath>
 
@@ -94,8 +95,8 @@ void applyBaseConfig(Config &config, const ImageSearchBaseSettings &settings)
     config.faiss_backend      = parsed_faiss_backend;
     config.index_storage      = parsed_index_storage;
     config.model_batch_size   = static_cast<size_t>(settings.model_batch_size);
-    config.model_backend      = static_cast<irt::model::ModelBackend>(settings.model_backend);
-    config.model_device       = static_cast<irt::model::ModelDevice>(settings.model_device);
+    config.model_runtime      = irt::model::ModelRuntime::parse(settings.model_runtime.toStdString());
+    config.model_precision    = static_cast<irt::model::ModelPrecision>(settings.model_precision);
 }
 
 /**
@@ -131,8 +132,12 @@ ImageSearchBaseSettings readImageSearchSettings(const dltool::settings::GlobalSe
     result.preprocess_backend = valueForField(settings, generated_field::ImageSearch::PreprocessBackend).toInt();
     result.faiss_backend      = valueForField(settings, generated_field::ImageSearch::FaissBackend).toInt();
     result.index_storage      = valueForField(settings, generated_field::ImageSearch::IndexStorage).toInt();
-    result.model_backend      = valueForField(settings, generated_field::ImageSearch::ModelBackend).toInt();
-    result.model_device       = valueForField(settings, generated_field::ImageSearch::ModelDevice).toInt();
+    result.model_runtime      = settingString(settings, generated_field::ImageSearch::ModelRuntime,
+                                               QStringLiteral("tensorrt:0"));
+    result.model_precision    = valueForField(
+                                   settings, generated_field::ImageSearch::ModelPrecision,
+                                   static_cast<int>(irt::model::ModelPrecision::FP32))
+                                   .toInt();
     result.model_batch_size   = valueForField(settings, generated_field::ImageSearch::ModelBatchSize).toInt();
     return result;
 }
@@ -157,8 +162,12 @@ ImageSearchBaseSettings readRoiSearchSettings(const dltool::settings::GlobalSett
     result.preprocess_backend = valueForField(settings, generated_field::RoiSearch::PreprocessBackend).toInt();
     result.faiss_backend      = valueForField(settings, generated_field::RoiSearch::FaissBackend).toInt();
     result.index_storage      = valueForField(settings, generated_field::RoiSearch::IndexStorage).toInt();
-    result.model_backend      = valueForField(settings, generated_field::RoiSearch::ModelBackend).toInt();
-    result.model_device       = valueForField(settings, generated_field::RoiSearch::ModelDevice).toInt();
+    result.model_runtime      = settingString(settings, generated_field::RoiSearch::ModelRuntime,
+                                               QStringLiteral("tensorrt:0"));
+    result.model_precision    = valueForField(
+                                   settings, generated_field::RoiSearch::ModelPrecision,
+                                   static_cast<int>(irt::model::ModelPrecision::FP32))
+                                   .toInt();
     result.model_batch_size   = valueForField(settings, generated_field::RoiSearch::ModelBatchSize).toInt();
     return result;
 }
@@ -174,8 +183,12 @@ ImageClusterSettings readImageClusterSettingsImpl(const dltool::settings::Global
     result.base.norm         = valueForField(settings, generated_field::ImageCluster::Norm, 2).toInt();
     result.base.preprocess_backend
         = valueForField(settings, generated_field::ImageCluster::PreprocessBackend, 0).toInt();
-    result.base.model_backend    = valueForField(settings, generated_field::ImageCluster::ModelBackend, 0).toInt();
-    result.base.model_device     = valueForField(settings, generated_field::ImageCluster::ModelDevice, 1).toInt();
+    result.base.model_runtime    = settingString(settings, generated_field::ImageCluster::ModelRuntime,
+                                                  QStringLiteral("tensorrt:0"));
+    result.base.model_precision  = valueForField(
+                                      settings, generated_field::ImageCluster::ModelPrecision,
+                                      static_cast<int>(irt::model::ModelPrecision::FP32))
+                                      .toInt();
     result.base.model_batch_size = valueForField(settings, generated_field::ImageCluster::ModelBatchSize, 1).toInt();
 
     result.use_pca       = valueForField(settings, generated_field::ImageCluster::UsePca, false).toBool();
