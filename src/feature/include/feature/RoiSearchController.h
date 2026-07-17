@@ -64,9 +64,9 @@ protected:
     /**
      * @brief 从数据集中收集标注 ROI 作为搜索库
      * @param request 搜索请求
-     * @param dataset_ids 数据集 ID 集合
+     * @param search_scope 数据集和类别搜索范围
      */
-    void collectGallery(SearchRequest &request, const std::set<int64_t> &dataset_ids) override;
+    void collectGallery(SearchRequest &request, const SearchScope &search_scope) override;
 
     /**
      * @brief 收集查询标注的 ROI

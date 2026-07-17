@@ -129,7 +129,7 @@ QString RoiSearchController::computeIndexPath(const SearchRequest &request) cons
                                QStringLiteral(".roi.faiss"));
 }
 
-void RoiSearchController::collectGallery(SearchRequest &request, const std::set<int64_t> &dataset_ids)
+void RoiSearchController::collectGallery(SearchRequest &request, const SearchScope &search_scope)
 {
     const auto all_label_ids = data_provider_->allLabelIds();
     for (const int64_t label_id : all_label_ids)
@@ -137,7 +137,12 @@ void RoiSearchController::collectGallery(SearchRequest &request, const std::set<
         const int64_t image_id = data_provider_->labelImageId(label_id);
         if (image_id < 0)
             continue;
-        if (!dataset_ids.empty() && dataset_ids.find(data_provider_->imageDatasetId(image_id)) == dataset_ids.end())
+        const int64_t image_dataset_id = data_provider_->imageDatasetId(image_id);
+        const auto    scope_it        = search_scope.find(image_dataset_id);
+        if (!search_scope.empty() && scope_it == search_scope.end())
+            continue;
+        if (scope_it != search_scope.end() && !scope_it->second.empty()
+            && scope_it->second.find(data_provider_->labelClassId(label_id)) == scope_it->second.end())
             continue;
 
         const QString path = data_provider_->imagePath(image_id);

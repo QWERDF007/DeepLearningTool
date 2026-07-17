@@ -288,6 +288,51 @@ QVariantList DataSelectionTreeModel::selectedLabelClassIds() const
     return sortedVariantList(label_class_ids);
 }
 
+QVariantList DataSelectionTreeModel::selectedDatasetClassScope() const
+{
+    QVariantList scope;
+    if (datasets_model_ == nullptr)
+    {
+        for (const qint64 item_id : selected_flat_ids_)
+        {
+            QVariantMap item;
+            item.insert(QStringLiteral("dataset_id"), item_id);
+            item.insert(QStringLiteral("label_class_id"), -1);
+            scope.append(item);
+        }
+        return scope;
+    }
+
+    for (const std::unique_ptr<Node> &dataset_node : root_->children)
+    {
+        const qint64 dataset_id = dataset_node->dataset_id;
+        if (dataset_id < 0 || (!isDatasetFullySelected(dataset_id) && !hasSelectedLabelClass(dataset_id)))
+            continue;
+
+        if (isDatasetFullySelected(dataset_id))
+        {
+            QVariantMap item;
+            item.insert(QStringLiteral("dataset_id"), dataset_id);
+            item.insert(QStringLiteral("label_class_id"), -1);
+            scope.append(item);
+            continue;
+        }
+
+        for (const std::unique_ptr<Node> &class_node : dataset_node->children)
+        {
+            if (selected_label_classes_.find({dataset_id, class_node->label_class_id})
+                == selected_label_classes_.end())
+                continue;
+
+            QVariantMap item;
+            item.insert(QStringLiteral("dataset_id"), dataset_id);
+            item.insert(QStringLiteral("label_class_id"), class_node->label_class_id);
+            scope.append(item);
+        }
+    }
+    return scope;
+}
+
 void DataSelectionTreeModel::setSelectedIds(const QVariantList &ids)
 {
     std::set<qint64> next_ids;

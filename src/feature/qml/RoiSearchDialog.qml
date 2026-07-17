@@ -17,6 +17,10 @@ QuiPopup {
     property bool roiSearchEnabled: true
     readonly property var roiSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.RoiSearch)
 
+    DataSelectionTreeModel {
+        id: datasetSelectionModel
+    }
+
     implicitWidth: 680
     implicitHeight: 760
     focus: true
@@ -26,6 +30,15 @@ QuiPopup {
         return featureManager ? featureManager.roiSearch : null
     }
 
+    function bindDatasetSelectionModel() {
+        let manager = dialog.dataManager
+        datasetSelectionModel.setDatasetClassSourceModels(
+                    manager ? manager.datasets : null,
+                    manager ? manager.labelClasses : null,
+                    manager ? manager.imageInstances : null,
+                    manager ? manager.labelInstances : null)
+    }
+
     function openForLabels(labelIds) {
         queryLabelIds = labelIds ? labelIds : []
         resetDatasetSelection()
@@ -33,25 +46,11 @@ QuiPopup {
     }
 
     function resetDatasetSelection() {
-        Qt.callLater(function () {
-            for (let i = 0; i < datasetRepeater.count; ++i) {
-                let item = datasetRepeater.itemAt(i)
-                if (item) {
-                    item.checked = true
-                }
-            }
-        })
+        datasetSelectionModel.clearSelection()
     }
 
-    function selectedDatasetIds() {
-        let ids = []
-        for (let i = 0; i < datasetRepeater.count; ++i) {
-            let item = datasetRepeater.itemAt(i)
-            if (item && item.checked) {
-                ids.push(item.datasetId)
-            }
-        }
-        return ids
+    function selectedSearchScope() {
+        return datasetSelectionModel.selectedDatasetClassScope()
     }
 
     function refreshRoiSearchEnabled() {
@@ -67,7 +66,7 @@ QuiPopup {
             return
         }
 
-        let started = controller.search(queryLabelIds, selectedDatasetIds())
+        let started = controller.search(queryLabelIds, selectedSearchScope())
         if (started) {
             close()
         }
@@ -77,6 +76,9 @@ QuiPopup {
         resetDatasetSelection()
         refreshRoiSearchEnabled()
     }
+
+    onDataManagerChanged: bindDatasetSelectionModel()
+    Component.onCompleted: bindDatasetSelectionModel()
 
     Connections {
         target: roiSearchSettings ? roiSearchSettings.fieldModel : null
@@ -137,51 +139,11 @@ QuiPopup {
                         anchors.margins: 12
                         spacing: 10
 
-                        ColumnLayout {
+                        DatasetSelectionTreeView {
                             Layout.fillWidth: true
-                            spacing: 4
-
-                            QuiText {
-                                text: "搜索数据集"
-                                color: QuiColor.FontDark
-                            }
-
-                            Rectangle {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: Math.min(150, Math.max(48, datasetColumn.implicitHeight + 12))
-                                radius: 4
-                                color: QuiColor.Background
-                                border.color: QuiColor.Border
-                                clip: true
-
-                                Flickable {
-                                    anchors.fill: parent
-                                    anchors.margins: 6
-                                    contentHeight: datasetColumn.implicitHeight
-                                    boundsBehavior: Flickable.StopAtBounds
-                                    clip: true
-
-                                    Column {
-                                        id: datasetColumn
-
-                                        width: parent.width
-                                        spacing: 4
-
-                                        Repeater {
-                                            id: datasetRepeater
-
-                                            model: dialog.dataManager ? dialog.dataManager.datasets : null
-                                            delegate: QuiCheckBox {
-                                                property int datasetId: model.dataset_id
-
-                                                width: datasetColumn.width
-                                                text: model.name
-                                                checked: true
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            roleTitle: "搜索数据集和类别"
+                            selectionModel: datasetSelectionModel
+                            treeHeight: 150
                         }
                     }
                 }
@@ -223,6 +185,7 @@ QuiPopup {
                          && queryLabelIds
                          && queryLabelIds.length > 0
                          && dialog.roiSearchEnabled
+                         && dialog.selectedSearchScope().length > 0
                 onClicked: dialog.startSearch()
             }
         }

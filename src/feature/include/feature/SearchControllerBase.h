@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <set>
 #include <vector>
 
@@ -46,7 +47,7 @@ public:
     QString lastError() const;
     QString lastSummary() const;
 
-    Q_INVOKABLE virtual bool search(const QVariantList &ids, const QVariantList &dataset_ids);
+    Q_INVOKABLE virtual bool search(const QVariantList &ids, const QVariantList &search_scope);
 
 signals:
     void enabledChanged();
@@ -56,6 +57,8 @@ signals:
     void buildProgressChanged(int processedCount, int totalCount);
 
 protected:
+    using SearchScope = std::map<int64_t, std::set<int64_t>>;
+
     struct SearchRequest
     {
         QString weights_file;
@@ -89,7 +92,7 @@ protected:
 
     using BuildProgressCallback = std::function<void(const irt::features::ImageSearchBuildProgress &)>;
 
-    static std::set<int64_t> parseDatasetIds(const QVariantList &dataset_ids);
+    static SearchScope parseSearchScope(const QVariantList &search_scope);
 
     virtual FeatureDataProvider *dataProvider() const = 0;
 
@@ -101,7 +104,7 @@ protected:
     virtual bool validateSearchRequest(SearchRequest &req);
     virtual void buildSearchRequest(SearchRequest &req);
     virtual QString computeIndexPath(const SearchRequest &request) const;
-    virtual void collectGallery(SearchRequest &request, const std::set<int64_t> &dataset_ids);
+    virtual void collectGallery(SearchRequest &request, const SearchScope &search_scope);
     virtual void collectQuery(SearchRequest &request, const std::vector<int64_t> &ids);
     virtual void executeSearch(const SearchRequest &request, SearchResponse &response);
 

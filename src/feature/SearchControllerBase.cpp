@@ -76,7 +76,7 @@ QString SearchControllerBase::lastSummary() const
     return last_summary_;
 }
 
-bool SearchControllerBase::search(const QVariantList &ids, const QVariantList &dataset_ids)
+bool SearchControllerBase::search(const QVariantList &ids, const QVariantList &search_scope)
 {
     if (running_)
     {
@@ -99,7 +99,7 @@ bool SearchControllerBase::search(const QVariantList &ids, const QVariantList &d
     if (!ensureSearchSettingsEnabled(searchDisplayName()))
         return false;
 
-    const auto dataset_ids_set = parseDatasetIds(dataset_ids);
+    const auto parsed_search_scope = parseSearchScope(search_scope);
 
     SearchRequest req;
     buildSearchRequest(req);
@@ -109,7 +109,7 @@ bool SearchControllerBase::search(const QVariantList &ids, const QVariantList &d
 
     req.weights_file = QFileInfo(req.weights_file).absoluteFilePath();
 
-    collectGallery(req, dataset_ids_set);
+    collectGallery(req, parsed_search_scope);
     if (galleryItemCount(req) == 0)
     {
         setLastError(emptyGalleryErrorMessage());
@@ -160,10 +160,32 @@ bool SearchControllerBase::search(const QVariantList &ids, const QVariantList &d
     return true;
 }
 
-std::set<int64_t> SearchControllerBase::parseDatasetIds(const QVariantList &dataset_ids)
+SearchControllerBase::SearchScope SearchControllerBase::parseSearchScope(const QVariantList &search_scope)
 {
-    const auto ids = parseInt64Ids(dataset_ids);
-    return std::set<int64_t>(ids.begin(), ids.end());
+    SearchScope result;
+    std::set<int64_t> all_classes_selected;
+    for (const QVariant &value : search_scope)
+    {
+        const QVariantMap item = value.toMap();
+        bool               dataset_ok = false;
+        const int64_t      dataset_id = item.value(QStringLiteral("dataset_id")).toLongLong(&dataset_ok);
+        if (!dataset_ok || dataset_id < 0)
+            continue;
+
+        bool          class_ok = false;
+        const int64_t label_class_id
+            = item.value(QStringLiteral("label_class_id"), -1).toLongLong(&class_ok);
+        if (!class_ok || label_class_id < 0)
+        {
+            result[dataset_id].clear();
+            all_classes_selected.insert(dataset_id);
+            continue;
+        }
+
+        if (all_classes_selected.find(dataset_id) == all_classes_selected.end())
+            result[dataset_id].insert(label_class_id);
+    }
+    return result;
 }
 
 bool SearchControllerBase::validateWeightsFile(const QString &path)
@@ -281,7 +303,7 @@ QString SearchControllerBase::computeIndexPath(const SearchRequest &request) con
                                QStringLiteral(".faiss"));
 }
 
-void SearchControllerBase::collectGallery(SearchRequest &request, const std::set<int64_t> &dataset_ids)
+void SearchControllerBase::collectGallery(SearchRequest &request, const SearchScope &search_scope)
 {
     const auto *provider = dataProvider();
     if (!provider)
@@ -290,8 +312,34 @@ void SearchControllerBase::collectGallery(SearchRequest &request, const std::set
     const auto all_ids = provider->allImageIds();
     for (const int64_t id : all_ids)
     {
-        if (!dataset_ids.empty() && dataset_ids.find(provider->imageDatasetId(id)) == dataset_ids.end())
+        const int64_t image_dataset_id = provider->imageDatasetId(id);
+        const auto    scope_it        = search_scope.find(image_dataset_id);
+        if (!search_scope.empty() && scope_it == search_scope.end())
             continue;
+
+        if (scope_it != search_scope.end() && !scope_it->second.empty())
+        {
+            bool matches_label_class = false;
+            const auto instance_label_ids = provider->imageLabelIds(id);
+            if (!instance_label_ids.empty())
+            {
+                for (const int64_t label_id : instance_label_ids)
+                {
+                    if (scope_it->second.find(provider->labelClassId(label_id)) != scope_it->second.end())
+                    {
+                        matches_label_class = true;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                matches_label_class
+                    = scope_it->second.find(provider->imageLabelClassId(id)) != scope_it->second.end();
+            }
+            if (!matches_label_class)
+                continue;
+        }
 
         const QString path = provider->imagePath(id);
         if (!QFileInfo::exists(path))

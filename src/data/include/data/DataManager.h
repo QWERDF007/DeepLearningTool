@@ -212,6 +212,7 @@ public:
     std::vector<int64_t> allImageIds() const;
     QString              imagePath(int64_t image_id) const;
     int64_t              imageDatasetId(int64_t image_id) const;
+    int64_t              imageLabelClassId(int64_t image_id) const;
     std::vector<int64_t> allLabelIds() const;
     int64_t              labelImageId(int64_t label_id) const;
     int64_t              labelClassId(int64_t label_id) const;

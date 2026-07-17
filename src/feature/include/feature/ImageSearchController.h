@@ -20,7 +20,7 @@ public:
     explicit ImageSearchController(ImageSearchDataProvider *data_provider, QObject *parent = nullptr);
     ~ImageSearchController() override = default;
 
-    Q_INVOKABLE bool searchSelectedImages(const QVariantList &dataset_ids);
+    Q_INVOKABLE bool searchSelectedImages(const QVariantList &search_scope);
 
 protected:
     FeatureDataProvider *dataProvider() const override;

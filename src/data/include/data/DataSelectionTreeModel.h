@@ -69,9 +69,10 @@ public:
     QAbstractItemModel *sourceModel() const;
     void                setSourceModel(QAbstractItemModel *source_model);
 
-    void setDatasetClassSourceModels(DatasetsListModel *datasets_model, LabelClassesListModel *label_classes_model,
-                                     ImageInstancesListModel *image_instances_model,
-                                     LabelInstancesListModel *label_instances_model);
+    Q_INVOKABLE void setDatasetClassSourceModels(DatasetsListModel *datasets_model,
+                                                 LabelClassesListModel *label_classes_model,
+                                                 ImageInstancesListModel *image_instances_model,
+                                                 LabelInstancesListModel *label_instances_model);
 
     int  idRole() const;
     void setIdRole(int role);
@@ -88,6 +89,7 @@ public:
     Q_INVOKABLE QVariantList selectedIds() const;
     Q_INVOKABLE QVariantList selectedDatasetIds() const;
     Q_INVOKABLE QVariantList selectedLabelClassIds() const;
+    Q_INVOKABLE QVariantList selectedDatasetClassScope() const;
     Q_INVOKABLE void         setSelectedIds(const QVariantList &ids);
     Q_INVOKABLE void         setSelected(int row, bool selected);
     Q_INVOKABLE void         setSelectedId(qint64 item_id, bool selected);

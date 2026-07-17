@@ -17,6 +17,10 @@ QuiPopup {
     property bool imageSearchEnabled: true
     readonly property var imageSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.ImageSearch)
 
+    DataSelectionTreeModel {
+        id: datasetSelectionModel
+    }
+
     implicitWidth: 680
     implicitHeight: 720
     focus: true
@@ -24,6 +28,15 @@ QuiPopup {
 
     function imageSearchController() {
         return featureManager ? featureManager.imageSearch : null
+    }
+
+    function bindDatasetSelectionModel() {
+        let manager = dialog.dataManager
+        datasetSelectionModel.setDatasetClassSourceModels(
+                    manager ? manager.datasets : null,
+                    manager ? manager.labelClasses : null,
+                    manager ? manager.imageInstances : null,
+                    manager ? manager.labelInstances : null)
     }
 
     function openForSearch() {
@@ -39,25 +52,11 @@ QuiPopup {
     }
 
     function resetDatasetSelection() {
-        Qt.callLater(function () {
-            for (let i = 0; i < datasetRepeater.count; ++i) {
-                let item = datasetRepeater.itemAt(i)
-                if (item) {
-                    item.checked = true
-                }
-            }
-        })
+        datasetSelectionModel.clearSelection()
     }
 
-    function selectedDatasetIds() {
-        let ids = []
-        for (let i = 0; i < datasetRepeater.count; ++i) {
-            let item = datasetRepeater.itemAt(i)
-            if (item && item.checked) {
-                ids.push(item.datasetId)
-            }
-        }
-        return ids
+    function selectedSearchScope() {
+        return datasetSelectionModel.selectedDatasetClassScope()
     }
 
     function refreshImageSearchEnabled() {
@@ -73,12 +72,12 @@ QuiPopup {
             return
         }
 
-        let datasetIds = selectedDatasetIds()
+        let searchScope = selectedSearchScope()
         let started = false
         if (queryImageIds && queryImageIds.length > 0) {
-            started = controller.search(queryImageIds, datasetIds)
+            started = controller.search(queryImageIds, searchScope)
         } else {
-            started = controller.searchSelectedImages(datasetIds)
+            started = controller.searchSelectedImages(searchScope)
         }
         if (started) {
             close()
@@ -89,6 +88,9 @@ QuiPopup {
         resetDatasetSelection()
         refreshImageSearchEnabled()
     }
+
+    onDataManagerChanged: bindDatasetSelectionModel()
+    Component.onCompleted: bindDatasetSelectionModel()
 
     Connections {
         target: imageSearchSettings ? imageSearchSettings.fieldModel : null
@@ -149,51 +151,11 @@ QuiPopup {
                         anchors.margins: 12
                         spacing: 10
 
-                        ColumnLayout {
+                        DatasetSelectionTreeView {
                             Layout.fillWidth: true
-                            spacing: 4
-
-                            QuiText {
-                                text: "搜索数据集"
-                                color: QuiColor.FontDark
-                            }
-
-                            Rectangle {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: Math.min(150, Math.max(48, datasetColumn.implicitHeight + 12))
-                                radius: 4
-                                color: QuiColor.Background
-                                border.color: QuiColor.Border
-                                clip: true
-
-                                Flickable {
-                                    anchors.fill: parent
-                                    anchors.margins: 6
-                                    contentHeight: datasetColumn.implicitHeight
-                                    boundsBehavior: Flickable.StopAtBounds
-                                    clip: true
-
-                                    Column {
-                                        id: datasetColumn
-
-                                        width: parent.width
-                                        spacing: 4
-
-                                        Repeater {
-                                            id: datasetRepeater
-
-                                            model: dialog.dataManager ? dialog.dataManager.datasets : null
-                                            delegate: QuiCheckBox {
-                                                property int datasetId: model.dataset_id
-
-                                                width: datasetColumn.width
-                                                text: model.name
-                                                checked: true
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            roleTitle: "搜索数据集和类别"
+                            selectionModel: datasetSelectionModel
+                            treeHeight: 150
                         }
                     }
                 }
@@ -233,6 +195,7 @@ QuiPopup {
                 enabled: dialog.imageSearchController()
                          && !dialog.imageSearchController().running
                          && dialog.imageSearchEnabled
+                         && dialog.selectedSearchScope().length > 0
                 onClicked: dialog.startSearch()
             }
         }

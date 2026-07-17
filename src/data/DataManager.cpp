@@ -408,6 +408,11 @@ int64_t DataManager::imageDatasetId(int64_t image_id) const
     return image_instances_ ? image_instances_->getImageDatasetId(image_id) : -1;
 }
 
+int64_t DataManager::imageLabelClassId(int64_t image_id) const
+{
+    return image_instances_ ? image_instances_->getImageLabelClassId(image_id) : -1;
+}
+
 std::vector<int64_t> DataManager::allLabelIds() const
 {
     std::vector<int64_t> label_ids;

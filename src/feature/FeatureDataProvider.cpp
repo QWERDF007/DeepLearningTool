@@ -26,6 +26,16 @@ int64_t FeatureDataProvider::imageDatasetId(int64_t image_id) const
     return data_manager_ ? data_manager_->imageDatasetId(image_id) : -1;
 }
 
+int64_t FeatureDataProvider::imageLabelClassId(int64_t image_id) const
+{
+    return data_manager_ ? data_manager_->imageLabelClassId(image_id) : -1;
+}
+
+std::vector<int64_t> FeatureDataProvider::imageLabelIds(int64_t image_id) const
+{
+    return data_manager_ ? data_manager_->imageLabelIds(image_id) : std::vector<int64_t>{};
+}
+
 QString FeatureDataProvider::databasePath() const
 {
     return data_manager_ ? data_manager_->databasePath() : QString();

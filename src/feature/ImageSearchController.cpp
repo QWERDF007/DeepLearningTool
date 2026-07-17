@@ -10,7 +10,7 @@ ImageSearchController::ImageSearchController(ImageSearchDataProvider *data_provi
 {
 }
 
-bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids)
+bool ImageSearchController::searchSelectedImages(const QVariantList &search_scope)
 {
     if (!data_provider_)
     {
@@ -28,7 +28,7 @@ bool ImageSearchController::searchSelectedImages(const QVariantList &dataset_ids
     QVariantList ids;
     ids.reserve(static_cast<int>(query_ids.size()));
     for (const int64_t id : query_ids) ids.append(static_cast<qlonglong>(id));
-    return search(ids, dataset_ids);
+    return search(ids, search_scope);
 }
 
 FeatureDataProvider *ImageSearchController::dataProvider() const
