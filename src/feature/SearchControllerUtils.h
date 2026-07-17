@@ -113,11 +113,11 @@ bool searchSettingsEnabled(const dltool::settings::GlobalSettings *settings,
 
 /**
  * @brief 确定项目的索引存储目录
- * @param database_path 数据库路径
+ * @param project_dir 项目目录
  * @param default_subdirectory 项目目录下的默认子目录名
  * @return 索引目录路径
  */
-QString indexDirectoryForProject(const QString &database_path, const QString &default_subdirectory);
+QString indexDirectoryForProject(const QString &project_dir, const QString &default_subdirectory);
 
 /**
  * @brief 生成索引文件完整路径

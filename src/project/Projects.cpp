@@ -11,6 +11,7 @@
 
 #include <QDateTime>
 #include <QFile>
+#include <QFileInfo>
 #include <QQmlApplicationEngine>
 #include <QTimer>
 #include <algorithm>
@@ -81,7 +82,8 @@ Project::~Project()
 
 void Project::init()
 {
-    data_manager_ = new data::DataManager(method_, database_, this);
+    const QString project_dir = QFileInfo(path_).absoluteDir().absolutePath();
+    data_manager_             = new data::DataManager(method_, database_, project_dir, this);
     model_manager_ = new model::ModelManager(method_, database_, data_manager_, this);
     task_manager_ = model::TaskManager::getInstance();
     task_manager_->clearTasks();

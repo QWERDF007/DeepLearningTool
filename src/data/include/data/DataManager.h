@@ -53,7 +53,8 @@ class DATA_API DataManager : public QObject
 public:
     using ImportFinishedHandler = std::function<void(bool, const QString &)>;
 
-    DataManager(const int method, dltool::database::ProjectDataBase *database, QObject *parent = nullptr);
+    DataManager(const int method, dltool::database::ProjectDataBase *database, const QString &project_dir,
+                QObject *parent = nullptr);
     ~DataManager();
 
     DatasetsListModel *datasets() const
@@ -131,7 +132,7 @@ public:
         return method_;
     }
 
-    QString databasePath() const;
+    QString projectDir() const;
     QString providerCacheKey() const;
 
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
@@ -265,6 +266,7 @@ private:
     void finishBatchedImport(bool success, const QString &message);
 
     dltool::database::ProjectDataBase *database_{nullptr};
+    QString                          project_dir_;
 
     DatasetsListModel       *datasets_{nullptr};
     ImageInstancesListModel *image_instances_{nullptr};

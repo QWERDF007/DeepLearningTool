@@ -123,7 +123,7 @@ void RoiSearchController::buildSearchRequest(SearchRequest &req)
 QString RoiSearchController::computeIndexPath(const SearchRequest &request) const
 {
     const QString index_dir
-        = indexDirectoryForProject(data_provider_->databasePath(), QStringLiteral("roi_search"));
+        = indexDirectoryForProject(data_provider_->projectDir(), QStringLiteral("roi_search"));
     return indexPathForRequest(index_dir, modelNameForRequest(request), featureNameForRequest(request),
                                QStringLiteral(".roi.faiss"));
 }

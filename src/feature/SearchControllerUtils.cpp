@@ -5,7 +5,6 @@
 
 #include <QDateTime>
 #include <QDir>
-#include <QFileInfo>
 #include <QMetaObject>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -313,14 +312,14 @@ bool searchSettingsEnabled(const dltool::settings::GlobalSettings  *settings,
 
 /**
  * @brief 确定项目的索引存储目录
- * @param database_path 数据库路径
+ * @param project_dir 项目目录
  * @param default_subdirectory 项目目录下的默认子目录名
  * @return 索引目录路径
  */
-QString indexDirectoryForProject(const QString &database_path, const QString &default_subdirectory)
+QString indexDirectoryForProject(const QString &project_dir, const QString &default_subdirectory)
 {
-    if (!database_path.isEmpty())
-        return QFileInfo(database_path).absoluteDir().filePath(default_subdirectory);
+    if (!project_dir.trimmed().isEmpty())
+        return QDir(project_dir).filePath(default_subdirectory);
 
     QString fallback = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (fallback.isEmpty())

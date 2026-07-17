@@ -109,9 +109,11 @@ struct DataManager::PendingImportTask
     bool    fatal_error{false};
 };
 
-DataManager::DataManager(const int method, dltool::database::ProjectDataBase *database, QObject *parent)
+DataManager::DataManager(const int method, dltool::database::ProjectDataBase *database, const QString &project_dir,
+                         QObject *parent)
     : QObject(parent)
     , database_(database)
+    , project_dir_(dltool::common::cleanPath(project_dir))
     , method_(method)
 {
     init(method);
@@ -378,14 +380,14 @@ int DataManager::getDatasetId(const QString &dataset_name) const
     return datasets_->getDatasetId(dataset_name);
 }
 
-QString DataManager::databasePath() const
+QString DataManager::projectDir() const
 {
-    return database_ ? database_->path() : QString();
+    return project_dir_;
 }
 
 QString DataManager::providerCacheKey() const
 {
-    return databasePath();
+    return projectDir();
 }
 
 std::vector<int64_t> DataManager::selectedImageIds() const

@@ -296,7 +296,7 @@ QString SearchControllerBase::computeIndexPath(const SearchRequest &request) con
 {
     const auto *provider = dataProvider();
     const QString index_dir
-        = indexDirectoryForProject(provider ? provider->databasePath() : QString(), QStringLiteral("image_search"));
+        = indexDirectoryForProject(provider ? provider->projectDir() : QString(), QStringLiteral("image_search"));
     return indexPathForRequest(index_dir, modelNameForRequest(request), featureNameForRequest(request),
                                QStringLiteral(".faiss"));
 }

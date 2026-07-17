@@ -29,7 +29,7 @@ public:
     virtual int64_t              imageLabelClassId(int64_t image_id) const;
     virtual std::vector<int64_t> imageLabelIds(int64_t image_id) const;
 
-    virtual QString databasePath() const;
+    virtual QString projectDir() const;
 
     virtual std::vector<int64_t> allLabelIds() const;
 

@@ -36,9 +36,9 @@ std::vector<int64_t> FeatureDataProvider::imageLabelIds(int64_t image_id) const
     return data_manager_ ? data_manager_->imageLabelIds(image_id) : std::vector<int64_t>{};
 }
 
-QString FeatureDataProvider::databasePath() const
+QString FeatureDataProvider::projectDir() const
 {
-    return data_manager_ ? data_manager_->databasePath() : QString();
+    return data_manager_ ? data_manager_->projectDir() : QString();
 }
 
 std::vector<int64_t> FeatureDataProvider::allLabelIds() const
