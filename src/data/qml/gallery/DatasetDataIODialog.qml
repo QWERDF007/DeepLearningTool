@@ -85,6 +85,7 @@ QuiPopup {
 
         if (anomalyImport) {
             waitingForClassScan = true
+            dialog.close()
             dataManager.scanImportLabelClasses(pendingDataFormat, pendingImageDir, pendingDataDir)
             return
         }
@@ -98,6 +99,15 @@ QuiPopup {
         }
         dataManager.importDataWithLabelClassGroups(pendingDatasetId, pendingDataFormat,
                                                    pendingImageDir, pendingDataDir, groups)
+    }
+
+    function showClassGroupDialog(classes) {
+        pendingClassGroupClasses = classes
+        if (!dialog.visible) {
+            let classesToOpen = pendingClassGroupClasses
+            pendingClassGroupClasses = []
+            classGroupDialog.openForClasses(classesToOpen)
+        }
     }
 
     Connections {
@@ -116,7 +126,7 @@ QuiPopup {
                 dialog.close()
                 dialog.importWithGroups({})
             } else {
-                pendingClassGroupClasses = classes
+                dialog.showClassGroupDialog(classes)
                 dialog.close()
             }
         }

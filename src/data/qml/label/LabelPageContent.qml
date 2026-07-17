@@ -52,7 +52,7 @@ Rectangle {
             DatasetsView {
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
-                SplitView.preferredHeight: parent.height / 3
+                SplitView.preferredHeight: parent.height / 2
                 color: QuiColor.Primary
                 dataManager: page.dataManager
             }
@@ -88,8 +88,8 @@ Rectangle {
 
             ImageTagView {
                 SplitView.fillWidth: true
-                SplitView.minimumHeight: 200
-                SplitView.preferredHeight: 200
+                SplitView.minimumHeight: 120
+                SplitView.preferredHeight: 120
                 color: QuiColor.Primary
                 multiSelect: false
                 dataManager: page.dataManager

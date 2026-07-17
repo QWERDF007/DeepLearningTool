@@ -61,7 +61,7 @@ Item {
             id: datasetName
             text: control.name
             Layout.fillWidth: true
-            Layout.minimumWidth: 60
+            Layout.minimumWidth: 50
             elide: Text.ElideRight
 
             QuiToolTip {
@@ -77,7 +77,7 @@ Item {
         }
         QuiText {
             text: control.stats
-            Layout.preferredWidth: 60
+            Layout.preferredWidth: 70
         }
         QuiTextIconButton {
             text: control.filterActive ? "不过滤" : "过滤"
