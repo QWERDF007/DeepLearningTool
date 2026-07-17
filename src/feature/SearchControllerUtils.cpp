@@ -1,6 +1,5 @@
 #include "SearchControllerUtils.h"
 
-#include "common/Utils.h"
 #include "settings/SettingsValue.h"
 #include "ui/ProgressManager.h"
 
@@ -125,7 +124,6 @@ ImageSearchBaseSettings readImageSearchSettings(const dltool::settings::GlobalSe
     result.weights_file       = settingString(settings, generated_field::ImageSearch::ModelPath);
     result.model_name         = settingString(settings, generated_field::ImageSearch::Model);
     result.feature_name       = settingString(settings, generated_field::ImageSearch::FeatureName);
-    result.index_directory    = settingString(settings, generated_field::ImageSearch::IndexDirectory);
     result.rebuild_index      = valueForField(settings, generated_field::ImageSearch::RebuildIndex).toBool();
     result.top_k              = valueForField(settings, generated_field::ImageSearch::TopK).toInt();
     result.norm               = valueForField(settings, generated_field::ImageSearch::Norm).toInt();
@@ -155,7 +153,6 @@ ImageSearchBaseSettings readRoiSearchSettings(const dltool::settings::GlobalSett
     result.weights_file       = settingString(settings, generated_field::RoiSearch::ModelPath);
     result.model_name         = settingString(settings, generated_field::RoiSearch::Model);
     result.feature_name       = settingString(settings, generated_field::RoiSearch::FeatureName);
-    result.index_directory    = settingString(settings, generated_field::RoiSearch::IndexDirectory);
     result.rebuild_index      = valueForField(settings, generated_field::RoiSearch::RebuildIndex).toBool();
     result.top_k              = valueForField(settings, generated_field::RoiSearch::TopK).toInt();
     result.norm               = valueForField(settings, generated_field::RoiSearch::Norm).toInt();
@@ -317,16 +314,11 @@ bool searchSettingsEnabled(const dltool::settings::GlobalSettings  *settings,
 /**
  * @brief 确定项目的索引存储目录
  * @param database_path 数据库路径
- * @param custom_directory 自定义目录
- * @param default_subdirectory 默认子目录名
+ * @param default_subdirectory 项目目录下的默认子目录名
  * @return 索引目录路径
  */
-QString indexDirectoryForProject(const QString &database_path, const QString &custom_directory,
-                                 const QString &default_subdirectory)
+QString indexDirectoryForProject(const QString &database_path, const QString &default_subdirectory)
 {
-    if (!custom_directory.trimmed().isEmpty())
-        return dltool::common::cleanPath(custom_directory);
-
     if (!database_path.isEmpty())
         return QFileInfo(database_path).absoluteDir().filePath(default_subdirectory);
 

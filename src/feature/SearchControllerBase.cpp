@@ -294,11 +294,9 @@ void SearchControllerBase::buildSearchRequest(SearchRequest &req)
 
 QString SearchControllerBase::computeIndexPath(const SearchRequest &request) const
 {
-    const auto base_settings
-        = readImageSearchBaseSettings(dltool::settings::GlobalSettings::getInstance(), settingsAccessor());
     const auto *provider = dataProvider();
-    const QString index_dir = indexDirectoryForProject(provider ? provider->databasePath() : QString(),
-                                                       base_settings.index_directory, QStringLiteral("image_search"));
+    const QString index_dir
+        = indexDirectoryForProject(provider ? provider->databasePath() : QString(), QStringLiteral("image_search"));
     return indexPathForRequest(index_dir, modelNameForRequest(request), featureNameForRequest(request),
                                QStringLiteral(".faiss"));
 }

@@ -113,6 +113,7 @@ void RoiSearchController::buildSearchRequest(SearchRequest &req)
     req.roi_config.pooled_width  = std::clamp(settingInt(settings, generated_field::RoiSearch::PooledWidth, 7), 1, 64);
     req.roi_config.sampling_ratio
         = std::clamp(settingInt(settings, generated_field::RoiSearch::SamplingRatio, -1), -1, 32);
+    // InferRT::RoiSearch always executes ROIAlign; aligned selects its coordinate semantics.
     req.roi_config.aligned = settingBool(settings, generated_field::RoiSearch::Aligned, false);
     req.roi_config.use_pca = settingBool(settings, generated_field::RoiSearch::UsePca, false);
     req.roi_config.pca_dim
@@ -121,10 +122,8 @@ void RoiSearchController::buildSearchRequest(SearchRequest &req)
 
 QString RoiSearchController::computeIndexPath(const SearchRequest &request) const
 {
-    const auto base_settings = readImageSearchBaseSettings(dltool::settings::GlobalSettings::getInstance(),
-                                                           settingsAccessor());
-    const QString index_dir = indexDirectoryForProject(data_provider_->databasePath(), base_settings.index_directory,
-                                                       QStringLiteral("roi_search"));
+    const QString index_dir
+        = indexDirectoryForProject(data_provider_->databasePath(), QStringLiteral("roi_search"));
     return indexPathForRequest(index_dir, modelNameForRequest(request), featureNameForRequest(request),
                                QStringLiteral(".roi.faiss"));
 }

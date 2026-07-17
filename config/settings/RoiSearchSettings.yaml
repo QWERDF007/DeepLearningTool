@@ -123,14 +123,6 @@ RoiSearchSettings:
           ram: 0
           disk: 1
 
-      - name_en: index_directory
-        name_cn: 索引目录
-        desc: 用于配置标注搜索中索引相关的索引目录。
-        property_name: indexDirectory
-        value: ""
-        value_type: string
-        control_type: folder
-
     运行时:
       - name_en: preprocess_backend
         name_cn: 预处理后端
@@ -207,7 +199,7 @@ RoiSearchSettings:
 
       - name_en: aligned
         name_cn: ROI 对齐
-        desc: 用于配置标注搜索中ROI相关的ROI 对齐。
+        desc: 用于配置标注搜索中ROI相关的ROI 对齐坐标规则。
         property_name: aligned
         value: false
         value_type: bool

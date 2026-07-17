@@ -51,11 +51,11 @@
 
 `RoiSearchController` 继承 `ImageSearchController`，复用搜索调度、线程和进度逻辑，但查询对象和图库对象从图像改为标注 ROI：
 
-1. QML 调用 `search(ids, dataset_ids)`，其中 `ids` 是标注实例 ID。
-2. 控制器读取 `RoiSearch` 设置，包含模型、权重、空间特征层、TopK、索引配置、推理运行时、推理精度，以及 ROIAlign 参数 `pooled_height`、`pooled_width`、`sampling_ratio`、`aligned`、PCA 开关和 PCA 维度。
+1. QML 调用 `search(ids, search_scope)`，其中 `ids` 是标注实例 ID，`search_scope` 包含数据集和类别范围。
+2. 控制器读取 `RoiSearch` 设置，包含模型、权重、空间特征层、TopK、索引配置、推理运行时、推理精度，以及 ROIAlign 参数 `pooled_height`、`pooled_width`、`sampling_ratio`、`aligned`、PCA 开关和 PCA 维度；ROIAlign 流程由 InferRT 固定执行。
 3. `validateSearchRequest()` 先执行图像搜索基础校验，再根据当前模型从设置 schema 中获取可用空间特征层。如果配置的特征层不可用，会回退到该模型最后一个可用空间特征层并写回设置。
 4. `collectGallery()` 遍历所有标注 ID，找到对应图像和数据集，过滤不存在的图像文件，并通过 `roiFromLabelData()` 从标注数据中的 `x/y/width/height` 构造 `RoiSearchBox`。
-5. 如果传入 `dataset_ids`，图库只保留这些数据集里的标注 ROI。
+5. 如果传入 `search_scope`，图库只保留范围内的标注 ROI。
 6. `collectQuery()` 对查询标注执行同样的图像路径校验和 ROI 解析。
 7. `computeIndexPath()` 生成 ROI 索引路径。默认索引目录位于项目数据库同级的 `roi_search` 子目录，索引后缀为 `.roi.faiss`。
 8. `executeSearch()` 创建 `irt::features::RoiSearch`，调用 `buildOrLoad()` 构建或加载 ROI 特征索引。

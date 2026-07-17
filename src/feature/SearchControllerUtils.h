@@ -23,7 +23,6 @@ struct ImageSearchBaseSettings
     QString weights_file;       ///< 模型权重文件路径
     QString model_name;         ///< 模型名称
     QString feature_name;       ///< 特征层名称
-    QString index_directory;    ///< 索引存储目录
 
     bool rebuild_index{false};  ///< 是否重建索引
     int  top_k{5};              ///< 返回结果数量
@@ -115,12 +114,10 @@ bool searchSettingsEnabled(const dltool::settings::GlobalSettings *settings,
 /**
  * @brief 确定项目的索引存储目录
  * @param database_path 数据库路径
- * @param custom_directory 自定义目录
- * @param default_subdirectory 默认子目录名
+ * @param default_subdirectory 项目目录下的默认子目录名
  * @return 索引目录路径
  */
-QString indexDirectoryForProject(const QString &database_path, const QString &custom_directory,
-                                 const QString &default_subdirectory);
+QString indexDirectoryForProject(const QString &database_path, const QString &default_subdirectory);
 
 /**
  * @brief 生成索引文件完整路径
