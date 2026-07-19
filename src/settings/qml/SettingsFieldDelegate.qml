@@ -237,27 +237,37 @@ Item {
                     Layout.fillHeight: true
                     spacing: 2
 
-                    HoverHandler {
-                        id: labelHover
-
-                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                    }
-
                     Item {
                         Layout.fillHeight: true
                     }
 
-                    QuiText {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: root.labelText
-                        elide: Text.ElideRight
-                        verticalAlignment: Text.AlignVCenter
-                        QuiToolTip {
-                            text: root.descText
-                            visible: labelHover.hovered && root.labelText.length > 0
-                            delay: 200
+
+                        QuiTextIcon {
+                            iconSource: QuiFontIcon.Info
+
+                            HoverHandler {
+                                id: fieldInfoHover
+
+                                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                            }
+
+                            QuiToolTip {
+                                text: root.descText
+                                visible: fieldInfoHover.hovered && root.descText.length > 0
+                                delay: 200
+                            }
                         }
-                    }   
+
+                        QuiText {
+                            Layout.fillWidth: true
+                            text: root.labelText
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+
                     Item {
                         Layout.fillHeight: true
                     }

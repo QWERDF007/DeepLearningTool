@@ -97,7 +97,7 @@ Item {
                                     id: delegateRoot
 
                                     width: ListView.view ? ListView.view.width : 0
-                                    height: paramDescription.length > 0 ? 64 : 50
+                                    height: 50
 
                                     property var groupModel: groupRoot.groupModel
                                     property int rowIndex: index
@@ -190,20 +190,34 @@ Item {
                                             Layout.fillHeight: true
                                             spacing: 2
 
-                                            QuiText {
+                                            RowLayout {
                                                 Layout.fillWidth: true
-                                                text: delegateRoot.paramLabel
-                                                color: delegateRoot.paramEnabled ? QuiColor.FontPrimary : QuiColor.FontDark
-                                                elide: Text.ElideRight
-                                            }
 
-                                            QuiText {
-                                                Layout.fillWidth: true
-                                                text: delegateRoot.paramDescription
-                                                visible: text.length > 0
-                                                color: QuiColor.FontDark
-                                                font: QuiFont.Caption
-                                                elide: Text.ElideRight
+                                                QuiTextIcon {
+                                                    iconSource: QuiFontIcon.Info
+
+                                                    HoverHandler {
+                                                        id: paramInfoHover
+
+                                                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                                                    }
+
+                                                    QuiToolTip {
+                                                        text: delegateRoot.paramDescription
+                                                        visible: paramInfoHover.hovered
+                                                                 && delegateRoot.paramDescription.length > 0
+                                                        delay: 200
+                                                    }
+                                                }
+
+                                                QuiText {
+                                                    Layout.fillWidth: true
+                                                    text: delegateRoot.paramLabel
+                                                    color: delegateRoot.paramEnabled
+                                                           ? QuiColor.FontPrimary
+                                                           : QuiColor.FontDark
+                                                    elide: Text.ElideRight
+                                                }
                                             }
                                         }
 
