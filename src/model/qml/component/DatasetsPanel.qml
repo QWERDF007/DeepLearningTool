@@ -14,7 +14,6 @@ Rectangle {
     property IModel selectedModel: null
     property int partSpacing: 5
     property int scrollbarReserve: 8
-    property int treeHeight: 180
 
     ColumnLayout {
         anchors.fill: parent
@@ -34,7 +33,6 @@ Rectangle {
             Layout.fillHeight: true
             dataManager: control.dataManager
             roleTitle: qsTr("训练数据集")
-            treeHeight: control.treeHeight
             selectionModel: control.selectedModel ? control.selectedModel.trainDatasetViewModel : null
         }
 
@@ -43,7 +41,6 @@ Rectangle {
             Layout.fillHeight: true
             dataManager: control.dataManager
             roleTitle: qsTr("验证数据集")
-            treeHeight: control.treeHeight
             selectionModel: control.selectedModel ? control.selectedModel.validationDatasetViewModel : null
         }
             

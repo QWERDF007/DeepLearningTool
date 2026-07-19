@@ -67,7 +67,6 @@ Rectangle {
                         roleTitle: qsTr("测试数据集")
                         dataManager: labelPage.dataManager
                         selectionModel: testPanel.selectedModel ? testPanel.selectedModel.testDatasetViewModel : null
-                        treeHeight: 240
                     }
                 }
 

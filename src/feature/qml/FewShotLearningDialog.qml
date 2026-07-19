@@ -2,6 +2,8 @@
 import QtQuick.Controls
 import QtQuick.Layouts
 
+pragma ComponentBehavior: Bound
+
 import dltool.ui
 import dltool.settings
 import dltool.data
@@ -88,113 +90,36 @@ QuiPopup {
         }
     }
 
-    ColumnLayout {
-        width: parent.width
-        height: parent.height
-        spacing: 0
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.leftMargin: 20
-            Layout.rightMargin: 20
-            Layout.topMargin: 18
-            Layout.bottomMargin: 10
-            spacing: 10
-
-            QuiText {
-                Layout.fillWidth: true
-                text: "小样本学习"
-                font: QuiFont.Title
-                color: QuiColor.FontPrimary
-            }
-        }
-
-        QuiScrollablePage {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            padding: 0
-
+    FeatureDialogLayout {
+        title: "小样本学习"
+        datasetSectionHeight: 640
+        settingsFieldModel: fewShotSettings ? fewShotSettings.fieldModel : null
+        datasetSectionComponent: Component {
             ColumnLayout {
-                width: parent.width
                 spacing: 12
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 20
-                    Layout.rightMargin: 20
-                    Layout.topMargin: 12
-                    implicitHeight: dataSection.implicitHeight + 24
-                    radius: 4
-                    color: QuiColor.Primary
-                    border.color: QuiColor.Border
+                Repeater {
+                    model: dialog.datasetSelectorSpecs
 
-                    ColumnLayout {
-                        id: dataSection
+                    delegate: DatasetSelectionTreeView {
+                        required property var modelData
 
-                        anchors.fill: parent
-                        anchors.margins: 12
-                        spacing: 12
-
-                        Repeater {
-                            model: dialog.datasetSelectorSpecs
-
-                            delegate: DatasetSelectionTreeView {
-                                required property var modelData
-
-                                Layout.fillWidth: true
-                                roleTitle: modelData.title
-                                selectionModel: dialog.datasetSelectionModel(modelData.selection)
-                                treeHeight: 150
-                            }
-                        }
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        roleTitle: modelData.title
+                        selectionModel: dialog.datasetSelectionModel(modelData.selection)
                     }
                 }
-
-                SettingsFieldsPanel {
-                    fieldModel: fewShotSettings ? fewShotSettings.fieldModel : null
-                }
-
-                Item {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 16
-                }
             }
         }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            color: QuiColor.Border
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 60
-            Layout.leftMargin: 20
-            Layout.rightMargin: 20
-            spacing: 10
-
-            QuiText {
-                Layout.fillWidth: true
-                text: controller && controller.lastError.length > 0
-                      ? controller.lastError
-                      : (String(pythonEnvPath || "").length === 0
-                         ? "请先在软件设置中配置 Python 环境目录"
-                         : "")
-                color: "red"
-                elide: Text.ElideRight
-            }
-
-            QuiButton {
-                text: "取消"
-                onClicked: dialog.close()
-            }
-
-            QuiButton {
-                text: controller && controller.running ? "运行中" : "启动"
-                enabled: dialog.canStart()
-                onClicked: dialog.startFewShot()
-            }
-        }
+        errorText: controller && controller.lastError.length > 0
+                   ? controller.lastError
+                   : (String(pythonEnvPath || "").length === 0
+                      ? "请先在软件设置中配置 Python 环境目录"
+                      : "")
+        primaryButtonText: controller && controller.running ? "运行中" : "启动"
+        primaryButtonEnabled: dialog.canStart()
+        onCancelRequested: dialog.close()
+        onPrimaryRequested: dialog.startFewShot()
     }
 }

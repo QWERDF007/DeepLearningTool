@@ -35,7 +35,7 @@ SmartAnnotationSettings:
 
     运行时:
       - name_en: model_runtime
-        name_cn: 运行时
+        name_cn: 运行时设备
         desc: 用于配置智能标注中模型推理的后端和设备。
         property_name: modelRuntime
         value_type: string

@@ -8,6 +8,7 @@
 #include "data/Labels.h"
 
 #include <QAbstractItemModel>
+#include <QLocale>
 #include <QMetaObject>
 
 #include <spdlog/spdlog.h>
@@ -20,6 +21,7 @@ DatasetSelectionStatisticsModel::DatasetSelectionStatisticsModel(QObject *parent
     QVariantMap empty_dataset;
     empty_dataset.insert(QStringLiteral("data"), QVariantList{});
     empty_dataset.insert(QStringLiteral("backgroundColor"), QVariantList{});
+    empty_dataset.insert(QStringLiteral("tooltips"), QVariantList{});
 
     QVariantList empty_datasets;
     empty_datasets.push_back(empty_dataset);
@@ -171,6 +173,7 @@ void DatasetSelectionStatisticsModel::refresh()
             QVariantList labels;
             QVariantList values;
             QVariantList colors;
+            QVariantList tooltips;
 
             for (const CategoryStatisticsItem &item : result.items)
             {
@@ -181,12 +184,20 @@ void DatasetSelectionStatisticsModel::refresh()
                 labels.push_back(item.name);
                 values.push_back(count);
                 colors.push_back(item.color);
+                const double percentage = image_dimension ? item.image_percentage : item.instance_percentage;
+                const QString percentage_text
+                    = QLocale::system().toString(percentage * 100.0, 'f', 2) + QStringLiteral("%");
+                tooltips.push_back(QStringLiteral("%1\n数量：%2\n占比：%3")
+                                       .arg(item.name)
+                                       .arg(QLocale::system().toString(count))
+                                       .arg(percentage_text));
             }
 
             QVariantMap dataset;
             dataset.insert(QStringLiteral("label"), image_dimension ? QStringLiteral("图像") : QStringLiteral("实例"));
             dataset.insert(QStringLiteral("data"), values);
             dataset.insert(QStringLiteral("backgroundColor"), colors);
+            dataset.insert(QStringLiteral("tooltips"), tooltips);
             dataset.insert(QStringLiteral("hoverOffset"), 4);
 
             QVariantList datasets;

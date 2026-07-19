@@ -35,11 +35,16 @@ public:
 - `inferrt.cpu_devices`
 - `inferrt.gpu_devices`
 - `inferrt.compute_devices`
+- `training.compute_devices`
 
 这些 provider 返回 InferRT `ModelRuntime` 字符串。GPU 运行时包含 `tensorrt:<id>`、
 `onnxruntime:<id>` 和 `openvino:<id>`，CPU 运行时包含 `onnxruntime:cpu` 和
 `openvino:cpu`。`inferrt.compute_devices` 将 GPU 运行时排在 CPU 运行时前面，并推荐第一块 GPU 的
 TensorRT 运行时；没有 GPU 时推荐 CPU 的 ONNX Runtime。
+
+`training.compute_devices` 面向训练后端，返回设备名称和训练设备值的映射：GPU 使用
+`cuda:<id>`，CPU 使用 `cpu`。它与 InferRT provider 分开，避免把
+`tensorrt:<id>` 等推理运行时值传给训练引擎。
 
 ## YAML 兼容性
 

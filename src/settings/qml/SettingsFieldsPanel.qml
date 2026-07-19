@@ -10,8 +10,6 @@ Rectangle {
     property var fieldModel: null
 
     Layout.fillWidth: true
-    Layout.leftMargin: 20
-    Layout.rightMargin: 20
 
     implicitHeight: fieldsColumn.implicitHeight + 24
     radius: 4

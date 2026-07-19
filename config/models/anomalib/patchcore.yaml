@@ -37,7 +37,7 @@ train_params:
         value_type: string
         param_type: dynamic
         display_type: combo
-        backend_key: inferrt.compute_devices
+        backend_key: training.compute_devices
 
       - name_en: accelerator
         name_cn: 加速器

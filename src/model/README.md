@@ -198,8 +198,12 @@ QML 参数面板按 `part_index` 拆成两列渲染。当前已使用的展示�
   backend_key: inferrt.compute_devices
 ```
 
-当前支持的硬件 provider key 为 `inferrt.cpu_devices`、`inferrt.gpu_devices` 和
-`inferrt.compute_devices`。provider 抽象和全局注册表位于 `dltool_parameter`，模型、设置和 feature 模块共享同一套动态选项接口；新增 provider 只需继承 `DynamicOptionsProvider` 并注册。provider 在加载 schema 时生成显示名称和实际值的映射；QML 只显示名称，任务配置保存实际值（例如 `tensorrt:0`）。计算设备默认选择第一块 GPU 的 TensorRT 运行时；没有 GPU 时选择 `onnxruntime:cpu`。
+当前支持的硬件 provider key 为 `inferrt.cpu_devices`、`inferrt.gpu_devices`、
+`inferrt.compute_devices` 和 `training.compute_devices`。provider 抽象和全局注册表位于
+`dltool_parameter`，模型、设置和 feature 模块共享同一套动态选项接口；新增 provider 只需继承
+`DynamicOptionsProvider` 并注册。provider 在加载 schema 时生成显示名称和实际值的映射；QML 只显示名称，
+任务配置保存实际值。推理参数使用 InferRT 运行时值（例如 `tensorrt:0`），训练参数使用
+`cpu` 或 `cuda:0` 等训练设备值。模型的训练和推理配置应根据后端分别选择对应 provider。
 
 ## 创建模型流程
 

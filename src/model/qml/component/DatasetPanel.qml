@@ -1,5 +1,6 @@
-import QtQuick
+﻿import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 
 import dltool.data
 import dltool.model
@@ -12,10 +13,6 @@ Item {
     property DataManager dataManager: null
     property DataSelectionTreeModel selectionModel: null
     property string roleTitle: qsTr("数据集")
-    property int treeHeight: 180
-    property int partSpacing: 5
-
-    implicitHeight: content.implicitHeight + control.partSpacing * 2
 
     DatasetSelectionStatisticsModel {
         id: statisticsModel
@@ -23,26 +20,27 @@ Item {
         selectionModel: control.selectionModel
     }
 
-    ColumnLayout {
+    QuiSplitView {
         id: content
 
         anchors.fill: parent
-        anchors.margins: control.partSpacing
-        spacing: 6
+        anchors.margins: 5
+        orientation: Qt.Vertical
 
         DatasetSelectionTreeView {
             id: selectionTree
 
-            Layout.fillWidth: true
+            SplitView.fillWidth: true
+            SplitView.fillHeight: true
             roleTitle: control.roleTitle
             selectionModel: control.selectionModel
-            treeHeight: control.treeHeight
         }
 
         RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 205
-            spacing: 6
+            SplitView.fillWidth: true
+            // SplitView.fillHeight: true
+            SplitView.preferredHeight: 200
+            spacing: 5
 
             QuiChart {
                 Layout.fillWidth: true

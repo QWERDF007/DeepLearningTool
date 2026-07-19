@@ -17,6 +17,12 @@ ParameterOption makeRuntimeOption(const QString &name, const QString &backend, c
     return {QStringLiteral("%1 (%2)").arg(displayName, actualValue), actualValue};
 }
 
+ParameterOption makeTrainingOption(const QString &name, const QString &device)
+{
+    const QString displayName = name.trimmed().isEmpty() ? device.toUpper() : name.trimmed();
+    return {QStringLiteral("%1 (%2)").arg(displayName, device), device};
+}
+
 QVector<ParameterOption> cpuOptions()
 {
     QVector<ParameterOption> options;
@@ -38,6 +44,25 @@ QVector<ParameterOption> gpuOptions()
         for (const QString &backend : {QStringLiteral("tensorrt"), QStringLiteral("onnxruntime"),
                                        QStringLiteral("openvino")})
             options.push_back(makeRuntimeOption(gpuName, backend, device));
+    }
+    return options;
+}
+
+QVector<ParameterOption> trainingCpuOptions()
+{
+    const QString cpuName = QString::fromStdString(irt::util::getCPUDeviceName());
+    return {makeTrainingOption(cpuName, QStringLiteral("cpu"))};
+}
+
+QVector<ParameterOption> trainingGpuOptions()
+{
+    QVector<ParameterOption> options;
+    const std::vector<std::string> gpus = irt::util::getGPUDeviceNames();
+    options.reserve(static_cast<qsizetype>(gpus.size()));
+    for (int index = 0; index < static_cast<int>(gpus.size()); ++index)
+    {
+        const QString gpuName = QString::fromStdString(gpus.at(static_cast<std::size_t>(index)));
+        options.push_back(makeTrainingOption(gpuName, QStringLiteral("cuda:%1").arg(index)));
     }
     return options;
 }
@@ -88,11 +113,26 @@ public:
     }
 };
 
+class TrainingComputeDeviceProvider final : public DynamicOptionsProvider
+{
+public:
+    QString key() const override { return QStringLiteral("training.compute_devices"); }
+
+    DynamicOptionsData query(const QVariantMap &context) const override
+    {
+        Q_UNUSED(context);
+        QVector<ParameterOption> options = trainingGpuOptions();
+        options += trainingCpuOptions();
+        return makeResult(std::move(options));
+    }
+};
+
 [[maybe_unused]] const bool hardwareProvidersRegistered = []
 {
     registerDynamicOptionsProvider(std::make_unique<CpuDeviceProvider>());
     registerDynamicOptionsProvider(std::make_unique<GpuDeviceProvider>());
     registerDynamicOptionsProvider(std::make_unique<ComputeDeviceProvider>());
+    registerDynamicOptionsProvider(std::make_unique<TrainingComputeDeviceProvider>());
     return true;
 }();
 
