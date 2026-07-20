@@ -52,6 +52,7 @@ std::vector<CustomFilterModule::ConditionSpec> CustomFilterModule::availableCond
     return {
         {static_cast<int64_t>(Condition::DuplicateFileName), QStringLiteral("重复文件名")},
         {static_cast<int64_t>(Condition::DuplicatePath), QStringLiteral("重复路径")},
+        {static_cast<int64_t>(Condition::UniqueFileName), QStringLiteral("不重复文件名")},
     };
 }
 
@@ -158,6 +159,8 @@ bool CustomFilterModule::passesCondition(int64_t condition_id, int64_t image_id)
         return hasDuplicateFileName(image_id);
     case Condition::DuplicatePath:
         return hasDuplicatePath(image_id);
+    case Condition::UniqueFileName:
+        return hasUniqueFileName(image_id);
     }
     return false;
 }
@@ -184,10 +187,22 @@ bool CustomFilterModule::hasDuplicatePath(int64_t image_id) const
     return duplicate_path_image_ids_.find(image_id) != duplicate_path_image_ids_.end();
 }
 
+bool CustomFilterModule::hasUniqueFileName(int64_t image_id) const
+{
+    if (!duplicate_cache_valid_)
+    {
+        DataManager *dm = dataManager();
+        rebuildDuplicateCaches(dm && dm->imageInstances() ? dm->imageInstances()->getAllImageIds()
+                                                          : std::vector<int64_t>{});
+    }
+    return unique_file_name_image_ids_.find(image_id) != unique_file_name_image_ids_.end();
+}
+
 void CustomFilterModule::rebuildDuplicateCaches(const std::vector<int64_t> &image_ids) const
 {
     duplicate_file_name_image_ids_.clear();
     duplicate_path_image_ids_.clear();
+    unique_file_name_image_ids_.clear();
 
     DataManager *dm = dataManager();
     ImageInstancesListModel *image_model = dm ? dm->imageInstances() : nullptr;
@@ -220,6 +235,10 @@ void CustomFilterModule::rebuildDuplicateCaches(const std::vector<int64_t> &imag
         if (!file_name.isEmpty() && file_name_counts.value(file_name) > 1)
         {
             duplicate_file_name_image_ids_.insert(image_id);
+        }
+        if (!file_name.isEmpty() && file_name_counts.value(file_name) == 1)
+        {
+            unique_file_name_image_ids_.insert(image_id);
         }
         if (!path.isEmpty() && path_counts.value(path) > 1)
         {

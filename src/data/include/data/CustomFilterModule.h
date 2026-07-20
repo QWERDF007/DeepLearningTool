@@ -19,6 +19,7 @@ public:
     {
         DuplicateFileName = 1,
         DuplicatePath     = 2,
+        UniqueFileName    = 3,
     };
 
     struct ConditionSpec
@@ -50,6 +51,7 @@ private:
     bool passesCondition(int64_t condition_id, int64_t image_id) const;
     bool hasDuplicateFileName(int64_t image_id) const;
     bool hasDuplicatePath(int64_t image_id) const;
+    bool hasUniqueFileName(int64_t image_id) const;
     void rebuildDuplicateCaches(const std::vector<int64_t> &image_ids) const;
     /// 仅使派生缓存失效；数据变更后的过滤刷新由 DataManager/GlobalFilter 统一调度。
     void invalidateCaches();
@@ -60,6 +62,7 @@ private:
     mutable bool                        duplicate_cache_valid_{false};
     mutable std::unordered_set<int64_t> duplicate_file_name_image_ids_;
     mutable std::unordered_set<int64_t> duplicate_path_image_ids_;
+    mutable std::unordered_set<int64_t> unique_file_name_image_ids_;
 };
 
 } // namespace dltool::data
