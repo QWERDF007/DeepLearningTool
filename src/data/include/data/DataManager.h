@@ -49,6 +49,7 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(CategoryStatisticsModel *categoryStatisticsModel READ categoryStatisticsModel CONSTANT FINAL)
     Q_PROPERTY(int method READ method CONSTANT FINAL)
     Q_PROPERTY(QString providerCacheKey READ providerCacheKey CONSTANT FINAL)
+    Q_PROPERTY(bool datasetDeletionRunning READ datasetDeletionRunning NOTIFY datasetDeletionRunningChanged FINAL)
 
 public:
     using ImportFinishedHandler = std::function<void(bool, const QString &)>;
@@ -134,6 +135,11 @@ public:
 
     QString projectDir() const;
     QString providerCacheKey() const;
+
+    bool datasetDeletionRunning() const
+    {
+        return dataset_deletion_running_;
+    }
 
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
     Q_INVOKABLE std::vector<int64_t> getAllDatasetIds() const;
@@ -235,6 +241,7 @@ public:
 signals:
     void dataImportFinished(bool success, const QString &message);
     void importLabelClassesScanned(bool success, QVariantList label_classes, const QString &message);
+    void datasetDeletionRunningChanged();
 
 private:
     struct PendingImportTask;
@@ -243,6 +250,8 @@ private:
     void startAsyncLabelLoading();
     void handleAsyncLabelsLoaded(std::shared_ptr<std::vector<LoadedLabelInstance>> labels, bool success,
                                  const QString &err_msg, qint64 elapsed_ms);
+    void handleAsyncDatasetDeletion(const std::vector<int64_t> &dataset_ids, bool success, const QString &err_msg,
+                                    qint64 elapsed_ms);
     void rebuildLabelRelations();
 
     void updateDatasetsStats();
@@ -294,6 +303,9 @@ private:
 
     bool labels_loading_{false};
     bool labels_changed_during_loading_{false};
+    bool labels_reload_after_dataset_deletion_{false};
+
+    bool dataset_deletion_running_{false};
 };
 
 } // namespace dltool::data

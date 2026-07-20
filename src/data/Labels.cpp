@@ -450,6 +450,10 @@ void LabelInstancesListModel::updateLabelsClass(const std::vector<int64_t> &labe
 
 void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids)
 {
+    if (label_ids.empty())
+    {
+        return;
+    }
     if (database_ == nullptr)
     {
         spdlog::error("添加标注失败: 数据库未初始化");
@@ -462,7 +466,52 @@ void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids
         spdlog::error("删除 {} 个标注失败: {}", label_ids.size(), err_msg.toUtf8().constData());
         return;
     }
+
+    removeLabelsFromMemory(label_ids);
+    spdlog::info("删除 {} 个标注成功", label_ids.size());
+}
+
+void LabelInstancesListModel::removeLabelsForImagesFromMemory(const std::vector<int64_t> &image_ids)
+{
+    if (image_ids.empty())
+    {
+        return;
+    }
+
+    const std::set<int64_t> target_image_ids(image_ids.begin(), image_ids.end());
+    std::vector<int64_t>    label_ids;
+    label_ids.reserve(full_label_instances_.size());
+    for (const auto &[label_id, instance] : full_label_instances_)
+    {
+        if (instance != nullptr && target_image_ids.find(instance->imageId()) != target_image_ids.end())
+        {
+            label_ids.push_back(label_id);
+        }
+    }
+    removeLabelsFromMemory(label_ids);
+}
+
+void LabelInstancesListModel::removeLabelsFromMemory(const std::vector<int64_t> &label_ids)
+{
+    if (label_ids.empty())
+    {
+        return;
+    }
+
     const std::set<int64_t> deleted_label_ids(label_ids.begin(), label_ids.end());
+    bool                    contains_deleted_label = false;
+    for (const int64_t label_id : deleted_label_ids)
+    {
+        if (full_label_instances_.find(label_id) != full_label_instances_.end())
+        {
+            contains_deleted_label = true;
+            break;
+        }
+    }
+    if (!contains_deleted_label)
+    {
+        return;
+    }
 
     beginResetModel();
 
@@ -502,7 +551,6 @@ void LabelInstancesListModel::deleteLabels(const std::vector<int64_t> &label_ids
 
     endResetModel();
     emit lastIndexChanged();
-    spdlog::info("删除 {} 个标注成功", label_ids.size());
 }
 
 std::vector<int64_t> LabelInstancesListModel::getImageLabelIds(int64_t image_id) const

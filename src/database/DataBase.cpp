@@ -28,6 +28,7 @@
 #include <QMetaType>
 #include <QRegularExpression>
 #include <QSet>
+#include <algorithm>
 #include <map>
 
 namespace dltool::database {
@@ -542,6 +543,58 @@ bool ProjectDataBase::deleteDataset(const int64_t dataset_id, QString &err_msg) 
         }
         auto db = pool_->get();
         db(sqlpp::remove_from(DatasetsTable).where(DatasetsTable.id == dataset_id));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::deleteDatasetsWithContents(const std::vector<int64_t> &dataset_ids, QString &err_msg) const
+{
+    if (dataset_ids.empty())
+    {
+        return true;
+    }
+
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+
+        std::vector<int64_t> unique_dataset_ids = dataset_ids;
+        std::sort(unique_dataset_ids.begin(), unique_dataset_ids.end());
+        unique_dataset_ids.erase(std::unique(unique_dataset_ids.begin(), unique_dataset_ids.end()),
+                                 unique_dataset_ids.end());
+
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        try
+        {
+            // Use a subquery instead of expanding every image ID in the caller.  Apart from
+            // being much smaller, this keeps all dependent-row cleanup in one SQLite transaction.
+            const auto images_in_datasets
+                = sqlpp::select(ImagesTable.id)
+                      .from(ImagesTable)
+                      .where(ImagesTable.datasetId.in(sqlpp::value_list(unique_dataset_ids)));
+
+            db(sqlpp::remove_from(TagsTable).where(TagsTable.imageId.in(images_in_datasets)));
+            db(sqlpp::remove_from(LabelsTable).where(LabelsTable.imageId.in(images_in_datasets)));
+            db(sqlpp::remove_from(ImagesTable)
+                   .where(ImagesTable.datasetId.in(sqlpp::value_list(unique_dataset_ids))));
+            db(sqlpp::remove_from(DatasetsTable).where(DatasetsTable.id.in(sqlpp::value_list(unique_dataset_ids))));
+            tx.commit();
+        }
+        catch (...)
+        {
+            tx.rollback();
+            throw;
+        }
         return true;
     }
     catch (const std::exception &e)

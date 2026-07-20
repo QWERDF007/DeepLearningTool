@@ -251,6 +251,50 @@ bool DatasetsListModel::deleteDataset(const int64_t dataset_id)
     return true;
 }
 
+void DatasetsListModel::removeDatasetsFromMemory(const std::vector<int64_t> &dataset_ids)
+{
+    if (dataset_ids.empty())
+    {
+        return;
+    }
+
+    const std::set<int64_t> deleted_dataset_ids(dataset_ids.begin(), dataset_ids.end());
+    bool                    contains_deleted_dataset = false;
+    for (const int64_t dataset_id : deleted_dataset_ids)
+    {
+        if (datasets_.find(dataset_id) != datasets_.end())
+        {
+            contains_deleted_dataset = true;
+            break;
+        }
+    }
+    if (!contains_deleted_dataset)
+    {
+        return;
+    }
+
+    beginResetModel();
+    for (const int64_t dataset_id : deleted_dataset_ids)
+    {
+        const auto found = datasets_.find(dataset_id);
+        if (found == datasets_.end())
+        {
+            continue;
+        }
+        delete found->second;
+        datasets_.erase(found);
+        labelled_image_stats_.erase(dataset_id);
+    }
+    endResetModel();
+
+    if (selection_ != nullptr)
+    {
+        selection_->clear();
+    }
+    setLastIndex(-1);
+    emit statsChanged();
+}
+
 void DatasetsListModel::shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command)
 {
     if (rowCount() <= 0)

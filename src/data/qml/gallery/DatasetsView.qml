@@ -158,7 +158,7 @@ Rectangle {
                                   : "确定删除选中的数据集吗?"
         onPositiveClicked: function () {
             let ids = selectedDatasetIds()
-            if (dataManager && ids.length > 0) {
+            if (dataManager && !dataManager.datasetDeletionRunning && ids.length > 0) {
                 dataManager.deleteDatasets(ids)
                 curItem = null
             }
@@ -239,7 +239,7 @@ Rectangle {
         QuiMenuItem {
             text: "删除"
             iconSource: QuiFontIcon.Delete
-            enabled: selectedCount > 0
+            enabled: selectedCount > 0 && dataManager && !dataManager.datasetDeletionRunning
             onClicked: {
                 deleteConfirmDialog.open()
             }

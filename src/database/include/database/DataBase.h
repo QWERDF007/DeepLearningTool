@@ -135,6 +135,13 @@ public:
     bool addDatasets(const std::vector<QString> &names, std::vector<int64_t> &dataset_ids, QString &err_msg) const;
     bool updateDataset(const int64_t dataset_id, const QString &name, QString &err_msg) const;
     bool deleteDataset(const int64_t dataset_id, QString &err_msg) const;
+    /**
+     * @brief 原子删除数据集及其图像、标注和图像标签。
+     *
+     * 旧项目数据库未依赖外键级联，因此必须显式删除从属记录，避免留下孤立
+     * labels/tags。该操作只访问数据库，可安全地在工作线程中执行。
+     */
+    bool deleteDatasetsWithContents(const std::vector<int64_t> &dataset_ids, QString &err_msg) const;
 
     // std::optional<int64_t> getDatasetId(const QString &name, QString &err_msg) const;
 

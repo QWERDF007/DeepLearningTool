@@ -306,6 +306,13 @@ void DataManager::handleAsyncLabelsLoaded(std::shared_ptr<std::vector<LoadedLabe
     {
         labels_changed_during_loading_ = false;
         spdlog::info("项目标注后台加载期间发生修改，丢弃当前结果并重新加载");
+        if (dataset_deletion_running_)
+        {
+            // Do not start a second read while the deletion transaction is still in
+            // progress.  It could otherwise observe a partial transaction snapshot.
+            labels_reload_after_dataset_deletion_ = true;
+            return;
+        }
         startAsyncLabelLoading();
         return;
     }
@@ -591,11 +598,148 @@ QString DataManager::isValidClassName(const QString &name, const int64_t label_c
 
 void DataManager::deleteDatasets(const std::vector<int64_t> &dataset_ids)
 {
+    if (dataset_deletion_running_)
+    {
+        ui::SignalHelper::notifyWarn(QString("删除数据集"), QString("数据集删除任务正在进行中"));
+        return;
+    }
+    if (import_running_)
+    {
+        ui::SignalHelper::notifyWarn(QString("删除数据集"), QString("导入任务正在进行中，请在导入完成后再删除数据集"));
+        return;
+    }
+    if (database_ == nullptr)
+    {
+        const QString message = QString("项目数据库未初始化");
+        spdlog::error("删除数据集失败: {}", message.toUtf8().constData());
+        ui::SignalHelper::notifyError(QString("删除数据集"), message);
+        return;
+    }
+
+    std::vector<int64_t> target_dataset_ids;
+    target_dataset_ids.reserve(dataset_ids.size());
     for (const int64_t dataset_id : dataset_ids)
     {
-        std::vector<int64_t> image_ids;
-        image_instances_->deleteImages(dataset_id, image_ids);
-        datasets_->deleteDataset(dataset_id);
+        if (dataset_id >= 0)
+        {
+            target_dataset_ids.push_back(dataset_id);
+        }
+    }
+    std::sort(target_dataset_ids.begin(), target_dataset_ids.end());
+    target_dataset_ids.erase(std::unique(target_dataset_ids.begin(), target_dataset_ids.end()), target_dataset_ids.end());
+    if (target_dataset_ids.empty())
+    {
+        return;
+    }
+
+    // A label-loading worker can be in flight while deletion starts.  Its result must
+    // not reintroduce labels that this transaction removes.
+    if (labels_loading_)
+    {
+        labels_changed_during_loading_ = true;
+    }
+
+    dataset_deletion_running_ = true;
+    emit datasetDeletionRunningChanged();
+
+    ui::ProgressManager::getInstance()->startTask(QString("删除数据集"));
+    ui::ProgressManager::getInstance()->updateProgress(5);
+    ui::ProgressManager::getInstance()->addMessage(
+        spdlog::level::info, QString("正在删除 %1 个数据集及其图像、标注和标签").arg(target_dataset_ids.size()));
+
+    const QString         database_path = database_->path();
+    QPointer<DataManager> manager(this);
+    QThread *worker_thread = QThread::create(
+        [manager, database_path, target_dataset_ids]()
+        {
+            QElapsedTimer timer;
+            timer.start();
+
+            bool    success = false;
+            QString err_msg;
+            try
+            {
+                dltool::database::ProjectDataBase database(database_path);
+                success = database.deleteDatasetsWithContents(target_dataset_ids, err_msg);
+            }
+            catch (const std::exception &e)
+            {
+                err_msg = QString::fromUtf8(e.what());
+            }
+
+            const qint64 elapsed_ms = timer.elapsed();
+            if (manager)
+            {
+                QMetaObject::invokeMethod(
+                    manager.data(),
+                    [manager, target_dataset_ids, success, err_msg, elapsed_ms]()
+                    {
+                        if (manager)
+                        {
+                            manager->handleAsyncDatasetDeletion(target_dataset_ids, success, err_msg, elapsed_ms);
+                        }
+                    },
+                    Qt::QueuedConnection);
+            }
+        });
+
+    connect(worker_thread, &QThread::finished, worker_thread, &QObject::deleteLater);
+    worker_thread->start();
+}
+
+void DataManager::handleAsyncDatasetDeletion(const std::vector<int64_t> &dataset_ids, const bool success,
+                                             const QString &err_msg, const qint64 elapsed_ms)
+{
+    if (success)
+    {
+        // Only QAbstractItemModel state is touched on this thread.  The database has
+        // already committed, so these helpers deliberately perform no database writes.
+        const std::vector<int64_t> image_ids
+            = image_instances_ != nullptr ? image_instances_->getImageIdsForDatasets(dataset_ids) : std::vector<int64_t>{};
+        if (label_instances_ != nullptr)
+        {
+            label_instances_->removeLabelsForImagesFromMemory(image_ids);
+        }
+        if (image_tags_ != nullptr)
+        {
+            image_tags_->removeImagesTagsFromMemory(image_ids);
+        }
+        if (image_instances_ != nullptr)
+        {
+            image_instances_->removeImagesFromMemory(image_ids);
+        }
+        if (datasets_ != nullptr)
+        {
+            datasets_->removeDatasetsFromMemory(dataset_ids);
+        }
+        if (global_filter_ != nullptr)
+        {
+            global_filter_->refresh();
+        }
+
+        const QString message
+            = QString("已删除 %1 个数据集，耗时 %2 ms").arg(dataset_ids.size()).arg(elapsed_ms);
+        spdlog::info("{}", message.toUtf8().constData());
+        ui::ProgressManager::getInstance()->updateProgress(100);
+        ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
+        ui::SignalHelper::notifySuccess(QString("删除数据集完成"), message);
+    }
+    else
+    {
+        const QString message = QString("删除数据集失败: %1").arg(err_msg);
+        spdlog::error("{}", message.toUtf8().constData());
+        ui::ProgressManager::getInstance()->addMessage(spdlog::level::err, message);
+        ui::SignalHelper::notifyError(QString("删除数据集失败"), message);
+    }
+
+    ui::ProgressManager::getInstance()->completeTask();
+    dataset_deletion_running_ = false;
+    emit datasetDeletionRunningChanged();
+
+    if (labels_reload_after_dataset_deletion_ && !labels_loading_)
+    {
+        labels_reload_after_dataset_deletion_ = false;
+        startAsyncLabelLoading();
     }
 }
 

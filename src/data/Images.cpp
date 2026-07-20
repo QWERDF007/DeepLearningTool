@@ -523,6 +523,10 @@ bool ImageInstancesListModel::updateImagesDataset(const std::vector<int64_t> &im
 
 bool ImageInstancesListModel::deleteImages(const std::vector<int64_t> &image_ids)
 {
+    if (image_ids.empty())
+    {
+        return true;
+    }
     if (database_ == nullptr)
     {
         spdlog::error("批量删除图像失败, 数量: {}, 数据库未初始化", image_ids.size());
@@ -537,39 +541,13 @@ bool ImageInstancesListModel::deleteImages(const std::vector<int64_t> &image_ids
     }
     spdlog::info("批量删除图像, 数量: {}", image_ids.size());
 
-    // 在删除前保存当前选中的行索引
-    int current_row = -1;
-    if (selection_ && selection_->hasSelection())
-    {
-        current_row = selection_->currentIndex().row();
-    }
-
-    // 找到所有要删除的图像在 image_ids_ 中的索引位置
-    std::vector<int> rows_to_remove = findRowsByImageIds(image_ids);
-
-    // 按升序排序
-    std::sort(rows_to_remove.begin(), rows_to_remove.end());
-
-    // 合并连续的索引范围，批量删除
-    std::vector<std::pair<int, int>> ranges = mergeConsecutiveRanges(rows_to_remove);
-
-    // 从后往前删除范围，避免索引变化
-    for (auto it = ranges.rbegin(); it != ranges.rend(); ++it)
-    {
-        removeRows(it->first, it->second);
-    }
-
-    // 删除后自动选择下一个合适的图像
-    int new_count = static_cast<int>(image_ids_.size());
-    selectNextAfterDeletion(current_row, new_count);
-
-    emit statsChanged();
-    emit currentImageChanged();
+    removeImagesFromMemory(image_ids);
     return true;
 }
 
 bool ImageInstancesListModel::deleteImages(const int64_t dataset_id, std::vector<int64_t> &image_ids)
 {
+    image_ids.clear();
     image_ids.reserve(full_image_instances_.size());
     for (const auto &[image_id, image_instance] : full_image_instances_)
     {
@@ -579,6 +557,88 @@ bool ImageInstancesListModel::deleteImages(const int64_t dataset_id, std::vector
         }
     }
     return deleteImages(image_ids);
+}
+
+std::vector<int64_t> ImageInstancesListModel::getImageIdsForDatasets(
+    const std::vector<int64_t> &dataset_ids) const
+{
+    if (dataset_ids.empty())
+    {
+        return {};
+    }
+
+    const std::set<int64_t> target_dataset_ids(dataset_ids.begin(), dataset_ids.end());
+    std::vector<int64_t>    image_ids;
+    image_ids.reserve(full_image_instances_.size());
+    for (const auto &[image_id, image_instance] : full_image_instances_)
+    {
+        if (image_instance != nullptr && target_dataset_ids.find(image_instance->datasetId()) != target_dataset_ids.end())
+        {
+            image_ids.push_back(image_id);
+        }
+    }
+    return image_ids;
+}
+
+void ImageInstancesListModel::removeImagesFromMemory(const std::vector<int64_t> &image_ids)
+{
+    if (image_ids.empty())
+    {
+        return;
+    }
+
+    const std::set<int64_t> deleted_image_ids(image_ids.begin(), image_ids.end());
+    bool                    contains_deleted_image = false;
+    for (const int64_t image_id : deleted_image_ids)
+    {
+        if (full_image_instances_.find(image_id) != full_image_instances_.end())
+        {
+            contains_deleted_image = true;
+            break;
+        }
+    }
+    if (!contains_deleted_image)
+    {
+        return;
+    }
+
+    const std::vector<int64_t> selected_image_ids = getSelectedImagesId();
+    const int64_t              current_image_id   = getCurrentImageId();
+    const int                  current_row
+        = selection_ != nullptr && selection_->hasSelection() ? selection_->currentIndex().row() : -1;
+
+    beginResetModel();
+    for (const int64_t image_id : deleted_image_ids)
+    {
+        const auto found = full_image_instances_.find(image_id);
+        if (found == full_image_instances_.end())
+        {
+            continue;
+        }
+        delete found->second;
+        full_image_instances_.erase(found);
+    }
+
+    filtered_image_ids_.erase(
+        std::remove_if(filtered_image_ids_.begin(), filtered_image_ids_.end(),
+                       [&deleted_image_ids](const int64_t image_id)
+                       { return deleted_image_ids.find(image_id) != deleted_image_ids.end(); }),
+        filtered_image_ids_.end());
+    rebuildImageIds();
+    endResetModel();
+
+    if (selection_ != nullptr)
+    {
+        selection_->clear();
+    }
+    restoreSelection(selected_image_ids, current_image_id);
+    if (findRowByImageId(current_image_id) < 0)
+    {
+        selectNextAfterDeletion(current_row, rowCount());
+    }
+
+    emit statsChanged();
+    emit currentImageChanged();
 }
 
 std::vector<int64_t> ImageInstancesListModel::getDatasetIds(const std::vector<int64_t> &image_ids) const
@@ -1247,13 +1307,12 @@ std::vector<int> ImageInstancesListModel::findRowsByImageIds(const std::vector<i
     std::vector<int> rows;
     rows.reserve(image_ids.size());
 
-    for (const auto &image_id : image_ids)
+    const std::set<int64_t> target_image_ids(image_ids.begin(), image_ids.end());
+    for (size_t row = 0; row < image_ids_.size(); ++row)
     {
-        auto it = std::find(image_ids_.begin(), image_ids_.end(), image_id);
-        if (it != image_ids_.end())
+        if (target_image_ids.find(image_ids_[row]) != target_image_ids.end())
         {
-            int row = std::distance(image_ids_.begin(), it);
-            rows.push_back(row);
+            rows.push_back(static_cast<int>(row));
         }
     }
 

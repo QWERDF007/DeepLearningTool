@@ -196,6 +196,19 @@ public:
     bool deleteImages(const std::vector<int64_t> &image_ids);
     bool deleteImages(const int64_t dataset_id, std::vector<int64_t> &image_ids);
 
+    /**
+     * @brief Return the in-memory image IDs belonging to one or more datasets.
+     */
+    std::vector<int64_t> getImageIdsForDatasets(const std::vector<int64_t> &dataset_ids) const;
+
+    /**
+     * @brief Remove already-deleted images from the model without accessing the database.
+     *
+     * A model reset keeps a large, non-contiguous deletion from generating thousands of
+     * removeRows() calls on the GUI thread.
+     */
+    void removeImagesFromMemory(const std::vector<int64_t> &image_ids);
+
     std::vector<int64_t> getDatasetIds(const std::vector<int64_t> &image_ids) const;
 
     std::vector<std::vector<int64_t>> getLabelIds(const std::vector<int64_t> &image_ids) const;

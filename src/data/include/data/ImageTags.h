@@ -4,6 +4,7 @@
 #include <QtQml>
 #include <map>
 #include <set>
+#include <vector>
 
 namespace dltool::database {
 class ProjectDataBase;
@@ -108,6 +109,7 @@ public:
     Q_INVOKABLE bool setImageTag(const int64_t image_id, const int64_t tag_id);
 
     bool removeImagesTags(const std::vector<int64_t> &image_ids);
+    void removeImagesTagsFromMemory(const std::vector<int64_t> &image_ids);
 
     ImageTag *getImageTag(const int64_t tag_id);
 

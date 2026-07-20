@@ -292,6 +292,35 @@ bool ImageTagsListModel::removeImagesTags(const std::vector<int64_t> &image_ids)
     return true;
 }
 
+void ImageTagsListModel::removeImagesTagsFromMemory(const std::vector<int64_t> &image_ids)
+{
+    if (image_ids.empty())
+    {
+        return;
+    }
+
+    if (image_instances_ != nullptr)
+    {
+        for (const int64_t image_id : image_ids)
+        {
+            ImageInstance *image_instance = image_instances_->getImageInstance(image_id);
+            if (image_instance != nullptr)
+            {
+                image_instance->removeAllTagIds();
+            }
+        }
+    }
+
+    for (const auto &[_, image_tag] : image_tags_)
+    {
+        if (image_tag != nullptr)
+        {
+            image_tag->removeImageIds(image_ids);
+        }
+    }
+    updateStats();
+}
+
 ImageTag *ImageTagsListModel::getImageTag(const int64_t tag_id)
 {
     auto found = image_tags_.find(tag_id);

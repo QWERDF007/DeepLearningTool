@@ -125,6 +125,14 @@ public:
 
     void deleteLabels(const std::vector<int64_t> &label_ids);
 
+    /**
+     * @brief Remove labels whose images were deleted by another database operation.
+     *
+     * This is intentionally memory-only so a completed background database transaction
+     * can update QAbstractItemModel state on the GUI thread without a second DB write.
+     */
+    void removeLabelsForImagesFromMemory(const std::vector<int64_t> &image_ids);
+
     std::vector<int64_t>              getImageLabelIds(int64_t image_id) const;
     std::vector<std::vector<int64_t>> getImagesLabelIds(const std::vector<int64_t> &image_ids) const;
 
@@ -189,6 +197,7 @@ public:
 private:
     void init(bool load_from_database);
     void loadLabelsFromDatabase();
+    void removeLabelsFromMemory(const std::vector<int64_t> &label_ids);
     void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
 
     int      getLabelId(const QModelIndex &index) const;
