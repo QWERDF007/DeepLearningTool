@@ -10,12 +10,14 @@ FS-SAM2:
       params:
         - name_en: sam2_checkpoint
           name_cn: SAM2 权重
+          description: SAM2 基础模型预训练权重文件的路径。
           value: python/fornib/FS-SAM2/checkpoint/sam2.1_hiera_base_plus.pt
           value_type: string
           control_type: file
 
         - name_en: sam2_cfg
           name_cn: SAM2 配置
+          description: SAM2 模型结构与推理设置配置文件的路径。
           value: ""
           value_type: string
           control_type: file
@@ -26,6 +28,7 @@ FS-SAM2:
       params:
         - name_en: kshot
           name_cn: K-shot
+          description: 每个类别在小样本训练中使用的支持样本数量。
           value: 1
           value_type: int
           value_range: [1, 16, 1]
@@ -33,6 +36,7 @@ FS-SAM2:
 
         - name_en: epochs
           name_cn: 训练轮数
+          description: 完整遍历训练数据集的次数。
           value: 50
           value_type: int
           value_range: [1, 10000, 1]
@@ -40,6 +44,7 @@ FS-SAM2:
 
         - name_en: batch_size
           name_cn: Batch Size
+          description: 每次参数更新参与训练的样本数量。
           value: 2
           value_type: int
           value_range: [1, 128, 1]
@@ -47,6 +52,7 @@ FS-SAM2:
 
         - name_en: num_workers
           name_cn: 数据线程数
+          description: 用于并行读取和预处理数据的工作线程数。
           value: 0
           value_type: int
           value_range: [0, 128, 1]
@@ -54,6 +60,7 @@ FS-SAM2:
 
         - name_en: learning_rate
           name_cn: 学习率
+          description: 优化器每次更新模型参数的步长。
           value: 0.0001
           value_type: double
           value_range: [0.000001, 0.01, 0.000001]
@@ -61,6 +68,7 @@ FS-SAM2:
 
         - name_en: weight_decay
           name_cn: Weight Decay
+          description: 用于抑制过拟合的 L2 正则化强度。
           value: 0.000001
           value_type: double
           value_range: [0.0, 0.01, 0.000001]
@@ -72,6 +80,7 @@ FS-SAM2:
       params:
         - name_en: image_size
           name_cn: 图像尺寸
+          description: 输入模型前将图像缩放到的边长。
           value: 1024
           value_type: int
           value_range: [64, 8192, 64]
@@ -84,12 +93,14 @@ FS-SAM2:
       params:
         - name_en: sam2_checkpoint
           name_cn: SAM2 权重
+          description: SAM2 基础模型预训练权重文件的路径。
           value: python/fornib/FS-SAM2/checkpoint/sam2.1_hiera_base_plus.pt
           value_type: string
           control_type: file
 
         - name_en: sam2_cfg
           name_cn: SAM2 配置
+          description: SAM2 模型结构与推理设置配置文件的路径。
           value: ""
           value_type: string
           control_type: file
@@ -100,18 +111,21 @@ FS-SAM2:
       params:
         - name_en: checkpoint_path
           name_cn: 检查点路径
+          description: 用于小样本推理的已训练模型检查点文件路径。
           value: ""
           value_type: string
           control_type: file
 
         - name_en: output_dir
           name_cn: 输出目录
+          description: 保存推理结果和中间文件的目录。
           value: ""
           value_type: string
           control_type: path
 
         - name_en: kshot
           name_cn: K-shot
+          description: 每个类别在小样本推理中使用的支持样本数量。
           value: 1
           value_type: int
           value_range: [1, 16, 1]
@@ -119,6 +133,7 @@ FS-SAM2:
 
         - name_en: image_size
           name_cn: 图像尺寸
+          description: 输入模型前将图像缩放到的边长。
           value: 1024
           value_type: int
           value_range: [64, 8192, 64]

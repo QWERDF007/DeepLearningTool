@@ -104,7 +104,8 @@ Item {
                                     property real labelWidth: Math.max(0, Math.floor(width / 3))
                                     property string paramNameEn: modelValue("nameEn", "")
                                     property string paramLabel: modelValue("nameCn", paramNameEn)
-                                    property string paramDescription: modelValue("description", "")
+                                    property string paramDescription: modelValue("description", "").trim()
+                                    property bool hasParamDescription: paramDescription.length > 0
                                     property string paramDisplayType: modelValue("displayType", "text")
                                     property string paramValueType: modelValue("valueType", "string")
                                     property var paramValue: modelValue("value", modelValue("defaultValue", ""))
@@ -195,6 +196,8 @@ Item {
 
                                                 QuiTextIcon {
                                                     iconSource: QuiFontIcon.Info
+                                                    visible: delegateRoot.hasParamDescription
+                                                    Layout.preferredWidth: visible ? implicitWidth : 0
 
                                                     HoverHandler {
                                                         id: paramInfoHover
@@ -204,8 +207,7 @@ Item {
 
                                                     QuiToolTip {
                                                         text: delegateRoot.paramDescription
-                                                        visible: paramInfoHover.hovered
-                                                                 && delegateRoot.paramDescription.length > 0
+                                                        visible: paramInfoHover.hovered && delegateRoot.hasParamDescription
                                                         delay: 200
                                                     }
                                                 }
