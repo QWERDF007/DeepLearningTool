@@ -84,6 +84,9 @@ void DatasetSelectionStatisticsModel::connectDataSources()
     if (data_manager_ == nullptr)
         return;
 
+    connect(data_manager_, &DataManager::dataImportFinished, this,
+            [this](bool, const QString &) { scheduleRefresh(); });
+
     image_instances_ = data_manager_->imageInstances();
     label_classes_   = data_manager_->labelClasses();
     label_instances_ = data_manager_->labelInstances();
@@ -110,6 +113,8 @@ void DatasetSelectionStatisticsModel::connectDataSources()
 
 void DatasetSelectionStatisticsModel::disconnectDataSources()
 {
+    if (data_manager_ != nullptr)
+        disconnect(data_manager_, nullptr, this, nullptr);
     if (image_instances_ != nullptr)
         disconnect(image_instances_, nullptr, this, nullptr);
     if (label_classes_ != nullptr)
@@ -137,6 +142,12 @@ void DatasetSelectionStatisticsModel::connectSourceModel(QAbstractItemModel *mod
 
 void DatasetSelectionStatisticsModel::scheduleRefresh()
 {
+    // Rows are added in batches during import.  Recalculating category statistics
+    // here walks every image and label, so defer it until DataManager emits the
+    // import-finished signal.
+    if (data_manager_ != nullptr && data_manager_->importRunning())
+        return;
+
     if (refresh_pending_)
         return;
 
@@ -145,6 +156,8 @@ void DatasetSelectionStatisticsModel::scheduleRefresh()
                               [this]()
                               {
                                   refresh_pending_ = false;
+                                  if (data_manager_ != nullptr && data_manager_->importRunning())
+                                      return;
                                   refresh();
                               },
                               Qt::QueuedConnection);
@@ -152,6 +165,9 @@ void DatasetSelectionStatisticsModel::scheduleRefresh()
 
 void DatasetSelectionStatisticsModel::refresh()
 {
+    if (data_manager_ != nullptr && data_manager_->importRunning())
+        return;
+
     try
     {
         const CategoryStatisticsResult result

@@ -325,13 +325,19 @@ bool ImageInstancesListModel::removeRows(int row, int count, const QModelIndex &
 }
 
 bool ImageInstancesListModel::addImages(const int64_t dataset_id, const std::vector<QString> &paths,
-                                        std::vector<int64_t> &image_ids)
+                                        std::vector<int64_t> &image_ids, const bool defer_model_update)
 {
     if (database_ == nullptr)
     {
         spdlog::error("批量添加图像失败, dataset id: {}, 数据库未初始化", dataset_id);
         return false;
     }
+    if (paths.empty())
+    {
+        image_ids.clear();
+        return true;
+    }
+
     QString err_msg;
     bool    ok = database_->addImages(dataset_id, paths, image_ids, err_msg);
     if (!ok)
@@ -339,31 +345,72 @@ bool ImageInstancesListModel::addImages(const int64_t dataset_id, const std::vec
         spdlog::error("批量添加图像失败, dataset id: {}, error: {}", dataset_id, err_msg.toUtf8().constData());
         return false;
     }
+    if (image_ids.size() != paths.size())
+    {
+        spdlog::error("批量添加图像失败: 返回图像 ID 数量不一致");
+        return false;
+    }
+    if (defer_model_update)
+    {
+        for (size_t i = 0; i < image_ids.size(); ++i)
+        {
+            full_image_instances_.emplace(image_ids[i],
+                                          new ImageInstance(dataset_id, image_ids[i], paths[i], -1, this));
+        }
+        return true;
+    }
+
     spdlog::info("批量添加图像, dataset id: {}, 数量: {}", dataset_id, image_ids.size());
 
-    const std::vector<int64_t> selected_image_ids = getSelectedImagesId();
-    const int64_t              current_image_id   = getCurrentImageId();
+    const bool can_insert_at_front
+        = !is_filtered_ && sort_order_ == ImageSortOrder::AddedTime
+          && std::is_sorted(image_ids.begin(), image_ids.end())
+          && (image_ids_.empty() || *std::min_element(image_ids.begin(), image_ids.end()) > image_ids_.front());
 
-    beginResetModel();
-    for (size_t i = 0; i < image_ids.size(); ++i)
+    if (can_insert_at_front)
     {
-        full_image_instances_.emplace(image_ids[i], new ImageInstance(dataset_id, image_ids[i], paths[i], -1, this));
+        const int count = static_cast<int>(image_ids.size());
+        const int previous_last_index = last_index_;
+        beginInsertRows(QModelIndex(), 0, count - 1);
+        for (size_t i = 0; i < image_ids.size(); ++i)
+        {
+            full_image_instances_.emplace(image_ids[i],
+                                          new ImageInstance(dataset_id, image_ids[i], paths[i], -1, this));
+        }
+        image_ids_.insert(image_ids_.begin(), image_ids.rbegin(), image_ids.rend());
+        endInsertRows();
+        if (previous_last_index >= 0)
+        {
+            setLastIndex(previous_last_index + count);
+        }
     }
-    if (is_filtered_)
+    else
     {
-        filtered_image_ids_.insert(filtered_image_ids_.end(), image_ids.begin(), image_ids.end());
-    }
-    rebuildImageIds();
-    endResetModel();
+        const std::vector<int64_t> selected_image_ids = getSelectedImagesId();
+        const int64_t              current_image_id   = getCurrentImageId();
 
-    restoreSelection(selected_image_ids, current_image_id);
+        beginResetModel();
+        for (size_t i = 0; i < image_ids.size(); ++i)
+        {
+            full_image_instances_.emplace(image_ids[i],
+                                          new ImageInstance(dataset_id, image_ids[i], paths[i], -1, this));
+        }
+        if (is_filtered_)
+        {
+            filtered_image_ids_.insert(filtered_image_ids_.end(), image_ids.begin(), image_ids.end());
+        }
+        rebuildImageIds();
+        endResetModel();
+
+        restoreSelection(selected_image_ids, current_image_id);
+    }
 
     emit statsChanged();
     return true;
 }
 
 bool ImageInstancesListModel::addImages(const std::vector<int64_t> &dataset_ids, const std::vector<QString> &paths,
-                                        std::vector<int64_t> &image_ids)
+                                        std::vector<int64_t> &image_ids, const bool defer_model_update)
 {
     if (database_ == nullptr)
     {
@@ -393,24 +440,60 @@ bool ImageInstancesListModel::addImages(const std::vector<int64_t> &dataset_ids,
         spdlog::error("批量添加图像失败: 返回图像 ID 数量不一致");
         return false;
     }
+    if (defer_model_update)
+    {
+        for (size_t i = 0; i < image_ids.size(); ++i)
+        {
+            full_image_instances_.emplace(image_ids[i],
+                                          new ImageInstance(dataset_ids[i], image_ids[i], paths[i], -1, this));
+        }
+        return true;
+    }
+
     spdlog::info("批量添加图像到多个数据集, 数量: {}", image_ids.size());
 
-    const std::vector<int64_t> selected_image_ids = getSelectedImagesId();
-    const int64_t              current_image_id   = getCurrentImageId();
+    const bool can_insert_at_front
+        = !is_filtered_ && sort_order_ == ImageSortOrder::AddedTime
+          && std::is_sorted(image_ids.begin(), image_ids.end())
+          && (image_ids_.empty() || *std::min_element(image_ids.begin(), image_ids.end()) > image_ids_.front());
 
-    beginResetModel();
-    for (size_t i = 0; i < image_ids.size(); ++i)
+    if (can_insert_at_front)
     {
-        full_image_instances_.emplace(image_ids[i], new ImageInstance(dataset_ids[i], image_ids[i], paths[i], -1, this));
+        const int count = static_cast<int>(image_ids.size());
+        const int previous_last_index = last_index_;
+        beginInsertRows(QModelIndex(), 0, count - 1);
+        for (size_t i = 0; i < image_ids.size(); ++i)
+        {
+            full_image_instances_.emplace(image_ids[i],
+                                          new ImageInstance(dataset_ids[i], image_ids[i], paths[i], -1, this));
+        }
+        image_ids_.insert(image_ids_.begin(), image_ids.rbegin(), image_ids.rend());
+        endInsertRows();
+        if (previous_last_index >= 0)
+        {
+            setLastIndex(previous_last_index + count);
+        }
     }
-    if (is_filtered_)
+    else
     {
-        filtered_image_ids_.insert(filtered_image_ids_.end(), image_ids.begin(), image_ids.end());
-    }
-    rebuildImageIds();
-    endResetModel();
+        const std::vector<int64_t> selected_image_ids = getSelectedImagesId();
+        const int64_t              current_image_id   = getCurrentImageId();
 
-    restoreSelection(selected_image_ids, current_image_id);
+        beginResetModel();
+        for (size_t i = 0; i < image_ids.size(); ++i)
+        {
+            full_image_instances_.emplace(image_ids[i],
+                                          new ImageInstance(dataset_ids[i], image_ids[i], paths[i], -1, this));
+        }
+        if (is_filtered_)
+        {
+            filtered_image_ids_.insert(filtered_image_ids_.end(), image_ids.begin(), image_ids.end());
+        }
+        rebuildImageIds();
+        endResetModel();
+
+        restoreSelection(selected_image_ids, current_image_id);
+    }
 
     emit statsChanged();
     return true;
@@ -426,6 +509,29 @@ bool ImageInstancesListModel::addImages(const int64_t dataset_id, const QString 
     }
     std::vector<QString> paths = getImagePaths(image_idr);
     return addImages(dataset_id, paths, image_ids);
+}
+
+void ImageInstancesListModel::refreshModelFromMemory()
+{
+    if (is_filtered_)
+    {
+        // A deferred import only uses this path when no global filter is active.
+        // If a stale filter remains, restoring the unfiltered model is the only
+        // correct representation without reapplying its predicate.
+        clearFilter();
+        return;
+    }
+
+    const std::vector<int64_t> selected_image_ids = getSelectedImagesId();
+    const int64_t              current_image_id   = getCurrentImageId();
+
+    beginResetModel();
+    rebuildImageIds();
+    endResetModel();
+
+    restoreSelection(selected_image_ids, current_image_id);
+    emit statsChanged();
+    emit currentImageChanged();
 }
 
 bool ImageInstancesListModel::updateImagesDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id)
@@ -875,44 +981,47 @@ void ImageInstancesListModel::addImagesLabelIds(const std::vector<int64_t> &imag
                                                 const std::vector<int64_t> &label_ids)
 {
     std::map<int64_t, std::vector<int64_t>> images_label_ids;
-    for (size_t i = 0; i < image_ids.size(); ++i)
+    const size_t count = std::min(image_ids.size(), label_ids.size());
+    for (size_t i = 0; i < count; ++i)
     {
-        const int64_t image_id = image_ids[i];
-        if (images_label_ids.find(image_id) == images_label_ids.end())
-        {
-            images_label_ids[image_id] = std::vector<int64_t>();
-            images_label_ids[image_id].reserve(image_ids.size());
-        }
-        images_label_ids[image_id].push_back(label_ids[i]);
+        images_label_ids[image_ids[i]].push_back(label_ids[i]);
     }
+    std::vector<int64_t> changed_image_ids;
+    changed_image_ids.reserve(images_label_ids.size());
     for (const auto &[image_id, image_label_ids] : images_label_ids)
     {
         ImageInstance *image_instance = getImageInstance(image_id);
         if (image_instance)
         {
             image_instance->addLabelIds(image_label_ids);
-            notifyHasLabelsChanged(image_id);
+            changed_image_ids.push_back(image_id);
         }
     }
+    notifyImageRowsChanged(changed_image_ids, {HasLabelsRole});
 }
 
 void ImageInstancesListModel::addImagesLabelIds(const std::vector<int64_t>              &image_ids,
                                                 const std::vector<std::vector<int64_t>> &label_ids)
 {
-    for (size_t i = 0; i < image_ids.size(); ++i)
+    const size_t count = std::min(image_ids.size(), label_ids.size());
+    std::vector<int64_t> changed_image_ids;
+    changed_image_ids.reserve(count);
+    for (size_t i = 0; i < count; ++i)
     {
         const int64_t  image_id       = image_ids[i];
         ImageInstance *image_instance = getImageInstance(image_id);
         if (image_instance)
         {
             image_instance->addLabelIds(label_ids[i]);
-            notifyHasLabelsChanged(image_id);
+            changed_image_ids.push_back(image_id);
         }
     }
+    notifyImageRowsChanged(changed_image_ids, {HasLabelsRole});
 }
 
 void ImageInstancesListModel::setImagesLabelIds(const std::vector<int64_t>              &image_ids,
-                                                const std::vector<std::vector<int64_t>> &label_ids)
+                                                const std::vector<std::vector<int64_t>> &label_ids,
+                                                const bool notify_model)
 {
     for (auto &[_, image_instance] : full_image_instances_)
     {
@@ -932,7 +1041,7 @@ void ImageInstancesListModel::setImagesLabelIds(const std::vector<int64_t>      
         }
     }
 
-    if (rowCount() > 0)
+    if (notify_model && rowCount() > 0)
     {
         emit dataChanged(index(0), index(rowCount() - 1), {HasLabelsRole});
     }
@@ -942,46 +1051,38 @@ void ImageInstancesListModel::deleteImagesLabelIds(const std::vector<int64_t> &i
                                                    const std::vector<int64_t> &label_ids)
 {
     std::map<int64_t, std::vector<int64_t>> images_label_ids;
-    for (size_t i = 0; i < image_ids.size(); ++i)
+    const size_t count = std::min(image_ids.size(), label_ids.size());
+    for (size_t i = 0; i < count; ++i)
     {
-        const int64_t image_id = image_ids[i];
-        if (images_label_ids.find(image_id) == images_label_ids.end())
-        {
-            images_label_ids[image_id] = std::vector<int64_t>();
-            images_label_ids[image_id].reserve(image_ids.size());
-        }
-        images_label_ids[image_id].push_back(label_ids[i]);
+        images_label_ids[image_ids[i]].push_back(label_ids[i]);
     }
+
+    std::vector<int64_t> changed_image_ids;
+    changed_image_ids.reserve(images_label_ids.size());
     for (const auto &[image_id, image_label_ids] : images_label_ids)
     {
         ImageInstance *image_instance = getImageInstance(image_id);
-        if (image_instance)
+        if (image_instance != nullptr)
         {
             image_instance->removeLabelIds(image_label_ids);
-            notifyHasLabelsChanged(image_id);
+            changed_image_ids.push_back(image_id);
         }
     }
+    notifyImageRowsChanged(changed_image_ids, {HasLabelsRole});
 }
 
-void ImageInstancesListModel::notifyHasLabelsChanged(int64_t image_id)
+void ImageInstancesListModel::notifyImageRowsChanged(const std::vector<int64_t> &image_ids, const QList<int> &roles)
 {
-    auto it = std::find(image_ids_.begin(), image_ids_.end(), image_id);
-    if (it != image_ids_.end())
+    if (image_ids.empty() || image_ids_.empty())
     {
-        int         row = std::distance(image_ids_.begin(), it);
-        QModelIndex idx = index(row, 0);
-        emit        dataChanged(idx, idx, {HasLabelsRole});
+        return;
     }
-}
 
-void ImageInstancesListModel::notifyImageLabelClassChanged(int64_t image_id)
-{
-    auto it = std::find(image_ids_.begin(), image_ids_.end(), image_id);
-    if (it != image_ids_.end())
+    const std::vector<int> changed_rows = findRowsByImageIds(image_ids);
+    const std::vector<std::pair<int, int>> ranges = mergeConsecutiveRanges(changed_rows);
+    for (const auto &[row, count] : ranges)
     {
-        const int   row = static_cast<int>(std::distance(image_ids_.begin(), it));
-        QModelIndex idx = index(row, 0);
-        emit        dataChanged(idx, idx, {ImageLabelClassIdRole, HasLabelsRole});
+        emit dataChanged(index(row), index(row + count - 1), roles);
     }
 }
 
@@ -1092,8 +1193,9 @@ bool ImageInstancesListModel::setImageLabelClassIds(const std::vector<int64_t> &
             continue;
         }
         image_instance->setImageLabelClassId(valid_label_class_ids[i]);
-        notifyImageLabelClassChanged(valid_image_ids[i]);
     }
+
+    notifyImageRowsChanged(valid_image_ids, {ImageLabelClassIdRole, HasLabelsRole});
 
     if (std::find(valid_image_ids.begin(), valid_image_ids.end(), getCurrentImageId()) != valid_image_ids.end())
     {

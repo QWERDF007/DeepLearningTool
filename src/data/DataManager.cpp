@@ -83,6 +83,7 @@ std::map<QString, QString> parseLabelClassGroupMap(const QVariantMap &groups)
 struct DataManager::PendingImportTask
 {
     DataIO *importer{nullptr};
+    QElapsedTimer elapsed_timer;
 
     int64_t dataset_id{0};
     int     data_format{-1};
@@ -93,6 +94,7 @@ struct DataManager::PendingImportTask
     std::map<QString, QString> label_class_group_map;
     std::set<int64_t>          imported_image_id_set;
     std::vector<int64_t>       imported_image_ids;
+    std::vector<int64_t>       deferred_dataset_image_ids;
     std::map<int64_t, int64_t> first_polygon_class_by_image_id;
     std::map<int64_t, int64_t> first_anomaly_polygon_class_by_image_id;
     std::map<int64_t, int64_t> folder_class_by_image_id;
@@ -107,6 +109,9 @@ struct DataManager::PendingImportTask
     int     skipped_labels{0};
     QString first_error_message;
     bool    fatal_error{false};
+    bool    deferred_ui_refresh{false};
+    bool    deferred_image_model_refresh{false};
+    bool    deferred_label_model_refresh{false};
 };
 
 DataManager::DataManager(const int method, dltool::database::ProjectDataBase *database, const QString &project_dir,
@@ -329,7 +334,7 @@ void DataManager::handleAsyncLabelsLoaded(std::shared_ptr<std::vector<LoadedLabe
     spdlog::info("后台加载项目标注完成: {} 个标注, 耗时 {} ms", label_instances_->totalCount(), elapsed_ms);
 }
 
-void DataManager::rebuildLabelRelations()
+void DataManager::rebuildLabelRelations(const bool notify_image_model)
 {
     if (image_instances_ == nullptr || label_instances_ == nullptr || datasets_ == nullptr)
     {
@@ -346,7 +351,7 @@ void DataManager::rebuildLabelRelations()
         image_label_class_ids.push_back(image_instances_->getImageLabelClassId(image_id));
     }
 
-    image_instances_->setImagesLabelIds(image_ids, images_label_ids);
+    image_instances_->setImagesLabelIds(image_ids, images_label_ids, notify_image_model);
     datasets_->setStats(dataset_ids, image_ids, images_label_ids, image_label_class_ids);
 
     if (image_labels_list_ != nullptr)
@@ -905,6 +910,7 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
     pending_import_task_->dataset_id            = dataset_id;
     pending_import_task_->data_format           = data_format;
     pending_import_task_->label_class_group_map = label_class_groups;
+    pending_import_task_->elapsed_timer.start();
 
     qRegisterMetaType<std::vector<QString>>("std::vector<QString>");
     qRegisterMetaType<std::vector<int64_t>>("std::vector<int64_t>");
@@ -1494,10 +1500,12 @@ bool DataManager::addLabel(const int64_t image_id, const int64_t label_class_id,
 }
 
 bool DataManager::addLabelsInternal(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
-                                    const std::vector<QVariantMap> &data, QString *err_msg)
+                                    const std::vector<QVariantMap> &data, QString *err_msg,
+                                    const bool refresh_dependent_models)
 {
     std::vector<int64_t> label_ids;
-    if (!label_instances_->tryAddLabels(label_ids, image_ids, label_class_ids, data, err_msg))
+    if (!label_instances_->tryAddLabels(label_ids, image_ids, label_class_ids, data, err_msg,
+                                        !refresh_dependent_models))
     {
         return false;
     }
@@ -1505,6 +1513,12 @@ bool DataManager::addLabelsInternal(const std::vector<int64_t> &image_ids, const
     {
         labels_changed_during_loading_ = true;
     }
+
+    if (!refresh_dependent_models)
+    {
+        return true;
+    }
+
     image_instances_->addImagesLabelIds(image_ids, label_ids);
     image_labels_list_->addLabels(image_ids, label_ids);
     image_labels_table_->addLabels(image_ids, label_ids);
@@ -1794,9 +1808,6 @@ void DataManager::handleDataBatchReady(int64_t dataset_id, std::vector<QString> 
         return;
     }
 
-    QMetaObject::invokeMethod(
-        ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection, Q_ARG(int, spdlog::level::info),
-        Q_ARG(QString, QString("已写入 %1 个图像, %2 个标注").arg(task.imported_images).arg(task.imported_labels)));
 }
 
 bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString> &image_paths,
@@ -1927,7 +1938,8 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
             pending_it->second.push_back(image_path);
         }
 
-        if (!new_image_paths.empty() && !image_instances_->addImages(task.dataset_id, new_image_paths, image_ids))
+        if (!new_image_paths.empty()
+            && !image_instances_->addImages(task.dataset_id, new_image_paths, image_ids, true))
         {
             err_msg = QString("添加图像失败，当前批次已跳过。已导入 %1 个图像, %2 个标注")
                           .arg(task.imported_images)
@@ -1942,9 +1954,9 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
         }
 
         task.imported_images += image_ids.size();
-
-        std::vector<int64_t> dataset_ids(image_ids.size(), task.dataset_id);
-        datasets_->addImages(dataset_ids, image_ids);
+        task.deferred_ui_refresh = task.deferred_ui_refresh || !image_ids.empty();
+        task.deferred_image_model_refresh = task.deferred_image_model_refresh || !image_ids.empty();
+        task.deferred_dataset_image_ids.insert(task.deferred_dataset_image_ids.end(), image_ids.begin(), image_ids.end());
 
         for (size_t i = 0; i < new_image_paths.size(); ++i)
         {
@@ -2035,7 +2047,8 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
     if (!batch_label_image_ids.empty())
     {
         QString label_err_msg;
-        if (!addLabelsInternal(batch_label_image_ids, batch_label_class_ids, batch_label_data, &label_err_msg))
+        if (!addLabelsInternal(batch_label_image_ids, batch_label_class_ids, batch_label_data, &label_err_msg,
+                               false))
         {
             err_msg = QString("添加标注失败，当前标注批次已跳过。待写入标注 %1 个").arg(batch_label_image_ids.size());
             if (!label_err_msg.isEmpty())
@@ -2045,11 +2058,8 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
             return false;
         }
         task.imported_labels += batch_label_image_ids.size();
-    }
-    else
-    {
-        updateDatasetsStats();
-        image_info_->updateLabelInfo();
+        task.deferred_ui_refresh = true;
+        task.deferred_label_model_refresh = true;
     }
 
     if (!batch_image_level_class_updates.empty())
@@ -2071,11 +2081,7 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
         if (!image_level_image_ids.empty()
             && image_instances_->setImageLabelClassIds(image_level_image_ids, image_level_class_ids))
         {
-            updateDatasetsStats();
-            if (image_info_ != nullptr)
-            {
-                image_info_->updateLabelInfo();
-            }
+            task.deferred_ui_refresh = true;
         }
     }
 
@@ -2117,9 +2123,6 @@ void DataManager::handleImportFinished(bool success, std::vector<int64_t> image_
                        .arg(task.failed_images)
                        .arg(task.failed_labels);
     }
-    spdlog::info("数据导入完成: 图像={}, 标注={}, 跳过标注={}, 写入失败批次={}, 失败图像={}, 失败标注={}",
-                 task.imported_images, task.imported_labels, task.skipped_labels, task.failed_batches,
-                 task.failed_images, task.failed_labels);
     finishBatchedImport(true, message);
 }
 
@@ -2127,6 +2130,56 @@ void DataManager::finishBatchedImport(bool success, const QString &message)
 {
     DataIO    *importer     = pending_import_task_ ? pending_import_task_->importer : nullptr;
     const bool has_warnings = success && pending_import_task_ && pending_import_task_->failed_batches > 0;
+    const bool refresh_dependent_models
+        = pending_import_task_ != nullptr && pending_import_task_->deferred_ui_refresh;
+    const bool refresh_image_model
+        = pending_import_task_ != nullptr && pending_import_task_->deferred_image_model_refresh;
+    const bool refresh_label_model
+        = pending_import_task_ != nullptr && pending_import_task_->deferred_label_model_refresh;
+
+    if (pending_import_task_ != nullptr && datasets_ != nullptr
+        && !pending_import_task_->deferred_dataset_image_ids.empty())
+    {
+        const std::vector<int64_t> dataset_ids(pending_import_task_->deferred_dataset_image_ids.size(),
+                                               pending_import_task_->dataset_id);
+        datasets_->addImages(dataset_ids, pending_import_task_->deferred_dataset_image_ids);
+    }
+
+    // Import batches only write their primary data.  Rebuild the derived image-label
+    // relationships, dataset statistics and current-image models once at the end so
+    // a large project does not perform the same full-project work for every batch.
+    if (refresh_dependent_models)
+    {
+        rebuildLabelRelations(!refresh_image_model);
+        if (global_filter_ != nullptr && global_filter_->isActive())
+        {
+            global_filter_->refresh();
+        }
+        else
+        {
+            if (refresh_image_model && image_instances_ != nullptr)
+            {
+                image_instances_->refreshModelFromMemory();
+            }
+            if (refresh_label_model && label_instances_ != nullptr)
+            {
+                label_instances_->refreshModelFromMemory();
+            }
+        }
+    }
+
+    const qint64 elapsed_ms = pending_import_task_ != nullptr && pending_import_task_->elapsed_timer.isValid()
+                                 ? pending_import_task_->elapsed_timer.elapsed()
+                                 : 0;
+    const QString completed_message = QString("%1，耗时 %2 ms").arg(message).arg(elapsed_ms);
+    if (success)
+    {
+        spdlog::info("{}", completed_message.toUtf8().constData());
+    }
+    else
+    {
+        spdlog::error("{}", completed_message.toUtf8().constData());
+    }
 
     const int level = success ? spdlog::level::info : spdlog::level::err;
     if (success)
@@ -2135,15 +2188,8 @@ void DataManager::finishBatchedImport(bool success, const QString &message)
                                   Q_ARG(int, 100));
     }
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection, Q_ARG(int, level),
-                              Q_ARG(QString, message));
+                              Q_ARG(QString, completed_message));
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
-
-    if (success && has_warnings)
-        ui::SignalHelper::notifyWarn(QString("导入完成"), message);
-    else if (success)
-        ui::SignalHelper::notifySuccess(QString("导入完成"), message);
-    else
-        ui::SignalHelper::notifyError(QString("导入失败"), message);
 
     if (importer)
     {
@@ -2151,7 +2197,23 @@ void DataManager::finishBatchedImport(bool success, const QString &message)
     }
     pending_import_task_.reset();
     import_running_ = false;
-    emit dataImportFinished(success, message);
+    emit dataImportFinished(success, completed_message);
+
+    // Send the toast after the final model refresh and dataImportFinished signal
+    // have been delivered.  This makes the completion notification correspond to
+    // the state already visible in QML rather than only to parsing completion.
+    QMetaObject::invokeMethod(
+        ui::SignalHelper::getInstance(),
+        [success, has_warnings, completed_message]()
+        {
+            if (success && has_warnings)
+                ui::SignalHelper::notifyWarn(QString("导入完成"), completed_message);
+            else if (success)
+                ui::SignalHelper::notifySuccess(QString("导入完成"), completed_message);
+            else
+                ui::SignalHelper::notifyError(QString("导入失败"), completed_message);
+        },
+        Qt::QueuedConnection);
 }
 
 void DataManager::initializeQmlEngine(QQmlApplicationEngine *engine)

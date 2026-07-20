@@ -112,11 +112,11 @@ public:
 
     bool tryAddLabels(std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
                       const std::vector<int64_t> &label_class_ids, const std::vector<QVariantMap> &data,
-                      QString *err_msg = nullptr);
+                      QString *err_msg = nullptr, bool defer_model_update = false);
 
     void addLabels(std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
                    const std::vector<int64_t> &label_class_ids, const std::vector<QVariantMap> &data,
-                   QString *err_msg = nullptr);
+                   QString *err_msg = nullptr, bool defer_model_update = false);
 
     void updateLabelsData(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
                           const std::vector<QVariantMap> &data);
@@ -187,6 +187,11 @@ public:
     {
         return static_cast<int>(full_label_instances_.size());
     }
+
+    /**
+     * @brief Publish labels accumulated with defer_model_update to QML in one reset.
+     */
+    void refreshModelFromMemory();
 
     // NEW: Access to unfiltered data for statistics
     const std::map<int64_t, LabelInstance *> &getAllLabelInstances() const

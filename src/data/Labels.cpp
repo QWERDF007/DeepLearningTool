@@ -176,7 +176,8 @@ LabelInstance *LabelInstancesListModel::getLabelInstance(const int64_t label_id)
 
 bool LabelInstancesListModel::tryAddLabels(std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
                                            const std::vector<int64_t>     &label_class_ids,
-                                           const std::vector<QVariantMap> &data, QString *err_msg)
+                                           const std::vector<QVariantMap> &data, QString *err_msg,
+                                           const bool defer_model_update)
 {
     label_ids.clear();
 
@@ -219,7 +220,7 @@ bool LabelInstancesListModel::tryAddLabels(std::vector<int64_t> &label_ids, cons
         }
     }
 
-    addLabels(label_ids, image_ids, label_class_ids, data, err_msg);
+    addLabels(label_ids, image_ids, label_class_ids, data, err_msg, defer_model_update);
     if (label_ids.size() != image_ids.size())
     {
         const QString message
@@ -238,7 +239,8 @@ bool LabelInstancesListModel::tryAddLabels(std::vector<int64_t> &label_ids, cons
 
 void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
                                         const std::vector<int64_t>     &label_class_ids,
-                                        const std::vector<QVariantMap> &data, QString *err_msg)
+                                        const std::vector<QVariantMap> &data, QString *err_msg,
+                                        const bool defer_model_update)
 {
     label_ids.clear();
 
@@ -362,6 +364,12 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
         full_label_instances_[label_ids[i]]
             = new LabelInstance(label_ids[i], image_ids[i], label_class_ids[i], std::move(labels_data[i]), this);
     }
+
+    if (defer_model_update)
+    {
+        return;
+    }
+
     std::vector<int64_t> sorted_label_ids(label_ids.begin(), label_ids.end());
     std::reverse(sorted_label_ids.begin(), sorted_label_ids.end());
     beginInsertRows(QModelIndex(), 0, static_cast<int>(sorted_label_ids.size()) - 1);
@@ -369,6 +377,49 @@ void LabelInstancesListModel::addLabels(std::vector<int64_t> &label_ids, const s
     endInsertRows();
     // TODO: 更新选中状态
     spdlog::info("添加 {} 个标注成功", label_ids.size());
+}
+
+void LabelInstancesListModel::refreshModelFromMemory()
+{
+    if (is_filtered_)
+    {
+        // GlobalFilter refreshes active filters itself.  This branch only handles
+        // a stale filtered view after filters were cleared during an import.
+        clearFilter();
+        return;
+    }
+
+    const std::vector<int64_t> selected_label_ids = getSelectedLabelIds();
+
+    beginResetModel();
+    label_ids_.clear();
+    label_ids_.reserve(full_label_instances_.size());
+    for (const auto &[label_id, _] : full_label_instances_)
+    {
+        label_ids_.push_back(label_id);
+    }
+    std::reverse(label_ids_.begin(), label_ids_.end());
+    endResetModel();
+
+    if (selection_ != nullptr)
+    {
+        selection_->clear();
+        bool has_selection = false;
+        for (const int64_t label_id : selected_label_ids)
+        {
+            const auto it = std::find(label_ids_.begin(), label_ids_.end(), label_id);
+            if (it == label_ids_.end())
+            {
+                continue;
+            }
+
+            const int row = static_cast<int>(std::distance(label_ids_.begin(), it));
+            selection_->select(index(row, 0), has_selection ? QItemSelectionModel::Select
+                                                            : QItemSelectionModel::ClearAndSelect);
+            has_selection = true;
+        }
+    }
+    setLastIndex(-1);
 }
 
 void LabelInstancesListModel::updateLabelsData(const std::vector<int64_t>     &label_ids,

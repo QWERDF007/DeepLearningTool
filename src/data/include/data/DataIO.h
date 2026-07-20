@@ -32,7 +32,10 @@ class DATA_API DataIO : public QObject
     Q_OBJECT
 
 public:
-    static constexpr std::size_t ImportBatchImageCount = 1000;
+    // Each batch is synchronously committed on the GUI thread so the background
+    // parser cannot outrun it.  Keep the batch bounded to let the event loop paint
+    // and process input between commits for projects with many labels.
+    static constexpr std::size_t ImportBatchImageCount = 256;
 
     explicit DataIO(dltool::database::ProjectDataBase *database = nullptr, QObject *parent = nullptr);
     ~DataIO() override;

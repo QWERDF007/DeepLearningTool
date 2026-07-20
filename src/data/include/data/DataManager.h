@@ -141,6 +141,17 @@ public:
         return dataset_deletion_running_;
     }
 
+    /**
+     * @brief Whether a batched data import is currently writing data on the GUI thread.
+     *
+     * Consumers which derive expensive, project-wide statistics from model change
+     * notifications use this to defer their work until dataImportFinished.
+     */
+    bool importRunning() const
+    {
+        return import_running_;
+    }
+
     Q_INVOKABLE QList<QString> getAllDatasetsName() const;
     Q_INVOKABLE std::vector<int64_t> getAllDatasetIds() const;
     Q_INVOKABLE std::vector<int64_t> getAllLabelClassIds() const;
@@ -252,7 +263,7 @@ private:
                                  const QString &err_msg, qint64 elapsed_ms);
     void handleAsyncDatasetDeletion(const std::vector<int64_t> &dataset_ids, bool success, const QString &err_msg,
                                     qint64 elapsed_ms);
-    void rebuildLabelRelations();
+    void rebuildLabelRelations(bool notify_image_model = true);
 
     void updateDatasetsStats();
 
@@ -268,7 +279,8 @@ private:
     void startImportData(const int64_t dataset_id, const int data_format, const QString &image_dir,
                          const QString &data_dir, const std::map<QString, QString> &label_class_groups);
     bool addLabelsInternal(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
-                           const std::vector<QVariantMap> &data, QString *err_msg = nullptr);
+                           const std::vector<QVariantMap> &data, QString *err_msg = nullptr,
+                           bool refresh_dependent_models = true);
     bool writeImportBatch(int64_t dataset_id, const std::vector<QString> &image_paths,
                           const std::map<QString, QString> &label_class_info, const std::vector<ImportedLabel> &labels,
                           QString &err_msg);
