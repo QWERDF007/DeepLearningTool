@@ -2,6 +2,7 @@
 
 #include "data/DataManager.h"
 #include "data/Images.h"
+#include "data/Labels.h"
 
 #include <QAbstractItemModel>
 #include <QDir>
@@ -53,6 +54,8 @@ std::vector<CustomFilterModule::ConditionSpec> CustomFilterModule::availableCond
         {static_cast<int64_t>(Condition::DuplicateFileName), QStringLiteral("重复文件名")},
         {static_cast<int64_t>(Condition::DuplicatePath), QStringLiteral("重复路径")},
         {static_cast<int64_t>(Condition::UniqueFileName), QStringLiteral("不重复文件名")},
+        {static_cast<int64_t>(Condition::ImageSearchResult), QStringLiteral("图像搜索结果")},
+        {static_cast<int64_t>(Condition::LabelSearchResult), QStringLiteral("标注搜索结果")},
     };
 }
 
@@ -63,27 +66,80 @@ void CustomFilterModule::prepare(const std::vector<int64_t> &image_ids)
 
 void CustomFilterModule::setCriteria(const std::vector<int64_t> &condition_ids)
 {
-    selected_condition_ids_.clear();
-    selected_condition_ids_.insert(condition_ids.begin(), condition_ids.end());
+    std::unordered_set<int64_t> normalized_ids;
+    for (const int64_t condition_id : condition_ids)
+    {
+        if (isRegularCondition(condition_id)
+            || (isImageSearchCondition(condition_id) && hasImageSearchResults())
+            || (isLabelSearchCondition(condition_id) && hasLabelSearchResults()))
+        {
+            normalized_ids.insert(condition_id);
+        }
+    }
+
+    const bool was_enabled = enabled_;
+    const bool changed     = selected_condition_ids_ != normalized_ids || empty_selection_enabled_;
+    if (!changed)
+    {
+        return;
+    }
+
+    selected_condition_ids_    = std::move(normalized_ids);
+    empty_selection_enabled_   = false;
+    if (selected_condition_ids_.empty())
+    {
+        enabled_ = false;
+    }
+
     emit criteriaChanged();
+    if (was_enabled != enabled_)
+    {
+        emit enabledChanged(enabled_);
+    }
 }
 
 void CustomFilterModule::clear()
 {
-    if (!selected_condition_ids_.empty())
+    const bool was_enabled = enabled_;
+    const bool changed     = !selected_condition_ids_.empty() || !image_search_result_image_ids_.empty()
+        || !label_search_result_label_ids_.empty() || !label_search_result_image_ids_.empty() || enabled_
+        || empty_selection_enabled_;
+    if (!changed)
     {
-        selected_condition_ids_.clear();
-        emit criteriaChanged();
+        return;
+    }
+
+    selected_condition_ids_.clear();
+    image_search_result_image_ids_.clear();
+    label_search_result_label_ids_.clear();
+    label_search_result_image_ids_.clear();
+    enabled_                 = false;
+    empty_selection_enabled_ = false;
+
+    emit criteriaChanged();
+    if (was_enabled != enabled_)
+    {
+        emit enabledChanged(enabled_);
     }
 }
 
 void CustomFilterModule::setEnabled(bool enabled)
 {
-    if (enabled_ != enabled)
+    if (enabled_ == enabled)
     {
-        enabled_ = enabled;
-        emit enabledChanged(enabled);
+        return;
     }
+
+    enabled_ = enabled;
+    if (enabled_)
+    {
+        empty_selection_enabled_ = selected_condition_ids_.empty();
+    }
+    else
+    {
+        empty_selection_enabled_ = false;
+    }
+    emit enabledChanged(enabled_);
 }
 
 bool CustomFilterModule::isEnabled() const
@@ -134,21 +190,250 @@ bool CustomFilterModule::passes(int64_t image_id) const
 
 void CustomFilterModule::selectAll()
 {
-    selected_condition_ids_.clear();
+    std::unordered_set<int64_t> all_condition_ids;
     for (const ConditionSpec &condition : availableConditions())
     {
-        selected_condition_ids_.insert(condition.id);
+        if (isRegularCondition(condition.id)
+            || (isImageSearchCondition(condition.id) && hasImageSearchResults())
+            || (isLabelSearchCondition(condition.id) && hasLabelSearchResults()))
+        {
+            all_condition_ids.insert(condition.id);
+        }
     }
+
+    const bool was_enabled = enabled_;
+    const bool changed = selected_condition_ids_ != all_condition_ids || !enabled_ || empty_selection_enabled_;
+    if (!changed)
+    {
+        return;
+    }
+
+    selected_condition_ids_  = std::move(all_condition_ids);
+    enabled_                 = true;
+    empty_selection_enabled_ = false;
     emit criteriaChanged();
+    if (was_enabled != enabled_)
+    {
+        emit enabledChanged(enabled_);
+    }
 }
 
 void CustomFilterModule::deselectAll()
 {
-    if (!selected_condition_ids_.empty())
+    const bool was_enabled = enabled_;
+    const bool changed     = !selected_condition_ids_.empty() || !enabled_ || !empty_selection_enabled_;
+    if (!changed)
     {
-        selected_condition_ids_.clear();
-        emit criteriaChanged();
+        return;
     }
+
+    selected_condition_ids_.clear();
+    enabled_                 = true;
+    empty_selection_enabled_ = true;
+    emit criteriaChanged();
+    if (was_enabled != enabled_)
+    {
+        emit enabledChanged(enabled_);
+    }
+}
+
+void CustomFilterModule::setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter)
+{
+    const bool was_enabled = enabled_;
+    const std::unordered_set<int64_t> result_ids(image_ids.begin(), image_ids.end());
+    bool changed = image_search_result_image_ids_ != result_ids;
+    image_search_result_image_ids_ = result_ids;
+
+    const int64_t condition_id = static_cast<int64_t>(Condition::ImageSearchResult);
+    if (enable_filter && !image_search_result_image_ids_.empty())
+    {
+        changed |= selected_condition_ids_.insert(condition_id).second;
+        if (!enabled_)
+        {
+            enabled_ = true;
+            changed  = true;
+        }
+        empty_selection_enabled_ = false;
+    }
+    else
+    {
+        changed |= selected_condition_ids_.erase(condition_id) > 0;
+        updateEnabledAfterRemovingSearchCondition();
+    }
+
+    if (!changed)
+    {
+        return;
+    }
+
+    emit criteriaChanged();
+    if (was_enabled != enabled_)
+    {
+        emit enabledChanged(enabled_);
+    }
+}
+
+void CustomFilterModule::clearImageSearchResults()
+{
+    const bool was_enabled = enabled_;
+    const bool removed_condition
+        = selected_condition_ids_.erase(static_cast<int64_t>(Condition::ImageSearchResult)) > 0;
+    const bool changed = !image_search_result_image_ids_.empty() || removed_condition;
+    image_search_result_image_ids_.clear();
+    updateEnabledAfterRemovingSearchCondition();
+
+    if (!changed && was_enabled == enabled_)
+    {
+        return;
+    }
+
+    emit criteriaChanged();
+    if (was_enabled != enabled_)
+    {
+        emit enabledChanged(enabled_);
+    }
+}
+
+bool CustomFilterModule::hasImageSearchResults() const
+{
+    return !image_search_result_image_ids_.empty();
+}
+
+int CustomFilterModule::imageSearchResultCount() const
+{
+    return static_cast<int>(image_search_result_image_ids_.size());
+}
+
+void CustomFilterModule::setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter)
+{
+    const bool was_enabled = enabled_;
+    const std::unordered_set<int64_t> result_ids(label_ids.begin(), label_ids.end());
+    bool changed = label_search_result_label_ids_ != result_ids;
+    label_search_result_label_ids_ = result_ids;
+    rebuildLabelSearchImageIds();
+
+    const int64_t condition_id = static_cast<int64_t>(Condition::LabelSearchResult);
+    if (enable_filter && !label_search_result_label_ids_.empty())
+    {
+        changed |= selected_condition_ids_.insert(condition_id).second;
+        if (!enabled_)
+        {
+            enabled_ = true;
+            changed  = true;
+        }
+        empty_selection_enabled_ = false;
+    }
+    else
+    {
+        changed |= selected_condition_ids_.erase(condition_id) > 0;
+        updateEnabledAfterRemovingSearchCondition();
+    }
+
+    if (!changed)
+    {
+        return;
+    }
+
+    emit criteriaChanged();
+    if (was_enabled != enabled_)
+    {
+        emit enabledChanged(enabled_);
+    }
+}
+
+void CustomFilterModule::clearLabelSearchResults()
+{
+    const bool was_enabled = enabled_;
+    const bool removed_condition
+        = selected_condition_ids_.erase(static_cast<int64_t>(Condition::LabelSearchResult)) > 0;
+    const bool changed
+        = !label_search_result_label_ids_.empty() || !label_search_result_image_ids_.empty() || removed_condition;
+    label_search_result_label_ids_.clear();
+    label_search_result_image_ids_.clear();
+    updateEnabledAfterRemovingSearchCondition();
+
+    if (!changed && was_enabled == enabled_)
+    {
+        return;
+    }
+
+    emit criteriaChanged();
+    if (was_enabled != enabled_)
+    {
+        emit enabledChanged(enabled_);
+    }
+}
+
+bool CustomFilterModule::hasLabelSearchResults() const
+{
+    return !label_search_result_label_ids_.empty();
+}
+
+int CustomFilterModule::labelSearchResultCount() const
+{
+    return static_cast<int>(label_search_result_label_ids_.size());
+}
+
+bool CustomFilterModule::passesLabel(int64_t label_id) const
+{
+    if (!enabled_ || !selected_condition_ids_.contains(static_cast<int64_t>(Condition::LabelSearchResult)))
+    {
+        return true;
+    }
+
+    if (label_search_result_label_ids_.contains(label_id))
+    {
+        return true;
+    }
+
+    DataManager *manager = dataManager();
+    if (manager == nullptr || manager->labelInstances() == nullptr)
+    {
+        return false;
+    }
+    return passesImageLevelCondition(manager->labelInstances()->getImageId(label_id));
+}
+
+bool CustomFilterModule::usesRegularConditions() const
+{
+    if (!enabled_)
+    {
+        return false;
+    }
+
+    for (const int64_t condition_id : selected_condition_ids_)
+    {
+        if (isRegularCondition(condition_id))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool CustomFilterModule::isRegularCondition(int64_t condition_id)
+{
+    switch (static_cast<Condition>(condition_id))
+    {
+    case Condition::DuplicateFileName:
+    case Condition::DuplicatePath:
+    case Condition::UniqueFileName:
+        return true;
+    case Condition::ImageSearchResult:
+    case Condition::LabelSearchResult:
+        return false;
+    }
+    return false;
+}
+
+bool CustomFilterModule::isImageSearchCondition(int64_t condition_id)
+{
+    return condition_id == static_cast<int64_t>(Condition::ImageSearchResult);
+}
+
+bool CustomFilterModule::isLabelSearchCondition(int64_t condition_id)
+{
+    return condition_id == static_cast<int64_t>(Condition::LabelSearchResult);
 }
 
 bool CustomFilterModule::passesCondition(int64_t condition_id, int64_t image_id) const
@@ -161,6 +446,23 @@ bool CustomFilterModule::passesCondition(int64_t condition_id, int64_t image_id)
         return hasDuplicatePath(image_id);
     case Condition::UniqueFileName:
         return hasUniqueFileName(image_id);
+    case Condition::ImageSearchResult:
+        return image_search_result_image_ids_.contains(image_id);
+    case Condition::LabelSearchResult:
+        return label_search_result_image_ids_.contains(image_id);
+    }
+    return false;
+}
+
+bool CustomFilterModule::passesImageLevelCondition(int64_t image_id) const
+{
+    for (const int64_t condition_id : selected_condition_ids_)
+    {
+        if ((isRegularCondition(condition_id) || isImageSearchCondition(condition_id))
+            && passesCondition(condition_id, image_id))
+        {
+            return true;
+        }
     }
     return false;
 }
@@ -173,7 +475,7 @@ bool CustomFilterModule::hasDuplicateFileName(int64_t image_id) const
         rebuildDuplicateCaches(dm && dm->imageInstances() ? dm->imageInstances()->getAllImageIds()
                                                           : std::vector<int64_t>{});
     }
-    return duplicate_file_name_image_ids_.find(image_id) != duplicate_file_name_image_ids_.end();
+    return duplicate_file_name_image_ids_.contains(image_id);
 }
 
 bool CustomFilterModule::hasDuplicatePath(int64_t image_id) const
@@ -184,7 +486,7 @@ bool CustomFilterModule::hasDuplicatePath(int64_t image_id) const
         rebuildDuplicateCaches(dm && dm->imageInstances() ? dm->imageInstances()->getAllImageIds()
                                                           : std::vector<int64_t>{});
     }
-    return duplicate_path_image_ids_.find(image_id) != duplicate_path_image_ids_.end();
+    return duplicate_path_image_ids_.contains(image_id);
 }
 
 bool CustomFilterModule::hasUniqueFileName(int64_t image_id) const
@@ -195,7 +497,7 @@ bool CustomFilterModule::hasUniqueFileName(int64_t image_id) const
         rebuildDuplicateCaches(dm && dm->imageInstances() ? dm->imageInstances()->getAllImageIds()
                                                           : std::vector<int64_t>{});
     }
-    return unique_file_name_image_ids_.find(image_id) != unique_file_name_image_ids_.end();
+    return unique_file_name_image_ids_.contains(image_id);
 }
 
 void CustomFilterModule::rebuildDuplicateCaches(const std::vector<int64_t> &image_ids) const
@@ -249,9 +551,32 @@ void CustomFilterModule::rebuildDuplicateCaches(const std::vector<int64_t> &imag
     duplicate_cache_valid_ = true;
 }
 
+void CustomFilterModule::rebuildLabelSearchImageIds()
+{
+    label_search_result_image_ids_.clear();
+
+    DataManager *manager = dataManager();
+    if (manager == nullptr || manager->labelInstances() == nullptr)
+    {
+        return;
+    }
+
+    const std::vector<int64_t> label_ids(label_search_result_label_ids_.begin(), label_search_result_label_ids_.end());
+    const auto image_ids = manager->labelInstances()->getImageIds(label_ids);
+    label_search_result_image_ids_.insert(image_ids.begin(), image_ids.end());
+}
+
 void CustomFilterModule::invalidateCaches()
 {
     duplicate_cache_valid_ = false;
+}
+
+void CustomFilterModule::updateEnabledAfterRemovingSearchCondition()
+{
+    if (selected_condition_ids_.empty() && !empty_selection_enabled_)
+    {
+        enabled_ = false;
+    }
 }
 
 } // namespace dltool::data

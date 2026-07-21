@@ -20,8 +20,6 @@ class DatasetFilterModule;
 class TagFilterModule;
 class LabelClassFilterModule;
 class ImageLabelClassFilterModule;
-class ImageSearchFilterModule;
-class LabelSearchFilterModule;
 class FilterModule;
 
 struct FilterCriteria
@@ -31,16 +29,12 @@ struct FilterCriteria
     std::unordered_set<int64_t> label_class_ids;
     std::unordered_set<int64_t> image_label_class_ids;
     std::unordered_set<int64_t> custom_condition_ids;
-    std::unordered_set<int64_t> image_search_ids;
-    std::unordered_set<int64_t> label_search_ids;
     QString                     file_name_text;
     bool                        dataset_inverted{false};
     bool                        tag_inverted{false};
     bool                        label_class_inverted{false};
     bool                        image_label_class_inverted{false};
     bool                        custom_condition_inverted{false};
-    bool                        image_search_inverted{false};
-    bool                        label_search_inverted{false};
 
     /**
      * @brief 检查过滤条件是否为空
@@ -49,10 +43,8 @@ struct FilterCriteria
     bool isEmpty() const
     {
         return dataset_ids.empty() && tag_ids.empty() && label_class_ids.empty() && image_label_class_ids.empty()
-            && custom_condition_ids.empty() && image_search_ids.empty() && label_search_ids.empty()
-            && file_name_text.isEmpty() && !dataset_inverted && !tag_inverted && !label_class_inverted
-            && !image_label_class_inverted && !custom_condition_inverted && !image_search_inverted
-            && !label_search_inverted;
+            && custom_condition_ids.empty() && file_name_text.isEmpty() && !dataset_inverted && !tag_inverted
+            && !label_class_inverted && !image_label_class_inverted && !custom_condition_inverted;
     }
 };
 
@@ -70,12 +62,6 @@ class GlobalFilter : public QObject
 
     Q_PROPERTY(bool isActive READ isActive NOTIFY filterStateChanged)
     Q_PROPERTY(int activeFilterCount READ activeFilterCount NOTIFY filterStateChanged)
-    Q_PROPERTY(bool hasImageSearchResults READ hasImageSearchResults NOTIFY filterStateChanged)
-    Q_PROPERTY(bool imageSearchFilterEnabled READ imageSearchFilterEnabled NOTIFY filterStateChanged)
-    Q_PROPERTY(int imageSearchResultCount READ imageSearchResultCount NOTIFY filterStateChanged)
-    Q_PROPERTY(bool hasLabelSearchResults READ hasLabelSearchResults NOTIFY filterStateChanged)
-    Q_PROPERTY(bool labelSearchFilterEnabled READ labelSearchFilterEnabled NOTIFY filterStateChanged)
-    Q_PROPERTY(int labelSearchResultCount READ labelSearchResultCount NOTIFY filterStateChanged)
     Q_PROPERTY(QString fileNameFilterText READ fileNameFilterText WRITE setFileNameFilterText NOTIFY filterStateChanged)
 
 public:
@@ -91,8 +77,6 @@ public:
         LabelClass,      // 标注类别过滤器（仅作用于标注实例）
         ImageLabelClass, // 标注类别过滤器（作用于图像：图像中包含选中类别实例则保留）
         Custom,          // 自定义条件过滤器
-        ImageSearch,
-        LabelSearch,
     };
     Q_ENUM(FilterType)
 
@@ -163,49 +147,16 @@ public:
 
     void refresh();
 
-    /**
-     * @brief 启用或禁用图像搜索过滤器
-     * @param enabled 是否启用；无搜索结果时会被强制设为 false
-     */
-    Q_INVOKABLE void setImageSearchFilterEnabled(bool enabled);
-
-    /**
-     * @brief 清除图像搜索结果并关闭搜索过滤
-     */
+    /// 清除图像搜索结果对应的自定义过滤条件。
     Q_INVOKABLE void clearImageSearchResults();
 
-    /**
-     * @brief 设置图像搜索结果并更新过滤条件
-     * @param image_ids 搜索命中的图像 ID 列表
-     * @param enable_filter 是否在设置结果后启用搜索过滤；列表为空时不会启用
-     */
+    /// 设置图像搜索结果，并按需启用“图像搜索结果”自定义条件。
     void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter);
 
-    Q_INVOKABLE void setLabelSearchFilterEnabled(bool enabled);
+    /// 清除标注搜索结果对应的自定义过滤条件。
     Q_INVOKABLE void clearLabelSearchResults();
+    /// 设置标注搜索结果，并按需启用“标注搜索结果”自定义条件。
     void             setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter);
-
-    /**
-     * @brief 是否存在图像搜索结果
-     * @return 有非空搜索结果时返回 true
-     */
-    bool hasImageSearchResults() const;
-
-    /**
-     * @brief 图像搜索过滤器是否已启用
-     * @return 过滤器处于启用状态时返回 true
-     */
-    bool imageSearchFilterEnabled() const;
-
-    /**
-     * @brief 获取图像搜索结果数量
-     * @return 当前搜索结果中的图像数量
-     */
-    int imageSearchResultCount() const;
-
-    bool hasLabelSearchResults() const;
-    bool labelSearchFilterEnabled() const;
-    int  labelSearchResultCount() const;
     QString fileNameFilterText() const
     {
         return file_name_filter_text_;
@@ -233,6 +184,8 @@ public:
 signals:
     void filterStateChanged(); // 过滤器状态改变信号
     void filterApplied();      // 过滤器应用完成信号
+    /// 图像/标注搜索结果的可用性变化，用于更新自定义过滤项的可用状态。
+    void customFilterSearchResultsChanged(bool has_image_search_results, bool has_label_search_results);
 
 private:
     /**
@@ -281,8 +234,6 @@ private:
     std::unique_ptr<LabelClassFilterModule>      label_class_filter_;       // 标注类别过滤模块
     std::unique_ptr<ImageLabelClassFilterModule> image_label_class_filter_; // 图像级标注类别过滤模块
     std::unique_ptr<CustomFilterModule>          custom_filter_;
-    std::unique_ptr<ImageSearchFilterModule>     image_search_filter_;
-    std::unique_ptr<LabelSearchFilterModule>     label_search_filter_;
 
     std::unordered_map<FilterType, FilterModule *> filter_modules_; // 过滤模块映射表
 

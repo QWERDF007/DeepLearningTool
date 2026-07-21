@@ -16,11 +16,13 @@ struct FilterItem
     int64_t id;      // 项目ID（数据集ID或标签ID）
     QString text;    // 显示文本
     bool    checked; // 是否选中
+    bool    enabled; // 是否可用
 
-    FilterItem(int64_t id_ = -1, const QString &text_ = QString(), bool checked_ = true)
+    FilterItem(int64_t id_ = -1, const QString &text_ = QString(), bool checked_ = true, bool enabled_ = true)
         : id(id_)
         , text(text_)
         , checked(checked_)
+        , enabled(enabled_)
     {
     }
 };
@@ -42,7 +44,8 @@ public:
     {
         IdRole = Qt::UserRole + 1, // 项目ID
         TextRole,                  // 显示文本
-        CheckedRole                // 选中状态
+        CheckedRole,               // 选中状态
+        EnabledRole                // 可用状态
     };
     Q_ENUM(Role)
 
@@ -67,7 +70,7 @@ public:
      * @param text 显示文本
      * @param checked 是否选中（默认true）
      */
-    Q_INVOKABLE void append(int64_t id, const QString &text, bool checked = true);
+    Q_INVOKABLE void append(int64_t id, const QString &text, bool checked = true, bool enabled = true);
 
     /**
      * @brief 获取所有选中项的ID列表
@@ -162,6 +165,7 @@ public:
     ~CustomFilterItemsModel() override = default;
 
     void populateFromCustomConditions();
+    void setSearchResultsAvailable(bool image_search_available, bool label_search_available);
 };
 
 } // namespace dltool::data

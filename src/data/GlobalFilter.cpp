@@ -5,11 +5,9 @@
 #include "data/DatasetFilterModule.h"
 #include "data/Datasets.h"
 #include "data/ImageLabelClassFilterModule.h"
-#include "data/ImageSearchFilterModule.h"
 #include "data/ImageTags.h"
 #include "data/Images.h"
 #include "data/LabelClassFilterModule.h"
-#include "data/LabelSearchFilterModule.h"
 #include "data/Labels.h"
 #include "data/TagFilterModule.h"
 
@@ -39,16 +37,12 @@ void GlobalFilter::initializeFilterModules(DataManager *data_manager)
     label_class_filter_       = std::make_unique<LabelClassFilterModule>(data_manager, this);
     image_label_class_filter_ = std::make_unique<ImageLabelClassFilterModule>(data_manager, this);
     custom_filter_            = std::make_unique<CustomFilterModule>(data_manager, this);
-    image_search_filter_      = std::make_unique<ImageSearchFilterModule>(data_manager, this);
-    label_search_filter_      = std::make_unique<LabelSearchFilterModule>(data_manager, this);
 
     filter_modules_[FilterType::Dataset]         = dataset_filter_.get();
     filter_modules_[FilterType::Tag]             = tag_filter_.get();
     filter_modules_[FilterType::LabelClass]      = label_class_filter_.get();
     filter_modules_[FilterType::ImageLabelClass] = image_label_class_filter_.get();
     filter_modules_[FilterType::Custom]          = custom_filter_.get();
-    filter_modules_[FilterType::ImageSearch]     = image_search_filter_.get();
-    filter_modules_[FilterType::LabelSearch]     = label_search_filter_.get();
 
     for (auto &[type, module] : filter_modules_)
     {
@@ -131,6 +125,10 @@ void GlobalFilter::clearFilter(FilterType type)
     updateFilterCriteria();
     applyFilters();
     emit filterStateChanged();
+    if (type == FilterType::Custom)
+    {
+        emit customFilterSearchResultsChanged(false, false);
+    }
 }
 
 void GlobalFilter::selectAll(FilterType type)
@@ -247,20 +245,6 @@ void GlobalFilter::clearAllFilters()
         changed = true;
     }
 
-    if (image_search_filter_)
-    {
-        image_search_filter_->selectAll();
-        image_search_filter_->setEnabled(false);
-        changed = true;
-    }
-
-    if (label_search_filter_)
-    {
-        label_search_filter_->selectAll();
-        label_search_filter_->setEnabled(false);
-        changed = true;
-    }
-
     if (!file_name_filter_text_.isEmpty())
     {
         file_name_filter_text_.clear();
@@ -273,6 +257,7 @@ void GlobalFilter::clearAllFilters()
         force_apply_ = true;
         applyFilters();
         emit filterStateChanged();
+        emit customFilterSearchResultsChanged(false, false);
     }
 }
 
@@ -284,140 +269,68 @@ void GlobalFilter::refresh()
     emit filterStateChanged();
 }
 
-void GlobalFilter::setImageSearchFilterEnabled(bool enabled)
-{
-    if (!image_search_filter_)
-    {
-        return;
-    }
-
-    if (enabled && !image_search_filter_->hasResults())
-    {
-        enabled = false;
-    }
-
-    const bool was_enabled = image_search_filter_->isEnabled();
-    image_search_filter_->setEnabled(enabled);
-    if (was_enabled != enabled)
-    {
-        updateFilterCriteria();
-        force_apply_ = true;
-        applyFilters();
-        emit filterStateChanged();
-    }
-}
-
 void GlobalFilter::clearImageSearchResults()
 {
-    if (!image_search_filter_)
+    if (!custom_filter_)
     {
         return;
     }
 
-    image_search_filter_->setEnabled(false);
-    image_search_filter_->clear();
+    custom_filter_->clearImageSearchResults();
     updateFilterCriteria();
     force_apply_ = true;
     applyFilters();
     emit filterStateChanged();
+    emit customFilterSearchResultsChanged(custom_filter_->hasImageSearchResults(),
+                                          custom_filter_->hasLabelSearchResults());
 }
 
 void GlobalFilter::setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter)
 {
-    if (!image_search_filter_)
+    if (!custom_filter_)
     {
         return;
     }
 
-    image_search_filter_->setCriteria(image_ids);
-    image_search_filter_->setEnabled(enable_filter && !image_ids.empty());
+    custom_filter_->setImageSearchResults(image_ids, enable_filter);
     updateFilterCriteria();
     force_apply_ = true;
     applyFilters();
     emit filterStateChanged();
-}
-
-bool GlobalFilter::hasImageSearchResults() const
-{
-    return image_search_filter_ && image_search_filter_->hasResults();
-}
-
-bool GlobalFilter::imageSearchFilterEnabled() const
-{
-    return image_search_filter_ && image_search_filter_->isEnabled();
-}
-
-int GlobalFilter::imageSearchResultCount() const
-{
-    return image_search_filter_ ? image_search_filter_->resultCount() : 0;
-}
-
-void GlobalFilter::setLabelSearchFilterEnabled(bool enabled)
-{
-    if (!label_search_filter_)
-    {
-        return;
-    }
-
-    if (enabled && !label_search_filter_->hasResults())
-    {
-        enabled = false;
-    }
-
-    const bool was_enabled = label_search_filter_->isEnabled();
-    label_search_filter_->setEnabled(enabled);
-    if (was_enabled != enabled)
-    {
-        updateFilterCriteria();
-        force_apply_ = true;
-        applyFilters();
-        emit filterStateChanged();
-    }
+    emit customFilterSearchResultsChanged(custom_filter_->hasImageSearchResults(),
+                                          custom_filter_->hasLabelSearchResults());
 }
 
 void GlobalFilter::clearLabelSearchResults()
 {
-    if (!label_search_filter_)
+    if (!custom_filter_)
     {
         return;
     }
 
-    label_search_filter_->setEnabled(false);
-    label_search_filter_->clear();
+    custom_filter_->clearLabelSearchResults();
     updateFilterCriteria();
     force_apply_ = true;
     applyFilters();
     emit filterStateChanged();
+    emit customFilterSearchResultsChanged(custom_filter_->hasImageSearchResults(),
+                                          custom_filter_->hasLabelSearchResults());
 }
 
 void GlobalFilter::setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter)
 {
-    if (!label_search_filter_)
+    if (!custom_filter_)
     {
         return;
     }
 
-    label_search_filter_->setCriteria(label_ids);
-    label_search_filter_->setEnabled(enable_filter && !label_ids.empty());
+    custom_filter_->setLabelSearchResults(label_ids, enable_filter);
     updateFilterCriteria();
     force_apply_ = true;
     applyFilters();
     emit filterStateChanged();
-}
-
-bool GlobalFilter::hasLabelSearchResults() const
-{
-    return label_search_filter_ && label_search_filter_->hasResults();
-}
-
-bool GlobalFilter::labelSearchFilterEnabled() const
-{
-    return label_search_filter_ && label_search_filter_->isEnabled();
-}
-
-int GlobalFilter::labelSearchResultCount() const
-{
-    return label_search_filter_ ? label_search_filter_->resultCount() : 0;
+    emit customFilterSearchResultsChanged(custom_filter_->hasImageSearchResults(),
+                                          custom_filter_->hasLabelSearchResults());
 }
 
 void GlobalFilter::setFileNameFilterText(const QString &text)
@@ -475,7 +388,7 @@ void GlobalFilter::applyFilters()
     {
         if (auto *image_model = data_manager_->imageInstances())
         {
-            if (custom_filter_ && custom_filter_->isEnabled())
+            if (custom_filter_ && custom_filter_->usesRegularConditions())
             {
                 std::vector<int64_t> candidate_ids;
                 for (const int64_t image_id : image_model->getAllImageIds())
@@ -517,9 +430,9 @@ void GlobalFilter::applyFilters()
 
             auto label_filter_func = [this](int64_t label_id) -> bool
             {
-                if (label_search_filter_ && label_search_filter_->isEnabled())
+                if (custom_filter_ && custom_filter_->isEnabled())
                 {
-                    return label_search_filter_->passesLabel(label_id);
+                    return custom_filter_->passesLabel(label_id);
                 }
                 return true;
             };
@@ -540,16 +453,12 @@ void GlobalFilter::updateFilterCriteria()
     current_criteria_.label_class_ids.clear();
     current_criteria_.image_label_class_ids.clear();
     current_criteria_.custom_condition_ids.clear();
-    current_criteria_.image_search_ids.clear();
-    current_criteria_.label_search_ids.clear();
     current_criteria_.file_name_text.clear();
     current_criteria_.dataset_inverted           = false;
     current_criteria_.tag_inverted               = false;
     current_criteria_.label_class_inverted       = false;
     current_criteria_.image_label_class_inverted = false;
     current_criteria_.custom_condition_inverted  = false;
-    current_criteria_.image_search_inverted      = false;
-    current_criteria_.label_search_inverted      = false;
 
     if (dataset_filter_ && dataset_filter_->isActive())
     {
@@ -579,18 +488,6 @@ void GlobalFilter::updateFilterCriteria()
     {
         current_criteria_.custom_condition_ids      = custom_filter_->getActiveCriteria();
         current_criteria_.custom_condition_inverted = custom_filter_->isInverted();
-    }
-
-    if (image_search_filter_ && image_search_filter_->isActive())
-    {
-        current_criteria_.image_search_ids      = image_search_filter_->getActiveCriteria();
-        current_criteria_.image_search_inverted = image_search_filter_->isInverted();
-    }
-
-    if (label_search_filter_ && label_search_filter_->isActive())
-    {
-        current_criteria_.label_search_ids      = label_search_filter_->getActiveCriteria();
-        current_criteria_.label_search_inverted = label_search_filter_->isInverted();
     }
 
     current_criteria_.file_name_text = file_name_filter_text_;
@@ -629,16 +526,6 @@ bool GlobalFilter::shouldIncludeImageWithoutCustom(int64_t image_id) const
         return false;
     }
 
-    if (image_search_filter_ && image_search_filter_->isEnabled() && !image_search_filter_->passes(image_id))
-    {
-        return false;
-    }
-
-    if (label_search_filter_ && label_search_filter_->isEnabled() && !label_search_filter_->passes(image_id))
-    {
-        return false;
-    }
-
     if (!file_name_filter_text_.isEmpty())
     {
         if (!data_manager_ || !data_manager_->imageInstances())
@@ -663,8 +550,7 @@ bool GlobalFilter::shouldIncludeLabel(int64_t label_id) const
         if (auto *label_model = data_manager_->labelInstances())
         {
             int64_t image_id = label_model->getImageId(label_id);
-            if (label_search_filter_ && label_search_filter_->isEnabled()
-                && !label_search_filter_->passesLabel(label_id))
+            if (custom_filter_ && custom_filter_->isEnabled() && !custom_filter_->passesLabel(label_id))
             {
                 return false;
             }
@@ -718,24 +604,6 @@ bool GlobalFilter::hasFilterCriteriaChanged() const
         return true;
     }
     if (current_criteria_.custom_condition_inverted != previous_criteria_.custom_condition_inverted)
-    {
-        return true;
-    }
-
-    if (current_criteria_.image_search_ids != previous_criteria_.image_search_ids)
-    {
-        return true;
-    }
-    if (current_criteria_.image_search_inverted != previous_criteria_.image_search_inverted)
-    {
-        return true;
-    }
-
-    if (current_criteria_.label_search_ids != previous_criteria_.label_search_ids)
-    {
-        return true;
-    }
-    if (current_criteria_.label_search_inverted != previous_criteria_.label_search_inverted)
     {
         return true;
     }

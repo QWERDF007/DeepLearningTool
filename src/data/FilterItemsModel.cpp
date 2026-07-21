@@ -42,6 +42,8 @@ QVariant FilterItemsModel::data(const QModelIndex &index, int role) const
         return item.text;
     case CheckedRole:
         return item.checked;
+    case EnabledRole:
+        return item.enabled;
     default:
         return QVariant();
     }
@@ -57,7 +59,7 @@ bool FilterItemsModel::setData(const QModelIndex &index, const QVariant &value, 
     switch (role)
     {
     case CheckedRole:
-        if (value.canConvert<bool>())
+        if (item.enabled && value.canConvert<bool>())
         {
             item.checked = value.toBool();
             emit dataChanged(index, index, {CheckedRole});
@@ -76,6 +78,11 @@ Qt::ItemFlags FilterItemsModel::flags(const QModelIndex &index) const
     if (!index.isValid())
         return Qt::NoItemFlags;
 
+    if (!items_[index.row()].enabled)
+    {
+        return Qt::NoItemFlags;
+    }
+
     return Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable;
 }
 
@@ -84,7 +91,8 @@ QHash<int, QByteArray> FilterItemsModel::roleNames() const
     return {
         {     IdRole,      "id"},
         {   TextRole,    "text"},
-        {CheckedRole, "checked"}
+        {CheckedRole, "checked"},
+        {EnabledRole, "enabled"}
     };
 }
 
@@ -98,11 +106,11 @@ void FilterItemsModel::clear()
     endResetModel();
 }
 
-void FilterItemsModel::append(int64_t id, const QString &text, bool checked)
+void FilterItemsModel::append(int64_t id, const QString &text, bool checked, bool enabled)
 {
     int row = static_cast<int>(items_.size());
     beginInsertRows(QModelIndex(), row, row);
-    items_.emplace_back(id, text, checked);
+    items_.emplace_back(id, text, checked, enabled);
     endInsertRows();
 }
 
@@ -113,7 +121,7 @@ std::vector<int64_t> FilterItemsModel::getCheckedIds() const
 
     for (const auto &item : items_)
     {
-        if (item.checked)
+        if (item.enabled && item.checked)
         {
             checked_ids.push_back(item.id);
         }
@@ -129,7 +137,10 @@ void FilterItemsModel::setAllChecked(bool checked)
 
     for (size_t i = 0; i < items_.size(); ++i)
     {
-        items_[i].checked = checked;
+        if (items_[i].enabled)
+        {
+            items_[i].checked = checked;
+        }
     }
 
     // 通知所有行的checked状态已改变
@@ -300,21 +311,46 @@ CustomFilterItemsModel::CustomFilterItemsModel(QObject *parent)
 
 void CustomFilterItemsModel::populateFromCustomConditions()
 {
-    std::unordered_set<int64_t> unchecked_ids;
-    for (const auto &item : items_)
-    {
-        if (!item.checked)
-        {
-            unchecked_ids.insert(item.id);
-        }
-    }
-
     clear();
 
     for (const CustomFilterModule::ConditionSpec &condition : CustomFilterModule::availableConditions())
     {
-        const bool checked = unchecked_ids.find(condition.id) == unchecked_ids.end();
-        append(condition.id, condition.text, checked);
+        const bool is_image_search = condition.id == static_cast<int64_t>(CustomFilterModule::Condition::ImageSearchResult);
+        const bool is_label_search = condition.id == static_cast<int64_t>(CustomFilterModule::Condition::LabelSearchResult);
+        const bool enabled         = !is_image_search && !is_label_search;
+        append(condition.id, condition.text, false, enabled);
+    }
+}
+
+void CustomFilterItemsModel::setSearchResultsAvailable(bool image_search_available, bool label_search_available)
+{
+    for (int row = 0; row < static_cast<int>(items_.size()); ++row)
+    {
+        FilterItem &item = items_[static_cast<size_t>(row)];
+        bool        available;
+        if (item.id == static_cast<int64_t>(CustomFilterModule::Condition::ImageSearchResult))
+        {
+            available = image_search_available;
+        }
+        else if (item.id == static_cast<int64_t>(CustomFilterModule::Condition::LabelSearchResult))
+        {
+            available = label_search_available;
+        }
+        else
+        {
+            continue;
+        }
+
+        const bool checked = available ? item.checked || !item.enabled : false;
+        if (item.enabled == available && item.checked == checked)
+        {
+            continue;
+        }
+
+        item.enabled = available;
+        item.checked = checked;
+        const QModelIndex item_index = index(row);
+        emit dataChanged(item_index, item_index, {CheckedRole, EnabledRole});
     }
 }
 

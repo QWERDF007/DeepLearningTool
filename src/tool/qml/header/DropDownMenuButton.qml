@@ -18,6 +18,7 @@ QuiButton {
     property var globalFilter: null
     property bool showItemList: true
     property int resultCount: -1
+    property bool selectAllByDefault: true
 
     property bool initialized: false
     property bool bulkUpdating: false
@@ -48,7 +49,7 @@ QuiButton {
 
         if (model) {
             Qt.callLater(function() {
-                if (!control.initialized && !control.hasAnyChecked()) {
+                if (control.selectAllByDefault && !control.initialized && !control.hasAnyChecked()) {
                     control.setAllModelChecked(true)
                     control.allDeselected = false
                 }
@@ -218,6 +219,7 @@ QuiButton {
                             id: itemCheckBox
                             text: model.text
                             width: popupModel.width
+                            enabled: model.enabled
                             property bool updatingFromModel: false
 
                             Component.onCompleted: {
@@ -322,7 +324,9 @@ QuiButton {
         control.bulkUpdating = true
         for (let i = 0; i < model.rowCount(); i++) {
             let idx = model.index(i, 0)
-            model.setData(idx, checked, FilterItemsModel.CheckedRole)
+            if (model.data(idx, FilterItemsModel.EnabledRole)) {
+                model.setData(idx, checked, FilterItemsModel.CheckedRole)
+            }
         }
         control.bulkUpdating = false
     }
@@ -337,7 +341,8 @@ QuiButton {
             let idx = model.index(i, 0)
             let id = model.data(idx, FilterItemsModel.IdRole)
             let matched = control.containsId(ids, id)
-            model.setData(idx, inverted ? !matched : matched, FilterItemsModel.CheckedRole)
+            let itemEnabled = model.data(idx, FilterItemsModel.EnabledRole)
+            model.setData(idx, itemEnabled && (inverted ? !matched : matched), FilterItemsModel.CheckedRole)
         }
         control.bulkUpdating = false
     }
@@ -394,7 +399,7 @@ QuiButton {
         }
 
         let checkedCount = control.getCheckedCount()
-        let totalCount = model.rowCount()
+        let totalCount = control.getEnabledCount()
 
         if (totalCount === 0) {
             control.setBulkControls(!control.allDeselected, control.allDeselected)
@@ -429,7 +434,7 @@ QuiButton {
         }
 
         let checkedCount = control.getCheckedCount()
-        let totalCount = model.rowCount()
+        let totalCount = control.getEnabledCount()
         if (totalCount === 0) {
             if (control.allDeselected) {
                 globalFilter.deselectAll(filterType)
@@ -459,7 +464,8 @@ QuiButton {
 
         for (let i = 0; i < model.rowCount(); i++) {
             let idx = model.index(i, 0)
-            if (model.data(idx, FilterItemsModel.CheckedRole)) {
+            if (model.data(idx, FilterItemsModel.EnabledRole)
+                    && model.data(idx, FilterItemsModel.CheckedRole)) {
                 return true
             }
         }
@@ -474,11 +480,27 @@ QuiButton {
         let checkedCount = 0
         for (let i = 0; i < model.rowCount(); i++) {
             let idx = model.index(i, 0)
-            if (model.data(idx, FilterItemsModel.CheckedRole)) {
+            if (model.data(idx, FilterItemsModel.EnabledRole)
+                    && model.data(idx, FilterItemsModel.CheckedRole)) {
                 checkedCount++
             }
         }
         return checkedCount
+    }
+
+    function getEnabledCount() {
+        if (!model) {
+            return 0
+        }
+
+        let enabledCount = 0
+        for (let i = 0; i < model.rowCount(); i++) {
+            let idx = model.index(i, 0)
+            if (model.data(idx, FilterItemsModel.EnabledRole)) {
+                enabledCount++
+            }
+        }
+        return enabledCount
     }
 
     function getCheckedIds() {
@@ -489,7 +511,8 @@ QuiButton {
         let ids = []
         for (let i = 0; i < model.rowCount(); i++) {
             let idx = model.index(i, 0)
-            if (model.data(idx, FilterItemsModel.CheckedRole)) {
+            if (model.data(idx, FilterItemsModel.EnabledRole)
+                    && model.data(idx, FilterItemsModel.CheckedRole)) {
                 ids.push(model.data(idx, FilterItemsModel.IdRole))
             }
         }
@@ -524,7 +547,7 @@ QuiButton {
         }
 
         let checkedCount = control.getCheckedCount()
-        let totalCount = model.rowCount()
+        let totalCount = control.getEnabledCount()
 
         if (totalCount === 0) {
             return text + (control.allDeselected ? " 全不选" : " 全选")

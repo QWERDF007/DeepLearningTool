@@ -157,6 +157,12 @@ void DataManager::init(const int method)
     label_class_filter_items_->populateFromLabelClasses(label_classes_);
     custom_filter_items_->populateFromCustomConditions();
 
+    connect(global_filter_, &GlobalFilter::customFilterSearchResultsChanged, this,
+            [this](bool has_image_search_results, bool has_label_search_results)
+            {
+                custom_filter_items_->setSearchResultsAvailable(has_image_search_results, has_label_search_results);
+            });
+
     // Connect source model changes to refresh filter items models
     connect(datasets_, &QAbstractItemModel::rowsInserted, this,
             [this](const QModelIndex &, int, int) { dataset_filter_items_->populateFromDatasets(datasets_); });

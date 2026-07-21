@@ -20,7 +20,6 @@ Rectangle {
     property var globalFilter: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.globalFilter : null
     property FeatureManager featureManager: ProjectManager.currentProject ? ProjectManager.currentProject.featureManager : null
     property var imageSearch: featureManager ? featureManager.imageSearch : null
-    property var roiSearch: featureManager ? featureManager.roiSearch : null
     property var smartAnnotation: featureManager ? featureManager.smartAnnotation : null
 
     onGlobalFilterChanged: syncFileNameFilterField()
@@ -148,11 +147,7 @@ Rectangle {
                                 labelClassImageDropDown.checked = false
                                 labelClassImageDropDown.selectAll(false)
                                 customFilterDropDown.checked = false
-                                customFilterDropDown.selectAll(false)
-                                imageSearchDropDown.checked = false
-                                imageSearchDropDown.selectAll(false)
-                                labelSearchDropDown.checked = false
-                                labelSearchDropDown.selectAll(false)
+                                customFilterDropDown.deselectAll(false)
                                 fileNameFilterField.text = ""
                             }
                         }
@@ -196,50 +191,7 @@ Rectangle {
                         filterType: GlobalFilter.FilterType.Custom
                         globalFilter: header.globalFilter
                         model: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager.customFilterItems : null
-                    }
-
-                    DropDownMenuButton {
-                        id: imageSearchDropDown
-                        Layout.fillHeight: true
-                        Layout.preferredWidth: 200
-                        text: "按图像搜索:"
-                        filterType: GlobalFilter.FilterType.ImageSearch
-                        globalFilter: header.globalFilter
-                        showItemList: false
-                        resultCount: globalFilter ? globalFilter.imageSearchResultCount : 0
-                        enabled: imageSearch && !imageSearch.running && globalFilter && globalFilter.hasImageSearchResults
-                        Connections {
-                            target: imageSearchDropDown.globalFilter
-                            function onFilterStateChanged() {
-                                imageSearchDropDown.suppressCheckedHandler = true
-                                imageSearchDropDown.checked = imageSearchDropDown.globalFilter
-                                                             && imageSearchDropDown.globalFilter.imageSearchFilterEnabled
-                                imageSearchDropDown.suppressCheckedHandler = false
-                                imageSearchDropDown.refreshDisplayText()
-                            }
-                        }
-                    }
-
-                    DropDownMenuButton {
-                        id: labelSearchDropDown
-                        Layout.fillHeight: true
-                        Layout.preferredWidth: 200
-                        text: "按标注搜索:"
-                        filterType: GlobalFilter.FilterType.LabelSearch
-                        globalFilter: header.globalFilter
-                        showItemList: false
-                        resultCount: globalFilter ? globalFilter.labelSearchResultCount : 0
-                        enabled: roiSearch && !roiSearch.running && globalFilter && globalFilter.hasLabelSearchResults
-                        Connections {
-                            target: labelSearchDropDown.globalFilter
-                            function onFilterStateChanged() {
-                                labelSearchDropDown.suppressCheckedHandler = true
-                                labelSearchDropDown.checked = labelSearchDropDown.globalFilter
-                                                             && labelSearchDropDown.globalFilter.labelSearchFilterEnabled
-                                labelSearchDropDown.suppressCheckedHandler = false
-                                labelSearchDropDown.refreshDisplayText()
-                            }
-                        }
+                        selectAllByDefault: false
                     }
 
                     QuiTextField {
@@ -269,8 +221,6 @@ Rectangle {
             tagDropDown.checked = false
             labelClassImageDropDown.checked = false
             customFilterDropDown.checked = false
-            imageSearchDropDown.checked = false
-            labelSearchDropDown.checked = false
             header.syncFileNameFilterField()
         }
     }
