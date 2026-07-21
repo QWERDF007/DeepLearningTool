@@ -3,6 +3,7 @@
 #include "data/DataManager.h"
 #include "data/ImageTags.h"
 #include "data/Images.h"
+#include "data/Labels.h"
 
 namespace dltool::data {
 
@@ -81,7 +82,8 @@ bool TagFilterModule::passes(int64_t image_id) const
     }
 
     ImageInstancesListModel *image_model = dm->imageInstances();
-    if (!image_model)
+    LabelInstancesListModel *label_model = dm->labelInstances();
+    if (!image_model || !label_model)
     {
         return false;
     }
@@ -92,15 +94,31 @@ bool TagFilterModule::passes(int64_t image_id) const
         return false;
     }
 
-    const std::set<int64_t> &image_tag_ids = image->tagIds();
-    bool                     matches       = false;
-    for (const auto &tag_id : selected_tag_ids_)
+    const auto hasSelectedTag = [this](const std::set<int64_t> &tag_ids)
     {
-        if (image_tag_ids.find(tag_id) != image_tag_ids.end())
+        for (const int64_t tag_id : selected_tag_ids_)
+        {
+            if (tag_ids.find(tag_id) != tag_ids.end())
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    bool matches = false;
+    for (const int64_t label_id : image->labelIds())
+    {
+        const LabelInstance *label = label_model->getLabelInstance(label_id);
+        if (label != nullptr && hasSelectedTag(label->tagIds()))
         {
             matches = true;
             break;
         }
+    }
+    if (!matches)
+    {
+        matches = hasSelectedTag(image->tagIds());
     }
 
     return inverted_ ? !matches : matches;

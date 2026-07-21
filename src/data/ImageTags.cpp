@@ -1,95 +1,111 @@
-﻿#include "data/ImageTags.h"
+#include "data/ImageTags.h"
 
-#include "data/Datasets.h"
 #include "data/Images.h"
+#include "data/Labels.h"
 #include "database/DataBase.h"
 
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <iterator>
 
 namespace dltool::data {
 
 ImageTagsListModel::ImageTagsListModel(dltool::database::ProjectDataBase *database,
-                                       ImageInstancesListModel *image_instances, QObject *parent)
+                                       ImageInstancesListModel *image_instances,
+                                       LabelInstancesListModel *label_instances,
+                                       ImageLabelsListModel *image_labels_list, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
     , image_instances_(image_instances)
+    , label_instances_(label_instances)
+    , image_labels_list_(image_labels_list)
 {
     init();
-}
 
-ImageTagsListModel::~ImageTagsListModel() {}
+    if (label_instances_ != nullptr)
+    {
+        connect(label_instances_, &LabelInstancesListModel::labelsAboutToBeRemoved, this,
+                [this](const std::vector<int64_t> &label_ids)
+                { removeTagsFromMemory(label_ids, TagTarget::Label); });
+    }
+}
 
 void ImageTagsListModel::init()
 {
     if (database_ == nullptr)
     {
-        spdlog::error("初始化标签(TagClass/Tag)失败: 数据库未初始化");
+        spdlog::error("初始化 Tag 失败: 数据库未初始化");
         return;
     }
 
-    if (!initTagClass())
+    if (!initTagClasses())
+    {
         return;
-    if (!initImagesTag())
-        return;
+    }
+    initTagRelations();
 }
 
-bool ImageTagsListModel::initTagClass()
+bool ImageTagsListModel::initTagClasses()
 {
     QString              err_msg;
-    std::vector<int64_t> tag_classes_id;
-    std::vector<QString> tags_name;
-    database_->getAllTagClasses(tag_classes_id, tags_name, err_msg);
-    if (!err_msg.isEmpty())
+    std::vector<int64_t> tag_ids;
+    std::vector<QString> tag_names;
+    if (!database_->getAllTagClasses(tag_ids, tag_names, err_msg))
     {
-        spdlog::error("查询所有标签(TagClass)失败, error: {}", err_msg.toUtf8().constData());
+        spdlog::error("查询 Tag 类别失败: {}", err_msg.toUtf8().constData());
         return false;
     }
-    for (size_t i = 0; i < tag_classes_id.size(); ++i)
+
+    for (size_t i = 0; i < tag_ids.size(); ++i)
     {
-        image_tags_.emplace(tag_classes_id[i], new ImageTag(tag_classes_id[i], tags_name[i], this));
+        tags_.emplace(tag_ids[i], Tag(tag_ids[i], tag_names[i]));
     }
     return true;
 }
 
-bool ImageTagsListModel::initImagesTag()
+bool ImageTagsListModel::initTagRelations()
 {
-    if (database_ == nullptr)
-    {
-        spdlog::error("初始化图像标签(Tag)失败, 数据库未初始化");
-        return false;
-    }
-
     QString              err_msg;
-    std::vector<int64_t> image_ids, tag_ids;
-    database_->getAllTags(image_ids, tag_ids, err_msg);
-    if (!err_msg.isEmpty())
+    std::vector<int64_t> image_ids;
+    std::vector<int64_t> image_tag_ids;
+    std::vector<int64_t> label_ids;
+    std::vector<int64_t> label_tag_ids;
+    if (!database_->getAllTags(image_ids, image_tag_ids, label_ids, label_tag_ids, err_msg))
     {
-        spdlog::error("查询所有图像标签(Tag)失败, error: {}", err_msg.toUtf8().constData());
+        spdlog::error("查询 Tag 关系失败: {}", err_msg.toUtf8().constData());
         return false;
     }
 
     for (size_t i = 0; i < image_ids.size(); ++i)
     {
-        ImageTag *image_tag = getImageTag(tag_ids[i]);
-        if (image_tag)
-            image_tag->addImageIds({image_ids[i]});
+        if (Tag *tag = getTag(image_tag_ids[i]))
+        {
+            tag->addImageIds({image_ids[i]});
+        }
+    }
+    for (size_t i = 0; i < label_ids.size(); ++i)
+    {
+        if (Tag *tag = getTag(label_tag_ids[i]))
+        {
+            tag->addLabelIds({label_ids[i]});
+        }
     }
     return true;
 }
 
 int ImageTagsListModel::rowCount(const QModelIndex &parent) const
 {
-    if (parent.isValid())
-        return 0;
-    return static_cast<int>(image_tags_.size());
+    return parent.isValid() ? 0 : static_cast<int>(tags_.size());
 }
 
-QVariant ImageTagsListModel::data(const QModelIndex &index, int role) const
+QVariant ImageTagsListModel::data(const QModelIndex &index, const int role) const
 {
-    if (index.row() < 0 || index.row() >= rowCount())
-        return QVariant();
+    if (!index.isValid() || index.row() < 0 || index.row() >= rowCount())
+    {
+        return {};
+    }
+
     switch (role)
     {
     case TagIdRole:
@@ -100,8 +116,10 @@ QVariant ImageTagsListModel::data(const QModelIndex &index, int role) const
         return getSelectedImagesTagStats(index);
     case CurrentImageStatsRole:
         return getCurrentImageTagStats(index);
+    case SelectedLabelsStatsRole:
+        return getSelectedLabelsTagStats(index);
     default:
-        return QVariant();
+        return {};
     }
 }
 
@@ -112,6 +130,7 @@ QHash<int, QByteArray> ImageTagsListModel::roleNames() const
         {               NameRole,                  "name"},
         {SelectedImagesStatsRole, "selected_images_stats"},
         {  CurrentImageStatsRole,   "current_image_stats"},
+        {SelectedLabelsStatsRole, "selected_labels_stats"},
     };
 }
 
@@ -119,352 +138,416 @@ bool ImageTagsListModel::addTagClass(const QString &name)
 {
     if (database_ == nullptr)
     {
-        spdlog::error("添加标签(TagClass)失败: {}, 数据库未初始化", name.toUtf8().constData());
+        spdlog::error("添加 Tag 失败: 数据库未初始化");
         return false;
     }
+
     QString err_msg;
-    int64_t tag_class_id{-1};
-    bool    ok = database_->addTagClass(name, tag_class_id, err_msg);
-    if (!ok)
+    int64_t tag_id{-1};
+    if (!database_->addTagClass(name, tag_id, err_msg))
     {
-        spdlog::error("添加标签(TagClass)失败: {}, error: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
+        spdlog::error("添加 Tag 失败: {}, error: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
         return false;
     }
-    spdlog::info("添加标签(TagClass): {}", name.toUtf8().constData());
-    const int row   = rowCount(); // 添加到队列尾部
-    const int count = 1;
-    beginInsertRows(QModelIndex(), row, row + count - 1);
-    image_tags_.emplace(tag_class_id, new ImageTag(tag_class_id, name, this));
+
+    const int row = rowCount();
+    beginInsertRows(QModelIndex(), row, row);
+    tags_.emplace(tag_id, Tag(tag_id, name));
     endInsertRows();
     return true;
 }
 
-bool ImageTagsListModel::updateTagClass(const int64_t tag_class_id, const QString &name)
+bool ImageTagsListModel::updateTagClass(const int64_t tag_id, const QString &name)
 {
     if (database_ == nullptr)
     {
-        spdlog::error("更新标签(TagClass)失败: {}, 数据库未初始化", tag_class_id);
+        spdlog::error("更新 Tag 失败: 数据库未初始化");
         return false;
     }
-    auto found = image_tags_.find(tag_class_id);
-    if (found == image_tags_.end())
+
+    Tag *tag = getTag(tag_id);
+    if (tag == nullptr)
     {
-        spdlog::error("更新标签(TagClass)失败: {}, 标签不存在", tag_class_id);
+        spdlog::error("更新 Tag 失败: Tag {} 不存在", tag_id);
         return false;
     }
-    if (found->second->name() == name)
+    if (tag->name() == name)
+    {
         return true;
+    }
+
     QString err_msg;
-    bool    ok = database_->updateTagClass(tag_class_id, name, err_msg);
-    if (!ok)
+    if (!database_->updateTagClass(tag_id, name, err_msg))
     {
-        spdlog::error("更新标签(TagClass)失败: {}, error: {}", tag_class_id, err_msg.toUtf8().constData());
+        spdlog::error("更新 Tag 失败: {}, error: {}", tag_id, err_msg.toUtf8().constData());
         return false;
     }
-    spdlog::info("更新标签(TagClass): {} -> {}", found->second->name().toUtf8().constData(), name.toUtf8().constData());
-    int idx{0};
-    for (const auto &[_, tag] : image_tags_)
+
+    tag->setName(name);
+    const int row = rowForTag(tag_id);
+    if (row >= 0)
     {
-        if (tag && tag->id() == tag_class_id)
-        {
-            tag->setName(name);
-            emit dataChanged(index(idx), index(idx), {NameRole});
-            break;
-        }
-        ++idx;
+        emit dataChanged(index(row), index(row), {NameRole});
     }
     return true;
 }
 
-bool ImageTagsListModel::deleteTagClass(const int64_t tag_class_id)
+bool ImageTagsListModel::deleteTagClass(const int64_t tag_id)
 {
-    // TODO: 删除TagClass
-    return false;
+    if (database_ == nullptr)
+    {
+        spdlog::error("删除 Tag 失败: 数据库未初始化");
+        return false;
+    }
+
+    const auto found = tags_.find(tag_id);
+    if (found == tags_.end())
+    {
+        return false;
+    }
+
+    QString err_msg;
+    if (!database_->deleteTagClass(tag_id, err_msg))
+    {
+        spdlog::error("删除 Tag 失败: {}, error: {}", tag_id, err_msg.toUtf8().constData());
+        return false;
+    }
+
+    const std::vector<int64_t> image_ids(found->second.imageIds().begin(), found->second.imageIds().end());
+    const std::vector<int64_t> label_ids(found->second.labelIds().begin(), found->second.labelIds().end());
+    for (const int64_t image_id : image_ids)
+    {
+        if (ImageInstance *image = image_instances_ ? image_instances_->getImageInstance(image_id) : nullptr)
+        {
+            image->removeTagIds({tag_id});
+        }
+    }
+    for (const int64_t label_id : label_ids)
+    {
+        if (LabelInstance *label = label_instances_ ? label_instances_->getLabelInstance(label_id) : nullptr)
+        {
+            label->removeTagIds({tag_id});
+        }
+    }
+
+    const int row = rowForTag(tag_id);
+    beginRemoveRows(QModelIndex(), row, row);
+    tags_.erase(found);
+    endRemoveRows();
+    updateStats();
+    return true;
 }
 
 bool ImageTagsListModel::setImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id)
 {
-    if (database_ == nullptr)
-    {
-        spdlog::error("添加标签(Tag)失败: 数据库未初始化");
-        return false;
-    }
-    if (image_ids.empty())
-        return true;
-    std::string op{"添加"}; // 添加, 删除
-
-    std::vector<int64_t> valid_image_ids = getValidImagesId(image_ids, tag_id);
-
-    if (valid_image_ids.empty())
-    {
-        op              = "删除";
-        valid_image_ids = image_ids;
-    }
-    else
-    {
-        op = "添加";
-    }
-
-    QString err_msg;
-    bool    ok{false};
-    if (op == "添加")
-        ok = database_->addImagesTag(valid_image_ids, tag_id, err_msg);
-    else
-        ok = database_->deleteImagesTag(valid_image_ids, tag_id, err_msg);
-    if (!ok)
-    {
-        spdlog::error("{}标签(Tag)失败: {}, error: {}", op, tag_id, err_msg.toUtf8().constData());
-        return false;
-    }
-    spdlog::info("为 {} 个图像{}标签(Tag)成功, tag_id: {}", image_ids.size(), op, tag_id);
-    for (const auto &image_id : image_ids)
-    {
-        ImageInstance *image_instance = image_instances_->getImageInstance(image_id);
-        if (image_instance)
-        {
-            if (op == "添加")
-                image_instance->addTagIds({tag_id});
-            else
-                image_instance->removeTagIds({tag_id});
-        }
-        ImageTag *image_tag = getImageTag(tag_id);
-        if (image_tag)
-        {
-            if (op == "添加")
-                image_tag->addImageIds({image_id});
-            else
-                image_tag->removeImageIds({image_id});
-        }
-    }
-    updateStats();
-    return true;
+    return setTags(image_ids, tag_id, TagTarget::Image);
 }
 
 bool ImageTagsListModel::setImageTag(const int64_t image_id, const int64_t tag_id)
 {
-    std::vector<int64_t> image_ids{image_id};
-    return setImagesTag(image_ids, tag_id);
+    return setImagesTag({image_id}, tag_id);
+}
+
+bool ImageTagsListModel::setLabelsTag(const std::vector<int64_t> &label_ids, const int64_t tag_id)
+{
+    return setTags(label_ids, tag_id, TagTarget::Label);
+}
+
+bool ImageTagsListModel::setLabelTag(const int64_t label_id, const int64_t tag_id)
+{
+    return setLabelsTag({label_id}, tag_id);
 }
 
 bool ImageTagsListModel::removeImagesTags(const std::vector<int64_t> &image_ids)
 {
-    if (database_ == nullptr)
-    {
-        spdlog::error("删除图像标签(Tag)失败: 数据库未初始化");
-        return false;
-    }
-    if (image_ids.empty())
-        return true;
-
-    // 如果这些图像都没有 tag，直接返回
-    if (!hasAnyTags(image_ids))
-        return true;
-
-    QString err_msg;
-    bool    ok = database_->deleteImagesTagsByImagesId(image_ids, err_msg);
-    if (!ok)
-    {
-        spdlog::error("删除图像标签(Tag)失败: {}, error: {}", image_ids.size(), err_msg.toUtf8().constData());
-        return false;
-    }
-    spdlog::info("删除 {} 个图像标签(Tag)成功", image_ids.size());
-    std::map<int64_t, std::vector<int64_t>> tags_image_ids;
-    for (const auto &image_id : image_ids)
-    {
-        ImageInstance *image_instance = image_instances_->getImageInstance(image_id);
-        if (image_instance == nullptr)
-            continue;
-        auto tag_ids = image_instance->removeAllTagIds();
-        for (const auto &tag_id : tag_ids)
-        {
-            tags_image_ids[tag_id].push_back(image_id);
-        }
-    }
-    for (const auto &[tag_id, deleted_image_ids] : tags_image_ids)
-    {
-        ImageTag *image_tag = getImageTag(tag_id);
-        if (image_tag)
-        {
-            image_tag->removeImageIds(deleted_image_ids);
-        }
-    }
-    updateStats();
-    return true;
+    return removeTags(image_ids, TagTarget::Image);
 }
 
 void ImageTagsListModel::removeImagesTagsFromMemory(const std::vector<int64_t> &image_ids)
 {
-    if (image_ids.empty())
+    removeTagsFromMemory(image_ids, TagTarget::Image);
+}
+
+std::vector<std::vector<int64_t>> ImageTagsListModel::getImagesTagIds(
+    const std::vector<int64_t> &image_ids) const
+{
+    std::vector<std::vector<int64_t>> image_tag_ids;
+    image_tag_ids.reserve(image_ids.size());
+    for (const int64_t image_id : image_ids)
+    {
+        std::vector<int64_t> tag_ids;
+        for (const auto &[tag_id, tag] : tags_)
+        {
+            if (tag.imageIds().count(image_id) > 0)
+            {
+                tag_ids.push_back(tag_id);
+            }
+        }
+        image_tag_ids.push_back(std::move(tag_ids));
+    }
+    return image_tag_ids;
+}
+
+void ImageTagsListModel::applyTagsToLabels()
+{
+    if (label_instances_ == nullptr)
     {
         return;
     }
 
-    if (image_instances_ != nullptr)
+    for (const auto &[tag_id, tag] : tags_)
     {
-        for (const int64_t image_id : image_ids)
+        for (const int64_t label_id : tag.labelIds())
         {
-            ImageInstance *image_instance = image_instances_->getImageInstance(image_id);
-            if (image_instance != nullptr)
+            if (LabelInstance *label = label_instances_->getLabelInstance(label_id))
             {
-                image_instance->removeAllTagIds();
+                label->addTagIds({tag_id});
             }
-        }
-    }
-
-    for (const auto &[_, image_tag] : image_tags_)
-    {
-        if (image_tag != nullptr)
-        {
-            image_tag->removeImageIds(image_ids);
         }
     }
     updateStats();
 }
 
-ImageTag *ImageTagsListModel::getImageTag(const int64_t tag_id)
+void ImageTagsListModel::updateStats()
 {
-    auto found = image_tags_.find(tag_id);
-    if (found == image_tags_.end())
-        return nullptr;
-    return found->second;
+    if (tags_.empty())
+    {
+        return;
+    }
+
+    emit dataChanged(index(0), index(rowCount() - 1),
+                     {SelectedImagesStatsRole, CurrentImageStatsRole, SelectedLabelsStatsRole});
 }
 
-std::vector<std::vector<int64_t>> ImageTagsListModel::getImagesTagIds(const std::vector<int64_t> &image_ids) const
+QString ImageTagsListModel::getTagClassName(const int64_t tag_id) const
 {
-    std::vector<std::vector<int64_t>> images_tag_ids;
-    images_tag_ids.reserve(image_ids.size());
-    for (size_t i = 0; i < image_ids.size(); ++i)
+    const auto found = tags_.find(tag_id);
+    return found == tags_.end() ? QString() : found->second.name();
+}
+
+Tag *ImageTagsListModel::getTag(const int64_t tag_id)
+{
+    const auto found = tags_.find(tag_id);
+    return found == tags_.end() ? nullptr : &found->second;
+}
+
+int ImageTagsListModel::rowForTag(const int64_t tag_id) const
+{
+    const auto found = tags_.find(tag_id);
+    return found == tags_.end() ? -1 : static_cast<int>(std::distance(tags_.begin(), found));
+}
+
+bool ImageTagsListModel::setTags(const std::vector<int64_t> &target_ids, const int64_t tag_id,
+                                  const TagTarget target)
+{
+    if (database_ == nullptr)
     {
-        const int64_t        image_id = image_ids[i];
-        std::vector<int64_t> tag_ids;
-        for (const auto &[tag_id, image_tag] : image_tags_)
+        spdlog::error("设置 Tag 失败: 数据库未初始化");
+        return false;
+    }
+    if (target_ids.empty())
+    {
+        return true;
+    }
+
+    Tag *tag = getTag(tag_id);
+    if (tag == nullptr)
+    {
+        spdlog::error("设置 Tag 失败: Tag {} 不存在", tag_id);
+        return false;
+    }
+
+    const std::set<int64_t> &tagged_ids = target == TagTarget::Image ? tag->imageIds() : tag->labelIds();
+    std::vector<int64_t> untagged_ids   = getUntaggedIds(target_ids, tagged_ids);
+    const bool            adding        = !untagged_ids.empty();
+    const std::vector<int64_t> &updated_ids = adding ? untagged_ids : target_ids;
+
+    QString err_msg;
+    const bool ok = target == TagTarget::Image
+                        ? (adding ? database_->addTagsToImages(updated_ids, tag_id, err_msg)
+                                  : database_->removeTagsFromImages(updated_ids, tag_id, err_msg))
+                        : (adding ? database_->addTagsToLabels(updated_ids, tag_id, err_msg)
+                                  : database_->removeTagsFromLabels(updated_ids, tag_id, err_msg));
+    if (!ok)
+    {
+        spdlog::error("{} {} Tag 失败: {}, error: {}", adding ? "添加" : "删除",
+                      target == TagTarget::Image ? "图像" : "标注实例", tag_id, err_msg.toUtf8().constData());
+        return false;
+    }
+
+    for (const int64_t target_id : updated_ids)
+    {
+        if (target == TagTarget::Image)
         {
-            if (image_tag->imageIds().count(image_id) > 0)
-                tag_ids.push_back(tag_id);
+            if (ImageInstance *image = image_instances_ ? image_instances_->getImageInstance(target_id) : nullptr)
+            {
+                adding ? image->addTagIds({tag_id}) : image->removeTagIds({tag_id});
+            }
         }
-        images_tag_ids.push_back(tag_ids);
+        else if (LabelInstance *label = label_instances_ ? label_instances_->getLabelInstance(target_id) : nullptr)
+        {
+            adding ? label->addTagIds({tag_id}) : label->removeTagIds({tag_id});
+        }
     }
-    return images_tag_ids;
+
+    if (target == TagTarget::Image)
+    {
+        adding ? tag->addImageIds(updated_ids) : tag->removeImageIds(updated_ids);
+    }
+    else
+    {
+        adding ? tag->addLabelIds(updated_ids) : tag->removeLabelIds(updated_ids);
+    }
+
+    updateStats();
+    return true;
 }
 
-int ImageTagsListModel::getTagClassId(const QModelIndex &index) const
+bool ImageTagsListModel::removeTags(const std::vector<int64_t> &target_ids, const TagTarget target)
 {
-    int idx = 0;
-    for (const auto &[tag_id, tag] : image_tags_)
+    if (database_ == nullptr)
     {
-        if (index.row() == idx)
-            return tag_id;
-        ++idx;
+        spdlog::error("删除 Tag 失败: 数据库未初始化");
+        return false;
     }
-    return -1;
+    if (target_ids.empty())
+    {
+        return true;
+    }
+
+    QString err_msg;
+    const bool ok = target == TagTarget::Image ? database_->removeTagsForImages(target_ids, err_msg)
+                                                : database_->removeTagsForLabels(target_ids, err_msg);
+    if (!ok)
+    {
+        spdlog::error("删除 {} Tag 失败: {}, error: {}", target == TagTarget::Image ? "图像" : "标注实例",
+                      target_ids.size(), err_msg.toUtf8().constData());
+        return false;
+    }
+
+    removeTagsFromMemory(target_ids, target);
+    return true;
+}
+
+void ImageTagsListModel::removeTagsFromMemory(const std::vector<int64_t> &target_ids, const TagTarget target)
+{
+    if (target_ids.empty())
+    {
+        return;
+    }
+
+    if (target == TagTarget::Image && image_instances_ != nullptr)
+    {
+        for (const int64_t image_id : target_ids)
+        {
+            if (ImageInstance *image = image_instances_->getImageInstance(image_id))
+            {
+                image->removeAllTagIds();
+            }
+        }
+    }
+    else if (target == TagTarget::Label && label_instances_ != nullptr)
+    {
+        for (const int64_t label_id : target_ids)
+        {
+            if (LabelInstance *label = label_instances_->getLabelInstance(label_id))
+            {
+                label->removeAllTagIds();
+            }
+        }
+    }
+
+    for (auto &[_, tag] : tags_)
+    {
+        if (target == TagTarget::Image)
+        {
+            tag.removeImageIds(target_ids);
+        }
+        else
+        {
+            tag.removeLabelIds(target_ids);
+        }
+    }
+    updateStats();
+}
+
+std::vector<int64_t> ImageTagsListModel::getUntaggedIds(const std::vector<int64_t> &target_ids,
+                                                         const std::set<int64_t> &tagged_ids)
+{
+    const std::set<int64_t> unique_target_ids(target_ids.begin(), target_ids.end());
+    std::vector<int64_t>    untagged_ids;
+    std::set_difference(unique_target_ids.begin(), unique_target_ids.end(), tagged_ids.begin(), tagged_ids.end(),
+                        std::back_inserter(untagged_ids));
+    return untagged_ids;
+}
+
+int64_t ImageTagsListModel::getTagClassId(const QModelIndex &index) const
+{
+    if (!index.isValid() || index.row() < 0 || index.row() >= rowCount())
+    {
+        return -1;
+    }
+
+    auto found = tags_.begin();
+    std::advance(found, index.row());
+    return found->first;
 }
 
 QVariant ImageTagsListModel::getTagClassName(const QModelIndex &index) const
 {
-    const int tag_id = getTagClassId(index);
-    return getTagClassName(tag_id);
+    return getTagClassName(getTagClassId(index));
 }
 
 QVariant ImageTagsListModel::getSelectedImagesTagStats(const QModelIndex &index) const
 {
     if (image_instances_ == nullptr)
     {
-        spdlog::error("获取选中图像标签(Tag)统计失败: 图像实例列表未初始化");
-        return "";
+        return {};
     }
-    const int tag_id = getTagClassId(index);
-    if (tag_id == -1)
-    {
-        spdlog::error("获取选中图像标签(Tag)统计失败: 标签 {} 不存在", tag_id);
-        return "";
-    }
-    const std::vector<int64_t> image_ids = image_instances_->getSelectedImagesId();
-    if (image_ids.empty())
-        return "";
 
-    const std::vector<ImageInstance *> image_instances = image_instances_->getImageInstances(image_ids);
-
-    int count{0};
-    for (const ImageInstance *image_instance : image_instances)
+    const int64_t tag_id = getTagClassId(index);
+    int           count{0};
+    for (const int64_t image_id : image_instances_->getSelectedImagesId())
     {
-        if (image_instance->tagIds().count(tag_id) > 0)
+        const ImageInstance *image = image_instances_->getImageInstance(image_id);
+        if (image != nullptr && image->tagIds().count(tag_id) > 0)
+        {
             ++count;
+        }
     }
-    return count > 0 ? QString("(%1)").arg(count) : "";
+    return count > 0 ? QString("(%1)").arg(count) : QString();
 }
 
 QVariant ImageTagsListModel::getCurrentImageTagStats(const QModelIndex &index) const
 {
     if (image_instances_ == nullptr)
     {
-        spdlog::error("获取当前图像标签(Tag)统计失败: 图像实例列表未初始化");
-        return "";
-    }
-    const int tag_id = getTagClassId(index);
-    if (tag_id == -1)
-    {
-        spdlog::error("获取当前图像标签(Tag)统计失败: 标签 {} 不存在", tag_id);
-        return "";
+        return {};
     }
 
-    const int image_id = image_instances_->getCurrentImageId();
-    if (image_id == -1)
-        return "";
-
-    const std::vector<ImageInstance *> image_instances = image_instances_->getImageInstances({image_id});
-
-    int count{0};
-    if (!image_instances.empty() && image_instances.at(0)->tagIds().count(tag_id) > 0)
-        ++count;
-    return count > 0 ? QString("(%1)").arg(count) : "";
+    const ImageInstance *image = image_instances_->getImageInstance(image_instances_->getCurrentImageId());
+    const int64_t        tag_id = getTagClassId(index);
+    return image != nullptr && image->tagIds().count(tag_id) > 0 ? QStringLiteral("(1)") : QString();
 }
 
-std::vector<int64_t> ImageTagsListModel::getValidImagesId(const std::vector<int64_t> &new_image_ids,
-                                                          const int64_t               tag_id)
+QVariant ImageTagsListModel::getSelectedLabelsTagStats(const QModelIndex &index) const
 {
-    std::set<int64_t> A{new_image_ids.begin(), new_image_ids.end()};
-    std::set<int64_t> B = getImageTag(tag_id)->imageIds();
-    if (A.empty() || B.empty())
-        return new_image_ids;
-    std::set<int64_t> result;
-    // 注意: 两个集合需要已排序, 所以不能用 std::unordered_set
-    std::set_difference(A.begin(), A.end(), B.begin(), B.end(), std::inserter(result, result.end()));
-    return std::vector<int64_t>{result.begin(), result.end()};
-}
-
-void ImageTagsListModel::updateStats()
-{
-    if (image_instances_ == nullptr || image_tags_.empty())
-        return;
-    emit dataChanged(index(0), index(static_cast<int>(image_tags_.size() - 1)),
-                     {SelectedImagesStatsRole, CurrentImageStatsRole});
-}
-
-QString ImageTagsListModel::getTagClassName(const int64_t tag_id) const
-{
-    auto found = image_tags_.find(tag_id);
-    if (found == image_tags_.end())
-        return QString();
-    return found->second->name();
-}
-
-bool ImageTagsListModel::hasAnyTags(const std::vector<int64_t> &image_ids) const
-{
-    // 如果没有任何 tag 定义，直接返回 false
-    if (image_tags_.empty())
-        return false;
-
-    // 检查这些图像是否有任何 tag
-    for (const auto &image_id : image_ids)
+    if (label_instances_ == nullptr || image_labels_list_ == nullptr)
     {
-        ImageInstance *image_instance = image_instances_->getImageInstance(image_id);
-        if (image_instance != nullptr && !image_instance->tagIds().empty())
+        return {};
+    }
+
+    const int64_t tag_id = getTagClassId(index);
+    int           count{0};
+    for (const int64_t label_id : image_labels_list_->getSelectedLabelIds())
+    {
+        const LabelInstance *label = label_instances_->getLabelInstance(label_id);
+        if (label != nullptr && label->tagIds().count(tag_id) > 0)
         {
-            return true;
+            ++count;
         }
     }
-
-    return false;
+    return count > 0 ? QString("(%1)").arg(count) : QString();
 }
 
 } // namespace dltool::data

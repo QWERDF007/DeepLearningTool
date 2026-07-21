@@ -11,8 +11,11 @@ Rectangle {
     color: QuiColor.Primary
     property DataManager dataManager
     property ImageInstancesModel imageInstances: dataManager ? dataManager.imageInstances : null
+    property ImageLabelsListModel imageLabelsList: dataManager ? dataManager.imageLabelsList : null
     property ImageTagsModel imageTags: dataManager ? dataManager.imageTags : null
     property bool multiSelect: false
+    readonly property bool hasSelectedLabels: !multiSelect && imageLabelsList && imageLabelsList.selection
+                                             && imageLabelsList.selection.hasSelection
     property int cellWidth: 80
     property int cellHeight: 30
     property int spacing: 10
@@ -37,11 +40,17 @@ Rectangle {
                 height: imageTagView.cellHeight
                 tagId: model.tag_id
                 tagName: model.name
-                tagStats: imageTagView.multiSelect ? model.selected_images_stats : model.current_image_stats
+                tagStats: imageTagView.multiSelect ? model.selected_images_stats
+                                                    : (imageTagView.hasSelectedLabels
+                                                       ? model.selected_labels_stats : model.current_image_stats)
                 onClicked: {
                     if (imageTagView.multiSelect)
                     {
                         imageTags.setImagesTag(imageInstances.getSelectedImagesId(), model.tag_id)
+                    }
+                    else if (imageTagView.hasSelectedLabels)
+                    {
+                        imageTags.setLabelsTag(imageLabelsList.getSelectedLabelIds(), model.tag_id)
                     }
                     else
                     {

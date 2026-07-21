@@ -1,9 +1,10 @@
-﻿#pragma once
+#pragma once
 
 #include <QAbstractListModel>
 #include <QtQml>
 #include <map>
 #include <set>
+#include <utility>
 #include <vector>
 
 namespace dltool::database {
@@ -13,31 +14,16 @@ class ProjectDataBase;
 namespace dltool::data {
 
 class ImageInstancesListModel;
+class LabelInstancesListModel;
+class ImageLabelsListModel;
 
-class ImageTag : public QObject
+class Tag
 {
 public:
-    ImageTag(const int64_t id, const QString &name, QObject *parent = nullptr)
-        : QObject(parent)
-        , id_(id)
-        , name_(name)
-
+    Tag(int64_t id, QString name)
+        : id_(id)
+        , name_(std::move(name))
     {
-    }
-
-    ~ImageTag() {}
-
-    QString name() const
-    {
-        return name_;
-    }
-
-    bool setName(const QString &name)
-    {
-        if (name_ == name)
-            return false;
-        name_ = name;
-        return true;
     }
 
     int64_t id() const
@@ -45,14 +31,29 @@ public:
         return id_;
     }
 
-    std::set<int64_t> &imageIds()
+    const QString &name() const
     {
-        return image_ids_;
+        return name_;
+    }
+
+    bool setName(const QString &name)
+    {
+        if (name_ == name)
+        {
+            return false;
+        }
+        name_ = name;
+        return true;
     }
 
     const std::set<int64_t> &imageIds() const
     {
         return image_ids_;
+    }
+
+    const std::set<int64_t> &labelIds() const
+    {
+        return label_ids_;
     }
 
     void addImageIds(const std::vector<int64_t> &image_ids)
@@ -62,18 +63,31 @@ public:
 
     void removeImageIds(const std::vector<int64_t> &image_ids)
     {
-        for (const auto &image_id : image_ids)
+        for (const int64_t image_id : image_ids)
         {
             image_ids_.erase(image_id);
         }
     }
 
-private:
-    int64_t id_;
+    void addLabelIds(const std::vector<int64_t> &label_ids)
+    {
+        label_ids_.insert(label_ids.begin(), label_ids.end());
+    }
 
+    void removeLabelIds(const std::vector<int64_t> &label_ids)
+    {
+        for (const int64_t label_id : label_ids)
+        {
+            label_ids_.erase(label_id);
+        }
+    }
+
+private:
+    int64_t id_{-1};
     QString name_;
 
     std::set<int64_t> image_ids_;
+    std::set<int64_t> label_ids_;
 };
 
 class ImageTagsListModel : public QAbstractListModel
@@ -83,8 +97,9 @@ class ImageTagsListModel : public QAbstractListModel
     QML_UNCREATABLE("Can not create ImageTagsModel directly!")
 public:
     ImageTagsListModel(dltool::database::ProjectDataBase *database, ImageInstancesListModel *image_instances,
+                       LabelInstancesListModel *label_instances, ImageLabelsListModel *image_labels_list,
                        QObject *parent = nullptr);
-    ~ImageTagsListModel();
+    ~ImageTagsListModel() override = default;
 
     enum Role
     {
@@ -92,58 +107,65 @@ public:
         NameRole,
         SelectedImagesStatsRole,
         CurrentImageStatsRole,
+        SelectedLabelsStatsRole,
     };
     Q_ENUM(Role)
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
-
     QHash<int, QByteArray> roleNames() const override;
 
     bool addTagClass(const QString &name);
-    bool updateTagClass(const int64_t tag_id, const QString &name);
-    bool deleteTagClass(const int64_t tag_id);
+    bool updateTagClass(int64_t tag_id, const QString &name);
+    bool deleteTagClass(int64_t tag_id);
 
-    Q_INVOKABLE bool setImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id);
-    Q_INVOKABLE bool setImageTag(const int64_t image_id, const int64_t tag_id);
+    Q_INVOKABLE bool setImagesTag(const std::vector<int64_t> &image_ids, int64_t tag_id);
+    Q_INVOKABLE bool setImageTag(int64_t image_id, int64_t tag_id);
+    Q_INVOKABLE bool setLabelsTag(const std::vector<int64_t> &label_ids, int64_t tag_id);
+    Q_INVOKABLE bool setLabelTag(int64_t label_id, int64_t tag_id);
 
     bool removeImagesTags(const std::vector<int64_t> &image_ids);
     void removeImagesTagsFromMemory(const std::vector<int64_t> &image_ids);
 
-    ImageTag *getImageTag(const int64_t tag_id);
-
     std::vector<std::vector<int64_t>> getImagesTagIds(const std::vector<int64_t> &image_ids) const;
+    void                              applyTagsToLabels();
+    void                              updateStats();
 
-    void updateStats();
-
-    QString getTagClassName(const int64_t tag_id) const;
+    QString getTagClassName(int64_t tag_id) const;
 
 private:
+    enum class TagTarget
+    {
+        Image,
+        Label,
+    };
+
     void init();
-    bool initTagClass();
-    bool initImagesTag();
+    bool initTagClasses();
+    bool initTagRelations();
 
-    int getTagClassId(const QModelIndex &index) const;
+    Tag *getTag(int64_t tag_id);
+    int  rowForTag(int64_t tag_id) const;
 
+    bool setTags(const std::vector<int64_t> &target_ids, int64_t tag_id, TagTarget target);
+    bool removeTags(const std::vector<int64_t> &target_ids, TagTarget target);
+    void removeTagsFromMemory(const std::vector<int64_t> &target_ids, TagTarget target);
+
+    static std::vector<int64_t> getUntaggedIds(const std::vector<int64_t> &target_ids,
+                                                const std::set<int64_t> &tagged_ids);
+
+    int64_t  getTagClassId(const QModelIndex &index) const;
     QVariant getTagClassName(const QModelIndex &index) const;
     QVariant getSelectedImagesTagStats(const QModelIndex &index) const;
     QVariant getCurrentImageTagStats(const QModelIndex &index) const;
-
-    std::vector<int64_t> getValidImagesId(const std::vector<int64_t> &new_image_ids, const int64_t tag_id);
-
-    /**
-     * @brief 检查指定的图像是否有任何 tag
-     * @param image_ids 要检查的图像 ID 列表
-     * @return 如果至少有一个图像有 tag 则返回 true，否则返回 false
-     */
-    bool hasAnyTags(const std::vector<int64_t> &image_ids) const;
+    QVariant getSelectedLabelsTagStats(const QModelIndex &index) const;
 
     dltool::database::ProjectDataBase *database_{nullptr};
+    ImageInstancesListModel           *image_instances_{nullptr};
+    LabelInstancesListModel           *label_instances_{nullptr};
+    ImageLabelsListModel              *image_labels_list_{nullptr};
 
-    ImageInstancesListModel *image_instances_{nullptr};
-
-    std::map<int64_t, ImageTag *> image_tags_;
+    std::map<int64_t, Tag> tags_;
 };
 
 } // namespace dltool::data

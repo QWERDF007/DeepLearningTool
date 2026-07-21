@@ -583,6 +583,10 @@ bool ProjectDataBase::deleteDatasetsWithContents(const std::vector<int64_t> &dat
                       .from(ImagesTable)
                       .where(ImagesTable.datasetId.in(sqlpp::value_list(unique_dataset_ids)));
 
+            const auto labels_in_datasets
+                = sqlpp::select(LabelsTable.id).from(LabelsTable).where(LabelsTable.imageId.in(images_in_datasets));
+
+            db(sqlpp::remove_from(TagsTable).where(TagsTable.labelId.in(labels_in_datasets)));
             db(sqlpp::remove_from(TagsTable).where(TagsTable.imageId.in(images_in_datasets)));
             db(sqlpp::remove_from(LabelsTable).where(LabelsTable.imageId.in(images_in_datasets)));
             db(sqlpp::remove_from(ImagesTable)
@@ -825,6 +829,11 @@ bool ProjectDataBase::getImages(const std::vector<int64_t> &image_ids, std::vect
 
 bool ProjectDataBase::deleteImages(const std::vector<int64_t> &image_ids, QString &err_msg) const
 {
+    if (image_ids.empty())
+    {
+        return true;
+    }
+
     try
     {
         if (pool_ == nullptr)
@@ -833,7 +842,25 @@ bool ProjectDataBase::deleteImages(const std::vector<int64_t> &image_ids, QStrin
             return false;
         }
         auto db = pool_->get();
-        db(sqlpp::remove_from(ImagesTable).where(ImagesTable.id.in(sqlpp::value_list(image_ids))));
+        auto tx = sqlpp::start_transaction(db);
+        try
+        {
+            const auto labels_for_images
+                = sqlpp::select(LabelsTable.id)
+                      .from(LabelsTable)
+                      .where(LabelsTable.imageId.in(sqlpp::value_list(image_ids)));
+
+            db(sqlpp::remove_from(TagsTable).where(TagsTable.labelId.in(labels_for_images)));
+            db(sqlpp::remove_from(TagsTable).where(TagsTable.imageId.in(sqlpp::value_list(image_ids))));
+            db(sqlpp::remove_from(LabelsTable).where(LabelsTable.imageId.in(sqlpp::value_list(image_ids))));
+            db(sqlpp::remove_from(ImagesTable).where(ImagesTable.id.in(sqlpp::value_list(image_ids))));
+            tx.commit();
+        }
+        catch (...)
+        {
+            tx.rollback();
+            throw;
+        }
         return true;
     }
     catch (const std::exception &e)
@@ -1164,7 +1191,18 @@ bool ProjectDataBase::deleteTagClass(const int64_t tag_class_id, QString &err_ms
             return false;
         }
         auto db = pool_->get();
-        db(sqlpp::remove_from(TagClassesTable).where(TagClassesTable.id == tag_class_id));
+        auto tx = sqlpp::start_transaction(db);
+        try
+        {
+            db(sqlpp::remove_from(TagsTable).where(TagsTable.tagId == tag_class_id));
+            db(sqlpp::remove_from(TagClassesTable).where(TagClassesTable.id == tag_class_id));
+            tx.commit();
+        }
+        catch (...)
+        {
+            tx.rollback();
+            throw;
+        }
         return true;
     }
     catch (const std::exception &e)
@@ -1174,7 +1212,9 @@ bool ProjectDataBase::deleteTagClass(const int64_t tag_class_id, QString &err_ms
     }
 }
 
-bool ProjectDataBase::getAllTags(std::vector<int64_t> &image_ids, std::vector<int64_t> &tag_ids, QString &err_msg) const
+bool ProjectDataBase::getAllTags(std::vector<int64_t> &image_ids, std::vector<int64_t> &image_tag_ids,
+                                 std::vector<int64_t> &label_ids, std::vector<int64_t> &label_tag_ids,
+                                 QString &err_msg) const
 {
     try
     {
@@ -1184,11 +1224,19 @@ bool ProjectDataBase::getAllTags(std::vector<int64_t> &image_ids, std::vector<in
             return false;
         }
         auto db   = pool_->get();
-        auto data = db(sqlpp::select(TagsTable.imageId, TagsTable.tagId).from(TagsTable).unconditionally());
+        auto data = db(sqlpp::select(TagsTable.imageId, TagsTable.labelId, TagsTable.tagId).from(TagsTable).unconditionally());
         for (const auto &row : data)
         {
-            image_ids.emplace_back(row.imageId);
-            tag_ids.emplace_back(row.tagId);
+            if (!row.imageId.is_null())
+            {
+                image_ids.emplace_back(row.imageId.value());
+                image_tag_ids.emplace_back(row.tagId);
+            }
+            else if (!row.labelId.is_null())
+            {
+                label_ids.emplace_back(row.labelId.value());
+                label_tag_ids.emplace_back(row.tagId);
+            }
         }
         return true;
     }
@@ -1199,7 +1247,8 @@ bool ProjectDataBase::getAllTags(std::vector<int64_t> &image_ids, std::vector<in
     }
 }
 
-bool ProjectDataBase::addImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id, QString &err_msg) const
+bool ProjectDataBase::addTagsToImages(const std::vector<int64_t> &image_ids, const int64_t tag_id,
+                                      QString &err_msg) const
 {
     if (pool_ == nullptr)
     {
@@ -1225,8 +1274,8 @@ bool ProjectDataBase::addImagesTag(const std::vector<int64_t> &image_ids, const 
     }
 }
 
-bool ProjectDataBase::deleteImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id,
-                                      QString &err_msg) const
+bool ProjectDataBase::removeTagsFromImages(const std::vector<int64_t> &image_ids, const int64_t tag_id,
+                                           QString &err_msg) const
 {
     try
     {
@@ -1247,7 +1296,7 @@ bool ProjectDataBase::deleteImagesTag(const std::vector<int64_t> &image_ids, con
     }
 }
 
-bool ProjectDataBase::deleteImagesTagsByImagesId(const std::vector<int64_t> &image_ids, QString &err_msg) const
+bool ProjectDataBase::removeTagsForImages(const std::vector<int64_t> &image_ids, QString &err_msg) const
 {
     try
     {
@@ -1267,7 +1316,35 @@ bool ProjectDataBase::deleteImagesTagsByImagesId(const std::vector<int64_t> &ima
     }
 }
 
-bool ProjectDataBase::deleteImagesTagsByTagsId(const std::vector<int64_t> &tag_ids, QString &err_msg) const
+bool ProjectDataBase::addTagsToLabels(const std::vector<int64_t> &label_ids, const int64_t tag_id,
+                                      QString &err_msg) const
+{
+    if (pool_ == nullptr)
+    {
+        err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
+    }
+    auto db = pool_->get();
+    auto tx = sqlpp::start_transaction(db);
+    try
+    {
+        for (const int64_t label_id : label_ids)
+        {
+            db(sqlpp::insert_into(TagsTable).set(TagsTable.labelId = label_id, TagsTable.tagId = tag_id));
+        }
+        tx.commit();
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        tx.rollback();
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::removeTagsFromLabels(const std::vector<int64_t> &label_ids, const int64_t tag_id,
+                                           QString &err_msg) const
 {
     try
     {
@@ -1277,7 +1354,28 @@ bool ProjectDataBase::deleteImagesTagsByTagsId(const std::vector<int64_t> &tag_i
             return false;
         }
         auto db = pool_->get();
-        db(sqlpp::remove_from(TagsTable).where(TagsTable.tagId.in(sqlpp::value_list(tag_ids))));
+        db(sqlpp::remove_from(TagsTable).where(TagsTable.labelId.in(sqlpp::value_list(label_ids))
+                                               && TagsTable.tagId == tag_id));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::removeTagsForLabels(const std::vector<int64_t> &label_ids, QString &err_msg) const
+{
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        db(sqlpp::remove_from(TagsTable).where(TagsTable.labelId.in(sqlpp::value_list(label_ids))));
         return true;
     }
     catch (const std::exception &e)
@@ -1629,6 +1727,11 @@ bool ProjectDataBase::updateLabelsClass(const std::vector<int64_t> &label_ids,
 
 bool ProjectDataBase::deleteLabels(const std::vector<int64_t> &label_ids, QString &err_msg) const
 {
+    if (label_ids.empty())
+    {
+        return true;
+    }
+
     try
     {
         if (pool_ == nullptr)
@@ -1637,7 +1740,18 @@ bool ProjectDataBase::deleteLabels(const std::vector<int64_t> &label_ids, QStrin
             return false;
         }
         auto db = pool_->get();
-        db(sqlpp::remove_from(LabelsTable).where(LabelsTable.id.in(sqlpp::value_list(label_ids))));
+        auto tx = sqlpp::start_transaction(db);
+        try
+        {
+            db(sqlpp::remove_from(TagsTable).where(TagsTable.labelId.in(sqlpp::value_list(label_ids))));
+            db(sqlpp::remove_from(LabelsTable).where(LabelsTable.id.in(sqlpp::value_list(label_ids))));
+            tx.commit();
+        }
+        catch (...)
+        {
+            tx.rollback();
+            throw;
+        }
         return true;
     }
     catch (const std::exception &e)

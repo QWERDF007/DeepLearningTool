@@ -61,6 +61,31 @@ public:
         label_class_id_ = label_class_id;
     }
 
+    void addTagIds(const std::vector<int64_t> &tag_ids)
+    {
+        tag_ids_.insert(tag_ids.begin(), tag_ids.end());
+    }
+
+    void removeTagIds(const std::vector<int64_t> &tag_ids)
+    {
+        for (const int64_t tag_id : tag_ids)
+        {
+            tag_ids_.erase(tag_id);
+        }
+    }
+
+    std::vector<int64_t> removeAllTagIds()
+    {
+        std::vector<int64_t> tag_ids(tag_ids_.begin(), tag_ids_.end());
+        tag_ids_.clear();
+        return tag_ids;
+    }
+
+    const std::set<int64_t> &tagIds() const
+    {
+        return tag_ids_;
+    }
+
     const LabelData &data() const
     {
         return data_;
@@ -72,6 +97,7 @@ private:
     int64_t label_class_id_;
 
     LabelData data_{nullptr};
+    std::set<int64_t> tag_ids_;
 };
 
 class LabelInstancesListModel : public QAbstractListModel
@@ -257,6 +283,7 @@ private:
 
 signals:
     void lastIndexChanged();
+    void labelsAboutToBeRemoved(const std::vector<int64_t> &label_ids);
 };
 
 class ImageLabelsListModel : public QAbstractListModel

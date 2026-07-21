@@ -550,23 +550,25 @@ void LabelInstancesListModel::removeLabelsFromMemory(const std::vector<int64_t> 
     }
 
     const std::set<int64_t> deleted_label_ids(label_ids.begin(), label_ids.end());
-    bool                    contains_deleted_label = false;
+    std::vector<int64_t>    removed_label_ids;
+    removed_label_ids.reserve(deleted_label_ids.size());
     for (const int64_t label_id : deleted_label_ids)
     {
         if (full_label_instances_.find(label_id) != full_label_instances_.end())
         {
-            contains_deleted_label = true;
-            break;
+            removed_label_ids.push_back(label_id);
         }
     }
-    if (!contains_deleted_label)
+    if (removed_label_ids.empty())
     {
         return;
     }
 
+    emit labelsAboutToBeRemoved(removed_label_ids);
+
     beginResetModel();
 
-    for (const auto &label_id : deleted_label_ids)
+    for (const int64_t label_id : removed_label_ids)
     {
         auto found = full_label_instances_.find(label_id);
         if (found == full_label_instances_.end())

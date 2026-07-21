@@ -12,7 +12,7 @@ Item {
     RowLayout {
         anchors.fill: parent
         QuiText {
-            text: "图像Tag:"
+            text: "Tag:"
             font: QuiFont.Subtitle
         }
         Item {

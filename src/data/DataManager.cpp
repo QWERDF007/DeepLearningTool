@@ -131,11 +131,11 @@ void DataManager::init(const int method)
     datasets_           = new DatasetsListModel(database_, this);
     image_instances_    = new ImageInstancesListModel(database_, this);
     label_classes_      = new LabelClassesListModel(database_, this);
-    image_tags_         = new ImageTagsListModel(database_, image_instances_, this);
     label_instances_    = new LabelInstancesListModel(database_, image_instances_, label_classes_,
                                                       data::createLabelDataHelper(method), false, this);
     image_labels_list_  = new ImageLabelsListModel(image_instances_, label_instances_, label_classes_, this);
     image_labels_table_ = new ImageLabelsTableModel(image_instances_, label_instances_, label_classes_, this);
+    image_tags_         = new ImageTagsListModel(database_, image_instances_, label_instances_, image_labels_list_, this);
     image_info_         = new ImageInfoListModel(datasets_, image_instances_, label_classes_, label_instances_, this);
 
     // Create GlobalFilter and initialize it with the models
@@ -199,6 +199,8 @@ void DataManager::init(const int method)
     connect(image_instances_->selection(), &QItemSelectionModel::selectionChanged, image_tags_,
             &ImageTagsListModel::updateStats);
     connect(image_instances_->selection(), &QItemSelectionModel::currentChanged, image_tags_,
+            &ImageTagsListModel::updateStats);
+    connect(image_labels_list_->selection(), &QItemSelectionModel::selectionChanged, image_tags_,
             &ImageTagsListModel::updateStats);
 
     std::vector<int64_t> image_ids   = image_instances_->getAllImageIds();
@@ -335,7 +337,15 @@ void DataManager::handleAsyncLabelsLoaded(std::shared_ptr<std::vector<LoadedLabe
     }
 
     label_instances_->replaceAllLabels(std::move(*labels));
+    if (image_tags_ != nullptr)
+    {
+        image_tags_->applyTagsToLabels();
+    }
     rebuildLabelRelations();
+    if (global_filter_ != nullptr)
+    {
+        global_filter_->refresh();
+    }
 
     spdlog::info("后台加载项目标注完成: {} 个标注, 耗时 {} ms", label_instances_->totalCount(), elapsed_ms);
 }
@@ -1258,6 +1268,7 @@ void DataManager::copyToDataset(const std::vector<int64_t> &image_ids, const int
     std::vector<int64_t>     copied_label_image_ids;
     std::vector<int64_t>     copied_label_class_ids;
     std::vector<QVariantMap> copied_label_data;
+    std::vector<std::vector<int64_t>> copied_label_tag_ids;
     for (size_t i = 0; i < copied_image_ids.size() && i < source_label_ids.size(); ++i)
     {
         for (const int64_t label_id : source_label_ids[i])
@@ -1270,15 +1281,33 @@ void DataManager::copyToDataset(const std::vector<int64_t> &image_ids, const int
             copied_label_image_ids.push_back(copied_image_ids[i]);
             copied_label_class_ids.push_back(label_instance->labelClassId());
             copied_label_data.push_back(label_instance->data()->dataMap());
+            copied_label_tag_ids.emplace_back(label_instance->tagIds().begin(), label_instance->tagIds().end());
         }
     }
 
     if (!copied_label_image_ids.empty())
     {
-        if (!addLabelsInternal(copied_label_image_ids, copied_label_class_ids, copied_label_data))
+        std::vector<int64_t> copied_label_ids;
+        if (!addLabelsInternal(copied_label_image_ids, copied_label_class_ids, copied_label_data, nullptr, true,
+                               &copied_label_ids))
         {
             updateDatasetsStats();
             image_info_->updateLabelInfo();
+        }
+        else
+        {
+            std::map<int64_t, std::vector<int64_t>> labels_by_tag;
+            for (size_t i = 0; i < copied_label_ids.size() && i < copied_label_tag_ids.size(); ++i)
+            {
+                for (const int64_t tag_id : copied_label_tag_ids[i])
+                {
+                    labels_by_tag[tag_id].push_back(copied_label_ids[i]);
+                }
+            }
+            for (const auto &[tag_id, label_ids] : labels_by_tag)
+            {
+                image_tags_->setLabelsTag(label_ids, tag_id);
+            }
         }
     }
     else
@@ -1507,8 +1536,13 @@ bool DataManager::addLabel(const int64_t image_id, const int64_t label_class_id,
 
 bool DataManager::addLabelsInternal(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                                     const std::vector<QVariantMap> &data, QString *err_msg,
-                                    const bool refresh_dependent_models)
+                                    const bool refresh_dependent_models, std::vector<int64_t> *added_label_ids)
 {
+    if (added_label_ids != nullptr)
+    {
+        added_label_ids->clear();
+    }
+
     std::vector<int64_t> label_ids;
     if (!label_instances_->tryAddLabels(label_ids, image_ids, label_class_ids, data, err_msg,
                                         !refresh_dependent_models))
@@ -1518,6 +1552,10 @@ bool DataManager::addLabelsInternal(const std::vector<int64_t> &image_ids, const
     if (labels_loading_)
     {
         labels_changed_during_loading_ = true;
+    }
+    if (added_label_ids != nullptr)
+    {
+        *added_label_ids = label_ids;
     }
 
     if (!refresh_dependent_models)
@@ -1594,6 +1632,7 @@ void DataManager::duplicateSelectedLabels()
     std::vector<int64_t>     image_ids;
     std::vector<int64_t>     label_class_ids;
     std::vector<QVariantMap> labels_data;
+    std::vector<std::vector<int64_t>> label_tag_ids;
     image_ids.reserve(selected_label_ids.size());
     label_class_ids.reserve(selected_label_ids.size());
     labels_data.reserve(selected_label_ids.size());
@@ -1610,11 +1649,30 @@ void DataManager::duplicateSelectedLabels()
         image_ids.push_back(current_image_id);
         label_class_ids.push_back(instance->labelClassId());
         labels_data.push_back(data);
+        label_tag_ids.emplace_back(instance->tagIds().begin(), instance->tagIds().end());
     }
 
     if (!image_ids.empty())
     {
-        addLabelsInternal(image_ids, label_class_ids, labels_data);
+        std::vector<int64_t> duplicated_label_ids;
+        if (!addLabelsInternal(image_ids, label_class_ids, labels_data, nullptr, true, &duplicated_label_ids)
+            || image_tags_ == nullptr)
+        {
+            return;
+        }
+
+        std::map<int64_t, std::vector<int64_t>> labels_by_tag;
+        for (size_t i = 0; i < duplicated_label_ids.size() && i < label_tag_ids.size(); ++i)
+        {
+            for (const int64_t tag_id : label_tag_ids[i])
+            {
+                labels_by_tag[tag_id].push_back(duplicated_label_ids[i]);
+            }
+        }
+        for (const auto &[tag_id, label_ids] : labels_by_tag)
+        {
+            image_tags_->setLabelsTag(label_ids, tag_id);
+        }
     }
 }
 

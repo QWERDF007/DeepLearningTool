@@ -184,12 +184,14 @@ public:
     bool updateTagClass(const int64_t tag_class_id, const QString &name, QString &err_msg) const;
     bool deleteTagClass(const int64_t tag_class_id, QString &err_msg) const;
 
-    bool getAllTags(std::vector<int64_t> &image_ids, std::vector<int64_t> &tag_ids, QString &err_msg) const;
-    bool addImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id, QString &err_msg) const;
-    bool deleteImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id, QString &err_msg) const;
-
-    bool deleteImagesTagsByImagesId(const std::vector<int64_t> &image_ids, QString &err_msg) const;
-    bool deleteImagesTagsByTagsId(const std::vector<int64_t> &tag_ids, QString &err_msg) const;
+    bool getAllTags(std::vector<int64_t> &image_ids, std::vector<int64_t> &image_tag_ids,
+                    std::vector<int64_t> &label_ids, std::vector<int64_t> &label_tag_ids, QString &err_msg) const;
+    bool addTagsToImages(const std::vector<int64_t> &image_ids, int64_t tag_id, QString &err_msg) const;
+    bool removeTagsFromImages(const std::vector<int64_t> &image_ids, int64_t tag_id, QString &err_msg) const;
+    bool removeTagsForImages(const std::vector<int64_t> &image_ids, QString &err_msg) const;
+    bool addTagsToLabels(const std::vector<int64_t> &label_ids, int64_t tag_id, QString &err_msg) const;
+    bool removeTagsFromLabels(const std::vector<int64_t> &label_ids, int64_t tag_id, QString &err_msg) const;
+    bool removeTagsForLabels(const std::vector<int64_t> &label_ids, QString &err_msg) const;
 
     bool getAllModels(std::vector<int64_t> &model_ids, std::vector<QString> &uuids, std::vector<QString> &names,
                       std::vector<QString> &framework_names, std::vector<QString> &model_architectures,

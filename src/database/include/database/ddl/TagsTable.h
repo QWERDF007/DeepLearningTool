@@ -59,7 +59,34 @@ struct ImageId
         };
     };
 
-    using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::require_insert>;
+    using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::can_be_null>;
+};
+
+struct LabelId
+{
+    struct _alias_t
+    {
+        static constexpr const char _literal[] = "label_id";
+        using _name_t                          = sqlpp::make_char_sequence<sizeof(_literal), _literal>;
+
+        template<typename T>
+        struct _member_t
+        {
+            T labelId;
+
+            T &operator()()
+            {
+                return labelId;
+            }
+
+            const T &operator()() const
+            {
+                return labelId;
+            }
+        };
+    };
+
+    using _traits = sqlpp::make_traits<sqlpp::integer, sqlpp::tag::can_be_null>;
 };
 
 struct TagId
@@ -117,7 +144,7 @@ struct ExtraData
 };
 } // namespace Tags_
 
-struct Tags : sqlpp::table_t<Tags, Tags_::Id, Tags_::ImageId, Tags_::TagId, Tags_::ExtraData>
+struct Tags : sqlpp::table_t<Tags, Tags_::Id, Tags_::ImageId, Tags_::LabelId, Tags_::TagId, Tags_::ExtraData>
 {
     struct _alias_t
     {

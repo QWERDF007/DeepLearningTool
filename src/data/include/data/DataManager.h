@@ -280,7 +280,8 @@ private:
                          const QString &data_dir, const std::map<QString, QString> &label_class_groups);
     bool addLabelsInternal(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                            const std::vector<QVariantMap> &data, QString *err_msg = nullptr,
-                           bool refresh_dependent_models = true);
+                           bool refresh_dependent_models = true,
+                           std::vector<int64_t> *added_label_ids = nullptr);
     bool writeImportBatch(int64_t dataset_id, const std::vector<QString> &image_paths,
                           const std::map<QString, QString> &label_class_info, const std::vector<ImportedLabel> &labels,
                           QString &err_msg);
