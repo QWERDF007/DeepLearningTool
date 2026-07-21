@@ -28,8 +28,6 @@ int imageClusterProgressPercent(const irt::features::ImageClusterProgress &progr
     using Stage = irt::features::ImageClusterStage;
     switch (progress.stage)
     {
-    case Stage::Started:
-        return 0;
     case Stage::LoadingModel:
         return progress.processed_count > 0 ? 5 : 1;
     case Stage::ExtractingFeatures:
@@ -42,8 +40,6 @@ int imageClusterProgressPercent(const irt::features::ImageClusterProgress &progr
     }
     case Stage::Clustering:
         return progress.processed_count > 0 ? 98 : 92;
-    case Stage::Finished:
-        return 100;
     case Stage::Unknown:
     default:
         return -1;
@@ -160,6 +156,36 @@ QString ImageClusterController::lastError() const
 QString ImageClusterController::lastSummary() const
 {
     return last_summary_;
+}
+
+QString ImageClusterController::validationError() const
+{
+    if (running_)
+    {
+        return QStringLiteral("图像聚类正在运行");
+    }
+    if (data_provider_ == nullptr)
+    {
+        return QStringLiteral("图像聚类模型未初始化");
+    }
+    if (data_manager_ == nullptr)
+    {
+        return QStringLiteral("数据管理器未初始化");
+    }
+
+    const auto *settings = dltool::settings::GlobalSettings::getInstance();
+    if (settings == nullptr || settings->settingsGroup(kSettingsAccessor) == nullptr)
+    {
+        return QStringLiteral("图像聚类设置未加载");
+    }
+    if (!searchSettingsEnabled(settings, kSettingsAccessor))
+    {
+        return QStringLiteral("图像聚类未启用");
+    }
+
+    ClusterRequest request;
+    buildClusterRequest(request);
+    return clusterRequestValidationError(request);
 }
 
 bool ImageClusterController::clusterSelectedImages()
@@ -289,7 +315,7 @@ std::set<int64_t> ImageClusterController::parseDatasetIds(const QVariantList &da
     return std::set<int64_t>(ids.begin(), ids.end());
 }
 
-void ImageClusterController::buildClusterRequest(ClusterRequest &request)
+void ImageClusterController::buildClusterRequest(ClusterRequest &request) const
 {
     const auto settings = readImageClusterSettings(dltool::settings::GlobalSettings::getInstance());
     request.weights_file
@@ -303,24 +329,32 @@ void ImageClusterController::buildClusterRequest(ClusterRequest &request)
 
 bool ImageClusterController::validateClusterRequest(const ClusterRequest &request)
 {
+    const QString error = clusterRequestValidationError(request);
+    if (!error.isEmpty())
+    {
+        setLastError(error);
+        return false;
+    }
+    return true;
+}
+
+QString ImageClusterController::clusterRequestValidationError(const ClusterRequest &request) const
+{
     if (QString::fromStdString(request.config.model_name).trimmed().isEmpty())
     {
-        setLastError(QStringLiteral("请先配置图像聚类模型"));
-        return false;
+        return QStringLiteral("请先配置图像聚类模型");
     }
     if (QString::fromStdString(request.config.feature_name).trimmed().isEmpty())
     {
-        setLastError(QStringLiteral("请先配置图像聚类特征层"));
-        return false;
+        return QStringLiteral("请先配置图像聚类特征层");
     }
 
     QFileInfo weights_info(request.weights_file);
     if (request.weights_file.trimmed().isEmpty() || !weights_info.isFile())
     {
-        setLastError(QStringLiteral("模型权重文件不存在: %1").arg(request.weights_file));
-        return false;
+        return QStringLiteral("模型权重文件不存在: %1").arg(request.weights_file);
     }
-    return true;
+    return {};
 }
 
 void ImageClusterController::collectClusterItems(ClusterRequest &request, const std::vector<int64_t> &image_ids,

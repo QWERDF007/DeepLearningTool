@@ -16,6 +16,8 @@ QuiPopup {
     property FeatureManager featureManager
     property var queryImageIds: []
     property bool imageSearchEnabled: true
+    property string validationMessage: ""
+    property bool startAttempted: false
     readonly property var imageSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.ImageSearch)
 
     DataSelectionTreeModel {
@@ -60,6 +62,40 @@ QuiPopup {
         return datasetSelectionModel.selectedDatasetClassScope()
     }
 
+    function selectedQueryImageIds() {
+        if (queryImageIds && queryImageIds.length > 0) {
+            return queryImageIds
+        }
+        return dataManager && dataManager.imageInstances
+                ? dataManager.imageInstances.getSelectedImagesId() : []
+    }
+
+    function updateValidation() {
+        startAttempted = false
+        let controller = imageSearchController()
+        if (!controller) {
+            validationMessage = "图像搜索功能未初始化"
+            return
+        }
+        if (controller.running) {
+            validationMessage = "图像搜索正在运行"
+            return
+        }
+        if (!imageSearchEnabled || !controller.enabled) {
+            validationMessage = "图像搜索未启用"
+            return
+        }
+        if (selectedQueryImageIds().length === 0) {
+            validationMessage = "请先选择要搜索的图像"
+            return
+        }
+        if (selectedSearchScope().length === 0) {
+            validationMessage = "请至少选择一个搜索数据集"
+            return
+        }
+        validationMessage = controller.validationError()
+    }
+
     function refreshImageSearchEnabled() {
         imageSearchEnabled = GlobalSettings.valueForField(
                     SettingsAccessor.ImageSearch,
@@ -69,10 +105,12 @@ QuiPopup {
 
     function startSearch() {
         let controller = imageSearchController()
-        if (!controller) {
+        updateValidation()
+        if (!controller || validationMessage.length > 0) {
             return
         }
 
+        startAttempted = true
         let searchScope = selectedSearchScope()
         let started = false
         if (queryImageIds && queryImageIds.length > 0) {
@@ -88,16 +126,34 @@ QuiPopup {
     onOpened: {
         resetDatasetSelection()
         refreshImageSearchEnabled()
+        Qt.callLater(updateValidation)
     }
 
-    onDataManagerChanged: bindDatasetSelectionModel()
-    Component.onCompleted: bindDatasetSelectionModel()
+    onDataManagerChanged: {
+        bindDatasetSelectionModel()
+        updateValidation()
+    }
+    onQueryImageIdsChanged: updateValidation()
+    onImageSearchEnabledChanged: updateValidation()
+    Component.onCompleted: {
+        bindDatasetSelectionModel()
+        updateValidation()
+    }
 
     Connections {
         target: imageSearchSettings ? imageSearchSettings.fieldModel : null
 
         function onValueChanged(name, value) {
             dialog.refreshImageSearchEnabled()
+            dialog.updateValidation()
+        }
+    }
+
+    Connections {
+        target: datasetSelectionModel
+
+        function onSelectionChanged() {
+            dialog.updateValidation()
         }
     }
 
@@ -110,12 +166,14 @@ QuiPopup {
                 selectionModel: datasetSelectionModel
             }
         }
-        errorText: dialog.imageSearchController() ? dialog.imageSearchController().lastError : ""
+        errorText: dialog.validationMessage.length > 0
+                   ? dialog.validationMessage
+                   : (dialog.startAttempted && dialog.imageSearchController()
+                      ? dialog.imageSearchController().lastError : "")
         primaryButtonText: "开始搜索"
         primaryButtonEnabled: dialog.imageSearchController()
                               && !dialog.imageSearchController().running
-                              && dialog.imageSearchEnabled
-                              && dialog.selectedSearchScope().length > 0
+                              && dialog.validationMessage.length === 0
         onCancelRequested: dialog.close()
         onPrimaryRequested: dialog.startSearch()
     }

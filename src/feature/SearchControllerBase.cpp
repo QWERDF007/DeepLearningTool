@@ -76,6 +76,32 @@ QString SearchControllerBase::lastSummary() const
     return last_summary_;
 }
 
+QString SearchControllerBase::validationError() const
+{
+    if (running_)
+    {
+        return searchDisplayName() + QString("正在运行");
+    }
+    if (!dataProvider())
+    {
+        return QString("%1数据未初始化").arg(searchDisplayName());
+    }
+
+    const auto *settings = dltool::settings::GlobalSettings::getInstance();
+    if (settings == nullptr || settings->settingsGroup(settingsAccessor()) == nullptr)
+    {
+        return QString("%1设置未加载").arg(searchDisplayName());
+    }
+    if (!searchSettingsEnabled(settings, settingsAccessor()))
+    {
+        return QString("%1未启用").arg(searchDisplayName());
+    }
+
+    SearchRequest request;
+    buildSearchRequest(request);
+    return validationErrorForRequest(request);
+}
+
 bool SearchControllerBase::search(const QVariantList &ids, const QVariantList &search_scope)
 {
     if (running_)
@@ -233,17 +259,32 @@ QString SearchControllerBase::featureNameForRequest(const SearchRequest &req) co
 
 bool SearchControllerBase::validateSearchRequest(SearchRequest &req)
 {
+    const QString error = validationErrorForRequest(req);
+    if (!error.isEmpty())
+    {
+        setLastError(error);
+        return false;
+    }
+    return true;
+}
+
+QString SearchControllerBase::validationErrorForRequest(const SearchRequest &req) const
+{
     if (modelNameForRequest(req).trimmed().isEmpty())
     {
-        setLastError(QString("请先配置%1模型").arg(searchDisplayName()));
-        return false;
+        return QString("请先配置%1模型").arg(searchDisplayName());
     }
     if (featureNameForRequest(req).trimmed().isEmpty())
     {
-        setLastError(QString("请先配置%1特征层").arg(searchDisplayName()));
-        return false;
+        return QString("请先配置%1特征层").arg(searchDisplayName());
     }
-    return validateWeightsFile(req.weights_file);
+
+    const QFileInfo weights_info(req.weights_file);
+    if (req.weights_file.trimmed().isEmpty() || !weights_info.isFile())
+    {
+        return QString("模型权重文件不存在: %1").arg(req.weights_file);
+    }
+    return {};
 }
 
 QString SearchControllerBase::searchDisplayName() const
@@ -281,7 +322,7 @@ QStringList SearchControllerBase::featureOptionsForModel(const QString &) const
     return {};
 }
 
-void SearchControllerBase::buildSearchRequest(SearchRequest &req)
+void SearchControllerBase::buildSearchRequest(SearchRequest &req) const
 {
     const auto base_settings
         = readImageSearchBaseSettings(dltool::settings::GlobalSettings::getInstance(), settingsAccessor());

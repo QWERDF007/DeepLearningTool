@@ -16,6 +16,8 @@ QuiPopup {
     property var clusterImageIds: []
     property var clusterDatasetIds: []
     property bool imageClusterEnabled: true
+    property string validationMessage: ""
+    property bool startAttempted: false
     readonly property var imageClusterSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.ImageCluster)
 
     implicitWidth: 680
@@ -68,6 +70,33 @@ QuiPopup {
         return ids
     }
 
+    function updateValidation() {
+        startAttempted = false
+        let controller = imageClusterController()
+        if (!controller) {
+            validationMessage = "图像聚类功能未初始化"
+            return
+        }
+        if (controller.running) {
+            validationMessage = "图像聚类正在运行"
+            return
+        }
+        if (!imageClusterEnabled || !controller.enabled) {
+            validationMessage = "图像聚类未启用"
+            return
+        }
+        if (imageMode()) {
+            if (!clusterImageIds || clusterImageIds.length === 0) {
+                validationMessage = "请先选择要聚类的图像"
+                return
+            }
+        } else if (selectedDatasetIds().length === 0) {
+            validationMessage = "请至少选择一个聚类数据集"
+            return
+        }
+        validationMessage = controller.validationError()
+    }
+
     function refreshImageClusterEnabled() {
         imageClusterEnabled = GlobalSettings.valueForField(
                     SettingsAccessor.ImageCluster,
@@ -77,10 +106,12 @@ QuiPopup {
 
     function startCluster() {
         let controller = imageClusterController()
-        if (!controller) {
+        updateValidation()
+        if (!controller || validationMessage.length > 0) {
             return
         }
 
+        startAttempted = true
         let started = false
         if (imageMode()) {
             started = controller.cluster(clusterImageIds, [])
@@ -95,13 +126,22 @@ QuiPopup {
     onOpened: {
         resetDatasetSelection()
         refreshImageClusterEnabled()
+        Qt.callLater(updateValidation)
     }
+
+    onClusterImageIdsChanged: updateValidation()
+    onClusterDatasetIdsChanged: updateValidation()
+    onImageClusterEnabledChanged: updateValidation()
+    onDataManagerChanged: Qt.callLater(updateValidation)
+    onFeatureManagerChanged: updateValidation()
+    Component.onCompleted: updateValidation()
 
     Connections {
         target: imageClusterSettings ? imageClusterSettings.fieldModel : null
 
         function onValueChanged(name, value) {
             dialog.refreshImageClusterEnabled()
+            dialog.updateValidation()
         }
     }
 
@@ -213,6 +253,7 @@ QuiPopup {
                                                 width: datasetColumn.width
                                                 text: model.name
                                                 checked: true
+                                                onCheckedChanged: dialog.updateValidation()
                                             }
                                         }
                                     }
@@ -243,7 +284,10 @@ QuiPopup {
 
             QuiText {
                 Layout.fillWidth: true
-                text: dialog.imageClusterController() ? dialog.imageClusterController().lastError : ""
+                text: dialog.validationMessage.length > 0
+                      ? dialog.validationMessage
+                      : (dialog.startAttempted && dialog.imageClusterController()
+                         ? dialog.imageClusterController().lastError : "")
                 color: "red"
                 elide: Text.ElideRight
             }
@@ -256,8 +300,7 @@ QuiPopup {
                 text: "开始聚类"
                 enabled: dialog.imageClusterController()
                          && !dialog.imageClusterController().running
-                         && dialog.imageClusterEnabled
-                         && (dialog.imageMode() || dialog.selectedDatasetIds().length > 0)
+                         && dialog.validationMessage.length === 0
                 onClicked: dialog.startCluster()
             }
         }

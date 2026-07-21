@@ -63,10 +63,8 @@ bool isOneStepStage(irt::features::ImageSearchBuildStage stage)
     switch (stage)
     {
     case Stage::LoadingModel:
-    case Stage::TrainingIndex:
-    case Stage::WritingIndex:
+    case Stage::BuildingIndex:
     case Stage::LoadingIndex:
-    case Stage::SavingMetadata:
         return true;
     default:
         return false;
@@ -377,15 +375,8 @@ bool resolveProgressCount(const irt::features::ImageSearchBuildProgress &progres
 {
     using Stage = irt::features::ImageSearchBuildStage;
 
-    if (progress.stage == Stage::Started || progress.stage == Stage::Unknown)
+    if (progress.stage == Stage::Unknown)
         return false;
-
-    if (progress.stage == Stage::Finished && gallery_count > 0)
-    {
-        processed = gallery_count;
-        total     = gallery_count;
-        return true;
-    }
 
     if (progress.total_count > 0 && progress.processed_count <= progress.total_count)
     {
@@ -397,14 +388,6 @@ bool resolveProgressCount(const irt::features::ImageSearchBuildProgress &progres
     if (progress.batch_count > 0 && gallery_count > 0)
     {
         processed = std::min(gallery_count, progress.batch_begin + progress.batch_count);
-        total     = gallery_count;
-        return true;
-    }
-
-    if (progress.stage == Stage::CollectingImages && gallery_count > 0
-        && progress.processed_count > progress.total_count)
-    {
-        processed = gallery_count;
         total     = gallery_count;
         return true;
     }
@@ -447,7 +430,7 @@ QString formatBuildProgressMessage(const irt::features::ImageSearchBuildProgress
     if (resolveProgressCount(progress, gallery_count, processed, total))
         return QString("构建进度 [%1]: %2 / %3").arg(stage_name).arg(processed).arg(total);
 
-    if (progress.stage == Stage::Started || isOneStepStage(progress.stage) || progress.stage == Stage::CollectingImages)
+    if (isOneStepStage(progress.stage))
         return QString("构建阶段 [%1]").arg(stage_name);
 
     return {};

@@ -44,6 +44,23 @@ QString RoiSearchController::featureNameForRequest(const SearchRequest &request)
     return QString::fromStdString(request.roi_config.feature_name);
 }
 
+QString RoiSearchController::validationErrorForRequest(const SearchRequest &request) const
+{
+    const QString base_error = SearchControllerBase::validationErrorForRequest(request);
+    if (!base_error.isEmpty())
+    {
+        return base_error;
+    }
+
+    const QString     model_name       = modelNameForRequest(request);
+    const QStringList spatial_features = featureOptionsForModel(model_name);
+    if (spatial_features.isEmpty())
+    {
+        return QString("标注搜索未在配置中找到模型 %1 的空间特征层").arg(model_name);
+    }
+    return {};
+}
+
 bool RoiSearchController::validateSearchRequest(SearchRequest &request)
 {
     if (!SearchControllerBase::validateSearchRequest(request))
@@ -95,7 +112,7 @@ size_t RoiSearchController::galleryItemCount(const SearchRequest &request) const
     return request.gallery_rois.size();
 }
 
-void RoiSearchController::buildSearchRequest(SearchRequest &req)
+void RoiSearchController::buildSearchRequest(SearchRequest &req) const
 {
     const auto *settings      = dltool::settings::GlobalSettings::getInstance();
     namespace generated_field = dltool::settings::generated::field;

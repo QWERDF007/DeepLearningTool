@@ -320,6 +320,25 @@ bool FewShotLearningController::startFsSam2()
                               selectedDatasetIdsFromViewModel(test_dataset_view_model_), label_class_ids);
 }
 
+QString FewShotLearningController::validationError() const
+{
+    if (running_)
+    {
+        return QString("小样本学习正在运行");
+    }
+
+    QVariantList label_class_ids = selectedLabelClassIdsFromViewModel(train_dataset_view_model_);
+    if (label_class_ids.empty())
+    {
+        label_class_ids = selectedLabelClassIdsFromViewModel(label_class_view_model_);
+    }
+
+    return validateStartRequest(parseInt64Ids(selectedDatasetIdsFromViewModel(train_dataset_view_model_), true, true),
+                                parseInt64Ids(selectedDatasetIdsFromViewModel(validation_dataset_view_model_), true, true),
+                                parseInt64Ids(selectedDatasetIdsFromViewModel(test_dataset_view_model_), true, true),
+                                parseInt64Ids(label_class_ids, true, true));
+}
+
 bool FewShotLearningController::startFsSam2WithIds(const QVariantList &train_dataset_ids,
                                                    const QVariantList &validation_dataset_ids,
                                                    const QVariantList &test_dataset_ids,
@@ -371,28 +390,12 @@ bool FewShotLearningController::startRun(const std::vector<int64_t> &train_datas
                                          const std::vector<int64_t> &test_dataset_ids,
                                          const std::vector<int64_t> &label_class_ids, QString *err_msg)
 {
-    if (data_manager_ == nullptr)
-        return setError(err_msg, QString("数据管理器未初始化"));
-    if (model_manager_ == nullptr)
-        return setError(err_msg, QString("模型管理器未初始化"));
-    if (model_task_controller_ == nullptr)
-        return setError(err_msg, QString("模型任务控制器未初始化"));
-    if (task_manager_ == nullptr || task_manager_->tasks() == nullptr)
-        return setError(err_msg, QString("任务管理器未初始化"));
-
-    const int method = data_manager_->method();
-    if (method != dltool::core::DeepLearningMethod::Detection
-        && method != dltool::core::DeepLearningMethod::Segmentation
-        && method != dltool::core::DeepLearningMethod::AnomalyDetection)
+    const QString validation_error
+        = validateStartRequest(train_dataset_ids, validation_dataset_ids, test_dataset_ids, label_class_ids);
+    if (!validation_error.isEmpty())
     {
-        return setError(err_msg, QString("小样本学习仅支持检测、分割和异常检测项目"));
+        return setError(err_msg, validation_error);
     }
-    if (train_dataset_ids.empty())
-        return setError(err_msg, QString("请至少选择一个训练数据集"));
-    if (test_dataset_ids.empty())
-        return setError(err_msg, QString("请至少选择一个测试数据集"));
-    if (label_class_ids.empty())
-        return setError(err_msg, QString("请至少选择一个类别"));
 
     QString       model_err;
     const QString model_name = QString("FS-SAM2 小样本 %1")
@@ -411,7 +414,7 @@ bool FewShotLearningController::startRun(const std::vector<int64_t> &train_datas
         return false;
     }
 
-    const bool requires_box_to_mask = method == dltool::core::DeepLearningMethod::Detection;
+    const bool requires_box_to_mask = data_manager_->method() == dltool::core::DeepLearningMethod::Detection;
     if (requires_box_to_mask)
     {
         run.box_to_mask_task_id = addOrdinaryTask(record.uuid, dltool::model::ModelTaskType::BoxToMask, err_msg);
@@ -442,6 +445,75 @@ bool FewShotLearningController::startRun(const std::vector<int64_t> &train_datas
         return false;
     }
     return true;
+}
+
+QString FewShotLearningController::validateStartRequest(const std::vector<int64_t> &train_dataset_ids,
+                                                        const std::vector<int64_t> &validation_dataset_ids,
+                                                        const std::vector<int64_t> &test_dataset_ids,
+                                                        const std::vector<int64_t> &label_class_ids) const
+{
+    Q_UNUSED(validation_dataset_ids)
+
+    if (!enabled_)
+        return QString("小样本学习未启用");
+    if (data_manager_ == nullptr)
+        return QString("数据管理器未初始化");
+    if (model_manager_ == nullptr)
+        return QString("模型管理器未初始化");
+    if (model_task_controller_ == nullptr)
+        return QString("模型任务控制器未初始化");
+    if (task_manager_ == nullptr || task_manager_->tasks() == nullptr)
+        return QString("任务管理器未初始化");
+
+    const int method = data_manager_->method();
+    if (method != dltool::core::DeepLearningMethod::Detection
+        && method != dltool::core::DeepLearningMethod::Segmentation
+        && method != dltool::core::DeepLearningMethod::AnomalyDetection)
+    {
+        return QString("小样本学习仅支持检测、分割和异常检测项目");
+    }
+    if (train_dataset_ids.empty())
+        return QString("请至少选择一个训练数据集");
+    if (test_dataset_ids.empty())
+        return QString("请至少选择一个测试数据集");
+    if (label_class_ids.empty())
+        return QString("请至少选择一个类别");
+
+    auto *settings = dltool::settings::GlobalSettings::getInstance();
+    if (settings == nullptr)
+        return QString("小样本学习设置未加载");
+
+    namespace generated_field = dltool::settings::generated::field;
+    const QString python_env_path = dltool::settings::settingString(settings, generated_field::Software::PythonEnvPath);
+    if (python_env_path.trimmed().isEmpty())
+        return QString("请先在软件设置中配置 Python 环境目录");
+
+    const QFileInfo python_env_info(cleanPath(python_env_path));
+    if (!python_env_info.exists() || !python_env_info.isDir())
+        return QString("Python 环境目录无效: %1").arg(python_env_path);
+
+    const QString python_executable = dltool::common::pythonExecutableFromEnvPath(python_env_path);
+    if (python_executable.isEmpty() || !QFileInfo(python_executable).isFile())
+        return QString("Python 环境中未找到 Python 可执行文件: %1").arg(python_env_path);
+
+    const QString sam2_checkpoint
+        = runtimePath(dltool::settings::settingString(settings, generated_field::FewShotLearning::Sam2Checkpoint));
+    if (sam2_checkpoint.trimmed().isEmpty())
+        return QString("请先配置 SAM2 权重");
+    if (!QFileInfo(sam2_checkpoint).isFile())
+        return QString("SAM2 checkpoint 不存在: %1").arg(sam2_checkpoint);
+
+    const QString sam2_architecture
+        = dltool::settings::settingString(settings, generated_field::FewShotLearning::Sam2Architecture);
+    if (sam2_architecture.trimmed().isEmpty())
+        return QString("请先配置 SAM2 架构");
+
+    QString       sam2_cfg_error;
+    const QString sam2_cfg = sam2ConfigPathFromArchitecture(sam2_architecture, &sam2_cfg_error);
+    if (sam2_cfg.isEmpty())
+        return sam2_cfg_error;
+
+    return {};
 }
 
 bool FewShotLearningController::configureFsSam2Model(const QString              &model_uuid,

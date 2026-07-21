@@ -88,6 +88,11 @@ public:
      */
     Q_INVOKABLE bool startFsSam2();
 
+    /**
+     * @brief 验证当前小样本学习参数是否可启动，不创建模型或任务。
+     */
+    Q_INVOKABLE QString validationError() const;
+
     /// 清除最后一次错误信息
     Q_INVOKABLE void clearLastError();
 
@@ -139,6 +144,10 @@ private:
                   const std::vector<int64_t> &validation_dataset_ids,
                   const std::vector<int64_t> &test_dataset_ids,
                   const std::vector<int64_t> &label_class_ids, QString *err_msg);
+    QString validateStartRequest(const std::vector<int64_t> &train_dataset_ids,
+                                 const std::vector<int64_t> &validation_dataset_ids,
+                                 const std::vector<int64_t> &test_dataset_ids,
+                                 const std::vector<int64_t> &label_class_ids) const;
     bool configureFsSam2Model(const QString &model_uuid, const std::vector<int64_t> &train_dataset_ids,
                               const std::vector<int64_t> &validation_dataset_ids,
                               const std::vector<int64_t> &test_dataset_ids,

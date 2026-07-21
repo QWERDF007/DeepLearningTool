@@ -50,6 +50,11 @@ public:
     QString lastError() const;
     QString lastSummary() const;
 
+    /**
+     * @brief 验证当前聚类配置是否可用于启动，不修改运行状态或错误状态。
+     */
+    Q_INVOKABLE QString validationError() const;
+
     Q_INVOKABLE bool clusterSelectedImages();
     Q_INVOKABLE bool cluster(const QVariantList &image_ids, const QVariantList &dataset_ids);
 
@@ -119,8 +124,9 @@ private:
 
     static std::set<int64_t> parseDatasetIds(const QVariantList &dataset_ids);
 
-    void buildClusterRequest(ClusterRequest &request);
+    void buildClusterRequest(ClusterRequest &request) const;
     bool validateClusterRequest(const ClusterRequest &request);
+    QString clusterRequestValidationError(const ClusterRequest &request) const;
     void collectClusterItems(ClusterRequest &request, const std::vector<int64_t> &image_ids,
                              const std::set<int64_t> &dataset_ids);
     void executeCluster(const ClusterRequest &request, ClusterResponse &response);

@@ -55,6 +55,7 @@ Rectangle {
                 SplitView.preferredHeight: parent.height / 2
                 color: QuiColor.Primary
                 dataManager: page.dataManager
+                featureManager: page.featureManager
             }
 
             Loader {

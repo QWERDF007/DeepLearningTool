@@ -16,6 +16,8 @@ QuiPopup {
     property FeatureManager featureManager
     property var queryLabelIds: []
     property bool roiSearchEnabled: true
+    property string validationMessage: ""
+    property bool startAttempted: false
     readonly property var roiSearchSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.RoiSearch)
 
     DataSelectionTreeModel {
@@ -54,6 +56,32 @@ QuiPopup {
         return datasetSelectionModel.selectedDatasetClassScope()
     }
 
+    function updateValidation() {
+        startAttempted = false
+        let controller = roiSearchController()
+        if (!controller) {
+            validationMessage = "标注搜索功能未初始化"
+            return
+        }
+        if (controller.running) {
+            validationMessage = "标注搜索正在运行"
+            return
+        }
+        if (!roiSearchEnabled || !controller.enabled) {
+            validationMessage = "标注搜索未启用"
+            return
+        }
+        if (!queryLabelIds || queryLabelIds.length === 0) {
+            validationMessage = "请先选择要搜索的标注"
+            return
+        }
+        if (selectedSearchScope().length === 0) {
+            validationMessage = "请至少选择一个搜索数据集"
+            return
+        }
+        validationMessage = controller.validationError()
+    }
+
     function refreshRoiSearchEnabled() {
         roiSearchEnabled = GlobalSettings.valueForField(
                     SettingsAccessor.RoiSearch,
@@ -63,10 +91,12 @@ QuiPopup {
 
     function startSearch() {
         let controller = roiSearchController()
-        if (!controller || !roiSearchEnabled || !queryLabelIds || queryLabelIds.length === 0) {
+        updateValidation()
+        if (!controller || validationMessage.length > 0) {
             return
         }
 
+        startAttempted = true
         let started = controller.search(queryLabelIds, selectedSearchScope())
         if (started) {
             close()
@@ -76,16 +106,34 @@ QuiPopup {
     onOpened: {
         resetDatasetSelection()
         refreshRoiSearchEnabled()
+        Qt.callLater(updateValidation)
     }
 
-    onDataManagerChanged: bindDatasetSelectionModel()
-    Component.onCompleted: bindDatasetSelectionModel()
+    onDataManagerChanged: {
+        bindDatasetSelectionModel()
+        updateValidation()
+    }
+    onQueryLabelIdsChanged: updateValidation()
+    onRoiSearchEnabledChanged: updateValidation()
+    Component.onCompleted: {
+        bindDatasetSelectionModel()
+        updateValidation()
+    }
 
     Connections {
         target: roiSearchSettings ? roiSearchSettings.fieldModel : null
 
         function onValueChanged(name, value) {
             dialog.refreshRoiSearchEnabled()
+            dialog.updateValidation()
+        }
+    }
+
+    Connections {
+        target: datasetSelectionModel
+
+        function onSelectionChanged() {
+            dialog.updateValidation()
         }
     }
 
@@ -98,14 +146,14 @@ QuiPopup {
                 selectionModel: datasetSelectionModel
             }
         }
-        errorText: dialog.roiSearchController() ? dialog.roiSearchController().lastError : ""
+        errorText: dialog.validationMessage.length > 0
+                   ? dialog.validationMessage
+                   : (dialog.startAttempted && dialog.roiSearchController()
+                      ? dialog.roiSearchController().lastError : "")
         primaryButtonText: "开始搜索"
         primaryButtonEnabled: dialog.roiSearchController()
                               && !dialog.roiSearchController().running
-                              && queryLabelIds
-                              && queryLabelIds.length > 0
-                              && dialog.roiSearchEnabled
-                              && dialog.selectedSearchScope().length > 0
+                              && dialog.validationMessage.length === 0
         onCancelRequested: dialog.close()
         onPrimaryRequested: dialog.startSearch()
     }

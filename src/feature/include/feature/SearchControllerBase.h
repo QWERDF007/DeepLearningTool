@@ -47,6 +47,13 @@ public:
     QString lastError() const;
     QString lastSummary() const;
 
+    /**
+     * @brief 验证当前搜索配置是否可用于启动，不修改运行状态或错误状态。
+     *
+     * 用于参数对话框在设置变更时即时展示不可启动的具体原因。
+     */
+    Q_INVOKABLE QString validationError() const;
+
     Q_INVOKABLE virtual bool search(const QVariantList &ids, const QVariantList &search_scope);
 
 signals:
@@ -102,7 +109,8 @@ protected:
     virtual QString modelNameForRequest(const SearchRequest &req) const;
     virtual QString featureNameForRequest(const SearchRequest &req) const;
     virtual bool validateSearchRequest(SearchRequest &req);
-    virtual void buildSearchRequest(SearchRequest &req);
+    virtual QString validationErrorForRequest(const SearchRequest &req) const;
+    virtual void buildSearchRequest(SearchRequest &req) const;
     virtual QString computeIndexPath(const SearchRequest &request) const;
     virtual void collectGallery(SearchRequest &request, const SearchScope &search_scope);
     virtual void collectQuery(SearchRequest &request, const std::vector<int64_t> &ids);

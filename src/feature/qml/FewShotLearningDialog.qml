@@ -17,7 +17,8 @@ QuiPopup {
     property FeatureManager featureManager
     readonly property FewShotLearningController controller: featureManager ? featureManager.fewShotLearning : null
     readonly property var fewShotSettings: GlobalSettings.settingsObjectFor(SettingsAccessor.FewShotLearning)
-    property string pythonEnvPath: ""
+    property string validationMessage: ""
+    property bool startAttempted: false
     readonly property var datasetSelectorSpecs: [
         { "title": "训练数据集", "selection": "train" },
         { "title": "验证数据集", "selection": "validation" },
@@ -46,47 +47,65 @@ QuiPopup {
         return controller ? controller.testDatasetViewModel : null
     }
 
-    function selectedCount(viewModel) {
-        return viewModel ? viewModel.selectedCount : 0
-    }
-
-    function selectedLabelClassCount(viewModel) {
-        return viewModel ? viewModel.selectedLabelClassCount : 0
-    }
-
     function canStart() {
-        return controller
-                && !controller.running
-                && selectedCount(controller.trainDatasetViewModel) > 0
-                && selectedCount(controller.testDatasetViewModel) > 0
-                && selectedLabelClassCount(controller.trainDatasetViewModel) > 0
-                && String(pythonEnvPath || "").length > 0
+        return controller && !controller.running && validationMessage.length === 0
+    }
+
+    function updateValidation() {
+        startAttempted = false
+        validationMessage = controller ? controller.validationError() : "小样本学习功能未初始化"
     }
 
     function startFewShot() {
+        updateValidation()
         if (!canStart()) {
             return
         }
+        startAttempted = true
         if (controller.startFsSam2()) {
             close()
         }
     }
 
     onOpened: {
-        refreshSettings()
+        updateValidation()
     }
 
-    function refreshSettings() {
-        pythonEnvPath = GlobalSettings.valueForField(
-                    SettingsAccessor.Software,
-                    SoftwareField.PythonEnvPath,
-                    "")
-    }
+    onFeatureManagerChanged: updateValidation()
+    Component.onCompleted: updateValidation()
 
     Connections {
         target: GlobalSettings.catalog
         function onValueChanged() {
-            dialog.refreshSettings()
+            dialog.updateValidation()
+        }
+    }
+
+    Connections {
+        target: dialog.controller ? dialog.controller.trainDatasetViewModel : null
+        function onSelectionChanged() {
+            dialog.updateValidation()
+        }
+    }
+
+    Connections {
+        target: dialog.controller ? dialog.controller.validationDatasetViewModel : null
+        function onSelectionChanged() {
+            dialog.updateValidation()
+        }
+    }
+
+    Connections {
+        target: dialog.controller ? dialog.controller.testDatasetViewModel : null
+        function onSelectionChanged() {
+            dialog.updateValidation()
+        }
+    }
+
+    Connections {
+        target: dialog.controller ? dialog.controller.labelClassViewModel : null
+        function onSelectionChanged() {
+            dialog.updateValidation()
         }
     }
 
@@ -112,11 +131,9 @@ QuiPopup {
                 }
             }
         }
-        errorText: controller && controller.lastError.length > 0
-                   ? controller.lastError
-                   : (String(pythonEnvPath || "").length === 0
-                      ? "请先在软件设置中配置 Python 环境目录"
-                      : "")
+        errorText: dialog.validationMessage.length > 0
+                   ? dialog.validationMessage
+                   : (dialog.startAttempted && controller ? controller.lastError : "")
         primaryButtonText: controller && controller.running ? "运行中" : "启动"
         primaryButtonEnabled: dialog.canStart()
         onCancelRequested: dialog.close()

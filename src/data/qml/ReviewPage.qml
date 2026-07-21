@@ -34,6 +34,7 @@ Rectangle {
                 SplitView.preferredHeight: parent.height / 3
                 color: QuiColor.Primary
                 dataManager: labelPage.dataManager
+                featureManager: labelPage.featureManager
             }
 
             ClassFilterView { // 类别筛选

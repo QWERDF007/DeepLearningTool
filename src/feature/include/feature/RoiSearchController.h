@@ -44,6 +44,8 @@ protected:
      */
     QString featureNameForRequest(const SearchRequest &request) const override;
 
+    QString validationErrorForRequest(const SearchRequest &request) const override;
+
     /**
      * @brief 验证搜索请求参数
      * @param request 搜索请求
@@ -52,7 +54,7 @@ protected:
     bool validateSearchRequest(SearchRequest &request) override;
 
     /// 构建搜索请求配置参数
-    void buildSearchRequest(SearchRequest &req) override;
+    void buildSearchRequest(SearchRequest &req) const override;
 
     /**
      * @brief 计算特征索引文件路径
