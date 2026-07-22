@@ -18,7 +18,6 @@ public:
 
     ~ImageClusterDataProvider() override = default;
 
-    virtual std::vector<int64_t> selectedImageIds() const = 0;
 };
 
 } // namespace dltool::feature

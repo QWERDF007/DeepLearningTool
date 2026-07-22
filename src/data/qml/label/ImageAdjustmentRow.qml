@@ -126,16 +126,22 @@ Item {
         if (label === "亮度") {
             return QuiFontIcon.Brightness
         }
-        return QuiFontIcon.Light
+        if (label === "对比度") {
+            return QuiFontIcon.Light
+        }
+        return QuiFontIcon.CalculatorSubtract
     }
 
     function increaseIconSource() {
         if (label === "缩放") {
-            return QuiFontIcon.Zoom
+            return QuiFontIcon.ZoomIn
         }
         if (label === "亮度") {
             return QuiFontIcon.Brightness
         }
-        return QuiFontIcon.Light
+        if (label === "对比度") {
+            return QuiFontIcon.Light
+        }
+        return QuiFontIcon.CalculatorAddition
     }
 }

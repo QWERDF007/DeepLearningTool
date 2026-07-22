@@ -81,7 +81,7 @@ Rectangle {
             text: "标注聚类"
             enabled: dataManager && roiCluster && selection && selection.hasSelection
                      && !roiCluster.running && roiClusterEnabled && roiCluster.enabled
-            iconSource: QuiFontIcon.AreaChart
+            iconSource: QuiFontIcon.GridView
             onClicked: startRoiClusterForSelectedLabels()
         }
     }

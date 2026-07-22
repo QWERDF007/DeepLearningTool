@@ -55,8 +55,7 @@ public:
      */
     Q_INVOKABLE QString validationError() const;
 
-    Q_INVOKABLE bool clusterSelectedImages();
-    Q_INVOKABLE bool cluster(const QVariantList &image_ids, const QVariantList &dataset_ids);
+    Q_INVOKABLE bool cluster(const QVariantList &dataset_ids);
 
 signals:
     void enabledChanged();
@@ -122,13 +121,10 @@ private:
         std::vector<ImageClusterAssignment> assignments;
     };
 
-    static std::set<int64_t> parseDatasetIds(const QVariantList &dataset_ids);
-
     void buildClusterRequest(ClusterRequest &request) const;
     bool validateClusterRequest(const ClusterRequest &request);
     QString clusterRequestValidationError(const ClusterRequest &request) const;
-    void collectClusterItems(ClusterRequest &request, const std::vector<int64_t> &image_ids,
-                             const std::set<int64_t> &dataset_ids);
+    void collectClusterItems(ClusterRequest &request, const std::map<int64_t, std::set<int64_t>> &scope);
     void executeCluster(const ClusterRequest &request, ClusterResponse &response);
     bool buildClusterApplyPlan(const std::vector<ImageClusterAssignment> &assignments,
                                bool include_noise,

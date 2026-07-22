@@ -222,7 +222,7 @@ Rectangle {
         }
         QuiMenuItem {
             text: "图像聚类"
-            iconSource: QuiFontIcon.AreaChart
+            iconSource: QuiFontIcon.GridView
             enabled: dataManager
                      && featureManager
                      && featureManager.imageCluster

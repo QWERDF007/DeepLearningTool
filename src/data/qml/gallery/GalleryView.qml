@@ -30,6 +30,20 @@ Item {
         }
     }
 
+    function selectedImageDatasetIds() {
+        let datasetIds = []
+        let seen = {}
+        let imageIds = imageInstances ? imageInstances.getSelectedImagesId() : []
+        for (let i = 0; i < imageIds.length; ++i) {
+            let datasetId = dataManager ? Number(dataManager.imageDatasetId(Number(imageIds[i]))) : -1
+            if (datasetId >= 0 && !seen[datasetId]) {
+                seen[datasetId] = true
+                datasetIds.push(datasetId)
+            }
+        }
+        return datasetIds
+    }
+
     property real imageCellScale: 1.0
     property int imageSortOrder: 0
     property real cellScaleMin: 0.5
@@ -63,13 +77,14 @@ Item {
         }
         QuiMenuItem {
             text: "图像聚类"
-            iconSource: QuiFontIcon.AreaChart
+            iconSource: QuiFontIcon.GridView
             enabled: dataManager && imageClusterController && !imageClusterController.running
                      && imageClusterController.enabled
                      && selection && selection.hasSelection
             onClicked: {
-                if (imageInstances) {
-                    imageClusterDialog.openForImages(imageInstances.getSelectedImagesId())
+                let datasetIds = instancesView.selectedImageDatasetIds()
+                if (datasetIds.length > 0) {
+                    imageClusterDialog.openForDatasets(datasetIds)
                 }
             }
         }

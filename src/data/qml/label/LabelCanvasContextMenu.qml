@@ -49,7 +49,7 @@ Item {
                      && actions.roiClusterEnabled && actions.selection
                      && actions.selection.hasSelection && !actions.roiCluster.running
                      && actions.roiCluster.enabled
-            iconSource: QuiFontIcon.AreaChart
+            iconSource: QuiFontIcon.GridView
             onClicked: actions.startRoiClusterForSelectedLabels()
         }
 

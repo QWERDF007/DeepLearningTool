@@ -64,12 +64,6 @@ public:
         : ImageClusterDataProvider(data_manager)
     {
     }
-
-    std::vector<int64_t> selectedImageIds() const override
-    {
-        auto *manager = dataManager();
-        return manager ? manager->selectedImageIds() : std::vector<int64_t>{};
-    }
 };
 
 class FeatureManager::RoiClusterProvider final : public RoiClusterDataProvider

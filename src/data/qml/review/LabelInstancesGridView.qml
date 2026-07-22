@@ -67,7 +67,7 @@ Rectangle {
         }
         QuiMenuItem {
             text: "标注聚类"
-            iconSource: QuiFontIcon.AreaChart
+            iconSource: QuiFontIcon.GridView
             enabled: dataManager && roiCluster && selection && selection.hasSelection
                      && !roiCluster.running && roiClusterEnabled && roiCluster.enabled
             onClicked: startRoiClusterForSelectedLabels()
