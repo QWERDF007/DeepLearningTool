@@ -995,104 +995,130 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
     };
 
     auto state = std::make_shared<ExportBatchState>();
-    for (const int64_t dataset_id : dataset_ids)
-    {
-        ExportDataset dataset = buildExportDataset(dataset_id);
-        if (dataset.dataset_name.isEmpty())
+    QPointer<DataManager> manager(this);
+    // Building an export snapshot reads every image header and walks all labels. Keep this
+    // preparation off the GUI thread; only the exporter sequencing and UI notifications run
+    // on the DataManager thread below.
+    auto *prepare_thread = QThread::create(
+        [manager, dataset_ids, output_dir, state, data_format, options]() mutable
         {
-            addProgressMessage(spdlog::level::warn, QString("跳过不存在的数据集: %1").arg(dataset_id));
-            continue;
-        }
-        if (dataset.images.empty())
-        {
-            spdlog::warn("跳过空数据集导出: {}", dataset_id);
-            addProgressMessage(spdlog::level::warn, QString("跳过空数据集: %1").arg(dataset.dataset_name));
-            continue;
-        }
+            if (!manager)
+                return;
 
-        const QString dataset_output_dir = QDir(output_dir).filePath(dataset.dataset_name);
-        if (!ensureDirectory(dataset_output_dir, err_msg))
-        {
-            spdlog::error("创建数据集导出目录失败: {}", err_msg.toUtf8().constData());
-            addProgressMessage(spdlog::level::err, err_msg);
-            ++state->failed_count;
-            continue;
-        }
-
-        state->items.push_back(ExportBatchItem{std::move(dataset), dataset_output_dir});
-    }
-
-    if (state->items.empty())
-    {
-        const QString message = QString("没有可导出的数据集");
-        addProgressMessage(spdlog::level::err, message);
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
-        ui::SignalHelper::notifyError(QString("导出失败"), message);
-        return;
-    }
-
-    auto                                 start_next      = std::make_shared<std::function<void()>>();
-    std::weak_ptr<std::function<void()>> weak_start_next = start_next;
-    *start_next                                          = [this, data_format, options, state, weak_start_next]()
-    {
-        if (state->current >= static_cast<int>(state->items.size()))
-        {
-            const QString message
-                = QString("导出完成: 成功 %1 个, 失败 %2 个").arg(state->success_count).arg(state->failed_count);
-            const bool success = state->success_count > 0 && state->failed_count == 0;
-            addProgressMessage(state->failed_count == 0 ? spdlog::level::info : spdlog::level::warn, message);
-            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
-            if (success)
-                ui::SignalHelper::notifySuccess(QString("导出完成"), message);
-            else if (state->success_count > 0)
-                ui::SignalHelper::notifyWarn(QString("导出完成"), message);
-            else
-                ui::SignalHelper::notifyError(QString("导出失败"), message);
-            return;
-        }
-
-        const ExportBatchItem item = state->items[static_cast<size_t>(state->current++)];
-        addProgressMessage(spdlog::level::info,
-                           QString("开始导出数据集: %1 -> %2").arg(item.dataset.dataset_name, item.output_dir));
-
-        DataIO *exporter = DataIO::createIO(data_format, nullptr, this);
-        if (!exporter)
-        {
-            addProgressMessage(spdlog::level::err, QString("不支持的数据格式"));
-            ++state->failed_count;
-            if (auto next = weak_start_next.lock())
+            QString err_msg;
+            for (const int64_t dataset_id : dataset_ids)
             {
-                (*next)();
-            }
-            return;
-        }
-        exporter->setTargetMethod(method_);
-
-        connect(
-            exporter, &DataIO::exportFinished, this,
-            [exporter, state, start_next = weak_start_next.lock()](bool success, const QString &message)
-            {
-                if (success)
+                ExportDataset dataset = manager->buildExportDataset(dataset_id);
+                if (dataset.dataset_name.isEmpty())
                 {
-                    ++state->success_count;
+                    spdlog::warn("跳过不存在的数据集: {}", dataset_id);
+                    addProgressMessage(spdlog::level::warn, QString("跳过不存在的数据集: %1").arg(dataset_id));
+                    continue;
                 }
-                else
+                if (dataset.images.empty())
                 {
+                    spdlog::warn("跳过空数据集导出: {}", dataset_id);
+                    addProgressMessage(spdlog::level::warn, QString("跳过空数据集: %1").arg(dataset.dataset_name));
+                    continue;
+                }
+
+                const QString dataset_output_dir = QDir(output_dir).filePath(dataset.dataset_name);
+                if (!ensureDirectory(dataset_output_dir, err_msg))
+                {
+                    spdlog::error("创建数据集导出目录失败: {}", err_msg.toUtf8().constData());
+                    addProgressMessage(spdlog::level::err, err_msg);
                     ++state->failed_count;
+                    continue;
                 }
-                addProgressMessage(success ? spdlog::level::info : spdlog::level::err, message);
-                exporter->deleteLater();
-                if (start_next)
+
+                state->items.push_back(ExportBatchItem{std::move(dataset), dataset_output_dir});
+            }
+
+            QMetaObject::invokeMethod(
+                manager.data(),
+                [manager, data_format, options, state]() mutable
                 {
+                    if (!manager)
+                        return;
+
+                    if (state->items.empty())
+                    {
+                        const QString message = QString("没有可导出的数据集");
+                        addProgressMessage(spdlog::level::err, message);
+                        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask",
+                                                  Qt::QueuedConnection);
+                        ui::SignalHelper::notifyError(QString("导出失败"), message);
+                        return;
+                    }
+
+                    auto                                 start_next      = std::make_shared<std::function<void()>>();
+                    std::weak_ptr<std::function<void()>> weak_start_next = start_next;
+                    *start_next = [manager, data_format, options, state, weak_start_next]()
+                    {
+                        if (!manager)
+                            return;
+
+                        if (state->current >= static_cast<int>(state->items.size()))
+                        {
+                            const QString message = QString("导出完成: 成功 %1 个, 失败 %2 个")
+                                                         .arg(state->success_count)
+                                                         .arg(state->failed_count);
+                            const bool success = state->success_count > 0 && state->failed_count == 0;
+                            addProgressMessage(state->failed_count == 0 ? spdlog::level::info : spdlog::level::warn,
+                                               message);
+                            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask",
+                                                      Qt::QueuedConnection);
+                            if (success)
+                                ui::SignalHelper::notifySuccess(QString("导出完成"), message);
+                            else if (state->success_count > 0)
+                                ui::SignalHelper::notifyWarn(QString("导出完成"), message);
+                            else
+                                ui::SignalHelper::notifyError(QString("导出失败"), message);
+                            return;
+                        }
+
+                        const ExportBatchItem item = state->items[static_cast<size_t>(state->current++)];
+                        addProgressMessage(spdlog::level::info,
+                                           QString("开始导出数据集: %1 -> %2")
+                                               .arg(item.dataset.dataset_name, item.output_dir));
+
+                        DataIO *exporter = DataIO::createIO(data_format, nullptr, manager.data());
+                        if (!exporter)
+                        {
+                            addProgressMessage(spdlog::level::err, QString("不支持的数据格式"));
+                            ++state->failed_count;
+                            if (auto next = weak_start_next.lock())
+                            {
+                                (*next)();
+                            }
+                            return;
+                        }
+                        exporter->setTargetMethod(manager->method_);
+
+                        connect(exporter, &DataIO::exportFinished, manager.data(),
+                                [exporter, state, start_next = weak_start_next.lock()](bool success,
+                                                                                        const QString &message)
+                                {
+                                    if (success)
+                                        ++state->success_count;
+                                    else
+                                        ++state->failed_count;
+                                    addProgressMessage(success ? spdlog::level::info : spdlog::level::err, message);
+                                    exporter->deleteLater();
+                                    if (start_next)
+                                        (*start_next)();
+                                },
+                                Qt::QueuedConnection);
+
+                        exporter->startExport(item.dataset, item.output_dir, options);
+                    };
+
                     (*start_next)();
-                }
-            },
-            Qt::QueuedConnection);
-
-        exporter->startExport(item.dataset, item.output_dir, options);
-    };
-
-    (*start_next)();
+                },
+                Qt::QueuedConnection);
+        });
+    connect(prepare_thread, &QThread::finished, prepare_thread, &QObject::deleteLater);
+    prepare_thread->start();
 }
 
 ExportDataset DataManager::buildExportDataset(const int64_t dataset_id) const
