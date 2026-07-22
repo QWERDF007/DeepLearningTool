@@ -18,7 +18,9 @@ Item {
     property ItemSelectionModel selection: null
     property ImageSearchController imageSearch: null
     property RoiSearchController roiSearch: null
+    property RoiClusterController roiCluster: null
     property bool roiSearchEnabled: true
+    property bool roiClusterEnabled: true
 
     QuiMenu {
         id: labelCanvasMenu
@@ -39,6 +41,16 @@ Item {
                      && actions.roiSearchEnabled && actions.selection && actions.selection.hasSelection
             iconSource: QuiFontIcon.Search
             onClicked: actions.startRoiSearchForSelectedLabels()
+        }
+
+        QuiMenuItem {
+            text: "标注聚类"
+            enabled: actions.dataManager && actions.roiCluster
+                     && actions.roiClusterEnabled && actions.selection
+                     && actions.selection.hasSelection && !actions.roiCluster.running
+                     && actions.roiCluster.enabled
+            iconSource: QuiFontIcon.AreaChart
+            onClicked: actions.startRoiClusterForSelectedLabels()
         }
 
         QuiMenuItem {
@@ -73,6 +85,13 @@ Item {
         featureManager: actions.featureManager
     }
 
+    RoiClusterDialog {
+        id: roiClusterDialog
+        dataManager: actions.dataManager
+        featureManager: actions.featureManager
+        roiClusterEnabled: actions.roiClusterEnabled
+    }
+
     function popup() {
         labelCanvasMenu.popup()
     }
@@ -101,6 +120,19 @@ Item {
         let labelIds = imageLabelsList.getSelectedLabelIds()
         if (labelIds.length > 0) {
             roiSearchDialog.openForLabels(labelIds)
+        }
+    }
+
+    function startRoiClusterForSelectedLabels() {
+        if (!dataManager || !roiCluster || !roiClusterEnabled || !imageLabelsList
+                || !selection || !selection.hasSelection || roiCluster.running
+                || !roiCluster.enabled) {
+            return
+        }
+
+        let labelIds = imageLabelsList.getSelectedLabelIds()
+        if (labelIds.length > 0) {
+            roiClusterDialog.openForLabels(labelIds)
         }
     }
 }

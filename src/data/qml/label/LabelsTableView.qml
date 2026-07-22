@@ -5,6 +5,8 @@ import Qt.labs.qmlmodels
 
 import dltool.ui
 import dltool.data
+import dltool.feature
+import dltool.settings
 import quickui
 
 Rectangle {
@@ -14,8 +16,11 @@ Rectangle {
     height: 200
 
     property DataManager dataManager
+    property FeatureManager featureManager
     property ImageLabelsTableModel imageLabelsTable: dataManager ? dataManager.imageLabelsTable : null
     property ItemSelectionModel selection: imageLabelsTable ? imageLabelsTable.selection : null
+    property var roiCluster: featureManager ? featureManager.roiCluster : null
+    property bool roiClusterEnabled: true
     readonly property bool tableActive: dataManager !== null && imageLabelsTable !== null
 
     property real rowHeight: 24
@@ -72,6 +77,20 @@ Rectangle {
                 deleteConfirmDialog.open()
             }
         }
+        QuiMenuItem {
+            text: "标注聚类"
+            enabled: dataManager && roiCluster && selection && selection.hasSelection
+                     && !roiCluster.running && roiClusterEnabled && roiCluster.enabled
+            iconSource: QuiFontIcon.AreaChart
+            onClicked: startRoiClusterForSelectedLabels()
+        }
+    }
+
+    RoiClusterDialog {
+        id: roiClusterDialog
+        dataManager: control.dataManager
+        featureManager: control.featureManager
+        roiClusterEnabled: control.roiClusterEnabled
     }
 
     QuiContentDialog {
@@ -268,6 +287,32 @@ Rectangle {
             selectAndScrollToRow(row)
         } else {
             console.warn("Label ID not found in current image:", label_id)
+        }
+    }
+
+    function startRoiClusterForSelectedLabels() {
+        if (!dataManager || !roiCluster || !imageLabelsTable || !selection
+                || !selection.hasSelection || !roiClusterEnabled || roiCluster.running
+                || !roiCluster.enabled) {
+            return
+        }
+
+        let labelIds = imageLabelsTable.getSelectedLabelIds()
+        if (labelIds.length > 0) {
+            roiClusterDialog.openForLabels(labelIds)
+        }
+    }
+
+    function refreshSettings() {
+        roiClusterEnabled = GlobalSettings.valueForField(SettingsAccessor.RoiCluster, RoiClusterField.Enabled, true)
+    }
+
+    Component.onCompleted: refreshSettings()
+
+    Connections {
+        target: GlobalSettings.catalog
+        function onValueChanged() {
+            control.refreshSettings()
         }
     }
 }

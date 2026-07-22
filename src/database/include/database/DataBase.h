@@ -14,6 +14,12 @@
 
 namespace dltool::database {
 
+enum class TagType : int
+{
+    Image = 0,
+    Label = 1,
+};
+
 class DATABASE_API DataBase : public QObject
 {
 public:
@@ -136,7 +142,7 @@ public:
     bool updateDataset(const int64_t dataset_id, const QString &name, QString &err_msg) const;
     bool deleteDataset(const int64_t dataset_id, QString &err_msg) const;
     /**
-     * @brief 原子删除数据集及其图像、标注和图像标签。
+     * @brief 原子删除数据集及其图像、标注和 Tag 关系。
      *
      * 旧项目数据库未依赖外键级联，因此必须显式删除从属记录，避免留下孤立
      * labels/tags。该操作只访问数据库，可安全地在工作线程中执行。
@@ -184,8 +190,10 @@ public:
     bool updateTagClass(const int64_t tag_class_id, const QString &name, QString &err_msg) const;
     bool deleteTagClass(const int64_t tag_class_id, QString &err_msg) const;
 
-    bool getAllTags(std::vector<int64_t> &image_ids, std::vector<int64_t> &image_tag_ids,
-                    std::vector<int64_t> &label_ids, std::vector<int64_t> &label_tag_ids, QString &err_msg) const;
+    // Each target has one row in tags; the associated tag-class IDs are returned as a vector.
+    bool getAllTags(std::vector<int64_t> &image_ids, std::vector<std::vector<int64_t>> &image_tag_ids,
+                    std::vector<int64_t> &label_ids, std::vector<std::vector<int64_t>> &label_tag_ids,
+                    QString &err_msg) const;
     bool addTagsToImages(const std::vector<int64_t> &image_ids, int64_t tag_id, QString &err_msg) const;
     bool removeTagsFromImages(const std::vector<int64_t> &image_ids, int64_t tag_id, QString &err_msg) const;
     bool removeTagsForImages(const std::vector<int64_t> &image_ids, QString &err_msg) const;

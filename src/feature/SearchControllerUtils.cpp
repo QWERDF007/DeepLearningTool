@@ -206,6 +206,51 @@ ImageClusterSettings readImageClusterSettingsImpl(const dltool::settings::Global
     return result;
 }
 
+RoiClusterSettings readRoiClusterSettingsImpl(const dltool::settings::GlobalSettings *settings)
+{
+    namespace generated_field = dltool::settings::generated::field;
+
+    RoiClusterSettings result;
+    result.base.weights_file = settingString(settings, generated_field::RoiCluster::ModelPath);
+    result.base.model_name   = settingString(settings, generated_field::RoiCluster::Model);
+    result.base.feature_name = settingString(settings, generated_field::RoiCluster::FeatureName);
+    result.base.norm         = valueForField(settings, generated_field::RoiCluster::Norm, 2).toInt();
+    result.base.preprocess_backend
+        = valueForField(settings, generated_field::RoiCluster::PreprocessBackend, 0).toInt();
+    result.base.model_runtime = settingString(settings, generated_field::RoiCluster::ModelRuntime,
+                                               QStringLiteral("tensorrt:0"));
+    result.base.model_precision
+        = valueForField(settings, generated_field::RoiCluster::ModelPrecision,
+                        static_cast<int>(irt::model::ModelPrecision::FP32))
+              .toInt();
+    result.base.model_batch_size = valueForField(settings, generated_field::RoiCluster::ModelBatchSize, 1).toInt();
+
+    result.use_pca       = valueForField(settings, generated_field::RoiCluster::UsePca, false).toBool();
+    result.pca_dim       = valueForField(settings, generated_field::RoiCluster::PcaDim, 0).toInt();
+    result.pooled_height = valueForField(settings, generated_field::RoiCluster::PooledHeight, 7).toInt();
+    result.pooled_width  = valueForField(settings, generated_field::RoiCluster::PooledWidth, 7).toInt();
+    result.sampling_ratio = valueForField(settings, generated_field::RoiCluster::SamplingRatio, -1).toInt();
+    result.aligned        = valueForField(settings, generated_field::RoiCluster::Aligned, false).toBool();
+    result.include_noise  = valueForField(settings, generated_field::RoiCluster::IncludeNoise, false).toBool();
+
+    result.min_cluster_size
+        = valueForField(settings, generated_field::RoiCluster::MinClusterSize, 5).toLongLong();
+    result.min_samples = valueForField(settings, generated_field::RoiCluster::MinSamples, 0).toLongLong();
+    result.cluster_selection_epsilon
+        = valueForField(settings, generated_field::RoiCluster::ClusterSelectionEpsilon, 0.0).toDouble();
+    result.max_cluster_size
+        = valueForField(settings, generated_field::RoiCluster::MaxClusterSize, 0).toLongLong();
+    result.algorithm = valueForField(settings, generated_field::RoiCluster::Algorithm,
+                                     static_cast<int>(irt::ops::ClusteringAlgorithm::KDTree))
+                           .toInt();
+    result.metric = valueForField(settings, generated_field::RoiCluster::Metric,
+                                  static_cast<int>(irt::ops::kDefaultHDBSCANMetric))
+                        .toInt();
+    result.cluster_selection_method
+        = valueForField(settings, generated_field::RoiCluster::ClusterSelectionMethod, 0).toInt();
+    return result;
+}
+
 } // namespace
 
 /**
@@ -220,6 +265,35 @@ std::filesystem::path toFsPath(const QString &path)
 #else
     return std::filesystem::path(path.toStdString());
 #endif
+}
+
+std::map<int64_t, std::set<int64_t>> parseDatasetClassScope(const QVariantList &scope)
+{
+    std::map<int64_t, std::set<int64_t>> result;
+    std::set<int64_t>                   all_classes_selected;
+
+    for (const QVariant &value : scope)
+    {
+        const QVariantMap item = value.toMap();
+        bool               dataset_ok = false;
+        const int64_t      dataset_id = item.value(QStringLiteral("dataset_id")).toLongLong(&dataset_ok);
+        if (!dataset_ok || dataset_id < 0)
+            continue;
+
+        bool          class_ok = false;
+        const int64_t label_class_id
+            = item.value(QStringLiteral("label_class_id"), -1).toLongLong(&class_ok);
+        if (!class_ok || label_class_id < 0)
+        {
+            result[dataset_id].clear();
+            all_classes_selected.insert(dataset_id);
+            continue;
+        }
+
+        if (all_classes_selected.find(dataset_id) == all_classes_selected.end())
+            result[dataset_id].insert(label_class_id);
+    }
+    return result;
 }
 
 /**
@@ -237,6 +311,8 @@ ImageSearchBaseSettings readImageSearchBaseSettings(const dltool::settings::Glob
         return readRoiSearchSettings(settings);
     case dltool::settings::generated::AccessorKey::ImageCluster:
         return readImageClusterSettingsImpl(settings).base;
+    case dltool::settings::generated::AccessorKey::RoiCluster:
+        return readRoiClusterSettingsImpl(settings).base;
     case dltool::settings::generated::AccessorKey::ImageSearch:
     default:
         return readImageSearchSettings(settings);
@@ -246,6 +322,11 @@ ImageSearchBaseSettings readImageSearchBaseSettings(const dltool::settings::Glob
 ImageClusterSettings readImageClusterSettings(const dltool::settings::GlobalSettings *settings)
 {
     return readImageClusterSettingsImpl(settings);
+}
+
+RoiClusterSettings readRoiClusterSettings(const dltool::settings::GlobalSettings *settings)
+{
+    return readRoiClusterSettingsImpl(settings);
 }
 
 /**
@@ -286,6 +367,25 @@ void applyImageClusterConfig(irt::features::ImageClusterConfig &config, const Im
     // config.hdbscan.allow_single_cluster = settings.allow_single_cluster;
 }
 
+void applyRoiClusterConfig(irt::features::RoiClusterConfig &config, const RoiClusterSettings &settings)
+{
+    applyBaseConfig(config, settings.base);
+    config.use_pca       = settings.use_pca;
+    config.pca_dim       = settings.pca_dim;
+    config.pooled_height = settings.pooled_height;
+    config.pooled_width  = settings.pooled_width;
+    config.sampling_ratio = settings.sampling_ratio;
+    config.aligned        = settings.aligned;
+    config.hdbscan.min_cluster_size          = settings.min_cluster_size;
+    config.hdbscan.min_samples               = settings.min_samples;
+    config.hdbscan.cluster_selection_epsilon = settings.cluster_selection_epsilon;
+    config.hdbscan.max_cluster_size          = settings.max_cluster_size;
+    config.hdbscan.algorithm = static_cast<irt::ops::ClusteringAlgorithm>(settings.algorithm);
+    config.hdbscan.metric    = static_cast<irt::ops::ClusteringMetric>(settings.metric);
+    config.hdbscan.cluster_selection_method
+        = static_cast<irt::ops::HDBSCANClusterSelectionMethod>(settings.cluster_selection_method);
+}
+
 /**
  * @brief 检查搜索功能是否在设置中启用
  * @param settings 全局设置实例
@@ -302,6 +402,8 @@ bool searchSettingsEnabled(const dltool::settings::GlobalSettings  *settings,
         return settingBool(settings, generated_field::RoiSearch::Enabled, true);
     case dltool::settings::generated::AccessorKey::ImageCluster:
         return settingBool(settings, generated_field::ImageCluster::Enabled, true);
+    case dltool::settings::generated::AccessorKey::RoiCluster:
+        return settingBool(settings, generated_field::RoiCluster::Enabled, true);
     case dltool::settings::generated::AccessorKey::ImageSearch:
     default:
         return settingBool(settings, generated_field::ImageSearch::Enabled, true);

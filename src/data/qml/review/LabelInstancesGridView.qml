@@ -21,7 +21,9 @@ Rectangle {
     property LabelInstancesModel labelInstances : dataManager ? dataManager.labelInstances : null
     property ItemSelectionModel selection : labelInstances ? labelInstances.selection : null
     property var roiSearch: featureManager ? featureManager.roiSearch : null
+    property var roiCluster: featureManager ? featureManager.roiCluster : null
     property bool roiSearchEnabled: true
+    property bool roiClusterEnabled: true
     property real labelThumbnailScale: 1.0
     property real labelThumbnailScaleFrom: 0.5
     property real labelThumbnailScaleTo: 4.0
@@ -44,6 +46,13 @@ Rectangle {
         featureManager: root.featureManager
     }
 
+    RoiClusterDialog {
+        id: roiClusterDialog
+        dataManager: root.dataManager
+        featureManager: root.featureManager
+        roiClusterEnabled: root.roiClusterEnabled
+    }
+
     QuiMenu {
         id: contextMenu
         width: 200
@@ -55,6 +64,13 @@ Rectangle {
                      && !roiSearch.running
                      && roiSearchEnabled
             onClicked: startRoiSearchForSelectedLabels()
+        }
+        QuiMenuItem {
+            text: "标注聚类"
+            iconSource: QuiFontIcon.AreaChart
+            enabled: dataManager && roiCluster && selection && selection.hasSelection
+                     && !roiCluster.running && roiClusterEnabled && roiCluster.enabled
+            onClicked: startRoiClusterForSelectedLabels()
         }
         QuiMenu {
             id: copyToDatasetMenu
@@ -397,8 +413,22 @@ Rectangle {
         }
     }
 
+    function startRoiClusterForSelectedLabels() {
+        if (!dataManager || !roiCluster || !labelInstances || !selection
+                || !selection.hasSelection || !roiClusterEnabled || roiCluster.running
+                || !roiCluster.enabled) {
+            return
+        }
+
+        let labelIds = labelInstances.getSelectedLabelIds()
+        if (labelIds.length > 0) {
+            roiClusterDialog.openForLabels(labelIds)
+        }
+    }
+
     function refreshSettings() {
         roiSearchEnabled = GlobalSettings.valueForField(SettingsAccessor.RoiSearch, RoiSearchField.Enabled, true)
+        roiClusterEnabled = GlobalSettings.valueForField(SettingsAccessor.RoiCluster, RoiClusterField.Enabled, true)
         labelThumbnailScale = GlobalSettings.valueForField(SettingsAccessor.Data, DataField.LabelScale, 1.0)
         let scaleRange = GlobalSettings.valueRangeForField(SettingsAccessor.Data, DataField.LabelScale)
         labelThumbnailScaleFrom = scaleRange && scaleRange.length > 0 ? scaleRange[0] : 0.5

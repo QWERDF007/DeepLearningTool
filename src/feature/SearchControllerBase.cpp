@@ -188,30 +188,7 @@ bool SearchControllerBase::search(const QVariantList &ids, const QVariantList &s
 
 SearchControllerBase::SearchScope SearchControllerBase::parseSearchScope(const QVariantList &search_scope)
 {
-    SearchScope result;
-    std::set<int64_t> all_classes_selected;
-    for (const QVariant &value : search_scope)
-    {
-        const QVariantMap item = value.toMap();
-        bool               dataset_ok = false;
-        const int64_t      dataset_id = item.value(QStringLiteral("dataset_id")).toLongLong(&dataset_ok);
-        if (!dataset_ok || dataset_id < 0)
-            continue;
-
-        bool          class_ok = false;
-        const int64_t label_class_id
-            = item.value(QStringLiteral("label_class_id"), -1).toLongLong(&class_ok);
-        if (!class_ok || label_class_id < 0)
-        {
-            result[dataset_id].clear();
-            all_classes_selected.insert(dataset_id);
-            continue;
-        }
-
-        if (all_classes_selected.find(dataset_id) == all_classes_selected.end())
-            result[dataset_id].insert(label_class_id);
-    }
-    return result;
+    return parseDatasetClassScope(search_scope);
 }
 
 bool SearchControllerBase::validateWeightsFile(const QString &path)

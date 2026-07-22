@@ -17,6 +17,7 @@ Rectangle {
     color: tagStats === "" ? Qt.lighter(QuiColor.Primary, 1.2) : QuiColor.Highlight
 
     signal clicked()
+    signal contextMenuRequested(int tagId, string tagName)
 
     RowLayout {
         anchors.fill: parent
@@ -47,9 +48,14 @@ Rectangle {
     MouseArea {
         id: mouse
         anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
-        onClicked: {
-            control.clicked()
+        onClicked: function(event) {
+            if (event.button === Qt.RightButton) {
+                control.contextMenuRequested(control.tagId, control.tagName)
+            } else {
+                control.clicked()
+            }
         }
     }
     QuiToolTip {

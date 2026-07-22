@@ -5,14 +5,17 @@
 
 #include <inferrt/features/ImageCluster.hpp>
 #include <inferrt/features/ImageSearch.hpp>
+#include <inferrt/features/RoiCluster.hpp>
 #include <inferrt/features/RoiSearch.hpp>
 
 #include <QString>
+#include <QVariantList>
 #include <QVariantMap>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <map>
+#include <set>
 #include <vector>
 
 namespace dltool::feature {
@@ -57,6 +60,28 @@ struct ImageClusterSettings
     bool    allow_single_cluster{false};
 };
 
+/// 标注聚类设置
+struct RoiClusterSettings
+{
+    ImageSearchBaseSettings base;
+
+    bool use_pca{false};
+    int  pca_dim{0};
+    int  pooled_height{7};
+    int  pooled_width{7};
+    int  sampling_ratio{-1};
+    bool aligned{false};
+    bool include_noise{false};
+
+    int64_t min_cluster_size{5};
+    int64_t min_samples{0};
+    double  cluster_selection_epsilon{0.0};
+    int64_t max_cluster_size{0};
+    int     algorithm{static_cast<int>(irt::ops::ClusteringAlgorithm::KDTree)};
+    int     metric{static_cast<int>(irt::ops::kDefaultHDBSCANMetric)};
+    int     cluster_selection_method{static_cast<int>(irt::ops::HDBSCANClusterSelectionMethod::Eom)};
+};
+
 /**
  * @brief 将 QString 转换为 std::filesystem::path
  * @param path 输入路径
@@ -64,6 +89,12 @@ struct ImageClusterSettings
  */
 std::filesystem::path toFsPath(const QString &path);
 
+/**
+ * @brief 将数据集/类别树选择转换为按数据集分组的范围。
+ *
+ * 空类别集合表示选择该数据集下的全部类别。
+ */
+std::map<int64_t, std::set<int64_t>> parseDatasetClassScope(const QVariantList &scope);
 
 /**
  * @brief 从全局设置中读取搜索基础配置
@@ -81,6 +112,11 @@ ImageSearchBaseSettings readImageSearchBaseSettings(
  * @return 图像聚类配置
  */
 ImageClusterSettings readImageClusterSettings(const dltool::settings::GlobalSettings *settings);
+
+/**
+ * @brief 从全局设置中读取标注聚类配置
+ */
+RoiClusterSettings readRoiClusterSettings(const dltool::settings::GlobalSettings *settings);
 
 /**
  * @brief 将基础设置应用到 ImageSearchConfig
@@ -101,6 +137,12 @@ void applyImageSearchBaseConfig(irt::features::RoiSearchConfig &config, const Im
  */
 void applyImageClusterConfig(irt::features::ImageClusterConfig &config,
                              const ImageClusterSettings &settings);
+
+/**
+ * @brief 将标注聚类设置应用到 RoiClusterConfig
+ */
+void applyRoiClusterConfig(irt::features::RoiClusterConfig &config,
+                           const RoiClusterSettings &settings);
 
 /**
  * @brief 检查搜索功能是否在设置中启用

@@ -4,6 +4,7 @@
 #include "feature/FewShotLearningController.h"
 #include "feature/ImageClusterController.h"
 #include "feature/ImageSearchController.h"
+#include "feature/RoiClusterController.h"
 #include "feature/RoiSearchController.h"
 #include "feature/SmartAnnotationController.h"
 
@@ -32,6 +33,7 @@ class FEATURE_API FeatureManager : public QObject
     Q_PROPERTY(dltool::feature::ImageSearchController *imageSearch READ imageSearch CONSTANT FINAL)
     Q_PROPERTY(dltool::feature::RoiSearchController *roiSearch READ roiSearch CONSTANT FINAL)
     Q_PROPERTY(dltool::feature::ImageClusterController *imageCluster READ imageCluster CONSTANT FINAL)
+    Q_PROPERTY(dltool::feature::RoiClusterController *roiCluster READ roiCluster CONSTANT FINAL)
     Q_PROPERTY(dltool::feature::SmartAnnotationController *smartAnnotation READ smartAnnotation CONSTANT FINAL)
     Q_PROPERTY(dltool::feature::FewShotLearningController *fewShotLearning READ fewShotLearning CONSTANT FINAL)
 
@@ -46,6 +48,7 @@ public:
     ImageSearchController *imageSearch() const;
     RoiSearchController *roiSearch() const;
     ImageClusterController *imageCluster() const;
+    RoiClusterController   *roiCluster() const;
     SmartAnnotationController *smartAnnotation() const;
     FewShotLearningController *fewShotLearning() const;
 
@@ -53,14 +56,17 @@ private:
     class ImageSearchProvider;
     class RoiSearchProvider;
     class ImageClusterProvider;
+    class RoiClusterProvider;
 
     std::unique_ptr<ImageSearchProvider> image_search_provider_;
     std::unique_ptr<RoiSearchProvider> roi_search_provider_;
     std::unique_ptr<ImageClusterProvider> image_cluster_provider_;
+    std::unique_ptr<RoiClusterProvider>   roi_cluster_provider_;
 
     ImageSearchController *image_search_{nullptr};
     RoiSearchController *roi_search_{nullptr};
     ImageClusterController *image_cluster_{nullptr};
+    RoiClusterController   *roi_cluster_{nullptr};
     SmartAnnotationController *smart_annotation_{nullptr};
     FewShotLearningController *few_shot_learning_{nullptr};
 };

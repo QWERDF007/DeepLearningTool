@@ -44,7 +44,11 @@ Item {
         roiSearch: annotationLayer.canvas && annotationLayer.canvas.featureManager
                    ? annotationLayer.canvas.featureManager.roiSearch
                    : null
+        roiCluster: annotationLayer.canvas && annotationLayer.canvas.featureManager
+                    ? annotationLayer.canvas.featureManager.roiCluster
+                    : null
         roiSearchEnabled: annotationSettings.roiSearchEnabled
+        roiClusterEnabled: annotationSettings.roiClusterEnabled
     }
 
     LabelCanvasAnnotationVisuals {

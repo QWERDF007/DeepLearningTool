@@ -42,9 +42,10 @@ public:
          "CREATE TABLE tag_classes (id INTEGER NOT NULL PRIMARY KEY, name TEXT, extra_data BLOB)"},
         {CreateTags,
          "CREATE TABLE tags (id INTEGER NOT NULL PRIMARY KEY, image_id INTEGER REFERENCES images(id), "
-         "label_id INTEGER REFERENCES labels(id), tag_id INTEGER NOT NULL REFERENCES tag_classes(id), extra_data BLOB, "
-         "CHECK ((image_id IS NOT NULL AND label_id IS NULL) OR (image_id IS NULL AND label_id IS NOT NULL)), "
-         "UNIQUE (image_id, tag_id), UNIQUE (label_id, tag_id))"},
+         "label_id INTEGER REFERENCES labels(id), tag_ids BLOB NOT NULL, type INTEGER NOT NULL, extra_data BLOB, "
+         "CHECK ((type = 0 AND image_id IS NOT NULL AND label_id IS NULL) OR "
+         "(type = 1 AND image_id IS NULL AND label_id IS NOT NULL)), "
+         "UNIQUE (image_id), UNIQUE (label_id))"},
         {CreateModels,
          "CREATE TABLE IF NOT EXISTS models (id INTEGER NOT NULL PRIMARY KEY, uuid TEXT NOT NULL UNIQUE, name TEXT, "
          "framework_name TEXT, model_architecture TEXT, ctime INTEGER NOT NULL, mtime INTEGER NOT NULL, extra_data BLOB)"},

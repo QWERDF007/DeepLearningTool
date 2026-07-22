@@ -3,6 +3,7 @@
 #include "data/DataManager.h"
 #include "feature/ImageClusterDataProvider.h"
 #include "feature/ImageSearchDataProvider.h"
+#include "feature/RoiClusterDataProvider.h"
 #include "feature/RoiSearchDataProvider.h"
 #include "settings/GlobalSettings.h"
 
@@ -71,6 +72,15 @@ public:
     }
 };
 
+class FeatureManager::RoiClusterProvider final : public RoiClusterDataProvider
+{
+public:
+    explicit RoiClusterProvider(dltool::data::DataManager *data_manager)
+        : RoiClusterDataProvider(data_manager)
+    {
+    }
+};
+
 FeatureManager::FeatureManager(dltool::data::DataManager *data_manager,
                                dltool::model::ModelManager *model_manager,
                                dltool::model::ModelTaskController *model_task_controller,
@@ -80,10 +90,12 @@ FeatureManager::FeatureManager(dltool::data::DataManager *data_manager,
     , image_search_provider_(std::make_unique<ImageSearchProvider>(data_manager))
     , roi_search_provider_(std::make_unique<RoiSearchProvider>(data_manager))
     , image_cluster_provider_(std::make_unique<ImageClusterProvider>(data_manager))
+    , roi_cluster_provider_(std::make_unique<RoiClusterProvider>(data_manager))
 {
     image_search_ = new ImageSearchController(image_search_provider_.get(), this);
     roi_search_ = new RoiSearchController(roi_search_provider_.get(), this);
     image_cluster_ = new ImageClusterController(image_cluster_provider_.get(), data_manager, this);
+    roi_cluster_ = new RoiClusterController(roi_cluster_provider_.get(), data_manager, this);
     smart_annotation_ = new SmartAnnotationController(this);
     few_shot_learning_ = new FewShotLearningController(data_manager, model_manager, model_task_controller,
                                                        task_manager, this);
@@ -104,11 +116,14 @@ FeatureManager::~FeatureManager()
     smart_annotation_ = nullptr;
     delete image_cluster_;
     image_cluster_ = nullptr;
+    delete roi_cluster_;
+    roi_cluster_ = nullptr;
     delete roi_search_;
     roi_search_ = nullptr;
     delete image_search_;
     image_search_ = nullptr;
     image_cluster_provider_.reset();
+    roi_cluster_provider_.reset();
     roi_search_provider_.reset();
     image_search_provider_.reset();
 }
@@ -126,6 +141,11 @@ RoiSearchController *FeatureManager::roiSearch() const
 ImageClusterController *FeatureManager::imageCluster() const
 {
     return image_cluster_;
+}
+
+RoiClusterController *FeatureManager::roiCluster() const
+{
+    return roi_cluster_;
 }
 
 SmartAnnotationController *FeatureManager::smartAnnotation() const

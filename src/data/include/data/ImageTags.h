@@ -116,6 +116,7 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     bool addTagClass(const QString &name);
+    int64_t findTagClassId(const QString &name) const;
     bool updateTagClass(int64_t tag_id, const QString &name);
     bool deleteTagClass(int64_t tag_id);
 
@@ -123,6 +124,9 @@ public:
     Q_INVOKABLE bool setImageTag(int64_t image_id, int64_t tag_id);
     Q_INVOKABLE bool setLabelsTag(const std::vector<int64_t> &label_ids, int64_t tag_id);
     Q_INVOKABLE bool setLabelTag(int64_t label_id, int64_t tag_id);
+
+    /// 为目标添加 Tag；与 set 接口不同，该接口始终保持目标已设置状态，不执行切换。
+    bool addLabelsTag(const std::vector<int64_t> &label_ids, int64_t tag_id);
 
     bool removeImagesTags(const std::vector<int64_t> &image_ids);
     void removeImagesTagsFromMemory(const std::vector<int64_t> &image_ids);
@@ -147,7 +151,7 @@ private:
     Tag *getTag(int64_t tag_id);
     int  rowForTag(int64_t tag_id) const;
 
-    bool setTags(const std::vector<int64_t> &target_ids, int64_t tag_id, TagTarget target);
+    bool setTags(const std::vector<int64_t> &target_ids, int64_t tag_id, TagTarget target, bool toggle);
     bool removeTags(const std::vector<int64_t> &target_ids, TagTarget target);
     void removeTagsFromMemory(const std::vector<int64_t> &target_ids, TagTarget target);
 

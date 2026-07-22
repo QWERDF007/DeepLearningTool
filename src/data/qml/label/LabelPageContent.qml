@@ -248,6 +248,7 @@ Rectangle {
                 SplitView.fillHeight: true
                 SplitView.minimumHeight: 240
                 dataManager: page.dataManager
+                featureManager: page.featureManager
             }
 
             LabelInstanceEditor {

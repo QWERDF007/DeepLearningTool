@@ -29,7 +29,10 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <algorithm>
+#include <cstdint>
 #include <map>
+
+#include <sqlite3.h>
 
 namespace dltool::database {
 
@@ -42,6 +45,62 @@ const auto LabelsTable          = Labels{};
 const auto TagClassesTable      = TagClasses{};
 const auto TagsTable            = Tags{};
 const auto ModelsTable          = Models{};
+
+namespace {
+
+using TagIds = std::vector<int64_t>;
+
+constexpr int kImageTagType = static_cast<int>(TagType::Image);
+constexpr int kLabelTagType = static_cast<int>(TagType::Label);
+
+// A tag relation stores the complete set of tag-class IDs for one image or label.
+// Keeping the encoding here makes the database schema independent from Qt containers.
+std::vector<uint8_t> encodeTagIds(const TagIds &tag_ids)
+{
+    std::vector<uint8_t> encoded;
+    encoded.reserve(tag_ids.size() * sizeof(int64_t));
+    for (const int64_t tag_id : tag_ids)
+    {
+        const uint64_t value = static_cast<uint64_t>(tag_id);
+        for (size_t byte_index = 0; byte_index < sizeof(value); ++byte_index)
+            encoded.push_back(static_cast<uint8_t>((value >> (byte_index * 8)) & 0xff));
+    }
+    return encoded;
+}
+
+TagIds decodeTagIds(const std::vector<uint8_t> &encoded)
+{
+    if (encoded.empty() || encoded.size() % sizeof(int64_t) != 0)
+        return {};
+
+    TagIds tag_ids;
+    tag_ids.reserve(encoded.size() / sizeof(int64_t));
+    for (size_t offset = 0; offset < encoded.size(); offset += sizeof(int64_t))
+    {
+        uint64_t value = 0;
+        for (size_t byte_index = 0; byte_index < sizeof(value); ++byte_index)
+            value |= static_cast<uint64_t>(encoded[offset + byte_index]) << (byte_index * 8);
+        tag_ids.push_back(static_cast<int64_t>(value));
+    }
+    return tag_ids;
+}
+
+void appendTagId(TagIds &tag_ids, const int64_t tag_id)
+{
+    if (std::find(tag_ids.begin(), tag_ids.end(), tag_id) == tag_ids.end())
+        tag_ids.push_back(tag_id);
+}
+
+bool removeTagId(TagIds &tag_ids, const int64_t tag_id)
+{
+    const auto found = std::remove(tag_ids.begin(), tag_ids.end(), tag_id);
+    if (found == tag_ids.end())
+        return false;
+    tag_ids.erase(found, tag_ids.end());
+    return true;
+}
+
+} // namespace
 
 DataBase::DataBase(const QString &path, QObject *parent)
     : QObject(parent)
@@ -1194,7 +1253,24 @@ bool ProjectDataBase::deleteTagClass(const int64_t tag_class_id, QString &err_ms
         auto tx = sqlpp::start_transaction(db);
         try
         {
-            db(sqlpp::remove_from(TagsTable).where(TagsTable.tagId == tag_class_id));
+            auto data = db(sqlpp::select(TagsTable.id, TagsTable.tagIds).from(TagsTable).unconditionally());
+            for (const auto &row : data)
+            {
+                TagIds tag_ids = decodeTagIds(row.tagIds);
+                if (!removeTagId(tag_ids, tag_class_id))
+                    continue;
+
+                if (tag_ids.empty())
+                {
+                    db(sqlpp::remove_from(TagsTable).where(TagsTable.id == row.id));
+                }
+                else
+                {
+                    db(sqlpp::update(TagsTable)
+                           .set(TagsTable.tagIds = encodeTagIds(tag_ids))
+                           .where(TagsTable.id == row.id));
+                }
+            }
             db(sqlpp::remove_from(TagClassesTable).where(TagClassesTable.id == tag_class_id));
             tx.commit();
         }
@@ -1212,8 +1288,10 @@ bool ProjectDataBase::deleteTagClass(const int64_t tag_class_id, QString &err_ms
     }
 }
 
-bool ProjectDataBase::getAllTags(std::vector<int64_t> &image_ids, std::vector<int64_t> &image_tag_ids,
-                                 std::vector<int64_t> &label_ids, std::vector<int64_t> &label_tag_ids,
+bool ProjectDataBase::getAllTags(std::vector<int64_t> &image_ids,
+                                 std::vector<std::vector<int64_t>> &image_tag_ids,
+                                 std::vector<int64_t> &label_ids,
+                                 std::vector<std::vector<int64_t>> &label_tag_ids,
                                  QString &err_msg) const
 {
     try
@@ -1223,19 +1301,28 @@ bool ProjectDataBase::getAllTags(std::vector<int64_t> &image_ids, std::vector<in
             err_msg = QString("打开数据库失败, %1").arg(path_);
             return false;
         }
+        image_ids.clear();
+        image_tag_ids.clear();
+        label_ids.clear();
+        label_tag_ids.clear();
+
         auto db   = pool_->get();
-        auto data = db(sqlpp::select(TagsTable.imageId, TagsTable.labelId, TagsTable.tagId).from(TagsTable).unconditionally());
+        auto data = db(sqlpp::select(TagsTable.imageId, TagsTable.labelId, TagsTable.tagIds, TagsTable.type)
+                           .from(TagsTable)
+                           .unconditionally());
         for (const auto &row : data)
         {
-            if (!row.imageId.is_null())
+            const TagIds tag_ids = decodeTagIds(row.tagIds);
+            const int type = static_cast<int>(row.type.value());
+            if (type == kImageTagType && !row.imageId.is_null())
             {
                 image_ids.emplace_back(row.imageId.value());
-                image_tag_ids.emplace_back(row.tagId);
+                image_tag_ids.emplace_back(tag_ids);
             }
-            else if (!row.labelId.is_null())
+            else if (type == kLabelTagType && !row.labelId.is_null())
             {
                 label_ids.emplace_back(row.labelId.value());
-                label_tag_ids.emplace_back(row.tagId);
+                label_tag_ids.emplace_back(tag_ids);
             }
         }
         return true;
@@ -1250,6 +1337,8 @@ bool ProjectDataBase::getAllTags(std::vector<int64_t> &image_ids, std::vector<in
 bool ProjectDataBase::addTagsToImages(const std::vector<int64_t> &image_ids, const int64_t tag_id,
                                       QString &err_msg) const
 {
+    if (image_ids.empty())
+        return true;
     if (pool_ == nullptr)
     {
         err_msg = QString("打开数据库失败, %1").arg(path_);
@@ -1259,9 +1348,29 @@ bool ProjectDataBase::addTagsToImages(const std::vector<int64_t> &image_ids, con
     auto tx = sqlpp::start_transaction(db);
     try
     {
-        for (const auto &image_id : image_ids)
+        for (const int64_t image_id : image_ids)
         {
-            db(sqlpp::insert_into(TagsTable).set(TagsTable.imageId = image_id, TagsTable.tagId = tag_id));
+            auto data = db(sqlpp::select(TagsTable.id, TagsTable.tagIds)
+                               .from(TagsTable)
+                               .where(TagsTable.imageId == image_id && TagsTable.type == kImageTagType));
+            if (data.empty())
+            {
+                db(sqlpp::insert_into(TagsTable).set(TagsTable.imageId = image_id,
+                                                     TagsTable.tagIds = encodeTagIds({tag_id}),
+                                                     TagsTable.type = kImageTagType));
+                continue;
+            }
+
+            const auto &row = data.front();
+            TagIds tag_ids  = decodeTagIds(row.tagIds);
+            const size_t old_size = tag_ids.size();
+            appendTagId(tag_ids, tag_id);
+            if (tag_ids.size() != old_size)
+            {
+                db(sqlpp::update(TagsTable)
+                       .set(TagsTable.tagIds = encodeTagIds(tag_ids))
+                       .where(TagsTable.id == row.id));
+            }
         }
         tx.commit();
         return true;
@@ -1277,6 +1386,8 @@ bool ProjectDataBase::addTagsToImages(const std::vector<int64_t> &image_ids, con
 bool ProjectDataBase::removeTagsFromImages(const std::vector<int64_t> &image_ids, const int64_t tag_id,
                                            QString &err_msg) const
 {
+    if (image_ids.empty())
+        return true;
     try
     {
         if (pool_ == nullptr)
@@ -1285,8 +1396,27 @@ bool ProjectDataBase::removeTagsFromImages(const std::vector<int64_t> &image_ids
             return false;
         }
         auto db = pool_->get();
-        db(sqlpp::remove_from(TagsTable).where(TagsTable.imageId.in(sqlpp::value_list(image_ids))
-                                               && TagsTable.tagId == tag_id));
+        auto tx = sqlpp::start_transaction(db);
+        for (const int64_t image_id : image_ids)
+        {
+            auto data = db(sqlpp::select(TagsTable.id, TagsTable.tagIds)
+                               .from(TagsTable)
+                               .where(TagsTable.imageId == image_id && TagsTable.type == kImageTagType));
+            if (data.empty())
+                continue;
+
+            const auto &row = data.front();
+            TagIds tag_ids  = decodeTagIds(row.tagIds);
+            if (!removeTagId(tag_ids, tag_id))
+                continue;
+            if (tag_ids.empty())
+                db(sqlpp::remove_from(TagsTable).where(TagsTable.id == row.id));
+            else
+                db(sqlpp::update(TagsTable)
+                       .set(TagsTable.tagIds = encodeTagIds(tag_ids))
+                       .where(TagsTable.id == row.id));
+        }
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -1298,6 +1428,8 @@ bool ProjectDataBase::removeTagsFromImages(const std::vector<int64_t> &image_ids
 
 bool ProjectDataBase::removeTagsForImages(const std::vector<int64_t> &image_ids, QString &err_msg) const
 {
+    if (image_ids.empty())
+        return true;
     try
     {
         if (pool_ == nullptr)
@@ -1306,7 +1438,8 @@ bool ProjectDataBase::removeTagsForImages(const std::vector<int64_t> &image_ids,
             return false;
         }
         auto db = pool_->get();
-        db(sqlpp::remove_from(TagsTable).where(TagsTable.imageId.in(sqlpp::value_list(image_ids))));
+        db(sqlpp::remove_from(TagsTable).where(TagsTable.imageId.in(sqlpp::value_list(image_ids))
+                                               && TagsTable.type == kImageTagType));
         return true;
     }
     catch (const std::exception &e)
@@ -1319,6 +1452,8 @@ bool ProjectDataBase::removeTagsForImages(const std::vector<int64_t> &image_ids,
 bool ProjectDataBase::addTagsToLabels(const std::vector<int64_t> &label_ids, const int64_t tag_id,
                                       QString &err_msg) const
 {
+    if (label_ids.empty())
+        return true;
     if (pool_ == nullptr)
     {
         err_msg = QString("打开数据库失败, %1").arg(path_);
@@ -1330,7 +1465,27 @@ bool ProjectDataBase::addTagsToLabels(const std::vector<int64_t> &label_ids, con
     {
         for (const int64_t label_id : label_ids)
         {
-            db(sqlpp::insert_into(TagsTable).set(TagsTable.labelId = label_id, TagsTable.tagId = tag_id));
+            auto data = db(sqlpp::select(TagsTable.id, TagsTable.tagIds)
+                               .from(TagsTable)
+                               .where(TagsTable.labelId == label_id && TagsTable.type == kLabelTagType));
+            if (data.empty())
+            {
+                db(sqlpp::insert_into(TagsTable).set(TagsTable.labelId = label_id,
+                                                     TagsTable.tagIds = encodeTagIds({tag_id}),
+                                                     TagsTable.type = kLabelTagType));
+                continue;
+            }
+
+            const auto &row = data.front();
+            TagIds tag_ids  = decodeTagIds(row.tagIds);
+            const size_t old_size = tag_ids.size();
+            appendTagId(tag_ids, tag_id);
+            if (tag_ids.size() != old_size)
+            {
+                db(sqlpp::update(TagsTable)
+                       .set(TagsTable.tagIds = encodeTagIds(tag_ids))
+                       .where(TagsTable.id == row.id));
+            }
         }
         tx.commit();
         return true;
@@ -1346,6 +1501,8 @@ bool ProjectDataBase::addTagsToLabels(const std::vector<int64_t> &label_ids, con
 bool ProjectDataBase::removeTagsFromLabels(const std::vector<int64_t> &label_ids, const int64_t tag_id,
                                            QString &err_msg) const
 {
+    if (label_ids.empty())
+        return true;
     try
     {
         if (pool_ == nullptr)
@@ -1354,8 +1511,27 @@ bool ProjectDataBase::removeTagsFromLabels(const std::vector<int64_t> &label_ids
             return false;
         }
         auto db = pool_->get();
-        db(sqlpp::remove_from(TagsTable).where(TagsTable.labelId.in(sqlpp::value_list(label_ids))
-                                               && TagsTable.tagId == tag_id));
+        auto tx = sqlpp::start_transaction(db);
+        for (const int64_t label_id : label_ids)
+        {
+            auto data = db(sqlpp::select(TagsTable.id, TagsTable.tagIds)
+                               .from(TagsTable)
+                               .where(TagsTable.labelId == label_id && TagsTable.type == kLabelTagType));
+            if (data.empty())
+                continue;
+
+            const auto &row = data.front();
+            TagIds tag_ids  = decodeTagIds(row.tagIds);
+            if (!removeTagId(tag_ids, tag_id))
+                continue;
+            if (tag_ids.empty())
+                db(sqlpp::remove_from(TagsTable).where(TagsTable.id == row.id));
+            else
+                db(sqlpp::update(TagsTable)
+                       .set(TagsTable.tagIds = encodeTagIds(tag_ids))
+                       .where(TagsTable.id == row.id));
+        }
+        tx.commit();
         return true;
     }
     catch (const std::exception &e)
@@ -1367,6 +1543,8 @@ bool ProjectDataBase::removeTagsFromLabels(const std::vector<int64_t> &label_ids
 
 bool ProjectDataBase::removeTagsForLabels(const std::vector<int64_t> &label_ids, QString &err_msg) const
 {
+    if (label_ids.empty())
+        return true;
     try
     {
         if (pool_ == nullptr)
@@ -1375,7 +1553,8 @@ bool ProjectDataBase::removeTagsForLabels(const std::vector<int64_t> &label_ids,
             return false;
         }
         auto db = pool_->get();
-        db(sqlpp::remove_from(TagsTable).where(TagsTable.labelId.in(sqlpp::value_list(label_ids))));
+        db(sqlpp::remove_from(TagsTable).where(TagsTable.labelId.in(sqlpp::value_list(label_ids))
+                                               && TagsTable.type == kLabelTagType));
         return true;
     }
     catch (const std::exception &e)

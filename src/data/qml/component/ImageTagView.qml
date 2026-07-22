@@ -19,6 +19,34 @@ Rectangle {
     property int cellWidth: 80
     property int cellHeight: 30
     property int spacing: 10
+
+    property int contextTagId: -1
+    property string contextTagName: ""
+
+    QuiMenu {
+        id: tagContextMenu
+        width: 180
+
+        QuiMenuItem {
+            text: "删除 Tag"
+            iconSource: QuiFontIcon.Delete
+            enabled: imageTagView.contextTagId >= 0
+            onClicked: deleteTagConfirmDialog.open()
+        }
+    }
+
+    QuiContentDialog {
+        id: deleteTagConfirmDialog
+        title: "删除 Tag"
+        message: "删除后将清除所有图像和标注实例上的该 Tag，确定删除吗?"
+        onPositiveClicked: {
+            if (imageTagView.dataManager && imageTagView.contextTagId >= 0) {
+                imageTagView.dataManager.deleteTagClass(imageTagView.contextTagId)
+                imageTagView.contextTagId = -1
+            }
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 5
@@ -57,7 +85,13 @@ Rectangle {
                         imageTags.setImageTag(imageInstances.currentImageId, model.tag_id)
                     }
                 }
+                onContextMenuRequested: function(tagId, tagName) {
+                    imageTagView.contextTagId = tagId
+                    imageTagView.contextTagName = tagName
+                    tagContextMenu.popup()
+                }
             }
         }
     }
+
 }

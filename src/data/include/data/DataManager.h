@@ -214,6 +214,9 @@ public:
                                                                    bool                        only_unset = false);
 
     Q_INVOKABLE void addTagClass(const QString &name);
+    Q_INVOKABLE int64_t findTagClassId(const QString &name) const;
+    Q_INVOKABLE bool    setLabelsTag(const std::vector<int64_t> &label_ids, const int64_t tag_id);
+    Q_INVOKABLE bool    deleteTagClass(const int64_t tag_id);
 
     /**
      * @brief 初始化 QML 引擎，注册图像提供器
@@ -229,11 +232,11 @@ public:
     std::vector<int64_t> selectedImageIds() const;
     std::vector<int64_t> allImageIds() const;
     QString              imagePath(int64_t image_id) const;
-    int64_t              imageDatasetId(int64_t image_id) const;
+    Q_INVOKABLE int64_t   imageDatasetId(int64_t image_id) const;
     int64_t              imageLabelClassId(int64_t image_id) const;
     std::vector<int64_t> allLabelIds() const;
-    int64_t              labelImageId(int64_t label_id) const;
-    int64_t              labelClassId(int64_t label_id) const;
+    Q_INVOKABLE int64_t   labelImageId(int64_t label_id) const;
+    Q_INVOKABLE int64_t   labelClassId(int64_t label_id) const;
     QVariantMap          labelData(int64_t label_id) const;
     QString              labelClassName(int64_t label_class_id) const;
     QString              labelClassGroup(int64_t label_class_id) const;

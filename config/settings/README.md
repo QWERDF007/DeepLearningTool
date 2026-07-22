@@ -93,6 +93,7 @@ sections:
 | `DataSettings.yaml` | `DataSettings` | `data` | `general` | `data_settings` | 数据与缩略图显示设置，包括缩略图边距、缓存大小、图像网格缩放、标注缩略图缩放、边框宽度、填充透明度和导入轮廓拟合系数。 |
 | `UISettings.yaml` | `UISettings` | `ui` | `general` | `ui_settings` | 界面设置，包括图像亮度、对比度、主题、语言。 |
 | `ImageClusterSettings.yaml` | `ImageClusterSettings` | `advanced.imageCluster` | `advanced` | `image_cluster_settings` | 图像聚类配置，包括模型、特征层、推理运行时、精度、批量、PCA 和 HDBSCAN 参数。 |
+| `RoiClusterSettings.yaml` | `RoiClusterSettings` | `advanced.roiCluster` | `advanced` | `roi_cluster_settings` | 标注 ROI 聚类配置，包括模型、ROIAlign、推理运行时、精度、PCA 和 HDBSCAN 参数。 |
 | `ImageSearchSettings.yaml` | `ImageSearchSettings` | `advanced.imageSearch` | `advanced` | `image_search_settings` | 图像搜索配置，包括模型、权重路径、特征层、索引、推理运行时、精度、批量大小。 |
 | `RoiSearchSettings.yaml` | `RoiSearchSettings` | `advanced.roiSearch` | `advanced` | `roi_search_settings` | ROI/标注搜索配置，在图像搜索基础上增加推理运行时、精度、ROI Align、PCA 等参数。 |
 | `SmartAnnotationSettings.yaml` | `SmartAnnotationSettings` | `advanced.smartAnnotation` | `advanced` | `smart_annotation_settings` | 智能标注配置，包括 SAM 模型、权重路径、推理运行时、精度、mask 阈值、mask 透明度、刷新间隔。 |

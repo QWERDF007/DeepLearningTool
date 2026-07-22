@@ -1803,7 +1803,26 @@ void DataManager::refreshAnomalyImageClassesFromPolygons(const std::vector<int64
 
 void DataManager::addTagClass(const QString &name)
 {
-    image_tags_->addTagClass(name);
+    if (image_tags_ == nullptr || name.trimmed().isEmpty() || findTagClassId(name) >= 0)
+    {
+        return;
+    }
+    image_tags_->addTagClass(name.trimmed());
+}
+
+int64_t DataManager::findTagClassId(const QString &name) const
+{
+    return image_tags_ ? image_tags_->findTagClassId(name) : -1;
+}
+
+bool DataManager::setLabelsTag(const std::vector<int64_t> &label_ids, const int64_t tag_id)
+{
+    return image_tags_ != nullptr && image_tags_->addLabelsTag(label_ids, tag_id);
+}
+
+bool DataManager::deleteTagClass(const int64_t tag_id)
+{
+    return image_tags_ != nullptr && image_tags_->deleteTagClass(tag_id);
 }
 
 void DataManager::updateDatasetsStats()

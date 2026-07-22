@@ -68,27 +68,29 @@ bool ImageTagsListModel::initTagRelations()
 {
     QString              err_msg;
     std::vector<int64_t> image_ids;
-    std::vector<int64_t> image_tag_ids;
+    std::vector<std::vector<int64_t>> image_tag_ids;
     std::vector<int64_t> label_ids;
-    std::vector<int64_t> label_tag_ids;
+    std::vector<std::vector<int64_t>> label_tag_ids;
     if (!database_->getAllTags(image_ids, image_tag_ids, label_ids, label_tag_ids, err_msg))
     {
         spdlog::error("查询 Tag 关系失败: {}", err_msg.toUtf8().constData());
         return false;
     }
 
-    for (size_t i = 0; i < image_ids.size(); ++i)
+    for (size_t i = 0; i < image_ids.size() && i < image_tag_ids.size(); ++i)
     {
-        if (Tag *tag = getTag(image_tag_ids[i]))
+        for (const int64_t tag_id : image_tag_ids[i])
         {
-            tag->addImageIds({image_ids[i]});
+            if (Tag *tag = getTag(tag_id))
+                tag->addImageIds({image_ids[i]});
         }
     }
-    for (size_t i = 0; i < label_ids.size(); ++i)
+    for (size_t i = 0; i < label_ids.size() && i < label_tag_ids.size(); ++i)
     {
-        if (Tag *tag = getTag(label_tag_ids[i]))
+        for (const int64_t tag_id : label_tag_ids[i])
         {
-            tag->addLabelIds({label_ids[i]});
+            if (Tag *tag = getTag(tag_id))
+                tag->addLabelIds({label_ids[i]});
         }
     }
     return true;
@@ -155,6 +157,24 @@ bool ImageTagsListModel::addTagClass(const QString &name)
     tags_.emplace(tag_id, Tag(tag_id, name));
     endInsertRows();
     return true;
+}
+
+int64_t ImageTagsListModel::findTagClassId(const QString &name) const
+{
+    const QString normalized_name = name.trimmed();
+    if (normalized_name.isEmpty())
+    {
+        return -1;
+    }
+
+    for (const auto &[tag_id, tag] : tags_)
+    {
+        if (tag.name() == normalized_name)
+        {
+            return tag_id;
+        }
+    }
+    return -1;
 }
 
 bool ImageTagsListModel::updateTagClass(const int64_t tag_id, const QString &name)
@@ -240,7 +260,7 @@ bool ImageTagsListModel::deleteTagClass(const int64_t tag_id)
 
 bool ImageTagsListModel::setImagesTag(const std::vector<int64_t> &image_ids, const int64_t tag_id)
 {
-    return setTags(image_ids, tag_id, TagTarget::Image);
+    return setTags(image_ids, tag_id, TagTarget::Image, true);
 }
 
 bool ImageTagsListModel::setImageTag(const int64_t image_id, const int64_t tag_id)
@@ -250,12 +270,17 @@ bool ImageTagsListModel::setImageTag(const int64_t image_id, const int64_t tag_i
 
 bool ImageTagsListModel::setLabelsTag(const std::vector<int64_t> &label_ids, const int64_t tag_id)
 {
-    return setTags(label_ids, tag_id, TagTarget::Label);
+    return setTags(label_ids, tag_id, TagTarget::Label, true);
 }
 
 bool ImageTagsListModel::setLabelTag(const int64_t label_id, const int64_t tag_id)
 {
     return setLabelsTag({label_id}, tag_id);
+}
+
+bool ImageTagsListModel::addLabelsTag(const std::vector<int64_t> &label_ids, const int64_t tag_id)
+{
+    return setTags(label_ids, tag_id, TagTarget::Label, false);
 }
 
 bool ImageTagsListModel::removeImagesTags(const std::vector<int64_t> &image_ids)
@@ -338,7 +363,7 @@ int ImageTagsListModel::rowForTag(const int64_t tag_id) const
 }
 
 bool ImageTagsListModel::setTags(const std::vector<int64_t> &target_ids, const int64_t tag_id,
-                                  const TagTarget target)
+                                  const TagTarget target, const bool toggle)
 {
     if (database_ == nullptr)
     {
@@ -359,8 +384,13 @@ bool ImageTagsListModel::setTags(const std::vector<int64_t> &target_ids, const i
 
     const std::set<int64_t> &tagged_ids = target == TagTarget::Image ? tag->imageIds() : tag->labelIds();
     std::vector<int64_t> untagged_ids   = getUntaggedIds(target_ids, tagged_ids);
-    const bool            adding        = !untagged_ids.empty();
+    const bool            adding        = !untagged_ids.empty() || !toggle;
     const std::vector<int64_t> &updated_ids = adding ? untagged_ids : target_ids;
+
+    if (updated_ids.empty())
+    {
+        return true;
+    }
 
     QString err_msg;
     const bool ok = target == TagTarget::Image

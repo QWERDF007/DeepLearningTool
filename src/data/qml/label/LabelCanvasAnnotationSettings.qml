@@ -7,6 +7,7 @@ Item {
     visible: false
 
     property bool roiSearchEnabled: true
+    property bool roiClusterEnabled: true
     property int smartAnnotationRefreshInterval: 80
     property real smartAnnotationMaskAlpha: 0.35
     property real labelFillOpacity: 0.3
@@ -23,6 +24,7 @@ Item {
 
     function refresh() {
         roiSearchEnabled = GlobalSettings.valueForField(SettingsAccessor.RoiSearch, RoiSearchField.Enabled, true)
+        roiClusterEnabled = GlobalSettings.valueForField(SettingsAccessor.RoiCluster, RoiClusterField.Enabled, true)
         smartAnnotationRefreshInterval = GlobalSettings.valueForField(
                     SettingsAccessor.SmartAnnotation,
                     SmartAnnotationField.RefreshInterval,
