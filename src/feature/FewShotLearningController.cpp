@@ -333,10 +333,11 @@ QString FewShotLearningController::validationError() const
         label_class_ids = selectedLabelClassIdsFromViewModel(label_class_view_model_);
     }
 
-    return validateStartRequest(parseInt64Ids(selectedDatasetIdsFromViewModel(train_dataset_view_model_), true, true),
-                                parseInt64Ids(selectedDatasetIdsFromViewModel(validation_dataset_view_model_), true, true),
-                                parseInt64Ids(selectedDatasetIdsFromViewModel(test_dataset_view_model_), true, true),
-                                parseInt64Ids(label_class_ids, true, true));
+    return validateStartRequest(
+        parseInt64Ids(selectedDatasetIdsFromViewModel(train_dataset_view_model_), true, true),
+        parseInt64Ids(selectedDatasetIdsFromViewModel(validation_dataset_view_model_), true, true),
+        parseInt64Ids(selectedDatasetIdsFromViewModel(test_dataset_view_model_), true, true),
+        parseInt64Ids(label_class_ids, true, true));
 }
 
 bool FewShotLearningController::startFsSam2WithIds(const QVariantList &train_dataset_ids,
@@ -398,8 +399,8 @@ bool FewShotLearningController::startRun(const std::vector<int64_t> &train_datas
     }
 
     QString       model_err;
-    const QString model_name = QString("FS-SAM2 小样本 %1")
-                                   .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss_zzz")));
+    const QString model_name
+        = QString("FS-SAM2_%1").arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss_zzz")));
     const dltool::model::ModelManager::ModelRecordView record = model_manager_->addModelRecord(
         model_name, QString::fromUtf8(kFsSam2FrameworkName), QString::fromUtf8(kFsSam2ModelName), &model_err);
     if (!record.isValid())
@@ -483,7 +484,7 @@ QString FewShotLearningController::validateStartRequest(const std::vector<int64_
     if (settings == nullptr)
         return QString("小样本学习设置未加载");
 
-    namespace generated_field = dltool::settings::generated::field;
+    namespace generated_field     = dltool::settings::generated::field;
     const QString python_env_path = dltool::settings::settingString(settings, generated_field::Software::PythonEnvPath);
     if (python_env_path.trimmed().isEmpty())
         return QString("请先在软件设置中配置 Python 环境目录");
@@ -523,9 +524,9 @@ bool FewShotLearningController::configureFsSam2Model(const QString              
                                                      const std::vector<int64_t> &label_class_ids, RunState &run,
                                                      QString *err_msg)
 {
-    const dltool::model::ModelManager::ModelRecordView record
-        = model_manager_ != nullptr ? model_manager_->modelRecordViewForUuid(model_uuid)
-                                  : dltool::model::ModelManager::ModelRecordView{};
+    const dltool::model::ModelManager::ModelRecordView record = model_manager_ != nullptr
+                                                                  ? model_manager_->modelRecordViewForUuid(model_uuid)
+                                                                  : dltool::model::ModelManager::ModelRecordView{};
     if (!record.isValid() || record.name.trimmed().isEmpty())
         return setError(err_msg, QString("FS-SAM2 模型记录不存在"));
 
@@ -577,26 +578,24 @@ bool FewShotLearningController::configureFsSam2Model(const QString              
         = dltool::settings::settingDouble(settings, generated_field::FewShotLearning::LearningRate, 1e-4);
     const double weight_decay
         = dltool::settings::settingDouble(settings, generated_field::FewShotLearning::WeightDecay, 1e-6);
-    const bool prediction_enhancement_enabled
-        = dltool::settings::settingBool(settings, generated_field::FewShotLearning::PredictionEnhancementEnabled, false);
+    const bool prediction_enhancement_enabled = dltool::settings::settingBool(
+        settings, generated_field::FewShotLearning::PredictionEnhancementEnabled, false);
     const bool box_to_mask_prediction_enhancement_enabled = dltool::settings::settingBool(
         settings, generated_field::FewShotLearning::BoxToMaskPredictionEnhancementEnabled, false);
     const bool prediction_horizontal_flip
         = dltool::settings::settingBool(settings, generated_field::FewShotLearning::PredictionHorizontalFlip, false);
     const bool prediction_vertical_flip
         = dltool::settings::settingBool(settings, generated_field::FewShotLearning::PredictionVerticalFlip, false);
-    const double prediction_scale
-        = std::clamp(dltool::settings::settingDouble(settings, generated_field::FewShotLearning::PredictionScale, 0.0),
-                     -0.9, 1.0);
-    const double prediction_brightness
-        = std::clamp(dltool::settings::settingDouble(settings, generated_field::FewShotLearning::PredictionBrightness, 0.0),
-                     -1.0, 1.0);
-    const double prediction_contrast
-        = std::clamp(dltool::settings::settingDouble(settings, generated_field::FewShotLearning::PredictionContrast, 0.0),
-                     -1.0, 1.0);
-    const double prediction_hue
-        = std::clamp(dltool::settings::settingDouble(settings, generated_field::FewShotLearning::PredictionHue, 0.0),
-                     -0.5, 0.5);
+    const double prediction_scale = std::clamp(
+        dltool::settings::settingDouble(settings, generated_field::FewShotLearning::PredictionScale, 0.0), -0.9, 1.0);
+    const double prediction_brightness = std::clamp(
+        dltool::settings::settingDouble(settings, generated_field::FewShotLearning::PredictionBrightness, 0.0), -1.0,
+        1.0);
+    const double prediction_contrast = std::clamp(
+        dltool::settings::settingDouble(settings, generated_field::FewShotLearning::PredictionContrast, 0.0), -1.0,
+        1.0);
+    const double prediction_hue = std::clamp(
+        dltool::settings::settingDouble(settings, generated_field::FewShotLearning::PredictionHue, 0.0), -0.5, 0.5);
     const double prediction_rotation = std::clamp(
         dltool::settings::settingDouble(settings, generated_field::FewShotLearning::PredictionRotation, 0.0), -180.0,
         180.0);
