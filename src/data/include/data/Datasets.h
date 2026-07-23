@@ -111,6 +111,9 @@ public:
     bool addDatasets(const std::vector<QString> &names, std::vector<int64_t> &dataset_ids);
     bool updateDataset(const int64_t dataset_id, const QString &name);
     bool deleteDataset(const int64_t dataset_id);
+    void addDatasetFromMemory(const int64_t dataset_id, const QString &name);
+    void addDatasetsFromMemory(const std::vector<int64_t> &dataset_ids, const std::vector<QString> &names);
+    void updateDatasetFromMemory(const int64_t dataset_id, const QString &name);
     void removeDatasetsFromMemory(const std::vector<int64_t> &dataset_ids);
 
     QItemSelectionModel *selection() const

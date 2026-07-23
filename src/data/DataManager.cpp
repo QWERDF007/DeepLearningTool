@@ -5,6 +5,7 @@
 #include "data/DataFormat.h"
 #include "data/DataIO.h"
 #include "data/DataNameUtils.h"
+#include "data/DataOperationWorkflow.h"
 #include "data/DatasetIO.h"
 #include "data/GlobalFilter.h"
 #include "data/ImageInstanceImageProvider.h"
@@ -21,10 +22,8 @@
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QMetaType>
-#include <QPointer>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
-#include <QThread>
 #include <algorithm>
 #include <cstddef>
 #include <functional>
@@ -127,7 +126,7 @@ struct CopyLabelPayload
     std::vector<int64_t> tag_ids;
 };
 
-struct AsyncImageCopyRequest
+struct ImageCopyRequest
 {
     QString                            database_path;
     int                                label_data_method{-1};
@@ -140,7 +139,7 @@ struct AsyncImageCopyRequest
 
 } // namespace
 
-struct DataManager::AsyncImageCopyResult
+struct DataManager::ImageCopyResult
 {
     bool                              success{false};
     QString                           err_msg;
@@ -276,83 +275,58 @@ void DataManager::startAsyncLabelLoading()
     labels_changed_during_loading_          = false;
     const QString         database_path     = database_->path();
     const int             label_data_method = method_;
-    QPointer<DataManager> manager(this);
+    auto loaded_labels = std::make_shared<std::vector<LoadedLabelInstance>>();
 
-    QThread *worker_thread = QThread::create(
-        [manager, database_path, label_data_method]()
+    DataOperationWorkflow::Options options;
+    options.manage_progress = false;
+    DataOperationWorkflow::startDatabase(
+        this, database_path, std::move(options),
+        [loaded_labels, label_data_method](dltool::database::ProjectDataBase &database,
+                                           DataOperationWorkflow::Result &result)
         {
-            QElapsedTimer timer;
-            timer.start();
+            std::vector<int64_t>               label_ids;
+            std::vector<int64_t>               image_ids;
+            std::vector<int64_t>               label_class_ids;
+            std::vector<int64_t>               label_types;
+            std::vector<std::vector<uint8_t>> labels_data;
 
-            auto    loaded_labels = std::make_shared<std::vector<LoadedLabelInstance>>();
-            bool    success       = false;
-            QString err_msg;
-
-            try
+            result.success
+                = database.getAllLabels(label_ids, image_ids, label_class_ids, label_types, labels_data, result.error);
+            if (!result.success)
             {
-                dltool::database::ProjectDataBase database(database_path);
-                std::vector<int64_t>              label_ids;
-                std::vector<int64_t>              image_ids;
-                std::vector<int64_t>              label_class_ids;
-                std::vector<int64_t>              label_types;
-                std::vector<std::vector<uint8_t>> labels_data;
-
-                success
-                    = database.getAllLabels(label_ids, image_ids, label_class_ids, label_types, labels_data, err_msg);
-                if (success)
-                {
-                    LabelDataHelper helper = data::createLabelDataHelper(label_data_method);
-                    if (helper == nullptr)
-                    {
-                        success = false;
-                        err_msg = QString("标签数据工厂未初始化");
-                    }
-                    else
-                    {
-                        loaded_labels->reserve(label_ids.size());
-                        for (size_t i = 0; i < label_ids.size(); ++i)
-                        {
-                            LabelData label_data = helper->createLabelData();
-                            label_data->fromBlob(labels_data[i]);
-
-                            LoadedLabelInstance label;
-                            label.label_id       = label_ids[i];
-                            label.image_id       = image_ids[i];
-                            label.label_class_id = label_class_ids[i];
-                            label.data           = std::move(label_data);
-                            loaded_labels->push_back(std::move(label));
-                        }
-                    }
-                }
-            }
-            catch (const std::exception &e)
-            {
-                success = false;
-                err_msg = QString::fromUtf8(e.what());
+                return;
             }
 
-            const qint64 elapsed_ms = timer.elapsed();
-            if (manager)
+            LabelDataHelper helper = data::createLabelDataHelper(label_data_method);
+            if (helper == nullptr)
             {
-                QMetaObject::invokeMethod(
-                    manager.data(),
-                    [manager, loaded_labels, success, err_msg, elapsed_ms]()
-                    {
-                        if (manager)
-                        {
-                            manager->handleAsyncLabelsLoaded(loaded_labels, success, err_msg, elapsed_ms);
-                        }
-                    },
-                    Qt::QueuedConnection);
+                result.error = QStringLiteral("标签数据工厂未初始化");
+                result.success = false;
+                return;
             }
+
+            loaded_labels->reserve(label_ids.size());
+            for (size_t i = 0; i < label_ids.size(); ++i)
+            {
+                LabelData label_data = helper->createLabelData();
+                label_data->fromBlob(labels_data[i]);
+
+                LoadedLabelInstance label;
+                label.label_id       = label_ids[i];
+                label.image_id       = image_ids[i];
+                label.label_class_id = label_class_ids[i];
+                label.data           = std::move(label_data);
+                loaded_labels->push_back(std::move(label));
+            }
+        },
+        [this, loaded_labels](const DataOperationWorkflow::Result &result)
+        {
+            commitLabelsLoaded(loaded_labels, result.success, result.error, result.elapsed_ms);
         });
-
-    connect(worker_thread, &QThread::finished, worker_thread, &QObject::deleteLater);
-    worker_thread->start();
 }
 
-void DataManager::handleAsyncLabelsLoaded(std::shared_ptr<std::vector<LoadedLabelInstance>> labels, bool success,
-                                          const QString &err_msg, qint64 elapsed_ms)
+void DataManager::commitLabelsLoaded(std::shared_ptr<std::vector<LoadedLabelInstance>> labels, bool success,
+                                     const QString &err_msg, qint64 elapsed_ms)
 {
     labels_loading_ = false;
 
@@ -607,7 +581,45 @@ void DataManager::addDataset(const QString &name)
         spdlog::warn("添加数据集失败: {}", validation_error.toUtf8().constData());
         return;
     }
-    datasets_->addDataset(name);
+    if (database_ == nullptr || datasets_ == nullptr)
+    {
+        return;
+    }
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QStringLiteral("添加数据集"), QStringLiteral("当前已有数据操作正在进行中"));
+        return;
+    }
+
+    setDataOperationRunning(true);
+    auto dataset_id = std::make_shared<int64_t>(-1);
+    DataOperationWorkflow::Options options;
+    options.title         = QStringLiteral("添加数据集");
+    options.start_message = QString("正在添加数据集: %1").arg(name);
+    DataOperationWorkflow::startDatabase(
+        this, database_->path(), std::move(options),
+        [name, dataset_id](dltool::database::ProjectDataBase &database, DataOperationWorkflow::Result &result)
+        {
+            result.success = database.addDataset(name, *dataset_id, result.error);
+        },
+        [this, name, dataset_id](const DataOperationWorkflow::Result &result)
+        {
+            setDataOperationRunning(false);
+            if (result.success)
+            {
+                datasets_->addDatasetFromMemory(*dataset_id, name);
+                const QString message = QString("已添加数据集: %1，耗时 %2 ms").arg(name).arg(result.elapsed_ms);
+                spdlog::info("{}", message.toUtf8().constData());
+                ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
+            }
+            else
+            {
+                const QString message = QString("添加数据集失败: %1").arg(result.error);
+                spdlog::error("{}", message.toUtf8().constData());
+                ui::ProgressManager::getInstance()->addMessage(spdlog::level::err, message);
+                ui::SignalHelper::notifyError(QStringLiteral("添加数据集失败"), message);
+            }
+        });
 }
 
 void DataManager::updateDataset(const int64_t dataset_id, const QString &name)
@@ -618,7 +630,44 @@ void DataManager::updateDataset(const int64_t dataset_id, const QString &name)
         spdlog::warn("更新数据集失败: {}", validation_error.toUtf8().constData());
         return;
     }
-    datasets_->updateDataset(dataset_id, name);
+    if (database_ == nullptr || datasets_ == nullptr)
+    {
+        return;
+    }
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QStringLiteral("更新数据集"), QStringLiteral("当前已有数据操作正在进行中"));
+        return;
+    }
+
+    setDataOperationRunning(true);
+    DataOperationWorkflow::Options options;
+    options.title         = QStringLiteral("更新数据集");
+    options.start_message = QString("正在更新数据集: %1").arg(name);
+    DataOperationWorkflow::startDatabase(
+        this, database_->path(), std::move(options),
+        [dataset_id, name](dltool::database::ProjectDataBase &database, DataOperationWorkflow::Result &result)
+        {
+            result.success = database.updateDataset(dataset_id, name, result.error);
+        },
+        [this, dataset_id, name](const DataOperationWorkflow::Result &result)
+        {
+            setDataOperationRunning(false);
+            if (result.success)
+            {
+                datasets_->updateDatasetFromMemory(dataset_id, name);
+                const QString message = QString("已更新数据集: %1，耗时 %2 ms").arg(name).arg(result.elapsed_ms);
+                spdlog::info("{}", message.toUtf8().constData());
+                ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
+            }
+            else
+            {
+                const QString message = QString("更新数据集失败: %1").arg(result.error);
+                spdlog::error("{}", message.toUtf8().constData());
+                ui::ProgressManager::getInstance()->addMessage(spdlog::level::err, message);
+                ui::SignalHelper::notifyError(QStringLiteral("更新数据集失败"), message);
+            }
+        });
 }
 
 QString DataManager::isValidName(const QString &name) const
@@ -660,14 +709,9 @@ QString DataManager::isValidClassName(const QString &name, const int64_t label_c
 
 void DataManager::deleteDatasets(const std::vector<int64_t> &dataset_ids)
 {
-    if (dataset_deletion_running_ || image_operation_running_)
+    if (isDataOperationRunning())
     {
         ui::SignalHelper::notifyWarn(QString("删除数据集"), QString("数据集删除任务正在进行中"));
-        return;
-    }
-    if (import_running_)
-    {
-        ui::SignalHelper::notifyWarn(QString("删除数据集"), QString("导入任务正在进行中，请在导入完成后再删除数据集"));
         return;
     }
     if (database_ == nullptr)
@@ -701,56 +745,27 @@ void DataManager::deleteDatasets(const std::vector<int64_t> &dataset_ids)
         labels_changed_during_loading_ = true;
     }
 
+    setDataOperationRunning(true);
     dataset_deletion_running_ = true;
     emit datasetDeletionRunningChanged();
 
-    ui::ProgressManager::getInstance()->startTask(QString("删除数据集"));
-    ui::ProgressManager::getInstance()->updateProgress(5);
-    ui::ProgressManager::getInstance()->addMessage(
-        spdlog::level::info, QString("正在删除 %1 个数据集及其图像、标注和标签").arg(target_dataset_ids.size()));
-
-    const QString         database_path = database_->path();
-    QPointer<DataManager> manager(this);
-    QThread *worker_thread = QThread::create(
-        [manager, database_path, target_dataset_ids]()
+    DataOperationWorkflow::Options options;
+    options.title        = QStringLiteral("删除数据集");
+    options.start_message = QString("正在删除 %1 个数据集及其图像、标注和标签").arg(target_dataset_ids.size());
+    DataOperationWorkflow::startDatabase(
+        this, database_->path(), std::move(options),
+        [target_dataset_ids](dltool::database::ProjectDataBase &database, DataOperationWorkflow::Result &result)
         {
-            QElapsedTimer timer;
-            timer.start();
-
-            bool    success = false;
-            QString err_msg;
-            try
-            {
-                dltool::database::ProjectDataBase database(database_path);
-                success = database.deleteDatasetsWithContents(target_dataset_ids, err_msg);
-            }
-            catch (const std::exception &e)
-            {
-                err_msg = QString::fromUtf8(e.what());
-            }
-
-            const qint64 elapsed_ms = timer.elapsed();
-            if (manager)
-            {
-                QMetaObject::invokeMethod(
-                    manager.data(),
-                    [manager, target_dataset_ids, success, err_msg, elapsed_ms]()
-                    {
-                        if (manager)
-                        {
-                            manager->handleAsyncDatasetDeletion(target_dataset_ids, success, err_msg, elapsed_ms);
-                        }
-                    },
-                    Qt::QueuedConnection);
-            }
+            result.success = database.deleteDatasetsWithContents(target_dataset_ids, result.error);
+        },
+        [this, target_dataset_ids](const DataOperationWorkflow::Result &result)
+        {
+            commitDatasetDeletion(target_dataset_ids, result.success, result.error, result.elapsed_ms);
         });
-
-    connect(worker_thread, &QThread::finished, worker_thread, &QObject::deleteLater);
-    worker_thread->start();
 }
 
-void DataManager::handleAsyncDatasetDeletion(const std::vector<int64_t> &dataset_ids, const bool success,
-                                             const QString &err_msg, const qint64 elapsed_ms)
+void DataManager::commitDatasetDeletion(const std::vector<int64_t> &dataset_ids, const bool success,
+                                        const QString &err_msg, const qint64 elapsed_ms)
 {
     if (success)
     {
@@ -782,7 +797,6 @@ void DataManager::handleAsyncDatasetDeletion(const std::vector<int64_t> &dataset
         const QString message
             = QString("已删除 %1 个数据集，耗时 %2 ms").arg(dataset_ids.size()).arg(elapsed_ms);
         spdlog::info("{}", message.toUtf8().constData());
-        ui::ProgressManager::getInstance()->updateProgress(100);
         ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
         ui::SignalHelper::notifySuccess(QString("删除数据集完成"), message);
     }
@@ -794,8 +808,8 @@ void DataManager::handleAsyncDatasetDeletion(const std::vector<int64_t> &dataset
         ui::SignalHelper::notifyError(QString("删除数据集失败"), message);
     }
 
-    ui::ProgressManager::getInstance()->completeTask();
     dataset_deletion_running_ = false;
+    setDataOperationRunning(false);
     emit datasetDeletionRunningChanged();
 
     if (labels_reload_after_dataset_deletion_ && !labels_loading_)
@@ -805,13 +819,13 @@ void DataManager::handleAsyncDatasetDeletion(const std::vector<int64_t> &dataset
     }
 }
 
-void DataManager::handleAsyncImageDeletion(const std::vector<int64_t>              &image_ids,
-                                           const std::vector<int64_t>              &dataset_ids,
-                                           const std::vector<std::vector<int64_t>> &image_label_ids,
-                                           const std::vector<int64_t>              &image_label_class_ids,
-                                           const bool                              success,
-                                           const QString                          &err_msg,
-                                           const qint64                            elapsed_ms)
+void DataManager::commitImageDeletion(const std::vector<int64_t>              &image_ids,
+                                      const std::vector<int64_t>              &dataset_ids,
+                                      const std::vector<std::vector<int64_t>> &image_label_ids,
+                                      const std::vector<int64_t>              &image_label_class_ids,
+                                      const bool                              success,
+                                      const QString                          &err_msg,
+                                      const qint64                            elapsed_ms)
 {
     if (success)
     {
@@ -848,7 +862,6 @@ void DataManager::handleAsyncImageDeletion(const std::vector<int64_t>           
 
         const QString message = QString("已删除 %1 个图像，耗时 %2 ms").arg(image_ids.size()).arg(elapsed_ms);
         spdlog::info("{}", message.toUtf8().constData());
-        ui::ProgressManager::getInstance()->updateProgress(100);
         ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
         ui::SignalHelper::notifySuccess(QString("删除图像完成"), message);
     }
@@ -860,22 +873,22 @@ void DataManager::handleAsyncImageDeletion(const std::vector<int64_t>           
         ui::SignalHelper::notifyError(QString("删除图像失败"), message);
     }
 
-    ui::ProgressManager::getInstance()->completeTask();
     if (image_operation_running_)
     {
         image_operation_running_ = false;
         emit imageOperationRunningChanged();
     }
+    setDataOperationRunning(false);
 }
 
-void DataManager::handleAsyncImageMove(const std::vector<int64_t>              &image_ids,
-                                       const std::vector<int64_t>              &source_dataset_ids,
-                                       const std::vector<int64_t>              &target_dataset_ids,
-                                       const std::vector<std::vector<int64_t>> &image_label_ids,
-                                       const std::vector<int64_t>              &image_label_class_ids,
-                                       const bool                              success,
-                                       const QString                          &err_msg,
-                                       const qint64                            elapsed_ms)
+void DataManager::commitImageMove(const std::vector<int64_t>              &image_ids,
+                                  const std::vector<int64_t>              &source_dataset_ids,
+                                  const std::vector<int64_t>              &target_dataset_ids,
+                                  const std::vector<std::vector<int64_t>> &image_label_ids,
+                                  const std::vector<int64_t>              &image_label_class_ids,
+                                  const bool                              success,
+                                  const QString                          &err_msg,
+                                  const qint64                            elapsed_ms)
 {
     if (success)
     {
@@ -890,7 +903,6 @@ void DataManager::handleAsyncImageMove(const std::vector<int64_t>              &
 
         const QString message = QString("已移动 %1 个图像，耗时 %2 ms").arg(image_ids.size()).arg(elapsed_ms);
         spdlog::info("{}", message.toUtf8().constData());
-        ui::ProgressManager::getInstance()->updateProgress(100);
         ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
         ui::SignalHelper::notifySuccess(QString("移动图像完成"), message);
     }
@@ -902,15 +914,15 @@ void DataManager::handleAsyncImageMove(const std::vector<int64_t>              &
         ui::SignalHelper::notifyError(QString("移动图像失败"), message);
     }
 
-    ui::ProgressManager::getInstance()->completeTask();
     if (image_operation_running_)
     {
         image_operation_running_ = false;
         emit imageOperationRunningChanged();
     }
+    setDataOperationRunning(false);
 }
 
-void DataManager::handleAsyncImageCopy(const std::shared_ptr<AsyncImageCopyResult> &result)
+void DataManager::commitImageCopy(const std::shared_ptr<ImageCopyResult> &result)
 {
     if (result != nullptr && result->success)
     {
@@ -978,7 +990,6 @@ void DataManager::handleAsyncImageCopy(const std::shared_ptr<AsyncImageCopyResul
                   .arg(result->elapsed_ms)
                   .arg(model_update_elapsed_ms);
         spdlog::info("{}", message.toUtf8().constData());
-        ui::ProgressManager::getInstance()->updateProgress(100);
         ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
         ui::SignalHelper::notifySuccess(QString("复制图像完成"), message);
     }
@@ -991,12 +1002,12 @@ void DataManager::handleAsyncImageCopy(const std::shared_ptr<AsyncImageCopyResul
         ui::SignalHelper::notifyError(QString("复制图像失败"), message);
     }
 
-    ui::ProgressManager::getInstance()->completeTask();
     if (image_operation_running_)
     {
         image_operation_running_ = false;
         emit imageOperationRunningChanged();
     }
+    setDataOperationRunning(false);
 }
 
 void DataManager::importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
@@ -1007,9 +1018,9 @@ void DataManager::importData(const int64_t dataset_id, const int data_format, co
 
 void DataManager::scanImportLabelClasses(const int data_format, const QString &image_dir, const QString &data_dir)
 {
-    if (import_running_)
+    if (isDataOperationRunning())
     {
-        const QString message = QString("已有导入任务正在运行");
+        const QString message = QString("已有数据操作正在运行");
         ui::SignalHelper::notifyWarn(QString("导入失败"), message);
         emit importLabelClassesScanned(false, {}, message);
         return;
@@ -1023,7 +1034,7 @@ void DataManager::scanImportLabelClasses(const int data_format, const QString &i
         return;
     }
 
-    DataIO *scanner = DataIO::createIO(data_format, database_, this);
+    DataIO *scanner = DataIO::createIO(data_format, this);
     if (!scanner)
     {
         const QString message = QString("不支持的数据格式");
@@ -1032,6 +1043,7 @@ void DataManager::scanImportLabelClasses(const int data_format, const QString &i
         return;
     }
 
+    setDataOperationRunning(true);
     scanner->setTargetMethod(method_);
     qRegisterMetaType<std::map<QString, QString>>("std::map<QString, QString>");
 
@@ -1080,6 +1092,7 @@ void DataManager::scanImportLabelClasses(const int data_format, const QString &i
 
             emit importLabelClassesScanned(success, label_classes, message);
             scanner->deleteLater();
+            setDataOperationRunning(false);
         },
         Qt::QueuedConnection);
 
@@ -1096,10 +1109,10 @@ void DataManager::importDataWithLabelClassGroups(const int64_t dataset_id, const
 void DataManager::startImportData(const int64_t dataset_id, const int data_format, const QString &image_dir,
                                   const QString &data_dir, const std::map<QString, QString> &label_class_groups)
 {
-    if (import_running_ || image_operation_running_ || dataset_deletion_running_)
+    if (isDataOperationRunning())
     {
-        const QString message = QString("已有导入任务正在运行");
-        spdlog::warn("导入数据失败, 已有导入任务正在运行");
+        const QString message = QString("已有数据操作正在运行");
+        spdlog::warn("导入数据失败, 已有数据操作正在运行");
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
                                   Q_ARG(QString, "导入数据"));
         QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
@@ -1142,7 +1155,7 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
     // 使用工厂函数创建导入器
     // 重构后：DataManager 不再直接实例化具体的导入器类
     // 而是通过工厂函数获取，实现了依赖倒置原则
-    DataIO *importer = DataIO::createIO(data_format, database_, this);
+    DataIO *importer = DataIO::createIO(data_format, this);
     if (!importer)
     {
         const QString message = QString("不支持的数据格式");
@@ -1154,6 +1167,7 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
         emit dataImportFinished(false, message);
         return;
     }
+    setDataOperationRunning(true);
     importer->setTargetMethod(method_);
     import_running_                             = true;
     pending_import_task_                        = std::make_unique<PendingImportTask>();
@@ -1180,6 +1194,12 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
 void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const int data_format,
                                  const QString &output_dir, const QVariantMap &options)
 {
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QStringLiteral("导出数据"), QStringLiteral("当前已有数据操作正在进行中"));
+        return;
+    }
+
     if (!data::DataFormat::isExportDataFormatSupported(method_, data_format))
     {
         const QString message = QString("当前项目类型不支持该导出格式");
@@ -1212,6 +1232,7 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
         return;
     }
 
+    setDataOperationRunning(true);
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
                               Q_ARG(QString, "导出数据"));
 
@@ -1230,213 +1251,266 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
     };
 
     auto state = std::make_shared<ExportBatchState>();
-    QPointer<DataManager> manager(this);
-    // Building an export snapshot reads every image header and walks all labels. Keep this
-    // preparation off the GUI thread; only the exporter sequencing and UI notifications run
-    // on the DataManager thread below.
-    auto *prepare_thread = QThread::create(
-        [manager, dataset_ids, output_dir, state, data_format, options]() mutable
-        {
-            if (!manager)
-                return;
+    const int export_method = method_;
 
-            QString err_msg;
+    // 构造快照只访问工作线程中的数据库连接，避免后台线程读取 QAbstractItemModel。
+    DataOperationWorkflow::Options prepare_options;
+    prepare_options.manage_progress = false;
+    DataOperationWorkflow::startDatabase(
+        this, database_->path(), std::move(prepare_options),
+        [dataset_ids, output_dir, state, export_method](dltool::database::ProjectDataBase &database,
+                                                        DataOperationWorkflow::Result &result)
+        {
+            std::vector<int64_t> dataset_row_ids;
+            std::vector<QString> dataset_names;
+            if (!database.getAllDatasets(dataset_row_ids, dataset_names, result.error))
+            {
+                return;
+            }
+
+            std::map<int64_t, QString> names_by_id;
+            for (size_t i = 0; i < dataset_row_ids.size() && i < dataset_names.size(); ++i)
+            {
+                names_by_id[dataset_row_ids[i]] = dataset_names[i];
+            }
+
+            std::vector<int64_t>               image_dataset_ids;
+            std::vector<int64_t>               image_ids;
+            std::vector<QString>               image_paths;
+            std::vector<std::vector<uint8_t>> image_extra_data;
+            if (!database.getAllImages(image_dataset_ids, image_ids, image_paths, image_extra_data, result.error))
+            {
+                return;
+            }
+
+            std::vector<int64_t>               label_ids;
+            std::vector<int64_t>               label_image_ids;
+            std::vector<int64_t>               label_class_ids;
+            std::vector<int64_t>               label_types;
+            std::vector<std::vector<uint8_t>> label_blobs;
+            if (!database.getAllLabels(label_ids, label_image_ids, label_class_ids, label_types, label_blobs,
+                                       result.error))
+            {
+                return;
+            }
+
+            std::vector<int64_t>               class_ids;
+            std::vector<QString>               class_names;
+            std::vector<QString>               class_colors;
+            std::vector<QString>               class_shortcuts;
+            std::vector<int64_t>               class_ordinals;
+            std::vector<std::vector<uint8_t>> class_extra_data;
+            if (!database.getAllLabelClasses(class_ids, class_names, class_colors, class_shortcuts, class_ordinals,
+                                             class_extra_data, result.error))
+            {
+                return;
+            }
+
+            struct ClassInfo
+            {
+                QString name;
+                QString color;
+            };
+            std::map<int64_t, ClassInfo> class_info_by_id;
+            for (size_t i = 0; i < class_ids.size(); ++i)
+            {
+                class_info_by_id[class_ids[i]] =
+                    {i < class_names.size() ? class_names[i] : QString(),
+                     i < class_colors.size() ? class_colors[i] : QString()};
+            }
+
+            LabelDataHelper label_helper = data::createLabelDataHelper(export_method);
+            if (!label_blobs.empty() && label_helper == nullptr)
+            {
+                result.error   = QStringLiteral("标签数据工厂未初始化");
+                result.success  = false;
+                return;
+            }
+
+            std::map<int64_t, size_t> state_index_by_dataset;
             for (const int64_t dataset_id : dataset_ids)
             {
-                ExportDataset dataset = manager->buildExportDataset(dataset_id);
-                if (dataset.dataset_name.isEmpty())
+                const auto name_it = names_by_id.find(dataset_id);
+                if (name_it == names_by_id.end())
                 {
                     spdlog::warn("跳过不存在的数据集: {}", dataset_id);
                     addProgressMessage(spdlog::level::warn, QString("跳过不存在的数据集: %1").arg(dataset_id));
                     continue;
                 }
-                if (dataset.images.empty())
-                {
-                    spdlog::warn("跳过空数据集导出: {}", dataset_id);
-                    addProgressMessage(spdlog::level::warn, QString("跳过空数据集: %1").arg(dataset.dataset_name));
-                    continue;
-                }
 
-                const QString dataset_output_dir = QDir(output_dir).filePath(dataset.dataset_name);
-                if (!ensureDirectory(dataset_output_dir, err_msg))
+                ExportBatchItem item;
+                item.dataset.dataset_id   = dataset_id;
+                item.dataset.dataset_name = name_it->second;
+                item.output_dir            = QDir(output_dir).filePath(name_it->second);
+                QString directory_error;
+                if (!ensureDirectory(item.output_dir, directory_error))
                 {
-                    spdlog::error("创建数据集导出目录失败: {}", err_msg.toUtf8().constData());
-                    addProgressMessage(spdlog::level::err, err_msg);
                     ++state->failed_count;
+                    addProgressMessage(spdlog::level::err, directory_error);
+                    continue;
+                }
+                state_index_by_dataset[dataset_id] = state->items.size();
+                state->items.push_back(std::move(item));
+            }
+
+            std::map<int64_t, std::pair<size_t, int64_t>> image_index_by_id;
+            for (size_t i = 0; i < image_ids.size() && i < image_dataset_ids.size() && i < image_paths.size(); ++i)
+            {
+                const auto state_it = state_index_by_dataset.find(image_dataset_ids[i]);
+                if (state_it == state_index_by_dataset.end())
+                {
                     continue;
                 }
 
-                state->items.push_back(ExportBatchItem{std::move(dataset), dataset_output_dir});
+                int width = 0;
+                int height = 0;
+                DatasetIO::getImageDimensions(image_paths[i], width, height);
+
+                ExportImage image;
+                image.dataset_id = image_dataset_ids[i];
+                image.image_id   = image_ids[i];
+                image.path       = image_paths[i];
+                image.width      = width;
+                image.height     = height;
+                auto &dataset    = state->items[state_it->second].dataset;
+                dataset.images.push_back(std::move(image));
+                image_index_by_id[image_ids[i]] = {state_it->second, image_ids[i]};
             }
 
-            QMetaObject::invokeMethod(
-                manager.data(),
-                [manager, data_format, options, state]() mutable
-                {
-                    if (!manager)
-                        return;
-
-                    if (state->items.empty())
-                    {
-                        const QString message = QString("没有可导出的数据集");
-                        addProgressMessage(spdlog::level::err, message);
-                        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask",
-                                                  Qt::QueuedConnection);
-                        ui::SignalHelper::notifyError(QString("导出失败"), message);
-                        return;
-                    }
-
-                    auto                                 start_next      = std::make_shared<std::function<void()>>();
-                    std::weak_ptr<std::function<void()>> weak_start_next = start_next;
-                    *start_next = [manager, data_format, options, state, weak_start_next]()
-                    {
-                        if (!manager)
-                            return;
-
-                        if (state->current >= static_cast<int>(state->items.size()))
-                        {
-                            const QString message = QString("导出完成: 成功 %1 个, 失败 %2 个")
-                                                         .arg(state->success_count)
-                                                         .arg(state->failed_count);
-                            const bool success = state->success_count > 0 && state->failed_count == 0;
-                            addProgressMessage(state->failed_count == 0 ? spdlog::level::info : spdlog::level::warn,
-                                               message);
-                            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask",
-                                                      Qt::QueuedConnection);
-                            if (success)
-                                ui::SignalHelper::notifySuccess(QString("导出完成"), message);
-                            else if (state->success_count > 0)
-                                ui::SignalHelper::notifyWarn(QString("导出完成"), message);
-                            else
-                                ui::SignalHelper::notifyError(QString("导出失败"), message);
-                            return;
-                        }
-
-                        const ExportBatchItem item = state->items[static_cast<size_t>(state->current++)];
-                        addProgressMessage(spdlog::level::info,
-                                           QString("开始导出数据集: %1 -> %2")
-                                               .arg(item.dataset.dataset_name, item.output_dir));
-
-                        DataIO *exporter = DataIO::createIO(data_format, nullptr, manager.data());
-                        if (!exporter)
-                        {
-                            addProgressMessage(spdlog::level::err, QString("不支持的数据格式"));
-                            ++state->failed_count;
-                            if (auto next = weak_start_next.lock())
-                            {
-                                (*next)();
-                            }
-                            return;
-                        }
-                        exporter->setTargetMethod(manager->method_);
-
-                        connect(exporter, &DataIO::exportFinished, manager.data(),
-                                [exporter, state, start_next = weak_start_next.lock()](bool success,
-                                                                                        const QString &message)
-                                {
-                                    if (success)
-                                        ++state->success_count;
-                                    else
-                                        ++state->failed_count;
-                                    addProgressMessage(success ? spdlog::level::info : spdlog::level::err, message);
-                                    exporter->deleteLater();
-                                    if (start_next)
-                                        (*start_next)();
-                                },
-                                Qt::QueuedConnection);
-
-                        exporter->startExport(item.dataset, item.output_dir, options);
-                    };
-
-                    (*start_next)();
-                },
-                Qt::QueuedConnection);
-        });
-    connect(prepare_thread, &QThread::finished, prepare_thread, &QObject::deleteLater);
-    prepare_thread->start();
-}
-
-ExportDataset DataManager::buildExportDataset(const int64_t dataset_id) const
-{
-    ExportDataset dataset;
-    dataset.dataset_id   = dataset_id;
-    dataset.dataset_name = datasets_->getDatasetName(dataset_id);
-
-    std::set<int64_t> image_id_set;
-    for (const int64_t image_id : image_instances_->getAllImageIds())
-    {
-        ImageInstance *image = image_instances_->getImageInstance(image_id);
-        if (image == nullptr || image->datasetId() != dataset_id)
-        {
-            continue;
-        }
-
-        QSize image_size = image->imageSize();
-        if (!image_size.isValid())
-        {
-            int width  = 0;
-            int height = 0;
-            if (DatasetIO::getImageDimensions(image->path(), width, height))
+            for (size_t i = 0; i < label_ids.size() && i < label_image_ids.size() && i < label_class_ids.size()
+                         && i < label_blobs.size();
+                 ++i)
             {
-                image_size = QSize(width, height);
+                const auto image_it = image_index_by_id.find(label_image_ids[i]);
+                if (image_it == image_index_by_id.end())
+                {
+                    continue;
+                }
+
+                LabelData label_data = label_helper->createLabelData();
+                label_data->fromBlob(label_blobs[i]);
+
+                ExportLabel label;
+                label.label_id       = label_ids[i];
+                label.image_id       = label_image_ids[i];
+                label.label_class_id = label_class_ids[i];
+                label.data           = label_data->dataMap();
+                auto &dataset        = state->items[image_it->second.first].dataset;
+                dataset.labels.push_back(std::move(label));
             }
-        }
 
-        ExportImage export_image;
-        export_image.dataset_id = dataset_id;
-        export_image.image_id   = image->imageId();
-        export_image.path       = image->path();
-        export_image.width      = image_size.width();
-        export_image.height     = image_size.height();
-        dataset.images.push_back(export_image);
-        image_id_set.insert(image->imageId());
-    }
+            for (auto &item : state->items)
+            {
+                std::set<int64_t> used_class_ids;
+                for (const ExportLabel &label : item.dataset.labels)
+                {
+                    used_class_ids.insert(label.label_class_id);
+                }
+                for (const int64_t class_id : used_class_ids)
+                {
+                    const auto class_it = class_info_by_id.find(class_id);
+                    if (class_it == class_info_by_id.end())
+                    {
+                        continue;
+                    }
+                    item.dataset.label_classes.push_back(
+                        ExportLabelClass{class_id, class_it->second.name, class_it->second.color});
+                }
+                if (item.dataset.images.empty())
+                {
+                    addProgressMessage(spdlog::level::warn,
+                                       QString("跳过空数据集: %1").arg(item.dataset.dataset_name));
+                }
+            }
 
-    std::set<int64_t> label_class_ids;
-    for (const auto &[label_id, label_instance] : label_instances_->getAllLabelInstances())
-    {
-        if (label_instance == nullptr || image_id_set.find(label_instance->imageId()) == image_id_set.end())
+            state->items.erase(std::remove_if(state->items.begin(), state->items.end(),
+                                              [](const ExportBatchItem &item) { return item.dataset.images.empty(); }),
+                               state->items.end());
+            result.success = !state->items.empty();
+            if (!result.success && result.error.isEmpty())
+            {
+                result.error = QStringLiteral("没有可导出的数据集");
+            }
+        },
+        [this, state, data_format, options](const DataOperationWorkflow::Result &result) mutable
         {
-            continue;
-        }
+            if (!result.success || state->items.empty())
+            {
+                setDataOperationRunning(false);
+                const QString message = result.error.isEmpty() ? QStringLiteral("没有可导出的数据集") : result.error;
+                addProgressMessage(spdlog::level::err, message);
+                QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask",
+                                          Qt::QueuedConnection);
+                ui::SignalHelper::notifyError(QStringLiteral("导出失败"), message);
+                return;
+            }
 
-        ExportLabel export_label;
-        export_label.label_id       = label_id;
-        export_label.image_id       = label_instance->imageId();
-        export_label.label_class_id = label_instance->labelClassId();
-        export_label.data           = label_instance->data() ? label_instance->data()->dataMap() : QVariantMap();
-        dataset.labels.push_back(export_label);
-        label_class_ids.insert(export_label.label_class_id);
-    }
+            auto                                 start_next      = std::make_shared<std::function<void()>>();
+            std::weak_ptr<std::function<void()>> weak_start_next = start_next;
+            *start_next = [this, data_format, options, state, weak_start_next]()
+            {
+                if (state->current >= static_cast<int>(state->items.size()))
+                {
+                    const QString message = QString("导出完成: 成功 %1 个, 失败 %2 个")
+                                                 .arg(state->success_count)
+                                                 .arg(state->failed_count);
+                    const bool success = state->success_count > 0 && state->failed_count == 0;
+                    setDataOperationRunning(false);
+                    addProgressMessage(state->failed_count == 0 ? spdlog::level::info : spdlog::level::warn, message);
+                    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask",
+                                              Qt::QueuedConnection);
+                    if (success)
+                        ui::SignalHelper::notifySuccess(QStringLiteral("导出完成"), message);
+                    else if (state->success_count > 0)
+                        ui::SignalHelper::notifyWarn(QStringLiteral("导出完成"), message);
+                    else
+                        ui::SignalHelper::notifyError(QStringLiteral("导出失败"), message);
+                    return;
+                }
 
-    if (label_classes_ == nullptr)
-    {
-        return dataset;
-    }
+                const ExportBatchItem item = state->items[static_cast<size_t>(state->current++)];
+                addProgressMessage(spdlog::level::info,
+                                   QString("开始导出数据集: %1 -> %2")
+                                       .arg(item.dataset.dataset_name, item.output_dir));
 
-    for (int row = 0; row < label_classes_->rowCount(); ++row)
-    {
-        const QModelIndex index = label_classes_->index(row, 0);
-        const int64_t     label_class_id
-            = label_classes_->data(index, LabelClassesListModel::LabelClassIdRole).toLongLong();
-        if (label_class_ids.find(label_class_id) == label_class_ids.end())
-        {
-            continue;
-        }
+                DataIO *exporter = DataIO::createIO(data_format, this);
+                if (!exporter)
+                {
+                    addProgressMessage(spdlog::level::err, QStringLiteral("不支持的数据格式"));
+                    ++state->failed_count;
+                    if (auto next = weak_start_next.lock())
+                    {
+                        (*next)();
+                    }
+                    return;
+                }
+                exporter->setTargetMethod(method_);
 
-        ExportLabelClass export_class;
-        export_class.id    = label_class_id;
-        export_class.name  = label_classes_->data(index, LabelClassesListModel::NameRole).toString();
-        export_class.color = label_classes_->data(index, LabelClassesListModel::ColorRole).toString();
-        dataset.label_classes.push_back(export_class);
-    }
+                connect(exporter, &DataIO::exportFinished, this,
+                        [exporter, state, start_next = weak_start_next.lock()](bool success,
+                                                                                const QString &message)
+                        {
+                            if (success)
+                                ++state->success_count;
+                            else
+                                ++state->failed_count;
+                            addProgressMessage(success ? spdlog::level::info : spdlog::level::err, message);
+                            exporter->deleteLater();
+                            if (start_next)
+                                (*start_next)();
+                        },
+                        Qt::QueuedConnection);
 
-    return dataset;
+                exporter->startExport(item.dataset, item.output_dir, options);
+            };
+
+            (*start_next)();
+        });
 }
 
 void DataManager::deleteSelectedImages()
 {
-    if (image_operation_running_ || dataset_deletion_running_ || import_running_)
+    if (isDataOperationRunning())
     {
         ui::SignalHelper::notifyWarn(QString("删除图像"), QString("当前已有数据操作正在进行中"));
         return;
@@ -1469,57 +1543,29 @@ void DataManager::deleteSelectedImages()
     {
         labels_changed_during_loading_ = true;
     }
+    setDataOperationRunning(true);
     image_operation_running_ = true;
     emit imageOperationRunningChanged();
-    ui::ProgressManager::getInstance()->startTask(QString("删除图像"));
-    ui::ProgressManager::getInstance()->updateProgress(5);
-    ui::ProgressManager::getInstance()->addMessage(
-        spdlog::level::info, QString("正在删除 %1 个图像及其标注").arg(image_ids.size()));
-
-    const QString         database_path = database_->path();
-    QPointer<DataManager> manager(this);
-    QThread *worker_thread = QThread::create(
-        [manager, database_path, image_ids, dataset_ids, images_label_ids, image_label_class_ids]()
+    DataOperationWorkflow::Options options;
+    options.title         = QStringLiteral("删除图像");
+    options.start_message = QString("正在删除 %1 个图像及其标注").arg(image_ids.size());
+    DataOperationWorkflow::startDatabase(
+        this, database_->path(), std::move(options),
+        [image_ids](dltool::database::ProjectDataBase &database, DataOperationWorkflow::Result &result)
         {
-            QElapsedTimer timer;
-            timer.start();
-
-            bool    success = false;
-            QString err_msg;
-            try
-            {
-                dltool::database::ProjectDataBase database(database_path);
-                success = database.deleteImages(image_ids, err_msg);
-            }
-            catch (const std::exception &e)
-            {
-                err_msg = QString::fromUtf8(e.what());
-            }
-
-            const qint64 elapsed_ms = timer.elapsed();
-            if (manager)
-            {
-                QMetaObject::invokeMethod(
-                    manager.data(),
-                    [manager, image_ids, dataset_ids, images_label_ids, image_label_class_ids, success, err_msg,
-                     elapsed_ms]()
-                    {
-                        if (manager)
-                        {
-                            manager->handleAsyncImageDeletion(image_ids, dataset_ids, images_label_ids,
-                                                              image_label_class_ids, success, err_msg, elapsed_ms);
-                        }
-                    },
-                    Qt::QueuedConnection);
-            }
+            result.success = database.deleteImages(image_ids, result.error);
+        },
+        [this, image_ids, dataset_ids, images_label_ids, image_label_class_ids](
+            const DataOperationWorkflow::Result &result)
+        {
+            commitImageDeletion(image_ids, dataset_ids, images_label_ids, image_label_class_ids, result.success,
+                                result.error, result.elapsed_ms);
         });
-    connect(worker_thread, &QThread::finished, worker_thread, &QObject::deleteLater);
-    worker_thread->start();
 }
 
 void DataManager::copyToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id)
 {
-    if (image_operation_running_ || dataset_deletion_running_ || import_running_)
+    if (isDataOperationRunning())
     {
         ui::SignalHelper::notifyWarn(QString("复制图像"), QString("当前已有数据操作正在进行中"));
         return;
@@ -1546,7 +1592,7 @@ void DataManager::copyToDataset(const std::vector<int64_t> &image_ids, const int
         return;
     }
 
-    auto request = std::make_shared<AsyncImageCopyRequest>();
+    auto request = std::make_shared<ImageCopyRequest>();
     request->database_path     = database_->path();
     request->label_data_method = method_;
     request->dataset_id        = dataset_id;
@@ -1591,28 +1637,24 @@ void DataManager::copyToDataset(const std::vector<int64_t> &image_ids, const int
     {
         labels_changed_during_loading_ = true;
     }
+    setDataOperationRunning(true);
     image_operation_running_ = true;
     emit imageOperationRunningChanged();
-    ui::ProgressManager::getInstance()->startTask(QString("复制图像"));
-    ui::ProgressManager::getInstance()->updateProgress(5);
-    ui::ProgressManager::getInstance()->addMessage(
-        spdlog::level::info, QString("正在复制 %1 个图像及其标注").arg(source_image_ids.size()));
+    auto result                    = std::make_shared<ImageCopyResult>();
+    result->dataset_id             = request->dataset_id;
+    result->image_paths            = request->image_paths;
+    result->image_label_class_ids  = request->image_label_class_ids;
+    result->image_tag_ids          = request->image_tag_ids;
 
-    QPointer<DataManager> manager(this);
-    QThread *worker_thread = QThread::create(
-        [manager, request]()
+    DataOperationWorkflow::Options options;
+    options.title         = QStringLiteral("复制图像");
+    options.start_message = QString("正在复制 %1 个图像及其标注").arg(source_image_ids.size());
+    DataOperationWorkflow::startDatabase(
+        this, request->database_path, std::move(options),
+        [request, result](dltool::database::ProjectDataBase &database, DataOperationWorkflow::Result &operation)
         {
-            QElapsedTimer timer;
-            timer.start();
-            auto result                       = std::make_shared<AsyncImageCopyResult>();
-            result->dataset_id                = request->dataset_id;
-            result->image_paths               = request->image_paths;
-            result->image_label_class_ids    = request->image_label_class_ids;
-            result->image_tag_ids             = request->image_tag_ids;
-
             try
             {
-                dltool::database::ProjectDataBase database(request->database_path);
                 if (!database.addImages(request->dataset_id, request->image_paths, result->copied_image_ids,
                                         result->err_msg))
                 {
@@ -1620,7 +1662,7 @@ void DataManager::copyToDataset(const std::vector<int64_t> &image_ids, const int
                 }
                 if (result->copied_image_ids.size() != request->image_paths.size())
                 {
-                    result->err_msg = QString("新图像 ID 数量不一致");
+                    result->err_msg = QStringLiteral("新图像 ID 数量不一致");
                     throw std::runtime_error(result->err_msg.toStdString());
                 }
 
@@ -1679,14 +1721,14 @@ void DataManager::copyToDataset(const std::vector<int64_t> &image_ids, const int
                 }
                 if (result->copied_label_ids.size() != request->labels.size())
                 {
-                    result->err_msg = QString("新标注 ID 数量不一致");
+                    result->err_msg = QStringLiteral("新标注 ID 数量不一致");
                     throw std::runtime_error(result->err_msg.toStdString());
                 }
 
                 LabelDataHelper helper = data::createLabelDataHelper(request->label_data_method);
                 if (!request->labels.empty() && helper == nullptr)
                 {
-                    result->err_msg = QString("标签数据工厂未初始化");
+                    result->err_msg = QStringLiteral("标签数据工厂未初始化");
                     throw std::runtime_error(result->err_msg.toStdString());
                 }
                 result->labels.reserve(request->labels.size());
@@ -1696,14 +1738,14 @@ void DataManager::copyToDataset(const std::vector<int64_t> &image_ids, const int
                 {
                     const CopyLabelPayload &payload = request->labels[i];
                     const int64_t            image_id = label_image_ids[i];
-                    LabelData                 data = helper->createLabelData();
-                    data->fromBlob(payload.data);
+                    LabelData                 label_data_instance = helper->createLabelData();
+                    label_data_instance->fromBlob(payload.data);
 
                     LoadedLabelInstance loaded_label;
                     loaded_label.label_id       = result->copied_label_ids[i];
                     loaded_label.image_id       = image_id;
                     loaded_label.label_class_id = payload.label_class_id;
-                    loaded_label.data           = std::move(data);
+                    loaded_label.data           = std::move(label_data_instance);
                     result->labels.push_back(std::move(loaded_label));
                     result->copied_label_tag_ids.push_back(payload.tag_ids);
 
@@ -1720,7 +1762,9 @@ void DataManager::copyToDataset(const std::vector<int64_t> &image_ids, const int
                     }
                 }
 
-                result->success = true;
+                result->success   = true;
+                operation.success  = true;
+                operation.error.clear();
             }
             catch (const std::exception &e)
             {
@@ -1730,40 +1774,25 @@ void DataManager::copyToDataset(const std::vector<int64_t> &image_ids, const int
                 }
                 if (!result->copied_image_ids.empty())
                 {
-                    try
-                    {
-                        dltool::database::ProjectDataBase database(request->database_path);
-                        QString                           ignored_error;
-                        database.deleteImages(result->copied_image_ids, ignored_error);
-                    }
-                    catch (...)
-                    {
-                    }
+                    QString ignored_error;
+                    database.deleteImages(result->copied_image_ids, ignored_error);
                 }
+                operation.success = false;
+                operation.error   = result->err_msg;
             }
-
-            result->elapsed_ms = timer.elapsed();
-            if (manager)
-            {
-                QMetaObject::invokeMethod(
-                    manager.data(),
-                    [manager, result]()
-                    {
-                        if (manager)
-                        {
-                            manager->handleAsyncImageCopy(result);
-                        }
-                    },
-                    Qt::QueuedConnection);
-            }
+        },
+        [this, result](const DataOperationWorkflow::Result &operation)
+        {
+            result->success    = operation.success;
+            result->err_msg    = operation.error.isEmpty() ? result->err_msg : operation.error;
+            result->elapsed_ms = operation.elapsed_ms;
+            commitImageCopy(result);
         });
-    connect(worker_thread, &QThread::finished, worker_thread, &QObject::deleteLater);
-    worker_thread->start();
 }
 
 void DataManager::moveToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id)
 {
-    if (image_operation_running_ || dataset_deletion_running_ || import_running_)
+    if (isDataOperationRunning())
     {
         ui::SignalHelper::notifyWarn(QString("移动图像"), QString("当前已有数据操作正在进行中"));
         return;
@@ -1815,54 +1844,25 @@ void DataManager::moveToDataset(const std::vector<int64_t> &image_ids, const int
     }
 
     const std::vector<int64_t> target_dataset_ids(moved_image_ids.size(), dataset_id);
+    setDataOperationRunning(true);
     image_operation_running_ = true;
     emit imageOperationRunningChanged();
-    ui::ProgressManager::getInstance()->startTask(QString("移动图像"));
-    ui::ProgressManager::getInstance()->updateProgress(5);
-    ui::ProgressManager::getInstance()->addMessage(
-        spdlog::level::info, QString("正在移动 %1 个图像").arg(moved_image_ids.size()));
-
-    const QString         database_path = database_->path();
-    QPointer<DataManager> manager(this);
-    QThread *worker_thread = QThread::create(
-        [manager, database_path, moved_image_ids, target_dataset_ids, source_dataset_ids, moved_image_label_ids,
-         moved_image_label_class_ids]()
+    DataOperationWorkflow::Options options;
+    options.title         = QStringLiteral("移动图像");
+    options.start_message = QString("正在移动 %1 个图像").arg(moved_image_ids.size());
+    DataOperationWorkflow::startDatabase(
+        this, database_->path(), std::move(options),
+        [moved_image_ids, target_dataset_ids](dltool::database::ProjectDataBase &database,
+                                              DataOperationWorkflow::Result &result)
         {
-            QElapsedTimer timer;
-            timer.start();
-
-            bool    success = false;
-            QString err_msg;
-            try
-            {
-                dltool::database::ProjectDataBase database(database_path);
-                success = database.updateImagesDataset(moved_image_ids, target_dataset_ids, err_msg);
-            }
-            catch (const std::exception &e)
-            {
-                err_msg = QString::fromUtf8(e.what());
-            }
-
-            const qint64 elapsed_ms = timer.elapsed();
-            if (manager)
-            {
-                QMetaObject::invokeMethod(
-                    manager.data(),
-                    [manager, moved_image_ids, source_dataset_ids, target_dataset_ids, moved_image_label_ids,
-                     moved_image_label_class_ids, success, err_msg, elapsed_ms]()
-                    {
-                        if (manager)
-                        {
-                            manager->handleAsyncImageMove(moved_image_ids, source_dataset_ids, target_dataset_ids,
-                                                          moved_image_label_ids, moved_image_label_class_ids, success,
-                                                          err_msg, elapsed_ms);
-                        }
-                    },
-                    Qt::QueuedConnection);
-            }
+            result.success = database.updateImagesDataset(moved_image_ids, target_dataset_ids, result.error);
+        },
+        [this, moved_image_ids, source_dataset_ids, target_dataset_ids, moved_image_label_ids,
+         moved_image_label_class_ids](const DataOperationWorkflow::Result &result)
+        {
+            commitImageMove(moved_image_ids, source_dataset_ids, target_dataset_ids, moved_image_label_ids,
+                            moved_image_label_class_ids, result.success, result.error, result.elapsed_ms);
         });
-    connect(worker_thread, &QThread::finished, worker_thread, &QObject::deleteLater);
-    worker_thread->start();
 }
 
 void DataManager::addLabelClass(const QString &name, const QString &color, const QString &shortcut)
@@ -2664,6 +2664,7 @@ void DataManager::handleImportFinished(bool success, std::vector<int64_t> image_
     if (!pending_import_task_)
     {
         import_running_ = false;
+        setDataOperationRunning(false);
         return;
     }
 
@@ -2764,6 +2765,7 @@ void DataManager::finishBatchedImport(bool success, const QString &message)
     }
     pending_import_task_.reset();
     import_running_ = false;
+    setDataOperationRunning(false);
     emit dataImportFinished(success, completed_message);
 
     // Send the toast after the final model refresh and dataImportFinished signal

@@ -269,27 +269,25 @@ private:
 
     void init(const int method);
     void startAsyncLabelLoading();
-    void handleAsyncLabelsLoaded(std::shared_ptr<std::vector<LoadedLabelInstance>> labels, bool success,
-                                 const QString &err_msg, qint64 elapsed_ms);
-    void handleAsyncDatasetDeletion(const std::vector<int64_t> &dataset_ids, bool success, const QString &err_msg,
-                                    qint64 elapsed_ms);
-    void handleAsyncImageDeletion(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &dataset_ids,
-                                  const std::vector<std::vector<int64_t>> &image_label_ids,
-                                  const std::vector<int64_t> &image_label_class_ids, bool success,
-                                  const QString &err_msg, qint64 elapsed_ms);
-    void handleAsyncImageMove(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &source_dataset_ids,
-                              const std::vector<int64_t> &target_dataset_ids,
-                              const std::vector<std::vector<int64_t>> &image_label_ids,
-                              const std::vector<int64_t> &image_label_class_ids, bool success,
-                              const QString &err_msg, qint64 elapsed_ms);
+    void commitLabelsLoaded(std::shared_ptr<std::vector<LoadedLabelInstance>> labels, bool success,
+                            const QString &err_msg, qint64 elapsed_ms);
+    void commitDatasetDeletion(const std::vector<int64_t> &dataset_ids, bool success, const QString &err_msg,
+                               qint64 elapsed_ms);
+    void commitImageDeletion(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &dataset_ids,
+                             const std::vector<std::vector<int64_t>> &image_label_ids,
+                             const std::vector<int64_t> &image_label_class_ids, bool success,
+                             const QString &err_msg, qint64 elapsed_ms);
+    void commitImageMove(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &source_dataset_ids,
+                         const std::vector<int64_t> &target_dataset_ids,
+                         const std::vector<std::vector<int64_t>> &image_label_ids,
+                         const std::vector<int64_t> &image_label_class_ids, bool success,
+                         const QString &err_msg, qint64 elapsed_ms);
 
-    struct AsyncImageCopyResult;
-    void handleAsyncImageCopy(const std::shared_ptr<AsyncImageCopyResult> &result);
+    struct ImageCopyResult;
+    void commitImageCopy(const std::shared_ptr<ImageCopyResult> &result);
     void rebuildLabelRelations(bool notify_image_model = true);
 
     void updateDatasetsStats();
-
-    ExportDataset buildExportDataset(const int64_t dataset_id) const;
 
     /**
      * @brief 处理导入器解析出的单个数据批次
@@ -308,6 +306,16 @@ private:
                           const std::map<QString, QString> &label_class_info, const std::vector<ImportedLabel> &labels,
                           QString &err_msg);
     void finishBatchedImport(bool success, const QString &message);
+
+    bool isDataOperationRunning() const
+    {
+        return data_operation_running_ || dataset_deletion_running_ || image_operation_running_ || import_running_;
+    }
+
+    void setDataOperationRunning(const bool running)
+    {
+        data_operation_running_ = running;
+    }
 
     dltool::database::ProjectDataBase *database_{nullptr};
     QString                          project_dir_;
@@ -342,6 +350,7 @@ private:
 
     bool dataset_deletion_running_{false};
     bool image_operation_running_{false};
+    bool data_operation_running_{false};
 };
 
 } // namespace dltool::data

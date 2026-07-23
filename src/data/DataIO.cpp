@@ -5,7 +5,7 @@
 #include "core/CoreDef.h"
 #include "data/DataFormat.h"
 #include "data/DataNameUtils.h"
-#include "database/DataBase.h"
+#include "data/DataOperationWorkflow.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsValue.h"
 #include "ui/ProgressManager.h"
@@ -23,7 +23,6 @@
 #include <QPainter>
 #include <QPolygonF>
 #include <QTextStream>
-#include <QThread>
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -704,9 +703,8 @@ bool writeClassMetadata(const ExportDataset &dataset, const QString &output_dir,
 // DataIO base class
 // ============================================================================
 
-DataIO::DataIO(dltool::database::ProjectDataBase *database, QObject *parent)
+DataIO::DataIO(QObject *parent)
     : QObject(parent)
-    , database_(database)
 {
 }
 
@@ -722,7 +720,7 @@ bool DataIO::isCancelRequested() const
     return cancel_requested_.load(std::memory_order_relaxed);
 }
 
-DataIO *DataIO::createIO(int data_format, dltool::database::ProjectDataBase *database, QObject *parent)
+DataIO *DataIO::createIO(int data_format, QObject *parent)
 {
     if (!DataFormat::isDataFormatSupported(data_format))
     {
@@ -733,13 +731,13 @@ DataIO *DataIO::createIO(int data_format, dltool::database::ProjectDataBase *dat
     switch (data_format)
     {
     case DataFormat::LabelMe:
-        return new LabelMeIO(database, parent);
+        return new LabelMeIO(parent);
     case DataFormat::COCO:
-        return new COCOIO(database, parent);
+        return new COCOIO(parent);
     case DataFormat::Mask:
-        return new MaskIO(database, parent);
+        return new MaskIO(parent);
     case DataFormat::Folder:
-        return new FolderIO(database, parent);
+        return new FolderIO(parent);
     default:
         spdlog::error("未实现的数据格式: {}", data_format);
         return nullptr;
@@ -777,14 +775,23 @@ void DataIO::updateProgress(int progress, const QString &message)
 
 void DataIO::runInThread(std::function<void()> work)
 {
-    // ponytail: 统一后台线程模式，消除了 4×2 处重复的 QThread 创建/连接逻辑
-    auto *thread = new QThread();
-    connect(thread, &QThread::started, this, std::move(work), Qt::DirectConnection);
-    connect(this, &DataIO::importFinished, thread, &QThread::quit);
-    connect(this, &DataIO::labelClassesScanned, thread, &QThread::quit);
-    connect(this, &DataIO::exportFinished, thread, &QThread::quit);
-    connect(thread, &QThread::finished, thread, &QThread::deleteLater);
-    thread->start();
+    DataOperationWorkflow::Options options;
+    options.manage_progress = false;
+
+    DataOperationWorkflow::start(
+        this, std::move(options),
+        [work = std::move(work)](DataOperationWorkflow::Result &result) mutable
+        {
+            work();
+            result.success = true;
+        },
+        [](const DataOperationWorkflow::Result &result)
+        {
+            if (!result.success)
+            {
+                spdlog::error("DataIO 后台任务失败: {}", result.error.toUtf8().constData());
+            }
+        });
 }
 
 bool DataIO::importImagesOnly(int64_t dataset_id, const QString &image_dir, const QString &format_name)

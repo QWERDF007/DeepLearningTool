@@ -121,13 +121,8 @@ bool DatasetsListModel::addDataset(const QString &name)
         spdlog::error("添加数据集失败: {}, error: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
         return false;
     }
+    addDatasetFromMemory(dataset_id, name);
     spdlog::info("添加数据集: {}", name.toUtf8().constData());
-    const int row   = rowCount(); // 添加到队列尾部
-    const int count = 1;
-    beginInsertRows(QModelIndex(), row, row + count - 1);
-    // beginInsertRows(QModelIndex(), row, row);
-    datasets_.emplace(dataset_id, new Dataset(dataset_id, name, this));
-    endInsertRows();
     return true;
 }
 
@@ -158,14 +153,7 @@ bool DatasetsListModel::addDatasets(const std::vector<QString> &names, std::vect
         return false;
     }
 
-    const int row   = rowCount();
-    const int count = static_cast<int>(dataset_ids.size());
-    beginInsertRows(QModelIndex(), row, row + count - 1);
-    for (size_t i = 0; i < dataset_ids.size(); ++i)
-    {
-        datasets_.emplace(dataset_ids[i], new Dataset(dataset_ids[i], names[i], this));
-    }
-    endInsertRows();
+    addDatasetsFromMemory(dataset_ids, names);
 
     spdlog::info("批量添加数据集, 数量: {}", dataset_ids.size());
     return true;
@@ -194,18 +182,65 @@ bool DatasetsListModel::updateDataset(const int64_t dataset_id, const QString &n
         return false;
     }
     spdlog::info("更新数据集: {} -> {}", found->second->name().toUtf8().constData(), name.toUtf8().constData());
-    int idx{0};
-    for (const auto &[_, dataset] : datasets_)
+    updateDatasetFromMemory(dataset_id, name);
+    return true;
+}
+
+void DatasetsListModel::addDatasetFromMemory(const int64_t dataset_id, const QString &name)
+{
+    addDatasetsFromMemory({dataset_id}, {name});
+}
+
+void DatasetsListModel::addDatasetsFromMemory(const std::vector<int64_t> &dataset_ids,
+                                              const std::vector<QString> &names)
+{
+    if (dataset_ids.empty() || dataset_ids.size() != names.size())
     {
-        if (dataset && dataset->id() == dataset_id)
+        return;
+    }
+
+    std::vector<std::pair<int64_t, QString>> pending;
+    pending.reserve(dataset_ids.size());
+    for (size_t i = 0; i < dataset_ids.size(); ++i)
+    {
+        if (dataset_ids[i] >= 0 && !names[i].isEmpty() && datasets_.find(dataset_ids[i]) == datasets_.end())
+        {
+            pending.emplace_back(dataset_ids[i], names[i]);
+        }
+    }
+    if (pending.empty())
+    {
+        return;
+    }
+
+    const int row = rowCount();
+    beginInsertRows(QModelIndex(), row, row + static_cast<int>(pending.size()) - 1);
+    for (const auto &[dataset_id, name] : pending)
+    {
+        datasets_.emplace(dataset_id, new Dataset(dataset_id, name, this));
+    }
+    endInsertRows();
+}
+
+void DatasetsListModel::updateDatasetFromMemory(const int64_t dataset_id, const QString &name)
+{
+    const auto found = datasets_.find(dataset_id);
+    if (found == datasets_.end() || found->second == nullptr || found->second->name() == name)
+    {
+        return;
+    }
+
+    int row = 0;
+    for (const auto &[id, dataset] : datasets_)
+    {
+        if (id == dataset_id)
         {
             dataset->setName(name);
-            emit dataChanged(index(idx), index(idx), {NameRole});
-            break;
+            emit dataChanged(index(row), index(row), {NameRole});
+            return;
         }
-        ++idx;
+        ++row;
     }
-    return true;
 }
 
 bool DatasetsListModel::deleteDataset(const int64_t dataset_id)

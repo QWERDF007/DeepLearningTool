@@ -14,10 +14,6 @@
 #include <map>
 #include <vector>
 
-namespace dltool::database {
-class ProjectDataBase;
-}
-
 namespace dltool::data {
 
 struct DATA_API ImportedLabel
@@ -37,11 +33,10 @@ public:
     // and process input between commits for projects with many labels.
     static constexpr std::size_t ImportBatchImageCount = 256;
 
-    explicit DataIO(dltool::database::ProjectDataBase *database = nullptr, QObject *parent = nullptr);
+    explicit DataIO(QObject *parent = nullptr);
     ~DataIO() override;
 
-    static DataIO *createIO(int data_format, dltool::database::ProjectDataBase *database = nullptr,
-                            QObject *parent = nullptr);
+    static DataIO *createIO(int data_format, QObject *parent = nullptr);
 
     void setTargetMethod(int method) { target_method_ = method; }
     void requestCancel();
@@ -61,9 +56,8 @@ signals:
     void exportFinished(bool success, const QString &message);
 
 protected:
-    dltool::database::ProjectDataBase *database_{nullptr};
-    int                                target_method_{-1};
-    std::atomic_bool                   cancel_requested_{false};
+    int             target_method_{-1};
+    std::atomic_bool cancel_requested_{false};
 
     void updateProgress(int progress, const QString &message);
     void runInThread(std::function<void()> work);
