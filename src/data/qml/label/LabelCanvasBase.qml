@@ -14,6 +14,9 @@ Item {
     readonly property ImageLabelsListModel imageLabelsList: dataManager ? dataManager.imageLabelsList : null
     readonly property ItemSelectionModel selection: imageLabelsList ? imageLabelsList.selection : null
     readonly property color drawingColor: labelClasses ? labelClasses.currentLabelClassColor : "red"
+    readonly property bool rectangleDrawingUsesPolygon: dataManager
+                                                      && (dataManager.method === DeepLearningMethod.Segmentation
+                                                          || dataManager.method === DeepLearningMethod.AnomalyDetection)
 
     property point startPos: Qt.point(0, 0)
     property int toolMode: LabelCanvasEnums.SelectTool
@@ -232,6 +235,25 @@ Item {
         setToolMode(mode)
         forceActiveFocus()
         return true
+    }
+
+    function rectangleDataToPolygon(data) {
+        if (!data || (data.points && data.points.length >= 3)) {
+            return data
+        }
+
+        let x = data.x ?? 0
+        let y = data.y ?? 0
+        let width = data.width ?? 0
+        let height = data.height ?? 0
+        data.points = [
+            {x: x, y: y},
+            {x: x + width, y: y},
+            {x: x + width, y: y + height},
+            {x: x, y: y + height}
+        ]
+        data.point_count = 4
+        return data
     }
 
 }

@@ -115,6 +115,9 @@ Item {
         }
 
         canvas.activeData = drawingItem.getData()
+        if (canvas.rectangleDrawingUsesPolygon) {
+            canvas.activeData = canvas.rectangleDataToPolygon(canvas.activeData)
+        }
         if (canvas.activeData.width > 1 && canvas.activeData.height > 1) {
             addLabelHandler(canvas.activeData)
         }

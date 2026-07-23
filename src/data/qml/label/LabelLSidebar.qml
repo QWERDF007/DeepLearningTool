@@ -23,7 +23,7 @@ Rectangle {
     readonly property bool detectionMode: method === DeepLearningMethod.Detection
     readonly property bool segmentationMode: method === DeepLearningMethod.Segmentation
     readonly property bool anomalyMode: method === DeepLearningMethod.AnomalyDetection
-    readonly property bool rectangleToolEnabled: detectionMode || segmentationMode
+    readonly property bool rectangleToolEnabled: detectionMode || segmentationMode || anomalyMode
     readonly property bool polygonToolEnabled: segmentationMode || anomalyMode
 
     signal toolSelected(int mode)

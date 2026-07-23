@@ -33,7 +33,7 @@ ClassificationLabelCanvas {
     LabelCanvasAnnotationLayer {
         id: annotationLayer
         canvas: labelCanvas
-        rectangleToolAvailable: false
+        rectangleToolAvailable: true
         polygonRegionMode: true
     }
 
