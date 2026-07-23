@@ -301,6 +301,21 @@ ModelDatasetSelections modelDatasetSelectionsSnapshot(IModel *model)
     return readModelDatasetSelections(model);
 }
 
+std::vector<int64_t> selectedDatasetIds(const ModelDatasetSelections &selections)
+{
+    std::set<qint64> dataset_ids;
+    const auto collect = [&dataset_ids](const ModelDatasetSelection &selection)
+    {
+        dataset_ids.insert(selection.dataset_ids.begin(), selection.dataset_ids.end());
+        for (const auto &[dataset_id, _] : selection.label_classes)
+            dataset_ids.insert(dataset_id);
+    };
+    collect(selections.train);
+    collect(selections.validation);
+    collect(selections.test);
+    return {dataset_ids.begin(), dataset_ids.end()};
+}
+
 QString modelDatasetSelectionsPath(const QString &dataset_dir)
 {
     const QString cleaned = common::cleanPath(dataset_dir);

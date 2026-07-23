@@ -2,8 +2,12 @@
 
 #include "common/Utils.h"
 #include "data/DataManager.h"
+#include "data/DatasetExportSource.h"
+#include "data/DataOperationWorkflow.h"
 #include "model/ExternalModelTaskRunner.h"
 #include "model/IModel.h"
+#include "model/IModelConfig.h"
+#include "model/IParams.h"
 #include "model/ModelManager.h"
 #include "model/ModelTaskPreparationService.h"
 #include "model/TaskCommunication.h"
@@ -12,10 +16,21 @@
 
 #include <spdlog/spdlog.h>
 
+#include <memory>
 #include <utility>
 
 namespace dltool::model {
 using common::setError;
+
+struct ModelTaskController::TaskContext
+{
+    int                 task_id{-1};
+    QString             model_uuid;
+    QString             model_name;
+    ModelTaskType       task_type{ModelTaskType::Unknown};
+    IModel             *model{nullptr};
+    FrameworkDefinition framework;
+};
 
 ModelTaskController::ModelTaskController(int method, QString project_dir, ModelManager *model_manager,
                                          dltool::data::DataManager *data_manager, TaskManager *task_manager,
@@ -30,6 +45,8 @@ ModelTaskController::ModelTaskController(int method, QString project_dir, ModelM
 {
     connect(external_task_runner_.get(), &ExternalModelTaskRunner::taskFinished, this,
             &ModelTaskController::handleExternalTaskFinished);
+    connect(external_task_runner_.get(), &ExternalModelTaskRunner::taskStartFailed, this,
+            &ModelTaskController::handleExternalTaskStartFailed);
     if (task_manager_ != nullptr)
     {
         connect(task_manager_, &TaskManager::taskStopRequested, this, &ModelTaskController::handleTaskStopRequested);
@@ -43,8 +60,8 @@ int ModelTaskController::addModelTask(const QString &model_uuid, ModelTaskType t
 {
     spdlog::info("添加模型任务请求, uuid: {}, 类型: {}", model_uuid.toUtf8().constData(),
                  modelTaskKey(task_type).toUtf8().constData());
-    ModelTaskContext context;
-    QString          err_msg;
+    TaskContext context;
+    QString     err_msg;
     if (!buildContext(model_uuid, task_type, -1, context, &err_msg))
     {
         spdlog::error("添加模型任务失败: {}", err_msg.toUtf8().constData());
@@ -61,8 +78,8 @@ int ModelTaskController::startModelTask(const QString &model_uuid, ModelTaskType
 {
     spdlog::info("启动模型任务请求, uuid: {}, 类型: {}", model_uuid.toUtf8().constData(),
                  modelTaskKey(task_type).toUtf8().constData());
-    ModelTaskContext context;
-    QString          err_msg;
+    TaskContext context;
+    QString     err_msg;
     if (!buildContext(model_uuid, task_type, -1, context, &err_msg))
     {
         spdlog::error("启动模型任务失败: {}", err_msg.toUtf8().constData());
@@ -79,7 +96,8 @@ int ModelTaskController::startModelTask(const QString &model_uuid, ModelTaskType
                       context.model_name.toUtf8().constData(), modelTaskKey(task_type).toUtf8().constData());
         return -1;
     }
-    spdlog::info("模型任务启动成功, task_id: {}, 模型: {}, 类型: {}", task_id, context.model_name.toUtf8().constData(),
+    spdlog::info("模型任务启动请求已提交, task_id: {}, 模型: {}, 类型: {}", task_id,
+                 context.model_name.toUtf8().constData(),
                  modelTaskKey(task_type).toUtf8().constData());
     return task_id;
 }
@@ -115,7 +133,7 @@ bool ModelTaskController::deleteModelTask(const QString &model_uuid, ModelTaskTy
 }
 
 bool ModelTaskController::buildContext(const QString &model_uuid, ModelTaskType task_type, int task_id,
-                                       ModelTaskContext &context, QString *err_msg) const
+                                       TaskContext &context, QString *err_msg) const
 {
     context = {};
 
@@ -155,7 +173,7 @@ bool ModelTaskController::buildContext(const QString &model_uuid, ModelTaskType 
     return true;
 }
 
-int ModelTaskController::ensureTaskRecord(const ModelTaskContext &context)
+int ModelTaskController::ensureTaskRecord(const TaskContext &context)
 {
     if (task_manager_ == nullptr || task_manager_->tasks() == nullptr)
         return -1;
@@ -191,9 +209,32 @@ bool ModelTaskController::startTask(int task_id)
     if (!task.can_start)
         return false;
 
-    ModelTaskContext context;
-    QString          err_msg;
+    TaskContext context;
+    QString     err_msg;
     if (!buildContext(task.model_uuid, task.task_type, task_id, context, &err_msg))
+    {
+        failTask(task_id, err_msg);
+        return false;
+    }
+
+    if (!context.framework.supportsExternalTask(context.task_type))
+    {
+        if (!task_manager_->startTask(task_id))
+            return false;
+
+        touchTaskModelModifiedTime(task_id);
+        return true;
+    }
+
+    QString server_err;
+    if (!task_manager_->ensureTaskServer(&server_err))
+    {
+        failTask(task_id, QString("任务通信服务启动失败: %1").arg(server_err));
+        return false;
+    }
+
+    ModelTaskPreparationRequest request;
+    if (!buildPreparationRequest(context, request, &err_msg))
     {
         failTask(task_id, err_msg);
         return false;
@@ -204,13 +245,123 @@ bool ModelTaskController::startTask(int task_id)
 
     touchTaskModelModifiedTime(task_id);
 
-    if (context.framework.supportsExternalTask(context.task_type) && !startExternalTask(context))
+    const auto process_spec = std::make_shared<ExternalProcessSpec>();
+
+    dltool::data::DataOperationWorkflow::Options options;
+    options.title            = QStringLiteral("准备模型任务");
+    options.start_message    = QString("准备模型任务: %1").arg(modelTaskDisplayName(context.task_type));
+    options.initial_progress = 5;
+
+    const int     method      = method_;
+    const QString project_dir = project_dir_;
+    const auto prepare_task = [method, project_dir, request, process_spec](
+                                  const dltool::data::DatasetExportSource *dataset_source,
+                                  dltool::data::DataOperationWorkflow::Result &result)
+        {
+            ModelTaskPreparationService preparation(method, project_dir);
+            QString                     preparation_error;
+            if (!preparation.prepare(request, dataset_source, *process_spec, &preparation_error))
+            {
+                result.error = preparation_error;
+                return;
+            }
+            result.success = true;
+        };
+    const auto completion = [this, task_id, process_spec](const dltool::data::DataOperationWorkflow::Result &result)
+    { handlePreparedTask(task_id, process_spec, result.success, result.error); };
+
+    if (describeModelTask(context.task_type).requires_dataset_export)
     {
-        touchTaskModelModifiedTime(task_id);
-        return false;
+        if (data_manager_ == nullptr)
+        {
+            const QString message = QStringLiteral("数据管理器为空");
+            touchTaskModelModifiedTime(task_id);
+            failTask(task_id, message);
+            return false;
+        }
+
+        dltool::data::DatasetExportRequest export_request;
+        export_request.dataset_ids = selectedDatasetIds(request.selections);
+        data_manager_->runDatasetExportAsync(
+            this, std::move(export_request), std::move(options),
+            [prepare_task](const dltool::data::DatasetExportSource &dataset_source,
+                           dltool::data::DataOperationWorkflow::Result &result)
+            { prepare_task(&dataset_source, result); },
+            completion);
+    }
+    else
+    {
+        dltool::data::DataOperationWorkflow::start(
+            this, std::move(options),
+            [prepare_task](dltool::data::DataOperationWorkflow::Result &result)
+            { prepare_task(nullptr, result); },
+            completion);
+    }
+
+    spdlog::info("模型任务已进入后台准备, task_id: {}, 模型: {}, 类型: {}", task_id,
+                 context.model_name.toUtf8().constData(), modelTaskKey(context.task_type).toUtf8().constData());
+    return true;
+}
+
+bool ModelTaskController::buildPreparationRequest(const TaskContext &context,
+                                                  ModelTaskPreparationRequest &request, QString *err_msg) const
+{
+    request = {};
+    if (context.model == nullptr)
+        return setError(err_msg, QString("模型实例为空"));
+    if (task_manager_ == nullptr || task_manager_->tasks() == nullptr)
+        return setError(err_msg, QString("任务管理器为空"));
+
+    request.task_id          = context.task_id;
+    request.task_type        = context.task_type;
+    request.framework        = context.framework;
+    request.task_server_host = task_manager_->taskServerHost();
+    request.task_server_port = task_manager_->taskServerPort();
+    request.selections       = modelDatasetSelectionsSnapshot(context.model);
+    request.model_config.model_uuid        = context.model_uuid;
+    request.model_config.model_name        = context.model_name;
+    request.model_config.framework_name    = context.model->frameworkName();
+    request.model_config.model_architecture = context.model->modelArchitecture();
+
+    if (const IModelConfig *config = context.model->config(); config != nullptr)
+    {
+        if (const ITrainParams *params = config->trainParams(); params != nullptr)
+            request.model_config.train_params = params->valuesMap();
+        if (const ITestParams *params = config->testParams(); params != nullptr)
+            request.model_config.test_params = params->valuesMap();
     }
 
     return true;
+}
+
+void ModelTaskController::handlePreparedTask(int task_id, const std::shared_ptr<ExternalProcessSpec> &process_spec,
+                                             const bool success, const QString &error)
+{
+    if (task_manager_ == nullptr || task_manager_->tasks() == nullptr)
+        return;
+
+    const TaskTableModel::TaskSnapshot task = task_manager_->tasks()->taskSnapshotForId(task_id);
+    if (!task.isValid() || task.status != TaskTableModel::Running)
+        return;
+
+    if (!success)
+    {
+        const QString message = error.isEmpty() ? QStringLiteral("准备模型任务失败") : error;
+        touchTaskModelModifiedTime(task_id);
+        failTask(task_id, message);
+        return;
+    }
+
+    QString start_error;
+    if (process_spec == nullptr || !startExternalTask(*process_spec, &start_error))
+    {
+        const QString message = start_error.isEmpty() ? QStringLiteral("启动外部模型任务失败") : start_error;
+        touchTaskModelModifiedTime(task_id);
+        failTask(task_id, message);
+        return;
+    }
+
+    spdlog::info("模型任务进程启动请求已发送, task_id: {}", task_id);
 }
 
 bool ModelTaskController::stopTask(int task_id)
@@ -318,37 +469,12 @@ void ModelTaskController::handleTaskMessage(const TaskMessage &message)
     }
 }
 
-bool ModelTaskController::startExternalTask(const ModelTaskContext &context)
+bool ModelTaskController::startExternalTask(const ExternalProcessSpec &process_spec, QString *err_msg)
 {
     if (task_manager_ == nullptr || external_task_runner_ == nullptr)
-        return false;
+        return setError(err_msg, QString("模型任务控制器未初始化"));
 
-    QString server_err;
-    if (!task_manager_->ensureTaskServer(&server_err))
-    {
-        failTask(context.task_id, QString("任务通信服务启动失败: %1").arg(server_err));
-        return false;
-    }
-
-    ModelTaskContext request = context;
-    request.task_server_host = task_manager_->taskServerHost();
-    request.task_server_port = task_manager_->taskServerPort();
-
-    ExternalProcessSpec               process_spec;
-    QString                           err_msg;
-    const ModelTaskPreparationService preparation(method_, project_dir_, data_manager_);
-    if (!preparation.prepare(request, process_spec, &err_msg))
-    {
-        failTask(context.task_id, err_msg);
-        return false;
-    }
-
-    if (!external_task_runner_->start(process_spec, &err_msg))
-    {
-        failTask(context.task_id, err_msg);
-        return false;
-    }
-    return true;
+    return external_task_runner_->start(process_spec, err_msg);
 }
 
 bool ModelTaskController::taskBelongsToCurrentModelManager(int task_id) const
@@ -400,6 +526,20 @@ void ModelTaskController::handleTaskStopRequested(int task_id)
     if (external_task_runner_ == nullptr || !taskBelongsToCurrentModelManager(task_id))
         return;
     external_task_runner_->stop(task_id);
+}
+
+void ModelTaskController::handleExternalTaskStartFailed(const int task_id, const QString &error)
+{
+    if (task_manager_ == nullptr || task_manager_->tasks() == nullptr || !taskBelongsToCurrentModelManager(task_id))
+        return;
+
+    const TaskTableModel::TaskSnapshot task = task_manager_->tasks()->taskSnapshotForId(task_id);
+    if (!task.isValid() || task.status != TaskTableModel::Running)
+        return;
+
+    const QString message = error.isEmpty() ? QStringLiteral("外部模型任务进程启动失败") : error;
+    touchTaskModelModifiedTime(task_id);
+    failTask(task_id, message);
 }
 
 void ModelTaskController::handleExternalTaskFinished(int task_id, int exit_code, bool normal_exit, bool stop_requested)

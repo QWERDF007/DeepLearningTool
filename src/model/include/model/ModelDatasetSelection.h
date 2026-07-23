@@ -5,6 +5,7 @@
 #include <QVariantMap>
 #include <set>
 #include <utility>
+#include <vector>
 
 namespace dltool::model {
 
@@ -64,6 +65,11 @@ struct MODEL_API ModelDatasetSelections
  * @return 数据集选择集合
  */
 MODEL_API ModelDatasetSelections modelDatasetSelectionsSnapshot(IModel *model);
+
+/**
+ * @brief 汇总训练、验证、测试选择中涉及的数据集 ID。
+ */
+MODEL_API std::vector<int64_t> selectedDatasetIds(const ModelDatasetSelections &selections);
 
 /**
  * @brief 获取数据集选择配置文件路径

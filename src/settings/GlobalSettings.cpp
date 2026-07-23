@@ -94,6 +94,16 @@ SettingsCatalog *GlobalSettings::catalog() const
     return settings_catalog_;
 }
 
+QString GlobalSettings::pythonEnvironmentPath()
+{
+    GlobalSettings *settings = getInstance();
+    if (settings == nullptr)
+        return {};
+
+    namespace generated_field = generated::field;
+    return settings->valueForField(generated_field::Software::PythonEnvPath).toString().trimmed();
+}
+
 void GlobalSettings::load()
 {
     if (settings_database_ == nullptr)

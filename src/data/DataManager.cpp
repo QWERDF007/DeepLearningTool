@@ -443,6 +443,11 @@ std::vector<int64_t> DataManager::allImageIds() const
     return image_instances_ ? image_instances_->getAllImageIds() : std::vector<int64_t>{};
 }
 
+std::vector<int64_t> DataManager::imageIdsForDatasets(const std::vector<int64_t> &dataset_ids) const
+{
+    return image_instances_ ? image_instances_->getImageIdsForDatasets(dataset_ids) : std::vector<int64_t>{};
+}
+
 QString DataManager::imagePath(int64_t image_id) const
 {
     return image_instances_ ? image_instances_->getImagePath(image_id) : QString();

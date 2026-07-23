@@ -9,8 +9,6 @@
 
 namespace dltool::model {
 
-class IModel;
-
 /**
  * @brief 模型任务配置文件类型枚举
  */
@@ -50,6 +48,21 @@ struct MODEL_API LoadedModelTaskConfigs
     QString     model_uuid;   ///< 模型 UUID
     QVariantMap train_params; ///< 训练参数
     QVariantMap test_params;  ///< 测试参数
+};
+
+/**
+ * @brief 后台生成任务配置所需的模型配置值。
+ *
+ * 不持有 IModel/QObject，允许在工作线程中安全地构建 YAML 配置。
+ */
+struct MODEL_API ModelTaskConfigInput
+{
+    QString     model_uuid;
+    QString     model_name;
+    QString     framework_name;
+    QString     model_architecture;
+    QVariantMap train_params;
+    QVariantMap test_params;
 };
 
 /**
@@ -101,14 +114,9 @@ public:
     LoadedModelTaskConfigs load(const QString &model_uuid, const QString &model_name) const;
 
     /**
-     * @brief 构建任务配置
-     * @param model 模型实例
-     * @param model_name 模型名称
-     * @param task_type 任务类型
-     * @param datasets 数据集配置
-     * @return 配置键值对
+     * @brief 根据任务启动输入构建任务配置。
      */
-    QVariantMap build(IModel *model, const QString &model_name, ModelTaskType task_type,
+    QVariantMap build(const ModelTaskConfigInput &model, ModelTaskType task_type,
                       const QVariantMap &datasets) const;
 
     /**

@@ -136,6 +136,19 @@ bool ExternalModelTaskRunner::start(const ExternalProcessSpec &process_spec, QSt
                     log_file->flush();
                 }
             });
+    connect(process, &QProcess::errorOccurred, this,
+            [this, process, task_id = process_spec.task_id](QProcess::ProcessError error)
+            {
+                if (error != QProcess::FailedToStart)
+                    return;
+
+                const QString message = process->errorString();
+                external_processes_.erase(task_id);
+                stop_requested_tasks_.erase(task_id);
+                QObject::disconnect(process, nullptr, this, nullptr);
+                process->deleteLater();
+                emit taskStartFailed(task_id, message);
+            });
     connect(process, &QProcess::finished, this,
             [this, process, task_id = process_spec.task_id, log_file = QPointer<QFile>(process_log)](
                 int exit_code, QProcess::ExitStatus exit_status)
@@ -150,21 +163,6 @@ bool ExternalModelTaskRunner::start(const ExternalProcessSpec &process_spec, QSt
 
     external_processes_[process_spec.task_id] = process;
     process->start();
-    if (!process->waitForStarted(5000))
-    {
-        const QString error = process->errorString();
-        if (process_log != nullptr)
-        {
-            process_log->write(error.toUtf8());
-            process_log->write("\n");
-            process_log->close();
-        }
-        if (err_msg != nullptr)
-            *err_msg = error;
-        external_processes_.erase(process_spec.task_id);
-        process->deleteLater();
-        return false;
-    }
     return true;
 }
 

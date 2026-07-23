@@ -1,15 +1,12 @@
 #include "model/ModelTaskPreparationService.h"
 
 #include "common/Utils.h"
-#include "data/DataManager.h"
-#include "model/IModel.h"
+#include "data/DatasetExportSource.h"
 #include "model/ModelDatasetOrganizer.h"
 #include "model/ModelDatasetSelection.h"
 #include "model/ModelStorageService.h"
 #include "model/ModelTaskConfigService.h"
 #include "settings/GlobalSettings.h"
-#include "settings/SettingsKeys.h"
-#include "settings/SettingsValue.h"
 
 #include <QDir>
 #include <QDirIterator>
@@ -17,7 +14,6 @@
 #include <QFileInfo>
 #include <QStringList>
 #include <QVariantMap>
-#include <utility>
 
 using dltool::common::cleanPath;
 
@@ -25,75 +21,6 @@ namespace dltool::model {
 using common::setError;
 
 namespace {
-
-/**
- * @brief 基于 DataManager 的数据集源适配器，将 DataManager 接口适配为 IModelDatasetSource
- */
-class DataManagerDatasetSource final : public IModelDatasetSource
-{
-public:
-    /**
-     * @brief 构造适配器
-     * @param data_manager 数据管理器引用
-     */
-    explicit DataManagerDatasetSource(dltool::data::DataManager &data_manager)
-        : data_manager_(data_manager)
-    {
-    }
-
-    std::vector<int64_t> allImageIds() const override
-    {
-        return data_manager_.allImageIds();
-    }
-
-    qint64 imageDatasetId(qint64 image_id) const override
-    {
-        return data_manager_.imageDatasetId(image_id);
-    }
-
-    QString imagePath(qint64 image_id) const override
-    {
-        return data_manager_.imagePath(image_id);
-    }
-
-    QVariantMap imageLevelLabelData(qint64 image_id) const override
-    {
-        return data_manager_.getImageLevelLabelData(image_id);
-    }
-
-    std::vector<int64_t> imageLabelIds(qint64 image_id) const override
-    {
-        return data_manager_.imageLabelIds(image_id);
-    }
-
-    qint64 labelClassId(qint64 label_id) const override
-    {
-        return data_manager_.labelClassId(label_id);
-    }
-
-    QVariantMap labelData(qint64 label_id) const override
-    {
-        return data_manager_.labelData(label_id);
-    }
-
-    QString labelClassName(qint64 label_class_id) const override
-    {
-        return data_manager_.labelClassName(label_class_id);
-    }
-
-    QString labelClassGroup(qint64 label_class_id) const override
-    {
-        return data_manager_.labelClassGroup(label_class_id);
-    }
-
-    QString datasetName(qint64 dataset_id) const override
-    {
-        return data_manager_.datasetName(dataset_id);
-    }
-
-private:
-    dltool::data::DataManager &data_manager_;
-};
 
 bool clearTensorBoardEventFiles(const QString &log_dir, QString *err_msg)
 {
@@ -105,7 +32,7 @@ bool clearTensorBoardEventFiles(const QString &log_dir, QString *err_msg)
     if (!root_info.exists())
         return true;
     if (!root_info.isDir())
-        return setError(err_msg, QString("TensorBoard 日志路径不是目录: %1").arg(root));
+        return setError(err_msg, QStringLiteral("TensorBoard 日志路径不是目录: %1").arg(root));
 
     QStringList failed_files;
     QDirIterator iterator(root, {QStringLiteral("events.out.tfevents.*")}, QDir::Files | QDir::NoSymLinks,
@@ -125,7 +52,7 @@ bool clearTensorBoardEventFiles(const QString &log_dir, QString *err_msg)
 
     if (!failed_files.isEmpty())
     {
-        return setError(err_msg, QString("删除 TensorBoard 历史 event 文件失败: %1")
+        return setError(err_msg, QStringLiteral("删除 TensorBoard 历史 event 文件失败: %1")
                                    .arg(failed_files.join(QStringLiteral(", "))));
     }
     return true;
@@ -133,92 +60,89 @@ bool clearTensorBoardEventFiles(const QString &log_dir, QString *err_msg)
 
 } // namespace
 
-ModelTaskPreparationService::ModelTaskPreparationService(int method, QString project_dir,
-                                                         dltool::data::DataManager *data_manager)
+ModelTaskPreparationService::ModelTaskPreparationService(const int method, QString project_dir)
     : method_(method)
     , project_dir_(cleanPath(project_dir))
-    , data_manager_(data_manager)
 {
 }
 
-bool ModelTaskPreparationService::prepare(const ModelTaskContext &context, ExternalProcessSpec &process_spec,
-                                          QString *err_msg) const
+bool ModelTaskPreparationService::prepare(const ModelTaskPreparationRequest &request,
+                                          const dltool::data::DatasetExportSource *dataset_source,
+                                          ExternalProcessSpec &process_spec, QString *err_msg) const
 {
     process_spec = {};
 
-    if (context.model == nullptr)
-        return setError(err_msg, QString("模型实例为空"));
-    if (context.task_server_host.trimmed().isEmpty() || context.task_server_port == 0)
-        return setError(err_msg, QString("任务通信端点无效"));
+    if (request.task_id < 0)
+        return setError(err_msg, QStringLiteral("任务 id 无效"));
+    if (!isKnownModelTask(request.task_type))
+        return setError(err_msg, QStringLiteral("任务类型无效"));
+    if (request.task_server_host.trimmed().isEmpty() || request.task_server_port == 0)
+        return setError(err_msg, QStringLiteral("任务通信端点无效"));
 
-    const QString model_uuid
-        = context.model_uuid.trimmed().isEmpty() ? context.model->uuid().trimmed() : context.model_uuid.trimmed();
+    const QString model_uuid = request.model_config.model_uuid.trimmed();
     if (model_uuid.isEmpty())
-        return setError(err_msg, QString("模型 uuid 为空"));
-    const QString model_name = context.model_name.trimmed();
+        return setError(err_msg, QStringLiteral("模型 uuid 为空"));
+    const QString model_name = request.model_config.model_name.trimmed();
     if (model_name.isEmpty())
-        return setError(err_msg, QString("模型名称为空"));
+        return setError(err_msg, QStringLiteral("模型名称为空"));
 
     ModelStorageService storage(project_dir_);
     QString             storage_err;
     if (!storage.ensureModelStorage(model_name, &storage_err))
-        return setError(err_msg, QString("创建模型目录失败: %1").arg(storage_err));
+        return setError(err_msg, QStringLiteral("创建模型目录失败: %1").arg(storage_err));
 
-    const QString script_path = context.framework.scriptFor(context.task_type);
+    const QString script_path = request.framework.scriptFor(request.task_type);
     if (script_path.isEmpty())
     {
-        return setError(err_msg, QString("框架未定义脚本, 框架: %1, 任务: %2")
-                                     .arg(context.model->frameworkName(), modelTaskKey(context.task_type)));
+        return setError(err_msg, QStringLiteral("框架未定义脚本, 框架: %1, 任务: %2")
+                                     .arg(request.framework.name, modelTaskKey(request.task_type)));
     }
     if (!QFileInfo::exists(script_path))
-        return setError(err_msg, QString("脚本不存在: %1").arg(script_path));
-    namespace generated_field     = dltool::settings::generated::field;
-    const QString python_env_path = dltool::settings::settingString(dltool::settings::GlobalSettings::getInstance(),
-                                                                    generated_field::Software::PythonEnvPath);
-    if (python_env_path.trimmed().isEmpty())
-        return setError(err_msg, QString("未配置 Python 环境目录"));
+        return setError(err_msg, QStringLiteral("脚本不存在: %1").arg(script_path));
 
-    const QFileInfo python_env_info(dltool::common::cleanPath(python_env_path));
+    const QString python_env_path = dltool::settings::GlobalSettings::pythonEnvironmentPath();
+    if (python_env_path.trimmed().isEmpty())
+        return setError(err_msg, QStringLiteral("未配置 Python 环境目录"));
+
+    const QFileInfo python_env_info(cleanPath(python_env_path));
     if (!python_env_info.exists() || !python_env_info.isDir())
-        return setError(err_msg, QString("Python 环境目录无效: %1").arg(python_env_path));
+        return setError(err_msg, QStringLiteral("Python 环境目录无效: %1").arg(python_env_path));
 
     const QString python_executable = dltool::common::pythonExecutableFromEnvPath(python_env_path);
     if (python_executable.isEmpty())
-        return setError(err_msg, QString("未配置 Python 环境目录"));
+        return setError(err_msg, QStringLiteral("未配置 Python 环境目录"));
 
-    QVariantMap               datasets;
-    const ModelTaskDescriptor task_descriptor = describeModelTask(context.task_type);
-    if (task_descriptor.requires_dataset_export)
+    QVariantMap datasets;
+    if (const ModelTaskDescriptor descriptor = describeModelTask(request.task_type);
+        descriptor.requires_dataset_export)
     {
-        if (data_manager_ == nullptr)
-            return setError(err_msg, QString("数据管理器为空"));
+        if (dataset_source == nullptr)
+            return setError(err_msg, QStringLiteral("数据集导出源为空"));
 
-        QString                      dataset_err;
-        DataManagerDatasetSource     source(*data_manager_);
-        const ModelDatasetSelections selections  = modelDatasetSelectionsSnapshot(context.model);
-        const QString                dataset_dir = storage.path(model_name, ModelStorageLocation::Datasets);
-        if (!writeModelDatasetSelectionsFile(dataset_dir, selections, &dataset_err))
-            return setError(err_msg, QString("写入数据集选择配置失败: %1").arg(dataset_err));
+        QString dataset_err;
+        const QString dataset_dir = storage.path(model_name, ModelStorageLocation::Datasets);
+        if (!writeModelDatasetSelectionsFile(dataset_dir, request.selections, &dataset_err))
+            return setError(err_msg, QStringLiteral("写入数据集选择配置失败: %1").arg(dataset_err));
 
         ModelDatasetExportRequest dataset_request;
         dataset_request.method             = method_;
-        dataset_request.framework_name     = context.model->frameworkName();
-        dataset_request.model_architecture = context.model->modelArchitecture();
+        dataset_request.framework_name     = request.model_config.framework_name;
+        dataset_request.model_architecture = request.model_config.model_architecture;
         dataset_request.model_uuid         = model_uuid;
-        dataset_request.task_type          = context.task_type;
+        dataset_request.task_type          = request.task_type;
         dataset_request.dataset_dir        = dataset_dir;
-        dataset_request.selections         = selections;
-        dataset_request.source             = &source;
+        dataset_request.selections         = request.selections;
+        dataset_request.source             = dataset_source;
         datasets                           = ModelDatasetOrganizer::organize(dataset_request, &dataset_err);
         if (datasets.isEmpty())
-            return setError(err_msg, QString("数据集组织失败: %1").arg(dataset_err));
+            return setError(err_msg, QStringLiteral("数据集组织失败: %1").arg(dataset_err));
     }
 
     ModelTaskConfigService config_service(project_dir_);
     QString                config_err;
-    const QString          config_path = config_service.write(
-        model_name, context.task_type,
-        config_service.build(context.model, context.model_name, context.task_type, datasets), &config_err);
+    const QString config_path = config_service.write(
+        model_name, request.task_type, config_service.build(request.model_config, request.task_type, datasets),
+        &config_err);
     if (config_path.isEmpty())
         return setError(err_msg, config_err);
 
@@ -227,26 +151,26 @@ bool ModelTaskPreparationService::prepare(const ModelTaskContext &context, Exter
     if (!clearTensorBoardEventFiles(log_dir, &tensorboard_err))
         return setError(err_msg, tensorboard_err);
 
-    const QString log_path = cleanPath(QDir(log_dir).filePath(modelTaskLogStem(context.task_type)
+    const QString log_path = cleanPath(QDir(log_dir).filePath(modelTaskLogStem(request.task_type)
                                                                   + QStringLiteral(".log")));
     if (log_path.isEmpty())
-        return setError(err_msg, QString("日志路径为空"));
+        return setError(err_msg, QStringLiteral("日志路径为空"));
 
-    process_spec.task_id   = context.task_id;
+    process_spec.task_id   = request.task_id;
     process_spec.program   = python_executable;
     process_spec.arguments = {
         script_path,
         QStringLiteral("--config"),
         config_path,
         QStringLiteral("--dltool_task_host"),
-        context.task_server_host,
+        request.task_server_host,
         QStringLiteral("--dltool_task_port"),
-        QString::number(context.task_server_port),
+        QString::number(request.task_server_port),
         QStringLiteral("--dltool_task_id"),
-        QString::number(context.task_id),
+        QString::number(request.task_id),
     };
-    process_spec.working_directory = context.framework.root;
-    process_spec.python_paths      = context.framework.python_paths;
+    process_spec.working_directory = request.framework.root;
+    process_spec.python_paths      = request.framework.python_paths;
     process_spec.log_path          = log_path;
     return true;
 }

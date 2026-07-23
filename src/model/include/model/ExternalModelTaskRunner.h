@@ -57,6 +57,7 @@ public:
     bool deleteTask(int task_id);
 
 signals:
+    void taskStartFailed(int task_id, const QString &error);
     void taskFinished(int task_id, int exit_code, bool normal_exit, bool stop_requested);
 
 private:

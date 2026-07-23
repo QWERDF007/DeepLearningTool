@@ -79,6 +79,8 @@ public:
     Q_INVOKABLE bool deleteModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type);
 
 private:
+    struct TaskContext;
+
     /**
      * @brief 构建任务上下文
      * @param model_uuid 模型 UUID
@@ -88,7 +90,7 @@ private:
      * @param err_msg 错误信息输出
      * @return 构建成功返回 true
      */
-    bool buildContext(const QString &model_uuid, ModelTaskType task_type, int task_id, ModelTaskContext &context,
+    bool buildContext(const QString &model_uuid, ModelTaskType task_type, int task_id, TaskContext &context,
                       QString *err_msg = nullptr) const;
 
     /**
@@ -96,7 +98,7 @@ private:
      * @param context 任务上下文
      * @return 任务 ID
      */
-    int ensureTaskRecord(const ModelTaskContext &context);
+    int ensureTaskRecord(const TaskContext &context);
 
     /**
      * @brief 启动任务
@@ -120,11 +122,22 @@ private:
     bool deleteTask(int task_id);
 
     /**
-     * @brief 启动外部任务进程
-     * @param context 任务上下文
+     * @brief 启动已经准备完成的外部任务进程
+     * @param process_spec 外部进程规格
+     * @param err_msg 错误信息输出
      * @return 启动成功返回 true
      */
-    bool startExternalTask(const ModelTaskContext &context);
+    bool startExternalTask(const ExternalProcessSpec &process_spec, QString *err_msg = nullptr);
+
+    /**
+     * @brief 构造后台准备请求，只在 GUI 线程读取模型配置和数据集选择状态。
+     */
+    bool buildPreparationRequest(const TaskContext &context, ModelTaskPreparationRequest &request,
+                                 QString *err_msg = nullptr) const;
+
+    /// 处理后台准备完成并在 GUI 线程启动外部进程。
+    void handlePreparedTask(int task_id, const std::shared_ptr<ExternalProcessSpec> &process_spec, bool success,
+                            const QString &error);
 
     /**
      * @brief 检查任务是否属于当前模型管理器
@@ -158,6 +171,11 @@ private slots:
      * @param task_id 任务 ID
      */
     void handleTaskStopRequested(int task_id);
+
+    /**
+     * @brief 处理外部任务进程启动失败事件。
+     */
+    void handleExternalTaskStartFailed(int task_id, const QString &error);
 
     /**
      * @brief 处理外部任务完成事件

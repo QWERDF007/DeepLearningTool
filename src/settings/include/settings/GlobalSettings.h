@@ -13,6 +13,7 @@
 
 #include <QHash>
 #include <QObject>
+#include <QString>
 #include <QTimer>
 #include <QtQml>
 #include <string_view>
@@ -37,6 +38,13 @@ class SETTINGS_API GlobalSettings : public QObject
     Q_PROPERTY(SettingsCatalog *catalog READ catalog CONSTANT FINAL)
 
 public:
+    /**
+     * @brief 获取当前 Python 环境目录。
+     *
+     * 调用方无需接触 SettingsFieldModel 或生成字段键。
+     */
+    static QString pythonEnvironmentPath();
+
     /**
      * @brief 获取根设置命名空间。
      * @return 根 SettingsNamespace 指针。

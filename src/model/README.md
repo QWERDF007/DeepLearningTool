@@ -23,7 +23,7 @@
 - `ModelStorageService` 统一模型目录路径计算、目录创建和模型目录删除。
 - `ModelDatasetSelection` 统一训练/验证/测试数据集选择快照、`datasets/datasets.yaml` 序列化和恢复。
 - `ModelTaskConfigService` 统一任务 YAML 读写、字段名和参数落盘。
-- `ModelTaskPreparationService` 统一外部任务启动前的目录准备、选择快照生成、数据集导出、YAML 配置写入、Python 解释器解析和进程规格生成，输入为共享的 `ModelTaskContext`。
+- `ModelTaskPreparationService` 统一外部任务启动前的目录准备、数据集组织、YAML 配置写入、Python 解释器解析和进程规格生成；它只接收轻量启动输入和 `data` 提供的只读数据源。
 - FS-SAM2 小样本学习通过内部创建的普通模型记录和普通任务链路运行，复用 `ModelTaskController`、`ModelTaskPreparationService`、`ModelDatasetOrganizer` 和 `ModelTaskConfigService`。
 - `ExternalModelTaskRunner` 统一外部 Python 进程的启动、环境变量、stdout/stderr 日志、停止/删除和进程退出通知。
 - `IModel`/`IModelConfig`/`IParams`/`ParamGroupModel` 定义模型实例、参数配置和 QML 参数编辑数据模型。
@@ -56,7 +56,7 @@
 - `include/model/ModelTaskConfigService.h`、`ModelTaskConfigService.cpp`
   任务配置服务，集中维护 YAML 字段名、`train.yaml`/`test.yaml` 读写和参数序列化。
 - `include/model/ModelTaskPreparationService.h`、`ModelTaskPreparationService.cpp`
-  外部任务准备服务，将 `ModelTaskContext` 转换为可直接启动的 `ExternalProcessSpec`。
+  外部任务准备服务，将轻量 `ModelTaskPreparationRequest` 和数据源转换为可直接启动的 `ExternalProcessSpec`。
 - `include/model/ExternalProcessSpec.h`
   外部进程运行规格，包含 task id、程序、参数、工作目录、Python path 和日志路径。
 - `include/model/ExternalModelTaskRunner.h`、`ExternalModelTaskRunner.cpp`
@@ -253,10 +253,11 @@ flowchart TD
 
     T -->|否| U[任务进入普通运行状态]
     T -->|是| V[TaskManager 启动 TCP 通信服务]
-    V --> W[ModelTaskController 补齐 ModelTaskContext]
-    W --> X[ModelTaskPreparationService 准备任务]
+    V --> W[ModelTaskController 提取轻量启动输入]
+    W --> W1[DataManager 后台提供内存 DatasetExportSource]
+    W1 --> X[ModelTaskPreparationService 准备任务]
     X --> X1[ModelStorageService 确保目录]
-    X1 --> X2[ModelDatasetSelection 读取当前选择]
+    X1 --> X2[写入已冻结的数据集选择]
     X2 --> X3[ModelDatasetOrganizer 导出数据清单和派生 mask]
     X3 --> X4[ModelTaskConfigService 写入 train/test YAML]
     X4 --> X5[解析 Python 解释器并生成 ExternalProcessSpec]
@@ -280,9 +281,9 @@ flowchart TD
 3. `ModelTaskController` 查询 `FrameworkDefinition`，并通过 `FrameworkDefinition::taskCapability()`/`supportsExternalTask()` 判断是否存在该 `ModelTaskTypes::Type` 的外部脚本。
 4. `ModelTaskController` 检查 `TaskTableModel` 中是否已有同一模型和任务类型的非终态任务；没有则通过 `TaskManager.addTask()` 创建任务记录。C++ 内部读取任务时使用 `TaskSnapshot`，QML 仍可使用 `taskForModel()` 返回的 `QVariantMap`。
 5. 如果框架没有为该任务定义脚本，`ModelTaskController` 只把任务置为运行状态，不启动 Python 进程，也不生成任务配置。
-6. 如果框架定义了脚本，`ModelTaskController` 先通过 `TaskManager` 确保 TCP 通信服务已启动，再补齐 `ModelTaskContext` 的通信端点并交给准备服务。
-7. `ModelTaskPreparationService` 通过 `ModelStorageService` 确保 `models/<model_name>/configs`、`results`、`logs`、`weights`、`datasets` 目录存在。
-8. `ModelTaskPreparationService` 将 UI 数据集选择快照写入 `models/<model_name>/datasets/datasets.yaml`，再调用 `ModelDatasetOrganizer` 将所选数据集导出到 `models/<model_name>/datasets`。训练任务要求训练集非空，测试/预测任务要求测试集非空；验证集为空时会跳过。
+6. 如果框架定义了脚本，`ModelTaskController` 先通过 `TaskManager` 确保 TCP 通信服务已启动，并在 GUI 线程只提取模型参数和数据集选择等轻量输入。
+7. `DataManager` 在后台线程基于当前内存数据创建 `DatasetExportSource`；数据读取、清单生成、派生 mask 和配置写入都在同一后台任务内完成，不会把完整数据传回 GUI 线程。
+8. `ModelTaskPreparationService` 通过 `ModelStorageService` 确保 `models/<model_name>/configs`、`results`、`logs`、`weights`、`datasets` 目录存在，将 UI 数据集选择写入 `datasets/datasets.yaml`，并调用 `ModelDatasetOrganizer` 导出框架数据。训练任务要求训练集非空，测试/预测任务要求测试集非空；验证集为空时会跳过。
 9. `ModelTaskPreparationService` 通过 `ModelTaskConfigService` 写出 YAML 任务配置。当前配置文件名由 `ModelTaskTypes` 决定：训练写 `train.yaml`，测试/预测写 `test.yaml`；无配置文件名的任务不会作为外部模型脚本启动。
 10. `ModelTaskPreparationService` 生成 `ExternalProcessSpec`，`ModelTaskController` 交给 `ExternalModelTaskRunner` 启动 Python 子进程，传入：
     - `--config`
@@ -378,7 +379,7 @@ flowchart TD
 - 通过 `ModelManager` 查询模型记录和模型实例。
 - 通过 `TaskManager` 创建或复用任务表记录，并使用任务通信服务。
 - 查询 `FrameworkDefinition`，判断任务是否需要外部脚本。
-- 对外部脚本任务补齐共享 `ModelTaskContext`，调用 `ModelTaskPreparationService` 准备目录、数据集、配置和进程规格。
+- 对外部脚本任务提取轻量启动输入，调用 `DataManager` 的后台数据源接口和 `ModelTaskPreparationService` 准备目录、数据集、配置和进程规格。
 - 持有项目级 `ExternalModelTaskRunner`，负责启动和停止当前项目模型任务进程。
 - 监听 `TaskManager::taskStopRequested`，把任务中心或其他通用入口发出的停止请求路由到当前项目的外部进程。
 - 接收外部进程退出信号，并把退出码 `0` 映射为完成、退出码 `2` 或显式停止请求映射为停止，其他退出映射为失败。
@@ -409,9 +410,9 @@ flowchart TD
 
 `ModelTaskConfigService` 是任务 YAML 入口。它集中维护配置字段名，负责读取历史 `train.yaml`/`test.yaml`，并在任务启动前构造和写入当前任务配置。
 
-`ModelTaskContext` 是模型任务编排和外部任务准备共用的强类型上下文。它包含 task id、模型 uuid、模型名、任务类型、当前模型实例、框架定义和任务通信端点；准备服务只在同步准备阶段读取该对象，不保存它。
+`ModelTaskPreparationRequest` 是 GUI 线程到后台任务的唯一模型侧输入。它只包含 task id/类型、框架、任务通信端点、模型配置值（uuid、名称、参数）和数据集选择；不持有 `IModel`、`QObject` 或数据库对象，也不重复保存数据集 ID。Python 环境路径由 `GlobalSettings::pythonEnvironmentPath()` 在工作线程直接读取。
 
-`ModelTaskPreparationService` 是外部任务准备入口。它接收 `ModelTaskContext`，负责脚本路径判断、Python 环境解析、数据集选择快照生成、数据集导出、配置写入，并生成 `ExternalProcessSpec`。
+`ModelTaskPreparationService` 是外部任务准备入口。它接收 `ModelTaskPreparationRequest` 和 `data::DatasetExportSource`，负责脚本路径判断、Python 环境解析、数据集导出、配置写入，并生成 `ExternalProcessSpec`。
 
 `ExternalProcessSpec` 是纯进程运行规格。它只包含 task id、程序、参数、工作目录、Python path 和日志路径，不包含模型、框架、数据集或任务表对象。
 
@@ -455,11 +456,11 @@ dataset_selections:
     label_classes: []
 ```
 
-`dataset_ids` 表示完整勾选的数据集节点，`label_classes` 表示按数据集/类别单独勾选的子节点。启动任务前，`ModelTaskPreparationService` 会先生成 `ModelDatasetSelections` 快照，再交给 `ModelDatasetOrganizer` 生成框架需要的 `datasets` 导出结果。
+`dataset_ids` 表示完整勾选的数据集节点，`label_classes` 表示按数据集/类别单独勾选的子节点。启动任务前，控制器只提取这份选择值；`DataManager` 在后台读取实际图像和标注，随后交给 `ModelDatasetOrganizer` 生成框架需要的 `datasets` 导出结果。
 
 ## 数据集组织
 
-`ModelDatasetOrganizer` 不直接读取模型或 UI 选择 ViewModel。它接收 `ModelDatasetExportRequest`，其中包含 `ModelDatasetSelections` 快照和 `IModelDatasetSource` 只读数据源，并按框架输出数据组织文件。训练/预测判断来自 `ModelTaskTypes`，因此数据集导出规则和任务配置文件命名使用同一套任务语义。
+`ModelDatasetOrganizer` 不直接读取模型、UI 选择 ViewModel 或数据库。它接收 `ModelDatasetExportRequest`，其中包含数据集选择和值由 `data::DatasetExportSource` 提供的只读数据源，并按框架输出数据组织文件。训练/预测判断来自 `ModelTaskTypes`，因此数据集导出规则和任务配置文件命名使用同一套任务语义。
 
 导出规则：
 
@@ -569,7 +570,7 @@ models/<model_name>/datasets/<split>/manifest.yaml
 
 - `ModelRegistry` 负责框架定义、模型工厂注册、注册信息查询和框架路径解析。
 - `ModelManager` 负责模型记录、模型实例缓存、项目目录上下文和数据集 ViewModel 绑定，不直接管理任务表、进程、目录细节、YAML 字段或注册表。
-- `ModelTaskController` 负责模型任务命令编排，连接 `ModelManager`、`TaskManager`、`ModelTaskPreparationService` 和 `ExternalModelTaskRunner`。
+- `ModelTaskController` 负责模型任务命令编排，连接 `ModelManager`、`DataManager`、`TaskManager`、`ModelTaskPreparationService` 和 `ExternalModelTaskRunner`。
 - `TaskManager` 负责任务表、任务通信服务和停止命令，不负责具体模型参数、目录、配置写入、协议事件翻译或进程启动细节。
 - `TaskEventRouter` 负责把 TCP 协议消息翻译为任务表状态、进度和 ETA 更新，不负责启动通信服务或发送命令。
 - `ModelTaskPreparationService` 负责外部脚本选择、Python 解释器解析、任务通信参数、数据集导出编排和配置写入编排，并输出 `ExternalProcessSpec`。
@@ -579,7 +580,7 @@ models/<model_name>/datasets/<split>/manifest.yaml
 - `ModelTaskConfigService` 负责任务配置字段、YAML 读写和参数序列化。
 - `ModelTaskTypes` 负责任务类型枚举、任务 key、显示名、配置文件名、日志文件名前缀和数据集导出需求。
 - `ModelDatasetOrganizer` 负责把数据集选择快照导出为框架可消费的数据清单和派生 mask，不负责读取 UI 模型、进程启动或任务配置写入。
-- `IModelDatasetSource` 是数据集导出所需的只读数据接口，避免导出器依赖完整 `DataManager`。
+- `data::DatasetExportSource` 是数据集导出所需的只读数据接口；它由 `DataManager` 在工作线程中构造，`model` 不访问数据库。
 - 框架层通过 `FrameworkDefinition` 定义 root、任务脚本能力、额外脚本和运行环境。
 - 模型层定义参数和模型架构。
 - 原始数据集、标注编辑、图像导入导出属于 `data` 或 `feature`；模型任务启动前的数据集 manifest 组织属于 `model`。

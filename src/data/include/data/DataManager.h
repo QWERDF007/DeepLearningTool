@@ -1,7 +1,9 @@
 ﻿#pragma once
 
 #include "CategoryStatisticsModel.h"
+#include "DataOperationWorkflow.h"
 #include "DataIO.h"
+#include "DatasetExportSource.h"
 #include "Datasets.h"
 #include "FilterItemsModel.h"
 #include "GlobalFilter.h"
@@ -237,6 +239,7 @@ public:
 
     std::vector<int64_t> selectedImageIds() const;
     std::vector<int64_t> allImageIds() const;
+    std::vector<int64_t> imageIdsForDatasets(const std::vector<int64_t> &dataset_ids) const;
     QString              imagePath(int64_t image_id) const;
     Q_INVOKABLE int64_t   imageDatasetId(int64_t image_id) const;
     int64_t              imageLabelClassId(int64_t image_id) const;
@@ -248,6 +251,18 @@ public:
     QString              labelClassGroup(int64_t label_class_id) const;
     QString              datasetName(int64_t dataset_id) const;
     std::vector<int64_t> imageLabelIds(int64_t image_id) const;
+
+    /**
+     * @brief 在后台以当前内存数据创建导出数据源，并执行导出工作。
+     *
+     * 模型等调用方只接触 DatasetExportSource，不接触 DataManager 或项目数据库。
+     * source 仅在 work 回调执行期间有效，completion 始终回到 context 所在线程。
+     */
+    using DatasetExportWork
+        = std::function<void(const DatasetExportSource &, DataOperationWorkflow::Result &)>;
+    void runDatasetExportAsync(QObject *context, DatasetExportRequest request,
+                               DataOperationWorkflow::Options options, DatasetExportWork work,
+                               DataOperationWorkflow::Completion completion = {}) const;
 
     void importMaskData(int64_t dataset_id, const QString &image_manifest_path, const QString &prediction_output_dir);
     QMetaObject::Connection connectImportFinished(QObject *context, ImportFinishedHandler handler);

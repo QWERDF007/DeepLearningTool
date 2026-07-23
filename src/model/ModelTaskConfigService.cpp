@@ -2,9 +2,6 @@
 
 #include "common/Utils.h"
 #include "common/YamlUtils.h"
-#include "model/IModel.h"
-#include "model/IModelConfig.h"
-#include "model/IParams.h"
 #include "model/ModelTaskTypes.h"
 
 #include <spdlog/spdlog.h>
@@ -149,23 +146,23 @@ LoadedModelTaskConfigs ModelTaskConfigService::load(const QString &model_uuid, c
     return configs;
 }
 
-QVariantMap ModelTaskConfigService::build(IModel *model, const QString &model_name, ModelTaskType task_type,
+QVariantMap ModelTaskConfigService::build(const ModelTaskConfigInput &model, ModelTaskType task_type,
                                           const QVariantMap &datasets) const
 {
+    if (model.model_uuid.trimmed().isEmpty() || model.model_name.trimmed().isEmpty())
+        return {};
+
+    const QString model_dir  = storage_.path(model.model_name, ModelStorageLocation::ModelRoot);
+    const QString result_dir = storage_.path(model.model_name, ModelStorageLocation::Results);
+    const QString log_dir    = storage_.path(model.model_name, ModelStorageLocation::Logs);
+    const QString weight_dir = storage_.path(model.model_name, ModelStorageLocation::Weights);
+
     QVariantMap config;
-    if (model == nullptr)
-        return config;
-
-    const QString model_dir  = storage_.path(model_name, ModelStorageLocation::ModelRoot);
-    const QString result_dir = storage_.path(model_name, ModelStorageLocation::Results);
-    const QString log_dir    = storage_.path(model_name, ModelStorageLocation::Logs);
-    const QString weight_dir = storage_.path(model_name, ModelStorageLocation::Weights);
-
-    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::ModelUuid), model->uuid());
-    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::ModelName), model_name);
+    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::ModelUuid), model.model_uuid);
+    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::ModelName), model.model_name);
     config.insert(modelTaskConfigFieldName(ModelTaskConfigField::TaskType), modelTaskKey(task_type));
-    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::Framework), model->frameworkName());
-    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::ModelArchitecture), model->modelArchitecture());
+    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::Framework), model.framework_name);
+    config.insert(modelTaskConfigFieldName(ModelTaskConfigField::ModelArchitecture), model.model_architecture);
     config.insert(modelTaskConfigFieldName(ModelTaskConfigField::ModelDir), model_dir);
     config.insert(modelTaskConfigFieldName(ModelTaskConfigField::ResultDir), result_dir);
     config.insert(modelTaskConfigFieldName(ModelTaskConfigField::LogDir), log_dir);
@@ -173,23 +170,17 @@ QVariantMap ModelTaskConfigService::build(IModel *model, const QString &model_na
     if (!datasets.isEmpty())
         config.insert(modelTaskConfigFieldName(ModelTaskConfigField::Datasets), datasets);
 
-    if (IModelConfig *model_config = model->config(); model_config != nullptr)
-    {
-        if (ITrainParams *train_params = model_config->trainParams(); train_params != nullptr)
-        {
-            QVariantMap train_values = train_params->valuesMap();
-            normalizeOutputDir(train_values, modelTaskConfigFieldName(ModelTaskConfigField::Trainer), model_dir,
-                               modelStorageLocationName(ModelStorageLocation::Results));
-            config.insert(modelTaskConfigFieldName(ModelTaskConfigField::TrainParams), train_values);
-        }
-        if (ITestParams *test_params = model_config->testParams(); test_params != nullptr)
-        {
-            QVariantMap test_values = test_params->valuesMap();
-            normalizeOutputDir(test_values, modelTaskConfigFieldName(ModelTaskConfigField::Inference), model_dir,
-                               modelStorageLocationName(ModelStorageLocation::Results));
-            config.insert(modelTaskConfigFieldName(ModelTaskConfigField::TestParams), test_values);
-        }
-    }
+    QVariantMap train_values = model.train_params;
+    normalizeOutputDir(train_values, modelTaskConfigFieldName(ModelTaskConfigField::Trainer), model_dir,
+                       modelStorageLocationName(ModelStorageLocation::Results));
+    if (!train_values.isEmpty())
+        config.insert(modelTaskConfigFieldName(ModelTaskConfigField::TrainParams), train_values);
+
+    QVariantMap test_values = model.test_params;
+    normalizeOutputDir(test_values, modelTaskConfigFieldName(ModelTaskConfigField::Inference), model_dir,
+                       modelStorageLocationName(ModelStorageLocation::Results));
+    if (!test_values.isEmpty())
+        config.insert(modelTaskConfigFieldName(ModelTaskConfigField::TestParams), test_values);
     return config;
 }
 

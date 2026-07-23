@@ -29,7 +29,6 @@
 #include <QTextStream>
 #include <algorithm>
 #include <map>
-#include <set>
 #include <utility>
 
 namespace dltool::feature {
@@ -485,7 +484,7 @@ QString FewShotLearningController::validateStartRequest(const std::vector<int64_
         return QString("小样本学习设置未加载");
 
     namespace generated_field     = dltool::settings::generated::field;
-    const QString python_env_path = dltool::settings::settingString(settings, generated_field::Software::PythonEnvPath);
+    const QString python_env_path = dltool::settings::GlobalSettings::pythonEnvironmentPath();
     if (python_env_path.trimmed().isEmpty())
         return QString("请先在软件设置中配置 Python 环境目录");
 
@@ -693,16 +692,14 @@ bool FewShotLearningController::writePredictionImportTargets(const QString      
     if (!ensureDirectory(datasets_dir, err_msg, QString("目录路径为空"), QString("创建目录失败: %1")))
         return false;
 
-    const std::set<int64_t>        selected_test_datasets(test_dataset_ids.begin(), test_dataset_ids.end());
     std::map<int64_t, QStringList> lines_by_dataset;
     for (int64_t dataset_id : test_dataset_ids) lines_by_dataset[dataset_id] = {};
 
-    for (int64_t image_id : data_manager_->allImageIds())
+    const std::vector<int64_t> test_image_ids
+        = data_manager_->imageIdsForDatasets(test_dataset_ids);
+    for (int64_t image_id : test_image_ids)
     {
         const int64_t dataset_id = data_manager_->imageDatasetId(image_id);
-        if (selected_test_datasets.find(dataset_id) == selected_test_datasets.end())
-            continue;
-
         const QString image_path = data_manager_->imagePath(image_id);
         if (image_path.trimmed().isEmpty())
             continue;

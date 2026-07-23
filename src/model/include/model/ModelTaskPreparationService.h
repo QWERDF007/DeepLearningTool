@@ -2,72 +2,58 @@
 
 #include "dltool/model/Export.h"
 #include "model/ExternalProcessSpec.h"
+#include "model/ModelDatasetSelection.h"
 #include "model/ModelRegistry.h"
+#include "model/ModelTaskConfigService.h"
 #include "model/ModelTaskTypes.h"
 
 #include <QString>
 #include <QtGlobal>
 
 namespace dltool::data {
-class DataManager;
-} // namespace dltool::data
+class DatasetExportSource;
+}
 
 namespace dltool::model {
 
-class IModel;
-
 /**
- * @brief 模型任务上下文，聚合启动外部任务所需的全部信息
+ * @brief 模型任务进入后台前冻结的启动输入。
+ *
+ * 只保存模型配置、任务通信端点和数据集选择等轻量值；数据由 data 模块在
+ * 工作线程内提供。
  */
-struct MODEL_API ModelTaskContext
+struct MODEL_API ModelTaskPreparationRequest
 {
-    int                 task_id{-1};                       ///< 任务 ID
-    QString             model_uuid;                        ///< 模型 UUID
-    QString             model_name;                        ///< 模型名称
-    ModelTaskType       task_type{ModelTaskType::Unknown}; ///< 任务类型
-    IModel             *model{nullptr};                    ///< 模型实例
-    FrameworkDefinition framework;                         ///< 框架定义
-    QString             task_server_host;                  ///< 任务通信服务主机
-    quint16             task_server_port{0};               ///< 任务通信服务端口
+    int           task_id{-1};                       ///< 任务 ID
+    ModelTaskType task_type{ModelTaskType::Unknown}; ///< 任务类型
 
-    /**
-     * @brief 检查上下文是否有效
-     * @return 有效返回 true
-     */
-    bool isValid() const
-    {
-        return task_id >= 0 && !model_uuid.trimmed().isEmpty() && !model_name.trimmed().isEmpty()
-            && isKnownModelTask(task_type) && model != nullptr;
-    }
+    FrameworkDefinition framework;           ///< 框架定义
+    QString             task_server_host;    ///< 任务通信服务主机
+    quint16             task_server_port{0}; ///< 任务通信服务端口
+
+    ModelDatasetSelections selections;
+    ModelTaskConfigInput   model_config;
 };
 
 /**
- * @brief 模型任务准备服务，负责导出数据集、生成配置、构建进程启动参数
+ * @brief 负责生成模型目录内容、任务配置和外部进程规格。
  */
 class MODEL_API ModelTaskPreparationService
 {
 public:
-    /**
-     * @brief 构造任务准备服务
-     * @param method 深度学习方法
-     * @param project_dir 项目目录
-     * @param data_manager 数据管理器
-     */
-    ModelTaskPreparationService(int method, QString project_dir, dltool::data::DataManager *data_manager);
+    ModelTaskPreparationService(int method, QString project_dir);
 
     /**
-     * @brief 准备外部任务启动所需的全部资源
-     * @param context 任务上下文
-     * @param process_spec 输出：进程启动规格
-     * @param err_msg 错误信息输出
-     * @return 准备成功返回 true
+     * @brief 在工作线程准备外部模型任务。
+     * @param request 已冻结的启动输入
+     * @param process_spec 输出的进程启动规格
      */
-    bool prepare(const ModelTaskContext &context, ExternalProcessSpec &process_spec, QString *err_msg = nullptr) const;
+    bool prepare(const ModelTaskPreparationRequest &request, const dltool::data::DatasetExportSource *dataset_source,
+                 ExternalProcessSpec &process_spec, QString *err_msg = nullptr) const;
 
 private:
-    int                        method_{-1};            ///< 深度学习方法
-    QString                    project_dir_;           ///< 项目目录
-    dltool::data::DataManager *data_manager_{nullptr}; ///< 数据管理器
+    int     method_{-1};
+    QString project_dir_;
 };
 
 } // namespace dltool::model

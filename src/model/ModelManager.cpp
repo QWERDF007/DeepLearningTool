@@ -700,9 +700,7 @@ QString ModelManager::startTensorBoard(const QString &model_uuid)
         tensorboard_process_->kill();
     }
 
-    namespace generated_field       = dltool::settings::generated::field;
-    const QString   python_env_path = dltool::settings::settingString(dltool::settings::GlobalSettings::getInstance(),
-                                                                      generated_field::Software::PythonEnvPath);
+    const QString python_env_path = dltool::settings::GlobalSettings::pythonEnvironmentPath();
     const QFileInfo python_env_info(dltool::common::cleanPath(python_env_path));
     const QString python = (!python_env_path.trimmed().isEmpty() && python_env_info.exists() && python_env_info.isDir())
                              ? dltool::common::pythonExecutableFromEnvPath(python_env_path)

@@ -4,6 +4,7 @@
 #include "common/Utils.h"
 #include "common/YamlUtils.h"
 #include "core/CoreDef.h"
+#include "data/DatasetExportSource.h"
 #include "data/DatasetIO.h"
 #include "model/ModelTaskTypes.h"
 
@@ -13,7 +14,6 @@
 #include <QDir>
 #include <QImage>
 #include <QPointF>
-#include <algorithm>
 #include <map>
 #include <memory>
 #include <vector>
@@ -494,8 +494,8 @@ enum class LabelExportDecision
 
 struct SplitExportContext
 {
-    const ModelDatasetExportRequest *request{};
-    const IModelDatasetSource       *source{};
+    const ModelDatasetExportRequest          *request{};
+    const dltool::data::DatasetExportSource *source{};
     const ModelDatasetSelection     *selection{};
     DatasetSplit                     split{DatasetSplit::Train};
     QString                          split_name;
@@ -516,7 +516,6 @@ struct ImageExportContext
     QString                           image_path;
     int                               width{0};
     int                               height{0};
-    QVariantMap                       image_level_label;
     qint64                            image_label_class_id{-1};
     QString                           image_label_class_name;
     QString                           image_label_group;
@@ -574,8 +573,7 @@ public:
         if (!prepareSplit(ctx, err_msg))
             return {};
 
-        std::vector<int64_t> all_image_ids = request.source->allImageIds();
-        std::sort(all_image_ids.begin(), all_image_ids.end());
+        const std::vector<int64_t> all_image_ids = request.source->allImageIds();
         for (const int64_t image_id : all_image_ids)
         {
             ImageExportContext image;
@@ -680,17 +678,17 @@ private:
 
         dltool::data::DatasetIO::getImageDimensions(image.image_path, image.width, image.height);
 
-        image.image_level_label = ctx.source->imageLevelLabelData(image_id);
+        const QVariantMap image_level_label = ctx.source->imageLevelLabelData(image_id);
         image.image_label_class_id
-            = image.image_level_label
+            = image_level_label
                   .value(mappedValue(imageLevelLabelFieldNames(), ImageLevelLabelField::LabelClassId), -1)
                   .toLongLong();
         image.image_label_class_name
-            = image.image_level_label
+            = image_level_label
                   .value(mappedValue(imageLevelLabelFieldNames(), ImageLevelLabelField::LabelClassName))
                   .toString();
         image.image_label_group
-            = image.image_level_label.value(mappedValue(imageLevelLabelFieldNames(), ImageLevelLabelField::Group))
+            = image_level_label.value(mappedValue(imageLevelLabelFieldNames(), ImageLevelLabelField::Group))
                   .toString();
         image.has_anomaly_label = isAnomalyGroup(image.image_label_group);
         return true;
@@ -705,10 +703,10 @@ private:
             if (!ctx.selection->contains(image.dataset_id, label_class_id))
                 continue;
 
-            const QString class_name  = label_class_id >= 0 ? ctx.source->labelClassName(label_class_id) : QString();
-            const QString class_group = label_class_id >= 0 ? ctx.source->labelClassGroup(label_class_id) : QString();
-            const QVariantMap label_data = ctx.source->labelData(label_id);
-            YAML::Node        label = baseLabelNode(ctx, label_id, label_class_id, class_name, class_group, label_data);
+            const QString     class_name  = ctx.source->labelClassName(label_class_id);
+            const QString     class_group = ctx.source->labelClassGroup(label_class_id);
+            const QVariantMap label_data  = ctx.source->labelData(label_id);
+            YAML::Node label = baseLabelNode(ctx, label_id, label_class_id, class_name, class_group, label_data);
 
             const LabelExportDecision decision
                 = augmentLabel(ctx, image, label_id, label_class_id, class_group, label_data, label, err_msg);
