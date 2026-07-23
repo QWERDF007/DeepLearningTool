@@ -135,8 +135,12 @@ public:
     int     getDatasetId(const QString &dataset_name) const;
     QString getDatasetName(const int dataset_id) const;
 
-    void addImages(const std::vector<int64_t> &dataset_id, const std::vector<int64_t> &image_ids);
-    void deleteImages(const std::vector<int64_t> &dataset_id, const std::vector<int64_t> &image_ids);
+    void addImages(const std::vector<int64_t> &dataset_id, const std::vector<int64_t> &image_ids,
+                   const std::vector<std::vector<int64_t>> &images_label_ids = {},
+                   const std::vector<int64_t> &image_label_class_ids = {});
+    void deleteImages(const std::vector<int64_t> &dataset_id, const std::vector<int64_t> &image_ids,
+                      const std::vector<std::vector<int64_t>> &images_label_ids = {},
+                      const std::vector<int64_t> &image_label_class_ids = {});
     void moveImages(const std::vector<int64_t> &source_dataset_ids, const std::vector<int64_t> &target_dataset_ids,
                     const std::vector<int64_t> &image_ids, const std::vector<std::vector<int64_t>> &images_label_ids,
                     const std::vector<int64_t> &image_label_class_ids);

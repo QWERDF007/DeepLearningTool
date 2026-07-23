@@ -21,13 +21,29 @@ Rectangle {
     property FeatureManager featureManager: ProjectManager.currentProject ? ProjectManager.currentProject.featureManager : null
     property var imageSearch: featureManager ? featureManager.imageSearch : null
     property var smartAnnotation: featureManager ? featureManager.smartAnnotation : null
+    property bool syncingFileNameFilter: false
 
     onGlobalFilterChanged: syncFileNameFilterField()
 
     function syncFileNameFilterField() {
         const nextText = globalFilter ? globalFilter.fileNameFilterText : ""
+        syncingFileNameFilter = true
+        fileNameFilterTimer.stop()
         if (fileNameFilterField.text !== nextText) {
             fileNameFilterField.text = nextText
+        }
+        syncingFileNameFilter = false
+    }
+
+    Timer {
+        id: fileNameFilterTimer
+        interval: 180
+        repeat: false
+        onTriggered: {
+            if (header.globalFilter && !header.syncingFileNameFilter
+                    && fileNameFilterField.text !== header.globalFilter.fileNameFilterText) {
+                header.globalFilter.fileNameFilterText = fileNameFilterField.text
+            }
         }
     }
 
@@ -202,8 +218,8 @@ Rectangle {
                         enabled: globalFilter !== null
                         selectByMouse: true
                         onTextChanged: {
-                            if (globalFilter && text !== globalFilter.fileNameFilterText) {
-                                globalFilter.fileNameFilterText = text
+                            if (!header.syncingFileNameFilter && globalFilter && text !== globalFilter.fileNameFilterText) {
+                                fileNameFilterTimer.restart()
                             }
                         }
                     }

@@ -130,6 +130,10 @@ public:
 
     bool removeImagesTags(const std::vector<int64_t> &image_ids);
     void removeImagesTagsFromMemory(const std::vector<int64_t> &image_ids);
+    void addImagesTagsFromMemory(const std::vector<int64_t> &image_ids,
+                                 const std::vector<std::vector<int64_t>> &tag_ids);
+    void addLabelsTagsFromMemory(const std::vector<int64_t> &label_ids,
+                                 const std::vector<std::vector<int64_t>> &tag_ids);
 
     std::vector<std::vector<int64_t>> getImagesTagIds(const std::vector<int64_t> &image_ids) const;
     void                              applyTagsToLabels();

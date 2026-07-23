@@ -293,6 +293,50 @@ void ImageTagsListModel::removeImagesTagsFromMemory(const std::vector<int64_t> &
     removeTagsFromMemory(image_ids, TagTarget::Image);
 }
 
+void ImageTagsListModel::addImagesTagsFromMemory(const std::vector<int64_t>              &image_ids,
+                                                 const std::vector<std::vector<int64_t>> &tag_ids)
+{
+    const size_t count = std::min(image_ids.size(), tag_ids.size());
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (ImageInstance *image = image_instances_ ? image_instances_->getImageInstance(image_ids[i]) : nullptr)
+        {
+            image->addTagIds(tag_ids[i]);
+        }
+        for (const int64_t tag_id : tag_ids[i])
+        {
+            auto tag = tags_.find(tag_id);
+            if (tag != tags_.end())
+            {
+                tag->second.addImageIds({image_ids[i]});
+            }
+        }
+    }
+    updateStats();
+}
+
+void ImageTagsListModel::addLabelsTagsFromMemory(const std::vector<int64_t>              &label_ids,
+                                                 const std::vector<std::vector<int64_t>> &tag_ids)
+{
+    const size_t count = std::min(label_ids.size(), tag_ids.size());
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (LabelInstance *label = label_instances_ ? label_instances_->getLabelInstance(label_ids[i]) : nullptr)
+        {
+            label->addTagIds(tag_ids[i]);
+        }
+        for (const int64_t tag_id : tag_ids[i])
+        {
+            auto tag = tags_.find(tag_id);
+            if (tag != tags_.end())
+            {
+                tag->second.addLabelIds({label_ids[i]});
+            }
+        }
+    }
+    updateStats();
+}
+
 std::vector<std::vector<int64_t>> ImageTagsListModel::getImagesTagIds(
     const std::vector<int64_t> &image_ids) const
 {

@@ -136,6 +136,12 @@ public:
 
     void replaceAllLabels(std::vector<LoadedLabelInstance> labels);
 
+    /// 将已经写入数据库的标注批量发布到内存模型，不执行数据库写入。
+    /// defer_model_update=true 时只更新内存容器，调用 refreshModelFromMemory() 一次性通知视图。
+    void addLabelsFromMemory(std::vector<LoadedLabelInstance> labels, bool defer_model_update = false);
+    void addLabelsTagIdsFromMemory(const std::vector<int64_t> &label_ids,
+                                   const std::vector<std::vector<int64_t>> &tag_ids);
+
     bool tryAddLabels(std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
                       const std::vector<int64_t> &label_class_ids, const std::vector<QVariantMap> &data,
                       QString *err_msg = nullptr, bool defer_model_update = false);

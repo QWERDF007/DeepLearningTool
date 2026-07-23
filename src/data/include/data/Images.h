@@ -183,6 +183,7 @@ public:
         IsCurrentRole,
         HasLabelsRole,
         ImageLabelClassIdRole,
+        DatasetIdRole,
     };
     Q_ENUM(Role)
 
@@ -193,8 +194,21 @@ public:
     bool addImages(const std::vector<int64_t> &dataset_ids, const std::vector<QString> &paths,
                    std::vector<int64_t> &image_ids, bool defer_model_update = false);
     bool addImages(const int64_t dataset_id, const QString &image_idr, std::vector<int64_t> &image_ids);
+
+    /**
+     * @brief 将已经写入数据库的图像发布到内存模型。
+     *
+     * 这些接口不访问数据库，供后台数据库事务完成后在 GUI 线程批量更新模型。
+     */
+    void addImagesFromMemory(const int64_t dataset_id, const std::vector<QString> &paths,
+                             const std::vector<int64_t> &image_ids, bool defer_model_update = false);
+    void addImagesFromMemory(const std::vector<int64_t> &dataset_ids, const std::vector<QString> &paths,
+                             const std::vector<int64_t> &image_ids, bool defer_model_update = false);
+
     bool updateImagesDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id);
     bool updateImagesDataset(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &dataset_ids);
+    void updateImagesDatasetFromMemory(const std::vector<int64_t> &image_ids,
+                                       const std::vector<int64_t> &dataset_ids, bool notify_model = true);
     bool deleteImages(const std::vector<int64_t> &image_ids);
     bool deleteImages(const int64_t dataset_id, std::vector<int64_t> &image_ids);
 
@@ -276,8 +290,10 @@ public:
      */
     void refreshModelFromMemory();
 
-    void addImagesLabelIds(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids);
-    void addImagesLabelIds(const std::vector<int64_t> &image_ids, const std::vector<std::vector<int64_t>> &label_ids);
+    void addImagesLabelIds(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_ids,
+                           bool notify_model = true);
+    void addImagesLabelIds(const std::vector<int64_t>              &image_ids,
+                           const std::vector<std::vector<int64_t>> &label_ids, bool notify_model = true);
     void setImagesLabelIds(const std::vector<int64_t>              &image_ids,
                            const std::vector<std::vector<int64_t>> &label_ids, bool notify_model = true);
 
@@ -292,6 +308,11 @@ public:
                                                const std::vector<int64_t> &label_class_ids);
 
     std::vector<int64_t> getImagesDatasetIds(const std::vector<int64_t> &image_ids) const;
+
+    void setImageLabelClassIdsFromMemory(const std::vector<int64_t> &image_ids,
+                                         const std::vector<int64_t> &label_class_ids, bool notify_model = true);
+
+    static std::vector<uint8_t> extraDataForImageLabelClassId(int64_t label_class_id);
 
     void getAllDatasetsImagesLabels(std::vector<int64_t> &dataset_ids, std::vector<int64_t> &image_ids,
                                     std::vector<std::vector<int64_t>> &images_label_ids) const;

@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <iterator>
 #include <set>
+#include <unordered_set>
 
 namespace dltool::data {
 
@@ -119,6 +120,58 @@ void LabelInstancesListModel::replaceAllLabels(std::vector<LoadedLabelInstance> 
     }
     endResetModel();
     emit lastIndexChanged();
+}
+
+void LabelInstancesListModel::addLabelsFromMemory(std::vector<LoadedLabelInstance> labels,
+                                                   const bool defer_model_update)
+{
+    if (labels.empty())
+    {
+        return;
+    }
+
+    std::sort(labels.begin(), labels.end(), [](const LoadedLabelInstance &left, const LoadedLabelInstance &right)
+              { return left.label_id > right.label_id; });
+
+    std::vector<int64_t> added_label_ids;
+    added_label_ids.reserve(labels.size());
+    for (LoadedLabelInstance &label : labels)
+    {
+        if (label.data == nullptr)
+        {
+            continue;
+        }
+        if (full_label_instances_.find(label.label_id) != full_label_instances_.end())
+            continue;
+
+        full_label_instances_.emplace(
+            label.label_id,
+            new LabelInstance(label.label_id, label.image_id, label.label_class_id, std::move(label.data), this));
+        added_label_ids.push_back(label.label_id);
+    }
+
+    if (added_label_ids.empty() || defer_model_update || is_filtered_)
+    {
+        return;
+    }
+
+    beginInsertRows(QModelIndex(), 0, static_cast<int>(added_label_ids.size()) - 1);
+    label_ids_.insert(label_ids_.begin(), added_label_ids.begin(), added_label_ids.end());
+    endInsertRows();
+}
+
+void LabelInstancesListModel::addLabelsTagIdsFromMemory(const std::vector<int64_t>              &label_ids,
+                                                        const std::vector<std::vector<int64_t>> &tag_ids)
+{
+    const size_t count = std::min(label_ids.size(), tag_ids.size());
+    for (size_t i = 0; i < count; ++i)
+    {
+        LabelInstance *label = getLabelInstance(label_ids[i]);
+        if (label != nullptr)
+        {
+            label->addTagIds(tag_ids[i]);
+        }
+    }
 }
 
 int LabelInstancesListModel::rowCount(const QModelIndex &parent) const
@@ -403,20 +456,47 @@ void LabelInstancesListModel::refreshModelFromMemory()
 
     if (selection_ != nullptr)
     {
-        selection_->clear();
-        bool has_selection = false;
+        std::unordered_set<int64_t> selected_ids;
+        selected_ids.reserve(selected_label_ids.size() * 2 + 1);
         for (const int64_t label_id : selected_label_ids)
         {
-            const auto it = std::find(label_ids_.begin(), label_ids_.end(), label_id);
-            if (it == label_ids_.end())
-            {
-                continue;
-            }
+            selected_ids.insert(label_id);
+        }
 
-            const int row = static_cast<int>(std::distance(label_ids_.begin(), it));
-            selection_->select(index(row, 0), has_selection ? QItemSelectionModel::Select
-                                                            : QItemSelectionModel::ClearAndSelect);
-            has_selection = true;
+        std::vector<int> selected_rows;
+        selected_rows.reserve(selected_ids.size());
+        for (int row = 0; row < static_cast<int>(label_ids_.size()); ++row)
+        {
+            if (selected_ids.find(label_ids_[static_cast<size_t>(row)]) != selected_ids.end())
+            {
+                selected_rows.push_back(row);
+            }
+        }
+
+        if (selected_rows.empty())
+        {
+            selection_->clear();
+        }
+        else
+        {
+            QItemSelection selected_selection;
+            int            range_start = selected_rows.front();
+            int            previous_row = range_start;
+            for (size_t i = 1; i < selected_rows.size(); ++i)
+            {
+                const int row = selected_rows[i];
+                if (row == previous_row + 1)
+                {
+                    previous_row = row;
+                    continue;
+                }
+
+                selected_selection.select(index(range_start, 0), index(previous_row, 0));
+                range_start = row;
+                previous_row = row;
+            }
+            selected_selection.select(index(range_start, 0), index(previous_row, 0));
+            selection_->select(selected_selection, QItemSelectionModel::ClearAndSelect);
         }
     }
     setLastIndex(-1);

@@ -37,6 +37,7 @@ CustomFilterModule::CustomFilterModule(DataManager *data_manager, QObject *paren
             [this](const QModelIndex &, int, int) { invalidateCaches(); });
     connect(image_model, &QAbstractItemModel::rowsRemoved, this,
             [this](const QModelIndex &, int, int) { invalidateCaches(); });
+    connect(image_model, &QAbstractItemModel::modelReset, this, [this]() { invalidateCaches(); });
     connect(image_model, &QAbstractItemModel::dataChanged, this,
             [this](const QModelIndex &, const QModelIndex &, const QList<int> &roles)
             {

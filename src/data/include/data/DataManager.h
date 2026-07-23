@@ -50,6 +50,7 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(int method READ method CONSTANT FINAL)
     Q_PROPERTY(QString providerCacheKey READ providerCacheKey CONSTANT FINAL)
     Q_PROPERTY(bool datasetDeletionRunning READ datasetDeletionRunning NOTIFY datasetDeletionRunningChanged FINAL)
+    Q_PROPERTY(bool imageOperationRunning READ imageOperationRunning NOTIFY imageOperationRunningChanged FINAL)
 
 public:
     using ImportFinishedHandler = std::function<void(bool, const QString &)>;
@@ -139,6 +140,11 @@ public:
     bool datasetDeletionRunning() const
     {
         return dataset_deletion_running_;
+    }
+
+    bool imageOperationRunning() const
+    {
+        return image_operation_running_;
     }
 
     /**
@@ -256,6 +262,7 @@ signals:
     void dataImportFinished(bool success, const QString &message);
     void importLabelClassesScanned(bool success, QVariantList label_classes, const QString &message);
     void datasetDeletionRunningChanged();
+    void imageOperationRunningChanged();
 
 private:
     struct PendingImportTask;
@@ -266,6 +273,18 @@ private:
                                  const QString &err_msg, qint64 elapsed_ms);
     void handleAsyncDatasetDeletion(const std::vector<int64_t> &dataset_ids, bool success, const QString &err_msg,
                                     qint64 elapsed_ms);
+    void handleAsyncImageDeletion(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &dataset_ids,
+                                  const std::vector<std::vector<int64_t>> &image_label_ids,
+                                  const std::vector<int64_t> &image_label_class_ids, bool success,
+                                  const QString &err_msg, qint64 elapsed_ms);
+    void handleAsyncImageMove(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &source_dataset_ids,
+                              const std::vector<int64_t> &target_dataset_ids,
+                              const std::vector<std::vector<int64_t>> &image_label_ids,
+                              const std::vector<int64_t> &image_label_class_ids, bool success,
+                              const QString &err_msg, qint64 elapsed_ms);
+
+    struct AsyncImageCopyResult;
+    void handleAsyncImageCopy(const std::shared_ptr<AsyncImageCopyResult> &result);
     void rebuildLabelRelations(bool notify_image_model = true);
 
     void updateDatasetsStats();
@@ -322,6 +341,7 @@ private:
     bool labels_reload_after_dataset_deletion_{false};
 
     bool dataset_deletion_running_{false};
+    bool image_operation_running_{false};
 };
 
 } // namespace dltool::data

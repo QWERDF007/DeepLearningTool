@@ -399,13 +399,18 @@ QString DatasetsListModel::getDatasetName(const int dataset_id) const
     return found->second->name();
 }
 
-void DatasetsListModel::addImages(const std::vector<int64_t> &dataset_ids, const std::vector<int64_t> &image_ids)
+void DatasetsListModel::addImages(const std::vector<int64_t>              &dataset_ids,
+                                  const std::vector<int64_t>              &image_ids,
+                                  const std::vector<std::vector<int64_t>> &images_label_ids,
+                                  const std::vector<int64_t>              &image_label_class_ids)
 {
     if (dataset_ids.size() != image_ids.size())
     {
         spdlog::error("添加图像失败: 数据集id和图像id数量不一致");
         return;
     }
+    const bool has_label_stats = images_label_ids.size() == image_ids.size()
+        && image_label_class_ids.size() == image_ids.size();
     std::map<int64_t, std::vector<int64_t>> datasets_image_ids;
     for (size_t i = 0; i < dataset_ids.size(); ++i)
     {
@@ -432,16 +437,32 @@ void DatasetsListModel::addImages(const std::vector<int64_t> &dataset_ids, const
         }
         found->second->addImageIds(dataset_image_ids);
     }
+
+    if (has_label_stats)
+    {
+        for (size_t i = 0; i < image_ids.size(); ++i)
+        {
+            if (!images_label_ids[i].empty() || image_label_class_ids[i] >= 0)
+            {
+                ++labelled_image_stats_[dataset_ids[i]];
+            }
+        }
+    }
     emit statsChanged();
 }
 
-void DatasetsListModel::deleteImages(const std::vector<int64_t> &dataset_ids, const std::vector<int64_t> &image_ids)
+void DatasetsListModel::deleteImages(const std::vector<int64_t>              &dataset_ids,
+                                     const std::vector<int64_t>              &image_ids,
+                                     const std::vector<std::vector<int64_t>> &images_label_ids,
+                                     const std::vector<int64_t>              &image_label_class_ids)
 {
     if (dataset_ids.size() != image_ids.size())
     {
         spdlog::error("删除图像失败: 数据集id和图像id数量不一致");
         return;
     }
+    const bool has_label_stats = images_label_ids.size() == image_ids.size()
+        && image_label_class_ids.size() == image_ids.size();
     std::map<int64_t, std::vector<int64_t>> datasets_image_ids;
     for (size_t i = 0; i < dataset_ids.size(); ++i)
     {
@@ -462,6 +483,21 @@ void DatasetsListModel::deleteImages(const std::vector<int64_t> &dataset_ids, co
             continue;
         }
         found->second->removeImageIds(dataset_image_ids);
+    }
+
+    if (has_label_stats)
+    {
+        for (size_t i = 0; i < image_ids.size(); ++i)
+        {
+            if (!images_label_ids[i].empty() || image_label_class_ids[i] >= 0)
+            {
+                auto found = labelled_image_stats_.find(dataset_ids[i]);
+                if (found != labelled_image_stats_.end() && found->second > 0)
+                {
+                    --found->second;
+                }
+            }
+        }
     }
     emit statsChanged();
 }
