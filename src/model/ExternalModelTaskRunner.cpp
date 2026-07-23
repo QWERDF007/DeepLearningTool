@@ -27,7 +27,7 @@ QFile *openProcessLogFile(const QString &path, QObject *parent, QString *err_msg
     if (cleaned.isEmpty())
     {
         if (err_msg != nullptr)
-            *err_msg = QStringLiteral("日志路径为空");
+            *err_msg = QString("日志路径为空");
         return nullptr;
     }
 
@@ -35,7 +35,7 @@ QFile *openProcessLogFile(const QString &path, QObject *parent, QString *err_msg
     if (!dir.exists() && !dir.mkpath(QStringLiteral(".")))
     {
         if (err_msg != nullptr)
-            *err_msg = QStringLiteral("创建日志目录失败: %1").arg(dir.absolutePath());
+            *err_msg = QString("创建日志目录失败: %1").arg(dir.absolutePath());
         return nullptr;
     }
 
@@ -43,7 +43,7 @@ QFile *openProcessLogFile(const QString &path, QObject *parent, QString *err_msg
     if (!file->open(QIODevice::WriteOnly | QIODevice::Truncate))
     {
         if (err_msg != nullptr)
-            *err_msg = QStringLiteral("打开日志文件失败: %1, %2").arg(cleaned, file->errorString());
+            *err_msg = QString("打开日志文件失败: %1, %2").arg(cleaned, file->errorString());
         delete file;
         return nullptr;
     }
@@ -70,7 +70,7 @@ bool ExternalModelTaskRunner::start(const ExternalProcessSpec &process_spec, QSt
     if (process_spec.task_id < 0)
     {
         if (err_msg != nullptr)
-            *err_msg = QStringLiteral("任务 id 无效");
+            *err_msg = QString("任务 id 无效");
         return false;
     }
     if (hasRunningTask(process_spec.task_id))
@@ -79,13 +79,13 @@ bool ExternalModelTaskRunner::start(const ExternalProcessSpec &process_spec, QSt
     if (process_spec.program.isEmpty())
     {
         if (err_msg != nullptr)
-            *err_msg = QStringLiteral("程序路径为空");
+            *err_msg = QString("程序路径为空");
         return false;
     }
     if (!QFileInfo::exists(process_spec.program))
     {
         if (err_msg != nullptr)
-            *err_msg = QStringLiteral("程序不存在: %1").arg(process_spec.program);
+            *err_msg = QString("程序不存在: %1").arg(process_spec.program);
         return false;
     }
 
@@ -136,6 +136,8 @@ bool ExternalModelTaskRunner::start(const ExternalProcessSpec &process_spec, QSt
                     log_file->flush();
                 }
             });
+    connect(process, &QProcess::started, this,
+            [this, task_id = process_spec.task_id]() { emit taskStarted(task_id); });
     connect(process, &QProcess::errorOccurred, this,
             [this, process, task_id = process_spec.task_id](QProcess::ProcessError error)
             {

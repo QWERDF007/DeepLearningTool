@@ -57,12 +57,31 @@ public:
     bool deleteTask(int task_id);
 
 signals:
+    /**
+     * @brief 外部 Python 进程已实际启动。
+     * @param task_id 任务 ID。
+     */
+    void taskStarted(int task_id);
+
+    /**
+     * @brief 外部 Python 进程无法启动。
+     * @param task_id 任务 ID。
+     * @param error 启动错误信息。
+     */
     void taskStartFailed(int task_id, const QString &error);
+
+    /**
+     * @brief 外部 Python 进程已退出。
+     * @param task_id 任务 ID。
+     * @param exit_code 进程退出码。
+     * @param normal_exit 是否正常退出。
+     * @param stop_requested 是否由用户请求停止。
+     */
     void taskFinished(int task_id, int exit_code, bool normal_exit, bool stop_requested);
 
 private:
-    std::unordered_map<int, QPointer<QProcess>> external_processes_;   ///< task_id -> 进程映射
-    std::unordered_set<int>                     stop_requested_tasks_; ///< 已请求停止的任务集合
+    std::unordered_map<int, QPointer<QProcess>> external_processes_;   ///< task_id 到进程对象的映射。
+    std::unordered_set<int>                     stop_requested_tasks_; ///< 已请求停止的任务集合。
 };
 
 } // namespace dltool::model

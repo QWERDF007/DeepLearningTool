@@ -296,7 +296,7 @@ bool ModelDatasetSelection::contains(qint64 dataset_id, qint64 label_class_id) c
     return containsLabelClass(dataset_id, label_class_id);
 }
 
-ModelDatasetSelections modelDatasetSelectionsSnapshot(IModel *model)
+ModelDatasetSelections modelDatasetSelections(IModel *model)
 {
     return readModelDatasetSelections(model);
 }
@@ -327,8 +327,8 @@ QString modelDatasetSelectionsPath(const QString &dataset_dir)
 bool writeModelDatasetSelectionsFile(const QString &dataset_dir, const ModelDatasetSelections &selections,
                                      QString *err_msg)
 {
-    if (!common::ensureDirectory(dataset_dir, err_msg, QStringLiteral("数据集目录为空"),
-                                 QStringLiteral("创建数据集目录失败: %1")))
+    if (!common::ensureDirectory(dataset_dir, err_msg, QString("数据集目录为空"),
+                                 QString("创建数据集目录失败: %1")))
     {
         return false;
     }
@@ -337,7 +337,7 @@ bool writeModelDatasetSelectionsFile(const QString &dataset_dir, const ModelData
     if (path.isEmpty())
     {
         if (err_msg != nullptr)
-            *err_msg = QStringLiteral("数据集选择配置路径为空");
+            *err_msg = QString("数据集选择配置路径为空");
         return false;
     }
 
@@ -345,8 +345,8 @@ bool writeModelDatasetSelectionsFile(const QString &dataset_dir, const ModelData
         {datasetSelectionFieldName(DatasetSelectionField::DatasetSelections), modelDatasetSelectionsMap(selections)},
     };
     return common::yaml::writeFile(path, common::yaml::variantToYaml(root), err_msg,
-                                   QStringLiteral("写入数据集选择配置失败"),
-                                   QStringLiteral("生成数据集选择 YAML 失败"));
+                                   QString("写入数据集选择配置失败"),
+                                   QString("生成数据集选择 YAML 失败"));
 }
 
 QVariantMap readModelDatasetSelectionsFile(const QString &dataset_dir)

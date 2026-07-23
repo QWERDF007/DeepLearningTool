@@ -181,10 +181,9 @@ bool writeTextFile(const QString &path, const QStringList &lines, QString *err_m
     return true;
 }
 
-bool isTerminalStatus(dltool::model::TaskTableModel::TaskStatus status)
+bool isTerminalStatus(const dltool::model::TaskManager::TaskStatus status)
 {
-    using Status = dltool::model::TaskTableModel::TaskStatus;
-    return status == Status::Finished || status == Status::Failed || status == Status::Stopped;
+    return dltool::model::TaskManager::isTerminal(status);
 }
 
 } // namespace
@@ -207,9 +206,9 @@ FewShotLearningController::FewShotLearningController(dltool::data::DataManager  
         dltool::data::DatasetViewModelFactory::createDatasetSelectionModel(data_manager, this));
     setTestDatasetViewModel(dltool::data::DatasetViewModelFactory::createDatasetSelectionModel(data_manager, this));
 
-    if (task_manager_ != nullptr && task_manager_->tasks() != nullptr)
+    if (task_manager_ != nullptr)
     {
-        connect(task_manager_->tasks(), &dltool::model::TaskTableModel::revisionChanged, this,
+        connect(task_manager_, &dltool::model::TaskManager::revisionChanged, this,
                 &FewShotLearningController::handleTaskTableRevision);
     }
 
@@ -462,7 +461,7 @@ QString FewShotLearningController::validateStartRequest(const std::vector<int64_
         return QString("模型管理器未初始化");
     if (model_task_controller_ == nullptr)
         return QString("模型任务控制器未初始化");
-    if (task_manager_ == nullptr || task_manager_->tasks() == nullptr)
+    if (task_manager_ == nullptr)
         return QString("任务管理器未初始化");
 
     const int method = data_manager_->method();
@@ -762,75 +761,70 @@ bool FewShotLearningController::startOrdinaryTask(dltool::model::ModelTaskType t
 
 void FewShotLearningController::handleTaskTableRevision()
 {
-    if (!running_ || current_run_.stage == RunStage::Idle || task_manager_ == nullptr
-        || task_manager_->tasks() == nullptr)
+    if (!running_ || current_run_.stage == RunStage::Idle || task_manager_ == nullptr)
     {
         return;
     }
 
-    using Status  = dltool::model::TaskTableModel::TaskStatus;
-    auto snapshot = [this](int task_id)
-    {
-        return task_manager_->tasks()->taskSnapshotForId(task_id);
-    };
+    using Status = dltool::model::TaskManager::TaskStatus;
 
     if (current_run_.stage == RunStage::PreparingMask)
     {
-        const auto task = snapshot(current_run_.box_to_mask_task_id);
-        if (!task.isValid())
+        const auto *task = task_manager_->findTask(current_run_.box_to_mask_task_id);
+        if (task == nullptr)
         {
             finishRun(false, QString("BoxToMask 任务不存在"));
             return;
         }
-        if (!isTerminalStatus(task.status))
+        if (!isTerminalStatus(task->status))
             return;
-        if (task.status == Status::Finished)
+        if (task->status == Status::Finished)
         {
             advanceFinishedTask(dltool::model::ModelTaskType::Train, current_run_.train_task_id, RunStage::Training);
             return;
         }
         finishRun(false,
-                  task.status == Status::Stopped ? QString("小样本学习任务已停止") : QString("BoxToMask 任务失败"));
+                  task->status == Status::Stopped ? QString("小样本学习任务已停止") : QString("BoxToMask 任务失败"));
         return;
     }
 
     if (current_run_.stage == RunStage::Training)
     {
-        const auto task = snapshot(current_run_.train_task_id);
-        if (!task.isValid())
+        const auto *task = task_manager_->findTask(current_run_.train_task_id);
+        if (task == nullptr)
         {
             finishRun(false, QString("小样本训练任务不存在"));
             return;
         }
-        if (!isTerminalStatus(task.status))
+        if (!isTerminalStatus(task->status))
             return;
-        if (task.status == Status::Finished)
+        if (task->status == Status::Finished)
         {
             advanceFinishedTask(dltool::model::ModelTaskType::Test, current_run_.predict_task_id, RunStage::Predicting);
             return;
         }
         finishRun(false,
-                  task.status == Status::Stopped ? QString("小样本学习任务已停止") : QString("小样本训练任务失败"));
+                  task->status == Status::Stopped ? QString("小样本学习任务已停止") : QString("小样本训练任务失败"));
         return;
     }
 
     if (current_run_.stage == RunStage::Predicting)
     {
-        const auto task = snapshot(current_run_.predict_task_id);
-        if (!task.isValid())
+        const auto *task = task_manager_->findTask(current_run_.predict_task_id);
+        if (task == nullptr)
         {
             finishRun(false, QString("小样本推理任务不存在"));
             return;
         }
-        if (!isTerminalStatus(task.status))
+        if (!isTerminalStatus(task->status))
             return;
-        if (task.status == Status::Finished)
+        if (task->status == Status::Finished)
         {
             finishRun(true);
             return;
         }
         finishRun(false,
-                  task.status == Status::Stopped ? QString("小样本学习任务已停止") : QString("小样本推理任务失败"));
+                  task->status == Status::Stopped ? QString("小样本学习任务已停止") : QString("小样本推理任务失败"));
     }
 }
 

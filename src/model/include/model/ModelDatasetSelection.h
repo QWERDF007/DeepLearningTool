@@ -60,11 +60,11 @@ struct MODEL_API ModelDatasetSelections
 };
 
 /**
- * @brief 获取模型当前的数据集选择快照
+ * @brief 读取模型当前的数据集选择。
  * @param model 模型实例
  * @return 数据集选择集合
  */
-MODEL_API ModelDatasetSelections modelDatasetSelectionsSnapshot(IModel *model);
+MODEL_API ModelDatasetSelections modelDatasetSelections(IModel *model);
 
 /**
  * @brief 汇总训练、验证、测试选择中涉及的数据集 ID。

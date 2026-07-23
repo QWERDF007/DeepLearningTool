@@ -13,7 +13,7 @@ Window {
     id: dialog
 
     property var taskManager: TaskManager
-    property var taskModel: taskManager ? taskManager.tasks : null
+    property var taskModel: taskManager
     property int selectedTaskId: -1
 
     visible: false
@@ -149,7 +149,7 @@ Window {
 
                 delegate: DelegateChooser {
                     DelegateChoice {
-                        column: TaskTableModel.ProgressColumn
+                        column: TaskManager.ProgressColumn
                         Rectangle {
                             implicitWidth: tableView.columnWidth(column)
                             implicitHeight: tableView.rowHeight
@@ -186,7 +186,7 @@ Window {
                     }
 
                     DelegateChoice {
-                        column: TaskTableModel.ActionsColumn
+                        column: TaskManager.ActionsColumn
                         Rectangle {
                             implicitWidth: tableView.columnWidth(column)
                             implicitHeight: tableView.rowHeight

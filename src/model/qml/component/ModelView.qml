@@ -27,7 +27,7 @@ Rectangle {
     property ModelTaskController taskController: null
     property int taskType: ModelTaskTypes.Unknown
     property bool taskActionsEnabled: false
-    property int taskRevision: taskManager && taskManager.tasks ? taskManager.tasks.revision : 0
+    property int taskRevision: taskManager ? taskManager.revision : 0
 
     function taskExtraData(modelData) {
         if (!modelData || !modelData.extra_data)
@@ -114,16 +114,12 @@ Rectangle {
         taskController.addModelTask(currentModelUuid, taskType)
     }
 
-    function taskForModel(uuid) {
+    function taskIdForModel(uuid) {
         const revision = taskRevision
-        if (!taskManager || !taskManager.tasks || !uuid || String(uuid).length === 0) {
-            return ({})
+        if (!taskManager || !uuid || String(uuid).length === 0) {
+            return -1
         }
-        return taskManager.tasks.taskForModel(uuid, taskType, false)
-    }
-
-    function hasTask(task) {
-        return task && task.task_id !== undefined && task.task_id >= 0
+        return taskManager.findModelTask(uuid, taskType, false)
     }
 
     function canStartModelTask(uuid) {
@@ -131,8 +127,8 @@ Rectangle {
             return false
         }
 
-        const task = taskForModel(uuid)
-        return hasTask(task) ? task.can_start === true : true
+        const taskId = taskIdForModel(uuid)
+        return taskId < 0 || taskManager.canStartTask(taskId)
     }
 
     function canStopModelTask(uuid) {
@@ -140,8 +136,8 @@ Rectangle {
             return false
         }
 
-        const task = taskForModel(uuid)
-        return hasTask(task) ? task.can_stop === true : false
+        const taskId = taskIdForModel(uuid)
+        return taskId >= 0 && taskManager.canStopTask(taskId)
     }
 
     onModelManagerChanged: requestEnsureCurrentModel()

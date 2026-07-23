@@ -12,27 +12,27 @@
 namespace dltool::model {
 
 class TaskCommunicationServer;
-class TaskEventRouter;
 struct TaskMessage;
 
 /**
- * @brief 任务表格模型，以表格形式管理所有任务记录，提供 QAbstractTableModel 接口
+ * @brief 应用唯一的任务状态中心，同时也是任务中心的表格模型。
+ *
+ * TaskManager 直接保存任务状态、处理外部任务消息，并向模型控制器发出开始/停止请求。
+ * 不维护 TaskSnapshot、QVariantMap 任务副本或额外的事件路由层。
+ *
+ * 模型任务的状态链为：Pending -> Preparing -> Running -> Stopping -> 终态。
+ * Preparing 表示数据集导出和配置写入正在后台执行；只有 Python 进程实际启动后
+ * 才会进入 Running。TaskManager 不关心模型、数据集或 Python，只负责记录和分发事件。
  */
-class MODEL_API TaskTableModel : public QAbstractTableModel
+class MODEL_API TaskManager final : public QAbstractTableModel
 {
     Q_OBJECT
-    QML_NAMED_ELEMENT(TaskTableModel)
-    QML_UNCREATABLE("Can not create TaskTableModel directly!")
+    QML_NAMED_ELEMENT(TaskManager)
+    QT_QML_SINGLETON(TaskManager)
     Q_PROPERTY(int count READ count NOTIFY countChanged FINAL)
     Q_PROPERTY(int revision READ revision NOTIFY revisionChanged FINAL)
-public:
-    /**
-     * @brief 构造任务表格模型
-     * @param parent 父对象
-     */
-    explicit TaskTableModel(QObject *parent = nullptr);
-    ~TaskTableModel() override = default;
 
+public:
     enum Column
     {
         TaskIdColumn = 0,
@@ -50,13 +50,14 @@ public:
 
     enum TaskStatus
     {
-        Pending = 0, ///< 等待中
-        Running,     ///< 运行中
-        Paused,      ///< 已暂停
-        Stopping,    ///< 停止中
-        Stopped,     ///< 已停止
-        Finished,    ///< 已结束
-        Failed,      ///< 失败
+        Pending = 0, ///< 已创建，尚未开始。
+        Preparing,   ///< 正在后台导出数据集、写入配置并准备进程。
+        Running,     ///< Python 进程已成功启动，或内部任务正在运行。
+        Paused,      ///< 内部任务已暂停。
+        Stopping,    ///< 已请求停止，等待后台准备或进程收敛。
+        Stopped,     ///< 已停止。
+        Finished,    ///< 正常结束。
+        Failed,      ///< 准备、启动或执行失败。
     };
     Q_ENUM(TaskStatus)
 
@@ -81,519 +82,369 @@ public:
     Q_ENUM(Role)
 
     /**
-     * @brief 任务快照，包含任务在某一时刻的完整状态
+     * @brief 任务中心持有的唯一任务记录。
+     *
+     * findTask() 返回的指针仅可在当前 GUI 调用栈内使用，下一次任务中心变更后不可保留。
      */
-    struct TaskSnapshot
+    struct Task
     {
-        int           task_id{-1};                       ///< 任务 ID
-        QString       model_uuid;                        ///< 模型 UUID
-        QString       model_name;                        ///< 模型名称
-        ModelTaskType task_type{ModelTaskType::Unknown}; ///< 任务类型
-        TaskStatus    status{Pending};                   ///< 任务状态
-        qint64        created_at{0};                     ///< 创建时间戳
-        qint64        started_at{0};                     ///< 启动时间戳
-        qint64        accumulated_seconds{0};            ///< 累计运行秒数
-        qint64        eta_seconds{-1};                   ///< 预计剩余秒数
-        int           progress{0};                       ///< 进度（0-100）
-        bool          supports_pause{true};              ///< 是否支持暂停
-        bool          can_start{false};                  ///< 是否可启动
-        bool          can_pause{false};                  ///< 是否可暂停
-        bool          can_stop{false};                   ///< 是否可停止
-        bool          can_finish{false};                 ///< 是否可结束
-
-        /**
-         * @brief 检查快照是否有效
-         * @return 有效返回 true
-         */
-        bool isValid() const
-        {
-            return task_id >= 0;
-        }
+        int           id{-1};                              ///< 当前项目内递增的任务 ID。
+        QString       model_uuid;                           ///< 所属模型 UUID。
+        QString       model_name;                           ///< 用于表格显示的模型名称。
+        ModelTaskType type{ModelTaskType::Unknown};         ///< 任务类型。
+        TaskStatus    status{Pending};                      ///< 当前生命周期状态。
+        qint64        created_at{0};                        ///< 创建时间（秒级 Unix 时间戳）。
+        qint64        started_at{0};                        ///< 进入 Running 的时间；非运行态为 0。
+        qint64        elapsed_seconds{0};                   ///< 已累计的运行时长。
+        qint64        eta_seconds{-1};                      ///< 剩余秒数，-1 表示未知。
+        int           progress{0};                          ///< 进度（0-100）。
+        bool          supports_pause{true};                 ///< 当前任务是否支持暂停。
     };
 
     /**
-     * @brief 获取行数
-     * @param parent 父索引
-     * @return 行数
+     * @brief 析构任务管理器。
      */
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+    ~TaskManager() override = default;
 
     /**
-     * @brief 获取列数
-     * @param parent 父索引
-     * @return 列数
+     * @brief 返回任务记录数。
+     * @param parent 父索引。
+     * @return 顶层任务记录数；子索引始终返回 0。
      */
-    int columnCount(const QModelIndex &parent = QModelIndex()) const override;
-
+    int rowCount(const QModelIndex &parent = {}) const override;
     /**
-     * @brief 获取任务数量
-     * @return 任务个数
+     * @brief 返回任务中心列数。
+     * @param parent 父索引。
+     * @return 顶层列数；子索引始终返回 0。
      */
-    int count() const;
-
+    int columnCount(const QModelIndex &parent = {}) const override;
     /**
-     * @brief 获取数据版本号
-     * @return 版本号
-     */
-    int revision() const;
-
-    /**
-     * @brief 获取指定单元格数据
-     * @param index 模型索引
-     * @param role 数据角色
-     * @return 数据值
+     * @brief 返回任务中心显示值和 QML role 数据。
+     * @param index 模型索引。
+     * @param role 请求的数据 role。
+     * @return 对应的显示值或 role 值；索引无效时返回空值。
      */
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
-
     /**
-     * @brief 获取表头数据
-     * @param section 行/列号
-     * @param orientation 方向
-     * @param role 数据角色
-     * @return 表头文本
+     * @brief 返回任务中心列标题。
+     * @param section 列序号。
+     * @param orientation 表头方向。
+     * @param role 请求的数据 role。
+     * @return 水平显示标题；其他情况返回空值。
      */
     QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
-
     /**
-     * @brief 获取角色名称映射
-     * @return 角色名称哈希表
+     * @brief 返回 QML 使用的 role 名称。
+     * @return role 到名称的映射。
      */
     QHash<int, QByteArray> roleNames() const override;
 
     /**
-     * @brief 添加任务
-     * @param model_uuid 模型 UUID
-     * @param model_name 模型名称
-     * @param task_type 任务类型
-     * @param supports_pause 是否支持暂停
-     * @return 任务 ID，失败返回 -1
+     * @brief 获取当前任务记录数量。
+     * @return 任务数量。
      */
-    int addTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type,
-                bool supports_pause = true);
+    int count() const;
+    /**
+     * @brief 获取任务状态版本号。
+     * @return 每次任务记录或状态变化后递增的版本号，供非表格 QML 绑定刷新。
+     */
+    int revision() const;
 
     /**
-     * @brief 启动任务
-     * @param task_id 任务 ID
-     * @return 操作成功返回 true
-     */
-    bool startTask(int task_id);
-
-    /**
-     * @brief 暂停任务
-     * @param task_id 任务 ID
-     * @return 操作成功返回 true
-     */
-    bool pauseTask(int task_id);
-
-    /**
-     * @brief 停止任务
-     * @param task_id 任务 ID
-     * @return 操作成功返回 true
-     */
-    bool stopTask(int task_id);
-
-    /**
-     * @brief 完成任务
-     * @param task_id 任务 ID
-     * @return 操作成功返回 true
-     */
-    bool finishTask(int task_id);
-
-    /**
-     * @brief 标记任务失败
-     * @param task_id 任务 ID
-     * @return 操作成功返回 true
-     */
-    bool failTask(int task_id);
-
-    /**
-     * @brief 设置任务状态
-     * @param task_id 任务 ID
-     * @param status 新状态
-     * @return 操作成功返回 true
-     */
-    bool setTaskStatus(int task_id, TaskStatus status);
-
-    /**
-     * @brief 删除任务
-     * @param task_id 任务 ID
-     * @return 操作成功返回 true
-     */
-    bool deleteTask(int task_id);
-
-    /**
-     * @brief 更新任务进度
-     * @param task_id 任务 ID
-     * @param progress 进度值（0-100）
-     * @return 操作成功返回 true
-     */
-    bool updateTaskProgress(int task_id, int progress);
-
-    /**
-     * @brief 更新任务预计剩余时间
-     * @param task_id 任务 ID
-     * @param eta_seconds 预计剩余秒数
-     * @return 操作成功返回 true
-     */
-    bool updateTaskEta(int task_id, qint64 eta_seconds);
-
-    /**
-     * @brief 清除所有任务
-     */
-    void clearTasks();
-
-    /**
-     * @brief 查找指定模型的任务 ID
-     * @param model_uuid 模型 UUID
-     * @param task_type 任务类型
-     * @param include_finished 是否包含已完成任务
-     * @return 任务 ID，未找到返回 -1
-     */
-    int findModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type, bool include_finished = false) const;
-
-    /**
-     * @brief 获取指定任务 ID 的快照
-     * @param task_id 任务 ID
-     * @return 任务快照
-     */
-    TaskSnapshot taskSnapshotForId(int task_id) const;
-
-    /**
-     * @brief 获取指定模型任务的快照
-     * @param model_uuid 模型 UUID
-     * @param task_type 任务类型
-     * @param include_finished 是否包含已完成任务
-     * @return 任务快照
-     */
-    TaskSnapshot taskSnapshotForModel(const QString &model_uuid, ModelTaskTypes::Type task_type,
-                                      bool include_finished = false) const;
-
-    /**
-     * @brief 获取指定行的任务数据
-     * @param row 行号
-     * @return 任务数据键值对
-     */
-    Q_INVOKABLE QVariantMap taskAt(int row) const;
-
-    /**
-     * @brief 获取指定任务 ID 的数据
-     * @param task_id 任务 ID
-     * @return 任务数据键值对
-     */
-    Q_INVOKABLE QVariantMap taskForId(int task_id) const;
-
-    /**
-     * @brief 获取指定模型任务的数据
-     * @param model_uuid 模型 UUID
-     * @param task_type 任务类型
-     * @param include_finished 是否包含已完成任务
-     * @return 任务数据键值对
-     */
-    Q_INVOKABLE QVariantMap taskForModel(const QString &model_uuid, ModelTaskTypes::Type task_type,
-                                         bool include_finished = false) const;
-
-signals:
-    void countChanged();
-    void revisionChanged();
-
-private:
-    struct TaskRecord
-    {
-        int           task_id{-1};
-        QString       model_uuid;
-        QString       model_name;
-        ModelTaskType task_type{ModelTaskType::Unknown};
-        TaskStatus    status{Pending};
-        qint64        created_at{0};
-        qint64        started_at{0};
-        qint64        accumulated_seconds{0};
-        qint64        eta_seconds{-1};
-        int           progress{0};
-        bool          supports_pause{true};
-    };
-
-    /**
-     * @brief 根据任务 ID 查找行索引
-     * @param task_id 任务 ID
-     * @return 行索引，未找到返回 -1
-     */
-    int indexOfTask(int task_id) const;
-
-    /**
-     * @brief 根据模型 UUID 和任务类型查找行索引
-     * @param model_uuid 模型 UUID
-     * @param task_type 任务类型
-     * @param include_finished 是否包含已完成任务
-     * @return 行索引
-     */
-    int indexOfModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type, bool include_finished) const;
-
-    /**
-     * @brief 生成指定行的任务快照
-     * @param row 行号
-     * @return 任务快照
-     */
-    TaskSnapshot snapshotForRow(int row) const;
-
-    /**
-     * @brief 发送任务变更信号
-     * @param row 行号
-     * @param roles 变更的角色列表
-     */
-    void emitTaskChanged(int row, const QList<int> &roles = {});
-
-    /**
-     * @brief 递增数据版本号
-     */
-    void bumpRevision();
-
-    /**
-     * @brief 刷新所有运行中任务的显示时间
-     */
-    void refreshRunningTasks();
-
-    /**
-     * @brief 获取指定列的数据
-     * @param task 任务记录
-     * @param column 列号
-     * @return 显示数据
-     */
-    QVariant dataForColumn(const TaskRecord &task, int column) const;
-
-    /**
-     * @brief 获取状态文本
-     * @param task 任务记录
-     * @return 状态文本
-     */
-    QString statusText(const TaskRecord &task) const;
-
-    /**
-     * @brief 获取创建时间文本
-     * @param task 任务记录
-     * @return 时间文本
-     */
-    QString createdAtText(const TaskRecord &task) const;
-
-    /**
-     * @brief 获取运行时间文本
-     * @param task 任务记录
-     * @return 时间文本
-     */
-    QString runningTimeText(const TaskRecord &task) const;
-
-    /**
-     * @brief 获取 ETA 文本
-     * @param task 任务记录
-     * @return ETA 文本
-     */
-    QString etaText(const TaskRecord &task) const;
-
-    /**
-     * @brief 计算运行时间秒数
-     * @param task 任务记录
-     * @return 运行秒数
-     */
-    qint64 runningTimeSeconds(const TaskRecord &task) const;
-
-    /**
-     * @brief 计算预计剩余秒数
-     * @param task 任务记录
-     * @return 预计秒数
-     */
-    qint64 etaSeconds(const TaskRecord &task) const;
-
-    /**
-     * @brief 检查任务是否可启动
-     * @param task 任务记录
-     * @return 可启动返回 true
-     */
-    bool canStart(const TaskRecord &task) const;
-
-    /**
-     * @brief 检查任务是否可暂停
-     * @param task 任务记录
-     * @return 可暂停返回 true
-     */
-    bool canPause(const TaskRecord &task) const;
-
-    /**
-     * @brief 检查任务是否可停止
-     * @param task 任务记录
-     * @return 可停止返回 true
-     */
-    bool canStop(const TaskRecord &task) const;
-
-    /**
-     * @brief 检查任务是否可完成
-     * @param task 任务记录
-     * @return 可完成返回 true
-     */
-    bool canFinish(const TaskRecord &task) const;
-
-    /**
-     * @brief 检查任务是否处于终止状态
-     * @param task 任务记录
-     * @return 已终止返回 true
-     */
-    bool isTerminal(const TaskRecord &task) const;
-
-    std::vector<TaskRecord> tasks_;                  ///< 任务记录列表
-    int                     next_task_id_{1};        ///< 下一个任务 ID
-    int                     revision_{0};            ///< 数据版本号
-    QTimer                 *runtime_timer_{nullptr}; ///< 运行时间刷新定时器
-};
-
-/**
- * @brief 任务管理器（单例），组合 TaskTableModel、TaskCommunicationServer 和 TaskEventRouter
- */
-class MODEL_API TaskManager : public QObject
-{
-    Q_OBJECT
-    QML_NAMED_ELEMENT(TaskManager)
-    QT_QML_SINGLETON(TaskManager)
-    Q_PROPERTY(TaskTableModel *tasks READ tasks CONSTANT FINAL)
-public:
-    ~TaskManager() override = default;
-
-    /**
-     * @brief 获取任务表格模型
-     * @return 任务表格模型指针
-     */
-    TaskTableModel *tasks() const
-    {
-        return tasks_;
-    }
-
-    /**
-     * @brief 添加任务
-     * @param model_uuid 模型 UUID
-     * @param model_name 模型名称
-     * @param task_type 任务类型
-     * @return 任务 ID
+     * @brief 创建 Pending 任务记录。
+     * @param model_uuid 所属模型 UUID。
+     * @param model_name 用于任务中心显示的模型名称。
+     * @param task_type 模型任务类型。
+     * @return 新任务 ID；参数无效时返回 -1。
      */
     Q_INVOKABLE int addTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type);
-
     /**
-     * @brief 添加任务（可选暂停支持）
-     * @param model_uuid 模型 UUID
-     * @param model_name 模型名称
-     * @param task_type 任务类型
-     * @param supports_pause 是否支持暂停
-     * @return 任务 ID
+     * @brief 创建 Pending 任务记录，并指定其是否支持暂停。
+     * @param model_uuid 所属模型 UUID。
+     * @param model_name 用于任务中心显示的模型名称。
+     * @param task_type 模型任务类型。
+     * @param supports_pause 是否允许暂停。
+     * @return 新任务 ID；参数无效时返回 -1。
      */
     int addTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type,
                 bool supports_pause);
 
     /**
-     * @brief 启动任务
-     * @param task_id 任务 ID
-     * @return 操作成功返回 true
+     * @brief 将可启动任务置为 Preparing，并请求所属控制器继续完整启动链。
+     *
+     * TaskCenter 和模型页面都调用此函数，因此两处必定走同一条后台准备、Python
+     * 启动和状态回写流程。
+     * @param task_id 任务 ID。
+     * @return 成功提交开始请求返回 true。
      */
     Q_INVOKABLE bool startTask(int task_id);
-
     /**
-     * @brief 暂停任务
-     * @param task_id 任务 ID
-     * @return 操作成功返回 true
+     * @brief 暂停支持暂停的运行中内部任务。
+     * @param task_id 任务 ID。
+     * @return 状态转换成功返回 true。
      */
     Q_INVOKABLE bool pauseTask(int task_id);
-
     /**
-     * @brief 停止任务
-     * @param task_id 任务 ID
-     * @return 操作成功返回 true
+     * @brief 请求停止运行中或正在准备的任务。
+     * @param task_id 任务 ID。
+     * @return 成功进入 Stopping 并通知所属控制器返回 true。
      */
     Q_INVOKABLE bool stopTask(int task_id);
-
     /**
-     * @brief 完成任务
-     * @param task_id 任务 ID
-     * @return 操作成功返回 true
+     * @brief 将运行中的任务标记为正常完成。
+     * @param task_id 任务 ID。
+     * @return 状态转换成功返回 true。
      */
     Q_INVOKABLE bool finishTask(int task_id);
-
     /**
-     * @brief 标记任务失败
-     * @param task_id 任务 ID
-     * @return 操作成功返回 true
+     * @brief 将仍在活动状态的任务标记为失败。
+     * @param task_id 任务 ID。
+     * @return 状态转换成功返回 true。
      */
-    bool failTask(int task_id);
-
+    bool              failTask(int task_id);
     /**
-     * @brief 标记任务为已停止
-     * @param task_id 任务 ID
-     * @return 操作成功返回 true
+     * @brief 将准备完成且 Python 已实际启动的任务置为 Running。
+     * @param task_id 任务 ID。
+     * @return 状态转换成功返回 true。
      */
-    bool markTaskStopped(int task_id);
-
+    bool              markTaskRunning(int task_id);
     /**
-     * @brief 删除任务
-     * @param task_id 任务 ID
-     * @return 操作成功返回 true
+     * @brief 将已收敛的停止请求置为 Stopped。
+     * @param task_id 任务 ID。
+     * @return 状态转换成功返回 true。
+     */
+    bool              markTaskStopped(int task_id);
+    /**
+     * @brief 删除任务记录。
+     * @param task_id 任务 ID。
+     * @return 记录删除成功返回 true；活动任务会先发出停止请求。
      */
     Q_INVOKABLE bool deleteTask(int task_id);
-
     /**
-     * @brief 更新任务进度
-     * @param task_id 任务 ID
-     * @param progress 进度值
-     * @return 操作成功返回 true
+     * @brief 更新任务进度。
+     * @param task_id 任务 ID。
+     * @param progress 进度值，自动限制在 0-100。
+     * @return 更新成功返回 true。
      */
     Q_INVOKABLE bool updateTaskProgress(int task_id, int progress);
-
     /**
-     * @brief 更新任务预计剩余时间
-     * @param task_id 任务 ID
-     * @param eta_seconds 预计剩余秒数
-     * @return 操作成功返回 true
+     * @brief 更新任务预计剩余时间。
+     * @param task_id 任务 ID。
+     * @param eta_seconds 剩余秒数；负数表示未知。
+     * @return 更新成功返回 true。
      */
-    bool updateTaskEta(int task_id, qint64 eta_seconds);
-
+    bool              updateTaskEta(int task_id, qint64 eta_seconds);
     /**
-     * @brief 清除所有任务
+     * @brief 清空当前项目的全部任务记录。
      */
-    void clearTasks();
+    void              clearTasks();
 
     /**
-     * @brief 确保任务通信服务端已启动
-     * @param err_msg 错误信息输出
-     * @return 启动成功返回 true
+     * @brief 按模型 UUID 和任务类型查找最新任务。
+     * @param model_uuid 模型 UUID。
+     * @param task_type 模型任务类型。
+     * @param include_finished 是否包含 Finished 任务。
+     * @return 任务 ID；未找到时返回 -1。
      */
-    bool ensureTaskServer(QString *err_msg = nullptr);
+    Q_INVOKABLE int findModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type,
+                                  bool include_finished = false) const;
+    /**
+     * @brief 获取任务中心保存的唯一任务记录。
+     * @param task_id 任务 ID。
+     * @return 任务记录指针；不存在时返回 nullptr。指针不可跨事件循环或任务表修改保存。
+     */
+    const Task      *findTask(int task_id) const;
+    /**
+     * @brief 获取指定模型的最新任务记录。
+     * @param model_uuid 模型 UUID。
+     * @param task_type 模型任务类型。
+     * @param include_finished 是否包含 Finished 任务。
+     * @return 任务记录指针；不存在时返回 nullptr。指针不可跨事件循环或任务表修改保存。
+     */
+    const Task      *findModelTaskRecord(const QString &model_uuid, ModelTaskTypes::Type task_type,
+                                         bool include_finished = false) const;
 
     /**
-     * @brief 获取任务通信服务端主机地址
-     * @return 主机地址
+     * @brief 查询任务是否可以开始。
+     * @param task_id 任务 ID。
+     * @return 可开始返回 true。
+     */
+    Q_INVOKABLE bool canStartTask(int task_id) const;
+    /**
+     * @brief 查询任务是否可以暂停。
+     * @param task_id 任务 ID。
+     * @return 可暂停返回 true。
+     */
+    Q_INVOKABLE bool canPauseTask(int task_id) const;
+    /**
+     * @brief 查询任务是否可以停止。
+     * @param task_id 任务 ID。
+     * @return Preparing、Running 或 Paused 状态返回 true。
+     */
+    Q_INVOKABLE bool canStopTask(int task_id) const;
+    /**
+     * @brief 判断任务状态是否为终态。
+     * @param status 任务状态。
+     * @return Stopped、Finished 或 Failed 返回 true。
+     */
+    static bool       isTerminal(TaskStatus status);
+
+    /**
+     * @brief 确保接收 Python 任务事件的 TCP 服务已启动。
+     * @param err_msg 启动失败时输出错误信息，可为 nullptr。
+     * @return 服务已启动或成功启动返回 true。
+     */
+    bool    ensureTaskServer(QString *err_msg = nullptr);
+    /**
+     * @brief 获取 TCP 服务绑定的主机地址。
+     * @return 主机地址。
      */
     QString taskServerHost() const;
-
     /**
-     * @brief 获取任务通信服务端端口号
-     * @return 端口号
+     * @brief 获取 TCP 服务绑定的端口。
+     * @return 服务未启动时返回 0。
      */
     quint16 taskServerPort() const;
 
-    /**
-     * @brief 请求停止任务
-     * @param task_id 任务 ID
-     * @return 命令发送成功返回 true
-     */
-    bool requestStopTask(int task_id);
-
 signals:
+    void countChanged();
+    void revisionChanged();
+    /**
+     * @brief 任务已经进入 Preparing，请所属控制器提交后台准备工作。
+     * @param task_id 任务 ID。
+     */
+    void taskStartRequested(int task_id);
+    /**
+     * @brief 用户请求停止，所属控制器应停止进程或收敛仍在执行的后台准备。
+     * @param task_id 任务 ID。
+     */
     void taskStopRequested(int task_id);
+    /**
+     * @brief 已处理状态表更新的 Python 任务事件，控制器可据此刷新模型结果。
+     * @param message Python 上报的任务事件。
+     */
     void taskMessageReceived(const dltool::model::TaskMessage &message);
+
+private slots:
+    /**
+     * @brief 接收 Python 上报的任务事件并更新任务表。
+     * @param message Python 上报的任务消息。
+     */
+    void handleTaskMessage(const dltool::model::TaskMessage &message);
 
 private:
     /**
-     * @brief 构造任务管理器
-     * @param parent 父对象
+     * @brief 构造任务管理器。
+     * @param parent 父对象。
      */
     explicit TaskManager(QObject *parent = nullptr);
 
-    TaskTableModel          *tasks_{nullptr};                ///< 任务表格模型
-    TaskCommunicationServer *communication_server_{nullptr}; ///< 任务通信服务端
-    TaskEventRouter         *event_router_{nullptr};         ///< 任务事件路由器
+    /**
+     * @brief 根据任务 ID 查找任务表行号。
+     * @param task_id 任务 ID。
+     * @return 行号；未找到时返回 -1。
+     */
+    int  rowForTask(int task_id) const;
+    /**
+     * @brief 根据模型和任务类型查找最新任务表行号。
+     * @param model_uuid 模型 UUID。
+     * @param task_type 模型任务类型。
+     * @param include_finished 是否包含 Finished 任务。
+     * @return 行号；未找到时返回 -1。
+     */
+    int  rowForModelTask(const QString &model_uuid, ModelTaskType task_type, bool include_finished) const;
+    /**
+     * @brief 更新任务状态并发出局部模型更新信号。
+     * @param task_id 任务 ID。
+     * @param status 新状态。
+     * @return 状态更新成功返回 true。
+     */
+    bool setTaskStatus(int task_id, TaskStatus status);
+
+    /**
+     * @brief 发出指定任务行的数据变更和版本变更信号。
+     * @param row 任务表行号。
+     * @param roles 已变化的 role 列表。
+     */
+    void emitTaskChanged(int row, const QList<int> &roles = {});
+    /**
+     * @brief 刷新运行中任务的显示时长。
+     */
+    void refreshRunningTasks();
+
+    /**
+     * @brief 获取指定任务列的显示数据。
+     * @param task 任务记录。
+     * @param column 列序号。
+     * @return 显示数据。
+     */
+    QVariant dataForColumn(const Task &task, int column) const;
+    /**
+     * @brief 获取任务状态显示文本。
+     * @param task 任务记录。
+     * @return 状态文本。
+     */
+    QString  statusText(const Task &task) const;
+    /**
+     * @brief 获取任务创建时间显示文本。
+     * @param task 任务记录。
+     * @return 格式化时间文本。
+     */
+    QString  createdAtText(const Task &task) const;
+    /**
+     * @brief 获取任务运行时长显示文本。
+     * @param task 任务记录。
+     * @return 格式化时长文本。
+     */
+    QString  runningTimeText(const Task &task) const;
+    /**
+     * @brief 获取任务 ETA 显示文本。
+     * @param task 任务记录。
+     * @return 格式化 ETA 文本。
+     */
+    QString  etaText(const Task &task) const;
+    /**
+     * @brief 计算任务累计运行秒数。
+     * @param task 任务记录。
+     * @return 运行秒数。
+     */
+    qint64   runningTimeSeconds(const Task &task) const;
+    /**
+     * @brief 获取任务剩余秒数。
+     * @param task 任务记录。
+     * @return 剩余秒数；未知时返回 -1。
+     */
+    qint64   etaSeconds(const Task &task) const;
+    /**
+     * @brief 判断任务是否可开始。
+     * @param task 任务记录。
+     * @return 可开始返回 true。
+     */
+    bool     canStart(const Task &task) const;
+    /**
+     * @brief 判断任务是否可暂停。
+     * @param task 任务记录。
+     * @return 可暂停返回 true。
+     */
+    bool     canPause(const Task &task) const;
+    /**
+     * @brief 判断任务是否可停止。
+     * @param task 任务记录。
+     * @return 可停止返回 true。
+     */
+    bool     canStop(const Task &task) const;
+    /**
+     * @brief 判断任务是否可标记完成。
+     * @param task 任务记录。
+     * @return 可标记完成返回 true。
+     */
+    bool     canFinish(const Task &task) const;
+
+    std::vector<Task>       tasks_;                 ///< 任务中心保存的唯一任务记录。
+    int                     next_task_id_{1};       ///< 下一个递增任务 ID。
+    int                     revision_{0};           ///< 非表格 QML 刷新版本号。
+    QTimer                 *runtime_timer_{nullptr}; ///< 运行时长刷新定时器。
+    TaskCommunicationServer *communication_server_{nullptr}; ///< Python 任务通信服务。
 };
 
 } // namespace dltool::model
