@@ -44,7 +44,7 @@ public:
 
     virtual void startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir);
     virtual void startScanLabelClasses(const QString &image_dir, const QString &data_dir);
-    virtual void startExport(const ExportDataset &dataset, const QString &output_dir,
+    virtual void startExport(ExportDataset dataset, const QString &output_dir,
                              const QVariantMap &options = {});
 
 signals:
@@ -77,7 +77,7 @@ public:
 
     void startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir) override;
     void startScanLabelClasses(const QString &image_dir, const QString &data_dir) override;
-    void startExport(const ExportDataset &dataset, const QString &output_dir,
+    void startExport(ExportDataset dataset, const QString &output_dir,
                      const QVariantMap &options = {}) override;
 
 private:
@@ -135,7 +135,7 @@ public:
 
     void startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir) override;
     void startScanLabelClasses(const QString &image_dir, const QString &data_dir) override;
-    void startExport(const ExportDataset &dataset, const QString &output_dir,
+    void startExport(ExportDataset dataset, const QString &output_dir,
                      const QVariantMap &options = {}) override;
 
 private:
@@ -161,7 +161,7 @@ public:
 
     void startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir) override;
     void startScanLabelClasses(const QString &image_dir, const QString &data_dir) override;
-    void startExport(const ExportDataset &dataset, const QString &output_dir,
+    void startExport(ExportDataset dataset, const QString &output_dir,
                      const QVariantMap &options = {}) override;
 
 private:
@@ -201,7 +201,7 @@ public:
 
     void startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir) override;
     void startScanLabelClasses(const QString &image_dir, const QString &data_dir) override;
-    void startExport(const ExportDataset &dataset, const QString &output_dir,
+    void startExport(ExportDataset dataset, const QString &output_dir,
                      const QVariantMap &options = {}) override;
 
 private:

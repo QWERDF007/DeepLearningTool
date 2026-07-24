@@ -154,6 +154,15 @@ public:
     Q_INVOKABLE bool updateLabelClassGroup(const int64_t label_class_id, const QString &group);
 
     /**
+     * @brief 设置数据操作期间的写入阻断状态。
+     * @param blocked 是否阻断直接写入。
+     */
+    void setMutationBlocked(bool blocked)
+    {
+        mutation_blocked_ = blocked;
+    }
+
+    /**
      * @brief 根据快捷键查找标签类别
      * @param shortcut 快捷键（不区分大小写）
      * @return 匹配的标签类别索引，未找到返回 -1；多个匹配时返回 ordinal_index 最小的
@@ -187,6 +196,7 @@ private:
     std::map<int64_t, LabelClass *> label_classes_;
 
     QItemSelectionModel *selection_{nullptr};
+    bool                 mutation_blocked_{false};
 
 signals:
     void currentLabelClassChanged();

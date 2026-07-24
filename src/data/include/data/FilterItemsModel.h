@@ -85,6 +85,12 @@ public:
     Q_INVOKABLE void setAllChecked(bool checked);
 
 protected:
+    /**
+     * @brief 一次性替换全部过滤项。
+     * @param items 新的过滤项列表。
+     */
+    void replaceItems(std::vector<FilterItem> items);
+
     std::vector<FilterItem> items_; // 项目列表
 };
 

@@ -87,9 +87,10 @@ void DatasetSelectionStatisticsModel::connectDataSources()
     connect(data_manager_, &DataManager::dataImportFinished, this,
             [this](bool, const QString &) { scheduleRefresh(); });
 
-    image_instances_ = data_manager_->imageInstances();
+    // 统计必须遍历全部实体，不能使用带筛选条件的可见代理模型。
+    image_instances_ = data_manager_->imageSource();
     label_classes_   = data_manager_->labelClasses();
-    label_instances_ = data_manager_->labelInstances();
+    label_instances_ = data_manager_->labelSource();
 
     connectSourceModel(image_instances_);
     connectSourceModel(label_classes_);
@@ -97,8 +98,6 @@ void DatasetSelectionStatisticsModel::connectDataSources()
 
     if (image_instances_ != nullptr)
     {
-        connect(image_instances_, &ImageInstancesListModel::statsChanged, this,
-                &DatasetSelectionStatisticsModel::scheduleRefresh);
         connect(image_instances_, &QObject::destroyed, this, [this]() { image_instances_ = nullptr; });
     }
     if (label_classes_ != nullptr)

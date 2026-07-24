@@ -2,6 +2,7 @@
 
 #include "CategoryStatisticsModel.h"
 #include "DataOperationWorkflow.h"
+#include "DataViewModels.h"
 #include "DataIO.h"
 #include "DatasetExportSource.h"
 #include "Datasets.h"
@@ -36,10 +37,10 @@ class DATA_API DataManager : public QObject
     QML_NAMED_ELEMENT(DataManager)
     QML_UNCREATABLE("Can not create DataManager directly!")
     Q_PROPERTY(DatasetsListModel *datasets READ datasets CONSTANT FINAL)
-    Q_PROPERTY(ImageInstancesListModel *imageInstances READ imageInstances CONSTANT FINAL)
+    Q_PROPERTY(ImageInstancesViewModel *imageInstances READ imageInstances CONSTANT FINAL)
     Q_PROPERTY(LabelClassesListModel *labelClasses READ labelClasses CONSTANT FINAL)
     Q_PROPERTY(ImageTagsListModel *imageTags READ imageTags CONSTANT FINAL)
-    Q_PROPERTY(LabelInstancesListModel *labelInstances READ labelInstances CONSTANT FINAL)
+    Q_PROPERTY(LabelInstancesViewModel *labelInstances READ labelInstances CONSTANT FINAL)
     Q_PROPERTY(ImageLabelsListModel *imageLabelsList READ imageLabelsList CONSTANT FINAL)
     Q_PROPERTY(ImageLabelsTableModel *imageLabelsTable READ imageLabelsTable CONSTANT FINAL)
     Q_PROPERTY(ImageInfoListModel *imageInfo READ imageInfo CONSTANT FINAL)
@@ -66,9 +67,20 @@ public:
         return datasets_;
     }
 
-    ImageInstancesListModel *imageInstances() const
+    ImageInstancesViewModel *imageInstances() const
     {
         return image_instances_;
+    }
+
+    /**
+     * @brief 返回图像原始数据模型。
+     *
+     * 仅供 data 模块内部、图像提供器和派生统计读取完整数据；QML 一律使用
+     * imageInstances() 返回的可见代理模型。
+     */
+    ImageInstancesListModel *imageSource() const
+    {
+        return image_source_;
     }
 
     LabelClassesListModel *labelClasses() const
@@ -81,9 +93,17 @@ public:
         return image_tags_;
     }
 
-    LabelInstancesListModel *labelInstances() const
+    LabelInstancesViewModel *labelInstances() const
     {
         return label_instances_;
+    }
+
+    /**
+     * @brief 返回标注原始数据模型。
+     */
+    LabelInstancesListModel *labelSource() const
+    {
+        return label_source_;
     }
 
     ImageLabelsListModel *imageLabelsList() const
@@ -248,6 +268,12 @@ public:
     Q_INVOKABLE int64_t   labelClassId(int64_t label_id) const;
     QVariantMap          labelData(int64_t label_id) const;
     QString              labelClassName(int64_t label_class_id) const;
+    /**
+     * @brief 返回标签类别颜色。
+     * @param label_class_id 标签类别 ID。
+     * @return 标签类别颜色。
+     */
+    QString              labelClassColor(int64_t label_class_id) const;
     QString              labelClassGroup(int64_t label_class_id) const;
     QString              datasetName(int64_t dataset_id) const;
     std::vector<int64_t> imageLabelIds(int64_t image_id) const;
@@ -262,7 +288,7 @@ public:
         = std::function<void(const DatasetExportSource &, DataOperationWorkflow::Result &)>;
     void runDatasetExportAsync(QObject *context, DatasetExportRequest request,
                                DataOperationWorkflow::Options options, DatasetExportWork work,
-                               DataOperationWorkflow::Completion completion = {}) const;
+                               DataOperationWorkflow::Completion completion = {});
 
     void importMaskData(int64_t dataset_id, const QString &image_manifest_path, const QString &prediction_output_dir);
     QMetaObject::Connection connectImportFinished(QObject *context, ImportFinishedHandler handler);
@@ -288,21 +314,15 @@ private:
                             const QString &err_msg, qint64 elapsed_ms);
     void commitDatasetDeletion(const std::vector<int64_t> &dataset_ids, bool success, const QString &err_msg,
                                qint64 elapsed_ms);
-    void commitImageDeletion(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &dataset_ids,
-                             const std::vector<std::vector<int64_t>> &image_label_ids,
-                             const std::vector<int64_t> &image_label_class_ids, bool success,
-                             const QString &err_msg, qint64 elapsed_ms);
-    void commitImageMove(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &source_dataset_ids,
-                         const std::vector<int64_t> &target_dataset_ids,
-                         const std::vector<std::vector<int64_t>> &image_label_ids,
-                         const std::vector<int64_t> &image_label_class_ids, bool success,
+    void commitImageDeletion(const std::vector<int64_t> &image_ids, bool success, const QString &err_msg,
+                             qint64 elapsed_ms);
+    void commitImageMove(const std::vector<int64_t> &image_ids, int64_t target_dataset_id, bool success,
                          const QString &err_msg, qint64 elapsed_ms);
 
     struct ImageCopyResult;
-    void commitImageCopy(const std::shared_ptr<ImageCopyResult> &result);
+    void commitImageCopy(const std::shared_ptr<ImageCopyResult> &result,
+                         const DataOperationWorkflow::Result &operation);
     void rebuildLabelRelations(bool notify_image_model = true);
-
-    void updateDatasetsStats();
 
     /**
      * @brief 处理导入器解析出的单个数据批次
@@ -324,22 +344,32 @@ private:
 
     bool isDataOperationRunning() const
     {
-        return data_operation_running_ || dataset_deletion_running_ || image_operation_running_ || import_running_;
+        return data_operation_running_;
     }
 
     void setDataOperationRunning(const bool running)
     {
         data_operation_running_ = running;
+        if (label_classes_ != nullptr)
+        {
+            label_classes_->setMutationBlocked(running);
+        }
+        if (image_tags_ != nullptr)
+        {
+            image_tags_->setMutationBlocked(running);
+        }
     }
 
     dltool::database::ProjectDataBase *database_{nullptr};
     QString                          project_dir_;
 
     DatasetsListModel       *datasets_{nullptr};
-    ImageInstancesListModel *image_instances_{nullptr};
+    ImageInstancesListModel *image_source_{nullptr};
+    ImageInstancesViewModel *image_instances_{nullptr};
     LabelClassesListModel   *label_classes_{nullptr};
     ImageTagsListModel      *image_tags_{nullptr};
-    LabelInstancesListModel *label_instances_{nullptr};
+    LabelInstancesListModel *label_source_{nullptr};
+    LabelInstancesViewModel *label_instances_{nullptr};
     ImageLabelsListModel    *image_labels_list_{nullptr};
     ImageLabelsTableModel   *image_labels_table_{nullptr};
 

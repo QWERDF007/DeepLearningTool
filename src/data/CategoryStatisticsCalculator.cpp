@@ -96,41 +96,46 @@ CategoryStatisticsResult calculateCategoryStatistics(LabelInstancesListModel *la
         }
     }
 
-    const std::vector<int64_t> all_image_ids
-        = use_filtered_data ? std::vector<int64_t>{} : image_instances->getAllImageIds();
-    const int image_count = use_filtered_data ? image_instances->rowCount() : image_instances->totalCount();
-
-    for (int row = 0; row < image_count; ++row)
+    if (use_filtered_data)
     {
-        int64_t image_id       = -1;
-        int64_t label_class_id = -1;
-
-        if (use_filtered_data)
+        for (int row = 0; row < image_instances->rowCount(); ++row)
         {
             const QModelIndex index = image_instances->index(row, 0);
-            image_id = image_instances->data(index, ImageInstancesListModel::ImageIdRole).toLongLong();
-            label_class_id
+            const int64_t image_id = image_instances->data(index, ImageInstancesListModel::ImageIdRole).toLongLong();
+            const int64_t label_class_id
                 = image_instances->data(index, ImageInstancesListModel::ImageLabelClassIdRole).toLongLong();
-        }
-        else
-        {
-            if (row >= static_cast<int>(all_image_ids.size()))
-                break;
-            image_id       = all_image_ids[static_cast<size_t>(row)];
-            label_class_id = image_instances->getImageLabelClassId(image_id);
-        }
+            if (label_class_id < 0 || !included(predicate, image_id, label_class_id))
+                continue;
 
-        if (label_class_id < 0 || !included(predicate, image_id, label_class_id))
-            continue;
-
-        // 图像级类别始终参与图像统计；只有实例总数需要避免与同一图像的标注实例重复计数。
-        if (images_with_label_instances.find(image_id) == images_with_label_instances.end())
-        {
-            ++category_instance_counts[label_class_id];
-            ++result.total_instances;
+            // 图像级类别始终参与图像统计；只有实例总数需要避免与同一图像的标注实例重复计数。
+            if (images_with_label_instances.find(image_id) == images_with_label_instances.end())
+            {
+                ++category_instance_counts[label_class_id];
+                ++result.total_instances;
+            }
+            category_images[label_class_id].insert(image_id);
+            all_images.insert(image_id);
         }
-        category_images[label_class_id].insert(image_id);
-        all_images.insert(image_id);
+    }
+    else
+    {
+        for (const auto &[image_id, image] : image_instances->getAllImageInstances())
+        {
+            if (image == nullptr)
+                continue;
+
+            const int64_t label_class_id = image->imageLabelClassId();
+            if (label_class_id < 0 || !included(predicate, image_id, label_class_id))
+                continue;
+
+            if (images_with_label_instances.find(image_id) == images_with_label_instances.end())
+            {
+                ++category_instance_counts[label_class_id];
+                ++result.total_instances;
+            }
+            category_images[label_class_id].insert(image_id);
+            all_images.insert(image_id);
+        }
     }
 
     result.total_images = static_cast<int>(all_images.size());

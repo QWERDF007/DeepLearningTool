@@ -1,5 +1,6 @@
 #include "data/ImageTags.h"
 
+#include "data/DataViewModels.h"
 #include "data/Images.h"
 #include "data/Labels.h"
 #include "database/DataBase.h"
@@ -13,11 +14,13 @@ namespace dltool::data {
 
 ImageTagsListModel::ImageTagsListModel(dltool::database::ProjectDataBase *database,
                                        ImageInstancesListModel *image_instances,
+                                       ImageInstancesViewModel *image_view,
                                        LabelInstancesListModel *label_instances,
                                        ImageLabelsListModel *image_labels_list, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
     , image_instances_(image_instances)
+    , image_view_(image_view)
     , label_instances_(label_instances)
     , image_labels_list_(image_labels_list)
 {
@@ -82,7 +85,7 @@ bool ImageTagsListModel::initTagRelations()
         for (const int64_t tag_id : image_tag_ids[i])
         {
             if (Tag *tag = getTag(tag_id))
-                tag->addImageIds({image_ids[i]});
+                tag->addImageId(image_ids[i]);
         }
     }
     for (size_t i = 0; i < label_ids.size() && i < label_tag_ids.size(); ++i)
@@ -90,7 +93,7 @@ bool ImageTagsListModel::initTagRelations()
         for (const int64_t tag_id : label_tag_ids[i])
         {
             if (Tag *tag = getTag(tag_id))
-                tag->addLabelIds({label_ids[i]});
+                tag->addLabelId(label_ids[i]);
         }
     }
     return true;
@@ -138,6 +141,10 @@ QHash<int, QByteArray> ImageTagsListModel::roleNames() const
 
 bool ImageTagsListModel::addTagClass(const QString &name)
 {
+    if (mutation_blocked_)
+    {
+        return false;
+    }
     if (database_ == nullptr)
     {
         spdlog::error("添加 Tag 失败: 数据库未初始化");
@@ -179,6 +186,10 @@ int64_t ImageTagsListModel::findTagClassId(const QString &name) const
 
 bool ImageTagsListModel::updateTagClass(const int64_t tag_id, const QString &name)
 {
+    if (mutation_blocked_)
+    {
+        return false;
+    }
     if (database_ == nullptr)
     {
         spdlog::error("更新 Tag 失败: 数据库未初始化");
@@ -214,6 +225,10 @@ bool ImageTagsListModel::updateTagClass(const int64_t tag_id, const QString &nam
 
 bool ImageTagsListModel::deleteTagClass(const int64_t tag_id)
 {
+    if (mutation_blocked_)
+    {
+        return false;
+    }
     if (database_ == nullptr)
     {
         spdlog::error("删除 Tag 失败: 数据库未初始化");
@@ -233,20 +248,18 @@ bool ImageTagsListModel::deleteTagClass(const int64_t tag_id)
         return false;
     }
 
-    const std::vector<int64_t> image_ids(found->second.imageIds().begin(), found->second.imageIds().end());
-    const std::vector<int64_t> label_ids(found->second.labelIds().begin(), found->second.labelIds().end());
-    for (const int64_t image_id : image_ids)
+    for (const int64_t image_id : found->second.imageIds())
     {
         if (ImageInstance *image = image_instances_ ? image_instances_->getImageInstance(image_id) : nullptr)
         {
-            image->removeTagIds({tag_id});
+            image->removeTagId(tag_id);
         }
     }
-    for (const int64_t label_id : label_ids)
+    for (const int64_t label_id : found->second.labelIds())
     {
         if (LabelInstance *label = label_instances_ ? label_instances_->getLabelInstance(label_id) : nullptr)
         {
-            label->removeTagIds({tag_id});
+            label->removeTagId(tag_id);
         }
     }
 
@@ -293,68 +306,52 @@ void ImageTagsListModel::removeImagesTagsFromMemory(const std::vector<int64_t> &
     removeTagsFromMemory(image_ids, TagTarget::Image);
 }
 
-void ImageTagsListModel::addImagesTagsFromMemory(const std::vector<int64_t>              &image_ids,
-                                                 const std::vector<std::vector<int64_t>> &tag_ids)
+void ImageTagsListModel::addRelationsFromMemory(const std::vector<LoadedImageInstance> &images,
+                                                const std::vector<LoadedLabelInstance> &labels)
 {
-    const size_t count = std::min(image_ids.size(), tag_ids.size());
-    for (size_t i = 0; i < count; ++i)
+    for (const LoadedImageInstance &image : images)
     {
-        if (ImageInstance *image = image_instances_ ? image_instances_->getImageInstance(image_ids[i]) : nullptr)
-        {
-            image->addTagIds(tag_ids[i]);
-        }
-        for (const int64_t tag_id : tag_ids[i])
+        for (const int64_t tag_id : image.tag_ids)
         {
             auto tag = tags_.find(tag_id);
             if (tag != tags_.end())
             {
-                tag->second.addImageIds({image_ids[i]});
+                tag->second.addImageId(image.image_id);
+            }
+        }
+    }
+    for (const LoadedLabelInstance &label : labels)
+    {
+        for (const int64_t tag_id : label.tag_ids)
+        {
+            auto tag = tags_.find(tag_id);
+            if (tag != tags_.end())
+            {
+                tag->second.addLabelId(label.label_id);
             }
         }
     }
     updateStats();
 }
 
-void ImageTagsListModel::addLabelsTagsFromMemory(const std::vector<int64_t>              &label_ids,
-                                                 const std::vector<std::vector<int64_t>> &tag_ids)
+void ImageTagsListModel::applyTagsToImages()
 {
-    const size_t count = std::min(label_ids.size(), tag_ids.size());
-    for (size_t i = 0; i < count; ++i)
+    if (image_instances_ == nullptr)
     {
-        if (LabelInstance *label = label_instances_ ? label_instances_->getLabelInstance(label_ids[i]) : nullptr)
+        return;
+    }
+
+    for (const auto &[tag_id, tag] : tags_)
+    {
+        for (const int64_t image_id : tag.imageIds())
         {
-            label->addTagIds(tag_ids[i]);
-        }
-        for (const int64_t tag_id : tag_ids[i])
-        {
-            auto tag = tags_.find(tag_id);
-            if (tag != tags_.end())
+            if (ImageInstance *image = image_instances_->getImageInstance(image_id))
             {
-                tag->second.addLabelIds({label_ids[i]});
+                image->addTagId(tag_id);
             }
         }
     }
     updateStats();
-}
-
-std::vector<std::vector<int64_t>> ImageTagsListModel::getImagesTagIds(
-    const std::vector<int64_t> &image_ids) const
-{
-    std::vector<std::vector<int64_t>> image_tag_ids;
-    image_tag_ids.reserve(image_ids.size());
-    for (const int64_t image_id : image_ids)
-    {
-        std::vector<int64_t> tag_ids;
-        for (const auto &[tag_id, tag] : tags_)
-        {
-            if (tag.imageIds().count(image_id) > 0)
-            {
-                tag_ids.push_back(tag_id);
-            }
-        }
-        image_tag_ids.push_back(std::move(tag_ids));
-    }
-    return image_tag_ids;
 }
 
 void ImageTagsListModel::applyTagsToLabels()
@@ -370,7 +367,7 @@ void ImageTagsListModel::applyTagsToLabels()
         {
             if (LabelInstance *label = label_instances_->getLabelInstance(label_id))
             {
-                label->addTagIds({tag_id});
+                label->addTagId(tag_id);
             }
         }
     }
@@ -379,6 +376,58 @@ void ImageTagsListModel::applyTagsToLabels()
 
 void ImageTagsListModel::updateStats()
 {
+    selected_image_tag_counts_.clear();
+    selected_label_tag_counts_.clear();
+
+    if (image_instances_ != nullptr && image_view_ != nullptr && image_view_->selection() != nullptr)
+    {
+        QAbstractItemModel *image_model = image_view_;
+        for (const QItemSelectionRange &range : image_view_->selection()->selection())
+        {
+            const int first = std::max(0, range.top());
+            const int last  = std::min(image_model->rowCount() - 1, range.bottom());
+            for (int row = first; row <= last; ++row)
+            {
+                const QModelIndex index = image_model->index(row, 0);
+                const int64_t image_id
+                    = image_model->data(index, ImageInstancesViewModel::ImageIdRole).toLongLong();
+                const ImageInstance *image = image_instances_->getImageInstance(image_id);
+                if (image == nullptr)
+                {
+                    continue;
+                }
+                for (const int64_t tag_id : image->tagIds())
+                {
+                    ++selected_image_tag_counts_[tag_id];
+                }
+            }
+        }
+    }
+
+    if (label_instances_ != nullptr && image_labels_list_ != nullptr && image_labels_list_->selection() != nullptr)
+    {
+        for (const QItemSelectionRange &range : image_labels_list_->selection()->selection())
+        {
+            const int first = std::max(0, range.top());
+            const int last  = std::min(image_labels_list_->rowCount() - 1, range.bottom());
+            for (int row = first; row <= last; ++row)
+            {
+                const QModelIndex index = image_labels_list_->index(row, 0);
+                const int64_t label_id
+                    = image_labels_list_->data(index, ImageLabelsListModel::LabelIdRole).toLongLong();
+                const LabelInstance *label = label_instances_->getLabelInstance(label_id);
+                if (label == nullptr)
+                {
+                    continue;
+                }
+                for (const int64_t tag_id : label->tagIds())
+                {
+                    ++selected_label_tag_counts_[tag_id];
+                }
+            }
+        }
+    }
+
     if (tags_.empty())
     {
         return;
@@ -409,6 +458,10 @@ int ImageTagsListModel::rowForTag(const int64_t tag_id) const
 bool ImageTagsListModel::setTags(const std::vector<int64_t> &target_ids, const int64_t tag_id,
                                   const TagTarget target, const bool toggle)
 {
+    if (mutation_blocked_)
+    {
+        return false;
+    }
     if (database_ == nullptr)
     {
         spdlog::error("设置 Tag 失败: 数据库未初始化");
@@ -455,12 +508,12 @@ bool ImageTagsListModel::setTags(const std::vector<int64_t> &target_ids, const i
         {
             if (ImageInstance *image = image_instances_ ? image_instances_->getImageInstance(target_id) : nullptr)
             {
-                adding ? image->addTagIds({tag_id}) : image->removeTagIds({tag_id});
+                adding ? image->addTagId(tag_id) : image->removeTagId(tag_id);
             }
         }
         else if (LabelInstance *label = label_instances_ ? label_instances_->getLabelInstance(target_id) : nullptr)
         {
-            adding ? label->addTagIds({tag_id}) : label->removeTagIds({tag_id});
+            adding ? label->addTagId(tag_id) : label->removeTagId(tag_id);
         }
     }
 
@@ -479,6 +532,10 @@ bool ImageTagsListModel::setTags(const std::vector<int64_t> &target_ids, const i
 
 bool ImageTagsListModel::removeTags(const std::vector<int64_t> &target_ids, const TagTarget target)
 {
+    if (mutation_blocked_)
+    {
+        return false;
+    }
     if (database_ == nullptr)
     {
         spdlog::error("删除 Tag 失败: 数据库未初始化");
@@ -516,7 +573,7 @@ void ImageTagsListModel::removeTagsFromMemory(const std::vector<int64_t> &target
         {
             if (ImageInstance *image = image_instances_->getImageInstance(image_id))
             {
-                image->removeAllTagIds();
+                image->clearTagIds();
             }
         }
     }
@@ -526,7 +583,7 @@ void ImageTagsListModel::removeTagsFromMemory(const std::vector<int64_t> &target
         {
             if (LabelInstance *label = label_instances_->getLabelInstance(label_id))
             {
-                label->removeAllTagIds();
+                label->clearTagIds();
             }
         }
     }
@@ -574,53 +631,29 @@ QVariant ImageTagsListModel::getTagClassName(const QModelIndex &index) const
 
 QVariant ImageTagsListModel::getSelectedImagesTagStats(const QModelIndex &index) const
 {
-    if (image_instances_ == nullptr)
-    {
-        return {};
-    }
-
     const int64_t tag_id = getTagClassId(index);
-    int           count{0};
-    for (const int64_t image_id : image_instances_->getSelectedImagesId())
-    {
-        const ImageInstance *image = image_instances_->getImageInstance(image_id);
-        if (image != nullptr && image->tagIds().count(tag_id) > 0)
-        {
-            ++count;
-        }
-    }
+    const auto found = selected_image_tag_counts_.find(tag_id);
+    const int count = found == selected_image_tag_counts_.end() ? 0 : found->second;
     return count > 0 ? QString("(%1)").arg(count) : QString();
 }
 
 QVariant ImageTagsListModel::getCurrentImageTagStats(const QModelIndex &index) const
 {
-    if (image_instances_ == nullptr)
+    if (image_instances_ == nullptr || image_view_ == nullptr)
     {
         return {};
     }
 
-    const ImageInstance *image = image_instances_->getImageInstance(image_instances_->getCurrentImageId());
+    const ImageInstance *image = image_instances_->getImageInstance(image_view_->currentImageId());
     const int64_t        tag_id = getTagClassId(index);
     return image != nullptr && image->tagIds().count(tag_id) > 0 ? QStringLiteral("(1)") : QString();
 }
 
 QVariant ImageTagsListModel::getSelectedLabelsTagStats(const QModelIndex &index) const
 {
-    if (label_instances_ == nullptr || image_labels_list_ == nullptr)
-    {
-        return {};
-    }
-
     const int64_t tag_id = getTagClassId(index);
-    int           count{0};
-    for (const int64_t label_id : image_labels_list_->getSelectedLabelIds())
-    {
-        const LabelInstance *label = label_instances_->getLabelInstance(label_id);
-        if (label != nullptr && label->tagIds().count(tag_id) > 0)
-        {
-            ++count;
-        }
-    }
+    const auto found = selected_label_tag_counts_.find(tag_id);
+    const int count = found == selected_label_tag_counts_.end() ? 0 : found->second;
     return count > 0 ? QString("(%1)").arg(count) : QString();
 }
 

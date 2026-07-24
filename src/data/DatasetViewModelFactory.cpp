@@ -15,7 +15,7 @@ DataSelectionTreeModel *DatasetViewModelFactory::createDatasetSelectionModel(con
 
     auto *model = new DataSelectionTreeModel(owner != nullptr ? owner : const_cast<DataManager *>(data_manager));
     model->setDatasetClassSourceModels(data_manager->datasets(), data_manager->labelClasses(),
-                                       data_manager->imageInstances(), data_manager->labelInstances());
+                                       data_manager->imageSource(), data_manager->labelSource());
     QQmlEngine::setObjectOwnership(model, QQmlEngine::CppOwnership);
     return model;
 }

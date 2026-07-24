@@ -77,7 +77,7 @@ void DataOperationWorkflow::start(QObject *context, Options options, Work work, 
             catch (...)
             {
                 result.success = false;
-                result.error   = QStringLiteral("后台数据操作发生未知异常");
+                result.error   = QString("后台数据操作发生未知异常");
             }
 
             result.elapsed_ms = timer.elapsed();
@@ -105,6 +105,16 @@ void DataOperationWorkflow::start(QObject *context, Options options, Work work, 
                 Qt::QueuedConnection);
         });
 
+    // context 可能在项目关闭时先销毁。等待工作线程结束，保证后台工作不会继续访问
+    // context 所属的 DataManager、DataIO 或内存模型。
+    QObject::connect(context, &QObject::destroyed, worker_thread,
+                     [worker_thread]()
+                     {
+                         if (worker_thread->isRunning())
+                         {
+                             worker_thread->wait();
+                         }
+                     });
     QObject::connect(worker_thread, &QThread::finished, worker_thread, &QObject::deleteLater);
     worker_thread->start();
 }

@@ -859,33 +859,6 @@ bool ProjectDataBase::getImage(const int64_t image_id, std::pair<int64_t, QStrin
     }
 }
 
-bool ProjectDataBase::getImages(const std::vector<int64_t> &image_ids, std::vector<std::pair<int64_t, QString>> &images,
-                                QString &err_msg) const
-{
-    try
-    {
-        if (pool_ == nullptr)
-        {
-            err_msg = QString("打开数据库失败, %1").arg(path_);
-            return false;
-        }
-        auto db   = pool_->get();
-        auto data = db(sqlpp::select(ImagesTable.datasetId, ImagesTable.path)
-                           .from(ImagesTable)
-                           .where(ImagesTable.id.in(sqlpp::value_list(image_ids))));
-        for (const auto &row : data)
-        {
-            images.emplace_back(std::make_pair(row.datasetId, QString::fromStdString(row.path)));
-        }
-        return true;
-    }
-    catch (const std::exception &e)
-    {
-        err_msg = e.what();
-        return false;
-    }
-}
-
 bool ProjectDataBase::deleteImages(const std::vector<int64_t> &image_ids, QString &err_msg) const
 {
     if (image_ids.empty())

@@ -594,10 +594,12 @@ void DataSelectionTreeModel::rebuildDatasetClassTree()
 
     if (image_instances_model_ != nullptr)
     {
-        for (const qint64 image_id : image_instances_model_->getAllImageIds())
+        for (const auto &[image_id, image] : image_instances_model_->getAllImageInstances())
         {
-            addDatasetClass(image_instances_model_->getImageDatasetId(image_id),
-                            image_instances_model_->getImageLabelClassId(image_id));
+            if (image != nullptr)
+            {
+                addDatasetClass(image->datasetId(), image->imageLabelClassId());
+            }
         }
     }
 

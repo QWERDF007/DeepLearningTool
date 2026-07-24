@@ -93,9 +93,6 @@ struct DataManager::PendingImportTask
     std::map<QString, int64_t> image_path_to_id;
     std::map<QString, int64_t> normalized_image_path_to_id;
     std::map<QString, QString> label_class_group_map;
-    std::set<int64_t>          imported_image_id_set;
-    std::vector<int64_t>       imported_image_ids;
-    std::vector<int64_t>       deferred_dataset_image_ids;
     std::map<int64_t, int64_t> first_polygon_class_by_image_id;
     std::map<int64_t, int64_t> first_anomaly_polygon_class_by_image_id;
     std::map<int64_t, int64_t> folder_class_by_image_id;
@@ -117,41 +114,19 @@ struct DataManager::PendingImportTask
 
 namespace {
 
-struct CopyLabelPayload
-{
-    size_t               target_image_index{0};
-    int64_t              label_class_id{-1};
-    int64_t              label_type{0};
-    std::vector<uint8_t> data;
-    std::vector<int64_t> tag_ids;
-};
-
 struct ImageCopyRequest
 {
-    QString                            database_path;
-    int                                label_data_method{-1};
-    int64_t                            dataset_id{-1};
-    std::vector<QString>               image_paths;
-    std::vector<int64_t>               image_label_class_ids;
-    std::vector<std::vector<int64_t>>  image_tag_ids;
-    std::vector<CopyLabelPayload>      labels;
+    int                   label_data_method{-1};
+    int64_t               dataset_id{-1};
+    std::vector<int64_t> source_image_ids;
 };
 
 } // namespace
 
 struct DataManager::ImageCopyResult
 {
-    bool                              success{false};
-    QString                           err_msg;
-    qint64                            elapsed_ms{0};
-    int64_t                           dataset_id{-1};
-    std::vector<QString>              image_paths;
-    std::vector<int64_t>              copied_image_ids;
-    std::vector<int64_t>              image_label_class_ids;
-    std::vector<std::vector<int64_t>> image_tag_ids;
-    std::vector<int64_t>              copied_label_ids;
-    std::vector<std::vector<int64_t>> copied_label_tag_ids;
-    std::vector<LoadedLabelInstance>  labels;
+    std::vector<LoadedImageInstance> images;
+    std::vector<LoadedLabelInstance> labels;
 };
 
 DataManager::DataManager(const int method, dltool::database::ProjectDataBase *database, const QString &project_dir,
@@ -168,19 +143,21 @@ DataManager::~DataManager() {}
 
 void DataManager::init(const int method)
 {
-    datasets_           = new DatasetsListModel(database_, this);
-    image_instances_    = new ImageInstancesListModel(database_, this);
-    label_classes_      = new LabelClassesListModel(database_, this);
-    label_instances_    = new LabelInstancesListModel(database_, image_instances_, label_classes_,
-                                                      data::createLabelDataHelper(method), false, this);
-    image_labels_list_  = new ImageLabelsListModel(image_instances_, label_instances_, label_classes_, this);
-    image_labels_table_ = new ImageLabelsTableModel(image_instances_, label_instances_, label_classes_, this);
-    image_tags_         = new ImageTagsListModel(database_, image_instances_, label_instances_, image_labels_list_, this);
-    image_info_         = new ImageInfoListModel(datasets_, image_instances_, label_classes_, label_instances_, this);
+    datasets_      = new DatasetsListModel(database_, this);
+    image_source_  = new ImageInstancesListModel(database_, this);
+    label_classes_ = new LabelClassesListModel(database_, this);
+    label_source_  = new LabelInstancesListModel(database_, image_source_, label_classes_,
+                                                 data::createLabelDataHelper(method), false, this);
 
-    // Create GlobalFilter and initialize it with the models
+    // 筛选器只保存条件；可见图像和标注由代理模型负责。
     global_filter_ = new GlobalFilter(this, this);
-    global_filter_->initializeFilterModules(this);
+
+    image_instances_ = new ImageInstancesViewModel(image_source_, global_filter_, this);
+    label_instances_ = new LabelInstancesViewModel(label_source_, global_filter_, this);
+    image_labels_list_ = new ImageLabelsListModel(image_instances_, label_source_, label_classes_, this);
+    image_labels_table_ = new ImageLabelsTableModel(image_instances_, label_source_, label_classes_, this);
+    image_tags_ = new ImageTagsListModel(database_, image_source_, image_instances_, label_source_, image_labels_list_, this);
+    image_info_ = new ImageInfoListModel(datasets_, image_instances_, label_classes_, label_source_, this);
 
     // Create filter items models
     dataset_filter_items_     = new DatasetFilterItemsModel(this);
@@ -189,7 +166,7 @@ void DataManager::init(const int method)
     custom_filter_items_      = new CustomFilterItemsModel(this);
 
     // Create CategoryStatisticsModel
-    category_statistics_model_ = new CategoryStatisticsModel(label_instances_, label_classes_, image_instances_, this);
+    category_statistics_model_ = new CategoryStatisticsModel(label_source_, label_classes_, image_source_, this);
 
     // Populate filter items models from datasets and tags
     dataset_filter_items_->populateFromDatasets(datasets_);
@@ -225,11 +202,11 @@ void DataManager::init(const int method)
     connect(label_classes_, &QAbstractItemModel::modelReset, this,
             [this]() { label_class_filter_items_->populateFromLabelClasses(label_classes_); });
 
-    connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_labels_list_,
+    connect(image_instances_, &ImageInstancesViewModel::currentImageChanged, image_labels_list_,
             &ImageLabelsListModel::onCurrentImageChanged);
-    connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_labels_table_,
+    connect(image_instances_, &ImageInstancesViewModel::currentImageChanged, image_labels_table_,
             &ImageLabelsTableModel::onCurrentImageChanged);
-    connect(image_instances_, &ImageInstancesListModel::currentImageChanged, image_info_,
+    connect(image_instances_, &ImageInstancesViewModel::currentImageChanged, image_info_,
             &ImageInfoListModel::onCurrentImageChanged);
     connect(global_filter_, &GlobalFilter::filterApplied, image_labels_list_,
             &ImageLabelsListModel::onCurrentImageChanged);
@@ -243,23 +220,8 @@ void DataManager::init(const int method)
     connect(image_labels_list_->selection(), &QItemSelectionModel::selectionChanged, image_tags_,
             &ImageTagsListModel::updateStats);
 
-    std::vector<int64_t> image_ids   = image_instances_->getAllImageIds();
-    std::vector<int64_t> dataset_ids = image_instances_->getImagesDatasetIds(image_ids);
-
-    std::vector<std::vector<int64_t>> images_label_ids(image_ids.size());
-    std::vector<int64_t>              image_label_class_ids;
-    image_label_class_ids.reserve(image_ids.size());
-    for (const int64_t image_id : image_ids)
-    {
-        image_label_class_ids.push_back(image_instances_->getImageLabelClassId(image_id));
-    }
-    std::vector<std::vector<int64_t>> images_tag_ids = image_tags_->getImagesTagIds(image_ids);
-
-    datasets_->addImages(dataset_ids, image_ids);
-    datasets_->setStats(dataset_ids, image_ids, images_label_ids, image_label_class_ids);
-
-    image_instances_->setImagesLabelIds(image_ids, images_label_ids);
-    image_instances_->addImagesTagIds(image_ids, images_tag_ids);
+    image_tags_->applyTagsToImages();
+    datasets_->rebuildImageStats(image_source_);
 
     startAsyncLabelLoading();
 }
@@ -351,7 +313,7 @@ void DataManager::commitLabelsLoaded(std::shared_ptr<std::vector<LoadedLabelInst
         return;
     }
 
-    label_instances_->replaceAllLabels(std::move(*labels));
+    label_source_->replaceAllLabels(std::move(*labels));
     if (image_tags_ != nullptr)
     {
         image_tags_->applyTagsToLabels();
@@ -362,28 +324,18 @@ void DataManager::commitLabelsLoaded(std::shared_ptr<std::vector<LoadedLabelInst
         global_filter_->refresh();
     }
 
-    spdlog::info("后台加载项目标注完成: {} 个标注, 耗时 {} ms", label_instances_->totalCount(), elapsed_ms);
+    spdlog::info("后台加载项目标注完成: {} 个标注, 耗时 {} ms", label_source_->totalCount(), elapsed_ms);
 }
 
 void DataManager::rebuildLabelRelations(const bool notify_image_model)
 {
-    if (image_instances_ == nullptr || label_instances_ == nullptr || datasets_ == nullptr)
+    if (image_source_ == nullptr || label_source_ == nullptr || datasets_ == nullptr)
     {
         return;
     }
 
-    std::vector<int64_t>              image_ids        = image_instances_->getAllImageIds();
-    std::vector<int64_t>              dataset_ids      = image_instances_->getImagesDatasetIds(image_ids);
-    std::vector<std::vector<int64_t>> images_label_ids = label_instances_->getImagesLabelIds(image_ids);
-    std::vector<int64_t>              image_label_class_ids;
-    image_label_class_ids.reserve(image_ids.size());
-    for (const int64_t image_id : image_ids)
-    {
-        image_label_class_ids.push_back(image_instances_->getImageLabelClassId(image_id));
-    }
-
-    image_instances_->setImagesLabelIds(image_ids, images_label_ids, notify_image_model);
-    datasets_->setStats(dataset_ids, image_ids, images_label_ids, image_label_class_ids);
+    image_source_->syncAllLabelRelations(label_source_, notify_image_model);
+    datasets_->rebuildImageStats(image_source_);
 
     if (image_labels_list_ != nullptr)
     {
@@ -440,38 +392,50 @@ std::vector<int64_t> DataManager::selectedImageIds() const
 
 std::vector<int64_t> DataManager::allImageIds() const
 {
-    return image_instances_ ? image_instances_->getAllImageIds() : std::vector<int64_t>{};
+    std::vector<int64_t> image_ids;
+    if (image_source_ == nullptr)
+    {
+        return image_ids;
+    }
+
+    const auto &images = image_source_->getAllImageInstances();
+    image_ids.reserve(images.size());
+    for (const auto &[image_id, _] : images)
+    {
+        image_ids.push_back(image_id);
+    }
+    return image_ids;
 }
 
 std::vector<int64_t> DataManager::imageIdsForDatasets(const std::vector<int64_t> &dataset_ids) const
 {
-    return image_instances_ ? image_instances_->getImageIdsForDatasets(dataset_ids) : std::vector<int64_t>{};
+    return image_source_ ? image_source_->getImageIdsForDatasets(dataset_ids) : std::vector<int64_t>{};
 }
 
 QString DataManager::imagePath(int64_t image_id) const
 {
-    return image_instances_ ? image_instances_->getImagePath(image_id) : QString();
+    return image_source_ ? image_source_->getImagePath(image_id) : QString();
 }
 
 int64_t DataManager::imageDatasetId(int64_t image_id) const
 {
-    return image_instances_ ? image_instances_->getImageDatasetId(image_id) : -1;
+    return image_source_ ? image_source_->getImageDatasetId(image_id) : -1;
 }
 
 int64_t DataManager::imageLabelClassId(int64_t image_id) const
 {
-    return image_instances_ ? image_instances_->getImageLabelClassId(image_id) : -1;
+    return image_source_ ? image_source_->getImageLabelClassId(image_id) : -1;
 }
 
 std::vector<int64_t> DataManager::allLabelIds() const
 {
     std::vector<int64_t> label_ids;
-    if (label_instances_ == nullptr)
+    if (label_source_ == nullptr)
     {
         return label_ids;
     }
 
-    const auto &instances = label_instances_->getAllLabelInstances();
+    const auto &instances = label_source_->getAllLabelInstances();
     label_ids.reserve(instances.size());
     for (const auto &[label_id, _] : instances)
     {
@@ -482,22 +446,22 @@ std::vector<int64_t> DataManager::allLabelIds() const
 
 int64_t DataManager::labelImageId(int64_t label_id) const
 {
-    return label_instances_ ? label_instances_->getImageId(label_id) : -1;
+    return label_source_ ? label_source_->getImageId(label_id) : -1;
 }
 
 int64_t DataManager::labelClassId(int64_t label_id) const
 {
-    return label_instances_ ? label_instances_->getLabelClassId(label_id) : -1;
+    return label_source_ ? label_source_->getLabelClassId(label_id) : -1;
 }
 
 QVariantMap DataManager::labelData(int64_t label_id) const
 {
-    if (label_instances_ == nullptr)
+    if (label_source_ == nullptr)
     {
         return {};
     }
 
-    const LabelInstance *instance = label_instances_->getLabelInstance(label_id);
+    const LabelInstance *instance = label_source_->getLabelInstance(label_id);
     if (instance == nullptr || instance->data() == nullptr)
     {
         return {};
@@ -508,6 +472,11 @@ QVariantMap DataManager::labelData(int64_t label_id) const
 QString DataManager::labelClassName(int64_t label_class_id) const
 {
     return label_classes_ ? label_classes_->getLabelClassName(static_cast<int>(label_class_id)) : QString();
+}
+
+QString DataManager::labelClassColor(int64_t label_class_id) const
+{
+    return label_classes_ ? label_classes_->getLabelClassColor(static_cast<int>(label_class_id)) : QString();
 }
 
 QString DataManager::labelClassGroup(int64_t label_class_id) const
@@ -522,7 +491,7 @@ QString DataManager::datasetName(int64_t dataset_id) const
 
 std::vector<int64_t> DataManager::imageLabelIds(int64_t image_id) const
 {
-    return label_instances_ ? label_instances_->getImageLabelIds(image_id) : std::vector<int64_t>{};
+    return label_source_ ? label_source_->getImageLabelIds(image_id) : std::vector<int64_t>{};
 }
 
 void DataManager::importMaskData(int64_t dataset_id, const QString &image_manifest_path,
@@ -777,18 +746,20 @@ void DataManager::commitDatasetDeletion(const std::vector<int64_t> &dataset_ids,
         // Only QAbstractItemModel state is touched on this thread.  The database has
         // already committed, so these helpers deliberately perform no database writes.
         const std::vector<int64_t> image_ids
-            = image_instances_ != nullptr ? image_instances_->getImageIdsForDatasets(dataset_ids) : std::vector<int64_t>{};
-        if (label_instances_ != nullptr)
+            = image_source_ != nullptr ? image_source_->getImageIdsForDatasets(dataset_ids) : std::vector<int64_t>{};
+        image_instances_->beginBulkUpdate();
+        label_instances_->beginBulkUpdate();
+        if (label_source_ != nullptr)
         {
-            label_instances_->removeLabelsForImagesFromMemory(image_ids);
+            label_source_->removeLabelsForImagesFromMemory(image_ids);
         }
         if (image_tags_ != nullptr)
         {
             image_tags_->removeImagesTagsFromMemory(image_ids);
         }
-        if (image_instances_ != nullptr)
+        if (image_source_ != nullptr)
         {
-            image_instances_->removeImagesFromMemory(image_ids);
+            image_source_->removeImagesFromMemory(image_ids);
         }
         if (datasets_ != nullptr)
         {
@@ -798,6 +769,8 @@ void DataManager::commitDatasetDeletion(const std::vector<int64_t> &dataset_ids,
         {
             global_filter_->refresh();
         }
+        label_instances_->endBulkUpdate();
+        image_instances_->endBulkUpdate();
 
         const QString message
             = QString("已删除 %1 个数据集，耗时 %2 ms").arg(dataset_ids.size()).arg(elapsed_ms);
@@ -824,13 +797,8 @@ void DataManager::commitDatasetDeletion(const std::vector<int64_t> &dataset_ids,
     }
 }
 
-void DataManager::commitImageDeletion(const std::vector<int64_t>              &image_ids,
-                                      const std::vector<int64_t>              &dataset_ids,
-                                      const std::vector<std::vector<int64_t>> &image_label_ids,
-                                      const std::vector<int64_t>              &image_label_class_ids,
-                                      const bool                              success,
-                                      const QString                          &err_msg,
-                                      const qint64                            elapsed_ms)
+void DataManager::commitImageDeletion(const std::vector<int64_t> &image_ids, const bool success,
+                                      const QString &err_msg, const qint64 elapsed_ms)
 {
     if (success)
     {
@@ -839,23 +807,26 @@ void DataManager::commitImageDeletion(const std::vector<int64_t>              &i
             labels_changed_during_loading_ = true;
         }
 
-        // The database transaction already removed images, labels and tag rows.
-        // Only update the in-memory models here; do not issue a second delete SQL.
-        if (label_instances_ != nullptr)
+        image_instances_->beginBulkUpdate();
+        label_instances_->beginBulkUpdate();
+
+        // 数据库事务已经删除图像、标注和标签关系；GUI 线程只提交内存状态。
+        // 数据集统计必须在图像实体被移除前读取其归属和标注状态。
+        if (datasets_ != nullptr)
         {
-            label_instances_->removeLabelsForImagesFromMemory(image_ids);
+            datasets_->removeImagesFromSource(image_source_, image_ids);
+        }
+        if (label_source_ != nullptr)
+        {
+            label_source_->removeLabelsForImagesFromMemory(image_ids);
         }
         if (image_tags_ != nullptr)
         {
             image_tags_->removeImagesTagsFromMemory(image_ids);
         }
-        if (image_instances_ != nullptr)
+        if (image_source_ != nullptr)
         {
-            image_instances_->removeImagesFromMemory(image_ids);
-        }
-        if (datasets_ != nullptr)
-        {
-            datasets_->deleteImages(dataset_ids, image_ids, image_label_ids, image_label_class_ids);
+            image_source_->removeImagesFromMemory(image_ids);
         }
         if (global_filter_ != nullptr && global_filter_->isActive())
         {
@@ -864,6 +835,8 @@ void DataManager::commitImageDeletion(const std::vector<int64_t>              &i
             // depends on the complete image set.
             global_filter_->refresh();
         }
+        label_instances_->endBulkUpdate();
+        image_instances_->endBulkUpdate();
 
         const QString message = QString("已删除 %1 个图像，耗时 %2 ms").arg(image_ids.size()).arg(elapsed_ms);
         spdlog::info("{}", message.toUtf8().constData());
@@ -886,25 +859,20 @@ void DataManager::commitImageDeletion(const std::vector<int64_t>              &i
     setDataOperationRunning(false);
 }
 
-void DataManager::commitImageMove(const std::vector<int64_t>              &image_ids,
-                                  const std::vector<int64_t>              &source_dataset_ids,
-                                  const std::vector<int64_t>              &target_dataset_ids,
-                                  const std::vector<std::vector<int64_t>> &image_label_ids,
-                                  const std::vector<int64_t>              &image_label_class_ids,
-                                  const bool                              success,
-                                  const QString                          &err_msg,
-                                  const qint64                            elapsed_ms)
+void DataManager::commitImageMove(const std::vector<int64_t> &image_ids, const int64_t target_dataset_id,
+                                  const bool success, const QString &err_msg, const qint64 elapsed_ms)
 {
     if (success)
     {
         const bool filter_active = global_filter_ != nullptr && global_filter_->isActive();
-        image_instances_->updateImagesDatasetFromMemory(image_ids, target_dataset_ids, !filter_active);
-        datasets_->moveImages(source_dataset_ids, target_dataset_ids, image_ids, image_label_ids,
-                              image_label_class_ids);
+        image_instances_->beginBulkUpdate();
+        datasets_->moveImagesFromSource(image_source_, image_ids, target_dataset_id);
+        image_source_->updateImagesDatasetFromMemory(image_ids, target_dataset_id, !filter_active);
         if (filter_active)
         {
             global_filter_->refresh();
         }
+        image_instances_->endBulkUpdate();
 
         const QString message = QString("已移动 %1 个图像，耗时 %2 ms").arg(image_ids.size()).arg(elapsed_ms);
         spdlog::info("{}", message.toUtf8().constData());
@@ -927,9 +895,10 @@ void DataManager::commitImageMove(const std::vector<int64_t>              &image
     setDataOperationRunning(false);
 }
 
-void DataManager::commitImageCopy(const std::shared_ptr<ImageCopyResult> &result)
+void DataManager::commitImageCopy(const std::shared_ptr<ImageCopyResult> &result,
+                                  const DataOperationWorkflow::Result &operation)
 {
-    if (result != nullptr && result->success)
+    if (result != nullptr && operation.success)
     {
         QElapsedTimer model_update_timer;
         model_update_timer.start();
@@ -939,60 +908,38 @@ void DataManager::commitImageCopy(const std::shared_ptr<ImageCopyResult> &result
             labels_changed_during_loading_ = true;
         }
 
-        // A large insertion at the head of the model makes Qt Quick remap every
-        // existing delegate.  Keep the source data in memory first and publish
-        // one reset after all image/label/tag relationships have been prepared.
-        const bool defer_model_update = result->copied_image_ids.size() >= 256
-            || result->copied_label_ids.size() >= 256;
+        // 大批量新增只在关系完整后发布一次源模型变化，避免 QML 为每行插入反复重排。
+        const size_t image_count = result->images.size();
+        const size_t label_count = result->labels.size();
+        const bool defer_model_update = image_count >= 256 || label_count >= 256;
 
-        image_instances_->addImagesFromMemory(result->dataset_id, result->image_paths, result->copied_image_ids,
-                                              defer_model_update);
-        image_instances_->setImageLabelClassIdsFromMemory(result->copied_image_ids,
-                                                          result->image_label_class_ids, !defer_model_update);
+        image_instances_->beginBulkUpdate();
+        label_instances_->beginBulkUpdate();
+        image_source_->addImagesFromMemory(result->images, defer_model_update);
+        label_source_->addLabelsFromMemory(result->labels, defer_model_update);
+        image_source_->syncAllLabelRelations(label_source_, !defer_model_update);
+        image_tags_->addRelationsFromMemory(result->images, result->labels);
+        datasets_->addImagesFromSource(image_source_, result->images);
 
-        std::vector<std::vector<int64_t>> copied_labels_by_image(result->copied_image_ids.size());
-        std::unordered_map<int64_t, size_t> copied_image_index;
-        copied_image_index.reserve(result->copied_image_ids.size());
-        for (size_t i = 0; i < result->copied_image_ids.size(); ++i)
+        if (defer_model_update)
         {
-            copied_image_index.emplace(result->copied_image_ids[i], i);
+            image_source_->refreshModelFromMemory();
+            label_source_->refreshModelFromMemory();
         }
-        for (const LoadedLabelInstance &label : result->labels)
-        {
-            const auto image_it = copied_image_index.find(label.image_id);
-            if (image_it != copied_image_index.end())
-            {
-                copied_labels_by_image[image_it->second].push_back(label.label_id);
-            }
-        }
-
-        label_instances_->addLabelsFromMemory(std::move(result->labels), defer_model_update);
-        label_instances_->addLabelsTagIdsFromMemory(result->copied_label_ids, result->copied_label_tag_ids);
-        image_instances_->addImagesLabelIds(result->copied_image_ids, copied_labels_by_image, !defer_model_update);
-
-        image_tags_->addImagesTagsFromMemory(result->copied_image_ids, result->image_tag_ids);
-        image_tags_->addLabelsTagsFromMemory(result->copied_label_ids, result->copied_label_tag_ids);
-
-        std::vector<int64_t> dataset_ids(result->copied_image_ids.size(), result->dataset_id);
-        datasets_->addImages(dataset_ids, result->copied_image_ids, copied_labels_by_image,
-                             result->image_label_class_ids);
 
         if (global_filter_ != nullptr && global_filter_->isActive())
         {
             global_filter_->refresh();
         }
-        else if (defer_model_update)
-        {
-            image_instances_->refreshModelFromMemory();
-            label_instances_->refreshModelFromMemory();
-        }
+        label_instances_->endBulkUpdate();
+        image_instances_->endBulkUpdate();
 
         const qint64 model_update_elapsed_ms = model_update_timer.elapsed();
         const QString message
             = QString("已复制 %1 个图像、%2 个标注，数据库耗时 %3 ms，界面模型更新耗时 %4 ms")
-                  .arg(result->copied_image_ids.size())
-                  .arg(result->copied_label_ids.size())
-                  .arg(result->elapsed_ms)
+                  .arg(image_count)
+                  .arg(label_count)
+                  .arg(operation.elapsed_ms)
                   .arg(model_update_elapsed_ms);
         spdlog::info("{}", message.toUtf8().constData());
         ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
@@ -1000,7 +947,7 @@ void DataManager::commitImageCopy(const std::shared_ptr<ImageCopyResult> &result
     }
     else
     {
-        const QString message = result != nullptr ? QString("复制图像失败: %1").arg(result->err_msg)
+        const QString message = result != nullptr ? QString("复制图像失败: %1").arg(operation.error)
                                                    : QString("复制图像失败");
         spdlog::error("{}", message.toUtf8().constData());
         ui::ProgressManager::getInstance()->addMessage(spdlog::level::err, message);
@@ -1201,7 +1148,7 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
 {
     if (isDataOperationRunning())
     {
-        ui::SignalHelper::notifyWarn(QStringLiteral("导出数据"), QStringLiteral("当前已有数据操作正在进行中"));
+        ui::SignalHelper::notifyWarn(QString("导出数据"), QString("当前已有数据操作正在进行中"));
         return;
     }
 
@@ -1237,7 +1184,6 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
         return;
     }
 
-    setDataOperationRunning(true);
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
                               Q_ARG(QString, "导出数据"));
 
@@ -1256,87 +1202,29 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
     };
 
     auto state = std::make_shared<ExportBatchState>();
-    const int export_method = method_;
+    const std::vector<int64_t> selected_dataset_ids = dataset_ids;
+    DatasetExportRequest       export_request;
+    export_request.dataset_ids = selected_dataset_ids;
 
-    // 构造快照只访问工作线程中的数据库连接，避免后台线程读取 QAbstractItemModel。
     DataOperationWorkflow::Options prepare_options;
     prepare_options.manage_progress = false;
-    DataOperationWorkflow::startDatabase(
-        this, database_->path(), std::move(prepare_options),
-        [dataset_ids, output_dir, state, export_method](dltool::database::ProjectDataBase &database,
-                                                        DataOperationWorkflow::Result &result)
+    runDatasetExportAsync(
+        this, std::move(export_request), std::move(prepare_options),
+        [selected_dataset_ids, output_dir, state](const DatasetExportSource &source,
+                                                    DataOperationWorkflow::Result &result)
         {
-            std::vector<int64_t> dataset_row_ids;
-            std::vector<QString> dataset_names;
-            if (!database.getAllDatasets(dataset_row_ids, dataset_names, result.error))
-            {
-                return;
-            }
-
-            std::map<int64_t, QString> names_by_id;
-            for (size_t i = 0; i < dataset_row_ids.size() && i < dataset_names.size(); ++i)
-            {
-                names_by_id[dataset_row_ids[i]] = dataset_names[i];
-            }
-
-            std::vector<int64_t>               image_dataset_ids;
-            std::vector<int64_t>               image_ids;
-            std::vector<QString>               image_paths;
-            std::vector<std::vector<uint8_t>> image_extra_data;
-            if (!database.getAllImages(image_dataset_ids, image_ids, image_paths, image_extra_data, result.error))
-            {
-                return;
-            }
-
-            std::vector<int64_t>               label_ids;
-            std::vector<int64_t>               label_image_ids;
-            std::vector<int64_t>               label_class_ids;
-            std::vector<int64_t>               label_types;
-            std::vector<std::vector<uint8_t>> label_blobs;
-            if (!database.getAllLabels(label_ids, label_image_ids, label_class_ids, label_types, label_blobs,
-                                       result.error))
-            {
-                return;
-            }
-
-            std::vector<int64_t>               class_ids;
-            std::vector<QString>               class_names;
-            std::vector<QString>               class_colors;
-            std::vector<QString>               class_shortcuts;
-            std::vector<int64_t>               class_ordinals;
-            std::vector<std::vector<uint8_t>> class_extra_data;
-            if (!database.getAllLabelClasses(class_ids, class_names, class_colors, class_shortcuts, class_ordinals,
-                                             class_extra_data, result.error))
-            {
-                return;
-            }
-
-            struct ClassInfo
-            {
-                QString name;
-                QString color;
-            };
-            std::map<int64_t, ClassInfo> class_info_by_id;
-            for (size_t i = 0; i < class_ids.size(); ++i)
-            {
-                class_info_by_id[class_ids[i]] =
-                    {i < class_names.size() ? class_names[i] : QString(),
-                     i < class_colors.size() ? class_colors[i] : QString()};
-            }
-
-            LabelDataHelper label_helper = data::createLabelDataHelper(export_method);
-            if (!label_blobs.empty() && label_helper == nullptr)
-            {
-                result.error   = QStringLiteral("标签数据工厂未初始化");
-                result.success  = false;
-                return;
-            }
-
             std::map<int64_t, size_t> state_index_by_dataset;
-            for (const int64_t dataset_id : dataset_ids)
+            std::map<int64_t, std::set<int64_t>> class_ids_by_dataset;
+
+            for (const int64_t dataset_id : selected_dataset_ids)
             {
-                const auto name_it = names_by_id.find(dataset_id);
-                if (name_it == names_by_id.end())
+                if (state_index_by_dataset.contains(dataset_id))
+                {
+                    continue;
+                }
+
+                const QString dataset_name = source.datasetName(dataset_id);
+                if (dataset_name.isEmpty())
                 {
                     spdlog::warn("跳过不存在的数据集: {}", dataset_id);
                     addProgressMessage(spdlog::level::warn, QString("跳过不存在的数据集: %1").arg(dataset_id));
@@ -1345,8 +1233,8 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
 
                 ExportBatchItem item;
                 item.dataset.dataset_id   = dataset_id;
-                item.dataset.dataset_name = name_it->second;
-                item.output_dir            = QDir(output_dir).filePath(name_it->second);
+                item.dataset.dataset_name = dataset_name;
+                item.output_dir            = QDir(output_dir).filePath(dataset_name);
                 QString directory_error;
                 if (!ensureDirectory(item.output_dir, directory_error))
                 {
@@ -1354,72 +1242,61 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                     addProgressMessage(spdlog::level::err, directory_error);
                     continue;
                 }
-                state_index_by_dataset[dataset_id] = state->items.size();
+
+                state_index_by_dataset.emplace(dataset_id, state->items.size());
                 state->items.push_back(std::move(item));
             }
 
-            std::map<int64_t, std::pair<size_t, int64_t>> image_index_by_id;
-            for (size_t i = 0; i < image_ids.size() && i < image_dataset_ids.size() && i < image_paths.size(); ++i)
+            const std::vector<int64_t> image_ids = source.allImageIds();
+            std::map<int64_t, size_t>  image_index_by_id;
+            for (const int64_t image_id : image_ids)
             {
-                const auto state_it = state_index_by_dataset.find(image_dataset_ids[i]);
+                const int64_t dataset_id = source.imageDatasetId(image_id);
+                const auto    state_it   = state_index_by_dataset.find(dataset_id);
                 if (state_it == state_index_by_dataset.end())
                 {
                     continue;
                 }
 
-                int width = 0;
-                int height = 0;
-                DatasetIO::getImageDimensions(image_paths[i], width, height);
-
-                ExportImage image;
-                image.dataset_id = image_dataset_ids[i];
-                image.image_id   = image_ids[i];
-                image.path       = image_paths[i];
-                image.width      = width;
-                image.height     = height;
-                auto &dataset    = state->items[state_it->second].dataset;
-                dataset.images.push_back(std::move(image));
-                image_index_by_id[image_ids[i]] = {state_it->second, image_ids[i]};
-            }
-
-            for (size_t i = 0; i < label_ids.size() && i < label_image_ids.size() && i < label_class_ids.size()
-                         && i < label_blobs.size();
-                 ++i)
-            {
-                const auto image_it = image_index_by_id.find(label_image_ids[i]);
-                if (image_it == image_index_by_id.end())
+                const QString image_path = source.imagePath(image_id);
+                if (image_path.isEmpty())
                 {
                     continue;
                 }
 
-                LabelData label_data = label_helper->createLabelData();
-                label_data->fromBlob(label_blobs[i]);
+                ExportImage image;
+                image.dataset_id = dataset_id;
+                image.image_id   = image_id;
+                image.path       = image_path;
+                DatasetIO::getImageDimensions(image.path, image.width, image.height);
 
-                ExportLabel label;
-                label.label_id       = label_ids[i];
-                label.image_id       = label_image_ids[i];
-                label.label_class_id = label_class_ids[i];
-                label.data           = label_data->dataMap();
-                auto &dataset        = state->items[image_it->second.first].dataset;
-                dataset.labels.push_back(std::move(label));
+                auto &dataset = state->items[state_it->second].dataset;
+                image_index_by_id.emplace(image_id, state_it->second);
+                dataset.images.push_back(std::move(image));
+            }
+
+            for (const auto &[image_id, state_index] : image_index_by_id)
+            {
+                auto &dataset = state->items[state_index].dataset;
+                for (const int64_t label_id : source.imageLabelIds(image_id))
+                {
+                    const int64_t label_class_id = source.labelClassId(label_id);
+                    ExportLabel  label;
+                    label.label_id       = label_id;
+                    label.image_id       = image_id;
+                    label.label_class_id = label_class_id;
+                    label.data           = source.labelData(label_id);
+                    dataset.labels.push_back(std::move(label));
+                    class_ids_by_dataset[dataset.dataset_id].insert(label_class_id);
+                }
             }
 
             for (auto &item : state->items)
             {
-                std::set<int64_t> used_class_ids;
-                for (const ExportLabel &label : item.dataset.labels)
+                for (const int64_t class_id : class_ids_by_dataset[item.dataset.dataset_id])
                 {
-                    used_class_ids.insert(label.label_class_id);
-                }
-                for (const int64_t class_id : used_class_ids)
-                {
-                    const auto class_it = class_info_by_id.find(class_id);
-                    if (class_it == class_info_by_id.end())
-                    {
-                        continue;
-                    }
                     item.dataset.label_classes.push_back(
-                        ExportLabelClass{class_id, class_it->second.name, class_it->second.color});
+                        ExportLabelClass{class_id, source.labelClassName(class_id), source.labelClassColor(class_id)});
                 }
                 if (item.dataset.images.empty())
                 {
@@ -1432,9 +1309,9 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                                               [](const ExportBatchItem &item) { return item.dataset.images.empty(); }),
                                state->items.end());
             result.success = !state->items.empty();
-            if (!result.success && result.error.isEmpty())
+            if (!result.success)
             {
-                result.error = QStringLiteral("没有可导出的数据集");
+                result.error = QString("没有可导出的数据集");
             }
         },
         [this, state, data_format, options](const DataOperationWorkflow::Result &result) mutable
@@ -1442,14 +1319,16 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
             if (!result.success || state->items.empty())
             {
                 setDataOperationRunning(false);
-                const QString message = result.error.isEmpty() ? QStringLiteral("没有可导出的数据集") : result.error;
+                const QString message = result.error.isEmpty() ? QString("没有可导出的数据集") : result.error;
                 addProgressMessage(spdlog::level::err, message);
                 QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask",
                                           Qt::QueuedConnection);
-                ui::SignalHelper::notifyError(QStringLiteral("导出失败"), message);
+                ui::SignalHelper::notifyError(QString("导出失败"), message);
                 return;
             }
 
+            // runDatasetExportAsync 只负责准备阶段；导出器完成前继续保持数据写入阻断。
+            setDataOperationRunning(true);
             auto                                 start_next      = std::make_shared<std::function<void()>>();
             std::weak_ptr<std::function<void()>> weak_start_next = start_next;
             *start_next = [this, data_format, options, state, weak_start_next]()
@@ -1465,15 +1344,15 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask",
                                               Qt::QueuedConnection);
                     if (success)
-                        ui::SignalHelper::notifySuccess(QStringLiteral("导出完成"), message);
+                        ui::SignalHelper::notifySuccess(QString("导出完成"), message);
                     else if (state->success_count > 0)
-                        ui::SignalHelper::notifyWarn(QStringLiteral("导出完成"), message);
+                        ui::SignalHelper::notifyWarn(QString("导出完成"), message);
                     else
-                        ui::SignalHelper::notifyError(QStringLiteral("导出失败"), message);
+                        ui::SignalHelper::notifyError(QString("导出失败"), message);
                     return;
                 }
 
-                const ExportBatchItem item = state->items[static_cast<size_t>(state->current++)];
+                ExportBatchItem item = std::move(state->items[static_cast<size_t>(state->current++)]);
                 addProgressMessage(spdlog::level::info,
                                    QString("开始导出数据集: %1 -> %2")
                                        .arg(item.dataset.dataset_name, item.output_dir));
@@ -1481,7 +1360,7 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                 DataIO *exporter = DataIO::createIO(data_format, this);
                 if (!exporter)
                 {
-                    addProgressMessage(spdlog::level::err, QStringLiteral("不支持的数据格式"));
+                    addProgressMessage(spdlog::level::err, QString("不支持的数据格式"));
                     ++state->failed_count;
                     if (auto next = weak_start_next.lock())
                     {
@@ -1506,7 +1385,7 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                         },
                         Qt::QueuedConnection);
 
-                exporter->startExport(item.dataset, item.output_dir, options);
+                exporter->startExport(std::move(item.dataset), item.output_dir, options);
             };
 
             (*start_next)();
@@ -1520,27 +1399,14 @@ void DataManager::deleteSelectedImages()
         ui::SignalHelper::notifyWarn(QString("删除图像"), QString("当前已有数据操作正在进行中"));
         return;
     }
-    if (database_ == nullptr || image_instances_ == nullptr)
+    if (database_ == nullptr || image_source_ == nullptr || image_instances_ == nullptr)
     {
         return;
     }
 
-    const std::vector<int64_t>              image_ids        = image_instances_->getSelectedImagesId();
-    const std::vector<int64_t>              dataset_ids      = image_instances_->getDatasetIds(image_ids);
-    const std::vector<std::vector<int64_t>> images_label_ids = image_instances_->getLabelIds(image_ids);
-    std::vector<int64_t>                    image_label_class_ids;
-    image_label_class_ids.reserve(image_ids.size());
-    for (const int64_t image_id : image_ids)
-    {
-        image_label_class_ids.push_back(image_instances_->getImageLabelClassId(image_id));
-    }
+    const std::vector<int64_t> image_ids = image_instances_->getSelectedImagesId();
     if (image_ids.empty())
     {
-        return;
-    }
-    if (dataset_ids.size() != image_ids.size() || images_label_ids.size() != image_ids.size())
-    {
-        ui::SignalHelper::notifyError(QString("删除图像"), QString("图像数据不完整，无法删除"));
         return;
     }
 
@@ -1560,11 +1426,9 @@ void DataManager::deleteSelectedImages()
         {
             result.success = database.deleteImages(image_ids, result.error);
         },
-        [this, image_ids, dataset_ids, images_label_ids, image_label_class_ids](
-            const DataOperationWorkflow::Result &result)
+        [this, image_ids](const DataOperationWorkflow::Result &result)
         {
-            commitImageDeletion(image_ids, dataset_ids, images_label_ids, image_label_class_ids, result.success,
-                                result.error, result.elapsed_ms);
+            commitImageDeletion(image_ids, result.success, result.error, result.elapsed_ms);
         });
 }
 
@@ -1575,9 +1439,13 @@ void DataManager::copyToDataset(const std::vector<int64_t> &image_ids, const int
         ui::SignalHelper::notifyWarn(QString("复制图像"), QString("当前已有数据操作正在进行中"));
         return;
     }
-    if (datasets_ == nullptr || image_instances_ == nullptr || label_instances_ == nullptr || image_tags_ == nullptr
-        || database_ == nullptr)
+    if (datasets_ == nullptr || image_source_ == nullptr || label_source_ == nullptr || database_ == nullptr)
     {
+        return;
+    }
+    if (labels_loading_)
+    {
+        ui::SignalHelper::notifyWarn(QString("复制图像"), QString("标注正在加载，请稍后再试"));
         return;
     }
     if (dataset_id < 0 || datasets_->getDatasetName(dataset_id).isEmpty())
@@ -1598,200 +1466,238 @@ void DataManager::copyToDataset(const std::vector<int64_t> &image_ids, const int
     }
 
     auto request = std::make_shared<ImageCopyRequest>();
-    request->database_path     = database_->path();
     request->label_data_method = method_;
     request->dataset_id        = dataset_id;
-    request->image_paths.reserve(source_image_ids.size());
-    request->image_label_class_ids.reserve(source_image_ids.size());
-    for (const int64_t image_id : source_image_ids)
-    {
-        const QString path = image_instances_->getImagePath(image_id);
-        if (path.isEmpty())
-        {
-            spdlog::warn("复制图像失败, 选中图像中存在无效路径");
-            return;
-        }
-        request->image_paths.push_back(path);
-        request->image_label_class_ids.push_back(image_instances_->getImageLabelClassId(image_id));
-    }
+    request->source_image_ids  = std::move(source_image_ids);
 
-    const std::vector<std::vector<int64_t>> source_label_ids = image_instances_->getLabelIds(source_image_ids);
-    request->image_tag_ids = image_tags_->getImagesTagIds(source_image_ids);
-    for (size_t image_index = 0; image_index < source_label_ids.size(); ++image_index)
-    {
-        for (const int64_t label_id : source_label_ids[image_index])
-        {
-            const LabelInstance *label_instance = label_instances_->getLabelInstance(label_id);
-            if (label_instance == nullptr || label_instance->data() == nullptr)
-            {
-                continue;
-            }
-
-            CopyLabelPayload payload;
-            payload.target_image_index = image_index;
-            payload.label_class_id      = label_instance->labelClassId();
-            payload.label_type          = label_instance->data()->type();
-            payload.data                = label_instance->data()->toBlob();
-            payload.tag_ids             = std::vector<int64_t>(label_instance->tagIds().begin(),
-                                                                label_instance->tagIds().end());
-            request->labels.push_back(std::move(payload));
-        }
-    }
-
-    if (labels_loading_)
-    {
-        labels_changed_during_loading_ = true;
-    }
     setDataOperationRunning(true);
     image_operation_running_ = true;
     emit imageOperationRunningChanged();
-    auto result                    = std::make_shared<ImageCopyResult>();
-    result->dataset_id             = request->dataset_id;
-    result->image_paths            = request->image_paths;
-    result->image_label_class_ids  = request->image_label_class_ids;
-    result->image_tag_ids          = request->image_tag_ids;
+    auto result = std::make_shared<ImageCopyResult>();
+    const ImageInstancesListModel *source_images = image_source_;
+    const LabelInstancesListModel *source_labels = label_source_;
 
     DataOperationWorkflow::Options options;
-    options.title         = QStringLiteral("复制图像");
-    options.start_message = QString("正在复制 %1 个图像及其标注").arg(source_image_ids.size());
+    options.title         = QString("复制图像");
+    options.start_message = QString("正在复制 %1 个图像及其标注").arg(request->source_image_ids.size());
     DataOperationWorkflow::startDatabase(
-        this, request->database_path, std::move(options),
-        [request, result](dltool::database::ProjectDataBase &database, DataOperationWorkflow::Result &operation)
+        this, database_->path(), std::move(options),
+        [request, result, source_images, source_labels](dltool::database::ProjectDataBase &database,
+                                                        DataOperationWorkflow::Result &operation)
         {
-            try
+            const auto fail = [&database, &operation, result](const QString &error)
             {
-                if (!database.addImages(request->dataset_id, request->image_paths, result->copied_image_ids,
-                                        result->err_msg))
+                if (!result->images.empty())
                 {
-                    throw std::runtime_error(result->err_msg.toStdString());
-                }
-                if (result->copied_image_ids.size() != request->image_paths.size())
-                {
-                    result->err_msg = QStringLiteral("新图像 ID 数量不一致");
-                    throw std::runtime_error(result->err_msg.toStdString());
-                }
-
-                std::vector<std::vector<uint8_t>> extra_data;
-                extra_data.reserve(request->image_label_class_ids.size());
-                for (const int64_t label_class_id : request->image_label_class_ids)
-                {
-                    extra_data.push_back(ImageInstancesListModel::extraDataForImageLabelClassId(label_class_id));
-                }
-                if (!database.updateImagesExtraData(result->copied_image_ids, extra_data, result->err_msg))
-                {
-                    throw std::runtime_error(result->err_msg.toStdString());
-                }
-
-                std::map<int64_t, std::vector<int64_t>> image_ids_by_tag;
-                for (size_t i = 0; i < request->image_tag_ids.size() && i < result->copied_image_ids.size(); ++i)
-                {
-                    for (const int64_t tag_id : request->image_tag_ids[i])
+                    std::vector<int64_t> copied_image_ids;
+                    copied_image_ids.reserve(result->images.size());
+                    for (const LoadedImageInstance &image : result->images)
                     {
-                        image_ids_by_tag[tag_id].push_back(result->copied_image_ids[i]);
+                        if (image.image_id >= 0)
+                        {
+                            copied_image_ids.push_back(image.image_id);
+                        }
                     }
-                }
-                for (const auto &[tag_id, target_ids] : image_ids_by_tag)
-                {
-                    if (!database.addTagsToImages(target_ids, tag_id, result->err_msg))
-                    {
-                        throw std::runtime_error(result->err_msg.toStdString());
-                    }
-                }
-
-                std::vector<int64_t>              label_image_ids;
-                std::vector<int64_t>              label_class_ids;
-                std::vector<int64_t>              label_types;
-                std::vector<std::vector<uint8_t>> label_data;
-                label_image_ids.reserve(request->labels.size());
-                label_class_ids.reserve(request->labels.size());
-                label_types.reserve(request->labels.size());
-                label_data.reserve(request->labels.size());
-                for (const CopyLabelPayload &payload : request->labels)
-                {
-                    if (payload.target_image_index >= result->copied_image_ids.size())
-                    {
-                        continue;
-                    }
-                    label_image_ids.push_back(result->copied_image_ids[payload.target_image_index]);
-                    label_class_ids.push_back(payload.label_class_id);
-                    label_types.push_back(payload.label_type);
-                    label_data.push_back(payload.data);
-                }
-
-                if (!label_image_ids.empty()
-                    && !database.addLabels(label_image_ids, label_class_ids, label_types, label_data,
-                                           result->copied_label_ids, result->err_msg))
-                {
-                    throw std::runtime_error(result->err_msg.toStdString());
-                }
-                if (result->copied_label_ids.size() != request->labels.size())
-                {
-                    result->err_msg = QStringLiteral("新标注 ID 数量不一致");
-                    throw std::runtime_error(result->err_msg.toStdString());
-                }
-
-                LabelDataHelper helper = data::createLabelDataHelper(request->label_data_method);
-                if (!request->labels.empty() && helper == nullptr)
-                {
-                    result->err_msg = QStringLiteral("标签数据工厂未初始化");
-                    throw std::runtime_error(result->err_msg.toStdString());
-                }
-                result->labels.reserve(request->labels.size());
-                result->copied_label_tag_ids.reserve(request->labels.size());
-                std::map<int64_t, std::vector<int64_t>> label_ids_by_tag;
-                for (size_t i = 0; i < request->labels.size(); ++i)
-                {
-                    const CopyLabelPayload &payload = request->labels[i];
-                    const int64_t            image_id = label_image_ids[i];
-                    LabelData                 label_data_instance = helper->createLabelData();
-                    label_data_instance->fromBlob(payload.data);
-
-                    LoadedLabelInstance loaded_label;
-                    loaded_label.label_id       = result->copied_label_ids[i];
-                    loaded_label.image_id       = image_id;
-                    loaded_label.label_class_id = payload.label_class_id;
-                    loaded_label.data           = std::move(label_data_instance);
-                    result->labels.push_back(std::move(loaded_label));
-                    result->copied_label_tag_ids.push_back(payload.tag_ids);
-
-                    for (const int64_t tag_id : payload.tag_ids)
-                    {
-                        label_ids_by_tag[tag_id].push_back(result->copied_label_ids[i]);
-                    }
-                }
-                for (const auto &[tag_id, target_ids] : label_ids_by_tag)
-                {
-                    if (!database.addTagsToLabels(target_ids, tag_id, result->err_msg))
-                    {
-                        throw std::runtime_error(result->err_msg.toStdString());
-                    }
-                }
-
-                result->success   = true;
-                operation.success  = true;
-                operation.error.clear();
-            }
-            catch (const std::exception &e)
-            {
-                if (result->err_msg.isEmpty())
-                {
-                    result->err_msg = QString::fromUtf8(e.what());
-                }
-                if (!result->copied_image_ids.empty())
-                {
                     QString ignored_error;
-                    database.deleteImages(result->copied_image_ids, ignored_error);
+                    database.deleteImages(copied_image_ids, ignored_error);
                 }
                 operation.success = false;
-                operation.error   = result->err_msg;
+                operation.error   = error;
+            };
+
+            result->images.reserve(request->source_image_ids.size());
+            std::unordered_map<int64_t, size_t> target_image_indices;
+            target_image_indices.reserve(request->source_image_ids.size());
+            for (const int64_t source_image_id : request->source_image_ids)
+            {
+                const ImageInstance *source = source_images->getImageInstance(source_image_id);
+                if (source == nullptr || source->path().isEmpty())
+                {
+                    fail(QString("复制图像失败: 源图像不存在或路径无效"));
+                    return;
+                }
+
+                const size_t target_index = result->images.size();
+                target_image_indices.emplace(source_image_id, target_index);
+                LoadedImageInstance image;
+                image.dataset_id = request->dataset_id;
+                image.path = source->path();
+                image.label_class_id = source->imageLabelClassId();
+                image.tag_ids = source->tagIds();
+                result->images.push_back(std::move(image));
             }
+
+            std::vector<size_t>               label_target_image_indices;
+            std::vector<int64_t>              copied_label_class_ids;
+            std::vector<int64_t>              copied_label_types;
+            std::vector<std::vector<uint8_t>> copied_label_data;
+            size_t label_count = 0;
+            for (const int64_t source_image_id : request->source_image_ids)
+            {
+                label_count += source_images->getImageInstance(source_image_id)->labelIds().size();
+            }
+            label_target_image_indices.reserve(label_count);
+            copied_label_class_ids.reserve(label_count);
+            copied_label_types.reserve(label_count);
+            copied_label_data.reserve(label_count);
+            result->labels.reserve(label_count);
+
+            LabelDataHelper helper{nullptr};
+            for (const int64_t source_image_id : request->source_image_ids)
+            {
+                const auto target = target_image_indices.find(source_image_id);
+                const ImageInstance *source_image = source_images->getImageInstance(source_image_id);
+                if (target == target_image_indices.end() || source_image == nullptr)
+                {
+                    fail(QString("复制图像失败: 源图像映射无效"));
+                    return;
+                }
+
+                for (const int64_t source_label_id : source_image->labelIds())
+                {
+                    const LabelInstance *source_label = source_labels->getLabelInstance(source_label_id);
+                    if (source_label == nullptr || source_label->data() == nullptr)
+                    {
+                        fail(QString("复制图像失败: 源标注不存在或数据无效"));
+                        return;
+                    }
+
+                    const std::vector<uint8_t> label_blob = source_label->data()->toBlob();
+                    label_target_image_indices.push_back(target->second);
+                    copied_label_class_ids.push_back(source_label->labelClassId());
+                    copied_label_types.push_back(source_label->data()->type());
+                    copied_label_data.push_back(label_blob);
+
+                    if (helper == nullptr)
+                    {
+                        helper = data::createLabelDataHelper(request->label_data_method);
+                        if (helper == nullptr)
+                        {
+                            fail(QString("复制图像失败: 标签数据工厂未初始化"));
+                            return;
+                        }
+                    }
+
+                    LabelData label_data = helper->createLabelData();
+                    if (label_data == nullptr)
+                    {
+                        fail(QString("复制图像失败: 标签数据创建失败"));
+                        return;
+                    }
+                    label_data->fromBlob(label_blob);
+
+                    LoadedLabelInstance label;
+                    label.label_class_id = source_label->labelClassId();
+                    label.data           = std::move(label_data);
+                    label.tag_ids        = source_label->tagIds();
+                    result->labels.push_back(std::move(label));
+                }
+            }
+
+            std::vector<QString> copied_image_paths;
+            copied_image_paths.reserve(result->images.size());
+            for (const LoadedImageInstance &image : result->images)
+            {
+                copied_image_paths.push_back(image.path);
+            }
+
+            std::vector<int64_t> copied_image_ids;
+            if (!database.addImages(request->dataset_id, copied_image_paths, copied_image_ids, operation.error)
+                || copied_image_ids.size() != result->images.size())
+            {
+                fail(operation.error.isEmpty() ? QString("复制图像失败: 新图像 ID 数量不一致") : operation.error);
+                return;
+            }
+
+            for (size_t index = 0; index < result->images.size(); ++index)
+            {
+                result->images[index].image_id = copied_image_ids[index];
+            }
+
+            std::vector<std::vector<uint8_t>> extra_data;
+            extra_data.reserve(result->images.size());
+            for (const LoadedImageInstance &image : result->images)
+            {
+                extra_data.push_back(ImageInstancesListModel::extraDataForImageLabelClassId(image.label_class_id));
+            }
+            if (!database.updateImagesExtraData(copied_image_ids, extra_data, operation.error))
+            {
+                fail(operation.error);
+                return;
+            }
+
+            std::map<int64_t, std::vector<int64_t>> image_ids_by_tag;
+            for (const LoadedImageInstance &image : result->images)
+            {
+                for (const int64_t tag_id : image.tag_ids)
+                {
+                    image_ids_by_tag[tag_id].push_back(image.image_id);
+                }
+            }
+            for (const auto &[tag_id, target_ids] : image_ids_by_tag)
+            {
+                if (!database.addTagsToImages(target_ids, tag_id, operation.error))
+                {
+                    fail(operation.error);
+                    return;
+                }
+            }
+
+            std::vector<int64_t> copied_label_image_ids;
+            copied_label_image_ids.reserve(label_target_image_indices.size());
+            for (const size_t target_index : label_target_image_indices)
+            {
+                if (target_index >= result->images.size())
+                {
+                    fail(QString("复制图像失败: 新图像映射无效"));
+                    return;
+                }
+                copied_label_image_ids.push_back(result->images[target_index].image_id);
+            }
+
+            std::vector<int64_t> copied_label_ids;
+            if (!copied_label_image_ids.empty()
+                && !database.addLabels(copied_label_image_ids, copied_label_class_ids, copied_label_types,
+                                       copied_label_data, copied_label_ids, operation.error))
+            {
+                fail(operation.error);
+                return;
+            }
+            if (copied_label_ids.size() != copied_label_image_ids.size())
+            {
+                fail(QString("复制图像失败: 新标注 ID 数量不一致"));
+                return;
+            }
+
+            for (size_t index = 0; index < copied_label_ids.size(); ++index)
+            {
+                result->labels[index].label_id = copied_label_ids[index];
+                result->labels[index].image_id = copied_label_image_ids[index];
+            }
+
+            std::map<int64_t, std::vector<int64_t>> label_ids_by_tag;
+            for (const LoadedLabelInstance &label : result->labels)
+            {
+                for (const int64_t tag_id : label.tag_ids)
+                {
+                    label_ids_by_tag[tag_id].push_back(label.label_id);
+                }
+            }
+            for (const auto &[tag_id, target_ids] : label_ids_by_tag)
+            {
+                if (!database.addTagsToLabels(target_ids, tag_id, operation.error))
+                {
+                    fail(operation.error);
+                    return;
+                }
+            }
+
+            operation.success  = true;
+            operation.error.clear();
         },
         [this, result](const DataOperationWorkflow::Result &operation)
         {
-            result->success    = operation.success;
-            result->err_msg    = operation.error.isEmpty() ? result->err_msg : operation.error;
-            result->elapsed_ms = operation.elapsed_ms;
-            commitImageCopy(result);
+            commitImageCopy(result, operation);
         });
 }
 
@@ -1824,31 +1730,22 @@ void DataManager::moveToDataset(const std::vector<int64_t> &image_ids, const int
         return;
     }
 
-    std::vector<int64_t> source_dataset_ids;
     std::vector<int64_t> moved_image_ids;
-    std::vector<std::vector<int64_t>> moved_image_label_ids;
-    std::vector<int64_t>              moved_image_label_class_ids;
-    source_dataset_ids.reserve(selected_image_ids.size());
     moved_image_ids.reserve(selected_image_ids.size());
     for (const int64_t image_id : selected_image_ids)
     {
-        const int64_t source_dataset_id = image_instances_->getImageDatasetId(image_id);
+        const int64_t source_dataset_id = image_source_->getImageDatasetId(image_id);
         if (source_dataset_id < 0 || source_dataset_id == dataset_id)
         {
             continue;
         }
-        source_dataset_ids.push_back(source_dataset_id);
         moved_image_ids.push_back(image_id);
-        const auto image_labels = image_instances_->getLabelIds({image_id});
-        moved_image_label_ids.push_back(image_labels.empty() ? std::vector<int64_t>{} : image_labels.front());
-        moved_image_label_class_ids.push_back(image_instances_->getImageLabelClassId(image_id));
     }
     if (moved_image_ids.empty())
     {
         return;
     }
 
-    const std::vector<int64_t> target_dataset_ids(moved_image_ids.size(), dataset_id);
     setDataOperationRunning(true);
     image_operation_running_ = true;
     emit imageOperationRunningChanged();
@@ -1857,16 +1754,14 @@ void DataManager::moveToDataset(const std::vector<int64_t> &image_ids, const int
     options.start_message = QString("正在移动 %1 个图像").arg(moved_image_ids.size());
     DataOperationWorkflow::startDatabase(
         this, database_->path(), std::move(options),
-        [moved_image_ids, target_dataset_ids](dltool::database::ProjectDataBase &database,
-                                              DataOperationWorkflow::Result &result)
+        [moved_image_ids, dataset_id](dltool::database::ProjectDataBase &database,
+                                      DataOperationWorkflow::Result &result)
         {
-            result.success = database.updateImagesDataset(moved_image_ids, target_dataset_ids, result.error);
+            result.success = database.updateImagesDataset(moved_image_ids, dataset_id, result.error);
         },
-        [this, moved_image_ids, source_dataset_ids, target_dataset_ids, moved_image_label_ids,
-         moved_image_label_class_ids](const DataOperationWorkflow::Result &result)
+        [this, moved_image_ids, dataset_id](const DataOperationWorkflow::Result &result)
         {
-            commitImageMove(moved_image_ids, source_dataset_ids, target_dataset_ids, moved_image_label_ids,
-                            moved_image_label_class_ids, result.success, result.error, result.elapsed_ms);
+            commitImageMove(moved_image_ids, dataset_id, result.success, result.error, result.elapsed_ms);
         });
 }
 
@@ -1878,6 +1773,11 @@ void DataManager::addLabelClass(const QString &name, const QString &color, const
 void DataManager::addLabelClassWithGroup(const QString &name, const QString &color, const QString &shortcut,
                                          const QString &group)
 {
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QString("添加标签类别"), QString("当前已有数据操作正在进行中"));
+        return;
+    }
     const QString validation_error = isValidClassName(name);
     if (!validation_error.isEmpty())
     {
@@ -1907,6 +1807,11 @@ void DataManager::updateLabelClass(const int64_t label_class_id, const QString &
 void DataManager::updateLabelClassWithGroup(const int64_t label_class_id, const QString &name, const QString &color,
                                             const QString &shortcut, const int64_t ordinal_index, const QString &group)
 {
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QString("更新标签类别"), QString("当前已有数据操作正在进行中"));
+        return;
+    }
     const QString validation_error = isValidClassName(name, label_class_id);
     if (!validation_error.isEmpty())
     {
@@ -1951,6 +1856,11 @@ void DataManager::updateLabelClassWithGroup(const int64_t label_class_id, const 
 
 void DataManager::updateLabelClassGroup(const int64_t label_class_id, const QString &group)
 {
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QString("更新标签类别分组"), QString("当前已有数据操作正在进行中"));
+        return;
+    }
     if (label_classes_ == nullptr)
     {
         return;
@@ -1966,16 +1876,21 @@ void DataManager::updateLabelClassGroup(const int64_t label_class_id, const QStr
 
 void DataManager::deleteLabelClass(const int64_t label_class_id)
 {
-    std::vector<int64_t> label_ids = label_instances_->getLabelIds(label_class_id);
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QString("删除标签类别"), QString("当前已有数据操作正在进行中"));
+        return;
+    }
+    std::vector<int64_t> label_ids = label_source_->getLabelIds(label_class_id);
     deleteLabels(label_ids);
 
     std::vector<int64_t> images_to_clear;
     std::vector<int64_t> clear_values;
-    if (image_instances_ != nullptr)
+    if (image_source_ != nullptr)
     {
-        for (const int64_t image_id : image_instances_->getAllImageIds())
+        for (const auto &[image_id, image] : image_source_->getAllImageInstances())
         {
-            if (image_instances_->getImageLabelClassId(image_id) == label_class_id)
+            if (image != nullptr && image->imageLabelClassId() == label_class_id)
             {
                 images_to_clear.push_back(image_id);
                 clear_values.push_back(-1);
@@ -1983,7 +1898,8 @@ void DataManager::deleteLabelClass(const int64_t label_class_id)
         }
         if (!images_to_clear.empty())
         {
-            image_instances_->setImageLabelClassIds(images_to_clear, clear_values);
+            image_source_->setImageLabelClassIds(images_to_clear, clear_values);
+            datasets_->syncImageLabelState(image_source_, images_to_clear);
         }
     }
 
@@ -1997,11 +1913,21 @@ void DataManager::deleteLabelClass(const int64_t label_class_id)
 void DataManager::addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                             const std::vector<QVariantMap> &data)
 {
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QString("添加标注"), QString("当前已有数据操作正在进行中"));
+        return;
+    }
     addLabelsInternal(image_ids, label_class_ids, data);
 }
 
 bool DataManager::addLabel(const int64_t image_id, const int64_t label_class_id, const QVariantMap &data)
 {
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QString("添加标注"), QString("当前已有数据操作正在进行中"));
+        return false;
+    }
     if (image_id < 0)
     {
         spdlog::warn("添加标注失败: 当前图像无效, image_id={}", image_id);
@@ -2033,8 +1959,8 @@ bool DataManager::addLabelsInternal(const std::vector<int64_t> &image_ids, const
     }
 
     std::vector<int64_t> label_ids;
-    if (!label_instances_->tryAddLabels(label_ids, image_ids, label_class_ids, data, err_msg,
-                                        !refresh_dependent_models))
+    if (!label_source_->tryAddLabels(label_ids, image_ids, label_class_ids, data, err_msg,
+                                     !refresh_dependent_models))
     {
         return false;
     }
@@ -2052,51 +1978,65 @@ bool DataManager::addLabelsInternal(const std::vector<int64_t> &image_ids, const
         return true;
     }
 
-    image_instances_->addImagesLabelIds(image_ids, label_ids);
+    image_source_->addImagesLabelIds(image_ids, label_ids);
     image_labels_list_->addLabels(image_ids, label_ids);
     image_labels_table_->addLabels(image_ids, label_ids);
-    updateDatasetsStats();
+    datasets_->syncImageLabelState(image_source_, image_ids);
     image_info_->updateLabelInfo();
     return true;
 }
 
 void DataManager::updateLabels(const std::vector<int64_t> &label_ids, const std::vector<QVariantMap> &data)
 {
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QString("更新标注"), QString("当前已有数据操作正在进行中"));
+        return;
+    }
     if (labels_loading_)
     {
         labels_changed_during_loading_ = true;
     }
-    std::vector<int64_t> image_ids = label_instances_->getImageIds(label_ids);
-    label_instances_->updateLabelsData(label_ids, image_ids, data);
+    std::vector<int64_t> image_ids = label_source_->getImageIds(label_ids);
+    label_source_->updateLabelsData(label_ids, image_ids, data);
     image_labels_list_->updateLabels(image_ids, label_ids);
     image_labels_table_->updateLabels(image_ids, label_ids);
-    // updateDatasetsStats();
 }
 
 void DataManager::updateLabelsClass(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &label_class_ids)
 {
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QString("更新标注类别"), QString("当前已有数据操作正在进行中"));
+        return;
+    }
     if (labels_loading_)
     {
         labels_changed_during_loading_ = true;
     }
-    std::vector<int64_t> image_ids = label_instances_->getImageIds(label_ids);
-    label_instances_->updateLabelsClass(label_ids, label_class_ids);
+    std::vector<int64_t> image_ids = label_source_->getImageIds(label_ids);
+    label_source_->updateLabelsClass(label_ids, label_class_ids);
     image_labels_list_->updateLabels(image_ids, label_ids);
     image_labels_table_->updateLabels(image_ids, label_ids);
 }
 
 void DataManager::deleteLabels(const std::vector<int64_t> &label_ids)
 {
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QString("删除标注"), QString("当前已有数据操作正在进行中"));
+        return;
+    }
     if (labels_loading_)
     {
         labels_changed_during_loading_ = true;
     }
-    std::vector<int64_t> image_ids = label_instances_->getImageIds(label_ids);
-    label_instances_->deleteLabels(label_ids);
-    image_instances_->deleteImagesLabelIds(image_ids, label_ids);
+    std::vector<int64_t> image_ids = label_source_->getImageIds(label_ids);
+    label_source_->deleteLabels(label_ids);
+    image_source_->deleteImagesLabelIds(image_ids, label_ids);
     image_labels_list_->deleteLabels(image_ids, label_ids);
     image_labels_table_->deleteLabels(image_ids, label_ids);
-    updateDatasetsStats();
+    datasets_->syncImageLabelState(image_source_, image_ids);
     image_info_->updateLabelInfo();
     if (global_filter_ != nullptr)
     {
@@ -2106,7 +2046,12 @@ void DataManager::deleteLabels(const std::vector<int64_t> &label_ids)
 
 void DataManager::duplicateSelectedLabels()
 {
-    if (image_labels_list_ == nullptr || label_instances_ == nullptr || image_instances_ == nullptr)
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QString("复制标注"), QString("当前已有数据操作正在进行中"));
+        return;
+    }
+    if (image_labels_list_ == nullptr || label_source_ == nullptr || image_instances_ == nullptr)
     {
         return;
     }
@@ -2117,18 +2062,19 @@ void DataManager::duplicateSelectedLabels()
         return;
     }
 
-    const int64_t            current_image_id = image_instances_->getCurrentImageId();
+    const int64_t            current_image_id = image_instances_->currentImageId();
     std::vector<int64_t>     image_ids;
     std::vector<int64_t>     label_class_ids;
     std::vector<QVariantMap> labels_data;
-    std::vector<std::vector<int64_t>> label_tag_ids;
+    std::vector<const std::set<int64_t> *> label_tag_sets;
     image_ids.reserve(selected_label_ids.size());
     label_class_ids.reserve(selected_label_ids.size());
     labels_data.reserve(selected_label_ids.size());
+    label_tag_sets.reserve(selected_label_ids.size());
 
     for (const int64_t label_id : selected_label_ids)
     {
-        LabelInstance *instance = label_instances_->getLabelInstance(label_id);
+        LabelInstance *instance = label_source_->getLabelInstance(label_id);
         if (instance == nullptr || instance->imageId() != current_image_id || instance->data() == nullptr)
         {
             continue;
@@ -2138,7 +2084,7 @@ void DataManager::duplicateSelectedLabels()
         image_ids.push_back(current_image_id);
         label_class_ids.push_back(instance->labelClassId());
         labels_data.push_back(data);
-        label_tag_ids.emplace_back(instance->tagIds().begin(), instance->tagIds().end());
+        label_tag_sets.push_back(&instance->tagIds());
     }
 
     if (!image_ids.empty())
@@ -2151,9 +2097,13 @@ void DataManager::duplicateSelectedLabels()
         }
 
         std::map<int64_t, std::vector<int64_t>> labels_by_tag;
-        for (size_t i = 0; i < duplicated_label_ids.size() && i < label_tag_ids.size(); ++i)
+        for (size_t i = 0; i < duplicated_label_ids.size() && i < label_tag_sets.size(); ++i)
         {
-            for (const int64_t tag_id : label_tag_ids[i])
+            if (label_tag_sets[i] == nullptr)
+            {
+                continue;
+            }
+            for (const int64_t tag_id : *label_tag_sets[i])
             {
                 labels_by_tag[tag_id].push_back(duplicated_label_ids[i]);
             }
@@ -2167,7 +2117,12 @@ void DataManager::duplicateSelectedLabels()
 
 bool DataManager::setImageLabelClass(const int64_t image_id, const int64_t label_class_id)
 {
-    if (image_instances_ == nullptr || label_classes_ == nullptr)
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QString("设置图像类别"), QString("当前已有数据操作正在进行中"));
+        return false;
+    }
+    if (image_source_ == nullptr || label_classes_ == nullptr)
     {
         return false;
     }
@@ -2186,10 +2141,10 @@ bool DataManager::setImageLabelClass(const int64_t image_id, const int64_t label
             ? -1
             : label_class_id;
 
-    const bool ok = image_instances_->setImageLabelClassId(image_id, effective_label_class_id);
+    const bool ok = image_source_->setImageLabelClassId(image_id, effective_label_class_id);
     if (ok)
     {
-        updateDatasetsStats();
+        datasets_->syncImageLabelState(image_source_, {image_id});
         if (image_info_ != nullptr)
         {
             image_info_->updateLabelInfo();
@@ -2201,12 +2156,12 @@ bool DataManager::setImageLabelClass(const int64_t image_id, const int64_t label
 QVariantMap DataManager::getImageLevelLabelData(const int64_t image_id) const
 {
     QVariantMap data;
-    if (image_instances_ == nullptr || label_classes_ == nullptr || image_id < 0)
+    if (image_source_ == nullptr || label_classes_ == nullptr || image_id < 0)
     {
         return data;
     }
 
-    const int64_t label_class_id = image_instances_->getImageLabelClassId(image_id);
+    const int64_t label_class_id = image_source_->getImageLabelClassId(image_id);
     if (label_class_id < 0)
     {
         return data;
@@ -2229,8 +2184,13 @@ QVariantMap DataManager::getImageLevelLabelData(const int64_t image_id) const
 
 void DataManager::refreshAnomalyImageClassesFromPolygons(const std::vector<int64_t> &image_ids, bool only_unset)
 {
-    if (method_ != core::DeepLearningMethod::AnomalyDetection || image_instances_ == nullptr
-        || label_instances_ == nullptr || label_classes_ == nullptr)
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QString("刷新图像类别"), QString("当前已有数据操作正在进行中"));
+        return;
+    }
+    if (method_ != core::DeepLearningMethod::AnomalyDetection || image_source_ == nullptr
+        || label_source_ == nullptr || label_classes_ == nullptr)
     {
         return;
     }
@@ -2247,16 +2207,16 @@ void DataManager::refreshAnomalyImageClassesFromPolygons(const std::vector<int64
 
     for (const int64_t image_id : image_ids)
     {
-        if (only_unset && image_instances_->getImageLabelClassId(image_id) >= 0)
+        if (only_unset && image_source_->getImageLabelClassId(image_id) >= 0)
         {
             continue;
         }
 
         int64_t first_class_id         = -1;
         int64_t first_anomaly_class_id = -1;
-        for (const int64_t label_id : label_instances_->getImageLabelIds(image_id))
+        for (const int64_t label_id : label_source_->getImageLabelIds(image_id))
         {
-            const int64_t label_class_id = label_instances_->getLabelClassId(label_id);
+            const int64_t label_class_id = label_source_->getLabelClassId(label_id);
             if (label_class_id < 0 || label_classes_->isUnlabeledLabelClass(static_cast<int>(label_class_id)))
             {
                 continue;
@@ -2273,16 +2233,16 @@ void DataManager::refreshAnomalyImageClassesFromPolygons(const std::vector<int64
         }
 
         const int64_t target_class_id = first_anomaly_class_id >= 0 ? first_anomaly_class_id : first_class_id;
-        if (image_instances_->getImageLabelClassId(image_id) != target_class_id)
+        if (image_source_->getImageLabelClassId(image_id) != target_class_id)
         {
             images_to_update.push_back(image_id);
             classes_to_set.push_back(target_class_id);
         }
     }
 
-    if (!images_to_update.empty() && image_instances_->setImageLabelClassIds(images_to_update, classes_to_set))
+    if (!images_to_update.empty() && image_source_->setImageLabelClassIds(images_to_update, classes_to_set))
     {
-        updateDatasetsStats();
+        datasets_->syncImageLabelState(image_source_, images_to_update);
         if (image_info_ != nullptr)
         {
             image_info_->updateLabelInfo();
@@ -2292,6 +2252,11 @@ void DataManager::refreshAnomalyImageClassesFromPolygons(const std::vector<int64
 
 void DataManager::addTagClass(const QString &name)
 {
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QString("添加 Tag"), QString("当前已有数据操作正在进行中"));
+        return;
+    }
     if (image_tags_ == nullptr || name.trimmed().isEmpty() || findTagClassId(name) >= 0)
     {
         return;
@@ -2306,28 +2271,22 @@ int64_t DataManager::findTagClassId(const QString &name) const
 
 bool DataManager::setLabelsTag(const std::vector<int64_t> &label_ids, const int64_t tag_id)
 {
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QString("设置标注 Tag"), QString("当前已有数据操作正在进行中"));
+        return false;
+    }
     return image_tags_ != nullptr && image_tags_->addLabelsTag(label_ids, tag_id);
 }
 
 bool DataManager::deleteTagClass(const int64_t tag_id)
 {
-    return image_tags_ != nullptr && image_tags_->deleteTagClass(tag_id);
-}
-
-void DataManager::updateDatasetsStats()
-{
-    if (image_instances_ == nullptr || datasets_ == nullptr)
-        return;
-    std::vector<int64_t>              dataset_ids, image_ids;
-    std::vector<std::vector<int64_t>> images_label_ids;
-    image_instances_->getAllDatasetsImagesLabels(dataset_ids, image_ids, images_label_ids);
-    std::vector<int64_t> image_label_class_ids;
-    image_label_class_ids.reserve(image_ids.size());
-    for (const int64_t image_id : image_ids)
+    if (isDataOperationRunning())
     {
-        image_label_class_ids.push_back(image_instances_->getImageLabelClassId(image_id));
+        ui::SignalHelper::notifyWarn(QString("删除 Tag"), QString("当前已有数据操作正在进行中"));
+        return false;
     }
-    datasets_->setStats(dataset_ids, image_ids, images_label_ids, image_label_class_ids);
+    return image_tags_ != nullptr && image_tags_->deleteTagClass(tag_id);
 }
 
 void DataManager::handleDataBatchReady(int64_t dataset_id, std::vector<QString> image_paths,
@@ -2402,14 +2361,6 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
     const bool anomaly_project = method_ == core::DeepLearningMethod::AnomalyDetection;
     const bool folder_import   = task.data_format == DataFormat::Folder;
 
-    auto track_imported_image = [&](int64_t image_id)
-    {
-        if (image_id >= 0 && task.imported_image_id_set.insert(image_id).second)
-        {
-            task.imported_image_ids.push_back(image_id);
-        }
-    };
-
     auto ensure_label_class = [&](const QString &label_name, const QString &color) -> int64_t
     {
         if (label_name.isEmpty())
@@ -2473,12 +2424,12 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
     {
         if (task.normalized_image_path_to_id.empty())
         {
-            for (const int64_t image_id : image_instances_->getAllImageIds())
+            for (const auto &[image_id, image] : image_source_->getAllImageInstances())
             {
-                if (image_instances_->getImageDatasetId(image_id) != task.dataset_id)
+                if (image == nullptr || image->datasetId() != task.dataset_id)
                     continue;
 
-                const QString normalized_path = normalizedImagePath(image_instances_->getImagePath(image_id));
+                const QString normalized_path = normalizedImagePath(image->path());
                 if (!normalized_path.isEmpty())
                     task.normalized_image_path_to_id[normalized_path] = image_id;
             }
@@ -2495,7 +2446,6 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
             if (existing_it != task.normalized_image_path_to_id.end())
             {
                 task.image_path_to_id[image_path] = existing_it->second;
-                track_imported_image(existing_it->second);
                 continue;
             }
 
@@ -2511,7 +2461,7 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
         }
 
         if (!new_image_paths.empty()
-            && !image_instances_->addImages(task.dataset_id, new_image_paths, image_ids, true))
+            && !image_source_->addImages(task.dataset_id, new_image_paths, image_ids, true))
         {
             err_msg = QString("添加图像失败，当前批次已跳过。已导入 %1 个图像, %2 个标注")
                           .arg(task.imported_images)
@@ -2528,8 +2478,6 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
         task.imported_images += image_ids.size();
         task.deferred_ui_refresh = task.deferred_ui_refresh || !image_ids.empty();
         task.deferred_image_model_refresh = task.deferred_image_model_refresh || !image_ids.empty();
-        task.deferred_dataset_image_ids.insert(task.deferred_dataset_image_ids.end(), image_ids.begin(), image_ids.end());
-
         for (size_t i = 0; i < new_image_paths.size(); ++i)
         {
             task.normalized_image_path_to_id[new_normalized_paths[i]] = image_ids[i];
@@ -2538,7 +2486,6 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
                 continue;
 
             for (const QString &raw_path : pending_it->second) task.image_path_to_id[raw_path] = image_ids[i];
-            track_imported_image(image_ids[i]);
         }
     }
 
@@ -2558,8 +2505,6 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
             continue;
         }
         const int64_t image_id = image_it->second;
-        track_imported_image(image_id);
-
         const QString fallback_color = DatasetIO::generateDefaultColor(static_cast<int>(task.label_class_map.size()));
         const int64_t label_class_id = ensure_label_class(label.label_class_name, fallback_color);
         if (label_class_id < 0)
@@ -2642,7 +2587,7 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
         image_level_class_ids.reserve(batch_image_level_class_updates.size());
         for (const auto &[image_id, class_id] : batch_image_level_class_updates)
         {
-            if (image_instances_->getImageLabelClassId(image_id) == class_id)
+            if (image_source_->getImageLabelClassId(image_id) == class_id)
             {
                 continue;
             }
@@ -2651,7 +2596,7 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
         }
 
         if (!image_level_image_ids.empty()
-            && image_instances_->setImageLabelClassIds(image_level_image_ids, image_level_class_ids))
+            && image_source_->setImageLabelClassIds(image_level_image_ids, image_level_class_ids))
         {
             task.deferred_ui_refresh = true;
         }
@@ -2710,14 +2655,6 @@ void DataManager::finishBatchedImport(bool success, const QString &message)
     const bool refresh_label_model
         = pending_import_task_ != nullptr && pending_import_task_->deferred_label_model_refresh;
 
-    if (pending_import_task_ != nullptr && datasets_ != nullptr
-        && !pending_import_task_->deferred_dataset_image_ids.empty())
-    {
-        const std::vector<int64_t> dataset_ids(pending_import_task_->deferred_dataset_image_ids.size(),
-                                               pending_import_task_->dataset_id);
-        datasets_->addImages(dataset_ids, pending_import_task_->deferred_dataset_image_ids);
-    }
-
     // Import batches only write their primary data.  Rebuild the derived image-label
     // relationships, dataset statistics and current-image models once at the end so
     // a large project does not perform the same full-project work for every batch.
@@ -2730,13 +2667,13 @@ void DataManager::finishBatchedImport(bool success, const QString &message)
         }
         else
         {
-            if (refresh_image_model && image_instances_ != nullptr)
+            if (refresh_image_model && image_source_ != nullptr)
             {
-                image_instances_->refreshModelFromMemory();
+                image_source_->refreshModelFromMemory();
             }
-            if (refresh_label_model && label_instances_ != nullptr)
+            if (refresh_label_model && label_source_ != nullptr)
             {
-                label_instances_->refreshModelFromMemory();
+                label_source_->refreshModelFromMemory();
             }
         }
     }
@@ -2811,10 +2748,10 @@ void DataManager::initializeQmlEngine(QQmlApplicationEngine *engine)
     engine->removeImageProvider(QStringLiteral("imageinstance"));
     engine->removeImageProvider(QStringLiteral("labelinstance"));
 
-    auto *image_instance_provider = new ImageInstanceImageProvider(image_instances_);
+    auto *image_instance_provider = new ImageInstanceImageProvider(image_source_);
 
     // 创建 LabelInstanceImageProvider 实例，传入三个模型指针
-    auto *label_instance_provider = new LabelInstanceImageProvider(label_instances_, image_instances_, label_classes_);
+    auto *label_instance_provider = new LabelInstanceImageProvider(label_source_, image_source_, label_classes_);
 
     // 注册到 QML 引擎（使用小写名称，因为 QML Image 会自动转换为小写）
     engine->addImageProvider("imageinstance", image_instance_provider);
@@ -2823,23 +2760,23 @@ void DataManager::initializeQmlEngine(QQmlApplicationEngine *engine)
 
 QString DataManager::getImageName(const int64_t image_id) const
 {
-    return image_instances_->getImageName(image_id);
+    return image_source_->getImageName(image_id);
 }
 
 QString DataManager::getImagePath(const int64_t image_id) const
 {
-    return image_instances_->getImagePath(image_id);
+    return image_source_->getImagePath(image_id);
 }
 
 QString DataManager::getImageDatasetName(const int64_t image_id) const
 {
-    const int64_t dataset_id = image_instances_->getImageDatasetId(image_id);
+    const int64_t dataset_id = image_source_->getImageDatasetId(image_id);
     return datasets_->getDatasetName(dataset_id);
 }
 
 QString DataManager::getImageTagName(const int64_t image_id) const
 {
-    const std::set<int64_t> tag_ids = image_instances_->getImageTagIds(image_id);
+    const std::set<int64_t> &tag_ids = image_source_->getImageTagIds(image_id);
     if (tag_ids.empty())
         return QString();
     QString tag_names;

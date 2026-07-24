@@ -14,8 +14,11 @@ class ProjectDataBase;
 namespace dltool::data {
 
 class ImageInstancesListModel;
+class ImageInstancesViewModel;
 class LabelInstancesListModel;
 class ImageLabelsListModel;
+struct LoadedImageInstance;
+struct LoadedLabelInstance;
 
 class Tag
 {
@@ -61,6 +64,11 @@ public:
         image_ids_.insert(image_ids.begin(), image_ids.end());
     }
 
+    void addImageId(const int64_t image_id)
+    {
+        image_ids_.insert(image_id);
+    }
+
     void removeImageIds(const std::vector<int64_t> &image_ids)
     {
         for (const int64_t image_id : image_ids)
@@ -69,9 +77,19 @@ public:
         }
     }
 
+    void removeImageId(const int64_t image_id)
+    {
+        image_ids_.erase(image_id);
+    }
+
     void addLabelIds(const std::vector<int64_t> &label_ids)
     {
         label_ids_.insert(label_ids.begin(), label_ids.end());
+    }
+
+    void addLabelId(const int64_t label_id)
+    {
+        label_ids_.insert(label_id);
     }
 
     void removeLabelIds(const std::vector<int64_t> &label_ids)
@@ -80,6 +98,11 @@ public:
         {
             label_ids_.erase(label_id);
         }
+    }
+
+    void removeLabelId(const int64_t label_id)
+    {
+        label_ids_.erase(label_id);
     }
 
 private:
@@ -97,7 +120,8 @@ class ImageTagsListModel : public QAbstractListModel
     QML_UNCREATABLE("Can not create ImageTagsModel directly!")
 public:
     ImageTagsListModel(dltool::database::ProjectDataBase *database, ImageInstancesListModel *image_instances,
-                       LabelInstancesListModel *label_instances, ImageLabelsListModel *image_labels_list,
+                       ImageInstancesViewModel *image_view, LabelInstancesListModel *label_instances,
+                       ImageLabelsListModel *image_labels_list,
                        QObject *parent = nullptr);
     ~ImageTagsListModel() override = default;
 
@@ -130,16 +154,32 @@ public:
 
     bool removeImagesTags(const std::vector<int64_t> &image_ids);
     void removeImagesTagsFromMemory(const std::vector<int64_t> &image_ids);
-    void addImagesTagsFromMemory(const std::vector<int64_t> &image_ids,
-                                 const std::vector<std::vector<int64_t>> &tag_ids);
-    void addLabelsTagsFromMemory(const std::vector<int64_t> &label_ids,
-                                 const std::vector<std::vector<int64_t>> &tag_ids);
+    /**
+     * @brief 将已发布实体中的 Tag 关系登记到 Tag 索引。
+     * @param images 已发布图像实体。
+     * @param labels 已发布标注实体。
+     */
+    void addRelationsFromMemory(const std::vector<LoadedImageInstance> &images,
+                                const std::vector<LoadedLabelInstance> &labels);
 
-    std::vector<std::vector<int64_t>> getImagesTagIds(const std::vector<int64_t> &image_ids) const;
+    /**
+     * @brief 将 Tag 关系写入当前图像源模型。
+     */
+    void applyTagsToImages();
+
     void                              applyTagsToLabels();
     void                              updateStats();
 
     QString getTagClassName(int64_t tag_id) const;
+
+    /**
+     * @brief 设置数据操作期间的写入阻断状态。
+     * @param blocked 是否阻断直接写入。
+     */
+    void setMutationBlocked(bool blocked)
+    {
+        mutation_blocked_ = blocked;
+    }
 
 private:
     enum class TagTarget
@@ -170,10 +210,14 @@ private:
 
     dltool::database::ProjectDataBase *database_{nullptr};
     ImageInstancesListModel           *image_instances_{nullptr};
+    ImageInstancesViewModel           *image_view_{nullptr};
     LabelInstancesListModel           *label_instances_{nullptr};
     ImageLabelsListModel              *image_labels_list_{nullptr};
 
     std::map<int64_t, Tag> tags_;
+    std::map<int64_t, int> selected_image_tag_counts_;  ///< 当前选中图像的各 Tag 计数。
+    std::map<int64_t, int> selected_label_tag_counts_;  ///< 当前选中标注的各 Tag 计数。
+    bool mutation_blocked_{false};                      ///< 数据操作期间是否阻断写入。
 };
 
 } // namespace dltool::data

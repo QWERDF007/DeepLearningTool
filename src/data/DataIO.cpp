@@ -758,7 +758,7 @@ void DataIO::startScanLabelClasses(const QString &image_dir, const QString &data
     emit labelClassesScanned(true, {}, QString());
 }
 
-void DataIO::startExport(const ExportDataset &dataset, const QString &output_dir, const QVariantMap &options)
+void DataIO::startExport(ExportDataset dataset, const QString &output_dir, const QVariantMap &options)
 {
     Q_UNUSED(dataset)
     Q_UNUSED(output_dir)
@@ -905,10 +905,10 @@ void COCOIO::startScanLabelClasses(const QString &image_dir, const QString &data
     runInThread([this, data_dir]() { doScanLabelClasses(data_dir); });
 }
 
-void COCOIO::startExport(const ExportDataset &dataset, const QString &output_dir, const QVariantMap &options)
+void COCOIO::startExport(ExportDataset dataset, const QString &output_dir, const QVariantMap &options)
 {
     Q_UNUSED(options)
-    runInThread([this, dataset, output_dir]() { doExport(dataset, output_dir); });
+    runInThread([this, dataset = std::move(dataset), output_dir]() { doExport(std::move(dataset), output_dir); });
 }
 
 QString COCOIO::findCocoJsonFile(const QString &data_path) const
@@ -1483,10 +1483,10 @@ void LabelMeIO::startScanLabelClasses(const QString &image_dir, const QString &d
     runInThread([this, image_dir, data_dir]() { doScanLabelClasses(image_dir, data_dir); });
 }
 
-void LabelMeIO::startExport(const ExportDataset &dataset, const QString &output_dir, const QVariantMap &options)
+void LabelMeIO::startExport(ExportDataset dataset, const QString &output_dir, const QVariantMap &options)
 {
     Q_UNUSED(options)
-    runInThread([this, dataset, output_dir]() { doExport(dataset, output_dir); });
+    runInThread([this, dataset = std::move(dataset), output_dir]() { doExport(std::move(dataset), output_dir); });
 }
 
 bool LabelMeIO::parseLabelMeJson(const QString &json_path, LabelMeData &data)
@@ -2007,9 +2007,10 @@ void MaskIO::startScanLabelClasses(const QString &image_dir, const QString &data
     runInThread([this, data_dir]() { doScanLabelClasses(data_dir); });
 }
 
-void MaskIO::startExport(const ExportDataset &dataset, const QString &output_dir, const QVariantMap &options)
+void MaskIO::startExport(ExportDataset dataset, const QString &output_dir, const QVariantMap &options)
 {
-    runInThread([this, dataset, output_dir, options]() { doExport(dataset, output_dir, options); });
+    runInThread([this, dataset = std::move(dataset), output_dir, options]()
+                { doExport(std::move(dataset), output_dir, options); });
 }
 
 void MaskIO::doScanLabelClasses(const QString &data_dir)
@@ -2469,10 +2470,10 @@ void FolderIO::startScanLabelClasses(const QString &image_dir, const QString &da
     runInThread([this, image_dir]() { doScanLabelClasses(image_dir); });
 }
 
-void FolderIO::startExport(const ExportDataset &dataset, const QString &output_dir, const QVariantMap &options)
+void FolderIO::startExport(ExportDataset dataset, const QString &output_dir, const QVariantMap &options)
 {
     Q_UNUSED(options)
-    runInThread([this, dataset, output_dir]() { doExport(dataset, output_dir); });
+    runInThread([this, dataset = std::move(dataset), output_dir]() { doExport(std::move(dataset), output_dir); });
 }
 
 void FolderIO::doScanLabelClasses(const QString &image_dir)

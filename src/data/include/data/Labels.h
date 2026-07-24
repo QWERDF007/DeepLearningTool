@@ -2,10 +2,10 @@
 
 #include <QAbstractListModel>
 #include <QtQml>
-#include <functional>
 #include <map>
 #include <memory>
 #include <set>
+#include <unordered_map>
 #include <vector>
 
 namespace dltool::database {
@@ -23,14 +23,16 @@ using LabelDataHelper = std::unique_ptr<dltool::data::LabelDataHelper_t>;
 namespace dltool::data {
 
 class ImageInstancesListModel;
+class ImageInstancesViewModel;
 class LabelClassesListModel;
 
 struct LoadedLabelInstance
 {
-    int64_t   label_id{0};
-    int64_t   image_id{0};
-    int64_t   label_class_id{0};
-    LabelData data{nullptr};
+    int64_t           label_id{-1};       ///< 标注 ID。
+    int64_t           image_id{-1};       ///< 所属图像 ID。
+    int64_t           label_class_id{-1}; ///< 标注类别 ID。
+    LabelData         data{nullptr};      ///< 标注几何数据。
+    std::set<int64_t> tag_ids;            ///< 标注关联的 Tag ID。
 };
 
 class LabelInstance : public QObject
@@ -66,6 +68,11 @@ public:
         tag_ids_.insert(tag_ids.begin(), tag_ids.end());
     }
 
+    void addTagId(const int64_t tag_id)
+    {
+        tag_ids_.insert(tag_id);
+    }
+
     void removeTagIds(const std::vector<int64_t> &tag_ids)
     {
         for (const int64_t tag_id : tag_ids)
@@ -74,11 +81,14 @@ public:
         }
     }
 
-    std::vector<int64_t> removeAllTagIds()
+    void removeTagId(const int64_t tag_id)
     {
-        std::vector<int64_t> tag_ids(tag_ids_.begin(), tag_ids_.end());
+        tag_ids_.erase(tag_id);
+    }
+
+    void clearTagIds()
+    {
         tag_ids_.clear();
-        return tag_ids;
     }
 
     const std::set<int64_t> &tagIds() const
@@ -90,6 +100,8 @@ public:
     {
         return data_;
     }
+
+    void setData(LabelData data);
 
 private:
     int64_t label_id_;
@@ -103,10 +115,8 @@ private:
 class LabelInstancesListModel : public QAbstractListModel
 {
     Q_OBJECT
-    QML_NAMED_ELEMENT(LabelInstancesModel)
-    QML_UNCREATABLE("Can not create LabelInstancesModel directly!")
-    Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
-    Q_PROPERTY(int lastIndex READ lastIndex WRITE setLastIndex NOTIFY lastIndexChanged)
+    QML_NAMED_ELEMENT(LabelInstancesSourceModel)
+    QML_UNCREATABLE("Can not create LabelInstancesSourceModel directly!")
 public:
     LabelInstancesListModel(dltool::database::ProjectDataBase *database, ImageInstancesListModel *image_instances,
                             LabelClassesListModel *label_classes, LabelDataHelper label_data_helper,
@@ -132,16 +142,17 @@ public:
 
     QHash<int, QByteArray> roleNames() const override;
 
-    LabelInstance *getLabelInstance(const int64_t label_id);
+    LabelInstance       *getLabelInstance(const int64_t label_id);
+    const LabelInstance *getLabelInstance(const int64_t label_id) const;
 
     void replaceAllLabels(std::vector<LoadedLabelInstance> labels);
 
-    /// 将已经写入数据库的标注批量发布到内存模型，不执行数据库写入。
-    /// defer_model_update=true 时只更新内存容器，调用 refreshModelFromMemory() 一次性通知视图。
-    void addLabelsFromMemory(std::vector<LoadedLabelInstance> labels, bool defer_model_update = false);
-    void addLabelsTagIdsFromMemory(const std::vector<int64_t> &label_ids,
-                                   const std::vector<std::vector<int64_t>> &tag_ids);
-
+    /**
+     * @brief 将已经写入数据库的标注批量发布到内存模型。
+     * @param labels 已完成数据库写入的标注。
+     * @param defer_model_update 是否延迟到 refreshModelFromMemory() 再通知视图。
+     */
+    void addLabelsFromMemory(std::vector<LoadedLabelInstance> &labels, bool defer_model_update = false);
     bool tryAddLabels(std::vector<int64_t> &label_ids, const std::vector<int64_t> &image_ids,
                       const std::vector<int64_t> &label_class_ids, const std::vector<QVariantMap> &data,
                       QString *err_msg = nullptr, bool defer_model_update = false);
@@ -165,25 +176,14 @@ public:
      */
     void removeLabelsForImagesFromMemory(const std::vector<int64_t> &image_ids);
 
-    std::vector<int64_t>              getImageLabelIds(int64_t image_id) const;
-    std::vector<std::vector<int64_t>> getImagesLabelIds(const std::vector<int64_t> &image_ids) const;
+    std::vector<int64_t> getImageLabelIds(int64_t image_id) const;
 
-    QItemSelectionModel *selection() const
-    {
-        return selection_;
-    }
-
-    Q_INVOKABLE void shiftSelect(int current_index, int previous_index, QItemSelectionModel::SelectionFlags command);
-    Q_INVOKABLE void selectAll();
-    Q_INVOKABLE std::vector<int64_t> getSelectedLabelIds() const;
-    Q_INVOKABLE std::vector<int64_t> getSelectedImageIds() const;
-
-    int lastIndex() const
-    {
-        return last_index_;
-    }
-
-    void setLastIndex(int last_index);
+    /**
+     * @brief 返回指定图像的标注关系索引。
+     * @param image_id 图像 ID。
+     * @return 标注 ID 集合；不存在时返回空集合引用。
+     */
+    const std::set<int64_t> &labelIdsForImage(int64_t image_id) const;
 
     int64_t              getImageId(const int64_t label_id) const;
     std::vector<int64_t> getImageIds(const std::vector<int64_t> &label_ids) const;
@@ -194,25 +194,6 @@ public:
     const LabelDataHelper &helper() const
     {
         return label_data_helper_;
-    }
-
-    // NEW: Filter support methods
-    void applyFilter(const std::function<bool(int64_t)> &image_filter_func);
-    void applyFilter(const std::function<bool(int64_t)> &image_filter_func,
-                     const std::function<bool(int64_t)> &label_class_filter_func);
-    void applyFilter(const std::function<bool(int64_t)> &image_filter_func,
-                     const std::function<bool(int64_t)> &label_class_filter_func,
-                     const std::function<bool(int64_t)> &label_filter_func);
-    void clearFilter();
-
-    bool isFilterActive() const
-    {
-        return is_filtered_;
-    }
-
-    int filteredCount() const
-    {
-        return static_cast<int>(filtered_label_ids_.size());
     }
 
     int totalCount() const
@@ -235,22 +216,20 @@ private:
     void init(bool load_from_database);
     void loadLabelsFromDatabase();
     void removeLabelsFromMemory(const std::vector<int64_t> &label_ids);
-    void updateSelection(const QItemSelection &selected, const QItemSelection &deselected);
+    void rebuildLabelIds();
 
-    int      getLabelId(const QModelIndex &index) const;
-    int      getImageId(const QModelIndex &index) const;
-    int      getLabelClassId(const QModelIndex &index) const;
+    /**
+     * @brief 发布尚未映射到模型行的新增标注。
+     */
+    void publishPendingLabels();
+    void notifyLabelRowsChanged(const std::vector<int64_t> &label_ids, const QList<int> &roles);
+
+    int64_t  getLabelId(const QModelIndex &index) const;
+    int64_t  getImageId(const QModelIndex &index) const;
+    int64_t  getLabelClassId(const QModelIndex &index) const;
     QString  getLabelClassName(const QModelIndex &index) const;
     QString  getLabelClassColor(const QModelIndex &index) const;
     QVariant getData(const QModelIndex &index) const;
-    QVariant getSelected(const QModelIndex &index) const;
-
-    /**
-     * @brief NEW: Helper to rebuild filtered_label_ids_ based on image filter function
-     */
-    void rebuildFilteredList(const std::function<bool(int64_t)> &image_filter_func,
-                             const std::function<bool(int64_t)> &label_class_filter_func,
-                             const std::function<bool(int64_t)> &label_filter_func = {});
 
     dltool::database::ProjectDataBase *database_{nullptr};
     ImageInstancesListModel           *image_instances_{nullptr};
@@ -258,37 +237,16 @@ private:
 
     LabelDataHelper label_data_helper_{nullptr};
 
-    /**
-     * @brief MODIFIED: Renamed from label_instances_ to indicate it's the full dataset
-     */
+    /** @brief 按标注 ID 保存的实体。 */
     std::map<int64_t, LabelInstance *> full_label_instances_;
 
-    /**
-     * @brief 标注 ID 列表，用于显示顺序
-     * When filtering is active, this contains filtered_label_ids_
-     * When filtering is inactive, this contains all label IDs from full_label_instances_
-     */
+    /** @brief 原始模型行到标注实体的 ID 映射，按添加时间倒序。 */
     std::vector<int64_t> label_ids_;
 
-    /**
-     * @brief NEW: Filtered label IDs (subset of full_label_instances_ keys)
-     */
-    std::vector<int64_t> filtered_label_ids_;
-
-    /**
-     * @brief NEW: Flag indicating if filter is active
-     */
-    bool is_filtered_{false};
-
-    QItemSelectionModel *selection_{nullptr};
-
-    /**
-     * @brief 上次选中的标注索引, 用于多选时记录上次选中的标注索引
-     */
-    int last_index_{-1};
+    /** @brief 图像到标注的反向关系索引。 */
+    std::unordered_map<int64_t, std::set<int64_t>> label_ids_by_image_;
 
 signals:
-    void lastIndexChanged();
     void labelsAboutToBeRemoved(const std::vector<int64_t> &label_ids);
 };
 
@@ -299,7 +257,7 @@ class ImageLabelsListModel : public QAbstractListModel
     QML_UNCREATABLE("Can not create ImageLabelsListModel directly!")
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
 public:
-    ImageLabelsListModel(ImageInstancesListModel *image_instances, LabelInstancesListModel *label_instances,
+    ImageLabelsListModel(ImageInstancesViewModel *image_instances, LabelInstancesListModel *label_instances,
                          LabelClassesListModel *label_classes, QObject *parent = nullptr);
 
     ~ImageLabelsListModel() {}
@@ -416,7 +374,7 @@ private:
     QVariant getSelected(const QModelIndex &index) const;
     QVariant getHovered(const QModelIndex &index) const;
 
-    ImageInstancesListModel *image_instances_{nullptr};
+    ImageInstancesViewModel *image_instances_{nullptr};
     LabelInstancesListModel *label_instances_{nullptr};
     LabelClassesListModel   *label_classes_{nullptr};
 
@@ -435,7 +393,7 @@ class ImageLabelsTableModel : public QAbstractTableModel
     Q_PROPERTY(QItemSelectionModel *selection READ selection CONSTANT)
     Q_PROPERTY(int lastIndex READ lastIndex WRITE setLastIndex NOTIFY lastSelectedIndexChanged)
 public:
-    ImageLabelsTableModel(ImageInstancesListModel *image_instances, LabelInstancesListModel *label_instances,
+    ImageLabelsTableModel(ImageInstancesViewModel *image_instances, LabelInstancesListModel *label_instances,
                           LabelClassesListModel *label_classes, QObject *parent = nullptr);
 
     ~ImageLabelsTableModel();
@@ -501,7 +459,7 @@ private:
     QVariant getClassData(const QModelIndex &index) const;
     QVariant getSelected(const QModelIndex &index) const;
 
-    ImageInstancesListModel *image_instances_{nullptr};
+    ImageInstancesViewModel *image_instances_{nullptr};
     LabelInstancesListModel *label_instances_{nullptr};
     LabelClassesListModel   *label_classes_{nullptr};
 

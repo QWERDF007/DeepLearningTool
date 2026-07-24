@@ -1,336 +1,441 @@
 #include "data/GlobalFilter.h"
 
-#include "data/CustomFilterModule.h"
 #include "data/DataManager.h"
-#include "data/DatasetFilterModule.h"
 #include "data/Datasets.h"
-#include "data/ImageLabelClassFilterModule.h"
 #include "data/ImageTags.h"
 #include "data/Images.h"
-#include "data/LabelClassFilterModule.h"
+#include "data/LabelClasses.h"
 #include "data/Labels.h"
-#include "data/TagFilterModule.h"
 
-#include <QScopedValueRollback>
-#include <QStringList>
+#include <QDir>
+#include <QFileInfo>
+#include <QHash>
+
+#include <algorithm>
+#include <set>
+#include <unordered_map>
 
 namespace dltool::data {
+
+namespace {
+
+QString normalizedPath(const QString &path)
+{
+    if (path.isEmpty())
+    {
+        return {};
+    }
+    return QDir::fromNativeSeparators(QDir::cleanPath(QFileInfo(path).absoluteFilePath())).toCaseFolded();
+}
+
+bool intersects(const std::set<int64_t> &values, const std::unordered_set<int64_t> &expected)
+{
+    for (const int64_t value : values)
+    {
+        if (expected.contains(value))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
 
 GlobalFilter::GlobalFilter(DataManager *data_manager, QObject *parent)
     : QObject(parent)
     , data_manager_(data_manager)
 {
+    if (ImageInstancesListModel *images = imageSource())
+    {
+        connect(images, &QAbstractItemModel::rowsInserted, this, [this]() { invalidateDuplicateIndexes(); });
+        connect(images, &QAbstractItemModel::rowsRemoved, this, [this]() { invalidateDuplicateIndexes(); });
+        connect(images, &QAbstractItemModel::modelReset, this, [this]() { invalidateDuplicateIndexes(); });
+        connect(images, &QAbstractItemModel::dataChanged, this,
+                [this](const QModelIndex &, const QModelIndex &, const QList<int> &roles)
+                {
+                    if (roles.isEmpty() || roles.contains(ImageInstancesListModel::NameRole)
+                        || roles.contains(ImageInstancesListModel::PathRole))
+                    {
+                        invalidateDuplicateIndexes();
+                    }
+                });
+    }
 }
 
-GlobalFilter::~GlobalFilter() {}
-
-void GlobalFilter::initializeFilterModules(DataManager *data_manager)
+std::vector<GlobalFilter::CustomConditionSpec> GlobalFilter::customConditions()
 {
-    if (!data_manager)
+    return {
+        {static_cast<int64_t>(CustomCondition::DuplicateFileName), QString("重复文件名")},
+        {static_cast<int64_t>(CustomCondition::DuplicatePath), QString("重复路径")},
+        {static_cast<int64_t>(CustomCondition::UniqueFileName), QString("不重复文件名")},
+        {static_cast<int64_t>(CustomCondition::ImageSearchResult), QString("图像搜索结果")},
+        {static_cast<int64_t>(CustomCondition::LabelSearchResult), QString("标注搜索结果")},
+    };
+}
+
+void GlobalFilter::setFilter(const FilterType type, const std::vector<int64_t> &ids)
+{
+    IdFilter &state = filter(type);
+    const bool was_enabled = state.enabled;
+    std::unordered_set<int64_t> normalized_ids;
+    normalized_ids.reserve(ids.size());
+    for (const int64_t id : ids)
     {
-        qWarning() << "GlobalFilter: initializeFilterModules called with null DataManager";
+        if (type != FilterType::Custom || customConditionAvailable(id))
+        {
+            normalized_ids.insert(id);
+        }
+    }
+
+    const bool changed = state.ids != normalized_ids || state.inverted;
+    if (!changed)
+    {
         return;
     }
 
-    dataset_filter_           = std::make_unique<DatasetFilterModule>(data_manager, this);
-    tag_filter_               = std::make_unique<TagFilterModule>(data_manager, this);
-    label_class_filter_       = std::make_unique<LabelClassFilterModule>(data_manager, this);
-    image_label_class_filter_ = std::make_unique<ImageLabelClassFilterModule>(data_manager, this);
-    custom_filter_            = std::make_unique<CustomFilterModule>(data_manager, this);
-
-    filter_modules_[FilterType::Dataset]         = dataset_filter_.get();
-    filter_modules_[FilterType::Tag]             = tag_filter_.get();
-    filter_modules_[FilterType::LabelClass]      = label_class_filter_.get();
-    filter_modules_[FilterType::ImageLabelClass] = image_label_class_filter_.get();
-    filter_modules_[FilterType::Custom]          = custom_filter_.get();
-
-    for (auto &[type, module] : filter_modules_)
-    {
-        Q_UNUSED(type)
-        connect(module, &FilterModule::criteriaChanged, this, &GlobalFilter::applyFilters);
-        connect(module, &FilterModule::enabledChanged, this, &GlobalFilter::applyFilters);
-    }
-}
-
-FilterModule *GlobalFilter::getFilterModule(FilterType type) const
-{
-    auto it = filter_modules_.find(type);
-    if (it == filter_modules_.end())
-    {
-        qWarning() << "GlobalFilter: Invalid filter type requested:" << static_cast<int>(type);
-        return nullptr;
-    }
-    return it->second;
-}
-
-void GlobalFilter::setFilter(FilterType type, const std::vector<int64_t> &ids)
-{
-    FilterModule *module = getFilterModule(type);
-    if (!module)
-    {
-        qWarning() << "GlobalFilter: Cannot set filter for invalid type:" << static_cast<int>(type);
-        return;
-    }
-
-    module->setCriteria(ids);
-    updateFilterCriteria();
-    applyFilters();
-    emit filterStateChanged();
-}
-
-void GlobalFilter::setFilterEnabled(FilterType type, bool enabled)
-{
-    FilterModule *module = getFilterModule(type);
-    if (!module)
-    {
-        qWarning() << "GlobalFilter: Cannot set filter enabled for invalid type:" << static_cast<int>(type);
-        return;
-    }
-
-    const bool was_enabled = module->isEnabled();
-    module->setEnabled(enabled);
-
-    if (was_enabled != enabled)
-    {
-        updateFilterCriteria();
-        force_apply_ = true;
-        applyFilters();
-    }
-
-    emit filterStateChanged();
-}
-
-bool GlobalFilter::isFilterEnabled(FilterType type) const
-{
-    FilterModule *module = getFilterModule(type);
-    return module && module->isEnabled();
-}
-
-bool GlobalFilter::isFilterInverted(FilterType type) const
-{
-    FilterModule *module = getFilterModule(type);
-    return module && module->isInverted();
-}
-
-void GlobalFilter::clearFilter(FilterType type)
-{
-    FilterModule *module = getFilterModule(type);
-    if (!module)
-    {
-        qWarning() << "GlobalFilter: Cannot clear filter for invalid type:" << static_cast<int>(type);
-        return;
-    }
-
-    module->clear();
-    updateFilterCriteria();
-    applyFilters();
-    emit filterStateChanged();
+    state.ids      = std::move(normalized_ids);
+    state.inverted = false;
     if (type == FilterType::Custom)
     {
-        emit customFilterSearchResultsChanged(false, false);
+        custom_empty_selection_enabled_ = false;
+        if (state.ids.empty())
+        {
+            state.enabled = false;
+        }
+    }
+
+    if (state.enabled || was_enabled)
+    {
+        notifyFilterChanged();
+    }
+    else
+    {
+        notifyStateChanged(false);
     }
 }
 
-void GlobalFilter::selectAll(FilterType type)
+void GlobalFilter::setFilterEnabled(const FilterType type, const bool enabled)
 {
-    FilterModule *module = getFilterModule(type);
-    if (!module)
+    IdFilter &state = filter(type);
+    if (state.enabled == enabled)
     {
-        qWarning() << "GlobalFilter: Cannot select all for invalid type:" << static_cast<int>(type);
         return;
     }
 
-    module->selectAll();
-    updateFilterCriteria();
-    force_apply_ = true;
-    applyFilters();
-    emit filterStateChanged();
+    state.enabled = enabled;
+    if (type == FilterType::Custom && !enabled)
+    {
+        custom_empty_selection_enabled_ = false;
+    }
+    notifyFilterChanged();
 }
 
-void GlobalFilter::deselectAll(FilterType type)
+bool GlobalFilter::isFilterEnabled(const FilterType type) const
 {
-    FilterModule *module = getFilterModule(type);
-    if (!module)
+    return filter(type).enabled;
+}
+
+bool GlobalFilter::isFilterInverted(const FilterType type) const
+{
+    return filter(type).inverted;
+}
+
+void GlobalFilter::clearFilter(const FilterType type)
+{
+    IdFilter &state = filter(type);
+    const bool search_results_changed = type == FilterType::Custom
+        && (!image_search_result_ids_.empty() || !label_search_result_ids_.empty());
+    const bool changed = !state.ids.empty() || state.inverted || search_results_changed
+        || (type == FilterType::Custom && custom_empty_selection_enabled_);
+    if (!changed)
     {
-        qWarning() << "GlobalFilter: Cannot deselect all for invalid type:" << static_cast<int>(type);
         return;
     }
 
-    module->deselectAll();
-    updateFilterCriteria();
-    force_apply_ = true;
-    applyFilters();
-    emit filterStateChanged();
+    state.ids.clear();
+    state.inverted = false;
+    if (type == FilterType::Custom)
+    {
+        image_search_result_ids_.clear();
+        label_search_result_ids_.clear();
+        custom_empty_selection_enabled_ = false;
+        state.enabled                  = false;
+    }
+
+    if (state.enabled || type == FilterType::Custom)
+    {
+        notifyFilterChanged();
+        if (search_results_changed)
+        {
+            emit customFilterSearchResultsChanged(false, false);
+        }
+    }
+    else
+    {
+        notifyStateChanged(search_results_changed);
+    }
 }
 
-std::vector<int64_t> GlobalFilter::getActiveIds(FilterType type) const
+void GlobalFilter::selectAll(const FilterType type)
 {
-    FilterModule *module = getFilterModule(type);
-    if (!module || !module->isActive())
+    IdFilter &state = filter(type);
+    std::unordered_set<int64_t> selected_ids;
+    collectAvailableIds(type, selected_ids);
+    const bool changed = state.ids != selected_ids || state.inverted
+        || (type == FilterType::Custom && custom_empty_selection_enabled_);
+    if (!changed)
+    {
+        return;
+    }
+
+    state.ids      = std::move(selected_ids);
+    state.inverted = false;
+    if (type == FilterType::Custom)
+    {
+        state.enabled                  = true;
+        custom_empty_selection_enabled_ = false;
+    }
+
+    if (state.enabled)
+    {
+        notifyFilterChanged();
+    }
+    else
+    {
+        notifyStateChanged(false);
+    }
+}
+
+void GlobalFilter::deselectAll(const FilterType type)
+{
+    IdFilter &state = filter(type);
+    if (type == FilterType::Custom)
+    {
+        const bool changed = !state.ids.empty() || !state.enabled || state.inverted || !custom_empty_selection_enabled_;
+        if (!changed)
+        {
+            return;
+        }
+
+        state.ids.clear();
+        state.inverted                   = false;
+        state.enabled                    = true;
+        custom_empty_selection_enabled_ = true;
+        notifyFilterChanged();
+        return;
+    }
+
+    std::unordered_set<int64_t> selected_ids;
+    collectAvailableIds(type, selected_ids);
+    const bool changed = state.ids != selected_ids || !state.inverted;
+    if (!changed)
+    {
+        return;
+    }
+
+    state.ids      = std::move(selected_ids);
+    state.inverted = true;
+    if (state.enabled)
+    {
+        notifyFilterChanged();
+    }
+    else
+    {
+        notifyStateChanged(false);
+    }
+}
+
+std::vector<int64_t> GlobalFilter::getActiveIds(const FilterType type) const
+{
+    const IdFilter &state = filter(type);
+    if (!state.enabled)
     {
         return {};
     }
 
-    auto criteria = module->getActiveCriteria();
-    return std::vector<int64_t>(criteria.begin(), criteria.end());
-}
-
-bool GlobalFilter::isActive() const
-{
-    for (const auto &[type, module] : filter_modules_)
+    std::vector<int64_t> ids;
+    ids.reserve(state.ids.size());
+    for (const int64_t id : state.ids)
     {
-        Q_UNUSED(type)
-        if (module && module->isActive())
-        {
-            return true;
-        }
+        ids.push_back(id);
     }
-    return !file_name_filter_text_.isEmpty();
-}
-
-int GlobalFilter::activeFilterCount() const
-{
-    int count = 0;
-    for (const auto &[type, module] : filter_modules_)
-    {
-        Q_UNUSED(type)
-        if (module && module->isActive())
-        {
-            count++;
-        }
-    }
-    if (!file_name_filter_text_.isEmpty())
-    {
-        count++;
-    }
-    return count;
+    std::sort(ids.begin(), ids.end());
+    return ids;
 }
 
 void GlobalFilter::clearAllFilters()
 {
-    bool changed = false;
-
-    if (dataset_filter_)
+    bool changed = !file_name_filter_text_.isEmpty() || !image_search_result_ids_.empty() || !label_search_result_ids_.empty()
+        || custom_empty_selection_enabled_;
+    for (IdFilter &state : filters_)
     {
-        dataset_filter_->clear();
-        dataset_filter_->setEnabled(false);
-        changed = true;
+        changed |= state.enabled || state.inverted || !state.ids.empty();
+        state.ids.clear();
+        state.enabled  = false;
+        state.inverted = false;
+    }
+    if (!changed)
+    {
+        return;
     }
 
-    if (tag_filter_)
-    {
-        tag_filter_->clear();
-        tag_filter_->setEnabled(false);
-        changed = true;
-    }
-
-    if (label_class_filter_)
-    {
-        label_class_filter_->clear();
-        label_class_filter_->setEnabled(false);
-        changed = true;
-    }
-
-    if (image_label_class_filter_)
-    {
-        image_label_class_filter_->clear();
-        image_label_class_filter_->setEnabled(false);
-        changed = true;
-    }
-
-    if (custom_filter_)
-    {
-        custom_filter_->clear();
-        custom_filter_->setEnabled(false);
-        changed = true;
-    }
-
-    if (!file_name_filter_text_.isEmpty())
-    {
-        file_name_filter_text_.clear();
-        changed = true;
-    }
-
-    if (changed)
-    {
-        updateFilterCriteria();
-        force_apply_ = true;
-        applyFilters();
-        emit filterStateChanged();
-        emit customFilterSearchResultsChanged(false, false);
-    }
+    file_name_filter_text_.clear();
+    image_search_result_ids_.clear();
+    label_search_result_ids_.clear();
+    custom_empty_selection_enabled_ = false;
+    notifyFilterChanged();
+    emit customFilterSearchResultsChanged(false, false);
 }
 
 void GlobalFilter::refresh()
 {
-    updateFilterCriteria();
-    force_apply_ = true;
-    applyFilters();
-    emit filterStateChanged();
+    invalidateDuplicateIndexes();
+    if (isActive())
+    {
+        notifyFilterChanged();
+    }
 }
 
 void GlobalFilter::clearImageSearchResults()
 {
-    if (!custom_filter_)
+    const bool was_available = !image_search_result_ids_.empty();
+    const int64_t condition_id = static_cast<int64_t>(CustomCondition::ImageSearchResult);
+    IdFilter &custom = filter(FilterType::Custom);
+    const bool was_enabled = custom.enabled;
+    const bool removed = custom.ids.erase(condition_id) > 0;
+    if (!was_available && !removed)
     {
         return;
     }
 
-    custom_filter_->clearImageSearchResults();
-    updateFilterCriteria();
-    force_apply_ = true;
-    applyFilters();
-    emit filterStateChanged();
-    emit customFilterSearchResultsChanged(custom_filter_->hasImageSearchResults(),
-                                          custom_filter_->hasLabelSearchResults());
+    image_search_result_ids_.clear();
+    updateCustomEnabledAfterSearchRemoval();
+    if (was_enabled && removed)
+    {
+        notifyFilterChanged();
+    }
+    else
+    {
+        notifyStateChanged(false);
+    }
+    emit customFilterSearchResultsChanged(false, !label_search_result_ids_.empty());
 }
 
-void GlobalFilter::setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter)
+void GlobalFilter::setImageSearchResults(const std::vector<int64_t> &image_ids, const bool enable_filter)
 {
-    if (!custom_filter_)
+    std::unordered_set<int64_t> result_ids(image_ids.begin(), image_ids.end());
+    const bool availability_changed = image_search_result_ids_.empty() != result_ids.empty();
+    const bool ids_changed = image_search_result_ids_ != result_ids;
+    image_search_result_ids_ = std::move(result_ids);
+
+    IdFilter &custom = filter(FilterType::Custom);
+    const int64_t condition_id = static_cast<int64_t>(CustomCondition::ImageSearchResult);
+    const bool was_enabled = custom.enabled;
+    const bool had_condition = custom.ids.contains(condition_id);
+    bool conditions_changed = false;
+    if (enable_filter && !image_search_result_ids_.empty())
+    {
+        conditions_changed = custom.ids.insert(condition_id).second;
+        custom.enabled = true;
+        custom_empty_selection_enabled_ = false;
+    }
+    else
+    {
+        conditions_changed = custom.ids.erase(condition_id) > 0;
+        updateCustomEnabledAfterSearchRemoval();
+    }
+
+    if (!ids_changed && !conditions_changed)
     {
         return;
     }
 
-    custom_filter_->setImageSearchResults(image_ids, enable_filter);
-    updateFilterCriteria();
-    force_apply_ = true;
-    applyFilters();
-    emit filterStateChanged();
-    emit customFilterSearchResultsChanged(custom_filter_->hasImageSearchResults(),
-                                          custom_filter_->hasLabelSearchResults());
+    if ((was_enabled && had_condition) || (custom.enabled && custom.ids.contains(condition_id)))
+    {
+        notifyFilterChanged();
+    }
+    else
+    {
+        notifyStateChanged(false);
+    }
+    if (availability_changed)
+    {
+        emit customFilterSearchResultsChanged(!image_search_result_ids_.empty(), !label_search_result_ids_.empty());
+    }
 }
 
 void GlobalFilter::clearLabelSearchResults()
 {
-    if (!custom_filter_)
+    const bool was_available = !label_search_result_ids_.empty();
+    const int64_t condition_id = static_cast<int64_t>(CustomCondition::LabelSearchResult);
+    IdFilter &custom = filter(FilterType::Custom);
+    const bool was_enabled = custom.enabled;
+    const bool removed = custom.ids.erase(condition_id) > 0;
+    if (!was_available && !removed)
     {
         return;
     }
 
-    custom_filter_->clearLabelSearchResults();
-    updateFilterCriteria();
-    force_apply_ = true;
-    applyFilters();
-    emit filterStateChanged();
-    emit customFilterSearchResultsChanged(custom_filter_->hasImageSearchResults(),
-                                          custom_filter_->hasLabelSearchResults());
+    label_search_result_ids_.clear();
+    updateCustomEnabledAfterSearchRemoval();
+    if (was_enabled && removed)
+    {
+        notifyFilterChanged();
+    }
+    else
+    {
+        notifyStateChanged(false);
+    }
+    emit customFilterSearchResultsChanged(!image_search_result_ids_.empty(), false);
 }
 
-void GlobalFilter::setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter)
+void GlobalFilter::setLabelSearchResults(const std::vector<int64_t> &label_ids, const bool enable_filter)
 {
-    if (!custom_filter_)
+    std::unordered_set<int64_t> result_ids(label_ids.begin(), label_ids.end());
+    const bool availability_changed = label_search_result_ids_.empty() != result_ids.empty();
+    const bool ids_changed = label_search_result_ids_ != result_ids;
+    label_search_result_ids_ = std::move(result_ids);
+
+    IdFilter &custom = filter(FilterType::Custom);
+    const int64_t condition_id = static_cast<int64_t>(CustomCondition::LabelSearchResult);
+    const bool was_enabled = custom.enabled;
+    const bool had_condition = custom.ids.contains(condition_id);
+    bool conditions_changed = false;
+    if (enable_filter && !label_search_result_ids_.empty())
+    {
+        conditions_changed = custom.ids.insert(condition_id).second;
+        custom.enabled = true;
+        custom_empty_selection_enabled_ = false;
+    }
+    else
+    {
+        conditions_changed = custom.ids.erase(condition_id) > 0;
+        updateCustomEnabledAfterSearchRemoval();
+    }
+
+    if (!ids_changed && !conditions_changed)
     {
         return;
     }
 
-    custom_filter_->setLabelSearchResults(label_ids, enable_filter);
-    updateFilterCriteria();
-    force_apply_ = true;
-    applyFilters();
-    emit filterStateChanged();
-    emit customFilterSearchResultsChanged(custom_filter_->hasImageSearchResults(),
-                                          custom_filter_->hasLabelSearchResults());
+    if ((was_enabled && had_condition) || (custom.enabled && custom.ids.contains(condition_id)))
+    {
+        notifyFilterChanged();
+    }
+    else
+    {
+        notifyStateChanged(false);
+    }
+    if (availability_changed)
+    {
+        emit customFilterSearchResultsChanged(!image_search_result_ids_.empty(), !label_search_result_ids_.empty());
+    }
+}
+
+QString GlobalFilter::fileNameFilterText() const
+{
+    return file_name_filter_text_;
 }
 
 void GlobalFilter::setFileNameFilterText(const QString &text)
@@ -342,278 +447,431 @@ void GlobalFilter::setFileNameFilterText(const QString &text)
     }
 
     file_name_filter_text_ = normalized_text;
-    updateFilterCriteria();
-    force_apply_ = true;
-    applyFilters();
+    notifyFilterChanged();
+}
+
+bool GlobalFilter::acceptsImage(const int64_t image_id) const
+{
+    return acceptsImageWithoutCustom(image_id) && acceptsCustomImage(image_id);
+}
+
+bool GlobalFilter::acceptsLabel(const int64_t label_id) const
+{
+    LabelInstancesListModel *labels = labelSource();
+    if (labels == nullptr)
+    {
+        return false;
+    }
+
+    const int64_t image_id = labels->getImageId(label_id);
+    if (image_id < 0 || !acceptsImageWithoutCustom(image_id))
+    {
+        return false;
+    }
+
+    const IdFilter &classes = filter(FilterType::LabelClass);
+    if (!passesIdFilter(classes, labels->getLabelClassId(label_id)))
+    {
+        return false;
+    }
+    return acceptsCustomLabel(label_id, image_id);
+}
+
+bool GlobalFilter::isActive() const
+{
+    return std::any_of(filters_.cbegin(), filters_.cend(), [](const IdFilter &state) { return state.enabled; })
+        || !file_name_filter_text_.isEmpty();
+}
+
+int GlobalFilter::activeFilterCount() const
+{
+    const int filter_count = static_cast<int>(std::count_if(
+        filters_.cbegin(), filters_.cend(), [](const IdFilter &state) { return state.enabled; }));
+    return filter_count + (file_name_filter_text_.isEmpty() ? 0 : 1);
+}
+
+GlobalFilter::IdFilter &GlobalFilter::filter(const FilterType type)
+{
+    return filters_[static_cast<size_t>(type)];
+}
+
+const GlobalFilter::IdFilter &GlobalFilter::filter(const FilterType type) const
+{
+    return filters_[static_cast<size_t>(type)];
+}
+
+ImageInstancesListModel *GlobalFilter::imageSource() const
+{
+    return data_manager_ != nullptr ? data_manager_->imageSource() : nullptr;
+}
+
+LabelInstancesListModel *GlobalFilter::labelSource() const
+{
+    return data_manager_ != nullptr ? data_manager_->labelSource() : nullptr;
+}
+
+void GlobalFilter::collectAvailableIds(const FilterType type, std::unordered_set<int64_t> &ids) const
+{
+    ids.clear();
+    QAbstractItemModel *model = nullptr;
+    int id_role = -1;
+    if (data_manager_ == nullptr)
+    {
+        return;
+    }
+
+    switch (type)
+    {
+    case FilterType::Dataset:
+        model = data_manager_->datasets();
+        id_role = DatasetsListModel::DatasetIdRole;
+        break;
+    case FilterType::Tag:
+        model = data_manager_->imageTags();
+        id_role = ImageTagsListModel::TagIdRole;
+        break;
+    case FilterType::LabelClass:
+    case FilterType::ImageLabelClass:
+        model = data_manager_->labelClasses();
+        id_role = LabelClassesListModel::LabelClassIdRole;
+        break;
+    case FilterType::Custom:
+        for (const CustomConditionSpec &condition : customConditions())
+        {
+            if (customConditionAvailable(condition.id))
+            {
+                ids.insert(condition.id);
+            }
+        }
+        return;
+    }
+
+    if (model == nullptr)
+    {
+        return;
+    }
+    ids.reserve(static_cast<size_t>(model->rowCount()));
+    for (int row = 0; row < model->rowCount(); ++row)
+    {
+        ids.insert(model->data(model->index(row, 0), id_role).toLongLong());
+    }
+}
+
+bool GlobalFilter::passesIdFilter(const IdFilter &state, const int64_t id) const
+{
+    if (!state.enabled)
+    {
+        return true;
+    }
+    if (state.ids.empty())
+    {
+        return state.inverted;
+    }
+    const bool matches = state.ids.contains(id);
+    return state.inverted ? !matches : matches;
+}
+
+bool GlobalFilter::acceptsImageWithoutCustom(const int64_t image_id) const
+{
+    ImageInstancesListModel *images = imageSource();
+    if (images == nullptr)
+    {
+        return false;
+    }
+    const ImageInstance *image = images->getImageInstance(image_id);
+    if (image == nullptr)
+    {
+        return false;
+    }
+
+    if (!passesIdFilter(filter(FilterType::Dataset), image->datasetId()))
+    {
+        return false;
+    }
+    const IdFilter &tags = filter(FilterType::Tag);
+    if (tags.enabled)
+    {
+        const bool matches = !tags.ids.empty() && matchesTags(image_id, tags.ids);
+        if (tags.inverted ? matches : !matches)
+        {
+            return false;
+        }
+    }
+    const IdFilter &image_classes = filter(FilterType::ImageLabelClass);
+    if (image_classes.enabled)
+    {
+        const bool matches = image_classes.ids.empty() ? false : matchesImageLabelClasses(image_id, image_classes.ids);
+        if (image_classes.inverted ? matches : !matches)
+        {
+            return false;
+        }
+    }
+    if (!file_name_filter_text_.isEmpty()
+        && !image->path().contains(file_name_filter_text_, Qt::CaseInsensitive))
+    {
+        return false;
+    }
+    return true;
+}
+
+bool GlobalFilter::acceptsCustomImage(const int64_t image_id) const
+{
+    const IdFilter &custom = filter(FilterType::Custom);
+    if (!custom.enabled)
+    {
+        return true;
+    }
+    if (custom.ids.empty())
+    {
+        return false;
+    }
+    for (const int64_t condition_id : custom.ids)
+    {
+        if (matchesCustomImageCondition(image_id, condition_id))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool GlobalFilter::acceptsCustomLabel(const int64_t label_id, const int64_t image_id) const
+{
+    const IdFilter &custom = filter(FilterType::Custom);
+    if (!custom.enabled)
+    {
+        return true;
+    }
+    if (custom.ids.empty())
+    {
+        return false;
+    }
+
+    const int64_t label_condition = static_cast<int64_t>(CustomCondition::LabelSearchResult);
+    if (custom.ids.contains(label_condition) && label_search_result_ids_.contains(label_id))
+    {
+        return true;
+    }
+    for (const int64_t condition_id : custom.ids)
+    {
+        if (condition_id != label_condition && matchesCustomImageCondition(image_id, condition_id))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool GlobalFilter::matchesTags(const int64_t image_id, const std::unordered_set<int64_t> &tag_ids) const
+{
+    if (tag_ids.empty())
+    {
+        return false;
+    }
+
+    ImageInstancesListModel *images = imageSource();
+    LabelInstancesListModel *labels = labelSource();
+    const ImageInstance *image = images != nullptr ? images->getImageInstance(image_id) : nullptr;
+    if (image == nullptr)
+    {
+        return false;
+    }
+    if (intersects(image->tagIds(), tag_ids))
+    {
+        return true;
+    }
+    if (labels == nullptr)
+    {
+        return false;
+    }
+    for (const int64_t label_id : image->labelIds())
+    {
+        const LabelInstance *label = labels->getLabelInstance(label_id);
+        if (label != nullptr && intersects(label->tagIds(), tag_ids))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool GlobalFilter::matchesImageLabelClasses(const int64_t image_id,
+                                             const std::unordered_set<int64_t> &label_class_ids) const
+{
+    if (label_class_ids.empty())
+    {
+        return false;
+    }
+    ImageInstancesListModel *images = imageSource();
+    LabelInstancesListModel *labels = labelSource();
+    const ImageInstance *image = images != nullptr ? images->getImageInstance(image_id) : nullptr;
+    if (image == nullptr || labels == nullptr)
+    {
+        return false;
+    }
+    for (const int64_t label_id : image->labelIds())
+    {
+        if (label_class_ids.contains(labels->getLabelClassId(label_id)))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool GlobalFilter::matchesCustomImageCondition(const int64_t image_id, const int64_t condition_id) const
+{
+    switch (static_cast<CustomCondition>(condition_id))
+    {
+    case CustomCondition::DuplicateFileName:
+        rebuildDuplicateIndexes();
+        return duplicate_file_name_image_ids_.contains(image_id);
+    case CustomCondition::DuplicatePath:
+        rebuildDuplicateIndexes();
+        return duplicate_path_image_ids_.contains(image_id);
+    case CustomCondition::UniqueFileName:
+        rebuildDuplicateIndexes();
+        return unique_file_name_image_ids_.contains(image_id);
+    case CustomCondition::ImageSearchResult:
+        return image_search_result_ids_.contains(image_id);
+    case CustomCondition::LabelSearchResult:
+    {
+        ImageInstancesListModel *images = imageSource();
+        const ImageInstance *image = images != nullptr ? images->getImageInstance(image_id) : nullptr;
+        if (image == nullptr)
+        {
+            return false;
+        }
+        for (const int64_t label_id : image->labelIds())
+        {
+            if (label_search_result_ids_.contains(label_id))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    }
+    return false;
+}
+
+bool GlobalFilter::customConditionAvailable(const int64_t condition_id) const
+{
+    switch (static_cast<CustomCondition>(condition_id))
+    {
+    case CustomCondition::DuplicateFileName:
+    case CustomCondition::DuplicatePath:
+    case CustomCondition::UniqueFileName:
+        return true;
+    case CustomCondition::ImageSearchResult:
+        return !image_search_result_ids_.empty();
+    case CustomCondition::LabelSearchResult:
+        return !label_search_result_ids_.empty();
+    }
+    return false;
+}
+
+bool GlobalFilter::usesRegularCustomCondition() const
+{
+    const IdFilter &custom = filter(FilterType::Custom);
+    return custom.ids.contains(static_cast<int64_t>(CustomCondition::DuplicateFileName))
+        || custom.ids.contains(static_cast<int64_t>(CustomCondition::DuplicatePath))
+        || custom.ids.contains(static_cast<int64_t>(CustomCondition::UniqueFileName));
+}
+
+void GlobalFilter::rebuildDuplicateIndexes() const
+{
+    if (duplicate_indexes_valid_ || !usesRegularCustomCondition())
+    {
+        return;
+    }
+
+    duplicate_file_name_image_ids_.clear();
+    duplicate_path_image_ids_.clear();
+    unique_file_name_image_ids_.clear();
+
+    ImageInstancesListModel *images = imageSource();
+    if (images == nullptr)
+    {
+        duplicate_indexes_valid_ = true;
+        return;
+    }
+
+    QHash<QString, int> file_name_counts;
+    QHash<QString, int> path_counts;
+    for (int row = 0; row < images->rowCount(); ++row)
+    {
+        const int64_t image_id = images->data(images->index(row, 0), ImageInstancesListModel::ImageIdRole).toLongLong();
+        if (!acceptsImageWithoutCustom(image_id))
+        {
+            continue;
+        }
+        const QString file_name = images->getImageName(image_id).toCaseFolded();
+        const QString path = normalizedPath(images->getImagePath(image_id));
+        if (!file_name.isEmpty())
+        {
+            ++file_name_counts[file_name];
+        }
+        if (!path.isEmpty())
+        {
+            ++path_counts[path];
+        }
+    }
+
+    for (int row = 0; row < images->rowCount(); ++row)
+    {
+        const int64_t image_id = images->data(images->index(row, 0), ImageInstancesListModel::ImageIdRole).toLongLong();
+        if (!acceptsImageWithoutCustom(image_id))
+        {
+            continue;
+        }
+        const QString file_name = images->getImageName(image_id).toCaseFolded();
+        const QString path = normalizedPath(images->getImagePath(image_id));
+        if (!file_name.isEmpty() && file_name_counts[file_name] > 1)
+        {
+            duplicate_file_name_image_ids_.insert(image_id);
+        }
+        if (!file_name.isEmpty() && file_name_counts[file_name] == 1)
+        {
+            unique_file_name_image_ids_.insert(image_id);
+        }
+        if (!path.isEmpty() && path_counts[path] > 1)
+        {
+            duplicate_path_image_ids_.insert(image_id);
+        }
+    }
+    duplicate_indexes_valid_ = true;
+}
+
+void GlobalFilter::invalidateDuplicateIndexes()
+{
+    duplicate_indexes_valid_ = false;
+}
+
+void GlobalFilter::notifyFilterChanged()
+{
+    invalidateDuplicateIndexes();
+    emit filterChanged();
+    emit filterApplied();
     emit filterStateChanged();
 }
 
-void GlobalFilter::applyFilters()
+void GlobalFilter::notifyStateChanged(const bool notify_search_results)
 {
-    if (applying_filters_)
+    emit filterStateChanged();
+    if (notify_search_results)
     {
-        return;
+        emit customFilterSearchResultsChanged(!image_search_result_ids_.empty(), !label_search_result_ids_.empty());
     }
-    QScopedValueRollback<bool> applying_guard(applying_filters_, true);
-
-    const bool should_force_apply = force_apply_;
-    force_apply_                  = false;
-
-    if (!isActive())
-    {
-        if (data_manager_)
-        {
-            if (auto *image_model = data_manager_->imageInstances())
-            {
-                image_model->clearFilter();
-            }
-            if (auto *label_model = data_manager_->labelInstances())
-            {
-                label_model->clearFilter();
-            }
-        }
-
-        previous_criteria_ = FilterCriteria();
-
-        emit filterApplied();
-        return;
-    }
-
-    if (!should_force_apply && !hasFilterCriteriaChanged())
-    {
-        return;
-    }
-
-    if (data_manager_)
-    {
-        if (auto *image_model = data_manager_->imageInstances())
-        {
-            if (custom_filter_ && custom_filter_->usesRegularConditions())
-            {
-                std::vector<int64_t> candidate_ids;
-                for (const int64_t image_id : image_model->getAllImageIds())
-                {
-                    if (shouldIncludeImageWithoutCustom(image_id))
-                    {
-                        candidate_ids.push_back(image_id);
-                    }
-                }
-                custom_filter_->prepare(candidate_ids);
-            }
-
-            auto image_filter_func = [this](int64_t image_id) -> bool
-            {
-                return shouldIncludeImage(image_id);
-            };
-
-            image_model->applyFilter(image_filter_func);
-        }
-    }
-
-    if (data_manager_)
-    {
-        if (auto *label_model = data_manager_->labelInstances())
-        {
-            auto image_filter_func = [this](int64_t image_id) -> bool
-            {
-                return shouldIncludeImage(image_id);
-            };
-
-            auto label_class_filter_func = [this](int64_t label_class_id) -> bool
-            {
-                if (label_class_filter_ && label_class_filter_->isEnabled())
-                {
-                    return label_class_filter_->passes(label_class_id);
-                }
-                return true;
-            };
-
-            auto label_filter_func = [this](int64_t label_id) -> bool
-            {
-                if (custom_filter_ && custom_filter_->isEnabled())
-                {
-                    return custom_filter_->passesLabel(label_id);
-                }
-                return true;
-            };
-
-            label_model->applyFilter(image_filter_func, label_class_filter_func, label_filter_func);
-        }
-    }
-
-    previous_criteria_ = current_criteria_;
-
-    emit filterApplied();
 }
 
-void GlobalFilter::updateFilterCriteria()
+void GlobalFilter::updateCustomEnabledAfterSearchRemoval()
 {
-    current_criteria_.dataset_ids.clear();
-    current_criteria_.tag_ids.clear();
-    current_criteria_.label_class_ids.clear();
-    current_criteria_.image_label_class_ids.clear();
-    current_criteria_.custom_condition_ids.clear();
-    current_criteria_.file_name_text.clear();
-    current_criteria_.dataset_inverted           = false;
-    current_criteria_.tag_inverted               = false;
-    current_criteria_.label_class_inverted       = false;
-    current_criteria_.image_label_class_inverted = false;
-    current_criteria_.custom_condition_inverted  = false;
-
-    if (dataset_filter_ && dataset_filter_->isActive())
+    IdFilter &custom = filter(FilterType::Custom);
+    if (custom.ids.empty() && !custom_empty_selection_enabled_)
     {
-        current_criteria_.dataset_ids      = dataset_filter_->getActiveCriteria();
-        current_criteria_.dataset_inverted = dataset_filter_->isInverted();
+        custom.enabled = false;
     }
-
-    if (tag_filter_ && tag_filter_->isActive())
-    {
-        current_criteria_.tag_ids      = tag_filter_->getActiveCriteria();
-        current_criteria_.tag_inverted = tag_filter_->isInverted();
-    }
-
-    if (label_class_filter_ && label_class_filter_->isActive())
-    {
-        current_criteria_.label_class_ids      = label_class_filter_->getActiveCriteria();
-        current_criteria_.label_class_inverted = label_class_filter_->isInverted();
-    }
-
-    if (image_label_class_filter_ && image_label_class_filter_->isActive())
-    {
-        current_criteria_.image_label_class_ids      = image_label_class_filter_->getActiveCriteria();
-        current_criteria_.image_label_class_inverted = image_label_class_filter_->isInverted();
-    }
-
-    if (custom_filter_ && custom_filter_->isActive())
-    {
-        current_criteria_.custom_condition_ids      = custom_filter_->getActiveCriteria();
-        current_criteria_.custom_condition_inverted = custom_filter_->isInverted();
-    }
-
-    current_criteria_.file_name_text = file_name_filter_text_;
-}
-
-bool GlobalFilter::shouldIncludeImage(int64_t image_id) const
-{
-    if (!shouldIncludeImageWithoutCustom(image_id))
-    {
-        return false;
-    }
-
-    if (custom_filter_ && custom_filter_->isEnabled() && !custom_filter_->passes(image_id))
-    {
-        return false;
-    }
-
-    return true;
-}
-
-bool GlobalFilter::shouldIncludeImageWithoutCustom(int64_t image_id) const
-{
-    if (dataset_filter_ && dataset_filter_->isEnabled() && !dataset_filter_->passes(image_id))
-    {
-        return false;
-    }
-
-    if (tag_filter_ && tag_filter_->isEnabled() && !tag_filter_->passes(image_id))
-    {
-        return false;
-    }
-
-    if (image_label_class_filter_ && image_label_class_filter_->isEnabled()
-        && !image_label_class_filter_->passes(image_id))
-    {
-        return false;
-    }
-
-    if (!file_name_filter_text_.isEmpty())
-    {
-        if (!data_manager_ || !data_manager_->imageInstances())
-        {
-            return false;
-        }
-
-        const QString file_path = data_manager_->imageInstances()->getImagePath(image_id);
-        if (!file_path.contains(file_name_filter_text_, Qt::CaseInsensitive))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-bool GlobalFilter::shouldIncludeLabel(int64_t label_id) const
-{
-    if (data_manager_)
-    {
-        if (auto *label_model = data_manager_->labelInstances())
-        {
-            int64_t image_id = label_model->getImageId(label_id);
-            if (custom_filter_ && custom_filter_->isEnabled() && !custom_filter_->passesLabel(label_id))
-            {
-                return false;
-            }
-            return shouldIncludeImage(image_id);
-        }
-    }
-
-    return false;
-}
-
-bool GlobalFilter::hasFilterCriteriaChanged() const
-{
-    if (current_criteria_.dataset_ids != previous_criteria_.dataset_ids)
-    {
-        return true;
-    }
-    if (current_criteria_.dataset_inverted != previous_criteria_.dataset_inverted)
-    {
-        return true;
-    }
-
-    if (current_criteria_.tag_ids != previous_criteria_.tag_ids)
-    {
-        return true;
-    }
-    if (current_criteria_.tag_inverted != previous_criteria_.tag_inverted)
-    {
-        return true;
-    }
-
-    if (current_criteria_.label_class_ids != previous_criteria_.label_class_ids)
-    {
-        return true;
-    }
-    if (current_criteria_.label_class_inverted != previous_criteria_.label_class_inverted)
-    {
-        return true;
-    }
-
-    if (current_criteria_.image_label_class_ids != previous_criteria_.image_label_class_ids)
-    {
-        return true;
-    }
-    if (current_criteria_.image_label_class_inverted != previous_criteria_.image_label_class_inverted)
-    {
-        return true;
-    }
-
-    if (current_criteria_.custom_condition_ids != previous_criteria_.custom_condition_ids)
-    {
-        return true;
-    }
-    if (current_criteria_.custom_condition_inverted != previous_criteria_.custom_condition_inverted)
-    {
-        return true;
-    }
-
-    if (current_criteria_.file_name_text != previous_criteria_.file_name_text)
-    {
-        return true;
-    }
-
-    return false;
 }
 
 } // namespace dltool::data

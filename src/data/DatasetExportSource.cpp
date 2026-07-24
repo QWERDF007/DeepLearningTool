@@ -62,6 +62,11 @@ public:
         return data_manager_.labelClassName(label_class_id);
     }
 
+    QString labelClassColor(const qint64 label_class_id) const override
+    {
+        return data_manager_.labelClassColor(label_class_id);
+    }
+
     QString labelClassGroup(const qint64 label_class_id) const override
     {
         return data_manager_.labelClassGroup(label_class_id);
@@ -81,16 +86,53 @@ private:
 
 void DataManager::runDatasetExportAsync(QObject *context, DatasetExportRequest request,
                                         DataOperationWorkflow::Options options, DatasetExportWork work,
-                                        DataOperationWorkflow::Completion completion) const
+                                        DataOperationWorkflow::Completion completion)
 {
+    if (context == nullptr)
+    {
+        return;
+    }
+
+    if (isDataOperationRunning())
+    {
+        DataOperationWorkflow::Result result;
+        result.error = QString("当前已有数据操作正在进行中");
+        if (completion)
+        {
+            completion(result);
+        }
+        return;
+    }
+
+    if (labels_loading_)
+    {
+        DataOperationWorkflow::Result result;
+        result.error = QString("标注正在加载，请稍后再试");
+        if (completion)
+        {
+            completion(result);
+        }
+        return;
+    }
+
     if (!work)
     {
         DataOperationWorkflow::start(
             context, std::move(options),
-            [](DataOperationWorkflow::Result &result) { result.error = QStringLiteral("数据集导出工作为空"); },
+            [](DataOperationWorkflow::Result &result) { result.error = QString("数据集导出工作为空"); },
             std::move(completion));
         return;
     }
+
+    setDataOperationRunning(true);
+    auto finish = [this, completion = std::move(completion)](const DataOperationWorkflow::Result &result) mutable
+    {
+        setDataOperationRunning(false);
+        if (completion)
+        {
+            completion(result);
+        }
+    };
 
     DataOperationWorkflow::start(
         context, std::move(options),
@@ -99,7 +141,7 @@ void DataManager::runDatasetExportAsync(QObject *context, DatasetExportRequest r
             DataManagerDatasetExportSource source(*this, std::move(request.dataset_ids));
             work(source, result);
         },
-        std::move(completion));
+        std::move(finish));
 }
 
 } // namespace dltool::data

@@ -1,5 +1,6 @@
 #include "data/Datasets.h"
 
+#include "data/Images.h"
 #include "database/DataBase.h"
 
 #include <spdlog/spdlog.h>
@@ -273,7 +274,6 @@ bool DatasetsListModel::deleteDataset(const int64_t dataset_id)
             beginRemoveRows(QModelIndex(), idx, idx);
             delete dataset;
             datasets_.erase(dataset_id);
-            labelled_image_stats_.erase(dataset_id);
             endRemoveRows();
             if (last_index_ >= rowCount())
             {
@@ -318,7 +318,6 @@ void DatasetsListModel::removeDatasetsFromMemory(const std::vector<int64_t> &dat
         }
         delete found->second;
         datasets_.erase(found);
-        labelled_image_stats_.erase(dataset_id);
     }
     endResetModel();
 
@@ -434,199 +433,193 @@ QString DatasetsListModel::getDatasetName(const int dataset_id) const
     return found->second->name();
 }
 
-void DatasetsListModel::addImages(const std::vector<int64_t>              &dataset_ids,
-                                  const std::vector<int64_t>              &image_ids,
-                                  const std::vector<std::vector<int64_t>> &images_label_ids,
-                                  const std::vector<int64_t>              &image_label_class_ids)
+void DatasetsListModel::addImagesFromSource(const ImageInstancesListModel *images,
+                                            const std::vector<int64_t> &image_ids)
 {
-    if (dataset_ids.size() != image_ids.size())
+    if (images == nullptr)
     {
-        spdlog::error("添加图像失败: 数据集id和图像id数量不一致");
         return;
     }
-    const bool has_label_stats = images_label_ids.size() == image_ids.size()
-        && image_label_class_ids.size() == image_ids.size();
-    std::map<int64_t, std::vector<int64_t>> datasets_image_ids;
-    for (size_t i = 0; i < dataset_ids.size(); ++i)
-    {
-        const int64_t dataset_id = dataset_ids[i];
-        if (datasets_image_ids.find(dataset_id) == datasets_image_ids.end())
-        {
-            datasets_image_ids[dataset_id] = std::vector<int64_t>();
-            datasets_image_ids[dataset_id].reserve(image_ids.size());
-        }
-        datasets_image_ids[dataset_id].push_back(image_ids[i]);
-    }
 
-    for (const auto &[dataset_id, dataset_image_ids] : datasets_image_ids)
+    bool changed = false;
+    for (const int64_t image_id : image_ids)
     {
-        auto found = datasets_.find(dataset_id);
-        if (found == datasets_.end())
+        const ImageInstance *image = images->getImageInstance(image_id);
+        if (image == nullptr)
         {
-            spdlog::error("添加图像失败: 数据集不存在: {}", dataset_id);
             continue;
         }
-        if (labelled_image_stats_.find(dataset_id) == labelled_image_stats_.end())
+        const auto dataset = datasets_.find(image->datasetId());
+        if (dataset == datasets_.end() || !dataset->second->addImageId(image_id))
         {
-            labelled_image_stats_[dataset_id] = 0;
+            continue;
         }
-        found->second->addImageIds(dataset_image_ids);
+        dataset->second->setImageLabelled(image_id, image->hasLabels());
+        changed = true;
     }
-
-    if (has_label_stats)
+    if (changed)
     {
-        for (size_t i = 0; i < image_ids.size(); ++i)
-        {
-            if (!images_label_ids[i].empty() || image_label_class_ids[i] >= 0)
-            {
-                ++labelled_image_stats_[dataset_ids[i]];
-            }
-        }
+        emit statsChanged();
     }
-    emit statsChanged();
 }
 
-void DatasetsListModel::deleteImages(const std::vector<int64_t>              &dataset_ids,
-                                     const std::vector<int64_t>              &image_ids,
-                                     const std::vector<std::vector<int64_t>> &images_label_ids,
-                                     const std::vector<int64_t>              &image_label_class_ids)
+void DatasetsListModel::addImagesFromSource(const ImageInstancesListModel *images,
+                                            const std::vector<LoadedImageInstance> &loaded_images)
 {
-    if (dataset_ids.size() != image_ids.size())
+    if (images == nullptr)
     {
-        spdlog::error("删除图像失败: 数据集id和图像id数量不一致");
         return;
     }
-    const bool has_label_stats = images_label_ids.size() == image_ids.size()
-        && image_label_class_ids.size() == image_ids.size();
-    std::map<int64_t, std::vector<int64_t>> datasets_image_ids;
-    for (size_t i = 0; i < dataset_ids.size(); ++i)
+
+    bool changed = false;
+    for (const LoadedImageInstance &loaded : loaded_images)
     {
-        const int64_t dataset_id = dataset_ids[i];
-        if (datasets_image_ids.find(dataset_id) == datasets_image_ids.end())
+        const ImageInstance *image = images->getImageInstance(loaded.image_id);
+        if (image == nullptr)
         {
-            datasets_image_ids[dataset_id] = std::vector<int64_t>();
-            datasets_image_ids[dataset_id].reserve(image_ids.size());
-        }
-        datasets_image_ids[dataset_id].push_back(image_ids[i]);
-    }
-    for (const auto &[dataset_id, dataset_image_ids] : datasets_image_ids)
-    {
-        auto found = datasets_.find(dataset_id);
-        if (found == datasets_.end())
-        {
-            spdlog::error("删除图像失败: 数据集不存在: {}", dataset_id);
             continue;
         }
-        found->second->removeImageIds(dataset_image_ids);
-    }
-
-    if (has_label_stats)
-    {
-        for (size_t i = 0; i < image_ids.size(); ++i)
+        const auto dataset = datasets_.find(image->datasetId());
+        if (dataset == datasets_.end() || !dataset->second->addImageId(loaded.image_id))
         {
-            if (!images_label_ids[i].empty() || image_label_class_ids[i] >= 0)
-            {
-                auto found = labelled_image_stats_.find(dataset_ids[i]);
-                if (found != labelled_image_stats_.end() && found->second > 0)
-                {
-                    --found->second;
-                }
-            }
+            continue;
         }
+        dataset->second->setImageLabelled(loaded.image_id, image->hasLabels());
+        changed = true;
     }
-    emit statsChanged();
+    if (changed)
+    {
+        emit statsChanged();
+    }
 }
 
-void DatasetsListModel::moveImages(const std::vector<int64_t>              &source_dataset_ids,
-                                   const std::vector<int64_t>              &target_dataset_ids,
-                                   const std::vector<int64_t>              &image_ids,
-                                   const std::vector<std::vector<int64_t>> &images_label_ids,
-                                   const std::vector<int64_t>              &image_label_class_ids)
+void DatasetsListModel::removeImagesFromSource(const ImageInstancesListModel *images,
+                                               const std::vector<int64_t> &image_ids)
 {
-    if (source_dataset_ids.size() != image_ids.size() || target_dataset_ids.size() != image_ids.size()
-        || images_label_ids.size() != image_ids.size() || image_label_class_ids.size() != image_ids.size())
+    if (images == nullptr)
     {
-        spdlog::error("移动图像失败: 数据集id、图像id和标签数量不一致");
         return;
     }
 
-    std::map<int64_t, std::vector<int64_t>> source_images;
-    std::map<int64_t, std::vector<int64_t>> target_images;
-    for (size_t i = 0; i < image_ids.size(); ++i)
+    bool changed = false;
+    for (const int64_t image_id : image_ids)
     {
-        if (labelled_image_stats_.find(source_dataset_ids[i]) == labelled_image_stats_.end())
+        const ImageInstance *image = images->getImageInstance(image_id);
+        if (image == nullptr)
         {
-            labelled_image_stats_[source_dataset_ids[i]] = 0;
-        }
-        if (labelled_image_stats_.find(target_dataset_ids[i]) == labelled_image_stats_.end())
-        {
-            labelled_image_stats_[target_dataset_ids[i]] = 0;
-        }
-
-        source_images[source_dataset_ids[i]].push_back(image_ids[i]);
-        target_images[target_dataset_ids[i]].push_back(image_ids[i]);
-
-        if (!images_label_ids[i].empty() || image_label_class_ids[i] >= 0)
-        {
-            auto source_stats = labelled_image_stats_.find(source_dataset_ids[i]);
-            if (source_stats != labelled_image_stats_.end() && source_stats->second > 0)
-            {
-                --source_stats->second;
-            }
-            ++labelled_image_stats_[target_dataset_ids[i]];
-        }
-    }
-
-    for (const auto &[dataset_id, dataset_image_ids] : source_images)
-    {
-        auto found = datasets_.find(dataset_id);
-        if (found == datasets_.end())
-        {
-            spdlog::error("移动图像失败: 源数据集不存在: {}", dataset_id);
             continue;
         }
-        found->second->removeImageIds(dataset_image_ids);
-    }
-
-    for (const auto &[dataset_id, dataset_image_ids] : target_images)
-    {
-        auto found = datasets_.find(dataset_id);
-        if (found == datasets_.end())
+        const auto dataset = datasets_.find(image->datasetId());
+        if (dataset != datasets_.end())
         {
-            spdlog::error("移动图像失败: 目标数据集不存在: {}", dataset_id);
-            continue;
+            changed |= dataset->second->removeImageId(image_id);
         }
-        found->second->addImageIds(dataset_image_ids);
     }
-
-    emit statsChanged();
+    if (changed)
+    {
+        emit statsChanged();
+    }
 }
 
-void DatasetsListModel::setStats(const std::vector<int64_t> &dataset_ids, const std::vector<int64_t> &image_ids,
-                                 const std::vector<std::vector<int64_t>> &images_label_ids,
-                                 const std::vector<int64_t> &image_label_class_ids)
+void DatasetsListModel::moveImagesFromSource(const ImageInstancesListModel *images,
+                                             const std::vector<int64_t> &image_ids,
+                                             const int64_t target_dataset_id)
 {
-    if (dataset_ids.size() != image_ids.size() || images_label_ids.size() != image_ids.size()
-        || image_label_class_ids.size() != image_ids.size())
+    if (images == nullptr)
     {
-        spdlog::error("更新数据集标注统计失败: 数据集id、图像id和标签数量不一致");
         return;
     }
 
-    labelled_image_stats_.clear();
-    for (size_t i = 0; i < dataset_ids.size(); ++i)
+    const auto target = datasets_.find(target_dataset_id);
+    if (target == datasets_.end())
     {
-        const int64_t dataset_id = dataset_ids[i];
-        const bool    has_label  = !images_label_ids[i].empty() || image_label_class_ids[i] >= 0;
+        spdlog::error("移动图像失败: 目标数据集不存在: {}", target_dataset_id);
+        return;
+    }
 
-        auto found = labelled_image_stats_.find(dataset_id);
-        if (found == labelled_image_stats_.end())
+    bool changed = false;
+    for (const int64_t image_id : image_ids)
+    {
+        const ImageInstance *image = images->getImageInstance(image_id);
+        if (image == nullptr || image->datasetId() == target_dataset_id)
         {
-            labelled_image_stats_[dataset_id] = 0;
-        }
-        if (!has_label)
             continue;
-        labelled_image_stats_[dataset_id] += 1;
+        }
+        const auto source = datasets_.find(image->datasetId());
+        if (source == datasets_.end())
+        {
+            continue;
+        }
+
+        const bool labelled = image->hasLabels();
+        source->second->removeImageId(image_id);
+        if (target->second->addImageId(image_id))
+        {
+            target->second->setImageLabelled(image_id, labelled);
+        }
+        changed = true;
+    }
+    if (changed)
+    {
+        emit statsChanged();
+    }
+}
+
+void DatasetsListModel::syncImageLabelState(const ImageInstancesListModel *images,
+                                            const std::vector<int64_t> &image_ids)
+{
+    if (images == nullptr)
+    {
+        return;
+    }
+
+    bool changed = false;
+    for (const int64_t image_id : image_ids)
+    {
+        const ImageInstance *image = images->getImageInstance(image_id);
+        if (image == nullptr)
+        {
+            continue;
+        }
+        const auto dataset = datasets_.find(image->datasetId());
+        if (dataset != datasets_.end())
+        {
+            changed |= dataset->second->setImageLabelled(image_id, image->hasLabels());
+        }
+    }
+    if (changed)
+    {
+        emit statsChanged();
+    }
+}
+
+void DatasetsListModel::rebuildImageStats(const ImageInstancesListModel *images)
+{
+    if (images == nullptr)
+    {
+        return;
+    }
+
+    for (auto &[_, dataset] : datasets_)
+    {
+        dataset->clearImages();
+    }
+    for (int row = 0; row < images->rowCount(); ++row)
+    {
+        const int64_t image_id
+            = images->data(images->index(row, 0), ImageInstancesListModel::ImageIdRole).toLongLong();
+        const ImageInstance *image = images->getImageInstance(image_id);
+        if (image == nullptr)
+        {
+            continue;
+        }
+        const auto dataset = datasets_.find(image->datasetId());
+        if (dataset == datasets_.end())
+        {
+            continue;
+        }
+        dataset->second->addImageId(image_id);
+        dataset->second->setImageLabelled(image_id, image->hasLabels());
     }
     emit statsChanged();
 }
@@ -644,10 +637,8 @@ QVariant DatasetsListModel::getStats(const QModelIndex &index) const
     const int dataset_id = getDatasetId(index);
     if (dataset_id != -1)
     {
-        auto found = labelled_image_stats_.find(dataset_id);
-        if (found == labelled_image_stats_.end())
-            return QString("%1/%2").arg(0).arg(datasets_.at(dataset_id)->imageIds().size());
-        return QString("%1/%2").arg(found->second).arg(datasets_.at(dataset_id)->imageIds().size());
+        const Dataset *dataset = datasets_.at(dataset_id);
+        return QString("%1/%2").arg(dataset->labelledImageCount()).arg(dataset->imageIds().size());
     }
     return QVariant();
 }
@@ -657,10 +648,8 @@ QVariant DatasetsListModel::getProgress(const QModelIndex &index) const
     const int dataset_id = getDatasetId(index);
     if (dataset_id != -1)
     {
-        auto found = labelled_image_stats_.find(dataset_id);
-        if (found == labelled_image_stats_.end())
-            return 0;
-        return found->second / (datasets_.at(dataset_id)->imageIds().size() + 1e-9);
+        const Dataset *dataset = datasets_.at(dataset_id);
+        return dataset->labelledImageCount() / (dataset->imageIds().size() + 1e-9);
     }
     return QVariant();
 }

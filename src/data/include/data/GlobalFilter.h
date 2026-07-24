@@ -2,8 +2,9 @@
 
 #include <QObject>
 #include <QtQml>
-#include <memory>
-#include <unordered_map>
+
+#include <array>
+#include <cstdint>
 #include <unordered_set>
 #include <vector>
 
@@ -12,49 +13,15 @@ namespace dltool::data {
 class DataManager;
 class ImageInstancesListModel;
 class LabelInstancesListModel;
-class DatasetsListModel;
-class ImageTagsListModel;
-class LabelClassesListModel;
-class CustomFilterModule;
-class DatasetFilterModule;
-class TagFilterModule;
-class LabelClassFilterModule;
-class ImageLabelClassFilterModule;
-class FilterModule;
-
-struct FilterCriteria
-{
-    std::unordered_set<int64_t> dataset_ids;
-    std::unordered_set<int64_t> tag_ids;
-    std::unordered_set<int64_t> label_class_ids;
-    std::unordered_set<int64_t> image_label_class_ids;
-    std::unordered_set<int64_t> custom_condition_ids;
-    QString                     file_name_text;
-    bool                        dataset_inverted{false};
-    bool                        tag_inverted{false};
-    bool                        label_class_inverted{false};
-    bool                        image_label_class_inverted{false};
-    bool                        custom_condition_inverted{false};
-
-    /**
-     * @brief 检查过滤条件是否为空
-     * @return 如果没有任何过滤条件返回true
-     */
-    bool isEmpty() const
-    {
-        return dataset_ids.empty() && tag_ids.empty() && label_class_ids.empty() && image_label_class_ids.empty()
-            && custom_condition_ids.empty() && file_name_text.isEmpty() && !dataset_inverted && !tag_inverted
-            && !label_class_inverted && !image_label_class_inverted && !custom_condition_inverted;
-    }
-};
 
 /**
- * @brief 全局过滤器类
- * 
- * 管理所有数据模型的过滤逻辑，协调多个过滤模块（数据集过滤、标签过滤等）
- * 使用AND逻辑组合多个过滤模块，使用OR逻辑组合模块内的条件
+ * @brief 全局筛选条件。
+ *
+ * 该对象只保存用户选择的筛选条件，不保存图像或标注的可见 ID 列表。
+ * 可见行由 ImageInstancesViewModel 和 LabelInstancesViewModel 两个代理模型
+ * 根据这些条件即时映射。
  */
-class GlobalFilter : public QObject
+class GlobalFilter final : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(GlobalFilter)
@@ -66,183 +33,247 @@ class GlobalFilter : public QObject
 
 public:
     /**
-     * @brief 过滤器类型枚举
-     * 
-     * 用于标识不同的过滤模块类型，提供类型安全的过滤器标识
+     * @brief 筛选维度。
      */
     enum class FilterType
     {
-        Dataset,         // 数据集过滤器
-        Tag,             // 标签过滤器
-        LabelClass,      // 标注类别过滤器（仅作用于标注实例）
-        ImageLabelClass, // 标注类别过滤器（作用于图像：图像中包含选中类别实例则保留）
-        Custom,          // 自定义条件过滤器
+        Dataset,
+        Tag,
+        LabelClass,
+        ImageLabelClass,
+        Custom,
     };
     Q_ENUM(FilterType)
 
-    GlobalFilter(DataManager *data_manager, QObject *parent = nullptr);
-    ~GlobalFilter();
-
     /**
-     * @brief 初始化过滤模块
-     * @param data_manager DataManager实例
-     * @note 必须在DataManager完全构造后调用
+     * @brief 自定义筛选条件。
      */
-    void initializeFilterModules(DataManager *data_manager);
+    enum class CustomCondition : int64_t
+    {
+        DuplicateFileName = 1,
+        DuplicatePath     = 2,
+        UniqueFileName    = 3,
+        ImageSearchResult = 4,
+        LabelSearchResult = 5,
+    };
+    Q_ENUM(CustomCondition)
 
-    // 过滤器状态查询
+    struct CustomConditionSpec
+    {
+        int64_t id{-1};  ///< 条件 ID。
+        QString text;    ///< 条件显示文本。
+    };
 
     /**
-     * @brief 检查是否有激活的过滤器
-     * @return 如果有任何过滤器激活返回true
+     * @brief 构造全局筛选器。
+     * @param data_manager 数据管理器。
+     * @param parent 父对象。
      */
-    bool isActive() const;
+    explicit GlobalFilter(DataManager *data_manager, QObject *parent = nullptr);
 
     /**
-     * @brief 获取激活的过滤器数量
-     * @return 激活的过滤器数量
+     * @brief 返回可供 UI 展示的自定义筛选条件。
+     * @return 自定义条件列表。
      */
-    int activeFilterCount() const;
-
-    // 通用过滤器接口方法
+    static std::vector<CustomConditionSpec> customConditions();
 
     /**
-     * @brief 设置过滤条件（通用方法）
-     * @param type 过滤器类型
-     * @param ids 选中的ID列表
+     * @brief 设置一个筛选维度的已选 ID。
+     * @param type 筛选维度。
+     * @param ids 已选 ID。
      */
     Q_INVOKABLE void setFilter(FilterType type, const std::vector<int64_t> &ids);
 
     /**
-     * @brief 启用/禁用过滤器（通用方法）
-     * @param type 过滤器类型
-     * @param enabled 是否启用
+     * @brief 启用或停用一个筛选维度。
+     * @param type 筛选维度。
+     * @param enabled 是否启用。
      */
     Q_INVOKABLE void setFilterEnabled(FilterType type, bool enabled);
 
+    /**
+     * @brief 查询一个筛选维度是否启用。
+     * @param type 筛选维度。
+     * @return 是否启用。
+     */
     Q_INVOKABLE bool isFilterEnabled(FilterType type) const;
 
+    /**
+     * @brief 查询一个筛选维度是否为反选。
+     * @param type 筛选维度。
+     * @return 是否反选。
+     */
     Q_INVOKABLE bool isFilterInverted(FilterType type) const;
 
     /**
-     * @brief 清除过滤器（通用方法）
-     * @param type 过滤器类型
+     * @brief 清空一个筛选维度的条件。
+     * @param type 筛选维度。
      */
     Q_INVOKABLE void clearFilter(FilterType type);
 
+    /**
+     * @brief 选择一个筛选维度的全部可用项。
+     * @param type 筛选维度。
+     */
     Q_INVOKABLE void selectAll(FilterType type);
 
-    Q_INVOKABLE void deselectAll(FilterType type);
     /**
-     * @brief 获取激活的ID列表（通用方法）
-     * @param type 过滤器类型
-     * @return ID列表
+     * @brief 取消选择一个筛选维度的全部可用项。
+     * @param type 筛选维度。
+     */
+    Q_INVOKABLE void deselectAll(FilterType type);
+
+    /**
+     * @brief 返回一个筛选维度当前保存的 ID。
+     * @param type 筛选维度。
+     * @return 已选 ID。
      */
     Q_INVOKABLE std::vector<int64_t> getActiveIds(FilterType type) const;
 
     /**
-     * @brief 清除所有过滤器
+     * @brief 清空并停用所有筛选条件。
      */
     Q_INVOKABLE void clearAllFilters();
 
+    /**
+     * @brief 使代理模型重新计算筛选结果。
+     *
+     * 数据关系发生变化后调用；不创建完整可见列表快照。
+     */
     void refresh();
 
-    /// 清除图像搜索结果对应的自定义过滤条件。
+    /**
+     * @brief 清除图像搜索结果。
+     */
     Q_INVOKABLE void clearImageSearchResults();
 
-    /// 设置图像搜索结果，并按需启用“图像搜索结果”自定义条件。
+    /**
+     * @brief 设置图像搜索结果。
+     * @param image_ids 命中的图像 ID。
+     * @param enable_filter 是否同时启用该自定义条件。
+     */
     void setImageSearchResults(const std::vector<int64_t> &image_ids, bool enable_filter);
 
-    /// 清除标注搜索结果对应的自定义过滤条件。
+    /**
+     * @brief 清除标注搜索结果。
+     */
     Q_INVOKABLE void clearLabelSearchResults();
-    /// 设置标注搜索结果，并按需启用“标注搜索结果”自定义条件。
-    void             setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter);
-    QString fileNameFilterText() const
-    {
-        return file_name_filter_text_;
-    }
 
+    /**
+     * @brief 设置标注搜索结果。
+     * @param label_ids 命中的标注 ID。
+     * @param enable_filter 是否同时启用该自定义条件。
+     */
+    void setLabelSearchResults(const std::vector<int64_t> &label_ids, bool enable_filter);
+
+    /**
+     * @brief 返回文件名筛选文本。
+     * @return 当前筛选文本。
+     */
+    QString fileNameFilterText() const;
+
+    /**
+     * @brief 设置文件名筛选文本。
+     * @param text 筛选文本。
+     */
     Q_INVOKABLE void setFileNameFilterText(const QString &text);
 
     /**
-     * @brief 应用过滤器到数据模型
-     * 
-     * 根据当前过滤条件更新图像和标注模型的显示内容
-     * 如果条件未改变，通常会跳过过滤操作以提高性能
+     * @brief 判断图像是否应显示。
+     * @param image_id 图像 ID。
+     * @return 图像是否通过当前筛选。
      */
-    void applyFilters();
+    bool acceptsImage(int64_t image_id) const;
 
     /**
-     * @brief 获取当前过滤条件
-     * @return 当前的过滤条件结构
+     * @brief 判断标注是否应显示。
+     * @param label_id 标注 ID。
+     * @return 标注是否通过当前筛选。
      */
-    const FilterCriteria &getCurrentCriteria() const
-    {
-        return current_criteria_;
-    }
+    bool acceptsLabel(int64_t label_id) const;
+
+    /**
+     * @brief 是否存在启用的筛选条件。
+     * @return 是否存在筛选条件。
+     */
+    bool isActive() const;
+
+    /**
+     * @brief 返回启用的筛选条件数量。
+     * @return 条件数量。
+     */
+    int activeFilterCount() const;
 
 signals:
-    void filterStateChanged(); // 过滤器状态改变信号
-    void filterApplied();      // 过滤器应用完成信号
-    /// 图像/标注搜索结果的可用性变化，用于更新自定义过滤项的可用状态。
+    /**
+     * @brief 筛选状态变化。
+     */
+    void filterStateChanged();
+
+    /**
+     * @brief 条件变化，需要代理模型重新筛选。
+     */
+    void filterChanged();
+
+    /**
+     * @brief 代理模型筛选通知已发出。
+     */
+    void filterApplied();
+
+    /**
+     * @brief 搜索结果可用性变化。
+     * @param has_image_search_results 是否存在图像搜索结果。
+     * @param has_label_search_results 是否存在标注搜索结果。
+     */
     void customFilterSearchResultsChanged(bool has_image_search_results, bool has_label_search_results);
 
 private:
-    /**
-     * @brief 获取指定类型的过滤模块
-     * @param type 过滤器类型
-     * @return 过滤模块指针，如果类型无效返回nullptr
-     */
-    FilterModule *getFilterModule(FilterType type) const;
+    struct IdFilter
+    {
+        std::unordered_set<int64_t> ids; ///< 已选 ID。
+        bool enabled{false};             ///< 是否启用。
+        bool inverted{false};            ///< 是否反选。
+    };
+
+    static constexpr size_t kFilterCount = static_cast<size_t>(FilterType::Custom) + 1;
+
+    IdFilter       &filter(FilterType type);
+    const IdFilter &filter(FilterType type) const;
+    ImageInstancesListModel *imageSource() const;
+    LabelInstancesListModel *labelSource() const;
 
     /**
-     * @brief 更新当前过滤条件
-     * 
-     * 从各个过滤模块收集激活的条件并更新current_criteria_
+     * @brief 直接收集一个筛选维度可用的 ID。
+     * @param type 筛选维度。
+     * @param ids 输出 ID 集合。
      */
-    void updateFilterCriteria();
+    void collectAvailableIds(FilterType type, std::unordered_set<int64_t> &ids) const;
+    bool passesIdFilter(const IdFilter &filter, int64_t id) const;
+    bool acceptsImageWithoutCustom(int64_t image_id) const;
+    bool acceptsCustomImage(int64_t image_id) const;
+    bool acceptsCustomLabel(int64_t label_id, int64_t image_id) const;
+    bool matchesTags(int64_t image_id, const std::unordered_set<int64_t> &tag_ids) const;
+    bool matchesImageLabelClasses(int64_t image_id, const std::unordered_set<int64_t> &label_class_ids) const;
+    bool matchesCustomImageCondition(int64_t image_id, int64_t condition_id) const;
+    bool customConditionAvailable(int64_t condition_id) const;
+    bool usesRegularCustomCondition() const;
+    void rebuildDuplicateIndexes() const;
+    void invalidateDuplicateIndexes();
+    void notifyFilterChanged();
+    void notifyStateChanged(bool notify_search_results);
+    void updateCustomEnabledAfterSearchRemoval();
 
-    /**
-     * @brief 判断图像是否应该被包含在过滤结果中
-     * @param image_id 图像ID
-     * @return 如果图像通过所有激活的过滤器返回true
-     */
-    bool shouldIncludeImage(int64_t image_id) const;
+    DataManager *data_manager_{nullptr}; ///< 数据管理器。
+    std::array<IdFilter, kFilterCount> filters_; ///< 各筛选维度的最小状态。
+    QString file_name_filter_text_; ///< 文件名筛选文本。
+    std::unordered_set<int64_t> image_search_result_ids_; ///< 图像搜索命中 ID。
+    std::unordered_set<int64_t> label_search_result_ids_; ///< 标注搜索命中 ID。
+    bool custom_empty_selection_enabled_{false}; ///< 自定义条件的“全不选且启用”状态。
 
-    /// 判断图像是否通过除自定义重复条件以外的过滤器。
-    bool shouldIncludeImageWithoutCustom(int64_t image_id) const;
-
-    /**
-     * @brief 判断标注是否应该被包含在过滤结果中
-     * @param label_id 标注ID
-     * @return 如果标注关联的图像通过过滤器返回true
-     */
-    bool shouldIncludeLabel(int64_t label_id) const;
-
-    /**
-     * @brief 检查过滤条件是否发生变化
-     * @return 如果条件改变返回true
-     * 
-     * 通过比较current_criteria_和previous_criteria_来避免不必要的过滤操作
-     */
-    bool hasFilterCriteriaChanged() const;
-
-    DataManager *data_manager_{nullptr}; // 数据管理器
-
-    std::unique_ptr<DatasetFilterModule>         dataset_filter_;           // 数据集过滤模块
-    std::unique_ptr<TagFilterModule>             tag_filter_;               // 标签过滤模块
-    std::unique_ptr<LabelClassFilterModule>      label_class_filter_;       // 标注类别过滤模块
-    std::unique_ptr<ImageLabelClassFilterModule> image_label_class_filter_; // 图像级标注类别过滤模块
-    std::unique_ptr<CustomFilterModule>          custom_filter_;
-
-    std::unordered_map<FilterType, FilterModule *> filter_modules_; // 过滤模块映射表
-
-    FilterCriteria current_criteria_;  // 当前过滤条件
-    FilterCriteria previous_criteria_; // 上一次过滤条件（用于避免不必要的过滤）
-    QString        file_name_filter_text_;
-
-    bool force_apply_{false}; // 强制重新应用过滤（跳过条件未变的优化）
-    bool applying_filters_{false}; // 防止模型重置信号导致过滤递归重入
+    mutable bool duplicate_indexes_valid_{false}; ///< 重复文件条件索引是否有效。
+    mutable std::unordered_set<int64_t> duplicate_file_name_image_ids_; ///< 重名图像 ID。
+    mutable std::unordered_set<int64_t> duplicate_path_image_ids_; ///< 重路径图像 ID。
+    mutable std::unordered_set<int64_t> unique_file_name_image_ids_; ///< 唯一文件名图像 ID。
 };
 
 } // namespace dltool::data

@@ -20,16 +20,24 @@ class DATA_API DatasetExportSource
 public:
     virtual ~DatasetExportSource() = default;
 
-    /// 按升序返回选中范围内的图像 ID，保证导出文件稳定。
+    /**
+     * @brief 按升序返回选中范围内的图像 ID，保证导出文件稳定。
+     * @return 图像 ID 列表。
+     */
     virtual std::vector<int64_t> allImageIds() const = 0;
     virtual qint64              imageDatasetId(qint64 image_id) const = 0;
     virtual QString             imagePath(qint64 image_id) const = 0;
     virtual QVariantMap         imageLevelLabelData(qint64 image_id) const = 0;
-    /// 按升序返回图像的标注 ID，保证导出文件稳定。
+    /**
+     * @brief 按升序返回图像的标注 ID，保证导出文件稳定。
+     * @param image_id 图像 ID。
+     * @return 标注 ID 列表。
+     */
     virtual std::vector<int64_t> imageLabelIds(qint64 image_id) const = 0;
     virtual qint64              labelClassId(qint64 label_id) const = 0;
     virtual QVariantMap         labelData(qint64 label_id) const = 0;
     virtual QString             labelClassName(qint64 label_class_id) const = 0;
+    virtual QString             labelClassColor(qint64 label_class_id) const = 0;
     virtual QString             labelClassGroup(qint64 label_class_id) const = 0;
     virtual QString             datasetName(qint64 dataset_id) const = 0;
 };

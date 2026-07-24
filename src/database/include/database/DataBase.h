@@ -161,8 +161,7 @@ public:
     bool updateImagesDataset(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &dataset_ids,
                              QString &err_msg) const;
     bool getImage(const int64_t image_id, std::pair<int64_t, QString> &image, QString &err_msg) const;
-    bool getImages(const std::vector<int64_t> &image_ids, std::vector<std::pair<int64_t, QString>> &images,
-                   QString &err_msg) const;
+
     bool deleteImages(const std::vector<int64_t> &image_ids, QString &err_msg) const;
     bool getImages(const int64_t dataset_id, std::vector<int64_t> &image_ids, std::vector<QString> &paths,
                    QString &err_msg) const;
@@ -194,6 +193,7 @@ public:
     bool getAllTags(std::vector<int64_t> &image_ids, std::vector<std::vector<int64_t>> &image_tag_ids,
                     std::vector<int64_t> &label_ids, std::vector<std::vector<int64_t>> &label_tag_ids,
                     QString &err_msg) const;
+
     bool addTagsToImages(const std::vector<int64_t> &image_ids, int64_t tag_id, QString &err_msg) const;
     bool removeTagsFromImages(const std::vector<int64_t> &image_ids, int64_t tag_id, QString &err_msg) const;
     bool removeTagsForImages(const std::vector<int64_t> &image_ids, QString &err_msg) const;
@@ -217,6 +217,7 @@ public:
     bool getAllLabels(std::vector<int64_t> &label_ids, std::vector<int64_t> &image_ids,
                       std::vector<int64_t> &label_class_ids, std::vector<int64_t> &label_types,
                       std::vector<std::vector<uint8_t>> &labels_data, QString &err_msg) const;
+
     bool addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                    const std::vector<int64_t> &label_types, const std::vector<std::vector<uint8_t>> &labels_data,
                    std::vector<int64_t> &label_ids, QString &err_msg) const;

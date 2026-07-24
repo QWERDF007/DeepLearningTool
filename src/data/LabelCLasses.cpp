@@ -127,6 +127,10 @@ bool LabelClass::setName(const QString &name)
 
 bool LabelClassesListModel::reorderLabelClass(const int64_t label_class_id, const int64_t new_ordinal_index)
 {
+    if (mutation_blocked_)
+    {
+        return false;
+    }
     if (new_ordinal_index < 0 || new_ordinal_index >= rowCount())
         return false;
 
@@ -351,6 +355,10 @@ QHash<int, QByteArray> LabelClassesListModel::roleNames() const
 bool LabelClassesListModel::addLabelClass(const QString &name, const QString &color, const QString &shortcut,
                                           const QString &group)
 {
+    if (mutation_blocked_)
+    {
+        return false;
+    }
     if (database_ == nullptr)
     {
         spdlog::error("添加标签类别 [{}] 失败, 数据库未初始化", name.toUtf8().constData());
@@ -384,6 +392,10 @@ bool LabelClassesListModel::addLabelClass(const QString &name, const QString &co
 bool LabelClassesListModel::updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
                                              const QString &shortcut, const int64_t ordinal_index, const QString &group)
 {
+    if (mutation_blocked_)
+    {
+        return false;
+    }
     if (database_ == nullptr)
     {
         spdlog::error("更新标签类别 [{}] 失败, 数据库未初始化", name.toUtf8().constData());
@@ -446,6 +458,10 @@ bool LabelClassesListModel::updateLabelClass(const int64_t label_class_id, const
 bool dltool::data::LabelClassesListModel::updateLabelClass(const std::vector<int64_t> &label_class_ids,
                                                            const std::vector<int64_t> &ordinal_indexes)
 {
+    if (mutation_blocked_)
+    {
+        return false;
+    }
     if (database_ == nullptr)
     {
         spdlog::error("更新 [{}] 个标签类别序号索引失败, 数据库未初始化", label_class_ids.size());
@@ -470,6 +486,10 @@ bool dltool::data::LabelClassesListModel::updateLabelClass(const std::vector<int
 
 bool LabelClassesListModel::deleteLabelClass(const int64_t label_class_id)
 {
+    if (mutation_blocked_)
+    {
+        return false;
+    }
     if (database_ == nullptr)
     {
         spdlog::error("删除标签类别 [{}] 失败, 数据库未初始化", label_class_id);
@@ -646,6 +666,10 @@ QString LabelClassesListModel::getCurrentLabelClassGroup() const
 
 bool LabelClassesListModel::updateLabelClassGroup(const int64_t label_class_id, const QString &group)
 {
+    if (mutation_blocked_)
+    {
+        return false;
+    }
     auto found = label_classes_.find(label_class_id);
     if (found == label_classes_.end())
     {

@@ -17,10 +17,12 @@ namespace dltool::data {
  *
  * 所有跨线程的数据操作都遵循同一条流水线：
  *
- *   GUI 准备快照 -> 工作线程执行 -> GUI 提交模型 -> 完成进度
+ *   GUI 提交 ID/参数 -> 工作线程 const 读取和执行 -> GUI 一次提交结果 -> 完成进度
  *
- * Work 只能访问工作线程中的数据和数据库连接；Completion 一定在 context
- * 所在线程执行，因此可以安全地更新 QAbstractItemModel 和 QML 状态。
+ * GUI 线程不复制已有图像、标注或 Tag 实体到工作线程。数据操作运行期间，DataManager
+ * 阻断所有内存写入口，因此 Work 可以通过只读接口读取稳定的内存实体，并访问自己的
+ * 数据库连接或文件。新增实体等操作增量由 Work 返回，Completion 一定在 context 所在线程
+ * 执行，因此可以安全地更新 QAbstractItemModel 和 QML 状态。
  */
 class DATA_API DataOperationWorkflow final
 {

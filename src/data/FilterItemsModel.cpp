@@ -1,13 +1,14 @@
 #include "data/FilterItemsModel.h"
 
-#include "data/CustomFilterModule.h"
 #include "data/Datasets.h"
+#include "data/GlobalFilter.h"
 #include "data/ImageTags.h"
 #include "data/LabelClasses.h"
 
 #include <spdlog/spdlog.h>
 
 #include <unordered_set>
+#include <utility>
 
 namespace dltool::data {
 
@@ -114,6 +115,13 @@ void FilterItemsModel::append(int64_t id, const QString &text, bool checked, boo
     endInsertRows();
 }
 
+void FilterItemsModel::replaceItems(std::vector<FilterItem> items)
+{
+    beginResetModel();
+    items_ = std::move(items);
+    endResetModel();
+}
+
 std::vector<int64_t> FilterItemsModel::getCheckedIds() const
 {
     std::vector<int64_t> checked_ids;
@@ -174,11 +182,9 @@ void DatasetFilterItemsModel::populateFromDatasets(QAbstractItemModel *datasets_
         }
     }
 
-    // 清空现有数据
-    clear();
-
-    // 从数据集模型填充
-    int row_count = datasets_model->rowCount();
+    std::vector<FilterItem> items;
+    const int row_count = datasets_model->rowCount();
+    items.reserve(static_cast<size_t>(row_count));
     for (int i = 0; i < row_count; ++i)
     {
         QModelIndex idx = datasets_model->index(i, 0);
@@ -192,11 +198,11 @@ void DatasetFilterItemsModel::populateFromDatasets(QAbstractItemModel *datasets_
             int64_t dataset_id   = id_variant.toLongLong();
             QString dataset_name = name_variant.toString();
 
-            // 保留已有项的选中状态，新项默认选中
-            bool checked = unchecked_ids.find(dataset_id) == unchecked_ids.end();
-            append(dataset_id, dataset_name, checked);
+            const bool checked = unchecked_ids.find(dataset_id) == unchecked_ids.end();
+            items.emplace_back(dataset_id, dataset_name, checked);
         }
     }
+    replaceItems(std::move(items));
 }
 
 // ============================================================================
@@ -226,11 +232,9 @@ void TagFilterItemsModel::populateFromTags(QAbstractItemModel *tags_model)
         }
     }
 
-    // 清空现有数据
-    clear();
-
-    // 从标签模型填充
-    int row_count = tags_model->rowCount();
+    std::vector<FilterItem> items;
+    const int row_count = tags_model->rowCount();
+    items.reserve(static_cast<size_t>(row_count));
     for (int i = 0; i < row_count; ++i)
     {
         QModelIndex idx = tags_model->index(i, 0);
@@ -244,11 +248,11 @@ void TagFilterItemsModel::populateFromTags(QAbstractItemModel *tags_model)
             int64_t tag_id   = id_variant.toLongLong();
             QString tag_name = name_variant.toString();
 
-            // 保留已有项的选中状态，新项默认选中
-            bool checked = unchecked_ids.find(tag_id) == unchecked_ids.end();
-            append(tag_id, tag_name, checked);
+            const bool checked = unchecked_ids.find(tag_id) == unchecked_ids.end();
+            items.emplace_back(tag_id, tag_name, checked);
         }
     }
+    replaceItems(std::move(items));
 }
 
 // ============================================================================
@@ -278,9 +282,9 @@ void LabelClassFilterItemsModel::populateFromLabelClasses(QAbstractItemModel *la
         }
     }
 
-    clear();
-
+    std::vector<FilterItem> items;
     const int row_count = label_classes_model->rowCount();
+    items.reserve(static_cast<size_t>(row_count));
     for (int i = 0; i < row_count; ++i)
     {
         const QModelIndex idx = label_classes_model->index(i, 0);
@@ -293,11 +297,11 @@ void LabelClassFilterItemsModel::populateFromLabelClasses(QAbstractItemModel *la
             const int64_t label_class_id = id_variant.toLongLong();
             const QString name           = name_variant.toString();
 
-            // 保留已有项的选中状态，新项默认选中
-            bool checked = unchecked_ids.find(label_class_id) == unchecked_ids.end();
-            append(label_class_id, name, checked);
+            const bool checked = unchecked_ids.find(label_class_id) == unchecked_ids.end();
+            items.emplace_back(label_class_id, name, checked);
         }
     }
+    replaceItems(std::move(items));
 }
 
 // ============================================================================
@@ -311,15 +315,15 @@ CustomFilterItemsModel::CustomFilterItemsModel(QObject *parent)
 
 void CustomFilterItemsModel::populateFromCustomConditions()
 {
-    clear();
-
-    for (const CustomFilterModule::ConditionSpec &condition : CustomFilterModule::availableConditions())
+    std::vector<FilterItem> items;
+    for (const GlobalFilter::CustomConditionSpec &condition : GlobalFilter::customConditions())
     {
-        const bool is_image_search = condition.id == static_cast<int64_t>(CustomFilterModule::Condition::ImageSearchResult);
-        const bool is_label_search = condition.id == static_cast<int64_t>(CustomFilterModule::Condition::LabelSearchResult);
+        const bool is_image_search = condition.id == static_cast<int64_t>(GlobalFilter::CustomCondition::ImageSearchResult);
+        const bool is_label_search = condition.id == static_cast<int64_t>(GlobalFilter::CustomCondition::LabelSearchResult);
         const bool enabled         = !is_image_search && !is_label_search;
-        append(condition.id, condition.text, false, enabled);
+        items.emplace_back(condition.id, condition.text, false, enabled);
     }
+    replaceItems(std::move(items));
 }
 
 void CustomFilterItemsModel::setSearchResultsAvailable(bool image_search_available, bool label_search_available)
@@ -328,11 +332,11 @@ void CustomFilterItemsModel::setSearchResultsAvailable(bool image_search_availab
     {
         FilterItem &item = items_[static_cast<size_t>(row)];
         bool        available;
-        if (item.id == static_cast<int64_t>(CustomFilterModule::Condition::ImageSearchResult))
+        if (item.id == static_cast<int64_t>(GlobalFilter::CustomCondition::ImageSearchResult))
         {
             available = image_search_available;
         }
-        else if (item.id == static_cast<int64_t>(CustomFilterModule::Condition::LabelSearchResult))
+        else if (item.id == static_cast<int64_t>(GlobalFilter::CustomCondition::LabelSearchResult))
         {
             available = label_search_available;
         }
