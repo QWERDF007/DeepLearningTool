@@ -94,7 +94,10 @@ ImageInstancesViewModel::ImageInstancesViewModel(ImageInstancesListModel *source
                     deselected.select(previous, previous);
                 }
                 notifySelectionRows(selected, deselected);
-                emit currentImageChanged();
+                if (!suppress_current_image_changed_)
+                {
+                    emit currentImageChanged();
+                }
             });
     connect(this, &QAbstractItemModel::modelAboutToBeReset, this, &ImageInstancesViewModel::rememberSelection);
     connect(this, &QAbstractItemModel::modelReset, this,
@@ -105,7 +108,10 @@ ImageInstancesViewModel::ImageInstancesViewModel(ImageInstancesListModel *source
                     restoreSelection();
                 }
                 emit countChanged();
-                emit currentImageChanged();
+                if (!suppress_current_image_changed_)
+                {
+                    emit currentImageChanged();
+                }
             });
     connect(this, &QAbstractItemModel::rowsInserted, this,
             [this](const QModelIndex &, int, int) { emit countChanged(); });
@@ -116,16 +122,23 @@ ImageInstancesViewModel::ImageInstancesViewModel(ImageInstancesListModel *source
         connect(filter_, &GlobalFilter::filterChanged, this,
                 [this]()
                 {
+                    const int64_t previous_current_image_id = currentImageId();
+                    suppress_current_image_changed_           = true;
                     rememberSelection();
                     if (bulk_depth_ > 0)
                     {
                         filter_dirty_ = true;
+                        suppress_current_image_changed_ = false;
                         return;
                     }
                     invalidate();
                     restoreSelection();
+                    suppress_current_image_changed_ = false;
                     emit countChanged();
-                    emit currentImageChanged();
+                    if (currentImageId() != previous_current_image_id)
+                    {
+                        emit currentImageChanged();
+                    }
                 });
     }
 }

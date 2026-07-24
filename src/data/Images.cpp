@@ -1031,13 +1031,13 @@ QVariant ImageInfoListModel::getValue(const QModelIndex &index) const
 {
     if (image_instances_ == nullptr || image_instances_->source() == nullptr)
     {
-        return {};
+        return QString();
     }
     const int64_t image_id = image_instances_->currentImageId();
     const ImageInstance *image = image_instances_->source()->getImageInstance(image_id);
     if (image == nullptr)
     {
-        return {};
+        return QString();
     }
 
     switch (index.row())
@@ -1061,7 +1061,7 @@ QVariant ImageInfoListModel::getValue(const QModelIndex &index) const
     {
         if (label_instances_ == nullptr || label_classes_ == nullptr)
         {
-            return {};
+            return QString();
         }
         std::map<QString, int> class_counts;
         for (const int64_t label_id : image->labelIds())

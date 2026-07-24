@@ -38,8 +38,8 @@ QuiPopup {
         datasetSelectionModel.setDatasetClassSourceModels(
                     manager ? manager.datasets : null,
                     manager ? manager.labelClasses : null,
-                    manager ? manager.imageInstances : null,
-                    manager ? manager.labelInstances : null)
+                    manager ? manager.imageSource : null,
+                    manager ? manager.labelSource : null)
     }
 
     function openForSearch() {

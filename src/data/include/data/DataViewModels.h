@@ -101,6 +101,7 @@ private:
     bool                 dynamic_sort_before_bulk_{true};
     bool                 selection_remembered_{false};
     bool                 filter_dirty_{false};
+    bool                 suppress_current_image_changed_{false}; ///< 恢复图像选择期间暂不发送当前图像变化通知。
 };
 
 /**

@@ -507,7 +507,7 @@ bool containsOnlyRectangleShapes(const LabelMeIO::LabelMeData &data)
 // Mask helpers
 // ============================================================================
 
-constexpr int kMaskThreshold = 128;
+constexpr int kMaskThreshold = 1;
 
 bool isForeground(const QImage &image, int x, int y)
 {
@@ -537,7 +537,7 @@ QRect foregroundBoundingBox(const QImage &mask)
     }
     if (x_max < x_min || y_max < y_min)
         return {};
-    return QRect(QPoint(x_min, y_min), QPoint(x_max + 1, y_max + 1));
+    return QRect(x_min, y_min, x_max - x_min + 1, y_max - y_min + 1);
 }
 
 void addImageMapEntry(std::map<QString, QString> &image_by_stem, const QString &key, const QString &image_path)
@@ -2091,6 +2091,7 @@ void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
         int processed_masks = 0;
         int valid_masks     = 0;
         int skipped_masks   = 0;
+        int generated_label_count = 0;
 
         auto flush_batch = [&]() -> bool
         {
@@ -2143,13 +2144,6 @@ void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
                 continue;
             }
 
-            const QVariantMap label_data = maskToLabelData(geometry, image_width, image_height);
-            if (label_data.isEmpty())
-            {
-                ++skipped_masks;
-                continue;
-            }
-
             const QString label_class_name = sanitizeName(labelClassNameForMask(mask_path, data_dir));
             if (label_class_name.isEmpty())
             {
@@ -2162,15 +2156,33 @@ void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
                     = DatasetIO::generateDefaultColor(static_cast<int>(label_class_colors.size()));
             batch_label_class_info[label_class_name] = label_class_colors[label_class_name];
 
-            batch_image_paths.push_back(image_it->second);
-            batch_image_widths.push_back(image_width);
-            batch_image_heights.push_back(image_height);
+            int generated_labels = 0;
+            for (const std::vector<QPointF> &polygon : geometry.polygons)
+            {
+                const QVariantMap label_data
+                    = maskToLabelData(polygon, geometry.mask_width, geometry.mask_height, image_width, image_height);
+                if (label_data.isEmpty())
+                    continue;
 
-            ImportedLabel imported_label;
-            imported_label.label_class_name = label_class_name;
-            imported_label.image_path       = image_it->second;
-            imported_label.data             = label_data;
-            batch_labels.push_back(imported_label);
+                batch_image_paths.push_back(image_it->second);
+                batch_image_widths.push_back(image_width);
+                batch_image_heights.push_back(image_height);
+
+                ImportedLabel imported_label;
+                imported_label.label_class_name = label_class_name;
+                imported_label.image_path       = image_it->second;
+                imported_label.data             = label_data;
+                batch_labels.push_back(std::move(imported_label));
+                ++generated_labels;
+            }
+
+            if (generated_labels == 0)
+            {
+                ++skipped_masks;
+                continue;
+            }
+
+            generated_label_count += generated_labels;
             ++valid_masks;
 
             if (processed_masks % std::max<int>(1, static_cast<int>(mask_files.size()) / 10) == 0
@@ -2180,7 +2192,7 @@ void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
                 updateProgress(progress, QString("已处理 Mask %1/%2").arg(processed_masks).arg(mask_files.size()));
             }
 
-            if (batch_image_paths.size() >= DataIO::ImportBatchImageCount)
+            if (batch_labels.size() >= DataIO::ImportBatchImageCount)
             {
                 if (!flush_batch())
                 {
@@ -2196,7 +2208,10 @@ void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
             return;
         }
 
-        updateProgress(100, QString("Mask 导入完成: 有效 %1 个，跳过 %2 个").arg(valid_masks).arg(skipped_masks));
+        updateProgress(100, QString("Mask 导入完成: 有效 %1 个，生成 %2 个标注，跳过 %3 个")
+                                  .arg(valid_masks)
+                                  .arg(generated_label_count)
+                                  .arg(skipped_masks));
         emit importFinished(valid_masks > 0, {}, {});
     }
     catch (const std::exception &e)
@@ -2251,30 +2266,51 @@ bool MaskIO::readMaskGeometry(const QString &mask_path, MaskGeometry &geometry,
     std::vector<std::vector<QPointF>> polygons
         = dltool::common::maskToPolygons(binary_mask, mask.width(), mask.height(), false, polygon_approx_epsilon_ratio);
     if (!polygons.empty())
-        geometry.polygon = std::move(polygons.front());
+    {
+        geometry.polygons = std::move(polygons);
+    }
     else
-        geometry.polygon.clear();
+    {
+        const double left   = geometry.bbox.x();
+        const double top    = geometry.bbox.y();
+        const double right  = left + geometry.bbox.width();
+        const double bottom = top + geometry.bbox.height();
+        geometry.polygons   = {{QPointF(left, top), QPointF(right, top), QPointF(right, bottom), QPointF(left, bottom)}};
+    }
 
     return true;
 }
 
-QVariantMap MaskIO::maskToLabelData(const MaskGeometry &geometry, int image_width, int image_height) const
+QVariantMap MaskIO::maskToLabelData(const std::vector<QPointF> &polygon, int mask_width, int mask_height,
+                                     int image_width, int image_height) const
 {
-    if (geometry.mask_width <= 0 || geometry.mask_height <= 0 || image_width <= 0 || image_height <= 0)
+    if (mask_width <= 0 || mask_height <= 0 || image_width <= 0 || image_height <= 0 || polygon.size() < 3)
         return {};
 
-    const double sx = static_cast<double>(image_width) / geometry.mask_width;
-    const double sy = static_cast<double>(image_height) / geometry.mask_height;
+    const double sx = static_cast<double>(image_width) / mask_width;
+    const double sy = static_cast<double>(image_height) / mask_height;
+
+    double x_min = polygon.front().x();
+    double y_min = polygon.front().y();
+    double x_max = x_min;
+    double y_max = y_min;
+    for (const QPointF &point : polygon)
+    {
+        x_min = std::min(x_min, point.x());
+        y_min = std::min(y_min, point.y());
+        x_max = std::max(x_max, point.x());
+        y_max = std::max(y_max, point.y());
+    }
 
     if (target_method_ == DeepLearningMethod::Detection)
-        return DatasetIO::bboxToLabelData(geometry.bbox.x() * sx, geometry.bbox.y() * sy, geometry.bbox.width() * sx,
-                                          geometry.bbox.height() * sy, image_width, image_height);
+        return DatasetIO::bboxToLabelData(x_min * sx, y_min * sy, (x_max - x_min) * sx, (y_max - y_min) * sy,
+                                          image_width, image_height);
 
     if (target_method_ == DeepLearningMethod::Segmentation || target_method_ == DeepLearningMethod::AnomalyDetection)
     {
         std::vector<QPointF> scaled_points;
-        scaled_points.reserve(geometry.polygon.size());
-        for (const QPointF &point : geometry.polygon) scaled_points.emplace_back(point.x() * sx, point.y() * sy);
+        scaled_points.reserve(polygon.size());
+        for (const QPointF &point : polygon) scaled_points.emplace_back(point.x() * sx, point.y() * sy);
         return DatasetIO::pointsToLabelData(scaled_points, image_width, image_height);
     }
 
@@ -2574,7 +2610,6 @@ void FolderIO::doImport(int64_t dataset_id, const QString &image_dir)
         int                        color_index      = 0;
         int                        processed_images = 0;
         int                        valid_images     = 0;
-        int                        skipped_images   = 0;
         std::map<QString, QString> class_colors;
 
         auto flush_batch = [&]() -> bool
@@ -2614,23 +2649,11 @@ void FolderIO::doImport(int64_t dataset_id, const QString &image_dir)
                 }
 
                 ++processed_images;
-
-                int width  = 0;
-                int height = 0;
-                if (!DatasetIO::getImageDimensions(image_path, width, height))
-                {
-                    ++skipped_images;
-                    continue;
-                }
-
                 ++valid_images;
                 batch_image_paths.push_back(image_path);
-                batch_image_widths.push_back(width);
-                batch_image_heights.push_back(height);
 
                 ImportedLabel label;
                 label.label_class_name = cls.name;
-                label.data             = DatasetIO::bboxToLabelData(0, 0, width, height, width, height);
                 label.image_path       = image_path;
                 batch_labels.push_back(label);
 
@@ -2664,10 +2687,9 @@ void FolderIO::doImport(int64_t dataset_id, const QString &image_dir)
             return;
         }
 
-        updateProgress(100, QString("文件夹导入完成: %1 个图像, %2 个类别，跳过图像 %3 个")
+        updateProgress(95, QString("文件夹解析完成，等待写入数据: %1 个图像, %2 个类别")
                                 .arg(valid_images)
-                                .arg(classes.size())
-                                .arg(skipped_images));
+                                .arg(classes.size()));
         emit importFinished(true, {}, {});
     }
     catch (const std::exception &e)

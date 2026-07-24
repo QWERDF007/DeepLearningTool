@@ -355,10 +355,6 @@ QHash<int, QByteArray> LabelClassesListModel::roleNames() const
 bool LabelClassesListModel::addLabelClass(const QString &name, const QString &color, const QString &shortcut,
                                           const QString &group)
 {
-    if (mutation_blocked_)
-    {
-        return false;
-    }
     if (database_ == nullptr)
     {
         spdlog::error("添加标签类别 [{}] 失败, 数据库未初始化", name.toUtf8().constData());

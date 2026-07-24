@@ -604,11 +604,11 @@ void DatasetsListModel::rebuildImageStats(const ImageInstancesListModel *images)
     {
         dataset->clearImages();
     }
-    for (int row = 0; row < images->rowCount(); ++row)
+    // 图像模型可能正在批量发布：新图像已经存在于完整内存索引中，
+    // 但尚未进入 QAbstractListModel 的可见行列表。统计必须遍历完整实体，
+    // 否则导入结束前重建统计会得到 0/0，后续标注同步也无法命中图像。
+    for (const auto &[image_id, image] : images->getAllImageInstances())
     {
-        const int64_t image_id
-            = images->data(images->index(row, 0), ImageInstancesListModel::ImageIdRole).toLongLong();
-        const ImageInstance *image = images->getImageInstance(image_id);
         if (image == nullptr)
         {
             continue;

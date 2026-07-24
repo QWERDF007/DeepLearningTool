@@ -107,6 +107,18 @@ public:
 
     QHash<int, QByteArray> roleNames() const override;
 
+    /**
+     * @brief 添加标签类别并同步到数据库和内存模型。
+     *
+     * 该接口仅由 DataManager 调用，DataManager 负责阻止用户在数据操作期间
+     * 发起冲突写入；导入流程本身允许通过该接口创建类别。
+     *
+     * @param name 类别名称
+     * @param color 类别颜色
+     * @param shortcut 类别快捷键
+     * @param group 类别分组
+     * @return 是否添加成功
+     */
     bool addLabelClass(const QString &name, const QString &color, const QString &shortcut, const QString &group);
     bool updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
                           const QString &shortcut, const int64_t ordinal_index, const QString &group);

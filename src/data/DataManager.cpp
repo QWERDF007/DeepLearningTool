@@ -1042,9 +1042,10 @@ void DataManager::scanImportLabelClasses(const int data_format, const QString &i
                                               message.isEmpty() ? QString("扫描导入类别失败") : message);
             }
 
-            emit importLabelClassesScanned(success, label_classes, message);
             scanner->deleteLater();
             setDataOperationRunning(false);
+            // 先释放扫描状态，再通知 QML。QML 可能在收到信号后立即启动正式导入。
+            emit importLabelClassesScanned(success, label_classes, message);
         },
         Qt::QueuedConnection);
 
@@ -2411,6 +2412,11 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
         {
             task.label_class_map[label_name] = label_class_id;
         }
+        else
+        {
+            // 缓存失败结果，避免同一类别在每张图像上重复写库和输出日志。
+            task.label_class_map[label_name] = -1;
+        }
         return label_class_id;
     };
 
@@ -2515,10 +2521,12 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
             continue;
         }
 
-        if (anomaly_project && folder_import)
+        if (folder_import)
         {
             const int64_t image_level_class_id
-                = label_classes_->isUnlabeledLabelClass(static_cast<int>(label_class_id)) ? -1 : label_class_id;
+                = anomaly_project && label_classes_->isUnlabeledLabelClass(static_cast<int>(label_class_id))
+                    ? -1
+                    : label_class_id;
             auto folder_class_it = task.folder_class_by_image_id.find(image_id);
             if (folder_class_it == task.folder_class_by_image_id.end())
             {
@@ -2661,20 +2669,22 @@ void DataManager::finishBatchedImport(bool success, const QString &message)
     if (refresh_dependent_models)
     {
         rebuildLabelRelations(!refresh_image_model);
+
+        // 先发布延迟写入的源模型，再让筛选代理重新计算。
+        // 如果筛选已启用而没有发布源模型，代理只能看到导入前的行，
+        // 即使切换筛选条件也无法发现新导入的图像和标注。
+        if (refresh_image_model && image_source_ != nullptr)
+        {
+            image_source_->refreshModelFromMemory();
+        }
+        if (refresh_label_model && label_source_ != nullptr)
+        {
+            label_source_->refreshModelFromMemory();
+        }
+
         if (global_filter_ != nullptr && global_filter_->isActive())
         {
             global_filter_->refresh();
-        }
-        else
-        {
-            if (refresh_image_model && image_source_ != nullptr)
-            {
-                image_source_->refreshModelFromMemory();
-            }
-            if (refresh_label_model && label_source_ != nullptr)
-            {
-                label_source_->refreshModelFromMemory();
-            }
         }
     }
 

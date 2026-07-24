@@ -69,6 +69,13 @@ public:
     QAbstractItemModel *sourceModel() const;
     void                setSourceModel(QAbstractItemModel *source_model);
 
+    /**
+     * @brief 设置数据集/类别选择树使用的源模型。
+     * @param datasets_model 数据集源模型
+     * @param label_classes_model 标签类别源模型
+     * @param image_instances_model 图像源模型
+     * @param label_instances_model 标注源模型
+     */
     Q_INVOKABLE void setDatasetClassSourceModels(DatasetsListModel *datasets_model,
                                                  LabelClassesListModel *label_classes_model,
                                                  ImageInstancesListModel *image_instances_model,

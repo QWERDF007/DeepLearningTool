@@ -167,10 +167,10 @@ public:
 private:
     struct MaskGeometry
     {
-        QRect                bbox;
-        std::vector<QPointF> polygon;
-        int                  mask_width{0};
-        int                  mask_height{0};
+        QRect                             bbox;
+        std::vector<std::vector<QPointF>> polygons;
+        int                               mask_width{0};
+        int                               mask_height{0};
     };
 
     void doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir,
@@ -181,7 +181,8 @@ private:
     std::vector<QString>        scanMaskFiles(const QString &mask_dir) const;
     bool                        readMaskGeometry(const QString &mask_path, MaskGeometry &geometry,
                                                  double polygon_approx_epsilon_ratio) const;
-    QVariantMap                 maskToLabelData(const MaskGeometry &geometry, int image_width, int image_height) const;
+    QVariantMap                 maskToLabelData(const std::vector<QPointF> &polygon, int mask_width, int mask_height,
+                                                int image_width, int image_height) const;
     QString                     labelClassNameForMask(const QString &mask_path, const QString &mask_root) const;
     QString                     imageStemForMask(const QString &mask_path, const QString &mask_root,
                                                  const QString &mask_stem) const;
