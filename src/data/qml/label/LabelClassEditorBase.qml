@@ -2,16 +2,19 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Qt.labs.platform
-import quickui
 
 import dltool.ui
+import quickui
+import "../component"
 
-QuiPopup {
+DataFormDialog {
     id: control
-    closePolicy: Popup.CloseOnPressOutside
-    width: 480
-    height: 360 + extraFieldsHeight
-    maskOpacity: 0.2
+
+    width: 600
+    title: isCreate ? "创建标签类别" : "修改标签类别"
+    errorText: msg
+    errorColor: getMsgColor()
+    submitEnabled: !isError()
 
     default property alias extraFields: extraFieldsColumn.data
 
@@ -27,46 +30,35 @@ QuiPopup {
     property int extraFieldsHeight: 0
     property bool isCreate: true
 
-    signal labelClassChanged(int classId, string className, string classColor, string classShortcut, int ordinalIndex, string classGroup)
-    signal labelClassChangedAccepted(int classId, string className, string classColor, string classShortcut, int ordinalIndex, string classGroup)
+    signal labelClassChanged(int classId, string className, string classColor, string classShortcut, int ordinalIndex,
+                             string classGroup)
+    signal labelClassChangedAccepted(int classId, string className, string classColor, string classShortcut,
+                                     int ordinalIndex, string classGroup)
 
     function isError() {
         return msg.startsWith("error:")
     }
 
-    function getDisplayMsg() {
-        if (msg.startsWith("error:")) {
-            return msg.substring(6)
-        } else if (msg.startsWith("warning:")) {
-            return msg.substring(8)
-        }
-        return msg
+    function getMsgColor() {
+        return msg.startsWith("warning:") ? "orange" : "#D83B01"
     }
 
-    function getMsgColor() {
-        if (msg.startsWith("error:")) {
-            return "red"
-        } else if (msg.startsWith("warning:")) {
-            return "orange"
+    function currentOrdinalIndex() {
+        if (isCreate) {
+            return -1
         }
-        return "red"
+
+        const ordinalText = ordinalField.text.trim()
+        return /^\d+$/.test(ordinalText) ? Number(ordinalText) : -1
     }
 
     function notifyChanged() {
-        labelClassChanged(classId, className, classColor, classShortcut, isCreate ? -1 : ordinalIndex, classGroup)
+        labelClassChanged(classId, className, classColor, classShortcut,
+                          currentOrdinalIndex(), classGroup)
     }
 
     function normalizeClassGroup(group) {
         return group
-    }
-
-    function openForCreate(defaultColor, defaultGroup) {
-        clearInput(defaultColor, defaultGroup)
-        control.classId = -1
-        control.isCreate = true
-        colorDialog.currentColor = defaultColor
-        colorField.text = defaultColor
-        control.open()
     }
 
     function clearInput(defaultColor, defaultGroup) {
@@ -75,162 +67,132 @@ QuiPopup {
         shortcutField.text = ""
         ordinalField.text = ""
         classGroup = defaultGroup !== undefined ? normalizeClassGroup(defaultGroup) : defaultClassGroup
-        control.msg = ""
+        msg = ""
     }
 
-    Item {
-        anchors.fill: parent
-        anchors.margins: 10
+    function openForCreate(defaultColor, defaultGroup) {
+        clearInput(defaultColor, defaultGroup)
+        classId = -1
+        isCreate = true
+        colorDialog.currentColor = colorField.text
+        open()
+        nameField.forceActiveFocus()
+        notifyChanged()
+    }
 
-        RowLayout {
-            anchors {
-                left: parent.left
-                right: parent.right
-                top: parent.top
-                bottom: buttonRow.top
-                bottomMargin: 10
-            }
+    function openForEdit(id, name, color, shortcut, ordinal, group) {
+        classId = id
+        nameField.text = name
+        colorField.text = color
+        shortcutField.text = shortcut
+        ordinalField.text = ordinal
+        classGroup = normalizeClassGroup(group)
+        isCreate = false
+        colorDialog.currentColor = colorField.text
+        msg = ""
+        open()
+        nameField.forceActiveFocus()
+        notifyChanged()
+    }
 
-            ColumnLayout {
-                Layout.fillHeight: true
-                Layout.preferredWidth: parent.width * 0.6
-                spacing: 5
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: 6
 
-                QuiText {
-                    text: "名字"
-                }
+        QuiText {
+            text: "类别名称"
+            color: QuiColor.FontDark
+        }
 
-                QuiTextField {
-                    id: nameField
-                    Layout.fillWidth: true
-                    placeholderText: "输入类别名称"
-                    onTextEdited: control.notifyChanged()
-                }
+        QuiTextField {
+            id: nameField
+            Layout.fillWidth: true
+            placeholderText: "输入类别名称"
+            onTextChanged: control.notifyChanged()
+        }
 
-                QuiText {
-                    text: "颜色"
-                }
-
-                QuiTextField {
-                    id: colorField
-                    Layout.fillWidth: true
-                    placeholderText: "#RRGGBB"
-                    text: colorDialog.currentColor
-                    onTextEdited: control.notifyChanged()
-                }
-
-                QuiText {
-                    text: "快捷键"
-                }
-
-                QuiTextField {
-                    id: shortcutField
-                    Layout.fillWidth: true
-                    placeholderText: "输入快捷键"
-                    onTextEdited: control.notifyChanged()
-                }
-
-                ColumnLayout {
-                    id: extraFieldsColumn
-                    Layout.fillWidth: true
-                    visible: control.extraFieldsHeight > 0
-                    spacing: 5
-                }
-
-                QuiText {
-                    text: "序号索引"
-                    visible: !isCreate
-                }
-
-                QuiTextField {
-                    id: ordinalField
-                    visible: !isCreate
-                    Layout.fillWidth: true
-                    placeholderText: "输入序号"
-                    validator: IntValidator {
-                        bottom: 0
-                        top: maxOrdinalIndex
-                    }
-                    onTextEdited: control.notifyChanged()
-                }
-
-                Item {
-                    Layout.fillHeight: true
-                }
-            }
-
-            ColumnLayout {
-                Layout.fillHeight: true
-                Layout.preferredWidth: parent.width * 0.4
-
-                QuiText {
-                    text: "选择颜色"
-                }
-
-                Rectangle {
-                    Layout.fillHeight: true
-                    Layout.fillWidth: true
-                    color: colorField.text
-                    border.width: 1
-                    border.color: "#CCCCCC"
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: colorDialog.open()
-                    }
-                }
-            }
+        QuiText {
+            text: "颜色"
+            color: QuiColor.FontDark
         }
 
         RowLayout {
-            id: buttonRow
-            anchors {
-                left: parent.left
-                right: parent.right
-                bottom: parent.bottom
-            }
-            spacing: 10
+            Layout.fillWidth: true
+            spacing: 8
 
-            Item {
+            QuiTextField {
+                id: colorField
                 Layout.fillWidth: true
+                placeholderText: "#RRGGBB"
+                onTextChanged: control.notifyChanged()
             }
 
-            QuiButton {
-                text: "取消"
-                onClicked: {
-                    control.clearInput()
-                    control.close()
+            Rectangle {
+                Layout.preferredWidth: 34
+                Layout.preferredHeight: 32
+                color: colorField.text
+                border.width: 1
+                border.color: "#CCCCCC"
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: colorDialog.open()
                 }
             }
 
             QuiButton {
-                text: "确认"
-                enabled: !control.isError()
-                onClicked: {
-                    control.labelClassChanged(classId, nameField.text, colorField.text, shortcutField.text,
-                                              isCreate ? -1 : ordinalField.text, classGroup)
-                    if (control.isError()) {
-                        return
-                    }
-                    control.labelClassChangedAccepted(classId, nameField.text, colorField.text, shortcutField.text,
-                                                      isCreate ? maxOrdinalIndex : ordinalField.text, classGroup)
-                    control.clearInput()
-                    control.close()
-                }
+                text: "选择颜色"
+                onClicked: colorDialog.open()
             }
         }
 
         QuiText {
-            text: control.getDisplayMsg()
-            anchors {
-                bottom: parent.bottom
-                left: parent.left
-                right: buttonRow.left
-                rightMargin: 5
-            }
-            color: control.getMsgColor()
-            visible: control.msg ? true : false
+            text: "快捷键"
+            color: QuiColor.FontDark
         }
+
+        QuiTextField {
+            id: shortcutField
+            Layout.fillWidth: true
+            placeholderText: "输入单个快捷键（可选）"
+            onTextChanged: control.notifyChanged()
+        }
+
+        ColumnLayout {
+            id: extraFieldsColumn
+            Layout.fillWidth: true
+            visible: control.extraFieldsHeight > 0
+            spacing: 6
+        }
+
+        QuiText {
+            text: "序号索引"
+            color: QuiColor.FontDark
+            visible: !isCreate
+        }
+
+        QuiTextField {
+            id: ordinalField
+            Layout.fillWidth: true
+            visible: !isCreate
+            placeholderText: "输入序号"
+            validator: IntValidator {
+                bottom: 0
+                top: maxOrdinalIndex
+            }
+            onTextChanged: control.notifyChanged()
+        }
+    }
+
+    onAccepted: {
+        notifyChanged()
+        if (isError()) {
+            return
+        }
+
+        labelClassChangedAccepted(classId, className, classColor, classShortcut,
+                                  isCreate ? maxOrdinalIndex : currentOrdinalIndex(), classGroup)
+        close()
     }
 
     ColorDialog {

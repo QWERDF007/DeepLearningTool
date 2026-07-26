@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import dltool.ui
 import dltool.data
 import quickui
+import "../component"
 
 Item {
     id: header
@@ -22,21 +23,25 @@ Item {
             id: addBtn
             iconSource: QuiFontIcon.Add
             text: "添加数据集"
-            onClicked: {
-                editor.text = ""
-                let pos = mapToItem(null, 0, 0)
-                editor.x = pos.x + 20
-                editor.y = pos.y + 20
-                editor.open()
-            }
+            onClicked: createDatasetDialog.openForm()
         }
     }
-    QuiEditor {
-        id: editor
-        description: "输入数据集名称"
-        onEditTextChanged: function (datasetName) {
-            if (dataManager && dataManager.isValidDatasetName(datasetName, -1).length === 0) {
-                dataManager.addDataset(datasetName)
+
+    DataNameFormDialog {
+        id: createDatasetDialog
+        title: "创建数据集"
+        fieldLabel: "数据集名称"
+        placeholderText: "输入数据集名称"
+        emptyError: "请输入数据集名称"
+        nameValidator: function(datasetName) {
+            if (!header.dataManager) {
+                return "数据集管理器不可用"
+            }
+            return header.dataManager.isValidDatasetName(datasetName, -1)
+        }
+        onSubmitted: function(datasetName) {
+            if (header.dataManager) {
+                header.dataManager.addDataset(datasetName)
             }
         }
     }

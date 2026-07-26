@@ -192,6 +192,7 @@ public:
     Q_INVOKABLE QString isValidName(const QString &name) const;
     Q_INVOKABLE QString isValidDatasetName(const QString &name, const int64_t dataset_id = -1) const;
     Q_INVOKABLE QString isValidClassName(const QString &name, const int64_t label_class_id = -1) const;
+    Q_INVOKABLE QString isValidTagName(const QString &name, const int64_t tag_id = -1) const;
 
     Q_INVOKABLE void addDataset(const QString &name);
     Q_INVOKABLE void updateDataset(const int64_t dataset_id, const QString &name);
@@ -244,6 +245,7 @@ public:
                                                                    bool                        only_unset = false);
 
     Q_INVOKABLE void addTagClass(const QString &name);
+    Q_INVOKABLE bool updateTagClass(const int64_t tag_id, const QString &name);
     Q_INVOKABLE int64_t findTagClassId(const QString &name) const;
     Q_INVOKABLE bool    setLabelsTag(const std::vector<int64_t> &label_ids, const int64_t tag_id);
     Q_INVOKABLE bool    deleteTagClass(const int64_t tag_id);

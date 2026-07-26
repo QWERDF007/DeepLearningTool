@@ -22,21 +22,25 @@ Item {
             id: addBtn
             iconSource: QuiFontIcon.Add
             text: "添加Tag"
-            onClicked: {
-                editor.text = ""
-                let pos = mapToItem(null, 0, 0) // 获取当前item左上角的全局坐标
-                editor.x = pos.x + 20
-                editor.y = pos.y + 20
-                editor.open()
-            }
+            onClicked: createTagDialog.openForm()
         }
     }
-    QuiEditor {
-        id: editor
-        description: "输入Tag名称"
-        onEditTextChanged: function (tagName) {
-            if (dataManager) {
-                dataManager.addTagClass(tagName)
+
+    DataNameFormDialog {
+        id: createTagDialog
+        title: "添加 Tag"
+        fieldLabel: "Tag 名称"
+        placeholderText: "输入 Tag 名称"
+        emptyError: "请输入 Tag 名称"
+        nameValidator: function(tagName) {
+            if (!header.dataManager) {
+                return "数据管理器不可用"
+            }
+            return header.dataManager.isValidTagName(tagName, -1)
+        }
+        onSubmitted: function(tagName) {
+            if (header.dataManager) {
+                header.dataManager.addTagClass(tagName)
             }
         }
     }

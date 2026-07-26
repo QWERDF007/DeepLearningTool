@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Window
 
 import dltool.data
 import dltool.ui
@@ -243,42 +242,12 @@ Rectangle {
         return labelClasses ? labelClasses.rowCount() : 0
     }
 
-    function placeEditor(anchorItem) {
-        let editor = editorLoader.item
-        if (!editor || !anchorItem) {
-            return
-        }
-
-        let pos = anchorItem.mapToItem(null, 0, 0)
-        let editorWidth = editor.width
-        let editorHeight = editor.height
-        let targetX = pos.x + anchorItem.width
-        let targetY = pos.y + 10
-
-        if (targetX + editorWidth > Window.width) {
-            targetX = pos.x - editorWidth
-            if (targetX < 0) {
-                targetX = 0
-            }
-        }
-        if (targetY + editorHeight > Window.height) {
-            targetY = Window.height - editorHeight
-        }
-        if (targetY < 0) {
-            targetY = 0
-        }
-
-        editor.x = targetX
-        editor.y = targetY
-    }
-
     function openEditorForCreate(anchorItem) {
         let editor = editorLoader.item
         if (!editor) {
             return
         }
 
-        placeEditor(anchorItem)
         editor.maxOrdinalIndex = editorMaxOrdinalIndex()
         editor.openForCreate(nextRecommendedColor(), createDefaultGroup)
     }
@@ -289,16 +258,8 @@ Rectangle {
             return
         }
 
-        placeEditor(anchorItem)
-        editor.classId = classId
-        editor.className = className
-        editor.classColor = classColor
-        editor.classShortcut = classShortcut
-        editor.ordinalIndex = ordinalIndex
-        editor.classGroup = classGroup
-        editor.isCreate = false
         editor.maxOrdinalIndex = editorMaxOrdinalIndex()
-        editor.open()
+        editor.openForEdit(classId, className, classColor, classShortcut, ordinalIndex, classGroup)
     }
 
     function confirmDeleteClass(classId) {
@@ -312,11 +273,14 @@ Rectangle {
             return ""
         }
 
-        let msg = ""
+        let msg = "error:数据管理器不可用"
         if (dataManager) {
             msg = dataManager.isValidClassName(className, classId)
         }
-        if (msg.length === 0 && labelClasses) {
+        if (msg.length === 0 && !labelClasses) {
+            msg = "error:标签类别模型不可用"
+        }
+        if (msg.length === 0) {
             msg = labelClasses.isValid(classId, className, classColor, classShortcut, ordinalIndex)
         }
         editor.msg = msg

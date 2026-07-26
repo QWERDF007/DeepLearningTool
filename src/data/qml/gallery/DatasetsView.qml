@@ -6,6 +6,7 @@ import dltool.ui
 import dltool.data
 import dltool.feature
 import quickui
+import "../component"
 
 Rectangle {
     id: datasetsView
@@ -18,6 +19,7 @@ Rectangle {
     property ItemSelectionModel selection: datasets ? datasets.selection : null
     property int selectedCount: selection ? selection.selectedIndexes.length : 0
     property var curItem: null
+    property int editingDatasetId: -1
     property var activeDatasetIds: []
     property bool datasetFilterEnabled: false
     property bool datasetFilterInverted: false
@@ -212,11 +214,8 @@ Rectangle {
             enabled: selectedCount === 1 && hasCurItem()
             onClicked: {
                 if (curItem) {
-                    editor.text = ""
-                    let pos = curItem.mapToItem(null, 0, 0)
-                    editor.x = pos.x + curItem.width
-                    editor.y = pos.y + 10
-                    editor.open()
+                    editingDatasetId = curItem.dataset_id
+                    renameDatasetDialog.openForm(curItem.name)
                 }
             }
         }
@@ -246,14 +245,26 @@ Rectangle {
         }
     }
 
-    QuiEditor {
-        id: editor
-        description: "输入数据集名称"
-        onEditTextChanged: function (datasetName) {
-            if (dataManager && curItem
-                    && dataManager.isValidDatasetName(datasetName, curItem.dataset_id).length === 0) {
-                dataManager.updateDataset(curItem.dataset_id, datasetName)
+    DataNameFormDialog {
+        id: renameDatasetDialog
+        title: "修改数据集"
+        fieldLabel: "数据集名称"
+        placeholderText: "输入数据集名称"
+        emptyError: "请输入数据集名称"
+        nameValidator: function(datasetName) {
+            if (!datasetsView.dataManager) {
+                return "数据集管理器不可用"
             }
+            if (datasetsView.editingDatasetId < 0) {
+                return "未选择要修改的数据集"
+            }
+            return datasetsView.dataManager.isValidDatasetName(datasetName, datasetsView.editingDatasetId)
+        }
+        onSubmitted: function(datasetName) {
+            if (datasetsView.dataManager && datasetsView.editingDatasetId >= 0) {
+                datasetsView.dataManager.updateDataset(datasetsView.editingDatasetId, datasetName)
+            }
+            datasetsView.editingDatasetId = -1
         }
     }
 

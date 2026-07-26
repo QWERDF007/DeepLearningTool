@@ -22,10 +22,21 @@ Rectangle {
 
     property int contextTagId: -1
     property string contextTagName: ""
+    property int editingTagId: -1
 
     QuiMenu {
         id: tagContextMenu
         width: 180
+
+        QuiMenuItem {
+            text: "修改 Tag"
+            iconSource: QuiFontIcon.Edit
+            enabled: imageTagView.contextTagId >= 0
+            onClicked: {
+                imageTagView.editingTagId = imageTagView.contextTagId
+                renameTagDialog.openForm(imageTagView.contextTagName)
+            }
+        }
 
         QuiMenuItem {
             text: "删除 Tag"
@@ -44,6 +55,29 @@ Rectangle {
                 imageTagView.dataManager.deleteTagClass(imageTagView.contextTagId)
                 imageTagView.contextTagId = -1
             }
+        }
+    }
+
+    DataNameFormDialog {
+        id: renameTagDialog
+        title: "修改 Tag"
+        fieldLabel: "Tag 名称"
+        placeholderText: "输入 Tag 名称"
+        emptyError: "请输入 Tag 名称"
+        nameValidator: function(tagName) {
+            if (!imageTagView.dataManager) {
+                return "数据管理器不可用"
+            }
+            if (imageTagView.editingTagId < 0) {
+                return "未选择要修改的 Tag"
+            }
+            return imageTagView.dataManager.isValidTagName(tagName, imageTagView.editingTagId)
+        }
+        onSubmitted: function(tagName) {
+            if (imageTagView.dataManager && imageTagView.editingTagId >= 0) {
+                imageTagView.dataManager.updateTagClass(imageTagView.editingTagId, tagName)
+            }
+            imageTagView.editingTagId = -1
         }
     }
 

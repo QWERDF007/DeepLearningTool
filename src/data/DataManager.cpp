@@ -681,6 +681,28 @@ QString DataManager::isValidClassName(const QString &name, const int64_t label_c
     return QString();
 }
 
+QString DataManager::isValidTagName(const QString &name, const int64_t tag_id) const
+{
+    if (image_tags_ == nullptr)
+    {
+        return QStringLiteral("error:Tag 模型不可用");
+    }
+
+    const QString normalized_name = name.trimmed();
+    const QString name_error     = isValidName(normalized_name);
+    if (!name_error.isEmpty())
+    {
+        return name_error;
+    }
+
+    const int64_t existing_tag_id = findTagClassId(normalized_name);
+    if (existing_tag_id >= 0 && existing_tag_id != tag_id)
+    {
+        return QStringLiteral("error:Tag 名称已存在");
+    }
+    return QString();
+}
+
 void DataManager::deleteDatasets(const std::vector<int64_t> &dataset_ids)
 {
     if (isDataOperationRunning())
@@ -2253,16 +2275,40 @@ void DataManager::refreshAnomalyImageClassesFromPolygons(const std::vector<int64
 
 void DataManager::addTagClass(const QString &name)
 {
+    const QString normalized_name  = name.trimmed();
+    const QString validation_error = isValidTagName(normalized_name);
+    if (!validation_error.isEmpty())
+    {
+        spdlog::warn("添加 Tag 失败: {}", validation_error.toUtf8().constData());
+        return;
+    }
     if (isDataOperationRunning())
     {
         ui::SignalHelper::notifyWarn(QString("添加 Tag"), QString("当前已有数据操作正在进行中"));
         return;
     }
-    if (image_tags_ == nullptr || name.trimmed().isEmpty() || findTagClassId(name) >= 0)
+    if (image_tags_ == nullptr)
     {
         return;
     }
-    image_tags_->addTagClass(name.trimmed());
+    image_tags_->addTagClass(normalized_name);
+}
+
+bool DataManager::updateTagClass(const int64_t tag_id, const QString &name)
+{
+    const QString normalized_name  = name.trimmed();
+    const QString validation_error = isValidTagName(normalized_name, tag_id);
+    if (!validation_error.isEmpty())
+    {
+        spdlog::warn("更新 Tag 失败: {}", validation_error.toUtf8().constData());
+        return false;
+    }
+    if (isDataOperationRunning())
+    {
+        ui::SignalHelper::notifyWarn(QString("更新 Tag"), QString("当前已有数据操作正在进行中"));
+        return false;
+    }
+    return image_tags_ != nullptr && image_tags_->updateTagClass(tag_id, normalized_name);
 }
 
 int64_t DataManager::findTagClassId(const QString &name) const
