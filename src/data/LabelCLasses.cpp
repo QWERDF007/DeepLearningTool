@@ -353,7 +353,7 @@ QHash<int, QByteArray> LabelClassesListModel::roleNames() const
 }
 
 bool LabelClassesListModel::addLabelClass(const QString &name, const QString &color, const QString &shortcut,
-                                          const QString &group)
+                                          const QString &group, const bool select_after_add)
 {
     if (database_ == nullptr)
     {
@@ -378,9 +378,12 @@ bool LabelClassesListModel::addLabelClass(const QString &name, const QString &co
     label_classes_.emplace(label_class_id,
                            new LabelClass(label_class_id, name, color, shortcut, row, normalized_group, this));
     endInsertRows();
-    QModelIndex index = this->index(row);
-    selection_->select(index, QItemSelectionModel::ClearAndSelect);
-    selection_->setCurrentIndex(index, QItemSelectionModel::Select);
+    if (select_after_add)
+    {
+        const QModelIndex index = this->index(row);
+        selection_->select(index, QItemSelectionModel::ClearAndSelect);
+        selection_->setCurrentIndex(index, QItemSelectionModel::Select);
+    }
     spdlog::info("添加标签类别 [{}] 成功", name.toUtf8().constData());
     return true;
 }

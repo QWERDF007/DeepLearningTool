@@ -2435,7 +2435,7 @@ bool DataManager::writeImportBatch(int64_t dataset_id, const std::vector<QString
                 spdlog::warn("导入时创建标签类别失败: {}, {}", label_name.toUtf8().constData(),
                              validation_error.toUtf8().constData());
             }
-            else if (label_classes_->addLabelClass(label_name, color, QString(), selected_group))
+            else if (label_classes_->addLabelClass(label_name, color, QString(), selected_group, false))
             {
                 label_class_id = label_classes_->getLabelClassId(label_name);
                 spdlog::info("导入时创建新标签类别: {}, ID: {}, group={}", label_name.toUtf8().constData(),

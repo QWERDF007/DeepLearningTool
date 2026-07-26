@@ -117,9 +117,11 @@ public:
      * @param color 类别颜色
      * @param shortcut 类别快捷键
      * @param group 类别分组
+     * @param select_after_add 是否在添加后选中新类别；导入期间应关闭以避免触发界面编辑操作
      * @return 是否添加成功
      */
-    bool addLabelClass(const QString &name, const QString &color, const QString &shortcut, const QString &group);
+    bool addLabelClass(const QString &name, const QString &color, const QString &shortcut, const QString &group,
+                       bool select_after_add = true);
     bool updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
                           const QString &shortcut, const int64_t ordinal_index, const QString &group);
     bool updateLabelClass(const std::vector<int64_t> &label_class_ids, const std::vector<int64_t> &ordinal_indexes);
