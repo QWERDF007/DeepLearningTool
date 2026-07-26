@@ -6,18 +6,17 @@ import dltool.model
 import dltool.ui
 import quickui
 
+
 Rectangle {
     id: control
     color: QuiColor.Primary
 
     property DataManager dataManager: null
     property IModel selectedModel: null
-    property int partSpacing: 5
-    property int scrollbarReserve: 8
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: control.partSpacing
+        spacing: 5
 
         QuiText {
             Layout.fillWidth: true
@@ -31,18 +30,9 @@ Rectangle {
         DatasetPanel {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            roleTitle: qsTr("测试数据集")
             dataManager: control.dataManager
-            roleTitle: qsTr("训练数据集")
-            selectionModel: control.selectedModel ? control.selectedModel.trainDatasetViewModel : null
+            selectionModel: control.selectedModel ? control.selectedModel.testDatasetViewModel : null
         }
-
-        DatasetPanel {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            dataManager: control.dataManager
-            roleTitle: qsTr("验证数据集")
-            selectionModel: control.selectedModel ? control.selectedModel.validationDatasetViewModel : null
-        }
-            
     }
 }

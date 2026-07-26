@@ -103,14 +103,13 @@ Item {
             Layout.fillHeight: true
             currentIndex: trainTabBar.currentIndex
 
-            Item {
-                ParamsForm {
-                    anchors.fill: parent
-                    params: control.trainParams
-                    dataManager: control.dataManager
-                    selectedModel: control.selectedModel
-                    emptyText: control.modelManager ? qsTr("请选择模型后设置训练参数") : qsTr("请先打开项目")
-                }
+            TrainParamsForm {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                params: control.trainParams
+                dataManager: control.dataManager
+                selectedModel: control.selectedModel
+                emptyText: control.modelManager ? qsTr("请选择模型后设置训练参数") : qsTr("请先打开项目")
             }
 
             RowLayout {
