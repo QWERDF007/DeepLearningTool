@@ -43,6 +43,7 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(ImageTagsListModel *imageTags READ imageTags CONSTANT FINAL)
     Q_PROPERTY(LabelInstancesListModel *labelSource READ labelSource CONSTANT FINAL)
     Q_PROPERTY(LabelInstancesViewModel *labelInstances READ labelInstances CONSTANT FINAL)
+    Q_PROPERTY(SelectedLabelsInfoModel *selectedLabelsInfo READ selectedLabelsInfo CONSTANT FINAL)
     Q_PROPERTY(ImageLabelsListModel *imageLabelsList READ imageLabelsList CONSTANT FINAL)
     Q_PROPERTY(ImageLabelsTableModel *imageLabelsTable READ imageLabelsTable CONSTANT FINAL)
     Q_PROPERTY(ImageInfoListModel *imageInfo READ imageInfo CONSTANT FINAL)
@@ -98,6 +99,11 @@ public:
     LabelInstancesViewModel *labelInstances() const
     {
         return label_instances_;
+    }
+
+    SelectedLabelsInfoModel *selectedLabelsInfo() const
+    {
+        return selected_labels_info_;
     }
 
     /**
@@ -374,6 +380,7 @@ private:
     ImageTagsListModel      *image_tags_{nullptr};
     LabelInstancesListModel *label_source_{nullptr};
     LabelInstancesViewModel *label_instances_{nullptr};
+    SelectedLabelsInfoModel *selected_labels_info_{nullptr};
     ImageLabelsListModel    *image_labels_list_{nullptr};
     ImageLabelsTableModel   *image_labels_table_{nullptr};
 

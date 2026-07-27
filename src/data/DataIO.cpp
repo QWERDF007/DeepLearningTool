@@ -31,7 +31,10 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <set>
+#include <thread>
+#include <type_traits>
 #include <utility>
 
 using dltool::common::ensureDirectory;
@@ -46,6 +49,79 @@ namespace dltool::data {
 namespace {
 
 constexpr double kDefaultMaskImportPolygonApproxRatio = 0.01;
+constexpr int    kDefaultDataIOThreads                = 4;
+constexpr int    kMaxDataIOThreads                    = 16;
+
+int dataIOThreadCount()
+{
+    namespace generated_field = dltool::settings::generated::field;
+
+    const int configured = dltool::settings::settingInt(dltool::settings::GlobalSettings::getInstance(),
+                                                        generated_field::Data::DataIoThreads, kDefaultDataIOThreads);
+    return std::clamp(configured, 1, kMaxDataIOThreads);
+}
+
+template<typename Function, typename ProgressFunction = std::nullptr_t>
+void parallelFor(const std::size_t count, const int requested_threads, const std::atomic_bool &cancel_requested,
+                 Function &&function, ProgressFunction &&progress = nullptr)
+{
+    if (count == 0 || cancel_requested.load(std::memory_order_relaxed))
+        return;
+
+    const std::size_t  worker_count = std::min(count, static_cast<std::size_t>(std::max(1, requested_threads)));
+    std::atomic_size_t next_index{0};
+    std::atomic_size_t completed_count{0};
+    std::atomic_size_t reported_count{0};
+    std::atomic_bool   stop_requested{false};
+    std::exception_ptr first_exception;
+    std::mutex         exception_mutex;
+
+    auto worker = [&]()
+    {
+        try
+        {
+            while (!stop_requested.load(std::memory_order_relaxed) && !cancel_requested.load(std::memory_order_relaxed))
+            {
+                const std::size_t index = next_index.fetch_add(1, std::memory_order_relaxed);
+                if (index >= count)
+                    break;
+                function(index);
+
+                if constexpr (!std::is_same_v<std::decay_t<ProgressFunction>, std::nullptr_t>)
+                {
+                    const std::size_t completed = completed_count.fetch_add(1, std::memory_order_relaxed) + 1;
+                    const std::size_t step       = std::max<std::size_t>(1, count / 10);
+                    const std::size_t candidate  = completed == count ? count : (completed / step) * step;
+                    if (candidate > 0)
+                    {
+                        std::size_t previous = reported_count.load(std::memory_order_relaxed);
+                        while (candidate > previous
+                               && !reported_count.compare_exchange_weak(previous, candidate,
+                                                                         std::memory_order_relaxed))
+                        {
+                        }
+                        if (candidate > previous)
+                            progress(candidate, count);
+                    }
+                }
+            }
+        }
+        catch (...)
+        {
+            stop_requested.store(true, std::memory_order_relaxed);
+            std::lock_guard lock(exception_mutex);
+            if (!first_exception)
+                first_exception = std::current_exception();
+        }
+    };
+
+    std::vector<std::jthread> workers;
+    workers.reserve(worker_count);
+    for (std::size_t i = 0; i < worker_count; ++i) workers.emplace_back(worker);
+
+    if (first_exception)
+        std::rethrow_exception(first_exception);
+}
 
 double normalizedMaskImportPolygonApproxRatio(const double ratio)
 {
@@ -794,7 +870,8 @@ void DataIO::runInThread(std::function<void()> work)
         });
 }
 
-bool DataIO::importImagesOnly(int64_t dataset_id, const QString &image_dir, const QString &format_name)
+bool DataIO::importImagesOnly(int64_t dataset_id, const QString &image_dir, const QString &format_name,
+                              const int thread_count)
 {
     updateProgress(0, QString("正在扫描图像文件..."));
     const std::vector<QString> image_files = DatasetIO::scanImageFiles(image_dir);
@@ -813,9 +890,30 @@ bool DataIO::importImagesOnly(int64_t dataset_id, const QString &image_dir, cons
     batch_image_heights.reserve(DataIO::ImportBatchImageCount);
 
     const int total_images = static_cast<int>(image_files.size());
-    int       processed    = 0;
-    int       valid_images = 0;
-    int       skipped      = 0;
+
+    struct ImageDimensionResult
+    {
+        int  width{0};
+        int  height{0};
+        bool valid{false};
+    };
+
+    std::vector<ImageDimensionResult> results(image_files.size());
+    parallelFor(image_files.size(), thread_count, cancel_requested_,
+                [&](const std::size_t index)
+                {
+                    results[index].valid = DatasetIO::getImageDimensions(image_files[index], results[index].width,
+                                                                         results[index].height);
+                },
+                [this](const std::size_t completed, const std::size_t total)
+                {
+                    const int progress = 10 + static_cast<int>(completed * 80 / std::max<std::size_t>(1, total));
+                    updateProgress(progress, QString("已并行处理图像 %1/%2").arg(completed).arg(total));
+                });
+
+    int processed    = 0;
+    int valid_images = 0;
+    int skipped      = 0;
 
     auto flush_batch = [&]() -> bool
     {
@@ -834,7 +932,7 @@ bool DataIO::importImagesOnly(int64_t dataset_id, const QString &image_dir, cons
         return !isCancelRequested();
     };
 
-    for (const QString &image_path : image_files)
+    for (std::size_t index = 0; index < image_files.size(); ++index)
     {
         if (isCancelRequested())
         {
@@ -843,9 +941,8 @@ bool DataIO::importImagesOnly(int64_t dataset_id, const QString &image_dir, cons
         }
 
         ++processed;
-        int width  = 0;
-        int height = 0;
-        if (!DatasetIO::getImageDimensions(image_path, width, height))
+        const QString &image_path = image_files[index];
+        if (!results[index].valid)
         {
             ++skipped;
             continue;
@@ -853,8 +950,8 @@ bool DataIO::importImagesOnly(int64_t dataset_id, const QString &image_dir, cons
 
         ++valid_images;
         batch_image_paths.push_back(image_path);
-        batch_image_widths.push_back(width);
-        batch_image_heights.push_back(height);
+        batch_image_widths.push_back(results[index].width);
+        batch_image_heights.push_back(results[index].height);
 
         if (batch_image_paths.size() >= DataIO::ImportBatchImageCount && !flush_batch())
         {
@@ -895,8 +992,9 @@ bool DataIO::importImagesOnly(int64_t dataset_id, const QString &image_dir, cons
 void COCOIO::startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir)
 {
     const double polygon_approx_epsilon_ratio = maskImportPolygonApproxRatio();
-    runInThread([this, dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio]()
-                { doImport(dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio); });
+    const int    thread_count                 = dataIOThreadCount();
+    runInThread([this, dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio, thread_count]()
+                { doImport(dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio, thread_count); });
 }
 
 void COCOIO::startScanLabelClasses(const QString &image_dir, const QString &data_dir)
@@ -908,7 +1006,9 @@ void COCOIO::startScanLabelClasses(const QString &image_dir, const QString &data
 void COCOIO::startExport(ExportDataset dataset, const QString &output_dir, const QVariantMap &options)
 {
     Q_UNUSED(options)
-    runInThread([this, dataset = std::move(dataset), output_dir]() { doExport(std::move(dataset), output_dir); });
+    const int thread_count = dataIOThreadCount();
+    runInThread([this, dataset = std::move(dataset), output_dir, thread_count]()
+                { doExport(std::move(dataset), output_dir, thread_count); });
 }
 
 QString COCOIO::findCocoJsonFile(const QString &data_path) const
@@ -1003,7 +1103,7 @@ void COCOIO::doScanLabelClasses(const QString &data_dir)
 }
 
 void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir,
-                      const double polygon_approx_epsilon_ratio)
+                      const double polygon_approx_epsilon_ratio, const int thread_count)
 {
     spdlog::info("开始解析 COCO 数据: dataset_id={}", dataset_id);
 
@@ -1012,7 +1112,7 @@ void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
         const QString annotation_dir = data_dir.trimmed();
         if (annotation_dir.isEmpty())
         {
-            importImagesOnly(dataset_id, image_dir, QStringLiteral("COCO"));
+            importImagesOnly(dataset_id, image_dir, QStringLiteral("COCO"), thread_count);
             return;
         }
 
@@ -1100,20 +1200,6 @@ void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
                 image.width = object_json.contains("width") ? static_cast<int>(jsonToDouble(object_json["width"])) : 0;
                 image.height
                     = object_json.contains("height") ? static_cast<int>(jsonToDouble(object_json["height"])) : 0;
-                if (image.width <= 0 || image.height <= 0)
-                {
-                    int real_width  = 0;
-                    int real_height = 0;
-                    if (!DatasetIO::getImageDimensions(image.image_path, real_width, real_height))
-                    {
-                        ++skipped_images;
-                        return true;
-                    }
-                    image.width  = real_width;
-                    image.height = real_height;
-                }
-
-                images_by_coco_id[image.coco_id] = image;
                 images.push_back(std::move(image));
 
                 if (processed_image_entries % 1000 == 0)
@@ -1126,6 +1212,37 @@ void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
             emit importFinished(false, {}, {});
             return;
         }
+
+        std::vector<uint8_t> valid_image_flags(images.size(), 1);
+        parallelFor(images.size(), thread_count, cancel_requested_,
+                    [&](const std::size_t index)
+                    {
+                        CocoImage &image = images[index];
+                        if (image.width > 0 && image.height > 0)
+                            return;
+
+                        if (!DatasetIO::getImageDimensions(image.image_path, image.width, image.height))
+                            valid_image_flags[index] = 0;
+                    },
+                    [this](const std::size_t completed, const std::size_t total)
+                    {
+                        const int progress = 20 + static_cast<int>(completed * 20 / std::max<std::size_t>(1, total));
+                        updateProgress(progress, QString("已校验 COCO 图像 %1/%2").arg(completed).arg(total));
+                    });
+
+        std::vector<CocoImage> valid_images;
+        valid_images.reserve(images.size());
+        for (std::size_t index = 0; index < images.size(); ++index)
+        {
+            if (!valid_image_flags[index])
+            {
+                ++skipped_images;
+                continue;
+            }
+            valid_images.push_back(std::move(images[index]));
+        }
+        images = std::move(valid_images);
+        for (const CocoImage &image : images) images_by_coco_id[image.coco_id] = image;
 
         if (images.empty())
         {
@@ -1210,8 +1327,119 @@ void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
             return !isCancelRequested();
         };
 
-        const bool import_as_segmentation = target_method_ == DeepLearningMethod::Segmentation
-                                         || target_method_ == DeepLearningMethod::AnomalyDetection;
+        struct CocoAnnotationResult
+        {
+            int                        skipped{0};
+            std::vector<ImportedLabel> labels;
+        };
+
+        std::vector<nlohmann::json> annotation_batch;
+        annotation_batch.reserve(DataIO::ImportBatchImageCount);
+        const auto &images_by_coco_id_readonly = images_by_coco_id;
+        const auto &categories_by_id_readonly  = categories_by_id;
+        auto        process_annotation_batch   = [&](const std::vector<nlohmann::json> &batch) -> bool
+        {
+            std::vector<CocoAnnotationResult> results(batch.size());
+            const int                         target_method = target_method_;
+            parallelFor(
+                batch.size(), thread_count, cancel_requested_,
+                [&](const std::size_t index)
+                {
+                    const auto &annotation_json = batch[index];
+                    auto       &result          = results[index];
+                    if (!annotation_json.contains("image_id") || !annotation_json.contains("category_id"))
+                    {
+                        result.skipped = 1;
+                        return;
+                    }
+
+                    int64_t coco_image_id = 0;
+                    int64_t category_id   = 0;
+                    if (!jsonToInt64(annotation_json["image_id"], coco_image_id)
+                        || !jsonToInt64(annotation_json["category_id"], category_id))
+                    {
+                        result.skipped = 1;
+                        return;
+                    }
+
+                    const auto image_it = images_by_coco_id_readonly.find(coco_image_id);
+                    const auto class_it = categories_by_id_readonly.find(category_id);
+                    if (image_it == images_by_coco_id_readonly.end() || class_it == categories_by_id_readonly.end())
+                    {
+                        result.skipped = 1;
+                        return;
+                    }
+
+                    const bool               annotation_has_seg = hasSegmentationData(annotation_json);
+                    std::vector<QVariantMap> label_data_list;
+                    if ((target_method == DeepLearningMethod::Segmentation
+                         || target_method == DeepLearningMethod::AnomalyDetection)
+                        && annotation_has_seg)
+                    {
+                        const auto segmentation_polygons
+                            = parseSegmentationPolygons(annotation_json, polygon_approx_epsilon_ratio);
+                        for (const auto &polygon : segmentation_polygons)
+                        {
+                            QVariantMap label_data = DatasetIO::pointsToLabelData(polygon, image_it->second.width,
+                                                                                  image_it->second.height);
+                            if (!label_data.isEmpty())
+                                label_data_list.push_back(std::move(label_data));
+                        }
+                    }
+
+                    if (label_data_list.empty())
+                    {
+                        if ((target_method == DeepLearningMethod::Segmentation
+                             || target_method == DeepLearningMethod::AnomalyDetection)
+                            && annotation_has_seg)
+                        {
+                            result.skipped = 1;
+                            return;
+                        }
+
+                        if (!annotation_json.contains("bbox") || !annotation_json["bbox"].is_array()
+                            || annotation_json["bbox"].size() < 4)
+                        {
+                            result.skipped = 1;
+                            return;
+                        }
+
+                        const auto &bbox       = annotation_json["bbox"];
+                        QVariantMap label_data = DatasetIO::bboxToLabelData(
+                            jsonToDouble(bbox[0]), jsonToDouble(bbox[1]), jsonToDouble(bbox[2]), jsonToDouble(bbox[3]),
+                            image_it->second.width, image_it->second.height);
+                        if (!label_data.isEmpty())
+                            label_data_list.push_back(std::move(label_data));
+                    }
+
+                    if (label_data_list.empty())
+                    {
+                        result.skipped = 1;
+                        return;
+                    }
+
+                    result.labels.reserve(label_data_list.size());
+                    for (auto &label_data : label_data_list)
+                    {
+                        ImportedLabel label;
+                        label.label_class_name = class_it->second.name;
+                        label.data             = std::move(label_data);
+                        label.image_path       = image_it->second.image_path;
+                        result.labels.push_back(std::move(label));
+                    }
+                });
+
+            for (auto &result : results)
+            {
+                skipped_annotations += result.skipped;
+                imported_label_count += static_cast<int>(result.labels.size());
+                for (auto &label : result.labels) batch_labels.push_back(std::move(label));
+                if (batch_labels.size() >= DataIO::ImportBatchImageCount && !flush_label_batch())
+                    return false;
+            }
+            return !isCancelRequested();
+        };
+
         const bool pass2_ok = parseTopLevelArrayObjects(
             coco_json_path,
             [&](const QString &array_key, const nlohmann::json &annotation_json) -> bool
@@ -1223,90 +1451,12 @@ void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
                     return true;
 
                 ++processed_annotations;
-                if (!annotation_json.contains("image_id") || !annotation_json.contains("category_id"))
+                annotation_batch.push_back(annotation_json);
+                if (annotation_batch.size() >= DataIO::ImportBatchImageCount)
                 {
-                    ++skipped_annotations;
-                    return true;
-                }
-
-                int64_t coco_image_id = 0;
-                int64_t category_id   = 0;
-                if (!jsonToInt64(annotation_json["image_id"], coco_image_id)
-                    || !jsonToInt64(annotation_json["category_id"], category_id))
-                {
-                    ++skipped_annotations;
-                    return true;
-                }
-
-                auto image_it = images_by_coco_id.find(coco_image_id);
-                auto class_it = categories_by_id.find(category_id);
-                if (image_it == images_by_coco_id.end() || class_it == categories_by_id.end())
-                {
-                    ++skipped_annotations;
-                    return true;
-                }
-
-                const bool               annotation_has_seg = hasSegmentationData(annotation_json);
-                std::vector<QVariantMap> label_data_list;
-
-                if (import_as_segmentation && annotation_has_seg)
-                {
-                    const std::vector<std::vector<QPointF>> segmentation_polygons
-                        = parseSegmentationPolygons(annotation_json, polygon_approx_epsilon_ratio);
-                    for (const std::vector<QPointF> &polygon : segmentation_polygons)
-                    {
-                        QVariantMap label_data
-                            = DatasetIO::pointsToLabelData(polygon, image_it->second.width, image_it->second.height);
-                        if (!label_data.isEmpty())
-                            label_data_list.push_back(label_data);
-                    }
-                }
-
-                if (label_data_list.empty())
-                {
-                    if (import_as_segmentation && annotation_has_seg)
-                    {
-                        spdlog::warn("COCO segmentation 存在但无法转换为多边形，跳过标注: image_id={}, category_id={}",
-                                     coco_image_id, category_id);
-                        ++skipped_annotations;
-                        return true;
-                    }
-
-                    if (!annotation_json.contains("bbox") || !annotation_json["bbox"].is_array()
-                        || annotation_json["bbox"].size() < 4)
-                    {
-                        ++skipped_annotations;
-                        return true;
-                    }
-
-                    const auto &bbox       = annotation_json["bbox"];
-                    QVariantMap label_data = DatasetIO::bboxToLabelData(
-                        jsonToDouble(bbox[0]), jsonToDouble(bbox[1]), jsonToDouble(bbox[2]), jsonToDouble(bbox[3]),
-                        image_it->second.width, image_it->second.height);
-                    if (!label_data.isEmpty())
-                        label_data_list.push_back(label_data);
-                }
-
-                if (label_data_list.empty())
-                {
-                    ++skipped_annotations;
-                    return true;
-                }
-
-                for (const QVariantMap &label_data : label_data_list)
-                {
-                    ImportedLabel label;
-                    label.label_class_name = class_it->second.name;
-                    label.data             = label_data;
-                    label.image_path       = image_it->second.image_path;
-                    batch_labels.push_back(label);
-                    ++imported_label_count;
-                }
-
-                if (batch_labels.size() >= DataIO::ImportBatchImageCount)
-                {
-                    if (!flush_label_batch())
+                    if (!process_annotation_batch(annotation_batch))
                         return false;
+                    annotation_batch.clear();
                 }
 
                 if (processed_annotations % 1000 == 0)
@@ -1315,6 +1465,12 @@ void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
             });
 
         if (!pass2_ok || isCancelRequested())
+        {
+            emit importFinished(false, {}, {});
+            return;
+        }
+
+        if (!annotation_batch.empty() && !process_annotation_batch(annotation_batch))
         {
             emit importFinished(false, {}, {});
             return;
@@ -1341,7 +1497,7 @@ void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
     }
 }
 
-void COCOIO::doExport(ExportDataset dataset, QString output_dir)
+void COCOIO::doExport(ExportDataset dataset, QString output_dir, const int thread_count)
 {
     try
     {
@@ -1368,7 +1524,8 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir)
 
         std::map<QString, int>     used_image_names;
         std::map<int64_t, QString> image_name_by_id;
-        const int                  image_count = static_cast<int>(dataset.images.size());
+        const auto                &image_name_by_id_readonly = image_name_by_id;
+        const int                  image_count               = static_cast<int>(dataset.images.size());
 
         for (int i = 0; i < image_count; ++i)
         {
@@ -1376,22 +1533,46 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir)
             const QString      file_name = DatasetIO::uniqueFileName(image.path, image.image_id, used_image_names);
             used_image_names[file_name]++;
             image_name_by_id[image.image_id] = file_name;
+        }
 
-            const QString target_path = QDir(images_dir).filePath(file_name);
-            if (!DatasetIO::copyFile(image.path, target_path, err_msg))
+        struct CocoImageExportResult
+        {
+            bool           success{true};
+            QString        error;
+            nlohmann::json image_json;
+        };
+
+        std::vector<CocoImageExportResult> image_results(image_count);
+        parallelFor(static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
+                    [&](const std::size_t index)
+                    {
+                        const ExportImage &image     = dataset.images[index];
+                        const QString      file_name = image_name_by_id_readonly.at(image.image_id);
+                        QString            task_error;
+                        if (!DatasetIO::copyFile(image.path, QDir(images_dir).filePath(file_name), task_error))
+                        {
+                            image_results[index].success = false;
+                            image_results[index].error   = task_error;
+                            return;
+                        }
+
+                        image_results[index].image_json = {
+                            {       "id",          image.image_id},
+                            {"file_name", file_name.toStdString()},
+                            {    "width",             image.width},
+                            {   "height",            image.height},
+                            {  "license",                       0},
+                        };
+                    });
+
+        for (int i = 0; i < image_count; ++i)
+        {
+            if (!image_results[i].success)
             {
-                emit exportFinished(false, err_msg);
+                emit exportFinished(false, image_results[i].error);
                 return;
             }
-
-            json_data["images"].push_back({
-                {       "id",          image.image_id},
-                {"file_name", file_name.toStdString()},
-                {    "width",             image.width},
-                {   "height",            image.height},
-                {  "license",                       0},
-            });
-
+            json_data["images"].push_back(std::move(image_results[i].image_json));
             if ((i + 1) % std::max(1, image_count / 10) == 0 || i + 1 == image_count)
                 updateProgress((i + 1) * 45 / std::max(1, image_count),
                                QString("已复制图像 %1/%2").arg(i + 1).arg(image_count));
@@ -1407,44 +1588,59 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir)
         }
 
         const int label_count = static_cast<int>(dataset.labels.size());
+
+        struct CocoAnnotationExportResult
+        {
+            bool           valid{false};
+            nlohmann::json annotation_json;
+        };
+
+        std::vector<CocoAnnotationExportResult> annotation_results(label_count);
+        parallelFor(static_cast<std::size_t>(label_count), thread_count, cancel_requested_,
+                    [&](const std::size_t index)
+                    {
+                        const ExportLabel &label = dataset.labels[index];
+                        const double       x     = label.data.value(QStringLiteral("x")).toDouble();
+                        const double       y     = label.data.value(QStringLiteral("y")).toDouble();
+                        const double       w     = label.data.value(QStringLiteral("width")).toDouble();
+                        const double       h     = label.data.value(QStringLiteral("height")).toDouble();
+                        if (w <= 0 || h <= 0)
+                            return;
+
+                        nlohmann::json             segmentation = nlohmann::json::array();
+                        double                     area         = w * h;
+                        const std::vector<QPointF> points
+                            = DatasetIO::variantListToPoints(label.data.value(QStringLiteral("points")));
+                        if (points.size() >= 3)
+                        {
+                            nlohmann::json flat_points = nlohmann::json::array();
+                            for (const QPointF &point : points)
+                            {
+                                flat_points.push_back(point.x());
+                                flat_points.push_back(point.y());
+                            }
+                            segmentation.push_back(flat_points);
+                            area = polygonArea(points);
+                            if (area <= 0)
+                                area = w * h;
+                        }
+
+                        annotation_results[index].annotation_json = {
+                            {          "id",       label.label_id},
+                            {    "image_id",       label.image_id},
+                            { "category_id", label.label_class_id},
+                            {        "bbox",         {x, y, w, h}},
+                            {        "area",                 area},
+                            {     "iscrowd",                    0},
+                            {"segmentation",         segmentation},
+                        };
+                        annotation_results[index].valid = true;
+                    });
+
         for (int i = 0; i < label_count; ++i)
         {
-            const ExportLabel &label = dataset.labels[i];
-            const double       x     = label.data.value(QStringLiteral("x")).toDouble();
-            const double       y     = label.data.value(QStringLiteral("y")).toDouble();
-            const double       w     = label.data.value(QStringLiteral("width")).toDouble();
-            const double       h     = label.data.value(QStringLiteral("height")).toDouble();
-            if (w <= 0 || h <= 0)
-                continue;
-
-            nlohmann::json             segmentation = nlohmann::json::array();
-            double                     area         = w * h;
-            const std::vector<QPointF> points
-                = DatasetIO::variantListToPoints(label.data.value(QStringLiteral("points")));
-            if (points.size() >= 3)
-            {
-                nlohmann::json flat_points = nlohmann::json::array();
-                for (const QPointF &point : points)
-                {
-                    flat_points.push_back(point.x());
-                    flat_points.push_back(point.y());
-                }
-                segmentation.push_back(flat_points);
-                area = polygonArea(points);
-                if (area <= 0)
-                    area = w * h;
-            }
-
-            json_data["annotations"].push_back({
-                {          "id",       label.label_id},
-                {    "image_id",       label.image_id},
-                { "category_id", label.label_class_id},
-                {        "bbox",         {x, y, w, h}},
-                {        "area",                 area},
-                {     "iscrowd",                    0},
-                {"segmentation",         segmentation},
-            });
-
+            if (annotation_results[i].valid)
+                json_data["annotations"].push_back(std::move(annotation_results[i].annotation_json));
             if ((i + 1) % std::max(1, label_count / 10) == 0 || i + 1 == label_count)
                 updateProgress(45 + (i + 1) * 45 / std::max(1, label_count),
                                QString("已写入 COCO 标注 %1/%2").arg(i + 1).arg(label_count));
@@ -1475,7 +1671,9 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir)
 
 void LabelMeIO::startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir)
 {
-    runInThread([this, dataset_id, image_dir, data_dir]() { doImport(dataset_id, image_dir, data_dir); });
+    const int thread_count = dataIOThreadCount();
+    runInThread([this, dataset_id, image_dir, data_dir, thread_count]()
+                { doImport(dataset_id, image_dir, data_dir, thread_count); });
 }
 
 void LabelMeIO::startScanLabelClasses(const QString &image_dir, const QString &data_dir)
@@ -1486,7 +1684,9 @@ void LabelMeIO::startScanLabelClasses(const QString &image_dir, const QString &d
 void LabelMeIO::startExport(ExportDataset dataset, const QString &output_dir, const QVariantMap &options)
 {
     Q_UNUSED(options)
-    runInThread([this, dataset = std::move(dataset), output_dir]() { doExport(std::move(dataset), output_dir); });
+    const int thread_count = dataIOThreadCount();
+    runInThread([this, dataset = std::move(dataset), output_dir, thread_count]()
+                { doExport(std::move(dataset), output_dir, thread_count); });
 }
 
 bool LabelMeIO::parseLabelMeJson(const QString &json_path, LabelMeData &data)
@@ -1671,7 +1871,7 @@ void LabelMeIO::doScanLabelClasses(const QString &image_dir, const QString &data
     }
 }
 
-void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir)
+void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir, const int thread_count)
 {
     spdlog::info("开始解析 LabelMe 数据: dataset_id={}", dataset_id);
 
@@ -1750,7 +1950,74 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
             return !isCancelRequested();
         };
 
-        for (const QString &image_path : image_files)
+        struct LabelMeImportResult
+        {
+            int                        width{0};
+            int                        height{0};
+            bool                       valid_image{false};
+            bool                       parsed_annotation{false};
+            bool                       skipped_annotation{false};
+            std::vector<ImportedLabel> labels;
+        };
+
+        const int                        target_method                              = target_method_;
+        const auto                      &annotation_files_by_relative_name_readonly = annotation_files_by_relative_name;
+        std::vector<LabelMeImportResult> results(image_files.size());
+        parallelFor(image_files.size(), thread_count, cancel_requested_,
+                    [&](const std::size_t index)
+                    {
+                        const QString &image_path = image_files[index];
+                        auto          &result     = results[index];
+                        result.valid_image = DatasetIO::getImageDimensions(image_path, result.width, result.height);
+                        if (!result.valid_image)
+                            return;
+
+                        const QString image_relative = dltool::common::relativePath(image_root_dir, image_path);
+                        const QString image_key      = QFileInfo(image_relative).completeBaseName();
+                        const auto    json_it        = annotation_files_by_relative_name_readonly.find(image_key);
+                        if (json_it == annotation_files_by_relative_name_readonly.end())
+                            return;
+
+                        LabelMeData data;
+                        if (!parseLabelMeJson(json_it->second, data))
+                        {
+                            result.skipped_annotation = true;
+                            return;
+                        }
+
+                        result.parsed_annotation = true;
+                        const bool convert_rectangles_to_polygons
+                            = (target_method == DeepLearningMethod::Segmentation
+                               || target_method == DeepLearningMethod::AnomalyDetection)
+                           && containsOnlyRectangleShapes(data);
+
+                        for (const LabelMeShape &shape : data.shapes)
+                        {
+                            if (shape.label.isEmpty())
+                                continue;
+                            const QString label_class_name = sanitizeName(shape.label);
+                            if (label_class_name.isEmpty())
+                                continue;
+
+                            const QVariantMap label_data = convertShapeToLabelData(shape, result.width, result.height,
+                                                                                   convert_rectangles_to_polygons);
+                            if (label_data.isEmpty())
+                                continue;
+
+                            ImportedLabel imported_label;
+                            imported_label.label_class_name = label_class_name;
+                            imported_label.data             = label_data;
+                            imported_label.image_path       = image_path;
+                            result.labels.push_back(std::move(imported_label));
+                        }
+                    },
+                    [this](const std::size_t completed, const std::size_t total)
+                    {
+                        const int progress = 10 + static_cast<int>(completed * 80 / std::max<std::size_t>(1, total));
+                        updateProgress(progress, QString("已并行解析 LabelMe 图像 %1/%2").arg(completed).arg(total));
+                    });
+
+        for (std::size_t index = 0; index < image_files.size(); ++index)
         {
             if (isCancelRequested())
             {
@@ -1759,69 +2026,33 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
             }
 
             ++processed_images;
-
-            int width  = 0;
-            int height = 0;
-            if (!DatasetIO::getImageDimensions(image_path, width, height))
+            const QString &image_path = image_files[index];
+            const auto    &result     = results[index];
+            if (!result.valid_image)
             {
                 ++skipped_images;
-                continue;
             }
-
-            ++valid_images;
-            batch_image_paths.push_back(image_path);
-            batch_image_widths.push_back(width);
-            batch_image_heights.push_back(height);
-
-            const QString image_relative = dltool::common::relativePath(image_root_dir, image_path);
-            const QString image_key      = QFileInfo(image_relative).completeBaseName();
-            auto          json_it        = annotation_files_by_relative_name.find(image_key);
-            if (json_it != annotation_files_by_relative_name.end())
+            else
             {
-                LabelMeData data;
-                if (parseLabelMeJson(json_it->second, data))
-                {
-                    data.image_path   = image_path;
-                    data.image_width  = width;
-                    data.image_height = height;
+                ++valid_images;
+                batch_image_paths.push_back(image_path);
+                batch_image_widths.push_back(result.width);
+                batch_image_heights.push_back(result.height);
+
+                if (result.parsed_annotation)
                     ++parsed_annotations;
-
-                    const bool convert_rectangles_to_polygons
-                        = (target_method_ == DeepLearningMethod::Segmentation
-                           || target_method_ == DeepLearningMethod::AnomalyDetection)
-                       && containsOnlyRectangleShapes(data);
-
-                    for (const LabelMeShape &shape : data.shapes)
-                    {
-                        if (shape.label.isEmpty())
-                            continue;
-                        const QString label_class_name = sanitizeName(shape.label);
-                        if (label_class_name.isEmpty())
-                            continue;
-
-                        const QVariantMap label_data
-                            = convertShapeToLabelData(shape, width, height, convert_rectangles_to_polygons);
-                        if (label_data.isEmpty())
-                            continue;
-
-                        auto color_it = label_class_colors.find(label_class_name);
-                        if (color_it == label_class_colors.end())
-                        {
-                            const QString color = DatasetIO::generateDefaultColor(color_index++);
-                            color_it            = label_class_colors.emplace(label_class_name, color).first;
-                            batch_label_class_info[label_class_name] = color;
-                        }
-
-                        ImportedLabel imported_label;
-                        imported_label.label_class_name = label_class_name;
-                        imported_label.data             = label_data;
-                        imported_label.image_path       = image_path;
-                        batch_labels.push_back(imported_label);
-                    }
-                }
-                else
-                {
+                if (result.skipped_annotation)
                     ++skipped_annotations;
+
+                for (const ImportedLabel &label : result.labels)
+                {
+                    if (label_class_colors.find(label.label_class_name) == label_class_colors.end())
+                    {
+                        const QString color                            = DatasetIO::generateDefaultColor(color_index++);
+                        label_class_colors[label.label_class_name]     = color;
+                        batch_label_class_info[label.label_class_name] = color;
+                    }
+                    batch_labels.push_back(label);
                 }
             }
 
@@ -1870,7 +2101,7 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
     }
 }
 
-void LabelMeIO::doExport(ExportDataset dataset, QString output_dir)
+void LabelMeIO::doExport(ExportDataset dataset, QString output_dir, const int thread_count)
 {
     try
     {
@@ -1886,7 +2117,8 @@ void LabelMeIO::doExport(ExportDataset dataset, QString output_dir)
         std::map<QString, int>     used_image_names;
         std::map<QString, int>     used_image_stems;
         std::map<int64_t, QString> image_name_by_id;
-        const int                  image_count = static_cast<int>(dataset.images.size());
+        const auto                &image_name_by_id_readonly = image_name_by_id;
+        const int                  image_count               = static_cast<int>(dataset.images.size());
 
         for (int i = 0; i < image_count; ++i)
         {
@@ -1895,17 +2127,6 @@ void LabelMeIO::doExport(ExportDataset dataset, QString output_dir)
             used_image_names[file_name]++;
             used_image_stems[QFileInfo(file_name).completeBaseName()]++;
             image_name_by_id[image.image_id] = file_name;
-
-            const QString target_path = QDir(images_dir).filePath(file_name);
-            if (!DatasetIO::copyFile(image.path, target_path, err_msg))
-            {
-                emit exportFinished(false, err_msg);
-                return;
-            }
-
-            if ((i + 1) % std::max(1, image_count / 10) == 0 || i + 1 == image_count)
-                updateProgress((i + 1) * 45 / std::max(1, image_count),
-                               QString("已复制图像 %1/%2").arg(i + 1).arg(image_count));
         }
 
         std::map<int64_t, QString> class_name_by_id;
@@ -1914,69 +2135,99 @@ void LabelMeIO::doExport(ExportDataset dataset, QString output_dir)
 
         std::map<int64_t, std::vector<ExportLabel>> labels_by_image_id;
         for (const ExportLabel &label : dataset.labels) labels_by_image_id[label.image_id].push_back(label);
+        const auto &class_name_by_id_readonly   = class_name_by_id;
+        const auto &labels_by_image_id_readonly = labels_by_image_id;
+
+        struct LabelMeExportResult
+        {
+            bool    success{true};
+            QString error;
+        };
+
+        std::vector<LabelMeExportResult> results(image_count);
+        parallelFor(
+            static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
+            [&](const std::size_t index)
+            {
+                const ExportImage &image      = dataset.images[index];
+                const QString      image_name = image_name_by_id_readonly.at(image.image_id);
+                QString            task_error;
+                if (!DatasetIO::copyFile(image.path, QDir(images_dir).filePath(image_name), task_error))
+                {
+                    results[index].success = false;
+                    results[index].error   = task_error;
+                    return;
+                }
+
+                nlohmann::json json_data;
+                json_data["version"]     = "5.0.1";
+                json_data["flags"]       = nlohmann::json::object();
+                json_data["shapes"]      = nlohmann::json::array();
+                json_data["imagePath"]   = image_name.toStdString();
+                json_data["imageData"]   = nullptr;
+                json_data["imageHeight"] = image.height;
+                json_data["imageWidth"]  = image.width;
+
+                const auto labels_it = labels_by_image_id_readonly.find(image.image_id);
+                if (labels_it != labels_by_image_id_readonly.end())
+                    for (const ExportLabel &label : labels_it->second)
+                    {
+                        const double x = label.data.value(QStringLiteral("x")).toDouble();
+                        const double y = label.data.value(QStringLiteral("y")).toDouble();
+                        const double w = label.data.value(QStringLiteral("width")).toDouble();
+                        const double h = label.data.value(QStringLiteral("height")).toDouble();
+                        if (w <= 0 || h <= 0)
+                            continue;
+
+                        nlohmann::json shape;
+                        const auto     class_it = class_name_by_id_readonly.find(label.label_class_id);
+                        shape["label"] = (class_it != class_name_by_id_readonly.end() ? class_it->second : QString())
+                                             .toStdString();
+                        shape["group_id"]    = nullptr;
+                        shape["description"] = "";
+                        shape["flags"]       = nlohmann::json::object();
+
+                        const std::vector<QPointF> points
+                            = DatasetIO::variantListToPoints(label.data.value(QStringLiteral("points")));
+                        if (points.size() >= 3)
+                        {
+                            nlohmann::json point_array = nlohmann::json::array();
+                            for (const QPointF &point : points) point_array.push_back({point.x(), point.y()});
+                            shape["points"]     = point_array;
+                            shape["shape_type"] = "polygon";
+                        }
+                        else
+                        {
+                            shape["points"] = {
+                                {    x,     y},
+                                {x + w, y + h}
+                            };
+                            shape["shape_type"] = "rectangle";
+                        }
+                        json_data["shapes"].push_back(shape);
+                    }
+
+                const QString annotation_name = QString("%1.json").arg(QFileInfo(image_name).completeBaseName());
+                QFile         annotation_file(QDir(annotations_dir).filePath(annotation_name));
+                if (!annotation_file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+                {
+                    results[index].success = false;
+                    results[index].error   = QString("无法写入标注文件: %1").arg(annotation_file.fileName());
+                    return;
+                }
+                annotation_file.write(QByteArray::fromStdString(json_data.dump(2)));
+            });
 
         for (int i = 0; i < image_count; ++i)
         {
-            const ExportImage &image      = dataset.images[i];
-            const QString      image_name = image_name_by_id[image.image_id];
-
-            nlohmann::json json_data;
-            json_data["version"]     = "5.0.1";
-            json_data["flags"]       = nlohmann::json::object();
-            json_data["shapes"]      = nlohmann::json::array();
-            json_data["imagePath"]   = image_name.toStdString();
-            json_data["imageData"]   = nullptr;
-            json_data["imageHeight"] = image.height;
-            json_data["imageWidth"]  = image.width;
-
-            for (const ExportLabel &label : labels_by_image_id[image.image_id])
+            if (!results[i].success)
             {
-                const double x = label.data.value(QStringLiteral("x")).toDouble();
-                const double y = label.data.value(QStringLiteral("y")).toDouble();
-                const double w = label.data.value(QStringLiteral("width")).toDouble();
-                const double h = label.data.value(QStringLiteral("height")).toDouble();
-                if (w <= 0 || h <= 0)
-                    continue;
-
-                nlohmann::json shape;
-                shape["label"]       = class_name_by_id[label.label_class_id].toStdString();
-                shape["group_id"]    = nullptr;
-                shape["description"] = "";
-                shape["flags"]       = nlohmann::json::object();
-
-                const std::vector<QPointF> points
-                    = DatasetIO::variantListToPoints(label.data.value(QStringLiteral("points")));
-                if (points.size() >= 3)
-                {
-                    nlohmann::json point_array = nlohmann::json::array();
-                    for (const QPointF &point : points) point_array.push_back({point.x(), point.y()});
-                    shape["points"]     = point_array;
-                    shape["shape_type"] = "polygon";
-                }
-                else
-                {
-                    shape["points"] = {
-                        {    x,     y},
-                        {x + w, y + h}
-                    };
-                    shape["shape_type"] = "rectangle";
-                }
-                json_data["shapes"].push_back(shape);
-            }
-
-            const QString annotation_name = QString("%1.json").arg(QFileInfo(image_name).completeBaseName());
-            QFile         annotation_file(QDir(annotations_dir).filePath(annotation_name));
-            if (!annotation_file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
-            {
-                emit exportFinished(false, QString("无法写入标注文件: %1").arg(annotation_file.fileName()));
+                emit exportFinished(false, results[i].error);
                 return;
             }
-
-            annotation_file.write(QByteArray::fromStdString(json_data.dump(2)));
-
-            const int progress = 45 + (i + 1) * 55 / std::max(1, image_count);
             if ((i + 1) % std::max(1, image_count / 10) == 0 || i + 1 == image_count)
-                updateProgress(progress, QString("已写入 LabelMe 标注 %1/%2").arg(i + 1).arg(image_count));
+                updateProgress(45 + (i + 1) * 55 / std::max(1, image_count),
+                               QString("已处理 LabelMe 导出 %1/%2").arg(i + 1).arg(image_count));
         }
 
         emit exportFinished(
@@ -1997,8 +2248,9 @@ void LabelMeIO::doExport(ExportDataset dataset, QString output_dir)
 void MaskIO::startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir)
 {
     const double polygon_approx_epsilon_ratio = maskImportPolygonApproxRatio();
-    runInThread([this, dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio]()
-                { doImport(dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio); });
+    const int    thread_count                 = dataIOThreadCount();
+    runInThread([this, dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio, thread_count]()
+                { doImport(dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio, thread_count); });
 }
 
 void MaskIO::startScanLabelClasses(const QString &image_dir, const QString &data_dir)
@@ -2009,8 +2261,9 @@ void MaskIO::startScanLabelClasses(const QString &image_dir, const QString &data
 
 void MaskIO::startExport(ExportDataset dataset, const QString &output_dir, const QVariantMap &options)
 {
-    runInThread([this, dataset = std::move(dataset), output_dir, options]()
-                { doExport(std::move(dataset), output_dir, options); });
+    const int thread_count = dataIOThreadCount();
+    runInThread([this, dataset = std::move(dataset), output_dir, options, thread_count]()
+                { doExport(std::move(dataset), output_dir, options, thread_count); });
 }
 
 void MaskIO::doScanLabelClasses(const QString &data_dir)
@@ -2060,14 +2313,14 @@ void MaskIO::doScanLabelClasses(const QString &data_dir)
 }
 
 void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir,
-                      const double polygon_approx_epsilon_ratio)
+                      const double polygon_approx_epsilon_ratio, const int thread_count)
 {
     try
     {
         const QString annotation_dir = data_dir.trimmed();
         if (annotation_dir.isEmpty())
         {
-            importImagesOnly(dataset_id, image_dir, QStringLiteral("Mask"));
+            importImagesOnly(dataset_id, image_dir, QStringLiteral("Mask"), thread_count);
             return;
         }
 
@@ -2088,9 +2341,9 @@ void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
         std::vector<ImportedLabel> batch_labels;
         std::map<QString, QString> label_class_colors;
 
-        int processed_masks = 0;
-        int valid_masks     = 0;
-        int skipped_masks   = 0;
+        int processed_masks       = 0;
+        int valid_masks           = 0;
+        int skipped_masks         = 0;
         int generated_label_count = 0;
 
         auto flush_batch = [&]() -> bool
@@ -2110,7 +2363,63 @@ void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
             return !isCancelRequested();
         };
 
-        for (const QString &mask_path : mask_files)
+        struct MaskImportResult
+        {
+            bool                       valid{false};
+            QString                    image_path;
+            QString                    label_class_name;
+            int                        image_width{0};
+            int                        image_height{0};
+            std::vector<ImportedLabel> labels;
+        };
+
+        std::vector<MaskImportResult> results(mask_files.size());
+        parallelFor(mask_files.size(), thread_count, cancel_requested_,
+                    [&](const std::size_t index)
+                    {
+                        const QString &mask_path  = mask_files[index];
+                        auto          &result     = results[index];
+                        const QString  mask_stem  = QFileInfo(mask_path).completeBaseName();
+                        const QString  image_stem = imageStemForMask(mask_path, data_dir, mask_stem);
+                        const auto     image_it   = image_by_stem.find(image_stem);
+                        if (image_it == image_by_stem.end())
+                            return;
+
+                        result.image_path = image_it->second;
+                        if (!DatasetIO::getImageDimensions(result.image_path, result.image_width, result.image_height))
+                            return;
+
+                        MaskGeometry geometry;
+                        if (!readMaskGeometry(mask_path, geometry, polygon_approx_epsilon_ratio))
+                            return;
+
+                        result.label_class_name = sanitizeName(labelClassNameForMask(mask_path, data_dir));
+                        if (result.label_class_name.isEmpty())
+                            return;
+
+                        for (const auto &polygon : geometry.polygons)
+                        {
+                            const QVariantMap label_data
+                                = maskToLabelData(polygon, geometry.mask_width, geometry.mask_height,
+                                                  result.image_width, result.image_height);
+                            if (label_data.isEmpty())
+                                continue;
+
+                            ImportedLabel imported_label;
+                            imported_label.label_class_name = result.label_class_name;
+                            imported_label.image_path       = result.image_path;
+                            imported_label.data             = label_data;
+                            result.labels.push_back(std::move(imported_label));
+                        }
+                        result.valid = !result.labels.empty();
+                    },
+                    [this](const std::size_t completed, const std::size_t total)
+                    {
+                        const int progress = 10 + static_cast<int>(completed * 80 / std::max<std::size_t>(1, total));
+                        updateProgress(progress, QString("已并行解析 Mask %1/%2").arg(completed).arg(total));
+                    });
+
+        for (std::size_t index = 0; index < results.size(); ++index)
         {
             if (isCancelRequested())
             {
@@ -2119,71 +2428,28 @@ void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
             }
 
             ++processed_masks;
-            const QString mask_stem  = QFileInfo(mask_path).completeBaseName();
-            const QString image_stem = imageStemForMask(mask_path, data_dir, mask_stem);
-            const auto    image_it   = image_by_stem.find(image_stem);
-            if (image_it == image_by_stem.end())
+            const auto &result = results[index];
+            if (!result.valid)
             {
                 ++skipped_masks;
-                spdlog::warn("Mask 未找到匹配图像，跳过: {}", mask_path.toUtf8().constData());
-                continue;
             }
-
-            int image_width  = 0;
-            int image_height = 0;
-            if (!DatasetIO::getImageDimensions(image_it->second, image_width, image_height))
+            else
             {
-                ++skipped_masks;
-                continue;
+                ++valid_masks;
+                generated_label_count += static_cast<int>(result.labels.size());
+                if (label_class_colors.find(result.label_class_name) == label_class_colors.end())
+                    label_class_colors[result.label_class_name]
+                        = DatasetIO::generateDefaultColor(static_cast<int>(label_class_colors.size()));
+                batch_label_class_info[result.label_class_name] = label_class_colors[result.label_class_name];
+
+                for (const ImportedLabel &label : result.labels)
+                {
+                    batch_image_paths.push_back(result.image_path);
+                    batch_image_widths.push_back(result.image_width);
+                    batch_image_heights.push_back(result.image_height);
+                    batch_labels.push_back(label);
+                }
             }
-
-            MaskGeometry geometry;
-            if (!readMaskGeometry(mask_path, geometry, polygon_approx_epsilon_ratio))
-            {
-                ++skipped_masks;
-                continue;
-            }
-
-            const QString label_class_name = sanitizeName(labelClassNameForMask(mask_path, data_dir));
-            if (label_class_name.isEmpty())
-            {
-                ++skipped_masks;
-                continue;
-            }
-
-            if (label_class_colors.find(label_class_name) == label_class_colors.end())
-                label_class_colors[label_class_name]
-                    = DatasetIO::generateDefaultColor(static_cast<int>(label_class_colors.size()));
-            batch_label_class_info[label_class_name] = label_class_colors[label_class_name];
-
-            int generated_labels = 0;
-            for (const std::vector<QPointF> &polygon : geometry.polygons)
-            {
-                const QVariantMap label_data
-                    = maskToLabelData(polygon, geometry.mask_width, geometry.mask_height, image_width, image_height);
-                if (label_data.isEmpty())
-                    continue;
-
-                batch_image_paths.push_back(image_it->second);
-                batch_image_widths.push_back(image_width);
-                batch_image_heights.push_back(image_height);
-
-                ImportedLabel imported_label;
-                imported_label.label_class_name = label_class_name;
-                imported_label.image_path       = image_it->second;
-                imported_label.data             = label_data;
-                batch_labels.push_back(std::move(imported_label));
-                ++generated_labels;
-            }
-
-            if (generated_labels == 0)
-            {
-                ++skipped_masks;
-                continue;
-            }
-
-            generated_label_count += generated_labels;
-            ++valid_masks;
 
             if (processed_masks % std::max<int>(1, static_cast<int>(mask_files.size()) / 10) == 0
                 || processed_masks == static_cast<int>(mask_files.size()))
@@ -2192,13 +2458,10 @@ void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
                 updateProgress(progress, QString("已处理 Mask %1/%2").arg(processed_masks).arg(mask_files.size()));
             }
 
-            if (batch_labels.size() >= DataIO::ImportBatchImageCount)
+            if (batch_labels.size() >= DataIO::ImportBatchImageCount && !flush_batch())
             {
-                if (!flush_batch())
-                {
-                    emit importFinished(false, {}, {});
-                    return;
-                }
+                emit importFinished(false, {}, {});
+                return;
             }
         }
 
@@ -2209,9 +2472,9 @@ void MaskIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
         }
 
         updateProgress(100, QString("Mask 导入完成: 有效 %1 个，生成 %2 个标注，跳过 %3 个")
-                                  .arg(valid_masks)
-                                  .arg(generated_label_count)
-                                  .arg(skipped_masks));
+                                .arg(valid_masks)
+                                .arg(generated_label_count)
+                                .arg(skipped_masks));
         emit importFinished(valid_masks > 0, {}, {});
     }
     catch (const std::exception &e)
@@ -2275,14 +2538,16 @@ bool MaskIO::readMaskGeometry(const QString &mask_path, MaskGeometry &geometry,
         const double top    = geometry.bbox.y();
         const double right  = left + geometry.bbox.width();
         const double bottom = top + geometry.bbox.height();
-        geometry.polygons   = {{QPointF(left, top), QPointF(right, top), QPointF(right, bottom), QPointF(left, bottom)}};
+        geometry.polygons   = {
+            {QPointF(left, top), QPointF(right, top), QPointF(right, bottom), QPointF(left, bottom)}
+        };
     }
 
     return true;
 }
 
 QVariantMap MaskIO::maskToLabelData(const std::vector<QPointF> &polygon, int mask_width, int mask_height,
-                                     int image_width, int image_height) const
+                                    int image_width, int image_height) const
 {
     if (mask_width <= 0 || mask_height <= 0 || image_width <= 0 || image_height <= 0 || polygon.size() < 3)
         return {};
@@ -2370,7 +2635,7 @@ std::map<QString, QString> MaskIO::loadQueryNameMap(const QString &dir_path) con
     return result;
 }
 
-void MaskIO::doExport(ExportDataset dataset, QString output_dir, QVariantMap options)
+void MaskIO::doExport(ExportDataset dataset, QString output_dir, QVariantMap options, const int thread_count)
 {
     try
     {
@@ -2408,62 +2673,98 @@ void MaskIO::doExport(ExportDataset dataset, QString output_dir, QVariantMap opt
             used_image_names[file_name]++;
             used_image_stems[QFileInfo(file_name).completeBaseName()]++;
             image_name_by_id[image.image_id] = file_name;
+        }
 
-            const QString target_path = QDir(images_dir).filePath(file_name);
-            if (!DatasetIO::copyFile(image.path, target_path, err_msg))
+        std::set<QString> mask_names;
+        for (const ExportImage &image : dataset.images)
+        {
+            const QString mask_name
+                = QString("%1.png").arg(QFileInfo(image_name_by_id[image.image_id]).completeBaseName());
+            if (!mask_names.insert(mask_name).second)
             {
-                emit exportFinished(false, err_msg);
+                emit exportFinished(false, QString("Mask 文件名冲突: %1").arg(mask_name));
                 return;
             }
-
-            if ((i + 1) % std::max(1, image_count / 10) == 0 || i + 1 == image_count)
-                updateProgress((i + 1) * 40 / std::max(1, image_count),
-                               QString("已复制图像 %1/%2").arg(i + 1).arg(image_count));
         }
 
         std::map<int64_t, std::vector<ExportLabel>> labels_by_image_id;
         for (const ExportLabel &label : dataset.labels) labels_by_image_id[label.image_id].push_back(label);
+        const auto &image_name_by_id_readonly   = image_name_by_id;
+        const auto &class_values_readonly       = class_values;
+        const auto &labels_by_image_id_readonly = labels_by_image_id;
+
+        struct MaskExportResult
+        {
+            bool    success{true};
+            QString error;
+            int     written_labels{0};
+            int     skipped_labels{0};
+        };
+
+        std::vector<MaskExportResult> results(image_count);
+        parallelFor(
+            static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
+            [&](const std::size_t index)
+            {
+                const ExportImage &image  = dataset.images[index];
+                auto              &result = results[index];
+                QString            task_error;
+                if (!DatasetIO::copyFile(image.path,
+                                         QDir(images_dir).filePath(image_name_by_id_readonly.at(image.image_id)),
+                                         task_error))
+                {
+                    result.success = false;
+                    result.error   = task_error;
+                    return;
+                }
+
+                int width  = image.width;
+                int height = image.height;
+                if ((width <= 0 || height <= 0) && !DatasetIO::getImageDimensions(image.path, width, height))
+                {
+                    result.success = false;
+                    result.error   = QString("无法读取图像尺寸，不能导出 Mask: %1").arg(image.path);
+                    return;
+                }
+
+                QImage mask(width, height, QImage::Format_ARGB32);
+                mask.fill(Qt::black);
+                const auto labels_it = labels_by_image_id_readonly.find(image.image_id);
+                if (labels_it != labels_by_image_id_readonly.end())
+                    for (const ExportLabel &label : labels_it->second)
+                    {
+                        const auto value_it = class_values_readonly.find(label.label_class_id);
+                        if (value_it == class_values_readonly.end())
+                        {
+                            ++result.skipped_labels;
+                            continue;
+                        }
+                        if (paintLabelToMask(mask, label.data, value_it->second))
+                            ++result.written_labels;
+                        else
+                            ++result.skipped_labels;
+                    }
+
+                const QString mask_name
+                    = QString("%1.png").arg(QFileInfo(image_name_by_id_readonly.at(image.image_id)).completeBaseName());
+                if (!mask.convertToFormat(QImage::Format_Grayscale8).save(QDir(masks_dir).filePath(mask_name), "PNG"))
+                {
+                    result.success = false;
+                    result.error   = QString("写入 Mask 失败: %1").arg(mask_name);
+                }
+            });
 
         int written_label_count = 0;
         int skipped_label_count = 0;
         for (int i = 0; i < image_count; ++i)
         {
-            const ExportImage &image  = dataset.images[i];
-            int                width  = image.width;
-            int                height = image.height;
-            if ((width <= 0 || height <= 0) && !DatasetIO::getImageDimensions(image.path, width, height))
+            if (!results[i].success)
             {
-                emit exportFinished(false, QString("无法读取图像尺寸，不能导出 Mask: %1").arg(image.path));
+                emit exportFinished(false, results[i].error);
                 return;
             }
-
-            QImage mask(width, height, QImage::Format_ARGB32);
-            mask.fill(Qt::black);
-
-            for (const ExportLabel &label : labels_by_image_id[image.image_id])
-            {
-                const auto value_it = class_values.find(label.label_class_id);
-                if (value_it == class_values.end())
-                {
-                    ++skipped_label_count;
-                    continue;
-                }
-
-                if (paintLabelToMask(mask, label.data, value_it->second))
-                    ++written_label_count;
-                else
-                    ++skipped_label_count;
-            }
-
-            const QString image_name = image_name_by_id[image.image_id];
-            const QString mask_name  = QString("%1.png").arg(QFileInfo(image_name).completeBaseName());
-            const QImage  gray_mask  = mask.convertToFormat(QImage::Format_Grayscale8);
-            if (!gray_mask.save(QDir(masks_dir).filePath(mask_name), "PNG"))
-            {
-                emit exportFinished(false, QString("写入 Mask 失败: %1").arg(mask_name));
-                return;
-            }
-
+            written_label_count += results[i].written_labels;
+            skipped_label_count += results[i].skipped_labels;
             if ((i + 1) % std::max(1, image_count / 10) == 0 || i + 1 == image_count)
             {
                 const int progress = 40 + (i + 1) * 55 / std::max(1, image_count);
@@ -2497,7 +2798,8 @@ void MaskIO::doExport(ExportDataset dataset, QString output_dir, QVariantMap opt
 void FolderIO::startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir)
 {
     Q_UNUSED(data_dir)
-    runInThread([this, dataset_id, image_dir]() { doImport(dataset_id, image_dir); });
+    const int thread_count = dataIOThreadCount();
+    runInThread([this, dataset_id, image_dir, thread_count]() { doImport(dataset_id, image_dir, thread_count); });
 }
 
 void FolderIO::startScanLabelClasses(const QString &image_dir, const QString &data_dir)
@@ -2509,7 +2811,9 @@ void FolderIO::startScanLabelClasses(const QString &image_dir, const QString &da
 void FolderIO::startExport(ExportDataset dataset, const QString &output_dir, const QVariantMap &options)
 {
     Q_UNUSED(options)
-    runInThread([this, dataset = std::move(dataset), output_dir]() { doExport(std::move(dataset), output_dir); });
+    const int thread_count = dataIOThreadCount();
+    runInThread([this, dataset = std::move(dataset), output_dir, thread_count]()
+                { doExport(std::move(dataset), output_dir, thread_count); });
 }
 
 void FolderIO::doScanLabelClasses(const QString &image_dir)
@@ -2555,7 +2859,7 @@ void FolderIO::doScanLabelClasses(const QString &image_dir)
     }
 }
 
-void FolderIO::doImport(int64_t dataset_id, const QString &image_dir)
+void FolderIO::doImport(int64_t dataset_id, const QString &image_dir, const int thread_count)
 {
     spdlog::info("开始解析文件夹分类数据: dataset_id={}, image_dir={}", dataset_id, image_dir.toUtf8().constData());
 
@@ -2632,6 +2936,14 @@ void FolderIO::doImport(int64_t dataset_id, const QString &image_dir)
             return !isCancelRequested();
         };
 
+        struct FolderImportItem
+        {
+            QString image_path;
+            QString class_name;
+        };
+
+        std::vector<FolderImportItem> items;
+        items.reserve(static_cast<std::size_t>(total_images));
         for (const FolderClassInfo &cls : classes)
         {
             if (class_colors.find(cls.name) == class_colors.end())
@@ -2639,38 +2951,56 @@ void FolderIO::doImport(int64_t dataset_id, const QString &image_dir)
                 class_colors[cls.name]           = DatasetIO::generateDefaultColor(color_index++);
                 batch_label_class_info[cls.name] = class_colors[cls.name];
             }
+            for (const QString &image_path : cls.image_paths) items.push_back({image_path, cls.name});
+        }
 
-            for (const QString &image_path : cls.image_paths)
-            {
-                if (isCancelRequested())
-                {
-                    emit importFinished(false, {}, {});
-                    return;
-                }
+        struct FolderImportResult
+        {
+            ImportedLabel label;
+            bool          valid{false};
+        };
 
-                ++processed_images;
-                ++valid_images;
-                batch_image_paths.push_back(image_path);
-
-                ImportedLabel label;
-                label.label_class_name = cls.name;
-                label.image_path       = image_path;
-                batch_labels.push_back(label);
-
-                if (processed_images % std::max(1, total_images / 10) == 0 || processed_images == total_images)
-                {
-                    const int progress = 10 + (processed_images * 80 / std::max(1, total_images));
-                    updateProgress(progress, QString("已处理文件夹图像 %1/%2").arg(processed_images).arg(total_images));
-                }
-
-                if (batch_image_paths.size() >= DataIO::ImportBatchImageCount)
-                {
-                    if (!flush_batch())
+        std::vector<FolderImportResult> results(items.size());
+        parallelFor(items.size(), thread_count, cancel_requested_,
+                    [&](const std::size_t index)
                     {
-                        emit importFinished(false, {}, {});
-                        return;
-                    }
-                }
+                        const auto &item              = items[index];
+                        auto       &result            = results[index];
+                        result.label.label_class_name = item.class_name;
+                        result.label.image_path       = item.image_path;
+                        result.valid                  = true;
+                    },
+                    [this](const std::size_t completed, const std::size_t total)
+                    {
+                        const int progress = 10 + static_cast<int>(completed * 80 / std::max<std::size_t>(1, total));
+                        updateProgress(progress, QString("已并行处理文件夹图像 %1/%2").arg(completed).arg(total));
+                    });
+
+        for (std::size_t index = 0; index < results.size(); ++index)
+        {
+            if (isCancelRequested())
+            {
+                emit importFinished(false, {}, {});
+                return;
+            }
+
+            ++processed_images;
+            if (!results[index].valid)
+                continue;
+            ++valid_images;
+            batch_image_paths.push_back(results[index].label.image_path);
+            batch_labels.push_back(std::move(results[index].label));
+
+            if (processed_images % std::max(1, total_images / 10) == 0 || processed_images == total_images)
+            {
+                const int progress = 10 + (processed_images * 80 / std::max(1, total_images));
+                updateProgress(progress, QString("已处理文件夹图像 %1/%2").arg(processed_images).arg(total_images));
+            }
+
+            if (batch_image_paths.size() >= DataIO::ImportBatchImageCount && !flush_batch())
+            {
+                emit importFinished(false, {}, {});
+                return;
             }
         }
 
@@ -2687,9 +3017,8 @@ void FolderIO::doImport(int64_t dataset_id, const QString &image_dir)
             return;
         }
 
-        updateProgress(95, QString("文件夹解析完成，等待写入数据: %1 个图像, %2 个类别")
-                                .arg(valid_images)
-                                .arg(classes.size()));
+        updateProgress(
+            95, QString("文件夹解析完成，等待写入数据: %1 个图像, %2 个类别").arg(valid_images).arg(classes.size()));
         emit importFinished(true, {}, {});
     }
     catch (const std::exception &e)
@@ -2700,7 +3029,7 @@ void FolderIO::doImport(int64_t dataset_id, const QString &image_dir)
     }
 }
 
-void FolderIO::doExport(ExportDataset dataset, QString output_dir)
+void FolderIO::doExport(ExportDataset dataset, QString output_dir, const int thread_count)
 {
     try
     {
@@ -2718,9 +3047,10 @@ void FolderIO::doExport(ExportDataset dataset, QString output_dir)
         std::map<int64_t, std::vector<ExportLabel>> labels_by_image;
         for (const ExportLabel &label : dataset.labels) labels_by_image[label.image_id].push_back(label);
 
-        const int image_count = static_cast<int>(dataset.images.size());
-        int       exported    = 0;
-
+        const int            image_count = static_cast<int>(dataset.images.size());
+        std::vector<QString> target_paths(image_count);
+        std::set<QString>    class_dirs;
+        std::set<QString>    used_target_paths;
         for (int i = 0; i < image_count; ++i)
         {
             const ExportImage &image      = dataset.images[i];
@@ -2735,22 +3065,51 @@ void FolderIO::doExport(ExportDataset dataset, QString output_dir)
             }
 
             const QString class_dir = QDir(output_dir).filePath(class_name);
+            class_dirs.insert(class_dir);
+            target_paths[i] = QDir(class_dir).filePath(QFileInfo(image.path).fileName());
+            if (!used_target_paths.insert(target_paths[i]).second)
+            {
+                emit exportFinished(false, QString("文件夹导出目标文件名冲突: %1").arg(target_paths[i]));
+                return;
+            }
+        }
+
+        for (const QString &class_dir : class_dirs)
+        {
             if (!ensureDirectory(class_dir, err_msg))
             {
                 emit exportFinished(false, err_msg);
                 return;
             }
+        }
 
-            const QString file_name   = QFileInfo(image.path).fileName();
-            const QString target_path = QDir(class_dir).filePath(file_name);
-            if (!DatasetIO::copyFile(image.path, target_path, err_msg))
+        struct FolderExportResult
+        {
+            bool    success{true};
+            QString error;
+        };
+
+        std::vector<FolderExportResult> results(image_count);
+        parallelFor(static_cast<std::size_t>(image_count), thread_count, cancel_requested_,
+                    [&](const std::size_t index)
+                    {
+                        QString task_error;
+                        if (!DatasetIO::copyFile(dataset.images[index].path, target_paths[index], task_error))
+                        {
+                            results[index].success = false;
+                            results[index].error   = task_error;
+                        }
+                    });
+
+        int exported = 0;
+        for (int i = 0; i < image_count; ++i)
+        {
+            if (!results[i].success)
             {
-                emit exportFinished(false, err_msg);
+                emit exportFinished(false, results[i].error);
                 return;
             }
-
             ++exported;
-
             if ((i + 1) % std::max(1, image_count / 10) == 0 || i + 1 == image_count)
                 updateProgress((i + 1) * 100 / std::max(1, image_count),
                                QString("已导出图像 %1/%2").arg(i + 1).arg(image_count));

@@ -110,3 +110,13 @@ DataSettings:
         value_type: double
         value_range: [0.0, 100, 0.001]
         control_type: spin
+
+    导入导出:
+      - name_en: data_io_threads
+        name_cn: 导入导出线程数
+        desc: 用于配置数据导入和导出处理时使用的工作线程数。
+        property_name: dataIOThreads
+        value: 4
+        value_type: int
+        value_range: [1, 16, 1]
+        control_type: spin

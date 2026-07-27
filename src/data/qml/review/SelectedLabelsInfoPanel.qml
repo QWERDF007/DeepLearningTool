@@ -12,25 +12,11 @@ Rectangle {
 
     // 公共属性
     property DataManager dataManager
-    property ImageInstancesModel imageInstances: dataManager ? dataManager.imageInstances : null
-    property LabelInstancesModel labelInstances: dataManager ? dataManager.labelInstances : null
-    property ItemSelectionModel selection: labelInstances ? labelInstances.selection : null
+    property SelectedLabelsInfoModel info: dataManager ? dataManager.selectedLabelsInfo : null
     property LabelClassesModel labelClasses: dataManager ? dataManager.labelClasses : null
 
-    // 内部状态属性
-    property int selectedCount: 0
-    property int totalCount: 0
-    property string imageName: ""
-    property string datasetName: ""
-    property string tagName
-    property int currentClassId: -1
-    property bool multipleDifferentDatasets: false
-    property bool multipleDifferentImages: false
-    property bool multipleDifferentTags: false
-    property bool multipleDifferentClasses: false
-
     // 可见性绑定：只有当有选中项时才显示
-    visible: selectedCount > 0
+    visible: info ? info.hasSelection : false
 
     QuiMenu {
         id: menu
@@ -55,7 +41,7 @@ Rectangle {
         SelectedLabelsInfoHeader {
             Layout.fillWidth: true
             height: 32
-            onClicked: root.clearSelection()
+            onClicked: if (root.info) root.info.clearSelection()
         }
 
         // 行1: 选中数量统计
@@ -74,14 +60,14 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.leftMargin: 5
                 Layout.rightMargin: 5
-                text: root.selectedCount + "/" + root.totalCount
+                text: root.info ? root.info.selectedCount + "/" + root.info.totalCount : "0/0"
                 
             }
         }
 
         InfoTextItem {
             title:  "数据集"
-            text: root.multipleDifferentDatasets ? "不同数据集" : root.datasetName
+            text: root.info ? root.info.datasetText : ""
             onClicked: {
                 copyboard.text = text
                 menu.popup()
@@ -90,7 +76,7 @@ Rectangle {
 
         InfoTextItem {
             title:  "图像"
-            text: root.multipleDifferentImages ? "不同图像" : root.imageName
+            text: root.info ? root.info.imageText : ""
             onClicked: {
                 copyboard.text = text
                 menu.popup()
@@ -99,7 +85,7 @@ Rectangle {
 
         InfoTextItem {
             title:  "图像Tag"
-            text: root.multipleDifferentImages ? "不同Tag" : root.tagName
+            text: root.info ? root.info.tagText : ""
             onClicked: {
                 copyboard.text = text
                 menu.popup()
@@ -126,12 +112,14 @@ Rectangle {
                 Layout.preferredHeight: 32
 
                 labelClassesModel: root.labelClasses
-                currentClassId: root.currentClassId
-                showMultipleDifferent: root.multipleDifferentClasses
+                currentClassId: root.info ? root.info.currentClassId : -1
+                showMultipleDifferent: root.info ? root.info.multipleClasses : false
                 multipleDifferentText: "不同类别"
 
                 onClassChanged: function(newClassId) {
-                    root.changeSelectedLabelsClass(newClassId)
+                    if (root.info) {
+                        root.info.changeSelectedLabelsClass(newClassId)
+                    }
                 }
             }
         }
@@ -141,118 +129,4 @@ Rectangle {
         }
     }
 
-    // 核心方法
-
-    // 更新选中信息
-    function updateSelectionInfo() {
-        if (!selection || !labelInstances) {
-            selectedCount = 0
-            return
-        }
-
-        // 获取选中的索引列表
-        let selectedIndexes = selection.selectedIndexes
-        selectedCount = selectedIndexes.length
-        totalCount = labelInstances.rowCount()
-
-        if (selectedCount === 0) {
-            return
-        }
-
-        // 收集图像ID和类别ID
-        let imageIds = new Set()
-        let classIds = new Set()
-
-        for (let i = 0; i < selectedIndexes.length; i++) {
-            let index = selectedIndexes[i]
-            let imageId = labelInstances.data(index, LabelInstancesModel.ImageIdRole)
-            let classId = labelInstances.data(index, LabelInstancesModel.LabelClassIdRole)
-
-            imageIds.add(imageId)
-            classIds.add(classId)
-        }
-
-        // 更新图像信息
-        if (imageIds.size === 1) {
-            multipleDifferentImages = false
-            let imageId = Array.from(imageIds)[0]
-            imageName = dataManager.getImageName(imageId)
-            datasetName = dataManager.getImageDatasetName(imageId)
-            tagName = dataManager.getImageTagName(imageId)
-        } else {
-            multipleDifferentImages = true
-            imageName = ""
-            datasetName = ""
-        }
-
-        // 更新类别信息
-        if (classIds.size === 1) {
-            multipleDifferentClasses = false
-            currentClassId = Array.from(classIds)[0]
-        } else {
-            multipleDifferentClasses = true
-            currentClassId = -1
-        }
-    }
-    
-    // 清除选中状态
-    function clearSelection() {
-        if (selection) {
-            selection.clear()
-        }
-    }
-
-    // 修改选中标注的类别
-    function changeSelectedLabelsClass(newClassId) {
-        if (!selection || !labelInstances || !dataManager) {
-            return
-        }
-
-        // 获取选中的标注ID列表
-        let selectedIndexes = selection.selectedIndexes
-        let labelIds = []
-
-        for (let i = 0; i < selectedIndexes.length; i++) {
-            let index = selectedIndexes[i]
-            let labelId = labelInstances.data(index, LabelInstancesModel.LabelIdRole)
-            labelIds.push(labelId)
-        }
-
-        if (labelIds.length === 0) {
-            return
-        }
-
-        // 创建类别ID数组（所有标注都改为同一类别）
-        let classIds = new Array(labelIds.length).fill(newClassId)
-
-        // 调用 DataManager 的批量更新方法
-        dataManager.updateLabelsClass(labelIds, classIds)
-    }
-
-    // 信号连接
-
-    Connections {
-        target: selection
-        function onSelectionChanged() {
-            root.updateSelectionInfo()
-        }
-    }
-
-    Connections {
-        target: labelInstances
-        function onRowsInserted() {
-            root.updateSelectionInfo()
-        }
-        function onRowsRemoved() {
-            root.updateSelectionInfo()
-        }
-        function onDataChanged() {
-            root.updateSelectionInfo()
-        }
-    }
-
-    // 组件完成时初始化
-    Component.onCompleted: {
-        updateSelectionInfo()
-    }
 }

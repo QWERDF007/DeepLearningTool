@@ -1,8 +1,10 @@
 #include "data/DataViewModels.h"
 
+#include "data/DataManager.h"
 #include "data/GlobalFilter.h"
 
 #include <algorithm>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -22,7 +24,7 @@ void notifySelectionRows(QAbstractItemModel *model, const QItemSelection &select
     }
 
     std::vector<std::pair<int, int>> ranges;
-    const auto append_ranges = [&ranges, model](const QItemSelection &selection)
+    const auto                       append_ranges = [&ranges, model](const QItemSelection &selection)
     {
         for (const QItemSelectionRange &range : selection)
         {
@@ -123,11 +125,11 @@ ImageInstancesViewModel::ImageInstancesViewModel(ImageInstancesListModel *source
                 [this]()
                 {
                     const int64_t previous_current_image_id = currentImageId();
-                    suppress_current_image_changed_           = true;
+                    suppress_current_image_changed_         = true;
                     rememberSelection();
                     if (bulk_depth_ > 0)
                     {
-                        filter_dirty_ = true;
+                        filter_dirty_                   = true;
                         suppress_current_image_changed_ = false;
                         return;
                     }
@@ -291,7 +293,7 @@ bool ImageInstancesViewModel::lessThan(const QModelIndex &left, const QModelInde
 
     const QString left_name  = sourceModel()->data(left, NameRole).toString();
     const QString right_name = sourceModel()->data(right, NameRole).toString();
-    const int order = QString::compare(left_name, right_name, Qt::CaseInsensitive);
+    const int     order      = QString::compare(left_name, right_name, Qt::CaseInsensitive);
     return order == 0 ? left_id > right_id : order < 0;
 }
 
@@ -315,8 +317,8 @@ QVariant ImageInstancesViewModel::data(const QModelIndex &index, const int role)
 QHash<int, QByteArray> ImageInstancesViewModel::roleNames() const
 {
     QHash<int, QByteArray> roles = QSortFilterProxyModel::roleNames();
-    roles[SelectedRole] = "selected";
-    roles[IsCurrentRole] = "isCurrent";
+    roles[SelectedRole]          = "selected";
+    roles[IsCurrentRole]         = "isCurrent";
     return roles;
 }
 
@@ -328,8 +330,8 @@ void ImageInstancesViewModel::rememberSelection()
     }
 
     remembered_selection_ids_ = getSelectedImagesId();
-    remembered_current_id_ = currentImageId();
-    selection_remembered_ = true;
+    remembered_current_id_    = currentImageId();
+    selection_remembered_     = true;
 }
 
 void ImageInstancesViewModel::restoreSelection()
@@ -348,7 +350,7 @@ void ImageInstancesViewModel::restoreSelection()
     }
     remembered_selection_ids_.clear();
     remembered_current_id_ = -1;
-    selection_remembered_ = false;
+    selection_remembered_  = false;
 }
 
 void ImageInstancesViewModel::notifySelectionRows(const QItemSelection &selected, const QItemSelection &deselected)
@@ -440,9 +442,9 @@ std::vector<int64_t> LabelInstancesViewModel::getSelectedImageIds() const
     }
 
     std::vector<int64_t> image_ids = labels->getImageIds(getSelectedLabelIds());
-    image_ids.erase(std::remove_if(image_ids.begin(), image_ids.end(),
-                                   [](const int64_t image_id) { return image_id < 0; }),
-                    image_ids.end());
+    image_ids.erase(
+        std::remove_if(image_ids.begin(), image_ids.end(), [](const int64_t image_id) { return image_id < 0; }),
+        image_ids.end());
     std::sort(image_ids.begin(), image_ids.end());
     image_ids.erase(std::unique(image_ids.begin(), image_ids.end()), image_ids.end());
     return image_ids;
@@ -499,7 +501,7 @@ QVariant LabelInstancesViewModel::data(const QModelIndex &index, const int role)
 QHash<int, QByteArray> LabelInstancesViewModel::roleNames() const
 {
     QHash<int, QByteArray> roles = QSortFilterProxyModel::roleNames();
-    roles[SelectedRole] = "selected";
+    roles[SelectedRole]          = "selected";
     return roles;
 }
 
@@ -511,7 +513,7 @@ void LabelInstancesViewModel::rememberSelection()
     }
 
     remembered_selection_ids_ = getSelectedLabelIds();
-    selection_remembered_ = true;
+    selection_remembered_     = true;
 }
 
 void LabelInstancesViewModel::restoreSelection()
@@ -529,6 +531,133 @@ void LabelInstancesViewModel::restoreSelection()
 void LabelInstancesViewModel::notifySelectionRows(const QItemSelection &selected, const QItemSelection &deselected)
 {
     ::dltool::data::notifySelectionRows(this, selected, deselected, {SelectedRole});
+}
+
+SelectedLabelsInfoModel::SelectedLabelsInfoModel(DataManager *data_manager, LabelInstancesViewModel *label_instances,
+                                                 QObject *parent)
+    : QObject(parent)
+    , data_manager_(data_manager)
+    , label_instances_(label_instances)
+{
+    if (label_instances_ != nullptr)
+    {
+        connect(label_instances_->selection(), &QItemSelectionModel::selectionChanged, this,
+                [this](const QItemSelection &, const QItemSelection &) { refresh(); });
+        connect(label_instances_, &QAbstractItemModel::rowsInserted, this,
+                [this](const QModelIndex &, int, int) { refresh(); });
+        connect(label_instances_, &QAbstractItemModel::rowsRemoved, this,
+                [this](const QModelIndex &, int, int) { refresh(); });
+        connect(label_instances_, &QAbstractItemModel::modelReset, this, &SelectedLabelsInfoModel::refresh);
+        connect(label_instances_, &QAbstractItemModel::dataChanged, this,
+                [this](const QModelIndex &, const QModelIndex &, const QList<int> &) { refresh(); });
+    }
+    refresh();
+}
+
+void SelectedLabelsInfoModel::clearSelection()
+{
+    if (label_instances_ != nullptr && label_instances_->selection() != nullptr)
+    {
+        label_instances_->selection()->clear();
+    }
+}
+
+void SelectedLabelsInfoModel::changeSelectedLabelsClass(const qint64 label_class_id)
+{
+    if (data_manager_ == nullptr || label_instances_ == nullptr || label_class_id < 0)
+    {
+        return;
+    }
+    const std::vector<int64_t> label_ids = label_instances_->getSelectedLabelIds();
+    if (label_ids.empty())
+    {
+        return;
+    }
+    data_manager_->updateLabelsClass(label_ids, std::vector<int64_t>(label_ids.size(), label_class_id));
+}
+
+void SelectedLabelsInfoModel::refresh()
+{
+    selected_count_ = 0;
+    total_count_    = label_instances_ == nullptr ? 0 : label_instances_->rowCount();
+    image_text_.clear();
+    dataset_text_.clear();
+    tag_text_.clear();
+    current_class_id_ = -1;
+    multiple_classes_ = false;
+
+    LabelInstancesListModel *source = label_instances_ == nullptr ? nullptr : label_instances_->source();
+    if (data_manager_ == nullptr || label_instances_ == nullptr || source == nullptr
+        || label_instances_->selection() == nullptr)
+    {
+        emit infoChanged();
+        return;
+    }
+
+    const QItemSelection ranges = label_instances_->selection()->selection();
+    for (const QItemSelectionRange &range : ranges)
+    {
+        if (range.isValid())
+        {
+            selected_count_ += range.height();
+        }
+    }
+    if (selected_count_ == 0)
+    {
+        emit infoChanged();
+        return;
+    }
+
+    int64_t           first_image_id   = -1;
+    int64_t           first_dataset_id = -1;
+    std::set<int64_t> first_tag_ids;
+    bool              initialized       = false;
+    bool              multiple_images   = false;
+    bool              multiple_datasets = false;
+    bool              multiple_tags     = false;
+    for (const QItemSelectionRange &range : ranges)
+    {
+        if (!range.isValid())
+        {
+            continue;
+        }
+        const int top    = std::max(0, range.top());
+        const int bottom = std::min(total_count_ - 1, range.bottom());
+        for (int row = top; row <= bottom; ++row)
+        {
+            const QModelIndex model_index  = label_instances_->index(row, 0);
+            const QModelIndex source_index = label_instances_->mapToSource(model_index);
+            const int64_t     image_id = source->data(source_index, LabelInstancesListModel::ImageIdRole).toLongLong();
+            const int64_t class_id = source->data(source_index, LabelInstancesListModel::LabelClassIdRole).toLongLong();
+            const int64_t dataset_id         = data_manager_->imageSource()->getImageDatasetId(image_id);
+            const std::set<int64_t> &tag_ids = data_manager_->imageSource()->getImageTagIds(image_id);
+            if (!initialized)
+            {
+                first_image_id    = image_id;
+                first_dataset_id  = dataset_id;
+                first_tag_ids     = tag_ids;
+                current_class_id_ = class_id;
+                initialized       = true;
+            }
+            else
+            {
+                multiple_images   = multiple_images || image_id != first_image_id;
+                multiple_datasets = multiple_datasets || dataset_id != first_dataset_id;
+                multiple_tags     = multiple_tags || tag_ids != first_tag_ids;
+                multiple_classes_ = multiple_classes_ || class_id != current_class_id_;
+            }
+        }
+    }
+
+    image_text_ = multiple_images ? QStringLiteral("不同图像") : data_manager_->getImageName(first_image_id);
+    dataset_text_
+        = multiple_datasets ? QStringLiteral("不同数据集") : data_manager_->getImageDatasetName(first_image_id);
+    tag_text_ = multiple_tags ? QStringLiteral("不同Tag") : data_manager_->getImageTagName(first_image_id);
+    if (multiple_classes_)
+    {
+        current_class_id_ = -1;
+    }
+    emit infoChanged();
 }
 
 } // namespace dltool::data

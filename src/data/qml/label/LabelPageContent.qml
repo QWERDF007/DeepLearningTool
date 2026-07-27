@@ -31,6 +31,21 @@ Rectangle {
     readonly property bool smartAnnotationLoading: smartAnnotation ? smartAnnotation.loadingModel : false
     readonly property var activeLabelCanvas: labelCanvasLoader.item
 
+    QuiContentDialog {
+        id: deleteConfirmDialog
+        title: "删除选中标签实例"
+        message: "确定删除选中的标签实例吗?"
+        onPositiveClicked: function() {
+            if (!page.dataManager || !page.activeLabelCanvas || !page.activeLabelCanvas.imageLabelsList) {
+                return
+            }
+            let labelIds = page.activeLabelCanvas.imageLabelsList.getSelectedLabelIds()
+            if (labelIds.length > 0) {
+                page.dataManager.deleteLabels(labelIds)
+            }
+        }
+    }
+
     Keys.priority: Keys.AfterItem
     Keys.onPressed: function(event) {
         if (page.handleLabelClassShortcut(event)) {
@@ -278,11 +293,12 @@ Rectangle {
     }
 
     function deleteSelectedLabels() {
-        if (!annotationToolbarVisible || !activeLabelCanvas || !activeLabelCanvas.actions) {
+        if (!annotationToolbarVisible || !activeLabelCanvas || !activeLabelCanvas.selection
+                || !activeLabelCanvas.selection.hasSelection) {
             return
         }
 
-        activeLabelCanvas.actions.deleteSelectedLabels()
+        deleteConfirmDialog.open()
     }
 
     function toggleBoundingBoxes() {

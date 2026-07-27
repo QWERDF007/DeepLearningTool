@@ -10,6 +10,7 @@
 namespace dltool::data {
 
 class GlobalFilter;
+class DataManager;
 
 /**
  * @brief 图像的可见列表模型。
@@ -168,6 +169,59 @@ private:
     bool                   dynamic_sort_before_bulk_{true};
     bool                   selection_remembered_{false};
     bool                   filter_dirty_{false};
+};
+
+/**
+ * @brief 复核页所选标注的信息摘要。
+ *
+ * 负责在 C++ 中汇总选择范围、图像、数据集、Tag 和类别信息，QML 仅绑定展示属性。
+ */
+class SelectedLabelsInfoModel final : public QObject
+{
+    Q_OBJECT
+    QML_NAMED_ELEMENT(SelectedLabelsInfoModel)
+    QML_UNCREATABLE("Can not create SelectedLabelsInfoModel directly!")
+
+    Q_PROPERTY(bool hasSelection READ hasSelection NOTIFY infoChanged FINAL)
+    Q_PROPERTY(int selectedCount READ selectedCount NOTIFY infoChanged FINAL)
+    Q_PROPERTY(int totalCount READ totalCount NOTIFY infoChanged FINAL)
+    Q_PROPERTY(QString imageText READ imageText NOTIFY infoChanged FINAL)
+    Q_PROPERTY(QString datasetText READ datasetText NOTIFY infoChanged FINAL)
+    Q_PROPERTY(QString tagText READ tagText NOTIFY infoChanged FINAL)
+    Q_PROPERTY(qint64 currentClassId READ currentClassId NOTIFY infoChanged FINAL)
+    Q_PROPERTY(bool multipleClasses READ multipleClasses NOTIFY infoChanged FINAL)
+
+public:
+    explicit SelectedLabelsInfoModel(DataManager *data_manager, LabelInstancesViewModel *label_instances,
+                                     QObject *parent = nullptr);
+
+    bool hasSelection() const { return selected_count_ > 0; }
+    int selectedCount() const { return selected_count_; }
+    int totalCount() const { return total_count_; }
+    QString imageText() const { return image_text_; }
+    QString datasetText() const { return dataset_text_; }
+    QString tagText() const { return tag_text_; }
+    qint64 currentClassId() const { return current_class_id_; }
+    bool multipleClasses() const { return multiple_classes_; }
+
+    Q_INVOKABLE void clearSelection();
+    Q_INVOKABLE void changeSelectedLabelsClass(qint64 label_class_id);
+
+signals:
+    void infoChanged();
+
+private:
+    void refresh();
+
+    DataManager             *data_manager_{nullptr};
+    LabelInstancesViewModel *label_instances_{nullptr};
+    int                      selected_count_{0};
+    int                      total_count_{0};
+    QString                  image_text_;
+    QString                  dataset_text_;
+    QString                  tag_text_;
+    int64_t                  current_class_id_{-1};
+    bool                     multiple_classes_{false};
 };
 
 } // namespace dltool::data

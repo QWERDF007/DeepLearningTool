@@ -195,13 +195,19 @@ Rectangle {
         Keys.enabled: thumbnailGridView.visible
         Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Escape) {
-                selection.clear()
+                if (selection) {
+                    selection.clear()
+                }
+                event.accepted = true
             } else if (event.key === Qt.Key_Delete && selection && selection.hasSelection) {
                 deleteConfirmDialog.open()
+                event.accepted = true
             } else if ((event.key === Qt.Key_A) && (event.modifiers & Qt.ControlModifier)) {
                 if (labelInstances) {
                     labelInstances.selectAll()
                 }
+                // 复核页的选择只属于 labelInstances，不能继续向其它页面的快捷键处理器传播。
+                event.accepted = true
             } else {
                 updateSelectionByKeyboard(event)
             }

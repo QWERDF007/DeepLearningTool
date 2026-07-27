@@ -61,7 +61,8 @@ protected:
 
     void updateProgress(int progress, const QString &message);
     void runInThread(std::function<void()> work);
-    bool importImagesOnly(int64_t dataset_id, const QString &image_dir, const QString &format_name);
+    bool importImagesOnly(int64_t dataset_id, const QString &image_dir, const QString &format_name,
+                          int thread_count);
 };
 
 // ============================================================================
@@ -97,9 +98,9 @@ private:
     };
 
     void doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir,
-                  double polygon_approx_epsilon_ratio);
+                  double polygon_approx_epsilon_ratio, int thread_count);
     void doScanLabelClasses(const QString &data_dir);
-    void doExport(ExportDataset dataset, QString output_dir);
+    void doExport(ExportDataset dataset, QString output_dir, int thread_count);
 
     QString findCocoJsonFile(const QString &data_path) const;
     bool    looksLikeCocoJson(const QString &json_path) const;
@@ -139,9 +140,9 @@ public:
                      const QVariantMap &options = {}) override;
 
 private:
-    void doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir);
+    void doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir, int thread_count);
     void doScanLabelClasses(const QString &image_dir, const QString &data_dir);
-    void doExport(ExportDataset dataset, QString output_dir);
+    void doExport(ExportDataset dataset, QString output_dir, int thread_count);
 
     bool        parseLabelMeJson(const QString &json_path, LabelMeData &data);
     QVariantMap convertShapeToLabelData(const LabelMeShape &shape, int image_width, int image_height,
@@ -174,9 +175,9 @@ private:
     };
 
     void doImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir,
-                  double polygon_approx_epsilon_ratio);
+                  double polygon_approx_epsilon_ratio, int thread_count);
     void doScanLabelClasses(const QString &data_dir);
-    void doExport(ExportDataset dataset, QString output_dir, QVariantMap options);
+    void doExport(ExportDataset dataset, QString output_dir, QVariantMap options, int thread_count);
 
     std::vector<QString>        scanMaskFiles(const QString &mask_dir) const;
     bool                        readMaskGeometry(const QString &mask_path, MaskGeometry &geometry,
@@ -206,9 +207,9 @@ public:
                      const QVariantMap &options = {}) override;
 
 private:
-    void doImport(int64_t dataset_id, const QString &image_dir);
+    void doImport(int64_t dataset_id, const QString &image_dir, int thread_count);
     void doScanLabelClasses(const QString &image_dir);
-    void doExport(ExportDataset dataset, QString output_dir);
+    void doExport(ExportDataset dataset, QString output_dir, int thread_count);
 };
 
 } // namespace dltool::data
