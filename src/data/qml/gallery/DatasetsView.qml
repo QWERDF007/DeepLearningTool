@@ -208,6 +208,32 @@ Rectangle {
                 }
             }
         }
+        QuiMenu {
+            id: copyToDatasetMenu
+            title: "复制到"
+            width: 200
+
+            Instantiator {
+                model: dataManager ? dataManager.datasets : null
+                delegate: QuiMenuItem {
+                    text: model.name
+                    iconSource: QuiFontIcon.Folder
+                    enabled: dataManager && selection && selection.hasSelection
+                    onClicked: {
+                        if (dataManager && datasets) {
+                            dataManager.copyToDataset(dataManager.imageIdsForDatasets(selectedDatasetIds()),
+                                                      model.dataset_id)
+                        }
+                    }
+                }
+                onObjectAdded: function(index, object) {
+                    copyToDatasetMenu.insertItem(index, object)
+                }
+                onObjectRemoved: function(index, object) {
+                    copyToDatasetMenu.removeItem(object)
+                }
+            }
+        }
         QuiMenuItem {
             text: "修改"
             iconSource: QuiFontIcon.Edit

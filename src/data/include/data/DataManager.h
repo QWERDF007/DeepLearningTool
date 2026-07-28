@@ -1,9 +1,9 @@
 ﻿#pragma once
 
 #include "CategoryStatisticsModel.h"
+#include "DataIO.h"
 #include "DataOperationWorkflow.h"
 #include "DataViewModels.h"
-#include "DataIO.h"
 #include "DatasetExportSource.h"
 #include "Datasets.h"
 #include "FilterItemsModel.h"
@@ -250,8 +250,8 @@ public:
     Q_INVOKABLE void        refreshAnomalyImageClassesFromPolygons(const std::vector<int64_t> &image_ids,
                                                                    bool                        only_unset = false);
 
-    Q_INVOKABLE void addTagClass(const QString &name);
-    Q_INVOKABLE bool updateTagClass(const int64_t tag_id, const QString &name);
+    Q_INVOKABLE void    addTagClass(const QString &name);
+    Q_INVOKABLE bool    updateTagClass(const int64_t tag_id, const QString &name);
     Q_INVOKABLE int64_t findTagClassId(const QString &name) const;
     Q_INVOKABLE bool    setLabelsTag(const std::vector<int64_t> &label_ids, const int64_t tag_id);
     Q_INVOKABLE bool    deleteTagClass(const int64_t tag_id);
@@ -269,15 +269,25 @@ public:
 
     std::vector<int64_t> selectedImageIds() const;
     std::vector<int64_t> allImageIds() const;
-    std::vector<int64_t> imageIdsForDatasets(const std::vector<int64_t> &dataset_ids) const;
-    QString              imagePath(int64_t image_id) const;
-    Q_INVOKABLE int64_t   imageDatasetId(int64_t image_id) const;
-    int64_t              imageLabelClassId(int64_t image_id) const;
+
+    Q_INVOKABLE std::vector<int64_t> imageIdsForDatasets(const std::vector<int64_t> &dataset_ids) const;
+
+    QString imagePath(int64_t image_id) const;
+
+    Q_INVOKABLE int64_t imageDatasetId(int64_t image_id) const;
+
+    int64_t imageLabelClassId(int64_t image_id) const;
+
     std::vector<int64_t> allLabelIds() const;
-    Q_INVOKABLE int64_t   labelImageId(int64_t label_id) const;
-    Q_INVOKABLE int64_t   labelClassId(int64_t label_id) const;
-    QVariantMap          labelData(int64_t label_id) const;
-    QString              labelClassName(int64_t label_class_id) const;
+
+    Q_INVOKABLE int64_t labelImageId(int64_t label_id) const;
+
+    Q_INVOKABLE int64_t labelClassId(int64_t label_id) const;
+
+    QVariantMap labelData(int64_t label_id) const;
+
+    QString labelClassName(int64_t label_class_id) const;
+
     /**
      * @brief 返回标签类别颜色。
      * @param label_class_id 标签类别 ID。
@@ -294,13 +304,13 @@ public:
      * 模型等调用方只接触 DatasetExportSource，不接触 DataManager 或项目数据库。
      * source 仅在 work 回调执行期间有效，completion 始终回到 context 所在线程。
      */
-    using DatasetExportWork
-        = std::function<void(const DatasetExportSource &, DataOperationWorkflow::Result &)>;
-    void runDatasetExportAsync(QObject *context, DatasetExportRequest request,
-                               DataOperationWorkflow::Options options, DatasetExportWork work,
-                               DataOperationWorkflow::Completion completion = {});
+    using DatasetExportWork = std::function<void(const DatasetExportSource &, DataOperationWorkflow::Result &)>;
+
+    void runDatasetExportAsync(QObject *context, DatasetExportRequest request, DataOperationWorkflow::Options options,
+                               DatasetExportWork work, DataOperationWorkflow::Completion completion = {});
 
     void importMaskData(int64_t dataset_id, const QString &image_manifest_path, const QString &prediction_output_dir);
+
     QMetaObject::Connection connectImportFinished(QObject *context, ImportFinishedHandler handler);
 
     void disconnectImportFinished(const QMetaObject::Connection &connection);
@@ -331,7 +341,7 @@ private:
 
     struct ImageCopyResult;
     void commitImageCopy(const std::shared_ptr<ImageCopyResult> &result,
-                         const DataOperationWorkflow::Result &operation);
+                         const DataOperationWorkflow::Result    &operation);
     void rebuildLabelRelations(bool notify_image_model = true);
 
     /**
@@ -345,8 +355,7 @@ private:
                          const QString &data_dir, const std::map<QString, QString> &label_class_groups);
     bool addLabelsInternal(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                            const std::vector<QVariantMap> &data, QString *err_msg = nullptr,
-                           bool refresh_dependent_models = true,
-                           std::vector<int64_t> *added_label_ids = nullptr);
+                           bool refresh_dependent_models = true, std::vector<int64_t> *added_label_ids = nullptr);
     bool writeImportBatch(int64_t dataset_id, const std::vector<QString> &image_paths,
                           const std::map<QString, QString> &label_class_info, const std::vector<ImportedLabel> &labels,
                           QString &err_msg);
@@ -371,7 +380,7 @@ private:
     }
 
     dltool::database::ProjectDataBase *database_{nullptr};
-    QString                          project_dir_;
+    QString                            project_dir_;
 
     DatasetsListModel       *datasets_{nullptr};
     ImageInstancesListModel *image_source_{nullptr};
