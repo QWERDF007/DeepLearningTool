@@ -7,9 +7,15 @@ import dltool.ui
 import quickui
 
 Rectangle {
+    id: footer
     width: 640
     height: 36
     color: QuiColor.Background
+
+    property bool showLabelStatus: false
+    property string labelSidebarState: ""
+    property string labelImageName: ""
+    property string labelDatasetName: ""
     
     function calculateWindowDialogPosition(badge, dialog, avoidLogDialog) {
         let pos = badge.mapToItem(null, 0, 0)
@@ -37,6 +43,22 @@ Rectangle {
 
         return Qt.point(dialogX, dialogY)
     }
+
+    QuiMenu {
+        id: menu
+        width: 200
+        QuiMenuItem {
+            text: "复制"
+            onTriggered: {
+                copyboard.selectAll()
+                copyboard.copy()
+            }
+        }
+    }
+    TextEdit {
+        id: copyboard
+        visible: false
+    }
     
     RowLayout {
         anchors.fill: parent
@@ -44,6 +66,44 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             color: QuiColor.Primary
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                spacing: 18
+                visible: footer.showLabelStatus
+
+                QuiText {
+                    Layout.preferredWidth: 100
+                    text: "工具: " + footer.labelSidebarState
+                    elide: Text.ElideRight
+                }
+                QuiText {
+                    Layout.preferredWidth: 240
+                    text: "数据集: " + footer.labelDatasetName
+                    elide: Text.ElideRight
+                }
+                QuiText {
+                    // Layout.fillWidth: true
+                    text: "图像: " + footer.labelImageName 
+                    elide: Text.ElideRight
+
+                    MouseArea {
+                        id: mouseArea
+                        anchors.fill: parent
+                        acceptedButtons: Qt.RightButton
+                        onClicked: {
+                            copyboard.text = footer.labelImageName 
+                            menu.popup()
+                        }
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                }
+            }
         }
         Rectangle {
             visible: ProgressManager ? ProgressManager.isRunning : false

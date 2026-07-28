@@ -168,7 +168,8 @@ void DataManager::init(const int method)
     custom_filter_items_      = new CustomFilterItemsModel(this);
 
     // Create CategoryStatisticsModel
-    category_statistics_model_ = new CategoryStatisticsModel(label_source_, label_classes_, image_source_, this);
+    category_statistics_model_
+        = new CategoryStatisticsModel(label_source_, label_classes_, image_source_, this, global_filter_);
 
     // Populate filter items models from datasets and tags
     dataset_filter_items_->populateFromDatasets(datasets_);

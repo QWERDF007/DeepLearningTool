@@ -1,5 +1,6 @@
 #include "data/CategoryStatisticsModel.h"
 
+#include "data/GlobalFilter.h"
 #include "data/Images.h"
 #include "data/LabelClasses.h"
 #include "data/Labels.h"
@@ -10,11 +11,13 @@ namespace dltool::data {
 
 CategoryStatisticsModel::CategoryStatisticsModel(LabelInstancesListModel *labelInstances,
                                                  LabelClassesListModel *labelClasses,
-                                                 ImageInstancesListModel *imageInstances, QObject *parent)
+                                                 ImageInstancesListModel *imageInstances, QObject *parent,
+                                                 GlobalFilter *filter)
     : QAbstractListModel(parent)
     , label_instances_(labelInstances)
     , label_classes_(labelClasses)
     , image_instances_(imageInstances)
+    , filter_(filter)
 {
 }
 
@@ -76,10 +79,25 @@ void CategoryStatisticsModel::refreshData(const bool applyFilter)
 {
     try
     {
+        CategoryStatisticsPredicate      image_predicate;
+        CategoryStatisticsLabelPredicate label_predicate;
+        if (applyFilter && filter_ != nullptr)
+        {
+            image_predicate = [this](const int64_t image_id, const int64_t)
+            {
+                return filter_->acceptsImage(image_id);
+            };
+            label_predicate = [this](const int64_t label_id, const int64_t, const int64_t)
+            {
+                return filter_->acceptsLabel(label_id);
+            };
+        }
+
         const CategoryStatisticsResult result
             = calculateCategoryStatistics(label_instances_, label_classes_, image_instances_,
                                           applyFilter ? CategoryStatisticsSource::FilteredData
-                                                      : CategoryStatisticsSource::AllData);
+                                                      : CategoryStatisticsSource::AllData,
+                                          image_predicate, label_predicate);
 
         beginResetModel();
         statistics_      = result.items;

@@ -75,6 +75,10 @@ ApplicationWindow {
         id: _footer
         width: parent.width
         height: 32
+        showLabelStatus: content.currentIndex === 2
+        labelSidebarState: content.labelPageItem ? content.labelPageItem.currentSidebarState : ""
+        labelImageName: content.labelPageItem ? content.labelPageItem.currentImageName : ""
+        labelDatasetName: content.labelPageItem ? content.labelPageItem.currentDatasetName : ""
     }
 
     Component.onCompleted: {

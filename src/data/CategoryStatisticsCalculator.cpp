@@ -23,7 +23,8 @@ CategoryStatisticsResult calculateCategoryStatistics(LabelInstancesListModel *la
                                                       LabelClassesListModel *label_classes,
                                                       ImageInstancesListModel *image_instances,
                                                       const CategoryStatisticsSource source,
-                                                      const CategoryStatisticsPredicate &predicate)
+                                                      const CategoryStatisticsPredicate &predicate,
+                                                      const CategoryStatisticsLabelPredicate &label_predicate)
 {
     CategoryStatisticsResult result;
 
@@ -64,7 +65,8 @@ CategoryStatisticsResult calculateCategoryStatistics(LabelInstancesListModel *la
                                                 .toLongLong();
                 const int64_t image_id = label_instances->data(index, LabelInstancesListModel::ImageIdRole).toLongLong();
                 const int64_t class_id = label_instances->getLabelClassId(label_id);
-                if (class_id < 0 || !included(predicate, image_id, class_id))
+                if (class_id < 0 || (label_predicate ? !label_predicate(label_id, image_id, class_id)
+                                                      : !included(predicate, image_id, class_id)))
                     continue;
 
                 ++category_instance_counts[class_id];
@@ -78,13 +80,13 @@ CategoryStatisticsResult calculateCategoryStatistics(LabelInstancesListModel *la
         {
             for (const auto &[label_id, instance] : label_instances->getAllLabelInstances())
             {
-                Q_UNUSED(label_id)
                 if (instance == nullptr)
                     continue;
 
                 const int64_t image_id = instance->imageId();
                 const int64_t class_id = instance->labelClassId();
-                if (class_id < 0 || !included(predicate, image_id, class_id))
+                if (class_id < 0 || (label_predicate ? !label_predicate(label_id, image_id, class_id)
+                                                      : !included(predicate, image_id, class_id)))
                     continue;
 
                 ++category_instance_counts[class_id];

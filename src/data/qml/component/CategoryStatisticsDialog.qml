@@ -232,7 +232,7 @@ QuiPopup {
                 onCheckedChanged: {
                     control.applyFilter = checked
                     if (statisticsModel) {
-                        statisticsModel.refreshData(applyFilter)
+                        statisticsModel.refreshData(control.applyFilter)
                     }
                 }
             }

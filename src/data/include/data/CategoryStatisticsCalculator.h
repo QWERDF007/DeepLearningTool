@@ -38,6 +38,12 @@ struct CategoryStatisticsResult
 
 using CategoryStatisticsPredicate = std::function<bool(int64_t image_id, int64_t label_class_id)>;
 
+// Label-level filtering needs the label ID as well.  In particular, the
+// global filter's "label search result" condition cannot be evaluated from an
+// image ID and class ID alone.
+using CategoryStatisticsLabelPredicate
+    = std::function<bool(int64_t label_id, int64_t image_id, int64_t label_class_id)>;
+
 /**
  * @brief 计算类别的实例和图像统计。
  *
@@ -48,6 +54,7 @@ CategoryStatisticsResult calculateCategoryStatistics(LabelInstancesListModel *la
                                                       LabelClassesListModel *label_classes,
                                                       ImageInstancesListModel *image_instances,
                                                       CategoryStatisticsSource source,
-                                                      const CategoryStatisticsPredicate &predicate = {});
+                                                      const CategoryStatisticsPredicate &predicate = {},
+                                                      const CategoryStatisticsLabelPredicate &label_predicate = {});
 
 } // namespace dltool::data

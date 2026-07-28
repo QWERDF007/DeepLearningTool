@@ -10,6 +10,7 @@ namespace dltool::data {
 class LabelInstancesListModel;
 class LabelClassesListModel;
 class ImageInstancesListModel;
+class GlobalFilter;
 
 class CategoryStatisticsModel : public QAbstractListModel
 {
@@ -34,7 +35,8 @@ public:
     Q_ENUM(Role)
 
     explicit CategoryStatisticsModel(LabelInstancesListModel *labelInstances, LabelClassesListModel *labelClasses,
-                                     ImageInstancesListModel *imageInstances, QObject *parent = nullptr);
+                                     ImageInstancesListModel *imageInstances, QObject *parent = nullptr,
+                                     GlobalFilter *filter = nullptr);
     ~CategoryStatisticsModel() override = default;
 
     int                    rowCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -62,6 +64,7 @@ private:
     LabelInstancesListModel *label_instances_{nullptr};
     LabelClassesListModel  *label_classes_{nullptr};
     ImageInstancesListModel *image_instances_{nullptr};
+    GlobalFilter             *filter_{nullptr};
 
     std::vector<CategoryStatisticsItem> statistics_;
     int                                  total_instances_{0};

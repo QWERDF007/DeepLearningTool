@@ -30,6 +30,17 @@ Rectangle {
     readonly property SmartAnnotationController smartAnnotation: featureManager ? featureManager.smartAnnotation : null
     readonly property bool smartAnnotationLoading: smartAnnotation ? smartAnnotation.loadingModel : false
     readonly property var activeLabelCanvas: labelCanvasLoader.item
+    readonly property string currentSidebarState: sidebarStateText(
+        activeLabelCanvas ? activeLabelCanvas.toolMode : LabelCanvasEnums.SelectTool,
+        activeLabelCanvas && activeLabelCanvas.smartPromptMode !== undefined
+            ? activeLabelCanvas.smartPromptMode : LabelCanvasEnums.PointPrompt)
+    readonly property string currentImageName: dataManager && dataManager.imageInstances
+                                               ? dataManager.imageInstances.currentImageName : ""
+    readonly property string currentDatasetName: {
+        const images = dataManager ? dataManager.imageInstances : null
+        const imageId = images ? images.currentImageId : -1
+        return dataManager && imageId >= 0 ? dataManager.getImageDatasetName(imageId) : ""
+    }
 
     QuiContentDialog {
         id: deleteConfirmDialog
@@ -290,6 +301,19 @@ Rectangle {
 
         let value = activeLabelCanvas.showBoundingBoxes
         return value === undefined ? false : value
+    }
+
+    function sidebarStateText(toolMode, promptMode) {
+        if (toolMode === LabelCanvasEnums.RectangleTool) {
+            return "绘制矩形"
+        }
+        if (toolMode === LabelCanvasEnums.PolygonTool) {
+            return "绘制多边形"
+        }
+        if (toolMode === LabelCanvasEnums.SmartTool) {
+            return promptMode === LabelCanvasEnums.BoxPrompt ? "智能标注（框提示）" : "智能标注（点提示）"
+        }
+        return "选中"
     }
 
     function deleteSelectedLabels() {

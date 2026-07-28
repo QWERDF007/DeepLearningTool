@@ -18,6 +18,7 @@ StackLayout {
     property FeatureManager featureManager: project ? project.featureManager : null
     property bool shuttingDown: false
     property int projectGeneration: 0
+    property var labelPageItem: null
 
     onProjectChanged: projectGeneration += 1
 
@@ -82,8 +83,16 @@ StackLayout {
             Component.onCompleted: syncSource()
             onShouldLoadChanged: syncSource()
             onReloadGenerationChanged: syncSource()
+            onItemChanged: {
+                if (index === 2) {
+                    content.labelPageItem = item
+                }
+            }
 
             function syncSource() {
+                if (index === 2) {
+                    content.labelPageItem = null
+                }
                 sourceComponent = null
                 if (shouldLoad) {
                     sourceComponent = modelData
