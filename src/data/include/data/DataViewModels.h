@@ -91,12 +91,14 @@ protected:
 private:
     void rememberSelection();
     void restoreSelection();
+    void selectNextAfterCurrentRemoval();
     void notifySelectionRows(const QItemSelection &selected, const QItemSelection &deselected);
 
     GlobalFilter     *filter_{nullptr};
     SelectionSupport *selection_support_{nullptr};
     ImageSortOrder    sort_order_{ImageSortOrder::AddedTime};
     std::vector<int64_t> remembered_selection_ids_;
+    std::vector<int64_t> remembered_image_ids_;
     int64_t              remembered_current_id_{-1};
     int                  bulk_depth_{0};
     bool                 dynamic_sort_before_bulk_{true};

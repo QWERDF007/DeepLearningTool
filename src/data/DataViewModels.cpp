@@ -4,6 +4,7 @@
 #include "data/GlobalFilter.h"
 
 #include <algorithm>
+#include <iterator>
 #include <set>
 #include <utility>
 #include <vector>
@@ -331,7 +332,59 @@ void ImageInstancesViewModel::rememberSelection()
 
     remembered_selection_ids_ = getSelectedImagesId();
     remembered_current_id_    = currentImageId();
+    remembered_image_ids_.clear();
+    remembered_image_ids_.reserve(static_cast<size_t>(rowCount()));
+    for (int row = 0; row < rowCount(); ++row)
+    {
+        remembered_image_ids_.push_back(data(index(row, 0), ImageIdRole).toLongLong());
+    }
     selection_remembered_     = true;
+}
+
+void ImageInstancesViewModel::selectNextAfterCurrentRemoval()
+{
+    if (remembered_current_id_ < 0 || rowCount() <= 0)
+    {
+        return;
+    }
+
+    const auto current_it
+        = std::find(remembered_image_ids_.cbegin(), remembered_image_ids_.cend(), remembered_current_id_);
+    if (current_it == remembered_image_ids_.cend())
+    {
+        return;
+    }
+
+    const auto selectImage = [this](const int64_t image_id)
+    {
+        const int row = findRowByImageId(image_id);
+        if (row < 0)
+        {
+            return false;
+        }
+
+        const QModelIndex next_index = index(row, 0);
+        selection()->select(next_index, QItemSelectionModel::ClearAndSelect);
+        selection()->setCurrentIndex(next_index, QItemSelectionModel::Select);
+        selection_support_->setAnchorRow(row);
+        return true;
+    };
+
+    for (auto it = std::next(current_it); it != remembered_image_ids_.cend(); ++it)
+    {
+        if (selectImage(*it))
+        {
+            return;
+        }
+    }
+    for (auto it = current_it; it != remembered_image_ids_.cbegin();)
+    {
+        --it;
+        if (selectImage(*it))
+        {
+            return;
+        }
+    }
 }
 
 void ImageInstancesViewModel::restoreSelection()
@@ -341,14 +394,27 @@ void ImageInstancesViewModel::restoreSelection()
         return;
     }
 
+    const bool current_removed = remembered_current_id_ >= 0 && findRowByImageId(remembered_current_id_) < 0;
     selection_support_->restoreIds(remembered_selection_ids_, ImageIdRole, remembered_current_id_);
-    if (!selection()->currentIndex().isValid() && rowCount() > 0)
+    if (current_removed)
+    {
+        selection()->clear();
+        selectNextAfterCurrentRemoval();
+        if (!selection()->currentIndex().isValid() && rowCount() > 0)
+        {
+            const QModelIndex first = index(0, 0);
+            selection()->setCurrentIndex(first, QItemSelectionModel::ClearAndSelect);
+            selection_support_->setAnchorRow(0);
+        }
+    }
+    else if (!selection()->currentIndex().isValid() && rowCount() > 0)
     {
         const QModelIndex first = index(0, 0);
         selection()->setCurrentIndex(first, QItemSelectionModel::ClearAndSelect);
         selection_support_->setAnchorRow(0);
     }
     remembered_selection_ids_.clear();
+    remembered_image_ids_.clear();
     remembered_current_id_ = -1;
     selection_remembered_  = false;
 }
