@@ -80,7 +80,7 @@ Rectangle {
                     elide: Text.ElideRight
                 }
                 QuiText {
-                    Layout.preferredWidth: 240
+                    Layout.preferredWidth: 320
                     text: "数据集: " + footer.labelDatasetName
                     elide: Text.ElideRight
                 }
