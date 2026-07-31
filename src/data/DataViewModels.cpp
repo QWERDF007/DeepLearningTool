@@ -102,6 +102,20 @@ ImageInstancesViewModel::ImageInstancesViewModel(ImageInstancesListModel *source
                     emit currentImageChanged();
                 }
             });
+    connect(this, &QAbstractItemModel::dataChanged, this,
+            [this](const QModelIndex &top_left, const QModelIndex &bottom_right, const QList<int> &roles)
+            {
+                if (!roles.isEmpty() && !roles.contains(ImageLabelClassIdRole))
+                {
+                    return;
+                }
+
+                const QModelIndex current = selection()->currentIndex();
+                if (current.isValid() && current.row() >= top_left.row() && current.row() <= bottom_right.row())
+                {
+                    emit currentImageChanged();
+                }
+            });
     connect(this, &QAbstractItemModel::modelAboutToBeReset, this, &ImageInstancesViewModel::rememberSelection);
     connect(this, &QAbstractItemModel::modelReset, this,
             [this]()

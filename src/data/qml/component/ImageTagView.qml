@@ -14,15 +14,44 @@ Rectangle {
     property ImageLabelsListModel imageLabelsList: dataManager ? dataManager.imageLabelsList : null
     property ImageTagsModel imageTags: dataManager ? dataManager.imageTags : null
     property bool multiSelect: false
-    readonly property bool hasSelectedLabels: !multiSelect && imageLabelsList && imageLabelsList.selection
-                                             && imageLabelsList.selection.hasSelection
+    property int _labelSelectionRevision: 0
+    readonly property var selectedLabelIds: {
+        // Make the binding depend on selection signals as well as hasSelection.
+        // A model reset can temporarily leave hasSelection true with no valid rows.
+        const revision = _labelSelectionRevision
+        if (multiSelect || !imageLabelsList || !imageLabelsList.selection
+                || !imageLabelsList.selection.hasSelection) {
+            return []
+        }
+        const ids = imageLabelsList.getSelectedLabelIds()
+        return ids ? ids : []
+    }
+    readonly property bool hasSelectedLabels: selectedLabelIds.length > 0
     property int cellWidth: 80
     property int cellHeight: 30
     property int spacing: 10
 
     property int contextTagId: -1
     property string contextTagName: ""
+    property string contextTagShortcut: ""
     property int editingTagId: -1
+    readonly property bool shortcutEditorOpen: renameTagDialog.visible || tagHeader.editorOpen
+
+    Connections {
+        target: imageTagView.imageLabelsList ? imageTagView.imageLabelsList.selection : null
+        function onSelectionChanged(selected, deselected) {
+            ++imageTagView._labelSelectionRevision
+        }
+        function onCurrentChanged(current, previous) {
+            ++imageTagView._labelSelectionRevision
+        }
+    }
+
+    Connections {
+        target: imageTagView.imageLabelsList
+        function onModelReset() { ++imageTagView._labelSelectionRevision }
+        function onRowsRemoved(parent, first, last) { ++imageTagView._labelSelectionRevision }
+    }
 
     QuiMenu {
         id: tagContextMenu
@@ -34,7 +63,8 @@ Rectangle {
             enabled: imageTagView.contextTagId >= 0
             onClicked: {
                 imageTagView.editingTagId = imageTagView.contextTagId
-                renameTagDialog.openForm(imageTagView.contextTagName)
+                renameTagDialog.openForEdit(imageTagView.contextTagId, imageTagView.contextTagName,
+                                            imageTagView.contextTagShortcut)
             }
         }
 
@@ -58,24 +88,12 @@ Rectangle {
         }
     }
 
-    DataNameFormDialog {
+    ImageTagFormDialog {
         id: renameTagDialog
-        title: "修改 Tag"
-        fieldLabel: "Tag 名称"
-        placeholderText: "输入 Tag 名称"
-        emptyError: "请输入 Tag 名称"
-        nameValidator: function(tagName) {
-            if (!imageTagView.dataManager) {
-                return "数据管理器不可用"
-            }
-            if (imageTagView.editingTagId < 0) {
-                return "未选择要修改的 Tag"
-            }
-            return imageTagView.dataManager.isValidTagName(tagName, imageTagView.editingTagId)
-        }
-        onSubmitted: function(tagName) {
-            if (imageTagView.dataManager && imageTagView.editingTagId >= 0) {
-                imageTagView.dataManager.updateTagClass(imageTagView.editingTagId, tagName)
+        dataManager: imageTagView.dataManager
+        onSubmitted: function(tagId, tagName, shortcut) {
+            if (imageTagView.dataManager && tagId >= 0) {
+                imageTagView.dataManager.updateTagClass(tagId, tagName, shortcut)
             }
             imageTagView.editingTagId = -1
         }
@@ -85,6 +103,7 @@ Rectangle {
         anchors.fill: parent
         anchors.margins: 5
         ImageTagHeader {
+            id: tagHeader
             Layout.fillWidth: true
             height: 32
             dataManager: imageTagView.dataManager
@@ -102,30 +121,46 @@ Rectangle {
                 height: imageTagView.cellHeight
                 tagId: model.tag_id
                 tagName: model.name
+                tagShortcut: model.shortcut || ""
                 tagStats: imageTagView.multiSelect ? model.selected_images_stats
                                                     : (imageTagView.hasSelectedLabels
                                                        ? model.selected_labels_stats : model.current_image_stats)
                 onClicked: {
-                    if (imageTagView.multiSelect)
-                    {
-                        imageTags.setImagesTag(imageInstances.getSelectedImagesId(), model.tag_id)
-                    }
-                    else if (imageTagView.hasSelectedLabels)
-                    {
-                        imageTags.setLabelsTag(imageLabelsList.getSelectedLabelIds(), model.tag_id)
-                    }
-                    else
-                    {
-                        imageTags.setImageTag(imageInstances.currentImageId, model.tag_id)
-                    }
+                    imageTagView.toggleTag(Number(model.tag_id))
                 }
-                onContextMenuRequested: function(tagId, tagName) {
+                onContextMenuRequested: function(tagId, tagName, tagShortcut) {
                     imageTagView.contextTagId = tagId
                     imageTagView.contextTagName = tagName
+                    imageTagView.contextTagShortcut = tagShortcut
                     tagContextMenu.popup()
                 }
             }
         }
+    }
+
+    function toggleTag(tagId) {
+        if (!imageTags || !imageInstances || tagId < 0) {
+            return false
+        }
+        if (multiSelect) {
+            const imageIds = imageInstances.getSelectedImagesId()
+            return imageIds && imageIds.length > 0 ? imageTags.setImagesTag(imageIds, tagId) : false
+        }
+        if (hasSelectedLabels) {
+            return imageTags.setLabelsTag(selectedLabelIds, tagId)
+        }
+        return imageInstances.currentImageId >= 0
+                ? imageTags.setImageTag(imageInstances.currentImageId, tagId) : false
+    }
+
+    function handleShortcutEvent(event) {
+        if (!event || event.accepted || shortcutEditorOpen || !dataManager || !dataManager.shortcutManager
+                || !event.text || event.text.length <= 0
+                || (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
+            return false
+        }
+        const tagId = Number(dataManager.shortcutManager.findTagId(event.text))
+        return tagId >= 0 ? toggleTag(tagId) : false
     }
 
 }

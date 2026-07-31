@@ -158,6 +158,8 @@ void DataManager::init(const int method)
     image_labels_table_ = new ImageLabelsTableModel(image_instances_, label_source_, label_classes_, this);
     image_tags_
         = new ImageTagsListModel(database_, image_source_, image_instances_, label_source_, image_labels_list_, this);
+    shortcut_manager_ = new ShortcutManager(label_classes_, image_tags_, this);
+    label_classes_->setShortcutManager(shortcut_manager_);
     selected_labels_info_ = new SelectedLabelsInfoModel(this, label_instances_, this);
     image_info_           = new ImageInfoListModel(datasets_, image_instances_, label_classes_, label_source_, this);
 
@@ -696,6 +698,17 @@ QString DataManager::isValidTagName(const QString &name, const int64_t tag_id) c
         return QStringLiteral("error:Tag 名称已存在");
     }
     return QString();
+}
+
+QString DataManager::isValidTag(const QString &name, const QString &shortcut, const int64_t tag_id) const
+{
+    const QString name_error = isValidTagName(name, tag_id);
+    if (!name_error.isEmpty())
+    {
+        return name_error;
+    }
+    return shortcut_manager_ ? shortcut_manager_->validateTagShortcut(shortcut, tag_id)
+                             : QStringLiteral("error:快捷键管理器不可用");
 }
 
 void DataManager::deleteDatasets(const std::vector<int64_t> &dataset_ids)
@@ -1771,6 +1784,7 @@ void DataManager::addLabelClass(const QString &name, const QString &color, const
 void DataManager::addLabelClassWithGroup(const QString &name, const QString &color, const QString &shortcut,
                                          const QString &group)
 {
+    const QString normalized_shortcut = ShortcutManager::normalizedShortcut(shortcut);
     if (isDataOperationRunning())
     {
         ui::SignalHelper::notifyWarn(QString("添加标签类别"), QString("当前已有数据操作正在进行中"));
@@ -1784,14 +1798,14 @@ void DataManager::addLabelClassWithGroup(const QString &name, const QString &col
     }
     if (label_classes_ != nullptr)
     {
-        const QString label_error = label_classes_->isValid(-1, name, color, shortcut, -1);
+        const QString label_error = label_classes_->isValid(-1, name, color, normalized_shortcut, -1);
         if (label_error.startsWith(QStringLiteral("error:")))
         {
             spdlog::warn("添加标签类别失败: {}", label_error.toUtf8().constData());
             return;
         }
     }
-    label_classes_->addLabelClass(name, color, shortcut, group);
+    label_classes_->addLabelClass(name, color, normalized_shortcut, group);
 }
 
 void DataManager::updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,
@@ -1805,6 +1819,7 @@ void DataManager::updateLabelClass(const int64_t label_class_id, const QString &
 void DataManager::updateLabelClassWithGroup(const int64_t label_class_id, const QString &name, const QString &color,
                                             const QString &shortcut, const int64_t ordinal_index, const QString &group)
 {
+    const QString normalized_shortcut = ShortcutManager::normalizedShortcut(shortcut);
     if (isDataOperationRunning())
     {
         ui::SignalHelper::notifyWarn(QString("更新标签类别"), QString("当前已有数据操作正在进行中"));
@@ -1818,7 +1833,8 @@ void DataManager::updateLabelClassWithGroup(const int64_t label_class_id, const 
     }
     if (label_classes_ != nullptr)
     {
-        const QString label_error = label_classes_->isValid(static_cast<int>(label_class_id), name, color, shortcut,
+        const QString label_error = label_classes_->isValid(static_cast<int>(label_class_id), name, color,
+                                                            normalized_shortcut,
                                                             static_cast<int>(ordinal_index));
         if (label_error.startsWith(QStringLiteral("error:")))
         {
@@ -1846,7 +1862,7 @@ void DataManager::updateLabelClassWithGroup(const int64_t label_class_id, const 
     }
 
     // 更新其他属性（名称、颜色、快捷键），使用新的 ordinal_index
-    label_classes_->updateLabelClass(label_class_id, name, color, shortcut, ordinal_index, group);
+    label_classes_->updateLabelClass(label_class_id, name, color, normalized_shortcut, ordinal_index, group);
     image_labels_list_->labelClassUpdated(label_class_id);
     image_labels_table_->labelClassUpdated(label_class_id);
     image_info_->updateLabelInfo();
@@ -2247,10 +2263,11 @@ void DataManager::refreshAnomalyImageClassesFromPolygons(const std::vector<int64
     }
 }
 
-void DataManager::addTagClass(const QString &name)
+void DataManager::addTagClass(const QString &name, const QString &shortcut)
 {
     const QString normalized_name  = name.trimmed();
-    const QString validation_error = isValidTagName(normalized_name);
+    const QString normalized_shortcut = ShortcutManager::normalizedShortcut(shortcut);
+    const QString validation_error = isValidTag(normalized_name, normalized_shortcut);
     if (!validation_error.isEmpty())
     {
         spdlog::warn("添加 Tag 失败: {}", validation_error.toUtf8().constData());
@@ -2265,13 +2282,14 @@ void DataManager::addTagClass(const QString &name)
     {
         return;
     }
-    image_tags_->addTagClass(normalized_name);
+    image_tags_->addTagClass(normalized_name, normalized_shortcut);
 }
 
-bool DataManager::updateTagClass(const int64_t tag_id, const QString &name)
+bool DataManager::updateTagClass(const int64_t tag_id, const QString &name, const QString &shortcut)
 {
     const QString normalized_name  = name.trimmed();
-    const QString validation_error = isValidTagName(normalized_name, tag_id);
+    const QString normalized_shortcut = ShortcutManager::normalizedShortcut(shortcut);
+    const QString validation_error = isValidTag(normalized_name, normalized_shortcut, tag_id);
     if (!validation_error.isEmpty())
     {
         spdlog::warn("更新 Tag 失败: {}", validation_error.toUtf8().constData());
@@ -2282,7 +2300,7 @@ bool DataManager::updateTagClass(const int64_t tag_id, const QString &name)
         ui::SignalHelper::notifyWarn(QString("更新 Tag"), QString("当前已有数据操作正在进行中"));
         return false;
     }
-    return image_tags_ != nullptr && image_tags_->updateTagClass(tag_id, normalized_name);
+    return image_tags_ != nullptr && image_tags_->updateTagClass(tag_id, normalized_name, normalized_shortcut);
 }
 
 int64_t DataManager::findTagClassId(const QString &name) const

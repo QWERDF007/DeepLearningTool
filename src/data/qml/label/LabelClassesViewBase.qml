@@ -49,7 +49,7 @@ Rectangle {
             listView: view
             labelClasses: labelClassesView.labelClasses
             dragEnabled: true
-            onClicked: labelClassesView.selectClassIndex(index, true)
+            onClicked: labelClassesView.activateClassIndex(index)
             onEditClicked: labelClassesView.openEditorForClass(this, Number(model.label_class_id),
                                                                model.name || "", model.color || "black",
                                                                model.shortcut || "", Number(model.ordinal_index),
@@ -74,62 +74,53 @@ Rectangle {
         }
     }
 
-    onSelectionFollowsCurrentImageClassChanged: syncSelectionToCurrentImageClass()
+    onSelectionFollowsCurrentImageClassChanged: syncSelectionToContext()
+    onDrawingToolActiveChanged: {
+        if (!drawingToolActive) {
+            syncSelectionToContext()
+        }
+    }
     onDataManagerChanged: {
         refreshViewModel()
-        syncSelectionToCurrentImageClass()
+        syncSelectionToContext()
     }
     onLabelClassesChanged: {
         refreshViewModel()
-        syncSelectionToCurrentImageClass()
+        syncSelectionToContext()
     }
 
     Connections {
         target: labelClassesView.imageInstances
         function onCurrentImageChanged() {
-            labelClassesView.syncSelectionToCurrentImageClass()
+            labelClassesView.syncSelectionToContext()
         }
     }
 
     Connections {
         target: labelClassesView.imageLabelsList
-        function onRowsInserted(parent, first, last) { labelClassesView.syncSelectionToCurrentImageClass() }
-        function onRowsRemoved(parent, first, last) { labelClassesView.syncSelectionToCurrentImageClass() }
-        function onDataChanged(topLeft, bottomRight, roles) { labelClassesView.syncSelectionToCurrentImageClass() }
-        function onModelReset() { labelClassesView.syncSelectionToCurrentImageClass() }
+        function onRowsInserted(parent, first, last) { labelClassesView.syncSelectionToContext() }
+        function onRowsRemoved(parent, first, last) { labelClassesView.syncSelectionToContext() }
+        function onDataChanged(topLeft, bottomRight, roles) { labelClassesView.syncSelectionToContext() }
+        function onModelReset() { labelClassesView.syncSelectionToContext() }
     }
 
     Connections {
         target: labelClassesView.labelClasses
         function onRowsInserted(parent, first, last) {
             labelClassesView.refreshViewModel()
-            labelClassesView.syncSelectionToCurrentImageClass()
+            labelClassesView.syncSelectionToContext()
         }
         function onRowsRemoved(parent, first, last) {
             labelClassesView.refreshViewModel()
-            labelClassesView.syncSelectionToCurrentImageClass()
+            labelClassesView.syncSelectionToContext()
         }
         function onDataChanged(topLeft, bottomRight, roles) {
             labelClassesView.refreshViewModel(topLeft, bottomRight, roles)
-            labelClassesView.syncSelectionToCurrentImageClass()
+            labelClassesView.syncSelectionToContext()
         }
         function onModelReset() {
             labelClassesView.refreshViewModel()
-            labelClassesView.syncSelectionToCurrentImageClass()
-        }
-    }
-
-    Connections {
-        target: labelClassesView.selection
-        function onCurrentChanged(current, previous) {
-            if (!labelClassesView.selectionFollowsCurrentImageClass || labelClassesView.syncingClassSelection) {
-                return
-            }
-
-            let row = current ? current.row : -1
-            if (row >= 0) {
-                labelClassesView.applyClassToCurrentImage(labelClassesView.classIdAt(row))
-            }
+            labelClassesView.syncSelectionToContext()
         }
     }
 
@@ -325,12 +316,19 @@ Rectangle {
         return true
     }
 
-    function syncSelectionToCurrentImageClass() {
-        if (!selectionFollowsCurrentImageClass || !labelClasses || !selection) {
+    // User action entry point. Programmatic selection synchronization must never
+    // modify labels; only an explicit activation may apply a class to an image.
+    function activateClassIndex(row) {
+        return selectClassIndex(row, true)
+    }
+
+    function syncSelectionToContext() {
+        if (!selectionFollowsCurrentImageClass || drawingToolActive || syncingClassSelection
+                || !labelClasses || !selection) {
             return
         }
 
-        let classId = currentImageClassId()
+        let classId = contextClassId()
         syncingClassSelection = true
         if (classId >= 0) {
             let row = findClassRow(classId)
@@ -343,6 +341,15 @@ Rectangle {
             selection.clear()
         }
         syncingClassSelection = false
+    }
+
+    // Kept as a compatibility entry point for callers outside this component.
+    function syncSelectionToCurrentImageClass() {
+        syncSelectionToContext()
+    }
+
+    function contextClassId() {
+        return currentImageClassId()
     }
 
     function currentImageClassId() {
@@ -419,7 +426,7 @@ Rectangle {
         if (matchIndex < 0) {
             return false
         }
-        return selectClassIndex(matchIndex, true)
+        return activateClassIndex(matchIndex)
     }
 
     function shortcutEditorOpen() {
@@ -429,6 +436,6 @@ Rectangle {
 
     Component.onCompleted: {
         refreshViewModel()
-        syncSelectionToCurrentImageClass()
+        syncSelectionToContext()
     }
 }

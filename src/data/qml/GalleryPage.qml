@@ -12,9 +12,17 @@ Rectangle {
     width: 1080
     height: 1920
     color: QuiColor.Background
+    focus: true
 
     property DataManager dataManager
     property FeatureManager featureManager
+
+    Keys.priority: Keys.BeforeItem
+    Keys.onPressed: function(event) {
+        if (imageTagView.handleShortcutEvent(event)) {
+            event.accepted = true
+        }
+    }
     
     QuiSplitView {
         anchors.fill: parent
@@ -72,6 +80,7 @@ Rectangle {
                 dataManager: galleryPage.dataManager
             }
             ImageTagView { // 图像标签
+                id: imageTagView
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 200
                 SplitView.preferredHeight: 200

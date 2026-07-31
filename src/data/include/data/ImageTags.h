@@ -23,9 +23,10 @@ struct LoadedLabelInstance;
 class Tag
 {
 public:
-    Tag(int64_t id, QString name)
+    Tag(int64_t id, QString name, QString shortcut = {})
         : id_(id)
         , name_(std::move(name))
+        , shortcut_(std::move(shortcut))
     {
     }
 
@@ -46,6 +47,21 @@ public:
             return false;
         }
         name_ = name;
+        return true;
+    }
+
+    const QString &shortcut() const
+    {
+        return shortcut_;
+    }
+
+    bool setShortcut(const QString &shortcut)
+    {
+        if (shortcut_ == shortcut)
+        {
+            return false;
+        }
+        shortcut_ = shortcut;
         return true;
     }
 
@@ -108,6 +124,7 @@ public:
 private:
     int64_t id_{-1};
     QString name_;
+    QString shortcut_;
 
     std::set<int64_t> image_ids_;
     std::set<int64_t> label_ids_;
@@ -129,6 +146,7 @@ public:
     {
         TagIdRole = Qt::UserRole + 1,
         NameRole,
+        ShortcutRole,
         SelectedImagesStatsRole,
         CurrentImageStatsRole,
         SelectedLabelsStatsRole,
@@ -139,9 +157,10 @@ public:
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    bool addTagClass(const QString &name);
+    bool addTagClass(const QString &name, const QString &shortcut);
     int64_t findTagClassId(const QString &name) const;
-    bool updateTagClass(int64_t tag_id, const QString &name);
+    int64_t findByShortcut(const QString &shortcut) const;
+    bool updateTagClass(int64_t tag_id, const QString &name, const QString &shortcut);
     bool deleteTagClass(int64_t tag_id);
 
     Q_INVOKABLE bool setImagesTag(const std::vector<int64_t> &image_ids, int64_t tag_id);
@@ -204,6 +223,7 @@ private:
 
     int64_t  getTagClassId(const QModelIndex &index) const;
     QVariant getTagClassName(const QModelIndex &index) const;
+    QVariant getTagClassShortcut(const QModelIndex &index) const;
     QVariant getSelectedImagesTagStats(const QModelIndex &index) const;
     QVariant getCurrentImageTagStats(const QModelIndex &index) const;
     QVariant getSelectedLabelsTagStats(const QModelIndex &index) const;

@@ -11,7 +11,7 @@ LabelClassesViewBase {
     editorComponent: anomalyEditorComponent
     rowDelegateComponent: anomalyRowDelegateComponent
     createDefaultGroup: "anomaly"
-    selectionFollowsCurrentImageClass: imageLevelClassEditing && !drawingToolActive
+    selectionFollowsCurrentImageClass: imageLevelClassEditing
 
     property bool imageLevelClassEditing: true
     property bool _applyingClass: false
@@ -36,6 +36,16 @@ LabelClassesViewBase {
             if (!root._applyingClass) {
                 root.refreshViewModel()
             }
+        }
+    }
+
+    Connections {
+        target: root.imageLabelsList ? root.imageLabelsList.selection : null
+        function onSelectionChanged(selected, deselected) {
+            root.syncSelectionToContext()
+        }
+        function onCurrentChanged(current, previous) {
+            root.syncSelectionToContext()
         }
     }
 
@@ -110,12 +120,7 @@ LabelClassesViewBase {
                 listView: root.listView
                 labelClasses: root.labelClasses
                 onClicked: {
-                    let selectedIds = root.selectedLabelIds()
-                    if (selectedIds.length > 0) {
-                        root.applyClassToSelectedLabels(selectedIds, root.classIdAt(rowDelegate.sourceRow))
-                    } else {
-                        root.selectClassIndex(rowDelegate.sourceRow, true)
-                    }
+                    root.activateAnomalyClass(rowDelegate.sourceRow)
                     root.ensureSourceRowVisible(rowDelegate.sourceRow)
                 }
                 onEditClicked: root.openEditorForClass(this, Number(model.label_class_id), model.name || "",
@@ -177,7 +182,7 @@ LabelClassesViewBase {
             "color": "transparent",
             "shortcut": "",
             "ordinal_index": -1,
-            "selected": currentImageClassId() < 0
+            "selected": contextClassId() < 0
         })
     }
 
@@ -244,7 +249,7 @@ LabelClassesViewBase {
             let item = groupedLabelClassesModel.get(row)
             let selected = false
             if (Boolean(item.isUnlabeledAction)) {
-                selected = currentImageClassId() < 0
+                selected = contextClassId() < 0
             } else if (!Boolean(item.isHeader)) {
                 let sourceRow = Number(item.sourceRow)
                 if (sourceRow >= 0 && sourceRow < labelClasses.rowCount()) {
@@ -298,7 +303,62 @@ LabelClassesViewBase {
         return Number(imageInstances.currentImageLabelClassId)
     }
 
+    function contextClassId() {
+        let selectedClassId = selectedInstanceClassId()
+        return selectedClassId >= 0 ? selectedClassId : currentImageClassId()
+    }
+
+    function selectedInstanceClassId() {
+        if (!imageLabelsList || !imageLabelsList.selection) {
+            return -1
+        }
+
+        let selectedIndexes = imageLabelsList.selection.selectedIndexes
+        if (!selectedIndexes || selectedIndexes.length <= 0) {
+            return -1
+        }
+
+        let currentIndex = imageLabelsList.selection.currentIndex
+        let currentRow = currentIndex ? Number(currentIndex.row) : -1
+        for (let i = 0; i < selectedIndexes.length; ++i) {
+            if (Number(selectedIndexes[i].row) === currentRow) {
+                return instanceClassIdAt(currentRow)
+            }
+        }
+        return instanceClassIdAt(Number(selectedIndexes[0].row))
+    }
+
+    function instanceClassIdAt(row) {
+        if (!imageLabelsList || row < 0 || row >= imageLabelsList.rowCount()) {
+            return -1
+        }
+        let data = imageLabelsList.getData(row)
+        return data && data.label_class_id !== undefined ? Number(data.label_class_id) : -1
+    }
+
+    function activateAnomalyClass(row) {
+        if (!selectClassIndex(row, false)) {
+            return false
+        }
+
+        // While drawing, LabelClassesModel.selection is the persistent drawing
+        // class. Do not let it edit the image or an existing instance.
+        if (drawingToolActive) {
+            return true
+        }
+
+        let classId = classIdAt(row)
+        let selectedIds = selectedLabelIds()
+        if (selectedIds.length > 0) {
+            return applyClassToSelectedLabels(selectedIds, classId)
+        }
+        return applyClassToCurrentImage(classId)
+    }
+
     function clearCurrentImageClass() {
+        if (drawingToolActive || selectedLabelIds().length > 0) {
+            return false
+        }
         let cleared = applyClassToCurrentImage(-1)
         if (cleared) {
             if (selection) {
@@ -338,12 +398,7 @@ LabelClassesViewBase {
             return false
         }
 
-        let selectedIds = selectedLabelIds()
-        if (selectedIds.length > 0) {
-            return applyClassToSelectedLabels(selectedIds, classIdAt(matchIndex))
-        }
-
-        let selected = selectClassIndex(matchIndex, true)
+        let selected = activateAnomalyClass(matchIndex)
         if (selected) {
             ensureSourceRowVisible(matchIndex)
         }

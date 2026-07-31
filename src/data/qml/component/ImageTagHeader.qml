@@ -9,6 +9,7 @@ import quickui
 Item {
     id: header
     property DataManager dataManager
+    readonly property bool editorOpen: createTagDialog.visible
     RowLayout {
         anchors.fill: parent
         QuiText {
@@ -22,25 +23,16 @@ Item {
             id: addBtn
             iconSource: QuiFontIcon.Add
             text: "添加Tag"
-            onClicked: createTagDialog.openForm()
+            onClicked: createTagDialog.openForCreate()
         }
     }
 
-    DataNameFormDialog {
+    ImageTagFormDialog {
         id: createTagDialog
-        title: "添加 Tag"
-        fieldLabel: "Tag 名称"
-        placeholderText: "输入 Tag 名称"
-        emptyError: "请输入 Tag 名称"
-        nameValidator: function(tagName) {
-            if (!header.dataManager) {
-                return "数据管理器不可用"
-            }
-            return header.dataManager.isValidTagName(tagName, -1)
-        }
-        onSubmitted: function(tagName) {
+        dataManager: header.dataManager
+        onSubmitted: function(tagId, tagName, shortcut) {
             if (header.dataManager) {
-                header.dataManager.addTagClass(tagName)
+                header.dataManager.addTagClass(tagName, shortcut)
             }
         }
     }

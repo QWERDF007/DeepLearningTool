@@ -1145,7 +1145,7 @@ bool ProjectDataBase::deleteLabelClass(const int64_t label_class_id, QString &er
 }
 
 bool ProjectDataBase::getAllTagClasses(std::vector<int64_t> &tag_class_ids, std::vector<QString> &names,
-                                       QString &err_msg) const
+                                       std::vector<std::vector<uint8_t>> &extra_data, QString &err_msg) const
 {
     try
     {
@@ -1155,11 +1155,14 @@ bool ProjectDataBase::getAllTagClasses(std::vector<int64_t> &tag_class_ids, std:
             return false;
         }
         auto db   = pool_->get();
-        auto data = db(sqlpp::select(TagClassesTable.id, TagClassesTable.name).from(TagClassesTable).unconditionally());
+        auto data = db(sqlpp::select(TagClassesTable.id, TagClassesTable.name, TagClassesTable.extraData)
+                           .from(TagClassesTable)
+                           .unconditionally());
         for (const auto &row : data)
         {
             tag_class_ids.emplace_back(row.id);
             names.emplace_back(QString::fromStdString(row.name));
+            extra_data.emplace_back(row.extraData.is_null() ? std::vector<uint8_t>{} : row.extraData.value());
         }
         return true;
     }
@@ -1170,7 +1173,8 @@ bool ProjectDataBase::getAllTagClasses(std::vector<int64_t> &tag_class_ids, std:
     }
 }
 
-bool ProjectDataBase::addTagClass(const QString &name, int64_t &tag_class_id, QString &err_msg) const
+bool ProjectDataBase::addTagClass(const QString &name, const std::vector<uint8_t> &extra_data,
+                                  int64_t &tag_class_id, QString &err_msg) const
 {
     try
     {
@@ -1180,7 +1184,8 @@ bool ProjectDataBase::addTagClass(const QString &name, int64_t &tag_class_id, QS
             return false;
         }
         auto db = pool_->get();
-        db(sqlpp::insert_into(TagClassesTable).set(TagClassesTable.name = name.toUtf8().constData()));
+        db(sqlpp::insert_into(TagClassesTable)
+               .set(TagClassesTable.name = name.toUtf8().constData(), TagClassesTable.extraData = extra_data));
         tag_class_id = static_cast<int64_t>(db.last_insert_id());
         return true;
     }
@@ -1191,7 +1196,8 @@ bool ProjectDataBase::addTagClass(const QString &name, int64_t &tag_class_id, QS
     }
 }
 
-bool ProjectDataBase::updateTagClass(const int64_t tag_class_id, const QString &name, QString &err_msg) const
+bool ProjectDataBase::updateTagClass(const int64_t tag_class_id, const QString &name,
+                                     const std::vector<uint8_t> &extra_data, QString &err_msg) const
 {
     try
     {
@@ -1202,7 +1208,7 @@ bool ProjectDataBase::updateTagClass(const int64_t tag_class_id, const QString &
         }
         auto db = pool_->get();
         db(sqlpp::update(TagClassesTable)
-               .set(TagClassesTable.name = name.toUtf8().constData())
+               .set(TagClassesTable.name = name.toUtf8().constData(), TagClassesTable.extraData = extra_data)
                .where(TagClassesTable.id == tag_class_id));
         return true;
     }

@@ -59,7 +59,7 @@ Rectangle {
 
     Keys.priority: Keys.AfterItem
     Keys.onPressed: function(event) {
-        if (page.handleLabelClassShortcut(event)) {
+        if (page.handleProjectShortcut(event)) {
             event.accepted = true
         }
     }
@@ -114,6 +114,7 @@ Rectangle {
             }
 
             ImageTagView {
+                id: imageTagView
                 SplitView.fillWidth: true
                 SplitView.minimumHeight: 120
                 SplitView.preferredHeight: 120
@@ -375,5 +376,12 @@ Rectangle {
             return false
         }
         return labelClassesLoader.item.handleShortcutEvent(event)
+    }
+
+    function handleProjectShortcut(event) {
+        if (imageTagView.handleShortcutEvent(event)) {
+            return true
+        }
+        return handleLabelClassShortcut(event)
     }
 }

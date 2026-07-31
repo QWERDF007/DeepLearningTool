@@ -9,6 +9,31 @@
 
 #include <algorithm>
 #include <iterator>
+#include <QJsonDocument>
+#include <QJsonObject>
+
+namespace {
+
+std::vector<uint8_t> tagExtraData(const QString &shortcut)
+{
+    const QByteArray json = QJsonDocument(QJsonObject{{QStringLiteral("shortcut"), shortcut}})
+                                .toJson(QJsonDocument::Compact);
+    return {json.cbegin(), json.cend()};
+}
+
+QString tagShortcutFromExtraData(const std::vector<uint8_t> &extra_data)
+{
+    if (extra_data.empty())
+        return {};
+    const QByteArray bytes(reinterpret_cast<const char *>(extra_data.data()), static_cast<qsizetype>(extra_data.size()));
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(bytes, &error);
+    return error.error == QJsonParseError::NoError && document.isObject()
+        ? document.object().value(QStringLiteral("shortcut")).toString()
+        : QString{};
+}
+
+} // namespace
 
 namespace dltool::data {
 
@@ -54,7 +79,8 @@ bool ImageTagsListModel::initTagClasses()
     QString              err_msg;
     std::vector<int64_t> tag_ids;
     std::vector<QString> tag_names;
-    if (!database_->getAllTagClasses(tag_ids, tag_names, err_msg))
+    std::vector<std::vector<uint8_t>> extra_data;
+    if (!database_->getAllTagClasses(tag_ids, tag_names, extra_data, err_msg))
     {
         spdlog::error("查询 Tag 类别失败: {}", err_msg.toUtf8().constData());
         return false;
@@ -62,7 +88,8 @@ bool ImageTagsListModel::initTagClasses()
 
     for (size_t i = 0; i < tag_ids.size(); ++i)
     {
-        tags_.emplace(tag_ids[i], Tag(tag_ids[i], tag_names[i]));
+        const QString shortcut = i < extra_data.size() ? tagShortcutFromExtraData(extra_data[i]) : QString{};
+        tags_.emplace(tag_ids[i], Tag(tag_ids[i], tag_names[i], shortcut));
     }
     return true;
 }
@@ -117,6 +144,8 @@ QVariant ImageTagsListModel::data(const QModelIndex &index, const int role) cons
         return getTagClassId(index);
     case NameRole:
         return getTagClassName(index);
+    case ShortcutRole:
+        return getTagClassShortcut(index);
     case SelectedImagesStatsRole:
         return getSelectedImagesTagStats(index);
     case CurrentImageStatsRole:
@@ -133,13 +162,14 @@ QHash<int, QByteArray> ImageTagsListModel::roleNames() const
     return {
         {              TagIdRole,                "tag_id"},
         {               NameRole,                  "name"},
+        {           ShortcutRole,              "shortcut"},
         {SelectedImagesStatsRole, "selected_images_stats"},
         {  CurrentImageStatsRole,   "current_image_stats"},
         {SelectedLabelsStatsRole, "selected_labels_stats"},
     };
 }
 
-bool ImageTagsListModel::addTagClass(const QString &name)
+bool ImageTagsListModel::addTagClass(const QString &name, const QString &shortcut)
 {
     if (mutation_blocked_)
     {
@@ -153,7 +183,7 @@ bool ImageTagsListModel::addTagClass(const QString &name)
 
     QString err_msg;
     int64_t tag_id{-1};
-    if (!database_->addTagClass(name, tag_id, err_msg))
+    if (!database_->addTagClass(name, tagExtraData(shortcut), tag_id, err_msg))
     {
         spdlog::error("添加 Tag 失败: {}, error: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
         return false;
@@ -161,7 +191,7 @@ bool ImageTagsListModel::addTagClass(const QString &name)
 
     const int row = rowCount();
     beginInsertRows(QModelIndex(), row, row);
-    tags_.emplace(tag_id, Tag(tag_id, name));
+    tags_.emplace(tag_id, Tag(tag_id, name, shortcut));
     endInsertRows();
     return true;
 }
@@ -184,7 +214,19 @@ int64_t ImageTagsListModel::findTagClassId(const QString &name) const
     return -1;
 }
 
-bool ImageTagsListModel::updateTagClass(const int64_t tag_id, const QString &name)
+int64_t ImageTagsListModel::findByShortcut(const QString &shortcut) const
+{
+    if (shortcut.isEmpty())
+        return -1;
+    for (const auto &[tag_id, tag] : tags_)
+    {
+        if (tag.shortcut().compare(shortcut, Qt::CaseInsensitive) == 0)
+            return tag_id;
+    }
+    return -1;
+}
+
+bool ImageTagsListModel::updateTagClass(const int64_t tag_id, const QString &name, const QString &shortcut)
 {
     if (mutation_blocked_)
     {
@@ -202,23 +244,24 @@ bool ImageTagsListModel::updateTagClass(const int64_t tag_id, const QString &nam
         spdlog::error("更新 Tag 失败: Tag {} 不存在", tag_id);
         return false;
     }
-    if (tag->name() == name)
+    if (tag->name() == name && tag->shortcut() == shortcut)
     {
         return true;
     }
 
     QString err_msg;
-    if (!database_->updateTagClass(tag_id, name, err_msg))
+    if (!database_->updateTagClass(tag_id, name, tagExtraData(shortcut), err_msg))
     {
         spdlog::error("更新 Tag 失败: {}, error: {}", tag_id, err_msg.toUtf8().constData());
         return false;
     }
 
     tag->setName(name);
+    tag->setShortcut(shortcut);
     const int row = rowForTag(tag_id);
     if (row >= 0)
     {
-        emit dataChanged(index(row), index(row), {NameRole});
+        emit dataChanged(index(row), index(row), {NameRole, ShortcutRole});
     }
     return true;
 }
@@ -391,14 +434,12 @@ void ImageTagsListModel::updateStats()
                 const QModelIndex index = image_model->index(row, 0);
                 const int64_t image_id
                     = image_model->data(index, ImageInstancesViewModel::ImageIdRole).toLongLong();
-                const ImageInstance *image = image_instances_->getImageInstance(image_id);
-                if (image == nullptr)
+                for (const auto &[tag_id, tag] : tags_)
                 {
-                    continue;
-                }
-                for (const int64_t tag_id : image->tagIds())
-                {
-                    ++selected_image_tag_counts_[tag_id];
+                    if (tag.imageIds().contains(image_id))
+                    {
+                        ++selected_image_tag_counts_[tag_id];
+                    }
                 }
             }
         }
@@ -415,14 +456,12 @@ void ImageTagsListModel::updateStats()
                 const QModelIndex index = image_labels_list_->index(row, 0);
                 const int64_t label_id
                     = image_labels_list_->data(index, ImageLabelsListModel::LabelIdRole).toLongLong();
-                const LabelInstance *label = label_instances_->getLabelInstance(label_id);
-                if (label == nullptr)
+                for (const auto &[tag_id, tag] : tags_)
                 {
-                    continue;
-                }
-                for (const int64_t tag_id : label->tagIds())
-                {
-                    ++selected_label_tag_counts_[tag_id];
+                    if (tag.labelIds().contains(label_id))
+                    {
+                        ++selected_label_tag_counts_[tag_id];
+                    }
                 }
             }
         }
@@ -469,7 +508,7 @@ bool ImageTagsListModel::setTags(const std::vector<int64_t> &target_ids, const i
     }
     if (target_ids.empty())
     {
-        return true;
+        return false;
     }
 
     Tag *tag = getTag(tag_id);
@@ -629,6 +668,13 @@ QVariant ImageTagsListModel::getTagClassName(const QModelIndex &index) const
     return getTagClassName(getTagClassId(index));
 }
 
+QVariant ImageTagsListModel::getTagClassShortcut(const QModelIndex &index) const
+{
+    const int64_t id = getTagClassId(index);
+    const auto found = tags_.find(id);
+    return found != tags_.end() ? QVariant(found->second.shortcut()) : QVariant{};
+}
+
 QVariant ImageTagsListModel::getSelectedImagesTagStats(const QModelIndex &index) const
 {
     const int64_t tag_id = getTagClassId(index);
@@ -644,9 +690,12 @@ QVariant ImageTagsListModel::getCurrentImageTagStats(const QModelIndex &index) c
         return {};
     }
 
-    const ImageInstance *image = image_instances_->getImageInstance(image_view_->currentImageId());
-    const int64_t        tag_id = getTagClassId(index);
-    return image != nullptr && image->tagIds().count(tag_id) > 0 ? QStringLiteral("(1)") : QString();
+    const int64_t image_id = image_view_->currentImageId();
+    const int64_t tag_id   = getTagClassId(index);
+    const auto    found    = tags_.find(tag_id);
+    return image_id >= 0 && found != tags_.end() && found->second.imageIds().contains(image_id)
+        ? QStringLiteral("(1)")
+        : QString();
 }
 
 QVariant ImageTagsListModel::getSelectedLabelsTagStats(const QModelIndex &index) const

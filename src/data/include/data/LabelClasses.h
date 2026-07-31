@@ -11,6 +11,8 @@ class ProjectDataBase;
 
 namespace dltool::data {
 
+class ShortcutManager;
+
 QString normalizeLabelClassGroup(const QString &group);
 QString labelClassGroupDisplayName(const QString &group);
 QString defaultLabelClassGroup();
@@ -182,6 +184,7 @@ public:
      * @return 匹配的标签类别索引，未找到返回 -1；多个匹配时返回 ordinal_index 最小的
      */
     Q_INVOKABLE int findByShortcut(const QString &shortcut) const;
+    int64_t         findIdByShortcut(const QString &shortcut) const;
 
     /**
      * @brief 根据快捷键选中标签类别
@@ -189,6 +192,11 @@ public:
      * @return 是否成功选中
      */
     Q_INVOKABLE bool selectByShortcut(const QString &shortcut);
+
+    void setShortcutManager(ShortcutManager *shortcut_manager)
+    {
+        shortcut_manager_ = shortcut_manager;
+    }
 
 private:
     void init();
@@ -211,6 +219,7 @@ private:
 
     QItemSelectionModel *selection_{nullptr};
     bool                 mutation_blocked_{false};
+    ShortcutManager     *shortcut_manager_{nullptr};
 
 signals:
     void currentLabelClassChanged();

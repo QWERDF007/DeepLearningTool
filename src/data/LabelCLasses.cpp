@@ -1,4 +1,5 @@
 #include "data/LabelClasses.h"
+#include "data/ShortcutManager.h"
 
 #include "database/DataBase.h"
 
@@ -690,8 +691,14 @@ QString LabelClassesListModel::isValid(const int label_class_id, const QString &
     const QString normalized_color = normalizedColorName(color);
     if (normalized_color.isEmpty())
         return "error:标签颜色无效";
-    if (shortcut.size() > 1)
-        return "error:标签快捷键只能是单个字符";
+    if (shortcut_manager_ != nullptr)
+    {
+        const QString shortcut_error = shortcut_manager_->validateLabelShortcut(shortcut, label_class_id);
+        if (!shortcut_error.isEmpty())
+            return shortcut_error;
+    }
+    else if (shortcut.trimmed().size() > 1)
+        return "error:类别快捷键只能是单个可打印字符";
 
     for (const auto &[_, label_class] : label_classes_)
     {
@@ -701,8 +708,6 @@ QString LabelClassesListModel::isValid(const int label_class_id, const QString &
             return "error:标签名称已存在";
         if (normalizedColorName(label_class->color()) == normalized_color)
             return "error:标签颜色已存在";
-        if (!shortcut.isEmpty() && label_class->shortcut().compare(shortcut, Qt::CaseInsensitive) == 0)
-            return "error:标签快捷键已存在";
         if (ordinal_index >= 0 && label_class->ordinalIndex() == ordinal_index)
             return "warning:修改序号将重新排序标签类别";
     }
@@ -731,6 +736,19 @@ int LabelClassesListModel::findByShortcut(const QString &shortcut) const
     }
 
     return best_index;
+}
+
+int64_t LabelClassesListModel::findIdByShortcut(const QString &shortcut) const
+{
+    if (shortcut.isEmpty())
+        return -1;
+
+    for (const auto &[label_class_id, label_class] : label_classes_)
+    {
+        if (label_class->shortcut().compare(shortcut, Qt::CaseInsensitive) == 0)
+            return label_class_id;
+    }
+    return -1;
 }
 
 bool LabelClassesListModel::selectByShortcut(const QString &shortcut)

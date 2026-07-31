@@ -184,9 +184,12 @@ public:
                           QString &err_msg) const;
     bool deleteLabelClass(const int64_t label_class_id, QString &err_msg) const;
 
-    bool getAllTagClasses(std::vector<int64_t> &tag_class_ids, std::vector<QString> &names, QString &err_msg) const;
-    bool addTagClass(const QString &name, int64_t &tag_class_id, QString &err_msg) const;
-    bool updateTagClass(const int64_t tag_class_id, const QString &name, QString &err_msg) const;
+    bool getAllTagClasses(std::vector<int64_t> &tag_class_ids, std::vector<QString> &names,
+                          std::vector<std::vector<uint8_t>> &extra_data, QString &err_msg) const;
+    bool addTagClass(const QString &name, const std::vector<uint8_t> &extra_data, int64_t &tag_class_id,
+                     QString &err_msg) const;
+    bool updateTagClass(const int64_t tag_class_id, const QString &name, const std::vector<uint8_t> &extra_data,
+                        QString &err_msg) const;
     bool deleteTagClass(const int64_t tag_class_id, QString &err_msg) const;
 
     // Each target has one row in tags; the associated tag-class IDs are returned as a vector.

@@ -12,6 +12,7 @@
 #include "Images.h"
 #include "LabelClasses.h"
 #include "Labels.h"
+#include "ShortcutManager.h"
 #include "dltool/data/Export.h"
 
 #include <QMetaObject>
@@ -41,6 +42,7 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(ImageInstancesViewModel *imageInstances READ imageInstances CONSTANT FINAL)
     Q_PROPERTY(LabelClassesListModel *labelClasses READ labelClasses CONSTANT FINAL)
     Q_PROPERTY(ImageTagsListModel *imageTags READ imageTags CONSTANT FINAL)
+    Q_PROPERTY(ShortcutManager *shortcutManager READ shortcutManager CONSTANT FINAL)
     Q_PROPERTY(LabelInstancesListModel *labelSource READ labelSource CONSTANT FINAL)
     Q_PROPERTY(LabelInstancesViewModel *labelInstances READ labelInstances CONSTANT FINAL)
     Q_PROPERTY(SelectedLabelsInfoModel *selectedLabelsInfo READ selectedLabelsInfo CONSTANT FINAL)
@@ -94,6 +96,11 @@ public:
     ImageTagsListModel *imageTags() const
     {
         return image_tags_;
+    }
+
+    ShortcutManager *shortcutManager() const
+    {
+        return shortcut_manager_;
     }
 
     LabelInstancesViewModel *labelInstances() const
@@ -199,6 +206,8 @@ public:
     Q_INVOKABLE QString isValidDatasetName(const QString &name, const int64_t dataset_id = -1) const;
     Q_INVOKABLE QString isValidClassName(const QString &name, const int64_t label_class_id = -1) const;
     Q_INVOKABLE QString isValidTagName(const QString &name, const int64_t tag_id = -1) const;
+    Q_INVOKABLE QString isValidTag(const QString &name, const QString &shortcut,
+                                   const int64_t tag_id = -1) const;
 
     Q_INVOKABLE void addDataset(const QString &name);
     Q_INVOKABLE void updateDataset(const int64_t dataset_id, const QString &name);
@@ -250,8 +259,8 @@ public:
     Q_INVOKABLE void        refreshAnomalyImageClassesFromPolygons(const std::vector<int64_t> &image_ids,
                                                                    bool                        only_unset = false);
 
-    Q_INVOKABLE void    addTagClass(const QString &name);
-    Q_INVOKABLE bool    updateTagClass(const int64_t tag_id, const QString &name);
+    Q_INVOKABLE void    addTagClass(const QString &name, const QString &shortcut = {});
+    Q_INVOKABLE bool    updateTagClass(const int64_t tag_id, const QString &name, const QString &shortcut = {});
     Q_INVOKABLE int64_t findTagClassId(const QString &name) const;
     Q_INVOKABLE bool    setLabelsTag(const std::vector<int64_t> &label_ids, const int64_t tag_id);
     Q_INVOKABLE bool    deleteTagClass(const int64_t tag_id);
@@ -387,6 +396,7 @@ private:
     ImageInstancesViewModel *image_instances_{nullptr};
     LabelClassesListModel   *label_classes_{nullptr};
     ImageTagsListModel      *image_tags_{nullptr};
+    ShortcutManager         *shortcut_manager_{nullptr};
     LabelInstancesListModel *label_source_{nullptr};
     LabelInstancesViewModel *label_instances_{nullptr};
     SelectedLabelsInfoModel *selected_labels_info_{nullptr};
