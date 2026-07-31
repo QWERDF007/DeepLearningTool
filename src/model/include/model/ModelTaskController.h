@@ -156,6 +156,12 @@ private:
      */
     void touchTaskModelModifiedTime(int task_id) const;
 
+    /**
+     * @brief 将任务中心的总体进度和终态同步到模型页面使用的任务数据。
+     * @param task_id 任务 ID。
+     */
+    void syncTaskModelState(int task_id) const;
+
 private slots:
     /**
      * @brief 响应 TaskManager 的开始请求，提交完整后台准备流程。

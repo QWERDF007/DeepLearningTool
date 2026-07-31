@@ -21,6 +21,35 @@
 namespace dltool::model {
 using common::setError;
 
+namespace {
+
+QString taskManagerStatusName(const TaskManager::TaskStatus status)
+{
+    switch (status)
+    {
+    case TaskManager::Pending:
+        return QStringLiteral("pending");
+    case TaskManager::Preparing:
+        return QStringLiteral("preparing");
+    case TaskManager::Running:
+        return QStringLiteral("running");
+    case TaskManager::Paused:
+        return QStringLiteral("paused");
+    case TaskManager::Stopping:
+        return QStringLiteral("stopping");
+    case TaskManager::Stopped:
+        return QStringLiteral("stopped");
+    case TaskManager::Finished:
+        return QStringLiteral("finished");
+    case TaskManager::Failed:
+        return QStringLiteral("failed");
+    default:
+        return {};
+    }
+}
+
+} // namespace
+
 ModelTaskController::ModelTaskController(const int method, QString project_dir, ModelManager *model_manager,
                                          dltool::data::DataManager *data_manager, TaskManager *task_manager,
                                          QObject *parent)
@@ -158,6 +187,7 @@ bool ModelTaskController::prepareTask(const int task_id)
             failTask(task_id, QString("内部模型任务无法进入运行状态"));
             return false;
         }
+        syncTaskModelState(task_id);
         touchTaskModelModifiedTime(task_id);
         return true;
     }
@@ -322,6 +352,8 @@ void ModelTaskController::failTask(const int task_id, const QString &message) co
     if (task_manager_ == nullptr || !task_manager_->failTask(task_id))
         return;
 
+    syncTaskModelState(task_id);
+
     if (!message.isEmpty())
     {
         spdlog::error("模型任务 {} 失败: {}", task_id, message.toUtf8().constData());
@@ -346,6 +378,45 @@ void ModelTaskController::touchTaskModelModifiedTime(const int task_id) const
     }
 }
 
+void ModelTaskController::syncTaskModelState(const int task_id) const
+{
+    if (task_manager_ == nullptr || model_manager_ == nullptr)
+        return;
+
+    const TaskManager::Task *task = task_manager_->findTask(task_id);
+    if (task == nullptr || (!isTrainModelTask(task->type) && !isTestModelTask(task->type)))
+        return;
+
+    const QString phase = isTrainModelTask(task->type) ? QStringLiteral("train") : QStringLiteral("test");
+    const QVariantMap current_model = model_manager_->modelRecordForUuid(task->model_uuid);
+    const QVariantMap extra_data = current_model.value(QStringLiteral("extra_data")).toMap();
+    QVariantMap section = extra_data.value(phase).toMap();
+
+    // TaskManager owns the overall task progress.  The model page previously
+    // kept the last phase progress (for example, 90% after training), which
+    // could differ from the 100% terminal value shown in TaskCenterWindow.
+    section.insert(QStringLiteral("progress"), task->progress);
+
+    if (TaskManager::isTerminal(task->status))
+    {
+        section.insert(QStringLiteral("started"), false);
+        section.insert(QStringLiteral("status"), taskManagerStatusName(task->status));
+    }
+    else if (task->status == TaskManager::Running || task->status == TaskManager::Paused
+             || task->status == TaskManager::Stopping)
+    {
+        section.insert(QStringLiteral("started"), true);
+        section.insert(QStringLiteral("status"), taskManagerStatusName(task->status));
+    }
+
+    QString error;
+    if (!model_manager_->updateModelExtraData(task->model_uuid, {{phase, section}}, &error))
+    {
+        spdlog::error("同步模型任务状态失败, task_id: {}, uuid: {}, 错误: {}", task_id,
+                      task->model_uuid.toUtf8().constData(), error.toUtf8().constData());
+    }
+}
+
 void ModelTaskController::handleTaskStartRequested(const int task_id)
 {
     if (taskBelongsToCurrentModelManager(task_id))
@@ -364,14 +435,11 @@ void ModelTaskController::handleTaskMessage(const TaskMessage &message)
     if (task == nullptr || (!isTrainModelTask(task->type) && !isTestModelTask(task->type)))
         return;
 
-    const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(task->model_uuid);
-    const FrameworkDefinition framework = registeredFramework(method_, record.framework_name);
-    if (!framework.name.isEmpty() && !framework.write_to_database)
-        return;
-
-    QString phase = message.payload.value(QStringLiteral("phase")).toString().trimmed().toLower();
-    if (phase != QStringLiteral("train") && phase != QStringLiteral("test"))
-        phase = isTrainModelTask(task->type) ? QStringLiteral("train") : QStringLiteral("test");
+    // The top-level model data is keyed by the software task type.  A train
+    // runner may report validation/evaluation as phase "test", but that is
+    // still part of the training task and must not update the separate Test
+    // page's state.
+    const QString phase = isTrainModelTask(task->type) ? QStringLiteral("train") : QStringLiteral("test");
 
     QVariantMap updates;
     if (message.status == TaskProtocolStatus::Running || message.payload.contains(QStringLiteral("started")))
@@ -397,15 +465,42 @@ void ModelTaskController::handleTaskMessage(const TaskMessage &message)
     const bool terminal = message.status == TaskProtocolStatus::Stopped || message.status == TaskProtocolStatus::Finished
                        || message.status == TaskProtocolStatus::Failed || message.status == TaskProtocolStatus::Error;
     if (terminal)
+    {
+        // Some runners send the final status without a progress field (or
+        // attach it to an internal evaluation phase), so explicitly close the
+        // phase belonging to this software task here.
+        updates.insert(QStringLiteral("started"), false);
+        if (message.status == TaskProtocolStatus::Finished)
+            updates.insert(QStringLiteral("progress"), 100);
         touchTaskModelModifiedTime(message.task_id);
-    if (updates.isEmpty())
-        return;
+    }
 
     const QVariantMap current_model = model_manager_->modelRecordForUuid(task->model_uuid);
     const QVariantMap extra_data = current_model.value(QStringLiteral("extra_data")).toMap();
     QVariantMap section = extra_data.value(phase).toMap();
     for (auto it = updates.cbegin(); it != updates.cend(); ++it)
         section.insert(it.key(), it.value());
+
+    // Keep the phase shown by ModelDelegate on the same overall progress as
+    // TaskManager/TaskCenterWindow.  A training task can enter an internal
+    // validation phase after its training progress reaches 90%, while the
+    // task itself continues to 100%.
+    const bool completed = message.status == TaskProtocolStatus::Finished;
+    auto applyTaskState = [task, terminal, completed](QVariantMap &target) {
+        target.insert(QStringLiteral("progress"), completed ? 100 : task->progress);
+        if (terminal)
+        {
+            target.insert(QStringLiteral("started"), false);
+            target.insert(QStringLiteral("status"), taskManagerStatusName(task->status));
+        }
+        else if (task->status == TaskManager::Running || task->status == TaskManager::Paused
+                 || task->status == TaskManager::Stopping)
+        {
+            target.insert(QStringLiteral("started"), true);
+            target.insert(QStringLiteral("status"), taskManagerStatusName(task->status));
+        }
+    };
+    applyTaskState(section);
 
     QString error;
     if (!model_manager_->updateModelExtraData(task->model_uuid, {{phase, section}}, &error))
@@ -428,6 +523,7 @@ void ModelTaskController::handleTaskStopRequested(const int task_id)
 
     if (task_manager_ != nullptr)
         task_manager_->markTaskStopped(task_id);
+    syncTaskModelState(task_id);
     touchTaskModelModifiedTime(task_id);
 }
 
@@ -443,7 +539,10 @@ void ModelTaskController::handleExternalTaskStarted(const int task_id)
     if (task->status == TaskManager::Preparing)
     {
         if (task_manager_->markTaskRunning(task_id))
+        {
+            syncTaskModelState(task_id);
             touchTaskModelModifiedTime(task_id);
+        }
         return;
     }
 
@@ -464,6 +563,7 @@ void ModelTaskController::handleExternalTaskStartFailed(const int task_id, const
     if (task->status == TaskManager::Stopping)
     {
         task_manager_->markTaskStopped(task_id);
+        syncTaskModelState(task_id);
         touchTaskModelModifiedTime(task_id);
         return;
     }
@@ -478,13 +578,19 @@ void ModelTaskController::handleExternalTaskFinished(const int task_id, const in
         return;
 
     const TaskManager::Task *task = task_manager_->findTask(task_id);
-    if (task == nullptr || TaskManager::isTerminal(task->status))
+    if (task == nullptr)
         return;
+    if (TaskManager::isTerminal(task->status))
+    {
+        syncTaskModelState(task_id);
+        return;
+    }
 
     touchTaskModelModifiedTime(task_id);
     if (task->status == TaskManager::Stopping || stop_requested || (normal_exit && exit_code == 2))
     {
         task_manager_->markTaskStopped(task_id);
+        syncTaskModelState(task_id);
         return;
     }
     if (normal_exit && exit_code == 0)
@@ -492,6 +598,7 @@ void ModelTaskController::handleExternalTaskFinished(const int task_id, const in
         if (task->status == TaskManager::Preparing)
             task_manager_->markTaskRunning(task_id);
         task_manager_->finishTask(task_id);
+        syncTaskModelState(task_id);
         return;
     }
 

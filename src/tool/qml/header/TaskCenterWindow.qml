@@ -136,7 +136,7 @@ Window {
                 minimumColumnWidth: 80
                 fitColumnsToWidth: true
                 columnSource: [
-                    { width: 100, minimumWidth: 100 },
+                    { width: 80, minimumWidth: 80 },
                     { width: 180, minimumWidth: 120 },
                     { width: 140, minimumWidth: 100 },
                     { width: 120, minimumWidth: 90 },
@@ -144,7 +144,7 @@ Window {
                     { width: 110, minimumWidth: 90 },
                     { width: 110, minimumWidth: 90 },
                     { width: 180, minimumWidth: 140 },
-                    { width: 200, minimumWidth: 200 }
+                    { width: 180, minimumWidth: 160 }
                 ]
 
                 delegate: DelegateChooser {
