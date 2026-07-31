@@ -38,7 +38,9 @@ Rectangle {
         }
 
         TestPanel {
-
+            modelManager: labelPage.modelManager
+            dataManager: labelPage.dataManager
+            currentModelUuid: modelView.currentModelUuid
         }
     }
 }

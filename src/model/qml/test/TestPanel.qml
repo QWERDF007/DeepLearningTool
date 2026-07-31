@@ -13,9 +13,11 @@ Item {
     SplitView.fillHeight: true
     SplitView.fillWidth: true
 
+    property ModelManager modelManager: null
     property DataManager dataManager: null
-    property IModel selectedModel: labelPage.modelManager && modelView.currentModelUuid.length > 0
-                                   ? labelPage.modelManager.modelForUuid(modelView.currentModelUuid)
+    property string currentModelUuid: ""
+    property IModel selectedModel: modelManager && currentModelUuid.length > 0
+                                   ? modelManager.modelForUuid(currentModelUuid)
                                    : null
     property ITestParams testParams: selectedModel && selectedModel.config ? selectedModel.config.testParams : null
 
