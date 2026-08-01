@@ -1,7 +1,6 @@
 ﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtWebEngine
 import dltool.ui
 import dltool.data
 import dltool.model
@@ -10,73 +9,83 @@ import quickui
 Item {
     id: testPanel
 
-    SplitView.fillHeight: true
-    SplitView.fillWidth: true
-
     property ModelManager modelManager: null
     property DataManager dataManager: null
+    property ModelTaskController modelTaskController: null
+    property ModelTestTaskManager testTaskManager: null
     property string currentModelUuid: ""
     property IModel selectedModel: modelManager && currentModelUuid.length > 0
                                    ? modelManager.modelForUuid(currentModelUuid)
                                    : null
-    property ITestParams testParams: selectedModel && selectedModel.config ? selectedModel.config.testParams : null
+    property ITestParams testParams: testTaskManager ? testTaskManager.currentTestParams
+                                                       : (selectedModel && selectedModel.config ? selectedModel.config.testParams : null)
 
+    ColumnLayout {
+        anchors.fill: parent
+        spacing: 0
 
-    QuiExpander {
-        id: settingsExpander
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: expand ? parent.height / 2 : headerHeight
+        TestTaskPanel {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 48
+            Layout.minimumHeight: 48
+            Layout.maximumHeight: 48
+            taskManager: testPanel.testTaskManager
+            modelTaskController: testPanel.modelTaskController
+            modelUuid: testPanel.currentModelUuid
+        }
 
-        headerText: qsTr("设置")
-        expand: true
-        contentHeight: Math.max(0, height - headerHeight)
+        QuiExpander {
+            id: settingsExpander
+            Layout.fillWidth: true
+            Layout.preferredHeight: expand ? parent.height / 2 - 48 : headerHeight
 
-        RowLayout {
-            id: settingsForm
+            headerText: qsTr("设置")
+            expand: true
+            contentHeight: Math.max(0, height - headerHeight)
 
-            anchors.fill: parent
-            anchors.topMargin: 10
-            spacing: 5
+            RowLayout {
+                id: settingsForm
 
-            TestDatasetPanel {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                Layout.minimumWidth: 0
-                dataManager: testPanel.dataManager
-                selectedModel: testPanel.selectedModel
-            }
+                anchors.fill: parent
+                anchors.topMargin: 10
+                spacing: 5
 
-            Repeater {
-                model: 2
-
-                ParamPanel {
+                TestDatasetPanel {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumWidth: 0
-                    params: testPanel.testParams
-                    targetPartIndex: index
-                    partSpacing: 5
+                    dataManager: testPanel.dataManager
+                    selectedModel: testPanel.selectedModel
                 }
+
+                Repeater {
+                    model: 2
+
+                    ParamPanel {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.minimumWidth: 0
+                        params: testPanel.testParams
+                        targetPartIndex: index
+                        partSpacing: 5
+                    }
+                }
+            }
+        }
+        QuiExpander {
+            id: evaluationExpander
+
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            headerText: qsTr("评估")
+            expand: true
+            contentHeight: Math.max(0, height - headerHeight)
+
+            TestEvaluationPanel {
+                anchors.fill: parent
+                evaluation: testPanel.testTaskManager ? testPanel.testTaskManager.currentEvaluation : null
             }
         }
     }
 
-    QuiExpander {
-        id: evaluationExpander
-
-        anchors.top: settingsExpander.bottom
-        anchors.topMargin: 5
-        anchors.left: parent.left
-        anchors.right: parent.right
-
-        headerText: qsTr("评估")
-        expand: true
-        contentHeight: Math.max(0, height - headerHeight)
-
-        TestEvaluationPanel {
-            anchors.fill: parent
-        }
-    }
 }
