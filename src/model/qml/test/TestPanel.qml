@@ -11,7 +11,6 @@ Item {
 
     property ModelManager modelManager: null
     property DataManager dataManager: null
-    property ModelTaskController modelTaskController: null
     property ModelTestTaskManager testTaskManager: null
     property string currentModelUuid: ""
     property IModel selectedModel: modelManager && currentModelUuid.length > 0
@@ -22,7 +21,7 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 0
+        spacing: 5
 
         TestTaskPanel {
             Layout.fillWidth: true
@@ -30,8 +29,6 @@ Item {
             Layout.minimumHeight: 48
             Layout.maximumHeight: 48
             taskManager: testPanel.testTaskManager
-            modelTaskController: testPanel.modelTaskController
-            modelUuid: testPanel.currentModelUuid
         }
 
         QuiExpander {
@@ -56,6 +53,8 @@ Item {
                     Layout.minimumWidth: 0
                     dataManager: testPanel.dataManager
                     selectedModel: testPanel.selectedModel
+                    selectionModel: testPanel.testTaskManager
+                                    ? testPanel.testTaskManager.currentDatasetViewModel : null
                 }
 
                 Repeater {

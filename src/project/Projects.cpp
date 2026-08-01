@@ -65,8 +65,15 @@ Project::~Project()
     delete feature_manager_;
     feature_manager_ = nullptr;
 
+    if (model_test_task_manager_ != nullptr)
+        model_test_task_manager_->flush();
+    if (model_task_controller_ != nullptr)
+        model_task_controller_->shutdown();
     delete model_task_controller_;
     model_task_controller_ = nullptr;
+
+    delete model_test_task_manager_;
+    model_test_task_manager_ = nullptr;
 
     task_manager_ = nullptr;
 
@@ -89,6 +96,8 @@ void Project::init()
     task_manager_->clearTasks();
     model_task_controller_ = new model::ModelTaskController(method_, model_manager_->projectDirectory(), model_manager_,
                                                             data_manager_, task_manager_, this);
+    model_test_task_manager_ = new model::ModelTestTaskManager(model_manager_->projectDirectory(), model_manager_,
+                                                               data_manager_, task_manager_, this);
     feature_manager_ = new dltool::feature::FeatureManager(data_manager_, model_manager_, model_task_controller_,
                                                            task_manager_, this);
 
@@ -552,6 +561,11 @@ void ProjectManager::closeProject()
         Project *project = current_project_;
         updateProjectMtime(project->path());
         spdlog::info("关闭项目: {}", project->path().toUtf8().constData());
+        // Stop external Python processes and cancel C++ evaluation before the
+        // shared TaskManager records are cleared.  Clearing first makes the
+        // controller unable to discover the task ids it must stop.
+        if (project->modelTaskController() != nullptr)
+            project->modelTaskController()->shutdown();
         if (project->taskManager() != nullptr)
             project->taskManager()->clearTasks();
         current_project_ = nullptr;

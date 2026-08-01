@@ -1645,7 +1645,7 @@ QString ImageLabelsListModel::getLabelSummaryForImage(int64_t image_id) const
     }
 
     // 格式化为 "标签总览：\n- 类别名 : 数量\n..." 的字符串
-    QString summary = QString::fromUtf8("标签总览：");
+    QString summary = QString("标签总览：");
     for (const auto &[label_class_id, count] : class_count)
     {
         QString class_name = label_classes_->getLabelClassName(label_class_id);

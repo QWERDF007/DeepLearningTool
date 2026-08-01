@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QMetaType>
+#include <QSaveFile>
 #include <algorithm>
 #include <stdexcept>
 #include <string>
@@ -228,6 +229,55 @@ bool writeFile(const QString &path, const YAML::Node &node, QString *err_msg, co
 
     yaml_file.write(out.c_str());
     yaml_file.write("\n");
+    return true;
+}
+
+bool writeFileAtomic(const QString &path, const YAML::Node &node, QString *err_msg,
+                     const QString &open_error_prefix, const QString &emit_error_prefix,
+                     const QString &commit_error_prefix)
+{
+    YAML::Emitter out;
+    out << node;
+    if (!out.good())
+    {
+        if (err_msg != nullptr)
+        {
+            const QString prefix = emit_error_prefix.isEmpty() ? QStringLiteral("emit yaml failed") : emit_error_prefix;
+            *err_msg             = QStringLiteral("%1: %2").arg(prefix, QString::fromUtf8(out.GetLastError().c_str()));
+        }
+        return false;
+    }
+
+    QSaveFile yaml_file(path);
+    if (!yaml_file.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        if (err_msg != nullptr)
+        {
+            const QString prefix
+                = open_error_prefix.isEmpty() ? QStringLiteral("write yaml failed") : open_error_prefix;
+            *err_msg = QStringLiteral("%1: %2, %3").arg(prefix, path, yaml_file.errorString());
+        }
+        return false;
+    }
+
+    const QByteArray content = QByteArray(out.c_str()) + QByteArrayLiteral("\n");
+    if (yaml_file.write(content) != content.size())
+    {
+        if (err_msg != nullptr)
+            *err_msg = QString("写入 YAML 临时文件失败: %1, %2").arg(path, yaml_file.errorString());
+        yaml_file.cancelWriting();
+        return false;
+    }
+    if (!yaml_file.commit())
+    {
+        if (err_msg != nullptr)
+        {
+            const QString prefix
+                = commit_error_prefix.isEmpty() ? QString("提交 yaml 失败") : commit_error_prefix;
+            *err_msg = QStringLiteral("%1: %2, %3").arg(prefix, path, yaml_file.errorString());
+        }
+        return false;
+    }
     return true;
 }
 

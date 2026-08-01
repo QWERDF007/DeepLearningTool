@@ -142,7 +142,7 @@ public:
      * @param model_id 源模型 ID
      * @return 操作成功返回 true
      */
-    Q_INVOKABLE bool copyModel(const qint64 model_id);
+    Q_INVOKABLE bool copyModel(const qint64 model_id, bool copy_train_weights = false);
 
     /**
      * @brief 获取支持的框架名称列表

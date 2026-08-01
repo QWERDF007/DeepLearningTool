@@ -72,7 +72,7 @@ void DataOperationWorkflow::start(QObject *context, Options options, Work work, 
             catch (const std::exception &e)
             {
                 result.success = false;
-                result.error   = QString::fromUtf8(e.what());
+                result.error   = QString(e.what());
             }
             catch (...)
             {

@@ -81,7 +81,7 @@ void appendCurrentValueOption(ParameterSpec &parameter, const QVariant &value,
     if (!hasValue(value) || isAutomaticValue(value) || containsOptionValue(options, value))
         return;
 
-    const QString label = QStringLiteral("当前值 (%1)").arg(value.toString());
+    const QString label = QString("当前值 (%1)").arg(value.toString());
     if (!parameter.options_value_map.contains(label))
     {
         parameter.options.append(label);

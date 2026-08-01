@@ -25,11 +25,17 @@ struct MODEL_API ModelTaskRequest
 {
     int           task_id{-1};                       ///< 任务 ID。
     ModelTaskType task_type{ModelTaskType::Unknown};  ///< 模型任务类型。
+    QString       scope_uuid;                        ///< 测试任务 UUID；训练为 train。
+    QString       scope_name;                        ///< 测试任务显示名称。
+    QString       evaluation_method;                 ///< 规范化评估方法名，例如 object_detection。
     FrameworkDefinition framework;                    ///< 框架脚本和环境定义。
     QString             task_server_host;             ///< Python 连接的任务 TCP 主机地址。
     quint16             task_server_port{0};          ///< Python 连接的任务 TCP 端口。
     ModelDatasetSelections selections;                ///< 当前模型的数据集选择。
     ModelTaskConfigInput   model_config;              ///< 当前模型名称、架构和参数。
+    bool reuse_prediction{false};                     ///< 测试仅重新评估时保留当前 pred/。
+    QString inference_digest;                         ///< 当前推理输入摘要。
+    QString input_data_digest;                        ///< 当前测试图像 ID、路径、大小和 mtime 摘要。
 };
 
 /**

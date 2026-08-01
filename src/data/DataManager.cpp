@@ -1,4 +1,4 @@
-﻿#include "data/DataManager.h"
+#include "data/DataManager.h"
 
 #include "common/Utils.h"
 #include "data/CategoryStatisticsModel.h"
@@ -265,7 +265,7 @@ void DataManager::startAsyncLabelLoading()
             LabelDataHelper helper = data::createLabelDataHelper(label_data_method);
             if (helper == nullptr)
             {
-                result.error   = QStringLiteral("标签数据工厂未初始化");
+                result.error   = QString("标签数据工厂未初始化");
                 result.success = false;
                 return;
             }
@@ -562,14 +562,14 @@ void DataManager::addDataset(const QString &name)
     }
     if (isDataOperationRunning())
     {
-        ui::SignalHelper::notifyWarn(QStringLiteral("添加数据集"), QStringLiteral("当前已有数据操作正在进行中"));
+        ui::SignalHelper::notifyWarn(QString("添加数据集"), QString("当前已有数据操作正在进行中"));
         return;
     }
 
     setDataOperationRunning(true);
     auto                           dataset_id = std::make_shared<int64_t>(-1);
     DataOperationWorkflow::Options options;
-    options.title         = QStringLiteral("添加数据集");
+    options.title         = QString("添加数据集");
     options.start_message = QString("正在添加数据集: %1").arg(name);
     DataOperationWorkflow::startDatabase(
         this, database_->path(), std::move(options),
@@ -590,7 +590,7 @@ void DataManager::addDataset(const QString &name)
                 const QString message = QString("添加数据集失败: %1").arg(result.error);
                 spdlog::error("{}", message.toUtf8().constData());
                 ui::ProgressManager::getInstance()->addMessage(spdlog::level::err, message);
-                ui::SignalHelper::notifyError(QStringLiteral("添加数据集失败"), message);
+                ui::SignalHelper::notifyError(QString("添加数据集失败"), message);
             }
         });
 }
@@ -609,13 +609,13 @@ void DataManager::updateDataset(const int64_t dataset_id, const QString &name)
     }
     if (isDataOperationRunning())
     {
-        ui::SignalHelper::notifyWarn(QStringLiteral("更新数据集"), QStringLiteral("当前已有数据操作正在进行中"));
+        ui::SignalHelper::notifyWarn(QString("更新数据集"), QString("当前已有数据操作正在进行中"));
         return;
     }
 
     setDataOperationRunning(true);
     DataOperationWorkflow::Options options;
-    options.title         = QStringLiteral("更新数据集");
+    options.title         = QString("更新数据集");
     options.start_message = QString("正在更新数据集: %1").arg(name);
     DataOperationWorkflow::startDatabase(
         this, database_->path(), std::move(options),
@@ -636,7 +636,7 @@ void DataManager::updateDataset(const int64_t dataset_id, const QString &name)
                 const QString message = QString("更新数据集失败: %1").arg(result.error);
                 spdlog::error("{}", message.toUtf8().constData());
                 ui::ProgressManager::getInstance()->addMessage(spdlog::level::err, message);
-                ui::SignalHelper::notifyError(QStringLiteral("更新数据集失败"), message);
+                ui::SignalHelper::notifyError(QString("更新数据集失败"), message);
             }
         });
 }
@@ -682,7 +682,7 @@ QString DataManager::isValidTagName(const QString &name, const int64_t tag_id) c
 {
     if (image_tags_ == nullptr)
     {
-        return QStringLiteral("error:Tag 模型不可用");
+        return QString("error:Tag 模型不可用");
     }
 
     const QString normalized_name = name.trimmed();
@@ -695,7 +695,7 @@ QString DataManager::isValidTagName(const QString &name, const int64_t tag_id) c
     const int64_t existing_tag_id = findTagClassId(normalized_name);
     if (existing_tag_id >= 0 && existing_tag_id != tag_id)
     {
-        return QStringLiteral("error:Tag 名称已存在");
+        return QString("error:Tag 名称已存在");
     }
     return QString();
 }
@@ -708,7 +708,7 @@ QString DataManager::isValidTag(const QString &name, const QString &shortcut, co
         return name_error;
     }
     return shortcut_manager_ ? shortcut_manager_->validateTagShortcut(shortcut, tag_id)
-                             : QStringLiteral("error:快捷键管理器不可用");
+                             : QString("error:快捷键管理器不可用");
 }
 
 void DataManager::deleteDatasets(const std::vector<int64_t> &dataset_ids)
@@ -755,7 +755,7 @@ void DataManager::deleteDatasets(const std::vector<int64_t> &dataset_ids)
     emit datasetDeletionRunningChanged();
 
     DataOperationWorkflow::Options options;
-    options.title         = QStringLiteral("删除数据集");
+    options.title         = QString("删除数据集");
     options.start_message = QString("正在删除 %1 个数据集及其图像、标注和标签").arg(target_dataset_ids.size());
     DataOperationWorkflow::startDatabase(
         this, database_->path(), std::move(options),
@@ -1440,7 +1440,7 @@ void DataManager::deleteSelectedImages()
     image_operation_running_ = true;
     emit                           imageOperationRunningChanged();
     DataOperationWorkflow::Options options;
-    options.title         = QStringLiteral("删除图像");
+    options.title         = QString("删除图像");
     options.start_message = QString("正在删除 %1 个图像及其标注").arg(image_ids.size());
     DataOperationWorkflow::startDatabase(
         this, database_->path(), std::move(options),
@@ -1765,7 +1765,7 @@ void DataManager::moveToDataset(const std::vector<int64_t> &image_ids, const int
     image_operation_running_ = true;
     emit                           imageOperationRunningChanged();
     DataOperationWorkflow::Options options;
-    options.title         = QStringLiteral("移动图像");
+    options.title         = QString("移动图像");
     options.start_message = QString("正在移动 %1 个图像").arg(moved_image_ids.size());
     DataOperationWorkflow::startDatabase(
         this, database_->path(), std::move(options),

@@ -2,11 +2,16 @@
 
 #include "dltool/model/Export.h"
 #include "model/ModelTaskPreparation.h"
+#include "model/ModelTestTaskRepository.h"
 #include "model/ModelTaskTypes.h"
 #include "model/TaskCommunication.h"
+#include "model/ModelEvaluationService.h"
 
 #include <QObject>
 #include <QString>
+#include <QVariantMap>
+#include <QSet>
+#include <QHash>
 #include <QtQml>
 #include <memory>
 
@@ -70,6 +75,8 @@ public:
      */
     Q_INVOKABLE int  startModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type);
 
+    Q_INVOKABLE int startModelTestTask(const QString &model_uuid, const QString &test_task_uuid);
+
     /**
      * @brief 停止指定模型任务。
      * @param model_uuid 模型 UUID。
@@ -77,6 +84,10 @@ public:
      * @return 成功提交停止请求返回 true。
      */
     Q_INVOKABLE bool stopModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type);
+    Q_INVOKABLE bool stopModelTestTask(const QString &model_uuid, const QString &test_task_uuid);
+
+    /** 在项目关闭前取消外部进程和 C++ 评估，并等待评估线程收敛。 */
+    void shutdown();
 
     /**
      * @brief 删除指定模型任务记录。
@@ -94,7 +105,8 @@ private:
      * @param err_msg 失败时输出错误信息，可为 nullptr。
      * @return 任务 ID；失败时返回 -1。
      */
-    int  ensureTaskRecord(const QString &model_uuid, ModelTaskType task_type, QString *err_msg = nullptr);
+    int ensureTaskRecord(const QString &model_uuid, ModelTaskType task_type, const QString &scope_uuid = {},
+                         const QString &scope_name = {}, QString *err_msg = nullptr);
 
     /**
      * @brief 提交处于 Preparing 状态的任务到后台准备流程。
@@ -161,6 +173,12 @@ private:
      * @param task_id 任务 ID。
      */
     void syncTaskModelState(int task_id) const;
+    bool buildTestEvaluationOptions(int task_id, ModelEvaluationOptions &options, QString *err_msg = nullptr) const;
+    bool commitTestEvaluationResult(int task_id, const ModelEvaluationOptions &options,
+                                    const ModelEvaluationResult &evaluation_result, QVariantMap &result,
+                                    QString *err_msg = nullptr);
+    bool runTestEvaluation(int task_id, QVariantMap &result, QString *err_msg = nullptr);
+    void runTestEvaluationAsync(int task_id);
 
 private slots:
     /**
@@ -211,6 +229,9 @@ private:
     dltool::data::DataManager *data_manager_{nullptr};  ///< 当前项目数据管理器。
     TaskManager               *task_manager_{nullptr};  ///< 应用级任务状态中心。
     std::unique_ptr<ExternalModelTaskRunner> external_task_runner_; ///< 当前项目 Python 进程运行器。
+    ModelTestTaskRepository test_task_repository_;
+    QSet<int> evaluation_tasks_;
+    QHash<int, std::shared_ptr<std::atomic_bool>> evaluation_cancel_tokens_;
 };
 
 } // namespace dltool::model

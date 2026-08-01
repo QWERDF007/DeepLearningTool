@@ -7,6 +7,7 @@
 
 #include <QDateTime>
 #include <algorithm>
+#include <utility>
 
 namespace dltool::model {
 
@@ -81,6 +82,12 @@ QVariant TaskManager::data(const QModelIndex &index, const int role) const
         return task.model_uuid;
     case ModelNameRole:
         return task.model_name;
+    case ScopeUuidRole:
+        return task.scope_uuid;
+    case ScopeNameRole:
+        return task.scope_name;
+    case DisplayNameRole:
+        return task.display_name.isEmpty() ? task.model_name : task.display_name;
     case TaskTypeRole:
         return static_cast<int>(task.type);
     case TaskTypeTextRole:
@@ -105,6 +112,14 @@ QVariant TaskManager::data(const QModelIndex &index, const int role) const
         return canStop(task);
     case CanFinishRole:
         return canFinish(task);
+    case CanDeleteRole:
+        return canDelete(task);
+    case PhaseRole:
+        return task.phase;
+    case ConfigPathRole:
+        return task.config_path;
+    case LogPathRole:
+        return task.log_path;
     default:
         return {};
     }
@@ -147,6 +162,9 @@ QHash<int, QByteArray> TaskManager::roleNames() const
         {      TaskIdRole,        "task_id"},
         {   ModelUuidRole,     "model_uuid"},
         {   ModelNameRole,     "model_name"},
+        {   ScopeUuidRole,     "scope_uuid"},
+        {   ScopeNameRole,     "scope_name"},
+        { DisplayNameRole,   "display_name"},
         {    TaskTypeRole,      "task_type"},
         {TaskTypeTextRole, "task_type_text"},
         {      StatusRole,         "status"},
@@ -159,6 +177,10 @@ QHash<int, QByteArray> TaskManager::roleNames() const
         {    CanPauseRole,      "can_pause"},
         {     CanStopRole,       "can_stop"},
         {   CanFinishRole,     "can_finish"},
+        {   CanDeleteRole,    "can_delete"},
+        {       PhaseRole,            "phase"},
+        {  ConfigPathRole,       "config_path"},
+        {     LogPathRole,           "log_path"},
     };
 }
 
@@ -170,6 +192,13 @@ int TaskManager::addTask(const QString &model_uuid, const QString &model_name, c
 int TaskManager::addTask(const QString &model_uuid, const QString &model_name, const ModelTaskType task_type,
                          const bool supports_pause)
 {
+    const QString scope_uuid = isTrainModelTask(task_type) ? QStringLiteral("train") : QString();
+    return addTask(model_uuid, model_name, task_type, scope_uuid, {}, supports_pause);
+}
+
+int TaskManager::addTask(const QString &model_uuid, const QString &model_name, const ModelTaskType task_type,
+                         const QString &scope_uuid, const QString &scope_name, const bool supports_pause)
+{
     const QString uuid = model_uuid.trimmed();
     const QString name = model_name.trimmed();
     if (uuid.isEmpty() || name.isEmpty() || !isKnownModelTask(task_type))
@@ -178,8 +207,19 @@ int TaskManager::addTask(const QString &model_uuid, const QString &model_name, c
     const int row = rowCount();
     beginInsertRows({}, row, row);
     const int task_id = next_task_id_++;
-    tasks_.push_back(Task{task_id, uuid, name, task_type, Pending, QDateTime::currentSecsSinceEpoch(), 0, 0, -1, 0,
-                          supports_pause});
+    Task task;
+    task.id = task_id;
+    task.model_uuid = uuid;
+    task.model_name = name;
+    task.scope_uuid = scope_uuid.trimmed();
+    task.scope_name = scope_name.trimmed();
+    task.display_name = task.scope_name.isEmpty() ? name : QStringLiteral("%1 · %2").arg(name, task.scope_name);
+    task.type = task_type;
+    task.status = Pending;
+    task.created_at = QDateTime::currentSecsSinceEpoch();
+    task.eta_seconds = -1;
+    task.supports_pause = supports_pause;
+    tasks_.push_back(std::move(task));
     endInsertRows();
     emit countChanged();
     ++revision_;
@@ -187,6 +227,24 @@ int TaskManager::addTask(const QString &model_uuid, const QString &model_name, c
     spdlog::info("添加任务, task_id: {}, 模型: {}, 类型: {}", task_id, name.toUtf8().constData(),
                  modelTaskKey(task_type).toUtf8().constData());
     return task_id;
+}
+
+bool TaskManager::setTaskPaths(const int task_id, const QString &config_path, const QString &log_path)
+{
+    const int row = rowForTask(task_id);
+    if (row < 0)
+        return false;
+
+    Task &task = tasks_[static_cast<size_t>(row)];
+    const QString normalized_config = config_path.trimmed();
+    const QString normalized_log = log_path.trimmed();
+    if (task.config_path == normalized_config && task.log_path == normalized_log)
+        return true;
+
+    task.config_path = normalized_config;
+    task.log_path = normalized_log;
+    emitTaskChanged(row, {ConfigPathRole, LogPathRole});
+    return true;
 }
 
 bool TaskManager::startTask(const int task_id)
@@ -258,13 +316,11 @@ bool TaskManager::deleteTask(const int task_id)
         return false;
 
     const Task &task = tasks_.at(static_cast<size_t>(row));
-    const bool should_stop = canStop(task) || task.status == Stopping;
-    if (should_stop)
-    {
-        if (communication_server_ != nullptr)
-            communication_server_->sendCommand(task_id, TaskCommand::Stop);
-        emit taskStopRequested(task_id);
-    }
+    // Keep active records routable until their process/background preparation
+    // has converged.  Deleting one here would let late events become orphaned
+    // and could mix them with a later task using the same scope.
+    if (!canDelete(task))
+        return false;
 
     beginRemoveRows({}, row, row);
     tasks_.erase(tasks_.begin() + row);
@@ -297,6 +353,20 @@ bool TaskManager::updateTaskProgress(const int task_id, const int progress)
     {
         emit dataChanged(index(row, ProgressColumn), index(row, ProgressColumn), {ProgressRole, Qt::DisplayRole});
     }
+    return true;
+}
+
+bool TaskManager::updateTaskPhase(const int task_id, const QString &phase)
+{
+    const int row = rowForTask(task_id);
+    if (row < 0)
+        return false;
+    Task &task = tasks_[static_cast<size_t>(row)];
+    const QString value = phase.trimmed();
+    if (task.phase == value)
+        return true;
+    task.phase = value;
+    emitTaskChanged(row, {PhaseRole});
     return true;
 }
 
@@ -333,7 +403,15 @@ void TaskManager::clearTasks()
 int TaskManager::findModelTask(const QString &model_uuid, const ModelTaskType task_type,
                                const bool include_finished) const
 {
-    const Task *task = findModelTaskRecord(model_uuid, task_type, include_finished);
+    const QString scope_uuid = isTrainModelTask(task_type) ? QStringLiteral("train") : QString();
+    const Task *task = findModelTaskRecord(model_uuid, task_type, scope_uuid, include_finished);
+    return task != nullptr ? task->id : -1;
+}
+
+int TaskManager::findModelTask(const QString &model_uuid, const ModelTaskType task_type,
+                               const QString &scope_uuid, const bool include_finished) const
+{
+    const Task *task = findModelTaskRecord(model_uuid, task_type, scope_uuid, include_finished);
     return task != nullptr ? task->id : -1;
 }
 
@@ -343,10 +421,29 @@ const TaskManager::Task *TaskManager::findTask(const int task_id) const
     return row >= 0 ? &tasks_.at(static_cast<size_t>(row)) : nullptr;
 }
 
+bool TaskManager::hasActiveModelTasks(const QString &model_uuid) const
+{
+    const QString value = model_uuid.trimmed();
+    if (value.isEmpty())
+        return false;
+    return std::any_of(tasks_.cbegin(), tasks_.cend(), [&value](const Task &task)
+    {
+        return task.model_uuid == value && !isTerminal(task.status);
+    });
+}
+
 const TaskManager::Task *TaskManager::findModelTaskRecord(const QString &model_uuid, const ModelTaskType task_type,
                                                            const bool include_finished) const
 {
-    const int row = rowForModelTask(model_uuid.trimmed(), task_type, include_finished);
+    const QString scope_uuid = isTrainModelTask(task_type) ? QStringLiteral("train") : QString();
+    const int row = rowForModelTask(model_uuid.trimmed(), task_type, scope_uuid, include_finished);
+    return row >= 0 ? &tasks_.at(static_cast<size_t>(row)) : nullptr;
+}
+
+const TaskManager::Task *TaskManager::findModelTaskRecord(const QString &model_uuid, const ModelTaskType task_type,
+                                                           const QString &scope_uuid, const bool include_finished) const
+{
+    const int row = rowForModelTask(model_uuid.trimmed(), task_type, scope_uuid.trimmed(), include_finished);
     return row >= 0 ? &tasks_.at(static_cast<size_t>(row)) : nullptr;
 }
 
@@ -366,6 +463,12 @@ bool TaskManager::canStopTask(const int task_id) const
 {
     const Task *task = findTask(task_id);
     return task != nullptr && canStop(*task);
+}
+
+bool TaskManager::canDeleteTask(const int task_id) const
+{
+    const Task *task = findTask(task_id);
+    return task != nullptr && canDelete(*task);
 }
 
 bool TaskManager::isTerminal(const TaskStatus status)
@@ -450,7 +553,11 @@ void TaskManager::handleTaskMessage(const TaskMessage &message)
         markTaskStopped(message.task_id);
         break;
     case TaskProtocolStatus::Finished:
-        finishTask(message.task_id);
+        // A test runner only completes inference here.  C++ still has to
+        // evaluate the normalized PRED and atomically commit result.yaml
+        // before the task can enter Finished.
+        if (task->type != ModelTaskType::Test)
+            finishTask(message.task_id);
         break;
     case TaskProtocolStatus::Failed:
     case TaskProtocolStatus::Error:
@@ -480,7 +587,7 @@ int TaskManager::rowForTask(const int task_id) const
 }
 
 int TaskManager::rowForModelTask(const QString &model_uuid, const ModelTaskType task_type,
-                                 const bool include_finished) const
+                                 const QString &scope_uuid, const bool include_finished) const
 {
     if (model_uuid.isEmpty() || !isKnownModelTask(task_type))
         return -1;
@@ -488,7 +595,8 @@ int TaskManager::rowForModelTask(const QString &model_uuid, const ModelTaskType 
     for (int row = static_cast<int>(tasks_.size()) - 1; row >= 0; --row)
     {
         const Task &task = tasks_.at(static_cast<size_t>(row));
-        if (task.model_uuid == model_uuid && task.type == task_type && (include_finished || task.status != Finished))
+        if (task.model_uuid == model_uuid && task.type == task_type && task.scope_uuid == scope_uuid
+            && (include_finished || task.status != Finished))
             return row;
     }
     return -1;
@@ -581,7 +689,7 @@ QVariant TaskManager::dataForColumn(const Task &task, const int column) const
     case TaskIdColumn:
         return task.id;
     case ModelNameColumn:
-        return task.model_name;
+        return task.display_name.isEmpty() ? task.model_name : task.display_name;
     case TaskTypeColumn:
         return modelTaskDisplayName(task.type);
     case StatusColumn:
@@ -668,6 +776,11 @@ bool TaskManager::canPause(const Task &task) const
 bool TaskManager::canStop(const Task &task) const
 {
     return task.status == Preparing || task.status == Running || task.status == Paused;
+}
+
+bool TaskManager::canDelete(const Task &task) const
+{
+    return task.status == Pending || isTerminal(task.status);
 }
 
 bool TaskManager::canFinish(const Task &task) const

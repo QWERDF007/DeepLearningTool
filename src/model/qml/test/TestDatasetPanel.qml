@@ -13,6 +13,10 @@ Rectangle {
 
     property DataManager dataManager: null
     property IModel selectedModel: null
+    // The test-task manager owns the editable dataset selection.  Keep the
+    // model optional so the panel can still fall back to the model template
+    // while a project/model context is being bound.
+    property DataSelectionTreeModel selectionModel: null
 
     ColumnLayout {
         anchors.fill: parent
@@ -22,7 +26,6 @@ Rectangle {
             Layout.fillWidth: true
             Layout.topMargin: 5
             Layout.leftMargin: 5
-            Layout.preferredHeight: 40
             text: qsTr("数据集选择")
             font: QuiFont.Title
         }
@@ -32,7 +35,9 @@ Rectangle {
             Layout.fillHeight: true
             roleTitle: qsTr("测试数据集")
             dataManager: control.dataManager
-            selectionModel: control.selectedModel ? control.selectedModel.testDatasetViewModel : null
+            selectionModel: control.selectionModel
+                             ? control.selectionModel
+                             : (control.selectedModel ? control.selectedModel.testDatasetViewModel : null)
         }
     }
 }

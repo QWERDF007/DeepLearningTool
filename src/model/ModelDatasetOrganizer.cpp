@@ -141,6 +141,7 @@ enum class AnomalibSampleField
 {
     Id,
     Path,
+    DatasetId,
     LabelIndex,
     Mask,
 };
@@ -310,6 +311,7 @@ const std::map<AnomalibSampleField, QString> &anomalibSampleFieldNames()
     static const std::map<AnomalibSampleField, QString> names = {
         {        AnomalibSampleField::Id,          QStringLiteral("id")},
         {      AnomalibSampleField::Path,        QStringLiteral("path")},
+        { AnomalibSampleField::DatasetId, QStringLiteral("dataset_id")},
         {AnomalibSampleField::LabelIndex, QStringLiteral("label_index")},
         {      AnomalibSampleField::Mask,        QStringLiteral("mask")},
     };
@@ -449,7 +451,7 @@ QString writeFsSam2LabelMask(const QVariantMap &label_data, int image_width, int
     if (image.isNull() || !image.save(path))
     {
         if (err_msg != nullptr)
-            *err_msg = QStringLiteral("写入 FS-SAM2 mask 失败: %1").arg(path);
+            *err_msg = QString("写入 FS-SAM2 mask 失败: %1").arg(path);
         return {};
     }
     return cleanPath(path);
@@ -461,7 +463,7 @@ QString writeAnomalibImageMask(const std::vector<std::vector<QPointF>> &polygons
     if (image_width <= 0 || image_height <= 0)
     {
         if (err_msg != nullptr)
-            *err_msg = QStringLiteral("写入 anomalib mask 失败: 图像尺寸无效, image_id=%1").arg(image_id);
+            *err_msg = QString("写入 anomalib mask 失败: 图像尺寸无效, image_id=%1").arg(image_id);
         return {};
     }
 
@@ -469,7 +471,7 @@ QString writeAnomalibImageMask(const std::vector<std::vector<QPointF>> &polygons
     if (mask.empty())
     {
         if (err_msg != nullptr)
-            *err_msg = QStringLiteral("写入 anomalib mask 失败: mask 为空, image_id=%1").arg(image_id);
+            *err_msg = QString("写入 anomalib mask 失败: mask 为空, image_id=%1").arg(image_id);
         return {};
     }
 
@@ -479,7 +481,7 @@ QString writeAnomalibImageMask(const std::vector<std::vector<QPointF>> &polygons
     if (image.isNull() || !image.save(path))
     {
         if (err_msg != nullptr)
-            *err_msg = QStringLiteral("写入 anomalib mask 失败: %1").arg(path);
+            *err_msg = QString("写入 anomalib mask 失败: %1").arg(path);
         return {};
     }
     return file_name;
@@ -549,7 +551,7 @@ public:
         if (request.source == nullptr)
         {
             if (err_msg != nullptr)
-                *err_msg = QStringLiteral("模型数据源为空");
+        *err_msg = QString("模型数据源为空");
             return {};
         }
 
@@ -557,7 +559,7 @@ public:
         if (selection == nullptr || selection->isEmpty())
         {
             if (required && err_msg != nullptr)
-                *err_msg = QStringLiteral("未选择%1数据集").arg(mappedValue(datasetSplitNames(), split));
+            *err_msg = QString("未选择%1数据集").arg(mappedValue(datasetSplitNames(), split));
             return {};
         }
 
@@ -596,7 +598,7 @@ public:
         if (ctx.image_count <= 0)
         {
             if (required && err_msg != nullptr)
-                *err_msg = QStringLiteral("%1数据集没有可用图像").arg(ctx.split_name);
+                *err_msg = QString("%1数据集没有可用图像").arg(ctx.split_name);
             return {};
         }
 
@@ -760,8 +762,8 @@ protected:
         setMapValue(ctx.manifest, mappedValue(genericManifestFieldNames(), GenericManifestField::Images), ctx.images);
         const QString manifest_path
             = QDir(ctx.split_dir).filePath(mappedValue(datasetFileNames(), DatasetFileName::Manifest));
-        if (!dltool::common::yaml::writeFile(manifest_path, ctx.manifest, err_msg, QStringLiteral("写入数据集清单失败"),
-                                             QStringLiteral("生成数据集清单 YAML 失败")))
+        if (!dltool::common::yaml::writeFile(manifest_path, ctx.manifest, err_msg, QString("写入数据集清单失败"),
+                                             QString("生成数据集清单 YAML 失败")))
             return {};
 
         return {
@@ -852,8 +854,8 @@ protected:
             return false;
         ctx.masks_dir
             = QDir(ctx.request->dataset_dir).filePath(mappedValue(datasetSubdirNames(), DatasetSubdir::Masks));
-        return ensureDirectory(ctx.masks_dir, err_msg, QStringLiteral("数据集目录为空"),
-                               QStringLiteral("创建数据集目录失败: %1"));
+        return ensureDirectory(ctx.masks_dir, err_msg, QString("数据集目录为空"),
+                               QString("创建数据集目录失败: %1"));
     }
 
     LabelExportDecision augmentLabel(SplitExportContext &ctx, ImageExportContext &image, qint64 label_id,
@@ -884,6 +886,7 @@ protected:
         setMapValue(sample, mappedValue(anomalibSampleFieldNames(), AnomalibSampleField::Id), image.image_id);
         setMapValue(sample, mappedValue(anomalibSampleFieldNames(), AnomalibSampleField::Path),
                     cleanPath(image.image_path));
+        setMapValue(sample, mappedValue(anomalibSampleFieldNames(), AnomalibSampleField::DatasetId), image.dataset_id);
         setMapValue(sample, mappedValue(anomalibSampleFieldNames(), AnomalibSampleField::LabelIndex),
                     image.has_anomaly_label ? 1 : 0);
         if (image.has_anomaly_label)
@@ -915,8 +918,8 @@ protected:
         setMapValue(file_list, mappedValue(anomalibFileListFieldNames(), AnomalibFileListField::Samples), ctx.samples);
 
         const QString file_list_path = anomalibFileListPath(ctx.request->dataset_dir, ctx.split_name);
-        if (!dltool::common::yaml::writeFile(file_list_path, file_list, err_msg, QStringLiteral("写入数据集清单失败"),
-                                             QStringLiteral("生成数据集清单 YAML 失败")))
+        if (!dltool::common::yaml::writeFile(file_list_path, file_list, err_msg, QString("写入数据集清单失败"),
+                                             QString("生成数据集清单 YAML 失败")))
             return {};
 
         return {
@@ -952,11 +955,11 @@ QVariantMap ModelDatasetOrganizer::organize(const ModelDatasetExportRequest &req
     if (request.dataset_dir.trimmed().isEmpty())
     {
         if (err_msg != nullptr)
-            *err_msg = QStringLiteral("模型数据集目录为空");
+        *err_msg = QString("模型数据集目录为空");
         return {};
     }
-    if (!ensureDirectory(request.dataset_dir, err_msg, QStringLiteral("数据集目录为空"),
-                         QStringLiteral("创建数据集目录失败: %1")))
+    if (!ensureDirectory(request.dataset_dir, err_msg, QString("数据集目录为空"),
+                         QString("创建数据集目录失败: %1")))
         return {};
 
     const bool fs_sam2_layout = datasetLayout(request.framework_name) == FrameworkDatasetLayout::FsSam2;

@@ -393,7 +393,7 @@ void ImageClusterController::executeCluster(const ClusterRequest &request, Clust
     catch (const std::exception &e)
     {
         response.success = false;
-        response.error   = QString::fromUtf8(e.what());
+        response.error   = QString(e.what());
     }
     catch (...)
     {

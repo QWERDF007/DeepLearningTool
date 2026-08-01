@@ -227,7 +227,7 @@ void RoiSearchController::executeSearch(const SearchRequest &request, SearchResp
     catch (const std::exception &e)
     {
         response.success = false;
-        QString msg      = QString::fromUtf8(e.what());
+        QString msg      = QString(e.what());
         if (msg.contains(QStringLiteral("RoiSearch feature tensor must be NCHW"))
             || msg.contains(QStringLiteral("RoiSearch requires NCHW feature tensor"))
             || msg.contains(QStringLiteral("RoiSearch requires NCHW feature map")))

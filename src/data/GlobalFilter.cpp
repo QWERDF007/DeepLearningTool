@@ -477,6 +477,21 @@ bool GlobalFilter::acceptsLabel(const int64_t label_id) const
     return acceptsCustomLabel(label_id, image_id);
 }
 
+bool GlobalFilter::acceptsLabelClassId(const int64_t label_class_id) const
+{
+    return passesIdFilter(filter(FilterType::LabelClass), label_class_id);
+}
+
+bool GlobalFilter::isLabelClassFilterEnabled() const
+{
+    return filter(FilterType::LabelClass).enabled;
+}
+
+bool GlobalFilter::isLabelClassFilterInverted() const
+{
+    return filter(FilterType::LabelClass).inverted;
+}
+
 bool GlobalFilter::isActive() const
 {
     return std::any_of(filters_.cbegin(), filters_.cend(), [](const IdFilter &state) { return state.enabled; })
@@ -488,6 +503,92 @@ int GlobalFilter::activeFilterCount() const
     const int filter_count = static_cast<int>(std::count_if(
         filters_.cbegin(), filters_.cend(), [](const IdFilter &state) { return state.enabled; }));
     return filter_count + (file_name_filter_text_.isEmpty() ? 0 : 1);
+}
+
+QString GlobalFilter::description() const
+{
+    if (!isActive())
+        return QString("全部测试样本");
+
+    const auto namesFor = [](const std::vector<int64_t> &ids, const auto &nameFor)
+    {
+        QStringList names;
+        for (const int64_t id : ids)
+        {
+            const QString name = nameFor(id);
+            names.push_back(name.isEmpty() ? QString("#%1").arg(id) : name);
+        }
+        return names.join(QString("/"));
+    };
+    const auto idsFor = [this](const FilterType type) { return getActiveIds(type); };
+    const auto prefix = [this](const FilterType type, const QString &label)
+    {
+        const IdFilter &state = filter(type);
+        return state.inverted ? QString("排除%1").arg(label) : label;
+    };
+
+    QStringList parts;
+    const IdFilter &datasets = filter(FilterType::Dataset);
+    if (datasets.enabled)
+    {
+        const QString values = namesFor(idsFor(FilterType::Dataset), [this](const int64_t id)
+        {
+            return data_manager_ != nullptr && data_manager_->datasets() != nullptr
+                ? data_manager_->datasets()->getDatasetName(id) : QString();
+        });
+        parts.push_back(QString("%1=%2").arg(prefix(FilterType::Dataset, QString("数据集")),
+                                              values.isEmpty() ? QString("无") : values));
+    }
+    const IdFilter &label_classes = filter(FilterType::LabelClass);
+    if (label_classes.enabled)
+    {
+        const QString values = namesFor(idsFor(FilterType::LabelClass), [this](const int64_t id)
+        {
+            return data_manager_ != nullptr && data_manager_->labelClasses() != nullptr
+                ? data_manager_->labelClasses()->getLabelClassName(id) : QString();
+        });
+        parts.push_back(QString("%1=%2").arg(prefix(FilterType::LabelClass, QString("标签")),
+                                              values.isEmpty() ? QString("无") : values));
+    }
+    const IdFilter &image_classes = filter(FilterType::ImageLabelClass);
+    if (image_classes.enabled)
+    {
+        const QString values = namesFor(idsFor(FilterType::ImageLabelClass), [this](const int64_t id)
+        {
+            return data_manager_ != nullptr && data_manager_->labelClasses() != nullptr
+                ? data_manager_->labelClasses()->getLabelClassName(id) : QString();
+        });
+        parts.push_back(QString("%1=%2").arg(prefix(FilterType::ImageLabelClass, QString("图像标签")),
+                                              values.isEmpty() ? QString("无") : values));
+    }
+    const IdFilter &tags = filter(FilterType::Tag);
+    if (tags.enabled)
+    {
+        const QString values = namesFor(idsFor(FilterType::Tag), [this](const int64_t id)
+        {
+            return data_manager_ != nullptr && data_manager_->imageTags() != nullptr
+                ? data_manager_->imageTags()->getTagClassName(id) : QString();
+        });
+        parts.push_back(QString("%1=%2").arg(prefix(FilterType::Tag, QString("Tag")),
+                                              values.isEmpty() ? QString("无") : values));
+    }
+    if (!file_name_filter_text_.isEmpty())
+        parts.push_back(QString("文件名=%1").arg(file_name_filter_text_));
+
+    const IdFilter &custom = filter(FilterType::Custom);
+    if (custom.enabled)
+    {
+        const auto conditions = customConditions();
+        QStringList values;
+        for (const int64_t id : getActiveIds(FilterType::Custom))
+        {
+            const auto found = std::find_if(conditions.cbegin(), conditions.cend(),
+                                            [id](const CustomConditionSpec &condition) { return condition.id == id; });
+            values.push_back(found == conditions.cend() ? QString("#%1").arg(id) : found->text);
+        }
+        parts.push_back(QString("自定义=%1").arg(values.isEmpty() ? QString("无") : values.join(QString("/"))));
+    }
+    return parts.isEmpty() ? QString("全部测试样本") : QString("当前过滤：%1").arg(parts.join(QString("，")));
 }
 
 GlobalFilter::IdFilter &GlobalFilter::filter(const FilterType type)

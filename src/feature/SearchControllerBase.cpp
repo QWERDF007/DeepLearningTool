@@ -415,7 +415,7 @@ void SearchControllerBase::executeSearch(const SearchRequest &request, SearchRes
     catch (const std::exception &e)
     {
         response.success = false;
-        response.error   = QString::fromUtf8(e.what());
+        response.error   = QString(e.what());
     }
     catch (...)
     {

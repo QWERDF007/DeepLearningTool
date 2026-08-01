@@ -11,15 +11,15 @@ ModelTaskDescriptor describeModelTask(ModelTaskType task_type)
     {
     case ModelTaskType::Train:
         descriptor.key                     = QStringLiteral("train");
-        descriptor.display_name            = QStringLiteral("训练");
-        descriptor.config_file_name        = QStringLiteral("train.yaml");
+        descriptor.display_name            = QString("训练");
+        descriptor.config_file_name        = QStringLiteral("config.yaml");
         descriptor.log_stem                = QStringLiteral("train");
         descriptor.requires_dataset_export = true;
         break;
     case ModelTaskType::Test:
         descriptor.key                     = QStringLiteral("test");
-        descriptor.display_name            = QStringLiteral("测试");
-        descriptor.config_file_name        = QStringLiteral("test.yaml");
+        descriptor.display_name            = QString("测试");
+        descriptor.config_file_name        = QStringLiteral("config.yaml");
         descriptor.log_stem                = QStringLiteral("test");
         descriptor.requires_dataset_export = true;
         break;
@@ -33,7 +33,7 @@ ModelTaskDescriptor describeModelTask(ModelTaskType task_type)
     case ModelTaskType::Unknown:
     default:
         descriptor.key          = QStringLiteral("unknown");
-        descriptor.display_name = QStringLiteral("未知");
+        descriptor.display_name = QString("未知");
         descriptor.log_stem     = QStringLiteral("task");
         break;
     }

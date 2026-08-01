@@ -68,7 +68,7 @@ Item {
         RowLayout {
             SplitView.fillWidth: true
             // SplitView.fillHeight: true
-            SplitView.preferredHeight: 200
+            SplitView.preferredHeight: Math.min(200, content.height/3)
             spacing: 5
 
             QuiChart {

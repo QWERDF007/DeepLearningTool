@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QStringList>
 #include <QtQml>
 
 #include <array>
@@ -193,6 +194,16 @@ public:
     bool acceptsLabel(int64_t label_id) const;
 
     /**
+     * @brief 判断一个标签类别 ID 是否通过当前 LabelClass 过滤。
+     *
+     * 评估结果中的实例记录可能只保存类别 ID，无法反查项目数据库中的
+     * label ID；该只读查询复用 GlobalFilter 原有的反选、空选择语义。
+     */
+    bool acceptsLabelClassId(int64_t label_class_id) const;
+    bool isLabelClassFilterEnabled() const;
+    bool isLabelClassFilterInverted() const;
+
+    /**
      * @brief 是否存在启用的筛选条件。
      * @return 是否存在筛选条件。
      */
@@ -203,6 +214,13 @@ public:
      * @return 条件数量。
      */
     int activeFilterCount() const;
+
+    /**
+     * @brief 返回供派生页面展示的当前过滤条件摘要。
+     *
+     * 该摘要只读取过滤器状态和现有数据模型，不复制过滤条件或可见 ID 列表。
+     */
+    Q_INVOKABLE QString description() const;
 
 signals:
     /**

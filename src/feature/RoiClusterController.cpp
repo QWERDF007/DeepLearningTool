@@ -56,12 +56,12 @@ QString roiClusterProgressMessage(const irt::features::RoiClusterProgress &progr
     const size_t  total      = progress.total_count > 0 ? progress.total_count : total_count;
     if (total > 0 && progress.stage == irt::features::RoiClusterStage::ExtractingFeatures)
     {
-        return QStringLiteral("标注聚类进度 [%1]: %2 / %3")
+        return QString("标注聚类进度 [%1]: %2 / %3")
             .arg(stage_name)
             .arg(static_cast<qlonglong>(progress.processed_count))
             .arg(static_cast<qlonglong>(total));
     }
-    return QStringLiteral("标注聚类阶段 [%1]").arg(stage_name);
+    return QString("标注聚类阶段 [%1]").arg(stage_name);
 }
 
 QString clusterTagName(const QString &class_name, const int64_t cluster_id)
@@ -130,17 +130,17 @@ QString RoiClusterController::lastSummary() const
 QString RoiClusterController::validationError() const
 {
     if (running_)
-        return QStringLiteral("标注聚类正在运行");
+        return QString("标注聚类正在运行");
     if (data_provider_ == nullptr)
-        return QStringLiteral("标注聚类模型未初始化");
+        return QString("标注聚类模型未初始化");
     if (data_manager_ == nullptr)
-        return QStringLiteral("数据管理器未初始化");
+        return QString("数据管理器未初始化");
 
     const auto *settings = dltool::settings::GlobalSettings::getInstance();
     if (settings == nullptr || settings->settingsGroup(kSettingsAccessor) == nullptr)
-        return QStringLiteral("标注聚类设置未加载");
+        return QString("标注聚类设置未加载");
     if (!searchSettingsEnabled(settings, kSettingsAccessor))
-        return QStringLiteral("标注聚类未启用");
+        return QString("标注聚类未启用");
 
     Request request;
     buildRequest(request);
@@ -151,36 +151,36 @@ bool RoiClusterController::cluster(const QVariantList &dataset_class_scope)
 {
     if (running_)
     {
-        setLastError(QStringLiteral("标注聚类正在运行"));
+        setLastError(QString("标注聚类正在运行"));
         return false;
     }
     if (data_provider_ == nullptr)
     {
-        setLastError(QStringLiteral("标注聚类模型未初始化"));
+        setLastError(QString("标注聚类模型未初始化"));
         return false;
     }
     if (data_manager_ == nullptr)
     {
-        setLastError(QStringLiteral("数据管理器未初始化"));
+        setLastError(QString("数据管理器未初始化"));
         return false;
     }
 
     const auto scope = parseDatasetClassScope(dataset_class_scope);
     if (scope.empty())
     {
-        setLastError(QStringLiteral("请选择要聚类的数据集或类别"));
+        setLastError(QString("请选择要聚类的数据集或类别"));
         return false;
     }
 
     const auto *settings = dltool::settings::GlobalSettings::getInstance();
     if (settings == nullptr || settings->settingsGroup(kSettingsAccessor) == nullptr)
     {
-        setLastError(QStringLiteral("标注聚类设置未加载"));
+        setLastError(QString("标注聚类设置未加载"));
         return false;
     }
     if (!searchSettingsEnabled(settings, kSettingsAccessor))
     {
-        setLastError(QStringLiteral("标注聚类未启用"));
+        setLastError(QString("标注聚类未启用"));
         return false;
     }
 
@@ -192,12 +192,12 @@ bool RoiClusterController::cluster(const QVariantList &dataset_class_scope)
     collectClusterItems(request, scope);
     if (request.items.empty())
     {
-        setLastError(QStringLiteral("选定范围内没有可聚类的标注 ROI"));
+        setLastError(QString("选定范围内没有可聚类的标注 ROI"));
         return false;
     }
     if (request.items.size() <= 1)
     {
-        setLastError(QStringLiteral("标注聚类至少需要 2 个标注"));
+        setLastError(QString("标注聚类至少需要 2 个标注"));
         return false;
     }
 
@@ -264,17 +264,17 @@ bool RoiClusterController::validateRequest(const Request &request)
 QString RoiClusterController::requestValidationError(const Request &request) const
 {
     if (QString::fromStdString(request.config.model_name).trimmed().isEmpty())
-        return QStringLiteral("请先配置标注聚类模型");
+        return QString("请先配置标注聚类模型");
     if (QString::fromStdString(request.config.feature_name).trimmed().isEmpty())
-        return QStringLiteral("请先配置标注聚类特征层");
+        return QString("请先配置标注聚类特征层");
 
     const QFileInfo weights_info(request.weights_file);
     if (request.weights_file.trimmed().isEmpty() || !weights_info.isFile())
-        return QStringLiteral("模型权重文件不存在: %1").arg(request.weights_file);
+        return QString("模型权重文件不存在: %1").arg(request.weights_file);
     if (request.config.pooled_height <= 0 || request.config.pooled_width <= 0)
-        return QStringLiteral("ROI 输出尺寸必须大于 0");
+        return QString("ROI 输出尺寸必须大于 0");
     if (request.config.hdbscan.min_cluster_size < 2)
-        return QStringLiteral("最小簇大小必须至少为 2");
+        return QString("最小簇大小必须至少为 2");
     return {};
 }
 
@@ -317,7 +317,7 @@ void RoiClusterController::executeCluster(const Request &request, Response &resp
     try
     {
         addProgressMessage(spdlog::level::info,
-                           QStringLiteral("正在抽取标注 ROI 特征并聚类: %1 个标注").arg(request.items.size()));
+                           QString("正在抽取标注 ROI 特征并聚类: %1 个标注").arg(request.items.size()));
 
         irt::features::RoiCluster cluster(request.config);
         const auto result = cluster.cluster(toFsPath(request.weights_file), request.items,
@@ -328,7 +328,7 @@ void RoiClusterController::executeCluster(const Request &request, Response &resp
         response.cluster_count = result.cluster_count;
         response.noise_count = result.noise_count;
         response.success = true;
-        response.summary = QStringLiteral("标注聚类完成: %1 个标注, %2 个簇, 噪声 %3 个")
+        response.summary = QString("标注聚类完成: %1 个标注, %2 个簇, 噪声 %3 个")
                                .arg(response.assignments.size())
                                .arg(static_cast<qlonglong>(response.cluster_count))
                                .arg(static_cast<qlonglong>(response.noise_count));
@@ -336,12 +336,12 @@ void RoiClusterController::executeCluster(const Request &request, Response &resp
     catch (const std::exception &e)
     {
         response.success = false;
-        response.error = QString::fromUtf8(e.what());
+        response.error = QString(e.what());
     }
     catch (...)
     {
         response.success = false;
-        response.error = QStringLiteral("未知标注聚类错误");
+        response.error = QString("未知标注聚类错误");
     }
 }
 
@@ -382,14 +382,14 @@ bool RoiClusterController::applyClusterResult(const Response &response, size_t &
         }
         if (tag_id < 0)
         {
-            err_msg = QStringLiteral("创建聚类 Tag 失败: %1").arg(tag_name);
+            err_msg = QString("创建聚类 Tag 失败: %1").arg(tag_name);
             return false;
         }
 
         const std::vector<int64_t> label_ids(label_id_set.begin(), label_id_set.end());
         if (!data_manager_->setLabelsTag(label_ids, tag_id))
         {
-            err_msg = QStringLiteral("设置聚类 Tag 失败: %1").arg(tag_name);
+            err_msg = QString("设置聚类 Tag 失败: %1").arg(tag_name);
             return false;
         }
         assigned_count += label_ids.size();
@@ -409,9 +409,9 @@ void RoiClusterController::resetForNewCluster()
 void RoiClusterController::startProgress(const Request &request)
 {
     setRunning(true);
-    ui::ProgressManager::getInstance()->startTask(QStringLiteral("标注聚类"));
+    ui::ProgressManager::getInstance()->startTask(QString("标注聚类"));
     addProgressMessage(spdlog::level::info,
-                       QStringLiteral("开始标注聚类: %1 个标注").arg(request.items.size()));
+                       QString("开始标注聚类: %1 个标注").arg(request.items.size()));
 }
 
 void RoiClusterController::finishProgress(const bool success, const QString &message)
@@ -430,8 +430,8 @@ void RoiClusterController::finishCluster(const Response &response)
         last_summary_.clear();
         emit resultsChanged();
         setLastError(response.error);
-        finishProgress(false, QStringLiteral("%1, 耗时 %2").arg(response.error, formatElapsed(response.elapsed_ms)));
-        ui::SignalHelper::notifyError(QStringLiteral("标注聚类失败"), response.error);
+        finishProgress(false, QString("%1, 耗时 %2").arg(response.error, formatElapsed(response.elapsed_ms)));
+        ui::SignalHelper::notifyError(QString("标注聚类失败"), response.error);
         return;
     }
 
@@ -445,22 +445,22 @@ void RoiClusterController::finishCluster(const Response &response)
         last_summary_.clear();
         emit resultsChanged();
         setLastError(err_msg);
-        finishProgress(false, QStringLiteral("%1, 耗时 %2").arg(err_msg, formatElapsed(response.elapsed_ms)));
-        ui::SignalHelper::notifyError(QStringLiteral("标注聚类失败"), err_msg);
+        finishProgress(false, QString("%1, 耗时 %2").arg(err_msg, formatElapsed(response.elapsed_ms)));
+        ui::SignalHelper::notifyError(QString("标注聚类失败"), err_msg);
         return;
     }
 
     result_count_ = static_cast<int>(std::min(assigned_count, static_cast<size_t>(std::numeric_limits<int>::max())));
-    last_summary_ = QStringLiteral("%1，已设置 %2 个 Tag，覆盖 %3 个标注")
+    last_summary_ = QString("%1，已设置 %2 个 Tag，覆盖 %3 个标注")
                         .arg(response.summary)
                         .arg(static_cast<qlonglong>(tag_count))
                         .arg(static_cast<qlonglong>(assigned_count));
     if (skipped_noise_count > 0)
-        last_summary_ += QStringLiteral("，跳过噪声 %1 个").arg(static_cast<qlonglong>(skipped_noise_count));
+        last_summary_ += QString("，跳过噪声 %1 个").arg(static_cast<qlonglong>(skipped_noise_count));
 
     setLastError(QString());
-    finishProgress(true, QStringLiteral("%1, 耗时 %2").arg(last_summary_, formatElapsed(response.elapsed_ms)));
-    ui::SignalHelper::notifySuccess(QStringLiteral("标注聚类完成"), last_summary_);
+    finishProgress(true, QString("%1, 耗时 %2").arg(last_summary_, formatElapsed(response.elapsed_ms)));
+    ui::SignalHelper::notifySuccess(QString("标注聚类完成"), last_summary_);
     emit resultsChanged();
 }
 

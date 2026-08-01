@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dltool/model/Export.h"
+#include "model/ModelDatasetSelection.h"
 #include "model/ModelStorageService.h"
 #include "model/ModelTaskTypes.h"
 
@@ -27,6 +28,7 @@ enum class ModelTaskConfigField
     ModelName,
     TaskType,
     Framework,
+    Method,
     ModelArchitecture,
     ModelDir,
     ResultDir,
@@ -38,6 +40,8 @@ enum class ModelTaskConfigField
     Trainer,
     Inference,
     OutputDir,
+    PredictionDir,
+    TestTaskUuid,
 };
 
 /**
@@ -60,9 +64,24 @@ struct MODEL_API ModelTaskConfigInput
     QString     model_uuid;
     QString     model_name;
     QString     framework_name;
+    QString     method;
     QString     model_architecture;
     QVariantMap train_params;
     QVariantMap test_params;
+    // Original editable test parameters.  The top-level test_params in a
+    // runner config may be normalized to the task-root coordinate system;
+    // this copy keeps the durable task definition stable across reruns.
+    QVariantMap task_definition_test_params;
+    QString     scope_uuid;
+    QString     scope_name;
+    QString     task_directory;
+    // A regular test task persists its definition in the same config.yaml
+    // that is consumed by the external runner.  Keep these values in the
+    // value-only input so rebuilding the runtime section cannot erase the
+    // task ledger fields.
+    ModelDatasetSelection test_dataset_selection;
+    qint64                created_at{0};
+    qint64                modified_at{0};
 };
 
 /**
@@ -104,6 +123,7 @@ public:
      * @return 完整路径
      */
     QString configPath(const QString &model_name, ModelTaskConfigFile file) const;
+    QString configPath(const QString &model_name, ModelTaskType task_type, const QString &task_directory = {}) const;
 
     /**
      * @brief 加载模型任务配置
@@ -129,6 +149,8 @@ public:
      */
     QString write(const QString &model_name, ModelTaskType task_type, const QVariantMap &config,
                   QString *err_msg = nullptr) const;
+    QString write(const QString &model_name, ModelTaskType task_type, const QString &task_directory,
+                  const QVariantMap &config, QString *err_msg = nullptr) const;
 
 private:
     /**

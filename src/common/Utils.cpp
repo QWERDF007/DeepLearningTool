@@ -90,7 +90,7 @@ bool ensureDirectory(const QString &path, QString *err_msg, const QString &empty
     if (cleaned.isEmpty())
     {
         if (err_msg != nullptr)
-            *err_msg = empty_message.isEmpty() ? QStringLiteral("目录路径为空") : empty_message;
+            *err_msg = empty_message.isEmpty() ? QString("目录路径为空") : empty_message;
         return false;
     }
 
@@ -103,7 +103,7 @@ bool ensureDirectory(const QString &path, QString *err_msg, const QString &empty
         if (err_msg != nullptr)
         {
             const QString message = create_failed_message.isEmpty()
-                                      ? QStringLiteral("无法创建目录: %1")
+                                      ? QString("无法创建目录: %1")
                                       : create_failed_message;
             *err_msg = message.arg(cleaned);
         }

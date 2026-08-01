@@ -729,10 +729,10 @@ void SelectedLabelsInfoModel::refresh()
         }
     }
 
-    image_text_ = multiple_images ? QStringLiteral("不同图像") : data_manager_->getImageName(first_image_id);
+    image_text_ = multiple_images ? QString("不同图像") : data_manager_->getImageName(first_image_id);
     dataset_text_
-        = multiple_datasets ? QStringLiteral("不同数据集") : data_manager_->getImageDatasetName(first_image_id);
-    tag_text_ = multiple_tags ? QStringLiteral("不同Tag") : data_manager_->getImageTagName(first_image_id);
+        = multiple_datasets ? QString("不同数据集") : data_manager_->getImageDatasetName(first_image_id);
+    tag_text_ = multiple_tags ? QString("不同Tag") : data_manager_->getImageTagName(first_image_id);
     if (multiple_classes_)
     {
         current_class_id_ = -1;

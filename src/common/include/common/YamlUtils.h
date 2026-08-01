@@ -27,6 +27,14 @@ COMMON_API void       setMapValue(YAML::Node &node, const QString &key, bool val
 COMMON_API YAML::Node loadFile(const QFileInfo &file);
 COMMON_API bool       writeFile(const QString &path, const YAML::Node &node, QString *err_msg = nullptr,
                                 const QString &open_error_prefix = {}, const QString &emit_error_prefix = {});
+/**
+ * @brief 使用 QSaveFile 原子写入 YAML 文件。
+ *
+ * 与 writeFile 保持相同的 YAML emitter 语义，但在 commit() 成功前不会替换目标文件。
+ */
+COMMON_API bool       writeFileAtomic(const QString &path, const YAML::Node &node, QString *err_msg = nullptr,
+                                      const QString &open_error_prefix = {}, const QString &emit_error_prefix = {},
+                                      const QString &commit_error_prefix = {});
 COMMON_API QFileInfo  findConfigFile(const QString &directory, const QString &base_name,
                                      const QStringList &suffixes = {QStringLiteral(".yaml"), QStringLiteral(".yml")});
 COMMON_API QVector<QFileInfo> configFiles(const QStringList &directories,

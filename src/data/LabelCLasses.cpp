@@ -27,7 +27,7 @@ QString normalizedColorName(const QString &color)
 std::vector<uint8_t> extraDataForGroup(const QString &group)
 {
     const QJsonObject object{
-        {QString::fromUtf8(kGroupKey), normalizeLabelClassGroup(group)}
+        {QString(kGroupKey), normalizeLabelClassGroup(group)}
     };
     const QByteArray     json = QJsonDocument(object).toJson(QJsonDocument::Compact);
     std::vector<uint8_t> blob;
@@ -54,7 +54,7 @@ QString groupFromExtraData(const std::vector<uint8_t> &blob)
         return defaultLabelClassGroup();
     }
 
-    return normalizeLabelClassGroup(document.object().value(QString::fromUtf8(kGroupKey)).toString());
+    return normalizeLabelClassGroup(document.object().value(QString(kGroupKey)).toString());
 }
 
 } // namespace
@@ -62,25 +62,25 @@ QString groupFromExtraData(const std::vector<uint8_t> &blob)
 QString normalizeLabelClassGroup(const QString &group)
 {
     const QString normalized = group.trimmed().toLower();
-    if (normalized == QString::fromUtf8(kUnlabeledGroup) || normalized == QString("未标注")
+    if (normalized == QString(kUnlabeledGroup) || normalized == QString("未标注")
         || normalized == QStringLiteral("unlabelled"))
     {
-        return QString::fromUtf8(kUnlabeledGroup);
+        return QString(kUnlabeledGroup);
     }
-    if (normalized == QString::fromUtf8(kGoodGroup) || normalized == QString("良好")
+    if (normalized == QString(kGoodGroup) || normalized == QString("良好")
         || normalized == QStringLiteral("good"))
     {
-        return QString::fromUtf8(kGoodGroup);
+        return QString(kGoodGroup);
     }
-    return QString::fromUtf8(kAnomalyGroup);
+    return QString(kAnomalyGroup);
 }
 
 QString labelClassGroupDisplayName(const QString &group)
 {
     const QString normalized = normalizeLabelClassGroup(group);
-    if (normalized == QString::fromUtf8(kUnlabeledGroup))
+    if (normalized == QString(kUnlabeledGroup))
         return QString("未标注");
-    return normalized == QString::fromUtf8(kGoodGroup) ? QString("良好") : QString("异常");
+    return normalized == QString(kGoodGroup) ? QString("良好") : QString("异常");
 }
 
 QString defaultLabelClassGroup()
@@ -90,17 +90,17 @@ QString defaultLabelClassGroup()
 
 QString unlabeledLabelClassGroup()
 {
-    return QString::fromUtf8(kUnlabeledGroup);
+    return QString(kUnlabeledGroup);
 }
 
 QString anomalyLabelClassGroup()
 {
-    return QString::fromUtf8(kAnomalyGroup);
+    return QString(kAnomalyGroup);
 }
 
 QString goodLabelClassGroup()
 {
-    return QString::fromUtf8(kGoodGroup);
+    return QString(kGoodGroup);
 }
 
 LabelClass::LabelClass(const int64_t id, const QString &name, const QString &color, const QString &shortcut,

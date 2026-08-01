@@ -135,8 +135,9 @@ bool DataBase::checkIntegrity(QString &err_msg) const
     int      rc = sqlite3_open_v2(path_.toUtf8().constData(), &db, SQLITE_OPEN_READONLY, nullptr);
     if (rc != SQLITE_OK)
     {
-        const char *sqlite_message = db != nullptr ? sqlite3_errmsg(db) : "数据库句柄为空";
-        err_msg                    = QString("无法打开数据库: %1").arg(QString::fromUtf8(sqlite_message));
+        const QString sqlite_message = db != nullptr ? QString::fromUtf8(sqlite3_errmsg(db))
+                                                      : QString("数据库句柄为空");
+        err_msg                       = QString("无法打开数据库: %1").arg(sqlite_message);
         if (db != nullptr)
         {
             sqlite3_close(db);
@@ -148,7 +149,8 @@ bool DataBase::checkIntegrity(QString &err_msg) const
     rc                 = sqlite3_prepare_v2(db, "PRAGMA quick_check", -1, &stmt, nullptr);
     if (rc != SQLITE_OK)
     {
-        err_msg = QString("无法检查数据库: %1").arg(QString::fromUtf8(sqlite3_errmsg(db)));
+        const QString sqlite_message = QString::fromUtf8(sqlite3_errmsg(db));
+        err_msg                      = QString("无法检查数据库: %1").arg(sqlite_message);
         sqlite3_close(db);
         return false;
     }
@@ -168,7 +170,8 @@ bool DataBase::checkIntegrity(QString &err_msg) const
 
     if (ok && rc != SQLITE_DONE)
     {
-        err_msg = QString("数据库检查失败: %1").arg(QString::fromUtf8(sqlite3_errmsg(db)));
+        const QString sqlite_message = QString::fromUtf8(sqlite3_errmsg(db));
+        err_msg                      = QString("数据库检查失败: %1").arg(sqlite_message);
         ok      = false;
     }
 

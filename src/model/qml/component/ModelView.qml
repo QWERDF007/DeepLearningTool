@@ -26,6 +26,9 @@ Rectangle {
     property var taskManager: null
     property ModelTaskController taskController: null
     property int taskType: ModelTaskTypes.Unknown
+    // Test task state is scoped by the selected test-task UUID.  Training
+    // keeps the single train scope and does not share the test-task cache.
+    property string taskScopeUuid: ""
     property bool taskActionsEnabled: false
     property int taskRevision: taskManager ? taskManager.revision : 0
 
@@ -35,8 +38,11 @@ Rectangle {
 
         if (taskType === ModelTaskTypes.Train)
             return modelData.extra_data.train || ({})
-        if (taskType === ModelTaskTypes.Test)
-            return modelData.extra_data.test || ({})
+        if (taskType === ModelTaskTypes.Test && modelData.uuid === currentModelUuid
+                && taskScopeUuid.length > 0) {
+            const testTasks = modelData.extra_data.test_tasks || ({})
+            return testTasks[taskScopeUuid] || ({})
+        }
         return ({})
     }
 
@@ -97,14 +103,22 @@ Rectangle {
         if (!canStartModelTask(currentModelUuid)) {
             return
         }
-        taskController.startModelTask(currentModelUuid, taskType)
+        if (taskType === ModelTaskTypes.Test) {
+            taskController.startModelTestTask(currentModelUuid, taskScopeUuid)
+        } else {
+            taskController.startModelTask(currentModelUuid, taskType)
+        }
     }
 
     function stopCurrentModelTask() {
         if (!canStopModelTask(currentModelUuid)) {
             return
         }
-        taskController.stopModelTask(currentModelUuid, taskType)
+        if (taskType === ModelTaskTypes.Test) {
+            taskController.stopModelTestTask(currentModelUuid, taskScopeUuid)
+        } else {
+            taskController.stopModelTask(currentModelUuid, taskType)
+        }
     }
 
     function addCurrentModelTask() {
@@ -119,11 +133,17 @@ Rectangle {
         if (!taskManager || !uuid || String(uuid).length === 0) {
             return -1
         }
+        if (taskType === ModelTaskTypes.Test) {
+            if (taskScopeUuid.length === 0)
+                return -1
+            return taskManager.findModelTask(uuid, taskType, taskScopeUuid, false)
+        }
         return taskManager.findModelTask(uuid, taskType, false)
     }
 
     function canStartModelTask(uuid) {
-        if (!taskActionsEnabled || !taskController || !taskManager || !uuid || String(uuid).length === 0) {
+        if (!taskActionsEnabled || !taskController || !taskManager || !uuid || String(uuid).length === 0
+                || (taskType === ModelTaskTypes.Test && taskScopeUuid.length === 0)) {
             return false
         }
 
@@ -132,7 +152,8 @@ Rectangle {
     }
 
     function canStopModelTask(uuid) {
-        if (!taskActionsEnabled || !taskController || !taskManager || !uuid || String(uuid).length === 0) {
+        if (!taskActionsEnabled || !taskController || !taskManager || !uuid || String(uuid).length === 0
+                || (taskType === ModelTaskTypes.Test && taskScopeUuid.length === 0)) {
             return false
         }
 
@@ -152,7 +173,7 @@ Rectangle {
         QuiMenuItem {
             text: "添加到任务"
             iconSource: QuiFontIcon.TaskView
-            visible: modelView.taskActionsEnabled
+            visible: modelView.taskActionsEnabled && modelView.taskType !== ModelTaskTypes.Test
             enabled: modelView.taskController && modelView.currentModelUuid.length > 0
             onClicked: modelView.addCurrentModelTask()
         }

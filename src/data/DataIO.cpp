@@ -1056,15 +1056,15 @@ void COCOIO::doScanLabelClasses(const QString &data_dir)
         const QString annotation_dir = data_dir.trimmed();
         if (annotation_dir.isEmpty())
         {
-            emit labelClassesScanned(true, {}, QStringLiteral("未提供 COCO 标注目录"));
+            emit labelClassesScanned(true, {}, QString("未提供 COCO 标注目录"));
             return;
         }
 
-        updateProgress(0, QStringLiteral("正在扫描 COCO 类别..."));
+        updateProgress(0, QString("正在扫描 COCO 类别..."));
         const QString coco_json_path = findCocoJsonFile(annotation_dir);
         if (coco_json_path.isEmpty())
         {
-            emit labelClassesScanned(false, {}, QStringLiteral("未找到有效的 COCO 标注文件"));
+            emit labelClassesScanned(false, {}, QString("未找到有效的 COCO 标注文件"));
             return;
         }
 
@@ -1088,11 +1088,11 @@ void COCOIO::doScanLabelClasses(const QString &data_dir)
 
         if (!ok || isCancelRequested())
         {
-            emit labelClassesScanned(false, {}, QStringLiteral("COCO 类别扫描已取消或失败"));
+            emit labelClassesScanned(false, {}, QString("COCO 类别扫描已取消或失败"));
             return;
         }
 
-        updateProgress(100, QStringLiteral("COCO 类别扫描完成: %1 个类别").arg(label_class_info.size()));
+        updateProgress(100, QString("COCO 类别扫描完成: %1 个类别").arg(label_class_info.size()));
         emit labelClassesScanned(true, label_class_info, QString());
     }
     catch (const std::exception &e)
@@ -1807,15 +1807,15 @@ void LabelMeIO::doScanLabelClasses(const QString &image_dir, const QString &data
         const QString annotation_dir = data_dir.trimmed();
         if (annotation_dir.isEmpty())
         {
-            emit labelClassesScanned(true, {}, QStringLiteral("未提供 LabelMe 标注目录"));
+            emit labelClassesScanned(true, {}, QString("未提供 LabelMe 标注目录"));
             return;
         }
 
-        updateProgress(0, QStringLiteral("正在扫描 LabelMe 类别..."));
+        updateProgress(0, QString("正在扫描 LabelMe 类别..."));
         const std::vector<QString> json_files = DatasetIO::scanJsonFiles(annotation_dir);
         if (json_files.empty())
         {
-            emit labelClassesScanned(true, {}, QStringLiteral("未找到 LabelMe 标注文件"));
+            emit labelClassesScanned(true, {}, QString("未找到 LabelMe 标注文件"));
             return;
         }
 
@@ -1834,7 +1834,7 @@ void LabelMeIO::doScanLabelClasses(const QString &image_dir, const QString &data
         {
             if (isCancelRequested())
             {
-                emit labelClassesScanned(false, {}, QStringLiteral("LabelMe 类别扫描已取消"));
+                emit labelClassesScanned(false, {}, QString("LabelMe 类别扫描已取消"));
                 return;
             }
 
@@ -1856,10 +1856,10 @@ void LabelMeIO::doScanLabelClasses(const QString &image_dir, const QString &data
                 addScannedLabelClass(label_class_info, shape.label, color_index);
 
             if (processed_files % 500 == 0)
-                updateProgress(50, QStringLiteral("已扫描 LabelMe 标注 %1").arg(processed_files));
+                updateProgress(50, QString("已扫描 LabelMe 标注 %1").arg(processed_files));
         }
 
-        updateProgress(100, QStringLiteral("LabelMe 类别扫描完成: %1 个类别，跳过 %2 个文件")
+        updateProgress(100, QString("LabelMe 类别扫描完成: %1 个类别，跳过 %2 个文件")
                                 .arg(label_class_info.size())
                                 .arg(skipped_files));
         emit labelClassesScanned(true, label_class_info, QString());
@@ -2273,15 +2273,15 @@ void MaskIO::doScanLabelClasses(const QString &data_dir)
         const QString annotation_dir = data_dir.trimmed();
         if (annotation_dir.isEmpty())
         {
-            emit labelClassesScanned(true, {}, QStringLiteral("未提供 Mask 标注目录"));
+            emit labelClassesScanned(true, {}, QString("未提供 Mask 标注目录"));
             return;
         }
 
-        updateProgress(0, QStringLiteral("正在扫描 Mask 类别..."));
+        updateProgress(0, QString("正在扫描 Mask 类别..."));
         const std::vector<QString> mask_files = scanMaskFiles(annotation_dir);
         if (mask_files.empty())
         {
-            emit labelClassesScanned(true, {}, QStringLiteral("未找到 Mask 文件"));
+            emit labelClassesScanned(true, {}, QString("未找到 Mask 文件"));
             return;
         }
 
@@ -2292,17 +2292,17 @@ void MaskIO::doScanLabelClasses(const QString &data_dir)
         {
             if (isCancelRequested())
             {
-                emit labelClassesScanned(false, {}, QStringLiteral("Mask 类别扫描已取消"));
+                emit labelClassesScanned(false, {}, QString("Mask 类别扫描已取消"));
                 return;
             }
 
             ++processed;
             addScannedLabelClass(label_class_info, labelClassNameForMask(mask_path, annotation_dir), color_index);
             if (processed % 1000 == 0)
-                updateProgress(50, QStringLiteral("已扫描 Mask %1").arg(processed));
+                updateProgress(50, QString("已扫描 Mask %1").arg(processed));
         }
 
-        updateProgress(100, QStringLiteral("Mask 类别扫描完成: %1 个类别").arg(label_class_info.size()));
+        updateProgress(100, QString("Mask 类别扫描完成: %1 个类别").arg(label_class_info.size()));
         emit labelClassesScanned(true, label_class_info, QString());
     }
     catch (const std::exception &e)
@@ -2820,7 +2820,7 @@ void FolderIO::doScanLabelClasses(const QString &image_dir)
 {
     try
     {
-        updateProgress(0, QStringLiteral("正在扫描类别目录..."));
+        updateProgress(0, QString("正在扫描类别目录..."));
 
         const QDir root_dir(image_dir);
         if (!root_dir.exists())
@@ -2836,7 +2836,7 @@ void FolderIO::doScanLabelClasses(const QString &image_dir)
         {
             if (isCancelRequested())
             {
-                emit labelClassesScanned(false, {}, QStringLiteral("类别扫描已取消"));
+                emit labelClassesScanned(false, {}, QString("类别扫描已取消"));
                 return;
             }
 
@@ -2845,11 +2845,11 @@ void FolderIO::doScanLabelClasses(const QString &image_dir)
 
         if (label_class_info.empty())
         {
-            emit labelClassesScanned(false, {}, QStringLiteral("未找到包含图像的目录"));
+            emit labelClassesScanned(false, {}, QString("未找到包含图像的目录"));
             return;
         }
 
-        updateProgress(100, QStringLiteral("类别目录扫描完成: %1 个类别").arg(label_class_info.size()));
+        updateProgress(100, QString("类别目录扫描完成: %1 个类别").arg(label_class_info.size()));
         emit labelClassesScanned(true, label_class_info, QString());
     }
     catch (const std::exception &e)

@@ -769,7 +769,7 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
             }
             catch (const std::exception &e)
             {
-                error = QString::fromUtf8(e.what());
+                error = QString(e.what());
                 spdlog::error("加载智能标注模型失败: {}", error.toUtf8().constData());
             }
             catch (...)
@@ -976,7 +976,7 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
     }
     catch (const std::exception &e)
     {
-        const QString error               = QString::fromUtf8(e.what());
+        const QString error               = QString(e.what());
         result[QStringLiteral("success")] = false;
         result[QStringLiteral("error")]   = error;
         setLastError(error);

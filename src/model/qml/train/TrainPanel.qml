@@ -24,8 +24,6 @@ Item {
     property var currentModelData: ({})
     property var trainState: currentModelData && currentModelData.extra_data
                               ? currentModelData.extra_data.train || ({}) : ({})
-    property var testState: currentModelData && currentModelData.extra_data
-                             ? currentModelData.extra_data.test || ({}) : ({})
 
     function openTensorBoard() {
         if (!tensorBoardPanelVisible || !modelManager || currentModelUuid.length === 0) {
@@ -135,7 +133,9 @@ Item {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.minimumHeight: 170
-                        metricText: control.testState.metrics || ""
+                        // Training validation/evaluation belongs to the train
+                        // task scope; software test tasks are independent.
+                        metricText: control.trainState.metrics || ""
                     }
                 }
 

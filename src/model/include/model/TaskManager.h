@@ -66,6 +66,9 @@ public:
         TaskIdRole = Qt::UserRole + 1,
         ModelUuidRole,
         ModelNameRole,
+        ScopeUuidRole,
+        ScopeNameRole,
+        DisplayNameRole,
         TaskTypeRole,
         TaskTypeTextRole,
         StatusRole,
@@ -78,6 +81,10 @@ public:
         CanPauseRole,
         CanStopRole,
         CanFinishRole,
+        CanDeleteRole,
+        PhaseRole,
+        ConfigPathRole,
+        LogPathRole,
     };
     Q_ENUM(Role)
 
@@ -91,6 +98,9 @@ public:
         int           id{-1};                              ///< 当前项目内递增的任务 ID。
         QString       model_uuid;                           ///< 所属模型 UUID。
         QString       model_name;                           ///< 用于表格显示的模型名称。
+        QString       scope_uuid;                           ///< 任务作用域 UUID；训练固定为 train。
+        QString       scope_name;                           ///< 任务作用域显示名称。
+        QString       display_name;                         ///< 任务在任务中心中的显示名称。
         ModelTaskType type{ModelTaskType::Unknown};         ///< 任务类型。
         TaskStatus    status{Pending};                      ///< 当前生命周期状态。
         qint64        created_at{0};                        ///< 创建时间（秒级 Unix 时间戳）。
@@ -99,6 +109,9 @@ public:
         qint64        eta_seconds{-1};                      ///< 剩余秒数，-1 表示未知。
         int           progress{0};                          ///< 进度（0-100）。
         bool          supports_pause{true};                 ///< 当前任务是否支持暂停。
+        QString       phase;                                 ///< 推理、评估或结果提交阶段。
+        QString       config_path;                           ///< 本次任务使用的配置路径。
+        QString       log_path;                              ///< 本次任务日志路径。
     };
 
     /**
@@ -168,6 +181,15 @@ public:
      */
     int addTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type,
                 bool supports_pause);
+    int addTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type,
+                const QString &scope_uuid, const QString &scope_name, bool supports_pause = true);
+
+    /**
+     * @brief 设置任务中心显示的实际配置和日志路径。
+     *
+     * 路径由 ModelStorageService 生成，TaskManager 只保存展示值，不自行拼接目录。
+     */
+    bool setTaskPaths(int task_id, const QString &config_path, const QString &log_path);
 
     /**
      * @brief 将可启动任务置为 Preparing，并请求所属控制器继续完整启动链。
@@ -217,7 +239,7 @@ public:
     /**
      * @brief 删除任务记录。
      * @param task_id 任务 ID。
-     * @return 记录删除成功返回 true；活动任务会先发出停止请求。
+     * @return 记录删除成功返回 true；Preparing、Running、Paused、Stopping 状态拒绝删除。
      */
     Q_INVOKABLE bool deleteTask(int task_id);
     /**
@@ -227,6 +249,7 @@ public:
      * @return 更新成功返回 true。
      */
     Q_INVOKABLE bool updateTaskProgress(int task_id, int progress);
+    bool              updateTaskPhase(int task_id, const QString &phase);
     /**
      * @brief 更新任务预计剩余时间。
      * @param task_id 任务 ID。
@@ -248,12 +271,15 @@ public:
      */
     Q_INVOKABLE int findModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type,
                                   bool include_finished = false) const;
+    Q_INVOKABLE int findModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type,
+                                  const QString &scope_uuid, bool include_finished = false) const;
     /**
      * @brief 获取任务中心保存的唯一任务记录。
      * @param task_id 任务 ID。
      * @return 任务记录指针；不存在时返回 nullptr。指针不可跨事件循环或任务表修改保存。
      */
     const Task      *findTask(int task_id) const;
+    bool hasActiveModelTasks(const QString &model_uuid) const;
     /**
      * @brief 获取指定模型的最新任务记录。
      * @param model_uuid 模型 UUID。
@@ -263,6 +289,8 @@ public:
      */
     const Task      *findModelTaskRecord(const QString &model_uuid, ModelTaskTypes::Type task_type,
                                          bool include_finished = false) const;
+    const Task      *findModelTaskRecord(const QString &model_uuid, ModelTaskTypes::Type task_type,
+                                         const QString &scope_uuid, bool include_finished = false) const;
 
     /**
      * @brief 查询任务是否可以开始。
@@ -282,6 +310,12 @@ public:
      * @return Preparing、Running 或 Paused 状态返回 true。
      */
     Q_INVOKABLE bool canStopTask(int task_id) const;
+    /**
+     * @brief 查询任务是否可以删除。
+     * @param task_id 任务 ID。
+     * @return Pending 或终态任务返回 true；活动任务返回 false。
+     */
+    Q_INVOKABLE bool canDeleteTask(int task_id) const;
     /**
      * @brief 判断任务状态是否为终态。
      * @param status 任务状态。
@@ -352,7 +386,8 @@ private:
      * @param include_finished 是否包含 Finished 任务。
      * @return 行号；未找到时返回 -1。
      */
-    int  rowForModelTask(const QString &model_uuid, ModelTaskType task_type, bool include_finished) const;
+    int  rowForModelTask(const QString &model_uuid, ModelTaskType task_type, const QString &scope_uuid,
+                         bool include_finished) const;
     /**
      * @brief 更新任务状态并发出局部模型更新信号。
      * @param task_id 任务 ID。
@@ -433,6 +468,12 @@ private:
      * @return 可停止返回 true。
      */
     bool     canStop(const Task &task) const;
+    /**
+     * @brief 判断任务是否允许从任务中心删除。
+     * @param task 任务记录。
+     * @return Pending 或终态任务返回 true。
+     */
+    bool     canDelete(const Task &task) const;
     /**
      * @brief 判断任务是否可标记完成。
      * @param task 任务记录。

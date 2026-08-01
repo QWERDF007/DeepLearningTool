@@ -202,14 +202,14 @@ void DatasetSelectionStatisticsModel::refresh()
                 const double percentage = image_dimension ? item.image_percentage : item.instance_percentage;
                 const QString percentage_text
                     = QLocale::system().toString(percentage * 100.0, 'f', 2) + QStringLiteral("%");
-                tooltips.push_back(QStringLiteral("%1\n数量：%2\n占比：%3")
+                tooltips.push_back(QString("%1\n数量：%2\n占比：%3")
                                        .arg(item.name)
                                        .arg(QLocale::system().toString(count))
                                        .arg(percentage_text));
             }
 
             QVariantMap dataset;
-            dataset.insert(QStringLiteral("label"), image_dimension ? QStringLiteral("图像") : QStringLiteral("实例"));
+            dataset.insert(QStringLiteral("label"), image_dimension ? QString("图像") : QString("实例"));
             dataset.insert(QStringLiteral("data"), values);
             dataset.insert(QStringLiteral("backgroundColor"), colors);
             dataset.insert(QStringLiteral("tooltips"), tooltips);

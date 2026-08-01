@@ -2,6 +2,7 @@
 #include "common/Logger.h"
 #include "data/Logger.h"
 #include "feature/Logger.h"
+#include "model/EvaluationThumbnailImageProvider.h"
 #include "model/Logger.h"
 #include "project/Logger.h"
 #include "project/Projects.h"
@@ -52,6 +53,7 @@ int main(int argc, char *argv[])
     spdlog::info("Welcome to dltool!");
 
     QQmlApplicationEngine engine;
+    engine.addImageProvider("evaluationthumbnail", new dltool::model::EvaluationThumbnailImageProvider());
     engine.addImportPath(QStringLiteral(DLTOOL_QML_BUILD_DIR "/qml"));
     engine.addImportPath(QCoreApplication::applicationDirPath() + QStringLiteral("/../qml"));
 

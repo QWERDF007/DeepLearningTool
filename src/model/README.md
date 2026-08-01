@@ -73,22 +73,41 @@ Pending -> Preparing -> Running -> Stopping -> Stopped
 它不包含 `QObject`、`IModel`、`DataManager` 或数据库对象。后台函数
 `prepareModelTask()` 负责：
 
-- 创建 `models/<模型名>/` 下的目录；
-- 写入 `datasets/datasets.yaml`；
+- 创建 `models/<模型名>/train/` 或 `models/<模型名>/test/<任务名>/` 下的目录；
+- 写入 `datasets/` 下的 YAML manifest 和 `pred/images.txt` 图像清单；
 - 通过 `ModelDatasetOrganizer` 导出框架需要的数据集 manifest；
 - 通过 `ModelTaskConfigService` 写入任务 YAML；
 - 读取全局 Python 环境路径并生成 `ExternalProcessSpec`。
 
-模型目录始终按模型名组织，不改为 UUID：
+模型目录始终按模型名组织，测试任务名称经过校验后作为目录名，UUID 只作为稳定身份：
 
 ```text
 models/<模型名>/
-  configs/
-  datasets/
-  logs/
-  results/
-  weights/
+  train/
+    config.yaml
+    datasets/
+    weights/
+    logs/
+  test/
+    tasks.yaml
+    logs/<测试任务 UUID>.log
+    <测试任务名>/
+      config.yaml
+      datasets/
+      pred/
+        config.yaml
+        images.txt
+        manifest.yaml
+      evaluation/
+        config.yaml
+        instances.yaml
+        report.yaml
+      result.yaml
 ```
+
+每个测试任务只有一份当前 `pred/`。完整重跑会先清理该目录，只有修改评估参数或
+GT/类别定义时才复用已校验的 PRED，并重建 `evaluation/`。`result.yaml` 使用原子提交，
+只有提交成功后任务才进入完成状态。
 
 ### 数据导出
 
@@ -146,8 +165,15 @@ Python 脚本通过启动参数获得本地 TCP 地址和任务 ID：
 
 ## 小样本学习
 
-FS-SAM2 小样本学习只创建内部普通模型和 BoxToMask、训练、测试任务；它通过
-`ModelTaskController` 与普通模型任务共享同一条启动、后台准备、进程和事件回写流程。
+FS-SAM2 属于小样本学习专用流程，不接入普通模型测试任务的评估适配器；普通模型测试
+只维护一个测试数据集选择，并通过测试任务管理器切换配置、PRED 和评估报告。
+
+## 测试评估展示
+
+`ModelEvaluationService` 使用 `yaml-cpp` 解析完整 PRED/GT 协议，在 C++ 中完成匹配、指标、
+混淆矩阵、图表和过滤后的重聚合。`ModelEvaluationViewModel` 暴露 `QAbstractItemModel` 与
+`QSortFilterProxyModel`，`TestEvaluationPanel.qml` 只负责 SplitView 布局、图表和实例联动，
+不在 QML 中遍历或计算评估事件。
 
 ## 扩展约定
 

@@ -247,7 +247,7 @@ Window {
                                     text: "删除"
                                     display: Button.IconOnly
                                     iconSource: QuiFontIcon.Delete
-                                    enabled: dialog.taskManager !== null
+                                    enabled: dialog.taskManager && (model.can_delete || false)
                                     onClicked: {
                                         dialog.selectedTaskId = model.task_id
                                         dialog.taskManager.deleteTask(model.task_id)

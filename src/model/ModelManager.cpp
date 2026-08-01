@@ -8,7 +8,9 @@
 #include "model/IParams.h"
 #include "model/ModelDatasetSelection.h"
 #include "model/ModelStorageService.h"
+#include "model/ModelStorageMigration.h"
 #include "model/ModelTaskConfigService.h"
+#include "model/TaskManager.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsKeys.h"
 #include "settings/SettingsValue.h"
@@ -16,6 +18,9 @@
 #include <spdlog/spdlog.h>
 
 #include <QDateTime>
+#include <QDir>
+#include <QDirIterator>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -31,6 +36,49 @@ namespace dltool::model {
 using common::setError;
 
 namespace {
+
+bool copyDirectoryContents(const QString &source, const QString &target, QString *err_msg)
+{
+    const QFileInfo source_info(source);
+    if (!source_info.exists() || !source_info.isDir())
+        return true;
+    if (!QDir().mkpath(target))
+    {
+        if (err_msg)
+            *err_msg = QString("创建模型权重目录失败: %1").arg(target);
+        return false;
+    }
+    QDirIterator iterator(source, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks,
+                          QDirIterator::Subdirectories);
+    while (iterator.hasNext())
+    {
+        const QFileInfo item(iterator.next());
+        const QString relative = QDir(source).relativeFilePath(item.absoluteFilePath());
+        const QString destination = QDir(target).filePath(relative);
+        if (item.isDir())
+        {
+            if (!QDir().mkpath(destination))
+            {
+                if (err_msg)
+                    *err_msg = QString("创建模型权重子目录失败: %1").arg(destination);
+                return false;
+            }
+        }
+        else if (!QFile::copy(item.absoluteFilePath(), destination))
+        {
+            if (err_msg)
+                *err_msg = QString("复制模型权重文件失败: %1").arg(item.absoluteFilePath());
+            return false;
+        }
+    }
+    return true;
+}
+
+bool modelHasActiveTasks(const QString &model_uuid)
+{
+    const TaskManager *task_manager = TaskManager::getInstance();
+    return task_manager != nullptr && task_manager->hasActiveModelTasks(model_uuid);
+}
 
 class UserVisibleModelProxy final : public QSortFilterProxyModel
 {
@@ -212,16 +260,16 @@ QString ModelManager::validateModelName(const QString &name) const
 {
     const QString trimmed_name = name.trimmed();
     if (trimmed_name.isEmpty())
-        return QStringLiteral("模型名称不能为空");
+        return QString("模型名称不能为空");
 
     static const QRegularExpression valid_name_pattern(QStringLiteral("^[\\p{Han}A-Za-z0-9_-]+$"));
     if (!valid_name_pattern.match(trimmed_name).hasMatch())
-        return QStringLiteral("模型名称仅支持中文、英文、数字、下划线和连字符");
+        return QString("模型名称仅支持中文、英文、数字、下划线和连字符");
 
     for (const ModelRecord &model : models_)
     {
         if (model.name == trimmed_name)
-            return QStringLiteral("模型名称已存在");
+            return QString("模型名称已存在");
     }
     return {};
 }
@@ -246,7 +294,7 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
     }
     if (trimmed_framework_name.isEmpty() || trimmed_model_architecture.isEmpty())
     {
-        const QString message = QStringLiteral("模型框架或模型架构为空");
+        const QString message = QString("模型框架或模型架构为空");
         setError(err_msg, message);
         spdlog::warn("添加模型失败: {}", message.toUtf8().constData());
         return {};
@@ -349,6 +397,11 @@ bool ModelManager::renameModel(const qint64 model_id, const QString &name)
     }
 
     const QString       old_name = models_[static_cast<size_t>(row)].name;
+    if (modelHasActiveTasks(models_[static_cast<size_t>(row)].uuid))
+    {
+        spdlog::warn("模型重命名失败: 模型仍有活动任务");
+        return false;
+    }
     ModelStorageService storage(project_dir_);
     QString             err_msg;
     if (!storage.renameModelStorage(old_name, trimmed_name, &err_msg))
@@ -384,6 +437,11 @@ bool ModelManager::deleteModel(const qint64 model_id)
     }
 
     const ModelRecord         record = models_[static_cast<size_t>(row)];
+    if (modelHasActiveTasks(record.uuid))
+    {
+        spdlog::warn("模型删除失败: 模型仍有活动任务");
+        return false;
+    }
     QString                   err_msg;
     const QString             uuid              = record.uuid;
     const QString             name              = record.name;
@@ -411,7 +469,7 @@ bool ModelManager::deleteModel(const qint64 model_id)
     return true;
 }
 
-bool ModelManager::copyModel(const qint64 model_id)
+bool ModelManager::copyModel(const qint64 model_id, const bool copy_train_weights)
 {
     const int row = indexOfModel(model_id);
     if (row < 0)
@@ -437,6 +495,30 @@ bool ModelManager::copyModel(const qint64 model_id)
     {
         spdlog::error("复制模型失败, 创建模型目录失败: {}", err_msg.toUtf8().constData());
         return false;
+    }
+
+    // Copy only the model definition and editable training configuration by
+    // default.  Test task directories/results/logs are intentionally not
+    // copied; weights are an explicit opt-in from the copy dialog/API.
+    const QString source_train_config = storage.trainConfigPath(source.name);
+    const QString target_train_config = storage.trainConfigPath(copied_name);
+    if (QFileInfo::exists(source_train_config) && !QFile::copy(source_train_config, target_train_config))
+    {
+        spdlog::error("复制模型训练配置失败: {}", source_train_config.toUtf8().constData());
+        QString remove_err;
+        storage.removeModelStorage(copied_name, &remove_err);
+        return false;
+    }
+    if (copy_train_weights)
+    {
+        if (!copyDirectoryContents(storage.trainWeightsPath(source.name), storage.trainWeightsPath(copied_name),
+                                   &err_msg))
+        {
+            spdlog::error("复制模型权重失败: {}", err_msg.toUtf8().constData());
+            QString remove_err;
+            storage.removeModelStorage(copied_name, &remove_err);
+            return false;
+        }
     }
 
     const bool ok = database_ != nullptr
@@ -582,7 +664,7 @@ bool ModelManager::updateModelExtraData(const QString &model_uuid, const QVarian
     {
         if (database_ == nullptr)
         {
-            setError(err_msg, QStringLiteral("数据库对象为空"));
+        setError(err_msg, QString("数据库对象为空"));
             return false;
         }
         if (!database_->updateModelExtraData(record.model_id, extraDataToBlob(merged), local_err_msg))
@@ -619,7 +701,7 @@ bool ModelManager::touchModelModifiedTime(const QString &model_uuid, QString *er
     {
         if (database_ == nullptr)
         {
-            setError(err_msg, QStringLiteral("数据库对象为空"));
+        setError(err_msg, QString("数据库对象为空"));
             return false;
         }
         if (!database_->updateModelMtime(record.model_id, now, local_err_msg))
@@ -672,6 +754,14 @@ void ModelManager::requestModelTaskConfigLoad(const QString &model_uuid) const
         return;
 
     const QString                               model_name = models_[static_cast<size_t>(model_row)].name;
+    const ModelStorageMigrationResult migration
+        = migrateModelStorage(project_dir_, model_name, trimmed_uuid);
+    if (!migration.error.isEmpty())
+    {
+        spdlog::error("模型存储迁移失败, 模型: {}, 错误: {}", model_name.toUtf8().constData(),
+                      migration.error.toUtf8().constData());
+        return;
+    }
     const ModelTaskConfigService                config_service(project_dir_);
     const dltool::model::LoadedModelTaskConfigs configs = config_service.load(trimmed_uuid, model_name);
     const_cast<ModelManager *>(this)->applyLoadedModelTaskConfigs(configs.model_uuid, model_name, configs.train_params,
@@ -705,7 +795,7 @@ QString ModelManager::startTensorBoard(const QString &model_uuid)
     const QString python = (!python_env_path.trimmed().isEmpty() && python_env_info.exists() && python_env_info.isDir())
                              ? dltool::common::pythonExecutableFromEnvPath(python_env_path)
                              : QString();
-    const QString log_dir = ModelStorageService(project_dir_).path(record.name, ModelStorageLocation::Logs);
+    const QString log_dir = ModelStorageService(project_dir_).trainLogsPath(record.name);
     if (python_env_path.trimmed().isEmpty())
     {
         spdlog::error("启动 TensorBoard 失败: 未配置 Python 环境目录");
@@ -790,7 +880,7 @@ void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const 
     }
     const ModelStorageService storage(project_dir_);
     const QVariantMap         dataset_selections
-        = readModelDatasetSelectionsFile(storage.path(model_name, ModelStorageLocation::Datasets));
+        = readModelDatasetSelectionsFile(storage.trainDatasetPath(model_name));
     applyModelDatasetSelections(model, dataset_selections);
 }
 
