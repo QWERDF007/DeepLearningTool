@@ -6,8 +6,9 @@ import dltool.model
 import dltool.ui
 import quickui
 
-Item {
+Rectangle {
     id: control
+    color: QuiColor.Primary
     property ModelEvaluationViewModel evaluation: null
 
     ColumnLayout {

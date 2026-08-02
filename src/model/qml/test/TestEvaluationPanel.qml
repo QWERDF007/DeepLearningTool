@@ -16,71 +16,29 @@ Rectangle {
         anchors.margins: 6
         orientation: Qt.Vertical
 
-        QuiFrame {
-            SplitView.fillWidth: true
-            SplitView.preferredHeight: 42
-            RowLayout {
-                anchors.fill: parent
-                spacing: 8
-                QuiText { text: qsTr("评估过滤") }
-                QuiComboBox {
-                    id: statusFilter
-                    Layout.preferredWidth: 150
-                    model: [qsTr("全部状态"), "true_positive", "class_mismatch", "false_positive", "false_negative"]
-                    onActivated: {
-                        if (control.evaluation)
-                            control.evaluation.setStatusFilter(currentIndex === 0 ? "" : currentText)
-                    }
-                }
-                QuiText {
-                    Layout.fillWidth: true
-                    text: control.evaluation
-                          ? control.evaluation.globalFilterDescription + " · "
-                            + control.evaluation.metricScopeDescription
-                            + qsTr(" · 置信度 %1 · IoU %2")
-                              .arg(control.evaluation.confidenceThreshold)
-                              .arg(control.evaluation.iouThreshold)
-                          : qsTr("数据集、标签和图像条件由全局过滤器统一应用")
-                    color: QuiColor.FontDark
-                    elide: Text.ElideRight
-                }
-                QuiButton {
-                    text: qsTr("清除过滤")
-                    enabled: !!control.evaluation
-                    onClicked: {
-                        if (control.evaluation) {
-                            control.evaluation.clearFilters()
-                            statusFilter.currentIndex = 0
-                        }
-                    }
-                }
-            }
-        }
-
         QuiSplitView {
             id: summarySplit
             SplitView.fillWidth: true
-            SplitView.fillHeight: true
-            SplitView.preferredHeight: Math.max(260, parent.height * 0.42)
+            SplitView.preferredHeight: 320
             orientation: Qt.Horizontal
 
-            QuiFrame {
+            
+            EvaluationMetricsPanel {
                 SplitView.fillHeight: true
-                SplitView.fillWidth: true
-                SplitView.minimumWidth: 220
-                EvaluationMetricsPanel { anchors.fill: parent; evaluation: control.evaluation }
+                SplitView.preferredWidth: 220 
+                evaluation: control.evaluation 
             }
-            QuiFrame {
+            
+            EvaluationImageMetricsPanel { 
                 SplitView.fillHeight: true
-                SplitView.fillWidth: true
-                SplitView.minimumWidth: 220
-                EvaluationImageMetricsPanel { anchors.fill: parent; evaluation: control.evaluation }
+                SplitView.preferredWidth: 220  
+                evaluation: control.evaluation 
             }
-            QuiFrame {
+            
+            EvaluationChartPanel { 
                 SplitView.fillHeight: true
                 SplitView.fillWidth: true
-                SplitView.minimumWidth: 260
-                EvaluationChartPanel { anchors.fill: parent; evaluation: control.evaluation }
+                evaluation: control.evaluation 
             }
         }
 
@@ -92,14 +50,12 @@ Rectangle {
 
             QuiFrame {
                 SplitView.fillHeight: true
-                SplitView.fillWidth: true
-                SplitView.minimumWidth: 260
+                SplitView.preferredWidth: 480
                 ConfusionMatrixPanel { anchors.fill: parent; evaluation: control.evaluation }
             }
             QuiFrame {
                 SplitView.fillHeight: true
                 SplitView.fillWidth: true
-                SplitView.minimumWidth: 300
                 ColumnLayout {
                     anchors.fill: parent
                     QuiText { text: qsTr("实例图像"); font: QuiFont.Title }
@@ -112,8 +68,7 @@ Rectangle {
             }
             QuiFrame {
                 SplitView.fillHeight: true
-                SplitView.fillWidth: true
-                SplitView.minimumWidth: 220
+                SplitView.preferredWidth: 320
                 EvaluationInstanceDetailsPanel { anchors.fill: parent; evaluation: control.evaluation }
             }
         }

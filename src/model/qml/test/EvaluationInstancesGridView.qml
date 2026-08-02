@@ -78,7 +78,7 @@ Item {
                 width: grid.cellWidth - 6
                 height: grid.cellHeight - 6
                 color: QuiColor.Primary
-                border.color: model.status === "true_positive" ? "#43a047"
+                border.color: (model.status === "true_positive" || model.status === "true_negative") ? "#43a047"
                               : model.status === "class_mismatch" ? "#fb8c00" : "#e53935"
                 EvaluationInstanceThumbnail {
                     anchors.fill: parent
@@ -107,7 +107,7 @@ Item {
                     anchors.right: parent.right
                     anchors.margins: 4
                     radius: 3
-                    color: model.status === "true_positive" ? "#43a047"
+                    color: (model.status === "true_positive" || model.status === "true_negative") ? "#43a047"
                           : model.status === "class_mismatch" ? "#fb8c00" : "#e53935"
                     implicitWidth: statusBadge.implicitWidth + 10
                     implicitHeight: statusBadge.implicitHeight + 4

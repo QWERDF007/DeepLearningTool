@@ -1261,7 +1261,8 @@ EvaluationCapabilities ModelEvaluationService::capabilitiesForMethod(const QStri
     capabilities.has_instance_metrics = normalized.contains(QStringLiteral("detect"))
         || normalized.contains(QStringLiteral("segment"));
     capabilities.has_image_metrics = capabilities.has_instance_metrics || normalized.contains(QStringLiteral("anomaly"));
-    capabilities.has_confusion_matrix = capabilities.has_instance_metrics;
+    capabilities.has_confusion_matrix = capabilities.has_instance_metrics
+        || normalized.contains(QStringLiteral("anomaly"));
     capabilities.has_instance_events = capabilities.has_instance_metrics;
     if (normalized.contains(QStringLiteral("anomaly")))
         capabilities.chart_kinds = {QStringLiteral("bar")};
@@ -1411,33 +1412,44 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         return false;
     }
 
+    const bool anomaly_method = options.method.trimmed().toLower().contains(QStringLiteral("anomaly"));
     QMap<int, ClassInfo> classes;
-    for (const Image &image : images)
+    if (anomaly_method)
     {
-        if (isCancelled(options.cancel_token))
-        {
-            if (err_msg)
-                *err_msg = QString("评估已取消");
-            return false;
-        }
-        for (const GroundTruth &gt : image.gt)
-            classes.insert(gt.class_id, {gt.class_id, gt.class_name.isEmpty() ? QString::number(gt.class_id) : gt.class_name});
+        // Anomaly evaluation is image-level binary classification.  GOOD is
+        // the implicit negative class because normal samples have no GT label.
+        classes.insert(0, {0, QStringLiteral("GOOD")});
+        classes.insert(1, {1, QStringLiteral("Anomaly")});
     }
-    for (const Image &image : images)
+    else
     {
-        if (isCancelled(options.cancel_token))
+        for (const Image &image : images)
         {
-            if (err_msg)
-                *err_msg = QString("评估已取消");
-            return false;
+            if (isCancelled(options.cancel_token))
+            {
+                if (err_msg)
+                    *err_msg = QString("评估已取消");
+                return false;
+            }
+            for (const GroundTruth &gt : image.gt)
+                classes.insert(gt.class_id, {gt.class_id, gt.class_name.isEmpty() ? QString::number(gt.class_id) : gt.class_name});
         }
-        for (const Prediction &prediction : image.predictions)
-            classes.insert(prediction.class_id,
-                           {prediction.class_id,
-                            prediction.class_name.isEmpty() ? QString::number(prediction.class_id)
-                                                            : prediction.class_name});
+        for (const Image &image : images)
+        {
+            if (isCancelled(options.cancel_token))
+            {
+                if (err_msg)
+                    *err_msg = QString("评估已取消");
+                return false;
+            }
+            for (const Prediction &prediction : image.predictions)
+                classes.insert(prediction.class_id,
+                               {prediction.class_id,
+                                prediction.class_name.isEmpty() ? QString::number(prediction.class_id)
+                                                                : prediction.class_name});
+        }
+        classes.remove(-1);
     }
-    classes.remove(-1);
 
     struct Counts
     {
@@ -1731,6 +1743,25 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                                             {QStringLiteral("color"), classColor(it.key())}});
     }
 
+    if (anomaly_method)
+    {
+        // Use one binary outcome per image so normal images contribute GOOD /
+        // GOOD true negatives even though they have no GT instance event.
+        matrix.clear();
+        for (const Image &image : images)
+        {
+            const bool ground_truth_anomaly = std::any_of(
+                image.gt.cbegin(), image.gt.cend(),
+                [](const GroundTruth &ground_truth) { return ground_truth.class_id == 1; });
+            const bool predicted_anomaly = std::any_of(
+                image.predictions.cbegin(), image.predictions.cend(),
+                [&options](const Prediction &prediction)
+                { return prediction.class_id == 1 && prediction.score >= options.confidence_threshold; });
+            incrementMatrix(predicted_anomaly ? QStringLiteral("1") : QStringLiteral("0"),
+                           ground_truth_anomaly ? QStringLiteral("1") : QStringLiteral("0"));
+        }
+    }
+
     QVariantList matrix_cells;
     QMap<int, qint64> pred_totals;
     QMap<int, qint64> gt_totals;
@@ -1808,8 +1839,8 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
     }
     appendCell(QStringLiteral("TOTAL"), QStringLiteral("FP"), unmatched_fp, QStringLiteral("false_positive_total"),
                true, false, true);
-    appendCell(QStringLiteral("TOTAL"), QStringLiteral("TOTAL"), event_records.size(), QStringLiteral("all"), true,
-               false, false);
+    appendCell(QStringLiteral("TOTAL"), QStringLiteral("TOTAL"), anomaly_method ? images.size() : event_records.size(),
+               QStringLiteral("all"), true, false, false);
 
     const QVariantMap diagnostic = {
         {QStringLiteral("instance"), QVariantMap{{QStringLiteral("overall"), metricMap(overall.tp, overall.fp, overall.fn)},

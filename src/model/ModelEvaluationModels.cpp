@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <QMetaMethod>
 #include <QMetaObject>
 #include <QSet>
 
@@ -13,6 +14,8 @@ QString statusDisplayText(const QString &status)
 {
     if (status == QStringLiteral("true_positive"))
         return QString("正确匹配");
+    if (status == QStringLiteral("true_negative"))
+        return QString("正常");
     if (status == QStringLiteral("class_mismatch"))
         return QString("类别错误");
     if (status == QStringLiteral("false_positive"))
@@ -435,10 +438,34 @@ EvaluationInstanceRecord instanceRecordFromModel(const QAbstractItemModel *model
     return record;
 }
 
+bool hasInvokable(QObject *object, const char *method, const int parameter_count)
+{
+    if (object == nullptr)
+        return false;
+    const QMetaObject *meta_object = object->metaObject();
+    for (int index = 0; index < meta_object->methodCount(); ++index)
+    {
+        const QMetaMethod meta_method = meta_object->method(index);
+        if (meta_method.name() == method && meta_method.parameterCount() == parameter_count)
+            return true;
+    }
+    return false;
+}
+
+bool globalFilterIsActive(QObject *object, bool *invoked = nullptr)
+{
+    bool active = true;
+    const bool ok = hasInvokable(object, "isActive", 0)
+        && QMetaObject::invokeMethod(object, "isActive", Qt::DirectConnection, Q_RETURN_ARG(bool, active));
+    if (invoked != nullptr)
+        *invoked = ok;
+    return active;
+}
+
 bool invokeBool(QObject *object, const char *method, const qint64 value, bool *invoked = nullptr)
 {
     bool accepted = true;
-    const bool ok = object != nullptr
+    const bool ok = hasInvokable(object, method, 1)
         && QMetaObject::invokeMethod(object, method, Qt::DirectConnection, Q_RETURN_ARG(bool, accepted),
                                      Q_ARG(qint64, value));
     if (invoked != nullptr)
@@ -449,7 +476,7 @@ bool invokeBool(QObject *object, const char *method, const qint64 value, bool *i
 bool invokeBool(QObject *object, const char *method, bool *invoked)
 {
     bool accepted = true;
-    const bool ok = object != nullptr
+    const bool ok = hasInvokable(object, method, 0)
         && QMetaObject::invokeMethod(object, method, Qt::DirectConnection, Q_RETURN_ARG(bool, accepted));
     if (invoked != nullptr)
         *invoked = ok;
@@ -481,6 +508,11 @@ bool EvaluationImageFilterProxyModel::acceptsRecord(const EvaluationImageRecord 
 {
     if (global_filter_ == nullptr)
         return true;
+
+    bool active_invoked = false;
+    if (!globalFilterIsActive(global_filter_, &active_invoked) && active_invoked)
+        return true;
+
     bool invoked = false;
     if (!invokeBool(global_filter_, "acceptsImage", record.image_id, &invoked))
         return invoked ? false : true;
@@ -610,6 +642,10 @@ bool EvaluationGlobalFilterProxyModel::acceptsGlobalLabel(const EvaluationInstan
     if (global_filter_ == nullptr)
         return true;
 
+    bool active_invoked = false;
+    if (!globalFilterIsActive(global_filter_, &active_invoked) && active_invoked)
+        return true;
+
     // A GT label ID is the authoritative object for LabelSearchResult and
     // other label-level custom predicates.  Pure FP events have no GT label
     // and deliberately do not get a synthetic match for this condition.
@@ -648,7 +684,10 @@ bool EvaluationGlobalFilterProxyModel::acceptsGlobalLabel(const EvaluationInstan
 
 bool EvaluationGlobalFilterProxyModel::acceptsRecord(const EvaluationInstanceRecord &record) const
 {
-    if (global_filter_ != nullptr && record.image_id >= 0)
+    bool active_invoked = false;
+    const bool external_filter_active = global_filter_ != nullptr
+        && (globalFilterIsActive(global_filter_, &active_invoked) || !active_invoked);
+    if (external_filter_active && record.image_id >= 0)
     {
         bool invoked = false;
         if (!invokeBool(global_filter_, "acceptsImage", record.image_id, &invoked) && invoked)
@@ -944,23 +983,22 @@ bool EvaluationInstanceProxyModel::filterAcceptsRow(const int source_row, const 
 bool EvaluationInstanceProxyModel::acceptsRecord(const EvaluationInstanceRecord &record, const bool includeMatrix) const
 {
     const qint64 dataset_id = record.dataset_id;
-    if (global_filter_ != nullptr)
+    bool active_invoked = false;
+    const bool external_filter_active = global_filter_ != nullptr
+        && (globalFilterIsActive(global_filter_, &active_invoked) || !active_invoked);
+    if (external_filter_active)
     {
         if (record.image_id >= 0)
         {
-            bool accepted = true;
-            if (QMetaObject::invokeMethod(global_filter_, "acceptsImage", Qt::DirectConnection,
-                                          Q_RETURN_ARG(bool, accepted), Q_ARG(qint64, record.image_id))
-                && !accepted)
-                return false;
+            bool invoked = false;
+            if (!invokeBool(global_filter_, "acceptsImage", record.image_id, &invoked))
+                return invoked ? false : true;
         }
         if (record.gt_label_id >= 0)
         {
-            bool accepted = true;
-            if (QMetaObject::invokeMethod(global_filter_, "acceptsLabel", Qt::DirectConnection,
-                                          Q_RETURN_ARG(bool, accepted), Q_ARG(qint64, record.gt_label_id))
-                && !accepted)
-                return false;
+            bool invoked = false;
+            if (!invokeBool(global_filter_, "acceptsLabel", record.gt_label_id, &invoked))
+                return invoked ? false : true;
         }
     }
     if (!dataset_ids_.isEmpty())
