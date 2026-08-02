@@ -13,7 +13,6 @@
 
 #include <QQmlEngine>
 #include <QDateTime>
-#include <QDir>
 #include <QFileInfo>
 #include <algorithm>
 
@@ -524,17 +523,16 @@ void ModelTestTaskManager::bindCurrentObjects()
     if (record.isValid())
     {
         const ModelStorageService storage(project_dir_);
-        const QString evaluation_dir = storage.testTaskEvaluationPath(record.name, tasks_.at(current_index_).directory_name);
         current_evaluation_ = new ModelEvaluationViewModel(this);
         if (data_manager_ != nullptr && data_manager_->globalFilter() != nullptr)
             current_evaluation_->setGlobalFilter(data_manager_->globalFilter());
         const QString result_path = storage.testTaskResultPath(record.name, tasks_.at(current_index_).directory_name);
+        const QString report_path = storage.testTaskEvaluationReportPath(record.name, tasks_.at(current_index_).directory_name);
         // Keep the expected paths even before the first run.  The task manager
         // can then reload the same view as soon as the background evaluation
         // creates result.yaml/report.yaml, instead of requiring a restart to
         // bind paths that did not exist when the task was selected.
-        current_evaluation_->setResultPath(result_path);
-        current_evaluation_->setReportPath(QDir(evaluation_dir).filePath(QStringLiteral("report.yaml")));
+        current_evaluation_->setPaths(report_path, result_path);
     }
     if (current_test_params_ != nullptr)
     {

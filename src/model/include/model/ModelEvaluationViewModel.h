@@ -7,7 +7,6 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml>
-#include <QMap>
 #include <QPointer>
 #include <QList>
 
@@ -74,6 +73,7 @@ public:
     void setReportPath(const QString &path);
     QString resultPath() const;
     void setResultPath(const QString &path);
+    void setPaths(const QString &reportPath, const QString &resultPath);
     QString primaryMetricSet() const;
     bool globalFilterActive() const;
     QString globalFilterDescription() const;
@@ -130,8 +130,7 @@ signals:
 private:
     void setLoading(bool value);
     void clearReport(const QString &error = {}, const QString &state = {});
-    void loadReport(const QVariantMap &root);
-    void loadInstances(const QString &path);
+    void loadReport(const QVariantMap &root, bool inferenceOutdated, bool evaluationOutdated);
     void loadInstanceRecords(const QVariantList &records);
     QVariantMap instanceToMap(const EvaluationInstanceRecord &record) const;
     QString thumbnailUrl(const EvaluationInstanceRecord &record) const;
@@ -139,7 +138,6 @@ private:
 
     QString report_path_;
     QString result_path_;
-    QString instances_path_;
     bool available_{false};
     bool loading_{false};
     QString error_;
@@ -158,9 +156,6 @@ private:
     bool has_confusion_matrix_{false};
     bool has_instance_events_{false};
     bool anomaly_detection_{false};
-    QList<QVariantMap> chart_descriptors_;
-    QMap<int, QString> class_catalog_;
-    QMap<int, QString> class_colors_;
     QPointer<QObject> global_filter_;
     EvaluationMetricModel *instance_metrics_{nullptr};
     EvaluationMetricModel *image_metrics_{nullptr};
@@ -177,6 +172,10 @@ private:
     QVariantMap selected_instance_;
     int reload_revision_{0};
     int aggregation_revision_{0};
+    qint64 loaded_report_size_{-1};
+    qint64 loaded_report_mtime_{-1};
+    qint64 loaded_result_size_{-1};
+    qint64 loaded_result_mtime_{-1};
 };
 
 } // namespace dltool::model

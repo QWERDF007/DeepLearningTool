@@ -77,9 +77,11 @@ Item {
             delegate: Rectangle {
                 width: grid.cellWidth - 6
                 height: grid.cellHeight - 6
+                readonly property bool successfulStatus: model.statusKind === EvaluationInstanceModel.StatusTruePositive
+                                                         || model.statusKind === EvaluationInstanceModel.StatusTrueNegative
+                readonly property bool mismatchStatus: model.statusKind === EvaluationInstanceModel.StatusClassMismatch
                 color: QuiColor.Primary
-                border.color: (model.status === "true_positive" || model.status === "true_negative") ? "#43a047"
-                              : model.status === "class_mismatch" ? "#fb8c00" : "#e53935"
+                border.color: successfulStatus ? "#43a047" : mismatchStatus ? "#fb8c00" : "#e53935"
                 EvaluationInstanceThumbnail {
                     anchors.fill: parent
                     anchors.margins: 2
@@ -107,8 +109,7 @@ Item {
                     anchors.right: parent.right
                     anchors.margins: 4
                     radius: 3
-                    color: (model.status === "true_positive" || model.status === "true_negative") ? "#43a047"
-                          : model.status === "class_mismatch" ? "#fb8c00" : "#e53935"
+                    color: successfulStatus ? "#43a047" : mismatchStatus ? "#fb8c00" : "#e53935"
                     implicitWidth: statusBadge.implicitWidth + 10
                     implicitHeight: statusBadge.implicitHeight + 4
                     QuiText {

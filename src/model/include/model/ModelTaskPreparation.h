@@ -6,6 +6,7 @@
 #include "model/ModelRegistry.h"
 #include "model/ModelTaskConfigService.h"
 #include "model/ModelTaskTypes.h"
+#include "model/ModelEvaluationProtocol.h"
 
 #include <QString>
 #include <QtGlobal>
@@ -27,7 +28,7 @@ struct MODEL_API ModelTaskRequest
     ModelTaskType task_type{ModelTaskType::Unknown};  ///< 模型任务类型。
     QString       scope_uuid;                        ///< 测试任务 UUID；训练为 train。
     QString       scope_name;                        ///< 测试任务显示名称。
-    QString       evaluation_method;                 ///< 规范化评估方法名，例如 object_detection。
+    evaluation::Method evaluation_method{evaluation::Method::Unknown}; ///< 评估协议方法。
     FrameworkDefinition framework;                    ///< 框架脚本和环境定义。
     QString             task_server_host;             ///< Python 连接的任务 TCP 主机地址。
     quint16             task_server_port{0};          ///< Python 连接的任务 TCP 端口。

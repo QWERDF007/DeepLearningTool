@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dltool/model/Export.h"
+#include "model/ModelEvaluationProtocol.h"
 
 #include <QVariantMap>
 #include <QString>
@@ -22,17 +23,15 @@ struct MODEL_API ModelEvaluationOptions
     QString test_task_uuid;
     QString model_name;
     QString task_directory;
-    QString method;
+    evaluation::Method method{evaluation::Method::Unknown};
     QString dataset_manifest_path;
     QString prediction_manifest_path;
     QString prediction_images_path;
     QString evaluation_dir;
-    QString evaluation_config_path;
     QString report_path;
-    QString instances_path;
-    double confidence_threshold{0.5};
-    double iou_threshold{0.5};
-    QString matching_strategy{QStringLiteral("greedy_iou")};
+    double confidence_threshold{evaluation::kDefaultConfidenceThreshold};
+    double iou_threshold{evaluation::kDefaultIouThreshold};
+    evaluation::MatchingStrategy matching_strategy{evaluation::MatchingStrategy::GreedyIoU};
     QVariantMap evaluation_config;
     // Optional cooperative cancellation token owned by the task controller.
     // The evaluator never dereferences a QObject and can therefore poll this
@@ -45,9 +44,7 @@ struct MODEL_API ModelEvaluationResult
     int image_count{0};
     int prediction_count{0};
     int event_count{0};
-    QString inference_digest;
     QString evaluation_digest;
-    QVariantMap result;
 };
 
 struct MODEL_API EvaluationCapabilities
@@ -66,7 +63,7 @@ struct MODEL_API EvaluationCapabilities
 class MODEL_API ModelEvaluationService
 {
 public:
-    static EvaluationCapabilities capabilitiesForMethod(const QString &method);
+    static EvaluationCapabilities capabilitiesForMethod(evaluation::Method method);
     static bool evaluate(const ModelEvaluationOptions &options, ModelEvaluationResult *result = nullptr,
                          QString *err_msg = nullptr);
 

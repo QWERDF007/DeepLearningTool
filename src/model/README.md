@@ -99,15 +99,13 @@ models/<模型名>/
         images.txt
         manifest.yaml
       evaluation/
-        config.yaml
-        instances.yaml
         report.yaml
       result.yaml
 ```
 
-每个测试任务只有一份当前 `pred/`。完整重跑会先清理该目录，只有修改评估参数或
-GT/类别定义时才复用已校验的 PRED，并重建 `evaluation/`。`result.yaml` 使用原子提交，
-只有提交成功后任务才进入完成状态。
+每个测试任务只有一份当前 `pred/` 和一份 `evaluation/report.yaml`。完整重跑会先清理这些目录，
+只有修改评估参数或 GT/类别定义时才复用已校验的 PRED，并重建报告。`result.yaml` 使用原子提交，
+只有提交成功后任务才进入完成状态。报告内嵌评估配置和实例事件，是当前唯一有效的评估结果协议。
 
 ### 数据导出
 

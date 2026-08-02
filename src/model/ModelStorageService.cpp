@@ -224,22 +224,10 @@ QString ModelStorageService::testTaskEvaluationPath(const QString &model_name, c
     return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral("evaluation")));
 }
 
-QString ModelStorageService::testTaskEvaluationConfigPath(const QString &model_name, const QString &task_directory) const
-{
-    const QString root = testTaskEvaluationPath(model_name, task_directory);
-    return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral("config.yaml")));
-}
-
 QString ModelStorageService::testTaskEvaluationReportPath(const QString &model_name, const QString &task_directory) const
 {
     const QString root = testTaskEvaluationPath(model_name, task_directory);
     return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral("report.yaml")));
-}
-
-QString ModelStorageService::testTaskEvaluationInstancesPath(const QString &model_name, const QString &task_directory) const
-{
-    const QString root = testTaskEvaluationPath(model_name, task_directory);
-    return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral("instances.yaml")));
 }
 
 QString ModelStorageService::testTaskResultPath(const QString &model_name, const QString &task_directory) const
@@ -289,9 +277,7 @@ ModelTaskPaths ModelStorageService::testPaths(const QString &model_name, const Q
     paths.prediction_images_path = testTaskPredictionImagesPath(model_name, task_directory);
     paths.prediction_manifest_path = testTaskPredictionManifestPath(model_name, task_directory);
     paths.evaluation_dir = testTaskEvaluationPath(model_name, task_directory);
-    paths.evaluation_config_path = testTaskEvaluationConfigPath(model_name, task_directory);
     paths.evaluation_report_path = testTaskEvaluationReportPath(model_name, task_directory);
-    paths.evaluation_instances_path = testTaskEvaluationInstancesPath(model_name, task_directory);
     return paths;
 }
 

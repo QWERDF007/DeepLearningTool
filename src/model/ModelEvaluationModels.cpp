@@ -1,4 +1,5 @@
 #include "model/ModelEvaluationModels.h"
+#include "model/ModelEvaluationProtocol.h"
 
 #include <algorithm>
 #include <cmath>
@@ -10,21 +11,44 @@ namespace dltool::model {
 
 namespace {
 
-QString statusDisplayText(const QString &status)
+QString statusDisplayText(const evaluation::Status status)
 {
-    if (status == QStringLiteral("true_positive"))
-        return QString("正确匹配");
-    if (status == QStringLiteral("true_negative"))
-        return QString("正常");
-    if (status == QStringLiteral("class_mismatch"))
-        return QString("类别错误");
-    if (status == QStringLiteral("false_positive"))
-        return QString("误检");
-    if (status == QStringLiteral("false_negative"))
-        return QString("漏检");
-    if (status == QStringLiteral("ignored"))
-        return QString("已忽略");
-    return status;
+    return evaluation::statusDisplayName(status);
+}
+
+QList<qint64> gtLabelIds(const EvaluationImageRecord &record)
+{
+    QList<qint64> ids;
+    for (const EvaluationGroundTruthRecord &ground_truth : record.gt_instances)
+        if (ground_truth.label_id >= 0)
+            ids.push_back(ground_truth.label_id);
+    return ids;
+}
+
+QList<int> gtClassIds(const EvaluationImageRecord &record)
+{
+    QList<int> ids;
+    for (const EvaluationGroundTruthRecord &ground_truth : record.gt_instances)
+        if (ground_truth.class_id >= 0 && !ids.contains(ground_truth.class_id))
+            ids.push_back(ground_truth.class_id);
+    return ids;
+}
+
+QList<int> predClassIds(const EvaluationImageRecord &record)
+{
+    QList<int> ids;
+    for (const EvaluationPredictionRecord &prediction : record.predictions)
+        if (prediction.class_id >= 0 && !ids.contains(prediction.class_id))
+            ids.push_back(prediction.class_id);
+    return ids;
+}
+
+double imageScore(const EvaluationImageRecord &record)
+{
+    double score = 0.0;
+    for (const EvaluationPredictionRecord &prediction : record.predictions)
+        score = std::max(score, prediction.score);
+    return score;
 }
 
 } // namespace
@@ -140,7 +164,8 @@ QVariant EvaluationConfusionModel::data(const QModelIndex &index, const int role
     case ColumnLabelRole: return record.column_label;
     case RowClassIdRole: return record.row_class_id;
     case ColumnClassIdRole: return record.column_class_id;
-    case CellKindRole: return record.cell_kind;
+    case CellKindRole: return evaluation::cellKindKey(record.cell_kind);
+    case CellKindValueRole: return static_cast<int>(record.cell_kind);
     case SelectableRole: return record.selectable;
     case IsDiagonalRole: return record.diagonal;
     case IsErrorRole: return record.error;
@@ -166,6 +191,7 @@ QHash<int, QByteArray> EvaluationConfusionModel::roleNames() const
     return {{Qt::DisplayRole, "display"}, {RowKeyRole, "rowKey"}, {ColumnKeyRole, "columnKey"},
             {RowLabelRole, "rowLabel"}, {ColumnLabelRole, "columnLabel"}, {CountRole, "count"},
             {RowClassIdRole, "rowClassId"}, {ColumnClassIdRole, "columnClassId"}, {CellKindRole, "cellKind"},
+            {CellKindValueRole, "cellKindValue"},
             {SelectableRole, "selectable"}, {IsDiagonalRole, "isDiagonal"}, {IsErrorRole, "isError"},
             {TooltipRole, "tooltip"}};
 }
@@ -216,7 +242,8 @@ QVariant EvaluationInstanceModel::data(const QModelIndex &index, const int role)
     case ImagePathRole: return record.image_path;
     case ImageWidthRole: return record.image_width;
     case ImageHeightRole: return record.image_height;
-    case StatusRole: return record.status;
+    case StatusRole: return evaluation::statusKey(record.status);
+    case StatusKindRole: return static_cast<int>(record.status);
     case StatusTextRole: return statusDisplayText(record.status);
     case GtClassRole: return record.gt_class;
     case GtClassNameRole: return record.gt_class;
@@ -253,7 +280,7 @@ QHash<int, QByteArray> EvaluationInstanceModel::roleNames() const
 {
     return {{EventUuidRole, "eventUuid"}, {ImageIdRole, "imageId"}, {DatasetIdRole, "datasetId"},
             {ImageNameRole, "imageName"}, {ImagePathRole, "imagePath"}, {ImageWidthRole, "imageWidth"},
-            {ImageHeightRole, "imageHeight"}, {StatusRole, "status"},
+            {ImageHeightRole, "imageHeight"}, {StatusRole, "status"}, {StatusKindRole, "statusKind"},
             {StatusTextRole, "statusText"}, {GtClassRole, "gtClass"}, {GtClassNameRole, "gtClassName"},
             {PredClassRole, "predClass"}, {PredClassNameRole, "predClassName"},
             {GtClassIdRole, "gtClassId"}, {PredClassIdRole, "predClassId"}, {ScoreRole, "score"},
@@ -327,27 +354,27 @@ QVariant EvaluationImageModel::data(const QModelIndex &index, const int role) co
     case GtLabelIdsRole:
     {
         QVariantList values;
-        for (const qint64 value : record.gt_label_ids)
+        for (const qint64 value : gtLabelIds(record))
             values.push_back(value);
         return values;
     }
     case GtClassIdsRole:
     {
         QVariantList values;
-        for (const int value : record.gt_class_ids)
+        for (const int value : gtClassIds(record))
             values.push_back(value);
         return values;
     }
     case PredClassIdsRole:
     {
         QVariantList values;
-        for (const int value : record.pred_class_ids)
+        for (const int value : predClassIds(record))
             values.push_back(value);
         return values;
     }
-    case ScoreRole: return record.score;
-    case HasGtRole: return record.has_gt;
-    case HasPredRole: return record.has_pred;
+    case ScoreRole: return imageScore(record);
+    case HasGtRole: return !record.gt_instances.isEmpty();
+    case HasPredRole: return !record.predictions.isEmpty();
     default: return {};
     }
 }
@@ -383,25 +410,11 @@ namespace {
 
 EvaluationImageRecord imageRecordFromModel(const QAbstractItemModel *model, const QModelIndex &index)
 {
-    EvaluationImageRecord record;
-    if (model == nullptr || !index.isValid())
-        return record;
-    record.image_id = model->data(index, EvaluationImageModel::ImageIdRole).toLongLong();
-    record.dataset_id = model->data(index, EvaluationImageModel::DatasetIdRole).toLongLong();
-    record.image_name = model->data(index, EvaluationImageModel::ImageNameRole).toString();
-    record.image_path = model->data(index, EvaluationImageModel::ImagePathRole).toString();
-    record.image_width = model->data(index, EvaluationImageModel::ImageWidthRole).toInt();
-    record.image_height = model->data(index, EvaluationImageModel::ImageHeightRole).toInt();
-    for (const QVariant &value : model->data(index, EvaluationImageModel::GtLabelIdsRole).toList())
-        record.gt_label_ids.push_back(value.toLongLong());
-    for (const QVariant &value : model->data(index, EvaluationImageModel::GtClassIdsRole).toList())
-        record.gt_class_ids.push_back(value.toInt());
-    for (const QVariant &value : model->data(index, EvaluationImageModel::PredClassIdsRole).toList())
-        record.pred_class_ids.push_back(value.toInt());
-    record.score = model->data(index, EvaluationImageModel::ScoreRole).toDouble();
-    record.has_gt = model->data(index, EvaluationImageModel::HasGtRole).toBool();
-    record.has_pred = model->data(index, EvaluationImageModel::HasPredRole).toBool();
-    return record;
+    const EvaluationImageModel *image_model = qobject_cast<const EvaluationImageModel *>(model);
+    if (image_model == nullptr || !index.isValid())
+        return {};
+    const EvaluationImageRecord *record = image_model->recordAt(index.row());
+    return record != nullptr ? *record : EvaluationImageRecord{};
 }
 
 EvaluationInstanceRecord instanceRecordFromModel(const QAbstractItemModel *model, const QModelIndex &index)
@@ -416,7 +429,8 @@ EvaluationInstanceRecord instanceRecordFromModel(const QAbstractItemModel *model
     record.image_path = model->data(index, EvaluationInstanceModel::ImagePathRole).toString();
     record.image_width = model->data(index, EvaluationInstanceModel::ImageWidthRole).toInt();
     record.image_height = model->data(index, EvaluationInstanceModel::ImageHeightRole).toInt();
-    record.status = model->data(index, EvaluationInstanceModel::StatusRole).toString();
+    record.status = evaluation::statusFromKey(
+        model->data(index, EvaluationInstanceModel::StatusRole).toString());
     record.gt_class = model->data(index, EvaluationInstanceModel::GtClassRole).toString();
     record.pred_class = model->data(index, EvaluationInstanceModel::PredClassRole).toString();
     record.gt_class_id = model->data(index, EvaluationInstanceModel::GtClassIdRole).toInt();
@@ -520,11 +534,12 @@ bool EvaluationImageFilterProxyModel::acceptsRecord(const EvaluationImageRecord 
     // Label search/custom label conditions are label-level predicates.  The
     // image proxy must apply them to the GT labels that belong to the image;
     // acceptsImage() alone cannot see a report's frozen label IDs.
-    if (!record.gt_label_ids.isEmpty())
+    const QList<qint64> label_ids = gtLabelIds(record);
+    if (!label_ids.isEmpty())
     {
         bool label_method_invoked = false;
         bool any_label_accepted = false;
-        for (const qint64 label_id : record.gt_label_ids)
+        for (const qint64 label_id : label_ids)
         {
             bool accepted = false;
             bool invoked_label = false;
@@ -554,7 +569,7 @@ bool EvaluationImageFilterProxyModel::acceptsRecord(const EvaluationImageRecord 
     // image when at least one GT class is selected; inversion keeps it only
     // when none of its GT classes is excluded.  Pure-FP images have no GT
     // class and must not be made visible by treating PRED as GT.
-    const QList<int> relevant_classes = record.gt_class_ids;
+    const QList<int> relevant_classes = gtClassIds(record);
 
     QList<bool> accepted_labels;
     bool class_method_invoked = false;
@@ -817,8 +832,12 @@ bool EvaluationCellFilterProxyModel::acceptsRecord(const EvaluationInstanceRecor
 {
     if (record.score < min_score_ || record.score > max_score_)
         return false;
-    if (!status_.isEmpty() && record.status != status_)
-        return false;
+    if (!status_.isEmpty())
+    {
+        const evaluation::Status status = evaluation::statusFromKey(status_);
+        if (status == evaluation::Status::Unknown || record.status != status)
+            return false;
+    }
     if (!pred_class_ids_.isEmpty())
     {
         bool match = false;
@@ -838,7 +857,7 @@ bool EvaluationCellFilterProxyModel::acceptsRecord(const EvaluationInstanceRecor
     {
         if (matrix_row_ == QStringLiteral("FN"))
         {
-            if (record.status != QStringLiteral("false_negative"))
+            if (record.status != evaluation::Status::FalseNegative)
                 return false;
         }
         else if (record.pred_class_id != matrix_row_.toInt())
@@ -848,7 +867,7 @@ bool EvaluationCellFilterProxyModel::acceptsRecord(const EvaluationInstanceRecor
     {
         if (matrix_column_ == QStringLiteral("FP"))
         {
-            if (record.status != QStringLiteral("false_positive"))
+            if (record.status != evaluation::Status::FalsePositive)
                 return false;
         }
         else if (record.gt_class_id != matrix_column_.toInt())
@@ -864,173 +883,6 @@ bool EvaluationCellFilterProxyModel::filterAcceptsRow(const int source_row,
     if (source == nullptr)
         return false;
     return acceptsRecord(instanceRecordFromModel(source, source->index(source_row, 0, source_parent)));
-}
-
-EvaluationInstanceProxyModel::EvaluationInstanceProxyModel(QObject *parent)
-    : QSortFilterProxyModel(parent)
-{
-    setDynamicSortFilter(true);
-}
-
-QVariantList EvaluationInstanceProxyModel::datasetIds() const
-{
-    return dataset_ids_;
-}
-
-void EvaluationInstanceProxyModel::setDatasetIds(const QVariantList &ids)
-{
-    if (dataset_ids_ == ids)
-        return;
-    dataset_ids_ = ids;
-    invalidateFilter();
-    emit filterChanged();
-}
-
-QVariantList EvaluationInstanceProxyModel::classIds() const
-{
-    return class_ids_;
-}
-
-void EvaluationInstanceProxyModel::setClassIds(const QVariantList &ids)
-{
-    if (class_ids_ == ids)
-        return;
-    class_ids_ = ids;
-    invalidateFilter();
-    emit filterChanged();
-}
-
-QString EvaluationInstanceProxyModel::status() const
-{
-    return status_;
-}
-
-void EvaluationInstanceProxyModel::setStatus(const QString &status)
-{
-    if (status_ == status)
-        return;
-    status_ = status.trimmed();
-    invalidateFilter();
-    emit filterChanged();
-}
-
-QString EvaluationInstanceProxyModel::matrixRow() const
-{
-    return matrix_row_;
-}
-
-void EvaluationInstanceProxyModel::setMatrixRow(const QString &value)
-{
-    if (matrix_row_ == value)
-        return;
-    matrix_row_ = value;
-    invalidateFilter();
-    emit filterChanged();
-}
-
-QString EvaluationInstanceProxyModel::matrixColumn() const
-{
-    return matrix_column_;
-}
-
-void EvaluationInstanceProxyModel::setMatrixColumn(const QString &value)
-{
-    if (matrix_column_ == value)
-        return;
-    matrix_column_ = value;
-    invalidateFilter();
-    emit filterChanged();
-}
-
-void EvaluationInstanceProxyModel::setGlobalFilter(QObject *filter)
-{
-    if (global_filter_ == filter)
-        return;
-    if (global_filter_ != nullptr)
-        disconnect(global_filter_, nullptr, this, nullptr);
-    global_filter_ = filter;
-    if (global_filter_ != nullptr)
-    {
-        connect(global_filter_, SIGNAL(filterChanged()), this, SLOT(onExternalFilterChanged()));
-    }
-    invalidateFilter();
-}
-
-void EvaluationInstanceProxyModel::onExternalFilterChanged()
-{
-    invalidateFilter();
-    // The view model also aggregates metrics and the confusion matrix from
-    // this proxy.  Forward the single coarse-grained global-filter signal so
-    // those derived models are rebuilt together with the thumbnail list.
-    emit filterChanged();
-}
-
-bool EvaluationInstanceProxyModel::filterAcceptsRow(const int source_row, const QModelIndex &source_parent) const
-{
-    const auto *source = qobject_cast<const EvaluationInstanceModel *>(sourceModel());
-    if (source == nullptr)
-        return false;
-    const QModelIndex index = source->index(source_row, 0, source_parent);
-    EvaluationInstanceRecord record;
-    record.image_id = source->data(index, EvaluationInstanceModel::ImageIdRole).toLongLong();
-    record.dataset_id = source->data(index, EvaluationInstanceModel::DatasetIdRole).toLongLong();
-    record.status = source->data(index, EvaluationInstanceModel::StatusRole).toString();
-    record.gt_class_id = source->data(index, EvaluationInstanceModel::GtClassIdRole).toInt();
-    record.pred_class_id = source->data(index, EvaluationInstanceModel::PredClassIdRole).toInt();
-    return acceptsRecord(record, true);
-}
-
-bool EvaluationInstanceProxyModel::acceptsRecord(const EvaluationInstanceRecord &record, const bool includeMatrix) const
-{
-    const qint64 dataset_id = record.dataset_id;
-    bool active_invoked = false;
-    const bool external_filter_active = global_filter_ != nullptr
-        && (globalFilterIsActive(global_filter_, &active_invoked) || !active_invoked);
-    if (external_filter_active)
-    {
-        if (record.image_id >= 0)
-        {
-            bool invoked = false;
-            if (!invokeBool(global_filter_, "acceptsImage", record.image_id, &invoked))
-                return invoked ? false : true;
-        }
-        if (record.gt_label_id >= 0)
-        {
-            bool invoked = false;
-            if (!invokeBool(global_filter_, "acceptsLabel", record.gt_label_id, &invoked))
-                return invoked ? false : true;
-        }
-    }
-    if (!dataset_ids_.isEmpty())
-    {
-        bool match = false;
-        for (const QVariant &value : dataset_ids_)
-            match = match || value.toLongLong() == dataset_id;
-        if (!match)
-            return false;
-    }
-    if (!status_.isEmpty() && record.status != status_)
-        return false;
-    if (!class_ids_.isEmpty())
-    {
-        bool match = false;
-        for (const QVariant &value : class_ids_)
-            match = match || value.toInt() == record.gt_class_id || value.toInt() == record.pred_class_id;
-        if (!match)
-            return false;
-    }
-    if (includeMatrix)
-    {
-        const QString gt_key = record.status == QStringLiteral("false_positive") ? QStringLiteral("FP")
-                                                                                   : QString::number(record.gt_class_id);
-        const QString pred_key = record.status == QStringLiteral("false_negative") ? QStringLiteral("FN")
-                                                                                      : QString::number(record.pred_class_id);
-        if (!matrix_row_.isEmpty() && matrix_row_ != QStringLiteral("TOTAL") && matrix_row_ != pred_key)
-            return false;
-        if (!matrix_column_.isEmpty() && matrix_column_ != QStringLiteral("TOTAL") && matrix_column_ != gt_key)
-            return false;
-    }
-    return true;
 }
 
 EvaluationChartModel::EvaluationChartModel(QObject *parent)
@@ -1069,6 +921,11 @@ void EvaluationChartModel::setRecords(QList<QVariantMap> records)
     beginResetModel();
     records_ = std::move(records);
     endResetModel();
+}
+
+const QList<QVariantMap> &EvaluationChartModel::records() const
+{
+    return records_;
 }
 
 QVariantMap EvaluationChartModel::descriptor(const int row) const

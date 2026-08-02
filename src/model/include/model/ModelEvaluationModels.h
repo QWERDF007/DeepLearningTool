@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dltool/model/Export.h"
+#include "model/ModelEvaluationProtocol.h"
 
 #include <QAbstractListModel>
 #include <QSortFilterProxyModel>
@@ -40,7 +41,7 @@ struct MODEL_API EvaluationConfusionCell
     qint64 count{0};
     int row_class_id{-1};
     int column_class_id{-1};
-    QString cell_kind; // match, false_positive, false_negative, pred_total, gt_total, all, not_applicable
+    evaluation::CellKind cell_kind{evaluation::CellKind::NotApplicable};
     QString tooltip;
     bool selectable{true};
     bool diagonal{false};
@@ -56,7 +57,7 @@ struct MODEL_API EvaluationInstanceRecord
     QString image_path;
     int image_width{0};
     int image_height{0};
-    QString status;
+    evaluation::Status status{evaluation::Status::Unknown};
     QString gt_class;
     QString pred_class;
     int gt_class_id{-1};
@@ -89,19 +90,15 @@ struct MODEL_API EvaluationGroundTruthRecord
     int class_id{-1};
     QString class_name;
     QVariantMap geometry;
-    QVariantMap bounds;
 };
 
 struct MODEL_API EvaluationPredictionRecord
 {
     QString prediction_id;
-    qint64 image_id{-1};
-    qint64 dataset_id{-1};
     int class_id{-1};
     QString class_name;
     double score{0.0};
     QVariantMap geometry;
-    QVariantMap bounds;
 };
 
 /**
@@ -118,12 +115,6 @@ struct MODEL_API EvaluationImageRecord
     QString image_path;
     int image_width{0};
     int image_height{0};
-    QList<qint64> gt_label_ids;
-    QList<int> gt_class_ids;
-    QList<int> pred_class_ids;
-    double score{0.0};
-    bool has_gt{false};
-    bool has_pred{false};
     QList<EvaluationGroundTruthRecord> gt_instances;
     QList<EvaluationPredictionRecord> predictions;
 };
@@ -189,12 +180,28 @@ public:
         RowClassIdRole,
         ColumnClassIdRole,
         CellKindRole,
+        CellKindValueRole,
         SelectableRole,
         IsDiagonalRole,
         IsErrorRole,
         TooltipRole,
     };
     Q_ENUM(Role)
+
+    enum CellKindValue
+    {
+        CellKindMatch = static_cast<int>(evaluation::CellKind::Match),
+        CellKindClassMismatch = static_cast<int>(evaluation::CellKind::ClassMismatch),
+        CellKindFalsePositive = static_cast<int>(evaluation::CellKind::FalsePositive),
+        CellKindFalseNegative = static_cast<int>(evaluation::CellKind::FalseNegative),
+        CellKindPredTotal = static_cast<int>(evaluation::CellKind::PredTotal),
+        CellKindGtTotal = static_cast<int>(evaluation::CellKind::GtTotal),
+        CellKindFalsePositiveTotal = static_cast<int>(evaluation::CellKind::FalsePositiveTotal),
+        CellKindFalseNegativeTotal = static_cast<int>(evaluation::CellKind::FalseNegativeTotal),
+        CellKindAll = static_cast<int>(evaluation::CellKind::All),
+        CellKindNotApplicable = static_cast<int>(evaluation::CellKind::NotApplicable),
+    };
+    Q_ENUM(CellKindValue)
 
     explicit EvaluationConfusionModel(QObject *parent = nullptr);
     int rowCount(const QModelIndex &parent = {}) const override;
@@ -227,6 +234,7 @@ public:
         ImageWidthRole,
         ImageHeightRole,
         StatusRole,
+        StatusKindRole,
         StatusTextRole,
         GtClassRole,
         GtClassNameRole,
@@ -257,6 +265,18 @@ public:
         SelectedRole,
     };
     Q_ENUM(Role)
+
+    enum StatusValue
+    {
+        StatusUnknown = static_cast<int>(evaluation::Status::Unknown),
+        StatusTruePositive = static_cast<int>(evaluation::Status::TruePositive),
+        StatusTrueNegative = static_cast<int>(evaluation::Status::TrueNegative),
+        StatusClassMismatch = static_cast<int>(evaluation::Status::ClassMismatch),
+        StatusFalsePositive = static_cast<int>(evaluation::Status::FalsePositive),
+        StatusFalseNegative = static_cast<int>(evaluation::Status::FalseNegative),
+        StatusIgnored = static_cast<int>(evaluation::Status::Ignored),
+    };
+    Q_ENUM(StatusValue)
 
     explicit EvaluationInstanceModel(QObject *parent = nullptr);
     int rowCount(const QModelIndex &parent = {}) const override;
@@ -403,49 +423,6 @@ private:
     double max_score_{std::numeric_limits<double>::infinity()};
 };
 
-class MODEL_API EvaluationInstanceProxyModel : public QSortFilterProxyModel
-{
-    Q_OBJECT
-    QML_NAMED_ELEMENT(EvaluationInstanceProxyModel)
-    QML_UNCREATABLE("EvaluationInstanceProxyModel is owned by ModelEvaluationViewModel")
-    Q_PROPERTY(QVariantList datasetIds READ datasetIds WRITE setDatasetIds NOTIFY filterChanged FINAL)
-    Q_PROPERTY(QVariantList classIds READ classIds WRITE setClassIds NOTIFY filterChanged FINAL)
-    Q_PROPERTY(QString status READ status WRITE setStatus NOTIFY filterChanged FINAL)
-    Q_PROPERTY(QString matrixRow READ matrixRow WRITE setMatrixRow NOTIFY filterChanged FINAL)
-    Q_PROPERTY(QString matrixColumn READ matrixColumn WRITE setMatrixColumn NOTIFY filterChanged FINAL)
-public:
-    explicit EvaluationInstanceProxyModel(QObject *parent = nullptr);
-    QVariantList datasetIds() const;
-    void setDatasetIds(const QVariantList &ids);
-    QVariantList classIds() const;
-    void setClassIds(const QVariantList &ids);
-    QString status() const;
-    void setStatus(const QString &status);
-    QString matrixRow() const;
-    void setMatrixRow(const QString &value);
-    QString matrixColumn() const;
-    void setMatrixColumn(const QString &value);
-    void setGlobalFilter(QObject *filter);
-    bool acceptsRecord(const EvaluationInstanceRecord &record, bool includeMatrix = true) const;
-
-signals:
-    void filterChanged();
-
-protected:
-    bool filterAcceptsRow(int source_row, const QModelIndex &source_parent) const override;
-
-private slots:
-    void onExternalFilterChanged();
-
-private:
-    QVariantList dataset_ids_;
-    QVariantList class_ids_;
-    QString status_;
-    QString matrix_row_;
-    QString matrix_column_;
-    QPointer<QObject> global_filter_;
-};
-
 class MODEL_API EvaluationChartModel : public QAbstractListModel
 {
     Q_OBJECT
@@ -465,6 +442,7 @@ public:
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
     void setRecords(QList<QVariantMap> records);
+    const QList<QVariantMap> &records() const;
     Q_INVOKABLE QVariantMap descriptor(int row) const;
 
 private:

@@ -51,9 +51,7 @@ struct MODEL_API ModelTaskPaths
     QString prediction_images_path;
     QString prediction_manifest_path;
     QString evaluation_dir;
-    QString evaluation_config_path;
     QString evaluation_report_path;
-    QString evaluation_instances_path;
 };
 
 /**
@@ -110,9 +108,7 @@ public:
     QString testTaskPredictionImagesPath(const QString &model_name, const QString &task_directory) const;
     QString testTaskPredictionManifestPath(const QString &model_name, const QString &task_directory) const;
     QString testTaskEvaluationPath(const QString &model_name, const QString &task_directory) const;
-    QString testTaskEvaluationConfigPath(const QString &model_name, const QString &task_directory) const;
     QString testTaskEvaluationReportPath(const QString &model_name, const QString &task_directory) const;
-    QString testTaskEvaluationInstancesPath(const QString &model_name, const QString &task_directory) const;
     QString testTaskResultPath(const QString &model_name, const QString &task_directory) const;
     QString testTaskLogPath(const QString &model_name, const QString &task_uuid) const;
 

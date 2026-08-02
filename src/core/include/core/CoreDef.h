@@ -26,6 +26,7 @@ public:
         Pose,
         OCR,
         AnomalyDetection,
+        Unknown,
     };
     Q_ENUM(Method)
 

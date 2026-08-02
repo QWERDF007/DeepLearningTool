@@ -205,7 +205,7 @@ QString inferenceDigest(const ModelTaskRequest &request, const QString &project_
     const QVariantMap value = {
         {QStringLiteral("model_uuid"), request.model_config.model_uuid},
         {QStringLiteral("framework"), request.model_config.framework_name},
-        {QStringLiteral("method"), request.evaluation_method},
+        {QStringLiteral("method"), evaluation::methodKey(request.evaluation_method)},
         {QStringLiteral("architecture"), request.model_config.model_architecture},
         {QStringLiteral("task_type"), modelTaskKey(request.task_type)},
         {QStringLiteral("dataset_selection"), QVariantMap{{QStringLiteral("train"), selectionMap(request.selections.train)},
@@ -221,19 +221,6 @@ QString inferenceDigest(const ModelTaskRequest &request, const QString &project_
     emitter << common::yaml::variantToYaml(value);
     return QStringLiteral("sha256:%1").arg(QString::fromLatin1(
         QCryptographicHash::hash(QByteArray(emitter.c_str()), QCryptographicHash::Sha256).toHex()));
-}
-
-QString evaluationMethodForProject(const int method)
-{
-    using Method = dltool::core::DeepLearningMethod;
-    switch (method)
-    {
-    case Method::Detection: return QStringLiteral("object_detection");
-    case Method::Segmentation: return QStringLiteral("segmentation");
-    case Method::AnomalyDetection: return QStringLiteral("anomaly_detection");
-    case Method::Classification: return QStringLiteral("classification");
-    default: return QStringLiteral("unknown");
-    }
 }
 
 bool isFewShotFramework(const QString &framework_name)
@@ -568,7 +555,8 @@ bool ModelTaskController::prepareTask(const int task_id)
                 if (reusable)
                     reusable = ModelEvaluationService::validatePrediction(
                         prediction_images, prediction_manifest, nullptr, nullptr, nullptr,
-                        request.model_config.model_uuid, request.scope_uuid, request.evaluation_method);
+                        request.model_config.model_uuid, request.scope_uuid,
+                        evaluation::methodKey(request.evaluation_method));
             }
             request.reuse_prediction = reusable;
             reuse_prediction->store(reusable, std::memory_order_release);
@@ -683,7 +671,7 @@ bool ModelTaskController::buildTaskRequest(const int task_id, ModelTaskRequest &
     request.task_type        = task->type;
     request.scope_uuid       = task->scope_uuid;
     request.scope_name       = task->scope_name;
-    request.evaluation_method = evaluationMethodForProject(method_);
+    request.evaluation_method = evaluation::fromProjectMethod(method_);
     request.framework        = framework;
     request.task_server_host = task_manager_->taskServerHost();
     request.task_server_port = task_manager_->taskServerPort();
@@ -691,7 +679,7 @@ bool ModelTaskController::buildTaskRequest(const int task_id, ModelTaskRequest &
     request.model_config.model_uuid         = record.uuid;
     request.model_config.model_name         = record.name;
     request.model_config.framework_name     = record.framework_name;
-    request.model_config.method              = request.evaluation_method;
+    request.model_config.method              = evaluation::methodKey(request.evaluation_method);
     request.model_config.model_architecture = record.model_architecture;
     request.model_config.scope_uuid         = task->scope_uuid;
     request.model_config.scope_name         = task->scope_name;
@@ -1044,7 +1032,7 @@ bool ModelTaskController::buildTestEvaluationOptions(const int task_id, ModelEva
     options.task_directory = task_directory;
     // 评估能力由项目方法决定，而不是由框架名决定（例如 anomalib
     // 框架既可能承载异常检测，也可能扩展其他方法）。
-    options.method = evaluationMethodForProject(method_);
+    options.method = evaluation::fromProjectMethod(method_);
     options.dataset_manifest_path = cleanPath(QDir(storage.testTaskDatasetPath(record.name, task_directory))
                                                   .filePath(QStringLiteral("test/manifest.yaml")));
     if (!QFileInfo::exists(options.dataset_manifest_path))
@@ -1060,9 +1048,7 @@ bool ModelTaskController::buildTestEvaluationOptions(const int task_id, ModelEva
     options.prediction_manifest_path = storage.testTaskPredictionManifestPath(record.name, task_directory);
     options.prediction_images_path = storage.testTaskPredictionImagesPath(record.name, task_directory);
     options.evaluation_dir = storage.testTaskEvaluationPath(record.name, task_directory);
-    options.evaluation_config_path = storage.testTaskEvaluationConfigPath(record.name, task_directory);
     options.report_path = storage.testTaskEvaluationReportPath(record.name, task_directory);
-    options.instances_path = storage.testTaskEvaluationInstancesPath(record.name, task_directory);
 
     QVariantMap prediction_config;
     const QString prediction_config_path = storage.testTaskPredictionConfigPath(record.name, task_directory);
@@ -1079,8 +1065,8 @@ bool ModelTaskController::buildTestEvaluationOptions(const int task_id, ModelEva
 
     // Evaluation parameters are optional for old parameter schemas; defaults
     // are deterministic and the report records the actual values used.
-    const QVariantMap evaluation = definition.test_params.value(QStringLiteral("evaluation")).toMap();
-    options.evaluation_config = evaluation;
+    const QVariantMap evaluation_params = definition.test_params.value(QStringLiteral("evaluation")).toMap();
+    options.evaluation_config = evaluation_params;
     // The generated test manifest and image list are the current GT/image
     // revisions.  They participate in evaluation (not inference) freshness,
     // so changing annotations can reuse PRED while forcing a new report.
@@ -1092,20 +1078,15 @@ bool ModelTaskController::buildTestEvaluationOptions(const int task_id, ModelEva
                                      prediction_config.value(QStringLiteral("inference_digest")));
     options.evaluation_config.insert(QStringLiteral("input_data_digest"),
                                      prediction_config.value(QStringLiteral("input_data_digest")));
-    options.evaluation_config.insert(QStringLiteral("weight_digest"),
-                                     prediction_config.value(QStringLiteral("weight_digest")));
-    options.evaluation_config.insert(QStringLiteral("checkpoint_path"),
-                                     prediction_config.value(QStringLiteral("checkpoint_path")));
-    options.evaluation_config.insert(QStringLiteral("checkpoint_signature"),
-                                     prediction_config.value(QStringLiteral("checkpoint_signature")));
     options.evaluation_config.insert(QStringLiteral("ground_truth_revision"),
                                      options.evaluation_config.value(QStringLiteral("ground_truth_digest")));
     options.evaluation_config.insert(QStringLiteral("input_digest"),
                                      options.evaluation_config.value(QStringLiteral("image_list_digest")));
-    options.confidence_threshold = evaluation.value(QStringLiteral("confidence_threshold"), 0.5).toDouble();
-    options.iou_threshold = evaluation.value(QStringLiteral("iou_threshold"), 0.5).toDouble();
-    options.matching_strategy = evaluation.value(QStringLiteral("matching_strategy"), QStringLiteral("greedy_iou"))
-                                    .toString();
+    options.confidence_threshold = evaluation_params.value(QStringLiteral("confidence_threshold"), 0.5).toDouble();
+    options.iou_threshold = evaluation_params.value(QStringLiteral("iou_threshold"), 0.5).toDouble();
+    options.matching_strategy = evaluation::matchingStrategyFromKey(
+        evaluation_params.value(QStringLiteral("matching_strategy"),
+                                 evaluation::matchingStrategyKey(evaluation::MatchingStrategy::GreedyIoU)).toString());
     return true;
 }
 
@@ -1118,11 +1099,14 @@ bool ModelTaskController::commitTestEvaluationResult(const int task_id, const Mo
     const TaskManager::Task *task = task_manager_->findTask(task_id);
     if (task == nullptr || !isTestModelTask(task->type))
         return setError(err_msg, QString("测试任务上下文无效"));
-    result = evaluation_result.result;
-    result.insert(QStringLiteral("schema_version"), 1);
+    result = {{QStringLiteral("image_count"), evaluation_result.image_count},
+              {QStringLiteral("prediction_count"), evaluation_result.prediction_count},
+              {QStringLiteral("event_count"), evaluation_result.event_count},
+              {QStringLiteral("evaluation_digest"), evaluation_result.evaluation_digest}};
+    result.insert(QStringLiteral("schema_version"), evaluation::kResultSchemaVersion);
     result.insert(QStringLiteral("model_uuid"), options.model_uuid);
     result.insert(QStringLiteral("test_task_uuid"), options.test_task_uuid);
-    result.insert(QStringLiteral("method"), options.method);
+    result.insert(QStringLiteral("method"), evaluation::methodKey(options.method));
     result.insert(QStringLiteral("status"), QStringLiteral("finished"));
     result.insert(QStringLiteral("evaluated_at"), QDateTime::currentSecsSinceEpoch());
     result.insert(QStringLiteral("prediction_dir"), QStringLiteral("pred"));
@@ -1131,10 +1115,6 @@ bool ModelTaskController::commitTestEvaluationResult(const int task_id, const Mo
     result.insert(QStringLiteral("evaluation_report"), QStringLiteral("evaluation/report.yaml"));
     result.insert(QStringLiteral("inference_digest"), options.evaluation_config.value(QStringLiteral("inference_digest")));
     result.insert(QStringLiteral("input_data_digest"), options.evaluation_config.value(QStringLiteral("input_data_digest")));
-    result.insert(QStringLiteral("weight_digest"), options.evaluation_config.value(QStringLiteral("weight_digest")));
-    result.insert(QStringLiteral("checkpoint_path"), options.evaluation_config.value(QStringLiteral("checkpoint_path")));
-    result.insert(QStringLiteral("checkpoint_signature"),
-                  options.evaluation_config.value(QStringLiteral("checkpoint_signature")));
     result.insert(QStringLiteral("ground_truth_digest"),
                   options.evaluation_config.value(QStringLiteral("ground_truth_digest")));
     result.insert(QStringLiteral("ground_truth_revision"),
@@ -1142,7 +1122,6 @@ bool ModelTaskController::commitTestEvaluationResult(const int task_id, const Mo
     result.insert(QStringLiteral("image_list_digest"),
                   options.evaluation_config.value(QStringLiteral("image_list_digest")));
     result.insert(QStringLiteral("input_digest"), options.evaluation_config.value(QStringLiteral("input_digest")));
-    result.insert(QStringLiteral("evaluation_digest"), result.value(QStringLiteral("evaluation_digest")));
     ModelTestTaskRepository repository(project_dir_);
     if (!repository.writeResult(options.model_name, options.task_directory, result, err_msg))
     {

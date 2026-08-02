@@ -1,4 +1,5 @@
 #include "model/ModelEvaluationService.h"
+#include "model/ModelEvaluationProtocol.h"
 
 #include "common/YamlUtils.h"
 
@@ -81,12 +82,6 @@ struct Image
     QList<Prediction> predictions;
 };
 
-struct ClassInfo
-{
-    int id{-1};
-    QString name;
-};
-
 QString mapString(const QVariantMap &map, const QString &key, const QString &fallback = {})
 {
     const QVariant value = map.value(key);
@@ -121,6 +116,14 @@ bool pathWithin(const QString &root, const QString &path)
     return !clean_root.isEmpty() && !clean_path.isEmpty()
         && (clean_path.compare(clean_root, Qt::CaseInsensitive) == 0
             || clean_path.startsWith(clean_root + QLatin1Char('/'), Qt::CaseInsensitive));
+}
+
+bool sourceImageExists(const QString &path, const QString &dataset_manifest)
+{
+    QFileInfo image(path);
+    if (!image.isAbsolute() && !image.exists() && !dataset_manifest.isEmpty())
+        image = QFileInfo(QDir(QFileInfo(dataset_manifest).absolutePath()), path);
+    return image.exists() && image.isFile();
 }
 
 bool finiteNumber(const QVariant &value, double *output = nullptr)
@@ -497,16 +500,6 @@ QVariantMap normalizedOverlayBounds(const QVariantMap &bounds, const QVariantMap
     return boxMap({left, top, std::max(0.0, right - left), std::max(0.0, bottom - top)});
 }
 
-QString csvField(const QString &text)
-{
-    if (!text.contains(QChar(',')) && !text.contains(QChar('"')) && !text.contains(QChar('\n'))
-        && !text.contains(QChar('\r')))
-        return text;
-    QString escaped = text;
-    escaped.replace(QStringLiteral("\""), QStringLiteral("\"\""));
-    return QStringLiteral("\"") + escaped + QStringLiteral("\"");
-}
-
 QList<QString> parseCsvLine(const QString &line, bool *valid = nullptr)
 {
     QList<QString> fields;
@@ -759,7 +752,7 @@ bool loadImages(const QString &images_path, const QString &dataset_manifest_path
 bool loadPredictions(const QString &manifest_path, QMap<qint64, Image> &images, int *count,
                      const std::shared_ptr<std::atomic_bool> &cancel_token, QString *err_msg,
                      const QString &expected_model_uuid = {}, const QString &expected_task_uuid = {},
-                     const QString &expected_method = {}, YAML::Node *normalized_manifest = nullptr)
+                     const QString &expected_method = {})
 {
     if (isCancelled(cancel_token))
     {
@@ -869,15 +862,11 @@ bool loadPredictions(const QString &manifest_path, QMap<qint64, Image> &images, 
                 prediction.bounds = boxMap(prediction.box);
             }
             prediction.geometry = canonicalGeometry(prediction.geometry, prediction.box);
-            if (normalized_manifest != nullptr && !prediction.geometry.isEmpty())
-                root["records"][record_index]["geometry"] = dltool::common::yaml::variantToYaml(prediction.geometry);
             images[prediction.image_id].predictions.push_back(prediction);
             ++total;
         }
         if (count)
             *count = total;
-        if (normalized_manifest != nullptr)
-            *normalized_manifest = root;
     }
     catch (const std::exception &e)
     {
@@ -1083,11 +1072,10 @@ QList<MatchPair> hungarianMatches(const QList<Prediction> &predictions, const QL
 }
 
 QList<MatchPair> matchPredictions(const QList<Prediction> &predictions, const QList<GroundTruth> &ground_truth,
-                                  const double threshold, const QString &strategy,
+                                  const double threshold, const evaluation::MatchingStrategy strategy,
                                   const std::shared_ptr<std::atomic_bool> &cancel_token = {})
 {
-    const QString normalized = strategy.trimmed().toLower();
-    if (normalized == QStringLiteral("hungarian") || normalized == QStringLiteral("hungarian_iou"))
+    if (strategy == evaluation::MatchingStrategy::HungarianIoU)
         return hungarianMatches(predictions, ground_truth, threshold, cancel_token);
     return greedyMatches(predictions, ground_truth, threshold, cancel_token);
 }
@@ -1101,17 +1089,15 @@ struct OfficialEvaluationOutput
     QVariantMap image_definition;
 };
 
-OfficialEvaluationOutput buildOfficialEvaluation(const QString &method, const QMap<qint64, Image> &images,
-                                                 const QMap<int, ClassInfo> &classes, const double confidence,
-                                                 const double iou_threshold, const QString &strategy,
+OfficialEvaluationOutput buildOfficialEvaluation(const evaluation::Method method, const QMap<qint64, Image> &images,
+                                                 const double confidence, const double iou_threshold,
+                                                 const evaluation::MatchingStrategy strategy,
                                                  const QVariantMap &diagnostic,
                                                  const std::shared_ptr<std::atomic_bool> &cancel_token = {})
 {
     OfficialEvaluationOutput output;
-    const QString normalized_method = method.trimmed().toLower();
-    const bool detection = normalized_method.contains(QStringLiteral("detect"))
-        || normalized_method.contains(QStringLiteral("segment"));
-    const bool anomaly = normalized_method.contains(QStringLiteral("anomaly"));
+    const bool detection = evaluation::hasInstanceMetrics(method);
+    const bool anomaly = evaluation::isAnomaly(method);
     if (!detection && !anomaly)
         return output;
 
@@ -1248,23 +1234,19 @@ OfficialEvaluationOutput buildOfficialEvaluation(const QString &method, const QM
                                                                                                 {QStringLiteral("data"), recall_values}}}}}},
                                         {QStringLiteral("options"), QVariantMap{{QStringLiteral("maintainAspectRatio"), false}}}});
     output.chart_kinds.push_back(QStringLiteral("line"));
-    Q_UNUSED(classes)
     return output;
 }
 
 } // namespace
 
-EvaluationCapabilities ModelEvaluationService::capabilitiesForMethod(const QString &method)
+EvaluationCapabilities ModelEvaluationService::capabilitiesForMethod(const evaluation::Method method)
 {
-    const QString normalized = method.trimmed().toLower();
     EvaluationCapabilities capabilities;
-    capabilities.has_instance_metrics = normalized.contains(QStringLiteral("detect"))
-        || normalized.contains(QStringLiteral("segment"));
-    capabilities.has_image_metrics = capabilities.has_instance_metrics || normalized.contains(QStringLiteral("anomaly"));
-    capabilities.has_confusion_matrix = capabilities.has_instance_metrics
-        || normalized.contains(QStringLiteral("anomaly"));
-    capabilities.has_instance_events = capabilities.has_instance_metrics;
-    if (normalized.contains(QStringLiteral("anomaly")))
+    capabilities.has_instance_metrics = evaluation::hasInstanceMetrics(method);
+    capabilities.has_image_metrics = evaluation::hasImageMetrics(method);
+    capabilities.has_confusion_matrix = evaluation::hasConfusionMatrix(method);
+    capabilities.has_instance_events = evaluation::hasInstanceEvents(method);
+    if (evaluation::isAnomaly(method))
         capabilities.chart_kinds = {QStringLiteral("bar")};
     else if (capabilities.has_instance_metrics)
         capabilities.chart_kinds = {QStringLiteral("bar"), QStringLiteral("line")};
@@ -1367,7 +1349,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
     }
     if (options.dataset_manifest_path.isEmpty() || options.prediction_manifest_path.isEmpty()
         || options.prediction_images_path.isEmpty() || options.evaluation_dir.isEmpty()
-        || options.report_path.isEmpty() || options.instances_path.isEmpty())
+        || options.report_path.isEmpty())
     {
         if (err_msg)
             *err_msg = QString("评估路径参数不完整");
@@ -1379,47 +1361,39 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                     err_msg))
         return false;
     int prediction_count = 0;
-    YAML::Node normalized_manifest;
     if (!loadPredictions(options.prediction_manifest_path, images, &prediction_count, options.cancel_token, err_msg,
-                         options.model_uuid, options.test_task_uuid, options.method, &normalized_manifest))
+                         options.model_uuid, options.test_task_uuid, evaluation::methodKey(options.method)))
         return false;
+    for (auto it = images.begin(); it != images.end();)
+    {
+        if (sourceImageExists(it->path, options.dataset_manifest_path))
+            ++it;
+        else
+            it = images.erase(it);
+    }
+    if (images.isEmpty())
+    {
+        if (err_msg)
+            *err_msg = QString("测试数据集没有可用图像");
+        return false;
+    }
+    prediction_count = 0;
+    for (const Image &image : images)
+        prediction_count += image.predictions.size();
     if (isCancelled(options.cancel_token))
     {
         if (err_msg)
             *err_msg = QString("评估已取消");
         return false;
     }
-    try
-    {
-        if (!normalized_manifest["schema_version"])
-            normalized_manifest["schema_version"] = 1;
-        normalized_manifest["record_count"] = prediction_count;
-        QString manifest_error;
-        if (!dltool::common::yaml::writeFileAtomic(options.prediction_manifest_path, normalized_manifest,
-                                                  &manifest_error, QString("打开预测清单失败"),
-                                                  QString("生成预测清单失败"),
-                                                  QString("提交预测清单失败")))
-        {
-            if (err_msg)
-                *err_msg = manifest_error;
-            return false;
-        }
-    }
-    catch (const std::exception &e)
-    {
-        if (err_msg)
-            *err_msg = QString("规范化预测清单失败: %1").arg(QString(e.what()));
-        return false;
-    }
-
-    const bool anomaly_method = options.method.trimmed().toLower().contains(QStringLiteral("anomaly"));
-    QMap<int, ClassInfo> classes;
+    const bool anomaly_method = evaluation::isAnomaly(options.method);
+    QMap<int, QString> classes;
     if (anomaly_method)
     {
         // Anomaly evaluation is image-level binary classification.  GOOD is
         // the implicit negative class because normal samples have no GT label.
-        classes.insert(0, {0, QStringLiteral("GOOD")});
-        classes.insert(1, {1, QStringLiteral("Anomaly")});
+        classes.insert(0, QStringLiteral("GOOD"));
+        classes.insert(1, QStringLiteral("Anomaly"));
     }
     else
     {
@@ -1432,7 +1406,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                 return false;
             }
             for (const GroundTruth &gt : image.gt)
-                classes.insert(gt.class_id, {gt.class_id, gt.class_name.isEmpty() ? QString::number(gt.class_id) : gt.class_name});
+                classes.insert(gt.class_id, gt.class_name.isEmpty() ? QString::number(gt.class_id) : gt.class_name);
         }
         for (const Image &image : images)
         {
@@ -1444,9 +1418,8 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
             }
             for (const Prediction &prediction : image.predictions)
                 classes.insert(prediction.class_id,
-                               {prediction.class_id,
-                                prediction.class_name.isEmpty() ? QString::number(prediction.class_id)
-                                                                : prediction.class_name});
+                               prediction.class_name.isEmpty() ? QString::number(prediction.class_id)
+                                                               : prediction.class_name);
         }
         classes.remove(-1);
     }
@@ -1485,7 +1458,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         QVector<bool> used_pred(predictions.size(), false);
         const QList<MatchPair> pairs = matchPredictions(predictions, image.gt, options.iou_threshold,
                                                          options.matching_strategy, options.cancel_token);
-        const auto appendEvent = [&](const QString &status, const GroundTruth *gt, const Prediction *pred,
+        const auto appendEvent = [&](const evaluation::Status status, const GroundTruth *gt, const Prediction *pred,
                                      double iou)
         {
             const QVariantMap crop = cropBounds(gt ? gt->bounds : QVariantMap{},
@@ -1499,15 +1472,18 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
             QVariantMap event{{QStringLiteral("event_uuid"),
                                QStringLiteral("%1-%2").arg(image.id).arg(event_records.size() + 1)},
                               {QStringLiteral("image_id"), image.id},
-                              {QStringLiteral("dataset_id"), image.dataset_id},
-                              {QStringLiteral("image_name"), image.name},
-                              {QStringLiteral("image_path"), image.path},
-                              {QStringLiteral("image_width"), image.width},
-                              {QStringLiteral("image_height"), image.height},
-                              {QStringLiteral("status"), status},
+                              {QStringLiteral("status"), evaluation::statusKey(status)},
                               {QStringLiteral("score"), pred ? pred->score : 0.0},
                               {QStringLiteral("iou"), iou},
-                               {QStringLiteral("crop_bounds"), viewport},
+                              {QStringLiteral("gt_label_id"), gt ? gt->label_id : -1},
+                              {QStringLiteral("gt_class_id"), gt ? gt->class_id : -1},
+                              {QStringLiteral("gt_class_name"), gt ? gt->class_name : QString()},
+                              {QStringLiteral("gt_geometry"), gt_geometry},
+                              {QStringLiteral("pred_instance_id"), pred ? pred->prediction_id : QString()},
+                              {QStringLiteral("pred_class_id"), pred ? pred->class_id : -1},
+                              {QStringLiteral("pred_class_name"), pred ? pred->class_name : QString()},
+                              {QStringLiteral("pred_geometry"), pred_geometry},
+                              {QStringLiteral("crop_bounds"), viewport},
                                {QStringLiteral("gt_overlay_bounds"),
                                 normalizedOverlayBounds(gt ? gt->bounds : QVariantMap{}, viewport)},
                                {QStringLiteral("pred_overlay_bounds"),
@@ -1518,25 +1494,6 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                                 normalizedOverlayPoints(pred_geometry, viewport)},
                                {QStringLiteral("gt_mask_url"), maskUrl(gt_geometry, dataset_manifest_root)},
                                {QStringLiteral("pred_mask_url"), maskUrl(pred_geometry, prediction_task_root)}};
-            if (gt)
-                event.insert(QStringLiteral("gt"), QVariantMap{{QStringLiteral("label_id"), gt->label_id},
-                                                                  {QStringLiteral("instance_id"), gt->label_id >= 0
-                                                                                                    ? QString::number(gt->label_id)
-                                                                                                    : QString()},
-                                                                  {QStringLiteral("class_id"), gt->class_id},
-                                                                  {QStringLiteral("class_name"), gt->class_name},
-                                                                  {QStringLiteral("class_color"), classColor(gt->class_id)},
-                                                                  {QStringLiteral("geometry"), gt_geometry},
-                                                                  {QStringLiteral("bounds"), gt->bounds}});
-            if (pred)
-                event.insert(QStringLiteral("pred"), QVariantMap{{QStringLiteral("prediction_id"), pred->prediction_id},
-                                                                    {QStringLiteral("instance_id"), pred->prediction_id},
-                                                                    {QStringLiteral("class_id"), pred->class_id},
-                                                                    {QStringLiteral("class_name"), pred->class_name},
-                                                                    {QStringLiteral("class_color"), classColor(pred->class_id)},
-                                                                    {QStringLiteral("score"), pred->score},
-                                                                    {QStringLiteral("geometry"), pred_geometry},
-                                                                    {QStringLiteral("bounds"), pred->bounds}});
             event_records.push_back(event);
         };
 
@@ -1560,7 +1517,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                 ++overall.tp;
                 ++per_class[pred.class_id].tp;
                 incrementMatrix(QString::number(pred.class_id), QString::number(gt.class_id));
-                appendEvent(QStringLiteral("true_positive"), &gt, &pred, pair.iou);
+                appendEvent(evaluation::Status::TruePositive, &gt, &pred, pair.iou);
             }
             else
             {
@@ -1569,7 +1526,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                 ++per_class[pred.class_id].fp;
                 ++per_class[gt.class_id].fn;
                 incrementMatrix(QString::number(pred.class_id), QString::number(gt.class_id));
-                appendEvent(QStringLiteral("class_mismatch"), &gt, &pred, pair.iou);
+                appendEvent(evaluation::Status::ClassMismatch, &gt, &pred, pair.iou);
             }
         }
         for (int p = 0; p < predictions.size(); ++p)
@@ -1580,7 +1537,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
             ++overall.fp;
             ++per_class[pred.class_id].fp;
             incrementMatrix(QString::number(pred.class_id), QStringLiteral("FP"));
-            appendEvent(QStringLiteral("false_positive"), nullptr, &pred, 0.0);
+            appendEvent(evaluation::Status::FalsePositive, nullptr, &pred, 0.0);
         }
         for (int g = 0; g < image.gt.size(); ++g)
         {
@@ -1590,7 +1547,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
             ++overall.fn;
             ++per_class[gt.class_id].fn;
             incrementMatrix(QStringLiteral("FN"), QString::number(gt.class_id));
-            appendEvent(QStringLiteral("false_negative"), &gt, nullptr, 0.0);
+            appendEvent(evaluation::Status::FalseNegative, &gt, nullptr, 0.0);
         }
 
         // 图像级指标按类别 presence 统计，而不是只要图像同时有 GT/PRED
@@ -1631,7 +1588,6 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
 
     QVariantList per_class_metrics;
     QVariantList image_records;
-    QVariantList prediction_records;
     for (const Image &image : images)
     {
         if (isCancelled(options.cancel_token))
@@ -1640,71 +1596,31 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                 *err_msg = QString("评估已取消");
             return false;
         }
-        QVariantList gt_label_ids;
-        QVariantList gt_class_ids;
         QVariantList gt_instances;
         for (const GroundTruth &gt : image.gt)
         {
-            if (gt.label_id >= 0)
-                gt_label_ids.push_back(gt.label_id);
-            if (gt.class_id >= 0)
-                gt_class_ids.push_back(gt.class_id);
             gt_instances.push_back(QVariantMap{{QStringLiteral("label_id"), gt.label_id},
-                                               {QStringLiteral("instance_id"), gt.label_id >= 0
-                                                        ? QString::number(gt.label_id) : QString()},
                                                {QStringLiteral("class_id"), gt.class_id},
                                                {QStringLiteral("class_name"), gt.class_name},
-                                               {QStringLiteral("geometry"), gt.geometry},
-                                               {QStringLiteral("bounds"), gt.bounds}});
+                                               {QStringLiteral("geometry"), gt.geometry}});
         }
-        QVariantList pred_class_ids;
         QVariantList prediction_instances;
-        double image_score = 0.0;
         for (const Prediction &prediction : image.predictions)
         {
-            image_score = std::max(image_score, prediction.score);
-            if (prediction.score >= options.confidence_threshold && prediction.class_id >= 0)
-                pred_class_ids.push_back(prediction.class_id);
             prediction_instances.push_back(QVariantMap{{QStringLiteral("prediction_id"), prediction.prediction_id},
-                                                        {QStringLiteral("image_id"), prediction.image_id},
-                                                        {QStringLiteral("dataset_id"), image.dataset_id},
                                                         {QStringLiteral("class_id"), prediction.class_id},
                                                         {QStringLiteral("class_name"), prediction.class_name},
                                                         {QStringLiteral("score"), prediction.score},
-                                                        {QStringLiteral("geometry"), prediction.geometry},
-                                                        {QStringLiteral("bounds"), prediction.bounds}});
+                                                        {QStringLiteral("geometry"), prediction.geometry}});
         }
-        // Keep image-level presence consistent with the thresholded
-        // predictions used by the diagnostic image metrics.  Raw low-score
-        // predictions remain available in `predictions` for later PR curves,
-        // but must not make the image appear positive at the current cutoff.
-        const bool has_pred = std::any_of(image.predictions.cbegin(), image.predictions.cend(),
-                                          [&options](const Prediction &prediction)
-                                          { return prediction.score >= options.confidence_threshold; });
         image_records.push_back(QVariantMap{{QStringLiteral("image_id"), image.id},
                                             {QStringLiteral("dataset_id"), image.dataset_id},
                                             {QStringLiteral("image_name"), image.name},
                                             {QStringLiteral("image_path"), image.path},
                                             {QStringLiteral("image_width"), image.width},
                                             {QStringLiteral("image_height"), image.height},
-                                            {QStringLiteral("gt_label_ids"), gt_label_ids},
-                                            {QStringLiteral("gt_class_ids"), gt_class_ids},
-                                            {QStringLiteral("pred_class_ids"), pred_class_ids},
                                             {QStringLiteral("gt_instances"), gt_instances},
-                                            {QStringLiteral("predictions"), prediction_instances},
-                                            {QStringLiteral("score"), image_score},
-                                            {QStringLiteral("has_gt"), !image.gt.isEmpty()},
-                                            {QStringLiteral("has_pred"), has_pred}});
-        for (const Prediction &prediction : image.predictions)
-        {
-            prediction_records.push_back(QVariantMap{{QStringLiteral("prediction_id"), prediction.prediction_id},
-                                                     {QStringLiteral("image_id"), image.id},
-                                                     {QStringLiteral("dataset_id"), image.dataset_id},
-                                                     {QStringLiteral("class_id"), prediction.class_id},
-                                                     {QStringLiteral("class_name"), prediction.class_name},
-                                                     {QStringLiteral("score"), prediction.score},
-                                                     {QStringLiteral("geometry"), prediction.geometry}});
-        }
+                                            {QStringLiteral("predictions"), prediction_instances}});
     }
     QVariantList chart_labels;
     QVariantList precision_values;
@@ -1721,9 +1637,9 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         const Counts counts = per_class.value(it.key());
         QVariantMap metric = metricMap(counts.tp, counts.fp, counts.fn);
         metric.insert(QStringLiteral("class_id"), it.key());
-        metric.insert(QStringLiteral("class_name"), it.value().name);
+        metric.insert(QStringLiteral("class_name"), it.value());
         per_class_metrics.push_back(metric);
-        chart_labels.push_back(it.value().name);
+        chart_labels.push_back(it.value());
         precision_values.push_back(metric.value(QStringLiteral("precision")));
         recall_values.push_back(metric.value(QStringLiteral("recall")));
         f1_values.push_back(metric.value(QStringLiteral("f1")));
@@ -1739,7 +1655,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
             return false;
         }
         class_catalog.push_back(QVariantMap{{QStringLiteral("id"), it.key()},
-                                            {QStringLiteral("name"), it.value().name},
+                                            {QStringLiteral("name"), it.value()},
                                             {QStringLiteral("color"), classColor(it.key())}});
     }
 
@@ -1781,7 +1697,8 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         else
             gt_totals[keys.at(1).toInt()] += it.value();
     }
-    const auto appendCell = [&](const QString &row, const QString &column, qint64 count, const QString &kind,
+    const auto appendCell = [&](const QString &row, const QString &column, qint64 count,
+                                const evaluation::CellKind kind,
                                 bool selectable, bool diagonal, bool error)
     {
         const bool row_fn = row == QStringLiteral("FN");
@@ -1791,9 +1708,9 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         const int row_id = row_fn || row_total ? -1 : row.toInt();
         const int column_id = column_fp || column_total ? -1 : column.toInt();
         const QString total_label = QString("合计");
-        const QString row_label = row_fn ? QStringLiteral("FN") : (row_total ? total_label : classes.value(row_id).name);
+        const QString row_label = row_fn ? QStringLiteral("FN") : (row_total ? total_label : classes.value(row_id));
         const QString column_label = column_fp ? QStringLiteral("FP")
-                                               : (column_total ? total_label : classes.value(column_id).name);
+                                               : (column_total ? total_label : classes.value(column_id));
         matrix_cells.push_back(QVariantMap{{QStringLiteral("row_key"), row},
                                            {QStringLiteral("column_key"), column},
                                            {QStringLiteral("row_label"), row_label},
@@ -1801,7 +1718,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                                            {QStringLiteral("row_class_id"), row_id},
                                            {QStringLiteral("column_class_id"), column_id},
                                            {QStringLiteral("count"), count},
-                                           {QStringLiteral("cell_kind"), kind},
+                                           {QStringLiteral("cell_kind"), evaluation::cellKindKey(kind)},
                                            {QStringLiteral("selectable"), selectable},
                                            {QStringLiteral("is_diagonal"), diagonal},
                                            {QStringLiteral("is_error"), error}});
@@ -1814,39 +1731,39 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
             const QString column = QString::number(column_it.key());
             const bool diagonal = row_it.key() == column_it.key();
             appendCell(row, column, matrix.value(row + QLatin1Char('\x1f') + column),
-                       diagonal ? QStringLiteral("match") : QStringLiteral("class_mismatch"), true, diagonal,
+                       diagonal ? evaluation::CellKind::Match : evaluation::CellKind::ClassMismatch, true, diagonal,
                        !diagonal);
         }
         appendCell(row, QStringLiteral("FP"), matrix.value(row + QLatin1Char('\x1f') + QStringLiteral("FP")),
-                   QStringLiteral("false_positive"), true, false, true);
-        appendCell(row, QStringLiteral("TOTAL"), pred_totals.value(row_it.key()), QStringLiteral("pred_total"), true,
+                   evaluation::CellKind::FalsePositive, true, false, true);
+        appendCell(row, QStringLiteral("TOTAL"), pred_totals.value(row_it.key()), evaluation::CellKind::PredTotal, true,
                    false, false);
     }
     for (auto column_it = classes.cbegin(); column_it != classes.cend(); ++column_it)
     {
         const QString column = QString::number(column_it.key());
         appendCell(QStringLiteral("FN"), column, matrix.value(QStringLiteral("FN") + QLatin1Char('\x1f') + column),
-                   QStringLiteral("false_negative"), true, false, true);
+                   evaluation::CellKind::FalseNegative, true, false, true);
     }
-    appendCell(QStringLiteral("FN"), QStringLiteral("FP"), 0, QStringLiteral("not_applicable"), false, false, false);
-    appendCell(QStringLiteral("FN"), QStringLiteral("TOTAL"), unmatched_fn, QStringLiteral("false_negative_total"),
+    appendCell(QStringLiteral("FN"), QStringLiteral("FP"), 0, evaluation::CellKind::NotApplicable, false, false, false);
+    appendCell(QStringLiteral("FN"), QStringLiteral("TOTAL"), unmatched_fn, evaluation::CellKind::FalseNegativeTotal,
                true, false, true);
     for (auto column_it = classes.cbegin(); column_it != classes.cend(); ++column_it)
     {
         const QString column = QString::number(column_it.key());
-        appendCell(QStringLiteral("TOTAL"), column, gt_totals.value(column_it.key()), QStringLiteral("gt_total"), true,
+        appendCell(QStringLiteral("TOTAL"), column, gt_totals.value(column_it.key()), evaluation::CellKind::GtTotal, true,
                    false, false);
     }
-    appendCell(QStringLiteral("TOTAL"), QStringLiteral("FP"), unmatched_fp, QStringLiteral("false_positive_total"),
+    appendCell(QStringLiteral("TOTAL"), QStringLiteral("FP"), unmatched_fp, evaluation::CellKind::FalsePositiveTotal,
                true, false, true);
     appendCell(QStringLiteral("TOTAL"), QStringLiteral("TOTAL"), anomaly_method ? images.size() : event_records.size(),
-               QStringLiteral("all"), true, false, false);
+               evaluation::CellKind::All, true, false, false);
 
     const QVariantMap diagnostic = {
         {QStringLiteral("instance"), QVariantMap{{QStringLiteral("overall"), metricMap(overall.tp, overall.fp, overall.fn)},
                                                    {QStringLiteral("per_class"), per_class_metrics}}},
         {QStringLiteral("image"), metricMap(image_counts.tp, image_counts.fp, image_counts.fn)}};
-    const OfficialEvaluationOutput official = buildOfficialEvaluation(options.method, images, classes,
+    const OfficialEvaluationOutput official = buildOfficialEvaluation(options.method, images,
                                                                         options.confidence_threshold,
                                                                         options.iou_threshold,
                                                                          options.matching_strategy, diagnostic,
@@ -1861,12 +1778,9 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
     const QVariantMap evaluation_config = {{QStringLiteral("schema_version"), 1},
                                            {QStringLiteral("model_uuid"), options.model_uuid},
                                            {QStringLiteral("test_task_uuid"), options.test_task_uuid},
-                                           {QStringLiteral("method"), options.method},
+                                           {QStringLiteral("method"), evaluation::methodKey(options.method)},
                                            {QStringLiteral("inference_digest"), options.evaluation_config.value(QStringLiteral("inference_digest"))},
                                            {QStringLiteral("input_data_digest"), options.evaluation_config.value(QStringLiteral("input_data_digest"))},
-                                           {QStringLiteral("weight_digest"), options.evaluation_config.value(QStringLiteral("weight_digest"))},
-                                           {QStringLiteral("checkpoint_path"), options.evaluation_config.value(QStringLiteral("checkpoint_path"))},
-                                           {QStringLiteral("checkpoint_signature"), options.evaluation_config.value(QStringLiteral("checkpoint_signature"))},
                                            {QStringLiteral("ground_truth_digest"), options.evaluation_config.value(QStringLiteral("ground_truth_digest"))},
                                            {QStringLiteral("ground_truth_revision"), options.evaluation_config.value(QStringLiteral("ground_truth_revision"))},
                                            {QStringLiteral("image_list_digest"), options.evaluation_config.value(QStringLiteral("image_list_digest"))},
@@ -1874,7 +1788,8 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                                            {QStringLiteral("evaluation_digest"), digestFor(options.evaluation_config)},
                                            {QStringLiteral("confidence_threshold"), options.confidence_threshold},
                                            {QStringLiteral("iou_threshold"), options.iou_threshold},
-                                           {QStringLiteral("matching_strategy"), options.matching_strategy}};
+                                           {QStringLiteral("matching_strategy"),
+                                            evaluation::matchingStrategyKey(options.matching_strategy)}};
     const QString evaluation_digest = evaluation_config.value(QStringLiteral("evaluation_digest")).toString();
     QVariantList charts = {QVariantMap{{QStringLiteral("kind"), QStringLiteral("bar")},
                                              {QStringLiteral("chart_id"), QStringLiteral("per_class_metrics")},
@@ -1890,18 +1805,16 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         charts.push_back(chart);
 
     const QVariantMap report = {
-        {QStringLiteral("schema_version"), 2},
+        {QStringLiteral("schema_version"), evaluation::kReportSchemaVersion},
         {QStringLiteral("model_uuid"), options.model_uuid},
         {QStringLiteral("test_task_uuid"), options.test_task_uuid},
-        {QStringLiteral("method"), options.method},
-        {QStringLiteral("primary_metric_set"), official.available ? QStringLiteral("official_metrics")
-                                                                     : QStringLiteral("diagnostic_metrics")},
+        {QStringLiteral("method"), evaluation::methodKey(options.method)},
+        {QStringLiteral("primary_metric_set"), official.available
+                ? evaluation::metricSetKey(evaluation::MetricSet::Official)
+                : evaluation::metricSetKey(evaluation::MetricSet::Diagnostic)},
         {QStringLiteral("inference_digest"), options.evaluation_config.value(QStringLiteral("inference_digest"))},
         {QStringLiteral("input_data_digest"), options.evaluation_config.value(QStringLiteral("input_data_digest"))},
         {QStringLiteral("evaluation_digest"), evaluation_digest},
-        {QStringLiteral("weight_digest"), options.evaluation_config.value(QStringLiteral("weight_digest"))},
-        {QStringLiteral("checkpoint_path"), options.evaluation_config.value(QStringLiteral("checkpoint_path"))},
-        {QStringLiteral("checkpoint_signature"), options.evaluation_config.value(QStringLiteral("checkpoint_signature"))},
         {QStringLiteral("ground_truth_digest"), options.evaluation_config.value(QStringLiteral("ground_truth_digest"))},
         {QStringLiteral("ground_truth_revision"), options.evaluation_config.value(QStringLiteral("ground_truth_revision"))},
         {QStringLiteral("image_list_digest"), options.evaluation_config.value(QStringLiteral("image_list_digest"))},
@@ -1909,7 +1822,8 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         {QStringLiteral("evaluated_at"), QDateTime::currentSecsSinceEpoch()},
         {QStringLiteral("evaluation_config"), QVariantMap{{QStringLiteral("confidence_threshold"), options.confidence_threshold},
                                                            {QStringLiteral("iou_threshold"), options.iou_threshold},
-                                                           {QStringLiteral("matching_strategy"), options.matching_strategy}}},
+                                                           {QStringLiteral("matching_strategy"),
+                                                            evaluation::matchingStrategyKey(options.matching_strategy)}}},
         {QStringLiteral("class_catalog"), class_catalog},
         {QStringLiteral("diagnostic_metrics"), diagnostic},
         {QStringLiteral("official_metrics"), official.available ? official.metrics
@@ -1928,19 +1842,15 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         {QStringLiteral("confusion_matrix"), QVariantMap{{QStringLiteral("cells"), matrix_cells}}},
         {QStringLiteral("charts"), charts},
         {QStringLiteral("image_records"), image_records},
-        {QStringLiteral("prediction_records"), prediction_records},
+        {QStringLiteral("instance_records"), event_records},
         {QStringLiteral("image_list"), QStringLiteral("../pred/images.txt")},
         {QStringLiteral("prediction_manifest"), QStringLiteral("../pred/manifest.yaml")},
         {QStringLiteral("dataset_manifest"),
          QDir(options.evaluation_dir).relativeFilePath(options.dataset_manifest_path)},
-        {QStringLiteral("instances_file"), QStringLiteral("instances.yaml")},
         {QStringLiteral("image_count"), images.size()},
         {QStringLiteral("prediction_count"), prediction_count},
         {QStringLiteral("event_count"), event_records.size()},
     };
-    const QVariantMap instance_root = {{QStringLiteral("schema_version"), 1},
-                                       {QStringLiteral("record_count"), event_records.size()},
-                                       {QStringLiteral("records"), event_records}};
     if (!QDir().mkpath(options.evaluation_dir))
     {
         if (err_msg)
@@ -1948,15 +1858,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         return false;
     }
     QString error;
-    if (!dltool::common::yaml::writeFileAtomic(options.evaluation_config_path,
-                                              dltool::common::yaml::variantToYaml(evaluation_config), &error,
-                                              QString("打开评估配置失败"), QString("生成评估配置失败"),
-                                              QString("提交评估配置失败"))
-        || !dltool::common::yaml::writeFileAtomic(options.instances_path,
-                                                  dltool::common::yaml::variantToYaml(instance_root), &error,
-                                                  QString("打开评估实例失败"), QString("生成评估实例失败"),
-                                                  QString("提交评估实例失败"))
-        || !dltool::common::yaml::writeFileAtomic(options.report_path,
+    if (!dltool::common::yaml::writeFileAtomic(options.report_path,
                                                   dltool::common::yaml::variantToYaml(report), &error,
                                                   QString("打开评估报告失败"), QString("生成评估报告失败"),
                                                   QString("提交评估报告失败")))
@@ -1971,10 +1873,6 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         result->prediction_count = prediction_count;
         result->event_count = event_records.size();
         result->evaluation_digest = evaluation_config.value(QStringLiteral("evaluation_digest")).toString();
-        result->result = {{QStringLiteral("image_count"), images.size()},
-                          {QStringLiteral("prediction_count"), prediction_count},
-                          {QStringLiteral("event_count"), event_records.size()},
-                          {QStringLiteral("evaluation_digest"), result->evaluation_digest}};
     }
     return true;
 }

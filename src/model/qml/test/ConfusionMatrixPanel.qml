@@ -152,14 +152,17 @@ Item {
                     property bool selected: control.isCellSelected(model.rowKey, model.columnKey)
                     color: selected
                            ? QuiColor.Highlight
-                           : (model.cellKind === "match" && model.isDiagonal
+                           : (model.cellKindValue === EvaluationConfusionModel.CellKindMatch && model.isDiagonal
                            ? "#2e7d32"
                            : (model.isError ? "#c62828" : QuiColor.Primary))
-                    opacity: selected || model.count > 0 || model.cellKind === "all" ? 1.0 : 0.72
+                    opacity: selected || model.count > 0
+                             || model.cellKindValue === EvaluationConfusionModel.CellKindAll ? 1.0 : 0.72
                     border.color: selected
                                   ? QuiColor.Highlight
-                                  : (model.cellKind === "all" || model.cellKind === "pred_total"
-                                     || model.cellKind === "gt_total" ? QuiColor.FontDark : QuiColor.Border)
+                                  : (model.cellKindValue === EvaluationConfusionModel.CellKindAll
+                                     || model.cellKindValue === EvaluationConfusionModel.CellKindPredTotal
+                                     || model.cellKindValue === EvaluationConfusionModel.CellKindGtTotal
+                                     ? QuiColor.FontDark : QuiColor.Border)
                     border.width: selected ? 2 : 1
 
                     Column {

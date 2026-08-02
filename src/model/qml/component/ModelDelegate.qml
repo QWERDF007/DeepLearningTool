@@ -64,8 +64,12 @@ Rectangle {
             id: progressInfo
             property var stateData: control.extraData || ({})
             readonly property bool started: progressInfo.stateData && progressInfo.stateData.started === true
+            // Terminal task states set started=false, but the persisted progress
+            // remains useful when the project is reopened.
+            readonly property bool hasRecordedProgress: progressInfo.stateData
+                                                         && progressInfo.stateData.progress !== undefined
 
-            visible: progressInfo.started
+            visible: progressInfo.started || progressInfo.hasRecordedProgress
             Layout.preferredHeight: visible ? 34 : 0
             spacing: 2
 

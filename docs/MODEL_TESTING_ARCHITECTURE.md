@@ -103,14 +103,14 @@
 | 测试任务 UUID、名称、目录名和顺序 | `test/tasks.yaml` |
 | 当前可编辑测试配置 | `test/<任务名>/config.yaml` |
 | 当前预测实际使用的推理配置 | `test/<任务名>/pred/config.yaml` |
-| 当前评估实际使用的评估配置 | `test/<任务名>/evaluation/config.yaml` |
+| 当前评估实际使用的评估配置 | `test/<任务名>/evaluation/report.yaml` 内的 `evaluation_config` |
 | 当前有效完整预测 | `test/<任务名>/pred/` |
 | 当前有效评估明细 | `test/<任务名>/evaluation/` |
 | 当前有效结果摘要和提交标志 | `test/<任务名>/result.yaml` |
 | 实时状态、阶段和进度 | `TaskManager` |
 | `extra_data.test_tasks` | 仅为可重建的 UI 加载缓存，不作为事实来源 |
 
-测试任务的 `config.yaml` 可以在运行后继续编辑，因此它不能用于解释已有结果。当前预测由 `pred/config.yaml` 解释，当前评估由 `evaluation/config.yaml` 解释。这样只修改评估参数时可以复用 PRED 重算评估，不必重新推理。
+测试任务的 `config.yaml` 可以在运行后继续编辑，因此它不能用于解释已有结果。当前预测由 `pred/config.yaml` 解释，当前评估由 `evaluation/report.yaml` 内的评估配置和 digest 解释。这样只修改评估参数时可以复用 PRED 重算评估，不必重新推理。
 
 ## 4. 最终目录结构
 
@@ -140,9 +140,7 @@ models/<模型名称>/
    │  │  ├─ manifest.yaml
    │  │  └─ <预测文件>
    │  └─ evaluation/
-   │     ├─ config.yaml
-   │     ├─ report.yaml
-   │     └─ instances.yaml
+   │     └─ report.yaml
    └─ <测试任务名称B>/
       └─ ...
 ```
@@ -156,13 +154,11 @@ models/<模型名称>/
 | `<任务>/config.yaml` | 当前可编辑的测试参数和单一测试数据集选择 |
 | `<任务>/pred/config.yaml` | 当前 PRED 实际使用的推理配置、checkpoint 和推理摘要 |
 | `<任务>/pred/images.txt` | 当前实际完成推理的全部图像；每行为 `image_id,image_path`，无预测实例的图像也必须存在 |
-| `<任务>/evaluation/config.yaml` | 当前评估实际使用的评估配置和 GT 版本摘要 |
 | `<任务>/result.yaml` | 最近一次有效运行的轻量摘要，也是结果提交完成标志 |
 | `<任务>/pred/` | 当前有效的完整预测及规范化预测清单 |
-| `evaluation/report.yaml` | 指标、混淆矩阵和图表数据 |
-| `evaluation/instances.yaml` | 匹配对、FP、FN 等实例评估事件序列 |
+| `evaluation/report.yaml` | 评估配置、digest、指标、混淆矩阵、图表、图像记录和实例事件 |
 
-`pred/images.txt` 明确记录当前测试的图像全集，`pred/manifest.yaml` 记录完整预测及 score；二者共同界定当前 PRED，不能通过扫描预测文件猜测测试范围。`images.txt` 使用 UTF-8，首行为 `image_id,image_path`，后续按 CSV 转义规则保存路径。图像级评估记录由 C++ 根据图像清单、GT 和 PRED 在内存中构建，汇总写入 `report.yaml`。`manifest.yaml` 和 `instances.yaml` 均使用顶层 map 加 records sequence 的稳定 YAML schema。
+`pred/images.txt` 明确记录当前测试的图像全集，`pred/manifest.yaml` 记录完整预测及 score；二者共同界定当前 PRED，不能通过扫描预测文件猜测测试范围。`images.txt` 使用 UTF-8，首行为 `image_id,image_path`，后续按 CSV 转义规则保存路径。图像级评估记录和实例事件由 C++ 根据图像清单、GT 和 PRED 构建并写入 `report.yaml`。
 
 每个测试任务只保留一份 PRED 和一份评估结果，不建立运行历史。需要重新推理时，控制器先安全确认任务根目录，再删除并重建该任务的 `pred/`、`evaluation/` 和 `result.yaml`；失败后页面显示当前运行失败且无有效结果。只需重新评估时保留 `pred/`，仅清理并重建 `evaluation/` 和 `result.yaml`。
 
@@ -232,7 +228,7 @@ QString log_path;
 评估报告是算法执行结果和 UI 之间的稳定协议。建议包含：
 
 ```yaml
-schema_version: 2
+schema_version: 3
 model_uuid: "..."
 test_task_uuid: "..."
 method: object_detection
@@ -281,7 +277,7 @@ charts: []
 dataset_manifest: ../datasets/test/manifest.yaml
 prediction_manifest: ../pred/manifest.yaml
 image_list: ../pred/images.txt
-instances_file: evaluation/instances.yaml
+instance_records: []
 ```
 
 类别 ID、名称和颜色以报告中的 `class_catalog` 为当前评估结果的固定解释，不能在加载结果时直接套用项目当前已变化的类别名称或颜色。`inference_digest`、`evaluation_digest` 和 `weight_digest` 用于分别判断是否需要重新推理、只需重新评估，或结果仍然有效。
@@ -558,7 +554,7 @@ PRED 必须保留重算评估所需的完整 score 和几何。不能在 Python 
 2. 删除旧 `pred/`、`evaluation/`、`result.yaml` 后重新创建目录；
 3. 导出数据并写入 `pred/images.txt` 与 `pred/config.yaml`；
 4. Python 只写当前 `pred/`，完成后由 C++ 使用 `yaml-cpp` 校验图像清单、预测清单、路径和 schema，并原子规范化重写 `manifest.yaml`；
-5. C++ 读取 PRED 和 GT，生成 `evaluation/config.yaml`、`report.yaml`、`instances.yaml`；
+5. C++ 读取 PRED 和 GT，生成包含评估配置、图像记录和实例事件的 `evaluation/report.yaml`；
 6. 校验评估结果后，最后原子写入 `result.yaml`；
 7. 只有第 6 步成功，任务才进入 `Finished` 和 100%。
 
@@ -568,7 +564,7 @@ PRED 必须保留重算评估所需的完整 score 和几何。不能在 Python 
 
 1. 校验 `pred/config.yaml`、`pred/images.txt` 和 `pred/manifest.yaml` 完整有效；
 2. 保留 `pred/`，只删除旧 `evaluation/` 和 `result.yaml`；
-3. C++ 使用当前评估参数和当前 GT 重新生成评估文件；
+3. C++ 使用当前评估参数和当前 GT 重新生成 `evaluation/report.yaml`；
 4. 最后原子写入 `result.yaml` 并刷新页面。
 
 停止任务必须同时支持终止 Python 和取消 C++ 评估。Python 正常退出只表示推理阶段结束，不能直接调用 `finishTask()`。
@@ -613,7 +609,7 @@ evaluation:
 
 `config.yaml` 只保存用户可编辑的任务定义和相对路径，不作为某次结果的实际配置。启动 Python 时，配置服务根据它生成仅供当前进程消费的绝对路径参数；持久文件仍使用相对任务根目录路径。
 
-推理相关字段和评估相关字段必须由参数 schema 明确分类，不能靠字段名猜测。`pred/config.yaml` 保存规范化后的实际推理配置、`inference_digest`、checkpoint 相对路径及 hash/mtime；`evaluation/config.yaml` 保存实际评估配置、`evaluation_digest`、所用 GT/类别版本和引用的 `inference_digest`。
+推理相关字段和评估相关字段必须由参数 schema 明确分类，不能靠字段名猜测。`pred/config.yaml` 保存规范化后的实际推理配置、`inference_digest`、checkpoint 相对路径及 hash/mtime；`evaluation/report.yaml` 保存实际评估配置、`evaluation_digest`、所用 GT/类别版本和引用的 `inference_digest`。
 
 摘要组成建议：
 
@@ -720,11 +716,11 @@ COMMON_API bool writeFileAtomic(
 } // namespace dltool::common::yaml
 ```
 
-实现使用 `YAML::Emitter` 生成 UTF-8 内容，再通过 `QSaveFile::write()` 和 `commit()` 提交。C++ 生成的 `tasks.yaml`、所有 `config.yaml`、`report.yaml`、`instances.yaml` 和最后的 `result.yaml` 均使用该接口。Python 完成 `manifest.yaml` 后，C++ 使用 `yaml-cpp` 完整解析、校验并通过 `writeFileAtomic()` 规范化重写，之后才允许进入评估阶段。`result.yaml` 仍最后写入，作为整套结果有效的提交标志。现有 `writeFile()` 保留给不要求原子替换的旧调用者，是否整体切换到 `QSaveFile` 另行评估，避免暗中改变公共接口语义。
+实现使用 `YAML::Emitter` 生成 UTF-8 内容，再通过 `QSaveFile::write()` 和 `commit()` 提交。C++ 生成的 `tasks.yaml`、所有 `config.yaml`、`report.yaml` 和最后的 `result.yaml` 均使用该接口。Python 完成 `manifest.yaml` 后，C++ 使用 `yaml-cpp` 完整解析、校验并通过 `writeFileAtomic()` 规范化重写，之后才允许进入评估阶段。`result.yaml` 仍最后写入，作为整套结果有效的提交标志。现有 `writeFile()` 保留给不要求原子替换的旧调用者，是否整体切换到 `QSaveFile` 另行评估，避免暗中改变公共接口语义。
 
 协议文件应使用类型化解析器直接检查 `YAML::Node` 的 Map/Sequence/Scalar 类型和必填字段，并捕获 `YAML::Exception`、文件异常及类型转换异常。`nodeVariant()`/`variantToYaml()` 适合开放式参数和 chart descriptor；任务 UUID、image ID、score、几何等稳定协议字段应显式 `as<T>()` 解析，避免通用 QVariant 标量推断改变字符串 ID 类型。
 
-`manifest.yaml` 和 `instances.yaml` 顶层统一为：
+`manifest.yaml` 顶层统一为：
 
 ```yaml
 schema_version: 1
@@ -920,7 +916,7 @@ ProxyModel 和后台线程的边界必须固定：
 
 #### YAML 加载和 Model 虚拟化
 
-过滤和指标必须覆盖完整结果，因此不能只读取 GridView 首屏。`yaml-cpp` 和现有 `common::yaml::loadFile()` 都会完整解析一个 YAML 文档，不能设计基于文件行偏移的伪懒加载。`instances.yaml` 在工作线程完整解析后，转换成类型明确的 C++ 详情记录和对应轻量索引：
+过滤和指标必须覆盖完整结果，因此不能只读取 GridView 首屏。`yaml-cpp` 和现有 `common::yaml::loadFile()` 都会完整解析一个 YAML 文档，不能设计基于文件行偏移的伪懒加载。报告的 `instance_records` 在工作线程完整解析后，转换成类型明确的 C++ 详情记录：
 
 ```cpp
 struct EvaluationEventIndex
@@ -941,7 +937,7 @@ SourceModel 的每一行对应一个索引项，ProxyModel 在这些轻量字段
 
 解析完成后立即释放 `YAML::Node` 树，避免 YAML 节点树和 C++ 记录长期占用双份内存。加载前检查文件大小、schema 和 records 数量上限；若真实规模测试证明单文件不可接受，再把同一 YAML schema 扩展为 `chunks` 引用的多个 `.yaml` 文件，但不新增 QML 数据模型。
 
-过滤只改变派生视图，不重新运行推理或改写磁盘评估。实例指标和矩阵基于已经生成的工作点事件重新聚合；分数分布、PR/ROC 和官方指标不能从固定阈值后的 `instances.yaml` 重建，必须从完整 `pred/manifest.yaml`、`pred/images.txt` 和 GT 在 C++ 重新计算。图表 Calculator 使用 Image Proxy 产生的可见 image ID 集合以及 `GlobalFilter` 的类别查询过滤完整预测，不能只缩放全量报告中的聚合曲线。
+过滤只改变派生视图，不重新运行推理或改写磁盘评估。实例指标和矩阵基于报告中的工作点事件重新聚合；分数分布、PR/ROC 和官方指标不能从固定阈值后的事件重建，必须从完整 `pred/manifest.yaml`、`pred/images.txt` 和 GT 在 C++ 重新计算。图表 Calculator 使用 Image Proxy 产生的可见 image ID 集合以及 `GlobalFilter` 的类别查询过滤完整预测，不能只缩放全量报告中的聚合曲线。
 
 过滤后类别集合是否收缩必须明确：默认保留完整报告的类别轴，只把被过滤后无数据的单元格显示为 0，这样不同过滤条件之间矩阵行列不会跳动；同时提供 `compactClassAxis` 能力供后续需要时启用。
 
@@ -1347,11 +1343,11 @@ InvalidReport
 加载策略：
 
 1. 先读取 `result.yaml`；
-2. 校验 `result.yaml` 引用的 `pred/config.yaml`、`pred/images.txt`、`pred/manifest.yaml`、`evaluation/config.yaml`、`report.yaml` 和报告中的 `dataset_manifest`；
+2. 校验 `result.yaml` 引用的 `pred/config.yaml`、`pred/images.txt`、`pred/manifest.yaml`、`report.yaml` 和报告中的 `dataset_manifest`；
 3. 比较当前可编辑配置与推理/评估摘要，设置 `inferenceOutdated`、`evaluationOutdated`；
 4. 异步读取并校验 `report.yaml`；
 5. 加载指标、矩阵和图表；
-6. 完整解析 `instances.yaml` 和 `manifest.yaml`，建立轻量索引，Qt Model 只按需转换可见项的重字段；
+6. 完整解析报告内的 `instance_records` 和 `image_records`，Qt Model 作为运行期唯一内存数据源；
 7. 切换任务时取消旧加载和聚合请求；
 8. 使用 task UUID、result revision 和 aggregation revision 防止异步结果回写到错误任务。
 
@@ -1412,7 +1408,7 @@ struct EvaluationCapabilities
 3. C++ `ModelEvaluationService` 在后台读取当前 PRED 和对应图像的 GT；
 4. 注册到 C++ Registry 的方法评估适配器执行规范化和方法特有处理；
 5. 通用 C++ Calculator 执行匹配、指标、矩阵和曲线计算；
-6. C++ 输出统一 `report.yaml` 和 `instances.yaml`；
+6. C++ 输出统一 `report.yaml`，实例事件嵌入 `instance_records`；
 7. C++ ViewModel 验证 schema 并暴露 Qt Model；
 8. QML 按 capabilities 显示或隐藏区域。
 
@@ -1604,7 +1600,7 @@ src/tool/qml/header/TaskCenterWindow.qml
 - 复用 `common::yaml` 和 `yaml-cpp` 实现类型化 schema 校验及原子 YAML 写入；
 - 实现推理摘要与评估摘要，支持只重新评估；
 - 实现首批方法评估适配器；
-- 生成 `report.yaml` 和 `instances.yaml`。
+- 生成包含 `instance_records` 的 `report.yaml`。
 
 ### 阶段 6：评估数据模型
 
@@ -1650,7 +1646,7 @@ src/tool/qml/header/TaskCenterWindow.qml
 - 预测结果准确写入 `test/<任务名>/pred`；
 - `pred/images.txt` 覆盖全部实际推理图像，格式为 `image_id,image_path`；
 - `pred/manifest.yaml` 保留重新计算阈值、PR/ROC 所需的完整 score；
-- 预测、评估明细和报告分别使用 `manifest.yaml`、`instances.yaml`、`report.yaml`；
+- 预测和评估统一使用 `manifest.yaml`、`report.yaml`；报告 schema 固定为 3；
 - C++ 通过 `common::yaml` 和 `yaml-cpp` 读写并校验协议，不在 model 模块复制 YAML 工具；
 - `result.yaml` 和索引文件使用 `QSaveFile` 原子提交，模拟写入失败时旧文件不被截断；
 - 不出现 `pred/pred`；
