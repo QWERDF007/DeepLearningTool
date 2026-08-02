@@ -60,8 +60,7 @@ Rectangle {
         QuiSplitView {
             id: summarySplit
             SplitView.fillWidth: true
-            SplitView.fillHeight: true
-            SplitView.preferredHeight: Math.max(260, parent.height * 0.42)
+            SplitView.preferredHeight: 320
             orientation: Qt.Horizontal
 
             
@@ -92,14 +91,12 @@ Rectangle {
 
             QuiFrame {
                 SplitView.fillHeight: true
-                SplitView.fillWidth: true
-                SplitView.minimumWidth: 260
+                SplitView.preferredWidth: 480
                 ConfusionMatrixPanel { anchors.fill: parent; evaluation: control.evaluation }
             }
             QuiFrame {
                 SplitView.fillHeight: true
                 SplitView.fillWidth: true
-                SplitView.minimumWidth: 300
                 ColumnLayout {
                     anchors.fill: parent
                     QuiText { text: qsTr("实例图像"); font: QuiFont.Title }
@@ -112,8 +109,7 @@ Rectangle {
             }
             QuiFrame {
                 SplitView.fillHeight: true
-                SplitView.fillWidth: true
-                SplitView.minimumWidth: 220
+                SplitView.preferredWidth: 320
                 EvaluationInstanceDetailsPanel { anchors.fill: parent; evaluation: control.evaluation }
             }
         }
