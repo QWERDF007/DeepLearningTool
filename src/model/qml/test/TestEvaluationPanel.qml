@@ -64,23 +64,23 @@ Rectangle {
             SplitView.preferredHeight: Math.max(260, parent.height * 0.42)
             orientation: Qt.Horizontal
 
-            QuiFrame {
+            
+            EvaluationMetricsPanel {
                 SplitView.fillHeight: true
-                SplitView.fillWidth: true
-                SplitView.minimumWidth: 220
-                EvaluationMetricsPanel { anchors.fill: parent; evaluation: control.evaluation }
+                SplitView.preferredWidth: 220 
+                evaluation: control.evaluation 
             }
-            QuiFrame {
+            
+            EvaluationImageMetricsPanel { 
                 SplitView.fillHeight: true
-                SplitView.fillWidth: true
-                SplitView.minimumWidth: 220
-                EvaluationImageMetricsPanel { anchors.fill: parent; evaluation: control.evaluation }
+                SplitView.preferredWidth: 220  
+                evaluation: control.evaluation 
             }
-            QuiFrame {
+            
+            EvaluationChartPanel { 
                 SplitView.fillHeight: true
                 SplitView.fillWidth: true
-                SplitView.minimumWidth: 260
-                EvaluationChartPanel { anchors.fill: parent; evaluation: control.evaluation }
+                evaluation: control.evaluation 
             }
         }
 
