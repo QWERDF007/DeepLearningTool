@@ -73,7 +73,8 @@ python tools/package_app.py
 
 它会执行这些步骤：
 
-- 将 `build/dltool` 链接到 `build/bin/dltool`。
+- Windows 下将 `build/dltool` 链接到 `build/bin/dltool`；Linux/macOS 跳过这一步，
+  因为 `build/bin/dltool` 是可执行文件，不能与模块目录链接共用同一路径。
 - 将 `build/dltool/<module>/dltool_*.dll` 链接到 `build/bin`。
 - 按 `tools/dependencies.yaml` 把第三方运行库链接到配置的 `destinations`。
 - 默认使用 release 配置，跳过 `config: debug` 的依赖和成对 debug DLL。

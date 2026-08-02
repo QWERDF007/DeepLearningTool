@@ -165,7 +165,8 @@ QString inputDataDigest(const ModelTaskRequest &request, const dltool::data::Dat
         const QFileInfo info(path);
         const bool valid = info.exists() && info.isFile();
         signatures.push_back(QVariantMap{{QStringLiteral("image_id"), image_id},
-                                         {QStringLiteral("dataset_id"), data_manager->imageDatasetId(image_id)},
+                                         {QStringLiteral("dataset_id"),
+                                          static_cast<qint64>(data_manager->imageDatasetId(image_id))},
                                          {QStringLiteral("path"), path},
                                          {QStringLiteral("size"), valid ? info.size() : qint64(-1)},
                                          {QStringLiteral("mtime"), valid ? info.lastModified().toMSecsSinceEpoch()

@@ -178,11 +178,11 @@ QVariant LabelInstancesListModel::data(const QModelIndex &index, int role) const
     switch (role)
     {
     case LabelIdRole:
-        return getLabelId(index);
+        return QVariant::fromValue<qint64>(getLabelId(index));
     case ImageIdRole:
-        return getImageId(index);
+        return QVariant::fromValue<qint64>(getImageId(index));
     case LabelClassIdRole:
-        return getLabelClassId(index);
+        return QVariant::fromValue<qint64>(getLabelClassId(index));
     case LabelClassNameRole:
         return getLabelClassName(index);
     case LabelClassColorRole:
@@ -886,11 +886,11 @@ QVariant ImageLabelsListModel::data(const QModelIndex &index, int role) const
     switch (role)
     {
     case LabelIdRole:
-        return getLabelId(index);
+        return QVariant::fromValue<qint64>(getLabelId(index));
     case ImageIdRole:
-        return getImageId(index);
+        return QVariant::fromValue<qint64>(getImageId(index));
     case LabelClassIdRole:
-        return getLabelClassId(index);
+        return QVariant::fromValue<qint64>(getLabelClassId(index));
     case DataRole:
         return getData(index);
     case LabelClassColorRole:

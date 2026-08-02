@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 from dependency_utils import (
@@ -52,6 +53,14 @@ def link_project_outputs(build_dir: Path, config: str) -> None:
     bin_dir = build_dir / "bin"
     if not module_root.is_dir():
         warn(f"skip dltool links, missing {module_root}")
+        return
+
+    # On Windows the executable is dltool.exe, so this directory link is safe.
+    # On Unix the executable itself is build/bin/dltool, which conflicts with
+    # the historical module-link destination.  Unix builds already keep the
+    # modules under build/dltool and use the CMake runtime paths to find them.
+    if os.name != "nt":
+        print("skip dltool module directory link on non-Windows (build/bin/dltool is the executable)")
         return
 
     link_dir(module_root, bin_dir / "dltool")

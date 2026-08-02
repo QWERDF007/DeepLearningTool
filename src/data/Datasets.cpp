@@ -57,7 +57,7 @@ QVariant DatasetsListModel::data(const QModelIndex &index, int role) const
     switch (role)
     {
     case DatasetIdRole:
-        return getDatasetId(index);
+        return QVariant::fromValue<qint64>(getDatasetId(index));
     case NameRole:
         return getName(index);
     case StatsRole:

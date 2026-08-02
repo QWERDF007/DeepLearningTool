@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QStringList>
+#include <QtGlobal>
 #include <QtQml>
 
 #include <array>
@@ -49,7 +50,7 @@ public:
     /**
      * @brief 自定义筛选条件。
      */
-    enum class CustomCondition : int64_t
+    enum class CustomCondition : qint64
     {
         DuplicateFileName = 1,
         DuplicatePath     = 2,

@@ -54,6 +54,9 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
     engine.addImageProvider("evaluationthumbnail", new dltool::model::EvaluationThumbnailImageProvider());
+    // qt_add_qml_module outputs the build-time modules below the build root
+    // (for example, build/dltool/core), while quickui is emitted under build/qml.
+    engine.addImportPath(QStringLiteral(DLTOOL_QML_BUILD_DIR));
     engine.addImportPath(QStringLiteral(DLTOOL_QML_BUILD_DIR "/qml"));
     engine.addImportPath(QCoreApplication::applicationDirPath() + QStringLiteral("/../qml"));
 

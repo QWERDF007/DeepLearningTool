@@ -3,5 +3,3 @@ add_plugin_library(data
         quickui dltool_common dltool_core dltool_ui dltool_settings dltool_database
     INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/3rdparty/nlohmann ${CMAKE_SOURCE_DIR}/3rdparty/spdlog/include
 )
-
-copy_inferrt_runtime(data)

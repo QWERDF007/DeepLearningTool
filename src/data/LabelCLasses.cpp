@@ -319,7 +319,7 @@ QVariant LabelClassesListModel::data(const QModelIndex &index, int role) const
     switch (role)
     {
     case LabelClassIdRole:
-        return getLabelClassId(index);
+        return QVariant::fromValue<qint64>(getLabelClassId(index));
     case NameRole:
         return getLabelClassName(index);
     case ColorRole:

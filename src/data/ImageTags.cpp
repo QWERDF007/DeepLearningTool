@@ -141,7 +141,7 @@ QVariant ImageTagsListModel::data(const QModelIndex &index, const int role) cons
     switch (role)
     {
     case TagIdRole:
-        return getTagClassId(index);
+        return QVariant::fromValue<qint64>(getTagClassId(index));
     case NameRole:
         return getTagClassName(index);
     case ShortcutRole:
