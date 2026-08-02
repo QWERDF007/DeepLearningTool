@@ -87,7 +87,7 @@ QVariant TaskManager::data(const QModelIndex &index, const int role) const
     case ScopeNameRole:
         return task.scope_name;
     case DisplayNameRole:
-        return task.display_name.isEmpty() ? task.model_name : task.display_name;
+        return task.model_name;
     case TaskTypeRole:
         return static_cast<int>(task.type);
     case TaskTypeTextRole:
@@ -213,7 +213,9 @@ int TaskManager::addTask(const QString &model_uuid, const QString &model_name, c
     task.model_name = name;
     task.scope_uuid = scope_uuid.trimmed();
     task.scope_name = scope_name.trimmed();
-    task.display_name = task.scope_name.isEmpty() ? name : QStringLiteral("%1 · %2").arg(name, task.scope_name);
+    // Task type and test-task scope are already shown in their own columns;
+    // keep the model-name column identical for training and testing.
+    task.display_name = name;
     task.type = task_type;
     task.status = Pending;
     task.created_at = QDateTime::currentSecsSinceEpoch();
@@ -689,7 +691,7 @@ QVariant TaskManager::dataForColumn(const Task &task, const int column) const
     case TaskIdColumn:
         return task.id;
     case ModelNameColumn:
-        return task.display_name.isEmpty() ? task.model_name : task.display_name;
+        return task.model_name;
     case TaskTypeColumn:
         return modelTaskDisplayName(task.type);
     case StatusColumn:

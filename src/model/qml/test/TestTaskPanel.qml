@@ -1,4 +1,4 @@
-import QtQuick
+﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -29,49 +29,17 @@ Rectangle {
         QuiComboBox {
             id: taskCombo
             Layout.preferredWidth: 220
-            // Keep the C++ list model attached directly.  Falling back to a
-            // JavaScript array makes the control switch model kinds while the
-            // project/model context is being bound, which can leave the
-            // ComboBox delegate with a stale empty model after rows are
-            // inserted or restored from tasks.yaml.
-            // Use the C++ model's row count as the presentation model.  Each
-            // delegate reads its name/UUID on demand from the same C++ model;
-            // no task snapshot is created in QML.
             model: control.taskManager ? control.taskManager.count : 0
-            delegate: QuiItemDelegate {
-                width: ListView.view ? ListView.view.width : taskCombo.width
-                text: control.taskData(index, ModelTestTaskManager.NameRole)
-                highlighted: taskCombo.highlightedIndex === index
-                hoverEnabled: true
-            }
-            // The manager owns the current task and emits currentTaskChanged
-            // after a create/reload/switch.  Binding the display text to that
-            // property keeps the selected name visible even when the model is
-            // reset before the ComboBox has rebuilt its delegate model.
+            currentIndex: control.taskManager ? control.taskManager.currentIndex : -1
             displayText: control.taskManager ? control.taskManager.currentTaskName : ""
-            // The task bar is fixed at 48 px and is followed by clipped
-            // expanders.  Do not let the template derive a zero-height popup
-            // from an as-yet-unmeasured delegate list, and keep it above the
-            // following layout content.
-            popup.height: Math.min(Math.max(40, taskCombo.count * 40 + 12), 360)
-            popup.z: 1000
             onActivated: {
-                if (control.taskManager && currentIndex >= 0)
-                    control.taskManager.switchTask(control.taskData(currentIndex,
-                                                                      ModelTestTaskManager.UuidRole))
+                if (control.taskManager && currentIndex >= 0) {
+                    control.taskManager.switchTask(control.taskData(currentIndex, ModelTestTaskManager.UuidRole))
+                }
             }
-        }
-
-        Binding {
-            target: taskCombo
-            property: "currentIndex"
-            value: control.taskManager ? control.taskManager.currentIndex : -1
         }
 
         QuiTextIconButton {
-            Layout.preferredWidth: 32
-            Layout.preferredHeight: 30
-            display: Button.IconOnly
             text: qsTr("添加")
             iconSource: QuiFontIcon.Add
             enabled: !!control.taskManager && !control.taskManager.currentTaskRunning
@@ -82,9 +50,6 @@ Rectangle {
         }
 
         QuiTextIconButton {
-            Layout.preferredWidth: 32
-            Layout.preferredHeight: 30
-            display: Button.IconOnly
             text: qsTr("重命名")
             iconSource: QuiFontIcon.Rename
             enabled: !!control.taskManager && control.taskManager.currentTaskUuid.length > 0
@@ -96,9 +61,6 @@ Rectangle {
         }
 
         QuiTextIconButton {
-            Layout.preferredWidth: 32
-            Layout.preferredHeight: 30
-            display: Button.IconOnly
             text: qsTr("删除")
             iconSource: QuiFontIcon.Delete
             enabled: !!control.taskManager && control.taskManager.count > 1
@@ -108,30 +70,14 @@ Rectangle {
         }
 
         QuiText {
-            Layout.fillWidth: true
-            horizontalAlignment: Text.AlignRight
             visible: !!control.taskManager && control.taskManager.currentTaskStatus.length > 0
             text: qsTr("%1  %2%").arg(control.taskManager ? control.taskManager.currentTaskStatus : "")
                                   .arg(control.taskManager ? control.taskManager.currentTaskProgress : 0)
         }
 
-        QuiText {
-            visible: {
-                var evaluation = control.taskManager ? control.taskManager.currentEvaluation : null
-                return !!evaluation && (evaluation.inferenceOutdated || evaluation.evaluationOutdated
-                                        || evaluation.available)
-            }
-            text: {
-                var evaluation = control.taskManager ? control.taskManager.currentEvaluation : null
-                if (!evaluation)
-                    return ""
-                if (evaluation.inferenceOutdated)
-                    return qsTr("推理输入已变化")
-                if (evaluation.evaluationOutdated)
-                    return qsTr("评估参数或标注已变化")
-                return qsTr("结果有效")
-            }
-            color: QuiColor.FontDark
+        Item {
+            Layout.fillWidth: true
+
         }
     }
 

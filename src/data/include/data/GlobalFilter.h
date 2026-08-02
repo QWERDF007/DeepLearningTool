@@ -184,14 +184,14 @@ public:
      * @param image_id 图像 ID。
      * @return 图像是否通过当前筛选。
      */
-    bool acceptsImage(int64_t image_id) const;
+    Q_INVOKABLE bool acceptsImage(int64_t image_id) const;
 
     /**
      * @brief 判断标注是否应显示。
      * @param label_id 标注 ID。
      * @return 标注是否通过当前筛选。
      */
-    bool acceptsLabel(int64_t label_id) const;
+    Q_INVOKABLE bool acceptsLabel(int64_t label_id) const;
 
     /**
      * @brief 判断一个标签类别 ID 是否通过当前 LabelClass 过滤。
@@ -199,15 +199,15 @@ public:
      * 评估结果中的实例记录可能只保存类别 ID，无法反查项目数据库中的
      * label ID；该只读查询复用 GlobalFilter 原有的反选、空选择语义。
      */
-    bool acceptsLabelClassId(int64_t label_class_id) const;
-    bool isLabelClassFilterEnabled() const;
-    bool isLabelClassFilterInverted() const;
+    Q_INVOKABLE bool acceptsLabelClassId(int64_t label_class_id) const;
+    Q_INVOKABLE bool isLabelClassFilterEnabled() const;
+    Q_INVOKABLE bool isLabelClassFilterInverted() const;
 
     /**
      * @brief 是否存在启用的筛选条件。
      * @return 是否存在筛选条件。
      */
-    bool isActive() const;
+    Q_INVOKABLE bool isActive() const;
 
     /**
      * @brief 返回启用的筛选条件数量。

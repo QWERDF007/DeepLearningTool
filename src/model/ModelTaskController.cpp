@@ -34,6 +34,7 @@
 #include <QDir>
 #include <yaml-cpp/yaml.h>
 #include <algorithm>
+#include <atomic>
 #include <set>
 #include <utility>
 
@@ -513,36 +514,69 @@ bool ModelTaskController::prepareTask(const int task_id)
         return false;
     }
 
-    // A change limited to evaluation parameters must not start Python again.
-    // The current normalized PRED is already validated by buildTaskRequest;
-    // evaluate it directly and commit result.yaml before exposing Finished.
-    if (isTestModelTask(request.task_type) && request.reuse_prediction)
-    {
-        if (!task_manager_->markTaskRunning(task_id))
-        {
-            failTask(task_id, QString("测试任务无法进入运行状态"));
-            return false;
-        }
-        task_manager_->updateTaskPhase(task_id, QStringLiteral("evaluating"));
-        task_manager_->updateTaskProgress(task_id, 90);
-        syncTaskModelState(task_id);
-        runTestEvaluationAsync(task_id);
-        return true;
-    }
-
     const auto process_spec = std::make_shared<ExternalProcessSpec>();
+    const auto request_ptr = std::make_shared<ModelTaskRequest>(std::move(request));
+    const auto reuse_prediction = std::make_shared<std::atomic_bool>(false);
 
     dltool::data::DataOperationWorkflow::Options options;
     options.title            = QString("准备模型任务");
-    options.start_message    = QString("准备模型任务: %1").arg(modelTaskDisplayName(request.task_type));
+    options.start_message    = QString("准备模型任务: %1").arg(modelTaskDisplayName(request_ptr->task_type));
     options.initial_progress = 5;
 
     const int method = method_;
     const QString project_dir = project_dir_;
-    const auto prepare = [method, project_dir, request, process_spec](
+    const auto data_manager = data_manager_;
+    const auto prepare = [method, project_dir, request_ptr, process_spec, reuse_prediction, data_manager](
                              const dltool::data::DatasetExportSource *dataset_source,
                              dltool::data::DataOperationWorkflow::Result &result)
     {
+        ModelTaskRequest &request = *request_ptr;
+        // Digesting the selected image universe, hashing the checkpoint and
+        // validating an existing PRED can touch thousands of files.  Keep all
+        // of that work inside the DataOperationWorkflow worker so starting a
+        // test task never blocks the GUI thread.
+        if (isTestModelTask(request.task_type))
+        {
+            request.input_data_digest = inputDataDigest(request, data_manager);
+            request.inference_digest = inferenceDigest(request, project_dir, request.input_data_digest);
+
+            const ModelStorageService storage(project_dir);
+            const QString prediction_config =
+                storage.testTaskPredictionConfigPath(request.model_config.model_name, request.model_config.task_directory);
+            const QString prediction_images =
+                storage.testTaskPredictionImagesPath(request.model_config.model_name, request.model_config.task_directory);
+            const QString prediction_manifest =
+                storage.testTaskPredictionManifestPath(request.model_config.model_name, request.model_config.task_directory);
+            bool reusable = QFileInfo::exists(prediction_config) && QFileInfo::exists(prediction_images)
+                && QFileInfo::exists(prediction_manifest);
+            if (reusable)
+            {
+                try
+                {
+                    const YAML::Node pred_root = common::yaml::loadFile(QFileInfo(prediction_config));
+                    reusable = pred_root && pred_root.IsMap()
+                        && common::yaml::nodeString(pred_root["inference_digest"]) == request.inference_digest
+                        && common::yaml::nodeString(pred_root["input_data_digest"]) == request.input_data_digest
+                        && !request.input_data_digest.isEmpty();
+                }
+                catch (const std::exception &)
+                {
+                    reusable = false;
+                }
+                if (reusable)
+                    reusable = ModelEvaluationService::validatePrediction(
+                        prediction_images, prediction_manifest, nullptr, nullptr, nullptr,
+                        request.model_config.model_uuid, request.scope_uuid, request.evaluation_method);
+            }
+            request.reuse_prediction = reusable;
+            reuse_prediction->store(reusable, std::memory_order_release);
+            if (reusable)
+            {
+                result.success = true;
+                return;
+            }
+        }
+
         QString error;
         if (!prepareModelTask(method, project_dir, request, dataset_source, *process_spec, &error))
         {
@@ -551,10 +585,34 @@ bool ModelTaskController::prepareTask(const int task_id)
         }
         result.success = true;
     };
-    const auto completion = [this, task_id, process_spec](const dltool::data::DataOperationWorkflow::Result &result)
-    { handlePreparedTask(task_id, process_spec, result.success, result.error); };
+    const auto completion = [this, task_id, process_spec, reuse_prediction](
+                                const dltool::data::DataOperationWorkflow::Result &result)
+    {
+        if (reuse_prediction->load(std::memory_order_acquire))
+        {
+            const TaskManager::Task *task = task_manager_ != nullptr ? task_manager_->findTask(task_id) : nullptr;
+            if (task == nullptr || task->status != TaskManager::Preparing)
+                return;
+            if (!result.success)
+            {
+                failTask(task_id, result.error.isEmpty() ? QString("准备测试任务失败") : result.error);
+                return;
+            }
+            if (!task_manager_->markTaskRunning(task_id))
+            {
+                failTask(task_id, QString("测试任务无法进入运行状态"));
+                return;
+            }
+            task_manager_->updateTaskPhase(task_id, QStringLiteral("evaluating"));
+            task_manager_->updateTaskProgress(task_id, 90);
+            syncTaskModelState(task_id);
+            runTestEvaluationAsync(task_id);
+            return;
+        }
+        handlePreparedTask(task_id, process_spec, result.success, result.error);
+    };
 
-    if (describeModelTask(request.task_type).requires_dataset_export)
+    if (describeModelTask(request_ptr->task_type).requires_dataset_export)
     {
         if (data_manager_ == nullptr)
         {
@@ -563,7 +621,7 @@ bool ModelTaskController::prepareTask(const int task_id)
         }
 
         dltool::data::DatasetExportRequest export_request;
-        export_request.dataset_ids = selectedDatasetIds(request.selections);
+        export_request.dataset_ids = selectedDatasetIds(request_ptr->selections);
         data_manager_->runDatasetExportAsync(
             this, std::move(export_request), std::move(options),
             [prepare](const dltool::data::DatasetExportSource &source, dltool::data::DataOperationWorkflow::Result &result)
@@ -661,40 +719,6 @@ bool ModelTaskController::buildTaskRequest(const int task_id, ModelTaskRequest &
         request.model_config.test_dataset_selection = definition.dataset_selection;
         request.model_config.created_at = definition.created_at;
         request.model_config.modified_at = definition.modified_at;
-    }
-    if (isTestModelTask(task->type))
-    {
-        request.input_data_digest = inputDataDigest(request, data_manager_);
-        request.inference_digest = inferenceDigest(request, project_dir_, request.input_data_digest);
-        const ModelStorageService storage(project_dir_);
-        const QString prediction_config =
-            storage.testTaskPredictionConfigPath(record.name, request.model_config.task_directory);
-        const QString prediction_images =
-            storage.testTaskPredictionImagesPath(record.name, request.model_config.task_directory);
-        const QString prediction_manifest =
-            storage.testTaskPredictionManifestPath(record.name, request.model_config.task_directory);
-        bool reusable = QFileInfo::exists(prediction_config) && QFileInfo::exists(prediction_images)
-            && QFileInfo::exists(prediction_manifest);
-        if (reusable)
-        {
-            try
-            {
-                const YAML::Node pred_root = common::yaml::loadFile(QFileInfo(prediction_config));
-                reusable = pred_root && pred_root.IsMap()
-                    && common::yaml::nodeString(pred_root["inference_digest"]) == request.inference_digest
-                    && common::yaml::nodeString(pred_root["input_data_digest"]) == request.input_data_digest
-                    && !request.input_data_digest.isEmpty();
-            }
-            catch (const std::exception &)
-            {
-                reusable = false;
-            }
-            if (reusable)
-                reusable = ModelEvaluationService::validatePrediction(
-                    prediction_images, prediction_manifest, nullptr, nullptr, nullptr,
-                    request.model_config.model_uuid, request.scope_uuid, request.evaluation_method);
-        }
-        request.reuse_prediction = reusable;
     }
     return true;
 }

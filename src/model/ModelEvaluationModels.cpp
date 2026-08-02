@@ -160,10 +160,11 @@ QVariant EvaluationConfusionModel::headerData(const int section, const Qt::Orien
 
 QHash<int, QByteArray> EvaluationConfusionModel::roleNames() const
 {
-    return {{RowKeyRole, "rowKey"}, {ColumnKeyRole, "columnKey"}, {RowLabelRole, "rowLabel"},
-            {ColumnLabelRole, "columnLabel"}, {CountRole, "count"}, {RowClassIdRole, "rowClassId"},
-            {ColumnClassIdRole, "columnClassId"}, {CellKindRole, "cellKind"}, {SelectableRole, "selectable"},
-            {IsDiagonalRole, "isDiagonal"}, {IsErrorRole, "isError"}, {TooltipRole, "tooltip"}};
+    return {{Qt::DisplayRole, "display"}, {RowKeyRole, "rowKey"}, {ColumnKeyRole, "columnKey"},
+            {RowLabelRole, "rowLabel"}, {ColumnLabelRole, "columnLabel"}, {CountRole, "count"},
+            {RowClassIdRole, "rowClassId"}, {ColumnClassIdRole, "columnClassId"}, {CellKindRole, "cellKind"},
+            {SelectableRole, "selectable"}, {IsDiagonalRole, "isDiagonal"}, {IsErrorRole, "isError"},
+            {TooltipRole, "tooltip"}};
 }
 
 void EvaluationConfusionModel::setRecords(std::vector<EvaluationConfusionCell> records)
