@@ -10,61 +10,164 @@ Item {
     id: control
     property ModelEvaluationViewModel evaluation: null
 
+    function displayValue(value, modelObject) {
+        if (value && typeof value === "object" && value.display !== undefined)
+            return String(value.display)
+        if (confusionTable.headerTextRole && value && typeof value === "object"
+                && value[confusionTable.headerTextRole] !== undefined)
+            return String(value[confusionTable.headerTextRole])
+        if (modelObject && typeof modelObject === "object" && modelObject.display !== undefined)
+            return String(modelObject.display)
+        if (confusionTable.headerTextRole && modelObject && typeof modelObject === "object"
+                && modelObject[confusionTable.headerTextRole] !== undefined)
+            return String(modelObject[confusionTable.headerTextRole])
+        return value === undefined || value === null ? "" : String(value)
+    }
+
+    function headerLabel(modelDataValue, displayValueValue, modelObject) {
+        let value = modelDataValue
+        if (value === undefined)
+            value = displayValueValue
+        return displayValue(value, modelObject)
+    }
+
+    function isTotalLabel(label) {
+        return label === qsTr("合计") || label === "TOTAL"
+    }
+
+    function isCellSelected(rowKey, columnKey) {
+        if (!control.evaluation)
+            return false
+        const row = control.evaluation.filteredInstances.matrixRow
+        const column = control.evaluation.filteredInstances.matrixColumn
+        // An empty matrix filter means all instances.  Keep that state visible
+        // by selecting the bottom-right TOTAL/TOTAL cell by default.
+        if (!row && !column)
+            return rowKey === "TOTAL" && columnKey === "TOTAL"
+        return row === rowKey && column === columnKey
+    }
+
     ColumnLayout {
         anchors.fill: parent
-        RowLayout {
+
+        QuiText {
             Layout.fillWidth: true
-            QuiText { text: qsTr("混淆矩阵（行=PRED，列=GT）"); font: QuiFont.Title }
-            Item { Layout.fillWidth: true }
-            QuiButton {
-                text: qsTr("显示全部")
-                enabled: !!control.evaluation
-                onClicked: control.evaluation.clearMatrixSelection()
-            }
+            text: qsTr("混淆矩阵")
+            font: QuiFont.Title
         }
-        HorizontalHeaderView {
-            Layout.fillWidth: true
-            syncView: confusionGrid
-            clip: true
-        }
-        RowLayout {
+
+        Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            VerticalHeaderView {
-                Layout.fillHeight: true
-                syncView: confusionGrid
-                clip: true
-            }
-            TableView {
-                id: confusionGrid
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
+
+            QuiTableView {
+                id: confusionTable
+                anchors.fill: parent
                 model: control.evaluation && control.evaluation.hasConfusionMatrix
                        ? control.evaluation.confusionMatrix : null
+                verticalHeaderVisible: true
+                headerHeight: 36
+                rowHeight: 32
+                defaultColumnWidth: 32
+                minimumColumnWidth: 32
+                columnSpacing: 1
+                rowSpacing: 1
+                headerColor: QuiColor.Background
+                headerTextColor: QuiColor.FontPrimary
+                borderColor: QuiColor.Border
+                showGridLines: true
+
+                headerDelegate: Component {
+                    Rectangle {
+                        property int sourceColumn: typeof column === "undefined" ? index : column
+                        property string label: control.headerLabel(
+                            typeof modelData === "undefined" ? undefined : modelData,
+                            typeof display === "undefined" ? undefined : display,
+                            model)
+                        implicitWidth: confusionTable.columnWidth(sourceColumn)
+                        implicitHeight: confusionTable.headerHeight
+                        color: confusionTable.headerColor
+                        border.color: confusionTable.borderColor
+                        border.width: 1
+
+                        QuiTextIcon {
+                            anchors.centerIn: parent
+                            visible: control.isTotalLabel(parent.label)
+                            iconSource: QuiFontIcon.Calculator
+                            iconColor: confusionTable.headerTextColor
+                            iconSize: 18
+                        }
+                        QuiText {
+                            anchors.fill: parent
+                            anchors.leftMargin: 6
+                            anchors.rightMargin: 6
+                            visible: !control.isTotalLabel(parent.label)
+                            text: parent.label
+                            color: confusionTable.headerTextColor
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+
+                verticalHeaderDelegate: Component {
+                    Rectangle {
+                        property int sourceRow: typeof row === "undefined" ? index : row
+                        property string label: control.headerLabel(
+                            typeof modelData === "undefined" ? undefined : modelData,
+                            typeof display === "undefined" ? undefined : display,
+                            model)
+                        implicitWidth: Math.max(72, rowLabel.implicitWidth + 16)
+                        implicitHeight: confusionTable.currentRowHeight(sourceRow)
+                        color: confusionTable.headerColor
+                        border.color: confusionTable.borderColor
+                        border.width: 1
+
+                        QuiTextIcon {
+                            anchors.centerIn: parent
+                            visible: control.isTotalLabel(parent.label)
+                            iconSource: QuiFontIcon.Calculator
+                            iconColor: confusionTable.headerTextColor
+                            iconSize: 18
+                        }
+                        QuiText {
+                            id: rowLabel
+                            anchors.fill: parent
+                            anchors.leftMargin: 6
+                            anchors.rightMargin: 6
+                            visible: !control.isTotalLabel(parent.label)
+                            text: parent.label
+                            color: confusionTable.headerTextColor
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+
                 delegate: Rectangle {
-                    implicitWidth: 120
-                    implicitHeight: 48
-                    property bool selected: !!control.evaluation
-                                          && control.evaluation.filteredInstances.matrixRow === model.rowKey
-                                          && control.evaluation.filteredInstances.matrixColumn === model.columnKey
+                    implicitWidth: confusionTable.columnWidth(column)
+                    implicitHeight: confusionTable.rowHeight
+                    property bool selected: control.isCellSelected(model.rowKey, model.columnKey)
                     color: selected
                            ? QuiColor.Highlight
                            : (model.cellKind === "match" && model.isDiagonal
                            ? "#2e7d32"
-                           : (model.isError ? "#c62828" : QuiColor.Background))
-                    opacity: model.count > 0 || model.cellKind === "all" ? 1.0 : 0.72
-                    border.color: model.cellKind === "all" || model.cellKind === "pred_total"
-                                  || model.cellKind === "gt_total" ? QuiColor.FontDark : QuiColor.Border
+                           : (model.isError ? "#c62828" : QuiColor.Primary))
+                    opacity: selected || model.count > 0 || model.cellKind === "all" ? 1.0 : 0.72
+                    border.color: selected
+                                  ? QuiColor.Highlight
+                                  : (model.cellKind === "all" || model.cellKind === "pred_total"
+                                     || model.cellKind === "gt_total" ? QuiColor.FontDark : QuiColor.Border)
+                    border.width: selected ? 2 : 1
+
                     Column {
                         anchors.centerIn: parent
-                        spacing: 1
-                        QuiText { anchors.horizontalCenter: parent.horizontalCenter; text: model.count }
                         QuiText {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: qsTr("%1 / %2").arg(model.rowLabel).arg(model.columnLabel)
-                            font.pixelSize: 9
-                            color: QuiColor.FontDark
+                            text: model.count
+                            color: QuiColor.FontPrimary
                         }
                     }
                     MouseArea {
@@ -76,18 +179,9 @@ Item {
                     }
                     QuiToolTip {
                         visible: cellMouse.containsMouse
-                        text: model.tooltip || qsTr("PRED %1 / GT %2").arg(model.rowLabel).arg(model.columnLabel)
+                        text: model.tooltip || qsTr("预测 %1 / Ground Truth %2").arg(model.rowLabel).arg(model.columnLabel)
                     }
                 }
-            }
-            QuiText {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: !control.evaluation || !control.evaluation.hasConfusionMatrix
-                text: qsTr("当前方法没有混淆矩阵")
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-                color: QuiColor.FontDark
             }
         }
     }

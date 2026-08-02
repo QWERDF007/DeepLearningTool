@@ -157,6 +157,7 @@ private:
     bool has_image_metrics_{false};
     bool has_confusion_matrix_{false};
     bool has_instance_events_{false};
+    bool anomaly_detection_{false};
     QList<QVariantMap> chart_descriptors_;
     QMap<int, QString> class_catalog_;
     QMap<int, QString> class_colors_;

@@ -9,6 +9,7 @@
 #include <QCryptographicHash>
 #include <QVariantList>
 #include <QMap>
+#include <QMetaMethod>
 #include <QSet>
 #include <QMetaObject>
 #include <QThreadPool>
@@ -41,6 +42,8 @@ QString statusDisplayText(const QString &status)
 {
     if (status == QStringLiteral("true_positive"))
         return QString("正确匹配");
+    if (status == QStringLiteral("true_negative"))
+        return QString("正常");
     if (status == QStringLiteral("class_mismatch"))
         return QString("类别错误");
     if (status == QStringLiteral("false_positive"))
@@ -71,6 +74,20 @@ double realValue(const QVariantMap &map, const QString &name, const double fallb
     bool ok = false;
     const double value = map.value(name).toDouble(&ok);
     return ok ? value : fallback;
+}
+
+bool hasInvokable(QObject *object, const char *method, const int parameter_count)
+{
+    if (object == nullptr)
+        return false;
+    const QMetaObject *meta_object = object->metaObject();
+    for (int index = 0; index < meta_object->methodCount(); ++index)
+    {
+        const QMetaMethod meta_method = meta_object->method(index);
+        if (meta_method.name() == method && meta_method.parameterCount() == parameter_count)
+            return true;
+    }
+    return false;
 }
 
 bool pathWithin(const QString &root, const QString &path)
@@ -469,6 +486,7 @@ struct EvaluationAggregateInput
     bool has_instance_metrics{false};
     bool has_image_metrics{false};
     bool has_confusion_matrix{false};
+    bool anomaly_detection{false};
 };
 
 struct EvaluationAggregateOutput
@@ -783,6 +801,41 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
         }
     }
 
+    // Anomaly projects are evaluated at image level.  A GOOD image has no
+    // ground-truth label in the dataset manifest, so the instance-event
+    // matrix above cannot represent true negatives (and anomaly projects do
+    // not produce instance events).  Build the binary image matrix explicitly
+    // while retaining the same FP/FN/total row and column layout as detection.
+    if (input.anomaly_detection)
+    {
+        class_names.clear();
+        class_names.insert(0, QStringLiteral("GOOD"));
+        class_names.insert(1, QStringLiteral("Anomaly"));
+        matrix.clear();
+        for (const EvaluationImageRecord &image : input.images)
+        {
+            bool ground_truth_anomaly = image.gt_class_ids.contains(1);
+            if (!ground_truth_anomaly)
+                ground_truth_anomaly = std::any_of(
+                    image.gt_instances.cbegin(), image.gt_instances.cend(),
+                    [](const EvaluationGroundTruthRecord &ground_truth)
+                    { return ground_truth.class_id == 1; });
+            if (!ground_truth_anomaly && image.gt_class_ids.isEmpty() && image.gt_instances.isEmpty())
+                ground_truth_anomaly = image.has_gt;
+            bool predicted_anomaly = image.pred_class_ids.contains(1);
+            if (!predicted_anomaly)
+                predicted_anomaly = std::any_of(
+                    image.predictions.cbegin(), image.predictions.cend(),
+                    [&input](const EvaluationPredictionRecord &prediction)
+                    { return prediction.class_id == 1 && prediction.score >= input.confidence_threshold; });
+            if (!predicted_anomaly && image.pred_class_ids.isEmpty() && image.predictions.isEmpty())
+                predicted_anomaly = image.has_pred;
+            const QString row = predicted_anomaly ? QStringLiteral("1") : QStringLiteral("0");
+            const QString column = ground_truth_anomaly ? QStringLiteral("1") : QStringLiteral("0");
+            ++matrix[row + QLatin1Char('\x1f') + column];
+        }
+    }
+
     AggregateCounts image_counts;
     for (const EvaluationImageRecord &image : input.images)
     {
@@ -1080,7 +1133,8 @@ bool ModelEvaluationViewModel::globalFilterActive() const
     if (global_filter_ == nullptr)
         return false;
     bool active = false;
-    QMetaObject::invokeMethod(global_filter_, "isActive", Qt::DirectConnection, Q_RETURN_ARG(bool, active));
+    if (hasInvokable(global_filter_, "isActive", 0))
+        QMetaObject::invokeMethod(global_filter_, "isActive", Qt::DirectConnection, Q_RETURN_ARG(bool, active));
     return active;
 }
 
@@ -1089,8 +1143,9 @@ QString ModelEvaluationViewModel::globalFilterDescription() const
     if (global_filter_ != nullptr)
     {
         QString description;
-        if (QMetaObject::invokeMethod(global_filter_, "description", Qt::DirectConnection,
-                                      Q_RETURN_ARG(QString, description)) && !description.isEmpty())
+        if (hasInvokable(global_filter_, "description", 0)
+            && QMetaObject::invokeMethod(global_filter_, "description", Qt::DirectConnection,
+                                         Q_RETURN_ARG(QString, description)) && !description.isEmpty())
             return description;
     }
     return globalFilterActive() ? QString("当前已应用全局过滤") : QString("全部测试样本");
@@ -1166,6 +1221,7 @@ void ModelEvaluationViewModel::clearReport(const QString &error, const QString &
     has_image_metrics_ = false;
     has_confusion_matrix_ = false;
     has_instance_events_ = false;
+    anomaly_detection_ = false;
     chart_descriptors_.clear();
     class_catalog_.clear();
     class_colors_.clear();
@@ -1181,6 +1237,8 @@ void ModelEvaluationViewModel::clearReport(const QString &error, const QString &
     filtered_instances_->setMatrixRow({});
     filtered_instances_->setMatrixColumn({});
     filtered_instances_->setPredClassIds({});
+    filtered_instances_->setMinScore(-std::numeric_limits<double>::infinity());
+    filtered_instances_->setMaxScore(std::numeric_limits<double>::infinity());
     charts_->setRecords({});
     selected_instance_.clear();
     selected_proxy_row_ = -1;
@@ -1286,6 +1344,7 @@ void ModelEvaluationViewModel::reload()
                             || !score_ok || !std::isfinite(score) || !iou_ok || !std::isfinite(iou)
                             || iou < 0.0 || iou > 1.0
                             || (status != QStringLiteral("true_positive")
+                                && status != QStringLiteral("true_negative")
                                 && status != QStringLiteral("class_mismatch")
                                 && status != QStringLiteral("false_positive")
                                 && status != QStringLiteral("false_negative")
@@ -1408,14 +1467,20 @@ void ModelEvaluationViewModel::loadReport(const QVariantMap &root)
         : QString("诊断匹配指标");
     image_metric_definition_ = root.value(QStringLiteral("image_metric_definition")).toMap();
     const QVariantMap evaluation_config = root.value(QStringLiteral("evaluation_config")).toMap();
+    anomaly_detection_ = root.value(QStringLiteral("method")).toString().trimmed().toLower()
+        .contains(QStringLiteral("anomaly"));
     confidence_threshold_ = realValue(evaluation_config, QStringLiteral("confidence_threshold"));
     iou_threshold_ = realValue(evaluation_config, QStringLiteral("iou_threshold"));
     matching_strategy_ = textValue(evaluation_config, QStringLiteral("matching_strategy"));
     const QVariantMap capabilities = root.value(QStringLiteral("capabilities")).toMap();
     has_instance_metrics_ = capabilities.value(QStringLiteral("has_instance_metrics")).toBool();
     has_image_metrics_ = capabilities.value(QStringLiteral("has_image_metrics")).toBool();
-    has_confusion_matrix_ = capabilities.value(QStringLiteral("has_confusion_matrix")).toBool();
-    has_instance_events_ = capabilities.value(QStringLiteral("has_instance_events")).toBool();
+    has_confusion_matrix_ = capabilities.value(QStringLiteral("has_confusion_matrix")).toBool() || anomaly_detection_;
+    // Anomaly reports are image-level, but the instance grid still needs one
+    // synthetic record per image so matrix selections can show GOOD/Anomaly
+    // samples, including true negatives with no original event.
+    has_instance_events_ = capabilities.value(QStringLiteral("has_instance_events")).toBool()
+        || anomaly_detection_;
     class_catalog_.clear();
     class_colors_.clear();
     for (const QVariant &value : root.value(QStringLiteral("class_catalog")).toList())
@@ -1566,6 +1631,64 @@ void ModelEvaluationViewModel::loadInstanceRecords(const QVariantList &records)
     QSet<QString> event_ids;
     std::vector<EvaluationInstanceRecord> values;
     values.reserve(static_cast<size_t>(records.size()));
+
+    if (anomaly_detection_ && images_ != nullptr && images_->rowCount() > 0)
+    {
+        values.reserve(static_cast<size_t>(images_->rowCount()));
+        for (const EvaluationImageRecord &image : images_->records())
+        {
+            bool ground_truth_anomaly = image.gt_class_ids.contains(1);
+            if (!ground_truth_anomaly)
+                ground_truth_anomaly = std::any_of(
+                    image.gt_instances.cbegin(), image.gt_instances.cend(),
+                    [](const EvaluationGroundTruthRecord &ground_truth)
+                    { return ground_truth.class_id == 1; });
+            if (!ground_truth_anomaly && image.gt_class_ids.isEmpty() && image.gt_instances.isEmpty())
+                ground_truth_anomaly = image.has_gt;
+
+            bool predicted_anomaly = image.pred_class_ids.contains(1);
+            if (!predicted_anomaly)
+                predicted_anomaly = std::any_of(
+                    image.predictions.cbegin(), image.predictions.cend(),
+                    [this](const EvaluationPredictionRecord &prediction)
+                    { return prediction.class_id == 1 && prediction.score >= confidence_threshold_; });
+            if (!predicted_anomaly && image.pred_class_ids.isEmpty() && image.predictions.isEmpty())
+                predicted_anomaly = image.has_pred;
+
+            const int gt_class_id = ground_truth_anomaly ? 1 : 0;
+            const int pred_class_id = predicted_anomaly ? 1 : 0;
+            EvaluationInstanceRecord value;
+            value.event_uuid = QStringLiteral("image-%1").arg(image.image_id);
+            value.image_id = image.image_id;
+            value.dataset_id = image.dataset_id;
+            value.image_name = image.image_name;
+            value.image_path = image.image_path;
+            value.image_width = image.image_width;
+            value.image_height = image.image_height;
+            value.status = gt_class_id == 1 && pred_class_id == 1
+                ? QStringLiteral("true_positive")
+                : (gt_class_id == 0 && pred_class_id == 0
+                       ? QStringLiteral("true_negative")
+                       : (gt_class_id == 0 ? QStringLiteral("false_positive")
+                                           : QStringLiteral("false_negative")));
+            value.gt_class_id = gt_class_id;
+            value.pred_class_id = pred_class_id;
+            value.gt_class = gt_class_id == 1 ? QStringLiteral("Anomaly") : QStringLiteral("GOOD");
+            value.pred_class = pred_class_id == 1 ? QStringLiteral("Anomaly") : QStringLiteral("GOOD");
+            value.score = image.score;
+            value.gt_class_color = class_colors_.value(gt_class_id);
+            value.pred_class_color = class_colors_.value(pred_class_id);
+            if (image.image_width > 0 && image.image_height > 0)
+                value.crop_bounds = QVariantMap{{QStringLiteral("x"), 0.0}, {QStringLiteral("y"), 0.0},
+                                                {QStringLiteral("width"), image.image_width},
+                                                {QStringLiteral("height"), image.image_height}};
+            value.thumbnail_url = thumbnailUrl(value);
+            values.push_back(std::move(value));
+        }
+        instances_->setRecords(std::move(values));
+        return;
+    }
+
     for (const QVariant &entry : records)
     {
         EvaluationInstanceRecord value = instanceFromMap(entry.toMap());
@@ -1595,6 +1718,7 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
     input.has_instance_metrics = has_instance_metrics_;
     input.has_image_metrics = has_image_metrics_;
     input.has_confusion_matrix = has_confusion_matrix_;
+    input.anomaly_detection = anomaly_detection_;
 
     // QSortFilterProxyModel remains the single GUI-thread filter boundary.
     // The worker receives only detached value records and never touches a
@@ -1614,7 +1738,7 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
     // classes.  This keeps all QObject/proxy access on the GUI thread.
     bool external_class_filter_enabled = false;
     bool external_class_filter_available = false;
-    if (global_filter_ != nullptr)
+    if (global_filter_ != nullptr && hasInvokable(global_filter_, "isLabelClassFilterEnabled", 0))
     {
         external_class_filter_available = QMetaObject::invokeMethod(
             global_filter_, "isLabelClassFilterEnabled", Qt::DirectConnection,
@@ -1638,8 +1762,9 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
         if (external_class_filter_available && external_class_filter_enabled && global_filter_ != nullptr)
         {
             bool accepted = true;
-            if (QMetaObject::invokeMethod(global_filter_, "acceptsLabelClassId", Qt::DirectConnection,
-                                          Q_RETURN_ARG(bool, accepted), Q_ARG(qint64, qint64(class_id))))
+            if (hasInvokable(global_filter_, "acceptsLabelClassId", 1)
+                && QMetaObject::invokeMethod(global_filter_, "acceptsLabelClassId", Qt::DirectConnection,
+                                             Q_RETURN_ARG(bool, accepted), Q_ARG(qint64, qint64(class_id))))
                 return accepted;
         }
         return true;
@@ -1826,8 +1951,30 @@ bool ModelEvaluationViewModel::selectInstance(const QString &eventUuid)
 
 void ModelEvaluationViewModel::selectMatrixCell(const QString &rowKey, const QString &columnKey)
 {
-    filtered_instances_->setMatrixRow(rowKey);
-    filtered_instances_->setMatrixColumn(columnKey);
+    const auto normalizeKey = [this](QString value, const bool row)
+    {
+        value = value.trimmed();
+        if (value.isEmpty() || value == QStringLiteral("TOTAL") || value == QStringLiteral("FN")
+            || value == QStringLiteral("FP"))
+            return value;
+
+        bool numeric = false;
+        value.toInt(&numeric);
+        if (numeric)
+            return value;
+
+        for (const EvaluationConfusionCell &cell : confusion_matrix_->records())
+        {
+            const QString label = row ? cell.row_label : cell.column_label;
+            const QString key = row ? cell.row_key : cell.column_key;
+            if (!key.isEmpty() && label.compare(value, Qt::CaseInsensitive) == 0)
+                return key;
+        }
+        return value;
+    };
+
+    filtered_instances_->setMatrixRow(normalizeKey(rowKey, true));
+    filtered_instances_->setMatrixColumn(normalizeKey(columnKey, false));
     selectInstance(-1);
 }
 
@@ -1886,6 +2033,8 @@ void ModelEvaluationViewModel::clearFilters()
     global_filtered_instances_->setClassIds({});
     filtered_instances_->setStatus({});
     filtered_instances_->setPredClassIds({});
+    filtered_instances_->setMinScore(-std::numeric_limits<double>::infinity());
+    filtered_instances_->setMaxScore(std::numeric_limits<double>::infinity());
     clearMatrixSelection();
 }
 
