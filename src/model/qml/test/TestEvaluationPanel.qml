@@ -16,47 +16,6 @@ Rectangle {
         anchors.margins: 6
         orientation: Qt.Vertical
 
-        QuiFrame {
-            SplitView.fillWidth: true
-            SplitView.preferredHeight: 42
-            RowLayout {
-                anchors.fill: parent
-                spacing: 8
-                QuiText { text: qsTr("评估过滤") }
-                QuiComboBox {
-                    id: statusFilter
-                    Layout.preferredWidth: 150
-                    model: [qsTr("全部状态"), "true_positive", "class_mismatch", "false_positive", "false_negative"]
-                    onActivated: {
-                        if (control.evaluation)
-                            control.evaluation.setStatusFilter(currentIndex === 0 ? "" : currentText)
-                    }
-                }
-                QuiText {
-                    Layout.fillWidth: true
-                    text: control.evaluation
-                          ? control.evaluation.globalFilterDescription + " · "
-                            + control.evaluation.metricScopeDescription
-                            + qsTr(" · 置信度 %1 · IoU %2")
-                              .arg(control.evaluation.confidenceThreshold)
-                              .arg(control.evaluation.iouThreshold)
-                          : qsTr("数据集、标签和图像条件由全局过滤器统一应用")
-                    color: QuiColor.FontDark
-                    elide: Text.ElideRight
-                }
-                QuiButton {
-                    text: qsTr("清除过滤")
-                    enabled: !!control.evaluation
-                    onClicked: {
-                        if (control.evaluation) {
-                            control.evaluation.clearFilters()
-                            statusFilter.currentIndex = 0
-                        }
-                    }
-                }
-            }
-        }
-
         QuiSplitView {
             id: summarySplit
             SplitView.fillWidth: true
