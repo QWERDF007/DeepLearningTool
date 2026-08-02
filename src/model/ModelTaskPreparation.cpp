@@ -219,6 +219,7 @@ bool writePredictionConfig(const QString &path, const QString &task_root, const 
         {QStringLiteral("input_data_digest"), request.input_data_digest},
         {QStringLiteral("task_type"), modelTaskKey(request.task_type)},
         {QStringLiteral("method"), request.evaluation_method},
+        {QStringLiteral("model_params"), request.model_config.train_params.value(QStringLiteral("model")).toMap()},
         {QStringLiteral("test_params"), request.model_config.test_params},
         {QStringLiteral("datasets"), relative_datasets},
         {QStringLiteral("checkpoint_path"), relativePath(task_root, checkpoint_path)},

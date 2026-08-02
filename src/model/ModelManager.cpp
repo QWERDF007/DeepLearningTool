@@ -26,6 +26,7 @@
 #include <QJsonParseError>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QTcpServer>
 #include <QQmlEngine>
 #include <QRegularExpression>
 #include <QSortFilterProxyModel>
@@ -127,6 +128,25 @@ std::vector<uint8_t> extraDataToBlob(const QVariantMap &data)
     return result;
 }
 
+quint16 availableTensorBoardPort()
+{
+    QTcpServer server;
+    if (server.listen(QHostAddress::LocalHost, 6006))
+    {
+        server.close();
+        return 6006;
+    }
+
+    if (server.listen(QHostAddress::LocalHost, 0))
+    {
+        const quint16 port = server.serverPort();
+        server.close();
+        return port;
+    }
+
+    return 0;
+}
+
 } // namespace
 
 ModelManager::ModelManager(const int method, dltool::database::ProjectDataBase *database,
@@ -152,8 +172,12 @@ ModelManager::~ModelManager()
     {
         tensorboard_process_->terminate();
         if (!tensorboard_process_->waitForFinished(2000))
+        {
             tensorboard_process_->kill();
+            tensorboard_process_->waitForFinished(1000);
+        }
     }
+    tensorboard_port_ = 0;
 }
 
 void ModelManager::init()
@@ -781,13 +805,25 @@ QString ModelManager::startTensorBoard(const QString &model_uuid)
         && tensorboard_model_uuid_ == record.uuid)
     {
         spdlog::debug("TensorBoard 已在运行, 模型: {}", record.name.toUtf8().constData());
-        return QStringLiteral("http://127.0.0.1:6006/");
+        return QStringLiteral("http://127.0.0.1:%1/").arg(tensorboard_port_);
     }
 
-    if (tensorboard_process_ != nullptr && tensorboard_process_->state() != QProcess::NotRunning)
+    if (tensorboard_process_ != nullptr)
     {
-        spdlog::info("切换 TensorBoard 模型, 停止旧进程: {}", tensorboard_model_uuid_.toUtf8().constData());
-        tensorboard_process_->kill();
+        if (tensorboard_process_->state() != QProcess::NotRunning)
+        {
+            spdlog::info("切换 TensorBoard 模型, 停止旧进程: {}", tensorboard_model_uuid_.toUtf8().constData());
+            tensorboard_process_->terminate();
+            if (!tensorboard_process_->waitForFinished(1000))
+            {
+                tensorboard_process_->kill();
+                tensorboard_process_->waitForFinished(1000);
+            }
+        }
+        tensorboard_process_->deleteLater();
+        tensorboard_process_ = nullptr;
+        tensorboard_model_uuid_.clear();
+        tensorboard_port_ = 0;
     }
 
     const QString python_env_path = dltool::settings::GlobalSettings::pythonEnvironmentPath();
@@ -825,13 +861,18 @@ QString ModelManager::startTensorBoard(const QString &model_uuid)
         return {};
     }
 
-    if (tensorboard_process_ != nullptr)
-        tensorboard_process_->deleteLater();
+    const quint16 port = availableTensorBoardPort();
+    if (port == 0)
+    {
+        spdlog::error("启动 TensorBoard 失败: 无法找到可用本地端口");
+        return {};
+    }
+
     tensorboard_process_ = new QProcess(this);
     tensorboard_process_->setProgram(python);
     tensorboard_process_->setArguments({QStringLiteral("-m"), QStringLiteral("tensorboard.main"),
                                         QStringLiteral("--logdir"), log_dir, QStringLiteral("--host"),
-                                        QStringLiteral("127.0.0.1"), QStringLiteral("--port"), QStringLiteral("6006")});
+                                        QStringLiteral("127.0.0.1"), QStringLiteral("--port"), QString::number(port)});
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
     tensorboard_process_->setProcessEnvironment(env);
@@ -853,10 +894,11 @@ QString ModelManager::startTensorBoard(const QString &model_uuid)
                                   exit_status == QProcess::NormalExit ? "normal" : "crashed");
             });
     tensorboard_model_uuid_ = record.uuid;
+    tensorboard_port_      = port;
     spdlog::info("启动 TensorBoard, 模型: {}, 日志目录: {}", record.name.toUtf8().constData(),
                  log_dir.toUtf8().constData());
     tensorboard_process_->start();
-    return QStringLiteral("http://127.0.0.1:6006/");
+    return QStringLiteral("http://127.0.0.1:%1/").arg(tensorboard_port_);
 }
 
 void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const QString &model_name,

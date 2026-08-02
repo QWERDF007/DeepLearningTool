@@ -27,6 +27,7 @@ Item {
 
     function openTensorBoard() {
         if (!tensorBoardPanelVisible || !modelManager || currentModelUuid.length === 0) {
+            tensorBoardReload.stop()
             tensorBoardUrl = ""
             return
         }
@@ -42,6 +43,7 @@ Item {
 
     onCurrentModelUuidChanged: {
         refreshCurrentModelData()
+        tensorBoardReload.stop()
         tensorBoardUrl = ""
         if (tensorBoardPanelVisible)
             openTensorBoard()
@@ -69,8 +71,8 @@ Item {
         id: tensorBoardReload
         interval: 1500
         onTriggered: {
-            if (tensorBoardView.visible)
-                tensorBoardView.reload()
+            if (tensorBoardLoader.item)
+                tensorBoardLoader.item.reload()
         }
     }
 
@@ -144,18 +146,23 @@ Item {
                     Layout.fillHeight: true
                     Layout.minimumWidth: 280
 
-                    WebEngineView {
-                        id: tensorBoardView
+                    Loader {
+                        id: tensorBoardLoader
                         anchors.fill: parent
-                        url: control.tensorBoardUrl
-                        visible: control.tensorBoardPanelVisible && control.tensorBoardUrl.toString().length > 0
+                        active: control.tensorBoardPanelVisible && control.tensorBoardUrl.toString().length > 0
+                        sourceComponent: Component {
+                            WebEngineView {
+                                anchors.fill: parent
+                                url: control.tensorBoardUrl
+                            }
+                        }
                     }
 
                     QuiText {
                         anchors.centerIn: parent
                         text: control.currentModelUuid.length > 0 ? qsTr("无法启动 TensorBoard") : qsTr("请选择模型")
                         color: QuiColor.FontDark
-                        visible: !tensorBoardView.visible
+                        visible: !tensorBoardLoader.active
                     }
                 }
             }

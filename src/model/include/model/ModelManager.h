@@ -430,6 +430,7 @@ private:
 
     QProcess *tensorboard_process_{nullptr}; ///< TensorBoard 进程
     QString   tensorboard_model_uuid_;       ///< 当前 TensorBoard 模型 UUID
+    quint16   tensorboard_port_{0};          ///< 当前 TensorBoard 监听端口
 
     int method_{-1}; ///< 深度学习方法
 

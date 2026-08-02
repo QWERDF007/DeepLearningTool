@@ -274,6 +274,20 @@ QVariantMap ModelTaskConfigService::build(const ModelTaskConfigInput &model, Mod
     }
     else
     {
+        // A test uses the model trained under train/.  Preserve the model
+        // structure parameters in the runner config so Python can recreate
+        // the exact backbone/pre-processing before loading the checkpoint.
+        QVariantMap train_values = model.train_params;
+        QVariantMap model_values = train_values.value(QStringLiteral("model")).toMap();
+        if (model_values.isEmpty())
+        {
+            train_values = readParams(storage_.trainConfigPath(model.model_name), ModelTaskConfigField::TrainParams);
+            model_values = train_values.value(QStringLiteral("model")).toMap();
+        }
+        if (!model_values.isEmpty())
+            config.insert(modelTaskConfigFieldName(ModelTaskConfigField::TrainParams),
+                          QVariantMap{{QStringLiteral("model"), model_values}});
+
         QVariantMap test_values = model.test_params;
         // Regular tests resolve relative inference output paths from
         // test/<task>/, while the legacy FS-SAM2 config keeps its historical

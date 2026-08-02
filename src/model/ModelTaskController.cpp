@@ -211,6 +211,7 @@ QString inferenceDigest(const ModelTaskRequest &request, const QString &project_
         {QStringLiteral("dataset_selection"), QVariantMap{{QStringLiteral("train"), selectionMap(request.selections.train)},
                                                            {QStringLiteral("validation"), selectionMap(request.selections.validation)},
                                                            {QStringLiteral("test"), selectionMap(request.selections.test)}}},
+        {QStringLiteral("model_params"), request.model_config.train_params.value(QStringLiteral("model")).toMap()},
         {QStringLiteral("test_params"), inference_params},
         {QStringLiteral("scope_uuid"), request.scope_uuid},
         {QStringLiteral("input_data_digest"), input_data_digest},

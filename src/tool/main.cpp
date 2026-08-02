@@ -11,8 +11,54 @@
 #include "ui/UILogger.h"
 
 #include <QApplication>
+#include <QFile>
+#include <QRegularExpression>
 #include <QQmlApplicationEngine>
+#include <QStringList>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
+
+namespace {
+
+bool isWslEnvironment()
+{
+    if (qEnvironmentVariableIsSet("WSL_DISTRO_NAME") || qEnvironmentVariableIsSet("WSL_INTEROP"))
+        return true;
+
+    QFile proc_version(QStringLiteral("/proc/version"));
+    if (!proc_version.open(QIODevice::ReadOnly))
+        return false;
+
+    const QString version = QString::fromLocal8Bit(proc_version.readAll());
+    return version.contains(QStringLiteral("microsoft"), Qt::CaseInsensitive)
+        || version.contains(QStringLiteral("wsl"), Qt::CaseInsensitive);
+}
+
+void configureWslQtWebEngine()
+{
+    if (!isWslEnvironment())
+        return;
+
+    QStringList chromium_flags
+        = QString::fromLocal8Bit(qgetenv("QTWEBENGINE_CHROMIUM_FLAGS"))
+              .split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+    const QStringList required_flags = {QStringLiteral("--disable-gpu"),
+                                        QStringLiteral("--disable-gpu-compositing"),
+                                        QStringLiteral("--disable-gpu-rasterization")};
+    for (const QString &flag : required_flags)
+    {
+        if (!chromium_flags.contains(flag))
+            chromium_flags.append(flag);
+    }
+    qputenv("QTWEBENGINE_CHROMIUM_FLAGS", chromium_flags.join(QLatin1Char(' ')).toLocal8Bit());
+
+    // WSLg exposes both Wayland and X11 in many installations.  Prefer the
+    // X11 plugin when DISPLAY is available because it avoids the unstable
+    // Wayland/EGL path used by the WebEngine view on this environment.
+    if (!qEnvironmentVariableIsSet("QT_QPA_PLATFORM") && qEnvironmentVariableIsSet("DISPLAY"))
+        qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("xcb"));
+}
+
+} // namespace
 
 void InitLogger()
 {
@@ -46,6 +92,7 @@ int main(int argc, char *argv[])
     dltool::common::CrashHandler crash_handler;
     crash_handler.setup();
 
+    configureWslQtWebEngine();
     QtWebEngineQuick::initialize();
     QApplication          app(argc, argv);
 
