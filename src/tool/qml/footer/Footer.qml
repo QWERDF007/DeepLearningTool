@@ -117,10 +117,14 @@ Rectangle {
                     let position = calculateWindowDialogPosition(progressBadge, progressDialog, true)
                     progressDialog.x = position.x
                     progressDialog.y = position.y
-                    if (checked)
+                    if (checked) {
                         progressDialog.open()
-                    else
+                    } else if (progressDialog.visible) {
+                        // A native close changes visible to false first. Avoid
+                        // re-entering QWindow::close() from that visibleChanged
+                        // callback on Wayland.
                         progressDialog.close()
+                    }
                 }
             }
         }
@@ -135,13 +139,14 @@ Rectangle {
                     let position = calculateWindowDialogPosition(infoBadge, log, false)
                     log.x = position.x
                     log.y = position.y
-                    if (checked)
-                    {
+                    if (checked) {
                         UILogger.clearCount()
                         log.open()
-                    }
-                    else
+                    } else if (log.visible) {
+                        // The LogDialog close button already made the window
+                        // invisible; calling close() again is re-entrant.
                         log.close()
+                    }
                 }
             }
         }

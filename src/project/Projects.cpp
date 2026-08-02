@@ -500,8 +500,21 @@ ProjectManager::~ProjectManager()
     if (current_project_)
     {
         Project *project = current_project_;
-        updateProjectMtime(project->path());
-        spdlog::info("关闭项目: {}", project->path().toUtf8().constData());
+
+        // The QML engine may already be tearing down its singleton objects when
+        // this destructor runs.  updateProjectMtime() also refreshes the QML
+        // recent-project model, whose row count reads GlobalSettings; doing
+        // that during engine teardown can dereference a partially destroyed
+        // settings model.  Persist the timestamp through the database only.
+        QVariantMap project_info;
+        QString     err_msg;
+        if (dltool::database::ProjectDataBase::getProjectInfo(project->path(), project_info, err_msg))
+        {
+            dltool::database::ProjectDataBase::updateProjectBaseInfo(
+                project->path(), project_info.value("name").toString(), project_info.value("description").toString(),
+                QDateTime::currentSecsSinceEpoch(), err_msg);
+        }
+
         current_project_ = nullptr;
         delete project;
     }
