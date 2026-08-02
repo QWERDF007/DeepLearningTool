@@ -128,7 +128,7 @@ Item {
                         if (control.evaluation)
                             control.evaluation.selectInstance(index)
                     }
-                    onWheel: {
+                    onWheel: function (wheel) {
                         if (wheel.modifiers & Qt.ControlModifier) {
                             var step = wheel.angleDelta.y > 0 ? 0.05 : -0.05
                             control.thumbnailScale = Math.max(0.75,

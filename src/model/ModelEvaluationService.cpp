@@ -581,7 +581,7 @@ bool loadImages(const QString &images_path, const QString &dataset_manifest_path
     }
     try
     {
-        const YAML::Node root = dltool::common::yaml::loadFile(manifest_file);
+        YAML::Node root = dltool::common::yaml::loadFile(manifest_file);
         YAML::Node entries = root["images"];
         const bool anomaly_samples = !entries || !entries.IsSequence();
         if (anomaly_samples)

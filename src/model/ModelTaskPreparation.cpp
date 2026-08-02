@@ -73,7 +73,7 @@ QByteArray predictionImagesData(const QVariantMap &datasets, QString *err_msg)
     QByteArray output("image_id,image_path\n");
     try
     {
-        const YAML::Node root = common::yaml::loadFile(QFileInfo(manifest_path));
+        YAML::Node root = common::yaml::loadFile(QFileInfo(manifest_path));
         YAML::Node images = root["images"];
         if (!images || !images.IsSequence())
             images = root["samples"];
