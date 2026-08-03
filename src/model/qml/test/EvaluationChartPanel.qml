@@ -11,10 +11,32 @@ Rectangle {
     color: QuiColor.Primary
     property ModelEvaluationViewModel evaluation: null
     property int chartRevision: 0
+    readonly property string chartFontColor: QuiColor.FontPrimary.toString()
 
     function chartModelCount() {
         var charts = control.evaluation ? control.evaluation.charts : null
         return charts ? charts.rowCount() : 0
+    }
+
+    function copyMap(source) {
+        var result = ({})
+        if (!source || typeof source !== "object")
+            return result
+
+        for (var key in source)
+            result[key] = source[key]
+        return result
+    }
+
+    function axisWithFontColor(axis) {
+        var axisCopy = copyMap(axis)
+        var ticksCopy = copyMap(axisCopy.ticks)
+        var scaleLabelCopy = copyMap(axisCopy.scaleLabel)
+        ticksCopy.fontColor = control.chartFontColor
+        scaleLabelCopy.fontColor = control.chartFontColor
+        axisCopy.ticks = ticksCopy
+        axisCopy.scaleLabel = scaleLabelCopy
+        return axisCopy
     }
 
     function chartOptionsForDescriptor(descriptor) {
@@ -35,11 +57,25 @@ Rectangle {
         var labelsCopy = ({})
         for (var labelKey in labels)
             labelsCopy[labelKey] = labels[labelKey]
+        labelsCopy.fontColor = control.chartFontColor
         labelsCopy.filter = function(item) {
             return item && (item.text === "GOOD" || item.text === "Anomaly")
         }
         legendCopy.labels = labelsCopy
         filtered.legend = legendCopy
+
+        var scales = copyMap(filtered.scales)
+        var xAxes = scales.xAxes || []
+        var yAxes = scales.yAxes || []
+        var xAxesCopy = []
+        var yAxesCopy = []
+        for (var xIndex = 0; xIndex < xAxes.length; ++xIndex)
+            xAxesCopy.push(axisWithFontColor(xAxes[xIndex]))
+        for (var yIndex = 0; yIndex < yAxes.length; ++yIndex)
+            yAxesCopy.push(axisWithFontColor(yAxes[yIndex]))
+        scales.xAxes = xAxesCopy
+        scales.yAxes = yAxesCopy
+        filtered.scales = scales
         return filtered
     }
 

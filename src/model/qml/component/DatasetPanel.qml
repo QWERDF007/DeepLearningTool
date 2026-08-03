@@ -95,12 +95,21 @@ Item {
                 chartData: control.chartDataForDisplay(statisticsModel.imageChartData)
                 chartOptions: ({
                     maintainAspectRatio: false,
-                    legend: { display: false },
+                    legend: {
+                        display: false,
+                        labels: {
+                            fontColor: QuiColor.FontPrimary.toString()
+                        }
+                    },
                     title: {
                         display: true,
-                        text: qsTr("类别图像占比")
+                        text: qsTr("类别图像占比"),
+                        fontColor: QuiColor.FontPrimary.toString()
                     },
                     tooltips: {
+                        titleFontColor: QuiColor.FontPrimary.toString(),
+                        bodyFontColor: QuiColor.FontPrimary.toString(),
+                        footerFontColor: QuiColor.FontPrimary.toString(),
                         // A pie slice is an area, not a point on an index axis.
                         // Require the pointer to intersect the arc so the
                         // tooltip always describes the slice under the cursor.
@@ -122,12 +131,21 @@ Item {
                 chartData: control.chartDataForDisplay(statisticsModel.instanceChartData)
                 chartOptions: ({
                     maintainAspectRatio: false,
-                    legend: { display: false },
+                    legend: {
+                        display: false,
+                        labels: {
+                            fontColor: QuiColor.FontPrimary.toString()
+                        }
+                    },
                     title: {
                         display: true,
-                        text: qsTr("类别实例占比")
+                        text: qsTr("类别实例占比"),
+                        fontColor: QuiColor.FontPrimary.toString()
                     },
                     tooltips: {
+                        titleFontColor: QuiColor.FontPrimary.toString(),
+                        bodyFontColor: QuiColor.FontPrimary.toString(),
+                        footerFontColor: QuiColor.FontPrimary.toString(),
                         // A pie slice is an area, not a point on an index axis.
                         // Require the pointer to intersect the arc so the
                         // tooltip always describes the slice under the cursor.
