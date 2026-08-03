@@ -19,9 +19,8 @@ Rectangle {
         QuiSplitView {
             id: summarySplit
             SplitView.fillWidth: true
-            SplitView.preferredHeight: 320
+            SplitView.preferredHeight: 240
             orientation: Qt.Horizontal
-
             
             EvaluationMetricsPanel {
                 SplitView.fillHeight: true
@@ -47,7 +46,6 @@ Rectangle {
         QuiSplitView {
             SplitView.fillWidth: true
             SplitView.fillHeight: true
-            SplitView.minimumHeight: 260
             orientation: Qt.Horizontal
 
             QuiFrame {

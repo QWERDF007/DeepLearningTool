@@ -34,7 +34,7 @@ Item {
         QuiExpander {
             id: settingsExpander
             Layout.fillWidth: true
-            Layout.preferredHeight: expand ? parent.height / 2 - 48 : headerHeight
+            Layout.preferredHeight: expand ? parent.height / 2 - 96 : headerHeight
 
             headerText: qsTr("设置")
             expand: true
