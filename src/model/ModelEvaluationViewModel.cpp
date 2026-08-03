@@ -1,13 +1,13 @@
 #include "model/ModelEvaluationViewModel.h"
 #include "model/ModelEvaluationService.h"
 #include "model/ModelEvaluationProtocol.h"
+#include "model/TaskCommunication.h"
 
 #include "common/YamlUtils.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QCryptographicHash>
 #include <QVariantList>
 #include <QMap>
 #include <QMetaMethod>
@@ -75,6 +75,26 @@ double realValue(const QVariantMap &map, const QString &name, const double fallb
     return ok ? value : fallback;
 }
 
+QString textValue(const QVariantMap &map, const evaluation::Field field, const QString &fallback = {})
+{
+    return textValue(map, evaluation::fieldName(field), fallback);
+}
+
+int intValue(const QVariantMap &map, const evaluation::Field field, const int fallback = -1)
+{
+    return intValue(map, evaluation::fieldName(field), fallback);
+}
+
+qint64 longValue(const QVariantMap &map, const evaluation::Field field, const qint64 fallback = 0)
+{
+    return longValue(map, evaluation::fieldName(field), fallback);
+}
+
+double realValue(const QVariantMap &map, const evaluation::Field field, const double fallback = 0.0)
+{
+    return realValue(map, evaluation::fieldName(field), fallback);
+}
+
 bool hasInvokable(QObject *object, const char *method, const int parameter_count)
 {
     if (object == nullptr)
@@ -107,8 +127,9 @@ QString resolveReportReference(const QString &base_dir, const QString &value)
     return info.isAbsolute() ? info.absoluteFilePath() : QDir(base_dir).filePath(trimmed);
 }
 
-void requireReportField(const QVariantMap &root, const QString &name)
+void requireReportField(const QVariantMap &root, const evaluation::Field field)
 {
+    const QString name = evaluation::fieldName(field);
     if (!root.contains(name))
         throw std::runtime_error(QString("评估报告缺少字段: %1").arg(name).toUtf8().constData());
 }
@@ -117,46 +138,46 @@ void validateReportProtocol(const QVariantMap &root, const QFileInfo &report_fil
 {
     if (report_file.size() > kMaxEvaluationYamlBytes)
         throw std::runtime_error("评估报告超过大小限制");
-    const QVariant version = root.value(QStringLiteral("schema_version"));
+    const QVariant version = root.value(evaluation::fieldName(evaluation::Field::SchemaVersion));
     bool version_ok = false;
     const int schema_version = version.toInt(&version_ok);
     if (!version_ok || schema_version != evaluation::kReportSchemaVersion)
-        throw std::runtime_error("评估报告 schema_version 必须为 3");
-    for (const QString &field : {QStringLiteral("model_uuid"), QStringLiteral("test_task_uuid"),
-                                 QStringLiteral("method"), QStringLiteral("primary_metric_set"),
-                                 QStringLiteral("evaluation_digest"), QStringLiteral("evaluation_config"),
-                                 QStringLiteral("capabilities"), QStringLiteral("diagnostic_metrics"),
-                                  QStringLiteral("confusion_matrix"), QStringLiteral("charts"),
-                                  QStringLiteral("image_records"), QStringLiteral("instance_records"),
-                                  QStringLiteral("dataset_manifest"), QStringLiteral("prediction_manifest"),
-                                  QStringLiteral("image_list"), QStringLiteral("image_count"),
-                                  QStringLiteral("prediction_count"), QStringLiteral("event_count")})
+        throw std::runtime_error("评估报告 schema_version 无效");
+    for (const evaluation::Field field : {evaluation::Field::ModelUuid, evaluation::Field::TestTaskUuid,
+                                           evaluation::Field::Method, evaluation::Field::PrimaryMetricSet,
+                                           evaluation::Field::EvaluatedAt, evaluation::Field::EvaluationConfig,
+                                           evaluation::Field::Capabilities, evaluation::Field::DiagnosticMetrics,
+                                           evaluation::Field::ConfusionMatrix, evaluation::Field::Charts,
+                                           evaluation::Field::ImageRecords, evaluation::Field::InstanceRecords,
+                                           evaluation::Field::DatasetManifest, evaluation::Field::PredictionManifest,
+                                           evaluation::Field::ImageList, evaluation::Field::ImageCount,
+                                           evaluation::Field::PredictionCount, evaluation::Field::EventCount})
         requireReportField(root, field);
-    if (root.value(QStringLiteral("model_uuid")).toString().trimmed().isEmpty()
-        || root.value(QStringLiteral("test_task_uuid")).toString().trimmed().isEmpty()
-        || root.value(QStringLiteral("method")).toString().trimmed().isEmpty())
+    if (root.value(evaluation::fieldName(evaluation::Field::ModelUuid)).toString().trimmed().isEmpty()
+        || root.value(evaluation::fieldName(evaluation::Field::TestTaskUuid)).toString().trimmed().isEmpty()
+        || root.value(evaluation::fieldName(evaluation::Field::Method)).toString().trimmed().isEmpty())
         throw std::runtime_error("评估报告 model_uuid/test_task_uuid/method 无效");
-    if (root.value(QStringLiteral("evaluation_config")).toMap().isEmpty()
-        || root.value(QStringLiteral("capabilities")).toMap().isEmpty())
+    if (root.value(evaluation::fieldName(evaluation::Field::EvaluationConfig)).toMap().isEmpty()
+        || root.value(evaluation::fieldName(evaluation::Field::Capabilities)).toMap().isEmpty())
         throw std::runtime_error("评估报告 evaluation_config/capabilities 无效");
-    const QString method_key = root.value(QStringLiteral("method")).toString().trimmed().toLower();
+    const QString method_key = root.value(evaluation::fieldName(evaluation::Field::Method)).toString().trimmed().toLower();
     const evaluation::Method method = evaluation::methodFromKey(method_key);
     if (method == evaluation::Method::Unknown || evaluation::methodKey(method) != method_key)
         throw std::runtime_error("评估报告 method 不是规范值");
-    const QString metric_set_key = root.value(QStringLiteral("primary_metric_set")).toString().trimmed().toLower();
+    const QString metric_set_key = root.value(evaluation::fieldName(evaluation::Field::PrimaryMetricSet)).toString().trimmed().toLower();
     const evaluation::MetricSet metric_set = evaluation::metricSetFromKey(metric_set_key);
     if (evaluation::metricSetKey(metric_set) != metric_set_key)
         throw std::runtime_error("评估报告 primary_metric_set 不是规范值");
-    const QVariantMap evaluation_config = root.value(QStringLiteral("evaluation_config")).toMap();
+    const QVariantMap evaluation_config = root.value(evaluation::fieldName(evaluation::Field::EvaluationConfig)).toMap();
     const QString matching_strategy_key
-        = evaluation_config.value(QStringLiteral("matching_strategy")).toString().trimmed().toLower();
-    if (!evaluation_config.contains(QStringLiteral("confidence_threshold"))
-        || !evaluation_config.contains(QStringLiteral("iou_threshold"))
+        = evaluation_config.value(evaluation::fieldName(evaluation::Field::MatchingStrategy)).toString().trimmed().toLower();
+    if (!evaluation_config.contains(evaluation::fieldName(evaluation::Field::ConfidenceThreshold))
+        || !evaluation_config.contains(evaluation::fieldName(evaluation::Field::IouThreshold))
         || matching_strategy_key.isEmpty()
         || evaluation::matchingStrategyKey(evaluation::matchingStrategyFromKey(matching_strategy_key))
                != matching_strategy_key)
         throw std::runtime_error("评估报告 evaluation_config 不是规范值");
-    const QVariant image_records_value = root.value(QStringLiteral("image_records"));
+    const QVariant image_records_value = root.value(evaluation::fieldName(evaluation::Field::ImageRecords));
     if (!image_records_value.canConvert<QVariantList>())
         throw std::runtime_error("评估报告 image_records 必须为序列");
     const QVariantList image_records = image_records_value.toList();
@@ -177,64 +198,77 @@ void validateReportProtocol(const QVariantMap &root, const QFileInfo &report_fil
     for (const QVariant &entry : image_records)
     {
         const QVariantMap image = entry.toMap();
-        for (const QString &field : {QStringLiteral("image_id"), QStringLiteral("dataset_id"),
-                                     QStringLiteral("image_name"), QStringLiteral("image_path"),
-                                     QStringLiteral("image_width"), QStringLiteral("image_height")})
-            if (!image.contains(field))
-                throw std::runtime_error(QString("评估报告图像记录缺少字段: %1").arg(field).toUtf8().constData());
-        requireList(image, QStringLiteral("gt_instances"));
-        requireList(image, QStringLiteral("predictions"));
+        for (const evaluation::Field field : {evaluation::Field::ImageId, evaluation::Field::DatasetId,
+                                              evaluation::Field::ImageName, evaluation::Field::ImagePath,
+                                              evaluation::Field::ImageWidth, evaluation::Field::ImageHeight})
+            if (!image.contains(evaluation::fieldName(field)))
+                throw std::runtime_error(QString("评估报告图像记录缺少字段: %1")
+                                             .arg(evaluation::fieldName(field))
+                                             .toUtf8()
+                                             .constData());
+        requireList(image, evaluation::fieldName(evaluation::Field::GtInstances));
+        requireList(image, evaluation::fieldName(evaluation::Field::Predictions));
         rejectLegacyFields(image, {QStringLiteral("gt_label_ids"), QStringLiteral("gt_class_ids"),
                                    QStringLiteral("pred_class_ids"), QStringLiteral("score"),
                                    QStringLiteral("has_gt"), QStringLiteral("has_pred")});
-        for (const QVariant &value : image.value(QStringLiteral("gt_instances")).toList())
+        for (const QVariant &value : image.value(evaluation::fieldName(evaluation::Field::GtInstances)).toList())
         {
             const QVariantMap ground_truth = value.toMap();
-            for (const QString &field : {QStringLiteral("label_id"), QStringLiteral("class_id"),
-                                         QStringLiteral("class_name"), QStringLiteral("geometry")})
-                if (!ground_truth.contains(field))
-                    throw std::runtime_error(QString("评估报告 GT 记录缺少字段: %1").arg(field).toUtf8().constData());
-            rejectLegacyFields(ground_truth, {QStringLiteral("bounds")});
+            for (const evaluation::Field field : {evaluation::Field::LabelId, evaluation::Field::ClassId,
+                                                  evaluation::Field::ClassName, evaluation::Field::Geometry})
+                if (!ground_truth.contains(evaluation::fieldName(field)))
+                    throw std::runtime_error(QString("评估报告 GT 记录缺少字段: %1")
+                                                 .arg(evaluation::fieldName(field))
+                                                 .toUtf8()
+                                                 .constData());
+            rejectLegacyFields(ground_truth, {evaluation::fieldName(evaluation::Field::Bounds)});
         }
-        for (const QVariant &value : image.value(QStringLiteral("predictions")).toList())
+        for (const QVariant &value : image.value(evaluation::fieldName(evaluation::Field::Predictions)).toList())
         {
             const QVariantMap prediction = value.toMap();
-            for (const QString &field : {QStringLiteral("prediction_id"), QStringLiteral("class_id"),
-                                         QStringLiteral("class_name"), QStringLiteral("score"),
-                                         QStringLiteral("geometry")})
-                if (!prediction.contains(field))
-                    throw std::runtime_error(QString("评估报告预测记录缺少字段: %1").arg(field).toUtf8().constData());
-            rejectLegacyFields(prediction, {QStringLiteral("image_id"), QStringLiteral("dataset_id"),
-                                            QStringLiteral("bounds")});
+            for (const evaluation::Field field : {evaluation::Field::PredictionId, evaluation::Field::ClassId,
+                                                  evaluation::Field::ClassName, evaluation::Field::Score,
+                                                  evaluation::Field::Geometry})
+                if (!prediction.contains(evaluation::fieldName(field)))
+                    throw std::runtime_error(QString("评估报告预测记录缺少字段: %1")
+                                                 .arg(evaluation::fieldName(field))
+                                                 .toUtf8()
+                                                 .constData());
+            rejectLegacyFields(prediction, {evaluation::fieldName(evaluation::Field::ImageId),
+                                            evaluation::fieldName(evaluation::Field::DatasetId),
+                                            evaluation::fieldName(evaluation::Field::Bounds)});
         }
     }
 
-    const QVariantMap confusion_matrix = root.value(QStringLiteral("confusion_matrix")).toMap();
-    requireList(confusion_matrix, QStringLiteral("cells"));
-    for (const QVariant &entry : confusion_matrix.value(QStringLiteral("cells")).toList())
+    const QVariantMap confusion_matrix = root.value(evaluation::fieldName(evaluation::Field::ConfusionMatrix)).toMap();
+    requireList(confusion_matrix, evaluation::fieldName(evaluation::Field::Cells));
+    for (const QVariant &entry : confusion_matrix.value(evaluation::fieldName(evaluation::Field::Cells)).toList())
     {
         const QVariantMap cell = entry.toMap();
-        for (const QString &field : {QStringLiteral("row_key"), QStringLiteral("column_key"),
-                                     QStringLiteral("row_label"), QStringLiteral("column_label"),
-                                     QStringLiteral("row_class_id"), QStringLiteral("column_class_id"),
-                                     QStringLiteral("count"), QStringLiteral("cell_kind"),
-                                     QStringLiteral("selectable"), QStringLiteral("is_diagonal"),
-                                     QStringLiteral("is_error")})
-            if (!cell.contains(field))
-                throw std::runtime_error(QString("评估报告矩阵单元缺少字段: %1").arg(field).toUtf8().constData());
+        for (const evaluation::Field field : {evaluation::Field::RowKey, evaluation::Field::ColumnKey,
+                                              evaluation::Field::RowLabel, evaluation::Field::ColumnLabel,
+                                              evaluation::Field::RowClassId, evaluation::Field::ColumnClassId,
+                                              evaluation::Field::Count, evaluation::Field::CellKind,
+                                              evaluation::Field::Selectable, evaluation::Field::IsDiagonal,
+                                              evaluation::Field::IsError})
+            if (!cell.contains(evaluation::fieldName(field)))
+                throw std::runtime_error(QString("评估报告矩阵单元缺少字段: %1")
+                                             .arg(evaluation::fieldName(field))
+                                             .toUtf8()
+                                             .constData());
     }
-    if (!root.value(QStringLiteral("charts")).canConvert<QVariantList>())
+    if (!root.value(evaluation::fieldName(evaluation::Field::Charts)).canConvert<QVariantList>())
         throw std::runtime_error("评估报告 charts 必须为序列");
 
-    if (!root.value(QStringLiteral("instance_records")).canConvert<QVariantList>())
+    if (!root.value(evaluation::fieldName(evaluation::Field::InstanceRecords)).canConvert<QVariantList>())
         throw std::runtime_error("评估报告缺少 instance_records");
     const QString task_root = QFileInfo(report_file.absolutePath()).absoluteDir().absolutePath();
 
-    for (const auto &reference : {std::pair<QString, QString>(QStringLiteral("prediction_manifest"),
+    for (const auto &reference : {std::pair<QString, QString>(evaluation::fieldName(evaluation::Field::PredictionManifest),
                                                                QDir(task_root).filePath(QStringLiteral("pred/manifest.yaml"))),
-                                  std::pair<QString, QString>(QStringLiteral("image_list"),
+                                  std::pair<QString, QString>(evaluation::fieldName(evaluation::Field::ImageList),
                                                                QDir(task_root).filePath(QStringLiteral("pred/images.txt"))),
-                                  std::pair<QString, QString>(QStringLiteral("dataset_manifest"), QString())})
+                                  std::pair<QString, QString>(evaluation::fieldName(evaluation::Field::DatasetManifest), QString())})
     {
         const QString configured = root.value(reference.first).toString();
         if (configured.trimmed().isEmpty())
@@ -242,18 +276,12 @@ void validateReportProtocol(const QVariantMap &root, const QFileInfo &report_fil
         const QString target = resolveReportReference(report_file.absolutePath(), configured);
         if (target.isEmpty() || !pathWithin(task_root, target))
             throw std::runtime_error(QString("评估报告 %1 路径越界").arg(reference.first).toUtf8().constData());
-        if (reference.first != QStringLiteral("dataset_manifest")
+        if (reference.first != evaluation::fieldName(evaluation::Field::DatasetManifest)
             && QFileInfo(target).absoluteFilePath().compare(QFileInfo(reference.second).absoluteFilePath(),
                                                             Qt::CaseInsensitive) != 0)
             throw std::runtime_error(QString("评估报告 %1 未指向当前测试产物").arg(reference.first).toUtf8().constData());
-        if (reference.first != QStringLiteral("dataset_manifest")
-            && (!QFileInfo::exists(target) || !QFileInfo(target).isFile()))
-            throw std::runtime_error(QString("评估报告引用文件不存在: %1").arg(target).toUtf8().constData());
     }
 
-    const QString prediction_config = QDir(task_root).filePath(QStringLiteral("pred/config.yaml"));
-    if (!QFileInfo::exists(prediction_config) || !QFileInfo(prediction_config).isFile())
-        throw std::runtime_error("评估报告缺少 pred/config.yaml");
 }
 
 QString resolveTaskReference(const QFileInfo &result_file, const QString &value)
@@ -265,22 +293,6 @@ QString resolveTaskReference(const QFileInfo &result_file, const QString &value)
     return info.isAbsolute() ? info.absoluteFilePath() : result_file.absoluteDir().filePath(candidate);
 }
 
-QString fileDigest(const QString &path)
-{
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly))
-        return {};
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    while (!file.atEnd())
-    {
-        const QByteArray chunk = file.read(1024 * 1024);
-        if (chunk.isEmpty() && !file.atEnd())
-            return {};
-        hash.addData(chunk);
-    }
-    return QString("sha256:%1").arg(QString::fromLatin1(hash.result().toHex()));
-}
-
 bool sourceImageExists(const QString &path, const QString &dataset_manifest)
 {
     QFileInfo image(path);
@@ -289,158 +301,71 @@ bool sourceImageExists(const QString &path, const QString &dataset_manifest)
     return image.exists() && image.isFile();
 }
 
-void filterUnavailableReportDetails(QVariantMap &report, const QString &dataset_manifest,
-                                    const bool details_available)
+void filterUnavailableReportDetails(QVariantMap &report, const QString &dataset_manifest)
 {
     QVariantList visible_images;
     QSet<qint64> visible_image_ids;
     qint64 visible_predictions = 0;
-    if (details_available)
     {
-        for (const QVariant &entry : report.value(QStringLiteral("image_records")).toList())
+        for (const QVariant &entry : report.value(evaluation::fieldName(evaluation::Field::ImageRecords)).toList())
         {
             const QVariantMap image = entry.toMap();
-            if (!sourceImageExists(image.value(QStringLiteral("image_path")).toString(), dataset_manifest))
+            if (!sourceImageExists(image.value(evaluation::fieldName(evaluation::Field::ImagePath)).toString(),
+                                   dataset_manifest))
                 continue;
-            const qint64 image_id = image.value(QStringLiteral("image_id")).toLongLong();
+            const qint64 image_id = image.value(evaluation::fieldName(evaluation::Field::ImageId)).toLongLong();
             if (image_id < 0)
                 continue;
             visible_image_ids.insert(image_id);
-            visible_predictions += image.value(QStringLiteral("predictions")).toList().size();
+            visible_predictions += image.value(evaluation::fieldName(evaluation::Field::Predictions)).toList().size();
             visible_images.push_back(image);
         }
     }
 
     QVariantList visible_events;
-    if (details_available)
     {
-        for (const QVariant &entry : report.value(QStringLiteral("instance_records")).toList())
+        for (const QVariant &entry : report.value(evaluation::fieldName(evaluation::Field::InstanceRecords)).toList())
         {
-            if (visible_image_ids.contains(entry.toMap().value(QStringLiteral("image_id")).toLongLong()))
+            if (visible_image_ids.contains(
+                    entry.toMap().value(evaluation::fieldName(evaluation::Field::ImageId)).toLongLong()))
                 visible_events.push_back(entry);
         }
     }
-    report.insert(QStringLiteral("image_records"), visible_images);
-    report.insert(QStringLiteral("instance_records"), visible_events);
-    report.insert(QStringLiteral("image_count"), visible_images.size());
-    report.insert(QStringLiteral("prediction_count"), visible_predictions);
-    report.insert(QStringLiteral("event_count"), visible_events.size());
+    report.insert(evaluation::fieldName(evaluation::Field::ImageRecords), visible_images);
+    report.insert(evaluation::fieldName(evaluation::Field::InstanceRecords), visible_events);
+    report.insert(evaluation::fieldName(evaluation::Field::ImageCount), visible_images.size());
+    report.insert(evaluation::fieldName(evaluation::Field::PredictionCount), visible_predictions);
+    report.insert(evaluation::fieldName(evaluation::Field::EventCount), visible_events.size());
 }
 
-void validateResultProtocol(const QVariantMap &result, const QFileInfo &result_file, const QFileInfo &report_file,
-                            bool *inference_outdated, bool *evaluation_outdated, bool *details_available)
+void validateResultProtocol(const QVariantMap &result, const QFileInfo &result_file, const QFileInfo &report_file)
 {
-    for (const QString &field : {QStringLiteral("schema_version"), QStringLiteral("model_uuid"),
-                                 QStringLiteral("test_task_uuid"), QStringLiteral("method"),
-                                 QStringLiteral("status"), QStringLiteral("prediction_dir"),
-                                 QStringLiteral("prediction_images"), QStringLiteral("prediction_manifest"),
-                                 QStringLiteral("evaluation_report"), QStringLiteral("inference_digest"),
-                                 QStringLiteral("evaluation_digest"),
-                                 QStringLiteral("ground_truth_digest"), QStringLiteral("image_list_digest")})
-        if (!result.contains(field))
-            throw std::runtime_error(QString("测试结果摘要缺少字段: %1").arg(field).toUtf8().constData());
-    if (result.value(QStringLiteral("schema_version")).toInt() != evaluation::kResultSchemaVersion
-        || result.value(QStringLiteral("status")).toString() != QStringLiteral("finished")
-        || result.value(QStringLiteral("model_uuid")).toString().trimmed().isEmpty()
-        || result.value(QStringLiteral("test_task_uuid")).toString().trimmed().isEmpty()
-        || result.value(QStringLiteral("method")).toString().trimmed().isEmpty())
+    for (const evaluation::Field field : {evaluation::Field::SchemaVersion, evaluation::Field::ModelUuid,
+                                          evaluation::Field::TestTaskUuid, evaluation::Field::Method,
+                                          evaluation::Field::Status, evaluation::Field::EvaluatedAt,
+                                          evaluation::Field::EvaluationReport})
+    {
+        const QString name = evaluation::fieldName(field);
+        if (!result.contains(name))
+            throw std::runtime_error(QString("测试结果摘要缺少字段: %1").arg(name).toUtf8().constData());
+    }
+    if (result.value(evaluation::fieldName(evaluation::Field::SchemaVersion)).toInt()
+            != evaluation::kResultSchemaVersion
+        || result.value(evaluation::fieldName(evaluation::Field::Status)).toString()
+               != taskProtocolStatusName(TaskProtocolStatus::Finished)
+        || result.value(evaluation::fieldName(evaluation::Field::ModelUuid)).toString().trimmed().isEmpty()
+        || result.value(evaluation::fieldName(evaluation::Field::TestTaskUuid)).toString().trimmed().isEmpty()
+        || result.value(evaluation::fieldName(evaluation::Field::Method)).toString().trimmed().isEmpty())
         throw std::runtime_error("测试结果摘要无效");
 
     const QString task_root = result_file.absoluteDir().absolutePath();
-    const auto resolveInsideTask = [&result_file, &task_root](const QString &value)
+    const QString configured_report = resolveTaskReference(
+        result_file, result.value(evaluation::fieldName(evaluation::Field::EvaluationReport)).toString());
+    if (configured_report.isEmpty() || !pathWithin(task_root, configured_report)
+        || QFileInfo(configured_report).absoluteFilePath().compare(report_file.absoluteFilePath(), Qt::CaseInsensitive) != 0)
     {
-        const QString path = resolveTaskReference(result_file, value);
-        if (path.isEmpty() || !pathWithin(task_root, path))
-            throw std::runtime_error("测试结果引用路径越界");
-        return path;
-    };
-
-    const QString prediction_config = resolveInsideTask(QStringLiteral("pred/config.yaml"));
-    const QString prediction_dir = resolveInsideTask(result.value(QStringLiteral("prediction_dir")).toString());
-    const QString prediction_images = resolveInsideTask(result.value(QStringLiteral("prediction_images")).toString());
-    const QString prediction_manifest = resolveInsideTask(result.value(QStringLiteral("prediction_manifest")).toString());
-    const QString configured_report = resolveInsideTask(result.value(QStringLiteral("evaluation_report")).toString());
-    if (QFileInfo(configured_report).absoluteFilePath().compare(report_file.absoluteFilePath(), Qt::CaseInsensitive) != 0)
-        throw std::runtime_error("测试结果 evaluation_report 与当前报告不一致");
-
-    if (!QFileInfo(prediction_dir).isDir())
-        throw std::runtime_error("测试结果 prediction_dir 不是目录");
-    for (const QString &path : {prediction_config, prediction_images, prediction_manifest, configured_report})
-        if (!QFileInfo::exists(path) || !QFileInfo(path).isFile())
-            throw std::runtime_error(QString("测试结果引用文件不存在: %1").arg(path).toUtf8().constData());
-
-    QVariantMap prediction;
-    QVariantMap report;
-    try
-    {
-        prediction = common::yaml::nodeVariant(common::yaml::loadFile(QFileInfo(prediction_config))).toMap();
-        report = common::yaml::nodeVariant(common::yaml::loadFile(report_file)).toMap();
+        throw std::runtime_error("测试结果 evaluation_report 引用无效");
     }
-    catch (const std::exception &exception)
-    {
-        throw std::runtime_error(QString("测试结果配置无法读取: %1").arg(QString(exception.what())).toUtf8().constData());
-    }
-    const QString result_model = result.value(QStringLiteral("model_uuid")).toString().trimmed();
-    const QString report_model = report.value(QStringLiteral("model_uuid")).toString().trimmed();
-    const QString result_method = result.value(QStringLiteral("method")).toString().trimmed();
-    const QString report_method = report.value(QStringLiteral("method")).toString().trimmed();
-    const QString result_task = result.value(QStringLiteral("test_task_uuid")).toString().trimmed();
-    const QString report_task = report.value(QStringLiteral("test_task_uuid")).toString().trimmed();
-    const QString prediction_model = prediction.value(QStringLiteral("model_uuid")).toString().trimmed();
-    const QString prediction_task = prediction.value(QStringLiteral("test_task_uuid")).toString().trimmed();
-    const QString prediction_method = prediction.value(QStringLiteral("method")).toString().trimmed();
-    const evaluation::Method method = evaluation::methodFromKey(result_method.toLower());
-    if (result_model.isEmpty() || report_model.isEmpty() || result_model != report_model
-        || prediction_model.isEmpty() || prediction_model != result_model
-        || result_method != report_method || prediction_method != report_method
-        || method == evaluation::Method::Unknown || evaluation::methodKey(method) != result_method.toLower()
-        || report_task.isEmpty() || report_task != result_task
-        || prediction_task.isEmpty() || prediction_task != result_task)
-        throw std::runtime_error("测试结果 model_uuid/test_task_uuid/method 不一致");
-
-    const QString dataset_manifest = resolveReportReference(
-        report_file.absolutePath(), report.value(QStringLiteral("dataset_manifest")).toString());
-    if (dataset_manifest.isEmpty() || !pathWithin(task_root, dataset_manifest))
-        throw std::runtime_error("测试结果 dataset_manifest 无效");
-
-    QString prediction_error;
-    if (!ModelEvaluationService::validatePrediction(prediction_images, prediction_manifest, nullptr, nullptr,
-                                                    &prediction_error, result_model, result_task, report_method))
-        throw std::runtime_error(QString("预测协议无效: %1").arg(prediction_error).toUtf8().constData());
-
-    const QString result_inference = result.value(QStringLiteral("inference_digest")).toString();
-    const QString prediction_inference = prediction.value(QStringLiteral("inference_digest")).toString();
-    const QString report_inference = report.value(QStringLiteral("inference_digest")).toString();
-    const QString result_input_data = result.value(QStringLiteral("input_data_digest")).toString();
-    const QString prediction_input_data = prediction.value(QStringLiteral("input_data_digest")).toString();
-    const QString report_input_data = report.value(QStringLiteral("input_data_digest")).toString();
-    const QString result_evaluation = result.value(QStringLiteral("evaluation_digest")).toString();
-    const QString report_evaluation = report.value(QStringLiteral("evaluation_digest")).toString();
-    const QString result_gt = result.value(QStringLiteral("ground_truth_digest")).toString();
-    const QString report_gt = report.value(QStringLiteral("ground_truth_digest")).toString();
-    const QString result_images = result.value(QStringLiteral("image_list_digest")).toString();
-    const QString prediction_images_digest = prediction.value(QStringLiteral("image_list_digest")).toString();
-    const QString report_images = report.value(QStringLiteral("image_list_digest")).toString();
-    const QString current_images_digest = fileDigest(prediction_images);
-    const QString current_dataset_digest = fileDigest(dataset_manifest);
-    const bool image_list_changed = !prediction_images_digest.isEmpty()
-        && prediction_images_digest != current_images_digest;
-    const bool inference_changed = result_inference.isEmpty() || prediction_inference.isEmpty()
-        || result_inference != prediction_inference || report_inference != prediction_inference
-        || result_input_data != prediction_input_data || report_input_data != prediction_input_data
-        || image_list_changed || result_images != prediction_images_digest;
-    const bool evaluation_changed = result_evaluation.isEmpty() || report_evaluation.isEmpty()
-        || result_evaluation != report_evaluation
-        || result_gt != report_gt || report_gt != current_dataset_digest
-        || result_images != report_images || report_images != current_images_digest;
-    if (inference_outdated)
-        *inference_outdated = inference_changed;
-    if (evaluation_outdated)
-        *evaluation_outdated = evaluation_changed;
-    if (details_available)
-        *details_available = !current_dataset_digest.isEmpty() && !current_images_digest.isEmpty()
-            && result_gt == report_gt && report_gt == current_dataset_digest
-            && result_images == report_images && report_images == current_images_digest;
 }
 
 EvaluationMetricRecord metricFromMap(const QString &key, const QVariantMap &map, const QString &fallback_label = {})
@@ -448,54 +373,54 @@ EvaluationMetricRecord metricFromMap(const QString &key, const QVariantMap &map,
     EvaluationMetricRecord metric;
     metric.key = key;
     metric.label = fallback_label.isEmpty() ? key : fallback_label;
-    metric.class_name = textValue(map, QStringLiteral("class_name"));
-    metric.class_id = intValue(map, QStringLiteral("class_id"));
-    metric.precision = realValue(map, QStringLiteral("precision"));
-    metric.recall = realValue(map, QStringLiteral("recall"));
-    metric.f1 = realValue(map, QStringLiteral("f1"));
-    metric.tp = longValue(map, QStringLiteral("tp"));
-    metric.fp = longValue(map, QStringLiteral("fp"));
-    metric.fn = longValue(map, QStringLiteral("fn"));
-    metric.precision_defined = map.contains(QStringLiteral("precision_defined"))
-        ? map.value(QStringLiteral("precision_defined")).toBool() : metric.tp + metric.fp > 0;
-    metric.recall_defined = map.contains(QStringLiteral("recall_defined"))
-        ? map.value(QStringLiteral("recall_defined")).toBool() : metric.tp + metric.fn > 0;
-    metric.f1_defined = map.contains(QStringLiteral("f1_defined"))
-        ? map.value(QStringLiteral("f1_defined")).toBool() : metric.precision_defined && metric.recall_defined;
+    metric.class_name = textValue(map, evaluation::Field::ClassName);
+    metric.class_id = intValue(map, evaluation::Field::ClassId);
+    metric.precision = realValue(map, evaluation::Field::Precision);
+    metric.recall = realValue(map, evaluation::Field::Recall);
+    metric.f1 = realValue(map, evaluation::Field::F1);
+    metric.tp = longValue(map, evaluation::Field::Tp);
+    metric.fp = longValue(map, evaluation::Field::Fp);
+    metric.fn = longValue(map, evaluation::Field::Fn);
+    metric.precision_defined = map.contains(evaluation::fieldName(evaluation::Field::PrecisionDefined))
+        ? map.value(evaluation::fieldName(evaluation::Field::PrecisionDefined)).toBool() : metric.tp + metric.fp > 0;
+    metric.recall_defined = map.contains(evaluation::fieldName(evaluation::Field::RecallDefined))
+        ? map.value(evaluation::fieldName(evaluation::Field::RecallDefined)).toBool() : metric.tp + metric.fn > 0;
+    metric.f1_defined = map.contains(evaluation::fieldName(evaluation::Field::F1Defined))
+        ? map.value(evaluation::fieldName(evaluation::Field::F1Defined)).toBool() : metric.precision_defined && metric.recall_defined;
     return metric;
 }
 
 EvaluationInstanceRecord instanceFromMap(const QVariantMap &map)
 {
     EvaluationInstanceRecord record;
-    record.event_uuid = textValue(map, QStringLiteral("event_uuid"));
-    record.image_id = longValue(map, QStringLiteral("image_id"), -1);
-    record.dataset_id = longValue(map, QStringLiteral("dataset_id"), -1);
-    record.image_name = textValue(map, QStringLiteral("image_name"));
-    record.image_path = textValue(map, QStringLiteral("image_path"));
-    record.image_width = intValue(map, QStringLiteral("image_width"), 0);
-    record.image_height = intValue(map, QStringLiteral("image_height"), 0);
-    record.status = evaluation::statusFromKey(textValue(map, QStringLiteral("status")));
-    record.score = realValue(map, QStringLiteral("score"));
-    record.iou = realValue(map, QStringLiteral("iou"));
-    record.gt_label_id = longValue(map, QStringLiteral("gt_label_id"), -1);
+    record.event_uuid = textValue(map, evaluation::Field::EventUuid);
+    record.image_id = longValue(map, evaluation::Field::ImageId, -1);
+    record.dataset_id = longValue(map, evaluation::Field::DatasetId, -1);
+    record.image_name = textValue(map, evaluation::Field::ImageName);
+    record.image_path = textValue(map, evaluation::Field::ImagePath);
+    record.image_width = intValue(map, evaluation::Field::ImageWidth, 0);
+    record.image_height = intValue(map, evaluation::Field::ImageHeight, 0);
+    record.status = evaluation::statusFromKey(textValue(map, evaluation::Field::Status));
+    record.score = realValue(map, evaluation::Field::Score);
+    record.iou = realValue(map, evaluation::Field::Iou);
+    record.gt_label_id = longValue(map, evaluation::Field::GtLabelId, -1);
     record.gt_instance_id = record.gt_label_id >= 0 ? QString::number(record.gt_label_id) : QString();
-    record.pred_instance_id = textValue(map, QStringLiteral("pred_instance_id"));
-    record.gt_class_id = intValue(map, QStringLiteral("gt_class_id"));
-    record.pred_class_id = intValue(map, QStringLiteral("pred_class_id"));
-    record.gt_class = textValue(map, QStringLiteral("gt_class_name"));
-    record.pred_class = textValue(map, QStringLiteral("pred_class_name"));
-    record.gt_geometry = map.value(QStringLiteral("gt_geometry")).toMap();
-    record.pred_geometry = map.value(QStringLiteral("pred_geometry")).toMap();
-    record.gt_bounds = record.gt_geometry.value(QStringLiteral("bounds")).toMap();
-    record.pred_bounds = record.pred_geometry.value(QStringLiteral("bounds")).toMap();
-    record.crop_bounds = map.value(QStringLiteral("crop_bounds")).toMap();
-    record.gt_overlay_bounds = map.value(QStringLiteral("gt_overlay_bounds")).toMap();
-    record.pred_overlay_bounds = map.value(QStringLiteral("pred_overlay_bounds")).toMap();
-    record.gt_overlay_points = map.value(QStringLiteral("gt_overlay_points")).toList();
-    record.pred_overlay_points = map.value(QStringLiteral("pred_overlay_points")).toList();
-    record.gt_mask_url = textValue(map, QStringLiteral("gt_mask_url"));
-    record.pred_mask_url = textValue(map, QStringLiteral("pred_mask_url"));
+    record.pred_instance_id = textValue(map, evaluation::Field::PredInstanceId);
+    record.gt_class_id = intValue(map, evaluation::Field::GtClassId);
+    record.pred_class_id = intValue(map, evaluation::Field::PredClassId);
+    record.gt_class = textValue(map, evaluation::Field::GtClassName);
+    record.pred_class = textValue(map, evaluation::Field::PredClassName);
+    record.gt_geometry = map.value(evaluation::fieldName(evaluation::Field::GtGeometry)).toMap();
+    record.pred_geometry = map.value(evaluation::fieldName(evaluation::Field::PredGeometry)).toMap();
+    record.gt_bounds = record.gt_geometry.value(evaluation::fieldName(evaluation::Field::Bounds)).toMap();
+    record.pred_bounds = record.pred_geometry.value(evaluation::fieldName(evaluation::Field::Bounds)).toMap();
+    record.crop_bounds = map.value(evaluation::fieldName(evaluation::Field::CropBounds)).toMap();
+    record.gt_overlay_bounds = map.value(evaluation::fieldName(evaluation::Field::GtOverlayBounds)).toMap();
+    record.pred_overlay_bounds = map.value(evaluation::fieldName(evaluation::Field::PredOverlayBounds)).toMap();
+    record.gt_overlay_points = map.value(evaluation::fieldName(evaluation::Field::GtOverlayPoints)).toList();
+    record.pred_overlay_points = map.value(evaluation::fieldName(evaluation::Field::PredOverlayPoints)).toList();
+    record.gt_mask_url = textValue(map, evaluation::Field::GtMaskUrl);
+    record.pred_mask_url = textValue(map, evaluation::Field::PredMaskUrl);
     if (record.image_name.isEmpty())
         record.image_name = QFileInfo(record.image_path).fileName();
     return record;
@@ -504,31 +429,31 @@ EvaluationInstanceRecord instanceFromMap(const QVariantMap &map)
 EvaluationImageRecord imageFromMap(const QVariantMap &map)
 {
     EvaluationImageRecord record;
-    record.image_id = longValue(map, QStringLiteral("image_id"), -1);
-    record.dataset_id = longValue(map, QStringLiteral("dataset_id"), -1);
-    record.image_name = textValue(map, QStringLiteral("image_name"));
-    record.image_path = textValue(map, QStringLiteral("image_path"));
-    record.image_width = intValue(map, QStringLiteral("image_width"), 0);
-    record.image_height = intValue(map, QStringLiteral("image_height"), 0);
-    for (const QVariant &value : map.value(QStringLiteral("gt_instances")).toList())
+    record.image_id = longValue(map, evaluation::Field::ImageId, -1);
+    record.dataset_id = longValue(map, evaluation::Field::DatasetId, -1);
+    record.image_name = textValue(map, evaluation::Field::ImageName);
+    record.image_path = textValue(map, evaluation::Field::ImagePath);
+    record.image_width = intValue(map, evaluation::Field::ImageWidth, 0);
+    record.image_height = intValue(map, evaluation::Field::ImageHeight, 0);
+    for (const QVariant &value : map.value(evaluation::fieldName(evaluation::Field::GtInstances)).toList())
     {
         const QVariantMap item = value.toMap();
         EvaluationGroundTruthRecord gt;
-        gt.label_id = longValue(item, QStringLiteral("label_id"), -1);
-        gt.class_id = intValue(item, QStringLiteral("class_id"), -1);
-        gt.class_name = textValue(item, QStringLiteral("class_name"));
-        gt.geometry = item.value(QStringLiteral("geometry")).toMap();
+        gt.label_id = longValue(item, evaluation::Field::LabelId, -1);
+        gt.class_id = intValue(item, evaluation::Field::ClassId, -1);
+        gt.class_name = textValue(item, evaluation::Field::ClassName);
+        gt.geometry = item.value(evaluation::fieldName(evaluation::Field::Geometry)).toMap();
         record.gt_instances.push_back(std::move(gt));
     }
-    for (const QVariant &value : map.value(QStringLiteral("predictions")).toList())
+    for (const QVariant &value : map.value(evaluation::fieldName(evaluation::Field::Predictions)).toList())
     {
         const QVariantMap item = value.toMap();
         EvaluationPredictionRecord prediction;
-        prediction.prediction_id = textValue(item, QStringLiteral("prediction_id"));
-        prediction.class_id = intValue(item, QStringLiteral("class_id"), -1);
-        prediction.class_name = textValue(item, QStringLiteral("class_name"));
-        prediction.score = realValue(item, QStringLiteral("score"));
-        prediction.geometry = item.value(QStringLiteral("geometry")).toMap();
+        prediction.prediction_id = textValue(item, evaluation::Field::PredictionId);
+        prediction.class_id = intValue(item, evaluation::Field::ClassId, -1);
+        prediction.class_name = textValue(item, evaluation::Field::ClassName);
+        prediction.score = realValue(item, evaluation::Field::Score);
+        prediction.geometry = item.value(evaluation::fieldName(evaluation::Field::Geometry)).toMap();
         record.predictions.push_back(std::move(prediction));
     }
     if (record.image_name.isEmpty())
@@ -536,13 +461,9 @@ EvaluationImageRecord imageFromMap(const QVariantMap &map)
     return record;
 }
 
-QList<int> gtClassIds(const EvaluationImageRecord &record)
+const QList<int> &gtClassIds(const EvaluationImageRecord &record)
 {
-    QList<int> ids;
-    for (const EvaluationGroundTruthRecord &ground_truth : record.gt_instances)
-        if (ground_truth.class_id >= 0 && !ids.contains(ground_truth.class_id))
-            ids.push_back(ground_truth.class_id);
-    return ids;
+    return record.gt_class_ids;
 }
 
 QList<int> predClassIds(const EvaluationImageRecord &record, const double threshold)
@@ -563,7 +484,7 @@ bool hasPredictions(const EvaluationImageRecord &record, const double threshold)
 
 bool hasGroundTruth(const EvaluationImageRecord &record)
 {
-    return !record.gt_instances.isEmpty();
+    return record.has_gt;
 }
 
 bool isAnomalyImage(const EvaluationImageRecord &record, const double threshold, const bool predicted)
@@ -574,15 +495,21 @@ bool isAnomalyImage(const EvaluationImageRecord &record, const double threshold,
 
 double imageScore(const EvaluationImageRecord &record)
 {
-    double score = 0.0;
-    for (const EvaluationPredictionRecord &prediction : record.predictions)
-        score = std::max(score, prediction.score);
-    return score;
+    return record.max_prediction_score;
 }
 
 struct EvaluationAggregateInput
 {
-    QList<EvaluationInstanceRecord> instances;
+    struct InstanceEvent
+    {
+        evaluation::Status status{evaluation::Status::Unknown};
+        QString gt_class;
+        QString pred_class;
+        int gt_class_id{-1};
+        int pred_class_id{-1};
+    };
+
+    QList<InstanceEvent> instances;
     QList<EvaluationImageRecord> images;
     QMap<int, QString> class_catalog;
     QList<QVariantMap> chart_descriptors;
@@ -885,11 +812,14 @@ AggregateCounts aggregateThresholdCounts(const QList<EvaluationImageRecord> &ima
 EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &input)
 {
     EvaluationAggregateOutput output;
+    const QString matrix_fn = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative);
+    const QString matrix_fp = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive);
+    const QString matrix_total = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::Total);
     QMap<int, AggregateCounts> classes;
     QMap<int, QString> class_names = input.class_catalog;
     QMap<QString, qint64> matrix;
     AggregateCounts overall;
-    for (const EvaluationInstanceRecord &record : input.instances)
+    for (const EvaluationAggregateInput::InstanceEvent &record : input.instances)
     {
         if (record.gt_class_id >= 0)
             class_names.insert(record.gt_class_id,
@@ -915,13 +845,13 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
         {
             ++overall.fp;
             ++classes[record.pred_class_id].fp;
-            ++matrix[QString::number(record.pred_class_id) + QLatin1Char('\x1f') + QStringLiteral("FP")];
+            ++matrix[QString::number(record.pred_class_id) + QLatin1Char('\x1f') + matrix_fp];
         }
         else if (record.status == evaluation::Status::FalseNegative)
         {
             ++overall.fn;
             ++classes[record.gt_class_id].fn;
-            ++matrix[QStringLiteral("FN") + QLatin1Char('\x1f') + QString::number(record.gt_class_id)];
+            ++matrix[matrix_fn + QLatin1Char('\x1f') + QString::number(record.gt_class_id)];
         }
     }
 
@@ -1000,33 +930,33 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
         const QList<QString> parts = it.key().split(QLatin1Char('\x1f'));
         if (parts.size() != 2)
             continue;
-        if (parts.at(0) == QStringLiteral("FN"))
+        if (parts.at(0) == matrix_fn)
             unmatched_fn += it.value();
         else
             pred_totals[parts.at(0).toInt()] += it.value();
-        if (parts.at(1) == QStringLiteral("FP"))
+        if (parts.at(1) == matrix_fp)
             unmatched_fp += it.value();
         else
         {
             gt_totals[parts.at(1).toInt()] += it.value();
-            if (parts.at(0) != QStringLiteral("FN") && parts.at(1) != QStringLiteral("FP"))
+            if (parts.at(0) != matrix_fn && parts.at(1) != matrix_fp)
                 matched_pairs += it.value();
         }
     }
-    const auto append_cell = [&output, &class_names](const QString &row, const QString &column, const qint64 count,
-                                                       const evaluation::CellKind kind, const bool selectable,
-                                                       const bool diagonal, const bool error)
+    const auto append_cell = [&output, &class_names, &matrix_fn, &matrix_total, &matrix_fp](
+        const QString &row, const QString &column, const qint64 count, const evaluation::CellKind kind,
+        const bool selectable, const bool diagonal, const bool error)
     {
-        const bool row_fn = row == QStringLiteral("FN");
-        const bool row_total = row == QStringLiteral("TOTAL");
-        const bool column_fp = column == QStringLiteral("FP");
-        const bool column_total = column == QStringLiteral("TOTAL");
+        const bool row_fn = row == matrix_fn;
+        const bool row_total = row == matrix_total;
+        const bool column_fp = column == matrix_fp;
+        const bool column_total = column == matrix_total;
         const int row_id = row_fn || row_total ? -1 : row.toInt();
         const int column_id = column_fp || column_total ? -1 : column.toInt();
         const QString total = QString("合计");
         output.confusion.push_back({row, column,
-                                    row_fn ? QStringLiteral("FN") : (row_total ? total : class_names.value(row_id)),
-                                    column_fp ? QStringLiteral("FP")
+                                    row_fn ? matrix_fn : (row_total ? total : class_names.value(row_id)),
+                                    column_fp ? matrix_fp
                                               : (column_total ? total : class_names.value(column_id)),
                                     count, row_id, column_id, kind, QString(), selectable, diagonal, error});
     };
@@ -1043,30 +973,30 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
                                                             : evaluation::CellKind::ClassMismatch,
                             true, row_it.key() == column_it.key(), row_it.key() != column_it.key());
             }
-            append_cell(row, QStringLiteral("FP"), matrix.value(row + QLatin1Char('\x1f') + QStringLiteral("FP")),
+            append_cell(row, matrix_fp, matrix.value(row + QLatin1Char('\x1f') + matrix_fp),
                         evaluation::CellKind::FalsePositive, true, false, true);
-            append_cell(row, QStringLiteral("TOTAL"), pred_totals.value(row_it.key()), evaluation::CellKind::PredTotal,
+            append_cell(row, matrix_total, pred_totals.value(row_it.key()), evaluation::CellKind::PredTotal,
                         true, false, false);
         }
         for (auto column_it = class_names.cbegin(); column_it != class_names.cend(); ++column_it)
         {
             const QString column = QString::number(column_it.key());
-            append_cell(QStringLiteral("FN"), column,
-                        matrix.value(QStringLiteral("FN") + QLatin1Char('\x1f') + column),
+            append_cell(matrix_fn, column,
+                        matrix.value(matrix_fn + QLatin1Char('\x1f') + column),
                         evaluation::CellKind::FalseNegative, true, false, true);
         }
-        append_cell(QStringLiteral("FN"), QStringLiteral("FP"), 0, evaluation::CellKind::NotApplicable, false, false, false);
-        append_cell(QStringLiteral("FN"), QStringLiteral("TOTAL"), unmatched_fn,
+        append_cell(matrix_fn, matrix_fp, 0, evaluation::CellKind::NotApplicable, false, false, false);
+        append_cell(matrix_fn, matrix_total, unmatched_fn,
                     evaluation::CellKind::FalseNegativeTotal, true, false, true);
         for (auto column_it = class_names.cbegin(); column_it != class_names.cend(); ++column_it)
         {
             const QString column = QString::number(column_it.key());
-            append_cell(QStringLiteral("TOTAL"), column, gt_totals.value(column_it.key()), evaluation::CellKind::GtTotal,
+            append_cell(matrix_total, column, gt_totals.value(column_it.key()), evaluation::CellKind::GtTotal,
                         true, false, false);
         }
-        append_cell(QStringLiteral("TOTAL"), QStringLiteral("FP"), unmatched_fp,
+        append_cell(matrix_total, matrix_fp, unmatched_fp,
                     evaluation::CellKind::FalsePositiveTotal, true, false, true);
-        append_cell(QStringLiteral("TOTAL"), QStringLiteral("TOTAL"), matched_pairs + unmatched_fp + unmatched_fn,
+        append_cell(matrix_total, matrix_total, matched_pairs + unmatched_fp + unmatched_fn,
                     evaluation::CellKind::All, true, false, false);
     }
 
@@ -1083,26 +1013,32 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
             recall.push_back(metric.recall);
             f1.push_back(metric.f1);
         }
-        output.charts.push_back({{QStringLiteral("kind"), QStringLiteral("bar")},
-                                 {QStringLiteral("chart_id"), QStringLiteral("per_class_metrics")},
-                                 {QStringLiteral("filter_kind"), QStringLiteral("per_class_metrics")},
-                                 {QStringLiteral("title"), QString("按类别指标")},
-                                 {QStringLiteral("data"), QVariantMap{
-                                     {QStringLiteral("labels"), labels},
-                                     {QStringLiteral("datasets"), QVariantList{
-                                         QVariantMap{{QStringLiteral("label"), QStringLiteral("Precision")},
-                                                     {QStringLiteral("data"), precision}},
-                                         QVariantMap{{QStringLiteral("label"), QStringLiteral("Recall")},
-                                                     {QStringLiteral("data"), recall}},
-                                         QVariantMap{{QStringLiteral("label"), QStringLiteral("F1")},
-                                                     {QStringLiteral("data"), f1}}}}}},
-                                 {QStringLiteral("options"), QVariantMap{{QStringLiteral("maintainAspectRatio"), false}}}});
+        output.charts.push_back({{evaluation::fieldName(evaluation::Field::Kind), QStringLiteral("bar")},
+                                 {evaluation::fieldName(evaluation::Field::ChartId),
+                                  QStringLiteral("per_class_metrics")},
+                                 {evaluation::fieldName(evaluation::Field::FilterKind),
+                                  QStringLiteral("per_class_metrics")},
+                                 {evaluation::fieldName(evaluation::Field::Title), QString("按类别指标")},
+                                 {evaluation::fieldName(evaluation::Field::Data), QVariantMap{
+                                     {evaluation::fieldName(evaluation::Field::Labels), labels},
+                                     {evaluation::fieldName(evaluation::Field::Datasets), QVariantList{
+                                         QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
+                                                      QStringLiteral("Precision")},
+                                                     {evaluation::fieldName(evaluation::Field::Data), precision}},
+                                         QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
+                                                      QStringLiteral("Recall")},
+                                                     {evaluation::fieldName(evaluation::Field::Data), recall}},
+                                         QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
+                                                      QStringLiteral("F1")},
+                                                     {evaluation::fieldName(evaluation::Field::Data), f1}}}}}},
+                                 {evaluation::fieldName(evaluation::Field::Options),
+                                  QVariantMap{{QStringLiteral("maintainAspectRatio"), false}}}});
     }
     for (const QVariantMap &descriptor : input.chart_descriptors)
     {
-        const QString chart_id = descriptor.value(QStringLiteral("chart_id")).toString();
-        const QString filter_kind = descriptor.value(QStringLiteral("filter_kind")).toString();
-        if (descriptor.value(QStringLiteral("kind")).toString() == QStringLiteral("bar")
+        const QString chart_id = descriptor.value(evaluation::fieldName(evaluation::Field::ChartId)).toString();
+        const QString filter_kind = descriptor.value(evaluation::fieldName(evaluation::Field::FilterKind)).toString();
+        if (descriptor.value(evaluation::fieldName(evaluation::Field::Kind)).toString() == QStringLiteral("bar")
             && (filter_kind == QStringLiteral("per_class_metrics")
                 || chart_id == QStringLiteral("per_class_metrics")))
             continue;
@@ -1136,11 +1072,13 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
                                      ? static_cast<double>(counts.tp) / (counts.tp + counts.fn)
                                      : 0.0);
             }
-            filtered.insert(QStringLiteral("data"), QVariantMap{
-                {QStringLiteral("labels"), labels},
-                {QStringLiteral("datasets"), QVariantList{
-                    QVariantMap{{QStringLiteral("label"), QStringLiteral("Precision")}, {QStringLiteral("data"), precision}},
-                    QVariantMap{{QStringLiteral("label"), QStringLiteral("Recall")}, {QStringLiteral("data"), recall}}}}});
+            filtered.insert(evaluation::fieldName(evaluation::Field::Data), QVariantMap{
+                {evaluation::fieldName(evaluation::Field::Labels), labels},
+                {evaluation::fieldName(evaluation::Field::Datasets), QVariantList{
+                    QVariantMap{{evaluation::fieldName(evaluation::Field::Label), QStringLiteral("Precision")},
+                                {evaluation::fieldName(evaluation::Field::Data), precision}},
+                    QVariantMap{{evaluation::fieldName(evaluation::Field::Label), QStringLiteral("Recall")},
+                                {evaluation::fieldName(evaluation::Field::Data), recall}}}}});
         }
         else if (filter_kind == QStringLiteral("image_score")
                  || chart_id == QStringLiteral("anomaly_score_distribution"))
@@ -1152,10 +1090,11 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
                 labels.push_back(image.image_name);
                 scores.push_back(imageScore(image));
             }
-            filtered.insert(QStringLiteral("data"), QVariantMap{
-                {QStringLiteral("labels"), labels},
-                {QStringLiteral("datasets"), QVariantList{
-                    QVariantMap{{QStringLiteral("label"), QStringLiteral("score")}, {QStringLiteral("data"), scores}}}}});
+            filtered.insert(evaluation::fieldName(evaluation::Field::Data), QVariantMap{
+                {evaluation::fieldName(evaluation::Field::Labels), labels},
+                {evaluation::fieldName(evaluation::Field::Datasets), QVariantList{
+                    QVariantMap{{evaluation::fieldName(evaluation::Field::Label), QStringLiteral("score")},
+                                {evaluation::fieldName(evaluation::Field::Data), scores}}}}});
         }
         output.charts.push_back(std::move(filtered));
     }
@@ -1166,6 +1105,7 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
 
 ModelEvaluationViewModel::ModelEvaluationViewModel(QObject *parent)
     : QObject(parent)
+    , state_(evaluation::viewStateKey(evaluation::ViewState::NotRun))
     , instance_metrics_(new EvaluationMetricModel(this))
     , image_metrics_(new EvaluationMetricModel(this))
     , per_class_metrics_(new EvaluationMetricModel(this))
@@ -1211,8 +1151,6 @@ bool ModelEvaluationViewModel::available() const { return available_; }
 bool ModelEvaluationViewModel::loading() const { return loading_; }
 QString ModelEvaluationViewModel::state() const { return state_; }
 QString ModelEvaluationViewModel::error() const { return error_; }
-bool ModelEvaluationViewModel::inferenceOutdated() const { return inference_outdated_; }
-bool ModelEvaluationViewModel::evaluationOutdated() const { return evaluation_outdated_; }
 QString ModelEvaluationViewModel::reportPath() const { return report_path_; }
 
 void ModelEvaluationViewModel::setReportPath(const QString &path)
@@ -1319,10 +1257,11 @@ void ModelEvaluationViewModel::setLoading(const bool value)
         return;
     loading_ = value;
     if (value)
-        state_ = QStringLiteral("Loading");
-    else if (state_ == QStringLiteral("Loading"))
-        state_ = available_ ? QStringLiteral("Ready")
-                            : (error_.isEmpty() ? QStringLiteral("NotRun") : QStringLiteral("Error"));
+        state_ = evaluation::viewStateKey(evaluation::ViewState::Loading);
+    else if (state_ == evaluation::viewStateKey(evaluation::ViewState::Loading))
+        state_ = available_ ? evaluation::viewStateKey(evaluation::ViewState::Ready)
+                            : (error_.isEmpty() ? evaluation::viewStateKey(evaluation::ViewState::NotRun)
+                                                : evaluation::viewStateKey(evaluation::ViewState::Error));
     emit loadingChanged();
 }
 
@@ -1331,9 +1270,10 @@ void ModelEvaluationViewModel::clearReport(const QString &error, const QString &
     ++aggregation_revision_;
     available_ = false;
     error_ = error;
-    state_ = state.isEmpty() ? (error.isEmpty() ? QStringLiteral("NotRun") : QStringLiteral("Error")) : state;
-    inference_outdated_ = false;
-    evaluation_outdated_ = false;
+    state_ = state.isEmpty()
+        ? (error.isEmpty() ? evaluation::viewStateKey(evaluation::ViewState::NotRun)
+                           : evaluation::viewStateKey(evaluation::ViewState::Error))
+        : state;
     primary_metric_set_.clear();
     metric_scope_description_.clear();
     image_metric_definition_.clear();
@@ -1373,7 +1313,8 @@ void ModelEvaluationViewModel::reload()
     {
         setLoading(true);
         clearReport();
-        state_ = report_path_.isEmpty() ? QStringLiteral("MissingReport") : QStringLiteral("MissingResult");
+        state_ = report_path_.isEmpty() ? evaluation::viewStateKey(evaluation::ViewState::MissingReport)
+                                        : evaluation::viewStateKey(evaluation::ViewState::MissingResult);
         setLoading(false);
         emit reportChanged();
         emit selectedInstanceChanged();
@@ -1404,21 +1345,18 @@ void ModelEvaluationViewModel::reload()
         QVariantList instance_records;
         QString error;
         QString failure_state;
-        bool inference_outdated = false;
-        bool evaluation_outdated = false;
-        bool details_available = false;
         try
         {
             const QFileInfo file(report_path);
             if (!file.exists() || !file.isFile())
             {
-                failure_state = QStringLiteral("MissingReport");
+                failure_state = evaluation::viewStateKey(evaluation::ViewState::MissingReport);
                 throw std::runtime_error("评估报告不存在");
             }
             const QFileInfo result_file(result_path);
             if (!result_file.exists() || !result_file.isFile())
             {
-                failure_state = QStringLiteral("MissingResult");
+                failure_state = evaluation::viewStateKey(evaluation::ViewState::MissingResult);
                 throw std::runtime_error("测试结果摘要不存在");
             }
             if (result_file.size() > kMaxEvaluationYamlBytes)
@@ -1427,81 +1365,93 @@ void ModelEvaluationViewModel::reload()
             if (!result_root || !result_root.IsMap())
                 throw std::runtime_error("测试结果摘要不是 YAML map");
             const QVariantMap result_map = common::yaml::nodeVariant(result_root).toMap();
-            validateResultProtocol(result_map, result_file, file, &inference_outdated, &evaluation_outdated,
-                                   &details_available);
+            validateResultProtocol(result_map, result_file, file);
             const YAML::Node root = common::yaml::loadFile(file);
             if (!root || !root.IsMap())
                 throw std::runtime_error("评估报告不是 YAML map");
             report = common::yaml::nodeVariant(root).toMap();
             validateReportProtocol(report, file);
             filterUnavailableReportDetails(
-                report, resolveReportReference(file.absolutePath(), report.value(QStringLiteral("dataset_manifest")).toString()),
-                details_available);
+                report,
+                resolveReportReference(file.absolutePath(),
+                                       report.value(evaluation::fieldName(evaluation::Field::DatasetManifest)).toString()));
             const auto validateRecords = [&report](const QVariantList &records)
             {
                 if (records.size() > static_cast<int>(kMaxEvaluationRecords))
                     throw std::runtime_error("评估实例 records 数量超过限制");
                 QSet<QString> event_ids;
                 QSet<qint64> image_ids;
-                for (const QVariant &entry : report.value(QStringLiteral("image_records")).toList())
-                    image_ids.insert(entry.toMap().value(QStringLiteral("image_id")).toLongLong());
+                for (const QVariant &entry : report.value(evaluation::fieldName(evaluation::Field::ImageRecords)).toList())
+                    image_ids.insert(entry.toMap().value(evaluation::fieldName(evaluation::Field::ImageId)).toLongLong());
                 for (const QVariant &entry : records)
                 {
                     const QVariantMap value = entry.toMap();
-                    const QString event_uuid = value.value(QStringLiteral("event_uuid")).toString().trimmed();
-                    const QString status = value.value(QStringLiteral("status")).toString().trimmed();
+                    const QString event_uuid = value.value(evaluation::fieldName(evaluation::Field::EventUuid))
+                                                   .toString()
+                                                   .trimmed();
+                    const QString status = value.value(evaluation::fieldName(evaluation::Field::Status))
+                                               .toString()
+                                               .trimmed();
                     bool score_ok = false;
                     bool iou_ok = false;
-                    const double score = value.value(QStringLiteral("score")).toDouble(&score_ok);
-                    const double iou = value.value(QStringLiteral("iou")).toDouble(&iou_ok);
-                    for (const QString &field : {QStringLiteral("event_uuid"), QStringLiteral("image_id"),
-                                                 QStringLiteral("status"), QStringLiteral("score"),
-                                                 QStringLiteral("iou"), QStringLiteral("gt_label_id"),
-                                                 QStringLiteral("gt_class_id"), QStringLiteral("gt_class_name"),
-                                                 QStringLiteral("gt_geometry"), QStringLiteral("pred_instance_id"),
-                                                 QStringLiteral("pred_class_id"), QStringLiteral("pred_class_name"),
-                                                 QStringLiteral("pred_geometry"), QStringLiteral("crop_bounds"),
-                                                 QStringLiteral("gt_overlay_bounds"),
-                                                 QStringLiteral("pred_overlay_bounds"),
-                                                 QStringLiteral("gt_overlay_points"),
-                                                 QStringLiteral("pred_overlay_points"),
-                                                 QStringLiteral("gt_mask_url"), QStringLiteral("pred_mask_url")})
-                        if (!value.contains(field))
-                            throw std::runtime_error(QString("评估实例缺少字段: %1").arg(field).toUtf8().constData());
+                    const double score = value.value(evaluation::fieldName(evaluation::Field::Score)).toDouble(&score_ok);
+                    const double iou = value.value(evaluation::fieldName(evaluation::Field::Iou)).toDouble(&iou_ok);
+                    for (const evaluation::Field field : {evaluation::Field::EventUuid, evaluation::Field::ImageId,
+                                                          evaluation::Field::Status, evaluation::Field::Score,
+                                                          evaluation::Field::Iou, evaluation::Field::GtLabelId,
+                                                          evaluation::Field::GtClassId, evaluation::Field::GtClassName,
+                                                          evaluation::Field::GtGeometry, evaluation::Field::PredInstanceId,
+                                                          evaluation::Field::PredClassId, evaluation::Field::PredClassName,
+                                                          evaluation::Field::PredGeometry, evaluation::Field::CropBounds,
+                                                          evaluation::Field::GtOverlayBounds,
+                                                          evaluation::Field::PredOverlayBounds,
+                                                          evaluation::Field::GtOverlayPoints,
+                                                          evaluation::Field::PredOverlayPoints,
+                                                          evaluation::Field::GtMaskUrl, evaluation::Field::PredMaskUrl})
+                    {
+                        const QString name = evaluation::fieldName(field);
+                        if (!value.contains(name))
+                            throw std::runtime_error(QString("评估实例缺少字段: %1").arg(name).toUtf8().constData());
+                    }
                     for (const QString &field : {QStringLiteral("gt"), QStringLiteral("pred"),
-                                                 QStringLiteral("dataset_id"), QStringLiteral("image_name"),
-                                                 QStringLiteral("image_path"), QStringLiteral("image_width"),
-                                                 QStringLiteral("image_height"), QStringLiteral("gt_instance_id"),
-                                                 QStringLiteral("gt_class_color"), QStringLiteral("pred_class_color"),
-                                                 QStringLiteral("gt_bounds"), QStringLiteral("pred_bounds")})
+                                                 evaluation::fieldName(evaluation::Field::DatasetId),
+                                                 evaluation::fieldName(evaluation::Field::ImageName),
+                                                 evaluation::fieldName(evaluation::Field::ImagePath),
+                                                 evaluation::fieldName(evaluation::Field::ImageWidth),
+                                                 evaluation::fieldName(evaluation::Field::ImageHeight),
+                                                 QStringLiteral("gt_instance_id"),
+                                                 QStringLiteral("gt_class_color"),
+                                                 QStringLiteral("pred_class_color"),
+                                                 QStringLiteral("gt_bounds"),
+                                                 QStringLiteral("pred_bounds")})
                         if (value.contains(field))
                             throw std::runtime_error(QString("评估实例包含已删除字段: %1").arg(field).toUtf8().constData());
                     if (value.isEmpty() || event_uuid.isEmpty() || event_ids.contains(event_uuid)
-                        || value.value(QStringLiteral("image_id")).toLongLong() < 0
-                        || !image_ids.contains(value.value(QStringLiteral("image_id")).toLongLong())
+                        || value.value(evaluation::fieldName(evaluation::Field::ImageId)).toLongLong() < 0
+                        || !image_ids.contains(value.value(evaluation::fieldName(evaluation::Field::ImageId)).toLongLong())
                         || !score_ok || !std::isfinite(score) || !iou_ok || !std::isfinite(iou)
                         || iou < 0.0 || iou > 1.0
                         || evaluation::statusFromKey(status) == evaluation::Status::Unknown)
                         throw std::runtime_error("评估实例记录字段无效或 event_uuid 重复");
                     event_ids.insert(event_uuid);
                 }
-                const QVariant event_count = report.value(QStringLiteral("event_count"));
+                const QVariant event_count = report.value(evaluation::fieldName(evaluation::Field::EventCount));
                 if (event_count.isValid() && event_count.toLongLong() != records.size())
                     throw std::runtime_error("评估报告 event_count 与实例记录不一致");
             };
 
-            instance_records = report.value(QStringLiteral("instance_records")).toList();
+            instance_records = report.value(evaluation::fieldName(evaluation::Field::InstanceRecords)).toList();
             validateRecords(instance_records);
         }
         catch (const std::exception &exception)
         {
             error = QString("%1").arg(QString(exception.what()));
             if (failure_state.isEmpty())
-                failure_state = QStringLiteral("InvalidReport");
+                failure_state = evaluation::viewStateKey(evaluation::ViewState::InvalidReport);
         }
         QMetaObject::invokeMethod(guard.data(), [guard, revision, report = std::move(report),
                                                   instance_records = std::move(instance_records), error, failure_state,
-                                                  inference_outdated, evaluation_outdated, report_size, report_mtime,
+                                                  report_size, report_mtime,
                                                   result_size, result_mtime]() mutable
         {
             if (guard.isNull() || guard->reload_revision_ != revision)
@@ -1514,12 +1464,14 @@ void ModelEvaluationViewModel::reload()
                 emit guard->selectedInstanceChanged();
                 return;
             }
-            guard->loadReport(report, inference_outdated, evaluation_outdated);
+            guard->loadReport(report);
             guard->loadInstanceRecords(instance_records);
-            if (guard->instances_->rowCount() > 0 || guard->images_->rowCount() > 0)
-                guard->rebuildFilteredAggregates();
+            // Rebuild even when details were filtered to an empty set.  A
+            // report whose source data changed must not keep presenting the
+            // old aggregate values above an empty detail view.
+            guard->rebuildFilteredAggregates();
             guard->available_ = true;
-            guard->state_ = QStringLiteral("Ready");
+            guard->state_ = evaluation::viewStateKey(evaluation::ViewState::Ready);
             guard->error_.clear();
             guard->loaded_report_size_ = report_size;
             guard->loaded_report_mtime_ = report_mtime;
@@ -1548,8 +1500,9 @@ void ModelEvaluationViewModel::setRuntimeState(const QString &state)
         return;
     if (state_ == value && !available_ && error_.isEmpty())
         return;
-    if (value == QStringLiteral("Running") || value == QStringLiteral("Failed")
-        || value == QStringLiteral("NotRun"))
+    if (value == evaluation::viewStateKey(evaluation::ViewState::Running)
+        || value == evaluation::viewStateKey(evaluation::ViewState::Failed)
+        || value == evaluation::viewStateKey(evaluation::ViewState::NotRun))
     {
         clearReport({}, value);
         setLoading(false);
@@ -1558,99 +1511,97 @@ void ModelEvaluationViewModel::setRuntimeState(const QString &state)
     }
 }
 
-void ModelEvaluationViewModel::loadReport(const QVariantMap &root, const bool inferenceOutdated,
-                                          const bool evaluationOutdated)
+void ModelEvaluationViewModel::loadReport(const QVariantMap &root)
 {
-    inference_outdated_ = inferenceOutdated || root.value(QStringLiteral("inference_outdated")).toBool();
-    evaluation_outdated_ = evaluationOutdated || root.value(QStringLiteral("evaluation_outdated")).toBool();
     const evaluation::MetricSet metric_set
-        = evaluation::metricSetFromKey(root.value(QStringLiteral("primary_metric_set")).toString());
+        = evaluation::metricSetFromKey(root.value(evaluation::fieldName(evaluation::Field::PrimaryMetricSet)).toString());
     primary_metric_set_ = evaluation::metricSetKey(metric_set);
-    result_revision_ = root.value(QStringLiteral("evaluation_digest")).toString();
-    if (result_revision_.isEmpty())
-        result_revision_ = root.value(QStringLiteral("inference_digest")).toString();
+    result_revision_ = root.value(evaluation::fieldName(evaluation::Field::EvaluatedAt)).toString();
     metric_scope_description_ = metric_set == evaluation::MetricSet::Official
         ? QString("官方指标")
         : QString("诊断匹配指标");
-    image_metric_definition_ = root.value(QStringLiteral("image_metric_definition")).toMap();
-    const QVariantMap evaluation_config = root.value(QStringLiteral("evaluation_config")).toMap();
+    image_metric_definition_ = root.value(evaluation::fieldName(evaluation::Field::ImageMetricDefinition)).toMap();
+    const QVariantMap evaluation_config = root.value(evaluation::fieldName(evaluation::Field::EvaluationConfig)).toMap();
     anomaly_detection_ = evaluation::isAnomaly(
-        evaluation::methodFromKey(root.value(QStringLiteral("method")).toString()));
-    confidence_threshold_ = realValue(evaluation_config, QStringLiteral("confidence_threshold"));
-    iou_threshold_ = realValue(evaluation_config, QStringLiteral("iou_threshold"));
+        evaluation::methodFromKey(root.value(evaluation::fieldName(evaluation::Field::Method)).toString()));
+    confidence_threshold_ = realValue(evaluation_config, evaluation::Field::ConfidenceThreshold);
+    iou_threshold_ = realValue(evaluation_config, evaluation::Field::IouThreshold);
     matching_strategy_ = evaluation::matchingStrategyKey(
-        evaluation::matchingStrategyFromKey(textValue(evaluation_config, QStringLiteral("matching_strategy"))));
-    const QVariantMap capabilities = root.value(QStringLiteral("capabilities")).toMap();
-    has_instance_metrics_ = capabilities.value(QStringLiteral("has_instance_metrics")).toBool();
-    has_image_metrics_ = capabilities.value(QStringLiteral("has_image_metrics")).toBool();
-    has_confusion_matrix_ = capabilities.value(QStringLiteral("has_confusion_matrix")).toBool() || anomaly_detection_;
+        evaluation::matchingStrategyFromKey(textValue(evaluation_config, evaluation::Field::MatchingStrategy)));
+    const QVariantMap capabilities = root.value(evaluation::fieldName(evaluation::Field::Capabilities)).toMap();
+    has_instance_metrics_ = capabilities.value(evaluation::fieldName(evaluation::Field::HasInstanceMetrics)).toBool();
+    has_image_metrics_ = capabilities.value(evaluation::fieldName(evaluation::Field::HasImageMetrics)).toBool();
+    has_confusion_matrix_ = capabilities.value(evaluation::fieldName(evaluation::Field::HasConfusionMatrix)).toBool()
+        || anomaly_detection_;
     // Anomaly reports are image-level, but the instance grid still needs one
     // synthetic record per image so matrix selections can show GOOD/Anomaly
     // samples, including true negatives with no original event.
-    has_instance_events_ = capabilities.value(QStringLiteral("has_instance_events")).toBool()
+    has_instance_events_ = capabilities.value(evaluation::fieldName(evaluation::Field::HasInstanceEvents)).toBool()
         || anomaly_detection_;
-    const QVariantMap diagnostic = root.value(QStringLiteral("diagnostic_metrics")).toMap();
-    const QVariantMap instance = diagnostic.value(QStringLiteral("instance")).toMap();
-    const QVariantMap overall = instance.value(QStringLiteral("overall")).toMap();
+    const QVariantMap diagnostic = root.value(evaluation::fieldName(evaluation::Field::DiagnosticMetrics)).toMap();
+    const QVariantMap instance = diagnostic.value(evaluation::fieldName(evaluation::Field::Instance)).toMap();
+    const QVariantMap overall = instance.value(evaluation::fieldName(evaluation::Field::Overall)).toMap();
     if (!overall.isEmpty())
         instance_metrics_->setRecords({metricFromMap(QStringLiteral("overall"), overall, QString("整体"))});
-    const QVariantMap image = diagnostic.value(QStringLiteral("image")).toMap();
+    const QVariantMap image = diagnostic.value(evaluation::fieldName(evaluation::Field::Image)).toMap();
     if (!image.isEmpty())
         image_metrics_->setRecords({metricFromMap(QStringLiteral("image"), image, QString("图像"))});
 
     // The report keeps official and diagnostic metrics separate.  The
     // primary set only changes which values are shown in the overall panel;
     // matrix/events always remain diagnostic records.
-    const QVariantMap official = root.value(QStringLiteral("official_metrics")).toMap();
-    if (primary_metric_set_ == QStringLiteral("official_metrics") && official.value(QStringLiteral("available")).toBool())
+    const QVariantMap official = root.value(evaluation::fieldName(evaluation::Field::OfficialMetrics)).toMap();
+    if (primary_metric_set_ == evaluation::metricSetKey(evaluation::MetricSet::Official)
+        && official.value(evaluation::fieldName(evaluation::Field::Available)).toBool())
     {
-        const QVariantMap official_instance = official.value(QStringLiteral("instance")).toMap();
+        const QVariantMap official_instance = official.value(evaluation::fieldName(evaluation::Field::Instance)).toMap();
         if (!official_instance.isEmpty())
             instance_metrics_->setRecords({metricFromMap(QStringLiteral("overall"), official_instance,
                                                           QString("整体"))});
-        const QVariantMap official_image = official.value(QStringLiteral("image")).toMap();
+        const QVariantMap official_image = official.value(evaluation::fieldName(evaluation::Field::Image)).toMap();
         if (!official_image.isEmpty())
             image_metrics_->setRecords({metricFromMap(QStringLiteral("image"), official_image,
                                                        QString("图像"))});
     }
 
     std::vector<EvaluationImageRecord> image_records;
-    for (const QVariant &value : root.value(QStringLiteral("image_records")).toList())
+    for (const QVariant &value : root.value(evaluation::fieldName(evaluation::Field::ImageRecords)).toList())
         image_records.push_back(imageFromMap(value.toMap()));
     images_->setRecords(std::move(image_records));
 
     std::vector<EvaluationMetricRecord> per_class;
-    for (const QVariant &value : instance.value(QStringLiteral("per_class")).toList())
+    for (const QVariant &value : instance.value(evaluation::fieldName(evaluation::Field::PerClass)).toList())
     {
         const QVariantMap map = value.toMap();
-        const QString key = map.value(QStringLiteral("class_id")).toString();
-        per_class.push_back(metricFromMap(key, map, map.value(QStringLiteral("class_name")).toString()));
+        const QString key = map.value(evaluation::fieldName(evaluation::Field::ClassId)).toString();
+        per_class.push_back(metricFromMap(key, map,
+                                          map.value(evaluation::fieldName(evaluation::Field::ClassName)).toString()));
     }
     per_class_metrics_->setRecords(std::move(per_class));
 
     std::vector<EvaluationConfusionCell> cells;
-    const QVariantMap matrix = root.value(QStringLiteral("confusion_matrix")).toMap();
-    const QVariantList matrix_cells = matrix.value(QStringLiteral("cells")).toList();
+    const QVariantMap matrix = root.value(evaluation::fieldName(evaluation::Field::ConfusionMatrix)).toMap();
+    const QVariantList matrix_cells = matrix.value(evaluation::fieldName(evaluation::Field::Cells)).toList();
     for (const QVariant &value : matrix_cells)
     {
         const QVariantMap map = value.toMap();
         EvaluationConfusionCell cell;
-        cell.row_key = map.value(QStringLiteral("row_key")).toString();
-        cell.column_key = map.value(QStringLiteral("column_key")).toString();
-        cell.row_label = map.value(QStringLiteral("row_label")).toString();
-        cell.column_label = map.value(QStringLiteral("column_label")).toString();
-        cell.count = longValue(map, QStringLiteral("count"));
-        cell.row_class_id = intValue(map, QStringLiteral("row_class_id"));
-        cell.column_class_id = intValue(map, QStringLiteral("column_class_id"));
-        cell.cell_kind = evaluation::cellKindFromKey(map.value(QStringLiteral("cell_kind")).toString());
-        cell.selectable = map.value(QStringLiteral("selectable")).toBool();
-        cell.diagonal = map.value(QStringLiteral("is_diagonal")).toBool();
-        cell.error = map.value(QStringLiteral("is_error")).toBool();
+        cell.row_key = textValue(map, evaluation::Field::RowKey);
+        cell.column_key = textValue(map, evaluation::Field::ColumnKey);
+        cell.row_label = textValue(map, evaluation::Field::RowLabel);
+        cell.column_label = textValue(map, evaluation::Field::ColumnLabel);
+        cell.count = longValue(map, evaluation::Field::Count);
+        cell.row_class_id = intValue(map, evaluation::Field::RowClassId);
+        cell.column_class_id = intValue(map, evaluation::Field::ColumnClassId);
+        cell.cell_kind = evaluation::cellKindFromKey(textValue(map, evaluation::Field::CellKind));
+        cell.selectable = map.value(evaluation::fieldName(evaluation::Field::Selectable)).toBool();
+        cell.diagonal = map.value(evaluation::fieldName(evaluation::Field::IsDiagonal)).toBool();
+        cell.error = map.value(evaluation::fieldName(evaluation::Field::IsError)).toBool();
         cells.push_back(cell);
     }
     confusion_matrix_->setRecords(std::move(cells));
     QList<QVariantMap> charts;
-    for (const QVariant &value : root.value(QStringLiteral("charts")).toList())
+    for (const QVariant &value : root.value(evaluation::fieldName(evaluation::Field::Charts)).toList())
         charts.push_back(value.toMap());
     charts_->setRecords(std::move(charts));
 }
@@ -1769,7 +1720,8 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
     for (const EvaluationInstanceRecord &record : instances_->records())
     {
         if (global_filtered_instances_->acceptsRecord(record))
-            input.instances.push_back(record);
+            input.instances.push_back({record.status, record.gt_class, record.pred_class,
+                                      record.gt_class_id, record.pred_class_id});
     }
     const QVariantList dataset_ids = global_filtered_instances_->datasetIds();
     const QVariantList class_ids = global_filtered_instances_->classIds();
@@ -1985,8 +1937,10 @@ void ModelEvaluationViewModel::selectMatrixCell(const QString &rowKey, const QSt
     const auto normalizeKey = [this](QString value, const bool row)
     {
         value = value.trimmed();
-        if (value.isEmpty() || value == QStringLiteral("TOTAL") || value == QStringLiteral("FN")
-            || value == QStringLiteral("FP"))
+        if (value.isEmpty()
+            || value == evaluation::matrixAxisKey(evaluation::MatrixAxisKey::Total)
+            || value == evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative)
+            || value == evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive))
             return value;
 
         bool numeric = false;

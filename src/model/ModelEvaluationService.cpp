@@ -3,7 +3,6 @@
 
 #include "common/YamlUtils.h"
 
-#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -14,6 +13,8 @@
 #include <QUrl>
 #include <QVariantList>
 #include <yaml-cpp/yaml.h>
+
+#include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <cmath>
@@ -29,8 +30,36 @@ namespace dltool::model {
 
 namespace {
 
-using dltool::common::yaml::nodeString;
 using dltool::common::yaml::nodeVariant;
+
+YAML::Node yamlField(const YAML::Node &node, const evaluation::Field field)
+{
+    return node[evaluation::fieldName(field).toStdString()];
+}
+
+YAML::Node datasetManifestEntries(const YAML::Node &root, bool *anomaly_samples = nullptr)
+{
+    if (anomaly_samples != nullptr)
+        *anomaly_samples = false;
+    if (!root)
+        return {};
+    if (root.IsSequence())
+        return root;
+    if (!root.IsMap())
+        return {};
+
+    const YAML::Node images = yamlField(root, evaluation::Field::Images);
+    if (images && images.IsSequence())
+        return images;
+    const YAML::Node samples = yamlField(root, evaluation::Field::Samples);
+    if (samples && samples.IsSequence())
+    {
+        if (anomaly_samples != nullptr)
+            *anomaly_samples = true;
+        return samples;
+    }
+    return {};
+}
 
 // Evaluation files are user-/framework-produced input.  Bound both the
 // document size and sequence cardinality before yaml-cpp expands them into a
@@ -139,13 +168,15 @@ bool finiteNumber(const QVariant &value, double *output = nullptr)
 
 QVariantMap boxMap(const Box &box)
 {
-    return {{QStringLiteral("x"), box.x}, {QStringLiteral("y"), box.y},
-            {QStringLiteral("width"), box.w}, {QStringLiteral("height"), box.h}};
+    return {{evaluation::fieldName(evaluation::Field::X), box.x},
+            {evaluation::fieldName(evaluation::Field::Y), box.y},
+            {evaluation::fieldName(evaluation::Field::Width), box.w},
+            {evaluation::fieldName(evaluation::Field::Height), box.h}};
 }
 
 QString geometryType(const QVariantMap &geometry)
 {
-    return mapString(geometry, QStringLiteral("type")).trimmed().toLower();
+    return mapString(geometry, evaluation::fieldName(evaluation::Field::Type)).trimmed().toLower();
 }
 
 QVariantMap canonicalGeometry(const QVariantMap &source, const Box &box)
@@ -156,27 +187,27 @@ QVariantMap canonicalGeometry(const QVariantMap &source, const Box &box)
     const QString type = geometryType(geometry);
     if (type.isEmpty())
     {
-        if (geometry.contains(QStringLiteral("points")))
+        if (geometry.contains(evaluation::fieldName(evaluation::Field::Points)))
         {
-            geometry.insert(QStringLiteral("type"), QStringLiteral("polygon"));
-            geometry.insert(QStringLiteral("format"), QStringLiteral("points"));
+            geometry.insert(evaluation::fieldName(evaluation::Field::Type), QStringLiteral("polygon"));
+            geometry.insert(evaluation::fieldName(evaluation::Field::Format), QStringLiteral("points"));
         }
         else if (box.valid())
         {
-            geometry.insert(QStringLiteral("type"), QStringLiteral("bbox"));
-            geometry.insert(QStringLiteral("format"), QStringLiteral("xywh"));
-            geometry.insert(QStringLiteral("values"), QVariantList{box.x, box.y, box.w, box.h});
+            geometry.insert(evaluation::fieldName(evaluation::Field::Type), QStringLiteral("bbox"));
+            geometry.insert(evaluation::fieldName(evaluation::Field::Format), QStringLiteral("xywh"));
+            geometry.insert(evaluation::fieldName(evaluation::Field::Values), QVariantList{box.x, box.y, box.w, box.h});
         }
     }
-    if (!geometry.contains(QStringLiteral("coordinate_system")))
-        geometry.insert(QStringLiteral("coordinate_system"), QStringLiteral("image_pixels"));
+    if (!geometry.contains(evaluation::fieldName(evaluation::Field::CoordinateSystem)))
+        geometry.insert(evaluation::fieldName(evaluation::Field::CoordinateSystem), QStringLiteral("image_pixels"));
     if (box.valid())
     {
-        geometry.insert(QStringLiteral("bounds"), boxMap(box));
+        geometry.insert(evaluation::fieldName(evaluation::Field::Bounds), boxMap(box));
         if (geometryType(geometry) == QStringLiteral("bbox")
             || geometryType(geometry) == QStringLiteral("box")
             || geometryType(geometry) == QStringLiteral("rectangle"))
-            geometry.insert(QStringLiteral("values"), QVariantList{box.x, box.y, box.w, box.h});
+            geometry.insert(evaluation::fieldName(evaluation::Field::Values), QVariantList{box.x, box.y, box.w, box.h});
     }
     return geometry;
 }
@@ -188,7 +219,7 @@ QVariantList normalizedOverlayPoints(const QVariantMap &geometry, const QVariant
     Box viewport;
     if (!readBox(crop, viewport) || viewport.w <= 0.0 || viewport.h <= 0.0)
         return {};
-    const QVariantList points = geometry.value(QStringLiteral("points")).toList();
+    const QVariantList points = geometry.value(evaluation::fieldName(evaluation::Field::Points)).toList();
     if (points.size() < 3)
         return {};
     QVariantList normalized;
@@ -215,7 +246,7 @@ QString maskUrl(const QVariantMap &geometry, const QString &root)
 {
     if (geometryType(geometry) != QStringLiteral("mask"))
         return {};
-    const QString artifact = mapString(geometry, QStringLiteral("artifact_path")).trimmed();
+    const QString artifact = mapString(geometry, evaluation::fieldName(evaluation::Field::ArtifactPath)).trimmed();
     if (artifact.isEmpty())
         return {};
     const QFileInfo info(QFileInfo(artifact).isAbsolute()
@@ -229,13 +260,13 @@ QString maskUrl(const QVariantMap &geometry, const QString &root)
 bool readBox(const QVariantMap &value, Box &box)
 {
     QVariantMap source = value;
-    if (source.contains(QStringLiteral("bounds")))
-        source = source.value(QStringLiteral("bounds")).toMap();
+    if (source.contains(evaluation::fieldName(evaluation::Field::Bounds)))
+        source = source.value(evaluation::fieldName(evaluation::Field::Bounds)).toMap();
     if (source.contains(QStringLiteral("bbox")))
         source = source.value(QStringLiteral("bbox")).toMap();
-    if (source.contains(QStringLiteral("values")))
+    if (source.contains(evaluation::fieldName(evaluation::Field::Values)))
     {
-        const QVariantList values = source.value(QStringLiteral("values")).toList();
+        const QVariantList values = source.value(evaluation::fieldName(evaluation::Field::Values)).toList();
         if (values.size() >= 4)
         {
             bool ok[4] = {false, false, false, false};
@@ -252,17 +283,19 @@ bool readBox(const QVariantMap &value, Box &box)
             return false;
         }
     }
-    if (source.contains(QStringLiteral("x")) && source.contains(QStringLiteral("y"))
-        && source.contains(QStringLiteral("width")) && source.contains(QStringLiteral("height")))
+    if (source.contains(evaluation::fieldName(evaluation::Field::X))
+        && source.contains(evaluation::fieldName(evaluation::Field::Y))
+        && source.contains(evaluation::fieldName(evaluation::Field::Width))
+        && source.contains(evaluation::fieldName(evaluation::Field::Height)))
     {
         bool x_ok = false;
         bool y_ok = false;
         bool w_ok = false;
         bool h_ok = false;
-        const double x = source.value(QStringLiteral("x")).toDouble(&x_ok);
-        const double y = source.value(QStringLiteral("y")).toDouble(&y_ok);
-        const double w = source.value(QStringLiteral("width")).toDouble(&w_ok);
-        const double h = source.value(QStringLiteral("height")).toDouble(&h_ok);
+        const double x = source.value(evaluation::fieldName(evaluation::Field::X)).toDouble(&x_ok);
+        const double y = source.value(evaluation::fieldName(evaluation::Field::Y)).toDouble(&y_ok);
+        const double w = source.value(evaluation::fieldName(evaluation::Field::Width)).toDouble(&w_ok);
+        const double h = source.value(evaluation::fieldName(evaluation::Field::Height)).toDouble(&h_ok);
         if (x_ok && y_ok && w_ok && h_ok && std::isfinite(x) && std::isfinite(y) && std::isfinite(w)
             && std::isfinite(h))
         {
@@ -271,17 +304,19 @@ bool readBox(const QVariantMap &value, Box &box)
         }
         return false;
     }
-    if (source.contains(QStringLiteral("cx")) && source.contains(QStringLiteral("cy"))
-        && source.contains(QStringLiteral("width")) && source.contains(QStringLiteral("height")))
+    if (source.contains(evaluation::fieldName(evaluation::Field::Cx))
+        && source.contains(evaluation::fieldName(evaluation::Field::Cy))
+        && source.contains(evaluation::fieldName(evaluation::Field::Width))
+        && source.contains(evaluation::fieldName(evaluation::Field::Height)))
     {
         bool cx_ok = false;
         bool cy_ok = false;
         bool w_ok = false;
         bool h_ok = false;
-        const double cx = source.value(QStringLiteral("cx")).toDouble(&cx_ok);
-        const double cy = source.value(QStringLiteral("cy")).toDouble(&cy_ok);
-        const double w = source.value(QStringLiteral("width")).toDouble(&w_ok);
-        const double h = source.value(QStringLiteral("height")).toDouble(&h_ok);
+        const double cx = source.value(evaluation::fieldName(evaluation::Field::Cx)).toDouble(&cx_ok);
+        const double cy = source.value(evaluation::fieldName(evaluation::Field::Cy)).toDouble(&cy_ok);
+        const double w = source.value(evaluation::fieldName(evaluation::Field::Width)).toDouble(&w_ok);
+        const double h = source.value(evaluation::fieldName(evaluation::Field::Height)).toDouble(&h_ok);
         if (cx_ok && cy_ok && w_ok && h_ok && std::isfinite(cx) && std::isfinite(cy) && std::isfinite(w)
             && std::isfinite(h))
         {
@@ -290,7 +325,7 @@ bool readBox(const QVariantMap &value, Box &box)
         }
         return false;
     }
-    const QVariantList points = source.value(QStringLiteral("points")).toList();
+    const QVariantList points = source.value(evaluation::fieldName(evaluation::Field::Points)).toList();
     if (!points.isEmpty())
     {
         double min_x = std::numeric_limits<double>::max();
@@ -327,9 +362,10 @@ bool validateGeometryProtocol(const QVariantMap &geometry, const Image &image, c
 {
     if (geometry.isEmpty())
         return true;
-    const QString type = mapString(geometry, QStringLiteral("type")).trimmed().toLower();
-    const QString coordinate_system = mapString(geometry, QStringLiteral("coordinate_system")).trimmed().toLower();
-    const QString format = mapString(geometry, QStringLiteral("format")).trimmed().toLower();
+    const QString type = mapString(geometry, evaluation::fieldName(evaluation::Field::Type)).trimmed().toLower();
+    const QString coordinate_system
+        = mapString(geometry, evaluation::fieldName(evaluation::Field::CoordinateSystem)).trimmed().toLower();
+    const QString format = mapString(geometry, evaluation::fieldName(evaluation::Field::Format)).trimmed().toLower();
     if (type.isEmpty() || coordinate_system != QStringLiteral("image_pixels"))
     {
         if (err_msg)
@@ -345,7 +381,7 @@ bool validateGeometryProtocol(const QVariantMap &geometry, const Image &image, c
                 *err_msg = QString("预测 bbox geometry.format 必须为 xywh");
             return false;
         }
-        const QVariantList values = geometry.value(QStringLiteral("values")).toList();
+        const QVariantList values = geometry.value(evaluation::fieldName(evaluation::Field::Values)).toList();
         if (values.size() != 4)
         {
             if (err_msg)
@@ -386,7 +422,7 @@ bool validateGeometryProtocol(const QVariantMap &geometry, const Image &image, c
                 *err_msg = QString("预测 polygon geometry.format 无效");
             return false;
         }
-        const QVariantList points = geometry.value(QStringLiteral("points")).toList();
+        const QVariantList points = geometry.value(evaluation::fieldName(evaluation::Field::Points)).toList();
         if (points.size() < 3)
         {
             if (err_msg)
@@ -414,7 +450,7 @@ bool validateGeometryProtocol(const QVariantMap &geometry, const Image &image, c
                 *err_msg = QString("预测 mask geometry.format 无效");
             return false;
         }
-        const QString artifact = mapString(geometry, QStringLiteral("artifact_path")).trimmed();
+        const QString artifact = mapString(geometry, evaluation::fieldName(evaluation::Field::ArtifactPath)).trimmed();
         const QString target = QFileInfo(artifact).isAbsolute()
             ? QFileInfo(artifact).absoluteFilePath()
             : QFileInfo(QDir(task_root), artifact).absoluteFilePath();
@@ -575,10 +611,8 @@ bool loadImages(const QString &images_path, const QString &dataset_manifest_path
     try
     {
         YAML::Node root = dltool::common::yaml::loadFile(manifest_file);
-        YAML::Node entries = root["images"];
-        const bool anomaly_samples = !entries || !entries.IsSequence();
-        if (anomaly_samples)
-            entries = root["samples"];
+        bool anomaly_samples = false;
+        const YAML::Node entries = datasetManifestEntries(root, &anomaly_samples);
         if (!entries || !entries.IsSequence())
             throw std::runtime_error("dataset manifest requires images or samples sequence");
         if (entries.size() > kMaxEvaluationRecords)
@@ -594,12 +628,12 @@ bool loadImages(const QString &images_path, const QString &dataset_manifest_path
             }
             const QVariantMap value = nodeVariant(node).toMap();
             Image image;
-            image.id = mapLong(value, QStringLiteral("id"));
-            image.dataset_id = mapLong(value, QStringLiteral("dataset_id"));
-            image.path = mapString(value, QStringLiteral("path"));
+            image.id = mapLong(value, evaluation::fieldName(evaluation::Field::Id));
+            image.dataset_id = mapLong(value, evaluation::fieldName(evaluation::Field::DatasetId));
+            image.path = mapString(value, evaluation::fieldName(evaluation::Field::Path));
             image.name = QFileInfo(image.path).fileName();
-            image.width = mapInt(value, QStringLiteral("width"), 0);
-            image.height = mapInt(value, QStringLiteral("height"), 0);
+            image.width = mapInt(value, evaluation::fieldName(evaluation::Field::Width), 0);
+            image.height = mapInt(value, evaluation::fieldName(evaluation::Field::Height), 0);
             if (image.id < 0 || image.path.trimmed().isEmpty())
                 throw std::runtime_error("dataset manifest image requires id and path");
             if (manifest_ids.contains(image.id))
@@ -607,32 +641,33 @@ bool loadImages(const QString &images_path, const QString &dataset_manifest_path
             manifest_ids.insert(image.id);
             if (anomaly_samples)
             {
-                const int label_index = mapInt(value, QStringLiteral("label_index"), 0);
+                const int label_index = mapInt(value, evaluation::fieldName(evaluation::Field::LabelIndex), 0);
                 if (label_index > 0)
                     image.gt.push_back(GroundTruth{-1, 1, QStringLiteral("anomaly"), {}, {}});
             }
-            for (const QVariant &entry : value.value(QStringLiteral("labels")).toList())
+            for (const QVariant &entry : value.value(evaluation::fieldName(evaluation::Field::Labels)).toList())
             {
                 const QVariantMap label = entry.toMap();
                 GroundTruth gt;
-                gt.label_id = mapLong(label, QStringLiteral("label_id"));
-                gt.class_id = mapInt(label, QStringLiteral("label_class_id"), mapInt(label, QStringLiteral("class_id")));
-                gt.class_name = mapString(label, QStringLiteral("label_class_name"),
-                                           mapString(label, QStringLiteral("class_name")));
-                const QVariantMap data = label.value(QStringLiteral("data")).toMap();
-                gt.geometry = data.value(QStringLiteral("geometry")).toMap();
+                gt.label_id = mapLong(label, evaluation::fieldName(evaluation::Field::LabelId));
+                gt.class_id = mapInt(label, evaluation::fieldName(evaluation::Field::LabelClassId),
+                                     mapInt(label, evaluation::fieldName(evaluation::Field::ClassId)));
+                gt.class_name = mapString(label, evaluation::fieldName(evaluation::Field::LabelClassName),
+                                           mapString(label, evaluation::fieldName(evaluation::Field::ClassName)));
+                const QVariantMap data = label.value(evaluation::fieldName(evaluation::Field::Data)).toMap();
+                gt.geometry = data.value(evaluation::fieldName(evaluation::Field::Geometry)).toMap();
                 if (gt.geometry.isEmpty())
                     gt.geometry = data;
                 gt.bounds = data;
                 if (!readBox(gt.geometry, gt.box))
                 {
-                    const QVariantMap yolo = label.value(QStringLiteral("yolo")).toMap();
+                    const QVariantMap yolo = label.value(evaluation::fieldName(evaluation::Field::Yolo)).toMap();
                     if (!yolo.isEmpty() && image.width > 0 && image.height > 0)
                     {
-                        const double cx = mapDouble(yolo, QStringLiteral("cx")) * image.width;
-                        const double cy = mapDouble(yolo, QStringLiteral("cy")) * image.height;
-                        const double width = mapDouble(yolo, QStringLiteral("width")) * image.width;
-                        const double height = mapDouble(yolo, QStringLiteral("height")) * image.height;
+                        const double cx = mapDouble(yolo, evaluation::fieldName(evaluation::Field::Cx)) * image.width;
+                        const double cy = mapDouble(yolo, evaluation::fieldName(evaluation::Field::Cy)) * image.height;
+                        const double width = mapDouble(yolo, evaluation::fieldName(evaluation::Field::Width)) * image.width;
+                        const double height = mapDouble(yolo, evaluation::fieldName(evaluation::Field::Height)) * image.height;
                         gt.box = {cx - width / 2.0, cy - height / 2.0, width, height};
                         gt.geometry = {};
                     }
@@ -653,90 +688,80 @@ bool loadImages(const QString &images_path, const QString &dataset_manifest_path
     }
 
     const QFileInfo list_file(images_path);
-    if (!list_file.exists() || !list_file.isFile())
-    {
-        if (err_msg)
-            *err_msg = QString("pred/images.txt 不存在: %1").arg(images_path);
-        return false;
-    }
-    QFile file(images_path);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-    {
-        if (err_msg)
-            *err_msg = QString("打开 pred/images.txt 失败: %1").arg(file.errorString());
-        return false;
-    }
-    QTextStream stream(&file);
-    bool first = true;
     QSet<qint64> listed;
-    while (!stream.atEnd())
+    if (list_file.exists() && list_file.isFile())
     {
-        if (isCancelled(cancel_token))
+        if (list_file.size() > kMaxEvaluationYamlBytes)
         {
             if (err_msg)
-                *err_msg = QString("评估已取消");
+                *err_msg = QString("pred/images.txt 超过大小限制");
             return false;
         }
-        QString line = stream.readLine();
-        if (line.trimmed().isEmpty())
-            continue;
-        if (first && !line.isEmpty() && line.at(0) == QChar(0xfeff))
-            line.remove(0, 1);
-        if (first)
+        QFile file(images_path);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
         {
-            first = false;
-            if (line.trimmed().compare(QStringLiteral("image_id,image_path"), Qt::CaseInsensitive) == 0)
+            if (err_msg)
+                *err_msg = QString("打开 pred/images.txt 失败: %1").arg(file.errorString());
+            return false;
+        }
+        QTextStream stream(&file);
+        bool first = true;
+        while (!stream.atEnd())
+        {
+            if (isCancelled(cancel_token))
+            {
+                if (err_msg)
+                    *err_msg = QString("评估已取消");
+                return false;
+            }
+            QString line = stream.readLine();
+            if (line.trimmed().isEmpty())
                 continue;
+            if (first && !line.isEmpty() && line.at(0) == QChar(0xfeff))
+                line.remove(0, 1);
+            if (first)
+            {
+                first = false;
+                const QString image_header = evaluation::fieldName(evaluation::Field::ImageId) + QLatin1Char(',')
+                    + evaluation::fieldName(evaluation::Field::ImagePath);
+                if (line.trimmed().compare(image_header, Qt::CaseInsensitive) == 0)
+                    continue;
+            }
+            bool csv_valid = false;
+            const QList<QString> fields = parseCsvLine(line, &csv_valid);
+            if (!csv_valid || fields.size() != 2)
+            {
+                if (err_msg)
+                    *err_msg = QString("pred/images.txt 行格式无效: %1").arg(line);
+                return false;
+            }
+            bool ok = false;
+            const qint64 image_id = fields.at(0).trimmed().toLongLong(&ok);
+            if (!ok || image_id < 0)
+                continue;
+            if (listed.contains(image_id) || !images.contains(image_id))
+                continue;
+            const QString path = fields.at(1).trimmed();
+            if (!path.isEmpty())
+            {
+                Image &image = images[image_id];
+                image.path = path;
+                image.name = QFileInfo(path).fileName();
+            }
+            listed.insert(image_id);
         }
-        bool csv_valid = false;
-        const QList<QString> fields = parseCsvLine(line, &csv_valid);
-        if (!csv_valid || fields.size() != 2)
-        {
-            if (err_msg)
-                *err_msg = QString("pred/images.txt 行格式无效: %1").arg(line);
-            return false;
-        }
-        bool ok = false;
-        const qint64 image_id = fields.at(0).trimmed().toLongLong(&ok);
-        if (!ok || image_id < 0)
-        {
-            if (err_msg)
-                *err_msg = QString("pred/images.txt image_id 无效: %1").arg(fields.at(0));
-            return false;
-        }
-        if (listed.contains(image_id))
-        {
-            if (err_msg)
-                *err_msg = QString("pred/images.txt image_id 重复: %1").arg(image_id);
-            return false;
-        }
-        if (!images.contains(image_id))
-        {
-            if (err_msg)
-                *err_msg = QString("pred/images.txt image_id 不在测试数据集 manifest 中: %1").arg(image_id);
-            return false;
-        }
-        if (fields.at(1).trimmed().isEmpty())
-        {
-            if (err_msg)
-                *err_msg = QString("pred/images.txt image_path 为空: %1").arg(image_id);
-            return false;
-        }
-        Image &image = images[image_id];
-        image.path = fields.at(1).trimmed();
-        image.name = QFileInfo(image.path).fileName();
-        listed.insert(image_id);
+    }
+    else
+    {
+        // The dataset manifest is sufficient to evaluate a test when the
+        // exported list was removed.  Predictions remain optional.
+        for (auto it = images.cbegin(); it != images.cend(); ++it)
+            listed.insert(it.key());
     }
     if (listed.isEmpty())
     {
         if (err_msg)
-            *err_msg = QString("pred/images.txt 没有有效图像");
-        return false;
-    }
-    if (listed.size() != images.size())
-    {
-        if (err_msg)
-            *err_msg = QString("pred/images.txt 未覆盖测试数据集 manifest 中的全部图像");
+            *err_msg = QString("测试数据集没有有效图像");
         return false;
     }
     for (auto it = images.begin(); it != images.end();)
@@ -751,8 +776,7 @@ bool loadImages(const QString &images_path, const QString &dataset_manifest_path
 
 bool loadPredictions(const QString &manifest_path, QMap<qint64, Image> &images, int *count,
                      const std::shared_ptr<std::atomic_bool> &cancel_token, QString *err_msg,
-                     const QString &expected_model_uuid = {}, const QString &expected_task_uuid = {},
-                     const QString &expected_method = {})
+                     int *ignored_count = nullptr)
 {
     if (isCancelled(cancel_token))
     {
@@ -763,9 +787,9 @@ bool loadPredictions(const QString &manifest_path, QMap<qint64, Image> &images, 
     const QFileInfo file(manifest_path);
     if (!file.exists() || !file.isFile())
     {
-        if (err_msg)
-            *err_msg = QString("pred/manifest.yaml 不存在: %1").arg(manifest_path);
-        return false;
+        if (count)
+            *count = 0;
+        return true;
     }
     if (file.size() > kMaxEvaluationYamlBytes)
     {
@@ -773,36 +797,34 @@ bool loadPredictions(const QString &manifest_path, QMap<qint64, Image> &images, 
             *err_msg = QString("pred/manifest.yaml 超过大小限制");
         return false;
     }
+    if (file.size() == 0)
+    {
+        if (count)
+            *count = 0;
+        return true;
+    }
     try
     {
         YAML::Node root = dltool::common::yaml::loadFile(file);
-        if (!root || !root.IsMap() || !root["schema_version"] || !root["schema_version"].IsScalar()
-            || root["schema_version"].as<int>() != 1)
+        if (!root || !root.IsMap())
+            throw std::runtime_error("预测清单必须为 YAML map");
+        const YAML::Node schema_version = yamlField(root, evaluation::Field::SchemaVersion);
+        if (!schema_version || !schema_version.IsScalar() || schema_version.as<int>() != 1)
             throw std::runtime_error("预测清单 schema_version 必须为 1");
-        for (const char *field : {"model_uuid", "test_task_uuid", "method"})
-        {
-            if (!root[field] || !root[field].IsScalar() || root[field].as<std::string>().empty())
-                throw std::runtime_error("预测清单缺少 model_uuid/test_task_uuid/method");
-        }
-        if (!expected_model_uuid.isEmpty() && nodeString(root["model_uuid"]) != expected_model_uuid)
-            throw std::runtime_error("预测清单 model_uuid 不一致");
-        if (!expected_task_uuid.isEmpty() && nodeString(root["test_task_uuid"]) != expected_task_uuid)
-            throw std::runtime_error("预测清单 test_task_uuid 不一致");
-        if (!expected_method.isEmpty() && nodeString(root["method"]) != expected_method)
-            throw std::runtime_error("预测清单 method 不一致");
-        if (!root["records"] || !root["records"].IsSequence())
+        const YAML::Node records = yamlField(root, evaluation::Field::Records);
+        if (!records || !records.IsSequence())
             throw std::runtime_error("预测清单缺少 records sequence");
-        if (root["records"].size() > kMaxEvaluationRecords)
+        if (records.size() > kMaxEvaluationRecords)
             throw std::runtime_error("预测清单 records 数量超过限制");
-        if (!root["record_count"] || !root["record_count"].IsScalar()
-            || root["record_count"].as<int>() < 0
-            || root["record_count"].as<int>() != static_cast<int>(root["records"].size()))
+        const YAML::Node record_count = yamlField(root, evaluation::Field::RecordCount);
+        if (!record_count || !record_count.IsScalar() || record_count.as<int>() < 0
+            || record_count.as<int>() != static_cast<int>(records.size()))
             throw std::runtime_error("预测清单 record_count 与 records 数量不一致");
         QSet<QString> ids;
         int total = 0;
-        for (std::size_t record_index = 0; record_index < root["records"].size(); ++record_index)
+        for (std::size_t record_index = 0; record_index < records.size(); ++record_index)
         {
-            const YAML::Node node = root["records"][record_index];
+            const YAML::Node node = records[record_index];
             if (isCancelled(cancel_token))
             {
                 if (err_msg)
@@ -812,15 +834,17 @@ bool loadPredictions(const QString &manifest_path, QMap<qint64, Image> &images, 
             if (!node || !node.IsMap())
                 throw std::runtime_error("预测记录必须为 YAML map");
             const QVariantMap value = nodeVariant(node).toMap();
-            if (!value.contains(QStringLiteral("prediction_id")) || !value.contains(QStringLiteral("image_id"))
-                || !value.contains(QStringLiteral("class_id")) || !value.contains(QStringLiteral("score")))
+            if (!value.contains(evaluation::fieldName(evaluation::Field::PredictionId))
+                || !value.contains(evaluation::fieldName(evaluation::Field::ImageId))
+                || !value.contains(evaluation::fieldName(evaluation::Field::ClassId))
+                || !value.contains(evaluation::fieldName(evaluation::Field::Score)))
                 throw std::runtime_error("预测记录缺少必填字段");
             Prediction prediction;
-            prediction.prediction_id = mapString(value, QStringLiteral("prediction_id"));
-            prediction.image_id = mapLong(value, QStringLiteral("image_id"));
-            prediction.class_id = mapInt(value, QStringLiteral("class_id"));
-            prediction.class_name = mapString(value, QStringLiteral("class_name"));
-            const QVariant score_value = value.value(QStringLiteral("score"));
+            prediction.prediction_id = mapString(value, evaluation::fieldName(evaluation::Field::PredictionId));
+            prediction.image_id = mapLong(value, evaluation::fieldName(evaluation::Field::ImageId));
+            prediction.class_id = mapInt(value, evaluation::fieldName(evaluation::Field::ClassId));
+            prediction.class_name = mapString(value, evaluation::fieldName(evaluation::Field::ClassName));
+            const QVariant score_value = value.value(evaluation::fieldName(evaluation::Field::Score));
             bool score_ok = false;
             prediction.score = score_value.toDouble(&score_ok);
             if (!score_ok || !std::isfinite(prediction.score) || prediction.score < 0.0 || prediction.score > 1.0)
@@ -830,13 +854,17 @@ bool loadPredictions(const QString &manifest_path, QMap<qint64, Image> &images, 
             if (prediction.class_id < 0)
                 throw std::runtime_error("预测 class_id 无效");
             if (prediction.image_id < 0 || !images.contains(prediction.image_id))
-                throw std::runtime_error("预测 image_id 不在 pred/images.txt 中");
+            {
+                if (ignored_count)
+                    ++(*ignored_count);
+                continue;
+            }
             if (ids.contains(prediction.prediction_id))
                 throw std::runtime_error("预测 prediction_id 重复");
             ids.insert(prediction.prediction_id);
-            const QVariantMap geometry = value.value(QStringLiteral("geometry")).toMap();
+            const QVariantMap geometry = value.value(evaluation::fieldName(evaluation::Field::Geometry)).toMap();
             prediction.geometry = geometry;
-            prediction.bounds = geometry.value(QStringLiteral("bounds")).toMap();
+            prediction.bounds = geometry.value(evaluation::fieldName(evaluation::Field::Bounds)).toMap();
             if (!geometry.isEmpty())
             {
                 QString geometry_error;
@@ -887,20 +915,16 @@ QVariantMap metricMap(qint64 tp, qint64 fp, qint64 fn)
     const double precision = safeRatio(tp, tp + fp);
     const double recall = safeRatio(tp, tp + fn);
     const double f1 = precision + recall > 0.0 ? 2.0 * precision * recall / (precision + recall) : 0.0;
-    return {{QStringLiteral("precision"), precision}, {QStringLiteral("recall"), recall},
-            {QStringLiteral("f1"), f1}, {QStringLiteral("precision_defined"), tp + fp > 0},
-            {QStringLiteral("recall_defined"), tp + fn > 0},
-            {QStringLiteral("f1_defined"), tp + fp > 0 && tp + fn > 0 && precision + recall > 0.0},
-            {QStringLiteral("tp"), tp}, {QStringLiteral("fp"), fp}, {QStringLiteral("fn"), fn}};
-}
-
-QString digestFor(const QVariantMap &value)
-{
-    const YAML::Node node = dltool::common::yaml::variantToYaml(value);
-    YAML::Emitter emitter;
-    emitter << node;
-    return QStringLiteral("sha256:%1").arg(QString::fromLatin1(
-        QCryptographicHash::hash(QByteArray(emitter.c_str()), QCryptographicHash::Sha256).toHex()));
+    return {{evaluation::fieldName(evaluation::Field::Precision), precision},
+            {evaluation::fieldName(evaluation::Field::Recall), recall},
+            {evaluation::fieldName(evaluation::Field::F1), f1},
+            {evaluation::fieldName(evaluation::Field::PrecisionDefined), tp + fp > 0},
+            {evaluation::fieldName(evaluation::Field::RecallDefined), tp + fn > 0},
+            {evaluation::fieldName(evaluation::Field::F1Defined),
+             tp + fp > 0 && tp + fn > 0 && precision + recall > 0.0},
+            {evaluation::fieldName(evaluation::Field::Tp), tp},
+            {evaluation::fieldName(evaluation::Field::Fp), fp},
+            {evaluation::fieldName(evaluation::Field::Fn), fn}};
 }
 
 QString classColor(const int class_id)
@@ -1116,22 +1140,30 @@ OfficialEvaluationOutput buildOfficialEvaluation(const evaluation::Method method
             scores.push_back(score);
         }
         output.available = true;
-        output.metrics = QVariantMap{{QStringLiteral("available"), true},
-                                     {QStringLiteral("image"), diagnostic.value(QStringLiteral("image"))},
-                                     {QStringLiteral("definition"), QStringLiteral("anomaly_score_threshold")}};
-        output.image_definition = QVariantMap{{QStringLiteral("sample_unit"), QStringLiteral("image")},
-                                              {QStringLiteral("aggregation"), QStringLiteral("micro")},
-                                              {QStringLiteral("positive_definition"), QStringLiteral("score_above_threshold")},
-                                              {QStringLiteral("has_image_metrics"), true}};
-        output.charts.push_back(QVariantMap{{QStringLiteral("kind"), QStringLiteral("bar")},
-                                            {QStringLiteral("chart_id"), QStringLiteral("anomaly_score_distribution")},
-                                            {QStringLiteral("filter_kind"), QStringLiteral("image_score")},
-                                            {QStringLiteral("title"), QString("异常分数分布")},
-                                            {QStringLiteral("data"), QVariantMap{{QStringLiteral("labels"), labels},
-                                                                                    {QStringLiteral("datasets"), QVariantList{
-                                                                                        QVariantMap{{QStringLiteral("label"), QStringLiteral("score")},
-                                                                                                    {QStringLiteral("data"), scores}}}}}},
-                                            {QStringLiteral("options"), QVariantMap{{QStringLiteral("maintainAspectRatio"), false}}}});
+        output.metrics = QVariantMap{{evaluation::fieldName(evaluation::Field::Available), true},
+                                     {evaluation::fieldName(evaluation::Field::Image),
+                                      diagnostic.value(evaluation::fieldName(evaluation::Field::Image))},
+                                     {evaluation::fieldName(evaluation::Field::Definition),
+                                      QStringLiteral("anomaly_score_threshold")}};
+        output.image_definition = QVariantMap{{evaluation::fieldName(evaluation::Field::SampleUnit), QStringLiteral("image")},
+                                              {evaluation::fieldName(evaluation::Field::Aggregation), QStringLiteral("micro")},
+                                              {evaluation::fieldName(evaluation::Field::PositiveDefinition),
+                                               QStringLiteral("score_above_threshold")},
+                                              {evaluation::fieldName(evaluation::Field::HasImageMetrics), true}};
+        output.charts.push_back(QVariantMap{{evaluation::fieldName(evaluation::Field::Kind), QStringLiteral("bar")},
+                                            {evaluation::fieldName(evaluation::Field::ChartId),
+                                             QStringLiteral("anomaly_score_distribution")},
+                                            {evaluation::fieldName(evaluation::Field::FilterKind),
+                                             QStringLiteral("image_score")},
+                                            {evaluation::fieldName(evaluation::Field::Title), QString("异常分数分布")},
+                                            {evaluation::fieldName(evaluation::Field::Data),
+                                             QVariantMap{{evaluation::fieldName(evaluation::Field::Labels), labels},
+                                                         {evaluation::fieldName(evaluation::Field::Datasets), QVariantList{
+                                                             QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
+                                                                          QStringLiteral("score")},
+                                                                         {evaluation::fieldName(evaluation::Field::Data), scores}}}}}},
+                                            {evaluation::fieldName(evaluation::Field::Options),
+                                             QVariantMap{{QStringLiteral("maintainAspectRatio"), false}}}});
         output.chart_kinds.push_back(QStringLiteral("bar"));
         return output;
     }
@@ -1209,30 +1241,45 @@ OfficialEvaluationOutput buildOfficialEvaluation(const evaluation::Method method
         const Counts counts = countsAt(threshold);
         const QVariantMap metric = metricMap(counts.tp, counts.fp, counts.fn);
         threshold_labels.push_back(threshold);
-        precision_values.push_back(metric.value(QStringLiteral("precision")));
-        recall_values.push_back(metric.value(QStringLiteral("recall")));
+        precision_values.push_back(metric.value(evaluation::fieldName(evaluation::Field::Precision)));
+        recall_values.push_back(metric.value(evaluation::fieldName(evaluation::Field::Recall)));
     }
     const Counts work_point = countsAt(confidence);
     output.available = true;
-    output.metrics = QVariantMap{{QStringLiteral("available"), true},
-                                 {QStringLiteral("instance"), metricMap(work_point.tp, work_point.fp, work_point.fn)},
-                                 {QStringLiteral("per_class"), diagnostic.value(QStringLiteral("instance")).toMap().value(QStringLiteral("per_class"))},
-                                 {QStringLiteral("definition"), QStringLiteral("confidence_iou_work_point")}};
-    output.image_definition = QVariantMap{{QStringLiteral("sample_unit"), QStringLiteral("image_class_presence")},
-                                          {QStringLiteral("aggregation"), QStringLiteral("micro")},
-                                          {QStringLiteral("positive_definition"), QStringLiteral("gt_or_pred_class_present")},
-                                          {QStringLiteral("has_image_metrics"), true}};
-    output.charts.push_back(QVariantMap{{QStringLiteral("kind"), QStringLiteral("line")},
-                                         {QStringLiteral("chart_id"), QStringLiteral("precision_recall")},
-                                         {QStringLiteral("filter_kind"), QStringLiteral("precision_recall")},
-                                         {QStringLiteral("title"), QString("PR 曲线")},
-                                        {QStringLiteral("data"), QVariantMap{{QStringLiteral("labels"), threshold_labels},
-                                                                                {QStringLiteral("datasets"), QVariantList{
-                                                                                    QVariantMap{{QStringLiteral("label"), QStringLiteral("Precision")},
-                                                                                                {QStringLiteral("data"), precision_values}},
-                                                                                    QVariantMap{{QStringLiteral("label"), QStringLiteral("Recall")},
-                                                                                                {QStringLiteral("data"), recall_values}}}}}},
-                                        {QStringLiteral("options"), QVariantMap{{QStringLiteral("maintainAspectRatio"), false}}}});
+    output.metrics = QVariantMap{{evaluation::fieldName(evaluation::Field::Available), true},
+                                 {evaluation::fieldName(evaluation::Field::Instance),
+                                  metricMap(work_point.tp, work_point.fp, work_point.fn)},
+                                 {evaluation::fieldName(evaluation::Field::PerClass),
+                                  diagnostic.value(evaluation::fieldName(evaluation::Field::Instance))
+                                      .toMap()
+                                      .value(evaluation::fieldName(evaluation::Field::PerClass))},
+                                 {evaluation::fieldName(evaluation::Field::Definition),
+                                  QStringLiteral("confidence_iou_work_point")}};
+    output.image_definition = QVariantMap{{evaluation::fieldName(evaluation::Field::SampleUnit),
+                                           QStringLiteral("image_class_presence")},
+                                          {evaluation::fieldName(evaluation::Field::Aggregation), QStringLiteral("micro")},
+                                          {evaluation::fieldName(evaluation::Field::PositiveDefinition),
+                                           QStringLiteral("gt_or_pred_class_present")},
+                                          {evaluation::fieldName(evaluation::Field::HasImageMetrics), true}};
+    output.charts.push_back(QVariantMap{{evaluation::fieldName(evaluation::Field::Kind), QStringLiteral("line")},
+                                         {evaluation::fieldName(evaluation::Field::ChartId),
+                                          QStringLiteral("precision_recall")},
+                                         {evaluation::fieldName(evaluation::Field::FilterKind),
+                                          QStringLiteral("precision_recall")},
+                                         {evaluation::fieldName(evaluation::Field::Title), QString("PR 曲线")},
+                                         {evaluation::fieldName(evaluation::Field::Data),
+                                          QVariantMap{{evaluation::fieldName(evaluation::Field::Labels), threshold_labels},
+                                                      {evaluation::fieldName(evaluation::Field::Datasets), QVariantList{
+                                                          QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
+                                                                       QStringLiteral("Precision")},
+                                                                      {evaluation::fieldName(evaluation::Field::Data),
+                                                                       precision_values}},
+                                                          QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
+                                                                       QStringLiteral("Recall")},
+                                                                      {evaluation::fieldName(evaluation::Field::Data),
+                                                                       recall_values}}}}}},
+                                         {evaluation::fieldName(evaluation::Field::Options),
+                                          QVariantMap{{QStringLiteral("maintainAspectRatio"), false}}}});
     output.chart_kinds.push_back(QStringLiteral("line"));
     return output;
 }
@@ -1251,91 +1298,6 @@ EvaluationCapabilities ModelEvaluationService::capabilitiesForMethod(const evalu
     else if (capabilities.has_instance_metrics)
         capabilities.chart_kinds = {QStringLiteral("bar"), QStringLiteral("line")};
     return capabilities;
-}
-
-bool ModelEvaluationService::validatePrediction(const QString &images_path, const QString &manifest_path,
-                                                 int *image_count, int *prediction_count, QString *err_msg,
-                                                 const QString &expected_model_uuid,
-                                                 const QString &expected_task_uuid,
-                                                 const QString &expected_method)
-{
-    QMap<qint64, Image> images;
-    QFile image_file(images_path);
-    if (!image_file.open(QIODevice::ReadOnly | QIODevice::Text))
-    {
-        if (err_msg)
-            *err_msg = QString("打开 pred/images.txt 失败: %1").arg(image_file.errorString());
-        return false;
-    }
-    if (QFileInfo(images_path).size() > kMaxEvaluationYamlBytes)
-    {
-        if (err_msg)
-            *err_msg = QString("pred/images.txt 超过大小限制");
-        return false;
-    }
-    QTextStream image_stream(&image_file);
-    bool first = true;
-    QSet<qint64> listed_ids;
-    while (!image_stream.atEnd())
-    {
-        QString line = image_stream.readLine();
-        if (line.trimmed().isEmpty())
-            continue;
-        if (first && !line.isEmpty() && line.at(0) == QChar(0xfeff))
-            line.remove(0, 1);
-        if (first)
-        {
-            first = false;
-            if (line.trimmed().compare(QStringLiteral("image_id,image_path"), Qt::CaseInsensitive) == 0)
-                continue;
-        }
-        bool csv_valid = false;
-        const QList<QString> fields = parseCsvLine(line, &csv_valid);
-        if (!csv_valid || fields.size() != 2)
-        {
-            if (err_msg)
-                *err_msg = QString("pred/images.txt 行格式无效: %1").arg(line);
-            return false;
-        }
-        bool ok = false;
-        const qint64 id = fields.at(0).trimmed().toLongLong(&ok);
-        if (!ok || id < 0)
-        {
-            if (err_msg)
-                *err_msg = QString("pred/images.txt image_id 无效: %1").arg(fields.at(0));
-            return false;
-        }
-        const QString path = fields.at(1).trimmed();
-        if (path.isEmpty())
-        {
-            if (err_msg)
-                *err_msg = QString("pred/images.txt image_path 为空: %1").arg(id);
-            return false;
-        }
-        if (listed_ids.contains(id))
-        {
-            if (err_msg)
-                *err_msg = QString("pred/images.txt image_id 重复: %1").arg(id);
-            return false;
-        }
-        listed_ids.insert(id);
-        images.insert(id, Image{id, -1, path, QFileInfo(path).fileName(), 0, 0, {}, {}});
-    }
-    if (images.isEmpty())
-    {
-        if (err_msg)
-            *err_msg = QString("pred/images.txt 没有有效图像");
-        return false;
-    }
-    int count = 0;
-    if (!loadPredictions(manifest_path, images, &count, {}, err_msg,
-                         expected_model_uuid, expected_task_uuid, expected_method))
-        return false;
-    if (image_count)
-        *image_count = images.size();
-    if (prediction_count)
-        *prediction_count = count;
-    return true;
 }
 
 bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, ModelEvaluationResult *result,
@@ -1360,23 +1322,39 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
     if (!loadImages(options.prediction_images_path, options.dataset_manifest_path, images, options.cancel_token,
                     err_msg))
         return false;
-    int prediction_count = 0;
-    if (!loadPredictions(options.prediction_manifest_path, images, &prediction_count, options.cancel_token, err_msg,
-                         options.model_uuid, options.test_task_uuid, evaluation::methodKey(options.method)))
-        return false;
+    int missing_source_images = 0;
     for (auto it = images.begin(); it != images.end();)
     {
         if (sourceImageExists(it->path, options.dataset_manifest_path))
             ++it;
         else
+        {
+            ++missing_source_images;
             it = images.erase(it);
+        }
     }
-    if (images.isEmpty())
-    {
-        if (err_msg)
-            *err_msg = QString("测试数据集没有可用图像");
+    if (missing_source_images > 0)
+        spdlog::warn("测试评估跳过 {} 个不存在的源图像", missing_source_images);
+
+    const bool prediction_file_missing = !QFileInfo::exists(options.prediction_manifest_path)
+        || !QFileInfo(options.prediction_manifest_path).isFile();
+    int prediction_count = 0;
+    int ignored_prediction_count = 0;
+    if (!loadPredictions(options.prediction_manifest_path, images, &prediction_count, options.cancel_token, err_msg,
+                         &ignored_prediction_count))
         return false;
+    if (prediction_file_missing)
+        spdlog::warn("未找到预测结果文件，{} 个图像按无推理结果进行评估", images.size());
+    if (ignored_prediction_count > 0)
+        spdlog::warn("预测结果中有 {} 条记录不属于当前可用图像，已跳过", ignored_prediction_count);
+    int images_without_predictions = 0;
+    for (const Image &image : images)
+    {
+        if (image.predictions.isEmpty())
+            ++images_without_predictions;
     }
+    if (!prediction_file_missing && images_without_predictions > 0)
+        spdlog::warn("{} 个图像没有推理结果，按空预测进行评估", images_without_predictions);
     prediction_count = 0;
     for (const Image &image : images)
         prediction_count += image.predictions.size();
@@ -1436,6 +1414,9 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
     const QString dataset_manifest_root = QFileInfo(options.dataset_manifest_path).absolutePath();
     const QString prediction_task_root
         = QFileInfo(QFileInfo(options.prediction_manifest_path).absolutePath()).absoluteDir().absolutePath();
+    const QString matrix_fn = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative);
+    const QString matrix_fp = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive);
+    const QString matrix_total = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::Total);
     const auto incrementMatrix = [&matrix](const QString &row, const QString &column, qint64 count = 1)
     { matrix[row + QLatin1Char('\x1f') + column] += count; };
 
@@ -1469,31 +1450,31 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                 : crop;
             const QVariantMap gt_geometry = gt ? gt->geometry : QVariantMap{};
             const QVariantMap pred_geometry = pred ? pred->geometry : QVariantMap{};
-            QVariantMap event{{QStringLiteral("event_uuid"),
+            QVariantMap event{{evaluation::fieldName(evaluation::Field::EventUuid),
                                QStringLiteral("%1-%2").arg(image.id).arg(event_records.size() + 1)},
-                              {QStringLiteral("image_id"), image.id},
-                              {QStringLiteral("status"), evaluation::statusKey(status)},
-                              {QStringLiteral("score"), pred ? pred->score : 0.0},
-                              {QStringLiteral("iou"), iou},
-                              {QStringLiteral("gt_label_id"), gt ? gt->label_id : -1},
-                              {QStringLiteral("gt_class_id"), gt ? gt->class_id : -1},
-                              {QStringLiteral("gt_class_name"), gt ? gt->class_name : QString()},
-                              {QStringLiteral("gt_geometry"), gt_geometry},
-                              {QStringLiteral("pred_instance_id"), pred ? pred->prediction_id : QString()},
-                              {QStringLiteral("pred_class_id"), pred ? pred->class_id : -1},
-                              {QStringLiteral("pred_class_name"), pred ? pred->class_name : QString()},
-                              {QStringLiteral("pred_geometry"), pred_geometry},
-                              {QStringLiteral("crop_bounds"), viewport},
-                               {QStringLiteral("gt_overlay_bounds"),
+                              {evaluation::fieldName(evaluation::Field::ImageId), image.id},
+                              {evaluation::fieldName(evaluation::Field::Status), evaluation::statusKey(status)},
+                              {evaluation::fieldName(evaluation::Field::Score), pred ? pred->score : 0.0},
+                              {evaluation::fieldName(evaluation::Field::Iou), iou},
+                              {evaluation::fieldName(evaluation::Field::GtLabelId), gt ? gt->label_id : -1},
+                              {evaluation::fieldName(evaluation::Field::GtClassId), gt ? gt->class_id : -1},
+                              {evaluation::fieldName(evaluation::Field::GtClassName), gt ? gt->class_name : QString()},
+                              {evaluation::fieldName(evaluation::Field::GtGeometry), gt_geometry},
+                              {evaluation::fieldName(evaluation::Field::PredInstanceId), pred ? pred->prediction_id : QString()},
+                              {evaluation::fieldName(evaluation::Field::PredClassId), pred ? pred->class_id : -1},
+                              {evaluation::fieldName(evaluation::Field::PredClassName), pred ? pred->class_name : QString()},
+                              {evaluation::fieldName(evaluation::Field::PredGeometry), pred_geometry},
+                              {evaluation::fieldName(evaluation::Field::CropBounds), viewport},
+                               {evaluation::fieldName(evaluation::Field::GtOverlayBounds),
                                 normalizedOverlayBounds(gt ? gt->bounds : QVariantMap{}, viewport)},
-                               {QStringLiteral("pred_overlay_bounds"),
+                               {evaluation::fieldName(evaluation::Field::PredOverlayBounds),
                                 normalizedOverlayBounds(pred ? pred->bounds : QVariantMap{}, viewport)},
-                               {QStringLiteral("gt_overlay_points"),
+                               {evaluation::fieldName(evaluation::Field::GtOverlayPoints),
                                 normalizedOverlayPoints(gt_geometry, viewport)},
-                               {QStringLiteral("pred_overlay_points"),
+                               {evaluation::fieldName(evaluation::Field::PredOverlayPoints),
                                 normalizedOverlayPoints(pred_geometry, viewport)},
-                               {QStringLiteral("gt_mask_url"), maskUrl(gt_geometry, dataset_manifest_root)},
-                               {QStringLiteral("pred_mask_url"), maskUrl(pred_geometry, prediction_task_root)}};
+                               {evaluation::fieldName(evaluation::Field::GtMaskUrl), maskUrl(gt_geometry, dataset_manifest_root)},
+                               {evaluation::fieldName(evaluation::Field::PredMaskUrl), maskUrl(pred_geometry, prediction_task_root)}};
             event_records.push_back(event);
         };
 
@@ -1536,7 +1517,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
             const Prediction &pred = predictions.at(p);
             ++overall.fp;
             ++per_class[pred.class_id].fp;
-            incrementMatrix(QString::number(pred.class_id), QStringLiteral("FP"));
+            incrementMatrix(QString::number(pred.class_id), matrix_fp);
             appendEvent(evaluation::Status::FalsePositive, nullptr, &pred, 0.0);
         }
         for (int g = 0; g < image.gt.size(); ++g)
@@ -1546,7 +1527,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
             const GroundTruth &gt = image.gt.at(g);
             ++overall.fn;
             ++per_class[gt.class_id].fn;
-            incrementMatrix(QStringLiteral("FN"), QString::number(gt.class_id));
+            incrementMatrix(matrix_fn, QString::number(gt.class_id));
             appendEvent(evaluation::Status::FalseNegative, &gt, nullptr, 0.0);
         }
 
@@ -1599,28 +1580,28 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         QVariantList gt_instances;
         for (const GroundTruth &gt : image.gt)
         {
-            gt_instances.push_back(QVariantMap{{QStringLiteral("label_id"), gt.label_id},
-                                               {QStringLiteral("class_id"), gt.class_id},
-                                               {QStringLiteral("class_name"), gt.class_name},
-                                               {QStringLiteral("geometry"), gt.geometry}});
+            gt_instances.push_back(QVariantMap{{evaluation::fieldName(evaluation::Field::LabelId), gt.label_id},
+                                               {evaluation::fieldName(evaluation::Field::ClassId), gt.class_id},
+                                               {evaluation::fieldName(evaluation::Field::ClassName), gt.class_name},
+                                               {evaluation::fieldName(evaluation::Field::Geometry), gt.geometry}});
         }
         QVariantList prediction_instances;
         for (const Prediction &prediction : image.predictions)
         {
-            prediction_instances.push_back(QVariantMap{{QStringLiteral("prediction_id"), prediction.prediction_id},
-                                                        {QStringLiteral("class_id"), prediction.class_id},
-                                                        {QStringLiteral("class_name"), prediction.class_name},
-                                                        {QStringLiteral("score"), prediction.score},
-                                                        {QStringLiteral("geometry"), prediction.geometry}});
+            prediction_instances.push_back(QVariantMap{{evaluation::fieldName(evaluation::Field::PredictionId), prediction.prediction_id},
+                                                        {evaluation::fieldName(evaluation::Field::ClassId), prediction.class_id},
+                                                        {evaluation::fieldName(evaluation::Field::ClassName), prediction.class_name},
+                                                        {evaluation::fieldName(evaluation::Field::Score), prediction.score},
+                                                        {evaluation::fieldName(evaluation::Field::Geometry), prediction.geometry}});
         }
-        image_records.push_back(QVariantMap{{QStringLiteral("image_id"), image.id},
-                                            {QStringLiteral("dataset_id"), image.dataset_id},
-                                            {QStringLiteral("image_name"), image.name},
-                                            {QStringLiteral("image_path"), image.path},
-                                            {QStringLiteral("image_width"), image.width},
-                                            {QStringLiteral("image_height"), image.height},
-                                            {QStringLiteral("gt_instances"), gt_instances},
-                                            {QStringLiteral("predictions"), prediction_instances}});
+        image_records.push_back(QVariantMap{{evaluation::fieldName(evaluation::Field::ImageId), image.id},
+                                            {evaluation::fieldName(evaluation::Field::DatasetId), image.dataset_id},
+                                            {evaluation::fieldName(evaluation::Field::ImageName), image.name},
+                                            {evaluation::fieldName(evaluation::Field::ImagePath), image.path},
+                                            {evaluation::fieldName(evaluation::Field::ImageWidth), image.width},
+                                            {evaluation::fieldName(evaluation::Field::ImageHeight), image.height},
+                                            {evaluation::fieldName(evaluation::Field::GtInstances), gt_instances},
+                                            {evaluation::fieldName(evaluation::Field::Predictions), prediction_instances}});
     }
     QVariantList chart_labels;
     QVariantList precision_values;
@@ -1636,13 +1617,13 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         }
         const Counts counts = per_class.value(it.key());
         QVariantMap metric = metricMap(counts.tp, counts.fp, counts.fn);
-        metric.insert(QStringLiteral("class_id"), it.key());
-        metric.insert(QStringLiteral("class_name"), it.value());
+        metric.insert(evaluation::fieldName(evaluation::Field::ClassId), it.key());
+        metric.insert(evaluation::fieldName(evaluation::Field::ClassName), it.value());
         per_class_metrics.push_back(metric);
         chart_labels.push_back(it.value());
-        precision_values.push_back(metric.value(QStringLiteral("precision")));
-        recall_values.push_back(metric.value(QStringLiteral("recall")));
-        f1_values.push_back(metric.value(QStringLiteral("f1")));
+        precision_values.push_back(metric.value(evaluation::fieldName(evaluation::Field::Precision)));
+        recall_values.push_back(metric.value(evaluation::fieldName(evaluation::Field::Recall)));
+        f1_values.push_back(metric.value(evaluation::fieldName(evaluation::Field::F1)));
     }
 
     QVariantList class_catalog;
@@ -1654,9 +1635,9 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                 *err_msg = QString("评估已取消");
             return false;
         }
-        class_catalog.push_back(QVariantMap{{QStringLiteral("id"), it.key()},
-                                            {QStringLiteral("name"), it.value()},
-                                            {QStringLiteral("color"), classColor(it.key())}});
+        class_catalog.push_back(QVariantMap{{evaluation::fieldName(evaluation::Field::Id), it.key()},
+                                            {evaluation::fieldName(evaluation::Field::Name), it.value()},
+                                            {evaluation::fieldName(evaluation::Field::Color), classColor(it.key())}});
     }
 
     if (anomaly_method)
@@ -1688,11 +1669,11 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         const QList<QString> keys = it.key().split(QLatin1Char('\x1f'));
         if (keys.size() != 2)
             continue;
-        if (keys.at(0) == QStringLiteral("FN"))
+        if (keys.at(0) == matrix_fn)
             unmatched_fn += it.value();
         else
             pred_totals[keys.at(0).toInt()] += it.value();
-        if (keys.at(1) == QStringLiteral("FP"))
+        if (keys.at(1) == matrix_fp)
             unmatched_fp += it.value();
         else
             gt_totals[keys.at(1).toInt()] += it.value();
@@ -1701,27 +1682,27 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                                 const evaluation::CellKind kind,
                                 bool selectable, bool diagonal, bool error)
     {
-        const bool row_fn = row == QStringLiteral("FN");
-        const bool row_total = row == QStringLiteral("TOTAL");
-        const bool column_fp = column == QStringLiteral("FP");
-        const bool column_total = column == QStringLiteral("TOTAL");
+        const bool row_fn = row == matrix_fn;
+        const bool row_total = row == matrix_total;
+        const bool column_fp = column == matrix_fp;
+        const bool column_total = column == matrix_total;
         const int row_id = row_fn || row_total ? -1 : row.toInt();
         const int column_id = column_fp || column_total ? -1 : column.toInt();
         const QString total_label = QString("合计");
-        const QString row_label = row_fn ? QStringLiteral("FN") : (row_total ? total_label : classes.value(row_id));
-        const QString column_label = column_fp ? QStringLiteral("FP")
+        const QString row_label = row_fn ? matrix_fn : (row_total ? total_label : classes.value(row_id));
+        const QString column_label = column_fp ? matrix_fp
                                                : (column_total ? total_label : classes.value(column_id));
-        matrix_cells.push_back(QVariantMap{{QStringLiteral("row_key"), row},
-                                           {QStringLiteral("column_key"), column},
-                                           {QStringLiteral("row_label"), row_label},
-                                           {QStringLiteral("column_label"), column_label},
-                                           {QStringLiteral("row_class_id"), row_id},
-                                           {QStringLiteral("column_class_id"), column_id},
-                                           {QStringLiteral("count"), count},
-                                           {QStringLiteral("cell_kind"), evaluation::cellKindKey(kind)},
-                                           {QStringLiteral("selectable"), selectable},
-                                           {QStringLiteral("is_diagonal"), diagonal},
-                                           {QStringLiteral("is_error"), error}});
+        matrix_cells.push_back(QVariantMap{{evaluation::fieldName(evaluation::Field::RowKey), row},
+                                           {evaluation::fieldName(evaluation::Field::ColumnKey), column},
+                                           {evaluation::fieldName(evaluation::Field::RowLabel), row_label},
+                                           {evaluation::fieldName(evaluation::Field::ColumnLabel), column_label},
+                                           {evaluation::fieldName(evaluation::Field::RowClassId), row_id},
+                                           {evaluation::fieldName(evaluation::Field::ColumnClassId), column_id},
+                                           {evaluation::fieldName(evaluation::Field::Count), count},
+                                           {evaluation::fieldName(evaluation::Field::CellKind), evaluation::cellKindKey(kind)},
+                                           {evaluation::fieldName(evaluation::Field::Selectable), selectable},
+                                           {evaluation::fieldName(evaluation::Field::IsDiagonal), diagonal},
+                                           {evaluation::fieldName(evaluation::Field::IsError), error}});
     };
     for (auto row_it = classes.cbegin(); row_it != classes.cend(); ++row_it)
     {
@@ -1734,35 +1715,37 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                        diagonal ? evaluation::CellKind::Match : evaluation::CellKind::ClassMismatch, true, diagonal,
                        !diagonal);
         }
-        appendCell(row, QStringLiteral("FP"), matrix.value(row + QLatin1Char('\x1f') + QStringLiteral("FP")),
+        appendCell(row, matrix_fp, matrix.value(row + QLatin1Char('\x1f') + matrix_fp),
                    evaluation::CellKind::FalsePositive, true, false, true);
-        appendCell(row, QStringLiteral("TOTAL"), pred_totals.value(row_it.key()), evaluation::CellKind::PredTotal, true,
+        appendCell(row, matrix_total, pred_totals.value(row_it.key()), evaluation::CellKind::PredTotal, true,
                    false, false);
     }
     for (auto column_it = classes.cbegin(); column_it != classes.cend(); ++column_it)
     {
         const QString column = QString::number(column_it.key());
-        appendCell(QStringLiteral("FN"), column, matrix.value(QStringLiteral("FN") + QLatin1Char('\x1f') + column),
+        appendCell(matrix_fn, column, matrix.value(matrix_fn + QLatin1Char('\x1f') + column),
                    evaluation::CellKind::FalseNegative, true, false, true);
     }
-    appendCell(QStringLiteral("FN"), QStringLiteral("FP"), 0, evaluation::CellKind::NotApplicable, false, false, false);
-    appendCell(QStringLiteral("FN"), QStringLiteral("TOTAL"), unmatched_fn, evaluation::CellKind::FalseNegativeTotal,
+    appendCell(matrix_fn, matrix_fp, 0, evaluation::CellKind::NotApplicable, false, false, false);
+    appendCell(matrix_fn, matrix_total, unmatched_fn, evaluation::CellKind::FalseNegativeTotal,
                true, false, true);
     for (auto column_it = classes.cbegin(); column_it != classes.cend(); ++column_it)
     {
         const QString column = QString::number(column_it.key());
-        appendCell(QStringLiteral("TOTAL"), column, gt_totals.value(column_it.key()), evaluation::CellKind::GtTotal, true,
+        appendCell(matrix_total, column, gt_totals.value(column_it.key()), evaluation::CellKind::GtTotal, true,
                    false, false);
     }
-    appendCell(QStringLiteral("TOTAL"), QStringLiteral("FP"), unmatched_fp, evaluation::CellKind::FalsePositiveTotal,
+    appendCell(matrix_total, matrix_fp, unmatched_fp, evaluation::CellKind::FalsePositiveTotal,
                true, false, true);
-    appendCell(QStringLiteral("TOTAL"), QStringLiteral("TOTAL"), anomaly_method ? images.size() : event_records.size(),
+    appendCell(matrix_total, matrix_total, anomaly_method ? images.size() : event_records.size(),
                evaluation::CellKind::All, true, false, false);
 
     const QVariantMap diagnostic = {
-        {QStringLiteral("instance"), QVariantMap{{QStringLiteral("overall"), metricMap(overall.tp, overall.fp, overall.fn)},
-                                                   {QStringLiteral("per_class"), per_class_metrics}}},
-        {QStringLiteral("image"), metricMap(image_counts.tp, image_counts.fp, image_counts.fn)}};
+        {evaluation::fieldName(evaluation::Field::Instance),
+         QVariantMap{{evaluation::fieldName(evaluation::Field::Overall), metricMap(overall.tp, overall.fp, overall.fn)},
+                     {evaluation::fieldName(evaluation::Field::PerClass), per_class_metrics}}},
+        {evaluation::fieldName(evaluation::Field::Image),
+         metricMap(image_counts.tp, image_counts.fp, image_counts.fn)}};
     const OfficialEvaluationOutput official = buildOfficialEvaluation(options.method, images,
                                                                         options.confidence_threshold,
                                                                         options.iou_threshold,
@@ -1775,81 +1758,72 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         return false;
     }
     const EvaluationCapabilities capabilities = capabilitiesForMethod(options.method);
-    const QVariantMap evaluation_config = {{QStringLiteral("schema_version"), 1},
-                                           {QStringLiteral("model_uuid"), options.model_uuid},
-                                           {QStringLiteral("test_task_uuid"), options.test_task_uuid},
-                                           {QStringLiteral("method"), evaluation::methodKey(options.method)},
-                                           {QStringLiteral("inference_digest"), options.evaluation_config.value(QStringLiteral("inference_digest"))},
-                                           {QStringLiteral("input_data_digest"), options.evaluation_config.value(QStringLiteral("input_data_digest"))},
-                                           {QStringLiteral("ground_truth_digest"), options.evaluation_config.value(QStringLiteral("ground_truth_digest"))},
-                                           {QStringLiteral("ground_truth_revision"), options.evaluation_config.value(QStringLiteral("ground_truth_revision"))},
-                                           {QStringLiteral("image_list_digest"), options.evaluation_config.value(QStringLiteral("image_list_digest"))},
-                                           {QStringLiteral("input_digest"), options.evaluation_config.value(QStringLiteral("input_digest"))},
-                                           {QStringLiteral("evaluation_digest"), digestFor(options.evaluation_config)},
-                                           {QStringLiteral("confidence_threshold"), options.confidence_threshold},
-                                           {QStringLiteral("iou_threshold"), options.iou_threshold},
-                                           {QStringLiteral("matching_strategy"),
-                                            evaluation::matchingStrategyKey(options.matching_strategy)}};
-    const QString evaluation_digest = evaluation_config.value(QStringLiteral("evaluation_digest")).toString();
-    QVariantList charts = {QVariantMap{{QStringLiteral("kind"), QStringLiteral("bar")},
-                                             {QStringLiteral("chart_id"), QStringLiteral("per_class_metrics")},
-                                             {QStringLiteral("filter_kind"), QStringLiteral("per_class_metrics")},
-                                             {QStringLiteral("title"), QString("按类别指标")},
-                                             {QStringLiteral("data"), QVariantMap{{QStringLiteral("labels"), chart_labels},
-                                                                                     {QStringLiteral("datasets"), QVariantList{
-                                                                                         QVariantMap{{QStringLiteral("label"), QStringLiteral("Precision")}, {QStringLiteral("data"), precision_values}},
-                                                                                         QVariantMap{{QStringLiteral("label"), QStringLiteral("Recall")}, {QStringLiteral("data"), recall_values}},
-                                                                                         QVariantMap{{QStringLiteral("label"), QStringLiteral("F1")}, {QStringLiteral("data"), f1_values}}}}}},
-                                             {QStringLiteral("options"), QVariantMap{{QStringLiteral("maintainAspectRatio"), false}}}}};
+    QVariantList charts = {QVariantMap{{evaluation::fieldName(evaluation::Field::Kind), QStringLiteral("bar")},
+                                       {evaluation::fieldName(evaluation::Field::ChartId),
+                                        QStringLiteral("per_class_metrics")},
+                                       {evaluation::fieldName(evaluation::Field::FilterKind),
+                                        QStringLiteral("per_class_metrics")},
+                                       {evaluation::fieldName(evaluation::Field::Title), QString("按类别指标")},
+                                       {evaluation::fieldName(evaluation::Field::Data),
+                                        QVariantMap{{evaluation::fieldName(evaluation::Field::Labels), chart_labels},
+                                                    {evaluation::fieldName(evaluation::Field::Datasets), QVariantList{
+                                                        QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
+                                                                     QStringLiteral("Precision")},
+                                                                    {evaluation::fieldName(evaluation::Field::Data),
+                                                                     precision_values}},
+                                                        QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
+                                                                     QStringLiteral("Recall")},
+                                                                    {evaluation::fieldName(evaluation::Field::Data),
+                                                                     recall_values}},
+                                                        QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
+                                                                     QStringLiteral("F1")},
+                                                                    {evaluation::fieldName(evaluation::Field::Data),
+                                                                     f1_values}}}}}},
+                                       {evaluation::fieldName(evaluation::Field::Options),
+                                        QVariantMap{{QStringLiteral("maintainAspectRatio"), false}}}}};
     for (const QVariant &chart : official.charts)
         charts.push_back(chart);
 
     const QVariantMap report = {
-        {QStringLiteral("schema_version"), evaluation::kReportSchemaVersion},
-        {QStringLiteral("model_uuid"), options.model_uuid},
-        {QStringLiteral("test_task_uuid"), options.test_task_uuid},
-        {QStringLiteral("method"), evaluation::methodKey(options.method)},
-        {QStringLiteral("primary_metric_set"), official.available
+        {evaluation::fieldName(evaluation::Field::SchemaVersion), evaluation::kReportSchemaVersion},
+        {evaluation::fieldName(evaluation::Field::ModelUuid), options.model_uuid},
+        {evaluation::fieldName(evaluation::Field::TestTaskUuid), options.test_task_uuid},
+        {evaluation::fieldName(evaluation::Field::Method), evaluation::methodKey(options.method)},
+        {evaluation::fieldName(evaluation::Field::PrimaryMetricSet), official.available
                 ? evaluation::metricSetKey(evaluation::MetricSet::Official)
                 : evaluation::metricSetKey(evaluation::MetricSet::Diagnostic)},
-        {QStringLiteral("inference_digest"), options.evaluation_config.value(QStringLiteral("inference_digest"))},
-        {QStringLiteral("input_data_digest"), options.evaluation_config.value(QStringLiteral("input_data_digest"))},
-        {QStringLiteral("evaluation_digest"), evaluation_digest},
-        {QStringLiteral("ground_truth_digest"), options.evaluation_config.value(QStringLiteral("ground_truth_digest"))},
-        {QStringLiteral("ground_truth_revision"), options.evaluation_config.value(QStringLiteral("ground_truth_revision"))},
-        {QStringLiteral("image_list_digest"), options.evaluation_config.value(QStringLiteral("image_list_digest"))},
-        {QStringLiteral("input_digest"), options.evaluation_config.value(QStringLiteral("input_digest"))},
-        {QStringLiteral("evaluated_at"), QDateTime::currentSecsSinceEpoch()},
-        {QStringLiteral("evaluation_config"), QVariantMap{{QStringLiteral("confidence_threshold"), options.confidence_threshold},
-                                                           {QStringLiteral("iou_threshold"), options.iou_threshold},
-                                                           {QStringLiteral("matching_strategy"),
+        {evaluation::fieldName(evaluation::Field::EvaluatedAt), QDateTime::currentSecsSinceEpoch()},
+        {evaluation::fieldName(evaluation::Field::EvaluationConfig), QVariantMap{{evaluation::fieldName(evaluation::Field::ConfidenceThreshold), options.confidence_threshold},
+                                                           {evaluation::fieldName(evaluation::Field::IouThreshold), options.iou_threshold},
+                                                           {evaluation::fieldName(evaluation::Field::MatchingStrategy),
                                                             evaluation::matchingStrategyKey(options.matching_strategy)}}},
-        {QStringLiteral("class_catalog"), class_catalog},
-        {QStringLiteral("diagnostic_metrics"), diagnostic},
-        {QStringLiteral("official_metrics"), official.available ? official.metrics
-                                                                   : QVariantMap{{QStringLiteral("available"), false}}},
-        {QStringLiteral("image_metric_definition"), official.available && !official.image_definition.isEmpty()
+        {evaluation::fieldName(evaluation::Field::ClassCatalog), class_catalog},
+        {evaluation::fieldName(evaluation::Field::DiagnosticMetrics), diagnostic},
+        {evaluation::fieldName(evaluation::Field::OfficialMetrics), official.available ? official.metrics
+                                                                   : QVariantMap{{evaluation::fieldName(evaluation::Field::Available), false}}},
+        {evaluation::fieldName(evaluation::Field::ImageMetricDefinition), official.available && !official.image_definition.isEmpty()
                 ? official.image_definition
-                : QVariantMap{{QStringLiteral("sample_unit"), QStringLiteral("image_presence")},
-                              {QStringLiteral("aggregation"), QStringLiteral("micro")},
-                              {QStringLiteral("positive_definition"), QStringLiteral("gt_or_pred_class_present")},
-                              {QStringLiteral("has_image_metrics"), true}}},
-        {QStringLiteral("capabilities"), QVariantMap{{QStringLiteral("has_instance_metrics"), capabilities.has_instance_metrics},
-                                                         {QStringLiteral("has_image_metrics"), capabilities.has_image_metrics},
-                                                         {QStringLiteral("has_confusion_matrix"), capabilities.has_confusion_matrix},
-                                                         {QStringLiteral("has_instance_events"), capabilities.has_instance_events},
-                                                         {QStringLiteral("chart_kinds"), capabilities.chart_kinds}}},
-        {QStringLiteral("confusion_matrix"), QVariantMap{{QStringLiteral("cells"), matrix_cells}}},
-        {QStringLiteral("charts"), charts},
-        {QStringLiteral("image_records"), image_records},
-        {QStringLiteral("instance_records"), event_records},
-        {QStringLiteral("image_list"), QStringLiteral("../pred/images.txt")},
-        {QStringLiteral("prediction_manifest"), QStringLiteral("../pred/manifest.yaml")},
-        {QStringLiteral("dataset_manifest"),
+                : QVariantMap{{evaluation::fieldName(evaluation::Field::SampleUnit), QStringLiteral("image_presence")},
+                              {evaluation::fieldName(evaluation::Field::Aggregation), QStringLiteral("micro")},
+                              {evaluation::fieldName(evaluation::Field::PositiveDefinition),
+                               QStringLiteral("gt_or_pred_class_present")},
+                              {evaluation::fieldName(evaluation::Field::HasImageMetrics), true}}},
+        {evaluation::fieldName(evaluation::Field::Capabilities), QVariantMap{{evaluation::fieldName(evaluation::Field::HasInstanceMetrics), capabilities.has_instance_metrics},
+                                                         {evaluation::fieldName(evaluation::Field::HasImageMetrics), capabilities.has_image_metrics},
+                                                         {evaluation::fieldName(evaluation::Field::HasConfusionMatrix), capabilities.has_confusion_matrix},
+                                                         {evaluation::fieldName(evaluation::Field::HasInstanceEvents), capabilities.has_instance_events},
+                                                         {evaluation::fieldName(evaluation::Field::ChartKinds), capabilities.chart_kinds}}},
+        {evaluation::fieldName(evaluation::Field::ConfusionMatrix), QVariantMap{{evaluation::fieldName(evaluation::Field::Cells), matrix_cells}}},
+        {evaluation::fieldName(evaluation::Field::Charts), charts},
+        {evaluation::fieldName(evaluation::Field::ImageRecords), image_records},
+        {evaluation::fieldName(evaluation::Field::InstanceRecords), event_records},
+        {evaluation::fieldName(evaluation::Field::ImageList), QStringLiteral("../pred/images.txt")},
+        {evaluation::fieldName(evaluation::Field::PredictionManifest), QStringLiteral("../pred/manifest.yaml")},
+        {evaluation::fieldName(evaluation::Field::DatasetManifest),
          QDir(options.evaluation_dir).relativeFilePath(options.dataset_manifest_path)},
-        {QStringLiteral("image_count"), images.size()},
-        {QStringLiteral("prediction_count"), prediction_count},
-        {QStringLiteral("event_count"), event_records.size()},
+        {evaluation::fieldName(evaluation::Field::ImageCount), images.size()},
+        {evaluation::fieldName(evaluation::Field::PredictionCount), prediction_count},
+        {evaluation::fieldName(evaluation::Field::EventCount), event_records.size()},
     };
     if (!QDir().mkpath(options.evaluation_dir))
     {
@@ -1872,7 +1846,6 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         result->image_count = images.size();
         result->prediction_count = prediction_count;
         result->event_count = event_records.size();
-        result->evaluation_digest = evaluation_config.value(QStringLiteral("evaluation_digest")).toString();
     }
     return true;
 }

@@ -7,6 +7,7 @@
 #include "model/IModelConfig.h"
 #include "model/IParams.h"
 #include "model/ModelManager.h"
+#include "model/ModelEvaluationProtocol.h"
 #include "model/ModelStorageService.h"
 #include "model/ModelStorageMigration.h"
 #include "model/TaskManager.h"
@@ -422,15 +423,15 @@ void ModelTestTaskManager::handleTaskRevisionChanged()
     {
         const TaskManager::Task *task = currentTaskRecord();
         if (task == nullptr)
-            current_evaluation_->setRuntimeState(QStringLiteral("NotRun"));
+            current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::NotRun));
         else if (task->status == TaskManager::Finished)
             current_evaluation_->reload();
         else if (task->status == TaskManager::Failed)
-            current_evaluation_->setRuntimeState(QStringLiteral("Failed"));
+            current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::Failed));
         else if (activeTask(task))
-            current_evaluation_->setRuntimeState(QStringLiteral("Running"));
+            current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::Running));
         else if (task->status == TaskManager::Stopped)
-            current_evaluation_->setRuntimeState(QStringLiteral("NotRun"));
+            current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::NotRun));
     }
     emit taskStateChanged();
 }

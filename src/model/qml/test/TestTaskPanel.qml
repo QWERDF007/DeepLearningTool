@@ -29,7 +29,8 @@ Rectangle {
         QuiComboBox {
             id: taskCombo
             Layout.preferredWidth: 220
-            model: control.taskManager ? control.taskManager.count : 0
+            model: control.taskManager
+            textRole: "name"
             currentIndex: control.taskManager ? control.taskManager.currentIndex : -1
             displayText: control.taskManager ? control.taskManager.currentTaskName : ""
             onActivated: {

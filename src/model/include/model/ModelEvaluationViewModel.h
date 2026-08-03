@@ -28,8 +28,6 @@ class MODEL_API ModelEvaluationViewModel : public QObject
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged FINAL)
     Q_PROPERTY(QString state READ state NOTIFY reportChanged FINAL)
     Q_PROPERTY(QString error READ error NOTIFY reportChanged FINAL)
-    Q_PROPERTY(bool inferenceOutdated READ inferenceOutdated NOTIFY reportChanged FINAL)
-    Q_PROPERTY(bool evaluationOutdated READ evaluationOutdated NOTIFY reportChanged FINAL)
     Q_PROPERTY(QString reportPath READ reportPath WRITE setReportPath NOTIFY reportPathChanged FINAL)
     Q_PROPERTY(QString resultPath READ resultPath WRITE setResultPath NOTIFY resultPathChanged FINAL)
     Q_PROPERTY(QString primaryMetricSet READ primaryMetricSet NOTIFY reportChanged FINAL)
@@ -67,8 +65,6 @@ public:
     bool loading() const;
     QString state() const;
     QString error() const;
-    bool inferenceOutdated() const;
-    bool evaluationOutdated() const;
     QString reportPath() const;
     void setReportPath(const QString &path);
     QString resultPath() const;
@@ -130,7 +126,7 @@ signals:
 private:
     void setLoading(bool value);
     void clearReport(const QString &error = {}, const QString &state = {});
-    void loadReport(const QVariantMap &root, bool inferenceOutdated, bool evaluationOutdated);
+    void loadReport(const QVariantMap &root);
     void loadInstanceRecords(const QVariantList &records);
     QVariantMap instanceToMap(const EvaluationInstanceRecord &record) const;
     QString thumbnailUrl(const EvaluationInstanceRecord &record) const;
@@ -141,9 +137,7 @@ private:
     bool available_{false};
     bool loading_{false};
     QString error_;
-    QString state_{QStringLiteral("NotRun")};
-    bool inference_outdated_{false};
-    bool evaluation_outdated_{false};
+    QString state_;
     QString primary_metric_set_;
     QString metric_scope_description_;
     QVariantMap image_metric_definition_;

@@ -20,7 +20,6 @@
 
 #include <memory>
 #include <exception>
-#include <QCryptographicHash>
 #include <QDateTime>
 #include <QCoreApplication>
 #include <QElapsedTimer>
@@ -32,10 +31,8 @@
 #include <QFileInfo>
 #include <QFile>
 #include <QDir>
-#include <yaml-cpp/yaml.h>
 #include <algorithm>
 #include <atomic>
-#include <set>
 #include <utility>
 
 namespace dltool::model {
@@ -67,160 +64,6 @@ QString taskManagerStatusName(const TaskManager::TaskStatus status)
     default:
         return {};
     }
-}
-
-QString fileDigest(const QString &path)
-{
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly))
-        return {};
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    while (!file.atEnd())
-    {
-        const QByteArray chunk = file.read(1024 * 1024);
-        if (chunk.isEmpty() && !file.atEnd())
-            return {};
-        hash.addData(chunk);
-    }
-    return QString("sha256:%1").arg(QString::fromLatin1(hash.result().toHex()));
-}
-
-QString checkpointPath(const ModelTaskRequest &request, const QString &project_dir)
-{
-    const QVariantMap inference = request.model_config.test_params.value(QString("inference")).toMap();
-    const QString raw = inference.value(QString("checkpoint_path")).toString().trimmed();
-    if (raw.isEmpty())
-        return {};
-    const QFileInfo info(raw);
-    if (info.isAbsolute())
-        return cleanPath(info.absoluteFilePath());
-    const ModelStorageService storage(project_dir);
-    const QString weights = storage.trainWeightsPath(request.model_config.model_name);
-    const QString weight_candidate = cleanPath(QDir(weights).filePath(raw));
-    if (QFileInfo::exists(weight_candidate))
-        return weight_candidate;
-    const QString model_root = storage.path(request.model_config.model_name, ModelStorageLocation::ModelRoot);
-    return cleanPath(QDir(model_root).filePath(raw));
-}
-
-QVariantMap fileSignature(const QString &path)
-{
-    const QFileInfo info(path);
-    const bool valid = info.exists() && info.isFile();
-    return {{QString("path"), path.isEmpty() ? QString() : cleanPath(info.absoluteFilePath())},
-            {QString("exists"), valid},
-            {QString("size"), valid ? info.size() : qint64(-1)},
-            {QString("mtime"), valid ? info.lastModified().toMSecsSinceEpoch() : qint64(-1)},
-            {QString("content_hash"), valid ? fileDigest(path) : QString()}};
-}
-
-bool testSelectionContainsImage(const ModelDatasetSelection &selection, const qint64 image_id,
-                                const dltool::data::DataManager *data_manager)
-{
-    if (data_manager == nullptr)
-        return false;
-    const qint64 dataset_id = data_manager->imageDatasetId(image_id);
-    if (selection.containsDataset(dataset_id))
-        return true;
-
-    const QVariantMap image_level = data_manager->getImageLevelLabelData(image_id);
-    const qint64 image_level_class = image_level.value(QStringLiteral("label_class_id"),
-                                                       image_level.value(QStringLiteral("class_id"), -1)).toLongLong();
-    if (selection.contains(dataset_id, image_level_class))
-        return true;
-
-    for (const qint64 label_id : data_manager->imageLabelIds(image_id))
-    {
-        if (selection.contains(dataset_id, data_manager->labelClassId(label_id)))
-            return true;
-    }
-    return false;
-}
-
-QString inputDataDigest(const ModelTaskRequest &request, const dltool::data::DataManager *data_manager)
-{
-    if (data_manager == nullptr || !isTestModelTask(request.task_type))
-        return {};
-
-    const ModelDatasetSelection &selection = request.selections.test;
-    std::set<qint64> dataset_set = selection.dataset_ids;
-    for (const auto &[dataset_id, label_class_id] : selection.label_classes)
-    {
-        Q_UNUSED(label_class_id)
-        dataset_set.insert(dataset_id);
-    }
-    if (dataset_set.empty())
-        return {};
-
-    const std::vector<int64_t> dataset_ids(dataset_set.cbegin(), dataset_set.cend());
-    std::vector<int64_t> image_ids = data_manager->imageIdsForDatasets(dataset_ids);
-    std::sort(image_ids.begin(), image_ids.end());
-
-    QVariantList signatures;
-    signatures.reserve(static_cast<int>(image_ids.size()));
-    for (const qint64 image_id : image_ids)
-    {
-        if (!testSelectionContainsImage(selection, image_id, data_manager))
-            continue;
-        const QString path = cleanPath(data_manager->imagePath(image_id));
-        const QFileInfo info(path);
-        const bool valid = info.exists() && info.isFile();
-        signatures.push_back(QVariantMap{{QStringLiteral("image_id"), image_id},
-                                         {QStringLiteral("dataset_id"),
-                                          static_cast<qint64>(data_manager->imageDatasetId(image_id))},
-                                         {QStringLiteral("path"), path},
-                                         {QStringLiteral("size"), valid ? info.size() : qint64(-1)},
-                                         {QStringLiteral("mtime"), valid ? info.lastModified().toMSecsSinceEpoch()
-                                                                           : qint64(-1)},
-                                         {QStringLiteral("exists"), valid}});
-    }
-    if (signatures.isEmpty())
-        return {};
-
-    YAML::Emitter emitter;
-    emitter << common::yaml::variantToYaml(signatures);
-    return QString("sha256:%1").arg(QString::fromLatin1(
-        QCryptographicHash::hash(QByteArray(emitter.c_str()), QCryptographicHash::Sha256).toHex()));
-}
-
-QString inferenceDigest(const ModelTaskRequest &request, const QString &project_dir,
-                        const QString &input_data_digest)
-{
-    const auto selectionMap = [](const ModelDatasetSelection &selection)
-    {
-        QVariantList dataset_ids;
-        for (const qint64 id : selection.dataset_ids)
-            dataset_ids.push_back(id);
-        QVariantList label_classes;
-        for (const auto &entry : selection.label_classes)
-            label_classes.push_back(QVariantMap{{QStringLiteral("dataset_id"), entry.first},
-                                                {QStringLiteral("label_class_id"), entry.second}});
-        return QVariantMap{{QStringLiteral("dataset_ids"), dataset_ids},
-                           {QStringLiteral("label_classes"), label_classes}};
-    };
-    QVariantMap inference_params = request.model_config.test_params;
-    // Evaluation thresholds/matching strategy affect only C++ diagnostics;
-    // changing them must not invalidate the normalized PRED.
-    inference_params.remove(QStringLiteral("evaluation"));
-    const QVariantMap value = {
-        {QStringLiteral("model_uuid"), request.model_config.model_uuid},
-        {QStringLiteral("framework"), request.model_config.framework_name},
-        {QStringLiteral("method"), evaluation::methodKey(request.evaluation_method)},
-        {QStringLiteral("architecture"), request.model_config.model_architecture},
-        {QStringLiteral("task_type"), modelTaskKey(request.task_type)},
-        {QStringLiteral("dataset_selection"), QVariantMap{{QStringLiteral("train"), selectionMap(request.selections.train)},
-                                                           {QStringLiteral("validation"), selectionMap(request.selections.validation)},
-                                                           {QStringLiteral("test"), selectionMap(request.selections.test)}}},
-        {QStringLiteral("model_params"), request.model_config.train_params.value(QStringLiteral("model")).toMap()},
-        {QStringLiteral("test_params"), inference_params},
-        {QStringLiteral("scope_uuid"), request.scope_uuid},
-        {QStringLiteral("input_data_digest"), input_data_digest},
-        {QStringLiteral("checkpoint"), fileSignature(checkpointPath(request, project_dir))},
-    };
-    YAML::Emitter emitter;
-    emitter << common::yaml::variantToYaml(value);
-    return QStringLiteral("sha256:%1").arg(QString::fromLatin1(
-        QCryptographicHash::hash(QByteArray(emitter.c_str()), QCryptographicHash::Sha256).toHex()));
 }
 
 bool isFewShotFramework(const QString &framework_name)
@@ -502,10 +345,13 @@ bool ModelTaskController::prepareTask(const int task_id)
         failTask(task_id, request_error);
         return false;
     }
+    // A regular test may be reduced to a C++-only re-evaluation.  The
+    // preparation stage compares the actual inference parameters and the
+    // exported image list directly.
+    request.evaluation_only = isTestModelTask(request.task_type) && !request.scope_uuid.trimmed().isEmpty();
 
     const auto process_spec = std::make_shared<ExternalProcessSpec>();
     const auto request_ptr = std::make_shared<ModelTaskRequest>(std::move(request));
-    const auto reuse_prediction = std::make_shared<std::atomic_bool>(false);
 
     dltool::data::DataOperationWorkflow::Options options;
     options.title            = QString("准备模型任务");
@@ -514,59 +360,11 @@ bool ModelTaskController::prepareTask(const int task_id)
 
     const int method = method_;
     const QString project_dir = project_dir_;
-    const auto data_manager = data_manager_;
-    const auto prepare = [method, project_dir, request_ptr, process_spec, reuse_prediction, data_manager](
+    const auto prepare = [method, project_dir, request_ptr, process_spec](
                              const dltool::data::DatasetExportSource *dataset_source,
                              dltool::data::DataOperationWorkflow::Result &result)
     {
         ModelTaskRequest &request = *request_ptr;
-        // Digesting the selected image universe, hashing the checkpoint and
-        // validating an existing PRED can touch thousands of files.  Keep all
-        // of that work inside the DataOperationWorkflow worker so starting a
-        // test task never blocks the GUI thread.
-        if (isTestModelTask(request.task_type))
-        {
-            request.input_data_digest = inputDataDigest(request, data_manager);
-            request.inference_digest = inferenceDigest(request, project_dir, request.input_data_digest);
-
-            const ModelStorageService storage(project_dir);
-            const QString prediction_config =
-                storage.testTaskPredictionConfigPath(request.model_config.model_name, request.model_config.task_directory);
-            const QString prediction_images =
-                storage.testTaskPredictionImagesPath(request.model_config.model_name, request.model_config.task_directory);
-            const QString prediction_manifest =
-                storage.testTaskPredictionManifestPath(request.model_config.model_name, request.model_config.task_directory);
-            bool reusable = QFileInfo::exists(prediction_config) && QFileInfo::exists(prediction_images)
-                && QFileInfo::exists(prediction_manifest);
-            if (reusable)
-            {
-                try
-                {
-                    const YAML::Node pred_root = common::yaml::loadFile(QFileInfo(prediction_config));
-                    reusable = pred_root && pred_root.IsMap()
-                        && common::yaml::nodeString(pred_root["inference_digest"]) == request.inference_digest
-                        && common::yaml::nodeString(pred_root["input_data_digest"]) == request.input_data_digest
-                        && !request.input_data_digest.isEmpty();
-                }
-                catch (const std::exception &)
-                {
-                    reusable = false;
-                }
-                if (reusable)
-                    reusable = ModelEvaluationService::validatePrediction(
-                        prediction_images, prediction_manifest, nullptr, nullptr, nullptr,
-                        request.model_config.model_uuid, request.scope_uuid,
-                        evaluation::methodKey(request.evaluation_method));
-            }
-            request.reuse_prediction = reusable;
-            reuse_prediction->store(reusable, std::memory_order_release);
-            if (reusable)
-            {
-                result.success = true;
-                return;
-            }
-        }
-
         QString error;
         if (!prepareModelTask(method, project_dir, request, dataset_source, *process_spec, &error))
         {
@@ -575,30 +373,9 @@ bool ModelTaskController::prepareTask(const int task_id)
         }
         result.success = true;
     };
-    const auto completion = [this, task_id, process_spec, reuse_prediction](
+    const auto completion = [this, task_id, process_spec](
                                 const dltool::data::DataOperationWorkflow::Result &result)
     {
-        if (reuse_prediction->load(std::memory_order_acquire))
-        {
-            const TaskManager::Task *task = task_manager_ != nullptr ? task_manager_->findTask(task_id) : nullptr;
-            if (task == nullptr || task->status != TaskManager::Preparing)
-                return;
-            if (!result.success)
-            {
-                failTask(task_id, result.error.isEmpty() ? QString("准备测试任务失败") : result.error);
-                return;
-            }
-            if (!task_manager_->markTaskRunning(task_id))
-            {
-                failTask(task_id, QString("测试任务无法进入运行状态"));
-                return;
-            }
-            task_manager_->updateTaskPhase(task_id, QStringLiteral("evaluating"));
-            task_manager_->updateTaskProgress(task_id, 90);
-            syncTaskModelState(task_id);
-            runTestEvaluationAsync(task_id);
-            return;
-        }
         handlePreparedTask(task_id, process_spec, result.success, result.error);
     };
 
@@ -727,6 +504,21 @@ void ModelTaskController::handlePreparedTask(const int task_id, const std::share
     if (!success)
     {
         failTask(task_id, error.isEmpty() ? QString("准备模型任务失败") : error);
+        return;
+    }
+
+    if (process_spec != nullptr && process_spec->evaluation_only)
+    {
+        if (!task_manager_->markTaskRunning(task_id))
+        {
+            failTask(task_id, QString("测试任务无法进入评估状态"));
+            return;
+        }
+        task_manager_->updateTaskPhase(task_id, QStringLiteral("evaluating"));
+        task_manager_->updateTaskProgress(task_id, 90);
+        syncTaskModelState(task_id);
+        spdlog::info("模型任务 {} 使用已有预测结果执行 C++ 评估", task_id);
+        runTestEvaluationAsync(task_id);
         return;
     }
 
@@ -1050,42 +842,16 @@ bool ModelTaskController::buildTestEvaluationOptions(const int task_id, ModelEva
     options.evaluation_dir = storage.testTaskEvaluationPath(record.name, task_directory);
     options.report_path = storage.testTaskEvaluationReportPath(record.name, task_directory);
 
-    QVariantMap prediction_config;
-    const QString prediction_config_path = storage.testTaskPredictionConfigPath(record.name, task_directory);
-    try
-    {
-        const QFileInfo file(prediction_config_path);
-        if (file.exists() && file.isFile())
-            prediction_config = common::yaml::nodeVariant(common::yaml::loadFile(file)).toMap();
-    }
-    catch (const std::exception &)
-    {
-        return setError(err_msg, QString("读取当前预测配置失败"));
-    }
-
-    // Evaluation parameters are optional for old parameter schemas; defaults
-    // are deterministic and the report records the actual values used.
+    // Evaluation parameters are optional; the evaluator applies deterministic
+    // defaults when they are absent.
     const QVariantMap evaluation_params = definition.test_params.value(QStringLiteral("evaluation")).toMap();
     options.evaluation_config = evaluation_params;
-    // The generated test manifest and image list are the current GT/image
-    // revisions.  They participate in evaluation (not inference) freshness,
-    // so changing annotations can reuse PRED while forcing a new report.
-    options.evaluation_config.insert(QStringLiteral("ground_truth_digest"),
-                                     fileDigest(options.dataset_manifest_path));
-    options.evaluation_config.insert(QStringLiteral("image_list_digest"),
-                                     fileDigest(options.prediction_images_path));
-    options.evaluation_config.insert(QStringLiteral("inference_digest"),
-                                     prediction_config.value(QStringLiteral("inference_digest")));
-    options.evaluation_config.insert(QStringLiteral("input_data_digest"),
-                                     prediction_config.value(QStringLiteral("input_data_digest")));
-    options.evaluation_config.insert(QStringLiteral("ground_truth_revision"),
-                                     options.evaluation_config.value(QStringLiteral("ground_truth_digest")));
-    options.evaluation_config.insert(QStringLiteral("input_digest"),
-                                     options.evaluation_config.value(QStringLiteral("image_list_digest")));
-    options.confidence_threshold = evaluation_params.value(QStringLiteral("confidence_threshold"), 0.5).toDouble();
-    options.iou_threshold = evaluation_params.value(QStringLiteral("iou_threshold"), 0.5).toDouble();
+    options.confidence_threshold
+        = evaluation_params.value(evaluation::fieldName(evaluation::Field::ConfidenceThreshold), 0.5).toDouble();
+    options.iou_threshold
+        = evaluation_params.value(evaluation::fieldName(evaluation::Field::IouThreshold), 0.5).toDouble();
     options.matching_strategy = evaluation::matchingStrategyFromKey(
-        evaluation_params.value(QStringLiteral("matching_strategy"),
+        evaluation_params.value(evaluation::fieldName(evaluation::Field::MatchingStrategy),
                                  evaluation::matchingStrategyKey(evaluation::MatchingStrategy::GreedyIoU)).toString());
     return true;
 }
@@ -1099,29 +865,20 @@ bool ModelTaskController::commitTestEvaluationResult(const int task_id, const Mo
     const TaskManager::Task *task = task_manager_->findTask(task_id);
     if (task == nullptr || !isTestModelTask(task->type))
         return setError(err_msg, QString("测试任务上下文无效"));
-    result = {{QStringLiteral("image_count"), evaluation_result.image_count},
-              {QStringLiteral("prediction_count"), evaluation_result.prediction_count},
-              {QStringLiteral("event_count"), evaluation_result.event_count},
-              {QStringLiteral("evaluation_digest"), evaluation_result.evaluation_digest}};
-    result.insert(QStringLiteral("schema_version"), evaluation::kResultSchemaVersion);
-    result.insert(QStringLiteral("model_uuid"), options.model_uuid);
-    result.insert(QStringLiteral("test_task_uuid"), options.test_task_uuid);
-    result.insert(QStringLiteral("method"), evaluation::methodKey(options.method));
-    result.insert(QStringLiteral("status"), QStringLiteral("finished"));
-    result.insert(QStringLiteral("evaluated_at"), QDateTime::currentSecsSinceEpoch());
-    result.insert(QStringLiteral("prediction_dir"), QStringLiteral("pred"));
-    result.insert(QStringLiteral("prediction_images"), QStringLiteral("pred/images.txt"));
-    result.insert(QStringLiteral("prediction_manifest"), QStringLiteral("pred/manifest.yaml"));
-    result.insert(QStringLiteral("evaluation_report"), QStringLiteral("evaluation/report.yaml"));
-    result.insert(QStringLiteral("inference_digest"), options.evaluation_config.value(QStringLiteral("inference_digest")));
-    result.insert(QStringLiteral("input_data_digest"), options.evaluation_config.value(QStringLiteral("input_data_digest")));
-    result.insert(QStringLiteral("ground_truth_digest"),
-                  options.evaluation_config.value(QStringLiteral("ground_truth_digest")));
-    result.insert(QStringLiteral("ground_truth_revision"),
-                  options.evaluation_config.value(QStringLiteral("ground_truth_revision")));
-    result.insert(QStringLiteral("image_list_digest"),
-                  options.evaluation_config.value(QStringLiteral("image_list_digest")));
-    result.insert(QStringLiteral("input_digest"), options.evaluation_config.value(QStringLiteral("input_digest")));
+    result = {{evaluation::fieldName(evaluation::Field::ImageCount), evaluation_result.image_count},
+              {evaluation::fieldName(evaluation::Field::PredictionCount), evaluation_result.prediction_count},
+              {evaluation::fieldName(evaluation::Field::EventCount), evaluation_result.event_count}};
+    result.insert(evaluation::fieldName(evaluation::Field::SchemaVersion), evaluation::kResultSchemaVersion);
+    result.insert(evaluation::fieldName(evaluation::Field::ModelUuid), options.model_uuid);
+    result.insert(evaluation::fieldName(evaluation::Field::TestTaskUuid), options.test_task_uuid);
+    result.insert(evaluation::fieldName(evaluation::Field::Method), evaluation::methodKey(options.method));
+    result.insert(evaluation::fieldName(evaluation::Field::Status),
+                  taskProtocolStatusName(TaskProtocolStatus::Finished));
+    result.insert(evaluation::fieldName(evaluation::Field::EvaluatedAt), QDateTime::currentSecsSinceEpoch());
+    result.insert(evaluation::fieldName(evaluation::Field::PredictionDir), QStringLiteral("pred"));
+    result.insert(evaluation::fieldName(evaluation::Field::PredictionImages), QStringLiteral("pred/images.txt"));
+    result.insert(evaluation::fieldName(evaluation::Field::PredictionManifest), QStringLiteral("pred/manifest.yaml"));
+    result.insert(evaluation::fieldName(evaluation::Field::EvaluationReport), QStringLiteral("evaluation/report.yaml"));
     ModelTestTaskRepository repository(project_dir_);
     if (!repository.writeResult(options.model_name, options.task_directory, result, err_msg))
     {
@@ -1197,6 +954,9 @@ void ModelTaskController::runTestEvaluationAsync(const int task_id)
             guard->task_manager_->updateTaskPhase(task_id, QStringLiteral("finished"));
             guard->task_manager_->finishTask(task_id);
             guard->syncTaskModelState(task_id);
+            spdlog::info("模型任务 {} 评估完成", task_id);
+            ui::SignalHelper::notifySuccess(QString("模型任务 %1 评估完成").arg(task_id),
+                                             QString("评估结果已生成"));
         }, Qt::QueuedConnection);
     });
 }

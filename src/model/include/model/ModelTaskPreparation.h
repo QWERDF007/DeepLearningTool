@@ -34,9 +34,7 @@ struct MODEL_API ModelTaskRequest
     quint16             task_server_port{0};          ///< Python 连接的任务 TCP 端口。
     ModelDatasetSelections selections;                ///< 当前模型的数据集选择。
     ModelTaskConfigInput   model_config;              ///< 当前模型名称、架构和参数。
-    bool reuse_prediction{false};                     ///< 测试仅重新评估时保留当前 pred/。
-    QString inference_digest;                         ///< 当前推理输入摘要。
-    QString input_data_digest;                        ///< 当前测试图像 ID、路径、大小和 mtime 摘要。
+    bool evaluation_only{false};                      ///< 推理输入未变化时仅重新执行 C++ 评估。
 };
 
 /**

@@ -13,7 +13,6 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
-#include <QCryptographicHash>
 #include <QStringList>
 #include <QVariantMap>
 #include <QSaveFile>
@@ -63,6 +62,22 @@ bool clearTensorBoardEventFiles(const QString &log_dir, QString *err_msg)
     return true;
 }
 
+YAML::Node datasetManifestEntries(const YAML::Node &root)
+{
+    if (!root)
+        return {};
+    if (root.IsSequence())
+        return root;
+    if (!root.IsMap())
+        return {};
+
+    const YAML::Node images = root[evaluation::fieldName(evaluation::Field::Images).toStdString()];
+    if (images && images.IsSequence())
+        return images;
+    const YAML::Node samples = root[evaluation::fieldName(evaluation::Field::Samples).toStdString()];
+    return samples && samples.IsSequence() ? samples : YAML::Node{};
+}
+
 QByteArray predictionImagesData(const QVariantMap &datasets, QString *err_msg)
 {
     const QVariantMap test_dataset = datasets.value(QStringLiteral("test")).toMap();
@@ -74,9 +89,7 @@ QByteArray predictionImagesData(const QVariantMap &datasets, QString *err_msg)
     try
     {
         YAML::Node root = common::yaml::loadFile(QFileInfo(manifest_path));
-        YAML::Node images = root["images"];
-        if (!images || !images.IsSequence())
-            images = root["samples"];
+        const YAML::Node images = datasetManifestEntries(root);
         if (!images || !images.IsSequence())
             return setError(err_msg, QString("测试数据集 manifest 缺少 images")), QByteArray();
         for (const YAML::Node &image : images)
@@ -148,42 +161,88 @@ bool isLegacyFewShotRequest(const ModelTaskRequest &request)
         && request.framework.name.compare(QString("FS-SAM2"), Qt::CaseInsensitive) == 0;
 }
 
-QString digestFile(const QString &path)
+QVariantMap inferenceParams(const QVariantMap &test_params)
 {
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly))
-        return {};
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    while (!file.atEnd())
-    {
-        const QByteArray chunk = file.read(1024 * 1024);
-        if (chunk.isEmpty() && !file.atEnd())
-            return {};
-        hash.addData(chunk);
-    }
-    return QString("sha256:%1").arg(QString::fromLatin1(hash.result().toHex()));
+    QVariantMap result = test_params;
+    result.remove(QStringLiteral("evaluation"));
+    return result;
 }
 
-QVariantMap fileSignature(const QString &path)
+QString checkpointPath(const ModelTaskRequest &request, const QString &model_root,
+                       const QString &train_weights_root)
+{
+    const QVariantMap inference = request.model_config.test_params.value(QStringLiteral("inference")).toMap();
+    const QString raw = inference.value(QStringLiteral("checkpoint_path")).toString().trimmed();
+    if (raw.isEmpty())
+        return {};
+    const QFileInfo info(raw);
+    if (info.isAbsolute())
+        return cleanPath(info.absoluteFilePath());
+    const QString model_candidate = cleanPath(QDir(model_root).filePath(raw));
+    const QString weights_candidate = cleanPath(QDir(train_weights_root).filePath(raw));
+    return QFileInfo::exists(model_candidate) ? model_candidate : weights_candidate;
+}
+
+QVariantMap checkpointInfo(const QString &path)
 {
     const QFileInfo info(path);
-    const QString normalized = info.exists() ? cleanPath(info.absoluteFilePath()) : cleanPath(path);
-    return {{QStringLiteral("path"), path.isEmpty() ? QString() : normalized},
-            {QStringLiteral("exists"), info.exists() && info.isFile()},
-            {QStringLiteral("size"), info.exists() && info.isFile() ? info.size() : qint64(-1)},
-            {QStringLiteral("mtime"), info.exists() && info.isFile() ? info.lastModified().toMSecsSinceEpoch() : qint64(-1)},
-            {QStringLiteral("content_hash"), info.exists() && info.isFile() ? digestFile(path) : QString()}};
+    const bool valid = info.exists() && info.isFile();
+    return {{QStringLiteral("path"), valid ? cleanPath(info.absoluteFilePath()) : QString()},
+            {QStringLiteral("size"), valid ? info.size() : qint64(-1)},
+            {QStringLiteral("mtime"), valid ? info.lastModified().toMSecsSinceEpoch() : qint64(-1)}};
 }
 
-bool predictionImagesMatch(const QString &path, const QVariantMap &datasets, QString *err_msg)
+bool predictionInputsMatch(const QString &prediction_dir, const QString &config_path, const QString &task_root,
+                           const QString &model_root, const QString &train_weights_root,
+                           const ModelTaskRequest &request, const QByteArray &images_data)
 {
-    const QByteArray expected = predictionImagesData(datasets, err_msg);
-    if (expected.isEmpty())
+    QFile images_file(QDir(prediction_dir).filePath(QStringLiteral("images.txt")));
+    if (!images_file.open(QIODevice::ReadOnly) || images_file.readAll() != images_data)
         return false;
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly))
+
+    const QFileInfo config_file(config_path);
+    if (!config_file.exists() || !config_file.isFile())
         return false;
-    return file.readAll() == expected;
+
+    QVariantMap previous;
+    try
+    {
+        previous = common::yaml::nodeVariant(common::yaml::loadFile(config_file)).toMap();
+    }
+    catch (const std::exception &)
+    {
+        return false;
+    }
+
+    if (previous.value(evaluation::fieldName(evaluation::Field::ModelUuid)).toString()
+            != request.model_config.model_uuid
+        || previous.value(evaluation::fieldName(evaluation::Field::TestTaskUuid)).toString() != request.scope_uuid
+        || previous.value(QStringLiteral("task_type")).toString() != modelTaskKey(request.task_type)
+        || previous.value(QStringLiteral("framework")).toString()
+               != request.model_config.framework_name
+        || previous.value(evaluation::fieldName(evaluation::Field::Method)).toString()
+               != evaluation::methodKey(request.evaluation_method)
+        || previous.value(QStringLiteral("model_architecture")).toString()
+               != request.model_config.model_architecture
+        || previous.value(QStringLiteral("model_params")).toMap()
+               != request.model_config.train_params.value(QStringLiteral("model")).toMap()
+        || inferenceParams(previous.value(QStringLiteral("test_params")).toMap())
+               != inferenceParams(request.model_config.test_params))
+        return false;
+
+    const QString current_checkpoint = checkpointPath(request, model_root, train_weights_root);
+    const QVariantMap current_info = checkpointInfo(current_checkpoint);
+    const QString previous_checkpoint = previous.value(QStringLiteral("checkpoint_path")).toString();
+    const QString previous_checkpoint_absolute = previous_checkpoint.isEmpty()
+        ? QString()
+        : (QFileInfo(previous_checkpoint).isAbsolute()
+               ? cleanPath(previous_checkpoint)
+               : cleanPath(QDir(task_root).filePath(previous_checkpoint)));
+    if (current_info.value(QStringLiteral("path")).toString() != previous_checkpoint_absolute
+        || current_info.value(QStringLiteral("size")) != previous.value(QStringLiteral("checkpoint_size"))
+        || current_info.value(QStringLiteral("mtime")) != previous.value(QStringLiteral("checkpoint_mtime")))
+        return false;
+    return true;
 }
 
 bool writePredictionConfig(const QString &path, const QString &task_root, const QString &model_root,
@@ -209,28 +268,25 @@ bool writePredictionConfig(const QString &path, const QString &task_root, const 
                 : (QFileInfo::exists(weights_candidate) ? weights_candidate : model_candidate);
         }
     }
-    const QString images_digest = QString("sha256:%1").arg(
-        QString::fromLatin1(QCryptographicHash::hash(images_data, QCryptographicHash::Sha256).toHex()));
     const QVariantMap value = {
-        {QStringLiteral("schema_version"), 1},
-        {QStringLiteral("model_uuid"), request.model_config.model_uuid},
-        {QStringLiteral("test_task_uuid"), request.scope_uuid},
-        {QStringLiteral("inference_digest"), request.inference_digest},
-        {QStringLiteral("input_data_digest"), request.input_data_digest},
+        {evaluation::fieldName(evaluation::Field::SchemaVersion), 1},
+        {evaluation::fieldName(evaluation::Field::ModelUuid), request.model_config.model_uuid},
+        {evaluation::fieldName(evaluation::Field::TestTaskUuid), request.scope_uuid},
         {QStringLiteral("task_type"), modelTaskKey(request.task_type)},
-        {QStringLiteral("method"), evaluation::methodKey(request.evaluation_method)},
+        {QStringLiteral("framework"), request.model_config.framework_name},
+        {evaluation::fieldName(evaluation::Field::Method), evaluation::methodKey(request.evaluation_method)},
+        {QStringLiteral("model_architecture"), request.model_config.model_architecture},
         {QStringLiteral("model_params"), request.model_config.train_params.value(QStringLiteral("model")).toMap()},
         {QStringLiteral("test_params"), request.model_config.test_params},
         {QStringLiteral("datasets"), relative_datasets},
         {QStringLiteral("checkpoint_path"), relativePath(task_root, checkpoint_path)},
-        {QStringLiteral("checkpoint_signature"), fileSignature(checkpoint_path)},
-        {QStringLiteral("weight_digest"), digestFile(checkpoint_path)},
-        {QStringLiteral("image_list_digest"), images_digest},
-        {QStringLiteral("image_count"), images_data.isEmpty() ? 0 : images_data.count('\n') - 1},
-        {QStringLiteral("prediction_images"), QStringLiteral("images.txt")},
-        {QStringLiteral("prediction_manifest"), QStringLiteral("manifest.yaml")},
+        {QStringLiteral("checkpoint_size"), checkpointInfo(checkpoint_path).value(QStringLiteral("size"))},
+        {QStringLiteral("checkpoint_mtime"), checkpointInfo(checkpoint_path).value(QStringLiteral("mtime"))},
+        {evaluation::fieldName(evaluation::Field::ImageCount), images_data.isEmpty() ? 0 : images_data.count('\n') - 1},
+        {evaluation::fieldName(evaluation::Field::PredictionImages), QStringLiteral("images.txt")},
+        {evaluation::fieldName(evaluation::Field::PredictionManifest), QStringLiteral("manifest.yaml")},
         {QStringLiteral("config_root"), QStringLiteral(".")},
-        {QStringLiteral("prediction_dir"), QStringLiteral(".")},
+        {evaluation::fieldName(evaluation::Field::PredictionDir), QStringLiteral(".")},
     };
     return common::yaml::writeFileAtomic(path, common::yaml::variantToYaml(value), err_msg,
                                          QString("打开预测配置失败"), QString("生成预测配置失败"),
@@ -295,22 +351,19 @@ bool prepareModelTask(const int method, const QString &project_dir, const ModelT
         return setError(err_msg, QString("创建测试任务目录失败: %1").arg(storage_err));
     }
 
-    // A full inference run replaces the single current PRED atomically at the
-    // task-directory level.  Validate every target before touching anything,
-    // then clear stale evaluation/result files before dataset export or config
-    // generation so a later preparation failure cannot leave an old result
-    // looking valid.
+    // A full inference run replaces the current PRED.  Evaluation-only runs
+    // keep that PRED and replace only the C++ evaluation output.
     QString prediction_dir;
     QString evaluation_dir;
     QString result_path;
-    bool reuse_prediction = request.reuse_prediction;
+    const QString task_root = cleanPath(QFileInfo(storage.testTaskRoot(model_name, task_directory)).absoluteFilePath());
+    bool evaluation_only = request.evaluation_only;
     QByteArray prediction_images_data;
     if (!is_train && !legacy_few_shot_test)
     {
         prediction_dir = storage.testTaskPredictionPath(model_name, task_directory);
         evaluation_dir = storage.testTaskEvaluationPath(model_name, task_directory);
         result_path = storage.testTaskResultPath(model_name, task_directory);
-        const QString task_root = cleanPath(QFileInfo(storage.testTaskRoot(model_name, task_directory)).absoluteFilePath());
         const auto insideTaskRoot = [&task_root](const QString &path)
         {
             const QString value = cleanPath(QFileInfo(path).absoluteFilePath());
@@ -323,27 +376,6 @@ bool prepareModelTask(const int method, const QString &project_dir, const ModelT
             return setError(err_msg, QString("测试结果路径非法"));
 
     }
-
-    const QString script_path = request.framework.scriptFor(request.task_type);
-    if (script_path.isEmpty())
-    {
-        return setError(err_msg, QString("框架未定义脚本, 框架: %1, 任务: %2")
-                                     .arg(request.framework.name, modelTaskKey(request.task_type)));
-    }
-    if (!QFileInfo::exists(script_path))
-        return setError(err_msg, QString("脚本不存在: %1").arg(script_path));
-
-    const QString python_env_path = dltool::settings::GlobalSettings::pythonEnvironmentPath();
-    if (python_env_path.trimmed().isEmpty())
-        return setError(err_msg, QString("未配置 Python 环境目录"));
-
-    const QFileInfo python_env_info(cleanPath(python_env_path));
-    if (!python_env_info.exists() || !python_env_info.isDir())
-        return setError(err_msg, QString("Python 环境目录无效: %1").arg(python_env_path));
-
-    const QString python_executable = dltool::common::pythonExecutableFromEnvPath(python_env_path);
-    if (python_executable.isEmpty())
-        return setError(err_msg, QString("未配置 Python 环境目录"));
 
     QVariantMap datasets;
     if (const ModelTaskDescriptor descriptor = describeModelTask(request.task_type);
@@ -381,16 +413,15 @@ bool prepareModelTask(const int method, const QString &project_dir, const ModelT
         if (prediction_images_data.isEmpty())
             return setError(err_msg, images_error.isEmpty() ? QString("生成 pred/images.txt 失败") : images_error);
 
-        // The GUI request can only compare model/parameter digests before
-        // dataset export.  Compare the exported image universe here as well;
-        // a changed image list forces a fresh PRED even when the selection IDs
-        // themselves stayed the same.
-        if (reuse_prediction
-            && !predictionImagesMatch(storage.testTaskPredictionImagesPath(model_name, task_directory), datasets,
-                                      nullptr))
-            reuse_prediction = false;
+        if (evaluation_only
+            && !predictionInputsMatch(prediction_dir,
+                                      storage.testTaskPredictionConfigPath(model_name, task_directory),
+                                      task_root,
+                                      storage.path(model_name, ModelStorageLocation::ModelRoot),
+                                      storage.trainWeightsPath(model_name), request, prediction_images_data))
+            evaluation_only = false;
 
-        if (!reuse_prediction && QDir(prediction_dir).exists() && !QDir(prediction_dir).removeRecursively())
+        if (!evaluation_only && QDir(prediction_dir).exists() && !QDir(prediction_dir).removeRecursively())
             return setError(err_msg, QString("清理旧预测目录失败"));
         if (QDir(evaluation_dir).exists() && !QDir(evaluation_dir).removeRecursively())
             return setError(err_msg, QString("清理旧评估目录失败"));
@@ -425,7 +456,7 @@ bool prepareModelTask(const int method, const QString &project_dir, const ModelT
 
     if (!is_train && !legacy_few_shot_test)
     {
-        if (!reuse_prediction)
+        if (!evaluation_only)
         {
             if (!writePredictionImagesFile(storage.testTaskPredictionImagesPath(model_name, task_directory), datasets,
                                            err_msg)
@@ -437,6 +468,34 @@ bool prepareModelTask(const int method, const QString &project_dir, const ModelT
                 return false;
         }
     }
+
+    if (evaluation_only)
+    {
+        process_spec.task_id = request.task_id;
+        process_spec.evaluation_only = true;
+        return true;
+    }
+
+    const QString script_path = request.framework.scriptFor(request.task_type);
+    if (script_path.isEmpty())
+    {
+        return setError(err_msg, QString("框架未定义脚本, 框架: %1, 任务: %2")
+                                     .arg(request.framework.name, modelTaskKey(request.task_type)));
+    }
+    if (!QFileInfo::exists(script_path))
+        return setError(err_msg, QString("脚本不存在: %1").arg(script_path));
+
+    const QString python_env_path = dltool::settings::GlobalSettings::pythonEnvironmentPath();
+    if (python_env_path.trimmed().isEmpty())
+        return setError(err_msg, QString("未配置 Python 环境目录"));
+
+    const QFileInfo python_env_info(cleanPath(python_env_path));
+    if (!python_env_info.exists() || !python_env_info.isDir())
+        return setError(err_msg, QString("Python 环境目录无效: %1").arg(python_env_path));
+
+    const QString python_executable = dltool::common::pythonExecutableFromEnvPath(python_env_path);
+    if (python_executable.isEmpty())
+        return setError(err_msg, QString("未配置 Python 环境目录"));
 
     process_spec.task_id   = request.task_id;
     process_spec.program   = python_executable;

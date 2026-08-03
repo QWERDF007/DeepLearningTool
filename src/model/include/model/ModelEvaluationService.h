@@ -44,7 +44,6 @@ struct MODEL_API ModelEvaluationResult
     int image_count{0};
     int prediction_count{0};
     int event_count{0};
-    QString evaluation_digest;
 };
 
 struct MODEL_API EvaluationCapabilities
@@ -67,12 +66,6 @@ public:
     static bool evaluate(const ModelEvaluationOptions &options, ModelEvaluationResult *result = nullptr,
                          QString *err_msg = nullptr);
 
-    static bool validatePrediction(const QString &images_path, const QString &manifest_path,
-                                   int *image_count = nullptr, int *prediction_count = nullptr,
-                                   QString *err_msg = nullptr,
-                                   const QString &expected_model_uuid = {},
-                                   const QString &expected_task_uuid = {},
-                                   const QString &expected_method = {});
 };
 
 } // namespace dltool::model
