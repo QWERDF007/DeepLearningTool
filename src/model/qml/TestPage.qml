@@ -33,6 +33,7 @@ Rectangle {
             addEnable: false
             modelManager: labelPage.modelManager
             taskManager: TaskManager
+            testTaskManager: labelPage.modelTestTaskManager
             taskController: labelPage.modelTaskController
             taskType: ModelTaskTypes.Test
             taskActionsEnabled: true

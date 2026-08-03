@@ -58,8 +58,20 @@ Rectangle {
         for (var labelKey in labels)
             labelsCopy[labelKey] = labels[labelKey]
         labelsCopy.fontColor = control.chartFontColor
-        labelsCopy.filter = function(item) {
-            return item && (item.text === "GOOD" || item.text === "Anomaly")
+        labelsCopy.filter = function(item, data) {
+            // Threshold markers remain line datasets so they can render as
+            // vertical dashed lines, but only the two distributions belong
+            // in the legend.  Chart.js normally provides item.text; the
+            // dataset fallback also covers updates from QVariant-backed data.
+            var itemLabel = item && item.text !== undefined ? String(item.text) : ""
+            if (itemLabel.length > 0)
+                return itemLabel === "GOOD" || itemLabel === "Anomaly"
+
+            var datasetIndex = item && item.datasetIndex !== undefined ? Number(item.datasetIndex) : -1
+            var datasets = data && data.datasets ? data.datasets : []
+            var dataset = datasetIndex >= 0 && datasetIndex < datasets.length ? datasets[datasetIndex] : null
+            var datasetLabel = dataset && dataset.label !== undefined ? String(dataset.label) : ""
+            return datasetLabel === "GOOD" || datasetLabel === "Anomaly"
         }
         legendCopy.labels = labelsCopy
         filtered.legend = legendCopy

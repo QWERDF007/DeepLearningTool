@@ -12,6 +12,8 @@
 #include "model/ModelStorageMigration.h"
 #include "model/TaskManager.h"
 
+#include <spdlog/spdlog.h>
+
 #include <QQmlEngine>
 #include <QDateTime>
 #include <QFileInfo>
@@ -95,7 +97,11 @@ ModelTestTaskManager::ModelTestTaskManager(QString project_dir, ModelManager *mo
     save_timer_.setInterval(350);
     connect(&save_timer_, &QTimer::timeout, this, [this]() { saveCurrentTask(); });
     if (task_manager_ != nullptr)
+    {
+        connect(task_manager_, &TaskManager::taskStartRequested, this,
+                &ModelTestTaskManager::handleTaskStartRequested);
         connect(task_manager_, &TaskManager::revisionChanged, this, &ModelTestTaskManager::handleTaskRevisionChanged);
+    }
 }
 
 ModelTestTaskManager::~ModelTestTaskManager()
@@ -324,6 +330,10 @@ bool ModelTestTaskManager::deleteTask(const QString &uuid)
         emit errorOccurred(error);
         return false;
     }
+    const QString cache_key = evaluationCacheKey(uuid);
+    if (ModelEvaluationViewModel *evaluation = evaluation_cache_.take(cache_key); evaluation != nullptr)
+        delete evaluation;
+    pending_evaluation_notifications_.remove(cache_key);
     const bool deleted_current = row == current_index_;
     beginRemoveRows({}, row, row);
     tasks_.removeAt(row);
@@ -413,6 +423,80 @@ void ModelTestTaskManager::scheduleSave()
         save_timer_.start();
 }
 
+QString ModelTestTaskManager::evaluationCacheKey(const QString &task_uuid) const
+{
+    return model_uuid_ + QLatin1Char('\x1f') + task_uuid.trimmed();
+}
+
+bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition &task,
+                                                  ModelEvaluationOptions &options, QString *err_msg) const
+{
+    if (model_manager_ == nullptr)
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("模型管理器为空");
+        return false;
+    }
+    const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(model_uuid_);
+    if (!record.isValid())
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("模型不存在");
+        return false;
+    }
+    const ModelStorageService storage(project_dir_);
+    options = {};
+    options.model_uuid = model_uuid_;
+    options.test_task_uuid = task.uuid;
+    options.model_name = record.name;
+    options.task_directory = task.directory_name;
+    options.method = evaluation::fromProjectMethod(model_manager_->method());
+    options.dataset_manifest_path = storage.testTaskDatasetManifestPath(record.name, task.directory_name);
+    options.prediction_manifest_path = storage.testTaskPredictionManifestPath(record.name, task.directory_name);
+    options.prediction_images_path = storage.testTaskPredictionImagesPath(record.name, task.directory_name);
+
+    const QVariantMap test_params = current_test_params_ != nullptr
+        ? current_test_params_->valuesMap() : task.test_params;
+    options.evaluation_config = evaluation::normalizedEvaluationConfig(
+        test_params.value(QStringLiteral("evaluation")).toMap());
+    options.confidence_threshold = options.evaluation_config
+        .value(evaluation::fieldName(evaluation::Field::ConfidenceThreshold)).toDouble();
+    options.iou_threshold = options.evaluation_config
+        .value(evaluation::fieldName(evaluation::Field::IouThreshold)).toDouble();
+    options.matching_strategy = evaluation::matchingStrategyFromKey(
+        options.evaluation_config.value(evaluation::fieldName(evaluation::Field::MatchingStrategy)).toString());
+    return true;
+}
+
+void ModelTestTaskManager::handleParameterChanged(const QString &group_name)
+{
+    scheduleSave();
+    if (current_evaluation_ == nullptr || current_index_ < 0 || current_index_ >= tasks_.size())
+        return;
+
+    if (group_name.compare(QStringLiteral("evaluation"), Qt::CaseInsensitive) == 0)
+    {
+        ModelEvaluationOptions options;
+        QString error;
+        if (!buildEvaluationOptions(tasks_.at(current_index_), options, &error))
+        {
+            spdlog::error("更新测试评估参数失败: {}", error.toUtf8().constData());
+            current_evaluation_->invalidate();
+            return;
+        }
+        current_evaluation_->setEvaluationOptions(options);
+        const TaskManager::Task *task = currentTaskRecord();
+        if (task == nullptr || task->status == TaskManager::Finished)
+            current_evaluation_->evaluate(false);
+        return;
+    }
+
+    // Inference parameters belong to the next explicit test run.  Until that
+    // run regenerates PRED, the old in-memory evaluation must not be shown as
+    // if it described the new inference settings.
+    current_evaluation_->invalidate();
+}
+
 void ModelTestTaskManager::handleTaskRevisionChanged()
 {
     if (!tasks_.isEmpty())
@@ -423,17 +507,60 @@ void ModelTestTaskManager::handleTaskRevisionChanged()
     {
         const TaskManager::Task *task = currentTaskRecord();
         if (task == nullptr)
-            current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::NotRun));
+        {
+            // A test task does not need a TaskManager record until it is
+            // started.  Keep an already cached evaluation visible while
+            // unrelated task records change.
+        }
         else if (task->status == TaskManager::Finished)
-            current_evaluation_->reload();
+        {
+            if (current_index_ >= 0 && current_index_ < tasks_.size())
+            {
+                ModelEvaluationOptions options;
+                QString error;
+                if (buildEvaluationOptions(tasks_.at(current_index_), options, &error))
+                    current_evaluation_->setEvaluationOptions(options);
+                else
+                    spdlog::error("准备测试任务 {} 的评估输入失败: {}", currentTaskUuid().toUtf8().constData(),
+                                  error.toUtf8().constData());
+            }
+            const QString cache_key = evaluationCacheKey(currentTaskUuid());
+            const bool notify = pending_evaluation_notifications_.contains(cache_key);
+            current_evaluation_->evaluate(notify);
+            pending_evaluation_notifications_.remove(cache_key);
+        }
         else if (task->status == TaskManager::Failed)
+        {
             current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::Failed));
+            pending_evaluation_notifications_.remove(evaluationCacheKey(currentTaskUuid()));
+        }
         else if (activeTask(task))
             current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::Running));
         else if (task->status == TaskManager::Stopped)
+        {
             current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::NotRun));
+            pending_evaluation_notifications_.remove(evaluationCacheKey(currentTaskUuid()));
+        }
     }
     emit taskStateChanged();
+}
+
+void ModelTestTaskManager::handleTaskStartRequested(const int task_id)
+{
+    if (task_manager_ == nullptr)
+        return;
+    const TaskManager::Task *task = task_manager_->findTask(task_id);
+    if (task == nullptr || !isTestModelTask(task->type) || task->scope_uuid.trimmed().isEmpty())
+        return;
+
+    // taskStartRequested is emitted only after an explicit start request has
+    // been accepted by TaskManager.  Invalidate a cached evaluation even when
+    // this task is not the currently visible one; otherwise selecting it after
+    // the run finishes could still expose the previous in-memory result.
+    const QString cache_key = task->model_uuid + QLatin1Char('\x1f') + task->scope_uuid.trimmed();
+    pending_evaluation_notifications_.insert(cache_key);
+    if (ModelEvaluationViewModel *evaluation = evaluation_cache_.value(cache_key, nullptr))
+        evaluation->invalidate(evaluation::viewStateKey(evaluation::ViewState::NotRun));
 }
 
 void ModelTestTaskManager::reload()
@@ -496,11 +623,9 @@ void ModelTestTaskManager::clearCurrentObjects()
         delete current_dataset_view_model_;
         current_dataset_view_model_ = nullptr;
     }
-    if (current_evaluation_ != nullptr)
-    {
-        delete current_evaluation_;
-        current_evaluation_ = nullptr;
-    }
+    // Evaluation view models are intentionally retained in evaluation_cache_
+    // so switching test tasks does not rerun an unchanged evaluation.
+    current_evaluation_ = nullptr;
 }
 
 void ModelTestTaskManager::bindCurrentObjects()
@@ -523,29 +648,59 @@ void ModelTestTaskManager::bindCurrentObjects()
     const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(model_uuid_);
     if (record.isValid())
     {
-        const ModelStorageService storage(project_dir_);
-        current_evaluation_ = new ModelEvaluationViewModel(this);
+        const QString cache_key = evaluationCacheKey(tasks_.at(current_index_).uuid);
+        current_evaluation_ = evaluation_cache_.value(cache_key, nullptr);
+        if (current_evaluation_ == nullptr)
+        {
+            current_evaluation_ = new ModelEvaluationViewModel(this);
+            evaluation_cache_.insert(cache_key, current_evaluation_);
+        }
         if (data_manager_ != nullptr && data_manager_->globalFilter() != nullptr)
             current_evaluation_->setGlobalFilter(data_manager_->globalFilter());
-        const QString result_path = storage.testTaskResultPath(record.name, tasks_.at(current_index_).directory_name);
-        const QString report_path = storage.testTaskEvaluationReportPath(record.name, tasks_.at(current_index_).directory_name);
-        // Keep the expected paths even before the first run.  The task manager
-        // can then reload the same view as soon as the background evaluation
-        // creates result.yaml/report.yaml, instead of requiring a restart to
-        // bind paths that did not exist when the task was selected.
-        current_evaluation_->setPaths(report_path, result_path);
+
+        ModelEvaluationOptions options;
+        QString evaluation_error;
+        if (buildEvaluationOptions(tasks_.at(current_index_), options, &evaluation_error))
+        {
+            current_evaluation_->setEvaluationOptions(options);
+            const TaskManager::Task *task = currentTaskRecord();
+            if (task != nullptr && activeTask(task))
+                current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::Running));
+            else if (task != nullptr && task->status == TaskManager::Failed)
+                current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::Failed));
+            else if (task != nullptr && task->status == TaskManager::Stopped)
+                current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::NotRun));
+            else
+            {
+                const bool notify = pending_evaluation_notifications_.contains(cache_key);
+                current_evaluation_->evaluate(notify);
+                pending_evaluation_notifications_.remove(cache_key);
+            }
+        }
+        else
+        {
+            spdlog::error("准备测试任务 {} 的评估上下文失败: {}", tasks_.at(current_index_).uuid.toUtf8().constData(),
+                          evaluation_error.toUtf8().constData());
+            current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::NotRun));
+        }
     }
     if (current_test_params_ != nullptr)
     {
         for (QObject *object : current_test_params_->groupObjects())
         {
             if (auto *group = qobject_cast<ParamGroupModel *>(object))
-                connect(group, &ParamGroupModel::valueChanged, this, &ModelTestTaskManager::scheduleSave);
+                connect(group, &ParamGroupModel::valueChanged, this,
+                        [this, group](const QString &, const QVariant &) { handleParameterChanged(group->nameEn()); });
         }
     }
     if (current_dataset_view_model_ != nullptr)
         connect(current_dataset_view_model_, &data::DataSelectionTreeModel::selectionChanged, this,
-                &ModelTestTaskManager::scheduleSave);
+                [this]()
+                {
+                    scheduleSave();
+                    if (current_evaluation_ != nullptr)
+                        current_evaluation_->invalidate();
+                });
 }
 
 bool ModelTestTaskManager::selectIndex(const int index, const bool save_before)

@@ -527,7 +527,7 @@ bool EvaluationImageFilterProxyModel::acceptsRecord(const EvaluationImageRecord 
 
     // Label search/custom label conditions are label-level predicates.  The
     // image proxy must apply them to the GT labels that belong to the image;
-    // acceptsImage() alone cannot see a report's frozen label IDs.
+    // acceptsImage() alone cannot see the current evaluation record's label IDs.
     const QList<qint64> &label_ids = gtLabelIds(record);
     if (!label_ids.isEmpty())
     {

@@ -2,168 +2,129 @@
 
 ## 总体结论
 
-评估链路采用“Python 生成预测、C++ 计算评估、Qt Model 提供内存数据、QML 展示”的分层设计。
-本次整理将评估结果收敛为一份报告和一份轻量提交摘要，避免同一批实例事件在多个 YAML 和多个缓存副本中重复保存。
+测试评估采用一条简单的数据流：Python 只负责推理，C++ 每次需要评估时读取
+数据集 manifest 和 PRED 文件并计算，Qt Model 保存当前进程中的展示数据，QML
+只负责显示和交互。评估结果不写入磁盘。
 
 ```text
+选中测试任务
+    ↓（惰性触发）
 ModelTestTaskManager
-        ↓
-ModelTaskController
-        ↓
-pred/{config.yaml, images.txt, manifest.yaml}
-        ↓
-ModelEvaluationService（后台线程）
-        ↓
-evaluation/report.yaml + result.yaml
-        ↓
-ModelEvaluationViewModel
-        ↓
+    ↓
+ModelEvaluationViewModel::evaluate()（QThreadPool）
+    ↓
+ModelEvaluationService
+    ├─ 读取 dataset manifest
+    ├─ 读取 pred/images.txt
+    ├─ 读取 pred/manifest.yaml
+    └─ C++ 计算指标、矩阵、事件和方法图表
+    ↓
+ModelEvaluationViewModel（内存缓存）
+    ↓
 现有 Qt Model / QML 评估面板
 ```
+
+## 文件职责
+
+测试任务仍然持久化配置和推理产物：
+
+```text
+test/<任务目录>/
+├─ config.yaml                 # 测试参数和数据集选择
+├─ datasets/.../manifest.yaml  # 本次测试使用的数据集清单
+└─ pred/
+   ├─ config.yaml              # 本次推理实际使用的配置
+   ├─ images.txt               # 导出的图像列表
+   └─ manifest.yaml            # Python 生成的完整预测结果
+```
+
+评估指标、混淆矩阵、图表、图像记录和实例事件只存在于
+`ModelEvaluationViewModel` 及其 Qt Model 中。进程结束后不保留评估快照，重新打开
+项目时从上述输入重新评估，不读取旧评估结果，也不做旧协议兼容。
+
+## 三种触发场景
+
+### 用户首次开始测试或再次开始测试
+
+`ModelTaskController` 只处理完整推理链：
+
+1. 后台导出当前数据集并生成图像列表；
+2. 清理当前任务的 `pred/`，重新写入推理配置；
+3. 启动 Python 模型推理；
+4. 推理完成后，测试评估页面按需读取新的 PRED 并调用 C++ 评估。
+
+每次用户点击开始都重新推理，不依据旧 PRED 的摘要决定是否复用。推理失败或被
+停止时，当前 ViewModel 清空，不展示上一次评估结果。
+
+### 修改评估参数
+
+confidence、IoU、匹配策略或其他评估组参数变化时，不启动 Python。管理器使当前
+ViewModel 失效，评估线程重新读取数据集 manifest 和 PRED，再生成一份新的内存结果。
+旧结果会先清空，失败时页面保持无结果。
+
+### 切换任务或重新打开项目
+
+管理器按模型 UUID 和测试任务 UUID 缓存 ViewModel。同一进程内切换任务时，已经成功
+评估且输入未变化的对象直接复用，不重复计算。删除任务时同步删除对应缓存。
+
+重新打开项目后缓存为空；只有在评估页面绑定到选中的任务时才惰性评估。打开行为不
+弹窗，只有由用户点击开始测试产生的评估完成/失败才调用
+`ui::SignalHelper::notifySuccess` 或 `ui::SignalHelper::notifyError`。
 
 ## 主要模块
 
 | 模块 | 职责 |
-|---|---|
-| `ModelEvaluationProtocol` | 集中管理评估方法、状态、匹配策略、指标集合、矩阵单元和报告字段协议。 |
-| `ModelEvaluationService` | 校验 GT/PRED，执行 IoU 匹配，计算指标、混淆矩阵和图表，并原子写入报告。 |
-| `ModelEvaluationModels` | 持有指标、图像、实例、矩阵和图表的 Qt Model；这些 Model 是页面运行期的唯一数据缓存。 |
-| `ModelEvaluationViewModel` | 异步校验并加载报告，提供过滤、选择和过滤后的重聚合。 |
-| `ModelTaskController` | 构造评估参数、复用 PRED、启动/取消评估并最后提交 `result.yaml`。 |
-| `ModelTestTaskManager` | 管理测试任务，并一次性绑定当前任务的报告/结果路径。 |
-| `ModelStorageService` | 提供测试任务、PRED、报告和结果摘要路径。 |
+| --- | --- |
+| `ModelTaskController` | 导出数据、生成 `pred/images.txt`、清理并生成 PRED、启动 Python；不执行评估。 |
+| `ModelTaskPreparation` | 在后台准备任务目录、数据集 manifest、推理配置和外部进程规格。 |
+| `ModelEvaluationService` | 在工作线程读取 GT/PRED，执行匹配、指标、矩阵、事件和可扩展图表计算。 |
+| `ModelEvaluationViewModel` | 管理异步生命周期，接收内存结果，填充 Qt Model，处理选择和过滤。 |
+| `ModelTestTaskManager` | 管理任务定义、ViewModel 内存缓存、惰性触发和通知来源。 |
+| `ModelStorageService` | 统一提供测试任务、数据集和 PRED 路径。 |
+| `TestEvaluationPanel.qml` | 只负责评估页面布局、状态空态和组件联动。 |
 
-## 输入与输出
+## 后台与状态规则
 
-输入：
+- `ModelEvaluationService` 只接收路径和普通值，不访问 `QObject`、`QModelIndex`、QML
+  或 `DataManager`；耗时 YAML 解析和指标计算在 `QThreadPool` 中执行。
+- ViewModel 在开始新评估时先清空已有 Model 数据；后台结果返回时用 revision 丢弃
+  过期任务，避免旧线程覆盖新参数的结果。
+- 评估失败会记录错误、清空结果并进入错误状态；不会继续展示成功评估留下的内容。
+- 找不到数据集源图像时跳过该图像；找不到某图像的预测时按空预测评估。缺失数量和
+  被忽略记录由 `spdlog` 汇总警告，不逐图像打印。
+- 运行中的测试显示运行状态，Python 完成后才进入评估流程；评估完成不是 Python
+  任务的第二个持久化阶段。
 
-```text
-datasets/.../manifest.yaml
-pred/config.yaml
-pred/images.txt
-pred/manifest.yaml
-```
+## 评估内容和图表
 
-新版本输出：
+检测/分割方法由 C++ 生成诊断匹配、类别指标、混淆矩阵和 PR 曲线所需的 descriptor。
+异常检测按图像级 `GOOD`/`Anomaly` 处理，使用原有图像级 `pred_score`（每张图像预测
+结果中的最大 score）生成分数分布图：横轴是分数，纵轴是数量，曲线下填充颜色；GOOD
+使用绿色，Anomaly 使用红色。存在对应类别时显示该类别的最大/最小分数竖直虚线，
+但图例只显示 GOOD 和 Anomaly。
 
-```text
-evaluation/report.yaml   # 评估配置、指标、矩阵、图表、图像记录和 instance_records
-result.yaml              # 轻量摘要和 finished 提交标志
-```
+图表通过通用 descriptor 传递 `kind`、`chart_id`、`data` 和 `options`，由
+`EvaluationChartPanel.qml` 选择并交给 `QuiChart`。因此后续可以为目标检测保留 PR
+曲线，为其他方法增加新的图表类型，而不复制评估页面结构。
 
-`report.yaml` 包含：
+## 过滤和缓存
 
-- 模型、测试任务、评估方法和 schema 版本；
-- 推理、输入、GT、权重和评估 digest；
-- 评估阈值、IoU 匹配策略和能力声明；
-- diagnostic / official 指标、类别目录、混淆矩阵和图表；
-- `image_records`：完整测试图像、GT 和原始预测，用于图像指标及过滤重算；
-- `instance_records`：匹配、误检和漏检事件；
-- PRED 与 GT manifest 的受控相对路径引用。
+全局数据集、类别、状态、矩阵单元和分数过滤仍由 Qt Proxy Model 在 GUI 线程确定可见
+记录；需要重算指标时只复制脱离 Qt Model 的普通值，交给后台重聚合。过滤结果不是
+持久化评估结果，也不改变原始 PRED。
 
-不再写入 `evaluation/config.yaml`、`evaluation/instances.yaml`，也不再额外写一份
-`prediction_records`；原始预测已经包含在对应的 `image_records.predictions` 中。
-只有 schema 3 的 `evaluation/report.yaml` 作为有效评估报告。
+评估缓存只按任务身份复用成功的 ViewModel。完整推理输入变化由下一次显式开始测试
+触发清空；评估参数变化立即失效并重新评估。系统不维护输入、图像列表、GT、推理或
+评估的校验摘要，也不把这些摘要用作失败判定。
 
-## 核心评估逻辑
+## 破坏性协议边界
 
-### 协议校验
+当前实现只接受新的 dataset/PRED manifest 协议。旧的评估结果文件、旧评估专用任务
+路径和旧字段不转换、不加载；用户需要重新开始测试生成新的推理产物。推理产物和任务
+配置仍使用现有 YAML 持久化接口，评估本身不新增持久文件。
 
-`ModelEvaluationService` 校验：
+## 静态验证
 
-- `pred/images.txt` 的 CSV、图像 ID、路径和完整覆盖关系；
-- `pred/manifest.yaml` 的 schema、记录数、元数据、预测 ID、类别 ID 和 score；
-- bbox、polygon、mask 等 geometry 及受控 artifact 路径；
-- 当前模型、测试任务和评估方法的一致性。
-
-YAML 文件大小和记录数量均有上限。
-
-### 匹配和指标
-
-默认值为 confidence `0.5`、IoU `0.5`、`greedy_iou`。协议层枚举同时支持
-`greedy_iou` 和 `hungarian_iou`。
-
-检测/分割任务计算：
-
-- true positive、class mismatch、false positive、false negative；
-- overall 与 per-class Precision、Recall、F1 及 TP/FP/FN；
-- 图像级指标和混淆矩阵；
-- 按类别指标柱状图和 PR 曲线。
-
-异常检测按图像级 `GOOD`/`Anomaly` 二分类处理，保留正常图像的 true negative，生成异常分数图。
-
-## 内存与并发精简
-
-- `ModelTaskRequest::evaluation_method` 和 `ModelEvaluationOptions::method` 使用评估枚举，只有写入外部 YAML 时转为字符串。
-- `ModelEvaluationResult` 只返回计数和 digest，不再携带重复的 `QVariantMap` 摘要。
-- ViewModel 不保存 `Snapshot`、完整报告副本、实例路径副本、类别目录副本或图表描述副本；
-  指标、图像、实例、矩阵和图表 Model 是唯一页面内存数据源。
-- 报告和结果文件只按路径、大小和修改时间判断是否需要重新解析；内容未变化时不会重复加载 YAML。
-- 当前测试任务通过 `setPaths()` 一次性绑定 report/result，避免两个 setter 连续触发两次 reload。
-- 过滤重聚合的后台线程只接收必要的脱离 Qt Model 的计算输入，不保存为长期缓存；旧任务结果或运行历史不建立快照。
-
-## ViewModel 与 QML
-
-ViewModel 负责：
-
-- 以 `result.yaml` 作为有效结果提交门槛；
-- 异步读取并校验新版 `report.yaml`；
-- 只读取报告内的 `instance_records`；
-- 暴露指标、矩阵、图表、图像和实例 Qt Model；
-- 处理全局过滤、状态/类别/score 过滤、矩阵联动和实例选择；
-- 识别推理过期与评估过期。
-
-QML 只消费现有 Model 和 role，评估页面布局与尺寸保持不变。
-
-## 文件关系
-
-```text
-pred/config.yaml       ─┐
-pred/images.txt         ├─> ModelEvaluationService ─> evaluation/report.yaml
-pred/manifest.yaml      ┘                              │
-datasets/manifest.yaml ────────────────────────────────┘
-                                                       ↓
-                                             result.yaml（最后原子提交）
-```
-
-`result.yaml` 写入失败时，控制器清理本次生成的 `evaluation/`，避免半成品报告被当作有效结果。
-重新评估可以复用完整 PRED；推理输入或权重变化时，控制器会重新生成 PRED。
-
-## 扩展注意事项
-
-新增评估方法时，需要同步更新：
-
-1. `ModelEvaluationProtocol` 的方法映射和能力判断；
-2. GT/PRED manifest 适配及 geometry 校验；
-3. 指标、匹配策略和报告字段；
-4. 必要的 Qt Model role 和 QML 展示能力。
-
-FS-SAM2 仍是独立的小样本流程，不接入普通模型测试评估适配器。
-
-## 当前重构进度
-
-### 已完成
-
-- 评估协议集中到 `ModelEvaluationProtocol.h/.cpp`，报告 schema 固定为 3。
-- 结果输出收敛为 `evaluation/report.yaml` 和 `result.yaml`，旧的评估配置、实例文件、旧报告 schema 和重复预测记录不再兼容。
-- `image_records` 只保存图像元数据、GT 实例和原始预测；实例事件使用扁平结构，通过 `image_id` 关联图像。
-- 删除实例代理模型、重复字段、冗余快照和长期缓存，类别 ID、最高分和 GT/PRED 存在性在运行时派生。
-- 增加严格的报告、结果、图像记录、预测记录和实例事件校验。
-- 评估阶段不再读取或计算权重摘要，也不再把 checkpoint 校验写入评估报告或结果摘要。
-- 新评估会跳过不存在的源图像；加载已有报告时，数据集或 `images.txt` 版本变化会隐藏旧详情，单张源图缺失时只隐藏该图及关联事件。
-
-### 尚未完成
-
-- 最新的权重和数据可用性修改尚未重新编译；最近一次编译被中断。
-- `docs/MODEL_TESTING_ARCHITECTURE.md` 仍有旧的权重字段、评估路径、事件结构、矩阵示例和 manifest 回写描述，需要同步到当前协议。
-- 需要确认详情被过滤后，顶部指标是否也应清空或按可用详情重新聚合，避免展示无法对应当前数据的旧汇总值。
-- 需要验证权重替换、数据集 manifest 修改/删除、`images.txt` 修改、单张图像删除等场景。
-- `weight_digest` 仍保留在预测配置和 PRED 复用流程中，用于推理阶段；如果要求权重变化连 PRED 复用判断也不影响，还需继续调整 `inferenceDigest()`。
-
-### 后续步骤
-
-1. 编译 `dltool_model`，修复最新修改引入的编译问题。
-2. 编译完整工程并检查 QML/Model 链路。
-3. 更新 `docs/MODEL_TESTING_ARCHITECTURE.md`，删除旧评估协议描述。
-4. 验证数据缺失和权重变化场景，确认无效图像不会进入图像或实例 Model。
-5. 执行残留协议搜索、`git diff --check` 和最终工作树检查。
+- `cmake --build build --config Release -- /m:4` 已成功。
+- `git diff --check` 已通过。
+- 未添加或运行额外测试。

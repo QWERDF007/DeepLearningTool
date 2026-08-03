@@ -7,6 +7,7 @@
 #include "model/ModelDatasetSelection.h"
 #include "model/ModelStorageService.h"
 #include "model/ModelTaskConfigService.h"
+#include "model/TaskCommunication.h"
 #include "settings/GlobalSettings.h"
 
 #include <QDir>
@@ -114,9 +115,8 @@ QByteArray predictionImagesData(const QVariantMap &datasets, QString *err_msg)
     return output;
 }
 
-bool writePredictionImagesFile(const QString &path, const QVariantMap &datasets, QString *err_msg)
+bool writePredictionImagesFile(const QString &path, const QByteArray &output, QString *err_msg)
 {
-    const QByteArray output = predictionImagesData(datasets, err_msg);
     if (output.isEmpty())
         return false;
     QSaveFile file(path);
@@ -161,13 +161,6 @@ bool isLegacyFewShotRequest(const ModelTaskRequest &request)
         && request.framework.name.compare(QString("FS-SAM2"), Qt::CaseInsensitive) == 0;
 }
 
-QVariantMap inferenceParams(const QVariantMap &test_params)
-{
-    QVariantMap result = test_params;
-    result.remove(QStringLiteral("evaluation"));
-    return result;
-}
-
 QString checkpointPath(const ModelTaskRequest &request, const QString &model_root,
                        const QString &train_weights_root)
 {
@@ -190,59 +183,6 @@ QVariantMap checkpointInfo(const QString &path)
     return {{QStringLiteral("path"), valid ? cleanPath(info.absoluteFilePath()) : QString()},
             {QStringLiteral("size"), valid ? info.size() : qint64(-1)},
             {QStringLiteral("mtime"), valid ? info.lastModified().toMSecsSinceEpoch() : qint64(-1)}};
-}
-
-bool predictionInputsMatch(const QString &prediction_dir, const QString &config_path, const QString &task_root,
-                           const QString &model_root, const QString &train_weights_root,
-                           const ModelTaskRequest &request, const QByteArray &images_data)
-{
-    QFile images_file(QDir(prediction_dir).filePath(QStringLiteral("images.txt")));
-    if (!images_file.open(QIODevice::ReadOnly) || images_file.readAll() != images_data)
-        return false;
-
-    const QFileInfo config_file(config_path);
-    if (!config_file.exists() || !config_file.isFile())
-        return false;
-
-    QVariantMap previous;
-    try
-    {
-        previous = common::yaml::nodeVariant(common::yaml::loadFile(config_file)).toMap();
-    }
-    catch (const std::exception &)
-    {
-        return false;
-    }
-
-    if (previous.value(evaluation::fieldName(evaluation::Field::ModelUuid)).toString()
-            != request.model_config.model_uuid
-        || previous.value(evaluation::fieldName(evaluation::Field::TestTaskUuid)).toString() != request.scope_uuid
-        || previous.value(QStringLiteral("task_type")).toString() != modelTaskKey(request.task_type)
-        || previous.value(QStringLiteral("framework")).toString()
-               != request.model_config.framework_name
-        || previous.value(evaluation::fieldName(evaluation::Field::Method)).toString()
-               != evaluation::methodKey(request.evaluation_method)
-        || previous.value(QStringLiteral("model_architecture")).toString()
-               != request.model_config.model_architecture
-        || previous.value(QStringLiteral("model_params")).toMap()
-               != request.model_config.train_params.value(QStringLiteral("model")).toMap()
-        || inferenceParams(previous.value(QStringLiteral("test_params")).toMap())
-               != inferenceParams(request.model_config.test_params))
-        return false;
-
-    const QString current_checkpoint = checkpointPath(request, model_root, train_weights_root);
-    const QVariantMap current_info = checkpointInfo(current_checkpoint);
-    const QString previous_checkpoint = previous.value(QStringLiteral("checkpoint_path")).toString();
-    const QString previous_checkpoint_absolute = previous_checkpoint.isEmpty()
-        ? QString()
-        : (QFileInfo(previous_checkpoint).isAbsolute()
-               ? cleanPath(previous_checkpoint)
-               : cleanPath(QDir(task_root).filePath(previous_checkpoint)));
-    if (current_info.value(QStringLiteral("path")).toString() != previous_checkpoint_absolute
-        || current_info.value(QStringLiteral("size")) != previous.value(QStringLiteral("checkpoint_size"))
-        || current_info.value(QStringLiteral("mtime")) != previous.value(QStringLiteral("checkpoint_mtime")))
-        return false;
-    return true;
 }
 
 bool writePredictionConfig(const QString &path, const QString &task_root, const QString &model_root,
@@ -351,19 +291,14 @@ bool prepareModelTask(const int method, const QString &project_dir, const ModelT
         return setError(err_msg, QString("创建测试任务目录失败: %1").arg(storage_err));
     }
 
-    // A full inference run replaces the current PRED.  Evaluation-only runs
-    // keep that PRED and replace only the C++ evaluation output.
+    // Every explicit test run regenerates the dataset file list and PRED.
+    // Evaluation only happens lazily after the inference task has finished.
     QString prediction_dir;
-    QString evaluation_dir;
-    QString result_path;
     const QString task_root = cleanPath(QFileInfo(storage.testTaskRoot(model_name, task_directory)).absoluteFilePath());
-    bool evaluation_only = request.evaluation_only;
     QByteArray prediction_images_data;
     if (!is_train && !legacy_few_shot_test)
     {
         prediction_dir = storage.testTaskPredictionPath(model_name, task_directory);
-        evaluation_dir = storage.testTaskEvaluationPath(model_name, task_directory);
-        result_path = storage.testTaskResultPath(model_name, task_directory);
         const auto insideTaskRoot = [&task_root](const QString &path)
         {
             const QString value = cleanPath(QFileInfo(path).absoluteFilePath());
@@ -371,10 +306,8 @@ bool prepareModelTask(const int method, const QString &project_dir, const ModelT
                 && (value.compare(task_root, Qt::CaseInsensitive) == 0
                     || value.startsWith(task_root + QStringLiteral("/"), Qt::CaseInsensitive));
         };
-        if (prediction_dir.isEmpty() || evaluation_dir.isEmpty() || result_path.isEmpty()
-            || !insideTaskRoot(prediction_dir) || !insideTaskRoot(evaluation_dir) || !insideTaskRoot(result_path))
-            return setError(err_msg, QString("测试结果路径非法"));
-
+        if (prediction_dir.isEmpty() || !insideTaskRoot(prediction_dir))
+            return setError(err_msg, QString("测试预测路径非法"));
     }
 
     QVariantMap datasets;
@@ -413,21 +346,9 @@ bool prepareModelTask(const int method, const QString &project_dir, const ModelT
         if (prediction_images_data.isEmpty())
             return setError(err_msg, images_error.isEmpty() ? QString("生成 pred/images.txt 失败") : images_error);
 
-        if (evaluation_only
-            && !predictionInputsMatch(prediction_dir,
-                                      storage.testTaskPredictionConfigPath(model_name, task_directory),
-                                      task_root,
-                                      storage.path(model_name, ModelStorageLocation::ModelRoot),
-                                      storage.trainWeightsPath(model_name), request, prediction_images_data))
-            evaluation_only = false;
-
-        if (!evaluation_only && QDir(prediction_dir).exists() && !QDir(prediction_dir).removeRecursively())
+        if (QDir(prediction_dir).exists() && !QDir(prediction_dir).removeRecursively())
             return setError(err_msg, QString("清理旧预测目录失败"));
-        if (QDir(evaluation_dir).exists() && !QDir(evaluation_dir).removeRecursively())
-            return setError(err_msg, QString("清理旧评估目录失败"));
-        if (QFileInfo::exists(result_path) && !QFile::remove(result_path))
-            return setError(err_msg, QString("清理旧测试结果失败"));
-        if (!QDir().mkpath(prediction_dir) || !QDir().mkpath(evaluation_dir))
+        if (!QDir().mkpath(prediction_dir))
             return setError(err_msg, QString("重建测试结果目录失败"));
     }
 
@@ -456,24 +377,14 @@ bool prepareModelTask(const int method, const QString &project_dir, const ModelT
 
     if (!is_train && !legacy_few_shot_test)
     {
-        if (!evaluation_only)
-        {
-            if (!writePredictionImagesFile(storage.testTaskPredictionImagesPath(model_name, task_directory), datasets,
-                                           err_msg)
-                || !writePredictionConfig(storage.testTaskPredictionConfigPath(model_name, task_directory),
-                                           storage.testTaskRoot(model_name, task_directory),
-                                           storage.path(model_name, ModelStorageLocation::ModelRoot),
-                                           storage.trainWeightsPath(model_name), request, datasets,
-                                           prediction_images_data, err_msg))
-                return false;
-        }
-    }
-
-    if (evaluation_only)
-    {
-        process_spec.task_id = request.task_id;
-        process_spec.evaluation_only = true;
-        return true;
+        if (!writePredictionImagesFile(storage.testTaskPredictionImagesPath(model_name, task_directory),
+                                       prediction_images_data, err_msg)
+            || !writePredictionConfig(storage.testTaskPredictionConfigPath(model_name, task_directory),
+                                      storage.testTaskRoot(model_name, task_directory),
+                                      storage.path(model_name, ModelStorageLocation::ModelRoot),
+                                      storage.trainWeightsPath(model_name), request, datasets,
+                                      prediction_images_data, err_msg))
+            return false;
     }
 
     const QString script_path = request.framework.scriptFor(request.task_type);

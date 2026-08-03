@@ -254,7 +254,7 @@ QVariantMap modelDatasetSelectionMap(const ModelDatasetSelection &selection)
  * @param selections 数据集选择集合
  * @return 键值对
  */
-QVariantMap modelDatasetSelectionsMap(const ModelDatasetSelections &selections)
+QVariantMap modelDatasetSelectionsMapInternal(const ModelDatasetSelections &selections)
 {
     QVariantMap result;
     result.insert(datasetSelectionSplitName(DatasetSelectionSplit::Train), modelDatasetSelectionMap(selections.train));
@@ -265,6 +265,11 @@ QVariantMap modelDatasetSelectionsMap(const ModelDatasetSelections &selections)
 }
 
 } // namespace
+
+MODEL_API QVariantMap modelDatasetSelectionsMap(const ModelDatasetSelections &selections)
+{
+    return modelDatasetSelectionsMapInternal(selections);
+}
 
 bool ModelDatasetSelection::isEmpty() const
 {

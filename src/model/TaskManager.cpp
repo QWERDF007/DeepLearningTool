@@ -555,9 +555,8 @@ void TaskManager::handleTaskMessage(const TaskMessage &message)
         markTaskStopped(message.task_id);
         break;
     case TaskProtocolStatus::Finished:
-        // A test runner only completes inference here.  C++ still has to
-        // evaluate the normalized PRED and atomically commit result.yaml
-        // before the task can enter Finished.
+        // A test runner finishes after inference.  The selected test page
+        // starts the lazy in-memory C++ evaluation from this terminal state.
         if (task->type != ModelTaskType::Test)
             finishTask(message.task_id);
         break;

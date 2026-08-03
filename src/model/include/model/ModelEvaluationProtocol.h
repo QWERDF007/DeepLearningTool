@@ -4,13 +4,14 @@
 #include "core/CoreDef.h"
 
 #include <QString>
+#include <QVariantMap>
 
 namespace dltool::model::evaluation {
 
 /**
  * @brief 评估层使用的统一方法类型。
  *
- * 评估直接复用项目级方法枚举，避免在任务请求、评估服务和报告协议之间
+ * 评估直接复用项目级方法枚举，避免在任务请求、评估服务和结果协议之间
  * 维护第二套方法类型。Unknown 仅用于未初始化或不受评估协议支持的方法。
  */
 using Method = core::DeepLearningMethod::Method;
@@ -71,9 +72,8 @@ enum class ViewState
     Loading,
     Running,
     Failed,
-    MissingReport,
     MissingResult,
-    InvalidReport,
+    InvalidResult,
     Error,
     Ready,
 };
@@ -81,7 +81,7 @@ enum class ViewState
 /**
  * @brief 稳定评估协议字段。
  *
- * 业务代码只通过该枚举访问 report/result/manifest 中的固定字段；真正的
+ * 业务代码只通过该枚举访问 result/manifest 中的固定字段；真正的
  * YAML 字符串只在协议边界的映射函数中维护。
  */
 enum class Field
@@ -112,15 +112,12 @@ enum class Field
     Charts,
     ImageRecords,
     InstanceRecords,
-    DatasetManifest,
     PredictionManifest,
-    ImageList,
     PredictionImages,
     ImageCount,
     PredictionCount,
     EventCount,
     PredictionDir,
-    EvaluationReport,
     Available,
     Definition,
     Instance,
@@ -217,8 +214,9 @@ enum class Field
     ArtifactPath,
 };
 
-constexpr int kReportSchemaVersion = 4;
-constexpr int kResultSchemaVersion = 3;
+// Evaluation snapshots are process-local and are intentionally not persisted.
+// This is a destructive protocol change: previously generated reports are
+// intentionally not read or migrated.
 constexpr double kDefaultConfidenceThreshold = 0.5;
 constexpr double kDefaultIouThreshold = 0.5;
 
@@ -233,6 +231,14 @@ MODEL_API QString statusDisplayName(Status status);
 
 MODEL_API QString matchingStrategyKey(MatchingStrategy strategy);
 MODEL_API MatchingStrategy matchingStrategyFromKey(const QString &key);
+
+/**
+ * @brief 将可编辑测试参数中的评估配置规范化为唯一的结果配置。
+ *
+ * C++ 评估输入和内存缓存使用同一组默认值及规范化的 matching_strategy，
+ * 避免在不同流程中各自解释评估参数。
+ */
+MODEL_API QVariantMap normalizedEvaluationConfig(const QVariantMap &source);
 
 MODEL_API QString metricSetKey(MetricSet metric_set);
 MODEL_API MetricSet metricSetFromKey(const QString &key);

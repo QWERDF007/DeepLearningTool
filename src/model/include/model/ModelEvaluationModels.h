@@ -118,7 +118,7 @@ struct MODEL_API EvaluationImageRecord
     QList<EvaluationGroundTruthRecord> gt_instances;
     QList<EvaluationPredictionRecord> predictions;
 
-    // Derived image-level values are part of the in-memory report store.  The
+    // Derived image-level values are part of the in-memory result store.  The
     // QML model can therefore answer common roles without rebuilding lists or
     // scanning every prediction on each delegate/filter request.
     QList<qint64> gt_label_ids;

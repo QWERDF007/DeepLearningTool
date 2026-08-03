@@ -1,12 +1,11 @@
 #include "model/ModelEvaluationViewModel.h"
 #include "model/ModelEvaluationService.h"
 #include "model/ModelEvaluationProtocol.h"
-#include "model/TaskCommunication.h"
+#include "ui/SignalHelper.h"
 
-#include "common/YamlUtils.h"
+#include <spdlog/spdlog.h>
 
-#include <QDir>
-#include <QFile>
+#include <QDateTime>
 #include <QFileInfo>
 #include <QVariantList>
 #include <QMap>
@@ -17,11 +16,8 @@
 #include <QPointer>
 #include <QUrl>
 #include <QUrlQuery>
-#include <yaml-cpp/yaml.h>
 
 #include <algorithm>
-#include <exception>
-#include <stdexcept>
 #include <cmath>
 #include <limits>
 #include <utility>
@@ -29,9 +25,6 @@
 namespace dltool::model {
 
 namespace {
-
-constexpr qint64 kMaxEvaluationYamlBytes = 256LL * 1024LL * 1024LL;
-constexpr std::size_t kMaxEvaluationRecords = 5'000'000;
 
 QString textValue(const QVariantMap &map, const QString &name, const QString &fallback = {})
 {
@@ -107,265 +100,6 @@ bool hasInvokable(QObject *object, const char *method, const int parameter_count
             return true;
     }
     return false;
-}
-
-bool pathWithin(const QString &root, const QString &path)
-{
-    const QString clean_root = QDir::fromNativeSeparators(QFileInfo(root).absoluteFilePath());
-    const QString clean_path = QDir::fromNativeSeparators(QFileInfo(path).absoluteFilePath());
-    return !clean_root.isEmpty() && !clean_path.isEmpty()
-        && (clean_path.compare(clean_root, Qt::CaseInsensitive) == 0
-            || clean_path.startsWith(clean_root + QLatin1Char('/'), Qt::CaseInsensitive));
-}
-
-QString resolveReportReference(const QString &base_dir, const QString &value)
-{
-    const QString trimmed = value.trimmed();
-    if (trimmed.isEmpty())
-        return {};
-    const QFileInfo info(trimmed);
-    return info.isAbsolute() ? info.absoluteFilePath() : QDir(base_dir).filePath(trimmed);
-}
-
-void requireReportField(const QVariantMap &root, const evaluation::Field field)
-{
-    const QString name = evaluation::fieldName(field);
-    if (!root.contains(name))
-        throw std::runtime_error(QString("评估报告缺少字段: %1").arg(name).toUtf8().constData());
-}
-
-void validateReportProtocol(const QVariantMap &root, const QFileInfo &report_file)
-{
-    if (report_file.size() > kMaxEvaluationYamlBytes)
-        throw std::runtime_error("评估报告超过大小限制");
-    const QVariant version = root.value(evaluation::fieldName(evaluation::Field::SchemaVersion));
-    bool version_ok = false;
-    const int schema_version = version.toInt(&version_ok);
-    if (!version_ok || schema_version != evaluation::kReportSchemaVersion)
-        throw std::runtime_error("评估报告 schema_version 无效");
-    for (const evaluation::Field field : {evaluation::Field::ModelUuid, evaluation::Field::TestTaskUuid,
-                                           evaluation::Field::Method, evaluation::Field::PrimaryMetricSet,
-                                           evaluation::Field::EvaluatedAt, evaluation::Field::EvaluationConfig,
-                                           evaluation::Field::Capabilities, evaluation::Field::DiagnosticMetrics,
-                                           evaluation::Field::ConfusionMatrix, evaluation::Field::Charts,
-                                           evaluation::Field::ImageRecords, evaluation::Field::InstanceRecords,
-                                           evaluation::Field::DatasetManifest, evaluation::Field::PredictionManifest,
-                                           evaluation::Field::ImageList, evaluation::Field::ImageCount,
-                                           evaluation::Field::PredictionCount, evaluation::Field::EventCount})
-        requireReportField(root, field);
-    if (root.value(evaluation::fieldName(evaluation::Field::ModelUuid)).toString().trimmed().isEmpty()
-        || root.value(evaluation::fieldName(evaluation::Field::TestTaskUuid)).toString().trimmed().isEmpty()
-        || root.value(evaluation::fieldName(evaluation::Field::Method)).toString().trimmed().isEmpty())
-        throw std::runtime_error("评估报告 model_uuid/test_task_uuid/method 无效");
-    if (root.value(evaluation::fieldName(evaluation::Field::EvaluationConfig)).toMap().isEmpty()
-        || root.value(evaluation::fieldName(evaluation::Field::Capabilities)).toMap().isEmpty())
-        throw std::runtime_error("评估报告 evaluation_config/capabilities 无效");
-    const QString method_key = root.value(evaluation::fieldName(evaluation::Field::Method)).toString().trimmed().toLower();
-    const evaluation::Method method = evaluation::methodFromKey(method_key);
-    if (method == evaluation::Method::Unknown || evaluation::methodKey(method) != method_key)
-        throw std::runtime_error("评估报告 method 不是规范值");
-    const QString metric_set_key = root.value(evaluation::fieldName(evaluation::Field::PrimaryMetricSet)).toString().trimmed().toLower();
-    const evaluation::MetricSet metric_set = evaluation::metricSetFromKey(metric_set_key);
-    if (evaluation::metricSetKey(metric_set) != metric_set_key)
-        throw std::runtime_error("评估报告 primary_metric_set 不是规范值");
-    const QVariantMap evaluation_config = root.value(evaluation::fieldName(evaluation::Field::EvaluationConfig)).toMap();
-    const QString matching_strategy_key
-        = evaluation_config.value(evaluation::fieldName(evaluation::Field::MatchingStrategy)).toString().trimmed().toLower();
-    if (!evaluation_config.contains(evaluation::fieldName(evaluation::Field::ConfidenceThreshold))
-        || !evaluation_config.contains(evaluation::fieldName(evaluation::Field::IouThreshold))
-        || matching_strategy_key.isEmpty()
-        || evaluation::matchingStrategyKey(evaluation::matchingStrategyFromKey(matching_strategy_key))
-               != matching_strategy_key)
-        throw std::runtime_error("评估报告 evaluation_config 不是规范值");
-    const QVariant image_records_value = root.value(evaluation::fieldName(evaluation::Field::ImageRecords));
-    if (!image_records_value.canConvert<QVariantList>())
-        throw std::runtime_error("评估报告 image_records 必须为序列");
-    const QVariantList image_records = image_records_value.toList();
-    if (image_records.size() > static_cast<int>(kMaxEvaluationRecords))
-        throw std::runtime_error("评估报告 image_records 数量超过限制");
-
-    const auto rejectLegacyFields = [](const QVariantMap &map, const QStringList &fields)
-    {
-        for (const QString &field : fields)
-            if (map.contains(field))
-                throw std::runtime_error(QString("评估报告包含已删除字段: %1").arg(field).toUtf8().constData());
-    };
-    const auto requireList = [](const QVariantMap &map, const QString &field)
-    {
-        if (!map.value(field).canConvert<QVariantList>())
-            throw std::runtime_error(QString("评估报告字段 %1 必须为序列").arg(field).toUtf8().constData());
-    };
-    for (const QVariant &entry : image_records)
-    {
-        const QVariantMap image = entry.toMap();
-        for (const evaluation::Field field : {evaluation::Field::ImageId, evaluation::Field::DatasetId,
-                                              evaluation::Field::ImageName, evaluation::Field::ImagePath,
-                                              evaluation::Field::ImageWidth, evaluation::Field::ImageHeight})
-            if (!image.contains(evaluation::fieldName(field)))
-                throw std::runtime_error(QString("评估报告图像记录缺少字段: %1")
-                                             .arg(evaluation::fieldName(field))
-                                             .toUtf8()
-                                             .constData());
-        requireList(image, evaluation::fieldName(evaluation::Field::GtInstances));
-        requireList(image, evaluation::fieldName(evaluation::Field::Predictions));
-        rejectLegacyFields(image, {QStringLiteral("gt_label_ids"), QStringLiteral("gt_class_ids"),
-                                   QStringLiteral("pred_class_ids"), QStringLiteral("score"),
-                                   QStringLiteral("has_gt"), QStringLiteral("has_pred")});
-        for (const QVariant &value : image.value(evaluation::fieldName(evaluation::Field::GtInstances)).toList())
-        {
-            const QVariantMap ground_truth = value.toMap();
-            for (const evaluation::Field field : {evaluation::Field::LabelId, evaluation::Field::ClassId,
-                                                  evaluation::Field::ClassName, evaluation::Field::Geometry})
-                if (!ground_truth.contains(evaluation::fieldName(field)))
-                    throw std::runtime_error(QString("评估报告 GT 记录缺少字段: %1")
-                                                 .arg(evaluation::fieldName(field))
-                                                 .toUtf8()
-                                                 .constData());
-            rejectLegacyFields(ground_truth, {evaluation::fieldName(evaluation::Field::Bounds)});
-        }
-        for (const QVariant &value : image.value(evaluation::fieldName(evaluation::Field::Predictions)).toList())
-        {
-            const QVariantMap prediction = value.toMap();
-            for (const evaluation::Field field : {evaluation::Field::PredictionId, evaluation::Field::ClassId,
-                                                  evaluation::Field::ClassName, evaluation::Field::Score,
-                                                  evaluation::Field::Geometry})
-                if (!prediction.contains(evaluation::fieldName(field)))
-                    throw std::runtime_error(QString("评估报告预测记录缺少字段: %1")
-                                                 .arg(evaluation::fieldName(field))
-                                                 .toUtf8()
-                                                 .constData());
-            rejectLegacyFields(prediction, {evaluation::fieldName(evaluation::Field::ImageId),
-                                            evaluation::fieldName(evaluation::Field::DatasetId),
-                                            evaluation::fieldName(evaluation::Field::Bounds)});
-        }
-    }
-
-    const QVariantMap confusion_matrix = root.value(evaluation::fieldName(evaluation::Field::ConfusionMatrix)).toMap();
-    requireList(confusion_matrix, evaluation::fieldName(evaluation::Field::Cells));
-    for (const QVariant &entry : confusion_matrix.value(evaluation::fieldName(evaluation::Field::Cells)).toList())
-    {
-        const QVariantMap cell = entry.toMap();
-        for (const evaluation::Field field : {evaluation::Field::RowKey, evaluation::Field::ColumnKey,
-                                              evaluation::Field::RowLabel, evaluation::Field::ColumnLabel,
-                                              evaluation::Field::RowClassId, evaluation::Field::ColumnClassId,
-                                              evaluation::Field::Count, evaluation::Field::CellKind,
-                                              evaluation::Field::Selectable, evaluation::Field::IsDiagonal,
-                                              evaluation::Field::IsError})
-            if (!cell.contains(evaluation::fieldName(field)))
-                throw std::runtime_error(QString("评估报告矩阵单元缺少字段: %1")
-                                             .arg(evaluation::fieldName(field))
-                                             .toUtf8()
-                                             .constData());
-    }
-    if (!root.value(evaluation::fieldName(evaluation::Field::Charts)).canConvert<QVariantList>())
-        throw std::runtime_error("评估报告 charts 必须为序列");
-
-    if (!root.value(evaluation::fieldName(evaluation::Field::InstanceRecords)).canConvert<QVariantList>())
-        throw std::runtime_error("评估报告缺少 instance_records");
-    const QString task_root = QFileInfo(report_file.absolutePath()).absoluteDir().absolutePath();
-
-    for (const auto &reference : {std::pair<QString, QString>(evaluation::fieldName(evaluation::Field::PredictionManifest),
-                                                               QDir(task_root).filePath(QStringLiteral("pred/manifest.yaml"))),
-                                  std::pair<QString, QString>(evaluation::fieldName(evaluation::Field::ImageList),
-                                                               QDir(task_root).filePath(QStringLiteral("pred/images.txt"))),
-                                  std::pair<QString, QString>(evaluation::fieldName(evaluation::Field::DatasetManifest), QString())})
-    {
-        const QString configured = root.value(reference.first).toString();
-        if (configured.trimmed().isEmpty())
-            throw std::runtime_error(QString("评估报告缺少 %1").arg(reference.first).toUtf8().constData());
-        const QString target = resolveReportReference(report_file.absolutePath(), configured);
-        if (target.isEmpty() || !pathWithin(task_root, target))
-            throw std::runtime_error(QString("评估报告 %1 路径越界").arg(reference.first).toUtf8().constData());
-        if (reference.first != evaluation::fieldName(evaluation::Field::DatasetManifest)
-            && QFileInfo(target).absoluteFilePath().compare(QFileInfo(reference.second).absoluteFilePath(),
-                                                            Qt::CaseInsensitive) != 0)
-            throw std::runtime_error(QString("评估报告 %1 未指向当前测试产物").arg(reference.first).toUtf8().constData());
-    }
-
-}
-
-QString resolveTaskReference(const QFileInfo &result_file, const QString &value)
-{
-    const QString candidate = value.trimmed();
-    if (candidate.isEmpty())
-        return {};
-    const QFileInfo info(candidate);
-    return info.isAbsolute() ? info.absoluteFilePath() : result_file.absoluteDir().filePath(candidate);
-}
-
-bool sourceImageExists(const QString &path, const QString &dataset_manifest)
-{
-    QFileInfo image(path);
-    if (!image.isAbsolute() && !image.exists() && !dataset_manifest.isEmpty())
-        image = QFileInfo(QDir(QFileInfo(dataset_manifest).absolutePath()), path);
-    return image.exists() && image.isFile();
-}
-
-void filterUnavailableReportDetails(QVariantMap &report, const QString &dataset_manifest)
-{
-    QVariantList visible_images;
-    QSet<qint64> visible_image_ids;
-    qint64 visible_predictions = 0;
-    {
-        for (const QVariant &entry : report.value(evaluation::fieldName(evaluation::Field::ImageRecords)).toList())
-        {
-            const QVariantMap image = entry.toMap();
-            if (!sourceImageExists(image.value(evaluation::fieldName(evaluation::Field::ImagePath)).toString(),
-                                   dataset_manifest))
-                continue;
-            const qint64 image_id = image.value(evaluation::fieldName(evaluation::Field::ImageId)).toLongLong();
-            if (image_id < 0)
-                continue;
-            visible_image_ids.insert(image_id);
-            visible_predictions += image.value(evaluation::fieldName(evaluation::Field::Predictions)).toList().size();
-            visible_images.push_back(image);
-        }
-    }
-
-    QVariantList visible_events;
-    {
-        for (const QVariant &entry : report.value(evaluation::fieldName(evaluation::Field::InstanceRecords)).toList())
-        {
-            if (visible_image_ids.contains(
-                    entry.toMap().value(evaluation::fieldName(evaluation::Field::ImageId)).toLongLong()))
-                visible_events.push_back(entry);
-        }
-    }
-    report.insert(evaluation::fieldName(evaluation::Field::ImageRecords), visible_images);
-    report.insert(evaluation::fieldName(evaluation::Field::InstanceRecords), visible_events);
-    report.insert(evaluation::fieldName(evaluation::Field::ImageCount), visible_images.size());
-    report.insert(evaluation::fieldName(evaluation::Field::PredictionCount), visible_predictions);
-    report.insert(evaluation::fieldName(evaluation::Field::EventCount), visible_events.size());
-}
-
-void validateResultProtocol(const QVariantMap &result, const QFileInfo &result_file, const QFileInfo &report_file)
-{
-    for (const evaluation::Field field : {evaluation::Field::SchemaVersion, evaluation::Field::ModelUuid,
-                                          evaluation::Field::TestTaskUuid, evaluation::Field::Method,
-                                          evaluation::Field::Status, evaluation::Field::EvaluatedAt,
-                                          evaluation::Field::EvaluationReport})
-    {
-        const QString name = evaluation::fieldName(field);
-        if (!result.contains(name))
-            throw std::runtime_error(QString("测试结果摘要缺少字段: %1").arg(name).toUtf8().constData());
-    }
-    if (result.value(evaluation::fieldName(evaluation::Field::SchemaVersion)).toInt()
-            != evaluation::kResultSchemaVersion
-        || result.value(evaluation::fieldName(evaluation::Field::Status)).toString()
-               != taskProtocolStatusName(TaskProtocolStatus::Finished)
-        || result.value(evaluation::fieldName(evaluation::Field::ModelUuid)).toString().trimmed().isEmpty()
-        || result.value(evaluation::fieldName(evaluation::Field::TestTaskUuid)).toString().trimmed().isEmpty()
-        || result.value(evaluation::fieldName(evaluation::Field::Method)).toString().trimmed().isEmpty())
-        throw std::runtime_error("测试结果摘要无效");
-
-    const QString task_root = result_file.absoluteDir().absolutePath();
-    const QString configured_report = resolveTaskReference(
-        result_file, result.value(evaluation::fieldName(evaluation::Field::EvaluationReport)).toString());
-    if (configured_report.isEmpty() || !pathWithin(task_root, configured_report)
-        || QFileInfo(configured_report).absoluteFilePath().compare(report_file.absoluteFilePath(), Qt::CaseInsensitive) != 0)
-    {
-        throw std::runtime_error("测试结果 evaluation_report 引用无效");
-    }
 }
 
 EvaluationMetricRecord metricFromMap(const QString &key, const QVariantMap &map, const QString &fallback_label = {})
@@ -680,7 +414,36 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
                        {evaluation::fieldName(evaluation::Field::Data),
                         QVariantMap{{evaluation::fieldName(evaluation::Field::Labels), histogram.labels},
                                     {evaluation::fieldName(evaluation::Field::Datasets), datasets}}},
-                       {evaluation::fieldName(evaluation::Field::Options), options}};
+                        {evaluation::fieldName(evaluation::Field::Options), options}};
+}
+
+QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageRecord> &images)
+{
+    QVariantList good_scores;
+    QVariantList anomaly_scores;
+    bool has_good = false;
+    bool has_anomaly = false;
+    double good_max = 0.0;
+    double anomaly_min = std::numeric_limits<double>::max();
+    for (const EvaluationImageRecord &image : images)
+    {
+        const double score = imageScore(image);
+        if (image.gt_class_ids.contains(1))
+        {
+            good_scores.push_back(QVariant());
+            anomaly_scores.push_back(score);
+            has_anomaly = true;
+            anomaly_min = std::min(anomaly_min, score);
+        }
+        else
+        {
+            good_scores.push_back(score);
+            anomaly_scores.push_back(QVariant());
+            has_good = true;
+            good_max = std::max(good_max, score);
+        }
+    }
+    return anomalyScoreChart(good_scores, anomaly_scores, has_good, good_max, has_anomaly, anomaly_min);
 }
 
 struct EvaluationAggregateInput
@@ -1222,32 +985,11 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
 
     if (input.anomaly_detection)
     {
-        QVariantList good_scores;
-        QVariantList anomaly_scores;
-        bool has_good = false;
-        bool has_anomaly = false;
-        double good_max = 0.0;
-        double anomaly_min = std::numeric_limits<double>::max();
+        QList<EvaluationImageRecord> images;
+        images.reserve(input.images.size());
         for (const EvaluationImageRecord &image : input.images)
-        {
-            const double score = imageScore(image);
-            if (gtClassIds(image).contains(1))
-            {
-                good_scores.push_back(QVariant());
-                anomaly_scores.push_back(score);
-                has_anomaly = true;
-                anomaly_min = std::min(anomaly_min, score);
-            }
-            else
-            {
-                good_scores.push_back(score);
-                anomaly_scores.push_back(QVariant());
-                has_good = true;
-                good_max = std::max(good_max, score);
-            }
-        }
-        output.charts.push_back(anomalyScoreChart(good_scores, anomaly_scores, has_good, good_max,
-                                                  has_anomaly, anomaly_min));
+            images.push_back(image);
+        output.charts.push_back(anomalyScoreChartForImages(images));
     }
 
     for (const QVariantMap &descriptor : input.chart_descriptors)
@@ -1368,43 +1110,6 @@ bool ModelEvaluationViewModel::available() const { return available_; }
 bool ModelEvaluationViewModel::loading() const { return loading_; }
 QString ModelEvaluationViewModel::state() const { return state_; }
 QString ModelEvaluationViewModel::error() const { return error_; }
-QString ModelEvaluationViewModel::reportPath() const { return report_path_; }
-
-void ModelEvaluationViewModel::setReportPath(const QString &path)
-{
-    setPaths(path, result_path_);
-}
-
-QString ModelEvaluationViewModel::resultPath() const { return result_path_; }
-
-void ModelEvaluationViewModel::setResultPath(const QString &path)
-{
-    setPaths(report_path_, path);
-}
-
-void ModelEvaluationViewModel::setPaths(const QString &reportPath, const QString &resultPath)
-{
-    const QString report = QDir::fromNativeSeparators(reportPath.trimmed());
-    const QString result = QDir::fromNativeSeparators(resultPath.trimmed());
-    const bool report_changed = report_path_ != report;
-    const bool result_changed = result_path_ != result;
-    if (!report_changed && !result_changed)
-        return;
-    report_path_ = report;
-    result_path_ = result;
-    if (report_changed || result_changed)
-    {
-        loaded_report_size_ = -1;
-        loaded_report_mtime_ = -1;
-        loaded_result_size_ = -1;
-        loaded_result_mtime_ = -1;
-    }
-    if (report_changed)
-        emit reportPathChanged();
-    if (result_changed)
-        emit resultPathChanged();
-    reload();
-}
 
 QString ModelEvaluationViewModel::primaryMetricSet() const { return primary_metric_set_; }
 bool ModelEvaluationViewModel::globalFilterActive() const
@@ -1482,7 +1187,7 @@ void ModelEvaluationViewModel::setLoading(const bool value)
     emit loadingChanged();
 }
 
-void ModelEvaluationViewModel::clearReport(const QString &error, const QString &state)
+void ModelEvaluationViewModel::clearEvaluation(const QString &error, const QString &state)
 {
     ++aggregation_revision_;
     available_ = false;
@@ -1523,191 +1228,120 @@ void ModelEvaluationViewModel::clearReport(const QString &error, const QString &
     instances_->setSelectedEvent({});
 }
 
-void ModelEvaluationViewModel::reload()
+bool ModelEvaluationViewModel::sameEvaluationInput(const ModelEvaluationOptions &lhs,
+                                                   const ModelEvaluationOptions &rhs) const
 {
-    const int revision = ++reload_revision_;
-    if (report_path_.isEmpty() || result_path_.isEmpty())
+    return lhs.model_uuid == rhs.model_uuid
+        && lhs.test_task_uuid == rhs.test_task_uuid
+        && lhs.model_name == rhs.model_name
+        && lhs.task_directory == rhs.task_directory
+        && lhs.method == rhs.method
+        && lhs.dataset_manifest_path == rhs.dataset_manifest_path
+        && lhs.prediction_manifest_path == rhs.prediction_manifest_path
+        && lhs.prediction_images_path == rhs.prediction_images_path
+        && lhs.evaluation_config == rhs.evaluation_config
+        && qFuzzyCompare(lhs.confidence_threshold + 1.0, rhs.confidence_threshold + 1.0)
+        && qFuzzyCompare(lhs.iou_threshold + 1.0, rhs.iou_threshold + 1.0)
+        && lhs.matching_strategy == rhs.matching_strategy;
+}
+
+void ModelEvaluationViewModel::setEvaluationOptions(const ModelEvaluationOptions &options)
+{
+    if (has_evaluation_options_ && sameEvaluationInput(evaluation_options_, options))
+        return;
+    evaluation_options_ = options;
+    has_evaluation_options_ = true;
+    invalidate();
+}
+
+void ModelEvaluationViewModel::invalidate(const QString &state)
+{
+    ++evaluation_revision_;
+    evaluation_attempted_ = false;
+    notify_when_finished_ = false;
+    if (cancel_token_ != nullptr)
+        cancel_token_->store(true, std::memory_order_relaxed);
+    cancel_token_.reset();
+    clearEvaluation({}, state.isEmpty() ? evaluation::viewStateKey(evaluation::ViewState::NotRun) : state);
+    setLoading(false);
+    emit evaluationChanged();
+    emit selectedInstanceChanged();
+}
+
+void ModelEvaluationViewModel::evaluate(const bool notify)
+{
+    if (!has_evaluation_options_)
     {
-        setLoading(true);
-        clearReport();
-        state_ = report_path_.isEmpty() ? evaluation::viewStateKey(evaluation::ViewState::MissingReport)
-                                        : evaluation::viewStateKey(evaluation::ViewState::MissingResult);
-        setLoading(false);
-        emit reportChanged();
-        emit selectedInstanceChanged();
+        invalidate(evaluation::viewStateKey(evaluation::ViewState::MissingResult));
         return;
     }
-    const QString report_path = report_path_;
-    const QString result_path = result_path_;
-    const QFileInfo report_file(report_path);
-    const QFileInfo result_file(result_path);
-    const qint64 report_size = report_file.exists() && report_file.isFile() ? report_file.size() : -1;
-    const qint64 report_mtime = report_file.exists() && report_file.isFile()
-        ? report_file.lastModified().toMSecsSinceEpoch() : -1;
-    const qint64 result_size = result_file.exists() && result_file.isFile() ? result_file.size() : -1;
-    const qint64 result_mtime = result_file.exists() && result_file.isFile()
-        ? result_file.lastModified().toMSecsSinceEpoch() : -1;
-    if (available_ && !loading_ && report_size == loaded_report_size_ && report_mtime == loaded_report_mtime_
-        && result_size == loaded_result_size_ && result_mtime == loaded_result_mtime_)
+    if (loading_)
+    {
+        notify_when_finished_ = notify_when_finished_ || notify;
         return;
+    }
+    if (evaluation_attempted_)
+        return;
+
+    const int revision = ++evaluation_revision_;
+    notify_when_finished_ = notify;
+    clearEvaluation();
+    cancel_token_ = std::make_shared<std::atomic_bool>(false);
+    ModelEvaluationOptions options = evaluation_options_;
+    options.cancel_token = cancel_token_;
     setLoading(true);
-    clearReport();
+
     const QPointer<ModelEvaluationViewModel> guard(this);
-    QThreadPool::globalInstance()->start([guard, revision, report_path, result_path, report_size, report_mtime,
-                                          result_size, result_mtime]()
+    QThreadPool::globalInstance()->start([guard, revision, options, notify]()
     {
         if (guard.isNull())
             return;
-        QVariantMap report;
-        QVariantList instance_records;
-        QString error;
-        QString failure_state;
-        try
-        {
-            const QFileInfo file(report_path);
-            if (!file.exists() || !file.isFile())
-            {
-                failure_state = evaluation::viewStateKey(evaluation::ViewState::MissingReport);
-                throw std::runtime_error("评估报告不存在");
-            }
-            const QFileInfo result_file(result_path);
-            if (!result_file.exists() || !result_file.isFile())
-            {
-                failure_state = evaluation::viewStateKey(evaluation::ViewState::MissingResult);
-                throw std::runtime_error("测试结果摘要不存在");
-            }
-            if (result_file.size() > kMaxEvaluationYamlBytes)
-                throw std::runtime_error("测试结果摘要超过大小限制");
-            const YAML::Node result_root = common::yaml::loadFile(result_file);
-            if (!result_root || !result_root.IsMap())
-                throw std::runtime_error("测试结果摘要不是 YAML map");
-            const QVariantMap result_map = common::yaml::nodeVariant(result_root).toMap();
-            validateResultProtocol(result_map, result_file, file);
-            const YAML::Node root = common::yaml::loadFile(file);
-            if (!root || !root.IsMap())
-                throw std::runtime_error("评估报告不是 YAML map");
-            report = common::yaml::nodeVariant(root).toMap();
-            validateReportProtocol(report, file);
-            filterUnavailableReportDetails(
-                report,
-                resolveReportReference(file.absolutePath(),
-                                       report.value(evaluation::fieldName(evaluation::Field::DatasetManifest)).toString()));
-            const auto validateRecords = [&report](const QVariantList &records)
-            {
-                if (records.size() > static_cast<int>(kMaxEvaluationRecords))
-                    throw std::runtime_error("评估实例 records 数量超过限制");
-                QSet<QString> event_ids;
-                QSet<qint64> image_ids;
-                for (const QVariant &entry : report.value(evaluation::fieldName(evaluation::Field::ImageRecords)).toList())
-                    image_ids.insert(entry.toMap().value(evaluation::fieldName(evaluation::Field::ImageId)).toLongLong());
-                for (const QVariant &entry : records)
-                {
-                    const QVariantMap value = entry.toMap();
-                    const QString event_uuid = value.value(evaluation::fieldName(evaluation::Field::EventUuid))
-                                                   .toString()
-                                                   .trimmed();
-                    const QString status = value.value(evaluation::fieldName(evaluation::Field::Status))
-                                               .toString()
-                                               .trimmed();
-                    bool score_ok = false;
-                    bool iou_ok = false;
-                    const double score = value.value(evaluation::fieldName(evaluation::Field::Score)).toDouble(&score_ok);
-                    const double iou = value.value(evaluation::fieldName(evaluation::Field::Iou)).toDouble(&iou_ok);
-                    for (const evaluation::Field field : {evaluation::Field::EventUuid, evaluation::Field::ImageId,
-                                                          evaluation::Field::Status, evaluation::Field::Score,
-                                                          evaluation::Field::Iou, evaluation::Field::GtLabelId,
-                                                          evaluation::Field::GtClassId, evaluation::Field::GtClassName,
-                                                          evaluation::Field::GtGeometry, evaluation::Field::PredInstanceId,
-                                                          evaluation::Field::PredClassId, evaluation::Field::PredClassName,
-                                                          evaluation::Field::PredGeometry, evaluation::Field::CropBounds,
-                                                          evaluation::Field::GtOverlayBounds,
-                                                          evaluation::Field::PredOverlayBounds,
-                                                          evaluation::Field::GtOverlayPoints,
-                                                          evaluation::Field::PredOverlayPoints,
-                                                          evaluation::Field::GtMaskUrl, evaluation::Field::PredMaskUrl})
-                    {
-                        const QString name = evaluation::fieldName(field);
-                        if (!value.contains(name))
-                            throw std::runtime_error(QString("评估实例缺少字段: %1").arg(name).toUtf8().constData());
-                    }
-                    for (const QString &field : {QStringLiteral("gt"), QStringLiteral("pred"),
-                                                 evaluation::fieldName(evaluation::Field::DatasetId),
-                                                 evaluation::fieldName(evaluation::Field::ImageName),
-                                                 evaluation::fieldName(evaluation::Field::ImagePath),
-                                                 evaluation::fieldName(evaluation::Field::ImageWidth),
-                                                 evaluation::fieldName(evaluation::Field::ImageHeight),
-                                                 QStringLiteral("gt_instance_id"),
-                                                 QStringLiteral("gt_class_color"),
-                                                 QStringLiteral("pred_class_color"),
-                                                 QStringLiteral("gt_bounds"),
-                                                 QStringLiteral("pred_bounds")})
-                        if (value.contains(field))
-                            throw std::runtime_error(QString("评估实例包含已删除字段: %1").arg(field).toUtf8().constData());
-                    if (value.isEmpty() || event_uuid.isEmpty() || event_ids.contains(event_uuid)
-                        || value.value(evaluation::fieldName(evaluation::Field::ImageId)).toLongLong() < 0
-                        || !image_ids.contains(value.value(evaluation::fieldName(evaluation::Field::ImageId)).toLongLong())
-                        || !score_ok || !std::isfinite(score) || !iou_ok || !std::isfinite(iou)
-                        || iou < 0.0 || iou > 1.0
-                        || evaluation::statusFromKey(status) == evaluation::Status::Unknown)
-                        throw std::runtime_error("评估实例记录字段无效或 event_uuid 重复");
-                    event_ids.insert(event_uuid);
-                }
-                const QVariant event_count = report.value(evaluation::fieldName(evaluation::Field::EventCount));
-                if (event_count.isValid() && event_count.toLongLong() != records.size())
-                    throw std::runtime_error("评估报告 event_count 与实例记录不一致");
-            };
 
-            instance_records = report.value(evaluation::fieldName(evaluation::Field::InstanceRecords)).toList();
-            validateRecords(instance_records);
-        }
-        catch (const std::exception &exception)
+        ModelEvaluationResult evaluation_result;
+        QString error;
+        const bool success = ModelEvaluationService::evaluate(options, &evaluation_result, &error);
+        QMetaObject::invokeMethod(guard.data(),
+                                  [guard, revision, options, notify, success,
+                                   result = std::move(evaluation_result.evaluation_data), error]() mutable
         {
-            error = QString("%1").arg(QString(exception.what()));
-            if (failure_state.isEmpty())
-                failure_state = evaluation::viewStateKey(evaluation::ViewState::InvalidReport);
-        }
-        QMetaObject::invokeMethod(guard.data(), [guard, revision, report = std::move(report),
-                                                  instance_records = std::move(instance_records), error, failure_state,
-                                                  report_size, report_mtime,
-                                                  result_size, result_mtime]() mutable
-        {
-            if (guard.isNull() || guard->reload_revision_ != revision)
+            if (guard.isNull() || guard->evaluation_revision_ != revision)
                 return;
-            if (!error.isEmpty())
+
+            const bool should_notify = guard->notify_when_finished_ || notify;
+            guard->notify_when_finished_ = false;
+            if (!success)
             {
-                guard->clearReport(error, failure_state);
+                guard->evaluation_attempted_ = true;
+                const QString message = error.isEmpty() ? QStringLiteral("C++ 评估失败") : error;
+                spdlog::error("测试任务 {} 评估失败: {}", options.test_task_uuid.toUtf8().constData(),
+                              message.toUtf8().constData());
+                guard->clearEvaluation(message, evaluation::viewStateKey(evaluation::ViewState::Error));
                 guard->setLoading(false);
-                emit guard->reportChanged();
+                emit guard->evaluationChanged();
                 emit guard->selectedInstanceChanged();
+                if (should_notify)
+                    ui::SignalHelper::notifyError(QStringLiteral("模型评估失败"), message);
                 return;
             }
-            guard->loadReport(report);
-            guard->loadInstanceRecords(instance_records);
-            // Rebuild even when details were filtered to an empty set.  A
-            // report whose source data changed must not keep presenting the
-            // old aggregate values above an empty detail view.
-            guard->rebuildFilteredAggregates();
+
+            guard->result_revision_ = QString::number(QDateTime::currentMSecsSinceEpoch());
+            guard->loadEvaluation(result);
+            guard->loadInstanceRecords(result.value(evaluation::fieldName(evaluation::Field::InstanceRecords)).toList());
+            guard->loadDerivedCharts();
+            guard->evaluation_attempted_ = true;
             guard->available_ = true;
             guard->state_ = evaluation::viewStateKey(evaluation::ViewState::Ready);
             guard->error_.clear();
-            guard->loaded_report_size_ = report_size;
-            guard->loaded_report_mtime_ = report_mtime;
-            guard->loaded_result_size_ = result_size;
-            guard->loaded_result_mtime_ = result_mtime;
             guard->setLoading(false);
-            emit guard->reportChanged();
+            emit guard->evaluationChanged();
             emit guard->selectedInstanceChanged();
+            if (should_notify)
+            {
+                spdlog::info("测试任务 {} 评估完成", options.test_task_uuid.toUtf8().constData());
+                ui::SignalHelper::notifySuccess(QStringLiteral("模型评估完成"), QStringLiteral("评估结果已更新"));
+            }
         }, Qt::QueuedConnection);
     });
-}
-
-void ModelEvaluationViewModel::refresh()
-{
-    loaded_report_size_ = -1;
-    loaded_report_mtime_ = -1;
-    loaded_result_size_ = -1;
-    loaded_result_mtime_ = -1;
-    reload();
 }
 
 void ModelEvaluationViewModel::setRuntimeState(const QString &state)
@@ -1720,27 +1354,20 @@ void ModelEvaluationViewModel::setRuntimeState(const QString &state)
     if (value == evaluation::viewStateKey(evaluation::ViewState::Running)
         || value == evaluation::viewStateKey(evaluation::ViewState::Failed)
         || value == evaluation::viewStateKey(evaluation::ViewState::NotRun))
-    {
-        clearReport({}, value);
-        setLoading(false);
-        emit reportChanged();
-        emit selectedInstanceChanged();
-    }
+        invalidate(value);
 }
 
-void ModelEvaluationViewModel::loadReport(const QVariantMap &root)
+void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
 {
     const evaluation::MetricSet metric_set
         = evaluation::metricSetFromKey(root.value(evaluation::fieldName(evaluation::Field::PrimaryMetricSet)).toString());
     primary_metric_set_ = evaluation::metricSetKey(metric_set);
-    result_revision_ = root.value(evaluation::fieldName(evaluation::Field::EvaluatedAt)).toString();
     metric_scope_description_ = metric_set == evaluation::MetricSet::Official
         ? QString("官方指标")
         : QString("诊断匹配指标");
     image_metric_definition_ = root.value(evaluation::fieldName(evaluation::Field::ImageMetricDefinition)).toMap();
     const QVariantMap evaluation_config = root.value(evaluation::fieldName(evaluation::Field::EvaluationConfig)).toMap();
-    anomaly_detection_ = evaluation::isAnomaly(
-        evaluation::methodFromKey(root.value(evaluation::fieldName(evaluation::Field::Method)).toString()));
+    anomaly_detection_ = evaluation::isAnomaly(evaluation_options_.method);
     confidence_threshold_ = realValue(evaluation_config, evaluation::Field::ConfidenceThreshold);
     iou_threshold_ = realValue(evaluation_config, evaluation::Field::IouThreshold);
     matching_strategy_ = evaluation::matchingStrategyKey(
@@ -1750,9 +1377,9 @@ void ModelEvaluationViewModel::loadReport(const QVariantMap &root)
     has_image_metrics_ = capabilities.value(evaluation::fieldName(evaluation::Field::HasImageMetrics)).toBool();
     has_confusion_matrix_ = capabilities.value(evaluation::fieldName(evaluation::Field::HasConfusionMatrix)).toBool()
         || anomaly_detection_;
-    // Anomaly reports are image-level, but the instance grid still needs one
-    // synthetic record per image so matrix selections can show GOOD/Anomaly
-    // samples, including true negatives with no original event.
+    // Anomaly results are image-level, but the instance grid still consumes
+    // the one in-memory C++ event per image so matrix selections can show
+    // GOOD/Anomaly samples, including true negatives with no original event.
     has_instance_events_ = capabilities.value(evaluation::fieldName(evaluation::Field::HasInstanceEvents)).toBool()
         || anomaly_detection_;
     const QVariantMap diagnostic = root.value(evaluation::fieldName(evaluation::Field::DiagnosticMetrics)).toMap();
@@ -1764,7 +1391,7 @@ void ModelEvaluationViewModel::loadReport(const QVariantMap &root)
     if (!image.isEmpty())
         image_metrics_->setRecords({metricFromMap(QStringLiteral("image"), image, QString("图像"))});
 
-    // The report keeps official and diagnostic metrics separate.  The
+    // The result keeps official and diagnostic metrics separate.  The
     // primary set only changes which values are shown in the overall panel;
     // matrix/events always remain diagnostic records.
     const QVariantMap official = root.value(evaluation::fieldName(evaluation::Field::OfficialMetrics)).toMap();
@@ -1823,6 +1450,21 @@ void ModelEvaluationViewModel::loadReport(const QVariantMap &root)
     charts_->setRecords(std::move(charts));
 }
 
+void ModelEvaluationViewModel::loadDerivedCharts()
+{
+    if (!anomaly_detection_)
+        return;
+
+    QList<EvaluationImageRecord> images;
+    images.reserve(images_->rowCount());
+    for (const EvaluationImageRecord &image : images_->records())
+        images.push_back(image);
+
+    QList<QVariantMap> charts = charts_->records();
+    charts.push_back(anomalyScoreChartForImages(images));
+    charts_->setRecords(std::move(charts));
+}
+
 void ModelEvaluationViewModel::loadInstanceRecords(const QVariantList &records)
 {
     QSet<QString> event_ids;
@@ -1831,48 +1473,6 @@ void ModelEvaluationViewModel::loadInstanceRecords(const QVariantList &records)
         image_index.insert(image.image_id, &image);
     std::vector<EvaluationInstanceRecord> values;
     values.reserve(static_cast<size_t>(records.size()));
-
-    if (anomaly_detection_ && images_ != nullptr && images_->rowCount() > 0)
-    {
-        values.reserve(static_cast<size_t>(images_->rowCount()));
-        for (const EvaluationImageRecord &image : images_->records())
-        {
-            const bool ground_truth_anomaly = isAnomalyImage(image, confidence_threshold_, false);
-            const bool predicted_anomaly = isAnomalyImage(image, confidence_threshold_, true);
-
-            const int gt_class_id = ground_truth_anomaly ? 1 : 0;
-            const int pred_class_id = predicted_anomaly ? 1 : 0;
-            EvaluationInstanceRecord value;
-            value.event_uuid = QStringLiteral("image-%1").arg(image.image_id);
-            value.image_id = image.image_id;
-            value.dataset_id = image.dataset_id;
-            value.image_name = image.image_name;
-            value.image_path = image.image_path;
-            value.image_width = image.image_width;
-            value.image_height = image.image_height;
-            value.status = gt_class_id == 1 && pred_class_id == 1
-                ? evaluation::Status::TruePositive
-                : (gt_class_id == 0 && pred_class_id == 0
-                       ? evaluation::Status::TrueNegative
-                       : (gt_class_id == 0 ? evaluation::Status::FalsePositive
-                                           : evaluation::Status::FalseNegative));
-            value.gt_class_id = gt_class_id;
-            value.pred_class_id = pred_class_id;
-            value.gt_class = gt_class_id == 1 ? QStringLiteral("Anomaly") : QStringLiteral("GOOD");
-            value.pred_class = pred_class_id == 1 ? QStringLiteral("Anomaly") : QStringLiteral("GOOD");
-            value.score = imageScore(image);
-            value.gt_class_color = classColor(gt_class_id);
-            value.pred_class_color = classColor(pred_class_id);
-            if (image.image_width > 0 && image.image_height > 0)
-                value.crop_bounds = QVariantMap{{QStringLiteral("x"), 0.0}, {QStringLiteral("y"), 0.0},
-                                                {QStringLiteral("width"), image.image_width},
-                                                {QStringLiteral("height"), image.image_height}};
-            value.thumbnail_url = thumbnailUrl(value);
-            values.push_back(std::move(value));
-        }
-        instances_->setRecords(std::move(values));
-        return;
-    }
 
     for (const QVariant &entry : records)
     {

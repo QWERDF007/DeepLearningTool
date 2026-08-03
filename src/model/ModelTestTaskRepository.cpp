@@ -675,26 +675,4 @@ bool ModelTestTaskRepository::removeTask(const QString &model_name, const QStrin
     return true;
 }
 
-bool ModelTestTaskRepository::writeResult(const QString &model_name, const QString &task_directory,
-                                          const QVariantMap &result, QString *err_msg) const
-{
-    ModelStorageService storage(project_dir_);
-    const QString path = storage.testTaskResultPath(model_name, task_directory);
-    if (path.isEmpty())
-        return setError(err_msg, QString("测试结果路径为空"));
-    const QString root = storage.testTaskRoot(model_name, task_directory);
-    const QString result_parent = common::cleanPath(QFileInfo(path).absolutePath());
-    const QString task_root = common::cleanPath(QFileInfo(root).absoluteFilePath());
-    if (root.isEmpty() || task_root.isEmpty()
-        || (result_parent.compare(task_root, Qt::CaseInsensitive) != 0
-            && !result_parent.startsWith(task_root + QStringLiteral("/"), Qt::CaseInsensitive)))
-        return setError(err_msg, QString("测试结果路径越界"));
-    if (!QDir(QFileInfo(path).absolutePath()).exists()
-        && !QDir().mkpath(QFileInfo(path).absolutePath()))
-        return setError(err_msg, QString("创建测试结果目录失败"));
-    return common::yaml::writeFileAtomic(path, common::yaml::variantToYaml(result), err_msg,
-                                         QString("打开测试结果失败"), QString("生成测试结果失败"),
-                                         QString("提交测试结果失败"));
-}
-
 } // namespace dltool::model

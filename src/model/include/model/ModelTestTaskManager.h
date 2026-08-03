@@ -4,10 +4,13 @@
 #include "data/DataSelectionTreeModel.h"
 #include "model/ModelTestTaskRepository.h"
 #include "model/ModelEvaluationViewModel.h"
+#include "model/ModelEvaluationService.h"
 #include "model/TaskManager.h"
 
 #include <QAbstractListModel>
+#include <QHash>
 #include <QPointer>
+#include <QSet>
 #include <QTimer>
 #include <QtQml>
 #include <memory>
@@ -104,6 +107,7 @@ signals:
 
 private slots:
     void scheduleSave();
+    void handleTaskStartRequested(int task_id);
     void handleTaskRevisionChanged();
 
 private:
@@ -112,6 +116,10 @@ private:
     bool selectIndex(int index, bool save_before);
     bool saveDefinition(ModelTestTaskDefinition &task);
     void bindCurrentObjects();
+    bool buildEvaluationOptions(const ModelTestTaskDefinition &task, ModelEvaluationOptions &options,
+                                QString *err_msg = nullptr) const;
+    void handleParameterChanged(const QString &group_name);
+    QString evaluationCacheKey(const QString &task_uuid) const;
     void emitTaskRowChanged(int row);
     const TaskManager::Task *currentTaskRecord() const;
 
@@ -126,6 +134,8 @@ private:
     std::unique_ptr<ITestParams> current_test_params_;
     QPointer<dltool::data::DataSelectionTreeModel> current_dataset_view_model_;
     QPointer<ModelEvaluationViewModel> current_evaluation_;
+    QHash<QString, ModelEvaluationViewModel *> evaluation_cache_;
+    QSet<QString> pending_evaluation_notifications_;
     QTimer save_timer_;
 };
 

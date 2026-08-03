@@ -218,22 +218,21 @@ QString ModelStorageService::testTaskPredictionManifestPath(const QString &model
     return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral("manifest.yaml")));
 }
 
-QString ModelStorageService::testTaskEvaluationPath(const QString &model_name, const QString &task_directory) const
+QString ModelStorageService::testTaskDatasetManifestPath(const QString &model_name,
+                                                         const QString &task_directory) const
 {
-    const QString root = testTaskRoot(model_name, task_directory);
-    return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral("evaluation")));
-}
+    const QString root = testTaskDatasetPath(model_name, task_directory);
+    if (root.isEmpty())
+        return {};
 
-QString ModelStorageService::testTaskEvaluationReportPath(const QString &model_name, const QString &task_directory) const
-{
-    const QString root = testTaskEvaluationPath(model_name, task_directory);
-    return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral("report.yaml")));
-}
-
-QString ModelStorageService::testTaskResultPath(const QString &model_name, const QString &task_directory) const
-{
-    const QString root = testTaskRoot(model_name, task_directory);
-    return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral("result.yaml")));
+    for (const QString &relative : {QStringLiteral("test/manifest.yaml"), QStringLiteral("manifest.yaml"),
+                                    QStringLiteral("test.yaml")})
+    {
+        const QString candidate = cleanPath(QDir(root).filePath(relative));
+        if (QFileInfo(candidate).isFile())
+            return candidate;
+    }
+    return {};
 }
 
 QString ModelStorageService::testTaskLogPath(const QString &model_name, const QString &task_uuid) const
@@ -271,13 +270,10 @@ ModelTaskPaths ModelStorageService::testPaths(const QString &model_name, const Q
     // Test logs are shared by all task directories and are keyed by the
     // stable task UUID, so a rename never changes the log association.
     paths.log_path = testTaskLogPath(model_name, task_uuid.trimmed().isEmpty() ? task_directory : task_uuid);
-    paths.result_path = testTaskResultPath(model_name, task_directory);
     paths.prediction_dir = testTaskPredictionPath(model_name, task_directory);
     paths.prediction_config_path = testTaskPredictionConfigPath(model_name, task_directory);
     paths.prediction_images_path = testTaskPredictionImagesPath(model_name, task_directory);
     paths.prediction_manifest_path = testTaskPredictionManifestPath(model_name, task_directory);
-    paths.evaluation_dir = testTaskEvaluationPath(model_name, task_directory);
-    paths.evaluation_report_path = testTaskEvaluationReportPath(model_name, task_directory);
     return paths;
 }
 
@@ -312,8 +308,7 @@ bool ModelStorageService::ensureTestTaskStorage(const QString &model_name, const
                          QString("创建测试任务目录失败: %1")))
         return false;
     for (const QString &directory : {testTaskDatasetPath(model_name, task_directory),
-                                     testTaskPredictionPath(model_name, task_directory),
-                                     testTaskEvaluationPath(model_name, task_directory)})
+                                     testTaskPredictionPath(model_name, task_directory)})
     {
         if (!ensureDirectory(directory, err_msg, QString("测试任务子目录为空"),
                              QString("创建测试任务子目录失败: %1")))

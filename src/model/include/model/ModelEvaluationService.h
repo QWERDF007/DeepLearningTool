@@ -27,12 +27,12 @@ struct MODEL_API ModelEvaluationOptions
     QString dataset_manifest_path;
     QString prediction_manifest_path;
     QString prediction_images_path;
-    QString evaluation_dir;
-    QString report_path;
+    // Keep the complete normalized evaluation group as the in-memory cache
+    // key.  The scalar fields below are the values consumed by the evaluator.
+    QVariantMap evaluation_config;
     double confidence_threshold{evaluation::kDefaultConfidenceThreshold};
     double iou_threshold{evaluation::kDefaultIouThreshold};
     evaluation::MatchingStrategy matching_strategy{evaluation::MatchingStrategy::GreedyIoU};
-    QVariantMap evaluation_config;
     // Optional cooperative cancellation token owned by the task controller.
     // The evaluator never dereferences a QObject and can therefore poll this
     // value safely from its worker thread.
@@ -41,9 +41,9 @@ struct MODEL_API ModelEvaluationOptions
 
 struct MODEL_API ModelEvaluationResult
 {
-    int image_count{0};
-    int prediction_count{0};
-    int event_count{0};
+    // The evaluator owns the complete in-memory snapshot consumed directly by
+    // ModelEvaluationViewModel; no evaluation output file is produced.
+    QVariantMap evaluation_data;
 };
 
 struct MODEL_API EvaluationCapabilities
@@ -56,8 +56,8 @@ struct MODEL_API EvaluationCapabilities
 };
 
 /**
- * @brief Reads the normalized dataset/PRED protocol, computes diagnostic
- * matching metrics, and atomically commits evaluation YAML files.
+ * @brief Reads the normalized dataset/PRED protocol and computes one
+ * complete evaluation snapshot in memory.
  */
 class MODEL_API ModelEvaluationService
 {

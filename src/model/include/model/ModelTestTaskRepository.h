@@ -37,8 +37,6 @@ public:
     bool renameTask(const QString &model_name, const QString &uuid, const QString &name,
                     QString *err_msg = nullptr) const;
     bool removeTask(const QString &model_name, const QString &uuid, QString *err_msg = nullptr) const;
-    bool writeResult(const QString &model_name, const QString &task_directory, const QVariantMap &result,
-                     QString *err_msg = nullptr) const;
 
     QString tasksPath(const QString &model_name) const;
 

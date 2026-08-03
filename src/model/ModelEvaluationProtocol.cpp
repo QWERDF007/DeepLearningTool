@@ -126,6 +126,27 @@ MatchingStrategy matchingStrategyFromKey(const QString &key)
     return MatchingStrategy::GreedyIoU;
 }
 
+QVariantMap normalizedEvaluationConfig(const QVariantMap &source)
+{
+    // Keep the complete user-owned evaluation group in the in-memory snapshot.
+    // The evaluator consumes only the fields it understands below, while
+    // preserving the remaining evaluation-only parameters lets a change to
+    // e.g. a metric selector trigger C++ re-evaluation without rerunning
+    // inference.  Inference parameters are kept outside this map and are
+    // compared by ModelTaskPreparation.
+    QVariantMap normalized = source;
+    normalized.insert(fieldName(Field::ConfidenceThreshold),
+                      source.value(fieldName(Field::ConfidenceThreshold), kDefaultConfidenceThreshold).toDouble());
+    normalized.insert(fieldName(Field::IouThreshold),
+                      source.value(fieldName(Field::IouThreshold), kDefaultIouThreshold).toDouble());
+    normalized.insert(fieldName(Field::MatchingStrategy),
+                      matchingStrategyKey(matchingStrategyFromKey(
+                          source.value(fieldName(Field::MatchingStrategy),
+                                       matchingStrategyKey(MatchingStrategy::GreedyIoU))
+                              .toString())));
+    return normalized;
+}
+
 QString metricSetKey(const MetricSet metric_set)
 {
     switch (metric_set)
@@ -192,9 +213,8 @@ QString viewStateKey(const ViewState state)
     case ViewState::Loading: return QStringLiteral("Loading");
     case ViewState::Running: return QStringLiteral("Running");
     case ViewState::Failed: return QStringLiteral("Failed");
-    case ViewState::MissingReport: return QStringLiteral("MissingReport");
     case ViewState::MissingResult: return QStringLiteral("MissingResult");
-    case ViewState::InvalidReport: return QStringLiteral("InvalidReport");
+    case ViewState::InvalidResult: return QStringLiteral("InvalidResult");
     case ViewState::Error: return QStringLiteral("Error");
     case ViewState::Ready: return QStringLiteral("Ready");
     }
@@ -231,15 +251,12 @@ QString fieldName(const Field field)
     case Field::Charts: return QStringLiteral("charts");
     case Field::ImageRecords: return QStringLiteral("image_records");
     case Field::InstanceRecords: return QStringLiteral("instance_records");
-    case Field::DatasetManifest: return QStringLiteral("dataset_manifest");
     case Field::PredictionManifest: return QStringLiteral("prediction_manifest");
-    case Field::ImageList: return QStringLiteral("image_list");
     case Field::PredictionImages: return QStringLiteral("prediction_images");
     case Field::ImageCount: return QStringLiteral("image_count");
     case Field::PredictionCount: return QStringLiteral("prediction_count");
     case Field::EventCount: return QStringLiteral("event_count");
     case Field::PredictionDir: return QStringLiteral("prediction_dir");
-    case Field::EvaluationReport: return QStringLiteral("evaluation_report");
     case Field::Available: return QStringLiteral("available");
     case Field::Definition: return QStringLiteral("definition");
     case Field::Instance: return QStringLiteral("instance");

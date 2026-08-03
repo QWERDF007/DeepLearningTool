@@ -3,7 +3,6 @@
 
 #include "common/YamlUtils.h"
 
-#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -750,13 +749,6 @@ bool loadImages(const QString &images_path, const QString &dataset_manifest_path
             listed.insert(image_id);
         }
     }
-    else
-    {
-        // The dataset manifest is sufficient to evaluate a test when the
-        // exported list was removed.  Predictions remain optional.
-        for (auto it = images.cbegin(); it != images.cend(); ++it)
-            listed.insert(it.key());
-    }
     if (listed.isEmpty())
     {
         if (err_msg)
@@ -1282,8 +1274,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         return false;
     }
     if (options.dataset_manifest_path.isEmpty() || options.prediction_manifest_path.isEmpty()
-        || options.prediction_images_path.isEmpty() || options.evaluation_dir.isEmpty()
-        || options.report_path.isEmpty())
+        || options.prediction_images_path.isEmpty())
     {
         if (err_msg)
             *err_msg = QString("评估路径参数不完整");
@@ -1449,6 +1440,56 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                                {evaluation::fieldName(evaluation::Field::PredMaskUrl), maskUrl(pred_geometry, prediction_task_root)}};
             event_records.push_back(event);
         };
+
+        if (anomaly_method)
+        {
+            // Anomaly evaluation is image-level.  Build the same one-event-
+            // per-image view that the UI displays so all consumers use one
+            // event model during this in-memory evaluation.
+            const GroundTruth *anomaly_gt = nullptr;
+            for (const GroundTruth &gt : image.gt)
+            {
+                if (gt.class_id == 1)
+                {
+                    anomaly_gt = &gt;
+                    break;
+                }
+            }
+            const Prediction *anomaly_prediction = nullptr;
+            double image_score = 0.0;
+            for (const Prediction &prediction : image.predictions)
+            {
+                image_score = std::max(image_score, prediction.score);
+                if (prediction.class_id == 1 && prediction.score >= options.confidence_threshold
+                    && (anomaly_prediction == nullptr || prediction.score > anomaly_prediction->score))
+                    anomaly_prediction = &prediction;
+            }
+            const bool ground_truth_anomaly = anomaly_gt != nullptr;
+            const bool predicted_anomaly = anomaly_prediction != nullptr;
+            const evaluation::Status status = ground_truth_anomaly && predicted_anomaly
+                ? evaluation::Status::TruePositive
+                : (!ground_truth_anomaly && !predicted_anomaly
+                       ? evaluation::Status::TrueNegative
+                       : (predicted_anomaly ? evaluation::Status::FalsePositive
+                                            : evaluation::Status::FalseNegative));
+            if (status == evaluation::Status::TruePositive)
+                ++image_counts.tp;
+            else if (status == evaluation::Status::FalsePositive)
+                ++image_counts.fp;
+            else if (status == evaluation::Status::FalseNegative)
+                ++image_counts.fn;
+
+            GroundTruth display_gt = anomaly_gt != nullptr ? *anomaly_gt : GroundTruth{};
+            display_gt.class_id = ground_truth_anomaly ? 1 : 0;
+            display_gt.class_name = ground_truth_anomaly ? QStringLiteral("Anomaly") : QStringLiteral("GOOD");
+            Prediction display_prediction
+                = anomaly_prediction != nullptr ? *anomaly_prediction : Prediction{};
+            display_prediction.class_id = predicted_anomaly ? 1 : 0;
+            display_prediction.class_name = predicted_anomaly ? QStringLiteral("Anomaly") : QStringLiteral("GOOD");
+            display_prediction.score = image_score;
+            appendEvent(status, &display_gt, &display_prediction, 0.0);
+            continue;
+        }
 
         for (const MatchPair &pair : pairs)
         {
@@ -1730,45 +1771,42 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         return false;
     }
     const EvaluationCapabilities capabilities = capabilitiesForMethod(options.method);
-    QVariantList charts = {QVariantMap{{evaluation::fieldName(evaluation::Field::Kind), QStringLiteral("bar")},
-                                       {evaluation::fieldName(evaluation::Field::ChartId),
-                                        QStringLiteral("per_class_metrics")},
-                                       {evaluation::fieldName(evaluation::Field::FilterKind),
-                                        QStringLiteral("per_class_metrics")},
-                                       {evaluation::fieldName(evaluation::Field::Title), QString("按类别指标")},
-                                       {evaluation::fieldName(evaluation::Field::Data),
-                                        QVariantMap{{evaluation::fieldName(evaluation::Field::Labels), chart_labels},
-                                                    {evaluation::fieldName(evaluation::Field::Datasets), QVariantList{
-                                                        QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
-                                                                     QStringLiteral("Precision")},
-                                                                    {evaluation::fieldName(evaluation::Field::Data),
-                                                                     precision_values}},
-                                                        QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
-                                                                     QStringLiteral("Recall")},
-                                                                    {evaluation::fieldName(evaluation::Field::Data),
-                                                                     recall_values}},
-                                                        QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
-                                                                     QStringLiteral("F1")},
-                                                                    {evaluation::fieldName(evaluation::Field::Data),
-                                                                     f1_values}}}}}},
-                                       {evaluation::fieldName(evaluation::Field::Options),
-                                        QVariantMap{{QStringLiteral("maintainAspectRatio"), false}}}}};
+    QVariantList charts;
+    if (capabilities.has_instance_metrics)
+    {
+        charts.push_back(QVariantMap{{evaluation::fieldName(evaluation::Field::Kind), QStringLiteral("bar")},
+                                     {evaluation::fieldName(evaluation::Field::ChartId),
+                                      QStringLiteral("per_class_metrics")},
+                                     {evaluation::fieldName(evaluation::Field::FilterKind),
+                                      QStringLiteral("per_class_metrics")},
+                                     {evaluation::fieldName(evaluation::Field::Title), QString("按类别指标")},
+                                     {evaluation::fieldName(evaluation::Field::Data),
+                                      QVariantMap{{evaluation::fieldName(evaluation::Field::Labels), chart_labels},
+                                                  {evaluation::fieldName(evaluation::Field::Datasets), QVariantList{
+                                                      QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
+                                                                   QStringLiteral("Precision")},
+                                                                  {evaluation::fieldName(evaluation::Field::Data),
+                                                                   precision_values}},
+                                                      QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
+                                                                   QStringLiteral("Recall")},
+                                                                  {evaluation::fieldName(evaluation::Field::Data),
+                                                                   recall_values}},
+                                                      QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
+                                                                   QStringLiteral("F1")},
+                                                                  {evaluation::fieldName(evaluation::Field::Data),
+                                                                   f1_values}}}}}},
+                                     {evaluation::fieldName(evaluation::Field::Options),
+                                      QVariantMap{{QStringLiteral("maintainAspectRatio"), false}}}});
+    }
     for (const QVariant &chart : official.charts)
         charts.push_back(chart);
 
-    const QVariantMap report = {
-        {evaluation::fieldName(evaluation::Field::SchemaVersion), evaluation::kReportSchemaVersion},
-        {evaluation::fieldName(evaluation::Field::ModelUuid), options.model_uuid},
-        {evaluation::fieldName(evaluation::Field::TestTaskUuid), options.test_task_uuid},
-        {evaluation::fieldName(evaluation::Field::Method), evaluation::methodKey(options.method)},
+    const QVariantMap evaluation_data = {
         {evaluation::fieldName(evaluation::Field::PrimaryMetricSet), official.available
                 ? evaluation::metricSetKey(evaluation::MetricSet::Official)
                 : evaluation::metricSetKey(evaluation::MetricSet::Diagnostic)},
-        {evaluation::fieldName(evaluation::Field::EvaluatedAt), QDateTime::currentSecsSinceEpoch()},
-        {evaluation::fieldName(evaluation::Field::EvaluationConfig), QVariantMap{{evaluation::fieldName(evaluation::Field::ConfidenceThreshold), options.confidence_threshold},
-                                                           {evaluation::fieldName(evaluation::Field::IouThreshold), options.iou_threshold},
-                                                           {evaluation::fieldName(evaluation::Field::MatchingStrategy),
-                                                            evaluation::matchingStrategyKey(options.matching_strategy)}}},
+        {evaluation::fieldName(evaluation::Field::EvaluationConfig),
+         evaluation::normalizedEvaluationConfig(options.evaluation_config)},
         {evaluation::fieldName(evaluation::Field::ClassCatalog), class_catalog},
         {evaluation::fieldName(evaluation::Field::DiagnosticMetrics), diagnostic},
         {evaluation::fieldName(evaluation::Field::OfficialMetrics), official.available ? official.metrics
@@ -1789,35 +1827,13 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         {evaluation::fieldName(evaluation::Field::Charts), charts},
         {evaluation::fieldName(evaluation::Field::ImageRecords), image_records},
         {evaluation::fieldName(evaluation::Field::InstanceRecords), event_records},
-        {evaluation::fieldName(evaluation::Field::ImageList), QStringLiteral("../pred/images.txt")},
-        {evaluation::fieldName(evaluation::Field::PredictionManifest), QStringLiteral("../pred/manifest.yaml")},
-        {evaluation::fieldName(evaluation::Field::DatasetManifest),
-         QDir(options.evaluation_dir).relativeFilePath(options.dataset_manifest_path)},
         {evaluation::fieldName(evaluation::Field::ImageCount), images.size()},
         {evaluation::fieldName(evaluation::Field::PredictionCount), prediction_count},
         {evaluation::fieldName(evaluation::Field::EventCount), event_records.size()},
     };
-    if (!QDir().mkpath(options.evaluation_dir))
-    {
-        if (err_msg)
-            *err_msg = QString("创建评估目录失败: %1").arg(options.evaluation_dir);
-        return false;
-    }
-    QString error;
-    if (!dltool::common::yaml::writeFileAtomic(options.report_path,
-                                                  dltool::common::yaml::variantToYaml(report), &error,
-                                                  QString("打开评估报告失败"), QString("生成评估报告失败"),
-                                                  QString("提交评估报告失败")))
-    {
-        if (err_msg)
-            *err_msg = error;
-        return false;
-    }
     if (result)
     {
-        result->image_count = images.size();
-        result->prediction_count = prediction_count;
-        result->event_count = event_records.size();
+        result->evaluation_data = evaluation_data;
     }
     return true;
 }

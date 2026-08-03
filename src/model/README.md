@@ -98,15 +98,17 @@ models/<模型名>/
         config.yaml
         images.txt
         manifest.yaml
-      evaluation/
-        report.yaml
-      result.yaml
 ```
 
-每个测试任务只有一份当前 `pred/` 和一份 `evaluation/report.yaml`。开始测试时先重新导出
-`pred/images.txt`，再比较实际推理配置和已有 `pred/config.yaml`；推理输入未变化时保留 PRED，
-直接执行 C++ 评估，否则清理并重新生成 PRED。`result.yaml` 使用原子提交，只有提交成功后任务才进入
-完成状态。报告内嵌评估配置和实例事件，是当前唯一有效的评估结果协议。
+每个测试任务只保留当前 `pred/`。用户点击开始测试时，后台重新导出数据集、生成
+`pred/images.txt`、清理并重新生成预测结果。Python 推理完成后，评估页面按需从数据集
+manifest 和 PRED 文件读取数据，由 C++ 在后台计算；指标、图表、图像记录和实例事件
+只保存在当前进程的 `ModelEvaluationViewModel` 中，不生成评估结果文件。
+
+评估页面只在选中测试任务时惰性触发。相同任务的 ViewModel 在内存中复用，切换任务不会
+重复评估；修改评估参数会清空当前结果并重新读取 PRED 评估，修改推理参数或数据集选择
+则等待下一次用户主动开始测试。重新打开项目时没有旧的内存结果，选中任务后重新读取
+PRED 并后台评估，打开行为不弹窗；只有用户点击开始测试触发的评估完成或失败才通知。
 
 ### 数据导出
 
@@ -165,14 +167,14 @@ Python 脚本通过启动参数获得本地 TCP 地址和任务 ID：
 ## 小样本学习
 
 FS-SAM2 属于小样本学习专用流程，不接入普通模型测试任务的评估适配器；普通模型测试
-只维护一个测试数据集选择，并通过测试任务管理器切换配置、PRED 和评估报告。
+只维护一个测试数据集选择，并通过测试任务管理器切换配置、PRED 和评估结果。
 
 ## 测试评估展示
 
 `ModelEvaluationService` 使用 `yaml-cpp` 解析完整 PRED/GT 协议，在 C++ 中完成匹配、指标、
-混淆矩阵、图表和过滤后的重聚合。`ModelEvaluationViewModel` 暴露 `QAbstractItemModel` 与
-`QSortFilterProxyModel`，`TestEvaluationPanel.qml` 只负责 SplitView 布局、图表和实例联动，
-不在 QML 中遍历或计算评估事件。
+混淆矩阵和方法图表。`ModelEvaluationViewModel` 接收后台返回的内存快照，并负责 Qt Model、
+过滤、选择和过滤后的后台重聚合。`TestEvaluationPanel.qml` 只负责 SplitView 布局、图表
+和实例联动，不在 QML 中遍历或计算评估事件。
 
 ## 扩展约定
 

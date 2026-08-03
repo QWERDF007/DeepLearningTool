@@ -99,12 +99,12 @@ Rectangle {
                     if (!control.evaluation)
                         return qsTr("请选择测试任务")
                     switch (control.evaluation.state) {
-                    case "Loading": return qsTr("正在加载评估结果…")
-                    case "Running": return qsTr("测试任务运行中，等待评估结果")
+                    case "Loading": return qsTr("正在后台评估…")
+                    case "Running": return qsTr("测试任务运行中，等待评估")
                     case "Failed": return qsTr("测试任务失败，暂无可用评估结果")
-                    case "MissingReport": return qsTr("当前测试任务还没有有效评估结果")
-                    case "InvalidReport": return qsTr("评估结果协议无效，无法展示")
-                    case "Error": return qsTr("加载评估结果失败")
+                    case "MissingResult": return qsTr("当前测试任务还没有可评估的预测结果")
+                    case "InvalidResult": return qsTr("评估数据无效，无法展示")
+                    case "Error": return qsTr("后台评估失败")
                     default: return qsTr("暂无评估结果")
                     }
                 }

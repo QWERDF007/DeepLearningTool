@@ -18,7 +18,6 @@ struct MODEL_API ExternalProcessSpec
     QString     working_directory; ///< 工作目录
     QStringList python_paths;      ///< 追加到 PYTHONPATH 的路径列表
     QString     log_path;          ///< 进程输出日志文件路径
-    bool        evaluation_only{false}; ///< 仅执行 C++ 评估，不启动 Python
 };
 
 } // namespace dltool::model

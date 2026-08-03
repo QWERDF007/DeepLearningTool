@@ -20,19 +20,11 @@
 
 #include <memory>
 #include <exception>
-#include <QDateTime>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QEventLoop>
-#include <QMetaObject>
 #include <QThreadPool>
-#include <QPointer>
-#include <QThreadPool>
-#include <QFileInfo>
-#include <QFile>
-#include <QDir>
 #include <algorithm>
-#include <atomic>
 #include <utility>
 
 namespace dltool::model {
@@ -119,17 +111,14 @@ void ModelTaskController::shutdown()
                 || !model_manager_->modelRecordViewForUuid(task->model_uuid).isValid()
                 || TaskManager::isTerminal(task->status))
                 continue;
-            const auto token = evaluation_cancel_tokens_.value(task_id);
-            if (token != nullptr)
-                token->store(true, std::memory_order_relaxed);
             if (external_task_runner_ != nullptr && external_task_runner_->hasRunningTask(task_id))
                 external_task_runner_->stop(task_id);
             else
                 task_manager_->markTaskStopped(task_id);
         }
     }
-    // Evaluation callbacks carry a QPointer guard, but wait here so project
-    // teardown never leaves a worker writing after the project has gone away.
+    // Let background preparation/data-export callbacks settle before project
+    // teardown releases their owner.
     QThreadPool::globalInstance()->waitForDone(5000);
     if (external_task_runner_ != nullptr)
     {
@@ -345,11 +334,6 @@ bool ModelTaskController::prepareTask(const int task_id)
         failTask(task_id, request_error);
         return false;
     }
-    // A regular test may be reduced to a C++-only re-evaluation.  The
-    // preparation stage compares the actual inference parameters and the
-    // exported image list directly.
-    request.evaluation_only = isTestModelTask(request.task_type) && !request.scope_uuid.trimmed().isEmpty();
-
     const auto process_spec = std::make_shared<ExternalProcessSpec>();
     const auto request_ptr = std::make_shared<ModelTaskRequest>(std::move(request));
 
@@ -379,7 +363,13 @@ bool ModelTaskController::prepareTask(const int task_id)
         handlePreparedTask(task_id, process_spec, result.success, result.error);
     };
 
-    if (describeModelTask(request_ptr->task_type).requires_dataset_export)
+    if (!describeModelTask(request_ptr->task_type).requires_dataset_export)
+    {
+        dltool::data::DataOperationWorkflow::start(
+            this, std::move(options),
+            [prepare](dltool::data::DataOperationWorkflow::Result &result) { prepare(nullptr, result); }, completion);
+    }
+    else
     {
         if (data_manager_ == nullptr)
         {
@@ -395,12 +385,6 @@ bool ModelTaskController::prepareTask(const int task_id)
             { prepare(&source, result); },
             completion);
     }
-    else
-    {
-        dltool::data::DataOperationWorkflow::start(
-            this, std::move(options),
-            [prepare](dltool::data::DataOperationWorkflow::Result &result) { prepare(nullptr, result); }, completion);
-    }
 
     spdlog::info("模型任务进入后台准备, task_id: {}", task_id);
     return true;
@@ -408,9 +392,6 @@ bool ModelTaskController::prepareTask(const int task_id)
 
 bool ModelTaskController::stopTask(const int task_id)
 {
-    const auto token = evaluation_cancel_tokens_.value(task_id);
-    if (token != nullptr)
-        token->store(true, std::memory_order_relaxed);
     return task_manager_ != nullptr && task_manager_->stopTask(task_id);
 }
 
@@ -504,21 +485,6 @@ void ModelTaskController::handlePreparedTask(const int task_id, const std::share
     if (!success)
     {
         failTask(task_id, error.isEmpty() ? QString("准备模型任务失败") : error);
-        return;
-    }
-
-    if (process_spec != nullptr && process_spec->evaluation_only)
-    {
-        if (!task_manager_->markTaskRunning(task_id))
-        {
-            failTask(task_id, QString("测试任务无法进入评估状态"));
-            return;
-        }
-        task_manager_->updateTaskPhase(task_id, QStringLiteral("evaluating"));
-        task_manager_->updateTaskProgress(task_id, 90);
-        syncTaskModelState(task_id);
-        spdlog::info("模型任务 {} 使用已有预测结果执行 C++ 评估", task_id);
-        runTestEvaluationAsync(task_id);
         return;
     }
 
@@ -743,10 +709,6 @@ void ModelTaskController::handleTaskStopRequested(const int task_id)
         return;
     }
 
-    const auto evaluation_token = evaluation_cancel_tokens_.value(task_id);
-    if (evaluation_token != nullptr)
-        evaluation_token->store(true, std::memory_order_relaxed);
-
     if (task_manager_ != nullptr)
         task_manager_->markTaskStopped(task_id);
     syncTaskModelState(task_id);
@@ -797,170 +759,6 @@ void ModelTaskController::handleExternalTaskStartFailed(const int task_id, const
         failTask(task_id, error.isEmpty() ? QString("外部模型任务进程启动失败") : error);
 }
 
-bool ModelTaskController::buildTestEvaluationOptions(const int task_id, ModelEvaluationOptions &options,
-                                                      QString *err_msg) const
-{
-    if (task_manager_ == nullptr || model_manager_ == nullptr)
-        return setError(err_msg, QString("评估上下文未初始化"));
-    const TaskManager::Task *task = task_manager_->findTask(task_id);
-    if (task == nullptr || !isTestModelTask(task->type) || task->scope_uuid.trimmed().isEmpty())
-        return setError(err_msg, QString("测试任务上下文无效"));
-    const QString model_uuid = task->model_uuid;
-    const QString task_scope = task->scope_uuid;
-    const QString task_name = task->scope_name;
-    const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(model_uuid);
-    if (!record.isValid())
-        return setError(err_msg, QString("模型不存在: %1").arg(model_uuid));
-    ModelTestTaskDefinition definition;
-    QString error;
-    if (!test_task_repository_.loadTask(record.name, task_scope, definition, &error))
-        return setError(err_msg, error);
-
-    const ModelStorageService storage(project_dir_);
-    const QString task_directory = definition.directory_name.isEmpty() ? task_name : definition.directory_name;
-    options.model_uuid = model_uuid;
-    options.test_task_uuid = task_scope;
-    options.model_name = record.name;
-    options.task_directory = task_directory;
-    // 评估能力由项目方法决定，而不是由框架名决定（例如 anomalib
-    // 框架既可能承载异常检测，也可能扩展其他方法）。
-    options.method = evaluation::fromProjectMethod(method_);
-    options.dataset_manifest_path = cleanPath(QDir(storage.testTaskDatasetPath(record.name, task_directory))
-                                                  .filePath(QStringLiteral("test/manifest.yaml")));
-    if (!QFileInfo::exists(options.dataset_manifest_path))
-        options.dataset_manifest_path = cleanPath(QDir(storage.testTaskDatasetPath(record.name, task_directory))
-                                                      .filePath(QStringLiteral("manifest.yaml")));
-    // Anomalib exports its split file as <split>.yaml directly under the
-    // dataset directory and uses a `samples` sequence instead of `images`.
-    // Keep the evaluator protocol-independent by accepting that generated
-    // file as the final fallback.
-    if (!QFileInfo::exists(options.dataset_manifest_path))
-        options.dataset_manifest_path = cleanPath(QDir(storage.testTaskDatasetPath(record.name, task_directory))
-                                                      .filePath(QStringLiteral("test.yaml")));
-    options.prediction_manifest_path = storage.testTaskPredictionManifestPath(record.name, task_directory);
-    options.prediction_images_path = storage.testTaskPredictionImagesPath(record.name, task_directory);
-    options.evaluation_dir = storage.testTaskEvaluationPath(record.name, task_directory);
-    options.report_path = storage.testTaskEvaluationReportPath(record.name, task_directory);
-
-    // Evaluation parameters are optional; the evaluator applies deterministic
-    // defaults when they are absent.
-    const QVariantMap evaluation_params = definition.test_params.value(QStringLiteral("evaluation")).toMap();
-    options.evaluation_config = evaluation_params;
-    options.confidence_threshold
-        = evaluation_params.value(evaluation::fieldName(evaluation::Field::ConfidenceThreshold), 0.5).toDouble();
-    options.iou_threshold
-        = evaluation_params.value(evaluation::fieldName(evaluation::Field::IouThreshold), 0.5).toDouble();
-    options.matching_strategy = evaluation::matchingStrategyFromKey(
-        evaluation_params.value(evaluation::fieldName(evaluation::Field::MatchingStrategy),
-                                 evaluation::matchingStrategyKey(evaluation::MatchingStrategy::GreedyIoU)).toString());
-    return true;
-}
-
-bool ModelTaskController::commitTestEvaluationResult(const int task_id, const ModelEvaluationOptions &options,
-                                                     const ModelEvaluationResult &evaluation_result,
-                                                     QVariantMap &result, QString *err_msg)
-{
-    if (task_manager_ == nullptr)
-        return setError(err_msg, QString("评估上下文未初始化"));
-    const TaskManager::Task *task = task_manager_->findTask(task_id);
-    if (task == nullptr || !isTestModelTask(task->type))
-        return setError(err_msg, QString("测试任务上下文无效"));
-    result = {{evaluation::fieldName(evaluation::Field::ImageCount), evaluation_result.image_count},
-              {evaluation::fieldName(evaluation::Field::PredictionCount), evaluation_result.prediction_count},
-              {evaluation::fieldName(evaluation::Field::EventCount), evaluation_result.event_count}};
-    result.insert(evaluation::fieldName(evaluation::Field::SchemaVersion), evaluation::kResultSchemaVersion);
-    result.insert(evaluation::fieldName(evaluation::Field::ModelUuid), options.model_uuid);
-    result.insert(evaluation::fieldName(evaluation::Field::TestTaskUuid), options.test_task_uuid);
-    result.insert(evaluation::fieldName(evaluation::Field::Method), evaluation::methodKey(options.method));
-    result.insert(evaluation::fieldName(evaluation::Field::Status),
-                  taskProtocolStatusName(TaskProtocolStatus::Finished));
-    result.insert(evaluation::fieldName(evaluation::Field::EvaluatedAt), QDateTime::currentSecsSinceEpoch());
-    result.insert(evaluation::fieldName(evaluation::Field::PredictionDir), QStringLiteral("pred"));
-    result.insert(evaluation::fieldName(evaluation::Field::PredictionImages), QStringLiteral("pred/images.txt"));
-    result.insert(evaluation::fieldName(evaluation::Field::PredictionManifest), QStringLiteral("pred/manifest.yaml"));
-    result.insert(evaluation::fieldName(evaluation::Field::EvaluationReport), QStringLiteral("evaluation/report.yaml"));
-    ModelTestTaskRepository repository(project_dir_);
-    if (!repository.writeResult(options.model_name, options.task_directory, result, err_msg))
-    {
-        // report.yaml is not a committed result on its own.  Remove the
-        // just-generated evaluation directory so a failed result commit
-        // cannot be shown as an apparently valid report on next launch.
-        QDir(options.evaluation_dir).removeRecursively();
-        return false;
-    }
-    return true;
-}
-
-bool ModelTaskController::runTestEvaluation(const int task_id, QVariantMap &result, QString *err_msg)
-{
-    ModelEvaluationOptions options;
-    if (!buildTestEvaluationOptions(task_id, options, err_msg))
-        return false;
-    ModelEvaluationResult evaluation_result;
-    QString error;
-    if (!ModelEvaluationService::evaluate(options, &evaluation_result, &error))
-        return setError(err_msg, error);
-    return commitTestEvaluationResult(task_id, options, evaluation_result, result, err_msg);
-}
-
-void ModelTaskController::runTestEvaluationAsync(const int task_id)
-{
-    if (evaluation_tasks_.contains(task_id))
-        return;
-    ModelEvaluationOptions options;
-    QString preparation_error;
-    if (!buildTestEvaluationOptions(task_id, options, &preparation_error))
-    {
-        failTask(task_id, preparation_error.isEmpty() ? QString("准备测试评估失败") : preparation_error);
-        return;
-    }
-    const auto cancel_token = std::make_shared<std::atomic_bool>(false);
-    options.cancel_token = cancel_token;
-    evaluation_tasks_.insert(task_id);
-    evaluation_cancel_tokens_.insert(task_id, cancel_token);
-    const QPointer<ModelTaskController> guard(this);
-    QThreadPool::globalInstance()->start([guard, task_id, options, cancel_token]()
-    {
-        if (guard.isNull())
-            return;
-        ModelEvaluationResult evaluation_result;
-        QString error;
-        const bool success = ModelEvaluationService::evaluate(options, &evaluation_result, &error);
-        QMetaObject::invokeMethod(guard, [guard, task_id, options, success, evaluation_result, error]()
-        {
-            if (guard.isNull())
-                return;
-            guard->evaluation_tasks_.remove(task_id);
-            guard->evaluation_cancel_tokens_.remove(task_id);
-            if (guard->task_manager_ == nullptr)
-                return;
-            const TaskManager::Task *task = guard->task_manager_->findTask(task_id);
-            if (task == nullptr || TaskManager::isTerminal(task->status))
-                return;
-            if (!success)
-            {
-                guard->failTask(task_id, error.isEmpty() ? QString("测试评估失败") : error);
-                return;
-            }
-            QVariantMap result;
-            QString commit_error;
-            if (!guard->commitTestEvaluationResult(task_id, options, evaluation_result, result, &commit_error))
-            {
-                guard->failTask(task_id, commit_error.isEmpty() ? QString("提交测试评估结果失败") : commit_error);
-                return;
-            }
-            guard->task_manager_->updateTaskPhase(task_id, QStringLiteral("saving_result"));
-            guard->task_manager_->updateTaskProgress(task_id, 99);
-            guard->task_manager_->updateTaskPhase(task_id, QStringLiteral("finished"));
-            guard->task_manager_->finishTask(task_id);
-            guard->syncTaskModelState(task_id);
-            spdlog::info("模型任务 {} 评估完成", task_id);
-            ui::SignalHelper::notifySuccess(QString("模型任务 %1 评估完成").arg(task_id),
-                                             QString("评估结果已生成"));
-        }, Qt::QueuedConnection);
-    });
-}
-
 void ModelTaskController::handleExternalTaskFinished(const int task_id, const int exit_code, const bool normal_exit,
                                                      const bool stop_requested)
 {
@@ -987,14 +785,6 @@ void ModelTaskController::handleExternalTaskFinished(const int task_id, const in
     {
         if (task->status == TaskManager::Preparing)
             task_manager_->markTaskRunning(task_id);
-        if (isTestModelTask(task->type) && !task->scope_uuid.trimmed().isEmpty())
-        {
-            task_manager_->updateTaskPhase(task_id, QStringLiteral("evaluating"));
-            task_manager_->updateTaskProgress(task_id, 90);
-            syncTaskModelState(task_id);
-            runTestEvaluationAsync(task_id);
-            return;
-        }
         task_manager_->updateTaskPhase(task_id, QStringLiteral("finished"));
         task_manager_->finishTask(task_id);
         syncTaskModelState(task_id);

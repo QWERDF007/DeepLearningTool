@@ -72,6 +72,14 @@ MODEL_API ModelDatasetSelections modelDatasetSelections(IModel *model);
 MODEL_API std::vector<int64_t> selectedDatasetIds(const ModelDatasetSelections &selections);
 
 /**
+ * @brief 将完整数据集选择转换为稳定的 QVariant map。
+ *
+ * 该表示同时用于持久化选择和生成当前测试的图像列表，避免任务准备阶段
+ * 再维护一份不同的选择转换逻辑。
+ */
+MODEL_API QVariantMap modelDatasetSelectionsMap(const ModelDatasetSelections &selections);
+
+/**
  * @brief 获取数据集选择配置文件路径
  * @param dataset_dir 数据集目录
  * @return 配置文件路径

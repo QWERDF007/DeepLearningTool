@@ -2,6 +2,7 @@
 
 #include "dltool/model/Export.h"
 #include "model/ModelEvaluationModels.h"
+#include "model/ModelEvaluationService.h"
 
 #include <QObject>
 #include <QVariantList>
@@ -13,10 +14,11 @@
 namespace dltool::model {
 
 /**
- * @brief 评估报告的展示模型。
+ * @brief 单一测试任务的内存评估模型。
  *
- * 该类只解析稳定的 YAML 协议并把纯值记录交给 Qt Model。指标、混淆矩阵和实例
- * 匹配关系不在 QML 中计算；实例过滤由 QSortFilterProxyModel 完成。
+ * 评估输入始终从当前测试任务的 dataset manifest 和 pred 文件读取，计算在后台
+ * 线程完成，结果只保留在当前进程的模型缓存中。指标、混淆矩阵和实例匹配关系
+ * 不在 QML 中计算；实例过滤由 QSortFilterProxyModel 完成。
  */
 class MODEL_API ModelEvaluationViewModel : public QObject
 {
@@ -24,25 +26,23 @@ class MODEL_API ModelEvaluationViewModel : public QObject
     QML_NAMED_ELEMENT(ModelEvaluationViewModel)
     QML_UNCREATABLE("ModelEvaluationViewModel is owned by ModelTestTaskManager")
 
-    Q_PROPERTY(bool available READ available NOTIFY reportChanged FINAL)
+    Q_PROPERTY(bool available READ available NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged FINAL)
-    Q_PROPERTY(QString state READ state NOTIFY reportChanged FINAL)
-    Q_PROPERTY(QString error READ error NOTIFY reportChanged FINAL)
-    Q_PROPERTY(QString reportPath READ reportPath WRITE setReportPath NOTIFY reportPathChanged FINAL)
-    Q_PROPERTY(QString resultPath READ resultPath WRITE setResultPath NOTIFY resultPathChanged FINAL)
-    Q_PROPERTY(QString primaryMetricSet READ primaryMetricSet NOTIFY reportChanged FINAL)
+    Q_PROPERTY(QString state READ state NOTIFY evaluationChanged FINAL)
+    Q_PROPERTY(QString error READ error NOTIFY evaluationChanged FINAL)
+    Q_PROPERTY(QString primaryMetricSet READ primaryMetricSet NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(bool globalFilterActive READ globalFilterActive NOTIFY filterStateChanged FINAL)
     Q_PROPERTY(QString globalFilterDescription READ globalFilterDescription NOTIFY filterStateChanged FINAL)
-    Q_PROPERTY(QString metricScopeDescription READ metricScopeDescription NOTIFY reportChanged FINAL)
-    Q_PROPERTY(QVariantMap imageMetricDefinition READ imageMetricDefinition NOTIFY reportChanged FINAL)
-    Q_PROPERTY(QString resultRevision READ resultRevision NOTIFY reportChanged FINAL)
-    Q_PROPERTY(double confidenceThreshold READ confidenceThreshold NOTIFY reportChanged FINAL)
-    Q_PROPERTY(double iouThreshold READ iouThreshold NOTIFY reportChanged FINAL)
-    Q_PROPERTY(QString matchingStrategy READ matchingStrategy NOTIFY reportChanged FINAL)
-    Q_PROPERTY(bool hasInstanceMetrics READ hasInstanceMetrics NOTIFY reportChanged FINAL)
-    Q_PROPERTY(bool hasImageMetrics READ hasImageMetrics NOTIFY reportChanged FINAL)
-    Q_PROPERTY(bool hasConfusionMatrix READ hasConfusionMatrix NOTIFY reportChanged FINAL)
-    Q_PROPERTY(bool hasInstanceEvents READ hasInstanceEvents NOTIFY reportChanged FINAL)
+    Q_PROPERTY(QString metricScopeDescription READ metricScopeDescription NOTIFY evaluationChanged FINAL)
+    Q_PROPERTY(QVariantMap imageMetricDefinition READ imageMetricDefinition NOTIFY evaluationChanged FINAL)
+    Q_PROPERTY(QString resultRevision READ resultRevision NOTIFY evaluationChanged FINAL)
+    Q_PROPERTY(double confidenceThreshold READ confidenceThreshold NOTIFY evaluationChanged FINAL)
+    Q_PROPERTY(double iouThreshold READ iouThreshold NOTIFY evaluationChanged FINAL)
+    Q_PROPERTY(QString matchingStrategy READ matchingStrategy NOTIFY evaluationChanged FINAL)
+    Q_PROPERTY(bool hasInstanceMetrics READ hasInstanceMetrics NOTIFY evaluationChanged FINAL)
+    Q_PROPERTY(bool hasImageMetrics READ hasImageMetrics NOTIFY evaluationChanged FINAL)
+    Q_PROPERTY(bool hasConfusionMatrix READ hasConfusionMatrix NOTIFY evaluationChanged FINAL)
+    Q_PROPERTY(bool hasInstanceEvents READ hasInstanceEvents NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(EvaluationMetricModel *instanceMetrics READ instanceMetrics CONSTANT FINAL)
     Q_PROPERTY(EvaluationMetricModel *imageMetrics READ imageMetrics CONSTANT FINAL)
     Q_PROPERTY(EvaluationMetricModel *perClassMetrics READ perClassMetrics CONSTANT FINAL)
@@ -65,11 +65,6 @@ public:
     bool loading() const;
     QString state() const;
     QString error() const;
-    QString reportPath() const;
-    void setReportPath(const QString &path);
-    QString resultPath() const;
-    void setResultPath(const QString &path);
-    void setPaths(const QString &reportPath, const QString &resultPath);
     QString primaryMetricSet() const;
     bool globalFilterActive() const;
     QString globalFilterDescription() const;
@@ -98,8 +93,9 @@ public:
     QString selectedEventUuid() const;
     int selectedInstanceRow() const;
 
-    Q_INVOKABLE void reload();
-    Q_INVOKABLE void refresh();
+    void setEvaluationOptions(const ModelEvaluationOptions &options);
+    Q_INVOKABLE void evaluate(bool notify = false);
+    void invalidate(const QString &state = {});
     void setRuntimeState(const QString &state);
     Q_INVOKABLE void selectInstance(int proxyRow);
     Q_INVOKABLE bool selectInstance(const QString &eventUuid);
@@ -116,24 +112,27 @@ public:
     void setGlobalFilter(QObject *filter);
 
 signals:
-    void reportPathChanged();
-    void resultPathChanged();
-    void reportChanged();
+    void evaluationChanged();
     void loadingChanged();
     void selectedInstanceChanged();
     void filterStateChanged();
 
 private:
     void setLoading(bool value);
-    void clearReport(const QString &error = {}, const QString &state = {});
-    void loadReport(const QVariantMap &root);
+    void clearEvaluation(const QString &error = {}, const QString &state = {});
+    bool sameEvaluationInput(const ModelEvaluationOptions &lhs, const ModelEvaluationOptions &rhs) const;
+    void loadEvaluation(const QVariantMap &root);
+    void loadDerivedCharts();
     void loadInstanceRecords(const QVariantList &records);
     QVariantMap instanceToMap(const EvaluationInstanceRecord &record) const;
     QString thumbnailUrl(const EvaluationInstanceRecord &record) const;
     void rebuildFilteredAggregates();
 
-    QString report_path_;
-    QString result_path_;
+    ModelEvaluationOptions evaluation_options_;
+    bool has_evaluation_options_{false};
+    bool evaluation_attempted_{false};
+    std::shared_ptr<std::atomic_bool> cancel_token_;
+    bool notify_when_finished_{false};
     bool available_{false};
     bool loading_{false};
     QString error_;
@@ -164,12 +163,8 @@ private:
     EvaluationChartModel *charts_{nullptr};
     int selected_proxy_row_{-1};
     QVariantMap selected_instance_;
-    int reload_revision_{0};
+    int evaluation_revision_{0};
     int aggregation_revision_{0};
-    qint64 loaded_report_size_{-1};
-    qint64 loaded_report_mtime_{-1};
-    qint64 loaded_result_size_{-1};
-    qint64 loaded_result_mtime_{-1};
 };
 
 } // namespace dltool::model

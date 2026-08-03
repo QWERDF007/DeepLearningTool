@@ -24,6 +24,7 @@ Rectangle {
     property string currentModelMtime: ""
     property bool componentCompleted: false
     property var taskManager: null
+    property ModelTestTaskManager testTaskManager: null
     property ModelTaskController taskController: null
     property int taskType: ModelTaskTypes.Unknown
     // Test task state is scoped by the selected test-task UUID.  Training
@@ -104,6 +105,9 @@ Rectangle {
             return
         }
         if (taskType === ModelTaskTypes.Test) {
+            if (testTaskManager && !testTaskManager.flush()) {
+                return
+            }
             taskController.startModelTestTask(currentModelUuid, taskScopeUuid)
         } else {
             taskController.startModelTask(currentModelUuid, taskType)

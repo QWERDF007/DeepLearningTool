@@ -5,13 +5,10 @@
 #include "model/ModelTestTaskRepository.h"
 #include "model/ModelTaskTypes.h"
 #include "model/TaskCommunication.h"
-#include "model/ModelEvaluationService.h"
 
 #include <QObject>
 #include <QString>
 #include <QVariantMap>
-#include <QSet>
-#include <QHash>
 #include <QtQml>
 #include <memory>
 
@@ -173,13 +170,6 @@ private:
      * @param task_id 任务 ID。
      */
     void syncTaskModelState(int task_id) const;
-    bool buildTestEvaluationOptions(int task_id, ModelEvaluationOptions &options, QString *err_msg = nullptr) const;
-    bool commitTestEvaluationResult(int task_id, const ModelEvaluationOptions &options,
-                                    const ModelEvaluationResult &evaluation_result, QVariantMap &result,
-                                    QString *err_msg = nullptr);
-    bool runTestEvaluation(int task_id, QVariantMap &result, QString *err_msg = nullptr);
-    void runTestEvaluationAsync(int task_id);
-
 private slots:
     /**
      * @brief 响应 TaskManager 的开始请求，提交完整后台准备流程。
@@ -230,8 +220,6 @@ private:
     TaskManager               *task_manager_{nullptr};  ///< 应用级任务状态中心。
     std::unique_ptr<ExternalModelTaskRunner> external_task_runner_; ///< 当前项目 Python 进程运行器。
     ModelTestTaskRepository test_task_repository_;
-    QSet<int> evaluation_tasks_;
-    QHash<int, std::shared_ptr<std::atomic_bool>> evaluation_cancel_tokens_;
 };
 
 } // namespace dltool::model
