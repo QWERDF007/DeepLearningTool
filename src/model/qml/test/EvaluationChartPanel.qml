@@ -18,6 +18,35 @@ Rectangle {
         return charts ? charts.rowCount() : 0
     }
 
+    // Evaluation descriptors expose nested QVariantMap/QVariantList values.
+    // Clone the data at the QML boundary so Chart.js receives native
+    // JavaScript objects, arrays, and strings (including dataset colors).
+    function chartDataForDisplay(chartData) {
+        if (!chartData || typeof chartData !== "object")
+            return ({labels: [], datasets: []})
+
+        try {
+            return JSON.parse(JSON.stringify(chartData))
+        } catch (error) {
+            // Keep the chart usable if a future descriptor adds a value that
+            // cannot be serialized.
+            return ({labels: [], datasets: []})
+        }
+    }
+
+    // Tooltip and interaction settings are nested QVariantMap values too.
+    // Convert them before Chart.js reads mode/intersect and related options.
+    function chartOptionsForDisplay(options) {
+        if (!options || typeof options !== "object")
+            return ({maintainAspectRatio: false})
+
+        try {
+            return JSON.parse(JSON.stringify(options))
+        } catch (error) {
+            return ({maintainAspectRatio: false})
+        }
+    }
+
     function copyMap(source) {
         var result = ({})
         if (!source || typeof source !== "object")
@@ -40,7 +69,7 @@ Rectangle {
     }
 
     function chartOptionsForDescriptor(descriptor) {
-        var options = descriptor.options || ({maintainAspectRatio: false})
+        var options = control.chartOptionsForDisplay(descriptor.options)
         if (descriptor.chart_id !== "anomaly_score_distribution")
             return options
 
@@ -131,7 +160,7 @@ Rectangle {
                 return charts && count > 0 ? charts.descriptor(index) : ({})
             }
             chartType: descriptor.kind || "line"
-            chartData: descriptor.data || ({labels: [], datasets: []})
+            chartData: control.chartDataForDisplay(descriptor.data)
             chartOptions: control.chartOptionsForDescriptor(descriptor)
         }
         Connections {

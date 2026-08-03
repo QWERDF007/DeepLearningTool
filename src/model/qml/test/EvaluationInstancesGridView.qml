@@ -6,8 +6,9 @@ import dltool.model
 import dltool.ui
 import quickui
 
-Item {
+Rectangle {
     id: control
+    color: QuiColor.Background
     property ModelEvaluationViewModel evaluation: null
     property real thumbnailScale: 1.0
 
@@ -43,22 +44,16 @@ Item {
             id: grid
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.margins: 10
             cellWidth: 180 * control.thumbnailScale
             cellHeight: 150 * control.thumbnailScale
             clip: true
             focus: true
             keyNavigationEnabled: true
             keyNavigationWraps: false
-            highlightFollowsCurrentItem: true
             ScrollBar.vertical: QuiScrollBar { }
             model: control.evaluation && control.evaluation.hasInstanceEvents
                    ? control.evaluation.filteredInstances : null
-            highlight: Rectangle {
-                color: "transparent"
-                border.width: 2
-                border.color: QuiColor.Highlight
-                radius: 2
-            }
             onCurrentIndexChanged: {
                 if (control.evaluation && currentIndex >= 0)
                     control.evaluation.selectInstance(currentIndex)
@@ -75,16 +70,18 @@ Item {
                     currentIndex = 0
             }
             delegate: Rectangle {
-                width: grid.cellWidth - 6
-                height: grid.cellHeight - 6
+                width: grid.cellWidth - 10
+                height: grid.cellHeight - 10
                 readonly property bool successfulStatus: model.statusKind === EvaluationInstanceModel.StatusTruePositive
                                                          || model.statusKind === EvaluationInstanceModel.StatusTrueNegative
                 readonly property bool mismatchStatus: model.statusKind === EvaluationInstanceModel.StatusClassMismatch
                 color: QuiColor.Primary
-                border.color: successfulStatus ? "#43a047" : mismatchStatus ? "#fb8c00" : "#e53935"
+                radius: 4
+                border.width: 2
+                border.color: model.selected ? QuiColor.Highlight : QuiColor.Transparent
                 EvaluationInstanceThumbnail {
                     anchors.fill: parent
-                    anchors.margins: 2
+                    anchors.margins: 5
                     record: ({imagePath: model.imagePath, thumbnailUrl: model.thumbnailUrl,
                               imageWidth: model.imageWidth,
                               imageHeight: model.imageHeight, cropBounds: model.cropBounds,
@@ -94,15 +91,6 @@ Item {
                               gtOverlayPoints: model.gtOverlayPoints, predOverlayPoints: model.predOverlayPoints,
                               gtMaskUrl: model.gtMaskUrl, predMaskUrl: model.predMaskUrl,
                               gtClassColor: model.gtClassColor, predClassColor: model.predClassColor})
-                }
-                QuiText {
-                    anchors.left: parent.left
-                    anchors.bottom: parent.bottom
-                    anchors.margins: 4
-                    text: model.imageName + "\n" + (model.statusText || model.status)
-                    color: "white"
-                    style: Text.Outline
-                    styleColor: "black"
                 }
                 Rectangle {
                     anchors.top: parent.top
