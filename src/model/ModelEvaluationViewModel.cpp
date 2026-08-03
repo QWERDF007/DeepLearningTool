@@ -1216,13 +1216,46 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
                                          QVariantMap{{evaluation::fieldName(evaluation::Field::Label),
                                                       QStringLiteral("F1")},
                                                      {evaluation::fieldName(evaluation::Field::Data), f1}}}}}},
-                                 {evaluation::fieldName(evaluation::Field::Options),
-                                  QVariantMap{{QStringLiteral("maintainAspectRatio"), false}}}});
+                                  {evaluation::fieldName(evaluation::Field::Options),
+                                   QVariantMap{{QStringLiteral("maintainAspectRatio"), false}}}});
     }
+
+    if (input.anomaly_detection)
+    {
+        QVariantList good_scores;
+        QVariantList anomaly_scores;
+        bool has_good = false;
+        bool has_anomaly = false;
+        double good_max = 0.0;
+        double anomaly_min = std::numeric_limits<double>::max();
+        for (const EvaluationImageRecord &image : input.images)
+        {
+            const double score = imageScore(image);
+            if (gtClassIds(image).contains(1))
+            {
+                good_scores.push_back(QVariant());
+                anomaly_scores.push_back(score);
+                has_anomaly = true;
+                anomaly_min = std::min(anomaly_min, score);
+            }
+            else
+            {
+                good_scores.push_back(score);
+                anomaly_scores.push_back(QVariant());
+                has_good = true;
+                good_max = std::max(good_max, score);
+            }
+        }
+        output.charts.push_back(anomalyScoreChart(good_scores, anomaly_scores, has_good, good_max,
+                                                  has_anomaly, anomaly_min));
+    }
+
     for (const QVariantMap &descriptor : input.chart_descriptors)
     {
         const QString chart_id = descriptor.value(evaluation::fieldName(evaluation::Field::ChartId)).toString();
         const QString filter_kind = descriptor.value(evaluation::fieldName(evaluation::Field::FilterKind)).toString();
+        if (chart_id == QStringLiteral("anomaly_score_distribution"))
+            continue;
         if (descriptor.value(evaluation::fieldName(evaluation::Field::Kind)).toString() == QStringLiteral("bar")
             && (filter_kind == QStringLiteral("per_class_metrics")
                 || chart_id == QStringLiteral("per_class_metrics")))
@@ -1264,35 +1297,6 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
                                 {evaluation::fieldName(evaluation::Field::Data), precision}},
                     QVariantMap{{evaluation::fieldName(evaluation::Field::Label), QStringLiteral("Recall")},
                                 {evaluation::fieldName(evaluation::Field::Data), recall}}}}});
-        }
-        else if (chart_id == QStringLiteral("anomaly_score_distribution"))
-        {
-            QVariantList good_scores;
-            QVariantList anomaly_scores;
-            bool has_good = false;
-            bool has_anomaly = false;
-            double good_max = 0.0;
-            double anomaly_min = std::numeric_limits<double>::max();
-            for (const EvaluationImageRecord &image : input.images)
-            {
-                const double score = imageScore(image);
-                if (gtClassIds(image).contains(1))
-                {
-                    good_scores.push_back(QVariant());
-                    anomaly_scores.push_back(score);
-                    has_anomaly = true;
-                    anomaly_min = std::min(anomaly_min, score);
-                }
-                else
-                {
-                    good_scores.push_back(score);
-                    anomaly_scores.push_back(QVariant());
-                    has_good = true;
-                    good_max = std::max(good_max, score);
-                }
-            }
-            filtered = anomalyScoreChart(good_scores, anomaly_scores, has_good, good_max,
-                                         has_anomaly, anomaly_min);
         }
         else if (filter_kind == QStringLiteral("image_score"))
         {

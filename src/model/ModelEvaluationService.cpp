@@ -24,7 +24,6 @@
 #include <set>
 #include <stdexcept>
 #include <utility>
-#include <vector>
 
 namespace dltool::model {
 
@@ -1113,191 +1112,6 @@ struct OfficialEvaluationOutput
     QVariantMap image_definition;
 };
 
-struct ScoreHistogramData
-{
-    QVariantList labels;
-    QVariantList good_points;
-    QVariantList anomaly_points;
-    std::vector<double> centers;
-    int max_count{0};
-    double min_score{0.0};
-    double max_score{1.0};
-};
-
-ScoreHistogramData scoreHistogram(const QVariantList &good_scores, const QVariantList &anomaly_scores)
-{
-    ScoreHistogramData histogram;
-    std::vector<double> good_values;
-    std::vector<double> anomaly_values;
-    const auto collect = [](const QVariantList &source, std::vector<double> &target)
-    {
-        for (const QVariant &value : source)
-        {
-            bool ok = false;
-            const double score = value.toDouble(&ok);
-            if (ok && std::isfinite(score))
-                target.push_back(score);
-        }
-    };
-    collect(good_scores, good_values);
-    collect(anomaly_scores, anomaly_values);
-
-    std::vector<double> all_values;
-    all_values.reserve(good_values.size() + anomaly_values.size());
-    all_values.insert(all_values.end(), good_values.cbegin(), good_values.cend());
-    all_values.insert(all_values.end(), anomaly_values.cbegin(), anomaly_values.cend());
-    if (all_values.empty())
-        return histogram;
-
-    const auto minmax = std::minmax_element(all_values.cbegin(), all_values.cend());
-    histogram.min_score = *minmax.first;
-    histogram.max_score = *minmax.second;
-    constexpr int bin_count = 24;
-    int actual_bin_count = bin_count;
-    if (std::abs(histogram.max_score - histogram.min_score) <= 1e-12)
-    {
-        const double padding = std::max(0.01, std::abs(histogram.min_score) * 0.05);
-        histogram.min_score -= padding;
-        histogram.max_score += padding;
-        actual_bin_count = 1;
-    }
-    const double bin_width = (histogram.max_score - histogram.min_score) / actual_bin_count;
-    std::vector<int> good_counts(static_cast<std::size_t>(actual_bin_count), 0);
-    std::vector<int> anomaly_counts(static_cast<std::size_t>(actual_bin_count), 0);
-    histogram.centers.reserve(actual_bin_count);
-    histogram.labels.reserve(actual_bin_count);
-    for (int index = 0; index < actual_bin_count; ++index)
-    {
-        const double center = histogram.min_score + (static_cast<double>(index) + 0.5) * bin_width;
-        histogram.centers.push_back(center);
-        histogram.labels.push_back(QString::number(center, 'f', 4));
-    }
-
-    const auto addToBins = [&](const std::vector<double> &values, std::vector<int> &counts)
-    {
-        for (const double score : values)
-        {
-            const int index = std::clamp(
-                static_cast<int>(std::floor((score - histogram.min_score) / bin_width)), 0, actual_bin_count - 1);
-            ++counts.at(static_cast<std::size_t>(index));
-        }
-    };
-    addToBins(good_values, good_counts);
-    addToBins(anomaly_values, anomaly_counts);
-
-    const auto makePoints = [&histogram](const std::vector<int> &counts)
-    {
-        QVariantList points;
-        points.reserve(static_cast<int>(counts.size()));
-        for (std::size_t index = 0; index < counts.size(); ++index)
-            points.push_back(QVariantMap{{QStringLiteral("x"), histogram.centers.at(index)},
-                                         {QStringLiteral("y"), counts.at(index)}});
-        return points;
-    };
-    histogram.good_points = makePoints(good_counts);
-    histogram.anomaly_points = makePoints(anomaly_counts);
-    histogram.max_count = std::max(*std::max_element(good_counts.cbegin(), good_counts.cend()),
-                                   *std::max_element(anomaly_counts.cbegin(), anomaly_counts.cend()));
-    return histogram;
-}
-
-QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantList &anomaly_scores,
-                              const bool has_good, const double good_max, const bool has_anomaly,
-                              const double anomaly_min)
-{
-    constexpr const char *good_color = "#43A047";
-    constexpr const char *good_fill = "rgba(67, 160, 71, 0.24)";
-    constexpr const char *anomaly_color = "#E53935";
-    constexpr const char *anomaly_fill = "rgba(229, 57, 53, 0.24)";
-    const ScoreHistogramData histogram = scoreHistogram(good_scores, anomaly_scores);
-    const auto distributionDataset = [](const QString &label, const QString &line_color,
-                                        const QString &fill_color, const QVariantList &points)
-    {
-        return QVariantMap{{QStringLiteral("label"), label},
-                           {QStringLiteral("data"), points},
-                           {QStringLiteral("backgroundColor"), fill_color},
-                           {QStringLiteral("borderColor"), line_color},
-                           {QStringLiteral("pointBackgroundColor"), line_color},
-                           {QStringLiteral("pointBorderColor"), line_color},
-                           {QStringLiteral("pointRadius"), 0},
-                           {QStringLiteral("pointHoverRadius"), 4},
-                           {QStringLiteral("borderWidth"), 2},
-                           {QStringLiteral("lineTension"), 0},
-                           {QStringLiteral("showLine"), true},
-                           {QStringLiteral("fill"), true}};
-    };
-    const auto referenceDataset = [](const QString &label, const QString &color, const double value,
-                                     const int max_count)
-    {
-        return QVariantMap{{QStringLiteral("label"), label},
-                           {QStringLiteral("data"), QVariantList{
-                               QVariantMap{{QStringLiteral("x"), value}, {QStringLiteral("y"), 0}},
-                               QVariantMap{{QStringLiteral("x"), value}, {QStringLiteral("y"), max_count}}}},
-                           {QStringLiteral("backgroundColor"), color},
-                           {QStringLiteral("borderColor"), color},
-                           {QStringLiteral("borderWidth"), 2},
-                           {QStringLiteral("borderDash"), QVariantList{6, 4}},
-                           {QStringLiteral("pointRadius"), 0},
-                           {QStringLiteral("pointHoverRadius"), 0},
-                           {QStringLiteral("lineTension"), 0},
-                           {QStringLiteral("showLine"), true},
-                           {QStringLiteral("fill"), false}};
-    };
-
-    QVariantList datasets;
-    if (has_good)
-        datasets.push_back(distributionDataset(QStringLiteral("GOOD"), QString::fromLatin1(good_color),
-                                                QString::fromLatin1(good_fill), histogram.good_points));
-    if (has_anomaly)
-        datasets.push_back(distributionDataset(QStringLiteral("Anomaly"), QString::fromLatin1(anomaly_color),
-                                                QString::fromLatin1(anomaly_fill), histogram.anomaly_points));
-    if (has_good)
-        datasets.push_back(referenceDataset(
-            QStringLiteral("GOOD 最大分数：%1").arg(QString::number(good_max, 'f', 4)),
-            QString::fromLatin1(good_color), good_max, histogram.max_count));
-    if (has_anomaly)
-        datasets.push_back(referenceDataset(
-            QStringLiteral("Anomaly 最小分数：%1").arg(QString::number(anomaly_min, 'f', 4)),
-            QString::fromLatin1(anomaly_color), anomaly_min, histogram.max_count));
-
-    const double suggested_count = histogram.max_count > 0 ? histogram.max_count * 1.1 : 1.0;
-    const QVariantMap options{
-        {QStringLiteral("maintainAspectRatio"), false},
-        {QStringLiteral("responsive"), true},
-        {QStringLiteral("legend"), QVariantMap{{QStringLiteral("display"), true},
-                                                 {QStringLiteral("position"), QStringLiteral("top")}}},
-        {QStringLiteral("tooltips"), QVariantMap{{QStringLiteral("mode"), QStringLiteral("nearest")},
-                                                  {QStringLiteral("intersect"), false}}},
-        {QStringLiteral("scales"), QVariantMap{
-            {QStringLiteral("xAxes"), QVariantList{QVariantMap{
-                {QStringLiteral("type"), QStringLiteral("linear")},
-                {QStringLiteral("display"), true},
-                {QStringLiteral("ticks"), QVariantMap{{QStringLiteral("min"), histogram.min_score},
-                                                       {QStringLiteral("max"), histogram.max_score},
-                                                       {QStringLiteral("maxTicksLimit"), 12},
-                                                       {QStringLiteral("maxRotation"), 0},
-                                                       {QStringLiteral("minRotation"), 0}}},
-                {QStringLiteral("scaleLabel"), QVariantMap{{QStringLiteral("display"), true},
-                                                             {QStringLiteral("labelString"), QStringLiteral("分数")}}}}}},
-            {QStringLiteral("yAxes"), QVariantList{QVariantMap{
-                {QStringLiteral("type"), QStringLiteral("linear")},
-                {QStringLiteral("display"), true},
-                {QStringLiteral("ticks"), QVariantMap{{QStringLiteral("beginAtZero"), true},
-                                                        {QStringLiteral("suggestedMax"), suggested_count}}},
-                {QStringLiteral("scaleLabel"), QVariantMap{{QStringLiteral("display"), true},
-                                                             {QStringLiteral("labelString"), QStringLiteral("数量")}}}}}}}}};
-
-    return QVariantMap{{evaluation::fieldName(evaluation::Field::Kind), QStringLiteral("line")},
-                       {evaluation::fieldName(evaluation::Field::ChartId),
-                        QStringLiteral("anomaly_score_distribution")},
-                       {evaluation::fieldName(evaluation::Field::FilterKind), QStringLiteral("image_score")},
-                       {evaluation::fieldName(evaluation::Field::Title), QStringLiteral("异常分数分布（图像级 pred_score）")},
-                       {evaluation::fieldName(evaluation::Field::Data),
-                        QVariantMap{{evaluation::fieldName(evaluation::Field::Labels), histogram.labels},
-                                    {evaluation::fieldName(evaluation::Field::Datasets), datasets}}},
-                       {evaluation::fieldName(evaluation::Field::Options), options}};
-}
-
 OfficialEvaluationOutput buildOfficialEvaluation(const evaluation::Method method, const QMap<qint64, Image> &images,
                                                  const double confidence, const double iou_threshold,
                                                  const evaluation::MatchingStrategy strategy,
@@ -1312,37 +1126,6 @@ OfficialEvaluationOutput buildOfficialEvaluation(const evaluation::Method method
 
     if (anomaly)
     {
-        QVariantList good_scores;
-        QVariantList anomaly_scores;
-        bool has_good = false;
-        bool has_anomaly = false;
-        double good_max = 0.0;
-        double anomaly_min = std::numeric_limits<double>::max();
-        for (const Image &image : images)
-        {
-            if (isCancelled(cancel_token))
-                return {};
-            double score = 0.0;
-            for (const Prediction &prediction : image.predictions)
-                score = std::max(score, prediction.score);
-            const bool ground_truth_anomaly = std::any_of(
-                image.gt.cbegin(), image.gt.cend(),
-                [](const GroundTruth &ground_truth) { return ground_truth.class_id == 1; });
-            if (ground_truth_anomaly)
-            {
-                good_scores.push_back(QVariant());
-                anomaly_scores.push_back(score);
-                has_anomaly = true;
-                anomaly_min = std::min(anomaly_min, score);
-            }
-            else
-            {
-                good_scores.push_back(score);
-                anomaly_scores.push_back(QVariant());
-                has_good = true;
-                good_max = std::max(good_max, score);
-            }
-        }
         output.available = true;
         output.metrics = QVariantMap{{evaluation::fieldName(evaluation::Field::Available), true},
                                      {evaluation::fieldName(evaluation::Field::Image),
@@ -1353,10 +1136,7 @@ OfficialEvaluationOutput buildOfficialEvaluation(const evaluation::Method method
                                               {evaluation::fieldName(evaluation::Field::Aggregation), QStringLiteral("micro")},
                                               {evaluation::fieldName(evaluation::Field::PositiveDefinition),
                                                QStringLiteral("score_above_threshold")},
-                                              {evaluation::fieldName(evaluation::Field::HasImageMetrics), true}};
-        output.charts.push_back(anomalyScoreChart(good_scores, anomaly_scores, has_good, good_max,
-                                                  has_anomaly, anomaly_min));
-        output.chart_kinds.push_back(QStringLiteral("line"));
+                                               {evaluation::fieldName(evaluation::Field::HasImageMetrics), true}};
         return output;
     }
 
