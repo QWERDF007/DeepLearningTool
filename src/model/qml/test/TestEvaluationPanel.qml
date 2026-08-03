@@ -38,6 +38,8 @@ Rectangle {
             EvaluationChartPanel { 
                 SplitView.fillHeight: true
                 SplitView.fillWidth: true
+                SplitView.preferredWidth: 420
+                SplitView.minimumWidth: 260
                 evaluation: control.evaluation 
             }
         }
