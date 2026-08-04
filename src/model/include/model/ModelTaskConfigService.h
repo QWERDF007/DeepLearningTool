@@ -37,7 +37,6 @@ enum class ModelTaskConfigField
     Datasets,
     TrainParams,
     TestParams,
-    Trainer,
     Inference,
     OutputDir,
     PredictionDir,

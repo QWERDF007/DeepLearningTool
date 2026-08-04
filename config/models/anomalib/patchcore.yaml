@@ -3,89 +3,41 @@ model_architecture: patchcore
 model_name: PatchCore
 method: AnomalyDetection
 train_params:
-  - name_en: data
-    name_cn: 数据参数
+  - name_en: network
+    name_cn: 网络配置
     part_index: 0
     params:
-      - name_en: train_batch_size
-        name_cn: 训练批量
-        description: 每次参数更新参与训练的图像数量。
-        value: 32
+      - name_en: image_size
+        name_cn: 图像大小
+        description: 输入模型前将图像缩放到的边长。
+        value: 256
         value_type: int
-        value_range: [1, 512, 1]
+        value_range: [64, 2048, 1]
         control_type: spin
 
-      - name_en: eval_batch_size
-        name_cn: 评估批量
-        description: 每次验证或评估处理的图像数量。
-        value: 32
-        value_type: int
-        value_range: [1, 512, 1]
-        control_type: spin
-
-      - name_en: num_workers
-        name_cn: 加载线程
-        description: 用于并行读取和预处理数据的工作线程数。
-        value: 8
-        value_type: int
-        value_range: [0, 64, 1]
-        control_type: spin
-
-  - name_en: trainer
-    name_cn: 训练器参数
-    part_index: 0
-    params:
-      - name_en: device
-        name_cn: 计算设备
-        description: 选择执行训练的计算设备。
-        value_type: string
-        param_type: dynamic
-        display_type: combo
-        backend_key: training.compute_devices
-
-      - name_en: accelerator
-        name_cn: 加速器
-        description: 指定训练框架使用的硬件加速后端。
-        value: auto
-        value_type: string
-        control_type: combo
-        options: [auto, cpu, gpu, cuda]
-
-      - name_en: devices
-        name_cn: 设备数
-        description: 参与训练的计算设备数量。
-        value: 1
-        value_type: int
-        value_range: [1, 16, 1]
-        control_type: spin
-
-      - name_en: max_epochs
-        name_cn: 最大轮数
-        description: 训练最多完整遍历数据集的次数。
-        value: 1
-        value_type: int
-        value_range: [1, 10000, 1]
-        control_type: spin
-
-      - name_en: seed
-        name_cn: 随机种子
-        description: 控制随机过程以便复现实验结果的种子值。
-        value: 42
-        value_type: int
-        value_range: [0, 2147483647, 1]
-        control_type: spin
-
-  - name_en: model
-    name_cn: 模型参数
-    part_index: 1
-    params:
       - name_en: backbone
-        name_cn: 骨干网络
+        name_cn: 网络结构
         description: 用于提取图像特征的主干网络。
         value: wide_resnet50_2
         value_type: string
         control_type: combo
         options: [wide_resnet50_2, resnet18, resnet50]
+
+      - name_en: image_channels
+        name_cn: 图像通道
+        description: 当前 anomalib 图像模型要求使用 RGB 三通道输入。
+        value: 3
+        value_type: int
+        control_type: combo
+        options: [3]
+        enabled: false
+
+      - name_en: pre_trained
+        name_cn: 预训练模型
+        description: 是否加载主干网络的预训练参数。
+        value: true
+        value_type: bool
+        control_type: checkbox
 
       - name_en: layers
         name_cn: 特征层
@@ -94,12 +46,49 @@ train_params:
         value_type: string
         control_type: text
 
-      - name_en: pre_trained
-        name_cn: 预训练
-        description: 是否加载骨干网络的预训练参数。
-        value: true
-        value_type: bool
-        control_type: checkbox
+      - name_en: center_crop_size
+        name_cn: 中心裁剪
+        description: 训练前进行中心裁剪的目标边长，设为 0 可不裁剪。
+        value: 224
+        value_type: int
+        value_range: [0, 2048, 1]
+        control_type: spin
+
+  - name_en: training
+    name_cn: 训练配置
+    part_index: 0
+    params:
+      - name_en: max_epochs
+        name_cn: Epoch（轮次）
+        description: 训练最多完整遍历数据集的次数。
+        value: 1
+        value_type: int
+        value_range: [1, 10000, 1]
+        control_type: spin
+
+      - name_en: batch_size
+        name_cn: 批量大小
+        description: 每次训练或验证处理的图像数量。
+        value: 32
+        value_type: int
+        value_range: [1, 512, 1]
+        control_type: spin
+
+      - name_en: device
+        name_cn: 设备
+        description: 选择执行训练的计算设备。
+        value_type: string
+        param_type: dynamic
+        display_type: combo
+        backend_key: training.compute_devices
+
+      - name_en: num_workers
+        name_cn: 数据加载进程
+        description: 用于并行读取和预处理数据的工作进程数。
+        value: 8
+        value_type: int
+        value_range: [0, 64, 1]
+        control_type: spin
 
       - name_en: coreset_sampling_ratio
         name_cn: Coreset 采样率
@@ -117,25 +106,9 @@ train_params:
         value_range: [1, 100, 1]
         control_type: spin
 
-      - name_en: image_size
-        name_cn: 输入尺寸
-        description: 输入模型前将图像缩放到的边长。
-        value: 256
-        value_type: int
-        value_range: [64, 2048, 1]
-        control_type: spin
-
-      - name_en: center_crop_size
-        name_cn: 中心裁剪
-        description: 训练前进行中心裁剪的目标边长，设为 0 可不裁剪。
-        value: 224
-        value_type: int
-        value_range: [0, 2048, 1]
-        control_type: spin
-
       - name_en: precision
-        name_cn: 精度
-        description: 训练和推理使用的浮点计算精度。
+        name_cn: 计算精度
+        description: 模型训练和推理使用的浮点计算精度。
         value: float32
         value_type: string
         control_type: combo
@@ -146,8 +119,8 @@ test_params:
     name_cn: 测试数据
     part_index: 0
     params:
-      - name_en: eval_batch_size
-        name_cn: 评估批量
+      - name_en: batch_size
+        name_cn: 批量大小
         description: 每次测试处理的图像数量。
         value: 32
         value_type: int
@@ -155,20 +128,20 @@ test_params:
         control_type: spin
 
       - name_en: num_workers
-        name_cn: 加载线程
-        description: 用于并行读取和预处理测试数据的工作线程数。
+        name_cn: 数据加载进程
+        description: 用于并行读取和预处理测试数据的工作进程数。
         value: 8
         value_type: int
         value_range: [0, 64, 1]
         control_type: spin
 
   - name_en: inference
-    name_cn: 推理参数
+    name_cn: 推理配置
     part_index: 1
     params:
       - name_en: device
-        name_cn: 计算设备
-        description: 选择执行推理的计算设备。
+        name_cn: 设备
+        description: 选择执行测试的计算设备。
         value_type: string
         param_type: dynamic
         display_type: combo
@@ -176,23 +149,7 @@ test_params:
 
       - name_en: checkpoint_path
         name_cn: 检查点路径
-        description: 用于推理或评估的模型检查点文件路径。
+        description: 用于测试的模型检查点文件路径。
         value: ""
         value_type: string
         control_type: file
-
-      - name_en: accelerator
-        name_cn: 加速器
-        description: 指定推理框架使用的硬件加速后端。
-        value: auto
-        value_type: string
-        control_type: combo
-        options: [auto, cpu, gpu, cuda]
-
-      - name_en: devices
-        name_cn: 设备数
-        description: 参与推理的计算设备数量。
-        value: 1
-        value_type: int
-        value_range: [1, 16, 1]
-        control_type: spin

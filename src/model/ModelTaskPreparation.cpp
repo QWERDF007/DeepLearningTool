@@ -155,6 +155,21 @@ void makeDatasetPathsRelative(QVariantMap &datasets, const QString &root)
     }
 }
 
+QVariantMap modelParamsForPrediction(const QVariantMap &train_params, const QString &framework_name)
+{
+    if (framework_name.compare(QStringLiteral("anomalib"), Qt::CaseInsensitive) != 0)
+        return train_params.value(QStringLiteral("model")).toMap();
+
+    QVariantMap result;
+    for (const QString &group_name : {QStringLiteral("network"), QStringLiteral("training")})
+    {
+        const QVariantMap group = train_params.value(group_name).toMap();
+        if (!group.isEmpty())
+            result.insert(group_name, group);
+    }
+    return result;
+}
+
 bool isLegacyFewShotRequest(const ModelTaskRequest &request)
 {
     return isTestModelTask(request.task_type) && request.scope_uuid.trimmed().isEmpty()
@@ -208,6 +223,8 @@ bool writePredictionConfig(const QString &path, const QString &task_root, const 
                 : (QFileInfo::exists(weights_candidate) ? weights_candidate : model_candidate);
         }
     }
+    const QVariantMap model_params
+        = modelParamsForPrediction(request.model_config.train_params, request.model_config.framework_name);
     const QVariantMap value = {
         {evaluation::fieldName(evaluation::Field::SchemaVersion), 1},
         {evaluation::fieldName(evaluation::Field::ModelUuid), request.model_config.model_uuid},
@@ -216,7 +233,7 @@ bool writePredictionConfig(const QString &path, const QString &task_root, const 
         {QStringLiteral("framework"), request.model_config.framework_name},
         {evaluation::fieldName(evaluation::Field::Method), evaluation::methodKey(request.evaluation_method)},
         {QStringLiteral("model_architecture"), request.model_config.model_architecture},
-        {QStringLiteral("model_params"), request.model_config.train_params.value(QStringLiteral("model")).toMap()},
+        {QStringLiteral("model_params"), model_params},
         {QStringLiteral("test_params"), request.model_config.test_params},
         {QStringLiteral("datasets"), relative_datasets},
         {QStringLiteral("checkpoint_path"), relativePath(task_root, checkpoint_path)},

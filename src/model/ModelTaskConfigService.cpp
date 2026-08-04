@@ -66,7 +66,6 @@ const std::map<ModelTaskConfigField, QString> &taskConfigFieldNames()
         {         ModelTaskConfigField::Datasets,           QStringLiteral("datasets")},
         {      ModelTaskConfigField::TrainParams,       QStringLiteral("train_params")},
         {       ModelTaskConfigField::TestParams,        QStringLiteral("test_params")},
-        {          ModelTaskConfigField::Trainer,            QStringLiteral("trainer")},
         {        ModelTaskConfigField::Inference,          QStringLiteral("inference")},
         {        ModelTaskConfigField::OutputDir,         QStringLiteral("output_dir")},
         {     ModelTaskConfigField::PredictionDir,      QStringLiteral("prediction_dir")},
@@ -140,6 +139,24 @@ void normalizeOutputDir(QVariantMap &groups, const QString &group_name, const QS
                                   config_root,
                                   resolveModelOutputPath(output_root, group.value(output_dir).toString(), fallback)));
     groups.insert(group_name, group);
+}
+
+/**
+ * @brief 保留测试时重建模型所需的训练参数组
+ */
+QVariantMap modelParamsForTest(const QVariantMap &train_params, const QString &framework_name)
+{
+    QVariantMap result;
+    if (framework_name.compare(QStringLiteral("anomalib"), Qt::CaseInsensitive) != 0)
+        return train_params.value(QStringLiteral("model")).toMap();
+
+    for (const QString &group_name : {QStringLiteral("network"), QStringLiteral("training")})
+    {
+        const QVariantMap group = train_params.value(group_name).toMap();
+        if (!group.isEmpty())
+            result.insert(group_name, group);
+    }
+    return result;
 }
 
 } // namespace
@@ -267,8 +284,7 @@ QVariantMap ModelTaskConfigService::build(const ModelTaskConfigInput &model, Mod
     if (is_train)
     {
         QVariantMap train_values = model.train_params;
-        normalizeOutputDir(train_values, modelTaskConfigFieldName(ModelTaskConfigField::Trainer), task_root, weight_dir,
-                           task_root);
+        normalizeOutputDir(train_values, QStringLiteral("training"), task_root, weight_dir, task_root);
         if (!train_values.isEmpty())
             config.insert(modelTaskConfigFieldName(ModelTaskConfigField::TrainParams), train_values);
     }
@@ -276,17 +292,13 @@ QVariantMap ModelTaskConfigService::build(const ModelTaskConfigInput &model, Mod
     {
         // A test uses the model trained under train/.  Preserve the model
         // structure parameters in the runner config so Python can recreate
-        // the exact backbone/pre-processing before loading the checkpoint.
+        // the exact backbone/pre-processing and model-specific training
+        // parameters before loading the checkpoint.
         QVariantMap train_values = model.train_params;
-        QVariantMap model_values = train_values.value(QStringLiteral("model")).toMap();
-        if (model_values.isEmpty())
-        {
-            train_values = readParams(storage_.trainConfigPath(model.model_name), ModelTaskConfigField::TrainParams);
-            model_values = train_values.value(QStringLiteral("model")).toMap();
-        }
+        QVariantMap model_values = modelParamsForTest(train_values, model.framework_name);
         if (!model_values.isEmpty())
             config.insert(modelTaskConfigFieldName(ModelTaskConfigField::TrainParams),
-                          QVariantMap{{QStringLiteral("model"), model_values}});
+                          model_values);
 
         QVariantMap test_values = model.test_params;
         // Regular tests resolve relative inference output paths from
