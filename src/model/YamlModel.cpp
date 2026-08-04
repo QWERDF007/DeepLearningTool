@@ -1,4 +1,4 @@
-#include "YamlModel.h"
+#include "model/YamlModel.h"
 
 #include "model/ModelParamsSchema.h"
 
