@@ -85,6 +85,22 @@ train_params:
         value_range: [0, 64, 1]
         control_type: spin
 
+      - name_en: check_val_every_n_epoch
+        name_cn: 验证间隔
+        description: 每 N 个 Epoch 运行一次验证。增大该值可减少验证和 worker 重建造成的卡顿。
+        value: 5
+        value_type: int
+        value_range: [1, 1000, 1]
+        control_type: spin
+
+      - name_en: checkpoint_every_n_epoch
+        name_cn: 保存间隔
+        description: 每 N 个 Epoch 保存一次模型 checkpoint。增大该值可减少写盘造成的卡顿。
+        value: 5
+        value_type: int
+        value_range: [1, 1000, 1]
+        control_type: spin
+
       - name_en: decoder_depth
         name_cn: 解码器深度
         description: 解码器中堆叠的网络层数。

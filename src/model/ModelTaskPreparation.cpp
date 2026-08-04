@@ -399,7 +399,7 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
         QStringLiteral("--model_root"), storage.path(model_name, ModelStorageLocation::ModelRoot),
         QStringLiteral("--dataset_dir"), dataset_dir,
         QStringLiteral("--train_dir"), storage.trainRoot(model_name),
-        QStringLiteral("--masks_dir"), QDir(dataset_dir).filePath(QStringLiteral("masks")),
+        QStringLiteral("--masks_dir"), dataset_dir,
         QStringLiteral("--weight_dir"), storage.trainWeightsPath(model_name),
         QStringLiteral("--log_dir"), log_dir,
         QStringLiteral("--model_uuid"), request.model_config.model_uuid,
