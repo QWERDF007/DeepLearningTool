@@ -14,14 +14,12 @@ struct MODEL_API ModelStorageMigrationResult
 };
 
 /**
- * @brief 将旧模型目录一次性迁移到 train/test 任务布局。
+ * @brief 保留的迁移入口。
  *
- * 迁移只在模型根目录内移动文件，目标已存在时绝不覆盖。storage.yaml 是
- * 提交标志；任一步失败都会留下 failed 状态，下次打开仍可安全重试。
+ * 当前存储格式采用破坏性切换，不提供旧 YAML 存储迁移。
  */
 MODEL_API ModelStorageMigrationResult migrateModelStorage(const QString &project_dir,
                                                           const QString &model_name,
                                                           const QString &model_uuid);
 
 } // namespace dltool::model
-

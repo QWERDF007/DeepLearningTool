@@ -81,8 +81,8 @@ enum class ViewState
 /**
  * @brief 稳定评估协议字段。
  *
- * 业务代码只通过该枚举访问 result/manifest 中的固定字段；真正的
- * YAML 字符串只在协议边界的映射函数中维护。
+ * 业务代码只通过该枚举访问内存评估快照中的固定字段；字段字符串只在
+ * 协议边界的映射函数中维护。评估快照不写入任何报告文件。
  */
 enum class Field
 {
@@ -112,12 +112,9 @@ enum class Field
     Charts,
     ImageRecords,
     InstanceRecords,
-    PredictionManifest,
-    PredictionImages,
     ImageCount,
     PredictionCount,
     EventCount,
-    PredictionDir,
     Available,
     Definition,
     Instance,

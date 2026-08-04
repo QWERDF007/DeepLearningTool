@@ -1,19 +1,12 @@
 #include "model/ModelDatasetSelection.h"
 
-#include "common/Utils.h"
-#include "common/YamlUtils.h"
 #include "data/DataSelectionTreeModel.h"
 #include "model/IModel.h"
 
-#include <spdlog/spdlog.h>
-
-#include <QDir>
-#include <QFileInfo>
 #include <QModelIndex>
 #include <QString>
 #include <QVariantList>
 #include <algorithm>
-#include <exception>
 #include <map>
 
 namespace dltool::model {
@@ -22,7 +15,6 @@ namespace {
 
 enum class DatasetSelectionField
 {
-    DatasetSelections,
     DatasetIds,
     LabelClasses,
     DatasetId,
@@ -43,7 +35,6 @@ enum class DatasetSelectionSplit
 const std::map<DatasetSelectionField, QString> &datasetSelectionFieldNames()
 {
     static const std::map<DatasetSelectionField, QString> names = {
-        {DatasetSelectionField::DatasetSelections, QStringLiteral("dataset_selections")},
         {       DatasetSelectionField::DatasetIds,        QStringLiteral("dataset_ids")},
         {     DatasetSelectionField::LabelClasses,      QStringLiteral("label_classes")},
         {        DatasetSelectionField::DatasetId,         QStringLiteral("dataset_id")},
@@ -321,64 +312,6 @@ std::vector<int64_t> selectedDatasetIds(const ModelDatasetSelections &selections
     return {dataset_ids.begin(), dataset_ids.end()};
 }
 
-QString modelDatasetSelectionsPath(const QString &dataset_dir)
-{
-    const QString cleaned = common::cleanPath(dataset_dir);
-    if (cleaned.isEmpty())
-        return {};
-    return common::cleanPath(QDir(cleaned).filePath(QStringLiteral("datasets.yaml")));
-}
-
-bool writeModelDatasetSelectionsFile(const QString &dataset_dir, const ModelDatasetSelections &selections,
-                                     QString *err_msg)
-{
-    if (!common::ensureDirectory(dataset_dir, err_msg, QString("数据集目录为空"),
-                                 QString("创建数据集目录失败: %1")))
-    {
-        return false;
-    }
-
-    const QString path = modelDatasetSelectionsPath(dataset_dir);
-    if (path.isEmpty())
-    {
-        if (err_msg != nullptr)
-            *err_msg = QString("数据集选择配置路径为空");
-        return false;
-    }
-
-    const QVariantMap root = {
-        {datasetSelectionFieldName(DatasetSelectionField::DatasetSelections), modelDatasetSelectionsMap(selections)},
-    };
-    return common::yaml::writeFile(path, common::yaml::variantToYaml(root), err_msg,
-                                   QString("写入数据集选择配置失败"),
-                                   QString("生成数据集选择 YAML 失败"));
-}
-
-QVariantMap readModelDatasetSelectionsFile(const QString &dataset_dir)
-{
-    const QFileInfo file_info(modelDatasetSelectionsPath(dataset_dir));
-    if (!file_info.exists() || !file_info.isFile())
-        return {};
-
-    try
-    {
-        const YAML::Node root = common::yaml::loadFile(file_info);
-        if (!root || !root.IsMap())
-            return {};
-
-        const YAML::Node selections
-            = root[common::yaml::toYamlString(datasetSelectionFieldName(DatasetSelectionField::DatasetSelections))];
-        if (selections)
-            return common::yaml::nodeVariant(selections).toMap();
-        return common::yaml::nodeVariant(root).toMap();
-    }
-    catch (const std::exception &e)
-    {
-        spdlog::error("读取数据集选择配置失败 '{}': {}", file_info.absoluteFilePath().toUtf8().constData(), e.what());
-        return {};
-    }
-}
-
 void applyModelDatasetSelections(IModel *model, const QVariantMap &dataset_selections)
 {
     if (model == nullptr || dataset_selections.isEmpty())
@@ -392,6 +325,61 @@ void applyModelDatasetSelections(IModel *model, const QVariantMap &dataset_selec
             applyDatasetSelectionMap(datasetSelectionObject(model, split),
                                      dataset_selections.value(split_name).toMap());
     }
+}
+
+QList<dltool::database::DatasetSelectionRecord>
+databaseDatasetSelections(const ModelDatasetSelections &selections)
+{
+    QList<dltool::database::DatasetSelectionRecord> result;
+    const auto append = [&result](const QString &type, const ModelDatasetSelection &selection)
+    {
+        for (const qint64 dataset_id : selection.dataset_ids)
+            result.push_back({type, dataset_id, {}});
+
+        std::map<qint64, QList<qint64>> class_ids_by_dataset;
+        for (const auto &[dataset_id, class_id] : selection.label_classes)
+            class_ids_by_dataset[dataset_id].push_back(class_id);
+        for (auto &[dataset_id, class_ids] : class_ids_by_dataset)
+        {
+            std::sort(class_ids.begin(), class_ids.end());
+            class_ids.erase(std::unique(class_ids.begin(), class_ids.end()), class_ids.end());
+            result.push_back({type, dataset_id, class_ids});
+        }
+    };
+
+    append(QStringLiteral("train"), selections.train);
+    append(QStringLiteral("validation"), selections.validation);
+    append(QStringLiteral("test"), selections.test);
+    return result;
+}
+
+ModelDatasetSelections modelDatasetSelectionsFromDatabase(
+    const QList<dltool::database::DatasetSelectionRecord> &records)
+{
+    ModelDatasetSelections result;
+    for (const auto &record : records)
+    {
+        ModelDatasetSelection *selection = nullptr;
+        if (record.type == QStringLiteral("train"))
+            selection = &result.train;
+        else if (record.type == QStringLiteral("validation"))
+            selection = &result.validation;
+        else if (record.type == QStringLiteral("test"))
+            selection = &result.test;
+        if (selection == nullptr || record.dataset_id < 0)
+            continue;
+        if (record.class_ids.isEmpty())
+        {
+            selection->dataset_ids.insert(record.dataset_id);
+            continue;
+        }
+        for (const qint64 class_id : record.class_ids)
+        {
+            if (class_id >= 0)
+                selection->label_classes.insert({record.dataset_id, class_id});
+        }
+    }
+    return result;
 }
 
 } // namespace dltool::model

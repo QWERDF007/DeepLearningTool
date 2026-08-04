@@ -8,8 +8,7 @@
 #include "model/IParams.h"
 #include "model/ModelDatasetSelection.h"
 #include "model/ModelStorageService.h"
-#include "model/ModelStorageMigration.h"
-#include "model/ModelTaskConfigService.h"
+#include "database/ModelDataBase.h"
 #include "model/TaskManager.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsKeys.h"
@@ -178,6 +177,11 @@ ModelManager::~ModelManager()
         }
     }
     tensorboard_port_ = 0;
+}
+
+QString ModelManager::projectDatabasePath() const
+{
+    return database_ != nullptr ? database_->path() : QString();
 }
 
 void ModelManager::init()
@@ -521,14 +525,19 @@ bool ModelManager::copyModel(const qint64 model_id, const bool copy_train_weight
         return false;
     }
 
-    // Copy only the model definition and editable training configuration by
-    // default.  Test task directories/results/logs are intentionally not
-    // copied; weights are an explicit opt-in from the copy dialog/API.
-    const QString source_train_config = storage.trainConfigPath(source.name);
-    const QString target_train_config = storage.trainConfigPath(copied_name);
-    if (QFileInfo::exists(source_train_config) && !QFile::copy(source_train_config, target_train_config))
+    // Copy only model-level parameters and dataset selections by default.
+    // Test-task databases/results/logs are intentionally not copied; weights
+    // are an explicit opt-in from the copy dialog/API.
+    database::ModelDataBase source_database(storage.modelDatabasePath(source.name));
+    database::ModelDataBase target_database(storage.modelDatabasePath(copied_name));
+    QVariantMap source_train_params;
+    QList<database::DatasetSelectionRecord> source_dataset_selections;
+    if (!source_database.readTrainParams(source_train_params, &err_msg)
+        || !source_database.readDatasets(source_dataset_selections, &err_msg)
+        || !target_database.replaceTrainParams(source_train_params, &err_msg)
+        || !target_database.replaceDatasets(source_dataset_selections, &err_msg))
     {
-        spdlog::error("复制模型训练配置失败: {}", source_train_config.toUtf8().constData());
+        spdlog::error("复制模型数据库内容失败: {}", err_msg.toUtf8().constData());
         QString remove_err;
         storage.removeModelStorage(copied_name, &remove_err);
         return false;
@@ -778,18 +787,20 @@ void ModelManager::requestModelTaskConfigLoad(const QString &model_uuid) const
         return;
 
     const QString                               model_name = models_[static_cast<size_t>(model_row)].name;
-    const ModelStorageMigrationResult migration
-        = migrateModelStorage(project_dir_, model_name, trimmed_uuid);
-    if (!migration.error.isEmpty())
+    const ModelStorageService storage(project_dir_);
+    database::ModelDataBase model_database(storage.modelDatabasePath(model_name));
+    QVariantMap train_params;
+    QList<database::DatasetSelectionRecord> dataset_records;
+    QString error;
+    if (!model_database.readTrainParams(train_params, &error)
+        || !model_database.readDatasets(dataset_records, &error))
     {
-        spdlog::error("模型存储迁移失败, 模型: {}, 错误: {}", model_name.toUtf8().constData(),
-                      migration.error.toUtf8().constData());
+        spdlog::error("读取模型数据库失败, 模型: {}, 错误: {}", model_name.toUtf8().constData(),
+                      error.toUtf8().constData());
         return;
     }
-    const ModelTaskConfigService                config_service(project_dir_);
-    const dltool::model::LoadedModelTaskConfigs configs = config_service.load(trimmed_uuid, model_name);
-    const_cast<ModelManager *>(this)->applyLoadedModelTaskConfigs(configs.model_uuid, model_name, configs.train_params,
-                                                                  configs.test_params);
+    const_cast<ModelManager *>(this)->applyLoadedModelTaskConfigs(
+        trimmed_uuid, train_params, modelDatasetSelectionsFromDatabase(dataset_records));
 }
 
 QString ModelManager::startTensorBoard(const QString &model_uuid)
@@ -901,8 +912,8 @@ QString ModelManager::startTensorBoard(const QString &model_uuid)
     return QStringLiteral("http://127.0.0.1:%1/").arg(tensorboard_port_);
 }
 
-void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const QString &model_name,
-                                               const QVariantMap &train_params, const QVariantMap &test_params)
+void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const QVariantMap &train_params,
+                                               const ModelDatasetSelections &dataset_selections)
 {
     const auto found = model_instances_.find(instanceKey(model_uuid));
     if (found == model_instances_.end() || !found->second || found->second->config() == nullptr)
@@ -915,15 +926,7 @@ void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const 
         if (ITrainParams *params = model_config->trainParams(); params != nullptr)
             params->setValuesMap(train_params);
     }
-    if (!test_params.isEmpty())
-    {
-        if (ITestParams *params = model_config->testParams(); params != nullptr)
-            params->setValuesMap(test_params);
-    }
-    const ModelStorageService storage(project_dir_);
-    const QVariantMap         dataset_selections
-        = readModelDatasetSelectionsFile(storage.trainDatasetPath(model_name));
-    applyModelDatasetSelections(model, dataset_selections);
+    applyModelDatasetSelections(model, modelDatasetSelectionsMap(dataset_selections));
 }
 
 std::unique_ptr<IModel> ModelManager::createRegisteredModelInstance(const QString &framework_name,

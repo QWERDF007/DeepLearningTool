@@ -3,6 +3,7 @@
 #include "IModel.h"
 #include "dltool/model/Export.h"
 #include "model/ModelRegistry.h"
+#include "model/ModelDatasetSelection.h"
 
 #include <QAbstractListModel>
 #include <QStringList>
@@ -230,6 +231,12 @@ public:
     }
 
     /**
+     * @brief 获取项目数据库路径。
+     * @return 项目数据库文件路径。
+     */
+    QString projectDatabasePath() const;
+
+    /**
      * @brief 创建已注册模型实例
      * @param framework_name 框架名称
      * @param model_architecture 模型架构名称
@@ -351,8 +358,8 @@ private:
      * @param train_params 训练参数
      * @param test_params 测试参数
      */
-    void applyLoadedModelTaskConfigs(const QString &model_uuid, const QString &model_name,
-                                     const QVariantMap &train_params, const QVariantMap &test_params);
+    void applyLoadedModelTaskConfigs(const QString &model_uuid, const QVariantMap &train_params,
+                                     const ModelDatasetSelections &dataset_selections);
 
     /**
      * @brief 生成实例缓存键

@@ -97,15 +97,15 @@ QString statusDisplayName(const Status status)
 {
     switch (status)
     {
-    case Status::TruePositive: return QStringLiteral("正确匹配");
-    case Status::TrueNegative: return QStringLiteral("正常");
-    case Status::ClassMismatch: return QStringLiteral("类别错误");
-    case Status::FalsePositive: return QStringLiteral("误检");
-    case Status::FalseNegative: return QStringLiteral("漏检");
-    case Status::Ignored: return QStringLiteral("已忽略");
-    case Status::Unknown: return QStringLiteral("未知");
+    case Status::TruePositive: return QString("正确匹配");
+    case Status::TrueNegative: return QString("正常");
+    case Status::ClassMismatch: return QString("类别错误");
+    case Status::FalsePositive: return QString("误检");
+    case Status::FalseNegative: return QString("漏检");
+    case Status::Ignored: return QString("已忽略");
+    case Status::Unknown: return QString("未知");
     }
-    return QStringLiteral("未知");
+    return QString("未知");
 }
 
 QString matchingStrategyKey(const MatchingStrategy strategy)
@@ -251,12 +251,9 @@ QString fieldName(const Field field)
     case Field::Charts: return QStringLiteral("charts");
     case Field::ImageRecords: return QStringLiteral("image_records");
     case Field::InstanceRecords: return QStringLiteral("instance_records");
-    case Field::PredictionManifest: return QStringLiteral("prediction_manifest");
-    case Field::PredictionImages: return QStringLiteral("prediction_images");
     case Field::ImageCount: return QStringLiteral("image_count");
     case Field::PredictionCount: return QStringLiteral("prediction_count");
     case Field::EventCount: return QStringLiteral("event_count");
-    case Field::PredictionDir: return QStringLiteral("prediction_dir");
     case Field::Available: return QStringLiteral("available");
     case Field::Definition: return QStringLiteral("definition");
     case Field::Instance: return QStringLiteral("instance");

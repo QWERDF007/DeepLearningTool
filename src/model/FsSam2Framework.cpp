@@ -23,7 +23,7 @@ FrameworkDefinition fsSam2Framework()
         QStringLiteral("../../task"),
     };
     framework.visible_for_model_creation = false;
-    framework.write_to_database          = false;
+    framework.write_to_database          = true;
     return framework;
 }
 

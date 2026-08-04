@@ -1,17 +1,23 @@
 #include "model/ModelEvaluationService.h"
-#include "model/ModelEvaluationProtocol.h"
 
-#include "common/YamlUtils.h"
+#include "data/DatasetIO.h"
+#include "data/LabelData.h"
+#include "database/DataBase.h"
+#include "model/ModelDatasetSelection.h"
+#include "database/ModelTaskDataBase.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
+#include <QMetaType>
 #include <QMap>
 #include <QSet>
 #include <QTextStream>
 #include <QUrl>
 #include <QVariantList>
-#include <yaml-cpp/yaml.h>
 
 #include <spdlog/spdlog.h>
 
@@ -28,41 +34,10 @@ namespace dltool::model {
 
 namespace {
 
-using dltool::common::yaml::nodeVariant;
-
-YAML::Node yamlField(const YAML::Node &node, const evaluation::Field field)
-{
-    return node[evaluation::fieldName(field).toStdString()];
-}
-
-YAML::Node datasetManifestEntries(const YAML::Node &root, bool *anomaly_samples = nullptr)
-{
-    if (anomaly_samples != nullptr)
-        *anomaly_samples = false;
-    if (!root)
-        return {};
-    if (root.IsSequence())
-        return root;
-    if (!root.IsMap())
-        return {};
-
-    const YAML::Node images = yamlField(root, evaluation::Field::Images);
-    if (images && images.IsSequence())
-        return images;
-    const YAML::Node samples = yamlField(root, evaluation::Field::Samples);
-    if (samples && samples.IsSequence())
-    {
-        if (anomaly_samples != nullptr)
-            *anomaly_samples = true;
-        return samples;
-    }
-    return {};
-}
-
-// Evaluation files are user-/framework-produced input.  Bound both the
-// document size and sequence cardinality before yaml-cpp expands them into a
-// node tree, so a malformed result cannot exhaust the GUI process.
-constexpr qint64 kMaxEvaluationYamlBytes = 256LL * 1024LL * 1024LL;
+// Prediction artifacts are user-/framework-produced input.  Bound both the
+// document size and sequence cardinality before JSON is converted to
+// QVariant values, so malformed prediction data cannot exhaust the GUI process.
+constexpr qint64 kMaxEvaluationFileBytes = 256LL * 1024LL * 1024LL;
 constexpr std::size_t kMaxEvaluationRecords = 5'000'000;
 
 struct Box
@@ -115,25 +90,11 @@ QString mapString(const QVariantMap &map, const QString &key, const QString &fal
     return value.isValid() ? value.toString() : fallback;
 }
 
-qint64 mapLong(const QVariantMap &map, const QString &key, qint64 fallback = -1)
-{
-    bool ok = false;
-    const qint64 value = map.value(key).toLongLong(&ok);
-    return ok ? value : fallback;
-}
-
 int mapInt(const QVariantMap &map, const QString &key, int fallback = -1)
 {
     bool ok = false;
     const int value = map.value(key).toInt(&ok);
     return ok ? value : fallback;
-}
-
-double mapDouble(const QVariantMap &map, const QString &key, double fallback = 0.0)
-{
-    bool ok = false;
-    const double value = map.value(key).toDouble(&ok);
-    return ok && std::isfinite(value) ? value : fallback;
 }
 
 bool pathWithin(const QString &root, const QString &path)
@@ -145,11 +106,11 @@ bool pathWithin(const QString &root, const QString &path)
             || clean_path.startsWith(clean_root + QLatin1Char('/'), Qt::CaseInsensitive));
 }
 
-bool sourceImageExists(const QString &path, const QString &dataset_manifest)
+bool sourceImageExists(const QString &path, const QString &dataset_root)
 {
     QFileInfo image(path);
-    if (!image.isAbsolute() && !image.exists() && !dataset_manifest.isEmpty())
-        image = QFileInfo(QDir(QFileInfo(dataset_manifest).absolutePath()), path);
+    if (!image.isAbsolute() && !image.exists() && !dataset_root.isEmpty())
+        image = QFileInfo(QDir(dataset_root), path);
     return image.exists() && image.isFile();
 }
 
@@ -571,328 +532,573 @@ bool isCancelled(const std::shared_ptr<std::atomic_bool> &cancel_token)
     return cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed);
 }
 
-bool loadImages(const QString &images_path, const QString &dataset_manifest_path, QMap<qint64, Image> &images,
-                const std::shared_ptr<std::atomic_bool> &cancel_token, QString *err_msg)
+bool readImageList(const QString &path, QList<QPair<qint64, QString>> &rows,
+                  const std::shared_ptr<std::atomic_bool> &cancel_token, QString *err_msg)
 {
+    rows.clear();
+    const QFileInfo file_info(path);
+    if (!file_info.exists() || !file_info.isFile())
+    {
+        if (err_msg)
+            *err_msg = QString("图像文件列表不存在: %1").arg(path);
+        return false;
+    }
+    if (file_info.size() > kMaxEvaluationFileBytes)
+    {
+        if (err_msg)
+            *err_msg = QString("图像文件列表超过大小限制: %1").arg(path);
+        return false;
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        if (err_msg)
+            *err_msg = QString("打开图像文件列表失败: %1").arg(file.errorString());
+        return false;
+    }
+    QTextStream stream(&file);
+    QSet<qint64> ids;
+    bool first = true;
+    while (!stream.atEnd())
+    {
+        if (isCancelled(cancel_token))
+        {
+            if (err_msg)
+                *err_msg = QString("评估已取消");
+            return false;
+        }
+        QString line = stream.readLine();
+        if (line.trimmed().isEmpty())
+            continue;
+        if (first && !line.isEmpty() && line.at(0) == QChar(0xfeff))
+            line.remove(0, 1);
+        bool csv_valid = false;
+        const QList<QString> fields = parseCsvLine(line, &csv_valid);
+        if (first && csv_valid && fields.size() == 2
+            && fields.at(0).trimmed().compare(QString("image_id"), Qt::CaseInsensitive) == 0)
+        {
+            first = false;
+            continue;
+        }
+        first = false;
+        if (!csv_valid || fields.size() != 2)
+        {
+            if (err_msg)
+                *err_msg = QString("图像文件列表行格式无效: %1").arg(line);
+            return false;
+        }
+        bool ok = false;
+        const qint64 image_id = fields.at(0).trimmed().toLongLong(&ok);
+        const QString image_path = fields.at(1).trimmed();
+        if (!ok || image_id < 0 || image_path.isEmpty())
+            continue;
+        if (ids.contains(image_id))
+            continue;
+        ids.insert(image_id);
+        rows.push_back({image_id, image_path});
+        if (rows.size() > static_cast<int>(kMaxEvaluationRecords))
+        {
+            if (err_msg)
+                *err_msg = QString("图像文件列表记录数量超过限制");
+            return false;
+        }
+    }
+    if (rows.isEmpty())
+    {
+        if (err_msg)
+            *err_msg = QString("图像文件列表没有有效图像: %1").arg(path);
+        return false;
+    }
+    return true;
+}
+
+struct SourceImage
+{
+    qint64 id{-1};
+    qint64 dataset_id{-1};
+    QString path;
+    std::vector<uint8_t> extra_data;
+};
+
+struct SourceLabel
+{
+    qint64 id{-1};
+    qint64 image_id{-1};
+    qint64 class_id{-1};
+    std::vector<uint8_t> data;
+};
+
+struct SourceClass
+{
+    QString name;
+    QString group;
+};
+
+QString normalizedLabelClassGroup(const QString &group)
+{
+    const QString normalized = group.trimmed().toLower();
+    if (normalized == QString("good") || normalized == QString("良好"))
+        return QString("good");
+    if (normalized == QString("unlabeled") || normalized == QString("unlabelled")
+        || normalized == QString("未标注"))
+        return QString("unlabeled");
+    return QString("anomaly");
+}
+
+qint64 imageLabelClassIdFromExtraData(const std::vector<uint8_t> &extra_data)
+{
+    if (extra_data.empty())
+        return -1;
+    const QByteArray encoded(reinterpret_cast<const char *>(extra_data.data()),
+                             static_cast<qsizetype>(extra_data.size()));
+    QJsonParseError parse_error;
+    const QJsonDocument document = QJsonDocument::fromJson(encoded, &parse_error);
+    if (parse_error.error != QJsonParseError::NoError || !document.isObject())
+        return -1;
+    return document.object().value(QString("image_label_class_id")).toInteger(-1);
+}
+
+QString labelClassGroupFromExtraData(const std::vector<uint8_t> &extra_data)
+{
+    if (extra_data.empty())
+        return QString("anomaly");
+    const QByteArray encoded(reinterpret_cast<const char *>(extra_data.data()),
+                             static_cast<qsizetype>(extra_data.size()));
+    QJsonParseError parse_error;
+    const QJsonDocument document = QJsonDocument::fromJson(encoded, &parse_error);
+    if (parse_error.error != QJsonParseError::NoError || !document.isObject())
+        return QString("anomaly");
+    return normalizedLabelClassGroup(document.object().value(QString("group")).toString());
+}
+
+bool selectionIncludesImage(const ModelDatasetSelection &selection, const SourceImage &image,
+                            const QList<SourceLabel> &labels)
+{
+    if (selection.dataset_ids.find(image.dataset_id) != selection.dataset_ids.cend())
+        return true;
+
+    const qint64 image_class_id = imageLabelClassIdFromExtraData(image.extra_data);
+    if (selection.containsLabelClass(image.dataset_id, image_class_id))
+        return true;
+
+    return std::any_of(labels.cbegin(), labels.cend(), [&selection, &image](const SourceLabel &label)
+                       { return selection.containsLabelClass(image.dataset_id, label.class_id); });
+}
+
+bool selectedLabel(const ModelDatasetSelection &selection, const SourceImage &image, const SourceLabel &label)
+{
+    return selection.dataset_ids.find(image.dataset_id) != selection.dataset_ids.cend()
+        || selection.containsLabelClass(image.dataset_id, label.class_id);
+}
+
+bool loadImages(const QString &file_list_path, const QString &project_database_path,
+                const QString &task_database_path, const evaluation::Method method, QMap<qint64, Image> &images,
+                const std::shared_ptr<std::atomic_bool> &cancel_token, QString *err_msg,
+                int *missing_database_images = nullptr, int *ignored_selection_images = nullptr)
+{
+    images.clear();
+    if (missing_database_images != nullptr)
+        *missing_database_images = 0;
+    if (ignored_selection_images != nullptr)
+        *ignored_selection_images = 0;
     if (isCancelled(cancel_token))
     {
         if (err_msg)
             *err_msg = QString("评估已取消");
         return false;
     }
-    const QFileInfo manifest_file(dataset_manifest_path);
-    if (!manifest_file.exists() || !manifest_file.isFile())
+
+    QList<QPair<qint64, QString>> rows;
+    if (!readImageList(file_list_path, rows, cancel_token, err_msg))
+        return false;
+
+    if (task_database_path.trimmed().isEmpty() || !QFileInfo(task_database_path).isFile())
     {
         if (err_msg)
-            *err_msg = QString("测试数据集 manifest.yaml 不存在: %1").arg(dataset_manifest_path);
+            *err_msg = QString("测试任务数据库不存在: %1").arg(task_database_path);
         return false;
     }
-    if (manifest_file.size() > kMaxEvaluationYamlBytes)
-    {
-        if (err_msg)
-            *err_msg = QString("测试数据集 manifest.yaml 超过大小限制");
+    database::ModelTaskDataBase task_database(task_database_path);
+    QList<database::DatasetSelectionRecord> selection_records;
+    if (!task_database.readDatasets(selection_records, err_msg))
         return false;
-    }
-    const QFileInfo images_file(images_path);
-    if (!images_file.exists() || !images_file.isFile())
+    const ModelDatasetSelection selection = modelDatasetSelectionsFromDatabase(selection_records).test;
+    if (selection.isEmpty())
     {
         if (err_msg)
-            *err_msg = QString("pred/images.txt 不存在: %1").arg(images_path);
-        return false;
-    }
-    if (images_file.size() > kMaxEvaluationYamlBytes)
-    {
-        if (err_msg)
-            *err_msg = QString("pred/images.txt 超过大小限制");
-        return false;
-    }
-    try
-    {
-        YAML::Node root = dltool::common::yaml::loadFile(manifest_file);
-        bool anomaly_samples = false;
-        const YAML::Node entries = datasetManifestEntries(root, &anomaly_samples);
-        if (!entries || !entries.IsSequence())
-            throw std::runtime_error("dataset manifest requires images or samples sequence");
-        if (entries.size() > kMaxEvaluationRecords)
-            throw std::runtime_error("dataset manifest records 数量超过限制");
-        QSet<qint64> manifest_ids;
-        for (const YAML::Node &node : entries)
-        {
-            if (isCancelled(cancel_token))
-            {
-                if (err_msg)
-                    *err_msg = QString("评估已取消");
-                return false;
-            }
-            const QVariantMap value = nodeVariant(node).toMap();
-            Image image;
-            image.id = mapLong(value, evaluation::fieldName(evaluation::Field::Id));
-            image.dataset_id = mapLong(value, evaluation::fieldName(evaluation::Field::DatasetId));
-            image.path = mapString(value, evaluation::fieldName(evaluation::Field::Path));
-            image.name = QFileInfo(image.path).fileName();
-            image.width = mapInt(value, evaluation::fieldName(evaluation::Field::Width), 0);
-            image.height = mapInt(value, evaluation::fieldName(evaluation::Field::Height), 0);
-            if (image.id < 0 || image.path.trimmed().isEmpty())
-                throw std::runtime_error("dataset manifest image requires id and path");
-            if (manifest_ids.contains(image.id))
-                throw std::runtime_error("dataset manifest image id duplicated");
-            manifest_ids.insert(image.id);
-            if (anomaly_samples)
-            {
-                const int label_index = mapInt(value, evaluation::fieldName(evaluation::Field::LabelIndex), 0);
-                if (label_index > 0)
-                    image.gt.push_back(GroundTruth{-1, 1, QStringLiteral("anomaly"), {}, {}});
-            }
-            for (const QVariant &entry : value.value(evaluation::fieldName(evaluation::Field::Labels)).toList())
-            {
-                const QVariantMap label = entry.toMap();
-                GroundTruth gt;
-                gt.label_id = mapLong(label, evaluation::fieldName(evaluation::Field::LabelId));
-                gt.class_id = mapInt(label, evaluation::fieldName(evaluation::Field::LabelClassId),
-                                     mapInt(label, evaluation::fieldName(evaluation::Field::ClassId)));
-                gt.class_name = mapString(label, evaluation::fieldName(evaluation::Field::LabelClassName),
-                                           mapString(label, evaluation::fieldName(evaluation::Field::ClassName)));
-                const QVariantMap data = label.value(evaluation::fieldName(evaluation::Field::Data)).toMap();
-                gt.geometry = data.value(evaluation::fieldName(evaluation::Field::Geometry)).toMap();
-                if (gt.geometry.isEmpty())
-                    gt.geometry = data;
-                gt.bounds = data;
-                if (!readBox(gt.geometry, gt.box))
-                {
-                    const QVariantMap yolo = label.value(evaluation::fieldName(evaluation::Field::Yolo)).toMap();
-                    if (!yolo.isEmpty() && image.width > 0 && image.height > 0)
-                    {
-                        const double cx = mapDouble(yolo, evaluation::fieldName(evaluation::Field::Cx)) * image.width;
-                        const double cy = mapDouble(yolo, evaluation::fieldName(evaluation::Field::Cy)) * image.height;
-                        const double width = mapDouble(yolo, evaluation::fieldName(evaluation::Field::Width)) * image.width;
-                        const double height = mapDouble(yolo, evaluation::fieldName(evaluation::Field::Height)) * image.height;
-                        gt.box = {cx - width / 2.0, cy - height / 2.0, width, height};
-                        gt.geometry = {};
-                    }
-                }
-                gt.geometry = canonicalGeometry(gt.geometry, gt.box);
-                if (gt.box.valid())
-                    gt.bounds = boxMap(gt.box);
-                image.gt.push_back(gt);
-            }
-            images.insert(image.id, image);
-        }
-    }
-    catch (const std::exception &e)
-    {
-        if (err_msg)
-            *err_msg = QString("读取测试数据集 manifest 失败: %1").arg(QString(e.what()));
+            *err_msg = QString("测试任务没有保存测试数据集或类别选择");
         return false;
     }
 
-    const QFileInfo list_file(images_path);
-    QSet<qint64> listed;
-    if (list_file.exists() && list_file.isFile())
+    if (project_database_path.trimmed().isEmpty() || !QFileInfo(project_database_path).isFile())
     {
-        if (list_file.size() > kMaxEvaluationYamlBytes)
-        {
-            if (err_msg)
-                *err_msg = QString("pred/images.txt 超过大小限制");
-            return false;
-        }
-        QFile file(images_path);
-        if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-        {
-            if (err_msg)
-                *err_msg = QString("打开 pred/images.txt 失败: %1").arg(file.errorString());
-            return false;
-        }
-        QTextStream stream(&file);
-        bool first = true;
-        while (!stream.atEnd())
-        {
-            if (isCancelled(cancel_token))
-            {
-                if (err_msg)
-                    *err_msg = QString("评估已取消");
-                return false;
-            }
-            QString line = stream.readLine();
-            if (line.trimmed().isEmpty())
-                continue;
-            if (first && !line.isEmpty() && line.at(0) == QChar(0xfeff))
-                line.remove(0, 1);
-            if (first)
-            {
-                first = false;
-                const QString image_header = evaluation::fieldName(evaluation::Field::ImageId) + QLatin1Char(',')
-                    + evaluation::fieldName(evaluation::Field::ImagePath);
-                if (line.trimmed().compare(image_header, Qt::CaseInsensitive) == 0)
-                    continue;
-            }
-            bool csv_valid = false;
-            const QList<QString> fields = parseCsvLine(line, &csv_valid);
-            if (!csv_valid || fields.size() != 2)
-            {
-                if (err_msg)
-                    *err_msg = QString("pred/images.txt 行格式无效: %1").arg(line);
-                return false;
-            }
-            bool ok = false;
-            const qint64 image_id = fields.at(0).trimmed().toLongLong(&ok);
-            if (!ok || image_id < 0)
-                continue;
-            if (listed.contains(image_id) || !images.contains(image_id))
-                continue;
-            const QString path = fields.at(1).trimmed();
-            if (!path.isEmpty())
-            {
-                Image &image = images[image_id];
-                image.path = path;
-                image.name = QFileInfo(path).fileName();
-            }
-            listed.insert(image_id);
-        }
+        if (err_msg)
+            *err_msg = QString("项目数据库不存在: %1").arg(project_database_path);
+        return false;
     }
-    if (listed.isEmpty())
+
+    database::ProjectDataBase project_database(project_database_path);
+    QString database_error;
+    std::vector<int64_t> image_dataset_ids;
+    std::vector<int64_t> image_ids;
+    std::vector<QString> image_paths;
+    std::vector<std::vector<uint8_t>> image_extra_data;
+    if (!project_database.getAllImages(image_dataset_ids, image_ids, image_paths, image_extra_data, database_error))
+    {
+        if (err_msg)
+            *err_msg = QString("读取项目图像失败: %1").arg(database_error);
+        return false;
+    }
+    if (image_dataset_ids.size() != image_ids.size() || image_ids.size() != image_paths.size()
+        || image_ids.size() != image_extra_data.size())
+    {
+        if (err_msg)
+            *err_msg = QString("项目图像数据数量不一致");
+        return false;
+    }
+
+    std::vector<int64_t> label_ids;
+    std::vector<int64_t> label_image_ids;
+    std::vector<int64_t> label_class_ids;
+    std::vector<int64_t> label_types;
+    std::vector<std::vector<uint8_t>> label_data;
+    if (!project_database.getAllLabels(label_ids, label_image_ids, label_class_ids, label_types, label_data,
+                                       database_error))
+    {
+        if (err_msg)
+            *err_msg = QString("读取项目标注失败: %1").arg(database_error);
+        return false;
+    }
+    if (label_ids.size() != label_image_ids.size() || label_ids.size() != label_class_ids.size()
+        || label_ids.size() != label_types.size() || label_ids.size() != label_data.size())
+    {
+        if (err_msg)
+            *err_msg = QString("项目标注数据数量不一致");
+        return false;
+    }
+
+    std::vector<int64_t> class_ids;
+    std::vector<QString> class_names;
+    std::vector<QString> class_colors;
+    std::vector<QString> class_shortcuts;
+    std::vector<int64_t> class_ordinals;
+    std::vector<std::vector<uint8_t>> class_extra_data;
+    if (!project_database.getAllLabelClasses(class_ids, class_names, class_colors, class_shortcuts, class_ordinals,
+                                             class_extra_data, database_error))
+    {
+        if (err_msg)
+            *err_msg = QString("读取项目标签类别失败: %1").arg(database_error);
+        return false;
+    }
+    if (class_ids.size() != class_names.size() || class_ids.size() != class_extra_data.size())
+    {
+        if (err_msg)
+            *err_msg = QString("项目标签类别数据数量不一致");
+        return false;
+    }
+
+    QMap<qint64, SourceImage> source_images;
+    for (size_t index = 0; index < image_ids.size(); ++index)
+    {
+        if (image_ids[index] < 0 || source_images.contains(image_ids[index]))
+            continue;
+        source_images.insert(image_ids[index],
+                             SourceImage{image_ids[index], image_dataset_ids[index], image_paths[index],
+                                         image_extra_data[index]});
+    }
+
+    QMap<qint64, QList<SourceLabel>> labels_by_image;
+    for (size_t index = 0; index < label_ids.size(); ++index)
+    {
+        if (label_ids[index] < 0 || label_image_ids[index] < 0 || label_class_ids[index] < 0)
+            continue;
+        labels_by_image[label_image_ids[index]].push_back(
+            SourceLabel{label_ids[index], label_image_ids[index], label_class_ids[index], label_data[index]});
+    }
+
+    QMap<qint64, SourceClass> classes;
+    for (size_t index = 0; index < class_ids.size(); ++index)
+    {
+        classes.insert(class_ids[index], SourceClass{class_names[index],
+                                                     labelClassGroupFromExtraData(class_extra_data[index])});
+    }
+
+    const std::unique_ptr<data::LabelDataHelper_t> label_helper
+        = data::createLabelDataHelper(static_cast<int>(method));
+    if (label_helper == nullptr)
+    {
+        if (err_msg)
+            *err_msg = QString("无法创建评估标注数据解析器");
+        return false;
+    }
+
+    for (const auto &[image_id, listed_path] : rows)
+    {
+        if (isCancelled(cancel_token))
+        {
+            if (err_msg)
+                *err_msg = QString("评估已取消");
+            return false;
+        }
+        const auto source_it = source_images.find(image_id);
+        if (source_it == source_images.end())
+        {
+            if (missing_database_images != nullptr)
+                ++(*missing_database_images);
+            continue;
+        }
+        const SourceImage &source_image = source_it.value();
+        const QList<SourceLabel> source_labels = labels_by_image.value(image_id);
+        if (!selectionIncludesImage(selection, source_image, source_labels))
+        {
+            if (ignored_selection_images != nullptr)
+                ++(*ignored_selection_images);
+            continue;
+        }
+
+        Image image;
+        image.id = source_image.id;
+        image.dataset_id = source_image.dataset_id;
+        image.path = source_image.path.trimmed().isEmpty() ? listed_path : source_image.path;
+        image.name = QFileInfo(image.path).fileName();
+        data::DatasetIO::getImageDimensions(image.path, image.width, image.height);
+
+        const qint64 image_class_id = imageLabelClassIdFromExtraData(source_image.extra_data);
+        const auto image_class = classes.find(image_class_id);
+        if (evaluation::isAnomaly(method) && image_class != classes.cend()
+            && image_class.value().group == QString("anomaly"))
+        {
+            image.gt.push_back(GroundTruth{-1, 1, QString("Anomaly"), {}, {}});
+        }
+        else if (method == evaluation::Method::Classification && image_class != classes.cend()
+                 && (selection.dataset_ids.find(image.dataset_id) != selection.dataset_ids.cend()
+                     || selection.containsLabelClass(image.dataset_id, image_class_id)))
+        {
+            image.gt.push_back(GroundTruth{-1, static_cast<int>(image_class_id), image_class.value().name, {}, {}});
+        }
+
+        for (const SourceLabel &source_label : source_labels)
+        {
+            if (!selectedLabel(selection, source_image, source_label))
+                continue;
+            const auto class_it = classes.find(source_label.class_id);
+            if (class_it == classes.cend())
+                continue;
+
+            QVariantMap label_geometry;
+            if (!source_label.data.empty())
+            {
+                try
+                {
+                    const std::unique_ptr<data::LabelData_t> label = label_helper->createLabelData();
+                    if (label == nullptr)
+                    {
+                        if (err_msg)
+                            *err_msg = QString("无法创建图像 %1 的标注数据").arg(source_label.id);
+                        return false;
+                    }
+                    label->fromBlob(source_label.data);
+                    label_geometry = label->dataMap();
+                }
+                catch (const std::exception &exception)
+                {
+                    if (err_msg)
+                        *err_msg = QString("读取标注 %1 失败: %2")
+                                       .arg(source_label.id)
+                                       .arg(QString::fromUtf8(exception.what()));
+                    return false;
+                }
+            }
+
+            GroundTruth ground_truth;
+            ground_truth.label_id = source_label.id;
+            ground_truth.class_id = evaluation::isAnomaly(method)
+                ? (class_it.value().group == QString("anomaly") ? 1 : 0)
+                : static_cast<int>(source_label.class_id);
+            ground_truth.class_name = evaluation::isAnomaly(method)
+                ? (ground_truth.class_id == 1 ? QString("Anomaly") : QString("GOOD"))
+                : class_it.value().name;
+            ground_truth.geometry = label_geometry;
+            ground_truth.bounds = label_geometry;
+            if (!readBox(ground_truth.geometry, ground_truth.box))
+                ground_truth.geometry.clear();
+            ground_truth.geometry = canonicalGeometry(ground_truth.geometry, ground_truth.box);
+            if (ground_truth.box.valid())
+                ground_truth.bounds = boxMap(ground_truth.box);
+            if (!evaluation::isAnomaly(method) || ground_truth.class_id == 1)
+                image.gt.push_back(std::move(ground_truth));
+        }
+        images.insert(image.id, std::move(image));
+    }
+    if (images.isEmpty())
     {
         if (err_msg)
             *err_msg = QString("测试数据集没有有效图像");
         return false;
     }
-    for (auto it = images.begin(); it != images.end();)
-    {
-        if (!listed.contains(it.key()))
-            it = images.erase(it);
-        else
-            ++it;
-    }
     return true;
 }
 
-bool loadPredictions(const QString &manifest_path, QMap<qint64, Image> &images, int *count,
+bool loadPredictions(const QString &task_database_path, const QString &prediction_dir,
+                     QMap<qint64, Image> &images, const bool anomaly_method, int *count,
                      const std::shared_ptr<std::atomic_bool> &cancel_token, QString *err_msg,
                      int *ignored_count = nullptr)
 {
+    if (count)
+        *count = 0;
+    if (ignored_count)
+        *ignored_count = 0;
     if (isCancelled(cancel_token))
     {
         if (err_msg)
             *err_msg = QString("评估已取消");
         return false;
     }
-    const QFileInfo file(manifest_path);
-    if (!file.exists() || !file.isFile())
-    {
-        if (count)
-            *count = 0;
+    if (task_database_path.trimmed().isEmpty() || !QFileInfo(task_database_path).isFile())
         return true;
-    }
-    if (file.size() > kMaxEvaluationYamlBytes)
+
+    database::ModelTaskDataBase database(task_database_path);
+    QHash<qint64, QVariant> records;
+    if (!database.readPredictions(records, err_msg))
+        return false;
+
+    QSet<QString> prediction_ids;
+    int total = 0;
+    const auto fail = [err_msg](const QString &message)
     {
         if (err_msg)
-            *err_msg = QString("pred/manifest.yaml 超过大小限制");
+            *err_msg = message;
         return false;
-    }
-    if (file.size() == 0)
+    };
+    for (auto record_it = records.cbegin(); record_it != records.cend(); ++record_it)
     {
-        if (count)
-            *count = 0;
-        return true;
-    }
-    try
-    {
-        YAML::Node root = dltool::common::yaml::loadFile(file);
-        if (!root || !root.IsMap())
-            throw std::runtime_error("预测清单必须为 YAML map");
-        const YAML::Node schema_version = yamlField(root, evaluation::Field::SchemaVersion);
-        if (!schema_version || !schema_version.IsScalar() || schema_version.as<int>() != 1)
-            throw std::runtime_error("预测清单 schema_version 必须为 1");
-        const YAML::Node records = yamlField(root, evaluation::Field::Records);
-        if (!records || !records.IsSequence())
-            throw std::runtime_error("预测清单缺少 records sequence");
-        if (records.size() > kMaxEvaluationRecords)
-            throw std::runtime_error("预测清单 records 数量超过限制");
-        const YAML::Node record_count = yamlField(root, evaluation::Field::RecordCount);
-        if (!record_count || !record_count.IsScalar() || record_count.as<int>() < 0
-            || record_count.as<int>() != static_cast<int>(records.size()))
-            throw std::runtime_error("预测清单 record_count 与 records 数量不一致");
-        QSet<QString> ids;
-        int total = 0;
-        for (std::size_t record_index = 0; record_index < records.size(); ++record_index)
+        if (isCancelled(cancel_token))
+            return fail(QString("评估已取消"));
+        const qint64 image_id = record_it.key();
+        if (!images.contains(image_id))
         {
-            const YAML::Node node = records[record_index];
-            if (isCancelled(cancel_token))
-            {
-                if (err_msg)
-                    *err_msg = QString("评估已取消");
-                return false;
-            }
-            if (!node || !node.IsMap())
-                throw std::runtime_error("预测记录必须为 YAML map");
-            const QVariantMap value = nodeVariant(node).toMap();
-            if (!value.contains(evaluation::fieldName(evaluation::Field::PredictionId))
-                || !value.contains(evaluation::fieldName(evaluation::Field::ImageId))
-                || !value.contains(evaluation::fieldName(evaluation::Field::ClassId))
-                || !value.contains(evaluation::fieldName(evaluation::Field::Score)))
-                throw std::runtime_error("预测记录缺少必填字段");
+            if (ignored_count)
+                ++(*ignored_count);
+            continue;
+        }
+
+        if (anomaly_method)
+        {
+            const QVariantMap value = record_it.value().toMap();
+            const QVariant score_value = value.value(QStringLiteral("image_score"));
+            double score = 0.0;
+            if (!finiteNumber(score_value, &score) || score < 0.0 || score > 1.0)
+                return fail(QString("图像 %1 的 image_score 无效").arg(image_id));
             Prediction prediction;
-            prediction.prediction_id = mapString(value, evaluation::fieldName(evaluation::Field::PredictionId));
-            prediction.image_id = mapLong(value, evaluation::fieldName(evaluation::Field::ImageId));
-            prediction.class_id = mapInt(value, evaluation::fieldName(evaluation::Field::ClassId));
-            prediction.class_name = mapString(value, evaluation::fieldName(evaluation::Field::ClassName));
-            const QVariant score_value = value.value(evaluation::fieldName(evaluation::Field::Score));
-            bool score_ok = false;
-            prediction.score = score_value.toDouble(&score_ok);
-            if (!score_ok || !std::isfinite(prediction.score) || prediction.score < 0.0 || prediction.score > 1.0)
-                throw std::runtime_error("预测 score 不是有限数值");
+            prediction.prediction_id = QString("image-%1").arg(image_id);
+            prediction.image_id = image_id;
+            prediction.class_id = 1;
+            prediction.class_name = QString("Anomaly");
+            prediction.score = score;
+            images[image_id].predictions.push_back(prediction);
+            ++total;
+            continue;
+        }
+
+        const QVariant value = record_it.value();
+        QVariantList prediction_values;
+        if (value.metaType().id() == QMetaType::QVariantList)
+            prediction_values = value.toList();
+        else
+        {
+            const QVariantMap map = value.toMap();
+            if (map.contains(evaluation::fieldName(evaluation::Field::Predictions)))
+                prediction_values = map.value(evaluation::fieldName(evaluation::Field::Predictions)).toList();
+            else if (map.contains(evaluation::fieldName(evaluation::Field::ClassId))
+                     || map.contains(evaluation::fieldName(evaluation::Field::Score)))
+                prediction_values.push_back(value);
+            else if (!map.isEmpty())
+                return fail(QString("图像 %1 的预测记录格式无效").arg(image_id));
+        }
+        if (prediction_values.size() > static_cast<int>(kMaxEvaluationRecords))
+            return fail(QString("图像 %1 的预测数量超过限制").arg(image_id));
+
+        for (int index = 0; index < prediction_values.size(); ++index)
+        {
+            const QVariantMap value_map = prediction_values.at(index).toMap();
+            if (value_map.isEmpty())
+                return fail(QString("图像 %1 的预测记录必须是对象").arg(image_id));
+            Prediction prediction;
+            prediction.prediction_id = mapString(value_map, evaluation::fieldName(evaluation::Field::PredictionId));
             if (prediction.prediction_id.isEmpty())
-                throw std::runtime_error("预测 prediction_id 为空");
+                prediction.prediction_id = QString("%1-%2").arg(image_id).arg(index + 1);
+            prediction.image_id = image_id;
+            prediction.class_id = mapInt(value_map, evaluation::fieldName(evaluation::Field::ClassId));
+            prediction.class_name = mapString(value_map, evaluation::fieldName(evaluation::Field::ClassName));
             if (prediction.class_id < 0)
-                throw std::runtime_error("预测 class_id 无效");
-            if (prediction.image_id < 0 || !images.contains(prediction.image_id))
+                return fail(QString("预测 %1 的 class_id 无效").arg(prediction.prediction_id));
+            if (!finiteNumber(value_map.value(evaluation::fieldName(evaluation::Field::Score)), &prediction.score)
+                || prediction.score < 0.0 || prediction.score > 1.0)
+                return fail(QString("预测 %1 的 score 无效").arg(prediction.prediction_id));
+            if (prediction_ids.contains(prediction.prediction_id))
+                return fail(QString("预测 prediction_id 重复: %1").arg(prediction.prediction_id));
+            prediction_ids.insert(prediction.prediction_id);
+
+            prediction.geometry = value_map.value(evaluation::fieldName(evaluation::Field::Geometry)).toMap();
+            const QString x_key = evaluation::fieldName(evaluation::Field::X);
+            const QString y_key = evaluation::fieldName(evaluation::Field::Y);
+            const QString width_key = evaluation::fieldName(evaluation::Field::Width);
+            const QString height_key = evaluation::fieldName(evaluation::Field::Height);
+            const QString short_width_key = QString("w");
+            const QString short_height_key = QString("h");
+            const bool has_direct_x = value_map.contains(x_key);
+            const bool has_direct_y = value_map.contains(y_key);
+            const bool has_direct_width = value_map.contains(width_key) || value_map.contains(short_width_key);
+            const bool has_direct_height = value_map.contains(height_key) || value_map.contains(short_height_key);
+            if (prediction.geometry.isEmpty()
+                && (has_direct_x || has_direct_y || has_direct_width || has_direct_height))
             {
-                if (ignored_count)
-                    ++(*ignored_count);
-                continue;
+                if (!has_direct_x || !has_direct_y || !has_direct_width || !has_direct_height)
+                    return fail(QString("预测 %1 的 bbox 必须同时包含 x、y、w/width、h/height")
+                                    .arg(prediction.prediction_id));
+                prediction.geometry = {
+                    {evaluation::fieldName(evaluation::Field::Type), QStringLiteral("bbox")},
+                    {evaluation::fieldName(evaluation::Field::Format), QStringLiteral("xywh")},
+                    {evaluation::fieldName(evaluation::Field::CoordinateSystem), QStringLiteral("image_pixels")},
+                    {evaluation::fieldName(evaluation::Field::Values),
+                     QVariantList{value_map.value(x_key), value_map.value(y_key),
+                                  value_map.contains(width_key) ? value_map.value(width_key)
+                                                                : value_map.value(short_width_key),
+                                  value_map.contains(height_key) ? value_map.value(height_key)
+                                                                 : value_map.value(short_height_key)}}};
             }
-            if (ids.contains(prediction.prediction_id))
-                throw std::runtime_error("预测 prediction_id 重复");
-            ids.insert(prediction.prediction_id);
-            const QVariantMap geometry = value.value(evaluation::fieldName(evaluation::Field::Geometry)).toMap();
-            prediction.geometry = geometry;
-            prediction.bounds = geometry.value(evaluation::fieldName(evaluation::Field::Bounds)).toMap();
-            if (!geometry.isEmpty())
+            prediction.bounds = prediction.geometry.value(evaluation::fieldName(evaluation::Field::Bounds)).toMap();
+            if (!prediction.geometry.isEmpty())
             {
                 QString geometry_error;
-                const QString task_root = QFileInfo(file.absolutePath()).absoluteDir().absolutePath();
-                if (!validateGeometryProtocol(geometry, images[prediction.image_id], task_root, &geometry_error))
-                    throw std::runtime_error(geometry_error.toUtf8().constData());
+                if (!validateGeometryProtocol(prediction.geometry, images[image_id], prediction_dir,
+                                              &geometry_error))
+                    return fail(geometry_error);
             }
-            if (readBox(geometry, prediction.box))
+            if (readBox(prediction.geometry, prediction.box))
             {
-                if (images[prediction.image_id].width > 0 && images[prediction.image_id].height > 0)
+                const Image &image = images[image_id];
+                if (image.width > 0 && image.height > 0)
                 {
                     const double right = std::clamp(prediction.box.x + prediction.box.w, 0.0,
-                                                    static_cast<double>(images[prediction.image_id].width));
+                                                    static_cast<double>(image.width));
                     const double bottom = std::clamp(prediction.box.y + prediction.box.h, 0.0,
-                                                     static_cast<double>(images[prediction.image_id].height));
-                    prediction.box.x = std::clamp(prediction.box.x, 0.0,
-                                                  static_cast<double>(images[prediction.image_id].width));
-                    prediction.box.y = std::clamp(prediction.box.y, 0.0,
-                                                  static_cast<double>(images[prediction.image_id].height));
+                                                     static_cast<double>(image.height));
+                    prediction.box.x = std::clamp(prediction.box.x, 0.0, static_cast<double>(image.width));
+                    prediction.box.y = std::clamp(prediction.box.y, 0.0, static_cast<double>(image.height));
                     prediction.box.w = std::max(0.0, right - prediction.box.x);
                     prediction.box.h = std::max(0.0, bottom - prediction.box.y);
                 }
                 prediction.bounds = boxMap(prediction.box);
             }
             prediction.geometry = canonicalGeometry(prediction.geometry, prediction.box);
-            images[prediction.image_id].predictions.push_back(prediction);
+            images[image_id].predictions.push_back(prediction);
             ++total;
         }
-        if (count)
-            *count = total;
     }
-    catch (const std::exception &e)
-    {
-        if (err_msg)
-            *err_msg = QString("读取预测清单失败: %1").arg(QString(e.what()));
-        return false;
-    }
+    if (count)
+        *count = total;
     return true;
 }
 
@@ -1273,8 +1479,8 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
             *err_msg = QString("评估已取消");
         return false;
     }
-    if (options.dataset_manifest_path.isEmpty() || options.prediction_manifest_path.isEmpty()
-        || options.prediction_images_path.isEmpty())
+    if (options.project_database_path.isEmpty() || options.dataset_file_list_path.isEmpty()
+        || options.task_database_path.isEmpty() || options.prediction_dir.isEmpty())
     {
         if (err_msg)
             *err_msg = QString("评估路径参数不完整");
@@ -1282,13 +1488,22 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
     }
 
     QMap<qint64, Image> images;
-    if (!loadImages(options.prediction_images_path, options.dataset_manifest_path, images, options.cancel_token,
-                    err_msg))
+    int missing_database_images = 0;
+    int ignored_selection_images = 0;
+    if (!loadImages(options.dataset_file_list_path, options.project_database_path, options.task_database_path,
+                    options.method, images, options.cancel_token, err_msg, &missing_database_images,
+                    &ignored_selection_images))
         return false;
+    if (missing_database_images > 0)
+        spdlog::warn("测试任务文件列表中有 {} 个图像已不在当前项目数据库中，已跳过", missing_database_images);
+    if (ignored_selection_images > 0)
+        spdlog::warn("测试任务文件列表中有 {} 个图像不属于当前数据集或类别选择，已跳过", ignored_selection_images);
+
+    const QString dataset_root = QFileInfo(options.project_database_path).absolutePath();
     int missing_source_images = 0;
     for (auto it = images.begin(); it != images.end();)
     {
-        if (sourceImageExists(it->path, options.dataset_manifest_path))
+        if (sourceImageExists(it->path, dataset_root))
             ++it;
         else
         {
@@ -1299,15 +1514,12 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
     if (missing_source_images > 0)
         spdlog::warn("测试评估跳过 {} 个不存在的源图像", missing_source_images);
 
-    const bool prediction_file_missing = !QFileInfo::exists(options.prediction_manifest_path)
-        || !QFileInfo(options.prediction_manifest_path).isFile();
     int prediction_count = 0;
     int ignored_prediction_count = 0;
-    if (!loadPredictions(options.prediction_manifest_path, images, &prediction_count, options.cancel_token, err_msg,
+    if (!loadPredictions(options.task_database_path, options.prediction_dir, images,
+                         evaluation::isAnomaly(options.method), &prediction_count, options.cancel_token, err_msg,
                          &ignored_prediction_count))
         return false;
-    if (prediction_file_missing)
-        spdlog::warn("未找到预测结果文件，{} 个图像按无推理结果进行评估", images.size());
     if (ignored_prediction_count > 0)
         spdlog::warn("预测结果中有 {} 条记录不属于当前可用图像，已跳过", ignored_prediction_count);
     int images_without_predictions = 0;
@@ -1316,7 +1528,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         if (image.predictions.isEmpty())
             ++images_without_predictions;
     }
-    if (!prediction_file_missing && images_without_predictions > 0)
+    if (images_without_predictions > 0)
         spdlog::warn("{} 个图像没有推理结果，按空预测进行评估", images_without_predictions);
     prediction_count = 0;
     for (const Image &image : images)
@@ -1374,9 +1586,8 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
     QMap<int, Counts> per_class;
     QMap<QString, qint64> matrix;
     QVariantList event_records;
-    const QString dataset_manifest_root = QFileInfo(options.dataset_manifest_path).absolutePath();
-    const QString prediction_task_root
-        = QFileInfo(QFileInfo(options.prediction_manifest_path).absolutePath()).absoluteDir().absolutePath();
+    const QString dataset_root_path = dataset_root;
+    const QString prediction_task_root = options.prediction_dir;
     const QString matrix_fn = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative);
     const QString matrix_fp = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive);
     const QString matrix_total = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::Total);
@@ -1436,7 +1647,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                                 normalizedOverlayPoints(gt_geometry, viewport)},
                                {evaluation::fieldName(evaluation::Field::PredOverlayPoints),
                                 normalizedOverlayPoints(pred_geometry, viewport)},
-                               {evaluation::fieldName(evaluation::Field::GtMaskUrl), maskUrl(gt_geometry, dataset_manifest_root)},
+                               {evaluation::fieldName(evaluation::Field::GtMaskUrl), maskUrl(gt_geometry, dataset_root_path)},
                                {evaluation::fieldName(evaluation::Field::PredMaskUrl), maskUrl(pred_geometry, prediction_task_root)}};
             event_records.push_back(event);
         };

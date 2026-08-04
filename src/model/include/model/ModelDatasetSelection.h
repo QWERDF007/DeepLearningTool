@@ -2,6 +2,9 @@
 
 #include "dltool/model/Export.h"
 
+#include "database/ModelDatabaseTypes.h"
+
+#include <QList>
 #include <QVariantMap>
 #include <set>
 #include <utility>
@@ -80,34 +83,22 @@ MODEL_API std::vector<int64_t> selectedDatasetIds(const ModelDatasetSelections &
 MODEL_API QVariantMap modelDatasetSelectionsMap(const ModelDatasetSelections &selections);
 
 /**
- * @brief 获取数据集选择配置文件路径
- * @param dataset_dir 数据集目录
- * @return 配置文件路径
- */
-MODEL_API QString modelDatasetSelectionsPath(const QString &dataset_dir);
-
-/**
- * @brief 写入数据集选择配置文件
- * @param dataset_dir 数据集目录
- * @param selections 数据集选择
- * @param err_msg 错误信息输出
- * @return 写入成功返回 true
- */
-MODEL_API bool writeModelDatasetSelectionsFile(const QString &dataset_dir, const ModelDatasetSelections &selections,
-                                               QString *err_msg = nullptr);
-
-/**
- * @brief 读取数据集选择配置文件
- * @param dataset_dir 数据集目录
- * @return 数据集选择键值对
- */
-MODEL_API QVariantMap readModelDatasetSelectionsFile(const QString &dataset_dir);
-
-/**
  * @brief 将数据集选择应用到模型
  * @param model 模型实例
  * @param dataset_selections 数据集选择键值对
  */
 MODEL_API void applyModelDatasetSelections(IModel *model, const QVariantMap &dataset_selections);
+
+/**
+ * @brief Convert the UI selection model to the model/task database rows.
+ */
+MODEL_API QList<dltool::database::DatasetSelectionRecord>
+databaseDatasetSelections(const ModelDatasetSelections &selections);
+
+/**
+ * @brief Restore the UI selection model from model/task database rows.
+ */
+MODEL_API ModelDatasetSelections
+modelDatasetSelectionsFromDatabase(const QList<dltool::database::DatasetSelectionRecord> &records);
 
 } // namespace dltool::model

@@ -604,11 +604,9 @@ bool FewShotLearningController::configureFsSam2Model(const QString              
         = dltool::settings::settingInt(settings, generated_field::FewShotLearning::PredictionMinVoteCount, 2);
 
     const dltool::model::ModelStorageService storage(model_manager_->projectDirectory());
-    const QString output_dir = cleanPath(QDir(storage.path(record.name, dltool::model::ModelStorageLocation::Results))
-                                             .filePath(QStringLiteral("predictions")));
+    const QString output_dir = storage.testTaskPredictionPath(record.name, QString("fs_sam2"));
     const QString checkpoint_path
-        = cleanPath(QDir(storage.path(record.name, dltool::model::ModelStorageLocation::Weights))
-                        .filePath(QStringLiteral("fs_sam2/best_model.pt")));
+        = cleanPath(QDir(storage.trainWeightsPath(record.name)).filePath(QStringLiteral("fs_sam2/best_model.pt")));
     QString dir_err;
     if (!ensureDirectory(output_dir, &dir_err, QString("目录路径为空"), QString("创建目录失败: %1")))
         return setError(err_msg, dir_err);
@@ -663,6 +661,7 @@ bool FewShotLearningController::configureFsSam2Model(const QString              
     QVariantMap test_params;
     test_params.insert(QStringLiteral("model"), train_model);
     test_params.insert(QStringLiteral("inference"), inference);
+    train_params.insert(QStringLiteral("inference"), inference);
 
     dltool::model::IModelConfig *config = model->config();
     if (config->trainParams() == nullptr || config->testParams() == nullptr)
@@ -687,8 +686,8 @@ bool FewShotLearningController::writePredictionImportTargets(const QString      
         return setError(err_msg, QString("FS-SAM2 模型记录不存在"));
 
     const dltool::model::ModelStorageService storage(model_manager_->projectDirectory());
-    const QString datasets_dir = storage.path(record.name, dltool::model::ModelStorageLocation::Datasets);
-    if (!ensureDirectory(datasets_dir, err_msg, QString("目录路径为空"), QString("创建目录失败: %1")))
+    const QString task_root = storage.testTaskRoot(record.name, QString("fs_sam2"));
+    if (!ensureDirectory(task_root, err_msg, QString("目录路径为空"), QString("创建 FS-SAM2 任务目录失败: %1")))
         return false;
 
     std::map<int64_t, QStringList> lines_by_dataset;
@@ -717,11 +716,11 @@ bool FewShotLearningController::writePredictionImportTargets(const QString      
                                          .arg(dataset_name.isEmpty() ? QString::number(dataset_id) : dataset_name));
         }
 
-        const QString import_manifest_path
-            = cleanPath(QDir(datasets_dir).filePath(QStringLiteral("test_images_%1.txt").arg(dataset_id)));
-        if (!writeTextFile(import_manifest_path, lines, err_msg))
+        const QString import_file_list_path
+            = cleanPath(QDir(task_root).filePath(QStringLiteral("prediction_import_%1.txt").arg(dataset_id)));
+        if (!writeTextFile(import_file_list_path, lines, err_msg))
             return false;
-        run.import_targets.push_back(PredictionImportTarget{dataset_id, import_manifest_path});
+        run.import_targets.push_back(PredictionImportTarget{dataset_id, import_file_list_path});
     }
     return true;
 }
@@ -920,7 +919,7 @@ void FewShotLearningController::startNextPredictionImport()
     }
 
     const PredictionImportTarget &target = pending_import_targets_.at(static_cast<size_t>(current_import_index_));
-    data_manager_->importMaskData(target.dataset_id, target.manifest_path, pending_import_output_dir_);
+    data_manager_->importMaskData(target.dataset_id, target.file_list_path, pending_import_output_dir_);
 }
 
 void FewShotLearningController::handlePredictionImportFinished(bool success, const QString &message)
@@ -936,6 +935,8 @@ void FewShotLearningController::handlePredictionImportFinished(bool success, con
         return;
     }
 
+    if (current_import_index_ >= 0 && current_import_index_ < static_cast<int>(pending_import_targets_.size()))
+        QFile::remove(pending_import_targets_.at(static_cast<size_t>(current_import_index_)).file_list_path);
     ++current_import_index_;
     startNextPredictionImport();
 }

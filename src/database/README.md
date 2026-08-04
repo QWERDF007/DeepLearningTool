@@ -28,6 +28,29 @@
 - `model` 通过 `ProjectDataBase` 读写模型记录。
 - 本模块只依赖 Qt Core 和 sqlpp11，不依赖 UI、QML 或业务聚合层。
 
+## 模型与测试任务数据库
+
+模型目录下的 `model.db` 和每个测试任务目录下的 `task.db` 使用固定的新结构，
+不兼容旧 YAML 配置或旧评估文件：
+
+```text
+model.db
+├─ train_params(name_en, value)
+├─ datasets(type, dataset_id, class_ids)
+└─ test_tasks(task_id, name, ctime, mtime)
+
+task.db
+├─ task_info(task_id, ctime, mtime)
+├─ test_params(name_en, value)
+├─ datasets(type, dataset_id, class_ids)
+└─ prediction(image_id, data)
+```
+
+`model.db` 只保存模型级训练参数、训练/验证数据集选择和测试任务索引；任务目录
+由 `test/<任务名称>/` 直接组合，不在索引中保存目录或运行状态。`task.db` 保存
+测试参数、测试数据集/类别选择和 Python 推理写入的预测记录。评估结果只在 C++
+后台计算并保存在进程内存中，不写入数据库或报告文件。
+
 ## 边界定义
 
 - 本模块负责“如何存取数据”，不负责“何时存取”和“如何展示”。

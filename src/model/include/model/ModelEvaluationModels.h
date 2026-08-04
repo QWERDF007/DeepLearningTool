@@ -104,7 +104,7 @@ struct MODEL_API EvaluationPredictionRecord
 /**
  * @brief 图像级评估记录。
  *
- * 该记录以 pred/images.txt 为全集，不从实例事件反推，因此没有任何 GT
+ * 该记录以测试任务的 test.txt 为全集，不从实例事件反推，因此没有任何 GT
  * 或预测实例的真负图像也会进入图像指标和图像级图表。
  */
 struct MODEL_API EvaluationImageRecord

@@ -279,12 +279,12 @@ int ModelTaskController::ensureTaskRecord(const QString &model_uuid, const Model
     QString log_path;
     if (isTrainModelTask(task_type))
     {
-        config_path = storage.trainConfigPath(record.name);
+        config_path = storage.modelDatabasePath(record.name);
         log_path = storage.trainLogPath(record.name);
     }
     else if (has_resolved_definition)
     {
-        config_path = storage.testTaskConfigPath(record.name, resolved_definition.directory_name);
+        config_path = storage.testTaskDatabasePath(record.name, resolved_definition.directory_name);
         log_path = storage.testTaskLogPath(record.name, resolved_definition.uuid);
     }
     task_manager_->setTaskPaths(task_id, config_path, log_path);
@@ -433,6 +433,7 @@ bool ModelTaskController::buildTaskRequest(const int task_id, ModelTaskRequest &
     request.framework        = framework;
     request.task_server_host = task_manager_->taskServerHost();
     request.task_server_port = task_manager_->taskServerPort();
+    request.project_database_path = model_manager_->projectDatabasePath();
     request.selections       = modelDatasetSelections(model);
     request.model_config.model_uuid         = record.uuid;
     request.model_config.model_name         = record.name;
@@ -460,7 +461,6 @@ bool ModelTaskController::buildTaskRequest(const int task_id, ModelTaskRequest &
         request.selections = {};
         request.selections.test = definition.dataset_selection;
         request.model_config.test_params = definition.test_params;
-        request.model_config.task_definition_test_params = definition.test_params;
         request.scope_name = definition.name;
         request.model_config.scope_name = definition.name;
         request.model_config.task_directory = definition.directory_name;

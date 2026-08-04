@@ -24,9 +24,10 @@ struct MODEL_API ModelEvaluationOptions
     QString model_name;
     QString task_directory;
     evaluation::Method method{evaluation::Method::Unknown};
-    QString dataset_manifest_path;
-    QString prediction_manifest_path;
-    QString prediction_images_path;
+    QString project_database_path;
+    QString dataset_file_list_path;
+    QString task_database_path;
+    QString prediction_dir;
     // Keep the complete normalized evaluation group as the in-memory cache
     // key.  The scalar fields below are the values consumed by the evaluator.
     QVariantMap evaluation_config;
@@ -56,8 +57,8 @@ struct MODEL_API EvaluationCapabilities
 };
 
 /**
- * @brief Reads the normalized dataset/PRED protocol and computes one
- * complete evaluation snapshot in memory.
+ * @brief Reads the task file list, project/task databases and prediction
+ * artifacts, then computes one complete evaluation snapshot in memory.
  */
 class MODEL_API ModelEvaluationService
 {

@@ -439,11 +439,11 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
                                                 QString::fromLatin1(anomaly_fill), histogram.anomaly_points));
     if (has_good)
         datasets.push_back(referenceDataset(
-            QStringLiteral("GOOD 最大分数：%1").arg(QString::number(good_max, 'f', 4)),
+            QString("GOOD 最大分数：%1").arg(QString::number(good_max, 'f', 4)),
             QString::fromLatin1(good_color), good_max, histogram.max_count));
     if (has_anomaly)
         datasets.push_back(referenceDataset(
-            QStringLiteral("Anomaly 最小分数：%1").arg(QString::number(anomaly_min, 'f', 4)),
+            QString("Anomaly 最小分数：%1").arg(QString::number(anomaly_min, 'f', 4)),
             QString::fromLatin1(anomaly_color), anomaly_min, histogram.max_count));
 
     const double suggested_count = histogram.max_count > 0 ? histogram.max_count * 1.1 : 1.0;
@@ -465,7 +465,7 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
                                                        {QStringLiteral("maxRotation"), 0},
                                                        {QStringLiteral("minRotation"), 0}}},
                 {QStringLiteral("scaleLabel"), QVariantMap{{QStringLiteral("display"), true},
-                                                             {QStringLiteral("labelString"), QStringLiteral("分数")}}}}}},
+                                                             {QStringLiteral("labelString"), QString("分数")}}}}}},
             {QStringLiteral("yAxes"), QVariantList{QVariantMap{
                 {QStringLiteral("id"), QStringLiteral("count-axis")},
                 {QStringLiteral("type"), QStringLiteral("linear")},
@@ -473,13 +473,13 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
                 {QStringLiteral("ticks"), QVariantMap{{QStringLiteral("beginAtZero"), true},
                                                         {QStringLiteral("suggestedMax"), suggested_count}}},
                 {QStringLiteral("scaleLabel"), QVariantMap{{QStringLiteral("display"), true},
-                                                             {QStringLiteral("labelString"), QStringLiteral("数量")}}}}}}}}};
+                                                             {QStringLiteral("labelString"), QString("数量")}}}}}}}}};
 
     return QVariantMap{{evaluation::fieldName(evaluation::Field::Kind), QStringLiteral("line")},
                        {evaluation::fieldName(evaluation::Field::ChartId),
                         QStringLiteral("anomaly_score_distribution")},
                        {evaluation::fieldName(evaluation::Field::FilterKind), QStringLiteral("image_score")},
-                       {evaluation::fieldName(evaluation::Field::Title), QStringLiteral("异常分数分布（图像级 pred_score）")},
+                       {evaluation::fieldName(evaluation::Field::Title), QString("异常分数分布（图像级 pred_score）")},
                        {evaluation::fieldName(evaluation::Field::Data),
                         QVariantMap{{evaluation::fieldName(evaluation::Field::Labels), histogram.labels},
                                     {evaluation::fieldName(evaluation::Field::Datasets), datasets}}},
@@ -873,7 +873,7 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
     }
 
     // Anomaly projects are evaluated at image level.  A GOOD image has no
-    // ground-truth label in the dataset manifest, so the instance-event
+    // ground-truth label in the project database/task selection, so the instance-event
     // matrix above cannot represent true negatives (and anomaly projects do
     // not produce instance events).  Build the binary image matrix explicitly
     // while retaining the same FP/FN/total row and column layout as detection.
@@ -1333,9 +1333,10 @@ bool ModelEvaluationViewModel::sameEvaluationInput(const ModelEvaluationOptions 
         && lhs.model_name == rhs.model_name
         && lhs.task_directory == rhs.task_directory
         && lhs.method == rhs.method
-        && lhs.dataset_manifest_path == rhs.dataset_manifest_path
-        && lhs.prediction_manifest_path == rhs.prediction_manifest_path
-        && lhs.prediction_images_path == rhs.prediction_images_path
+        && lhs.project_database_path == rhs.project_database_path
+        && lhs.dataset_file_list_path == rhs.dataset_file_list_path
+        && lhs.task_database_path == rhs.task_database_path
+        && lhs.prediction_dir == rhs.prediction_dir
         && lhs.evaluation_config == rhs.evaluation_config
         && qFuzzyCompare(lhs.confidence_threshold + 1.0, rhs.confidence_threshold + 1.0)
         && qFuzzyCompare(lhs.iou_threshold + 1.0, rhs.iou_threshold + 1.0)
@@ -1409,7 +1410,7 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
             if (!success)
             {
                 guard->evaluation_attempted_ = true;
-                const QString message = error.isEmpty() ? QStringLiteral("C++ 评估失败") : error;
+                const QString message = error.isEmpty() ? QString("C++ 评估失败") : error;
                 spdlog::error("测试任务 {} 评估失败: {}", options.test_task_uuid.toUtf8().constData(),
                               message.toUtf8().constData());
                 guard->clearEvaluation(message, evaluation::viewStateKey(evaluation::ViewState::Error));
@@ -1417,7 +1418,7 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
                 emit guard->evaluationChanged();
                 emit guard->selectedInstanceChanged();
                 if (should_notify)
-                    ui::SignalHelper::notifyError(QStringLiteral("模型评估失败"), message);
+                    ui::SignalHelper::notifyError(QString("模型评估失败"), message);
                 return;
             }
 
@@ -1436,7 +1437,7 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
             if (should_notify)
             {
                 spdlog::info("测试任务 {} 评估完成", options.test_task_uuid.toUtf8().constData());
-                ui::SignalHelper::notifySuccess(QStringLiteral("模型评估完成"), QStringLiteral("评估结果已更新"));
+                ui::SignalHelper::notifySuccess(QString("模型评估完成"), QString("评估结果已更新"));
             }
         }, Qt::QueuedConnection);
     });
@@ -1632,9 +1633,9 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
     }
     for (const EvaluationConfusionCell &cell : confusion_matrix_->records())
     {
-        if (cell.row_class_id >= 0 && !cell.row_label.isEmpty() && cell.row_label != QStringLiteral("合计"))
+        if (cell.row_class_id >= 0 && !cell.row_label.isEmpty() && cell.row_label != QString("合计"))
             input.class_catalog.insert(cell.row_class_id, cell.row_label);
-        if (cell.column_class_id >= 0 && !cell.column_label.isEmpty() && cell.column_label != QStringLiteral("合计"))
+        if (cell.column_class_id >= 0 && !cell.column_label.isEmpty() && cell.column_label != QString("合计"))
             input.class_catalog.insert(cell.column_class_id, cell.column_label);
     }
     if (anomaly_detection_)

@@ -38,18 +38,8 @@ struct MODEL_API ModelTaskDescriptor
     ModelTaskType type{ModelTaskType::Unknown};   ///< 任务类型
     QString       key;                            ///< 任务键名
     QString       display_name;                   ///< 显示名称
-    QString       config_file_name;               ///< 配置文件名
     QString       log_stem;                       ///< 日志文件名主干
     bool          requires_dataset_export{false}; ///< 是否需要导出数据集
-
-    /**
-     * @brief 检查是否为外部配置任务
-     * @return 有配置文件名返回 true
-     */
-    bool isExternalConfigTask() const
-    {
-        return !config_file_name.isEmpty();
-    }
 };
 
 /**
@@ -100,13 +90,6 @@ MODEL_API QString modelTaskDisplayName(ModelTaskType task_type);
  * @return 日志文件名主干
  */
 MODEL_API QString modelTaskLogStem(ModelTaskType task_type);
-
-/**
- * @brief 获取任务配置文件名
- * @param task_type 任务类型
- * @return 配置文件名
- */
-MODEL_API QString modelTaskConfigFileName(ModelTaskType task_type);
 
 } // namespace dltool::model
 

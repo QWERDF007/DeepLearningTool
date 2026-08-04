@@ -9,7 +9,6 @@
 #include "model/ModelManager.h"
 #include "model/ModelEvaluationProtocol.h"
 #include "model/ModelStorageService.h"
-#include "model/ModelStorageMigration.h"
 #include "model/TaskManager.h"
 
 #include <spdlog/spdlog.h>
@@ -79,6 +78,11 @@ void applySelection(data::DataSelectionTreeModel *model, const ModelDatasetSelec
         model->setNodeSelected(dataset_id, -1, true);
     for (const auto &[dataset_id, label_class_id] : selection.label_classes)
         model->setNodeSelected(dataset_id, label_class_id, true);
+}
+
+bool isFsSam2Model(const ModelManager::ModelRecordView &record)
+{
+    return record.framework_name.compare(QString("FS-SAM2"), Qt::CaseInsensitive) == 0;
 }
 
 } // namespace
@@ -239,6 +243,8 @@ QString ModelTestTaskManager::createTask(const QString &name)
 {
     if (model_manager_ == nullptr || model_uuid_.isEmpty())
         return QString("当前模型为空");
+    if (isFsSam2Model(model_manager_->modelRecordViewForUuid(model_uuid_)))
+        return QString("FS-SAM2 模型不需要评估任务");
     if (const QString error = validateTaskName(name); !error.isEmpty())
         return error;
     if (!flush())
@@ -360,12 +366,6 @@ bool ModelTestTaskManager::deleteTask(const QString &uuid)
         current_index_ = tasks_.isEmpty() ? -1 : tasks_.size() - 1;
     if (deleted_current || current_index_ < 0)
         bindCurrentObjects();
-    if (model_manager_ != nullptr)
-    {
-        const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(model_uuid_);
-        if (record.isValid())
-            repository_.setCurrentTaskUuid(record.name, currentTaskUuid(), nullptr);
-    }
     emit currentIndexChanged();
     emit currentTaskChanged();
     return true;
@@ -434,14 +434,20 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
     if (model_manager_ == nullptr)
     {
         if (err_msg != nullptr)
-            *err_msg = QStringLiteral("模型管理器为空");
+            *err_msg = QString("模型管理器为空");
         return false;
     }
     const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(model_uuid_);
     if (!record.isValid())
     {
         if (err_msg != nullptr)
-            *err_msg = QStringLiteral("模型不存在");
+            *err_msg = QString("模型不存在");
+        return false;
+    }
+    if (isFsSam2Model(record))
+    {
+        if (err_msg != nullptr)
+            *err_msg = QString("FS-SAM2 模型不支持评估");
         return false;
     }
     const ModelStorageService storage(project_dir_);
@@ -451,9 +457,10 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
     options.model_name = record.name;
     options.task_directory = task.directory_name;
     options.method = evaluation::fromProjectMethod(model_manager_->method());
-    options.dataset_manifest_path = storage.testTaskDatasetManifestPath(record.name, task.directory_name);
-    options.prediction_manifest_path = storage.testTaskPredictionManifestPath(record.name, task.directory_name);
-    options.prediction_images_path = storage.testTaskPredictionImagesPath(record.name, task.directory_name);
+    options.project_database_path = model_manager_->projectDatabasePath();
+    options.dataset_file_list_path = storage.testTaskFileListPath(record.name, task.directory_name);
+    options.task_database_path = storage.testTaskDatabasePath(record.name, task.directory_name);
+    options.prediction_dir = storage.testTaskPredictionPath(record.name, task.directory_name);
 
     const QVariantMap test_params = current_test_params_ != nullptr
         ? current_test_params_->valuesMap() : task.test_params;
@@ -471,6 +478,8 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
 void ModelTestTaskManager::handleParameterChanged(const QString &group_name)
 {
     scheduleSave();
+    if (model_manager_ != nullptr && isFsSam2Model(model_manager_->modelRecordViewForUuid(model_uuid_)))
+        return;
     if (current_evaluation_ == nullptr || current_index_ < 0 || current_index_ >= tasks_.size())
         return;
 
@@ -503,7 +512,8 @@ void ModelTestTaskManager::handleTaskRevisionChanged()
     {
         emit dataChanged(index(0), index(tasks_.size() - 1), {RunningRole, ProgressRole, StatusRole});
     }
-    if (current_evaluation_ != nullptr)
+    if (current_evaluation_ != nullptr
+        && (model_manager_ == nullptr || !isFsSam2Model(model_manager_->modelRecordViewForUuid(model_uuid_))))
     {
         const TaskManager::Task *task = currentTaskRecord();
         if (task == nullptr)
@@ -552,6 +562,8 @@ void ModelTestTaskManager::handleTaskStartRequested(const int task_id)
     const TaskManager::Task *task = task_manager_->findTask(task_id);
     if (task == nullptr || !isTestModelTask(task->type) || task->scope_uuid.trimmed().isEmpty())
         return;
+    if (model_manager_ != nullptr && isFsSam2Model(model_manager_->modelRecordViewForUuid(task->model_uuid)))
+        return;
 
     // taskStartRequested is emitted only after an explicit start request has
     // been accepted by TaskManager.  Invalidate a cached evaluation even when
@@ -574,6 +586,11 @@ void ModelTestTaskManager::reload()
         emit countChanged();
     };
 
+    for (ModelEvaluationViewModel *evaluation : evaluation_cache_)
+        delete evaluation;
+    evaluation_cache_.clear();
+    pending_evaluation_notifications_.clear();
+
     replaceTasks({});
     clearCurrentObjects();
     if (model_uuid_.isEmpty() || model_manager_ == nullptr)
@@ -586,17 +603,42 @@ void ModelTestTaskManager::reload()
     const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(model_uuid_);
     if (!record.isValid())
         return;
-    const ModelStorageMigrationResult migration
-        = migrateModelStorage(project_dir_, record.name, record.uuid);
-    if (!migration.error.isEmpty())
+    if (isFsSam2Model(record))
     {
-        emit errorOccurred(migration.error);
+        emit currentIndexChanged();
+        emit currentTaskChanged();
         return;
     }
     QString error;
     QList<ModelTestTaskDefinition> loaded_tasks = repository_.listTasks(record.name, &error);
+
+    // model.db only stores the task index.  Hydrate every task from its own
+    // task.db before publishing it, so reopening a project restores the
+    // saved parameters and dataset/class selection used by the evaluator.
+    if (error.isEmpty())
+    {
+        for (ModelTestTaskDefinition &task : loaded_tasks)
+        {
+            ModelTestTaskDefinition hydrated;
+            QString hydration_error;
+            if (!repository_.loadTask(record.name, task.uuid, hydrated, &hydration_error))
+            {
+                error = hydration_error.isEmpty() ? QString("读取测试任务数据库失败: %1").arg(task.name)
+                                                  : hydration_error;
+                break;
+            }
+            hydrated.model_uuid = model_uuid_;
+            task = std::move(hydrated);
+        }
+    }
     if (!error.isEmpty())
+    {
+        replaceTasks({});
         emit errorOccurred(error);
+        emit currentIndexChanged();
+        emit currentTaskChanged();
+        return;
+    }
     // The initial reset above intentionally leaves the model empty while
     // storage/migration is read.  Publish the loaded rows with a second
     // model reset; assigning tasks_ directly would leave QML views with the
@@ -609,10 +651,7 @@ void ModelTestTaskManager::reload()
             emit errorOccurred(created);
         return;
     }
-    const QString selected_uuid = repository_.currentTaskUuid(record.name, nullptr);
-    const auto selected = std::find_if(tasks_.cbegin(), tasks_.cend(), [&selected_uuid](const auto &task)
-                                       { return !selected_uuid.isEmpty() && task.uuid == selected_uuid; });
-    selectIndex(selected == tasks_.cend() ? 0 : static_cast<int>(std::distance(tasks_.cbegin(), selected)), false);
+    selectIndex(0, false);
 }
 
 void ModelTestTaskManager::clearCurrentObjects()
@@ -648,6 +687,8 @@ void ModelTestTaskManager::bindCurrentObjects()
     const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(model_uuid_);
     if (record.isValid())
     {
+        if (isFsSam2Model(record))
+            return;
         const QString cache_key = evaluationCacheKey(tasks_.at(current_index_).uuid);
         current_evaluation_ = evaluation_cache_.value(cache_key, nullptr);
         if (current_evaluation_ == nullptr)
@@ -718,12 +759,6 @@ bool ModelTestTaskManager::selectIndex(const int index, const bool save_before)
     }
     current_index_ = index;
     bindCurrentObjects();
-    if (model_manager_ != nullptr)
-    {
-        const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(model_uuid_);
-        if (record.isValid())
-            repository_.setCurrentTaskUuid(record.name, currentTaskUuid(), nullptr);
-    }
     emit currentIndexChanged();
     emit currentTaskChanged();
     emit taskStateChanged();

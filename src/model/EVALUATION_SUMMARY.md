@@ -2,9 +2,9 @@
 
 ## 总体结论
 
-测试评估采用一条简单的数据流：Python 只负责推理，C++ 每次需要评估时读取
-数据集 manifest 和 PRED 文件并计算，Qt Model 保存当前进程中的展示数据，QML
-只负责显示和交互。评估结果不写入磁盘。
+测试评估采用一条简单的数据流：Python 只负责推理，C++ 每次需要评估时读取任务级
+`test.txt`、任务数据库预测记录/文件和项目数据库中的图像、类别、标注并计算，Qt Model
+保存当前进程中的展示数据，QML 只负责显示和交互。评估结果不写入磁盘。
 
 ```text
 选中测试任务
@@ -14,10 +14,11 @@ ModelTestTaskManager
 ModelEvaluationViewModel::evaluate()（QThreadPool）
     ↓
 ModelEvaluationService
-    ├─ 读取 dataset manifest
-    ├─ 读取 pred/images.txt
-    ├─ 读取 pred/manifest.yaml
-    └─ C++ 计算指标、矩阵、事件和方法图表
+    ├─ 读取 test/<任务名称>/test.txt
+    ├─ 读取 task.db 中的数据集选择和预测记录
+    ├─ 读取项目数据库中的图像、类别和标注
+    ├─ 读取 pred/ 中的预测文件
+    └─ C++ 构造 GT，计算指标、矩阵、事件和方法图表
     ↓
 ModelEvaluationViewModel（内存缓存）
     ↓
@@ -26,16 +27,31 @@ ModelEvaluationViewModel（内存缓存）
 
 ## 文件职责
 
-测试任务仍然持久化配置和推理产物：
+模型和测试任务持久化数据库、文件列表和推理产物：
 
 ```text
-test/<任务目录>/
-├─ config.yaml                 # 测试参数和数据集选择
-├─ datasets/.../manifest.yaml  # 本次测试使用的数据集清单
-└─ pred/
-   ├─ config.yaml              # 本次推理实际使用的配置
-   ├─ images.txt               # 导出的图像列表
-   └─ manifest.yaml            # Python 生成的完整预测结果
+models/<模型名>/
+├─ model.db                    # 模型参数、训练/验证选择和测试任务索引
+├─ datasets/
+│  ├─ train.txt
+│  ├─ validation.txt
+│  ├─ train_labels.json
+│  └─ validation_labels.json
+└─ test/<任务目录>/
+   ├─ task.db                  # 测试参数、测试数据集/类别选择和预测记录
+   ├─ test.txt                 # 当前测试任务的图像列表
+   └─ pred/                    # Python 推理产物
+```
+
+测试任务不额外生成测试标签旁路文件。评估时由 C++ 根据 `task.db` 的数据集/类别选择，
+重新从项目数据库获取图像、图像类别和标注；缺失源图像跳过，缺失预测按空预测参与评估。
+这使首次测试、修改评估参数重新评估和重新打开项目后的评估使用同一条评估路径。
+
+异常检测的预测产物示例：
+
+```text
+test/<任务目录>/pred/
+└─ <image_id>.tiff             # 原始异常分数图（如有）
 ```
 
 评估指标、混淆矩阵、图表、图像记录和实例事件只存在于
@@ -49,17 +65,17 @@ test/<任务目录>/
 `ModelTaskController` 只处理完整推理链：
 
 1. 后台导出当前数据集并生成图像列表；
-2. 清理当前任务的 `pred/`，重新写入推理配置；
+2. 清理当前任务的 `pred/`，重新写入任务数据库中的推理参数；
 3. 启动 Python 模型推理；
 4. 推理完成后，测试评估页面按需读取新的 PRED 并调用 C++ 评估。
 
-每次用户点击开始都重新推理，不依据旧 PRED 的摘要决定是否复用。推理失败或被
+每次用户点击开始都重新推理，不依据旧预测产物的摘要决定是否复用。推理失败或被
 停止时，当前 ViewModel 清空，不展示上一次评估结果。
 
 ### 修改评估参数
 
 confidence、IoU、匹配策略或其他评估组参数变化时，不启动 Python。管理器使当前
-ViewModel 失效，评估线程重新读取数据集 manifest 和 PRED，再生成一份新的内存结果。
+ViewModel 失效，评估线程重新读取 `test.txt`、数据库和预测产物，再生成一份新的内存结果。
 旧结果会先清空，失败时页面保持无结果。
 
 ### 切换任务或重新打开项目
@@ -75,9 +91,9 @@ ViewModel 失效，评估线程重新读取数据集 manifest 和 PRED，再生�
 
 | 模块 | 职责 |
 | --- | --- |
-| `ModelTaskController` | 导出数据、生成 `pred/images.txt`、清理并生成 PRED、启动 Python；不执行评估。 |
-| `ModelTaskPreparation` | 在后台准备任务目录、数据集 manifest、推理配置和外部进程规格。 |
-| `ModelEvaluationService` | 在工作线程读取 GT/PRED，执行匹配、指标、矩阵、事件和可扩展图表计算。 |
+| `ModelTaskController` | 导出数据、生成任务级 `test.txt`、清理并生成预测产物、启动 Python；不执行评估。 |
+| `ModelTaskPreparation` | 在后台准备任务目录、数据库、文件列表和外部进程规格。 |
+| `ModelEvaluationService` | 在工作线程从项目/任务数据库和预测产物构造 GT/PRED，执行匹配、指标、矩阵、事件和可扩展图表计算。 |
 | `ModelEvaluationViewModel` | 管理异步生命周期，接收内存结果，填充 Qt Model，处理选择和过滤。 |
 | `ModelTestTaskManager` | 管理任务定义、ViewModel 内存缓存、惰性触发和通知来源。 |
 | `ModelStorageService` | 统一提供测试任务、数据集和 PRED 路径。 |
@@ -86,7 +102,7 @@ ViewModel 失效，评估线程重新读取数据集 manifest 和 PRED，再生�
 ## 后台与状态规则
 
 - `ModelEvaluationService` 只接收路径和普通值，不访问 `QObject`、`QModelIndex`、QML
-  或 `DataManager`；耗时 YAML 解析和指标计算在 `QThreadPool` 中执行。
+  或 `DataManager`；数据库、预测文件解析和指标计算在 `QThreadPool` 中执行。
 - ViewModel 在开始新评估时先清空已有 Model 数据；后台结果返回时用 revision 丢弃
   过期任务，避免旧线程覆盖新参数的结果。
 - 评估失败会记录错误、清空结果并进入错误状态；不会继续展示成功评估留下的内容。
@@ -119,9 +135,9 @@ ViewModel 失效，评估线程重新读取数据集 manifest 和 PRED，再生�
 
 ## 破坏性协议边界
 
-当前实现只接受新的 dataset/PRED manifest 协议。旧的评估结果文件、旧评估专用任务
-路径和旧字段不转换、不加载；用户需要重新开始测试生成新的推理产物。推理产物和任务
-配置仍使用现有 YAML 持久化接口，评估本身不新增持久文件。
+当前实现只接受新的模型数据库/任务数据库、任务级文件列表和预测产物布局。旧的 YAML
+配置、manifest、评估结果文件、旧评估专用任务路径和旧字段不转换、不加载；用户需要
+重新开始测试生成新的推理产物。评估本身不新增持久文件。
 
 ## 静态验证
 

@@ -11,7 +11,7 @@
   -> ModelTaskController 创建或复用任务记录
   -> TaskManager 标记 Preparing 并通知控制器
   -> DataManager 后台导出数据集
-  -> prepareModelTask() 后台写数据集配置、任务配置和进程规格
+  -> prepareModelTask() 后台导出文件列表、更新数据库并创建进程规格
   -> ExternalModelTaskRunner 启动 Python
   -> Python TCP 事件更新 TaskManager 和模型结果
 ```
@@ -53,7 +53,8 @@ Pending -> Preparing -> Running -> Stopping -> Stopped
 2. 调用 `TaskManager::startTask()`；模型页面与任务中心从这里汇合。
 3. 收到 `taskStartRequested` 后，在 GUI 线程提取轻量任务输入。
 4. 调用 `DataManager::runDatasetExportAsync()` 在后台导出选中数据集；不需要导出数据集的任务直接使用 `DataOperationWorkflow::start()`。
-5. 后台调用 `prepareModelTask()` 写入配置并生成 `ExternalProcessSpec`。
+5. 后台调用 `prepareModelTask()` 导出文件列表、更新 `model.db`/`task.db` 并生成
+   `ExternalProcessSpec`。
 6. `ExternalModelTaskRunner` 启动 Python；进程实际启动后控制器将任务置为 `Running`。
 7. Python 事件到达后，控制器把训练/测试状态、进度、指标和消息写回模型 `extra_data`，QML 模型列表自动刷新。
 8. 进程退出时，控制器按退出码将任务收敛为 `Stopped`、`Finished` 或 `Failed`。
@@ -74,41 +75,44 @@ Pending -> Preparing -> Running -> Stopping -> Stopped
 `prepareModelTask()` 负责：
 
 - 创建 `models/<模型名>/train/` 或 `models/<模型名>/test/<任务名>/` 下的目录；
-- 写入 `datasets/` 下的 YAML manifest 和 `pred/images.txt` 图像清单；
-- 通过 `ModelDatasetOrganizer` 导出框架需要的数据集 manifest；
-- 通过 `ModelTaskConfigService` 写入任务 YAML；
+- 通过 `ModelDatasetOrganizer` 导出训练/验证文件列表、训练/验证标签文件，以及测试任务专属
+  的 `test.txt`；
+- 通过数据库对象写入模型参数、测试参数和数据集/类别选择；
 - 读取全局 Python 环境路径并生成 `ExternalProcessSpec`。
 
 模型目录始终按模型名组织，测试任务名称经过校验后作为目录名，UUID 只作为稳定身份：
 
 ```text
 models/<模型名>/
+  model.db
+  datasets/
+    train.txt
+    validation.txt
+    train_labels.json
+    validation_labels.json
   train/
-    config.yaml
-    datasets/
     weights/
     logs/
   test/
-    tasks.yaml
     logs/<测试任务 UUID>.log
     <测试任务名>/
-      config.yaml
-      datasets/
+      task.db
+      test.txt
       pred/
-        config.yaml
-        images.txt
-        manifest.yaml
 ```
 
-每个测试任务只保留当前 `pred/`。用户点击开始测试时，后台重新导出数据集、生成
-`pred/images.txt`、清理并重新生成预测结果。Python 推理完成后，评估页面按需从数据集
-manifest 和 PRED 文件读取数据，由 C++ 在后台计算；指标、图表、图像记录和实例事件
-只保存在当前进程的 `ModelEvaluationViewModel` 中，不生成评估结果文件。
+测试文件列表位于测试任务自己的目录，避免多个任务共享或覆盖文件。测试任务不生成
+测试标签旁路文件；用户点击开始测试时，后台重新导出任务目录下的 `test.txt`，清理该任务的 `pred/`
+并重新调用 Python 推理。Python 只写入模型预测产物（例如异常分数 TIFF 和任务数据库中的
+预测记录）。评估页面按需读取任务 `test.txt`、任务数据库和项目数据库，由 C++ 在后台
+从内存中的图像、类别和标注构造 GT 并评估；指标、图表、图像记录和实例事件只保存在
+当前进程的 `ModelEvaluationViewModel` 中，不生成评估报告文件。
 
 评估页面只在选中测试任务时惰性触发。相同任务的 ViewModel 在内存中复用，切换任务不会
-重复评估；修改评估参数会清空当前结果并重新读取 PRED 评估，修改推理参数或数据集选择
-则等待下一次用户主动开始测试。重新打开项目时没有旧的内存结果，选中任务后重新读取
-PRED 并后台评估，打开行为不弹窗；只有用户点击开始测试触发的评估完成或失败才通知。
+重复评估；修改评估参数会清空当前结果并重新读取 `test.txt`、数据库和预测产物评估，
+修改推理参数或数据集选择则等待下一次用户主动开始测试。重新打开项目时没有旧的内存结果，
+选中任务后重新读取相同输入并后台评估，打开行为不弹窗；只有用户点击开始测试触发的评估
+完成或失败才通知。
 
 ### 数据导出
 
@@ -167,14 +171,15 @@ Python 脚本通过启动参数获得本地 TCP 地址和任务 ID：
 ## 小样本学习
 
 FS-SAM2 属于小样本学习专用流程，不接入普通模型测试任务的评估适配器；普通模型测试
-只维护一个测试数据集选择，并通过测试任务管理器切换配置、PRED 和评估结果。
+只维护一个测试数据集选择，并通过测试任务管理器切换数据库、文件列表、预测产物和内存
+评估结果。
 
 ## 测试评估展示
 
-`ModelEvaluationService` 使用 `yaml-cpp` 解析完整 PRED/GT 协议，在 C++ 中完成匹配、指标、
-混淆矩阵和方法图表。`ModelEvaluationViewModel` 接收后台返回的内存快照，并负责 Qt Model、
-过滤、选择和过滤后的后台重聚合。`TestEvaluationPanel.qml` 只负责 SplitView 布局、图表
-和实例联动，不在 QML 中遍历或计算评估事件。
+`ModelEvaluationService` 读取任务级文件列表、任务数据库预测记录/文件和项目数据库标注，
+在 C++ 中完成 GT 构造、匹配、指标、混淆矩阵和方法图表。`ModelEvaluationViewModel` 接收
+后台返回的内存快照，并负责 Qt Model、过滤、选择和过滤后的后台重聚合。`TestEvaluationPanel.qml`
+只负责 SplitView 布局、图表和实例联动，不在 QML 中遍历或计算评估事件。
 
 ## 扩展约定
 

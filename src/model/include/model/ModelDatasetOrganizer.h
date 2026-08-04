@@ -24,6 +24,7 @@ struct MODEL_API ModelDatasetExportRequest
     QString                model_uuid;                        ///< 模型 UUID
     ModelTaskType          task_type{ModelTaskType::Unknown}; ///< 任务类型
     QString                dataset_dir;                       ///< 数据集输出目录
+    QString                test_file_list_path;                ///< 测试任务专属文件列表路径
     ModelDatasetSelections selections;                        ///< 数据集选择
 
     const dltool::data::DatasetExportSource *source{nullptr};

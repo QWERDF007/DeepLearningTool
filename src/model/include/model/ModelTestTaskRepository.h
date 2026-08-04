@@ -7,15 +7,13 @@
 #include <QString>
 #include <QVariantMap>
 
-#include <optional>
-
 namespace dltool::model {
 
 /**
  * @brief 测试任务定义的唯一持久化入口。
  *
- * 索引保存于 models/<model>/test/tasks.yaml，任务配置保存于各自任务目录。
- * 仓库不维护运行状态，也不暴露 QObject，便于任务控制器和 QML 管理器共享。
+ * 索引保存于模型目录的 model.db，任务参数和数据集选择保存于各自任务
+ * 目录的 task.db。仓库不维护运行状态，也不暴露 QObject。
  */
 class MODEL_API ModelTestTaskRepository
 {
@@ -26,8 +24,6 @@ public:
     QString projectDirectory() const;
 
     QList<ModelTestTaskDefinition> listTasks(const QString &model_name, QString *err_msg = nullptr) const;
-    QString currentTaskUuid(const QString &model_name, QString *err_msg = nullptr) const;
-    bool setCurrentTaskUuid(const QString &model_name, const QString &uuid, QString *err_msg = nullptr) const;
     bool loadTask(const QString &model_name, const QString &uuid, ModelTestTaskDefinition &task,
                   QString *err_msg = nullptr) const;
     bool saveTask(const QString &model_name, const ModelTestTaskDefinition &task, QString *err_msg = nullptr) const;
@@ -38,18 +34,12 @@ public:
                     QString *err_msg = nullptr) const;
     bool removeTask(const QString &model_name, const QString &uuid, QString *err_msg = nullptr) const;
 
-    QString tasksPath(const QString &model_name) const;
+    QString modelDatabasePath(const QString &model_name) const;
 
     static QString validateTaskName(const QString &name);
     static QString directoryNameForTask(const QString &name);
 
 private:
-    bool writeIndex(const QString &model_name, const QList<ModelTestTaskDefinition> &tasks,
-                    QString *err_msg = nullptr,
-                    const std::optional<QString> &current_uuid_override = std::nullopt) const;
-    bool writeTaskConfig(const QString &model_name, const ModelTestTaskDefinition &task,
-                         QString *err_msg = nullptr) const;
-    bool readTaskConfig(const QString &model_name, ModelTestTaskDefinition &task, QString *err_msg = nullptr) const;
     bool ensureTaskRoot(const QString &model_name, const ModelTestTaskDefinition &task,
                         QString *err_msg = nullptr) const;
 

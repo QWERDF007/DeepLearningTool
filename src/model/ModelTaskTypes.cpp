@@ -12,21 +12,18 @@ ModelTaskDescriptor describeModelTask(ModelTaskType task_type)
     case ModelTaskType::Train:
         descriptor.key                     = QStringLiteral("train");
         descriptor.display_name            = QString("训练");
-        descriptor.config_file_name        = QStringLiteral("config.yaml");
         descriptor.log_stem                = QStringLiteral("train");
         descriptor.requires_dataset_export = true;
         break;
     case ModelTaskType::Test:
         descriptor.key                     = QStringLiteral("test");
         descriptor.display_name            = QString("测试");
-        descriptor.config_file_name        = QStringLiteral("config.yaml");
         descriptor.log_stem                = QStringLiteral("test");
         descriptor.requires_dataset_export = true;
         break;
     case ModelTaskType::BoxToMask:
         descriptor.key                     = QStringLiteral("box_to_mask");
         descriptor.display_name            = QStringLiteral("BoxToMask");
-        descriptor.config_file_name        = QStringLiteral("box_to_mask.yaml");
         descriptor.log_stem                = QStringLiteral("box_to_mask");
         descriptor.requires_dataset_export = true;
         break;
@@ -69,11 +66,6 @@ QString modelTaskDisplayName(ModelTaskType task_type)
 QString modelTaskLogStem(ModelTaskType task_type)
 {
     return describeModelTask(task_type).log_stem;
-}
-
-QString modelTaskConfigFileName(ModelTaskType task_type)
-{
-    return describeModelTask(task_type).config_file_name;
 }
 
 } // namespace dltool::model

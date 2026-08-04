@@ -115,7 +115,7 @@ private:
     struct PredictionImportTarget
     {
         qint64  dataset_id{-1};
-        QString manifest_path;
+        QString file_list_path;
     };
 
     enum class RunStage

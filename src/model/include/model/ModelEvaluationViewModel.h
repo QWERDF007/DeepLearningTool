@@ -16,9 +16,9 @@ namespace dltool::model {
 /**
  * @brief 单一测试任务的内存评估模型。
  *
- * 评估输入始终从当前测试任务的 dataset manifest 和 pred 文件读取，计算在后台
- * 线程完成，结果只保留在当前进程的模型缓存中。指标、混淆矩阵和实例匹配关系
- * 不在 QML 中计算；实例过滤由 QSortFilterProxyModel 完成。
+ * 评估输入始终从当前测试任务的 test.txt、task.db、项目数据库和 pred 文件读取，
+ * 计算在后台线程完成，结果只保留在当前进程的模型缓存中。指标、混淆矩阵和实例
+ * 匹配关系不在 QML 中计算；实例过滤由 QSortFilterProxyModel 完成。
  */
 class MODEL_API ModelEvaluationViewModel : public QObject
 {

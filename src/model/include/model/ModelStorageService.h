@@ -15,11 +15,9 @@ enum class ModelStorageLocation
     ModelRoot,  ///< 单个模型根目录
     Train,      ///< 新训练目录
     Test,       ///< 新测试目录
-    Results,    ///< 结果目录
     Logs,       ///< 日志目录
     Weights,    ///< 权重目录
     Datasets,   ///< 数据集目录
-    Configs,    ///< 配置目录
 };
 
 /**
@@ -40,15 +38,12 @@ struct MODEL_API ModelTaskPaths
 {
     QString model_root;
     QString task_root;
-    QString editable_config_path;
+    QString database_path;
     QString dataset_dir;
     QString weight_dir;
     QString log_dir;
     QString log_path;
     QString prediction_dir;
-    QString prediction_config_path;
-    QString prediction_images_path;
-    QString prediction_manifest_path;
 };
 
 /**
@@ -75,8 +70,8 @@ public:
      */
     QString projectDirectory() const;
 
-    // 元数据文件记录当前模型目录结构版本和迁移状态。
-    QString storageMetadataPath(const QString &model_name) const;
+    QString modelDatabasePath(const QString &model_name) const;
+    QString sharedDatasetPath(const QString &model_name) const;
 
     /**
      * @brief 获取指定位置路径
@@ -88,23 +83,17 @@ public:
 
     // 新任务布局路径。旧 path()/ModelStorageLocation 保留给迁移和小样本流程兼容使用。
     QString trainRoot(const QString &model_name) const;
-    QString trainConfigPath(const QString &model_name) const;
     QString trainWeightsPath(const QString &model_name) const;
     QString trainLogsPath(const QString &model_name) const;
     QString trainDatasetPath(const QString &model_name) const;
     QString trainLogPath(const QString &model_name) const;
 
     QString testRoot(const QString &model_name) const;
-    QString testTasksPath(const QString &model_name) const;
     QString testLogsPath(const QString &model_name) const;
     QString testTaskRoot(const QString &model_name, const QString &task_directory) const;
-    QString testTaskConfigPath(const QString &model_name, const QString &task_directory) const;
-    QString testTaskDatasetPath(const QString &model_name, const QString &task_directory) const;
+    QString testTaskDatabasePath(const QString &model_name, const QString &task_directory) const;
+    QString testTaskFileListPath(const QString &model_name, const QString &task_directory) const;
     QString testTaskPredictionPath(const QString &model_name, const QString &task_directory) const;
-    QString testTaskPredictionConfigPath(const QString &model_name, const QString &task_directory) const;
-    QString testTaskPredictionImagesPath(const QString &model_name, const QString &task_directory) const;
-    QString testTaskPredictionManifestPath(const QString &model_name, const QString &task_directory) const;
-    QString testTaskDatasetManifestPath(const QString &model_name, const QString &task_directory) const;
     QString testTaskLogPath(const QString &model_name, const QString &task_uuid) const;
 
     ModelTaskPaths trainPaths(const QString &model_name) const;

@@ -27,8 +27,7 @@ struct MODEL_API ModelTestTaskDefinition
 
     bool isValid() const
     {
-        return !uuid.trimmed().isEmpty() && !model_uuid.trimmed().isEmpty() && !name.trimmed().isEmpty()
-            && !directory_name.trimmed().isEmpty();
+        return !uuid.trimmed().isEmpty() && !name.trimmed().isEmpty() && !directory_name.trimmed().isEmpty();
     }
 };
 
