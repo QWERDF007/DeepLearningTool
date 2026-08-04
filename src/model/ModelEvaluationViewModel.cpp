@@ -1156,11 +1156,14 @@ ModelEvaluationViewModel::ModelEvaluationViewModel(QObject *parent)
                 selected_proxy_row_ = -1;
                 selected_instance_.clear();
                 instances_->setSelectedEvent({});
-                rebuildFilteredAggregates();
+                scheduleRebuildFilteredAggregates();
                 emit selectedInstanceChanged();
             });
     connect(filtered_images_, &EvaluationImageFilterProxyModel::filterChanged, this,
-            [this]() { rebuildFilteredAggregates(); });
+            [this]()
+            {
+                scheduleRebuildFilteredAggregates();
+            });
     connect(filtered_instances_, &EvaluationCellFilterProxyModel::filterChanged, this,
             [this]()
             {
@@ -1172,7 +1175,27 @@ ModelEvaluationViewModel::ModelEvaluationViewModel(QObject *parent)
     connect(filtered_instances_, &QAbstractItemModel::modelReset, this,
             [this]() { selected_instance_ = {}; emit selectedInstanceChanged(); });
     connect(filtered_instances_, &QAbstractItemModel::rowsRemoved, this,
-            [this]() { if (selected_proxy_row_ >= filtered_instances_->rowCount()) selectInstance(-1); });
+            [this]()
+            {
+                // Do not touch the source selection model while a proxy is
+                // still dispatching rowsRemoved.  GridView can also request
+                // the old index during this notification window.
+                if (selected_proxy_row_ < 0)
+                    return;
+                const int selected_row = selected_proxy_row_;
+                QMetaObject::invokeMethod(this,
+                                          [this, selected_row]()
+                                          {
+                                              if (selected_proxy_row_ != selected_row || filtered_instances_ == nullptr)
+                                                  return;
+                                              const int row_count = filtered_instances_->rowCount();
+                                              if (selected_proxy_row_ >= row_count)
+                                              {
+                                                  selectInstance(-1);
+                                              }
+                                          },
+                                          Qt::QueuedConnection);
+            });
 }
 
 bool ModelEvaluationViewModel::available() const { return available_; }
@@ -1259,6 +1282,8 @@ void ModelEvaluationViewModel::setLoading(const bool value)
 void ModelEvaluationViewModel::clearEvaluation(const QString &error, const QString &state)
 {
     ++aggregation_revision_;
+    ++aggregation_schedule_token_;
+    aggregation_rebuild_scheduled_ = false;
     available_ = false;
     error_ = error;
     state_ = state.isEmpty()
@@ -1277,6 +1302,8 @@ void ModelEvaluationViewModel::clearEvaluation(const QString &error, const QStri
     has_confusion_matrix_ = false;
     has_instance_events_ = false;
     anomaly_detection_ = false;
+    const bool previous_suppress_aggregation_rebuild = suppress_aggregation_rebuild_;
+    suppress_aggregation_rebuild_ = true;
     instance_metrics_->setRecords({});
     image_metrics_->setRecords({});
     per_class_metrics_->setRecords({});
@@ -1292,6 +1319,7 @@ void ModelEvaluationViewModel::clearEvaluation(const QString &error, const QStri
     filtered_instances_->setMinScore(-std::numeric_limits<double>::infinity());
     filtered_instances_->setMaxScore(std::numeric_limits<double>::infinity());
     charts_->setRecords({});
+    suppress_aggregation_rebuild_ = previous_suppress_aggregation_rebuild;
     selected_instance_.clear();
     selected_proxy_row_ = -1;
     instances_->setSelectedEvent({});
@@ -1401,6 +1429,7 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
             guard->available_ = true;
             guard->state_ = evaluation::viewStateKey(evaluation::ViewState::Ready);
             guard->error_.clear();
+            guard->scheduleRebuildFilteredAggregates();
             guard->setLoading(false);
             emit guard->evaluationChanged();
             emit guard->selectedInstanceChanged();
@@ -1568,8 +1597,31 @@ void ModelEvaluationViewModel::loadInstanceRecords(const QVariantList &records)
     instances_->setRecords(std::move(values));
 }
 
+void ModelEvaluationViewModel::scheduleRebuildFilteredAggregates()
+{
+    if (suppress_aggregation_rebuild_ || !available_ || aggregation_rebuild_scheduled_)
+        return;
+
+    aggregation_rebuild_scheduled_ = true;
+    const int token = ++aggregation_schedule_token_;
+    QMetaObject::invokeMethod(this,
+                              [this, token]()
+                              {
+                                  if (token != aggregation_schedule_token_)
+                                      return;
+                                  aggregation_rebuild_scheduled_ = false;
+                                  if (!available_)
+                                      return;
+                                  rebuildFilteredAggregates();
+                              },
+                              Qt::QueuedConnection);
+}
+
 void ModelEvaluationViewModel::rebuildFilteredAggregates()
 {
+    if (!available_)
+        return;
+
     const int revision = ++aggregation_revision_;
     EvaluationAggregateInput input;
     for (const EvaluationMetricRecord &metric : per_class_metrics_->records())
@@ -1778,21 +1830,51 @@ QString ModelEvaluationViewModel::thumbnailUrl(const EvaluationInstanceRecord &r
 
 void ModelEvaluationViewModel::selectInstance(const int proxyRow)
 {
-    if (proxyRow < 0 || proxyRow >= filtered_instances_->rowCount())
+    const auto clearSelection = [this]()
     {
         selected_proxy_row_ = -1;
         selected_instance_.clear();
-        instances_->setSelectedEvent({});
+        if (instances_ != nullptr)
+            instances_->setSelectedEvent({});
+    };
+
+    if (proxyRow < 0 || proxyRow >= filtered_instances_->rowCount())
+    {
+        clearSelection();
     }
     else
     {
         selected_proxy_row_ = proxyRow;
         const QModelIndex proxy_index = filtered_instances_->index(proxyRow, 0);
+        if (!proxy_index.isValid() || proxy_index.model() != filtered_instances_)
+        {
+            clearSelection();
+            emit selectedInstanceChanged();
+            return;
+        }
         const QModelIndex global_index = filtered_instances_->mapToSource(proxy_index);
+        if (!global_index.isValid() || global_index.model() != global_filtered_instances_)
+        {
+            clearSelection();
+            emit selectedInstanceChanged();
+            return;
+        }
         const QModelIndex source_index = global_filtered_instances_->mapToSource(global_index);
+        if (!source_index.isValid() || source_index.model() != instances_)
+        {
+            clearSelection();
+            emit selectedInstanceChanged();
+            return;
+        }
         const EvaluationInstanceRecord *record = instances_->recordAt(source_index.row());
-        selected_instance_ = record != nullptr ? instanceToMap(*record) : QVariantMap{};
-        instances_->setSelectedEvent(record != nullptr ? record->event_uuid : QString());
+        if (record == nullptr)
+        {
+            clearSelection();
+            emit selectedInstanceChanged();
+            return;
+        }
+        selected_instance_ = instanceToMap(*record);
+        instances_->setSelectedEvent(record->event_uuid);
     }
     emit selectedInstanceChanged();
 }

@@ -496,7 +496,10 @@ bool invokeBool(QObject *object, const char *method, bool *invoked)
 EvaluationImageFilterProxyModel::EvaluationImageFilterProxyModel(QObject *parent)
     : QSortFilterProxyModel(parent)
 {
-    setDynamicSortFilter(true);
+    // Every filter setter explicitly calls invalidateFilter().  Keeping the
+    // proxy static while source data/selection roles change avoids reentrant
+    // filtering during evaluation result and selection updates.
+    setDynamicSortFilter(false);
 }
 
 void EvaluationImageFilterProxyModel::setGlobalFilter(QObject *filter)
@@ -603,7 +606,7 @@ void EvaluationImageFilterProxyModel::onExternalFilterChanged()
 EvaluationGlobalFilterProxyModel::EvaluationGlobalFilterProxyModel(QObject *parent)
     : QSortFilterProxyModel(parent)
 {
-    setDynamicSortFilter(true);
+    setDynamicSortFilter(false);
 }
 
 QVariantList EvaluationGlobalFilterProxyModel::datasetIds() const
@@ -745,7 +748,7 @@ void EvaluationGlobalFilterProxyModel::onExternalFilterChanged()
 EvaluationCellFilterProxyModel::EvaluationCellFilterProxyModel(QObject *parent)
     : QSortFilterProxyModel(parent)
 {
-    setDynamicSortFilter(true);
+    setDynamicSortFilter(false);
 }
 
 QString EvaluationCellFilterProxyModel::status() const { return status_; }

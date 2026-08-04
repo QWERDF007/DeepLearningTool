@@ -322,12 +322,7 @@ QuiButton {
         }
 
         control.bulkUpdating = true
-        for (let i = 0; i < model.rowCount(); i++) {
-            let idx = model.index(i, 0)
-            if (model.data(idx, FilterItemsModel.EnabledRole)) {
-                model.setData(idx, checked, FilterItemsModel.CheckedRole)
-            }
-        }
+        model.setAllChecked(checked)
         control.bulkUpdating = false
     }
 

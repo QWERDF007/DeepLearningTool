@@ -62,7 +62,10 @@ bool FilterItemsModel::setData(const QModelIndex &index, const QVariant &value, 
     case CheckedRole:
         if (item.enabled && value.canConvert<bool>())
         {
-            item.checked = value.toBool();
+            const bool checked = value.toBool();
+            if (item.checked == checked)
+                return true;
+            item.checked = checked;
             emit dataChanged(index, index, {CheckedRole});
             return true;
         }
@@ -76,7 +79,7 @@ bool FilterItemsModel::setData(const QModelIndex &index, const QVariant &value, 
 
 Qt::ItemFlags FilterItemsModel::flags(const QModelIndex &index) const
 {
-    if (!index.isValid())
+    if (!index.isValid() || index.row() < 0 || index.row() >= static_cast<int>(items_.size()))
         return Qt::NoItemFlags;
 
     if (!items_[index.row()].enabled)
@@ -143,16 +146,18 @@ void FilterItemsModel::setAllChecked(bool checked)
     if (items_.empty())
         return;
 
+    bool changed = false;
     for (size_t i = 0; i < items_.size(); ++i)
     {
-        if (items_[i].enabled)
+        if (items_[i].enabled && items_[i].checked != checked)
         {
             items_[i].checked = checked;
+            changed = true;
         }
     }
 
-    // 通知所有行的checked状态已改变
-    emit dataChanged(index(0), index(static_cast<int>(items_.size()) - 1), {CheckedRole});
+    if (changed)
+        emit dataChanged(index(0), index(static_cast<int>(items_.size()) - 1), {CheckedRole});
 }
 
 // ============================================================================

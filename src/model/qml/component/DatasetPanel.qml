@@ -95,7 +95,6 @@ Item {
                         mode: "nearest",
                         intersect: true,
                         callbacks: {
-                            title: "",
                             label: control.chartTooltipLabel
                         }
                     }
@@ -131,7 +130,6 @@ Item {
                         mode: "nearest",
                         intersect: true,
                         callbacks: {
-                            title: "",
                             label: control.chartTooltipLabel
                         }
                     }

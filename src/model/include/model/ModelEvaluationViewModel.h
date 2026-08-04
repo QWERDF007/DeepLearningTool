@@ -126,6 +126,7 @@ private:
     void loadInstanceRecords(const QVariantList &records);
     QVariantMap instanceToMap(const EvaluationInstanceRecord &record) const;
     QString thumbnailUrl(const EvaluationInstanceRecord &record) const;
+    void scheduleRebuildFilteredAggregates();
     void rebuildFilteredAggregates();
 
     ModelEvaluationOptions evaluation_options_;
@@ -165,6 +166,9 @@ private:
     QVariantMap selected_instance_;
     int evaluation_revision_{0};
     int aggregation_revision_{0};
+    bool aggregation_rebuild_scheduled_{false};
+    int aggregation_schedule_token_{0};
+    bool suppress_aggregation_rebuild_{false};
 };
 
 } // namespace dltool::model
