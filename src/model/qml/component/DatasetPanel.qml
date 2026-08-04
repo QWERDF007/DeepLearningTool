@@ -14,22 +14,6 @@ Item {
     property DataSelectionTreeModel selectionModel: null
     property string roleTitle: qsTr("数据集")
 
-    // The statistics model exposes QVariantMap/QVariantList values.  Clone
-    // them at the QML boundary so Chart.js always receives native JavaScript
-    // arrays for indexed dataset options such as backgroundColor.
-    function chartDataForDisplay(chartData) {
-        if (!chartData || typeof chartData !== "object")
-            return ({labels: [], datasets: []})
-
-        try {
-            return JSON.parse(JSON.stringify(chartData))
-        } catch (error) {
-            // Keep the chart usable if a future data provider adds a value
-            // that cannot be serialized.
-            return ({labels: [], datasets: []})
-        }
-    }
-
     // Chart.js invokes tooltip callbacks with the active item and the complete
     // chart data object.  Keeping this presentation rule here lets QuiChart
     // remain independent from dataset-specific terminology while preserving
@@ -53,11 +37,6 @@ Item {
         return label + value
     }
 
-    function chartTooltipTitle() {
-        // The model's tooltip text already contains the category name.  Leave
-        // the Chart.js title row empty so it is not shown twice.
-        return ""
-    }
 
     DatasetSelectionStatisticsModel {
         id: statisticsModel
@@ -92,7 +71,7 @@ Item {
                 Layout.fillHeight: true
                 animationDuration: 0
                 chartType: "pie"
-                chartData: control.chartDataForDisplay(statisticsModel.imageChartData)
+                chartData: ChartPresenter.prepareData(statisticsModel.imageChartData)
                 chartOptions: ({
                     maintainAspectRatio: false,
                     legend: {
@@ -116,7 +95,7 @@ Item {
                         mode: "nearest",
                         intersect: true,
                         callbacks: {
-                            title: control.chartTooltipTitle,
+                            title: "",
                             label: control.chartTooltipLabel
                         }
                     }
@@ -128,7 +107,7 @@ Item {
                 Layout.fillHeight: true
                 animationDuration: 0
                 chartType: "pie"
-                chartData: control.chartDataForDisplay(statisticsModel.instanceChartData)
+                chartData: ChartPresenter.prepareData(statisticsModel.instanceChartData)
                 chartOptions: ({
                     maintainAspectRatio: false,
                     legend: {
@@ -152,7 +131,7 @@ Item {
                         mode: "nearest",
                         intersect: true,
                         callbacks: {
-                            title: control.chartTooltipTitle,
+                            title: "",
                             label: control.chartTooltipLabel
                         }
                     }

@@ -18,142 +18,26 @@ Rectangle {
         return charts ? charts.rowCount() : 0
     }
 
-    // Evaluation descriptors expose nested QVariantMap/QVariantList values.
-    // Clone the data at the QML boundary so Chart.js receives native
-    // JavaScript objects, arrays, and strings (including dataset colors).
-    function chartDataForDisplay(chartData, chartId) {
-        if (!chartData || typeof chartData !== "object")
-            return ({labels: [], datasets: []})
+    // Reference datasets are still Chart.js datasets, but only the two
+    // distribution datasets are meaningful in the legend.
+    function anomalyLegendFilter(item, data) {
+        var itemLabel = item && item.text !== undefined ? String(item.text) : ""
+        if (itemLabel.length > 0)
+            return itemLabel === "GOOD" || itemLabel === "Anomaly"
 
-        try {
-            var displayData = JSON.parse(JSON.stringify(chartData))
-            if (chartId === "anomaly_score_distribution" && displayData.datasets) {
-                // An empty histogram bin is a gap, not a zero-height sample.
-                // Normalize both invalid QVariant values (which may arrive as
-                // an omitted/undefined y) and numeric zero to explicit null
-                // after crossing the QVariant -> JavaScript boundary.
-                for (var datasetIndex = 0; datasetIndex < displayData.datasets.length; ++datasetIndex) {
-                    var dataset = displayData.datasets[datasetIndex]
-                    if (!dataset)
-                        continue
-                    if (dataset.label !== "GOOD" && dataset.label !== "Anomaly")
-                        continue
-                    var points = dataset && dataset.data ? dataset.data : []
-                    var pointRadii = []
-                    for (var pointIndex = 0; pointIndex < points.length; ++pointIndex) {
-                        var point = points[pointIndex]
-                        if (point && typeof point === "object"
-                                && (point.y === undefined || point.y === null || Number(point.y) === 0))
-                            point.y = null
-
-                        var hasValue = point && point.y !== null && point.y !== undefined
-                                       && isFinite(Number(point.y)) && Number(point.y) > 0
-                        var previous = pointIndex > 0 ? points[pointIndex - 1] : null
-                        var next = pointIndex + 1 < points.length ? points[pointIndex + 1] : null
-                        var hasPreviousValue = previous && previous.y !== null && previous.y !== undefined
-                                               && isFinite(Number(previous.y)) && Number(previous.y) > 0
-                        var hasNextValue = next && next.y !== null && next.y !== undefined
-                                           && isFinite(Number(next.y)) && Number(next.y) > 0
-                        // A single valid point has no segment for Chart.js to
-                        // stroke.  Keep ordinary curves marker-free, but make
-                        // an isolated bin visible instead of leaving only a
-                        // hoverable, invisible point.
-                        pointRadii.push(hasValue && !hasPreviousValue && !hasNextValue ? 3 : 0)
-                    }
-                    dataset.pointRadius = pointRadii
-                }
-            }
-            return displayData
-        } catch (error) {
-            // Keep the chart usable if a future descriptor adds a value that
-            // cannot be serialized.
-            return ({labels: [], datasets: []})
-        }
-    }
-
-    // Tooltip and interaction settings are nested QVariantMap values too.
-    // Convert them before Chart.js reads mode/intersect and related options.
-    function chartOptionsForDisplay(options) {
-        if (!options || typeof options !== "object")
-            return ({maintainAspectRatio: false})
-
-        try {
-            return JSON.parse(JSON.stringify(options))
-        } catch (error) {
-            return ({maintainAspectRatio: false})
-        }
-    }
-
-    function copyMap(source) {
-        var result = ({})
-        if (!source || typeof source !== "object")
-            return result
-
-        for (var key in source)
-            result[key] = source[key]
-        return result
-    }
-
-    function axisWithFontColor(axis) {
-        var axisCopy = copyMap(axis)
-        var ticksCopy = copyMap(axisCopy.ticks)
-        var scaleLabelCopy = copyMap(axisCopy.scaleLabel)
-        ticksCopy.fontColor = control.chartFontColor
-        scaleLabelCopy.fontColor = control.chartFontColor
-        axisCopy.ticks = ticksCopy
-        axisCopy.scaleLabel = scaleLabelCopy
-        return axisCopy
+        var datasetIndex = item && item.datasetIndex !== undefined ? Number(item.datasetIndex) : -1
+        var datasets = data && data.datasets ? data.datasets : []
+        var dataset = datasetIndex >= 0 && datasetIndex < datasets.length ? datasets[datasetIndex] : null
+        var datasetLabel = dataset && dataset.label !== undefined ? String(dataset.label) : ""
+        return datasetLabel === "GOOD" || datasetLabel === "Anomaly"
     }
 
     function chartOptionsForDescriptor(descriptor) {
-        var options = control.chartOptionsForDisplay(descriptor.options)
-        if (descriptor.chart_id !== "anomaly_score_distribution")
-            return options
-
-        var filtered = ({})
-        for (var key in options)
-            filtered[key] = options[key]
-
-        var legend = filtered.legend || ({})
-        var legendCopy = ({})
-        for (var legendKey in legend)
-            legendCopy[legendKey] = legend[legendKey]
-
-        var labels = legendCopy.labels || ({})
-        var labelsCopy = ({})
-        for (var labelKey in labels)
-            labelsCopy[labelKey] = labels[labelKey]
-        labelsCopy.fontColor = control.chartFontColor
-        labelsCopy.filter = function(item, data) {
-            // Keep the legend limited to the two distribution datasets.  The
-            // Reference markers are line datasets too, but only the two
-            // distribution datasets belong in the legend.
-            var itemLabel = item && item.text !== undefined ? String(item.text) : ""
-            if (itemLabel.length > 0)
-                return itemLabel === "GOOD" || itemLabel === "Anomaly"
-
-            var datasetIndex = item && item.datasetIndex !== undefined ? Number(item.datasetIndex) : -1
-            var datasets = data && data.datasets ? data.datasets : []
-            var dataset = datasetIndex >= 0 && datasetIndex < datasets.length ? datasets[datasetIndex] : null
-            var datasetLabel = dataset && dataset.label !== undefined ? String(dataset.label) : ""
-            return datasetLabel === "GOOD" || datasetLabel === "Anomaly"
-        }
-        legendCopy.labels = labelsCopy
-        filtered.legend = legendCopy
-
-        var scales = copyMap(filtered.scales)
-        var xAxes = scales.xAxes || []
-        var yAxes = scales.yAxes || []
-        var xAxesCopy = []
-        var yAxesCopy = []
-        for (var xIndex = 0; xIndex < xAxes.length; ++xIndex)
-            xAxesCopy.push(axisWithFontColor(xAxes[xIndex]))
-        for (var yIndex = 0; yIndex < yAxes.length; ++yIndex)
-            yAxesCopy.push(axisWithFontColor(yAxes[yIndex]))
-        scales.xAxes = xAxesCopy
-        scales.yAxes = yAxesCopy
-        filtered.scales = scales
-        return filtered
+        var options = ChartPresenter.prepareOptions(descriptor.options, control.chartFontColor)
+        if (descriptor.chart_id === "anomaly_score_distribution"
+                && options.legend && options.legend.labels)
+            options.legend.labels.filter = control.anomalyLegendFilter
+        return options
     }
 
     ColumnLayout {
@@ -196,7 +80,7 @@ Rectangle {
                 return charts && count > 0 ? charts.descriptor(index) : ({})
             }
             chartType: descriptor.kind || "line"
-            chartData: control.chartDataForDisplay(descriptor.data, descriptor.chart_id)
+            chartData: ChartPresenter.prepareData(descriptor.data)
             chartOptions: control.chartOptionsForDescriptor(descriptor)
         }
         Connections {

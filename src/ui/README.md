@@ -12,10 +12,12 @@ src/ui/
 ├── README.md                # 模块文档
 ├── UILogger.cpp             # 日志服务实现
 ├── ProgressManager.cpp      # 进度管理服务实现
+├── ChartPresenter.cpp       # 通用图表展示适配
 ├── Utils.cpp                # 工具函数实现
 └── include/ui/
     ├── UILogger.h           # 日志服务头文件
     ├── ProgressManager.h    # 进度管理服务头文件
+    ├── ChartPresenter.h     # 通用图表展示适配
     ├── Utils.h              # 工具函数头文件
     └── SignalHelper.h      # 信号辅助类头文件
 ```
@@ -52,6 +54,13 @@ src/ui/
   - 参数精度计算（`paramDecimals`，基于值类型和范围推导显示精度）
   - 值范围查找（`valueRangeAt`）
   - 整数类型判断（`isIntegerValueType`）
+
+### ChartPresenter - 通用图表展示适配
+- **角色**：将 C++ 模型提供的 QVariant 图表数据和静态配置转换为 Chart.js 可直接消费的展示数据
+- **特性**：
+  - 统一处理 QVariantMap/QVariantList 的深拷贝与边界转换
+  - 统一应用 UI 字体颜色到图例、标题、tooltip 和坐标轴
+  - 不包含具体业务图表逻辑；业务数据处理仍由对应 C++ 模型负责
 
 ### SignalHelper - 信号辅助类
 - **角色**：跨组件信号中枢

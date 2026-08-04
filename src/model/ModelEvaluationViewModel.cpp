@@ -366,8 +366,32 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
     if (has_anomaly)
         alignBoundaryPoint(histogram.anomaly_points, anomaly_min, false);
 
-    const auto distributionDataset = [](const QString &label, const QString &line_color,
-                                        const QString &fill_color, const QVariantList &points)
+    const auto isolatedPointRadii = [](const QVariantList &points)
+    {
+        const auto hasValue = [](const QVariant &value)
+        {
+            bool ok = false;
+            const double count = value.toDouble(&ok);
+            return ok && std::isfinite(count) && count > 0.0;
+        };
+
+        QVariantList radii;
+        radii.reserve(points.size());
+        for (int index = 0; index < points.size(); ++index)
+        {
+            const QVariantMap point = points.at(index).toMap();
+            const bool current = hasValue(point.value(QStringLiteral("y")));
+            const bool previous = index > 0
+                && hasValue(points.at(index - 1).toMap().value(QStringLiteral("y")));
+            const bool next = index + 1 < points.size()
+                && hasValue(points.at(index + 1).toMap().value(QStringLiteral("y")));
+            radii.push_back(current && !previous && !next ? 3 : 0);
+        }
+        return radii;
+    };
+
+    const auto distributionDataset = [&isolatedPointRadii](const QString &label, const QString &line_color,
+                                                           const QString &fill_color, const QVariantList &points)
     {
         return QVariantMap{{QStringLiteral("label"), label},
                            {QStringLiteral("data"), points},
@@ -375,7 +399,7 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
                            {QStringLiteral("borderColor"), line_color},
                            {QStringLiteral("pointBackgroundColor"), line_color},
                            {QStringLiteral("pointBorderColor"), line_color},
-                           {QStringLiteral("pointRadius"), 0},
+                           {QStringLiteral("pointRadius"), isolatedPointRadii(points)},
                            {QStringLiteral("pointHoverRadius"), 4},
                            {QStringLiteral("borderWidth"), 2},
                            {QStringLiteral("lineTension"), 0},
