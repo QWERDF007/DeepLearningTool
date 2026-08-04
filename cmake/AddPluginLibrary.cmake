@@ -23,13 +23,22 @@ function(add_plugin_library PLUGIN_NAME)
     set(_OUTPUT_DIR "${CMAKE_BINARY_DIR}/${PROJECT_NAME}/${PLUGIN_NAME}")
 
     # 获取所有源文件的相对路径
-    file(GLOB_RECURSE SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp *.cu)
+    file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
+        RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+        *.cpp *.cu
+    )
 
     # 获取所有头文件的相对路径
-    file(GLOB_RECURSE HEADERS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.h *.hpp *.cuh)
+    file(GLOB_RECURSE HEADERS CONFIGURE_DEPENDS
+        RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+        *.h *.hpp *.cuh
+    )
 
     # 获取所有QML文件的相对路径
-    file(GLOB_RECURSE QML_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.qml)
+    file(GLOB_RECURSE QML_SOURCES CONFIGURE_DEPENDS
+        RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+        *.qml
+    )
     if(QML_SOURCES)
         source_group("QML Files" FILES ${QML_SOURCES})
     endif()
