@@ -309,8 +309,15 @@ ScoreHistogramData scoreHistogram(const QVariantList &good_scores, const QVarian
         QVariantList points;
         points.reserve(static_cast<int>(counts.size()));
         for (std::size_t index = 0; index < counts.size(); ++index)
+        {
+            // A zero-count bin is a gap, not a point on the x axis.  Using an
+            // invalid QVariant becomes null at the QML/JSON boundary, which
+            // makes Chart.js break the line instead of drawing a zero baseline
+            // through empty ranges.
+            const QVariant y = counts.at(index) > 0 ? QVariant(counts.at(index)) : QVariant();
             points.push_back(QVariantMap{{QStringLiteral("x"), histogram.centers.at(index)},
-                                         {QStringLiteral("y"), counts.at(index)}});
+                                         {QStringLiteral("y"), y}});
+        }
         return points;
     };
     histogram.good_points = makePoints(good_counts);
@@ -328,7 +335,37 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
     constexpr const char *good_fill = "rgba(67, 160, 71, 0.24)";
     constexpr const char *anomaly_color = "#E53935";
     constexpr const char *anomaly_fill = "rgba(229, 57, 53, 0.24)";
-    const ScoreHistogramData histogram = scoreHistogram(good_scores, anomaly_scores);
+    ScoreHistogramData histogram = scoreHistogram(good_scores, anomaly_scores);
+    const auto alignBoundaryPoint = [](QVariantList &points, const double score, const bool last)
+    {
+        if (!std::isfinite(score))
+            return;
+
+        const int start = last ? points.size() - 1 : 0;
+        const int end = last ? -1 : points.size();
+        const int step = last ? -1 : 1;
+        for (int index = start; index != end; index += step)
+        {
+            QVariantMap point = points.at(index).toMap();
+            bool valid_count = false;
+            const double count = point.value(QStringLiteral("y")).toDouble(&valid_count);
+            if (!valid_count || count <= 0.0)
+                continue;
+
+            // Histogram points normally use bin centers.  The boundary point
+            // associated with a reference marker is moved to the original
+            // sample extremum so the curve and its marker share the same
+            // visible x coordinate.
+            point.insert(QStringLiteral("x"), score);
+            points[index] = point;
+            return;
+        }
+    };
+    if (has_good)
+        alignBoundaryPoint(histogram.good_points, good_max, true);
+    if (has_anomaly)
+        alignBoundaryPoint(histogram.anomaly_points, anomaly_min, false);
+
     const auto distributionDataset = [](const QString &label, const QString &line_color,
                                         const QString &fill_color, const QVariantList &points)
     {
@@ -342,6 +379,9 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
                            {QStringLiteral("pointHoverRadius"), 4},
                            {QStringLiteral("borderWidth"), 2},
                            {QStringLiteral("lineTension"), 0},
+                           {QStringLiteral("spanGaps"), false},
+                           {QStringLiteral("xAxisID"), QStringLiteral("score-axis")},
+                           {QStringLiteral("yAxisID"), QStringLiteral("count-axis")},
                            {QStringLiteral("showLine"), true},
                            {QStringLiteral("fill"), true}};
     };
@@ -359,6 +399,9 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
                            {QStringLiteral("pointRadius"), 0},
                            {QStringLiteral("pointHoverRadius"), 0},
                            {QStringLiteral("lineTension"), 0},
+                           {QStringLiteral("spanGaps"), false},
+                           {QStringLiteral("xAxisID"), QStringLiteral("score-axis")},
+                           {QStringLiteral("yAxisID"), QStringLiteral("count-axis")},
                            {QStringLiteral("showLine"), true},
                            {QStringLiteral("fill"), false}};
     };
@@ -389,6 +432,7 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
                                                   {QStringLiteral("intersect"), false}}},
         {QStringLiteral("scales"), QVariantMap{
             {QStringLiteral("xAxes"), QVariantList{QVariantMap{
+                {QStringLiteral("id"), QStringLiteral("score-axis")},
                 {QStringLiteral("type"), QStringLiteral("linear")},
                 {QStringLiteral("display"), true},
                 {QStringLiteral("ticks"), QVariantMap{{QStringLiteral("min"), histogram.min_score},
@@ -399,6 +443,7 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
                 {QStringLiteral("scaleLabel"), QVariantMap{{QStringLiteral("display"), true},
                                                              {QStringLiteral("labelString"), QStringLiteral("分数")}}}}}},
             {QStringLiteral("yAxes"), QVariantList{QVariantMap{
+                {QStringLiteral("id"), QStringLiteral("count-axis")},
                 {QStringLiteral("type"), QStringLiteral("linear")},
                 {QStringLiteral("display"), true},
                 {QStringLiteral("ticks"), QVariantMap{{QStringLiteral("beginAtZero"), true},
@@ -414,7 +459,7 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
                        {evaluation::fieldName(evaluation::Field::Data),
                         QVariantMap{{evaluation::fieldName(evaluation::Field::Labels), histogram.labels},
                                     {evaluation::fieldName(evaluation::Field::Datasets), datasets}}},
-                        {evaluation::fieldName(evaluation::Field::Options), options}};
+                       {evaluation::fieldName(evaluation::Field::Options), options}};
 }
 
 QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageRecord> &images)

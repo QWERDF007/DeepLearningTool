@@ -21,12 +21,49 @@ Rectangle {
     // Evaluation descriptors expose nested QVariantMap/QVariantList values.
     // Clone the data at the QML boundary so Chart.js receives native
     // JavaScript objects, arrays, and strings (including dataset colors).
-    function chartDataForDisplay(chartData) {
+    function chartDataForDisplay(chartData, chartId) {
         if (!chartData || typeof chartData !== "object")
             return ({labels: [], datasets: []})
 
         try {
-            return JSON.parse(JSON.stringify(chartData))
+            var displayData = JSON.parse(JSON.stringify(chartData))
+            if (chartId === "anomaly_score_distribution" && displayData.datasets) {
+                // An empty histogram bin is a gap, not a zero-height sample.
+                // Normalize both invalid QVariant values (which may arrive as
+                // an omitted/undefined y) and numeric zero to explicit null
+                // after crossing the QVariant -> JavaScript boundary.
+                for (var datasetIndex = 0; datasetIndex < displayData.datasets.length; ++datasetIndex) {
+                    var dataset = displayData.datasets[datasetIndex]
+                    if (!dataset)
+                        continue
+                    if (dataset.label !== "GOOD" && dataset.label !== "Anomaly")
+                        continue
+                    var points = dataset && dataset.data ? dataset.data : []
+                    var pointRadii = []
+                    for (var pointIndex = 0; pointIndex < points.length; ++pointIndex) {
+                        var point = points[pointIndex]
+                        if (point && typeof point === "object"
+                                && (point.y === undefined || point.y === null || Number(point.y) === 0))
+                            point.y = null
+
+                        var hasValue = point && point.y !== null && point.y !== undefined
+                                       && isFinite(Number(point.y)) && Number(point.y) > 0
+                        var previous = pointIndex > 0 ? points[pointIndex - 1] : null
+                        var next = pointIndex + 1 < points.length ? points[pointIndex + 1] : null
+                        var hasPreviousValue = previous && previous.y !== null && previous.y !== undefined
+                                               && isFinite(Number(previous.y)) && Number(previous.y) > 0
+                        var hasNextValue = next && next.y !== null && next.y !== undefined
+                                           && isFinite(Number(next.y)) && Number(next.y) > 0
+                        // A single valid point has no segment for Chart.js to
+                        // stroke.  Keep ordinary curves marker-free, but make
+                        // an isolated bin visible instead of leaving only a
+                        // hoverable, invisible point.
+                        pointRadii.push(hasValue && !hasPreviousValue && !hasNextValue ? 3 : 0)
+                    }
+                    dataset.pointRadius = pointRadii
+                }
+            }
+            return displayData
         } catch (error) {
             // Keep the chart usable if a future descriptor adds a value that
             // cannot be serialized.
@@ -88,10 +125,9 @@ Rectangle {
             labelsCopy[labelKey] = labels[labelKey]
         labelsCopy.fontColor = control.chartFontColor
         labelsCopy.filter = function(item, data) {
-            // Threshold markers remain line datasets so they can render as
-            // vertical dashed lines, but only the two distributions belong
-            // in the legend.  Chart.js normally provides item.text; the
-            // dataset fallback also covers updates from QVariant-backed data.
+            // Keep the legend limited to the two distribution datasets.  The
+            // Reference markers are line datasets too, but only the two
+            // distribution datasets belong in the legend.
             var itemLabel = item && item.text !== undefined ? String(item.text) : ""
             if (itemLabel.length > 0)
                 return itemLabel === "GOOD" || itemLabel === "Anomaly"
@@ -160,7 +196,7 @@ Rectangle {
                 return charts && count > 0 ? charts.descriptor(index) : ({})
             }
             chartType: descriptor.kind || "line"
-            chartData: control.chartDataForDisplay(descriptor.data)
+            chartData: control.chartDataForDisplay(descriptor.data, descriptor.chart_id)
             chartOptions: control.chartOptionsForDescriptor(descriptor)
         }
         Connections {
