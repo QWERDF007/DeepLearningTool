@@ -16,6 +16,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QStringList>
+#include <set>
 
 using dltool::common::cleanPath;
 
@@ -24,6 +25,38 @@ using common::ensureDirectory;
 using common::setError;
 
 namespace {
+
+QList<qint64> allLabelClassIdsForDataset(const dltool::data::DatasetExportSource &source, qint64 dataset_id)
+{
+    std::set<qint64> class_ids;
+    for (const int64_t image_id : source.allImageIds())
+    {
+        if (source.imageDatasetId(image_id) != dataset_id)
+            continue;
+
+        const QVariantMap image_level = source.imageLevelLabelData(image_id);
+        const qint64 image_class_id
+            = image_level.value(QStringLiteral("label_class_id"), -1).toLongLong();
+        if (image_class_id >= 0)
+            class_ids.insert(image_class_id);
+
+        for (const int64_t label_id : source.imageLabelIds(image_id))
+        {
+            const qint64 class_id = source.labelClassId(label_id);
+            if (class_id >= 0)
+                class_ids.insert(class_id);
+        }
+    }
+    return {class_ids.begin(), class_ids.end()};
+}
+
+std::function<QList<qint64>(qint64)> datasetClassIdsResolver(const dltool::data::DatasetExportSource *source)
+{
+    return [source](const qint64 dataset_id) -> QList<qint64>
+    {
+        return source != nullptr ? allLabelClassIdsForDataset(*source, dataset_id) : QList<qint64>{};
+    };
+}
 
 bool clearTensorBoardEventFiles(const QString &log_dir, QString *err_msg)
 {
@@ -59,18 +92,21 @@ bool clearTensorBoardEventFiles(const QString &log_dir, QString *err_msg)
 }
 
 bool persistModelDatabase(const ModelStorageService &storage, const QString &model_name,
-                          const ModelTaskRequest &request, const QVariantMap &train_params, QString *err_msg)
+                          const ModelTaskRequest &request, const QVariantMap &train_params,
+                          const dltool::data::DatasetExportSource *dataset_source, QString *err_msg)
 {
     database::ModelDataBase database(storage.modelDatabasePath(model_name));
     QString database_error;
     if (!database.replaceTrainParams(train_params, &database_error)
-        || !database.replaceDatasets(databaseDatasetSelections(request.selections), &database_error))
+        || !database.replaceDatasets(databaseDatasetSelections(request.selections, datasetClassIdsResolver(dataset_source)),
+                                     &database_error))
         return setError(err_msg, QString("写入模型数据库失败: %1").arg(database_error));
     return true;
 }
 
 bool persistTaskDatabase(const ModelStorageService &storage, const QString &model_name,
-                         const ModelTaskRequest &request, QString *err_msg)
+                         const ModelTaskRequest &request, const dltool::data::DatasetExportSource *dataset_source,
+                         QString *err_msg)
 {
     const QString task_id = request.scope_uuid.trimmed();
     const QString task_directory = request.model_config.task_directory.trimmed();
@@ -88,7 +124,8 @@ bool persistTaskDatabase(const ModelStorageService &storage, const QString &mode
     QString database_error;
     if (!database.upsertTaskInfo({task_id, ctime, mtime}, &database_error)
         || !database.replaceTestParams(request.model_config.test_params, &database_error)
-        || !database.replaceDatasets(databaseDatasetSelections(request.selections), &database_error))
+        || !database.replaceDatasets(databaseDatasetSelections(request.selections, datasetClassIdsResolver(dataset_source)),
+                                     &database_error))
         return setError(err_msg, QString("写入测试任务数据库失败: %1").arg(database_error));
     return true;
 }
@@ -125,7 +162,7 @@ bool prepareFsSam2Task(int method, const QString &project_dir, const ModelTaskRe
     const QVariantMap inference = request.model_config.test_params.value(QStringLiteral("inference")).toMap();
     if (!inference.isEmpty())
         train_params.insert(QStringLiteral("inference"), inference);
-    if (!persistModelDatabase(storage, model_name, request, train_params, err_msg))
+    if (!persistModelDatabase(storage, model_name, request, train_params, dataset_source, err_msg))
         return false;
 
     const QString task_directory = request.model_config.task_directory.trimmed().isEmpty()
@@ -146,7 +183,7 @@ bool prepareFsSam2Task(int method, const QString &project_dir, const ModelTaskRe
         task_request.scope_uuid = request.scope_uuid.trimmed().isEmpty() ? task_directory : request.scope_uuid;
         task_request.model_config.scope_uuid = task_request.scope_uuid;
         task_request.model_config.task_directory = task_directory;
-        if (!persistTaskDatabase(storage, model_name, task_request, err_msg))
+        if (!persistTaskDatabase(storage, model_name, task_request, dataset_source, err_msg))
             return false;
 
         prediction_dir = fsSam2PredictionDirectory(storage, model_name, request.model_config.test_params);
@@ -177,6 +214,7 @@ bool prepareFsSam2Task(int method, const QString &project_dir, const ModelTaskRe
         export_request.model_uuid         = request.model_config.model_uuid;
         export_request.task_type          = request.task_type;
         export_request.dataset_dir        = dataset_dir;
+        export_request.train_dir          = storage.trainRoot(model_name);
         if (request.task_type == ModelTaskType::Test)
         {
             export_request.test_file_list_path = storage.testTaskFileListPath(model_name, task_directory);
@@ -275,10 +313,11 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
 
     if (is_train)
     {
-        if (!persistModelDatabase(storage, model_name, request, request.model_config.train_params, err_msg))
+        if (!persistModelDatabase(storage, model_name, request, request.model_config.train_params, dataset_source,
+                                  err_msg))
             return false;
     }
-    else if (!persistTaskDatabase(storage, model_name, request, err_msg))
+    else if (!persistTaskDatabase(storage, model_name, request, dataset_source, err_msg))
     {
         return false;
     }
@@ -318,6 +357,7 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
     export_request.model_uuid         = request.model_config.model_uuid;
     export_request.task_type          = request.task_type;
     export_request.dataset_dir        = dataset_dir;
+    export_request.train_dir          = storage.trainRoot(model_name);
     if (!is_train)
         export_request.test_file_list_path = storage.testTaskFileListPath(model_name, task_directory);
     export_request.selections         = request.selections;
@@ -358,6 +398,8 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
         QStringLiteral("--project_db"), request.project_database_path,
         QStringLiteral("--model_root"), storage.path(model_name, ModelStorageLocation::ModelRoot),
         QStringLiteral("--dataset_dir"), dataset_dir,
+        QStringLiteral("--train_dir"), storage.trainRoot(model_name),
+        QStringLiteral("--masks_dir"), QDir(dataset_dir).filePath(QStringLiteral("masks")),
         QStringLiteral("--weight_dir"), storage.trainWeightsPath(model_name),
         QStringLiteral("--log_dir"), log_dir,
         QStringLiteral("--model_uuid"), request.model_config.model_uuid,

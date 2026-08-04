@@ -328,13 +328,22 @@ void applyModelDatasetSelections(IModel *model, const QVariantMap &dataset_selec
 }
 
 QList<dltool::database::DatasetSelectionRecord>
-databaseDatasetSelections(const ModelDatasetSelections &selections)
+databaseDatasetSelections(
+    const ModelDatasetSelections &selections,
+    const std::function<QList<qint64>(qint64 dataset_id)> &dataset_class_ids_resolver)
 {
     QList<dltool::database::DatasetSelectionRecord> result;
-    const auto append = [&result](const QString &type, const ModelDatasetSelection &selection)
+    const auto append = [&result, &dataset_class_ids_resolver](const QString &type,
+                                                               const ModelDatasetSelection &selection)
     {
         for (const qint64 dataset_id : selection.dataset_ids)
-            result.push_back({type, dataset_id, {}});
+        {
+            QList<qint64> class_ids = dataset_class_ids_resolver ? dataset_class_ids_resolver(dataset_id)
+                                                                 : QList<qint64>{};
+            std::sort(class_ids.begin(), class_ids.end());
+            class_ids.erase(std::unique(class_ids.begin(), class_ids.end()), class_ids.end());
+            result.push_back({type, dataset_id, class_ids});
+        }
 
         std::map<qint64, QList<qint64>> class_ids_by_dataset;
         for (const auto &[dataset_id, class_id] : selection.label_classes)
@@ -368,11 +377,6 @@ ModelDatasetSelections modelDatasetSelectionsFromDatabase(
             selection = &result.test;
         if (selection == nullptr || record.dataset_id < 0)
             continue;
-        if (record.class_ids.isEmpty())
-        {
-            selection->dataset_ids.insert(record.dataset_id);
-            continue;
-        }
         for (const qint64 class_id : record.class_ids)
         {
             if (class_id >= 0)

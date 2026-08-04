@@ -11,8 +11,9 @@ namespace dltool::database {
 /**
  * @brief A dataset selection persisted by a model/task database.
  *
- * An empty class_ids list means that the complete dataset is selected.  A
- * non-empty list contains the selected label-class IDs for that dataset.
+ * Whole-dataset selections are stored as the explicit label-class IDs at save
+ * time.  An empty list means no label classes are selected; it is never
+ * interpreted as a whole-dataset selection when loading.
  */
 struct DATABASE_API DatasetSelectionRecord
 {

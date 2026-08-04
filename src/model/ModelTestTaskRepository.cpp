@@ -1,6 +1,7 @@
 #include "model/ModelTestTaskRepository.h"
 
 #include "common/Utils.h"
+#include "database/DataBase.h"
 #include "database/ModelDataBase.h"
 #include "database/ModelTaskDataBase.h"
 #include "model/ModelStorageService.h"
@@ -25,11 +26,27 @@ bool setError(QString *err_msg, const QString &message)
     return false;
 }
 
-QList<dltool::database::DatasetSelectionRecord> testDatasetRecords(const ModelDatasetSelection &selection)
+QList<dltool::database::DatasetSelectionRecord> testDatasetRecords(const ModelDatasetSelection &selection,
+                                                                   const QString &project_database_path)
 {
     ModelDatasetSelections selections;
     selections.test = selection;
-    const QList<dltool::database::DatasetSelectionRecord> all = databaseDatasetSelections(selections);
+    const auto class_resolver = [&project_database_path](const qint64 dataset_id) -> QList<qint64>
+    {
+        if (project_database_path.trimmed().isEmpty())
+            return {};
+        dltool::database::ProjectDataBase database(project_database_path);
+        std::vector<int64_t> class_ids;
+        QString              error;
+        if (!database.labelClassIdsForDataset(dataset_id, class_ids, error))
+            return {};
+        QList<qint64> result;
+        for (const int64_t class_id : class_ids)
+            result.push_back(class_id);
+        return result;
+    };
+    const QList<dltool::database::DatasetSelectionRecord> all
+        = databaseDatasetSelections(selections, class_resolver);
     QList<dltool::database::DatasetSelectionRecord> result;
     for (const auto &record : all)
     {
@@ -54,6 +71,11 @@ ModelTestTaskRepository::ModelTestTaskRepository(QString project_dir)
 void ModelTestTaskRepository::setProjectDirectory(const QString &project_dir)
 {
     project_dir_ = common::cleanPath(project_dir);
+}
+
+void ModelTestTaskRepository::setProjectDatabasePath(const QString &project_database_path)
+{
+    project_database_path_ = common::cleanPath(project_database_path);
 }
 
 QString ModelTestTaskRepository::projectDirectory() const
@@ -192,7 +214,7 @@ bool ModelTestTaskRepository::saveTask(const QString &model_name, const ModelTes
     const dltool::database::TaskInfoRecord info{value.uuid, value.created_at, value.modified_at};
     if (!task_database.upsertTaskInfo(info, err_msg)
         || !task_database.replaceTestParams(value.test_params, err_msg)
-        || !task_database.replaceDatasets(testDatasetRecords(value.dataset_selection), err_msg))
+        || !task_database.replaceDatasets(testDatasetRecords(value.dataset_selection, project_database_path_), err_msg))
         return false;
 
     dltool::database::ModelDataBase model_database(modelDatabasePath(model_name));

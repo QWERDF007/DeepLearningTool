@@ -23,6 +23,8 @@ public:
     void setProjectDirectory(const QString &project_dir);
     QString projectDirectory() const;
 
+    void setProjectDatabasePath(const QString &project_database_path);
+
     QList<ModelTestTaskDefinition> listTasks(const QString &model_name, QString *err_msg = nullptr) const;
     bool loadTask(const QString &model_name, const QString &uuid, ModelTestTaskDefinition &task,
                   QString *err_msg = nullptr) const;
@@ -44,6 +46,7 @@ private:
                         QString *err_msg = nullptr) const;
 
     QString project_dir_;
+    QString project_database_path_;
 };
 
 } // namespace dltool::model

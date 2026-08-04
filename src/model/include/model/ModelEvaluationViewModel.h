@@ -95,6 +95,7 @@ public:
 
     void setEvaluationOptions(const ModelEvaluationOptions &options);
     Q_INVOKABLE void evaluate(bool notify = false);
+    Q_INVOKABLE void refreshEvaluation();
     void invalidate(const QString &state = {});
     void setRuntimeState(const QString &state);
     Q_INVOKABLE void selectInstance(int proxyRow);

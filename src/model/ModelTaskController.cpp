@@ -77,6 +77,8 @@ ModelTaskController::ModelTaskController(const int method, QString project_dir, 
     , external_task_runner_(std::make_unique<ExternalModelTaskRunner>(this))
     , test_task_repository_(project_dir_)
 {
+    test_task_repository_.setProjectDatabasePath(
+        model_manager_ != nullptr ? model_manager_->projectDatabasePath() : QString());
     connect(external_task_runner_.get(), &ExternalModelTaskRunner::taskStarted, this,
             &ModelTaskController::handleExternalTaskStarted);
     connect(external_task_runner_.get(), &ExternalModelTaskRunner::taskFinished, this,

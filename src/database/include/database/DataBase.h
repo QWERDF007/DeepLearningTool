@@ -175,6 +175,9 @@ public:
                             std::vector<int64_t> &ordinal_indices,
                             std::vector<std::vector<uint8_t>> &extra_data, QString &err_msg) const;
 
+    bool labelClassIdsForDataset(const int64_t dataset_id, std::vector<int64_t> &label_class_ids,
+                                 QString &err_msg) const;
+
     bool addLabelClass(const QString &name, const QString &color, const QString &shortcut, const int64_t ordinal_index,
                        const std::vector<uint8_t> &extra_data, int64_t &label_class_id, QString &err_msg) const;
     bool updateLabelClass(const int64_t label_class_id, const QString &name, const QString &color,

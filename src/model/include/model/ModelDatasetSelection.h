@@ -6,6 +6,7 @@
 
 #include <QList>
 #include <QVariantMap>
+#include <functional>
 #include <set>
 #include <utility>
 #include <vector>
@@ -91,9 +92,14 @@ MODEL_API void applyModelDatasetSelections(IModel *model, const QVariantMap &dat
 
 /**
  * @brief Convert the UI selection model to the model/task database rows.
+ *
+ * Whole-dataset selections are expanded to the explicit label-class IDs of the
+ * dataset via the optional resolver; without a resolver the dataset-level
+ * selections are stored with an empty class_ids list.
  */
 MODEL_API QList<dltool::database::DatasetSelectionRecord>
-databaseDatasetSelections(const ModelDatasetSelections &selections);
+databaseDatasetSelections(const ModelDatasetSelections &selections,
+                          const std::function<QList<qint64>(qint64 dataset_id)> &dataset_class_ids_resolver = {});
 
 /**
  * @brief Restore the UI selection model from model/task database rows.

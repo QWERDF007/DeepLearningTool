@@ -12,6 +12,8 @@
 #include <yaml-cpp/yaml.h>
 
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QImage>
 #include <QJsonDocument>
 #include <QList>
@@ -19,6 +21,7 @@
 #include <QPair>
 #include <QSaveFile>
 #include <QStringConverter>
+#include <QStringList>
 #include <QTextStream>
 #include <map>
 #include <memory>
@@ -118,21 +121,6 @@ enum class YoloLabelField
 enum class FsSam2LabelField
 {
     MaskPath,
-};
-
-enum class AnomalibFileListField
-{
-    MasksDir,
-    Samples,
-};
-
-enum class AnomalibSampleField
-{
-    Id,
-    Path,
-    DatasetId,
-    LabelIndex,
-    Mask,
 };
 
 enum class ImageLevelLabelField
@@ -259,27 +247,6 @@ const std::map<FsSam2LabelField, QString> &fsSam2LabelFieldNames()
 {
     static const std::map<FsSam2LabelField, QString> names = {
         {FsSam2LabelField::MaskPath, QStringLiteral("mask_path")},
-    };
-    return names;
-}
-
-const std::map<AnomalibFileListField, QString> &anomalibFileListFieldNames()
-{
-    static const std::map<AnomalibFileListField, QString> names = {
-        {AnomalibFileListField::MasksDir, QStringLiteral("masks_dir")},
-        { AnomalibFileListField::Samples,   QStringLiteral("samples")},
-    };
-    return names;
-}
-
-const std::map<AnomalibSampleField, QString> &anomalibSampleFieldNames()
-{
-    static const std::map<AnomalibSampleField, QString> names = {
-        {        AnomalibSampleField::Id,          QStringLiteral("id")},
-        {      AnomalibSampleField::Path,        QStringLiteral("path")},
-        { AnomalibSampleField::DatasetId, QStringLiteral("dataset_id")},
-        {AnomalibSampleField::LabelIndex, QStringLiteral("label_index")},
-        {      AnomalibSampleField::Mask,        QStringLiteral("mask")},
     };
     return names;
 }
@@ -437,6 +404,27 @@ bool writeImageFileList(const QString &path, const QList<QPair<qint64, QString>>
     return true;
 }
 
+void removeLegacyAnomalibSplitFiles(const QString &dataset_dir, const QString &train_dir)
+{
+    const auto remove_if_inside = [](const QString &root, const QString &name) {
+        const QString clean_root = cleanPath(QFileInfo(root).absoluteFilePath());
+        if (clean_root.isEmpty())
+            return;
+        const QString path = cleanPath(QFileInfo(QDir(clean_root).filePath(name)).absoluteFilePath());
+        if (path.startsWith(clean_root + QStringLiteral("/"), Qt::CaseInsensitive) && QFileInfo::exists(path))
+            QFile::remove(path);
+    };
+
+    const QStringList dataset_names = {QStringLiteral("train.txt"), QStringLiteral("validation.txt"),
+                                       QStringLiteral("train_labels.json"), QStringLiteral("validation_labels.json"),
+                                       QStringLiteral("train.yaml"), QStringLiteral("validation.yaml")};
+    const QStringList train_names  = {QStringLiteral("train.yaml"), QStringLiteral("validation.yaml")};
+    for (const QString &name : dataset_names)
+        remove_if_inside(dataset_dir, name);
+    for (const QString &name : train_names)
+        remove_if_inside(train_dir, name);
+}
+
 bool writeJsonFile(const QString &path, const QVariant &value, QString *err_msg, const QString &message)
 {
     const QByteArray encoded = QJsonDocument::fromVariant(value).toJson(QJsonDocument::Compact);
@@ -532,7 +520,6 @@ struct SplitExportContext
     QString                          split_dir;
     QString                          masks_dir;
     YAML::Node                       images{YAML::NodeType::Sequence};
-    YAML::Node                       samples{YAML::NodeType::Sequence};
     std::map<qint64, int>            class_indices;
     QList<QPair<qint64, QString>>    image_files;
     int                              image_count{0};
@@ -984,53 +971,46 @@ protected:
     {
         Q_UNUSED(labels)
 
-        YAML::Node sample(YAML::NodeType::Map);
-        setMapValue(sample, mappedValue(anomalibSampleFieldNames(), AnomalibSampleField::Id), image.image_id);
-        setMapValue(sample, mappedValue(anomalibSampleFieldNames(), AnomalibSampleField::Path),
-                    cleanPath(image.image_path));
-        setMapValue(sample, mappedValue(anomalibSampleFieldNames(), AnomalibSampleField::DatasetId), image.dataset_id);
-        setMapValue(sample, mappedValue(anomalibSampleFieldNames(), AnomalibSampleField::LabelIndex),
-                    image.has_anomaly_label ? 1 : 0);
+        // 掩膜按 image_id 写入共享 datasets/masks；Python 端以同名 mask 是否存在判断是否异常。
         if (image.has_anomaly_label && ctx.split != DatasetSplit::Test)
         {
-            QString       mask_err;
-            const QString mask_file = writeAnomalibImageMask(image.anomaly_polygons, image.width, image.height,
-                                                             ctx.masks_dir, image.image_id, &mask_err);
+            QString mask_err;
+            writeAnomalibImageMask(image.anomaly_polygons, image.width, image.height, ctx.masks_dir,
+                                   image.image_id, &mask_err);
             if (!mask_err.isEmpty())
             {
                 if (err_msg != nullptr)
                     *err_msg = mask_err;
                 return false;
             }
-            setMapValue(sample, mappedValue(anomalibSampleFieldNames(), AnomalibSampleField::Mask), mask_file);
         }
-        else
-        {
-            setMapValue(sample, mappedValue(anomalibSampleFieldNames(), AnomalibSampleField::Mask), QString());
-        }
-        ctx.samples.push_back(sample);
         return true;
     }
 
     QVariantMap finishSplit(SplitExportContext &ctx, QString *err_msg) const override
     {
-        const QString file_list_path = splitFileListPath(ctx, err_msg);
-        if (file_list_path.isEmpty())
-            return {};
-        if (!writeImageFileList(file_list_path, ctx.image_files, err_msg))
-            return {};
-
-        if (ctx.split != DatasetSplit::Test)
+        QString file_list_path;
+        if (ctx.split == DatasetSplit::Test)
         {
-            const QVariantMap labels = {
-                {mappedValue(anomalibFileListFieldNames(), AnomalibFileListField::MasksDir), cleanPath(ctx.masks_dir)},
-                {mappedValue(anomalibFileListFieldNames(), AnomalibFileListField::Samples),
-                 common::yaml::nodeVariant(ctx.samples)},
-            };
-            if (!writeJsonFile(splitLabelsPath(ctx.request->dataset_dir, ctx.split_name), labels, err_msg,
-                               QString("写入 anomalib 标注文件失败")))
+            file_list_path = splitFileListPath(ctx, err_msg);
+            if (file_list_path.isEmpty())
                 return {};
         }
+        else
+        {
+            const QString train_dir = cleanPath(ctx.request->train_dir);
+            if (train_dir.isEmpty())
+            {
+                if (err_msg != nullptr)
+                    *err_msg = QString("训练目录为空");
+                return {};
+            }
+            if (!ensureDirectory(train_dir, err_msg, QString("训练目录为空"), QString("创建训练目录失败: %1")))
+                return {};
+            file_list_path = anomalibFileListPath(train_dir, ctx.split_name);
+        }
+        if (!writeImageFileList(file_list_path, ctx.image_files, err_msg))
+            return {};
 
         return {
             {mappedValue(datasetConfigFieldNames(),   DatasetConfigField::FileList),           file_list_path},
@@ -1073,6 +1053,7 @@ QVariantMap ModelDatasetOrganizer::organize(const ModelDatasetExportRequest &req
         return {};
 
     const bool fs_sam2_layout = datasetLayout(request.framework_name) == FrameworkDatasetLayout::FsSam2;
+    const bool anomalib_layout = datasetLayout(request.framework_name) == FrameworkDatasetLayout::Anomalib;
     const std::unique_ptr<DatasetOrganizerBase> organizer = createDatasetOrganizer(request.framework_name);
     if (isTrainModelTask(request.task_type) || request.task_type == ModelTaskType::BoxToMask)
     {
@@ -1102,6 +1083,23 @@ QVariantMap ModelDatasetOrganizer::organize(const ModelDatasetExportRequest &req
         if (test.isEmpty())
             return {};
         datasets.insert(mappedValue(datasetConfigFieldNames(), DatasetConfigField::Test), test);
+    }
+
+    if (anomalib_layout)
+    {
+        removeLegacyAnomalibSplitFiles(request.dataset_dir, request.train_dir);
+        if (isTrainModelTask(request.task_type) && !request.train_dir.trimmed().isEmpty()
+            && !datasets.contains(mappedValue(datasetConfigFieldNames(), DatasetConfigField::Validation)))
+        {
+            const QString train_root = cleanPath(QFileInfo(request.train_dir).absoluteFilePath());
+            const QString stale_path
+                = cleanPath(anomalibFileListPath(request.train_dir, QStringLiteral("validation")));
+            if (!train_root.isEmpty() && stale_path.startsWith(train_root + QStringLiteral("/"), Qt::CaseInsensitive)
+                && QFileInfo::exists(stale_path))
+            {
+                QFile::remove(stale_path);
+            }
+        }
     }
 
     return datasets;

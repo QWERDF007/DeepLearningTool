@@ -97,6 +97,7 @@ ModelTestTaskManager::ModelTestTaskManager(QString project_dir, ModelManager *mo
     , task_manager_(task_manager)
     , repository_(project_dir_)
 {
+    repository_.setProjectDatabasePath(model_manager_ != nullptr ? model_manager_->projectDatabasePath() : QString());
     save_timer_.setSingleShot(true);
     save_timer_.setInterval(350);
     connect(&save_timer_, &QTimer::timeout, this, [this]() { saveCurrentTask(); });
@@ -711,11 +712,19 @@ void ModelTestTaskManager::bindCurrentObjects()
                 current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::Failed));
             else if (task != nullptr && task->status == TaskManager::Stopped)
                 current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::NotRun));
-            else
+
+            // Evaluation is lazy: reopening the project or switching tasks
+            // only binds the inputs.  The evaluation panel requests the first
+            // evaluation when it becomes visible, parameter changes re-evaluate
+            // in handleParameterChanged(), and a finished test run re-evaluates
+            // in handleTaskRevisionChanged().  A pending notification means the
+            // user explicitly started this task and it has since finished, so
+            // evaluate with notification even if the panel is not visible yet.
+            const bool notify = pending_evaluation_notifications_.contains(cache_key);
+            if (notify)
             {
-                const bool notify = pending_evaluation_notifications_.contains(cache_key);
-                current_evaluation_->evaluate(notify);
                 pending_evaluation_notifications_.remove(cache_key);
+                current_evaluation_->evaluate(true);
             }
         }
         else

@@ -14,6 +14,22 @@ Item {
     property DataSelectionTreeModel selectionModel: null
     property string roleTitle: qsTr("数据集")
 
+    // The statistics model exposes nested QVariantMap/QVariantList values.
+    // Clone the data at the QML boundary so Chart.js receives native
+    // JavaScript objects, arrays, and strings (including dataset colors).
+    function chartDataForDisplay(chartData) {
+        if (!chartData || typeof chartData !== "object")
+            return ({labels: [], datasets: []})
+
+        try {
+            return JSON.parse(JSON.stringify(chartData))
+        } catch (error) {
+            // Keep the chart usable if a future data provider adds a value
+            // that cannot be serialized.
+            return ({labels: [], datasets: []})
+        }
+    }
+
     // Chart.js invokes tooltip callbacks with the active item and the complete
     // chart data object.  Keeping this presentation rule here lets QuiChart
     // remain independent from dataset-specific terminology while preserving
@@ -71,7 +87,7 @@ Item {
                 Layout.fillHeight: true
                 animationDuration: 0
                 chartType: "pie"
-                chartData: ChartPresenter.prepareData(statisticsModel.imageChartData)
+                chartData: control.chartDataForDisplay(statisticsModel.imageChartData)
                 chartOptions: ({
                     maintainAspectRatio: false,
                     legend: {
@@ -106,7 +122,7 @@ Item {
                 Layout.fillHeight: true
                 animationDuration: 0
                 chartType: "pie"
-                chartData: ChartPresenter.prepareData(statisticsModel.instanceChartData)
+                chartData: control.chartDataForDisplay(statisticsModel.instanceChartData)
                 chartOptions: ({
                     maintainAspectRatio: false,
                     legend: {

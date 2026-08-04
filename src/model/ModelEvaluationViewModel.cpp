@@ -1381,6 +1381,14 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
     if (evaluation_attempted_)
         return;
 
+    // 尚未开始测试或文件列表被清理时没有可评估的输入，显示“还没有可评估的预测结果”，
+    // 而不是当作后台评估失败。
+    if (!QFileInfo(evaluation_options_.dataset_file_list_path).isFile())
+    {
+        invalidate(evaluation::viewStateKey(evaluation::ViewState::MissingResult));
+        return;
+    }
+
     const int revision = ++evaluation_revision_;
     notify_when_finished_ = notify;
     clearEvaluation();
@@ -1441,6 +1449,12 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
             }
         }, Qt::QueuedConnection);
     });
+}
+
+void ModelEvaluationViewModel::refreshEvaluation()
+{
+    invalidate();
+    evaluate(false);
 }
 
 void ModelEvaluationViewModel::setRuntimeState(const QString &state)

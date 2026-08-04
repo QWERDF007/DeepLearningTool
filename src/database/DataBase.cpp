@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <set>
 
 #include <sqlite3.h>
 
@@ -1031,6 +1032,63 @@ bool ProjectDataBase::getAllLabelClasses(std::vector<int64_t> &label_class_ids, 
             ordinal_indices.emplace_back(row.ordinalIndex);
             extra_data.emplace_back(row.extraData.is_null() ? std::vector<uint8_t>{} : row.extraData.value());
         }
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::labelClassIdsForDataset(const int64_t dataset_id, std::vector<int64_t> &label_class_ids,
+                                              QString &err_msg) const
+{
+    try
+    {
+        label_class_ids.clear();
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+
+        // 实例标注的类别
+        auto label_data = db(sqlpp::select(LabelsTable.labelClassId)
+                                 .from(LabelsTable.join(ImagesTable).on(LabelsTable.imageId == ImagesTable.id))
+                                 .where(ImagesTable.datasetId == dataset_id));
+        std::set<int64_t> class_ids;
+        for (const auto &row : label_data)
+        {
+            if (row.labelClassId >= 0)
+                class_ids.insert(row.labelClassId);
+        }
+
+        // 图像级类别保存在 images.extra_data 的 image_label_class_id 字段
+        auto image_data = db(sqlpp::select(ImagesTable.extraData)
+                                 .from(ImagesTable)
+                                 .where(ImagesTable.datasetId == dataset_id));
+        for (const auto &row : image_data)
+        {
+            const std::vector<uint8_t> extra
+                = row.extraData.is_null() ? std::vector<uint8_t>{} : row.extraData.value();
+            if (extra.empty())
+                continue;
+            const QByteArray bytes(reinterpret_cast<const char *>(extra.data()),
+                                   static_cast<qsizetype>(extra.size()));
+            QJsonParseError parse_error;
+            const QJsonDocument document = QJsonDocument::fromJson(bytes, &parse_error);
+            if (parse_error.error != QJsonParseError::NoError || !document.isObject())
+                continue;
+            const int64_t class_id = document.object()
+                                         .value(QStringLiteral("image_label_class_id"))
+                                         .toInteger(-1);
+            if (class_id >= 0)
+                class_ids.insert(class_id);
+        }
+
+        label_class_ids.assign(class_ids.begin(), class_ids.end());
         return true;
     }
     catch (const std::exception &e)

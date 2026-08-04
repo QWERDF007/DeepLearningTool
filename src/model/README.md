@@ -75,7 +75,7 @@ Pending -> Preparing -> Running -> Stopping -> Stopped
 `prepareModelTask()` 负责：
 
 - 创建 `models/<模型名>/train/` 或 `models/<模型名>/test/<任务名>/` 下的目录；
-- 通过 `ModelDatasetOrganizer` 导出训练/验证文件列表、训练/验证标签文件，以及测试任务专属
+- 通过 `ModelDatasetOrganizer` 导出训练/验证图像列表 `train/train.txt` 与 `train/validation.txt`（随数据集和类别选择变化），以及测试任务专属
   的 `test.txt`；
 - 通过数据库对象写入模型参数、测试参数和数据集/类别选择；
 - 读取全局 Python 环境路径并生成 `ExternalProcessSpec`。
@@ -86,11 +86,10 @@ Pending -> Preparing -> Running -> Stopping -> Stopped
 models/<模型名>/
   model.db
   datasets/
+    masks/
+  train/
     train.txt
     validation.txt
-    train_labels.json
-    validation_labels.json
-  train/
     weights/
     logs/
   test/
@@ -101,7 +100,7 @@ models/<模型名>/
       pred/
 ```
 
-测试文件列表位于测试任务自己的目录，避免多个任务共享或覆盖文件。测试任务不生成
+训练/验证 `train.txt`/`validation.txt` 位于 `train/` 下，每行只含 `image_id,image_path`。Python 从列表拿到 `image_id` 后到 `datasets/masks` 查找 `<image_id>.png`：存在 mask 即异常图（mask 像素 0 为背景、255 为异常区域），不存在则为正常图，因此不再生成 labels JSON/YAML。测试文件列表位于测试任务自己的目录，避免多个任务共享或覆盖文件。测试任务不生成
 测试标签旁路文件；用户点击开始测试时，后台重新导出任务目录下的 `test.txt`，清理该任务的 `pred/`
 并重新调用 Python 推理。Python 只写入模型预测产物（例如异常分数 TIFF 和任务数据库中的
 预测记录）。评估页面按需读取任务 `test.txt`、任务数据库和项目数据库，由 C++ 在后台

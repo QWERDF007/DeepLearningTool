@@ -19,6 +19,20 @@ Item {
     property ITestParams testParams: testTaskManager ? testTaskManager.currentTestParams
                                                        : (selectedModel && selectedModel.config ? selectedModel.config.testParams : null)
 
+    // Evaluation is lazy: it starts only when this page is visible, a model is
+    // selected and the evaluation section is expanded.  Results stay cached in
+    // memory; parameter changes and manual refresh re-evaluate.
+    function requestLazyEvaluation() {
+        if (!testPanel.visible || testPanel.currentModelUuid.length === 0 || !evaluationExpander.expand)
+            return
+        var evaluation = testPanel.testTaskManager ? testPanel.testTaskManager.currentEvaluation : null
+        if (evaluation)
+            evaluation.evaluate(false)
+    }
+
+    onVisibleChanged: requestLazyEvaluation()
+    onCurrentModelUuidChanged: requestLazyEvaluation()
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 5
@@ -79,6 +93,7 @@ Item {
             headerText: qsTr("评估")
             expand: true
             contentHeight: Math.max(0, height - headerHeight)
+            onExpandChanged: testPanel.requestLazyEvaluation()
 
             TestEvaluationPanel {
                 anchors.fill: parent
