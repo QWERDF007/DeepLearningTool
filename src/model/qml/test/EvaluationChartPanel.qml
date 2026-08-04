@@ -13,6 +13,20 @@ Rectangle {
     property int chartRevision: 0
     readonly property string chartFontColor: QuiColor.FontPrimary.toString()
 
+    // Qt delivers QVariantMap/QVariantList to QML as wrapped JavaScript
+    // objects.  Chart.js' deep merge (scales/datasets) requires plain native
+    // objects/arrays, so clone the descriptor payload at the QML boundary.
+    function chartDataForDisplay(chartData) {
+        if (!chartData || typeof chartData !== "object")
+            return ({labels: [], datasets: []})
+
+        try {
+            return JSON.parse(JSON.stringify(chartData))
+        } catch (error) {
+            return ({labels: [], datasets: []})
+        }
+    }
+
     function chartModelCount() {
         var charts = control.evaluation ? control.evaluation.charts : null
         return charts ? charts.rowCount() : 0
@@ -34,6 +48,13 @@ Rectangle {
 
     function chartOptionsForDescriptor(descriptor) {
         var options = ChartPresenter.prepareOptions(descriptor.options, control.chartFontColor)
+        try {
+            // Same QML-boundary clone as chartDataForDisplay: Chart.js cannot
+            // deep-merge QVariantMap-backed JS objects into its scale config.
+            options = JSON.parse(JSON.stringify(options))
+        } catch (error) {
+            options = ({})
+        }
         if (descriptor.chart_id === "anomaly_score_distribution"
                 && options.legend && options.legend.labels)
             options.legend.labels.filter = control.anomalyLegendFilter
@@ -80,7 +101,7 @@ Rectangle {
                 return charts && count > 0 ? charts.descriptor(index) : ({})
             }
             chartType: descriptor.kind || "line"
-            chartData: ChartPresenter.prepareData(descriptor.data)
+            chartData: control.chartDataForDisplay(ChartPresenter.prepareData(descriptor.data))
             chartOptions: control.chartOptionsForDescriptor(descriptor)
         }
         Connections {

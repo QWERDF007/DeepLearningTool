@@ -69,7 +69,11 @@ ChartPresenter::~ChartPresenter() = default;
 
 QVariantMap ChartPresenter::prepareData(const QVariant &chart_data) const
 {
-    const QVariantMap result = jsonObjectCopy(chart_data);
+    // QML already converts C++ QVariantMap/QVariantList into native JavaScript
+    // objects/arrays.  Round-tripping through QJsonDocument here drops nested
+    // values (for example invalid QVariant histogram bins), so keep the map as
+    // it is instead of serializing it.
+    const QVariantMap result = chart_data.toMap();
     if (!result.isEmpty())
         return result;
 
