@@ -13,6 +13,40 @@
 namespace dltool::model {
 
 /**
+ * @brief 评估方法的能力声明（指标/图表能力位化）。
+ */
+struct MODEL_API EvaluationCapabilities
+{
+    bool        has_instance_metrics{false}; ///< 是否产出实例级指标。
+    bool        has_image_metrics{false};    ///< 是否产出图像级指标。
+    bool        has_confusion_matrix{false}; ///< 是否产出混淆矩阵。
+    bool        has_instance_events{false};  ///< 是否产出实例事件。
+    QStringList chart_kinds;                 ///< 图表类型列表。
+};
+
+/**
+ * @brief 由评估方法推导能力声明。
+ *
+ * 检测方法具备实例指标与混淆矩阵；异常检测为图像级二元分类（无类别错误
+ * 语义），仅具备图像指标。Service 结果组装与图表构造共用同一推导。
+ * @param method 评估方法。
+ * @return 能力声明。
+ */
+inline EvaluationCapabilities evaluationCapabilitiesForMethod(const evaluation::Method method)
+{
+    EvaluationCapabilities capabilities;
+    capabilities.has_instance_metrics = evaluation::hasInstanceMetrics(method);
+    capabilities.has_image_metrics    = evaluation::hasImageMetrics(method);
+    capabilities.has_confusion_matrix = evaluation::hasConfusionMatrix(method);
+    capabilities.has_instance_events  = evaluation::hasInstanceEvents(method);
+    if (evaluation::isAnomaly(method))
+        capabilities.chart_kinds = {QStringLiteral("line")};
+    else if (capabilities.has_instance_metrics)
+        capabilities.chart_kinds = {QStringLiteral("bar"), QStringLiteral("line")};
+    return capabilities;
+}
+
+/**
  * @brief 按类别 ID 取评估界面调色板颜色。
  *
  * Service 与 ViewModel 共用的类别配色：同一类别在两个模块中呈现一致，

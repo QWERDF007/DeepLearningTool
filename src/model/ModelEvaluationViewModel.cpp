@@ -1,6 +1,7 @@
 #include "model/ModelEvaluationViewModel.h"
 
 #include "model/AggregateEvaluation.h"
+#include "model/EvaluationCharts.h"
 #include "model/EvaluationCommon.h"
 #include "model/EvaluationMatching.h"
 #include "model/ModelEvaluationProtocol.h"
@@ -29,58 +30,6 @@ namespace dltool::model {
 
 namespace {
 
-QString textValue(const QVariantMap &map, const QString &name, const QString &fallback = {})
-{
-    const QString value = map.value(name).toString();
-    return value.isEmpty() ? fallback : value;
-}
-
-QString statusDisplayText(const evaluation::Status status)
-{
-    return evaluation::statusDisplayName(status);
-}
-
-int intValue(const QVariantMap &map, const QString &name, const int fallback = -1)
-{
-    bool      ok    = false;
-    const int value = map.value(name).toInt(&ok);
-    return ok ? value : fallback;
-}
-
-qint64 longValue(const QVariantMap &map, const QString &name, const qint64 fallback = 0)
-{
-    bool         ok    = false;
-    const qint64 value = map.value(name).toLongLong(&ok);
-    return ok ? value : fallback;
-}
-
-double realValue(const QVariantMap &map, const QString &name, const double fallback = 0.0)
-{
-    bool         ok    = false;
-    const double value = map.value(name).toDouble(&ok);
-    return ok ? value : fallback;
-}
-
-QString textValue(const QVariantMap &map, const evaluation::Field field, const QString &fallback = {})
-{
-    return textValue(map, evaluation::fieldName(field), fallback);
-}
-
-int intValue(const QVariantMap &map, const evaluation::Field field, const int fallback = -1)
-{
-    return intValue(map, evaluation::fieldName(field), fallback);
-}
-
-qint64 longValue(const QVariantMap &map, const evaluation::Field field, const qint64 fallback = 0)
-{
-    return longValue(map, evaluation::fieldName(field), fallback);
-}
-
-double realValue(const QVariantMap &map, const evaluation::Field field, const double fallback = 0.0)
-{
-    return realValue(map, evaluation::fieldName(field), fallback);
-}
-
 bool hasInvokable(QObject *object, const char *method, const int parameter_count)
 {
     if (object == nullptr)
@@ -100,14 +49,14 @@ EvaluationMetricRecord metricFromMap(const QString &key, const QVariantMap &map,
     EvaluationMetricRecord metric;
     metric.key               = key;
     metric.label             = fallback_label.isEmpty() ? key : fallback_label;
-    metric.class_name        = textValue(map, evaluation::Field::ClassName);
-    metric.class_id          = intValue(map, evaluation::Field::ClassId);
-    metric.precision         = realValue(map, evaluation::Field::Precision);
-    metric.recall            = realValue(map, evaluation::Field::Recall);
-    metric.f1                = realValue(map, evaluation::Field::F1);
-    metric.tp                = longValue(map, evaluation::Field::Tp);
-    metric.fp                = longValue(map, evaluation::Field::Fp);
-    metric.fn                = longValue(map, evaluation::Field::Fn);
+    metric.class_name        = recordText(map, evaluation::Field::ClassName);
+    metric.class_id          = recordInt(map, evaluation::Field::ClassId);
+    metric.precision         = recordReal(map, evaluation::Field::Precision);
+    metric.recall            = recordReal(map, evaluation::Field::Recall);
+    metric.f1                = recordReal(map, evaluation::Field::F1);
+    metric.tp                = recordLong(map, evaluation::Field::Tp);
+    metric.fp                = recordLong(map, evaluation::Field::Fp);
+    metric.fn                = recordLong(map, evaluation::Field::Fn);
     metric.precision_defined = map.contains(evaluation::fieldName(evaluation::Field::PrecisionDefined))
                                  ? map.value(evaluation::fieldName(evaluation::Field::PrecisionDefined)).toBool()
                                  : metric.tp + metric.fp > 0;
@@ -590,10 +539,10 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
     const QVariantMap evaluation_config
         = root.value(evaluation::fieldName(evaluation::Field::EvaluationConfig)).toMap();
     anomaly_detection_    = evaluation::isAnomaly(evaluation_options_.method);
-    confidence_threshold_ = realValue(evaluation_config, evaluation::Field::ConfidenceThreshold);
-    iou_threshold_        = realValue(evaluation_config, evaluation::Field::IouThreshold);
+    confidence_threshold_ = recordReal(evaluation_config, evaluation::Field::ConfidenceThreshold);
+    iou_threshold_        = recordReal(evaluation_config, evaluation::Field::IouThreshold);
     matching_strategy_    = evaluation::matchingStrategyKey(
-        evaluation::matchingStrategyFromKey(textValue(evaluation_config, evaluation::Field::MatchingStrategy)));
+        evaluation::matchingStrategyFromKey(recordText(evaluation_config, evaluation::Field::MatchingStrategy)));
     const QVariantMap capabilities = root.value(evaluation::fieldName(evaluation::Field::Capabilities)).toMap();
     has_instance_metrics_ = capabilities.value(evaluation::fieldName(evaluation::Field::HasInstanceMetrics)).toBool();
     has_image_metrics_    = capabilities.value(evaluation::fieldName(evaluation::Field::HasImageMetrics)).toBool();
@@ -652,14 +601,14 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
     {
         const QVariantMap       map = value.toMap();
         EvaluationConfusionCell cell;
-        cell.row_key         = textValue(map, evaluation::Field::RowKey);
-        cell.column_key      = textValue(map, evaluation::Field::ColumnKey);
-        cell.row_label       = textValue(map, evaluation::Field::RowLabel);
-        cell.column_label    = textValue(map, evaluation::Field::ColumnLabel);
-        cell.count           = longValue(map, evaluation::Field::Count);
-        cell.row_class_id    = intValue(map, evaluation::Field::RowClassId);
-        cell.column_class_id = intValue(map, evaluation::Field::ColumnClassId);
-        cell.cell_kind       = evaluation::cellKindFromKey(textValue(map, evaluation::Field::CellKind));
+        cell.row_key         = recordText(map, evaluation::Field::RowKey);
+        cell.column_key      = recordText(map, evaluation::Field::ColumnKey);
+        cell.row_label       = recordText(map, evaluation::Field::RowLabel);
+        cell.column_label    = recordText(map, evaluation::Field::ColumnLabel);
+        cell.count           = recordLong(map, evaluation::Field::Count);
+        cell.row_class_id    = recordInt(map, evaluation::Field::RowClassId);
+        cell.column_class_id = recordInt(map, evaluation::Field::ColumnClassId);
+        cell.cell_kind       = evaluation::cellKindFromKey(recordText(map, evaluation::Field::CellKind));
         cell.selectable      = map.value(evaluation::fieldName(evaluation::Field::Selectable)).toBool();
         cell.diagonal        = map.value(evaluation::fieldName(evaluation::Field::IsDiagonal)).toBool();
         cell.error           = map.value(evaluation::fieldName(evaluation::Field::IsError)).toBool();

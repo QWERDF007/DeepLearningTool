@@ -1,6 +1,8 @@
 #pragma once
 
 #include "dltool/model/Export.h"
+#include "model/EvaluationData.h"
+#include "model/ModelEvaluationProtocol.h"
 
 #include <QList>
 #include <atomic>
@@ -53,5 +55,21 @@ MODEL_API QList<MatchPair> greedyIoUMatches(int pred_count, int gt_count, const 
 MODEL_API QList<MatchPair> hungarianIoUMatches(int pred_count, int gt_count,
                                                const std::function<double(int, int)> &iou_fn, double threshold,
                                                const std::shared_ptr<std::atomic_bool> &cancel = {});
+
+/**
+ * @brief 按策略匹配预测与真值记录。
+ *
+ * IoU 计算注入规则：两框均无效（无框的 GT/预测）视为完全匹配（IoU=1）。
+ * @param predictions 预测列表。
+ * @param ground_truth 真值列表。
+ * @param threshold IoU 匹配阈值。
+ * @param strategy 匹配策略（贪心/Hungarian）。
+ * @param cancel 协作取消令牌，可为空。
+ * @return 匹配对列表。
+ */
+MODEL_API QList<MatchPair> matchPredictions(const QList<EvaluationPredictionData>  &predictions,
+                                            const QList<EvaluationGroundTruthData> &ground_truth, double threshold,
+                                            evaluation::MatchingStrategy             strategy,
+                                            const std::shared_ptr<std::atomic_bool> &cancel = {});
 
 } // namespace dltool::model

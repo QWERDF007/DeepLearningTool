@@ -94,13 +94,6 @@ MODEL_API bool hasGroundTruth(const EvaluationImageRecord &record);
 MODEL_API double imageScore(const EvaluationImageRecord &record);
 
 /**
- * @brief 构造异常分数分布图（GOOD/Anomaly 直方图 + 边界参考线）。
- * @param images 图像记录列表。
- * @return 图表描述符。
- */
-MODEL_API QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageRecord> &images);
-
-/**
  * @brief 执行聚合评估：实例/图像指标、混淆矩阵与派生图表。
  *
  * 输入经 ViewModel 过滤后进入此函数；匹配与 IoU 复用 EvaluationMatching /

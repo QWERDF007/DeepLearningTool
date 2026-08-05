@@ -1,5 +1,7 @@
 #include "model/EvaluationMatching.h"
 
+#include "model/EvaluationGeometry.h"
+
 #include <QVector>
 #include <algorithm>
 #include <limits>
@@ -166,6 +168,23 @@ QList<MatchPair> hungarianIoUMatches(const int pred_count, const int gt_count,
     std::sort(result.begin(), result.end(),
               [](const MatchPair &lhs, const MatchPair &rhs) { return lhs.prediction < rhs.prediction; });
     return result;
+}
+
+QList<MatchPair> matchPredictions(const QList<EvaluationPredictionData>  &predictions,
+                                  const QList<EvaluationGroundTruthData> &ground_truth, const double threshold,
+                                  const evaluation::MatchingStrategy       strategy,
+                                  const std::shared_ptr<std::atomic_bool> &cancel)
+{
+    // IoU 计算注入：两框均无效（无框的 GT/预测）视为完全匹配（IoU=1）。
+    const auto iou_fn = [&predictions, &ground_truth](const int prediction, const int gt)
+    {
+        return (!predictions.at(prediction).box.valid() && !ground_truth.at(gt).box.valid())
+                 ? 1.0
+                 : intersectionOverUnion(predictions.at(prediction).box, ground_truth.at(gt).box);
+    };
+    if (strategy == evaluation::MatchingStrategy::HungarianIoU)
+        return hungarianIoUMatches(predictions.size(), ground_truth.size(), iou_fn, threshold, cancel);
+    return greedyIoUMatches(predictions.size(), ground_truth.size(), iou_fn, threshold, cancel);
 }
 
 } // namespace dltool::model

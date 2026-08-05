@@ -1,8 +1,8 @@
 #pragma once
 
 #include "dltool/model/Export.h"
-#include "model/EvaluationGeometry.h"
-#include "model/EvaluationMatching.h"
+#include "model/EvaluationData.h"
+#include "model/ModelEvaluationModels.h"
 #include "model/ModelEvaluationProtocol.h"
 
 #include <QList>
@@ -15,49 +15,6 @@
 #include <memory>
 
 namespace dltool::model {
-
-/**
- * @brief 评估主链路与图表构造共用的真值记录。
- */
-struct MODEL_API EvaluationGroundTruthData
-{
-    qint64        label_id{-1}; ///< 标签 ID。
-    int           class_id{-1}; ///< 类别 ID。
-    QString       class_name;   ///< 类别名称。
-    QVariantMap   geometry;     ///< 规范化几何记录。
-    QVariantMap   bounds;       ///< 几何包围盒映射。
-    EvaluationBox box;          ///< 解析出的包围盒。
-};
-
-/**
- * @brief 评估主链路与图表构造共用的预测记录。
- */
-struct MODEL_API EvaluationPredictionData
-{
-    QString       prediction_id; ///< 预测实例 ID。
-    qint64        image_id{-1};  ///< 所属图像 ID。
-    int           class_id{-1};  ///< 预测类别 ID。
-    QString       class_name;    ///< 预测类别名称。
-    double        score{0.0};    ///< 置信度分数。
-    QVariantMap   geometry;      ///< 规范化几何记录。
-    QVariantMap   bounds;        ///< 几何包围盒映射。
-    EvaluationBox box;           ///< 解析出的包围盒。
-};
-
-/**
- * @brief 评估主链路与图表构造共用的图像记录。
- */
-struct MODEL_API EvaluationImageData
-{
-    qint64                           id{-1};         ///< 图像 ID。
-    qint64                           dataset_id{-1}; ///< 所属数据集 ID。
-    QString                          path;           ///< 图像路径。
-    QString                          name;           ///< 图像名称。
-    int                              width{0};       ///< 图像宽度。
-    int                              height{0};      ///< 图像高度。
-    QList<EvaluationGroundTruthData> gt;             ///< 真值列表。
-    QList<EvaluationPredictionData>  predictions;    ///< 预测列表。
-};
 
 /**
  * @brief 官方评估输出：指标、图表与图像级定义。
@@ -82,20 +39,14 @@ struct MODEL_API EvaluationCounts
 };
 
 /**
- * @brief 按策略匹配预测与真值。
+ * @brief 由图像记录构造异常分数分布图描述符。
  *
- * IoU 计算注入规则：两框均无效（无框的 GT/预测）视为完全匹配（IoU=1）。
- * @param predictions 预测列表。
- * @param ground_truth 真值列表。
- * @param threshold IoU 匹配阈值。
- * @param strategy 匹配策略（贪心/Hungarian）。
- * @param cancel 协作取消令牌，可为空。
- * @return 匹配对列表。
+ * GOOD 图像取 max_prediction_score 为 GOOD 样本，Anomaly 图像取
+ * max_prediction_score 为 Anomaly 样本；图表由公共直方图构造实现生成。
+ * @param images 图像记录列表。
+ * @return 图表描述符。
  */
-MODEL_API QList<MatchPair> matchPredictions(const QList<EvaluationPredictionData>  &predictions,
-                                            const QList<EvaluationGroundTruthData> &ground_truth, double threshold,
-                                            evaluation::MatchingStrategy             strategy,
-                                            const std::shared_ptr<std::atomic_bool> &cancel = {});
+MODEL_API QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageRecord> &images);
 
 /**
  * @brief 序列化单条实例事件记录。

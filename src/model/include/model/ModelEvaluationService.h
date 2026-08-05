@@ -5,7 +5,6 @@
 
 #include <QVariantMap>
 #include <QString>
-#include <QStringList>
 
 #include <atomic>
 #include <memory>
@@ -47,15 +46,6 @@ struct MODEL_API ModelEvaluationResult
     QVariantMap evaluation_data;
 };
 
-struct MODEL_API EvaluationCapabilities
-{
-    bool has_instance_metrics{false};
-    bool has_image_metrics{false};
-    bool has_confusion_matrix{false};
-    bool has_instance_events{false};
-    QStringList chart_kinds;
-};
-
 /**
  * @brief Reads the task file list, project/task databases and prediction
  * artifacts, then computes one complete evaluation snapshot in memory.
@@ -63,7 +53,6 @@ struct MODEL_API EvaluationCapabilities
 class MODEL_API ModelEvaluationService
 {
 public:
-    static EvaluationCapabilities capabilitiesForMethod(evaluation::Method method);
     static bool evaluate(const ModelEvaluationOptions &options, ModelEvaluationResult *result = nullptr,
                          QString *err_msg = nullptr);
 

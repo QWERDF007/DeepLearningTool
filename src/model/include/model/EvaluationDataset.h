@@ -1,7 +1,10 @@
 #pragma once
 
 #include "dltool/model/Export.h"
+#include "model/EvaluationData.h"
+#include "model/ModelEvaluationProtocol.h"
 
+#include <QMap>
 #include <QPair>
 #include <QString>
 #include <atomic>
@@ -23,5 +26,48 @@ namespace dltool::model {
 MODEL_API bool readEvaluationImageList(const QString &path, QList<QPair<qint64, QString>> &rows,
                                        const std::shared_ptr<std::atomic_bool> &cancel_token = {},
                                        QString                                 *err_msg      = nullptr);
+
+/**
+ * @brief 从项目/任务数据库加载测试图像与真值。
+ *
+ * 以文件列表为主轴：不在项目数据库中的图像跳过并计数；图像级/标注级
+ * 类别选择过滤不满足条件的图像并计数。异常检测方法按图像标签分组
+ * （good/unlabeled/anomaly）构造二值真值，分类方法按图像标签类别构造。
+ * @param file_list_path 测试任务文件列表路径。
+ * @param project_database_path 项目数据库路径。
+ * @param task_database_path 测试任务数据库路径（数据集/类别选择）。
+ * @param method 评估方法。
+ * @param images 输出图像记录。
+ * @param cancel_token 协作取消令牌，置位后提前失败；可为空。
+ * @param err_msg 失败时输出错误信息，可为 nullptr。
+ * @param missing_database_images 输出：不在项目数据库中的图像数。
+ * @param ignored_selection_images 输出：不满足数据集/类别选择的图像数。
+ * @return 加载成功返回 true。
+ */
+MODEL_API bool loadEvaluationImages(
+    const QString &file_list_path, const QString &project_database_path, const QString &task_database_path,
+    evaluation::Method method, QMap<qint64, EvaluationImageData> &images,
+    const std::shared_ptr<std::atomic_bool> &cancel_token = {}, QString *err_msg = nullptr,
+    int *missing_database_images = nullptr, int *ignored_selection_images = nullptr);
+
+/**
+ * @brief 从测试任务数据库与预测目录加载预测结果。
+ *
+ * 每条预测记录按协议校验 geometry，越界 bbox 裁剪到图像边界，并规范化
+ * 几何记录；异常检测方法只读取图像级 image_score。
+ * @param task_database_path 测试任务数据库路径。
+ * @param prediction_dir 预测输出目录（mask artifact 根目录）。
+ * @param images 已加载的图像记录（按 image_id 追加预测）。
+ * @param anomaly_method 是否为异常检测方法。
+ * @param count 输出预测总数，可为 nullptr。
+ * @param cancel_token 协作取消令牌，置位后提前失败；可为空。
+ * @param err_msg 失败时输出错误信息，可为 nullptr。
+ * @param ignored_count 输出：不属于当前可用图像的预测数。
+ * @return 加载成功返回 true。
+ */
+MODEL_API bool loadEvaluationPredictions(const QString &task_database_path, const QString &prediction_dir,
+                                         QMap<qint64, EvaluationImageData> &images, bool anomaly_method,
+                                         int *count = nullptr, const std::shared_ptr<std::atomic_bool> &cancel_token = {},
+                                         QString *err_msg = nullptr, int *ignored_count = nullptr);
 
 } // namespace dltool::model
