@@ -49,6 +49,8 @@ struct MODEL_API FrameworkDefinition
     QStringList                          python_paths;                     ///< PYTHONPATH 追加路径
     bool                                 visible_for_model_creation{true}; ///< 是否在模型创建界面可见
     bool                                 write_to_database{true};          ///< 是否写入数据库
+    bool                                 few_shot{false}; ///< 小样本流程：无 UUID 测试任务记录、无评估适配器
+    QString                              default_test_task_directory; ///< 默认测试目录名（FS-SAM2 填 "fs_sam2"）
 
     /**
      * @brief 获取指定任务类型的能力
@@ -56,6 +58,19 @@ struct MODEL_API FrameworkDefinition
      * @return 任务能力，未找到返回空
      */
     FrameworkTaskCapability taskCapability(ModelTaskType task_type) const;
+
+    /**
+     * @brief 判断框架是否走小样本流程。
+     *
+     * 小样本框架（如 FS-SAM2）的测试任务没有 UUID 测试任务记录，也不参与
+     * 普通评估适配流程。注册时只需置位 few_shot，控制器与准备逻辑不再按
+     * 框架名字符串特判。
+     * @return 小样本框架返回 true
+     */
+    bool isFewShot() const
+    {
+        return few_shot;
+    }
 
     /**
      * @brief 获取指定任务类型的脚本路径

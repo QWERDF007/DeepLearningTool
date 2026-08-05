@@ -10,9 +10,9 @@
 #include "model/TaskCommunication.h"
 #include "settings/GlobalSettings.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
-#include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
 #include <QStringList>
@@ -34,9 +34,8 @@ QList<qint64> allLabelClassIdsForDataset(const dltool::data::DatasetExportSource
         if (source.imageDatasetId(image_id) != dataset_id)
             continue;
 
-        const QVariantMap image_level = source.imageLevelLabelData(image_id);
-        const qint64 image_class_id
-            = image_level.value(QStringLiteral("label_class_id"), -1).toLongLong();
+        const QVariantMap image_level    = source.imageLevelLabelData(image_id);
+        const qint64      image_class_id = image_level.value(QStringLiteral("label_class_id"), -1).toLongLong();
         if (image_class_id >= 0)
             class_ids.insert(image_class_id);
 
@@ -70,7 +69,7 @@ bool clearTensorBoardEventFiles(const QString &log_dir, QString *err_msg)
     if (!root_info.isDir())
         return setError(err_msg, QString("TensorBoard 日志路径不是目录: %1").arg(root));
 
-    QStringList failed_files;
+    QStringList  failed_files;
     QDirIterator iterator(root, {QStringLiteral("events.out.tfevents.*")}, QDir::Files | QDir::NoSymLinks,
                           QDirIterator::Subdirectories);
     while (iterator.hasNext())
@@ -86,8 +85,8 @@ bool clearTensorBoardEventFiles(const QString &log_dir, QString *err_msg)
     }
 
     if (!failed_files.isEmpty())
-        return setError(err_msg, QString("删除 TensorBoard 历史 event 文件失败: %1")
-                                     .arg(failed_files.join(QStringLiteral(", "))));
+        return setError(
+            err_msg, QString("删除 TensorBoard 历史 event 文件失败: %1").arg(failed_files.join(QStringLiteral(", "))));
     return true;
 }
 
@@ -96,19 +95,18 @@ bool persistModelDatabase(const ModelStorageService &storage, const QString &mod
                           const dltool::data::DatasetExportSource *dataset_source, QString *err_msg)
 {
     database::ModelDataBase database(storage.modelDatabasePath(model_name));
-    QString database_error;
+    QString                 database_error;
     if (!database.replaceTrainParams(train_params, &database_error)
-        || !database.replaceDatasets(databaseDatasetSelections(request.selections, datasetClassIdsResolver(dataset_source)),
-                                     &database_error))
+        || !database.replaceDatasets(
+            databaseDatasetSelections(request.selections, datasetClassIdsResolver(dataset_source)), &database_error))
         return setError(err_msg, QString("写入模型数据库失败: %1").arg(database_error));
     return true;
 }
 
-bool persistTaskDatabase(const ModelStorageService &storage, const QString &model_name,
-                         const ModelTaskRequest &request, const dltool::data::DatasetExportSource *dataset_source,
-                         QString *err_msg)
+bool persistTaskDatabase(const ModelStorageService &storage, const QString &model_name, const ModelTaskRequest &request,
+                         const dltool::data::DatasetExportSource *dataset_source, QString *err_msg)
 {
-    const QString task_id = request.scope_uuid.trimmed();
+    const QString task_id        = request.scope_uuid.trimmed();
     const QString task_directory = request.model_config.task_directory.trimmed();
     if (task_id.isEmpty() || task_directory.isEmpty())
         return setError(err_msg, QString("测试任务 ID 或目录为空"));
@@ -117,33 +115,45 @@ bool persistTaskDatabase(const ModelStorageService &storage, const QString &mode
     if (database_path.isEmpty())
         return setError(err_msg, QString("测试任务数据库路径为空"));
 
-    const qint64 now = QDateTime::currentSecsSinceEpoch();
-    const qint64 ctime = request.model_config.created_at > 0 ? request.model_config.created_at : now;
-    const qint64 mtime = request.model_config.modified_at > 0 ? request.model_config.modified_at : now;
+    const qint64                now   = QDateTime::currentSecsSinceEpoch();
+    const qint64                ctime = request.model_config.created_at > 0 ? request.model_config.created_at : now;
+    const qint64                mtime = request.model_config.modified_at > 0 ? request.model_config.modified_at : now;
     database::ModelTaskDataBase database(database_path);
-    QString database_error;
+    QString                     database_error;
     if (!database.upsertTaskInfo({task_id, ctime, mtime}, &database_error)
         || !database.replaceTestParams(request.model_config.test_params, &database_error)
-        || !database.replaceDatasets(databaseDatasetSelections(request.selections, datasetClassIdsResolver(dataset_source)),
-                                     &database_error))
+        || !database.replaceDatasets(
+            databaseDatasetSelections(request.selections, datasetClassIdsResolver(dataset_source)), &database_error))
         return setError(err_msg, QString("写入测试任务数据库失败: %1").arg(database_error));
     return true;
 }
 
-bool isFsSam2Request(const ModelTaskRequest &request)
+/**
+ * @brief 判断请求是否属于小样本（few-shot）框架任务。
+ * @param request 模型任务请求。
+ * @return 小样本框架的训练/测试/BoxToMask 任务返回 true。
+ */
+bool isFewShotRequest(const ModelTaskRequest &request)
 {
-    return request.framework.name.compare(QString("FS-SAM2"), Qt::CaseInsensitive) == 0
+    return request.framework.isFewShot()
         && (request.task_type == ModelTaskType::Train || request.task_type == ModelTaskType::Test
             || request.task_type == ModelTaskType::BoxToMask);
 }
 
+/**
+ * @brief 计算小样本任务的预测输出目录。
+ * @param storage 模型存储服务。
+ * @param model_name 模型名称。
+ * @param test_params 测试参数。
+ * @param default_directory 默认测试任务目录名（来自框架能力位）。
+ * @return 预测输出目录；未配置时回退到默认目录。
+ */
 QString fsSam2PredictionDirectory(const ModelStorageService &storage, const QString &model_name,
-                                  const QVariantMap &test_params)
+                                  const QVariantMap &test_params, const QString &default_directory)
 {
-    const QVariantMap inference = test_params.value(QStringLiteral("inference")).toMap();
-    const QString configured = cleanPath(inference.value(QStringLiteral("output_dir")).toString());
-    return configured.isEmpty() ? cleanPath(storage.testTaskPredictionPath(model_name, QString("fs_sam2")))
-                                : configured;
+    const QVariantMap inference  = test_params.value(QStringLiteral("inference")).toMap();
+    const QString     configured = cleanPath(inference.value(QStringLiteral("output_dir")).toString());
+    return configured.isEmpty() ? cleanPath(storage.testTaskPredictionPath(model_name, default_directory)) : configured;
 }
 
 bool prepareFsSam2Task(int method, const QString &project_dir, const ModelTaskRequest &request,
@@ -151,24 +161,24 @@ bool prepareFsSam2Task(int method, const QString &project_dir, const ModelTaskRe
                        QString *err_msg)
 {
     const ModelStorageService storage(project_dir);
-    const QString model_name = request.model_config.model_name.trimmed();
-    const QString model_root = storage.path(model_name, ModelStorageLocation::ModelRoot);
-    const QString model_db = storage.modelDatabasePath(model_name);
-    const QString dataset_dir = storage.sharedDatasetPath(model_name);
+    const QString             model_name  = request.model_config.model_name.trimmed();
+    const QString             model_root  = storage.path(model_name, ModelStorageLocation::ModelRoot);
+    const QString             model_db    = storage.modelDatabasePath(model_name);
+    const QString             dataset_dir = storage.sharedDatasetPath(model_name);
     if (model_root.isEmpty() || model_db.isEmpty() || dataset_dir.isEmpty())
         return setError(err_msg, QString("FS-SAM2 模型存储路径为空"));
 
-    QVariantMap train_params = request.model_config.train_params;
-    const QVariantMap inference = request.model_config.test_params.value(QStringLiteral("inference")).toMap();
+    QVariantMap       train_params = request.model_config.train_params;
+    const QVariantMap inference    = request.model_config.test_params.value(QStringLiteral("inference")).toMap();
     if (!inference.isEmpty())
         train_params.insert(QStringLiteral("inference"), inference);
     if (!persistModelDatabase(storage, model_name, request, train_params, dataset_source, err_msg))
         return false;
 
     const QString task_directory = request.model_config.task_directory.trimmed().isEmpty()
-        ? QString("fs_sam2")
-        : request.model_config.task_directory.trimmed();
-    QString prediction_dir;
+                                     ? request.framework.default_test_task_directory
+                                     : request.model_config.task_directory.trimmed();
+    QString       prediction_dir;
     if (request.task_type == ModelTaskType::Test)
     {
         QString storage_error;
@@ -180,14 +190,15 @@ bool prepareFsSam2Task(int method, const QString &project_dir, const ModelTaskRe
         // no UUID-backed test-task record, so use the stable directory name
         // as task_info.task_id.
         ModelTaskRequest task_request = request;
-        task_request.scope_uuid = request.scope_uuid.trimmed().isEmpty() ? task_directory : request.scope_uuid;
-        task_request.model_config.scope_uuid = task_request.scope_uuid;
+        task_request.scope_uuid       = request.scope_uuid.trimmed().isEmpty() ? task_directory : request.scope_uuid;
+        task_request.model_config.scope_uuid     = task_request.scope_uuid;
         task_request.model_config.task_directory = task_directory;
         if (!persistTaskDatabase(storage, model_name, task_request, dataset_source, err_msg))
             return false;
 
-        prediction_dir = fsSam2PredictionDirectory(storage, model_name, request.model_config.test_params);
-        const QString clean_model_root = cleanPath(QFileInfo(model_root).absoluteFilePath());
+        prediction_dir = fsSam2PredictionDirectory(storage, model_name, request.model_config.test_params,
+                                                   request.framework.default_test_task_directory);
+        const QString clean_model_root     = cleanPath(QFileInfo(model_root).absoluteFilePath());
         const QString clean_prediction_dir = cleanPath(QFileInfo(prediction_dir).absoluteFilePath());
         if (clean_prediction_dir.isEmpty()
             || !clean_prediction_dir.startsWith(clean_model_root + QStringLiteral("/"), Qt::CaseInsensitive))
@@ -213,14 +224,15 @@ bool prepareFsSam2Task(int method, const QString &project_dir, const ModelTaskRe
         export_request.model_architecture = request.model_config.model_architecture;
         export_request.model_uuid         = request.model_config.model_uuid;
         export_request.task_type          = request.task_type;
+        export_request.few_shot           = request.framework.isFewShot();
         export_request.dataset_dir        = dataset_dir;
         export_request.train_dir          = storage.trainRoot(model_name);
         if (request.task_type == ModelTaskType::Test)
         {
             export_request.test_file_list_path = storage.testTaskFileListPath(model_name, task_directory);
         }
-        export_request.selections         = request.selections;
-        export_request.source             = dataset_source;
+        export_request.selections = request.selections;
+        export_request.source     = dataset_source;
         QString dataset_error;
         if (ModelDatasetOrganizer::organize(export_request, &dataset_error).isEmpty())
             return setError(err_msg, QString("FS-SAM2 数据集组织失败: %1").arg(dataset_error));
@@ -232,7 +244,7 @@ bool prepareFsSam2Task(int method, const QString &project_dir, const ModelTaskRe
     if (!QFileInfo::exists(script_path))
         return setError(err_msg, QString("FS-SAM2 脚本不存在: %1").arg(script_path));
 
-    const QString python_env_path = dltool::settings::GlobalSettings::pythonEnvironmentPath();
+    const QString   python_env_path = dltool::settings::GlobalSettings::pythonEnvironmentPath();
     const QFileInfo python_env_info(cleanPath(python_env_path));
     if (python_env_path.trimmed().isEmpty() || !python_env_info.exists() || !python_env_info.isDir())
         return setError(err_msg, QString("Python 环境目录无效: %1").arg(python_env_path));
@@ -240,29 +252,39 @@ bool prepareFsSam2Task(int method, const QString &project_dir, const ModelTaskRe
     if (python_executable.isEmpty())
         return setError(err_msg, QString("未配置 Python 环境目录"));
 
-    const QString log_dir = request.task_type == ModelTaskType::Train
-        ? storage.trainLogsPath(model_name)
-        : storage.testLogsPath(model_name);
+    const QString log_dir  = request.task_type == ModelTaskType::Train ? storage.trainLogsPath(model_name)
+                                                                       : storage.testLogsPath(model_name);
     const QString log_path = request.task_type == ModelTaskType::Train
-        ? storage.trainLogPath(model_name)
-        : storage.testTaskLogPath(model_name, request.task_type == ModelTaskType::Test ? QString("fs_sam2")
-                                                                                       : QString("fs_sam2_box_to_mask"));
+                               ? storage.trainLogPath(model_name)
+                               : storage.testTaskLogPath(model_name, request.task_type == ModelTaskType::Test
+                                                                         ? request.framework.default_test_task_directory
+                                                                         : request.framework.default_test_task_directory
+                                                                               + QStringLiteral("_box_to_mask"));
     if (log_path.isEmpty())
         return setError(err_msg, QString("FS-SAM2 日志路径为空"));
 
-    process_spec.task_id = request.task_id;
-    process_spec.program = python_executable;
+    process_spec.task_id   = request.task_id;
+    process_spec.program   = python_executable;
     process_spec.arguments = {
         script_path,
-        QStringLiteral("--model_db"), model_db,
-        QStringLiteral("--project_db"), request.project_database_path,
-        QStringLiteral("--model_root"), model_root,
-        QStringLiteral("--dataset_dir"), dataset_dir,
-        QStringLiteral("--weight_dir"), storage.trainWeightsPath(model_name),
-        QStringLiteral("--log_dir"), log_dir,
-        QStringLiteral("--model_uuid"), request.model_config.model_uuid,
-        QStringLiteral("--model_architecture"), request.model_config.model_architecture,
-        QStringLiteral("--method"), QString::number(method),
+        QStringLiteral("--model_db"),
+        model_db,
+        QStringLiteral("--project_db"),
+        request.project_database_path,
+        QStringLiteral("--model_root"),
+        model_root,
+        QStringLiteral("--dataset_dir"),
+        dataset_dir,
+        QStringLiteral("--weight_dir"),
+        storage.trainWeightsPath(model_name),
+        QStringLiteral("--log_dir"),
+        log_dir,
+        QStringLiteral("--model_uuid"),
+        request.model_config.model_uuid,
+        QStringLiteral("--model_architecture"),
+        request.model_config.model_architecture,
+        QStringLiteral("--method"),
+        QString::number(method),
     };
     if (request.task_type == ModelTaskType::Test)
     {
@@ -279,8 +301,8 @@ bool prepareFsSam2Task(int method, const QString &project_dir, const ModelTaskRe
                                << QStringLiteral("--dltool_progress_span") << QStringLiteral("100");
     }
     process_spec.working_directory = request.framework.root;
-    process_spec.python_paths = request.framework.python_paths;
-    process_spec.log_path = log_path;
+    process_spec.python_paths      = request.framework.python_paths;
+    process_spec.log_path          = log_path;
     return true;
 }
 
@@ -289,9 +311,9 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
                         QString *err_msg)
 {
     const ModelStorageService storage(project_dir);
-    const QString model_name = request.model_config.model_name.trimmed();
-    const bool is_train = isTrainModelTask(request.task_type);
-    const QString task_directory = request.model_config.task_directory.trimmed();
+    const QString             model_name     = request.model_config.model_name.trimmed();
+    const bool                is_train       = isTrainModelTask(request.task_type);
+    const QString             task_directory = request.model_config.task_directory.trimmed();
     if (!is_train && (request.scope_uuid.trimmed().isEmpty() || task_directory.isEmpty()))
         return setError(err_msg, QString("测试任务 ID 或目录为空"));
 
@@ -306,7 +328,7 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
         return setError(err_msg, QString("创建测试任务目录失败: %1").arg(storage_error));
     }
 
-    const QString model_db = storage.modelDatabasePath(model_name);
+    const QString model_db    = storage.modelDatabasePath(model_name);
     const QString dataset_dir = storage.sharedDatasetPath(model_name);
     if (model_db.isEmpty() || dataset_dir.isEmpty())
         return setError(err_msg, QString("模型数据库或数据集目录为空"));
@@ -323,9 +345,8 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
     }
     else
     {
-        database::ModelTaskDataBase task_database(
-            storage.testTaskDatabasePath(model_name, task_directory));
-        QString prediction_error;
+        database::ModelTaskDataBase task_database(storage.testTaskDatabasePath(model_name, task_directory));
+        QString                     prediction_error;
         if (!task_database.clearPredictions(&prediction_error))
             return setError(err_msg, QString("清理历史预测结果失败: %1").arg(prediction_error));
     }
@@ -334,7 +355,8 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
     if (!is_train)
     {
         prediction_dir = storage.testTaskPredictionPath(model_name, task_directory);
-        const QString task_root = cleanPath(QFileInfo(storage.testTaskRoot(model_name, task_directory)).absoluteFilePath());
+        const QString task_root
+            = cleanPath(QFileInfo(storage.testTaskRoot(model_name, task_directory)).absoluteFilePath());
         const QString clean_prediction_dir = cleanPath(QFileInfo(prediction_dir).absoluteFilePath());
         if (task_root.isEmpty() || clean_prediction_dir.isEmpty()
             || !clean_prediction_dir.startsWith(task_root + QStringLiteral("/"), Qt::CaseInsensitive))
@@ -356,25 +378,27 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
     export_request.model_architecture = request.model_config.model_architecture;
     export_request.model_uuid         = request.model_config.model_uuid;
     export_request.task_type          = request.task_type;
+    export_request.few_shot           = request.framework.isFewShot();
     export_request.dataset_dir        = dataset_dir;
     export_request.train_dir          = storage.trainRoot(model_name);
     if (!is_train)
         export_request.test_file_list_path = storage.testTaskFileListPath(model_name, task_directory);
-    export_request.selections         = request.selections;
-    export_request.source             = dataset_source;
-    QString dataset_error;
+    export_request.selections = request.selections;
+    export_request.source     = dataset_source;
+    QString           dataset_error;
     const QVariantMap datasets = ModelDatasetOrganizer::organize(export_request, &dataset_error);
     if (datasets.isEmpty())
         return setError(err_msg, QString("数据集组织失败: %1").arg(dataset_error));
 
     const QString script_path = request.framework.scriptFor(request.task_type);
     if (script_path.isEmpty())
-        return setError(err_msg, QString("框架未定义脚本, 框架: %1, 任务: %2")
-                                     .arg(request.framework.name, modelTaskKey(request.task_type)));
+        return setError(
+            err_msg,
+            QString("框架未定义脚本, 框架: %1, 任务: %2").arg(request.framework.name, modelTaskKey(request.task_type)));
     if (!QFileInfo::exists(script_path))
         return setError(err_msg, QString("脚本不存在: %1").arg(script_path));
 
-    const QString python_env_path = dltool::settings::GlobalSettings::pythonEnvironmentPath();
+    const QString   python_env_path = dltool::settings::GlobalSettings::pythonEnvironmentPath();
     const QFileInfo python_env_info(cleanPath(python_env_path));
     if (python_env_path.trimmed().isEmpty() || !python_env_info.exists() || !python_env_info.isDir())
         return setError(err_msg, QString("Python 环境目录无效: %1").arg(python_env_path));
@@ -383,28 +407,40 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
         return setError(err_msg, QString("未配置 Python 环境目录"));
 
     const QString log_dir = is_train ? storage.trainLogsPath(model_name) : storage.testLogsPath(model_name);
-    QString log_path = is_train ? storage.trainLogPath(model_name) : storage.testTaskLogPath(model_name, request.scope_uuid);
+    QString       log_path
+        = is_train ? storage.trainLogPath(model_name) : storage.testTaskLogPath(model_name, request.scope_uuid);
     if (log_path.isEmpty())
         return setError(err_msg, QString("日志路径为空"));
     QString tensorboard_error;
     if (is_train && !clearTensorBoardEventFiles(log_dir, &tensorboard_error))
         return setError(err_msg, tensorboard_error);
 
-    process_spec.task_id = request.task_id;
-    process_spec.program = python_executable;
+    process_spec.task_id   = request.task_id;
+    process_spec.program   = python_executable;
     process_spec.arguments = {
         script_path,
-        QStringLiteral("--model_db"), model_db,
-        QStringLiteral("--project_db"), request.project_database_path,
-        QStringLiteral("--model_root"), storage.path(model_name, ModelStorageLocation::ModelRoot),
-        QStringLiteral("--dataset_dir"), dataset_dir,
-        QStringLiteral("--train_dir"), storage.trainRoot(model_name),
-        QStringLiteral("--masks_dir"), QDir(dataset_dir).filePath(QStringLiteral("masks")),
-        QStringLiteral("--weight_dir"), storage.trainWeightsPath(model_name),
-        QStringLiteral("--log_dir"), log_dir,
-        QStringLiteral("--model_uuid"), request.model_config.model_uuid,
-        QStringLiteral("--model_architecture"), request.model_config.model_architecture,
-        QStringLiteral("--method"), QString::number(method),
+        QStringLiteral("--model_db"),
+        model_db,
+        QStringLiteral("--project_db"),
+        request.project_database_path,
+        QStringLiteral("--model_root"),
+        storage.path(model_name, ModelStorageLocation::ModelRoot),
+        QStringLiteral("--dataset_dir"),
+        dataset_dir,
+        QStringLiteral("--train_dir"),
+        storage.trainRoot(model_name),
+        QStringLiteral("--masks_dir"),
+        QDir(dataset_dir).filePath(QStringLiteral("masks")),
+        QStringLiteral("--weight_dir"),
+        storage.trainWeightsPath(model_name),
+        QStringLiteral("--log_dir"),
+        log_dir,
+        QStringLiteral("--model_uuid"),
+        request.model_config.model_uuid,
+        QStringLiteral("--model_architecture"),
+        request.model_config.model_architecture,
+        QStringLiteral("--method"),
+        QString::number(method),
     };
     if (!is_train)
     {
@@ -418,8 +454,8 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
                            << QStringLiteral("--dltool_task_port") << QString::number(request.task_server_port)
                            << QStringLiteral("--dltool_task_id") << QString::number(request.task_id);
     process_spec.working_directory = request.framework.root;
-    process_spec.python_paths = request.framework.python_paths;
-    process_spec.log_path = log_path;
+    process_spec.python_paths      = request.framework.python_paths;
+    process_spec.log_path          = log_path;
     return true;
 }
 
@@ -442,11 +478,11 @@ bool prepareModelTask(const int method, const QString &project_dir, const ModelT
         return setError(err_msg, QString("模型名称为空"));
 
     ModelStorageService storage(project_dir);
-    QString storage_error;
+    QString             storage_error;
     if (!storage.ensureModelStorage(request.model_config.model_name, &storage_error))
         return setError(err_msg, QString("创建模型目录失败: %1").arg(storage_error));
 
-    if (isFsSam2Request(request))
+    if (isFewShotRequest(request))
         return prepareFsSam2Task(method, project_dir, request, dataset_source, process_spec, err_msg);
     return prepareRegularTask(method, project_dir, request, dataset_source, process_spec, err_msg);
 }

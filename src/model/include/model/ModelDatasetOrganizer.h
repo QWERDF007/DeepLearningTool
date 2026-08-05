@@ -23,10 +23,11 @@ struct MODEL_API ModelDatasetExportRequest
     QString                model_architecture;                ///< 模型架构
     QString                model_uuid;                        ///< 模型 UUID
     ModelTaskType          task_type{ModelTaskType::Unknown}; ///< 任务类型
-    QString                dataset_dir;                       ///< 数据集输出目录（跨训练运行不变的数据，如 masks）
-    QString                train_dir;                         ///< 训练输出目录（train.txt、validation.txt 按选择变化）
-    QString                test_file_list_path;                ///< 测试任务专属文件列表路径
-    ModelDatasetSelections selections;                        ///< 数据集选择
+    bool                   few_shot{false};     ///< 小样本流程（框架能力位 few_shot）：测试时同时导出训练集
+    QString                dataset_dir;         ///< 数据集输出目录（跨训练运行不变的数据，如 masks）
+    QString                train_dir;           ///< 训练输出目录（train.txt、validation.txt 按选择变化）
+    QString                test_file_list_path; ///< 测试任务专属文件列表路径
+    ModelDatasetSelections selections;          ///< 数据集选择
 
     const dltool::data::DatasetExportSource *source{nullptr};
 };

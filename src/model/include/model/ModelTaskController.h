@@ -2,12 +2,15 @@
 
 #include "dltool/model/Export.h"
 #include "model/ModelTaskPreparation.h"
-#include "model/ModelTestTaskRepository.h"
 #include "model/ModelTaskTypes.h"
+#include "model/ModelTestTaskRepository.h"
 #include "model/TaskCommunication.h"
+#include "model/TaskManager.h"
 
+#include <QHash>
 #include <QObject>
 #include <QString>
+#include <QTimer>
 #include <QVariantMap>
 #include <QtQml>
 #include <memory>
@@ -59,7 +62,7 @@ public:
      * @param task_type 模型任务类型。
      * @return 任务 ID；失败时返回 -1。
      */
-    Q_INVOKABLE int  addModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type);
+    Q_INVOKABLE int addModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type);
 
     /**
      * @brief 启动指定模型任务。
@@ -70,7 +73,7 @@ public:
      * @param task_type 模型任务类型。
      * @return 任务 ID；无法提交启动请求时返回 -1。
      */
-    Q_INVOKABLE int  startModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type);
+    Q_INVOKABLE int startModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type);
 
     Q_INVOKABLE int startModelTestTask(const QString &model_uuid, const QString &test_task_uuid);
 
@@ -157,7 +160,7 @@ private:
      * @param task_id 任务 ID。
      * @param message 错误信息。
      */
-    void failTask(int task_id, const QString &message) const;
+    void failTask(int task_id, const QString &message);
 
     /**
      * @brief 更新任务所属模型的修改时间。
@@ -167,9 +170,43 @@ private:
 
     /**
      * @brief 将任务中心的总体进度和终态同步到模型页面使用的任务数据。
+     *
+     * 该函数只是 flushModelState 的状态投影别名：extra_data 是 TaskManager
+     * 状态的持久化投影，不维护独立的进度值。
      * @param task_id 任务 ID。
      */
-    void syncTaskModelState(int task_id) const;
+    void syncTaskModelState(int task_id);
+
+    /**
+     * @brief 将任务状态投影进模型 extra_data 的目标 section。
+     *
+     * 进度以 TaskManager 为唯一权威：Finished 归一化为 100，其余状态直接
+     * 投影任务记录值；终态写入 started=false，运行态写入 started=true。
+     * @param task 任务记录。
+     * @param terminal 任务是否处于终态。
+     * @param completed 任务是否正常完成（Finished）。
+     * @param section 目标 section，函数就地合并。
+     */
+    static void applyTaskStateToSection(const TaskManager::Task &task, bool terminal, bool completed,
+                                        QVariantMap &section);
+
+    /**
+     * @brief 合并任务待写入字段并将任务状态投影落库。
+     *
+     * 合并 pending_extra_updates_ 中该任务的指标字段，随后应用任务状态投影
+     * 并调用 updateModelExtraData 写 SQLite。进度/开始标记不随消息写入，
+     * 一律以任务中心为准。终态事件与 stopTask 调用点直接冲刷，保证最后
+     * 一条状态不丢失。
+     * @param task_id 任务 ID。
+     */
+    void flushModelState(int task_id);
+
+    /**
+     * @brief 冲刷全部待写入的任务状态更新。
+     *
+     * 由节流定时器触发，或 shutdown 时调用以丢弃所有缓冲。
+     */
+    void flushPendingExtraUpdates();
 private slots:
     /**
      * @brief 响应 TaskManager 的开始请求，提交完整后台准备流程。
@@ -212,14 +249,19 @@ private slots:
     void handleExternalTaskFinished(int task_id, int exit_code, bool normal_exit, bool stop_requested);
 
 private:
-    int     method_{-1};       ///< 当前项目的深度学习方法。
-    QString project_dir_;      ///< 当前项目目录。
+    int     method_{-1};  ///< 当前项目的深度学习方法。
+    QString project_dir_; ///< 当前项目目录。
 
-    ModelManager              *model_manager_{nullptr}; ///< 当前项目模型管理器。
-    dltool::data::DataManager *data_manager_{nullptr};  ///< 当前项目数据管理器。
-    TaskManager               *task_manager_{nullptr};  ///< 应用级任务状态中心。
-    std::unique_ptr<ExternalModelTaskRunner> external_task_runner_; ///< 当前项目 Python 进程运行器。
-    ModelTestTaskRepository test_task_repository_;
+    ModelManager                            *model_manager_{nullptr}; ///< 当前项目模型管理器。
+    dltool::data::DataManager               *data_manager_{nullptr};  ///< 当前项目数据管理器。
+    TaskManager                             *task_manager_{nullptr};  ///< 应用级任务状态中心。
+    std::unique_ptr<ExternalModelTaskRunner> external_task_runner_;   ///< 当前项目 Python 进程运行器。
+    ModelTestTaskRepository                  test_task_repository_;
+
+    /// 待合并的任务状态更新缓冲（task_id -> 指标字段），由节流定时器统一落库。
+    QHash<int, QVariantMap> pending_extra_updates_;
+    /// extra_data 写库节流定时器（1s）。由控制器持有并随对象销毁，不阻塞关闭流程。
+    QTimer                 *extra_flush_timer_{nullptr};
 };
 
 } // namespace dltool::model

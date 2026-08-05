@@ -24,6 +24,11 @@ FrameworkDefinition fsSam2Framework()
     };
     framework.visible_for_model_creation = false;
     framework.write_to_database          = true;
+    // 小样本能力位：FS-SAM2 的测试任务没有 UUID 测试任务记录、无评估适配器，
+    // 控制器/准备/数据集组织逻辑据此走小样本专用分支，不再按框架名特判。
+    framework.few_shot = true;
+    // 小样本测试任务没有 UUID，使用稳定目录名作为测试任务标识与存储目录。
+    framework.default_test_task_directory = QStringLiteral("fs_sam2");
     return framework;
 }
 

@@ -6,16 +6,16 @@
 #include "model/IModel.h"
 #include "model/IModelConfig.h"
 #include "model/IParams.h"
-#include "model/ModelManager.h"
 #include "model/ModelEvaluationProtocol.h"
+#include "model/ModelManager.h"
 #include "model/ModelStorageService.h"
 #include "model/TaskManager.h"
 
 #include <spdlog/spdlog.h>
 
-#include <QQmlEngine>
 #include <QDateTime>
 #include <QFileInfo>
+#include <QQmlEngine>
 #include <algorithm>
 
 namespace dltool::model {
@@ -28,23 +28,32 @@ QString statusText(const TaskManager::Task *task)
         return {};
     switch (task->status)
     {
-    case TaskManager::Pending: return QString("等待中");
-    case TaskManager::Preparing: return QString("准备中");
-    case TaskManager::Running: return QString("运行中");
-    case TaskManager::Paused: return QString("已暂停");
-    case TaskManager::Stopping: return QString("停止中");
-    case TaskManager::Stopped: return QString("已停止");
-    case TaskManager::Finished: return QString("已结束");
-    case TaskManager::Failed: return QString("失败");
+    case TaskManager::Pending:
+        return QString("等待中");
+    case TaskManager::Preparing:
+        return QString("准备中");
+    case TaskManager::Running:
+        return QString("运行中");
+    case TaskManager::Paused:
+        return QString("已暂停");
+    case TaskManager::Stopping:
+        return QString("停止中");
+    case TaskManager::Stopped:
+        return QString("已停止");
+    case TaskManager::Finished:
+        return QString("已结束");
+    case TaskManager::Failed:
+        return QString("失败");
     }
     return QString("未知");
 }
 
 bool activeTask(const TaskManager::Task *task)
 {
-    return task != nullptr && (task->status == TaskManager::Pending || task->status == TaskManager::Preparing
-                               || task->status == TaskManager::Running || task->status == TaskManager::Paused
-                               || task->status == TaskManager::Stopping);
+    return task != nullptr
+        && (task->status == TaskManager::Pending || task->status == TaskManager::Preparing
+            || task->status == TaskManager::Running || task->status == TaskManager::Paused
+            || task->status == TaskManager::Stopping);
 }
 
 ModelDatasetSelection readSelection(const data::DataSelectionTreeModel *model)
@@ -54,11 +63,11 @@ ModelDatasetSelection readSelection(const data::DataSelectionTreeModel *model)
         return result;
     for (const QVariant &value : model->selectedDatasetClassScope())
     {
-        const QVariantMap entry = value.toMap();
-        bool dataset_ok = false;
-        bool class_ok = false;
-        const qint64 dataset_id = entry.value(QStringLiteral("dataset_id")).toLongLong(&dataset_ok);
-        const qint64 label_class_id = entry.value(QStringLiteral("label_class_id")).toLongLong(&class_ok);
+        const QVariantMap entry          = value.toMap();
+        bool              dataset_ok     = false;
+        bool              class_ok       = false;
+        const qint64      dataset_id     = entry.value(QStringLiteral("dataset_id")).toLongLong(&dataset_ok);
+        const qint64      label_class_id = entry.value(QStringLiteral("label_class_id")).toLongLong(&class_ok);
         if (!dataset_ok || dataset_id < 0)
             continue;
         if (!class_ok || label_class_id < 0)
@@ -74,15 +83,24 @@ void applySelection(data::DataSelectionTreeModel *model, const ModelDatasetSelec
     if (model == nullptr)
         return;
     model->clearSelection();
-    for (const qint64 dataset_id : selection.dataset_ids)
-        model->setNodeSelected(dataset_id, -1, true);
+    for (const qint64 dataset_id : selection.dataset_ids) model->setNodeSelected(dataset_id, -1, true);
     for (const auto &[dataset_id, label_class_id] : selection.label_classes)
         model->setNodeSelected(dataset_id, label_class_id, true);
 }
 
-bool isFsSam2Model(const ModelManager::ModelRecordView &record)
+/**
+ * @brief 判断模型是否属于小样本（few-shot）流程。
+ *
+ * 小样本框架（如 FS-SAM2）的测试任务没有 UUID 测试任务记录、无评估适配器，
+ * 测试任务管理器据此隐藏/禁用普通测试任务入口。能力来源为框架注册表，
+ * 不再按框架名字符串比较。
+ * @param model_manager 模型管理器（解析深度学习方法与框架注册表）。
+ * @param record 模型记录视图。
+ * @return 框架注册表标记为 few_shot 时返回 true。
+ */
+bool isFewShotModel(const QPointer<ModelManager> &model_manager, const ModelManager::ModelRecordView &record)
 {
-    return record.framework_name.compare(QString("FS-SAM2"), Qt::CaseInsensitive) == 0;
+    return model_manager != nullptr && registeredFramework(model_manager->method(), record.framework_name).isFewShot();
 }
 
 } // namespace
@@ -103,8 +121,7 @@ ModelTestTaskManager::ModelTestTaskManager(QString project_dir, ModelManager *mo
     connect(&save_timer_, &QTimer::timeout, this, [this]() { saveCurrentTask(); });
     if (task_manager_ != nullptr)
     {
-        connect(task_manager_, &TaskManager::taskStartRequested, this,
-                &ModelTestTaskManager::handleTaskStartRequested);
+        connect(task_manager_, &TaskManager::taskStartRequested, this, &ModelTestTaskManager::handleTaskStartRequested);
         connect(task_manager_, &TaskManager::revisionChanged, this, &ModelTestTaskManager::handleTaskRevisionChanged);
     }
 }
@@ -123,29 +140,46 @@ QVariant ModelTestTaskManager::data(const QModelIndex &index, const int role) co
 {
     if (!index.isValid() || index.row() < 0 || index.row() >= tasks_.size())
         return {};
-    const ModelTestTaskDefinition &task = tasks_.at(index.row());
-    const TaskManager::Task *running = task_manager_ != nullptr ? task_manager_->findModelTaskRecord(
-        model_uuid_, ModelTaskType::Test, task.uuid, true) : nullptr;
+    const ModelTestTaskDefinition &task    = tasks_.at(index.row());
+    const TaskManager::Task       *running = task_manager_ != nullptr ? task_manager_->findModelTaskRecord(
+                                                                            model_uuid_, ModelTaskType::Test, task.uuid, true)
+                                                                      : nullptr;
     switch (role)
     {
     case Qt::DisplayRole:
-    case NameRole: return task.name;
-    case UuidRole: return task.uuid;
-    case DirectoryNameRole: return task.directory_name;
-    case CreatedAtRole: return task.created_at;
-    case ModifiedAtRole: return task.modified_at;
-    case RunningRole: return activeTask(running);
-    case ProgressRole: return running != nullptr ? running->progress : 0;
-    case StatusRole: return statusText(running);
-    default: return {};
+    case NameRole:
+        return task.name;
+    case UuidRole:
+        return task.uuid;
+    case DirectoryNameRole:
+        return task.directory_name;
+    case CreatedAtRole:
+        return task.created_at;
+    case ModifiedAtRole:
+        return task.modified_at;
+    case RunningRole:
+        return activeTask(running);
+    case ProgressRole:
+        return running != nullptr ? running->progress : 0;
+    case StatusRole:
+        return statusText(running);
+    default:
+        return {};
     }
 }
 
 QHash<int, QByteArray> ModelTestTaskManager::roleNames() const
 {
-    return {{UuidRole, "uuid"}, {NameRole, "name"}, {DirectoryNameRole, "directoryName"},
-            {CreatedAtRole, "createdAt"}, {ModifiedAtRole, "modifiedAt"}, {RunningRole, "running"},
-            {ProgressRole, "progress"}, {StatusRole, "status"}};
+    return {
+        {         UuidRole,          "uuid"},
+        {         NameRole,          "name"},
+        {DirectoryNameRole, "directoryName"},
+        {    CreatedAtRole,     "createdAt"},
+        {   ModifiedAtRole,    "modifiedAt"},
+        {      RunningRole,       "running"},
+        {     ProgressRole,      "progress"},
+        {       StatusRole,        "status"}
+    };
 }
 
 QString ModelTestTaskManager::modelUuid() const
@@ -244,7 +278,7 @@ QString ModelTestTaskManager::createTask(const QString &name)
 {
     if (model_manager_ == nullptr || model_uuid_.isEmpty())
         return QString("当前模型为空");
-    if (isFsSam2Model(model_manager_->modelRecordViewForUuid(model_uuid_)))
+    if (isFewShotModel(model_manager_, model_manager_->modelRecordViewForUuid(model_uuid_)))
         return QString("FS-SAM2 模型不需要评估任务");
     if (const QString error = validateTaskName(name); !error.isEmpty())
         return error;
@@ -252,7 +286,7 @@ QString ModelTestTaskManager::createTask(const QString &name)
         return QString("保存当前测试任务失败");
 
     const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(model_uuid_);
-    IModel *model = model_manager_->modelForUuid(model_uuid_);
+    IModel                             *model  = model_manager_->modelForUuid(model_uuid_);
     if (!record.isValid() || model == nullptr || model->config() == nullptr)
         return QString("当前模型不存在");
     QVariantMap params;
@@ -260,7 +294,7 @@ QString ModelTestTaskManager::createTask(const QString &name)
         params = test_params->valuesMap();
 
     ModelTestTaskDefinition task;
-    QString error;
+    QString                 error;
     if (!repository_.createTask(record.name, model_uuid_, name, params, {}, task, &error))
         return error;
     const int row = tasks_.size();
@@ -275,19 +309,20 @@ QString ModelTestTaskManager::createTask(const QString &name)
 bool ModelTestTaskManager::switchTask(const QString &uuid)
 {
     const auto found = std::find_if(tasks_.cbegin(), tasks_.cend(), [&uuid](const ModelTestTaskDefinition &task)
-                                     { return task.uuid == uuid.trimmed(); });
+                                    { return task.uuid == uuid.trimmed(); });
     return found != tasks_.cend() && selectIndex(static_cast<int>(std::distance(tasks_.cbegin(), found)), true);
 }
 
 bool ModelTestTaskManager::renameTask(const QString &uuid, const QString &name)
 {
-    const int row = std::distance(tasks_.cbegin(), std::find_if(
-                                      tasks_.cbegin(), tasks_.cend(), [&uuid](const ModelTestTaskDefinition &task)
+    const int row = std::distance(
+        tasks_.cbegin(), std::find_if(tasks_.cbegin(), tasks_.cend(), [&uuid](const ModelTestTaskDefinition &task)
                                       { return task.uuid == uuid.trimmed(); }));
     if (row < 0 || row >= tasks_.size())
         return false;
-    const TaskManager::Task *running = task_manager_ != nullptr
-        ? task_manager_->findModelTaskRecord(model_uuid_, ModelTaskType::Test, uuid, false) : nullptr;
+    const TaskManager::Task *running
+        = task_manager_ != nullptr ? task_manager_->findModelTaskRecord(model_uuid_, ModelTaskType::Test, uuid, false)
+                                   : nullptr;
     if (activeTask(running))
     {
         emit errorOccurred(QString("运行中的测试任务不能重命名"));
@@ -304,9 +339,9 @@ bool ModelTestTaskManager::renameTask(const QString &uuid, const QString &name)
         emit errorOccurred(error);
         return false;
     }
-    tasks_[row].name = name.trimmed();
+    tasks_[row].name           = name.trimmed();
     tasks_[row].directory_name = ModelTestTaskRepository::directoryNameForTask(name);
-    tasks_[row].modified_at = QDateTime::currentSecsSinceEpoch();
+    tasks_[row].modified_at    = QDateTime::currentSecsSinceEpoch();
     emitTaskRowChanged(row);
     if (row == current_index_)
     {
@@ -318,19 +353,21 @@ bool ModelTestTaskManager::renameTask(const QString &uuid, const QString &name)
 
 bool ModelTestTaskManager::deleteTask(const QString &uuid)
 {
-    const int row = std::distance(tasks_.cbegin(), std::find_if(
-                                      tasks_.cbegin(), tasks_.cend(), [&uuid](const ModelTestTaskDefinition &task)
+    const int row = std::distance(
+        tasks_.cbegin(), std::find_if(tasks_.cbegin(), tasks_.cend(), [&uuid](const ModelTestTaskDefinition &task)
                                       { return task.uuid == uuid.trimmed(); }));
     if (row < 0 || row >= tasks_.size())
         return false;
-    const TaskManager::Task *running = task_manager_ != nullptr
-        ? task_manager_->findModelTaskRecord(model_uuid_, ModelTaskType::Test, uuid, false) : nullptr;
+    const TaskManager::Task *running
+        = task_manager_ != nullptr ? task_manager_->findModelTaskRecord(model_uuid_, ModelTaskType::Test, uuid, false)
+                                   : nullptr;
     if (activeTask(running))
     {
         emit errorOccurred(QString("运行中的测试任务不能删除"));
         return false;
     }
-    const QString model_name = model_manager_ != nullptr ? model_manager_->modelRecordViewForUuid(model_uuid_).name : QString();
+    const QString model_name
+        = model_manager_ != nullptr ? model_manager_->modelRecordViewForUuid(model_uuid_).name : QString();
     QString error;
     if (!repository_.removeTask(model_name, uuid, &error))
     {
@@ -354,8 +391,8 @@ bool ModelTestTaskManager::deleteTask(const QString &uuid)
     {
         current_index_ = -1;
         clearCurrentObjects();
-        emit currentIndexChanged();
-        emit currentTaskChanged();
+        emit          currentIndexChanged();
+        emit          currentTaskChanged();
         const QString created = createTask(QString("测试 1"));
         if (created.isEmpty())
             emit errorOccurred(QString("删除后创建默认测试任务失败"));
@@ -376,10 +413,11 @@ bool ModelTestTaskManager::saveDefinition(ModelTestTaskDefinition &task)
 {
     if (current_test_params_ != nullptr)
         task.test_params = current_test_params_->valuesMap();
-    task.dataset_selection = readSelection(current_dataset_view_model_);
-    task.modified_at = QDateTime::currentSecsSinceEpoch();
+    task.dataset_selection                     = readSelection(current_dataset_view_model_);
+    task.modified_at                           = QDateTime::currentSecsSinceEpoch();
     const ModelManager::ModelRecordView record = model_manager_ != nullptr
-        ? model_manager_->modelRecordViewForUuid(model_uuid_) : ModelManager::ModelRecordView{};
+                                                   ? model_manager_->modelRecordViewForUuid(model_uuid_)
+                                                   : ModelManager::ModelRecordView{};
     if (!record.isValid())
         return false;
     QString error;
@@ -429,8 +467,8 @@ QString ModelTestTaskManager::evaluationCacheKey(const QString &task_uuid) const
     return model_uuid_ + QLatin1Char('\x1f') + task_uuid.trimmed();
 }
 
-bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition &task,
-                                                  ModelEvaluationOptions &options, QString *err_msg) const
+bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition &task, ModelEvaluationOptions &options,
+                                                  QString *err_msg) const
 {
     if (model_manager_ == nullptr)
     {
@@ -445,32 +483,32 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
             *err_msg = QString("模型不存在");
         return false;
     }
-    if (isFsSam2Model(record))
+    if (isFewShotModel(model_manager_, record))
     {
         if (err_msg != nullptr)
             *err_msg = QString("FS-SAM2 模型不支持评估");
         return false;
     }
     const ModelStorageService storage(project_dir_);
-    options = {};
-    options.model_uuid = model_uuid_;
-    options.test_task_uuid = task.uuid;
-    options.model_name = record.name;
-    options.task_directory = task.directory_name;
-    options.method = evaluation::fromProjectMethod(model_manager_->method());
-    options.project_database_path = model_manager_->projectDatabasePath();
+    options                        = {};
+    options.model_uuid             = model_uuid_;
+    options.test_task_uuid         = task.uuid;
+    options.model_name             = record.name;
+    options.task_directory         = task.directory_name;
+    options.method                 = evaluation::fromProjectMethod(model_manager_->method());
+    options.project_database_path  = model_manager_->projectDatabasePath();
     options.dataset_file_list_path = storage.testTaskFileListPath(record.name, task.directory_name);
-    options.task_database_path = storage.testTaskDatabasePath(record.name, task.directory_name);
-    options.prediction_dir = storage.testTaskPredictionPath(record.name, task.directory_name);
+    options.task_database_path     = storage.testTaskDatabasePath(record.name, task.directory_name);
+    options.prediction_dir         = storage.testTaskPredictionPath(record.name, task.directory_name);
 
-    const QVariantMap test_params = current_test_params_ != nullptr
-        ? current_test_params_->valuesMap() : task.test_params;
-    options.evaluation_config = evaluation::normalizedEvaluationConfig(
-        test_params.value(QStringLiteral("evaluation")).toMap());
-    options.confidence_threshold = options.evaluation_config
-        .value(evaluation::fieldName(evaluation::Field::ConfidenceThreshold)).toDouble();
-    options.iou_threshold = options.evaluation_config
-        .value(evaluation::fieldName(evaluation::Field::IouThreshold)).toDouble();
+    const QVariantMap test_params
+        = current_test_params_ != nullptr ? current_test_params_->valuesMap() : task.test_params;
+    options.evaluation_config
+        = evaluation::normalizedEvaluationConfig(test_params.value(QStringLiteral("evaluation")).toMap());
+    options.confidence_threshold
+        = options.evaluation_config.value(evaluation::fieldName(evaluation::Field::ConfidenceThreshold)).toDouble();
+    options.iou_threshold
+        = options.evaluation_config.value(evaluation::fieldName(evaluation::Field::IouThreshold)).toDouble();
     options.matching_strategy = evaluation::matchingStrategyFromKey(
         options.evaluation_config.value(evaluation::fieldName(evaluation::Field::MatchingStrategy)).toString());
     return true;
@@ -479,7 +517,8 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
 void ModelTestTaskManager::handleParameterChanged(const QString &group_name)
 {
     scheduleSave();
-    if (model_manager_ != nullptr && isFsSam2Model(model_manager_->modelRecordViewForUuid(model_uuid_)))
+    if (model_manager_ != nullptr
+        && isFewShotModel(model_manager_, model_manager_->modelRecordViewForUuid(model_uuid_)))
         return;
     if (current_evaluation_ == nullptr || current_index_ < 0 || current_index_ >= tasks_.size())
         return;
@@ -487,7 +526,7 @@ void ModelTestTaskManager::handleParameterChanged(const QString &group_name)
     if (group_name.compare(QStringLiteral("evaluation"), Qt::CaseInsensitive) == 0)
     {
         ModelEvaluationOptions options;
-        QString error;
+        QString                error;
         if (!buildEvaluationOptions(tasks_.at(current_index_), options, &error))
         {
             spdlog::error("更新测试评估参数失败: {}", error.toUtf8().constData());
@@ -514,7 +553,8 @@ void ModelTestTaskManager::handleTaskRevisionChanged()
         emit dataChanged(index(0), index(tasks_.size() - 1), {RunningRole, ProgressRole, StatusRole});
     }
     if (current_evaluation_ != nullptr
-        && (model_manager_ == nullptr || !isFsSam2Model(model_manager_->modelRecordViewForUuid(model_uuid_))))
+        && (model_manager_ == nullptr
+            || !isFewShotModel(model_manager_, model_manager_->modelRecordViewForUuid(model_uuid_))))
     {
         const TaskManager::Task *task = currentTaskRecord();
         if (task == nullptr)
@@ -528,7 +568,7 @@ void ModelTestTaskManager::handleTaskRevisionChanged()
             if (current_index_ >= 0 && current_index_ < tasks_.size())
             {
                 ModelEvaluationOptions options;
-                QString error;
+                QString                error;
                 if (buildEvaluationOptions(tasks_.at(current_index_), options, &error))
                     current_evaluation_->setEvaluationOptions(options);
                 else
@@ -536,7 +576,7 @@ void ModelTestTaskManager::handleTaskRevisionChanged()
                                   error.toUtf8().constData());
             }
             const QString cache_key = evaluationCacheKey(currentTaskUuid());
-            const bool notify = pending_evaluation_notifications_.contains(cache_key);
+            const bool    notify    = pending_evaluation_notifications_.contains(cache_key);
             current_evaluation_->evaluate(notify);
             pending_evaluation_notifications_.remove(cache_key);
         }
@@ -563,7 +603,8 @@ void ModelTestTaskManager::handleTaskStartRequested(const int task_id)
     const TaskManager::Task *task = task_manager_->findTask(task_id);
     if (task == nullptr || !isTestModelTask(task->type) || task->scope_uuid.trimmed().isEmpty())
         return;
-    if (model_manager_ != nullptr && isFsSam2Model(model_manager_->modelRecordViewForUuid(task->model_uuid)))
+    if (model_manager_ != nullptr
+        && isFewShotModel(model_manager_, model_manager_->modelRecordViewForUuid(task->model_uuid)))
         return;
 
     // taskStartRequested is emitted only after an explicit start request has
@@ -581,14 +622,13 @@ void ModelTestTaskManager::reload()
     const auto replaceTasks = [this](QList<ModelTestTaskDefinition> tasks)
     {
         beginResetModel();
-        tasks_ = std::move(tasks);
+        tasks_         = std::move(tasks);
         current_index_ = -1;
         endResetModel();
         emit countChanged();
     };
 
-    for (ModelEvaluationViewModel *evaluation : evaluation_cache_)
-        delete evaluation;
+    for (ModelEvaluationViewModel *evaluation : evaluation_cache_) delete evaluation;
     evaluation_cache_.clear();
     pending_evaluation_notifications_.clear();
 
@@ -604,13 +644,13 @@ void ModelTestTaskManager::reload()
     const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(model_uuid_);
     if (!record.isValid())
         return;
-    if (isFsSam2Model(record))
+    if (isFewShotModel(model_manager_, record))
     {
         emit currentIndexChanged();
         emit currentTaskChanged();
         return;
     }
-    QString error;
+    QString                        error;
     QList<ModelTestTaskDefinition> loaded_tasks = repository_.listTasks(record.name, &error);
 
     // model.db only stores the task index.  Hydrate every task from its own
@@ -621,7 +661,7 @@ void ModelTestTaskManager::reload()
         for (ModelTestTaskDefinition &task : loaded_tasks)
         {
             ModelTestTaskDefinition hydrated;
-            QString hydration_error;
+            QString                 hydration_error;
             if (!repository_.loadTask(record.name, task.uuid, hydrated, &hydration_error))
             {
                 error = hydration_error.isEmpty() ? QString("读取测试任务数据库失败: %1").arg(task.name)
@@ -629,7 +669,7 @@ void ModelTestTaskManager::reload()
                 break;
             }
             hydrated.model_uuid = model_uuid_;
-            task = std::move(hydrated);
+            task                = std::move(hydrated);
         }
     }
     if (!error.isEmpty())
@@ -688,10 +728,10 @@ void ModelTestTaskManager::bindCurrentObjects()
     const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(model_uuid_);
     if (record.isValid())
     {
-        if (isFsSam2Model(record))
+        if (isFewShotModel(model_manager_, record))
             return;
         const QString cache_key = evaluationCacheKey(tasks_.at(current_index_).uuid);
-        current_evaluation_ = evaluation_cache_.value(cache_key, nullptr);
+        current_evaluation_     = evaluation_cache_.value(cache_key, nullptr);
         if (current_evaluation_ == nullptr)
         {
             current_evaluation_ = new ModelEvaluationViewModel(this);
@@ -701,7 +741,7 @@ void ModelTestTaskManager::bindCurrentObjects()
             current_evaluation_->setGlobalFilter(data_manager_->globalFilter());
 
         ModelEvaluationOptions options;
-        QString evaluation_error;
+        QString                evaluation_error;
         if (buildEvaluationOptions(tasks_.at(current_index_), options, &evaluation_error))
         {
             current_evaluation_->setEvaluationOptions(options);

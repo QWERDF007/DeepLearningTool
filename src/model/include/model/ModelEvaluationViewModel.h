@@ -1,15 +1,16 @@
 #pragma once
 
 #include "dltool/model/Export.h"
+#include "model/EvaluationCommon.h"
 #include "model/ModelEvaluationModels.h"
 #include "model/ModelEvaluationService.h"
 
+#include <QList>
 #include <QObject>
+#include <QPointer>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml>
-#include <QPointer>
-#include <QList>
 
 namespace dltool::model {
 
@@ -61,43 +62,43 @@ class MODEL_API ModelEvaluationViewModel : public QObject
 public:
     explicit ModelEvaluationViewModel(QObject *parent = nullptr);
 
-    bool available() const;
-    bool loading() const;
-    QString state() const;
-    QString error() const;
-    QString primaryMetricSet() const;
-    bool globalFilterActive() const;
-    QString globalFilterDescription() const;
-    QString metricScopeDescription() const;
-    QVariantMap imageMetricDefinition() const;
-    QString resultRevision() const;
-    double confidenceThreshold() const;
-    double iouThreshold() const;
-    QString matchingStrategy() const;
-    bool hasInstanceMetrics() const;
-    bool hasImageMetrics() const;
-    bool hasConfusionMatrix() const;
-    bool hasInstanceEvents() const;
-    EvaluationMetricModel *instanceMetrics() const;
-    EvaluationMetricModel *imageMetrics() const;
-    EvaluationMetricModel *perClassMetrics() const;
-    EvaluationMetricSortProxyModel *sortedPerClassMetrics() const;
-    EvaluationConfusionModel *confusionMatrix() const;
-    EvaluationImageModel *images() const;
-    EvaluationImageFilterProxyModel *filteredImages() const;
-    EvaluationInstanceModel *instances() const;
+    bool                              available() const;
+    bool                              loading() const;
+    QString                           state() const;
+    QString                           error() const;
+    QString                           primaryMetricSet() const;
+    bool                              globalFilterActive() const;
+    QString                           globalFilterDescription() const;
+    QString                           metricScopeDescription() const;
+    QVariantMap                       imageMetricDefinition() const;
+    QString                           resultRevision() const;
+    double                            confidenceThreshold() const;
+    double                            iouThreshold() const;
+    QString                           matchingStrategy() const;
+    bool                              hasInstanceMetrics() const;
+    bool                              hasImageMetrics() const;
+    bool                              hasConfusionMatrix() const;
+    bool                              hasInstanceEvents() const;
+    EvaluationMetricModel            *instanceMetrics() const;
+    EvaluationMetricModel            *imageMetrics() const;
+    EvaluationMetricModel            *perClassMetrics() const;
+    EvaluationMetricSortProxyModel   *sortedPerClassMetrics() const;
+    EvaluationConfusionModel         *confusionMatrix() const;
+    EvaluationImageModel             *images() const;
+    EvaluationImageFilterProxyModel  *filteredImages() const;
+    EvaluationInstanceModel          *instances() const;
     EvaluationGlobalFilterProxyModel *globalFilteredInstances() const;
-    EvaluationCellFilterProxyModel *filteredInstances() const;
-    EvaluationChartModel *charts() const;
-    QVariantMap selectedInstance() const;
-    QString selectedEventUuid() const;
-    int selectedInstanceRow() const;
+    EvaluationCellFilterProxyModel   *filteredInstances() const;
+    EvaluationChartModel             *charts() const;
+    QVariantMap                       selectedInstance() const;
+    QString                           selectedEventUuid() const;
+    int                               selectedInstanceRow() const;
 
-    void setEvaluationOptions(const ModelEvaluationOptions &options);
+    void             setEvaluationOptions(const ModelEvaluationOptions &options);
     Q_INVOKABLE void evaluate(bool notify = false);
     Q_INVOKABLE void refreshEvaluation();
-    void invalidate(const QString &state = {});
-    void setRuntimeState(const QString &state);
+    void             invalidate(const QString &state = {});
+    void             setRuntimeState(const QString &state);
     Q_INVOKABLE void selectInstance(int proxyRow);
     Q_INVOKABLE bool selectInstance(const QString &eventUuid);
     Q_INVOKABLE void selectMatrixCell(const QString &rowKey, const QString &columnKey);
@@ -110,7 +111,7 @@ public:
     Q_INVOKABLE void clearPredClassFilter();
     Q_INVOKABLE void setStatusFilter(const QString &status);
     Q_INVOKABLE void clearFilters();
-    void setGlobalFilter(QObject *filter);
+    void             setGlobalFilter(QObject *filter);
 
 signals:
     void evaluationChanged();
@@ -125,51 +126,57 @@ private:
     void loadEvaluation(const QVariantMap &root);
     void loadDerivedCharts();
     void loadInstanceRecords(const QVariantList &records);
-    QVariantMap instanceToMap(const EvaluationInstanceRecord &record) const;
-    QString thumbnailUrl(const EvaluationInstanceRecord &record) const;
-    void scheduleRebuildFilteredAggregates();
-    void rebuildFilteredAggregates();
 
-    ModelEvaluationOptions evaluation_options_;
-    bool has_evaluation_options_{false};
-    bool evaluation_attempted_{false};
+    /** 将实例记录序列化为 QML 映射，委托 EvaluationCommon 公共实现。 */
+    QVariantMap instanceToMap(const EvaluationInstanceRecord &record) const
+    {
+        return dltool::model::instanceToMap(record);
+    }
+
+    QString thumbnailUrl(const EvaluationInstanceRecord &record) const;
+    void    scheduleRebuildFilteredAggregates();
+    void    rebuildFilteredAggregates();
+
+    ModelEvaluationOptions            evaluation_options_;
+    bool                              has_evaluation_options_{false};
+    bool                              evaluation_attempted_{false};
     std::shared_ptr<std::atomic_bool> cancel_token_;
-    bool notify_when_finished_{false};
-    bool available_{false};
-    bool loading_{false};
-    QString error_;
-    QString state_;
-    QString primary_metric_set_;
-    QString metric_scope_description_;
-    QVariantMap image_metric_definition_;
-    QString result_revision_;
-    double confidence_threshold_{0.0};
-    double iou_threshold_{0.0};
-    QString matching_strategy_;
-    bool has_instance_metrics_{false};
-    bool has_image_metrics_{false};
-    bool has_confusion_matrix_{false};
-    bool has_instance_events_{false};
-    bool anomaly_detection_{false};
-    QPointer<QObject> global_filter_;
-    EvaluationMetricModel *instance_metrics_{nullptr};
-    EvaluationMetricModel *image_metrics_{nullptr};
-    EvaluationMetricModel *per_class_metrics_{nullptr};
-    EvaluationMetricSortProxyModel *sorted_per_class_metrics_{nullptr};
-    EvaluationConfusionModel *confusion_matrix_{nullptr};
-    EvaluationImageModel *images_{nullptr};
-    EvaluationImageFilterProxyModel *filtered_images_{nullptr};
-    EvaluationInstanceModel *instances_{nullptr};
+    bool                              notify_when_finished_{false};
+    bool                              available_{false};
+    bool                              loading_{false};
+    QString                           error_;
+    QString                           state_;
+    QString                           primary_metric_set_;
+    QString                           metric_scope_description_;
+    QVariantMap                       image_metric_definition_;
+    QString                           result_revision_;
+    double                            confidence_threshold_{0.0};
+    double                            iou_threshold_{0.0};
+    QString                           matching_strategy_;
+    bool                              has_instance_metrics_{false};
+    bool                              has_image_metrics_{false};
+    bool                              has_confusion_matrix_{false};
+    bool                              has_instance_events_{false};
+    bool                              anomaly_detection_{false};
+    QPointer<QObject>                 global_filter_;
+    EvaluationMetricModel            *instance_metrics_{nullptr};
+    EvaluationMetricModel            *image_metrics_{nullptr};
+    EvaluationMetricModel            *per_class_metrics_{nullptr};
+    EvaluationMetricSortProxyModel   *sorted_per_class_metrics_{nullptr};
+    EvaluationConfusionModel         *confusion_matrix_{nullptr};
+    EvaluationImageModel             *images_{nullptr};
+    EvaluationImageFilterProxyModel  *filtered_images_{nullptr};
+    EvaluationInstanceModel          *instances_{nullptr};
     EvaluationGlobalFilterProxyModel *global_filtered_instances_{nullptr};
-    EvaluationCellFilterProxyModel *filtered_instances_{nullptr};
-    EvaluationChartModel *charts_{nullptr};
-    int selected_proxy_row_{-1};
-    QVariantMap selected_instance_;
-    int evaluation_revision_{0};
-    int aggregation_revision_{0};
-    bool aggregation_rebuild_scheduled_{false};
-    int aggregation_schedule_token_{0};
-    bool suppress_aggregation_rebuild_{false};
+    EvaluationCellFilterProxyModel   *filtered_instances_{nullptr};
+    EvaluationChartModel             *charts_{nullptr};
+    int                               selected_proxy_row_{-1};
+    QVariantMap                       selected_instance_;
+    int                               evaluation_revision_{0};
+    int                               aggregation_revision_{0};
+    bool                              aggregation_rebuild_scheduled_{false};
+    int                               aggregation_schedule_token_{0};
+    bool                              suppress_aggregation_rebuild_{false};
 };
 
 } // namespace dltool::model

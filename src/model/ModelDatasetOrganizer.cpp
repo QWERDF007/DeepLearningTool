@@ -17,8 +17,8 @@
 #include <QImage>
 #include <QJsonDocument>
 #include <QList>
-#include <QPointF>
 #include <QPair>
+#include <QPointF>
 #include <QSaveFile>
 #include <QStringConverter>
 #include <QStringList>
@@ -182,7 +182,7 @@ const std::map<DatasetFileName, QString> &datasetFileNames()
     static const std::map<DatasetFileName, QString> names = {
         {         DatasetFileName::Mask, QStringLiteral("image_%1_label_%2.png")},
         {    DatasetFileName::ImageMask,                QStringLiteral("%1.png")},
-        {DatasetFileName::SplitFileList,               QStringLiteral("%1.txt")},
+        {DatasetFileName::SplitFileList,                QStringLiteral("%1.txt")},
     };
     return names;
 }
@@ -390,8 +390,8 @@ bool writeImageFileList(const QString &path, const QList<QPair<qint64, QString>>
     {
         QString image_path = raw_path;
         image_path.replace(QString("\""), QString("\"\""));
-        if (image_path.contains(QChar(',')) || image_path.contains(QChar('"'))
-            || image_path.contains(QChar('\n')) || image_path.contains(QChar('\r')))
+        if (image_path.contains(QChar(',')) || image_path.contains(QChar('"')) || image_path.contains(QChar('\n'))
+            || image_path.contains(QChar('\r')))
             image_path = QString("\"") + image_path + QString("\"");
         stream << image_id << QChar(',') << image_path << QChar('\n');
     }
@@ -406,7 +406,8 @@ bool writeImageFileList(const QString &path, const QList<QPair<qint64, QString>>
 
 void removeLegacyAnomalibSplitFiles(const QString &dataset_dir, const QString &train_dir)
 {
-    const auto remove_if_inside = [](const QString &root, const QString &name) {
+    const auto remove_if_inside = [](const QString &root, const QString &name)
+    {
         const QString clean_root = cleanPath(QFileInfo(root).absoluteFilePath());
         if (clean_root.isEmpty())
             return;
@@ -415,14 +416,12 @@ void removeLegacyAnomalibSplitFiles(const QString &dataset_dir, const QString &t
             QFile::remove(path);
     };
 
-    const QStringList dataset_names = {QStringLiteral("train.txt"), QStringLiteral("validation.txt"),
+    const QStringList dataset_names = {QStringLiteral("train.txt"),         QStringLiteral("validation.txt"),
                                        QStringLiteral("train_labels.json"), QStringLiteral("validation_labels.json"),
-                                       QStringLiteral("train.yaml"), QStringLiteral("validation.yaml")};
-    const QStringList train_names  = {QStringLiteral("train.yaml"), QStringLiteral("validation.yaml")};
-    for (const QString &name : dataset_names)
-        remove_if_inside(dataset_dir, name);
-    for (const QString &name : train_names)
-        remove_if_inside(train_dir, name);
+                                       QStringLiteral("train.yaml"),        QStringLiteral("validation.yaml")};
+    const QStringList train_names   = {QStringLiteral("train.yaml"), QStringLiteral("validation.yaml")};
+    for (const QString &name : dataset_names) remove_if_inside(dataset_dir, name);
+    for (const QString &name : train_names) remove_if_inside(train_dir, name);
 }
 
 bool writeJsonFile(const QString &path, const QVariant &value, QString *err_msg, const QString &message)
@@ -512,18 +511,18 @@ enum class LabelExportDecision
 
 struct SplitExportContext
 {
-    const ModelDatasetExportRequest          *request{};
+    const ModelDatasetExportRequest         *request{};
     const dltool::data::DatasetExportSource *source{};
-    const ModelDatasetSelection     *selection{};
-    DatasetSplit                     split{DatasetSplit::Train};
-    QString                          split_name;
-    QString                          split_dir;
-    QString                          masks_dir;
-    YAML::Node                       images{YAML::NodeType::Sequence};
-    std::map<qint64, int>            class_indices;
-    QList<QPair<qint64, QString>>    image_files;
-    int                              image_count{0};
-    int                              label_count{0};
+    const ModelDatasetSelection             *selection{};
+    DatasetSplit                             split{DatasetSplit::Train};
+    QString                                  split_name;
+    QString                                  split_dir;
+    QString                                  masks_dir;
+    YAML::Node                               images{YAML::NodeType::Sequence};
+    std::map<qint64, int>                    class_indices;
+    QList<QPair<qint64, QString>>            image_files;
+    int                                      image_count{0};
+    int                                      label_count{0};
 };
 
 QString splitFileListPath(const SplitExportContext &ctx, QString *err_msg)
@@ -581,7 +580,7 @@ public:
         if (request.source == nullptr)
         {
             if (err_msg != nullptr)
-        *err_msg = QString("模型数据源为空");
+                *err_msg = QString("模型数据源为空");
             return {};
         }
 
@@ -589,7 +588,7 @@ public:
         if (selection == nullptr || selection->isEmpty())
         {
             if (required && err_msg != nullptr)
-            *err_msg = QString("未选择%1数据集").arg(mappedValue(datasetSplitNames(), split));
+                *err_msg = QString("未选择%1数据集").arg(mappedValue(datasetSplitNames(), split));
             return {};
         }
 
@@ -662,8 +661,7 @@ protected:
     }
 
     virtual bool appendImage(SplitExportContext &ctx, const ImageExportContext &image, const YAML::Node &labels,
-                             QString *err_msg) const
-        = 0;
+                             QString *err_msg) const = 0;
 
     virtual QVariantMap finishSplit(SplitExportContext &ctx, QString *err_msg) const = 0;
 
@@ -697,16 +695,13 @@ private:
 
         const QVariantMap image_level_label = ctx.source->imageLevelLabelData(image_id);
         image.image_label_class_id
-            = image_level_label
-                  .value(mappedValue(imageLevelLabelFieldNames(), ImageLevelLabelField::LabelClassId), -1)
+            = image_level_label.value(mappedValue(imageLevelLabelFieldNames(), ImageLevelLabelField::LabelClassId), -1)
                   .toLongLong();
         image.image_label_class_name
-            = image_level_label
-                  .value(mappedValue(imageLevelLabelFieldNames(), ImageLevelLabelField::LabelClassName))
+            = image_level_label.value(mappedValue(imageLevelLabelFieldNames(), ImageLevelLabelField::LabelClassName))
                   .toString();
         image.image_label_group
-            = image_level_label.value(mappedValue(imageLevelLabelFieldNames(), ImageLevelLabelField::Group))
-                  .toString();
+            = image_level_label.value(mappedValue(imageLevelLabelFieldNames(), ImageLevelLabelField::Group)).toString();
         image.has_anomaly_label = isAnomalyGroup(image.image_label_group);
         return true;
     }
@@ -723,7 +718,7 @@ private:
             const QString     class_name  = ctx.source->labelClassName(label_class_id);
             const QString     class_group = ctx.source->labelClassGroup(label_class_id);
             const QVariantMap label_data  = ctx.source->labelData(label_id);
-            YAML::Node label = baseLabelNode(ctx, label_id, label_class_id, class_name, class_group, label_data);
+            YAML::Node        label = baseLabelNode(ctx, label_id, label_class_id, class_name, class_group, label_data);
 
             const LabelExportDecision decision
                 = augmentLabel(ctx, image, label_id, label_class_id, class_group, label_data, label, err_msg);
@@ -781,14 +776,14 @@ protected:
             return {};
         if (ctx.split != DatasetSplit::Test)
         {
-            const QString labels_path = splitLabelsPath(ctx.request->dataset_dir, ctx.split_name);
-            const QVariant labels = common::yaml::nodeVariant(ctx.images);
+            const QString  labels_path = splitLabelsPath(ctx.request->dataset_dir, ctx.split_name);
+            const QVariant labels      = common::yaml::nodeVariant(ctx.images);
             if (!writeJsonFile(labels_path, labels, err_msg, QString("写入数据集标注文件失败")))
                 return {};
         }
 
         return {
-            {mappedValue(datasetConfigFieldNames(),   DatasetConfigField::FileList), file_list_path},
+            {mappedValue(datasetConfigFieldNames(),   DatasetConfigField::FileList),  file_list_path},
             {mappedValue(datasetConfigFieldNames(), DatasetConfigField::ImageCount), ctx.image_count},
             {mappedValue(datasetConfigFieldNames(), DatasetConfigField::LabelCount), ctx.label_count},
         };
@@ -828,7 +823,8 @@ protected:
     {
         if (!GenericDatasetOrganizer::prepareSplit(ctx, err_msg))
             return false;
-        ctx.masks_dir = QDir(ctx.request->dataset_dir).filePath(mappedValue(datasetSubdirNames(), DatasetSubdir::Masks));
+        ctx.masks_dir
+            = QDir(ctx.request->dataset_dir).filePath(mappedValue(datasetSubdirNames(), DatasetSubdir::Masks));
         return ensureDirectory(ctx.masks_dir, err_msg, QString("数据集目录为空"), QString("创建数据集目录失败: %1"));
     }
 
@@ -921,10 +917,12 @@ protected:
             }
         }
 
-        return {{mappedValue(datasetConfigFieldNames(), DatasetConfigField::FileList), cleanPath(file_list_path)},
-                {mappedValue(datasetConfigFieldNames(), DatasetConfigField::MasksDir), cleanPath(ctx.masks_dir)},
-                {mappedValue(datasetConfigFieldNames(), DatasetConfigField::ImageCount), ctx.image_count},
-                {mappedValue(datasetConfigFieldNames(), DatasetConfigField::LabelCount), ctx.label_count}};
+        return {
+            {mappedValue(datasetConfigFieldNames(),   DatasetConfigField::FileList), cleanPath(file_list_path)},
+            {mappedValue(datasetConfigFieldNames(),   DatasetConfigField::MasksDir),  cleanPath(ctx.masks_dir)},
+            {mappedValue(datasetConfigFieldNames(), DatasetConfigField::ImageCount),           ctx.image_count},
+            {mappedValue(datasetConfigFieldNames(), DatasetConfigField::LabelCount),           ctx.label_count}
+        };
     }
 };
 
@@ -943,8 +941,7 @@ protected:
             return false;
         ctx.masks_dir
             = QDir(ctx.request->dataset_dir).filePath(mappedValue(datasetSubdirNames(), DatasetSubdir::Masks));
-        return ensureDirectory(ctx.masks_dir, err_msg, QString("数据集目录为空"),
-                               QString("创建数据集目录失败: %1"));
+        return ensureDirectory(ctx.masks_dir, err_msg, QString("数据集目录为空"), QString("创建数据集目录失败: %1"));
     }
 
     LabelExportDecision augmentLabel(SplitExportContext &ctx, ImageExportContext &image, qint64 label_id,
@@ -975,8 +972,8 @@ protected:
         if (image.has_anomaly_label && ctx.split != DatasetSplit::Test)
         {
             QString mask_err;
-            writeAnomalibImageMask(image.anomaly_polygons, image.width, image.height, ctx.masks_dir,
-                                   image.image_id, &mask_err);
+            writeAnomalibImageMask(image.anomaly_polygons, image.width, image.height, ctx.masks_dir, image.image_id,
+                                   &mask_err);
             if (!mask_err.isEmpty())
             {
                 if (err_msg != nullptr)
@@ -1045,14 +1042,15 @@ QVariantMap ModelDatasetOrganizer::organize(const ModelDatasetExportRequest &req
     if (request.dataset_dir.trimmed().isEmpty())
     {
         if (err_msg != nullptr)
-        *err_msg = QString("模型数据集目录为空");
+            *err_msg = QString("模型数据集目录为空");
         return {};
     }
-    if (!ensureDirectory(request.dataset_dir, err_msg, QString("数据集目录为空"),
-                         QString("创建数据集目录失败: %1")))
+    if (!ensureDirectory(request.dataset_dir, err_msg, QString("数据集目录为空"), QString("创建数据集目录失败: %1")))
         return {};
 
-    const bool fs_sam2_layout = datasetLayout(request.framework_name) == FrameworkDatasetLayout::FsSam2;
+    // 小样本流程（框架能力位 few_shot）：测试时仍需导出训练集划分，供
+    // 小样本推理脚本读取参考样本；不再按框架名字符串判断数据集布局。
+    const bool fs_sam2_layout  = request.few_shot;
     const bool anomalib_layout = datasetLayout(request.framework_name) == FrameworkDatasetLayout::Anomalib;
     const std::unique_ptr<DatasetOrganizerBase> organizer = createDatasetOrganizer(request.framework_name);
     if (isTrainModelTask(request.task_type) || request.task_type == ModelTaskType::BoxToMask)
@@ -1092,8 +1090,7 @@ QVariantMap ModelDatasetOrganizer::organize(const ModelDatasetExportRequest &req
             && !datasets.contains(mappedValue(datasetConfigFieldNames(), DatasetConfigField::Validation)))
         {
             const QString train_root = cleanPath(QFileInfo(request.train_dir).absoluteFilePath());
-            const QString stale_path
-                = cleanPath(anomalibFileListPath(request.train_dir, QStringLiteral("validation")));
+            const QString stale_path = cleanPath(anomalibFileListPath(request.train_dir, QStringLiteral("validation")));
             if (!train_root.isEmpty() && stale_path.startsWith(train_root + QStringLiteral("/"), Qt::CaseInsensitive)
                 && QFileInfo::exists(stale_path))
             {

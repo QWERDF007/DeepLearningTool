@@ -4,8 +4,8 @@
 #include "common/YamlUtils.h"
 #include "core/CoreDef.h"
 #include "data/DataManager.h"
-#include "data/DatasetExportSource.h"
 #include "data/DataOperationWorkflow.h"
+#include "data/DatasetExportSource.h"
 #include "model/ExternalModelTaskRunner.h"
 #include "model/IModel.h"
 #include "model/IModelConfig.h"
@@ -18,20 +18,28 @@
 
 #include <spdlog/spdlog.h>
 
-#include <memory>
-#include <exception>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QThreadPool>
 #include <algorithm>
+#include <exception>
+#include <memory>
 #include <utility>
 
 namespace dltool::model {
-using common::setError;
 using common::cleanPath;
+using common::setError;
 
 namespace {
+
+/**
+ * @brief extra_data 写库节流间隔。
+ *
+ * Python 按 iter 高频上报时，GUI 线程逐条写 SQLite 会成为磁盘 IO 瓶颈；
+ * 指标字段先合并进内存缓冲，最多每 1 秒落库一次。
+ */
+constexpr int kExtraFlushIntervalMs = 1000;
 
 QString taskManagerStatusName(const TaskManager::TaskStatus status)
 {
@@ -58,11 +66,6 @@ QString taskManagerStatusName(const TaskManager::TaskStatus status)
     }
 }
 
-bool isFewShotFramework(const QString &framework_name)
-{
-    return framework_name.compare(QString("FS-SAM2"), Qt::CaseInsensitive) == 0;
-}
-
 } // namespace
 
 ModelTaskController::ModelTaskController(const int method, QString project_dir, ModelManager *model_manager,
@@ -77,8 +80,8 @@ ModelTaskController::ModelTaskController(const int method, QString project_dir, 
     , external_task_runner_(std::make_unique<ExternalModelTaskRunner>(this))
     , test_task_repository_(project_dir_)
 {
-    test_task_repository_.setProjectDatabasePath(
-        model_manager_ != nullptr ? model_manager_->projectDatabasePath() : QString());
+    test_task_repository_.setProjectDatabasePath(model_manager_ != nullptr ? model_manager_->projectDatabasePath()
+                                                                           : QString());
     connect(external_task_runner_.get(), &ExternalModelTaskRunner::taskStarted, this,
             &ModelTaskController::handleExternalTaskStarted);
     connect(external_task_runner_.get(), &ExternalModelTaskRunner::taskFinished, this,
@@ -87,11 +90,15 @@ ModelTaskController::ModelTaskController(const int method, QString project_dir, 
             &ModelTaskController::handleExternalTaskStartFailed);
     if (task_manager_ != nullptr)
     {
-        connect(task_manager_, &TaskManager::taskStartRequested, this,
-                &ModelTaskController::handleTaskStartRequested);
+        connect(task_manager_, &TaskManager::taskStartRequested, this, &ModelTaskController::handleTaskStartRequested);
         connect(task_manager_, &TaskManager::taskStopRequested, this, &ModelTaskController::handleTaskStopRequested);
         connect(task_manager_, &TaskManager::taskMessageReceived, this, &ModelTaskController::handleTaskMessage);
     }
+    // extra_data 写库节流定时器：高频进度事件先合并进内存缓冲，由该定时器
+    // 统一落库，避免每条 Python 消息都触发一次 SQLite 写入。
+    extra_flush_timer_ = new QTimer(this);
+    extra_flush_timer_->setInterval(kExtraFlushIntervalMs);
+    connect(extra_flush_timer_, &QTimer::timeout, this, &ModelTaskController::flushPendingExtraUpdates);
 }
 
 ModelTaskController::~ModelTaskController()
@@ -101,14 +108,16 @@ ModelTaskController::~ModelTaskController()
 
 void ModelTaskController::shutdown()
 {
+    // 项目关闭前冲刷全部待写入的状态更新，避免高频事件缓冲丢失。
+    flushPendingExtraUpdates();
     if (task_manager_ != nullptr)
     {
         const int count = task_manager_->rowCount();
         for (int row = 0; row < count; ++row)
         {
-            const QModelIndex index = task_manager_->index(row, 0);
-            const int task_id = task_manager_->data(index, TaskManager::TaskIdRole).toInt();
-            const TaskManager::Task *task = task_manager_->findTask(task_id);
+            const QModelIndex        index   = task_manager_->index(row, 0);
+            const int                task_id = task_manager_->data(index, TaskManager::TaskIdRole).toInt();
+            const TaskManager::Task *task    = task_manager_->findTask(task_id);
             if (task == nullptr || model_manager_ == nullptr
                 || !model_manager_->modelRecordViewForUuid(task->model_uuid).isValid()
                 || TaskManager::isTerminal(task->status))
@@ -133,7 +142,8 @@ void ModelTaskController::shutdown()
             {
                 for (int row = 0; row < task_manager_->rowCount(); ++row)
                 {
-                    const int task_id = task_manager_->data(task_manager_->index(row, 0), TaskManager::TaskIdRole).toInt();
+                    const int task_id
+                        = task_manager_->data(task_manager_->index(row, 0), TaskManager::TaskIdRole).toInt();
                     if (external_task_runner_->hasRunningTask(task_id))
                     {
                         running = true;
@@ -150,7 +160,7 @@ void ModelTaskController::shutdown()
 
 int ModelTaskController::addModelTask(const QString &model_uuid, const ModelTaskType task_type)
 {
-    QString error;
+    QString   error;
     const int task_id = ensureTaskRecord(model_uuid, task_type, {}, {}, &error);
     if (task_id < 0)
         spdlog::error("添加模型任务失败: {}", error.toUtf8().constData());
@@ -159,7 +169,7 @@ int ModelTaskController::addModelTask(const QString &model_uuid, const ModelTask
 
 int ModelTaskController::startModelTask(const QString &model_uuid, const ModelTaskType task_type)
 {
-    QString error;
+    QString   error;
     const int task_id = ensureTaskRecord(model_uuid, task_type, {}, {}, &error);
     if (task_id < 0)
     {
@@ -171,7 +181,7 @@ int ModelTaskController::startModelTask(const QString &model_uuid, const ModelTa
 
 int ModelTaskController::startModelTestTask(const QString &model_uuid, const QString &test_task_uuid)
 {
-    QString error;
+    QString   error;
     const int task_id = ensureTaskRecord(model_uuid, ModelTaskType::Test, test_task_uuid, {}, &error);
     if (task_id < 0)
     {
@@ -194,8 +204,8 @@ bool ModelTaskController::stopModelTestTask(const QString &model_uuid, const QSt
 {
     if (task_manager_ == nullptr)
         return false;
-    const int task_id = task_manager_->findModelTask(model_uuid.trimmed(), ModelTaskType::Test,
-                                                     test_task_uuid.trimmed(), false);
+    const int task_id
+        = task_manager_->findModelTask(model_uuid.trimmed(), ModelTaskType::Test, test_task_uuid.trimmed(), false);
     return task_id >= 0 && stopTask(task_id);
 }
 
@@ -248,22 +258,24 @@ int ModelTaskController::ensureTaskRecord(const QString &model_uuid, const Model
         return -1;
     }
 
-    QString resolved_scope = scope_uuid.trimmed();
+    QString resolved_scope      = scope_uuid.trimmed();
     QString resolved_scope_name = scope_name.trimmed();
     if (isTrainModelTask(task_type))
         resolved_scope = QStringLiteral("train");
-    if (isTestModelTask(task_type) && resolved_scope.isEmpty() && !isFewShotFramework(record.framework_name))
+    // 普通测试任务必须有 UUID 测试任务记录；小样本框架（few_shot 能力位）
+    // 的测试任务没有 UUID，直接进入无作用域流程。
+    if (isTestModelTask(task_type) && resolved_scope.isEmpty() && !framework.isFewShot())
     {
         setError(err_msg, QString("普通测试任务必须绑定测试任务 UUID"));
         return -1;
     }
     ModelTestTaskDefinition resolved_definition;
-    bool has_resolved_definition = false;
+    bool                    has_resolved_definition = false;
     if (isTestModelTask(task_type) && !resolved_scope.isEmpty())
     {
         if (!test_task_repository_.loadTask(record.name, resolved_scope, resolved_definition, err_msg))
             return -1;
-        resolved_scope_name = resolved_definition.name;
+        resolved_scope_name     = resolved_definition.name;
         has_resolved_definition = true;
     }
 
@@ -277,17 +289,17 @@ int ModelTaskController::ensureTaskRecord(const QString &model_uuid, const Model
         return -1;
 
     const ModelStorageService storage(project_dir_);
-    QString config_path;
-    QString log_path;
+    QString                   config_path;
+    QString                   log_path;
     if (isTrainModelTask(task_type))
     {
         config_path = storage.modelDatabasePath(record.name);
-        log_path = storage.trainLogPath(record.name);
+        log_path    = storage.trainLogPath(record.name);
     }
     else if (has_resolved_definition)
     {
         config_path = storage.testTaskDatabasePath(record.name, resolved_definition.directory_name);
-        log_path = storage.testTaskLogPath(record.name, resolved_definition.uuid);
+        log_path    = storage.testTaskLogPath(record.name, resolved_definition.uuid);
     }
     task_manager_->setTaskPaths(task_id, config_path, log_path);
     return task_id;
@@ -302,8 +314,8 @@ bool ModelTaskController::prepareTask(const int task_id)
     if (task == nullptr || task->status != TaskManager::Preparing)
         return false;
 
-    const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(task->model_uuid);
-    const FrameworkDefinition framework = registeredFramework(method_, record.framework_name);
+    const ModelManager::ModelRecordView record    = model_manager_->modelRecordViewForUuid(task->model_uuid);
+    const FrameworkDefinition           framework = registeredFramework(method_, record.framework_name);
     if (record.name.isEmpty() || framework.name.isEmpty())
     {
         failTask(task_id, QString("模型或框架不存在"));
@@ -337,21 +349,21 @@ bool ModelTaskController::prepareTask(const int task_id)
         return false;
     }
     const auto process_spec = std::make_shared<ExternalProcessSpec>();
-    const auto request_ptr = std::make_shared<ModelTaskRequest>(std::move(request));
+    const auto request_ptr  = std::make_shared<ModelTaskRequest>(std::move(request));
 
     dltool::data::DataOperationWorkflow::Options options;
     options.title            = QString("准备模型任务");
     options.start_message    = QString("准备模型任务: %1").arg(modelTaskDisplayName(request_ptr->task_type));
     options.initial_progress = 5;
 
-    const int method = method_;
+    const int     method      = method_;
     const QString project_dir = project_dir_;
-    const auto prepare = [method, project_dir, request_ptr, process_spec](
-                             const dltool::data::DatasetExportSource *dataset_source,
-                             dltool::data::DataOperationWorkflow::Result &result)
+    const auto    prepare
+        = [method, project_dir, request_ptr, process_spec](const dltool::data::DatasetExportSource     *dataset_source,
+                                                           dltool::data::DataOperationWorkflow::Result &result)
     {
         ModelTaskRequest &request = *request_ptr;
-        QString error;
+        QString           error;
         if (!prepareModelTask(method, project_dir, request, dataset_source, *process_spec, &error))
         {
             result.error = error;
@@ -359,8 +371,7 @@ bool ModelTaskController::prepareTask(const int task_id)
         }
         result.success = true;
     };
-    const auto completion = [this, task_id, process_spec](
-                                const dltool::data::DataOperationWorkflow::Result &result)
+    const auto completion = [this, task_id, process_spec](const dltool::data::DataOperationWorkflow::Result &result)
     {
         handlePreparedTask(task_id, process_spec, result.success, result.error);
     };
@@ -383,8 +394,8 @@ bool ModelTaskController::prepareTask(const int task_id)
         export_request.dataset_ids = selectedDatasetIds(request_ptr->selections);
         data_manager_->runDatasetExportAsync(
             this, std::move(export_request), std::move(options),
-            [prepare](const dltool::data::DatasetExportSource &source, dltool::data::DataOperationWorkflow::Result &result)
-            { prepare(&source, result); },
+            [prepare](const dltool::data::DatasetExportSource     &source,
+                      dltool::data::DataOperationWorkflow::Result &result) { prepare(&source, result); },
             completion);
     }
 
@@ -427,20 +438,20 @@ bool ModelTaskController::buildTaskRequest(const int task_id, ModelTaskRequest &
     if (framework.name.isEmpty())
         return setError(err_msg, QString("框架未注册: %1").arg(record.framework_name));
 
-    request.task_id          = task->id;
-    request.task_type        = task->type;
-    request.scope_uuid       = task->scope_uuid;
-    request.scope_name       = task->scope_name;
-    request.evaluation_method = evaluation::fromProjectMethod(method_);
-    request.framework        = framework;
-    request.task_server_host = task_manager_->taskServerHost();
-    request.task_server_port = task_manager_->taskServerPort();
-    request.project_database_path = model_manager_->projectDatabasePath();
-    request.selections       = modelDatasetSelections(model);
+    request.task_id                         = task->id;
+    request.task_type                       = task->type;
+    request.scope_uuid                      = task->scope_uuid;
+    request.scope_name                      = task->scope_name;
+    request.evaluation_method               = evaluation::fromProjectMethod(method_);
+    request.framework                       = framework;
+    request.task_server_host                = task_manager_->taskServerHost();
+    request.task_server_port                = task_manager_->taskServerPort();
+    request.project_database_path           = model_manager_->projectDatabasePath();
+    request.selections                      = modelDatasetSelections(model);
     request.model_config.model_uuid         = record.uuid;
     request.model_config.model_name         = record.name;
     request.model_config.framework_name     = record.framework_name;
-    request.model_config.method              = evaluation::methodKey(request.evaluation_method);
+    request.model_config.method             = evaluation::methodKey(request.evaluation_method);
     request.model_config.model_architecture = record.model_architecture;
     request.model_config.scope_uuid         = task->scope_uuid;
     request.model_config.scope_name         = task->scope_name;
@@ -457,23 +468,24 @@ bool ModelTaskController::buildTaskRequest(const int task_id, ModelTaskRequest &
     if (isTestModelTask(task->type) && !task->scope_uuid.trimmed().isEmpty())
     {
         ModelTestTaskDefinition definition;
-        QString error;
+        QString                 error;
         if (!test_task_repository_.loadTask(record.name, task->scope_uuid, definition, &error))
             return setError(err_msg, error);
-        request.selections = {};
-        request.selections.test = definition.dataset_selection;
-        request.model_config.test_params = definition.test_params;
-        request.scope_name = definition.name;
-        request.model_config.scope_name = definition.name;
-        request.model_config.task_directory = definition.directory_name;
+        request.selections                          = {};
+        request.selections.test                     = definition.dataset_selection;
+        request.model_config.test_params            = definition.test_params;
+        request.scope_name                          = definition.name;
+        request.model_config.scope_name             = definition.name;
+        request.model_config.task_directory         = definition.directory_name;
         request.model_config.test_dataset_selection = definition.dataset_selection;
-        request.model_config.created_at = definition.created_at;
-        request.model_config.modified_at = definition.modified_at;
+        request.model_config.created_at             = definition.created_at;
+        request.model_config.modified_at            = definition.modified_at;
     }
     return true;
 }
 
-void ModelTaskController::handlePreparedTask(const int task_id, const std::shared_ptr<ExternalProcessSpec> &process_spec,
+void ModelTaskController::handlePreparedTask(const int                                   task_id,
+                                             const std::shared_ptr<ExternalProcessSpec> &process_spec,
                                              const bool success, const QString &error)
 {
     if (task_manager_ == nullptr)
@@ -507,7 +519,7 @@ bool ModelTaskController::taskBelongsToCurrentModelManager(const int task_id) co
     return task != nullptr && model_manager_->modelRecordViewForUuid(task->model_uuid).isValid();
 }
 
-void ModelTaskController::failTask(const int task_id, const QString &message) const
+void ModelTaskController::failTask(const int task_id, const QString &message)
 {
     if (task_manager_ == nullptr || !task_manager_->failTask(task_id))
         return;
@@ -538,43 +550,76 @@ void ModelTaskController::touchTaskModelModifiedTime(const int task_id) const
     }
 }
 
-void ModelTaskController::syncTaskModelState(const int task_id) const
+void ModelTaskController::syncTaskModelState(const int task_id)
+{
+    // extra_data 只是 TaskManager 状态的持久化投影：这里只做状态投影与
+    // 待写入字段的合并落库，不维护独立进度值（见 flushModelState）。
+    flushModelState(task_id);
+}
+
+void ModelTaskController::applyTaskStateToSection(const TaskManager::Task &task, const bool terminal,
+                                                  const bool completed, QVariantMap &section)
+{
+    // 进度以 TaskManager 为唯一权威：Finished 归一化为 100，其余状态（含
+    // Stopped/Failed）直接投影任务记录值，避免模型页与任务中心表格出现
+    // 不一致的进度（例如训练后停留在 90% 而任务中心为 100%）。
+    section.insert(QStringLiteral("progress"), completed ? 100 : task.progress);
+
+    if (terminal)
+    {
+        section.insert(QStringLiteral("started"), false);
+        section.insert(QStringLiteral("status"), taskManagerStatusName(task.status));
+    }
+    else if (task.status == TaskManager::Running || task.status == TaskManager::Paused
+             || task.status == TaskManager::Stopping)
+    {
+        section.insert(QStringLiteral("started"), true);
+        section.insert(QStringLiteral("status"), taskManagerStatusName(task.status));
+    }
+}
+
+void ModelTaskController::flushModelState(const int task_id)
 {
     if (task_manager_ == nullptr || model_manager_ == nullptr)
         return;
 
     const TaskManager::Task *task = task_manager_->findTask(task_id);
     if (task == nullptr || (!isTrainModelTask(task->type) && !isTestModelTask(task->type)))
+    {
+        pending_extra_updates_.remove(task_id);
         return;
+    }
 
+    // 取出本次待合并的指标字段（epoch/iter/lr/loss/elapsed/eta/metrics/
+    // message/status）。progress 与 started 不在此缓冲，由状态投影写入。
+    const QVariantMap updates = pending_extra_updates_.take(task_id);
+
+    // The top-level model data is keyed by the software task type.  A train
+    // runner may report validation/evaluation as phase "test", but that is
+    // still part of the training task and must not update the separate Test
+    // page's state.
     const bool train_scope = isTrainModelTask(task->type);
-    const bool legacy_few_shot_test = isTestModelTask(task->type) && task->scope_uuid.trimmed().isEmpty();
+    // 小样本测试任务（框架能力位 few_shot）没有 UUID 测试任务记录，其状态
+    // 投影到 extra_data.test 顶层 section；能力来源为框架注册表。
+    const bool legacy_few_shot_test
+        = isTestModelTask(task->type) && task->scope_uuid.trimmed().isEmpty()
+       && registeredFramework(method_, model_manager_->modelRecordViewForUuid(task->model_uuid).framework_name)
+              .isFewShot();
     const QString phase = train_scope ? QStringLiteral("train") : QStringLiteral("test_tasks");
+
     const QVariantMap current_model = model_manager_->modelRecordForUuid(task->model_uuid);
-    const QVariantMap extra_data = current_model.value(QStringLiteral("extra_data")).toMap();
-    QVariantMap test_tasks = extra_data.value(QStringLiteral("test_tasks")).toMap();
-    QVariantMap section = train_scope ? extra_data.value(phase).toMap()
-                                      : (legacy_few_shot_test ? extra_data.value(QStringLiteral("test")).toMap()
-                                                              : test_tasks.value(task->scope_uuid).toMap());
+    const QVariantMap extra_data    = current_model.value(QStringLiteral("extra_data")).toMap();
+    QVariantMap       test_tasks    = extra_data.value(QStringLiteral("test_tasks")).toMap();
+    QVariantMap       section = train_scope ? extra_data.value(phase).toMap()
+                                            : (legacy_few_shot_test ? extra_data.value(QStringLiteral("test")).toMap()
+                                                                    : test_tasks.value(task->scope_uuid).toMap());
+    for (auto it = updates.cbegin(); it != updates.cend(); ++it) section.insert(it.key(), it.value());
 
-    // TaskManager owns the overall task progress.  The model page previously
-    // kept the last phase progress (for example, 90% after training), which
-    // could differ from the 100% terminal value shown in TaskCenterWindow.
-    section.insert(QStringLiteral("progress"), task->progress);
+    // 状态投影：进度/开始标记以任务中心为准，与 TaskManager 表格逐帧一致。
+    applyTaskStateToSection(*task, TaskManager::isTerminal(task->status), task->status == TaskManager::Finished,
+                            section);
 
-    if (TaskManager::isTerminal(task->status))
-    {
-        section.insert(QStringLiteral("started"), false);
-        section.insert(QStringLiteral("status"), taskManagerStatusName(task->status));
-    }
-    else if (task->status == TaskManager::Running || task->status == TaskManager::Paused
-             || task->status == TaskManager::Stopping)
-    {
-        section.insert(QStringLiteral("started"), true);
-        section.insert(QStringLiteral("status"), taskManagerStatusName(task->status));
-    }
-
-    QString error;
+    QString     error;
     QVariantMap state_update;
     if (train_scope)
         state_update.insert(phase, section);
@@ -587,9 +632,16 @@ void ModelTaskController::syncTaskModelState(const int task_id) const
     }
     if (!model_manager_->updateModelExtraData(task->model_uuid, state_update, &error))
     {
-        spdlog::error("同步模型任务状态失败, task_id: {}, uuid: {}, 错误: {}", task_id,
+        spdlog::error("保存模型任务状态失败, task_id: {}, uuid: {}, 错误: {}", task_id,
                       task->model_uuid.toUtf8().constData(), error.toUtf8().constData());
     }
+}
+
+void ModelTaskController::flushPendingExtraUpdates()
+{
+    // 定时器触发或 shutdown 时冲刷全部脏任务；每个任务最多一次写库。
+    const QList<int> task_ids = pending_extra_updates_.keys();
+    for (const int task_id : task_ids) flushModelState(task_id);
 }
 
 void ModelTaskController::handleTaskStartRequested(const int task_id)
@@ -610,94 +662,40 @@ void ModelTaskController::handleTaskMessage(const TaskMessage &message)
     if (task == nullptr || (!isTrainModelTask(task->type) && !isTestModelTask(task->type)))
         return;
 
-    // The top-level model data is keyed by the software task type.  A train
-    // runner may report validation/evaluation as phase "test", but that is
-    // still part of the training task and must not update the separate Test
-    // page's state.
-    const bool train_scope = isTrainModelTask(task->type);
-    const bool legacy_few_shot_test = isTestModelTask(task->type) && task->scope_uuid.trimmed().isEmpty();
-    const QString phase = train_scope ? QStringLiteral("train") : QStringLiteral("test_tasks");
-
-    QVariantMap updates;
-    if (message.status == TaskProtocolStatus::Running || message.payload.contains(QStringLiteral("started")))
-        updates.insert(QStringLiteral("started"), message.payload.value(QStringLiteral("started"), true).toBool());
-    if (message.progress >= 0)
-        updates.insert(QStringLiteral("progress"), message.progress);
-
+    // 高频进度消息只合并进内存缓冲，由节流定时器统一落库（≤1 次/秒/任务）。
+    // TaskManager 表格仍由 TaskManager 每事件即时更新（纯内存，无磁盘 IO）。
+    // 消息只携带指标字段；progress/started 一律由任务状态投影写入（见
+    // applyTaskStateToSection），不在此处维护独立进度值。
+    QVariantMap &pending = pending_extra_updates_[message.task_id];
     for (const QString &key : {QStringLiteral("epoch"), QStringLiteral("iter"), QStringLiteral("lr"),
                                QStringLiteral("loss"), QStringLiteral("elapsed"), QStringLiteral("eta")})
     {
         if (message.payload.contains(key))
-            updates.insert(key, message.payload.value(key).toString());
+            pending.insert(key, message.payload.value(key).toString());
     }
     if (message.payload.contains(QStringLiteral("metrics")))
-        updates.insert(QStringLiteral("metrics"), message.payload.value(QStringLiteral("metrics")).toString());
+        pending.insert(QStringLiteral("metrics"), message.payload.value(QStringLiteral("metrics")).toString());
     if (!message.message.isEmpty())
-        updates.insert(QStringLiteral("message"), message.message);
+        pending.insert(QStringLiteral("message"), message.message);
 
     const QString status = taskProtocolStatusName(message.status);
     if (!status.isEmpty())
-        updates.insert(QStringLiteral("status"), status);
+        pending.insert(QStringLiteral("status"), status);
 
-    const bool terminal = message.status == TaskProtocolStatus::Stopped || message.status == TaskProtocolStatus::Finished
-                       || message.status == TaskProtocolStatus::Failed || message.status == TaskProtocolStatus::Error;
+    // 终态事件必须立即冲刷：确保最后一条状态（started=false、Finished 的
+    // 100%）不因节流窗口被丢弃，也避免迟到事件覆盖终态。
+    const bool terminal = message.status == TaskProtocolStatus::Stopped
+                       || message.status == TaskProtocolStatus::Finished || message.status == TaskProtocolStatus::Failed
+                       || message.status == TaskProtocolStatus::Error;
     if (terminal)
     {
-        // Some runners send the final status without a progress field (or
-        // attach it to an internal evaluation phase), so explicitly close the
-        // phase belonging to this software task here.
-        updates.insert(QStringLiteral("started"), false);
-        if (message.status == TaskProtocolStatus::Finished)
-            updates.insert(QStringLiteral("progress"), 100);
         touchTaskModelModifiedTime(message.task_id);
+        flushModelState(message.task_id);
+        return;
     }
 
-    const QVariantMap current_model = model_manager_->modelRecordForUuid(task->model_uuid);
-    const QVariantMap extra_data = current_model.value(QStringLiteral("extra_data")).toMap();
-    QVariantMap test_tasks = extra_data.value(QStringLiteral("test_tasks")).toMap();
-    QVariantMap section = train_scope ? extra_data.value(phase).toMap()
-                                      : (legacy_few_shot_test ? extra_data.value(QStringLiteral("test")).toMap()
-                                                              : test_tasks.value(task->scope_uuid).toMap());
-    for (auto it = updates.cbegin(); it != updates.cend(); ++it)
-        section.insert(it.key(), it.value());
-
-    // Keep the phase shown by ModelDelegate on the same overall progress as
-    // TaskManager/TaskCenterWindow.  A training task can enter an internal
-    // validation phase after its training progress reaches 90%, while the
-    // task itself continues to 100%.
-    const bool completed = message.status == TaskProtocolStatus::Finished;
-    auto applyTaskState = [task, terminal, completed](QVariantMap &target) {
-        target.insert(QStringLiteral("progress"), completed ? 100 : task->progress);
-        if (terminal)
-        {
-            target.insert(QStringLiteral("started"), false);
-            target.insert(QStringLiteral("status"), taskManagerStatusName(task->status));
-        }
-        else if (task->status == TaskManager::Running || task->status == TaskManager::Paused
-                 || task->status == TaskManager::Stopping)
-        {
-            target.insert(QStringLiteral("started"), true);
-            target.insert(QStringLiteral("status"), taskManagerStatusName(task->status));
-        }
-    };
-    applyTaskState(section);
-
-    QString error;
-    QVariantMap state_update;
-    if (train_scope)
-        state_update.insert(phase, section);
-    else if (legacy_few_shot_test)
-        state_update.insert(QStringLiteral("test"), section);
-    else
-    {
-        test_tasks.insert(task->scope_uuid, section);
-        state_update.insert(QStringLiteral("test_tasks"), test_tasks);
-    }
-    if (!model_manager_->updateModelExtraData(task->model_uuid, state_update, &error))
-    {
-        spdlog::error("保存模型任务状态失败, task_id: {}, uuid: {}, 错误: {}", message.task_id,
-                      task->model_uuid.toUtf8().constData(), error.toUtf8().constData());
-    }
+    if (!extra_flush_timer_->isActive())
+        extra_flush_timer_->start();
 }
 
 void ModelTaskController::handleTaskStopRequested(const int task_id)
