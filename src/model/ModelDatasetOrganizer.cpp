@@ -62,11 +62,6 @@ enum class DatasetConfigField
     LabelCount,
 };
 
-enum class DatasetSubdir
-{
-    Masks,
-};
-
 enum class DatasetFileName
 {
     Mask,
@@ -165,14 +160,6 @@ const std::map<DatasetConfigField, QString> &datasetConfigFieldNames()
         {  DatasetConfigField::MasksDir,   QStringLiteral("masks_dir")},
         {DatasetConfigField::ImageCount, QStringLiteral("image_count")},
         {DatasetConfigField::LabelCount, QStringLiteral("label_count")},
-    };
-    return names;
-}
-
-const std::map<DatasetSubdir, QString> &datasetSubdirNames()
-{
-    static const std::map<DatasetSubdir, QString> names = {
-        {DatasetSubdir::Masks, QStringLiteral("masks")},
     };
     return names;
 }
@@ -823,8 +810,8 @@ protected:
     {
         if (!GenericDatasetOrganizer::prepareSplit(ctx, err_msg))
             return false;
-        ctx.masks_dir
-            = QDir(ctx.request->dataset_dir).filePath(mappedValue(datasetSubdirNames(), DatasetSubdir::Masks));
+        // 掩膜直接写入共享数据集目录（不再使用 masks 子目录）。
+        ctx.masks_dir = ctx.request->dataset_dir;
         return ensureDirectory(ctx.masks_dir, err_msg, QString("数据集目录为空"), QString("创建数据集目录失败: %1"));
     }
 
@@ -939,9 +926,10 @@ protected:
     {
         if (!DatasetOrganizerBase::prepareSplit(ctx, err_msg))
             return false;
-        ctx.masks_dir
-            = QDir(ctx.request->dataset_dir).filePath(mappedValue(datasetSubdirNames(), DatasetSubdir::Masks));
-        return ensureDirectory(ctx.masks_dir, err_msg, QString("数据集目录为空"), QString("创建数据集目录失败: %1"));
+        // 掩膜直接写入共享数据集目录（不再使用 masks 子目录）。
+        ctx.masks_dir = ctx.request->dataset_dir;
+        return ensureDirectory(ctx.masks_dir, err_msg, QString("数据集目录为空"),
+                               QString("创建数据集目录失败: %1"));
     }
 
     LabelExportDecision augmentLabel(SplitExportContext &ctx, ImageExportContext &image, qint64 label_id,
@@ -968,7 +956,7 @@ protected:
     {
         Q_UNUSED(labels)
 
-        // 掩膜按 image_id 写入共享 datasets/masks；Python 端以同名 mask 是否存在判断是否异常。
+        // 掩膜按 image_id 写入共享 datasets；Python 端以同名 mask 是否存在判断是否异常。
         if (image.has_anomaly_label && ctx.split != DatasetSplit::Test)
         {
             QString mask_err;
