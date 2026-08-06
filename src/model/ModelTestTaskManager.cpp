@@ -409,11 +409,14 @@ bool ModelTestTaskManager::deleteTask(const QString &uuid)
     return true;
 }
 
-bool ModelTestTaskManager::saveDefinition(ModelTestTaskDefinition &task)
+bool ModelTestTaskManager::saveDefinition(ModelTestTaskDefinition &task, const bool persist_selection)
 {
     if (current_test_params_ != nullptr)
         task.test_params = current_test_params_->valuesMap();
-    task.dataset_selection                     = readSelection(current_dataset_view_model_);
+    // 数据集选择默认不落库：编辑期间只保存在内存（snapshotCurrentDatasetSelection），
+    // 仅当 persist_selection（手动运行测试前的提交）时才从视图读取并持久化。
+    if (persist_selection)
+        task.dataset_selection = readSelection(current_dataset_view_model_);
     task.modified_at                           = QDateTime::currentSecsSinceEpoch();
     const ModelManager::ModelRecordView record = model_manager_ != nullptr
                                                    ? model_manager_->modelRecordViewForUuid(model_uuid_)
@@ -429,6 +432,25 @@ bool ModelTestTaskManager::saveDefinition(ModelTestTaskDefinition &task)
     return true;
 }
 
+void ModelTestTaskManager::snapshotCurrentDatasetSelection()
+{
+    if (current_index_ < 0 || current_index_ >= tasks_.size())
+        return;
+    // 数据集选择只更新内存任务记录并刷新界面行，不写库。
+    tasks_[current_index_].dataset_selection = readSelection(current_dataset_view_model_);
+    tasks_[current_index_].modified_at       = QDateTime::currentSecsSinceEpoch();
+    emitTaskRowChanged(current_index_);
+}
+
+bool ModelTestTaskManager::commitCurrentDatasetSelection()
+{
+    // 手动运行测试前把当前数据集选择与参数一起提交落库，保证本次运行
+    // 使用界面上的最新选择。
+    if (current_index_ < 0 || current_index_ >= tasks_.size())
+        return true;
+    return saveDefinition(tasks_[current_index_], true);
+}
+
 bool ModelTestTaskManager::saveCurrentTask()
 {
     if (!save_timer_.isActive() && (current_index_ < 0 || current_index_ >= tasks_.size()))
@@ -436,7 +458,7 @@ bool ModelTestTaskManager::saveCurrentTask()
     save_timer_.stop();
     if (current_index_ < 0 || current_index_ >= tasks_.size())
         return true;
-    if (!saveDefinition(tasks_[current_index_]))
+    if (!saveDefinition(tasks_[current_index_], false))
         return false;
     emitTaskRowChanged(current_index_);
     return true;
@@ -784,13 +806,12 @@ void ModelTestTaskManager::bindCurrentObjects()
         }
     }
     if (current_dataset_view_model_ != nullptr)
+    {
+        // 数据集选择只更新内存并刷新界面，不落库；仅在手动运行测试时由
+        // commitCurrentDatasetSelection() 提交。同时不失效已缓存的评估结果。
         connect(current_dataset_view_model_, &data::DataSelectionTreeModel::selectionChanged, this,
-                [this]()
-                {
-                    scheduleSave();
-                    if (current_evaluation_ != nullptr)
-                        current_evaluation_->invalidate();
-                });
+                &ModelTestTaskManager::snapshotCurrentDatasetSelection);
+    }
 }
 
 bool ModelTestTaskManager::selectIndex(const int index, const bool save_before)

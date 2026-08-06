@@ -105,7 +105,8 @@ Rectangle {
             return
         }
         if (taskType === ModelTaskTypes.Test) {
-            if (testTaskManager && !testTaskManager.flush()) {
+            // 运行前提交当前数据集选择与参数落库，本次运行使用界面上的最新选择。
+            if (testTaskManager && !testTaskManager.commitCurrentDatasetSelection()) {
                 return
             }
             taskController.startModelTestTask(currentModelUuid, taskScopeUuid)
