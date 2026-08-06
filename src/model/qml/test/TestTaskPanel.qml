@@ -97,7 +97,7 @@ Rectangle {
             QuiText {
                 Layout.fillWidth: true
                 text: qsTr("添加测试任务")
-                font: QuiFont.Title
+                font: QuiFont.Subtitle
             }
 
             QuiTextField {

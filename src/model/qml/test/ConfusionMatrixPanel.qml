@@ -53,7 +53,7 @@ Item {
         QuiText {
             Layout.fillWidth: true
             text: qsTr("混淆矩阵")
-            font: QuiFont.Title
+            font: QuiFont.Subtitle
         }
 
         Item {

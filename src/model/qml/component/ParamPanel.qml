@@ -69,8 +69,7 @@ Item {
                             QuiText {
                                 Layout.fillWidth: true
                                 text: groupRoot.groupLabel
-                                color: QuiColor.FontPrimary
-                                font: QuiFont.Title
+                                font: QuiFont.Subtitle
                                 elide: Text.ElideRight
                             }
 
@@ -87,7 +86,7 @@ Item {
                                 id: paramList
 
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: Math.max(contentHeight, 44)
+                                Layout.preferredHeight: Math.max(contentHeight, 48)
                                 spacing: control.partSpacing
                                 interactive: false
                                 clip: true
@@ -97,7 +96,7 @@ Item {
                                     id: delegateRoot
 
                                     width: ListView.view ? ListView.view.width : 0
-                                    height: 50
+                                    height: 40
 
                                     property var groupModel: groupRoot.groupModel
                                     property int rowIndex: index

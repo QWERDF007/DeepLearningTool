@@ -23,7 +23,7 @@ Rectangle {
             Layout.leftMargin: 5
             Layout.preferredHeight: 40
             text: qsTr("数据集选择")
-            font: QuiFont.Title
+            font: QuiFont.Subtitle
         }
 
         DatasetPanel {

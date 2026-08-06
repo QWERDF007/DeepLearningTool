@@ -11,6 +11,10 @@ Rectangle {
     color: QuiColor.Background
     property ModelEvaluationViewModel evaluation: null
 
+    onHeightChanged: {
+        console.log("height", height)
+    }
+
     QuiSplitView {
         anchors.fill: parent
         anchors.margins: 6
@@ -58,7 +62,10 @@ Rectangle {
                 SplitView.fillWidth: true
                 ColumnLayout {
                     anchors.fill: parent
-                    QuiText { text: qsTr("实例图像"); font: QuiFont.Title }
+                    QuiText { 
+                        text: qsTr("实例图像")
+                        font: QuiFont.Subtitle
+                    }
                     EvaluationInstancesGridView {
                         Layout.fillWidth: true
                         Layout.fillHeight: true

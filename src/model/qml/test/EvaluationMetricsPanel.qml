@@ -17,7 +17,10 @@ Rectangle {
 
         RowLayout {
             Layout.fillWidth: true
-            QuiText { text: qsTr("实例统计"); font: QuiFont.Title }
+            QuiText { 
+                text: qsTr("实例统计")
+                font: QuiFont.Subtitle
+            }
             Item { Layout.fillWidth: true }
             QuiButton {
                 text: qsTr("按类别详情")

@@ -12,7 +12,10 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        QuiText { text: qsTr("实例详情"); font: QuiFont.Title }
+        QuiText { 
+            text: qsTr("实例详情")
+            font: QuiFont.Subtitle
+        }
         QuiText {
             Layout.fillWidth: true
             text: control.evaluation && control.evaluation.selectedInstance.imageName

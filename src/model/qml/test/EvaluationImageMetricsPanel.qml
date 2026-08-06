@@ -14,7 +14,10 @@ Rectangle {
     ColumnLayout {
         anchors.fill: parent
         spacing: 6
-        QuiText { text: qsTr("图像统计"); font: QuiFont.Title }
+        QuiText { 
+            text: qsTr("图像统计")
+            font: QuiFont.Subtitle
+        }
         Repeater {
             model: control.evaluation && control.evaluation.hasImageMetrics
                    ? control.evaluation.imageMetrics : null

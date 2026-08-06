@@ -57,7 +57,7 @@ QuiPopup {
         QuiText {
             Layout.fillWidth: true
             text: control.title
-            font: QuiFont.Title
+            font: QuiFont.Subtitle
         }
 
         ColumnLayout {

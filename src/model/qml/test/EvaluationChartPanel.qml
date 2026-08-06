@@ -66,7 +66,10 @@ Rectangle {
         spacing: 6
         RowLayout {
             Layout.fillWidth: true
-            QuiText { text: qsTr("方法图表"); font: QuiFont.Title }
+            QuiText { 
+                text: qsTr("方法图表")
+                font: QuiFont.Subtitle 
+            }
             QuiComboBox {
                 id: chartSelector
                 Layout.fillWidth: true
