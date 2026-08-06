@@ -95,9 +95,18 @@ Item {
             contentHeight: Math.max(0, height - headerHeight)
             onExpandChanged: testPanel.requestLazyEvaluation()
 
-            TestEvaluationPanel {
+            // 评估面板内容高度最少 720，视口不足时出现滚动条。
+            QuiScrollablePage {
                 anchors.fill: parent
-                evaluation: testPanel.testTaskManager ? testPanel.testTaskManager.currentEvaluation : null
+                anchors.topMargin: 10
+                animationEnabled: false
+                padding: 0
+
+                TestEvaluationPanel {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.max(720, implicitHeight)
+                    evaluation: testPanel.testTaskManager ? testPanel.testTaskManager.currentEvaluation : null
+                }
             }
         }
     }

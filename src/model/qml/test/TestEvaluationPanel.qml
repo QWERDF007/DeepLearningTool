@@ -6,18 +6,12 @@ import dltool.model
 import dltool.ui
 import quickui
 
-Rectangle {
+Item {
     id: control
-    color: QuiColor.Background
     property ModelEvaluationViewModel evaluation: null
-
-    onHeightChanged: {
-        console.log("height", height)
-    }
 
     QuiSplitView {
         anchors.fill: parent
-        anchors.margins: 6
         orientation: Qt.Vertical
 
         QuiSplitView {
@@ -25,25 +19,25 @@ Rectangle {
             SplitView.fillWidth: true
             SplitView.preferredHeight: 240
             orientation: Qt.Horizontal
-            
+
             EvaluationMetricsPanel {
                 SplitView.fillHeight: true
-                SplitView.preferredWidth: 220 
-                evaluation: control.evaluation 
+                SplitView.preferredWidth: 220
+                evaluation: control.evaluation
             }
-            
-            EvaluationImageMetricsPanel { 
+
+            EvaluationImageMetricsPanel {
                 SplitView.fillHeight: true
-                SplitView.preferredWidth: 220  
-                evaluation: control.evaluation 
+                SplitView.preferredWidth: 220
+                evaluation: control.evaluation
             }
-            
-            EvaluationChartPanel { 
+
+            EvaluationChartPanel {
                 SplitView.fillHeight: true
                 SplitView.fillWidth: true
                 SplitView.preferredWidth: 420
                 SplitView.minimumWidth: 260
-                evaluation: control.evaluation 
+                evaluation: control.evaluation
             }
         }
 
@@ -62,7 +56,7 @@ Rectangle {
                 SplitView.fillWidth: true
                 ColumnLayout {
                     anchors.fill: parent
-                    QuiText { 
+                    QuiText {
                         text: qsTr("实例图像")
                         font: QuiFont.Subtitle
                     }
