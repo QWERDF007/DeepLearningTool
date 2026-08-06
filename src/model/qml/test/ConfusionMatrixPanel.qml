@@ -93,9 +93,8 @@ Item {
                         QuiTextIcon {
                             anchors.centerIn: parent
                             visible: control.isTotalLabel(parent.label)
-                            iconSource: QuiFontIcon.Calculator
+                            iconSource: QuiFontIcon.Picture
                             iconColor: confusionTable.headerTextColor
-                            iconSize: 18
                         }
                         QuiText {
                             anchors.fill: parent
@@ -127,9 +126,8 @@ Item {
                         QuiTextIcon {
                             anchors.centerIn: parent
                             visible: control.isTotalLabel(parent.label)
-                            iconSource: QuiFontIcon.Calculator
+                            iconSource: QuiFontIcon.Picture
                             iconColor: confusionTable.headerTextColor
-                            iconSize: 18
                         }
                         QuiText {
                             id: rowLabel
@@ -150,19 +148,24 @@ Item {
                     implicitWidth: confusionTable.columnWidth(column)
                     implicitHeight: confusionTable.rowHeight
                     property bool selected: control.isCellSelected(model.rowKey, model.columnKey)
+                    property bool totalCell: model.cellKindValue === EvaluationConfusionModel.CellKindAll
+                                             || model.cellKindValue === EvaluationConfusionModel.CellKindPredTotal
+                                             || model.cellKindValue === EvaluationConfusionModel.CellKindGtTotal
+                                             || model.cellKindValue === EvaluationConfusionModel.CellKindFalsePositiveTotal
+                                             || model.cellKindValue === EvaluationConfusionModel.CellKindFalseNegativeTotal
                     color: selected
-                           ? QuiColor.Highlight
-                           : (model.cellKindValue === EvaluationConfusionModel.CellKindMatch && model.isDiagonal
-                           ? "#2e7d32"
-                           : (model.isError ? "#c62828" : QuiColor.Primary))
+                           ? Qt.darker(QuiColor.Highlight)
+                           : (totalCell
+                              || (model.cellKindValue === EvaluationConfusionModel.CellKindMatch && model.isDiagonal)
+                              ? QuiColor.Highlight
+                              : (model.cellKindValue === EvaluationConfusionModel.CellKindFalsePositive
+                                 || model.cellKindValue === EvaluationConfusionModel.CellKindFalseNegative
+                                 ? QuiColor.Background : QuiColor.Primary))
                     opacity: selected || model.count > 0
                              || model.cellKindValue === EvaluationConfusionModel.CellKindAll ? 1.0 : 0.72
                     border.color: selected
                                   ? QuiColor.Highlight
-                                  : (model.cellKindValue === EvaluationConfusionModel.CellKindAll
-                                     || model.cellKindValue === EvaluationConfusionModel.CellKindPredTotal
-                                     || model.cellKindValue === EvaluationConfusionModel.CellKindGtTotal
-                                     ? QuiColor.FontDark : QuiColor.Border)
+                                  : (totalCell ? QuiColor.FontDark : QuiColor.Border)
                     border.width: selected ? 2 : 1
 
                     Column {
@@ -179,10 +182,6 @@ Item {
                         enabled: model.selectable
                         hoverEnabled: enabled
                         onClicked: control.evaluation.selectMatrixCell(model.rowKey, model.columnKey)
-                    }
-                    QuiToolTip {
-                        visible: cellMouse.containsMouse
-                        text: model.tooltip || qsTr("预测 %1 / Ground Truth %2").arg(model.rowLabel).arg(model.columnLabel)
                     }
                 }
             }
