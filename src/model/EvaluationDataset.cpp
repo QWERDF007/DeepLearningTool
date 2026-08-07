@@ -442,10 +442,15 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
 
         const qint64 image_class_id = imageLabelClassIdFromExtraData(source_image.extra_data);
         const auto   image_class    = classes.find(image_class_id);
-        if (evaluation::isAnomaly(method) && image_class != classes.cend()
-            && image_class.value().group == QString("anomaly"))
+        if (evaluation::isAnomaly(method) && image_class != classes.cend())
         {
-            image.gt.push_back(EvaluationGroundTruthData{-1, 1, QString("Anomaly"), {}, {}});
+            image.gt.push_back(EvaluationGroundTruthData{-1,
+                                                         static_cast<int>(image_class_id),
+                                                         image_class.value().name,
+                                                         {},
+                                                         {},
+                                                         {},
+                                                         image_class.value().group == QString("anomaly")});
         }
         else if (method == evaluation::Method::Classification && image_class != classes.cend()
                  && (selection.dataset_ids.find(image.dataset_id) != selection.dataset_ids.cend()
@@ -490,12 +495,9 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
 
             EvaluationGroundTruthData ground_truth;
             ground_truth.label_id   = source_label.id;
-            ground_truth.class_id   = evaluation::isAnomaly(method)
-                                        ? (class_it.value().group == QString("anomaly") ? 1 : 0)
-                                        : static_cast<int>(source_label.class_id);
-            ground_truth.class_name = evaluation::isAnomaly(method)
-                                        ? (ground_truth.class_id == 1 ? QString("Anomaly") : QString("GOOD"))
-                                        : class_it.value().name;
+            ground_truth.class_id   = static_cast<int>(source_label.class_id);
+            ground_truth.class_name = class_it.value().name;
+            ground_truth.anomaly    = class_it.value().group == QString("anomaly");
             ground_truth.geometry   = label_geometry;
             ground_truth.bounds     = label_geometry;
             if (!readBox(ground_truth.geometry, ground_truth.box))
@@ -503,8 +505,7 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
             ground_truth.geometry = canonicalGeometry(ground_truth.geometry, ground_truth.box);
             if (ground_truth.box.valid())
                 ground_truth.bounds = evaluationBoxMap(ground_truth.box);
-            if (!evaluation::isAnomaly(method) || ground_truth.class_id == 1)
-                image.gt.push_back(std::move(ground_truth));
+            image.gt.push_back(std::move(ground_truth));
         }
         images.insert(image.id, std::move(image));
     }

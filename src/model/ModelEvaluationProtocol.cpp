@@ -289,6 +289,7 @@ QString fieldName(const Field field)
     case Field::LabelId: return QStringLiteral("label_id");
     case Field::ClassId: return QStringLiteral("class_id");
     case Field::ClassName: return QStringLiteral("class_name");
+    case Field::IsAnomaly: return QStringLiteral("is_anomaly");
     case Field::Geometry: return QStringLiteral("geometry");
     case Field::X: return QStringLiteral("x");
     case Field::Y: return QStringLiteral("y");

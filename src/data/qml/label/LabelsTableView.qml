@@ -1,7 +1,6 @@
 ﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import Qt.labs.qmlmodels
 
 import dltool.ui
 import dltool.data
@@ -24,8 +23,56 @@ Rectangle {
     readonly property bool tableActive: dataManager !== null && imageLabelsTable !== null
 
     property real rowHeight: 24
-    property real classColumnWidth: 120
-    property real minimumColumnWidth: 80
+    property real classColumnWidth: 80
+    property real minimumColumnWidth: 60
+
+    function sameColumnSchema(left, right) {
+        if (!left || left.length !== right.length)
+            return false
+        for (let i = 0; i < right.length; ++i) {
+            if (String(left[i].dataIndex) !== String(right[i].dataIndex))
+                return false
+        }
+        return true
+    }
+
+    function rebuildTable() {
+        let columns = []
+        let rows = []
+        if (control.tableActive) {
+            let columnCount = imageLabelsTable.columnCount()
+            let rowCount = imageLabelsTable.rowCount()
+            for (let column = 0; column < columnCount; ++column) {
+                columns.push({
+                    title: imageLabelsTable.headerData(column, Qt.Horizontal, Qt.DisplayRole),
+                    dataIndex: "column_" + column,
+                    width: column === 0 ? control.classColumnWidth : control.minimumColumnWidth,
+                    minimumWidth: control.minimumColumnWidth,
+                    stretch: column !== 0,
+                    resizable: true,
+                    frozen: column === 0
+                })
+            }
+            for (let row = 0; row < rowCount; ++row) {
+                let rowData = {}
+                for (let column = 0; column < columnCount; ++column) {
+                    let index = imageLabelsTable.index(row, column)
+                    let role = column === 0 ? ImageLabelsTableModel.ClassDataRole
+                                            : ImageLabelsTableModel.DataRole
+                    rowData["column_" + column] = tableView.customItem(
+                        column === 0 ? com_class_cell : com_data_cell,
+                        {
+                            mdata: imageLabelsTable.data(index, role),
+                            selected: imageLabelsTable.data(index, ImageLabelsTableModel.SelectedRole) || false
+                        })
+                }
+                rows.push(rowData)
+            }
+        }
+        if (!sameColumnSchema(tableView.columnSource, columns))
+            tableView.columnSource = columns
+        tableView.dataSource = rows
+    }
 
     function preferredColumnWidth(column) {
         if (column === 0) {
@@ -61,8 +108,40 @@ Rectangle {
     Connections {
         target: imageLabelsTable
         function onRowsInserted(parent, first, last) {
+            control.rebuildTable()
             // Select and scroll to the last inserted row
-            selectAndScrollToRow(last)
+            Qt.callLater(function() { selectAndScrollToRow(last) })
+        }
+        function onRowsRemoved(parent, first, last) {
+            control.rebuildTable()
+        }
+        function onModelReset() {
+            control.rebuildTable()
+        }
+        function onDataChanged(topLeft, bottomRight, roles) {
+            control.rebuildTable()
+        }
+    }
+
+    onImageLabelsTableChanged: rebuildTable()
+
+    Component {
+        id: com_class_cell
+        ClassColumnDelegate {
+            implicitWidth: tableView.columnWidth(column)
+            implicitHeight: control.rowHeight
+            mdata: options.mdata
+            selected: options.selected
+        }
+    }
+
+    Component {
+        id: com_data_cell
+        DataColumnDelegate {
+            implicitWidth: tableView.columnWidth(column)
+            implicitHeight: control.rowHeight
+            mdata: options.mdata
+            selected: options.selected
         }
     }
 
@@ -135,41 +214,14 @@ Rectangle {
                 columnSpacing: 2
                 fitColumnsToWidth: true
                 minimumColumnWidth: control.minimumColumnWidth
-                columnSource: [
-                    {
-                        width: control.classColumnWidth,
-                        minimumWidth: control.minimumColumnWidth,
-                        stretch: false,
-                        frozen: true
-                    }
-                ]
-                model: control.tableActive ? imageLabelsTable : null
+                columnSource: []
+                dataSource: []
+                rowSelectionEnabled: false
 
                 rowHeightProvider: function(row) {
                     return control.rowHeight
                 }
 
-                delegate: DelegateChooser {
-
-                    DelegateChoice {
-                        column: 0
-                        ClassColumnDelegate {
-                            implicitWidth: tableView.columnWidth(column)
-                            implicitHeight: control.rowHeight
-                            mdata: model.class_data
-                            selected: model.selected ?? false
-                        }
-                    }
-
-                    DelegateChoice {
-                        DataColumnDelegate {
-                            implicitWidth: tableView.columnWidth(column)
-                            implicitHeight: control.rowHeight
-                            mdata: model.data
-                            selected: model.selected ?? false
-                        }
-                    }
-                }
             }
 
             MouseArea {
@@ -307,7 +359,10 @@ Rectangle {
         roiClusterEnabled = GlobalSettings.valueForField(SettingsAccessor.RoiCluster, RoiClusterField.Enabled, true)
     }
 
-    Component.onCompleted: refreshSettings()
+    Component.onCompleted: {
+        refreshSettings()
+        rebuildTable()
+    }
 
     Connections {
         target: GlobalSettings.catalog

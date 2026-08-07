@@ -144,12 +144,12 @@ EvaluationConfusionModel::EvaluationConfusionModel(QObject *parent)
 
 int EvaluationConfusionModel::rowCount(const QModelIndex &parent) const
 {
-    return parent.isValid() ? 0 : dimension_;
+    return parent.isValid() ? 0 : row_count_;
 }
 
 int EvaluationConfusionModel::columnCount(const QModelIndex &parent) const
 {
-    return parent.isValid() ? 0 : dimension_;
+    return parent.isValid() ? 0 : column_count_;
 }
 
 QVariant EvaluationConfusionModel::data(const QModelIndex &index, const int role) const
@@ -157,7 +157,7 @@ QVariant EvaluationConfusionModel::data(const QModelIndex &index, const int role
     if (!index.isValid() || index.row() < 0 || index.row() >= rowCount() || index.column() < 0
         || index.column() >= columnCount())
         return {};
-    const auto &record = records_.at(static_cast<size_t>(index.row() * dimension_ + index.column()));
+    const auto &record = records_.at(static_cast<size_t>(index.row() * column_count_ + index.column()));
     switch (role)
     {
     case Qt::DisplayRole:
@@ -184,9 +184,11 @@ QVariant EvaluationConfusionModel::data(const QModelIndex &index, const int role
 QVariant EvaluationConfusionModel::headerData(const int section, const Qt::Orientation orientation,
                                               const int role) const
 {
-    if (role != Qt::DisplayRole || section < 0 || section >= dimension_)
+    if (role != Qt::DisplayRole || section < 0
+        || (orientation == Qt::Horizontal ? section >= column_count_ : section >= row_count_))
         return {};
-    const auto &record = records_.at(static_cast<size_t>(orientation == Qt::Horizontal ? section : section * dimension_));
+    const auto &record
+        = records_.at(static_cast<size_t>(orientation == Qt::Horizontal ? section : section * column_count_));
     return orientation == Qt::Horizontal ? record.column_label : record.row_label;
 }
 
@@ -204,14 +206,18 @@ void EvaluationConfusionModel::setRecords(std::vector<EvaluationConfusionCell> r
 {
     beginResetModel();
     records_ = std::move(records);
-    dimension_ = 0;
+    row_count_ = 0;
+    column_count_ = 0;
     if (!records_.empty())
     {
-        dimension_ = static_cast<int>(std::sqrt(static_cast<double>(records_.size())));
-        while (dimension_ * dimension_ < static_cast<int>(records_.size()))
-            ++dimension_;
-        if (dimension_ * dimension_ != static_cast<int>(records_.size()))
-            dimension_ = 0;
+        const QString first_row = records_.front().row_key;
+        while (column_count_ < static_cast<int>(records_.size())
+               && records_.at(static_cast<size_t>(column_count_)).row_key == first_row)
+            ++column_count_;
+        if (column_count_ > 0 && static_cast<int>(records_.size()) % column_count_ == 0)
+            row_count_ = static_cast<int>(records_.size()) / column_count_;
+        else
+            column_count_ = 0;
     }
     endResetModel();
 }
@@ -854,13 +860,14 @@ bool EvaluationCellFilterProxyModel::acceptsRecord(const EvaluationInstanceRecor
     const QString matrix_fn = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative);
     const QString matrix_fp = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive);
     const QString matrix_total = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::Total);
-    if (matrix_row_ == matrix_fn && matrix_column_ == matrix_fp)
-        return false;
+    const bool error_record = record.status == evaluation::Status::ClassMismatch
+                              || record.status == evaluation::Status::FalsePositive
+                              || record.status == evaluation::Status::FalseNegative;
     if (has_row && matrix_row_ != matrix_total)
     {
         if (matrix_row_ == matrix_fn)
         {
-            if (record.status != evaluation::Status::FalseNegative)
+            if (!error_record)
                 return false;
         }
         else if (record.pred_class_id != matrix_row_.toInt())
@@ -870,7 +877,7 @@ bool EvaluationCellFilterProxyModel::acceptsRecord(const EvaluationInstanceRecor
     {
         if (matrix_column_ == matrix_fp)
         {
-            if (record.status != evaluation::Status::FalsePositive)
+            if (!error_record)
                 return false;
         }
         else if (record.gt_class_id != matrix_column_.toInt())

@@ -90,6 +90,7 @@ struct MODEL_API EvaluationGroundTruthRecord
     int class_id{-1};
     QString class_name;
     QVariantMap geometry;
+    bool anomaly{false};
 };
 
 struct MODEL_API EvaluationPredictionRecord
@@ -225,7 +226,8 @@ public:
 
 private:
     std::vector<EvaluationConfusionCell> records_;
-    int dimension_{0};
+    int row_count_{0};
+    int column_count_{0};
 };
 
 class MODEL_API EvaluationInstanceModel : public QAbstractListModel

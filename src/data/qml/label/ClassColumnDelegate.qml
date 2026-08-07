@@ -7,7 +7,7 @@ import quickui
 
 Rectangle {
     clip: true
-    property var mdata
+    property var mdata: ({})
     property bool selected
     color: rowBackgroundColor()
     RowLayout {
@@ -15,7 +15,7 @@ Rectangle {
         anchors.leftMargin: 2
         anchors.rightMargin: 2
         Rectangle {
-            color: mdata.class_color
+            color: mdata && mdata.class_color !== undefined ? mdata.class_color : "transparent"
             width: rowHeight - 5
             height: rowHeight - 5
             radius: 3
@@ -26,7 +26,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             elide: Text.ElideRight
-            text:  mdata.class_name
+            text: mdata && mdata.class_name !== undefined ? String(mdata.class_name) : ""
             verticalAlignment: Text.AlignVCenter
         }    
     }   

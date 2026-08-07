@@ -150,6 +150,7 @@ enum class Field
     LabelId,
     ClassId,
     ClassName,
+    IsAnomaly,
     Geometry,
     X,
     Y,

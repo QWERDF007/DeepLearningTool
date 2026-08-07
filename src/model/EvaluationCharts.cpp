@@ -325,7 +325,10 @@ QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageRecord> &image
     for (const EvaluationImageRecord &image : images)
     {
         const double score = image.max_prediction_score;
-        if (image.gt_class_ids.contains(1))
+        const bool ground_truth_anomaly
+            = std::any_of(image.gt_instances.cbegin(), image.gt_instances.cend(),
+                          [](const EvaluationGroundTruthRecord &ground_truth) { return ground_truth.anomaly; });
+        if (ground_truth_anomaly)
         {
             good_scores.push_back(QVariant());
             anomaly_scores.push_back(score);
@@ -579,21 +582,43 @@ QVariantList evaluationConfusionCells(const QMap<int, QString> &classes, const Q
     const QString     matrix_total = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::Total);
     QMap<int, qint64> pred_totals;
     QMap<int, qint64> gt_totals;
+    QMap<int, qint64> row_fp_totals;
+    QMap<int, qint64> column_fn_totals;
     qint64            unmatched_fp = 0;
     qint64            unmatched_fn = 0;
+    qint64            mismatch_total = 0;
     for (auto it = matrix.cbegin(); it != matrix.cend(); ++it)
     {
         const QList<QString> keys = it.key().split(QLatin1Char('\x1f'));
         if (keys.size() != 2)
             continue;
-        if (keys.at(0) == matrix_fn)
+        const QString &row_key    = keys.at(0);
+        const QString &column_key = keys.at(1);
+        const qint64   count      = it.value();
+        const bool     row_fn     = row_key == matrix_fn;
+        const bool     column_fp  = column_key == matrix_fp;
+        if (row_fn)
+        {
             unmatched_fn += it.value();
+            if (!column_fp)
+                column_fn_totals[column_key.toInt()] += count;
+        }
         else
-            pred_totals[keys.at(0).toInt()] += it.value();
-        if (keys.at(1) == matrix_fp)
+            pred_totals[row_key.toInt()] += count;
+        if (column_fp)
+        {
             unmatched_fp += it.value();
+            if (!row_fn)
+                row_fp_totals[row_key.toInt()] += count;
+        }
         else
-            gt_totals[keys.at(1).toInt()] += it.value();
+            gt_totals[column_key.toInt()] += count;
+        if (!row_fn && !column_fp && row_key != column_key)
+        {
+            row_fp_totals[row_key.toInt()] += count;
+            column_fn_totals[column_key.toInt()] += count;
+            mismatch_total += count;
+        }
     }
 
     QVariantList cells;
@@ -634,7 +659,7 @@ QVariantList evaluationConfusionCells(const QMap<int, QString> &classes, const Q
                        diagonal ? evaluation::CellKind::Match : evaluation::CellKind::ClassMismatch, true, diagonal,
                        !diagonal);
         }
-        appendCell(row, matrix_fp, matrix.value(row + QLatin1Char('\x1f') + matrix_fp),
+        appendCell(row, matrix_fp, row_fp_totals.value(row_it.key()),
                    evaluation::CellKind::FalsePositive, true, false, true);
         appendCell(row, matrix_total, pred_totals.value(row_it.key()), evaluation::CellKind::PredTotal, true, false,
                    false);
@@ -642,22 +667,145 @@ QVariantList evaluationConfusionCells(const QMap<int, QString> &classes, const Q
     for (auto column_it = classes.cbegin(); column_it != classes.cend(); ++column_it)
     {
         const QString column = QString::number(column_it.key());
-        appendCell(matrix_fn, column, matrix.value(matrix_fn + QLatin1Char('\x1f') + column),
+        appendCell(matrix_fn, column, column_fn_totals.value(column_it.key()),
                    evaluation::CellKind::FalseNegative, true, false, true);
     }
-    appendCell(matrix_fn, matrix_fp, 0, evaluation::CellKind::NotApplicable, false, false, false);
-    appendCell(matrix_fn, matrix_total, unmatched_fn, evaluation::CellKind::FalseNegativeTotal, true, false, true);
+    appendCell(matrix_fn, matrix_fp, mismatch_total + unmatched_fp + unmatched_fn,
+               evaluation::CellKind::NotApplicable, false, false, false);
+    appendCell(matrix_fn, matrix_total, mismatch_total + unmatched_fn,
+               evaluation::CellKind::FalseNegativeTotal, true, false, true);
     for (auto column_it = classes.cbegin(); column_it != classes.cend(); ++column_it)
     {
         const QString column = QString::number(column_it.key());
         appendCell(matrix_total, column, gt_totals.value(column_it.key()), evaluation::CellKind::GtTotal, true, false,
                    false);
     }
-    appendCell(matrix_total, matrix_fp, unmatched_fp, evaluation::CellKind::FalsePositiveTotal, true, false, true);
+    appendCell(matrix_total, matrix_fp, mismatch_total + unmatched_fp,
+               evaluation::CellKind::FalsePositiveTotal, true, false, true);
     appendCell(matrix_total, matrix_total, total_count, evaluation::CellKind::All, true, false, false);
     (void)anomaly_method;
     return cells;
 }
+
+namespace {
+
+struct AnomalyGroundTruthColumn
+{
+    QString name;
+    bool    anomaly{false};
+};
+
+const EvaluationGroundTruthData *primaryGroundTruth(const EvaluationImageData &image)
+{
+    const EvaluationGroundTruthData *result = image.gt.isEmpty() ? nullptr : &image.gt.front();
+    for (const EvaluationGroundTruthData &ground_truth : image.gt)
+        if (ground_truth.label_id < 0)
+            return &ground_truth;
+    return result;
+}
+
+QVariantList anomalyConfusionCells(const QMap<qint64, EvaluationImageData> &images, const double threshold)
+{
+    const QString matrix_fn    = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative);
+    const QString matrix_fp    = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive);
+    const QString matrix_total = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::Total);
+    const QString separator(QLatin1Char('\x1f'));
+    QMap<int, AnomalyGroundTruthColumn> categories;
+    QMap<QString, qint64>               counts;
+    QMap<int, qint64>                   row_totals;
+    QMap<int, qint64>                   row_errors;
+    QMap<int, qint64>                   column_totals;
+    QMap<int, qint64>                   column_errors;
+    qint64                              error_total = 0;
+
+    for (const EvaluationImageData &image : images)
+    {
+        const EvaluationGroundTruthData *ground_truth = primaryGroundTruth(image);
+        const int category_id = ground_truth != nullptr && ground_truth->class_id >= 0 ? ground_truth->class_id : 0;
+        const QString category_name = ground_truth != nullptr && !ground_truth->class_name.isEmpty()
+            ? ground_truth->class_name
+            : QStringLiteral("GOOD");
+        const bool category_anomaly = ground_truth != nullptr && ground_truth->anomaly;
+        categories[category_id] = AnomalyGroundTruthColumn{category_name, category_anomaly};
+
+        const bool predicted_anomaly
+            = std::any_of(image.predictions.cbegin(), image.predictions.cend(),
+                          [threshold](const EvaluationPredictionData &prediction)
+                          { return prediction.class_id == 1 && prediction.score >= threshold; });
+        const int row_id = predicted_anomaly ? 1 : 0;
+        ++counts[QString::number(row_id) + separator + QString::number(category_id)];
+        ++row_totals[row_id];
+        ++column_totals[category_id];
+        if (predicted_anomaly != category_anomaly)
+        {
+            ++row_errors[row_id];
+            ++column_errors[category_id];
+            ++error_total;
+        }
+    }
+
+    QVariantList cells;
+    const auto appendCell = [&cells](const QString &row_key, const QString &row_label, const int row_class_id,
+                                     const QString &column_key, const QString &column_label,
+                                     const int column_class_id, const qint64 count,
+                                     const evaluation::CellKind kind, const bool selectable,
+                                     const bool diagonal, const bool error)
+    {
+        cells.push_back(QVariantMap{
+            {       evaluation::fieldName(evaluation::Field::RowKey),                              row_key},
+            {    evaluation::fieldName(evaluation::Field::ColumnKey),                           column_key},
+            {     evaluation::fieldName(evaluation::Field::RowLabel),                            row_label},
+            {  evaluation::fieldName(evaluation::Field::ColumnLabel),                         column_label},
+            {   evaluation::fieldName(evaluation::Field::RowClassId),                        row_class_id},
+            {evaluation::fieldName(evaluation::Field::ColumnClassId),                     column_class_id},
+            {        evaluation::fieldName(evaluation::Field::Count),                               count},
+            {     evaluation::fieldName(evaluation::Field::CellKind), evaluation::cellKindKey(kind)},
+            {   evaluation::fieldName(evaluation::Field::Selectable),                          selectable},
+            {   evaluation::fieldName(evaluation::Field::IsDiagonal),                            diagonal},
+            {      evaluation::fieldName(evaluation::Field::IsError),                               error}
+        });
+    };
+
+    const QString total_label = QStringLiteral("合计");
+    for (const int row_id : {0, 1})
+    {
+        const QString row_key   = QString::number(row_id);
+        const QString row_label = row_id == 0 ? QStringLiteral("GOOD") : QStringLiteral("Anomaly");
+        for (auto category = categories.cbegin(); category != categories.cend(); ++category)
+        {
+            const qint64 count = counts.value(row_key + separator + QString::number(category.key()));
+            const bool correct = (row_id == 1) == category.value().anomaly;
+            appendCell(row_key, row_label, row_id, QString::number(category.key()), category.value().name,
+                       category.key(), count,
+                       correct ? evaluation::CellKind::Match : evaluation::CellKind::ClassMismatch,
+                       true, correct, !correct);
+        }
+        appendCell(row_key, row_label, row_id, matrix_fp, matrix_fp, -1, row_errors.value(row_id),
+                   evaluation::CellKind::FalsePositive, true, false, true);
+        appendCell(row_key, row_label, row_id, matrix_total, total_label, -1, row_totals.value(row_id),
+                   evaluation::CellKind::PredTotal, true, false, false);
+    }
+
+    for (auto category = categories.cbegin(); category != categories.cend(); ++category)
+        appendCell(matrix_fn, matrix_fn, -1, QString::number(category.key()), category.value().name, category.key(),
+                   column_errors.value(category.key()), evaluation::CellKind::FalseNegative, true, false, true);
+    appendCell(matrix_fn, matrix_fn, -1, matrix_fp, matrix_fp, -1, error_total,
+               evaluation::CellKind::NotApplicable, false, false, true);
+    appendCell(matrix_fn, matrix_fn, -1, matrix_total, total_label, -1, error_total,
+               evaluation::CellKind::FalseNegativeTotal, true, false, true);
+
+    for (auto category = categories.cbegin(); category != categories.cend(); ++category)
+        appendCell(matrix_total, total_label, -1, QString::number(category.key()), category.value().name,
+                   category.key(), column_totals.value(category.key()), evaluation::CellKind::GtTotal,
+                   true, false, false);
+    appendCell(matrix_total, total_label, -1, matrix_fp, matrix_fp, -1, error_total,
+               evaluation::CellKind::FalsePositiveTotal, true, false, true);
+    appendCell(matrix_total, total_label, -1, matrix_total, total_label, -1, images.size(),
+               evaluation::CellKind::All, true, false, false);
+    return cells;
+}
+
+} // namespace
 
 QVariantMap assembleEvaluationResult(const QMap<qint64, EvaluationImageData> &images, const QMap<int, QString> &classes,
                                      const QMap<int, EvaluationCounts> &per_class, const EvaluationCounts &overall,
@@ -689,6 +837,7 @@ QVariantMap assembleEvaluationResult(const QMap<qint64, EvaluationImageData> &im
                 {  evaluation::fieldName(evaluation::Field::LabelId),   gt.label_id},
                 {  evaluation::fieldName(evaluation::Field::ClassId),   gt.class_id},
                 {evaluation::fieldName(evaluation::Field::ClassName), gt.class_name},
+                {evaluation::fieldName(evaluation::Field::IsAnomaly),   gt.anomaly},
                 { evaluation::fieldName(evaluation::Field::Geometry),   gt.geometry}
             });
         }
@@ -749,28 +898,9 @@ QVariantMap assembleEvaluationResult(const QMap<qint64, EvaluationImageData> &im
         });
     }
 
-    // 异常检测的矩阵重建：每幅图像一个二元结果，使正常图像的 GOOD/GOOD
-    // 真负计入矩阵（它们没有 GT 实例事件）。
-    QMap<QString, qint64> resolved_matrix = matrix;
-    if (anomaly_method)
-    {
-        resolved_matrix.clear();
-        for (const EvaluationImageData &image : images)
-        {
-            const bool ground_truth_anomaly
-                = std::any_of(image.gt.cbegin(), image.gt.cend(),
-                              [](const EvaluationGroundTruthData &ground_truth) { return ground_truth.class_id == 1; });
-            const bool predicted_anomaly
-                = std::any_of(image.predictions.cbegin(), image.predictions.cend(),
-                              [confidence_threshold](const EvaluationPredictionData &prediction)
-                              { return prediction.class_id == 1 && prediction.score >= confidence_threshold; });
-            const QString row    = predicted_anomaly ? QStringLiteral("1") : QStringLiteral("0");
-            const QString column = ground_truth_anomaly ? QStringLiteral("1") : QStringLiteral("0");
-            ++resolved_matrix[row + QLatin1Char('\x1f') + column];
-        }
-    }
-    const QVariantList matrix_cells = evaluationConfusionCells(
-        classes, resolved_matrix, anomaly_method ? images.size() : event_records.size(), anomaly_method);
+    const QVariantList matrix_cells
+        = anomaly_method ? anomalyConfusionCells(images, confidence_threshold)
+                         : evaluationConfusionCells(classes, matrix, event_records.size(), false);
 
     const QVariantMap diagnostic = {
         {evaluation::fieldName(evaluation::Field::Instance),

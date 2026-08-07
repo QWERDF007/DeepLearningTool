@@ -188,14 +188,13 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         {
             // 异常检测为图像级评估：每幅图像生成一条事件，供 UI 事件模型
             // 统一消费（包括没有原始事件的真负样本）。
-            const EvaluationGroundTruthData *anomaly_gt = nullptr;
+            const EvaluationGroundTruthData *category_gt = nullptr;
+            bool                             ground_truth_anomaly = false;
             for (const EvaluationGroundTruthData &gt : image.gt)
             {
-                if (gt.class_id == 1)
-                {
-                    anomaly_gt = &gt;
-                    break;
-                }
+                ground_truth_anomaly = ground_truth_anomaly || gt.anomaly;
+                if (category_gt == nullptr || gt.label_id < 0)
+                    category_gt = &gt;
             }
             const EvaluationPredictionData *anomaly_prediction = nullptr;
             double                          image_score        = 0.0;
@@ -206,7 +205,6 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
                     && (anomaly_prediction == nullptr || prediction.score > anomaly_prediction->score))
                     anomaly_prediction = &prediction;
             }
-            const bool               ground_truth_anomaly = anomaly_gt != nullptr;
             const bool               predicted_anomaly    = anomaly_prediction != nullptr;
             const evaluation::Status status = ground_truth_anomaly && predicted_anomaly
                                                 ? evaluation::Status::TruePositive
@@ -221,9 +219,13 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
             else if (status == evaluation::Status::FalseNegative)
                 ++image_counts.fn;
 
-            EvaluationGroundTruthData display_gt = anomaly_gt != nullptr ? *anomaly_gt : EvaluationGroundTruthData{};
-            display_gt.class_id                  = ground_truth_anomaly ? 1 : 0;
-            display_gt.class_name = ground_truth_anomaly ? QStringLiteral("Anomaly") : QStringLiteral("GOOD");
+            EvaluationGroundTruthData display_gt = category_gt != nullptr ? *category_gt : EvaluationGroundTruthData{};
+            if (category_gt == nullptr)
+            {
+                display_gt.class_id   = 0;
+                display_gt.class_name = QStringLiteral("GOOD");
+                display_gt.anomaly    = false;
+            }
             EvaluationPredictionData display_prediction
                 = anomaly_prediction != nullptr ? *anomaly_prediction : EvaluationPredictionData{};
             display_prediction.class_id   = predicted_anomaly ? 1 : 0;

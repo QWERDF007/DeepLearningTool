@@ -20,6 +20,7 @@ struct MODEL_API EvaluationGroundTruthData
     QVariantMap   geometry;     ///< 规范化几何记录。
     QVariantMap   bounds;       ///< 几何包围盒映射。
     EvaluationBox box;          ///< 解析出的包围盒。
+    bool          anomaly{false}; ///< 该 GT 类别是否属于异常组。
 };
 
 /**

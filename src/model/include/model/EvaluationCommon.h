@@ -185,6 +185,7 @@ inline EvaluationImageRecord imageFromMap(const QVariantMap &map)
         gt.label_id   = recordLong(item, evaluation::Field::LabelId, -1);
         gt.class_id   = recordInt(item, evaluation::Field::ClassId, -1);
         gt.class_name = recordText(item, evaluation::Field::ClassName);
+        gt.anomaly    = item.value(evaluation::fieldName(evaluation::Field::IsAnomaly)).toBool();
         gt.geometry   = item.value(evaluation::fieldName(evaluation::Field::Geometry)).toMap();
         record.gt_instances.push_back(std::move(gt));
     }
