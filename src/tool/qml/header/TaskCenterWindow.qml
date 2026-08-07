@@ -14,6 +14,8 @@ Window {
     property var taskManager: TaskManager
     property var taskModel: taskManager
     property int selectedTaskId: -1
+    property string taskTypeFilter: ""
+    property string taskStatusFilter: ""
 
     visible: false
     title: "任务管理中心"
@@ -118,6 +120,39 @@ Window {
         tableView.setRow(sourceRow, row)
     }
 
+    function taskFilterText(filterKey) {
+        return filterKey === "task_type" ? taskTypeFilter : taskStatusFilter
+    }
+
+    function applyTaskFilter() {
+        tableView.filter(undefined)
+        tableView.setFieldFilter("task_type", taskTypeFilter)
+        tableView.setFieldFilter("status", taskStatusFilter)
+    }
+
+    function openTaskFilter(filterKey, anchorPoint) {
+        taskFilterPopup.filterKey = filterKey
+        const xLimit = Math.max(8, dialog.width - taskFilterPopup.width - 8)
+        const yLimit = Math.max(8, dialog.height - taskFilterPopup.height - 8)
+        taskFilterPopup.x = Math.max(8, Math.min(anchorPoint.x, xLimit))
+        taskFilterPopup.y = Math.max(8, Math.min(anchorPoint.y + 4, yLimit))
+        taskFilterPopup.open()
+    }
+
+    function commitTaskFilter() {
+        if (taskFilterPopup.filterKey === "task_type")
+            taskTypeFilter = taskFilterInput.text
+        else
+            taskStatusFilter = taskFilterInput.text
+        applyTaskFilter()
+        taskFilterPopup.close()
+    }
+
+    function clearTaskFilter() {
+        taskFilterInput.text = ""
+        commitTaskFilter()
+    }
+
     function screenGeometryFor(targetScreen) {
         if (targetScreen) {
             let availableWidth = targetScreen.desktopAvailableWidth > 0 ? targetScreen.desktopAvailableWidth : targetScreen.width
@@ -150,6 +185,88 @@ Window {
         raise()
         requestActivate()
         rebuildTasks()
+    }
+
+    QuiPopup {
+        id: taskFilterPopup
+        property string filterKey: ""
+        width: 250
+        height: 116
+        padding: 10
+        maskVisible: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        onOpened: {
+            taskFilterInput.text = dialog.taskFilterText(filterKey)
+            taskFilterInput.cursorPosition = taskFilterInput.text.length
+            taskFilterInput.forceActiveFocus()
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+
+            QuiTextField {
+                id: taskFilterInput
+                Layout.fillWidth: true
+                placeholderText: taskFilterPopup.filterKey === "task_type"
+                                 ? "输入任务类型"
+                                 : "输入任务状态"
+                selectByMouse: true
+                onAccepted: dialog.commitTaskFilter()
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Item { Layout.fillWidth: true }
+
+                QuiButton {
+                    text: "清除"
+                    onClicked: dialog.clearTaskFilter()
+                }
+
+                QuiButton {
+                    text: "搜索"
+                    onClicked: dialog.commitTaskFilter()
+                }
+            }
+        }
+    }
+
+    Component {
+        id: com_task_filter_header
+        Item {
+            RowLayout {
+                anchors.fill: parent
+                spacing: 2
+
+                QuiText {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 6
+                    text: options.label || ""
+                    color: tableView.headerTextColor
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                }
+
+                QuiTextIconButton {
+                    Layout.preferredWidth: 22
+                    Layout.preferredHeight: 22
+                    iconSize: 13
+                    normalColor: "transparent"
+                    hoverColor: QuiColor.Background
+                    pressedColor: QuiColor.Background
+                    iconSource: QuiFontIcon.Filter
+                    iconColor: dialog.taskFilterText(options.filterKey) !== ""
+                               ? QuiColor.Highlight : QuiColor.FontPrimary
+                    text: options.filterKey === "task_type" ? "过滤任务类型" : "过滤任务状态"
+                    onClicked: dialog.openTaskFilter(options.filterKey, mapToItem(null, 0, height))
+                }
+            }
+        }
     }
 
     Component {
@@ -198,19 +315,6 @@ Window {
                     onClicked: {
                         dialog.selectedTaskId = rowModel.task_id
                         dialog.taskManager.startTask(rowModel.task_id)
-                    }
-                }
-
-                QuiTextIconButton {
-                    width: 30
-                    height: 28
-                    text: "暂停"
-                    display: Button.IconOnly
-                    iconSource: QuiFontIcon.Pause
-                    enabled: rowModel ? (rowModel.can_pause || false) : false
-                    onClicked: {
-                        dialog.selectedTaskId = rowModel.task_id
-                        dialog.taskManager.pauseTask(rowModel.task_id)
                     }
                 }
 
@@ -285,15 +389,32 @@ Window {
                 minimumColumnWidth: 80
                 fitColumnsToWidth: true
                 columnSource: [
-                    { title: "任务ID", dataIndex: "task_id", width: 80, minimumWidth: 80, stretch: false },
-                    { title: "模型名称", dataIndex: "model_name", width: 180, minimumWidth: 120 },
-                    { title: "任务类型", dataIndex: "task_type", width: 140, minimumWidth: 100 },
-                    { title: "任务状态", dataIndex: "status", width: 120, minimumWidth: 90 },
-                    { title: "任务创建时间", dataIndex: "created_at", width: 170, minimumWidth: 140 },
-                    { title: "运行时间", dataIndex: "running_time", width: 110, minimumWidth: 90 },
-                    { title: "剩余时间", dataIndex: "eta", width: 110, minimumWidth: 90 },
-                    { title: "进度", dataIndex: "progress_cell", width: 180, minimumWidth: 140 },
-                    { title: "操作", dataIndex: "actions_cell", width: 180, minimumWidth: 160, stretch: false }
+                    {
+                        title: "任务ID", dataIndex: "task_id", width: 80, minimumWidth: 80,
+                        stretch: false, frozen: true, resizable: true
+                    },
+                    {
+                        title: "模型名称", dataIndex: "model_name", width: 180, minimumWidth: 120,
+                        frozen: true, resizable: true
+                    },
+                    {
+                        title: tableView.customItem(com_task_filter_header,
+                                                   { label: "任务类型", filterKey: "task_type" }),
+                        dataIndex: "task_type", width: 140, minimumWidth: 100, resizable: true
+                    },
+                    {
+                        title: tableView.customItem(com_task_filter_header,
+                                                   { label: "任务状态", filterKey: "status" }),
+                        dataIndex: "status", width: 120, minimumWidth: 90, resizable: true
+                    },
+                    { title: "任务创建时间", dataIndex: "created_at", width: 170, minimumWidth: 140, resizable: true },
+                    { title: "运行时间", dataIndex: "running_time", width: 110, minimumWidth: 90, resizable: true },
+                    { title: "剩余时间", dataIndex: "eta", width: 110, minimumWidth: 90, resizable: true },
+                    { title: "进度", dataIndex: "progress_cell", width: 180, minimumWidth: 140, resizable: true },
+                    {
+                        title: "操作", dataIndex: "actions_cell", width: 180, minimumWidth: 160,
+                        stretch: false, frozen: true, resizable: true
+                    }
                 ]
 
                 onCurrentChanged: {

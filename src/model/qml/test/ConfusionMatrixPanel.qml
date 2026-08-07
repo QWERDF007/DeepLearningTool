@@ -173,7 +173,7 @@ Item {
         Item {
             QuiTextIcon {
                 anchors.centerIn: parent
-                visible: options.isTotal
+                visible: !!options.isTotal
                 iconSource: QuiFontIcon.Picture
                 iconColor: confusionTable.headerTextColor
             }
