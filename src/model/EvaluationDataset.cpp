@@ -273,7 +273,8 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
                           const QString &task_database_path, const evaluation::Method method,
                           QMap<qint64, EvaluationImageData> &images,
                           const std::shared_ptr<std::atomic_bool> &cancel_token, QString *err_msg,
-                          int *missing_database_images, int *ignored_selection_images)
+                          int *missing_database_images, int *ignored_selection_images,
+                          const std::function<bool(qint64 image_id, int *width, int *height)> &dimensions_provider)
 {
     images.clear();
     if (missing_database_images != nullptr)
@@ -438,7 +439,10 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
         image.dataset_id = source_image.dataset_id;
         image.path       = source_image.path.trimmed().isEmpty() ? listed_path : source_image.path;
         image.name       = QFileInfo(image.path).fileName();
-        data::DatasetIO::getImageDimensions(image.path, image.width, image.height);
+        if (!dimensions_provider || !dimensions_provider(image.id, &image.width, &image.height))
+        {
+            data::DatasetIO::getImageDimensions(image.path, image.width, image.height);
+        }
 
         const qint64 image_class_id = imageLabelClassIdFromExtraData(source_image.extra_data);
         const auto   image_class    = classes.find(image_class_id);

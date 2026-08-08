@@ -276,6 +276,13 @@ public:
     Q_INVOKABLE QString getImageDatasetName(const int64_t image_id) const;
     Q_INVOKABLE QString getImageTagName(const int64_t image_id) const;
 
+    /**
+     * @brief 线程安全地查询图像尺寸,复用打开项目时后台预取的缓存。
+     * @param image_id 图像 ID。
+     * @return 图像尺寸,无效时返回空 QSize。
+     */
+    Q_INVOKABLE QSize imageSize(const int64_t image_id) const;
+
     std::vector<int64_t> selectedImageIds() const;
     std::vector<int64_t> allImageIds() const;
 

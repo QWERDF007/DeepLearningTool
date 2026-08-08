@@ -107,7 +107,13 @@ Item {
         control.classColumnLabels = classColumnLabels
         control.classRowLabels = classRowLabels
         control.matrixRowCount = rows.length
-        if (!sameColumnSchema(confusionTable.columnSource, columnSource))
+        // Keep the previous column/frozen-view structure alive while there is
+        // no matrix. Clearing rows is sufficient to empty the panel; clearing
+        // columns at the same time destroys synchronized frozen views during
+        // Qt Quick TableView layout. A new matrix can safely replace the
+        // schema after its rows are available again.
+        const schemaChanged = !!matrix && !sameColumnSchema(confusionTable.columnSource, columnSource)
+        if (schemaChanged)
             confusionTable.columnSource = columnSource
         confusionTable.dataSource = rows
     }
@@ -144,7 +150,9 @@ Item {
                - confusionTable.contentY
     }
 
-    onEvaluationChanged: rebuildMatrix()
+    onEvaluationChanged: {
+        rebuildMatrix()
+    }
 
     Connections {
         target: control.evaluation ? control.evaluation.confusionMatrix : null
@@ -269,7 +277,7 @@ Item {
                 hoverEnabled: false
                 zebraEnabled: false
                 resizableColumns: false
-
+                visible: control.matrixRowCount > 0
                 verticalHeaderDelegate: Component {
                     Rectangle {
                         property int sourceRow: typeof row === "undefined" ? index : row

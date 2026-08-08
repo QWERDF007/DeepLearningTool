@@ -852,16 +852,23 @@ QString ModelEvaluationViewModel::thumbnailUrl(const EvaluationInstanceRecord &r
     query.addQueryItem(QStringLiteral("event"), record.event_uuid);
     query.addQueryItem(QStringLiteral("revision"), result_revision_);
     query.addQueryItem(QStringLiteral("path"), record.image_path);
-    const auto addBounds = [&query, &record](const QString &name, const QString &key)
+    // 裁剪视口由 provider 渲染时按 GT/PRED 绝对 bounds 推导,
+    // 评估阶段不再需要图像宽高。
+    const auto addBounds = [&query](const QString &prefix, const QVariantMap &bounds)
     {
-        const QVariant value = record.crop_bounds.value(key);
-        if (value.isValid())
-            query.addQueryItem(name, QString::number(value.toDouble(), 'f', 6));
+        const QVariant x = bounds.value(QStringLiteral("x"));
+        const QVariant y = bounds.value(QStringLiteral("y"));
+        const QVariant w = bounds.value(QStringLiteral("width"));
+        const QVariant h = bounds.value(QStringLiteral("height"));
+        if (!x.isValid() || !y.isValid() || !w.isValid() || !h.isValid())
+            return;
+        query.addQueryItem(prefix + QStringLiteral("_x"), QString::number(x.toDouble(), 'f', 6));
+        query.addQueryItem(prefix + QStringLiteral("_y"), QString::number(y.toDouble(), 'f', 6));
+        query.addQueryItem(prefix + QStringLiteral("_w"), QString::number(w.toDouble(), 'f', 6));
+        query.addQueryItem(prefix + QStringLiteral("_h"), QString::number(h.toDouble(), 'f', 6));
     };
-    addBounds(QStringLiteral("x"), QStringLiteral("x"));
-    addBounds(QStringLiteral("y"), QStringLiteral("y"));
-    addBounds(QStringLiteral("width"), QStringLiteral("width"));
-    addBounds(QStringLiteral("height"), QStringLiteral("height"));
+    addBounds(QStringLiteral("gt"), record.gt_bounds);
+    addBounds(QStringLiteral("pd"), record.pred_bounds);
 
     const QString encoded_event = QString::fromLatin1(QUrl::toPercentEncoding(record.event_uuid));
     return QString("image://evaluationthumbnail/%1?%2").arg(encoded_event, query.toString(QUrl::FullyEncoded));

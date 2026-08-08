@@ -59,7 +59,7 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
     int                               ignored_selection_images = 0;
     if (!loadEvaluationImages(options.dataset_file_list_path, options.project_database_path, options.task_database_path,
                                options.method, images, options.cancel_token, err_msg, &missing_database_images,
-                               &ignored_selection_images))
+                               &ignored_selection_images, options.image_dimensions_provider))
         return false;
     if (missing_database_images > 0)
         spdlog::warn("测试任务文件列表中有 {} 个图像已不在当前项目数据库中，已跳过", missing_database_images);

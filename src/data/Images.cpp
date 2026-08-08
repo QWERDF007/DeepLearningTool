@@ -97,7 +97,60 @@ ImageInstancesListModel::ImageInstancesListModel(dltool::database::ProjectDataBa
     init();
 }
 
-ImageInstancesListModel::~ImageInstancesListModel() = default;
+ImageInstancesListModel::~ImageInstancesListModel()
+{
+    prefetch_cancel_.store(true, std::memory_order_relaxed);
+    if (prefetch_thread_.joinable())
+        prefetch_thread_.join();
+}
+
+void ImageInstancesListModel::startSizePrefetch()
+{
+    if (prefetch_running_.exchange(true))
+        return;
+    std::vector<std::pair<int64_t, QString>> targets;
+    targets.reserve(full_image_instances_.size());
+    for (const auto &entry : full_image_instances_)
+        targets.emplace_back(entry.first, entry.second->path());
+    prefetch_thread_ = std::thread([this, targets = std::move(targets)]() mutable
+                                   { prefetchSizes(std::move(targets)); });
+}
+
+void ImageInstancesListModel::prefetchSizes(std::vector<std::pair<int64_t, QString>> targets)
+{
+    for (const auto &[image_id, path] : targets)
+    {
+        if (prefetch_cancel_.load(std::memory_order_relaxed))
+            break;
+        QImageReader reader(path);
+        const QSize  size = reader.size();
+        if (!size.isValid() || size.width() <= 0 || size.height() <= 0)
+            continue;
+        QWriteLocker locker(&size_lock_);
+        image_sizes_.insert(image_id, size);
+    }
+    prefetch_running_.store(false, std::memory_order_relaxed);
+}
+
+QSize ImageInstancesListModel::imageSize(const int64_t image_id) const
+{
+    {
+        QReadLocker locker(&size_lock_);
+        const auto  it = image_sizes_.constFind(image_id);
+        if (it != image_sizes_.cend())
+            return it.value();
+    }
+    const ImageInstance *instance = getImageInstance(image_id);
+    if (instance == nullptr)
+        return {};
+    const QSize size = instance->imageSize();
+    if (size.isValid())
+    {
+        QWriteLocker locker(&size_lock_);
+        image_sizes_.insert(image_id, size);
+    }
+    return size;
+}
 
 void ImageInstancesListModel::init()
 {
@@ -127,6 +180,8 @@ void ImageInstancesListModel::init()
                               index < extra_data.size() ? readImageLabelClassId(extra_data[index]) : -1, this));
     }
     rebuildImageIds();
+    // 打开项目后立即在后台预取全部图像尺寸,供评估等线程复用,避免重复读文件。
+    startSizePrefetch();
 }
 
 int ImageInstancesListModel::rowCount(const QModelIndex &parent) const

@@ -84,11 +84,9 @@ Rectangle {
                     anchors.margins: 5
                     record: ({imagePath: model.imagePath, thumbnailUrl: model.thumbnailUrl,
                               imageWidth: model.imageWidth,
-                              imageHeight: model.imageHeight, cropBounds: model.cropBounds,
+                              imageHeight: model.imageHeight,
                               gtGeometry: model.gtGeometry, predGeometry: model.predGeometry,
                               gtBounds: model.gtBounds, predBounds: model.predBounds,
-                              gtOverlayBounds: model.gtOverlayBounds, predOverlayBounds: model.predOverlayBounds,
-                              gtOverlayPoints: model.gtOverlayPoints, predOverlayPoints: model.predOverlayPoints,
                               gtMaskUrl: model.gtMaskUrl, predMaskUrl: model.predMaskUrl,
                               gtClassColor: model.gtClassColor, predClassColor: model.predClassColor})
                 }

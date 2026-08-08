@@ -7,6 +7,7 @@
 #include <QString>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 
 namespace dltool::model {
@@ -37,6 +38,9 @@ struct MODEL_API ModelEvaluationOptions
     // The evaluator never dereferences a QObject and can therefore poll this
     // value safely from its worker thread.
     std::shared_ptr<std::atomic_bool> cancel_token;
+    // 可选图像尺寸提供者:复用 DataManager 后台预取的尺寸缓存,
+    // 避免评估线程为每张图重复打开文件;返回 false 时回退到文件读取。
+    std::function<bool(qint64 image_id, int *width, int *height)> image_dimensions_provider;
 };
 
 struct MODEL_API ModelEvaluationResult

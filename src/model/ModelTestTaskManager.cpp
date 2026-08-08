@@ -16,6 +16,7 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QQmlEngine>
+#include <QSize>
 #include <algorithm>
 
 namespace dltool::model {
@@ -533,6 +534,20 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
         = options.evaluation_config.value(evaluation::fieldName(evaluation::Field::IouThreshold)).toDouble();
     options.matching_strategy = evaluation::matchingStrategyFromKey(
         options.evaluation_config.value(evaluation::fieldName(evaluation::Field::MatchingStrategy)).toString());
+    // 复用 DataManager 后台预取的图像尺寸缓存,评估线程不再逐张打开图像文件。
+    options.image_dimensions_provider = [this](const qint64 image_id, int *width, int *height) -> bool
+    {
+        if (data_manager_ == nullptr)
+            return false;
+        const QSize size = data_manager_->imageSize(image_id);
+        if (!size.isValid() || size.width() <= 0 || size.height() <= 0)
+            return false;
+        if (width != nullptr)
+            *width = size.width();
+        if (height != nullptr)
+            *height = size.height();
+        return true;
+    };
     return true;
 }
 
@@ -650,7 +665,16 @@ void ModelTestTaskManager::reload()
         emit countChanged();
     };
 
-    for (ModelEvaluationViewModel *evaluation : evaluation_cache_) delete evaluation;
+    // QML may still be bound to currentEvaluation while reload() is rebuilding
+    // the task/model context.  Synchronous deletion emits destroyed() in the
+    // middle of the TableView model reset and leaves Qt Quick polishing a view
+    // whose sync model is already gone.  Defer destruction until the current
+    // task bindings have received currentTaskChanged.
+    for (ModelEvaluationViewModel *evaluation : evaluation_cache_)
+    {
+        if (evaluation != nullptr)
+            evaluation->deleteLater();
+    }
     evaluation_cache_.clear();
     pending_evaluation_notifications_.clear();
 
@@ -722,7 +746,9 @@ void ModelTestTaskManager::clearCurrentObjects()
     current_test_params_.reset();
     if (current_dataset_view_model_ != nullptr)
     {
-        delete current_dataset_view_model_;
+        // Keep the old selection model alive until QML has rebound
+        // currentDatasetViewModel on currentTaskChanged.
+        current_dataset_view_model_->deleteLater();
         current_dataset_view_model_ = nullptr;
     }
     // Evaluation view models are intentionally retained in evaluation_cache_

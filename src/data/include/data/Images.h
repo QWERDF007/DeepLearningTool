@@ -1,10 +1,15 @@
 ﻿#pragma once
 
 #include <QAbstractListModel>
-#include <QRect>
+#include <QHash>
+#include <QReadWriteLock>
+#include <QRectF>
+#include <QSize>
 #include <QtQml>
-#include <map>
+#include <atomic>
 #include <set>
+#include <map>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -315,9 +320,28 @@ public:
     int64_t           getImageDatasetId(const int64_t image_id) const;
     const std::set<int64_t> &getImageTagIds(const int64_t image_id) const;
 
+    /**
+     * @brief 线程安全地查询图像尺寸。
+     *
+     * 打开项目时后台线程已预取全部图像尺寸;未命中缓存时回退到文件读取并写回缓存,
+     * 供评估等后台线程复用,避免重复打开图像文件。
+     * @param image_id 图像 ID。
+     * @return 图像尺寸,无效时返回空 QSize。
+     */
+    QSize imageSize(int64_t image_id) const;
+
 private:
     void init();
     void rebuildImageIds();
+
+    /**
+     * @brief 在后台线程预取当前全部图像的尺寸。
+     *
+     * 仅快照 (image_id, path),不触碰实例容器,避免与 GUI 线程的增删并发。
+     */
+    void startSizePrefetch();
+
+    void prefetchSizes(std::vector<std::pair<int64_t, QString>> targets);
 
     /**
      * @brief 发布尚未映射到模型行的新增图像。
@@ -365,6 +389,22 @@ private:
      * 由外层代理模型维护，不在此处复制第二份可见列表。
      */
     std::vector<int64_t> image_ids_;
+
+    /**
+     * @brief 图像尺寸缓存 {image_id, size}。
+     *
+     * 由打开项目后的后台预取线程填充,评估等后台线程通过 imageSize() 只读复用;
+     * 读写均受 size_lock_ 保护。
+     */
+    mutable QReadWriteLock size_lock_;
+
+    mutable QHash<int64_t, QSize> image_sizes_;
+
+    std::atomic_bool prefetch_cancel_{false};
+
+    std::atomic_bool prefetch_running_{false};
+
+    std::thread prefetch_thread_;
 };
 
 class ImageInfoListModel : public QAbstractListModel

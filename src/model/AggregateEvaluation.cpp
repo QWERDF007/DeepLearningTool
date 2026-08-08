@@ -413,36 +413,58 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
     }
 
     AggregateCounts image_counts;
-    for (const EvaluationImageRecord &image : input.images)
+    if (input.anomaly_detection)
     {
-        QSet<int> gt_classes;
-        QSet<int> pred_classes;
-        for (const int class_id : gtClassIds(image))
-            if (aggregateClassAllowed(input.class_ids, class_id))
-                gt_classes.insert(class_id);
-        for (const int class_id : predClassIds(image, input.confidence_threshold))
-            if (aggregateClassAllowed(input.class_ids, class_id))
-                pred_classes.insert(class_id);
-        for (const int class_id : pred_classes)
+        // Anomaly methods are binary image-level classifiers.  The GT may
+        // contain several semantic classes, but only the anomaly flag of the
+        // image matters; counting every class ID here turns one image into
+        // multiple FP/FN events and makes the image metrics disagree with the
+        // binary confusion matrix.
+        for (const EvaluationImageRecord &image : input.images)
         {
-            if (gt_classes.contains(class_id))
+            const bool ground_truth_anomaly = isAnomalyImage(image, input.confidence_threshold, false);
+            const bool predicted_anomaly    = isAnomalyImage(image, input.confidence_threshold, true);
+            if (ground_truth_anomaly && predicted_anomaly)
                 ++image_counts.tp;
-            else
+            else if (predicted_anomaly)
                 ++image_counts.fp;
+            else if (ground_truth_anomaly)
+                ++image_counts.fn;
         }
-        for (const int class_id : gt_classes)
-            if (!pred_classes.contains(class_id))
-                ++image_counts.fn;
-        if (gt_classes.isEmpty() && pred_classes.isEmpty())
+    }
+    else
+    {
+        for (const EvaluationImageRecord &image : input.images)
         {
-            const bool has_gt   = hasGroundTruth(image) && input.class_ids.isEmpty();
-            const bool has_pred = hasPredictions(image, input.confidence_threshold) && input.class_ids.isEmpty();
-            if (has_gt && has_pred)
-                ++image_counts.tp;
-            else if (has_pred)
-                ++image_counts.fp;
-            else if (has_gt)
-                ++image_counts.fn;
+            QSet<int> gt_classes;
+            QSet<int> pred_classes;
+            for (const int class_id : gtClassIds(image))
+                if (aggregateClassAllowed(input.class_ids, class_id))
+                    gt_classes.insert(class_id);
+            for (const int class_id : predClassIds(image, input.confidence_threshold))
+                if (aggregateClassAllowed(input.class_ids, class_id))
+                    pred_classes.insert(class_id);
+            for (const int class_id : pred_classes)
+            {
+                if (gt_classes.contains(class_id))
+                    ++image_counts.tp;
+                else
+                    ++image_counts.fp;
+            }
+            for (const int class_id : gt_classes)
+                if (!pred_classes.contains(class_id))
+                    ++image_counts.fn;
+            if (gt_classes.isEmpty() && pred_classes.isEmpty())
+            {
+                const bool has_gt   = hasGroundTruth(image) && input.class_ids.isEmpty();
+                const bool has_pred = hasPredictions(image, input.confidence_threshold) && input.class_ids.isEmpty();
+                if (has_gt && has_pred)
+                    ++image_counts.tp;
+                else if (has_pred)
+                    ++image_counts.fp;
+                else if (has_gt)
+                    ++image_counts.fn;
+            }
         }
     }
 

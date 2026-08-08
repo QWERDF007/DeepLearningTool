@@ -539,13 +539,9 @@ QVariantMap buildInstanceEvent(const EvaluationImageData &image, const evaluatio
                                const double iou, const QString &dataset_root, const QString &prediction_root,
                                const qint64 event_index)
 {
-    // 裁剪视口：GT/预测并集扩展 5% 边距；整幅图像无有效边界时退回全图。
-    const QVariantMap crop
-        = cropBounds(gt ? gt->bounds : QVariantMap{}, pred ? pred->bounds : QVariantMap{}, image.width, image.height);
-    const QVariantMap viewport      = crop.isEmpty() && image.width > 0 && image.height > 0
-                                        ? evaluationBoxMap(EvaluationBox{0.0, 0.0, static_cast<double>(image.width),
-                                                                         static_cast<double>(image.height)})
-                                        : crop;
+    // 视口裁剪不再在评估阶段计算:thumbnail provider 渲染时按 URL 携带的
+    // GT/PRED 绝对 bounds 自行推导裁剪区域,QML 侧按 LabelInstanceThumbnail
+    // 模式用原始几何换算 overlay,评估线程因此不再依赖图像宽高。
     const QVariantMap gt_geometry   = gt ? gt->geometry : QVariantMap{};
     const QVariantMap pred_geometry = pred ? pred->geometry : QVariantMap{};
     return QVariantMap{
@@ -562,13 +558,6 @@ QVariantMap buildInstanceEvent(const EvaluationImageData &image, const evaluatio
         {evaluation::fieldName(evaluation::Field::PredClassId), pred ? pred->class_id : -1},
         {evaluation::fieldName(evaluation::Field::PredClassName), pred ? pred->class_name : QString()},
         {evaluation::fieldName(evaluation::Field::PredGeometry), pred_geometry},
-        {evaluation::fieldName(evaluation::Field::CropBounds), viewport},
-        {evaluation::fieldName(evaluation::Field::GtOverlayBounds),
-         normalizedOverlayBounds(gt ? gt->bounds : QVariantMap{}, viewport)},
-        {evaluation::fieldName(evaluation::Field::PredOverlayBounds),
-         normalizedOverlayBounds(pred ? pred->bounds : QVariantMap{}, viewport)},
-        {evaluation::fieldName(evaluation::Field::GtOverlayPoints), normalizedOverlayPoints(gt_geometry, viewport)},
-        {evaluation::fieldName(evaluation::Field::PredOverlayPoints), normalizedOverlayPoints(pred_geometry, viewport)},
         {evaluation::fieldName(evaluation::Field::GtMaskUrl), maskUrl(gt_geometry, dataset_root)},
         {evaluation::fieldName(evaluation::Field::PredMaskUrl), maskUrl(pred_geometry, prediction_root)}
     };
@@ -823,7 +812,6 @@ QVariantMap assembleEvaluationResult(const QMap<qint64, EvaluationImageData> &im
         return isCancelled(cancel);
     };
     const bool anomaly_method = evaluation::isAnomaly(method);
-
     // 图像记录序列化：GT/预测实例列表。
     QVariantList image_records;
     for (const EvaluationImageData &image : images)

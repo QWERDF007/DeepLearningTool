@@ -8,6 +8,7 @@
 #include <QPair>
 #include <QString>
 #include <atomic>
+#include <functional>
 #include <memory>
 
 namespace dltool::model {
@@ -48,7 +49,8 @@ MODEL_API bool loadEvaluationImages(
     const QString &file_list_path, const QString &project_database_path, const QString &task_database_path,
     evaluation::Method method, QMap<qint64, EvaluationImageData> &images,
     const std::shared_ptr<std::atomic_bool> &cancel_token = {}, QString *err_msg = nullptr,
-    int *missing_database_images = nullptr, int *ignored_selection_images = nullptr);
+    int *missing_database_images = nullptr, int *ignored_selection_images = nullptr,
+    const std::function<bool(qint64 image_id, int *width, int *height)> &dimensions_provider = {});
 
 /**
  * @brief 从测试任务数据库与预测目录加载预测结果。

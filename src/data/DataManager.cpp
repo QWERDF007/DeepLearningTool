@@ -2812,6 +2812,11 @@ QString DataManager::getImagePath(const int64_t image_id) const
     return image_source_->getImagePath(image_id);
 }
 
+QSize DataManager::imageSize(const int64_t image_id) const
+{
+    return image_source_ != nullptr ? image_source_->imageSize(image_id) : QSize();
+}
+
 QString DataManager::getImageDatasetName(const int64_t image_id) const
 {
     const int64_t dataset_id = image_source_->getImageDatasetId(image_id);
