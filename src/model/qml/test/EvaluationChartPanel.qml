@@ -46,6 +46,25 @@ Rectangle {
         return datasetLabel === "GOOD" || datasetLabel === "Anomaly"
     }
 
+    function anomalyTooltipLabel(tooltipItem, data) {
+        var datasets = data && data.datasets ? data.datasets : []
+        var datasetIndex = tooltipItem && tooltipItem.datasetIndex !== undefined
+                ? Number(tooltipItem.datasetIndex) : -1
+        var dataset = datasetIndex >= 0 && datasetIndex < datasets.length
+                ? datasets[datasetIndex] : null
+        if (dataset && dataset.tooltipXOnly)
+            return null
+
+        var label = dataset && dataset.label !== undefined ? String(dataset.label) : ""
+        if (label.length > 0)
+            label += ": "
+        if (tooltipItem && tooltipItem.value !== undefined && tooltipItem.value !== null)
+            label += tooltipItem.value
+        else if (tooltipItem && tooltipItem.yLabel !== undefined)
+            label += tooltipItem.yLabel
+        return label
+    }
+
     function chartOptionsForDescriptor(descriptor) {
         var options = ChartPresenter.prepareOptions(descriptor.options, control.chartFontColor)
         try {
@@ -58,6 +77,13 @@ Rectangle {
         if (descriptor.chart_id === "anomaly_score_distribution"
                 && options.legend && options.legend.labels)
             options.legend.labels.filter = control.anomalyLegendFilter
+        if (descriptor.chart_id === "anomaly_score_distribution") {
+            if (!options.tooltips)
+                options.tooltips = ({})
+            if (!options.tooltips.callbacks)
+                options.tooltips.callbacks = ({})
+            options.tooltips.callbacks.label = control.anomalyTooltipLabel
+        }
         return options
     }
 

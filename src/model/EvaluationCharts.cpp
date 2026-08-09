@@ -240,6 +240,7 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
              QVariantMap{{QStringLiteral("x"), value}, {QStringLiteral("y"), max_count}}}             },
             { QStringLiteral("backgroundColor"),                                                 color},
             {     QStringLiteral("borderColor"),                                                 color},
+            {       QStringLiteral("tooltipXOnly"),                                                 true},
             {     QStringLiteral("borderWidth"),                                                     2},
             {      QStringLiteral("borderDash"),                                    QVariantList{6, 4}},
             {     QStringLiteral("pointRadius"),                                                     0},
