@@ -330,10 +330,22 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
             *err_msg = QString("评估已取消");
         return false;
     }
-    const QVariantMap evaluation_data = assembleEvaluationResult(
-        images, classes, per_class, overall, image_counts, matrix, event_records, prediction_count, options.method,
-        options.confidence_threshold, options.iou_threshold, options.matching_strategy, options.evaluation_config,
-        options.cancel_token, err_msg);
+    const EvaluationResultContext result_context{images,
+                                                 classes,
+                                                 per_class,
+                                                 overall,
+                                                 image_counts,
+                                                 matrix,
+                                                 event_records,
+                                                 prediction_count,
+                                                 options.method,
+                                                 options.confidence_threshold,
+                                                 options.iou_threshold,
+                                                 options.matching_strategy,
+                                                 options.evaluation_config,
+                                                 options.cancel_token,
+                                                 err_msg};
+    const QVariantMap evaluation_data = assembleEvaluationResult(result_context);
     if (evaluation_data.isEmpty())
         return false;
     if (result)

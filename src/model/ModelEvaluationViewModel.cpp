@@ -1,7 +1,6 @@
 #include "model/ModelEvaluationViewModel.h"
 
 #include "model/AggregateEvaluation.h"
-#include "model/EvaluationCharts.h"
 #include "model/EvaluationCommon.h"
 #include "model/EvaluationMatching.h"
 #include "model/ModelEvaluationProtocol.h"
@@ -490,7 +489,6 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
                     guard->loadEvaluation(result);
                     guard->loadInstanceRecords(
                         result.value(evaluation::fieldName(evaluation::Field::InstanceRecords)).toList());
-                    guard->loadDerivedCharts();
                     guard->evaluation_attempted_ = true;
                     guard->available_            = true;
                     guard->state_                = evaluation::viewStateKey(evaluation::ViewState::Ready);
@@ -621,20 +619,6 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
     charts_->setRecords(std::move(charts));
 }
 
-void ModelEvaluationViewModel::loadDerivedCharts()
-{
-    if (!anomaly_detection_)
-        return;
-
-    QList<EvaluationImageRecord> images;
-    images.reserve(images_->rowCount());
-    for (const EvaluationImageRecord &image : images_->records()) images.push_back(image);
-
-    QList<QVariantMap> charts = charts_->records();
-    charts.push_back(anomalyScoreChartForImages(images));
-    charts_->setRecords(std::move(charts));
-}
-
 void ModelEvaluationViewModel::loadInstanceRecords(const QVariantList &records)
 {
     QSet<QString>                                event_ids;
@@ -703,9 +687,9 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
     }
     for (const EvaluationConfusionCell &cell : confusion_matrix_->records())
     {
-        if (cell.row_class_id >= 0 && !cell.row_label.isEmpty() && cell.row_label != QString("合计"))
+        if (cell.row_class_id >= 0 && !cell.row_label.isEmpty())
             input.class_catalog.insert(cell.row_class_id, cell.row_label);
-        if (cell.column_class_id >= 0 && !cell.column_label.isEmpty() && cell.column_label != QString("合计"))
+        if (cell.column_class_id >= 0 && !cell.column_label.isEmpty())
             input.class_catalog.insert(cell.column_class_id, cell.column_label);
     }
     if (anomaly_detection_)

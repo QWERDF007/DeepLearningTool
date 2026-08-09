@@ -1,11 +1,13 @@
 #include "model/EvaluationCharts.h"
 
+#include "model/EvaluationAnomalyConfusion.h"
 #include "model/EvaluationCommon.h"
 #include "model/EvaluationGeometry.h"
 #include "model/EvaluationMatching.h"
 #include "model/ModelEvaluationProtocol.h"
 
 #include <QVariantList>
+#include <QVector>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -313,9 +315,13 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
     };
 }
 
-} // namespace
+struct AnomalyScoreSample
+{
+    double score{0.0};
+    bool   ground_truth_anomaly{false};
+};
 
-QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageRecord> &images)
+QVariantMap anomalyScoreChartForSamples(const QList<AnomalyScoreSample> &samples)
 {
     QVariantList good_scores;
     QVariantList anomaly_scores;
@@ -323,28 +329,199 @@ QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageRecord> &image
     bool         has_anomaly = false;
     double       good_max    = 0.0;
     double       anomaly_min = std::numeric_limits<double>::max();
+    for (const AnomalyScoreSample &sample : samples)
+    {
+        if (sample.ground_truth_anomaly)
+        {
+            good_scores.push_back(QVariant());
+            anomaly_scores.push_back(sample.score);
+            has_anomaly = true;
+            anomaly_min = std::min(anomaly_min, sample.score);
+        }
+        else
+        {
+            good_scores.push_back(sample.score);
+            anomaly_scores.push_back(QVariant());
+            has_good = true;
+            good_max = std::max(good_max, sample.score);
+        }
+    }
+    return anomalyScoreChart(good_scores, anomaly_scores, has_good, good_max, has_anomaly, anomaly_min);
+}
+
+QVariantMap anomalyScoreChartForEvaluationImages(const QMap<qint64, EvaluationImageData> &images)
+{
+    QList<AnomalyScoreSample> samples;
+    samples.reserve(images.size());
+    for (const EvaluationImageData &image : images)
+    {
+        bool ground_truth_anomaly = false;
+        for (const EvaluationGroundTruthData &ground_truth : image.gt)
+            ground_truth_anomaly = ground_truth_anomaly || ground_truth.anomaly;
+
+        double score = 0.0;
+        for (const EvaluationPredictionData &prediction : image.predictions)
+            score = std::max(score, prediction.score);
+        samples.push_back({score, ground_truth_anomaly});
+    }
+    return anomalyScoreChartForSamples(samples);
+}
+
+struct CachedMatchCandidate
+{
+    int    prediction{-1};
+    int    ground_truth{-1};
+    double iou{0.0};
+};
+
+struct CurveImageCache
+{
+    const EvaluationImageData       *image{nullptr};
+    QVector<QVector<double>>         ious;
+    QVector<CachedMatchCandidate>    greedy_candidates;
+    QVector<int>                     score_order;
+    QVector<bool>                    active_predictions;
+    int                              next_score{0};
+};
+
+CurveImageCache makeCurveImageCache(const EvaluationImageData &image, const double iou_threshold,
+                                    const std::shared_ptr<std::atomic_bool> &cancel)
+{
+    CurveImageCache cache;
+    cache.image = &image;
+    cache.ious.resize(image.predictions.size());
+    cache.active_predictions.resize(image.predictions.size());
+    cache.active_predictions.fill(false);
+
+    for (int prediction = 0; prediction < image.predictions.size(); ++prediction)
+    {
+        if (isCancelled(cancel))
+            return {};
+        cache.ious[prediction].resize(image.gt.size());
+        for (int ground_truth = 0; ground_truth < image.gt.size(); ++ground_truth)
+        {
+            if (isCancelled(cancel))
+                return {};
+            const double iou
+                = (!image.predictions.at(prediction).box.valid() && !image.gt.at(ground_truth).box.valid())
+                    ? 1.0
+                    : intersectionOverUnion(image.predictions.at(prediction).box, image.gt.at(ground_truth).box);
+            cache.ious[prediction][ground_truth] = iou;
+            if (iou >= iou_threshold)
+                cache.greedy_candidates.push_back({prediction, ground_truth, iou});
+        }
+        cache.score_order.push_back(prediction);
+    }
+
+    std::sort(cache.greedy_candidates.begin(), cache.greedy_candidates.end(),
+              [](const CachedMatchCandidate &lhs, const CachedMatchCandidate &rhs)
+              {
+                  if (lhs.iou != rhs.iou)
+                      return lhs.iou > rhs.iou;
+                  if (lhs.prediction != rhs.prediction)
+                      return lhs.prediction < rhs.prediction;
+                  return lhs.ground_truth < rhs.ground_truth;
+              });
+    std::sort(cache.score_order.begin(), cache.score_order.end(),
+              [&image](const int lhs, const int rhs)
+              {
+                  const double lhs_score = image.predictions.at(lhs).score;
+                  const double rhs_score = image.predictions.at(rhs).score;
+                  const bool   lhs_valid = std::isfinite(lhs_score);
+                  const bool   rhs_valid = std::isfinite(rhs_score);
+                  if (lhs_valid != rhs_valid)
+                      return lhs_valid;
+                  if (lhs_valid && lhs_score != rhs_score)
+                      return lhs_score > rhs_score;
+                  return lhs < rhs;
+              });
+    return cache;
+}
+
+void activateCurvePredictions(CurveImageCache &cache, const double threshold)
+{
+    while (cache.next_score < cache.score_order.size())
+    {
+        const int    prediction = cache.score_order.at(cache.next_score);
+        const double score      = cache.image->predictions.at(prediction).score;
+        ++cache.next_score;
+        if (!std::isfinite(score))
+            continue;
+        if (score < threshold)
+        {
+            --cache.next_score;
+            return;
+        }
+        cache.active_predictions[prediction] = true;
+    }
+}
+
+QList<MatchPair> cachedGreedyMatches(const CurveImageCache &cache,
+                                     const std::shared_ptr<std::atomic_bool> &cancel)
+{
+    QVector<bool>    used_predictions(cache.image->predictions.size(), false);
+    QVector<bool>    used_ground_truth(cache.image->gt.size(), false);
+    QList<MatchPair> result;
+    for (const CachedMatchCandidate &candidate : cache.greedy_candidates)
+    {
+        if (isCancelled(cancel))
+            return {};
+        if (!cache.active_predictions.at(candidate.prediction)
+            || used_predictions.at(candidate.prediction) || used_ground_truth.at(candidate.ground_truth))
+            continue;
+        used_predictions[candidate.prediction]     = true;
+        used_ground_truth[candidate.ground_truth] = true;
+        result.push_back({candidate.prediction, candidate.ground_truth, candidate.iou});
+    }
+    return result;
+}
+
+QList<MatchPair> cachedHungarianMatches(const CurveImageCache &cache,
+                                        const double iou_threshold,
+                                        const std::shared_ptr<std::atomic_bool> &cancel)
+{
+    QList<int> active_predictions;
+    for (int prediction = 0; prediction < cache.active_predictions.size(); ++prediction)
+        if (cache.active_predictions.at(prediction))
+            active_predictions.push_back(prediction);
+
+    const auto iou_fn = [&cache, &active_predictions](const int prediction, const int ground_truth)
+    {
+        return cache.ious.at(active_predictions.at(prediction)).at(ground_truth);
+    };
+    const QList<MatchPair> local_matches
+        = hungarianIoUMatches(active_predictions.size(), cache.image->gt.size(), iou_fn, iou_threshold, cancel);
+    QList<MatchPair> result;
+    result.reserve(local_matches.size());
+    for (const MatchPair &match : local_matches)
+        result.push_back({active_predictions.at(match.prediction), match.ground_truth, match.iou});
+    return result;
+}
+
+QList<MatchPair> cachedCurveMatches(const CurveImageCache &cache, const double iou_threshold,
+                                    const evaluation::MatchingStrategy strategy,
+                                    const std::shared_ptr<std::atomic_bool> &cancel)
+{
+    return strategy == evaluation::MatchingStrategy::HungarianIoU
+        ? cachedHungarianMatches(cache, iou_threshold, cancel)
+        : cachedGreedyMatches(cache, cancel);
+}
+
+} // namespace
+
+QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageRecord> &images)
+{
+    QList<AnomalyScoreSample> samples;
+    samples.reserve(images.size());
     for (const EvaluationImageRecord &image : images)
     {
         const double score = image.max_prediction_score;
         const bool ground_truth_anomaly
             = std::any_of(image.gt_instances.cbegin(), image.gt_instances.cend(),
                           [](const EvaluationGroundTruthRecord &ground_truth) { return ground_truth.anomaly; });
-        if (ground_truth_anomaly)
-        {
-            good_scores.push_back(QVariant());
-            anomaly_scores.push_back(score);
-            has_anomaly = true;
-            anomaly_min = std::min(anomaly_min, score);
-        }
-        else
-        {
-            good_scores.push_back(score);
-            anomaly_scores.push_back(QVariant());
-            has_good = true;
-            good_max = std::max(good_max, score);
-        }
+        samples.push_back({score, ground_truth_anomaly});
     }
-    return anomalyScoreChart(good_scores, anomaly_scores, has_good, good_max, has_anomaly, anomaly_min);
+    return anomalyScoreChartForSamples(samples);
 }
 
 QVariantMap evaluationMetricMap(const qint64 tp, const qint64 fp, const qint64 fn)
@@ -417,6 +594,8 @@ EvaluationChartOutput buildEvaluationCharts(const evaluation::Method            
             {evaluation::fieldName(evaluation::Field::PositiveDefinition), QStringLiteral("score_above_threshold")},
             {   evaluation::fieldName(evaluation::Field::HasImageMetrics),                                    true}
         };
+        output.charts.push_back(anomalyScoreChartForEvaluationImages(images));
+        output.chart_kinds.push_back(QStringLiteral("line"));
         return output;
     }
 
@@ -427,28 +606,37 @@ EvaluationChartOutput buildEvaluationCharts(const evaluation::Method            
         qint64 fn{0};
     };
 
-    const auto countsAt = [&](const double threshold)
+    QList<CurveImageCache> curve_images;
+    curve_images.reserve(images.size());
+    for (const EvaluationImageData &image : images)
+    {
+        if (isCancelled(cancel))
+            return {};
+        curve_images.push_back(makeCurveImageCache(image, iou_threshold, cancel));
+        if (isCancelled(cancel))
+            return {};
+    }
+
+    const auto countsAtActivePredictions = [&]()
     {
         Counts counts;
-        for (const EvaluationImageData &image : images)
+        for (const CurveImageCache &curve_image : curve_images)
         {
             if (isCancelled(cancel))
                 return counts;
-            QList<EvaluationPredictionData> predictions;
-            for (const EvaluationPredictionData &prediction : image.predictions)
-                if (prediction.score >= threshold)
-                    predictions.push_back(prediction);
-            const QList<MatchPair> pairs = matchPredictions(predictions, image.gt, iou_threshold, strategy, cancel);
-            QVector<bool>          used_prediction(predictions.size(), false);
-            QVector<bool>          used_gt(image.gt.size(), false);
+            const QList<MatchPair> pairs = cachedCurveMatches(curve_image, iou_threshold, strategy, cancel);
+            QVector<bool>           used_prediction(curve_image.image->predictions.size(), false);
+            QVector<bool>           used_gt(curve_image.image->gt.size(), false);
             for (const MatchPair &pair : pairs)
             {
-                if (pair.prediction < 0 || pair.ground_truth < 0 || used_prediction.at(pair.prediction)
+                if (pair.prediction < 0 || pair.prediction >= used_prediction.size() || pair.ground_truth < 0
+                    || pair.ground_truth >= used_gt.size() || used_prediction.at(pair.prediction)
                     || used_gt.at(pair.ground_truth))
                     continue;
                 used_prediction[pair.prediction] = true;
                 used_gt[pair.ground_truth]       = true;
-                if (predictions.at(pair.prediction).class_id == image.gt.at(pair.ground_truth).class_id)
+                if (curve_image.image->predictions.at(pair.prediction).class_id
+                    == curve_image.image->gt.at(pair.ground_truth).class_id)
                     ++counts.tp;
                 else
                 {
@@ -456,17 +644,17 @@ EvaluationChartOutput buildEvaluationCharts(const evaluation::Method            
                     ++counts.fn;
                 }
             }
-            for (int index = 0; index < predictions.size(); ++index)
-                if (!used_prediction.at(index))
+            for (int index = 0; index < used_prediction.size(); ++index)
+                if (curve_image.active_predictions.at(index) && !used_prediction.at(index))
                     ++counts.fp;
-            for (int index = 0; index < image.gt.size(); ++index)
+            for (int index = 0; index < used_gt.size(); ++index)
                 if (!used_gt.at(index))
                     ++counts.fn;
         }
         return counts;
     };
 
-    // PR 曲线阈值集：1.0、所有预测分数、工作点置信度。
+    // 置信度扫描图阈值集：1.0、所有预测分数、工作点置信度。
     QList<double> thresholds;
     thresholds.push_back(1.0);
     for (const EvaluationImageData &image : images)
@@ -487,17 +675,37 @@ EvaluationChartOutput buildEvaluationCharts(const evaluation::Method            
     QVariantList recall_values;
     QVariantList precision_values;
     QVariantList threshold_labels;
+    Counts       work_point;
+    bool         work_point_ready = false;
     for (const double threshold : unique_thresholds)
     {
         if (isCancelled(cancel))
             return {};
-        const Counts      counts = countsAt(threshold);
+        for (CurveImageCache &curve_image : curve_images)
+            activateCurvePredictions(curve_image, threshold);
+        const Counts      counts = countsAtActivePredictions();
         const QVariantMap metric = evaluationMetricMap(counts.tp, counts.fp, counts.fn);
         threshold_labels.push_back(threshold);
         precision_values.push_back(metric.value(evaluation::fieldName(evaluation::Field::Precision)));
         recall_values.push_back(metric.value(evaluation::fieldName(evaluation::Field::Recall)));
+        if (threshold == confidence)
+        {
+            work_point       = counts;
+            work_point_ready = true;
+        }
     }
-    const Counts work_point = countsAt(confidence);
+    if (!work_point_ready)
+    {
+        for (CurveImageCache &curve_image : curve_images)
+        {
+            curve_image.active_predictions.fill(false);
+            curve_image.next_score = 0;
+            activateCurvePredictions(curve_image, confidence);
+        }
+        work_point = countsAtActivePredictions();
+    }
+    if (isCancelled(cancel))
+        return {};
     output.available        = true;
     output.metrics          = QVariantMap{
         {evaluation::fieldName(evaluation::Field::Available), true},
@@ -519,7 +727,7 @@ EvaluationChartOutput buildEvaluationCharts(const evaluation::Method            
         {      evaluation::fieldName(evaluation::Field::Kind),QStringLiteral("line")                                                              },
         {   evaluation::fieldName(evaluation::Field::ChartId),          QStringLiteral("precision_recall")},
         {evaluation::fieldName(evaluation::Field::FilterKind),          QStringLiteral("precision_recall")},
-        {     evaluation::fieldName(evaluation::Field::Title),                          QString("PR 曲线")},
+        {     evaluation::fieldName(evaluation::Field::Title),              QString("Precision/Recall 随置信度阈值变化")},
         {      evaluation::fieldName(evaluation::Field::Data),
          QVariantMap{
          {evaluation::fieldName(evaluation::Field::Labels), threshold_labels},
@@ -565,7 +773,7 @@ QVariantMap buildInstanceEvent(const EvaluationImageData &image, const evaluatio
 }
 
 QVariantList evaluationConfusionCells(const QMap<int, QString> &classes, const QMap<QString, qint64> &matrix,
-                                      const qint64 total_count, const bool anomaly_method)
+                                      const qint64 total_count)
 {
     const QString     matrix_fn    = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative);
     const QString     matrix_fp    = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive);
@@ -673,17 +881,10 @@ QVariantList evaluationConfusionCells(const QMap<int, QString> &classes, const Q
     appendCell(matrix_total, matrix_fp, mismatch_total + unmatched_fp,
                evaluation::CellKind::FalsePositiveTotal, true, false, true);
     appendCell(matrix_total, matrix_total, total_count, evaluation::CellKind::All, true, false, false);
-    (void)anomaly_method;
     return cells;
 }
 
 namespace {
-
-struct AnomalyGroundTruthColumn
-{
-    QString name;
-    bool    anomaly{false};
-};
 
 const EvaluationGroundTruthData *primaryGroundTruth(const EvaluationImageData &image)
 {
@@ -694,20 +895,27 @@ const EvaluationGroundTruthData *primaryGroundTruth(const EvaluationImageData &i
     return result;
 }
 
-QVariantList anomalyConfusionCells(const QMap<qint64, EvaluationImageData> &images, const double threshold)
+QVariantMap anomalyConfusionCellMap(const EvaluationConfusionCell &cell)
 {
-    const QString matrix_fn    = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative);
-    const QString matrix_fp    = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive);
-    const QString matrix_total = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::Total);
-    const QString separator(QLatin1Char('\x1f'));
-    QMap<int, AnomalyGroundTruthColumn> categories;
-    QMap<QString, qint64>               counts;
-    QMap<int, qint64>                   row_totals;
-    QMap<int, qint64>                   row_errors;
-    QMap<int, qint64>                   column_totals;
-    QMap<int, qint64>                   column_errors;
-    qint64                              error_total = 0;
+    return QVariantMap{
+        {evaluation::fieldName(evaluation::Field::RowKey), cell.row_key},
+        {evaluation::fieldName(evaluation::Field::ColumnKey), cell.column_key},
+        {evaluation::fieldName(evaluation::Field::RowLabel), cell.row_label},
+        {evaluation::fieldName(evaluation::Field::ColumnLabel), cell.column_label},
+        {evaluation::fieldName(evaluation::Field::RowClassId), cell.row_class_id},
+        {evaluation::fieldName(evaluation::Field::ColumnClassId), cell.column_class_id},
+        {evaluation::fieldName(evaluation::Field::Count), cell.count},
+        {evaluation::fieldName(evaluation::Field::CellKind), evaluation::cellKindKey(cell.cell_kind)},
+        {evaluation::fieldName(evaluation::Field::Selectable), cell.selectable},
+        {evaluation::fieldName(evaluation::Field::IsDiagonal), cell.diagonal},
+        {evaluation::fieldName(evaluation::Field::IsError), cell.error}
+    };
+}
 
+QVariantList anomalyConfusionVariantCells(const QMap<qint64, EvaluationImageData> &images, const double threshold)
+{
+    QList<AnomalyConfusionSample> samples;
+    samples.reserve(images.size());
     for (const EvaluationImageData &image : images)
     {
         const EvaluationGroundTruthData *ground_truth = primaryGroundTruth(image);
@@ -716,96 +924,39 @@ QVariantList anomalyConfusionCells(const QMap<qint64, EvaluationImageData> &imag
             ? ground_truth->class_name
             : QStringLiteral("GOOD");
         const bool category_anomaly = ground_truth != nullptr && ground_truth->anomaly;
-        categories[category_id] = AnomalyGroundTruthColumn{category_name, category_anomaly};
-
         const bool predicted_anomaly
             = std::any_of(image.predictions.cbegin(), image.predictions.cend(),
                           [threshold](const EvaluationPredictionData &prediction)
                           { return prediction.class_id == 1 && prediction.score >= threshold; });
-        const int row_id = predicted_anomaly ? 1 : 0;
-        ++counts[QString::number(row_id) + separator + QString::number(category_id)];
-        ++row_totals[row_id];
-        ++column_totals[category_id];
-        if (predicted_anomaly != category_anomaly)
-        {
-            ++row_errors[row_id];
-            ++column_errors[category_id];
-            ++error_total;
-        }
+        samples.push_back(AnomalyConfusionSample{category_id, category_name, category_anomaly, predicted_anomaly});
     }
 
     QVariantList cells;
-    const auto appendCell = [&cells](const QString &row_key, const QString &row_label, const int row_class_id,
-                                     const QString &column_key, const QString &column_label,
-                                     const int column_class_id, const qint64 count,
-                                     const evaluation::CellKind kind, const bool selectable,
-                                     const bool diagonal, const bool error)
-    {
-        cells.push_back(QVariantMap{
-            {       evaluation::fieldName(evaluation::Field::RowKey),                              row_key},
-            {    evaluation::fieldName(evaluation::Field::ColumnKey),                           column_key},
-            {     evaluation::fieldName(evaluation::Field::RowLabel),                            row_label},
-            {  evaluation::fieldName(evaluation::Field::ColumnLabel),                         column_label},
-            {   evaluation::fieldName(evaluation::Field::RowClassId),                        row_class_id},
-            {evaluation::fieldName(evaluation::Field::ColumnClassId),                     column_class_id},
-            {        evaluation::fieldName(evaluation::Field::Count),                               count},
-            {     evaluation::fieldName(evaluation::Field::CellKind), evaluation::cellKindKey(kind)},
-            {   evaluation::fieldName(evaluation::Field::Selectable),                          selectable},
-            {   evaluation::fieldName(evaluation::Field::IsDiagonal),                            diagonal},
-            {      evaluation::fieldName(evaluation::Field::IsError),                               error}
-        });
-    };
-
-    const QString total_label = QStringLiteral("合计");
-    for (const int row_id : {0, 1})
-    {
-        const QString row_key   = QString::number(row_id);
-        const QString row_label = row_id == 0 ? QStringLiteral("GOOD") : QStringLiteral("Anomaly");
-        for (auto category = categories.cbegin(); category != categories.cend(); ++category)
-        {
-            const qint64 count = counts.value(row_key + separator + QString::number(category.key()));
-            const bool correct = (row_id == 1) == category.value().anomaly;
-            appendCell(row_key, row_label, row_id, QString::number(category.key()), category.value().name,
-                       category.key(), count,
-                       correct ? evaluation::CellKind::Match : evaluation::CellKind::ClassMismatch,
-                       true, correct, !correct);
-        }
-        appendCell(row_key, row_label, row_id, matrix_fp, matrix_fp, -1, row_errors.value(row_id),
-                   evaluation::CellKind::FalsePositive, true, false, true);
-        appendCell(row_key, row_label, row_id, matrix_total, total_label, -1, row_totals.value(row_id),
-                   evaluation::CellKind::PredTotal, true, false, false);
-    }
-
-    for (auto category = categories.cbegin(); category != categories.cend(); ++category)
-        appendCell(matrix_fn, matrix_fn, -1, QString::number(category.key()), category.value().name, category.key(),
-                   column_errors.value(category.key()), evaluation::CellKind::FalseNegative, true, false, true);
-    appendCell(matrix_fn, matrix_fn, -1, matrix_fp, matrix_fp, -1, error_total,
-               evaluation::CellKind::NotApplicable, false, false, true);
-    appendCell(matrix_fn, matrix_fn, -1, matrix_total, total_label, -1, error_total,
-               evaluation::CellKind::FalseNegativeTotal, true, false, true);
-
-    for (auto category = categories.cbegin(); category != categories.cend(); ++category)
-        appendCell(matrix_total, total_label, -1, QString::number(category.key()), category.value().name,
-                   category.key(), column_totals.value(category.key()), evaluation::CellKind::GtTotal,
-                   true, false, false);
-    appendCell(matrix_total, total_label, -1, matrix_fp, matrix_fp, -1, error_total,
-               evaluation::CellKind::FalsePositiveTotal, true, false, true);
-    appendCell(matrix_total, total_label, -1, matrix_total, total_label, -1, images.size(),
-               evaluation::CellKind::All, true, false, false);
+    const std::vector<EvaluationConfusionCell> shared_cells = buildAnomalyConfusionCells(samples);
+    for (const EvaluationConfusionCell &cell : shared_cells)
+        cells.push_back(anomalyConfusionCellMap(cell));
     return cells;
 }
 
 } // namespace
 
-QVariantMap assembleEvaluationResult(const QMap<qint64, EvaluationImageData> &images, const QMap<int, QString> &classes,
-                                     const QMap<int, EvaluationCounts> &per_class, const EvaluationCounts &overall,
-                                     const EvaluationCounts &image_counts, const QMap<QString, qint64> &matrix,
-                                     const QVariantList &event_records, const int prediction_count,
-                                     const evaluation::Method method, const double confidence_threshold,
-                                     const double iou_threshold, const evaluation::MatchingStrategy matching_strategy,
-                                     const QVariantMap                       &evaluation_config,
-                                     const std::shared_ptr<std::atomic_bool> &cancel, QString *err_msg)
+QVariantMap assembleEvaluationResult(const EvaluationResultContext &context)
 {
+    const auto &images                = context.images;
+    const auto &classes               = context.classes;
+    const auto &per_class             = context.per_class;
+    const auto &overall               = context.overall;
+    const auto &image_counts          = context.image_counts;
+    const auto &matrix                = context.matrix;
+    const auto &event_records         = context.event_records;
+    const int   prediction_count      = context.prediction_count;
+    const auto  method                = context.method;
+    const double confidence_threshold = context.confidence_threshold;
+    const double iou_threshold        = context.iou_threshold;
+    const auto  matching_strategy     = context.matching_strategy;
+    const auto &evaluation_config     = context.evaluation_config;
+    const auto &cancel                = context.cancel;
+    QString    *err_msg               = context.err_msg;
     const auto cancelled = [cancel, err_msg]()
     {
         if (err_msg)
@@ -888,8 +1039,13 @@ QVariantMap assembleEvaluationResult(const QMap<qint64, EvaluationImageData> &im
     }
 
     const QVariantList matrix_cells
-        = anomaly_method ? anomalyConfusionCells(images, confidence_threshold)
-                         : evaluationConfusionCells(classes, matrix, event_records.size(), false);
+        = anomaly_method ? anomalyConfusionVariantCells(images, confidence_threshold)
+                         : evaluationConfusionCells(classes, matrix, event_records.size());
+    const QVariantMap confusion_definition{
+        {evaluation::fieldName(evaluation::Field::SampleUnit),
+         anomaly_method ? QStringLiteral("image") : QStringLiteral("instance_event")},
+        {evaluation::fieldName(evaluation::Field::Aggregation), QStringLiteral("micro")}
+    };
 
     const QVariantMap diagnostic = {
         {evaluation::fieldName(evaluation::Field::Instance),
@@ -935,7 +1091,11 @@ QVariantMap assembleEvaluationResult(const QMap<qint64, EvaluationImageData> &im
          {evaluation::fieldName(evaluation::Field::HasInstanceEvents), capabilities.has_instance_events},
          {evaluation::fieldName(evaluation::Field::ChartKinds), capabilities.chart_kinds}}             },
         {      evaluation::fieldName(evaluation::Field::ConfusionMatrix),
-         QVariantMap{{evaluation::fieldName(evaluation::Field::Cells), matrix_cells}}                  },
+         QVariantMap{{evaluation::fieldName(evaluation::Field::Cells), matrix_cells},
+         {evaluation::fieldName(evaluation::Field::SampleUnit),
+          confusion_definition.value(evaluation::fieldName(evaluation::Field::SampleUnit))},
+         {evaluation::fieldName(evaluation::Field::Aggregation),
+          confusion_definition.value(evaluation::fieldName(evaluation::Field::Aggregation))}}             },
         {               evaluation::fieldName(evaluation::Field::Charts),                        charts},
         {         evaluation::fieldName(evaluation::Field::ImageRecords),                 image_records},
         {      evaluation::fieldName(evaluation::Field::InstanceRecords),                 event_records},

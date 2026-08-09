@@ -16,16 +16,16 @@ Item {
     readonly property real rightLabelsWidth: 104
     readonly property real bottomLabelsHeight: 72
 
-    function isTotalLabel(label) {
-        return label === qsTr("合计") || label === "TOTAL"
+    function isTotalKey(key) {
+        return String(key) === "TOTAL"
     }
 
-    function predictedClassLabel(rowKey, fallback) {
-        if (String(rowKey) === "0")
+    function predictedClassLabel(fallback) {
+        if (String(fallback) === "GOOD")
             return qsTr("正常")
-        if (String(rowKey) === "1")
+        if (String(fallback) === "Anomaly")
             return qsTr("异常")
-        return fallback
+        return String(fallback)
     }
 
     function isCellSelected(rowKey, columnKey) {
@@ -70,7 +70,7 @@ Item {
                     title: specialColumn
                            ? confusionTable.customItem(com_matrix_header, {
                                label: label,
-                               isTotal: control.isTotalLabel(label)
+                               isTotal: control.isTotalKey(key)
                            }) : "",
                     dataIndex: key,
                     width: 32,
@@ -99,7 +99,7 @@ Item {
                 if (String(row.__rowKey) !== "FN" && String(row.__rowKey) !== "TOTAL")
                     classRowLabels.push({
                         row: r,
-                        label: control.predictedClassLabel(row.__rowKey, String(row.__rowLabel))
+                        label: control.predictedClassLabel(row.__rowLabel)
                     })
                 rows.push(row)
             }
@@ -286,8 +286,12 @@ Item {
                             return rowData && rowData.__rowLabel !== undefined
                                    ? String(rowData.__rowLabel) : ""
                         }
-                        property bool classRow: String(label) !== "FN"
-                                                && !control.isTotalLabel(label)
+                        property string rowKey: {
+                            let rowData = confusionTable.getRow(sourceRow)
+                            return rowData && rowData.__rowKey !== undefined
+                                   ? String(rowData.__rowKey) : ""
+                        }
+                        property bool classRow: rowKey !== "FN" && rowKey !== "TOTAL"
                         implicitWidth: control.leftAxisWidth
                         implicitHeight: confusionTable.currentRowHeight(sourceRow)
                         color: confusionTable.headerColor
@@ -296,7 +300,7 @@ Item {
 
                         QuiTextIcon {
                             anchors.centerIn: parent
-                            visible: control.isTotalLabel(parent.label)
+                            visible: parent.rowKey === "TOTAL"
                             iconSource: QuiFontIcon.Picture
                             iconColor: confusionTable.headerTextColor
                         }
@@ -305,7 +309,7 @@ Item {
                             anchors.fill: parent
                             anchors.leftMargin: 6
                             anchors.rightMargin: 6
-                            visible: !control.isTotalLabel(parent.label)
+                            visible: parent.rowKey !== "TOTAL"
                             text: parent.classRow ? "" : parent.label
                             color: confusionTable.headerTextColor
                             horizontalAlignment: Text.AlignHCenter

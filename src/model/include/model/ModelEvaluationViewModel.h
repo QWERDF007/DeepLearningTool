@@ -124,7 +124,6 @@ private:
     void clearEvaluation(const QString &error = {}, const QString &state = {});
     bool sameEvaluationInput(const ModelEvaluationOptions &lhs, const ModelEvaluationOptions &rhs) const;
     void loadEvaluation(const QVariantMap &root);
-    void loadDerivedCharts();
     void loadInstanceRecords(const QVariantList &records);
 
     /** 将实例记录序列化为 QML 映射，委托 EvaluationCommon 公共实现。 */

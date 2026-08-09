@@ -39,6 +39,31 @@ struct MODEL_API EvaluationCounts
 };
 
 /**
+ * @brief 组装评估结果所需的上下文。
+ *
+ * 大型快照字段以引用传递，避免为整理参数额外复制评估数据；上下文只在
+ * assembleEvaluationResult 调用期间有效。
+ */
+struct MODEL_API EvaluationResultContext
+{
+    const QMap<qint64, EvaluationImageData> &images;
+    const QMap<int, QString>                &classes;
+    const QMap<int, EvaluationCounts>      &per_class;
+    const EvaluationCounts                 &overall;
+    const EvaluationCounts                 &image_counts;
+    const QMap<QString, qint64>             &matrix;
+    const QVariantList                      &event_records;
+    int                                      prediction_count{0};
+    evaluation::Method                       method{evaluation::Method::Unknown};
+    double                                   confidence_threshold{evaluation::kDefaultConfidenceThreshold};
+    double                                   iou_threshold{evaluation::kDefaultIouThreshold};
+    evaluation::MatchingStrategy             matching_strategy{evaluation::MatchingStrategy::GreedyIoU};
+    const QVariantMap                       &evaluation_config;
+    std::shared_ptr<std::atomic_bool>        cancel;
+    QString                                 *err_msg{nullptr};
+};
+
+/**
  * @brief 由图像记录构造异常分数分布图描述符。
  *
  * GOOD 图像取 max_prediction_score 为 GOOD 样本，Anomaly 图像取
@@ -73,42 +98,21 @@ MODEL_API QVariantMap buildInstanceEvent(const EvaluationImageData &image, evalu
  * 布局为 类别 x 类别 + FN/FP/合计 行列，与主链路矩阵键（行\x1f列）对应。
  * @param classes 类别目录。
  * @param matrix 矩阵计数（行\x1f列 -> 计数）。
- * @param total_count 全部单元格计数。
- * @param anomaly_method 是否为异常检测（无类别错误语义）。
+ * @param total_count 全部评估单元计数：检测方法为实例事件数，异常检测为图像数。
  * @return 单元格映射列表。
  */
 MODEL_API QVariantList evaluationConfusionCells(const QMap<int, QString> &classes, const QMap<QString, qint64> &matrix,
-                                                qint64 total_count, bool anomaly_method);
+                                                qint64 total_count);
 
 /**
  * @brief 组装完整评估结果映射。
  *
  * 主链路 evaluate 完成计数与事件收集后，由本函数完成结果序列化：图像记录、
  * 按类别指标、类别目录、混淆矩阵、官方指标/图表与能力声明。
- * @param images 全部图像记录。
- * @param classes 类别目录。
- * @param per_class 按类别计数。
- * @param overall 实例级总体计数。
- * @param image_counts 图像级计数。
- * @param matrix 混淆矩阵计数。
- * @param event_records 实例事件列表。
- * @param prediction_count 预测总数。
- * @param method 评估方法。
- * @param confidence_threshold 置信度阈值。
- * @param iou_threshold IoU 阈值。
- * @param matching_strategy 匹配策略。
- * @param evaluation_config 规范化评估配置。
- * @param cancel 协作取消令牌，可为空。
- * @param err_msg 取消/失败时输出错误信息，可为 nullptr。
+ * @param context 评估结果组装上下文；引用字段只需在调用期间保持有效。
  * @return 评估结果映射；取消或失败时返回空映射。
  */
-MODEL_API QVariantMap assembleEvaluationResult(
-    const QMap<qint64, EvaluationImageData> &images, const QMap<int, QString> &classes,
-    const QMap<int, EvaluationCounts> &per_class, const EvaluationCounts &overall, const EvaluationCounts &image_counts,
-    const QMap<QString, qint64> &matrix, const QVariantList &event_records, int prediction_count,
-    evaluation::Method method, double confidence_threshold, double iou_threshold,
-    evaluation::MatchingStrategy matching_strategy, const QVariantMap &evaluation_config,
-    const std::shared_ptr<std::atomic_bool> &cancel = {}, QString *err_msg = nullptr);
+MODEL_API QVariantMap assembleEvaluationResult(const EvaluationResultContext &context);
 
 /**
  * @brief 由 TP/FP/FN 构造评估协议指标映射。
@@ -122,8 +126,8 @@ MODEL_API QVariantMap evaluationMetricMap(qint64 tp, qint64 fp, qint64 fn);
 /**
  * @brief 构建官方评估输出（指标与图表）。
  *
- * 检测方法生成 confidence-IoU 工作点的实例指标与 PR 曲线；异常检测方法
- * 生成 score-above-threshold 的图像级二元指标。
+ * 检测方法生成 confidence-IoU 工作点的实例指标与“Precision/Recall 随置信度阈值变化”图；
+ * 异常检测方法生成 score-above-threshold 的图像级二元指标和异常分数分布图。
  * @param method 评估方法。
  * @param images 全部图像记录。
  * @param confidence 置信度阈值。
