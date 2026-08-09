@@ -439,6 +439,27 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
                                << storage.testTaskFileListPath(model_name, task_directory)
                                << QStringLiteral("--prediction_dir") << prediction_dir;
     }
+    // Dinomaly2 布局在数据集导出时按类别分组收集 mask 类别值（good/anomaly/unlabeled 组的类别 ID），
+    // 组装后传给 python 端；其他框架不返回这些字段，不会追加参数。
+    const QStringList mask_value_fields = {
+        QStringLiteral("good_values"),
+        QStringLiteral("anomaly_values"),
+        QStringLiteral("ignore_values"),
+    };
+    for (const QString &field : mask_value_fields)
+    {
+        QStringList collected;
+        for (const QString &split : {QStringLiteral("train"), QStringLiteral("validation"),
+                                     QStringLiteral("test")})
+        {
+            const QString value = datasets.value(split).toMap().value(field).toString();
+            for (const QString &part : value.split(QChar(','), Qt::SkipEmptyParts))
+                if (!collected.contains(part))
+                    collected.push_back(part);
+        }
+        if (!collected.isEmpty())
+            process_spec.arguments << QStringLiteral("--") + field << collected.join(QChar(','));
+    }
     process_spec.arguments << QStringLiteral("--dltool_task_host") << request.task_server_host
                            << QStringLiteral("--dltool_task_port") << QString::number(request.task_server_port)
                            << QStringLiteral("--dltool_task_id") << QString::number(request.task_id);
