@@ -35,9 +35,9 @@ bool isCancelled(const std::shared_ptr<std::atomic_bool> &cancel_token)
     return cancel_token != nullptr && cancel_token->load(std::memory_order_relaxed);
 }
 
-} // namespace
+}
 
-bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, ModelEvaluationResult *result,
+bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, QVariantMap *result,
                                       QString *err_msg)
 {
     if (isCancelled(options.cancel_token))
@@ -109,9 +109,9 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
     QMap<int, QString> classes;
     if (anomaly_method)
     {
-        // 异常检测为图像级二元分类：GOOD 是隐式负类（正常样本没有 GT 标签）。
-        classes.insert(0, QStringLiteral("GOOD"));
-        classes.insert(1, QStringLiteral("Anomaly"));
+        /** @brief 异常检测为图像级二元分类，正常样本是没有 GT 标签的隐式负类。 */
+        classes.insert(0, evaluation::displayText(evaluation::DisplayText::Good));
+        classes.insert(1, evaluation::displayText(evaluation::DisplayText::Anomaly));
     }
     else
     {
@@ -169,9 +169,9 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
         for (const EvaluationPredictionData &prediction : image.predictions)
             if (prediction.score >= options.confidence_threshold)
                 predictions.push_back(prediction);
-        std::sort(predictions.begin(), predictions.end(),
-                  [](const EvaluationPredictionData &a, const EvaluationPredictionData &b)
-                  { return a.score > b.score; });
+        std::stable_sort(predictions.begin(), predictions.end(),
+                         [](const EvaluationPredictionData &a, const EvaluationPredictionData &b)
+                         { return a.score > b.score; });
         QVector<bool>          used_gt(image.gt.size(), false);
         QVector<bool>          used_pred(predictions.size(), false);
         const QList<MatchPair> pairs       = matchPredictions(predictions, image.gt, options.iou_threshold,
@@ -186,8 +186,11 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
 
         if (anomaly_method)
         {
-            // 异常检测为图像级评估：每幅图像生成一条事件，供 UI 事件模型
-            // 统一消费（包括没有原始事件的真负样本）。
+            /**
+             * @brief 异常检测按图像生成事件供 UI 统一消费。
+             *
+             * 没有原始实例事件的真负样本也会生成一条记录。
+             */
             const EvaluationGroundTruthData *category_gt = nullptr;
             bool                             ground_truth_anomaly = false;
             for (const EvaluationGroundTruthData &gt : image.gt)
@@ -223,13 +226,15 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
             if (category_gt == nullptr)
             {
                 display_gt.class_id   = 0;
-                display_gt.class_name = QStringLiteral("GOOD");
+                display_gt.class_name = evaluation::displayText(evaluation::DisplayText::Good);
                 display_gt.anomaly    = false;
             }
             EvaluationPredictionData display_prediction
                 = anomaly_prediction != nullptr ? *anomaly_prediction : EvaluationPredictionData{};
-            display_prediction.class_id   = predicted_anomaly ? 1 : 0;
-            display_prediction.class_name = predicted_anomaly ? QStringLiteral("Anomaly") : QStringLiteral("GOOD");
+            display_prediction.class_id = predicted_anomaly ? 1 : 0;
+            display_prediction.class_name
+                = evaluation::displayText(predicted_anomaly ? evaluation::DisplayText::Anomaly
+                                                             : evaluation::DisplayText::Good);
             display_prediction.score      = image_score;
             appendEvent(status, &display_gt, &display_prediction, 0.0);
             continue;
@@ -288,8 +293,12 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
             appendEvent(evaluation::Status::FalseNegative, &gt, nullptr, 0.0);
         }
 
-        // 图像级指标按类别 presence 统计，而不是只要图像同时有 GT/PRED
-        // 就记为 TP；这样类别错误和多类别图像的 FP/FN 不会被吞掉。
+        /**
+         * @brief 图像级指标按类别 presence 统计。
+         *
+         * 不能只要图像同时有 GT/PRED 就记为 TP，否则类别错误和多类别
+         * 图像的 FP/FN 会被吞掉。
+         */
         QSet<int> image_gt_classes;
         QSet<int> image_pred_classes;
         for (const EvaluationGroundTruthData &gt : image.gt)
@@ -349,10 +358,8 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, Mod
     if (evaluation_data.isEmpty())
         return false;
     if (result)
-    {
-        result->evaluation_data = evaluation_data;
-    }
+        *result = evaluation_data;
     return true;
 }
 
-} // namespace dltool::model
+}

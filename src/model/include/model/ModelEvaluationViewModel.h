@@ -27,9 +27,29 @@ class MODEL_API ModelEvaluationViewModel : public QObject
     QML_NAMED_ELEMENT(ModelEvaluationViewModel)
     QML_UNCREATABLE("ModelEvaluationViewModel is owned by ModelTestTaskManager")
 
+public:
+    /**
+     * @brief QML 使用的类型化状态值。
+     *
+     * 字符串状态属性与枚举状态保持一致，状态分支统一依据该枚举。
+     */
+    enum StateKind
+    {
+        NotRun = static_cast<int>(evaluation::ViewState::NotRun),
+        Loading = static_cast<int>(evaluation::ViewState::Loading),
+        Running = static_cast<int>(evaluation::ViewState::Running),
+        Failed = static_cast<int>(evaluation::ViewState::Failed),
+        MissingResult = static_cast<int>(evaluation::ViewState::MissingResult),
+        InvalidResult = static_cast<int>(evaluation::ViewState::InvalidResult),
+        Error = static_cast<int>(evaluation::ViewState::Error),
+        Ready = static_cast<int>(evaluation::ViewState::Ready),
+    };
+    Q_ENUM(StateKind)
+
     Q_PROPERTY(bool available READ available NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged FINAL)
     Q_PROPERTY(QString state READ state NOTIFY evaluationChanged FINAL)
+    Q_PROPERTY(StateKind stateKind READ stateKind NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(QString error READ error NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(QString primaryMetricSet READ primaryMetricSet NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(bool globalFilterActive READ globalFilterActive NOTIFY filterStateChanged FINAL)
@@ -65,6 +85,7 @@ public:
     bool                              available() const;
     bool                              loading() const;
     QString                           state() const;
+    StateKind                         stateKind() const;
     QString                           error() const;
     QString                           primaryMetricSet() const;
     bool                              globalFilterActive() const;
@@ -97,8 +118,8 @@ public:
     void             setEvaluationOptions(const ModelEvaluationOptions &options);
     Q_INVOKABLE void evaluate(bool notify = false);
     Q_INVOKABLE void refreshEvaluation();
-    void             invalidate(const QString &state = {});
-    void             setRuntimeState(const QString &state);
+    void             invalidate(evaluation::ViewState state = evaluation::ViewState::NotRun);
+    void             setRuntimeState(evaluation::ViewState state);
     Q_INVOKABLE void selectInstance(int proxyRow);
     Q_INVOKABLE bool selectInstance(const QString &eventUuid);
     Q_INVOKABLE void selectMatrixCell(const QString &rowKey, const QString &columnKey);
@@ -121,7 +142,8 @@ signals:
 
 private:
     void setLoading(bool value);
-    void clearEvaluation(const QString &error = {}, const QString &state = {});
+    void clearEvaluation(const QString &error = {},
+                         evaluation::ViewState state = evaluation::ViewState::NotRun);
     bool sameEvaluationInput(const ModelEvaluationOptions &lhs, const ModelEvaluationOptions &rhs) const;
     void loadEvaluation(const QVariantMap &root);
     void loadInstanceRecords(const QVariantList &records);
@@ -144,7 +166,7 @@ private:
     bool                              available_{false};
     bool                              loading_{false};
     QString                           error_;
-    QString                           state_;
+    evaluation::ViewState             state_kind_{evaluation::ViewState::NotRun};
     QString                           primary_metric_set_;
     QString                           metric_scope_description_;
     QVariantMap                       image_metric_definition_;
@@ -178,4 +200,4 @@ private:
     bool                              suppress_aggregation_rebuild_{false};
 };
 
-} // namespace dltool::model
+}

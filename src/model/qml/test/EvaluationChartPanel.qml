@@ -13,17 +13,15 @@ Rectangle {
     property int chartRevision: 0
     readonly property string chartFontColor: QuiColor.FontPrimary.toString()
 
-    // Qt delivers QVariantMap/QVariantList to QML as wrapped JavaScript
-    // objects.  Chart.js' deep merge (scales/datasets) requires plain native
-    // objects/arrays, so clone the descriptor payload at the QML boundary.
-    function chartDataForDisplay(chartData) {
-        if (!chartData || typeof chartData !== "object")
-            return ({labels: [], datasets: []})
+    function chartDataForDisplay(chartId, chartData) {
+        if (!chartData || typeof chartData !== "object") {
+            return ({ labels: [], datasets: [] })
+        }
 
         try {
             return JSON.parse(JSON.stringify(chartData))
         } catch (error) {
-            return ({labels: [], datasets: []})
+            return ({ labels: [], datasets: [] })
         }
     }
 
@@ -32,18 +30,13 @@ Rectangle {
         return charts ? charts.rowCount() : 0
     }
 
-    // Reference datasets are still Chart.js datasets, but only the two
-    // distribution datasets are meaningful in the legend.
+    /* 参考数据集仍属于 Chart.js 数据集，但图例只显示两个分布数据集。 */
     function anomalyLegendFilter(item, data) {
-        var itemLabel = item && item.text !== undefined ? String(item.text) : ""
-        if (itemLabel.length > 0)
-            return itemLabel === "GOOD" || itemLabel === "Anomaly"
-
         var datasetIndex = item && item.datasetIndex !== undefined ? Number(item.datasetIndex) : -1
         var datasets = data && data.datasets ? data.datasets : []
         var dataset = datasetIndex >= 0 && datasetIndex < datasets.length ? datasets[datasetIndex] : null
-        var datasetLabel = dataset && dataset.label !== undefined ? String(dataset.label) : ""
-        return datasetLabel === "GOOD" || datasetLabel === "Anomaly"
+        var seriesKind = dataset && dataset.series_kind !== undefined ? String(dataset.series_kind) : ""
+        return seriesKind === "good" || seriesKind === "anomaly"
     }
 
     function anomalyTooltipLabel(tooltipItem, data) {
@@ -68,8 +61,6 @@ Rectangle {
     function chartOptionsForDescriptor(descriptor) {
         var options = ChartPresenter.prepareOptions(descriptor.options, control.chartFontColor)
         try {
-            // Same QML-boundary clone as chartDataForDisplay: Chart.js cannot
-            // deep-merge QVariantMap-backed JS objects into its scale config.
             options = JSON.parse(JSON.stringify(options))
         } catch (error) {
             options = ({})
@@ -115,12 +106,10 @@ Rectangle {
             Layout.fillHeight: true
             Layout.minimumWidth: 1
             Layout.minimumHeight: 1
-            // Keep the Canvas in the layout while the model is resetting.
-            // QuiChart renders its own empty state when chartData is empty.
+            /* 模型重置期间保留 Canvas 的布局，由 QuiChart 绘制空状态。 */
             visible: true
             property var descriptor: {
-                // Keep the chart usable while QAbstractItemModel is resetting.
-                // The model can temporarily expose currentIndex == -1.
+                /* QAbstractItemModel 重置期间仍保持图表可用，当前索引可能暂时为 -1。 */
                 var revision = control.chartRevision
                 var charts = control.evaluation ? control.evaluation.charts : null
                 var count = control.chartModelCount()
@@ -130,14 +119,30 @@ Rectangle {
                 return charts && count > 0 ? charts.descriptor(index) : ({})
             }
             chartType: descriptor.kind || "line"
-            chartData: control.chartDataForDisplay(ChartPresenter.prepareData(descriptor.data))
+            chartData: control.chartDataForDisplay(
+                           descriptor.chart_id, ChartPresenter.prepareData(descriptor.data))
             chartOptions: control.chartOptionsForDescriptor(descriptor)
         }
         Connections {
             target: control.evaluation ? control.evaluation.charts : null
+            function refreshChartModel() {
+                if (chartSelector.count > 0
+                        && (chartSelector.currentIndex < 0 || chartSelector.currentIndex >= chartSelector.count))
+                    chartSelector.currentIndex = 0
+                control.chartRevision += 1
+            }
             function onModelReset() {
                 chartSelector.currentIndex = 0
-                control.chartRevision += 1
+                refreshChartModel()
+            }
+            function onRowsInserted(parent, first, last) {
+                refreshChartModel()
+            }
+            function onRowsRemoved(parent, first, last) {
+                refreshChartModel()
+            }
+            function onDataChanged(topLeft, bottomRight, roles) {
+                refreshChartModel()
             }
         }
         QuiText {

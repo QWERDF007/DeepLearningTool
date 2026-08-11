@@ -619,14 +619,14 @@ void ModelTestTaskManager::handleTaskRevisionChanged()
         }
         else if (task->status == TaskManager::Failed)
         {
-            current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::Failed));
+            current_evaluation_->setRuntimeState(evaluation::ViewState::Failed);
             pending_evaluation_notifications_.remove(evaluationCacheKey(currentTaskUuid()));
         }
         else if (activeTask(task))
-            current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::Running));
+            current_evaluation_->setRuntimeState(evaluation::ViewState::Running);
         else if (task->status == TaskManager::Stopped)
         {
-            current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::NotRun));
+            current_evaluation_->setRuntimeState(evaluation::ViewState::NotRun);
             pending_evaluation_notifications_.remove(evaluationCacheKey(currentTaskUuid()));
         }
     }
@@ -651,7 +651,7 @@ void ModelTestTaskManager::handleTaskStartRequested(const int task_id)
     const QString cache_key = task->model_uuid + QLatin1Char('\x1f') + task->scope_uuid.trimmed();
     pending_evaluation_notifications_.insert(cache_key);
     if (ModelEvaluationViewModel *evaluation = evaluation_cache_.value(cache_key, nullptr))
-        evaluation->invalidate(evaluation::viewStateKey(evaluation::ViewState::NotRun));
+        evaluation->invalidate(evaluation::ViewState::NotRun);
 }
 
 void ModelTestTaskManager::reload()
@@ -795,11 +795,11 @@ void ModelTestTaskManager::bindCurrentObjects()
             current_evaluation_->setEvaluationOptions(options);
             const TaskManager::Task *task = currentTaskRecord();
             if (task != nullptr && activeTask(task))
-                current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::Running));
+                current_evaluation_->setRuntimeState(evaluation::ViewState::Running);
             else if (task != nullptr && task->status == TaskManager::Failed)
-                current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::Failed));
+                current_evaluation_->setRuntimeState(evaluation::ViewState::Failed);
             else if (task != nullptr && task->status == TaskManager::Stopped)
-                current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::NotRun));
+                current_evaluation_->setRuntimeState(evaluation::ViewState::NotRun);
 
             // Evaluation is lazy: reopening the project or switching tasks
             // only binds the inputs.  The evaluation panel requests the first
@@ -819,7 +819,7 @@ void ModelTestTaskManager::bindCurrentObjects()
         {
             spdlog::error("准备测试任务 {} 的评估上下文失败: {}", tasks_.at(current_index_).uuid.toUtf8().constData(),
                           evaluation_error.toUtf8().constData());
-            current_evaluation_->setRuntimeState(evaluation::viewStateKey(evaluation::ViewState::NotRun));
+            current_evaluation_->setRuntimeState(evaluation::ViewState::NotRun);
         }
     }
     if (current_test_params_ != nullptr)

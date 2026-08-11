@@ -576,7 +576,7 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
             prediction.prediction_id = QString("image-%1").arg(image_id);
             prediction.image_id      = image_id;
             prediction.class_id      = 1;
-            prediction.class_name    = QString("Anomaly");
+            prediction.class_name    = evaluation::displayText(evaluation::DisplayText::Anomaly);
             prediction.score         = score;
             images[image_id].predictions.push_back(prediction);
             ++total;

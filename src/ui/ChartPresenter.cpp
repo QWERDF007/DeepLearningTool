@@ -58,7 +58,7 @@ void setAxesFontColor(QVariantMap &scales, const QString &key, const QString &fo
     scales.insert(key, axes);
 }
 
-} // namespace
+}
 
 ChartPresenter::ChartPresenter(QObject *parent)
     : QObject(parent)
@@ -69,10 +69,9 @@ ChartPresenter::~ChartPresenter() = default;
 
 QVariantMap ChartPresenter::prepareData(const QVariant &chart_data) const
 {
-    // QML already converts C++ QVariantMap/QVariantList into native JavaScript
-    // objects/arrays.  Round-tripping through QJsonDocument here drops nested
-    // values (for example invalid QVariant histogram bins), so keep the map as
-    // it is instead of serializing it.
+    /**
+     * @brief 保持 QVariantMap 结构交给 QML 转换，避免 JSON 深拷贝丢失嵌套值。
+     */
     const QVariantMap result = chart_data.toMap();
     if (!result.isEmpty())
         return result;
@@ -108,4 +107,4 @@ QVariantMap ChartPresenter::prepareOptions(const QVariant &options, const QStrin
     return result;
 }
 
-} // namespace dltool::ui
+}

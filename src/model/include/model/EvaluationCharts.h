@@ -2,7 +2,6 @@
 
 #include "dltool/model/Export.h"
 #include "model/EvaluationData.h"
-#include "model/ModelEvaluationModels.h"
 #include "model/ModelEvaluationProtocol.h"
 
 #include <QList>
@@ -66,12 +65,12 @@ struct MODEL_API EvaluationResultContext
 /**
  * @brief 由图像记录构造异常分数分布图描述符。
  *
- * GOOD 图像取 max_prediction_score 为 GOOD 样本，Anomaly 图像取
- * max_prediction_score 为 Anomaly 样本；图表由公共直方图构造实现生成。
+ * 正常图像取 max_prediction_score 作为正常样本，异常图像取
+ * max_prediction_score 作为异常样本；图表由公共直方图构造实现生成。
  * @param images 图像记录列表。
  * @return 图表描述符。
  */
-MODEL_API QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageRecord> &images);
+MODEL_API QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageData> &images);
 
 /**
  * @brief 序列化单条实例事件记录。
@@ -124,6 +123,17 @@ MODEL_API QVariantMap assembleEvaluationResult(const EvaluationResultContext &co
 MODEL_API QVariantMap evaluationMetricMap(qint64 tp, qint64 fp, qint64 fn);
 
 /**
+ * @brief 构造置信度曲线使用的有序去重阈值集合。
+ *
+ * 集合包含 1.0、给定分数（裁剪到 [0, 1]）以及工作点阈值，按降序排列并
+ * 使用与图表扫描一致的浮点近似去重。调用方负责先按自身过滤规则收集分数。
+ * @param scores 已按调用方规则保留的预测分数。
+ * @param confidence 工作点置信度阈值。
+ * @return 降序且去重后的阈值集合。
+ */
+MODEL_API QList<double> confidenceThresholds(const QList<double> &scores, double confidence);
+
+/**
  * @brief 构建官方评估输出（指标与图表）。
  *
  * 检测方法生成 confidence-IoU 工作点的实例指标与“Precision/Recall 随置信度阈值变化”图；
@@ -155,4 +165,4 @@ MODEL_API EvaluationChartOutput buildEvaluationCharts(evaluation::Method        
 MODEL_API QVariantMap perClassMetricsChart(const QVariantList &labels, const QVariantList &precision,
                                            const QVariantList &recall, const QVariantList &f1);
 
-} // namespace dltool::model
+}

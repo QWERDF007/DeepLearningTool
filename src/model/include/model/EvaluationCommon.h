@@ -163,49 +163,6 @@ inline EvaluationInstanceRecord instanceFromMap(const QVariantMap &map)
 }
 
 /**
- * @brief 将评估结果图像记录从映射转换为值对象。
- *
- * 图像记录包含 GT/预测实例列表；该转换被评估结果加载共用。
- * @param map 图像记录映射。
- * @return 图像记录值对象。
- */
-inline EvaluationImageRecord imageFromMap(const QVariantMap &map)
-{
-    EvaluationImageRecord record;
-    record.image_id     = recordLong(map, evaluation::Field::ImageId, -1);
-    record.dataset_id   = recordLong(map, evaluation::Field::DatasetId, -1);
-    record.image_name   = recordText(map, evaluation::Field::ImageName);
-    record.image_path   = recordText(map, evaluation::Field::ImagePath);
-    record.image_width  = recordInt(map, evaluation::Field::ImageWidth, 0);
-    record.image_height = recordInt(map, evaluation::Field::ImageHeight, 0);
-    for (const QVariant &value : map.value(evaluation::fieldName(evaluation::Field::GtInstances)).toList())
-    {
-        const QVariantMap           item = value.toMap();
-        EvaluationGroundTruthRecord gt;
-        gt.label_id   = recordLong(item, evaluation::Field::LabelId, -1);
-        gt.class_id   = recordInt(item, evaluation::Field::ClassId, -1);
-        gt.class_name = recordText(item, evaluation::Field::ClassName);
-        gt.anomaly    = item.value(evaluation::fieldName(evaluation::Field::IsAnomaly)).toBool();
-        gt.geometry   = item.value(evaluation::fieldName(evaluation::Field::Geometry)).toMap();
-        record.gt_instances.push_back(std::move(gt));
-    }
-    for (const QVariant &value : map.value(evaluation::fieldName(evaluation::Field::Predictions)).toList())
-    {
-        const QVariantMap          item = value.toMap();
-        EvaluationPredictionRecord prediction;
-        prediction.prediction_id = recordText(item, evaluation::Field::PredictionId);
-        prediction.class_id      = recordInt(item, evaluation::Field::ClassId, -1);
-        prediction.class_name    = recordText(item, evaluation::Field::ClassName);
-        prediction.score         = recordReal(item, evaluation::Field::Score);
-        prediction.geometry      = item.value(evaluation::fieldName(evaluation::Field::Geometry)).toMap();
-        record.predictions.push_back(std::move(prediction));
-    }
-    if (record.image_name.isEmpty())
-        record.image_name = QFileInfo(record.image_path).fileName();
-    return record;
-}
-
-/**
  * @brief 将实例记录序列化为 QML 使用的映射。
  *
  * 与 instanceFromMap 互为逆转换；QML 通过该映射展示实例详情。

@@ -14,26 +14,10 @@ Item {
     property DataSelectionTreeModel selectionModel: null
     property string roleTitle: qsTr("数据集")
 
-    // The statistics model exposes nested QVariantMap/QVariantList values.
-    // Clone the data at the QML boundary so Chart.js receives native
-    // JavaScript objects, arrays, and strings (including dataset colors).
-    function chartDataForDisplay(chartData) {
-        if (!chartData || typeof chartData !== "object")
-            return ({labels: [], datasets: []})
-
-        try {
-            return JSON.parse(JSON.stringify(chartData))
-        } catch (error) {
-            // Keep the chart usable if a future data provider adds a value
-            // that cannot be serialized.
-            return ({labels: [], datasets: []})
-        }
-    }
-
-    // Chart.js invokes tooltip callbacks with the active item and the complete
-    // chart data object.  Keeping this presentation rule here lets QuiChart
-    // remain independent from dataset-specific terminology while preserving
-    // the detailed text prepared by DatasetSelectionStatisticsModel.
+            /*
+             * Chart.js 回调同时提供当前项和完整图表数据。展示规则放在面板中，
+             * 使 QuiChart 不依赖数据集术语，同时保留统计模型生成的详细文本。
+             */
     function chartTooltipLabel(tooltipItem, data) {
         var datasets = data && data.datasets ? data.datasets : []
         var dataset = tooltipItem && tooltipItem.datasetIndex >= 0
@@ -78,7 +62,7 @@ Item {
 
         RowLayout {
             SplitView.fillWidth: true
-            // SplitView.fillHeight: true
+                        /* SplitView.fillHeight: true */
             SplitView.preferredHeight: Math.min(200, content.height/3)
             spacing: 5
 
@@ -87,7 +71,7 @@ Item {
                 Layout.fillHeight: true
                 animationDuration: 0
                 chartType: "pie"
-                chartData: control.chartDataForDisplay(statisticsModel.imageChartData)
+                chartData: statisticsModel.imageChartData
                 chartOptions: ({
                     maintainAspectRatio: false,
                     legend: {
@@ -105,9 +89,7 @@ Item {
                         titleFontColor: QuiColor.FontPrimary.toString(),
                         bodyFontColor: QuiColor.FontPrimary.toString(),
                         footerFontColor: QuiColor.FontPrimary.toString(),
-                        // A pie slice is an area, not a point on an index axis.
-                        // Require the pointer to intersect the arc so the
-                        // tooltip always describes the slice under the cursor.
+                        /* 饼图切片是区域而不是索引轴上的点，要求指针实际落在圆弧内。 */
                         mode: "nearest",
                         intersect: true,
                         callbacks: {
@@ -122,7 +104,7 @@ Item {
                 Layout.fillHeight: true
                 animationDuration: 0
                 chartType: "pie"
-                chartData: control.chartDataForDisplay(statisticsModel.instanceChartData)
+                chartData: statisticsModel.instanceChartData
                 chartOptions: ({
                     maintainAspectRatio: false,
                     legend: {
@@ -140,9 +122,7 @@ Item {
                         titleFontColor: QuiColor.FontPrimary.toString(),
                         bodyFontColor: QuiColor.FontPrimary.toString(),
                         footerFontColor: QuiColor.FontPrimary.toString(),
-                        // A pie slice is an area, not a point on an index axis.
-                        // Require the pointer to intersect the arc so the
-                        // tooltip always describes the slice under the cursor.
+                        /* 饼图切片是区域而不是索引轴上的点，要求指针实际落在圆弧内。 */
                         mode: "nearest",
                         intersect: true,
                         callbacks: {

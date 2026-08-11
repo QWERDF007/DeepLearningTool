@@ -79,7 +79,8 @@ Item {
         id: stateOverlay
         anchors.fill: parent
         z: 20
-        visible: !control.evaluation || control.evaluation.loading || control.evaluation.state !== "Ready"
+        visible: !control.evaluation || control.evaluation.loading
+                 || control.evaluation.stateKind !== ModelEvaluationViewModel.Ready
         color: QuiColor.Background
 
         Column {
@@ -99,13 +100,14 @@ Item {
                 text: {
                     if (!control.evaluation)
                         return qsTr("请选择测试任务")
-                    switch (control.evaluation.state) {
-                    case "Loading": return qsTr("正在后台评估…")
-                    case "Running": return qsTr("测试任务运行中，等待评估")
-                    case "Failed": return qsTr("测试任务失败，暂无可用评估结果")
-                    case "MissingResult": return qsTr("当前测试任务还没有可评估的预测结果")
-                    case "InvalidResult": return qsTr("评估数据无效，无法展示")
-                    case "Error": return qsTr("后台评估失败")
+                    switch (control.evaluation.stateKind) {
+                    case ModelEvaluationViewModel.Loading: return qsTr("正在后台评估…")
+                    case ModelEvaluationViewModel.Running: return qsTr("测试任务运行中，等待评估")
+                    case ModelEvaluationViewModel.Failed: return qsTr("测试任务失败，暂无可用评估结果")
+                    case ModelEvaluationViewModel.MissingResult:
+                        return qsTr("当前测试任务还没有可评估的预测结果")
+                    case ModelEvaluationViewModel.InvalidResult: return qsTr("评估数据无效，无法展示")
+                    case ModelEvaluationViewModel.Error: return qsTr("后台评估失败")
                     default: return qsTr("暂无评估结果")
                     }
                 }

@@ -15,7 +15,7 @@ struct GroundTruthCategory
     bool    anomaly{false};
 };
 
-} // namespace
+}
 
 std::vector<EvaluationConfusionCell>
 buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples)
@@ -40,8 +40,11 @@ buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples)
         ++row_totals[row_id];
         ++column_totals[sample.category_id];
 
-        // FP/FN are the prediction-axis and GT-axis error margins. A class
-        // mismatch intentionally contributes to both margins.
+        /**
+         * @brief FP/FN 分别表示预测轴和 GT 轴的错误边际。
+         *
+         * 类别错误会同时计入两个边际。
+         */
         if (sample.predicted_anomaly != sample.category_anomaly)
         {
             ++row_errors[row_id];
@@ -72,11 +75,12 @@ buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples)
         cells.push_back(std::move(cell));
     };
 
-    const QString total_label = QStringLiteral("合计");
+    const QString total_label = evaluation::displayText(evaluation::DisplayText::Total);
     for (const int row_id : {0, 1})
     {
         const QString row_key   = QString::number(row_id);
-        const QString row_label = row_id == 0 ? QStringLiteral("GOOD") : QStringLiteral("Anomaly");
+        const QString row_label = evaluation::displayText(row_id == 0 ? evaluation::DisplayText::Good
+                                                                        : evaluation::DisplayText::Anomaly);
         for (auto category = categories.cbegin(); category != categories.cend(); ++category)
         {
             const qint64 count = counts.value(row_key + separator + QString::number(category.key()));
@@ -96,7 +100,7 @@ buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples)
         appendCell(matrix_fn, matrix_fn, -1, QString::number(category.key()), category.value().name, category.key(),
                    column_errors.value(category.key()), evaluation::CellKind::FalseNegative, true, false, true);
     appendCell(matrix_fn, matrix_fn, -1, matrix_fp, matrix_fp, -1, error_total,
-               evaluation::CellKind::NotApplicable, false, false, true);
+               evaluation::CellKind::NotApplicable, true, false, true);
     appendCell(matrix_fn, matrix_fn, -1, matrix_total, total_label, -1, error_total,
                evaluation::CellKind::FalseNegativeTotal, true, false, true);
 
@@ -111,4 +115,4 @@ buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples)
     return cells;
 }
 
-} // namespace dltool::model
+}

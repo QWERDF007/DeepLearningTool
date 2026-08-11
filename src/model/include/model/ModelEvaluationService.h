@@ -28,38 +28,40 @@ struct MODEL_API ModelEvaluationOptions
     QString dataset_file_list_path;
     QString task_database_path;
     QString prediction_dir;
-    // Keep the complete normalized evaluation group as the in-memory cache
-    // key.  The scalar fields below are the values consumed by the evaluator.
+    /**
+     * @brief 保存完整规范化评估配置作为内存缓存键。
+     *
+     * 下方标量字段是评估器实际消费的值。
+     */
     QVariantMap evaluation_config;
     double confidence_threshold{evaluation::kDefaultConfidenceThreshold};
     double iou_threshold{evaluation::kDefaultIouThreshold};
     evaluation::MatchingStrategy matching_strategy{evaluation::MatchingStrategy::GreedyIoU};
-    // Optional cooperative cancellation token owned by the task controller.
-    // The evaluator never dereferences a QObject and can therefore poll this
-    // value safely from its worker thread.
+    /**
+     * @brief 由任务控制器持有的可选协作取消令牌。
+     *
+     * 评估器不访问 QObject，可在工作线程安全轮询该令牌。
+     */
     std::shared_ptr<std::atomic_bool> cancel_token;
-    // 可选图像尺寸提供者:复用 DataManager 后台预取的尺寸缓存,
-    // 避免评估线程为每张图重复打开文件;返回 false 时回退到文件读取。
+    /**
+     * @brief 可选图像尺寸提供者。
+     *
+     * 复用 DataManager 后台预取的尺寸缓存，避免评估线程为每张图重复打开
+     * 文件；缓存没有尺寸时直接读取文件。
+     */
     std::function<bool(qint64 image_id, int *width, int *height)> image_dimensions_provider;
-};
-
-struct MODEL_API ModelEvaluationResult
-{
-    // The evaluator owns the complete in-memory snapshot consumed directly by
-    // ModelEvaluationViewModel; no evaluation output file is produced.
-    QVariantMap evaluation_data;
 };
 
 /**
  * @brief Reads the task file list, project/task databases and prediction
- * artifacts, then computes one complete evaluation snapshot in memory.
+ * artifacts, then computes one complete evaluation result in memory.
  */
 class MODEL_API ModelEvaluationService
 {
 public:
-    static bool evaluate(const ModelEvaluationOptions &options, ModelEvaluationResult *result = nullptr,
+    static bool evaluate(const ModelEvaluationOptions &options, QVariantMap *result = nullptr,
                          QString *err_msg = nullptr);
 
 };
 
-} // namespace dltool::model
+}

@@ -5,6 +5,7 @@
 #include "model/ModelEvaluationProtocol.h"
 
 #include <QList>
+#include <QVector>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -57,6 +58,39 @@ MODEL_API QList<MatchPair> hungarianIoUMatches(int pred_count, int gt_count,
                                                const std::shared_ptr<std::atomic_bool> &cancel = {});
 
 /**
+ * @brief 按预测激活顺序增量维护 Hungarian 最大权匹配。
+ *
+ * 阈值曲线中的预测只会按置信度从高到低逐步加入。该匹配器固定最终
+ * 方阵的列数，每加入一行只执行一次增广路径，而不是对每个阈值从头
+ * 求解完整方阵。IoU 矩阵和阈值保持不变，因此每个前缀仍得到该前缀
+ * 的最大 IoU 总和匹配；未达到阈值的边权为零，输出时被过滤。
+ */
+class MODEL_API IncrementalHungarianMatcher
+{
+public:
+    IncrementalHungarianMatcher(int prediction_count, int ground_truth_count,
+                                const QVector<QVector<double>> &ious, double threshold);
+
+    void reset();
+    bool addPrediction(int prediction_index, const std::shared_ptr<std::atomic_bool> &cancel = {});
+    QList<MatchPair> matches(const std::shared_ptr<std::atomic_bool> &cancel = {}) const;
+
+private:
+    double weight(int prediction_index, int column) const;
+
+    int                              prediction_count_{0};
+    int                              ground_truth_count_{0};
+    int                              column_count_{0};
+    const QVector<QVector<double>> *ious_{nullptr};
+    double                           threshold_{0.0};
+    QVector<int>                     row_predictions_;
+    QVector<double>                  u_;
+    QVector<double>                  v_;
+    QVector<int>                     p_;
+    QVector<int>                     way_;
+};
+
+/**
  * @brief 按策略匹配预测与真值记录。
  *
  * IoU 计算注入规则：两框均无效（无框的 GT/预测）视为完全匹配（IoU=1）。
@@ -72,4 +106,4 @@ MODEL_API QList<MatchPair> matchPredictions(const QList<EvaluationPredictionData
                                             evaluation::MatchingStrategy             strategy,
                                             const std::shared_ptr<std::atomic_bool> &cancel = {});
 
-} // namespace dltool::model
+}

@@ -4,9 +4,12 @@
 #include "core/CoreDef.h"
 
 #include <QString>
+#include <QObject>
 #include <QVariantMap>
 
 namespace dltool::model::evaluation {
+
+Q_NAMESPACE_EXPORT(MODEL_API)
 
 /**
  * @brief 评估层使用的统一方法类型。
@@ -61,10 +64,25 @@ enum class MatrixAxisKey
 };
 
 /**
+ * @brief 评估界面使用的集中显示文案。
+ *
+ * 协议 key 与显示文本分离：row_key/column_key 等稳定值不用于展示，
+ * 展示层只消费 C++ 生成的 label，避免 QML 根据 GOOD/Anomaly 等文本猜语义。
+ */
+enum class DisplayText
+{
+    Good = 0,
+    Anomaly,
+    Total,
+};
+
+/**
  * @brief 评估展示状态。
  *
- * 状态仍以字符串形式暴露给现有 QML 属性，但所有 C++ 状态转换都通过
- * 此枚举完成，避免任务管理器和展示模型各自维护一套字面量。
+ * NotRun 表示尚未进行本次评估或任务已停止，Running/Failed 表示任务本身
+ * 的运行状态；MissingResult 表示没有可读取的预测输入，InvalidResult 表示
+ * 评估服务返回了不完整的结果快照，Error 表示评估执行失败。Ready 只表示
+ * 当前快照已经通过协议校验并可供界面使用。字符串 key 仅保留在协议边界。
  */
 enum class ViewState
 {
@@ -194,6 +212,7 @@ enum class Field
     Labels,
     Datasets,
     Label,
+    SeriesKind,
     Images,
     Samples,
     LabelClassId,
@@ -211,10 +230,13 @@ enum class Field
     Bounds,
     ArtifactPath,
 };
+Q_ENUM_NS(Field)
 
-// Evaluation snapshots are process-local and are intentionally not persisted.
-// This is a destructive protocol change: previously generated reports are
-// intentionally not read or migrated.
+/**
+ * @brief 评估快照仅存在于当前进程内，不持久化。
+ *
+ * 旧版生成的报告不会被读取或迁移。
+ */
 constexpr double kDefaultConfidenceThreshold = 0.5;
 constexpr double kDefaultIouThreshold = 0.5;
 
@@ -243,7 +265,9 @@ MODEL_API MetricSet metricSetFromKey(const QString &key);
 MODEL_API QString cellKindKey(CellKind kind);
 MODEL_API CellKind cellKindFromKey(const QString &key);
 MODEL_API QString matrixAxisKey(MatrixAxisKey key);
+MODEL_API QString displayText(DisplayText text);
 MODEL_API QString viewStateKey(ViewState state);
+MODEL_API ViewState viewStateFromKey(const QString &key);
 MODEL_API QString fieldName(Field field);
 
 MODEL_API bool isAnomaly(Method method);
@@ -252,4 +276,4 @@ MODEL_API bool hasImageMetrics(Method method);
 MODEL_API bool hasConfusionMatrix(Method method);
 MODEL_API bool hasInstanceEvents(Method method);
 
-} // namespace dltool::model::evaluation
+}

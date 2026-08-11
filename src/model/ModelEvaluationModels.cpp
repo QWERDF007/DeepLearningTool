@@ -6,6 +6,7 @@
 #include <QMetaMethod>
 #include <QMetaObject>
 #include <QSet>
+#include <utility>
 
 namespace dltool::model {
 
@@ -26,21 +27,61 @@ const QList<int> &gtClassIds(const EvaluationImageRecord &record)
     return record.gt_class_ids;
 }
 
+std::pair<int, int> confusionShape(const std::vector<EvaluationConfusionCell> &records)
+{
+    if (records.empty())
+        return {0, 0};
+
+    const QString first_row = records.front().row_key;
+    int           columns  = 0;
+    while (columns < static_cast<int>(records.size())
+           && records.at(static_cast<size_t>(columns)).row_key == first_row)
+        ++columns;
+    if (columns <= 0 || static_cast<int>(records.size()) % columns != 0)
+        return {0, 0};
+    return {static_cast<int>(records.size()) / columns, columns};
+}
+
+bool sameConfusionCell(const EvaluationConfusionCell &lhs, const EvaluationConfusionCell &rhs)
+{
+    return lhs.row_key == rhs.row_key && lhs.column_key == rhs.column_key && lhs.row_label == rhs.row_label
+           && lhs.column_label == rhs.column_label && lhs.count == rhs.count && lhs.row_class_id == rhs.row_class_id
+           && lhs.column_class_id == rhs.column_class_id && lhs.cell_kind == rhs.cell_kind
+           && lhs.tooltip == rhs.tooltip && lhs.selectable == rhs.selectable && lhs.diagonal == rhs.diagonal
+           && lhs.error == rhs.error;
+}
+
+bool sameConfusionLayout(const std::vector<EvaluationConfusionCell> &lhs,
+                         const std::vector<EvaluationConfusionCell> &rhs)
+{
+    if (lhs.size() != rhs.size())
+        return false;
+    for (size_t index = 0; index < lhs.size(); ++index)
+    {
+        if (lhs.at(index).row_key != rhs.at(index).row_key
+            || lhs.at(index).column_key != rhs.at(index).column_key)
+            return false;
+    }
+    return true;
+}
+
 const QList<int> &predClassIds(const EvaluationImageRecord &record)
 {
     return record.pred_class_ids;
 }
 
-void cacheImageDerivedValues(EvaluationImageRecord &record)
+}
+
+void rebuildImageDerivedValues(EvaluationImageRecord &record)
 {
     record.gt_label_ids.clear();
     record.gt_class_ids.clear();
     record.pred_class_ids.clear();
     record.max_prediction_score = 0.0;
-    record.has_gt = !record.gt_instances.isEmpty();
+    record.has_gt = !record.gt.isEmpty();
     record.has_pred = !record.predictions.isEmpty();
 
-    for (const EvaluationGroundTruthRecord &ground_truth : record.gt_instances)
+    for (const EvaluationGroundTruthRecord &ground_truth : record.gt)
     {
         if (ground_truth.label_id >= 0)
             record.gt_label_ids.push_back(ground_truth.label_id);
@@ -54,8 +95,6 @@ void cacheImageDerivedValues(EvaluationImageRecord &record)
         record.max_prediction_score = std::max(record.max_prediction_score, prediction.score);
     }
 }
-
-} // namespace
 
 EvaluationMetricModel::EvaluationMetricModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -204,21 +243,31 @@ QHash<int, QByteArray> EvaluationConfusionModel::roleNames() const
 
 void EvaluationConfusionModel::setRecords(std::vector<EvaluationConfusionCell> records)
 {
+    const auto [new_rows, new_columns] = confusionShape(records);
+    if (row_count_ == new_rows && column_count_ == new_columns && sameConfusionLayout(records_, records))
+    {
+        bool changed = false;
+        for (size_t index = 0; index < records_.size(); ++index)
+        {
+            if (!sameConfusionCell(records_.at(index), records.at(index)))
+            {
+                changed = true;
+                break;
+            }
+        }
+        if (!changed)
+            return;
+
+        records_ = std::move(records);
+        if (row_count_ > 0 && column_count_ > 0)
+            emit dataChanged(index(0, 0), index(row_count_ - 1, column_count_ - 1));
+        return;
+    }
+
     beginResetModel();
     records_ = std::move(records);
-    row_count_ = 0;
-    column_count_ = 0;
-    if (!records_.empty())
-    {
-        const QString first_row = records_.front().row_key;
-        while (column_count_ < static_cast<int>(records_.size())
-               && records_.at(static_cast<size_t>(column_count_)).row_key == first_row)
-            ++column_count_;
-        if (column_count_ > 0 && static_cast<int>(records_.size()) % column_count_ == 0)
-            row_count_ = static_cast<int>(records_.size()) / column_count_;
-        else
-            column_count_ = 0;
-    }
+    row_count_    = new_rows;
+    column_count_ = new_columns;
     endResetModel();
 }
 
@@ -355,12 +404,12 @@ QVariant EvaluationImageModel::data(const QModelIndex &index, const int role) co
     switch (role)
     {
     case Qt::DisplayRole:
-    case ImageNameRole: return record.image_name;
-    case ImageIdRole: return record.image_id;
+    case ImageNameRole: return record.name;
+    case ImageIdRole: return record.id;
     case DatasetIdRole: return record.dataset_id;
-    case ImagePathRole: return record.image_path;
-    case ImageWidthRole: return record.image_width;
-    case ImageHeightRole: return record.image_height;
+    case ImagePathRole: return record.path;
+    case ImageWidthRole: return record.width;
+    case ImageHeightRole: return record.height;
     case GtLabelIdsRole:
     {
         QVariantList values;
@@ -403,7 +452,7 @@ void EvaluationImageModel::setRecords(std::vector<EvaluationImageRecord> records
 {
     beginResetModel();
     for (EvaluationImageRecord &record : records)
-        cacheImageDerivedValues(record);
+        rebuildImageDerivedValues(record);
     records_ = std::move(records);
     endResetModel();
 }
@@ -502,9 +551,11 @@ bool invokeBool(QObject *object, const char *method, bool *invoked)
 EvaluationImageFilterProxyModel::EvaluationImageFilterProxyModel(QObject *parent)
     : QSortFilterProxyModel(parent)
 {
-    // Every filter setter explicitly calls invalidateFilter().  Keeping the
-    // proxy static while source data/selection roles change avoids reentrant
-    // filtering during evaluation result and selection updates.
+    /**
+     * @brief 各筛选设置器显式调用 invalidateFilter()。
+     *
+     * 保持代理的动态筛选关闭，避免评估结果和选择更新期间发生重入筛选。
+     */
     setDynamicSortFilter(false);
 }
 
@@ -531,12 +582,14 @@ bool EvaluationImageFilterProxyModel::acceptsRecord(const EvaluationImageRecord 
         return true;
 
     bool invoked = false;
-    if (!invokeBool(global_filter_, "acceptsImage", record.image_id, &invoked))
+    if (!invokeBool(global_filter_, "acceptsImage", record.id, &invoked))
         return invoked ? false : true;
 
-    // Label search/custom label conditions are label-level predicates.  The
-    // image proxy must apply them to the GT labels that belong to the image;
-    // acceptsImage() alone cannot see the current evaluation record's label IDs.
+    /**
+     * @brief 标签搜索和自定义标签条件必须作用于图像所属的 GT 标签。
+     *
+     * acceptsImage() 无法读取当前评估记录中的标签 ID，因此不能单独完成判断。
+     */
     const QList<qint64> &label_ids = gtLabelIds(record);
     if (!label_ids.isEmpty())
     {
@@ -554,9 +607,11 @@ bool EvaluationImageFilterProxyModel::acceptsRecord(const EvaluationImageRecord 
             return false;
     }
 
-    // GlobalFilter::acceptsImage() covers Dataset, Tag, ImageLabelClass,
-    // filename and Custom. LabelClass is an instance-level filter, so image
-    // rows explicitly apply its GT labels with the same accept/reject rules.
+    /**
+     * @brief 全局图像筛选覆盖数据集、标签、图像标签类别、文件名和自定义条件。
+     *
+     * LabelClass 属于实例级筛选，因此图像行需按自身 GT 标签执行同一套规则。
+     */
     bool class_enabled = false;
     bool class_enabled_invoked = false;
     class_enabled = invokeBool(global_filter_, "isLabelClassFilterEnabled", &class_enabled_invoked);
@@ -568,10 +623,12 @@ bool EvaluationImageFilterProxyModel::acceptsRecord(const EvaluationImageRecord 
     if (!inverted_invoked)
         inverted = false;
 
-    // LabelClass is a GT-oriented image filter.  Positive selection keeps an
-    // image when at least one GT class is selected; inversion keeps it only
-    // when none of its GT classes is excluded.  Pure-FP images have no GT
-    // class and must not be made visible by treating PRED as GT.
+    /**
+     * @brief LabelClass 是面向 GT 的图像筛选。
+     *
+     * 正向选择要求至少一个 GT 类别命中，反选要求所有 GT 类别均不被排除；
+     * 纯 FP 图像没有 GT 类别，不能把 PRED 当作 GT 来显示。
+     */
     const QList<int> &relevant_classes = gtClassIds(record);
 
     QList<bool> accepted_labels;
@@ -665,9 +722,11 @@ bool EvaluationGlobalFilterProxyModel::acceptsGlobalLabel(const EvaluationInstan
     if (!globalFilterIsActive(global_filter_, &active_invoked) && active_invoked)
         return true;
 
-    // A GT label ID is the authoritative object for LabelSearchResult and
-    // other label-level custom predicates.  Pure FP events have no GT label
-    // and deliberately do not get a synthetic match for this condition.
+    /**
+     * @brief GT 标签 ID 是标签搜索结果及其他标签级谓词的权威对象。
+     *
+     * 纯 FP 事件没有 GT 标签，不为此类条件构造虚假的匹配。
+     */
     if (record.gt_label_id >= 0)
     {
         bool invoked_label = false;
@@ -687,10 +746,12 @@ bool EvaluationGlobalFilterProxyModel::acceptsGlobalLabel(const EvaluationInstan
     if (!inverted_invoked)
         inverted = false;
 
-    // Prefer GT for every matched/missed/mismatched event.  Including PRED
-    // here would let a false positive from a selected class pass an event
-    // whose GT belongs to a different class.  Only a pure FP falls back to
-    // the predicted class.
+    /**
+     * @brief 匹配、漏检和类别错误事件始终优先使用 GT 类别。
+     *
+     * 若把 PRED 也用于判断，选中类别的误检可能绕过不匹配的 GT；只有纯 FP
+     * 事件才回退到预测类别。
+     */
     const int class_id = record.gt_class_id >= 0 ? record.gt_class_id : record.pred_class_id;
     bool invoked = false;
     const bool accepted = invokeBool(global_filter_, "acceptsLabelClassId", class_id, &invoked);
@@ -930,6 +991,45 @@ QHash<int, QByteArray> EvaluationChartModel::roleNames() const
 
 void EvaluationChartModel::setRecords(QList<QVariantMap> records)
 {
+    if (records_ == records)
+        return;
+
+    const int old_size = records_.size();
+    const int new_size = records.size();
+    int       common   = 0;
+    while (common < old_size && common < new_size && records_.at(common) == records.at(common))
+        ++common;
+
+    /**
+     * @brief 图表仅在尾部增删时保留公共前缀的持久索引。
+     */
+    if (common == std::min(old_size, new_size))
+    {
+        if (new_size > old_size)
+        {
+            beginInsertRows({}, old_size, new_size - 1);
+            for (int index = old_size; index < new_size; ++index)
+                records_.push_back(std::move(records[index]));
+            endInsertRows();
+            return;
+        }
+        if (new_size < old_size)
+        {
+            beginRemoveRows({}, new_size, old_size - 1);
+            records_.resize(new_size);
+            endRemoveRows();
+            return;
+        }
+    }
+
+    if (old_size == new_size)
+    {
+        records_ = std::move(records);
+        if (new_size > 0)
+            emit dataChanged(index(0), index(new_size - 1), {KindRole, TitleRole, DataRole, OptionsRole});
+        return;
+    }
+
     beginResetModel();
     records_ = std::move(records);
     endResetModel();
@@ -945,4 +1045,4 @@ QVariantMap EvaluationChartModel::descriptor(const int row) const
     return row >= 0 && row < records_.size() ? records_.at(row) : QVariantMap{};
 }
 
-} // namespace dltool::model
+}

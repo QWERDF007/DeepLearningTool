@@ -1,5 +1,7 @@
 #include "model/ModelEvaluationProtocol.h"
 
+#include <QMetaEnum>
+
 namespace dltool::model::evaluation {
 
 namespace {
@@ -9,7 +11,7 @@ QString normalized(const QString &value)
     return value.trimmed().toLower();
 }
 
-} // namespace
+}
 
 Method fromProjectMethod(const int method)
 {
@@ -128,12 +130,12 @@ MatchingStrategy matchingStrategyFromKey(const QString &key)
 
 QVariantMap normalizedEvaluationConfig(const QVariantMap &source)
 {
-    // Keep the complete user-owned evaluation group in the in-memory snapshot.
-    // The evaluator consumes only the fields it understands below, while
-    // preserving the remaining evaluation-only parameters lets a change to
-    // e.g. a metric selector trigger C++ re-evaluation without rerunning
-    // inference.  Inference parameters are kept outside this map and are
-    // compared by ModelTaskPreparation.
+    /**
+     * @brief 保留用户配置组的完整内容，并规范化评估器实际使用的字段。
+     *
+     * 其余仅用于评估的参数仍保存在快照中，修改指标选择器等参数时可触发
+     * C++ 重新评估而无需重新推理；推理参数在 ModelTaskPreparation 中比较。
+     */
     QVariantMap normalized = source;
     normalized.insert(fieldName(Field::ConfidenceThreshold),
                       source.value(fieldName(Field::ConfidenceThreshold), kDefaultConfidenceThreshold).toDouble());
@@ -205,6 +207,17 @@ QString matrixAxisKey(const MatrixAxisKey key)
     return {};
 }
 
+QString displayText(const DisplayText text)
+{
+    switch (text)
+    {
+    case DisplayText::Good: return QStringLiteral("正常");
+    case DisplayText::Anomaly: return QStringLiteral("异常");
+    case DisplayText::Total: return QStringLiteral("合计");
+    }
+    return {};
+}
+
 QString viewStateKey(const ViewState state)
 {
     switch (state)
@@ -221,136 +234,42 @@ QString viewStateKey(const ViewState state)
     return QStringLiteral("NotRun");
 }
 
+ViewState viewStateFromKey(const QString &key)
+{
+    const QString value = normalized(key);
+    for (const ViewState state : {ViewState::NotRun, ViewState::Loading, ViewState::Running, ViewState::Failed,
+                                  ViewState::MissingResult, ViewState::InvalidResult, ViewState::Error,
+                                  ViewState::Ready})
+    {
+        if (value == normalized(viewStateKey(state)))
+            return state;
+    }
+    return ViewState::NotRun;
+}
+
 QString fieldName(const Field field)
 {
-    switch (field)
+    static const QMetaEnum meta_enum = QMetaEnum::fromType<Field>();
+    const char *name = meta_enum.valueToKey(static_cast<int>(field));
+    if (name == nullptr)
+        return {};
+
+    const QString camel_case = QString::fromLatin1(name);
+    QString       snake_case;
+    snake_case.reserve(camel_case.size() + 8);
+    for (int index = 0; index < camel_case.size(); ++index)
     {
-    case Field::SchemaVersion: return QStringLiteral("schema_version");
-    case Field::ModelUuid: return QStringLiteral("model_uuid");
-    case Field::TestTaskUuid: return QStringLiteral("test_task_uuid");
-    case Field::Method: return QStringLiteral("method");
-    case Field::Status: return QStringLiteral("status");
-    case Field::PrimaryMetricSet: return QStringLiteral("primary_metric_set");
-    case Field::EvaluatedAt: return QStringLiteral("evaluated_at");
-    case Field::EvaluationConfig: return QStringLiteral("evaluation_config");
-    case Field::ConfidenceThreshold: return QStringLiteral("confidence_threshold");
-    case Field::IouThreshold: return QStringLiteral("iou_threshold");
-    case Field::MatchingStrategy: return QStringLiteral("matching_strategy");
-    case Field::ClassCatalog: return QStringLiteral("class_catalog");
-    case Field::DiagnosticMetrics: return QStringLiteral("diagnostic_metrics");
-    case Field::OfficialMetrics: return QStringLiteral("official_metrics");
-    case Field::ImageMetricDefinition: return QStringLiteral("image_metric_definition");
-    case Field::Capabilities: return QStringLiteral("capabilities");
-    case Field::HasInstanceMetrics: return QStringLiteral("has_instance_metrics");
-    case Field::HasImageMetrics: return QStringLiteral("has_image_metrics");
-    case Field::HasConfusionMatrix: return QStringLiteral("has_confusion_matrix");
-    case Field::HasInstanceEvents: return QStringLiteral("has_instance_events");
-    case Field::ChartKinds: return QStringLiteral("chart_kinds");
-    case Field::ConfusionMatrix: return QStringLiteral("confusion_matrix");
-    case Field::Cells: return QStringLiteral("cells");
-    case Field::Charts: return QStringLiteral("charts");
-    case Field::ImageRecords: return QStringLiteral("image_records");
-    case Field::InstanceRecords: return QStringLiteral("instance_records");
-    case Field::ImageCount: return QStringLiteral("image_count");
-    case Field::PredictionCount: return QStringLiteral("prediction_count");
-    case Field::EventCount: return QStringLiteral("event_count");
-    case Field::Available: return QStringLiteral("available");
-    case Field::Definition: return QStringLiteral("definition");
-    case Field::Instance: return QStringLiteral("instance");
-    case Field::Overall: return QStringLiteral("overall");
-    case Field::PerClass: return QStringLiteral("per_class");
-    case Field::Image: return QStringLiteral("image");
-    case Field::Precision: return QStringLiteral("precision");
-    case Field::Recall: return QStringLiteral("recall");
-    case Field::F1: return QStringLiteral("f1");
-    case Field::PrecisionDefined: return QStringLiteral("precision_defined");
-    case Field::RecallDefined: return QStringLiteral("recall_defined");
-    case Field::F1Defined: return QStringLiteral("f1_defined");
-    case Field::Tp: return QStringLiteral("tp");
-    case Field::Fp: return QStringLiteral("fp");
-    case Field::Fn: return QStringLiteral("fn");
-    case Field::SampleUnit: return QStringLiteral("sample_unit");
-    case Field::Aggregation: return QStringLiteral("aggregation");
-    case Field::PositiveDefinition: return QStringLiteral("positive_definition");
-    case Field::RecordCount: return QStringLiteral("record_count");
-    case Field::Records: return QStringLiteral("records");
-    case Field::PredictionId: return QStringLiteral("prediction_id");
-    case Field::ImageId: return QStringLiteral("image_id");
-    case Field::DatasetId: return QStringLiteral("dataset_id");
-    case Field::ImageName: return QStringLiteral("image_name");
-    case Field::ImagePath: return QStringLiteral("image_path");
-    case Field::ImageWidth: return QStringLiteral("image_width");
-    case Field::ImageHeight: return QStringLiteral("image_height");
-    case Field::Id: return QStringLiteral("id");
-    case Field::Name: return QStringLiteral("name");
-    case Field::Color: return QStringLiteral("color");
-    case Field::GtInstances: return QStringLiteral("gt_instances");
-    case Field::Predictions: return QStringLiteral("predictions");
-    case Field::LabelId: return QStringLiteral("label_id");
-    case Field::ClassId: return QStringLiteral("class_id");
-    case Field::ClassName: return QStringLiteral("class_name");
-    case Field::IsAnomaly: return QStringLiteral("is_anomaly");
-    case Field::Geometry: return QStringLiteral("geometry");
-    case Field::X: return QStringLiteral("x");
-    case Field::Y: return QStringLiteral("y");
-    case Field::Cx: return QStringLiteral("cx");
-    case Field::Cy: return QStringLiteral("cy");
-    case Field::Score: return QStringLiteral("score");
-    case Field::EventUuid: return QStringLiteral("event_uuid");
-    case Field::Iou: return QStringLiteral("iou");
-    case Field::GtLabelId: return QStringLiteral("gt_label_id");
-    case Field::GtClassId: return QStringLiteral("gt_class_id");
-    case Field::GtClassName: return QStringLiteral("gt_class_name");
-    case Field::GtGeometry: return QStringLiteral("gt_geometry");
-    case Field::PredInstanceId: return QStringLiteral("pred_instance_id");
-    case Field::PredClassId: return QStringLiteral("pred_class_id");
-    case Field::PredClassName: return QStringLiteral("pred_class_name");
-    case Field::PredGeometry: return QStringLiteral("pred_geometry");
-    case Field::CropBounds: return QStringLiteral("crop_bounds");
-    case Field::GtOverlayBounds: return QStringLiteral("gt_overlay_bounds");
-    case Field::PredOverlayBounds: return QStringLiteral("pred_overlay_bounds");
-    case Field::GtOverlayPoints: return QStringLiteral("gt_overlay_points");
-    case Field::PredOverlayPoints: return QStringLiteral("pred_overlay_points");
-    case Field::GtMaskUrl: return QStringLiteral("gt_mask_url");
-    case Field::PredMaskUrl: return QStringLiteral("pred_mask_url");
-    case Field::RowKey: return QStringLiteral("row_key");
-    case Field::ColumnKey: return QStringLiteral("column_key");
-    case Field::RowLabel: return QStringLiteral("row_label");
-    case Field::ColumnLabel: return QStringLiteral("column_label");
-    case Field::RowClassId: return QStringLiteral("row_class_id");
-    case Field::ColumnClassId: return QStringLiteral("column_class_id");
-    case Field::Count: return QStringLiteral("count");
-    case Field::CellKind: return QStringLiteral("cell_kind");
-    case Field::Selectable: return QStringLiteral("selectable");
-    case Field::IsDiagonal: return QStringLiteral("is_diagonal");
-    case Field::IsError: return QStringLiteral("is_error");
-    case Field::Kind: return QStringLiteral("kind");
-    case Field::ChartId: return QStringLiteral("chart_id");
-    case Field::FilterKind: return QStringLiteral("filter_kind");
-    case Field::Title: return QStringLiteral("title");
-    case Field::Data: return QStringLiteral("data");
-    case Field::Options: return QStringLiteral("options");
-    case Field::Labels: return QStringLiteral("labels");
-    case Field::Datasets: return QStringLiteral("datasets");
-    case Field::Label: return QStringLiteral("label");
-    case Field::Images: return QStringLiteral("images");
-    case Field::Samples: return QStringLiteral("samples");
-    case Field::LabelClassId: return QStringLiteral("label_class_id");
-    case Field::LabelClassName: return QStringLiteral("label_class_name");
-    case Field::Yolo: return QStringLiteral("yolo");
-    case Field::LabelIndex: return QStringLiteral("label_index");
-    case Field::Path: return QStringLiteral("path");
-    case Field::Width: return QStringLiteral("width");
-    case Field::Height: return QStringLiteral("height");
-    case Field::Type: return QStringLiteral("type");
-    case Field::CoordinateSystem: return QStringLiteral("coordinate_system");
-    case Field::Format: return QStringLiteral("format");
-    case Field::Values: return QStringLiteral("values");
-    case Field::Points: return QStringLiteral("points");
-    case Field::Bounds: return QStringLiteral("bounds");
-    case Field::ArtifactPath: return QStringLiteral("artifact_path");
+        const QChar current = camel_case.at(index);
+        const QChar previous = index > 0 ? camel_case.at(index - 1) : QChar();
+        const QChar next = index + 1 < camel_case.size() ? camel_case.at(index + 1) : QChar();
+        const bool word_boundary = index > 0 && current.isUpper()
+                                    && (previous.isLower() || previous.isDigit()
+                                        || (previous.isUpper() && next.isLower()));
+        if (word_boundary)
+            snake_case.push_back(QLatin1Char('_'));
+        snake_case.push_back(current.toLower());
     }
-    return {};
+    return snake_case;
 }
 
 bool isAnomaly(const Method method)
@@ -378,4 +297,4 @@ bool hasInstanceEvents(const Method method)
     return hasInstanceMetrics(method);
 }
 
-} // namespace dltool::model::evaluation
+}

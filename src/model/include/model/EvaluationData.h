@@ -51,6 +51,19 @@ struct MODEL_API EvaluationImageData
     int                              height{0};      ///< 图像高度。
     QList<EvaluationGroundTruthData> gt;             ///< 真值列表。
     QList<EvaluationPredictionData>  predictions;    ///< 预测列表。
+
+    /**
+     * @brief ViewModel 图像角色使用的派生字段。
+     *
+     * ViewModel 直接复用当前值对象，避免把 GT/预测列表复制到并行的
+     * Record 层级中。
+     */
+    QList<qint64>                    gt_label_ids;
+    QList<int>                       gt_class_ids;
+    QList<int>                       pred_class_ids;
+    double                           max_prediction_score{0.0};
+    bool                             has_gt{false};
+    bool                             has_pred{false};
 };
 
-} // namespace dltool::model
+}

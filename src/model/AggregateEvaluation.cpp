@@ -48,44 +48,6 @@ double aggregateIou(const QVariantMap &lhs, const QVariantMap &rhs)
 }
 
 /**
- * @brief 聚合匹配对（预测/真值下标与 IoU）。
- */
-struct AggregateMatch
-{
-    int    prediction{-1};   ///< 预测下标。
-    int    ground_truth{-1}; ///< 真值下标。
-    double iou{0.0};         ///< 匹配 IoU。
-};
-
-/**
- * @brief 聚合匹配：委托公共匹配模块，注入 QVariantMap 几何 IoU。
- * @param predictions 预测记录列表。
- * @param ground_truth 真值记录列表。
- * @param threshold IoU 阈值。
- * @param strategy 匹配策略。
- * @return 匹配对列表（按预测下标升序）。
- */
-QList<AggregateMatch> aggregateMatches(const QList<EvaluationPredictionRecord>  &predictions,
-                                       const QList<EvaluationGroundTruthRecord> &ground_truth, const double threshold,
-                                       const evaluation::MatchingStrategy strategy)
-{
-    // 几何 IoU 注入：ViewModel 使用 QVariantMap 几何记录，Service 使用 Box；
-    // 匹配算法（贪心/Hungarian）由 EvaluationMatching 公共模块提供。
-    const auto iou_fn = [&predictions, &ground_truth](const int prediction, const int gt)
-    {
-        return aggregateIou(predictions.at(prediction).geometry, ground_truth.at(gt).geometry);
-    };
-    const QList<MatchPair> matches = strategy == evaluation::MatchingStrategy::HungarianIoU
-                                       ? hungarianIoUMatches(predictions.size(), ground_truth.size(), iou_fn, threshold)
-                                       : greedyIoUMatches(predictions.size(), ground_truth.size(), iou_fn, threshold);
-
-    QList<AggregateMatch> result;
-    result.reserve(matches.size());
-    for (const MatchPair &pair : matches) result.push_back({pair.prediction, pair.ground_truth, pair.iou});
-    return result;
-}
-
-/**
  * @brief 判断图像记录是否为异常（按预测或 GT 类别包含类别 1）。
  * @param record 图像记录。
  * @param threshold 置信度阈值（仅预测侧使用）。
@@ -96,15 +58,15 @@ bool isAnomalyImage(const EvaluationImageRecord &record, const double threshold,
 {
     if (predicted)
         return predClassIds(record, threshold).contains(1);
-    return std::any_of(record.gt_instances.cbegin(), record.gt_instances.cend(),
+    return std::any_of(record.gt.cbegin(), record.gt.cend(),
                        [](const EvaluationGroundTruthRecord &ground_truth) { return ground_truth.anomaly; });
 }
 
 const EvaluationGroundTruthRecord *primaryGroundTruth(const EvaluationImageRecord &image)
 {
     const EvaluationGroundTruthRecord *result
-        = image.gt_instances.isEmpty() ? nullptr : &image.gt_instances.front();
-    for (const EvaluationGroundTruthRecord &ground_truth : image.gt_instances)
+        = image.gt.isEmpty() ? nullptr : &image.gt.front();
+    for (const EvaluationGroundTruthRecord &ground_truth : image.gt)
         if (ground_truth.label_id < 0)
             return &ground_truth;
     return result;
@@ -121,7 +83,7 @@ QList<AnomalyConfusionSample> anomalyConfusionSamples(const QList<EvaluationImag
         const int category_id = ground_truth != nullptr && ground_truth->class_id >= 0 ? ground_truth->class_id : 0;
         const QString category_name = ground_truth != nullptr && !ground_truth->class_name.isEmpty()
             ? ground_truth->class_name
-            : QStringLiteral("GOOD");
+            : evaluation::displayText(evaluation::DisplayText::Good);
         const bool category_anomaly = ground_truth != nullptr && ground_truth->anomaly;
         const bool predicted_anomaly = isAnomalyImage(image, threshold, true);
         samples.push_back(AnomalyConfusionSample{category_id, category_name, category_anomaly, predicted_anomaly});
@@ -173,47 +135,188 @@ bool aggregateClassAllowed(const QVariantList &class_ids, const int class_id)
     return false;
 }
 
+struct AggregateCachedMatchCandidate
+{
+    int    prediction{-1};
+    int    ground_truth{-1};
+    double iou{0.0};
+};
+
+/**
+ * @brief 聚合图像的阈值匹配缓存。
+ *
+ * prediction_indices/ground_truth_indices 将缓存矩阵映射回原始图像记录；
+ * active_predictions 按置信度阈值递增激活，避免每个阈值复制和重排预测列表。
+ */
+struct AggregateCurveImageCache
+{
+    const EvaluationImageRecord           *image{nullptr};
+    QVector<int>                           prediction_indices;
+    QVector<int>                           ground_truth_indices;
+    QVector<QVector<double>>               ious;
+    QVector<AggregateCachedMatchCandidate> greedy_candidates;
+    QVector<int>                           score_order;
+    QVector<int>                           score_rank;
+    QVector<bool>                          active_predictions;
+    std::shared_ptr<IncrementalHungarianMatcher> hungarian;
+    int                                    hungarian_added{0};
+    int                                    next_score{0};
+};
+
+AggregateCurveImageCache makeAggregateCurveImageCache(const EvaluationImageRecord &image,
+                                                       const QVariantList &class_ids, const double iou_threshold)
+{
+    AggregateCurveImageCache cache;
+    cache.image = &image;
+    for (int index = 0; index < image.predictions.size(); ++index)
+        if (aggregateClassAllowed(class_ids, image.predictions.at(index).class_id))
+            cache.prediction_indices.push_back(index);
+    for (int index = 0; index < image.gt.size(); ++index)
+        if (aggregateClassAllowed(class_ids, image.gt.at(index).class_id))
+            cache.ground_truth_indices.push_back(index);
+
+    cache.ious.resize(cache.prediction_indices.size());
+    cache.active_predictions.resize(cache.prediction_indices.size());
+    cache.active_predictions.fill(false);
+    for (int prediction = 0; prediction < cache.prediction_indices.size(); ++prediction)
+    {
+        cache.ious[prediction].resize(cache.ground_truth_indices.size());
+        const auto &prediction_record = image.predictions.at(cache.prediction_indices.at(prediction));
+        for (int ground_truth = 0; ground_truth < cache.ground_truth_indices.size(); ++ground_truth)
+        {
+            const auto &ground_truth_record = image.gt.at(cache.ground_truth_indices.at(ground_truth));
+            const double iou = aggregateIou(prediction_record.geometry, ground_truth_record.geometry);
+            cache.ious[prediction][ground_truth] = iou;
+            if (iou >= iou_threshold)
+                cache.greedy_candidates.push_back({prediction, ground_truth, iou});
+        }
+        cache.score_order.push_back(prediction);
+    }
+
+    std::sort(cache.score_order.begin(), cache.score_order.end(),
+              [&cache](const int lhs, const int rhs)
+              {
+                  const double lhs_score = cache.image->predictions.at(cache.prediction_indices.at(lhs)).score;
+                  const double rhs_score = cache.image->predictions.at(cache.prediction_indices.at(rhs)).score;
+                  const bool   lhs_nan   = std::isnan(lhs_score);
+                  const bool   rhs_nan   = std::isnan(rhs_score);
+                  if (lhs_nan != rhs_nan)
+                      return !lhs_nan;
+                  if (!lhs_nan && lhs_score != rhs_score)
+                      return lhs_score > rhs_score;
+                  return lhs < rhs;
+              });
+    cache.score_rank.resize(cache.score_order.size());
+    for (int rank = 0; rank < cache.score_order.size(); ++rank)
+        cache.score_rank[cache.score_order.at(rank)] = rank;
+
+    std::sort(cache.greedy_candidates.begin(), cache.greedy_candidates.end(),
+              [&cache](const AggregateCachedMatchCandidate &lhs, const AggregateCachedMatchCandidate &rhs)
+              {
+                  if (lhs.iou != rhs.iou)
+                      return lhs.iou > rhs.iou;
+                  const int lhs_rank = cache.score_rank.at(lhs.prediction);
+                  const int rhs_rank = cache.score_rank.at(rhs.prediction);
+                  if (lhs_rank != rhs_rank)
+                      return lhs_rank < rhs_rank;
+                  return lhs.ground_truth < rhs.ground_truth;
+              });
+    return cache;
+}
+
+void activateAggregateCurvePredictions(AggregateCurveImageCache &cache, const double threshold)
+{
+    while (cache.next_score < cache.score_order.size())
+    {
+        const int    prediction = cache.score_order.at(cache.next_score);
+        const double score = cache.image->predictions.at(cache.prediction_indices.at(prediction)).score;
+        ++cache.next_score;
+        if (std::isnan(score))
+            continue;
+        if (score < threshold)
+        {
+            --cache.next_score;
+            return;
+        }
+        cache.active_predictions[prediction] = true;
+    }
+}
+
+QList<MatchPair> aggregateGreedyMatches(const AggregateCurveImageCache &cache)
+{
+    QVector<bool>    used_prediction(cache.prediction_indices.size(), false);
+    QVector<bool>    used_ground_truth(cache.ground_truth_indices.size(), false);
+    QList<MatchPair> result;
+    for (const AggregateCachedMatchCandidate &candidate : cache.greedy_candidates)
+    {
+        if (!cache.active_predictions.at(candidate.prediction)
+            || used_prediction.at(candidate.prediction) || used_ground_truth.at(candidate.ground_truth))
+            continue;
+        used_prediction[candidate.prediction]     = true;
+        used_ground_truth[candidate.ground_truth] = true;
+        result.push_back({candidate.prediction, candidate.ground_truth, candidate.iou});
+    }
+    return result;
+}
+
+QList<MatchPair> aggregateHungarianMatches(AggregateCurveImageCache &cache, const double iou_threshold)
+{
+    if (cache.hungarian == nullptr)
+        cache.hungarian = std::make_shared<IncrementalHungarianMatcher>(
+            cache.prediction_indices.size(), cache.ground_truth_indices.size(), cache.ious, iou_threshold);
+
+    while (cache.hungarian_added < cache.next_score)
+    {
+        const int prediction = cache.score_order.at(cache.hungarian_added);
+        ++cache.hungarian_added;
+        if (!cache.active_predictions.at(prediction))
+            continue;
+        if (!cache.hungarian->addPrediction(prediction))
+            return {};
+    }
+    return cache.hungarian->matches();
+}
+
+QList<MatchPair> aggregateCurveMatches(AggregateCurveImageCache &cache, const double iou_threshold,
+                                       const evaluation::MatchingStrategy strategy)
+{
+    return strategy == evaluation::MatchingStrategy::HungarianIoU
+        ? aggregateHungarianMatches(cache, iou_threshold)
+        : aggregateGreedyMatches(cache);
+}
+
 /**
  * @brief 统计给定置信度阈值下的聚合 TP/FP/FN。
- * @param images 图像记录列表。
- * @param class_ids 类别过滤列表。
+ * @param curve_images 已按类别过滤并完成 IoU 缓存的图像列表。
  * @param threshold 置信度阈值。
  * @param iou_threshold IoU 阈值。
  * @param matching_strategy 匹配策略。
  * @return 聚合计数。
  */
-AggregateCounts aggregateThresholdCounts(const QList<EvaluationImageRecord> &images, const QVariantList &class_ids,
-                                         const double threshold, const double iou_threshold,
+AggregateCounts aggregateThresholdCounts(QList<AggregateCurveImageCache> &curve_images, const double threshold,
+                                         const double iou_threshold,
                                          const evaluation::MatchingStrategy matching_strategy)
 {
     AggregateCounts counts;
-    for (const EvaluationImageRecord &image : images)
+    for (AggregateCurveImageCache &curve_image : curve_images)
     {
-        QList<EvaluationPredictionRecord>  predictions;
-        QList<EvaluationGroundTruthRecord> ground_truth;
-        for (const EvaluationPredictionRecord &prediction : image.predictions)
+        activateAggregateCurvePredictions(curve_image, threshold);
+        const QList<MatchPair> matches = aggregateCurveMatches(curve_image, iou_threshold, matching_strategy);
+        QVector<bool>               used_prediction(curve_image.prediction_indices.size(), false);
+        QVector<bool>               used_gt(curve_image.ground_truth_indices.size(), false);
+        for (const MatchPair &candidate : matches)
         {
-            if (prediction.score >= threshold && aggregateClassAllowed(class_ids, prediction.class_id))
-                predictions.push_back(prediction);
-        }
-        for (const EvaluationGroundTruthRecord &gt : image.gt_instances)
-        {
-            if (aggregateClassAllowed(class_ids, gt.class_id))
-                ground_truth.push_back(gt);
-        }
-        std::sort(predictions.begin(), predictions.end(),
-                  [](const auto &lhs, const auto &rhs) { return lhs.score > rhs.score; });
-        const QList<AggregateMatch> matches
-            = aggregateMatches(predictions, ground_truth, iou_threshold, matching_strategy);
-        QVector<bool> used_prediction(predictions.size(), false);
-        QVector<bool> used_gt(ground_truth.size(), false);
-        for (const AggregateMatch &candidate : matches)
-        {
-            if (used_prediction.at(candidate.prediction) || used_gt.at(candidate.ground_truth))
+            if (candidate.prediction < 0 || candidate.prediction >= used_prediction.size()
+                || candidate.ground_truth < 0 || candidate.ground_truth >= used_gt.size()
+                || used_prediction.at(candidate.prediction) || used_gt.at(candidate.ground_truth))
                 continue;
             used_prediction[candidate.prediction] = true;
             used_gt[candidate.ground_truth]       = true;
-            if (predictions.at(candidate.prediction).class_id == ground_truth.at(candidate.ground_truth).class_id)
+            const auto &prediction
+                = curve_image.image->predictions.at(curve_image.prediction_indices.at(candidate.prediction));
+            const auto &ground_truth
+                = curve_image.image->gt.at(curve_image.ground_truth_indices.at(candidate.ground_truth));
+            if (prediction.class_id == ground_truth.class_id)
                 ++counts.tp;
             else
             {
@@ -222,7 +325,7 @@ AggregateCounts aggregateThresholdCounts(const QList<EvaluationImageRecord> &ima
             }
         }
         for (int index = 0; index < used_prediction.size(); ++index)
-            if (!used_prediction.at(index))
+            if (curve_image.active_predictions.at(index) && !used_prediction.at(index))
                 ++counts.fp;
         for (int index = 0; index < used_gt.size(); ++index)
             if (!used_gt.at(index))
@@ -231,7 +334,7 @@ AggregateCounts aggregateThresholdCounts(const QList<EvaluationImageRecord> &ima
     return counts;
 }
 
-} // namespace
+}
 
 const QList<int> &gtClassIds(const EvaluationImageRecord &record)
 {
@@ -311,14 +414,17 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
         }
     }
 
-    // 异常项目按图像级评估。GOOD 图像在项目数据库/任务选择中没有 GT 标签，
-    // 上面的实例事件矩阵无法表达真负；这里显式构造二元图像矩阵，行列布局
-    // 与检测方法保持一致。
+    /**
+     * @brief 异常项目按图像级评估。
+     *
+     * 正常图像在项目数据库或任务选择中没有 GT 标签，上面的实例事件矩阵
+     * 无法表达真负，因此这里显式构造与检测方法布局一致的二元图像矩阵。
+     */
     if (input.anomaly_detection)
     {
         class_names.clear();
-        class_names.insert(0, QStringLiteral("GOOD"));
-        class_names.insert(1, QStringLiteral("Anomaly"));
+        class_names.insert(0, evaluation::displayText(evaluation::DisplayText::Good));
+        class_names.insert(1, evaluation::displayText(evaluation::DisplayText::Anomaly));
         matrix.clear();
         for (const EvaluationImageRecord &image : input.images)
         {
@@ -333,11 +439,12 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
     AggregateCounts image_counts;
     if (input.anomaly_detection)
     {
-        // Anomaly methods are binary image-level classifiers.  The GT may
-        // contain several semantic classes, but only the anomaly flag of the
-        // image matters; counting every class ID here turns one image into
-        // multiple FP/FN events and makes the image metrics disagree with the
-        // binary confusion matrix.
+        /**
+         * @brief 异常方法是二元图像分类器，指标只看图像异常标记。
+         *
+         * GT 可能包含多个语义类别，但按类别 ID 累计会把一张图像拆成
+         * 多个 FP/FN，使图像指标与二元混淆矩阵不一致。
+         */
         for (const EvaluationImageRecord &image : input.images)
         {
             const bool ground_truth_anomaly = isAnomalyImage(image, input.confidence_threshold, false);
@@ -412,7 +519,7 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
         const bool    column_total = column == matrix_total;
         const int     row_id       = row_fn || row_total ? -1 : row.toInt();
         const int     column_id    = column_fp || column_total ? -1 : column.toInt();
-        const QString total_label  = QString("合计");
+        const QString total_label  = evaluation::displayText(evaluation::DisplayText::Total);
         const QString row_label    = row_fn ? matrix_fn : (row_total ? total_label : class_names.value(row_id));
         const QString column_label
             = column_fp ? matrix_fp : (column_total ? total_label : class_names.value(column_id));
@@ -493,7 +600,7 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
                    evaluation::CellKind::FalseNegative, true, false, true);
     }
     appendCell(matrix_fn, matrix_fp, mismatch_total + unmatched_fp + unmatched_fn,
-               evaluation::CellKind::NotApplicable, false, false, false);
+               evaluation::CellKind::NotApplicable, true, false, false);
     appendCell(matrix_fn, matrix_total, mismatch_total + unmatched_fn,
                evaluation::CellKind::FalseNegativeTotal, true, false, true);
     for (auto column_it = class_names.cbegin(); column_it != class_names.cend(); ++column_it)
@@ -509,9 +616,11 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
     output.confusion = std::move(cells);
     }
 
-    // 派生图表：按类别指标柱状图（聚合后重算）与异常分数分布图。
-    // 异常分布图在 Service 初始结果中由 buildEvaluationCharts 生成；这里
-    // 仍需按当前过滤后的图像集合重算，因此复用同一个公共图表构造器。
+    /**
+     * @brief 构造当前过滤结果的按类别指标图和异常分数分布图。
+     *
+     * Service 的初始图表不能直接复用，因为这里必须基于过滤后的图像集合重算。
+     */
     if (input.has_instance_metrics)
     {
         QVariantList labels;
@@ -529,15 +638,13 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
     }
 
     if (input.anomaly_detection)
-    {
-        QList<EvaluationImageRecord> images;
-        images.reserve(input.images.size());
-        for (const EvaluationImageRecord &image : input.images) images.push_back(image);
-        output.charts.push_back(anomalyScoreChartForImages(images));
-    }
+        output.charts.push_back(anomalyScoreChartForImages(input.images));
 
-    // 沿用 Service 图表描述符：阈值 Precision/Recall 图按聚合输入重算，
-    // 过滤掉已被本地派生的异常分布与按类别指标图。
+    /**
+     * @brief 沿用 Service 图表描述符，并按聚合输入重算阈值指标。
+     *
+     * 异常分布图和按类别指标图已在本地派生，因此跳过对应的 Service 图表。
+     */
     for (const QVariantMap &descriptor : input.chart_descriptors)
     {
         const QString chart_id    = descriptor.value(evaluation::fieldName(evaluation::Field::ChartId)).toString();
@@ -550,23 +657,24 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
         QVariantMap filtered = descriptor;
         if (filter_kind == QStringLiteral("precision_recall") || chart_id == QStringLiteral("precision_recall"))
         {
-            QList<double> thresholds{1.0, input.confidence_threshold};
+            QList<double> prediction_scores;
             for (const EvaluationImageRecord &image : input.images)
                 for (const EvaluationPredictionRecord &prediction : image.predictions)
                     if (std::isfinite(prediction.score) && aggregateClassAllowed(input.class_ids, prediction.class_id))
-                        thresholds.push_back(std::clamp(prediction.score, 0.0, 1.0));
-            std::sort(thresholds.begin(), thresholds.end(), std::greater<double>());
-            QList<double> unique;
-            for (const double value : thresholds)
-                if (unique.isEmpty() || !qFuzzyCompare(unique.back() + 1.0, value + 1.0))
-                    unique.push_back(value);
+                        prediction_scores.push_back(prediction.score);
+            const QList<double> unique = confidenceThresholds(prediction_scores, input.confidence_threshold);
+            QList<AggregateCurveImageCache> curve_images;
+            curve_images.reserve(input.images.size());
+            for (const EvaluationImageRecord &image : input.images)
+                curve_images.push_back(
+                    makeAggregateCurveImageCache(image, input.class_ids, input.iou_threshold));
             QVariantList labels;
             QVariantList precision;
             QVariantList recall;
             for (const double threshold : unique)
             {
-                const AggregateCounts counts = aggregateThresholdCounts(input.images, input.class_ids, threshold,
-                                                                        input.iou_threshold, input.matching_strategy);
+                const AggregateCounts counts
+                    = aggregateThresholdCounts(curve_images, threshold, input.iou_threshold, input.matching_strategy);
                 labels.push_back(threshold);
                 precision.push_back(counts.tp + counts.fp > 0 ? static_cast<double>(counts.tp) / (counts.tp + counts.fp)
                                                               : 0.0);
@@ -591,7 +699,7 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
             QVariantList scores;
             for (const EvaluationImageRecord &image : input.images)
             {
-                labels.push_back(image.image_name);
+                labels.push_back(image.name);
                 scores.push_back(imageScore(image));
             }
             filtered.insert(evaluation::fieldName(evaluation::Field::Data),
@@ -608,4 +716,4 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
     return output;
 }
 
-} // namespace dltool::model
+}

@@ -12,6 +12,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <optional>
 
 namespace dltool::model {
 
@@ -39,13 +40,13 @@ double safeRatio(const qint64 numerator, const qint64 denominator)
 }
 
 /**
- * @brief 分数直方图数据（GOOD/Anomaly 分箱点列）。
+ * @brief 分数直方图数据（正常/异常分箱点列）。
  */
 struct ScoreHistogramData
 {
     QVariantList        labels;         ///< 箱中心标签。
-    QVariantList        good_points;    ///< GOOD 分箱点列。
-    QVariantList        anomaly_points; ///< Anomaly 分箱点列。
+    QVariantList        good_points;    ///< 正常分箱点列。
+    QVariantList        anomaly_points; ///< 异常分箱点列。
     std::vector<double> centers;        ///< 箱中心值。
     int                 max_count{0};   ///< 最大箱计数。
     double              min_score{0.0}; ///< 分数最小值。
@@ -54,8 +55,8 @@ struct ScoreHistogramData
 
 /**
  * @brief 按 24 箱构造分数直方图。
- * @param good_scores GOOD 样本分数列表（空值忽略）。
- * @param anomaly_scores Anomaly 样本分数列表。
+ * @param good_scores 正常样本分数列表（空值忽略）。
+ * @param anomaly_scores 异常样本分数列表。
  * @return 直方图数据。
  */
 ScoreHistogramData scoreHistogram(const QVariantList &good_scores, const QVariantList &anomaly_scores)
@@ -144,12 +145,12 @@ ScoreHistogramData scoreHistogram(const QVariantList &good_scores, const QVarian
 
 /**
  * @brief 构造异常分数分布图（直方图 + 参考线）。
- * @param good_scores GOOD 样本分数列表。
- * @param anomaly_scores Anomaly 样本分数列表。
- * @param has_good 是否存在 GOOD 样本。
- * @param good_max GOOD 最大分数。
- * @param has_anomaly 是否存在 Anomaly 样本。
- * @param anomaly_min Anomaly 最小分数。
+ * @param good_scores 正常样本分数列表。
+ * @param anomaly_scores 异常样本分数列表。
+ * @param has_good 是否存在正常样本。
+ * @param good_max 正常样本最大分数。
+ * @param has_anomaly 是否存在异常样本。
+ * @param anomaly_min 异常样本最小分数。
  * @return 图表描述符。
  */
 QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantList &anomaly_scores, const bool has_good,
@@ -211,11 +212,13 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
         return radii;
     };
 
-    const auto distributionDataset = [&isolatedPointRadii](const QString &label, const QString &line_color,
-                                                           const QString &fill_color, const QVariantList &points)
+    const auto distributionDataset = [&isolatedPointRadii](const QString &label, const QString &series_kind,
+                                                           const QString &line_color, const QString &fill_color,
+                                                           const QVariantList &points)
     {
         return QVariantMap{
             {               QStringLiteral("label"),                        label},
+            {evaluation::fieldName(evaluation::Field::SeriesKind),      series_kind},
             {                QStringLiteral("data"),                       points},
             {     QStringLiteral("backgroundColor"),                   fill_color},
             {         QStringLiteral("borderColor"),                   line_color},
@@ -257,17 +260,21 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
     };
 
     QVariantList datasets;
+    const QString good_label    = evaluation::displayText(evaluation::DisplayText::Good);
+    const QString anomaly_label = evaluation::displayText(evaluation::DisplayText::Anomaly);
     if (has_good)
-        datasets.push_back(distributionDataset(QStringLiteral("GOOD"), QString::fromLatin1(good_color),
-                                               QString::fromLatin1(good_fill), histogram.good_points));
+        datasets.push_back(distributionDataset(good_label, QStringLiteral("good"),
+                                               QString::fromLatin1(good_color), QString::fromLatin1(good_fill),
+                                               histogram.good_points));
     if (has_anomaly)
-        datasets.push_back(distributionDataset(QStringLiteral("Anomaly"), QString::fromLatin1(anomaly_color),
-                                               QString::fromLatin1(anomaly_fill), histogram.anomaly_points));
+        datasets.push_back(distributionDataset(anomaly_label, QStringLiteral("anomaly"),
+                                               QString::fromLatin1(anomaly_color), QString::fromLatin1(anomaly_fill),
+                                               histogram.anomaly_points));
     if (has_good)
-        datasets.push_back(referenceDataset(QString("GOOD 最大分数：%1").arg(QString::number(good_max, 'f', 4)),
+        datasets.push_back(referenceDataset(QString("%1 最大分数：%2").arg(good_label).arg(QString::number(good_max, 'f', 4)),
                                             QString::fromLatin1(good_color), good_max, histogram.max_count));
     if (has_anomaly)
-        datasets.push_back(referenceDataset(QString("Anomaly 最小分数：%1").arg(QString::number(anomaly_min, 'f', 4)),
+        datasets.push_back(referenceDataset(QString("%1 最小分数：%2").arg(anomaly_label).arg(QString::number(anomaly_min, 'f', 4)),
                                             QString::fromLatin1(anomaly_color), anomaly_min, histogram.max_count));
 
     const double      suggested_count = histogram.max_count > 0 ? histogram.max_count * 1.1 : 1.0;
@@ -381,6 +388,8 @@ struct CurveImageCache
     QVector<CachedMatchCandidate>    greedy_candidates;
     QVector<int>                     score_order;
     QVector<bool>                    active_predictions;
+    std::shared_ptr<IncrementalHungarianMatcher> hungarian;
+    int                              hungarian_added{0};
     int                              next_score{0};
 };
 
@@ -413,15 +422,6 @@ CurveImageCache makeCurveImageCache(const EvaluationImageData &image, const doub
         cache.score_order.push_back(prediction);
     }
 
-    std::sort(cache.greedy_candidates.begin(), cache.greedy_candidates.end(),
-              [](const CachedMatchCandidate &lhs, const CachedMatchCandidate &rhs)
-              {
-                  if (lhs.iou != rhs.iou)
-                      return lhs.iou > rhs.iou;
-                  if (lhs.prediction != rhs.prediction)
-                      return lhs.prediction < rhs.prediction;
-                  return lhs.ground_truth < rhs.ground_truth;
-              });
     std::sort(cache.score_order.begin(), cache.score_order.end(),
               [&image](const int lhs, const int rhs)
               {
@@ -434,6 +434,15 @@ CurveImageCache makeCurveImageCache(const EvaluationImageData &image, const doub
                   if (lhs_valid && lhs_score != rhs_score)
                       return lhs_score > rhs_score;
                   return lhs < rhs;
+              });
+    std::sort(cache.greedy_candidates.begin(), cache.greedy_candidates.end(),
+              [](const CachedMatchCandidate &lhs, const CachedMatchCandidate &rhs)
+              {
+                  if (lhs.iou != rhs.iou)
+                      return lhs.iou > rhs.iou;
+                  if (lhs.prediction != rhs.prediction)
+                      return lhs.prediction < rhs.prediction;
+                  return lhs.ground_truth < rhs.ground_truth;
               });
     return cache;
 }
@@ -476,29 +485,29 @@ QList<MatchPair> cachedGreedyMatches(const CurveImageCache &cache,
     return result;
 }
 
-QList<MatchPair> cachedHungarianMatches(const CurveImageCache &cache,
+QList<MatchPair> cachedHungarianMatches(CurveImageCache &cache,
                                         const double iou_threshold,
                                         const std::shared_ptr<std::atomic_bool> &cancel)
 {
-    QList<int> active_predictions;
-    for (int prediction = 0; prediction < cache.active_predictions.size(); ++prediction)
-        if (cache.active_predictions.at(prediction))
-            active_predictions.push_back(prediction);
+    if (cache.hungarian == nullptr)
+        cache.hungarian = std::make_shared<IncrementalHungarianMatcher>(
+            cache.image->predictions.size(), cache.image->gt.size(), cache.ious, iou_threshold);
 
-    const auto iou_fn = [&cache, &active_predictions](const int prediction, const int ground_truth)
+    while (cache.hungarian_added < cache.next_score)
     {
-        return cache.ious.at(active_predictions.at(prediction)).at(ground_truth);
-    };
-    const QList<MatchPair> local_matches
-        = hungarianIoUMatches(active_predictions.size(), cache.image->gt.size(), iou_fn, iou_threshold, cancel);
-    QList<MatchPair> result;
-    result.reserve(local_matches.size());
-    for (const MatchPair &match : local_matches)
-        result.push_back({active_predictions.at(match.prediction), match.ground_truth, match.iou});
-    return result;
+        if (isCancelled(cancel))
+            return {};
+        const int prediction = cache.score_order.at(cache.hungarian_added);
+        ++cache.hungarian_added;
+        if (!cache.active_predictions.at(prediction))
+            continue;
+        if (!cache.hungarian->addPrediction(prediction, cancel))
+            return {};
+    }
+    return cache.hungarian->matches(cancel);
 }
 
-QList<MatchPair> cachedCurveMatches(const CurveImageCache &cache, const double iou_threshold,
+QList<MatchPair> cachedCurveMatches(CurveImageCache &cache, const double iou_threshold,
                                     const evaluation::MatchingStrategy strategy,
                                     const std::shared_ptr<std::atomic_bool> &cancel)
 {
@@ -507,17 +516,17 @@ QList<MatchPair> cachedCurveMatches(const CurveImageCache &cache, const double i
         : cachedGreedyMatches(cache, cancel);
 }
 
-} // namespace
+}
 
-QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageRecord> &images)
+QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageData> &images)
 {
     QList<AnomalyScoreSample> samples;
     samples.reserve(images.size());
-    for (const EvaluationImageRecord &image : images)
+    for (const EvaluationImageData &image : images)
     {
         const double score = image.max_prediction_score;
         const bool ground_truth_anomaly
-            = std::any_of(image.gt_instances.cbegin(), image.gt_instances.cend(),
+            = std::any_of(image.gt.cbegin(), image.gt.cend(),
                           [](const EvaluationGroundTruthRecord &ground_truth) { return ground_truth.anomaly; });
         samples.push_back({score, ground_truth_anomaly});
     }
@@ -540,6 +549,23 @@ QVariantMap evaluationMetricMap(const qint64 tp, const qint64 fp, const qint64 f
         {              evaluation::fieldName(evaluation::Field::Fp),                                                     fp},
         {              evaluation::fieldName(evaluation::Field::Fn),                                                     fn}
     };
+}
+
+QList<double> confidenceThresholds(const QList<double> &scores, const double confidence)
+{
+    QList<double> thresholds;
+    thresholds.push_back(1.0);
+    for (const double score : scores)
+        if (std::isfinite(score))
+            thresholds.push_back(std::clamp(score, 0.0, 1.0));
+    thresholds.push_back(confidence);
+    std::sort(thresholds.begin(), thresholds.end(), std::greater<double>());
+
+    QList<double> unique_thresholds;
+    for (const double value : thresholds)
+        if (unique_thresholds.isEmpty() || !qFuzzyCompare(unique_thresholds.back() + 1.0, value + 1.0))
+            unique_thresholds.push_back(value);
+    return unique_thresholds;
 }
 
 QVariantMap perClassMetricsChart(const QVariantList &labels, const QVariantList &precision, const QVariantList &recall,
@@ -579,8 +605,11 @@ EvaluationChartOutput buildEvaluationCharts(const evaluation::Method            
 
     if (anomaly)
     {
-        // 异常检测为图像级二元分类：GOOD 是隐式负类（正常样本没有 GT 标签），
-        // 指标定义为 score-above-threshold。
+            /**
+             * @brief 异常检测采用图像级二元分类，正常样本是没有 GT 标签的隐式负类。
+             *
+             * 指标定义为预测分数高于置信度阈值。
+             */
         output.available = true;
         output.metrics   = QVariantMap{
             { evaluation::fieldName(evaluation::Field::Available),true                                                                  },
@@ -617,18 +646,22 @@ EvaluationChartOutput buildEvaluationCharts(const evaluation::Method            
             return {};
     }
 
-    const auto countsAtActivePredictions = [&]()
+    const auto countsAtActivePredictions = [&]() -> std::optional<Counts>
     {
         Counts counts;
-        for (const CurveImageCache &curve_image : curve_images)
+        for (CurveImageCache &curve_image : curve_images)
         {
             if (isCancelled(cancel))
-                return counts;
+                return std::nullopt;
             const QList<MatchPair> pairs = cachedCurveMatches(curve_image, iou_threshold, strategy, cancel);
+            if (isCancelled(cancel))
+                return std::nullopt;
             QVector<bool>           used_prediction(curve_image.image->predictions.size(), false);
             QVector<bool>           used_gt(curve_image.image->gt.size(), false);
             for (const MatchPair &pair : pairs)
             {
+                if (isCancelled(cancel))
+                    return std::nullopt;
                 if (pair.prediction < 0 || pair.prediction >= used_prediction.size() || pair.ground_truth < 0
                     || pair.ground_truth >= used_gt.size() || used_prediction.at(pair.prediction)
                     || used_gt.at(pair.ground_truth))
@@ -645,32 +678,35 @@ EvaluationChartOutput buildEvaluationCharts(const evaluation::Method            
                 }
             }
             for (int index = 0; index < used_prediction.size(); ++index)
+            {
+                if (isCancelled(cancel))
+                    return std::nullopt;
                 if (curve_image.active_predictions.at(index) && !used_prediction.at(index))
                     ++counts.fp;
+            }
             for (int index = 0; index < used_gt.size(); ++index)
+            {
+                if (isCancelled(cancel))
+                    return std::nullopt;
                 if (!used_gt.at(index))
                     ++counts.fn;
+            }
         }
+        if (isCancelled(cancel))
+            return std::nullopt;
         return counts;
     };
 
     // 置信度扫描图阈值集：1.0、所有预测分数、工作点置信度。
-    QList<double> thresholds;
-    thresholds.push_back(1.0);
+    QList<double> prediction_scores;
     for (const EvaluationImageData &image : images)
     {
         if (isCancelled(cancel))
             return {};
         for (const EvaluationPredictionData &prediction : image.predictions)
-            if (std::isfinite(prediction.score))
-                thresholds.push_back(std::clamp(prediction.score, 0.0, 1.0));
+            prediction_scores.push_back(prediction.score);
     }
-    thresholds.push_back(confidence);
-    std::sort(thresholds.begin(), thresholds.end(), std::greater<double>());
-    QList<double> unique_thresholds;
-    for (const double value : thresholds)
-        if (unique_thresholds.isEmpty() || !qFuzzyCompare(unique_thresholds.back() + 1.0, value + 1.0))
-            unique_thresholds.push_back(value);
+    const QList<double> unique_thresholds = confidenceThresholds(prediction_scores, confidence);
 
     QVariantList recall_values;
     QVariantList precision_values;
@@ -683,14 +719,16 @@ EvaluationChartOutput buildEvaluationCharts(const evaluation::Method            
             return {};
         for (CurveImageCache &curve_image : curve_images)
             activateCurvePredictions(curve_image, threshold);
-        const Counts      counts = countsAtActivePredictions();
-        const QVariantMap metric = evaluationMetricMap(counts.tp, counts.fp, counts.fn);
+        const std::optional<Counts> counts = countsAtActivePredictions();
+        if (!counts.has_value())
+            return {};
+        const QVariantMap metric = evaluationMetricMap(counts->tp, counts->fp, counts->fn);
         threshold_labels.push_back(threshold);
         precision_values.push_back(metric.value(evaluation::fieldName(evaluation::Field::Precision)));
         recall_values.push_back(metric.value(evaluation::fieldName(evaluation::Field::Recall)));
         if (threshold == confidence)
         {
-            work_point       = counts;
+            work_point       = *counts;
             work_point_ready = true;
         }
     }
@@ -700,9 +738,15 @@ EvaluationChartOutput buildEvaluationCharts(const evaluation::Method            
         {
             curve_image.active_predictions.fill(false);
             curve_image.next_score = 0;
+            curve_image.hungarian_added = 0;
+            if (curve_image.hungarian != nullptr)
+                curve_image.hungarian->reset();
             activateCurvePredictions(curve_image, confidence);
         }
-        work_point = countsAtActivePredictions();
+        const std::optional<Counts> counts = countsAtActivePredictions();
+        if (!counts.has_value())
+            return {};
+        work_point = *counts;
     }
     if (isCancelled(cancel))
         return {};
@@ -748,9 +792,12 @@ QVariantMap buildInstanceEvent(const EvaluationImageData &image, const evaluatio
                                const double iou, const QString &dataset_root, const QString &prediction_root,
                                const qint64 event_index)
 {
-    // 视口裁剪不再在评估阶段计算:thumbnail provider 渲染时按 URL 携带的
-    // GT/PRED 绝对 bounds 自行推导裁剪区域,QML 侧按 LabelInstanceThumbnail
-    // 模式用原始几何换算 overlay,评估线程因此不再依赖图像宽高。
+    /**
+     * @brief 视口裁剪由 thumbnail provider 在渲染时根据 URL 中的绝对 bounds 推导。
+     *
+     * QML 按 LabelInstanceThumbnail 模式使用原始几何换算 overlay，评估线程
+     * 因此不再依赖图像宽高。
+     */
     const QVariantMap gt_geometry   = gt ? gt->geometry : QVariantMap{};
     const QVariantMap pred_geometry = pred ? pred->geometry : QVariantMap{};
     return QVariantMap{
@@ -829,7 +876,7 @@ QVariantList evaluationConfusionCells(const QMap<int, QString> &classes, const Q
         const bool    column_total = column == matrix_total;
         const int     row_id       = row_fn || row_total ? -1 : row.toInt();
         const int     column_id    = column_fp || column_total ? -1 : column.toInt();
-        const QString total_label  = QString("合计");
+        const QString total_label  = evaluation::displayText(evaluation::DisplayText::Total);
         const QString row_label    = row_fn ? matrix_fn : (row_total ? total_label : classes.value(row_id));
         const QString column_label = column_fp ? matrix_fp : (column_total ? total_label : classes.value(column_id));
         cells.push_back(QVariantMap{
@@ -869,7 +916,7 @@ QVariantList evaluationConfusionCells(const QMap<int, QString> &classes, const Q
                    evaluation::CellKind::FalseNegative, true, false, true);
     }
     appendCell(matrix_fn, matrix_fp, mismatch_total + unmatched_fp + unmatched_fn,
-               evaluation::CellKind::NotApplicable, false, false, false);
+               evaluation::CellKind::NotApplicable, true, false, false);
     appendCell(matrix_fn, matrix_total, mismatch_total + unmatched_fn,
                evaluation::CellKind::FalseNegativeTotal, true, false, true);
     for (auto column_it = classes.cbegin(); column_it != classes.cend(); ++column_it)
@@ -922,7 +969,7 @@ QVariantList anomalyConfusionVariantCells(const QMap<qint64, EvaluationImageData
         const int category_id = ground_truth != nullptr && ground_truth->class_id >= 0 ? ground_truth->class_id : 0;
         const QString category_name = ground_truth != nullptr && !ground_truth->class_name.isEmpty()
             ? ground_truth->class_name
-            : QStringLiteral("GOOD");
+            : evaluation::displayText(evaluation::DisplayText::Good);
         const bool category_anomaly = ground_truth != nullptr && ground_truth->anomaly;
         const bool predicted_anomaly
             = std::any_of(image.predictions.cbegin(), image.predictions.cend(),
@@ -938,7 +985,7 @@ QVariantList anomalyConfusionVariantCells(const QMap<qint64, EvaluationImageData
     return cells;
 }
 
-} // namespace
+}
 
 QVariantMap assembleEvaluationResult(const EvaluationResultContext &context)
 {
@@ -964,7 +1011,7 @@ QVariantMap assembleEvaluationResult(const EvaluationResultContext &context)
         return isCancelled(cancel);
     };
     const bool anomaly_method = evaluation::isAnomaly(method);
-    // 图像记录序列化：GT/预测实例列表。
+    /** @brief 序列化图像记录及其 GT/预测实例列表。 */
     QVariantList image_records;
     for (const EvaluationImageData &image : images)
     {
@@ -1105,4 +1152,4 @@ QVariantMap assembleEvaluationResult(const EvaluationResultContext &context)
     };
 }
 
-} // namespace dltool::model
+}

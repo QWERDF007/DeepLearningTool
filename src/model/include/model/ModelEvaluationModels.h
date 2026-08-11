@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dltool/model/Export.h"
+#include "model/EvaluationData.h"
 #include "model/ModelEvaluationProtocol.h"
 
 #include <QAbstractListModel>
@@ -84,51 +85,23 @@ struct MODEL_API EvaluationInstanceRecord
     bool selected{false};
 };
 
-struct MODEL_API EvaluationGroundTruthRecord
-{
-    qint64 label_id{-1};
-    int class_id{-1};
-    QString class_name;
-    QVariantMap geometry;
-    bool anomaly{false};
-};
-
-struct MODEL_API EvaluationPredictionRecord
-{
-    QString prediction_id;
-    int class_id{-1};
-    QString class_name;
-    double score{0.0};
-    QVariantMap geometry;
-};
+/**
+ * @brief Service 与 ViewModel 共用同一套值对象层级。
+ *
+ * 保留模型层名称以减少调用方改动，同时避免几何数据与 GT/预测列表
+ * 再维护一份并行副本。
+ */
+using EvaluationGroundTruthRecord = EvaluationGroundTruthData;
+using EvaluationPredictionRecord  = EvaluationPredictionData;
+using EvaluationImageRecord       = EvaluationImageData;
 
 /**
- * @brief 图像级评估记录。
+ * @brief 根据当前 GT/预测列表重建图像记录的派生字段。
  *
- * 该记录以测试任务的 test.txt 为全集，不从实例事件反推，因此没有任何 GT
- * 或预测实例的真负图像也会进入图像指标和图像级图表。
+ * 过滤聚合会替换实例列表但不经过 EvaluationImageModel::setRecords()，
+ * 因此调用方在提交裁剪后的值记录前必须显式刷新这些缓存字段。
  */
-struct MODEL_API EvaluationImageRecord
-{
-    qint64 image_id{-1};
-    qint64 dataset_id{-1};
-    QString image_name;
-    QString image_path;
-    int image_width{0};
-    int image_height{0};
-    QList<EvaluationGroundTruthRecord> gt_instances;
-    QList<EvaluationPredictionRecord> predictions;
-
-    // Derived image-level values are part of the in-memory result store.  The
-    // QML model can therefore answer common roles without rebuilding lists or
-    // scanning every prediction on each delegate/filter request.
-    QList<qint64> gt_label_ids;
-    QList<int> gt_class_ids;
-    QList<int> pred_class_ids;
-    double max_prediction_score{0.0};
-    bool has_gt{false};
-    bool has_pred{false};
-};
+MODEL_API void rebuildImageDerivedValues(EvaluationImageRecord &record);
 
 class MODEL_API EvaluationMetricModel : public QAbstractListModel
 {
@@ -461,4 +434,4 @@ private:
     QList<QVariantMap> records_;
 };
 
-} // namespace dltool::model
+}

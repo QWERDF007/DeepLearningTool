@@ -14,6 +14,7 @@
 #include <QMap>
 #include <QMetaMethod>
 #include <QMetaObject>
+#include <QMetaType>
 #include <QPointer>
 #include <QSet>
 #include <QThreadPool>
@@ -43,11 +44,11 @@ bool hasInvokable(QObject *object, const char *method, const int parameter_count
     return false;
 }
 
-EvaluationMetricRecord metricFromMap(const QString &key, const QVariantMap &map, const QString &fallback_label = {})
+EvaluationMetricRecord metricFromMap(const QString &key, const QVariantMap &map, const QString &label_override = {})
 {
     EvaluationMetricRecord metric;
     metric.key               = key;
-    metric.label             = fallback_label.isEmpty() ? key : fallback_label;
+    metric.label             = label_override.isEmpty() ? key : label_override;
     metric.class_name        = recordText(map, evaluation::Field::ClassName);
     metric.class_id          = recordInt(map, evaluation::Field::ClassId);
     metric.precision         = recordReal(map, evaluation::Field::Precision);
@@ -68,6 +69,48 @@ EvaluationMetricRecord metricFromMap(const QString &key, const QVariantMap &map,
     return metric;
 }
 
+/** @brief 将评估协议中的图像记录转换为界面模型使用的值对象。 */
+EvaluationImageRecord imageRecordFromMap(const QVariantMap &map)
+{
+    EvaluationImageRecord record;
+    record.id         = recordLong(map, evaluation::Field::ImageId, -1);
+    record.dataset_id = recordLong(map, evaluation::Field::DatasetId, -1);
+    record.name       = recordText(map, evaluation::Field::ImageName);
+    record.path       = recordText(map, evaluation::Field::ImagePath);
+    record.width      = recordInt(map, evaluation::Field::ImageWidth, 0);
+    record.height     = recordInt(map, evaluation::Field::ImageHeight, 0);
+
+    for (const QVariant &value : map.value(evaluation::fieldName(evaluation::Field::GtInstances)).toList())
+    {
+        const QVariantMap gt_map = value.toMap();
+        EvaluationGroundTruthData gt;
+        gt.label_id   = recordLong(gt_map, evaluation::Field::LabelId, -1);
+        gt.class_id   = recordInt(gt_map, evaluation::Field::ClassId, -1);
+        gt.class_name = recordText(gt_map, evaluation::Field::ClassName);
+        gt.anomaly    = gt_map.value(evaluation::fieldName(evaluation::Field::IsAnomaly)).toBool();
+        gt.geometry   = gt_map.value(evaluation::fieldName(evaluation::Field::Geometry)).toMap();
+        if (readBox(gt.geometry, gt.box))
+            gt.bounds = evaluationBoxMap(gt.box);
+        record.gt.push_back(std::move(gt));
+    }
+
+    for (const QVariant &value : map.value(evaluation::fieldName(evaluation::Field::Predictions)).toList())
+    {
+        const QVariantMap prediction_map = value.toMap();
+        EvaluationPredictionData prediction;
+        prediction.prediction_id = recordText(prediction_map, evaluation::Field::PredictionId);
+        prediction.image_id      = record.id;
+        prediction.class_id      = recordInt(prediction_map, evaluation::Field::ClassId, -1);
+        prediction.class_name    = recordText(prediction_map, evaluation::Field::ClassName);
+        prediction.score         = recordReal(prediction_map, evaluation::Field::Score);
+        prediction.geometry      = prediction_map.value(evaluation::fieldName(evaluation::Field::Geometry)).toMap();
+        if (readBox(prediction.geometry, prediction.box))
+            prediction.bounds = evaluationBoxMap(prediction.box);
+        record.predictions.push_back(std::move(prediction));
+    }
+    return record;
+}
+
 /**
  * @brief 获取评估专用线程池。
  *
@@ -83,11 +126,56 @@ QThreadPool *evaluationPool()
     return &pool;
 }
 
-} // namespace
+bool validEvaluationResult(const QVariantMap &root, QString *error)
+{
+    const auto fail = [error](const QString &message)
+    {
+        if (error != nullptr)
+            *error = message;
+        return false;
+    };
+    if (root.isEmpty())
+        return fail(QStringLiteral("评估结果为空"));
+
+    const QString primary_metric_set = evaluation::fieldName(evaluation::Field::PrimaryMetricSet);
+    if (!root.contains(primary_metric_set) || root.value(primary_metric_set).toString().trimmed().isEmpty())
+        return fail(QStringLiteral("评估结果缺少 primary_metric_set"));
+
+    const auto requireMap = [&root, &fail](const evaluation::Field field, const char *name)
+    {
+        const QString key = evaluation::fieldName(field);
+        if (!root.contains(key) || root.value(key).metaType().id() != QMetaType::QVariantMap)
+            return fail(QStringLiteral("评估结果缺少或无效字段: %1").arg(QString::fromLatin1(name)));
+        return true;
+    };
+    const auto requireList = [&root, &fail](const evaluation::Field field, const char *name)
+    {
+        const QString key = evaluation::fieldName(field);
+        if (!root.contains(key) || root.value(key).metaType().id() != QMetaType::QVariantList)
+            return fail(QStringLiteral("评估结果缺少或无效字段: %1").arg(QString::fromLatin1(name)));
+        return true;
+    };
+
+    if (!requireMap(evaluation::Field::EvaluationConfig, "evaluation_config")
+        || !requireMap(evaluation::Field::DiagnosticMetrics, "diagnostic_metrics")
+        || !requireMap(evaluation::Field::Capabilities, "capabilities")
+        || !requireMap(evaluation::Field::ConfusionMatrix, "confusion_matrix")
+        || !requireList(evaluation::Field::ImageRecords, "image_records")
+        || !requireList(evaluation::Field::InstanceRecords, "instance_records")
+        || !requireList(evaluation::Field::Charts, "charts"))
+        return false;
+
+    const QVariantMap confusion = root.value(evaluation::fieldName(evaluation::Field::ConfusionMatrix)).toMap();
+    if (!confusion.contains(evaluation::fieldName(evaluation::Field::Cells))
+        || confusion.value(evaluation::fieldName(evaluation::Field::Cells)).metaType().id() != QMetaType::QVariantList)
+        return fail(QStringLiteral("评估结果缺少或无效字段: confusion_matrix.cells"));
+    return true;
+}
+
+}
 
 ModelEvaluationViewModel::ModelEvaluationViewModel(QObject *parent)
     : QObject(parent)
-    , state_(evaluation::viewStateKey(evaluation::ViewState::NotRun))
     , instance_metrics_(new EvaluationMetricModel(this))
     , image_metrics_(new EvaluationMetricModel(this))
     , per_class_metrics_(new EvaluationMetricModel(this))
@@ -132,9 +220,11 @@ ModelEvaluationViewModel::ModelEvaluationViewModel(QObject *parent)
     connect(filtered_instances_, &QAbstractItemModel::rowsRemoved, this,
             [this]()
             {
-                // Do not touch the source selection model while a proxy is
-                // still dispatching rowsRemoved.  GridView can also request
-                // the old index during this notification window.
+                /**
+                 * @brief 代理发送 rowsRemoved 期间不操作源选择模型。
+                 *
+                 * GridView 可能在该通知窗口内继续请求旧索引。
+                 */
                 if (selected_proxy_row_ < 0)
                     return;
                 const int selected_row = selected_proxy_row_;
@@ -166,7 +256,12 @@ bool ModelEvaluationViewModel::loading() const
 
 QString ModelEvaluationViewModel::state() const
 {
-    return state_;
+    return evaluation::viewStateKey(state_kind_);
+}
+
+ModelEvaluationViewModel::StateKind ModelEvaluationViewModel::stateKind() const
+{
+    return static_cast<StateKind>(state_kind_);
 }
 
 QString ModelEvaluationViewModel::error() const
@@ -329,24 +424,23 @@ void ModelEvaluationViewModel::setLoading(const bool value)
         return;
     loading_ = value;
     if (value)
-        state_ = evaluation::viewStateKey(evaluation::ViewState::Loading);
-    else if (state_ == evaluation::viewStateKey(evaluation::ViewState::Loading))
-        state_ = available_ ? evaluation::viewStateKey(evaluation::ViewState::Ready)
-                            : (error_.isEmpty() ? evaluation::viewStateKey(evaluation::ViewState::NotRun)
-                                                : evaluation::viewStateKey(evaluation::ViewState::Error));
+        state_kind_ = evaluation::ViewState::Loading;
+    else if (state_kind_ == evaluation::ViewState::Loading)
+        state_kind_ = available_ ? evaluation::ViewState::Ready
+                                 : (error_.isEmpty() ? evaluation::ViewState::NotRun : evaluation::ViewState::Error);
     emit loadingChanged();
 }
 
-void ModelEvaluationViewModel::clearEvaluation(const QString &error, const QString &state)
+void ModelEvaluationViewModel::clearEvaluation(const QString &error, const evaluation::ViewState state)
 {
     ++aggregation_revision_;
     ++aggregation_schedule_token_;
     aggregation_rebuild_scheduled_ = false;
     available_                     = false;
     error_                         = error;
-    state_ = state.isEmpty() ? (error.isEmpty() ? evaluation::viewStateKey(evaluation::ViewState::NotRun)
-                                                : evaluation::viewStateKey(evaluation::ViewState::Error))
-                             : state;
+    state_kind_ = error.isEmpty() && state == evaluation::ViewState::NotRun ? evaluation::ViewState::NotRun : state;
+    if (!error.isEmpty() && state == evaluation::ViewState::NotRun)
+        state_kind_ = evaluation::ViewState::Error;
     primary_metric_set_.clear();
     metric_scope_description_.clear();
     image_metric_definition_.clear();
@@ -404,7 +498,7 @@ void ModelEvaluationViewModel::setEvaluationOptions(const ModelEvaluationOptions
     invalidate();
 }
 
-void ModelEvaluationViewModel::invalidate(const QString &state)
+void ModelEvaluationViewModel::invalidate(const evaluation::ViewState state)
 {
     ++evaluation_revision_;
     evaluation_attempted_ = false;
@@ -412,7 +506,7 @@ void ModelEvaluationViewModel::invalidate(const QString &state)
     if (cancel_token_ != nullptr)
         cancel_token_->store(true, std::memory_order_relaxed);
     cancel_token_.reset();
-    clearEvaluation({}, state.isEmpty() ? evaluation::viewStateKey(evaluation::ViewState::NotRun) : state);
+    clearEvaluation({}, state);
     setLoading(false);
     emit evaluationChanged();
     emit selectedInstanceChanged();
@@ -422,7 +516,7 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
 {
     if (!has_evaluation_options_)
     {
-        invalidate(evaluation::viewStateKey(evaluation::ViewState::MissingResult));
+        invalidate(evaluation::ViewState::MissingResult);
         return;
     }
     if (loading_)
@@ -437,7 +531,7 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
     // 而不是当作后台评估失败。
     if (!QFileInfo(evaluation_options_.dataset_file_list_path).isFile())
     {
-        invalidate(evaluation::viewStateKey(evaluation::ViewState::MissingResult));
+        invalidate(evaluation::ViewState::MissingResult);
         return;
     }
 
@@ -457,12 +551,12 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
             if (guard.isNull())
                 return;
 
-            ModelEvaluationResult evaluation_result;
-            QString               error;
-            const bool            success = ModelEvaluationService::evaluate(options, &evaluation_result, &error);
+            QVariantMap evaluation_result;
+            QString      error;
+            const bool   success = ModelEvaluationService::evaluate(options, &evaluation_result, &error);
             QMetaObject::invokeMethod(
                 guard.data(),
-                [guard, revision, options, notify, success, result = std::move(evaluation_result.evaluation_data),
+                [guard, revision, options, notify, success, result = std::move(evaluation_result),
                  error]() mutable
                 {
                     if (guard.isNull() || guard->evaluation_revision_ != revision)
@@ -476,12 +570,29 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
                         const QString message        = error.isEmpty() ? QString("C++ 评估失败") : error;
                         spdlog::error("测试任务 {} 评估失败: {}", options.test_task_uuid.toUtf8().constData(),
                                       message.toUtf8().constData());
-                        guard->clearEvaluation(message, evaluation::viewStateKey(evaluation::ViewState::Error));
+                        guard->clearEvaluation(message, evaluation::ViewState::Error);
                         guard->setLoading(false);
                         emit guard->evaluationChanged();
                         emit guard->selectedInstanceChanged();
                         if (should_notify)
                             ui::SignalHelper::notifyError(QString("模型评估失败"), message);
+                        return;
+                    }
+
+                    QString validation_error;
+                    if (!validEvaluationResult(result, &validation_error))
+                    {
+                        guard->evaluation_attempted_ = true;
+                        const QString message = validation_error.isEmpty() ? QStringLiteral("评估结果格式无效")
+                                                                            : validation_error;
+                        spdlog::error("测试任务 {} 评估结果无效: {}", options.test_task_uuid.toUtf8().constData(),
+                                      message.toUtf8().constData());
+                        guard->clearEvaluation(message, evaluation::ViewState::InvalidResult);
+                        guard->setLoading(false);
+                        emit guard->evaluationChanged();
+                        emit guard->selectedInstanceChanged();
+                        if (should_notify)
+                            ui::SignalHelper::notifyError(QStringLiteral("模型评估结果无效"), message);
                         return;
                     }
 
@@ -491,7 +602,7 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
                         result.value(evaluation::fieldName(evaluation::Field::InstanceRecords)).toList());
                     guard->evaluation_attempted_ = true;
                     guard->available_            = true;
-                    guard->state_                = evaluation::viewStateKey(evaluation::ViewState::Ready);
+                    guard->state_kind_           = evaluation::ViewState::Ready;
                     guard->error_.clear();
                     guard->scheduleRebuildFilteredAggregates();
                     guard->setLoading(false);
@@ -513,17 +624,13 @@ void ModelEvaluationViewModel::refreshEvaluation()
     evaluate(false);
 }
 
-void ModelEvaluationViewModel::setRuntimeState(const QString &state)
+void ModelEvaluationViewModel::setRuntimeState(const evaluation::ViewState state)
 {
-    const QString value = state.trimmed();
-    if (value.isEmpty())
+    if (state_kind_ == state && !available_ && error_.isEmpty())
         return;
-    if (state_ == value && !available_ && error_.isEmpty())
-        return;
-    if (value == evaluation::viewStateKey(evaluation::ViewState::Running)
-        || value == evaluation::viewStateKey(evaluation::ViewState::Failed)
-        || value == evaluation::viewStateKey(evaluation::ViewState::NotRun))
-        invalidate(value);
+    if (state == evaluation::ViewState::Running || state == evaluation::ViewState::Failed
+        || state == evaluation::ViewState::NotRun)
+        invalidate(state);
 }
 
 void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
@@ -546,9 +653,11 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
     has_image_metrics_    = capabilities.value(evaluation::fieldName(evaluation::Field::HasImageMetrics)).toBool();
     has_confusion_matrix_ = capabilities.value(evaluation::fieldName(evaluation::Field::HasConfusionMatrix)).toBool()
                          || anomaly_detection_;
-    // Anomaly results are image-level, but the instance grid still consumes
-    // the one in-memory C++ event per image so matrix selections can show
-    // GOOD/Anomaly samples, including true negatives with no original event.
+    /**
+     * @brief 异常结果按图像评估，但实例表仍消费每图像一条内存事件。
+     *
+     * 这样矩阵选择可以展示正常/异常样本，也能覆盖没有原始事件的真负图像。
+     */
     has_instance_events_ = capabilities.value(evaluation::fieldName(evaluation::Field::HasInstanceEvents)).toBool()
                         || anomaly_detection_;
     const QVariantMap diagnostic = root.value(evaluation::fieldName(evaluation::Field::DiagnosticMetrics)).toMap();
@@ -560,9 +669,11 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
     if (!image.isEmpty())
         image_metrics_->setRecords({metricFromMap(QStringLiteral("image"), image, QString("图像"))});
 
-    // The result keeps official and diagnostic metrics separate.  The
-    // primary set only changes which values are shown in the overall panel;
-    // matrix/events always remain diagnostic records.
+    /**
+     * @brief 官方指标和诊断指标保持分离。
+     *
+     * 主指标集合只改变总览面板显示的数值，矩阵和事件始终使用诊断记录。
+     */
     const QVariantMap official = root.value(evaluation::fieldName(evaluation::Field::OfficialMetrics)).toMap();
     if (primary_metric_set_ == evaluation::metricSetKey(evaluation::MetricSet::Official)
         && official.value(evaluation::fieldName(evaluation::Field::Available)).toBool())
@@ -578,8 +689,11 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
     }
 
     std::vector<EvaluationImageRecord> image_records;
-    for (const QVariant &value : root.value(evaluation::fieldName(evaluation::Field::ImageRecords)).toList())
-        image_records.push_back(imageFromMap(value.toMap()));
+    const QVariantList serialized_images
+        = root.value(evaluation::fieldName(evaluation::Field::ImageRecords)).toList();
+    image_records.reserve(static_cast<size_t>(serialized_images.size()));
+    for (const QVariant &value : serialized_images)
+        image_records.push_back(imageRecordFromMap(value.toMap()));
     images_->setRecords(std::move(image_records));
 
     std::vector<EvaluationMetricRecord> per_class;
@@ -612,10 +726,10 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
         cell.error           = map.value(evaluation::fieldName(evaluation::Field::IsError)).toBool();
         cells.push_back(cell);
     }
-    confusion_matrix_->setRecords(std::move(cells));
     QList<QVariantMap> charts;
     for (const QVariant &value : root.value(evaluation::fieldName(evaluation::Field::Charts)).toList())
         charts.push_back(value.toMap());
+    confusion_matrix_->setRecords(std::move(cells));
     charts_->setRecords(std::move(charts));
 }
 
@@ -623,7 +737,7 @@ void ModelEvaluationViewModel::loadInstanceRecords(const QVariantList &records)
 {
     QSet<QString>                                event_ids;
     QHash<qint64, const EvaluationImageRecord *> image_index;
-    for (const EvaluationImageRecord &image : images_->records()) image_index.insert(image.image_id, &image);
+    for (const EvaluationImageRecord &image : images_->records()) image_index.insert(image.id, &image);
     std::vector<EvaluationInstanceRecord> values;
     values.reserve(static_cast<size_t>(records.size()));
 
@@ -634,10 +748,10 @@ void ModelEvaluationViewModel::loadInstanceRecords(const QVariantList &records)
         if (image != image_index.cend())
         {
             value.dataset_id   = image.value()->dataset_id;
-            value.image_name   = image.value()->image_name;
-            value.image_path   = image.value()->image_path;
-            value.image_width  = image.value()->image_width;
-            value.image_height = image.value()->image_height;
+            value.image_name   = image.value()->name;
+            value.image_path   = image.value()->path;
+            value.image_width  = image.value()->width;
+            value.image_height = image.value()->height;
         }
         if (value.event_uuid.isEmpty() || event_ids.contains(value.event_uuid))
             continue;
@@ -694,8 +808,8 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
     }
     if (anomaly_detection_)
     {
-        input.class_catalog.insert(0, QStringLiteral("GOOD"));
-        input.class_catalog.insert(1, QStringLiteral("Anomaly"));
+        input.class_catalog.insert(0, evaluation::displayText(evaluation::DisplayText::Good));
+        input.class_catalog.insert(1, evaluation::displayText(evaluation::DisplayText::Anomaly));
     }
     input.chart_descriptors    = charts_->records();
     input.class_ids            = global_filtered_instances_->classIds();
@@ -707,9 +821,12 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
     input.has_confusion_matrix = has_confusion_matrix_;
     input.anomaly_detection    = anomaly_detection_;
 
-    // QSortFilterProxyModel remains the single GUI-thread filter boundary.
-    // The worker receives only detached value records and never touches a
-    // proxy, QModelIndex, QObject or QML object.
+    /**
+     * @brief QSortFilterProxyModel 是 GUI 线程唯一的过滤边界。
+     *
+     * 工作线程只接收脱离 QObject 的值记录，不访问代理、QModelIndex、
+     * QObject 或 QML 对象。
+     */
     for (const EvaluationInstanceRecord &record : instances_->records())
     {
         if (global_filtered_instances_->acceptsRecord(record))
@@ -719,11 +836,12 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
     const QVariantList dataset_ids = global_filtered_instances_->datasetIds();
     const QVariantList class_ids   = global_filtered_instances_->classIds();
 
-    // The image proxy decides whether an image has at least one class that
-    // passes the external GlobalFilter, but the image still contains all of
-    // its classes.  Detach a class-filtered value record before handing it to
-    // the worker so image metrics and PR charts cannot count unrelated
-    // classes.  This keeps all QObject/proxy access on the GUI thread.
+    /**
+     * @brief 在提交聚合前复制经过类别筛选的值记录。
+     *
+     * 图像代理只决定图像是否可见，工作线程还必须剔除图像中未选中的
+     * 类别，避免图像指标和阈值图表计入无关类别；代理访问仍限定在 GUI 线程。
+     */
     bool external_class_filter_enabled   = false;
     bool external_class_filter_available = false;
     if (global_filter_ != nullptr && hasInvokable(global_filter_, "isLabelClassFilterEnabled", 0))
@@ -784,22 +902,25 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
             continue;
         }
 
-        // Keep only selected GT/PRED classes and their corresponding detail
-        // records.  A selected class filter is GT-preferred for image
-        // visibility (handled by filtered_images_), while unrelated
-        // predictions are excluded from the aggregate once the image is in.
+        /**
+         * @brief 只保留选中类别及其对应的 GT/预测详情。
+         *
+         * 图像可见性由 filtered_images_ 按 GT 优先决定，图像进入聚合后
+         * 仍需排除无关预测。
+         */
         EvaluationImageRecord              filtered = record;
-        QList<EvaluationGroundTruthRecord> filtered_gt_instances;
-        for (const EvaluationGroundTruthRecord &ground_truth : record.gt_instances)
+        QList<EvaluationGroundTruthRecord> filtered_gt;
+        for (const EvaluationGroundTruthRecord &ground_truth : record.gt)
             if (classAllowed(ground_truth.class_id))
-                filtered_gt_instances.push_back(ground_truth);
+                filtered_gt.push_back(ground_truth);
         QList<EvaluationPredictionRecord> filtered_predictions;
         for (const EvaluationPredictionRecord &prediction : record.predictions)
             if (classAllowed(prediction.class_id))
                 filtered_predictions.push_back(prediction);
 
-        filtered.gt_instances = std::move(filtered_gt_instances);
+        filtered.gt           = std::move(filtered_gt);
         filtered.predictions  = std::move(filtered_predictions);
+        rebuildImageDerivedValues(filtered);
         if (!hasGroundTruth(filtered) && !hasPredictions(filtered, confidence_threshold_))
             continue;
         input.images.push_back(std::move(filtered));
@@ -836,8 +957,11 @@ QString ModelEvaluationViewModel::thumbnailUrl(const EvaluationInstanceRecord &r
     query.addQueryItem(QStringLiteral("event"), record.event_uuid);
     query.addQueryItem(QStringLiteral("revision"), result_revision_);
     query.addQueryItem(QStringLiteral("path"), record.image_path);
-    // 裁剪视口由 provider 渲染时按 GT/PRED 绝对 bounds 推导,
-    // 评估阶段不再需要图像宽高。
+    /**
+     * @brief 裁剪视口由 provider 根据 GT/PRED 绝对 bounds 在渲染时推导。
+     *
+     * 评估阶段无需再次依赖图像宽高。
+     */
     const auto addBounds = [&query](const QString &prefix, const QVariantMap &bounds)
     {
         const QVariant x = bounds.value(QStringLiteral("x"));
@@ -1032,4 +1156,4 @@ void ModelEvaluationViewModel::setGlobalFilter(QObject *filter)
     emit filterStateChanged();
 }
 
-} // namespace dltool::model
+}
