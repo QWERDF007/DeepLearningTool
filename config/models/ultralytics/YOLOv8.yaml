@@ -32,6 +32,14 @@ YOLOv8:
           control_type: combo
           options: ["None", COCO, Custom]
 
+        - name_en: export_format
+          name_cn: 导出格式
+          description: 训练完成后可选的模型导出格式，None 表示不导出。
+          value: None
+          value_type: string
+          control_type: combo
+          options: ["None", onnx, torchscript, engine]
+
     - name_en: training
       name_cn: 训练参数
       part_index: 0

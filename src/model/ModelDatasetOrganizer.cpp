@@ -23,9 +23,12 @@
 #include <QStringConverter>
 #include <QStringList>
 #include <QTextStream>
+#include <QMap>
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <set>
+#include <utility>
 #include <vector>
 
 using dltool::common::cleanPath;
@@ -404,6 +407,55 @@ bool writeImageFileList(const QString &path, const QList<QPair<qint64, QString>>
     return true;
 }
 
+QString numberText(const double value)
+{
+    return QString::number(value, 'g', 12);
+}
+
+QString escapedYamlString(QString value)
+{
+    value.replace(QString("'"), QString("''"));
+    return QString("'%1'").arg(value);
+}
+
+bool writeUltralyticsDatasetConfig(const QString &path, const QString &dataset_dir,
+                                   const QMap<int, QString> &class_names,
+                                   const QMap<int, qint64> &class_ids, QString *err_msg)
+{
+    if (class_names.isEmpty() && class_ids.isEmpty())
+        return true;
+
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        if (err_msg != nullptr)
+            *err_msg = QString("打开 Ultralytics 数据集配置失败: %1").arg(file.errorString());
+        return false;
+    }
+
+    QTextStream stream(&file);
+    stream.setEncoding(QStringConverter::Utf8);
+    stream << QStringLiteral("path: ") << escapedYamlString(cleanPath(dataset_dir)) << QChar('\n');
+    stream << QStringLiteral("train: ") << escapedYamlString(QStringLiteral("train.txt")) << QChar('\n');
+    stream << QStringLiteral("val: ") << escapedYamlString(QStringLiteral("validation.txt")) << QChar('\n');
+    stream << QStringLiteral("test: ") << escapedYamlString(QStringLiteral("test.txt")) << QChar('\n');
+    stream << QStringLiteral("names:\n");
+    for (auto it = class_names.cbegin(); it != class_names.cend(); ++it)
+        stream << QStringLiteral("  ") << it.key() << QStringLiteral(": ") << escapedYamlString(it.value())
+               << QChar('\n');
+    stream << QStringLiteral("class_ids:\n");
+    for (auto it = class_ids.cbegin(); it != class_ids.cend(); ++it)
+        stream << QStringLiteral("  ") << it.key() << QStringLiteral(": ") << it.value() << QChar('\n');
+
+    if (!file.commit())
+    {
+        if (err_msg != nullptr)
+            *err_msg = QString("提交 Ultralytics 数据集配置失败: %1").arg(file.errorString());
+        return false;
+    }
+    return true;
+}
+
 void removeLegacyAnomalibSplitFiles(const QString &dataset_dir, const QString &train_dir)
 {
     const auto remove_if_inside = [](const QString &root, const QString &name)
@@ -573,6 +625,7 @@ struct SplitExportContext
     QString                                  masks_dir;
     YAML::Node                               images{YAML::NodeType::Sequence};
     std::map<qint64, int>                    class_indices;
+    QMap<int, QString>                        class_names;
     std::set<qint64>                         good_classes;
     std::set<qint64>                         anomaly_classes;
     std::set<qint64>                         ignore_classes;
@@ -643,6 +696,12 @@ class DatasetOrganizerBase
 public:
     virtual ~DatasetOrganizerBase() = default;
 
+    void setClassMapping(std::map<qint64, int> class_indices, QMap<int, QString> class_names)
+    {
+        class_indices_ = std::move(class_indices);
+        class_names_   = std::move(class_names);
+    }
+
     QVariantMap exportSplit(const ModelDatasetExportRequest &request, DatasetSplit split, bool required,
                             QString *err_msg) const
     {
@@ -668,6 +727,8 @@ public:
         ctx.split      = split;
         ctx.split_name = mappedValue(datasetSplitNames(), split);
         ctx.split_dir  = splitDirectory(request, ctx.split_name);
+        ctx.class_indices = class_indices_;
+        ctx.class_names   = class_names_;
         if (!prepareSplit(ctx, err_msg))
             return {};
 
@@ -688,7 +749,7 @@ public:
 
             if (!appendImage(ctx, image, labels, err_msg))
                 return {};
-            ctx.image_files.push_back({image.image_id, cleanPath(image.image_path)});
+            ctx.image_files.push_back({image.image_id, imageListPath(ctx, image)});
             ++ctx.image_count;
         }
 
@@ -731,6 +792,12 @@ protected:
 
     virtual bool appendImage(SplitExportContext &ctx, const ImageExportContext &image, const YAML::Node &labels,
                              QString *err_msg) const = 0;
+
+    virtual QString imageListPath(const SplitExportContext &ctx, const ImageExportContext &image) const
+    {
+        Q_UNUSED(ctx)
+        return cleanPath(image.image_path);
+    }
 
     virtual QVariantMap finishSplit(SplitExportContext &ctx, QString *err_msg) const = 0;
 
@@ -797,11 +864,17 @@ private:
                 continue;
 
             image.has_anomaly_label = image.has_anomaly_label || isAnomalyGroup(class_group);
+            const int label_class_index = classIndex(label_class_id, ctx.class_indices);
+            if (label_class_index >= 0)
+                ctx.class_names.insert(label_class_index, class_name);
             labels.push_back(label);
             ++ctx.label_count;
         }
         return true;
     }
+
+    std::map<qint64, int> class_indices_;
+    QMap<int, QString>    class_names_;
 };
 
 class GenericDatasetOrganizer : public DatasetOrganizerBase
@@ -862,6 +935,104 @@ protected:
 class UltralyticsDatasetOrganizer final : public GenericDatasetOrganizer
 {
 protected:
+    QString imageListPath(const SplitExportContext &ctx, const ImageExportContext &image) const override
+    {
+        const QString suffix = QFileInfo(image.image_path).suffix().trimmed();
+        return cleanPath(QDir(ctx.request->dataset_dir).filePath(
+            QString::number(image.image_id) + (suffix.isEmpty() ? QStringLiteral(".jpg") : QStringLiteral(".") + suffix)));
+    }
+
+    bool appendImage(SplitExportContext &ctx, const ImageExportContext &image, const YAML::Node &labels,
+                     QString *err_msg) const override
+    {
+        if (!GenericDatasetOrganizer::appendImage(ctx, image, labels, err_msg))
+            return false;
+
+        const QString target_image = imageListPath(ctx, image);
+        if (!QFileInfo::exists(target_image))
+        {
+            if (!QFile::copy(image.image_path, target_image))
+            {
+                if (err_msg != nullptr)
+                    *err_msg = QString("复制 Ultralytics 图像失败: %1 -> %2").arg(image.image_path, target_image);
+                return false;
+            }
+        }
+
+        const QString label_path = cleanPath(QDir(ctx.request->dataset_dir).filePath(
+            QString::number(image.image_id) + QStringLiteral(".txt")));
+        QSaveFile label_file(label_path);
+        if (!label_file.open(QIODevice::WriteOnly | QIODevice::Text))
+        {
+            if (err_msg != nullptr)
+                *err_msg = QString("打开 Ultralytics 标签文件失败: %1").arg(label_file.errorString());
+            return false;
+        }
+        QTextStream stream(&label_file);
+        stream.setEncoding(QStringConverter::Utf8);
+        for (const YAML::Node &entry : labels)
+        {
+            const int class_index = entry["class_index"] ? entry["class_index"].as<int>() : -1;
+            if (class_index < 0)
+                continue;
+
+            const QVariantMap data = common::yaml::nodeVariant(entry["data"]).toMap();
+            QStringList      values;
+            values << QString::number(image.image_id) << QString::number(class_index);
+            if (ctx.request->method == dltool::core::DeepLearningMethod::Segmentation)
+            {
+                const std::vector<QPointF> points = labelPolygon(data);
+                for (const QPointF &point : points)
+                {
+                    if (image.width <= 0 || image.height <= 0)
+                        continue;
+                    values << numberText(std::clamp(point.x() / image.width, 0.0, 1.0));
+                    values << numberText(std::clamp(point.y() / image.height, 0.0, 1.0));
+                }
+            }
+            else
+            {
+                const QVariantMap yolo = entry["yolo"].IsMap()
+                                            ? common::yaml::nodeVariant(entry["yolo"]).toMap()
+                                            : labelYoloData(data, image.width, image.height);
+                const QStringList keys = {QStringLiteral("cx"), QStringLiteral("cy"), QStringLiteral("width"),
+                                          QStringLiteral("height")};
+                for (const QString &key : keys)
+                    values << numberText(yolo.value(key).toDouble());
+            }
+            if (values.size() >= (ctx.request->method == dltool::core::DeepLearningMethod::Segmentation ? 8 : 6))
+                stream << values.join(QChar(' ')) << QChar('\n');
+        }
+        if (!label_file.commit())
+        {
+            if (err_msg != nullptr)
+                *err_msg = QString("提交 Ultralytics 标签文件失败: %1").arg(label_file.errorString());
+            return false;
+        }
+        return true;
+    }
+
+    QVariantMap finishSplit(SplitExportContext &ctx, QString *err_msg) const override
+    {
+        const QString file_list_path = splitFileListPath(ctx, err_msg);
+        if (file_list_path.isEmpty() || !writeImageFileList(file_list_path, ctx.image_files, err_msg))
+            return {};
+
+        const QString config_path = cleanPath(QDir(ctx.request->dataset_dir).filePath(QStringLiteral("dataset.yaml")));
+        QMap<int, qint64> class_ids;
+        for (auto it = ctx.class_indices.cbegin(); it != ctx.class_indices.cend(); ++it)
+            class_ids.insert(it->second, it->first);
+        if (!writeUltralyticsDatasetConfig(config_path, ctx.request->dataset_dir, ctx.class_names, class_ids, err_msg))
+            return {};
+
+        return {
+            {mappedValue(datasetConfigFieldNames(), DatasetConfigField::FileList), file_list_path},
+            {mappedValue(datasetConfigFieldNames(), DatasetConfigField::ImageCount), ctx.image_count},
+            {mappedValue(datasetConfigFieldNames(), DatasetConfigField::LabelCount), ctx.label_count},
+            {QStringLiteral("dataset_config"), config_path},
+        };
+    }
+
     LabelExportDecision augmentLabel(SplitExportContext &ctx, ImageExportContext &image, qint64 label_id,
                                      qint64 label_class_id, const QString &class_group, const QVariantMap &label_data,
                                      YAML::Node &label, QString *err_msg) const override
@@ -1237,6 +1408,33 @@ QVariantMap ModelDatasetOrganizer::organize(const ModelDatasetExportRequest &req
     const bool file_list_layout = layout == FrameworkDatasetLayout::Anomalib
                                   || layout == FrameworkDatasetLayout::Dinomaly2;
     const std::unique_ptr<DatasetOrganizerBase> organizer = createDatasetOrganizer(request.framework_name);
+    if (layout == FrameworkDatasetLayout::Ultralytics && request.source != nullptr)
+    {
+        // Ultralytics uses contiguous class indices; keep a deterministic mapping
+        // back to the project's persistent label-class IDs for C++ evaluation.
+        std::set<qint64> source_class_ids;
+        for (const int64_t image_id : request.source->allImageIds())
+            for (const int64_t label_id : request.source->imageLabelIds(image_id))
+            {
+                const qint64 class_id = request.source->labelClassId(label_id);
+                if (class_id >= 0)
+                    source_class_ids.insert(class_id);
+            }
+
+        std::map<qint64, int> class_indices;
+        QMap<int, QString>    class_names;
+        int                   class_index = 0;
+        for (const qint64 class_id : source_class_ids)
+        {
+            class_indices.emplace(class_id, class_index);
+            QString class_name = request.source->labelClassName(class_id).trimmed();
+            if (class_name.isEmpty())
+                class_name = QString::number(class_id);
+            class_names.insert(class_index, class_name);
+            ++class_index;
+        }
+        organizer->setClassMapping(std::move(class_indices), std::move(class_names));
+    }
     if (isTrainModelTask(request.task_type) || request.task_type == ModelTaskType::BoxToMask)
     {
         const QVariantMap train = organizer->exportSplit(request, DatasetSplit::Train, true, err_msg);

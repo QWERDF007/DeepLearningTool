@@ -5,11 +5,7 @@ namespace dltool::model { namespace {
 
 using dltool::core::DeepLearningMethod;
 
-/**
- * @brief 构建 ultralytics 框架定义
- * @return 框架定义
- */
-FrameworkDefinition ultralyticsFramework()
+FrameworkDefinition ultralyticsSegmentationFramework()
 {
     FrameworkDefinition framework;
     framework.name           = QStringLiteral("ultralytics");
@@ -24,6 +20,7 @@ FrameworkDefinition ultralyticsFramework()
     return framework;
 }
 
-DLT_REGISTER_FRAMEWORK(DeepLearningMethod::Detection, Ultralytics, ultralyticsFramework());
+DLT_REGISTER_FRAMEWORK(DeepLearningMethod::Segmentation, UltralyticsSegmentation,
+                       ultralyticsSegmentationFramework());
 
 }} // namespace dltool::model

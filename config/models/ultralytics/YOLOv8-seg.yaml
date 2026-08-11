@@ -1,8 +1,8 @@
-YOLOv5:
+YOLOv8-seg:
   framework: ultralytics
-  model_architecture: YOLOv5
-  model_name: YOLOv5
-  method: Detection
+  model_architecture: YOLOv8-seg
+  model_name: YOLOv8-seg
+  method: Segmentation
   train_params:
     - name_en: network
       name_cn: 网络参数
@@ -15,15 +15,13 @@ YOLOv5:
           value_type: int
           value_range: [320, 1536, 32]
           control_type: spin
-
         - name_en: num_classes
           name_cn: 类别数
-          description: 目标检测类别总数，应与数据集类别数一致。
+          description: 实例分割类别总数，应与数据集类别数一致。
           value: 80
           value_type: int
           value_range: [1, 10000, 1]
           control_type: spin
-
         - name_en: pretrained
           name_cn: 预训练权重
           description: 初始化模型时使用的预训练权重来源。
@@ -39,7 +37,6 @@ YOLOv5:
           value_type: string
           control_type: combo
           options: ["None", onnx, torchscript, engine]
-
     - name_en: training
       name_cn: 训练参数
       part_index: 0
@@ -51,7 +48,6 @@ YOLOv5:
           value_type: int
           value_range: [1, 10000, 1]
           control_type: spin
-
         - name_en: batch_size
           name_cn: 批量大小
           description: 每次参数更新参与训练的图像数量。
@@ -59,7 +55,6 @@ YOLOv5:
           value_type: int
           value_range: [1, 512, 1]
           control_type: spin
-
         - name_en: learning_rate
           name_cn: 学习率
           description: 优化器每次更新模型参数的步长。
@@ -67,49 +62,29 @@ YOLOv5:
           value_type: double
           value_range: [0.000001, 1.0, 0.0001]
           control_type: spin
-
         - name_en: optimizer
           name_cn: 优化器
           description: 用于更新模型参数的优化算法。
-          value: SGD
+          value: AdamW
           value_type: string
           control_type: combo
           options: [SGD, Adam, AdamW]
-
     - name_en: augmentation
       name_cn: 数据增强
       part_index: 1
       params:
         - name_en: mosaic
           name_cn: Mosaic
-          description: 将四张图像拼接为一张图像的数据增强开关。
+          description: 将多张图像拼接为一张图像的数据增强开关。
           value: true
           value_type: bool
           control_type: checkbox
-
         - name_en: mixup
           name_cn: MixUp
-          description: 按比例混合两张图像及其标签的数据增强开关。
+          description: 按比例混合图像及其标注的数据增强开关。
           value: false
           value_type: bool
           control_type: checkbox
-
-        - name_en: hsv_gain
-          name_cn: HSV 增益
-          description: HSV 颜色空间随机扰动的最大强度。
-          value: 0.015
-          value_type: double
-          value_range: [0.0, 0.1, 0.001]
-          control_type: slider
-
-        - name_en: flip_probability
-          name_cn: 翻转概率
-          description: 训练时对图像执行随机翻转的概率。
-          value: 0.5
-          value_type: double
-          value_range: [0.0, 1.0, 0.01]
-          control_type: slider
-
   test_params:
     - name_en: inference
       name_cn: 推理参数
@@ -122,15 +97,13 @@ YOLOv5:
           value_type: int
           value_range: [320, 1536, 32]
           control_type: spin
-
         - name_en: confidence_threshold
           name_cn: 置信度阈值
-          description: 低于此置信度的预测框会被过滤。
+          description: 低于此置信度的预测实例会被过滤。
           value: 0.25
           value_type: double
           value_range: [0.0, 1.0, 0.01]
           control_type: slider
-
         - name_en: nms_threshold
           name_cn: NMS 阈值
           description: 非极大值抑制使用的 IoU 阈值。
@@ -138,7 +111,6 @@ YOLOv5:
           value_type: double
           value_range: [0.0, 1.0, 0.01]
           control_type: slider
-
     - name_en: evaluation
       name_cn: 评估参数
       part_index: 1
@@ -150,7 +122,6 @@ YOLOv5:
           value_type: int
           value_range: [1, 512, 1]
           control_type: spin
-
         - name_en: metric
           name_cn: 评估指标
           description: 模型评估时计算并展示的主要指标。
