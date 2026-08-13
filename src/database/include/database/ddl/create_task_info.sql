@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS task_info (
+    task_id TEXT    NOT NULL PRIMARY KEY,
+    ctime   INTEGER NOT NULL,
+    mtime   INTEGER NOT NULL
+)

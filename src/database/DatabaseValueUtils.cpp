@@ -4,46 +4,11 @@
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QJsonValue>
+#include <QMetaType>
 
 namespace dltool::database::detail {
 
 namespace {
-
-void flattenMap(const QVariantMap &map, const QString &prefix, QList<NamedValue> &result)
-{
-    for (auto it = map.cbegin(); it != map.cend(); ++it)
-    {
-        const QString name = prefix.isEmpty() ? it.key() : prefix + QLatin1Char('.') + it.key();
-        const QVariant value = it.value();
-        if (value.userType() == QMetaType::QVariantMap)
-        {
-            const QVariantMap nested = value.toMap();
-            if (nested.isEmpty())
-                result.push_back({name, value});
-            else
-                flattenMap(nested, name, result);
-        }
-        else
-        {
-            result.push_back({name, value});
-        }
-    }
-}
-
-void insertValue(QVariantMap &map, const QStringList &parts, int index, const QVariant &value)
-{
-    if (index < 0 || index >= parts.size())
-        return;
-    if (index == parts.size() - 1)
-    {
-        map.insert(parts.at(index), value);
-        return;
-    }
-
-    QVariantMap nested = map.value(parts.at(index)).toMap();
-    insertValue(nested, parts, index + 1, value);
-    map.insert(parts.at(index), nested);
-}
 
 bool setError(QString *err_msg, const QString &message)
 {
@@ -52,27 +17,120 @@ bool setError(QString *err_msg, const QString &message)
     return false;
 }
 
+void flattenGroup(const QString &group_name, const QVariantMap &group, QList<ParamValue> &result)
+{
+    for (auto it = group.cbegin(); it != group.cend(); ++it)
+    {
+        if (it.key().trimmed().isEmpty())
+            continue;
+        result.push_back({group_name, it.key(), it.value()});
+    }
+}
+
+bool parseTypeAndText(const QString &type, const QString &text, QVariant &result, QString *err_msg)
+{
+    const QString normalized = type.trimmed().toLower();
+    if (normalized == QStringLiteral("bool") || normalized == QStringLiteral("boolean"))
+    {
+        result = text.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0
+                 || text.compare(QStringLiteral("1")) == 0;
+        return true;
+    }
+    if (normalized == QStringLiteral("int") || normalized == QStringLiteral("integer"))
+    {
+        bool ok = false;
+        const qlonglong parsed = text.trimmed().toLongLong(&ok);
+        if (!ok)
+            return setError(err_msg, QString("int 参数值无效: %1").arg(text)), false;
+        result = static_cast<int>(parsed);
+        return true;
+    }
+    if (normalized == QStringLiteral("double") || normalized == QStringLiteral("float")
+        || normalized == QStringLiteral("real"))
+    {
+        bool ok = false;
+        const double parsed = text.trimmed().toDouble(&ok);
+        if (!ok)
+            return setError(err_msg, QString("double 参数值无效: %1").arg(text)), false;
+        result = parsed;
+        return true;
+    }
+    if (normalized == QStringLiteral("string"))
+    {
+        result = text;
+        return true;
+    }
+    return setError(err_msg, QString("未知参数类型: %1").arg(type));
+}
+
 } // namespace
 
-QList<NamedValue> flattenValues(const QVariantMap &values)
+QList<ParamValue> flattenParamValues(const QVariantMap &params)
 {
-    QList<NamedValue> result;
-    flattenMap(values, {}, result);
+    QList<ParamValue> result;
+    for (auto it = params.cbegin(); it != params.cend(); ++it)
+    {
+        const QVariant value = it.value();
+        if (value.userType() == QMetaType::QVariantMap)
+            flattenGroup(it.key(), value.toMap(), result);
+        else if (!it.key().trimmed().isEmpty())
+            result.push_back({it.key(), {}, value});
+    }
     return result;
 }
 
-QVariantMap unflattenValues(const QList<NamedValue> &values)
+QVariantMap unflattenParamValues(const QList<ParamValue> &values)
 {
     QVariantMap result;
-    for (const NamedValue &entry : values)
+    for (const ParamValue &entry : values)
     {
-        const QString name = entry.name.trimmed();
-        if (name.isEmpty())
+        if (entry.group.trimmed().isEmpty() || entry.name_en.trimmed().isEmpty())
             continue;
-        const QStringList parts = name.split(QLatin1Char('.'), Qt::SkipEmptyParts);
-        if (!parts.isEmpty())
-            insertValue(result, parts, 0, entry.value);
+        QVariantMap group = result.value(entry.group).toMap();
+        group.insert(entry.name_en, entry.value);
+        result.insert(entry.group, group);
     }
+    return result;
+}
+
+QString paramValueType(const QVariant &value)
+{
+    switch (value.userType())
+    {
+    case QMetaType::Bool:
+        return QStringLiteral("bool");
+    case QMetaType::Char:
+    case QMetaType::SChar:
+    case QMetaType::UChar:
+    case QMetaType::Short:
+    case QMetaType::UShort:
+    case QMetaType::Int:
+    case QMetaType::UInt:
+    case QMetaType::Long:
+    case QMetaType::ULong:
+    case QMetaType::LongLong:
+    case QMetaType::ULongLong:
+        return QStringLiteral("int");
+    case QMetaType::Float:
+    case QMetaType::Double:
+        return QStringLiteral("double");
+    default:
+        return QStringLiteral("string");
+    }
+}
+
+QString paramValueText(const QVariant &value)
+{
+    if (value.userType() == QMetaType::Bool)
+        return value.toBool() ? QStringLiteral("true") : QStringLiteral("false");
+    return value.toString();
+}
+
+QVariant paramValueFromText(const QString &type, const QString &text, QString *err_msg)
+{
+    QVariant result;
+    if (!parseTypeAndText(type, text, result, err_msg))
+        return {};
     return result;
 }
 

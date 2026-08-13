@@ -8,35 +8,32 @@ YOLOv8-seg:
       name_cn: 网络参数
       part_index: 0
       params:
-        - name_en: image_size
+        - name_en: model_size
+          name_cn: 模型尺寸
+          description: 官方预训练权重的模型尺寸，同时用于过滤可选的用户已训练权重。
+          value: n
+          value_type: string
+          control_type: combo
+          options: [n, s, m, l, x]
+
+        - name_en: checkpoint
+          name_cn: 权重
+          description: 训练使用的初始权重：官方预训练权重，或同架构同尺寸的用户已训练权重。
+          value: yolov8n-seg.pt
+          value_type: string
+          control_type: group_combo
+          variants: [n, s, m, l, x]
+          variant_name_template: "yolov8{size}-seg.pt"
+          variant_param: model_size
+
+        - name_en: imgsz
           name_cn: 图像尺寸
           description: 训练时将输入图像缩放到的边长。
           value: 640
           value_type: int
-          value_range: [320, 1536, 32]
+          value_range: [128, 4096, 32]
           control_type: spin
-        - name_en: num_classes
-          name_cn: 类别数
-          description: 实例分割类别总数，应与数据集类别数一致。
-          value: 80
-          value_type: int
-          value_range: [1, 10000, 1]
-          control_type: spin
-        - name_en: pretrained
-          name_cn: 预训练权重
-          description: 初始化模型时使用的预训练权重来源。
-          value: COCO
-          value_type: string
-          control_type: combo
-          options: ["None", COCO, Custom]
 
-        - name_en: export_format
-          name_cn: 导出格式
-          description: 训练完成后可选的模型导出格式，None 表示不导出。
-          value: None
-          value_type: string
-          control_type: combo
-          options: ["None", onnx, torchscript, engine]
     - name_en: training
       name_cn: 训练参数
       part_index: 0
@@ -48,84 +45,302 @@ YOLOv8-seg:
           value_type: int
           value_range: [1, 10000, 1]
           control_type: spin
-        - name_en: batch_size
+
+        - name_en: batch
           name_cn: 批量大小
           description: 每次参数更新参与训练的图像数量。
-          value: 16
+          value: 8
           value_type: int
           value_range: [1, 512, 1]
           control_type: spin
-        - name_en: learning_rate
-          name_cn: 学习率
-          description: 优化器每次更新模型参数的步长。
-          value: 0.01
-          value_type: double
-          value_range: [0.000001, 1.0, 0.0001]
+
+        - name_en: workers
+          name_cn: 数据加载进程
+          description: 用于并行读取和预处理数据的工作进程数。
+          value: 2
+          value_type: int
+          value_range: [0, 64, 1]
           control_type: spin
+
         - name_en: optimizer
           name_cn: 优化器
           description: 用于更新模型参数的优化算法。
           value: AdamW
           value_type: string
           control_type: combo
-          options: [SGD, Adam, AdamW]
+          options: [SGD, Adam, AdamW, Adamax, NAdam, RAdam, RMSprop, MuSGD]
+
+        - name_en: momentum
+          name_cn: 动量
+          description: SGD/MuSGD 优化器的动量系数。
+          value: 0.937
+          value_type: double
+          value_range: [0.0, 1.0, 0.001]
+          control_type: slider
+          enabled_when: "optimizer in [SGD, MuSGD]"
+
+        - name_en: lr0
+          name_cn: 初始学习率
+          description: 优化器的初始学习率。
+          value: 0.01
+          value_type: double
+          value_range: [0.000001, 1.0, 0.00001]
+          control_type: spin
+
+        - name_en: lrf
+          name_cn: 最终学习率系数
+          description: 最终学习率 = 初始学习率 × 该系数。
+          value: 0.01
+          value_type: double
+          value_range: [0.0001, 1.0, 0.0001]
+          control_type: spin
+
+        - name_en: weight_decay
+          name_cn: 权重衰减
+          description: 优化器正则化项的权重衰减系数。
+          value: 0.0005
+          value_type: double
+          value_range: [0.0, 0.1, 0.0001]
+          control_type: spin
+
+        - name_en: warmup_epochs
+          name_cn: 预热轮数
+          description: 学习率从预热值增长到初始学习率所用的轮数。
+          value: 3.0
+          value_type: double
+          value_range: [0.0, 50.0, 0.1]
+          control_type: spin
+
+        - name_en: warmup_momentum
+          name_cn: 预热动量
+          description: 预热阶段使用的动量值。
+          value: 0.8
+          value_type: double
+          value_range: [0.0, 1.0, 0.001]
+          control_type: slider
+
+        - name_en: warmup_bias_lr
+          name_cn: 预热偏置学习率
+          description: 预热阶段偏置项使用的学习率。
+          value: 0.1
+          value_type: double
+          value_range: [0.0, 1.0, 0.001]
+          control_type: slider
+
+        - name_en: cos_lr
+          name_cn: 余弦学习率
+          description: 使用余弦退火调度代替线性衰减。
+          value: false
+          value_type: bool
+          control_type: checkbox
+
+        - name_en: patience
+          name_cn: 早停耐心
+          description: 验证指标连续多少个 epoch 无提升时提前停止训练，0 表示不早停。
+          value: 100
+          value_type: int
+          value_range: [0, 500, 1]
+          control_type: spin
+
+        - name_en: close_mosaic
+          name_cn: 关闭 Mosaic 轮数
+          description: 训练最后 N 个 epoch 关闭 Mosaic 增强，0 表示训练全程开启。
+          value: 10
+          value_type: int
+          value_range: [0, 100, 1]
+          control_type: spin
+
+        - name_en: seed
+          name_cn: 随机种子
+          description: 随机数种子，用于结果复现。
+          value: 0
+          value_type: int
+          value_range: [0, 999999, 1]
+          control_type: spin
+
+        - name_en: amp
+          name_cn: 混合精度训练
+          description: 使用自动混合精度加速训练并减少显存占用。
+          value: true
+          value_type: bool
+          control_type: checkbox
+
+        - name_en: device
+          name_cn: 设备
+          description: 选择执行训练的计算设备。
+          value: cuda:0
+          value_type: string
+          param_type: dynamic
+          display_type: combo
+          backend_key: training.compute_devices
+
     - name_en: augmentation
       name_cn: 数据增强
       part_index: 1
       params:
         - name_en: mosaic
           name_cn: Mosaic
-          description: 将多张图像拼接为一张图像的数据增强开关。
-          value: true
-          value_type: bool
-          control_type: checkbox
+          description: 将多张图像拼接为一张图像的数据增强概率。
+          value: 1.0
+          value_type: double
+          value_range: [0.0, 1.0, 0.01]
+          control_type: slider
+
         - name_en: mixup
           name_cn: MixUp
-          description: 按比例混合图像及其标注的数据增强开关。
-          value: false
-          value_type: bool
-          control_type: checkbox
+          description: 按比例混合两张图像及其标签的数据增强概率。
+          value: 0.0
+          value_type: double
+          value_range: [0.0, 1.0, 0.01]
+          control_type: slider
+
+        - name_en: copy_paste
+          name_cn: Copy-Paste
+          description: 复制粘贴目标实例的数据增强概率（实例分割有效）。
+          value: 0.0
+          value_type: double
+          value_range: [0.0, 1.0, 0.01]
+          control_type: slider
+
+        - name_en: cutmix
+          name_cn: CutMix
+          description: 将裁剪区域混合到另一张图像的数据增强概率。
+          value: 0.0
+          value_type: double
+          value_range: [0.0, 1.0, 0.01]
+          control_type: slider
+
+        - name_en: hsv_h
+          name_cn: HSV 色相增益
+          description: 色相通道随机扰动的最大强度。
+          value: 0.015
+          value_type: double
+          value_range: [0.0, 0.1, 0.001]
+          control_type: slider
+
+        - name_en: hsv_s
+          name_cn: HSV 饱和度增益
+          description: 饱和度通道随机扰动的最大强度。
+          value: 0.7
+          value_type: double
+          value_range: [0.0, 1.0, 0.01]
+          control_type: slider
+
+        - name_en: hsv_v
+          name_cn: HSV 明度增益
+          description: 明度通道随机扰动的最大强度。
+          value: 0.4
+          value_type: double
+          value_range: [0.0, 1.0, 0.01]
+          control_type: slider
+
+        - name_en: degrees
+          name_cn: 旋转角度
+          description: 随机旋转的最大角度（度）。
+          value: 0.0
+          value_type: double
+          value_range: [0.0, 180.0, 1.0]
+          control_type: slider
+
+        - name_en: translate
+          name_cn: 平移比例
+          description: 随机平移的最大比例（相对图像边长）。
+          value: 0.1
+          value_type: double
+          value_range: [0.0, 1.0, 0.01]
+          control_type: slider
+
+        - name_en: scale
+          name_cn: 缩放比例
+          description: 随机缩放的最大比例。
+          value: 0.5
+          value_type: double
+          value_range: [0.0, 2.0, 0.01]
+          control_type: slider
+
+        - name_en: shear
+          name_cn: 剪切角度
+          description: 随机错切的最大角度（度）。
+          value: 0.0
+          value_type: double
+          value_range: [0.0, 180.0, 1.0]
+          control_type: slider
+
+        - name_en: perspective
+          name_cn: 透视变换
+          description: 随机透视变换的强度。
+          value: 0.0
+          value_type: double
+          value_range: [0.0, 0.01, 0.0001]
+          control_type: slider
+
+        - name_en: flipud
+          name_cn: 垂直翻转概率
+          description: 训练时对图像执行垂直翻转的概率。
+          value: 0.0
+          value_type: double
+          value_range: [0.0, 1.0, 0.01]
+          control_type: slider
+
+        - name_en: fliplr
+          name_cn: 水平翻转概率
+          description: 训练时对图像执行水平翻转的概率。
+          value: 0.5
+          value_type: double
+          value_range: [0.0, 1.0, 0.01]
+          control_type: slider
+
   test_params:
     - name_en: inference
       name_cn: 推理参数
       part_index: 0
       params:
-        - name_en: image_size
+        - name_en: checkpoint
+          name_cn: 权重
+          description: 推理使用的模型权重：用户已训练权重，留空使用当前模型训练的权重。
+          value: ""
+          value_type: string
+          control_type: combo
+          param_type: dynamic
+          backend_key: model.checkpoints
+
+        - name_en: imgsz
           name_cn: 图像尺寸
           description: 推理时将输入图像缩放到的边长。
           value: 640
           value_type: int
-          value_range: [320, 1536, 32]
+          value_range: [128, 4096, 32]
           control_type: spin
-        - name_en: confidence_threshold
+
+        - name_en: conf
           name_cn: 置信度阈值
           description: 低于此置信度的预测实例会被过滤。
           value: 0.25
           value_type: double
           value_range: [0.0, 1.0, 0.01]
           control_type: slider
-        - name_en: nms_threshold
+
+        - name_en: iou
           name_cn: NMS 阈值
           description: 非极大值抑制使用的 IoU 阈值。
-          value: 0.45
+          value: 0.7
           value_type: double
           value_range: [0.0, 1.0, 0.01]
           control_type: slider
-    - name_en: evaluation
-      name_cn: 评估参数
-      part_index: 1
-      params:
-        - name_en: batch_size
-          name_cn: 批量大小
-          description: 一次评估处理的图像数量。
-          value: 8
+
+        - name_en: max_det
+          name_cn: 最大检测数
+          description: 单张图像最多输出的检测框数量。
+          value: 300
           value_type: int
-          value_range: [1, 512, 1]
+          value_range: [1, 1000, 1]
           control_type: spin
-        - name_en: metric
-          name_cn: 评估指标
-          description: 模型评估时计算并展示的主要指标。
-          value: "mAP@0.5"
+
+        - name_en: device
+          name_cn: 设备
+          description: 选择执行推理的计算设备。
+          value: cuda:0
           value_type: string
-          control_type: combo
-          options: ["mAP@0.5", "mAP@0.5:0.95", Recall]
+          param_type: dynamic
+          display_type: combo
+          backend_key: training.compute_devices

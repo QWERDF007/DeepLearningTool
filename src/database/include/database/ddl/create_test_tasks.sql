@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS test_tasks (
+    task_id TEXT    NOT NULL PRIMARY KEY,
+    name    TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+    ctime   INTEGER NOT NULL,
+    mtime   INTEGER NOT NULL
+)

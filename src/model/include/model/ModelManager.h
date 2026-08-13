@@ -272,6 +272,20 @@ public:
     bool updateModelExtraData(const QString &model_uuid, const QVariantMap &updates, QString *err_msg = nullptr);
 
     /**
+     * @brief 重置模型扩展数据中指定 section（如 train）的任务状态字段。
+     *
+     * 任务启动时调用，避免界面保留上一次训练/评估的状态直到新上报到达。
+     * @param model_uuid 模型 UUID
+     * @param section_key 扩展数据中的 section 键（如 "train"）
+     * @param fields 需要移除的字段名列表
+     * @param preset 重置后写入的字段值（如 {"progress": 0}），可为空
+     * @param err_msg 错误信息
+     * @return 重置成功（或无字段变化）返回 true
+     */
+    bool resetModelTaskState(const QString &model_uuid, const QString &section_key, const QStringList &fields,
+                             const QVariantMap &preset = {}, QString *err_msg = nullptr);
+
+    /**
      * @brief 更新模型修改时间
      * @param model_uuid 模型 UUID
      * @param err_msg 错误信息输出

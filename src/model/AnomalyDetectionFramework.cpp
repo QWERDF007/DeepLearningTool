@@ -19,8 +19,8 @@ FrameworkDefinition anomalibFramework()
     framework.python_paths   = {
         QStringLiteral("src"),
         QStringLiteral("."),
-        QStringLiteral("../../task"),
     };
+    framework.weight_extensions = {QStringLiteral(".ckpt")};
     return framework;
 }
 

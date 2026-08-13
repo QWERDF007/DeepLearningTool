@@ -32,7 +32,7 @@ public:
      * @return sqlpp::sqlite3::connection_pool* 数据库连接池指针
      * @details 返回当前数据库的连接池对象指针,可用于获取数据库连接进行操作
      */
-    sqlpp::sqlite3::connection_pool *connectionPool()
+    sqlpp::sqlite3::connection_pool *connectionPool() const
     {
         return pool_;
     }

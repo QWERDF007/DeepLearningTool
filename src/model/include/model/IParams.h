@@ -16,6 +16,8 @@
 
 namespace dltool::model {
 
+class IParams;
+
 /** 模型参数选项的生成方式。 */
 using ParamKind = dltool::parameter::ParameterKind;
 
@@ -183,6 +185,34 @@ public:
     Q_INVOKABLE QVariantMap valuesMap() const;
 
     /**
+     * @brief 获取权重组件（weight_combo 控件）的两级选项列表。
+     *
+     * 一级为官方权重叶子项（若参数声明了 weight_sizes/weight_name_template）与
+     * 同框架同架构（且尺寸匹配时）的用户已训练模型；二级为用户模型权重文件。
+     * @param row 权重参数所在行
+     * @param size_hint 显式尺寸，空时自动从本组 weight_size_param 或训练侧参数解析
+     * @return 形如 {label, value, subOptions:[{label, value}]} 的列表
+     */
+    Q_INVOKABLE QVariantList nestedOptions(int row, const QString &size_hint = {}) const;
+
+    /**
+     * @brief 设置权重组件枚举上下文（项目目录、项目数据库、框架、架构、模型名）
+     * @param project_dir 项目目录
+     * @param project_db 项目数据库路径
+     * @param framework_name 框架名称
+     * @param architecture 模型架构名称
+     * @param model_name 当前模型名称
+     */
+    void setWeightContext(const QString &project_dir, const QString &project_db, const QString &framework_name,
+                          const QString &architecture, const QString &model_name);
+
+    /**
+     * @brief 设置尺寸参数的来源参数集（测试参数指向训练参数）
+     * @param source 提供 weight_size_param 取值的参数集，可为空
+     */
+    void setWeightSizeSource(IParams *source);
+
+    /**
      * @brief 从另一个参数组复制值
      * @param other 源参数组
      */
@@ -214,12 +244,69 @@ private:
      */
     int indexOfParam(const QString &name_en) const;
 
+    /**
+     * @brief 求值参数的 enabled_when 条件表达式
+     * @param param 参数定义
+     * @return 表达式为真返回 true；无表达式返回 true
+     */
+    bool evaluateEnabledWhen(const ParamDefinition &param) const;
+
+    /**
+     * @brief 获取引用指定参数的 enabled_when 表达式所在行（用于值变化后刷新）
+     * @param name_en 参数英文名
+     * @return 行号集合
+     */
+    QVector<int> dependentRows(const QString &name_en) const;
+
+    /**
+     * @brief 解析尺寸值：优先显式传入，其次本组 weight_size_param，其次训练侧参数集
+     * @param size_hint 显式尺寸
+     * @param param 权重参数定义
+     * @return 尺寸值，无法解析返回空
+     */
+    QString resolveWeightSize(const QString &size_hint, const ParamDefinition &param) const;
+
+    /**
+     * @brief 获取当前框架注册的可枚举权重扩展名列表
+     * @return 扩展名列表（如 .pt），框架未注册时为空
+     */
+    QStringList weightExtensions() const;
+
+    /**
+     * @brief 判断是否为动态自身权重参数（backend_key = model.checkpoints）
+     */
+    bool isWeightParam(const ParamDefinition &param) const;
+
+    /**
+     * @brief 实时解析自身权重参数的单级选项，填充 value_map
+     * @param param 参数定义
+     * @param value_map 输出：显示值到实际值的映射
+     * @return 选项显示值列表
+     */
+    QVariantList resolveWeightOptions(const ParamDefinition &param, QVariantMap &value_map) const;
+
+    /**
+     * @brief 获取参数选项显示值列表（权重参数实时解析）
+     */
+    QVariantList paramOptions(const ParamDefinition &param) const;
+
+    /**
+     * @brief 获取参数显示值到实际值的映射（权重参数实时解析）
+     */
+    QVariantMap paramOptionsValueMap(const ParamDefinition &param) const;
+
     QString                      name_en_;
     QString                      name_cn_;
     QString                      description_;
     bool                         enabled_{true};
     int                          part_index_{0};
     std::vector<ParamDefinition> params_;
+    QString                      weight_project_dir_;
+    QString                      weight_project_db_;
+    QString                      weight_framework_;
+    QString                      weight_architecture_;
+    QString                      weight_model_name_;
+    IParams                     *weight_size_source_{nullptr};
 };
 
 /**
@@ -330,6 +417,30 @@ public:
      */
     bool setValuesMap(const QVariantMap &values);
 
+    /**
+     * @brief 向所有参数组设置权重组件枚举上下文
+     * @param project_dir 项目目录
+     * @param project_db 项目数据库路径
+     * @param framework_name 框架名称
+     * @param architecture 模型架构名称
+     * @param model_name 当前模型名称
+     */
+    void setWeightContext(const QString &project_dir, const QString &project_db, const QString &framework_name,
+                          const QString &architecture, const QString &model_name);
+
+    /**
+     * @brief 设置尺寸参数来源参数集（测试参数指向训练参数）
+     * @param source 提供 weight_size_param 取值的参数集，可为空
+     */
+    void setWeightSizeSource(IParams *source);
+
+    /**
+     * @brief 在所有参数组中查找指定参数的有效值
+     * @param name_en 参数英文名
+     * @return 参数值字符串，未找到返回空
+     */
+    QString weightSizeValue(const QString &name_en) const;
+
 signals:
     void groupCountChanged();
 
@@ -405,3 +516,5 @@ public:
 };
 
 } // namespace dltool::model
+
+

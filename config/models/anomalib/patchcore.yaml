@@ -39,6 +39,13 @@ train_params:
         value_type: bool
         control_type: checkbox
 
+      - name_en: checkpoint
+        name_cn: 初始权重
+        description: 训练使用的初始权重：同架构用户已训练权重，留空使用默认初始化。
+        value: ""
+        value_type: string
+        control_type: group_combo
+
       - name_en: layers
         name_cn: 特征层
         description: 从骨干网络提取特征的层，多个层以逗号分隔。
@@ -69,7 +76,7 @@ train_params:
       - name_en: batch_size
         name_cn: 批量大小
         description: 每次训练或验证处理的图像数量。
-        value: 32
+        value: 8
         value_type: int
         value_range: [1, 512, 1]
         control_type: spin
@@ -85,7 +92,7 @@ train_params:
       - name_en: num_workers
         name_cn: 数据加载进程
         description: 用于并行读取和预处理数据的工作进程数。
-        value: 8
+        value: 2
         value_type: int
         value_range: [0, 64, 1]
         control_type: spin
@@ -122,7 +129,7 @@ test_params:
       - name_en: batch_size
         name_cn: 批量大小
         description: 每次测试处理的图像数量。
-        value: 32
+        value: 8
         value_type: int
         value_range: [1, 512, 1]
         control_type: spin
@@ -130,7 +137,7 @@ test_params:
       - name_en: num_workers
         name_cn: 数据加载进程
         description: 用于并行读取和预处理测试数据的工作进程数。
-        value: 8
+        value: 2
         value_type: int
         value_range: [0, 64, 1]
         control_type: spin
@@ -147,9 +154,11 @@ test_params:
         display_type: combo
         backend_key: training.compute_devices
 
-      - name_en: checkpoint_path
-        name_cn: 检查点路径
-        description: 用于测试的模型检查点文件路径。
+      - name_en: checkpoint
+        name_cn: 权重
+        description: 推理使用的模型权重：用户已训练权重，留空使用当前模型训练的权重。
         value: ""
         value_type: string
-        control_type: file
+        control_type: combo
+        param_type: dynamic
+        backend_key: model.checkpoints

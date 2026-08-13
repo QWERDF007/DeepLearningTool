@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
+import QtQuick.Templates as T
 import dltool.ui
 import dltool.model
 import quickui
@@ -177,6 +179,9 @@ Item {
                                         if (type === "combo") {
                                             return comboEditorComponent;
                                         }
+                                        if (type === "group_combo") {
+                                            return weightComboEditorComponent;
+                                        }
                                         return textEditorComponent;
                                     }
 
@@ -337,6 +342,25 @@ Item {
                                             onEditingFinished: delegateRoot.commitValue(text)
                                         }
                                     }
+
+                                    Component {
+                                        id: weightComboEditorComponent
+
+                                        QuiGroupComboBox {
+                                            anchors.fill: parent
+                                            enabled: delegateRoot.paramEnabled
+                                            // 绑定当前值：模型切换/值变化后自动重定位显示，不再依赖打开时手动设置。
+                                            savedValue: String(delegateRoot.paramValue === undefined ? "" : delegateRoot.paramValue)
+
+                                            onAboutToOpen: {
+                                                optionGroups = groupModel ? (groupModel.nestedOptions(rowIndex, "") || []) : []
+                                            }
+
+                                            onCommit: function(value) {
+                                                delegateRoot.commitValue(value)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -346,3 +370,4 @@ Item {
         }
     }
 }
+

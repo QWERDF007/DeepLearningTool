@@ -19,6 +19,12 @@ public:
         CreateTagClasses,
         CreateTags,
         CreateModels,
+        CreateTrainParams,
+        CreateTestParams,
+        CreateModelDatasets,
+        CreateTestTasks,
+        CreateTaskInfo,
+        CreatePrediction,
     };
 
     // clang-format off
@@ -49,6 +55,23 @@ public:
         {CreateModels,
          "CREATE TABLE IF NOT EXISTS models (id INTEGER NOT NULL PRIMARY KEY, uuid TEXT NOT NULL UNIQUE, name TEXT, "
          "framework_name TEXT, model_architecture TEXT, ctime INTEGER NOT NULL, mtime INTEGER NOT NULL, extra_data BLOB)"},
+        {CreateTrainParams,
+         "CREATE TABLE IF NOT EXISTS train_params (\"group\" TEXT NOT NULL, name_en TEXT NOT NULL, value TEXT NOT NULL, "
+         "type TEXT NOT NULL, PRIMARY KEY (\"group\", name_en))"},
+        {CreateTestParams,
+         "CREATE TABLE IF NOT EXISTS test_params (\"group\" TEXT NOT NULL, name_en TEXT NOT NULL, value TEXT NOT NULL, "
+         "type TEXT NOT NULL, PRIMARY KEY (\"group\", name_en))"},
+        {CreateModelDatasets,
+         "CREATE TABLE IF NOT EXISTS datasets (type TEXT NOT NULL, dataset_id INTEGER NOT NULL, class_ids TEXT NOT NULL, "
+         "PRIMARY KEY (type, dataset_id))"},
+        {CreateTestTasks,
+         "CREATE TABLE IF NOT EXISTS test_tasks (task_id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE "
+         "NOCASE, ctime INTEGER NOT NULL, mtime INTEGER NOT NULL)"},
+        {CreateTaskInfo,
+         "CREATE TABLE IF NOT EXISTS task_info (task_id TEXT NOT NULL PRIMARY KEY, ctime INTEGER NOT NULL, "
+         "mtime INTEGER NOT NULL)"},
+        {CreatePrediction,
+         "CREATE TABLE IF NOT EXISTS prediction (image_id INTEGER NOT NULL PRIMARY KEY, data TEXT NOT NULL)"},
     };
 
     // clang-format on

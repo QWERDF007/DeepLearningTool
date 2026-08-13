@@ -715,6 +715,58 @@ bool ModelManager::updateModelExtraData(const QString &model_uuid, const QVarian
     return true;
 }
 
+bool ModelManager::resetModelTaskState(const QString &model_uuid, const QString &section_key,
+                                       const QStringList &fields, const QVariantMap &preset, QString *err_msg)
+{
+    const int row = indexOfUuid(model_uuid.trimmed());
+    if (row < 0)
+        return setError(err_msg, QString("模型不存在: %1").arg(model_uuid.trimmed()));
+
+    ModelRecord &record  = models_[static_cast<size_t>(row)];
+    QVariantMap  merged  = record.extra_data;
+    QVariantMap  section = merged.value(section_key).toMap();
+    bool         changed = false;
+    for (const QString &field : fields)
+        changed = section.remove(field) > 0 || changed;
+    for (auto it = preset.cbegin(); it != preset.cend(); ++it)
+        changed = section.value(it.key()) != it.value() || changed;
+    if (!changed)
+        return true;
+
+    for (auto it = preset.cbegin(); it != preset.cend(); ++it)
+        section.insert(it.key(), it.value());
+    if (section.isEmpty())
+        merged.remove(section_key);
+    else
+        merged.insert(section_key, section);
+    if (merged == record.extra_data)
+        return true;
+
+    const FrameworkDefinition framework         = registeredFramework(method_, record.framework_name);
+    const bool                write_to_database = framework.name.isEmpty() || framework.write_to_database;
+    QString                   local_err_msg;
+    if (write_to_database)
+    {
+        if (database_ == nullptr)
+        {
+            setError(err_msg, QString("数据库对象为空"));
+            return false;
+        }
+        if (!database_->updateModelExtraData(record.model_id, extraDataToBlob(merged), local_err_msg))
+        {
+            setError(err_msg, local_err_msg);
+            spdlog::error("重置模型任务状态失败, uuid: {}, 错误: {}", record.uuid.toUtf8().constData(),
+                          local_err_msg.toUtf8().constData());
+            return false;
+        }
+    }
+
+    record.extra_data = merged;
+    emit dataChanged(index(row), index(row), {ExtraDataRole});
+    emit modelExtraDataChanged(record.uuid);
+    return true;
+}
+
 bool ModelManager::touchModelModifiedTime(const QString &model_uuid, QString *err_msg)
 {
     const int row = indexOfUuid(model_uuid.trimmed());
@@ -921,10 +973,19 @@ void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const 
 
     IModel       *model        = found->second.get();
     IModelConfig *model_config = found->second->config();
-    if (!train_params.isEmpty())
+    const int     model_index  = indexOfUuid(model_uuid);
+    const QString model_name   = model_index >= 0 ? models_.at(static_cast<size_t>(model_index)).name : QString();
+    if (ITrainParams *params = model_config->trainParams(); params != nullptr)
     {
-        if (ITrainParams *params = model_config->trainParams(); params != nullptr)
-            params->setValuesMap(train_params);
+        params->setWeightContext(project_dir_, projectDatabasePath(), model->frameworkName(),
+                                 model->modelArchitecture(), model_name);
+        params->setValuesMap(train_params);
+    }
+    if (ITestParams *params = model_config->testParams(); params != nullptr)
+    {
+        params->setWeightContext(project_dir_, projectDatabasePath(), model->frameworkName(),
+                                 model->modelArchitecture(), model_name);
+        params->setWeightSizeSource(model_config->trainParams());
     }
     applyModelDatasetSelections(model, modelDatasetSelectionsMap(dataset_selections));
 }
@@ -1008,6 +1069,20 @@ IModel *ModelManager::cachedModelForRecord(const ModelRecord &record) const
             model->setParent(const_cast<ModelManager *>(this));
             model->setUuid(trimmed_uuid);
             QQmlEngine::setObjectOwnership(model.get(), QQmlEngine::CppOwnership);
+            if (IModelConfig *model_config = model->config(); model_config != nullptr)
+            {
+                if (ITrainParams *params = model_config->trainParams(); params != nullptr)
+                {
+                    params->setWeightContext(project_dir_, projectDatabasePath(), model->frameworkName(),
+                                             model->modelArchitecture(), record.name);
+                }
+                if (ITestParams *params = model_config->testParams(); params != nullptr)
+                {
+                    params->setWeightContext(project_dir_, projectDatabasePath(), model->frameworkName(),
+                                             model->modelArchitecture(), record.name);
+                    params->setWeightSizeSource(model_config->trainParams());
+                }
+            }
         }
     }
     return model.get();

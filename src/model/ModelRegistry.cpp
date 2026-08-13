@@ -115,6 +115,12 @@ FrameworkDefinition resolvedFrameworkDefinition(const FrameworkDefinition &defin
     resolved.python_paths.clear();
     for (const QString &path : definition.python_paths)
         resolved.python_paths.append(dltool::common::resolvePath(resolved.root, path));
+    // 公共任务协议目录（entrypoint/dltool_task_*）统一注入：所有框架的 Python 根目录
+    // 都位于 <runtime>/python/<...> 下，task 目录固定为 <runtime>/python/task，
+    // 集中追加避免各框架注册时按目录深度重复维护相对路径。
+    const QString task_path = dltool::common::runtimePath(QStringLiteral("python/task"));
+    if (!task_path.isEmpty() && !resolved.python_paths.contains(task_path))
+        resolved.python_paths.append(task_path);
     return resolved;
 }
 

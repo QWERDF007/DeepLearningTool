@@ -20,7 +20,6 @@ FrameworkDefinition fsSam2Framework()
     framework.scripts.insert(QStringLiteral("box_to_mask"), QStringLiteral("box_to_mask.py"));
     framework.python_paths = {
         QStringLiteral("."),
-        QStringLiteral("../../task"),
     };
     framework.visible_for_model_creation = false;
     framework.write_to_database          = true;

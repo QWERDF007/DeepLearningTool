@@ -51,6 +51,7 @@ struct MODEL_API FrameworkDefinition
     bool                                 write_to_database{true};          ///< 是否写入数据库
     bool                                 few_shot{false}; ///< 小样本流程：无 UUID 测试任务记录、无评估适配器
     QString                              default_test_task_directory; ///< 默认测试目录名（FS-SAM2 填 "fs_sam2"）
+    QStringList                          weight_extensions; ///< 可枚举的权重文件扩展名列表（如 {".pt"}），驱动权重组件二级菜单
 
     /**
      * @brief 获取指定任务类型的能力

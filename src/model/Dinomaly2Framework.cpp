@@ -17,8 +17,8 @@ FrameworkDefinition dinomaly2Framework()
     framework.predict_script = QStringLiteral("predict.py");
     framework.python_paths   = {
         QStringLiteral("."),
-        QStringLiteral("../../task"),
     };
+    framework.weight_extensions = {QStringLiteral(".pth")};
     return framework;
 }
 

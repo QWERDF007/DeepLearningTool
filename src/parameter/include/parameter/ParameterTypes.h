@@ -43,6 +43,10 @@ struct PARAMETER_API ParameterSpec
     ParameterKind kind{ParameterKind::Static};          ///< 参数选项生成方式。
     bool          enabled{true};                        ///< 是否启用。
     QString       unit;                                 ///< 单位。
+    QString       enabled_when;                         ///< 启用条件表达式（引用同组其他参数的 name_en），空表示始终启用。
+    QStringList   variants;                             ///< 分组下拉的变体列表（如 {n,s,m,l,x}），空表示无预置叶子项。
+    QString       variant_name_template;                ///< 变体叶子项名模板，{size} 会被替换为所选变体（如 "yolov8{size}.pt"）。
+    QString       variant_param;                        ///< 决定预置叶子项与选项过滤的变体参数名（同组或训练侧）。
 };
 
 } // namespace dltool::parameter

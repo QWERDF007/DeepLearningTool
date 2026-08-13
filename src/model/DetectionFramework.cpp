@@ -13,14 +13,14 @@ FrameworkDefinition ultralyticsFramework()
 {
     FrameworkDefinition framework;
     framework.name           = QStringLiteral("ultralytics");
-    framework.root           = QStringLiteral("python/ultralytics");
+    framework.root           = QStringLiteral("python/ultralytics/ultralytics");
     framework.train_script   = QStringLiteral("train.py");
     framework.predict_script = QStringLiteral("predict.py");
     framework.python_paths   = {
-        QStringLiteral("ultralytics"),
         QStringLiteral("."),
-        QStringLiteral("../../task"),
+        QStringLiteral(".."),
     };
+    framework.weight_extensions = {QStringLiteral(".pt")};
     return framework;
 }
 

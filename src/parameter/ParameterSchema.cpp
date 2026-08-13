@@ -125,6 +125,16 @@ ParameterSpec parseParameterSpec(const YAML::Node &node)
         parameter.options_value_map = nodeVariant(node["options_value_map"]).toMap();
     parameter.enabled = node["enabled"] ? node["enabled"].as<bool>() : true;
     parameter.unit    = nodeString(node["unit"]);
+    parameter.enabled_when = nodeString(node["enabled_when"]);
+    parameter.variant_param = nodeString(node["variant_param"]);
+
+    const YAML::Node variants_node = node["variants"];
+    if (variants_node && variants_node.IsSequence())
+    {
+        for (const YAML::Node &entry : variants_node)
+            parameter.variants.append(nodeString(entry));
+    }
+    parameter.variant_name_template = nodeString(node["variant_name_template"]);
 
     const YAML::Node options_node = node["options"];
     if (options_node && options_node.IsSequence())
