@@ -104,7 +104,7 @@ Item {
                                     property int rowIndex: index
                                     property real labelWidth: Math.max(0, Math.floor(width / 3))
                                     property string paramNameEn: modelValue("nameEn", "")
-                                    property string paramLabel: modelValue("nameCn", paramNameEn)
+                                    property string paramLabel: paramNameEn
                                     property string paramDescription: modelValue("description", "").trim()
                                     property bool hasParamDescription: paramDescription.length > 0
                                     property string paramDisplayType: modelValue("displayType", "text")
@@ -347,16 +347,94 @@ Item {
                                         id: weightComboEditorComponent
 
                                         QuiGroupComboBox {
+                                            id: combo
                                             anchors.fill: parent
                                             enabled: delegateRoot.paramEnabled
-                                            // 绑定当前值：模型切换/值变化后自动重定位显示，不再依赖打开时手动设置。
-                                            savedValue: String(delegateRoot.paramValue === undefined ? "" : delegateRoot.paramValue)
+                                            property var watchedValue: delegateRoot.paramValue
+                                            property var watchedOptions: delegateRoot.paramOptions
+                                            property string resolvedSavedValue: ""
+                                            savedValue: resolvedSavedValue
+
+                                            Component.onCompleted: {
+                                                refreshCheckpointOptions()
+                                            }
+
+                                            function valueForSelection(value, groups) {
+                                                const raw = collapseDuplicateLabel(value)
+                                                for (let i = 0; i < groups.length; ++i) {
+                                                    const group = groups[i]
+                                                    const groupValue = group && group.value !== undefined ? String(group.value) : ""
+                                                    if (groupValue === raw)
+                                                        return raw
+                                                    const subs = group && group.subOptions ? group.subOptions : []
+                                                    for (let j = 0; j < subs.length; ++j) {
+                                                        const sub = subs[j]
+                                                        const subValue = sub && sub.value !== undefined ? String(sub.value) : ""
+                                                        const label = String(group.label) + " / " + String(sub.label)
+                                                        if (subValue === raw || label === raw
+                                                                || stripExtension(label) === stripExtension(raw))
+                                                            return subValue
+                                                    }
+                                                }
+                                                for (let i = 0; i < groups.length; ++i) {
+                                                    const group = groups[i]
+                                                    const groupValue = group && group.value !== undefined ? String(group.value) : ""
+                                                    if (groupValue.length > 0 && stripExtension(raw) === stripExtension(groupValue))
+                                                        return groupValue
+                                                }
+                                                return raw
+                                            }
+
+                                            function stripExtension(value) {
+                                                const raw = String(value)
+                                                const slash = Math.max(raw.lastIndexOf("/"), raw.lastIndexOf("\\"))
+                                                const dot = raw.lastIndexOf(".")
+                                                return dot > slash ? raw.substring(0, dot) : raw
+                                            }
+
+                                            function collapseDuplicateLabel(value) {
+                                                const raw = value === undefined || value === null ? "" : String(value)
+                                                const parts = raw.split(" / ")
+                                                if (parts.length === 2 && parts[0] === parts[1])
+                                                    return parts[0]
+                                                if (parts.length > 2 && parts.length % 2 === 0) {
+                                                    const half = parts.length / 2
+                                                    let duplicated = true
+                                                    for (let i = 0; i < half; ++i) {
+                                                        if (parts[i] !== parts[i + half]) {
+                                                            duplicated = false
+                                                            break
+                                                        }
+                                                    }
+                                                    if (duplicated)
+                                                        return parts.slice(0, half).join(" / ")
+                                                }
+                                                return raw
+                                            }
+
+                                            function refreshCheckpointOptions() {
+                                                const groups = groupModel ? (groupModel.nestedOptions(rowIndex) || []) : []
+                                                optionGroups = groups
+                                                resolvedSavedValue = valueForSelection(delegateRoot.paramValue, groups)
+                                            }
+
+                                            onWatchedValueChanged: {
+                                                // 模型切换/联动值变化后同步选项，避免关闭状态下残留旧模型的选项导致显示空白。
+                                                if (!combo.popup.opened)
+                                                    refreshCheckpointOptions()
+                                            }
+
+                                            onWatchedOptionsChanged: {
+                                                if (!combo.popup.opened)
+                                                    refreshCheckpointOptions()
+                                            }
 
                                             onAboutToOpen: {
-                                                optionGroups = groupModel ? (groupModel.nestedOptions(rowIndex, "") || []) : []
+                                                refreshCheckpointOptions()
                                             }
 
                                             onCommit: function(value) {
+                                                resolvedSavedValue = value
                                                 delegateRoot.commitValue(value)
                                             }
                                         }

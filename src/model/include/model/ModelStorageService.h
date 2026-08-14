@@ -89,16 +89,14 @@ public:
     QString trainLogPath(const QString &model_name) const;
 
     QString testRoot(const QString &model_name) const;
-    QString testLogsPath(const QString &model_name) const;
     QString testTaskRoot(const QString &model_name, const QString &task_directory) const;
     QString testTaskDatabasePath(const QString &model_name, const QString &task_directory) const;
     QString testTaskFileListPath(const QString &model_name, const QString &task_directory) const;
     QString testTaskPredictionPath(const QString &model_name, const QString &task_directory) const;
-    QString testTaskLogPath(const QString &model_name, const QString &task_uuid) const;
+    QString testTaskLogPath(const QString &model_name, const QString &task_directory) const;
 
     ModelTaskPaths trainPaths(const QString &model_name) const;
-    ModelTaskPaths testPaths(const QString &model_name, const QString &task_directory,
-                             const QString &task_uuid = {}) const;
+    ModelTaskPaths testPaths(const QString &model_name, const QString &task_directory) const;
 
     bool ensureTrainStorage(const QString &model_name, QString *err_msg = nullptr) const;
     bool ensureTestStorage(const QString &model_name, QString *err_msg = nullptr) const;

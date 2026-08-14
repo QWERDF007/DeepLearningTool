@@ -8,23 +8,24 @@ YOLOv5:
       name_cn: 网络参数
       part_index: 0
       params:
-        - name_en: model_size
-          name_cn: 模型尺寸
-          description: 官方预训练权重的模型尺寸，同时用于过滤可选的用户已训练权重。
-          value: n
+        - name_en: model
+          name_cn: 模型
+          description: 官方预训练模型，同时用于决定权重组件的官方权重与过滤用户已训练权重。
+          value: yolov5n
           value_type: string
           control_type: combo
-          options: [n, s, m, l, x]
+          options: [yolov5n, yolov5s, yolov5m, yolov5l, yolov5x]
 
         - name_en: checkpoint
           name_cn: 权重
-          description: 训练使用的初始权重：官方预训练权重，或同架构同尺寸的用户已训练权重。
+          description: 训练使用的初始权重：官方预训练权重，或同架构同模型参数的用户已训练权重。
           value: yolov5n.pt
           value_type: string
           control_type: group_combo
-          variants: [n, s, m, l, x]
-          variant_name_template: "yolov5{size}.pt"
-          variant_param: model_size
+          param_type: dynamic
+          backend_key: model.checkpoints
+          model_param_name: model
+          official_weight: true
 
         - name_en: imgsz
           name_cn: 图像尺寸
@@ -174,6 +175,14 @@ YOLOv5:
           display_type: combo
           backend_key: training.compute_devices
 
+        - name_en: val
+          name_cn: 验证间隔
+          description: 每隔多少个 epoch 在验证集上评估一次，1 表示每个 epoch 都验证。
+          value: 1
+          value_type: int
+          value_range: [1, 100, 1]
+          control_type: spin
+
     - name_en: augmentation
       name_cn: 数据增强
       part_index: 1
@@ -300,9 +309,19 @@ YOLOv5:
           description: 推理使用的模型权重：用户已训练权重，留空使用当前模型训练的权重。
           value: ""
           value_type: string
-          control_type: combo
+          control_type: group_combo
           param_type: dynamic
           backend_key: model.checkpoints
+          model_param_name: model
+          official_weight: true
+
+        - name_en: batch_size
+          name_cn: 批量大小
+          description: 每次同时送入模型进行推理的图像数量。
+          value: 1
+          value_type: int
+          value_range: [1, 512, 1]
+          control_type: spin
 
         - name_en: imgsz
           name_cn: 图像尺寸

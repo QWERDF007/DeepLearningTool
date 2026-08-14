@@ -985,7 +985,6 @@ void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const 
     {
         params->setWeightContext(project_dir_, projectDatabasePath(), model->frameworkName(),
                                  model->modelArchitecture(), model_name);
-        params->setWeightSizeSource(model_config->trainParams());
     }
     applyModelDatasetSelections(model, modelDatasetSelectionsMap(dataset_selections));
 }
@@ -1080,7 +1079,6 @@ IModel *ModelManager::cachedModelForRecord(const ModelRecord &record) const
                 {
                     params->setWeightContext(project_dir_, projectDatabasePath(), model->frameworkName(),
                                              model->modelArchitecture(), record.name);
-                    params->setWeightSizeSource(model_config->trainParams());
                 }
             }
         }

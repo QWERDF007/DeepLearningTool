@@ -126,6 +126,10 @@ ParameterSpec parseParameterSpec(const YAML::Node &node)
     parameter.enabled = node["enabled"] ? node["enabled"].as<bool>() : true;
     parameter.unit    = nodeString(node["unit"]);
     parameter.enabled_when = nodeString(node["enabled_when"]);
+    parameter.model_param_name = nodeString(node["model_param_name"]);
+    if (parameter.model_param_name.isEmpty())
+        parameter.model_param_name = nodeString(node["model_param"]);
+    parameter.official_weight = node["official_weight"] ? node["official_weight"].as<bool>() : false;
     parameter.variant_param = nodeString(node["variant_param"]);
 
     const YAML::Node variants_node = node["variants"];

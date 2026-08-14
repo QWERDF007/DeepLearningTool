@@ -16,8 +16,6 @@
 
 namespace dltool::model {
 
-class IParams;
-
 /** 模型参数选项的生成方式。 */
 using ParamKind = dltool::parameter::ParameterKind;
 
@@ -185,15 +183,12 @@ public:
     Q_INVOKABLE QVariantMap valuesMap() const;
 
     /**
-     * @brief 获取权重组件（weight_combo 控件）的两级选项列表。
-     *
-     * 一级为官方权重叶子项（若参数声明了 weight_sizes/weight_name_template）与
-     * 同框架同架构（且尺寸匹配时）的用户已训练模型；二级为用户模型权重文件。
-     * @param row 权重参数所在行
-     * @param size_hint 显式尺寸，空时自动从本组 weight_size_param 或训练侧参数解析
+     * @brief 获取 model.checkpoints provider 返回的两级选项列表。
+     * @param row checkpoint 参数所在行
+     * @param unused 保留旧 QML 调用签名
      * @return 形如 {label, value, subOptions:[{label, value}]} 的列表
      */
-    Q_INVOKABLE QVariantList nestedOptions(int row, const QString &size_hint = {}) const;
+    Q_INVOKABLE QVariantList nestedOptions(int row, const QString &unused = {}) const;
 
     /**
      * @brief 设置权重组件枚举上下文（项目目录、项目数据库、框架、架构、模型名）
@@ -205,12 +200,6 @@ public:
      */
     void setWeightContext(const QString &project_dir, const QString &project_db, const QString &framework_name,
                           const QString &architecture, const QString &model_name);
-
-    /**
-     * @brief 设置尺寸参数的来源参数集（测试参数指向训练参数）
-     * @param source 提供 weight_size_param 取值的参数集，可为空
-     */
-    void setWeightSizeSource(IParams *source);
 
     /**
      * @brief 从另一个参数组复制值
@@ -259,14 +248,6 @@ private:
     QVector<int> dependentRows(const QString &name_en) const;
 
     /**
-     * @brief 解析尺寸值：优先显式传入，其次本组 weight_size_param，其次训练侧参数集
-     * @param size_hint 显式尺寸
-     * @param param 权重参数定义
-     * @return 尺寸值，无法解析返回空
-     */
-    QString resolveWeightSize(const QString &size_hint, const ParamDefinition &param) const;
-
-    /**
      * @brief 获取当前框架注册的可枚举权重扩展名列表
      * @return 扩展名列表（如 .pt），框架未注册时为空
      */
@@ -295,6 +276,9 @@ private:
      */
     QVariantMap paramOptionsValueMap(const ParamDefinition &param) const;
 
+    /** 构造 model.checkpoints provider 所需的运行时上下文。 */
+    QVariantMap weightOptionsContext(const ParamDefinition &param) const;
+
     QString                      name_en_;
     QString                      name_cn_;
     QString                      description_;
@@ -306,7 +290,6 @@ private:
     QString                      weight_framework_;
     QString                      weight_architecture_;
     QString                      weight_model_name_;
-    IParams                     *weight_size_source_{nullptr};
 };
 
 /**
@@ -427,19 +410,6 @@ public:
      */
     void setWeightContext(const QString &project_dir, const QString &project_db, const QString &framework_name,
                           const QString &architecture, const QString &model_name);
-
-    /**
-     * @brief 设置尺寸参数来源参数集（测试参数指向训练参数）
-     * @param source 提供 weight_size_param 取值的参数集，可为空
-     */
-    void setWeightSizeSource(IParams *source);
-
-    /**
-     * @brief 在所有参数组中查找指定参数的有效值
-     * @param name_en 参数英文名
-     * @return 参数值字符串，未找到返回空
-     */
-    QString weightSizeValue(const QString &name_en) const;
 
 signals:
     void groupCountChanged();

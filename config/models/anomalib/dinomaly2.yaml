@@ -29,6 +29,9 @@ train_params:
         value: ""
         value_type: string
         control_type: group_combo
+        param_type: dynamic
+        backend_key: model.checkpoints
+        model_param_name: encoder_name
 
       - name_en: image_channels
         name_cn: 图像通道
@@ -178,6 +181,7 @@ test_params:
         description: 推理使用的模型权重：用户已训练权重，留空使用当前模型训练的权重。
         value: ""
         value_type: string
-        control_type: combo
+        control_type: group_combo
         param_type: dynamic
         backend_key: model.checkpoints
+        model_param_name: encoder_name

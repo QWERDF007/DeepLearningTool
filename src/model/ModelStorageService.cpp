@@ -162,12 +162,6 @@ QString ModelStorageService::testRoot(const QString &model_name) const
     return path(model_name, ModelStorageLocation::Test);
 }
 
-QString ModelStorageService::testLogsPath(const QString &model_name) const
-{
-    const QString root = testRoot(model_name);
-    return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral("logs")));
-}
-
 QString ModelStorageService::testTaskRoot(const QString &model_name, const QString &task_directory) const
 {
     return safeTaskChild(testRoot(model_name), task_directory);
@@ -193,13 +187,12 @@ QString ModelStorageService::testTaskPredictionPath(const QString &model_name, c
     return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral("pred")));
 }
 
-QString ModelStorageService::testTaskLogPath(const QString &model_name, const QString &task_uuid) const
+QString ModelStorageService::testTaskLogPath(const QString &model_name, const QString &task_directory) const
 {
-    const QString root = testLogsPath(model_name);
-    const QString safe_uuid = task_uuid.trimmed();
-    if (root.isEmpty() || safe_uuid.isEmpty() || safe_uuid.contains(QChar('/')) || safe_uuid.contains(QChar('\\')))
+    const QString root = testTaskRoot(model_name, task_directory);
+    if (root.isEmpty())
         return {};
-    return cleanPath(QDir(root).filePath(safe_uuid + QStringLiteral(".log")));
+    return cleanPath(QDir(root).filePath(QStringLiteral("test.log")));
 }
 
 ModelTaskPaths ModelStorageService::trainPaths(const QString &model_name) const
@@ -215,8 +208,7 @@ ModelTaskPaths ModelStorageService::trainPaths(const QString &model_name) const
     return paths;
 }
 
-ModelTaskPaths ModelStorageService::testPaths(const QString &model_name, const QString &task_directory,
-                                              const QString &task_uuid) const
+ModelTaskPaths ModelStorageService::testPaths(const QString &model_name, const QString &task_directory) const
 {
     ModelTaskPaths paths;
     paths.model_root = path(model_name, ModelStorageLocation::ModelRoot);
@@ -224,10 +216,8 @@ ModelTaskPaths ModelStorageService::testPaths(const QString &model_name, const Q
     paths.database_path = testTaskDatabasePath(model_name, task_directory);
     paths.dataset_dir = sharedDatasetPath(model_name);
     paths.weight_dir = trainWeightsPath(model_name);
-    paths.log_dir = testLogsPath(model_name);
-    // Test logs are shared by all task directories and are keyed by the
-    // stable task UUID, so a rename never changes the log association.
-    paths.log_path = testTaskLogPath(model_name, task_uuid.trimmed().isEmpty() ? task_directory : task_uuid);
+    paths.log_dir = paths.task_root;
+    paths.log_path = testTaskLogPath(model_name, task_directory);
     paths.prediction_dir = testTaskPredictionPath(model_name, task_directory);
     return paths;
 }
@@ -247,10 +237,7 @@ bool ModelStorageService::ensureTrainStorage(const QString &model_name, QString 
 
 bool ModelStorageService::ensureTestStorage(const QString &model_name, QString *err_msg) const
 {
-    if (!ensureDirectory(testRoot(model_name), err_msg, QString("测试目录为空"), QString("创建测试目录失败: %1")))
-        return false;
-    return ensureDirectory(testLogsPath(model_name), err_msg, QString("测试日志目录为空"),
-                           QString("创建测试日志目录失败: %1"));
+    return ensureDirectory(testRoot(model_name), err_msg, QString("测试目录为空"), QString("创建测试目录失败: %1"));
 }
 
 bool ModelStorageService::ensureTestTaskStorage(const QString &model_name, const QString &task_directory,

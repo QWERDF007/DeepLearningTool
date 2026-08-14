@@ -47,6 +47,11 @@ const auto TagClassesTable      = TagClasses{};
 const auto TagsTable            = Tags{};
 const auto ModelsTable          = Models{};
 
+// SQLite 默认 busy_timeout 为 0，评估线程读取项目库时若 GUI 线程正在写模型状态，
+// 会立刻得到 SQLITE_LOCKED。预暖连接池中的连接并为每个连接设置短暂等待，
+// 让短事务结束后读取自动继续，而不是把瞬时写锁当作致命错误。
+constexpr int kSqliteBusyTimeoutMs = 5000;
+
 namespace {
 
 using TagIds = std::vector<int64_t>;
@@ -191,6 +196,11 @@ void DataBase::createDataBase()
     dir.mkpath(dir.path());
 
     pool_ = new sqlpp::sqlite3::connection_pool{config, capacity_};
+    for (std::size_t i = 0; i < capacity_; ++i)
+    {
+        auto db = pool_->get();
+        sqlite3_busy_timeout(db.native_handle(), kSqliteBusyTimeoutMs);
+    }
 }
 
 ProjectDataBase::ProjectDataBase(const QString &path, QObject *parent)

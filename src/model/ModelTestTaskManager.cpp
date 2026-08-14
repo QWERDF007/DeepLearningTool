@@ -767,7 +767,12 @@ void ModelTestTaskManager::bindCurrentObjects()
     if (const ITestParams *template_params = model->config()->testParams(); template_params != nullptr)
         current_test_params_ = template_params->cloneTestParams();
     if (current_test_params_ != nullptr)
+    {
+        const QString model_name = model_manager_->modelRecordViewForUuid(model_uuid_).name;
+        current_test_params_->setWeightContext(project_dir_, model_manager_->projectDatabasePath(),
+                                               model->frameworkName(), model->modelArchitecture(), model_name);
         current_test_params_->setValuesMap(tasks_.at(current_index_).test_params);
+    }
     if (data_manager_ != nullptr)
     {
         current_dataset_view_model_ = data::DatasetViewModelFactory::createDatasetSelectionModel(data_manager_, this);

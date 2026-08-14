@@ -65,6 +65,7 @@ DynamicOptionsResult DynamicOptionsRegistry::resolve(const QString &backend_key,
     {
         const DynamicOptionsData data = selected_provider->query(context);
         result.options               = data.options;
+        result.option_groups         = data.option_groups;
         result.recommended_value     = data.recommended_value;
     }
     catch (const std::exception &error)

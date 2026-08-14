@@ -5,8 +5,9 @@
 
 #include <QHash>
 #include <QMutex>
-#include <QVector>
+#include <QVariantList>
 #include <QVariantMap>
+#include <QVector>
 
 #include <memory>
 
@@ -16,6 +17,7 @@ namespace dltool::parameter {
 struct PARAMETER_API DynamicOptionsData
 {
     QVector<ParameterOption> options;
+    QVariantList             option_groups;
     QVariant                 recommended_value;
 };
 
@@ -24,6 +26,7 @@ struct PARAMETER_API DynamicOptionsResult
 {
     bool                    provider_found{false};
     QVector<ParameterOption> options;
+    QVariantList             option_groups;
     QVariant                recommended_value;
 };
 

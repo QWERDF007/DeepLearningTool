@@ -23,7 +23,7 @@ train_params:
         value_range: [64, 2048, 1]
         control_type: spin
 
-      - name_en: encoder_name
+      - name_en: backbone
         name_cn: 预训练模型
         description: 用于提取图像特征的 DINOv2 预训练编码器版本。
         value: dinov2reg_vit_base_14
@@ -37,6 +37,9 @@ train_params:
         value: ""
         value_type: string
         control_type: group_combo
+        param_type: dynamic
+        backend_key: model.checkpoints
+        model_param_name: backbone
 
       - name_en: image_channels
         name_cn: 图像通道
@@ -265,6 +268,7 @@ test_params:
         description: 推理使用的模型权重：用户已训练权重，留空使用当前模型训练的权重。
         value: ""
         value_type: string
-        control_type: combo
+        control_type: group_combo
         param_type: dynamic
         backend_key: model.checkpoints
+        model_param_name: backbone

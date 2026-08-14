@@ -312,7 +312,7 @@ int ModelTaskController::ensureTaskRecord(const QString &model_uuid, const Model
     else if (has_resolved_definition)
     {
         config_path = storage.testTaskDatabasePath(record.name, resolved_definition.directory_name);
-        log_path    = storage.testTaskLogPath(record.name, resolved_definition.uuid);
+        log_path    = storage.testTaskLogPath(record.name, resolved_definition.directory_name);
     }
     task_manager_->setTaskPaths(task_id, config_path, log_path);
     return task_id;

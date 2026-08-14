@@ -1,7 +1,6 @@
 #include "model/IParams.h"
 
 #include "model/ModelRegistry.h"
-#include "model/ModelNestedOptions.h"
 #include "parameter/DynamicOptions.h"
 #include "parameter/ParameterSchema.h"
 
@@ -641,25 +640,6 @@ QVector<int> ParamGroupModel::dependentRows(const QString &name_en) const
     return rows;
 }
 
-QString ParamGroupModel::resolveWeightSize(const QString &size_hint, const ParamDefinition &param) const
-{
-    QString size = size_hint.trimmed();
-    if (!size.isEmpty())
-        return size;
-
-    const QString size_param = param.variant_param.trimmed();
-    if (size_param.isEmpty())
-        return {};
-
-    const int row = indexOfParam(size_param);
-    if (row >= 0)
-        return currentValue(params_.at(static_cast<size_t>(row))).toString().trimmed();
-
-    if (weight_size_source_)
-        return weight_size_source_->weightSizeValue(size_param);
-    return {};
-}
-
 QStringList ParamGroupModel::weightExtensions() const
 {
     if (weight_framework_.trimmed().isEmpty())
@@ -679,20 +659,11 @@ QVariantList ParamGroupModel::resolveWeightOptions(const ParamDefinition &param,
     QVariantList labels;
     value_map.clear();
 
-    QVariantMap context;
-    context.insert(QStringLiteral("model_name"), weight_model_name_);
-    context.insert(QStringLiteral("project_dir"), weight_project_dir_);
-    QStringList extensions = weightExtensions();
-    if (extensions.isEmpty())
-        extensions = {QStringLiteral("pt")};
-    context.insert(QStringLiteral("extensions"), QVariant::fromValue(extensions));
-
-    const auto result = parameter::DynamicOptionsRegistry::instance().resolve(param.backend_key, context);
+    const auto result = parameter::DynamicOptionsRegistry::instance().resolve(param.backend_key,
+                                                                                weightOptionsContext(param));
     if (!result.provider_found)
         return labels;
 
-    const QVariant current_value = currentValue(param);
-    bool           found_current = false;
     for (const auto &option : result.options)
     {
         const QString label = option.display_value.trimmed();
@@ -700,15 +671,6 @@ QVariantList ParamGroupModel::resolveWeightOptions(const ParamDefinition &param,
             continue;
         labels.append(label);
         value_map.insert(label, option.actual_value);
-        if (current_value.isValid() && option.actual_value == current_value)
-            found_current = true;
-    }
-
-    if (current_value.isValid() && !current_value.toString().trimmed().isEmpty() && !found_current)
-    {
-        const QString label = QStringLiteral("当前值 (%1)").arg(current_value.toString());
-        labels.append(label);
-        value_map.insert(label, current_value);
     }
     return labels;
 }
@@ -736,19 +698,48 @@ QVariantMap ParamGroupModel::paramOptionsValueMap(const ParamDefinition &param) 
 
 QVariantList ParamGroupModel::nestedOptions(const int row, const QString &size_hint) const
 {
+    Q_UNUSED(size_hint);
     if (row < 0 || row >= rowCount())
         return {};
     const ParamDefinition &param = params_.at(static_cast<size_t>(row));
-    if (param.display_type.compare(QStringLiteral("group_combo"), Qt::CaseInsensitive) != 0)
+    if (!isWeightParam(param))
         return {};
 
-    QStringList extensions = weightExtensions();
-    if (extensions.isEmpty())
-        extensions = {QStringLiteral("pt")};
+    const auto result = parameter::DynamicOptionsRegistry::instance().resolve(param.backend_key,
+                                                                                weightOptionsContext(param));
+    return result.provider_found ? result.option_groups : QVariantList{};
+}
 
-    return modelNestedOptions(weight_project_dir_, weight_project_db_, weight_framework_, weight_architecture_,
-                              extensions, param.variants, param.variant_name_template, param.variant_param,
-                              resolveWeightSize(size_hint, param), currentValue(param));
+QVariantMap ParamGroupModel::weightOptionsContext(const ParamDefinition &param) const
+{
+    QVariantMap context;
+    context.insert(QStringLiteral("model_name"), weight_model_name_);
+    context.insert(QStringLiteral("project_dir"), weight_project_dir_);
+    context.insert(QStringLiteral("project_db"), weight_project_db_);
+    context.insert(QStringLiteral("framework_name"), weight_framework_);
+    context.insert(QStringLiteral("model_architecture"), weight_architecture_);
+
+    QStringList extensions = weightExtensions();
+    context.insert(QStringLiteral("extensions"), QVariant::fromValue(extensions));
+    const QString model_param_name
+        = param.model_param_name.trimmed().isEmpty() ? QStringLiteral("model") : param.model_param_name.trimmed();
+    context.insert(QStringLiteral("model_param_name"), model_param_name);
+    context.insert(QStringLiteral("official_weight"), param.official_weight);
+    context.insert(QStringLiteral("current_value"), currentValue(param));
+
+    int model_row = indexOfParam(model_param_name);
+    if (model_row < 0 && model_param_name.compare(QStringLiteral("model"), Qt::CaseInsensitive) == 0)
+        model_row = indexOfParam(QStringLiteral("model_size"));
+    if (model_row < 0 && model_param_name.compare(QStringLiteral("backbone"), Qt::CaseInsensitive) == 0)
+        model_row = indexOfParam(QStringLiteral("encoder_name"));
+    if (model_row >= 0)
+    {
+        const QString model_value = currentValue(params_.at(static_cast<size_t>(model_row))).toString().trimmed();
+        context.insert(QStringLiteral("model_param_value"), model_value);
+        if (param.official_weight)
+            context.insert(QStringLiteral("official_model"), model_value);
+    }
+    return context;
 }
 
 void ParamGroupModel::setWeightContext(const QString &project_dir, const QString &project_db,
@@ -761,11 +752,6 @@ void ParamGroupModel::setWeightContext(const QString &project_dir, const QString
     weight_architecture_ = architecture;
     weight_model_name_   = model_name;
     emit dataChanged(index(0), index(rowCount() - 1), {OptionsRole, OptionsValueMapRole});
-}
-
-void ParamGroupModel::setWeightSizeSource(IParams *source)
-{
-    weight_size_source_ = source;
 }
 
 IParams::IParams(QObject *parent)
@@ -955,28 +941,6 @@ void IParams::setWeightContext(const QString &project_dir, const QString &projec
         if (group != nullptr)
             group->setWeightContext(project_dir, project_db, framework_name, architecture, model_name);
     }
-}
-
-void IParams::setWeightSizeSource(IParams *source)
-{
-    for (ParamGroupModel *group : groups())
-    {
-        if (group != nullptr)
-            group->setWeightSizeSource(source);
-    }
-}
-
-QString IParams::weightSizeValue(const QString &name_en) const
-{
-    for (const ParamGroupModel *group : groups())
-    {
-        if (group == nullptr)
-            continue;
-        const QString value = group->valueForName(name_en).toString().trimmed();
-        if (!value.isEmpty())
-            return value;
-    }
-    return {};
 }
 
 void IParams::clearGroups()

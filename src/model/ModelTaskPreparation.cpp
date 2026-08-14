@@ -252,14 +252,15 @@ bool prepareFsSam2Task(int method, const QString &project_dir, const ModelTaskRe
     if (python_executable.isEmpty())
         return setError(err_msg, QString("未配置 Python 环境目录"));
 
-    const QString log_dir  = request.task_type == ModelTaskType::Train ? storage.trainLogsPath(model_name)
-                                                                       : storage.testLogsPath(model_name);
+    const QString log_task_directory = request.task_type == ModelTaskType::Test
+                                         ? task_directory
+                                         : task_directory + QStringLiteral("_box_to_mask");
+    const QString log_dir            = request.task_type == ModelTaskType::Train
+                                         ? storage.trainLogsPath(model_name)
+                                         : storage.testTaskRoot(model_name, log_task_directory);
     const QString log_path = request.task_type == ModelTaskType::Train
                                ? storage.trainLogPath(model_name)
-                               : storage.testTaskLogPath(model_name, request.task_type == ModelTaskType::Test
-                                                                         ? request.framework.default_test_task_directory
-                                                                         : request.framework.default_test_task_directory
-                                                                               + QStringLiteral("_box_to_mask"));
+                               : storage.testTaskLogPath(model_name, log_task_directory);
     if (log_path.isEmpty())
         return setError(err_msg, QString("FS-SAM2 日志路径为空"));
 
@@ -406,9 +407,10 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
     if (python_executable.isEmpty())
         return setError(err_msg, QString("未配置 Python 环境目录"));
 
-    const QString log_dir = is_train ? storage.trainLogsPath(model_name) : storage.testLogsPath(model_name);
+    const QString log_dir
+        = is_train ? storage.trainLogsPath(model_name) : storage.testTaskRoot(model_name, task_directory);
     QString       log_path
-        = is_train ? storage.trainLogPath(model_name) : storage.testTaskLogPath(model_name, request.scope_uuid);
+        = is_train ? storage.trainLogPath(model_name) : storage.testTaskLogPath(model_name, task_directory);
     if (log_path.isEmpty())
         return setError(err_msg, QString("日志路径为空"));
     QString tensorboard_error;
