@@ -107,28 +107,22 @@ ParameterSpec parseParameterSpec(const YAML::Node &node)
     if (!parameter.value.isValid())
         parameter.value = parameter.default_value;
 
-    parameter.value_type   = nodeString(node["value_type"], QStringLiteral("string"));
-    parameter.value_range  = nodeVariant(node["value_range"]).toList();
-    parameter.display_type = nodeString(node["display_type"]);
-    if (parameter.display_type.isEmpty())
-        parameter.display_type = nodeString(node["control_type"], QStringLiteral("text"));
-    parameter.backend_key = nodeString(node["backend_key"]);
+    parameter.value_type      = nodeString(node["value_type"], QStringLiteral("string"));
+    parameter.value_range     = nodeVariant(node["value_range"]).toList();
+    parameter.display_type    = nodeString(node["display_type"], QStringLiteral("text"));
+    parameter.backend_key     = nodeString(node["backend_key"]);
+    parameter.options_map     = nodeVariant(node["options_map"]).toMap();
+    parameter.options_key_field = nodeString(node["options_key_field"]);
     const bool dynamic_type = nodeString(node["param_type"]).trimmed().compare(QStringLiteral("dynamic"),
                                                                                   Qt::CaseInsensitive)
                               == 0;
     parameter.kind = dynamic_type || !parameter.backend_key.trimmed().isEmpty() ? ParameterKind::Dynamic
                                                                                   : ParameterKind::Static;
     parameter.options_value_map = nodeVariant(node["options_values"]).toMap();
-    if (parameter.options_value_map.isEmpty())
-        parameter.options_value_map = nodeVariant(node["option_values"]).toMap();
-    if (parameter.options_value_map.isEmpty())
-        parameter.options_value_map = nodeVariant(node["options_value_map"]).toMap();
     parameter.enabled = node["enabled"] ? node["enabled"].as<bool>() : true;
     parameter.unit    = nodeString(node["unit"]);
     parameter.enabled_when = nodeString(node["enabled_when"]);
     parameter.model_param_name = nodeString(node["model_param_name"]);
-    if (parameter.model_param_name.isEmpty())
-        parameter.model_param_name = nodeString(node["model_param"]);
     parameter.official_weight = node["official_weight"] ? node["official_weight"].as<bool>() : false;
     parameter.variant_param = nodeString(node["variant_param"]);
 

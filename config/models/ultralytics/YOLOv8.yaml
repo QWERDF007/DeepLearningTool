@@ -13,7 +13,7 @@ YOLOv8:
           description: 官方预训练模型，同时用于决定权重组件的官方权重与过滤用户已训练权重。
           value: yolov8n
           value_type: string
-          control_type: combo
+          display_type: combo
           options: [yolov8n, yolov8s, yolov8m, yolov8l, yolov8x]
 
         - name_en: checkpoint
@@ -21,7 +21,7 @@ YOLOv8:
           description: 训练使用的初始权重：官方预训练权重，或同架构同模型参数的用户已训练权重。
           value: yolov8n.pt
           value_type: string
-          control_type: group_combo
+          display_type: group_combo
           param_type: dynamic
           backend_key: model.checkpoints
           model_param_name: model
@@ -33,7 +33,7 @@ YOLOv8:
           value: 640
           value_type: int
           value_range: [128, 4096, 32]
-          control_type: spin
+          display_type: spin
 
     - name_en: training
       name_cn: 训练参数
@@ -45,7 +45,7 @@ YOLOv8:
           value: 100
           value_type: int
           value_range: [1, 10000, 1]
-          control_type: spin
+          display_type: spin
 
         - name_en: batch
           name_cn: 批量大小
@@ -53,7 +53,7 @@ YOLOv8:
           value: 8
           value_type: int
           value_range: [1, 512, 1]
-          control_type: spin
+          display_type: spin
 
         - name_en: workers
           name_cn: 数据加载进程
@@ -61,14 +61,14 @@ YOLOv8:
           value: 2
           value_type: int
           value_range: [0, 64, 1]
-          control_type: spin
+          display_type: spin
 
         - name_en: optimizer
           name_cn: 优化器
           description: 用于更新模型参数的优化算法。
           value: AdamW
           value_type: string
-          control_type: combo
+          display_type: combo
           options: [SGD, Adam, AdamW, Adamax, NAdam, RAdam, RMSprop, MuSGD]
 
         - name_en: momentum
@@ -77,7 +77,7 @@ YOLOv8:
           value: 0.937
           value_type: double
           value_range: [0.0, 1.0, 0.001]
-          control_type: slider
+          display_type: slider
           enabled_when: "optimizer in [SGD, MuSGD]"
 
         - name_en: lr0
@@ -86,7 +86,7 @@ YOLOv8:
           value: 0.01
           value_type: double
           value_range: [0.000001, 1.0, 0.00001]
-          control_type: spin
+          display_type: spin
 
         - name_en: lrf
           name_cn: 最终学习率系数
@@ -94,7 +94,7 @@ YOLOv8:
           value: 0.01
           value_type: double
           value_range: [0.0001, 1.0, 0.0001]
-          control_type: spin
+          display_type: spin
 
         - name_en: weight_decay
           name_cn: 权重衰减
@@ -102,7 +102,7 @@ YOLOv8:
           value: 0.0005
           value_type: double
           value_range: [0.0, 0.1, 0.0001]
-          control_type: spin
+          display_type: spin
 
         - name_en: warmup_epochs
           name_cn: 预热轮数
@@ -110,7 +110,7 @@ YOLOv8:
           value: 3.0
           value_type: double
           value_range: [0.0, 50.0, 0.1]
-          control_type: spin
+          display_type: spin
 
         - name_en: warmup_momentum
           name_cn: 预热动量
@@ -118,7 +118,7 @@ YOLOv8:
           value: 0.8
           value_type: double
           value_range: [0.0, 1.0, 0.001]
-          control_type: slider
+          display_type: slider
 
         - name_en: warmup_bias_lr
           name_cn: 预热偏置学习率
@@ -126,14 +126,14 @@ YOLOv8:
           value: 0.1
           value_type: double
           value_range: [0.0, 1.0, 0.001]
-          control_type: slider
+          display_type: slider
 
         - name_en: cos_lr
           name_cn: 余弦学习率
           description: 使用余弦退火调度代替线性衰减。
           value: false
           value_type: bool
-          control_type: checkbox
+          display_type: checkbox
 
         - name_en: patience
           name_cn: 早停耐心
@@ -141,7 +141,7 @@ YOLOv8:
           value: 100
           value_type: int
           value_range: [0, 500, 1]
-          control_type: spin
+          display_type: spin
 
         - name_en: close_mosaic
           name_cn: 关闭 Mosaic 轮数
@@ -149,7 +149,7 @@ YOLOv8:
           value: 10
           value_type: int
           value_range: [0, 100, 1]
-          control_type: spin
+          display_type: spin
 
         - name_en: seed
           name_cn: 随机种子
@@ -157,14 +157,14 @@ YOLOv8:
           value: 0
           value_type: int
           value_range: [0, 999999, 1]
-          control_type: spin
+          display_type: spin
 
         - name_en: amp
           name_cn: 混合精度训练
           description: 使用自动混合精度加速训练并减少显存占用。
           value: true
           value_type: bool
-          control_type: checkbox
+          display_type: checkbox
 
         - name_en: device
           name_cn: 设备
@@ -181,7 +181,7 @@ YOLOv8:
           value: 1
           value_type: int
           value_range: [1, 100, 1]
-          control_type: spin
+          display_type: spin
 
     - name_en: augmentation
       name_cn: 数据增强
@@ -193,7 +193,7 @@ YOLOv8:
           value: 1.0
           value_type: double
           value_range: [0.0, 1.0, 0.01]
-          control_type: slider
+          display_type: slider
 
         - name_en: mixup
           name_cn: MixUp
@@ -201,7 +201,7 @@ YOLOv8:
           value: 0.0
           value_type: double
           value_range: [0.0, 1.0, 0.01]
-          control_type: slider
+          display_type: slider
 
         - name_en: copy_paste
           name_cn: Copy-Paste
@@ -209,7 +209,7 @@ YOLOv8:
           value: 0.0
           value_type: double
           value_range: [0.0, 1.0, 0.01]
-          control_type: slider
+          display_type: slider
 
         - name_en: cutmix
           name_cn: CutMix
@@ -217,7 +217,7 @@ YOLOv8:
           value: 0.0
           value_type: double
           value_range: [0.0, 1.0, 0.01]
-          control_type: slider
+          display_type: slider
 
         - name_en: hsv_h
           name_cn: HSV 色相增益
@@ -225,7 +225,7 @@ YOLOv8:
           value: 0.015
           value_type: double
           value_range: [0.0, 0.1, 0.001]
-          control_type: slider
+          display_type: slider
 
         - name_en: hsv_s
           name_cn: HSV 饱和度增益
@@ -233,7 +233,7 @@ YOLOv8:
           value: 0.7
           value_type: double
           value_range: [0.0, 1.0, 0.01]
-          control_type: slider
+          display_type: slider
 
         - name_en: hsv_v
           name_cn: HSV 明度增益
@@ -241,7 +241,7 @@ YOLOv8:
           value: 0.4
           value_type: double
           value_range: [0.0, 1.0, 0.01]
-          control_type: slider
+          display_type: slider
 
         - name_en: degrees
           name_cn: 旋转角度
@@ -249,7 +249,7 @@ YOLOv8:
           value: 0.0
           value_type: double
           value_range: [0.0, 180.0, 1.0]
-          control_type: slider
+          display_type: slider
 
         - name_en: translate
           name_cn: 平移比例
@@ -257,7 +257,7 @@ YOLOv8:
           value: 0.1
           value_type: double
           value_range: [0.0, 1.0, 0.01]
-          control_type: slider
+          display_type: slider
 
         - name_en: scale
           name_cn: 缩放比例
@@ -265,7 +265,7 @@ YOLOv8:
           value: 0.5
           value_type: double
           value_range: [0.0, 2.0, 0.01]
-          control_type: slider
+          display_type: slider
 
         - name_en: shear
           name_cn: 剪切角度
@@ -273,7 +273,7 @@ YOLOv8:
           value: 0.0
           value_type: double
           value_range: [0.0, 180.0, 1.0]
-          control_type: slider
+          display_type: slider
 
         - name_en: perspective
           name_cn: 透视变换
@@ -281,7 +281,7 @@ YOLOv8:
           value: 0.0
           value_type: double
           value_range: [0.0, 0.01, 0.0001]
-          control_type: slider
+          display_type: slider
 
         - name_en: flipud
           name_cn: 垂直翻转概率
@@ -289,7 +289,7 @@ YOLOv8:
           value: 0.0
           value_type: double
           value_range: [0.0, 1.0, 0.01]
-          control_type: slider
+          display_type: slider
 
         - name_en: fliplr
           name_cn: 水平翻转概率
@@ -297,7 +297,7 @@ YOLOv8:
           value: 0.5
           value_type: double
           value_range: [0.0, 1.0, 0.01]
-          control_type: slider
+          display_type: slider
 
   test_params:
     - name_en: inference
@@ -309,7 +309,7 @@ YOLOv8:
           description: 推理使用的模型权重：用户已训练权重，留空使用当前模型训练的权重。
           value: ""
           value_type: string
-          control_type: group_combo
+          display_type: group_combo
           param_type: dynamic
           backend_key: model.checkpoints
           model_param_name: model
@@ -321,7 +321,7 @@ YOLOv8:
           value: 1
           value_type: int
           value_range: [1, 512, 1]
-          control_type: spin
+          display_type: spin
 
         - name_en: imgsz
           name_cn: 图像尺寸
@@ -329,7 +329,7 @@ YOLOv8:
           value: 640
           value_type: int
           value_range: [128, 4096, 32]
-          control_type: spin
+          display_type: spin
 
         - name_en: conf
           name_cn: 置信度阈值
@@ -337,7 +337,7 @@ YOLOv8:
           value: 0.25
           value_type: double
           value_range: [0.0, 1.0, 0.01]
-          control_type: slider
+          display_type: slider
 
         - name_en: iou
           name_cn: NMS 阈值
@@ -345,7 +345,7 @@ YOLOv8:
           value: 0.7
           value_type: double
           value_range: [0.0, 1.0, 0.01]
-          control_type: slider
+          display_type: slider
 
         - name_en: max_det
           name_cn: 最大检测数
@@ -353,7 +353,7 @@ YOLOv8:
           value: 300
           value_type: int
           value_range: [1, 1000, 1]
-          control_type: spin
+          display_type: spin
 
         - name_en: device
           name_cn: 设备

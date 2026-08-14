@@ -46,9 +46,11 @@ TensorRT 运行时；没有 GPU 时推荐 CPU 的 ONNX Runtime。
 `cuda:<id>`，CPU 使用 `cpu`。它与 InferRT provider 分开，避免把
 `tensorrt:<id>` 等推理运行时值传给训练引擎。
 
-## YAML 兼容性
+## YAML 字段规范
 
-现有 YAML 格式保持不变：
+参数 YAML 使用统一字段名，不再解析旧字段别名。公共展示字段包括 `description` 和
+`display_type`；静态显示值映射使用 `options_values`，联动选项使用 `options_map` 与
+`options_key_field`：
 
 ```yaml
 param_type: dynamic

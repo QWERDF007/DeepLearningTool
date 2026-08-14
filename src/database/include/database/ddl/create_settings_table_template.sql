@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS {table_name} (
     default_value TEXT,
     value_type TEXT NOT NULL,
     value_range TEXT,
-    control_type TEXT,
+    display_type TEXT,
     options TEXT,
     options_map TEXT,
     section TEXT,

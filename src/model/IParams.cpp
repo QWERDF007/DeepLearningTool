@@ -406,6 +406,10 @@ QVariant ParamGroupModel::data(const QModelIndex &index, const int role) const
         return paramOptions(param);
     case OptionsValueMapRole:
         return paramOptionsValueMap(param);
+    case OptionsMapRole:
+        return param.options_map;
+    case OptionsKeyFieldRole:
+        return param.options_key_field;
     case ParamKindRole:
         return static_cast<int>(param.kind);
     case DisplayTypeRole:
@@ -414,6 +418,12 @@ QVariant ParamGroupModel::data(const QModelIndex &index, const int role) const
         return param.backend_key;
     case UnitRole:
         return param.unit;
+    case SectionRole:
+        return QString();
+    case VisibleRole:
+        return true;
+    case OrdinalIndexRole:
+        return index.row();
     default:
         return {};
     }
@@ -426,13 +436,14 @@ bool ParamGroupModel::setData(const QModelIndex &index, const QVariant &value, c
         return false;
     }
 
-    if (role != ValueRole && role != Qt::EditRole)
+    ParamDefinition &param = params_[index.row()];
+    if ((role != ValueRole && role != Qt::EditRole) || !enabled_ || !param.enabled
+        || !evaluateEnabledWhen(param))
     {
         return false;
     }
 
-    ParamDefinition &param      = params_[index.row()];
-    const QVariant  next_value = normalizeDynamicValue(param, value);
+    const QVariant next_value = normalizeDynamicValue(param, value);
     if (param.value == next_value)
     {
         return true;
@@ -481,10 +492,15 @@ QHash<int, QByteArray> ParamGroupModel::roleNames() const
         {     EnabledRole,      "enabled"},
         {     OptionsRole,      "options"},
         {OptionsValueMapRole, "optionsValueMap"},
+        {  OptionsMapRole,      "optionsMap"},
+        {OptionsKeyFieldRole, "optionsKeyField"},
         {  ParamKindRole,      "paramKind"},
         {DisplayTypeRole,      "displayType"},
         { BackendKeyRole,      "backendKey"},
         {        UnitRole,         "unit"},
+        {    SectionRole,      "section"},
+        {    VisibleRole,      "visible"},
+        {OrdinalIndexRole, "ordinalIndex"},
     };
 }
 
@@ -510,6 +526,54 @@ QVariant ParamGroupModel::valueForName(const QString &name_en) const
         return {};
     }
     return currentValue(params_.at(row));
+}
+
+bool ParamGroupModel::setValueForName(const QString &name_en, const QVariant &value)
+{
+    const int row = indexOfParam(name_en);
+    return row >= 0 && setData(index(row), value, ValueRole);
+}
+
+QVariantMap ParamGroupModel::fieldMap(const int row) const
+{
+    if (row < 0 || row >= rowCount())
+        return {};
+
+    const ParamDefinition &param = params_.at(static_cast<size_t>(row));
+    return {
+        {QStringLiteral("nameEn"), param.name_en},
+        {QStringLiteral("nameCn"), param.name_cn},
+        {QStringLiteral("description"), param.description},
+        {QStringLiteral("value"), currentValue(param)},
+        {QStringLiteral("defaultValue"), param.default_value},
+        {QStringLiteral("valueType"), param.value_type},
+        {QStringLiteral("valueRange"), param.value_range},
+        {QStringLiteral("enabled"), enabled_ && param.enabled && evaluateEnabledWhen(param)},
+        {QStringLiteral("options"), paramOptions(param)},
+        {QStringLiteral("optionsValueMap"), paramOptionsValueMap(param)},
+        {QStringLiteral("optionsMap"), param.options_map},
+        {QStringLiteral("optionsKeyField"), param.options_key_field},
+        {QStringLiteral("paramKind"), static_cast<int>(param.kind)},
+        {QStringLiteral("displayType"), param.display_type},
+        {QStringLiteral("backendKey"), param.backend_key},
+        {QStringLiteral("unit"), param.unit},
+        {QStringLiteral("section"), QString()},
+        {QStringLiteral("visible"), true},
+        {QStringLiteral("ordinalIndex"), row},
+    };
+}
+
+QVariantMap ParamGroupModel::fieldMapForName(const QString &name_en) const
+{
+    return fieldMap(indexOfParam(name_en));
+}
+
+QVariantList ParamGroupModel::optionsForKey(const QString &name_en, const QString &key) const
+{
+    const int row = indexOfParam(name_en);
+    if (row < 0)
+        return {};
+    return params_.at(static_cast<size_t>(row)).options_map.value(key).toList();
 }
 
 QVariantMap ParamGroupModel::valuesMap() const
@@ -696,17 +760,17 @@ QVariantMap ParamGroupModel::paramOptionsValueMap(const ParamDefinition &param) 
     return param.options_value_map;
 }
 
-QVariantList ParamGroupModel::nestedOptions(const int row, const QString &size_hint) const
+QVariantList ParamGroupModel::optionGroups(const int row) const
 {
-    Q_UNUSED(size_hint);
     if (row < 0 || row >= rowCount())
         return {};
     const ParamDefinition &param = params_.at(static_cast<size_t>(row));
-    if (!isWeightParam(param))
+    if (param.backend_key.trimmed().isEmpty())
         return {};
 
+    const QVariantMap context = isWeightParam(param) ? weightOptionsContext(param) : QVariantMap{};
     const auto result = parameter::DynamicOptionsRegistry::instance().resolve(param.backend_key,
-                                                                                weightOptionsContext(param));
+                                                                                 context);
     return result.provider_found ? result.option_groups : QVariantList{};
 }
 

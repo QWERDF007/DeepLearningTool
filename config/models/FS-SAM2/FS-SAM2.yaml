@@ -13,14 +13,14 @@ FS-SAM2:
           description: SAM2 基础模型预训练权重文件的路径。
           value: python/fornib/FS-SAM2/checkpoint/sam2.1_hiera_base_plus.pt
           value_type: string
-          control_type: file
+          display_type: file
 
         - name_en: sam2_cfg
           name_cn: SAM2 配置
           description: SAM2 模型结构与推理设置配置文件的路径。
           value: ""
           value_type: string
-          control_type: file
+          display_type: file
 
     - name_en: training
       name_cn: 训练参数
@@ -32,7 +32,7 @@ FS-SAM2:
           value: 1
           value_type: int
           value_range: [1, 16, 1]
-          control_type: spin
+          display_type: spin
 
         - name_en: epochs
           name_cn: 训练轮数
@@ -40,7 +40,7 @@ FS-SAM2:
           value: 50
           value_type: int
           value_range: [1, 10000, 1]
-          control_type: spin
+          display_type: spin
 
         - name_en: batch_size
           name_cn: Batch Size
@@ -48,7 +48,7 @@ FS-SAM2:
           value: 2
           value_type: int
           value_range: [1, 128, 1]
-          control_type: spin
+          display_type: spin
 
         - name_en: num_workers
           name_cn: 数据线程数
@@ -56,7 +56,7 @@ FS-SAM2:
           value: 0
           value_type: int
           value_range: [0, 128, 1]
-          control_type: spin
+          display_type: spin
 
         - name_en: learning_rate
           name_cn: 学习率
@@ -64,7 +64,7 @@ FS-SAM2:
           value: 0.0001
           value_type: double
           value_range: [0.000001, 0.01, 0.000001]
-          control_type: spin
+          display_type: spin
 
         - name_en: weight_decay
           name_cn: Weight Decay
@@ -72,7 +72,7 @@ FS-SAM2:
           value: 0.000001
           value_type: double
           value_range: [0.0, 0.01, 0.000001]
-          control_type: spin
+          display_type: spin
 
     - name_en: network
       name_cn: 网络参数
@@ -84,7 +84,7 @@ FS-SAM2:
           value: 1024
           value_type: int
           value_range: [64, 8192, 64]
-          control_type: spin
+          display_type: spin
 
   test_params:
     - name_en: model
@@ -96,14 +96,14 @@ FS-SAM2:
           description: SAM2 基础模型预训练权重文件的路径。
           value: python/fornib/FS-SAM2/checkpoint/sam2.1_hiera_base_plus.pt
           value_type: string
-          control_type: file
+          display_type: file
 
         - name_en: sam2_cfg
           name_cn: SAM2 配置
           description: SAM2 模型结构与推理设置配置文件的路径。
           value: ""
           value_type: string
-          control_type: file
+          display_type: file
 
     - name_en: inference
       name_cn: 推理参数
@@ -114,14 +114,14 @@ FS-SAM2:
           description: 用于小样本推理的已训练模型检查点文件路径。
           value: ""
           value_type: string
-          control_type: file
+          display_type: file
 
         - name_en: output_dir
           name_cn: 输出目录
           description: 保存推理结果和中间文件的目录。
           value: ""
           value_type: string
-          control_type: path
+          display_type: path
 
         - name_en: kshot
           name_cn: K-shot
@@ -129,7 +129,7 @@ FS-SAM2:
           value: 1
           value_type: int
           value_range: [1, 16, 1]
-          control_type: spin
+          display_type: spin
 
         - name_en: image_size
           name_cn: 图像尺寸
@@ -137,4 +137,4 @@ FS-SAM2:
           value: 1024
           value_type: int
           value_range: [64, 8192, 64]
-          control_type: spin
+          display_type: spin

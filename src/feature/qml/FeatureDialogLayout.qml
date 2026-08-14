@@ -59,7 +59,7 @@ ColumnLayout {
                 }
             }
 
-            SettingsFieldsPanel {
+            ParameterFieldsPanel {
                 fieldModel: root.settingsFieldModel
             }
         }

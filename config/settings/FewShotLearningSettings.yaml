@@ -9,196 +9,196 @@ FewShotLearningSettings:
     基础:
       - name_en: enabled
         name_cn: 启用
-        desc: 用于配置小样本学习中基础相关的启用。
+        description: 用于配置小样本学习中基础相关的启用。
         property_name: enabled
         value: true
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
     模型:
       - name_en: sam2_architecture
         name_cn: SAM2 架构
-        desc: 用于配置小样本学习中模型相关的SAM2 架构。
+        description: 用于配置小样本学习中模型相关的SAM2 架构。
         property_name: sam2Architecture
         value: sam2.1_hiera_small
         value_type: string
-        control_type: combo
+        display_type: combo
         options: [sam2_hiera_tiny, sam2_hiera_small, sam2_hiera_base_plus, sam2_hiera_large, sam2.1_hiera_tiny, sam2.1_hiera_small, sam2.1_hiera_base_plus, sam2.1_hiera_large]
 
       - name_en: sam2_checkpoint
         name_cn: SAM2 权重
-        desc: 用于配置小样本学习中模型相关的SAM2 权重。
+        description: 用于配置小样本学习中模型相关的SAM2 权重。
         property_name: sam2Checkpoint
         value: python/fornib/FS-SAM2/checkpoint/sam2.1_hiera_base_plus.pt
         value_type: string
-        control_type: path
+        display_type: path
 
     训练参数:
       - name_en: kshot
         name_cn: K-shot
-        desc: 用于配置小样本学习中训练参数相关的K-shot。
+        description: 用于配置小样本学习中训练参数相关的K-shot。
         property_name: kshot
         value: 1
         value_type: int
         value_range: [1, 16, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: epochs
         name_cn: 训练轮数
-        desc: 用于配置小样本学习中训练参数相关的训练轮数。
+        description: 用于配置小样本学习中训练参数相关的训练轮数。
         property_name: epochs
         value: 50
         value_type: int
         value_range: [1, 10000, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: batch_size
         name_cn: Batch Size
-        desc: 用于配置小样本学习中训练参数相关的Batch Size。
+        description: 用于配置小样本学习中训练参数相关的Batch Size。
         property_name: batchSize
         value: 2
         value_type: int
         value_range: [1, 128, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: num_workers
         name_cn: 数据线程数
-        desc: 用于配置小样本学习中训练参数相关的数据线程数。
+        description: 用于配置小样本学习中训练参数相关的数据线程数。
         property_name: numWorkers
         value: 0
         value_type: int
         value_range: [0, 128, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: image_size
         name_cn: 图像尺寸
-        desc: 用于配置小样本学习中训练参数相关的图像尺寸。
+        description: 用于配置小样本学习中训练参数相关的图像尺寸。
         property_name: imageSize
         value: 1024
         value_type: int
         value_range: [64, 8192, 64]
-        control_type: spin
+        display_type: spin
 
       - name_en: learning_rate
         name_cn: 学习率
-        desc: 用于配置小样本学习中训练参数相关的学习率。
+        description: 用于配置小样本学习中训练参数相关的学习率。
         property_name: learningRate
         value: 0.0001
         value_type: double
         value_range: [0.000001, 0.01, 0.000001]
-        control_type: spin
+        display_type: spin
 
       - name_en: weight_decay
         name_cn: Weight Decay
-        desc: 用于配置小样本学习中训练参数相关的Weight Decay。
+        description: 用于配置小样本学习中训练参数相关的Weight Decay。
         property_name: weightDecay
         value: 0.000001
         value_type: double
         value_range: [0.0, 0.01, 0.000001]
-        control_type: spin
+        display_type: spin
 
     数据:
       - name_en: support_ratio
         name_cn: Support 比例
-        desc: 用于配置小样本学习中数据相关的Support 比例。
+        description: 用于配置小样本学习中数据相关的Support 比例。
         property_name: supportRatio
         value: 0.5
         value_type: double
         value_range: [0.1, 0.9, 0.05]
-        control_type: slider
+        display_type: slider
 
     预测增强:
       - name_en: prediction_enhancement_enabled
         name_cn: 启用预测增强投票
-        desc: 对原图和固定增强图分别预测并通过 IoU 投票融合，默认关闭以保持原有预测流程。
+        description: 对原图和固定增强图分别预测并通过 IoU 投票融合，默认关闭以保持原有预测流程。
         property_name: predictionEnhancementEnabled
         value: false
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
       - name_en: box_to_mask_prediction_enhancement_enabled
         name_cn: 启用 BoxToMask 预测增强投票
-        desc: 对 BoxToMask 的原图和固定增强图分别预测并通过 IoU 投票融合，默认关闭以保持原有流程。
+        description: 对 BoxToMask 的原图和固定增强图分别预测并通过 IoU 投票融合，默认关闭以保持原有流程。
         property_name: boxToMaskPredictionEnhancementEnabled
         value: false
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
       - name_en: prediction_horizontal_flip
         name_cn: 左右翻转
-        desc: 固定执行左右翻转，关闭表示不使用左右翻转。
+        description: 固定执行左右翻转，关闭表示不使用左右翻转。
         property_name: predictionHorizontalFlip
         value: false
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
       - name_en: prediction_vertical_flip
         name_cn: 上下翻转
-        desc: 固定执行上下翻转，关闭表示不使用上下翻转。
+        description: 固定执行上下翻转，关闭表示不使用上下翻转。
         property_name: predictionVerticalFlip
         value: false
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
       - name_en: prediction_scale
         name_cn: 固定缩放幅度
-        desc: 固定缩放幅度，实际缩放因子为 1 加上该值，0 表示不使用缩放。
+        description: 固定缩放幅度，实际缩放因子为 1 加上该值，0 表示不使用缩放。
         property_name: predictionScale
         value: 0.0
         value_type: double
         value_range: [-0.9, 1.0, 0.05]
-        control_type: slider
+        display_type: slider
 
       - name_en: prediction_brightness
         name_cn: 固定亮度调整
-        desc: 固定亮度调整幅度，实际亮度因子为 1 加上该值，0 表示不使用亮度调整。
+        description: 固定亮度调整幅度，实际亮度因子为 1 加上该值，0 表示不使用亮度调整。
         property_name: predictionBrightness
         value: 0.0
         value_type: double
         value_range: [-1.0, 1.0, 0.05]
-        control_type: slider
+        display_type: slider
 
       - name_en: prediction_contrast
         name_cn: 固定对比度调整
-        desc: 固定对比度调整幅度，实际对比度因子为 1 加上该值，0 表示不使用对比度调整。
+        description: 固定对比度调整幅度，实际对比度因子为 1 加上该值，0 表示不使用对比度调整。
         property_name: predictionContrast
         value: 0.0
         value_type: double
         value_range: [-1.0, 1.0, 0.05]
-        control_type: slider
+        display_type: slider
 
       - name_en: prediction_hue
         name_cn: 固定色调调整
-        desc: 固定色调调整幅度，实际色调偏移为该值，0 表示不使用色调调整。
+        description: 固定色调调整幅度，实际色调偏移为该值，0 表示不使用色调调整。
         property_name: predictionHue
         value: 0.0
         value_type: double
         value_range: [-0.5, 0.5, 0.01]
-        control_type: slider
+        display_type: slider
 
       - name_en: prediction_rotation
         name_cn: 固定旋转角度
-        desc: 固定旋转角度，单位为度，正值逆时针旋转，0 表示不使用旋转。
+        description: 固定旋转角度，单位为度，正值逆时针旋转，0 表示不使用旋转。
         property_name: predictionRotation
         value: 0.0
         value_type: double
         value_range: [-180.0, 180.0, 5.0]
-        control_type: slider
+        display_type: slider
 
       - name_en: prediction_iou_threshold
         name_cn: 预测 IoU 阈值
-        desc: 增强预测结果被视为同一区域时使用的 IoU 阈值，默认值为 0.5。
+        description: 增强预测结果被视为同一区域时使用的 IoU 阈值，默认值为 0.5。
         property_name: predictionIouThreshold
         value: 0.5
         value_type: double
         value_range: [0.0, 1.0, 0.05]
-        control_type: slider
+        display_type: slider
 
       - name_en: prediction_min_vote_count
         name_cn: 最少一致投票数
-        desc: 至少有多少个预测结果彼此重合才保留该区域，达到该阈值才视为有效区域；最大值为 7 类增强加原图共 8 个结果。
+        description: 至少有多少个预测结果彼此重合才保留该区域，达到该阈值才视为有效区域；最大值为 7 类增强加原图共 8 个结果。
         property_name: predictionMinVoteCount
         value: 2
         value_type: int
         value_range: [1, 8, 1]
-        control_type: spin
+        display_type: spin

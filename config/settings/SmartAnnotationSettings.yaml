@@ -9,34 +9,34 @@ SmartAnnotationSettings:
     基础:
       - name_en: enabled
         name_cn: 启用
-        desc: 用于配置智能标注中基础相关的启用。
+        description: 用于配置智能标注中基础相关的启用。
         property_name: enabled
         value: true
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
     模型:
       - name_en: model
         name_cn: 模型
-        desc: 用于配置智能标注中模型相关的模型。
+        description: 用于配置智能标注中模型相关的模型。
         property_name: model
         value: edge_sam
         value_type: string
-        control_type: combo
+        display_type: combo
         options: [edge_sam, sam_vit_b, sam_vit_l, sam_vit_h, sam2_hiera_tiny, sam2_hiera_small, sam2_hiera_base_plus, sam2_hiera_large, sam2_1_hiera_tiny, sam2_1_hiera_small, sam2_1_hiera_base_plus, sam2_1_hiera_large]
 
       - name_en: model_path
         name_cn: 模型文件
-        desc: 用于配置智能标注中模型相关的模型文件。
+        description: 用于配置智能标注中模型相关的模型文件。
         property_name: modelPath
         value: F:/models/edge_sam.wts
         value_type: string
-        control_type: path
+        display_type: path
 
     运行时:
       - name_en: model_runtime
         name_cn: 运行时设备
-        desc: 用于配置智能标注中模型推理的后端和设备。
+        description: 用于配置智能标注中模型推理的后端和设备。
         property_name: modelRuntime
         value_type: string
         param_type: dynamic
@@ -45,11 +45,11 @@ SmartAnnotationSettings:
 
       - name_en: model_precision
         name_cn: 推理精度
-        desc: 用于配置智能标注中 TensorRT 模型的推理精度。
+        description: 用于配置智能标注中 TensorRT 模型的推理精度。
         property_name: modelPrecision
         value: 0
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [FP32, FP16]
         options_values:
           FP32: 0
@@ -58,64 +58,64 @@ SmartAnnotationSettings:
     Mask:
       - name_en: mask_threshold
         name_cn: Mask 阈值
-        desc: 用于配置智能标注中Mask相关的Mask 阈值。
+        description: 用于配置智能标注中Mask相关的Mask 阈值。
         property_name: maskThreshold
         value: 0.0
         value_type: double
         value_range: [-20.0, 20.0, 0.1]
-        control_type: slider
+        display_type: slider
 
       - name_en: max_hole_area
         name_cn: 最大填洞面积
-        desc: 用于配置智能标注中Mask相关的最大填洞面积；0 表示不填充背景洞。
+        description: 用于配置智能标注中Mask相关的最大填洞面积；0 表示不填充背景洞。
         property_name: maxHoleArea
         value: 0
         value_type: int
         value_range: [0, 1000000, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: max_sprinkle_area
         name_cn: 最大去噪面积
-        desc: 用于配置智能标注中Mask相关的最大去噪面积；0 表示不移除前景噪点。
+        description: 用于配置智能标注中Mask相关的最大去噪面积；0 表示不移除前景噪点。
         property_name: maxSprinkleArea
         value: 0
         value_type: int
         value_range: [0, 1000000, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: polygon_approx_epsilon
         name_cn: 轮廓拟合系数
-        desc: 用于配置智能标注中Mask相关的 OpenCV approxPolyDP 轮廓拟合系数；epsilon = 系数 * arcLength(contour, true)，0 表示不压缩轮廓点。
+        description: 用于配置智能标注中Mask相关的 OpenCV approxPolyDP 轮廓拟合系数；epsilon = 系数 * arcLength(contour, true)，0 表示不压缩轮廓点。
         property_name: polygonApproxEpsilon
         value: 0.01
         value_type: double
         value_range: [0.0, 100, 0.001]
-        control_type: spin
+        display_type: spin
 
       - name_en: polygon_spline_enabled
         name_cn: 启用轮廓 B 样条
-        desc: 用于配置智能标注中Mask相关的是否在 OpenCV 多边形拟合后继续执行 B 样条拟合。
+        description: 用于配置智能标注中Mask相关的是否在 OpenCV 多边形拟合后继续执行 B 样条拟合。
         property_name: polygonSplineEnabled
         value: false
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
       - name_en: polygon_spline_smoothing
         name_cn: 轮廓 B 样条平滑
-        desc: 用于配置智能标注中Mask相关的轮廓 B 样条平滑残差预算；0 表示插值拟合。
+        description: 用于配置智能标注中Mask相关的轮廓 B 样条平滑残差预算；0 表示插值拟合。
         property_name: polygonSplineSmoothing
         value: 0.0
         value_type: double
         value_range: [0.0, 100000.0, 10.0]
-        control_type: slider
+        display_type: slider
 
       - name_en: polygon_spline_degree
         name_cn: 轮廓 B 样条阶数
-        desc: 用于配置智能标注中Mask相关的轮廓 B 样条阶数。
+        description: 用于配置智能标注中Mask相关的轮廓 B 样条阶数。
         property_name: polygonSplineDegree
         value: 3
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [linear, cubic]
         options_values:
           linear: 1
@@ -123,27 +123,27 @@ SmartAnnotationSettings:
 
       - name_en: mask_alpha
         name_cn: Mask 透明度
-        desc: 用于配置智能标注中Mask相关的Mask 透明度。
+        description: 用于配置智能标注中Mask相关的Mask 透明度。
         property_name: maskAlpha
         value: 0.35
         value_type: double
         value_range: [0.0, 1.0, 0.05]
-        control_type: slider
+        display_type: slider
 
     预览:
       - name_en: refresh_interval
         name_cn: 刷新间隔
-        desc: 用于配置智能标注中预览相关的刷新间隔。
+        description: 用于配置智能标注中预览相关的刷新间隔。
         property_name: refreshInterval
         value: 80
         value_type: int
         value_range: [20, 5000, 10]
-        control_type: spin
+        display_type: spin
 
       - name_en: use_viewport_input
         name_cn: 使用可视窗口
-        desc: 用于配置智能标注中预览相关的使用可视窗口。
+        description: 用于配置智能标注中预览相关的使用可视窗口。
         property_name: useViewportInput
         value: false
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox

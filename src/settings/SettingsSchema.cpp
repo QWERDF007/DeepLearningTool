@@ -3,6 +3,7 @@
 #include "common/Utils.h"
 #include "common/YamlUtils.h"
 #include "database/DataBase.h"
+#include "parameter/DynamicOptions.h"
 #include "parameter/ParameterSchema.h"
 
 #include <spdlog/spdlog.h>
@@ -18,7 +19,6 @@ namespace {
 
 using dltool::common::yaml::loadFile;
 using dltool::common::yaml::nodeString;
-using dltool::common::yaml::nodeVariant;
 
 QString camelToSnake(const QString &value)
 {
@@ -54,14 +54,10 @@ SettingsField parseField(const YAML::Node &node, const QString &section, const i
 {
     SettingsField field;
     static_cast<dltool::parameter::ParameterSpec &>(field) = dltool::parameter::parseParameterSpec(node);
-    field.property_name     = nodeString(node["property_name"], field.name_en);
-    field.options_map       = nodeVariant(node["options_map"]).toMap();
-    field.options_key_field = nodeString(node["options_key_field"]);
-    field.section           = section;
-    field.desc              = nodeString(node["desc"]);
-    field.description       = nodeString(node["description"]);
-    field.visible           = node["visible"] ? node["visible"].as<bool>() : true;
-    field.ordinal_index     = node["ordinal_index"] ? node["ordinal_index"].as<int>() : ordinal_index;
+    field.property_name = nodeString(node["property_name"], field.name_en);
+    field.section       = section;
+    field.visible       = node["visible"] ? node["visible"].as<bool>() : true;
+    field.ordinal_index = node["ordinal_index"] ? node["ordinal_index"].as<int>() : ordinal_index;
     return field;
 }
 
@@ -192,10 +188,12 @@ QVariant SettingsFieldModel::data(const QModelIndex &index, const int role) cons
         return field.options_key_field;
     case SectionRole:
         return field.section;
-    case DescRole:
-        return field.desc;
     case DescriptionRole:
         return field.description;
+    case EnabledRole:
+        return field.enabled;
+    case UnitRole:
+        return field.unit;
     case VisibleRole:
         return field.visible;
     case OrdinalIndexRole:
@@ -209,7 +207,7 @@ bool SettingsFieldModel::setData(const QModelIndex &index, const QVariant &value
 {
     if (!index.isValid() || index.row() < 0 || index.row() >= rowCount())
         return false;
-    if (role != ValueRole && role != Qt::EditRole)
+    if ((role != ValueRole && role != Qt::EditRole) || !fields_.at(static_cast<size_t>(index.row())).enabled)
         return false;
 
     SettingsField &field = fields_[static_cast<size_t>(index.row())];
@@ -226,7 +224,7 @@ bool SettingsFieldModel::setData(const QModelIndex &index, const QVariant &value
 Qt::ItemFlags SettingsFieldModel::flags(const QModelIndex &index) const
 {
     Qt::ItemFlags item_flags = QAbstractListModel::flags(index);
-    if (index.isValid())
+    if (index.isValid() && fields_.at(static_cast<size_t>(index.row())).enabled)
         item_flags |= Qt::ItemIsEditable;
     return item_flags;
 }
@@ -249,8 +247,9 @@ QHash<int, QByteArray> SettingsFieldModel::roleNames() const
         {     OptionsMapRole,      "optionsMap"},
         {OptionsKeyFieldRole, "optionsKeyField"},
         {        SectionRole,         "section"},
-        {           DescRole,            "desc"},
         {    DescriptionRole,     "description"},
+        {       EnabledRole,        "enabled"},
+        {           UnitRole,            "unit"},
         {        VisibleRole,         "visible"},
         {   OrdinalIndexRole,    "ordinalIndex"},
     };
@@ -304,6 +303,19 @@ QVariantList SettingsFieldModel::optionsForKey(const QString &name, const QStrin
     if (row < 0)
         return {};
     return fields_.at(static_cast<size_t>(row)).options_map.value(key).toList();
+}
+
+QVariantList SettingsFieldModel::optionGroups(const int row) const
+{
+    if (row < 0 || row >= rowCount())
+        return {};
+
+    const SettingsField &field = fields_.at(static_cast<size_t>(row));
+    if (field.backend_key.trimmed().isEmpty())
+        return {};
+
+    const auto result = parameter::DynamicOptionsRegistry::instance().resolve(field.backend_key, {});
+    return result.provider_found ? result.option_groups : QVariantList{};
 }
 
 QVariantMap SettingsFieldModel::valuesMap() const
@@ -402,8 +414,9 @@ QVariantMap SettingsFieldModel::toMap(const SettingsField &field) const
         {      QStringLiteral("options_map"),       field.options_map},
         {QStringLiteral("options_key_field"), field.options_key_field},
         {          QStringLiteral("section"),           field.section},
-        {             QStringLiteral("desc"),              field.desc},
         {      QStringLiteral("description"),       field.description},
+        {           QStringLiteral("enabled"),            field.enabled},
+        {              QStringLiteral("unit"),               field.unit},
         {          QStringLiteral("visible"),           field.visible},
         {    QStringLiteral("ordinal_index"),     field.ordinal_index},
     };

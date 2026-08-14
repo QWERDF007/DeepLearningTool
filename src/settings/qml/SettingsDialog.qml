@@ -189,7 +189,7 @@ Window {
                             Layout.preferredHeight: 12
                         }
 
-                        SettingsFieldsPanel {
+                        ParameterFieldsPanel {
                             fieldModel: page.fieldModel
                         }
 

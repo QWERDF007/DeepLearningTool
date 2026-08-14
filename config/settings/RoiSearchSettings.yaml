@@ -9,20 +9,20 @@ RoiSearchSettings:
     基础:
       - name_en: enabled
         name_cn: 启用
-        desc: 用于配置标注搜索中基础相关的启用。
+        description: 用于配置标注搜索中基础相关的启用。
         property_name: enabled
         value: true
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
     模型:
       - name_en: model
         name_cn: 模型
-        desc: 用于配置标注搜索中模型相关的模型。
+        description: 用于配置标注搜索中模型相关的模型。
         property_name: model
         value: dinov2_vits14_reg
         value_type: string
-        control_type: combo
+        display_type: combo
         options:
           - resnet18
           - resnet34
@@ -41,19 +41,19 @@ RoiSearchSettings:
 
       - name_en: model_path
         name_cn: 模型文件
-        desc: 用于配置标注搜索中模型相关的模型文件。
+        description: 用于配置标注搜索中模型相关的模型文件。
         property_name: modelPath
         value: ""
         value_type: string
-        control_type: path
+        display_type: path
 
       - name_en: feature_name
         name_cn: 特征层
-        desc: 用于配置标注搜索中模型相关的特征层。
+        description: 用于配置标注搜索中模型相关的特征层。
         property_name: featureName
         value: x_norm_patchtokens
         value_type: string
-        control_type: combo
+        display_type: combo
         options_key_field: model
         options_map:
           resnet18: [layer1, layer2, layer3, layer4]
@@ -73,38 +73,38 @@ RoiSearchSettings:
 
       - name_en: model_batch_size
         name_cn: 模型批量
-        desc: 用于配置标注搜索中模型相关的模型批量。
+        description: 用于配置标注搜索中模型相关的模型批量。
         property_name: modelBatchSize
         value: 1
         value_type: int
         value_range: [1, 8192, 1]
-        control_type: spin
+        display_type: spin
 
     索引:
       - name_en: rebuild_index
         name_cn: 重建索引
-        desc: 用于配置标注搜索中索引相关的重建索引。
+        description: 用于配置标注搜索中索引相关的重建索引。
         property_name: rebuildIndex
         value: false
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
       - name_en: top_k
         name_cn: 返回数量
-        desc: 用于配置标注搜索中索引相关的返回数量。
+        description: 用于配置标注搜索中索引相关的返回数量。
         property_name: topK
         value: 5
         value_type: int
         value_range: [1, 1000, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: norm
         name_cn: 特征归一化
-        desc: 用于配置标注搜索中索引相关的特征归一化。
+        description: 用于配置标注搜索中索引相关的特征归一化。
         property_name: norm
         value: 2
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [none, l1, l2]
         options_values:
           none: 0
@@ -113,11 +113,11 @@ RoiSearchSettings:
 
       - name_en: index_storage
         name_cn: 索引存储
-        desc: 用于配置标注搜索中索引相关的索引存储。
+        description: 用于配置标注搜索中索引相关的索引存储。
         property_name: indexStorage
         value: 0
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [ram, disk]
         options_values:
           ram: 0
@@ -126,11 +126,11 @@ RoiSearchSettings:
     运行时:
       - name_en: preprocess_backend
         name_cn: 预处理后端
-        desc: 用于配置标注搜索中运行时相关的预处理后端。
+        description: 用于配置标注搜索中运行时相关的预处理后端。
         property_name: preprocessBackend
         value: 0
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [cpu, gpu]
         options_values:
           cpu: 0
@@ -138,11 +138,11 @@ RoiSearchSettings:
 
       - name_en: faiss_backend
         name_cn: FAISS 后端
-        desc: 用于配置标注搜索中运行时相关的FAISS 后端。
+        description: 用于配置标注搜索中运行时相关的FAISS 后端。
         property_name: faissBackend
         value: 0
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [cpu, gpu]
         options_values:
           cpu: 0
@@ -150,7 +150,7 @@ RoiSearchSettings:
 
       - name_en: model_runtime
         name_cn: 运行时设备
-        desc: 用于配置标注搜索中模型推理的后端和设备。
+        description: 用于配置标注搜索中模型推理的后端和设备。
         property_name: modelRuntime
         value_type: string
         param_type: dynamic
@@ -159,11 +159,11 @@ RoiSearchSettings:
 
       - name_en: model_precision
         name_cn: 推理精度
-        desc: 用于配置标注搜索中 TensorRT 模型的推理精度。
+        description: 用于配置标注搜索中 TensorRT 模型的推理精度。
         property_name: modelPrecision
         value: 0
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [FP32, FP16]
         options_values:
           FP32: 0
@@ -172,52 +172,52 @@ RoiSearchSettings:
     ROI:
       - name_en: pooled_height
         name_cn: ROI 输出高度
-        desc: 用于配置标注搜索中ROI相关的ROI 输出高度。
+        description: 用于配置标注搜索中ROI相关的ROI 输出高度。
         property_name: pooledHeight
         value: 7
         value_type: int
         value_range: [1, 64, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: pooled_width
         name_cn: ROI 输出宽度
-        desc: 用于配置标注搜索中ROI相关的ROI 输出宽度。
+        description: 用于配置标注搜索中ROI相关的ROI 输出宽度。
         property_name: pooledWidth
         value: 7
         value_type: int
         value_range: [1, 64, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: sampling_ratio
         name_cn: ROI 采样比例
-        desc: 用于配置标注搜索中ROI相关的ROI 采样比例。
+        description: 用于配置标注搜索中ROI相关的ROI 采样比例。
         property_name: samplingRatio
         value: -1
         value_type: int
         value_range: [-1, 32, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: aligned
         name_cn: ROI 对齐
-        desc: 用于配置标注搜索中ROI相关的ROI 对齐坐标规则。
+        description: 用于配置标注搜索中ROI相关的ROI 对齐坐标规则。
         property_name: aligned
         value: false
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
       - name_en: use_pca
         name_cn: 启用 PCA
-        desc: 用于配置标注搜索中ROI相关的启用 PCA。
+        description: 用于配置标注搜索中ROI相关的启用 PCA。
         property_name: usePca
         value: false
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
       - name_en: pca_dim
         name_cn: PCA 维度
-        desc: 用于配置标注搜索中ROI相关的PCA 维度。
+        description: 用于配置标注搜索中ROI相关的PCA 维度。
         property_name: pcaDim
         value: 0
         value_type: int
         value_range: [0, 8192, 1]
-        control_type: spin
+        display_type: spin

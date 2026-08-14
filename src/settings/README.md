@@ -24,7 +24,7 @@
 
 - `table`：对应的数据库表名；未配置时由 group 名自动转为 snake_case，并追加 `_settings`。
 - `accessor`：运行时对象名，例如 `ui`、`data`、`software`。
-- `parent_accessor` / `parent`：可选父级命名空间，例如 `advanced`。
+- `parent_accessor`：可选父级命名空间，例如 `advanced`。
 - `category`：设置页面或其它界面可用于分类过滤的逻辑类别。
 - `ordinal_index`：设置组排序值；未配置时按加载顺序生成。
 - `label`：设置页面显示名称。
@@ -32,20 +32,19 @@
 
 每个 field 支持的主要字段：
 
-- `name_en` / `key` / `name`：字段内部名称，也是数据库保存值时使用的 key。
-- `name_cn` / `label`：界面显示文本。
-- `property_name` / `property`：运行时 QML 属性名；未配置时回退到 `name_en`。
-- `value` / `default_value`：当前默认值和重置值。
-- `value_type` / `type`：值类型，支持 `bool`、`int`、`double`、`float`、`real`、`string` 等。
-- `value_range` / `range`：数值范围，按 `[from, to, step]` 解释。
-- `control_type` / `control`：界面控件类型，例如 `slider`、`combo`、`switch`、`path`。
-- `display_type`：展示类型；未配置时回退到 `control_type`。
+- `name_en`：字段内部名称，也是数据库保存值时使用的 key。
+- `name_cn`：界面显示文本。
+- `property_name`：运行时 QML 属性名；未配置时回退到 `name_en`。
+- `value`、`default_value`：当前默认值和重置值。
+- `value_type`：值类型，支持 `bool`、`int`、`double`、`float`、`real`、`string` 等。
+- `value_range`：数值范围，按 `[from, to, step]` 解释。
+- `display_type`：界面控件类型，例如 `slider`、`combo`、`switch`、`path`、`group_combo`。
 - `param_type: dynamic`、`backend_key`：通过 `dltool_parameter` 动态 provider 注册表生成选项。
 - `options`：普通枚举选项。
-- `options_values` / `option_values` / `options_value_map`：可选的 combo 显示值到实际值映射；未配置时实际值等于 `options` 中的显示值。
-- `options_map` / `key_values` / `values_map`：按其它字段值切换的动态选项。
-- `desc`：配置项简短说明，设置页在左侧文字区域显示 tooltip 时使用。
-- `description`、`visible`、`ordinal_index`：说明、可见性和排序信息。字段的 `section` 角色由父 section 节点名生成。
+- `options_values`：可选的 combo 显示值到实际值映射；未配置时实际值等于 `options` 中的显示值。
+- `options_map`：按其它字段值切换的动态选项，配合 `options_key_field` 使用。
+- `description`：配置项说明，设置页在左侧文字区域显示 tooltip 时使用。
+- `visible`、`enabled`、`unit`、`ordinal_index`：可见性、编辑状态、单位和排序信息。字段的 `section` 角色由父 section 节点名生成。
 
 ## QML 访问方式
 
@@ -106,7 +105,7 @@ QML 侧优先使用枚举入口，避免手写 accessor path：
 - `ordinalIndex`
 - `fieldModel`
 
-`fieldModel` 是字段列表模型，角色包括 `nameEn`、`nameCn`、`propertyName`、`value`、`defaultValue`、`valueType`、`valueRange`、`displayType`、`backendKey`、`paramKind`、`options`、`optionsValueMap`、`optionsMap`、`section`、`desc`、`description`、`visible`、`ordinalIndex`。界面根据 `displayType` 和 `valueType` 创建对应控件，根据 `value` 赋值，根据 `valueRange` 设置范围。
+`fieldModel` 是字段列表模型，角色包括 `nameEn`、`nameCn`、`propertyName`、`value`、`defaultValue`、`valueType`、`valueRange`、`displayType`、`backendKey`、`paramKind`、`options`、`optionsValueMap`、`optionsMap`、`optionsKeyField`、`section`、`description`、`enabled`、`unit`、`visible`、`ordinalIndex`。界面统一使用 `dltool.ui` 的 `ParameterFieldsPanel`，根据 `displayType` 和 `valueType` 创建对应控件。
 
 动态设置示例：
 
@@ -152,7 +151,7 @@ provider 抽象和全局注册表位于 `dltool_parameter`，模型、设置和 
 新增或删除设置项时优先修改 `config/settings/*.yaml`：
 
 1. 新增 group：添加一个 YAML 顶层 group，并配置 `table`、`accessor`、`label` 和 `sections`。
-2. 新增字段：在 group 的对应 section 节点下添加 field，并配置 `name_en`、`property_name`、`desc`、`value_type`、`value`、`control_type` 等。
+2. 新增字段：在 group 的对应 section 节点下添加 field，并配置 `name_en`、`property_name`、`description`、`value_type`、`value`、`display_type` 等。
 3. 动态列表：简单列表使用 `options`；需要显示值和保存值不一致时，使用 `options_values`；如果列表依赖其它字段值，使用 `options_map` 这类 key-values 结构，例如按 `model` 映射到不同特征层名列表。
 4. 访问路径：通过 `accessor` 和 `parent_accessor` 决定，例如 `parent_accessor: advanced` + `accessor: roiSearch` 对应内部路径 `advanced.roiSearch`，QML 使用 `SettingsAccessor.RoiSearch` 访问。
 

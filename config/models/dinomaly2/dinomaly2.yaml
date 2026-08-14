@@ -13,7 +13,7 @@ train_params:
         value: 448
         value_type: int
         value_range: [128, 2048, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: crop_size
         name_cn: 裁剪尺寸
@@ -21,14 +21,14 @@ train_params:
         value: 392
         value_type: int
         value_range: [64, 2048, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: backbone
         name_cn: 预训练模型
         description: 用于提取图像特征的 DINOv2 预训练编码器版本。
         value: dinov2reg_vit_base_14
         value_type: string
-        control_type: combo
+        display_type: combo
         options: [dinov2reg_vit_small_14, dinov2reg_vit_base_14, dinov2reg_vit_large_14]
 
       - name_en: checkpoint
@@ -36,7 +36,7 @@ train_params:
         description: 训练使用的初始权重：同架构用户已训练权重，留空使用默认初始化。
         value: ""
         value_type: string
-        control_type: group_combo
+        display_type: group_combo
         param_type: dynamic
         backend_key: model.checkpoints
         model_param_name: backbone
@@ -46,7 +46,7 @@ train_params:
         description: Dinomaly2 仅支持 RGB 三通道输入。
         value: 3
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [3]
         enabled: false
 
@@ -56,21 +56,21 @@ train_params:
         value: 0.4
         value_type: double
         value_range: [0.0, 0.9, 0.01]
-        control_type: spin
+        display_type: spin
 
       - name_en: la
         name_cn: 线性注意力
         description: 解码器是否使用线性注意力（1 使用，0 使用标准注意力）。
         value: true
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
       - name_en: lc
         name_cn: 松散约束分组
         description: 编码器与解码器特征融合的分组方式（0 逐层，1 一组，2 两组，3 三组，4 四组，11/12/14 稀疏）。
         value: 2
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [0, 1, 2, 3, 4, 11, 12, 14]
 
       - name_en: ll
@@ -78,7 +78,7 @@ train_params:
         description: 是否启用丢弃低距离区域的松散余弦损失。
         value: true
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
       - name_en: ll_ratio
         name_cn: 松散损失比例
@@ -86,7 +86,7 @@ train_params:
         value: 0.9
         value_type: double
         value_range: [0.0, 1.0, 0.01]
-        control_type: spin
+        display_type: spin
 
       - name_en: ll_factor
         name_cn: 松散损失梯度系数
@@ -94,14 +94,14 @@ train_params:
         value: 0.1
         value_type: double
         value_range: [0.0, 1.0, 0.01]
-        control_type: spin
+        display_type: spin
 
       - name_en: cr
         name_cn: 上下文重居中
         description: 是否对上下文特征执行重居中处理。
         value: true
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
   - name_en: training
     name_cn: 训练配置
@@ -113,7 +113,7 @@ train_params:
         value: 40000
         value_type: int
         value_range: [1, 200000, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: batch_size
         name_cn: 批量大小
@@ -121,7 +121,7 @@ train_params:
         value: 8
         value_type: int
         value_range: [1, 128, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: lr_decay_ratio
         name_cn: 学习率衰减比例
@@ -129,7 +129,7 @@ train_params:
         value: 1.0
         value_type: double
         value_range: [0.01, 1.0, 0.01]
-        control_type: spin
+        display_type: spin
 
       - name_en: seed
         name_cn: 随机种子
@@ -137,7 +137,7 @@ train_params:
         value: 1
         value_type: int
         value_range: [0, 1000000, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: device
         name_cn: 设备
@@ -154,7 +154,7 @@ train_params:
         value: 2
         value_type: int
         value_range: [0, 64, 1]
-        control_type: spin
+        display_type: spin
 
   - name_en: mask
     name_cn: Mask 约束
@@ -165,21 +165,21 @@ train_params:
         description: 未由项目自动传递时使用的 Good 类别像素值列表（逗号分隔）。训练时项目会按数据管理中 Good 类别的类别值自动传递，此处仅在手动运行 Python 时作为默认值。
         value: 1
         value_type: string
-        control_type: text
+        display_type: text
 
       - name_en: anomaly_value
         name_cn: 异常像素值
         description: 未由项目自动传递时使用的异常类别像素值列表（逗号分隔）。训练时项目会按数据管理中 Anomaly 类别的类别值自动传递，此处仅在手动运行 Python 时作为默认值。
         value: 255
         value_type: string
-        control_type: text
+        display_type: text
 
       - name_en: ignore_value
         name_cn: 忽略像素值
         description: 未由项目自动传递时使用的忽略像素值列表（逗号分隔）。训练时项目会按数据管理中 Unlabeled 类别的类别值自动传递，这些像素不参与任何 Mask 约束损失。
         value: 254
         value_type: string
-        control_type: text
+        display_type: text
 
       - name_en: aug_hflip_prob
         name_cn: 随机水平翻转概率
@@ -187,7 +187,7 @@ train_params:
         value: 0
         value_type: double
         value_range: [0.0, 1.0, 0.05]
-        control_type: spin
+        display_type: spin
 
       - name_en: aug_brightness
         name_cn: 亮度抖动强度
@@ -195,7 +195,7 @@ train_params:
         value: 0
         value_type: double
         value_range: [0.0, 1.0, 0.05]
-        control_type: spin
+        display_type: spin
 
       - name_en: aug_contrast
         name_cn: 对比度抖动强度
@@ -203,7 +203,7 @@ train_params:
         value: 0
         value_type: double
         value_range: [0.0, 1.0, 0.05]
-        control_type: spin
+        display_type: spin
 
       - name_en: aug_hue
         name_cn: 色相抖动强度
@@ -211,7 +211,7 @@ train_params:
         value: 0
         value_type: double
         value_range: [0.0, 0.5, 0.05]
-        control_type: spin
+        display_type: spin
 
       - name_en: lambda_good
         name_cn: Good 损失权重
@@ -219,7 +219,7 @@ train_params:
         value: 0.5
         value_type: double
         value_range: [0.0, 10.0, 0.1]
-        control_type: spin
+        display_type: spin
 
       - name_en: lambda_anomaly
         name_cn: 异常损失权重
@@ -227,7 +227,7 @@ train_params:
         value: 0.5
         value_type: double
         value_range: [0.0, 10.0, 0.1]
-        control_type: spin
+        display_type: spin
 
 test_params:
   - name_en: data
@@ -240,7 +240,7 @@ test_params:
         value: 8
         value_type: int
         value_range: [1, 128, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: num_workers
         name_cn: 数据加载进程
@@ -248,7 +248,7 @@ test_params:
         value: 2
         value_type: int
         value_range: [0, 64, 1]
-        control_type: spin
+        display_type: spin
 
   - name_en: inference
     name_cn: 推理配置
@@ -268,7 +268,7 @@ test_params:
         description: 推理使用的模型权重：用户已训练权重，留空使用当前模型训练的权重。
         value: ""
         value_type: string
-        control_type: group_combo
+        display_type: group_combo
         param_type: dynamic
         backend_key: model.checkpoints
         model_param_name: backbone

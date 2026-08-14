@@ -31,13 +31,10 @@ namespace dltool::settings {
  */
 struct SETTINGS_API SettingsField : public dltool::parameter::ParameterSpec
 {
-    QString     property_name;      ///< 绑定到外部对象或 QML 的属性名。
-    QVariantMap  options_map;       ///< 选项键值映射。
-    QString      options_key_field; ///< options_map 的联动字段的 name_en。
-    QString      section;           ///< 所属分区名称。
-    QString      desc;              ///< 简短说明，用于 tooltip。
-    bool         visible{true};     ///< 是否在界面中显示。
-    int          ordinal_index{0};  ///< 分组内排序索引。
+    QString property_name;    ///< 绑定到外部对象或 QML 的属性名。
+    QString section;          ///< 所属分区名称。
+    bool    visible{true};    ///< 是否在界面中显示。
+    int     ordinal_index{0}; ///< 分组内排序索引。
 };
 
 /**
@@ -80,8 +77,9 @@ public:
         OptionsMapRole,                ///< 选项映射。
         OptionsKeyFieldRole,           ///< 动态选项键字段。
         SectionRole,                   ///< 分区名称。
-        DescRole,                      ///< tooltip 说明文本。
         DescriptionRole,               ///< 描述文本。
+        EnabledRole,                   ///< 是否启用。
+        UnitRole,                      ///< 单位。
         VisibleRole,                   ///< 可见性。
         OrdinalIndexRole,              ///< 排序索引。
     };
@@ -262,6 +260,13 @@ public:
      * @return 选项列表；字段或键不存在时返回空列表。
      */
     Q_INVOKABLE QVariantList optionsForKey(const QString &name, const QString &key) const;
+
+    /**
+     * @brief 获取参数 provider 返回的两级选项列表。
+     * @param row 字段行号
+     * @return 形如 {label, value, subOptions:[{label, value}]} 的列表
+     */
+    Q_INVOKABLE QVariantList optionGroups(int row) const;
 
     /**
      * @brief 获取当前所有字段的值映射。

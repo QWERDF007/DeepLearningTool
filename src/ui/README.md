@@ -2,7 +2,7 @@
 
 ## 模块概述
 
-`dltool.ui` 是 DeepLearningTool 项目的 UI 服务层模块，位于项目架构中的基础设施层之上。该模块提供轻量级的 UI 基础设施服务，用于连接 C++ 后端与 QML 前端，但不包含可复用的视觉控件或业务状态管理。
+`dltool.ui` 是 DeepLearningTool 项目的 UI 基础设施模块，提供轻量级的 C++ 服务和不依赖业务模块的公共 QML 组件。参数字段编辑器在这里统一实现，settings、model 和 feature 只提供字段模型与页面容器。
 
 ## 目录结构
 
@@ -14,6 +14,9 @@ src/ui/
 ├── ProgressManager.cpp      # 进度管理服务实现
 ├── ChartPresenter.cpp       # 通用图表展示适配
 ├── Utils.cpp                # 工具函数实现
+├── qml/
+    ├── ParameterFieldDelegate.qml  # 公共参数字段编辑器
+    └── ParameterFieldsPanel.qml    # 公共参数字段列表
 └── include/ui/
     ├── UILogger.h           # 日志服务头文件
     ├── ProgressManager.h    # 进度管理服务头文件
@@ -70,18 +73,25 @@ src/ui/
   - 图片/标签表格选择信号（支持 Shift 多选、全选、清除）
   - 审核到标注跳转信号（`switchToImage`、`selectLabel`）
 
+### ParameterFieldDelegate / ParameterFieldsPanel - 参数字段编辑器
+
+- 使用统一的字段角色：`nameEn`、`nameCn`、`description`、`value`、`defaultValue`、`valueType`、`valueRange`、`displayType`、`enabled`、`options`、`optionsValueMap`、`optionsMap`、`optionsKeyField`、`unit`。
+- 支持文本、数值微调、滑块加直接输入、复选框、开关、下拉、文件/目录选择和 `group_combo`。
+- `fieldModel` 只需提供 `setValueForName`、`valueForName`、`fieldMap`、`optionsForKey` 和 `optionGroups` 等统一接口。
+
 ## 依赖关系
 
 ### 构建依赖
 - `Qt6::Core` - Qt 核心库
 - `Qt6::Gui` - Qt GUI 库
 - `Qt6::Quick` - Qt Quick 库
+- `Qt6::Qml` - QML 类型和模块支持
 - `quickui` - 第三方 QuickUI 控件库
 - `dltool_common` - 项目通用模块
 
 ### 项目内位置
 ```
-common → core → database → settings → ui → model → feature → data → project → tool
+common → core → database → ui → parameter → settings → model → feature → data → project → tool
 ```
 
 `ui` 模块构建于基础设施层之上，被上层业务模块引用。其他模块通过 `import dltool.ui` 使用本模块提供的服务。
@@ -97,6 +107,9 @@ import dltool.ui      // 提供服务
 UILogger.infoCount
 ProgressManager.progress
 Utils.withOpacity(color, 0.5)
+
+// 使用公共字段编辑器
+ParameterFieldsPanel { fieldModel: someFieldModel }
 ```
 
 ### C++ 侧使用
@@ -129,6 +142,7 @@ Text { text: value.toFixed(Utils.paramDecimals(valueType, valueRange, value, def
 
 ## 设计约束
 
-- **不添加可复用视觉控件** - 所有可复用控件、颜色、字体、图标和对话框按钮枚举统一放入 `3rdparty/QuickUI` 模块
+- **不引入业务依赖** - 公共参数编辑器只依赖字段模型的统一 QML 接口，不依赖 `dltool.model` 或 `dltool.settings`
+- **视觉基础控件复用 QuickUI** - 颜色、字体、图标和基础控件统一使用 `3rdparty/QuickUI`
 - **不引入业务状态** - 项目、数据集、标签、模型等业务状态不归此模块管理
 - **跨线程更新必须走 Qt 事件队列** - 通过 `QueuedConnection` 或服务 API 回到 UI 线程，避免直接跨线程操作 UI 对象

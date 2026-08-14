@@ -40,6 +40,8 @@ struct PARAMETER_API ParameterSpec
     QString       backend_key;                          ///< 动态 provider key。
     QVariantList  options;                              ///< 选项显示值列表。
     QVariantMap   options_value_map;                    ///< 显示值到实际值的映射。
+    QVariantMap   options_map;                           ///< 根据其他字段值切换的选项映射。
+    QString       options_key_field;                     ///< options_map 使用的联动字段。
     ParameterKind kind{ParameterKind::Static};          ///< 参数选项生成方式。
     bool          enabled{true};                        ///< 是否启用。
     QString       unit;                                 ///< 单位。

@@ -8,48 +8,48 @@ DataSettings:
     缩略图:
       - name_en: margin
         name_cn: 缩略图边距
-        desc: 用于配置数据设置中缩略图相关的缩略图边距。
+        description: 用于配置数据设置中缩略图相关的缩略图边距。
         property_name: thumbnailMargin
         value: 10
         value_type: int
         value_range: [0, 64, 1]
-        control_type: slider
+        display_type: slider
 
       - name_en: cache_size
         name_cn: 缩略图缓存
-        desc: 用于配置数据设置中缩略图相关的缩略图缓存。
+        description: 用于配置数据设置中缩略图相关的缩略图缓存。
         property_name: thumbnailCacheSize
         value: 100
         value_type: int
         value_range: [1, 10000, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: image_load_threads
         name_cn: 图像加载线程
-        desc: 用于配置数据设置中缩略图相关的图像加载线程。
+        description: 用于配置数据设置中缩略图相关的图像加载线程。
         property_name: imageLoadThreads
         value: 4
         value_type: int
         value_range: [1, 16, 1]
-        control_type: spin
+        display_type: spin
 
     图像单元:
       - name_en: cell_scale
         name_cn: 图像单元缩放
-        desc: 用于配置数据设置中图像单元相关的图像单元缩放。
+        description: 用于配置数据设置中图像单元相关的图像单元缩放。
         property_name: imageCellScale
         value: 1.0
         value_type: double
         value_range: [0.5, 4.0, 0.25]
-        control_type: slider
+        display_type: slider
 
       - name_en: image_sort_order
         name_cn: 图像排序
-        desc: 用于配置图库中图像的展示顺序，可按添加时间或文件名排序。
+        description: 用于配置图库中图像的展示顺序，可按添加时间或文件名排序。
         property_name: imageSortOrder
         value: 0
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [添加时间, 文件名]
         options_values:
           添加时间: 0
@@ -58,65 +58,65 @@ DataSettings:
     标注显示:
       - name_en: label_scale
         name_cn: 标注缩略图缩放
-        desc: 用于配置数据设置中标注显示相关的标注缩略图缩放。
+        description: 用于配置数据设置中标注显示相关的标注缩略图缩放。
         property_name: labelThumbnailScale
         value: 1.0
         value_type: double
         value_range: [0.5, 4.0, 0.1]
-        control_type: slider
+        display_type: slider
 
       - name_en: label_aspect_ratio
         name_cn: 标注缩略图宽高比
-        desc: 用于配置数据设置中标注显示相关的标注缩略图宽高比。
+        description: 用于配置数据设置中标注显示相关的标注缩略图宽高比。
         property_name: labelThumbnailAspectRatio
         value: 1.0
         value_type: double
         value_range: [0.5, 2.0, 0.1]
-        control_type: slider
+        display_type: slider
 
       - name_en: label_border_padding
         name_cn: 标注缩略图边框留白
-        desc: 用于配置数据设置中标注显示相关的标注缩略图边框留白，单位为像素。
+        description: 用于配置数据设置中标注显示相关的标注缩略图边框留白，单位为像素。
         property_name: labelThumbnailBorderPadding
         value: 10.0
         value_type: double
         value_range: [0.0, 200.0, 10.0]
-        control_type: slider
+        display_type: slider
 
       - name_en: border_width
         name_cn: 标注边框宽度
-        desc: 用于配置数据设置中标注显示相关的标注边框宽度。
+        description: 用于配置数据设置中标注显示相关的标注边框宽度。
         property_name: labelBorderWidth
         value: 2
         value_type: int
         value_range: [1, 16, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: fill_opacity
         name_cn: 标注填充透明度
-        desc: 用于配置数据设置中标注显示相关的标注填充透明度。
+        description: 用于配置数据设置中标注显示相关的标注填充透明度。
         property_name: labelFillOpacity
         value: 30
         value_type: int
         value_range: [0, 100, 1]
-        control_type: slider
+        display_type: slider
 
     导入:
       - name_en: polygon_approx_epsilon_ratio
         name_cn: 导入轮廓拟合系数
-        desc: 用于配置 COCO RLE / Mask 导入时 maskToPolygons 的 OpenCV approxPolyDP 轮廓拟合系数；epsilon = 系数 * arcLength(contour, true)，0 表示不压缩轮廓点。
+        description: 用于配置 COCO RLE / Mask 导入时 maskToPolygons 的 OpenCV approxPolyDP 轮廓拟合系数；epsilon = 系数 * arcLength(contour, true)，0 表示不压缩轮廓点。
         property_name: polygonApproxEpsilonRatio
         value: 0.01
         value_type: double
         value_range: [0.0, 100, 0.001]
-        control_type: spin
+        display_type: spin
 
     导入导出:
       - name_en: data_io_threads
         name_cn: 导入导出线程数
-        desc: 用于配置数据导入和导出处理时使用的工作线程数。
+        description: 用于配置数据导入和导出处理时使用的工作线程数。
         property_name: dataIOThreads
         value: 4
         value_type: int
         value_range: [1, 16, 1]
-        control_type: spin
+        display_type: spin

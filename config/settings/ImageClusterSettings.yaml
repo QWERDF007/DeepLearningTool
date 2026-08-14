@@ -9,20 +9,20 @@ ImageClusterSettings:
     基础:
       - name_en: enabled
         name_cn: 启用
-        desc: 用于配置图像聚类中基础相关的启用。
+        description: 用于配置图像聚类中基础相关的启用。
         property_name: enabled
         value: true
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
     模型:
       - name_en: model
         name_cn: 模型
-        desc: 用于配置图像聚类中模型相关的模型。
+        description: 用于配置图像聚类中模型相关的模型。
         property_name: model
         value: dinov2_vits14
         value_type: string
-        control_type: combo
+        display_type: combo
         options:
           - resnet18
           - resnet34
@@ -41,19 +41,19 @@ ImageClusterSettings:
 
       - name_en: model_path
         name_cn: 模型文件
-        desc: 用于配置图像聚类中模型相关的模型文件。
+        description: 用于配置图像聚类中模型相关的模型文件。
         property_name: modelPath
         value: ""
         value_type: string
-        control_type: path
+        display_type: path
 
       - name_en: feature_name
         name_cn: 特征层
-        desc: 用于配置图像聚类中模型相关的特征层。
+        description: 用于配置图像聚类中模型相关的特征层。
         property_name: featureName
         value: x_norm_clstoken
         value_type: string
-        control_type: combo
+        display_type: combo
         options_key_field: model
         options_map:
           resnet18: [layer1, layer2, layer3, layer4]
@@ -73,21 +73,21 @@ ImageClusterSettings:
 
       - name_en: model_batch_size
         name_cn: 模型批量
-        desc: 用于配置图像聚类中模型相关的模型批量。
+        description: 用于配置图像聚类中模型相关的模型批量。
         property_name: modelBatchSize
         value: 1
         value_type: int
         value_range: [1, 8192, 1]
-        control_type: spin
+        display_type: spin
 
     特征:
       - name_en: norm
         name_cn: 特征归一化
-        desc: 用于配置图像聚类中特征相关的特征归一化。
+        description: 用于配置图像聚类中特征相关的特征归一化。
         property_name: norm
         value: 2
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [none, l1, l2]
         options_values:
           none: 0
@@ -96,65 +96,65 @@ ImageClusterSettings:
 
       - name_en: use_pca
         name_cn: 启用 PCA
-        desc: 用于配置图像聚类中特征相关的启用 PCA。
+        description: 用于配置图像聚类中特征相关的启用 PCA。
         property_name: usePca
         value: false
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
       - name_en: pca_dim
         name_cn: PCA 维度
-        desc: 用于配置图像聚类中特征相关的PCA 维度。
+        description: 用于配置图像聚类中特征相关的PCA 维度。
         property_name: pcaDim
         value: 0
         value_type: int
         value_range: [0, 8192, 1]
-        control_type: spin
+        display_type: spin
 
     HDBSCAN:
       - name_en: min_cluster_size
         name_cn: 最小簇大小
-        desc: 用于配置图像聚类中HDBSCAN相关的最小簇大小。
+        description: 用于配置图像聚类中HDBSCAN相关的最小簇大小。
         property_name: minClusterSize
         value: 5
         value_type: int
         value_range: [2, 1000000, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: min_samples
         name_cn: 最小样本数
-        desc: 用于配置图像聚类中HDBSCAN相关的最小样本数。
+        description: 用于配置图像聚类中HDBSCAN相关的最小样本数。
         property_name: minSamples
         value: 0
         value_type: int
         value_range: [0, 1000000, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: cluster_selection_epsilon
         name_cn: 簇选择 Epsilon
-        desc: 用于配置图像聚类中HDBSCAN相关的簇选择 Epsilon。
+        description: 用于配置图像聚类中HDBSCAN相关的簇选择 Epsilon。
         property_name: clusterSelectionEpsilon
         value: 0.0
         value_type: double
         value_range: [0.0, 1000000.0, 0.01]
-        control_type: spin
+        display_type: spin
 
       - name_en: max_cluster_size
         name_cn: 最大簇大小
-        desc: 用于配置图像聚类中HDBSCAN相关的最大簇大小。
+        description: 用于配置图像聚类中HDBSCAN相关的最大簇大小。
         property_name: maxClusterSize
         value: 0
         value_type: int
         value_range: [0, 1000000, 1]
-        control_type: spin
+        display_type: spin
 
       - name_en: algorithm
         name_cn: 邻居搜索
-        desc: 用于配置图像聚类中HDBSCAN相关的邻居搜索。
+        description: 用于配置图像聚类中HDBSCAN相关的邻居搜索。
         property_name: algorithm
         value: 1
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [brute, kd_tree, ball_tree]
         options_values:
           brute: 0
@@ -163,11 +163,11 @@ ImageClusterSettings:
 
       - name_en: metric
         name_cn: 距离度量
-        desc: 用于配置图像聚类中HDBSCAN相关的距离度量。
+        description: 用于配置图像聚类中HDBSCAN相关的距离度量。
         property_name: metric
         value: 0
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [euclidean, cosine, manhattan, chebyshev, minkowski]
         options_values:
           euclidean: 0
@@ -178,11 +178,11 @@ ImageClusterSettings:
 
       - name_en: cluster_selection_method
         name_cn: 簇选择方法
-        desc: 用于配置图像聚类中HDBSCAN相关的簇选择方法。
+        description: 用于配置图像聚类中HDBSCAN相关的簇选择方法。
         property_name: clusterSelectionMethod
         value: 0
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [eom, leaf]
         options_values:
           eom: 0
@@ -191,19 +191,19 @@ ImageClusterSettings:
     输出:
       - name_en: include_noise
         name_cn: 导出噪声簇
-        desc: 用于配置图像聚类中输出相关的导出噪声簇。
+        description: 用于配置图像聚类中输出相关的导出噪声簇。
         property_name: includeNoise
         value: true
         value_type: bool
-        control_type: checkbox
+        display_type: checkbox
 
       - name_en: apply_mode
         name_cn: 输出方式
-        desc: 用于配置图像聚类中输出相关的输出方式。
+        description: 用于配置图像聚类中输出相关的输出方式。
         property_name: applyMode
         value: 0
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [移动, 复制]
         options_values:
           移动: 0
@@ -212,11 +212,11 @@ ImageClusterSettings:
     运行时:
       - name_en: preprocess_backend
         name_cn: 预处理后端
-        desc: 用于配置图像聚类中运行时相关的预处理后端。
+        description: 用于配置图像聚类中运行时相关的预处理后端。
         property_name: preprocessBackend
         value: 0
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [cpu, gpu]
         options_values:
           cpu: 0
@@ -224,7 +224,7 @@ ImageClusterSettings:
 
       - name_en: model_runtime
         name_cn: 运行时设备
-        desc: 用于配置图像聚类中模型推理的后端和设备。
+        description: 用于配置图像聚类中模型推理的后端和设备。
         property_name: modelRuntime
         value_type: string
         param_type: dynamic
@@ -233,11 +233,11 @@ ImageClusterSettings:
 
       - name_en: model_precision
         name_cn: 推理精度
-        desc: 用于配置图像聚类中 TensorRT 模型的推理精度。
+        description: 用于配置图像聚类中 TensorRT 模型的推理精度。
         property_name: modelPrecision
         value: 0
         value_type: int
-        control_type: combo
+        display_type: combo
         options: [FP32, FP16]
         options_values:
           FP32: 0

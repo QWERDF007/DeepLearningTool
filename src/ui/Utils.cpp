@@ -74,7 +74,18 @@ int decimalCount(const QVariant &value)
         return 0;
     }
 
-    QString text = value.toString().trimmed().toLower();
+    QString text;
+    const int type_id = value.metaType().id();
+    if (type_id == QMetaType::Double || type_id == QMetaType::Float)
+    {
+        // Avoid exposing binary floating-point artifacts such as 0.41999999999999998.
+        text = QString::number(value.toDouble(), 'g', 15).toLower();
+    }
+    else
+    {
+        text = value.toString().trimmed().toLower();
+    }
+
     if (text.isEmpty())
     {
         text = QString::number(value.toDouble(), 'g', 15).toLower();

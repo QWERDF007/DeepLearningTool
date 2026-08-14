@@ -54,10 +54,15 @@ public:
         EnabledRole,
         OptionsRole,
         OptionsValueMapRole,
+        OptionsMapRole,
+        OptionsKeyFieldRole,
         ParamKindRole,
         DisplayTypeRole,
         BackendKeyRole,
         UnitRole,
+        SectionRole,
+        VisibleRole,
+        OrdinalIndexRole,
     };
     Q_ENUM(Role)
 
@@ -177,18 +182,47 @@ public:
     Q_INVOKABLE QVariant valueForName(const QString &name_en) const;
 
     /**
+     * @brief 根据英文名设置参数值。
+     * @param name_en 参数英文名
+     * @param value 新值
+     * @return 设置成功返回 true
+     */
+    Q_INVOKABLE bool setValueForName(const QString &name_en, const QVariant &value);
+
+    /**
      * @brief 获取所有参数的键值对
      * @return 参数名-值映射
      */
     Q_INVOKABLE QVariantMap valuesMap() const;
 
     /**
-     * @brief 获取 model.checkpoints provider 返回的两级选项列表。
-     * @param row checkpoint 参数所在行
-     * @param unused 保留旧 QML 调用签名
+     * @brief 获取指定参数的字段元数据。
+     * @param row 参数行号
+     * @return 字段映射；行号无效时返回空映射
+     */
+    Q_INVOKABLE QVariantMap fieldMap(int row) const;
+
+    /**
+     * @brief 根据英文名获取参数字段元数据。
+     * @param name_en 参数英文名
+     * @return 字段映射；参数不存在时返回空映射
+     */
+    Q_INVOKABLE QVariantMap fieldMapForName(const QString &name_en) const;
+
+    /**
+     * @brief 获取某个参数在指定联动键下的选项列表。
+     * @param name_en 参数英文名
+     * @param key 联动键
+     * @return 选项列表；参数或键不存在时返回空列表
+     */
+    Q_INVOKABLE QVariantList optionsForKey(const QString &name_en, const QString &key) const;
+
+    /**
+     * @brief 获取参数 provider 返回的两级选项列表。
+     * @param row 参数行号
      * @return 形如 {label, value, subOptions:[{label, value}]} 的列表
      */
-    Q_INVOKABLE QVariantList nestedOptions(int row, const QString &unused = {}) const;
+    Q_INVOKABLE QVariantList optionGroups(int row) const;
 
     /**
      * @brief 设置权重组件枚举上下文（项目目录、项目数据库、框架、架构、模型名）
