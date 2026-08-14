@@ -60,6 +60,8 @@ enum class MatrixAxisKey
 {
     FalseNegative = 0,
     FalsePositive,
+    UnmatchedGroundTruth,
+    UnmatchedPrediction,
     Total,
 };
 
@@ -265,6 +267,7 @@ MODEL_API MetricSet metricSetFromKey(const QString &key);
 MODEL_API QString cellKindKey(CellKind kind);
 MODEL_API CellKind cellKindFromKey(const QString &key);
 MODEL_API QString matrixAxisKey(MatrixAxisKey key);
+MODEL_API QString matrixAxisLabel(MatrixAxisKey key);
 MODEL_API QString displayText(DisplayText text);
 MODEL_API QString viewStateKey(ViewState state);
 MODEL_API ViewState viewStateFromKey(const QString &key);

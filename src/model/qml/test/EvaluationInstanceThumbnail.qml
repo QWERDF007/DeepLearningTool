@@ -3,7 +3,13 @@ import QtQuick
 Item {
     id: control
     property var record: ({})
-    onRecordChanged: boxes.requestPaint()
+
+    function requestOverlayPaint() {
+        if (boxes)
+            boxes.requestPaint()
+    }
+
+    onRecordChanged: requestOverlayPaint()
 
     // 裁剪视口不再由评估预计算:按 LabelInstanceThumbnail 模式,
     // 从 GT/PRED 绝对 bounds 推导(并集 + 5% 边距,钳制到图像边界),
@@ -48,8 +54,8 @@ Item {
     }
 
     function contentRect() {
-        var width = Number(preview.paintedWidth || preview.width)
-        var height = Number(preview.paintedHeight || preview.height)
+        var width = Number(preview.paintedWidth || 0)
+        var height = Number(preview.paintedHeight || 0)
         return ({x: (boxes.width - width) / 2, y: (boxes.height - height) / 2,
                  width: width, height: height})
     }
@@ -99,6 +105,10 @@ Item {
                         : control.cropRectFor(preview)
         fillMode: Image.PreserveAspectFit
         asynchronous: true
+        onStatusChanged: control.requestOverlayPaint()
+        onPaintedWidthChanged: control.requestOverlayPaint()
+        onPaintedHeightChanged: control.requestOverlayPaint()
+        onSourceSizeChanged: control.requestOverlayPaint()
     }
 
     // A mask is already a raster artifact in the standard protocol.  It is
@@ -131,6 +141,10 @@ Item {
         id: boxes
         anchors.fill: preview
         anchors.margins: 2
+        visible: preview.status === Image.Ready
+                 && preview.paintedWidth > 0 && preview.paintedHeight > 0
+                 && control.viewportRect().valid
+        onVisibleChanged: requestPaint()
         onPaint: {
             var ctx = getContext("2d")
             ctx.clearRect(0, 0, width, height)

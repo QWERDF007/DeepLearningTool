@@ -920,6 +920,10 @@ bool EvaluationCellFilterProxyModel::acceptsRecord(const EvaluationInstanceRecor
         return true;
     const QString matrix_fn = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative);
     const QString matrix_fp = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive);
+    const QString matrix_unmatched_fn
+        = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::UnmatchedGroundTruth);
+    const QString matrix_unmatched_fp
+        = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::UnmatchedPrediction);
     const QString matrix_total = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::Total);
     const bool error_record = record.status == evaluation::Status::ClassMismatch
                               || record.status == evaluation::Status::FalsePositive
@@ -931,6 +935,16 @@ bool EvaluationCellFilterProxyModel::acceptsRecord(const EvaluationInstanceRecor
             if (!error_record)
                 return false;
         }
+        else if (matrix_row_ == matrix_unmatched_fn)
+        {
+            if (record.status != evaluation::Status::FalseNegative)
+                return false;
+        }
+        else if (matrix_row_ == matrix_unmatched_fp)
+        {
+            if (record.status != evaluation::Status::FalsePositive)
+                return false;
+        }
         else if (record.pred_class_id != matrix_row_.toInt())
             return false;
     }
@@ -939,6 +953,16 @@ bool EvaluationCellFilterProxyModel::acceptsRecord(const EvaluationInstanceRecor
         if (matrix_column_ == matrix_fp)
         {
             if (!error_record)
+                return false;
+        }
+        else if (matrix_column_ == matrix_unmatched_fp)
+        {
+            if (record.status != evaluation::Status::FalsePositive)
+                return false;
+        }
+        else if (matrix_column_ == matrix_unmatched_fn)
+        {
+            if (record.status != evaluation::Status::FalseNegative)
                 return false;
         }
         else if (record.gt_class_id != matrix_column_.toInt())

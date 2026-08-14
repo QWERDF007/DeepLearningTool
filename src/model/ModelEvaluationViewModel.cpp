@@ -1061,7 +1061,9 @@ void ModelEvaluationViewModel::selectMatrixCell(const QString &rowKey, const QSt
         value = value.trimmed();
         if (value.isEmpty() || value == evaluation::matrixAxisKey(evaluation::MatrixAxisKey::Total)
             || value == evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative)
-            || value == evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive))
+            || value == evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive)
+            || value == evaluation::matrixAxisKey(evaluation::MatrixAxisKey::UnmatchedGroundTruth)
+            || value == evaluation::matrixAxisKey(evaluation::MatrixAxisKey::UnmatchedPrediction))
             return value;
 
         bool numeric = false;

@@ -20,6 +20,105 @@ Item {
         return String(key) === "TOTAL"
     }
 
+    function isUnmatchedPredictionKey(key) {
+        return String(key) === "UNMATCHED_PRED"
+    }
+
+    function isUnmatchedGroundTruthKey(key) {
+        return String(key) === "UNMATCHED_GT"
+    }
+
+    function isSpecialColumn(key) {
+        const value = String(key)
+        return value === "FP" || control.isUnmatchedPredictionKey(value) || control.isTotalKey(value)
+    }
+
+    function isSpecialRow(key) {
+        const value = String(key)
+        return value === "FN" || control.isUnmatchedGroundTruthKey(value) || control.isTotalKey(value)
+    }
+
+    /**
+     * @brief 判断单元格是否属于错误区域：FP/误检、FN/漏检 及其合计与不可用格。
+     * @param kind 单元格类型（EvaluationConfusionModel.CellKindValueRole）。
+     */
+    function isErrorKind(kind) {
+        if (kind === EvaluationConfusionModel.CellKindFalsePositive
+                || kind === EvaluationConfusionModel.CellKindFalseNegative
+                || kind === EvaluationConfusionModel.CellKindNotApplicable
+                || kind === EvaluationConfusionModel.CellKindFalsePositiveTotal
+                || kind === EvaluationConfusionModel.CellKindFalseNegativeTotal
+                || kind === EvaluationConfusionModel.CellKindErrorTotal)
+            return true
+        return false
+    }
+
+    /**
+     * @brief 判断单元格是否为类别合计格（TOTAL 行列上对类别/全部实例的聚合）。
+     */
+    function isTotalKind(kind) {
+        if (kind === EvaluationConfusionModel.CellKindAll
+                || kind === EvaluationConfusionModel.CellKindPredTotal
+                || kind === EvaluationConfusionModel.CellKindGtTotal)
+            return true
+        return false
+    }
+
+    /**
+     * @brief 计算单元格底色：FP/FN/漏检/误检 等错误轴上的格子统一用背景色，
+     *        类别合计与正确匹配用高亮色，其余（类别错配）用主色。
+     */
+    function cellBaseColor(kind, diagonal, errorAxis, totalAxis) {
+        if (totalAxis)
+            return QuiColor.Highlight
+        if (errorAxis)
+            return QuiColor.Background
+        if (control.isTotalKind(kind))
+            return QuiColor.Highlight
+        if (kind === EvaluationConfusionModel.CellKindMatch && diagonal)
+            return QuiColor.Highlight
+        if (control.isErrorKind(kind))
+            return QuiColor.Background
+        return QuiColor.Primary
+    }
+
+    function cellFillColor(kind, diagonal, errorAxis, totalAxis, selected) {
+        if (selected)
+            return Qt.darker(control.cellBaseColor(kind, diagonal, errorAxis, totalAxis))
+        return control.cellBaseColor(kind, diagonal, errorAxis, totalAxis)
+    }
+
+    function cellOpacity(kind, count, selected, errorAxis, totalAxis) {
+        if (selected || errorAxis || totalAxis || count > 0
+                || kind === EvaluationConfusionModel.CellKindAll)
+            return 1.0
+        return 0.72
+    }
+
+    function cellBorderColor(kind, errorAxis, totalAxis, selected) {
+        if (selected)
+            return QuiColor.Highlight
+        if (totalAxis || (control.isTotalKind(kind) && !errorAxis))
+            return QuiColor.FontDark
+        return QuiColor.Border
+    }
+
+    function cellBorderWidth(selected) {
+        if (selected)
+            return 2
+        return 1
+    }
+
+    function isErrorAxisRow(key) {
+        const value = String(key)
+        return value === "FN" || control.isUnmatchedGroundTruthKey(value)
+    }
+
+    function isErrorAxisColumn(key) {
+        const value = String(key)
+        return value === "FP" || control.isUnmatchedPredictionKey(value)
+    }
+
     function isCellSelected(rowKey, columnKey) {
         if (!control.evaluation)
             return false
@@ -105,7 +204,7 @@ Item {
             for (let c = 0; c < columnCount; ++c) {
                 let key = control.matrixData(0, c, EvaluationConfusionModel.ColumnKeyRole, "")
                 let label = control.matrixData(0, c, EvaluationConfusionModel.ColumnLabelRole, "")
-                let specialColumn = String(key) === "FP" || String(key) === "TOTAL"
+                let specialColumn = control.isSpecialColumn(key)
                 columnSource.push({
                     title: specialColumn
                            ? confusionTable.customItem(com_matrix_header, {
@@ -113,10 +212,10 @@ Item {
                                isTotal: control.isTotalKey(key)
                            }) : "",
                     dataIndex: key,
-                    width: 32,
-                    minimumWidth: 32,
+                    width: control.isUnmatchedPredictionKey(key) ? 44 : 32,
+                    minimumWidth: control.isUnmatchedPredictionKey(key) ? 44 : 32,
                     stretch: false,
-                    frozen: String(key) === "FP" || String(key) === "TOTAL"
+                    frozen: specialColumn
                 })
                 if (!specialColumn)
                     classColumnLabels.push({ column: c, label: String(label) })
@@ -124,7 +223,7 @@ Item {
             for (let r = 0; r < rowCount; ++r) {
                 let rowKey = control.matrixData(r, 0, EvaluationConfusionModel.RowKeyRole, "")
                 let rowLabel = control.matrixData(r, 0, EvaluationConfusionModel.RowLabelRole, "")
-                if (String(rowKey) !== "FN" && String(rowKey) !== "TOTAL")
+                if (!control.isSpecialRow(rowKey))
                     classRowLabels.push({
                         row: r,
                         label: String(rowLabel)
@@ -232,25 +331,17 @@ Item {
                                      selectable: false,
                                      isDiagonal: false })
             property bool selected: control.isCellSelected(options.rowKey, options.columnKey)
-            property bool totalCell: options.cellKind === EvaluationConfusionModel.CellKindAll
-                                     || options.cellKind === EvaluationConfusionModel.CellKindPredTotal
-                                     || options.cellKind === EvaluationConfusionModel.CellKindGtTotal
-                                     || options.cellKind === EvaluationConfusionModel.CellKindFalsePositiveTotal
-                                     || options.cellKind === EvaluationConfusionModel.CellKindFalseNegativeTotal
-            readonly property color baseColor: totalCell
-                                               || (options.cellKind === EvaluationConfusionModel.CellKindMatch
-                                                   && options.isDiagonal)
-                                               ? QuiColor.Highlight
-                                               : (options.cellKind === EvaluationConfusionModel.CellKindFalsePositive
-                                                  || options.cellKind === EvaluationConfusionModel.CellKindFalseNegative
-                                                  ? QuiColor.Background : QuiColor.Primary)
-            color: selected ? Qt.darker(baseColor) : baseColor
-            opacity: selected || options.count > 0
-                     || options.cellKind === EvaluationConfusionModel.CellKindAll ? 1.0 : 0.72
-            border.color: selected
-                          ? QuiColor.Highlight
-                          : (totalCell ? QuiColor.FontDark : QuiColor.Border)
-            border.width: selected ? 2 : 1
+            property bool errorAxisCell: control.isErrorAxisRow(options.rowKey)
+                                      || control.isErrorAxisColumn(options.columnKey)
+            property bool totalAxisCell: control.isTotalKey(options.rowKey)
+                                      || control.isTotalKey(options.columnKey)
+            color: control.cellFillColor(options.cellKind, options.isDiagonal,
+                                         errorAxisCell, totalAxisCell, selected)
+            opacity: control.cellOpacity(options.cellKind, options.count, selected,
+                                         errorAxisCell, totalAxisCell)
+            border.color: control.cellBorderColor(options.cellKind, errorAxisCell,
+                                                  totalAxisCell, selected)
+            border.width: control.cellBorderWidth(selected)
 
             Column {
                 anchors.centerIn: parent
@@ -334,7 +425,7 @@ Item {
                             sourceRow, 0, EvaluationConfusionModel.RowLabelRole, ""))
                         property string rowKey: String(control.matrixData(
                             sourceRow, 0, EvaluationConfusionModel.RowKeyRole, ""))
-                        property bool classRow: rowKey !== "FN" && rowKey !== "TOTAL"
+                        property bool classRow: !control.isSpecialRow(rowKey)
                         implicitWidth: control.leftAxisWidth
                         implicitHeight: confusionTable.currentRowHeight(sourceRow)
                         color: confusionTable.headerColor

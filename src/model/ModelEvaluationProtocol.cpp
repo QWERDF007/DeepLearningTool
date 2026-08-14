@@ -202,7 +202,22 @@ QString matrixAxisKey(const MatrixAxisKey key)
     {
     case MatrixAxisKey::FalseNegative: return QStringLiteral("FN");
     case MatrixAxisKey::FalsePositive: return QStringLiteral("FP");
+    case MatrixAxisKey::UnmatchedGroundTruth: return QStringLiteral("UNMATCHED_GT");
+    case MatrixAxisKey::UnmatchedPrediction: return QStringLiteral("UNMATCHED_PRED");
     case MatrixAxisKey::Total: return QStringLiteral("TOTAL");
+    }
+    return {};
+}
+
+QString matrixAxisLabel(const MatrixAxisKey key)
+{
+    switch (key)
+    {
+    case MatrixAxisKey::FalseNegative: return QStringLiteral("FN");
+    case MatrixAxisKey::FalsePositive: return QStringLiteral("FP");
+    case MatrixAxisKey::UnmatchedGroundTruth: return QStringLiteral("漏检");
+    case MatrixAxisKey::UnmatchedPrediction: return QStringLiteral("误检");
+    case MatrixAxisKey::Total: return displayText(DisplayText::Total);
     }
     return {};
 }

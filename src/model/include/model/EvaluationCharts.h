@@ -94,7 +94,9 @@ MODEL_API QVariantMap buildInstanceEvent(const EvaluationImageData &image, evalu
 /**
  * @brief 构造混淆矩阵单元格列表。
  *
- * 布局为 类别 x 类别 + FN/FP/合计 行列，与主链路矩阵键（行\x1f列）对应。
+ * 布局为 类别 x 类别 + 误检/FP 列、漏检/FN 行及合计行列，与主链路矩阵键
+ * （行\x1f列）对应。FP/FN 保留类别错误与未匹配事件的聚合值，误检/漏检
+ * 仅表示未匹配的预测/真实框。
  * @param classes 类别目录。
  * @param matrix 矩阵计数（行\x1f列 -> 计数）。
  * @param total_count 全部评估单元计数：检测方法为实例事件数，异常检测为图像数。

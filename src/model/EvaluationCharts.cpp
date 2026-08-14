@@ -824,11 +824,17 @@ QVariantList evaluationConfusionCells(const QMap<int, QString> &classes, const Q
 {
     const QString     matrix_fn    = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative);
     const QString     matrix_fp    = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive);
+    const QString     matrix_unmatched_fn
+        = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::UnmatchedGroundTruth);
+    const QString     matrix_unmatched_fp
+        = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::UnmatchedPrediction);
     const QString     matrix_total = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::Total);
     QMap<int, qint64> pred_totals;
     QMap<int, qint64> gt_totals;
     QMap<int, qint64> row_fp_totals;
     QMap<int, qint64> column_fn_totals;
+    QMap<int, qint64> unmatched_pred_totals;
+    QMap<int, qint64> unmatched_gt_totals;
     qint64            unmatched_fp = 0;
     qint64            unmatched_fn = 0;
     qint64            mismatch_total = 0;
@@ -846,7 +852,10 @@ QVariantList evaluationConfusionCells(const QMap<int, QString> &classes, const Q
         {
             unmatched_fn += it.value();
             if (!column_fp)
+            {
+                unmatched_gt_totals[column_key.toInt()] += count;
                 column_fn_totals[column_key.toInt()] += count;
+            }
         }
         else
             pred_totals[row_key.toInt()] += count;
@@ -854,7 +863,10 @@ QVariantList evaluationConfusionCells(const QMap<int, QString> &classes, const Q
         {
             unmatched_fp += it.value();
             if (!row_fn)
+            {
+                unmatched_pred_totals[row_key.toInt()] += count;
                 row_fp_totals[row_key.toInt()] += count;
+            }
         }
         else
             gt_totals[column_key.toInt()] += count;
@@ -870,15 +882,29 @@ QVariantList evaluationConfusionCells(const QMap<int, QString> &classes, const Q
     const auto   appendCell = [&](const QString &row, const QString &column, qint64 count,
                                   const evaluation::CellKind kind, bool selectable, bool diagonal, bool error)
     {
-        const bool    row_fn       = row == matrix_fn;
-        const bool    row_total    = row == matrix_total;
-        const bool    column_fp    = column == matrix_fp;
-        const bool    column_total = column == matrix_total;
-        const int     row_id       = row_fn || row_total ? -1 : row.toInt();
-        const int     column_id    = column_fp || column_total ? -1 : column.toInt();
-        const QString total_label  = evaluation::displayText(evaluation::DisplayText::Total);
-        const QString row_label    = row_fn ? matrix_fn : (row_total ? total_label : classes.value(row_id));
-        const QString column_label = column_fp ? matrix_fp : (column_total ? total_label : classes.value(column_id));
+        const bool    row_fn              = row == matrix_fn;
+        const bool    row_unmatched_fn    = row == matrix_unmatched_fn;
+        const bool    row_total           = row == matrix_total;
+        const bool    column_fp           = column == matrix_fp;
+        const bool    column_unmatched_fp = column == matrix_unmatched_fp;
+        const bool    column_total        = column == matrix_total;
+        const int     row_id              = row_fn || row_unmatched_fn || row_total ? -1 : row.toInt();
+        const int     column_id           = column_fp || column_unmatched_fp || column_total ? -1 : column.toInt();
+        const QString total_label         = evaluation::displayText(evaluation::DisplayText::Total);
+        const QString row_label           = row_fn
+                                                ? evaluation::matrixAxisLabel(
+                                                      evaluation::MatrixAxisKey::FalseNegative)
+                                                : (row_unmatched_fn
+                                                       ? evaluation::matrixAxisLabel(
+                                                             evaluation::MatrixAxisKey::UnmatchedGroundTruth)
+                                                       : (row_total ? total_label : classes.value(row_id)));
+        const QString column_label        = column_fp
+                                                ? evaluation::matrixAxisLabel(
+                                                      evaluation::MatrixAxisKey::FalsePositive)
+                                                : (column_unmatched_fp
+                                                       ? evaluation::matrixAxisLabel(
+                                                             evaluation::MatrixAxisKey::UnmatchedPrediction)
+                                                       : (column_total ? total_label : classes.value(column_id)));
         cells.push_back(QVariantMap{
             {       evaluation::fieldName(evaluation::Field::RowKey),                           row},
             {    evaluation::fieldName(evaluation::Field::ColumnKey),                        column},
@@ -904,6 +930,8 @@ QVariantList evaluationConfusionCells(const QMap<int, QString> &classes, const Q
                        diagonal ? evaluation::CellKind::Match : evaluation::CellKind::ClassMismatch, true, diagonal,
                        !diagonal);
         }
+        appendCell(row, matrix_unmatched_fp, unmatched_pred_totals.value(row_it.key()),
+                   evaluation::CellKind::FalsePositive, true, false, true);
         appendCell(row, matrix_fp, row_fp_totals.value(row_it.key()),
                    evaluation::CellKind::FalsePositive, true, false, true);
         appendCell(row, matrix_total, pred_totals.value(row_it.key()), evaluation::CellKind::PredTotal, true, false,
@@ -912,9 +940,20 @@ QVariantList evaluationConfusionCells(const QMap<int, QString> &classes, const Q
     for (auto column_it = classes.cbegin(); column_it != classes.cend(); ++column_it)
     {
         const QString column = QString::number(column_it.key());
+        appendCell(matrix_unmatched_fn, column, unmatched_gt_totals.value(column_it.key()),
+                   evaluation::CellKind::FalseNegative, true, false, true);
+    }
+    appendCell(matrix_unmatched_fn, matrix_unmatched_fp, 0, evaluation::CellKind::NotApplicable, true, false, false);
+    appendCell(matrix_unmatched_fn, matrix_fp, unmatched_fn, evaluation::CellKind::FalseNegative, true, false, true);
+    appendCell(matrix_unmatched_fn, matrix_total, unmatched_fn, evaluation::CellKind::FalseNegativeTotal, true, false,
+               true);
+    for (auto column_it = classes.cbegin(); column_it != classes.cend(); ++column_it)
+    {
+        const QString column = QString::number(column_it.key());
         appendCell(matrix_fn, column, column_fn_totals.value(column_it.key()),
                    evaluation::CellKind::FalseNegative, true, false, true);
     }
+    appendCell(matrix_fn, matrix_unmatched_fp, unmatched_fp, evaluation::CellKind::FalsePositive, true, false, true);
     appendCell(matrix_fn, matrix_fp, mismatch_total + unmatched_fp + unmatched_fn,
                evaluation::CellKind::NotApplicable, true, false, false);
     appendCell(matrix_fn, matrix_total, mismatch_total + unmatched_fn,
@@ -925,6 +964,8 @@ QVariantList evaluationConfusionCells(const QMap<int, QString> &classes, const Q
         appendCell(matrix_total, column, gt_totals.value(column_it.key()), evaluation::CellKind::GtTotal, true, false,
                    false);
     }
+    appendCell(matrix_total, matrix_unmatched_fp, unmatched_fp, evaluation::CellKind::FalsePositiveTotal, true, false,
+               true);
     appendCell(matrix_total, matrix_fp, mismatch_total + unmatched_fp,
                evaluation::CellKind::FalsePositiveTotal, true, false, true);
     appendCell(matrix_total, matrix_total, total_count, evaluation::CellKind::All, true, false, false);
