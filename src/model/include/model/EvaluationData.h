@@ -32,7 +32,7 @@ struct MODEL_API EvaluationPredictionData
     qint64        image_id{-1};  ///< 所属图像 ID。
     int           class_id{-1};  ///< 预测类别 ID。
     QString       class_name;    ///< 预测类别名称。
-    double        score{0.0};    ///< 置信度分数。
+    double        score{0.0};    ///< 模型输出分数，范围由评估方法决定。
     QVariantMap   geometry;      ///< 规范化几何记录。
     QVariantMap   bounds;        ///< 几何包围盒映射。
     EvaluationBox box;           ///< 解析出的包围盒。

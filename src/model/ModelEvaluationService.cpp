@@ -55,11 +55,12 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, QVa
     }
 
     QMap<qint64, EvaluationImageData> images;
+    QMap<int, QString>                global_class_catalog;
     int                               missing_database_images  = 0;
     int                               ignored_selection_images = 0;
     if (!loadEvaluationImages(options.dataset_file_list_path, options.project_database_path, options.task_database_path,
                                options.method, images, options.cancel_token, err_msg, &missing_database_images,
-                               &ignored_selection_images, options.image_dimensions_provider))
+                               &ignored_selection_images, options.image_dimensions_provider, &global_class_catalog))
         return false;
     if (missing_database_images > 0)
         spdlog::warn("测试任务文件列表中有 {} 个图像已不在当前项目数据库中，已跳过", missing_database_images);
@@ -106,14 +107,8 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, QVa
         return false;
     }
     const bool         anomaly_method = evaluation::isAnomaly(options.method);
-    QMap<int, QString> classes;
-    if (anomaly_method)
-    {
-        /** @brief 异常检测为图像级二元分类，正常样本是没有 GT 标签的隐式负类。 */
-        classes.insert(0, evaluation::displayText(evaluation::DisplayText::Good));
-        classes.insert(1, evaluation::displayText(evaluation::DisplayText::Anomaly));
-    }
-    else
+    QMap<int, QString> classes = global_class_catalog;
+    if (!anomaly_method)
     {
         for (const EvaluationImageData &image : images)
         {
@@ -201,9 +196,14 @@ bool ModelEvaluationService::evaluate(const ModelEvaluationOptions &options, QVa
             }
             const EvaluationPredictionData *anomaly_prediction = nullptr;
             double                          image_score        = 0.0;
+            bool                            has_image_score    = false;
             for (const EvaluationPredictionData &prediction : image.predictions)
             {
-                image_score = std::max(image_score, prediction.score);
+                if (!has_image_score || prediction.score > image_score)
+                {
+                    image_score     = prediction.score;
+                    has_image_score = true;
+                }
                 if (prediction.class_id == 1 && prediction.score >= options.confidence_threshold
                     && (anomaly_prediction == nullptr || prediction.score > anomaly_prediction->score))
                     anomaly_prediction = &prediction;

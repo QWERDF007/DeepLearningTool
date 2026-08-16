@@ -215,13 +215,21 @@ int Utils::paramDecimals(const QString &value_type, const QVariant &value_range,
         return 0;
     }
 
-    int                result = std::max(decimalCount(value), decimalCount(default_value));
     const QVariantList range  = toVariantList(value_range);
-    for (const QVariant &entry : range)
+    if (range.size() > 2)
     {
-        result = std::max(result, decimalCount(entry));
+        bool         ok   = false;
+        const double step = range.at(2).toDouble(&ok);
+        if (ok && std::isfinite(step) && step > 0.0)
+        {
+            // The YAML step defines both the display precision and the maximum
+            // number of fractional digits accepted by the numeric editor.
+            return decimalCount(range.at(2));
+        }
     }
-    return result;
+
+    // Keep a useful fallback for numeric fields without a valid step.
+    return std::max(decimalCount(value), decimalCount(default_value));
 }
 
 QVariantList Utils::recommendedLabelColors() const

@@ -106,6 +106,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredHeight: Math.max(720, implicitHeight)
                     evaluation: testPanel.testTaskManager ? testPanel.testTaskManager.currentEvaluation : null
+                    testParams: testPanel.testParams
                 }
             }
         }

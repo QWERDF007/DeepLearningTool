@@ -129,7 +129,7 @@ private:
     void    bindCurrentObjects();
     bool    buildEvaluationOptions(const ModelTestTaskDefinition &task, ModelEvaluationOptions &options,
                                    QString *err_msg = nullptr) const;
-    void    handleParameterChanged(const QString &group_name);
+    void    handleParameterChanged(const QString &group_name, const QString &parameter_name);
     QString evaluationCacheKey(const QString &task_uuid) const;
     void    emitTaskRowChanged(int row);
     const TaskManager::Task *currentTaskRecord() const;

@@ -72,38 +72,68 @@ Rectangle {
             delegate: Rectangle {
                 width: grid.cellWidth - 10
                 height: grid.cellHeight - 10
-                readonly property bool successfulStatus: model.statusKind === EvaluationInstanceModel.StatusTruePositive
-                                                         || model.statusKind === EvaluationInstanceModel.StatusTrueNegative
-                readonly property bool mismatchStatus: model.statusKind === EvaluationInstanceModel.StatusClassMismatch
+                readonly property bool consistentStatus: model.statusKind === EvaluationInstanceModel.StatusTruePositive
+                                                          || model.statusKind === EvaluationInstanceModel.StatusTrueNegative
+                readonly property bool anomalyDetection: !!control.evaluation
+                                                         && control.evaluation.anomalyDetection
+
+                function formatMetric() {
+                    var score = Number(model.score)
+                    var scoreText = isFinite(score) ? score.toFixed(3) : "—"
+                    if (anomalyDetection)
+                        return scoreText
+
+                    var iou = Number(model.iou)
+                    var iouText = isFinite(iou) ? Math.round(iou * 100) + "%" : "—"
+                    return scoreText + " / " + iouText
+                }
+
                 color: QuiColor.Primary
                 radius: 4
                 border.width: 2
                 border.color: model.selected ? QuiColor.Highlight : QuiColor.Transparent
-                EvaluationInstanceThumbnail {
+                ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 5
-                    record: ({imagePath: model.imagePath, thumbnailUrl: model.thumbnailUrl,
-                              imageWidth: model.imageWidth,
-                              imageHeight: model.imageHeight,
-                              gtGeometry: model.gtGeometry, predGeometry: model.predGeometry,
-                              gtBounds: model.gtBounds, predBounds: model.predBounds,
-                              gtMaskUrl: model.gtMaskUrl, predMaskUrl: model.predMaskUrl,
-                              gtClassColor: model.gtClassColor, predClassColor: model.predClassColor})
-                }
-                Rectangle {
-                    anchors.top: parent.top
-                    anchors.right: parent.right
-                    anchors.margins: 4
-                    radius: 3
-                    color: successfulStatus ? "#43a047" : mismatchStatus ? "#fb8c00" : "#e53935"
-                    implicitWidth: statusBadge.implicitWidth + 10
-                    implicitHeight: statusBadge.implicitHeight + 4
-                    QuiText {
-                        id: statusBadge
-                        anchors.centerIn: parent
-                        text: model.statusText || model.status
-                        color: "white"
-                        font.pixelSize: 10
+                    spacing: 2
+
+                    EvaluationInstanceThumbnail {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.minimumHeight: 1
+                        record: ({imagePath: model.imagePath, thumbnailUrl: model.thumbnailUrl,
+                                  imageWidth: model.imageWidth,
+                                  imageHeight: model.imageHeight,
+                                  gtGeometry: model.gtGeometry, predGeometry: model.predGeometry,
+                                  gtBounds: model.gtBounds, predBounds: model.predBounds,
+                                  gtMaskUrl: model.gtMaskUrl, predMaskUrl: model.predMaskUrl,
+                                  gtClassColor: model.gtClassColor, predClassColor: model.predClassColor})
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 16
+                        spacing: 4
+
+                        QuiText {
+                            id: metricText
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            text: formatMetric()
+                            font: QuiFont.Caption
+                            color: QuiColor.FontPrimary
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        QuiTextIcon {
+                            Layout.preferredWidth: 16
+                            Layout.preferredHeight: 16
+                            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                            iconSource: consistentStatus ? QuiFontIcon.CheckMark : QuiFontIcon.Cancel
+                            iconColor: consistentStatus ? "#43a047" : "#e53935"
+                            iconSize: 14
+                        }
                     }
                 }
                 MouseArea {

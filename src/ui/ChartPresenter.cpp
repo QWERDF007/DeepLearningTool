@@ -1,6 +1,7 @@
 #include "ui/ChartPresenter.h"
 
 #include <QJsonDocument>
+#include <QJSValue>
 
 namespace dltool::ui {
 
@@ -72,7 +73,12 @@ QVariantMap ChartPresenter::prepareData(const QVariant &chart_data) const
     /**
      * @brief 保持 QVariantMap 结构交给 QML 转换，避免 JSON 深拷贝丢失嵌套值。
      */
-    const QVariantMap result = chart_data.toMap();
+    QVariant source = chart_data;
+    const bool input_is_js_value = source.metaType().id() == qMetaTypeId<QJSValue>();
+    if (input_is_js_value)
+        source = source.value<QJSValue>().toVariant();
+
+    const QVariantMap result = source.toMap();
     if (!result.isEmpty())
         return result;
 

@@ -9,6 +9,7 @@ import quickui
 Item {
     id: control
     property ModelEvaluationViewModel evaluation: null
+    property ITestParams testParams: null
 
     QuiSplitView {
         anchors.fill: parent
@@ -38,6 +39,7 @@ Item {
                 SplitView.preferredWidth: 420
                 SplitView.minimumWidth: 260
                 evaluation: control.evaluation
+                testParams: control.testParams
             }
         }
 

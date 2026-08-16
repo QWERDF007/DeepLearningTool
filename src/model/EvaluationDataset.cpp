@@ -274,9 +274,12 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
                           QMap<qint64, EvaluationImageData> &images,
                           const std::shared_ptr<std::atomic_bool> &cancel_token, QString *err_msg,
                           int *missing_database_images, int *ignored_selection_images,
-                          const std::function<bool(qint64 image_id, int *width, int *height)> &dimensions_provider)
+                          const std::function<bool(qint64 image_id, int *width, int *height)> &dimensions_provider,
+                          QMap<int, QString> *class_catalog)
 {
     images.clear();
+    if (class_catalog != nullptr)
+        class_catalog->clear();
     if (missing_database_images != nullptr)
         *missing_database_images = 0;
     if (ignored_selection_images != nullptr)
@@ -400,6 +403,13 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
     {
         classes.insert(class_ids[index],
                        SourceClass{class_names[index], labelClassGroupFromExtraData(class_extra_data[index])});
+        if (class_catalog != nullptr)
+        {
+            const int class_id = static_cast<int>(class_ids[index]);
+            const QString name = class_names[index].trimmed().isEmpty() ? QString::number(class_id)
+                                                                         : class_names[index];
+            class_catalog->insert(class_id, name);
+        }
     }
 
     const std::unique_ptr<data::LabelDataHelper_t> label_helper = data::createLabelDataHelper(static_cast<int>(method));
@@ -570,7 +580,7 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
             const QVariantMap value       = record_it.value().toMap();
             const QVariant    score_value = value.value(QStringLiteral("image_score"));
             double            score       = 0.0;
-            if (!finiteNumber(score_value, &score) || score < 0.0 || score > 1.0)
+            if (!finiteNumber(score_value, &score))
                 return fail(QString("图像 %1 的 image_score 无效").arg(image_id));
             EvaluationPredictionData prediction;
             prediction.prediction_id = QString("image-%1").arg(image_id);
@@ -615,8 +625,7 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
             prediction.class_name = mapString(value_map, evaluation::fieldName(evaluation::Field::ClassName));
             if (prediction.class_id < 0)
                 return fail(QString("预测 %1 的 class_id 无效").arg(prediction.prediction_id));
-            if (!finiteNumber(value_map.value(evaluation::fieldName(evaluation::Field::Score)), &prediction.score)
-                || prediction.score < 0.0 || prediction.score > 1.0)
+            if (!finiteNumber(value_map.value(evaluation::fieldName(evaluation::Field::Score)), &prediction.score))
                 return fail(QString("预测 %1 的 score 无效").arg(prediction.prediction_id));
             if (prediction_ids.contains(prediction.prediction_id))
                 return fail(QString("预测 prediction_id 重复: %1").arg(prediction.prediction_id));

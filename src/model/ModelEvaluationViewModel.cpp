@@ -348,6 +348,11 @@ bool ModelEvaluationViewModel::hasInstanceEvents() const
     return has_instance_events_;
 }
 
+bool ModelEvaluationViewModel::anomalyDetection() const
+{
+    return anomaly_detection_;
+}
+
 EvaluationMetricModel *ModelEvaluationViewModel::instanceMetrics() const
 {
     return instance_metrics_;
@@ -458,7 +463,11 @@ void ModelEvaluationViewModel::clearEvaluation(const QString &error, const evalu
     instance_metrics_->setRecords({});
     image_metrics_->setRecords({});
     per_class_metrics_->setRecords({});
-    confusion_matrix_->setRecords({});
+    /*
+     * confusion_matrix_ 是多个同步 TableView 共同观察的稳定展示快照。
+     * available_/has_confusion_matrix_ 已经使旧结果不可见；保留旧快照直到
+     * 新结果一次性替换，可避免重新评估时产生 4xN -> 0x0 -> 4xN 的布局抖动。
+     */
     images_->setRecords({});
     instances_->setRecords({});
     global_filtered_instances_->setDatasetIds({});
@@ -799,17 +808,17 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
         if (metric.class_id >= 0)
             input.class_catalog.insert(metric.class_id, metric.class_name.isEmpty() ? metric.label : metric.class_name);
     }
-    for (const EvaluationConfusionCell &cell : confusion_matrix_->records())
+    // 异常检测的矩阵行是内部二元预测类别（正常/异常），GT 类别目录只取
+    // Service 返回的全局按类别指标，避免过滤重算时把 0/1 混入 GT 列。
+    if (!anomaly_detection_)
     {
-        if (cell.row_class_id >= 0 && !cell.row_label.isEmpty())
-            input.class_catalog.insert(cell.row_class_id, cell.row_label);
-        if (cell.column_class_id >= 0 && !cell.column_label.isEmpty())
-            input.class_catalog.insert(cell.column_class_id, cell.column_label);
-    }
-    if (anomaly_detection_)
-    {
-        input.class_catalog.insert(0, evaluation::displayText(evaluation::DisplayText::Good));
-        input.class_catalog.insert(1, evaluation::displayText(evaluation::DisplayText::Anomaly));
+        for (const EvaluationConfusionCell &cell : confusion_matrix_->records())
+        {
+            if (cell.row_class_id >= 0 && !cell.row_label.isEmpty())
+                input.class_catalog.insert(cell.row_class_id, cell.row_label);
+            if (cell.column_class_id >= 0 && !cell.column_label.isEmpty())
+                input.class_catalog.insert(cell.column_class_id, cell.column_label);
+        }
     }
     input.chart_descriptors    = charts_->records();
     input.class_ids            = global_filtered_instances_->classIds();

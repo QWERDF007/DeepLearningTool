@@ -80,6 +80,7 @@ void rebuildImageDerivedValues(EvaluationImageRecord &record)
     record.max_prediction_score = 0.0;
     record.has_gt = !record.gt.isEmpty();
     record.has_pred = !record.predictions.isEmpty();
+    bool has_prediction_score = false;
 
     for (const EvaluationGroundTruthRecord &ground_truth : record.gt)
     {
@@ -92,7 +93,11 @@ void rebuildImageDerivedValues(EvaluationImageRecord &record)
     {
         if (prediction.class_id >= 0 && !record.pred_class_ids.contains(prediction.class_id))
             record.pred_class_ids.push_back(prediction.class_id);
-        record.max_prediction_score = std::max(record.max_prediction_score, prediction.score);
+        if (!has_prediction_score || prediction.score > record.max_prediction_score)
+        {
+            record.max_prediction_score = prediction.score;
+            has_prediction_score        = true;
+        }
     }
 }
 

@@ -6,13 +6,13 @@
 #include "model/EvaluationMatching.h"
 #include "model/ModelEvaluationProtocol.h"
 
+#include <QSet>
 #include <QVariantList>
 #include <QVector>
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <memory>
-#include <optional>
 
 namespace dltool::model {
 
@@ -57,9 +57,11 @@ struct ScoreHistogramData
  * @brief 按 24 箱构造分数直方图。
  * @param good_scores 正常样本分数列表（空值忽略）。
  * @param anomaly_scores 异常样本分数列表。
+ * @param classification_threshold 分类阈值；纳入横轴范围但不参与分箱计数。
  * @return 直方图数据。
  */
-ScoreHistogramData scoreHistogram(const QVariantList &good_scores, const QVariantList &anomaly_scores)
+ScoreHistogramData scoreHistogram(const QVariantList &good_scores, const QVariantList &anomaly_scores,
+                                  const double classification_threshold)
 {
     ScoreHistogramData  histogram;
     std::vector<double> good_values;
@@ -81,6 +83,8 @@ ScoreHistogramData scoreHistogram(const QVariantList &good_scores, const QVarian
     all_values.reserve(good_values.size() + anomaly_values.size());
     all_values.insert(all_values.end(), good_values.cbegin(), good_values.cend());
     all_values.insert(all_values.end(), anomaly_values.cbegin(), anomaly_values.cend());
+    if (std::isfinite(classification_threshold))
+        all_values.push_back(classification_threshold);
     if (all_values.empty())
         return histogram;
 
@@ -151,16 +155,18 @@ ScoreHistogramData scoreHistogram(const QVariantList &good_scores, const QVarian
  * @param good_max 正常样本最大分数。
  * @param has_anomaly 是否存在异常样本。
  * @param anomaly_min 异常样本最小分数。
+ * @param classification_threshold 图像分数分类阈值。
  * @return 图表描述符。
  */
 QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantList &anomaly_scores, const bool has_good,
-                              const double good_max, const bool has_anomaly, const double anomaly_min)
+                              const double good_max, const bool has_anomaly, const double anomaly_min,
+                              const double classification_threshold)
 {
     constexpr const char *good_color         = "#43A047";
     constexpr const char *good_fill          = "rgba(67, 160, 71, 0.24)";
     constexpr const char *anomaly_color      = "#E53935";
     constexpr const char *anomaly_fill       = "rgba(229, 57, 53, 0.24)";
-    ScoreHistogramData    histogram          = scoreHistogram(good_scores, anomaly_scores);
+    ScoreHistogramData    histogram          = scoreHistogram(good_scores, anomaly_scores, classification_threshold);
     const auto            alignBoundaryPoint = [](QVariantList &points, const double score, const bool last)
     {
         if (!std::isfinite(score))
@@ -254,9 +260,9 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
             {        QStringLiteral("spanGaps"),                                                 false},
             {         QStringLiteral("xAxisID"),                          QStringLiteral("score-axis")},
             {         QStringLiteral("yAxisID"),                          QStringLiteral("count-axis")},
-            {        QStringLiteral("showLine"),                                                  true},
-            {            QStringLiteral("fill"),                                                 false}
-        };
+             {        QStringLiteral("showLine"),                                                  true},
+             {            QStringLiteral("fill"),                                                 false}
+         };
     };
 
     QVariantList datasets;
@@ -276,7 +282,6 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
     if (has_anomaly)
         datasets.push_back(referenceDataset(QString("%1 最小分数：%2").arg(anomaly_label).arg(QString::number(anomaly_min, 'f', 4)),
                                             QString::fromLatin1(anomaly_color), anomaly_min, histogram.max_count));
-
     const double      suggested_count = histogram.max_count > 0 ? histogram.max_count * 1.1 : 1.0;
     const QVariantMap options{
         {QStringLiteral("maintainAspectRatio"),                false                                               },
@@ -328,13 +333,13 @@ struct AnomalyScoreSample
     bool   ground_truth_anomaly{false};
 };
 
-QVariantMap anomalyScoreChartForSamples(const QList<AnomalyScoreSample> &samples)
+QVariantMap anomalyScoreChartForSamples(const QList<AnomalyScoreSample> &samples, const double classification_threshold)
 {
     QVariantList good_scores;
     QVariantList anomaly_scores;
     bool         has_good    = false;
     bool         has_anomaly = false;
-    double       good_max    = 0.0;
+    double       good_max    = -std::numeric_limits<double>::infinity();
     double       anomaly_min = std::numeric_limits<double>::max();
     for (const AnomalyScoreSample &sample : samples)
     {
@@ -353,10 +358,12 @@ QVariantMap anomalyScoreChartForSamples(const QList<AnomalyScoreSample> &samples
             good_max = std::max(good_max, sample.score);
         }
     }
-    return anomalyScoreChart(good_scores, anomaly_scores, has_good, good_max, has_anomaly, anomaly_min);
+    return anomalyScoreChart(good_scores, anomaly_scores, has_good, good_max, has_anomaly, anomaly_min,
+                             classification_threshold);
 }
 
-QVariantMap anomalyScoreChartForEvaluationImages(const QMap<qint64, EvaluationImageData> &images)
+QVariantMap anomalyScoreChartForEvaluationImages(const QMap<qint64, EvaluationImageData> &images,
+                                                 const double classification_threshold)
 {
     QList<AnomalyScoreSample> samples;
     samples.reserve(images.size());
@@ -367,158 +374,337 @@ QVariantMap anomalyScoreChartForEvaluationImages(const QMap<qint64, EvaluationIm
             ground_truth_anomaly = ground_truth_anomaly || ground_truth.anomaly;
 
         double score = 0.0;
+        bool   has_score = false;
         for (const EvaluationPredictionData &prediction : image.predictions)
-            score = std::max(score, prediction.score);
+        {
+            if (!has_score || prediction.score > score)
+            {
+                score     = prediction.score;
+                has_score = true;
+            }
+        }
         samples.push_back({score, ground_truth_anomaly});
     }
-    return anomalyScoreChartForSamples(samples);
+    return anomalyScoreChartForSamples(samples, classification_threshold);
 }
 
-struct CachedMatchCandidate
+struct PrecisionRecallPrediction
 {
-    int    prediction{-1};
-    int    ground_truth{-1};
-    double iou{0.0};
+    double score{0.0};
+    bool   true_positive{false};
 };
 
-struct CurveImageCache
+struct PrecisionRecallClassCurve
 {
-    const EvaluationImageData       *image{nullptr};
-    QVector<QVector<double>>         ious;
-    QVector<CachedMatchCandidate>    greedy_candidates;
-    QVector<int>                     score_order;
-    QVector<bool>                    active_predictions;
-    std::shared_ptr<IncrementalHungarianMatcher> hungarian;
-    int                              hungarian_added{0};
-    int                              next_score{0};
+    int                  class_id{-1};
+    QString              class_name;
+    int                  ground_truth_count{0};
+    double               average_precision{0.0};
+    QVector<double>      precision;
+    QList<PrecisionRecallPrediction> predictions;
 };
 
-CurveImageCache makeCurveImageCache(const EvaluationImageData &image, const double iou_threshold,
-                                    const std::shared_ptr<std::atomic_bool> &cancel)
+bool precisionRecallClassAllowed(const QVariantList &class_ids, const int class_id)
 {
-    CurveImageCache cache;
-    cache.image = &image;
-    cache.ious.resize(image.predictions.size());
-    cache.active_predictions.resize(image.predictions.size());
-    cache.active_predictions.fill(false);
+    if (class_ids.isEmpty())
+        return true;
+    for (const QVariant &value : class_ids)
+        if (value.toInt() == class_id)
+            return true;
+    return false;
+}
 
-    for (int prediction = 0; prediction < image.predictions.size(); ++prediction)
+double interpolatePrecision(const QVector<double> &recall, const QVector<double> &precision, const double value)
+{
+    if (recall.isEmpty() || precision.isEmpty())
+        return 0.0;
+    if (value < recall.front())
+        return precision.front();
+    if (value >= recall.back())
+        return precision.back();
+
+    /* upper_bound 让重复 Recall 点取最后一个 envelope 值，和 np.interp 的离散行为一致。 */
+    const auto upper = std::upper_bound(recall.cbegin(), recall.cend(), value);
+    const int  right = static_cast<int>(std::distance(recall.cbegin(), upper)) - 1;
+    const int  next  = right + 1;
+    if (right < 0)
+        return precision.front();
+    if (next >= recall.size())
+        return precision.back();
+    const double width = recall.at(next) - recall.at(right);
+    if (width <= 0.0)
+        return precision.at(next);
+    const double factor = (value - recall.at(right)) / width;
+    return precision.at(right) + factor * (precision.at(next) - precision.at(right));
+}
+
+PrecisionRecallClassCurve makePrecisionRecallClassCurve(
+    const int class_id, const QString &class_name, const QList<EvaluationImageData> &images,
+    const double iou_threshold, const evaluation::MatchingStrategy strategy,
+    const std::shared_ptr<std::atomic_bool> &cancel)
+{
+    PrecisionRecallClassCurve curve;
+    curve.class_id   = class_id;
+    curve.class_name = class_name;
+
+    for (const EvaluationImageData &image : images)
     {
         if (isCancelled(cancel))
             return {};
-        cache.ious[prediction].resize(image.gt.size());
-        for (int ground_truth = 0; ground_truth < image.gt.size(); ++ground_truth)
+
+        QList<EvaluationPredictionData> predictions;
+        QList<EvaluationGroundTruthData> ground_truth;
+        for (const EvaluationPredictionData &prediction : image.predictions)
         {
-            if (isCancelled(cancel))
-                return {};
-            const double iou
-                = (!image.predictions.at(prediction).box.valid() && !image.gt.at(ground_truth).box.valid())
-                    ? 1.0
-                    : intersectionOverUnion(image.predictions.at(prediction).box, image.gt.at(ground_truth).box);
-            cache.ious[prediction][ground_truth] = iou;
-            if (iou >= iou_threshold)
-                cache.greedy_candidates.push_back({prediction, ground_truth, iou});
+            if (prediction.class_id == class_id && std::isfinite(prediction.score))
+                predictions.push_back(prediction);
         }
-        cache.score_order.push_back(prediction);
-    }
-
-    std::sort(cache.score_order.begin(), cache.score_order.end(),
-              [&image](const int lhs, const int rhs)
-              {
-                  const double lhs_score = image.predictions.at(lhs).score;
-                  const double rhs_score = image.predictions.at(rhs).score;
-                  const bool   lhs_valid = std::isfinite(lhs_score);
-                  const bool   rhs_valid = std::isfinite(rhs_score);
-                  if (lhs_valid != rhs_valid)
-                      return lhs_valid;
-                  if (lhs_valid && lhs_score != rhs_score)
-                      return lhs_score > rhs_score;
-                  return lhs < rhs;
-              });
-    std::sort(cache.greedy_candidates.begin(), cache.greedy_candidates.end(),
-              [](const CachedMatchCandidate &lhs, const CachedMatchCandidate &rhs)
-              {
-                  if (lhs.iou != rhs.iou)
-                      return lhs.iou > rhs.iou;
-                  if (lhs.prediction != rhs.prediction)
-                      return lhs.prediction < rhs.prediction;
-                  return lhs.ground_truth < rhs.ground_truth;
-              });
-    return cache;
-}
-
-void activateCurvePredictions(CurveImageCache &cache, const double threshold)
-{
-    while (cache.next_score < cache.score_order.size())
-    {
-        const int    prediction = cache.score_order.at(cache.next_score);
-        const double score      = cache.image->predictions.at(prediction).score;
-        ++cache.next_score;
-        if (!std::isfinite(score))
-            continue;
-        if (score < threshold)
+        for (const EvaluationGroundTruthData &value : image.gt)
         {
-            --cache.next_score;
-            return;
+            if (value.class_id == class_id)
+                ground_truth.push_back(value);
         }
-        cache.active_predictions[prediction] = true;
+        curve.ground_truth_count += ground_truth.size();
+
+        std::stable_sort(predictions.begin(), predictions.end(),
+                         [](const EvaluationPredictionData &lhs, const EvaluationPredictionData &rhs)
+                         { return lhs.score > rhs.score; });
+        const QList<MatchPair> matches
+            = matchPredictions(predictions, ground_truth, iou_threshold, strategy, cancel);
+        if (isCancelled(cancel))
+            return {};
+
+        QVector<bool> true_positives(predictions.size(), false);
+        for (const MatchPair &match : matches)
+        {
+            if (match.prediction >= 0 && match.prediction < true_positives.size())
+                true_positives[match.prediction] = true;
+        }
+        for (int index = 0; index < predictions.size(); ++index)
+            curve.predictions.push_back({predictions.at(index).score, true_positives.at(index)});
     }
+
+    std::stable_sort(curve.predictions.begin(), curve.predictions.end(),
+                     [](const PrecisionRecallPrediction &lhs, const PrecisionRecallPrediction &rhs)
+                     { return lhs.score > rhs.score; });
+
+    const int point_count = kPrecisionRecallInterpolationPoints;
+    curve.precision.fill(0.0, point_count);
+    if (curve.ground_truth_count <= 0 || curve.predictions.isEmpty())
+        return curve;
+
+    QVector<double> recall;
+    QVector<double> precision;
+    recall.reserve(curve.predictions.size());
+    precision.reserve(curve.predictions.size());
+    int true_positive_count = 0;
+    int false_positive_count = 0;
+    for (const PrecisionRecallPrediction &prediction : curve.predictions)
+    {
+        if (prediction.true_positive)
+            ++true_positive_count;
+        else
+            ++false_positive_count;
+        recall.push_back(static_cast<double>(true_positive_count) / curve.ground_truth_count);
+        precision.push_back(static_cast<double>(true_positive_count)
+                            / (true_positive_count + false_positive_count));
+    }
+
+    QVector<double> modified_recall;
+    QVector<double> envelope;
+    modified_recall.reserve(recall.size() + 3);
+    envelope.reserve(precision.size() + 3);
+    modified_recall.push_back(0.0);
+    envelope.push_back(1.0);
+    for (int index = 0; index < recall.size(); ++index)
+    {
+        modified_recall.push_back(recall.at(index));
+        envelope.push_back(precision.at(index));
+    }
+    modified_recall.push_back(recall.isEmpty() ? 1.0 : recall.back());
+    modified_recall.push_back(1.0);
+    envelope.push_back(0.0);
+    envelope.push_back(0.0);
+    for (int index = envelope.size() - 2; index >= 0; --index)
+        envelope[index] = std::max(envelope.at(index), envelope.at(index + 1));
+
+    const int denominator = std::max(1, point_count - 1);
+    double    previous_x  = 0.0;
+    double    previous_y  = interpolatePrecision(modified_recall, envelope, previous_x);
+    for (int index = 0; index < point_count; ++index)
+    {
+        const double x = static_cast<double>(index) / denominator;
+        const double y = std::clamp(interpolatePrecision(modified_recall, envelope, x), 0.0, 1.0);
+        curve.precision[index] = y;
+        if (index > 0)
+            curve.average_precision += (x - previous_x) * (y + previous_y) * 0.5;
+        previous_x = x;
+        previous_y = y;
+    }
+    return curve;
 }
 
-QList<MatchPair> cachedGreedyMatches(const CurveImageCache &cache,
-                                     const std::shared_ptr<std::atomic_bool> &cancel)
+QVariantMap precisionRecallChartFromCurves(const QList<PrecisionRecallClassCurve> &curves)
 {
-    QVector<bool>    used_predictions(cache.image->predictions.size(), false);
-    QVector<bool>    used_ground_truth(cache.image->gt.size(), false);
-    QList<MatchPair> result;
-    for (const CachedMatchCandidate &candidate : cache.greedy_candidates)
+    QVariantList datasets;
+    QVector<double> average_precision(kPrecisionRecallInterpolationPoints, 0.0);
+    double          mean_average_precision = 0.0;
+    for (const PrecisionRecallClassCurve &curve : curves)
+    {
+        if (curve.precision.size() != average_precision.size())
+            continue;
+        for (int index = 0; index < average_precision.size(); ++index)
+            average_precision[index] += curve.precision.at(index);
+        mean_average_precision += curve.average_precision;
+    }
+    if (!curves.isEmpty())
+    {
+        for (double &value : average_precision)
+            value /= curves.size();
+        mean_average_precision /= curves.size();
+    }
+
+    QVariantList average_points;
+    average_points.reserve(average_precision.size());
+    const int denominator = std::max(1, kPrecisionRecallInterpolationPoints - 1);
+    for (int index = 0; index < average_precision.size(); ++index)
+        average_points.push_back(QVariantMap{{QStringLiteral("x"), static_cast<double>(index) / denominator},
+                                             {QStringLiteral("y"), average_precision.at(index)}});
+
+    constexpr const char *average_color = "#2563EB";
+    datasets.push_back(QVariantMap{
+        {evaluation::fieldName(evaluation::Field::Label),
+         QStringLiteral("平均 (mAP: %1)").arg(QString::number(mean_average_precision, 'f', 3))},
+        {evaluation::fieldName(evaluation::Field::SeriesKind), QStringLiteral("average")},
+        {evaluation::fieldName(evaluation::Field::ClassId), -1},
+        {evaluation::fieldName(evaluation::Field::ClassName), QStringLiteral("平均")},
+        {QStringLiteral("average_precision"), mean_average_precision},
+        {evaluation::fieldName(evaluation::Field::Data), average_points},
+        {QStringLiteral("borderColor"), QString::fromLatin1(average_color)},
+        {QStringLiteral("backgroundColor"), QString::fromLatin1(average_color)},
+        {QStringLiteral("pointBackgroundColor"), QString::fromLatin1(average_color)},
+        {QStringLiteral("pointBorderColor"), QString::fromLatin1(average_color)},
+        {QStringLiteral("borderWidth"), 3},
+        {QStringLiteral("pointRadius"), 0},
+        {QStringLiteral("pointHoverRadius"), 4},
+        {QStringLiteral("lineTension"), 0},
+        {QStringLiteral("fill"), false},
+        {QStringLiteral("showLine"), true}
+    });
+
+    for (const PrecisionRecallClassCurve &curve : curves)
+    {
+        QVariantList points;
+        points.reserve(curve.precision.size());
+        for (int index = 0; index < curve.precision.size(); ++index)
+            points.push_back(QVariantMap{
+                {QStringLiteral("x"), static_cast<double>(index) / denominator},
+                {QStringLiteral("y"), curve.precision.at(index)}
+            });
+        const QString color = classColor(curve.class_id);
+        datasets.push_back(QVariantMap{
+            {evaluation::fieldName(evaluation::Field::Label),
+             QStringLiteral("%1 (AP: %2)").arg(curve.class_name).arg(QString::number(curve.average_precision, 'f', 3))},
+            {evaluation::fieldName(evaluation::Field::SeriesKind), QStringLiteral("class")},
+            {evaluation::fieldName(evaluation::Field::ClassId), curve.class_id},
+            {evaluation::fieldName(evaluation::Field::ClassName), curve.class_name},
+            {QStringLiteral("average_precision"), curve.average_precision},
+            {evaluation::fieldName(evaluation::Field::Data), points},
+            {QStringLiteral("borderColor"), color},
+            {QStringLiteral("backgroundColor"), color},
+            {QStringLiteral("pointBackgroundColor"), color},
+            {QStringLiteral("pointBorderColor"), color},
+            {QStringLiteral("borderWidth"), 2},
+            {QStringLiteral("pointRadius"), 0},
+            {QStringLiteral("pointHoverRadius"), 4},
+            {QStringLiteral("lineTension"), 0},
+            {QStringLiteral("fill"), false},
+            {QStringLiteral("showLine"), true}
+        });
+    }
+
+    const QVariantMap ticks{
+        {QStringLiteral("min"), 0.0},
+        {QStringLiteral("max"), 1.0},
+        {QStringLiteral("stepSize"), 0.2},
+        {QStringLiteral("maxTicksLimit"), 6},
+        {QStringLiteral("precision"), 1},
+        {QStringLiteral("maxRotation"), 0},
+        {QStringLiteral("minRotation"), 0}
+    };
+    const QVariantMap scales{
+        {QStringLiteral("xAxes"), QVariantList{QVariantMap{
+            {QStringLiteral("type"), QStringLiteral("linear")},
+            {QStringLiteral("display"), true},
+            {QStringLiteral("ticks"), ticks},
+            {QStringLiteral("scaleLabel"),
+             QVariantMap{{QStringLiteral("display"), true}, {QStringLiteral("labelString"), QStringLiteral("Recall")}}}
+        }}},
+        {QStringLiteral("yAxes"), QVariantList{QVariantMap{
+            {QStringLiteral("type"), QStringLiteral("linear")},
+            {QStringLiteral("display"), true},
+            {QStringLiteral("ticks"), ticks},
+            {QStringLiteral("scaleLabel"),
+             QVariantMap{{QStringLiteral("display"), true}, {QStringLiteral("labelString"), QStringLiteral("Precision")}}}
+        }}}
+    };
+    return QVariantMap{
+        {evaluation::fieldName(evaluation::Field::Kind), QStringLiteral("line")},
+        {evaluation::fieldName(evaluation::Field::ChartId), QStringLiteral("precision_recall")},
+        {evaluation::fieldName(evaluation::Field::FilterKind), QStringLiteral("precision_recall")},
+        {evaluation::fieldName(evaluation::Field::Title), QStringLiteral("Precision-Recall 曲线")},
+        {evaluation::fieldName(evaluation::Field::Data),
+         QVariantMap{{evaluation::fieldName(evaluation::Field::Labels), QVariantList{}},
+                     {evaluation::fieldName(evaluation::Field::Datasets), datasets}}},
+        {evaluation::fieldName(evaluation::Field::Options),
+         QVariantMap{{QStringLiteral("maintainAspectRatio"), false},
+                     {QStringLiteral("responsive"), true},
+                     {QStringLiteral("legend"), QVariantMap{{QStringLiteral("display"), true},
+                                                              {QStringLiteral("position"), QStringLiteral("top")}}},
+                     {QStringLiteral("tooltips"), QVariantMap{{QStringLiteral("mode"), QStringLiteral("nearest")},
+                                                                {QStringLiteral("intersect"), false}}},
+                     {QStringLiteral("scales"), scales}}}
+    };
+}
+
+QVariantMap buildPrecisionRecallChart(const QList<EvaluationImageData> &images,
+                                      const QMap<int, QString> &class_catalog, const double iou_threshold,
+                                      const evaluation::MatchingStrategy strategy, const QVariantList &class_ids,
+                                      const std::shared_ptr<std::atomic_bool> &cancel)
+{
+    QSet<int> target_classes;
+    QMap<int, QString> class_names = class_catalog;
+    for (const EvaluationImageData &image : images)
     {
         if (isCancelled(cancel))
             return {};
-        if (!cache.active_predictions.at(candidate.prediction)
-            || used_predictions.at(candidate.prediction) || used_ground_truth.at(candidate.ground_truth))
-            continue;
-        used_predictions[candidate.prediction]     = true;
-        used_ground_truth[candidate.ground_truth] = true;
-        result.push_back({candidate.prediction, candidate.ground_truth, candidate.iou});
+        for (const EvaluationGroundTruthData &ground_truth : image.gt)
+        {
+            if (ground_truth.class_id < 0 || !precisionRecallClassAllowed(class_ids, ground_truth.class_id))
+                continue;
+            target_classes.insert(ground_truth.class_id);
+            if (!ground_truth.class_name.isEmpty())
+                class_names.insert(ground_truth.class_id, ground_truth.class_name);
+        }
     }
-    return result;
-}
 
-QList<MatchPair> cachedHungarianMatches(CurveImageCache &cache,
-                                        const double iou_threshold,
-                                        const std::shared_ptr<std::atomic_bool> &cancel)
-{
-    if (cache.hungarian == nullptr)
-        cache.hungarian = std::make_shared<IncrementalHungarianMatcher>(
-            cache.image->predictions.size(), cache.image->gt.size(), cache.ious, iou_threshold);
-
-    while (cache.hungarian_added < cache.next_score)
+    QList<PrecisionRecallClassCurve> curves;
+    curves.reserve(target_classes.size());
+    for (auto it = class_names.cbegin(); it != class_names.cend(); ++it)
     {
+        if (!target_classes.contains(it.key()))
+            continue;
+        const QString name = it.value().isEmpty() ? QString::number(it.key()) : it.value();
+        curves.push_back(makePrecisionRecallClassCurve(it.key(), name, images, iou_threshold, strategy, cancel));
         if (isCancelled(cancel))
             return {};
-        const int prediction = cache.score_order.at(cache.hungarian_added);
-        ++cache.hungarian_added;
-        if (!cache.active_predictions.at(prediction))
-            continue;
-        if (!cache.hungarian->addPrediction(prediction, cancel))
-            return {};
     }
-    return cache.hungarian->matches(cancel);
-}
-
-QList<MatchPair> cachedCurveMatches(CurveImageCache &cache, const double iou_threshold,
-                                    const evaluation::MatchingStrategy strategy,
-                                    const std::shared_ptr<std::atomic_bool> &cancel)
-{
-    return strategy == evaluation::MatchingStrategy::HungarianIoU
-        ? cachedHungarianMatches(cache, iou_threshold, cancel)
-        : cachedGreedyMatches(cache, cancel);
+    return precisionRecallChartFromCurves(curves);
 }
 
 }
 
-QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageData> &images)
+QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageData> &images, const double classification_threshold)
 {
     QList<AnomalyScoreSample> samples;
     samples.reserve(images.size());
@@ -530,7 +716,7 @@ QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageData> &images)
                           [](const EvaluationGroundTruthRecord &ground_truth) { return ground_truth.anomaly; });
         samples.push_back({score, ground_truth_anomaly});
     }
-    return anomalyScoreChartForSamples(samples);
+    return anomalyScoreChartForSamples(samples, classification_threshold);
 }
 
 QVariantMap evaluationMetricMap(const qint64 tp, const qint64 fp, const qint64 fn)
@@ -551,44 +737,12 @@ QVariantMap evaluationMetricMap(const qint64 tp, const qint64 fp, const qint64 f
     };
 }
 
-QList<double> confidenceThresholds(const QList<double> &scores, const double confidence)
+QVariantMap precisionRecallChartForImages(const QList<EvaluationImageData> &images,
+                                          const QMap<int, QString> &class_catalog, const double iou_threshold,
+                                          const evaluation::MatchingStrategy strategy, const QVariantList &class_ids,
+                                          const std::shared_ptr<std::atomic_bool> &cancel)
 {
-    QList<double> thresholds;
-    thresholds.push_back(1.0);
-    for (const double score : scores)
-        if (std::isfinite(score))
-            thresholds.push_back(std::clamp(score, 0.0, 1.0));
-    thresholds.push_back(confidence);
-    std::sort(thresholds.begin(), thresholds.end(), std::greater<double>());
-
-    QList<double> unique_thresholds;
-    for (const double value : thresholds)
-        if (unique_thresholds.isEmpty() || !qFuzzyCompare(unique_thresholds.back() + 1.0, value + 1.0))
-            unique_thresholds.push_back(value);
-    return unique_thresholds;
-}
-
-QVariantMap perClassMetricsChart(const QVariantList &labels, const QVariantList &precision, const QVariantList &recall,
-                                 const QVariantList &f1)
-{
-    return QVariantMap{
-        {      evaluation::fieldName(evaluation::Field::Kind),QStringLiteral("bar")                                                              },
-        {   evaluation::fieldName(evaluation::Field::ChartId), QStringLiteral("per_class_metrics")},
-        {evaluation::fieldName(evaluation::Field::FilterKind), QStringLiteral("per_class_metrics")},
-        {     evaluation::fieldName(evaluation::Field::Title),               QString("按类别指标")},
-        {      evaluation::fieldName(evaluation::Field::Data),
-         QVariantMap{
-         {evaluation::fieldName(evaluation::Field::Labels), labels},
-         {evaluation::fieldName(evaluation::Field::Datasets),
-         QVariantList{QVariantMap{{evaluation::fieldName(evaluation::Field::Label), QStringLiteral("Precision")},
-         {evaluation::fieldName(evaluation::Field::Data), precision}},
-         QVariantMap{{evaluation::fieldName(evaluation::Field::Label), QStringLiteral("Recall")},
-         {evaluation::fieldName(evaluation::Field::Data), recall}},
-         QVariantMap{{evaluation::fieldName(evaluation::Field::Label), QStringLiteral("F1")},
-         {evaluation::fieldName(evaluation::Field::Data), f1}}}}}                                 },
-        {   evaluation::fieldName(evaluation::Field::Options),
-         QVariantMap{{QStringLiteral("maintainAspectRatio"), false}}                              }
-    };
+    return buildPrecisionRecallChart(images, class_catalog, iou_threshold, strategy, class_ids, cancel);
 }
 
 EvaluationChartOutput buildEvaluationCharts(const evaluation::Method                 method,
@@ -623,138 +777,42 @@ EvaluationChartOutput buildEvaluationCharts(const evaluation::Method            
             {evaluation::fieldName(evaluation::Field::PositiveDefinition), QStringLiteral("score_above_threshold")},
             {   evaluation::fieldName(evaluation::Field::HasImageMetrics),                                    true}
         };
-        output.charts.push_back(anomalyScoreChartForEvaluationImages(images));
+        output.charts.push_back(anomalyScoreChartForEvaluationImages(images, confidence));
         output.chart_kinds.push_back(QStringLiteral("line"));
         return output;
     }
 
-    struct Counts
-    {
-        qint64 tp{0};
-        qint64 fp{0};
-        qint64 fn{0};
-    };
-
-    QList<CurveImageCache> curve_images;
-    curve_images.reserve(images.size());
+    if (isCancelled(cancel))
+        return {};
+    QList<EvaluationImageData> chart_images;
+    chart_images.reserve(images.size());
     for (const EvaluationImageData &image : images)
-    {
-        if (isCancelled(cancel))
-            return {};
-        curve_images.push_back(makeCurveImageCache(image, iou_threshold, cancel));
-        if (isCancelled(cancel))
-            return {};
-    }
+        chart_images.push_back(image);
 
-    const auto countsAtActivePredictions = [&]() -> std::optional<Counts>
+    QMap<int, QString> class_catalog;
+    const QVariantList per_class = diagnostic.value(evaluation::fieldName(evaluation::Field::Instance))
+                                       .toMap()
+                                       .value(evaluation::fieldName(evaluation::Field::PerClass))
+                                       .toList();
+    for (const QVariant &value : per_class)
     {
-        Counts counts;
-        for (CurveImageCache &curve_image : curve_images)
-        {
-            if (isCancelled(cancel))
-                return std::nullopt;
-            const QList<MatchPair> pairs = cachedCurveMatches(curve_image, iou_threshold, strategy, cancel);
-            if (isCancelled(cancel))
-                return std::nullopt;
-            QVector<bool>           used_prediction(curve_image.image->predictions.size(), false);
-            QVector<bool>           used_gt(curve_image.image->gt.size(), false);
-            for (const MatchPair &pair : pairs)
-            {
-                if (isCancelled(cancel))
-                    return std::nullopt;
-                if (pair.prediction < 0 || pair.prediction >= used_prediction.size() || pair.ground_truth < 0
-                    || pair.ground_truth >= used_gt.size() || used_prediction.at(pair.prediction)
-                    || used_gt.at(pair.ground_truth))
-                    continue;
-                used_prediction[pair.prediction] = true;
-                used_gt[pair.ground_truth]       = true;
-                if (curve_image.image->predictions.at(pair.prediction).class_id
-                    == curve_image.image->gt.at(pair.ground_truth).class_id)
-                    ++counts.tp;
-                else
-                {
-                    ++counts.fp;
-                    ++counts.fn;
-                }
-            }
-            for (int index = 0; index < used_prediction.size(); ++index)
-            {
-                if (isCancelled(cancel))
-                    return std::nullopt;
-                if (curve_image.active_predictions.at(index) && !used_prediction.at(index))
-                    ++counts.fp;
-            }
-            for (int index = 0; index < used_gt.size(); ++index)
-            {
-                if (isCancelled(cancel))
-                    return std::nullopt;
-                if (!used_gt.at(index))
-                    ++counts.fn;
-            }
-        }
-        if (isCancelled(cancel))
-            return std::nullopt;
-        return counts;
-    };
-
-    // 置信度扫描图阈值集：1.0、所有预测分数、工作点置信度。
-    QList<double> prediction_scores;
-    for (const EvaluationImageData &image : images)
-    {
-        if (isCancelled(cancel))
-            return {};
-        for (const EvaluationPredictionData &prediction : image.predictions)
-            prediction_scores.push_back(prediction.score);
+        const QVariantMap metric = value.toMap();
+        const int class_id = metric.value(evaluation::fieldName(evaluation::Field::ClassId)).toInt();
+        if (class_id >= 0)
+            class_catalog.insert(class_id,
+                                 metric.value(evaluation::fieldName(evaluation::Field::ClassName)).toString());
     }
-    const QList<double> unique_thresholds = confidenceThresholds(prediction_scores, confidence);
-
-    QVariantList recall_values;
-    QVariantList precision_values;
-    QVariantList threshold_labels;
-    Counts       work_point;
-    bool         work_point_ready = false;
-    for (const double threshold : unique_thresholds)
-    {
-        if (isCancelled(cancel))
-            return {};
-        for (CurveImageCache &curve_image : curve_images)
-            activateCurvePredictions(curve_image, threshold);
-        const std::optional<Counts> counts = countsAtActivePredictions();
-        if (!counts.has_value())
-            return {};
-        const QVariantMap metric = evaluationMetricMap(counts->tp, counts->fp, counts->fn);
-        threshold_labels.push_back(threshold);
-        precision_values.push_back(metric.value(evaluation::fieldName(evaluation::Field::Precision)));
-        recall_values.push_back(metric.value(evaluation::fieldName(evaluation::Field::Recall)));
-        if (threshold == confidence)
-        {
-            work_point       = *counts;
-            work_point_ready = true;
-        }
-    }
-    if (!work_point_ready)
-    {
-        for (CurveImageCache &curve_image : curve_images)
-        {
-            curve_image.active_predictions.fill(false);
-            curve_image.next_score = 0;
-            curve_image.hungarian_added = 0;
-            if (curve_image.hungarian != nullptr)
-                curve_image.hungarian->reset();
-            activateCurvePredictions(curve_image, confidence);
-        }
-        const std::optional<Counts> counts = countsAtActivePredictions();
-        if (!counts.has_value())
-            return {};
-        work_point = *counts;
-    }
+    const QVariantMap precision_recall
+        = precisionRecallChartForImages(chart_images, class_catalog, iou_threshold, strategy, {}, cancel);
     if (isCancelled(cancel))
         return {};
     output.available        = true;
     output.metrics          = QVariantMap{
         {evaluation::fieldName(evaluation::Field::Available), true},
         {evaluation::fieldName(evaluation::Field::Instance),
-         evaluationMetricMap(work_point.tp, work_point.fp, work_point.fn)},
+         diagnostic.value(evaluation::fieldName(evaluation::Field::Instance))
+             .toMap()
+             .value(evaluation::fieldName(evaluation::Field::Overall))},
         {evaluation::fieldName(evaluation::Field::PerClass),
          diagnostic.value(evaluation::fieldName(evaluation::Field::Instance))
              .toMap()
@@ -767,22 +825,7 @@ EvaluationChartOutput buildEvaluationCharts(const evaluation::Method            
         {evaluation::fieldName(evaluation::Field::PositiveDefinition), QStringLiteral("gt_or_pred_class_present")},
         {   evaluation::fieldName(evaluation::Field::HasImageMetrics),                                       true}
     };
-    output.charts.push_back(QVariantMap{
-        {      evaluation::fieldName(evaluation::Field::Kind),QStringLiteral("line")                                                              },
-        {   evaluation::fieldName(evaluation::Field::ChartId),          QStringLiteral("precision_recall")},
-        {evaluation::fieldName(evaluation::Field::FilterKind),          QStringLiteral("precision_recall")},
-        {     evaluation::fieldName(evaluation::Field::Title),              QString("Precision/Recall 随置信度阈值变化")},
-        {      evaluation::fieldName(evaluation::Field::Data),
-         QVariantMap{
-         {evaluation::fieldName(evaluation::Field::Labels), threshold_labels},
-         {evaluation::fieldName(evaluation::Field::Datasets),
-         QVariantList{QVariantMap{{evaluation::fieldName(evaluation::Field::Label), QStringLiteral("Precision")},
-         {evaluation::fieldName(evaluation::Field::Data), precision_values}},
-         QVariantMap{{evaluation::fieldName(evaluation::Field::Label), QStringLiteral("Recall")},
-         {evaluation::fieldName(evaluation::Field::Data), recall_values}}}}}                              },
-        {   evaluation::fieldName(evaluation::Field::Options),
-         QVariantMap{{QStringLiteral("maintainAspectRatio"), false}}                                      }
-    });
+    output.charts.push_back(precision_recall);
     output.chart_kinds.push_back(QStringLiteral("line"));
     return output;
 }
@@ -1000,7 +1043,8 @@ QVariantMap anomalyConfusionCellMap(const EvaluationConfusionCell &cell)
     };
 }
 
-QVariantList anomalyConfusionVariantCells(const QMap<qint64, EvaluationImageData> &images, const double threshold)
+QVariantList anomalyConfusionVariantCells(const QMap<qint64, EvaluationImageData> &images, const double threshold,
+                                           const QMap<int, QString> &class_catalog)
 {
     QList<AnomalyConfusionSample> samples;
     samples.reserve(images.size());
@@ -1020,7 +1064,8 @@ QVariantList anomalyConfusionVariantCells(const QMap<qint64, EvaluationImageData
     }
 
     QVariantList cells;
-    const std::vector<EvaluationConfusionCell> shared_cells = buildAnomalyConfusionCells(samples);
+    const std::vector<EvaluationConfusionCell> shared_cells
+        = buildAnomalyConfusionCells(samples, class_catalog);
     for (const EvaluationConfusionCell &cell : shared_cells)
         cells.push_back(anomalyConfusionCellMap(cell));
     return cells;
@@ -1092,12 +1137,8 @@ QVariantMap assembleEvaluationResult(const EvaluationResultContext &context)
         });
     }
 
-    // 按类别指标与图表数据。
+    // 按类别指标数据。
     QVariantList per_class_metrics;
-    QVariantList chart_labels;
-    QVariantList precision_values;
-    QVariantList recall_values;
-    QVariantList f1_values;
     for (auto it = classes.cbegin(); it != classes.cend(); ++it)
     {
         if (cancelled())
@@ -1107,10 +1148,6 @@ QVariantMap assembleEvaluationResult(const EvaluationResultContext &context)
         metric.insert(evaluation::fieldName(evaluation::Field::ClassId), it.key());
         metric.insert(evaluation::fieldName(evaluation::Field::ClassName), it.value());
         per_class_metrics.push_back(metric);
-        chart_labels.push_back(it.value());
-        precision_values.push_back(metric.value(evaluation::fieldName(evaluation::Field::Precision)));
-        recall_values.push_back(metric.value(evaluation::fieldName(evaluation::Field::Recall)));
-        f1_values.push_back(metric.value(evaluation::fieldName(evaluation::Field::F1)));
     }
 
     // 类别目录。
@@ -1127,7 +1164,7 @@ QVariantMap assembleEvaluationResult(const EvaluationResultContext &context)
     }
 
     const QVariantList matrix_cells
-        = anomaly_method ? anomalyConfusionVariantCells(images, confidence_threshold)
+        = anomaly_method ? anomalyConfusionVariantCells(images, confidence_threshold, classes)
                          : evaluationConfusionCells(classes, matrix, event_records.size());
     const QVariantMap confusion_definition{
         {evaluation::fieldName(evaluation::Field::SampleUnit),
@@ -1149,8 +1186,6 @@ QVariantMap assembleEvaluationResult(const EvaluationResultContext &context)
         return {};
     const EvaluationCapabilities capabilities = evaluationCapabilitiesForMethod(method);
     QVariantList                 charts;
-    if (capabilities.has_instance_metrics)
-        charts.push_back(perClassMetricsChart(chart_labels, precision_values, recall_values, f1_values));
     for (const QVariant &chart : official.charts) charts.push_back(chart);
 
     return QVariantMap{

@@ -34,6 +34,7 @@ MODEL_API bool readEvaluationImageList(const QString &path, QList<QPair<qint64, 
  * 以文件列表为主轴：不在项目数据库中的图像跳过并计数；图像级/标注级
  * 类别选择过滤不满足条件的图像并计数。异常检测方法按图像标签分组
  * （good/unlabeled/anomaly）构造二值真值，分类方法按图像标签类别构造。
+ * class_catalog 始终返回项目数据库中的完整类别目录，不受当前选择集影响。
  * @param file_list_path 测试任务文件列表路径。
  * @param project_database_path 项目数据库路径。
  * @param task_database_path 测试任务数据库路径（数据集/类别选择）。
@@ -43,6 +44,8 @@ MODEL_API bool readEvaluationImageList(const QString &path, QList<QPair<qint64, 
  * @param err_msg 失败时输出错误信息，可为 nullptr。
  * @param missing_database_images 输出：不在项目数据库中的图像数。
  * @param ignored_selection_images 输出：不满足数据集/类别选择的图像数。
+ * @param dimensions_provider 可选的图像尺寸提供器。
+ * @param class_catalog 输出：项目数据库中的全局类别目录，可为 nullptr。
  * @return 加载成功返回 true。
  */
 MODEL_API bool loadEvaluationImages(
@@ -50,7 +53,8 @@ MODEL_API bool loadEvaluationImages(
     evaluation::Method method, QMap<qint64, EvaluationImageData> &images,
     const std::shared_ptr<std::atomic_bool> &cancel_token = {}, QString *err_msg = nullptr,
     int *missing_database_images = nullptr, int *ignored_selection_images = nullptr,
-    const std::function<bool(qint64 image_id, int *width, int *height)> &dimensions_provider = {});
+    const std::function<bool(qint64 image_id, int *width, int *height)> &dimensions_provider = {},
+    QMap<int, QString> *class_catalog = nullptr);
 
 /**
  * @brief 从测试任务数据库与预测目录加载预测结果。

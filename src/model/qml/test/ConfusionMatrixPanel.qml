@@ -20,6 +20,21 @@ Item {
         return String(key) === "TOTAL"
     }
 
+    function classColorForLabel(classId, key, label, predicted) {
+        const text = String(label || "")
+        if (predicted && (text === "正常" || text === "Good"))
+            return "#00b85a"
+        if (predicted && (text === "异常" || text === "Anomaly"))
+            return "#d71920"
+
+        const palette = ["#ef5350", "#42a5f5", "#66bb6a", "#ffa726",
+                         "#ab47bc", "#26c6da", "#8d6e63", "#78909c"]
+        const value = Number(classId)
+        if (!isFinite(value) || value < 0)
+            return QuiColor.FontDark
+        return palette[Math.floor(value) % palette.length]
+    }
+
     function isUnmatchedPredictionKey(key) {
         return String(key) === "UNMATCHED_PRED"
     }
@@ -218,7 +233,12 @@ Item {
                     frozen: specialColumn
                 })
                 if (!specialColumn)
-                    classColumnLabels.push({ column: c, label: String(label) })
+                    classColumnLabels.push({
+                        column: c,
+                        label: String(label),
+                        classId: control.matrixData(0, c, EvaluationConfusionModel.ColumnClassIdRole, -1),
+                        key: String(key)
+                    })
             }
             for (let r = 0; r < rowCount; ++r) {
                 let rowKey = control.matrixData(r, 0, EvaluationConfusionModel.RowKeyRole, "")
@@ -226,7 +246,9 @@ Item {
                 if (!control.isSpecialRow(rowKey))
                     classRowLabels.push({
                         row: r,
-                        label: String(rowLabel)
+                        label: String(rowLabel),
+                        classId: control.matrixData(r, 0, EvaluationConfusionModel.RowClassIdRole, -1),
+                        key: String(rowKey)
                     })
             }
         }
@@ -236,6 +258,10 @@ Item {
         /*
          * 直接模型模式下只更新列布局和标签元数据，单元格仍由
          * EvaluationConfusionModel 的角色数据驱动，不再复制成 JS 行数组。
+         */
+        /*
+         * 无结果是重新评估过程中的短暂数据状态，不是列结构变化。
+         * 保留列与冻结列，避免在 TableView 回收旧 delegate 时拆除子视图。
          */
         const schemaChanged = !!matrix && !sameColumnSchema(confusionTable.columnSource, columnSource)
         if (schemaChanged)
@@ -405,8 +431,8 @@ Item {
                 zebraEnabled: false
                 resizableColumns: false
                 visible: control.matrixRowCount > 0
-                externalModel: control.evaluation && control.evaluation.hasConfusionMatrix
-                              ? control.evaluation.confusionMatrix : null
+                /* 同一评估对象始终暴露同一个矩阵模型，空矩阵也不切换 model。 */
+                externalModel: control.evaluation ? control.evaluation.confusionMatrix : null
                 externalCellDelegate: com_matrix_cell
                 externalCellOptionsProvider: function(row, column, modelData) {
                     return control.matrixCellOptions(row, column, modelData)
@@ -530,11 +556,25 @@ Item {
                         y: control.rowVisualY(modelData.row)
                         width: rightClassLabels.width
                         height: confusionTable.rowHeight
-                        color: confusionTable.headerColor
+                        color: QuiColor.Transparent
+
+                        Rectangle {
+                            id: predictedClassColor
+                            x: 8
+                            width: 10
+                            height: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                            radius: 2
+                            color: control.classColorForLabel(modelData.classId, modelData.key,
+                                                              modelData.label, true)
+                        }
 
                         QuiText {
-                            anchors.fill: parent
-                            anchors.leftMargin: 8
+                            anchors.left: predictedClassColor.right
+                            anchors.leftMargin: 4
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: parent.height
                             text: modelData.label
                             color: confusionTable.headerTextColor
                             verticalAlignment: Text.AlignVCenter
@@ -561,15 +601,35 @@ Item {
                         width: confusionTable.columnWidth(modelData.column)
                         height: bottomClassLabels.height
 
-                        QuiText {
-                            x: parent.width / 2
-                            y: 4
-                            width: bottomClassLabels.height - 4
-                            text: modelData.label
-                            color: confusionTable.headerTextColor
-                            elide: Text.ElideRight
-                            transformOrigin: Item.TopLeft
-                            rotation: 45
+                        Item {
+                            id: groundTruthClassLabel
+                            width: Math.max(0, bottomClassLabels.height - 12)
+                            height: parent.width
+                            anchors.centerIn: parent
+                            transformOrigin: Item.Center
+                            rotation: 90
+
+                            Rectangle {
+                                id: groundTruthClassColor
+                                x: 0
+                                width: 10
+                                height: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                radius: 2
+                                color: control.classColorForLabel(modelData.classId, modelData.key,
+                                                                  modelData.label, false)
+                            }
+
+                            QuiText {
+                                x: groundTruthClassColor.width + 4
+                                y: 0
+                                width: Math.max(0, parent.width - x)
+                                height: parent.height
+                                text: modelData.label
+                                color: confusionTable.headerTextColor
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
                         }
                     }
                 }

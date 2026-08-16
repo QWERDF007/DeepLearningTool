@@ -38,6 +38,14 @@ struct MODEL_API EvaluationCounts
 };
 
 /**
+ * @brief Precision-Recall 曲线的固定插值点数。
+ *
+ * 该值对应 Ultralytics PR 曲线的均匀 Recall 网格；调整后会同时影响
+ * 各类别曲线、平均曲线以及 AP 的数值积分。
+ */
+inline constexpr int kPrecisionRecallInterpolationPoints = 100;
+
+/**
  * @brief 组装评估结果所需的上下文。
  *
  * 大型快照字段以引用传递，避免为整理参数额外复制评估数据；上下文只在
@@ -68,9 +76,11 @@ struct MODEL_API EvaluationResultContext
  * 正常图像取 max_prediction_score 作为正常样本，异常图像取
  * max_prediction_score 作为异常样本；图表由公共直方图构造实现生成。
  * @param images 图像记录列表。
+ * @param classification_threshold 图像分数分类阈值。
  * @return 图表描述符。
  */
-MODEL_API QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageData> &images);
+MODEL_API QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageData> &images,
+                                                 double classification_threshold);
 
 /**
  * @brief 序列化单条实例事件记录。
@@ -125,20 +135,9 @@ MODEL_API QVariantMap assembleEvaluationResult(const EvaluationResultContext &co
 MODEL_API QVariantMap evaluationMetricMap(qint64 tp, qint64 fp, qint64 fn);
 
 /**
- * @brief 构造置信度曲线使用的有序去重阈值集合。
- *
- * 集合包含 1.0、给定分数（裁剪到 [0, 1]）以及工作点阈值，按降序排列并
- * 使用与图表扫描一致的浮点近似去重。调用方负责先按自身过滤规则收集分数。
- * @param scores 已按调用方规则保留的预测分数。
- * @param confidence 工作点置信度阈值。
- * @return 降序且去重后的阈值集合。
- */
-MODEL_API QList<double> confidenceThresholds(const QList<double> &scores, double confidence);
-
-/**
  * @brief 构建官方评估输出（指标与图表）。
  *
- * 检测方法生成 confidence-IoU 工作点的实例指标与“Precision/Recall 随置信度阈值变化”图；
+ * 检测方法生成 confidence-IoU 工作点的实例指标与 Precision-Recall 曲线；
  * 异常检测方法生成 score-above-threshold 的图像级二元指标和异常分数分布图。
  * @param method 评估方法。
  * @param images 全部图像记录。
@@ -157,14 +156,22 @@ MODEL_API EvaluationChartOutput buildEvaluationCharts(evaluation::Method        
                                                       const std::shared_ptr<std::atomic_bool> &cancel = {});
 
 /**
- * @brief 构造按类别指标柱状图描述符。
- * @param labels 类别名称标签。
- * @param precision 各类别 Precision 值。
- * @param recall 各类别 Recall 值。
- * @param f1 各类别 F1 值。
+ * @brief 按 Ultralytics 核心流程构造目标检测 Precision-Recall 曲线。
+ *
+ * 预测按类别分别完成 IoU 匹配、置信度排序、累计 TP/FP、Precision envelope
+ * 和均匀 Recall 插值；平均曲线为所有有效类别曲线的逐点平均。返回的数据集
+ * 同时包含平均曲线和各类别曲线，界面可按 series_kind/class_id 选择展示。
+ * @param images 评估图像记录。
+ * @param class_catalog 类别 ID 到显示名称的目录。
+ * @param iou_threshold IoU 匹配阈值。
+ * @param strategy 匹配策略。
+ * @param class_ids 可选类别过滤列表；空表示全部类别。
+ * @param cancel 协作取消令牌，可为空。
  * @return 图表描述符。
  */
-MODEL_API QVariantMap perClassMetricsChart(const QVariantList &labels, const QVariantList &precision,
-                                           const QVariantList &recall, const QVariantList &f1);
+MODEL_API QVariantMap precisionRecallChartForImages(
+    const QList<EvaluationImageData> &images, const QMap<int, QString> &class_catalog, double iou_threshold,
+    evaluation::MatchingStrategy strategy, const QVariantList &class_ids = {},
+    const std::shared_ptr<std::atomic_bool> &cancel = {});
 
 }

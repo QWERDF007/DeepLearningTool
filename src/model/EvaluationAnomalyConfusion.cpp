@@ -18,7 +18,7 @@ struct GroundTruthCategory
 }
 
 std::vector<EvaluationConfusionCell>
-buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples)
+buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples, const QMap<int, QString> &class_catalog)
 {
     const QString matrix_fn    = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative);
     const QString matrix_fp    = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive);
@@ -31,6 +31,10 @@ buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples)
     QMap<int, qint64>               column_totals;
     QMap<int, qint64>               column_errors;
     qint64                          error_total = 0;
+
+    // 类别轴来自项目数据库的完整目录，不能随着当前选中的图像集合收缩。
+    for (auto category = class_catalog.cbegin(); category != class_catalog.cend(); ++category)
+        categories.insert(category.key(), GroundTruthCategory{category.value(), false});
 
     for (const AnomalyConfusionSample &sample : samples)
     {

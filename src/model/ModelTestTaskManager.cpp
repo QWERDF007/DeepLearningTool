@@ -18,6 +18,7 @@
 #include <QQmlEngine>
 #include <QSize>
 #include <algorithm>
+#include <cmath>
 
 namespace dltool::model {
 
@@ -528,6 +529,16 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
         = current_test_params_ != nullptr ? current_test_params_->valuesMap() : task.test_params;
     options.evaluation_config
         = evaluation::normalizedEvaluationConfig(test_params.value(QStringLiteral("evaluation")).toMap());
+    if (evaluation::isAnomaly(options.method))
+    {
+        bool threshold_ok = false;
+        const double classification_threshold
+            = test_params.value(QStringLiteral("inference")).toMap().value(QStringLiteral("classification_threshold"))
+                  .toDouble(&threshold_ok);
+        if (threshold_ok && std::isfinite(classification_threshold))
+            options.evaluation_config.insert(evaluation::fieldName(evaluation::Field::ConfidenceThreshold),
+                                             classification_threshold);
+    }
     options.confidence_threshold
         = options.evaluation_config.value(evaluation::fieldName(evaluation::Field::ConfidenceThreshold)).toDouble();
     options.iou_threshold
@@ -551,7 +562,7 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
     return true;
 }
 
-void ModelTestTaskManager::handleParameterChanged(const QString &group_name)
+void ModelTestTaskManager::handleParameterChanged(const QString &group_name, const QString &parameter_name)
 {
     scheduleSave();
     if (model_manager_ != nullptr
@@ -560,7 +571,13 @@ void ModelTestTaskManager::handleParameterChanged(const QString &group_name)
     if (current_evaluation_ == nullptr || current_index_ < 0 || current_index_ >= tasks_.size())
         return;
 
-    if (group_name.compare(QStringLiteral("evaluation"), Qt::CaseInsensitive) == 0)
+    const bool evaluation_changed = group_name.compare(QStringLiteral("evaluation"), Qt::CaseInsensitive) == 0;
+    const bool anomaly_threshold_changed
+        = group_name.compare(QStringLiteral("inference"), Qt::CaseInsensitive) == 0
+       && parameter_name.compare(QStringLiteral("classification_threshold"), Qt::CaseInsensitive) == 0
+       && model_manager_ != nullptr
+       && evaluation::isAnomaly(evaluation::fromProjectMethod(model_manager_->method()));
+    if (evaluation_changed || anomaly_threshold_changed)
     {
         ModelEvaluationOptions options;
         QString                error;
@@ -577,10 +594,9 @@ void ModelTestTaskManager::handleParameterChanged(const QString &group_name)
         return;
     }
 
-    // Inference parameters belong to the next explicit test run.  Until that
-    // run regenerates PRED, the old in-memory evaluation must not be shown as
-    // if it described the new inference settings.
-    current_evaluation_->invalidate();
+    // Inference parameters affect the next prediction run.  Keep the current
+    // evaluation visible until that run is explicitly started; the start
+    // request invalidates it before new predictions are generated.
 }
 
 void ModelTestTaskManager::handleTaskRevisionChanged()
@@ -833,7 +849,8 @@ void ModelTestTaskManager::bindCurrentObjects()
         {
             if (auto *group = qobject_cast<ParamGroupModel *>(object))
                 connect(group, &ParamGroupModel::valueChanged, this,
-                        [this, group](const QString &, const QVariant &) { handleParameterChanged(group->nameEn()); });
+                        [this, group](const QString &parameter_name, const QVariant &)
+                        { handleParameterChanged(group->nameEn(), parameter_name); });
         }
     }
     if (current_dataset_view_model_ != nullptr)

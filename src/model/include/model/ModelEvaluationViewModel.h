@@ -64,6 +64,7 @@ public:
     Q_PROPERTY(bool hasImageMetrics READ hasImageMetrics NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(bool hasConfusionMatrix READ hasConfusionMatrix NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(bool hasInstanceEvents READ hasInstanceEvents NOTIFY evaluationChanged FINAL)
+    Q_PROPERTY(bool anomalyDetection READ anomalyDetection NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(EvaluationMetricModel *instanceMetrics READ instanceMetrics CONSTANT FINAL)
     Q_PROPERTY(EvaluationMetricModel *imageMetrics READ imageMetrics CONSTANT FINAL)
     Q_PROPERTY(EvaluationMetricModel *perClassMetrics READ perClassMetrics CONSTANT FINAL)
@@ -100,6 +101,7 @@ public:
     bool                              hasImageMetrics() const;
     bool                              hasConfusionMatrix() const;
     bool                              hasInstanceEvents() const;
+    bool                              anomalyDetection() const;
     EvaluationMetricModel            *instanceMetrics() const;
     EvaluationMetricModel            *imageMetrics() const;
     EvaluationMetricModel            *perClassMetrics() const;

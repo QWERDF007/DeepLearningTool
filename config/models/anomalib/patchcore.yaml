@@ -125,13 +125,13 @@ train_params:
         options: [float32, float16]
 
 test_params:
-  - name_en: data
-    name_cn: 测试数据
-    part_index: 0
+  - name_en: inference
+    name_cn: 推理参数
+    part_index: 1
     params:
       - name_en: batch_size
         name_cn: 批量大小
-        description: 每次测试处理的图像数量。
+        description: 每次推理处理的图像数量。
         value: 8
         value_type: int
         value_range: [1, 512, 1]
@@ -145,10 +145,14 @@ test_params:
         value_range: [0, 64, 1]
         display_type: spin
 
-  - name_en: inference
-    name_cn: 推理配置
-    part_index: 1
-    params:
+      - name_en: classification_threshold
+        name_cn: 分类阈值
+        description: 图像分数大于等于该值时判定为异常，否则判定为正常。
+        value: 0.5
+        value_type: double
+        value_range: [-1000000.0, 1000000.0, 0.001]
+        display_type: spin
+
       - name_en: device
         name_cn: 设备
         description: 选择执行测试的计算设备。
