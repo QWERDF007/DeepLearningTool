@@ -40,6 +40,7 @@ from dependency_utils import (
 # build/bin 里可能有 link_dependencies.py 创建的第三方链接。
 # 打包时只允许复制本项目本地构建、但不属于 dltool_* 的少数 DLL。
 LOCAL_BIN_DLL_NAMES = {"quickui.dll"}
+PROJECT_NAME_LONG = "DeepLearningTool"
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,7 +48,7 @@ def parse_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(description="Package DeepLearningTool release runtime.")
     parser.add_argument("--build-dir", "-BuildDir", default="build")
-    parser.add_argument("--install-dir", "-InstallDir", default="install")
+    parser.add_argument("--install-dir", "-InstallDir", default=None)
     parser.add_argument("--config", "-Config", choices=["release"], default="release")
     parser.add_argument("--dependencies", default="tools/dependencies.yaml")
     parser.add_argument("--windeployqt", "-WinDeployQt", default="")
@@ -60,6 +61,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--force-clean", "-ForceClean", action="store_true")
     parser.add_argument("--skip-system-libs", action="store_true")
     return parser.parse_args()
+
+
+def project_version(repo_root: Path = REPO_ROOT) -> str:
+    """从根 CMakeLists.txt 读取 project VERSION。"""
+
+    cmake_lists = repo_root / "CMakeLists.txt"
+    text = cmake_lists.read_text(encoding="utf-8", errors="ignore")
+    match = re.search(r"VERSION\s+(\d+\.\d+\.\d+)", text)
+    if not match:
+        raise RuntimeError(f"cannot find project VERSION in {cmake_lists}")
+    return match.group(1)
+
+
+def default_install_dir() -> Path:
+    """默认发布包输出目录：install/DeepLearningTool-<version>。"""
+
+    return REPO_ROOT / "install" / f"{PROJECT_NAME_LONG}-{project_version()}"
 
 
 def find_executable(build_dir: Path) -> Path:
@@ -642,7 +660,7 @@ def main() -> int:
 
     args = parse_args()
     build_dir = resolve_project_path(args.build_dir)
-    install_dir = resolve_project_path(args.install_dir)
+    install_dir = resolve_project_path(args.install_dir) if args.install_dir else default_install_dir()
     dependency_file = resolve_project_path(args.dependencies)
 
     if not build_dir.is_dir():
