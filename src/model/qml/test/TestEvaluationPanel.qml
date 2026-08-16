@@ -56,17 +56,9 @@ Item {
             QuiFrame {
                 SplitView.fillHeight: true
                 SplitView.fillWidth: true
-                ColumnLayout {
+                EvaluationInstancesGridView {
                     anchors.fill: parent
-                    QuiText {
-                        text: qsTr("实例图像")
-                        font: QuiFont.Subtitle
-                    }
-                    EvaluationInstancesGridView {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        evaluation: control.evaluation
-                    }
+                    evaluation: control.evaluation
                 }
             }
             QuiFrame {

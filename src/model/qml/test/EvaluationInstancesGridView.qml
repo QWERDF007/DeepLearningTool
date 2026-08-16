@@ -8,7 +8,7 @@ import quickui
 
 Rectangle {
     id: control
-    color: QuiColor.Background
+    color: QuiColor.Primary
     property ModelEvaluationViewModel evaluation: null
     property real thumbnailScale: 1.0
 
@@ -18,24 +18,43 @@ Rectangle {
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 6
-            QuiText { text: qsTr("缩略图") }
-            QuiSlider {
-                id: zoomSlider
-                Layout.fillWidth: true
-                from: 0.75
-                to: 1.75
-                stepSize: 0.05
-                value: control.thumbnailScale
-                onMoved: control.thumbnailScale = value
-            }
+            Layout.preferredHeight: 32
+            Layout.leftMargin: 10
+            Layout.rightMargin: 10
+            spacing: 8
+
             QuiText {
-                Layout.preferredWidth: 52
-                horizontalAlignment: Text.AlignRight
-                text: qsTr("%1×").arg(control.thumbnailScale.toFixed(2))
+                Layout.fillWidth: true
+                text: qsTr("实例图像")
+                font: QuiFont.Subtitle
             }
-            QuiButton {
-                text: qsTr("重置")
+
+            QuiSpinEditor {
+                id: zoomEditor
+                Layout.preferredWidth: 122
+                Layout.preferredHeight: 32
+                label: ""
+                value: control.thumbnailScale
+                minValue: 0.1
+                maxValue: 10
+                step: 0.05
+                decimals: 2
+                onEditingFinished: {
+                    const next = Math.max(minValue, Math.min(maxValue, Number(value)))
+                    if (isFinite(next))
+                        control.thumbnailScale = next
+                }
+            }
+
+            QuiTextIconButton {
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
+                iconSize: 18
+                iconSource: QuiFontIcon.Refresh
+                text: qsTr("重置缩放倍率")
+                normalColor: QuiColor.Button
+                hoverColor: Qt.lighter(QuiColor.Button, 1.2)
+                pressedColor: Qt.lighter(QuiColor.Button, 1.3)
                 onClicked: control.thumbnailScale = 1.0
             }
         }
@@ -44,7 +63,9 @@ Rectangle {
             id: grid
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.margins: 10
+            Layout.leftMargin: 10
+            Layout.rightMargin: 10
+            Layout.bottomMargin: 10
             cellWidth: 180 * control.thumbnailScale
             cellHeight: 150 * control.thumbnailScale
             clip: true
@@ -52,6 +73,25 @@ Rectangle {
             keyNavigationEnabled: true
             keyNavigationWraps: false
             ScrollBar.vertical: QuiScrollBar { }
+
+            WheelHandler {
+                id: thumbnailZoomWheelHandler
+                onWheel: function (wheel) {
+                    if (!(wheel.modifiers & Qt.ControlModifier)) {
+                        const maxContentY = Math.max(0, grid.contentHeight - grid.height)
+                        const wheelDelta = Number(wheel.angleDelta.y) / 120
+                        const scrollStep = wheelDelta * grid.cellHeight * 2.0
+                        grid.contentY = Math.max(0, Math.min(maxContentY, grid.contentY - scrollStep))
+                        wheel.accepted = true
+                        return
+                    }
+                    const delta = wheel.angleDelta.y > 0 ? 0.05 : -0.05
+                    const next = Math.max(0.1, Math.min(10, control.thumbnailScale + delta))
+                    control.thumbnailScale = Math.round(next * 100) / 100
+                    wheel.accepted = true
+                }
+            }
+
             model: control.evaluation && control.evaluation.hasInstanceEvents
                    ? control.evaluation.filteredInstances : null
             onCurrentIndexChanged: {
@@ -88,7 +128,7 @@ Rectangle {
                     return scoreText + " / " + iouText
                 }
 
-                color: QuiColor.Primary
+                color: QuiColor.Background
                 radius: 4
                 border.width: 2
                 border.color: model.selected ? QuiColor.Highlight : QuiColor.Transparent
@@ -145,16 +185,6 @@ Rectangle {
                         if (control.evaluation)
                             control.evaluation.selectInstance(index)
                     }
-                    onWheel: function (wheel) {
-                        if (wheel.modifiers & Qt.ControlModifier) {
-                            var step = wheel.angleDelta.y > 0 ? 0.05 : -0.05
-                            control.thumbnailScale = Math.max(0.75,
-                                                               Math.min(1.75, control.thumbnailScale + step))
-                            wheel.accepted = true
-                        } else {
-                            wheel.accepted = false
-                        }
-                    }
                 }
             }
         }
@@ -185,5 +215,10 @@ Rectangle {
             verticalAlignment: Text.AlignVCenter
             color: QuiColor.FontDark
         }
+    }
+
+    onThumbnailScaleChanged: {
+        if (zoomEditor.value !== thumbnailScale)
+            zoomEditor.value = thumbnailScale
     }
 }
