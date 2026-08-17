@@ -6,6 +6,7 @@
 
 #include <QAbstractListModel>
 #include <QSortFilterProxyModel>
+#include <QAbstractTableModel>
 #include <QVariantMap>
 #include <QStringList>
 #include <QPointer>
@@ -25,9 +26,12 @@ struct MODEL_API EvaluationMetricRecord
     double precision{0.0};
     double recall{0.0};
     double f1{0.0};
+    double ap{0.0};
     bool precision_defined{false};
     bool recall_defined{false};
     bool f1_defined{false};
+    bool ap_defined{false};
+    QString class_color;
     qint64 tp{0};
     qint64 fp{0};
     qint64 fn{0};
@@ -108,6 +112,7 @@ class MODEL_API EvaluationMetricModel : public QAbstractListModel
     Q_OBJECT
     QML_NAMED_ELEMENT(EvaluationMetricModel)
     QML_UNCREATABLE("EvaluationMetricModel is owned by ModelEvaluationViewModel")
+    Q_PROPERTY(int count READ rowCount NOTIFY countChanged FINAL)
 public:
     enum Role
     {
@@ -118,9 +123,16 @@ public:
         PrecisionRole,
         RecallRole,
         F1Role,
+        ApRole,
         PrecisionTextRole,
         RecallTextRole,
         F1TextRole,
+        ApTextRole,
+        ClassColorRole,
+        PredictedCountRole,
+        LabeledCountRole,
+        FpPredictedTextRole,
+        FnLabeledTextRole,
         TpRole,
         FpRole,
         FnRole,
@@ -134,18 +146,11 @@ public:
     void setRecords(std::vector<EvaluationMetricRecord> records);
     const std::vector<EvaluationMetricRecord> &records() const;
 
+signals:
+    void countChanged();
+
 private:
     std::vector<EvaluationMetricRecord> records_;
-};
-
-class MODEL_API EvaluationMetricSortProxyModel : public QSortFilterProxyModel
-{
-    Q_OBJECT
-    QML_NAMED_ELEMENT(EvaluationMetricSortProxyModel)
-    QML_UNCREATABLE("EvaluationMetricSortProxyModel is owned by ModelEvaluationViewModel")
-public:
-    explicit EvaluationMetricSortProxyModel(QObject *parent = nullptr);
-    Q_INVOKABLE void sortBy(const QString &field);
 };
 
 class MODEL_API EvaluationConfusionModel : public QAbstractTableModel

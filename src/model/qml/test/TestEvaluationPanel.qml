@@ -35,8 +35,8 @@ Item {
 
             Loader {
                 SplitView.fillHeight: true
-                SplitView.preferredWidth: 220
-                SplitView.minimumWidth: 160
+                SplitView.preferredWidth: 260
+                SplitView.minimumWidth: 180
                 sourceComponent: control.evaluation
                                  ? panelRegistry.metricsPanel(control.evaluation.method) : null
                 onLoaded: control.bindPanel(this)
@@ -44,8 +44,8 @@ Item {
 
             Loader {
                 SplitView.fillHeight: true
-                SplitView.preferredWidth: 280
-                SplitView.minimumWidth: 220
+                SplitView.preferredWidth: 260
+                SplitView.minimumWidth: 180
                 sourceComponent: control.evaluation
                                  ? panelRegistry.imageMetricsPanel(control.evaluation.method) : null
                 onLoaded: control.bindPanel(this)

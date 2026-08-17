@@ -6,81 +6,118 @@ import dltool.model
 import dltool.ui
 import quickui
 
+/*
+ * 检测实例指标面板：
+ * - 主面板展示 Macro-Average（宏平均）计算后的 F1-Score 与 精确率/召回率双饼图。
+ * - 点击右上角“按类别详情”弹出独立的类别指标详情窗口（Window）。
+ */
 EvaluationMetricsPanelBase {
     id: control
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 6
+        spacing: 2
 
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            Repeater {
-                model: control.evaluation && control.evaluation.hasInstanceMetrics
-                       ? control.evaluation.instanceMetrics : null
-                delegate: ColumnLayout {
+        Repeater {
+            model: control.evaluation && control.evaluation.hasInstanceMetrics
+                   ? control.evaluation.instanceMetrics : null
+            delegate: ColumnLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 4
+
+                QuiText {
                     Layout.fillWidth: true
-                    QuiText { text: model.label; font: QuiFont.BodyStrong }
-                    QuiText { text: qsTr("精确率 %1").arg(model.precisionText) }
-                    QuiText { text: qsTr("召回率 %1").arg(model.recallText) }
-                    QuiText { text: qsTr("F1 %1").arg(model.f1Text) }
-                    QuiText { text: qsTr("TP %1 · FP %2 · FN %3").arg(model.tp).arg(model.fp).arg(model.fn) }
+                    horizontalAlignment: Text.AlignHCenter
+                    font: QuiFont.BodyStrong
+                    text: qsTr("F1-Score: %1").arg(control.percentage(model.f1, 2))
                 }
-            }
-            QuiText {
-                visible: !control.evaluation || !control.evaluation.hasInstanceMetrics
-                text: control.emptyText
-                color: QuiColor.FontDark
-            }
-            Item { Layout.fillWidth: true }
-        }
-    }
 
-    QuiContentDialog {
-        id: classDialog
-        width: 620
-        title: qsTr("按类别实例指标")
-        useNeutralButton: true
-        useNegativeButton: false
-        usePositiveButton: false
-        neutralText: qsTr("关闭")
-        contentDelegate: Component {
-            ListView {
-                implicitWidth: 560
-                implicitHeight: 360
-                clip: true
-                headerPositioning: ListView.OverlayHeader
-                header: RowLayout {
-                    width: ListView.view.width
-                    QuiComboBox {
-                        id: classSort
-                        model: [qsTr("F1"), qsTr("FP"), qsTr("FN"), qsTr("类别")]
-                        onActivated: {
-                            if (control.evaluation)
-                                control.evaluation.sortedPerClassMetrics.sortBy(currentIndex === 1 ? "fp"
-                                    : currentIndex === 2 ? "fn" : currentIndex === 3 ? "label" : "f1")
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: 8
+
+                    // 左侧：精确率饼图
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        Layout.fillHeight: true
+                        spacing: 2
+
+                        QuiChart {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            Layout.minimumWidth: 50
+                            Layout.minimumHeight: 50
+                            animationDuration: 0
+                            chartType: EvaluationProtocolKeys.chartKindPie
+                            chartData: control.pieData(model.precision)
+                            chartOptions: control.pieOptions()
+                        }
+
+                        QuiText {
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignHCenter
+                            font: QuiFont.Body
+                            text: qsTr("精确率: %1").arg(control.percentage(model.precision, 1))
+                        }
+                    }
+
+                    // 右侧：召回率饼图
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        Layout.fillHeight: true
+                        spacing: 2
+
+                        QuiChart {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            Layout.minimumWidth: 50
+                            Layout.minimumHeight: 50
+                            animationDuration: 0
+                            chartType: EvaluationProtocolKeys.chartKindPie
+                            chartData: control.pieData(model.recall)
+                            chartOptions: control.pieOptions()
+                        }
+
+                        QuiText {
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignHCenter
+                            font: QuiFont.Body
+                            text: qsTr("召回率: %1").arg(control.percentage(model.recall, 1))
                         }
                     }
                 }
-                model: control.evaluation ? control.evaluation.sortedPerClassMetrics : null
-                delegate: RowLayout {
-                    width: ListView.view.width
-                    spacing: 12
-                    QuiText { Layout.fillWidth: true; text: model.label }
-                    QuiText { text: model.precisionText }
-                    QuiText { text: model.recallText }
-                    QuiText { text: model.f1Text }
-                    QuiText { text: qsTr("TP %1 / FP %2 / FN %3").arg(model.tp).arg(model.fp).arg(model.fn) }
-                }
             }
         }
+
+        QuiText {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            visible: !control.evaluation || !control.evaluation.hasInstanceMetrics
+            text: control.emptyText
+            color: QuiColor.FontDark
+        }
+    }
+
+    // 类别详情独立窗口（Window）
+    EvaluationClassDetailsWindow {
+        id: classDetailsWindow
+        evaluation: control.evaluation
     }
 
     headerContent: QuiButton {
         anchors.fill: parent
         text: qsTr("按类别详情")
-        enabled: !!control.evaluation && control.evaluation.perClassMetrics.count > 0
-        onClicked: classDialog.open()
+        enabled: !!control.evaluation && control.evaluation.hasInstanceMetrics
+        onClicked: {
+            classDetailsWindow.show()
+            classDetailsWindow.raise()
+            classDetailsWindow.requestActivate()
+        }
     }
 }

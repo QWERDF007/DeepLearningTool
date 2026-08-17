@@ -71,7 +71,6 @@ public:
     Q_PROPERTY(EvaluationMetricModel *instanceMetrics READ instanceMetrics CONSTANT FINAL)
     Q_PROPERTY(EvaluationMetricModel *imageMetrics READ imageMetrics CONSTANT FINAL)
     Q_PROPERTY(EvaluationMetricModel *perClassMetrics READ perClassMetrics CONSTANT FINAL)
-    Q_PROPERTY(EvaluationMetricSortProxyModel *sortedPerClassMetrics READ sortedPerClassMetrics CONSTANT FINAL)
     Q_PROPERTY(EvaluationConfusionModel *confusionMatrix READ confusionMatrix CONSTANT FINAL)
     Q_PROPERTY(EvaluationImageModel *images READ images CONSTANT FINAL)
     Q_PROPERTY(EvaluationImageFilterProxyModel *filteredImages READ filteredImages CONSTANT FINAL)
@@ -109,7 +108,6 @@ public:
     EvaluationMetricModel            *instanceMetrics() const;
     EvaluationMetricModel            *imageMetrics() const;
     EvaluationMetricModel            *perClassMetrics() const;
-    EvaluationMetricSortProxyModel   *sortedPerClassMetrics() const;
     EvaluationConfusionModel         *confusionMatrix() const;
     EvaluationImageModel             *images() const;
     EvaluationImageFilterProxyModel  *filteredImages() const;
@@ -200,7 +198,6 @@ private:
     EvaluationMetricModel            *instance_metrics_{nullptr};
     EvaluationMetricModel            *image_metrics_{nullptr};
     EvaluationMetricModel            *per_class_metrics_{nullptr};
-    EvaluationMetricSortProxyModel   *sorted_per_class_metrics_{nullptr};
     EvaluationConfusionModel         *confusion_matrix_{nullptr};
     EvaluationImageModel             *images_{nullptr};
     EvaluationImageFilterProxyModel  *filtered_images_{nullptr};
@@ -210,6 +207,7 @@ private:
     EvaluationChartModel             *charts_{nullptr};
     int                               selected_proxy_row_{-1};
     QVariantMap                       selected_instance_;
+    QMap<int, double>                 class_ap_map_;
     int                               evaluation_revision_{0};
     int                               aggregation_revision_{0};
     bool                              aggregation_rebuild_scheduled_{false};

@@ -26,10 +26,7 @@ Rectangle {
         var number = Number(value)
         if (!isFinite(number))
             number = 0
-        var text = (Math.max(0, Math.min(1, number)) * 100).toFixed(decimals)
-        if (decimals > 0)
-            text = text.replace(/\.?(0+)$/, "")
-        return text + "%"
+        return (Math.max(0, Math.min(1, number)) * 100).toFixed(decimals !== undefined ? decimals : 1) + "%"
     }
 
     function pieData(value) {

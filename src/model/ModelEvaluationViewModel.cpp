@@ -180,7 +180,6 @@ ModelEvaluationViewModel::ModelEvaluationViewModel(QObject *parent)
     , instance_metrics_(new EvaluationMetricModel(this))
     , image_metrics_(new EvaluationMetricModel(this))
     , per_class_metrics_(new EvaluationMetricModel(this))
-    , sorted_per_class_metrics_(new EvaluationMetricSortProxyModel(this))
     , confusion_matrix_(new EvaluationConfusionModel(this))
     , images_(new EvaluationImageModel(this))
     , filtered_images_(new EvaluationImageFilterProxyModel(this))
@@ -189,7 +188,6 @@ ModelEvaluationViewModel::ModelEvaluationViewModel(QObject *parent)
     , filtered_instances_(new EvaluationCellFilterProxyModel(this))
     , charts_(new EvaluationChartModel(this))
 {
-    sorted_per_class_metrics_->setSourceModel(per_class_metrics_);
     filtered_images_->setSourceModel(images_);
     global_filtered_instances_->setSourceModel(instances_);
     filtered_instances_->setSourceModel(global_filtered_instances_);
@@ -372,11 +370,6 @@ EvaluationMetricModel *ModelEvaluationViewModel::imageMetrics() const
 EvaluationMetricModel *ModelEvaluationViewModel::perClassMetrics() const
 {
     return per_class_metrics_;
-}
-
-EvaluationMetricSortProxyModel *ModelEvaluationViewModel::sortedPerClassMetrics() const
-{
-    return sorted_per_class_metrics_;
 }
 
 EvaluationConfusionModel *ModelEvaluationViewModel::confusionMatrix() const
@@ -685,11 +678,94 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
     const QVariantMap diagnostic = root.value(evaluation::fieldName(evaluation::Field::DiagnosticMetrics)).toMap();
     const QVariantMap instance   = diagnostic.value(evaluation::fieldName(evaluation::Field::Instance)).toMap();
     const QVariantMap overall    = instance.value(evaluation::fieldName(evaluation::Field::Overall)).toMap();
-    if (!overall.isEmpty())
-        instance_metrics_->setRecords({metricFromMap(QStringLiteral("overall"), overall, QString("整体"))});
-    const QVariantMap image = diagnostic.value(evaluation::fieldName(evaluation::Field::Image)).toMap();
+    const QVariantMap image      = diagnostic.value(evaluation::fieldName(evaluation::Field::Image)).toMap();
     if (!image.isEmpty())
         image_metrics_->setRecords({metricFromMap(QStringLiteral("image"), image, QString("图像"))});
+
+    // 提取 PR 曲线中计算出的每类 Average Precision (AP)
+    QMap<int, double> class_ap_map;
+    const QVariantList charts_list = root.value(evaluation::fieldName(evaluation::Field::Charts)).toList();
+    for (const QVariant &chart_val : charts_list)
+    {
+        const QVariantMap chart_map = chart_val.toMap();
+        const QVariantList datasets
+            = chart_map.value(QStringLiteral("data")).toMap().value(QStringLiteral("datasets")).toList();
+        for (const QVariant &dataset_val : datasets)
+        {
+            const QVariantMap dataset_map = dataset_val.toMap();
+            if (dataset_map.contains(QStringLiteral("average_precision"))
+                && dataset_map.contains(evaluation::fieldName(evaluation::Field::ClassId)))
+            {
+                const int cid   = dataset_map.value(evaluation::fieldName(evaluation::Field::ClassId)).toInt();
+                const double ap = dataset_map.value(QStringLiteral("average_precision")).toDouble();
+                class_ap_map.insert(cid, ap);
+            }
+        }
+    }
+    class_ap_map_ = class_ap_map;
+
+    std::vector<EvaluationMetricRecord> per_class;
+    for (const QVariant &value : instance.value(evaluation::fieldName(evaluation::Field::PerClass)).toList())
+    {
+        const QVariantMap map = value.toMap();
+        const QString     key = map.value(evaluation::fieldName(evaluation::Field::ClassId)).toString();
+        EvaluationMetricRecord rec
+            = metricFromMap(key, map, map.value(evaluation::fieldName(evaluation::Field::ClassName)).toString());
+        if (class_ap_map.contains(rec.class_id))
+        {
+            rec.ap         = class_ap_map.value(rec.class_id);
+            rec.ap_defined = true;
+        }
+        rec.class_color = classColor(rec.class_id);
+        per_class.push_back(std::move(rec));
+    }
+
+    if (!per_class.empty())
+    {
+        // 宏平均（Macro-Average）：先算每个类别的指标，然后算术平均
+        double sum_precision = 0.0, sum_recall = 0.0;
+        qint64 total_tp = 0, total_fp = 0, total_fn = 0;
+        int valid_p = 0, valid_r = 0;
+        for (const auto &record : per_class)
+        {
+            if (record.precision_defined)
+            {
+                sum_precision += record.precision;
+                ++valid_p;
+            }
+            if (record.recall_defined)
+            {
+                sum_recall += record.recall;
+                ++valid_r;
+            }
+            total_tp += record.tp;
+            total_fp += record.fp;
+            total_fn += record.fn;
+        }
+        const double macro_p  = valid_p > 0 ? (sum_precision / static_cast<double>(valid_p)) : 0.0;
+        const double macro_r  = valid_r > 0 ? (sum_recall / static_cast<double>(valid_r)) : 0.0;
+        const double macro_f1 = (macro_p + macro_r > 0.0) ? (2.0 * macro_p * macro_r / (macro_p + macro_r)) : 0.0;
+
+        EvaluationMetricRecord macro_record;
+        macro_record.key               = QStringLiteral("overall");
+        macro_record.label             = QStringLiteral("整体");
+        macro_record.precision         = macro_p;
+        macro_record.recall            = macro_r;
+        macro_record.f1                = macro_f1;
+        macro_record.precision_defined = valid_p > 0;
+        macro_record.recall_defined    = valid_r > 0;
+        macro_record.f1_defined        = (macro_p + macro_r > 0.0);
+        macro_record.tp                = total_tp;
+        macro_record.fp                = total_fp;
+        macro_record.fn                = total_fn;
+        instance_metrics_->setRecords({macro_record});
+    }
+    else if (!overall.isEmpty())
+    {
+        instance_metrics_->setRecords({metricFromMap(QStringLiteral("overall"), overall, QString("整体"))});
+    }
+
+    per_class_metrics_->setRecords(std::move(per_class));
 
     /**
      * @brief 官方指标和诊断指标保持分离。
@@ -717,16 +793,6 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
     for (const QVariant &value : serialized_images)
         image_records.push_back(imageRecordFromMap(value.toMap()));
     images_->setRecords(std::move(image_records));
-
-    std::vector<EvaluationMetricRecord> per_class;
-    for (const QVariant &value : instance.value(evaluation::fieldName(evaluation::Field::PerClass)).toList())
-    {
-        const QVariantMap map = value.toMap();
-        const QString     key = map.value(evaluation::fieldName(evaluation::Field::ClassId)).toString();
-        per_class.push_back(
-            metricFromMap(key, map, map.value(evaluation::fieldName(evaluation::Field::ClassName)).toString()));
-    }
-    per_class_metrics_->setRecords(std::move(per_class));
 
     std::vector<EvaluationConfusionCell> cells;
     const QVariantMap  matrix       = root.value(evaluation::fieldName(evaluation::Field::ConfusionMatrix)).toMap();
@@ -961,6 +1027,14 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
                                       {
                                           if (guard.isNull() || guard->aggregation_revision_ != revision)
                                               return;
+                                          for (auto &rec : output.per_class_metrics)
+                                          {
+                                              if (guard->class_ap_map_.contains(rec.class_id))
+                                              {
+                                                  rec.ap         = guard->class_ap_map_.value(rec.class_id);
+                                                  rec.ap_defined = true;
+                                              }
+                                          }
                                           guard->instance_metrics_->setRecords(std::move(output.instance_metrics));
                                           guard->image_metrics_->setRecords(std::move(output.image_metrics));
                                           guard->per_class_metrics_->setRecords(std::move(output.per_class_metrics));

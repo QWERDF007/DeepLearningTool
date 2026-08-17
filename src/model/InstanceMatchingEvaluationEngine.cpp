@@ -165,43 +165,20 @@ bool InstanceMatchingEvaluationEngine::runDetectionLoop(const QMap<qint64, Evalu
         }
 
         /**
-         * @brief 图像级指标按类别 presence 统计。
-         *
-         * 不能只要图像同时有 GT/PRED 就记为 TP，否则类别错误和多类别
-         * 图像的 FP/FN 会被吞掉。
+         * @brief 图像级指标按整图 OK / NG 二分类模型（良品/不良品判定）统计：
+         * - 图像有标注（NG 不良品图）+ 模型有检出 -> TP（不良品检出）
+         * - 图像无标注（OK 良品图）  + 模型有检出 -> FP（良品误报 / 过杀）
+         * - 图像有标注（NG 不良品图）+ 模型无检出 -> FN（不良品漏检 / 漏杀）
+         * - 图像无标注（OK 良品图）  + 模型无检出 -> TN（良品放行）
          */
-        QSet<int> image_gt_classes;
-        QSet<int> image_pred_classes;
-        for (const EvaluationGroundTruthData &gt : image.gt)
-            if (gt.class_id >= 0)
-                image_gt_classes.insert(gt.class_id);
-        for (const EvaluationPredictionData &prediction : predictions)
-            if (prediction.class_id >= 0)
-                image_pred_classes.insert(prediction.class_id);
-        if (image_gt_classes.isEmpty() && image_pred_classes.isEmpty())
-        {
-            const bool has_gt   = !image.gt.isEmpty();
-            const bool has_pred = !predictions.isEmpty();
-            if (has_gt && has_pred)
-                ++scratch_.image_counts.tp;
-            else if (has_pred)
-                ++scratch_.image_counts.fp;
-            else if (has_gt)
-                ++scratch_.image_counts.fn;
-        }
-        else
-        {
-            for (const int class_id : image_pred_classes)
-            {
-                if (image_gt_classes.contains(class_id))
-                    ++scratch_.image_counts.tp;
-                else
-                    ++scratch_.image_counts.fp;
-            }
-            for (const int class_id : image_gt_classes)
-                if (!image_pred_classes.contains(class_id))
-                    ++scratch_.image_counts.fn;
-        }
+        const bool has_gt   = !image.gt.isEmpty();
+        const bool has_pred = !predictions.isEmpty();
+        if (has_gt && has_pred)
+            ++scratch_.image_counts.tp;
+        else if (has_pred)
+            ++scratch_.image_counts.fp;
+        else if (has_gt)
+            ++scratch_.image_counts.fn;
     }
     return true;
 }

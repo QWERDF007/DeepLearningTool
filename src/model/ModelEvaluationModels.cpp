@@ -1,5 +1,6 @@
 #include "model/ModelEvaluationModels.h"
 #include "model/ModelEvaluationProtocol.h"
+#include "model/EvaluationCommon.h"
 
 #include <algorithm>
 #include <cmath>
@@ -126,12 +127,25 @@ QVariant EvaluationMetricModel::data(const QModelIndex &index, const int role) c
     case PrecisionRole: return record.precision;
     case RecallRole: return record.recall;
     case F1Role: return record.f1;
+    case ApRole: return record.ap;
     case PrecisionTextRole:
         return record.precision_defined ? QString::number(record.precision, 'f', 3) : QString("—");
     case RecallTextRole:
         return record.recall_defined ? QString::number(record.recall, 'f', 3) : QString("—");
     case F1TextRole:
         return record.f1_defined ? QString::number(record.f1, 'f', 3) : QString("—");
+    case ApTextRole:
+        return record.ap_defined ? QString::number(record.ap * 100.0, 'f', 1) + QStringLiteral("%") : QString("—");
+    case ClassColorRole:
+        return !record.class_color.isEmpty() ? record.class_color : classColor(record.class_id);
+    case PredictedCountRole:
+        return record.tp + record.fp;
+    case LabeledCountRole:
+        return record.tp + record.fn;
+    case FpPredictedTextRole:
+        return QStringLiteral("%1 / %2").arg(record.fp).arg(record.tp + record.fp);
+    case FnLabeledTextRole:
+        return QStringLiteral("%1 / %2").arg(record.fn).arg(record.tp + record.fn);
     case TpRole: return record.tp;
     case FpRole: return record.fp;
     case FnRole: return record.fn;
@@ -141,10 +155,26 @@ QVariant EvaluationMetricModel::data(const QModelIndex &index, const int role) c
 
 QHash<int, QByteArray> EvaluationMetricModel::roleNames() const
 {
-    return {{KeyRole, "key"}, {LabelRole, "label"}, {ClassNameRole, "className"}, {ClassIdRole, "classId"},
-            {PrecisionRole, "precision"}, {RecallRole, "recall"}, {F1Role, "f1"},
-            {PrecisionTextRole, "precisionText"}, {RecallTextRole, "recallText"}, {F1TextRole, "f1Text"},
-            {TpRole, "tp"}, {FpRole, "fp"}, {FnRole, "fn"}};
+    return {{KeyRole, "key"},
+            {LabelRole, "label"},
+            {ClassNameRole, "className"},
+            {ClassIdRole, "classId"},
+            {PrecisionRole, "precision"},
+            {RecallRole, "recall"},
+            {F1Role, "f1"},
+            {ApRole, "ap"},
+            {PrecisionTextRole, "precisionText"},
+            {RecallTextRole, "recallText"},
+            {F1TextRole, "f1Text"},
+            {ApTextRole, "apText"},
+            {ClassColorRole, "classColor"},
+            {PredictedCountRole, "predictedCount"},
+            {LabeledCountRole, "labeledCount"},
+            {FpPredictedTextRole, "fpPredictedText"},
+            {FnLabeledTextRole, "fnLabeledText"},
+            {TpRole, "tp"},
+            {FpRole, "fp"},
+            {FnRole, "fn"}};
 }
 
 void EvaluationMetricModel::setRecords(std::vector<EvaluationMetricRecord> records)
@@ -152,33 +182,12 @@ void EvaluationMetricModel::setRecords(std::vector<EvaluationMetricRecord> recor
     beginResetModel();
     records_ = std::move(records);
     endResetModel();
+    emit countChanged();
 }
 
 const std::vector<EvaluationMetricRecord> &EvaluationMetricModel::records() const
 {
     return records_;
-}
-
-EvaluationMetricSortProxyModel::EvaluationMetricSortProxyModel(QObject *parent)
-    : QSortFilterProxyModel(parent)
-{
-    setDynamicSortFilter(true);
-    setSortRole(EvaluationMetricModel::F1Role);
-    sort(0, Qt::DescendingOrder);
-}
-
-void EvaluationMetricSortProxyModel::sortBy(const QString &field)
-{
-    const QString normalized = field.trimmed().toLower();
-    if (normalized == QStringLiteral("fp"))
-        setSortRole(EvaluationMetricModel::FpRole);
-    else if (normalized == QStringLiteral("fn"))
-        setSortRole(EvaluationMetricModel::FnRole);
-    else if (normalized == QStringLiteral("label"))
-        setSortRole(EvaluationMetricModel::LabelRole);
-    else
-        setSortRole(EvaluationMetricModel::F1Role);
-    sort(0, normalized == QStringLiteral("label") ? Qt::AscendingOrder : Qt::DescendingOrder);
 }
 
 EvaluationConfusionModel::EvaluationConfusionModel(QObject *parent)

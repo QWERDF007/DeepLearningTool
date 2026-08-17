@@ -828,9 +828,9 @@ EvaluationChartOutput buildInstanceMatchingEvaluationCharts(const QMap<qint64, E
         {evaluation::fieldName(evaluation::Field::Definition), QStringLiteral("confidence_iou_work_point")}
     };
     output.image_definition = QVariantMap{
-        {        evaluation::fieldName(evaluation::Field::SampleUnit),     QStringLiteral("image_class_presence")},
-        {       evaluation::fieldName(evaluation::Field::Aggregation),                    QStringLiteral("micro")},
-        {evaluation::fieldName(evaluation::Field::PositiveDefinition), QStringLiteral("gt_or_pred_class_present")},
+        {        evaluation::fieldName(evaluation::Field::SampleUnit),     QStringLiteral("image_presence")},
+        {       evaluation::fieldName(evaluation::Field::Aggregation),                    QStringLiteral("binary")},
+        {evaluation::fieldName(evaluation::Field::PositiveDefinition),         QStringLiteral("gt_or_pred_present")},
         {   evaluation::fieldName(evaluation::Field::HasImageMetrics),                                       true}
     };
     output.charts.push_back(precision_recall);

@@ -36,6 +36,7 @@ EvaluationImageMetricsPanelBase {
                     // 左侧：精确率饼图
                     ColumnLayout {
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 1
                         Layout.fillHeight: true
                         spacing: 2
 
@@ -53,7 +54,7 @@ EvaluationImageMetricsPanelBase {
                         QuiText {
                             Layout.fillWidth: true
                             horizontalAlignment: Text.AlignHCenter
-                            elide: Text.ElideRight
+                            font: QuiFont.Body
                             text: qsTr("精确率: %1").arg(control.percentage(model.precision, 1))
                         }
                     }
@@ -61,6 +62,7 @@ EvaluationImageMetricsPanelBase {
                     // 右侧：召回率饼图
                     ColumnLayout {
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 1
                         Layout.fillHeight: true
                         spacing: 2
 
@@ -78,7 +80,7 @@ EvaluationImageMetricsPanelBase {
                         QuiText {
                             Layout.fillWidth: true
                             horizontalAlignment: Text.AlignHCenter
-                            elide: Text.ElideRight
+                            font: QuiFont.Body
                             text: qsTr("召回率: %1").arg(control.percentage(model.recall, 1))
                         }
                     }

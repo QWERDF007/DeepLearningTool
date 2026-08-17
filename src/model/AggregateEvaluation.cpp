@@ -2,6 +2,7 @@
 
 #include "model/EvaluationAnomalyConfusion.h"
 #include "model/EvaluationCharts.h"
+#include "model/EvaluationCommon.h"
 #include "model/ModelEvaluationProtocol.h"
 
 #include <QSet>
@@ -275,12 +276,50 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
         }
     }
 
-    output.instance_metrics.push_back(aggregateMetric(QStringLiteral("overall"), QString("整体"), -1, overall));
+    // 宏平均（Macro-Average）：先算每个类别的指标，然后算术平均
+    double sum_precision = 0.0, sum_recall = 0.0;
+    int valid_p = 0, valid_r = 0;
     for (auto it = class_names.cbegin(); it != class_names.cend(); ++it)
     {
-        output.per_class_metrics.push_back(
-            aggregateMetric(QString::number(it.key()), it.value(), it.key(), classes.value(it.key())));
+        EvaluationMetricRecord rec = aggregateMetric(QString::number(it.key()), it.value(), it.key(), classes.value(it.key()));
+        rec.class_color = classColor(rec.class_id);
+        if (rec.precision_defined)
+        {
+            sum_precision += rec.precision;
+            ++valid_p;
+        }
+        if (rec.recall_defined)
+        {
+            sum_recall += rec.recall;
+            ++valid_r;
+        }
+        output.per_class_metrics.push_back(std::move(rec));
     }
+
+    EvaluationMetricRecord macro_overall;
+    macro_overall.key = QStringLiteral("overall");
+    macro_overall.label = QString("整体");
+    macro_overall.tp = overall.tp;
+    macro_overall.fp = overall.fp;
+    macro_overall.fn = overall.fn;
+    if (valid_p > 0)
+    {
+        macro_overall.precision = sum_precision / valid_p;
+        macro_overall.precision_defined = true;
+    }
+    if (valid_r > 0)
+    {
+        macro_overall.recall = sum_recall / valid_r;
+        macro_overall.recall_defined = true;
+    }
+    if (macro_overall.precision_defined && macro_overall.recall_defined
+        && (macro_overall.precision + macro_overall.recall > 0.0))
+    {
+        macro_overall.f1 = 2.0 * (macro_overall.precision * macro_overall.recall)
+                           / (macro_overall.precision + macro_overall.recall);
+        macro_overall.f1_defined = true;
+    }
+    output.instance_metrics.push_back(std::move(macro_overall));
     output.image_metrics.push_back(aggregateMetric(QStringLiteral("image"), QString("图像"), -1, image_counts));
 
     if (input.anomaly_detection)
