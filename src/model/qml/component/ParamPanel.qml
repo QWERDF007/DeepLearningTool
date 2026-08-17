@@ -64,7 +64,10 @@ Item {
                             id: groupContent
 
                             anchors.fill: parent
-                            anchors.margins: control.partSpacing
+                            anchors.leftMargin: control.partSpacing
+                            anchors.topMargin: control.partSpacing
+                            anchors.bottomMargin: control.partSpacing
+                            anchors.rightMargin: 8
                             spacing: control.partSpacing
 
                             // 顶栏 Header 容器（包含标题与说明）

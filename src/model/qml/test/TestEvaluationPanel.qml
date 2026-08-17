@@ -68,35 +68,32 @@ Item {
             SplitView.fillHeight: true
             orientation: Qt.Horizontal
 
-            QuiFrame {
+            Loader {
                 SplitView.fillHeight: true
                 SplitView.preferredWidth: 480
-                Loader {
-                    anchors.fill: parent
-                    sourceComponent: control.evaluation
-                                     ? panelRegistry.confusionMatrixPanel(control.evaluation.method) : null
-                    onLoaded: control.bindPanel(this)
-                }
+                SplitView.minimumWidth: 320
+                sourceComponent: control.evaluation
+                                 ? panelRegistry.confusionMatrixPanel(control.evaluation.method) : null
+                onLoaded: control.bindPanel(this)
             }
-            QuiFrame {
+
+            Loader {
                 SplitView.fillHeight: true
                 SplitView.fillWidth: true
-                Loader {
-                    anchors.fill: parent
-                    sourceComponent: control.evaluation
-                                     ? panelRegistry.instancesGridPanel(control.evaluation.method) : null
-                    onLoaded: control.bindPanel(this)
-                }
+                SplitView.preferredWidth: 480
+                SplitView.minimumWidth: 280
+                sourceComponent: control.evaluation
+                                 ? panelRegistry.instancesGridPanel(control.evaluation.method) : null
+                onLoaded: control.bindPanel(this)
             }
-            QuiFrame {
+
+            Loader {
                 SplitView.fillHeight: true
                 SplitView.preferredWidth: 320
-                Loader {
-                    anchors.fill: parent
-                    sourceComponent: control.evaluation
-                                     ? panelRegistry.instanceDetailsPanel(control.evaluation.method) : null
-                    onLoaded: control.bindPanel(this)
-                }
+                SplitView.minimumWidth: 240
+                sourceComponent: control.evaluation
+                                 ? panelRegistry.instanceDetailsPanel(control.evaluation.method) : null
+                onLoaded: control.bindPanel(this)
             }
         }
     }

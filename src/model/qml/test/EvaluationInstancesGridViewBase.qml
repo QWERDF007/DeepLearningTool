@@ -16,6 +16,9 @@ Rectangle {
     color: QuiColor.Primary
     property ModelEvaluationViewModel evaluation: null
     property real thumbnailScale: 1.0
+    property int spacing: 8
+    property int baseCellWidth: 180
+    property int baseCellHeight: 150
     property string title: qsTr("实例图像")
 
     function formatMetric(model) {
@@ -25,13 +28,17 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 8
+        anchors.leftMargin: 8
+        anchors.rightMargin: 0
+        anchors.topMargin: 8
+        anchors.bottomMargin: 8
         spacing: 4
 
         // 顶栏 Header 容器（包含标题与缩放控制）
         RowLayout {
             id: headerHost
             Layout.fillWidth: true
+            Layout.rightMargin: 8
             Layout.preferredHeight: 32
             spacing: 8
 
@@ -79,8 +86,9 @@ Rectangle {
             GridView {
                 id: grid
                 anchors.fill: parent
-                cellWidth: 180 * control.thumbnailScale
-                cellHeight: 150 * control.thumbnailScale
+                boundsBehavior: Flickable.StopAtBounds
+                cellWidth: Math.round(control.baseCellWidth * control.thumbnailScale) + control.spacing
+                cellHeight: Math.round(control.baseCellHeight * control.thumbnailScale) + control.spacing
                 clip: true
                 focus: true
                 keyNavigationEnabled: true
@@ -123,8 +131,8 @@ Rectangle {
                         currentIndex = 0
                 }
                 delegate: Rectangle {
-                    width: grid.cellWidth - 10
-                    height: grid.cellHeight - 10
+                    width: Math.min(Math.round(control.baseCellWidth * control.thumbnailScale), Math.max(50, grid.width - control.spacing - 10))
+                    height: Math.round(control.baseCellHeight * control.thumbnailScale)
                     readonly property bool consistentStatus: model.statusKind === EvaluationInstanceModel.StatusTruePositive
                                                               || model.statusKind === EvaluationInstanceModel.StatusTrueNegative
 
@@ -210,6 +218,7 @@ Rectangle {
 
             QuiText {
                 anchors.fill: parent
+                anchors.rightMargin: 8
                 visible: !control.evaluation || !control.evaluation.hasInstanceEvents
                          || grid.count === 0
                 text: !control.evaluation || !control.evaluation.hasInstanceEvents

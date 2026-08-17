@@ -135,20 +135,24 @@ Rectangle {
     GridView {
         id: thumbnailGridView
         anchors.fill: parent
-        anchors.margins: 10
+        anchors.leftMargin: 10
+        anchors.topMargin: 10
+        anchors.bottomMargin: 10
+        anchors.rightMargin: 0
         
         // 基础尺寸
         property real baseCellSize: 200
+        property real spacing: 10
         
         // 绑定到设置
-        cellWidth: baseCellSize * root.labelThumbnailScale
-        cellHeight: cellWidth * root.labelThumbnailAspectRatio
+        cellWidth: Math.round(baseCellSize * root.labelThumbnailScale) + spacing
+        cellHeight: Math.round(baseCellSize * root.labelThumbnailScale * root.labelThumbnailAspectRatio) + spacing
         
         clip: true
+        boundsBehavior: Flickable.StopAtBounds
         
         // 绑定到所有标注实例
         model: labelInstances
-
         
         // 优化：减少缓冲区大小，避免一次性加载太多项目
         cacheBuffer: 400  // 只缓冲 2 行的高度
@@ -157,8 +161,8 @@ Rectangle {
         
         delegate: Rectangle {
             id: delegateItem
-            width: thumbnailGridView.cellWidth - 10
-            height: thumbnailGridView.cellHeight - 10
+            width: Math.min(Math.round(thumbnailGridView.baseCellSize * root.labelThumbnailScale), Math.max(50, thumbnailGridView.width - thumbnailGridView.spacing - 10))
+            height: Math.round(thumbnailGridView.baseCellSize * root.labelThumbnailScale * root.labelThumbnailAspectRatio)
             color: QuiColor.Primary
             radius: 4
             
@@ -183,8 +187,6 @@ Rectangle {
                 providerCacheKey: root.providerCacheKey
             }
         }
-        
-        boundsBehavior: Flickable.StopAtBounds
         
         // 滚动条
         ScrollBar.vertical: QuiScrollBar {
