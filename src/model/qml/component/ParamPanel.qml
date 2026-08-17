@@ -55,7 +55,7 @@ Item {
                         property string groupLabel: groupLoader.groupLabel
                         property string groupDescription: groupLoader.groupDescription
 
-                        implicitHeight: groupContent.implicitHeight + 2 * control.partSpacing
+                        implicitHeight: groupContent.implicitHeight + 10
                         radius: 4
                         clip: true
                         color: QuiColor.Primary
@@ -64,11 +64,10 @@ Item {
                             id: groupContent
 
                             anchors.fill: parent
-                            anchors.leftMargin: control.partSpacing
-                            anchors.topMargin: control.partSpacing
-                            anchors.bottomMargin: control.partSpacing
+                            anchors.leftMargin: 5
+                            anchors.topMargin: 5
+                            anchors.bottomMargin: 5
                             anchors.rightMargin: 8
-                            spacing: control.partSpacing
 
                             // 顶栏 Header 容器（包含标题与说明）
                             RowLayout {

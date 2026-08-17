@@ -28,19 +28,17 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.leftMargin: 8
+        anchors.leftMargin: 5
         anchors.rightMargin: 0
-        anchors.topMargin: 8
-        anchors.bottomMargin: 8
-        spacing: 4
+        anchors.topMargin: 5
+        anchors.bottomMargin: 5
 
         // 顶栏 Header 容器（包含标题与缩放控制）
         RowLayout {
             id: headerHost
             Layout.fillWidth: true
-            Layout.rightMargin: 8
+            Layout.rightMargin: 5
             Layout.preferredHeight: 32
-            spacing: 8
 
             QuiText {
                 Layout.fillWidth: true
@@ -218,7 +216,7 @@ Rectangle {
 
             QuiText {
                 anchors.fill: parent
-                anchors.rightMargin: 8
+                anchors.rightMargin: 5
                 visible: !control.evaluation || !control.evaluation.hasInstanceEvents
                          || grid.count === 0
                 text: !control.evaluation || !control.evaluation.hasInstanceEvents

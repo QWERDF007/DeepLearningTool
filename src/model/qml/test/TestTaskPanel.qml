@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -19,8 +19,7 @@ Rectangle {
 
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 6
-        spacing: 6
+        anchors.margins: 5
 
         QuiText {
             text: qsTr("测试任务")

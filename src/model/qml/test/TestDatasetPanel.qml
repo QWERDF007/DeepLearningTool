@@ -19,12 +19,10 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 5
+        anchors.margins: 5
 
         QuiText {
             Layout.fillWidth: true
-            Layout.topMargin: 5
-            Layout.leftMargin: 5
             text: qsTr("数据集选择")
             font: QuiFont.Subtitle
         }

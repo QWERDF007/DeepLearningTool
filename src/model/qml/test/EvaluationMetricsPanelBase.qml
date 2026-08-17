@@ -23,13 +23,13 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 8
-        spacing: 6
+        anchors.margins: 5
 
         // 顶栏 Header 容器（包含标题与右上角动作插槽）
         RowLayout {
             id: headerHost
             Layout.fillWidth: true
+            Layout.preferredHeight: 32
 
             QuiText {
                 text: control.title
@@ -42,7 +42,7 @@ Rectangle {
                 id: headerAction
                 visible: children.length > 0
                 Layout.preferredWidth: visible ? 100 : 0
-                Layout.preferredHeight: visible ? 28 : 0
+                Layout.preferredHeight: visible ? 32 : 0
                 Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
             }
         }
