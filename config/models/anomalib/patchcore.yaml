@@ -127,7 +127,7 @@ train_params:
 test_params:
   - name_en: inference
     name_cn: 推理参数
-    part_index: 1
+    part_index: 0
     params:
       - name_en: batch_size
         name_cn: 批量大小
