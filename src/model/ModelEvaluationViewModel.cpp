@@ -2,9 +2,10 @@
 
 #include "model/AggregateEvaluation.h"
 #include "model/EvaluationCommon.h"
+#include "model/EvaluationEngineRegistry.h"
 #include "model/EvaluationMatching.h"
+#include "model/EvaluationResult.h"
 #include "model/ModelEvaluationProtocol.h"
-#include "model/ModelEvaluationService.h"
 #include "ui/SignalHelper.h"
 
 #include <spdlog/spdlog.h>
@@ -252,6 +253,11 @@ bool ModelEvaluationViewModel::available() const
 bool ModelEvaluationViewModel::loading() const
 {
     return loading_;
+}
+
+int ModelEvaluationViewModel::method() const
+{
+    return method_;
 }
 
 QString ModelEvaluationViewModel::state() const
@@ -504,6 +510,7 @@ void ModelEvaluationViewModel::setEvaluationOptions(const ModelEvaluationOptions
         return;
     evaluation_options_     = options;
     has_evaluation_options_ = true;
+    method_                 = static_cast<int>(options.method);
     invalidate();
 }
 
@@ -560,12 +567,16 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
             if (guard.isNull())
                 return;
 
-            QVariantMap evaluation_result;
-            QString      error;
-            const bool   success = ModelEvaluationService::evaluate(options, &evaluation_result, &error);
+            auto result = std::make_shared<EvaluationResult>();
+            QString error;
+            bool success = false;
+            if (auto engine = EvaluationEngineRegistry::instance().createEngine(options.method))
+                success = engine->evaluate(options, result.get(), &error);
+            else
+                error = QString("未注册的评估方法: %1").arg(static_cast<int>(options.method));
             QMetaObject::invokeMethod(
                 guard.data(),
-                [guard, revision, options, notify, success, result = std::move(evaluation_result),
+                [guard, revision, options, notify, success, result = std::move(result),
                  error]() mutable
                 {
                     if (guard.isNull() || guard->evaluation_revision_ != revision)
@@ -588,8 +599,9 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
                         return;
                     }
 
-                    QString validation_error;
-                    if (!validEvaluationResult(result, &validation_error))
+                    const QVariantMap protocol = evaluationResultToProtocolMap(*result);
+                    QString          validation_error;
+                    if (!validEvaluationResult(protocol, &validation_error))
                     {
                         guard->evaluation_attempted_ = true;
                         const QString message = validation_error.isEmpty() ? QStringLiteral("评估结果格式无效")
@@ -606,9 +618,10 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
                     }
 
                     guard->result_revision_ = QString::number(QDateTime::currentMSecsSinceEpoch());
-                    guard->loadEvaluation(result);
+                    guard->loadEvaluation(protocol);
                     guard->loadInstanceRecords(
-                        result.value(evaluation::fieldName(evaluation::Field::InstanceRecords)).toList());
+                        protocol.value(evaluation::fieldName(evaluation::Field::InstanceRecords)).toList());
+                    guard->applyMethodSpecificData(*result);
                     guard->evaluation_attempted_ = true;
                     guard->available_            = true;
                     guard->state_kind_           = evaluation::ViewState::Ready;
@@ -740,6 +753,7 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
         charts.push_back(value.toMap());
     confusion_matrix_->setRecords(std::move(cells));
     charts_->setRecords(std::move(charts));
+
 }
 
 void ModelEvaluationViewModel::loadInstanceRecords(const QVariantList &records)

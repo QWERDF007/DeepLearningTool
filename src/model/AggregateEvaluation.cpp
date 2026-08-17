@@ -446,18 +446,21 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
     {
         const QString chart_id    = descriptor.value(evaluation::fieldName(evaluation::Field::ChartId)).toString();
         const QString filter_kind = descriptor.value(evaluation::fieldName(evaluation::Field::FilterKind)).toString();
-        if (chart_id == QStringLiteral("anomaly_score_distribution"))
+        if (chart_id == evaluation::chartIdKey(evaluation::ChartId::AnomalyScoreDistribution))
             continue;
-        if (descriptor.value(evaluation::fieldName(evaluation::Field::Kind)).toString() == QStringLiteral("bar")
-            && (filter_kind == QStringLiteral("per_class_metrics") || chart_id == QStringLiteral("per_class_metrics")))
+        if (descriptor.value(evaluation::fieldName(evaluation::Field::Kind)).toString()
+                == evaluation::chartKindKey(evaluation::ChartKind::Bar)
+            && (filter_kind == evaluation::filterKindKey(evaluation::FilterKind::PerClassMetrics)
+                || chart_id == evaluation::chartIdKey(evaluation::ChartId::PerClassMetrics)))
             continue;
         QVariantMap filtered = descriptor;
-        if (filter_kind == QStringLiteral("precision_recall") || chart_id == QStringLiteral("precision_recall"))
+        if (filter_kind == evaluation::filterKindKey(evaluation::FilterKind::PrecisionRecall)
+            || chart_id == evaluation::chartIdKey(evaluation::ChartId::PrecisionRecall))
         {
             filtered = precisionRecallChartForImages(input.images, input.class_catalog, input.iou_threshold,
                                                      input.matching_strategy, input.class_ids);
         }
-        else if (filter_kind == QStringLiteral("image_score"))
+        else if (filter_kind == evaluation::filterKindKey(evaluation::FilterKind::ImageScore))
         {
             QVariantList labels;
             QVariantList scores;

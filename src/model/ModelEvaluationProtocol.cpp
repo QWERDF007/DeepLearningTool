@@ -196,6 +196,126 @@ CellKind cellKindFromKey(const QString &key)
     return CellKind::NotApplicable;
 }
 
+QString chartKindKey(const ChartKind kind)
+{
+    switch (kind)
+    {
+    case ChartKind::Line: return QStringLiteral("line");
+    case ChartKind::Bar: return QStringLiteral("bar");
+    case ChartKind::Pie: return QStringLiteral("pie");
+    case ChartKind::Unknown: return QStringLiteral("unknown");
+    }
+    return QStringLiteral("unknown");
+}
+
+ChartKind chartKindFromKey(const QString &key)
+{
+    const QString value = normalized(key);
+    if (value == chartKindKey(ChartKind::Line))
+        return ChartKind::Line;
+    if (value == chartKindKey(ChartKind::Bar))
+        return ChartKind::Bar;
+    if (value == chartKindKey(ChartKind::Pie))
+        return ChartKind::Pie;
+    return ChartKind::Unknown;
+}
+
+QString chartAxisIdKey(const ChartAxisId id)
+{
+    switch (id)
+    {
+    case ChartAxisId::ScoreAxis: return QStringLiteral("score-axis");
+    case ChartAxisId::CountAxis: return QStringLiteral("count-axis");
+    case ChartAxisId::Unknown: return QStringLiteral("unknown");
+    }
+    return QStringLiteral("unknown");
+}
+
+ChartAxisId chartAxisIdFromKey(const QString &key)
+{
+    const QString value = normalized(key);
+    if (value == chartAxisIdKey(ChartAxisId::ScoreAxis))
+        return ChartAxisId::ScoreAxis;
+    if (value == chartAxisIdKey(ChartAxisId::CountAxis))
+        return ChartAxisId::CountAxis;
+    return ChartAxisId::Unknown;
+}
+
+QString chartIdKey(const ChartId id)
+{
+    switch (id)
+    {
+    case ChartId::AnomalyScoreDistribution: return QStringLiteral("anomaly_score_distribution");
+    case ChartId::PrecisionRecall: return QStringLiteral("precision_recall");
+    case ChartId::PerClassMetrics: return QStringLiteral("per_class_metrics");
+    case ChartId::Unknown: return QStringLiteral("unknown");
+    }
+    return QStringLiteral("unknown");
+}
+
+ChartId chartIdFromKey(const QString &key)
+{
+    const QString value = normalized(key);
+    if (value == chartIdKey(ChartId::AnomalyScoreDistribution))
+        return ChartId::AnomalyScoreDistribution;
+    if (value == chartIdKey(ChartId::PrecisionRecall))
+        return ChartId::PrecisionRecall;
+    if (value == chartIdKey(ChartId::PerClassMetrics))
+        return ChartId::PerClassMetrics;
+    return ChartId::Unknown;
+}
+
+QString seriesKindKey(const SeriesKind kind)
+{
+    switch (kind)
+    {
+    case SeriesKind::Good: return QStringLiteral("good");
+    case SeriesKind::Anomaly: return QStringLiteral("anomaly");
+    case SeriesKind::Average: return QStringLiteral("average");
+    case SeriesKind::Class: return QStringLiteral("class");
+    case SeriesKind::Unknown: return QStringLiteral("unknown");
+    }
+    return QStringLiteral("unknown");
+}
+
+SeriesKind seriesKindFromKey(const QString &key)
+{
+    const QString value = normalized(key);
+    if (value == seriesKindKey(SeriesKind::Good))
+        return SeriesKind::Good;
+    if (value == seriesKindKey(SeriesKind::Anomaly))
+        return SeriesKind::Anomaly;
+    if (value == seriesKindKey(SeriesKind::Average))
+        return SeriesKind::Average;
+    if (value == seriesKindKey(SeriesKind::Class))
+        return SeriesKind::Class;
+    return SeriesKind::Unknown;
+}
+
+QString filterKindKey(const FilterKind kind)
+{
+    switch (kind)
+    {
+    case FilterKind::ImageScore: return QStringLiteral("image_score");
+    case FilterKind::PrecisionRecall: return QStringLiteral("precision_recall");
+    case FilterKind::PerClassMetrics: return QStringLiteral("per_class_metrics");
+    case FilterKind::Unknown: return QStringLiteral("unknown");
+    }
+    return QStringLiteral("unknown");
+}
+
+FilterKind filterKindFromKey(const QString &key)
+{
+    const QString value = normalized(key);
+    if (value == filterKindKey(FilterKind::ImageScore))
+        return FilterKind::ImageScore;
+    if (value == filterKindKey(FilterKind::PrecisionRecall))
+        return FilterKind::PrecisionRecall;
+    if (value == filterKindKey(FilterKind::PerClassMetrics))
+        return FilterKind::PerClassMetrics;
+    return FilterKind::Unknown;
+}
+
 QString matrixAxisKey(const MatrixAxisKey key)
 {
     switch (key)
@@ -310,6 +430,157 @@ bool hasConfusionMatrix(const Method method)
 bool hasInstanceEvents(const Method method)
 {
     return hasInstanceMetrics(method);
+}
+
+EvaluationProtocolKeys::EvaluationProtocolKeys(QObject *parent)
+    : QObject(parent)
+{
+}
+
+QString EvaluationProtocolKeys::chartKindLine() const
+{
+    return evaluation::chartKindKey(ChartKind::Line);
+}
+
+QString EvaluationProtocolKeys::chartKindBar() const
+{
+    return evaluation::chartKindKey(ChartKind::Bar);
+}
+
+QString EvaluationProtocolKeys::chartKindPie() const
+{
+    return evaluation::chartKindKey(ChartKind::Pie);
+}
+
+QString EvaluationProtocolKeys::chartAxisScore() const
+{
+    return evaluation::chartAxisIdKey(ChartAxisId::ScoreAxis);
+}
+
+QString EvaluationProtocolKeys::chartAxisCount() const
+{
+    return evaluation::chartAxisIdKey(ChartAxisId::CountAxis);
+}
+
+QString EvaluationProtocolKeys::chartIdAnomalyScoreDistribution() const
+{
+    return evaluation::chartIdKey(ChartId::AnomalyScoreDistribution);
+}
+
+QString EvaluationProtocolKeys::chartIdPrecisionRecall() const
+{
+    return evaluation::chartIdKey(ChartId::PrecisionRecall);
+}
+
+QString EvaluationProtocolKeys::chartIdPerClassMetrics() const
+{
+    return evaluation::chartIdKey(ChartId::PerClassMetrics);
+}
+
+QString EvaluationProtocolKeys::seriesKindGood() const
+{
+    return evaluation::seriesKindKey(SeriesKind::Good);
+}
+
+QString EvaluationProtocolKeys::seriesKindAnomaly() const
+{
+    return evaluation::seriesKindKey(SeriesKind::Anomaly);
+}
+
+QString EvaluationProtocolKeys::seriesKindAverage() const
+{
+    return evaluation::seriesKindKey(SeriesKind::Average);
+}
+
+QString EvaluationProtocolKeys::seriesKindClass() const
+{
+    return evaluation::seriesKindKey(SeriesKind::Class);
+}
+
+QString EvaluationProtocolKeys::filterKindImageScore() const
+{
+    return evaluation::filterKindKey(FilterKind::ImageScore);
+}
+
+QString EvaluationProtocolKeys::filterKindPrecisionRecall() const
+{
+    return evaluation::filterKindKey(FilterKind::PrecisionRecall);
+}
+
+QString EvaluationProtocolKeys::filterKindPerClassMetrics() const
+{
+    return evaluation::filterKindKey(FilterKind::PerClassMetrics);
+}
+
+QString EvaluationProtocolKeys::matrixAxisFalseNegative() const
+{
+    return evaluation::matrixAxisKey(MatrixAxisKey::FalseNegative);
+}
+
+QString EvaluationProtocolKeys::matrixAxisFalsePositive() const
+{
+    return evaluation::matrixAxisKey(MatrixAxisKey::FalsePositive);
+}
+
+QString EvaluationProtocolKeys::matrixAxisUnmatchedGroundTruth() const
+{
+    return evaluation::matrixAxisKey(MatrixAxisKey::UnmatchedGroundTruth);
+}
+
+QString EvaluationProtocolKeys::matrixAxisUnmatchedPrediction() const
+{
+    return evaluation::matrixAxisKey(MatrixAxisKey::UnmatchedPrediction);
+}
+
+QString EvaluationProtocolKeys::matrixAxisTotal() const
+{
+    return evaluation::matrixAxisKey(MatrixAxisKey::Total);
+}
+
+QString EvaluationProtocolKeys::chartKindKey(const int kind) const
+{
+    return evaluation::chartKindKey(static_cast<ChartKind>(kind));
+}
+
+QString EvaluationProtocolKeys::chartAxisIdKey(const int id) const
+{
+    return evaluation::chartAxisIdKey(static_cast<ChartAxisId>(id));
+}
+
+QString EvaluationProtocolKeys::chartIdKey(const int id) const
+{
+    return evaluation::chartIdKey(static_cast<ChartId>(id));
+}
+
+QString EvaluationProtocolKeys::seriesKindKey(const int kind) const
+{
+    return evaluation::seriesKindKey(static_cast<SeriesKind>(kind));
+}
+
+QString EvaluationProtocolKeys::filterKindKey(const int kind) const
+{
+    return evaluation::filterKindKey(static_cast<FilterKind>(kind));
+}
+
+QString EvaluationProtocolKeys::matrixAxisKey(const int key) const
+{
+    return evaluation::matrixAxisKey(static_cast<MatrixAxisKey>(key));
+}
+
+QString EvaluationProtocolKeys::statusKey(const int status) const
+{
+    return evaluation::statusKey(static_cast<Status>(status));
+}
+
+QString EvaluationProtocolKeys::fieldName(const int field) const
+{
+    return evaluation::fieldName(static_cast<Field>(field));
+}
+
+EvaluationProtocolKeys *EvaluationProtocolKeys::create(QQmlEngine *, QJSEngine *)
+{
+    static EvaluationProtocolKeys instance;
+    return &instance;
 }
 
 }

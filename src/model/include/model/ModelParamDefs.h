@@ -33,8 +33,8 @@ struct ParamGroupDefinition
  * @param description 描述
  * @return 参数定义
  */
-ParamDefinition makeIntegerParam(const QString &name_en, const QString &name_cn, int default_value, int from, int to,
-                                 int step, const QString &description = {});
+MODEL_API ParamDefinition makeIntegerParam(const QString &name_en, const QString &name_cn, int default_value,
+                                           int from, int to, int step, const QString &description = {});
 
 /**
  * @brief 创建浮点类型参数
@@ -47,8 +47,8 @@ ParamDefinition makeIntegerParam(const QString &name_en, const QString &name_cn,
  * @param description 描述
  * @return 参数定义
  */
-ParamDefinition makeDoubleParam(const QString &name_en, const QString &name_cn, double default_value, double from,
-                                double to, double step, const QString &description = {});
+MODEL_API ParamDefinition makeDoubleParam(const QString &name_en, const QString &name_cn, double default_value,
+                                          double from, double to, double step, const QString &description = {});
 
 /**
  * @brief 创建滑块类型参数
@@ -61,8 +61,8 @@ ParamDefinition makeDoubleParam(const QString &name_en, const QString &name_cn, 
  * @param description 描述
  * @return 参数定义
  */
-ParamDefinition makeSliderParam(const QString &name_en, const QString &name_cn, double default_value, double from,
-                                double to, double step, const QString &description = {});
+MODEL_API ParamDefinition makeSliderParam(const QString &name_en, const QString &name_cn, double default_value,
+                                          double from, double to, double step, const QString &description = {});
 
 /**
  * @brief 创建复选框类型参数
@@ -72,8 +72,8 @@ ParamDefinition makeSliderParam(const QString &name_en, const QString &name_cn, 
  * @param description 描述
  * @return 参数定义
  */
-ParamDefinition makeCheckParam(const QString &name_en, const QString &name_cn, bool default_value,
-                               const QString &description = {});
+MODEL_API ParamDefinition makeCheckParam(const QString &name_en, const QString &name_cn, bool default_value,
+                                         const QString &description = {});
 
 /**
  * @brief 创建下拉框类型参数
@@ -84,8 +84,8 @@ ParamDefinition makeCheckParam(const QString &name_en, const QString &name_cn, b
  * @param description 描述
  * @return 参数定义
  */
-ParamDefinition makeComboParam(const QString &name_en, const QString &name_cn, const QString &default_value,
-                               QVariantList options, const QString &description = {});
+MODEL_API ParamDefinition makeComboParam(const QString &name_en, const QString &name_cn, const QString &default_value,
+                                         QVariantList options, const QString &description = {});
 
 /**
  * @brief 创建并解析由后端 provider 动态提供选项的参数。
@@ -97,8 +97,8 @@ ParamDefinition makeComboParam(const QString &name_en, const QString &name_cn, c
  * @param description 描述
  * @return 动态参数定义
  */
-ParamDefinition makeDynamicParam(const QString &name_en, const QString &name_cn, const QVariant &default_value,
-                                 const QString &display_type, const QString &backend_key,
-                                 const QString &description = {});
+MODEL_API ParamDefinition makeDynamicParam(const QString &name_en, const QString &name_cn,
+                                           const QVariant &default_value, const QString &display_type,
+                                           const QString &backend_key, const QString &description = {});
 
 } // namespace dltool::model

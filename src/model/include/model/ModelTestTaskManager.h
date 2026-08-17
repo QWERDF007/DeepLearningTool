@@ -2,7 +2,7 @@
 
 #include "data/DataSelectionTreeModel.h"
 #include "dltool/model/Export.h"
-#include "model/ModelEvaluationService.h"
+#include "model/ModelEvaluationOptions.h"
 #include "model/ModelEvaluationViewModel.h"
 #include "model/ModelTestTaskRepository.h"
 #include "model/TaskManager.h"

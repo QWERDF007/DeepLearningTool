@@ -175,10 +175,15 @@ FS-SAM2 属于小样本学习专用流程，不接入普通模型测试任务的
 
 ## 测试评估展示
 
-`ModelEvaluationService` 读取任务级文件列表、任务数据库预测记录/文件和项目数据库标注，
-在 C++ 中完成 GT 构造、匹配、指标、混淆矩阵和方法图表。`ModelEvaluationViewModel` 接收
-后台返回的内存快照，并负责 Qt Model、过滤、选择和过滤后的后台重聚合。`TestEvaluationPanel.qml`
-只负责 SplitView 布局、图表和实例联动，不在 QML 中遍历或计算评估事件。
+评估按方法拆分为引擎层级：`EvaluationEngineRegistry` 首次访问时自动注册
+`AnomalyEvaluationEngine`、`DetectionEvaluationEngine`、`SegmentationEvaluationEngine`；
+`IEvaluationEngine` 基类实现加载图像/预测、源文件过滤、取消检查与强类型
+`EvaluationResult` 组装的公共骨架，子类实现类别构建、实例/图像计数、实例事件、
+方法图表与混淆矩阵。后台通过 `std::shared_ptr<EvaluationResult>` 跨线程回 GUI，
+`ModelEvaluationViewModel`（抽象基类）及其方法子类负责 Qt Model、过滤、选择和
+过滤后的后台重聚合。`EvaluationPanelRegistry.qml` 集中维护方法到子面板组件的映射，
+`TestEvaluationPanel.qml` 只负责 SplitView 布局与状态遮罩，通过 Loader 装配面板，
+不在 QML 中遍历或计算评估事件。
 
 ## 扩展约定
 
@@ -187,7 +192,9 @@ FS-SAM2 属于小样本学习专用流程，不接入普通模型测试任务的
 1. 在 `ModelRegistry` 注册框架、架构、脚本和数据集导出规则。
 2. 在 `ModelTaskTypes` 定义任务描述与配置文件名。
 3. 在 `ModelDatasetOrganizer` 中实现框架数据集导出规则。
-4. Python 脚本复用 `3rdparty/EasyTrain/src/python/task/` 的任务协议并上报状态。
+4. 评估方法通过 `EvaluationEngineRegistry` 与 `EvaluationViewModelRegistry` 注册
+   对应子类；QML 面板在 `EvaluationPanelRegistry.qml` 追加组件映射。
+5. Python 脚本复用 `3rdparty/EasyTrain/src/python/task/` 的任务协议并上报状态。
 
 不要新增任务快照、控制器包装层或数据库导出接口；需要的模型/数据输入在 GUI 线程构造为
 `ModelTaskRequest`，耗时工作始终放到后台。

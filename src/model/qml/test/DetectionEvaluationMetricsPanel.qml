@@ -6,28 +6,12 @@ import dltool.model
 import dltool.ui
 import quickui
 
-Rectangle {
+EvaluationMetricsPanelBase {
     id: control
-    color: QuiColor.Primary
-    property ModelEvaluationViewModel evaluation: null
 
     ColumnLayout {
         anchors.fill: parent
         spacing: 6
-
-        RowLayout {
-            Layout.fillWidth: true
-            QuiText { 
-                text: qsTr("实例统计")
-                font: QuiFont.Subtitle
-            }
-            Item { Layout.fillWidth: true }
-            QuiButton {
-                text: qsTr("按类别详情")
-                enabled: !!control.evaluation && control.evaluation.perClassMetrics.count > 0
-                onClicked: classDialog.open()
-            }
-        }
 
         RowLayout {
             Layout.fillWidth: true
@@ -46,7 +30,7 @@ Rectangle {
             }
             QuiText {
                 visible: !control.evaluation || !control.evaluation.hasInstanceMetrics
-                text: qsTr("当前方法没有实例指标")
+                text: control.emptyText
                 color: QuiColor.FontDark
             }
             Item { Layout.fillWidth: true }
@@ -91,5 +75,12 @@ Rectangle {
                 }
             }
         }
+    }
+
+    headerContent: QuiButton {
+        anchors.fill: parent
+        text: qsTr("按类别详情")
+        enabled: !!control.evaluation && control.evaluation.perClassMetrics.count > 0
+        onClicked: classDialog.open()
     }
 }

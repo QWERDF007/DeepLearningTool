@@ -13,7 +13,7 @@
 namespace dltool::model {
 
 /**
- * @brief C++ evaluation input.  The service deliberately accepts paths and
+ * @brief C++ evaluation input.  The engine deliberately accepts paths and
  * plain values only, so it can run off the GUI thread and does not depend on
  * QML models or DataManager objects.
  */
@@ -52,16 +52,4 @@ struct MODEL_API ModelEvaluationOptions
     std::function<bool(qint64 image_id, int *width, int *height)> image_dimensions_provider;
 };
 
-/**
- * @brief Reads the task file list, project/task databases and prediction
- * artifacts, then computes one complete evaluation result in memory.
- */
-class MODEL_API ModelEvaluationService
-{
-public:
-    static bool evaluate(const ModelEvaluationOptions &options, QVariantMap *result = nullptr,
-                         QString *err_msg = nullptr);
-
-};
-
-}
+} // namespace dltool::model

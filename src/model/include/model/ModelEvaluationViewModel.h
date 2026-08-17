@@ -3,7 +3,7 @@
 #include "dltool/model/Export.h"
 #include "model/EvaluationCommon.h"
 #include "model/ModelEvaluationModels.h"
-#include "model/ModelEvaluationService.h"
+#include "model/ModelEvaluationOptions.h"
 
 #include <QList>
 #include <QObject>
@@ -13,6 +13,8 @@
 #include <QtQml>
 
 namespace dltool::model {
+
+struct EvaluationResult;
 
 /**
  * @brief 单一测试任务的内存评估模型。
@@ -48,6 +50,7 @@ public:
 
     Q_PROPERTY(bool available READ available NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged FINAL)
+    Q_PROPERTY(int method READ method CONSTANT FINAL)
     Q_PROPERTY(QString state READ state NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(StateKind stateKind READ stateKind NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(QString error READ error NOTIFY evaluationChanged FINAL)
@@ -85,6 +88,7 @@ public:
 
     bool                              available() const;
     bool                              loading() const;
+    int                               method() const;
     QString                           state() const;
     StateKind                         stateKind() const;
     QString                           error() const;
@@ -136,6 +140,16 @@ public:
     Q_INVOKABLE void clearFilters();
     void             setGlobalFilter(QObject *filter);
 
+protected:
+    /**
+     * @brief 方法特有数据填充钩子（纯虚）。
+     *
+     * 基类完成公共协议加载后调用；子类在此从强类型结果派生并发出自己的
+     * 方法数据变化信号。QML 面板通过运行时子类访问这些扩展属性。
+     * @param result 已完成的强类型评估结果。
+     */
+    virtual void applyMethodSpecificData(const EvaluationResult &result) = 0;
+
 signals:
     void evaluationChanged();
     void loadingChanged();
@@ -167,6 +181,7 @@ private:
     bool                              notify_when_finished_{false};
     bool                              available_{false};
     bool                              loading_{false};
+    int                               method_{static_cast<int>(evaluation::Method::Unknown)};
     QString                           error_;
     evaluation::ViewState             state_kind_{evaluation::ViewState::NotRun};
     QString                           primary_metric_set_;

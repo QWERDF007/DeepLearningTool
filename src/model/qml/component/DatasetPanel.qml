@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 
@@ -70,7 +70,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 animationDuration: 0
-                chartType: "pie"
+                chartType: EvaluationProtocolKeys.chartKindPie
                 chartData: statisticsModel.imageChartData
                 chartOptions: ({
                     maintainAspectRatio: false,
@@ -103,7 +103,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 animationDuration: 0
-                chartType: "pie"
+                chartType: EvaluationProtocolKeys.chartKindPie
                 chartData: statisticsModel.instanceChartData
                 chartOptions: ({
                     maintainAspectRatio: false,

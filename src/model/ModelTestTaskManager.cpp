@@ -3,6 +3,7 @@
 #include "data/DataManager.h"
 #include "data/DataSelectionTreeModel.h"
 #include "data/DatasetViewModelFactory.h"
+#include "model/EvaluationViewModelRegistry.h"
 #include "model/IModel.h"
 #include "model/IModelConfig.h"
 #include "model/IParams.h"
@@ -803,7 +804,10 @@ void ModelTestTaskManager::bindCurrentObjects()
         current_evaluation_     = evaluation_cache_.value(cache_key, nullptr);
         if (current_evaluation_ == nullptr)
         {
-            current_evaluation_ = new ModelEvaluationViewModel(this);
+            current_evaluation_ = EvaluationViewModelRegistry::instance().createViewModel(
+                static_cast<evaluation::Method>(model->method()), this);
+            if (current_evaluation_ == nullptr)
+                return;
             evaluation_cache_.insert(cache_key, current_evaluation_);
         }
         if (data_manager_ != nullptr && data_manager_->globalFilter() != nullptr)

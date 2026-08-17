@@ -235,8 +235,8 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
             {         QStringLiteral("borderWidth"),                            2},
             {         QStringLiteral("lineTension"),                            0},
             {            QStringLiteral("spanGaps"),                        false},
-            {             QStringLiteral("xAxisID"), QStringLiteral("score-axis")},
-            {             QStringLiteral("yAxisID"), QStringLiteral("count-axis")},
+            {             QStringLiteral("xAxisID"), evaluation::chartAxisIdKey(evaluation::ChartAxisId::ScoreAxis)},
+            {             QStringLiteral("yAxisID"), evaluation::chartAxisIdKey(evaluation::ChartAxisId::CountAxis)},
             {            QStringLiteral("showLine"),                         true},
             {                QStringLiteral("fill"),                         true}
         };
@@ -258,8 +258,10 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
             {QStringLiteral("pointHoverRadius"),                                                     0},
             {     QStringLiteral("lineTension"),                                                     0},
             {        QStringLiteral("spanGaps"),                                                 false},
-            {         QStringLiteral("xAxisID"),                          QStringLiteral("score-axis")},
-            {         QStringLiteral("yAxisID"),                          QStringLiteral("count-axis")},
+            {         QStringLiteral("xAxisID"),
+             evaluation::chartAxisIdKey(evaluation::ChartAxisId::ScoreAxis)                              },
+            {         QStringLiteral("yAxisID"),
+             evaluation::chartAxisIdKey(evaluation::ChartAxisId::CountAxis)                              },
              {        QStringLiteral("showLine"),                                                  true},
              {            QStringLiteral("fill"),                                                 false}
          };
@@ -269,11 +271,11 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
     const QString good_label    = evaluation::displayText(evaluation::DisplayText::Good);
     const QString anomaly_label = evaluation::displayText(evaluation::DisplayText::Anomaly);
     if (has_good)
-        datasets.push_back(distributionDataset(good_label, QStringLiteral("good"),
+        datasets.push_back(distributionDataset(good_label, evaluation::seriesKindKey(evaluation::SeriesKind::Good),
                                                QString::fromLatin1(good_color), QString::fromLatin1(good_fill),
                                                histogram.good_points));
     if (has_anomaly)
-        datasets.push_back(distributionDataset(anomaly_label, QStringLiteral("anomaly"),
+        datasets.push_back(distributionDataset(anomaly_label, evaluation::seriesKindKey(evaluation::SeriesKind::Anomaly),
                                                QString::fromLatin1(anomaly_color), QString::fromLatin1(anomaly_fill),
                                                histogram.anomaly_points));
     if (has_good)
@@ -294,7 +296,7 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
          QVariantMap{
          {QStringLiteral("xAxes"),
          QVariantList{QVariantMap{
-         {QStringLiteral("id"), QStringLiteral("score-axis")},
+         {QStringLiteral("id"), evaluation::chartAxisIdKey(evaluation::ChartAxisId::ScoreAxis)},
          {QStringLiteral("type"), QStringLiteral("linear")},
          {QStringLiteral("display"), true},
          {QStringLiteral("ticks"), QVariantMap{{QStringLiteral("min"), histogram.min_score},
@@ -306,7 +308,7 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
          QVariantMap{{QStringLiteral("display"), true}, {QStringLiteral("labelString"), QString("分数")}}}}}},
          {QStringLiteral("yAxes"),
          QVariantList{QVariantMap{
-         {QStringLiteral("id"), QStringLiteral("count-axis")},
+         {QStringLiteral("id"), evaluation::chartAxisIdKey(evaluation::ChartAxisId::CountAxis)},
          {QStringLiteral("type"), QStringLiteral("linear")},
          {QStringLiteral("display"), true},
          {QStringLiteral("ticks"), QVariantMap{{QStringLiteral("beginAtZero"), true},
@@ -316,9 +318,12 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
     };
 
     return QVariantMap{
-        {      evaluation::fieldName(evaluation::Field::Kind),QStringLiteral("line")                                                              },
-        {   evaluation::fieldName(evaluation::Field::ChartId), QStringLiteral("anomaly_score_distribution")},
-        {evaluation::fieldName(evaluation::Field::FilterKind),                QStringLiteral("image_score")},
+        {      evaluation::fieldName(evaluation::Field::Kind),
+         evaluation::chartKindKey(evaluation::ChartKind::Line)                                                     },
+        {   evaluation::fieldName(evaluation::Field::ChartId),
+         evaluation::chartIdKey(evaluation::ChartId::AnomalyScoreDistribution)                                     },
+        {evaluation::fieldName(evaluation::Field::FilterKind),
+         evaluation::filterKindKey(evaluation::FilterKind::ImageScore)                                             },
         {     evaluation::fieldName(evaluation::Field::Title), QString("异常分数分布（图像级 pred_score）")},
         {      evaluation::fieldName(evaluation::Field::Data),
          QVariantMap{{evaluation::fieldName(evaluation::Field::Labels), histogram.labels},
@@ -575,7 +580,8 @@ QVariantMap precisionRecallChartFromCurves(const QList<PrecisionRecallClassCurve
     datasets.push_back(QVariantMap{
         {evaluation::fieldName(evaluation::Field::Label),
          QStringLiteral("平均 (mAP: %1)").arg(QString::number(mean_average_precision, 'f', 3))},
-        {evaluation::fieldName(evaluation::Field::SeriesKind), QStringLiteral("average")},
+        {evaluation::fieldName(evaluation::Field::SeriesKind),
+         evaluation::seriesKindKey(evaluation::SeriesKind::Average)},
         {evaluation::fieldName(evaluation::Field::ClassId), -1},
         {evaluation::fieldName(evaluation::Field::ClassName), QStringLiteral("平均")},
         {QStringLiteral("average_precision"), mean_average_precision},
@@ -605,7 +611,8 @@ QVariantMap precisionRecallChartFromCurves(const QList<PrecisionRecallClassCurve
         datasets.push_back(QVariantMap{
             {evaluation::fieldName(evaluation::Field::Label),
              QStringLiteral("%1 (AP: %2)").arg(curve.class_name).arg(QString::number(curve.average_precision, 'f', 3))},
-            {evaluation::fieldName(evaluation::Field::SeriesKind), QStringLiteral("class")},
+            {evaluation::fieldName(evaluation::Field::SeriesKind),
+             evaluation::seriesKindKey(evaluation::SeriesKind::Class)},
             {evaluation::fieldName(evaluation::Field::ClassId), curve.class_id},
             {evaluation::fieldName(evaluation::Field::ClassName), curve.class_name},
             {QStringLiteral("average_precision"), curve.average_precision},
@@ -649,9 +656,10 @@ QVariantMap precisionRecallChartFromCurves(const QList<PrecisionRecallClassCurve
         }}}
     };
     return QVariantMap{
-        {evaluation::fieldName(evaluation::Field::Kind), QStringLiteral("line")},
-        {evaluation::fieldName(evaluation::Field::ChartId), QStringLiteral("precision_recall")},
-        {evaluation::fieldName(evaluation::Field::FilterKind), QStringLiteral("precision_recall")},
+        {evaluation::fieldName(evaluation::Field::Kind), evaluation::chartKindKey(evaluation::ChartKind::Line)},
+        {evaluation::fieldName(evaluation::Field::ChartId), evaluation::chartIdKey(evaluation::ChartId::PrecisionRecall)},
+        {evaluation::fieldName(evaluation::Field::FilterKind),
+         evaluation::filterKindKey(evaluation::FilterKind::PrecisionRecall)},
         {evaluation::fieldName(evaluation::Field::Title), QStringLiteral("Precision-Recall 曲线")},
         {evaluation::fieldName(evaluation::Field::Data),
          QVariantMap{{evaluation::fieldName(evaluation::Field::Labels), QVariantList{}},
@@ -745,45 +753,45 @@ QVariantMap precisionRecallChartForImages(const QList<EvaluationImageData> &imag
     return buildPrecisionRecallChart(images, class_catalog, iou_threshold, strategy, class_ids, cancel);
 }
 
-EvaluationChartOutput buildEvaluationCharts(const evaluation::Method                 method,
-                                            const QMap<qint64, EvaluationImageData> &images, const double confidence,
-                                            const double iou_threshold, const evaluation::MatchingStrategy strategy,
-                                            const QVariantMap                       &diagnostic,
-                                            const std::shared_ptr<std::atomic_bool> &cancel)
+EvaluationChartOutput buildAnomalyEvaluationCharts(const QMap<qint64, EvaluationImageData> &images,
+                                                    const QVariantMap                       &diagnostic,
+                                                    const double                             confidence)
+{
+    /**
+     * @brief 异常检测采用图像级二元分类，正常样本是没有 GT 标签的隐式负类。
+     *
+     * 指标定义为预测分数高于置信度阈值。
+     */
+    EvaluationChartOutput output;
+    output.available = true;
+    output.metrics   = QVariantMap{
+        { evaluation::fieldName(evaluation::Field::Available),true                                                                  },
+        {     evaluation::fieldName(evaluation::Field::Image),
+         diagnostic.value(evaluation::fieldName(evaluation::Field::Image))                              },
+        {evaluation::fieldName(evaluation::Field::Definition), QStringLiteral("anomaly_score_threshold")}
+    };
+    output.image_definition = QVariantMap{
+        {        evaluation::fieldName(evaluation::Field::SampleUnit),                 QStringLiteral("image")},
+        {       evaluation::fieldName(evaluation::Field::Aggregation),                 QStringLiteral("micro")},
+        {evaluation::fieldName(evaluation::Field::PositiveDefinition), QStringLiteral("score_above_threshold")},
+        {   evaluation::fieldName(evaluation::Field::HasImageMetrics),                                    true}
+    };
+    output.charts.push_back(anomalyScoreChartForEvaluationImages(images, confidence));
+    output.chart_kinds.push_back(evaluation::chartKindKey(evaluation::ChartKind::Line));
+    return output;
+}
+
+EvaluationChartOutput buildInstanceMatchingEvaluationCharts(const QMap<qint64, EvaluationImageData> &images,
+                                                            const double                             confidence,
+                                                            const double                             iou_threshold,
+                                                            const evaluation::MatchingStrategy       strategy,
+                                                            const QVariantMap                       &diagnostic,
+                                                            const std::shared_ptr<std::atomic_bool> &cancel)
 {
     EvaluationChartOutput output;
-    const bool            detection = evaluation::hasInstanceMetrics(method);
-    const bool            anomaly   = evaluation::isAnomaly(method);
-    if (!detection && !anomaly)
-        return output;
-
-    if (anomaly)
-    {
-            /**
-             * @brief 异常检测采用图像级二元分类，正常样本是没有 GT 标签的隐式负类。
-             *
-             * 指标定义为预测分数高于置信度阈值。
-             */
-        output.available = true;
-        output.metrics   = QVariantMap{
-            { evaluation::fieldName(evaluation::Field::Available),true                                                                  },
-            {     evaluation::fieldName(evaluation::Field::Image),
-             diagnostic.value(evaluation::fieldName(evaluation::Field::Image))                              },
-            {evaluation::fieldName(evaluation::Field::Definition), QStringLiteral("anomaly_score_threshold")}
-        };
-        output.image_definition = QVariantMap{
-            {        evaluation::fieldName(evaluation::Field::SampleUnit),                 QStringLiteral("image")},
-            {       evaluation::fieldName(evaluation::Field::Aggregation),                 QStringLiteral("micro")},
-            {evaluation::fieldName(evaluation::Field::PositiveDefinition), QStringLiteral("score_above_threshold")},
-            {   evaluation::fieldName(evaluation::Field::HasImageMetrics),                                    true}
-        };
-        output.charts.push_back(anomalyScoreChartForEvaluationImages(images, confidence));
-        output.chart_kinds.push_back(QStringLiteral("line"));
-        return output;
-    }
-
     if (isCancelled(cancel))
-        return {};
+        return output;
+
     QList<EvaluationImageData> chart_images;
     chart_images.reserve(images.size());
     for (const EvaluationImageData &image : images)
@@ -805,7 +813,7 @@ EvaluationChartOutput buildEvaluationCharts(const evaluation::Method            
     const QVariantMap precision_recall
         = precisionRecallChartForImages(chart_images, class_catalog, iou_threshold, strategy, {}, cancel);
     if (isCancelled(cancel))
-        return {};
+        return output;
     output.available        = true;
     output.metrics          = QVariantMap{
         {evaluation::fieldName(evaluation::Field::Available), true},
@@ -826,8 +834,27 @@ EvaluationChartOutput buildEvaluationCharts(const evaluation::Method            
         {   evaluation::fieldName(evaluation::Field::HasImageMetrics),                                       true}
     };
     output.charts.push_back(precision_recall);
-    output.chart_kinds.push_back(QStringLiteral("line"));
+    output.chart_kinds.push_back(evaluation::chartKindKey(evaluation::ChartKind::Line));
     return output;
+}
+
+EvaluationChartOutput buildEvaluationCharts(const evaluation::Method                 method,
+                                            const QMap<qint64, EvaluationImageData> &images, const double confidence,
+                                            const double iou_threshold, const evaluation::MatchingStrategy strategy,
+                                            const QVariantMap                       &diagnostic,
+                                            const std::shared_ptr<std::atomic_bool> &cancel)
+{
+    /**
+     * @brief 兼容分发：协议组装仍按 method 选择图表构建器。
+     *
+     * 引擎子类已直接调用 buildAnomalyEvaluationCharts /
+     * buildInstanceMatchingEvaluationCharts；该函数只服务旧协议组装路径。
+     */
+    if (evaluation::isAnomaly(method))
+        return buildAnomalyEvaluationCharts(images, diagnostic, confidence);
+    if (!evaluation::hasInstanceMetrics(method))
+        return {};
+    return buildInstanceMatchingEvaluationCharts(images, confidence, iou_threshold, strategy, diagnostic, cancel);
 }
 
 QVariantMap buildInstanceEvent(const EvaluationImageData &image, const evaluation::Status status,

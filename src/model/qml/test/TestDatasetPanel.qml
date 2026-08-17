@@ -6,7 +6,6 @@ import dltool.model
 import dltool.ui
 import quickui
 
-
 Rectangle {
     id: control
     color: QuiColor.Primary

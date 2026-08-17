@@ -67,11 +67,18 @@ Item {
                             anchors.margins: control.partSpacing
                             spacing: control.partSpacing
 
-                            QuiText {
+                            // 顶栏 Header 容器（包含标题与说明）
+                            RowLayout {
+                                id: headerHost
                                 Layout.fillWidth: true
-                                text: groupRoot.groupLabel
-                                font: QuiFont.Subtitle
-                                elide: Text.ElideRight
+
+                                QuiText {
+                                    text: groupRoot.groupLabel
+                                    font: QuiFont.Subtitle
+                                    elide: Text.ElideRight
+                                }
+
+                                Item { Layout.fillWidth: true }
                             }
 
                             QuiText {
@@ -83,11 +90,20 @@ Item {
                                 wrapMode: Text.Wrap
                             }
 
-                            ParameterFieldsPanel {
+                            // 主体内容容器
+                            Item {
+                                id: contentHost
                                 Layout.fillWidth: true
-                                fieldModel: groupRoot.groupModel
-                                framed: false
-                                showSectionHeaders: true
+                                Layout.preferredHeight: fieldsPanel.implicitHeight
+                                implicitHeight: fieldsPanel.implicitHeight
+
+                                ParameterFieldsPanel {
+                                    id: fieldsPanel
+                                    anchors.fill: parent
+                                    fieldModel: groupRoot.groupModel
+                                    framed: false
+                                    showSectionHeaders: true
+                                }
                             }
                         }
                     }

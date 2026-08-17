@@ -6,10 +6,14 @@
 #include <QString>
 #include <QObject>
 #include <QVariantMap>
+#include <QQmlEngine>
+#include <QJSEngine>
+#include <QtQml>
 
 namespace dltool::model::evaluation {
 
 Q_NAMESPACE_EXPORT(MODEL_API)
+QML_NAMED_ELEMENT(EvaluationProtocol)
 
 /**
  * @brief 评估层使用的统一方法类型。
@@ -29,18 +33,21 @@ enum class Status
     FalseNegative,
     Ignored,
 };
+Q_ENUM_NS(Status)
 
 enum class MatchingStrategy
 {
     GreedyIoU = 0,
     HungarianIoU,
 };
+Q_ENUM_NS(MatchingStrategy)
 
 enum class MetricSet
 {
     Diagnostic = 0,
     Official,
 };
+Q_ENUM_NS(MetricSet)
 
 enum class CellKind
 {
@@ -55,6 +62,7 @@ enum class CellKind
     All,
     NotApplicable,
 };
+Q_ENUM_NS(CellKind)
 
 enum class MatrixAxisKey
 {
@@ -64,6 +72,79 @@ enum class MatrixAxisKey
     UnmatchedPrediction,
     Total,
 };
+Q_ENUM_NS(MatrixAxisKey)
+
+/**
+ * @brief 图表渲染类型。
+ *
+ * Chart.js 的 chart type 只支持协议枚举中的值；QML 不再散落 "line"/"bar"
+ * 字面量，统一通过 chartKindKey() 映射。
+ */
+enum class ChartKind
+{
+    Unknown = 0,
+    Line,
+    Bar,
+    Pie,
+};
+Q_ENUM_NS(ChartKind)
+
+/**
+ * @brief Chart.js 坐标轴 ID。
+ *
+ * 异常分数分布图使用固定轴 ID，QML 与 C++ 都通过映射函数获取，
+ * 避免两处散落 "score-axis"/"count-axis" 字面量。
+ */
+enum class ChartAxisId
+{
+    Unknown = 0,
+    ScoreAxis,
+    CountAxis,
+};
+Q_ENUM_NS(ChartAxisId)
+
+/**
+ * @brief 方法图表的稳定标识。
+ *
+ * 旧结果中可能仍保存历史字符串，chartIdFromKey() 负责容错解析。
+ */
+enum class ChartId
+{
+    Unknown = 0,
+    AnomalyScoreDistribution,
+    PrecisionRecall,
+    PerClassMetrics,
+};
+Q_ENUM_NS(ChartId)
+
+/**
+ * @brief 图表数据集的系列语义。
+ *
+ * series_kind 是稳定协议字段，QML 图例/工具提示按该枚举区分处理。
+ */
+enum class SeriesKind
+{
+    Unknown = 0,
+    Good,
+    Anomaly,
+    Average,
+    Class,
+};
+Q_ENUM_NS(SeriesKind)
+
+/**
+ * @brief 图表过滤语义。
+ *
+ * 实例网格按 filter_kind 联动方法图表；该枚举覆盖评估协议使用的全部值。
+ */
+enum class FilterKind
+{
+    Unknown = 0,
+    ImageScore,
+    PrecisionRecall,
+    PerClassMetrics,
+};
+Q_ENUM_NS(FilterKind)
 
 /**
  * @brief 评估界面使用的集中显示文案。
@@ -77,6 +158,7 @@ enum class DisplayText
     Anomaly,
     Total,
 };
+Q_ENUM_NS(DisplayText)
 
 /**
  * @brief 评估展示状态。
@@ -97,6 +179,7 @@ enum class ViewState
     Error,
     Ready,
 };
+Q_ENUM_NS(ViewState)
 
 /**
  * @brief 稳定评估协议字段。
@@ -266,6 +349,16 @@ MODEL_API QString metricSetKey(MetricSet metric_set);
 MODEL_API MetricSet metricSetFromKey(const QString &key);
 MODEL_API QString cellKindKey(CellKind kind);
 MODEL_API CellKind cellKindFromKey(const QString &key);
+MODEL_API QString chartKindKey(ChartKind kind);
+MODEL_API ChartKind chartKindFromKey(const QString &key);
+MODEL_API QString chartAxisIdKey(ChartAxisId id);
+MODEL_API ChartAxisId chartAxisIdFromKey(const QString &key);
+MODEL_API QString chartIdKey(ChartId id);
+MODEL_API ChartId chartIdFromKey(const QString &key);
+MODEL_API QString seriesKindKey(SeriesKind kind);
+MODEL_API SeriesKind seriesKindFromKey(const QString &key);
+MODEL_API QString filterKindKey(FilterKind kind);
+MODEL_API FilterKind filterKindFromKey(const QString &key);
 MODEL_API QString matrixAxisKey(MatrixAxisKey key);
 MODEL_API QString matrixAxisLabel(MatrixAxisKey key);
 MODEL_API QString displayText(DisplayText text);
@@ -278,5 +371,75 @@ MODEL_API bool hasInstanceMetrics(Method method);
 MODEL_API bool hasImageMetrics(Method method);
 MODEL_API bool hasConfusionMatrix(Method method);
 MODEL_API bool hasInstanceEvents(Method method);
+
+/**
+ * @brief 评估协议 key 映射的 QML 单例。
+ *
+ * Q_NAMESPACE 只暴露枚举值，QML 无法调用命名空间自由函数；该类把
+ * chartIdKey/matrixAxisKey 等字符串映射包装为 Q_INVOKABLE，供 QML 侧
+ * 与模型返回的稳定 key 比较，避免在 QML 中散落字符串字面量。
+ */
+class MODEL_API EvaluationProtocolKeys : public QObject
+{
+    Q_OBJECT
+    QML_NAMED_ELEMENT(EvaluationProtocolKeys)
+    QML_SINGLETON
+
+    Q_PROPERTY(QString chartKindLine READ chartKindLine CONSTANT FINAL)
+    Q_PROPERTY(QString chartKindBar READ chartKindBar CONSTANT FINAL)
+    Q_PROPERTY(QString chartKindPie READ chartKindPie CONSTANT FINAL)
+    Q_PROPERTY(QString chartAxisScore READ chartAxisScore CONSTANT FINAL)
+    Q_PROPERTY(QString chartAxisCount READ chartAxisCount CONSTANT FINAL)
+    Q_PROPERTY(QString chartIdAnomalyScoreDistribution READ chartIdAnomalyScoreDistribution CONSTANT FINAL)
+    Q_PROPERTY(QString chartIdPrecisionRecall READ chartIdPrecisionRecall CONSTANT FINAL)
+    Q_PROPERTY(QString chartIdPerClassMetrics READ chartIdPerClassMetrics CONSTANT FINAL)
+    Q_PROPERTY(QString seriesKindGood READ seriesKindGood CONSTANT FINAL)
+    Q_PROPERTY(QString seriesKindAnomaly READ seriesKindAnomaly CONSTANT FINAL)
+    Q_PROPERTY(QString seriesKindAverage READ seriesKindAverage CONSTANT FINAL)
+    Q_PROPERTY(QString seriesKindClass READ seriesKindClass CONSTANT FINAL)
+    Q_PROPERTY(QString filterKindImageScore READ filterKindImageScore CONSTANT FINAL)
+    Q_PROPERTY(QString filterKindPrecisionRecall READ filterKindPrecisionRecall CONSTANT FINAL)
+    Q_PROPERTY(QString filterKindPerClassMetrics READ filterKindPerClassMetrics CONSTANT FINAL)
+    Q_PROPERTY(QString matrixAxisFalseNegative READ matrixAxisFalseNegative CONSTANT FINAL)
+    Q_PROPERTY(QString matrixAxisFalsePositive READ matrixAxisFalsePositive CONSTANT FINAL)
+    Q_PROPERTY(QString matrixAxisUnmatchedGroundTruth READ matrixAxisUnmatchedGroundTruth CONSTANT FINAL)
+    Q_PROPERTY(QString matrixAxisUnmatchedPrediction READ matrixAxisUnmatchedPrediction CONSTANT FINAL)
+    Q_PROPERTY(QString matrixAxisTotal READ matrixAxisTotal CONSTANT FINAL)
+
+public:
+    explicit EvaluationProtocolKeys(QObject *parent = nullptr);
+
+    QString chartKindLine() const;
+    QString chartKindBar() const;
+    QString chartKindPie() const;
+    QString chartAxisScore() const;
+    QString chartAxisCount() const;
+    QString chartIdAnomalyScoreDistribution() const;
+    QString chartIdPrecisionRecall() const;
+    QString chartIdPerClassMetrics() const;
+    QString seriesKindGood() const;
+    QString seriesKindAnomaly() const;
+    QString seriesKindAverage() const;
+    QString seriesKindClass() const;
+    QString filterKindImageScore() const;
+    QString filterKindPrecisionRecall() const;
+    QString filterKindPerClassMetrics() const;
+    QString matrixAxisFalseNegative() const;
+    QString matrixAxisFalsePositive() const;
+    QString matrixAxisUnmatchedGroundTruth() const;
+    QString matrixAxisUnmatchedPrediction() const;
+    QString matrixAxisTotal() const;
+
+    Q_INVOKABLE QString chartKindKey(int kind) const;
+    Q_INVOKABLE QString chartAxisIdKey(int id) const;
+    Q_INVOKABLE QString chartIdKey(int id) const;
+    Q_INVOKABLE QString seriesKindKey(int kind) const;
+    Q_INVOKABLE QString filterKindKey(int kind) const;
+    Q_INVOKABLE QString matrixAxisKey(int key) const;
+    Q_INVOKABLE QString statusKey(int status) const;
+    Q_INVOKABLE QString fieldName(int field) const;
+
+    static EvaluationProtocolKeys *create(QQmlEngine *, QJSEngine *);
+};
 
 }

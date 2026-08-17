@@ -156,6 +156,33 @@ MODEL_API EvaluationChartOutput buildEvaluationCharts(evaluation::Method        
                                                       const std::shared_ptr<std::atomic_bool> &cancel = {});
 
 /**
+ * @brief 构建异常检测方法图表（分数分布 + 图像级二元指标）。
+ * @param images 图像记录。
+ * @param diagnostic 诊断指标（消费 image 分项）。
+ * @param confidence 置信度阈值。
+ * @return 异常方法官方评估输出。
+ */
+MODEL_API EvaluationChartOutput buildAnomalyEvaluationCharts(const QMap<qint64, EvaluationImageData> &images,
+                                                             const QVariantMap                       &diagnostic,
+                                                             double confidence);
+
+/**
+ * @brief 构建检测/分割实例匹配方法图表（Precision-Recall 曲线 + 实例指标）。
+ * @param images 图像记录。
+ * @param confidence 置信度阈值。
+ * @param iou_threshold IoU 阈值。
+ * @param strategy 匹配策略。
+ * @param diagnostic 诊断指标（消费 instance 分项）。
+ * @param cancel 协作取消令牌，可为空。
+ * @return 实例匹配方法官方评估输出。
+ */
+MODEL_API EvaluationChartOutput
+buildInstanceMatchingEvaluationCharts(const QMap<qint64, EvaluationImageData> &images, double confidence,
+                                      double iou_threshold, evaluation::MatchingStrategy strategy,
+                                      const QVariantMap                       &diagnostic,
+                                      const std::shared_ptr<std::atomic_bool> &cancel = {});
+
+/**
  * @brief 按 Ultralytics 核心流程构造目标检测 Precision-Recall 曲线。
  *
  * 预测按类别分别完成 IoU 匹配、置信度排序、累计 TP/FP、Precision envelope

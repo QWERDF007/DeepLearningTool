@@ -6,9 +6,17 @@ import dltool.model
 import dltool.ui
 import quickui
 
-Item {
+/*
+ * 混淆矩阵面板 Base：
+ * - 收拢矩阵模型读取、列结构重建、单元格配色与筛选等公共逻辑。
+ * - 特殊轴 key 全部通过 EvaluationProtocolKeys 映射函数获取。
+ * - 方法子类继承本组件；异常检测专用矩阵在后续阶段实现。
+ */
+Rectangle {
     id: control
+    color: QuiColor.Primary
     property ModelEvaluationViewModel evaluation: null
+    property string title: qsTr("混淆矩阵")
     property var classColumnLabels: []
     property var classRowLabels: []
     property int matrixRowCount: 0
@@ -17,7 +25,7 @@ Item {
     readonly property real bottomLabelsHeight: 72
 
     function isTotalKey(key) {
-        return String(key) === "TOTAL"
+        return String(key) === EvaluationProtocolKeys.matrixAxisTotal
     }
 
     function classColorForLabel(classId, key, label, predicted) {
@@ -36,21 +44,21 @@ Item {
     }
 
     function isUnmatchedPredictionKey(key) {
-        return String(key) === "UNMATCHED_PRED"
+        return String(key) === EvaluationProtocolKeys.matrixAxisUnmatchedPrediction
     }
 
     function isUnmatchedGroundTruthKey(key) {
-        return String(key) === "UNMATCHED_GT"
+        return String(key) === EvaluationProtocolKeys.matrixAxisUnmatchedGroundTruth
     }
 
     function isSpecialColumn(key) {
         const value = String(key)
-        return value === "FP" || control.isUnmatchedPredictionKey(value) || control.isTotalKey(value)
+        return value === EvaluationProtocolKeys.matrixAxisFalsePositive || control.isUnmatchedPredictionKey(value) || control.isTotalKey(value)
     }
 
     function isSpecialRow(key) {
         const value = String(key)
-        return value === "FN" || control.isUnmatchedGroundTruthKey(value) || control.isTotalKey(value)
+        return value === EvaluationProtocolKeys.matrixAxisFalseNegative || control.isUnmatchedGroundTruthKey(value) || control.isTotalKey(value)
     }
 
     /**
@@ -62,8 +70,7 @@ Item {
                 || kind === EvaluationConfusionModel.CellKindFalseNegative
                 || kind === EvaluationConfusionModel.CellKindNotApplicable
                 || kind === EvaluationConfusionModel.CellKindFalsePositiveTotal
-                || kind === EvaluationConfusionModel.CellKindFalseNegativeTotal
-                || kind === EvaluationConfusionModel.CellKindErrorTotal)
+                || kind === EvaluationConfusionModel.CellKindFalseNegativeTotal)
             return true
         return false
     }
@@ -126,12 +133,12 @@ Item {
 
     function isErrorAxisRow(key) {
         const value = String(key)
-        return value === "FN" || control.isUnmatchedGroundTruthKey(value)
+        return value === EvaluationProtocolKeys.matrixAxisFalseNegative || control.isUnmatchedGroundTruthKey(value)
     }
 
     function isErrorAxisColumn(key) {
         const value = String(key)
-        return value === "FP" || control.isUnmatchedPredictionKey(value)
+        return value === EvaluationProtocolKeys.matrixAxisFalsePositive || control.isUnmatchedPredictionKey(value)
     }
 
     function isCellSelected(rowKey, columnKey) {
@@ -141,7 +148,7 @@ Item {
         const column = control.evaluation.filteredInstances.matrixColumn
         /* 空矩阵筛选表示全部实例，默认选中右下角的 TOTAL/TOTAL 单元格。 */
         if (!row && !column)
-            return rowKey === "TOTAL" && columnKey === "TOTAL"
+            return rowKey === EvaluationProtocolKeys.matrixAxisTotal && columnKey === EvaluationProtocolKeys.matrixAxisTotal
         return row === rowKey && column === columnKey
     }
 
@@ -222,10 +229,10 @@ Item {
                 let specialColumn = control.isSpecialColumn(key)
                 columnSource.push({
                     title: specialColumn
-                           ? confusionTable.customItem(com_matrix_header, {
-                               label: label,
-                               isTotal: control.isTotalKey(key)
-                           }) : "",
+                            ? confusionTable.customItem(com_matrix_header, {
+                                label: label,
+                                isTotal: control.isTotalKey(key)
+                            }) : "",
                     dataIndex: key,
                     width: control.isUnmatchedPredictionKey(key) ? 44 : 32,
                     minimumWidth: control.isUnmatchedPredictionKey(key) ? 44 : 32,
@@ -396,14 +403,24 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
+        anchors.margins: 8
+        spacing: 4
 
-        QuiText {
+        // 顶栏 Header 容器（包含标题）
+        RowLayout {
+            id: headerHost
             Layout.fillWidth: true
-            text: qsTr("混淆矩阵")
-            font: QuiFont.Subtitle
+
+            QuiText {
+                text: control.title
+                font: QuiFont.Subtitle
+            }
+
+            Item { Layout.fillWidth: true }
         }
 
         Item {
+            id: contentHost
             Layout.fillWidth: true
             Layout.fillHeight: true
 
@@ -460,7 +477,7 @@ Item {
 
                         QuiTextIcon {
                             anchors.centerIn: parent
-                            visible: parent.rowKey === "TOTAL"
+                            visible: parent.rowKey === EvaluationProtocolKeys.matrixAxisTotal
                             iconSource: QuiFontIcon.Picture
                             iconColor: confusionTable.headerTextColor
                         }
@@ -469,7 +486,7 @@ Item {
                             anchors.fill: parent
                             anchors.leftMargin: 6
                             anchors.rightMargin: 6
-                            visible: parent.rowKey !== "TOTAL"
+                            visible: parent.rowKey !== EvaluationProtocolKeys.matrixAxisTotal
                             text: parent.classRow ? "" : parent.label
                             color: confusionTable.headerTextColor
                             horizontalAlignment: Text.AlignHCenter

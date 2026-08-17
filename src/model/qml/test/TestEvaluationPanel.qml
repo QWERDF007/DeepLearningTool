@@ -11,6 +11,18 @@ Item {
     property ModelEvaluationViewModel evaluation: null
     property ITestParams testParams: null
 
+    EvaluationPanelRegistry {
+        id: panelRegistry
+    }
+
+    function bindPanel(loader) {
+        if (!loader || !loader.item)
+            return
+        loader.item.evaluation = Qt.binding(function() { return control.evaluation })
+        if ("testParams" in loader.item)
+            loader.item.testParams = Qt.binding(function() { return control.testParams })
+    }
+
     QuiSplitView {
         anchors.fill: parent
         orientation: Qt.Vertical
@@ -21,25 +33,33 @@ Item {
             SplitView.preferredHeight: 240
             orientation: Qt.Horizontal
 
-            EvaluationMetricsPanel {
+            Loader {
                 SplitView.fillHeight: true
                 SplitView.preferredWidth: 220
-                evaluation: control.evaluation
+                SplitView.minimumWidth: 160
+                sourceComponent: control.evaluation
+                                 ? panelRegistry.metricsPanel(control.evaluation.method) : null
+                onLoaded: control.bindPanel(this)
             }
 
-            EvaluationImageMetricsPanel {
+            Loader {
                 SplitView.fillHeight: true
-                SplitView.preferredWidth: 220
-                evaluation: control.evaluation
+                SplitView.preferredWidth: 280
+                SplitView.minimumWidth: 220
+                sourceComponent: control.evaluation
+                                 ? panelRegistry.imageMetricsPanel(control.evaluation.method) : null
+                onLoaded: control.bindPanel(this)
             }
 
-            EvaluationChartPanel {
+            Loader {
+                id: chartPanelLoader
                 SplitView.fillHeight: true
                 SplitView.fillWidth: true
                 SplitView.preferredWidth: 420
                 SplitView.minimumWidth: 260
-                evaluation: control.evaluation
-                testParams: control.testParams
+                sourceComponent: control.evaluation
+                                 ? panelRegistry.chartPanel(control.evaluation.method) : null
+                onLoaded: control.bindPanel(this)
             }
         }
 
@@ -51,20 +71,32 @@ Item {
             QuiFrame {
                 SplitView.fillHeight: true
                 SplitView.preferredWidth: 480
-                ConfusionMatrixPanel { anchors.fill: parent; evaluation: control.evaluation }
+                Loader {
+                    anchors.fill: parent
+                    sourceComponent: control.evaluation
+                                     ? panelRegistry.confusionMatrixPanel(control.evaluation.method) : null
+                    onLoaded: control.bindPanel(this)
+                }
             }
             QuiFrame {
                 SplitView.fillHeight: true
                 SplitView.fillWidth: true
-                EvaluationInstancesGridView {
+                Loader {
                     anchors.fill: parent
-                    evaluation: control.evaluation
+                    sourceComponent: control.evaluation
+                                     ? panelRegistry.instancesGridPanel(control.evaluation.method) : null
+                    onLoaded: control.bindPanel(this)
                 }
             }
             QuiFrame {
                 SplitView.fillHeight: true
                 SplitView.preferredWidth: 320
-                EvaluationInstanceDetailsPanel { anchors.fill: parent; evaluation: control.evaluation }
+                Loader {
+                    anchors.fill: parent
+                    sourceComponent: control.evaluation
+                                     ? panelRegistry.instanceDetailsPanel(control.evaluation.method) : null
+                    onLoaded: control.bindPanel(this)
+                }
             }
         }
     }
