@@ -532,10 +532,11 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
         = evaluation::normalizedEvaluationConfig(test_params.value(QStringLiteral("evaluation")).toMap());
     if (evaluation::isAnomaly(options.method))
     {
-        bool threshold_ok = false;
-        const double classification_threshold
-            = test_params.value(QStringLiteral("inference")).toMap().value(QStringLiteral("classification_threshold"))
-                  .toDouble(&threshold_ok);
+        bool         threshold_ok             = false;
+        const double classification_threshold = test_params.value(QStringLiteral("inference"))
+                                                    .toMap()
+                                                    .value(QStringLiteral("classification_threshold"))
+                                                    .toDouble(&threshold_ok);
         if (threshold_ok && std::isfinite(classification_threshold))
             options.evaluation_config.insert(evaluation::fieldName(evaluation::Field::ConfidenceThreshold),
                                              classification_threshold);
@@ -576,8 +577,7 @@ void ModelTestTaskManager::handleParameterChanged(const QString &group_name, con
     const bool anomaly_threshold_changed
         = group_name.compare(QStringLiteral("inference"), Qt::CaseInsensitive) == 0
        && parameter_name.compare(QStringLiteral("classification_threshold"), Qt::CaseInsensitive) == 0
-       && model_manager_ != nullptr
-       && evaluation::isAnomaly(evaluation::fromProjectMethod(model_manager_->method()));
+       && model_manager_ != nullptr && evaluation::isAnomaly(evaluation::fromProjectMethod(model_manager_->method()));
     if (evaluation_changed || anomaly_threshold_changed)
     {
         ModelEvaluationOptions options;

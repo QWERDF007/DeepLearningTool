@@ -26,10 +26,11 @@ class ModelManager;
 class ModelEvaluationViewModel;
 
 /**
- * @brief 当前模型的测试任务列表和编辑上下文。
+ * @brief 当前模型测试任务列表管理器与编辑上下文。
  *
- * QML 只通过本类取得当前任务的参数、单一测试数据集选择和评估对象；任务定义、
- * 参数和选择的持久化由 ModelTestTaskRepository 完成。
+ * 管理属于指定模型的所有测试任务生命周期，提供列表展示、任务增删重命名、
+ * 当前选中任务的参数与数据集绑定、异步测试运行控制及评估结果缓存。
+ * 任务定义、参数和数据集选择的持久化委托给 ModelTestTaskRepository。
  */
 class MODEL_API ModelTestTaskManager final : public QAbstractListModel
 {
@@ -52,16 +53,19 @@ class MODEL_API ModelTestTaskManager final : public QAbstractListModel
     Q_PROPERTY(QString currentTaskStatus READ currentTaskStatus NOTIFY taskStateChanged FINAL)
 
 public:
+    /**
+     * @brief 列表模型数据角色枚举。
+     */
     enum Role
     {
-        UuidRole = Qt::UserRole + 1,
-        NameRole,
-        DirectoryNameRole,
-        CreatedAtRole,
-        ModifiedAtRole,
-        RunningRole,
-        ProgressRole,
-        StatusRole,
+        UuidRole = Qt::UserRole + 1, ///< 测试任务 UUID。
+        NameRole,                    ///< 测试任务名称。
+        DirectoryNameRole,           ///< 任务工作目录名。
+        CreatedAtRole,               ///< 创建时间。
+        ModifiedAtRole,              ///< 修改时间。
+        RunningRole,                 ///< 是否正在运行。
+        ProgressRole,                ///< 运行进度（0 ~ 100）。
+        StatusRole,                  ///< 运行状态描述文本。
     };
     Q_ENUM(Role)
 
@@ -74,28 +78,87 @@ public:
     QVariant               data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
 
+    /** @brief 获取当前关联的模型 UUID。 */
     QString                               modelUuid() const;
+    /** @brief 切换关联的模型 UUID 并重载其下所有测试任务。 */
     void                                  setModelUuid(const QString &uuid);
+    /** @brief 获取当前选中的测试任务索引。 */
     int                                   currentIndex() const;
+    /** @brief 获取测试任务总数。 */
     int                                   count() const;
+    /** @brief 获取当前任务 UUID。 */
     QString                               currentTaskUuid() const;
+    /** @brief 获取当前任务名称。 */
     QString                               currentTaskName() const;
+    /** @brief 获取当前任务的工作目录路径。 */
     QString                               currentTaskDirectory() const;
+    /** @brief 获取当前任务的测试参数对象。 */
     ITestParams                          *currentTestParams() const;
+    /** @brief 获取当前任务对应的数据集树形勾选视图模型。 */
     dltool::data::DataSelectionTreeModel *currentDatasetViewModel() const;
+    /** @brief 获取当前任务对应的评估视图模型实例。 */
     ModelEvaluationViewModel             *currentEvaluation() const;
+    /** @brief 当前任务是否处于运行中状态。 */
     bool                                  currentTaskRunning() const;
+    /** @brief 当前任务运行进度（0 ~ 100）。 */
     int                                   currentTaskProgress() const;
+    /** @brief 当前任务状态文本。 */
     QString                               currentTaskStatus() const;
 
+    /**
+     * @brief 校验测试任务名称合法性（检查重名及非法字符）。
+     * @param name 待校验名称。
+     * @return 错误信息，合法返回空字符串。
+     */
     Q_INVOKABLE QString validateTaskName(const QString &name) const;
+
+    /**
+     * @brief 为当前模型新建一个测试任务。
+     * @param name 任务名称。
+     * @return 新任务的 UUID，失败返回空。
+     */
     Q_INVOKABLE QString createTask(const QString &name);
-    Q_INVOKABLE bool    switchTask(const QString &uuid);
-    Q_INVOKABLE bool    renameTask(const QString &uuid, const QString &name);
-    Q_INVOKABLE bool    deleteTask(const QString &uuid);
-    Q_INVOKABLE bool    saveCurrentTask();
-    Q_INVOKABLE bool    flush();
-    Q_INVOKABLE int     taskId(const QString &uuid = {}) const;
+
+    /**
+     * @brief 切换当前激活的测试任务。
+     * @param uuid 目标任务 UUID。
+     * @return 切换成功返回 true。
+     */
+    Q_INVOKABLE bool switchTask(const QString &uuid);
+
+    /**
+     * @brief 重命名指定测试任务。
+     * @param uuid 目标任务 UUID。
+     * @param name 新名称。
+     * @return 成功返回 true。
+     */
+    Q_INVOKABLE bool renameTask(const QString &uuid, const QString &name);
+
+    /**
+     * @brief 删除指定测试任务（清理数据库与磁盘目录）。
+     * @param uuid 目标任务 UUID。
+     * @return 成功返回 true。
+     */
+    Q_INVOKABLE bool deleteTask(const QString &uuid);
+
+    /**
+     * @brief 将当前任务的参数变更立即落库保存。
+     * @return 成功返回 true。
+     */
+    Q_INVOKABLE bool saveCurrentTask();
+
+    /**
+     * @brief 强制立即保存所有挂起的延迟写入操作。
+     * @return 成功返回 true。
+     */
+    Q_INVOKABLE bool flush();
+
+    /**
+     * @brief 获取指定任务在全局 TaskManager 中的整数任务 ID。
+     * @param uuid 任务 UUID（为空时取当前任务）。
+     * @return 整数任务 ID，未找到返回 -1。
+     */
+    Q_INVOKABLE int taskId(const QString &uuid = {}) const;
 
     /**
      * @brief 将当前数据集选择连同参数提交落库。
@@ -107,11 +170,17 @@ public:
     Q_INVOKABLE bool commitCurrentDatasetSelection();
 
 signals:
+    /** @brief 关联的模型 UUID 发生改变。 */
     void modelUuidChanged();
+    /** @brief 当前选中的任务索引改变。 */
     void currentIndexChanged();
+    /** @brief 当前选中的任务对象（参数/数据集/评估）改变。 */
     void currentTaskChanged();
+    /** @brief 任务列表项数量改变。 */
     void countChanged();
+    /** @brief 任务运行状态或进度发生改变。 */
     void taskStateChanged();
+    /** @brief 发生业务错误信号。 */
     void errorOccurred(const QString &message);
 
 private slots:

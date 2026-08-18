@@ -3,7 +3,6 @@
 #include <QFileInfo>
 #include <QUrl>
 #include <QUrlQuery>
-
 #include <algorithm>
 #include <cmath>
 
@@ -13,8 +12,8 @@ namespace {
 
 double queryDouble(const QUrlQuery &query, const QString &name, bool *ok = nullptr)
 {
-    bool parsed = false;
-    const double value = query.queryItemValue(name).toDouble(&parsed);
+    bool         parsed = false;
+    const double value  = query.queryItemValue(name).toDouble(&parsed);
     if (ok != nullptr)
         *ok = parsed;
     return value;
@@ -31,14 +30,14 @@ struct Box
 
 Box queryBox(const QUrlQuery &query, const QString &prefix)
 {
-    bool x_ok = false;
-    bool y_ok = false;
-    bool width_ok = false;
-    bool height_ok = false;
-    const double x = queryDouble(query, prefix + QStringLiteral("_x"), &x_ok);
-    const double y = queryDouble(query, prefix + QStringLiteral("_y"), &y_ok);
-    const double width = queryDouble(query, prefix + QStringLiteral("_w"), &width_ok);
-    const double height = queryDouble(query, prefix + QStringLiteral("_h"), &height_ok);
+    bool         x_ok      = false;
+    bool         y_ok      = false;
+    bool         width_ok  = false;
+    bool         height_ok = false;
+    const double x         = queryDouble(query, prefix + QStringLiteral("_x"), &x_ok);
+    const double y         = queryDouble(query, prefix + QStringLiteral("_y"), &y_ok);
+    const double width     = queryDouble(query, prefix + QStringLiteral("_w"), &width_ok);
+    const double height    = queryDouble(query, prefix + QStringLiteral("_h"), &height_ok);
     if (!x_ok || !y_ok || !width_ok || !height_ok || width <= 0.0 || height <= 0.0)
         return {};
     return {true, x, y, width, height};
@@ -52,8 +51,8 @@ Box queryBox(const QUrlQuery &query, const QString &prefix)
  */
 QRect cropRect(const QImage &image, const QUrlQuery &query)
 {
-    const Box gt  = queryBox(query, QStringLiteral("gt"));
-    const Box pd  = queryBox(query, QStringLiteral("pd"));
+    const Box gt = queryBox(query, QStringLiteral("gt"));
+    const Box pd = queryBox(query, QStringLiteral("pd"));
     Box       bounds;
     if (!gt.valid)
         bounds = pd;
@@ -97,8 +96,8 @@ EvaluationThumbnailImageProvider::EvaluationThumbnailImageProvider()
 
 QImage EvaluationThumbnailImageProvider::requestImage(const QString &id, QSize *size, const QSize &requestedSize)
 {
-    const QString cache_key = id + QLatin1Char('\x1f') + QString::number(requestedSize.width())
-        + QLatin1Char('x') + QString::number(requestedSize.height());
+    const QString cache_key = id + QLatin1Char('\x1f') + QString::number(requestedSize.width()) + QLatin1Char('x')
+                            + QString::number(requestedSize.height());
     {
         QMutexLocker locker(&mutex_);
         if (const QImage *cached = cache_.object(cache_key))
@@ -122,17 +121,17 @@ QImage EvaluationThumbnailImageProvider::requestImage(const QString &id, QSize *
 
 QImage EvaluationThumbnailImageProvider::loadImage(const QString &id, const QSize &requestedSize) const
 {
-    const int query_index = id.indexOf(QChar('?'));
-    const QString query_text = query_index >= 0 ? id.mid(query_index + 1) : QString();
+    const int       query_index = id.indexOf(QChar('?'));
+    const QString   query_text  = query_index >= 0 ? id.mid(query_index + 1) : QString();
     const QUrlQuery query(query_text);
-    const QString encoded_path = query.queryItemValue(QStringLiteral("path"));
+    const QString   encoded_path = query.queryItemValue(QStringLiteral("path"));
     if (encoded_path.isEmpty())
         return {};
 
     // QUrlQuery returns the decoded value.  Do not run a second percent
     // decoding pass: a literal '%' in a Windows or network path is valid.
     const QString image_path = encoded_path;
-    QImage image(image_path);
+    QImage        image(image_path);
     if (image.isNull())
         return {};
 

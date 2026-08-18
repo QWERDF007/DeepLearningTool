@@ -55,9 +55,9 @@ struct MODEL_API EvaluationResultContext
 {
     const QMap<qint64, EvaluationImageData> &images;
     const QMap<int, QString>                &classes;
-    const QMap<int, EvaluationCounts>      &per_class;
-    const EvaluationCounts                 &overall;
-    const EvaluationCounts                 &image_counts;
+    const QMap<int, EvaluationCounts>       &per_class;
+    const EvaluationCounts                  &overall;
+    const EvaluationCounts                  &image_counts;
     const QMap<QString, qint64>             &matrix;
     const QVariantList                      &event_records;
     int                                      prediction_count{0};
@@ -80,7 +80,7 @@ struct MODEL_API EvaluationResultContext
  * @return 图表描述符。
  */
 MODEL_API QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageData> &images,
-                                                 double classification_threshold);
+                                                 double                            classification_threshold);
 
 /**
  * @brief 序列化单条实例事件记录。
@@ -163,8 +163,7 @@ MODEL_API EvaluationChartOutput buildEvaluationCharts(evaluation::Method        
  * @return 异常方法官方评估输出。
  */
 MODEL_API EvaluationChartOutput buildAnomalyEvaluationCharts(const QMap<qint64, EvaluationImageData> &images,
-                                                             const QVariantMap                       &diagnostic,
-                                                             double confidence);
+                                                             const QVariantMap &diagnostic, double confidence);
 
 /**
  * @brief 构建检测/分割实例匹配方法图表（Precision-Recall 曲线 + 实例指标）。
@@ -176,11 +175,12 @@ MODEL_API EvaluationChartOutput buildAnomalyEvaluationCharts(const QMap<qint64, 
  * @param cancel 协作取消令牌，可为空。
  * @return 实例匹配方法官方评估输出。
  */
-MODEL_API EvaluationChartOutput
-buildInstanceMatchingEvaluationCharts(const QMap<qint64, EvaluationImageData> &images, double confidence,
-                                      double iou_threshold, evaluation::MatchingStrategy strategy,
-                                      const QVariantMap                       &diagnostic,
-                                      const std::shared_ptr<std::atomic_bool> &cancel = {});
+MODEL_API EvaluationChartOutput buildInstanceMatchingEvaluationCharts(const QMap<qint64, EvaluationImageData> &images,
+                                                                      double confidence, double iou_threshold,
+                                                                      evaluation::MatchingStrategy strategy,
+                                                                      const QVariantMap           &diagnostic,
+                                                                      const std::shared_ptr<std::atomic_bool> &cancel
+                                                                      = {});
 
 /**
  * @brief 按 Ultralytics 核心流程构造目标检测 Precision-Recall 曲线。
@@ -196,9 +196,10 @@ buildInstanceMatchingEvaluationCharts(const QMap<qint64, EvaluationImageData> &i
  * @param cancel 协作取消令牌，可为空。
  * @return 图表描述符。
  */
-MODEL_API QVariantMap precisionRecallChartForImages(
-    const QList<EvaluationImageData> &images, const QMap<int, QString> &class_catalog, double iou_threshold,
-    evaluation::MatchingStrategy strategy, const QVariantList &class_ids = {},
-    const std::shared_ptr<std::atomic_bool> &cancel = {});
+MODEL_API QVariantMap precisionRecallChartForImages(const QList<EvaluationImageData> &images,
+                                                    const QMap<int, QString> &class_catalog, double iou_threshold,
+                                                    evaluation::MatchingStrategy             strategy,
+                                                    const QVariantList                      &class_ids = {},
+                                                    const std::shared_ptr<std::atomic_bool> &cancel    = {});
 
-}
+} // namespace dltool::model

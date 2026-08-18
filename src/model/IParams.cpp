@@ -56,7 +56,7 @@ struct CondToken
 QVector<CondToken> tokenizeCondition(const QString &input)
 {
     QVector<CondToken> tokens;
-    int                i  = 0;
+    int                i       = 0;
     const QString      special = QStringLiteral("()[]=!&|,'\"");
     while (i < input.size())
     {
@@ -133,16 +133,14 @@ QVector<CondToken> tokenizeCondition(const QString &input)
             const QChar quote = ch;
             ++i;
             QString text;
-            while (i < input.size() && input.at(i) != quote)
-                text += input.at(i++);
+            while (i < input.size() && input.at(i) != quote) text += input.at(i++);
             ++i;
             tokens.push_back({CondTokenType::String, text});
             continue;
         }
 
         const int start = i;
-        while (i < input.size() && !input.at(i).isSpace() && !special.contains(input.at(i)))
-            ++i;
+        while (i < input.size() && !input.at(i).isSpace() && !special.contains(input.at(i))) ++i;
         const QString word = input.mid(start, i - start);
         if (word.compare(QStringLiteral("in"), Qt::CaseInsensitive) == 0)
         {
@@ -161,8 +159,8 @@ QVector<CondToken> tokenizeCondition(const QString &input)
 
 bool valuesEqual(const QVariant &lhs, const QVariant &rhs)
 {
-    bool lhs_number = false;
-    bool rhs_number = false;
+    bool         lhs_number = false;
+    bool         rhs_number = false;
     const double lhs_double = lhs.toString().toDouble(&lhs_number);
     const double rhs_double = rhs.toString().toDouble(&rhs_number);
     if (lhs_number && rhs_number)
@@ -210,16 +208,14 @@ private:
     bool parseOr()
     {
         bool value = parseAnd();
-        while (match(CondTokenType::Or))
-            value = parseAnd() || value;
+        while (match(CondTokenType::Or)) value = parseAnd() || value;
         return value;
     }
 
     bool parseAnd()
     {
         bool value = parseUnary();
-        while (match(CondTokenType::And))
-            value = parseUnary() && value;
+        while (match(CondTokenType::And)) value = parseUnary() && value;
         return value;
     }
 
@@ -248,7 +244,7 @@ private:
         if (peek().type == CondTokenType::Eq || peek().type == CondTokenType::Ne)
         {
             const bool negate = advance().type == CondTokenType::Ne;
-            QVariant rhs;
+            QVariant   rhs;
             if (peek().type == CondTokenType::Ident)
                 rhs = lookup_(advance().text);
             else if (peek().type == CondTokenType::String || peek().type == CondTokenType::Number)
@@ -293,9 +289,9 @@ private:
         return negate ? !found : found;
     }
 
-    QVector<CondToken>                        tokens_;
+    QVector<CondToken>                       tokens_;
     std::function<QVariant(const QString &)> lookup_;
-    int                                       pos_{0};
+    int                                      pos_{0};
 };
 
 bool evaluateCondition(const QString &expression, const std::function<QVariant(const QString &)> &lookup)
@@ -437,8 +433,7 @@ bool ParamGroupModel::setData(const QModelIndex &index, const QVariant &value, c
     }
 
     ParamDefinition &param = params_[index.row()];
-    if ((role != ValueRole && role != Qt::EditRole) || !enabled_ || !param.enabled
-        || !evaluateEnabledWhen(param))
+    if ((role != ValueRole && role != Qt::EditRole) || !enabled_ || !param.enabled || !evaluateEnabledWhen(param))
     {
         return false;
     }
@@ -482,25 +477,25 @@ Qt::ItemFlags ParamGroupModel::flags(const QModelIndex &index) const
 QHash<int, QByteArray> ParamGroupModel::roleNames() const
 {
     return {
-        {      NameEnRole,       "nameEn"},
-        {      NameCnRole,       "nameCn"},
-        { DescriptionRole,  "description"},
-        {       ValueRole,        "value"},
-        {DefaultValueRole, "defaultValue"},
-        {   ValueTypeRole,    "valueType"},
-        {  ValueRangeRole,   "valueRange"},
-        {     EnabledRole,      "enabled"},
-        {     OptionsRole,      "options"},
+        {         NameEnRole,          "nameEn"},
+        {         NameCnRole,          "nameCn"},
+        {    DescriptionRole,     "description"},
+        {          ValueRole,           "value"},
+        {   DefaultValueRole,    "defaultValue"},
+        {      ValueTypeRole,       "valueType"},
+        {     ValueRangeRole,      "valueRange"},
+        {        EnabledRole,         "enabled"},
+        {        OptionsRole,         "options"},
         {OptionsValueMapRole, "optionsValueMap"},
-        {  OptionsMapRole,      "optionsMap"},
+        {     OptionsMapRole,      "optionsMap"},
         {OptionsKeyFieldRole, "optionsKeyField"},
-        {  ParamKindRole,      "paramKind"},
-        {DisplayTypeRole,      "displayType"},
-        { BackendKeyRole,      "backendKey"},
-        {        UnitRole,         "unit"},
-        {    SectionRole,      "section"},
-        {    VisibleRole,      "visible"},
-        {OrdinalIndexRole, "ordinalIndex"},
+        {      ParamKindRole,       "paramKind"},
+        {    DisplayTypeRole,     "displayType"},
+        {     BackendKeyRole,      "backendKey"},
+        {           UnitRole,            "unit"},
+        {        SectionRole,         "section"},
+        {        VisibleRole,         "visible"},
+        {   OrdinalIndexRole,    "ordinalIndex"},
     };
 }
 
@@ -541,25 +536,25 @@ QVariantMap ParamGroupModel::fieldMap(const int row) const
 
     const ParamDefinition &param = params_.at(static_cast<size_t>(row));
     return {
-        {QStringLiteral("nameEn"), param.name_en},
-        {QStringLiteral("nameCn"), param.name_cn},
-        {QStringLiteral("description"), param.description},
-        {QStringLiteral("value"), currentValue(param)},
-        {QStringLiteral("defaultValue"), param.default_value},
-        {QStringLiteral("valueType"), param.value_type},
-        {QStringLiteral("valueRange"), param.value_range},
-        {QStringLiteral("enabled"), enabled_ && param.enabled && evaluateEnabledWhen(param)},
-        {QStringLiteral("options"), paramOptions(param)},
-        {QStringLiteral("optionsValueMap"), paramOptionsValueMap(param)},
-        {QStringLiteral("optionsMap"), param.options_map},
-        {QStringLiteral("optionsKeyField"), param.options_key_field},
-        {QStringLiteral("paramKind"), static_cast<int>(param.kind)},
-        {QStringLiteral("displayType"), param.display_type},
-        {QStringLiteral("backendKey"), param.backend_key},
-        {QStringLiteral("unit"), param.unit},
-        {QStringLiteral("section"), QString()},
-        {QStringLiteral("visible"), true},
-        {QStringLiteral("ordinalIndex"), row},
+        {         QStringLiteral("nameEn"),                                           param.name_en},
+        {         QStringLiteral("nameCn"),                                           param.name_cn},
+        {    QStringLiteral("description"),                                       param.description},
+        {          QStringLiteral("value"),                                     currentValue(param)},
+        {   QStringLiteral("defaultValue"),                                     param.default_value},
+        {      QStringLiteral("valueType"),                                        param.value_type},
+        {     QStringLiteral("valueRange"),                                       param.value_range},
+        {        QStringLiteral("enabled"), enabled_ && param.enabled && evaluateEnabledWhen(param)},
+        {        QStringLiteral("options"),                                     paramOptions(param)},
+        {QStringLiteral("optionsValueMap"),                             paramOptionsValueMap(param)},
+        {     QStringLiteral("optionsMap"),                                       param.options_map},
+        {QStringLiteral("optionsKeyField"),                                 param.options_key_field},
+        {      QStringLiteral("paramKind"),                            static_cast<int>(param.kind)},
+        {    QStringLiteral("displayType"),                                      param.display_type},
+        {     QStringLiteral("backendKey"),                                       param.backend_key},
+        {           QStringLiteral("unit"),                                              param.unit},
+        {        QStringLiteral("section"),                                               QString()},
+        {        QStringLiteral("visible"),                                                    true},
+        {   QStringLiteral("ordinalIndex"),                                                     row},
     };
 }
 
@@ -600,7 +595,7 @@ void ParamGroupModel::copyValuesFrom(const ParamGroupModel &other)
     for (ParamDefinition &param : params_)
     {
         const QVariant other_value = other.valueForName(param.name_en);
-        const QVariant next_value = normalizeDynamicValue(param, other_value);
+        const QVariant next_value  = normalizeDynamicValue(param, other_value);
         if (other_value.isValid() && param.value != next_value)
         {
             param.value = next_value;
@@ -723,8 +718,8 @@ QVariantList ParamGroupModel::resolveWeightOptions(const ParamDefinition &param,
     QVariantList labels;
     value_map.clear();
 
-    const auto result = parameter::DynamicOptionsRegistry::instance().resolve(param.backend_key,
-                                                                                weightOptionsContext(param));
+    const auto result
+        = parameter::DynamicOptionsRegistry::instance().resolve(param.backend_key, weightOptionsContext(param));
     if (!result.provider_found)
         return labels;
 
@@ -769,8 +764,7 @@ QVariantList ParamGroupModel::optionGroups(const int row) const
         return {};
 
     const QVariantMap context = isWeightParam(param) ? weightOptionsContext(param) : QVariantMap{};
-    const auto result = parameter::DynamicOptionsRegistry::instance().resolve(param.backend_key,
-                                                                                 context);
+    const auto        result  = parameter::DynamicOptionsRegistry::instance().resolve(param.backend_key, context);
     return result.provider_found ? result.option_groups : QVariantList{};
 }
 
@@ -1030,7 +1024,3 @@ ITestParams::ITestParams(QObject *parent)
 ITestParams::~ITestParams() = default;
 
 } // namespace dltool::model
-
-
-
-

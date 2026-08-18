@@ -13,7 +13,6 @@
 #include <QStringList>
 #include <QVariantMap>
 #include <QVector>
-
 #include <atomic>
 #include <memory>
 
@@ -68,17 +67,17 @@ protected:
      */
     struct ComputeScratch
     {
-        QMap<QString, qint64>           matrix;      ///< 矩阵键（行\x1f列）-> 计数。
-        QList<EvaluationInstanceRecord> events;      ///< 已生成的事件记录。
-        QMap<int, EvaluationCounts>     per_class;   ///< 类别级实例计数（检测路径）。
-        EvaluationCounts                overall;     ///< 全局实例计数。
-        EvaluationCounts                image_counts;///< 图像级计数。
+        QMap<QString, qint64>           matrix;       ///< 矩阵键（行\x1f列）-> 计数。
+        QList<EvaluationInstanceRecord> events;       ///< 已生成的事件记录。
+        QMap<int, EvaluationCounts>     per_class;    ///< 类别级实例计数（检测路径）。
+        EvaluationCounts                overall;      ///< 全局实例计数。
+        EvaluationCounts                image_counts; ///< 图像级计数。
 
-        QString                     dataset_root;     ///< GT mask 解析根目录（项目库绝对路径）。
-        QString                     prediction_root;  ///< 预测 mask 解析根目录。
-        double                      confidence{0.5};  ///< 置信度阈值。
-        double                      iou{0.5};         ///< IoU 阈值。
-        evaluation::MatchingStrategy matching_strategy{evaluation::MatchingStrategy::GreedyIoU};
+        QString                           dataset_root;    ///< GT mask 解析根目录（项目库绝对路径）。
+        QString                           prediction_root; ///< 预测 mask 解析根目录。
+        double                            confidence{0.5}; ///< 置信度阈值。
+        double                            iou{0.5};        ///< IoU 阈值。
+        evaluation::MatchingStrategy      matching_strategy{evaluation::MatchingStrategy::GreedyIoU};
         std::shared_ptr<std::atomic_bool> cancel_token;
     };
 
@@ -111,8 +110,8 @@ protected:
      * @param err_msg 可选错误信息输出。
      * @return 成功返回 true。
      */
-    virtual bool computeImageCounts(const QMap<qint64, EvaluationImageData> &images,
-                                    EvaluationCounts &image_counts, QString *err_msg) = 0;
+    virtual bool computeImageCounts(const QMap<qint64, EvaluationImageData> &images, EvaluationCounts &image_counts,
+                                    QString *err_msg) = 0;
 
     /**
      * @brief 实例事件钩子（纯虚）。
@@ -121,8 +120,8 @@ protected:
      * @param err_msg 可选错误信息输出。
      * @return 成功返回 true。
      */
-    virtual bool buildEvents(const QMap<qint64, EvaluationImageData> &images,
-                             QList<EvaluationInstanceRecord> &events, QString *err_msg) = 0;
+    virtual bool buildEvents(const QMap<qint64, EvaluationImageData> &images, QList<EvaluationInstanceRecord> &events,
+                             QString *err_msg) = 0;
 
     /**
      * @brief 图表构建钩子（纯虚）。
@@ -136,11 +135,12 @@ protected:
      * @param err_msg 可选错误信息输出。
      * @return 图表描述符列表。
      */
-    virtual QList<QVariantMap>
-    buildCharts(const QMap<qint64, EvaluationImageData> &images, const QMap<int, QString> &classes,
-                const EvaluationCounts &overall, const EvaluationCounts &image_counts,
-                const QMap<int, EvaluationCounts> &per_class, const QMap<QString, qint64> &matrix,
-                const QList<EvaluationInstanceRecord> &events, QString *err_msg) = 0;
+    virtual QList<QVariantMap> buildCharts(const QMap<qint64, EvaluationImageData> &images,
+                                           const QMap<int, QString> &classes, const EvaluationCounts &overall,
+                                           const EvaluationCounts                &image_counts,
+                                           const QMap<int, EvaluationCounts>     &per_class,
+                                           const QMap<QString, qint64>           &matrix,
+                                           const QList<EvaluationInstanceRecord> &events, QString *err_msg) = 0;
 
     /**
      * @brief 混淆矩阵构建钩子（纯虚）。
@@ -148,8 +148,8 @@ protected:
      * @param matrix 矩阵键 -> 计数。
      * @return 混淆矩阵单元格列表。
      */
-    virtual QVector<EvaluationConfusionCell>
-    buildConfusionMatrix(const QMap<int, QString> &classes, const QMap<QString, qint64> &matrix) = 0;
+    virtual QVector<EvaluationConfusionCell> buildConfusionMatrix(const QMap<int, QString>    &classes,
+                                                                  const QMap<QString, qint64> &matrix) = 0;
 
     /**
      * @brief 当前方法是否产出混淆矩阵。

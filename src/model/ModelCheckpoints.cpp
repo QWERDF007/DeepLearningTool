@@ -11,9 +11,8 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QMetaType>
-#include <QVariantList>
 #include <QStringList>
-
+#include <QVariantList>
 #include <algorithm>
 #include <cstdint>
 #include <vector>
@@ -22,18 +21,18 @@ namespace dltool::model {
 
 namespace {
 
-constexpr const char *kProviderKey     = "model.checkpoints";
-constexpr const char *kContextModel            = "model_name";
-constexpr const char *kContextProject          = "project_dir";
-constexpr const char *kContextProjectDatabase  = "project_db";
-constexpr const char *kContextFramework        = "framework_name";
-constexpr const char *kContextArchitecture     = "model_architecture";
-constexpr const char *kContextExts             = "extensions";
-constexpr const char *kContextModelParam        = "model_param_name";
-constexpr const char *kContextModelParamValue   = "model_param_value";
-constexpr const char *kContextOfficialModel     = "official_model";
-constexpr const char *kContextOfficialWeight    = "official_weight";
-constexpr const char *kContextCurrentValue      = "current_value";
+constexpr const char *kProviderKey            = "model.checkpoints";
+constexpr const char *kContextModel           = "model_name";
+constexpr const char *kContextProject         = "project_dir";
+constexpr const char *kContextProjectDatabase = "project_db";
+constexpr const char *kContextFramework       = "framework_name";
+constexpr const char *kContextArchitecture    = "model_architecture";
+constexpr const char *kContextExts            = "extensions";
+constexpr const char *kContextModelParam      = "model_param_name";
+constexpr const char *kContextModelParamValue = "model_param_value";
+constexpr const char *kContextOfficialModel   = "official_model";
+constexpr const char *kContextOfficialWeight  = "official_weight";
+constexpr const char *kContextCurrentValue    = "current_value";
 
 struct ModelEntry
 {
@@ -89,19 +88,18 @@ QString officialModelName(const QString &model_value, const QString &framework_n
     if (value.isEmpty() || !sameText(framework_name, QStringLiteral("ultralytics")))
         return value;
 
-    const QString stem = QFileInfo(value).completeBaseName();
-    const QString prefix = architecture.trimmed().toLower().remove(QStringLiteral("-seg"));
-    const QStringList variants = {QStringLiteral("n"), QStringLiteral("s"), QStringLiteral("m"),
-                                  QStringLiteral("l"), QStringLiteral("x")};
+    const QString     stem   = QFileInfo(value).completeBaseName();
+    const QString     prefix = architecture.trimmed().toLower().remove(QStringLiteral("-seg"));
+    const QStringList variants
+        = {QStringLiteral("n"), QStringLiteral("s"), QStringLiteral("m"), QStringLiteral("l"), QStringLiteral("x")};
     if (!prefix.isEmpty() && variants.contains(stem, Qt::CaseInsensitive))
-        return prefix + stem.toLower() + (architecture.trimmed().endsWith(QStringLiteral("-seg"), Qt::CaseInsensitive)
-                                              ? QStringLiteral("-seg")
-                                              : QString());
+        return prefix + stem.toLower()
+             + (architecture.trimmed().endsWith(QStringLiteral("-seg"), Qt::CaseInsensitive) ? QStringLiteral("-seg")
+                                                                                             : QString());
     return value;
 }
 
-QString canonicalModelParameterValue(const QString &value, const QString &framework_name,
-                                     const QString &architecture)
+QString canonicalModelParameterValue(const QString &value, const QString &framework_name, const QString &architecture)
 {
     const QString normalized = officialModelName(value, framework_name, architecture);
     if (sameText(framework_name, QStringLiteral("ultralytics")))
@@ -130,8 +128,8 @@ QString officialWeightValue(const QString &model_value, const QString &framework
 
 QString collapseDuplicateLabel(const QString &value)
 {
-    const QString trimmed = value.trimmed();
-    const QStringList parts = trimmed.split(QStringLiteral(" / "));
+    const QString     trimmed = value.trimmed();
+    const QStringList parts   = trimmed.split(QStringLiteral(" / "));
     if (parts.size() < 2 || parts.size() % 2 != 0)
         return trimmed;
 
@@ -146,7 +144,7 @@ QString collapseDuplicateLabel(const QString &value)
 
 QStringList contextExtensions(const QVariantMap &context)
 {
-    QStringList extensions;
+    QStringList    extensions;
     const QVariant value = context.value(QString::fromLatin1(kContextExts));
     if (value.userType() == QMetaType::QStringList)
     {
@@ -195,7 +193,7 @@ QVariantMap hiddenModelEntryMap(const QString &label, const QVariant &value, con
 
 QString modelParameterFromTrainParams(const QVariantMap &train_params, const QString &parameter_name)
 {
-    QStringList names;
+    QStringList   names;
     const QString name = parameter_name.trimmed();
     if (name.isEmpty())
         return {};
@@ -224,8 +222,7 @@ QString modelParameterFromTrainParams(const QVariantMap &train_params, const QSt
     return {};
 }
 
-QString modelParameterFromDatabase(const QString &project_dir, const QString &model_name,
-                                   const QString &parameter_name)
+QString modelParameterFromDatabase(const QString &project_dir, const QString &model_name, const QString &parameter_name)
 {
     if (project_dir.trimmed().isEmpty() || model_name.trimmed().isEmpty() || parameter_name.trimmed().isEmpty())
         return {};
@@ -249,23 +246,22 @@ QVector<ModelEntry> candidateModels(const QString &project_db, const QString &pr
     QVector<ModelEntry> models;
     if (!project_db.trimmed().isEmpty() && QFileInfo::exists(project_db))
     {
-        database::ProjectDataBase project_database(project_db);
-        std::vector<int64_t>      model_ids;
-        std::vector<QString>      uuids;
-        std::vector<QString>      names;
-        std::vector<QString>      framework_names;
-        std::vector<QString>      architectures;
-        std::vector<qint64>       ctimes;
-        std::vector<qint64>       mtimes;
+        database::ProjectDataBase         project_database(project_db);
+        std::vector<int64_t>              model_ids;
+        std::vector<QString>              uuids;
+        std::vector<QString>              names;
+        std::vector<QString>              framework_names;
+        std::vector<QString>              architectures;
+        std::vector<qint64>               ctimes;
+        std::vector<qint64>               mtimes;
         std::vector<std::vector<uint8_t>> extra_data;
-        QString                   error;
+        QString                           error;
         if (project_database.getAllModels(model_ids, uuids, names, framework_names, architectures, ctimes, mtimes,
                                           extra_data, error))
         {
             const size_t count = std::min({names.size(), framework_names.size(), architectures.size()});
             models.reserve(static_cast<int>(count));
-            for (size_t i = 0; i < count; ++i)
-                models.push_back({names[i], framework_names[i], architectures[i]});
+            for (size_t i = 0; i < count; ++i) models.push_back({names[i], framework_names[i], architectures[i]});
         }
         else
         {
@@ -287,8 +283,7 @@ QVector<ModelEntry> candidateModels(const QString &project_db, const QString &pr
     return models;
 }
 
-QStringList enumerateWeightFiles(const QString &project_dir, const QString &model_name,
-                                 const QStringList &extensions)
+QStringList enumerateWeightFiles(const QString &project_dir, const QString &model_name, const QStringList &extensions)
 {
     if (project_dir.trimmed().isEmpty() || model_name.trimmed().isEmpty())
         return {};
@@ -298,7 +293,7 @@ QStringList enumerateWeightFiles(const QString &project_dir, const QString &mode
     if (!dir.exists())
         return {};
 
-    QStringList files;
+    QStringList         files;
     const QFileInfoList entries = dir.entryInfoList(QDir::Files, QDir::Name);
     for (const QFileInfo &entry : entries)
     {
@@ -326,10 +321,9 @@ WeightParts weightPartsFromPath(const QString &value)
     return {weights_dir.dirName(), info.completeBaseName(), info.absoluteFilePath()};
 }
 
-WeightParts weightPartsFromLegacyLabel(const QString &project_dir, const QString &value,
-                                       const QStringList &extensions)
+WeightParts weightPartsFromLegacyLabel(const QString &project_dir, const QString &value, const QStringList &extensions)
 {
-    const QString trimmed = collapseDuplicateLabel(value);
+    const QString trimmed   = collapseDuplicateLabel(value);
     const int     separator = trimmed.indexOf(QStringLiteral(" / "));
     if (separator <= 0)
         return {};
@@ -348,7 +342,7 @@ WeightParts weightPartsFromLegacyLabel(const QString &project_dir, const QString
     for (const QFileInfo &entry : entries)
     {
         const bool same_name = sameText(entry.fileName(), weight_name)
-            || sameText(entry.completeBaseName(), QFileInfo(weight_name).completeBaseName());
+                            || sameText(entry.completeBaseName(), QFileInfo(weight_name).completeBaseName());
         if (same_name && extensions.contains(normalizedExtension(entry.suffix()), Qt::CaseInsensitive))
             return {model_name, entry.completeBaseName(), entry.absoluteFilePath()};
     }
@@ -384,22 +378,25 @@ QString currentDisplayLabel(const QString &project_dir, const QString &value, co
 class ModelCheckpointsProvider final : public parameter::DynamicOptionsProvider
 {
 public:
-    QString key() const override { return QString::fromLatin1(kProviderKey); }
+    QString key() const override
+    {
+        return QString::fromLatin1(kProviderKey);
+    }
 
     parameter::DynamicOptionsData query(const QVariantMap &context) const override
     {
         parameter::DynamicOptionsData result;
 
-        const QString project_dir       = context.value(QString::fromLatin1(kContextProject)).toString().trimmed();
-        const QString project_db        = context.value(QString::fromLatin1(kContextProjectDatabase)).toString().trimmed();
-        const QString current_model     = context.value(QString::fromLatin1(kContextModel)).toString().trimmed();
-        const QString framework_name    = context.value(QString::fromLatin1(kContextFramework)).toString().trimmed();
-        const QString architecture      = context.value(QString::fromLatin1(kContextArchitecture)).toString().trimmed();
-        const QString model_param_name  = context.value(QString::fromLatin1(kContextModelParam)).toString().trimmed();
-        QString       model_param_value = context.value(QString::fromLatin1(kContextModelParamValue)).toString().trimmed();
-        QString       official_model    = context.value(QString::fromLatin1(kContextOfficialModel)).toString().trimmed();
-        const bool    official_weight   = context.value(QString::fromLatin1(kContextOfficialWeight)).toBool();
-        const QString current_value     = context.value(QString::fromLatin1(kContextCurrentValue)).toString().trimmed();
+        const QString project_dir    = context.value(QString::fromLatin1(kContextProject)).toString().trimmed();
+        const QString project_db     = context.value(QString::fromLatin1(kContextProjectDatabase)).toString().trimmed();
+        const QString current_model  = context.value(QString::fromLatin1(kContextModel)).toString().trimmed();
+        const QString framework_name = context.value(QString::fromLatin1(kContextFramework)).toString().trimmed();
+        const QString architecture   = context.value(QString::fromLatin1(kContextArchitecture)).toString().trimmed();
+        const QString model_param_name = context.value(QString::fromLatin1(kContextModelParam)).toString().trimmed();
+        QString    model_param_value = context.value(QString::fromLatin1(kContextModelParamValue)).toString().trimmed();
+        QString    official_model    = context.value(QString::fromLatin1(kContextOfficialModel)).toString().trimmed();
+        const bool official_weight   = context.value(QString::fromLatin1(kContextOfficialWeight)).toBool();
+        const QString current_value  = context.value(QString::fromLatin1(kContextCurrentValue)).toString().trimmed();
         if (project_dir.isEmpty())
             return result;
 
@@ -446,8 +443,7 @@ public:
 
             if (!model_param_name.isEmpty() && !model_param_value.isEmpty())
             {
-                const QString candidate_value
-                    = modelParameterFromDatabase(project_dir, model.name, model_param_name);
+                const QString candidate_value = modelParameterFromDatabase(project_dir, model.name, model_param_name);
                 if (!sameModelParameterValue(candidate_value, model_param_value, framework_name, architecture))
                     continue;
             }

@@ -520,5 +520,3 @@ public:
 };
 
 } // namespace dltool::model
-
-

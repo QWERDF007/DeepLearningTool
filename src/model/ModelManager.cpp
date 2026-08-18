@@ -4,11 +4,11 @@
 #include "data/DataSelectionTreeModel.h"
 #include "data/DatasetViewModelFactory.h"
 #include "database/DataBase.h"
+#include "database/ModelDataBase.h"
 #include "model/IModelConfig.h"
 #include "model/IParams.h"
 #include "model/ModelDatasetSelection.h"
 #include "model/ModelStorageService.h"
-#include "database/ModelDataBase.h"
 #include "model/TaskManager.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsKeys.h"
@@ -25,10 +25,10 @@
 #include <QJsonParseError>
 #include <QProcess>
 #include <QProcessEnvironment>
-#include <QTcpServer>
 #include <QQmlEngine>
 #include <QRegularExpression>
 #include <QSortFilterProxyModel>
+#include <QTcpServer>
 #include <algorithm>
 #include <utility>
 
@@ -53,8 +53,8 @@ bool copyDirectoryContents(const QString &source, const QString &target, QString
     while (iterator.hasNext())
     {
         const QFileInfo item(iterator.next());
-        const QString relative = QDir(source).relativeFilePath(item.absoluteFilePath());
-        const QString destination = QDir(target).filePath(relative);
+        const QString   relative    = QDir(source).relativeFilePath(item.absoluteFilePath());
+        const QString   destination = QDir(target).filePath(relative);
         if (item.isDir())
         {
             if (!QDir().mkpath(destination))
@@ -109,7 +109,7 @@ QVariantMap extraDataFromBlob(const std::vector<uint8_t> &data)
     if (data.empty())
         return {};
 
-    QJsonParseError error;
+    QJsonParseError     error;
     const QJsonDocument document = QJsonDocument::fromJson(
         QByteArray(reinterpret_cast<const char *>(data.data()), static_cast<int>(data.size())), &error);
     if (error.error != QJsonParseError::NoError || !document.isObject())
@@ -119,11 +119,10 @@ QVariantMap extraDataFromBlob(const std::vector<uint8_t> &data)
 
 std::vector<uint8_t> extraDataToBlob(const QVariantMap &data)
 {
-    const QByteArray serialized = QJsonDocument::fromVariant(data).toJson(QJsonDocument::Compact);
+    const QByteArray     serialized = QJsonDocument::fromVariant(data).toJson(QJsonDocument::Compact);
     std::vector<uint8_t> result;
     result.reserve(static_cast<size_t>(serialized.size()));
-    for (const char byte : serialized)
-        result.push_back(static_cast<uint8_t>(byte));
+    for (const char byte : serialized) result.push_back(static_cast<uint8_t>(byte));
     return result;
 }
 
@@ -198,15 +197,15 @@ void ModelManager::init()
         return;
     }
 
-    std::vector<int64_t> model_ids;
-    std::vector<QString> uuids;
-    std::vector<QString> names;
-    std::vector<QString> framework_names;
-    std::vector<QString> model_architectures;
-    std::vector<qint64>  ctimes;
-    std::vector<qint64>  mtimes;
+    std::vector<int64_t>              model_ids;
+    std::vector<QString>              uuids;
+    std::vector<QString>              names;
+    std::vector<QString>              framework_names;
+    std::vector<QString>              model_architectures;
+    std::vector<qint64>               ctimes;
+    std::vector<qint64>               mtimes;
     std::vector<std::vector<uint8_t>> extra_data;
-    QString              err_msg;
+    QString                           err_msg;
 
     const bool ok = database_->getAllModels(model_ids, uuids, names, framework_names, model_architectures, ctimes,
                                             mtimes, extra_data, err_msg);
@@ -280,7 +279,7 @@ QHash<int, QByteArray> ModelManager::roleNames() const
         {ModelArchitectureRole, "model_architecture"},
         {            CtimeRole,              "ctime"},
         {            MtimeRole,              "mtime"},
-        {        ExtraDataRole,          "extra_data"},
+        {        ExtraDataRole,         "extra_data"},
     };
 }
 
@@ -424,7 +423,7 @@ bool ModelManager::renameModel(const qint64 model_id, const QString &name)
         return false;
     }
 
-    const QString       old_name = models_[static_cast<size_t>(row)].name;
+    const QString old_name = models_[static_cast<size_t>(row)].name;
     if (modelHasActiveTasks(models_[static_cast<size_t>(row)].uuid))
     {
         spdlog::warn("模型重命名失败: 模型仍有活动任务");
@@ -464,7 +463,7 @@ bool ModelManager::deleteModel(const qint64 model_id)
         return false;
     }
 
-    const ModelRecord         record = models_[static_cast<size_t>(row)];
+    const ModelRecord record = models_[static_cast<size_t>(row)];
     if (modelHasActiveTasks(record.uuid))
     {
         spdlog::warn("模型删除失败: 模型仍有活动任务");
@@ -530,9 +529,9 @@ bool ModelManager::copyModel(const qint64 model_id, const bool copy_train_weight
     // Copy only model-level parameters and dataset selections by default.
     // Test-task databases/results/logs are intentionally not copied; weights
     // are an explicit opt-in from the copy dialog/API.
-    database::ModelDataBase source_database(storage.modelDatabasePath(source.name));
-    database::ModelDataBase target_database(storage.modelDatabasePath(copied_name));
-    QVariantMap source_train_params;
+    database::ModelDataBase                 source_database(storage.modelDatabasePath(source.name));
+    database::ModelDataBase                 target_database(storage.modelDatabasePath(copied_name));
+    QVariantMap                             source_train_params;
     QList<database::DatasetSelectionRecord> source_dataset_selections;
     if (!source_database.readTrainParams(source_train_params, &err_msg)
         || !source_database.readDatasets(source_dataset_selections, &err_msg)
@@ -586,11 +585,11 @@ bool ModelManager::copyModel(const qint64 model_id, const bool copy_train_weight
         auto copied_model = createRegisteredModelInstance(source.framework_name, source.model_architecture);
         if (copied_model && copied_model->config() && source_found->second->config())
         {
-            ITrainParams       *target_train_params = copied_model->config()->trainParams();
-            const ITrainParams *source_train_params = source_found->second->config()->trainParams();
-            if (target_train_params != nullptr && source_train_params != nullptr)
+            ITrainParams       *target_train_params      = copied_model->config()->trainParams();
+            const ITrainParams *source_train_inst_params = source_found->second->config()->trainParams();
+            if (target_train_params != nullptr && source_train_inst_params != nullptr)
             {
-                target_train_params->copyValuesFrom(*source_train_params);
+                target_train_params->copyValuesFrom(*source_train_inst_params);
             }
 
             ITestParams       *target_test_params = copied_model->config()->testParams();
@@ -642,7 +641,7 @@ QVariantMap ModelManager::modelAt(const int row) const
         {QStringLiteral("model_architecture"),            model.model_architecture},
         {             QStringLiteral("ctime"),        formatTimestamp(model.ctime)},
         {             QStringLiteral("mtime"),        formatTimestamp(model.mtime)},
-        {        QStringLiteral("extra_data"),                 model.extra_data},
+        {        QStringLiteral("extra_data"),                    model.extra_data},
     };
 }
 
@@ -686,8 +685,7 @@ bool ModelManager::updateModelExtraData(const QString &model_uuid, const QVarian
 
     ModelRecord &record = models_[static_cast<size_t>(row)];
     QVariantMap  merged = record.extra_data;
-    for (auto it = updates.cbegin(); it != updates.cend(); ++it)
-        merged.insert(it.key(), it.value());
+    for (auto it = updates.cbegin(); it != updates.cend(); ++it) merged.insert(it.key(), it.value());
 
     if (merged == record.extra_data)
         return true;
@@ -699,7 +697,7 @@ bool ModelManager::updateModelExtraData(const QString &model_uuid, const QVarian
     {
         if (database_ == nullptr)
         {
-        setError(err_msg, QString("数据库对象为空"));
+            setError(err_msg, QString("数据库对象为空"));
             return false;
         }
         if (!database_->updateModelExtraData(record.model_id, extraDataToBlob(merged), local_err_msg))
@@ -717,8 +715,8 @@ bool ModelManager::updateModelExtraData(const QString &model_uuid, const QVarian
     return true;
 }
 
-bool ModelManager::resetModelTaskState(const QString &model_uuid, const QString &section_key,
-                                       const QStringList &fields, const QVariantMap &preset, QString *err_msg)
+bool ModelManager::resetModelTaskState(const QString &model_uuid, const QString &section_key, const QStringList &fields,
+                                       const QVariantMap &preset, QString *err_msg)
 {
     const int row = indexOfUuid(model_uuid.trimmed());
     if (row < 0)
@@ -728,15 +726,13 @@ bool ModelManager::resetModelTaskState(const QString &model_uuid, const QString 
     QVariantMap  merged  = record.extra_data;
     QVariantMap  section = merged.value(section_key).toMap();
     bool         changed = false;
-    for (const QString &field : fields)
-        changed = section.remove(field) > 0 || changed;
+    for (const QString &field : fields) changed = section.remove(field) > 0 || changed;
     for (auto it = preset.cbegin(); it != preset.cend(); ++it)
         changed = section.value(it.key()) != it.value() || changed;
     if (!changed)
         return true;
 
-    for (auto it = preset.cbegin(); it != preset.cend(); ++it)
-        section.insert(it.key(), it.value());
+    for (auto it = preset.cbegin(); it != preset.cend(); ++it) section.insert(it.key(), it.value());
     if (section.isEmpty())
         merged.remove(section_key);
     else
@@ -779,8 +775,8 @@ bool ModelManager::touchModelModifiedTime(const QString &model_uuid, QString *er
         return false;
     }
 
-    ModelRecord &record = models_[static_cast<size_t>(row)];
-    const qint64 now   = QDateTime::currentSecsSinceEpoch();
+    ModelRecord              &record            = models_[static_cast<size_t>(row)];
+    const qint64              now               = QDateTime::currentSecsSinceEpoch();
     const FrameworkDefinition framework         = registeredFramework(method_, record.framework_name);
     const bool                write_to_database = framework.name.isEmpty() || framework.write_to_database;
     QString                   local_err_msg;
@@ -788,7 +784,7 @@ bool ModelManager::touchModelModifiedTime(const QString &model_uuid, QString *er
     {
         if (database_ == nullptr)
         {
-        setError(err_msg, QString("数据库对象为空"));
+            setError(err_msg, QString("数据库对象为空"));
             return false;
         }
         if (!database_->updateModelMtime(record.model_id, now, local_err_msg))
@@ -840,21 +836,20 @@ void ModelManager::requestModelTaskConfigLoad(const QString &model_uuid) const
     if (model_row < 0)
         return;
 
-    const QString                               model_name = models_[static_cast<size_t>(model_row)].name;
-    const ModelStorageService storage(project_dir_);
-    database::ModelDataBase model_database(storage.modelDatabasePath(model_name));
-    QVariantMap train_params;
+    const QString                           model_name = models_[static_cast<size_t>(model_row)].name;
+    const ModelStorageService               storage(project_dir_);
+    database::ModelDataBase                 model_database(storage.modelDatabasePath(model_name));
+    QVariantMap                             train_params;
     QList<database::DatasetSelectionRecord> dataset_records;
-    QString error;
-    if (!model_database.readTrainParams(train_params, &error)
-        || !model_database.readDatasets(dataset_records, &error))
+    QString                                 error;
+    if (!model_database.readTrainParams(train_params, &error) || !model_database.readDatasets(dataset_records, &error))
     {
         spdlog::error("读取模型数据库失败, 模型: {}, 错误: {}", model_name.toUtf8().constData(),
                       error.toUtf8().constData());
         return;
     }
-    const_cast<ModelManager *>(this)->applyLoadedModelTaskConfigs(
-        trimmed_uuid, train_params, modelDatasetSelectionsFromDatabase(dataset_records));
+    const_cast<ModelManager *>(this)->applyLoadedModelTaskConfigs(trimmed_uuid, train_params,
+                                                                  modelDatasetSelectionsFromDatabase(dataset_records));
 }
 
 QString ModelManager::startTensorBoard(const QString &model_uuid)
@@ -891,7 +886,7 @@ QString ModelManager::startTensorBoard(const QString &model_uuid)
         tensorboard_port_ = 0;
     }
 
-    const QString python_env_path = dltool::settings::GlobalSettings::pythonEnvironmentPath();
+    const QString   python_env_path = dltool::settings::GlobalSettings::pythonEnvironmentPath();
     const QFileInfo python_env_info(dltool::common::cleanPath(python_env_path));
     const QString python = (!python_env_path.trimmed().isEmpty() && python_env_info.exists() && python_env_info.isDir())
                              ? dltool::common::pythonExecutableFromEnvPath(python_env_path)
@@ -959,7 +954,7 @@ QString ModelManager::startTensorBoard(const QString &model_uuid)
                                   exit_status == QProcess::NormalExit ? "normal" : "crashed");
             });
     tensorboard_model_uuid_ = record.uuid;
-    tensorboard_port_      = port;
+    tensorboard_port_       = port;
     spdlog::info("启动 TensorBoard, 模型: {}, 日志目录: {}", record.name.toUtf8().constData(),
                  log_dir.toUtf8().constData());
     tensorboard_process_->start();

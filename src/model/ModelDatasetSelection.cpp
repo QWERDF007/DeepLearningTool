@@ -35,10 +35,10 @@ enum class DatasetSelectionSplit
 const std::map<DatasetSelectionField, QString> &datasetSelectionFieldNames()
 {
     static const std::map<DatasetSelectionField, QString> names = {
-        {       DatasetSelectionField::DatasetIds,        QStringLiteral("dataset_ids")},
-        {     DatasetSelectionField::LabelClasses,      QStringLiteral("label_classes")},
-        {        DatasetSelectionField::DatasetId,         QStringLiteral("dataset_id")},
-        {     DatasetSelectionField::LabelClassId,     QStringLiteral("label_class_id")},
+        {  DatasetSelectionField::DatasetIds,    QStringLiteral("dataset_ids")},
+        {DatasetSelectionField::LabelClasses,  QStringLiteral("label_classes")},
+        {   DatasetSelectionField::DatasetId,     QStringLiteral("dataset_id")},
+        {DatasetSelectionField::LabelClassId, QStringLiteral("label_class_id")},
     };
     return names;
 }
@@ -300,11 +300,10 @@ ModelDatasetSelections modelDatasetSelections(IModel *model)
 std::vector<int64_t> selectedDatasetIds(const ModelDatasetSelections &selections)
 {
     std::set<qint64> dataset_ids;
-    const auto collect = [&dataset_ids](const ModelDatasetSelection &selection)
+    const auto       collect = [&dataset_ids](const ModelDatasetSelection &selection)
     {
         dataset_ids.insert(selection.dataset_ids.begin(), selection.dataset_ids.end());
-        for (const auto &[dataset_id, _] : selection.label_classes)
-            dataset_ids.insert(dataset_id);
+        for (const auto &[dataset_id, _] : selection.label_classes) dataset_ids.insert(dataset_id);
     };
     collect(selections.train);
     collect(selections.validation);
@@ -327,19 +326,18 @@ void applyModelDatasetSelections(IModel *model, const QVariantMap &dataset_selec
     }
 }
 
-QList<dltool::database::DatasetSelectionRecord>
-databaseDatasetSelections(
-    const ModelDatasetSelections &selections,
+QList<dltool::database::DatasetSelectionRecord> databaseDatasetSelections(
+    const ModelDatasetSelections                          &selections,
     const std::function<QList<qint64>(qint64 dataset_id)> &dataset_class_ids_resolver)
 {
     QList<dltool::database::DatasetSelectionRecord> result;
-    const auto append = [&result, &dataset_class_ids_resolver](const QString &type,
-                                                               const ModelDatasetSelection &selection)
+    const auto                                      append
+        = [&result, &dataset_class_ids_resolver](const QString &type, const ModelDatasetSelection &selection)
     {
         for (const qint64 dataset_id : selection.dataset_ids)
         {
-            QList<qint64> class_ids = dataset_class_ids_resolver ? dataset_class_ids_resolver(dataset_id)
-                                                                 : QList<qint64>{};
+            QList<qint64> class_ids
+                = dataset_class_ids_resolver ? dataset_class_ids_resolver(dataset_id) : QList<qint64>{};
             std::sort(class_ids.begin(), class_ids.end());
             class_ids.erase(std::unique(class_ids.begin(), class_ids.end()), class_ids.end());
             result.push_back({type, dataset_id, class_ids});

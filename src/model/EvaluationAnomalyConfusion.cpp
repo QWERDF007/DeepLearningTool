@@ -15,22 +15,22 @@ struct GroundTruthCategory
     bool    anomaly{false};
 };
 
-}
+} // namespace
 
-std::vector<EvaluationConfusionCell>
-buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples, const QMap<int, QString> &class_catalog)
+std::vector<EvaluationConfusionCell> buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples,
+                                                                const QMap<int, QString>            &class_catalog)
 {
-    const QString matrix_fn    = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative);
-    const QString matrix_fp    = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive);
-    const QString matrix_total = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::Total);
-    const QString separator(QLatin1Char('\x1f'));
+    const QString                  matrix_fn    = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative);
+    const QString                  matrix_fp    = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive);
+    const QString                  matrix_total = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::Total);
+    const QString                  separator(QLatin1Char('\x1f'));
     QMap<int, GroundTruthCategory> categories;
-    QMap<QString, qint64>           counts;
-    QMap<int, qint64>               row_totals;
-    QMap<int, qint64>               row_errors;
-    QMap<int, qint64>               column_totals;
-    QMap<int, qint64>               column_errors;
-    qint64                          error_total = 0;
+    QMap<QString, qint64>          counts;
+    QMap<int, qint64>              row_totals;
+    QMap<int, qint64>              row_errors;
+    QMap<int, qint64>              column_totals;
+    QMap<int, qint64>              column_errors;
+    qint64                         error_total = 0;
 
     // 类别轴来自项目数据库的完整目录，不能随着当前选中的图像集合收缩。
     for (auto category = class_catalog.cbegin(); category != class_catalog.cend(); ++category)
@@ -39,7 +39,7 @@ buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples, const Q
     for (const AnomalyConfusionSample &sample : samples)
     {
         categories[sample.category_id] = GroundTruthCategory{sample.category_name, sample.category_anomaly};
-        const int row_id = sample.predicted_anomaly ? 1 : 0;
+        const int row_id               = sample.predicted_anomaly ? 1 : 0;
         ++counts[QString::number(row_id) + separator + QString::number(sample.category_id)];
         ++row_totals[row_id];
         ++column_totals[sample.category_id];
@@ -58,11 +58,10 @@ buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples, const Q
     }
 
     std::vector<EvaluationConfusionCell> cells;
-    const auto appendCell = [&cells](const QString &row_key, const QString &row_label, const int row_class_id,
-                                     const QString &column_key, const QString &column_label,
-                                     const int column_class_id, const qint64 count,
-                                     const evaluation::CellKind kind, const bool selectable,
-                                     const bool diagonal, const bool error)
+    const auto                           appendCell
+        = [&cells](const QString &row_key, const QString &row_label, const int row_class_id, const QString &column_key,
+                   const QString &column_label, const int column_class_id, const qint64 count,
+                   const evaluation::CellKind kind, const bool selectable, const bool diagonal, const bool error)
     {
         EvaluationConfusionCell cell;
         cell.row_key         = row_key;
@@ -82,17 +81,17 @@ buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples, const Q
     const QString total_label = evaluation::displayText(evaluation::DisplayText::Total);
     for (const int row_id : {0, 1})
     {
-        const QString row_key   = QString::number(row_id);
-        const QString row_label = evaluation::displayText(row_id == 0 ? evaluation::DisplayText::Good
-                                                                        : evaluation::DisplayText::Anomaly);
+        const QString row_key = QString::number(row_id);
+        const QString row_label
+            = evaluation::displayText(row_id == 0 ? evaluation::DisplayText::Good : evaluation::DisplayText::Anomaly);
         for (auto category = categories.cbegin(); category != categories.cend(); ++category)
         {
-            const qint64 count = counts.value(row_key + separator + QString::number(category.key()));
-            const bool correct = (row_id == 1) == category.value().anomaly;
+            const qint64 count   = counts.value(row_key + separator + QString::number(category.key()));
+            const bool   correct = (row_id == 1) == category.value().anomaly;
             appendCell(row_key, row_label, row_id, QString::number(category.key()), category.value().name,
                        category.key(), count,
-                       correct ? evaluation::CellKind::Match : evaluation::CellKind::ClassMismatch,
-                       true, correct, !correct);
+                       correct ? evaluation::CellKind::Match : evaluation::CellKind::ClassMismatch, true, correct,
+                       !correct);
         }
         appendCell(row_key, row_label, row_id, matrix_fp, matrix_fp, -1, row_errors.value(row_id),
                    evaluation::CellKind::FalsePositive, true, false, true);
@@ -103,20 +102,20 @@ buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples, const Q
     for (auto category = categories.cbegin(); category != categories.cend(); ++category)
         appendCell(matrix_fn, matrix_fn, -1, QString::number(category.key()), category.value().name, category.key(),
                    column_errors.value(category.key()), evaluation::CellKind::FalseNegative, true, false, true);
-    appendCell(matrix_fn, matrix_fn, -1, matrix_fp, matrix_fp, -1, error_total,
-               evaluation::CellKind::NotApplicable, true, false, true);
+    appendCell(matrix_fn, matrix_fn, -1, matrix_fp, matrix_fp, -1, error_total, evaluation::CellKind::NotApplicable,
+               true, false, true);
     appendCell(matrix_fn, matrix_fn, -1, matrix_total, total_label, -1, error_total,
                evaluation::CellKind::FalseNegativeTotal, true, false, true);
 
     for (auto category = categories.cbegin(); category != categories.cend(); ++category)
         appendCell(matrix_total, total_label, -1, QString::number(category.key()), category.value().name,
-                   category.key(), column_totals.value(category.key()), evaluation::CellKind::GtTotal,
-                   true, false, false);
+                   category.key(), column_totals.value(category.key()), evaluation::CellKind::GtTotal, true, false,
+                   false);
     appendCell(matrix_total, total_label, -1, matrix_fp, matrix_fp, -1, error_total,
                evaluation::CellKind::FalsePositiveTotal, true, false, true);
-    appendCell(matrix_total, total_label, -1, matrix_total, total_label, -1, samples.size(),
-               evaluation::CellKind::All, true, false, false);
+    appendCell(matrix_total, total_label, -1, matrix_total, total_label, -1, samples.size(), evaluation::CellKind::All,
+               true, false, false);
     return cells;
 }
 
-}
+} // namespace dltool::model

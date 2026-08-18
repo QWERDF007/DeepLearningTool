@@ -213,7 +213,6 @@ inline QVariantMap instanceToMap(const EvaluationInstanceRecord &record)
     };
 }
 
-
 /**
  * @brief 将实例事件值对象序列化为协议映射（snake_case 字段名）。
  *
@@ -224,31 +223,31 @@ inline QVariantMap instanceToMap(const EvaluationInstanceRecord &record)
 inline QVariantMap instanceToProtocolMap(const EvaluationInstanceRecord &record)
 {
     return {
-        {      evaluation::fieldName(evaluation::Field::EventUuid),    record.event_uuid},
-        {        evaluation::fieldName(evaluation::Field::ImageId),      record.image_id},
-        {      evaluation::fieldName(evaluation::Field::DatasetId),    record.dataset_id},
-        {      evaluation::fieldName(evaluation::Field::ImageName),      record.image_name},
-        {      evaluation::fieldName(evaluation::Field::ImagePath),      record.image_path},
-        {     evaluation::fieldName(evaluation::Field::ImageWidth),     record.image_width},
-        {    evaluation::fieldName(evaluation::Field::ImageHeight),    record.image_height},
-        {         evaluation::fieldName(evaluation::Field::Status), evaluation::statusKey(record.status)},
-        {         evaluation::fieldName(evaluation::Field::Score),           record.score},
-        {          evaluation::fieldName(evaluation::Field::Iou),            record.iou},
-        {     evaluation::fieldName(evaluation::Field::GtLabelId),     record.gt_label_id},
-        {     evaluation::fieldName(evaluation::Field::PredInstanceId), record.pred_instance_id},
-        {       evaluation::fieldName(evaluation::Field::GtClassId),     record.gt_class_id},
-        {     evaluation::fieldName(evaluation::Field::PredClassId),   record.pred_class_id},
-        {     evaluation::fieldName(evaluation::Field::GtClassName),     record.gt_class},
-        {    evaluation::fieldName(evaluation::Field::PredClassName),    record.pred_class},
-        {       evaluation::fieldName(evaluation::Field::GtGeometry),   record.gt_geometry},
-        {     evaluation::fieldName(evaluation::Field::PredGeometry), record.pred_geometry},
-        {       evaluation::fieldName(evaluation::Field::CropBounds),   record.crop_bounds},
-        { evaluation::fieldName(evaluation::Field::GtOverlayBounds), record.gt_overlay_bounds},
-        {evaluation::fieldName(evaluation::Field::PredOverlayBounds), record.pred_overlay_bounds},
-        { evaluation::fieldName(evaluation::Field::GtOverlayPoints), record.gt_overlay_points},
-        {evaluation::fieldName(evaluation::Field::PredOverlayPoints), record.pred_overlay_points},
-        {       evaluation::fieldName(evaluation::Field::GtMaskUrl),     record.gt_mask_url},
-        {     evaluation::fieldName(evaluation::Field::PredMaskUrl),   record.pred_mask_url}
+        {        evaluation::fieldName(evaluation::Field::EventUuid),                    record.event_uuid},
+        {          evaluation::fieldName(evaluation::Field::ImageId),                      record.image_id},
+        {        evaluation::fieldName(evaluation::Field::DatasetId),                    record.dataset_id},
+        {        evaluation::fieldName(evaluation::Field::ImageName),                    record.image_name},
+        {        evaluation::fieldName(evaluation::Field::ImagePath),                    record.image_path},
+        {       evaluation::fieldName(evaluation::Field::ImageWidth),                   record.image_width},
+        {      evaluation::fieldName(evaluation::Field::ImageHeight),                  record.image_height},
+        {           evaluation::fieldName(evaluation::Field::Status), evaluation::statusKey(record.status)},
+        {            evaluation::fieldName(evaluation::Field::Score),                         record.score},
+        {              evaluation::fieldName(evaluation::Field::Iou),                           record.iou},
+        {        evaluation::fieldName(evaluation::Field::GtLabelId),                   record.gt_label_id},
+        {   evaluation::fieldName(evaluation::Field::PredInstanceId),              record.pred_instance_id},
+        {        evaluation::fieldName(evaluation::Field::GtClassId),                   record.gt_class_id},
+        {      evaluation::fieldName(evaluation::Field::PredClassId),                 record.pred_class_id},
+        {      evaluation::fieldName(evaluation::Field::GtClassName),                      record.gt_class},
+        {    evaluation::fieldName(evaluation::Field::PredClassName),                    record.pred_class},
+        {       evaluation::fieldName(evaluation::Field::GtGeometry),                   record.gt_geometry},
+        {     evaluation::fieldName(evaluation::Field::PredGeometry),                 record.pred_geometry},
+        {       evaluation::fieldName(evaluation::Field::CropBounds),                   record.crop_bounds},
+        {  evaluation::fieldName(evaluation::Field::GtOverlayBounds),             record.gt_overlay_bounds},
+        {evaluation::fieldName(evaluation::Field::PredOverlayBounds),           record.pred_overlay_bounds},
+        {  evaluation::fieldName(evaluation::Field::GtOverlayPoints),             record.gt_overlay_points},
+        {evaluation::fieldName(evaluation::Field::PredOverlayPoints),           record.pred_overlay_points},
+        {        evaluation::fieldName(evaluation::Field::GtMaskUrl),                   record.gt_mask_url},
+        {      evaluation::fieldName(evaluation::Field::PredMaskUrl),                 record.pred_mask_url}
     };
 }
 } // namespace dltool::model

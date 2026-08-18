@@ -44,7 +44,7 @@ ParamDefinition makeSliderParam(const QString &name_en, const QString &name_cn, 
                                 const double from, const double to, const double step, const QString &description)
 {
     ParamDefinition param = makeDoubleParam(name_en, name_cn, default_value, from, to, step, description);
-    param.display_type = QStringLiteral("slider");
+    param.display_type    = QStringLiteral("slider");
     return param;
 }
 
@@ -60,21 +60,18 @@ ParamDefinition makeComboParam(const QString &name_en, const QString &name_cn, c
 {
     ParamDefinition param = makeParameter(name_en, name_cn, default_value, QStringLiteral("string"),
                                           QStringLiteral("combo"), {}, description);
-    for (const QVariant &option : options)
-        param.options.append(option);
+    for (const QVariant &option : options) param.options.append(option);
     return param;
 }
 
 ParamDefinition makeDynamicParam(const QString &name_en, const QString &name_cn, const QVariant &default_value,
-                                 const QString &display_type, const QString &backend_key,
-                                 const QString &description)
+                                 const QString &display_type, const QString &backend_key, const QString &description)
 {
-    const QString resolved_display_type = display_type.isEmpty() ? QStringLiteral("combo") : display_type;
-    ParamDefinition param
-        = makeParameter(name_en, name_cn, default_value, QStringLiteral("string"), resolved_display_type, {},
-                        description);
-    param.backend_key = backend_key;
-    param.kind        = ParamKind::Dynamic;
+    const QString   resolved_display_type = display_type.isEmpty() ? QStringLiteral("combo") : display_type;
+    ParamDefinition param                 = makeParameter(name_en, name_cn, default_value, QStringLiteral("string"),
+                                                          resolved_display_type, {}, description);
+    param.backend_key                     = backend_key;
+    param.kind                            = ParamKind::Dynamic;
     dltool::parameter::resolveParameterOptions(param);
     return param;
 }

@@ -95,23 +95,23 @@ public:
      */
     struct Task
     {
-        int           id{-1};                              ///< 当前项目内递增的任务 ID。
-        QString       model_uuid;                           ///< 所属模型 UUID。
-        QString       model_name;                           ///< 用于表格显示的模型名称。
-        QString       scope_uuid;                           ///< 任务作用域 UUID；训练固定为 train。
-        QString       scope_name;                           ///< 任务作用域显示名称。
-        QString       display_name;                         ///< 任务在任务中心中的显示名称。
-        ModelTaskType type{ModelTaskType::Unknown};         ///< 任务类型。
-        TaskStatus    status{Pending};                      ///< 当前生命周期状态。
-        qint64        created_at{0};                        ///< 创建时间（秒级 Unix 时间戳）。
-        qint64        started_at{0};                        ///< 进入 Running 的时间；非运行态为 0。
-        qint64        elapsed_seconds{0};                   ///< 已累计的运行时长。
-        qint64        eta_seconds{-1};                      ///< 剩余秒数，-1 表示未知。
-        int           progress{0};                          ///< 进度（0-100）。
-        bool          supports_pause{true};                 ///< 当前任务是否支持暂停。
-        QString       phase;                                 ///< 推理、评估或结果提交阶段。
-        QString       config_path;                           ///< 本次任务使用的配置路径。
-        QString       log_path;                              ///< 本次任务日志路径。
+        int           id{-1};                       ///< 当前项目内递增的任务 ID。
+        QString       model_uuid;                   ///< 所属模型 UUID。
+        QString       model_name;                   ///< 用于表格显示的模型名称。
+        QString       scope_uuid;                   ///< 任务作用域 UUID；训练固定为 train。
+        QString       scope_name;                   ///< 任务作用域显示名称。
+        QString       display_name;                 ///< 任务在任务中心中的显示名称。
+        ModelTaskType type{ModelTaskType::Unknown}; ///< 任务类型。
+        TaskStatus    status{Pending};              ///< 当前生命周期状态。
+        qint64        created_at{0};                ///< 创建时间（秒级 Unix 时间戳）。
+        qint64        started_at{0};                ///< 进入 Running 的时间；非运行态为 0。
+        qint64        elapsed_seconds{0};           ///< 已累计的运行时长。
+        qint64        eta_seconds{-1};              ///< 剩余秒数，-1 表示未知。
+        int           progress{0};                  ///< 进度（0-100）。
+        bool          supports_pause{true};         ///< 当前任务是否支持暂停。
+        QString       phase;                        ///< 推理、评估或结果提交阶段。
+        QString       config_path;                  ///< 本次任务使用的配置路径。
+        QString       log_path;                     ///< 本次任务日志路径。
     };
 
     /**
@@ -124,13 +124,13 @@ public:
      * @param parent 父索引。
      * @return 顶层任务记录数；子索引始终返回 0。
      */
-    int rowCount(const QModelIndex &parent = {}) const override;
+    int      rowCount(const QModelIndex &parent = {}) const override;
     /**
      * @brief 返回任务中心列数。
      * @param parent 父索引。
      * @return 顶层列数；子索引始终返回 0。
      */
-    int columnCount(const QModelIndex &parent = {}) const override;
+    int      columnCount(const QModelIndex &parent = {}) const override;
     /**
      * @brief 返回任务中心显示值和 QML role 数据。
      * @param index 模型索引。
@@ -179,10 +179,10 @@ public:
      * @param supports_pause 是否允许暂停。
      * @return 新任务 ID；参数无效时返回 -1。
      */
-    int addTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type,
-                bool supports_pause);
-    int addTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type,
-                const QString &scope_uuid, const QString &scope_name, bool supports_pause = true);
+    int             addTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type,
+                            bool supports_pause);
+    int             addTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type,
+                            const QString &scope_uuid, const QString &scope_name, bool supports_pause = true);
 
     /**
      * @brief 设置任务中心显示的实际配置和日志路径。
@@ -223,19 +223,19 @@ public:
      * @param task_id 任务 ID。
      * @return 状态转换成功返回 true。
      */
-    bool              failTask(int task_id);
+    bool             failTask(int task_id);
     /**
      * @brief 将准备完成且 Python 已实际启动的任务置为 Running。
      * @param task_id 任务 ID。
      * @return 状态转换成功返回 true。
      */
-    bool              markTaskRunning(int task_id);
+    bool             markTaskRunning(int task_id);
     /**
      * @brief 将已收敛的停止请求置为 Stopped。
      * @param task_id 任务 ID。
      * @return 状态转换成功返回 true。
      */
-    bool              markTaskStopped(int task_id);
+    bool             markTaskStopped(int task_id);
     /**
      * @brief 删除任务记录。
      * @param task_id 任务 ID。
@@ -249,18 +249,18 @@ public:
      * @return 更新成功返回 true。
      */
     Q_INVOKABLE bool updateTaskProgress(int task_id, int progress);
-    bool              updateTaskPhase(int task_id, const QString &phase);
+    bool             updateTaskPhase(int task_id, const QString &phase);
     /**
      * @brief 更新任务预计剩余时间。
      * @param task_id 任务 ID。
      * @param eta_seconds 剩余秒数；负数表示未知。
      * @return 更新成功返回 true。
      */
-    bool              updateTaskEta(int task_id, qint64 eta_seconds);
+    bool             updateTaskEta(int task_id, qint64 eta_seconds);
     /**
      * @brief 清空当前项目的全部任务记录。
      */
-    void              clearTasks();
+    void             clearTasks();
 
     /**
      * @brief 按模型 UUID 和任务类型查找最新任务。
@@ -271,15 +271,15 @@ public:
      */
     Q_INVOKABLE int findModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type,
                                   bool include_finished = false) const;
-    Q_INVOKABLE int findModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type,
-                                  const QString &scope_uuid, bool include_finished = false) const;
+    Q_INVOKABLE int findModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type, const QString &scope_uuid,
+                                  bool include_finished = false) const;
     /**
      * @brief 获取任务中心保存的唯一任务记录。
      * @param task_id 任务 ID。
      * @return 任务记录指针；不存在时返回 nullptr。指针不可跨事件循环或任务表修改保存。
      */
-    const Task      *findTask(int task_id) const;
-    bool hasActiveModelTasks(const QString &model_uuid) const;
+    const Task     *findTask(int task_id) const;
+    bool            hasActiveModelTasks(const QString &model_uuid) const;
     /**
      * @brief 获取指定模型的最新任务记录。
      * @param model_uuid 模型 UUID。
@@ -287,10 +287,10 @@ public:
      * @param include_finished 是否包含 Finished 任务。
      * @return 任务记录指针；不存在时返回 nullptr。指针不可跨事件循环或任务表修改保存。
      */
-    const Task      *findModelTaskRecord(const QString &model_uuid, ModelTaskTypes::Type task_type,
-                                         bool include_finished = false) const;
-    const Task      *findModelTaskRecord(const QString &model_uuid, ModelTaskTypes::Type task_type,
-                                         const QString &scope_uuid, bool include_finished = false) const;
+    const Task     *findModelTaskRecord(const QString &model_uuid, ModelTaskTypes::Type task_type,
+                                        bool include_finished = false) const;
+    const Task     *findModelTaskRecord(const QString &model_uuid, ModelTaskTypes::Type task_type,
+                                        const QString &scope_uuid, bool include_finished = false) const;
 
     /**
      * @brief 查询任务是否可以开始。
@@ -321,7 +321,7 @@ public:
      * @param status 任务状态。
      * @return Stopped、Finished 或 Failed 返回 true。
      */
-    static bool       isTerminal(TaskStatus status);
+    static bool      isTerminal(TaskStatus status);
 
     /**
      * @brief 确保接收 Python 任务事件的 TCP 服务已启动。
@@ -481,10 +481,10 @@ private:
      */
     bool     canFinish(const Task &task) const;
 
-    std::vector<Task>       tasks_;                 ///< 任务中心保存的唯一任务记录。
-    int                     next_task_id_{1};       ///< 下一个递增任务 ID。
-    int                     revision_{0};           ///< 非表格 QML 刷新版本号。
-    QTimer                 *runtime_timer_{nullptr}; ///< 运行时长刷新定时器。
+    std::vector<Task>        tasks_;                         ///< 任务中心保存的唯一任务记录。
+    int                      next_task_id_{1};               ///< 下一个递增任务 ID。
+    int                      revision_{0};                   ///< 非表格 QML 刷新版本号。
+    QTimer                  *runtime_timer_{nullptr};        ///< 运行时长刷新定时器。
     TaskCommunicationServer *communication_server_{nullptr}; ///< Python 任务通信服务。
 };
 

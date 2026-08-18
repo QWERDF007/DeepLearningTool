@@ -54,7 +54,7 @@ MODEL_API bool loadEvaluationImages(
     const std::shared_ptr<std::atomic_bool> &cancel_token = {}, QString *err_msg = nullptr,
     int *missing_database_images = nullptr, int *ignored_selection_images = nullptr,
     const std::function<bool(qint64 image_id, int *width, int *height)> &dimensions_provider = {},
-    QMap<int, QString> *class_catalog = nullptr);
+    QMap<int, QString>                                                  *class_catalog       = nullptr);
 
 /**
  * @brief 从测试任务数据库与预测目录加载预测结果。
@@ -73,7 +73,8 @@ MODEL_API bool loadEvaluationImages(
  */
 MODEL_API bool loadEvaluationPredictions(const QString &task_database_path, const QString &prediction_dir,
                                          QMap<qint64, EvaluationImageData> &images, bool anomaly_method,
-                                         int *count = nullptr, const std::shared_ptr<std::atomic_bool> &cancel_token = {},
+                                         int                                     *count        = nullptr,
+                                         const std::shared_ptr<std::atomic_bool> &cancel_token = {},
                                          QString *err_msg = nullptr, int *ignored_count = nullptr);
 
 } // namespace dltool::model

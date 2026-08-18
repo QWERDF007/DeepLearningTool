@@ -30,7 +30,7 @@ struct MODEL_API AnomalyConfusionSample
  * @param class_catalog 项目数据库中的全局类别目录。
  * @return 二元预测行 x 全局 GT 类别列 + FN/FP/合计行列的单元格列表。
  */
-MODEL_API std::vector<EvaluationConfusionCell>
-buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples, const QMap<int, QString> &class_catalog);
+MODEL_API std::vector<EvaluationConfusionCell> buildAnomalyConfusionCells(const QList<AnomalyConfusionSample> &samples,
+                                                                          const QMap<int, QString> &class_catalog);
 
 } // namespace dltool::model

@@ -20,7 +20,7 @@ namespace dltool::model {
 class MODEL_API EvaluationViewModelRegistry
 {
 public:
-    EvaluationViewModelRegistry(const EvaluationViewModelRegistry &) = delete;
+    EvaluationViewModelRegistry(const EvaluationViewModelRegistry &)            = delete;
     EvaluationViewModelRegistry &operator=(const EvaluationViewModelRegistry &) = delete;
 
     /**
@@ -36,7 +36,7 @@ public:
      * @param method 评估方法。
      * @param factory 工厂函数（接收 QObject 父对象）。
      */
-    void registerViewModel(evaluation::Method method,
+    void registerViewModel(evaluation::Method                                         method,
                            std::function<ModelEvaluationViewModel *(QObject *parent)> factory);
 
     /**

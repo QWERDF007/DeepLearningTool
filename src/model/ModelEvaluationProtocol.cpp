@@ -11,7 +11,7 @@ QString normalized(const QString &value)
     return value.trimmed().toLower();
 }
 
-}
+} // namespace
 
 Method fromProjectMethod(const int method)
 {
@@ -25,11 +25,13 @@ Method fromProjectMethod(const core::DeepLearningMethod::Method method)
     case core::DeepLearningMethod::Classification:
     case core::DeepLearningMethod::Detection:
     case core::DeepLearningMethod::Segmentation:
-    case core::DeepLearningMethod::AnomalyDetection: return method;
+    case core::DeepLearningMethod::AnomalyDetection:
+        return method;
     case core::DeepLearningMethod::Pose:
     case core::DeepLearningMethod::OCR:
     case core::DeepLearningMethod::Unknown:
-    default: return Method::Unknown;
+    default:
+        return Method::Unknown;
     }
 }
 
@@ -51,13 +53,18 @@ QString methodKey(const Method method)
 {
     switch (method)
     {
-    case Method::Classification: return QStringLiteral("classification");
-    case Method::Detection: return QStringLiteral("object_detection");
-    case Method::Segmentation: return QStringLiteral("segmentation");
-    case Method::AnomalyDetection: return QStringLiteral("anomaly_detection");
+    case Method::Classification:
+        return QStringLiteral("classification");
+    case Method::Detection:
+        return QStringLiteral("object_detection");
+    case Method::Segmentation:
+        return QStringLiteral("segmentation");
+    case Method::AnomalyDetection:
+        return QStringLiteral("anomaly_detection");
     case Method::Unknown:
     case Method::Pose:
-    case Method::OCR: return QStringLiteral("unknown");
+    case Method::OCR:
+        return QStringLiteral("unknown");
     }
     return QStringLiteral("unknown");
 }
@@ -66,13 +73,20 @@ QString statusKey(const Status status)
 {
     switch (status)
     {
-    case Status::TruePositive: return QStringLiteral("true_positive");
-    case Status::TrueNegative: return QStringLiteral("true_negative");
-    case Status::ClassMismatch: return QStringLiteral("class_mismatch");
-    case Status::FalsePositive: return QStringLiteral("false_positive");
-    case Status::FalseNegative: return QStringLiteral("false_negative");
-    case Status::Ignored: return QStringLiteral("ignored");
-    case Status::Unknown: return QStringLiteral("unknown");
+    case Status::TruePositive:
+        return QStringLiteral("true_positive");
+    case Status::TrueNegative:
+        return QStringLiteral("true_negative");
+    case Status::ClassMismatch:
+        return QStringLiteral("class_mismatch");
+    case Status::FalsePositive:
+        return QStringLiteral("false_positive");
+    case Status::FalseNegative:
+        return QStringLiteral("false_negative");
+    case Status::Ignored:
+        return QStringLiteral("ignored");
+    case Status::Unknown:
+        return QStringLiteral("unknown");
     }
     return QStringLiteral("unknown");
 }
@@ -99,13 +113,20 @@ QString statusDisplayName(const Status status)
 {
     switch (status)
     {
-    case Status::TruePositive: return QString("正确匹配");
-    case Status::TrueNegative: return QString("正常");
-    case Status::ClassMismatch: return QString("类别错误");
-    case Status::FalsePositive: return QString("误检");
-    case Status::FalseNegative: return QString("漏检");
-    case Status::Ignored: return QString("已忽略");
-    case Status::Unknown: return QString("未知");
+    case Status::TruePositive:
+        return QString("正确匹配");
+    case Status::TrueNegative:
+        return QString("正常");
+    case Status::ClassMismatch:
+        return QString("类别错误");
+    case Status::FalsePositive:
+        return QString("误检");
+    case Status::FalseNegative:
+        return QString("漏检");
+    case Status::Ignored:
+        return QString("已忽略");
+    case Status::Unknown:
+        return QString("未知");
     }
     return QString("未知");
 }
@@ -114,8 +135,10 @@ QString matchingStrategyKey(const MatchingStrategy strategy)
 {
     switch (strategy)
     {
-    case MatchingStrategy::HungarianIoU: return QStringLiteral("hungarian_iou");
-    case MatchingStrategy::GreedyIoU: return QStringLiteral("greedy_iou");
+    case MatchingStrategy::HungarianIoU:
+        return QStringLiteral("hungarian_iou");
+    case MatchingStrategy::GreedyIoU:
+        return QStringLiteral("greedy_iou");
     }
     return QStringLiteral("greedy_iou");
 }
@@ -141,11 +164,11 @@ QVariantMap normalizedEvaluationConfig(const QVariantMap &source)
                       source.value(fieldName(Field::ConfidenceThreshold), kDefaultConfidenceThreshold).toDouble());
     normalized.insert(fieldName(Field::IouThreshold),
                       source.value(fieldName(Field::IouThreshold), kDefaultIouThreshold).toDouble());
-    normalized.insert(fieldName(Field::MatchingStrategy),
-                      matchingStrategyKey(matchingStrategyFromKey(
-                          source.value(fieldName(Field::MatchingStrategy),
-                                       matchingStrategyKey(MatchingStrategy::GreedyIoU))
-                              .toString())));
+    normalized.insert(
+        fieldName(Field::MatchingStrategy),
+        matchingStrategyKey(matchingStrategyFromKey(
+            source.value(fieldName(Field::MatchingStrategy), matchingStrategyKey(MatchingStrategy::GreedyIoU))
+                .toString())));
     return normalized;
 }
 
@@ -153,8 +176,10 @@ QString metricSetKey(const MetricSet metric_set)
 {
     switch (metric_set)
     {
-    case MetricSet::Official: return QStringLiteral("official_metrics");
-    case MetricSet::Diagnostic: return QStringLiteral("diagnostic_metrics");
+    case MetricSet::Official:
+        return QStringLiteral("official_metrics");
+    case MetricSet::Diagnostic:
+        return QStringLiteral("diagnostic_metrics");
     }
     return QStringLiteral("diagnostic_metrics");
 }
@@ -168,16 +193,26 @@ QString cellKindKey(const CellKind kind)
 {
     switch (kind)
     {
-    case CellKind::Match: return QStringLiteral("match");
-    case CellKind::ClassMismatch: return QStringLiteral("class_mismatch");
-    case CellKind::FalsePositive: return QStringLiteral("false_positive");
-    case CellKind::FalseNegative: return QStringLiteral("false_negative");
-    case CellKind::PredTotal: return QStringLiteral("pred_total");
-    case CellKind::GtTotal: return QStringLiteral("gt_total");
-    case CellKind::FalsePositiveTotal: return QStringLiteral("false_positive_total");
-    case CellKind::FalseNegativeTotal: return QStringLiteral("false_negative_total");
-    case CellKind::All: return QStringLiteral("all");
-    case CellKind::NotApplicable: return QStringLiteral("not_applicable");
+    case CellKind::Match:
+        return QStringLiteral("match");
+    case CellKind::ClassMismatch:
+        return QStringLiteral("class_mismatch");
+    case CellKind::FalsePositive:
+        return QStringLiteral("false_positive");
+    case CellKind::FalseNegative:
+        return QStringLiteral("false_negative");
+    case CellKind::PredTotal:
+        return QStringLiteral("pred_total");
+    case CellKind::GtTotal:
+        return QStringLiteral("gt_total");
+    case CellKind::FalsePositiveTotal:
+        return QStringLiteral("false_positive_total");
+    case CellKind::FalseNegativeTotal:
+        return QStringLiteral("false_negative_total");
+    case CellKind::All:
+        return QStringLiteral("all");
+    case CellKind::NotApplicable:
+        return QStringLiteral("not_applicable");
     }
     return QStringLiteral("not_applicable");
 }
@@ -185,10 +220,10 @@ QString cellKindKey(const CellKind kind)
 CellKind cellKindFromKey(const QString &key)
 {
     const QString value = normalized(key);
-    for (const CellKind kind : {CellKind::Match, CellKind::ClassMismatch, CellKind::FalsePositive,
-                                CellKind::FalseNegative, CellKind::PredTotal, CellKind::GtTotal,
-                                CellKind::FalsePositiveTotal, CellKind::FalseNegativeTotal, CellKind::All,
-                                CellKind::NotApplicable})
+    for (const CellKind kind :
+         {CellKind::Match, CellKind::ClassMismatch, CellKind::FalsePositive, CellKind::FalseNegative,
+          CellKind::PredTotal, CellKind::GtTotal, CellKind::FalsePositiveTotal, CellKind::FalseNegativeTotal,
+          CellKind::All, CellKind::NotApplicable})
     {
         if (value == cellKindKey(kind))
             return kind;
@@ -200,10 +235,14 @@ QString chartKindKey(const ChartKind kind)
 {
     switch (kind)
     {
-    case ChartKind::Line: return QStringLiteral("line");
-    case ChartKind::Bar: return QStringLiteral("bar");
-    case ChartKind::Pie: return QStringLiteral("pie");
-    case ChartKind::Unknown: return QStringLiteral("unknown");
+    case ChartKind::Line:
+        return QStringLiteral("line");
+    case ChartKind::Bar:
+        return QStringLiteral("bar");
+    case ChartKind::Pie:
+        return QStringLiteral("pie");
+    case ChartKind::Unknown:
+        return QStringLiteral("unknown");
     }
     return QStringLiteral("unknown");
 }
@@ -224,9 +263,12 @@ QString chartAxisIdKey(const ChartAxisId id)
 {
     switch (id)
     {
-    case ChartAxisId::ScoreAxis: return QStringLiteral("score-axis");
-    case ChartAxisId::CountAxis: return QStringLiteral("count-axis");
-    case ChartAxisId::Unknown: return QStringLiteral("unknown");
+    case ChartAxisId::ScoreAxis:
+        return QStringLiteral("score-axis");
+    case ChartAxisId::CountAxis:
+        return QStringLiteral("count-axis");
+    case ChartAxisId::Unknown:
+        return QStringLiteral("unknown");
     }
     return QStringLiteral("unknown");
 }
@@ -245,10 +287,14 @@ QString chartIdKey(const ChartId id)
 {
     switch (id)
     {
-    case ChartId::AnomalyScoreDistribution: return QStringLiteral("anomaly_score_distribution");
-    case ChartId::PrecisionRecall: return QStringLiteral("precision_recall");
-    case ChartId::PerClassMetrics: return QStringLiteral("per_class_metrics");
-    case ChartId::Unknown: return QStringLiteral("unknown");
+    case ChartId::AnomalyScoreDistribution:
+        return QStringLiteral("anomaly_score_distribution");
+    case ChartId::PrecisionRecall:
+        return QStringLiteral("precision_recall");
+    case ChartId::PerClassMetrics:
+        return QStringLiteral("per_class_metrics");
+    case ChartId::Unknown:
+        return QStringLiteral("unknown");
     }
     return QStringLiteral("unknown");
 }
@@ -269,11 +315,16 @@ QString seriesKindKey(const SeriesKind kind)
 {
     switch (kind)
     {
-    case SeriesKind::Good: return QStringLiteral("good");
-    case SeriesKind::Anomaly: return QStringLiteral("anomaly");
-    case SeriesKind::Average: return QStringLiteral("average");
-    case SeriesKind::Class: return QStringLiteral("class");
-    case SeriesKind::Unknown: return QStringLiteral("unknown");
+    case SeriesKind::Good:
+        return QStringLiteral("good");
+    case SeriesKind::Anomaly:
+        return QStringLiteral("anomaly");
+    case SeriesKind::Average:
+        return QStringLiteral("average");
+    case SeriesKind::Class:
+        return QStringLiteral("class");
+    case SeriesKind::Unknown:
+        return QStringLiteral("unknown");
     }
     return QStringLiteral("unknown");
 }
@@ -296,10 +347,14 @@ QString filterKindKey(const FilterKind kind)
 {
     switch (kind)
     {
-    case FilterKind::ImageScore: return QStringLiteral("image_score");
-    case FilterKind::PrecisionRecall: return QStringLiteral("precision_recall");
-    case FilterKind::PerClassMetrics: return QStringLiteral("per_class_metrics");
-    case FilterKind::Unknown: return QStringLiteral("unknown");
+    case FilterKind::ImageScore:
+        return QStringLiteral("image_score");
+    case FilterKind::PrecisionRecall:
+        return QStringLiteral("precision_recall");
+    case FilterKind::PerClassMetrics:
+        return QStringLiteral("per_class_metrics");
+    case FilterKind::Unknown:
+        return QStringLiteral("unknown");
     }
     return QStringLiteral("unknown");
 }
@@ -320,11 +375,16 @@ QString matrixAxisKey(const MatrixAxisKey key)
 {
     switch (key)
     {
-    case MatrixAxisKey::FalseNegative: return QStringLiteral("FN");
-    case MatrixAxisKey::FalsePositive: return QStringLiteral("FP");
-    case MatrixAxisKey::UnmatchedGroundTruth: return QStringLiteral("UNMATCHED_GT");
-    case MatrixAxisKey::UnmatchedPrediction: return QStringLiteral("UNMATCHED_PRED");
-    case MatrixAxisKey::Total: return QStringLiteral("TOTAL");
+    case MatrixAxisKey::FalseNegative:
+        return QStringLiteral("FN");
+    case MatrixAxisKey::FalsePositive:
+        return QStringLiteral("FP");
+    case MatrixAxisKey::UnmatchedGroundTruth:
+        return QStringLiteral("UNMATCHED_GT");
+    case MatrixAxisKey::UnmatchedPrediction:
+        return QStringLiteral("UNMATCHED_PRED");
+    case MatrixAxisKey::Total:
+        return QStringLiteral("TOTAL");
     }
     return {};
 }
@@ -333,11 +393,16 @@ QString matrixAxisLabel(const MatrixAxisKey key)
 {
     switch (key)
     {
-    case MatrixAxisKey::FalseNegative: return QStringLiteral("FN");
-    case MatrixAxisKey::FalsePositive: return QStringLiteral("FP");
-    case MatrixAxisKey::UnmatchedGroundTruth: return QStringLiteral("漏检");
-    case MatrixAxisKey::UnmatchedPrediction: return QStringLiteral("误检");
-    case MatrixAxisKey::Total: return displayText(DisplayText::Total);
+    case MatrixAxisKey::FalseNegative:
+        return QStringLiteral("FN");
+    case MatrixAxisKey::FalsePositive:
+        return QStringLiteral("FP");
+    case MatrixAxisKey::UnmatchedGroundTruth:
+        return QStringLiteral("漏检");
+    case MatrixAxisKey::UnmatchedPrediction:
+        return QStringLiteral("误检");
+    case MatrixAxisKey::Total:
+        return displayText(DisplayText::Total);
     }
     return {};
 }
@@ -346,9 +411,12 @@ QString displayText(const DisplayText text)
 {
     switch (text)
     {
-    case DisplayText::Good: return QStringLiteral("正常");
-    case DisplayText::Anomaly: return QStringLiteral("异常");
-    case DisplayText::Total: return QStringLiteral("合计");
+    case DisplayText::Good:
+        return QStringLiteral("正常");
+    case DisplayText::Anomaly:
+        return QStringLiteral("异常");
+    case DisplayText::Total:
+        return QStringLiteral("合计");
     }
     return {};
 }
@@ -357,14 +425,22 @@ QString viewStateKey(const ViewState state)
 {
     switch (state)
     {
-    case ViewState::NotRun: return QStringLiteral("NotRun");
-    case ViewState::Loading: return QStringLiteral("Loading");
-    case ViewState::Running: return QStringLiteral("Running");
-    case ViewState::Failed: return QStringLiteral("Failed");
-    case ViewState::MissingResult: return QStringLiteral("MissingResult");
-    case ViewState::InvalidResult: return QStringLiteral("InvalidResult");
-    case ViewState::Error: return QStringLiteral("Error");
-    case ViewState::Ready: return QStringLiteral("Ready");
+    case ViewState::NotRun:
+        return QStringLiteral("NotRun");
+    case ViewState::Loading:
+        return QStringLiteral("Loading");
+    case ViewState::Running:
+        return QStringLiteral("Running");
+    case ViewState::Failed:
+        return QStringLiteral("Failed");
+    case ViewState::MissingResult:
+        return QStringLiteral("MissingResult");
+    case ViewState::InvalidResult:
+        return QStringLiteral("InvalidResult");
+    case ViewState::Error:
+        return QStringLiteral("Error");
+    case ViewState::Ready:
+        return QStringLiteral("Ready");
     }
     return QStringLiteral("NotRun");
 }
@@ -372,9 +448,9 @@ QString viewStateKey(const ViewState state)
 ViewState viewStateFromKey(const QString &key)
 {
     const QString value = normalized(key);
-    for (const ViewState state : {ViewState::NotRun, ViewState::Loading, ViewState::Running, ViewState::Failed,
-                                  ViewState::MissingResult, ViewState::InvalidResult, ViewState::Error,
-                                  ViewState::Ready})
+    for (const ViewState state :
+         {ViewState::NotRun, ViewState::Loading, ViewState::Running, ViewState::Failed, ViewState::MissingResult,
+          ViewState::InvalidResult, ViewState::Error, ViewState::Ready})
     {
         if (value == normalized(viewStateKey(state)))
             return state;
@@ -385,7 +461,7 @@ ViewState viewStateFromKey(const QString &key)
 QString fieldName(const Field field)
 {
     static const QMetaEnum meta_enum = QMetaEnum::fromType<Field>();
-    const char *name = meta_enum.valueToKey(static_cast<int>(field));
+    const char            *name      = meta_enum.valueToKey(static_cast<int>(field));
     if (name == nullptr)
         return {};
 
@@ -394,12 +470,11 @@ QString fieldName(const Field field)
     snake_case.reserve(camel_case.size() + 8);
     for (int index = 0; index < camel_case.size(); ++index)
     {
-        const QChar current = camel_case.at(index);
-        const QChar previous = index > 0 ? camel_case.at(index - 1) : QChar();
-        const QChar next = index + 1 < camel_case.size() ? camel_case.at(index + 1) : QChar();
+        const QChar current      = camel_case.at(index);
+        const QChar previous     = index > 0 ? camel_case.at(index - 1) : QChar();
+        const QChar next         = index + 1 < camel_case.size() ? camel_case.at(index + 1) : QChar();
         const bool word_boundary = index > 0 && current.isUpper()
-                                    && (previous.isLower() || previous.isDigit()
-                                        || (previous.isUpper() && next.isLower()));
+                                && (previous.isLower() || previous.isDigit() || (previous.isUpper() && next.isLower()));
         if (word_boundary)
             snake_case.push_back(QLatin1Char('_'));
         snake_case.push_back(current.toLower());
@@ -583,4 +658,4 @@ EvaluationProtocolKeys *EvaluationProtocolKeys::create(QQmlEngine *, QJSEngine *
     return &instance;
 }
 
-}
+} // namespace dltool::model::evaluation

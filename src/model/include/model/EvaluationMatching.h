@@ -68,26 +68,26 @@ MODEL_API QList<MatchPair> hungarianIoUMatches(int pred_count, int gt_count,
 class MODEL_API IncrementalHungarianMatcher
 {
 public:
-    IncrementalHungarianMatcher(int prediction_count, int ground_truth_count,
-                                const QVector<QVector<double>> &ious, double threshold);
+    IncrementalHungarianMatcher(int prediction_count, int ground_truth_count, const QVector<QVector<double>> &ious,
+                                double threshold);
 
-    void reset();
-    bool addPrediction(int prediction_index, const std::shared_ptr<std::atomic_bool> &cancel = {});
+    void             reset();
+    bool             addPrediction(int prediction_index, const std::shared_ptr<std::atomic_bool> &cancel = {});
     QList<MatchPair> matches(const std::shared_ptr<std::atomic_bool> &cancel = {}) const;
 
 private:
     double weight(int prediction_index, int column) const;
 
-    int                              prediction_count_{0};
-    int                              ground_truth_count_{0};
-    int                              column_count_{0};
+    int                             prediction_count_{0};
+    int                             ground_truth_count_{0};
+    int                             column_count_{0};
     const QVector<QVector<double>> *ious_{nullptr};
-    double                           threshold_{0.0};
-    QVector<int>                     row_predictions_;
-    QVector<double>                  u_;
-    QVector<double>                  v_;
-    QVector<int>                     p_;
-    QVector<int>                     way_;
+    double                          threshold_{0.0};
+    QVector<int>                    row_predictions_;
+    QVector<double>                 u_;
+    QVector<double>                 v_;
+    QVector<int>                    p_;
+    QVector<int>                    way_;
 };
 
 /**
@@ -106,4 +106,4 @@ MODEL_API QList<MatchPair> matchPredictions(const QList<EvaluationPredictionData
                                             evaluation::MatchingStrategy             strategy,
                                             const std::shared_ptr<std::atomic_bool> &cancel = {});
 
-}
+} // namespace dltool::model

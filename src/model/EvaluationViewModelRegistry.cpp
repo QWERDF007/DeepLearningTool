@@ -29,14 +29,13 @@ void EvaluationViewModelRegistry::registerBuiltins()
                       [](QObject *parent) { return new SegmentationEvaluationViewModel(parent); });
 }
 
-void EvaluationViewModelRegistry::registerViewModel(evaluation::Method method,
+void EvaluationViewModelRegistry::registerViewModel(evaluation::Method                                         method,
                                                     std::function<ModelEvaluationViewModel *(QObject *parent)> factory)
 {
     factories_.insert(static_cast<int>(method), std::move(factory));
 }
 
-ModelEvaluationViewModel *EvaluationViewModelRegistry::createViewModel(evaluation::Method method,
-                                                                       QObject *parent) const
+ModelEvaluationViewModel *EvaluationViewModelRegistry::createViewModel(evaluation::Method method, QObject *parent) const
 {
     const auto it = factories_.constFind(static_cast<int>(method));
     if (it == factories_.cend())

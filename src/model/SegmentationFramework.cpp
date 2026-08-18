@@ -20,7 +20,6 @@ FrameworkDefinition ultralyticsSegmentationFramework()
     return framework;
 }
 
-DLT_REGISTER_FRAMEWORK(DeepLearningMethod::Segmentation, UltralyticsSegmentation,
-                       ultralyticsSegmentationFramework());
+DLT_REGISTER_FRAMEWORK(DeepLearningMethod::Segmentation, UltralyticsSegmentation, ultralyticsSegmentationFramework());
 
 }} // namespace dltool::model

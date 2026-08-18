@@ -24,18 +24,19 @@ void InstanceMatchingEvaluationViewModel::applyMethodSpecificData(const Evaluati
      * 旧逻辑一致：只取 series_kind == class 的数据集，使用图表自带名称与
      * 边框颜色，避免 ViewModel 重复维护调色板。
      */
-    QVariantList options;
+    QVariantList  options;
     const QString precision_recall_id = evaluation::chartIdKey(evaluation::ChartId::PrecisionRecall);
     for (const QVariantMap &chart : result.charts)
     {
         if (chart.value(evaluation::fieldName(evaluation::Field::ChartId)).toString() != precision_recall_id)
             continue;
-        const QVariantList datasets
-            = chart.value(evaluation::fieldName(evaluation::Field::Data)).toMap()
-                  .value(evaluation::fieldName(evaluation::Field::Datasets)).toList();
+        const QVariantList datasets = chart.value(evaluation::fieldName(evaluation::Field::Data))
+                                          .toMap()
+                                          .value(evaluation::fieldName(evaluation::Field::Datasets))
+                                          .toList();
         for (const QVariant &value : datasets)
         {
-            const QVariantMap dataset = value.toMap();
+            const QVariantMap            dataset     = value.toMap();
             const evaluation::SeriesKind series_kind = evaluation::seriesKindFromKey(
                 dataset.value(evaluation::fieldName(evaluation::Field::SeriesKind)).toString());
             if (series_kind != evaluation::SeriesKind::Class)

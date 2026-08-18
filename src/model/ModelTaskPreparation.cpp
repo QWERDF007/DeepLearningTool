@@ -252,12 +252,11 @@ bool prepareFsSam2Task(int method, const QString &project_dir, const ModelTaskRe
     if (python_executable.isEmpty())
         return setError(err_msg, QString("未配置 Python 环境目录"));
 
-    const QString log_task_directory = request.task_type == ModelTaskType::Test
-                                         ? task_directory
-                                         : task_directory + QStringLiteral("_box_to_mask");
-    const QString log_dir            = request.task_type == ModelTaskType::Train
-                                         ? storage.trainLogsPath(model_name)
-                                         : storage.testTaskRoot(model_name, log_task_directory);
+    const QString log_task_directory
+        = request.task_type == ModelTaskType::Test ? task_directory : task_directory + QStringLiteral("_box_to_mask");
+    const QString log_dir  = request.task_type == ModelTaskType::Train
+                               ? storage.trainLogsPath(model_name)
+                               : storage.testTaskRoot(model_name, log_task_directory);
     const QString log_path = request.task_type == ModelTaskType::Train
                                ? storage.trainLogPath(model_name)
                                : storage.testTaskLogPath(model_name, log_task_directory);
@@ -409,7 +408,7 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
 
     const QString log_dir
         = is_train ? storage.trainLogsPath(model_name) : storage.testTaskRoot(model_name, task_directory);
-    QString       log_path
+    QString log_path
         = is_train ? storage.trainLogPath(model_name) : storage.testTaskLogPath(model_name, task_directory);
     if (log_path.isEmpty())
         return setError(err_msg, QString("日志路径为空"));
@@ -421,17 +420,28 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
     process_spec.program   = python_executable;
     process_spec.arguments = {
         script_path,
-        QStringLiteral("--model_db"), model_db,
-        QStringLiteral("--project_db"), request.project_database_path,
-        QStringLiteral("--model_root"), storage.path(model_name, ModelStorageLocation::ModelRoot),
-        QStringLiteral("--dataset_dir"), dataset_dir,
-        QStringLiteral("--train_dir"), storage.trainRoot(model_name),
-        QStringLiteral("--masks_dir"), dataset_dir,
-        QStringLiteral("--weight_dir"), storage.trainWeightsPath(model_name),
-        QStringLiteral("--log_dir"), log_dir,
-        QStringLiteral("--model_uuid"), request.model_config.model_uuid,
-        QStringLiteral("--model_architecture"), request.model_config.model_architecture,
-        QStringLiteral("--method"), QString::number(method),
+        QStringLiteral("--model_db"),
+        model_db,
+        QStringLiteral("--project_db"),
+        request.project_database_path,
+        QStringLiteral("--model_root"),
+        storage.path(model_name, ModelStorageLocation::ModelRoot),
+        QStringLiteral("--dataset_dir"),
+        dataset_dir,
+        QStringLiteral("--train_dir"),
+        storage.trainRoot(model_name),
+        QStringLiteral("--masks_dir"),
+        dataset_dir,
+        QStringLiteral("--weight_dir"),
+        storage.trainWeightsPath(model_name),
+        QStringLiteral("--log_dir"),
+        log_dir,
+        QStringLiteral("--model_uuid"),
+        request.model_config.model_uuid,
+        QStringLiteral("--model_architecture"),
+        request.model_config.model_architecture,
+        QStringLiteral("--method"),
+        QString::number(method),
     };
     if (!is_train)
     {
@@ -451,8 +461,7 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
     for (const QString &field : mask_value_fields)
     {
         QStringList collected;
-        for (const QString &split : {QStringLiteral("train"), QStringLiteral("validation"),
-                                     QStringLiteral("test")})
+        for (const QString &split : {QStringLiteral("train"), QStringLiteral("validation"), QStringLiteral("test")})
         {
             const QString value = datasets.value(split).toMap().value(field).toString();
             for (const QString &part : value.split(QChar(','), Qt::SkipEmptyParts))

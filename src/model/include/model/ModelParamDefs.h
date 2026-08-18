@@ -33,8 +33,8 @@ struct ParamGroupDefinition
  * @param description 描述
  * @return 参数定义
  */
-MODEL_API ParamDefinition makeIntegerParam(const QString &name_en, const QString &name_cn, int default_value,
-                                           int from, int to, int step, const QString &description = {});
+MODEL_API ParamDefinition makeIntegerParam(const QString &name_en, const QString &name_cn, int default_value, int from,
+                                           int to, int step, const QString &description = {});
 
 /**
  * @brief 创建浮点类型参数

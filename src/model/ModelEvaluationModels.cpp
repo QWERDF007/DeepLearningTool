@@ -1,12 +1,13 @@
 #include "model/ModelEvaluationModels.h"
-#include "model/ModelEvaluationProtocol.h"
-#include "model/EvaluationCommon.h"
 
-#include <algorithm>
-#include <cmath>
+#include "model/EvaluationCommon.h"
+#include "model/ModelEvaluationProtocol.h"
+
 #include <QMetaMethod>
 #include <QMetaObject>
 #include <QSet>
+#include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace dltool::model {
@@ -34,9 +35,8 @@ std::pair<int, int> confusionShape(const std::vector<EvaluationConfusionCell> &r
         return {0, 0};
 
     const QString first_row = records.front().row_key;
-    int           columns  = 0;
-    while (columns < static_cast<int>(records.size())
-           && records.at(static_cast<size_t>(columns)).row_key == first_row)
+    int           columns   = 0;
+    while (columns < static_cast<int>(records.size()) && records.at(static_cast<size_t>(columns)).row_key == first_row)
         ++columns;
     if (columns <= 0 || static_cast<int>(records.size()) % columns != 0)
         return {0, 0};
@@ -46,10 +46,9 @@ std::pair<int, int> confusionShape(const std::vector<EvaluationConfusionCell> &r
 bool sameConfusionCell(const EvaluationConfusionCell &lhs, const EvaluationConfusionCell &rhs)
 {
     return lhs.row_key == rhs.row_key && lhs.column_key == rhs.column_key && lhs.row_label == rhs.row_label
-           && lhs.column_label == rhs.column_label && lhs.count == rhs.count && lhs.row_class_id == rhs.row_class_id
-           && lhs.column_class_id == rhs.column_class_id && lhs.cell_kind == rhs.cell_kind
-           && lhs.tooltip == rhs.tooltip && lhs.selectable == rhs.selectable && lhs.diagonal == rhs.diagonal
-           && lhs.error == rhs.error;
+        && lhs.column_label == rhs.column_label && lhs.count == rhs.count && lhs.row_class_id == rhs.row_class_id
+        && lhs.column_class_id == rhs.column_class_id && lhs.cell_kind == rhs.cell_kind && lhs.tooltip == rhs.tooltip
+        && lhs.selectable == rhs.selectable && lhs.diagonal == rhs.diagonal && lhs.error == rhs.error;
 }
 
 bool sameConfusionLayout(const std::vector<EvaluationConfusionCell> &lhs,
@@ -59,8 +58,7 @@ bool sameConfusionLayout(const std::vector<EvaluationConfusionCell> &lhs,
         return false;
     for (size_t index = 0; index < lhs.size(); ++index)
     {
-        if (lhs.at(index).row_key != rhs.at(index).row_key
-            || lhs.at(index).column_key != rhs.at(index).column_key)
+        if (lhs.at(index).row_key != rhs.at(index).row_key || lhs.at(index).column_key != rhs.at(index).column_key)
             return false;
     }
     return true;
@@ -71,7 +69,7 @@ const QList<int> &predClassIds(const EvaluationImageRecord &record)
     return record.pred_class_ids;
 }
 
-}
+} // namespace
 
 void rebuildImageDerivedValues(EvaluationImageRecord &record)
 {
@@ -79,9 +77,9 @@ void rebuildImageDerivedValues(EvaluationImageRecord &record)
     record.gt_class_ids.clear();
     record.pred_class_ids.clear();
     record.max_prediction_score = 0.0;
-    record.has_gt = !record.gt.isEmpty();
-    record.has_pred = !record.predictions.isEmpty();
-    bool has_prediction_score = false;
+    record.has_gt               = !record.gt.isEmpty();
+    record.has_pred             = !record.predictions.isEmpty();
+    bool has_prediction_score   = false;
 
     for (const EvaluationGroundTruthRecord &ground_truth : record.gt)
     {
@@ -120,14 +118,22 @@ QVariant EvaluationMetricModel::data(const QModelIndex &index, const int role) c
     switch (role)
     {
     case Qt::DisplayRole:
-    case LabelRole: return record.label;
-    case KeyRole: return record.key;
-    case ClassNameRole: return record.class_name;
-    case ClassIdRole: return record.class_id;
-    case PrecisionRole: return record.precision;
-    case RecallRole: return record.recall;
-    case F1Role: return record.f1;
-    case ApRole: return record.ap;
+    case LabelRole:
+        return record.label;
+    case KeyRole:
+        return record.key;
+    case ClassNameRole:
+        return record.class_name;
+    case ClassIdRole:
+        return record.class_id;
+    case PrecisionRole:
+        return record.precision;
+    case RecallRole:
+        return record.recall;
+    case F1Role:
+        return record.f1;
+    case ApRole:
+        return record.ap;
     case PrecisionTextRole:
         return record.precision_defined ? QString::number(record.precision, 'f', 3) : QString("—");
     case RecallTextRole:
@@ -146,35 +152,41 @@ QVariant EvaluationMetricModel::data(const QModelIndex &index, const int role) c
         return QStringLiteral("%1 / %2").arg(record.fp).arg(record.tp + record.fp);
     case FnLabeledTextRole:
         return QStringLiteral("%1 / %2").arg(record.fn).arg(record.tp + record.fn);
-    case TpRole: return record.tp;
-    case FpRole: return record.fp;
-    case FnRole: return record.fn;
-    default: return {};
+    case TpRole:
+        return record.tp;
+    case FpRole:
+        return record.fp;
+    case FnRole:
+        return record.fn;
+    default:
+        return {};
     }
 }
 
 QHash<int, QByteArray> EvaluationMetricModel::roleNames() const
 {
-    return {{KeyRole, "key"},
-            {LabelRole, "label"},
-            {ClassNameRole, "className"},
-            {ClassIdRole, "classId"},
-            {PrecisionRole, "precision"},
-            {RecallRole, "recall"},
-            {F1Role, "f1"},
-            {ApRole, "ap"},
-            {PrecisionTextRole, "precisionText"},
-            {RecallTextRole, "recallText"},
-            {F1TextRole, "f1Text"},
-            {ApTextRole, "apText"},
-            {ClassColorRole, "classColor"},
-            {PredictedCountRole, "predictedCount"},
-            {LabeledCountRole, "labeledCount"},
-            {FpPredictedTextRole, "fpPredictedText"},
-            {FnLabeledTextRole, "fnLabeledText"},
-            {TpRole, "tp"},
-            {FpRole, "fp"},
-            {FnRole, "fn"}};
+    return {
+        {            KeyRole,             "key"},
+        {          LabelRole,           "label"},
+        {      ClassNameRole,       "className"},
+        {        ClassIdRole,         "classId"},
+        {      PrecisionRole,       "precision"},
+        {         RecallRole,          "recall"},
+        {             F1Role,              "f1"},
+        {             ApRole,              "ap"},
+        {  PrecisionTextRole,   "precisionText"},
+        {     RecallTextRole,      "recallText"},
+        {         F1TextRole,          "f1Text"},
+        {         ApTextRole,          "apText"},
+        {     ClassColorRole,      "classColor"},
+        { PredictedCountRole,  "predictedCount"},
+        {   LabeledCountRole,    "labeledCount"},
+        {FpPredictedTextRole, "fpPredictedText"},
+        {  FnLabeledTextRole,   "fnLabeledText"},
+        {             TpRole,              "tp"},
+        {             FpRole,              "fp"},
+        {             FnRole,              "fn"}
+    };
 }
 
 void EvaluationMetricModel::setRecords(std::vector<EvaluationMetricRecord> records)
@@ -214,23 +226,36 @@ QVariant EvaluationConfusionModel::data(const QModelIndex &index, const int role
     switch (role)
     {
     case Qt::DisplayRole:
-    case CountRole: return record.count;
-    case RowKeyRole: return record.row_key;
-    case ColumnKeyRole: return record.column_key;
-    case RowLabelRole: return record.row_label;
-    case ColumnLabelRole: return record.column_label;
-    case RowClassIdRole: return record.row_class_id;
-    case ColumnClassIdRole: return record.column_class_id;
-    case CellKindRole: return evaluation::cellKindKey(record.cell_kind);
-    case CellKindValueRole: return static_cast<int>(record.cell_kind);
-    case SelectableRole: return record.selectable;
-    case IsDiagonalRole: return record.diagonal;
-    case IsErrorRole: return record.error;
+    case CountRole:
+        return record.count;
+    case RowKeyRole:
+        return record.row_key;
+    case ColumnKeyRole:
+        return record.column_key;
+    case RowLabelRole:
+        return record.row_label;
+    case ColumnLabelRole:
+        return record.column_label;
+    case RowClassIdRole:
+        return record.row_class_id;
+    case ColumnClassIdRole:
+        return record.column_class_id;
+    case CellKindRole:
+        return evaluation::cellKindKey(record.cell_kind);
+    case CellKindValueRole:
+        return static_cast<int>(record.cell_kind);
+    case SelectableRole:
+        return record.selectable;
+    case IsDiagonalRole:
+        return record.diagonal;
+    case IsErrorRole:
+        return record.error;
     case TooltipRole:
         return record.tooltip.isEmpty()
-            ? QString("PRED %1 / GT %2\\n数量：%3").arg(record.row_label, record.column_label).arg(record.count)
-            : record.tooltip;
-    default: return {};
+                 ? QString("PRED %1 / GT %2\\n数量：%3").arg(record.row_label, record.column_label).arg(record.count)
+                 : record.tooltip;
+    default:
+        return {};
     }
 }
 
@@ -247,12 +272,22 @@ QVariant EvaluationConfusionModel::headerData(const int section, const Qt::Orien
 
 QHash<int, QByteArray> EvaluationConfusionModel::roleNames() const
 {
-    return {{Qt::DisplayRole, "display"}, {RowKeyRole, "rowKey"}, {ColumnKeyRole, "columnKey"},
-            {RowLabelRole, "rowLabel"}, {ColumnLabelRole, "columnLabel"}, {CountRole, "count"},
-            {RowClassIdRole, "rowClassId"}, {ColumnClassIdRole, "columnClassId"}, {CellKindRole, "cellKind"},
-            {CellKindValueRole, "cellKindValue"},
-            {SelectableRole, "selectable"}, {IsDiagonalRole, "isDiagonal"}, {IsErrorRole, "isError"},
-            {TooltipRole, "tooltip"}};
+    return {
+        {  Qt::DisplayRole,       "display"},
+        {       RowKeyRole,        "rowKey"},
+        {    ColumnKeyRole,     "columnKey"},
+        {     RowLabelRole,      "rowLabel"},
+        {  ColumnLabelRole,   "columnLabel"},
+        {        CountRole,         "count"},
+        {   RowClassIdRole,    "rowClassId"},
+        {ColumnClassIdRole, "columnClassId"},
+        {     CellKindRole,      "cellKind"},
+        {CellKindValueRole, "cellKindValue"},
+        {   SelectableRole,    "selectable"},
+        {   IsDiagonalRole,    "isDiagonal"},
+        {      IsErrorRole,       "isError"},
+        {      TooltipRole,       "tooltip"}
+    };
 }
 
 void EvaluationConfusionModel::setRecords(std::vector<EvaluationConfusionCell> records)
@@ -279,7 +314,7 @@ void EvaluationConfusionModel::setRecords(std::vector<EvaluationConfusionCell> r
     }
 
     beginResetModel();
-    records_ = std::move(records);
+    records_      = std::move(records);
     row_count_    = new_rows;
     column_count_ = new_columns;
     endResetModel();
@@ -308,65 +343,126 @@ QVariant EvaluationInstanceModel::data(const QModelIndex &index, const int role)
     switch (role)
     {
     case Qt::DisplayRole:
-    case ImageNameRole: return record.image_name;
-    case EventUuidRole: return record.event_uuid;
-    case ImageIdRole: return record.image_id;
-    case DatasetIdRole: return record.dataset_id;
-    case ImagePathRole: return record.image_path;
-    case ImageWidthRole: return record.image_width;
-    case ImageHeightRole: return record.image_height;
-    case StatusRole: return evaluation::statusKey(record.status);
-    case StatusKindRole: return static_cast<int>(record.status);
-    case StatusTextRole: return statusDisplayText(record.status);
-    case GtClassRole: return record.gt_class;
-    case GtClassNameRole: return record.gt_class;
-    case PredClassRole: return record.pred_class;
-    case PredClassNameRole: return record.pred_class;
-    case GtClassIdRole: return record.gt_class_id;
-    case PredClassIdRole: return record.pred_class_id;
-    case ScoreRole: return record.score;
-    case PredScoreRole: return record.score;
-    case IouRole: return record.iou;
-    case GtGeometryRole: return record.gt_geometry;
-    case PredGeometryRole: return record.pred_geometry;
-    case GtBoundsRole: return record.gt_bounds;
-    case PredBoundsRole: return record.pred_bounds;
-    case CropBoundsRole: return record.crop_bounds;
-    case GtOverlayBoundsRole: return record.gt_overlay_bounds;
-    case PredOverlayBoundsRole: return record.pred_overlay_bounds;
-    case GtOverlayPointsRole: return record.gt_overlay_points;
-    case PredOverlayPointsRole: return record.pred_overlay_points;
-    case GtMaskUrlRole: return record.gt_mask_url;
-    case PredMaskUrlRole: return record.pred_mask_url;
-    case GtLabelIdRole: return record.gt_label_id;
-    case GtInstanceIdRole: return record.gt_instance_id;
-    case PredInstanceIdRole: return record.pred_instance_id;
-    case GtClassColorRole: return record.gt_class_color;
-    case PredClassColorRole: return record.pred_class_color;
-    case ThumbnailUrlRole: return record.thumbnail_url;
-    case SelectedRole: return record.selected;
-    default: return {};
+    case ImageNameRole:
+        return record.image_name;
+    case EventUuidRole:
+        return record.event_uuid;
+    case ImageIdRole:
+        return record.image_id;
+    case DatasetIdRole:
+        return record.dataset_id;
+    case ImagePathRole:
+        return record.image_path;
+    case ImageWidthRole:
+        return record.image_width;
+    case ImageHeightRole:
+        return record.image_height;
+    case StatusRole:
+        return evaluation::statusKey(record.status);
+    case StatusKindRole:
+        return static_cast<int>(record.status);
+    case StatusTextRole:
+        return statusDisplayText(record.status);
+    case GtClassRole:
+        return record.gt_class;
+    case GtClassNameRole:
+        return record.gt_class;
+    case PredClassRole:
+        return record.pred_class;
+    case PredClassNameRole:
+        return record.pred_class;
+    case GtClassIdRole:
+        return record.gt_class_id;
+    case PredClassIdRole:
+        return record.pred_class_id;
+    case ScoreRole:
+        return record.score;
+    case PredScoreRole:
+        return record.score;
+    case IouRole:
+        return record.iou;
+    case GtGeometryRole:
+        return record.gt_geometry;
+    case PredGeometryRole:
+        return record.pred_geometry;
+    case GtBoundsRole:
+        return record.gt_bounds;
+    case PredBoundsRole:
+        return record.pred_bounds;
+    case CropBoundsRole:
+        return record.crop_bounds;
+    case GtOverlayBoundsRole:
+        return record.gt_overlay_bounds;
+    case PredOverlayBoundsRole:
+        return record.pred_overlay_bounds;
+    case GtOverlayPointsRole:
+        return record.gt_overlay_points;
+    case PredOverlayPointsRole:
+        return record.pred_overlay_points;
+    case GtMaskUrlRole:
+        return record.gt_mask_url;
+    case PredMaskUrlRole:
+        return record.pred_mask_url;
+    case GtLabelIdRole:
+        return record.gt_label_id;
+    case GtInstanceIdRole:
+        return record.gt_instance_id;
+    case PredInstanceIdRole:
+        return record.pred_instance_id;
+    case GtClassColorRole:
+        return record.gt_class_color;
+    case PredClassColorRole:
+        return record.pred_class_color;
+    case ThumbnailUrlRole:
+        return record.thumbnail_url;
+    case SelectedRole:
+        return record.selected;
+    default:
+        return {};
     }
 }
 
 QHash<int, QByteArray> EvaluationInstanceModel::roleNames() const
 {
-    return {{EventUuidRole, "eventUuid"}, {ImageIdRole, "imageId"}, {DatasetIdRole, "datasetId"},
-            {ImageNameRole, "imageName"}, {ImagePathRole, "imagePath"}, {ImageWidthRole, "imageWidth"},
-            {ImageHeightRole, "imageHeight"}, {StatusRole, "status"}, {StatusKindRole, "statusKind"},
-            {StatusTextRole, "statusText"}, {GtClassRole, "gtClass"}, {GtClassNameRole, "gtClassName"},
-            {PredClassRole, "predClass"}, {PredClassNameRole, "predClassName"},
-            {GtClassIdRole, "gtClassId"}, {PredClassIdRole, "predClassId"}, {ScoreRole, "score"},
-            {PredScoreRole, "predScore"}, {IouRole, "iou"},
-            {GtGeometryRole, "gtGeometry"}, {PredGeometryRole, "predGeometry"},
-            {GtBoundsRole, "gtBounds"}, {PredBoundsRole, "predBounds"}, {CropBoundsRole, "cropBounds"},
-            {GtOverlayBoundsRole, "gtOverlayBounds"}, {PredOverlayBoundsRole, "predOverlayBounds"},
-            {GtOverlayPointsRole, "gtOverlayPoints"}, {PredOverlayPointsRole, "predOverlayPoints"},
-            {GtMaskUrlRole, "gtMaskUrl"}, {PredMaskUrlRole, "predMaskUrl"},
-            {GtLabelIdRole, "gtLabelId"}, {GtInstanceIdRole, "gtInstanceId"},
-            {PredInstanceIdRole, "predInstanceId"}, {GtClassColorRole, "gtClassColor"},
-            {PredClassColorRole, "predClassColor"}, {ThumbnailUrlRole, "thumbnailUrl"},
-            {SelectedRole, "selected"}};
+    return {
+        {        EventUuidRole,         "eventUuid"},
+        {          ImageIdRole,           "imageId"},
+        {        DatasetIdRole,         "datasetId"},
+        {        ImageNameRole,         "imageName"},
+        {        ImagePathRole,         "imagePath"},
+        {       ImageWidthRole,        "imageWidth"},
+        {      ImageHeightRole,       "imageHeight"},
+        {           StatusRole,            "status"},
+        {       StatusKindRole,        "statusKind"},
+        {       StatusTextRole,        "statusText"},
+        {          GtClassRole,           "gtClass"},
+        {      GtClassNameRole,       "gtClassName"},
+        {        PredClassRole,         "predClass"},
+        {    PredClassNameRole,     "predClassName"},
+        {        GtClassIdRole,         "gtClassId"},
+        {      PredClassIdRole,       "predClassId"},
+        {            ScoreRole,             "score"},
+        {        PredScoreRole,         "predScore"},
+        {              IouRole,               "iou"},
+        {       GtGeometryRole,        "gtGeometry"},
+        {     PredGeometryRole,      "predGeometry"},
+        {         GtBoundsRole,          "gtBounds"},
+        {       PredBoundsRole,        "predBounds"},
+        {       CropBoundsRole,        "cropBounds"},
+        {  GtOverlayBoundsRole,   "gtOverlayBounds"},
+        {PredOverlayBoundsRole, "predOverlayBounds"},
+        {  GtOverlayPointsRole,   "gtOverlayPoints"},
+        {PredOverlayPointsRole, "predOverlayPoints"},
+        {        GtMaskUrlRole,         "gtMaskUrl"},
+        {      PredMaskUrlRole,       "predMaskUrl"},
+        {        GtLabelIdRole,         "gtLabelId"},
+        {     GtInstanceIdRole,      "gtInstanceId"},
+        {   PredInstanceIdRole,    "predInstanceId"},
+        {     GtClassColorRole,      "gtClassColor"},
+        {   PredClassColorRole,    "predClassColor"},
+        {     ThumbnailUrlRole,      "thumbnailUrl"},
+        {         SelectedRole,          "selected"}
+    };
 }
 
 void EvaluationInstanceModel::setRecords(std::vector<EvaluationInstanceRecord> records)
@@ -385,8 +481,8 @@ void EvaluationInstanceModel::setSelectedEvent(const QString &eventUuid)
         if (records_.at(static_cast<size_t>(row)).selected == selected)
             continue;
         records_[static_cast<size_t>(row)].selected = selected;
-        const QModelIndex index = this->index(row, 0);
-        emit dataChanged(index, index, {SelectedRole});
+        const QModelIndex index                     = this->index(row, 0);
+        emit              dataChanged(index, index, {SelectedRole});
     }
 }
 
@@ -418,55 +514,69 @@ QVariant EvaluationImageModel::data(const QModelIndex &index, const int role) co
     switch (role)
     {
     case Qt::DisplayRole:
-    case ImageNameRole: return record.name;
-    case ImageIdRole: return record.id;
-    case DatasetIdRole: return record.dataset_id;
-    case ImagePathRole: return record.path;
-    case ImageWidthRole: return record.width;
-    case ImageHeightRole: return record.height;
+    case ImageNameRole:
+        return record.name;
+    case ImageIdRole:
+        return record.id;
+    case DatasetIdRole:
+        return record.dataset_id;
+    case ImagePathRole:
+        return record.path;
+    case ImageWidthRole:
+        return record.width;
+    case ImageHeightRole:
+        return record.height;
     case GtLabelIdsRole:
     {
         QVariantList values;
-        for (const qint64 value : record.gt_label_ids)
-            values.push_back(value);
+        for (const qint64 value : record.gt_label_ids) values.push_back(value);
         return values;
     }
     case GtClassIdsRole:
     {
         QVariantList values;
-        for (const int value : record.gt_class_ids)
-            values.push_back(value);
+        for (const int value : record.gt_class_ids) values.push_back(value);
         return values;
     }
     case PredClassIdsRole:
     {
         QVariantList values;
-        for (const int value : record.pred_class_ids)
-            values.push_back(value);
+        for (const int value : record.pred_class_ids) values.push_back(value);
         return values;
     }
-    case ScoreRole: return record.max_prediction_score;
-    case HasGtRole: return record.has_gt;
-    case HasPredRole: return record.has_pred;
-    default: return {};
+    case ScoreRole:
+        return record.max_prediction_score;
+    case HasGtRole:
+        return record.has_gt;
+    case HasPredRole:
+        return record.has_pred;
+    default:
+        return {};
     }
 }
 
 QHash<int, QByteArray> EvaluationImageModel::roleNames() const
 {
-    return {{ImageIdRole, "imageId"},       {DatasetIdRole, "datasetId"},
-            {ImageNameRole, "imageName"},   {ImagePathRole, "imagePath"},
-            {ImageWidthRole, "imageWidth"}, {ImageHeightRole, "imageHeight"},
-            {GtLabelIdsRole, "gtLabelIds"}, {GtClassIdsRole, "gtClassIds"},
-            {PredClassIdsRole, "predClassIds"}, {ScoreRole, "score"}, {HasGtRole, "hasGt"},
-            {HasPredRole, "hasPred"}};
+    return {
+        {     ImageIdRole,      "imageId"},
+        {   DatasetIdRole,    "datasetId"},
+        {   ImageNameRole,    "imageName"},
+        {   ImagePathRole,    "imagePath"},
+        {  ImageWidthRole,   "imageWidth"},
+        { ImageHeightRole,  "imageHeight"},
+        {  GtLabelIdsRole,   "gtLabelIds"},
+        {  GtClassIdsRole,   "gtClassIds"},
+        {PredClassIdsRole, "predClassIds"},
+        {       ScoreRole,        "score"},
+        {       HasGtRole,        "hasGt"},
+        {     HasPredRole,      "hasPred"}
+    };
 }
 
 void EvaluationImageModel::setRecords(std::vector<EvaluationImageRecord> records)
 {
     beginResetModel();
-    for (EvaluationImageRecord &record : records)
-        rebuildImageDerivedValues(record);
+    for (EvaluationImageRecord &record : records) rebuildImageDerivedValues(record);
     records_ = std::move(records);
     endResetModel();
 }
@@ -531,9 +641,9 @@ bool hasInvokable(QObject *object, const char *method, const int parameter_count
 
 bool globalFilterIsActive(QObject *object, bool *invoked = nullptr)
 {
-    bool active = true;
-    const bool ok = hasInvokable(object, "isActive", 0)
-        && QMetaObject::invokeMethod(object, "isActive", Qt::DirectConnection, Q_RETURN_ARG(bool, active));
+    bool       active = true;
+    const bool ok     = hasInvokable(object, "isActive", 0)
+                     && QMetaObject::invokeMethod(object, "isActive", Qt::DirectConnection, Q_RETURN_ARG(bool, active));
     if (invoked != nullptr)
         *invoked = ok;
     return active;
@@ -541,10 +651,10 @@ bool globalFilterIsActive(QObject *object, bool *invoked = nullptr)
 
 bool invokeBool(QObject *object, const char *method, const qint64 value, bool *invoked = nullptr)
 {
-    bool accepted = true;
-    const bool ok = hasInvokable(object, method, 1)
-        && QMetaObject::invokeMethod(object, method, Qt::DirectConnection, Q_RETURN_ARG(bool, accepted),
-                                     Q_ARG(qint64, value));
+    bool       accepted = true;
+    const bool ok       = hasInvokable(object, method, 1)
+                       && QMetaObject::invokeMethod(object, method, Qt::DirectConnection, Q_RETURN_ARG(bool, accepted),
+                                                    Q_ARG(qint64, value));
     if (invoked != nullptr)
         *invoked = ok;
     return accepted;
@@ -552,15 +662,15 @@ bool invokeBool(QObject *object, const char *method, const qint64 value, bool *i
 
 bool invokeBool(QObject *object, const char *method, bool *invoked)
 {
-    bool accepted = true;
-    const bool ok = hasInvokable(object, method, 0)
-        && QMetaObject::invokeMethod(object, method, Qt::DirectConnection, Q_RETURN_ARG(bool, accepted));
+    bool       accepted = true;
+    const bool ok       = hasInvokable(object, method, 0)
+                       && QMetaObject::invokeMethod(object, method, Qt::DirectConnection, Q_RETURN_ARG(bool, accepted));
     if (invoked != nullptr)
         *invoked = ok;
     return accepted;
 }
 
-}
+} // namespace
 
 EvaluationImageFilterProxyModel::EvaluationImageFilterProxyModel(QObject *parent)
     : QSortFilterProxyModel(parent)
@@ -608,14 +718,14 @@ bool EvaluationImageFilterProxyModel::acceptsRecord(const EvaluationImageRecord 
     if (!label_ids.isEmpty())
     {
         bool label_method_invoked = false;
-        bool any_label_accepted = false;
+        bool any_label_accepted   = false;
         for (const qint64 label_id : label_ids)
         {
-            bool accepted = false;
-            bool invoked_label = false;
-            accepted = invokeBool(global_filter_, "acceptsLabel", label_id, &invoked_label);
+            bool accepted        = false;
+            bool invoked_label   = false;
+            accepted             = invokeBool(global_filter_, "acceptsLabel", label_id, &invoked_label);
             label_method_invoked = label_method_invoked || invoked_label;
-            any_label_accepted = any_label_accepted || (invoked_label && accepted);
+            any_label_accepted   = any_label_accepted || (invoked_label && accepted);
         }
         if (label_method_invoked && !any_label_accepted)
             return false;
@@ -626,14 +736,14 @@ bool EvaluationImageFilterProxyModel::acceptsRecord(const EvaluationImageRecord 
      *
      * LabelClass 属于实例级筛选，因此图像行需按自身 GT 标签执行同一套规则。
      */
-    bool class_enabled = false;
+    bool class_enabled         = false;
     bool class_enabled_invoked = false;
-    class_enabled = invokeBool(global_filter_, "isLabelClassFilterEnabled", &class_enabled_invoked);
+    class_enabled              = invokeBool(global_filter_, "isLabelClassFilterEnabled", &class_enabled_invoked);
     if (!class_enabled_invoked || !class_enabled)
         return true;
-    bool inverted = false;
+    bool inverted         = false;
     bool inverted_invoked = false;
-    inverted = invokeBool(global_filter_, "isLabelClassFilterInverted", &inverted_invoked);
+    inverted              = invokeBool(global_filter_, "isLabelClassFilterInverted", &inverted_invoked);
     if (!inverted_invoked)
         inverted = false;
 
@@ -646,12 +756,12 @@ bool EvaluationImageFilterProxyModel::acceptsRecord(const EvaluationImageRecord 
     const QList<int> &relevant_classes = gtClassIds(record);
 
     QList<bool> accepted_labels;
-    bool class_method_invoked = false;
+    bool        class_method_invoked = false;
     for (const int class_id : relevant_classes)
     {
-        bool class_invoked = false;
-        const bool accepted = invokeBool(global_filter_, "acceptsLabelClassId", class_id, &class_invoked);
-        class_method_invoked = class_method_invoked || class_invoked;
+        bool       class_invoked = false;
+        const bool accepted      = invokeBool(global_filter_, "acceptsLabelClassId", class_id, &class_invoked);
+        class_method_invoked     = class_method_invoked || class_invoked;
         if (class_invoked)
             accepted_labels.push_back(accepted);
     }
@@ -664,8 +774,7 @@ bool EvaluationImageFilterProxyModel::acceptsRecord(const EvaluationImageRecord 
     return std::any_of(accepted_labels.cbegin(), accepted_labels.cend(), [](bool value) { return value; });
 }
 
-bool EvaluationImageFilterProxyModel::filterAcceptsRow(const int source_row,
-                                                        const QModelIndex &source_parent) const
+bool EvaluationImageFilterProxyModel::filterAcceptsRow(const int source_row, const QModelIndex &source_parent) const
 {
     const auto *source = qobject_cast<const EvaluationImageModel *>(sourceModel());
     if (source == nullptr)
@@ -743,20 +852,20 @@ bool EvaluationGlobalFilterProxyModel::acceptsGlobalLabel(const EvaluationInstan
      */
     if (record.gt_label_id >= 0)
     {
-        bool invoked_label = false;
+        bool       invoked_label  = false;
         const bool accepted_label = invokeBool(global_filter_, "acceptsLabel", record.gt_label_id, &invoked_label);
         if (invoked_label && !accepted_label)
             return false;
     }
 
-    bool filter_enabled = false;
+    bool filter_enabled  = false;
     bool enabled_invoked = false;
-    filter_enabled = invokeBool(global_filter_, "isLabelClassFilterEnabled", &enabled_invoked);
+    filter_enabled       = invokeBool(global_filter_, "isLabelClassFilterEnabled", &enabled_invoked);
     if (!enabled_invoked || !filter_enabled)
         return true;
-    bool inverted = false;
+    bool inverted         = false;
     bool inverted_invoked = false;
-    inverted = invokeBool(global_filter_, "isLabelClassFilterInverted", &inverted_invoked);
+    inverted              = invokeBool(global_filter_, "isLabelClassFilterInverted", &inverted_invoked);
     if (!inverted_invoked)
         inverted = false;
 
@@ -766,8 +875,8 @@ bool EvaluationGlobalFilterProxyModel::acceptsGlobalLabel(const EvaluationInstan
      * 若把 PRED 也用于判断，选中类别的误检可能绕过不匹配的 GT；只有纯 FP
      * 事件才回退到预测类别。
      */
-    const int class_id = record.gt_class_id >= 0 ? record.gt_class_id : record.pred_class_id;
-    bool invoked = false;
+    const int  class_id = record.gt_class_id >= 0 ? record.gt_class_id : record.pred_class_id;
+    bool       invoked  = false;
     const bool accepted = invokeBool(global_filter_, "acceptsLabelClassId", class_id, &invoked);
     if (!invoked)
         return true;
@@ -778,9 +887,9 @@ bool EvaluationGlobalFilterProxyModel::acceptsGlobalLabel(const EvaluationInstan
 
 bool EvaluationGlobalFilterProxyModel::acceptsRecord(const EvaluationInstanceRecord &record) const
 {
-    bool active_invoked = false;
-    const bool external_filter_active = global_filter_ != nullptr
-        && (globalFilterIsActive(global_filter_, &active_invoked) || !active_invoked);
+    bool       active_invoked = false;
+    const bool external_filter_active
+        = global_filter_ != nullptr && (globalFilterIsActive(global_filter_, &active_invoked) || !active_invoked);
     if (external_filter_active && record.image_id >= 0)
     {
         bool invoked = false;
@@ -792,25 +901,22 @@ bool EvaluationGlobalFilterProxyModel::acceptsRecord(const EvaluationInstanceRec
     if (!dataset_ids_.isEmpty())
     {
         bool match = false;
-        for (const QVariant &value : dataset_ids_)
-            match = match || value.toLongLong() == record.dataset_id;
+        for (const QVariant &value : dataset_ids_) match = match || value.toLongLong() == record.dataset_id;
         if (!match)
             return false;
     }
     if (!class_ids_.isEmpty())
     {
-        bool match = false;
+        bool      match             = false;
         const int relevant_class_id = record.gt_class_id >= 0 ? record.gt_class_id : record.pred_class_id;
-        for (const QVariant &value : class_ids_)
-            match = match || value.toInt() == relevant_class_id;
+        for (const QVariant &value : class_ids_) match = match || value.toInt() == relevant_class_id;
         if (!match)
             return false;
     }
     return true;
 }
 
-bool EvaluationGlobalFilterProxyModel::filterAcceptsRow(const int source_row,
-                                                        const QModelIndex &source_parent) const
+bool EvaluationGlobalFilterProxyModel::filterAcceptsRow(const int source_row, const QModelIndex &source_parent) const
 {
     const QAbstractItemModel *source = sourceModel();
     if (source == nullptr)
@@ -832,7 +938,10 @@ EvaluationCellFilterProxyModel::EvaluationCellFilterProxyModel(QObject *parent)
     setDynamicSortFilter(false);
 }
 
-QString EvaluationCellFilterProxyModel::status() const { return status_; }
+QString EvaluationCellFilterProxyModel::status() const
+{
+    return status_;
+}
 
 void EvaluationCellFilterProxyModel::setStatus(const QString &status)
 {
@@ -844,7 +953,10 @@ void EvaluationCellFilterProxyModel::setStatus(const QString &status)
     emit filterChanged();
 }
 
-QString EvaluationCellFilterProxyModel::matrixRow() const { return matrix_row_; }
+QString EvaluationCellFilterProxyModel::matrixRow() const
+{
+    return matrix_row_;
+}
 
 void EvaluationCellFilterProxyModel::setMatrixRow(const QString &value)
 {
@@ -855,7 +967,10 @@ void EvaluationCellFilterProxyModel::setMatrixRow(const QString &value)
     emit filterChanged();
 }
 
-QString EvaluationCellFilterProxyModel::matrixColumn() const { return matrix_column_; }
+QString EvaluationCellFilterProxyModel::matrixColumn() const
+{
+    return matrix_column_;
+}
 
 void EvaluationCellFilterProxyModel::setMatrixColumn(const QString &value)
 {
@@ -866,7 +981,10 @@ void EvaluationCellFilterProxyModel::setMatrixColumn(const QString &value)
     emit filterChanged();
 }
 
-QVariantList EvaluationCellFilterProxyModel::predClassIds() const { return pred_class_ids_; }
+QVariantList EvaluationCellFilterProxyModel::predClassIds() const
+{
+    return pred_class_ids_;
+}
 
 void EvaluationCellFilterProxyModel::setPredClassIds(const QVariantList &ids)
 {
@@ -922,26 +1040,23 @@ bool EvaluationCellFilterProxyModel::acceptsRecord(const EvaluationInstanceRecor
     if (!pred_class_ids_.isEmpty())
     {
         bool match = false;
-        for (const QVariant &value : pred_class_ids_)
-            match = match || value.toInt() == record.pred_class_id;
+        for (const QVariant &value : pred_class_ids_) match = match || value.toInt() == record.pred_class_id;
         if (!match)
             return false;
     }
 
-    const bool has_row = !matrix_row_.isEmpty();
+    const bool has_row    = !matrix_row_.isEmpty();
     const bool has_column = !matrix_column_.isEmpty();
     if (!has_row && !has_column)
         return true;
-    const QString matrix_fn = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative);
-    const QString matrix_fp = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive);
-    const QString matrix_unmatched_fn
-        = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::UnmatchedGroundTruth);
-    const QString matrix_unmatched_fp
-        = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::UnmatchedPrediction);
-    const QString matrix_total = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::Total);
-    const bool error_record = record.status == evaluation::Status::ClassMismatch
-                              || record.status == evaluation::Status::FalsePositive
-                              || record.status == evaluation::Status::FalseNegative;
+    const QString matrix_fn           = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalseNegative);
+    const QString matrix_fp           = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::FalsePositive);
+    const QString matrix_unmatched_fn = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::UnmatchedGroundTruth);
+    const QString matrix_unmatched_fp = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::UnmatchedPrediction);
+    const QString matrix_total        = evaluation::matrixAxisKey(evaluation::MatrixAxisKey::Total);
+    const bool    error_record        = record.status == evaluation::Status::ClassMismatch
+                                     || record.status == evaluation::Status::FalsePositive
+                                     || record.status == evaluation::Status::FalseNegative;
     if (has_row && matrix_row_ != matrix_total)
     {
         if (matrix_row_ == matrix_fn)
@@ -985,8 +1100,7 @@ bool EvaluationCellFilterProxyModel::acceptsRecord(const EvaluationInstanceRecor
     return true;
 }
 
-bool EvaluationCellFilterProxyModel::filterAcceptsRow(const int source_row,
-                                                       const QModelIndex &source_parent) const
+bool EvaluationCellFilterProxyModel::filterAcceptsRow(const int source_row, const QModelIndex &source_parent) const
 {
     const QAbstractItemModel *source = sourceModel();
     if (source == nullptr)
@@ -1014,17 +1128,27 @@ QVariant EvaluationChartModel::data(const QModelIndex &index, const int role) co
     switch (role)
     {
     case Qt::DisplayRole:
-    case TitleRole: return record.value(evaluation::fieldName(evaluation::Field::Title));
-    case KindRole: return record.value(evaluation::fieldName(evaluation::Field::Kind));
-    case DataRole: return record.value(evaluation::fieldName(evaluation::Field::Data));
-    case OptionsRole: return record.value(evaluation::fieldName(evaluation::Field::Options));
-    default: return {};
+    case TitleRole:
+        return record.value(evaluation::fieldName(evaluation::Field::Title));
+    case KindRole:
+        return record.value(evaluation::fieldName(evaluation::Field::Kind));
+    case DataRole:
+        return record.value(evaluation::fieldName(evaluation::Field::Data));
+    case OptionsRole:
+        return record.value(evaluation::fieldName(evaluation::Field::Options));
+    default:
+        return {};
     }
 }
 
 QHash<int, QByteArray> EvaluationChartModel::roleNames() const
 {
-    return {{KindRole, "kind"}, {TitleRole, "title"}, {DataRole, "data"}, {OptionsRole, "options"}};
+    return {
+        {   KindRole,    "kind"},
+        {  TitleRole,   "title"},
+        {   DataRole,    "data"},
+        {OptionsRole, "options"}
+    };
 }
 
 void EvaluationChartModel::setRecords(QList<QVariantMap> records)
@@ -1035,8 +1159,7 @@ void EvaluationChartModel::setRecords(QList<QVariantMap> records)
     const int old_size = records_.size();
     const int new_size = records.size();
     int       common   = 0;
-    while (common < old_size && common < new_size && records_.at(common) == records.at(common))
-        ++common;
+    while (common < old_size && common < new_size && records_.at(common) == records.at(common)) ++common;
 
     /**
      * @brief 图表仅在尾部增删时保留公共前缀的持久索引。
@@ -1046,8 +1169,7 @@ void EvaluationChartModel::setRecords(QList<QVariantMap> records)
         if (new_size > old_size)
         {
             beginInsertRows({}, old_size, new_size - 1);
-            for (int index = old_size; index < new_size; ++index)
-                records_.push_back(std::move(records[index]));
+            for (int index = old_size; index < new_size; ++index) records_.push_back(std::move(records[index]));
             endInsertRows();
             return;
         }
@@ -1083,4 +1205,4 @@ QVariantMap EvaluationChartModel::descriptor(const int row) const
     return row >= 0 && row < records_.size() ? records_.at(row) : QVariantMap{};
 }
 
-}
+} // namespace dltool::model

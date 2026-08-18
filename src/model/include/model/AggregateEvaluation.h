@@ -103,4 +103,4 @@ MODEL_API double imageScore(const EvaluationImageRecord &record);
  */
 MODEL_API EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &input);
 
-}
+} // namespace dltool::model

@@ -13,7 +13,6 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QVector>
-
 #include <memory>
 
 namespace dltool::model {
@@ -30,31 +29,31 @@ struct MODEL_API EvaluationResult
 {
     evaluation::Method method{evaluation::Method::Unknown};
 
-    QMap<qint64, EvaluationImageData> images;               ///< 按图像 ID 索引的图像记录。
-    QMap<int, QString>                class_catalog;        ///< 类别 ID -> 类别名称。
-    QMap<int, EvaluationCounts>       per_class;            ///< 类别级实例计数。
-    EvaluationCounts                  overall;              ///< 全局实例计数。
-    EvaluationCounts                  image_counts;         ///< 图像级计数。
+    QMap<qint64, EvaluationImageData> images;        ///< 按图像 ID 索引的图像记录。
+    QMap<int, QString>                class_catalog; ///< 类别 ID -> 类别名称。
+    QMap<int, EvaluationCounts>       per_class;     ///< 类别级实例计数。
+    EvaluationCounts                  overall;       ///< 全局实例计数。
+    EvaluationCounts                  image_counts;  ///< 图像级计数。
 
-    QVector<EvaluationConfusionCell>  matrix_cells;         ///< 混淆矩阵单元格。
-    QMap<QString, qint64>             matrix;               ///< 原始矩阵键（行\x1f列）-> 计数。
-    QVector<EvaluationInstanceRecord> instance_records;     ///< 实例事件值对象。
-    QVariantList                      event_maps;           ///< 与 instance_records 对应的协议事件映射。
+    QVector<EvaluationConfusionCell>  matrix_cells;     ///< 混淆矩阵单元格。
+    QMap<QString, qint64>             matrix;           ///< 原始矩阵键（行\x1f列）-> 计数。
+    QVector<EvaluationInstanceRecord> instance_records; ///< 实例事件值对象。
+    QVariantList                      event_maps;       ///< 与 instance_records 对应的协议事件映射。
 
-    int  prediction_count{0};                               ///< 参与评估的预测总数。
-    bool has_confusion_matrix{false};                       ///< 当前方法是否产出矩阵。
-    bool has_instance_metrics{false};                       ///< 是否产出实例级指标。
-    bool has_image_metrics{false};                          ///< 是否产出图像级指标。
-    bool has_instance_events{false};                        ///< 是否产出实例事件。
+    int  prediction_count{0};         ///< 参与评估的预测总数。
+    bool has_confusion_matrix{false}; ///< 当前方法是否产出矩阵。
+    bool has_instance_metrics{false}; ///< 是否产出实例级指标。
+    bool has_image_metrics{false};    ///< 是否产出图像级指标。
+    bool has_instance_events{false};  ///< 是否产出实例事件。
 
-    QList<QVariantMap> charts;                              ///< 图表描述符（Chart.js 边界保留 QVariantMap）。
-    QStringList        chart_kinds;                         ///< 图表渲染类型 key 列表。
-    QVariantMap        image_metric_definition;             ///< 图像级指标定义。
+    QList<QVariantMap> charts;                  ///< 图表描述符（Chart.js 边界保留 QVariantMap）。
+    QStringList        chart_kinds;             ///< 图表渲染类型 key 列表。
+    QVariantMap        image_metric_definition; ///< 图像级指标定义。
 
-    double                    confidence_threshold{evaluation::kDefaultConfidenceThreshold};
-    double                    iou_threshold{evaluation::kDefaultIouThreshold};
+    double                       confidence_threshold{evaluation::kDefaultConfidenceThreshold};
+    double                       iou_threshold{evaluation::kDefaultIouThreshold};
     evaluation::MatchingStrategy matching_strategy{evaluation::MatchingStrategy::GreedyIoU};
-    QVariantMap               evaluation_config;            ///< 规范化评估配置缓存键。
+    QVariantMap                  evaluation_config; ///< 规范化评估配置缓存键。
 };
 
 /**

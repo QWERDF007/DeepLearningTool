@@ -177,10 +177,10 @@ QHash<int, QByteArray> TaskManager::roleNames() const
         {    CanPauseRole,      "can_pause"},
         {     CanStopRole,       "can_stop"},
         {   CanFinishRole,     "can_finish"},
-        {   CanDeleteRole,    "can_delete"},
-        {       PhaseRole,            "phase"},
-        {  ConfigPathRole,       "config_path"},
-        {     LogPathRole,           "log_path"},
+        {   CanDeleteRole,     "can_delete"},
+        {       PhaseRole,          "phase"},
+        {  ConfigPathRole,    "config_path"},
+        {     LogPathRole,       "log_path"},
     };
 }
 
@@ -207,19 +207,19 @@ int TaskManager::addTask(const QString &model_uuid, const QString &model_name, c
     const int row = rowCount();
     beginInsertRows({}, row, row);
     const int task_id = next_task_id_++;
-    Task task;
-    task.id = task_id;
+    Task      task;
+    task.id         = task_id;
     task.model_uuid = uuid;
     task.model_name = name;
     task.scope_uuid = scope_uuid.trimmed();
     task.scope_name = scope_name.trimmed();
     // Task type and test-task scope are already shown in their own columns;
     // keep the model-name column identical for training and testing.
-    task.display_name = name;
-    task.type = task_type;
-    task.status = Pending;
-    task.created_at = QDateTime::currentSecsSinceEpoch();
-    task.eta_seconds = -1;
+    task.display_name   = name;
+    task.type           = task_type;
+    task.status         = Pending;
+    task.created_at     = QDateTime::currentSecsSinceEpoch();
+    task.eta_seconds    = -1;
     task.supports_pause = supports_pause;
     tasks_.push_back(std::move(task));
     endInsertRows();
@@ -237,14 +237,14 @@ bool TaskManager::setTaskPaths(const int task_id, const QString &config_path, co
     if (row < 0)
         return false;
 
-    Task &task = tasks_[static_cast<size_t>(row)];
+    Task         &task              = tasks_[static_cast<size_t>(row)];
     const QString normalized_config = config_path.trimmed();
-    const QString normalized_log = log_path.trimmed();
+    const QString normalized_log    = log_path.trimmed();
     if (task.config_path == normalized_config && task.log_path == normalized_log)
         return true;
 
     task.config_path = normalized_config;
-    task.log_path = normalized_log;
+    task.log_path    = normalized_log;
     emitTaskChanged(row, {ConfigPathRole, LogPathRole});
     return true;
 }
@@ -278,8 +278,8 @@ bool TaskManager::stopTask(const int task_id)
     if (!setTaskStatus(task_id, Stopping))
         return false;
 
-    const bool command_sent = communication_server_ != nullptr
-        && communication_server_->sendCommand(task_id, TaskCommand::Stop);
+    const bool command_sent
+        = communication_server_ != nullptr && communication_server_->sendCommand(task_id, TaskCommand::Stop);
     emit taskStopRequested(task_id);
     spdlog::info("停止任务, task_id: {}, 通信命令: {}", task_id, command_sent ? "已发送" : "未发送");
     return true;
@@ -300,8 +300,7 @@ bool TaskManager::failTask(const int task_id)
 bool TaskManager::markTaskRunning(const int task_id)
 {
     const Task *task = findTask(task_id);
-    return task != nullptr
-        && (task->status == Pending || task->status == Preparing || task->status == Paused)
+    return task != nullptr && (task->status == Pending || task->status == Preparing || task->status == Paused)
         && setTaskStatus(task_id, Running);
 }
 
@@ -343,7 +342,7 @@ bool TaskManager::updateTaskProgress(const int task_id, const int progress)
     if (isTerminal(task.status))
         return false;
 
-    const int bounded = boundedProgress(progress);
+    const int  bounded     = boundedProgress(progress);
     const bool eta_changed = bounded >= 100 && task.eta_seconds != 0;
     if (task.progress == bounded && !eta_changed)
         return true;
@@ -366,7 +365,7 @@ bool TaskManager::updateTaskPhase(const int task_id, const QString &phase)
     const int row = rowForTask(task_id);
     if (row < 0)
         return false;
-    Task &task = tasks_[static_cast<size_t>(row)];
+    Task         &task  = tasks_[static_cast<size_t>(row)];
     const QString value = phase.trimmed();
     if (task.phase == value)
         return true;
@@ -381,7 +380,7 @@ bool TaskManager::updateTaskEta(const int task_id, const qint64 eta_seconds)
     if (row < 0)
         return false;
 
-    Task &task = tasks_[static_cast<size_t>(row)];
+    Task        &task  = tasks_[static_cast<size_t>(row)];
     const qint64 value = eta_seconds < 0 ? -1 : eta_seconds;
     if (task.eta_seconds == value)
         return true;
@@ -409,12 +408,12 @@ int TaskManager::findModelTask(const QString &model_uuid, const ModelTaskType ta
                                const bool include_finished) const
 {
     const QString scope_uuid = isTrainModelTask(task_type) ? QStringLiteral("train") : QString();
-    const Task *task = findModelTaskRecord(model_uuid, task_type, scope_uuid, include_finished);
+    const Task   *task       = findModelTaskRecord(model_uuid, task_type, scope_uuid, include_finished);
     return task != nullptr ? task->id : -1;
 }
 
-int TaskManager::findModelTask(const QString &model_uuid, const ModelTaskType task_type,
-                               const QString &scope_uuid, const bool include_finished) const
+int TaskManager::findModelTask(const QString &model_uuid, const ModelTaskType task_type, const QString &scope_uuid,
+                               const bool include_finished) const
 {
     const Task *task = findModelTaskRecord(model_uuid, task_type, scope_uuid, include_finished);
     return task != nullptr ? task->id : -1;
@@ -431,22 +430,20 @@ bool TaskManager::hasActiveModelTasks(const QString &model_uuid) const
     const QString value = model_uuid.trimmed();
     if (value.isEmpty())
         return false;
-    return std::any_of(tasks_.cbegin(), tasks_.cend(), [&value](const Task &task)
-    {
-        return task.model_uuid == value && !isTerminal(task.status);
-    });
+    return std::any_of(tasks_.cbegin(), tasks_.cend(),
+                       [&value](const Task &task) { return task.model_uuid == value && !isTerminal(task.status); });
 }
 
 const TaskManager::Task *TaskManager::findModelTaskRecord(const QString &model_uuid, const ModelTaskType task_type,
-                                                           const bool include_finished) const
+                                                          const bool include_finished) const
 {
     const QString scope_uuid = isTrainModelTask(task_type) ? QStringLiteral("train") : QString();
-    const int row = rowForModelTask(model_uuid.trimmed(), task_type, scope_uuid, include_finished);
+    const int     row        = rowForModelTask(model_uuid.trimmed(), task_type, scope_uuid, include_finished);
     return row >= 0 ? &tasks_.at(static_cast<size_t>(row)) : nullptr;
 }
 
 const TaskManager::Task *TaskManager::findModelTaskRecord(const QString &model_uuid, const ModelTaskType task_type,
-                                                           const QString &scope_uuid, const bool include_finished) const
+                                                          const QString &scope_uuid, const bool include_finished) const
 {
     const int row = rowForModelTask(model_uuid.trimmed(), task_type, scope_uuid.trimmed(), include_finished);
     return row >= 0 ? &tasks_.at(static_cast<size_t>(row)) : nullptr;
@@ -570,9 +567,9 @@ void TaskManager::handleTaskMessage(const TaskMessage &message)
         if (failTask(message.task_id))
         {
             spdlog::error("任务 {} 失败: {}", message.task_id, message.message.toUtf8().constData());
-            ui::SignalHelper::notifyError(QString("模型任务 %1 失败").arg(message.task_id),
-                                          message.message.isEmpty() ? QString("任务执行失败，请查看模型日志。")
-                                                                    : message.message);
+            ui::SignalHelper::notifyError(
+                QString("模型任务 %1 失败").arg(message.task_id),
+                message.message.isEmpty() ? QString("任务执行失败，请查看模型日志。") : message.message);
         }
         break;
     default:
@@ -592,8 +589,8 @@ int TaskManager::rowForTask(const int task_id) const
     return -1;
 }
 
-int TaskManager::rowForModelTask(const QString &model_uuid, const ModelTaskType task_type,
-                                 const QString &scope_uuid, const bool include_finished) const
+int TaskManager::rowForModelTask(const QString &model_uuid, const ModelTaskType task_type, const QString &scope_uuid,
+                                 const bool include_finished) const
 {
     if (model_uuid.isEmpty() || !isKnownModelTask(task_type))
         return -1;
@@ -619,9 +616,9 @@ bool TaskManager::setTaskStatus(const int task_id, const TaskStatus status)
         return true;
 
     const TaskStatus previous_status = task.status;
-    const qint64 now = QDateTime::currentSecsSinceEpoch();
-    const bool was_counting = (task.status == Running || task.status == Stopping) && task.started_at > 0;
-    const bool will_count = status == Running || status == Stopping;
+    const qint64     now             = QDateTime::currentSecsSinceEpoch();
+    const bool       was_counting    = (task.status == Running || task.status == Stopping) && task.started_at > 0;
+    const bool       will_count      = status == Running || status == Stopping;
     if (was_counting && !will_count)
         task.elapsed_seconds += std::max<qint64>(0, now - task.started_at);
 
@@ -639,7 +636,7 @@ bool TaskManager::setTaskStatus(const int task_id, const TaskStatus status)
         if (previous_status == Stopped || previous_status == Failed)
         {
             task.elapsed_seconds = 0;
-            task.progress = 0;
+            task.progress        = 0;
         }
         if (task.started_at <= 0)
             task.started_at = now;
@@ -657,7 +654,7 @@ bool TaskManager::setTaskStatus(const int task_id, const TaskStatus status)
     task.status = status;
     if (status == Finished)
     {
-        task.progress = 100;
+        task.progress    = 100;
         task.eta_seconds = 0;
     }
     else if (status == Preparing || status == Stopping || status == Stopped || status == Failed)

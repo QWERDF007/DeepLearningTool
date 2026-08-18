@@ -83,7 +83,7 @@ EvaluationImageRecord imageRecordFromMap(const QVariantMap &map)
 
     for (const QVariant &value : map.value(evaluation::fieldName(evaluation::Field::GtInstances)).toList())
     {
-        const QVariantMap gt_map = value.toMap();
+        const QVariantMap         gt_map = value.toMap();
         EvaluationGroundTruthData gt;
         gt.label_id   = recordLong(gt_map, evaluation::Field::LabelId, -1);
         gt.class_id   = recordInt(gt_map, evaluation::Field::ClassId, -1);
@@ -97,7 +97,7 @@ EvaluationImageRecord imageRecordFromMap(const QVariantMap &map)
 
     for (const QVariant &value : map.value(evaluation::fieldName(evaluation::Field::Predictions)).toList())
     {
-        const QVariantMap prediction_map = value.toMap();
+        const QVariantMap        prediction_map = value.toMap();
         EvaluationPredictionData prediction;
         prediction.prediction_id = recordText(prediction_map, evaluation::Field::PredictionId);
         prediction.image_id      = record.id;
@@ -173,7 +173,7 @@ bool validEvaluationResult(const QVariantMap &root, QString *error)
     return true;
 }
 
-}
+} // namespace
 
 ModelEvaluationViewModel::ModelEvaluationViewModel(QObject *parent)
     : QObject(parent)
@@ -560,17 +560,16 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
             if (guard.isNull())
                 return;
 
-            auto result = std::make_shared<EvaluationResult>();
+            auto    result = std::make_shared<EvaluationResult>();
             QString error;
-            bool success = false;
+            bool    success = false;
             if (auto engine = EvaluationEngineRegistry::instance().createEngine(options.method))
                 success = engine->evaluate(options, result.get(), &error);
             else
                 error = QString("未注册的评估方法: %1").arg(static_cast<int>(options.method));
             QMetaObject::invokeMethod(
                 guard.data(),
-                [guard, revision, options, notify, success, result = std::move(result),
-                 error]() mutable
+                [guard, revision, options, notify, success, result = std::move(result), error]() mutable
                 {
                     if (guard.isNull() || guard->evaluation_revision_ != revision)
                         return;
@@ -593,12 +592,12 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
                     }
 
                     const QVariantMap protocol = evaluationResultToProtocolMap(*result);
-                    QString          validation_error;
+                    QString           validation_error;
                     if (!validEvaluationResult(protocol, &validation_error))
                     {
                         guard->evaluation_attempted_ = true;
-                        const QString message = validation_error.isEmpty() ? QStringLiteral("评估结果格式无效")
-                                                                            : validation_error;
+                        const QString message
+                            = validation_error.isEmpty() ? QStringLiteral("评估结果格式无效") : validation_error;
                         spdlog::error("测试任务 {} 评估结果无效: {}", options.test_task_uuid.toUtf8().constData(),
                                       message.toUtf8().constData());
                         guard->clearEvaluation(message, evaluation::ViewState::InvalidResult);
@@ -683,11 +682,11 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
         image_metrics_->setRecords({metricFromMap(QStringLiteral("image"), image, QString("图像"))});
 
     // 提取 PR 曲线中计算出的每类 Average Precision (AP)
-    QMap<int, double> class_ap_map;
+    QMap<int, double>  class_ap_map;
     const QVariantList charts_list = root.value(evaluation::fieldName(evaluation::Field::Charts)).toList();
     for (const QVariant &chart_val : charts_list)
     {
-        const QVariantMap chart_map = chart_val.toMap();
+        const QVariantMap  chart_map = chart_val.toMap();
         const QVariantList datasets
             = chart_map.value(QStringLiteral("data")).toMap().value(QStringLiteral("datasets")).toList();
         for (const QVariant &dataset_val : datasets)
@@ -696,8 +695,8 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
             if (dataset_map.contains(QStringLiteral("average_precision"))
                 && dataset_map.contains(evaluation::fieldName(evaluation::Field::ClassId)))
             {
-                const int cid   = dataset_map.value(evaluation::fieldName(evaluation::Field::ClassId)).toInt();
-                const double ap = dataset_map.value(QStringLiteral("average_precision")).toDouble();
+                const int    cid = dataset_map.value(evaluation::fieldName(evaluation::Field::ClassId)).toInt();
+                const double ap  = dataset_map.value(QStringLiteral("average_precision")).toDouble();
                 class_ap_map.insert(cid, ap);
             }
         }
@@ -707,8 +706,8 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
     std::vector<EvaluationMetricRecord> per_class;
     for (const QVariant &value : instance.value(evaluation::fieldName(evaluation::Field::PerClass)).toList())
     {
-        const QVariantMap map = value.toMap();
-        const QString     key = map.value(evaluation::fieldName(evaluation::Field::ClassId)).toString();
+        const QVariantMap      map = value.toMap();
+        const QString          key = map.value(evaluation::fieldName(evaluation::Field::ClassId)).toString();
         EvaluationMetricRecord rec
             = metricFromMap(key, map, map.value(evaluation::fieldName(evaluation::Field::ClassName)).toString());
         if (class_ap_map.contains(rec.class_id))
@@ -725,7 +724,7 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
         // 宏平均（Macro-Average）：先算每个类别的指标，然后算术平均
         double sum_precision = 0.0, sum_recall = 0.0;
         qint64 total_tp = 0, total_fp = 0, total_fn = 0;
-        int valid_p = 0, valid_r = 0;
+        int    valid_p = 0, valid_r = 0;
         for (const auto &record : per_class)
         {
             if (record.precision_defined)
@@ -787,11 +786,9 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
     }
 
     std::vector<EvaluationImageRecord> image_records;
-    const QVariantList serialized_images
-        = root.value(evaluation::fieldName(evaluation::Field::ImageRecords)).toList();
+    const QVariantList serialized_images = root.value(evaluation::fieldName(evaluation::Field::ImageRecords)).toList();
     image_records.reserve(static_cast<size_t>(serialized_images.size()));
-    for (const QVariant &value : serialized_images)
-        image_records.push_back(imageRecordFromMap(value.toMap()));
+    for (const QVariant &value : serialized_images) image_records.push_back(imageRecordFromMap(value.toMap()));
     images_->setRecords(std::move(image_records));
 
     std::vector<EvaluationConfusionCell> cells;
@@ -819,7 +816,6 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
         charts.push_back(value.toMap());
     confusion_matrix_->setRecords(std::move(cells));
     charts_->setRecords(std::move(charts));
-
 }
 
 void ModelEvaluationViewModel::loadInstanceRecords(const QVariantList &records)
@@ -1007,8 +1003,8 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
             if (classAllowed(prediction.class_id))
                 filtered_predictions.push_back(prediction);
 
-        filtered.gt           = std::move(filtered_gt);
-        filtered.predictions  = std::move(filtered_predictions);
+        filtered.gt          = std::move(filtered_gt);
+        filtered.predictions = std::move(filtered_predictions);
         rebuildImageDerivedValues(filtered);
         if (!hasGroundTruth(filtered) && !hasPredictions(filtered, confidence_threshold_))
             continue;
@@ -1255,4 +1251,4 @@ void ModelEvaluationViewModel::setGlobalFilter(QObject *filter)
     emit filterStateChanged();
 }
 
-}
+} // namespace dltool::model

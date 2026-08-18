@@ -19,7 +19,7 @@ namespace dltool::model {
 class MODEL_API EvaluationEngineRegistry
 {
 public:
-    EvaluationEngineRegistry(const EvaluationEngineRegistry &) = delete;
+    EvaluationEngineRegistry(const EvaluationEngineRegistry &)            = delete;
     EvaluationEngineRegistry &operator=(const EvaluationEngineRegistry &) = delete;
 
     /**

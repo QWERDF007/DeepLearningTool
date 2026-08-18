@@ -2,8 +2,8 @@
 
 #include "IModel.h"
 #include "dltool/model/Export.h"
-#include "model/ModelRegistry.h"
 #include "model/ModelDatasetSelection.h"
+#include "model/ModelRegistry.h"
 
 #include <QAbstractListModel>
 #include <QStringList>
@@ -303,13 +303,13 @@ signals:
 private:
     struct ModelRecord
     {
-        int64_t model_id{-1};
-        QString uuid;
-        QString name;
-        QString framework_name;
-        QString model_architecture;
-        qint64  ctime{0};
-        qint64  mtime{0};
+        int64_t     model_id{-1};
+        QString     uuid;
+        QString     name;
+        QString     framework_name;
+        QString     model_architecture;
+        qint64      ctime{0};
+        qint64      mtime{0};
         QVariantMap extra_data;
     };
 

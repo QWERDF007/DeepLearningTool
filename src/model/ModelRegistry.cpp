@@ -181,7 +181,7 @@ FrameworkDefinition registeredFramework(const int method, const QString &framewo
                                         {
                                         return (method < 0 || framework.definition.method == method)
                                             && framework.definition.name == trimmed_framework_name;
-                                    });
+                                        });
     if (found == registry.end())
         return {};
     return resolvedFrameworkDefinition(found->definition);

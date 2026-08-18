@@ -37,14 +37,13 @@ protected:
     bool buildEvents(const QMap<qint64, EvaluationImageData> &images, QList<EvaluationInstanceRecord> &events,
                      QString *err_msg) override;
 
-    QList<QVariantMap>
-    buildCharts(const QMap<qint64, EvaluationImageData> &images, const QMap<int, QString> &classes,
-                const EvaluationCounts &overall, const EvaluationCounts &image_counts,
-                const QMap<int, EvaluationCounts> &per_class, const QMap<QString, qint64> &matrix,
-                const QList<EvaluationInstanceRecord> &events, QString *err_msg) override;
+    QList<QVariantMap> buildCharts(const QMap<qint64, EvaluationImageData> &images, const QMap<int, QString> &classes,
+                                   const EvaluationCounts &overall, const EvaluationCounts &image_counts,
+                                   const QMap<int, EvaluationCounts> &per_class, const QMap<QString, qint64> &matrix,
+                                   const QList<EvaluationInstanceRecord> &events, QString *err_msg) override;
 
-    QVector<EvaluationConfusionCell>
-    buildConfusionMatrix(const QMap<int, QString> &classes, const QMap<QString, qint64> &matrix) override;
+    QVector<EvaluationConfusionCell> buildConfusionMatrix(const QMap<int, QString>    &classes,
+                                                          const QMap<QString, qint64> &matrix) override;
 
     bool hasConfusionMatrix() const override;
 

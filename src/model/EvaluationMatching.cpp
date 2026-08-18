@@ -21,7 +21,7 @@ bool isCancelled(const std::shared_ptr<std::atomic_bool> &cancel)
     return cancel != nullptr && cancel->load(std::memory_order_relaxed);
 }
 
-}
+} // namespace
 
 QList<MatchPair> greedyIoUMatches(const int pred_count, const int gt_count,
                                   const std::function<double(int, int)> &iou_fn, const double threshold,
@@ -175,8 +175,7 @@ QList<MatchPair> hungarianIoUMatches(const int pred_count, const int gt_count,
 }
 
 IncrementalHungarianMatcher::IncrementalHungarianMatcher(const int prediction_count, const int ground_truth_count,
-                                                         const QVector<QVector<double>> &ious,
-                                                         const double threshold)
+                                                         const QVector<QVector<double>> &ious, const double threshold)
     : prediction_count_(std::max(0, prediction_count))
     , ground_truth_count_(std::max(0, ground_truth_count))
     , column_count_(std::max(prediction_count_, ground_truth_count_))
@@ -211,7 +210,7 @@ double IncrementalHungarianMatcher::weight(const int prediction_index, const int
     return iou >= threshold_ ? iou : 0.0;
 }
 
-bool IncrementalHungarianMatcher::addPrediction(const int prediction_index,
+bool IncrementalHungarianMatcher::addPrediction(const int                                prediction_index,
                                                 const std::shared_ptr<std::atomic_bool> &cancel)
 {
     if (prediction_index < 0 || prediction_index >= prediction_count_)
@@ -222,9 +221,9 @@ bool IncrementalHungarianMatcher::addPrediction(const int prediction_index,
         return false;
 
     row_predictions_.push_back(prediction_index);
-    const int row = row_predictions_.size();
-    p_[0]           = row;
-    int column0     = 0;
+    const int row           = row_predictions_.size();
+    p_[0]                   = row;
+    int             column0 = 0;
     QVector<double> minv(column_count_ + 1, std::numeric_limits<double>::max());
     QVector<bool>   used(column_count_ + 1, false);
 
@@ -271,8 +270,8 @@ bool IncrementalHungarianMatcher::addPrediction(const int prediction_index,
     do
     {
         const int column1 = way_.at(column0);
-        p_[column0]        = p_.at(column1);
-        column0            = column1;
+        p_[column0]       = p_.at(column1);
+        column0           = column1;
     }
     while (column0 != 0);
     return true;
@@ -288,11 +287,11 @@ QList<MatchPair> IncrementalHungarianMatcher::matches(const std::shared_ptr<std:
         const int row = p_.at(column) - 1;
         if (row < 0 || row >= row_predictions_.size())
             continue;
-        const int prediction = row_predictions_.at(row);
-        const double iou = ious_ != nullptr && prediction >= 0 && prediction < ious_->size()
-                               && column - 1 < ious_->at(prediction).size()
-                             ? ious_->at(prediction).at(column - 1)
-                             : 0.0;
+        const int    prediction = row_predictions_.at(row);
+        const double iou        = ious_ != nullptr && prediction >= 0 && prediction < ious_->size()
+                                       && column - 1 < ious_->at(prediction).size()
+                                    ? ious_->at(prediction).at(column - 1)
+                                    : 0.0;
         if (iou >= threshold_)
             result.push_back({prediction, column - 1, iou});
     }
@@ -323,4 +322,4 @@ QList<MatchPair> matchPredictions(const QList<EvaluationPredictionData>  &predic
     return greedyIoUMatches(predictions.size(), ground_truth.size(), iou_fn, threshold, cancel);
 }
 
-}
+} // namespace dltool::model

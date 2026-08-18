@@ -271,11 +271,11 @@ bool readEvaluationImageList(const QString &path, QList<QPair<qint64, QString>> 
 
 bool loadEvaluationImages(const QString &file_list_path, const QString &project_database_path,
                           const QString &task_database_path, const evaluation::Method method,
-                          QMap<qint64, EvaluationImageData> &images,
+                          QMap<qint64, EvaluationImageData>       &images,
                           const std::shared_ptr<std::atomic_bool> &cancel_token, QString *err_msg,
                           int *missing_database_images, int *ignored_selection_images,
                           const std::function<bool(qint64 image_id, int *width, int *height)> &dimensions_provider,
-                          QMap<int, QString> *class_catalog)
+                          QMap<int, QString>                                                  *class_catalog)
 {
     images.clear();
     if (class_catalog != nullptr)
@@ -405,9 +405,9 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
                        SourceClass{class_names[index], labelClassGroupFromExtraData(class_extra_data[index])});
         if (class_catalog != nullptr)
         {
-            const int class_id = static_cast<int>(class_ids[index]);
-            const QString name = class_names[index].trimmed().isEmpty() ? QString::number(class_id)
-                                                                         : class_names[index];
+            const int     class_id = static_cast<int>(class_ids[index]);
+            const QString name
+                = class_names[index].trimmed().isEmpty() ? QString::number(class_id) : class_names[index];
             class_catalog->insert(class_id, name);
         }
     }

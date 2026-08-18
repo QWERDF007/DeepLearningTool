@@ -24,8 +24,8 @@ const std::map<ModelStorageLocation, QString> &storageLocationNames()
     static const std::map<ModelStorageLocation, QString> names = {
         {ModelStorageLocation::ModelsRoot,   QStringLiteral("models")},
         { ModelStorageLocation::ModelRoot,                         {}},
-        {    ModelStorageLocation::Train,     QStringLiteral("train")},
-        {     ModelStorageLocation::Test,      QStringLiteral("test")},
+        {     ModelStorageLocation::Train,    QStringLiteral("train")},
+        {      ModelStorageLocation::Test,     QStringLiteral("test")},
         {      ModelStorageLocation::Logs,     QStringLiteral("logs")},
         {   ModelStorageLocation::Weights,  QStringLiteral("weights")},
         {  ModelStorageLocation::Datasets, QStringLiteral("datasets")},
@@ -39,7 +39,8 @@ const std::map<ModelStorageLocation, QString> &storageLocationNames()
  */
 const std::array<ModelStorageLocation, 2> &modelChildLocations()
 {
-    static const std::array<ModelStorageLocation, 2> locations = {ModelStorageLocation::Train, ModelStorageLocation::Test};
+    static const std::array<ModelStorageLocation, 2> locations
+        = {ModelStorageLocation::Train, ModelStorageLocation::Test};
     return locations;
 }
 
@@ -119,10 +120,10 @@ QString safeTaskChild(const QString &root, const QString &child)
         || value.contains(QChar('/')) || value.contains(QChar('\\')))
         return {};
 
-    const QString result = cleanPath(QDir(root).filePath(value));
+    const QString result     = cleanPath(QDir(root).filePath(value));
     const QString clean_root = cleanPath(QFileInfo(root).absoluteFilePath());
-    if (result.isEmpty() || clean_root.isEmpty() || !result.startsWith(clean_root + QStringLiteral("/"),
-                                                                  Qt::CaseInsensitive))
+    if (result.isEmpty() || clean_root.isEmpty()
+        || !result.startsWith(clean_root + QStringLiteral("/"), Qt::CaseInsensitive))
         return {};
     return result;
 }
@@ -176,9 +177,7 @@ QString ModelStorageService::testTaskDatabasePath(const QString &model_name, con
 QString ModelStorageService::testTaskFileListPath(const QString &model_name, const QString &task_directory) const
 {
     const QString task_root = testTaskRoot(model_name, task_directory);
-    return task_root.isEmpty()
-        ? QString()
-        : cleanPath(QDir(task_root).filePath(QString("test.txt")));
+    return task_root.isEmpty() ? QString() : cleanPath(QDir(task_root).filePath(QString("test.txt")));
 }
 
 QString ModelStorageService::testTaskPredictionPath(const QString &model_name, const QString &task_directory) const
@@ -198,26 +197,26 @@ QString ModelStorageService::testTaskLogPath(const QString &model_name, const QS
 ModelTaskPaths ModelStorageService::trainPaths(const QString &model_name) const
 {
     ModelTaskPaths paths;
-    paths.model_root = path(model_name, ModelStorageLocation::ModelRoot);
-    paths.task_root = trainRoot(model_name);
+    paths.model_root    = path(model_name, ModelStorageLocation::ModelRoot);
+    paths.task_root     = trainRoot(model_name);
     paths.database_path = modelDatabasePath(model_name);
-    paths.dataset_dir = trainDatasetPath(model_name);
-    paths.weight_dir = trainWeightsPath(model_name);
-    paths.log_dir = trainLogsPath(model_name);
-    paths.log_path = trainLogPath(model_name);
+    paths.dataset_dir   = trainDatasetPath(model_name);
+    paths.weight_dir    = trainWeightsPath(model_name);
+    paths.log_dir       = trainLogsPath(model_name);
+    paths.log_path      = trainLogPath(model_name);
     return paths;
 }
 
 ModelTaskPaths ModelStorageService::testPaths(const QString &model_name, const QString &task_directory) const
 {
     ModelTaskPaths paths;
-    paths.model_root = path(model_name, ModelStorageLocation::ModelRoot);
-    paths.task_root = testTaskRoot(model_name, task_directory);
-    paths.database_path = testTaskDatabasePath(model_name, task_directory);
-    paths.dataset_dir = sharedDatasetPath(model_name);
-    paths.weight_dir = trainWeightsPath(model_name);
-    paths.log_dir = paths.task_root;
-    paths.log_path = testTaskLogPath(model_name, task_directory);
+    paths.model_root     = path(model_name, ModelStorageLocation::ModelRoot);
+    paths.task_root      = testTaskRoot(model_name, task_directory);
+    paths.database_path  = testTaskDatabasePath(model_name, task_directory);
+    paths.dataset_dir    = sharedDatasetPath(model_name);
+    paths.weight_dir     = trainWeightsPath(model_name);
+    paths.log_dir        = paths.task_root;
+    paths.log_path       = testTaskLogPath(model_name, task_directory);
     paths.prediction_dir = testTaskPredictionPath(model_name, task_directory);
     return paths;
 }
@@ -226,8 +225,8 @@ bool ModelStorageService::ensureTrainStorage(const QString &model_name, QString 
 {
     if (!ensureDirectory(trainRoot(model_name), err_msg, QString("训练目录为空"), QString("创建训练目录失败: %1")))
         return false;
-    for (const QString &directory : {trainWeightsPath(model_name), trainLogsPath(model_name),
-                                    sharedDatasetPath(model_name)})
+    for (const QString &directory :
+         {trainWeightsPath(model_name), trainLogsPath(model_name), sharedDatasetPath(model_name)})
     {
         if (!ensureDirectory(directory, err_msg, QString("训练子目录为空"), QString("创建训练子目录失败: %1")))
             return false;
@@ -246,13 +245,11 @@ bool ModelStorageService::ensureTestTaskStorage(const QString &model_name, const
     if (!ensureTestStorage(model_name, err_msg))
         return false;
     const QString task_root = testTaskRoot(model_name, task_directory);
-    if (!ensureDirectory(task_root, err_msg, QString("测试任务目录为空"),
-                         QString("创建测试任务目录失败: %1")))
+    if (!ensureDirectory(task_root, err_msg, QString("测试任务目录为空"), QString("创建测试任务目录失败: %1")))
         return false;
     for (const QString &directory : {testTaskPredictionPath(model_name, task_directory)})
     {
-        if (!ensureDirectory(directory, err_msg, QString("测试任务子目录为空"),
-                             QString("创建测试任务子目录失败: %1")))
+        if (!ensureDirectory(directory, err_msg, QString("测试任务子目录为空"), QString("创建测试任务子目录失败: %1")))
             return false;
     }
     return true;

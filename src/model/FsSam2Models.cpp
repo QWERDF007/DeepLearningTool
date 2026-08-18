@@ -1,6 +1,6 @@
-#include "model/YamlModel.h"
 #include "core/CoreDef.h"
 #include "model/ModelRegistry.h"
+#include "model/YamlModel.h"
 
 namespace dltool::model { namespace {
 

@@ -183,10 +183,12 @@ int ModelTaskController::startModelTask(const QString &model_uuid, const ModelTa
         QString reset_error;
         model_manager_->resetModelTaskState(
             model_uuid, QStringLiteral("train"),
-            {QStringLiteral("epoch"), QStringLiteral("iter"), QStringLiteral("lr"), QStringLiteral("loss"),
-             QStringLiteral("elapsed"), QStringLiteral("eta"), QStringLiteral("metrics"),
-             QStringLiteral("message"), QStringLiteral("status"), QStringLiteral("started"),
-             QStringLiteral("phase"), QStringLiteral("phase_progress")},
+            {
+                QStringLiteral("epoch"), QStringLiteral("iter"), QStringLiteral("lr"), QStringLiteral("loss"),
+                QStringLiteral("elapsed"), QStringLiteral("eta"), QStringLiteral("metrics"), QStringLiteral("message"),
+                QStringLiteral("status"), QStringLiteral("started"), QStringLiteral("phase"),
+                QStringLiteral("phase_progress")
+        },
             {{QStringLiteral("progress"), 0}}, &reset_error);
     }
     return task_manager_->startTask(task_id) ? task_id : -1;
@@ -369,7 +371,7 @@ bool ModelTaskController::prepareTask(const int task_id)
     options.start_message    = QString("准备模型任务: %1").arg(modelTaskDisplayName(request_ptr->task_type));
     options.initial_progress = 5;
     // 训练/测试/评估任务的进度走模型任务面板（task 消息上报），不触发全局进度任务/ProgressDialog。
-    options.manage_progress  = false;
+    options.manage_progress = false;
 
     const int     method      = method_;
     const QString project_dir = project_dir_;

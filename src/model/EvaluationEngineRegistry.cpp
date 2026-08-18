@@ -21,13 +21,12 @@ EvaluationEngineRegistry &EvaluationEngineRegistry::instance()
 
 void EvaluationEngineRegistry::registerBuiltins()
 {
-    registerEngine(evaluation::Method::AnomalyDetection,
-                   []() { return std::make_unique<AnomalyEvaluationEngine>(); });
+    registerEngine(evaluation::Method::AnomalyDetection, []() { return std::make_unique<AnomalyEvaluationEngine>(); });
     registerEngine(evaluation::Method::Detection, []() { return std::make_unique<DetectionEvaluationEngine>(); });
     registerEngine(evaluation::Method::Segmentation, []() { return std::make_unique<SegmentationEvaluationEngine>(); });
 }
 
-void EvaluationEngineRegistry::registerEngine(evaluation::Method method,
+void EvaluationEngineRegistry::registerEngine(evaluation::Method                                  method,
                                               std::function<std::unique_ptr<IEvaluationEngine>()> factory)
 {
     factories_.insert(static_cast<int>(method), std::move(factory));

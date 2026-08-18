@@ -1,13 +1,13 @@
 #pragma once
 
-#include "dltool/model/Export.h"
 #include "core/CoreDef.h"
+#include "dltool/model/Export.h"
 
-#include <QString>
-#include <QObject>
-#include <QVariantMap>
-#include <QQmlEngine>
 #include <QJSEngine>
+#include <QObject>
+#include <QQmlEngine>
+#include <QString>
+#include <QVariantMap>
 #include <QtQml>
 
 namespace dltool::model::evaluation {
@@ -16,104 +16,115 @@ Q_NAMESPACE_EXPORT(MODEL_API)
 QML_NAMED_ELEMENT(EvaluationProtocol)
 
 /**
- * @brief 评估层使用的统一方法类型。
+ * @brief 评估层使用的统一深度学习方法枚举别名。
  *
  * 评估直接复用项目级方法枚举，避免在任务请求、评估服务和结果协议之间
  * 维护第二套方法类型。Unknown 仅用于未初始化或不受评估协议支持的方法。
  */
 using Method = core::DeepLearningMethod::Method;
 
+/**
+ * @brief 实例或图像匹配结果状态枚举。
+ */
 enum class Status
 {
-    Unknown = 0,
-    TruePositive,
-    TrueNegative,
-    ClassMismatch,
-    FalsePositive,
-    FalseNegative,
-    Ignored,
+    Unknown = 0,   ///< 未知状态。
+    TruePositive,  ///< 真正例（正确匹配检出）。
+    TrueNegative,  ///< 真负例（正确排除）。
+    ClassMismatch, ///< 几何重叠达标但类别预测错误。
+    FalsePositive, ///< 假正例（多检/误检）。
+    FalseNegative, ///< 假负例（漏检）。
+    Ignored,       ///< 忽略的样本。
 };
 Q_ENUM_NS(Status)
 
+/**
+ * @brief 预测实例与真值标注之间的匹配算法策略。
+ */
 enum class MatchingStrategy
 {
-    GreedyIoU = 0,
-    HungarianIoU,
+    GreedyIoU = 0, ///< 贪婪 IoU 优先匹配（按得分/IoU 降序排序后贪婪配对）。
+    HungarianIoU,  ///< 匈牙利二分图最大权匹配算法。
 };
 Q_ENUM_NS(MatchingStrategy)
 
+/**
+ * @brief 指标集合类型。
+ */
 enum class MetricSet
 {
-    Diagnostic = 0,
-    Official,
+    Diagnostic = 0, ///< 诊断型指标集（包含 TP/FP/FN、细粒度错误分类等）。
+    Official,       ///< 官方基准指标集（如 COCO mAP、VOC mAP）。
 };
 Q_ENUM_NS(MetricSet)
 
+/**
+ * @brief 混淆矩阵单元格类型枚举。
+ */
 enum class CellKind
 {
-    Match = 0,
-    ClassMismatch,
-    FalsePositive,
-    FalseNegative,
-    PredTotal,
-    GtTotal,
-    FalsePositiveTotal,
-    FalseNegativeTotal,
-    All,
-    NotApplicable,
+    Match = 0,          ///< 对角线正确匹配单元格。
+    ClassMismatch,      ///< 类别分类错误单元格。
+    FalsePositive,      ///< 假正例单元格（背景误检）。
+    FalseNegative,      ///< 假负例单元格（目标漏检）。
+    PredTotal,          ///< 预测总计汇总行。
+    GtTotal,            ///< GT 标注总计汇总列。
+    FalsePositiveTotal, ///< 误检总计行。
+    FalseNegativeTotal, ///< 漏检总计列。
+    All,                ///< 全局总数单元格。
+    NotApplicable,      ///< 不适用或空白单元格。
 };
 Q_ENUM_NS(CellKind)
 
+/**
+ * @brief 混淆矩阵轴关键项枚举。
+ */
 enum class MatrixAxisKey
 {
-    FalseNegative = 0,
-    FalsePositive,
-    UnmatchedGroundTruth,
-    UnmatchedPrediction,
-    Total,
+    FalseNegative = 0,    ///< 漏检（FN）轴。
+    FalsePositive,        ///< 误检（FP）轴。
+    UnmatchedGroundTruth, ///< 未匹配的真值标注。
+    UnmatchedPrediction,  ///< 未匹配的模型预测。
+    Total,                ///< 合计轴。
 };
 Q_ENUM_NS(MatrixAxisKey)
 
 /**
  * @brief 图表渲染类型。
  *
- * Chart.js 的 chart type 只支持协议枚举中的值；QML 不再散落 "line"/"bar"
- * 字面量，统一通过 chartKindKey() 映射。
+ * Chart.js 的 chart type 只支持协议枚举中的值；QML 统一通过 chartKindKey() 映射。
  */
 enum class ChartKind
 {
-    Unknown = 0,
-    Line,
-    Bar,
-    Pie,
+    Unknown = 0, ///< 未知图表类型。
+    Line,        ///< 折线图（如 PR 曲线、ROC 曲线）。
+    Bar,         ///< 柱状图/直方图（如分数分布）。
+    Pie,         ///< 饼图/环形图（如准确率与召回率比例）。
 };
 Q_ENUM_NS(ChartKind)
 
 /**
  * @brief Chart.js 坐标轴 ID。
  *
- * 异常分数分布图使用固定轴 ID，QML 与 C++ 都通过映射函数获取，
- * 避免两处散落 "score-axis"/"count-axis" 字面量。
+ * 异常分数分布图使用固定轴 ID，QML 与 C++ 都通过映射函数获取。
  */
 enum class ChartAxisId
 {
-    Unknown = 0,
-    ScoreAxis,
-    CountAxis,
+    Unknown = 0, ///< 未知坐标轴。
+    ScoreAxis,   ///< 分数轴（横轴）。
+    CountAxis,   ///< 计数频次轴（纵轴）。
 };
 Q_ENUM_NS(ChartAxisId)
 
 /**
- * @brief 方法图表的稳定标识。
- *
- * 旧结果中可能仍保存历史字符串，chartIdFromKey() 负责容错解析。
+ * @brief 方法图表的稳定标识枚举。
  */
 enum class ChartId
 {
-    Unknown = 0,
-    AnomalyScoreDistribution,
-    PrecisionRecall,
-    PerClassMetrics,
+    Unknown = 0,              ///< 未知图表标识。
+    AnomalyScoreDistribution, ///< 异常检测分数分布直方图。
+    PrecisionRecall,          ///< 精确率-召回率（PR）曲线图。
+    PerClassMetrics,          ///< 按类别多指标对比图。
 };
 Q_ENUM_NS(ChartId)
 
@@ -124,68 +135,61 @@ Q_ENUM_NS(ChartId)
  */
 enum class SeriesKind
 {
-    Unknown = 0,
-    Good,
-    Anomaly,
-    Average,
-    Class,
+    Unknown = 0, ///< 未知系列。
+    Good,        ///< 良品/正常样本系列。
+    Anomaly,     ///< 异常/缺陷样本系列。
+    Average,     ///< 平均值/总体系列（如 mAP）。
+    Class,       ///< 单类别系列。
 };
 Q_ENUM_NS(SeriesKind)
 
 /**
- * @brief 图表过滤语义。
+ * @brief 图表过滤语义枚举。
  *
- * 实例网格按 filter_kind 联动方法图表；该枚举覆盖评估协议使用的全部值。
+ * 实例网格按 filter_kind 联动方法图表。
  */
 enum class FilterKind
 {
-    Unknown = 0,
-    ImageScore,
-    PrecisionRecall,
-    PerClassMetrics,
+    Unknown = 0,     ///< 未知过滤类型。
+    ImageScore,      ///< 图像级分数区间过滤。
+    PrecisionRecall, ///< PR 曲线操作点置信度联动过滤。
+    PerClassMetrics, ///< 单类别指标联动过滤。
 };
 Q_ENUM_NS(FilterKind)
 
 /**
- * @brief 评估界面使用的集中显示文案。
+ * @brief 评估界面使用的集中显示文案枚举。
  *
- * 协议 key 与显示文本分离：row_key/column_key 等稳定值不用于展示，
- * 展示层只消费 C++ 生成的 label，避免 QML 根据 GOOD/Anomaly 等文本猜语义。
+ * 协议 key 与显示文本分离，展示层只消费 C++ 生成的 label。
  */
 enum class DisplayText
 {
-    Good = 0,
-    Anomaly,
-    Total,
+    Good = 0, ///< "良品 / 正常"
+    Anomaly,  ///< "缺陷 / 异常"
+    Total,    ///< "合计 / 总数"
 };
 Q_ENUM_NS(DisplayText)
 
 /**
- * @brief 评估展示状态。
- *
- * NotRun 表示尚未进行本次评估或任务已停止，Running/Failed 表示任务本身
- * 的运行状态；MissingResult 表示没有可读取的预测输入，InvalidResult 表示
- * 评估服务返回了不完整的结果快照，Error 表示评估执行失败。Ready 只表示
- * 当前快照已经通过协议校验并可供界面使用。字符串 key 仅保留在协议边界。
+ * @brief 评估展示状态枚举。
  */
 enum class ViewState
 {
-    NotRun = 0,
-    Loading,
-    Running,
-    Failed,
-    MissingResult,
-    InvalidResult,
-    Error,
-    Ready,
+    NotRun = 0,    ///< 尚未运行本次评估。
+    Loading,       ///< 正在加载/读取评估输入数据。
+    Running,       ///< 正在执行后台评测计算。
+    Failed,        ///< 任务执行或评估计算失败。
+    MissingResult, ///< 预测结果文件或标注数据缺失。
+    InvalidResult, ///< 结果数据格式无效或不完整。
+    Error,         ///< 运行时异常错误。
+    Ready,         ///< 评估成功且数据就绪。
 };
 Q_ENUM_NS(ViewState)
 
 /**
- * @brief 稳定评估协议字段。
+ * @brief 稳定评估协议字段枚举。
  *
- * 业务代码只通过该枚举访问内存评估快照中的固定字段；字段字符串只在
- * 协议边界的映射函数中维护。评估快照不写入任何报告文件。
+ * 业务代码只通过该枚举访问内存评估快照中的固定字段。
  */
 enum class Field
 {
@@ -317,54 +321,50 @@ enum class Field
 };
 Q_ENUM_NS(Field)
 
-/**
- * @brief 评估快照仅存在于当前进程内，不持久化。
- *
- * 旧版生成的报告不会被读取或迁移。
- */
+/** @brief 默认置信度过滤阈值（0.5）。 */
 constexpr double kDefaultConfidenceThreshold = 0.5;
+/** @brief 默认 IoU 判定阈值（0.5）。 */
 constexpr double kDefaultIouThreshold = 0.5;
 
-MODEL_API Method fromProjectMethod(int method);
-MODEL_API Method fromProjectMethod(core::DeepLearningMethod::Method method);
-MODEL_API Method methodFromKey(const QString &key);
+MODEL_API Method  fromProjectMethod(int method);
+MODEL_API Method  fromProjectMethod(core::DeepLearningMethod::Method method);
+MODEL_API Method  methodFromKey(const QString &key);
 MODEL_API QString methodKey(Method method);
 
 MODEL_API QString statusKey(Status status);
-MODEL_API Status statusFromKey(const QString &key);
+MODEL_API Status  statusFromKey(const QString &key);
 MODEL_API QString statusDisplayName(Status status);
 
-MODEL_API QString matchingStrategyKey(MatchingStrategy strategy);
+MODEL_API QString          matchingStrategyKey(MatchingStrategy strategy);
 MODEL_API MatchingStrategy matchingStrategyFromKey(const QString &key);
 
 /**
  * @brief 将可编辑测试参数中的评估配置规范化为唯一的结果配置。
- *
- * C++ 评估输入和内存缓存使用同一组默认值及规范化的 matching_strategy，
- * 避免在不同流程中各自解释评估参数。
+ * @param source 原始评估参数字典。
+ * @return 规范化后的参数字典。
  */
 MODEL_API QVariantMap normalizedEvaluationConfig(const QVariantMap &source);
 
-MODEL_API QString metricSetKey(MetricSet metric_set);
-MODEL_API MetricSet metricSetFromKey(const QString &key);
-MODEL_API QString cellKindKey(CellKind kind);
-MODEL_API CellKind cellKindFromKey(const QString &key);
-MODEL_API QString chartKindKey(ChartKind kind);
-MODEL_API ChartKind chartKindFromKey(const QString &key);
-MODEL_API QString chartAxisIdKey(ChartAxisId id);
+MODEL_API QString     metricSetKey(MetricSet metric_set);
+MODEL_API MetricSet   metricSetFromKey(const QString &key);
+MODEL_API QString     cellKindKey(CellKind kind);
+MODEL_API CellKind    cellKindFromKey(const QString &key);
+MODEL_API QString     chartKindKey(ChartKind kind);
+MODEL_API ChartKind   chartKindFromKey(const QString &key);
+MODEL_API QString     chartAxisIdKey(ChartAxisId id);
 MODEL_API ChartAxisId chartAxisIdFromKey(const QString &key);
-MODEL_API QString chartIdKey(ChartId id);
-MODEL_API ChartId chartIdFromKey(const QString &key);
-MODEL_API QString seriesKindKey(SeriesKind kind);
-MODEL_API SeriesKind seriesKindFromKey(const QString &key);
-MODEL_API QString filterKindKey(FilterKind kind);
-MODEL_API FilterKind filterKindFromKey(const QString &key);
-MODEL_API QString matrixAxisKey(MatrixAxisKey key);
-MODEL_API QString matrixAxisLabel(MatrixAxisKey key);
-MODEL_API QString displayText(DisplayText text);
-MODEL_API QString viewStateKey(ViewState state);
-MODEL_API ViewState viewStateFromKey(const QString &key);
-MODEL_API QString fieldName(Field field);
+MODEL_API QString     chartIdKey(ChartId id);
+MODEL_API ChartId     chartIdFromKey(const QString &key);
+MODEL_API QString     seriesKindKey(SeriesKind kind);
+MODEL_API SeriesKind  seriesKindFromKey(const QString &key);
+MODEL_API QString     filterKindKey(FilterKind kind);
+MODEL_API FilterKind  filterKindFromKey(const QString &key);
+MODEL_API QString     matrixAxisKey(MatrixAxisKey key);
+MODEL_API QString     matrixAxisLabel(MatrixAxisKey key);
+MODEL_API QString     displayText(DisplayText text);
+MODEL_API QString     viewStateKey(ViewState state);
+MODEL_API ViewState   viewStateFromKey(const QString &key);
+MODEL_API QString     fieldName(Field field);
 
 MODEL_API bool isAnomaly(Method method);
 MODEL_API bool hasInstanceMetrics(Method method);
@@ -375,8 +375,7 @@ MODEL_API bool hasInstanceEvents(Method method);
 /**
  * @brief 评估协议 key 映射的 QML 单例。
  *
- * Q_NAMESPACE 只暴露枚举值，QML 无法调用命名空间自由函数；该类把
- * chartIdKey/matrixAxisKey 等字符串映射包装为 Q_INVOKABLE，供 QML 侧
+ * 将 chartIdKey/matrixAxisKey 等字符串映射包装为 Q_INVOKABLE，供 QML 侧
  * 与模型返回的稳定 key 比较，避免在 QML 中散落字符串字面量。
  */
 class MODEL_API EvaluationProtocolKeys : public QObject
@@ -442,4 +441,4 @@ public:
     static EvaluationProtocolKeys *create(QQmlEngine *, QJSEngine *);
 };
 
-}
+} // namespace dltool::model::evaluation

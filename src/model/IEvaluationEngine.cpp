@@ -9,7 +9,6 @@
 
 #include <QDir>
 #include <QFileInfo>
-
 #include <algorithm>
 #include <atomic>
 #include <memory>
@@ -77,7 +76,7 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
         spdlog::warn("测试任务文件列表中有 {} 个图像不属于当前数据集或类别选择，已跳过", ignored_selection_images);
 
     // (d) 剔除源文件不存在的图像。
-    const QString dataset_root = QFileInfo(options.project_database_path).absolutePath();
+    const QString dataset_root          = QFileInfo(options.project_database_path).absolutePath();
     int           missing_source_images = 0;
     for (auto it = images.begin(); it != images.end();)
     {
@@ -117,15 +116,15 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
         return fail(QString("评估已取消"));
 
     // 重置子类共享暂存区，并把钩子需要的输入标量暂存其中。
-    scratch_                       = ComputeScratch{};
-    scratch_.dataset_root          = dataset_root;
-    scratch_.prediction_root       = options.prediction_dir;
-    scratch_.confidence            = options.confidence_threshold;
-    scratch_.iou                   = options.iou_threshold;
-    scratch_.matching_strategy     = options.matching_strategy;
-    scratch_.cancel_token          = options.cancel_token;
+    scratch_                   = ComputeScratch{};
+    scratch_.dataset_root      = dataset_root;
+    scratch_.prediction_root   = options.prediction_dir;
+    scratch_.confidence        = options.confidence_threshold;
+    scratch_.iou               = options.iou_threshold;
+    scratch_.matching_strategy = options.matching_strategy;
+    scratch_.cancel_token      = options.cancel_token;
 
-    QMap<int, QString> classes        = global_class_catalog;
+    QMap<int, QString> classes = global_class_catalog;
     // The anomaly engine also contributes the implicit Good category used by
     // its image-level matrix.  Instance-matching engines use the same hook to
     // fill categories that are present only in predictions or labels.
@@ -142,10 +141,9 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     if (!buildEvents(images, scratch_.events, err_msg))
         return false;
     // (k) 图表与图表类型。
-    const QList<QVariantMap> charts
-        = buildCharts(images, classes, scratch_.overall, scratch_.image_counts, scratch_.per_class, scratch_.matrix,
-                      scratch_.events, err_msg);
-    const QStringList chart_kinds = chartKinds();
+    const QList<QVariantMap> charts      = buildCharts(images, classes, scratch_.overall, scratch_.image_counts,
+                                                       scratch_.per_class, scratch_.matrix, scratch_.events, err_msg);
+    const QStringList        chart_kinds = chartKinds();
     // (l) 混淆矩阵。
     QVector<EvaluationConfusionCell> matrix_cells;
     if (hasConfusionMatrix())
@@ -154,36 +152,34 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     if (cancelled(options.cancel_token))
         return fail(QString("评估已取消"));
 
-
     // (m) 组装强类型结果。
     EvaluationResult output;
-    output.method             = method();
-    output.images             = images;
-    output.class_catalog      = classes;
-    output.per_class          = scratch_.per_class;
-    output.overall            = scratch_.overall;
-    output.image_counts       = scratch_.image_counts;
-    output.matrix_cells       = std::move(matrix_cells);
-    output.matrix             = scratch_.matrix;
-    output.instance_records   = scratch_.events;
+    output.method           = method();
+    output.images           = images;
+    output.class_catalog    = classes;
+    output.per_class        = scratch_.per_class;
+    output.overall          = scratch_.overall;
+    output.image_counts     = scratch_.image_counts;
+    output.matrix_cells     = std::move(matrix_cells);
+    output.matrix           = scratch_.matrix;
+    output.instance_records = scratch_.events;
     output.event_maps.reserve(scratch_.events.size());
     for (const EvaluationInstanceRecord &record : scratch_.events)
         output.event_maps.push_back(instanceToProtocolMap(record));
-    output.prediction_count   = prediction_count;
+    output.prediction_count = prediction_count;
 
     output.has_confusion_matrix = evaluation::hasConfusionMatrix(method());
     output.has_instance_metrics = evaluation::hasInstanceMetrics(method());
     output.has_image_metrics    = evaluation::hasImageMetrics(method());
     output.has_instance_events  = evaluation::hasInstanceEvents(method());
 
-    output.charts            = charts;
-    output.chart_kinds       = chart_kinds;
+    output.charts      = charts;
+    output.chart_kinds = chart_kinds;
 
     output.confidence_threshold = options.confidence_threshold;
     output.iou_threshold        = options.iou_threshold;
     output.matching_strategy    = options.matching_strategy;
     output.evaluation_config    = options.evaluation_config;
-
 
     if (result)
         *result = std::move(output);
