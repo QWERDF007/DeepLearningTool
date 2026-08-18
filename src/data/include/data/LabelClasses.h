@@ -167,7 +167,7 @@ public:
      * @return 是否成功
      */
     Q_INVOKABLE bool reorderLabelClass(const int64_t label_class_id, const int64_t new_ordinal_index);
-    Q_INVOKABLE bool updateLabelClassGroup(const int64_t label_class_id, const QString &group);
+    bool             updateLabelClassGroup(const int64_t label_class_id, const QString &group);
 
     /**
      * @brief 设置数据操作期间的写入阻断状态。

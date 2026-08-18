@@ -54,10 +54,8 @@ QList<AnomalyConfusionSample> anomalyConfusionSamples(const QList<EvaluationImag
     for (const EvaluationImageRecord &image : images)
     {
         const EvaluationGroundTruthRecord *ground_truth = primaryGroundTruth(image);
-        const int     category_id = ground_truth != nullptr && ground_truth->class_id >= 0 ? ground_truth->class_id : 0;
-        const QString category_name     = ground_truth != nullptr && !ground_truth->class_name.isEmpty()
-                                            ? ground_truth->class_name
-                                            : evaluation::displayText(evaluation::DisplayText::Good);
+        const int category_id = ground_truth != nullptr && ground_truth->class_id >= 0 ? ground_truth->class_id : -1;
+        const QString category_name     = ground_truth != nullptr ? ground_truth->class_name : QString{};
         const bool    category_anomaly  = ground_truth != nullptr && ground_truth->anomaly;
         const bool    predicted_anomaly = isAnomalyImage(image, threshold, true);
         samples.push_back(AnomalyConfusionSample{category_id, category_name, category_anomaly, predicted_anomaly});
@@ -196,12 +194,8 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
         }
     }
 
-    /**
-     * @brief 异常项目按图像级评估。
-     *
-     * 正常图像在项目数据库或任务选择中没有 GT 标签，上面的实例事件矩阵
-     * 无法表达真负，因此这里显式构造与检测方法布局一致的二元图像矩阵。
-     */
+    // 异常项目按图像级评估。正常图像在项目数据库或任务选择中没有 GT 标签，
+    // 上面的实例事件矩阵无法表达真负，因此这里显式构造与检测方法布局一致的二元图像矩阵。
     if (input.anomaly_detection)
     {
         matrix.clear();
@@ -218,12 +212,9 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
     AggregateCounts image_counts;
     if (input.anomaly_detection)
     {
-        /**
-         * @brief 异常方法是二元图像分类器，指标只看图像异常标记。
-         *
-         * GT 可能包含多个语义类别，但按类别 ID 累计会把一张图像拆成
-         * 多个 FP/FN，使图像指标与二元混淆矩阵不一致。
-         */
+        // 异常方法是二元图像分类器，指标只看图像异常标记。
+        // GT 可能包含多个语义类别，但按类别 ID 累计会把一张图像拆成
+        // 多个 FP/FN，使图像指标与二元混淆矩阵不一致。
         for (const EvaluationImageRecord &image : input.images)
         {
             const bool ground_truth_anomaly = isAnomalyImage(image, input.confidence_threshold, false);
@@ -471,11 +462,7 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
     if (input.anomaly_detection)
         output.charts.push_back(anomalyScoreChartForImages(input.images, input.confidence_threshold));
 
-    /**
-     * @brief 沿用 Service 图表描述符，并按聚合输入重算阈值指标。
-     *
-     * 异常分布图已在本地派生，因此跳过对应的 Service 图表。
-     */
+    // 沿用 Service 图表描述符，并按聚合输入重算阈值指标。异常分布图已在本地派生，因此跳过对应的 Service 图表。
     for (const QVariantMap &descriptor : input.chart_descriptors)
     {
         const QString chart_id    = descriptor.value(evaluation::fieldName(evaluation::Field::ChartId)).toString();

@@ -23,7 +23,7 @@ LabelClassEditorBase {
         if (group === "unlabeled" || group === "未标注") {
             return "unlabeled"
         }
-        if (group === "good" || group === "良好") {
+        if (group === "good" || group === "良好" || group === "正常" || group === "ok") {
             return "good"
         }
         return "anomaly"
@@ -68,7 +68,7 @@ LabelClassEditorBase {
     QuiComboBox {
         id: groupBox
         Layout.fillWidth: true
-        model: control.allowUnlabeledGroup ? ["未标注", "良好", "异常"] : ["良好", "异常"]
+        model: control.allowUnlabeledGroup ? ["未标注", "正常", "异常"] : ["正常", "异常"]
         currentIndex: control.groupIndex(control.classGroup)
         onActivated: function(index) {
             control.classGroup = control.groupFromIndex(index)

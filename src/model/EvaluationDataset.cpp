@@ -133,7 +133,8 @@ struct SourceClass
 QString normalizedLabelClassGroup(const QString &group)
 {
     const QString normalized = group.trimmed().toLower();
-    if (normalized == QString("good") || normalized == QString("良好"))
+    if (normalized == QString("good") || normalized == QString("良好") || normalized == QString("正常")
+        || normalized == QString("ok"))
         return QString("good");
     if (normalized == QString("unlabeled") || normalized == QString("unlabelled") || normalized == QString("未标注"))
         return QString("unlabeled");
@@ -275,11 +276,13 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
                           const std::shared_ptr<std::atomic_bool> &cancel_token, QString *err_msg,
                           int *missing_database_images, int *ignored_selection_images,
                           const std::function<bool(qint64 image_id, int *width, int *height)> &dimensions_provider,
-                          QMap<int, QString>                                                  *class_catalog)
+                          QMap<int, QString> *class_catalog, QMap<int, QString> *class_colors_out)
 {
     images.clear();
     if (class_catalog != nullptr)
         class_catalog->clear();
+    if (class_colors_out != nullptr)
+        class_colors_out->clear();
     if (missing_database_images != nullptr)
         *missing_database_images = 0;
     if (ignored_selection_images != nullptr)
@@ -409,6 +412,13 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
             const QString name
                 = class_names[index].trimmed().isEmpty() ? QString::number(class_id) : class_names[index];
             class_catalog->insert(class_id, name);
+        }
+        if (class_colors_out != nullptr)
+        {
+            const int     class_id = static_cast<int>(class_ids[index]);
+            const QString color    = index < class_colors.size() ? class_colors[index] : QString();
+            if (!color.isEmpty())
+                class_colors_out->insert(class_id, color);
         }
     }
 

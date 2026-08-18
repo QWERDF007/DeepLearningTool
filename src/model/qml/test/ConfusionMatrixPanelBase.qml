@@ -28,19 +28,19 @@ Rectangle {
         return String(key) === EvaluationProtocolKeys.matrixAxisTotal
     }
 
-    function classColorForLabel(classId, key, label, predicted) {
-        const text = String(label || "")
-        if (predicted && (text === "正常" || text === "Good"))
-            return "#00b85a"
-        if (predicted && (text === "异常" || text === "Anomaly"))
-            return "#d71920"
+    function classColor(classId) {
+        return control.evaluation ? control.evaluation.classColor(Number(classId)) : QuiColor.FontDark
+    }
 
-        const palette = ["#ef5350", "#42a5f5", "#66bb6a", "#ffa726",
-                         "#ab47bc", "#26c6da", "#8d6e63", "#78909c"]
-        const value = Number(classId)
-        if (!isFinite(value) || value < 0)
-            return QuiColor.FontDark
-        return palette[Math.floor(value) % palette.length]
+    function predictedRowColor(rowKey, classId) {
+        if (control.evaluation && control.evaluation.anomalyDetection) {
+            const key = String(rowKey)
+            if (key === "0")
+                return "green"
+            if (key === "1")
+                return "red"
+        }
+        return control.classColor(classId)
     }
 
     function isUnmatchedPredictionKey(key) {
@@ -589,8 +589,7 @@ Rectangle {
                             height: 10
                             anchors.verticalCenter: parent.verticalCenter
                             radius: 2
-                            color: control.classColorForLabel(modelData.classId, modelData.key,
-                                                              modelData.label, true)
+                            color: control.predictedRowColor(modelData.key, modelData.classId)
                         }
 
                         QuiText {
@@ -640,8 +639,7 @@ Rectangle {
                                 height: 10
                                 anchors.verticalCenter: parent.verticalCenter
                                 radius: 2
-                                color: control.classColorForLabel(modelData.classId, modelData.key,
-                                                                  modelData.label, false)
+                                color: control.classColor(modelData.classId)
                             }
 
                             QuiText {

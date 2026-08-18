@@ -55,15 +55,6 @@ Rectangle {
         })
     }
 
-    function classColor(classId) {
-        const palette = ["#ef5350", "#42a5f5", "#66bb6a", "#ffa726",
-                         "#ab47bc", "#26c6da", "#8d6e63", "#78909c"]
-        const value = Number(classId)
-        if (!isFinite(value) || value < 0)
-            return QuiColor.FontDark
-        return palette[Math.floor(value) % palette.length]
-    }
-
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 5

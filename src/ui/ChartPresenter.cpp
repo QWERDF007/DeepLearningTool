@@ -1,7 +1,7 @@
 #include "ui/ChartPresenter.h"
 
-#include <QJsonDocument>
 #include <QJSValue>
+#include <QJsonDocument>
 
 namespace dltool::ui {
 
@@ -59,7 +59,7 @@ void setAxesFontColor(QVariantMap &scales, const QString &key, const QString &fo
     scales.insert(key, axes);
 }
 
-}
+} // namespace
 
 ChartPresenter::ChartPresenter(QObject *parent)
     : QObject(parent)
@@ -70,10 +70,8 @@ ChartPresenter::~ChartPresenter() = default;
 
 QVariantMap ChartPresenter::prepareData(const QVariant &chart_data) const
 {
-    /**
-     * @brief 保持 QVariantMap 结构交给 QML 转换，避免 JSON 深拷贝丢失嵌套值。
-     */
-    QVariant source = chart_data;
+    // 保持 QVariantMap 结构交给 QML 转换，避免 JSON 深拷贝丢失嵌套值。
+    QVariant   source            = chart_data;
     const bool input_is_js_value = source.metaType().id() == qMetaTypeId<QJSValue>();
     if (input_is_js_value)
         source = source.value<QJSValue>().toVariant();
@@ -82,7 +80,10 @@ QVariantMap ChartPresenter::prepareData(const QVariant &chart_data) const
     if (!result.isEmpty())
         return result;
 
-    return {{QStringLiteral("labels"), QVariantList{}}, {QStringLiteral("datasets"), QVariantList{}}};
+    return {
+        {  QStringLiteral("labels"), QVariantList{}},
+        {QStringLiteral("datasets"), QVariantList{}}
+    };
 }
 
 QVariantMap ChartPresenter::prepareOptions(const QVariant &options, const QString &font_color) const
@@ -91,7 +92,7 @@ QVariantMap ChartPresenter::prepareOptions(const QVariant &options, const QStrin
     if (font_color.isEmpty())
         return result;
 
-    QVariantMap legend = result.value(QStringLiteral("legend")).toMap();
+    QVariantMap legend        = result.value(QStringLiteral("legend")).toMap();
     QVariantMap legend_labels = legend.value(QStringLiteral("labels")).toMap();
     legend_labels.insert(QStringLiteral("fontColor"), font_color);
     legend.insert(QStringLiteral("labels"), legend_labels);
@@ -113,4 +114,4 @@ QVariantMap ChartPresenter::prepareOptions(const QVariant &options, const QStrin
     return result;
 }
 
-}
+} // namespace dltool::ui

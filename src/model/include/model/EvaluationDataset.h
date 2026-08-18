@@ -46,6 +46,7 @@ MODEL_API bool readEvaluationImageList(const QString &path, QList<QPair<qint64, 
  * @param ignored_selection_images 输出：不满足数据集/类别选择的图像数。
  * @param dimensions_provider 可选的图像尺寸提供器。
  * @param class_catalog 输出：项目数据库中的全局类别目录，可为 nullptr。
+ * @param class_colors 输出：项目数据库中的全局类别颜色映射，可为 nullptr。
  * @return 加载成功返回 true。
  */
 MODEL_API bool loadEvaluationImages(
@@ -54,7 +55,7 @@ MODEL_API bool loadEvaluationImages(
     const std::shared_ptr<std::atomic_bool> &cancel_token = {}, QString *err_msg = nullptr,
     int *missing_database_images = nullptr, int *ignored_selection_images = nullptr,
     const std::function<bool(qint64 image_id, int *width, int *height)> &dimensions_provider = {},
-    QMap<int, QString>                                                  *class_catalog       = nullptr);
+    QMap<int, QString> *class_catalog = nullptr, QMap<int, QString> *class_colors_out = nullptr);
 
 /**
  * @brief 从测试任务数据库与预测目录加载预测结果。

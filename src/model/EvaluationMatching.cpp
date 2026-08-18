@@ -91,12 +91,8 @@ QList<MatchPair> hungarianIoUMatches(const int pred_count, const int gt_count,
         }
     }
 
-    /**
-     * @brief Hungarian 最小费用算法。
-     *
-     * 费用取负 IoU，使总 IoU 最大；方阵补齐后的 dummy 行/列权值为零，
-     * 低于阈值的分配最终会被剔除。
-     */
+    // Hungarian 最小费用算法。
+    // 费用取负 IoU，使总 IoU 最大；方阵补齐后的 dummy 行/列权值为零，低于阈值的分配最终会被剔除。
     const int       n = size;
     QVector<double> u(n + 1), v(n + 1);
     QVector<int>    p(n + 1), way(n + 1);
@@ -310,7 +306,7 @@ QList<MatchPair> matchPredictions(const QList<EvaluationPredictionData>  &predic
                                   const evaluation::MatchingStrategy       strategy,
                                   const std::shared_ptr<std::atomic_bool> &cancel)
 {
-    /** @brief 两框均无效时视为完全匹配，IoU 取 1。 */
+    // 两框均无效时视为完全匹配，IoU 取 1。
     const auto iou_fn = [&predictions, &ground_truth](const int prediction, const int gt)
     {
         return (!predictions.at(prediction).box.valid() && !ground_truth.at(gt).box.valid())

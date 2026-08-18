@@ -1,7 +1,5 @@
 #include "../test_runner.h"
-
 #include "TestFixture.h"
-
 #include "model/AnomalyEvaluationViewModel.h"
 #include "model/DetectionEvaluationViewModel.h"
 #include "model/ModelEvaluationOptions.h"
@@ -29,8 +27,8 @@ ModelEvaluationOptions optionsFor(const EvaluationFixture &fixture, evaluation::
     options.task_database_path     = fixture.taskDatabasePath();
     options.prediction_dir         = fixture.predictionDirectory();
     options.confidence_threshold   = 0.5;
-    options.iou_threshold           = 0.5;
-    options.matching_strategy       = evaluation::MatchingStrategy::GreedyIoU;
+    options.iou_threshold          = 0.5;
+    options.matching_strategy      = evaluation::MatchingStrategy::GreedyIoU;
     return options;
 }
 
@@ -41,6 +39,7 @@ class ModelEvaluationViewModelTest : public QObject
     Q_OBJECT
 
 private slots:
+
     void noOptionsAndMissingInputUseExplicitStates()
     {
         DetectionEvaluationViewModel view_model;
@@ -51,7 +50,7 @@ private slots:
         QTemporaryDir temp;
         QVERIFY(temp.isValid());
         ModelEvaluationOptions options;
-        options.method = evaluation::Method::Detection;
+        options.method                 = evaluation::Method::Detection;
         options.dataset_file_list_path = QDir(temp.path()).filePath(QStringLiteral("missing.csv"));
         view_model.setEvaluationOptions(options);
         view_model.evaluate();
@@ -63,16 +62,15 @@ private slots:
     {
         EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
         QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
-        const qint64 cat = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 cat      = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
         const qint64 tp_image = fixture.addImage(QStringLiteral("tp"));
         const qint64 fn_image = fixture.addImage(QStringLiteral("fn"));
         QVERIFY(fixture.addDetectionLabel(tp_image, cat, 0, 0, 10, 10) >= 0);
         QVERIFY(fixture.addDetectionLabel(fn_image, cat, 0, 0, 10, 10) >= 0);
         QVERIFY(fixture.writeImageList());
         QVERIFY(fixture.setTestSelection({cat}));
-        QVERIFY(fixture.writePrediction(tp_image,
-                                        detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9,
-                                                            0, 0, 10, 10)));
+        QVERIFY(fixture.writePrediction(
+            tp_image, detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 10, 10)));
 
         DetectionEvaluationViewModel view_model;
         view_model.setEvaluationOptions(optionsFor(fixture, evaluation::Method::Detection));
@@ -115,14 +113,18 @@ private slots:
     {
         EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
         QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
-        const qint64 good = fixture.addClass(QStringLiteral("Good"), QStringLiteral("good"));
+        const qint64 good    = fixture.addClass(QStringLiteral("Good"), QStringLiteral("good"));
         const qint64 anomaly = fixture.addClass(QStringLiteral("Scratch"), QStringLiteral("anomaly"));
-        const qint64 normal = fixture.addImage(QStringLiteral("normal"),
-                                                {{QStringLiteral("image_label_class_id"), good},
-                                                 {QStringLiteral("group"), QStringLiteral("good")} });
-        const qint64 bad = fixture.addImage(QStringLiteral("bad"),
-                                             {{QStringLiteral("image_label_class_id"), anomaly},
-                                              {QStringLiteral("group"), QStringLiteral("anomaly")} });
+        const qint64 normal
+            = fixture.addImage(QStringLiteral("normal"), {
+                                                             {QStringLiteral("image_label_class_id"),                   good},
+                                                             {               QStringLiteral("group"), QStringLiteral("good")}
+        });
+        const qint64 bad
+            = fixture.addImage(QStringLiteral("bad"), {
+                                                          {QStringLiteral("image_label_class_id"),                   anomaly},
+                                                          {               QStringLiteral("group"), QStringLiteral("anomaly")}
+        });
         QVERIFY(fixture.writeImageList());
         QVERIFY(fixture.setTestSelection({good, anomaly}));
         QVERIFY(fixture.writePrediction(normal, anomalyPrediction(0.1)));
@@ -144,17 +146,16 @@ private slots:
     {
         EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
         QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
-        const qint64 cat = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 cat   = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
         const qint64 image = fixture.addImage(QStringLiteral("cat"));
         QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
         QVERIFY(fixture.writeImageList());
         QVERIFY(fixture.setTestSelection({cat}));
-        QVERIFY(fixture.writePrediction(image,
-                                        detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9,
-                                                            0, 0, 10, 10)));
+        QVERIFY(fixture.writePrediction(
+            image, detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 10, 10)));
 
         DetectionEvaluationViewModel view_model;
-        auto options = optionsFor(fixture, evaluation::Method::Detection);
+        auto                         options = optionsFor(fixture, evaluation::Method::Detection);
         view_model.setEvaluationOptions(options);
         view_model.evaluate();
         QTRY_COMPARE_WITH_TIMEOUT(view_model.stateKind(), ModelEvaluationViewModel::Ready, 5000);
@@ -172,6 +173,52 @@ private slots:
         QVERIFY(!view_model.error().isEmpty());
         QVERIFY(!view_model.available());
         QCOMPARE(view_model.instances()->rowCount(), 0);
+    }
+
+    void viewModelProvidesDatabaseClassColorsAndStrictClassCatalog()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 good = fixture.addClass(QStringLiteral("good"), QStringLiteral("good"), QStringLiteral("#112233"));
+        const qint64 scratch
+            = fixture.addClass(QStringLiteral("scratch"), QStringLiteral("anomaly"), QStringLiteral("#445566"));
+        const qint64 normal
+            = fixture.addImage(QStringLiteral("normal"), {
+                                                             {QStringLiteral("image_label_class_id"),                   good},
+                                                             {               QStringLiteral("group"), QStringLiteral("good")}
+        });
+        const qint64 bad
+            = fixture.addImage(QStringLiteral("bad"), {
+                                                          {QStringLiteral("image_label_class_id"),                   scratch},
+                                                          {               QStringLiteral("group"), QStringLiteral("anomaly")}
+        });
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({good, scratch}));
+        QVERIFY(fixture.writePrediction(normal, anomalyPrediction(0.1)));
+        QVERIFY(fixture.writePrediction(bad, anomalyPrediction(0.9)));
+
+        AnomalyEvaluationViewModel view_model;
+        view_model.setEvaluationOptions(optionsFor(fixture, evaluation::Method::AnomalyDetection));
+        view_model.evaluate();
+        QTRY_COMPARE_WITH_TIMEOUT(view_model.stateKind(), ModelEvaluationViewModel::Ready, 5000);
+        QVERIFY(view_model.available());
+
+        // 验证从数据库透传的颜色与接口
+        QCOMPARE(view_model.classColor(static_cast<int>(good)), QStringLiteral("#112233"));
+        QCOMPARE(view_model.classColor(static_cast<int>(scratch)), QStringLiteral("#445566"));
+        // 未知类别回退到默认调色板
+        QVERIFY(!view_model.classColor(9999).isEmpty());
+
+        // 验证混淆矩阵列数严格遵循类别标签（good 与 scratch，加 FP 与 TOTAL），没有多余的 0 / 正常 列
+        const auto *matrix = view_model.confusionMatrix();
+        QVERIFY(matrix != nullptr);
+        QCOMPARE(matrix->columnCount(), 4);
+        for (int c = 0; c < matrix->columnCount(); ++c)
+        {
+            const QString col_key
+                = matrix->data(matrix->index(0, c), EvaluationConfusionModel::ColumnKeyRole).toString();
+            QVERIFY(col_key != QStringLiteral("0"));
+        }
     }
 };
 

@@ -4,15 +4,14 @@
 #include "database/DataBase.h"
 #include "database/ModelTaskDataBase.h"
 
+#include <QColor>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
-#include <QColor>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTextStream>
-
 #include <utility>
 
 namespace dltool::model::testsupport {
@@ -45,7 +44,7 @@ EvaluationFixture::EvaluationFixture(const int method)
         return;
     }
 
-    const QString root = temporary_dir_->path();
+    const QString root     = temporary_dir_->path();
     project_database_path_ = QDir(root).filePath(QStringLiteral("project.db"));
     task_database_path_    = QDir(root).filePath(QStringLiteral("task.db"));
     file_list_path_        = QDir(root).filePath(QStringLiteral("test_images.csv"));
@@ -57,17 +56,15 @@ EvaluationFixture::EvaluationFixture(const int method)
     }
 
     database::ProjectDataBase database(projectDatabasePath());
-    QString                  database_error;
-    if (!database.initProject(QStringLiteral("evaluation-fixture"), method_, root, {}, root, 1, 1,
-                              database_error))
+    QString                   database_error;
+    if (!database.initProject(QStringLiteral("evaluation-fixture"), method_, root, {}, root, 1, 1, database_error))
     {
         setError(QStringLiteral("初始化项目数据库失败: %1").arg(database_error));
         return;
     }
 
     std::vector<int64_t> dataset_ids;
-    if (!database.addDatasets({QStringLiteral("test-dataset")}, dataset_ids, database_error)
-        || dataset_ids.size() != 1)
+    if (!database.addDatasets({QStringLiteral("test-dataset")}, dataset_ids, database_error) || dataset_ids.size() != 1)
     {
         setError(QStringLiteral("初始化测试数据集失败: %1").arg(database_error));
         return;
@@ -75,7 +72,11 @@ EvaluationFixture::EvaluationFixture(const int method)
     dataset_id_ = dataset_ids.front();
 
     database::ModelTaskDataBase task_database(taskDatabasePath());
-    if (!task_database.replaceDatasets({{QStringLiteral("test"), dataset_id_, {}}}, &database_error))
+    if (!task_database.replaceDatasets(
+            {
+                {QStringLiteral("test"), dataset_id_, {}}
+    },
+            &database_error))
     {
         setError(QStringLiteral("初始化任务数据库失败: %1").arg(database_error));
     }
@@ -133,16 +134,18 @@ const QList<qint64> &EvaluationFixture::imageIds() const
     return image_ids_;
 }
 
-qint64 EvaluationFixture::addClass(const QString &name, const QString &group)
+qint64 EvaluationFixture::addClass(const QString &name, const QString &group, const QString &color)
 {
     if (!isValid() && !error_.isEmpty())
         return -1;
 
     database::ProjectDataBase database(projectDatabasePath());
-    QString                  database_error;
-    qint64                   class_id = -1;
-    if (!database.addLabelClass(name, QStringLiteral("#3366cc"), {}, class_ids_.size(),
-                                jsonBytes(QJsonObject{{QStringLiteral("group"), group}}), class_id,
+    QString                   database_error;
+    qint64                    class_id = -1;
+    if (!database.addLabelClass(name, color,
+                                {
+    },
+                                class_ids_.size(), jsonBytes(QJsonObject{{QStringLiteral("group"), group}}), class_id,
                                 database_error))
     {
         setError(QStringLiteral("写入标签类别失败: %1").arg(database_error));
@@ -162,8 +165,8 @@ qint64 EvaluationFixture::addImage(const QString &name, const QVariantMap &image
         return -1;
 
     database::ProjectDataBase database(projectDatabasePath());
-    QString                  database_error;
-    std::vector<int64_t>     ids;
+    QString                   database_error;
+    std::vector<int64_t>      ids;
     if (!database.addImages(dataset_id_ >= 0 ? dataset_id_ : 1, {path}, ids, database_error) || ids.size() != 1)
     {
         setError(QStringLiteral("写入图像失败: %1").arg(database_error));
@@ -194,8 +197,8 @@ qint64 EvaluationFixture::addDetectionLabel(const qint64 image_id, const qint64 
     label.height = height;
 
     database::ProjectDataBase database(projectDatabasePath());
-    QString                  database_error;
-    std::vector<int64_t>     label_ids;
+    QString                   database_error;
+    std::vector<int64_t>      label_ids;
     if (!database.addLabels({image_id}, {class_id}, {method_}, {label.toBlob()}, label_ids, database_error)
         || label_ids.size() != 1)
     {
@@ -211,8 +214,8 @@ qint64 EvaluationFixture::addSegmentationLabel(const qint64 image_id, const qint
     data::SegLabelData_t label;
     label.points = points;
     database::ProjectDataBase database(projectDatabasePath());
-    QString                  database_error;
-    std::vector<int64_t>     label_ids;
+    QString                   database_error;
+    std::vector<int64_t>      label_ids;
     if (!database.addLabels({image_id}, {class_id}, {method_}, {label.toBlob()}, label_ids, database_error)
         || label_ids.size() != 1)
     {
@@ -228,8 +231,8 @@ qint64 EvaluationFixture::addAnomalyLabel(const qint64 image_id, const qint64 cl
     data::AnomalyLabelData_t label;
     label.points = points;
     database::ProjectDataBase database(projectDatabasePath());
-    QString                  database_error;
-    std::vector<int64_t>     label_ids;
+    QString                   database_error;
+    std::vector<int64_t>      label_ids;
     if (!database.addLabels({image_id}, {class_id}, {method_}, {label.toBlob()}, label_ids, database_error)
         || label_ids.size() != 1)
     {
@@ -241,32 +244,34 @@ qint64 EvaluationFixture::addAnomalyLabel(const qint64 image_id, const qint64 cl
 
 bool EvaluationFixture::writeImageList(const QList<QPair<qint64, QString>> &rows)
 {
-    const QList<QPair<qint64, QString>> values = rows.isEmpty()
-        ? [&]()
-        {
-              QList<QPair<qint64, QString>> result;
-              for (int index = 0; index < image_ids_.size(); ++index)
-                  result.push_back({image_ids_.at(index), image_paths_.at(index)});
-              return result;
-          }()
-        : rows;
+    const QList<QPair<qint64, QString>> values = rows.isEmpty() ? [&]()
+    {
+        QList<QPair<qint64, QString>> result;
+        for (int index = 0; index < image_ids_.size(); ++index)
+            result.push_back({image_ids_.at(index), image_paths_.at(index)});
+        return result;
+    }()
+                                                                : rows;
 
     QFile file(fileListPath());
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return setError(QStringLiteral("打开文件列表失败: %1").arg(file.errorString()));
     QTextStream stream(&file);
     stream << "image_id,image_path\n";
-    for (const auto &row : values)
-        stream << row.first << ',' << row.second << '\n';
+    for (const auto &row : values) stream << row.first << ',' << row.second << '\n';
     return true;
 }
 
 bool EvaluationFixture::setTestSelection(const QList<qint64> &class_ids)
 {
-    const QList<qint64> selected = class_ids.isEmpty() ? class_ids_ : class_ids;
+    const QList<qint64>         selected = class_ids.isEmpty() ? class_ids_ : class_ids;
     database::ModelTaskDataBase task_database(taskDatabasePath());
-    QString                      database_error;
-    if (!task_database.replaceDatasets({{QStringLiteral("test"), dataset_id_, selected}}, &database_error))
+    QString                     database_error;
+    if (!task_database.replaceDatasets(
+            {
+                {QStringLiteral("test"), dataset_id_, selected}
+    },
+            &database_error))
         return setError(QStringLiteral("写入测试选择失败: %1").arg(database_error));
     return true;
 }
@@ -274,7 +279,7 @@ bool EvaluationFixture::setTestSelection(const QList<qint64> &class_ids)
 bool EvaluationFixture::writePrediction(const qint64 image_id, const QVariant &prediction)
 {
     database::ModelTaskDataBase task_database(taskDatabasePath());
-    QString                      database_error;
+    QString                     database_error;
     if (!task_database.upsertPrediction({image_id, prediction}, &database_error))
         return setError(QStringLiteral("写入预测失败: %1").arg(database_error));
     return true;
@@ -283,8 +288,8 @@ bool EvaluationFixture::writePrediction(const qint64 image_id, const QVariant &p
 bool EvaluationFixture::removePrediction(const qint64 image_id)
 {
     database::ModelTaskDataBase task_database(taskDatabasePath());
-    QHash<qint64, QVariant>      predictions;
-    QString                      database_error;
+    QHash<qint64, QVariant>     predictions;
+    QString                     database_error;
     if (!task_database.readPredictions(predictions, &database_error))
         return setError(QStringLiteral("读取预测失败: %1").arg(database_error));
     predictions.remove(image_id);
@@ -312,22 +317,26 @@ bool EvaluationFixture::writeImageFile(const QString &path, const bool anomaly_v
 }
 
 QVariantMap detectionPrediction(const int class_id, const QString &class_name, const double score, const double x,
-                                 const double y, const double width, const double height)
+                                const double y, const double width, const double height)
 {
     // Let EvaluationDataset generate image-scoped IDs.  A fixture-level ID
     // based only on class_id would collide when several images share a class.
-    return {{QStringLiteral("class_id"), class_id},
-            {QStringLiteral("class_name"), class_name},
-            {QStringLiteral("score"), score},
-            {QStringLiteral("x"), x},
-            {QStringLiteral("y"), y},
-            {QStringLiteral("width"), width},
-            {QStringLiteral("height"), height}};
+    return {
+        {  QStringLiteral("class_id"),   class_id},
+        {QStringLiteral("class_name"), class_name},
+        {     QStringLiteral("score"),      score},
+        {         QStringLiteral("x"),          x},
+        {         QStringLiteral("y"),          y},
+        {     QStringLiteral("width"),      width},
+        {    QStringLiteral("height"),     height}
+    };
 }
 
 QVariantMap anomalyPrediction(const double image_score)
 {
-    return {{QStringLiteral("image_score"), image_score}};
+    return {
+        {QStringLiteral("image_score"), image_score}
+    };
 }
 
 } // namespace dltool::model::testsupport

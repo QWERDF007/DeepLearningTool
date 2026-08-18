@@ -137,7 +137,7 @@ LabelClassesViewBase {
         if (group === "unlabeled" || group === "未标注") {
             return "unlabeled"
         }
-        if (group === "good" || group === "良好") {
+        if (group === "good" || group === "良好" || group === "正常" || group === "ok") {
             return "good"
         }
         return "anomaly"
@@ -149,7 +149,7 @@ LabelClassesViewBase {
             return "未标注"
         }
         if (normalized === "good") {
-            return "良好"
+            return "正常"
         }
         return "异常"
     }

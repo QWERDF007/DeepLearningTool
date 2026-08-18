@@ -71,7 +71,7 @@ QuiPopup {
         if (group === "unlabeled" || group === "未标注") {
             return "unlabeled"
         }
-        if (group === "good" || group === "良好") {
+        if (group === "good" || group === "良好" || group === "正常" || group === "ok") {
             return "good"
         }
         return "anomaly"
@@ -477,7 +477,7 @@ QuiPopup {
                                 id: goodButton
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                text: "良好"
+                                text: "正常"
                                 checkable: true
                                 onClicked: groupSelector.setGroup("good")
                             }

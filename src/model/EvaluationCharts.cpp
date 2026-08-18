@@ -755,11 +755,7 @@ QVariantMap precisionRecallChartForImages(const QList<EvaluationImageData> &imag
 EvaluationChartOutput buildAnomalyEvaluationCharts(const QMap<qint64, EvaluationImageData> &images,
                                                    const QVariantMap &diagnostic, const double confidence)
 {
-    /**
-     * @brief 异常检测采用图像级二元分类，正常样本是没有 GT 标签的隐式负类。
-     *
-     * 指标定义为预测分数高于置信度阈值。
-     */
+    // 异常检测采用图像级二元分类，正常样本是没有 GT 标签的隐式负类。指标定义为预测分数高于置信度阈值。
     EvaluationChartOutput output;
     output.available = true;
     output.metrics   = QVariantMap{
@@ -840,12 +836,9 @@ EvaluationChartOutput buildEvaluationCharts(const evaluation::Method            
                                             const QVariantMap                       &diagnostic,
                                             const std::shared_ptr<std::atomic_bool> &cancel)
 {
-    /**
-     * @brief 兼容分发：协议组装仍按 method 选择图表构建器。
-     *
-     * 引擎子类已直接调用 buildAnomalyEvaluationCharts /
-     * buildInstanceMatchingEvaluationCharts；该函数只服务旧协议组装路径。
-     */
+    // 兼容分发：协议组装仍按 method 选择图表构建器。
+    // 引擎子类已直接调用 buildAnomalyEvaluationCharts /
+    // buildInstanceMatchingEvaluationCharts；该函数只服务旧协议组装路径。
     if (evaluation::isAnomaly(method))
         return buildAnomalyEvaluationCharts(images, diagnostic, confidence);
     if (!evaluation::hasInstanceMetrics(method))
@@ -858,12 +851,8 @@ QVariantMap buildInstanceEvent(const EvaluationImageData &image, const evaluatio
                                const double iou, const QString &dataset_root, const QString &prediction_root,
                                const qint64 event_index)
 {
-    /**
-     * @brief 视口裁剪由 thumbnail provider 在渲染时根据 URL 中的绝对 bounds 推导。
-     *
-     * QML 按 LabelInstanceThumbnail 模式使用原始几何换算 overlay，评估线程
-     * 因此不再依赖图像宽高。
-     */
+    // 视口裁剪由 thumbnail provider 在渲染时根据 URL 中的绝对 bounds 推导。
+    // QML 按 LabelInstanceThumbnail 模式使用原始几何换算 overlay，评估线程因此不再依赖图像宽高。
     const QVariantMap gt_geometry   = gt ? gt->geometry : QVariantMap{};
     const QVariantMap pred_geometry = pred ? pred->geometry : QVariantMap{};
     return QVariantMap{
@@ -1067,10 +1056,8 @@ QVariantList anomalyConfusionVariantCells(const QMap<qint64, EvaluationImageData
     for (const EvaluationImageData &image : images)
     {
         const EvaluationGroundTruthData *ground_truth = primaryGroundTruth(image);
-        const int     category_id = ground_truth != nullptr && ground_truth->class_id >= 0 ? ground_truth->class_id : 0;
-        const QString category_name    = ground_truth != nullptr && !ground_truth->class_name.isEmpty()
-                                           ? ground_truth->class_name
-                                           : evaluation::displayText(evaluation::DisplayText::Good);
+        const int category_id = ground_truth != nullptr && ground_truth->class_id >= 0 ? ground_truth->class_id : -1;
+        const QString category_name    = ground_truth != nullptr ? ground_truth->class_name : QString{};
         const bool    category_anomaly = ground_truth != nullptr && ground_truth->anomaly;
         const bool    predicted_anomaly
             = std::any_of(image.predictions.cbegin(), image.predictions.cend(),
@@ -1111,7 +1098,7 @@ QVariantMap assembleEvaluationResult(const EvaluationResultContext &context)
         return isCancelled(cancel);
     };
     const bool   anomaly_method = evaluation::isAnomaly(method);
-    /** @brief 序列化图像记录及其 GT/预测实例列表。 */
+    // 序列化图像记录及其 GT/预测实例列表。
     QVariantList image_records;
     for (const EvaluationImageData &image : images)
     {
@@ -1170,10 +1157,11 @@ QVariantMap assembleEvaluationResult(const EvaluationResultContext &context)
     {
         if (cancelled())
             return {};
+        const QString color = context.class_colors.value(it.key(), classColor(it.key()));
         class_catalog.push_back(QVariantMap{
-            {   evaluation::fieldName(evaluation::Field::Id),             it.key()},
-            { evaluation::fieldName(evaluation::Field::Name),           it.value()},
-            {evaluation::fieldName(evaluation::Field::Color), classColor(it.key())}
+            {   evaluation::fieldName(evaluation::Field::Id),   it.key()},
+            { evaluation::fieldName(evaluation::Field::Name), it.value()},
+            {evaluation::fieldName(evaluation::Field::Color),      color}
         });
     }
 

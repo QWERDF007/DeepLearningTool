@@ -210,6 +210,13 @@ public:
     Q_INVOKABLE bool selectConfusionCell(int row, int column);
 
     /**
+     * @brief 获取指定类别 ID 的显示颜色。
+     * @param classId 类别 ID。
+     * @return 颜色十六进制字符串。
+     */
+    Q_INVOKABLE QString classColor(int classId) const;
+
+    /**
      * @brief 清除混淆矩阵选中项。
      */
     Q_INVOKABLE void clearMatrixSelection();
@@ -332,6 +339,8 @@ private:
     int                               selected_proxy_row_{-1};
     QVariantMap                       selected_instance_;
     QMap<int, double>                 class_ap_map_;
+    QMap<int, QString>                class_catalog_;
+    QMap<int, QString>                class_colors_;
     int                               evaluation_revision_{0};
     int                               aggregation_revision_{0};
     bool                              aggregation_rebuild_scheduled_{false};

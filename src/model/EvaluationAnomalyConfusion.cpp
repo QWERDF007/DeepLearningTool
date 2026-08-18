@@ -34,21 +34,26 @@ std::vector<EvaluationConfusionCell> buildAnomalyConfusionCells(const QList<Anom
 
     // 类别轴来自项目数据库的完整目录，不能随着当前选中的图像集合收缩。
     for (auto category = class_catalog.cbegin(); category != class_catalog.cend(); ++category)
-        categories.insert(category.key(), GroundTruthCategory{category.value(), false});
+    {
+        const QString lower_name = category.value().trimmed().toLower();
+        const bool    is_good    = (category.key() == 0) || (lower_name == QStringLiteral("good"))
+                                || (lower_name == QStringLiteral("正常")) || (lower_name == QStringLiteral("ok"));
+        categories.insert(category.key(), GroundTruthCategory{category.value(), !is_good});
+    }
 
     for (const AnomalyConfusionSample &sample : samples)
     {
-        categories[sample.category_id] = GroundTruthCategory{sample.category_name, sample.category_anomaly};
-        const int row_id               = sample.predicted_anomaly ? 1 : 0;
+        if (sample.category_id < 0 || !categories.contains(sample.category_id))
+            continue;
+        categories[sample.category_id] = GroundTruthCategory{
+            sample.category_name.isEmpty() ? categories[sample.category_id].name : sample.category_name,
+            sample.category_anomaly};
+        const int row_id = sample.predicted_anomaly ? 1 : 0;
         ++counts[QString::number(row_id) + separator + QString::number(sample.category_id)];
         ++row_totals[row_id];
         ++column_totals[sample.category_id];
 
-        /**
-         * @brief FP/FN 分别表示预测轴和 GT 轴的错误边际。
-         *
-         * 类别错误会同时计入两个边际。
-         */
+        // FP/FN 分别表示预测轴和 GT 轴的错误边际。类别错误会同时计入两个边际。
         if (sample.predicted_anomaly != sample.category_anomaly)
         {
             ++row_errors[row_id];

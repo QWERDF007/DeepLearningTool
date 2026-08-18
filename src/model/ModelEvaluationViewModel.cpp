@@ -219,11 +219,8 @@ ModelEvaluationViewModel::ModelEvaluationViewModel(QObject *parent)
     connect(filtered_instances_, &QAbstractItemModel::rowsRemoved, this,
             [this]()
             {
-                /**
-                 * @brief 代理发送 rowsRemoved 期间不操作源选择模型。
-                 *
-                 * GridView 可能在该通知窗口内继续请求旧索引。
-                 */
+                // 代理发送 rowsRemoved 期间不操作源选择模型。
+                // GridView 可能在该通知窗口内继续请求旧索引。
                 if (selected_proxy_row_ < 0)
                     return;
                 const int selected_row = selected_proxy_row_;
@@ -662,16 +659,31 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
     iou_threshold_        = recordReal(evaluation_config, evaluation::Field::IouThreshold);
     matching_strategy_    = evaluation::matchingStrategyKey(
         evaluation::matchingStrategyFromKey(recordText(evaluation_config, evaluation::Field::MatchingStrategy)));
+
+    QMap<int, QString> catalog;
+    QMap<int, QString> colors;
+    for (const QVariant &item : root.value(evaluation::fieldName(evaluation::Field::ClassCatalog)).toList())
+    {
+        const QVariantMap map        = item.toMap();
+        const int         class_id   = map.value(evaluation::fieldName(evaluation::Field::Id)).toInt();
+        const QString     class_name = map.value(evaluation::fieldName(evaluation::Field::Name)).toString();
+        const QString     color      = map.value(evaluation::fieldName(evaluation::Field::Color)).toString();
+        if (class_id >= 0)
+        {
+            catalog.insert(class_id, class_name);
+            if (!color.isEmpty())
+                colors.insert(class_id, color);
+        }
+    }
+    class_catalog_                 = std::move(catalog);
+    class_colors_                  = std::move(colors);
     const QVariantMap capabilities = root.value(evaluation::fieldName(evaluation::Field::Capabilities)).toMap();
     has_instance_metrics_ = capabilities.value(evaluation::fieldName(evaluation::Field::HasInstanceMetrics)).toBool();
     has_image_metrics_    = capabilities.value(evaluation::fieldName(evaluation::Field::HasImageMetrics)).toBool();
     has_confusion_matrix_ = capabilities.value(evaluation::fieldName(evaluation::Field::HasConfusionMatrix)).toBool()
                          || anomaly_detection_;
-    /**
-     * @brief 异常结果按图像评估，但实例表仍消费每图像一条内存事件。
-     *
-     * 这样矩阵选择可以展示正常/异常样本，也能覆盖没有原始事件的真负图像。
-     */
+    // 异常结果按图像评估，但实例表仍消费每图像一条内存事件。
+    // 这样矩阵选择可以展示正常/异常样本，也能覆盖没有原始事件的真负图像。
     has_instance_events_ = capabilities.value(evaluation::fieldName(evaluation::Field::HasInstanceEvents)).toBool()
                         || anomaly_detection_;
     const QVariantMap diagnostic = root.value(evaluation::fieldName(evaluation::Field::DiagnosticMetrics)).toMap();
@@ -766,11 +778,8 @@ void ModelEvaluationViewModel::loadEvaluation(const QVariantMap &root)
 
     per_class_metrics_->setRecords(std::move(per_class));
 
-    /**
-     * @brief 官方指标和诊断指标保持分离。
-     *
-     * 主指标集合只改变总览面板显示的数值，矩阵和事件始终使用诊断记录。
-     */
+    // 官方指标和诊断指标保持分离。
+    // 主指标集合只改变总览面板显示的数值，矩阵和事件始终使用诊断记录。
     const QVariantMap official = root.value(evaluation::fieldName(evaluation::Field::OfficialMetrics)).toMap();
     if (primary_metric_set_ == evaluation::metricSetKey(evaluation::MetricSet::Official)
         && official.value(evaluation::fieldName(evaluation::Field::Available)).toBool())
@@ -844,7 +853,12 @@ void ModelEvaluationViewModel::loadInstanceRecords(const QVariantList &records)
         if (value.gt_class_color.isEmpty())
             value.gt_class_color = classColor(value.gt_class_id);
         if (value.pred_class_color.isEmpty())
-            value.pred_class_color = classColor(value.pred_class_id);
+        {
+            if (anomaly_detection_)
+                value.pred_class_color = value.pred_class_id == 1 ? QStringLiteral("red") : QStringLiteral("green");
+            else
+                value.pred_class_color = classColor(value.pred_class_id);
+        }
         value.thumbnail_url = thumbnailUrl(value);
         values.push_back(std::move(value));
     }
@@ -879,13 +893,12 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
 
     const int                revision = ++aggregation_revision_;
     EvaluationAggregateInput input;
+    input.class_catalog = class_catalog_;
     for (const EvaluationMetricRecord &metric : per_class_metrics_->records())
     {
         if (metric.class_id >= 0)
             input.class_catalog.insert(metric.class_id, metric.class_name.isEmpty() ? metric.label : metric.class_name);
     }
-    // 异常检测的矩阵行是内部二元预测类别（正常/异常），GT 类别目录只取
-    // Service 返回的全局按类别指标，避免过滤重算时把 0/1 混入 GT 列。
     if (!anomaly_detection_)
     {
         for (const EvaluationConfusionCell &cell : confusion_matrix_->records())
@@ -906,12 +919,9 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
     input.has_confusion_matrix = has_confusion_matrix_;
     input.anomaly_detection    = anomaly_detection_;
 
-    /**
-     * @brief QSortFilterProxyModel 是 GUI 线程唯一的过滤边界。
-     *
-     * 工作线程只接收脱离 QObject 的值记录，不访问代理、QModelIndex、
-     * QObject 或 QML 对象。
-     */
+    // QSortFilterProxyModel 是 GUI 线程唯一的过滤边界。
+    // 工作线程只接收脱离 QObject 的值记录，不访问代理、QModelIndex、
+    // QObject 或 QML 对象。
     for (const EvaluationInstanceRecord &record : instances_->records())
     {
         if (global_filtered_instances_->acceptsRecord(record))
@@ -921,12 +931,9 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
     const QVariantList dataset_ids = global_filtered_instances_->datasetIds();
     const QVariantList class_ids   = global_filtered_instances_->classIds();
 
-    /**
-     * @brief 在提交聚合前复制经过类别筛选的值记录。
-     *
-     * 图像代理只决定图像是否可见，工作线程还必须剔除图像中未选中的
-     * 类别，避免图像指标和阈值图表计入无关类别；代理访问仍限定在 GUI 线程。
-     */
+    // 在提交聚合前复制经过类别筛选的值记录。
+    // 图像代理只决定图像是否可见，工作线程还必须剔除图像中未选中的
+    // 类别，避免图像指标和阈值图表计入无关类别；代理访问仍限定在 GUI 线程。
     bool external_class_filter_enabled   = false;
     bool external_class_filter_available = false;
     if (global_filter_ != nullptr && hasInvokable(global_filter_, "isLabelClassFilterEnabled", 0))
@@ -987,12 +994,8 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
             continue;
         }
 
-        /**
-         * @brief 只保留选中类别及其对应的 GT/预测详情。
-         *
-         * 图像可见性由 filtered_images_ 按 GT 优先决定，图像进入聚合后
-         * 仍需排除无关预测。
-         */
+        // 只保留选中类别及其对应的 GT/预测详情。
+        // 图像可见性由 filtered_images_ 按 GT 优先决定，图像进入聚合后仍需排除无关预测。
         EvaluationImageRecord              filtered = record;
         QList<EvaluationGroundTruthRecord> filtered_gt;
         for (const EvaluationGroundTruthRecord &ground_truth : record.gt)
@@ -1050,11 +1053,8 @@ QString ModelEvaluationViewModel::thumbnailUrl(const EvaluationInstanceRecord &r
     query.addQueryItem(QStringLiteral("event"), record.event_uuid);
     query.addQueryItem(QStringLiteral("revision"), result_revision_);
     query.addQueryItem(QStringLiteral("path"), record.image_path);
-    /**
-     * @brief 裁剪视口由 provider 根据 GT/PRED 绝对 bounds 在渲染时推导。
-     *
-     * 评估阶段无需再次依赖图像宽高。
-     */
+    // 裁剪视口由 provider 根据 GT/PRED 绝对 bounds 在渲染时推导。
+    // 评估阶段无需再次依赖图像宽高。
     const auto addBounds = [&query](const QString &prefix, const QVariantMap &bounds)
     {
         const QVariant x = bounds.value(QStringLiteral("x"));
@@ -1249,6 +1249,13 @@ void ModelEvaluationViewModel::setGlobalFilter(QObject *filter)
     if (global_filter_ != nullptr)
         connect(global_filter_, SIGNAL(filterChanged()), this, SIGNAL(filterStateChanged()));
     emit filterStateChanged();
+}
+
+QString ModelEvaluationViewModel::classColor(const int class_id) const
+{
+    if (class_colors_.contains(class_id))
+        return class_colors_.value(class_id);
+    return dltool::model::classColor(class_id);
 }
 
 } // namespace dltool::model

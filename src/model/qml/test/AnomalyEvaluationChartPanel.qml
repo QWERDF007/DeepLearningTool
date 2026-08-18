@@ -221,6 +221,8 @@ EvaluationChartPanelBase {
     }
 
     chartOverlay: Item {
+        anchors.fill: parent
+
         Rectangle {
             id: classificationThresholdLine
             z: 2

@@ -153,12 +153,9 @@ MatchingStrategy matchingStrategyFromKey(const QString &key)
 
 QVariantMap normalizedEvaluationConfig(const QVariantMap &source)
 {
-    /**
-     * @brief 保留用户配置组的完整内容，并规范化评估器实际使用的字段。
-     *
-     * 其余仅用于评估的参数仍保存在快照中，修改指标选择器等参数时可触发
-     * C++ 重新评估而无需重新推理；推理参数在 ModelTaskPreparation 中比较。
-     */
+    // 保留用户配置组的完整内容，并规范化评估器实际使用的字段。
+    // 其余仅用于评估的参数仍保存在快照中，修改指标选择器等参数时可触发
+    // C++ 重新评估而无需重新推理；推理参数在 ModelTaskPreparation 中比较。
     QVariantMap normalized = source;
     normalized.insert(fieldName(Field::ConfidenceThreshold),
                       source.value(fieldName(Field::ConfidenceThreshold), kDefaultConfidenceThreshold).toDouble());

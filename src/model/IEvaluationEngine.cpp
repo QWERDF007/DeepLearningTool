@@ -64,11 +64,13 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     // (c) 加载图像与真值。
     QMap<qint64, EvaluationImageData> images;
     QMap<int, QString>                global_class_catalog;
+    QMap<int, QString>                global_class_colors;
     int                               missing_database_images  = 0;
     int                               ignored_selection_images = 0;
     if (!loadEvaluationImages(options.dataset_file_list_path, options.project_database_path, options.task_database_path,
                               method(), images, options.cancel_token, err_msg, &missing_database_images,
-                              &ignored_selection_images, options.image_dimensions_provider, &global_class_catalog))
+                              &ignored_selection_images, options.image_dimensions_provider, &global_class_catalog,
+                              &global_class_colors))
         return false;
     if (missing_database_images > 0)
         spdlog::warn("测试任务文件列表中有 {} 个图像已不在当前项目数据库中，已跳过", missing_database_images);
@@ -157,6 +159,7 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     output.method           = method();
     output.images           = images;
     output.class_catalog    = classes;
+    output.class_colors     = global_class_colors;
     output.per_class        = scratch_.per_class;
     output.overall          = scratch_.overall;
     output.image_counts     = scratch_.image_counts;

@@ -55,6 +55,7 @@ struct MODEL_API EvaluationResultContext
 {
     const QMap<qint64, EvaluationImageData> &images;
     const QMap<int, QString>                &classes;
+    const QMap<int, QString>                &class_colors;
     const QMap<int, EvaluationCounts>       &per_class;
     const EvaluationCounts                  &overall;
     const EvaluationCounts                  &image_counts;

@@ -162,13 +162,11 @@ bool InstanceMatchingEvaluationEngine::runDetectionLoop(const QMap<qint64, Evalu
             appendEvent(evaluation::Status::FalseNegative, &gt, nullptr, 0.0);
         }
 
-        /**
-         * @brief 图像级指标按整图 OK / NG 二分类模型（良品/不良品判定）统计：
-         * - 图像有标注（NG 不良品图）+ 模型有检出 -> TP（不良品检出）
-         * - 图像无标注（OK 良品图）  + 模型有检出 -> FP（良品误报 / 过杀）
-         * - 图像有标注（NG 不良品图）+ 模型无检出 -> FN（不良品漏检 / 漏杀）
-         * - 图像无标注（OK 良品图）  + 模型无检出 -> TN（良品放行）
-         */
+        // 图像级指标按整图 OK / NG 二分类模型（良品/不良品判定）统计：
+        // - 图像有标注（NG 不良品图）+ 模型有检出 -> TP（不良品检出）
+        // - 图像无标注（OK 良品图）  + 模型有检出 -> FP（良品误报 / 过杀）
+        // - 图像有标注（NG 不良品图）+ 模型无检出 -> FN（不良品漏检 / 漏杀）
+        // - 图像无标注（OK 良品图）  + 模型无检出 -> TN（良品放行）
         const bool has_gt   = !image.gt.isEmpty();
         const bool has_pred = !predictions.isEmpty();
         if (has_gt && has_pred)

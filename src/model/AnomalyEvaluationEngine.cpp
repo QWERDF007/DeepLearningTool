@@ -18,13 +18,7 @@ evaluation::Method AnomalyEvaluationEngine::method() const
     return evaluation::Method::AnomalyDetection;
 }
 
-void AnomalyEvaluationEngine::buildClasses(const QMap<qint64, EvaluationImageData> &, QMap<int, QString> &classes)
-{
-    // Normal images have no label row.  Keep an explicit negative category so
-    // the anomaly matrix remains rectangular even for an all-normal dataset.
-    if (!classes.contains(0))
-        classes.insert(0, evaluation::displayText(evaluation::DisplayText::Good));
-}
+void AnomalyEvaluationEngine::buildClasses(const QMap<qint64, EvaluationImageData> &, QMap<int, QString> &) {}
 
 bool AnomalyEvaluationEngine::computeInstanceCounts(const QMap<qint64, EvaluationImageData> &,
                                                     const QMap<int, QString> &, QMap<int, EvaluationCounts> &,
@@ -49,11 +43,7 @@ bool AnomalyEvaluationEngine::runAnomalyLoop(const QMap<qint64, EvaluationImageD
             return fail(QString("评估已取消"));
         const EvaluationImageData &image = image_it.value();
 
-        /**
-         * @brief 异常检测按图像生成事件供 UI 统一消费。
-         *
-         * 没有原始实例事件的真负样本也会生成一条记录。
-         */
+        // 异常检测按图像生成事件供 UI 统一消费。没有原始实例事件的真负样本也会生成一条记录。
         const EvaluationGroundTruthData *category_gt          = nullptr;
         bool                             ground_truth_anomaly = false;
         for (const EvaluationGroundTruthData &gt : image.gt)
@@ -94,11 +84,8 @@ bool AnomalyEvaluationEngine::runAnomalyLoop(const QMap<qint64, EvaluationImageD
         EvaluationGroundTruthData display_gt = category_gt != nullptr ? *category_gt : EvaluationGroundTruthData{};
         if (category_gt == nullptr)
         {
-            /**
-             * @brief 正常图像没有 GT 标签，使用隐式负类展示。
-             */
-            display_gt.class_id   = 0;
-            display_gt.class_name = evaluation::displayText(evaluation::DisplayText::Good);
+            display_gt.class_id   = -1;
+            display_gt.class_name = QString{};
             display_gt.anomaly    = false;
         }
         EvaluationPredictionData display_prediction

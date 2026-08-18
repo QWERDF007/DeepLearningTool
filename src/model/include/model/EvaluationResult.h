@@ -31,6 +31,7 @@ struct MODEL_API EvaluationResult
 
     QMap<qint64, EvaluationImageData> images;        ///< 按图像 ID 索引的图像记录。
     QMap<int, QString>                class_catalog; ///< 类别 ID -> 类别名称。
+    QMap<int, QString>                class_colors;  ///< 类别 ID -> 类别颜色。
     QMap<int, EvaluationCounts>       per_class;     ///< 类别级实例计数。
     EvaluationCounts                  overall;       ///< 全局实例计数。
     EvaluationCounts                  image_counts;  ///< 图像级计数。

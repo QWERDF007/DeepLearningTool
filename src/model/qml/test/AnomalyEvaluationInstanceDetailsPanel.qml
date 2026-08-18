@@ -14,6 +14,8 @@ EvaluationInstanceDetailsPanelBase {
     }
 
     function predictedClassColor(instance) {
-        return Number(instance.predClassId) === 1 ? "#e53935" : "#43a047"
+        if (!instance)
+            return QuiColor.FontDark
+        return Number(instance.predClassId) === 1 ? "red" : "green"
     }
 }

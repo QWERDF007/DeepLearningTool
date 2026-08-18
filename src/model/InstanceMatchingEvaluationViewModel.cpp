@@ -17,13 +17,10 @@ QVariantList InstanceMatchingEvaluationViewModel::precisionRecallClasses() const
 
 void InstanceMatchingEvaluationViewModel::applyMethodSpecificData(const EvaluationResult &result)
 {
-    /**
-     * @brief 从 PR 曲线图表描述符派生类别选项。
-     *
-     * 与 QML 侧 chartDescriptorForDisplay/refreshPrecisionRecallClasses 的
-     * 旧逻辑一致：只取 series_kind == class 的数据集，使用图表自带名称与
-     * 边框颜色，避免 ViewModel 重复维护调色板。
-     */
+    // 从 PR 曲线图表描述符派生类别选项。
+    // 与 QML 侧 chartDescriptorForDisplay/refreshPrecisionRecallClasses 的
+    // 旧逻辑一致：只取 series_kind == class 的数据集，使用图表自带名称与
+    // 边框颜色，避免 ViewModel 重复维护调色板。
     QVariantList  options;
     const QString precision_recall_id = evaluation::chartIdKey(evaluation::ChartId::PrecisionRecall);
     for (const QVariantMap &chart : result.charts)

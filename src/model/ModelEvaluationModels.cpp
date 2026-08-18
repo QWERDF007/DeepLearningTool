@@ -675,11 +675,8 @@ bool invokeBool(QObject *object, const char *method, bool *invoked)
 EvaluationImageFilterProxyModel::EvaluationImageFilterProxyModel(QObject *parent)
     : QSortFilterProxyModel(parent)
 {
-    /**
-     * @brief 各筛选设置器显式调用 invalidateFilter()。
-     *
-     * 保持代理的动态筛选关闭，避免评估结果和选择更新期间发生重入筛选。
-     */
+    // 各筛选设置器显式调用 invalidateFilter()。
+    // 保持代理的动态筛选关闭，避免评估结果和选择更新期间发生重入筛选。
     setDynamicSortFilter(false);
 }
 
@@ -709,11 +706,8 @@ bool EvaluationImageFilterProxyModel::acceptsRecord(const EvaluationImageRecord 
     if (!invokeBool(global_filter_, "acceptsImage", record.id, &invoked))
         return invoked ? false : true;
 
-    /**
-     * @brief 标签搜索和自定义标签条件必须作用于图像所属的 GT 标签。
-     *
-     * acceptsImage() 无法读取当前评估记录中的标签 ID，因此不能单独完成判断。
-     */
+    // 标签搜索和自定义标签条件必须作用于图像所属的 GT 标签。
+    // acceptsImage() 无法读取当前评估记录中的标签 ID，因此不能单独完成判断。
     const QList<qint64> &label_ids = gtLabelIds(record);
     if (!label_ids.isEmpty())
     {
@@ -731,11 +725,8 @@ bool EvaluationImageFilterProxyModel::acceptsRecord(const EvaluationImageRecord 
             return false;
     }
 
-    /**
-     * @brief 全局图像筛选覆盖数据集、标签、图像标签类别、文件名和自定义条件。
-     *
-     * LabelClass 属于实例级筛选，因此图像行需按自身 GT 标签执行同一套规则。
-     */
+    // 全局图像筛选覆盖数据集、标签、图像标签类别、文件名和自定义条件。
+    // LabelClass 属于实例级筛选，因此图像行需按自身 GT 标签执行同一套规则。
     bool class_enabled         = false;
     bool class_enabled_invoked = false;
     class_enabled              = invokeBool(global_filter_, "isLabelClassFilterEnabled", &class_enabled_invoked);
@@ -747,12 +738,9 @@ bool EvaluationImageFilterProxyModel::acceptsRecord(const EvaluationImageRecord 
     if (!inverted_invoked)
         inverted = false;
 
-    /**
-     * @brief LabelClass 是面向 GT 的图像筛选。
-     *
-     * 正向选择要求至少一个 GT 类别命中，反选要求所有 GT 类别均不被排除；
-     * 纯 FP 图像没有 GT 类别，不能把 PRED 当作 GT 来显示。
-     */
+    // LabelClass 是面向 GT 的图像筛选。
+    // 正向选择要求至少一个 GT 类别命中，反选要求所有 GT 类别均不被排除；
+    // 纯 FP 图像没有 GT 类别，不能把 PRED 当作 GT 来显示。
     const QList<int> &relevant_classes = gtClassIds(record);
 
     QList<bool> accepted_labels;
@@ -845,11 +833,8 @@ bool EvaluationGlobalFilterProxyModel::acceptsGlobalLabel(const EvaluationInstan
     if (!globalFilterIsActive(global_filter_, &active_invoked) && active_invoked)
         return true;
 
-    /**
-     * @brief GT 标签 ID 是标签搜索结果及其他标签级谓词的权威对象。
-     *
-     * 纯 FP 事件没有 GT 标签，不为此类条件构造虚假的匹配。
-     */
+    // GT 标签 ID 是标签搜索结果及其他标签级谓词的权威对象。
+    // 纯 FP 事件没有 GT 标签，不为此类条件构造虚假的匹配。
     if (record.gt_label_id >= 0)
     {
         bool       invoked_label  = false;
@@ -869,12 +854,9 @@ bool EvaluationGlobalFilterProxyModel::acceptsGlobalLabel(const EvaluationInstan
     if (!inverted_invoked)
         inverted = false;
 
-    /**
-     * @brief 匹配、漏检和类别错误事件始终优先使用 GT 类别。
-     *
-     * 若把 PRED 也用于判断，选中类别的误检可能绕过不匹配的 GT；只有纯 FP
-     * 事件才回退到预测类别。
-     */
+    // 匹配、漏检和类别错误事件始终优先使用 GT 类别。
+    // 若把 PRED 也用于判断，选中类别的误检可能绕过不匹配的 GT；只有纯 FP
+    // 事件才回退到预测类别。
     const int  class_id = record.gt_class_id >= 0 ? record.gt_class_id : record.pred_class_id;
     bool       invoked  = false;
     const bool accepted = invokeBool(global_filter_, "acceptsLabelClassId", class_id, &invoked);
@@ -1161,9 +1143,7 @@ void EvaluationChartModel::setRecords(QList<QVariantMap> records)
     int       common   = 0;
     while (common < old_size && common < new_size && records_.at(common) == records.at(common)) ++common;
 
-    /**
-     * @brief 图表仅在尾部增删时保留公共前缀的持久索引。
-     */
+    // 图表仅在尾部增删时保留公共前缀的持久索引。
     if (common == std::min(old_size, new_size))
     {
         if (new_size > old_size)

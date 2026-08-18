@@ -1,6 +1,6 @@
 #include "data/LabelClasses.h"
-#include "data/ShortcutManager.h"
 
+#include "data/ShortcutManager.h"
 #include "database/DataBase.h"
 
 #include <spdlog/spdlog.h>
@@ -67,8 +67,8 @@ QString normalizeLabelClassGroup(const QString &group)
     {
         return QString(kUnlabeledGroup);
     }
-    if (normalized == QString(kGoodGroup) || normalized == QString("良好")
-        || normalized == QStringLiteral("good"))
+    if (normalized == QString(kGoodGroup) || normalized == QString("良好") || normalized == QString("正常")
+        || normalized == QStringLiteral("good") || normalized == QStringLiteral("ok"))
     {
         return QString(kGoodGroup);
     }
@@ -80,7 +80,7 @@ QString labelClassGroupDisplayName(const QString &group)
     const QString normalized = normalizeLabelClassGroup(group);
     if (normalized == QString(kUnlabeledGroup))
         return QString("未标注");
-    return normalized == QString(kGoodGroup) ? QString("良好") : QString("异常");
+    return normalized == QString(kGoodGroup) ? QString("正常") : QString("异常");
 }
 
 QString defaultLabelClassGroup()
