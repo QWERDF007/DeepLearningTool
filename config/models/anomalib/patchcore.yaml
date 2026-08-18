@@ -150,7 +150,7 @@ test_params:
         description: 图像分数大于等于该值时判定为异常，否则判定为正常。
         value: 0.5
         value_type: double
-        value_range: [-1000000.0, 1000000.0, 0.001]
+        value_range: [-1000000.0, 1000000.0, 0.0001]
         display_type: spin
 
       - name_en: device
