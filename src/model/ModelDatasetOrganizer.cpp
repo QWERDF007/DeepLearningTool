@@ -827,7 +827,8 @@ private:
         if (image.image_path.trimmed().isEmpty())
             return false;
 
-        dltool::data::DatasetIO::getImageDimensions(image.image_path, image.width, image.height);
+        if (!dltool::data::DatasetIO::getImageDimensions(image.image_path, image.width, image.height))
+            return false;
 
         const QVariantMap image_level_label = ctx.source->imageLevelLabelData(image_id);
         image.image_label_class_id

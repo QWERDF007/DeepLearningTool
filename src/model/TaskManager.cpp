@@ -340,6 +340,9 @@ bool TaskManager::updateTaskProgress(const int task_id, const int progress)
         return false;
 
     Task &task = tasks_[static_cast<size_t>(row)];
+    if (isTerminal(task.status))
+        return false;
+
     const int bounded = boundedProgress(progress);
     const bool eta_changed = bounded >= 100 && task.eta_seconds != 0;
     if (task.progress == bounded && !eta_changed)
@@ -541,6 +544,8 @@ void TaskManager::handleTaskMessage(const TaskMessage &message)
         updateTaskProgress(message.task_id, message.progress);
     if (message.payload.contains(taskProtocolFieldName(TaskProtocolField::EtaSeconds)) && message.eta_seconds >= 0)
         updateTaskEta(message.task_id, message.eta_seconds);
+    if (message.payload.contains(QStringLiteral("phase")))
+        updateTaskPhase(message.task_id, message.payload.value(QStringLiteral("phase")).toString());
 
     switch (message.status)
     {

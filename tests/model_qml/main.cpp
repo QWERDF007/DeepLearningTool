@@ -1,10 +1,13 @@
 #include <QtQuickTest/quicktest.h>
 
+#include "QmlModelFixture.h"
+
 #include <QGuiApplication>
 #include <QString>
 #include <QByteArray>
 #include <QFileInfo>
 #include <QDir>
+#include <QtQml/qqml.h>
 
 int main(int argc, char **argv)
 {
@@ -14,6 +17,9 @@ int main(int argc, char **argv)
     const QString build_root = QStringLiteral("F:/Projects/DeepLearningTool/build");
     const QString import_paths = build_root + QLatin1Char(';') + build_root + QStringLiteral("/qml");
     qputenv("QML2_IMPORT_PATH", import_paths.toUtf8());
+
+    qmlRegisterType<dltool::model::testsupport::QmlModelFixture>("dltool.modeltest", 1, 0,
+                                                                  "ModelTestFixture");
 
     return quick_test_main(argc, argv, "tst_dltool_model_qml", qPrintable(QFINDTESTDATA("qml")));
 }

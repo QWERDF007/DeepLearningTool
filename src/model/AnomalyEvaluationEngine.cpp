@@ -1,5 +1,6 @@
 #include "model/AnomalyEvaluationEngine.h"
 
+#include "model/EvaluationAnomalyConfusion.h"
 #include "model/EvaluationCharts.h"
 #include "model/EvaluationCommon.h"
 
@@ -17,9 +18,12 @@ evaluation::Method AnomalyEvaluationEngine::method() const
     return evaluation::Method::AnomalyDetection;
 }
 
-void AnomalyEvaluationEngine::buildClasses(const QMap<qint64, EvaluationImageData> &, QMap<int, QString> &)
+void AnomalyEvaluationEngine::buildClasses(const QMap<qint64, EvaluationImageData> &, QMap<int, QString> &classes)
 {
-    // 异常路径保留项目数据库的全局类别目录，不追加方法特异类别。
+    // Normal images have no label row.  Keep an explicit negative category so
+    // the anomaly matrix remains rectangular even for an all-normal dataset.
+    if (!classes.contains(0))
+        classes.insert(0, evaluation::displayText(evaluation::DisplayText::Good));
 }
 
 bool AnomalyEvaluationEngine::computeInstanceCounts(const QMap<qint64, EvaluationImageData> &, const QMap<int, QString> &,
@@ -154,10 +158,24 @@ AnomalyEvaluationEngine::buildCharts(const QMap<qint64, EvaluationImageData> &im
 }
 
 QVector<EvaluationConfusionCell>
-AnomalyEvaluationEngine::buildConfusionMatrix(const QMap<int, QString> &, const QMap<QString, qint64> &)
+AnomalyEvaluationEngine::buildConfusionMatrix(const QMap<int, QString> &classes, const QMap<QString, qint64> &)
 {
-    // 旧 Service 的异常路径不产出实例级混淆矩阵单元格；专用异常矩阵留待后续阶段。
-    return {};
+    QList<AnomalyConfusionSample> samples;
+    samples.reserve(scratch_.events.size());
+    for (const EvaluationInstanceRecord &event : scratch_.events)
+    {
+        const bool predicted_anomaly = event.status == evaluation::Status::TruePositive
+                                    || event.status == evaluation::Status::FalsePositive;
+        const bool category_anomaly  = event.status == evaluation::Status::TruePositive
+                                    || event.status == evaluation::Status::FalseNegative;
+        samples.push_back({event.gt_class_id,
+                           event.gt_class,
+                           category_anomaly,
+                           predicted_anomaly});
+    }
+
+    const std::vector<EvaluationConfusionCell> cells = buildAnomalyConfusionCells(samples, classes);
+    return QVector<EvaluationConfusionCell>(cells.cbegin(), cells.cend());
 }
 
 bool AnomalyEvaluationEngine::hasConfusionMatrix() const

@@ -1,10 +1,38 @@
 #include "../test_runner.h"
 
 #include "model/ModelParamDefs.h"
+#include "model/IParams.h"
 
+#include <QSignalSpy>
 #include <QTest>
 
 using namespace dltool::model;
+
+namespace {
+
+class TestParams final : public ITestParams
+{
+public:
+    TestParams()
+    {
+        addGroup(QStringLiteral("inference"), QStringLiteral("Inference"),
+                 {makeIntegerParam(QStringLiteral("epochs"), QStringLiteral("Epochs"), 3, 1, 20, 1)});
+    }
+
+    QString typeName() const override
+    {
+        return QStringLiteral("TestParams");
+    }
+
+    std::unique_ptr<ITestParams> cloneTestParams() const override
+    {
+        auto result = std::make_unique<TestParams>();
+        result->copyValuesFrom(*this);
+        return result;
+    }
+};
+
+} // namespace
 
 class ModelParamDefsTest : public QObject
 {
@@ -56,6 +84,32 @@ private slots:
         QCOMPARE(group.valueForName(QStringLiteral("epochs")).toInt(), 9);
         QCOMPARE(group.valuesMap().value(QStringLiteral("epochs")).toInt(), 9);
         QVERIFY(!group.setValueForName(QStringLiteral("missing"), 1));
+    }
+
+    void paramsCopyCloneAndSignalsAreValueBased()
+    {
+        TestParams source;
+        ParamGroupModel *source_group = source.groupAt(0);
+        QVERIFY(source_group != nullptr);
+        QSignalSpy value_changed(source_group, &ParamGroupModel::valueChanged);
+        QVERIFY(source_group->setValueForName(QStringLiteral("epochs"), 9));
+        QCOMPARE(value_changed.count(), 1);
+
+        TestParams copied;
+        copied.copyValuesFrom(source);
+        QCOMPARE(copied.groupAt(0)->valueForName(QStringLiteral("epochs")).toInt(), 9);
+
+        std::unique_ptr<ITestParams> cloned = source.cloneTestParams();
+        QVERIFY(cloned != nullptr);
+        QCOMPARE(cloned->groupAt(0)->valueForName(QStringLiteral("epochs")).toInt(), 9);
+
+        QVERIFY(source_group->setValueForName(QStringLiteral("epochs"), 12));
+        QCOMPARE(copied.groupAt(0)->valueForName(QStringLiteral("epochs")).toInt(), 9);
+        QCOMPARE(cloned->groupAt(0)->valueForName(QStringLiteral("epochs")).toInt(), 9);
+        QVERIFY(source.setValuesMap({{QStringLiteral("inference"),
+                                      QVariantMap{{QStringLiteral("epochs"), 15}}}}));
+        QCOMPARE(source.valuesMap().value(QStringLiteral("inference")).toMap().value(QStringLiteral("epochs")).toInt(),
+                 15);
     }
 };
 

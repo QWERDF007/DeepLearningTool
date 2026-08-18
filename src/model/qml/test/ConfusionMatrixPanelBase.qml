@@ -363,17 +363,25 @@ Rectangle {
                                      cellKind: EvaluationConfusionModel.CellKindNotApplicable,
                                      selectable: false,
                                      isDiagonal: false })
-            property bool selected: control.isCellSelected(options.rowKey, options.columnKey)
-            property bool errorAxisCell: control.isErrorAxisRow(options.rowKey)
-                                      || control.isErrorAxisColumn(options.columnKey)
-            property bool totalAxisCell: control.isTotalKey(options.rowKey)
-                                      || control.isTotalKey(options.columnKey)
-            color: control.cellFillColor(options.cellKind, options.isDiagonal,
+            readonly property string rowKey: String(options && options.rowKey !== undefined ? options.rowKey : "")
+            readonly property string columnKey: String(options && options.columnKey !== undefined ? options.columnKey : "")
+            readonly property int cellKind: Number(options && options.cellKind !== undefined
+                                                   ? options.cellKind
+                                                   : EvaluationConfusionModel.CellKindNotApplicable)
+            readonly property bool selectable: !!(options && options.selectable)
+            readonly property int count: Number(options && options.count !== undefined ? options.count : 0)
+            property bool selected: control.isCellSelected(rowKey, columnKey)
+            property bool errorAxisCell: control.isErrorAxisRow(rowKey)
+                                      || control.isErrorAxisColumn(columnKey)
+            property bool totalAxisCell: control.isTotalKey(rowKey)
+                                      || control.isTotalKey(columnKey)
+            objectName: "confusionCell_" + rowKey + "_" + columnKey
+            color: control.cellFillColor(cellKind, !!options.isDiagonal,
                                          errorAxisCell, totalAxisCell, selected)
-            opacity: control.cellOpacity(options.cellKind, options.count, selected,
+            opacity: control.cellOpacity(cellKind, count, selected,
                                          errorAxisCell, totalAxisCell)
-            border.color: control.cellBorderColor(options.cellKind, errorAxisCell,
-                                                  totalAxisCell, selected)
+            border.color: control.cellBorderColor(cellKind, errorAxisCell,
+                                                   totalAxisCell, selected)
             border.width: control.cellBorderWidth(selected)
 
             Column {
@@ -381,15 +389,14 @@ Rectangle {
                 QuiText {
                     anchors.horizontalCenter: parent.horizontalCenter
                     // Dynamic table delegates can be created before their options are injected.
-                    text: options && options.count !== undefined && options.count !== null
-                          ? String(options.count) : "0"
+                        text: String(parent.parent.count)
                     color: QuiColor.FontPrimary
                 }
             }
             MouseArea {
                 id: cellMouse
                 anchors.fill: parent
-                enabled: !!(options && options.selectable)
+                enabled: selectable
                 hoverEnabled: enabled
                 onClicked: {
                     if (!control.evaluation || !options

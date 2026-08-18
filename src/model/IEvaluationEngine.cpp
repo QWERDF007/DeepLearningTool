@@ -125,14 +125,12 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     scratch_.matching_strategy     = options.matching_strategy;
     scratch_.cancel_token          = options.cancel_token;
 
-    const bool         anomaly_method = evaluation::isAnomaly(method());
     QMap<int, QString> classes        = global_class_catalog;
-    if (!anomaly_method)
-    {
-        // (g) 由子类补充图像 GT/预测产生的类别（仅非异常方法）。
-        buildClasses(images, classes);
-        classes.remove(-1);
-    }
+    // The anomaly engine also contributes the implicit Good category used by
+    // its image-level matrix.  Instance-matching engines use the same hook to
+    // fill categories that are present only in predictions or labels.
+    buildClasses(images, classes);
+    classes.remove(-1);
 
     // (h) 实例级计数。
     if (!computeInstanceCounts(images, classes, scratch_.per_class, scratch_.overall, err_msg))

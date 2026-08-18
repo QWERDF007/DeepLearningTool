@@ -44,7 +44,10 @@ QString runtimePath(const QString &path)
     const QString cleaned = cleanPath(path);
     if (cleaned.isEmpty() || QFileInfo(cleaned).isAbsolute())
         return cleaned;
-    return cleanPath(QDir(QCoreApplication::applicationDirPath()).filePath(cleaned));
+    const QString configured_root = qEnvironmentVariable("DLT_RUNTIME_ROOT").trimmed();
+    const QString runtime_root
+        = configured_root.isEmpty() ? QCoreApplication::applicationDirPath() : cleanPath(configured_root);
+    return cleanPath(QDir(runtime_root).filePath(cleaned));
 }
 
 QString resolvePath(const QString &base_dir, const QString &path)

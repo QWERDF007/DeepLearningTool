@@ -506,7 +506,9 @@ bool ModelManager::copyModel(const qint64 model_id, const bool copy_train_weight
         return false;
     }
 
-    const ModelRecord  &source = models_[row];
+    // Keep the source record stable while inserting the copied model. The
+    // insertion may reallocate models_ and invalidate references into it.
+    const ModelRecord   source = models_[row];
     QString             err_msg;
     int64_t             new_model_id{-1};
     const qint64        now         = QDateTime::currentSecsSinceEpoch();

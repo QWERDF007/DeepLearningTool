@@ -122,8 +122,8 @@ public:
     void             setEvaluationOptions(const ModelEvaluationOptions &options);
     Q_INVOKABLE void evaluate(bool notify = false);
     Q_INVOKABLE void refreshEvaluation();
-    void             invalidate(evaluation::ViewState state = evaluation::ViewState::NotRun);
-    void             setRuntimeState(evaluation::ViewState state);
+    Q_INVOKABLE void invalidate(evaluation::ViewState state = evaluation::ViewState::NotRun);
+    Q_INVOKABLE void setRuntimeState(evaluation::ViewState state);
     Q_INVOKABLE void selectInstance(int proxyRow);
     Q_INVOKABLE bool selectInstance(const QString &eventUuid);
     Q_INVOKABLE void selectMatrixCell(const QString &rowKey, const QString &columnKey);

@@ -100,6 +100,7 @@ Item {
 
     Rectangle {
         id: stateOverlay
+        objectName: "evaluationStateOverlay"
         anchors.fill: parent
         z: 20
         visible: !control.evaluation || control.evaluation.loading
