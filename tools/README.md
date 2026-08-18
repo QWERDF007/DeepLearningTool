@@ -5,14 +5,14 @@
 Windows 环境默认使用：
 
 ```powershell
-& 'D:\Software\anaconda3\envs\py312\python.exe' --version
+python --version
 ```
 
 脚本依赖 `PyYAML` 读取 `tools/dependencies.yaml`。
 
 ## `package_app.py`
 
-`package_app.py` 用于生成 release 发布包，默认从 `build/` 读取构建产物，输出到 `install/`。
+`package_app.py` 用于生成 release 发布包，默认从 `build/` 读取构建产物，输出到 `install/DeepLearningTool-<version>/`。
 
 它会执行这些步骤：
 
@@ -29,7 +29,7 @@ Windows 环境默认使用：
 常用命令：
 
 ```powershell
-& 'D:\Software\anaconda3\envs\py312\python.exe' tools\package_app.py
+python tools\package_app.py
 ```
 
 ```bash
@@ -39,13 +39,13 @@ python tools/package_app.py
 指定构建目录和输出目录：
 
 ```powershell
-& 'D:\Software\anaconda3\envs\py312\python.exe' tools\package_app.py --build-dir build --install-dir install
+python tools\package_app.py --build-dir build --install-dir D:\Project\DeepLearningTool\install\DeepLearningTool-0.0.1
 ```
 
 跳过 Qt 部署和系统运行库，适合快速检查脚本复制逻辑：
 
 ```powershell
-& 'D:\Software\anaconda3\envs\py312\python.exe' tools\package_app.py --install-dir build\package_check --skip-windeployqt --skip-system-libs
+python tools\package_app.py --install-dir build\package_check --skip-windeployqt --skip-system-libs
 ```
 
 常用参数：
@@ -53,7 +53,7 @@ python tools/package_app.py
 | 参数 | 说明 |
 |------|------|
 | `--build-dir` / `-BuildDir` | CMake 构建目录，默认 `build`。 |
-| `--install-dir` / `-InstallDir` | 发布包输出目录，默认 `install`。 |
+| `--install-dir` / `-InstallDir` | 发布包输出目录，默认 `install/DeepLearningTool-<version>`。 |
 | `--dependencies` | 依赖清单路径，默认 `tools/dependencies.yaml`。 |
 | `--windeployqt` / `-WinDeployQt` | 显式指定 `windeployqt.exe`。 |
 | `--qt-root` / `-QtRoot` | Linux/macOS 下显式指定 Qt 安装根目录。 |

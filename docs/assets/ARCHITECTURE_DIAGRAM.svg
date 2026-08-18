@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1260" viewBox="0 0 1800 1260">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#374151"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#203040" flood-opacity="0.18"/>
+    </filter>
+    <style>
+      .title { font: 700 28px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #1f2937; }
+      .subtitle { font: 15px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #4b5563; }
+      .layer { font: 700 28px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #16202a; text-anchor: middle; }
+      .module { font: 700 18px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #17202a; text-anchor: middle; }
+      .body { font: 15px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #26323c; text-anchor: middle; }
+      .body-small { font: 13px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #334155; text-anchor: middle; }
+      .note { font: 13px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #52606d; }
+      .box { stroke: #44505c; stroke-width: 1.5; rx: 12; filter: url(#shadow); }
+      .group { stroke: #3c4652; stroke-width: 2; stroke-dasharray: 10 7; rx: 10; }
+      .flow { stroke: #374151; stroke-width: 2.2; fill: none; marker-end: url(#arrow); }
+      .flow-soft { stroke: #566372; stroke-width: 1.8; stroke-dasharray: 7 5; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect x="25" y="24" width="1750" height="1212" fill="#eef8e8" stroke="#49614d" stroke-width="3"/>
+  <text x="65" y="62" class="title">DeepLearningTool 项目架构图</text>
+  <text x="65" y="88" class="subtitle">基于当前源码、CMake 目标、QML 入口和实际运行时对象关系整理 · Qt 6 / C++20 / QML / CMake</text>
+
+  <!-- 展示层 -->
+  <rect x="260" y="105" width="1480" height="170" fill="#58b9ef" stroke="#466273" stroke-width="2"/>
+  <polygon points="55,116 235,116 252,190 235,264 55,264 42,190" fill="#4eb2e8" stroke="#466273" stroke-width="2"/>
+  <text x="145" y="181" class="layer">展示层</text>
+  <rect x="285" y="126" width="1430" height="128" class="group" fill="#63bff1"/>
+  <rect x="310" y="145" width="300" height="90" class="box" fill="#71d06c"/>
+  <text x="460" y="172" class="module">dltool 可执行程序</text>
+  <text x="460" y="197" class="body">QApplication · QQmlApplicationEngine</text>
+  <text x="460" y="219" class="body-small">main.cpp · CrashHandler · 日志初始化</text>
+  <rect x="635" y="145" width="320" height="90" class="box" fill="#71d06c"/>
+  <text x="795" y="172" class="module">顶层 QML 壳</text>
+  <text x="795" y="197" class="body">Main.qml · Header · Content · Footer</text>
+  <text x="795" y="219" class="body-small">导航、全局日志、进度与退出流程</text>
+  <rect x="980" y="145" width="345" height="90" class="box" fill="#71d06c"/>
+  <text x="1152" y="172" class="module">数据与项目页面</text>
+  <text x="1152" y="197" class="body">Project · Gallery · Label · Review</text>
+  <text x="1152" y="219" class="body-small">创建/打开项目、图库、标注、复核</text>
+  <rect x="1350" y="145" width="340" height="90" class="box" fill="#71d06c"/>
+  <text x="1520" y="172" class="module">模型与高级能力页面</text>
+  <text x="1520" y="197" class="body">Train · Test · Evaluation · Settings</text>
+  <text x="1520" y="219" class="body-small">任务中心、评估、设置、搜索与智能标注</text>
+  <text x="300" y="267" class="note">QML 模块 URI：dltool.tool / project / data / model / feature / settings / ui</text>
+
+  <!-- 业务层 -->
+  <rect x="260" y="295" width="1480" height="350" fill="#8877ec" stroke="#4d4b78" stroke-width="2"/>
+  <polygon points="55,306 235,306 252,470 235,634 55,634 42,470" fill="#7d6eeb" stroke="#4d4b78" stroke-width="2"/>
+  <text x="145" y="480" class="layer">业务层</text>
+  <rect x="285" y="315" width="1430" height="70" class="group" fill="#9988f1"/>
+  <text x="1000" y="343" class="module">当前项目运行时（Project runtime）</text>
+  <text x="1000" y="367" class="body">ProjectManager 管理 currentProject；Project 聚合 DataManager、ModelManager、FeatureManager 与任务管理对象</text>
+  <path d="M 1000 385 L 1000 405" class="flow"/>
+  <rect x="305" y="410" width="320" height="190" class="box" fill="#fff5d5"/>
+  <text x="465" y="443" class="module">dltool_project</text>
+  <text x="465" y="475" class="body">ProjectManager · Project</text>
+  <text x="465" y="503" class="body">创建 / 打开 / 关闭 / 删除</text>
+  <text x="465" y="530" class="body">最近项目 · 项目元信息</text>
+  <text x="465" y="566" class="body-small">项目文件后缀：.dlpro</text>
+  <rect x="650" y="410" width="345" height="190" class="box" fill="#fff5d5"/>
+  <text x="822" y="443" class="module">dltool_data</text>
+  <text x="822" y="475" class="body">DataManager · Qt Models</text>
+  <text x="822" y="503" class="body">Dataset · Image · Label · Tag</text>
+  <text x="822" y="530" class="body">导入/导出 · 过滤 · 统计</text>
+  <text x="822" y="566" class="body-small">LabelMe / COCO · QML 数据工作区</text>
+  <rect x="1020" y="410" width="365" height="190" class="box" fill="#fff5d5"/>
+  <text x="1202" y="443" class="module">dltool_model</text>
+  <text x="1202" y="475" class="body">ModelManager · Model Registry</text>
+  <text x="1202" y="503" class="body">参数 / 模型存储 / 数据集选择</text>
+  <text x="1202" y="530" class="body">ModelTaskController · TaskManager</text>
+  <text x="1202" y="558" class="body-small">训练 · 测试 · 评估 · TCP 任务通信</text>
+  <rect x="1410" y="410" width="280" height="190" class="box" fill="#fff5d5"/>
+  <text x="1550" y="443" class="module">dltool_feature</text>
+  <text x="1550" y="475" class="body">FeatureManager</text>
+  <text x="1550" y="503" class="body">图像 / ROI 搜索</text>
+  <text x="1550" y="530" class="body">图像 / ROI 聚类</text>
+  <text x="1550" y="557" class="body">智能标注 · 小样本学习</text>
+  <text x="300" y="630" class="note">业务关系：project 负责生命周期与聚合；data 是数据宿主；feature 通过 provider 读写 data；feature 的小样本流程复用 model 任务链路</text>
+  <path d="M 465 405 L 465 390" class="flow-soft"/>
+  <path d="M 822 405 L 822 390" class="flow-soft"/>
+  <path d="M 1202 405 L 1202 390" class="flow-soft"/>
+  <path d="M 1550 405 L 1550 390" class="flow-soft"/>
+  <path d="M 995 505 C 1120 485, 1260 485, 1408 505" class="flow-soft"/>
+
+  <!-- 支撑层 -->
+  <rect x="260" y="665" width="1480" height="185" fill="#71c9c7" stroke="#426b6d" stroke-width="2"/>
+  <polygon points="55,676 235,676 252,757 235,838 55,838 42,757" fill="#62bebf" stroke="#426b6d" stroke-width="2"/>
+  <text x="145" y="768" class="layer">支撑层</text>
+  <rect x="285" y="687" width="270" height="120" class="group" fill="#82d4ca"/>
+  <text x="420" y="718" class="module">dltool_common</text>
+  <text x="420" y="747" class="body">Logger · CrashHandler</text>
+  <text x="420" y="773" class="body-small">路径 / 文件 / YAML / 图像工具</text>
+  <rect x="580" y="687" width="245" height="120" class="group" fill="#82d4ca"/>
+  <text x="702" y="718" class="module">dltool_core</text>
+  <text x="702" y="747" class="body">DeepLearningMethod</text>
+  <text x="702" y="773" class="body-small">任务类型与方法枚举</text>
+  <rect x="850" y="687" width="270" height="120" class="group" fill="#82d4ca"/>
+  <text x="985" y="718" class="module">dltool_parameter</text>
+  <text x="985" y="747" class="body">ParameterSchema</text>
+  <text x="985" y="773" class="body-small">动态选项 Provider / 类型转换</text>
+  <rect x="1145" y="687" width="280" height="120" class="group" fill="#82d4ca"/>
+  <text x="1285" y="718" class="module">dltool_settings</text>
+  <text x="1285" y="747" class="body">GlobalSettings · Catalog</text>
+  <text x="1285" y="773" class="body-small">YAML schema → 动态 QML 对象</text>
+  <rect x="1450" y="687" width="240" height="120" class="group" fill="#82d4ca"/>
+  <text x="1570" y="718" class="module">dltool_ui</text>
+  <text x="1570" y="747" class="body">UILogger · Progress</text>
+  <text x="1570" y="773" class="body-small">主题 · 控件 · 图表适配</text>
+  <text x="300" y="835" class="note">基础方向：common 为底层通用能力；core / parameter / settings / ui 被业务模块复用，不直接承载项目数据业务</text>
+
+  <!-- 数据与外部运行时 -->
+  <rect x="260" y="870" width="1480" height="330" fill="#e89a23" stroke="#77521f" stroke-width="2"/>
+  <polygon points="55,881 235,881 252,1035 235,1189 55,1189 42,1035" fill="#df8e17" stroke="#77521f" stroke-width="2"/>
+  <text x="145" y="1046" class="layer">数据与外部运行时</text>
+  <rect x="285" y="892" width="890" height="270" class="group" fill="#f1a83c"/>
+  <text x="730" y="921" class="module">持久化数据层 · dltool_database</text>
+  <rect x="310" y="940" width="265" height="100" class="box" fill="#fff5d5"/>
+  <text x="442" y="970" class="module">ProjectDataBase</text>
+  <text x="442" y="997" class="body">项目 .dlpro SQLite</text>
+  <text x="442" y="1022" class="body-small">datasets · images · labels · tags · models</text>
+  <rect x="600" y="940" width="265" height="100" class="box" fill="#fff5d5"/>
+  <text x="732" y="970" class="module">SettingsDataBase</text>
+  <text x="732" y="997" class="body">settings.db</text>
+  <text x="732" y="1022" class="body-small">YAML 设置 schema 的运行时值</text>
+  <rect x="890" y="940" width="260" height="100" class="box" fill="#fff5d5"/>
+  <text x="1020" y="970" class="module">RecentProjectsDataBase</text>
+  <text x="1020" y="997" class="body">history.db</text>
+  <text x="1020" y="1022" class="body-small">最近项目路径</text>
+  <rect x="310" y="1060" width="840" height="78" class="box" fill="#fff5d5"/>
+  <text x="730" y="1092" class="module">ModelDataBase / ModelTaskDataBase</text>
+  <text x="730" y="1118" class="body-small">models/&lt;model&gt;/model.db · test/&lt;task&gt;/task.db · 参数、数据集选择、预测记录</text>
+
+  <rect x="1210" y="892" width="505" height="270" class="group" fill="#f1a83c"/>
+  <text x="1462" y="921" class="module">外部模型与推理运行时</text>
+  <rect x="1235" y="940" width="455" height="82" class="box" fill="#fff5d5"/>
+  <text x="1462" y="970" class="module">Python 模型进程</text>
+  <text x="1462" y="997" class="body">ultralytics · anomalib · FS-SAM2</text>
+  <rect x="1235" y="1037" width="455" height="82" class="box" fill="#fff5d5"/>
+  <text x="1462" y="1067" class="module">InferRT / FAISS / CUDA / OpenCV</text>
+  <text x="1462" y="1094" class="body-small">特征搜索、ROI 搜索、聚类、SAM 推理</text>
+  <text x="300" y="1190" class="note">连接方式：model 通过 QProcess + TCP 任务通信驱动 Python；feature 直接调用 InferRT/FAISS；database 统一封装 SQLite/sqlpp11</text>
+
+  <!-- 跨层关系线 -->
+  <path d="M 465 600 C 465 720, 442 790, 442 938" class="flow-soft"/>
+  <path d="M 822 600 C 822 730, 442 820, 442 938" class="flow-soft"/>
+  <path d="M 1202 600 C 1202 760, 730 835, 730 938" class="flow-soft"/>
+  <path d="M 1285 807 L 1285 938" class="flow-soft"/>
+  <path d="M 1202 600 C 1270 730, 1462 820, 1462 938" class="flow-soft"/>
+  <path d="M 1550 600 C 1570 730, 1462 820, 1462 1037" class="flow-soft"/>
+
+  <line x1="1270" y1="1215" x2="1310" y2="1215" class="flow"/>
+  <text x="1320" y="1220" class="note">实线/箭头：主要运行时依赖</text>
+  <line x1="1510" y1="1215" x2="1550" y2="1215" class="flow-soft"/>
+  <text x="1560" y="1220" class="note">虚线：provider、持久化或异步任务关系</text>
+</svg>
