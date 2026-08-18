@@ -11,6 +11,7 @@ DeepLearningTool 是一个基于 C++17、Qt 6/QML、CMake 和 SQLite 的深度�
 | [API_REFERENCE.md](./API_REFERENCE.md) | C++/QML 公开接口、模型 role 和常用单例 |
 | [CODING_STYLE.md](./CODING_STYLE.md) | C++、QML、CMake、数据层和资源约定 |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | 本地开发、测试、PR 与评审流程 |
+| [PROJECT_LEVEL_TESTS.md](./PROJECT_LEVEL_TESTS.md) | 异常检测项目级测试的分层执行流程 |
 
 ## 快速导航
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and run the model CTest and QML smoke suite."""
+"""Build and run ordinary model module tests."""
 
 from __future__ import annotations
 
@@ -10,7 +10,10 @@ import sys
 from pathlib import Path
 
 
-DEFAULT_TEST_REGEX = r"dltool_model_.*_tests|tst_dltool_model_qml"
+DEFAULT_MODEL_TEST_REGEX = (
+    r"^dltool_model_.*_tests$|^tst_dltool_model_qml$|^tst_dltool_model_qml_registry$|"
+    r"^tst_dltool_model_qml_smoke$"
+)
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -51,8 +54,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--test-regex",
-        default=DEFAULT_TEST_REGEX,
-        help="CTest regular expression (default: model C++ and QML targets)",
+        default=None,
+        help="Override the model test selection regular expression",
     )
     return parser.parse_args()
 
@@ -73,6 +76,8 @@ def main() -> int:
             "DLT_TEST_TMP_ROOT": "F:/tmp",
         }
     )
+
+    test_regex = args.test_regex or DEFAULT_MODEL_TEST_REGEX
 
     try:
         if not args.skip_build:
@@ -97,7 +102,7 @@ def main() -> int:
                 "-C",
                 args.configuration,
                 "-R",
-                args.test_regex,
+                test_regex,
                 "--output-on-failure",
             ],
             environment,

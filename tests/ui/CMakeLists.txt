@@ -18,6 +18,7 @@ set(_test_path_updates
     "PATH=path_list_prepend:${Qt6_ROOT}/bin"
 )
 set_tests_properties(${TEST_TARGET_NAME} PROPERTIES
+    LABELS "ordinary;ui"
     ENVIRONMENT_MODIFICATION "${_test_path_updates}"
 )
 unset(_test_path_updates)

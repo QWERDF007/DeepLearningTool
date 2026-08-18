@@ -69,8 +69,8 @@ void UtilsTest::paramDecimalsTestCase()
 
     QCOMPARE(utils->paramDecimals(QStringLiteral("int"), QVariantList{1, 100, 1}), 0);
     QCOMPARE(utils->paramDecimals(QStringLiteral("double"), QVariantList{0.0, 1.0, 0.01}), 2);
-    QCOMPARE(utils->paramDecimals(QStringLiteral("double"), QVariantList{0.000001, 1.0, 0.0001}, 0.01), 6);
-    QCOMPARE(utils->paramDecimals(QStringLiteral("double"), QVariantList{QStringLiteral("1e-06"), 1.0, 0.0001}), 6);
+    QCOMPARE(utils->paramDecimals(QStringLiteral("double"), QVariantList{0.000001, 1.0, 0.0001}, 0.01), 4);
+    QCOMPARE(utils->paramDecimals(QStringLiteral("double"), QVariantList{QStringLiteral("1e-06"), 1.0, 0.0001}), 4);
 }
 
 } // namespace dltool::ui

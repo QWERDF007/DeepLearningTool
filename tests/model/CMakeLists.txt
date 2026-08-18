@@ -71,6 +71,7 @@ function(add_model_cpp_test TARGET_NAME)
     target_include_directories(${TARGET_NAME} PRIVATE ${_model_test_include_dirs})
     add_test(NAME ${TARGET_NAME} COMMAND ${TARGET_NAME})
     set_tests_properties(${TARGET_NAME} PROPERTIES
+        LABELS "ordinary;model"
         ENVIRONMENT_MODIFICATION "${_model_test_path_updates}"
     )
 endfunction()

@@ -69,6 +69,7 @@ set_tests_properties(
     ${TEST_TARGET_NAME}_registry
     ${TEST_TARGET_NAME}_smoke
     PROPERTIES
+    LABELS "ordinary;qml"
     ENVIRONMENT_MODIFICATION "${_test_path_updates}"
 )
 unset(_test_path_updates)
