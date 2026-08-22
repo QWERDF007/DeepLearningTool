@@ -107,6 +107,23 @@ add_model_cpp_test(dltool_model_tasks_tests
     test_ModelTaskController.cpp
 )
 
+add_model_cpp_test(dltool_model_evaluation_behavior_tests
+    test_ModelEvaluationParameterBehavior.cpp
+)
+
+foreach(_behavior_case
+        parameterGroupsControlEvaluationTrigger
+        anomalyClassificationThresholdIsEvaluationOnly
+        evaluationParameterWithoutPredictionsDoesNotStartEvaluation
+        finishedTestAutomaticallyEvaluatesAndBusyStateRestores)
+    add_test(NAME "dltool_model_evaluation_behavior_${_behavior_case}"
+        COMMAND dltool_model_evaluation_behavior_tests "${_behavior_case}")
+    set_tests_properties("dltool_model_evaluation_behavior_${_behavior_case}" PROPERTIES
+        LABELS "ordinary;model"
+        ENVIRONMENT_MODIFICATION "${_model_test_path_updates}"
+    )
+endforeach()
+
 add_model_cpp_test(dltool_model_storage_params_tests
     test_ModelStorageService.cpp
     test_ModelStorageMigration.cpp
@@ -114,6 +131,10 @@ add_model_cpp_test(dltool_model_storage_params_tests
     test_ModelParamsSchema.cpp
     test_ModelDataBases.cpp
     test_ModelManager.cpp
+)
+
+add_model_cpp_test(dltool_model_config_tests
+    test_ModelConfigConsistency.cpp
 )
 
 add_model_cpp_test(dltool_model_registry_tests

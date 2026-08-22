@@ -70,7 +70,7 @@ bool hasFiles(const QString &root, const QStringList &filters, const int minimum
     const QDir directory(root);
     if (!directory.exists())
         return false;
-    return directory.entryList(filters, QDir::Files | QDir::Readable, QDir::Name).size() >= minimum;
+    return directory.entryList(filters, QDir::Files | QDir::Readable, QDir::Name).size() == minimum;
 }
 
 bool waitForExportOutput(const int format, const QString &output_dir, const int minimum_images, const int timeout_ms)
@@ -232,6 +232,16 @@ QString PersistentProjectFixture::maskRoundtripDatasetName()
 QString PersistentProjectFixture::patchcoreModelName()
 {
     return QStringLiteral("patchcore-model");
+}
+
+QString PersistentProjectFixture::patchcoreModelCopyName()
+{
+    return patchcoreModelName() + QStringLiteral(" Copy");
+}
+
+QString PersistentProjectFixture::patchcoreModelRenameName()
+{
+    return patchcoreModelName() + QStringLiteral("-renamed");
 }
 
 QString PersistentProjectFixture::patchcoreTestName()
@@ -586,7 +596,7 @@ bool PersistentProjectFixture::savePatchcoreConfiguration(const QString &model_u
         {QStringLiteral("inference"), QStringLiteral("batch_size"), 2},
         {QStringLiteral("inference"), QStringLiteral("num_workers"), 0},
         {QStringLiteral("inference"), QStringLiteral("device"), QStringLiteral("cpu")},
-        {QStringLiteral("inference"), QStringLiteral("classification_threshold"), 0.5},
+        {QStringLiteral("evaluation"), QStringLiteral("classification_threshold"), 0.5},
     };
     for (const auto &[group, name, value] : test_parameters)
         if (!setPatchcoreParameter(model->config()->testParams(), group, name, value, &parameter_error))

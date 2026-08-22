@@ -37,6 +37,7 @@ Rectangle {
             taskController: labelPage.modelTaskController
             taskType: ModelTaskTypes.Test
             taskActionsEnabled: true
+            modelBusyOverride: labelPage.modelTestTaskManager ? labelPage.modelTestTaskManager.currentModelBusy : false
         }
 
         TestPanel {

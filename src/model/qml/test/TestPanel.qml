@@ -18,6 +18,7 @@ Item {
                                    : null
     property ITestParams testParams: testTaskManager ? testTaskManager.currentTestParams
                                                        : (selectedModel && selectedModel.config ? selectedModel.config.testParams : null)
+    property bool modelBusy: testTaskManager ? testTaskManager.currentModelBusy : false
 
     // Evaluation is lazy: it starts only when this page is visible, a model is
     // selected and the evaluation section is expanded.  Results stay cached in
@@ -62,6 +63,7 @@ Item {
                 spacing: 5
 
                 TestDatasetPanel {
+                    objectName: "testDatasetPanel"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumWidth: 0
@@ -69,18 +71,21 @@ Item {
                     selectedModel: testPanel.selectedModel
                     selectionModel: testPanel.testTaskManager
                                     ? testPanel.testTaskManager.currentDatasetViewModel : null
+                    editable: !testPanel.modelBusy
                 }
 
                 Repeater {
                     model: 2
 
                     ParamPanel {
+                        objectName: "testParamsPanel" + index
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.minimumWidth: 0
                         params: testPanel.testParams
                         targetPartIndex: index
                         partSpacing: 5
+                        editable: !testPanel.modelBusy
                     }
                 }
             }

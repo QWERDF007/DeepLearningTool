@@ -26,9 +26,11 @@ private slots:
         QVERIFY(id > 0);
         QCOMPARE(manager->findModelTask(QStringLiteral("model-1"), ModelTaskType::Test, QStringLiteral("scope-1")), id);
         QCOMPARE(manager->findTask(id)->status, TaskManager::Pending);
+        QVERIFY(!manager->hasActiveModelTasks(QStringLiteral("model-1")));
         QVERIFY(manager->canStartTask(id));
         QVERIFY(manager->startTask(id));
         QCOMPARE(manager->findTask(id)->status, TaskManager::Preparing);
+        QVERIFY(manager->hasActiveModelTasks(QStringLiteral("model-1")));
         QCOMPARE(start_requested.count(), 1);
         QVERIFY(!manager->startTask(id));
 
@@ -49,6 +51,7 @@ private slots:
         QCOMPARE(stop_requested.count(), 1);
         QVERIFY(manager->markTaskStopped(id));
         QCOMPARE(manager->findTask(id)->status, TaskManager::Stopped);
+        QVERIFY(!manager->hasActiveModelTasks(QStringLiteral("model-1")));
         QVERIFY(TaskManager::isTerminal(TaskManager::Stopped));
         QVERIFY(!manager->markTaskRunning(id));
         QVERIFY(!manager->stopTask(id));

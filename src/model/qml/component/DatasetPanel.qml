@@ -13,6 +13,9 @@ Item {
     property DataManager dataManager: null
     property DataSelectionTreeModel selectionModel: null
     property string roleTitle: qsTr("数据集")
+    property bool editable: true
+
+    enabled: editable
 
             /*
              * Chart.js 回调同时提供当前项和完整图表数据。展示规则放在面板中，

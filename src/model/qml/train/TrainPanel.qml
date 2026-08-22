@@ -12,6 +12,7 @@ Item {
 
     property ModelManager modelManager: null
     property DataManager dataManager: null
+    property TaskManager taskManager: null
     property int currentModelId: -1
     property string currentModelUuid: ""
     property string currentModelName: ""
@@ -21,6 +22,8 @@ Item {
     property ITrainParams trainParams: selectedModel && selectedModel.config ? selectedModel.config.trainParams : null
     property url tensorBoardUrl: ""
     property bool tensorBoardPanelVisible: visible && trainTabBar.currentIndex === 1
+    property bool modelBusy: taskManager && currentModelUuid.length > 0
+                         ? taskManager.hasActiveModelTasks(currentModelUuid) : false
     property var currentModelData: ({})
     property var trainState: currentModelData && currentModelData.extra_data
                               ? currentModelData.extra_data.train || ({}) : ({})
@@ -104,11 +107,13 @@ Item {
             currentIndex: trainTabBar.currentIndex
 
             TrainParamsForm {
+                objectName: "trainParamsForm"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 params: control.trainParams
                 dataManager: control.dataManager
                 selectedModel: control.selectedModel
+                editable: !control.modelBusy
                 emptyText: control.modelManager ? qsTr("请选择模型后设置训练参数") : qsTr("请先打开项目")
             }
 

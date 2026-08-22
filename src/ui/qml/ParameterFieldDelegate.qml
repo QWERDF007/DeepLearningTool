@@ -40,7 +40,7 @@ Item {
     property var configuredOptionsMap: roleValue("optionsMap", ({})) || ({})
     property string optionsKeyField: String(roleValue("optionsKeyField", "") || "")
     property var currentValue: roleValue("value", defaultValue)
-    property bool fieldEnabled: Utils.boolValue(roleValue("enabled", true), true)
+    property bool fieldEnabled: root.enabled && Utils.boolValue(roleValue("enabled", true), true)
     property bool fieldVisible: Utils.boolValue(roleValue("visible", true), true)
     property string unitText: String(roleValue("unit", "") || "")
 
@@ -468,7 +468,10 @@ Item {
                 onMoved: {
                     const next = root.numberValue(value, 0)
                     editor.value = next
-                    root.commit(next)
+                }
+                onPressedChanged: {
+                    if (!pressed)
+                        root.commit(root.numberValue(value, 0))
                 }
             }
 

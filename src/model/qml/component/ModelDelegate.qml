@@ -99,6 +99,7 @@ Rectangle {
             z: 2
 
             QuiTextIconButton {
+                objectName: "modelStartTaskButton"
                 Layout.preferredWidth: 32
                 Layout.preferredHeight: 30
                 display: Button.IconOnly
@@ -109,6 +110,7 @@ Rectangle {
             }
 
             QuiTextIconButton {
+                objectName: "modelStopTaskButton"
                 Layout.preferredWidth: 32
                 Layout.preferredHeight: 30
                 display: Button.IconOnly

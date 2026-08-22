@@ -13,12 +13,12 @@ EvaluationChartPanelBase {
     property real dragClassificationThreshold: 0.5
     property real classificationThreshold: 0.5
 
-    readonly property var inferenceGroup: control.findInferenceGroup()
+    readonly property var evaluationGroup: control.findEvaluationGroup()
     readonly property real displayedClassificationThreshold: control.thresholdDragActive
                                                        ? control.dragClassificationThreshold
                                                        : control.classificationThreshold
 
-    function findInferenceGroup() {
+    function findEvaluationGroup() {
         var params = control.testParams
         if (!params)
             return null
@@ -29,14 +29,14 @@ EvaluationChartPanelBase {
             return null
         for (var index = 0; index < count; ++index) {
             var group = params.groupAt(index)
-            if (group && String(group.nameEn).toLowerCase() === "inference")
+            if (group && String(group.nameEn).toLowerCase() === "evaluation")
                 return group
         }
         return null
     }
 
     function readClassificationThreshold() {
-        var group = control.inferenceGroup
+        var group = control.evaluationGroup
         if (group) {
             var value = Number(group.valueForName("classification_threshold"))
             if (isFinite(value))
@@ -153,7 +153,7 @@ EvaluationChartPanelBase {
     }
 
     function commitDraggedThreshold() {
-        var group = control.inferenceGroup
+        var group = control.evaluationGroup
         var value = Number(control.dragClassificationThreshold)
         if (!group || !isFinite(value))
         {
@@ -298,7 +298,7 @@ EvaluationChartPanelBase {
     }
 
     Connections {
-        target: control.inferenceGroup
+        target: control.evaluationGroup
         function onValueChanged(name, value) {
             if (String(name).toLowerCase() !== "classification_threshold")
                 return

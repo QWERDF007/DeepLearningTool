@@ -9,7 +9,8 @@ import quickui
 Rectangle {
     id: control
     color: QuiColor.Primary
-    property ModelTestTaskManager taskManager: null
+    property var taskManager: null
+    readonly property bool editingEnabled: !!control.taskManager && !control.taskManager.currentModelBusy
 
     function taskData(row, role) {
         if (!control.taskManager || row < 0 || row >= control.taskManager.count)
@@ -27,11 +28,13 @@ Rectangle {
 
         QuiComboBox {
             id: taskCombo
+            objectName: "testTaskCombo"
             Layout.preferredWidth: 220
             model: control.taskManager
             textRole: "name"
             currentIndex: control.taskManager ? control.taskManager.currentIndex : -1
             displayText: control.taskManager ? control.taskManager.currentTaskName : ""
+            enabled: control.editingEnabled
             onActivated: {
                 if (control.taskManager && currentIndex >= 0) {
                     control.taskManager.switchTask(control.taskData(currentIndex, ModelTestTaskManager.UuidRole))
@@ -40,9 +43,10 @@ Rectangle {
         }
 
         QuiTextIconButton {
+            objectName: "createTestTaskButton"
             text: qsTr("添加")
             iconSource: QuiFontIcon.Add
-            enabled: !!control.taskManager && !control.taskManager.currentTaskRunning
+            enabled: control.editingEnabled
             onClicked: {
                 taskName.text = qsTr("测试 %1").arg(control.taskManager ? control.taskManager.count + 1 : 1)
                 createDialog.open()
@@ -50,10 +54,10 @@ Rectangle {
         }
 
         QuiTextIconButton {
+            objectName: "renameTestTaskButton"
             text: qsTr("重命名")
             iconSource: QuiFontIcon.Rename
-            enabled: !!control.taskManager && control.taskManager.currentTaskUuid.length > 0
-                     && !control.taskManager.currentTaskRunning
+            enabled: control.editingEnabled && control.taskManager.currentTaskUuid.length > 0
             onClicked: {
                 renameField.text = control.taskManager ? control.taskManager.currentTaskName : ""
                 renameDialog.open()
@@ -61,11 +65,11 @@ Rectangle {
         }
 
         QuiTextIconButton {
+            objectName: "deleteTestTaskButton"
             text: qsTr("删除")
             iconSource: QuiFontIcon.Delete
-            enabled: !!control.taskManager && control.taskManager.count > 1
+            enabled: control.editingEnabled && control.taskManager.count > 1
                      && control.taskManager.currentTaskUuid.length > 0
-                     && !control.taskManager.currentTaskRunning
             onClicked: deleteDialog.open()
         }
 
@@ -102,6 +106,7 @@ Rectangle {
             QuiTextField {
                 id: taskName
                 Layout.fillWidth: true
+                enabled: control.editingEnabled
                 placeholderText: qsTr("测试任务名称")
                 text: qsTr("测试 %1").arg(control.taskManager ? control.taskManager.count + 1 : 1)
             }
@@ -126,12 +131,14 @@ Rectangle {
                 spacing: 10
                 Item { Layout.fillWidth: true }
                 QuiButton {
+                    objectName: "createTestTaskCancelButton"
                     text: qsTr("取消")
                     onClicked: createDialog.close()
                 }
                 QuiButton {
+                    objectName: "createTestTaskConfirmButton"
                     text: qsTr("确认")
-                    enabled: !!control.taskManager && taskName.text.trim().length > 0
+                    enabled: control.editingEnabled && taskName.text.trim().length > 0
                              && control.taskManager.validateTaskName(taskName.text).length === 0
                     onClicked: {
                         const uuid = control.taskManager.createTask(taskName.text)
@@ -166,6 +173,7 @@ Rectangle {
             QuiTextField {
                 id: renameField
                 Layout.fillWidth: true
+                enabled: control.editingEnabled
                 placeholderText: qsTr("测试任务名称")
             }
 
@@ -189,12 +197,14 @@ Rectangle {
                 spacing: 10
                 Item { Layout.fillWidth: true }
                 QuiButton {
+                    objectName: "renameTestTaskCancelButton"
                     text: qsTr("取消")
                     onClicked: renameDialog.close()
                 }
                 QuiButton {
+                    objectName: "renameTestTaskConfirmButton"
                     text: qsTr("确认")
-                    enabled: !!control.taskManager && renameField.text.trim().length > 0
+                    enabled: control.editingEnabled && renameField.text.trim().length > 0
                              && control.taskManager.validateTaskName(renameField.text).length === 0
                     onClicked: {
                         control.taskManager.renameTask(control.taskManager.currentTaskUuid, renameField.text)
@@ -214,8 +224,9 @@ Rectangle {
         useNeutralButton: false
         useNegativeButton: true
         usePositiveButton: true
+        positiveButtonEnabled: control.editingEnabled
         onPositiveClicked: {
-            if (control.taskManager)
+            if (control.editingEnabled)
                 control.taskManager.deleteTask(control.taskManager.currentTaskUuid)
         }
     }

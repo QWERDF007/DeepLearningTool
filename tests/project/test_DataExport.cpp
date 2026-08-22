@@ -26,8 +26,8 @@ private slots:
         int image_count = 0;
         int label_count = 0;
         QVERIFY2(fixture.datasetCounts(dataset_id, &image_count, &label_count, &error), qPrintable(error));
-        QVERIFY2(image_count > 0, qPrintable(QStringLiteral("导出前没有可用图像")));
-        QVERIFY2(label_count > 0, qPrintable(QStringLiteral("导出前没有可用标注")));
+        QCOMPARE(image_count, 14);
+        QCOMPARE(label_count, 10);
 
         QVERIFY2(fixture.exportData(dataset_id, dltool::data::DataFormat::Mask,
                                     PersistentProjectFixture::maskExportRoot(), image_count, &error),

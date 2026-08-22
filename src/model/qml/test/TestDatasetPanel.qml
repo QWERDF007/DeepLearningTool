@@ -16,6 +16,9 @@ Rectangle {
     // model optional so the panel can still fall back to the model template
     // while a project/model context is being bound.
     property DataSelectionTreeModel selectionModel: null
+    property bool editable: true
+
+    enabled: editable
 
     ColumnLayout {
         anchors.fill: parent
@@ -32,9 +35,10 @@ Rectangle {
             Layout.fillHeight: true
             roleTitle: qsTr("测试数据集")
             dataManager: control.dataManager
+            editable: control.editable
             selectionModel: control.selectionModel
-                             ? control.selectionModel
-                             : (control.selectedModel ? control.selectedModel.testDatasetViewModel : null)
+                            ? control.selectionModel
+                            : (control.selectedModel ? control.selectedModel.testDatasetViewModel : null)
         }
     }
 }

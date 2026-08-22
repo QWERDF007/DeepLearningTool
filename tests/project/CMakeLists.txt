@@ -79,6 +79,9 @@ add_project_test(dltool_model_data_import_test test_DataImport.cpp project-data 
 add_project_test(dltool_model_data_export_test test_DataExport.cpp project-data project-data-export)
 add_project_test(dltool_model_data_roundtrip_test test_DataFormatRoundtrip.cpp project-data project-data-roundtrip)
 add_project_test(dltool_model_patchcore_model_test test_PatchcoreModel.cpp project-model project-model-creation)
+add_project_test(dltool_model_patchcore_copy_test test_PatchcoreCopy.cpp project-model project-model-copy)
+add_project_test(dltool_model_patchcore_rename_test test_PatchcoreRename.cpp project-model project-model-rename)
+add_project_test(dltool_model_patchcore_delete_test test_PatchcoreDelete.cpp project-model project-model-delete)
 add_project_test(dltool_model_patchcore_train_test test_PatchcoreTrain.cpp project-model project-model-train)
 add_project_test(dltool_model_patchcore_predict_test test_PatchcorePredict.cpp project-model project-model-predict)
 add_project_test(dltool_model_patchcore_evaluation_test test_PatchcoreEvaluation.cpp project-model project-model-evaluation)
@@ -104,6 +107,15 @@ set_tests_properties(dltool_model_data_roundtrip_test PROPERTIES
 set_tests_properties(dltool_model_patchcore_model_test PROPERTIES
     FIXTURES_REQUIRED dltool_model_data_import
     FIXTURES_SETUP dltool_model_patchcore_model
+)
+set_tests_properties(dltool_model_patchcore_copy_test PROPERTIES
+    FIXTURES_REQUIRED dltool_model_patchcore_model
+)
+set_tests_properties(dltool_model_patchcore_rename_test PROPERTIES
+    FIXTURES_REQUIRED dltool_model_patchcore_model
+)
+set_tests_properties(dltool_model_patchcore_delete_test PROPERTIES
+    FIXTURES_REQUIRED dltool_model_patchcore_model
 )
 set_tests_properties(dltool_model_patchcore_train_test PROPERTIES
     FIXTURES_REQUIRED dltool_model_patchcore_model

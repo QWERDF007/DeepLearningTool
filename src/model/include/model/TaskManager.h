@@ -279,7 +279,7 @@ public:
      * @return 任务记录指针；不存在时返回 nullptr。指针不可跨事件循环或任务表修改保存。
      */
     const Task     *findTask(int task_id) const;
-    bool            hasActiveModelTasks(const QString &model_uuid) const;
+    Q_INVOKABLE bool hasActiveModelTasks(const QString &model_uuid) const;
     /**
      * @brief 获取指定模型的最新任务记录。
      * @param model_uuid 模型 UUID。

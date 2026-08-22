@@ -55,6 +55,7 @@ private slots:
         auto *second_evaluation = manager.currentEvaluation();
         QVERIFY(second_evaluation != nullptr);
         QVERIFY(second_evaluation != first_evaluation);
+        QTRY_VERIFY_WITH_TIMEOUT(!manager.currentModelBusy(), 5000);
         QVERIFY(manager.switchTask(first_uuid));
         QCOMPARE(manager.currentTaskUuid(), first_uuid);
         QCOMPARE(manager.currentEvaluation(), first_evaluation);
@@ -69,12 +70,14 @@ private slots:
         QCOMPARE(manager.taskId(first_uuid), task_id);
         QVERIFY(task_manager->startTask(task_id));
         QCOMPARE(manager.currentTaskRunning(), false);
-        QVERIFY(manager.switchTask(first_uuid));
-        QCOMPARE(manager.currentTaskRunning(), true);
+        QVERIFY(!manager.switchTask(first_uuid));
+        QCOMPARE(manager.currentTaskRunning(), false);
         QVERIFY(!manager.renameTask(first_uuid, QStringLiteral("Running rename")));
         QVERIFY(!manager.deleteTask(first_uuid));
         QVERIFY(task_manager->markTaskStopped(task_id));
         QVERIFY(!manager.currentTaskRunning());
+        QVERIFY(manager.switchTask(first_uuid));
+        QCOMPARE(manager.currentTaskRunning(), false);
         QVERIFY(manager.renameTask(first_uuid, QStringLiteral("Renamed")));
         QCOMPARE(manager.currentTaskName(), QStringLiteral("Renamed"));
         QVERIFY(manager.flush());
@@ -103,6 +106,7 @@ private slots:
         QCOMPARE(manager.count(), 1);
         QCOMPARE(manager.currentTaskName(), QStringLiteral("测试 1"));
     }
+
 };
 
 REGISTER_TEST(ModelTestTaskManagerTest)

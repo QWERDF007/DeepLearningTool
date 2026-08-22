@@ -12,6 +12,9 @@ Rectangle {
 
     property DataManager dataManager: null
     property IModel selectedModel: null
+    property bool editable: true
+
+    enabled: editable
 
     ColumnLayout {
         anchors.fill: parent
@@ -32,6 +35,7 @@ Rectangle {
             dataManager: control.dataManager
             roleTitle: qsTr("训练数据集")
             selectionModel: control.selectedModel ? control.selectedModel.trainDatasetViewModel : null
+            editable: control.editable
         }
 
         DatasetPanel {
@@ -40,6 +44,7 @@ Rectangle {
             dataManager: control.dataManager
             roleTitle: qsTr("验证数据集")
             selectionModel: control.selectedModel ? control.selectedModel.validationDatasetViewModel : null
+            editable: control.editable
         }
             
     }

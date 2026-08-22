@@ -88,6 +88,8 @@ public:
     bool        available() const;
     /** @brief 当前是否正在加载或评估中。 */
     bool        loading() const;
+    /** @brief 当前测试任务是否已有可用于重新评估的预测记录。 */
+    bool        hasPredictionResults() const;
     /** @brief 对应的视觉任务方法类型（Method 枚举整型值）。 */
     int         method() const;
     /** @brief 状态字符串描述。 */

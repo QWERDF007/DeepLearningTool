@@ -572,13 +572,6 @@ std::vector<QPointF> rectangleToPolygon(const QPointF &p1, const QPointF &p2)
     return {QPointF(x_min, y_min), QPointF(x_max, y_min), QPointF(x_max, y_max), QPointF(x_min, y_max)};
 }
 
-bool containsOnlyRectangleShapes(const LabelMeIO::LabelMeData &data)
-{
-    return !data.shapes.empty()
-        && std::all_of(data.shapes.begin(), data.shapes.end(), [](const LabelMeIO::LabelMeShape &shape)
-                       { return shape.shape_type == QStringLiteral("rectangle"); });
-}
-
 // ============================================================================
 // Mask helpers
 // ============================================================================
@@ -1988,8 +1981,7 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
                         result.parsed_annotation = true;
                         const bool convert_rectangles_to_polygons
                             = (target_method == DeepLearningMethod::Segmentation
-                               || target_method == DeepLearningMethod::AnomalyDetection)
-                           && containsOnlyRectangleShapes(data);
+                               || target_method == DeepLearningMethod::AnomalyDetection);
 
                         for (const LabelMeShape &shape : data.shapes)
                         {

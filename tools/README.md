@@ -134,7 +134,7 @@ python tools\package_app.py --install-dir build\package_check --skip-windeployqt
 & 'D:\Software\anaconda3\envs\py312\python.exe' tools\run_project_tests.py --project-layer full
 ```
 
-也可以只执行一个项目级目标：`project-creation`、`data-creation`、`python`、`data-import`、`data-export`、`data-roundtrip`、`model-creation`、`model-train`、`model-predict` 或 `model-evaluation`。项目创建默认名称为 `测试项目`，数据集默认名称为 `测试数据集`，可通过 `--project-name` 和 `--dataset-name` 指定：
+也可以只执行一个项目级目标：`project-creation`、`data-creation`、`set-python-env`、`data-import`、`data-export`、`data-roundtrip`、`model-creation`、`model-copy`、`model-rename`、`model-delete`、`model-train`、`model-predict` 或 `model-evaluation`。项目创建默认名称为 `测试项目`，数据集默认名称为 `测试数据集`，可通过 `--project-name` 和 `--dataset-name` 指定：
 
 ```powershell
 & 'D:\Software\anaconda3\envs\py312\python.exe' tools\run_project_tests.py --project-layer project-creation --project-name '测试项目-新建'
@@ -142,6 +142,14 @@ python tools\package_app.py --install-dir build\package_check --skip-windeployqt
 ```
 
 `--project-root`、`--python-env`、`--project-name` 和 `--dataset-name` 可用于切换本机路径及测试名称。
+
+`set-python-env` 层通过 `--python-env` 指定 Python 环境目录：
+
+```powershell
+& 'D:\Software\anaconda3\envs\py312\python.exe' tools\run_project_tests.py `
+    --project-layer set-python-env `
+    --python-env 'D:\Software\anaconda3\envs\py312'
+```
 
 完整的项目级测试依赖关系、逐层命令和产物说明见
 [项目级测试流程](../docs/PROJECT_LEVEL_TESTS.md)。

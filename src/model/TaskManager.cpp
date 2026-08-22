@@ -431,7 +431,13 @@ bool TaskManager::hasActiveModelTasks(const QString &model_uuid) const
     if (value.isEmpty())
         return false;
     return std::any_of(tasks_.cbegin(), tasks_.cend(),
-                       [&value](const Task &task) { return task.model_uuid == value && !isTerminal(task.status); });
+                       [&value](const Task &task)
+                       {
+                           if (task.model_uuid != value)
+                               return false;
+                           return task.status == Preparing || task.status == Running || task.status == Paused
+                               || task.status == Stopping;
+                       });
 }
 
 const TaskManager::Task *TaskManager::findModelTaskRecord(const QString &model_uuid, const ModelTaskType task_type,

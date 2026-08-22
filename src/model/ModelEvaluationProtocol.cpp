@@ -154,13 +154,18 @@ MatchingStrategy matchingStrategyFromKey(const QString &key)
 QVariantMap normalizedEvaluationConfig(const QVariantMap &source)
 {
     // 保留用户配置组的完整内容，并规范化评估器实际使用的字段。
-    // 其余仅用于评估的参数仍保存在快照中，修改指标选择器等参数时可触发
-    // C++ 重新评估而无需重新推理；推理参数在 ModelTaskPreparation 中比较。
+    // 配置文件中的评估组使用 conf/iou；评估引擎内部使用更明确的
+    // confidence_threshold/iou_threshold。异常检测的同一位置由
+    // classification_threshold 提供分类阈值。
     QVariantMap normalized = source;
+    const double confidence_threshold
+        = source.contains(QStringLiteral("classification_threshold"))
+            ? source.value(QStringLiteral("classification_threshold")).toDouble()
+            : source.value(QStringLiteral("conf"), kDefaultConfidenceThreshold).toDouble();
     normalized.insert(fieldName(Field::ConfidenceThreshold),
-                      source.value(fieldName(Field::ConfidenceThreshold), kDefaultConfidenceThreshold).toDouble());
+                      confidence_threshold);
     normalized.insert(fieldName(Field::IouThreshold),
-                      source.value(fieldName(Field::IouThreshold), kDefaultIouThreshold).toDouble());
+                      source.value(QStringLiteral("iou"), kDefaultIouThreshold).toDouble());
     normalized.insert(
         fieldName(Field::MatchingStrategy),
         matchingStrategyKey(matchingStrategyFromKey(

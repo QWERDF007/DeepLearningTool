@@ -54,9 +54,8 @@ QString statusText(const TaskManager::Task *task)
 bool activeTask(const TaskManager::Task *task)
 {
     return task != nullptr
-        && (task->status == TaskManager::Pending || task->status == TaskManager::Preparing
-            || task->status == TaskManager::Running || task->status == TaskManager::Paused
-            || task->status == TaskManager::Stopping);
+        && (task->status == TaskManager::Preparing || task->status == TaskManager::Running
+            || task->status == TaskManager::Paused || task->status == TaskManager::Stopping);
 }
 
 ModelDatasetSelection readSelection(const data::DataSelectionTreeModel *model)
@@ -253,6 +252,15 @@ bool ModelTestTaskManager::currentTaskRunning() const
     return activeTask(currentTaskRecord());
 }
 
+bool ModelTestTaskManager::currentModelBusy() const
+{
+    if (model_uuid_.trimmed().isEmpty())
+        return false;
+    if (task_manager_ != nullptr && task_manager_->hasActiveModelTasks(model_uuid_))
+        return true;
+    return current_evaluation_ != nullptr && current_evaluation_->loading();
+}
+
 int ModelTestTaskManager::currentTaskProgress() const
 {
     const TaskManager::Task *task = currentTaskRecord();
@@ -281,6 +289,11 @@ QString ModelTestTaskManager::createTask(const QString &name)
 {
     if (model_manager_ == nullptr || model_uuid_.isEmpty())
         return QString("当前模型为空");
+    if (currentModelBusy())
+    {
+        emit errorOccurred(QString("模型任务运行期间不能创建测试任务"));
+        return QString("模型任务运行期间不能创建测试任务");
+    }
     if (isFewShotModel(model_manager_, model_manager_->modelRecordViewForUuid(model_uuid_)))
         return QString("FS-SAM2 模型不需要评估任务");
     if (const QString error = validateTaskName(name); !error.isEmpty())
@@ -311,6 +324,11 @@ QString ModelTestTaskManager::createTask(const QString &name)
 
 bool ModelTestTaskManager::switchTask(const QString &uuid)
 {
+    if (currentModelBusy())
+    {
+        emit errorOccurred(QString("模型任务运行期间不能切换测试任务"));
+        return false;
+    }
     const auto found = std::find_if(tasks_.cbegin(), tasks_.cend(), [&uuid](const ModelTestTaskDefinition &task)
                                     { return task.uuid == uuid.trimmed(); });
     return found != tasks_.cend() && selectIndex(static_cast<int>(std::distance(tasks_.cbegin(), found)), true);
@@ -318,6 +336,11 @@ bool ModelTestTaskManager::switchTask(const QString &uuid)
 
 bool ModelTestTaskManager::renameTask(const QString &uuid, const QString &name)
 {
+    if (currentModelBusy())
+    {
+        emit errorOccurred(QString("模型任务运行期间不能重命名测试任务"));
+        return false;
+    }
     const int row = std::distance(
         tasks_.cbegin(), std::find_if(tasks_.cbegin(), tasks_.cend(), [&uuid](const ModelTestTaskDefinition &task)
                                       { return task.uuid == uuid.trimmed(); }));
@@ -356,6 +379,11 @@ bool ModelTestTaskManager::renameTask(const QString &uuid, const QString &name)
 
 bool ModelTestTaskManager::deleteTask(const QString &uuid)
 {
+    if (currentModelBusy())
+    {
+        emit errorOccurred(QString("模型任务运行期间不能删除测试任务"));
+        return false;
+    }
     const int row = std::distance(
         tasks_.cbegin(), std::find_if(tasks_.cbegin(), tasks_.cend(), [&uuid](const ModelTestTaskDefinition &task)
                                       { return task.uuid == uuid.trimmed(); }));
@@ -530,19 +558,18 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
         = current_test_params_ != nullptr ? current_test_params_->valuesMap() : task.test_params;
     options.evaluation_config
         = evaluation::normalizedEvaluationConfig(test_params.value(QStringLiteral("evaluation")).toMap());
-    if (evaluation::isAnomaly(options.method))
+    if (options.method == evaluation::Method::AnomalyDetection)
     {
-        bool         threshold_ok             = false;
-        const double classification_threshold = test_params.value(QStringLiteral("inference"))
-                                                    .toMap()
-                                                    .value(QStringLiteral("classification_threshold"))
-                                                    .toDouble(&threshold_ok);
-        if (threshold_ok && std::isfinite(classification_threshold))
-            options.evaluation_config.insert(evaluation::fieldName(evaluation::Field::ConfidenceThreshold),
-                                             classification_threshold);
+        options.confidence_threshold
+            = options.evaluation_config
+                  .value(QStringLiteral("classification_threshold"), evaluation::kDefaultConfidenceThreshold)
+                  .toDouble();
     }
-    options.confidence_threshold
-        = options.evaluation_config.value(evaluation::fieldName(evaluation::Field::ConfidenceThreshold)).toDouble();
+    else
+    {
+        options.confidence_threshold
+            = options.evaluation_config.value(evaluation::fieldName(evaluation::Field::ConfidenceThreshold)).toDouble();
+    }
     options.iou_threshold
         = options.evaluation_config.value(evaluation::fieldName(evaluation::Field::IouThreshold)).toDouble();
     options.matching_strategy = evaluation::matchingStrategyFromKey(
@@ -566,6 +593,7 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
 
 void ModelTestTaskManager::handleParameterChanged(const QString &group_name, const QString &parameter_name)
 {
+    Q_UNUSED(parameter_name);
     scheduleSave();
     if (model_manager_ != nullptr
         && isFewShotModel(model_manager_, model_manager_->modelRecordViewForUuid(model_uuid_)))
@@ -574,11 +602,7 @@ void ModelTestTaskManager::handleParameterChanged(const QString &group_name, con
         return;
 
     const bool evaluation_changed = group_name.compare(QStringLiteral("evaluation"), Qt::CaseInsensitive) == 0;
-    const bool anomaly_threshold_changed
-        = group_name.compare(QStringLiteral("inference"), Qt::CaseInsensitive) == 0
-       && parameter_name.compare(QStringLiteral("classification_threshold"), Qt::CaseInsensitive) == 0
-       && model_manager_ != nullptr && evaluation::isAnomaly(evaluation::fromProjectMethod(model_manager_->method()));
-    if (evaluation_changed || anomaly_threshold_changed)
+    if (evaluation_changed)
     {
         ModelEvaluationOptions options;
         QString                error;
@@ -589,6 +613,11 @@ void ModelTestTaskManager::handleParameterChanged(const QString &group_name, con
             return;
         }
         current_evaluation_->setEvaluationOptions(options);
+        if (!current_evaluation_->hasPredictionResults())
+        {
+            emit taskStateChanged();
+            return;
+        }
         const TaskManager::Task *task = currentTaskRecord();
         if (task == nullptr || task->status == TaskManager::Finished)
             current_evaluation_->evaluate(false);
@@ -809,6 +838,8 @@ void ModelTestTaskManager::bindCurrentObjects()
             if (current_evaluation_ == nullptr)
                 return;
             evaluation_cache_.insert(cache_key, current_evaluation_);
+            connect(current_evaluation_, &ModelEvaluationViewModel::loadingChanged, this,
+                    &ModelTestTaskManager::taskStateChanged);
         }
         if (data_manager_ != nullptr && data_manager_->globalFilter() != nullptr)
             current_evaluation_->setGlobalFilter(data_manager_->globalFilter());

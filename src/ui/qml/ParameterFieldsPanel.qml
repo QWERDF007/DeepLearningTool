@@ -13,6 +13,9 @@ Item {
     property int horizontalPadding: framed ? 12 : 0
     property int verticalPadding: framed ? 12 : 0
     property int rowSpacing: 0
+    property bool editable: true
+
+    enabled: editable
 
     Layout.fillWidth: true
     implicitHeight: fieldsColumn.implicitHeight + verticalPadding * 2

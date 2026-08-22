@@ -31,6 +31,7 @@ Rectangle {
     // keeps the single train scope and does not share the test-task cache.
     property string taskScopeUuid: ""
     property bool taskActionsEnabled: false
+    property bool modelBusyOverride: false
     property int taskRevision: taskManager ? taskManager.revision : 0
 
     function taskExtraData(modelData) {
@@ -45,6 +46,14 @@ Rectangle {
             return testTasks[taskScopeUuid] || ({})
         }
         return ({})
+    }
+
+    function isModelBusy(uuid) {
+        if (!uuid || String(uuid).length === 0)
+            return false
+        if (String(uuid) === modelView.currentModelUuid && modelView.modelBusyOverride)
+            return true
+        return modelView.taskManager && modelView.taskManager.hasActiveModelTasks(String(uuid))
     }
 
     function resetCurrentModelState() {
@@ -153,7 +162,7 @@ Rectangle {
         }
 
         const taskId = taskIdForModel(uuid)
-        return taskId < 0 || taskManager.canStartTask(taskId)
+        return !modelView.isModelBusy(uuid) && (taskId < 0 || taskManager.canStartTask(taskId))
     }
 
     function canStopModelTask(uuid) {
@@ -180,11 +189,14 @@ Rectangle {
             iconSource: QuiFontIcon.TaskView
             visible: modelView.taskActionsEnabled && modelView.taskType !== ModelTaskTypes.Test
             enabled: modelView.taskController && modelView.currentModelUuid.length > 0
+                     && !modelView.isModelBusy(modelView.currentModelUuid)
             onClicked: modelView.addCurrentModelTask()
         }
         QuiMenuItem {
+            objectName: "modelRenameMenuItem"
             text: "重命名"
             iconSource: QuiFontIcon.Rename
+            enabled: !modelView.isModelBusy(modelView.currentModelUuid)
             onClicked: {
                 if (modelView.currentModelId < 0)
                     return
@@ -198,8 +210,10 @@ Rectangle {
             }
         }
         QuiMenuItem {
+            objectName: "modelDeleteMenuItem"
             text: "删除"
             iconSource: QuiFontIcon.Delete
+            enabled: !modelView.isModelBusy(modelView.currentModelUuid)
             onClicked: {
                 if (modelManager && modelView.currentModelId >= 0) {
                     modelManager.deleteModel(modelView.currentModelId)
@@ -208,8 +222,10 @@ Rectangle {
             }
         }
         QuiMenuItem {
+            objectName: "modelCopyMenuItem"
             text: "复制"
             iconSource: QuiFontIcon.Copy
+            enabled: !modelView.isModelBusy(modelView.currentModelUuid)
             onClicked: {
                 if (modelManager && modelView.currentModelId >= 0) {
                     modelManager.copyModel(modelView.currentModelId)

@@ -48,6 +48,7 @@ Rectangle {
             currentModelName: modelView.currentModelName
             currentFrameworkName: modelView.currentFrameworkName
             currentModelArchitecture: modelView.currentModelArchitecture
+            taskManager: TaskManager
         }
     }
 }

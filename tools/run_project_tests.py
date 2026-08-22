@@ -13,20 +13,23 @@ from pathlib import Path
 
 DEFAULT_PROJECT_TEST_REGEX = (
     r"^dltool_model_(project_creation|data_(creation|import|export)|"
-    r"patchcore_(model|train|predict|evaluation))_test$"
+    r"patchcore_(model|copy|rename|delete|train|predict|evaluation))_test$"
 )
 PROJECT_LAYER_REGEX = {
     "full": DEFAULT_PROJECT_TEST_REGEX,
     "project-setup": r"^dltool_model_(project_creation|python_environment)_test$",
     "project-creation": r"^dltool_model_project_creation_test$",
-    "python": r"^dltool_model_python_environment_test$",
+    "set-python-env": r"^dltool_model_python_environment_test$",
     "data": r"^dltool_model_data_(creation|import|export|roundtrip)_test$",
     "data-creation": r"^dltool_model_data_creation_test$",
     "data-import": r"^dltool_model_data_import_test$",
     "data-export": r"^dltool_model_data_export_test$",
     "data-roundtrip": r"^dltool_model_data_roundtrip_test$",
-    "model": r"^dltool_model_patchcore_(model|train|predict|evaluation)_test$",
+    "model": r"^dltool_model_patchcore_(model|copy|rename|delete|train|predict|evaluation)_test$",
     "model-creation": r"^dltool_model_patchcore_model_test$",
+    "model-copy": r"^dltool_model_patchcore_copy_test$",
+    "model-rename": r"^dltool_model_patchcore_rename_test$",
+    "model-delete": r"^dltool_model_patchcore_delete_test$",
     "model-train": r"^dltool_model_patchcore_train_test$",
     "model-predict": r"^dltool_model_patchcore_predict_test$",
     "model-evaluation": r"^dltool_model_patchcore_evaluation_test$",
@@ -165,7 +168,7 @@ def main() -> int:
                 environment,
             )
 
-        if args.project_layer != "python" and (args.project_layer == "full" or args.recreate_project):
+        if args.project_layer != "set-python-env" and (args.project_layer == "full" or args.recreate_project):
             reset_project_root(args.project_root)
 
         ctest_command = [

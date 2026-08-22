@@ -6,6 +6,7 @@
 #include "model/EvaluationMatching.h"
 #include "model/EvaluationResult.h"
 #include "model/ModelEvaluationProtocol.h"
+#include "database/ModelTaskDataBase.h"
 #include "ui/SignalHelper.h"
 
 #include <spdlog/spdlog.h>
@@ -248,6 +249,17 @@ bool ModelEvaluationViewModel::available() const
 bool ModelEvaluationViewModel::loading() const
 {
     return loading_;
+}
+
+bool ModelEvaluationViewModel::hasPredictionResults() const
+{
+    if (!has_evaluation_options_ || !QFileInfo::exists(evaluation_options_.dataset_file_list_path)
+        || !QFileInfo(evaluation_options_.task_database_path).isFile())
+        return false;
+    database::ModelTaskDataBase task_database(evaluation_options_.task_database_path);
+    QHash<qint64, QVariant> predictions;
+    QString                  error;
+    return task_database.readPredictions(predictions, &error) && !predictions.isEmpty();
 }
 
 int ModelEvaluationViewModel::method() const

@@ -59,6 +59,8 @@ public:
     static QString cocoRoundtripDatasetName();
     static QString maskRoundtripDatasetName();
     static QString patchcoreModelName();
+    static QString patchcoreModelCopyName();
+    static QString patchcoreModelRenameName();
     static QString patchcoreTestName();
     static QString dataExportRoot();
     static QString maskExportRoot();

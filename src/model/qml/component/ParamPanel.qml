@@ -11,6 +11,9 @@ Item {
     property IParams params: null
     property int targetPartIndex: 0
     property int partSpacing: 5
+    property bool editable: true
+
+    enabled: editable
 
     QuiScrollablePage {
         anchors.fill: parent

@@ -14,6 +14,34 @@ TestCase {
     property var detectionEvaluation: null
     property var segmentationEvaluation: null
 
+    ListModel {
+        id: fakeTestTasks
+
+        property bool currentModelBusy: true
+        property int currentIndex: 0
+        property string currentTaskUuid: "task-1"
+        property string currentTaskName: "测试任务"
+        property string currentTaskStatus: ""
+        property int currentTaskProgress: 0
+
+        ListElement { uuid: "task-1"; name: "测试任务" }
+        ListElement { uuid: "task-2"; name: "测试任务 2" }
+
+        function index(row, column) {
+            return row
+        }
+
+        function data(row, role) {
+            return get(Number(row)).uuid
+        }
+
+        function switchTask(uuid) {}
+        function createTask(name) { return "created" }
+        function renameTask(uuid, name) { return true }
+        function deleteTask(uuid) { return true }
+        function validateTaskName(name) { return "" }
+    }
+
     ModelTestFixture { id: fixtureObject }
 
     Window {
@@ -70,6 +98,64 @@ TestCase {
         DetectionEvaluationChartPanel {
             width: 420
             height: 260
+        }
+    }
+
+    Component {
+        id: testTaskPanelComponent
+        TestTaskPanel {
+            width: 640
+            height: 48
+            taskManager: fakeTestTasks
+        }
+    }
+
+    Component {
+        id: testPanelComponent
+        TestPanel {
+            width: 800
+            height: 620
+        }
+    }
+
+    Component {
+        id: modelDelegateComponent
+        ModelDelegate {
+            width: 260
+            height: 240
+            selected: true
+            showTaskActions: true
+            taskActionsEnabled: true
+            startTaskEnabled: false
+            stopTaskEnabled: true
+        }
+    }
+
+    Component {
+        id: modelViewComponent
+        ModelView {
+            width: 320
+            height: 480
+            currentModelUuid: "busy-model"
+            modelBusyOverride: true
+        }
+    }
+
+    Component {
+        id: trainParamsFormComponent
+        TrainParamsForm {
+            width: 640
+            height: 320
+            editable: false
+        }
+    }
+
+    Component {
+        id: trainDatasetsPanelComponent
+        TrainDatasetsPanel {
+            width: 640
+            height: 320
+            editable: false
         }
     }
 
@@ -252,5 +338,82 @@ TestCase {
         tryCompare(detectionEvaluation.filteredInstances, "matrixRow", classKey, 1000)
         tryCompare(detectionEvaluation.filteredInstances, "matrixColumn", EvaluationProtocolKeys.matrixAxisFalsePositive, 1000)
         testWindow.visible = false
+    }
+
+    function test_modelBusyLocksTestControlsAndRestoresEditing() {
+        var taskPanel = createTemporaryObject(testTaskPanelComponent, testWindow.contentItem)
+        verify(taskPanel)
+        var taskCombo = findChild(taskPanel, "testTaskCombo")
+        var createButton = findChild(taskPanel, "createTestTaskButton")
+        var renameButton = findChild(taskPanel, "renameTestTaskButton")
+        var deleteButton = findChild(taskPanel, "deleteTestTaskButton")
+        verify(taskCombo)
+        verify(createButton)
+        verify(renameButton)
+        verify(deleteButton)
+        verify(!taskCombo.enabled)
+        verify(!createButton.enabled)
+        verify(!renameButton.enabled)
+        verify(!deleteButton.enabled)
+
+        fakeTestTasks.currentModelBusy = false
+        tryVerify(function() {
+            return taskCombo.enabled && createButton.enabled && renameButton.enabled && deleteButton.enabled
+        }, 1000)
+
+        var panel = createTemporaryObject(testPanelComponent, testWindow.contentItem)
+        verify(panel)
+        panel.modelBusy = true
+        var datasetPanel = findChild(panel, "testDatasetPanel")
+        var inferencePanel = findChild(panel, "testParamsPanel0")
+        var evaluationPanel = findChild(panel, "testParamsPanel1")
+        verify(datasetPanel)
+        verify(inferencePanel)
+        verify(evaluationPanel)
+        verify(!datasetPanel.enabled)
+        verify(!inferencePanel.enabled)
+        verify(!evaluationPanel.enabled)
+
+        panel.modelBusy = false
+        tryVerify(function() {
+            return datasetPanel.enabled && inferencePanel.enabled && evaluationPanel.enabled
+        }, 1000)
+    }
+
+    function test_runningModelLeavesOnlyStopActionAvailable() {
+        var delegate = createTemporaryObject(modelDelegateComponent, testWindow.contentItem)
+        verify(delegate)
+        var startButton = findChild(delegate, "modelStartTaskButton")
+        var stopButton = findChild(delegate, "modelStopTaskButton")
+        verify(startButton)
+        verify(stopButton)
+        verify(!startButton.enabled)
+        verify(stopButton.enabled)
+
+        var modelView = createTemporaryObject(modelViewComponent, testWindow.contentItem)
+        verify(modelView)
+        modelView.currentModelUuid = "busy-model"
+        var renameItem = findChild(modelView, "modelRenameMenuItem")
+        var deleteItem = findChild(modelView, "modelDeleteMenuItem")
+        var copyItem = findChild(modelView, "modelCopyMenuItem")
+        verify(renameItem)
+        verify(deleteItem)
+        verify(copyItem)
+        verify(!renameItem.enabled)
+        verify(!deleteItem.enabled)
+        verify(!copyItem.enabled)
+    }
+
+    function test_trainingBusyStateDisablesParameterAndDatasetEditors() {
+        var paramsForm = createTemporaryObject(trainParamsFormComponent, testWindow.contentItem)
+        var datasetsPanel = createTemporaryObject(trainDatasetsPanelComponent, testWindow.contentItem)
+        verify(paramsForm)
+        verify(datasetsPanel)
+        verify(!paramsForm.enabled)
+        verify(!datasetsPanel.enabled)
+
+        paramsForm.editable = true
+        datasetsPanel.editable = true
+        tryVerify(function() { return paramsForm.enabled && datasetsPanel.enabled }, 1000)
     }
 }

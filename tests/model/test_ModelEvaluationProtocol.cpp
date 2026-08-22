@@ -87,8 +87,8 @@ private slots:
     void normalizedEvaluationConfigPreservesCustomValues()
     {
         QVariantMap source;
-        source.insert(evaluation::fieldName(evaluation::Field::ConfidenceThreshold), 0.7);
-        source.insert(evaluation::fieldName(evaluation::Field::IouThreshold), 0.4);
+        source.insert(QStringLiteral("conf"), 0.7);
+        source.insert(QStringLiteral("iou"), 0.4);
         source.insert(evaluation::fieldName(evaluation::Field::MatchingStrategy),
                       evaluation::matchingStrategyKey(evaluation::MatchingStrategy::HungarianIoU));
         const QVariantMap normalized = evaluation::normalizedEvaluationConfig(source);
@@ -96,6 +96,15 @@ private slots:
         QCOMPARE(normalized.value(evaluation::fieldName(evaluation::Field::IouThreshold)).toDouble(), 0.4);
         QCOMPARE(normalized.value(evaluation::fieldName(evaluation::Field::MatchingStrategy)).toString(),
                  evaluation::matchingStrategyKey(evaluation::MatchingStrategy::HungarianIoU));
+    }
+
+    void normalizedEvaluationConfigMapsAnomalyClassificationThreshold()
+    {
+        const QVariantMap normalized
+            = evaluation::normalizedEvaluationConfig({{QStringLiteral("classification_threshold"), 0.8}});
+        QCOMPARE(normalized.value(evaluation::fieldName(evaluation::Field::ConfidenceThreshold)).toDouble(), 0.8);
+        QCOMPARE(normalized.value(evaluation::fieldName(evaluation::Field::IouThreshold)).toDouble(),
+                 evaluation::kDefaultIouThreshold);
     }
 };
 

@@ -23,20 +23,22 @@ target_include_directories(${TEST_TARGET_NAME}
         ${CMAKE_SOURCE_DIR}/tests/model_support
 )
 
-# Keep QML component groups in separate processes.  Qt Quick render objects
-# created by the smoke components can outlive a test function on offscreen
-# backends, so sharing the process with the fixture-heavy refactor tests is
-# not reliable.
-add_test(NAME ${TEST_TARGET_NAME}
-    COMMAND ${TEST_TARGET_NAME}
-        EvaluationRefactor::test_protocolKeysAreTheQmlBoundary
-        EvaluationRefactor::test_basePropertyAcceptsConcreteViewModelRuntimeExtensions
-        EvaluationRefactor::test_anomalyMatrixClickSetsFnAndFpFilters
-        EvaluationRefactor::test_everyRegisteredPanelCanInstantiate
-        EvaluationRefactor::test_baseContentInjectionAndMethodChartHook
-        EvaluationRefactor::test_testEvaluationPanelReadyStatesAndRuntimeStateOverlay
-        EvaluationRefactor::test_detectionMatrixDelegatePropertiesAndClickFilters
+set(_evaluation_refactor_cases
+    test_protocolKeysAreTheQmlBoundary
+    test_basePropertyAcceptsConcreteViewModelRuntimeExtensions
+    test_anomalyMatrixClickSetsFnAndFpFilters
+    test_everyRegisteredPanelCanInstantiate
+    test_baseContentInjectionAndMethodChartHook
+    test_testEvaluationPanelReadyStatesAndRuntimeStateOverlay
+    test_detectionMatrixDelegatePropertiesAndClickFilters
+    test_modelBusyLocksTestControlsAndRestoresEditing
+    test_runningModelLeavesOnlyStopActionAvailable
+    test_trainingBusyStateDisablesParameterAndDatasetEditors
 )
+foreach(_case IN LISTS _evaluation_refactor_cases)
+    add_test(NAME "${TEST_TARGET_NAME}_${_case}"
+        COMMAND ${TEST_TARGET_NAME} "EvaluationRefactor::${_case}")
+endforeach()
 add_test(NAME ${TEST_TARGET_NAME}_registry
     COMMAND ${TEST_TARGET_NAME}
         EvaluationPanelRegistry::test_detectionMapping
@@ -65,9 +67,18 @@ set(_test_path_updates
     "DLT_TEST_TMP_ROOT=set:F:/tmp"
 )
 set_tests_properties(
-    ${TEST_TARGET_NAME}
     ${TEST_TARGET_NAME}_registry
     ${TEST_TARGET_NAME}_smoke
+    ${TEST_TARGET_NAME}_test_protocolKeysAreTheQmlBoundary
+    ${TEST_TARGET_NAME}_test_basePropertyAcceptsConcreteViewModelRuntimeExtensions
+    ${TEST_TARGET_NAME}_test_anomalyMatrixClickSetsFnAndFpFilters
+    ${TEST_TARGET_NAME}_test_everyRegisteredPanelCanInstantiate
+    ${TEST_TARGET_NAME}_test_baseContentInjectionAndMethodChartHook
+    ${TEST_TARGET_NAME}_test_testEvaluationPanelReadyStatesAndRuntimeStateOverlay
+    ${TEST_TARGET_NAME}_test_detectionMatrixDelegatePropertiesAndClickFilters
+    ${TEST_TARGET_NAME}_test_modelBusyLocksTestControlsAndRestoresEditing
+    ${TEST_TARGET_NAME}_test_runningModelLeavesOnlyStopActionAvailable
+    ${TEST_TARGET_NAME}_test_trainingBusyStateDisablesParameterAndDatasetEditors
     PROPERTIES
     LABELS "ordinary;qml"
     ENVIRONMENT_MODIFICATION "${_test_path_updates}"

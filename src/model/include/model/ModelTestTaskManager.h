@@ -49,6 +49,7 @@ class MODEL_API ModelTestTaskManager final : public QAbstractListModel
     Q_PROPERTY(ModelEvaluationViewModel *currentEvaluation READ currentEvaluation NOTIFY currentTaskChanged FINAL)
     Q_PROPERTY(int count READ count NOTIFY countChanged FINAL)
     Q_PROPERTY(bool currentTaskRunning READ currentTaskRunning NOTIFY taskStateChanged FINAL)
+    Q_PROPERTY(bool currentModelBusy READ currentModelBusy NOTIFY taskStateChanged FINAL)
     Q_PROPERTY(int currentTaskProgress READ currentTaskProgress NOTIFY taskStateChanged FINAL)
     Q_PROPERTY(QString currentTaskStatus READ currentTaskStatus NOTIFY taskStateChanged FINAL)
 
@@ -100,6 +101,8 @@ public:
     ModelEvaluationViewModel             *currentEvaluation() const;
     /** @brief 当前任务是否处于运行中状态。 */
     bool                                  currentTaskRunning() const;
+    /** @brief 当前模型是否有训练、推理或评估任务正在运行。 */
+    bool                                  currentModelBusy() const;
     /** @brief 当前任务运行进度（0 ~ 100）。 */
     int                                   currentTaskProgress() const;
     /** @brief 当前任务状态文本。 */

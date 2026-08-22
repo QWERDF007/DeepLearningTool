@@ -363,3 +363,31 @@ YOLOv8:
           param_type: dynamic
           display_type: combo
           backend_key: training.compute_devices
+
+    - name_en: evaluation
+      name_cn: 评估参数
+      part_index: 1
+      params:
+        - name_en: conf
+          name_cn: 置信度阈值
+          description: 在已有预测结果上进行评估前的置信度过滤。
+          value: 0.5
+          value_type: double
+          value_range: [0.0, 1.0, 0.01]
+          display_type: slider
+
+        - name_en: iou
+          name_cn: 匹配 IoU 阈值
+          description: 评估时预测框与标注框匹配所需的最小 IoU。
+          value: 0.5
+          value_type: double
+          value_range: [0.0, 1.0, 0.01]
+          display_type: slider
+
+        - name_en: matching_strategy
+          name_cn: 匹配策略
+          description: 评估预测框与标注框时使用的匹配算法。
+          value: greedy_iou
+          value_type: string
+          display_type: combo
+          options: [greedy_iou, hungarian_iou]
