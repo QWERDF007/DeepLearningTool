@@ -78,6 +78,7 @@ add_project_test(dltool_model_data_creation_test test_DataCreation.cpp project-d
 add_project_test(dltool_model_data_import_test test_DataImport.cpp project-data project-data-import)
 add_project_test(dltool_model_data_export_test test_DataExport.cpp project-data project-data-export)
 add_project_test(dltool_model_data_roundtrip_test test_DataFormatRoundtrip.cpp project-data project-data-roundtrip)
+add_project_test(dltool_model_data_split_test test_DataSplit.cpp project-data project-data-split)
 add_project_test(dltool_model_patchcore_model_test test_PatchcoreModel.cpp project-model project-model-creation)
 add_project_test(dltool_model_patchcore_copy_test test_PatchcoreCopy.cpp project-model project-model-copy)
 add_project_test(dltool_model_patchcore_rename_test test_PatchcoreRename.cpp project-model project-model-rename)
@@ -103,6 +104,10 @@ set_tests_properties(dltool_model_data_export_test PROPERTIES
 )
 set_tests_properties(dltool_model_data_roundtrip_test PROPERTIES
     FIXTURES_REQUIRED dltool_model_data_export
+)
+set_tests_properties(dltool_model_data_split_test PROPERTIES
+    FIXTURES_REQUIRED dltool_model_data_import
+    FIXTURES_SETUP dltool_model_data_split
 )
 set_tests_properties(dltool_model_patchcore_model_test PROPERTIES
     FIXTURES_REQUIRED dltool_model_data_import

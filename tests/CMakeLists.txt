@@ -13,6 +13,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 
 add_subdirectory(ui)
+add_subdirectory(data)
 add_subdirectory(model)
 add_subdirectory(model_qml)
 add_subdirectory(project)

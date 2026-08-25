@@ -208,6 +208,17 @@ Rectangle {
                 }
             }
         }
+        QuiMenuItem {
+            text: "划分"
+            iconSource: QuiFontIcon.GridView
+            enabled: selectedCount === 1 && hasCurItem()
+                     && dataManager && !dataManager.dataOperationRunning
+            onClicked: {
+                if (dataManager && curItem) {
+                    splitDatasetDialog.openForDataset(curItem.dataset_id, curItem.name)
+                }
+            }
+        }
         QuiMenu {
             id: copyToDatasetMenu
             title: "复制到"
@@ -292,6 +303,11 @@ Rectangle {
             }
             datasetsView.editingDatasetId = -1
         }
+    }
+
+    DatasetSplitDialog {
+        id: splitDatasetDialog
+        dataManager: datasetsView.dataManager
     }
 
     DatasetDataIODialog {

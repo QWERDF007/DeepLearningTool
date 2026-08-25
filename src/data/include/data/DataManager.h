@@ -59,6 +59,7 @@ class DATA_API DataManager : public QObject
     Q_PROPERTY(QString providerCacheKey READ providerCacheKey CONSTANT FINAL)
     Q_PROPERTY(bool datasetDeletionRunning READ datasetDeletionRunning NOTIFY datasetDeletionRunningChanged FINAL)
     Q_PROPERTY(bool imageOperationRunning READ imageOperationRunning NOTIFY imageOperationRunningChanged FINAL)
+    Q_PROPERTY(bool dataOperationRunning READ dataOperationRunning NOTIFY dataOperationRunningChanged FINAL)
 
 public:
     using ImportFinishedHandler = std::function<void(bool, const QString &)>;
@@ -184,6 +185,11 @@ public:
         return image_operation_running_;
     }
 
+    bool dataOperationRunning() const
+    {
+        return data_operation_running_;
+    }
+
     /**
      * @brief Whether a batched data import is currently writing data on the GUI thread.
      *
@@ -225,6 +231,8 @@ public:
     Q_INVOKABLE void deleteSelectedImages();
     Q_INVOKABLE void copyToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id);
     Q_INVOKABLE void moveToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id);
+    Q_INVOKABLE void splitDataset(const int64_t dataset_id, const double train_ratio, const double validation_ratio,
+                                  const double test_ratio, const bool use_validation);
 
     Q_INVOKABLE void addLabelClass(const QString &name, const QString &color, const QString &shortcut);
     Q_INVOKABLE void addLabelClassWithGroup(const QString &name, const QString &color, const QString &shortcut,
@@ -340,6 +348,8 @@ signals:
     void importLabelClassesScanned(bool success, QVariantList label_classes, const QString &message);
     void datasetDeletionRunningChanged();
     void imageOperationRunningChanged();
+    void dataOperationRunningChanged();
+    void datasetSplitFinished(bool success, const QString &message);
 
 private:
     struct PendingImportTask;
@@ -358,6 +368,10 @@ private:
     struct ImageCopyResult;
     void commitImageCopy(const std::shared_ptr<ImageCopyResult> &result,
                          const DataOperationWorkflow::Result    &operation);
+
+    struct DatasetSplitCopyResult;
+    void commitDatasetSplit(const std::shared_ptr<DatasetSplitCopyResult> &result,
+                            const DataOperationWorkflow::Result &operation);
     void rebuildLabelRelations(bool notify_image_model = true);
 
     /**
@@ -384,6 +398,10 @@ private:
 
     void setDataOperationRunning(const bool running)
     {
+        if (data_operation_running_ == running)
+        {
+            return;
+        }
         data_operation_running_ = running;
         if (label_classes_ != nullptr)
         {
@@ -393,6 +411,7 @@ private:
         {
             image_tags_->setMutationBlocked(running);
         }
+        emit dataOperationRunningChanged();
     }
 
     dltool::database::ProjectDataBase *database_{nullptr};

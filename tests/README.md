@@ -1,15 +1,16 @@
 # 测试说明
 
-`tests/` 使用 Qt Test、Qt Quick Test 和 CTest。测试按职责分为四个目录：
+`tests/` 使用 Qt Test、Qt Quick Test 和 CTest。测试按职责分为五个目录：
 
 | 目录 | 主要内容 | CTest 标签 |
 |------|----------|------------|
 | `ui/` | UI 工具函数测试 | `ordinary;ui` |
+| `data/` | Data 模块 C++ 单元测试 | `ordinary;data` |
 | `model/` | Model 模块 C++ 单元测试 | `ordinary;model` |
 | `model_qml/` | Model 评估相关 QML 测试 | `ordinary;qml` |
 | `project/` | 异常检测项目级集成测试 | `project;...` |
 
-根目录 [`tests/CMakeLists.txt`](CMakeLists.txt) 负责注册四个测试目录。测试运行统一通过 CTest；Python 脚本只是构建项目并调用 CTest，不应直接启动测试 exe。
+根目录 [`tests/CMakeLists.txt`](CMakeLists.txt) 负责注册五个测试目录。测试运行统一通过 CTest；Python 脚本只是构建项目并调用 CTest，不应直接启动测试 exe。
 
 ## 环境
 
@@ -28,18 +29,20 @@
 
 ## 普通测试
 
-普通测试不依赖项目级测试产生的 `.dlpro`、数据集、模型或 `F:\tmp\pro`。执行入口为 [`tools/run_model_tests.py`](../tools/run_model_tests.py)，默认包含 8 个 CTest 目标。
+普通测试不依赖项目级测试产生的 `.dlpro`、数据集、模型或 `F:\tmp\pro`。当前 `ordinary` 标签包含 29 个 CTest 条目。Model/QML 专用入口为 [`tools/run_model_tests.py`](../tools/run_model_tests.py)，默认运行其中 27 个 Model/QML 条目，不包含 UI 和 Data 条目。
 
 ### Model C++ 测试
 
-5 个 CTest 目标共覆盖 29 个 C++ 测试源码：
+11 个 CTest 条目共覆盖 31 个 C++ 测试源码及参数化行为入口：
 
 | CTest 目标 | 覆盖源码 | 覆盖内容 |
 |------------|----------|----------|
 | `dltool_model_evaluation_tests` | `test_ModelEvaluationProtocol.cpp`、`test_EvaluationRegistries.cpp`、`test_EvaluationResult.cpp`、`test_EvaluationGeometryMatching.cpp`、`test_EvaluationModels.cpp`、`test_EvaluationCharts.cpp`、`test_EvaluationAnomalyConfusion.cpp`、`test_AggregateEvaluation.cpp`、`test_ModelEvaluationViewModel.cpp` | 评估协议、注册表、结果对象、几何匹配、评估模型、图表数据、异常混淆矩阵、聚合评估、评估 ViewModel |
 | `dltool_model_dataset_tests` | `test_EvaluationDataset.cpp`、`test_ModelDatasetOrganizer.cpp`、`test_EvaluationEngine.cpp`、`test_ModelDatasetSelection.cpp` | 评估数据集、数据集组织、评估引擎、模型数据集选择 |
 | `dltool_model_tasks_tests` | `test_ModelTaskTypes.cpp`、`test_TaskCommunicationProtocol.cpp`、`test_TaskCommunicationServer.cpp`、`test_TaskManager.cpp`、`test_ExternalModelTaskRunner.cpp`、`test_ModelTestTaskRepository.cpp`、`test_ModelTaskPreparation.cpp`、`test_ModelTestTaskManager.cpp`、`test_ModelTaskController.cpp` | 任务类型、任务通信协议和服务、任务管理、外部模型任务、测试任务持久化、任务准备、模型测试任务管理和控制 |
+| `dltool_model_evaluation_behavior_tests`、`dltool_model_evaluation_behavior_<case>` | `test_ModelEvaluationParameterBehavior.cpp` | 参数分组对评估触发的影响、无预测结果时不启动评估、任务完成后的自动评估和忙碌状态恢复；包含 4 个独立行为条目 |
 | `dltool_model_storage_params_tests` | `test_ModelStorageService.cpp`、`test_ModelStorageMigration.cpp`、`test_ModelParamDefs.cpp`、`test_ModelParamsSchema.cpp`、`test_ModelDataBases.cpp`、`test_ModelManager.cpp` | 模型文件存储、存储迁移、模型参数定义和 Schema、模型数据库、模型管理 |
+| `dltool_model_config_tests` | `test_ModelConfigConsistency.cpp` | 模型配置和推理/评估参数结构的一致性 |
 | `dltool_model_registry_tests` | `test_RegistryIsolation.cpp` | 模型注册表隔离 |
 
 ### Model QML 测试
@@ -74,6 +77,22 @@ ctest --test-dir build -C Release -R "^tst_dltool_ui$" --output-on-failure
 python tools\run_model_tests.py --skip-build
 ```
 
+### Data 测试
+
+目标为 `dltool_data_split_tests`，源码为 `data/test_DatasetSplitter.cpp`，当前覆盖：
+
+- 比例范围、比例和及启用验证集的校验
+- 空数据、重复图像 ID 和不支持任务类型的失败路径
+- 分类和异常检测按图像级类别分层
+- 目标检测和语义分割按图像类别集合分层，确保同一图像的标注不会被拆开
+- 固定随机种子的可复现划分，以及划分结果的完整、不重复分区
+
+该测试不依赖项目级数据集，可单独通过 CTest 运行：
+
+```powershell
+ctest --test-dir build -C Release -R "^dltool_data_split_tests$" --output-on-failure
+```
+
 ## 项目级测试
 
 项目级测试源码位于 [`tests/project/`](project/)，由 [`tools/run_project_tests.py`](../tools/run_project_tests.py) 调用。项目级测试使用 [`PersistentProjectFixture`](project/PersistentProjectFixture.cpp) 打开或创建项目、读取数据集、启动模型任务并等待异步任务完成。
@@ -97,6 +116,7 @@ python tools\run_model_tests.py --skip-build
 | `data-import` | `dltool_model_data_import_test` | `test_DataImport.cpp` | 要求目标数据集已存在；校验固定图片和 Mask 夹具，再导入 Folder 图片和独立 Mask，验证 14 张图片、10 个标注及 `MT_Blowhole=5`、`MT_Crack=5` |
 | `data-export` | `dltool_model_data_export_test` | `test_DataExport.cpp` | 要求数据集精确包含 14 张图片和 10 个标注；分别导出 Mask、LabelMe 和 COCO，并验证导出文件结构和数量 |
 | `data-roundtrip` | `dltool_model_data_roundtrip_test` | `test_DataFormatRoundtrip.cpp` | 将导出的 Mask、LabelMe、COCO 分别回导到独立数据集，精确验证源数据集为 14 张图片和 10 个标注，Mask 回导为 9 张图片和 10 个标注，LabelMe/COCO 回导均为 14 张图片和 10 个标注 |
+| `data-split` | `dltool_model_data_split_test` | `test_DataSplit.cpp` | 要求源数据集精确包含 14 张图片和 10 个标注；异步创建 `-Train`、`-Val`、`-Test` 子数据集，验证图像不重复、完整覆盖源数据且标注随图像复制 |
 | `model-creation` | `dltool_model_patchcore_model_test` | `test_PatchcoreModel.cpp` | 要求数据集已存在；创建并配置 `anomalib/patchcore` 模型、训练/测试参数和测试任务，验证模型数据库及存储目录 |
 | `model-copy` | `dltool_model_patchcore_copy_test` | `test_PatchcoreCopy.cpp` | 要求原始 PatchCore 模型已存在；复制模型配置和数据集选择，验证副本记录、名称、框架、架构和存储目录 |
 | `model-rename` | `dltool_model_patchcore_rename_test` | `test_PatchcoreRename.cpp` | 要求 PatchCore 模型已存在；重命名模型并验证数据库记录和存储目录，再恢复原名称 |
@@ -109,7 +129,7 @@ python tools\run_model_tests.py --skip-build
 
 CTest 中声明了项目级 fixture 依赖，但 runner 对不同模式有明确控制：
 
-- `full`：清理项目目录，启用 fixture，执行完整 11 层主流程，包括模型创建、复制、重命名、删除副本、训练、预测和评估
+- `full`：清理项目目录，启用 fixture，执行完整 12 层主流程，包括数据集划分，以及模型创建、复制、重命名、删除副本、训练、预测和评估
 - 其他单层或分组模式：默认复用已有项目，只执行选择的目标，不自动补齐前置 fixture
 - `--recreate-project`：在执行任意非 `set-python-env` 层前清理项目目录，然后执行选择的目标
 - `set-python-env`：不依赖项目目录，也不会清理项目
@@ -123,6 +143,7 @@ CTest 中声明了项目级 fixture 依赖，但 runner 对不同模式有明确
 - 没有模型时执行 `model-copy`、`model-rename` 和 `model-delete` 必须失败
 - 没有训练权重时执行 `model-predict` 必须失败
 - 没有预测结果时执行 `model-evaluation` 必须失败
+- 没有已导入的源数据集时执行 `data-split` 必须失败
 
 `data-import` 在数据集已存在但数据量不足时会使用测试资产补充导入，完成后必须精确得到 14 张图片、10 个标注，其中 `MT_Blowhole=5`、`MT_Crack=5`；测试还校验固定图片和 Mask 的尺寸及 Mask 区域元数据。`data-roundtrip` 会为三种格式创建独立的回导数据集，并精确校验回导数量。这两项是测试本身的操作，不是 runner 自动补齐前置测试。
 
@@ -150,13 +171,14 @@ python tools\run_project_tests.py --project-layer full
 python tools\run_project_tests.py --project-layer full --skip-build
 ```
 
-预期目标为 11 个：
+预期目标为 12 个：
 
 ```text
 project-creation
 data-creation
 data-import
 data-export
+data-split
 model-creation
 model-copy
 model-rename
@@ -176,6 +198,7 @@ python tools\run_project_tests.py --project-layer data-creation
 python tools\run_project_tests.py --project-layer data-import
 python tools\run_project_tests.py --project-layer data-export
 python tools\run_project_tests.py --project-layer data-roundtrip
+python tools\run_project_tests.py --project-layer data-split
 python tools\run_project_tests.py --project-layer model-creation
 python tools\run_project_tests.py --project-layer model-copy
 python tools\run_project_tests.py --project-layer model-rename
@@ -226,13 +249,13 @@ ctest --test-dir build -C Release -N -L model
 项目级测试的标签包括：
 
 - `project-setup`：项目创建、Python 环境
-- `project-data`：数据集、导入、导出、回导
+- `project-data`：数据集、导入、导出、回导、划分
 - `project-model`：PatchCore 创建、复制、重命名、删除副本、训练、预测、评估
-- `project-creation`、`project-data-import`、`project-model-copy`、`project-model-rename`、`project-model-delete`、`project-model-train` 等细粒度层标签
+- `project-creation`、`project-data-import`、`project-data-split`、`project-model-copy`、`project-model-rename`、`project-model-delete`、`project-model-train` 等细粒度层标签
 
 ## 当前覆盖边界
 
-当前测试是功能和流程验证，不生成代码行覆盖率报告。已覆盖正常项目创建、数据处理、PatchCore CPU 训练/预测/评估、文件产物和部分缺少前置条件的失败路径。
+当前测试是功能和流程验证，不生成代码行覆盖率报告。已覆盖数据集划分算法、正常项目创建、数据处理、PatchCore CPU 训练/预测/评估、文件产物和部分缺少前置条件的失败路径。
 
 目前没有系统覆盖：
 

@@ -7,6 +7,7 @@
 #include "data/DataNameUtils.h"
 #include "data/DataOperationWorkflow.h"
 #include "data/DatasetIO.h"
+#include "data/DatasetSplitter.h"
 #include "data/GlobalFilter.h"
 #include "data/ImageInstanceImageProvider.h"
 #include "data/LabelData.h"
@@ -125,6 +126,30 @@ struct ImageCopyRequest
 
 struct DataManager::ImageCopyResult
 {
+    std::vector<LoadedImageInstance> images;
+    std::vector<LoadedLabelInstance> labels;
+};
+
+namespace {
+
+struct DatasetSplitTarget
+{
+    QString              name;
+    std::vector<int64_t> source_image_ids;
+};
+
+struct DatasetSplitRequest
+{
+    int                         label_data_method{-1};
+    std::vector<DatasetSplitTarget> targets;
+};
+
+} // namespace
+
+struct DataManager::DatasetSplitCopyResult
+{
+    std::vector<int64_t>        dataset_ids;
+    std::vector<QString>        dataset_names;
     std::vector<LoadedImageInstance> images;
     std::vector<LoadedLabelInstance> labels;
 };
@@ -987,6 +1012,58 @@ void DataManager::commitImageCopy(const std::shared_ptr<ImageCopyResult> &result
     setDataOperationRunning(false);
 }
 
+void DataManager::commitDatasetSplit(const std::shared_ptr<DatasetSplitCopyResult> &result,
+                                     const DataOperationWorkflow::Result            &operation)
+{
+    if (result != nullptr && operation.success)
+    {
+        if (labels_loading_)
+        {
+            labels_changed_during_loading_ = true;
+        }
+
+        datasets_->addDatasetsFromMemory(result->dataset_ids, result->dataset_names);
+
+        image_instances_->beginBulkUpdate();
+        label_instances_->beginBulkUpdate();
+        image_source_->addImagesFromMemory(result->images, true);
+        label_source_->addLabelsFromMemory(result->labels, true);
+        image_source_->syncAllLabelRelations(label_source_, false);
+        image_tags_->addRelationsFromMemory(result->images, result->labels);
+        datasets_->addImagesFromSource(image_source_, result->images);
+        image_source_->refreshModelFromMemory();
+        label_source_->refreshModelFromMemory();
+
+        if (global_filter_ != nullptr && global_filter_->isActive())
+        {
+            global_filter_->refresh();
+        }
+        label_instances_->endBulkUpdate();
+        image_instances_->endBulkUpdate();
+
+        const QString message = QString("已完成数据集划分，创建 %1 个子数据集、复制 %2 个图像和 %3 个标注，耗时 %4 ms")
+                                    .arg(result->dataset_ids.size())
+                                    .arg(result->images.size())
+                                    .arg(result->labels.size())
+                                    .arg(operation.elapsed_ms);
+        spdlog::info("{}", message.toUtf8().constData());
+        ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
+        ui::SignalHelper::notifySuccess(QString("划分数据集完成"), message);
+        emit datasetSplitFinished(true, message);
+    }
+    else
+    {
+        const QString message = QString("划分数据集失败: %1")
+                                    .arg(operation.error.isEmpty() ? QStringLiteral("后台操作失败") : operation.error);
+        spdlog::error("{}", message.toUtf8().constData());
+        ui::ProgressManager::getInstance()->addMessage(spdlog::level::err, message);
+        ui::SignalHelper::notifyError(QString("划分数据集失败"), message);
+        emit datasetSplitFinished(false, message);
+    }
+
+    setDataOperationRunning(false);
+}
+
 void DataManager::importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
                              const QString &data_dir)
 {
@@ -1714,6 +1791,353 @@ void DataManager::copyToDataset(const std::vector<int64_t> &image_ids, const int
             operation.error.clear();
         },
         [this, result](const DataOperationWorkflow::Result &operation) { commitImageCopy(result, operation); });
+}
+
+void DataManager::splitDataset(const int64_t dataset_id, const double train_ratio, const double validation_ratio,
+                               const double test_ratio, const bool use_validation)
+{
+    const auto reportFailure = [this](const QString &message)
+    {
+        ui::SignalHelper::notifyError(QString("划分数据集失败"), message);
+        emit datasetSplitFinished(false, message);
+    };
+
+    if (isDataOperationRunning())
+    {
+        const QString message = QStringLiteral("当前已有数据操作正在进行中");
+        ui::SignalHelper::notifyWarn(QString("划分数据集"), message);
+        emit datasetSplitFinished(false, message);
+        return;
+    }
+    if (database_ == nullptr || datasets_ == nullptr || image_source_ == nullptr || label_source_ == nullptr)
+    {
+        reportFailure(QStringLiteral("数据管理器未初始化"));
+        return;
+    }
+    if (labels_loading_)
+    {
+        reportFailure(QStringLiteral("标注正在加载，请稍后再试"));
+        return;
+    }
+    if (!core::DeepLearningMethod::isSupportedMethod(method_))
+    {
+        reportFailure(QStringLiteral("当前项目类型不支持数据集划分"));
+        return;
+    }
+    const QString source_dataset_name = datasets_->getDatasetName(dataset_id);
+    if (dataset_id < 0 || source_dataset_name.isEmpty())
+    {
+        reportFailure(QStringLiteral("源数据集不存在"));
+        return;
+    }
+
+    const auto &all_images = image_source_->getAllImageInstances();
+    std::vector<DatasetSplitItem> items;
+    for (const auto &[image_id, image] : all_images)
+    {
+        if (image == nullptr || image->datasetId() != dataset_id)
+        {
+            continue;
+        }
+
+        DatasetSplitItem item;
+        item.image_id              = image_id;
+        item.image_label_class_id = image->imageLabelClassId();
+        if (method_ == core::DeepLearningMethod::Detection || method_ == core::DeepLearningMethod::Segmentation)
+        {
+            for (const int64_t label_id : image->labelIds())
+            {
+                const LabelInstance *label = label_source_->getLabelInstance(label_id);
+                if (label == nullptr)
+                {
+                    reportFailure(QString("图像 %1 的标注 %2 不存在").arg(image_id).arg(label_id));
+                    return;
+                }
+                item.label_class_ids.push_back(label->labelClassId());
+            }
+        }
+        items.push_back(std::move(item));
+    }
+
+    DatasetSplitRatios ratios;
+    ratios.train          = train_ratio;
+    ratios.validation     = validation_ratio;
+    ratios.test           = test_ratio;
+    ratios.use_validation = use_validation;
+    QString ratio_error;
+    if (!DatasetSplitter::validateRatios(ratios, &ratio_error))
+    {
+        reportFailure(ratio_error);
+        return;
+    }
+    if (items.empty())
+    {
+        reportFailure(QStringLiteral("不能划分空数据集"));
+        return;
+    }
+
+    const DatasetSplitResult split = DatasetSplitter::split(items, method_, ratios, 0xD17A5EEDU);
+    if (!split.success)
+    {
+        reportFailure(split.error);
+        return;
+    }
+
+    auto request = std::make_shared<DatasetSplitRequest>();
+    request->label_data_method = method_;
+    std::set<QString> reserved_names;
+    const auto uniqueName = [&](const QString &suffix)
+    {
+        const QString base_name = source_dataset_name + QStringLiteral("-") + suffix;
+        QString       candidate  = base_name;
+        int           index      = 1;
+        while (datasets_->getDatasetId(candidate) >= 0 || reserved_names.contains(candidate))
+        {
+            candidate = QStringLiteral("%1(%2)").arg(base_name).arg(index++);
+        }
+        reserved_names.insert(candidate);
+        return candidate;
+    };
+
+    request->targets.push_back({uniqueName(QStringLiteral("Train")), split.train_image_ids});
+    if (ratios.use_validation)
+    {
+        request->targets.push_back({uniqueName(QStringLiteral("Val")), split.validation_image_ids});
+    }
+    request->targets.push_back({uniqueName(QStringLiteral("Test")), split.test_image_ids});
+
+    setDataOperationRunning(true);
+    auto result = std::make_shared<DatasetSplitCopyResult>();
+    const ImageInstancesListModel *source_images = image_source_;
+    const LabelInstancesListModel *source_labels = label_source_;
+    DataOperationWorkflow::Options options;
+    options.title         = QStringLiteral("划分数据集");
+    options.start_message = QString("正在划分数据集: %1").arg(source_dataset_name);
+    DataOperationWorkflow::startDatabase(
+        this, database_->path(), std::move(options),
+        [request, result, source_images, source_labels](dltool::database::ProjectDataBase &database,
+                                                        DataOperationWorkflow::Result     &operation)
+        {
+            std::vector<int64_t> created_dataset_ids;
+            const auto fail = [&database, &operation, &created_dataset_ids](const QString &message)
+            {
+                if (!created_dataset_ids.empty())
+                {
+                    QString cleanup_error;
+                    database.deleteDatasetsWithContents(created_dataset_ids, cleanup_error);
+                    if (!cleanup_error.isEmpty())
+                    {
+                        operation.error = QString("%1；清理失败: %2").arg(message, cleanup_error);
+                        operation.success = false;
+                        return;
+                    }
+                }
+                operation.error   = message;
+                operation.success = false;
+            };
+
+            std::vector<QString> target_names;
+            target_names.reserve(request->targets.size());
+            for (const DatasetSplitTarget &target : request->targets)
+            {
+                target_names.push_back(target.name);
+            }
+            for (const QString &target_name : target_names)
+            {
+                int64_t dataset_id = -1;
+                if (!database.addDataset(target_name, dataset_id, operation.error) || dataset_id < 0)
+                {
+                    operation.error = QStringLiteral("创建子数据集失败: %1")
+                                          .arg(operation.error.isEmpty() ? QStringLiteral("新数据集 ID 无效")
+                                                                         : operation.error);
+                    fail(operation.error);
+                    return;
+                }
+                created_dataset_ids.push_back(dataset_id);
+            }
+
+            result->dataset_ids   = created_dataset_ids;
+            result->dataset_names = target_names;
+
+            std::vector<int64_t> source_image_ids;
+            std::vector<int64_t> target_dataset_ids;
+            std::vector<QString> image_paths;
+            std::unordered_map<int64_t, size_t> source_image_indices;
+            for (size_t target_index = 0; target_index < request->targets.size(); ++target_index)
+            {
+                const DatasetSplitTarget &target = request->targets[target_index];
+                for (const int64_t source_image_id : target.source_image_ids)
+                {
+                    const ImageInstance *source_image = source_images->getImageInstance(source_image_id);
+                    if (source_image == nullptr || source_image->path().isEmpty())
+                    {
+                        fail(QString("源图像不存在或路径无效: %1").arg(source_image_id));
+                        return;
+                    }
+                    if (!source_image_indices.emplace(source_image_id, result->images.size()).second)
+                    {
+                        fail(QString("图像重复出现在多个子数据集: %1").arg(source_image_id));
+                        return;
+                    }
+
+                    LoadedImageInstance image;
+                    image.dataset_id     = created_dataset_ids[target_index];
+                    image.path           = source_image->path();
+                    image.label_class_id = source_image->imageLabelClassId();
+                    image.tag_ids        = source_image->tagIds();
+                    result->images.push_back(std::move(image));
+                    source_image_ids.push_back(source_image_id);
+                    target_dataset_ids.push_back(created_dataset_ids[target_index]);
+                    image_paths.push_back(source_image->path());
+                }
+            }
+
+            std::vector<size_t>               label_target_image_indices;
+            std::vector<int64_t>              copied_label_class_ids;
+            std::vector<int64_t>              copied_label_types;
+            std::vector<std::vector<uint8_t>> copied_label_data;
+            LabelDataHelper                    helper{nullptr};
+            for (const int64_t source_image_id : source_image_ids)
+            {
+                const auto image_index = source_image_indices.find(source_image_id);
+                const ImageInstance *source_image = source_images->getImageInstance(source_image_id);
+                if (image_index == source_image_indices.end() || source_image == nullptr)
+                {
+                    fail(QString("源图像映射无效: %1").arg(source_image_id));
+                    return;
+                }
+
+                for (const int64_t source_label_id : source_image->labelIds())
+                {
+                    const LabelInstance *source_label = source_labels->getLabelInstance(source_label_id);
+                    if (source_label == nullptr || source_label->data() == nullptr)
+                    {
+                        fail(QString("源标注不存在或数据无效: %1").arg(source_label_id));
+                        return;
+                    }
+
+                    const std::vector<uint8_t> label_blob = source_label->data()->toBlob();
+                    if (helper == nullptr)
+                    {
+                        helper = data::createLabelDataHelper(request->label_data_method);
+                        if (helper == nullptr)
+                        {
+                            fail(QStringLiteral("标签数据工厂未初始化"));
+                            return;
+                        }
+                    }
+                    LabelData label_data = helper->createLabelData();
+                    if (label_data == nullptr)
+                    {
+                        fail(QStringLiteral("标签数据创建失败"));
+                        return;
+                    }
+                    label_data->fromBlob(label_blob);
+
+                    label_target_image_indices.push_back(image_index->second);
+                    copied_label_class_ids.push_back(source_label->labelClassId());
+                    copied_label_types.push_back(source_label->data()->type());
+                    copied_label_data.push_back(label_blob);
+
+                    LoadedLabelInstance label;
+                    label.label_class_id = source_label->labelClassId();
+                    label.data           = std::move(label_data);
+                    label.tag_ids        = source_label->tagIds();
+                    result->labels.push_back(std::move(label));
+                }
+            }
+
+            std::vector<int64_t> copied_image_ids;
+            if (!database.addImages(target_dataset_ids, image_paths, copied_image_ids, operation.error)
+                || copied_image_ids.size() != result->images.size())
+            {
+                fail(QStringLiteral("复制图像失败: %1")
+                         .arg(operation.error.isEmpty() ? QStringLiteral("新图像 ID 数量不一致") : operation.error));
+                return;
+            }
+            for (size_t index = 0; index < result->images.size(); ++index)
+            {
+                result->images[index].image_id = copied_image_ids[index];
+            }
+
+            std::vector<std::vector<uint8_t>> image_extra_data;
+            image_extra_data.reserve(result->images.size());
+            for (const LoadedImageInstance &image : result->images)
+            {
+                image_extra_data.push_back(ImageInstancesListModel::extraDataForImageLabelClassId(image.label_class_id));
+            }
+            if (!database.updateImagesExtraData(copied_image_ids, image_extra_data, operation.error))
+            {
+                fail(QStringLiteral("复制图像级类别失败: %1").arg(operation.error));
+                return;
+            }
+
+            std::map<int64_t, std::vector<int64_t>> image_ids_by_tag;
+            for (const LoadedImageInstance &image : result->images)
+            {
+                for (const int64_t tag_id : image.tag_ids)
+                {
+                    image_ids_by_tag[tag_id].push_back(image.image_id);
+                }
+            }
+            for (const auto &[tag_id, target_image_ids] : image_ids_by_tag)
+            {
+                if (!database.addTagsToImages(target_image_ids, tag_id, operation.error))
+                {
+                    fail(QStringLiteral("复制图像 Tag 失败: %1").arg(operation.error));
+                    return;
+                }
+            }
+
+            std::vector<int64_t> copied_label_image_ids;
+            copied_label_image_ids.reserve(label_target_image_indices.size());
+            for (const size_t image_index : label_target_image_indices)
+            {
+                if (image_index >= copied_image_ids.size())
+                {
+                    fail(QStringLiteral("复制标注时图像映射无效"));
+                    return;
+                }
+                copied_label_image_ids.push_back(copied_image_ids[image_index]);
+            }
+
+            std::vector<int64_t> copied_label_ids;
+            if (!copied_label_image_ids.empty()
+                && (!database.addLabels(copied_label_image_ids, copied_label_class_ids, copied_label_types,
+                                         copied_label_data, copied_label_ids, operation.error)
+                    || copied_label_ids.size() != copied_label_image_ids.size()))
+            {
+                fail(QStringLiteral("复制标注失败: %1")
+                         .arg(operation.error.isEmpty() ? QStringLiteral("新标注 ID 数量不一致") : operation.error));
+                return;
+            }
+            for (size_t index = 0; index < copied_label_ids.size(); ++index)
+            {
+                result->labels[index].label_id = copied_label_ids[index];
+                result->labels[index].image_id = copied_label_image_ids[index];
+            }
+
+            std::map<int64_t, std::vector<int64_t>> label_ids_by_tag;
+            for (const LoadedLabelInstance &label : result->labels)
+            {
+                for (const int64_t tag_id : label.tag_ids)
+                {
+                    label_ids_by_tag[tag_id].push_back(label.label_id);
+                }
+            }
+            for (const auto &[tag_id, target_label_ids] : label_ids_by_tag)
+            {
+                if (!database.addTagsToLabels(target_label_ids, tag_id, operation.error))
+                {
+                    fail(QStringLiteral("复制标注 Tag 失败: %1").arg(operation.error));
+                    return;
+                }
+            }
+
+            operation.success = true;
+            operation.error.clear();
+        },
+        [this, result](const DataOperationWorkflow::Result &operation) { commitDatasetSplit(result, operation); });
 }
 
 void DataManager::moveToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id)

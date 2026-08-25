@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 DEFAULT_PROJECT_TEST_REGEX = (
-    r"^dltool_model_(project_creation|data_(creation|import|export)|"
+    r"^dltool_model_(project_creation|data_(creation|import|export|split)|"
     r"patchcore_(model|copy|rename|delete|train|predict|evaluation))_test$"
 )
 PROJECT_LAYER_REGEX = {
@@ -20,11 +20,12 @@ PROJECT_LAYER_REGEX = {
     "project-setup": r"^dltool_model_(project_creation|python_environment)_test$",
     "project-creation": r"^dltool_model_project_creation_test$",
     "set-python-env": r"^dltool_model_python_environment_test$",
-    "data": r"^dltool_model_data_(creation|import|export|roundtrip)_test$",
+    "data": r"^dltool_model_data_(creation|import|export|roundtrip|split)_test$",
     "data-creation": r"^dltool_model_data_creation_test$",
     "data-import": r"^dltool_model_data_import_test$",
     "data-export": r"^dltool_model_data_export_test$",
     "data-roundtrip": r"^dltool_model_data_roundtrip_test$",
+    "data-split": r"^dltool_model_data_split_test$",
     "model": r"^dltool_model_patchcore_(model|copy|rename|delete|train|predict|evaluation)_test$",
     "model-creation": r"^dltool_model_patchcore_model_test$",
     "model-copy": r"^dltool_model_patchcore_copy_test$",
