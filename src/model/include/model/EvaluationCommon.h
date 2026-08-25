@@ -158,6 +158,9 @@ inline EvaluationInstanceRecord instanceFromMap(const QVariantMap &map)
     record.pred_overlay_points = map.value(evaluation::fieldName(evaluation::Field::PredOverlayPoints)).toList();
     record.gt_mask_url         = recordText(map, evaluation::Field::GtMaskUrl);
     record.pred_mask_url       = recordText(map, evaluation::Field::PredMaskUrl);
+    record.anomaly_score_map_path = recordText(map, evaluation::Field::AnomalyScoreMapPath);
+    record.anomaly_model_polygons = map.value(evaluation::fieldName(evaluation::Field::AnomalyModelPolygons)).toList();
+    record.anomaly_image_polygons = map.value(evaluation::fieldName(evaluation::Field::AnomalyImagePolygons)).toList();
     if (record.image_name.isEmpty())
         record.image_name = QFileInfo(record.image_path).fileName();
     return record;
@@ -209,7 +212,10 @@ inline QVariantMap instanceToMap(const EvaluationInstanceRecord &record)
         {  QStringLiteral("gtOverlayPoints"),                     record.gt_overlay_points},
         {QStringLiteral("predOverlayPoints"),                   record.pred_overlay_points},
         {        QStringLiteral("gtMaskUrl"),                           record.gt_mask_url},
-        {      QStringLiteral("predMaskUrl"),                         record.pred_mask_url}
+        {      QStringLiteral("predMaskUrl"),                         record.pred_mask_url},
+        { QStringLiteral("anomalyScoreMapPath"),              record.anomaly_score_map_path},
+        {QStringLiteral("anomalyModelPolygons"),              record.anomaly_model_polygons},
+        {QStringLiteral("anomalyImagePolygons"),              record.anomaly_image_polygons}
     };
 }
 
@@ -247,7 +253,10 @@ inline QVariantMap instanceToProtocolMap(const EvaluationInstanceRecord &record)
         {  evaluation::fieldName(evaluation::Field::GtOverlayPoints),             record.gt_overlay_points},
         {evaluation::fieldName(evaluation::Field::PredOverlayPoints),           record.pred_overlay_points},
         {        evaluation::fieldName(evaluation::Field::GtMaskUrl),                   record.gt_mask_url},
-        {      evaluation::fieldName(evaluation::Field::PredMaskUrl),                 record.pred_mask_url}
+        {      evaluation::fieldName(evaluation::Field::PredMaskUrl),                 record.pred_mask_url},
+        {evaluation::fieldName(evaluation::Field::AnomalyScoreMapPath), record.anomaly_score_map_path},
+        {evaluation::fieldName(evaluation::Field::AnomalyModelPolygons), record.anomaly_model_polygons},
+        {evaluation::fieldName(evaluation::Field::AnomalyImagePolygons), record.anomaly_image_polygons}
     };
 }
 } // namespace dltool::model

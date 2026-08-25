@@ -8,9 +8,10 @@ namespace dltool::model {
 /**
  * @brief 异常检测评估引擎。
  *
- * 图像级二元分类：按图像聚合 GT 异常、取最大图像分数、class_id==1 且达到
- * 阈值判定预测异常，产出图像级 TP/TN/FP/FN 计数与每图像一条事件。不产
- * 实例级指标；实例混淆矩阵留待后续阶段（当前返回空）。
+ * 图像级二元分类：按图像聚合 GT 异常；有像素异常分数图时，取其最大
+ * 分数作为评估层 pred_score，并与同一阈值生成异常区域和图像级判定。
+ * 没有分数图时回退到模型输出的图像分数。产出图像级 TP/TN/FP/FN
+ * 计数与每图像一条事件，不产出实例级指标。
  */
 class MODEL_API AnomalyEvaluationEngine : public IEvaluationEngine
 {
@@ -48,9 +49,9 @@ private:
     /**
      * @brief 单次异常图像级评估循环。
      *
-     * 与旧 Service 异常分支逐字对齐：图像级 GT 聚合、最大图像分数、异常
-     * 预测判定、TP/TN/FP/FN 计数与每图像一条事件。结果写入共享 scratch_
-     *（image_counts/events），供 computeImageCounts/buildEvents 复用。
+     * 图像级 GT 聚合、统一像素图最大分数、异常预测判定、TP/TN/FP/FN
+     * 计数与每图像一条事件。结果写入共享 scratch_（image_counts/events），
+     * 供 computeImageCounts/buildEvents 复用。
      * @param images 图像记录。
      * @param err_msg 可选错误信息输出。
      * @return 成功返回 true。

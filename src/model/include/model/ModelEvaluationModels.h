@@ -101,6 +101,9 @@ struct MODEL_API EvaluationInstanceRecord
     QString            gt_class_color;                      ///< GT 类别颜色。
     QString            pred_class_color;                    ///< 预测类别颜色。
     QString            thumbnail_url;                       ///< 缩略图请求 URL。
+    QString            anomaly_score_map_path;               ///< 原始异常分数图 TIFF 路径。
+    QVariantList       anomaly_model_polygons;               ///< 模型坐标系异常区域多边形集合。
+    QVariantList       anomaly_image_polygons;               ///< 原图坐标系异常区域多边形集合。
     bool               selected{false};                     ///< 当前是否被选中。
 };
 
@@ -314,6 +317,9 @@ public:
         GtClassColorRole,                 ///< GT 类别颜色。
         PredClassColorRole,               ///< 预测类别颜色。
         ThumbnailUrlRole,                 ///< 缩略图 URL。
+        AnomalyScoreMapPathRole,          ///< 原始异常分数图 TIFF 路径。
+        AnomalyModelPolygonsRole,         ///< 模型坐标系异常区域多边形集合。
+        AnomalyImagePolygonsRole,         ///< 原图坐标系异常区域多边形集合。
         SelectedRole,                     ///< 是否选中。
     };
     Q_ENUM(Role)

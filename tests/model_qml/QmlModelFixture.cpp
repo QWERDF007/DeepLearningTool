@@ -5,6 +5,11 @@
 #include "model/EvaluationViewModelRegistry.h"
 #include "model/ModelEvaluationOptions.h"
 
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+
+#include <QDir>
+
 namespace dltool::model::testsupport {
 
 QmlModelFixture::QmlModelFixture(QObject *parent)
@@ -27,10 +32,30 @@ ModelEvaluationViewModel *QmlModelFixture::createAnomalyEvaluation()
         = anomaly_fixture_->addImage(QStringLiteral("normal"), {{QStringLiteral("image_label_class_id"), good}});
     const qint64 bad_image
         = anomaly_fixture_->addImage(QStringLiteral("bad"), {{QStringLiteral("image_label_class_id"), anomaly}});
-    if (good < 0 || anomaly < 0 || normal_image < 0 || bad_image < 0
+    const qint64 false_positive_image
+        = anomaly_fixture_->addImage(QStringLiteral("false-positive"),
+                                     {{QStringLiteral("image_label_class_id"), good}});
+    if (good < 0 || anomaly < 0 || normal_image < 0 || bad_image < 0 || false_positive_image < 0
         || !anomaly_fixture_->writeImageList() || !anomaly_fixture_->setTestSelection({good, anomaly})
         || !anomaly_fixture_->writePrediction(normal_image, anomalyPrediction(0.2))
-        || !anomaly_fixture_->writePrediction(bad_image, anomalyPrediction(0.9)))
+        || !anomaly_fixture_->writePrediction(bad_image, anomalyPrediction(0.9))
+        || !anomaly_fixture_->writePrediction(false_positive_image, anomalyPrediction(0.8)))
+        return nullptr;
+
+    cv::Mat normal_score(8, 8, CV_32FC1, cv::Scalar(0.2F));
+    cv::Mat anomaly_score(8, 8, CV_32FC1, cv::Scalar(0.1F));
+    cv::Mat false_positive_score(8, 8, CV_32FC1, cv::Scalar(0.1F));
+    anomaly_score(cv::Range(2, 6), cv::Range(2, 6)).setTo(0.9F);
+    false_positive_score(cv::Range(1, 4), cv::Range(4, 7)).setTo(0.8F);
+    const QString normal_score_path
+        = QDir(anomaly_fixture_->predictionDirectory()).filePath(QStringLiteral("%1.tiff").arg(normal_image));
+    const QString anomaly_score_path
+        = QDir(anomaly_fixture_->predictionDirectory()).filePath(QStringLiteral("%1.tiff").arg(bad_image));
+    const QString false_positive_score_path = QDir(anomaly_fixture_->predictionDirectory())
+                                                  .filePath(QStringLiteral("%1.tiff").arg(false_positive_image));
+    if (!cv::imwrite(normal_score_path.toStdString(), normal_score)
+        || !cv::imwrite(anomaly_score_path.toStdString(), anomaly_score)
+        || !cv::imwrite(false_positive_score_path.toStdString(), false_positive_score))
         return nullptr;
 
     ModelEvaluationViewModel *view_model = createViewModel(evaluation::Method::AnomalyDetection);
@@ -50,6 +75,10 @@ ModelEvaluationViewModel *QmlModelFixture::createAnomalyEvaluation()
     options.confidence_threshold    = 0.5;
     options.iou_threshold           = 0.5;
     options.matching_strategy       = evaluation::MatchingStrategy::GreedyIoU;
+    options.preprocessing_config    = {
+        {QStringLiteral("network"),
+         QVariantMap{{QStringLiteral("image_size"), 32}, {QStringLiteral("center_crop_size"), 32}}}
+    };
     view_model->setEvaluationOptions(options);
     view_model->evaluate(false);
     anomaly_evaluation_ = view_model;

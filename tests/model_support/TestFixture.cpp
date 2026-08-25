@@ -38,6 +38,11 @@ EvaluationFixture::EvaluationFixture(const int method)
 {
     const QString template_path = QDir(temporaryRoot()).filePath(QStringLiteral("dltool-evaluation-XXXXXX"));
     temporary_dir_              = std::make_unique<QTemporaryDir>(template_path);
+    // Some Windows Qt builds cannot create QTemporaryDir on a configured
+    // secondary drive. Keep the configured root as the first choice, but use
+    // the system temporary directory so ordinary tests remain portable.
+    if (!temporary_dir_->isValid())
+        temporary_dir_ = std::make_unique<QTemporaryDir>();
     if (!temporary_dir_->isValid())
     {
         setError(QStringLiteral("无法创建临时测试目录: %1").arg(template_path));

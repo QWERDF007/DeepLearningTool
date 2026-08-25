@@ -13,6 +13,7 @@
 
 #include <QDateTime>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QMap>
 #include <QMetaMethod>
 #include <QMetaObject>
@@ -500,7 +501,8 @@ bool ModelEvaluationViewModel::sameEvaluationInput(const ModelEvaluationOptions 
         && lhs.model_name == rhs.model_name && lhs.task_directory == rhs.task_directory && lhs.method == rhs.method
         && lhs.project_database_path == rhs.project_database_path
         && lhs.dataset_file_list_path == rhs.dataset_file_list_path && lhs.task_database_path == rhs.task_database_path
-        && lhs.prediction_dir == rhs.prediction_dir && lhs.evaluation_config == rhs.evaluation_config
+        && lhs.prediction_dir == rhs.prediction_dir && lhs.preprocessing_config == rhs.preprocessing_config
+        && lhs.evaluation_config == rhs.evaluation_config
         && qFuzzyCompare(lhs.confidence_threshold + 1.0, rhs.confidence_threshold + 1.0)
         && qFuzzyCompare(lhs.iou_threshold + 1.0, rhs.iou_threshold + 1.0)
         && lhs.matching_strategy == rhs.matching_strategy;
@@ -1085,6 +1087,32 @@ QString ModelEvaluationViewModel::thumbnailUrl(const EvaluationInstanceRecord &r
 
     const QString encoded_event = QString::fromLatin1(QUrl::toPercentEncoding(record.event_uuid));
     return QString("image://evaluationthumbnail/%1?%2").arg(encoded_event, query.toString(QUrl::FullyEncoded));
+}
+
+QString ModelEvaluationViewModel::heatmapThumbnailUrl(const qint64 imageId, const QString &imagePath,
+                                                       const QString &scoreMapPath, double threshold) const
+{
+    if (imagePath.trimmed().isEmpty() || scoreMapPath.trimmed().isEmpty())
+        return {};
+
+    if (!std::isfinite(threshold) || threshold <= 0.0)
+        threshold = 1.0;
+    threshold = std::clamp(threshold, 0.0001, 1000.0);
+
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("revision"), result_revision_);
+    query.addQueryItem(QStringLiteral("imageId"), QString::number(imageId));
+    query.addQueryItem(QStringLiteral("path"), imagePath);
+    query.addQueryItem(QStringLiteral("scorePath"), scoreMapPath);
+    query.addQueryItem(QStringLiteral("heatmap"), QStringLiteral("1"));
+    query.addQueryItem(QStringLiteral("heatmapThreshold"), QString::number(threshold, 'f', 6));
+
+    const QByteArray preprocessing = QJsonDocument::fromVariant(evaluation_options_.preprocessing_config)
+                                         .toJson(QJsonDocument::Compact);
+    query.addQueryItem(QStringLiteral("preprocessing"), QString::fromUtf8(preprocessing));
+
+    const QString encoded_id = QString::fromLatin1(QUrl::toPercentEncoding(QString::number(imageId)));
+    return QString("image://evaluationthumbnail/heatmap-%1?%2").arg(encoded_id, query.toString(QUrl::FullyEncoded));
 }
 
 void ModelEvaluationViewModel::selectInstance(const int proxyRow)

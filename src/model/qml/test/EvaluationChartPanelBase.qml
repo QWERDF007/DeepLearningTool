@@ -193,10 +193,20 @@ Rectangle {
                 chartOptions: {
                     return control.chartOptionsForDescriptor(descriptor)
                 }
-                onChartCreated: {
+                function scheduleGeometryRefresh() {
                     control.chartGeometryRevision += 1
+                    // Chart.js recomputes chartArea during the resize/update
+                    // cycle. Re-read it once the current QML geometry pass has
+                    // completed so overlays do not retain the old bounds.
+                    Qt.callLater(function() {
+                        control.chartGeometryRevision += 1
+                    })
                 }
-                onChartUpdated: control.chartGeometryRevision += 1
+
+                onChartCreated: scheduleGeometryRefresh()
+                onChartUpdated: scheduleGeometryRefresh()
+                onWidthChanged: scheduleGeometryRefresh()
+                onHeightChanged: scheduleGeometryRefresh()
             }
 
             Item {

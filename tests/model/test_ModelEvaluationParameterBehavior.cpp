@@ -196,6 +196,7 @@ private slots:
         QVERIFY(inference != nullptr);
         QVERIFY(evaluation_params != nullptr);
         QVERIFY(evaluation_params->fieldMapForName(QStringLiteral("classification_threshold")).size() > 0);
+        QVERIFY(evaluation_params->fieldMapForName(QStringLiteral("heatmap_threshold")).size() > 0);
 
         evaluation->evaluate(false);
         QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
@@ -206,6 +207,15 @@ private slots:
         const int original_batch = inference->valueForName(QStringLiteral("batch_size")).toInt();
         QVERIFY(inference->setValueForName(QStringLiteral("batch_size"), original_batch + 1));
         QCOMPARE(evaluation->stateKind(), ModelEvaluationViewModel::Ready);
+        QCOMPARE(loading_changed.count(), 0);
+
+        const double original_heatmap_threshold
+            = evaluation_params->valueForName(QStringLiteral("heatmap_threshold")).toDouble();
+        const double next_heatmap_threshold
+            = qFuzzyCompare(original_heatmap_threshold, 1.0) ? 0.75 : 1.0;
+        QVERIFY(evaluation_params->setValueForName(QStringLiteral("heatmap_threshold"), next_heatmap_threshold));
+        QCOMPARE(evaluation->stateKind(), ModelEvaluationViewModel::Ready);
+        QVERIFY(evaluation->available());
         QCOMPARE(loading_changed.count(), 0);
 
         QVERIFY(evaluation_params->setValueForName(QStringLiteral("classification_threshold"), 0.8));

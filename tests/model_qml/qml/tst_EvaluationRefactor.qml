@@ -7,7 +7,15 @@ import dltool.model
 import dltool.modeltest 1.0
 
 TestCase {
+    id: root
     name: "EvaluationRefactor"
+
+    readonly property string originalImageUrl:
+        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E"
+        + "%3Crect width='32' height='32' fill='%23708090'/%3E%3C/svg%3E"
+    readonly property string heatmapImageUrl:
+        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E"
+        + "%3Crect width='16' height='16' fill='%23e53935'/%3E%3C/svg%3E"
 
     property var fixture: null
     property var anomalyEvaluation: null
@@ -119,6 +127,41 @@ TestCase {
     }
 
     Component {
+        id: anomalyThumbnailComponent
+        EvaluationInstanceThumbnail {
+            width: 180
+            height: 140
+            record: ({imagePath: "fixture.png",
+                      thumbnailUrl: root.originalImageUrl,
+                      heatmapUrl: root.heatmapImageUrl,
+                      imageWidth: 32,
+                      imageHeight: 32,
+                      gtBounds: ({x: 8, y: 8, width: 8, height: 8}),
+                      predBounds: ({x: 8, y: 8, width: 8, height: 8}),
+                      anomalyModelPolygons: [[{x: 2, y: 2}, {x: 6, y: 2}, {x: 6, y: 6}, {x: 2, y: 6}]],
+                      anomalyImagePolygons: [[{x: 8, y: 8}, {x: 12, y: 8}, {x: 12, y: 12}, {x: 8, y: 12}]]})
+        }
+    }
+
+    Component {
+        id: anomalyChartComponent
+        AnomalyEvaluationChartPanel {
+            width: 420
+            height: 260
+            evaluation: anomalyEvaluation
+        }
+    }
+
+    Component {
+        id: anomalyInstancesGridComponent
+        AnomalyEvaluationInstancesGridView {
+            width: 800
+            height: 300
+            evaluation: anomalyEvaluation
+        }
+    }
+
+    Component {
         id: modelDelegateComponent
         ModelDelegate {
             width: 260
@@ -183,6 +226,105 @@ TestCase {
         verify(detection.precisionRecallClasses !== undefined)
     }
 
+    function test_anomalyThumbnailHeatmapLifecycle() {
+        testWindow.visible = true
+        var thumbnail = createTemporaryObject(anomalyThumbnailComponent, testWindow.contentItem)
+        verify(thumbnail)
+        var original = findChild(thumbnail, "originalPreview")
+        var heatmap = findChild(thumbnail, "heatmapPreview")
+        var busy = findChild(thumbnail, "heatmapBusyIndicator")
+        var overlay = findChild(thumbnail, "anomalyOverlay")
+        verify(original)
+        verify(heatmap)
+        verify(busy)
+        verify(overlay)
+
+        tryCompare(original, "status", Image.Ready, 3000)
+        compare(thumbnail.heatmapMode, false)
+        compare(original.visible, true)
+        compare(heatmap.visible, false)
+        compare(overlay.polygons.length, 1)
+        compare(overlay.polygons[0][0].x, 8)
+        var originalPaintCount = overlay.paintCount
+
+        thumbnail.heatmapEnabled = true
+        tryCompare(heatmap, "status", Image.Ready, 3000)
+        tryCompare(thumbnail, "heatmapReady", true, 1000)
+        tryCompare(thumbnail, "heatmapLoading", false, 1000)
+        compare(thumbnail.heatmapMode, true)
+        compare(busy.running, false)
+        compare(original.visible, false)
+        compare(heatmap.visible, true)
+        tryCompare(overlay, "visible", true, 1000)
+        compare(overlay.width, heatmap.width)
+        compare(overlay.height, heatmap.height)
+        compare(overlay.polygons.length, 1)
+        compare(overlay.polygons[0][0].x, 2)
+        tryVerify(function() { return overlay.paintCount > originalPaintCount }, 1000)
+
+        // Repeated mode changes must repaint every time; this catches the
+        // intermittent hidden-Canvas race that only appeared in the UI.
+        for (var toggleIndex = 0; toggleIndex < 5; ++toggleIndex) {
+            var beforeToggle = overlay.paintCount
+            thumbnail.heatmapEnabled = false
+            tryCompare(thumbnail, "heatmapMode", false, 1000)
+            thumbnail.heatmapEnabled = true
+            tryCompare(heatmap, "status", Image.Ready, 3000)
+            tryCompare(thumbnail, "heatmapMode", true, 1000)
+            tryVerify(function() { return overlay.paintCount > beforeToggle }, 1000)
+        }
+
+        thumbnail.record = ({imagePath: "fixture.png",
+                             thumbnailUrl: root.originalImageUrl,
+                             heatmapUrl: "data:image/png;base64,invalid",
+                             imageWidth: 32,
+                             imageHeight: 32,
+                             gtBounds: ({x: 8, y: 8, width: 8, height: 8}),
+                             predBounds: ({x: 8, y: 8, width: 8, height: 8}),
+                             anomalyModelPolygons: [[{x: 2, y: 2}, {x: 6, y: 2}, {x: 6, y: 6}, {x: 2, y: 6}]],
+                             anomalyImagePolygons: [[{x: 8, y: 8}, {x: 12, y: 8}, {x: 12, y: 12}, {x: 8, y: 12}]]})
+        tryCompare(heatmap, "status", Image.Error, 3000)
+        tryCompare(thumbnail, "heatmapFailed", true, 1000)
+        compare(thumbnail.heatmapMode, false)
+        compare(busy.running, false)
+        compare(original.visible, true)
+        compare(heatmap.visible, false)
+        compare(overlay.polygons[0][0].x, 8)
+        testWindow.visible = false
+    }
+
+    function test_anomalyHeatmapToggleLabelFits() {
+        testWindow.visible = true
+        var grid = createTemporaryObject(anomalyInstancesGridComponent, testWindow.contentItem)
+        verify(grid)
+        var toggle = findChild(grid, "heatmapToggleSwitch")
+        verify(toggle)
+        compare(toggle.visible, true)
+        compare(toggle.text, "热力图")
+        verify(toggle.width >= 100)
+        verify(toggle.width >= toggle.contentItem.implicitWidth)
+        testWindow.visible = false
+    }
+
+    function test_anomalyChartThresholdLineFollowsChartResize() {
+        anomalyEvaluation = fixture.createAnomalyEvaluation()
+        verify(anomalyEvaluation)
+        tryCompare(anomalyEvaluation, "stateKind", ModelEvaluationViewModel.Ready, 5000)
+
+        testWindow.visible = true
+        var panel = createTemporaryObject(anomalyChartComponent, testWindow.contentItem)
+        verify(panel)
+        var line = findChild(panel, "classificationThresholdLine")
+        verify(line)
+        tryCompare(panel.chart, "chartReady", true, 3000)
+        tryVerify(function() { return line.visible && line.height > 0 }, 2000)
+
+        var originalHeight = line.height
+        panel.height = 420
+        tryVerify(function() { return line.height > originalHeight + 20 }, 2000)
+        testWindow.visible = false
+    }
+
     function test_anomalyMatrixClickSetsFnAndFpFilters() {
         anomalyEvaluation = fixture.createAnomalyEvaluation()
         verify(anomalyEvaluation)
@@ -207,6 +349,101 @@ TestCase {
         mouseClick(fpCell, fpCell.width / 2, fpCell.height / 2)
         tryCompare(anomalyEvaluation.filteredInstances, "matrixRow", "1", 1000)
         tryCompare(anomalyEvaluation.filteredInstances, "matrixColumn", "FP", 1000)
+        testWindow.visible = false
+    }
+
+    function test_anomalyMatrixFilterFirstHeatmapPaintsPolygons() {
+        function redStrokePixelCount(image) {
+            var count = 0
+            for (var y = 0; y < image.height; ++y) {
+                for (var x = 0; x < image.width; ++x) {
+                    var red = image.red(x, y)
+                    var green = image.green(x, y)
+                    var blue = image.blue(x, y)
+                    if (image.alpha(x, y) > 200 && red > 200
+                            && red > green + 80 && red > blue + 80)
+                        ++count
+                }
+            }
+            return count
+        }
+
+        anomalyEvaluation = fixture.createAnomalyEvaluation()
+        verify(anomalyEvaluation)
+        tryCompare(anomalyEvaluation, "stateKind", ModelEvaluationViewModel.Ready, 5000)
+        anomalyEvaluation.clearMatrixSelection()
+
+        testWindow.visible = true
+        var panel = createTemporaryObject(anomalyMatrixComponent, testWindow.contentItem)
+        var instances = createTemporaryObject(anomalyInstancesGridComponent, testWindow.contentItem)
+        verify(panel)
+        verify(instances)
+        panel.z = 10
+        var matrix = anomalyEvaluation.confusionMatrix
+        var anomalyColumns = []
+        for (var row = 0; row < matrix.rowCount(); ++row) {
+            for (var column = 0; column < matrix.columnCount(); ++column) {
+                var index = matrix.index(row, column)
+                var rowKey = String(matrix.data(index, EvaluationConfusionModel.RowKeyRole))
+                var columnKey = String(matrix.data(index, EvaluationConfusionModel.ColumnKeyRole))
+                var count = Number(matrix.data(index, EvaluationConfusionModel.CountRole))
+                if (rowKey === "1" && columnKey !== "FP" && columnKey !== "TOTAL" && count > 0)
+                    anomalyColumns.push(columnKey)
+            }
+        }
+        compare(anomalyColumns.length, 2)
+
+        var grid = findChild(instances, "evaluationInstancesGrid")
+        verify(grid)
+        for (var switchIndex = 0; switchIndex < 4; ++switchIndex) {
+            instances.heatmapEnabled = false
+            var anomalyColumn = anomalyColumns[switchIndex % anomalyColumns.length]
+            var cellName = "confusionCell_1_" + anomalyColumn
+            panel.visible = true
+            tryVerify(function() { return findChild(panel, cellName) !== null }, 2000)
+
+            var anomalyCell = findChild(panel, cellName)
+            mouseClick(anomalyCell, anomalyCell.width / 2, anomalyCell.height / 2)
+            tryCompare(anomalyEvaluation.filteredInstances, "matrixRow", "1", 1000)
+            tryCompare(anomalyEvaluation.filteredInstances, "matrixColumn", anomalyColumn, 1000)
+            tryCompare(grid, "count", 1, 2000)
+            panel.visible = false
+            wait(0)
+
+            var delegate = grid.itemAtIndex(0)
+            tryVerify(function() { return grid.itemAtIndex(0) !== null }, 2000)
+            delegate = grid.itemAtIndex(0)
+            var thumbnail = findChild(delegate, "evaluationInstanceThumbnail")
+            verify(thumbnail)
+            var overlay = findChild(thumbnail, "anomalyOverlay")
+            var heatmap = findChild(thumbnail, "heatmapPreview")
+            verify(overlay)
+            var overlayCanvas = findChild(overlay, "polygonOverlayCanvas")
+            verify(overlayCanvas)
+            verify(heatmap)
+            tryVerify(function() { return overlay.polygons.length > 0 }, 2000)
+            var paintBeforeHeatmap = overlay.paintCount
+
+            // This is the first enable after each matrix filter change. The
+            // current delegate's model-coordinate polygons must paint now.
+            instances.heatmapEnabled = true
+            tryCompare(heatmap, "status", Image.Ready, 3000)
+            tryCompare(thumbnail, "heatmapMode", true, 1000)
+            tryCompare(overlay, "visible", true, 1000)
+            tryVerify(function() { return overlay.polygons.length > 0 }, 1000)
+            tryVerify(function() { return overlay.paintCount > paintBeforeHeatmap }, 1000)
+            compare(String(overlay.strokeColor).toLowerCase(), "#ff5252")
+            wait(16)
+            var canvasImage = grabImage(overlayCanvas)
+            verify(redStrokePixelCount(canvasImage) > 0,
+                   "canvas=" + canvasImage.width + "x" + canvasImage.height
+                   + ", viewport=" + JSON.stringify(overlay.coordinateViewport)
+                   + ", source=" + overlay.sourceWidth + "x" + overlay.sourceHeight
+                   + ", painted=" + overlay.paintedWidth + "x" + overlay.paintedHeight
+                   + ", polygons=" + overlay.polygons.length)
+        }
+
+        anomalyEvaluation.clearMatrixSelection()
         testWindow.visible = false
     }
 

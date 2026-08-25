@@ -124,6 +124,7 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     scratch_.confidence        = options.confidence_threshold;
     scratch_.iou               = options.iou_threshold;
     scratch_.matching_strategy = options.matching_strategy;
+    scratch_.preprocessing_config = options.preprocessing_config;
     scratch_.cancel_token      = options.cancel_token;
 
     QMap<int, QString> classes = global_class_catalog;

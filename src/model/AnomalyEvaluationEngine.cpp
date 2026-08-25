@@ -1,12 +1,123 @@
 #include "model/AnomalyEvaluationEngine.h"
 
+#include "model/AnomalyPreprocessingTransform.h"
 #include "model/EvaluationAnomalyConfusion.h"
 #include "model/EvaluationCharts.h"
 #include "model/EvaluationCommon.h"
 
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
+
+#include <QDir>
+#include <QFile>
 #include <QVariantList>
 
+#include <cmath>
+#include <limits>
+
 namespace dltool::model {
+
+namespace {
+
+QVariantMap polygonPoint(const double x, const double y)
+{
+    return {{QStringLiteral("x"), x}, {QStringLiteral("y"), y}};
+}
+
+QVariantList polygonPoints(const std::vector<cv::Point> &contour)
+{
+    QVariantList points;
+    points.reserve(static_cast<qsizetype>(contour.size()));
+    for (const cv::Point &point : contour)
+        points.push_back(polygonPoint(point.x, point.y));
+    return points;
+}
+
+cv::Mat readScoreMap(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    const QByteArray bytes = file.readAll();
+    if (bytes.isEmpty())
+        return {};
+    cv::Mat encoded(1, bytes.size(), CV_8UC1, const_cast<char *>(bytes.constData()));
+    return cv::imdecode(encoded, cv::IMREAD_UNCHANGED);
+}
+
+struct AnomalyRegionSnapshot
+{
+    QVariantList model_polygons;
+    QVariantList image_polygons;
+    double        max_score{0.0};
+    bool          has_score{false};
+};
+
+AnomalyRegionSnapshot anomalyRegions(const EvaluationImageData &image, const QString &prediction_root,
+                                     const double threshold, const QVariantMap &preprocessing)
+{
+    AnomalyRegionSnapshot snapshot;
+    const QString score_path = QDir(prediction_root).filePath(QStringLiteral("%1.tiff").arg(image.id));
+    const cv::Mat  score_map = readScoreMap(score_path);
+    if (score_map.empty())
+        return snapshot;
+    if (score_map.type() != CV_32FC1 || score_map.cols <= 0 || score_map.rows <= 0)
+        return snapshot;
+
+    cv::Mat binary(score_map.size(), CV_8UC1, cv::Scalar(0));
+    for (int y = 0; y < score_map.rows; ++y)
+    {
+        const float *source = score_map.ptr<float>(y);
+        uchar       *target = binary.ptr<uchar>(y);
+        for (int x = 0; x < score_map.cols; ++x)
+        {
+            const double value = static_cast<double>(source[x]);
+            target[x]          = std::isfinite(value) && value >= threshold ? 255 : 0;
+        }
+    }
+
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    const QSize image_size(image.width, image.height);
+    const AnomalyPreprocessingTransform transform = AnomalyPreprocessingTransform::fromConfig(
+        image_size, QSize(score_map.cols, score_map.rows), preprocessing);
+    for (const std::vector<cv::Point> &contour : contours)
+    {
+        if (contour.size() < 3)
+            continue;
+        const QVariantList model_points = polygonPoints(contour);
+        snapshot.model_polygons.push_back(model_points);
+        if (transform.isValid())
+        {
+            QVariantList image_points;
+            image_points.reserve(model_points.size());
+            for (const cv::Point &point : contour)
+            {
+                const QPointF mapped = transform.modelToImage(QPointF(point.x, point.y));
+                image_points.push_back(polygonPoint(mapped.x(), mapped.y()));
+            }
+            snapshot.image_polygons.push_back(image_points);
+        }
+    }
+
+    for (int y = 0; y < score_map.rows; ++y)
+    {
+        const float *source = score_map.ptr<float>(y);
+        for (int x = 0; x < score_map.cols; ++x)
+        {
+            const double value = static_cast<double>(source[x]);
+            if (std::isfinite(value) && (!snapshot.has_score || value > snapshot.max_score))
+            {
+                snapshot.max_score = value;
+                snapshot.has_score = true;
+            }
+        }
+    }
+
+    return snapshot;
+}
+
+} // namespace
 
 AnomalyEvaluationEngine::AnomalyEvaluationEngine()
     : IEvaluationEngine()
@@ -53,20 +164,28 @@ bool AnomalyEvaluationEngine::runAnomalyLoop(const QMap<qint64, EvaluationImageD
                 category_gt = &gt;
         }
         const EvaluationPredictionData *anomaly_prediction = nullptr;
-        double                          image_score        = 0.0;
+        double                          model_image_score  = 0.0;
         bool                            has_image_score    = false;
         for (const EvaluationPredictionData &prediction : image.predictions)
         {
-            if (!has_image_score || prediction.score > image_score)
+            if (!has_image_score || prediction.score > model_image_score)
             {
-                image_score     = prediction.score;
-                has_image_score = true;
+                model_image_score = prediction.score;
+                has_image_score   = true;
             }
-            if (prediction.class_id == 1 && prediction.score >= scratch_.confidence
+            if (prediction.class_id == 1
                 && (anomaly_prediction == nullptr || prediction.score > anomaly_prediction->score))
                 anomaly_prediction = &prediction;
         }
-        const bool               predicted_anomaly = anomaly_prediction != nullptr;
+        const AnomalyRegionSnapshot regions
+            = anomalyRegions(image, scratch_.prediction_root, scratch_.confidence, scratch_.preprocessing_config);
+        // The application-level anomaly decision and region extraction share
+        // the same raw pixel-score TIFF and threshold. Anomalib's internal
+        // calibrated image score remains untouched in the prediction store.
+        const double image_score = regions.has_score ? regions.max_score : model_image_score;
+        if (regions.has_score)
+            scratch_.anomaly_image_scores.insert(image.id, image_score);
+        const bool               predicted_anomaly = image_score >= scratch_.confidence;
         const evaluation::Status status
             = ground_truth_anomaly && predicted_anomaly
                 ? evaluation::Status::TruePositive
@@ -98,7 +217,12 @@ bool AnomalyEvaluationEngine::runAnomalyLoop(const QMap<qint64, EvaluationImageD
         const QVariantMap event_map
             = buildInstanceEvent(image, status, &display_gt, &display_prediction, 0.0, scratch_.dataset_root,
                                  scratch_.prediction_root, static_cast<qint64>(scratch_.events.size() + 1));
-        scratch_.events.push_back(instanceFromMap(event_map));
+        EvaluationInstanceRecord event = instanceFromMap(event_map);
+        event.anomaly_score_map_path
+            = QDir(scratch_.prediction_root).filePath(QStringLiteral("%1.tiff").arg(image.id));
+        event.anomaly_model_polygons = regions.model_polygons;
+        event.anomaly_image_polygons = regions.image_polygons;
+        scratch_.events.push_back(std::move(event));
     }
     return true;
 }
@@ -136,7 +260,19 @@ QList<QVariantMap> AnomalyEvaluationEngine::buildCharts(const QMap<qint64, Evalu
         {evaluation::fieldName(evaluation::Field::Image),
          evaluationMetricMap(image_counts.tp, image_counts.fp, image_counts.fn)}
     };
-    const EvaluationChartOutput official = buildAnomalyEvaluationCharts(images, diagnostic, scratch_.confidence);
+    // Keep the anomaly-score chart in the same score domain as classification
+    // and polygon extraction when a score TIFF is available.
+    QMap<qint64, EvaluationImageData> chart_images = images;
+    for (auto image_it = chart_images.begin(); image_it != chart_images.end(); ++image_it)
+    {
+        const auto score_it = scratch_.anomaly_image_scores.constFind(image_it.key());
+        if (score_it == scratch_.anomaly_image_scores.cend())
+            continue;
+        for (EvaluationPredictionData &prediction : image_it->predictions)
+            prediction.score = score_it.value();
+        rebuildImageDerivedValues(image_it.value());
+    }
+    const EvaluationChartOutput official = buildAnomalyEvaluationCharts(chart_images, diagnostic, scratch_.confidence);
     QList<QVariantMap>          charts;
     charts.reserve(official.charts.size());
     for (const QVariant &value : official.charts) charts.push_back(value.toMap());

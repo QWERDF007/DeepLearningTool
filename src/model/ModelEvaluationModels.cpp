@@ -415,6 +415,12 @@ QVariant EvaluationInstanceModel::data(const QModelIndex &index, const int role)
         return record.pred_class_color;
     case ThumbnailUrlRole:
         return record.thumbnail_url;
+    case AnomalyScoreMapPathRole:
+        return record.anomaly_score_map_path;
+    case AnomalyModelPolygonsRole:
+        return record.anomaly_model_polygons;
+    case AnomalyImagePolygonsRole:
+        return record.anomaly_image_polygons;
     case SelectedRole:
         return record.selected;
     default:
@@ -461,6 +467,9 @@ QHash<int, QByteArray> EvaluationInstanceModel::roleNames() const
         {     GtClassColorRole,      "gtClassColor"},
         {   PredClassColorRole,    "predClassColor"},
         {     ThumbnailUrlRole,      "thumbnailUrl"},
+        {AnomalyScoreMapPathRole, "anomalyScoreMapPath"},
+        {AnomalyModelPolygonsRole, "anomalyModelPolygons"},
+        {AnomalyImagePolygonsRole, "anomalyImagePolygons"},
         {         SelectedRole,          "selected"}
     };
 }

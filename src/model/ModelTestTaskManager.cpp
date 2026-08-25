@@ -556,8 +556,16 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
 
     const QVariantMap test_params
         = current_test_params_ != nullptr ? current_test_params_->valuesMap() : task.test_params;
+    if (IModel *model = model_manager_->modelForUuid(model_uuid_); model != nullptr && model->config() != nullptr)
+    {
+        if (const ITrainParams *train_params = model->config()->trainParams(); train_params != nullptr)
+            options.preprocessing_config = train_params->valuesMap();
+    }
     options.evaluation_config
         = evaluation::normalizedEvaluationConfig(test_params.value(QStringLiteral("evaluation")).toMap());
+    // heatmap_threshold is a display-only control. It is read by the QML
+    // thumbnail request and must not invalidate or rerun metric evaluation.
+    options.evaluation_config.remove(QStringLiteral("heatmap_threshold"));
     if (options.method == evaluation::Method::AnomalyDetection)
     {
         options.confidence_threshold
@@ -593,7 +601,6 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
 
 void ModelTestTaskManager::handleParameterChanged(const QString &group_name, const QString &parameter_name)
 {
-    Q_UNUSED(parameter_name);
     scheduleSave();
     if (model_manager_ != nullptr
         && isFewShotModel(model_manager_, model_manager_->modelRecordViewForUuid(model_uuid_)))
@@ -602,7 +609,9 @@ void ModelTestTaskManager::handleParameterChanged(const QString &group_name, con
         return;
 
     const bool evaluation_changed = group_name.compare(QStringLiteral("evaluation"), Qt::CaseInsensitive) == 0;
-    if (evaluation_changed)
+    const bool heatmap_changed
+        = parameter_name.compare(QStringLiteral("heatmap_threshold"), Qt::CaseInsensitive) == 0;
+    if (evaluation_changed && !heatmap_changed)
     {
         ModelEvaluationOptions options;
         QString                error;

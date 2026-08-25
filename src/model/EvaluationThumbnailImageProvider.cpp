@@ -1,6 +1,15 @@
 #include "model/EvaluationThumbnailImageProvider.h"
 
+#include "model/AnomalyPreprocessingTransform.h"
+
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
+
+#include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonParseError>
+#include <QPainter>
 #include <QUrl>
 #include <QUrlQuery>
 #include <algorithm>
@@ -17,6 +26,92 @@ double queryDouble(const QUrlQuery &query, const QString &name, bool *ok = nullp
     if (ok != nullptr)
         *ok = parsed;
     return value;
+}
+
+bool queryFlag(const QUrlQuery &query, const QString &name)
+{
+    const QString value = query.queryItemValue(name).trimmed().toLower();
+    return value == QStringLiteral("1") || value == QStringLiteral("true") || value == QStringLiteral("yes");
+}
+
+cv::Mat readScoreMap(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    const QByteArray bytes = file.readAll();
+    if (bytes.isEmpty())
+        return {};
+    cv::Mat encoded(1, bytes.size(), CV_8UC1, const_cast<char *>(bytes.constData()));
+    return cv::imdecode(encoded, cv::IMREAD_UNCHANGED);
+}
+
+QVariantMap preprocessingConfig(const QUrlQuery &query)
+{
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(
+        query.queryItemValue(QStringLiteral("preprocessing")).toUtf8(), &error);
+    return error.error == QJsonParseError::NoError && document.isObject() ? document.toVariant().toMap()
+                                                                          : QVariantMap{};
+}
+
+QImage makeHeatmap(const QImage &source, const QString &scorePath, const QUrlQuery &query)
+{
+    const cv::Mat score_map = readScoreMap(scorePath);
+    if (score_map.empty() || score_map.type() != CV_32FC1 || score_map.cols <= 0 || score_map.rows <= 0)
+        return {};
+
+    const QSize model_size(score_map.cols, score_map.rows);
+    const AnomalyPreprocessingTransform transform
+        = AnomalyPreprocessingTransform::fromConfig(source.size(), model_size, preprocessingConfig(query));
+    QImage base = transform.applyToImage(source);
+    if (base.isNull())
+        return {};
+
+    bool   threshold_ok = false;
+    double threshold    = queryDouble(query, QStringLiteral("heatmapThreshold"), &threshold_ok);
+    if (!threshold_ok || !std::isfinite(threshold) || threshold <= 0.0)
+        threshold = 1.0;
+    threshold = std::clamp(threshold, 0.0001, 1000.0);
+
+    cv::Mat normalized_map(model_size.height(), model_size.width(), CV_8UC1, cv::Scalar(0));
+    for (int y = 0; y < score_map.rows; ++y)
+    {
+        const float *source_row = score_map.ptr<float>(y);
+        uchar       *target_row = normalized_map.ptr<uchar>(y);
+        for (int x = 0; x < score_map.cols; ++x)
+        {
+            const double value = static_cast<double>(source_row[x]);
+            const double normalized_value = std::isfinite(value)
+                                                ? std::clamp(value / threshold, 0.0, 1.0)
+                                                : 0.0;
+            target_row[x] = static_cast<uchar>(std::lround(normalized_value * 255.0));
+        }
+    }
+
+    // Keep the color mapping in C++ so every thumbnail uses the same global
+    // threshold instead of normalizing each image by its own maximum.
+    cv::Mat color_bgr;
+    cv::applyColorMap(normalized_map, color_bgr, cv::COLORMAP_JET);
+    QImage colored(model_size, QImage::Format_RGB888);
+    for (int y = 0; y < model_size.height(); ++y)
+    {
+        uchar       *rgb_row  = colored.scanLine(y);
+        for (int x = 0; x < model_size.width(); ++x)
+        {
+            const cv::Vec3b bgr = color_bgr.at<cv::Vec3b>(y, x);
+            rgb_row[x * 3 + 0] = bgr[2];
+            rgb_row[x * 3 + 1] = bgr[1];
+            rgb_row[x * 3 + 2] = bgr[0];
+        }
+    }
+
+    QImage result = base.convertToFormat(QImage::Format_ARGB32);
+    QPainter painter(&result);
+    painter.setOpacity(0.5);
+    painter.drawImage(QPoint(0, 0), colored);
+    painter.end();
+    return result;
 }
 
 struct Box
@@ -96,8 +191,13 @@ EvaluationThumbnailImageProvider::EvaluationThumbnailImageProvider()
 
 QImage EvaluationThumbnailImageProvider::requestImage(const QString &id, QSize *size, const QSize &requestedSize)
 {
-    const QString cache_key = id + QLatin1Char('\x1f') + QString::number(requestedSize.width()) + QLatin1Char('x')
-                            + QString::number(requestedSize.height());
+    const int       query_index = id.indexOf(QChar('?'));
+    const QUrlQuery query(query_index >= 0 ? id.mid(query_index + 1) : QString());
+    const bool      heatmap = queryFlag(query, QStringLiteral("heatmap"));
+    const QString   cache_key = id + (heatmap
+                                          ? QString()
+                                          : QLatin1Char('\x1f') + QString::number(requestedSize.width()) + QLatin1Char('x')
+                                                + QString::number(requestedSize.height()));
     {
         QMutexLocker locker(&mutex_);
         if (const QImage *cached = cache_.object(cache_key))
@@ -135,13 +235,24 @@ QImage EvaluationThumbnailImageProvider::loadImage(const QString &id, const QSiz
     if (image.isNull())
         return {};
 
+    const bool heatmap = queryFlag(query, QStringLiteral("heatmap"));
+    if (heatmap)
+    {
+        const QImage rendered = makeHeatmap(image, query.queryItemValue(QStringLiteral("scorePath")), query);
+        if (!rendered.isNull())
+            return rendered;
+        // Let QML switch back to the original URL so a failed derived
+        // visualization cannot be mistaken for a valid heatmap.
+        return {};
+    }
+
     const QRect crop = cropRect(image, query);
     if (crop.isValid())
         image = image.copy(crop);
     if (image.isNull())
         return {};
 
-    if (requestedSize.isValid() && requestedSize.width() > 0 && requestedSize.height() > 0
+    if (!heatmap && requestedSize.isValid() && requestedSize.width() > 0 && requestedSize.height() > 0
         && (image.width() > requestedSize.width() || image.height() > requestedSize.height()))
     {
         image = image.scaled(requestedSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);

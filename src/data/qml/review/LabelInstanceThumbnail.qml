@@ -266,6 +266,7 @@ Item {
 
         anchors.fill: parent
         visible: !root.classificationMode &&
+                 !root.hasPolygonLabelData &&
                  hasValidLabelData && imageLoaded && !imageError &&
                  thumbnail.paintedWidth > 0 && thumbnail.paintedHeight > 0 &&
                  cropSize().valid
@@ -288,14 +289,37 @@ Item {
             ctx.strokeStyle = String(root.borderColor)
             ctx.fillStyle = String(root.borderColor)
 
-            if (root.hasPolygonLabelData) {
-                drawPolygon(ctx)
-            } else {
-                drawRectangle(ctx, lineWidth)
-            }
+            drawRectangle(ctx, lineWidth)
 
             ctx.restore()
         }
+    }
+
+    // 分割多边形与模型评估缩略图共用同一个坐标映射覆盖层。
+    PolygonOverlay {
+        id: polygonOverlay
+        anchors.fill: parent
+        visible: !root.classificationMode && root.hasPolygonLabelData
+                 && root.imageLoaded && !root.imageError
+                 && thumbnail.paintedWidth > 0 && thumbnail.paintedHeight > 0
+                 && root.cropSize().valid
+        polygons: root.hasPolygonLabelData ? [root.labelData.points] : []
+        coordinateViewport: {
+            var bounds = root.effectiveLabelBounds()
+            var marginValue = root.calculateExtendedMargin()
+            return {valid: bounds.valid,
+                    x: bounds.x - marginValue,
+                    y: bounds.y - marginValue,
+                    width: root.cropSize().width,
+                    height: root.cropSize().height}
+        }
+        sourceWidth: root.cropSize().width
+        sourceHeight: root.cropSize().height
+        paintedWidth: thumbnail.paintedWidth
+        paintedHeight: thumbnail.paintedHeight
+        strokeColor: root.borderColor
+        fillOpacity: root.fillOpacity
+        lineWidth: root.borderWidth
     }
     
     // 位置计算函数

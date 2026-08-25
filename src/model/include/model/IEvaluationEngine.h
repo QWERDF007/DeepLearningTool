@@ -72,12 +72,14 @@ protected:
         QMap<int, EvaluationCounts>     per_class;    ///< 类别级实例计数（检测路径）。
         EvaluationCounts                overall;      ///< 全局实例计数。
         EvaluationCounts                image_counts; ///< 图像级计数。
+        QMap<qint64, double>             anomaly_image_scores; ///< 异常检测使用的图像级分数。
 
         QString                           dataset_root;    ///< GT mask 解析根目录（项目库绝对路径）。
         QString                           prediction_root; ///< 预测 mask 解析根目录。
         double                            confidence{0.5}; ///< 置信度阈值。
         double                            iou{0.5};        ///< IoU 阈值。
         evaluation::MatchingStrategy      matching_strategy{evaluation::MatchingStrategy::GreedyIoU};
+        QVariantMap                       preprocessing_config; ///< 模型空间预处理参数（仅用于展示坐标）。
         std::shared_ptr<std::atomic_bool> cancel_token;
     };
 

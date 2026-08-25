@@ -29,6 +29,13 @@ struct MODEL_API ModelEvaluationOptions
     QString                      task_database_path;     ///< 测试任务数据库路径（task.db）。
     QString                      prediction_dir;         ///< 预测产物输出目录。
     /**
+     * @brief 模型推理阶段使用的空间预处理参数。
+     *
+     * 仅用于把原始异常分数图的模型坐标转换为原图坐标，以及生成热力图
+     * 的模型坐标底图；评估指标计算不读取这些参数。
+     */
+    QVariantMap                  preprocessing_config;
+    /**
      * @brief 规范化评估配置映射，用于内存缓存键比较。
      */
     QVariantMap                  evaluation_config;

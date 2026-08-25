@@ -169,8 +169,16 @@ test_params:
     params:
       - name_en: classification_threshold
         name_cn: 分类阈值
-        description: 图像分数大于等于该值时判定为异常，否则判定为正常。
+        description: 原始像素异常分数图的最大值大于等于该值时判定为异常，并使用同一阈值提取异常区域。
         value: 0.5
         value_type: double
         value_range: [-1000000.0, 1000000.0, 0.0001]
+        display_type: spin
+
+      - name_en: heatmap_threshold
+        name_cn: 热力图阈值
+        description: 仅用于实例图像热力图显示的全局异常分数归一化阈值，不影响评估指标。
+        value: 1
+        value_type: double
+        value_range: [0.0001, 1000.0, 0.0001]
         display_type: spin

@@ -63,14 +63,18 @@ EvaluationChartPanelBase {
         })
     }
 
-    function scoreScale() {
+    function scoreScale(revision) {
+        // Keep the geometry revision as an explicit binding dependency. The
+        // Chart.js scale object is mutable and does not notify QML itself.
+        var geometryRevision = revision
         var instance = control.chart.chartInstance
         if (!instance || !instance.scales)
             return null
         return instance.scales[EvaluationProtocolKeys.chartAxisScore] || null
     }
 
-    function scoreChartArea() {
+    function scoreChartArea(revision) {
+        var geometryRevision = revision
         var instance = control.chart.chartInstance
         return instance && instance.chartArea ? instance.chartArea : null
     }
@@ -108,8 +112,8 @@ EvaluationChartPanelBase {
         return null
     }
 
-    function scorePixelForValue(value) {
-        var scale = control.scoreScale()
+    function scorePixelForValue(value, revision) {
+        var scale = control.scoreScale(revision)
         if (!scale || !isFinite(Number(value)))
             return -100
         try {
@@ -142,7 +146,7 @@ EvaluationChartPanelBase {
     }
 
     function updateDraggedThreshold(pixel) {
-        var area = control.scoreChartArea()
+        var area = control.scoreChartArea(control.chartGeometryRevision)
         if (!area)
             return
         var x = Math.max(Number(area.left), Math.min(Number(area.right), Number(pixel)))
@@ -225,19 +229,18 @@ EvaluationChartPanelBase {
 
         Rectangle {
             id: classificationThresholdLine
+            objectName: "classificationThresholdLine"
             z: 2
             width: 2
-            x: control.scorePixelForValue(control.displayedClassificationThreshold) - width / 2
+            x: control.scorePixelForValue(control.displayedClassificationThreshold,
+                                          control.chartGeometryRevision) - width / 2
             y: {
-                var geometry = control.referenceLineGeometry(control.chartGeometryRevision)
-                var area = control.scoreChartArea()
-                return geometry ? Number(geometry.top) : (area ? Number(area.top) : 0)
+                var area = control.scoreChartArea(control.chartGeometryRevision)
+                return area ? Number(area.top) : 0
             }
             height: {
-                var geometry = control.referenceLineGeometry(control.chartGeometryRevision)
-                var area = control.scoreChartArea()
-                return geometry ? Math.max(0, Number(geometry.bottom) - Number(geometry.top))
-                                 : (area ? Math.max(0, Number(area.bottom) - Number(area.top)) : 0)
+                var area = control.scoreChartArea(control.chartGeometryRevision)
+                return area ? Math.max(0, Number(area.bottom) - Number(area.top)) : 0
             }
             color: "#1E88E5"
             visible: control.chart.chartReady
@@ -253,7 +256,8 @@ EvaluationChartPanelBase {
             width: Math.max(56, implicitWidth + 4)
             height: implicitHeight
             x: {
-                var lineX = control.scorePixelForValue(control.displayedClassificationThreshold)
+                var lineX = control.scorePixelForValue(control.displayedClassificationThreshold,
+                                                        control.chartGeometryRevision)
                 var maxX = Math.max(0, control.chartSurfaceItem.width - width)
                 return Math.max(0, Math.min(maxX, lineX - width / 2))
             }

@@ -219,6 +219,14 @@ public:
     Q_INVOKABLE QString classColor(int classId) const;
 
     /**
+     * @brief 构造异常分数图热力图缩略图请求 URL。
+     *
+     * 该 URL 只服务于可视化 provider，不参与评估结果或指标缓存键。
+     */
+    Q_INVOKABLE QString heatmapThumbnailUrl(qint64 imageId, const QString &imagePath,
+                                             const QString &scoreMapPath, double threshold) const;
+
+    /**
      * @brief 清除混淆矩阵选中项。
      */
     Q_INVOKABLE void clearMatrixSelection();

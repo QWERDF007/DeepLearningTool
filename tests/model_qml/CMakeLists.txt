@@ -26,7 +26,11 @@ target_include_directories(${TEST_TARGET_NAME}
 set(_evaluation_refactor_cases
     test_protocolKeysAreTheQmlBoundary
     test_basePropertyAcceptsConcreteViewModelRuntimeExtensions
+    test_anomalyThumbnailHeatmapLifecycle
+    test_anomalyHeatmapToggleLabelFits
+    test_anomalyChartThresholdLineFollowsChartResize
     test_anomalyMatrixClickSetsFnAndFpFilters
+    test_anomalyMatrixFilterFirstHeatmapPaintsPolygons
     test_everyRegisteredPanelCanInstantiate
     test_baseContentInjectionAndMethodChartHook
     test_testEvaluationPanelReadyStatesAndRuntimeStateOverlay
@@ -37,17 +41,20 @@ set(_evaluation_refactor_cases
 )
 foreach(_case IN LISTS _evaluation_refactor_cases)
     add_test(NAME "${TEST_TARGET_NAME}_${_case}"
-        COMMAND ${TEST_TARGET_NAME} "EvaluationRefactor::${_case}")
+        COMMAND ${TEST_TARGET_NAME} "EvaluationRefactor::${_case}"
+                -o "${CMAKE_CURRENT_BINARY_DIR}/${_case}.txt,txt")
 endforeach()
 add_test(NAME ${TEST_TARGET_NAME}_registry
     COMMAND ${TEST_TARGET_NAME}
         EvaluationPanelRegistry::test_detectionMapping
         EvaluationPanelRegistry::test_anomalyMapping
         EvaluationPanelRegistry::test_segmentationMapping
+        -o -,txt
 )
 add_test(NAME ${TEST_TARGET_NAME}_smoke
     COMMAND ${TEST_TARGET_NAME}
         EvaluationPanelSmoke::test_componentsLoad
+        -o -,txt
 )
 
 set(_test_path_updates
@@ -71,7 +78,11 @@ set_tests_properties(
     ${TEST_TARGET_NAME}_smoke
     ${TEST_TARGET_NAME}_test_protocolKeysAreTheQmlBoundary
     ${TEST_TARGET_NAME}_test_basePropertyAcceptsConcreteViewModelRuntimeExtensions
+    ${TEST_TARGET_NAME}_test_anomalyThumbnailHeatmapLifecycle
+    ${TEST_TARGET_NAME}_test_anomalyHeatmapToggleLabelFits
+    ${TEST_TARGET_NAME}_test_anomalyChartThresholdLineFollowsChartResize
     ${TEST_TARGET_NAME}_test_anomalyMatrixClickSetsFnAndFpFilters
+    ${TEST_TARGET_NAME}_test_anomalyMatrixFilterFirstHeatmapPaintsPolygons
     ${TEST_TARGET_NAME}_test_everyRegisteredPanelCanInstantiate
     ${TEST_TARGET_NAME}_test_baseContentInjectionAndMethodChartHook
     ${TEST_TARGET_NAME}_test_testEvaluationPanelReadyStatesAndRuntimeStateOverlay

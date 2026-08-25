@@ -3,8 +3,10 @@
 #include "TestFixture.h"
 
 #include "model/AnomalyEvaluationEngine.h"
+#include "model/AnomalyPreprocessingTransform.h"
 #include "model/DetectionEvaluationEngine.h"
 #include "model/EvaluationEngineRegistry.h"
+#include "model/EvaluationThumbnailImageProvider.h"
 #include "model/EvaluationResult.h"
 #include "model/ModelEvaluationOptions.h"
 #include "model/ModelEvaluationProtocol.h"
@@ -12,7 +14,15 @@
 
 #include <QTest>
 
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/core.hpp>
+
+#include <QDir>
+#include <QImage>
+#include <QUrlQuery>
+
 #include <atomic>
+#include <cmath>
 #include <memory>
 
 using namespace dltool::model;
@@ -264,6 +274,222 @@ private slots:
         QCOMPARE(good_cell->count, qint64(1));
         QCOMPARE(bad_cell->count, qint64(1));
         QVERIFY(findCell(result, QStringLiteral("TOTAL"), QStringLiteral("TOTAL")) != nullptr);
+    }
+
+    void anomalyRegionsUseRawScoreMapAndHeatmapThresholdDoesNotChangeEvaluation()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 good = fixture.addClass(QStringLiteral("Good"), QStringLiteral("good"));
+        const qint64 anomaly = fixture.addClass(QStringLiteral("Scratch"), QStringLiteral("anomaly"));
+        const qint64 image = fixture.addImage(QStringLiteral("score-map"),
+                                               {{QStringLiteral("image_label_class_id"), anomaly}});
+        QVERIFY(good >= 0);
+        QVERIFY(anomaly >= 0);
+        QVERIFY(image >= 0);
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({good, anomaly}));
+        QVERIFY(fixture.writePrediction(image, anomalyPrediction(0.9)));
+
+        cv::Mat score_map = cv::Mat::zeros(10, 10, CV_32FC1);
+        score_map(cv::Range(1, 3), cv::Range(1, 3)).setTo(0.8F);
+        score_map(cv::Range(6, 9), cv::Range(6, 9)).setTo(1.2F);
+        const QString score_path
+            = QDir(fixture.predictionDirectory()).filePath(QStringLiteral("%1.tiff").arg(image));
+        QVERIFY(cv::imwrite(score_path.toStdString(), score_map));
+
+        AnomalyEvaluationEngine engine;
+        auto options = optionsFor(fixture, evaluation::Method::AnomalyDetection);
+        options.preprocessing_config = {
+            {QStringLiteral("network"),
+             QVariantMap{{QStringLiteral("image_size"), 20}, {QStringLiteral("center_crop_size"), 10}}}
+        };
+        options.evaluation_config
+            = evaluation::normalizedEvaluationConfig({{QStringLiteral("classification_threshold"), 0.5},
+                                                      {QStringLiteral("heatmap_threshold"), 1.0}});
+        EvaluationResult first;
+        QString          error;
+        QVERIFY2(engine.evaluate(options, &first, &error), qPrintable(error));
+        QCOMPARE(first.image_counts.tp, qint64(1));
+        QCOMPARE(first.instance_records.size(), 1);
+        const EvaluationInstanceRecord &first_event = first.instance_records.front();
+        QCOMPARE(first_event.anomaly_model_polygons.size(), 2);
+        QCOMPARE(first_event.anomaly_image_polygons.size(), 2);
+        QCOMPARE(first_event.anomaly_score_map_path, score_path);
+
+        // The provider first resizes the 32x32 source to 20x20, center-crops
+        // 10x10, then scales the crop to the 10x10 score-map size. The image
+        // polygons must use that exact inverse transform.
+        QCOMPARE(first_event.anomaly_model_polygons.size(), first_event.anomaly_image_polygons.size());
+        for (int polygon_index = 0; polygon_index < first_event.anomaly_model_polygons.size(); ++polygon_index)
+        {
+            const QVariantList model_polygon = first_event.anomaly_model_polygons.at(polygon_index).toList();
+            const QVariantList image_polygon = first_event.anomaly_image_polygons.at(polygon_index).toList();
+            QCOMPARE(model_polygon.size(), image_polygon.size());
+            for (int point_index = 0; point_index < model_polygon.size(); ++point_index)
+            {
+                const QVariantMap model_point = model_polygon.at(point_index).toMap();
+                const QVariantMap image_point = image_polygon.at(point_index).toMap();
+                const double       model_x    = model_point.value(QStringLiteral("x")).toDouble();
+                const double       model_y    = model_point.value(QStringLiteral("y")).toDouble();
+                const double expected_x = ((model_x + 0.5) + 5.0) / 20.0 * 32.0 - 0.5;
+                const double expected_y = ((model_y + 0.5) + 5.0) / 20.0 * 32.0 - 0.5;
+                QVERIFY(std::abs(image_point.value(QStringLiteral("x")).toDouble() - expected_x) < 1e-9);
+                QVERIFY(std::abs(image_point.value(QStringLiteral("y")).toDouble() - expected_y) < 1e-9);
+            }
+        }
+
+        options.evaluation_config
+            = evaluation::normalizedEvaluationConfig({{QStringLiteral("classification_threshold"), 0.5},
+                                                      {QStringLiteral("heatmap_threshold"), 0.25}});
+        EvaluationResult second;
+        QVERIFY2(engine.evaluate(options, &second, &error), qPrintable(error));
+        QCOMPARE(second.image_counts.tp, first.image_counts.tp);
+        QCOMPARE(second.image_counts.fp, first.image_counts.fp);
+        QCOMPARE(second.image_counts.fn, first.image_counts.fn);
+        QCOMPARE(second.instance_records.front().anomaly_model_polygons.size(),
+                 first_event.anomaly_model_polygons.size());
+    }
+
+    void anomalyClassificationUsesTheSameScoreMapAsRegions()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 good = fixture.addClass(QStringLiteral("Good"), QStringLiteral("good"));
+        const qint64 anomaly = fixture.addClass(QStringLiteral("Scratch"), QStringLiteral("anomaly"));
+        const qint64 image = fixture.addImage(QStringLiteral("score-map-consistency"),
+                                               {{QStringLiteral("image_label_class_id"), anomaly}});
+        QVERIFY(good >= 0);
+        QVERIFY(anomaly >= 0);
+        QVERIFY(image >= 0);
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({good, anomaly}));
+        // Deliberately make the stored anomalib image score disagree with the
+        // pixel map. Evaluation must use the shared pixel-score domain.
+        QVERIFY(fixture.writePrediction(image, anomalyPrediction(0.95)));
+
+        cv::Mat score_map = cv::Mat::zeros(10, 10, CV_32FC1);
+        score_map(cv::Range(4, 6), cv::Range(4, 6)).setTo(0.75F);
+        const QString score_path
+            = QDir(fixture.predictionDirectory()).filePath(QStringLiteral("%1.tiff").arg(image));
+        QVERIFY(cv::imwrite(score_path.toStdString(), score_map));
+
+        AnomalyEvaluationEngine engine;
+        auto options = optionsFor(fixture, evaluation::Method::AnomalyDetection);
+        options.confidence_threshold = 0.5;
+        EvaluationResult result;
+        QString          error;
+        QVERIFY2(engine.evaluate(options, &result, &error), qPrintable(error));
+        QCOMPARE(result.image_counts.tp, qint64(1));
+        QCOMPARE(result.instance_records.size(), 1);
+        QCOMPARE(result.instance_records.front().pred_class_id, 1);
+        QCOMPARE(result.instance_records.front().score, 0.75);
+        QCOMPARE(result.instance_records.front().anomaly_model_polygons.size(), 1);
+
+        score_map.setTo(0.25F);
+        QVERIFY(cv::imwrite(score_path.toStdString(), score_map));
+        result = {};
+        QVERIFY2(engine.evaluate(options, &result, &error), qPrintable(error));
+        QCOMPARE(result.image_counts.tp, qint64(0));
+        QCOMPARE(result.image_counts.fn, qint64(1));
+        QCOMPARE(result.instance_records.front().pred_class_id, 0);
+        QVERIFY(result.instance_records.front().anomaly_model_polygons.isEmpty());
+    }
+
+    void anomalyPreprocessingTransformPreservesResizePaddingAndCropGeometry()
+    {
+        const QVariantMap preprocessing = {
+            {QStringLiteral("network"),
+             QVariantMap{{QStringLiteral("image_size"), QVariantList{15, 21}},
+                         {QStringLiteral("padding"), QVariantList{1, 2, 2, 1}},
+                         {QStringLiteral("center_crop_size"), QVariantList{11, 17}}}}
+        };
+        const AnomalyPreprocessingTransform transform
+            = AnomalyPreprocessingTransform::fromConfig(QSize(101, 53), QSize(13, 9), preprocessing);
+        QVERIFY(transform.isValid());
+        QCOMPARE(transform.resizedSize(), QSize(21, 15));
+        QCOMPARE(transform.padding(), QMargins(1, 2, 2, 1));
+        QCOMPARE(transform.paddedSize(), QSize(24, 18));
+        // 7 / 2 == 3.5; torchvision/torch rounds ties to the even integer 4.
+        QCOMPARE(transform.cropRect(), QRect(4, 4, 17, 11));
+
+        const QPointF model_point(3.25, 6.5);
+        const double crop_edge_x = (model_point.x() + 0.5) * 17.0 / 13.0;
+        const double crop_edge_y = (model_point.y() + 0.5) * 11.0 / 9.0;
+        const QPointF expected((4.0 + crop_edge_x - 1.0) * 101.0 / 21.0 - 0.5,
+                               (4.0 + crop_edge_y - 2.0) * 53.0 / 15.0 - 0.5);
+        const QPointF image_point = transform.modelToImage(model_point);
+        QVERIFY(std::abs(image_point.x() - expected.x()) < 1e-9);
+        QVERIFY(std::abs(image_point.y() - expected.y()) < 1e-9);
+
+        const QPointF round_trip = transform.imageToModel(image_point);
+        QVERIFY(std::abs(round_trip.x() - model_point.x()) < 1e-9);
+        QVERIFY(std::abs(round_trip.y() - model_point.y()) < 1e-9);
+
+        QImage source(101, 53, QImage::Format_RGB888);
+        source.fill(QColor(80, 120, 180));
+        const QImage model_image = transform.applyToImage(source);
+        QCOMPARE(model_image.size(), QSize(13, 9));
+    }
+
+    void anomalyPreprocessingTransformMatchesCenterCropAutomaticPadding()
+    {
+        const QVariantMap preprocessing = {
+            {QStringLiteral("network"),
+             QVariantMap{{QStringLiteral("image_size"), QVariantList{6, 8}},
+                         {QStringLiteral("center_crop_size"), QVariantList{9, 11}}}}
+        };
+        const AnomalyPreprocessingTransform transform
+            = AnomalyPreprocessingTransform::fromConfig(QSize(20, 10), QSize(11, 9), preprocessing);
+        QVERIFY(transform.isValid());
+        QCOMPARE(transform.resizedSize(), QSize(8, 6));
+        QCOMPARE(transform.padding(), QMargins(1, 1, 2, 2));
+        QCOMPARE(transform.paddedSize(), QSize(11, 9));
+        QCOMPARE(transform.cropRect(), QRect(0, 0, 11, 9));
+
+        const QPointF image_point = transform.modelToImage(QPointF(1.0, 1.0));
+        const QPointF round_trip = transform.imageToModel(image_point);
+        QVERIFY(std::abs(round_trip.x() - 1.0) < 1e-9);
+        QVERIFY(std::abs(round_trip.y() - 1.0) < 1e-9);
+    }
+
+    void heatmapProviderUsesFixedModelSizeAndGlobalThreshold()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString image_path = QDir(temporary.path()).filePath(QStringLiteral("source.png"));
+        const QString score_path = QDir(temporary.path()).filePath(QStringLiteral("1.tiff"));
+        QImage        source(4, 4, QImage::Format_RGB888);
+        source.fill(QColor(80, 80, 80));
+        QVERIFY(source.save(image_path, "PNG"));
+
+        cv::Mat score_map = cv::Mat::zeros(4, 4, CV_32FC1);
+        score_map.at<float>(0, 0) = 0.5F;
+        score_map.at<float>(3, 3) = 1.0F;
+        QVERIFY(cv::imwrite(score_path.toStdString(), score_map));
+
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("path"), image_path);
+        query.addQueryItem(QStringLiteral("scorePath"), score_path);
+        query.addQueryItem(QStringLiteral("heatmap"), QStringLiteral("1"));
+        query.addQueryItem(QStringLiteral("heatmapThreshold"), QStringLiteral("1"));
+
+        EvaluationThumbnailImageProvider provider;
+        QSize                              output_size;
+        const QImage first = provider.requestImage(QStringLiteral("heatmap?%1").arg(query.toString(QUrl::FullyEncoded)),
+                                                   &output_size, QSize(1, 1));
+        QVERIFY(!first.isNull());
+        QCOMPARE(output_size, QSize(4, 4));
+        QCOMPARE(first.size(), QSize(4, 4));
+
+        query.removeAllQueryItems(QStringLiteral("heatmapThreshold"));
+        query.addQueryItem(QStringLiteral("heatmapThreshold"), QStringLiteral("0.25"));
+        const QImage second
+            = provider.requestImage(QStringLiteral("heatmap?%1").arg(query.toString(QUrl::FullyEncoded)), nullptr,
+                                    QSize(1, 1));
+        QVERIFY(!second.isNull());
+        QCOMPARE(second.size(), QSize(4, 4));
+        QVERIFY(first != second);
     }
 
     void cancellationAndInvalidInputFailWithoutPartialResult()

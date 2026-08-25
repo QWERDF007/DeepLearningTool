@@ -20,6 +20,40 @@ Rectangle {
     property int baseCellWidth: 180
     property int baseCellHeight: 150
     property string title: qsTr("实例图像")
+    property ITestParams testParams: null
+    property bool heatmapControlVisible: false
+    property bool heatmapEnabled: false
+
+    property real heatmapThreshold: 1.0
+
+    function refreshHeatmapThreshold() {
+        var params = control.testParams
+        if (!params)
+        {
+            control.heatmapThreshold = 1.0
+            return
+        }
+        var count = Number(params.count)
+        if (!isFinite(count) && params.rowCount)
+            count = Number(params.rowCount())
+        if (!isFinite(count) || count < 1)
+        {
+            control.heatmapThreshold = 1.0
+            return
+        }
+        for (var index = 0; index < count; ++index) {
+            var group = params.groupAt(index)
+            if (!group || String(group.nameEn).toLowerCase() !== "evaluation")
+                continue
+            var value = Number(group.valueForName("heatmap_threshold"))
+            if (isFinite(value) && value > 0)
+            {
+                control.heatmapThreshold = Math.max(0.0001, Math.min(1000.0, value))
+                return
+            }
+        }
+        control.heatmapThreshold = 1.0
+    }
 
     function formatMetric(model) {
         var score = Number(model.score)
@@ -44,6 +78,22 @@ Rectangle {
                 Layout.fillWidth: true
                 text: control.title
                 font: QuiFont.Subtitle
+            }
+
+            QuiToggleSwitch {
+                objectName: "heatmapToggleSwitch"
+                // QuiToggleSwitch contains a 40 px switch, 6 px spacing and
+                // the three-character label. Keep enough room for the label
+                // so it is not clipped or covered by the next header control.
+                Layout.minimumWidth: 100
+                Layout.preferredWidth: 100
+                Layout.preferredHeight: 24
+                visible: control.heatmapControlVisible
+                text: qsTr("热力图")
+                checked: control.heatmapEnabled
+                clickListener: function () {
+                    control.heatmapEnabled = !control.heatmapEnabled
+                }
             }
 
             QuiSpinEditor {
@@ -83,6 +133,7 @@ Rectangle {
 
             GridView {
                 id: grid
+                objectName: "evaluationInstancesGrid"
                 anchors.fill: parent
                 boundsBehavior: Flickable.StopAtBounds
                 cellWidth: Math.round(control.baseCellWidth * control.thumbnailScale) + control.spacing
@@ -129,6 +180,7 @@ Rectangle {
                         currentIndex = 0
                 }
                 delegate: Rectangle {
+                    objectName: "evaluationInstanceDelegate"
                     width: Math.min(Math.round(control.baseCellWidth * control.thumbnailScale), Math.max(50, grid.width - control.spacing - 10))
                     height: Math.round(control.baseCellHeight * control.thumbnailScale)
                     readonly property bool consistentStatus: model.statusKind === EvaluationInstanceModel.StatusTruePositive
@@ -148,16 +200,27 @@ Rectangle {
                         spacing: 2
 
                         EvaluationInstanceThumbnail {
+                            objectName: "evaluationInstanceThumbnail"
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             Layout.minimumHeight: 1
                             record: ({imagePath: model.imagePath, thumbnailUrl: model.thumbnailUrl,
+                                      heatmapUrl: control.evaluation
+                                                 ? control.evaluation.heatmapThumbnailUrl(
+                                                       model.imageId, model.imagePath,
+                                                       model.anomalyScoreMapPath,
+                                                       control.heatmapThreshold)
+                                                 : "",
                                       imageWidth: model.imageWidth,
                                       imageHeight: model.imageHeight,
                                       gtGeometry: model.gtGeometry, predGeometry: model.predGeometry,
                                       gtBounds: model.gtBounds, predBounds: model.predBounds,
                                       gtMaskUrl: model.gtMaskUrl, predMaskUrl: model.predMaskUrl,
+                                      anomalyModelPolygons: model.anomalyModelPolygons,
+                                      anomalyImagePolygons: model.anomalyImagePolygons,
                                       gtClassColor: model.gtClassColor, predClassColor: model.predClassColor})
+                            heatmapEnabled: control.heatmapEnabled
+                            heatmapThreshold: control.heatmapThreshold
                         }
 
                         RowLayout {
@@ -231,5 +294,29 @@ Rectangle {
     onThumbnailScaleChanged: {
         if (zoomEditor.value !== thumbnailScale)
             zoomEditor.value = thumbnailScale
+    }
+
+    onTestParamsChanged: refreshHeatmapThreshold()
+    Component.onCompleted: refreshHeatmapThreshold()
+
+    Connections {
+        target: {
+            var params = control.testParams
+            if (!params)
+                return null
+            var count = Number(params.count)
+            if (!isFinite(count) && params.rowCount)
+                count = Number(params.rowCount())
+            for (var index = 0; isFinite(count) && index < count; ++index) {
+                var group = params.groupAt(index)
+                if (group && String(group.nameEn).toLowerCase() === "evaluation")
+                    return group
+            }
+            return null
+        }
+        function onValueChanged(name) {
+            if (String(name).toLowerCase() === "heatmap_threshold")
+                control.refreshHeatmapThreshold()
+        }
     }
 }

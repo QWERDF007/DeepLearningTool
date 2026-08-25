@@ -1,15 +1,85 @@
 import QtQuick
+import QtQuick.Controls
+
+import dltool.ui
 
 Item {
     id: control
     property var record: ({})
+    property bool heatmapEnabled: false
+    property real heatmapThreshold: 1.0
+    property bool heatmapFailed: false
+    property bool heatmapReady: false
+    property bool heatmapLoading: false
+    property bool keepOriginalWhileLoading: false
+    property string activeHeatmapUrl: ""
+    readonly property bool heatmapAvailable: control.heatmapEnabled
+                                           && String(control.record.heatmapUrl || "").length > 0
+    readonly property bool heatmapMode: control.heatmapAvailable
+                                       && control.heatmapReady
+                                       && !control.heatmapFailed
+
+    function beginHeatmapLoad() {
+        var nextUrl = String(control.record.heatmapUrl || "")
+        if (!control.heatmapEnabled || nextUrl.length === 0) {
+            control.activeHeatmapUrl = nextUrl
+            control.heatmapReady = false
+            control.heatmapLoading = false
+            control.heatmapFailed = false
+            control.keepOriginalWhileLoading = false
+            return
+        }
+        if (nextUrl === control.activeHeatmapUrl && !control.heatmapFailed
+                && (control.heatmapReady || control.heatmapLoading))
+            return
+
+        // Keep the already rendered original image visible until the derived
+        // image has completed.  The first enable also needs this fallback.
+        var preserve = true
+        control.activeHeatmapUrl = nextUrl
+        control.heatmapReady = false
+        control.heatmapLoading = true
+        control.heatmapFailed = false
+        control.keepOriginalWhileLoading = preserve
+    }
 
     function requestOverlayPaint() {
         if (boxes)
             boxes.requestPaint()
+        if (anomalyOverlay)
+            anomalyOverlay.requestOverlayPaint()
     }
 
-    onRecordChanged: requestOverlayPaint()
+    function scheduleOverlayPaint() {
+        control.requestOverlayPaint()
+        Qt.callLater(function() {
+            control.requestOverlayPaint()
+        })
+    }
+
+    onRecordChanged: {
+        beginHeatmapLoad()
+        requestOverlayPaint()
+    }
+    onHeatmapEnabledChanged: {
+        if (heatmapEnabled)
+            beginHeatmapLoad()
+        else {
+            // Invalidate a late Image status from the previous source.
+            control.activeHeatmapUrl = ""
+            heatmapReady = false
+            heatmapLoading = false
+            heatmapFailed = false
+            keepOriginalWhileLoading = false
+        }
+        requestOverlayPaint()
+    }
+    onHeatmapThresholdChanged: {
+        beginHeatmapLoad()
+        requestOverlayPaint()
+    }
+    onHeatmapModeChanged: scheduleOverlayPaint()
+    onHeatmapReadyChanged: scheduleOverlayPaint()
 
     // 裁剪视口不再由评估预计算:按 LabelInstanceThumbnail 模式,
     // 从 GT/PRED 绝对 bounds 推导(并集 + 5% 边距,钳制到图像边界),
@@ -43,7 +113,22 @@ Item {
         var vTop = Math.min(Math.max(0, top - pad), vBottom)
         if (vRight - vLeft <= 0 || vBottom - vTop <= 0)
             return { valid: false }
-        return { valid: true, x: vLeft, y: vTop, width: vRight - vLeft, height: vBottom - vTop }
+
+        // EvaluationThumbnailImageProvider crops with floor(left/top) and
+        // ceil(right/bottom). Keep QML's source viewport identical to that
+        // integer crop so original-coordinate polygons do not drift.
+        var leftPixel = Math.max(0, Math.floor(vLeft))
+        var topPixel = Math.max(0, Math.floor(vTop))
+        var rightPixel = Math.max(leftPixel, Math.ceil(vRight))
+        var bottomPixel = Math.max(topPixel, Math.ceil(vBottom))
+        if (iw > 0)
+            rightPixel = Math.min(iw, rightPixel)
+        if (ih > 0)
+            bottomPixel = Math.min(ih, bottomPixel)
+        if (rightPixel <= leftPixel || bottomPixel <= topPixel)
+            return { valid: false }
+        return { valid: true, x: leftPixel, y: topPixel,
+                 width: rightPixel - leftPixel, height: bottomPixel - topPixel }
     }
 
     function cropRectFor(image) {
@@ -94,10 +179,11 @@ Item {
 
     Image {
         id: preview
+        objectName: "originalPreview"
         anchors.fill: parent
         anchors.margins: 2
-        source: control.record.thumbnailUrl
-                || ""
+        visible: !control.heatmapMode || control.keepOriginalWhileLoading
+        source: control.record.thumbnailUrl || ""
         // The provider already returns the cropped viewport.  Applying the
         // absolute crop again would offset the image a second time.
         sourceClipRect: control.record.thumbnailUrl
@@ -109,6 +195,59 @@ Item {
         onPaintedWidthChanged: control.requestOverlayPaint()
         onPaintedHeightChanged: control.requestOverlayPaint()
         onSourceSizeChanged: control.requestOverlayPaint()
+    }
+
+    Image {
+        id: heatmapPreview
+        objectName: "heatmapPreview"
+        anchors.fill: parent
+        anchors.margins: 2
+        // Do not expose a partially loaded derived image.  During loading the
+        // original image and its original-coordinate overlay remain visible.
+        visible: control.heatmapMode
+        source: control.heatmapAvailable ? control.activeHeatmapUrl : ""
+        fillMode: Image.PreserveAspectFit
+        asynchronous: true
+        onSourceChanged: {
+            if (!control.heatmapAvailable || String(source || "").length === 0)
+                return
+            control.heatmapLoading = true
+            control.heatmapReady = false
+            control.heatmapFailed = false
+        }
+        onStatusChanged: {
+            // Image.source is a QML url while activeHeatmapUrl originates as
+            // a C++ string. Comparing their text is not reliable for encoded
+            // Windows paths. This Image is the single active request, so its
+            // status is the authoritative lifecycle signal.
+            if (!control.heatmapAvailable || String(source || "").length === 0)
+                return
+            if (status === Image.Loading) {
+                control.heatmapLoading = true
+            } else if (status === Image.Ready) {
+                control.heatmapLoading = false
+                control.heatmapReady = true
+                control.heatmapFailed = false
+                control.keepOriginalWhileLoading = false
+            } else if (status === Image.Error) {
+                control.heatmapLoading = false
+                control.heatmapReady = false
+                control.heatmapFailed = true
+                control.keepOriginalWhileLoading = true
+            }
+            control.requestOverlayPaint()
+        }
+        onPaintedWidthChanged: control.requestOverlayPaint()
+        onPaintedHeightChanged: control.requestOverlayPaint()
+        onSourceSizeChanged: control.requestOverlayPaint()
+    }
+
+    BusyIndicator {
+        objectName: "heatmapBusyIndicator"
+        anchors.centerIn: parent
+        running: control.heatmapAvailable && control.heatmapLoading && !control.heatmapFailed
+                 && !control.heatmapMode
+        visible: running
     }
 
     // A mask is already a raster artifact in the standard protocol.  It is
@@ -123,7 +262,7 @@ Item {
         fillMode: Image.PreserveAspectFit
         opacity: 0.28
         asynchronous: true
-        visible: source.length > 0
+        visible: !control.heatmapMode && preview.visible && source.length > 0
     }
 
     Image {
@@ -134,14 +273,14 @@ Item {
         fillMode: Image.PreserveAspectFit
         opacity: 0.28
         asynchronous: true
-        visible: source.length > 0
+        visible: !control.heatmapMode && preview.visible && source.length > 0
     }
 
     Canvas {
         id: boxes
         anchors.fill: preview
         anchors.margins: 2
-        visible: preview.status === Image.Ready
+        visible: !control.heatmapMode && preview.visible && preview.status === Image.Ready
                  && preview.paintedWidth > 0 && preview.paintedHeight > 0
                  && control.viewportRect().valid
         onVisibleChanged: requestPaint()
@@ -202,5 +341,49 @@ Item {
         Component.onCompleted: requestPaint()
         onWidthChanged: requestPaint()
         onHeightChanged: requestPaint()
+    }
+
+    // 异常检测的所有连通区域共用检查页的多边形覆盖层。热力图开启时
+    // 使用模型坐标；关闭时使用同一批区域的原图坐标。
+    PolygonOverlay {
+        id: anomalyOverlay
+        objectName: "anomalyOverlay"
+        // Keep one visible Canvas across mode changes. Re-anchoring or hiding
+        // the Canvas while an asynchronous Image becomes ready can consume
+        // its first repaint before the scene graph exposes it.
+        anchors.fill: parent
+        anchors.margins: 2
+        z: 3
+        visible: (control.heatmapMode ? heatmapPreview.paintedWidth : preview.paintedWidth) > 0
+                 && (control.heatmapMode ? heatmapPreview.paintedHeight : preview.paintedHeight) > 0
+                 && ((control.heatmapMode && (control.record.anomalyModelPolygons || []).length > 0)
+                     || (!control.heatmapMode && (control.record.anomalyImagePolygons || []).length > 0))
+        polygons: control.heatmapMode ? (control.record.anomalyModelPolygons || [])
+                                      : (control.record.anomalyImagePolygons || [])
+        coordinateViewport: {
+            if (control.heatmapMode)
+                return {valid: heatmapPreview.sourceSize.width > 0 && heatmapPreview.sourceSize.height > 0,
+                        x: 0, y: 0, width: heatmapPreview.sourceSize.width, height: heatmapPreview.sourceSize.height}
+            var viewport = control.viewportRect()
+            if (viewport.valid)
+                return viewport
+            var imageWidth = Number(control.record.imageWidth || 0)
+            var imageHeight = Number(control.record.imageHeight || 0)
+            return {valid: imageWidth > 0 && imageHeight > 0,
+                    x: 0, y: 0, width: imageWidth, height: imageHeight}
+        }
+        sourceWidth: control.heatmapMode
+                     ? heatmapPreview.sourceSize.width
+                     : (control.viewportRect().valid ? control.viewportRect().width
+                                                      : Number(control.record.imageWidth || 0))
+        sourceHeight: control.heatmapMode
+                      ? heatmapPreview.sourceSize.height
+                      : (control.viewportRect().valid ? control.viewportRect().height
+                                                       : Number(control.record.imageHeight || 0))
+        paintedWidth: control.heatmapMode ? heatmapPreview.paintedWidth : preview.paintedWidth
+        paintedHeight: control.heatmapMode ? heatmapPreview.paintedHeight : preview.paintedHeight
+        strokeColor: "#ff5252"
+        fillOpacity: 0.12
+        lineWidth: 2
     }
 }
