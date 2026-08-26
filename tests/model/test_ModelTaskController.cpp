@@ -77,14 +77,50 @@ private slots:
                                      && task_manager->findTask(task_id)->status == TaskManager::Running,
                                  2000);
 
+        QTRY_VERIFY_WITH_TIMEOUT(
+            model_manager.modelRecordForUuid(record.uuid)
+                    .value(QStringLiteral("extra_data"))
+                    .toMap()
+                    .value(QStringLiteral("train"))
+                    .toMap()
+                    .value(QStringLiteral("elapsed"))
+                    .toString()
+                != QStringLiteral("00:00:00"),
+            3000);
+        const QVariantMap persisted_train
+            = model_manager.modelRecordForUuid(record.uuid)
+                  .value(QStringLiteral("extra_data"))
+                  .toMap()
+                  .value(QStringLiteral("train"))
+                  .toMap();
+        QVERIFY(persisted_train.value(QStringLiteral("elapsed")).toString() != QStringLiteral("00:00:00"));
+
         QVERIFY(controller.stopModelTask(record.uuid, ModelTaskType::Train));
         QCOMPARE(task_manager->findTask(task_id)->status, TaskManager::Stopped);
+        const QString stopped_elapsed = model_manager.modelRecordForUuid(record.uuid)
+                                            .value(QStringLiteral("extra_data"))
+                                            .toMap()
+                                            .value(QStringLiteral("train"))
+                                            .toMap()
+                                            .value(QStringLiteral("elapsed"))
+                                            .toString();
+        QVERIFY(!stopped_elapsed.isEmpty());
         QVERIFY(controller.deleteModelTask(record.uuid, ModelTaskType::Train));
         QVERIFY(task_manager->findTask(task_id) == nullptr);
 
         controller.shutdown();
         controller.shutdown();
         task_manager->clearTasks();
+
+        ModelManager reloaded_model_manager(kControllerTestMethod, &database, nullptr);
+        QCOMPARE(reloaded_model_manager.modelRecordForUuid(record.uuid)
+                     .value(QStringLiteral("extra_data"))
+                     .toMap()
+                     .value(QStringLiteral("train"))
+                     .toMap()
+                     .value(QStringLiteral("elapsed"))
+                     .toString(),
+                 stopped_elapsed);
     }
 };
 

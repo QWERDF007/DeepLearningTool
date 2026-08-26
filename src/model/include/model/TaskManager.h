@@ -279,6 +279,12 @@ public:
      * @return 任务记录指针；不存在时返回 nullptr。指针不可跨事件循环或任务表修改保存。
      */
     const Task     *findTask(int task_id) const;
+    /**
+     * @brief 获取指定任务的本地运行时间文本。
+     * @param task_id 任务 ID。
+     * @return 任务存在时返回本地计时文本；任务不存在时返回 "-"。
+     */
+    Q_INVOKABLE QString taskRunningTime(int task_id) const;
     Q_INVOKABLE bool hasActiveModelTasks(const QString &model_uuid) const;
     /**
      * @brief 获取指定模型的最新任务记录。
@@ -353,6 +359,13 @@ signals:
      * @param task_id 任务 ID。
      */
     void taskStopRequested(int task_id);
+    /**
+     * @brief 本地运行时间发生变化。
+     * @param task_id 任务 ID。
+     *
+     * 该信号由任务管理器的本地时钟触发，不依赖 Python 进度消息。
+     */
+    void taskRunningTimeChanged(int task_id);
     /**
      * @brief 已处理状态表更新的 Python 任务事件，控制器可据此刷新模型结果。
      * @param message Python 上报的任务事件。

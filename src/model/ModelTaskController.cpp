@@ -92,6 +92,8 @@ ModelTaskController::ModelTaskController(const int method, QString project_dir, 
     {
         connect(task_manager_, &TaskManager::taskStartRequested, this, &ModelTaskController::handleTaskStartRequested);
         connect(task_manager_, &TaskManager::taskStopRequested, this, &ModelTaskController::handleTaskStopRequested);
+        connect(task_manager_, &TaskManager::taskRunningTimeChanged, this,
+                &ModelTaskController::handleTaskRunningTimeChanged);
         connect(task_manager_, &TaskManager::taskMessageReceived, this, &ModelTaskController::handleTaskMessage);
     }
     // extra_data 写库节流定时器：高频进度事件先合并进内存缓冲，由该定时器
@@ -125,7 +127,11 @@ void ModelTaskController::shutdown()
             if (external_task_runner_ != nullptr && external_task_runner_->hasRunningTask(task_id))
                 external_task_runner_->stop(task_id);
             else
+            {
                 task_manager_->markTaskStopped(task_id);
+                syncTaskModelState(task_id);
+                touchTaskModelModifiedTime(task_id);
+            }
         }
     }
     // Let background preparation/data-export callbacks settle before project
@@ -609,7 +615,11 @@ void ModelTaskController::flushModelState(const int task_id)
 
     // 取出本次待合并的指标字段（epoch/iter/lr/loss/elapsed/eta/metrics/
     // message/status）。progress 与 started 不在此缓冲，由状态投影写入。
-    const QVariantMap updates = pending_extra_updates_.take(task_id);
+    QVariantMap updates = pending_extra_updates_.take(task_id);
+    // 训练 elapsed 的权威来源是 TaskManager 的本地时钟。它覆盖同名的
+    // Python 上报值，同时仍写入原有 extra_data 链路，保证项目重开后可以恢复显示。
+    if (isTrainModelTask(task->type))
+        updates.insert(QStringLiteral("elapsed"), task_manager_->taskRunningTime(task_id));
 
     // The top-level model data is keyed by the software task type.  A train
     // runner may report validation/evaluation as phase "test", but that is
@@ -711,6 +721,29 @@ void ModelTaskController::handleTaskMessage(const TaskMessage &message)
         return;
     }
 
+    if (!extra_flush_timer_->isActive())
+        extra_flush_timer_->start();
+}
+
+void ModelTaskController::handleTaskRunningTimeChanged(const int task_id)
+{
+    if (task_manager_ == nullptr || !taskBelongsToCurrentModelManager(task_id))
+        return;
+
+    const TaskManager::Task *task = task_manager_->findTask(task_id);
+    if (task == nullptr || !isTrainModelTask(task->type))
+        return;
+
+    if (TaskManager::isTerminal(task->status))
+    {
+        flushModelState(task_id);
+        return;
+    }
+
+    // 复用 Python 状态更新的缓冲和节流写库路径；没有 Python 消息时，
+    // 本地时钟也会定期把 elapsed 写入模型数据库。
+    pending_extra_updates_[task_id].insert(QStringLiteral("elapsed"),
+                                           task_manager_->taskRunningTime(task_id));
     if (!extra_flush_timer_->isActive())
         extra_flush_timer_->start();
 }

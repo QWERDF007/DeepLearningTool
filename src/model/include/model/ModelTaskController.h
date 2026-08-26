@@ -221,6 +221,12 @@ private slots:
     void handleTaskMessage(const dltool::model::TaskMessage &message);
 
     /**
+     * @brief 接收任务管理器的本地运行时间变化并进入原有状态落库链路。
+     * @param task_id 任务 ID。
+     */
+    void handleTaskRunningTimeChanged(int task_id);
+
+    /**
      * @brief 响应停止请求，停止 Python 进程或收敛后台准备。
      * @param task_id 任务 ID。
      */

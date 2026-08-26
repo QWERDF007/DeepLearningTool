@@ -134,6 +134,8 @@ Item {
                         Layout.fillHeight: true
                         Layout.minimumHeight: 230
                         stateData: control.trainState
+                        taskManager: control.taskManager
+                        modelUuid: control.currentModelUuid
                     }
 
                     EvaluationStatusPanel {

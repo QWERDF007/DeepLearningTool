@@ -10,7 +10,7 @@ QuiPopup {
     id: control
 
     width: 600
-    height: 420
+    height: 480
     maskOpacity: 0.2
 
     property DataManager dataManager: null
@@ -81,6 +81,7 @@ QuiPopup {
         useValidationCheckBox.checked = false
         validationError = ""
         waiting = false
+        datasetCombo.currentIndex = datasetCombo.find(datasetName)
         open()
         trainRatioField.forceActiveFocus()
     }
@@ -110,11 +111,30 @@ QuiPopup {
             font: QuiFont.Subtitle
         }
 
-        QuiText {
+        ColumnLayout {
             Layout.fillWidth: true
-            text: control.datasetName
-            color: QuiColor.FontDark
-            elide: Text.ElideRight
+            spacing: 6
+
+            QuiText {
+                text: "数据集"
+                color: QuiColor.FontDark
+            }
+
+            QuiComboBox {
+                id: datasetCombo
+                Layout.fillWidth: true
+                model: control.dataManager ? control.dataManager.datasets : null
+                textRole: "name"
+                enabled: !control.waiting
+                onActivated: {
+                    if (currentIndex < 0 || !control.dataManager) {
+                        return
+                    }
+                    control.datasetName = currentText
+                    control.datasetId = control.dataManager.getDatasetId(currentText)
+                    control.validationError = ""
+                }
+            }
         }
 
         ColumnLayout {
@@ -133,35 +153,6 @@ QuiPopup {
             }
         }
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 12
-
-            QuiCheckBox {
-                id: useValidationCheckBox
-                Layout.fillWidth: true
-                text: "使用验证集"
-                onCheckedChanged: control.validateRatios()
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                visible: useValidationCheckBox.checked
-
-                QuiText {
-                    text: "验证集比例"
-                    color: QuiColor.FontDark
-                }
-                QuiTextField {
-                    id: validationRatioField
-                    Layout.fillWidth: true
-                    placeholderText: "例如 0.1"
-                    onTextChanged: control.validateRatios()
-                }
-            }
-        }
-
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 6
@@ -174,6 +165,39 @@ QuiPopup {
                 id: testRatioField
                 Layout.fillWidth: true
                 placeholderText: "例如 0.2"
+                onTextChanged: control.validateRatios()
+            }
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 6
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                QuiCheckBox {
+                    id: useValidationCheckBox
+                    Layout.preferredWidth: 24
+                    Layout.preferredHeight: 24
+                    text: ""
+                    onCheckedChanged: control.validateRatios()
+                }
+
+                QuiText {
+                    Layout.fillWidth: true
+                    text: "验证集比例"
+                    color: QuiColor.FontDark
+                    opacity: useValidationCheckBox.checked ? 1.0 : 0.5
+                }
+            }
+
+            QuiTextField {
+                id: validationRatioField
+                Layout.fillWidth: true
+                enabled: useValidationCheckBox.checked
+                placeholderText: "例如 0.1"
                 onTextChanged: control.validateRatios()
             }
         }

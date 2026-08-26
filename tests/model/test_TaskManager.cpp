@@ -99,6 +99,34 @@ private slots:
         manager->clearTasks();
     }
 
+    void localRunningTimeDoesNotDependOnPythonElapsed()
+    {
+        TaskManager *manager = TaskManager::getInstance();
+        manager->clearTasks();
+
+        const int id = manager->addTask(QStringLiteral("model-runtime"), QStringLiteral("Runtime"),
+                                        ModelTaskType::Train, false);
+        QVERIFY(id > 0);
+        QVERIFY(manager->startTask(id));
+        QVERIFY(manager->markTaskRunning(id));
+
+        const QModelIndex index = manager->index(0, 0);
+        QCOMPARE(index.data(TaskManager::RunningTimeRole).toString(), QStringLiteral("00:00:00"));
+        QTest::qWait(1200);
+
+        const QString running_time = manager->taskRunningTime(id);
+        QVERIFY(running_time != QStringLiteral("00:00:00"));
+        QCOMPARE(index.data(TaskManager::RunningTimeRole).toString(), running_time);
+
+        QVERIFY(manager->finishTask(id));
+        const QString finished_time = manager->taskRunningTime(id);
+        QTest::qWait(1100);
+        QCOMPARE(manager->taskRunningTime(id), finished_time);
+
+        QVERIFY(manager->deleteTask(id));
+        manager->clearTasks();
+    }
+
     void coversFailureRestartPauseCapabilityAndInvalidTransitions()
     {
         TaskManager *manager = TaskManager::getInstance();

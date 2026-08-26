@@ -425,6 +425,12 @@ const TaskManager::Task *TaskManager::findTask(const int task_id) const
     return row >= 0 ? &tasks_.at(static_cast<size_t>(row)) : nullptr;
 }
 
+QString TaskManager::taskRunningTime(const int task_id) const
+{
+    const Task *task = findTask(task_id);
+    return task != nullptr ? runningTimeText(*task) : QStringLiteral("-");
+}
+
 bool TaskManager::hasActiveModelTasks(const QString &model_uuid) const
 {
     const QString value = model_uuid.trimmed();
@@ -668,6 +674,9 @@ bool TaskManager::setTaskStatus(const int task_id, const TaskStatus status)
         task.eta_seconds = -1;
     }
     emitTaskChanged(row);
+    // 状态转换可能会结算本地运行时间（例如停止或完成），因此也要通知
+    // 持久化控制器，即使此时没有 Python 消息。
+    emit taskRunningTimeChanged(task.id);
     return true;
 }
 
@@ -686,8 +695,11 @@ void TaskManager::refreshRunningTasks()
     {
         const TaskStatus status = tasks_[static_cast<size_t>(row)].status;
         if (status == Running || status == Stopping)
+        {
             emit dataChanged(index(row, RunningTimeColumn), index(row, RunningTimeColumn),
                              {RunningTimeRole, Qt::DisplayRole});
+            emit taskRunningTimeChanged(tasks_[static_cast<size_t>(row)].id);
+        }
     }
 }
 
