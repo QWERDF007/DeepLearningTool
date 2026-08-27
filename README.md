@@ -1,52 +1,54 @@
 # DeepLearningTool
 
-一个基于 Qt 6 和 C++17 开发的深度学习数据标注工具，采用分层模块化架构设计。
+DeepLearningTool 是一个基于 Qt 6/QML 和 C++20 的桌面深度学习工具，以 SQLite 项目文件组织数据集、标注和模型元数据，并以模型目录保存任务产物。
 
-## 核心特性
+## 功能范围
 
-- 项目管理：创建、打开、管理深度学习标注项目
-- 数据集管理：支持多数据集组织和管理
-- 图像标注：支持多种标注类型（矩形框、多边形等）
-- 标签管理：灵活的标签类别和标签系统
-- 统一配置：全局配置管理，支持持久化
-- 现代UI：基于 Qt Quick/QML 的流畅界面
+- 创建、打开和管理 `.dlpro` 项目。
+- 管理多数据集、图片、类别、标注和图片/标注标签。
+- 导入、导出 Folder、Mask、LabelMe 和 COCO 数据。
+- 提供图库、标注、复核、过滤、统计、图像搜索和智能标注工作区。
+- 配置模型，运行训练、推理和评估任务。
+- 通过独立 Python 进程执行模型任务，并在界面中查看任务状态和评估结果。
 
-## 模块架构
-
-```
-应用层 (dltool)
-    ↓
-业务层 (dltool_project)
-    ↓
-表现层 (dltool_ui) + 数据层 (dltool_data)
-    ↓
-参数基础层 (dltool_parameter)
-    ↓
-配置层 (dltool_settings)
-    ↓
-基础设施层 (dltool_common)
-```
+当前模型和功能注册以源码及配置为准，入口见 [`config/models/`](config/models/) 和 [`src/model/`](src/model/)。
 
 ## 技术栈
 
-- **语言**: C++17
-- **UI框架**: Qt 6 (Qt Quick/QML)
-- **构建系统**: CMake 3.18+
-- **数据库**: SQLite (sqlpp11)
-- **日志**: spdlog
-- **JSON**: nlohmann/json
+- C++20、Qt 6、Qt Quick/QML
+- CMake 3.18+
+- SQLite、sqlpp11
+- yaml-cpp、spdlog、nlohmann/json
+- CUDA、OpenCV、InferRT/FAISS
+- Qt Test、Qt Quick Test、CTest
+- EasyTrain/Python 外部任务
 
 ## 快速开始
 
-详见 [docs/README.md](docs/README.md) 获取完整文档。
+先确认 [`cmake/`](cmake/) 中的 Qt、CUDA、SQLite、OpenCV 和 InferRT 路径符合当前机器，然后配置并构建：
+
+```powershell
+cmake -S . -B build -DDLT_BUILD_TESTS=ON
+cmake --build build --config Release --parallel 4
+```
+
+运行测试请使用 CTest 或项目提供的 Python 调度脚本，不要直接启动测试可执行文件：
+
+```powershell
+ctest --test-dir build -C Release -L ordinary --output-on-failure
+python tools\run_project_tests.py --project-layer full --skip-build
+```
+
+Windows 下启动应用或测试前，如需准备 DLL 和 QML 运行环境，先查看 [`tools/README.md`](tools/README.md)。
 
 ## 文档
 
-- [架构总览](docs/ARCHITECTURE.md) - 系统架构和模块依赖
-- [代码结构](docs/CODE_STRUCTURE.md) - 详细代码组织和模块说明
-- [API参考](docs/API_REFERENCE.md) - C++ 和 QML API 文档
-- [代码风格](docs/CODING_STYLE.md) - 代码规范指南
-- [贡献指南](docs/CONTRIBUTING.md) - 如何参与贡献
+- [文档入口](docs/README.md)
+- [架构](docs/ARCHITECTURE.md)
+- [模块索引](docs/MODULES.md)
+- [数据模型与存储](docs/DATA_MODEL.md)
+- [开发指南](docs/DEVELOPMENT.md)
+- [测试指南](docs/TESTING.md)
 
 ## 许可证
 

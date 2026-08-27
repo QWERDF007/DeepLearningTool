@@ -108,51 +108,13 @@ python tools\package_app.py --install-dir build\package_check --skip-windeployqt
 
 ## `run_project_tests.py`
 
-该脚本专门运行项目级集成测试。默认复用 `F:\tmp\pro` 中的已有项目，执行项目创建、数据集创建、数据导入、数据导出、PatchCore 模型创建、训练、预测和评估：
+该脚本专门运行项目级集成测试。它负责构建、设置测试环境变量并调用 CTest，不直接启动测试可执行文件：
 
 ```powershell
 & 'D:\Software\anaconda3\envs\py312\python.exe' tools\run_project_tests.py
 ```
 
-已经编译过时添加 `--skip-build`。项目级测试默认复用已有项目和模型产物；只有 `full` 模式或显式添加 `--recreate-project` 时才清空项目目录。
-只有 `full` 模式会通过 CTest fixture 自动补齐前置层；其他单层或分组模式只运行所选目标，缺少前置项目、数据集或模型产物时会失败。连续执行时应保持相同的项目根目录、项目名和数据集名。
-
-项目级测试可以按层运行。只有 `full` 模式会自动补齐前置层；其他模式只执行所选目标：
-
-```powershell
-& 'D:\Software\anaconda3\envs\py312\python.exe' tools\run_project_tests.py --project-layer project-setup
-& 'D:\Software\anaconda3\envs\py312\python.exe' tools\run_project_tests.py --project-layer data
-& 'D:\Software\anaconda3\envs\py312\python.exe' tools\run_project_tests.py --project-layer model
-& 'D:\Software\anaconda3\envs\py312\python.exe' tools\run_project_tests.py --project-layer model-train
-& 'D:\Software\anaconda3\envs\py312\python.exe' tools\run_project_tests.py --project-layer model-predict
-& 'D:\Software\anaconda3\envs\py312\python.exe' tools\run_project_tests.py --project-layer model-evaluation
-```
-
-一次执行完整流程：
-
-```powershell
-& 'D:\Software\anaconda3\envs\py312\python.exe' tools\run_project_tests.py --project-layer full
-```
-
-也可以只执行一个项目级目标：`project-creation`、`data-creation`、`set-python-env`、`data-import`、`data-export`、`data-roundtrip`、`model-creation`、`model-copy`、`model-rename`、`model-delete`、`model-train`、`model-predict` 或 `model-evaluation`。项目创建默认名称为 `测试项目`，数据集默认名称为 `测试数据集`，可通过 `--project-name` 和 `--dataset-name` 指定：
-
-```powershell
-& 'D:\Software\anaconda3\envs\py312\python.exe' tools\run_project_tests.py --project-layer project-creation --project-name '测试项目-新建'
-& 'D:\Software\anaconda3\envs\py312\python.exe' tools\run_project_tests.py --project-layer data-creation --dataset-name '测试数据集-新建'
-```
-
-`--project-root`、`--python-env`、`--project-name` 和 `--dataset-name` 可用于切换本机路径及测试名称。
-
-`set-python-env` 层通过 `--python-env` 指定 Python 环境目录：
-
-```powershell
-& 'D:\Software\anaconda3\envs\py312\python.exe' tools\run_project_tests.py `
-    --project-layer set-python-env `
-    --python-env 'D:\Software\anaconda3\envs\py312'
-```
-
-完整的项目级测试依赖关系、逐层命令和产物说明见
-[项目级测试流程](../docs/PROJECT_LEVEL_TESTS.md)。
+已经编译过时添加 `--skip-build`。项目级层级、项目根目录、项目名、数据集名、Python 环境和清理/复用语义见 [测试指南](../docs/TESTING.md)。
 
 ## `dependencies.yaml`
 

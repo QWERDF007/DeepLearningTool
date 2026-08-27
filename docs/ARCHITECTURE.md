@@ -1,204 +1,104 @@
-# DeepLearningTool 架构总览
+# DeepLearningTool 架构
 
-DeepLearningTool 采用“基础设施 + 核心定义 + 数据库 + 设置 + UI 基础组件 + 领域业务模块 + 项目聚合 + 应用入口”的分层结构。构建系统基于 CMake，界面基于 Qt 6/QML，持久化基于 SQLite/sqlpp11。
+DeepLearningTool 是一个由 Qt 6/QML 驱动界面、C++ 驱动业务、SQLite 驱动项目数据、Python 驱动模型任务的桌面应用。模块边界和依赖以 [`src/CMakeLists.txt`](../src/CMakeLists.txt) 及各模块 CMake 文件为准；本页只说明运行时关系。
 
-## 分层与边界
+![DeepLearningTool 架构总览](assets/ARCHITECTURE_DIAGRAM.svg)
 
-| 层级 | 目标 | 位置 | 边界 |
-|------|------|------|------|
-| 基础设施 | `dltool_common` | `src/common/` | 日志、崩溃处理、通用文件工具、单例模板；不依赖业务模块 |
-| 核心定义 | `dltool_core` | `src/core/` | 深度学习任务类型、跨模块共享枚举和名称映射 |
-| 数据库 | `dltool_database` | `src/database/` | SQLite 连接池、项目数据库、最近项目数据库、设置数据库、DDL 和 sqlpp11 表定义 |
-| 参数基础 | `dltool_parameter` | `src/parameter/` | 公共参数 schema、动态 provider、显示值/实际值映射和值解析；不依赖业务模块 |
-| 配置 | `dltool_settings` | `src/settings/` | `GlobalSettings` 聚合项目/数据/高级/UI 设置，通过 `SettingsDataBase` 持久化到 `db/settings.db` |
-| UI 组件 | `dltool_ui` | `src/ui/` | 主题、字体、图标、日志/进度单例和通用 QML 控件 |
-| 模型管理 | `dltool_model` | `src/model/` | 项目内模型记录、模型结构注册、训练/测试参数模型和训练/测试页面骨架 |
-| 数据工作区 | `dltool_data` | `src/data/` | 数据集、图像、标注、标签、过滤、统计、导入导出、图像搜索、智能标注 |
-| 项目业务 | `dltool_project` | `src/project/` | 项目创建/打开/关闭、最近项目、`DataManager` 和 `ModelManager` 聚合 |
-| 应用入口 | `dltool` | `src/tool/` | `main.cpp`、QML 引擎、顶层窗口、Header/Content/Footer 布局 |
+> 架构图是当前源码和 CMake 关系的静态总览；模块依赖、公开类型和任务契约发生变化时，应同步更新图和本页说明，最终以源码和构建配置为准。
 
-约束：
+## 分层关系
 
-- 低层模块不反向依赖高层模块。
-- 数据库访问集中在 `dltool_database`，UI/QML 通过 manager 和 Qt 模型操作数据。
-- 每个库模块由 `add_plugin_library()` 生成同名动态库和 `<target>_header` 头目标。
-- QML 模块产物输出到 `${CMAKE_BINARY_DIR}/dltool/<plugin>`。
-- `src/` 每个一级模块目录下都有模块级 README，用于补充模块内部架构和边界。
+源码构建顺序为：
 
-## 模块依赖
-
-```mermaid
-flowchart TB
-  qt["Qt6::Core/Gui/Quick/Widgets"]
-  spdlog["spdlog::spdlog"]
-  yaml["yaml-cpp"]
-  sqlpp["sqlpp11::sqlite3"]
-  nlohmann["nlohmann/json headers"]
-  inferrt["InferRT / FAISS"]
-  assets["assets/assets.qrc"]
-
-  common["dltool_common"]
-  parameter["dltool_parameter"]
-  core["dltool_core\nURI: dltool.core"]
-  database["dltool_database"]
-  settings["dltool_settings\nURI: dltool.settings"]
-  ui["dltool_ui\nURI: dltool.ui"]
-  model["dltool_model\nURI: dltool.model"]
-  feature["dltool_feature\nURI: dltool.feature"]
-  data["dltool_data\nURI: dltool.data"]
-  project["dltool_project\nURI: dltool.project"]
-  tool["dltool executable\nURI: dltool.tool"]
-
-  qt --> common
-  spdlog --> common
-
-  common --> core
-  qt --> core
-
-  common --> parameter
-  yaml --> parameter
-  inferrt --> parameter
-
-  qt --> database
-  sqlpp --> database
-
-  common --> settings
-  parameter --> settings
-  database --> settings
-  qt --> settings
-
-  common --> ui
-  qt --> ui
-
-  common --> model
-  parameter --> model
-  core --> model
-  ui --> model
-  settings --> model
-  database --> model
-  qt --> model
-  nlohmann --> model
-
-  common --> feature
-  parameter --> feature
-  core --> feature
-  ui --> feature
-  settings --> feature
-  model --> feature
-  data --> feature
-  inferrt --> feature
-
-  common --> data
-  core --> data
-  ui --> data
-  settings --> data
-  database --> data
-  qt --> data
-  nlohmann --> data
-  inferrt --> data
-
-  common --> project
-  core --> project
-  ui --> project
-  data --> project
-  model --> project
-  feature --> project
-  database --> project
-  settings --> project
-  qt --> project
-  nlohmann --> project
-
-  common --> tool
-  parameter --> tool
-  settings --> tool
-  core --> tool
-  ui --> tool
-  data --> tool
-  model --> tool
-  feature --> tool
-  project --> tool
-  assets --> tool
+```text
+common -> core -> database -> ui -> parameter -> settings
+       -> model -> feature -> data -> project -> tool
 ```
 
-## 运行时主流程
+这表示构建和依赖的主方向，不表示所有模块之间都是线性依赖。边界如下：
 
-```mermaid
-sequenceDiagram
-  participant Main as src/tool/main.cpp
-  participant QML as dltool.tool QML
-  participant PM as ProjectManager
-  participant P as Project
-  participant DB as ProjectDataBase
-  participant DM as DataManager
-  participant MM as ModelManager
-  participant Models as Qt Models
+| 层 | 责任 | 代表入口 |
+| --- | --- | --- |
+| 基础设施 | 日志、崩溃处理、路径和通用工具 | `src/common/` |
+| 核心定义 | 任务类型等跨领域定义 | `src/core/` |
+| 持久化 | SQLite 连接、DDL 和数据库访问对象 | `src/database/` |
+| 参数与设置 | 参数元数据、动态选项、全局设置 | `src/parameter/`、`src/settings/` |
+| UI 基础 | QML 公共控件、日志、进度和图表适配 | `src/ui/` |
+| 领域业务 | 数据、模型和高级功能 | `src/data/`、`src/model/`、`src/feature/` |
+| 项目聚合 | 项目生命周期以及项目内对象所有权 | `src/project/` |
+| 应用装配 | Qt 应用、QML 引擎和顶层导航 | `src/tool/` |
 
-  Main->>Main: CrashHandler.setup()
-  Main->>Main: InitLogger()
-  Main->>QML: QQmlApplicationEngine.load(Main.qml)
-  Main->>PM: setQmlEngine(&engine)
-  QML->>PM: createProject/openProject
-  PM->>P: 创建 Project
-  P->>DB: 初始化或打开 .dlpro SQLite 数据库
-  P->>DM: 创建 DataManager(method, database)
-  P->>MM: 创建 ModelManager(method, database)
-  DM->>Models: 初始化 datasets/images/labels/tags/filter/statistics/search/smartAnnotation
-  MM->>Models: 初始化项目模型记录和注册模型结构
-  Models-->>QML: QAbstractItemModel role 数据绑定
+低层不反向依赖高层。数据库访问集中在 `database`；QML 通过项目对象、manager 和 Qt Model 访问业务数据；耗时 I/O、数据导出和外部任务不应在 QML 线程执行。
+
+## 运行时对象关系
+
+```text
+dltool/main.cpp
+  ├─ 初始化 CrashHandler、spdlog、QApplication、QQmlApplicationEngine
+  └─ 加载 dltool.tool/Main.qml
+       └─ ProjectManager（QML 单例）
+            └─ currentProject: Project
+                 ├─ ProjectDataBase
+                 ├─ DataManager
+                 ├─ FeatureManager
+                 ├─ ModelManager
+                 ├─ ModelTaskController
+                 ├─ ModelTestTaskManager
+                 └─ TaskManager
 ```
 
-## 数据与持久化
+`Project` 是项目级聚合对象，不把数据库细节暴露给 QML。`ProjectManager` 负责创建、打开、关闭和删除项目；`Project` 在自己的生命周期内创建和释放数据、模型、功能和任务对象。实现入口见 [`src/project/include/project/Projects.h`](../src/project/include/project/Projects.h) 和 [`src/tool/main.cpp`](../src/tool/main.cpp)。
 
-- 项目文件后缀为 `.dlpro`，本质是 SQLite 数据库。
-- 表结构定义在 `src/database/include/database/ddl/`，包括 project、recent_projects、datasets、images、label_classes、labels、tag_classes、tags、models，以及多类设置表。
-- `ProjectDataBase` 提供项目元数据、数据集、图像、标签类别、图像标签、标注实例和模型记录的读写。
-- `SettingsDataBase` 使用软件目录下的 `db/settings.db` 保存全局设置，包括图像搜索、智能标注、缩略图、标注显示、图像增强、UI 和软件设置。
-- `RecentProjectsDataBase` 使用软件目录下的 `db/history.db` 保存最近项目列表。
-- `DataManager` 聚合数据模型，并向 QML 暴露统一入口，同时持有 `ImageSearchController` 和 `SmartAnnotationController`。
-- `ModelManager` 聚合项目模型记录，并通过注册表按任务类型实例化模型配置。
+## 数据工作区链路
 
-## 数据集导入导出
+```text
+QML 页面
+  -> DataManager
+      -> Qt Model / GlobalFilter / Statistics
+      -> ProjectDataBase
+      -> DataImporter / DataExporter
+```
 
-- `DataImporter`/`DataExporter` 作为格式扩展点，`DataManager` 负责调度、批量写库和模型刷新。
-- `LabelMeImporter`、`COCOImporter` 将外部格式转换为统一的图像路径、类别信息和标注数据。bbox 标注用于目标检测；LabelMe polygon、COCO polygon `segmentation` 和 COCO RLE `segmentation` 会保留为 `points` 点集，用于语义分割。
-- 导入器采用批次信号边解析边交给 `DataManager` 写入，批次大小为 1000 张图像或 1000 条标注。批次信号使用阻塞队列连接，后台解析线程会等待当前批次写库完成后继续，避免内存堆积。
-- 单个批次写入失败时只跳过当前批次并记录失败数量，不取消整个导入流程。
-- `LabelMeExporter`、`COCOExporter` 从统一的 `ExportDataset` 写出文件。导出目录统一包含 `images/`，LabelMe 标注位于 `annotations/*.json`，COCO 标注位于 `annotations/instances.json`。
-- `DatasetIO` 复用图片扫描、JSON 扫描、图像尺寸读取、bbox 裁剪、点集转换、文件拷贝和导出文件名去重逻辑。
+`data` 负责数据集、图片、类别、标注、标签、过滤、统计及格式转换；`database` 只负责存取。导入导出格式的扩展点和页面入口在 [`src/data/README.md`](../src/data/README.md)，表定义在 [`src/database/include/database/ddl/`](../src/database/include/database/ddl/)。
 
-## 图像搜索与智能标注
+## 模型任务链路
 
-- `ImageSearchController` 基于 InferRT 特征提取与 FAISS 索引，支持 TensorRT / OpenVINO / ONNX Runtime 等模型后端，可对选中图像在数据集图库中执行相似检索。
-- 图像搜索结果通过 `ImageSearchFilterModule` 写入 `GlobalFilter`，并与数据集、图片标签、类别过滤按 AND 逻辑组合。
-- `SmartAnnotationController` 负责智能标注模型加载、缓存和推理，根据图像路径和提示点返回 QML 可消费的分割结果。
-- 图像搜索参数和智能标注参数分别由 `GlobalSettings.advanced.imageSearch`、`GlobalSettings.advanced.smartAnnotation` 持久化。
+```text
+模型页或任务中心
+  -> ModelTaskController / TaskManager
+  -> 后台准备：数据导出、文件列表、数据库和目录
+  -> ExternalModelTaskRunner
+  -> EasyTrain / Python 外部进程
+  -> TCP 任务事件
+  -> TaskManager 与 ModelManager 更新状态和结果
+```
 
-## 模型管理
+任务状态由 `TaskManager` 管理。控制器负责准备和编排，外部运行器只负责 Python 进程，任务中心不直接启动 Python。训练和测试输入由纯值 `ModelTaskRequest` 传入后台，避免将 `QObject` 或数据库对象带入工作线程。详细契约见 [`src/model/README.md`](../src/model/README.md)。
 
-- `ModelManager` 从项目数据库的 `models` 表加载模型记录，并提供新增、重命名、删除、复制和模型实例化接口。
-- `IModel`、`IModelConfig`、`ITrainParams`、`ITestParams`、`ParamGroupModel` 构成训练/测试参数模型体系。
-- 当前注册了目标检测任务下的 YOLOv5 和 YOLOv8 默认参数，真实训练/评估执行仍是后续扩展点。
+测试任务完成后，评估链路为：
 
-## QML 模块
+```text
+test.txt + task.db + project .dlpro + pred/*.tiff
+  -> IEvaluationEngine 子类
+  -> EvaluationResult
+  -> ModelEvaluationViewModel 子类
+  -> QML 评估面板、图表、混淆矩阵和实例列表
+```
 
-| URI | 目标 | 内容 |
-|-----|------|------|
-| `dltool.core` | `dltool_core` | `DeepLearningMethod` |
-| `dltool.settings` | `dltool_settings` | `GlobalSettings`、`SettingsCatalog`、`SettingsGroup`、`SettingsNamespace` |
-| `dltool.ui` | `dltool_ui` | `DltColor`、`DltFont`、`DltFontIcon`、`UILogger`、`ProgressManager`、`Utils`、`controls/*.qml` |
-| `dltool.model` | `dltool_model` | `ModelManager`、`IModel`、`IModelConfig`、参数模型、Train/Test QML |
-| `dltool.feature` | `dltool_feature` | `ImageSearchController`、`SmartAnnotationController`、图像搜索数据 provider 接口 |
-| `dltool.data` | `dltool_data` | `DataManager`、数据模型、过滤模型、统计模型、Gallery/Label/Review QML |
-| `dltool.project` | `dltool_project` | `ProjectManager`、`Project`、项目创建/打开 QML |
-| `dltool.tool` | `dltool` | 主窗口、Header、Content、Footer |
+评估引擎在后台读取文件并构造结果，ViewModel 负责 Qt Model、过滤、选择和展示。推理参数与评估参数的语义边界以 [`GRILL_ME_EVALUATION_PARAMETER_SPLIT.md`](GRILL_ME_EVALUATION_PARAMETER_SPLIT.md) 为准，异常检测可视化边界以 [`GRILL_ME_ANOMALY_SEGMENTATION_HEATMAP.md`](GRILL_ME_ANOMALY_SEGMENTATION_HEATMAP.md) 为准。
 
-`dltool_common` 和 `dltool_database` 当前不生成 QML 模块。
+## QML 边界
 
-## 构建与第三方
+QML 模块通过 Qt 的 QML 类型注册暴露对象。应用级单例包括 `ProjectManager`、`GlobalSettings`、`TaskManager` 以及 UI 服务；项目对象拥有数据和模型 manager。页面负责布局、绑定和轻量交互，协议、持久化、任务状态和评估计算留在 C++。
 
-- 根项目启用 C、C++ 和 CUDA 语言，当前 C++ 标准为 C++17。
-- `src/CMakeLists.txt` 当前构建顺序为 `common -> core -> database -> settings -> ui -> model -> feature -> data -> project -> tool`。
-- 第三方库在 `3rdparty/` 管理：`sqlpp11`、`spdlog`、`nlohmann/json.hpp`。
-- `feature` 模块通过 `setup_inferrt(feature)` 接入 InferRT 相关能力。
-- `assets/assets.qrc` 通过 `qt_add_big_resources()` 链入 `dltool` 可执行程序。
-- `tests/` 当前只启用 `tests/ui`，测试目标为 `tst_dltool_ui`。
+顶层页面由 [`src/tool/qml/Content.qml`](../src/tool/qml/Content.qml) 装配，领域页面分别位于 `src/project/qml/`、`src/data/qml/` 和 `src/model/qml/`。模块 URI、公开类型和目录入口见 [模块索引](MODULES.md)。
+
+## 异步与线程边界
+
+- GUI 线程创建和操作 QObject、Qt Model 及 QML 状态。
+- 数据导出、文件复制、任务准备、外部进程和评估计算在后台执行。
+- 后台只接收路径、参数快照和其它纯值输入；结果通过 Qt 信号或 queued connection 回到 GUI 线程。
+- 取消必须沿任务控制器和取消令牌传递，完成、失败和停止后的迟到事件不能重新打开终态任务。
+- 需要跨线程更新 UI 服务时，复用现有服务 API 或 `Qt::QueuedConnection`。
+
+这些规则的具体实现位于 `src/model/ModelTaskController.*`、`src/model/ModelTaskPreparation.*`、`src/model/ExternalModelTaskRunner.*` 和对应评估引擎文件。
