@@ -2,6 +2,7 @@
 
 #include "dltool/model/Export.h"
 #include "model/EvaluationCommon.h"
+#include "model/EvaluationThresholdSearch.h"
 #include "model/ModelEvaluationModels.h"
 #include "model/ModelEvaluationOptions.h"
 
@@ -10,6 +11,7 @@
 #include <QPointer>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QVector>
 #include <QtQml>
 
 namespace dltool::model {
@@ -20,7 +22,7 @@ struct EvaluationResult;
  * @brief 单一模型测试任务的评估视图模型抽象基类。
  *
  * 负责管理模型评估生命周期、异步评测任务调度、多级过滤筛选（数据集/类别/状态/混淆矩阵单元格）、
- * 指标重聚合（宏平均/图像级二分类）、实例详情选择与图表联动。
+ * 指标重聚合（过滤后 TP/FP/FN 汇总与图像级二分类）、实例详情选择与图表联动。
  * 评估输入从测试任务的 test.txt、task.db、项目数据库及预测结果文件读取，
  * 计算在后台线程完成，结果只保留在当前进程的模型缓存中。
  */
@@ -58,7 +60,6 @@ public:
     Q_PROPERTY(QString globalFilterDescription READ globalFilterDescription NOTIFY filterStateChanged FINAL)
     Q_PROPERTY(QString metricScopeDescription READ metricScopeDescription NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(QVariantMap imageMetricDefinition READ imageMetricDefinition NOTIFY evaluationChanged FINAL)
-    Q_PROPERTY(QString resultRevision READ resultRevision NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(double confidenceThreshold READ confidenceThreshold NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(double iouThreshold READ iouThreshold NOTIFY evaluationChanged FINAL)
     Q_PROPERTY(QString matchingStrategy READ matchingStrategy NOTIFY evaluationChanged FINAL)
@@ -83,6 +84,14 @@ public:
 
 public:
     explicit ModelEvaluationViewModel(QObject *parent = nullptr);
+    ~ModelEvaluationViewModel() override;
+
+    /**
+     * @brief 等待评估专用线程池中的任务完成。
+     *
+     * 调用方应先取消所有视图模型的评估，再调用本函数完成项目关闭收尾。
+     */
+    static void shutdownEvaluationWorkers();
 
     /** @brief 评估数据是否有效且可用。 */
     bool        available() const;
@@ -108,12 +117,20 @@ public:
     QString     metricScopeDescription() const;
     /** @brief 图像级指标定义字典（OK/NG 定义）。 */
     QVariantMap imageMetricDefinition() const;
-    /** @brief 评估结果修订版本标识。 */
-    QString     resultRevision() const;
     /** @brief 当前生效的置信度阈值。 */
     double      confidenceThreshold() const;
     /** @brief 当前生效的 IoU 重叠度阈值。 */
     double      iouThreshold() const;
+    /** @brief 当前评估搜索得到的最佳阈值是否可用。 */
+    bool        hasBestThreshold() const;
+    /** @brief 当前评估搜索得到的最佳阈值。无效时返回 0。 */
+    double      bestThreshold() const;
+    /**
+     * @brief 接受同一次评估自动应用后的有效输入。
+     *
+     * 只同步内存中的下一次评估选项，不清空当前结果或重新启动评估。
+     */
+    void adoptEvaluationThreshold(double threshold, const QString &prediction_snapshot = {});
     /** @brief 当前匹配策略名称。 */
     QString     matchingStrategy() const;
     /** @brief 是否具备实例级指标。 */
@@ -291,6 +308,8 @@ signals:
     void evaluationChanged();
     /** @brief 加载状态变更信号。 */
     void loadingChanged();
+    /** @brief 一次评估成功完成，结果已加载到当前视图模型。 */
+    void evaluationCompleted();
     /** @brief 选中实例发生变化信号。 */
     void selectedInstanceChanged();
     /** @brief 过滤器状态（激活/描述）变更信号。 */
@@ -298,12 +317,13 @@ signals:
 
 private:
     void setLoading(bool value);
+    void startEvaluation(bool notify);
     void clearEvaluation(const QString &error = {}, evaluation::ViewState state = evaluation::ViewState::NotRun);
     bool sameEvaluationInput(const ModelEvaluationOptions &lhs, const ModelEvaluationOptions &rhs) const;
-    void loadEvaluation(const QVariantMap &root);
-    void loadInstanceRecords(const QVariantList &records);
+    void loadEvaluation(const EvaluationResult &result);
+    void loadInstanceRecords(const QVector<EvaluationInstanceRecord> &records);
 
-    /** 将实例记录序列化为 QML 映射，委托 EvaluationCommon 公共实现。 */
+    /** 将实例记录转换为 QML 映射，委托 EvaluationCommon 公共实现。 */
     QVariantMap instanceToMap(const EvaluationInstanceRecord &record) const
     {
         return dltool::model::instanceToMap(record);
@@ -316,8 +336,12 @@ private:
     ModelEvaluationOptions            evaluation_options_;
     bool                              has_evaluation_options_{false};
     bool                              evaluation_attempted_{false};
+    bool                              evaluation_worker_active_{false};
+    bool                              discard_active_result_{false};
     std::shared_ptr<std::atomic_bool> cancel_token_;
     bool                              notify_when_finished_{false};
+    bool                              pending_evaluation_{false};
+    bool                              pending_notify_when_finished_{false};
     bool                              available_{false};
     bool                              loading_{false};
     int                               method_{static_cast<int>(evaluation::Method::Unknown)};
@@ -326,9 +350,12 @@ private:
     QString                           primary_metric_set_;
     QString                           metric_scope_description_;
     QVariantMap                       image_metric_definition_;
-    QString                           result_revision_;
+    QString                           prediction_snapshot_;
+    EvaluationThresholdSearchResult  threshold_search_;
     double                            confidence_threshold_{0.0};
     double                            iou_threshold_{0.0};
+    bool                              best_threshold_available_{false};
+    double                            best_threshold_{0.0};
     QString                           matching_strategy_;
     bool                              has_instance_metrics_{false};
     bool                              has_image_metrics_{false};
@@ -351,7 +378,6 @@ private:
     QMap<int, double>                 class_ap_map_;
     QMap<int, QString>                class_catalog_;
     QMap<int, QString>                class_colors_;
-    int                               evaluation_revision_{0};
     int                               aggregation_revision_{0};
     bool                              aggregation_rebuild_scheduled_{false};
     int                               aggregation_schedule_token_{0};

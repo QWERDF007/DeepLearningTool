@@ -9,7 +9,11 @@ target_link_libraries(dltool_model_test_support
     PUBLIC
         Qt6::Core
         Qt6::Gui
+        Qt6::Qml
+        ${OpenCV_LIBS}
         dltool_model
+        dltool_core
+        dltool_common
         dltool_data
         dltool_database
 )
@@ -18,8 +22,11 @@ target_include_directories(dltool_model_test_support
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/../model_support
         ${CMAKE_SOURCE_DIR}/src/model/include
+        ${CMAKE_SOURCE_DIR}/src/core/include
+        ${CMAKE_SOURCE_DIR}/src/common/include
         ${CMAKE_SOURCE_DIR}/src/data/include
         ${CMAKE_SOURCE_DIR}/src/database/include
+        ${OpenCV_INCLUDE_DIRS}
 )
 
 set(_model_test_common_libs
@@ -78,6 +85,7 @@ endfunction()
 
 add_model_cpp_test(dltool_model_evaluation_tests
     test_ModelEvaluationProtocol.cpp
+    test_EvaluationThresholdSearch.cpp
     test_EvaluationRegistries.cpp
     test_EvaluationResult.cpp
     test_EvaluationGeometryMatching.cpp
@@ -114,6 +122,7 @@ add_model_cpp_test(dltool_model_evaluation_behavior_tests
 foreach(_behavior_case
         parameterGroupsControlEvaluationTrigger
         anomalyClassificationThresholdIsEvaluationOnly
+        anomalyViewModelRecognizesTiffPredictionsWithoutTaskRows
         evaluationParameterWithoutPredictionsDoesNotStartEvaluation
         finishedTestAutomaticallyEvaluatesAndBusyStateRestores)
     add_test(NAME "dltool_model_evaluation_behavior_${_behavior_case}"

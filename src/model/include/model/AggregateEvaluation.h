@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dltool/model/Export.h"
+#include "model/EvaluationThresholdSearch.h"
 #include "model/ModelEvaluationModels.h"
 #include "model/ModelEvaluationProtocol.h"
 
@@ -42,6 +43,8 @@ struct MODEL_API EvaluationAggregateInput
     bool                         has_image_metrics{false};                                   ///< 是否包含图像指标。
     bool                         has_confusion_matrix{false};                                ///< 是否包含混淆矩阵。
     bool                         anomaly_detection{false};                                   ///< 是否为异常检测。
+    EvaluationThresholdSearchResult threshold_search;                                        ///< 当前完整评估的阈值搜索结果。
+    bool                         threshold_search_is_complete{false};                       ///< 当前图像范围是否仍是完整评估范围。
 };
 
 /**

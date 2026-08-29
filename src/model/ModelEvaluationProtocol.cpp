@@ -293,6 +293,8 @@ QString chartIdKey(const ChartId id)
         return QStringLiteral("anomaly_score_distribution");
     case ChartId::PrecisionRecall:
         return QStringLiteral("precision_recall");
+    case ChartId::ConfidenceDistribution:
+        return QStringLiteral("confidence_distribution");
     case ChartId::PerClassMetrics:
         return QStringLiteral("per_class_metrics");
     case ChartId::Unknown:
@@ -308,6 +310,8 @@ ChartId chartIdFromKey(const QString &key)
         return ChartId::AnomalyScoreDistribution;
     if (value == chartIdKey(ChartId::PrecisionRecall))
         return ChartId::PrecisionRecall;
+    if (value == chartIdKey(ChartId::ConfidenceDistribution))
+        return ChartId::ConfidenceDistribution;
     if (value == chartIdKey(ChartId::PerClassMetrics))
         return ChartId::PerClassMetrics;
     return ChartId::Unknown;
@@ -321,10 +325,14 @@ QString seriesKindKey(const SeriesKind kind)
         return QStringLiteral("good");
     case SeriesKind::Anomaly:
         return QStringLiteral("anomaly");
-    case SeriesKind::Average:
-        return QStringLiteral("average");
+    case SeriesKind::Micro:
+        return QStringLiteral("micro");
     case SeriesKind::Class:
         return QStringLiteral("class");
+    case SeriesKind::Overall:
+        return QStringLiteral("overall");
+    case SeriesKind::BestThreshold:
+        return QStringLiteral("best_threshold");
     case SeriesKind::Unknown:
         return QStringLiteral("unknown");
     }
@@ -338,10 +346,14 @@ SeriesKind seriesKindFromKey(const QString &key)
         return SeriesKind::Good;
     if (value == seriesKindKey(SeriesKind::Anomaly))
         return SeriesKind::Anomaly;
-    if (value == seriesKindKey(SeriesKind::Average))
-        return SeriesKind::Average;
+    if (value == seriesKindKey(SeriesKind::Micro))
+        return SeriesKind::Micro;
     if (value == seriesKindKey(SeriesKind::Class))
         return SeriesKind::Class;
+    if (value == seriesKindKey(SeriesKind::Overall))
+        return SeriesKind::Overall;
+    if (value == seriesKindKey(SeriesKind::BestThreshold))
+        return SeriesKind::BestThreshold;
     return SeriesKind::Unknown;
 }
 
@@ -549,6 +561,11 @@ QString EvaluationProtocolKeys::chartIdPrecisionRecall() const
     return evaluation::chartIdKey(ChartId::PrecisionRecall);
 }
 
+QString EvaluationProtocolKeys::chartIdConfidenceDistribution() const
+{
+    return evaluation::chartIdKey(ChartId::ConfidenceDistribution);
+}
+
 QString EvaluationProtocolKeys::chartIdPerClassMetrics() const
 {
     return evaluation::chartIdKey(ChartId::PerClassMetrics);
@@ -564,14 +581,24 @@ QString EvaluationProtocolKeys::seriesKindAnomaly() const
     return evaluation::seriesKindKey(SeriesKind::Anomaly);
 }
 
-QString EvaluationProtocolKeys::seriesKindAverage() const
+QString EvaluationProtocolKeys::seriesKindMicro() const
 {
-    return evaluation::seriesKindKey(SeriesKind::Average);
+    return evaluation::seriesKindKey(SeriesKind::Micro);
 }
 
 QString EvaluationProtocolKeys::seriesKindClass() const
 {
     return evaluation::seriesKindKey(SeriesKind::Class);
+}
+
+QString EvaluationProtocolKeys::seriesKindOverall() const
+{
+    return evaluation::seriesKindKey(SeriesKind::Overall);
+}
+
+QString EvaluationProtocolKeys::seriesKindBestThreshold() const
+{
+    return evaluation::seriesKindKey(SeriesKind::BestThreshold);
 }
 
 QString EvaluationProtocolKeys::filterKindImageScore() const

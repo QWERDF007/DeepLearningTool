@@ -10,7 +10,7 @@ namespace dltool::model {
  *
  * 图像级二元分类：按图像聚合 GT 异常；有像素异常分数图时，取其最大
  * 分数作为评估层 pred_score，并与同一阈值生成异常区域和图像级判定。
- * 没有分数图时回退到模型输出的图像分数。产出图像级 TP/TN/FP/FN
+ * 评估不回退到模型输出的图像分数。产出图像级 TP/TN/FP/FN
  * 计数与每图像一条事件，不产出实例级指标。
  */
 class MODEL_API AnomalyEvaluationEngine : public IEvaluationEngine
@@ -22,6 +22,9 @@ public:
 
 protected:
     void buildClasses(const QMap<qint64, EvaluationImageData> &images, QMap<int, QString> &classes) override;
+
+    bool collectThresholdSearchData(const QMap<qint64, EvaluationImageData> &images, QVector<double> &scores,
+                                    qint64 &positive_ground_truth_count, QString *err_msg) override;
 
     bool computeInstanceCounts(const QMap<qint64, EvaluationImageData> &images, const QMap<int, QString> &classes,
                                QMap<int, EvaluationCounts> &per_class, EvaluationCounts &overall,

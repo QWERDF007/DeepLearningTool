@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 
 import dltool.model
@@ -26,6 +27,7 @@ Rectangle {
 
     property int chartRevision: 0
     property int chartGeometryRevision: 0
+    property int currentChartTabIndex: 0
     readonly property string chartFontColor: QuiColor.FontPrimary.toString()
 
     readonly property var displayDescriptor: control.chartDescriptorForDisplay(control.chartRevision)
@@ -109,22 +111,48 @@ Rectangle {
         return charts ? charts.rowCount() : 0
     }
 
-    function chartDescriptorForDisplay(revision) {
+    function chartDescriptorForTab(tabIndex, revision) {
         var charts = control.evaluation ? control.evaluation.charts : null
         var count = control.chartModelCount()
         if (!charts || count <= 0)
             return ({})
 
-        var anomalyDescriptor = ({})
+        var desiredId = tabIndex === 0
+                ? EvaluationProtocolKeys.chartIdPrecisionRecall
+                : (control.evaluation && control.evaluation.anomalyDetection
+                   ? EvaluationProtocolKeys.chartIdAnomalyScoreDistribution
+                   : EvaluationProtocolKeys.chartIdConfidenceDistribution)
         for (var index = 0; index < count; ++index) {
             var descriptor = charts.descriptor(index)
-            if (descriptor.chart_id === EvaluationProtocolKeys.chartIdPrecisionRecall)
+            if (descriptor.chart_id === desiredId)
                 return descriptor
-            if (descriptor.chart_id === EvaluationProtocolKeys.chartIdAnomalyScoreDistribution)
-                anomalyDescriptor = descriptor
         }
-        /* 旧结果可能仍保存按类别指标，但该图不再属于方法图表区域。 */
-        return anomalyDescriptor
+        return ({})
+    }
+
+    function chartDescriptorForDisplay(revision) {
+        return control.chartDescriptorForTab(control.currentChartTabIndex, revision)
+    }
+
+    function hasChartForTab(tabIndex, revision) {
+        var descriptor = control.chartDescriptorForTab(tabIndex, revision)
+        return descriptor && descriptor.chart_id !== undefined && descriptor.chart_id !== ""
+    }
+
+    function chartTabTitle(tabIndex, revision) {
+        if (tabIndex === 0)
+            return qsTr("PR 曲线")
+        return control.evaluation && control.evaluation.anomalyDetection
+                ? qsTr("异常分数分布") : qsTr("置信度分布")
+    }
+
+    function normalizeChartTab() {
+        if (control.hasChartForTab(control.currentChartTabIndex, control.chartRevision))
+            return
+        if (control.hasChartForTab(0, control.chartRevision))
+            control.currentChartTabIndex = 0
+        else if (control.hasChartForTab(1, control.chartRevision))
+            control.currentChartTabIndex = 1
     }
 
     function hasDisplayChart(revision) {
@@ -137,10 +165,17 @@ Rectangle {
 
     Component.onCompleted: Qt.callLater(control.refreshMethodSpecificState)
     onEvaluationChanged: {
+        control.currentChartTabIndex = 0
         control.chartRevision += 1
-        Qt.callLater(control.refreshMethodSpecificState)
+        Qt.callLater(function() {
+            control.normalizeChartTab()
+            control.refreshMethodSpecificState()
+        })
     }
-    onChartRevisionChanged: Qt.callLater(control.refreshMethodSpecificState)
+    onChartRevisionChanged: Qt.callLater(function() {
+        control.normalizeChartTab()
+        control.refreshMethodSpecificState()
+    })
 
     ColumnLayout {
         anchors.fill: parent
@@ -165,6 +200,44 @@ Rectangle {
                 Layout.preferredWidth: visible ? 220 : 0
                 Layout.preferredHeight: visible ? 32 : 0
                 Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+            }
+        }
+
+        TabBar {
+            id: chartTabBar
+            objectName: "chartTabBar"
+            Layout.fillWidth: true
+            Layout.preferredHeight: 28
+            Layout.minimumHeight: 28
+            Layout.maximumHeight: 28
+            visible: control.hasChartForTab(0, control.chartRevision)
+                     || control.hasChartForTab(1, control.chartRevision)
+            currentIndex: control.currentChartTabIndex
+            background: Item {}
+
+            QuiTabButton {
+                objectName: "precisionRecallTab"
+                text: control.chartTabTitle(0, control.chartRevision)
+                Layout.preferredHeight: 28
+                Layout.minimumHeight: 28
+                Layout.maximumHeight: 28
+                textColor: chartTabBar.currentIndex === 0 ? QuiColor.Highlight : QuiColor.FontPrimary
+                visible: control.hasChartForTab(0, control.chartRevision)
+            }
+
+            QuiTabButton {
+                objectName: "distributionTab"
+                text: control.chartTabTitle(1, control.chartRevision)
+                Layout.preferredHeight: 28
+                Layout.minimumHeight: 28
+                Layout.maximumHeight: 28
+                textColor: chartTabBar.currentIndex === 1 ? QuiColor.Highlight : QuiColor.FontPrimary
+                visible: control.hasChartForTab(1, control.chartRevision)
+            }
+
+            onCurrentIndexChanged: {
+                if (control.currentChartTabIndex !== currentIndex)
+                    control.currentChartTabIndex = currentIndex
             }
         }
 

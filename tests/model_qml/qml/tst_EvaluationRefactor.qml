@@ -316,12 +316,63 @@ TestCase {
         verify(panel)
         var line = findChild(panel, "classificationThresholdLine")
         verify(line)
+        panel.currentChartTabIndex = 1
         tryCompare(panel.chart, "chartReady", true, 3000)
         tryVerify(function() { return line.visible && line.height > 0 }, 2000)
 
         var originalHeight = line.height
         panel.height = 420
         tryVerify(function() { return line.height > originalHeight + 20 }, 2000)
+        testWindow.visible = false
+    }
+
+    function test_chartTabsUseCompactStableHeightAndPrTooltipValues() {
+        testWindow.visible = true
+        var panel = createTemporaryObject(detectionChartComponent, testWindow.contentItem)
+        verify(panel)
+
+        var tabBar = findChild(panel, "chartTabBar")
+        verify(tabBar)
+        compare(tabBar.height, 28)
+        compare(findChild(panel, "precisionRecallTab").height, 28)
+        compare(findChild(panel, "distributionTab").height, 28)
+
+        var data = { datasets: [{
+            label: "总体 micro",
+            data: [{ x: 0.25, y: 0.75, threshold: 0.625 }]
+        }] }
+        var item = { datasetIndex: 0, index: 0, xLabel: 0.25, yLabel: 0.75 }
+        compare(panel.precisionRecallTooltipTitle([item], data), "召回率: 0.2500")
+        var lines = panel.precisionRecallTooltipLabel(item, data)
+        compare(lines.length, 2)
+        compare(lines[0], "精确率: 0.7500")
+        compare(lines[1], "阈值: 0.6250")
+        testWindow.visible = false
+    }
+
+    function test_chartTabSurvivesSameEvaluationRefresh() {
+        anomalyEvaluation = fixture.createAnomalyEvaluation()
+        verify(anomalyEvaluation)
+        tryCompare(anomalyEvaluation, "stateKind", ModelEvaluationViewModel.Ready, 5000)
+
+        testWindow.visible = true
+        var panel = createTemporaryObject(anomalyChartComponent, testWindow.contentItem)
+        verify(panel)
+        panel.currentChartTabIndex = 1
+        tryCompare(panel.chart, "chartReady", true, 3000)
+        tryVerify(function() {
+            return panel.currentChartTabIndex === 1
+                    && panel.displayDescriptor.chart_id
+                       === EvaluationProtocolKeys.chartIdAnomalyScoreDistribution
+        }, 2000)
+
+        anomalyEvaluation.refreshEvaluation()
+        tryCompare(anomalyEvaluation, "stateKind", ModelEvaluationViewModel.Ready, 5000)
+        tryVerify(function() {
+            return panel.currentChartTabIndex === 1
+                    && panel.displayDescriptor.chart_id
+                       === EvaluationProtocolKeys.chartIdAnomalyScoreDistribution
+        }, 3000)
         testWindow.visible = false
     }
 
@@ -478,7 +529,7 @@ TestCase {
             datasets: [
                 { series_kind: "class", class_id: 1, data: [1] },
                 { series_kind: "class", class_id: 2, data: [2] },
-                { series_kind: "average", data: [3] }
+                { series_kind: "micro", data: [3] }
             ]
         }
         var transformed = chart.transformChartData("precision_recall", input)
@@ -490,7 +541,7 @@ TestCase {
             datasets: [
                 { series_kind: "class", class_id: 1, data: [1] },
                 { series_kind: "class", class_id: 2, data: [2] },
-                { series_kind: "average", data: [3] }
+                { series_kind: "micro", data: [3] }
             ]
         }
         transformed = chart.transformChartData("precision_recall", selectedInput)

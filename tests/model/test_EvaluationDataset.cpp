@@ -207,6 +207,51 @@ private slots:
         QCOMPARE(images.value(bad_image).predictions.front().class_name,
                  evaluation::displayText(evaluation::DisplayText::Anomaly));
     }
+
+    void anomalyPredictionsUseTiffWithoutTaskDatabaseRecords()
+    {
+        using namespace dltool::model::testsupport;
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 good = fixture.addClass(QStringLiteral("Good"), QStringLiteral("good"));
+        const qint64 anomaly = fixture.addClass(QStringLiteral("Scratch"), QStringLiteral("anomaly"));
+        const qint64 normal_image
+            = fixture.addImage(QStringLiteral("normal"), {{QStringLiteral("image_label_class_id"), good}});
+        const qint64 bad_image
+            = fixture.addImage(QStringLiteral("bad"), {{QStringLiteral("image_label_class_id"), anomaly}});
+        QVERIFY(good >= 0);
+        QVERIFY(anomaly >= 0);
+        QVERIFY(normal_image >= 0);
+        QVERIFY(bad_image >= 0);
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({good, anomaly}));
+        QVERIFY(fixture.writePrediction(normal_image, anomalyPrediction(0.1)));
+        QVERIFY(fixture.writePrediction(bad_image, anomalyPrediction(0.9)));
+
+        // The TIFF files are the anomaly prediction artifacts. Remove only
+        // task.db prediction rows to prove the loader does not depend on them.
+        QVERIFY(fixture.removePrediction(normal_image));
+        QVERIFY(fixture.removePrediction(bad_image));
+
+        QMap<qint64, EvaluationImageData> images;
+        QString error;
+        QVERIFY2(loadEvaluationImages(fixture.fileListPath(), fixture.projectDatabasePath(),
+                                       fixture.taskDatabasePath(), evaluation::Method::AnomalyDetection, images, {},
+                                       &error),
+                  qPrintable(error));
+
+        int count = 0;
+        QVERIFY2(loadEvaluationPredictions(QDir(fixture.rootPath()).filePath(QStringLiteral("missing-task.db")),
+                                            fixture.predictionDirectory(), images, true, &count, {}, &error),
+                  qPrintable(error));
+        QCOMPARE(count, 2);
+        QCOMPARE(images.value(normal_image).predictions.size(), 1);
+        QCOMPARE(images.value(bad_image).predictions.size(), 1);
+        QVERIFY(qAbs(images.value(normal_image).predictions.front().score - 0.1) < 1e-6);
+        QVERIFY(qAbs(images.value(bad_image).predictions.front().score - 0.9) < 1e-6);
+        QVERIFY(images.value(normal_image).anomaly_score_map != nullptr);
+        QVERIFY(images.value(bad_image).anomaly_score_map != nullptr);
+    }
 };
 
 REGISTER_TEST(EvaluationDatasetTest)

@@ -3,6 +3,10 @@
 #include "data/LabelData.h"
 #include "database/DataBase.h"
 #include "database/ModelTaskDataBase.h"
+#include "model/ModelEvaluationProtocol.h"
+
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/core.hpp>
 
 #include <QColor>
 #include <QDir>
@@ -12,6 +16,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTextStream>
+#include <cmath>
 #include <utility>
 
 namespace dltool::model::testsupport {
@@ -287,6 +292,23 @@ bool EvaluationFixture::writePrediction(const qint64 image_id, const QVariant &p
     QString                     database_error;
     if (!task_database.upsertPrediction({image_id, prediction}, &database_error))
         return setError(QStringLiteral("写入预测失败: %1").arg(database_error));
+
+    // 异常评估只消费 pred/<image_id>.tiff 中的原始像素分数。普通异常
+    // 测试通过 image_score 便捷构造同域的常量分数图；需要空间分布的
+    // 测试可在此之后直接覆盖同一路径的 TIFF。
+    if (method_ == static_cast<int>(evaluation::Method::AnomalyDetection))
+    {
+        const QVariantMap value = prediction.toMap();
+        bool              ok    = false;
+        const double      score  = value.value(QStringLiteral("image_score")).toDouble(&ok);
+        if (ok && std::isfinite(score))
+        {
+            const cv::Mat score_map(32, 32, CV_32FC1, cv::Scalar(static_cast<float>(score)));
+            const QString  score_path = QDir(predictionDirectory()).filePath(QStringLiteral("%1.tiff").arg(image_id));
+            if (!cv::imwrite(score_path.toStdString(), score_map))
+                return setError(QStringLiteral("写入异常分数图失败: %1").arg(score_path));
+        }
+    }
     return true;
 }
 

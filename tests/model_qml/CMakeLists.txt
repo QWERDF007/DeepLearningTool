@@ -29,6 +29,7 @@ set(_evaluation_refactor_cases
     test_anomalyThumbnailHeatmapLifecycle
     test_anomalyHeatmapToggleLabelFits
     test_anomalyChartThresholdLineFollowsChartResize
+    test_chartTabSurvivesSameEvaluationRefresh
     test_anomalyMatrixClickSetsFnAndFpFilters
     test_anomalyMatrixFilterFirstHeatmapPaintsPolygons
     test_everyRegisteredPanelCanInstantiate
@@ -81,6 +82,7 @@ set_tests_properties(
     ${TEST_TARGET_NAME}_test_anomalyThumbnailHeatmapLifecycle
     ${TEST_TARGET_NAME}_test_anomalyHeatmapToggleLabelFits
     ${TEST_TARGET_NAME}_test_anomalyChartThresholdLineFollowsChartResize
+    ${TEST_TARGET_NAME}_test_chartTabSurvivesSameEvaluationRefresh
     ${TEST_TARGET_NAME}_test_anomalyMatrixClickSetsFnAndFpFilters
     ${TEST_TARGET_NAME}_test_anomalyMatrixFilterFirstHeatmapPaintsPolygons
     ${TEST_TARGET_NAME}_test_everyRegisteredPanelCanInstantiate

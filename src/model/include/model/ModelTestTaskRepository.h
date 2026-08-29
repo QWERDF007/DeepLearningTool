@@ -49,13 +49,16 @@ public:
                   QString *err_msg = nullptr) const;
 
     /**
-     * @brief 保存/更新测试任务定义（含参数与数据集选择）。
+     * @brief 保存/更新测试任务定义。
      * @param model_name 模型名称。
      * @param task 待保存的任务定义。
+     * @param persist_selection 是否同步写入测试数据集选择。参数自动保存时传 false，
+     *        避免用内存中的编辑快照覆盖任务数据库中的已提交选择。
      * @param err_msg 可选错误信息输出。
      * @return 成功返回 true。
      */
-    bool saveTask(const QString &model_name, const ModelTestTaskDefinition &task, QString *err_msg = nullptr) const;
+    bool saveTask(const QString &model_name, const ModelTestTaskDefinition &task, bool persist_selection,
+                  QString *err_msg = nullptr) const;
 
     /**
      * @brief 创建并持久化一个新的测试任务。

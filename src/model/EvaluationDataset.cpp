@@ -7,6 +7,8 @@
 #include "model/EvaluationGeometry.h"
 #include "model/ModelDatasetSelection.h"
 
+#include <opencv2/imgcodecs.hpp>
+
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -188,6 +190,66 @@ bool selectedLabel(const ModelDatasetSelection &selection, const SourceImage &im
 }
 
 } // namespace
+
+bool readEvaluationScoreMap(const QString &path, EvaluationScoreMap &score_map, QString *err_msg)
+{
+    score_map = {};
+    const auto fail = [err_msg](const QString &message)
+    {
+        if (err_msg != nullptr)
+            *err_msg = message;
+        return false;
+    };
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return fail(QString("打开异常分数图失败: %1").arg(path));
+    const QByteArray bytes = file.readAll();
+    if (bytes.isEmpty())
+        return fail(QString("异常分数图为空: %1").arg(path));
+
+    cv::Mat encoded(1, bytes.size(), CV_8UC1, const_cast<char *>(bytes.constData()));
+    const cv::Mat decoded = cv::imdecode(encoded, cv::IMREAD_UNCHANGED);
+    if (decoded.empty() || decoded.dims != 2 || decoded.channels() != 1
+        || (decoded.type() != CV_32FC1 && decoded.type() != CV_64FC1))
+        return fail(QString("异常分数图必须是单通道 CV_32FC1/CV_64FC1 TIFF: %1").arg(path));
+
+    score_map.width  = decoded.cols;
+    score_map.height = decoded.rows;
+    score_map.values.resize(decoded.cols * decoded.rows);
+    for (int y = 0; y < decoded.rows; ++y)
+    {
+        for (int x = 0; x < decoded.cols; ++x)
+        {
+            const double value = decoded.type() == CV_32FC1 ? static_cast<double>(decoded.at<float>(y, x))
+                                                              : decoded.at<double>(y, x);
+            score_map.values[y * decoded.cols + x] = value;
+        }
+    }
+    return true;
+}
+
+bool evaluationScoreMapMaximum(const EvaluationScoreMap &score_map, double *maximum)
+{
+    if (maximum == nullptr || !score_map.isValid())
+        return false;
+    bool   found = false;
+    double value = 0.0;
+    for (const double score : score_map.values)
+    {
+        if (!std::isfinite(score))
+            continue;
+        if (!found || score > value)
+        {
+            value = score;
+            found = true;
+        }
+    }
+    if (!found)
+        return false;
+    *maximum = value;
+    return true;
+}
 
 bool readEvaluationImageList(const QString &path, QList<QPair<qint64, QString>> &rows,
                              const std::shared_ptr<std::atomic_bool> &cancel_token, QString *err_msg)
@@ -557,6 +619,53 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
             *err_msg = QString("评估已取消");
         return false;
     }
+
+    // 异常检测的唯一评估分数来源是预测目录中的原始像素分数图。
+    // task.db 中的 image_score 只属于 Python 任务记录，不能替代 TIFF，
+    // 否则图像级分类、区域分割和热力图会落在不同的分数域。
+    if (anomaly_method)
+    {
+        const auto fail = [err_msg](const QString &message)
+        {
+            if (err_msg != nullptr)
+                *err_msg = message;
+            return false;
+        };
+        int total = 0;
+        for (auto image_it = images.begin(); image_it != images.end(); ++image_it)
+        {
+            if (isCancelled(cancel_token))
+                return fail(QStringLiteral("评估已取消"));
+
+            const QString score_path = QDir(prediction_dir).filePath(QStringLiteral("%1.tiff").arg(image_it.key()));
+            if (!QFileInfo(score_path).isFile())
+                continue;
+
+            EvaluationScoreMap score_map;
+            QString            score_error;
+            if (!readEvaluationScoreMap(score_path, score_map, &score_error))
+                return fail(score_error.isEmpty() ? QString("读取异常分数图失败: %1").arg(score_path) : score_error);
+
+            double maximum = 0.0;
+            if (!evaluationScoreMapMaximum(score_map, &maximum))
+                continue;
+
+            image_it->anomaly_score_map = std::make_shared<const EvaluationScoreMap>(std::move(score_map));
+
+            EvaluationPredictionData prediction;
+            prediction.prediction_id = QString("image-%1").arg(image_it.key());
+            prediction.image_id      = image_it.key();
+            prediction.class_id      = 1;
+            prediction.class_name    = evaluation::displayText(evaluation::DisplayText::Anomaly);
+            prediction.score         = maximum;
+            image_it->predictions.push_back(std::move(prediction));
+            ++total;
+        }
+        if (count != nullptr)
+            *count = total;
+        return true;
+    }
+
     if (task_database_path.trimmed().isEmpty() || !QFileInfo(task_database_path).isFile())
         return true;
 
@@ -582,24 +691,6 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
         {
             if (ignored_count)
                 ++(*ignored_count);
-            continue;
-        }
-
-        if (anomaly_method)
-        {
-            const QVariantMap value       = record_it.value().toMap();
-            const QVariant    score_value = value.value(QStringLiteral("image_score"));
-            double            score       = 0.0;
-            if (!finiteNumber(score_value, &score))
-                return fail(QString("图像 %1 的 image_score 无效").arg(image_id));
-            EvaluationPredictionData prediction;
-            prediction.prediction_id = QString("image-%1").arg(image_id);
-            prediction.image_id      = image_id;
-            prediction.class_id      = 1;
-            prediction.class_name    = evaluation::displayText(evaluation::DisplayText::Anomaly);
-            prediction.score         = score;
-            images[image_id].predictions.push_back(prediction);
-            ++total;
             continue;
         }
 

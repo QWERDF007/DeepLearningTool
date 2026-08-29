@@ -124,6 +124,7 @@ enum class ChartId
     Unknown = 0,              ///< 未知图表标识。
     AnomalyScoreDistribution, ///< 异常检测分数分布直方图。
     PrecisionRecall,          ///< 精确率-召回率（PR）曲线图。
+    ConfidenceDistribution,   ///< 目标检测/语义分割置信度分布图。
     PerClassMetrics,          ///< 按类别多指标对比图。
 };
 Q_ENUM_NS(ChartId)
@@ -135,11 +136,13 @@ Q_ENUM_NS(ChartId)
  */
 enum class SeriesKind
 {
-    Unknown = 0, ///< 未知系列。
-    Good,        ///< 良品/正常样本系列。
-    Anomaly,     ///< 异常/缺陷样本系列。
-    Average,     ///< 平均值/总体系列（如 mAP）。
-    Class,       ///< 单类别系列。
+    Unknown = 0,  ///< 未知系列。
+    Good,         ///< 良品/正常样本系列。
+    Anomaly,      ///< 异常/缺陷样本系列。
+    Micro,        ///< 全局 micro 系列。
+    Class,        ///< 单类别系列。
+    Overall,      ///< 不区分组别的总体分布系列。
+    BestThreshold,///< 最佳阈值只读参考系列。
 };
 Q_ENUM_NS(SeriesKind)
 
@@ -208,6 +211,7 @@ enum class Field
     DiagnosticMetrics,
     OfficialMetrics,
     ImageMetricDefinition,
+    ThresholdSearch,
     Capabilities,
     HasInstanceMetrics,
     HasImageMetrics,
@@ -234,6 +238,14 @@ enum class Field
     PrecisionDefined,
     RecallDefined,
     F1Defined,
+    BestThreshold,
+    EquivalentBestThresholdMin,
+    EquivalentBestThresholdMax,
+    BestF1,
+    PositiveGroundTruthCount,
+    Threshold,
+    ReadOnly,
+    Reference,
     Tp,
     Fp,
     Fn,
@@ -394,11 +406,14 @@ class MODEL_API EvaluationProtocolKeys : public QObject
     Q_PROPERTY(QString chartAxisCount READ chartAxisCount CONSTANT FINAL)
     Q_PROPERTY(QString chartIdAnomalyScoreDistribution READ chartIdAnomalyScoreDistribution CONSTANT FINAL)
     Q_PROPERTY(QString chartIdPrecisionRecall READ chartIdPrecisionRecall CONSTANT FINAL)
+    Q_PROPERTY(QString chartIdConfidenceDistribution READ chartIdConfidenceDistribution CONSTANT FINAL)
     Q_PROPERTY(QString chartIdPerClassMetrics READ chartIdPerClassMetrics CONSTANT FINAL)
     Q_PROPERTY(QString seriesKindGood READ seriesKindGood CONSTANT FINAL)
     Q_PROPERTY(QString seriesKindAnomaly READ seriesKindAnomaly CONSTANT FINAL)
-    Q_PROPERTY(QString seriesKindAverage READ seriesKindAverage CONSTANT FINAL)
+    Q_PROPERTY(QString seriesKindMicro READ seriesKindMicro CONSTANT FINAL)
     Q_PROPERTY(QString seriesKindClass READ seriesKindClass CONSTANT FINAL)
+    Q_PROPERTY(QString seriesKindOverall READ seriesKindOverall CONSTANT FINAL)
+    Q_PROPERTY(QString seriesKindBestThreshold READ seriesKindBestThreshold CONSTANT FINAL)
     Q_PROPERTY(QString filterKindImageScore READ filterKindImageScore CONSTANT FINAL)
     Q_PROPERTY(QString filterKindPrecisionRecall READ filterKindPrecisionRecall CONSTANT FINAL)
     Q_PROPERTY(QString filterKindPerClassMetrics READ filterKindPerClassMetrics CONSTANT FINAL)
@@ -418,11 +433,14 @@ public:
     QString chartAxisCount() const;
     QString chartIdAnomalyScoreDistribution() const;
     QString chartIdPrecisionRecall() const;
+    QString chartIdConfidenceDistribution() const;
     QString chartIdPerClassMetrics() const;
     QString seriesKindGood() const;
     QString seriesKindAnomaly() const;
-    QString seriesKindAverage() const;
+    QString seriesKindMicro() const;
     QString seriesKindClass() const;
+    QString seriesKindOverall() const;
+    QString seriesKindBestThreshold() const;
     QString filterKindImageScore() const;
     QString filterKindPrecisionRecall() const;
     QString filterKindPerClassMetrics() const;

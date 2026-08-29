@@ -675,7 +675,7 @@ bool PersistentProjectFixture::savePatchcoreConfiguration(const QString &model_u
         task.test_params       = test_params;
         task.dataset_selection = test_selection;
         task.modified_at       = QDateTime::currentSecsSinceEpoch();
-        if (!repository.saveTask(patchcoreModelName(), task, &database_error))
+        if (!repository.saveTask(patchcoreModelName(), task, true, &database_error))
         {
             if (error != nullptr)
                 *error = QStringLiteral("更新 PatchCore 测试任务失败: %1").arg(database_error);

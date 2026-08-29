@@ -34,7 +34,9 @@ private slots:
     void seriesAndFilterRoundTrip()
     {
         for (const evaluation::SeriesKind kind : {evaluation::SeriesKind::Good, evaluation::SeriesKind::Anomaly,
-                                                  evaluation::SeriesKind::Average, evaluation::SeriesKind::Class})
+                                                  evaluation::SeriesKind::Micro, evaluation::SeriesKind::Class,
+                                                  evaluation::SeriesKind::Overall,
+                                                  evaluation::SeriesKind::BestThreshold})
             QCOMPARE(evaluation::seriesKindFromKey(evaluation::seriesKindKey(kind)), kind);
 
         for (const evaluation::FilterKind kind : {evaluation::FilterKind::ImageScore,

@@ -101,4 +101,6 @@ QML 模块通过 Qt 的 QML 类型注册暴露对象。应用级单例包括 `Pr
 - 取消必须沿任务控制器和取消令牌传递，完成、失败和停止后的迟到事件不能重新打开终态任务。
 - 需要跨线程更新 UI 服务时，复用现有服务 API 或 `Qt::QueuedConnection`。
 
+项目关闭时由 `ModelTestTaskManager::shutdown()` 统一取消缓存中的评估视图模型，并等待评估专用线程池收敛；项目对象释放前不会遗留访问项目数据的评估线程。具体实现见 [`src/model/ModelTestTaskManager.cpp`](../src/model/ModelTestTaskManager.cpp) 和 [`src/model/ModelEvaluationViewModel.cpp`](../src/model/ModelEvaluationViewModel.cpp)。
+
 这些规则的具体实现位于 `src/model/ModelTaskController.*`、`src/model/ModelTaskPreparation.*`、`src/model/ExternalModelTaskRunner.*` 和对应评估引擎文件。

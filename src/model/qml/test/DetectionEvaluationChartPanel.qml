@@ -28,7 +28,9 @@ EvaluationChartPanelBase {
             if (!dataset)
                 continue
             var seriesKind = dataset.series_kind !== undefined ? String(dataset.series_kind) : ""
-            if (seriesKind === "average" || seriesKind === EvaluationProtocolKeys.seriesKindAverage) {
+            if (seriesKind === "micro" || seriesKind === EvaluationProtocolKeys.seriesKindMicro
+                    || seriesKind === "best_threshold"
+                    || seriesKind === EvaluationProtocolKeys.seriesKindBestThreshold) {
                 displayedDatasets.push(dataset)
             } else if (seriesKind === "class" || seriesKind === EvaluationProtocolKeys.seriesKindClass) {
                 var classId = Number(dataset.class_id)
@@ -67,14 +69,30 @@ EvaluationChartPanelBase {
                 ? Number(tooltipItem.datasetIndex) : -1
         var dataset = datasetIndex >= 0 && datasetIndex < datasets.length
                 ? datasets[datasetIndex] : null
-        var label = dataset && dataset.label !== undefined ? String(dataset.label) : ""
-        if (label.length > 0)
-            label += ": "
-
-        var value = tooltipItem && tooltipItem.value !== undefined && tooltipItem.value !== null
-                ? tooltipItem.value
+        var pointIndex = tooltipItem && tooltipItem.index !== undefined ? Number(tooltipItem.index) : -1
+        var point = dataset && dataset.data && pointIndex >= 0 && pointIndex < dataset.data.length
+                ? dataset.data[pointIndex] : null
+        var precision = point && point.y !== undefined
+                ? point.y
                 : (tooltipItem && tooltipItem.yLabel !== undefined ? tooltipItem.yLabel : "")
-        return label + control.formatChartTooltipNumber(value)
+        var threshold = point && point.threshold !== undefined
+                ? point.threshold
+                : (dataset && dataset.threshold !== undefined ? dataset.threshold : NaN)
+        var lines = ["精确率: " + control.formatChartTooltipNumber(precision)]
+        if (isFinite(Number(threshold)))
+            lines.push("阈值: " + control.formatChartTooltipNumber(threshold))
+        if (dataset && dataset.best_f1 !== undefined && isFinite(Number(dataset.best_f1)))
+            lines.push("F1: " + control.formatChartTooltipNumber(dataset.best_f1))
+        return lines
+    }
+
+    function precisionRecallTooltipTitle(tooltipItems, data) {
+        if (!tooltipItems || tooltipItems.length === 0)
+            return ""
+        var item = tooltipItems[0]
+        var recall = item && item.xLabel !== undefined && item.xLabel !== null && item.xLabel !== ""
+                ? item.xLabel : item.label
+        return "召回率: " + control.formatChartTooltipNumber(recall)
     }
 
     function prepareMethodOptions(descriptor, options) {
@@ -82,6 +100,7 @@ EvaluationChartPanelBase {
         if (chartId === "precision_recall" || chartId === EvaluationProtocolKeys.chartIdPrecisionRecall) {
             options.tooltips = options.tooltips || ({})
             options.tooltips.callbacks = options.tooltips.callbacks || ({})
+            options.tooltips.callbacks.title = control.precisionRecallTooltipTitle
             options.tooltips.callbacks.label = control.precisionRecallTooltipLabel
             options.maintainAspectRatio = false
             options.responsive = true

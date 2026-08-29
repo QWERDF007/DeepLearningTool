@@ -62,6 +62,29 @@ const EvaluationInstanceRecord *findEvent(const EvaluationResult &result, evalua
     return nullptr;
 }
 
+class ThresholdCollectionProbe final : public DetectionEvaluationEngine
+{
+public:
+    using InstanceMatchingEvaluationEngine::collectThresholdSearchData;
+
+    void setCancelToken(const std::shared_ptr<std::atomic_bool> &token)
+    {
+        scratch_.cancel_token = token;
+    }
+};
+
+class ThresholdCollectionFailureProbe final : public DetectionEvaluationEngine
+{
+protected:
+    bool collectThresholdSearchData(const QMap<qint64, EvaluationImageData> &, QVector<double> &, qint64 &,
+                                    QString *err_msg) override
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("阈值数据收集失败");
+        return false;
+    }
+};
+
 } // namespace
 
 class EvaluationEngineTest : public QObject
@@ -102,11 +125,8 @@ private slots:
         QVERIFY(match != nullptr);
         QCOMPARE(match->count, qint64(1));
         QVERIFY(!result.charts.isEmpty());
-
-        QString conversion_error;
-        const QVariantMap protocol = evaluationResultToProtocolMap(result, &conversion_error);
-        QVERIFY2(!protocol.isEmpty(), qPrintable(conversion_error));
-        QCOMPARE(protocol.value(evaluation::fieldName(evaluation::Field::PredictionCount)).toInt(), 1);
+        QVERIFY(result.official_metrics.value(evaluation::fieldName(evaluation::Field::Available)).toBool());
+        QVERIFY(!result.image_metric_definition.isEmpty());
     }
 
     void detectionThresholdAndEmptyPredictionProduceFalseNegative()
@@ -138,7 +158,7 @@ private slots:
         QCOMPARE(cell->count, qint64(1));
     }
 
-    void detectionCountsClassMismatchFalsePositiveAndFalseNegative()
+    void detectionMatchesPredictionsWithinTheirOwnClass()
     {
         EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
         QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
@@ -167,11 +187,59 @@ private slots:
         QCOMPARE(result.overall.tp, qint64(0));
         QCOMPARE(result.overall.fp, qint64(2));
         QCOMPARE(result.overall.fn, qint64(2));
-        QVERIFY(findEvent(result, evaluation::Status::ClassMismatch) != nullptr);
+        QVERIFY(findEvent(result, evaluation::Status::ClassMismatch) == nullptr);
         QVERIFY(findEvent(result, evaluation::Status::FalsePositive) != nullptr);
         QVERIFY(findEvent(result, evaluation::Status::FalseNegative) != nullptr);
         QVERIFY(findCell(result, QStringLiteral("FN"), QString::number(cat)) != nullptr);
         QVERIFY(findCell(result, QString::number(cat), QStringLiteral("FP")) != nullptr);
+    }
+
+    void detectionThresholdSearchUsesGlobalMicroF1()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 dog = fixture.addClass(QStringLiteral("Dog"), QStringLiteral("normal"));
+        QVERIFY(cat >= 0);
+        QVERIFY(dog >= 0);
+
+        // At 0.9, ten Cat matches are kept: micro counts are TP=10/FN=1.
+        for (int index = 0; index < 10; ++index)
+        {
+            const qint64 image = fixture.addImage(QStringLiteral("cat-%1").arg(index));
+            QVERIFY(image >= 0);
+            QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+            QVariantList predictions;
+            predictions.push_back(detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9,
+                                                      0, 0, 10, 10));
+            predictions.push_back(detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.8,
+                                                      20, 20, 5, 5));
+            QVERIFY(fixture.writePrediction(image, predictions));
+        }
+
+        // At 0.8, the minority Dog match and ten extra false positives are
+        // added. This improves macro-F1 but lowers global micro-F1.
+        const qint64 dog_image = fixture.addImage(QStringLiteral("dog"));
+        QVERIFY(dog_image >= 0);
+        QVERIFY(fixture.addDetectionLabel(dog_image, dog, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.writePrediction(dog_image,
+                                        detectionPrediction(static_cast<int>(dog), QStringLiteral("Dog"), 0.8,
+                                                            0, 0, 10, 10)));
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({cat, dog}));
+
+        DetectionEvaluationEngine engine;
+        EvaluationResult result;
+        QString error;
+        QVERIFY2(engine.evaluate(optionsFor(fixture, evaluation::Method::Detection), &result, &error),
+                 qPrintable(error));
+        QVERIFY(result.threshold_search.available);
+        QCOMPARE(result.threshold_search.points.size(), 3);
+        QCOMPARE(result.threshold_search.best_point.threshold, 0.9);
+        QCOMPARE(result.threshold_search.best_point.counts.tp, qint64(10));
+        QCOMPARE(result.threshold_search.best_point.counts.fp, qint64(0));
+        QCOMPARE(result.threshold_search.best_point.counts.fn, qint64(1));
+        QVERIFY(result.threshold_search.best_point.f1 > 0.95);
     }
 
     void segmentationUsesConcreteEngineAndPolygonLabels()
@@ -199,6 +267,76 @@ private slots:
         QCOMPARE(result.overall.fp, qint64(0));
         QCOMPARE(result.overall.fn, qint64(0));
         QVERIFY(result.has_confusion_matrix);
+    }
+
+    void segmentationThresholdSearchUsesAllPredictionScores()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Segmentation));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 object = fixture.addClass(QStringLiteral("Object"), QStringLiteral("normal"));
+        const qint64 image  = fixture.addImage(QStringLiteral("polygon-threshold"));
+        QVERIFY(object >= 0);
+        QVERIFY(image >= 0);
+        QVERIFY(fixture.addSegmentationLabel(image, object,
+                                             {QPointF(2, 2), QPointF(14, 2), QPointF(14, 14), QPointF(2, 14)})
+                >= 0);
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({object}));
+        QVERIFY(fixture.writePrediction(
+            image,
+            QVariantList{
+                detectionPrediction(static_cast<int>(object), QStringLiteral("Object"), 0.8, 2, 2, 12, 12),
+                detectionPrediction(static_cast<int>(object), QStringLiteral("Object"), 0.6, 20, 20, 5, 5)}));
+
+        SegmentationEvaluationEngine engine;
+        EvaluationResult             result;
+        QString                      error;
+        QVERIFY2(engine.evaluate(optionsFor(fixture, evaluation::Method::Segmentation), &result, &error),
+                 qPrintable(error));
+        QVERIFY(result.threshold_search.available);
+        QCOMPARE(result.threshold_search.points.size(), 3);
+        QCOMPARE(result.threshold_search.best_point.threshold, 0.8);
+        QCOMPARE(result.threshold_search.best_point.counts.tp, qint64(1));
+        QCOMPARE(result.threshold_search.best_point.counts.fp, qint64(0));
+        QCOMPARE(result.threshold_search.best_point.counts.fn, qint64(0));
+    }
+
+    void instanceThresholdCollectionHonorsCancellation()
+    {
+        EvaluationImageData image;
+        image.gt.push_back(EvaluationGroundTruthData{1, 1, QStringLiteral("Object"), {}, {}, {}, false});
+        image.predictions.push_back(EvaluationPredictionData{QStringLiteral("prediction"), 1, 1,
+                                                              QStringLiteral("Object"), 0.8, {}, {}, {}});
+
+        auto                       cancel = std::make_shared<std::atomic_bool>(true);
+        ThresholdCollectionProbe  probe;
+        probe.setCancelToken(cancel);
+        QVector<double>            scores;
+        qint64                      positive_ground_truth_count = 0;
+        QString                     error;
+        QVERIFY(!probe.collectThresholdSearchData({{1, image}}, scores, positive_ground_truth_count, &error));
+        QVERIFY(error.contains(QStringLiteral("取消")));
+        QVERIFY(scores.isEmpty());
+    }
+
+    void thresholdCollectionFailureStopsEvaluation()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat   = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 image = fixture.addImage(QStringLiteral("cat"));
+        QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({cat}));
+        QVERIFY(fixture.writePrediction(
+            image, detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 10, 10)));
+
+        ThresholdCollectionFailureProbe engine;
+        EvaluationResult               result;
+        QString                        error;
+        QVERIFY(!engine.evaluate(optionsFor(fixture, evaluation::Method::Detection), &result, &error));
+        QCOMPARE(error, QStringLiteral("阈值数据收集失败"));
+        QVERIFY(result.images.isEmpty());
     }
 
     void detectionHonorsIoUBoundaryAndHungarianStrategy()
@@ -266,6 +404,51 @@ private slots:
         QVERIFY(!result.has_instance_metrics);
         QVERIFY(result.has_confusion_matrix);
         QVERIFY(!result.charts.isEmpty());
+        QVERIFY(result.threshold_search.available);
+        QCOMPARE(result.threshold_search.points.size(), 3);
+        QVERIFY(std::abs(result.threshold_search.best_point.threshold - 0.9) < 1e-6);
+        QCOMPARE(result.threshold_search.best_point.counts.tp, qint64(1));
+        QCOMPARE(result.threshold_search.best_point.counts.fp, qint64(0));
+        QCOMPARE(result.threshold_search.best_point.counts.fn, qint64(0));
+
+        const QVariantMap *anomaly_distribution = nullptr;
+        for (const QVariantMap &chart : result.charts)
+        {
+            if (chart.value(evaluation::fieldName(evaluation::Field::ChartId)).toString()
+                == evaluation::chartIdKey(evaluation::ChartId::AnomalyScoreDistribution))
+            {
+                anomaly_distribution = &chart;
+                break;
+            }
+        }
+        QVERIFY(anomaly_distribution != nullptr);
+        const QVariantList distribution_datasets
+            = anomaly_distribution->value(evaluation::fieldName(evaluation::Field::Data))
+                  .toMap()
+                  .value(evaluation::fieldName(evaluation::Field::Datasets))
+                  .toList();
+        QCOMPARE(distribution_datasets.size(), 3);
+        QCOMPARE(evaluation::seriesKindFromKey(
+                     distribution_datasets.at(0).toMap()
+                         .value(evaluation::fieldName(evaluation::Field::SeriesKind))
+                         .toString()),
+                 evaluation::SeriesKind::Good);
+        QCOMPARE(evaluation::seriesKindFromKey(
+                     distribution_datasets.at(1).toMap()
+                         .value(evaluation::fieldName(evaluation::Field::SeriesKind))
+                         .toString()),
+                 evaluation::SeriesKind::Anomaly);
+        QCOMPARE(evaluation::seriesKindFromKey(
+                     distribution_datasets.at(2).toMap()
+                         .value(evaluation::fieldName(evaluation::Field::SeriesKind))
+                         .toString()),
+                 evaluation::SeriesKind::BestThreshold);
+        for (const QVariant &dataset_value : distribution_datasets)
+            QVERIFY(evaluation::seriesKindFromKey(
+                        dataset_value.toMap()
+                            .value(evaluation::fieldName(evaluation::Field::SeriesKind))
+                            .toString())
+                    != evaluation::SeriesKind::Overall);
 
         const auto *good_cell = findCell(result, QStringLiteral("0"), QString::number(good));
         const auto *bad_cell = findCell(result, QStringLiteral("1"), QString::number(anomaly));
@@ -490,6 +673,35 @@ private slots:
         QVERIFY(!second.isNull());
         QCOMPARE(second.size(), QSize(4, 4));
         QVERIFY(first != second);
+    }
+
+    void heatmapProviderReadsDoublePrecisionScoreMaps()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString image_path = QDir(temporary.path()).filePath(QStringLiteral("source.png"));
+        const QString score_path = QDir(temporary.path()).filePath(QStringLiteral("double.tiff"));
+        QImage        source(4, 4, QImage::Format_RGB888);
+        source.fill(QColor(80, 80, 80));
+        QVERIFY(source.save(image_path, "PNG"));
+
+        cv::Mat score_map(4, 4, CV_64FC1, cv::Scalar(0.0));
+        score_map.at<double>(0, 0) = 0.5;
+        score_map.at<double>(3, 3) = 1.0;
+        QVERIFY(cv::imwrite(score_path.toStdString(), score_map));
+
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("path"), image_path);
+        query.addQueryItem(QStringLiteral("scorePath"), score_path);
+        query.addQueryItem(QStringLiteral("heatmap"), QStringLiteral("1"));
+        query.addQueryItem(QStringLiteral("heatmapThreshold"), QStringLiteral("1"));
+
+        EvaluationThumbnailImageProvider provider;
+        const QImage rendered
+            = provider.requestImage(QStringLiteral("heatmap-double?%1").arg(query.toString(QUrl::FullyEncoded)),
+                                    nullptr, QSize(1, 1));
+        QVERIFY(!rendered.isNull());
+        QCOMPARE(rendered.size(), QSize(4, 4));
     }
 
     void cancellationAndInvalidInputFailWithoutPartialResult()

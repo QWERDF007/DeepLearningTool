@@ -89,6 +89,38 @@ private slots:
         QVERIFY(!QDir(storage.testRoot(QStringLiteral("model"))).exists()
                 || QDir(storage.testRoot(QStringLiteral("model"))).entryList(QDir::Dirs | QDir::NoDotAndDotDot).isEmpty());
     }
+
+    void parameterSaveDoesNotOverwriteCommittedDatasetSelection()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 class_id = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        QVERIFY(class_id >= 0);
+
+        ModelTestTaskRepository repository(fixture.rootPath());
+        repository.setProjectDatabasePath(fixture.projectDatabasePath());
+        ModelDatasetSelection selection;
+        selection.label_classes.insert({fixture.datasetId(), class_id});
+        ModelTestTaskDefinition task;
+        QString error;
+        QVERIFY2(repository.createTask(QStringLiteral("model"), QStringLiteral("model-uuid"), QStringLiteral("Task"),
+                                       {{QStringLiteral("evaluation"),
+                                         QVariantMap{{QStringLiteral("conf"), 0.5}}}},
+                                       selection, task, &error),
+                 qPrintable(error));
+
+        ModelTestTaskDefinition parameters_only = task;
+        parameters_only.test_params[QStringLiteral("evaluation")]
+            = QVariantMap{{QStringLiteral("conf"), 0.8}};
+        parameters_only.dataset_selection = {};
+        QVERIFY2(repository.saveTask(QStringLiteral("model"), parameters_only, false, &error), qPrintable(error));
+
+        ModelTestTaskDefinition loaded;
+        QVERIFY2(repository.loadTask(QStringLiteral("model"), task.uuid, loaded, &error), qPrintable(error));
+        QCOMPARE(loaded.test_params.value(QStringLiteral("evaluation")).toMap().value(QStringLiteral("conf")).toDouble(),
+                 0.8);
+        QVERIFY(loaded.dataset_selection.containsLabelClass(fixture.datasetId(), class_id));
+    }
 };
 
 REGISTER_TEST(ModelTestTaskRepositoryTest)

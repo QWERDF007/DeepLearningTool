@@ -3,6 +3,7 @@
 #include "dltool/model/Export.h"
 #include "model/EvaluationCharts.h"
 #include "model/EvaluationData.h"
+#include "model/EvaluationThresholdSearch.h"
 #include "model/ModelEvaluationModels.h"
 #include "model/ModelEvaluationOptions.h"
 #include "model/ModelEvaluationProtocol.h"
@@ -73,6 +74,9 @@ protected:
         EvaluationCounts                overall;      ///< 全局实例计数。
         EvaluationCounts                image_counts; ///< 图像级计数。
         QMap<qint64, double>             anomaly_image_scores; ///< 异常检测使用的图像级分数。
+        QVariantMap                       official_metrics; ///< 当前阈值工作点的官方指标。
+        QVariantMap                       image_metric_definition; ///< 图像级指标定义。
+        EvaluationThresholdSearchResult threshold_search; ///< 当前评估的进程内阈值搜索结果。
 
         QString                           dataset_root;    ///< GT mask 解析根目录（项目库绝对路径）。
         QString                           prediction_root; ///< 预测 mask 解析根目录。
@@ -81,6 +85,7 @@ protected:
         evaluation::MatchingStrategy      matching_strategy{evaluation::MatchingStrategy::GreedyIoU};
         QVariantMap                       preprocessing_config; ///< 模型空间预处理参数（仅用于展示坐标）。
         std::shared_ptr<std::atomic_bool> cancel_token;
+        bool                              collect_events{true}; ///< 搜索计数阶段关闭事件/几何构造。
     };
 
     /**
@@ -91,6 +96,16 @@ protected:
      * @param classes 类别目录（输入为全局目录，可追加）。
      */
     virtual void buildClasses(const QMap<qint64, EvaluationImageData> &images, QMap<int, QString> &classes);
+
+    /**
+     * @brief 收集当前方法的全量阈值搜索输入。
+     *
+     * 默认返回 false，供不支持阈值搜索的自定义引擎保持旧行为。内建异常
+     * 检测、目标检测和语义分割引擎返回 true，并只收集有限原始分数。
+     */
+    virtual bool collectThresholdSearchData(const QMap<qint64, EvaluationImageData> &images,
+                                            QVector<double> &scores, qint64 &positive_ground_truth_count,
+                                            QString *err_msg);
 
     /**
      * @brief 实例级计数钩子（纯虚）。
@@ -170,6 +185,16 @@ protected:
      * @return 产出返回 true。
      */
     virtual bool hasImageLevelStats() const;
+
+    /**
+     * @brief 清空一次阈值工作点的派生计算结果并设置工作阈值。
+     *
+     * 原始异常分数快照与阈值搜索结果会保留，供后续工作点和图表复用。
+     */
+    void resetComputationScratch(double threshold, bool collect_events);
+
+    /** @brief 当前工作点用于搜索比较的正式计数。 */
+    EvaluationCounts thresholdSearchCounts() const;
 
     /**
      * @brief 子类可访问的共享暂存区。

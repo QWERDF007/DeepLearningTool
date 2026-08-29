@@ -3,6 +3,7 @@
 #include "dltool/model/Export.h"
 #include "model/EvaluationCharts.h"
 #include "model/EvaluationData.h"
+#include "model/EvaluationThresholdSearch.h"
 #include "model/ModelEvaluationModels.h"
 #include "model/ModelEvaluationProtocol.h"
 
@@ -39,7 +40,6 @@ struct MODEL_API EvaluationResult
     QVector<EvaluationConfusionCell>  matrix_cells;     ///< 混淆矩阵单元格。
     QMap<QString, qint64>             matrix;           ///< 原始矩阵键（行\x1f列）-> 计数。
     QVector<EvaluationInstanceRecord> instance_records; ///< 实例事件值对象。
-    QVariantList                      event_maps;       ///< 与 instance_records 对应的协议事件映射。
 
     int  prediction_count{0};         ///< 参与评估的预测总数。
     bool has_confusion_matrix{false}; ///< 当前方法是否产出矩阵。
@@ -47,26 +47,17 @@ struct MODEL_API EvaluationResult
     bool has_image_metrics{false};    ///< 是否产出图像级指标。
     bool has_instance_events{false};  ///< 是否产出实例事件。
 
-    QList<QVariantMap> charts;                  ///< 图表描述符（Chart.js 边界保留 QVariantMap）。
-    QStringList        chart_kinds;             ///< 图表渲染类型 key 列表。
-    QVariantMap        image_metric_definition; ///< 图像级指标定义。
+    QList<QVariantMap>              charts;                  ///< 图表描述符（Chart.js 边界保留 QVariantMap）。
+    QStringList                     chart_kinds;             ///< 图表渲染类型 key 列表。
+    QVariantMap                     official_metrics;       ///< 当前阈值工作点的官方指标。
+    QVariantMap                     image_metric_definition; ///< 图像级指标定义。
+    EvaluationThresholdSearchResult threshold_search;        ///< 当前评估的进程内阈值搜索结果。
 
     double                       confidence_threshold{evaluation::kDefaultConfidenceThreshold};
     double                       iou_threshold{evaluation::kDefaultIouThreshold};
     evaluation::MatchingStrategy matching_strategy{evaluation::MatchingStrategy::GreedyIoU};
     QVariantMap                  evaluation_config; ///< 规范化评估配置缓存键。
 };
-
-/**
- * @brief 将强类型评估结果转换为现有协议 QVariantMap 快照。
- *
- * 这是 Phase 3 到 Phase 5 之间的兼容桥：ViewModel 尚在消费协议快照，
- * 后台跨线程传递已改用 EvaluationResult。Phase 5 完成后该桥接函数删除。
- * @param result 强类型评估结果。
- * @param err_msg 可选错误信息输出。
- * @return 协议快照。
- */
-MODEL_API QVariantMap evaluationResultToProtocolMap(const EvaluationResult &result, QString *err_msg = nullptr);
 
 } // namespace dltool::model
 

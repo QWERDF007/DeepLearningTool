@@ -3,6 +3,7 @@
 #include "model/EvaluationGeometry.h"
 
 #include <QVector>
+#include <QMap>
 #include <algorithm>
 #include <limits>
 #include <numeric>
@@ -316,6 +317,62 @@ QList<MatchPair> matchPredictions(const QList<EvaluationPredictionData>  &predic
     if (strategy == evaluation::MatchingStrategy::HungarianIoU)
         return hungarianIoUMatches(predictions.size(), ground_truth.size(), iou_fn, threshold, cancel);
     return greedyIoUMatches(predictions.size(), ground_truth.size(), iou_fn, threshold, cancel);
+}
+
+QList<MatchPair> matchPredictionsByClass(const QList<EvaluationPredictionData>  &predictions,
+                                         const QList<EvaluationGroundTruthData> &ground_truth, const double threshold,
+                                         const evaluation::MatchingStrategy       strategy,
+                                         const std::shared_ptr<std::atomic_bool> &cancel)
+{
+    QMap<int, QList<int>> prediction_indices;
+    QMap<int, QList<int>> ground_truth_indices;
+    for (int index = 0; index < predictions.size(); ++index)
+        prediction_indices[predictions.at(index).class_id].push_back(index);
+    for (int index = 0; index < ground_truth.size(); ++index)
+        ground_truth_indices[ground_truth.at(index).class_id].push_back(index);
+
+    QList<MatchPair> result;
+    for (auto prediction_group = prediction_indices.cbegin(); prediction_group != prediction_indices.cend();
+         ++prediction_group)
+    {
+        if (isCancelled(cancel))
+            return {};
+
+        const QList<int> ground_truth_group = ground_truth_indices.value(prediction_group.key());
+        if (ground_truth_group.isEmpty())
+            continue;
+
+        QList<EvaluationPredictionData> grouped_predictions;
+        QList<EvaluationGroundTruthData> grouped_ground_truth;
+        grouped_predictions.reserve(prediction_group.value().size());
+        grouped_ground_truth.reserve(ground_truth_group.size());
+        for (const int index : prediction_group.value())
+            grouped_predictions.push_back(predictions.at(index));
+        for (const int index : ground_truth_group)
+            grouped_ground_truth.push_back(ground_truth.at(index));
+
+        const QList<MatchPair> grouped_matches
+            = matchPredictions(grouped_predictions, grouped_ground_truth, threshold, strategy, cancel);
+        if (isCancelled(cancel))
+            return {};
+        for (const MatchPair &match : grouped_matches)
+        {
+            if (match.prediction < 0 || match.prediction >= prediction_group.value().size()
+                || match.ground_truth < 0 || match.ground_truth >= ground_truth_group.size())
+                continue;
+            result.push_back({prediction_group.value().at(match.prediction),
+                              ground_truth_group.at(match.ground_truth), match.iou});
+        }
+    }
+
+    std::sort(result.begin(), result.end(),
+              [](const MatchPair &lhs, const MatchPair &rhs)
+              {
+                  if (lhs.prediction != rhs.prediction)
+                      return lhs.prediction < rhs.prediction;
+                  return lhs.ground_truth < rhs.ground_truth;
+              });
+    return result;
 }
 
 } // namespace dltool::model

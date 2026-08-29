@@ -1,12 +1,10 @@
 #include "model/EvaluationThumbnailImageProvider.h"
 
 #include "model/AnomalyPreprocessingTransform.h"
+#include "model/EvaluationDataset.h"
 
-#include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include <QFile>
-#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QPainter>
@@ -34,18 +32,6 @@ bool queryFlag(const QUrlQuery &query, const QString &name)
     return value == QStringLiteral("1") || value == QStringLiteral("true") || value == QStringLiteral("yes");
 }
 
-cv::Mat readScoreMap(const QString &path)
-{
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly))
-        return {};
-    const QByteArray bytes = file.readAll();
-    if (bytes.isEmpty())
-        return {};
-    cv::Mat encoded(1, bytes.size(), CV_8UC1, const_cast<char *>(bytes.constData()));
-    return cv::imdecode(encoded, cv::IMREAD_UNCHANGED);
-}
-
 QVariantMap preprocessingConfig(const QUrlQuery &query)
 {
     QJsonParseError error;
@@ -57,11 +43,11 @@ QVariantMap preprocessingConfig(const QUrlQuery &query)
 
 QImage makeHeatmap(const QImage &source, const QString &scorePath, const QUrlQuery &query)
 {
-    const cv::Mat score_map = readScoreMap(scorePath);
-    if (score_map.empty() || score_map.type() != CV_32FC1 || score_map.cols <= 0 || score_map.rows <= 0)
+    EvaluationScoreMap score_map;
+    if (!readEvaluationScoreMap(scorePath, score_map) || !score_map.isValid())
         return {};
 
-    const QSize model_size(score_map.cols, score_map.rows);
+    const QSize model_size(score_map.width, score_map.height);
     const AnomalyPreprocessingTransform transform
         = AnomalyPreprocessingTransform::fromConfig(source.size(), model_size, preprocessingConfig(query));
     QImage base = transform.applyToImage(source);
@@ -75,13 +61,12 @@ QImage makeHeatmap(const QImage &source, const QString &scorePath, const QUrlQue
     threshold = std::clamp(threshold, 0.0001, 1000.0);
 
     cv::Mat normalized_map(model_size.height(), model_size.width(), CV_8UC1, cv::Scalar(0));
-    for (int y = 0; y < score_map.rows; ++y)
+    for (int y = 0; y < score_map.height; ++y)
     {
-        const float *source_row = score_map.ptr<float>(y);
-        uchar       *target_row = normalized_map.ptr<uchar>(y);
-        for (int x = 0; x < score_map.cols; ++x)
+        uchar *target_row = normalized_map.ptr<uchar>(y);
+        for (int x = 0; x < score_map.width; ++x)
         {
-            const double value = static_cast<double>(source_row[x]);
+            const double value = score_map.values.at(y * score_map.width + x);
             const double normalized_value = std::isfinite(value)
                                                 ? std::clamp(value / threshold, 0.0, 1.0)
                                                 : 0.0;

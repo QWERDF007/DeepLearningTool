@@ -193,7 +193,7 @@ bool ModelTestTaskRepository::loadTask(const QString &model_name, const QString 
 }
 
 bool ModelTestTaskRepository::saveTask(const QString &model_name, const ModelTestTaskDefinition &task,
-                                       QString *err_msg) const
+                                       const bool persist_selection, QString *err_msg) const
 {
     ModelTestTaskDefinition value = task;
     value.name                    = value.name.trimmed();
@@ -211,7 +211,8 @@ bool ModelTestTaskRepository::saveTask(const QString &model_name, const ModelTes
     dltool::database::ModelTaskDataBase    task_database(task_database_path);
     const dltool::database::TaskInfoRecord info{value.uuid, value.created_at, value.modified_at};
     if (!task_database.upsertTaskInfo(info, err_msg) || !task_database.replaceTestParams(value.test_params, err_msg)
-        || !task_database.replaceDatasets(testDatasetRecords(value.dataset_selection, project_database_path_), err_msg))
+        || (persist_selection
+            && !task_database.replaceDatasets(testDatasetRecords(value.dataset_selection, project_database_path_), err_msg)))
         return false;
 
     dltool::database::ModelDataBase             model_database(modelDatabasePath(model_name));
@@ -247,7 +248,7 @@ bool ModelTestTaskRepository::createTask(const QString &model_name, const QStrin
     task.dataset_selection = dataset_selection;
     task.created_at        = now;
     task.modified_at       = now;
-    return saveTask(model_name, task, err_msg);
+    return saveTask(model_name, task, true, err_msg);
 }
 
 bool ModelTestTaskRepository::renameTask(const QString &model_name, const QString &uuid, const QString &name,

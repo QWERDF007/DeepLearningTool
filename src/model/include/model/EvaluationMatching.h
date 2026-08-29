@@ -106,4 +106,22 @@ MODEL_API QList<MatchPair> matchPredictions(const QList<EvaluationPredictionData
                                             evaluation::MatchingStrategy             strategy,
                                             const std::shared_ptr<std::atomic_bool> &cancel = {});
 
+/**
+ * @brief 按类别分别匹配预测与真值。
+ *
+ * 预测和真值只在相同 class_id 的子集中进行一对一匹配，返回的下标仍然
+ * 指向传入列表。检测、分割正式评估以及全局 micro-F1 阈值搜索必须共用
+ * 此入口，避免不同类别的几何重叠互相消耗匹配机会。
+ * @param predictions 预测列表。
+ * @param ground_truth 真值列表。
+ * @param threshold IoU 匹配阈值。
+ * @param strategy 匹配策略（贪心/Hungarian）。
+ * @param cancel 协作取消令牌，可为空。
+ * @return 按原始预测下标升序的匹配对列表。
+ */
+MODEL_API QList<MatchPair> matchPredictionsByClass(const QList<EvaluationPredictionData>  &predictions,
+                                                   const QList<EvaluationGroundTruthData> &ground_truth,
+                                                   double threshold, evaluation::MatchingStrategy strategy,
+                                                   const std::shared_ptr<std::atomic_bool> &cancel = {});
+
 } // namespace dltool::model

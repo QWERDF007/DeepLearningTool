@@ -13,6 +13,13 @@
 
 namespace dltool::model {
 
+/** @brief 从 TIFF 预测产物读取原始异常分数图；缺失或格式无效时返回 false。 */
+MODEL_API bool readEvaluationScoreMap(const QString &path, EvaluationScoreMap &score_map,
+                                      QString *err_msg = nullptr);
+
+/** @brief 获取分数图中的有限像素最大值。 */
+MODEL_API bool evaluationScoreMapMaximum(const EvaluationScoreMap &score_map, double *maximum);
+
 /**
  * @brief 读取测试任务图像文件列表。
  *
@@ -61,7 +68,8 @@ MODEL_API bool loadEvaluationImages(
  * @brief 从测试任务数据库与预测目录加载预测结果。
  *
  * 每条预测记录按协议校验 geometry，越界 bbox 裁剪到图像边界，并规范化
- * 几何记录；异常检测方法只读取图像级 image_score。
+ * 几何记录；异常检测方法从 pred/<image_id>.tiff 读取原始异常分数图，
+ * 不使用 task.db 中的 image_score 替代。
  * @param task_database_path 测试任务数据库路径。
  * @param prediction_dir 预测输出目录（mask artifact 根目录）。
  * @param images 已加载的图像记录（按 image_id 追加预测）。

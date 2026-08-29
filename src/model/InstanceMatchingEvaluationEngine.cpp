@@ -7,6 +7,7 @@
 #include <QSet>
 #include <QVariantList>
 #include <algorithm>
+#include <cmath>
 
 namespace dltool::model {
 
@@ -69,6 +70,37 @@ void InstanceMatchingEvaluationEngine::buildClasses(const QMap<qint64, Evaluatio
     classes.remove(-1);
 }
 
+bool InstanceMatchingEvaluationEngine::collectThresholdSearchData(const QMap<qint64, EvaluationImageData> &images,
+                                                                  QVector<double> &scores,
+                                                                  qint64 &positive_ground_truth_count,
+                                                                  QString *err_msg)
+{
+    scores.clear();
+    positive_ground_truth_count = 0;
+    for (const EvaluationImageData &image : images)
+    {
+        if (cancelled(scratch_.cancel_token))
+        {
+            if (err_msg != nullptr)
+                *err_msg = QStringLiteral("评估已取消");
+            return false;
+        }
+        positive_ground_truth_count += image.gt.size();
+        for (const EvaluationPredictionData &prediction : image.predictions)
+        {
+            if (cancelled(scratch_.cancel_token))
+            {
+                if (err_msg != nullptr)
+                    *err_msg = QStringLiteral("评估已取消");
+                return false;
+            }
+            if (std::isfinite(prediction.score))
+                scores.push_back(prediction.score);
+        }
+    }
+    return true;
+}
+
 bool InstanceMatchingEvaluationEngine::runDetectionLoop(const QMap<qint64, EvaluationImageData> &images,
                                                         QString                                 *err_msg)
 {
@@ -94,7 +126,7 @@ bool InstanceMatchingEvaluationEngine::runDetectionLoop(const QMap<qint64, Evalu
         const EvaluationImageData      &image = image_it.value();
         QList<EvaluationPredictionData> predictions;
         for (const EvaluationPredictionData &prediction : image.predictions)
-            if (prediction.score >= scratch_.confidence)
+            if (std::isfinite(prediction.score) && prediction.score >= scratch_.confidence)
                 predictions.push_back(prediction);
         std::stable_sort(predictions.begin(), predictions.end(),
                          [](const EvaluationPredictionData &a, const EvaluationPredictionData &b)
@@ -102,15 +134,20 @@ bool InstanceMatchingEvaluationEngine::runDetectionLoop(const QMap<qint64, Evalu
 
         QVector<bool>          used_gt(image.gt.size(), false);
         QVector<bool>          used_pred(predictions.size(), false);
-        const QList<MatchPair> pairs
-            = matchPredictions(predictions, image.gt, scratch_.iou, scratch_.matching_strategy, scratch_.cancel_token);
+        const QList<MatchPair> pairs = matchPredictionsByClass(
+            predictions, image.gt, scratch_.iou, scratch_.matching_strategy, scratch_.cancel_token);
+        if (cancelled(scratch_.cancel_token))
+            return fail(QString("评估已取消"));
         const auto appendEvent = [&](const evaluation::Status status, const EvaluationGroundTruthData *gt,
                                      const EvaluationPredictionData *pred, double iou)
         {
-            const QVariantMap event_map
-                = buildInstanceEvent(image, status, gt, pred, iou, dataset_root_path, prediction_task_root,
-                                     static_cast<qint64>(scratch_.events.size() + 1));
-            scratch_.events.push_back(instanceFromMap(event_map));
+            if (scratch_.collect_events)
+            {
+                const QVariantMap event_map
+                    = buildInstanceEvent(image, status, gt, pred, iou, dataset_root_path, prediction_task_root,
+                                         static_cast<qint64>(scratch_.events.size() + 1));
+                scratch_.events.push_back(instanceFromMap(event_map));
+            }
         };
 
         for (const MatchPair &pair : pairs)
@@ -123,23 +160,10 @@ bool InstanceMatchingEvaluationEngine::runDetectionLoop(const QMap<qint64, Evalu
             used_pred[pair.prediction]                  = true;
             const EvaluationGroundTruthData &gt         = image.gt.at(pair.ground_truth);
             const EvaluationPredictionData  &pred       = predictions.at(pair.prediction);
-            const bool                       same_class = gt.class_id == pred.class_id;
-            if (same_class)
-            {
-                ++scratch_.overall.tp;
-                ++scratch_.per_class[pred.class_id].tp;
-                incrementMatrix(QString::number(pred.class_id), QString::number(gt.class_id));
-                appendEvent(evaluation::Status::TruePositive, &gt, &pred, pair.iou);
-            }
-            else
-            {
-                ++scratch_.overall.fp;
-                ++scratch_.overall.fn;
-                ++scratch_.per_class[pred.class_id].fp;
-                ++scratch_.per_class[gt.class_id].fn;
-                incrementMatrix(QString::number(pred.class_id), QString::number(gt.class_id));
-                appendEvent(evaluation::Status::ClassMismatch, &gt, &pred, pair.iou);
-            }
+            ++scratch_.overall.tp;
+            ++scratch_.per_class[pred.class_id].tp;
+            incrementMatrix(QString::number(pred.class_id), QString::number(gt.class_id));
+            appendEvent(evaluation::Status::TruePositive, &gt, &pred, pair.iou);
         }
         for (int p = 0; p < predictions.size(); ++p)
         {
@@ -214,7 +238,7 @@ QList<QVariantMap> InstanceMatchingEvaluationEngine::buildCharts(
     const EvaluationCounts &image_counts, const QMap<int, EvaluationCounts> &per_class, const QMap<QString, qint64> &,
     const QList<EvaluationInstanceRecord> &, QString *)
 {
-    // 构造与 assembleEvaluationResult 一致的诊断指标，供实例匹配图表构建器消费。
+    // 构造统一诊断指标，供实例匹配图表构建器消费。
     QVariantList per_class_metrics;
     for (auto it = classes.cbegin(); it != classes.cend(); ++it)
     {
@@ -233,7 +257,10 @@ QList<QVariantMap> InstanceMatchingEvaluationEngine::buildCharts(
          evaluationMetricMap(image_counts.tp, image_counts.fp, image_counts.fn)}
     };
     const EvaluationChartOutput official = buildInstanceMatchingEvaluationCharts(
-        images, scratch_.confidence, scratch_.iou, scratch_.matching_strategy, diagnostic, scratch_.cancel_token);
+        images, scratch_.confidence, scratch_.iou, scratch_.matching_strategy, diagnostic, scratch_.cancel_token,
+        &scratch_.threshold_search);
+    scratch_.official_metrics        = official.metrics;
+    scratch_.image_metric_definition = official.image_definition;
     QList<QVariantMap> charts;
     charts.reserve(official.charts.size());
     for (const QVariant &value : official.charts) charts.push_back(value.toMap());
@@ -243,7 +270,7 @@ QList<QVariantMap> InstanceMatchingEvaluationEngine::buildCharts(
 QVector<EvaluationConfusionCell> InstanceMatchingEvaluationEngine::buildConfusionMatrix(
     const QMap<int, QString> &classes, const QMap<QString, qint64> &matrix)
 {
-    // 检测方法 total_count = 实例事件数（与 assembleEvaluationResult 一致）。
+    // 检测方法 total_count 使用实例事件数。
     const QVariantList               cell_maps = evaluationConfusionCells(classes, matrix, scratch_.events.size());
     QVector<EvaluationConfusionCell> cells;
     cells.reserve(cell_maps.size());

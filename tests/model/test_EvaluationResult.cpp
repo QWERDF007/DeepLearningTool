@@ -20,15 +20,22 @@ private slots:
         QVERIFY(QMetaType::fromType<std::shared_ptr<EvaluationResult>>().isValid());
     }
 
-    void protocolBridgeProducesExpectedFields()
+    void typedResultStoresEvaluationOutput()
     {
-        const EvaluationResult result;
-        QString                error;
-        const QVariantMap      map = evaluationResultToProtocolMap(result, &error);
-        QVERIFY(!map.isEmpty());
-        QVERIFY(map.contains(evaluation::fieldName(evaluation::Field::PrimaryMetricSet)));
-        QVERIFY(map.contains(evaluation::fieldName(evaluation::Field::Capabilities)));
-        QVERIFY(map.contains(evaluation::fieldName(evaluation::Field::Charts)));
+        EvaluationResult result;
+        result.official_metrics = QVariantMap{
+            {evaluation::fieldName(evaluation::Field::Available), true},
+            {evaluation::fieldName(evaluation::Field::Instance), QVariantMap{}}
+        };
+        result.image_metric_definition = QVariantMap{
+            {evaluation::fieldName(evaluation::Field::SampleUnit), QStringLiteral("image")}
+        };
+        result.threshold_search.available = true;
+
+        QVERIFY(result.official_metrics.value(evaluation::fieldName(evaluation::Field::Available)).toBool());
+        QCOMPARE(result.image_metric_definition.value(evaluation::fieldName(evaluation::Field::SampleUnit)).toString(),
+                 QStringLiteral("image"));
+        QVERIFY(result.threshold_search.available);
     }
 
     void protocolKeysSingletonMapsAxisIds()

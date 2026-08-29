@@ -263,51 +263,16 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
         }
     }
 
-    // 宏平均（Macro-Average）：先算每个类别的指标，然后算术平均
-    double sum_precision = 0.0, sum_recall = 0.0;
-    int    valid_p = 0, valid_r = 0;
     for (auto it = class_names.cbegin(); it != class_names.cend(); ++it)
     {
         EvaluationMetricRecord rec
             = aggregateMetric(QString::number(it.key()), it.value(), it.key(), classes.value(it.key()));
         rec.class_color = classColor(rec.class_id);
-        if (rec.precision_defined)
-        {
-            sum_precision += rec.precision;
-            ++valid_p;
-        }
-        if (rec.recall_defined)
-        {
-            sum_recall += rec.recall;
-            ++valid_r;
-        }
         output.per_class_metrics.push_back(std::move(rec));
     }
 
-    EvaluationMetricRecord macro_overall;
-    macro_overall.key   = QStringLiteral("overall");
-    macro_overall.label = QString("整体");
-    macro_overall.tp    = overall.tp;
-    macro_overall.fp    = overall.fp;
-    macro_overall.fn    = overall.fn;
-    if (valid_p > 0)
-    {
-        macro_overall.precision         = sum_precision / valid_p;
-        macro_overall.precision_defined = true;
-    }
-    if (valid_r > 0)
-    {
-        macro_overall.recall         = sum_recall / valid_r;
-        macro_overall.recall_defined = true;
-    }
-    if (macro_overall.precision_defined && macro_overall.recall_defined
-        && (macro_overall.precision + macro_overall.recall > 0.0))
-    {
-        macro_overall.f1
-            = 2.0 * (macro_overall.precision * macro_overall.recall) / (macro_overall.precision + macro_overall.recall);
-        macro_overall.f1_defined = true;
-    }
-    output.instance_metrics.push_back(std::move(macro_overall));
+    // 整体指标按所有类别汇总计数计算，定义为 global micro-F1。
+    output.instance_metrics.push_back(aggregateMetric(QStringLiteral("overall"), QString("整体"), -1, overall));
     output.image_metrics.push_back(aggregateMetric(QStringLiteral("image"), QString("图像"), -1, image_counts));
 
     if (input.anomaly_detection)
@@ -459,15 +424,31 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
         output.confusion = std::move(cells);
     }
 
+    EvaluationThresholdSearchResult filtered_threshold_search;
+    if (input.threshold_search_is_complete)
+        filtered_threshold_search = input.threshold_search;
+    else if (input.anomaly_detection)
+        filtered_threshold_search = searchAnomalyThresholdForImages(input.images);
+    else
+        filtered_threshold_search = searchInstanceThresholdForImages(
+            input.images, input.iou_threshold, input.matching_strategy, input.class_ids);
+    const EvaluationThresholdSearchResult *threshold_search = &filtered_threshold_search;
+    QList<QVariantMap> primary_charts;
+    QList<QVariantMap> secondary_charts;
+    QList<QVariantMap> other_charts;
     if (input.anomaly_detection)
-        output.charts.push_back(anomalyScoreChartForImages(input.images, input.confidence_threshold));
+        secondary_charts.push_back(anomalyScoreChartForImages(input.images, input.confidence_threshold, threshold_search));
 
-    // 沿用 Service 图表描述符，并按聚合输入重算阈值指标。异常分布图已在本地派生，因此跳过对应的 Service 图表。
+    // 沿用 Service 图表描述符，并按固定顺序输出：PR 曲线、分布图、其他图表。
+    // 异常分布图由当前过滤后的图像记录派生，因此跳过 Service 原始描述符。
     for (const QVariantMap &descriptor : input.chart_descriptors)
     {
         const QString chart_id    = descriptor.value(evaluation::fieldName(evaluation::Field::ChartId)).toString();
         const QString filter_kind = descriptor.value(evaluation::fieldName(evaluation::Field::FilterKind)).toString();
         if (chart_id == evaluation::chartIdKey(evaluation::ChartId::AnomalyScoreDistribution))
+            continue;
+        if (input.anomaly_detection
+            && chart_id == evaluation::chartIdKey(evaluation::ChartId::ConfidenceDistribution))
             continue;
         if (descriptor.value(evaluation::fieldName(evaluation::Field::Kind)).toString()
                 == evaluation::chartKindKey(evaluation::ChartKind::Bar)
@@ -478,8 +459,15 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
         if (filter_kind == evaluation::filterKindKey(evaluation::FilterKind::PrecisionRecall)
             || chart_id == evaluation::chartIdKey(evaluation::ChartId::PrecisionRecall))
         {
-            filtered = precisionRecallChartForImages(input.images, input.class_catalog, input.iou_threshold,
-                                                     input.matching_strategy, input.class_ids);
+            if (input.anomaly_detection)
+                filtered = anomalyPrecisionRecallChartForImages(input.images, threshold_search);
+            else
+                filtered = precisionRecallChartForImages(input.images, input.class_catalog, input.iou_threshold,
+                                                         input.matching_strategy, input.class_ids, {}, threshold_search);
+        }
+        else if (chart_id == evaluation::chartIdKey(evaluation::ChartId::ConfidenceDistribution))
+        {
+            filtered = confidenceDistributionChartForImages(input.images, threshold_search);
         }
         else if (filter_kind == evaluation::filterKindKey(evaluation::FilterKind::ImageScore))
         {
@@ -499,8 +487,21 @@ EvaluationAggregateOutput aggregateEvaluation(const EvaluationAggregateInput &in
                                  {evaluation::fieldName(evaluation::Field::Data), scores}}}}
             });
         }
-        output.charts.push_back(std::move(filtered));
+        const bool is_primary = filter_kind == evaluation::filterKindKey(evaluation::FilterKind::PrecisionRecall)
+                             || chart_id == evaluation::chartIdKey(evaluation::ChartId::PrecisionRecall);
+        const bool is_secondary = chart_id == evaluation::chartIdKey(evaluation::ChartId::ConfidenceDistribution)
+                               || chart_id == evaluation::chartIdKey(evaluation::ChartId::AnomalyScoreDistribution);
+        if (is_primary)
+            primary_charts.push_back(std::move(filtered));
+        else if (is_secondary)
+            secondary_charts.push_back(std::move(filtered));
+        else
+            other_charts.push_back(std::move(filtered));
     }
+    output.charts.reserve(primary_charts.size() + secondary_charts.size() + other_charts.size());
+    output.charts.append(primary_charts);
+    output.charts.append(secondary_charts);
+    output.charts.append(other_charts);
     return output;
 }
 

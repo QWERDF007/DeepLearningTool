@@ -2,6 +2,8 @@
 
 #include "dltool/model/Export.h"
 #include "model/EvaluationData.h"
+#include "model/ModelEvaluationModels.h"
+#include "model/EvaluationThresholdSearch.h"
 #include "model/ModelEvaluationProtocol.h"
 
 #include <QList>
@@ -28,16 +30,6 @@ struct MODEL_API EvaluationChartOutput
 };
 
 /**
- * @brief 评估计数（真正例/假正例/假负例），供主链路与结果组装共用。
- */
-struct MODEL_API EvaluationCounts
-{
-    qint64 tp{0};
-    qint64 fp{0};
-    qint64 fn{0};
-};
-
-/**
  * @brief Precision-Recall 曲线的固定插值点数。
  *
  * 该值对应 Ultralytics PR 曲线的均匀 Recall 网格；调整后会同时影响
@@ -46,42 +38,73 @@ struct MODEL_API EvaluationCounts
 inline constexpr int kPrecisionRecallInterpolationPoints = 100;
 
 /**
- * @brief 组装评估结果所需的上下文。
- *
- * 大型快照字段以引用传递，避免为整理参数额外复制评估数据；上下文只在
- * assembleEvaluationResult 调用期间有效。
- */
-struct MODEL_API EvaluationResultContext
-{
-    const QMap<qint64, EvaluationImageData> &images;
-    const QMap<int, QString>                &classes;
-    const QMap<int, QString>                &class_colors;
-    const QMap<int, EvaluationCounts>       &per_class;
-    const EvaluationCounts                  &overall;
-    const EvaluationCounts                  &image_counts;
-    const QMap<QString, qint64>             &matrix;
-    const QVariantList                      &event_records;
-    int                                      prediction_count{0};
-    evaluation::Method                       method{evaluation::Method::Unknown};
-    double                                   confidence_threshold{evaluation::kDefaultConfidenceThreshold};
-    double                                   iou_threshold{evaluation::kDefaultIouThreshold};
-    evaluation::MatchingStrategy             matching_strategy{evaluation::MatchingStrategy::GreedyIoU};
-    const QVariantMap                       &evaluation_config;
-    std::shared_ptr<std::atomic_bool>        cancel;
-    QString                                 *err_msg{nullptr};
-};
-
-/**
  * @brief 由图像记录构造异常分数分布图描述符。
  *
- * 正常图像取 max_prediction_score 作为正常样本，异常图像取
- * max_prediction_score 作为异常样本；图表由公共直方图构造实现生成。
+ * 正常图像和异常图像均从原始异常分数图取最大分数；缺少有效分数图的
+ * 图像不会回退到 task.db 中的 image_score 或其他预测字段。
  * @param images 图像记录列表。
  * @param classification_threshold 图像分数分类阈值。
  * @return 图表描述符。
  */
-MODEL_API QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageData> &images,
-                                                 double                            classification_threshold);
+MODEL_API QVariantMap anomalyScoreChartForImages(
+    const QList<EvaluationImageData> &images, double classification_threshold,
+    const EvaluationThresholdSearchResult *threshold_search = nullptr);
+
+/**
+ * @brief 构造异常检测的图像级 Precision-Recall 曲线。
+ *
+ * 异常检测使用每张图像原始异常分数图的最大值作为唯一分数，不参与
+ * 检测/分割的实例 IoU 匹配。返回总体 micro 曲线和只读最佳阈值点。
+ * @param images 评估图像记录列表。
+ * @param threshold_search 已完成的图像级阈值搜索结果，可为空。
+ * @param cancel 协作取消令牌，可为空。
+ * @return 图表描述符。
+ */
+MODEL_API QVariantMap anomalyPrecisionRecallChartForImages(
+    const QList<EvaluationImageData> &images,
+    const EvaluationThresholdSearchResult *threshold_search = nullptr,
+    const std::shared_ptr<std::atomic_bool> &cancel = {});
+
+/**
+ * @brief 构造目标检测/语义分割的总体置信度分布图。
+ *
+ * 使用全部有限预测分数在固定 [0, 1] 范围内分成 24 个等宽箱，并在有
+ * 最佳阈值时附加只读参考线。
+ */
+MODEL_API QVariantMap confidenceDistributionChartForImages(
+    const QList<EvaluationImageData> &images,
+    const EvaluationThresholdSearchResult *threshold_search = nullptr);
+
+/**
+ * @brief 从异常检测图像记录搜索全局图像级最佳阈值。
+ *
+ * 分数取原始异常分数图的有限像素最大值，搜索计数与正式异常评估一致。
+ * @param images 图像记录列表。
+ * @param cancel 协作取消令牌，可为空。
+ * @param err_msg 搜索失败或取消时的错误信息，可为空。
+ * @return 阈值搜索结果。
+ */
+MODEL_API EvaluationThresholdSearchResult searchAnomalyThresholdForImages(
+    const QList<EvaluationImageData> &images, const std::shared_ptr<std::atomic_bool> &cancel = {},
+    QString *err_msg = nullptr);
+
+/**
+ * @brief 从检测/分割图像记录搜索全局 micro-F1 最佳置信度阈值。
+ *
+ * 每个候选阈值都按正式 IoU 与匹配策略重新匹配，并汇总所有类别的
+ * TP/FP/FN；类别过滤列表为空表示全部类别。
+ * @param images 图像记录列表。
+ * @param iou_threshold IoU 匹配阈值。
+ * @param strategy 匹配策略。
+ * @param class_ids 可选类别过滤列表。
+ * @param cancel 协作取消令牌，可为空。
+ * @param err_msg 搜索失败或取消时的错误信息，可为空。
+ * @return 阈值搜索结果。
+ */
+MODEL_API EvaluationThresholdSearchResult searchInstanceThresholdForImages(
+    const QList<EvaluationImageData> &images, double iou_threshold, evaluation::MatchingStrategy strategy,
+    const QVariantList &class_ids = {}, const std::shared_ptr<std::atomic_bool> &cancel = {},
+    QString *err_msg = nullptr);
 
 /**
  * @brief 序列化单条实例事件记录。
@@ -117,16 +140,6 @@ MODEL_API QVariantList evaluationConfusionCells(const QMap<int, QString> &classe
                                                 qint64 total_count);
 
 /**
- * @brief 组装完整评估结果映射。
- *
- * 主链路 evaluate 完成计数与事件收集后，由本函数完成结果序列化：图像记录、
- * 按类别指标、类别目录、混淆矩阵、官方指标/图表与能力声明。
- * @param context 评估结果组装上下文；引用字段只需在调用期间保持有效。
- * @return 评估结果映射；取消或失败时返回空映射。
- */
-MODEL_API QVariantMap assembleEvaluationResult(const EvaluationResultContext &context);
-
-/**
  * @brief 由 TP/FP/FN 构造评估协议指标映射。
  * @param tp 真正例数。
  * @param fp 假正例数。
@@ -136,35 +149,17 @@ MODEL_API QVariantMap assembleEvaluationResult(const EvaluationResultContext &co
 MODEL_API QVariantMap evaluationMetricMap(qint64 tp, qint64 fp, qint64 fn);
 
 /**
- * @brief 构建官方评估输出（指标与图表）。
- *
- * 检测方法生成 confidence-IoU 工作点的实例指标与 Precision-Recall 曲线；
- * 异常检测方法生成 score-above-threshold 的图像级二元指标和异常分数分布图。
- * @param method 评估方法。
- * @param images 全部图像记录。
- * @param confidence 置信度阈值。
- * @param iou_threshold IoU 阈值。
- * @param strategy 匹配策略。
- * @param diagnostic 诊断指标（实例/图像分项）。
- * @param cancel 协作取消令牌，可为空。
- * @return 官方评估输出。
- */
-MODEL_API EvaluationChartOutput buildEvaluationCharts(evaluation::Method                       method,
-                                                      const QMap<qint64, EvaluationImageData> &images,
-                                                      double confidence, double iou_threshold,
-                                                      evaluation::MatchingStrategy             strategy,
-                                                      const QVariantMap                       &diagnostic,
-                                                      const std::shared_ptr<std::atomic_bool> &cancel = {});
-
-/**
  * @brief 构建异常检测方法图表（分数分布 + 图像级二元指标）。
  * @param images 图像记录。
  * @param diagnostic 诊断指标（消费 image 分项）。
  * @param confidence 置信度阈值。
+ * @param threshold_search 当前评估的全局阈值搜索结果。
  * @return 异常方法官方评估输出。
  */
 MODEL_API EvaluationChartOutput buildAnomalyEvaluationCharts(const QMap<qint64, EvaluationImageData> &images,
-                                                             const QVariantMap &diagnostic, double confidence);
+                                                              const QVariantMap &diagnostic, double confidence,
+                                                              const EvaluationThresholdSearchResult *threshold_search
+                                                              = nullptr);
 
 /**
  * @brief 构建检测/分割实例匹配方法图表（Precision-Recall 曲线 + 实例指标）。
@@ -178,17 +173,19 @@ MODEL_API EvaluationChartOutput buildAnomalyEvaluationCharts(const QMap<qint64, 
  */
 MODEL_API EvaluationChartOutput buildInstanceMatchingEvaluationCharts(const QMap<qint64, EvaluationImageData> &images,
                                                                       double confidence, double iou_threshold,
-                                                                      evaluation::MatchingStrategy strategy,
-                                                                      const QVariantMap           &diagnostic,
-                                                                      const std::shared_ptr<std::atomic_bool> &cancel
-                                                                      = {});
+                                                                       evaluation::MatchingStrategy strategy,
+                                                                       const QVariantMap           &diagnostic,
+                                                                       const std::shared_ptr<std::atomic_bool> &cancel
+                                                                       = {},
+                                                                       const EvaluationThresholdSearchResult *threshold_search
+                                                                       = nullptr);
 
 /**
- * @brief 按 Ultralytics 核心流程构造目标检测 Precision-Recall 曲线。
+ * @brief 构造目标检测/语义分割的全局 micro PR 曲线及类别曲线。
  *
- * 预测按类别分别完成 IoU 匹配、置信度排序、累计 TP/FP、Precision envelope
- * 和均匀 Recall 插值；平均曲线为所有有效类别曲线的逐点平均。返回的数据集
- * 同时包含平均曲线和各类别曲线，界面可按 series_kind/class_id 选择展示。
+ * 后端使用全部真实预测分数切分点计算正式匹配计数，前端边界只接收固定数量
+ * 的 Recall 展示点，并额外接收全局最佳阈值操作点。返回的数据集包含 micro
+ * 总体曲线与各类别曲线，不产生宏平均曲线。
  * @param images 评估图像记录。
  * @param class_catalog 类别 ID 到显示名称的目录。
  * @param iou_threshold IoU 匹配阈值。
@@ -199,8 +196,9 @@ MODEL_API EvaluationChartOutput buildInstanceMatchingEvaluationCharts(const QMap
  */
 MODEL_API QVariantMap precisionRecallChartForImages(const QList<EvaluationImageData> &images,
                                                     const QMap<int, QString> &class_catalog, double iou_threshold,
-                                                    evaluation::MatchingStrategy             strategy,
-                                                    const QVariantList                      &class_ids = {},
-                                                    const std::shared_ptr<std::atomic_bool> &cancel    = {});
+                                                     evaluation::MatchingStrategy             strategy,
+                                                     const QVariantList                      &class_ids = {},
+                                                     const std::shared_ptr<std::atomic_bool> &cancel    = {},
+                                                     const EvaluationThresholdSearchResult *threshold_search = nullptr);
 
 } // namespace dltool::model

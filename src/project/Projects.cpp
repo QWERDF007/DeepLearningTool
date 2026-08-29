@@ -66,7 +66,10 @@ Project::~Project()
     feature_manager_ = nullptr;
 
     if (model_test_task_manager_ != nullptr)
+    {
+        model_test_task_manager_->shutdown();
         model_test_task_manager_->flush();
+    }
     if (model_task_controller_ != nullptr)
         model_task_controller_->shutdown();
     delete model_task_controller_;
@@ -577,6 +580,8 @@ void ProjectManager::closeProject()
         // Stop external Python processes and cancel C++ evaluation before the
         // shared TaskManager records are cleared.  Clearing first makes the
         // controller unable to discover the task ids it must stop.
+        if (project->modelTestTaskManager() != nullptr)
+            project->modelTestTaskManager()->shutdown();
         if (project->modelTaskController() != nullptr)
             project->modelTaskController()->shutdown();
         if (project->taskManager() != nullptr)

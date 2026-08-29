@@ -75,6 +75,9 @@ public:
                                   QObject *parent = nullptr);
     ~ModelTestTaskManager() override;
 
+    /** @brief 取消当前模型的评估并等待评估线程池收尾。 */
+    void shutdown();
+
     int                    rowCount(const QModelIndex &parent = {}) const override;
     QVariant               data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
@@ -202,6 +205,9 @@ private:
     bool    buildEvaluationOptions(const ModelTestTaskDefinition &task, ModelEvaluationOptions &options,
                                    QString *err_msg = nullptr) const;
     void    handleParameterChanged(const QString &group_name, const QString &parameter_name);
+    void    handleEvaluationCompleted(const QString &cache_key);
+    bool    automaticThresholdApplied(const QString &task_uuid) const;
+    bool    markAutomaticThresholdApplied(const QString &task_uuid, QString *err_msg = nullptr);
     QString evaluationCacheKey(const QString &task_uuid) const;
     void    emitTaskRowChanged(int row);
     const TaskManager::Task *currentTaskRecord() const;
@@ -219,6 +225,7 @@ private:
     QPointer<ModelEvaluationViewModel>             current_evaluation_;
     QHash<QString, ModelEvaluationViewModel *>     evaluation_cache_;
     QSet<QString>                                  pending_evaluation_notifications_;
+    bool                                           applying_best_threshold_{false};
     QTimer                                         save_timer_;
 };
 

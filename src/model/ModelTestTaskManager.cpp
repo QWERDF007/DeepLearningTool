@@ -3,6 +3,7 @@
 #include "data/DataManager.h"
 #include "data/DataSelectionTreeModel.h"
 #include "data/DatasetViewModelFactory.h"
+#include "database/ModelTaskDataBase.h"
 #include "model/EvaluationViewModelRegistry.h"
 #include "model/IModel.h"
 #include "model/IModelConfig.h"
@@ -14,7 +15,11 @@
 
 #include <spdlog/spdlog.h>
 
+#include <QByteArrayView>
+#include <QCryptographicHash>
 #include <QDateTime>
+#include <QDir>
+#include <QDirIterator>
 #include <QFileInfo>
 #include <QQmlEngine>
 #include <QSize>
@@ -24,6 +29,8 @@
 namespace dltool::model {
 
 namespace {
+
+constexpr const char *kAutomaticThresholdApplied = "adaptive_threshold_applied";
 
 QString statusText(const TaskManager::Task *task)
 {
@@ -105,6 +112,74 @@ bool isFewShotModel(const QPointer<ModelManager> &model_manager, const ModelMana
     return model_manager != nullptr && registeredFramework(model_manager->method(), record.framework_name).isFewShot();
 }
 
+QString evaluationInputSnapshot(const QString &project_database_path, const QString &dataset_file_list_path,
+                                const QString &task_database_path, const QString &prediction_dir)
+{
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    const auto addFileInfo = [&hash](const QString &kind, const QFileInfo &info, const QString &relative_path)
+    {
+        const QByteArray kind_bytes = kind.toUtf8();
+        const QByteArray path_bytes = relative_path.toUtf8();
+        hash.addData(QByteArrayView(kind_bytes));
+        hash.addData(QByteArrayView("\0", 1));
+        hash.addData(QByteArrayView(path_bytes));
+        hash.addData(QByteArrayView("\0", 1));
+        const QByteArray size_bytes = QByteArray::number(info.size());
+        hash.addData(QByteArrayView(size_bytes));
+        hash.addData(QByteArrayView("\0", 1));
+        const QByteArray modified_bytes = QByteArray::number(info.lastModified().toMSecsSinceEpoch());
+        hash.addData(QByteArrayView(modified_bytes));
+        hash.addData(QByteArrayView("\n", 1));
+    };
+
+    const auto addSingleFile = [&addFileInfo](const QString &kind, const QString &path)
+    {
+        const QFileInfo info(path);
+        if (info.exists() && info.isFile())
+            addFileInfo(kind, info, info.absoluteFilePath());
+        else
+            addFileInfo(kind, QFileInfo{}, info.absoluteFilePath());
+    };
+    addSingleFile(QStringLiteral("project"), project_database_path);
+    addSingleFile(QStringLiteral("dataset"), dataset_file_list_path);
+    // The task database also owns dataset/class selection. Its file identity
+    // must invalidate a retained evaluation even when it has no prediction
+    // rows, which is the normal anomaly-TIFF case.
+    addSingleFile(QStringLiteral("task"), task_database_path);
+
+    dltool::database::ModelTaskDataBase task_database(task_database_path);
+    QHash<qint64, QVariant>            predictions;
+    QString                           prediction_error;
+    if (task_database.readPredictions(predictions, &prediction_error))
+    {
+        QList<qint64> image_ids = predictions.keys();
+        std::sort(image_ids.begin(), image_ids.end());
+        for (const qint64 image_id : image_ids)
+        {
+            const QByteArray prediction_data
+                = QJsonDocument::fromVariant(predictions.value(image_id)).toJson(QJsonDocument::Compact);
+            addFileInfo(QStringLiteral("task-prediction"), QFileInfo{}, QString::number(image_id));
+            hash.addData(QByteArrayView(prediction_data));
+            hash.addData(QByteArrayView("\n", 1));
+        }
+    }
+
+    const QDir root(prediction_dir);
+    QStringList files;
+    if (root.exists())
+    {
+        QDirIterator iterator(prediction_dir, QDir::Files | QDir::Hidden | QDir::NoSymLinks,
+                              QDirIterator::Subdirectories);
+        while (iterator.hasNext())
+            files.push_back(QDir::fromNativeSeparators(root.relativeFilePath(iterator.next())));
+    }
+    std::sort(files.begin(), files.end());
+    for (const QString &relative_path : files)
+        addFileInfo(QStringLiteral("prediction"), QFileInfo(root.filePath(relative_path)), relative_path);
+
+    return QString::fromLatin1(hash.result().toHex());
+}
+
 } // namespace
 
 ModelTestTaskManager::ModelTestTaskManager(QString project_dir, ModelManager *model_manager,
@@ -130,7 +205,18 @@ ModelTestTaskManager::ModelTestTaskManager(QString project_dir, ModelManager *mo
 
 ModelTestTaskManager::~ModelTestTaskManager()
 {
+    shutdown();
     flush();
+}
+
+void ModelTestTaskManager::shutdown()
+{
+    for (ModelEvaluationViewModel *evaluation : evaluation_cache_)
+    {
+        if (evaluation != nullptr)
+            evaluation->invalidate(evaluation::ViewState::NotRun);
+    }
+    ModelEvaluationViewModel::shutdownEvaluationWorkers();
 }
 
 int ModelTestTaskManager::rowCount(const QModelIndex &parent) const
@@ -455,7 +541,7 @@ bool ModelTestTaskManager::saveDefinition(ModelTestTaskDefinition &task, const b
     if (!record.isValid())
         return false;
     QString error;
-    if (!repository_.saveTask(record.name, task, &error))
+    if (!repository_.saveTask(record.name, task, persist_selection, &error))
     {
         emit errorOccurred(error);
         return false;
@@ -520,6 +606,100 @@ QString ModelTestTaskManager::evaluationCacheKey(const QString &task_uuid) const
     return model_uuid_ + QLatin1Char('\x1f') + task_uuid.trimmed();
 }
 
+bool ModelTestTaskManager::automaticThresholdApplied(const QString &task_uuid) const
+{
+    if (model_manager_ == nullptr || task_uuid.trimmed().isEmpty())
+        return false;
+    const QVariantMap model_record = model_manager_->modelRecordForUuid(model_uuid_);
+    const QVariantMap extra_data   = model_record.value(QStringLiteral("extra_data")).toMap();
+    const QVariantMap test_tasks   = extra_data.value(QStringLiteral("test_tasks")).toMap();
+    return test_tasks.value(task_uuid.trimmed()).toMap().value(QString::fromLatin1(kAutomaticThresholdApplied))
+        .toBool();
+}
+
+bool ModelTestTaskManager::markAutomaticThresholdApplied(const QString &task_uuid, QString *err_msg)
+{
+    if (model_manager_ == nullptr || task_uuid.trimmed().isEmpty())
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("模型或测试任务为空");
+        return false;
+    }
+
+    const QVariantMap model_record = model_manager_->modelRecordForUuid(model_uuid_);
+    QVariantMap       extra_data   = model_record.value(QStringLiteral("extra_data")).toMap();
+    QVariantMap       test_tasks   = extra_data.value(QStringLiteral("test_tasks")).toMap();
+    QVariantMap       task_state   = test_tasks.value(task_uuid.trimmed()).toMap();
+    task_state.insert(QString::fromLatin1(kAutomaticThresholdApplied), true);
+    test_tasks.insert(task_uuid.trimmed(), task_state);
+    return model_manager_->updateModelExtraData(model_uuid_, {{QStringLiteral("test_tasks"), test_tasks}}, err_msg);
+}
+
+void ModelTestTaskManager::handleEvaluationCompleted(const QString &cache_key)
+{
+    if (applying_best_threshold_ || current_evaluation_ == nullptr
+        || evaluation_cache_.value(cache_key, nullptr) != current_evaluation_)
+        return;
+
+    const QString task_uuid = currentTaskUuid();
+    if (task_uuid.isEmpty() || evaluationCacheKey(task_uuid) != cache_key || automaticThresholdApplied(task_uuid))
+        return;
+    if (!current_evaluation_->hasBestThreshold())
+        return;
+
+    const double threshold = current_evaluation_->bestThreshold();
+    if (!std::isfinite(threshold))
+        return;
+
+    ITestParams *params = current_test_params_.get();
+    if (params == nullptr)
+        return;
+    const QString parameter_name
+        = evaluation::isAnomaly(evaluation::fromProjectMethod(model_manager_->method()))
+            ? QStringLiteral("classification_threshold")
+            : QStringLiteral("conf");
+    ParamGroupModel *evaluation_group = nullptr;
+    for (QObject *object : params->groupObjects())
+    {
+        auto *group = qobject_cast<ParamGroupModel *>(object);
+        if (group != nullptr && group->nameEn().compare(QStringLiteral("evaluation"), Qt::CaseInsensitive) == 0)
+        {
+            evaluation_group = group;
+            break;
+        }
+    }
+    if (evaluation_group == nullptr)
+        return;
+
+    applying_best_threshold_ = true;
+    const bool accepted        = evaluation_group->setValueForName(parameter_name, threshold);
+    applying_best_threshold_ = false;
+    if (!accepted && !qFuzzyCompare(evaluation_group->valueForName(parameter_name).toDouble() + 1.0,
+                                    threshold + 1.0))
+    {
+        spdlog::warn("测试任务 {} 自动应用最佳阈值失败", task_uuid.toUtf8().constData());
+        return;
+    }
+
+    const double applied_threshold = evaluation_group->valueForName(parameter_name).toDouble();
+    QString error;
+    if (!flush() || !markAutomaticThresholdApplied(task_uuid, &error))
+    {
+        spdlog::error("测试任务 {} 保存自动应用最佳阈值状态失败: {}", task_uuid.toUtf8().constData(),
+                      error.toUtf8().constData());
+        return;
+    }
+
+    // 标记首次自动应用会更新项目数据库文件时间。同步该次评估的输入快照，
+    // 避免同一结果因本次自身的持久化动作被后续无关任务变化重新触发。
+    ModelEvaluationOptions synchronized_options;
+    if (buildEvaluationOptions(tasks_.at(current_index_), synchronized_options, &error))
+        current_evaluation_->adoptEvaluationThreshold(applied_threshold, synchronized_options.prediction_snapshot);
+    else
+        spdlog::warn("测试任务 {} 同步自动应用后的评估快照失败: {}", task_uuid.toUtf8().constData(),
+                     error.toUtf8().constData());
+}
+
 bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition &task, ModelEvaluationOptions &options,
                                                   QString *err_msg) const
 {
@@ -553,6 +733,9 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
     options.dataset_file_list_path = storage.testTaskFileListPath(record.name, task.directory_name);
     options.task_database_path     = storage.testTaskDatabasePath(record.name, task.directory_name);
     options.prediction_dir         = storage.testTaskPredictionPath(record.name, task.directory_name);
+    options.prediction_snapshot
+        = evaluationInputSnapshot(options.project_database_path, options.dataset_file_list_path,
+                                  options.task_database_path, options.prediction_dir);
 
     const QVariantMap test_params
         = current_test_params_ != nullptr ? current_test_params_->valuesMap() : task.test_params;
@@ -582,6 +765,10 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
         = options.evaluation_config.value(evaluation::fieldName(evaluation::Field::IouThreshold)).toDouble();
     options.matching_strategy = evaluation::matchingStrategyFromKey(
         options.evaluation_config.value(evaluation::fieldName(evaluation::Field::MatchingStrategy)).toString());
+    // The first successful evaluation is assembled at the searched optimum.
+    // The marker is persisted at model extra_data scope; once it exists the
+    // user's current evaluation threshold remains authoritative.
+    options.apply_best_threshold = !automaticThresholdApplied(task.uuid);
     // 复用 DataManager 后台预取的图像尺寸缓存,评估线程不再逐张打开图像文件。
     options.image_dimensions_provider = [this](const qint64 image_id, int *width, int *height) -> bool
     {
@@ -606,6 +793,8 @@ void ModelTestTaskManager::handleParameterChanged(const QString &group_name, con
         && isFewShotModel(model_manager_, model_manager_->modelRecordViewForUuid(model_uuid_)))
         return;
     if (current_evaluation_ == nullptr || current_index_ < 0 || current_index_ >= tasks_.size())
+        return;
+    if (applying_best_threshold_)
         return;
 
     const bool evaluation_changed = group_name.compare(QStringLiteral("evaluation"), Qt::CaseInsensitive) == 0;
@@ -669,7 +858,10 @@ void ModelTestTaskManager::handleTaskRevisionChanged()
             }
             const QString cache_key = evaluationCacheKey(currentTaskUuid());
             const bool    notify    = pending_evaluation_notifications_.contains(cache_key);
-            current_evaluation_->evaluate(notify);
+            const bool needs_evaluation = notify
+                || current_evaluation_->stateKind() == ModelEvaluationViewModel::NotRun;
+            if (needs_evaluation)
+                current_evaluation_->evaluate(notify);
             pending_evaluation_notifications_.remove(cache_key);
         }
         else if (task->status == TaskManager::Failed)
@@ -849,6 +1041,8 @@ void ModelTestTaskManager::bindCurrentObjects()
             evaluation_cache_.insert(cache_key, current_evaluation_);
             connect(current_evaluation_, &ModelEvaluationViewModel::loadingChanged, this,
                     &ModelTestTaskManager::taskStateChanged);
+            connect(current_evaluation_, &ModelEvaluationViewModel::evaluationCompleted, this,
+                    [this, cache_key]() { handleEvaluationCompleted(cache_key); });
         }
         if (data_manager_ != nullptr && data_manager_->globalFilter() != nullptr)
             current_evaluation_->setGlobalFilter(data_manager_->globalFilter());

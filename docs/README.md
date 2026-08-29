@@ -20,7 +20,6 @@
 - 模型和设置参数：[`config/models/`](../config/models/) 与 [`config/settings/`](../config/settings/)。
 - 数据库表结构：[`src/database/include/database/ddl/`](../src/database/include/database/ddl/)。
 - 测试注册和执行实现：[`tests/`](../tests/)、[`tools/run_model_tests.py`](../tools/run_model_tests.py)、[`tools/run_project_tests.py`](../tools/run_project_tests.py)。
-- 产品层面的设计背景：[`DESIGN.md`](../DESIGN.md)。
 
 文档中的接口名称只用于定位源码，不替代头文件注释或实现。发生代码、CMake 或配置变更时，应优先更新对应事实源，再检查本目录中的导航和稳定约定。
 
@@ -31,3 +30,4 @@
 - [模型模块重构访谈](GRILL_ME_MODEL_REFACTOR.md)
 - [推理与评估参数拆分访谈](GRILL_ME_EVALUATION_PARAMETER_SPLIT.md)
 - [异常检测实例分割与热力图访谈](GRILL_ME_ANOMALY_SEGMENTATION_HEATMAP.md)
+- [动态自适应最优阈值搜索访谈](GRILL_ME_ADAPTIVE_THRESHOLD_SEARCH.md)

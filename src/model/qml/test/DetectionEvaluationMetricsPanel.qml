@@ -8,7 +8,7 @@ import quickui
 
 /*
  * 检测实例指标面板：
- * - 主面板展示 Macro-Average（宏平均）计算后的 F1-Score 与 精确率/召回率双饼图。
+ * - 主面板展示全局 micro-F1 与精确率/召回率双饼图。
  * - 点击右上角“按类别详情”弹出独立的类别指标详情窗口（Window）。
  */
 EvaluationMetricsPanelBase {

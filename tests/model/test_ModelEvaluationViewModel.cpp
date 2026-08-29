@@ -1,13 +1,20 @@
 #include "../test_runner.h"
 #include "TestFixture.h"
 #include "model/AnomalyEvaluationViewModel.h"
+#include "model/DetectionEvaluationEngine.h"
 #include "model/DetectionEvaluationViewModel.h"
+#include "model/EvaluationEngineRegistry.h"
 #include "model/ModelEvaluationOptions.h"
 #include "model/ModelEvaluationProtocol.h"
 
+#include <QElapsedTimer>
 #include <QDir>
 #include <QFile>
+#include <QThread>
 #include <QTest>
+
+#include <atomic>
+#include <memory>
 
 using namespace dltool::model;
 using namespace dltool::model::testsupport;
@@ -31,6 +38,66 @@ ModelEvaluationOptions optionsFor(const EvaluationFixture &fixture, evaluation::
     options.matching_strategy      = evaluation::MatchingStrategy::GreedyIoU;
     return options;
 }
+
+class SerializedEvaluationProbeEngine final : public DetectionEvaluationEngine
+{
+public:
+    inline static std::atomic_int active{0};
+    inline static std::atomic_int max_active{0};
+    inline static std::atomic_bool block_first{false};
+    inline static std::atomic_bool first_entered{false};
+    inline static std::atomic_bool release_first{false};
+    inline static std::atomic_bool cancel_observed{false};
+    inline static std::atomic_bool cancel_block{false};
+
+    static void reset()
+    {
+        active.store(0, std::memory_order_relaxed);
+        max_active.store(0, std::memory_order_relaxed);
+        block_first.store(true, std::memory_order_relaxed);
+        first_entered.store(false, std::memory_order_relaxed);
+        release_first.store(false, std::memory_order_relaxed);
+        cancel_observed.store(false, std::memory_order_relaxed);
+        cancel_block.store(false, std::memory_order_relaxed);
+    }
+
+protected:
+    bool collectThresholdSearchData(const QMap<qint64, EvaluationImageData> &images, QVector<double> &scores,
+                                    qint64 &positive_ground_truth_count, QString *err_msg) override
+    {
+        const int current = active.fetch_add(1, std::memory_order_relaxed) + 1;
+        int       previous = max_active.load(std::memory_order_relaxed);
+        while (current > previous
+               && !max_active.compare_exchange_weak(previous, current, std::memory_order_relaxed))
+        {
+        }
+
+        if (block_first.exchange(false, std::memory_order_relaxed))
+        {
+            first_entered.store(true, std::memory_order_release);
+            while (!release_first.load(std::memory_order_acquire)
+                   && (!cancel_block.load(std::memory_order_acquire) || !cancelled(scratch_.cancel_token)))
+                QThread::msleep(1);
+            if (cancel_block.load(std::memory_order_acquire) && cancelled(scratch_.cancel_token))
+                cancel_observed.store(true, std::memory_order_release);
+        }
+
+        const bool result
+            = DetectionEvaluationEngine::collectThresholdSearchData(images, scores, positive_ground_truth_count,
+                                                                      err_msg);
+        active.fetch_sub(1, std::memory_order_relaxed);
+        return result;
+    }
+};
+
+struct RestoreDetectionEvaluationEngine
+{
+    ~RestoreDetectionEvaluationEngine()
+    {
+        EvaluationEngineRegistry::instance().registerEngine(
+            evaluation::Method::Detection, []() { return std::make_unique<DetectionEvaluationEngine>(); });
+    }
+};
 
 } // namespace
 
@@ -140,6 +207,74 @@ private slots:
         QCOMPARE(view_model.classificationThreshold(), 0.5);
         QCOMPARE(view_model.images()->rowCount(), 2);
         QVERIFY(view_model.confusionMatrix()->rowCount() > 0);
+    }
+
+    void invalidatedEvaluationWaitsForActiveWorkerBeforeStartingNext()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat   = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 image = fixture.addImage(QStringLiteral("cat"));
+        QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({cat}));
+        QVERIFY(fixture.writePrediction(
+            image, detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 10, 10)));
+
+        SerializedEvaluationProbeEngine::reset();
+        EvaluationEngineRegistry::instance().registerEngine(
+            evaluation::Method::Detection, []() { return std::make_unique<SerializedEvaluationProbeEngine>(); });
+        RestoreDetectionEvaluationEngine restore_registration;
+
+        DetectionEvaluationViewModel view_model;
+        view_model.setEvaluationOptions(optionsFor(fixture, evaluation::Method::Detection));
+        view_model.evaluate();
+        QTRY_VERIFY_WITH_TIMEOUT(SerializedEvaluationProbeEngine::first_entered.load(std::memory_order_acquire),
+                                 5000);
+
+        view_model.invalidate();
+        view_model.evaluate();
+        QTest::qWait(100);
+        QCOMPARE(SerializedEvaluationProbeEngine::active.load(std::memory_order_relaxed), 1);
+        QCOMPARE(SerializedEvaluationProbeEngine::max_active.load(std::memory_order_relaxed), 1);
+
+        SerializedEvaluationProbeEngine::release_first.store(true, std::memory_order_release);
+        QTRY_COMPARE_WITH_TIMEOUT(view_model.stateKind(), ModelEvaluationViewModel::Ready, 5000);
+        QCOMPARE(SerializedEvaluationProbeEngine::max_active.load(std::memory_order_relaxed), 1);
+    }
+
+    void shutdownCancelsActiveEvaluationBeforeReturning()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 image = fixture.addImage(QStringLiteral("cat"));
+        QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({cat}));
+        QVERIFY(fixture.writePrediction(
+            image, detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 10, 10)));
+
+        SerializedEvaluationProbeEngine::reset();
+        SerializedEvaluationProbeEngine::cancel_block.store(true, std::memory_order_release);
+        EvaluationEngineRegistry::instance().registerEngine(
+            evaluation::Method::Detection, []() { return std::make_unique<SerializedEvaluationProbeEngine>(); });
+        RestoreDetectionEvaluationEngine restore_registration;
+
+        DetectionEvaluationViewModel view_model;
+        view_model.setEvaluationOptions(optionsFor(fixture, evaluation::Method::Detection));
+        view_model.evaluate();
+        QTRY_VERIFY_WITH_TIMEOUT(SerializedEvaluationProbeEngine::first_entered.load(std::memory_order_acquire),
+                                 5000);
+
+        view_model.invalidate();
+        QElapsedTimer timer;
+        timer.start();
+        ModelEvaluationViewModel::shutdownEvaluationWorkers();
+
+        QVERIFY(SerializedEvaluationProbeEngine::cancel_observed.load(std::memory_order_acquire));
+        QCOMPARE(SerializedEvaluationProbeEngine::active.load(std::memory_order_relaxed), 0);
+        QVERIFY2(timer.elapsed() < 2000, "取消后的评估线程未及时收敛");
     }
 
     void engineFailureAndRuntimeStateClearOldResult()

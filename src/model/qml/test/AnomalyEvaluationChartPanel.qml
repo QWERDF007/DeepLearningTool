@@ -184,6 +184,7 @@ EvaluationChartPanelBase {
         var seriesKind = dataset && dataset.series_kind !== undefined ? String(dataset.series_kind) : ""
         return seriesKind === EvaluationProtocolKeys.seriesKindGood
                 || seriesKind === EvaluationProtocolKeys.seriesKindAnomaly
+                || seriesKind === EvaluationProtocolKeys.seriesKindBestThreshold
     }
 
     function anomalyTooltipLabel(tooltipItem, data) {
