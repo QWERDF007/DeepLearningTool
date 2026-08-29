@@ -177,42 +177,7 @@ EvaluationChartPanelBase {
         control.thresholdDragActive = false
     }
 
-    function anomalyLegendFilter(item, data) {
-        var datasetIndex = item && item.datasetIndex !== undefined ? Number(item.datasetIndex) : -1
-        var datasets = data && data.datasets ? data.datasets : []
-        var dataset = datasetIndex >= 0 && datasetIndex < datasets.length ? datasets[datasetIndex] : null
-        var seriesKind = dataset && dataset.series_kind !== undefined ? String(dataset.series_kind) : ""
-        return seriesKind === EvaluationProtocolKeys.seriesKindGood
-                || seriesKind === EvaluationProtocolKeys.seriesKindAnomaly
-                || seriesKind === EvaluationProtocolKeys.seriesKindBestThreshold
-    }
-
-    function anomalyTooltipLabel(tooltipItem, data) {
-        var datasets = data && data.datasets ? data.datasets : []
-        var datasetIndex = tooltipItem && tooltipItem.datasetIndex !== undefined
-                ? Number(tooltipItem.datasetIndex) : -1
-        var dataset = datasetIndex >= 0 && datasetIndex < datasets.length
-                ? datasets[datasetIndex] : null
-        if (dataset && dataset.tooltipXOnly)
-            return null
-
-        var label = dataset && dataset.label !== undefined ? String(dataset.label) : ""
-        if (label.length > 0)
-            label += ": "
-        if (tooltipItem && tooltipItem.value !== undefined && tooltipItem.value !== null)
-            label += control.formatChartTooltipNumber(tooltipItem.value)
-        else if (tooltipItem && tooltipItem.yLabel !== undefined)
-            label += control.formatChartTooltipNumber(tooltipItem.yLabel)
-        return label
-    }
-
     function prepareMethodOptions(descriptor, options) {
-        var anomalyChartId = EvaluationProtocolKeys.chartIdAnomalyScoreDistribution
-        if (descriptor.chart_id === anomalyChartId && options.legend && options.legend.labels)
-            options.legend.labels.filter = control.anomalyLegendFilter
-        if (descriptor.chart_id === anomalyChartId) {
-            options.tooltips.callbacks.label = control.anomalyTooltipLabel
-        }
         return options
     }
 

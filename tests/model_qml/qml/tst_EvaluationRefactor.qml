@@ -331,11 +331,13 @@ TestCase {
         var panel = createTemporaryObject(detectionChartComponent, testWindow.contentItem)
         verify(panel)
 
-        var tabBar = findChild(panel, "chartTabBar")
-        verify(tabBar)
-        compare(tabBar.height, 28)
-        compare(findChild(panel, "precisionRecallTab").height, 28)
-        compare(findChild(panel, "distributionTab").height, 28)
+        var selector = findChild(panel, "chartSelector")
+        verify(selector)
+        compare(selector.height, 32)
+        compare(selector.width, 140)
+        verify(selector.width < panel.width)
+        verify(selector.y >= 0 && selector.y < 32)
+        compare(selector.model.length, 2)
 
         var data = { datasets: [{
             label: "总体 micro",
@@ -347,6 +349,25 @@ TestCase {
         compare(lines.length, 2)
         compare(lines[0], "精确率: 0.7500")
         compare(lines[1], "阈值: 0.6250")
+        var bestPointData = { datasets: [{ data: [{ x: 0.25, y: 0.75, threshold: 0.625, best_f1: 0.8888 }] }] }
+        var bestPointLines = panel.precisionRecallTooltipLabel(item, bestPointData)
+        compare(bestPointLines.length, 2)
+        verify(bestPointLines.indexOf("F1: 0.8888") < 0)
+
+        compare(panel.scoreDistributionTooltipTitle([{ xLabel: 12.345678 }], {}), "分数: 12.3457")
+        var distributionData = { datasets: [{ data: [{ x: 12.345678, y: 24 }] }] }
+        var distributionItem = { datasetIndex: 0, index: 0, xLabel: 12.345678, yLabel: 24 }
+        compare(panel.scoreDistributionTooltipLabel(distributionItem, distributionData), "数量: 24")
+        var prOptions = panel.chartOptionsForDescriptor({chart_id: EvaluationProtocolKeys.chartIdPrecisionRecall,
+                                                          options: {}})
+        compare(prOptions.tooltips.displayColors, false)
+        var distributionOptions = panel.chartOptionsForDescriptor({
+                                                                       chart_id: EvaluationProtocolKeys.chartIdConfidenceDistribution,
+                                                                       options: {}})
+        compare(distributionOptions.tooltips.displayColors, false)
+        var distributionLegendFilter = distributionOptions.legend.labels.filter
+        verify(distributionLegendFilter({datasetIndex: 0}, {datasets: [{reference: true}]} ) === false)
+        verify(distributionLegendFilter({datasetIndex: 0}, {datasets: [{series_kind: "micro"}]} ) === true)
         testWindow.visible = false
     }
 

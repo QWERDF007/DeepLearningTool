@@ -63,45 +63,11 @@ EvaluationChartPanelBase {
         })
     }
 
-    function precisionRecallTooltipLabel(tooltipItem, data) {
-        var datasets = data && data.datasets ? data.datasets : []
-        var datasetIndex = tooltipItem && tooltipItem.datasetIndex !== undefined
-                ? Number(tooltipItem.datasetIndex) : -1
-        var dataset = datasetIndex >= 0 && datasetIndex < datasets.length
-                ? datasets[datasetIndex] : null
-        var pointIndex = tooltipItem && tooltipItem.index !== undefined ? Number(tooltipItem.index) : -1
-        var point = dataset && dataset.data && pointIndex >= 0 && pointIndex < dataset.data.length
-                ? dataset.data[pointIndex] : null
-        var precision = point && point.y !== undefined
-                ? point.y
-                : (tooltipItem && tooltipItem.yLabel !== undefined ? tooltipItem.yLabel : "")
-        var threshold = point && point.threshold !== undefined
-                ? point.threshold
-                : (dataset && dataset.threshold !== undefined ? dataset.threshold : NaN)
-        var lines = ["精确率: " + control.formatChartTooltipNumber(precision)]
-        if (isFinite(Number(threshold)))
-            lines.push("阈值: " + control.formatChartTooltipNumber(threshold))
-        if (dataset && dataset.best_f1 !== undefined && isFinite(Number(dataset.best_f1)))
-            lines.push("F1: " + control.formatChartTooltipNumber(dataset.best_f1))
-        return lines
-    }
-
-    function precisionRecallTooltipTitle(tooltipItems, data) {
-        if (!tooltipItems || tooltipItems.length === 0)
-            return ""
-        var item = tooltipItems[0]
-        var recall = item && item.xLabel !== undefined && item.xLabel !== null && item.xLabel !== ""
-                ? item.xLabel : item.label
-        return "召回率: " + control.formatChartTooltipNumber(recall)
-    }
-
     function prepareMethodOptions(descriptor, options) {
         var chartId = descriptor && descriptor.chart_id ? String(descriptor.chart_id) : ""
         if (chartId === "precision_recall" || chartId === EvaluationProtocolKeys.chartIdPrecisionRecall) {
             options.tooltips = options.tooltips || ({})
             options.tooltips.callbacks = options.tooltips.callbacks || ({})
-            options.tooltips.callbacks.title = control.precisionRecallTooltipTitle
-            options.tooltips.callbacks.label = control.precisionRecallTooltipLabel
             options.maintainAspectRatio = false
             options.responsive = true
             options.legend = options.legend || ({})

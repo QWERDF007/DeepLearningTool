@@ -87,6 +87,68 @@ Rectangle {
         return control.formatChartTooltipNumber(value)
     }
 
+    function scoreDistributionTooltipTitle(tooltipItems, data) {
+        if (!tooltipItems || tooltipItems.length === 0)
+            return ""
+
+        var item = tooltipItems[0]
+        var score = item && item.xLabel !== undefined && item.xLabel !== null && item.xLabel !== ""
+                ? item.xLabel : item.label
+        return "分数: " + control.formatChartTooltipNumber(score)
+    }
+
+    function scoreDistributionTooltipLabel(tooltipItem, data) {
+        var datasets = data && data.datasets ? data.datasets : []
+        var datasetIndex = tooltipItem && tooltipItem.datasetIndex !== undefined
+                ? Number(tooltipItem.datasetIndex) : -1
+        var dataset = datasetIndex >= 0 && datasetIndex < datasets.length
+                ? datasets[datasetIndex] : null
+        if (dataset && dataset.tooltipXOnly)
+            return null
+
+        var count = tooltipItem && tooltipItem.yLabel !== undefined && tooltipItem.yLabel !== null
+                ? tooltipItem.yLabel : (tooltipItem ? tooltipItem.value : "")
+        var numericCount = Number(count)
+        return "数量: " + (isFinite(numericCount) ? numericCount.toFixed(0) : String(count))
+    }
+
+    function scoreDistributionLegendFilter(item, data) {
+        var datasets = data && data.datasets ? data.datasets : []
+        var datasetIndex = item && item.datasetIndex !== undefined ? Number(item.datasetIndex) : -1
+        var dataset = datasetIndex >= 0 && datasetIndex < datasets.length ? datasets[datasetIndex] : null
+        return !(dataset && dataset.reference)
+    }
+
+    function precisionRecallTooltipLabel(tooltipItem, data) {
+        var datasets = data && data.datasets ? data.datasets : []
+        var datasetIndex = tooltipItem && tooltipItem.datasetIndex !== undefined
+                ? Number(tooltipItem.datasetIndex) : -1
+        var dataset = datasetIndex >= 0 && datasetIndex < datasets.length
+                ? datasets[datasetIndex] : null
+        var pointIndex = tooltipItem && tooltipItem.index !== undefined ? Number(tooltipItem.index) : -1
+        var point = dataset && dataset.data && pointIndex >= 0 && pointIndex < dataset.data.length
+                ? dataset.data[pointIndex] : null
+        var precision = point && point.y !== undefined
+                ? point.y
+                : (tooltipItem && tooltipItem.yLabel !== undefined ? tooltipItem.yLabel : "")
+        var threshold = point && point.threshold !== undefined
+                ? point.threshold
+                : (dataset && dataset.threshold !== undefined ? dataset.threshold : NaN)
+        var lines = ["精确率: " + control.formatChartTooltipNumber(precision)]
+        if (isFinite(Number(threshold)))
+            lines.push("阈值: " + control.formatChartTooltipNumber(threshold))
+        return lines
+    }
+
+    function precisionRecallTooltipTitle(tooltipItems, data) {
+        if (!tooltipItems || tooltipItems.length === 0)
+            return ""
+        var item = tooltipItems[0]
+        var recall = item && item.xLabel !== undefined && item.xLabel !== null && item.xLabel !== ""
+                ? item.xLabel : item.label
+        return "召回率: " + control.formatChartTooltipNumber(recall)
+    }
+
     function prepareMethodOptions(descriptor, options) {
         return options
     }
@@ -102,8 +164,26 @@ Rectangle {
             options.tooltips = ({})
         if (!options.tooltips.callbacks)
             options.tooltips.callbacks = ({})
-        options.tooltips.callbacks.title = control.chartTooltipTitle
-        return control.prepareMethodOptions(descriptor, options)
+        options.tooltips.displayColors = false
+        var chartId = descriptor && descriptor.chart_id !== undefined ? String(descriptor.chart_id) : ""
+        if (chartId === EvaluationProtocolKeys.chartIdAnomalyScoreDistribution
+                || chartId === EvaluationProtocolKeys.chartIdConfidenceDistribution) {
+            options.tooltips.callbacks.title = control.scoreDistributionTooltipTitle
+            options.tooltips.callbacks.label = control.scoreDistributionTooltipLabel
+        } else if (chartId === EvaluationProtocolKeys.chartIdPrecisionRecall) {
+            options.tooltips.callbacks.title = control.precisionRecallTooltipTitle
+            options.tooltips.callbacks.label = control.precisionRecallTooltipLabel
+        } else {
+            options.tooltips.callbacks.title = control.chartTooltipTitle
+        }
+        options = control.prepareMethodOptions(descriptor, options)
+        if (chartId === EvaluationProtocolKeys.chartIdAnomalyScoreDistribution
+                || chartId === EvaluationProtocolKeys.chartIdConfidenceDistribution) {
+            options.legend = options.legend || ({})
+            options.legend.labels = options.legend.labels || ({})
+            options.legend.labels.filter = control.scoreDistributionLegendFilter
+        }
+        return options
     }
 
     function chartModelCount() {
@@ -181,7 +261,7 @@ Rectangle {
         anchors.fill: parent
         anchors.margins: 5
 
-        // 顶栏 Header 容器（包含标题与右上角动作插槽）
+        // 顶栏 Header 容器（包含标题、图表切换和右上角动作插槽）
         RowLayout {
             id: headerHost
             Layout.fillWidth: true
@@ -194,50 +274,34 @@ Rectangle {
 
             Item { Layout.fillWidth: true }
 
+            QuiComboBox {
+                id: chartSelector
+                objectName: "chartSelector"
+                Layout.preferredWidth: visible ? 140 : 0
+                Layout.minimumWidth: visible ? 140 : 0
+                Layout.maximumWidth: visible ? 140 : 0
+                Layout.preferredHeight: 32
+                Layout.minimumHeight: 32
+                Layout.maximumHeight: 32
+                implicitHeight: 32
+                height: 32
+                visible: control.hasChartForTab(0, control.chartRevision)
+                         || control.hasChartForTab(1, control.chartRevision)
+                model: [control.chartTabTitle(0, control.chartRevision),
+                        control.chartTabTitle(1, control.chartRevision)]
+                currentIndex: control.currentChartTabIndex
+                onActivated: function(index) {
+                    if (index >= 0 && index <= 1 && control.currentChartTabIndex !== index)
+                        control.currentChartTabIndex = index
+                }
+            }
+
             Item {
                 id: headerAction
                 visible: children.length > 0
                 Layout.preferredWidth: visible ? 220 : 0
                 Layout.preferredHeight: visible ? 32 : 0
                 Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-            }
-        }
-
-        TabBar {
-            id: chartTabBar
-            objectName: "chartTabBar"
-            Layout.fillWidth: true
-            Layout.preferredHeight: 28
-            Layout.minimumHeight: 28
-            Layout.maximumHeight: 28
-            visible: control.hasChartForTab(0, control.chartRevision)
-                     || control.hasChartForTab(1, control.chartRevision)
-            currentIndex: control.currentChartTabIndex
-            background: Item {}
-
-            QuiTabButton {
-                objectName: "precisionRecallTab"
-                text: control.chartTabTitle(0, control.chartRevision)
-                Layout.preferredHeight: 28
-                Layout.minimumHeight: 28
-                Layout.maximumHeight: 28
-                textColor: chartTabBar.currentIndex === 0 ? QuiColor.Highlight : QuiColor.FontPrimary
-                visible: control.hasChartForTab(0, control.chartRevision)
-            }
-
-            QuiTabButton {
-                objectName: "distributionTab"
-                text: control.chartTabTitle(1, control.chartRevision)
-                Layout.preferredHeight: 28
-                Layout.minimumHeight: 28
-                Layout.maximumHeight: 28
-                textColor: chartTabBar.currentIndex === 1 ? QuiColor.Highlight : QuiColor.FontPrimary
-                visible: control.hasChartForTab(1, control.chartRevision)
-            }
-
-            onCurrentIndexChanged: {
-                if (control.currentChartTabIndex !== currentIndex)
-                    control.currentChartTabIndex = currentIndex
             }
         }
 
