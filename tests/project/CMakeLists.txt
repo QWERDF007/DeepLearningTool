@@ -53,87 +53,111 @@ set(_project_path_updates
     "DLT_TEST_ASSET_ROOT=set:${CMAKE_SOURCE_DIR}/tests/assets/model"
 )
 
-add_library(dltool_project_test_support STATIC
-    PersistentProjectFixture.cpp
-    PersistentProjectFixture.h
+dlt_glob_sources(_project_fixture_sources
+    RECURSE
+    ROOT "${CMAKE_CURRENT_SOURCE_DIR}"
+    PATTERNS "*Fixture.cpp" "*Fixture.h" "*Fixture.hpp"
 )
+add_library(dltool_project_test_support STATIC ${_project_fixture_sources})
 target_link_libraries(dltool_project_test_support PUBLIC ${_project_common_libs})
 target_include_directories(dltool_project_test_support PUBLIC ${_project_include_dirs})
 target_compile_definitions(dltool_project_test_support PUBLIC DLT_SOURCE_ROOT="${CMAKE_SOURCE_DIR}")
 
-function(add_project_test TARGET_NAME SOURCE_FILE CATEGORY LAYER)
-    add_executable(${TARGET_NAME} ${SOURCE_FILE})
-    target_link_libraries(${TARGET_NAME} PRIVATE dltool_project_test_support)
-    target_include_directories(${TARGET_NAME} PRIVATE ${_project_include_dirs})
-    add_test(NAME ${TARGET_NAME} COMMAND ${TARGET_NAME})
-    set_tests_properties(${TARGET_NAME} PROPERTIES
-        LABELS "project;${CATEGORY};${LAYER}"
-        ENVIRONMENT_MODIFICATION "${_project_path_updates}"
-    )
+function(project_test_metadata TEST_SOURCE OUTPUT_TARGET OUTPUT_CATEGORY OUTPUT_LAYER OUTPUT_REQUIRED OUTPUT_SETUP)
+    set(_category)
+    set(_layer)
+    set(_required)
+    set(_setup)
+
+    get_filename_component(_test_key "${TEST_SOURCE}" NAME_WE)
+    string(REGEX REPLACE "^test_" "" _test_key "${_test_key}")
+    string(REGEX REPLACE "([a-z0-9])([A-Z])" "\\1_\\2" _target_suffix "${_test_key}")
+    string(TOLOWER "${_target_suffix}" _target_suffix)
+    string(REGEX REPLACE "^data_format_" "data_" _target_suffix "${_target_suffix}")
+
+    if(_test_key STREQUAL "ProjectCreation")
+        set(_category project-setup)
+        set(_layer project-creation)
+        set(_setup dltool_model_project)
+    elseif(_test_key STREQUAL "PythonEnvironment")
+        set(_category project-setup)
+        set(_layer project-python)
+    elseif(_test_key MATCHES "^Data")
+        set(_category project-data)
+        string(REGEX REPLACE "^data_" "" _data_operation "${_target_suffix}")
+        string(REPLACE "_" "-" _data_operation "${_data_operation}")
+        set(_layer "project-data-${_data_operation}")
+        if(_test_key STREQUAL "DataCreation")
+            set(_required dltool_model_project)
+            set(_setup dltool_model_data_creation)
+        elseif(_test_key STREQUAL "DataImport")
+            set(_required dltool_model_data_creation)
+            set(_setup dltool_model_data_import)
+        elseif(_test_key STREQUAL "DataExport")
+            set(_required dltool_model_data_import)
+            set(_setup dltool_model_data_export)
+        elseif(_test_key STREQUAL "DataSplit")
+            set(_required dltool_model_data_import)
+            set(_setup dltool_model_data_split)
+        elseif(_test_key STREQUAL "DataFormatRoundtrip")
+            set(_required dltool_model_data_export)
+        endif()
+    elseif(_test_key MATCHES "^Patchcore")
+        set(_category project-model)
+        string(REGEX REPLACE "^patchcore_" "" _operation "${_target_suffix}")
+        if(_operation STREQUAL "model")
+            set(_layer project-model-creation)
+            set(_required dltool_model_data_import)
+            set(_setup dltool_model_patchcore_model)
+        else()
+            set(_layer "project-model-${_operation}")
+            set(_required dltool_model_patchcore_model)
+            if(_operation STREQUAL "train")
+                set(_setup dltool_model_patchcore_train)
+            elseif(_operation STREQUAL "predict")
+                set(_required dltool_model_patchcore_train)
+                set(_setup dltool_model_patchcore_predict)
+            elseif(_operation STREQUAL "evaluation")
+                set(_required dltool_model_patchcore_predict)
+            endif()
+        endif()
+    else()
+        message(FATAL_ERROR "Cannot infer project test metadata from ${TEST_SOURCE}")
+    endif()
+
+    set(${OUTPUT_TARGET} "dltool_model_${_target_suffix}_test" PARENT_SCOPE)
+    set(${OUTPUT_CATEGORY} "${_category}" PARENT_SCOPE)
+    set(${OUTPUT_LAYER} "${_layer}" PARENT_SCOPE)
+    set(${OUTPUT_REQUIRED} "${_required}" PARENT_SCOPE)
+    set(${OUTPUT_SETUP} "${_setup}" PARENT_SCOPE)
 endfunction()
 
-add_project_test(dltool_model_project_creation_test test_ProjectCreation.cpp project-setup project-creation)
-add_project_test(dltool_model_python_environment_test test_PythonEnvironment.cpp project-setup project-python)
-add_project_test(dltool_model_data_creation_test test_DataCreation.cpp project-data project-data-creation)
-add_project_test(dltool_model_data_import_test test_DataImport.cpp project-data project-data-import)
-add_project_test(dltool_model_data_export_test test_DataExport.cpp project-data project-data-export)
-add_project_test(dltool_model_data_roundtrip_test test_DataFormatRoundtrip.cpp project-data project-data-roundtrip)
-add_project_test(dltool_model_data_split_test test_DataSplit.cpp project-data project-data-split)
-add_project_test(dltool_model_patchcore_model_test test_PatchcoreModel.cpp project-model project-model-creation)
-add_project_test(dltool_model_patchcore_copy_test test_PatchcoreCopy.cpp project-model project-model-copy)
-add_project_test(dltool_model_patchcore_rename_test test_PatchcoreRename.cpp project-model project-model-rename)
-add_project_test(dltool_model_patchcore_delete_test test_PatchcoreDelete.cpp project-model project-model-delete)
-add_project_test(dltool_model_patchcore_train_test test_PatchcoreTrain.cpp project-model project-model-train)
-add_project_test(dltool_model_patchcore_predict_test test_PatchcorePredict.cpp project-model project-model-predict)
-add_project_test(dltool_model_patchcore_evaluation_test test_PatchcoreEvaluation.cpp project-model project-model-evaluation)
+dlt_glob_sources(_project_test_sources
+    RECURSE
+    ROOT "${CMAKE_CURRENT_SOURCE_DIR}"
+    PATTERNS "test_*.cpp"
+)
+foreach(_project_test_source IN LISTS _project_test_sources)
+    project_test_metadata("${_project_test_source}" _target _category _layer _required _setup)
+    dlt_add_test_executable(${_target}
+        SOURCES "${_project_test_source}"
+        LINK_LIBRARIES dltool_project_test_support
+        INCLUDE_DIRECTORIES ${_project_include_dirs}
+        LABELS "project;${_category};${_layer}"
+        ENVIRONMENT_MODIFICATION "${_project_path_updates}"
+        FIXTURES_REQUIRED "${_required}"
+        FIXTURES_SETUP "${_setup}"
+    )
+endforeach()
 
-set_tests_properties(dltool_model_project_creation_test PROPERTIES
-    FIXTURES_SETUP dltool_model_project
-)
-set_tests_properties(dltool_model_data_import_test PROPERTIES
-    FIXTURES_REQUIRED dltool_model_data_creation
-    FIXTURES_SETUP dltool_model_data_import
-)
-set_tests_properties(dltool_model_data_creation_test PROPERTIES
-    FIXTURES_REQUIRED dltool_model_project
-    FIXTURES_SETUP dltool_model_data_creation
-)
-set_tests_properties(dltool_model_data_export_test PROPERTIES
-    FIXTURES_REQUIRED dltool_model_data_import
-    FIXTURES_SETUP dltool_model_data_export
-)
-set_tests_properties(dltool_model_data_roundtrip_test PROPERTIES
-    FIXTURES_REQUIRED dltool_model_data_export
-)
-set_tests_properties(dltool_model_data_split_test PROPERTIES
-    FIXTURES_REQUIRED dltool_model_data_import
-    FIXTURES_SETUP dltool_model_data_split
-)
-set_tests_properties(dltool_model_patchcore_model_test PROPERTIES
-    FIXTURES_REQUIRED dltool_model_data_import
-    FIXTURES_SETUP dltool_model_patchcore_model
-)
-set_tests_properties(dltool_model_patchcore_copy_test PROPERTIES
-    FIXTURES_REQUIRED dltool_model_patchcore_model
-)
-set_tests_properties(dltool_model_patchcore_rename_test PROPERTIES
-    FIXTURES_REQUIRED dltool_model_patchcore_model
-)
-set_tests_properties(dltool_model_patchcore_delete_test PROPERTIES
-    FIXTURES_REQUIRED dltool_model_patchcore_model
-)
-set_tests_properties(dltool_model_patchcore_train_test PROPERTIES
-    FIXTURES_REQUIRED dltool_model_patchcore_model
-    FIXTURES_SETUP dltool_model_patchcore_train
-)
-set_tests_properties(dltool_model_patchcore_predict_test PROPERTIES
-    FIXTURES_REQUIRED dltool_model_patchcore_train
-    FIXTURES_SETUP dltool_model_patchcore_predict
-)
-set_tests_properties(dltool_model_patchcore_evaluation_test PROPERTIES
-    FIXTURES_REQUIRED dltool_model_patchcore_predict
-)
-
-set(_project_common_libs "")
-set(_project_include_dirs "")
-set(_project_path_updates "")
+unset(_project_common_libs)
+unset(_project_include_dirs)
+unset(_project_path_updates)
+unset(_project_fixture_sources)
+unset(_project_test_sources)
+unset(_project_test_source)
+unset(_target)
+unset(_category)
+unset(_layer)
+unset(_required)
+unset(_setup)

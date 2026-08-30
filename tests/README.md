@@ -12,7 +12,7 @@
 | [`model_qml/`](model_qml/) | Model QML 测试 | `ordinary;qml` |
 | [`project/`](project/) | 项目级集成测试 | `project;...` |
 
-测试注册分别位于各目录的 `CMakeLists.txt`。公共测试辅助代码位于 [`model_support/`](model_support/) 和 [`test_runner.h`](test_runner.h)。
+CTest 注册由 [`../cmake/AddTest.cmake`](../cmake/AddTest.cmake) 统一提供，模块 CMake 只声明依赖、分组规则和 fixture 关系。公共测试辅助代码位于 [`model_support/`](model_support/) 和 [`test_runner.h`](test_runner.h)。
 
 ## 构建和运行
 
@@ -50,7 +50,7 @@ CTest 名称以当前构建树为准；新增或拆分测试后先重新配置�
 
 ## 添加测试
 
-1. 在所属测试目录添加源文件和 CMake 注册。
+1. 在所属测试目录按现有命名约定添加源文件，重新配置后会由 `GLOB CONFIGURE_DEPENDS` 自动发现。
 2. 为独立行为设置明确的 CTest 名称和标签。
 3. 若测试需要 DLL、QML 或外部资源，在 CMake 的 `ENVIRONMENT_MODIFICATION` 中配置。
 4. 项目级测试若依赖前一步产物，显式声明 CTest fixture；单层执行的前置条件仍由测试自身校验。

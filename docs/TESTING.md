@@ -1,6 +1,10 @@
 # 测试指南
 
-测试统一由 CTest 注册和执行。Python 工具只负责准备构建、环境变量和 CTest 参数，不直接启动测试可执行文件。测试目标和标签的唯一注册位置是 [`tests/CMakeLists.txt`](../tests/CMakeLists.txt) 及其子目录 CMake 文件。
+测试统一由 CTest 注册和执行。Python 工具只负责准备构建、环境变量和 CTest 参数，不直接启动测试可执行文件。测试目标和标签的公共注册入口是 [`cmake/AddTest.cmake`](../cmake/AddTest.cmake)，模块边界和测试分组位于 [`tests/`](../tests/) 各目录的 CMake 文件。
+
+测试 CMake 使用 `GLOB CONFIGURE_DEPENDS` 自动发现测试源文件和测试模块；新增符合现有目录及文件命名约定的测试源文件后，重新配置即可纳入构建。只有改变 CTest 隔离粒度、项目级 fixture 依赖或 QML 测试函数选择时，才需要调整对应的模块 CMake 元数据。
+
+Model C++ 测试按 `test_Evaluation*`、`test_ModelTask*` 等前缀自动归入汇总目标；项目级测试按 `test_Project*`、`test_Data*`、`test_Patchcore*` 文件名推导 CTest 目标、标签和 fixture。新增项目级测试应遵循对应前缀及操作名约定。
 
 ## 测试类型
 
