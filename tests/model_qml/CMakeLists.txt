@@ -28,6 +28,7 @@ set(_evaluation_refactor_cases
     test_basePropertyAcceptsConcreteViewModelRuntimeExtensions
     test_anomalyThumbnailHeatmapLifecycle
     test_anomalyHeatmapToggleLabelFits
+    test_instanceSortSelectorProvidesMethodSpecificOptions
     test_anomalyChartThresholdLineFollowsChartResize
     test_chartTabsUseCompactStableHeightAndPrTooltipValues
     test_chartTabSurvivesSameEvaluationRefresh
@@ -82,6 +83,7 @@ set_tests_properties(
     ${TEST_TARGET_NAME}_test_basePropertyAcceptsConcreteViewModelRuntimeExtensions
     ${TEST_TARGET_NAME}_test_anomalyThumbnailHeatmapLifecycle
     ${TEST_TARGET_NAME}_test_anomalyHeatmapToggleLabelFits
+    ${TEST_TARGET_NAME}_test_instanceSortSelectorProvidesMethodSpecificOptions
     ${TEST_TARGET_NAME}_test_anomalyChartThresholdLineFollowsChartResize
     ${TEST_TARGET_NAME}_test_chartTabsUseCompactStableHeightAndPrTooltipValues
     ${TEST_TARGET_NAME}_test_chartTabSurvivesSameEvaluationRefresh

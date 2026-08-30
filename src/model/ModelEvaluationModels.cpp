@@ -929,6 +929,30 @@ EvaluationCellFilterProxyModel::EvaluationCellFilterProxyModel(QObject *parent)
     setDynamicSortFilter(false);
 }
 
+EvaluationCellFilterProxyModel::SortMode EvaluationCellFilterProxyModel::sortMode() const
+{
+    return sort_mode_;
+}
+
+void EvaluationCellFilterProxyModel::setSortMode(const SortMode mode)
+{
+    const SortMode normalized = mode >= SortNone && mode <= SortIouDescending ? mode : SortNone;
+    if (sort_mode_ == normalized)
+        return;
+    sort_mode_ = normalized;
+    sort(0, Qt::AscendingOrder);
+    emit sortModeChanged();
+}
+
+void EvaluationCellFilterProxyModel::setSourceModel(QAbstractItemModel *sourceModel)
+{
+    QSortFilterProxyModel::setSourceModel(sourceModel);
+    // The default display order is part of the instance-grid contract: image_id
+    // ascending, with source order preserved for events from the same image.
+    if (sourceModel != nullptr)
+        sort(0, Qt::AscendingOrder);
+}
+
 QString EvaluationCellFilterProxyModel::status() const
 {
     return status_;
@@ -1089,6 +1113,35 @@ bool EvaluationCellFilterProxyModel::acceptsRecord(const EvaluationInstanceRecor
             return false;
     }
     return true;
+}
+
+bool EvaluationCellFilterProxyModel::lessThan(const QModelIndex &source_left,
+                                              const QModelIndex &source_right) const
+{
+    const qint64 left_image_id  = source_left.data(EvaluationInstanceModel::ImageIdRole).toLongLong();
+    const qint64 right_image_id = source_right.data(EvaluationInstanceModel::ImageIdRole).toLongLong();
+
+    if (sort_mode_ != SortNone)
+    {
+        const int role = sort_mode_ == SortIouAscending || sort_mode_ == SortIouDescending
+                       ? EvaluationInstanceModel::IouRole
+                       : EvaluationInstanceModel::ScoreRole;
+        const double left_value  = source_left.data(role).toDouble();
+        const double right_value = source_right.data(role).toDouble();
+        const bool   left_finite  = std::isfinite(left_value);
+        const bool   right_finite = std::isfinite(right_value);
+        if (left_finite != right_finite)
+            return left_finite;
+        if (left_finite && right_finite && left_value != right_value)
+        {
+            const bool descending = sort_mode_ == SortScoreDescending || sort_mode_ == SortIouDescending;
+            return descending ? left_value > right_value : left_value < right_value;
+        }
+    }
+
+    if (left_image_id != right_image_id)
+        return left_image_id < right_image_id;
+    return source_left.row() < source_right.row();
 }
 
 bool EvaluationCellFilterProxyModel::filterAcceptsRow(const int source_row, const QModelIndex &source_parent) const

@@ -162,6 +162,24 @@ TestCase {
     }
 
     Component {
+        id: detectionInstancesGridComponent
+        DetectionEvaluationInstancesGridView {
+            width: 800
+            height: 300
+            evaluation: detectionEvaluation
+        }
+    }
+
+    Component {
+        id: segmentationInstancesGridComponent
+        SegmentationEvaluationInstancesGridView {
+            width: 800
+            height: 300
+            evaluation: segmentationEvaluation
+        }
+    }
+
+    Component {
         id: modelDelegateComponent
         ModelDelegate {
             width: 260
@@ -303,6 +321,65 @@ TestCase {
         compare(toggle.text, "热力图")
         verify(toggle.width >= 100)
         verify(toggle.width >= toggle.contentItem.implicitWidth)
+        testWindow.visible = false
+    }
+
+    function test_instanceSortSelectorProvidesMethodSpecificOptions() {
+        testWindow.visible = true
+
+        anomalyEvaluation = fixture.createAnomalyEvaluation()
+        verify(anomalyEvaluation)
+        tryCompare(anomalyEvaluation, "stateKind", ModelEvaluationViewModel.Ready, 5000)
+        anomalyEvaluation.filteredInstances.sortMode = EvaluationCellFilterProxyModel.SortNone
+        var anomalyGrid = createTemporaryObject(anomalyInstancesGridComponent, testWindow.contentItem)
+        verify(anomalyGrid)
+        var anomalySelector = findChild(anomalyGrid, "instanceSortSelector")
+        verify(anomalySelector)
+        tryCompare(anomalySelector, "visible", true, 1000)
+        compare(anomalySelector.model.length, 3)
+        compare(anomalySelector.model[0], "不排序")
+        compare(anomalySelector.model[1], "分数升序")
+        compare(anomalySelector.model[2], "分数降序")
+        compare(anomalySelector.currentIndex, 0)
+
+        anomalyEvaluation.filteredInstances.sortMode = EvaluationCellFilterProxyModel.SortScoreDescending
+        tryCompare(anomalySelector, "currentIndex", 2, 1000)
+        compare(anomalyEvaluation.filteredInstances.data(
+                    anomalyEvaluation.filteredInstances.index(0, 0), EvaluationInstanceModel.ScoreRole), 0.9)
+
+        detectionEvaluation = fixture.createDetectionViewModel()
+        verify(detectionEvaluation)
+        tryCompare(detectionEvaluation, "stateKind", ModelEvaluationViewModel.Ready, 5000)
+        detectionEvaluation.filteredInstances.sortMode = EvaluationCellFilterProxyModel.SortNone
+        var detectionGrid = createTemporaryObject(detectionInstancesGridComponent, testWindow.contentItem)
+        verify(detectionGrid)
+        var detectionSelector = findChild(detectionGrid, "instanceSortSelector")
+        verify(detectionSelector)
+        tryCompare(detectionSelector, "visible", true, 1000)
+        compare(detectionSelector.model.length, 5)
+        compare(detectionSelector.model[0], "不排序")
+        compare(detectionSelector.model[1], "IoU 升序")
+        compare(detectionSelector.model[2], "IoU 降序")
+        compare(detectionSelector.model[3], "置信度升序")
+        compare(detectionSelector.model[4], "置信度降序")
+
+        detectionEvaluation.filteredInstances.sortMode = EvaluationCellFilterProxyModel.SortIouDescending
+        tryCompare(detectionSelector, "currentIndex", 2, 1000)
+        detectionEvaluation.filteredInstances.sortMode = EvaluationCellFilterProxyModel.SortScoreAscending
+        tryCompare(detectionSelector, "currentIndex", 3, 1000)
+
+        segmentationEvaluation = fixture.createSegmentationEvaluation()
+        verify(segmentationEvaluation)
+        tryCompare(segmentationEvaluation, "stateKind", ModelEvaluationViewModel.Ready, 5000)
+        var segmentationGrid = createTemporaryObject(segmentationInstancesGridComponent, testWindow.contentItem)
+        verify(segmentationGrid)
+        var segmentationSelector = findChild(segmentationGrid, "instanceSortSelector")
+        verify(segmentationSelector)
+        tryCompare(segmentationSelector, "visible", true, 1000)
+        compare(segmentationSelector.model.length, 5)
+        compare(segmentationSelector.model[1], "IoU 升序")
+        compare(segmentationSelector.model[4], "置信度降序")
+
         testWindow.visible = false
     }
 

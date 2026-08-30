@@ -553,6 +553,24 @@ class MODEL_API EvaluationCellFilterProxyModel : public QSortFilterProxyModel
     Q_OBJECT
     QML_NAMED_ELEMENT(EvaluationCellFilterProxyModel)
     QML_UNCREATABLE("EvaluationCellFilterProxyModel is owned by ModelEvaluationViewModel")
+public:
+    /**
+     * @brief 实例图像列表的显示排序方式。
+     *
+     * SortNone 表示不按评估分数排序，仅按当前评估事件的 image_id 升序显示。
+     * Score 模式同时表示异常检测分数或目标检测/语义分割的置信度。
+     */
+    enum SortMode
+    {
+        SortNone = 0,
+        SortScoreAscending,
+        SortScoreDescending,
+        SortIouAscending,
+        SortIouDescending,
+    };
+    Q_ENUM(SortMode)
+
+    Q_PROPERTY(SortMode sortMode READ sortMode WRITE setSortMode NOTIFY sortModeChanged FINAL)
     Q_PROPERTY(QString status READ status WRITE setStatus NOTIFY filterChanged FINAL)
     Q_PROPERTY(QString matrixRow READ matrixRow WRITE setMatrixRow NOTIFY filterChanged FINAL)
     Q_PROPERTY(QString matrixColumn READ matrixColumn WRITE setMatrixColumn NOTIFY filterChanged FINAL)
@@ -561,6 +579,11 @@ class MODEL_API EvaluationCellFilterProxyModel : public QSortFilterProxyModel
     Q_PROPERTY(double maxScore READ maxScore WRITE setMaxScore NOTIFY filterChanged FINAL)
 public:
     explicit EvaluationCellFilterProxyModel(QObject *parent = nullptr);
+
+    SortMode sortMode() const;
+    void     setSortMode(SortMode mode);
+
+    void setSourceModel(QAbstractItemModel *sourceModel) override;
 
     QString status() const;
     void    setStatus(const QString &status);
@@ -592,11 +615,15 @@ signals:
      * @brief 过滤条件变更信号。
      */
     void filterChanged();
+    /** @brief 排序方式变更信号。 */
+    void sortModeChanged();
 
 protected:
     bool filterAcceptsRow(int source_row, const QModelIndex &source_parent) const override;
+    bool lessThan(const QModelIndex &source_left, const QModelIndex &source_right) const override;
 
 private:
+    SortMode     sort_mode_{SortNone};                              ///< 当前实例列表排序方式。
     QString      status_;                                              ///< 状态过滤字符串。
     QString      matrix_row_;                                          ///< 选中的混淆矩阵行标识。
     QString      matrix_column_;                                       ///< 选中的混淆矩阵列标识。

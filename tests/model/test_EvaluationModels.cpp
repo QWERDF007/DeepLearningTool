@@ -174,6 +174,69 @@ private slots:
         QCOMPARE(cell.index(0, 0).data(EvaluationInstanceModel::EventUuidRole).toString(), QStringLiteral("tp"));
     }
 
+    void instanceProxySortsByConfiguredMetric()
+    {
+        EvaluationInstanceRecord first;
+        first.event_uuid = QStringLiteral("image-30");
+        first.image_id   = 30;
+        first.score      = 0.2;
+        first.iou        = 0.8;
+
+        EvaluationInstanceRecord second;
+        second.event_uuid = QStringLiteral("image-10");
+        second.image_id   = 10;
+        second.score      = 0.9;
+        second.iou        = 0.2;
+
+        EvaluationInstanceRecord third;
+        third.event_uuid = QStringLiteral("image-20");
+        third.image_id   = 20;
+        third.score      = 0.9;
+        third.iou        = 0.2;
+
+        EvaluationInstanceRecord fourth;
+        fourth.event_uuid = QStringLiteral("image-40");
+        fourth.image_id   = 40;
+        fourth.score      = 0.1;
+        fourth.iou        = 0.9;
+
+        EvaluationInstanceModel source;
+        source.setRecords({first, second, third, fourth});
+
+        EvaluationCellFilterProxyModel proxy;
+        proxy.setSourceModel(&source);
+
+        const auto imageIds = [&proxy]()
+        {
+            QVector<qint64> result;
+            result.reserve(proxy.rowCount());
+            for (int row = 0; row < proxy.rowCount(); ++row)
+                result.push_back(proxy.index(row, 0).data(EvaluationInstanceModel::ImageIdRole).toLongLong());
+            return result;
+        };
+
+        QCOMPARE(proxy.sortMode(), EvaluationCellFilterProxyModel::SortNone);
+        QCOMPARE(imageIds(), QVector<qint64>({10, 20, 30, 40}));
+
+        proxy.setSortMode(EvaluationCellFilterProxyModel::SortScoreAscending);
+        QCOMPARE(imageIds(), QVector<qint64>({40, 30, 10, 20}));
+
+        proxy.setSortMode(EvaluationCellFilterProxyModel::SortScoreDescending);
+        QCOMPARE(imageIds(), QVector<qint64>({10, 20, 30, 40}));
+
+        proxy.setSortMode(EvaluationCellFilterProxyModel::SortIouAscending);
+        QCOMPARE(imageIds(), QVector<qint64>({10, 20, 30, 40}));
+
+        proxy.setSortMode(EvaluationCellFilterProxyModel::SortIouDescending);
+        QCOMPARE(imageIds(), QVector<qint64>({40, 30, 10, 20}));
+
+        proxy.setMinScore(0.15);
+        QCOMPARE(imageIds(), QVector<qint64>({30, 10, 20}));
+
+        proxy.setSortMode(EvaluationCellFilterProxyModel::SortNone);
+        QCOMPARE(imageIds(), QVector<qint64>({10, 20, 30}));
+    }
+
     void chartModelExposesStructuredDescriptor()
     {
         EvaluationChartModel model;

@@ -183,7 +183,9 @@ FS-SAM2 属于小样本学习专用流程，不接入普通模型测试任务的
 `ModelEvaluationViewModel`（抽象基类）及其方法子类负责 Qt Model、过滤、选择和
 过滤后的后台重聚合。`EvaluationPanelRegistry.qml` 集中维护方法到子面板组件的映射，
 `TestEvaluationPanel.qml` 只负责 SplitView 布局与状态遮罩，通过 Loader 装配面板，
-不在 QML 中遍历或计算评估事件。
+不在 QML 中遍历或计算评估事件。实例图像网格使用
+`EvaluationCellFilterProxyModel` 作为最终数据源：异常检测提供分数升降序，检测/分割
+提供 IoU 与置信度升降序；不排序时按 `image_id` 升序，排序只改变展示顺序，不改变评估结果。
 
 ## 扩展约定
 

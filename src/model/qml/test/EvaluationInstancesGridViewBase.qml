@@ -24,6 +24,30 @@ Rectangle {
     property bool heatmapControlVisible: false
     property bool heatmapEnabled: false
 
+    readonly property var sortModeValues: control.evaluation && control.evaluation.anomalyDetection
+                                         ? [EvaluationCellFilterProxyModel.SortNone,
+                                            EvaluationCellFilterProxyModel.SortScoreAscending,
+                                            EvaluationCellFilterProxyModel.SortScoreDescending]
+                                         : [EvaluationCellFilterProxyModel.SortNone,
+                                            EvaluationCellFilterProxyModel.SortIouAscending,
+                                            EvaluationCellFilterProxyModel.SortIouDescending,
+                                            EvaluationCellFilterProxyModel.SortScoreAscending,
+                                            EvaluationCellFilterProxyModel.SortScoreDescending]
+    readonly property var sortModeLabels: control.evaluation && control.evaluation.anomalyDetection
+                                          ? [qsTr("不排序"), qsTr("分数升序"), qsTr("分数降序")]
+                                          : [qsTr("不排序"), qsTr("IoU 升序"), qsTr("IoU 降序"),
+                                             qsTr("置信度升序"), qsTr("置信度降序")]
+    readonly property int sortModeIndex: {
+        const activeMode = control.evaluation && control.evaluation.filteredInstances
+                          ? Number(control.evaluation.filteredInstances.sortMode)
+                          : EvaluationCellFilterProxyModel.SortNone
+        for (var index = 0; index < control.sortModeValues.length; ++index) {
+            if (Number(control.sortModeValues[index]) === activeMode)
+                return index
+        }
+        return 0
+    }
+
     property real heatmapThreshold: 1.0
 
     function refreshHeatmapThreshold() {
@@ -93,6 +117,28 @@ Rectangle {
                 checked: control.heatmapEnabled
                 clickListener: function () {
                     control.heatmapEnabled = !control.heatmapEnabled
+                }
+            }
+
+            QuiComboBox {
+                id: instanceSortSelector
+                objectName: "instanceSortSelector"
+                Layout.preferredWidth: visible ? 140 : 0
+                Layout.minimumWidth: visible ? 140 : 0
+                Layout.maximumWidth: visible ? 140 : 0
+                Layout.preferredHeight: 32
+                Layout.minimumHeight: 32
+                Layout.maximumHeight: 32
+                implicitHeight: 32
+                height: 32
+                visible: !!control.evaluation && control.evaluation.hasInstanceEvents
+                model: control.sortModeLabels
+                currentIndex: control.sortModeIndex
+                onActivated: function(index) {
+                    if (!control.evaluation || !control.evaluation.filteredInstances
+                            || index < 0 || index >= control.sortModeValues.length)
+                        return
+                    control.evaluation.filteredInstances.sortMode = control.sortModeValues[index]
                 }
             }
 
