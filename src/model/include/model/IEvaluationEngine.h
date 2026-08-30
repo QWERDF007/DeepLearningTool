@@ -15,6 +15,7 @@
 #include <QVariantMap>
 #include <QVector>
 #include <atomic>
+#include <functional>
 #include <memory>
 
 namespace dltool::model {
@@ -85,6 +86,7 @@ protected:
         evaluation::MatchingStrategy      matching_strategy{evaluation::MatchingStrategy::GreedyIoU};
         QVariantMap                       preprocessing_config; ///< 模型空间预处理参数（仅用于展示坐标）。
         std::shared_ptr<std::atomic_bool> cancel_token;
+        std::function<bool(qint64 image_id, int *width, int *height)> image_dimensions_provider;
         bool                              collect_events{true}; ///< 搜索计数阶段关闭事件/几何构造。
     };
 
@@ -97,15 +99,8 @@ protected:
      */
     virtual void buildClasses(const QMap<qint64, EvaluationImageData> &images, QMap<int, QString> &classes);
 
-    /**
-     * @brief 收集当前方法的全量阈值搜索输入。
-     *
-     * 默认返回 false，供不支持阈值搜索的自定义引擎保持旧行为。内建异常
-     * 检测、目标检测和语义分割引擎返回 true，并只收集有限原始分数。
-     */
-    virtual bool collectThresholdSearchData(const QMap<qint64, EvaluationImageData> &images,
-                                            QVector<double> &scores, qint64 &positive_ground_truth_count,
-                                            QString *err_msg);
+    /** @brief 当前方法是否支持全量阈值搜索。 */
+    virtual bool supportsThresholdSearch() const;
 
     /**
      * @brief 实例级计数钩子（纯虚）。

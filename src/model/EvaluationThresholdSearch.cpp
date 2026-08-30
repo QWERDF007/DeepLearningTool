@@ -54,42 +54,21 @@ QVector<double> evaluationThresholdCandidates(const QVector<double> &scores)
     return candidates;
 }
 
-EvaluationThresholdSearchResult searchBestEvaluationThreshold(
-    const QVector<double> &scores, const qint64 positive_ground_truth_count, const EvaluationThresholdCounter &counter,
-    const std::shared_ptr<std::atomic_bool> &cancel, QString *err_msg)
+EvaluationThresholdSearchResult selectBestEvaluationThreshold(
+    const QVector<EvaluationThresholdPoint> &points, const qint64 positive_ground_truth_count)
 {
     EvaluationThresholdSearchResult result;
     result.positive_ground_truth_count = positive_ground_truth_count;
-    if (positive_ground_truth_count <= 0 || !counter)
+    result.points = points;
+    if (positive_ground_truth_count <= 0)
         return result;
 
-    const QVector<double> candidates = evaluationThresholdCandidates(scores);
-    if (candidates.isEmpty())
-        return result;
-
-    for (const double threshold : candidates)
+    for (const EvaluationThresholdPoint &point : points)
     {
-        if (cancel != nullptr && cancel->load(std::memory_order_relaxed))
-        {
-            if (err_msg != nullptr)
-                *err_msg = QStringLiteral("评估已取消");
-            return {};
-        }
-
-        EvaluationCounts counts;
-        if (!counter(threshold, counts, err_msg))
-        {
-            if (err_msg != nullptr && err_msg->isEmpty())
-                *err_msg = QStringLiteral("阈值计数失败");
-            return {};
-        }
-
-        const EvaluationThresholdPoint point = evaluationThresholdPoint(threshold, counts);
         const bool                    new_best_f1
             = !result.available || point.f1 > result.best_point.f1;
         const bool                    equal_best_f1
             = result.available && point.f1 == result.best_point.f1;
-        result.points.push_back(point);
         if (new_best_f1)
         {
             result.best_point = point;
@@ -108,6 +87,40 @@ EvaluationThresholdSearchResult searchBestEvaluationThreshold(
         }
     }
     return result;
+}
+
+EvaluationThresholdSearchResult searchBestEvaluationThreshold(
+    const QVector<double> &scores, const qint64 positive_ground_truth_count, const EvaluationThresholdCounter &counter,
+    const std::shared_ptr<std::atomic_bool> &cancel, QString *err_msg)
+{
+    if (positive_ground_truth_count <= 0 || !counter)
+        return selectBestEvaluationThreshold({}, positive_ground_truth_count);
+
+    const QVector<double> candidates = evaluationThresholdCandidates(scores);
+    if (candidates.isEmpty())
+        return selectBestEvaluationThreshold({}, positive_ground_truth_count);
+
+    QVector<EvaluationThresholdPoint> points;
+    points.reserve(candidates.size());
+    for (const double threshold : candidates)
+    {
+        if (cancel != nullptr && cancel->load(std::memory_order_relaxed))
+        {
+            if (err_msg != nullptr)
+                *err_msg = QStringLiteral("评估已取消");
+            return {};
+        }
+
+        EvaluationCounts counts;
+        if (!counter(threshold, counts, err_msg))
+        {
+            if (err_msg != nullptr && err_msg->isEmpty())
+                *err_msg = QStringLiteral("阈值计数失败");
+            return {};
+        }
+        points.push_back(evaluationThresholdPoint(threshold, counts));
+    }
+    return selectBestEvaluationThreshold(points, positive_ground_truth_count);
 }
 
 } // namespace dltool::model

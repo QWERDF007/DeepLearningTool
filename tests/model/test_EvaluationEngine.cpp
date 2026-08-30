@@ -6,6 +6,7 @@
 #include "model/AnomalyPreprocessingTransform.h"
 #include "model/DetectionEvaluationEngine.h"
 #include "model/EvaluationEngineRegistry.h"
+#include "model/EvaluationDataset.h"
 #include "model/EvaluationThumbnailImageProvider.h"
 #include "model/EvaluationResult.h"
 #include "model/ModelEvaluationOptions.h"
@@ -61,29 +62,6 @@ const EvaluationInstanceRecord *findEvent(const EvaluationResult &result, evalua
             return &event;
     return nullptr;
 }
-
-class ThresholdCollectionProbe final : public DetectionEvaluationEngine
-{
-public:
-    using InstanceMatchingEvaluationEngine::collectThresholdSearchData;
-
-    void setCancelToken(const std::shared_ptr<std::atomic_bool> &token)
-    {
-        scratch_.cancel_token = token;
-    }
-};
-
-class ThresholdCollectionFailureProbe final : public DetectionEvaluationEngine
-{
-protected:
-    bool collectThresholdSearchData(const QMap<qint64, EvaluationImageData> &, QVector<double> &, qint64 &,
-                                    QString *err_msg) override
-    {
-        if (err_msg != nullptr)
-            *err_msg = QStringLiteral("阈值数据收集失败");
-        return false;
-    }
-};
 
 } // namespace
 
@@ -301,44 +279,6 @@ private slots:
         QCOMPARE(result.threshold_search.best_point.counts.fn, qint64(0));
     }
 
-    void instanceThresholdCollectionHonorsCancellation()
-    {
-        EvaluationImageData image;
-        image.gt.push_back(EvaluationGroundTruthData{1, 1, QStringLiteral("Object"), {}, {}, {}, false});
-        image.predictions.push_back(EvaluationPredictionData{QStringLiteral("prediction"), 1, 1,
-                                                              QStringLiteral("Object"), 0.8, {}, {}, {}});
-
-        auto                       cancel = std::make_shared<std::atomic_bool>(true);
-        ThresholdCollectionProbe  probe;
-        probe.setCancelToken(cancel);
-        QVector<double>            scores;
-        qint64                      positive_ground_truth_count = 0;
-        QString                     error;
-        QVERIFY(!probe.collectThresholdSearchData({{1, image}}, scores, positive_ground_truth_count, &error));
-        QVERIFY(error.contains(QStringLiteral("取消")));
-        QVERIFY(scores.isEmpty());
-    }
-
-    void thresholdCollectionFailureStopsEvaluation()
-    {
-        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
-        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
-        const qint64 cat   = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
-        const qint64 image = fixture.addImage(QStringLiteral("cat"));
-        QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
-        QVERIFY(fixture.writeImageList());
-        QVERIFY(fixture.setTestSelection({cat}));
-        QVERIFY(fixture.writePrediction(
-            image, detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 10, 10)));
-
-        ThresholdCollectionFailureProbe engine;
-        EvaluationResult               result;
-        QString                        error;
-        QVERIFY(!engine.evaluate(optionsFor(fixture, evaluation::Method::Detection), &result, &error));
-        QCOMPARE(error, QStringLiteral("阈值数据收集失败"));
-        QVERIFY(result.images.isEmpty());
-    }
-
     void detectionHonorsIoUBoundaryAndHungarianStrategy()
     {
         EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
@@ -427,7 +367,7 @@ private slots:
                   .toMap()
                   .value(evaluation::fieldName(evaluation::Field::Datasets))
                   .toList();
-        QCOMPARE(distribution_datasets.size(), 3);
+        QCOMPARE(distribution_datasets.size(), 5);
         QCOMPARE(evaluation::seriesKindFromKey(
                      distribution_datasets.at(0).toMap()
                          .value(evaluation::fieldName(evaluation::Field::SeriesKind))
@@ -440,6 +380,16 @@ private slots:
                  evaluation::SeriesKind::Anomaly);
         QCOMPARE(evaluation::seriesKindFromKey(
                      distribution_datasets.at(2).toMap()
+                         .value(evaluation::fieldName(evaluation::Field::SeriesKind))
+                         .toString()),
+                 evaluation::SeriesKind::BestThreshold);
+        QCOMPARE(evaluation::seriesKindFromKey(
+                     distribution_datasets.at(3).toMap()
+                         .value(evaluation::fieldName(evaluation::Field::SeriesKind))
+                         .toString()),
+                 evaluation::SeriesKind::BestThreshold);
+        QCOMPARE(evaluation::seriesKindFromKey(
+                     distribution_datasets.at(4).toMap()
                          .value(evaluation::fieldName(evaluation::Field::SeriesKind))
                          .toString()),
                  evaluation::SeriesKind::BestThreshold);
@@ -499,6 +449,8 @@ private slots:
         QCOMPARE(first_event.anomaly_model_polygons.size(), 2);
         QCOMPARE(first_event.anomaly_image_polygons.size(), 2);
         QCOMPARE(first_event.anomaly_score_map_path, score_path);
+        QCOMPARE(first_event.image_width, 32);
+        QCOMPARE(first_event.image_height, 32);
 
         // The provider first resizes the 32x32 source to 20x20, center-crops
         // 10x10, then scales the crop to the 10x10 score-map size. The image
@@ -532,6 +484,44 @@ private slots:
         QCOMPARE(second.image_counts.fn, first.image_counts.fn);
         QCOMPARE(second.instance_records.front().anomaly_model_polygons.size(),
                  first_event.anomaly_model_polygons.size());
+    }
+
+    void anomalyImageLoadingDefersSourceDimensionLookup()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 good = fixture.addClass(QStringLiteral("Good"), QStringLiteral("good"));
+        const qint64 anomaly = fixture.addClass(QStringLiteral("Scratch"), QStringLiteral("anomaly"));
+        const qint64 first = fixture.addImage(QStringLiteral("lazy-good"),
+                                              {{QStringLiteral("image_label_class_id"), good}});
+        const qint64 second = fixture.addImage(QStringLiteral("lazy-anomaly"),
+                                               {{QStringLiteral("image_label_class_id"), anomaly}});
+        QVERIFY(good >= 0);
+        QVERIFY(anomaly >= 0);
+        QVERIFY(first >= 0);
+        QVERIFY(second >= 0);
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({good, anomaly}));
+
+        int dimension_calls = 0;
+        QMap<qint64, EvaluationImageData> images;
+        QString error;
+        QVERIFY2(loadEvaluationImages(fixture.fileListPath(), fixture.projectDatabasePath(),
+                                       fixture.taskDatabasePath(), evaluation::Method::AnomalyDetection, images, {},
+                                       &error, nullptr, nullptr,
+                                       [&dimension_calls](qint64, int *width, int *height)
+                                       {
+                                           ++dimension_calls;
+                                           *width = 32;
+                                           *height = 32;
+                                           return true;
+                                       }),
+                  qPrintable(error));
+        QCOMPARE(dimension_calls, 0);
+        QCOMPARE(images.value(first).width, 0);
+        QCOMPARE(images.value(first).height, 0);
+        QCOMPARE(images.value(second).width, 0);
+        QCOMPARE(images.value(second).height, 0);
     }
 
     void anomalyClassificationUsesTheSameScoreMapAsRegions()

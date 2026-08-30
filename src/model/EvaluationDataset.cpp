@@ -9,6 +9,10 @@
 
 #include <opencv2/imgcodecs.hpp>
 
+#include <spdlog/spdlog.h>
+
+#include <QElapsedTimer>
+#include <QCache>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -16,12 +20,15 @@
 #include <QJsonParseError>
 #include <QMap>
 #include <QMetaType>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QSet>
 #include <QTextStream>
 #include <algorithm>
 #include <cmath>
 #include <exception>
 #include <memory>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -84,6 +91,200 @@ QList<QString> parseCsvLine(const QString &line, bool *valid = nullptr)
 bool isCancelled(const std::shared_ptr<std::atomic_bool> &cancel)
 {
     return cancel != nullptr && cancel->load(std::memory_order_relaxed);
+}
+
+bool decodeEvaluationScoreMap(const QString &path, cv::Mat &decoded, QString *err_msg);
+bool decodedScoreMapMaximum(const cv::Mat &decoded, double *maximum);
+
+struct EvaluationScoreMaximumRequest
+{
+    qint64  image_id{-1};
+    QString path;
+};
+
+struct EvaluationScoreMaximumResult
+{
+    qint64                                image_id{-1};
+    bool                                  has_score{false};
+    bool                                  maximum_cache_hit{false};
+    double                                maximum{0.0};
+    std::shared_ptr<const EvaluationScoreMap> score_map;
+    QString                               error;
+};
+
+struct EvaluationScoreMaximumCacheEntry
+{
+    qint64 file_size{0};
+    qint64 last_modified_ms{0};
+    bool   has_score{false};
+    double maximum{0.0};
+};
+
+QMutex &evaluationScoreMaximumCacheMutex()
+{
+    static QMutex mutex;
+    return mutex;
+}
+
+QCache<QString, EvaluationScoreMaximumCacheEntry> &evaluationScoreMaximumCache()
+{
+    static QCache<QString, EvaluationScoreMaximumCacheEntry> cache;
+    static const bool initialized = []
+    {
+        cache.setMaxCost(100'000);
+        return true;
+    }();
+    Q_UNUSED(initialized);
+    return cache;
+}
+
+bool cachedEvaluationScoreMapMaximum(const QString &path, double *maximum, bool *has_score)
+{
+    if (maximum == nullptr || has_score == nullptr)
+        return false;
+
+    const QFileInfo file_info(path);
+    if (!file_info.isFile())
+        return false;
+    const QString cache_key       = file_info.absoluteFilePath();
+    const qint64  file_size       = file_info.size();
+    const qint64  last_modified_ms = file_info.lastModified().toMSecsSinceEpoch();
+    QMutexLocker locker(&evaluationScoreMaximumCacheMutex());
+    const EvaluationScoreMaximumCacheEntry *cached = evaluationScoreMaximumCache().object(cache_key);
+    if (cached == nullptr || cached->file_size != file_size || cached->last_modified_ms != last_modified_ms)
+        return false;
+    *maximum  = cached->maximum;
+    *has_score = cached->has_score;
+    return true;
+}
+
+void cacheEvaluationScoreMapMaximum(const QString &path, const bool has_score, const double maximum)
+{
+    const QFileInfo file_info(path);
+    if (!file_info.isFile())
+        return;
+    const QString cache_key = file_info.absoluteFilePath();
+    QMutexLocker  locker(&evaluationScoreMaximumCacheMutex());
+    evaluationScoreMaximumCache().insert(
+        cache_key, new EvaluationScoreMaximumCacheEntry{
+                       file_info.size(), file_info.lastModified().toMSecsSinceEpoch(), has_score, maximum});
+}
+
+std::shared_ptr<const EvaluationScoreMap> materializedScoreMap(const cv::Mat &decoded)
+{
+    auto score_map = std::make_shared<EvaluationScoreMap>();
+    score_map->width  = decoded.cols;
+    score_map->height = decoded.rows;
+    score_map->values.resize(decoded.cols * decoded.rows);
+    double maximum     = 0.0;
+    bool   has_maximum = false;
+    if (decoded.type() == CV_32FC1)
+    {
+        for (int y = 0; y < decoded.rows; ++y)
+        {
+            const float *source = decoded.ptr<float>(y);
+            double       *target = score_map->values.data() + y * decoded.cols;
+            for (int x = 0; x < decoded.cols; ++x)
+            {
+                const double value = static_cast<double>(source[x]);
+                target[x]           = value;
+                if (std::isfinite(value) && (!has_maximum || value > maximum))
+                {
+                    maximum     = value;
+                    has_maximum = true;
+                }
+            }
+        }
+    }
+    else
+    {
+        for (int y = 0; y < decoded.rows; ++y)
+        {
+            const double *source = decoded.ptr<double>(y);
+            double        *target = score_map->values.data() + y * decoded.cols;
+            for (int x = 0; x < decoded.cols; ++x)
+            {
+                const double value = source[x];
+                target[x]           = value;
+                if (std::isfinite(value) && (!has_maximum || value > maximum))
+                {
+                    maximum     = value;
+                    has_maximum = true;
+                }
+            }
+        }
+    }
+    score_map->maximum_score     = maximum;
+    score_map->has_maximum_score = has_maximum;
+    return score_map;
+}
+
+EvaluationScoreMaximumResult readScoreMapForEvaluation(const EvaluationScoreMaximumRequest &request,
+                                                        const double retain_threshold)
+{
+    EvaluationScoreMaximumResult result;
+    result.image_id = request.image_id;
+    if (cachedEvaluationScoreMapMaximum(request.path, &result.maximum, &result.has_score))
+    {
+        result.maximum_cache_hit = true;
+        if (!result.has_score || !std::isfinite(retain_threshold) || result.maximum < retain_threshold)
+            return result;
+
+        cv::Mat decoded;
+        if (!decodeEvaluationScoreMap(request.path, decoded, &result.error))
+            return result;
+        result.score_map = materializedScoreMap(decoded);
+        return result;
+    }
+
+    cv::Mat decoded;
+    if (!decodeEvaluationScoreMap(request.path, decoded, &result.error))
+        return result;
+
+    if (!decodedScoreMapMaximum(decoded, &result.maximum))
+    {
+        cacheEvaluationScoreMapMaximum(request.path, false, 0.0);
+        result.error.clear();
+        return result;
+    }
+    result.has_score = true;
+    cacheEvaluationScoreMapMaximum(request.path, true, result.maximum);
+    if (std::isfinite(retain_threshold) && result.maximum >= retain_threshold)
+        result.score_map = materializedScoreMap(decoded);
+    return result;
+}
+
+std::vector<EvaluationScoreMaximumResult> readScoreMapMaximums(
+    const std::vector<EvaluationScoreMaximumRequest> &requests,
+    const std::shared_ptr<std::atomic_bool>            &cancel_token, const double retain_threshold)
+{
+    std::vector<EvaluationScoreMaximumResult> results(requests.size());
+    if (requests.empty())
+        return results;
+
+    constexpr std::size_t kMaximumReaderThreads = 8;
+    const std::size_t worker_count
+        = std::min(requests.size(), std::max<std::size_t>(1, std::min<std::size_t>(kMaximumReaderThreads,
+                                                                                     std::thread::hardware_concurrency())));
+    std::atomic_size_t next_index{0};
+    std::vector<std::thread> workers;
+    workers.reserve(worker_count);
+    const auto worker = [&]()
+    {
+        while (!isCancelled(cancel_token))
+        {
+            const std::size_t index = next_index.fetch_add(1, std::memory_order_relaxed);
+            if (index >= requests.size())
+                return;
+
+            results[index] = readScoreMapForEvaluation(requests[index], retain_threshold);
+        }
+    };
+    for (std::size_t index = 0; index < worker_count; ++index)
+        workers.emplace_back(worker);
+    for (std::thread &thread : workers)
+        thread.join();
+    return results;
 }
 
 QString mapString(const QVariantMap &map, const QString &key, const QString &fallback = {})
@@ -189,11 +390,8 @@ bool selectedLabel(const ModelDatasetSelection &selection, const SourceImage &im
         || selection.containsLabelClass(image.dataset_id, label.class_id);
 }
 
-} // namespace
-
-bool readEvaluationScoreMap(const QString &path, EvaluationScoreMap &score_map, QString *err_msg)
+bool decodeEvaluationScoreMap(const QString &path, cv::Mat &decoded, QString *err_msg)
 {
-    score_map = {};
     const auto fail = [err_msg](const QString &message)
     {
         if (err_msg != nullptr)
@@ -209,30 +407,86 @@ bool readEvaluationScoreMap(const QString &path, EvaluationScoreMap &score_map, 
         return fail(QString("异常分数图为空: %1").arg(path));
 
     cv::Mat encoded(1, bytes.size(), CV_8UC1, const_cast<char *>(bytes.constData()));
-    const cv::Mat decoded = cv::imdecode(encoded, cv::IMREAD_UNCHANGED);
+    decoded = cv::imdecode(encoded, cv::IMREAD_UNCHANGED);
     if (decoded.empty() || decoded.dims != 2 || decoded.channels() != 1
         || (decoded.type() != CV_32FC1 && decoded.type() != CV_64FC1))
         return fail(QString("异常分数图必须是单通道 CV_32FC1/CV_64FC1 TIFF: %1").arg(path));
+    return true;
+}
 
-    score_map.width  = decoded.cols;
-    score_map.height = decoded.rows;
-    score_map.values.resize(decoded.cols * decoded.rows);
-    for (int y = 0; y < decoded.rows; ++y)
+bool decodedScoreMapMaximum(const cv::Mat &decoded, double *maximum)
+{
+    if (maximum == nullptr)
+        return false;
+    bool   found = false;
+    double value = 0.0;
+    if (decoded.type() == CV_32FC1)
     {
-        for (int x = 0; x < decoded.cols; ++x)
+        for (int y = 0; y < decoded.rows; ++y)
         {
-            const double value = decoded.type() == CV_32FC1 ? static_cast<double>(decoded.at<float>(y, x))
-                                                              : decoded.at<double>(y, x);
-            score_map.values[y * decoded.cols + x] = value;
+            const float *row = decoded.ptr<float>(y);
+            for (int x = 0; x < decoded.cols; ++x)
+            {
+                const double score = static_cast<double>(row[x]);
+                if (std::isfinite(score) && (!found || score > value))
+                {
+                    value = score;
+                    found = true;
+                }
+            }
         }
     }
+    else
+    {
+        for (int y = 0; y < decoded.rows; ++y)
+        {
+            const double *row = decoded.ptr<double>(y);
+            for (int x = 0; x < decoded.cols; ++x)
+            {
+                const double score = row[x];
+                if (std::isfinite(score) && (!found || score > value))
+                {
+                    value = score;
+                    found = true;
+                }
+            }
+        }
+    }
+    if (!found)
+        return false;
+    *maximum = value;
     return true;
+}
+
+} // namespace
+
+bool readEvaluationScoreMap(const QString &path, EvaluationScoreMap &score_map, QString *err_msg)
+{
+    score_map = {};
+    cv::Mat decoded;
+    if (!decodeEvaluationScoreMap(path, decoded, err_msg))
+        return false;
+
+    const std::shared_ptr<const EvaluationScoreMap> materialized = materializedScoreMap(decoded);
+    score_map = *materialized;
+    return true;
+}
+
+bool readEvaluationScoreMapMaximum(const QString &path, double *maximum, QString *err_msg)
+{
+    cv::Mat decoded;
+    return decodeEvaluationScoreMap(path, decoded, err_msg) && decodedScoreMapMaximum(decoded, maximum);
 }
 
 bool evaluationScoreMapMaximum(const EvaluationScoreMap &score_map, double *maximum)
 {
     if (maximum == nullptr || !score_map.isValid())
         return false;
+    if (score_map.has_maximum_score)
+    {
+        *maximum = score_map.maximum_score;
+        return true;
+    }
     bool   found = false;
     double value = 0.0;
     for (const double score : score_map.values)
@@ -248,6 +502,36 @@ bool evaluationScoreMapMaximum(const EvaluationScoreMap &score_map, double *maxi
     if (!found)
         return false;
     *maximum = value;
+    return true;
+}
+
+bool evaluationAnomalyImageScore(const EvaluationImageData &image, double *score)
+{
+    if (score == nullptr)
+        return false;
+    if (image.has_anomaly_image_score && std::isfinite(image.anomaly_image_score))
+    {
+        *score = image.anomaly_image_score;
+        return true;
+    }
+    if (image.anomaly_score_map != nullptr)
+        return evaluationScoreMapMaximum(*image.anomaly_score_map, score);
+
+    bool   found = false;
+    double value = 0.0;
+    for (const EvaluationPredictionData &prediction : image.predictions)
+    {
+        if (prediction.class_id != 1 || !std::isfinite(prediction.score))
+            continue;
+        if (!found || prediction.score > value)
+        {
+            value = prediction.score;
+            found = true;
+        }
+    }
+    if (!found)
+        return false;
+    *score = value;
     return true;
 }
 
@@ -340,6 +624,10 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
                           const std::function<bool(qint64 image_id, int *width, int *height)> &dimensions_provider,
                           QMap<int, QString> *class_catalog, QMap<int, QString> *class_colors_out)
 {
+    QElapsedTimer total_timer;
+    total_timer.start();
+    QElapsedTimer phase_timer;
+    phase_timer.start();
     images.clear();
     if (class_catalog != nullptr)
         class_catalog->clear();
@@ -359,6 +647,8 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
     QList<QPair<qint64, QString>> rows;
     if (!readEvaluationImageList(file_list_path, rows, cancel_token, err_msg))
         return false;
+    spdlog::debug("[评估耗时] load-images file-list 完成: {} ms, rows={}", phase_timer.elapsed(), rows.size());
+    phase_timer.restart();
 
     if (task_database_path.trimmed().isEmpty() || !QFileInfo(task_database_path).isFile())
     {
@@ -371,6 +661,9 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
     if (!task_database.readDatasets(selection_records, err_msg))
         return false;
     const ModelDatasetSelection selection = modelDatasetSelectionsFromDatabase(selection_records).test;
+    spdlog::debug("[评估耗时] load-images task-selection 完成: {} ms, records={}, selected={}",
+                  phase_timer.elapsed(), selection_records.size(), !selection.isEmpty());
+    phase_timer.restart();
     if (selection.isEmpty())
     {
         if (err_msg)
@@ -444,6 +737,9 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
             *err_msg = QString("项目标签类别数据数量不一致");
         return false;
     }
+    spdlog::debug("[评估耗时] load-images project-database 完成: {} ms, images={}, labels={}, classes={}",
+                  phase_timer.elapsed(), image_ids.size(), label_ids.size(), class_ids.size());
+    phase_timer.restart();
 
     QMap<qint64, SourceImage> source_images;
     for (size_t index = 0; index < image_ids.size(); ++index)
@@ -521,7 +817,10 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
         image.dataset_id = source_image.dataset_id;
         image.path       = source_image.path.trimmed().isEmpty() ? listed_path : source_image.path;
         image.name       = QFileInfo(image.path).fileName();
-        if (!dimensions_provider || !dimensions_provider(image.id, &image.width, &image.height))
+        // 异常检测只使用图像级真值和预测 TIFF 的分数。原图尺寸仅在
+        // 生成异常区域时按需读取，避免打开评估时为全部图像读取文件头。
+        if (!evaluation::isAnomaly(method)
+            && (!dimensions_provider || !dimensions_provider(image.id, &image.width, &image.height)))
         {
             data::DatasetIO::getImageDimensions(image.path, image.width, image.height);
         }
@@ -601,14 +900,20 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
             *err_msg = QString("测试数据集没有有效图像");
         return false;
     }
+    spdlog::debug("[评估耗时] load-images materialize 完成: {} ms, valid_images={}, rows={}", phase_timer.elapsed(),
+                  images.size(), rows.size());
+    spdlog::debug("[评估耗时] load-images 总计: {} ms", total_timer.elapsed());
     return true;
 }
 
 bool loadEvaluationPredictions(const QString &task_database_path, const QString &prediction_dir,
                                QMap<qint64, EvaluationImageData> &images, const bool anomaly_method, int *count,
                                const std::shared_ptr<std::atomic_bool> &cancel_token, QString *err_msg,
-                               int *ignored_count)
+                               int *ignored_count, const bool load_anomaly_score_maps,
+                               const double retain_anomaly_score_map_threshold)
 {
+    QElapsedTimer total_timer;
+    total_timer.start();
     if (count)
         *count = 0;
     if (ignored_count)
@@ -631,7 +936,13 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
                 *err_msg = message;
             return false;
         };
-        int total = 0;
+        int    total                        = 0;
+        int    existing_files              = 0;
+        qint64 materialized_score_value_count = 0;
+        int    maximum_only_count           = 0;
+        int    maximum_cache_hit_count      = 0;
+        std::vector<EvaluationScoreMaximumRequest> requests;
+        requests.reserve(static_cast<std::size_t>(images.size()));
         for (auto image_it = images.begin(); image_it != images.end(); ++image_it)
         {
             if (isCancelled(cancel_token))
@@ -640,16 +951,27 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
             const QString score_path = QDir(prediction_dir).filePath(QStringLiteral("%1.tiff").arg(image_it.key()));
             if (!QFileInfo(score_path).isFile())
                 continue;
+            ++existing_files;
 
-            EvaluationScoreMap score_map;
-            QString            score_error;
-            if (!readEvaluationScoreMap(score_path, score_map, &score_error))
-                return fail(score_error.isEmpty() ? QString("读取异常分数图失败: %1").arg(score_path) : score_error);
+            if (!load_anomaly_score_maps)
+            {
+                requests.push_back({image_it.key(), score_path});
+                continue;
+            }
 
             double maximum = 0.0;
-            if (!evaluationScoreMapMaximum(score_map, &maximum))
+            QString score_error;
+            EvaluationScoreMap score_map;
+            if (!readEvaluationScoreMap(score_path, score_map, &score_error))
+            {
+                return fail(score_error.isEmpty() ? QString("读取异常分数图失败: %1").arg(score_path) : score_error);
+            }
+            maximum = score_map.maximum_score;
+            if (!score_map.has_maximum_score)
                 continue;
-
+            materialized_score_value_count += score_map.values.size();
+            image_it->anomaly_image_score     = maximum;
+            image_it->has_anomaly_image_score = true;
             image_it->anomaly_score_map = std::make_shared<const EvaluationScoreMap>(std::move(score_map));
 
             EvaluationPredictionData prediction;
@@ -661,8 +983,54 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
             image_it->predictions.push_back(std::move(prediction));
             ++total;
         }
+
+        if (!load_anomaly_score_maps)
+        {
+            const std::vector<EvaluationScoreMaximumResult> results
+                = readScoreMapMaximums(requests, cancel_token, retain_anomaly_score_map_threshold);
+            if (isCancelled(cancel_token))
+                return fail(QStringLiteral("评估已取消"));
+            for (std::size_t index = 0; index < requests.size(); ++index)
+            {
+                const EvaluationScoreMaximumResult &result = results[index];
+                if (result.maximum_cache_hit)
+                    ++maximum_cache_hit_count;
+                if (!result.has_score)
+                {
+                    if (result.error.isEmpty())
+                        continue;
+                    return fail(result.error);
+                }
+
+                const qint64 image_id = result.image_id;
+                auto          image_it = images.find(image_id);
+                if (image_it == images.end())
+                    continue;
+                EvaluationPredictionData prediction;
+                prediction.prediction_id = QString("image-%1").arg(image_id);
+                prediction.image_id      = image_id;
+                prediction.class_id      = 1;
+                prediction.class_name    = evaluation::displayText(evaluation::DisplayText::Anomaly);
+                prediction.score         = result.maximum;
+                image_it->anomaly_image_score     = result.maximum;
+                image_it->has_anomaly_image_score = true;
+                if (result.score_map != nullptr)
+                {
+                    materialized_score_value_count += result.score_map->values.size();
+                    image_it->anomaly_score_map = result.score_map;
+                }
+                else
+                    ++maximum_only_count;
+                image_it->predictions.push_back(std::move(prediction));
+                ++total;
+            }
+        }
         if (count != nullptr)
             *count = total;
+        spdlog::debug("[评估耗时] load-predictions anomaly-tiff 完成: {} ms, images={}, files={}, loaded={}, "
+                      "materialized_score_values={}, maximum_only={}, maximum_cache_hits={}, prediction_dir={}",
+                      total_timer.elapsed(), images.size(), existing_files, total, materialized_score_value_count,
+                      maximum_only_count, maximum_cache_hit_count, prediction_dir.toUtf8().constData());
         return true;
     }
 
@@ -673,6 +1041,7 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
     QHash<qint64, QVariant>     records;
     if (!database.readPredictions(records, err_msg))
         return false;
+    spdlog::debug("[评估耗时] load-predictions task-db 完成: {} ms, records={}", total_timer.elapsed(), records.size());
 
     QSet<QString> prediction_ids;
     int           total = 0;
@@ -792,6 +1161,8 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
     }
     if (count)
         *count = total;
+    spdlog::debug("[评估耗时] load-predictions 完成: {} ms, records={}, predictions={}, ignored={}",
+                  total_timer.elapsed(), records.size(), total, ignored_count != nullptr ? *ignored_count : 0);
     return true;
 }
 

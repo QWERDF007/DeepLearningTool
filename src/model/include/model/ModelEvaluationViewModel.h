@@ -332,6 +332,7 @@ private:
     QString thumbnailUrl(const EvaluationInstanceRecord &record) const;
     void    scheduleRebuildFilteredAggregates();
     void    rebuildFilteredAggregates();
+    bool    hasActiveAggregationFilters() const;
 
     ModelEvaluationOptions            evaluation_options_;
     bool                              has_evaluation_options_{false};
@@ -380,6 +381,7 @@ private:
     QMap<int, QString>                class_colors_;
     int                               aggregation_revision_{0};
     bool                              aggregation_rebuild_scheduled_{false};
+    bool                              aggregation_matches_evaluation_result_{true};
     int                               aggregation_schedule_token_{0};
     bool                              suppress_aggregation_rebuild_{false};
 };

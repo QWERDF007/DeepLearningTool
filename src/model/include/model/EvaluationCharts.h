@@ -126,6 +126,18 @@ MODEL_API QVariantMap buildInstanceEvent(const EvaluationImageData &image, evalu
                                          qint64 event_index);
 
 /**
+ * @brief 直接构造评估内部使用的强类型实例事件。
+ *
+ * 评估引擎直接消费值对象，避免在后台循环中经过 QVariantMap 协议边界再
+ * 反解析；buildInstanceEvent 仍保留给协议调用方。
+ */
+MODEL_API EvaluationInstanceRecord buildInstanceRecord(const EvaluationImageData &image, evaluation::Status status,
+                                                       const EvaluationGroundTruthData *gt,
+                                                       const EvaluationPredictionData *pred, double iou,
+                                                       const QString &dataset_root, const QString &prediction_root,
+                                                       qint64 event_index);
+
+/**
  * @brief 构造混淆矩阵单元格列表。
  *
  * 布局为 类别 x 类别 + 误检/FP 列、漏检/FN 行及合计行列，与主链路矩阵键

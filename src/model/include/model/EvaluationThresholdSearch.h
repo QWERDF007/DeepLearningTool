@@ -79,4 +79,13 @@ MODEL_API EvaluationThresholdSearchResult searchBestEvaluationThreshold(
     const QVector<double> &scores, qint64 positive_ground_truth_count, const EvaluationThresholdCounter &counter,
     const std::shared_ptr<std::atomic_bool> &cancel = {}, QString *err_msg = nullptr);
 
+/**
+ * @brief 从已计算的阈值工作点中选择最大 F1。
+ *
+ * 专用搜索器已经在一次扫描中生成所有工作点时使用此函数，避免再次
+ * 生成候选阈值并调用计数器。
+ */
+MODEL_API EvaluationThresholdSearchResult selectBestEvaluationThreshold(
+    const QVector<EvaluationThresholdPoint> &points, qint64 positive_ground_truth_count);
+
 } // namespace dltool::model

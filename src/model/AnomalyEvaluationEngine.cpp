@@ -6,9 +6,19 @@
 #include "model/EvaluationCommon.h"
 #include "model/EvaluationDataset.h"
 
+#include "data/DatasetIO.h"
+
 #include <opencv2/imgproc.hpp>
 
+#include <spdlog/spdlog.h>
+
 #include <QDir>
+#include <QElapsedTimer>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QCache>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QVariantList>
 
 #include <cmath>
@@ -36,20 +46,87 @@ struct AnomalyRegionSnapshot
 {
     QVariantList model_polygons;
     QVariantList image_polygons;
-    double        max_score{0.0};
-    bool          has_score{false};
 };
 
-AnomalyRegionSnapshot anomalyRegions(const EvaluationImageData &image, const double threshold,
-                                     const QVariantMap &preprocessing)
+QMutex &anomalyRegionCacheMutex()
+{
+    static QMutex mutex;
+    return mutex;
+}
+
+QCache<QString, AnomalyRegionSnapshot> &anomalyRegionCache()
+{
+    static QCache<QString, AnomalyRegionSnapshot> cache;
+    static const bool initialized = []
+    {
+        cache.setMaxCost(64 * 1024);
+        return true;
+    }();
+    Q_UNUSED(initialized);
+    return cache;
+}
+
+QString anomalyRegionCacheKey(const QString &score_path, const EvaluationImageData &image,
+                              const EvaluationScoreMap &score_map, const double threshold,
+                              const QVariantMap &preprocessing)
+{
+    const QFileInfo file_info(score_path);
+    if (!file_info.isFile())
+        return {};
+    const QByteArray preprocessing_bytes = QJsonDocument::fromVariant(preprocessing).toJson(QJsonDocument::Compact);
+    return QStringLiteral("%1|size=%2|mtime=%3|image=%4x%5|map=%6x%7|threshold=%8|preprocessing=%9")
+        .arg(file_info.absoluteFilePath())
+        .arg(file_info.size())
+        .arg(file_info.lastModified().toMSecsSinceEpoch())
+        .arg(image.width)
+        .arg(image.height)
+        .arg(score_map.width)
+        .arg(score_map.height)
+        .arg(QString::number(threshold, 'g', 17))
+        .arg(QString::fromUtf8(preprocessing_bytes));
+}
+
+bool cachedAnomalyRegions(const QString &key, AnomalyRegionSnapshot *snapshot)
+{
+    if (key.isEmpty() || snapshot == nullptr)
+        return false;
+    QMutexLocker locker(&anomalyRegionCacheMutex());
+    const AnomalyRegionSnapshot *cached = anomalyRegionCache().object(key);
+    if (cached == nullptr)
+        return false;
+    *snapshot = *cached;
+    return true;
+}
+
+void cacheAnomalyRegions(const QString &key, const AnomalyRegionSnapshot &snapshot)
+{
+    if (key.isEmpty())
+        return;
+    qsizetype point_count = 0;
+    for (const QVariant &polygon : snapshot.model_polygons) point_count += polygon.toList().size();
+    for (const QVariant &polygon : snapshot.image_polygons) point_count += polygon.toList().size();
+    const int cost_kib = std::max(1, static_cast<int>((point_count * 64 + 1023) / 1024));
+    QMutexLocker locker(&anomalyRegionCacheMutex());
+    anomalyRegionCache().insert(key, new AnomalyRegionSnapshot(snapshot), cost_kib);
+}
+
+AnomalyRegionSnapshot anomalyRegions(const EvaluationImageData &image, const EvaluationScoreMap &score_map,
+                                     const QString &score_path, const double threshold,
+                                     const QVariantMap &preprocessing, bool *cache_hit)
 {
     AnomalyRegionSnapshot snapshot;
-    if (image.anomaly_score_map == nullptr || !image.anomaly_score_map->isValid())
+    if (cache_hit != nullptr)
+        *cache_hit = false;
+    if (!score_map.isValid())
         return snapshot;
-    const EvaluationScoreMap &score_map = *image.anomaly_score_map;
-    if (!evaluationScoreMapMaximum(score_map, &snapshot.max_score))
+
+    const QString cache_key = anomalyRegionCacheKey(score_path, image, score_map, threshold, preprocessing);
+    if (cachedAnomalyRegions(cache_key, &snapshot))
+    {
+        if (cache_hit != nullptr)
+            *cache_hit = true;
         return snapshot;
-    snapshot.has_score = true;
+    }
 
     cv::Mat binary(score_map.height, score_map.width, CV_8UC1, cv::Scalar(0));
     for (int y = 0; y < score_map.height; ++y)
@@ -57,7 +134,7 @@ AnomalyRegionSnapshot anomalyRegions(const EvaluationImageData &image, const dou
         uchar *target = binary.ptr<uchar>(y);
         for (int x = 0; x < score_map.width; ++x)
         {
-            const double value = score_map.values.at(y * score_map.width + x);
+            const double value = score_map.values.constData()[y * score_map.width + x];
             target[x]          = std::isfinite(value) && value >= threshold ? 255 : 0;
         }
     }
@@ -86,6 +163,7 @@ AnomalyRegionSnapshot anomalyRegions(const EvaluationImageData &image, const dou
         }
     }
 
+    cacheAnomalyRegions(cache_key, snapshot);
     return snapshot;
 }
 
@@ -103,35 +181,8 @@ evaluation::Method AnomalyEvaluationEngine::method() const
 
 void AnomalyEvaluationEngine::buildClasses(const QMap<qint64, EvaluationImageData> &, QMap<int, QString> &) {}
 
-bool AnomalyEvaluationEngine::collectThresholdSearchData(const QMap<qint64, EvaluationImageData> &images,
-                                                         QVector<double> &scores,
-                                                         qint64 &positive_ground_truth_count, QString *err_msg)
+bool AnomalyEvaluationEngine::supportsThresholdSearch() const
 {
-    scores.clear();
-    positive_ground_truth_count = 0;
-    for (const EvaluationImageData &image : images)
-    {
-        if (cancelled(scratch_.cancel_token))
-        {
-            if (err_msg != nullptr)
-                *err_msg = QStringLiteral("评估已取消");
-            return false;
-        }
-
-        bool ground_truth_anomaly = false;
-        for (const EvaluationGroundTruthData &ground_truth : image.gt)
-            ground_truth_anomaly = ground_truth_anomaly || ground_truth.anomaly;
-        if (ground_truth_anomaly)
-            ++positive_ground_truth_count;
-
-        double maximum = 0.0;
-        if (image.anomaly_score_map != nullptr
-            && evaluationScoreMapMaximum(*image.anomaly_score_map, &maximum))
-        {
-            scratch_.anomaly_image_scores.insert(image.id, maximum);
-            scores.push_back(maximum);
-        }
-    }
     return true;
 }
 
@@ -152,6 +203,12 @@ bool AnomalyEvaluationEngine::runAnomalyLoop(const QMap<qint64, EvaluationImageD
         return false;
     };
 
+    QElapsedTimer region_timer;
+    region_timer.start();
+    qint64 region_images = 0;
+    qint64 region_values = 0;
+    qint64 region_polygons = 0;
+    qint64 region_cache_hits = 0;
     for (auto image_it = images.begin(); image_it != images.end(); ++image_it)
     {
         if (cancelled(scratch_.cancel_token))
@@ -174,16 +231,49 @@ bool AnomalyEvaluationEngine::runAnomalyLoop(const QMap<qint64, EvaluationImageD
                 && (anomaly_prediction == nullptr || prediction.score > anomaly_prediction->score))
                 anomaly_prediction = &prediction;
         }
-        AnomalyRegionSnapshot regions;
-        if (scratch_.collect_events)
-            regions = anomalyRegions(image, scratch_.confidence, scratch_.preprocessing_config);
         const auto  cached_score = scratch_.anomaly_image_scores.constFind(image.id);
-        const double image_score = cached_score != scratch_.anomaly_image_scores.cend()
-                                      ? cached_score.value()
-                                      : (regions.has_score ? regions.max_score : 0.0);
-        if (regions.has_score)
-            scratch_.anomaly_image_scores.insert(image.id, regions.max_score);
+        double      image_score = cached_score != scratch_.anomaly_image_scores.cend() ? cached_score.value() : 0.0;
+        if (cached_score == scratch_.anomaly_image_scores.cend())
+        {
+            double score = 0.0;
+            if (evaluationAnomalyImageScore(image, &score))
+            {
+                image_score = score;
+                scratch_.anomaly_image_scores.insert(image.id, score);
+            }
+        }
         const bool               predicted_anomaly = image_score >= scratch_.confidence;
+        AnomalyRegionSnapshot regions;
+        const QString score_path
+            = QDir(scratch_.prediction_root).filePath(QStringLiteral("%1.tiff").arg(image.id));
+        EvaluationImageData region_image = image;
+        if (scratch_.collect_events && predicted_anomaly)
+        {
+            if (region_image.width <= 0 || region_image.height <= 0)
+            {
+                bool dimensions_loaded = scratch_.image_dimensions_provider
+                    && scratch_.image_dimensions_provider(region_image.id, &region_image.width, &region_image.height);
+                if (!dimensions_loaded)
+                    data::DatasetIO::getImageDimensions(region_image.path, region_image.width, region_image.height);
+            }
+            EvaluationScoreMap region_score_map;
+            const EvaluationScoreMap *score_map = image.anomaly_score_map.get();
+            if (score_map == nullptr)
+            {
+                QString            score_error;
+                if (!readEvaluationScoreMap(score_path, region_score_map, &score_error))
+                    return fail(score_error.isEmpty() ? QString("读取异常分数图失败: %1").arg(score_path) : score_error);
+                score_map = &region_score_map;
+            }
+            bool region_cache_hit = false;
+            regions = anomalyRegions(region_image, *score_map, score_path, scratch_.confidence, scratch_.preprocessing_config,
+                                     &region_cache_hit);
+            if (region_cache_hit)
+                ++region_cache_hits;
+            ++region_images;
+            region_values += score_map->values.size();
+            region_polygons += regions.model_polygons.size();
+        }
         const evaluation::Status status
             = ground_truth_anomaly && predicted_anomaly
                 ? evaluation::Status::TruePositive
@@ -214,17 +304,21 @@ bool AnomalyEvaluationEngine::runAnomalyLoop(const QMap<qint64, EvaluationImageD
 
         if (scratch_.collect_events)
         {
-            const QVariantMap event_map
-                = buildInstanceEvent(image, status, &display_gt, &display_prediction, 0.0, scratch_.dataset_root,
-                                     scratch_.prediction_root, static_cast<qint64>(scratch_.events.size() + 1));
-            EvaluationInstanceRecord event = instanceFromMap(event_map);
+            const EvaluationImageData &display_image
+                = predicted_anomaly && (image.width <= 0 || image.height <= 0) ? region_image : image;
+            EvaluationInstanceRecord event
+                = buildInstanceRecord(display_image, status, &display_gt, &display_prediction, 0.0,
+                                       scratch_.dataset_root,
+                                       scratch_.prediction_root, static_cast<qint64>(scratch_.events.size() + 1));
             event.anomaly_score_map_path
-                = QDir(scratch_.prediction_root).filePath(QStringLiteral("%1.tiff").arg(image.id));
+                = score_path;
             event.anomaly_model_polygons = regions.model_polygons;
             event.anomaly_image_polygons = regions.image_polygons;
             scratch_.events.push_back(std::move(event));
         }
     }
+    spdlog::debug("[评估耗时] anomaly-regions 完成: {} ms, images={}, score_values={}, polygons={}, cache_hits={}",
+                  region_timer.elapsed(), region_images, region_values, region_polygons, region_cache_hits);
     return true;
 }
 
@@ -261,20 +355,8 @@ QList<QVariantMap> AnomalyEvaluationEngine::buildCharts(const QMap<qint64, Evalu
         {evaluation::fieldName(evaluation::Field::Image),
          evaluationMetricMap(image_counts.tp, image_counts.fp, image_counts.fn)}
     };
-    // Keep the anomaly-score chart in the same score domain as classification
-    // and polygon extraction when a score TIFF is available.
-    QMap<qint64, EvaluationImageData> chart_images = images;
-    for (auto image_it = chart_images.begin(); image_it != chart_images.end(); ++image_it)
-    {
-        const auto score_it = scratch_.anomaly_image_scores.constFind(image_it.key());
-        if (score_it == scratch_.anomaly_image_scores.cend())
-            continue;
-        for (EvaluationPredictionData &prediction : image_it->predictions)
-            prediction.score = score_it.value();
-        rebuildImageDerivedValues(image_it.value());
-    }
     const EvaluationChartOutput official
-        = buildAnomalyEvaluationCharts(chart_images, diagnostic, scratch_.confidence, &scratch_.threshold_search);
+        = buildAnomalyEvaluationCharts(images, diagnostic, scratch_.confidence, &scratch_.threshold_search);
     scratch_.official_metrics        = official.metrics;
     scratch_.image_metric_definition = official.image_definition;
     QList<QVariantMap>          charts;

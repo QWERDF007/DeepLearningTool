@@ -27,8 +27,7 @@ public:
 protected:
     void buildClasses(const QMap<qint64, EvaluationImageData> &images, QMap<int, QString> &classes) override;
 
-    bool collectThresholdSearchData(const QMap<qint64, EvaluationImageData> &images, QVector<double> &scores,
-                                    qint64 &positive_ground_truth_count, QString *err_msg) override;
+    bool supportsThresholdSearch() const override;
 
     bool computeInstanceCounts(const QMap<qint64, EvaluationImageData> &images, const QMap<int, QString> &classes,
                                QMap<int, EvaluationCounts> &per_class, EvaluationCounts &overall,

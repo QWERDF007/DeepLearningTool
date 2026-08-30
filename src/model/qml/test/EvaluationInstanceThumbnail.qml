@@ -52,9 +52,14 @@ Item {
 
     function scheduleOverlayPaint() {
         control.requestOverlayPaint()
-        Qt.callLater(function() {
-            control.requestOverlayPaint()
-        })
+        overlayPaintTimer.restart()
+    }
+
+    Timer {
+        id: overlayPaintTimer
+        interval: 0
+        repeat: false
+        onTriggered: control.requestOverlayPaint()
     }
 
     onRecordChanged: {

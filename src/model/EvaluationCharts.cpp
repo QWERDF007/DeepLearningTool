@@ -6,6 +6,9 @@
 #include "model/EvaluationMatching.h"
 #include "model/ModelEvaluationProtocol.h"
 
+#include <spdlog/spdlog.h>
+
+#include <QElapsedTimer>
 #include <QSet>
 #include <QVariantList>
 #include <QVector>
@@ -390,6 +393,8 @@ EvaluationThresholdSearchResult anomalyThresholdSearchForImages(const QList<Eval
                                                                 const std::shared_ptr<std::atomic_bool> &cancel,
                                                                 QString *err_msg)
 {
+    QElapsedTimer total_timer;
+    total_timer.start();
     struct Sample
     {
         double score{0.0};
@@ -414,19 +419,29 @@ EvaluationThresholdSearchResult anomalyThresholdSearchForImages(const QList<Eval
         if (ground_truth_anomaly)
             ++positive_ground_truth_count;
 
-        double score     = 0.0;
-        const bool has_score = image.anomaly_score_map != nullptr
-                             && evaluationScoreMapMaximum(*image.anomaly_score_map, &score);
+        double      score      = 0.0;
+        const bool  has_score  = evaluationAnomalyImageScore(image, &score);
         if (has_score)
         {
             scores.push_back(score);
             ranked_samples.push_back({score, ground_truth_anomaly});
         }
     }
+    spdlog::debug("[评估耗时] threshold-search anomaly collect 完成: {} ms, images={}, scored_images={}, scores={}, "
+                  "positive_gt={}",
+                  total_timer.elapsed(), images.size(), ranked_samples.size(), scores.size(), positive_ground_truth_count);
 
+    QElapsedTimer phase_timer;
+    phase_timer.start();
     std::stable_sort(ranked_samples.begin(), ranked_samples.end(),
                      [](const Sample &lhs, const Sample &rhs) { return lhs.score > rhs.score; });
+    const qint64 sort_elapsed = phase_timer.elapsed();
+    phase_timer.restart();
     const QVector<double> candidates = evaluationThresholdCandidates(scores);
+    const qint64 candidate_elapsed = phase_timer.elapsed();
+    spdlog::debug("[评估耗时] threshold-search anomaly candidates 完成: sort={} ms, unique={} ms, candidates={}",
+                  sort_elapsed, candidate_elapsed, candidates.size());
+    phase_timer.restart();
     QVector<EvaluationThresholdPoint> points(candidates.size());
     EvaluationCounts                  counts{0, 0, positive_ground_truth_count};
     int                               active_count = 0;
@@ -452,17 +467,16 @@ EvaluationThresholdSearchResult anomalyThresholdSearchForImages(const QList<Eval
         }
         points[index] = evaluationThresholdPoint(threshold, counts);
     }
+    const qint64 scan_elapsed = phase_timer.elapsed();
 
-    int point_index = 0;
-    const EvaluationThresholdCounter counter
-        = [&points, &point_index](const double, EvaluationCounts &output, QString *)
-    {
-        if (point_index >= points.size())
-            return false;
-        output = points.at(point_index++).counts;
-        return true;
-    };
-    return searchBestEvaluationThreshold(scores, positive_ground_truth_count, counter, cancel, err_msg);
+    const qint64 select_elapsed = 0;
+    EvaluationThresholdSearchResult result
+        = selectBestEvaluationThreshold(points, positive_ground_truth_count);
+    spdlog::debug("[评估耗时] threshold-search anomaly 完成: scan={} ms, select={} ms, total={} ms, points={}, "
+                  "available={}, best_threshold={}, best_f1={}",
+                  scan_elapsed, select_elapsed, total_timer.elapsed(), result.points.size(), result.available,
+                  result.best_point.threshold, result.best_point.f1);
+    return result;
 }
 
 QVariantMap anomalyScoreChartForEvaluationImages(const QMap<qint64, EvaluationImageData> &images,
@@ -477,9 +491,8 @@ QVariantMap anomalyScoreChartForEvaluationImages(const QMap<qint64, EvaluationIm
         for (const EvaluationGroundTruthData &ground_truth : image.gt)
             ground_truth_anomaly = ground_truth_anomaly || ground_truth.anomaly;
 
-        double score     = 0.0;
-        const bool has_score = image.anomaly_score_map != nullptr
-                             && evaluationScoreMapMaximum(*image.anomaly_score_map, &score);
+        double      score      = 0.0;
+        const bool  has_score  = evaluationAnomalyImageScore(image, &score);
         if (!has_score)
             continue;
         samples.push_back({score, ground_truth_anomaly});
@@ -872,6 +885,8 @@ EvaluationThresholdSearchResult instanceThresholdSearchForImages(
     const QList<EvaluationImageData> &images, const double iou_threshold, const evaluation::MatchingStrategy strategy,
     const QVariantList &class_ids, const std::shared_ptr<std::atomic_bool> &cancel, QString *err_msg)
 {
+    QElapsedTimer total_timer;
+    total_timer.start();
     const auto allowed = [&class_ids](const int class_id)
     {
         return precisionRecallClassAllowed(class_ids, class_id);
@@ -881,6 +896,13 @@ EvaluationThresholdSearchResult instanceThresholdSearchForImages(
     qint64           positive_ground_truth_count = 0;
     QVector<PreparedThresholdImage> prepared_images;
     prepared_images.reserve(images.size());
+    qint64       prediction_count = 0;
+    qint64       ground_truth_count = 0;
+    qint64       iou_pair_count = 0;
+    qint64       edge_count = 0;
+    qint64       iou_elapsed = 0;
+    QElapsedTimer iou_timer;
+    iou_timer.start();
 
     for (const EvaluationImageData &image : images)
     {
@@ -926,11 +948,14 @@ EvaluationThresholdSearchResult instanceThresholdSearchForImages(
                 prepared_class.predictions.push_back(prediction);
             for (const EvaluationGroundTruthData &value : ground_truth)
                 prepared_class.ground_truth.push_back(value);
+            prediction_count += prepared_class.predictions.size();
+            ground_truth_count += prepared_class.ground_truth.size();
             std::stable_sort(prepared_class.predictions.begin(), prepared_class.predictions.end(),
                              [](const EvaluationPredictionData &lhs, const EvaluationPredictionData &rhs)
                              { return lhs.score > rhs.score; });
 
             prepared_class.ious.resize(prepared_class.predictions.size());
+            iou_timer.restart();
             for (int prediction_index = 0; prediction_index < prepared_class.predictions.size(); ++prediction_index)
             {
                 if (isCancelled(cancel))
@@ -955,6 +980,7 @@ EvaluationThresholdSearchResult instanceThresholdSearchForImages(
                     const double iou = (!prediction_box.valid() && !ground_truth_box.valid())
                                          ? 1.0
                                          : intersectionOverUnion(prediction_box, ground_truth_box);
+                    ++iou_pair_count;
                     prediction_ious[ground_truth_index] = iou;
                     if (iou >= iou_threshold)
                         prepared_class.greedy_edges.push_back({prediction_index, ground_truth_index, iou});
@@ -969,12 +995,23 @@ EvaluationThresholdSearchResult instanceThresholdSearchForImages(
                               return lhs.prediction < rhs.prediction;
                           return lhs.ground_truth < rhs.ground_truth;
                       });
+            iou_elapsed += iou_timer.elapsed();
+            edge_count += prepared_class.greedy_edges.size();
             prepared_image.classes.push_back(std::move(prepared_class));
         }
         prepared_images.push_back(std::move(prepared_image));
     }
 
+    const qint64 preparation_elapsed = total_timer.elapsed();
+    spdlog::debug("[评估耗时] threshold-search instance prepare 完成: {} ms, images={}, predictions={}, gt={}, "
+                  "iou_pairs={}, iou_compute={} ms, edges={}, scores={}, positive_gt={}",
+                  preparation_elapsed, images.size(), prediction_count, ground_truth_count, iou_pair_count,
+                  iou_elapsed, edge_count, scores.size(), positive_ground_truth_count);
+
+    QElapsedTimer phase_timer;
+    phase_timer.start();
     const QVector<double> candidates = evaluationThresholdCandidates(scores);
+    const qint64 candidate_elapsed = phase_timer.elapsed();
     QVector<EvaluationThresholdPoint> global_points(candidates.size());
     QMap<int, QVector<EvaluationThresholdPoint>> class_points;
     for (const PreparedThresholdImage &image : prepared_images)
@@ -990,6 +1027,11 @@ EvaluationThresholdSearchResult instanceThresholdSearchForImages(
                     prepared_class.predictions.size(), prepared_class.ground_truth.size(), prepared_class.ious,
                     iou_threshold));
     }
+    const qint64 matcher_elapsed = phase_timer.elapsed() - candidate_elapsed;
+    spdlog::debug("[评估耗时] threshold-search instance candidates/matchers 完成: candidates={} ({}) ms, matchers={} "
+                  "({} ms), strategy={}",
+                  candidates.size(), candidate_elapsed, hungarian_matchers.size(), matcher_elapsed,
+                  static_cast<int>(strategy));
 
     int matcher_index = 0;
     for (int candidate_index = candidates.size() - 1; candidate_index >= 0; --candidate_index)
@@ -1063,20 +1105,18 @@ EvaluationThresholdSearchResult instanceThresholdSearchForImages(
         }
         global_points[candidate_index] = evaluationThresholdPoint(threshold, global_counts);
     }
+    const qint64 scan_elapsed = phase_timer.elapsed();
 
-    int point_index = 0;
-    const EvaluationThresholdCounter counter
-        = [&global_points, &point_index](const double, EvaluationCounts &output, QString *)
-    {
-        if (point_index >= global_points.size())
-            return false;
-        output = global_points.at(point_index++).counts;
-        return true;
-    };
+    const qint64 select_elapsed = 0;
     EvaluationThresholdSearchResult result
-        = searchBestEvaluationThreshold(scores, positive_ground_truth_count, counter, cancel, err_msg);
+        = selectBestEvaluationThreshold(global_points, positive_ground_truth_count);
     if (result.available)
         result.class_points = std::move(class_points);
+    spdlog::debug("[评估耗时] threshold-search instance 完成: prepare={} ms, candidates={} ms, matchers={} ms, "
+                  "scan={} ms, select={} ms, total={} ms, points={}, available={}, best_threshold={}, best_f1={}",
+                  preparation_elapsed, candidate_elapsed, matcher_elapsed, scan_elapsed, select_elapsed,
+                  total_timer.elapsed(), result.points.size(), result.available, result.best_point.threshold,
+                  result.best_point.f1);
     return result;
 }
 
@@ -1282,7 +1322,7 @@ QVariantMap anomalyScoreChartForImages(const QList<EvaluationImageData> &images,
     for (const EvaluationImageData &image : images)
     {
         double score = 0.0;
-        if (image.anomaly_score_map == nullptr || !evaluationScoreMapMaximum(*image.anomaly_score_map, &score))
+        if (!evaluationAnomalyImageScore(image, &score))
             continue;
         const bool   ground_truth_anomaly
             = std::any_of(image.gt.cbegin(), image.gt.cend(),
@@ -1361,14 +1401,15 @@ EvaluationChartOutput buildAnomalyEvaluationCharts(const QMap<qint64, Evaluation
         {evaluation::fieldName(evaluation::Field::PositiveDefinition), QStringLiteral("score_above_threshold")},
         {   evaluation::fieldName(evaluation::Field::HasImageMetrics),                                    true}
     };
-    QList<EvaluationImageData> chart_images;
-    chart_images.reserve(images.size());
-    for (const EvaluationImageData &image : images)
-        chart_images.push_back(image);
-
     EvaluationThresholdSearchResult local_search;
     if (threshold_search == nullptr)
+    {
+        QList<EvaluationImageData> chart_images;
+        chart_images.reserve(images.size());
+        for (const EvaluationImageData &image : images)
+            chart_images.push_back(image);
         local_search = anomalyThresholdSearchForImages(chart_images, {}, nullptr);
+    }
     const EvaluationThresholdSearchResult *search
         = threshold_search != nullptr ? threshold_search : &local_search;
     output.charts.push_back(precisionRecallChartFromCurves({}, search));
@@ -1443,31 +1484,64 @@ EvaluationChartOutput buildInstanceMatchingEvaluationCharts(const QMap<qint64, E
     return output;
 }
 
+EvaluationInstanceRecord buildInstanceRecord(const EvaluationImageData &image, const evaluation::Status status,
+                                             const EvaluationGroundTruthData *gt,
+                                             const EvaluationPredictionData *pred, const double iou,
+                                             const QString &dataset_root, const QString &prediction_root,
+                                             const qint64 event_index)
+{
+    // 视口裁剪由 thumbnail provider 在渲染时根据 URL 中的绝对 bounds 推导。
+    // QML 按 LabelInstanceThumbnail 模式使用原始几何换算 overlay，评估线程因此不再依赖图像宽高。
+    EvaluationInstanceRecord record;
+    record.event_uuid       = QStringLiteral("%1-%2").arg(image.id).arg(event_index);
+    record.image_id         = image.id;
+    record.dataset_id       = image.dataset_id;
+    record.image_name       = image.name;
+    record.image_path       = image.path;
+    record.image_width      = image.width;
+    record.image_height     = image.height;
+    record.status            = status;
+    record.score             = pred ? pred->score : 0.0;
+    record.iou               = iou;
+    record.gt_label_id       = gt ? gt->label_id : -1;
+    record.gt_instance_id    = record.gt_label_id >= 0 ? QString::number(record.gt_label_id) : QString();
+    record.gt_class_id       = gt ? gt->class_id : -1;
+    record.gt_class          = gt ? gt->class_name : QString();
+    record.gt_geometry       = gt ? gt->geometry : QVariantMap{};
+    record.gt_bounds         = record.gt_geometry.value(evaluation::fieldName(evaluation::Field::Bounds)).toMap();
+    record.pred_instance_id  = pred ? pred->prediction_id : QString();
+    record.pred_class_id     = pred ? pred->class_id : -1;
+    record.pred_class        = pred ? pred->class_name : QString();
+    record.pred_geometry     = pred ? pred->geometry : QVariantMap{};
+    record.pred_bounds       = record.pred_geometry.value(evaluation::fieldName(evaluation::Field::Bounds)).toMap();
+    record.gt_mask_url       = maskUrl(record.gt_geometry, dataset_root);
+    record.pred_mask_url     = maskUrl(record.pred_geometry, prediction_root);
+    return record;
+}
+
 QVariantMap buildInstanceEvent(const EvaluationImageData &image, const evaluation::Status status,
                                const EvaluationGroundTruthData *gt, const EvaluationPredictionData *pred,
                                const double iou, const QString &dataset_root, const QString &prediction_root,
                                const qint64 event_index)
 {
-    // 视口裁剪由 thumbnail provider 在渲染时根据 URL 中的绝对 bounds 推导。
-    // QML 按 LabelInstanceThumbnail 模式使用原始几何换算 overlay，评估线程因此不再依赖图像宽高。
-    const QVariantMap gt_geometry   = gt ? gt->geometry : QVariantMap{};
-    const QVariantMap pred_geometry = pred ? pred->geometry : QVariantMap{};
+    const EvaluationInstanceRecord record
+        = buildInstanceRecord(image, status, gt, pred, iou, dataset_root, prediction_root, event_index);
     return QVariantMap{
-        {evaluation::fieldName(evaluation::Field::EventUuid), QStringLiteral("%1-%2").arg(image.id).arg(event_index)},
-        {evaluation::fieldName(evaluation::Field::ImageId), image.id},
-        {evaluation::fieldName(evaluation::Field::Status), evaluation::statusKey(status)},
-        {evaluation::fieldName(evaluation::Field::Score), pred ? pred->score : 0.0},
-        {evaluation::fieldName(evaluation::Field::Iou), iou},
-        {evaluation::fieldName(evaluation::Field::GtLabelId), gt ? gt->label_id : -1},
-        {evaluation::fieldName(evaluation::Field::GtClassId), gt ? gt->class_id : -1},
-        {evaluation::fieldName(evaluation::Field::GtClassName), gt ? gt->class_name : QString()},
-        {evaluation::fieldName(evaluation::Field::GtGeometry), gt_geometry},
-        {evaluation::fieldName(evaluation::Field::PredInstanceId), pred ? pred->prediction_id : QString()},
-        {evaluation::fieldName(evaluation::Field::PredClassId), pred ? pred->class_id : -1},
-        {evaluation::fieldName(evaluation::Field::PredClassName), pred ? pred->class_name : QString()},
-        {evaluation::fieldName(evaluation::Field::PredGeometry), pred_geometry},
-        {evaluation::fieldName(evaluation::Field::GtMaskUrl), maskUrl(gt_geometry, dataset_root)},
-        {evaluation::fieldName(evaluation::Field::PredMaskUrl), maskUrl(pred_geometry, prediction_root)}
+        {evaluation::fieldName(evaluation::Field::EventUuid), record.event_uuid},
+        {evaluation::fieldName(evaluation::Field::ImageId), record.image_id},
+        {evaluation::fieldName(evaluation::Field::Status), evaluation::statusKey(record.status)},
+        {evaluation::fieldName(evaluation::Field::Score), record.score},
+        {evaluation::fieldName(evaluation::Field::Iou), record.iou},
+        {evaluation::fieldName(evaluation::Field::GtLabelId), record.gt_label_id},
+        {evaluation::fieldName(evaluation::Field::GtClassId), record.gt_class_id},
+        {evaluation::fieldName(evaluation::Field::GtClassName), record.gt_class},
+        {evaluation::fieldName(evaluation::Field::GtGeometry), record.gt_geometry},
+        {evaluation::fieldName(evaluation::Field::PredInstanceId), record.pred_instance_id},
+        {evaluation::fieldName(evaluation::Field::PredClassId), record.pred_class_id},
+        {evaluation::fieldName(evaluation::Field::PredClassName), record.pred_class},
+        {evaluation::fieldName(evaluation::Field::PredGeometry), record.pred_geometry},
+        {evaluation::fieldName(evaluation::Field::GtMaskUrl), record.gt_mask_url},
+        {evaluation::fieldName(evaluation::Field::PredMaskUrl), record.pred_mask_url}
     };
 }
 

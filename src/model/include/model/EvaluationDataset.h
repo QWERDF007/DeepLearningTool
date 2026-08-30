@@ -9,6 +9,7 @@
 #include <QString>
 #include <atomic>
 #include <functional>
+#include <limits>
 #include <memory>
 
 namespace dltool::model {
@@ -19,6 +20,9 @@ MODEL_API bool readEvaluationScoreMap(const QString &path, EvaluationScoreMap &s
 
 /** @brief 获取分数图中的有限像素最大值。 */
 MODEL_API bool evaluationScoreMapMaximum(const EvaluationScoreMap &score_map, double *maximum);
+
+/** @brief 只读取异常分数图中的有限像素最大值，不物化完整像素数组。 */
+MODEL_API bool readEvaluationScoreMapMaximum(const QString &path, double *maximum, QString *err_msg = nullptr);
 
 /**
  * @brief 读取测试任务图像文件列表。
@@ -41,7 +45,9 @@ MODEL_API bool readEvaluationImageList(const QString &path, QList<QPair<qint64, 
  * 以文件列表为主轴：不在项目数据库中的图像跳过并计数；图像级/标注级
  * 类别选择过滤不满足条件的图像并计数。异常检测方法按图像标签分组
  * （good/unlabeled/anomaly）构造二值真值，分类方法按图像标签类别构造。
- * class_catalog 始终返回项目数据库中的完整类别目录，不受当前选择集影响。
+ * 异常检测不在此阶段读取原图尺寸，区域生成时按需读取；其他需要几何校验
+ * 的方法仍在此阶段准备尺寸。class_catalog 始终返回项目数据库中的完整
+ * 类别目录，不受当前选择集影响。
  * @param file_list_path 测试任务文件列表路径。
  * @param project_database_path 项目数据库路径。
  * @param task_database_path 测试任务数据库路径（数据集/类别选择）。
@@ -69,7 +75,9 @@ MODEL_API bool loadEvaluationImages(
  *
  * 每条预测记录按协议校验 geometry，越界 bbox 裁剪到图像边界，并规范化
  * 几何记录；异常检测方法从 pred/<image_id>.tiff 读取原始异常分数图，
- * 不使用 task.db 中的 image_score 替代。
+ * 不使用 task.db 中的 image_score 替代。评估主链路对异常检测只加载每张
+ * TIFF 的最大值，并把这个标量随图像记录传递给阈值搜索、指标和图表；需要
+ * 生成异常区域时才保留或按需读取对应完整分数图。
  * @param task_database_path 测试任务数据库路径。
  * @param prediction_dir 预测输出目录（mask artifact 根目录）。
  * @param images 已加载的图像记录（按 image_id 追加预测）。
@@ -78,12 +86,18 @@ MODEL_API bool loadEvaluationImages(
  * @param cancel_token 协作取消令牌，置位后提前失败；可为空。
  * @param err_msg 失败时输出错误信息，可为 nullptr。
  * @param ignored_count 输出：不属于当前可用图像的预测数。
+ * @param load_anomaly_score_maps 异常检测是否保留完整分数图；关闭时仅加载图像级最大分数，
+ *                                多边形生成阶段按需读取分数图。指定阈值时，在同一次 TIFF
+ *                                解码中保留最大值达到阈值的分数图，避免后续二次解码。
  * @return 加载成功返回 true。
  */
 MODEL_API bool loadEvaluationPredictions(const QString &task_database_path, const QString &prediction_dir,
                                          QMap<qint64, EvaluationImageData> &images, bool anomaly_method,
                                          int                                     *count        = nullptr,
                                          const std::shared_ptr<std::atomic_bool> &cancel_token = {},
-                                         QString *err_msg = nullptr, int *ignored_count = nullptr);
+                                         QString *err_msg = nullptr, int *ignored_count = nullptr,
+                                         bool load_anomaly_score_maps = true,
+                                         double retain_anomaly_score_map_threshold
+                                         = std::numeric_limits<double>::quiet_NaN());
 
 } // namespace dltool::model

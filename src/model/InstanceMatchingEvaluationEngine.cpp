@@ -70,34 +70,8 @@ void InstanceMatchingEvaluationEngine::buildClasses(const QMap<qint64, Evaluatio
     classes.remove(-1);
 }
 
-bool InstanceMatchingEvaluationEngine::collectThresholdSearchData(const QMap<qint64, EvaluationImageData> &images,
-                                                                  QVector<double> &scores,
-                                                                  qint64 &positive_ground_truth_count,
-                                                                  QString *err_msg)
+bool InstanceMatchingEvaluationEngine::supportsThresholdSearch() const
 {
-    scores.clear();
-    positive_ground_truth_count = 0;
-    for (const EvaluationImageData &image : images)
-    {
-        if (cancelled(scratch_.cancel_token))
-        {
-            if (err_msg != nullptr)
-                *err_msg = QStringLiteral("评估已取消");
-            return false;
-        }
-        positive_ground_truth_count += image.gt.size();
-        for (const EvaluationPredictionData &prediction : image.predictions)
-        {
-            if (cancelled(scratch_.cancel_token))
-            {
-                if (err_msg != nullptr)
-                    *err_msg = QStringLiteral("评估已取消");
-                return false;
-            }
-            if (std::isfinite(prediction.score))
-                scores.push_back(prediction.score);
-        }
-    }
     return true;
 }
 
@@ -143,10 +117,9 @@ bool InstanceMatchingEvaluationEngine::runDetectionLoop(const QMap<qint64, Evalu
         {
             if (scratch_.collect_events)
             {
-                const QVariantMap event_map
-                    = buildInstanceEvent(image, status, gt, pred, iou, dataset_root_path, prediction_task_root,
-                                         static_cast<qint64>(scratch_.events.size() + 1));
-                scratch_.events.push_back(instanceFromMap(event_map));
+                scratch_.events.push_back(buildInstanceRecord(
+                    image, status, gt, pred, iou, dataset_root_path, prediction_task_root,
+                    static_cast<qint64>(scratch_.events.size() + 1)));
             }
         };
 

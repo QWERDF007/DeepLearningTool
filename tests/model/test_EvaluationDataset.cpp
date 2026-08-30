@@ -6,12 +6,15 @@
 #include "model/EvaluationDataset.h"
 #include "model/ModelEvaluationProtocol.h"
 
+#include <opencv2/imgcodecs.hpp>
+
 #include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
 #include <QTest>
 
 #include <atomic>
+#include <limits>
 
 using namespace dltool::model;
 
@@ -251,6 +254,108 @@ private slots:
         QVERIFY(qAbs(images.value(bad_image).predictions.front().score - 0.9) < 1e-6);
         QVERIFY(images.value(normal_image).anomaly_score_map != nullptr);
         QVERIFY(images.value(bad_image).anomaly_score_map != nullptr);
+    }
+
+    void anomalyPredictionsCanLoadOnlyImageLevelScores()
+    {
+        using namespace dltool::model::testsupport;
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 good = fixture.addClass(QStringLiteral("Good"), QStringLiteral("good"));
+        const qint64 anomaly = fixture.addClass(QStringLiteral("Scratch"), QStringLiteral("anomaly"));
+        const qint64 normal_image
+            = fixture.addImage(QStringLiteral("normal"), {{QStringLiteral("image_label_class_id"), good}});
+        const qint64 bad_image
+            = fixture.addImage(QStringLiteral("bad"), {{QStringLiteral("image_label_class_id"), anomaly}});
+        QVERIFY(good >= 0);
+        QVERIFY(anomaly >= 0);
+        QVERIFY(normal_image >= 0);
+        QVERIFY(bad_image >= 0);
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({good, anomaly}));
+        QVERIFY(fixture.writePrediction(normal_image, anomalyPrediction(0.1)));
+        QVERIFY(fixture.writePrediction(bad_image, anomalyPrediction(0.9)));
+
+        QMap<qint64, EvaluationImageData> images;
+        QString error;
+        QVERIFY2(loadEvaluationImages(fixture.fileListPath(), fixture.projectDatabasePath(),
+                                       fixture.taskDatabasePath(), evaluation::Method::AnomalyDetection, images, {},
+                                       &error),
+                  qPrintable(error));
+
+        int count = 0;
+        QVERIFY2(loadEvaluationPredictions(fixture.taskDatabasePath(), fixture.predictionDirectory(), images, true,
+                                            &count, {}, &error, nullptr, false),
+                  qPrintable(error));
+        QCOMPARE(count, 2);
+        QVERIFY(images.value(normal_image).anomaly_score_map == nullptr);
+        QVERIFY(images.value(bad_image).anomaly_score_map == nullptr);
+        QVERIFY(images.value(normal_image).has_anomaly_image_score);
+        QVERIFY(images.value(bad_image).has_anomaly_image_score);
+        QVERIFY(qAbs(images.value(normal_image).anomaly_image_score - 0.1) < 1e-6);
+        QVERIFY(qAbs(images.value(bad_image).anomaly_image_score - 0.9) < 1e-6);
+        QVERIFY(qAbs(images.value(normal_image).predictions.front().score - 0.1) < 1e-6);
+        QVERIFY(qAbs(images.value(bad_image).predictions.front().score - 0.9) < 1e-6);
+    }
+
+    void anomalyPredictionsRetainMapsForPredictedImagesInTheSameRead()
+    {
+        using namespace dltool::model::testsupport;
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 good = fixture.addClass(QStringLiteral("Good"), QStringLiteral("good"));
+        const qint64 anomaly = fixture.addClass(QStringLiteral("Scratch"), QStringLiteral("anomaly"));
+        const qint64 normal_image
+            = fixture.addImage(QStringLiteral("normal"), {{QStringLiteral("image_label_class_id"), good}});
+        const qint64 bad_image
+            = fixture.addImage(QStringLiteral("bad"), {{QStringLiteral("image_label_class_id"), anomaly}});
+        QVERIFY(good >= 0);
+        QVERIFY(anomaly >= 0);
+        QVERIFY(normal_image >= 0);
+        QVERIFY(bad_image >= 0);
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({good, anomaly}));
+        QVERIFY(fixture.writePrediction(normal_image, anomalyPrediction(0.1)));
+        QVERIFY(fixture.writePrediction(bad_image, anomalyPrediction(0.9)));
+
+        QMap<qint64, EvaluationImageData> images;
+        QString error;
+        QVERIFY2(loadEvaluationImages(fixture.fileListPath(), fixture.projectDatabasePath(),
+                                       fixture.taskDatabasePath(), evaluation::Method::AnomalyDetection, images, {},
+                                       &error),
+                  qPrintable(error));
+        int count = 0;
+        QVERIFY2(loadEvaluationPredictions(fixture.taskDatabasePath(), fixture.predictionDirectory(), images, true,
+                                            &count, {}, &error, nullptr, false, 0.5),
+                  qPrintable(error));
+        QCOMPARE(count, 2);
+        QVERIFY(images.value(normal_image).anomaly_score_map == nullptr);
+        QVERIFY(images.value(bad_image).anomaly_score_map != nullptr);
+        QVERIFY(qAbs(images.value(bad_image).anomaly_score_map->maximum_score - 0.9) < 1e-6);
+    }
+
+    void scoreMapReadCachesMaximum()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString path = QDir(temporary.path()).filePath(QStringLiteral("score.tiff"));
+
+        cv::Mat values(2, 2, CV_32FC1);
+        values.at<float>(0, 0) = 0.25F;
+        values.at<float>(0, 1) = 3.5F;
+        values.at<float>(1, 0) = -1.0F;
+        values.at<float>(1, 1) = std::numeric_limits<float>::quiet_NaN();
+        QVERIFY(cv::imwrite(path.toStdString(), values));
+
+        EvaluationScoreMap score_map;
+        QString            error;
+        QVERIFY2(readEvaluationScoreMap(path, score_map, &error), qPrintable(error));
+        QVERIFY(score_map.has_maximum_score);
+        QCOMPARE(score_map.maximum_score, 3.5);
+
+        double maximum = 0.0;
+        QVERIFY(evaluationScoreMapMaximum(score_map, &maximum));
+        QCOMPARE(maximum, 3.5);
     }
 };
 

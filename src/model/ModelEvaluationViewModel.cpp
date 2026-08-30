@@ -12,6 +12,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <QElapsedTimer>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -205,34 +206,43 @@ bool ModelEvaluationViewModel::loading() const
 
 bool ModelEvaluationViewModel::hasPredictionResults() const
 {
+    QElapsedTimer timer;
+    timer.start();
+    const auto finish = [this, &timer](const bool value)
+    {
+        spdlog::debug("[评估耗时] 任务 {} has-prediction-results 完成: {} ms, result={}",
+                      evaluation_options_.test_task_uuid.toUtf8().constData(), timer.elapsed(), value);
+        return value;
+    };
     if (!has_evaluation_options_ || !QFileInfo::exists(evaluation_options_.dataset_file_list_path))
-        return false;
+        return finish(false);
 
     if (evaluation::isAnomaly(evaluation_options_.method))
     {
         if (evaluation_options_.prediction_dir.trimmed().isEmpty())
-            return false;
+            return finish(false);
 
         QList<QPair<qint64, QString>> rows;
         QString                      error;
         if (!readEvaluationImageList(evaluation_options_.dataset_file_list_path, rows, {}, &error))
-            return false;
+            return finish(false);
 
         const QDir prediction_dir(evaluation_options_.prediction_dir);
-        return std::any_of(rows.cbegin(), rows.cend(), [&prediction_dir](const auto &row)
-                           {
-                               return QFileInfo(prediction_dir.filePath(QStringLiteral("%1.tiff").arg(row.first)))
-                                   .isFile();
-                           });
+        return finish(std::any_of(rows.cbegin(), rows.cend(), [&prediction_dir](const auto &row)
+                                  {
+                                      return QFileInfo(prediction_dir.filePath(
+                                          QStringLiteral("%1.tiff").arg(row.first)))
+                                          .isFile();
+                                  }));
     }
 
     if (!QFileInfo(evaluation_options_.task_database_path).isFile())
-        return false;
+        return finish(false);
 
     database::ModelTaskDataBase task_database(evaluation_options_.task_database_path);
     QHash<qint64, QVariant> predictions;
     QString                  error;
-    return task_database.readPredictions(predictions, &error) && !predictions.isEmpty();
+    return finish(task_database.readPredictions(predictions, &error) && !predictions.isEmpty());
 }
 
 int ModelEvaluationViewModel::method() const
@@ -427,6 +437,7 @@ void ModelEvaluationViewModel::clearEvaluation(const QString &error, const evalu
     ++aggregation_revision_;
     ++aggregation_schedule_token_;
     aggregation_rebuild_scheduled_ = false;
+    aggregation_matches_evaluation_result_ = true;
     available_                     = false;
     error_                         = error;
     state_kind_ = error.isEmpty() && state == evaluation::ViewState::NotRun ? evaluation::ViewState::NotRun : state;
@@ -615,6 +626,9 @@ void ModelEvaluationViewModel::startEvaluation(const bool notify)
             if (guard.isNull())
                 return;
 
+            QElapsedTimer worker_timer;
+            worker_timer.start();
+            spdlog::debug("[评估耗时] 任务 {} worker 开始", options.test_task_uuid.toUtf8().constData());
             auto    result = std::make_shared<EvaluationResult>();
             QString error;
             bool    success = false;
@@ -622,9 +636,13 @@ void ModelEvaluationViewModel::startEvaluation(const bool notify)
                 success = engine->evaluate(options, result.get(), &error);
             else
                 error = QString("未注册的评估方法: %1").arg(static_cast<int>(options.method));
+            const qint64 worker_elapsed = worker_timer.elapsed();
+            spdlog::debug("[评估耗时] 任务 {} worker 完成: {} ms, success={}, images={}, events={}, charts={}",
+                          options.test_task_uuid.toUtf8().constData(), worker_elapsed, success, result->images.size(),
+                          result->instance_records.size(), result->charts.size());
             QMetaObject::invokeMethod(
                 guard.data(),
-                [guard, request_token, options, notify, success, result = std::move(result), error]() mutable
+                [guard, request_token, options, notify, success, worker_elapsed, result = std::move(result), error]() mutable
                 {
                     if (guard.isNull() || !guard->evaluation_worker_active_ || guard->cancel_token_ != request_token)
                         return;
@@ -696,20 +714,29 @@ void ModelEvaluationViewModel::startEvaluation(const bool notify)
                         return;
                     }
 
+                    QElapsedTimer gui_timer;
+                    gui_timer.start();
                     guard->prediction_snapshot_ = options.prediction_snapshot;
                     guard->loadEvaluation(*result);
-                    guard->loadInstanceRecords(
-                        result->instance_records);
+                    spdlog::debug("[评估耗时] 任务 {} GUI load-evaluation 完成: {} ms",
+                                  options.test_task_uuid.toUtf8().constData(), gui_timer.elapsed());
+                    gui_timer.restart();
+                    guard->loadInstanceRecords(result->instance_records);
+                    spdlog::debug("[评估耗时] 任务 {} GUI load-instance-records 完成: {} ms",
+                                  options.test_task_uuid.toUtf8().constData(), gui_timer.elapsed());
                     guard->applyMethodSpecificData(*result);
                     guard->evaluation_attempted_ = true;
                     guard->available_            = true;
                     guard->state_kind_           = evaluation::ViewState::Ready;
                     guard->error_.clear();
+                    guard->aggregation_matches_evaluation_result_ = true;
                     guard->scheduleRebuildFilteredAggregates();
                     guard->setLoading(false);
                     emit guard->evaluationChanged();
                     emit guard->selectedInstanceChanged();
                     emit guard->evaluationCompleted();
+                    spdlog::debug("[评估耗时] 任务 {} GUI result-publish 完成: {} ms, worker={} ms",
+                                  options.test_task_uuid.toUtf8().constData(), gui_timer.elapsed(), worker_elapsed);
                     if (should_notify)
                     {
                         spdlog::info("测试任务 {} 评估完成", options.test_task_uuid.toUtf8().constData());
@@ -742,6 +769,8 @@ void ModelEvaluationViewModel::setRuntimeState(const evaluation::ViewState state
 
 void ModelEvaluationViewModel::loadEvaluation(const EvaluationResult &result)
 {
+    QElapsedTimer timer;
+    timer.start();
     const bool official_available
         = result.official_metrics.value(evaluation::fieldName(evaluation::Field::Available)).toBool();
     primary_metric_set_ = official_available ? evaluation::metricSetKey(evaluation::MetricSet::Official)
@@ -835,10 +864,15 @@ void ModelEvaluationViewModel::loadEvaluation(const EvaluationResult &result)
         cells.push_back(cell);
     confusion_matrix_->setRecords(std::move(cells));
     charts_->setRecords(result.charts);
+    spdlog::debug("[评估耗时] 任务 {} GUI loadEvaluation 完成: {} ms, images={}, matrix={}, charts={}",
+                  evaluation_options_.test_task_uuid.toUtf8().constData(), timer.elapsed(), result.images.size(),
+                  result.matrix_cells.size(), result.charts.size());
 }
 
 void ModelEvaluationViewModel::loadInstanceRecords(const QVector<EvaluationInstanceRecord> &records)
 {
+    QElapsedTimer timer;
+    timer.start();
     QSet<QString>                                event_ids;
     QHash<qint64, const EvaluationImageRecord *> image_index;
     for (const EvaluationImageRecord &image : images_->records()) image_index.insert(image.id, &image);
@@ -854,8 +888,11 @@ void ModelEvaluationViewModel::loadInstanceRecords(const QVector<EvaluationInsta
             value.dataset_id   = image.value()->dataset_id;
             value.image_name   = image.value()->name;
             value.image_path   = image.value()->path;
-            value.image_width  = image.value()->width;
-            value.image_height = image.value()->height;
+            if (image.value()->width > 0 && image.value()->height > 0)
+            {
+                value.image_width  = image.value()->width;
+                value.image_height = image.value()->height;
+            }
         }
         if (value.event_uuid.isEmpty() || event_ids.contains(value.event_uuid))
             continue;
@@ -872,13 +909,24 @@ void ModelEvaluationViewModel::loadInstanceRecords(const QVector<EvaluationInsta
         value.thumbnail_url = thumbnailUrl(value);
         values.push_back(std::move(value));
     }
+    const int loaded_count = static_cast<int>(values.size());
     instances_->setRecords(std::move(values));
+    spdlog::debug("[评估耗时] 任务 {} GUI loadInstanceRecords 完成: {} ms, input={}, loaded={}",
+                  evaluation_options_.test_task_uuid.toUtf8().constData(), timer.elapsed(), records.size(),
+                  loaded_count);
 }
 
 void ModelEvaluationViewModel::scheduleRebuildFilteredAggregates()
 {
     if (suppress_aggregation_rebuild_ || !available_ || aggregation_rebuild_scheduled_)
         return;
+
+    if (!hasActiveAggregationFilters() && aggregation_matches_evaluation_result_)
+    {
+        spdlog::debug("[评估耗时] 任务 {} 跳过无筛选聚合：直接复用主评估结果",
+                      evaluation_options_.test_task_uuid.toUtf8().constData());
+        return;
+    }
 
     aggregation_rebuild_scheduled_ = true;
     const int token                = ++aggregation_schedule_token_;
@@ -896,12 +944,31 @@ void ModelEvaluationViewModel::scheduleRebuildFilteredAggregates()
         Qt::QueuedConnection);
 }
 
+bool ModelEvaluationViewModel::hasActiveAggregationFilters() const
+{
+    if (global_filtered_instances_ != nullptr
+        && (!global_filtered_instances_->datasetIds().isEmpty() || !global_filtered_instances_->classIds().isEmpty()))
+        return true;
+
+    if (global_filter_ == nullptr)
+        return false;
+    if (!hasInvokable(global_filter_, "isActive", 0))
+        return true;
+
+    bool active = false;
+    QMetaObject::invokeMethod(global_filter_, "isActive", Qt::DirectConnection, Q_RETURN_ARG(bool, active));
+    return active;
+}
+
 void ModelEvaluationViewModel::rebuildFilteredAggregates()
 {
     if (!available_)
         return;
 
+    QElapsedTimer aggregate_timer;
+    aggregate_timer.start();
     const int                revision = ++aggregation_revision_;
+    const QString            task_uuid = evaluation_options_.test_task_uuid;
     EvaluationAggregateInput input;
     input.class_catalog = class_catalog_;
     for (const EvaluationMetricRecord &metric : per_class_metrics_->records())
@@ -1036,18 +1103,33 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
         input.images.push_back(std::move(filtered));
     }
 
+    const qint64 input_build_elapsed = aggregate_timer.elapsed();
+    spdlog::debug("[评估耗时] 任务 {} GUI aggregate-input 完成: {} ms, images={}, instances={}, class_filter={}, "
+                  "dataset_filter={}",
+                  task_uuid.toUtf8().constData(), input_build_elapsed, input.images.size(), input.instances.size(),
+                  class_filter_active, !dataset_ids.isEmpty());
+
     const QPointer<ModelEvaluationViewModel> guard(this);
+    spdlog::debug("[评估耗时] 任务 {} aggregate-submit", task_uuid.toUtf8().constData());
     QThreadPool::globalInstance()->start(
-        [guard, revision, input = std::move(input)]() mutable
+        [guard, revision, task_uuid, input = std::move(input)]() mutable
         {
             if (guard.isNull())
                 return;
+            spdlog::debug("[评估耗时] 任务 {} aggregate-worker 开始", task_uuid.toUtf8().constData());
+            QElapsedTimer worker_timer;
+            worker_timer.start();
             EvaluationAggregateOutput output = aggregateEvaluation(input);
+            spdlog::debug("[评估耗时] 任务 {} aggregate-worker 完成: {} ms, images={}, instances={}, charts={}",
+                          task_uuid.toUtf8().constData(), worker_timer.elapsed(), input.images.size(),
+                          input.instances.size(), output.charts.size());
             QMetaObject::invokeMethod(guard,
-                                      [guard, revision, output = std::move(output)]() mutable
+                                      [guard, revision, task_uuid, output = std::move(output)]() mutable
                                       {
                                           if (guard.isNull() || guard->aggregation_revision_ != revision)
                                               return;
+                                          QElapsedTimer apply_timer;
+                                          apply_timer.start();
                                           for (auto &rec : output.per_class_metrics)
                                           {
                                               if (guard->class_ap_map_.contains(rec.class_id))
@@ -1061,6 +1143,10 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
                                           guard->per_class_metrics_->setRecords(std::move(output.per_class_metrics));
                                           guard->confusion_matrix_->setRecords(std::move(output.confusion));
                                           guard->charts_->setRecords(std::move(output.charts));
+                                          guard->aggregation_matches_evaluation_result_
+                                              = !guard->hasActiveAggregationFilters();
+                                          spdlog::debug("[评估耗时] 任务 {} GUI aggregate-apply 完成: {} ms",
+                                                        task_uuid.toUtf8().constData(), apply_timer.elapsed());
                                       });
         });
     return;

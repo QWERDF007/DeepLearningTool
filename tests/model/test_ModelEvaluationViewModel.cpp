@@ -10,6 +10,7 @@
 #include <QElapsedTimer>
 #include <QDir>
 #include <QFile>
+#include <QSignalSpy>
 #include <QThread>
 #include <QTest>
 
@@ -39,6 +40,15 @@ ModelEvaluationOptions optionsFor(const EvaluationFixture &fixture, evaluation::
     return options;
 }
 
+struct RestoreDetectionEvaluationEngine
+{
+    ~RestoreDetectionEvaluationEngine()
+    {
+        EvaluationEngineRegistry::instance().registerEngine(
+            evaluation::Method::Detection, []() { return std::make_unique<DetectionEvaluationEngine>(); });
+    }
+};
+
 class SerializedEvaluationProbeEngine final : public DetectionEvaluationEngine
 {
 public:
@@ -62,8 +72,9 @@ public:
     }
 
 protected:
-    bool collectThresholdSearchData(const QMap<qint64, EvaluationImageData> &images, QVector<double> &scores,
-                                    qint64 &positive_ground_truth_count, QString *err_msg) override
+    bool computeInstanceCounts(const QMap<qint64, EvaluationImageData> &images, const QMap<int, QString> &classes,
+                               QMap<int, EvaluationCounts> &per_class, EvaluationCounts &overall,
+                               QString *err_msg) override
     {
         const int current = active.fetch_add(1, std::memory_order_relaxed) + 1;
         int       previous = max_active.load(std::memory_order_relaxed);
@@ -82,20 +93,10 @@ protected:
                 cancel_observed.store(true, std::memory_order_release);
         }
 
-        const bool result
-            = DetectionEvaluationEngine::collectThresholdSearchData(images, scores, positive_ground_truth_count,
-                                                                      err_msg);
+        const bool result = DetectionEvaluationEngine::computeInstanceCounts(images, classes, per_class, overall,
+                                                                               err_msg);
         active.fetch_sub(1, std::memory_order_relaxed);
         return result;
-    }
-};
-
-struct RestoreDetectionEvaluationEngine
-{
-    ~RestoreDetectionEvaluationEngine()
-    {
-        EvaluationEngineRegistry::instance().registerEngine(
-            evaluation::Method::Detection, []() { return std::make_unique<DetectionEvaluationEngine>(); });
     }
 };
 
@@ -141,9 +142,13 @@ private slots:
 
         DetectionEvaluationViewModel view_model;
         view_model.setEvaluationOptions(optionsFor(fixture, evaluation::Method::Detection));
+        QSignalSpy image_metric_resets(view_model.imageMetrics(), &QAbstractItemModel::modelReset);
         view_model.evaluate();
         QTRY_COMPARE_WITH_TIMEOUT(view_model.stateKind(), ModelEvaluationViewModel::Ready, 5000);
         QVERIFY(view_model.available());
+        const int image_metric_resets_after_evaluation = image_metric_resets.count();
+        QTest::qWait(200);
+        QCOMPARE(image_metric_resets.count(), image_metric_resets_after_evaluation);
         QVERIFY(!view_model.loading());
         QCOMPARE(view_model.method(), static_cast<int>(evaluation::Method::Detection));
         QCOMPARE(view_model.hasInstanceMetrics(), true);

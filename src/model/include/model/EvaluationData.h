@@ -15,13 +15,17 @@ namespace dltool::model {
  * @brief 已解码的原始异常分数图。
  *
  * values 保留预测 TIFF 中的原始浮点分数，不做逐图归一化。分数图由
- * 评估输入阶段读取一次，后续评估、分割和展示流程共享同一个对象。
+ * 评估输入阶段读取一次，后续评估、分割和展示流程共享同一个对象；
+ * 读取时同步缓存有限像素最大值，避免后续流程重复扫描整张图。评估主
+ * 链路通常只保留最大值，完整像素数组仅在生成异常区域时按需加载。
  */
 struct MODEL_API EvaluationScoreMap
 {
     int             width{0};
     int             height{0};
     QVector<double> values;
+    double          maximum_score{0.0};
+    bool            has_maximum_score{false};
 
     bool isValid() const
     {
@@ -72,6 +76,8 @@ struct MODEL_API EvaluationImageData
     QList<EvaluationGroundTruthData> gt;             ///< 真值列表。
     QList<EvaluationPredictionData>  predictions;    ///< 预测列表。
     std::shared_ptr<const EvaluationScoreMap> anomaly_score_map; ///< 原始异常分数图（可选）。
+    double                            anomaly_image_score{0.0}; ///< 原始 TIFF 的图像级最大异常分数。
+    bool                              has_anomaly_image_score{false}; ///< 是否已读取原始 TIFF 的图像级分数。
 
     /**
      * @brief ViewModel 图像角色使用的派生字段。
@@ -86,6 +92,14 @@ struct MODEL_API EvaluationImageData
     bool          has_gt{false};
     bool          has_pred{false};
 };
+
+/**
+ * @brief 获取异常检测图像级原始分数。
+ *
+ * 优先使用原始异常分数图的有限最大值；没有分数图时使用已加载的异常
+ * 预测记录。两种来源都表示同一个图像级 pred_score 分数域。
+ */
+MODEL_API bool evaluationAnomalyImageScore(const EvaluationImageData &image, double *score);
 
 /**
  * @brief 评估计数（真正例/假正例/假负例）。

@@ -8,10 +8,9 @@
 #include <spdlog/spdlog.h>
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFileInfo>
-#include <QCryptographicHash>
 #include <QHash>
-#include <QJsonDocument>
 #include <QMutex>
 #include <QMutexLocker>
 #include <QStringList>
@@ -70,91 +69,20 @@ ThresholdSearchCache &thresholdSearchCache()
     return cache;
 }
 
-QString thresholdSearchCacheKey(const ModelEvaluationOptions &options,
-                                const QMap<qint64, EvaluationImageData> &images)
+QString thresholdSearchCacheKey(const ModelEvaluationOptions &options)
 {
-    QByteArray payload;
-    const auto append = [&payload](const QByteArray &value)
-    {
-        payload.append(value);
-        payload.append('\0');
-    };
-    const auto appendDouble = [&append](const double value)
-    {
-        append(QByteArray::number(value, 'g', 17));
-    };
-    const auto appendBox = [&appendDouble](const EvaluationBox &box)
-    {
-        appendDouble(box.x);
-        appendDouble(box.y);
-        appendDouble(box.w);
-        appendDouble(box.h);
-    };
-    const auto appendGeometry = [&append](const QVariantMap &geometry)
-    {
-        append(QJsonDocument::fromVariant(geometry).toJson(QJsonDocument::Compact));
-    };
+    if (options.prediction_snapshot.trimmed().isEmpty())
+        return {};
 
-    append(options.model_uuid.toUtf8());
-    append(options.test_task_uuid.toUtf8());
-    append(options.task_directory.toUtf8());
-    append(options.project_database_path.toUtf8());
-    append(options.dataset_file_list_path.toUtf8());
-    append(options.task_database_path.toUtf8());
-    append(options.prediction_dir.toUtf8());
-    append(options.prediction_snapshot.toUtf8());
-    append(QByteArray::number(static_cast<int>(options.method)));
-    appendDouble(options.iou_threshold);
-    append(QByteArray::number(static_cast<int>(options.matching_strategy)));
-
-    for (auto image_it = images.cbegin(); image_it != images.cend(); ++image_it)
-    {
-        const EvaluationImageData &image = image_it.value();
-        append(QByteArray::number(image.id));
-        append(QByteArray::number(image.dataset_id));
-        append(image.path.toUtf8());
-        append(QByteArray::number(image.width));
-        append(QByteArray::number(image.height));
-        for (const EvaluationGroundTruthData &ground_truth : image.gt)
-        {
-            append(QByteArray::number(ground_truth.label_id));
-            append(QByteArray::number(ground_truth.class_id));
-            append(ground_truth.class_name.toUtf8());
-            appendBox(ground_truth.box);
-            appendGeometry(ground_truth.geometry);
-            appendGeometry(ground_truth.bounds);
-        }
-        for (const EvaluationPredictionData &prediction : image.predictions)
-        {
-            append(prediction.prediction_id.toUtf8());
-            append(QByteArray::number(prediction.image_id));
-            append(QByteArray::number(prediction.class_id));
-            append(prediction.class_name.toUtf8());
-            appendDouble(prediction.score);
-            appendBox(prediction.box);
-            appendGeometry(prediction.geometry);
-            appendGeometry(prediction.bounds);
-        }
-        if (image.anomaly_score_map != nullptr)
-        {
-            append(QByteArray::number(image.anomaly_score_map->width));
-            append(QByteArray::number(image.anomaly_score_map->height));
-            append(QByteArray::number(image.anomaly_score_map->values.size()));
-            for (const double value : image.anomaly_score_map->values)
-            {
-                if (std::isfinite(value))
-                    appendDouble(value);
-                else if (std::isnan(value))
-                    append(QByteArrayLiteral("nan"));
-                else
-                    append(value > 0.0 ? QByteArrayLiteral("positive-infinity")
-                                      : QByteArrayLiteral("negative-infinity"));
-            }
-        }
-        else
-            append(QByteArrayLiteral("no-score-map"));
-    }
-    return QString::fromLatin1(QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex());
+    // prediction_snapshot already identifies the project/task input and every
+    // prediction artifact.  Do not serialize EvaluationImageData here: for
+    // anomaly detection that would turn every TIFF pixel into cache-key work,
+    // although threshold search only consumes the image-level maximum score.
+    return QStringLiteral("%1|method=%2|iou=%3|matching=%4")
+        .arg(options.prediction_snapshot)
+        .arg(static_cast<int>(options.method))
+        .arg(QString::number(options.iou_threshold, 'g', 17))
+        .arg(static_cast<int>(options.matching_strategy));
 }
 
 } // namespace
@@ -169,8 +97,7 @@ void IEvaluationEngine::buildClasses(const QMap<qint64, EvaluationImageData> &, 
     // 默认空实现：子类按方法填充类别目录。
 }
 
-bool IEvaluationEngine::collectThresholdSearchData(const QMap<qint64, EvaluationImageData> &, QVector<double> &,
-                                                   qint64 &, QString *)
+bool IEvaluationEngine::supportsThresholdSearch() const
 {
     return false;
 }
@@ -198,15 +125,26 @@ EvaluationCounts IEvaluationEngine::thresholdSearchCounts() const
 
 bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, EvaluationResult *result, QString *err_msg)
 {
-    const auto fail = [err_msg](const QString &message)
+    QElapsedTimer total_timer;
+    total_timer.start();
+    QElapsedTimer phase_timer;
+    phase_timer.start();
+    const auto fail = [&err_msg, &options, &total_timer](const QString &message)
     {
         if (err_msg)
             *err_msg = message;
+        spdlog::debug("[评估耗时] 任务 {} 失败，总耗时 {} ms: {}", options.test_task_uuid.toUtf8().constData(),
+                      total_timer.elapsed(), message.toUtf8().constData());
         return false;
     };
 
     if (err_msg != nullptr)
         err_msg->clear();
+
+    spdlog::debug("[评估耗时] 任务 {} 开始: method={}, file_list={}, prediction_dir={}, confidence={}, iou={}",
+                  options.test_task_uuid.toUtf8().constData(), static_cast<int>(options.method),
+                  options.dataset_file_list_path.toUtf8().constData(), options.prediction_dir.toUtf8().constData(),
+                  options.confidence_threshold, options.iou_threshold);
 
     // (a) 协作取消检查。
     if (cancelled(options.cancel_token))
@@ -228,6 +166,11 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
                               &ignored_selection_images, options.image_dimensions_provider, &global_class_catalog,
                               &global_class_colors))
         return false;
+    spdlog::debug("[评估耗时] 任务 {} 阶段 load-images 完成: {} ms, images={}, classes={}, missing_database={}, "
+                  "ignored_selection={}",
+                  options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(), images.size(),
+                  global_class_catalog.size(), missing_database_images, ignored_selection_images);
+    phase_timer.restart();
     if (missing_database_images > 0)
         spdlog::warn("测试任务文件列表中有 {} 个图像已不在当前项目数据库中，已跳过", missing_database_images);
     if (ignored_selection_images > 0)
@@ -248,14 +191,25 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     }
     if (missing_source_images > 0)
         spdlog::warn("测试评估跳过 {} 个不存在的源图像", missing_source_images);
+    spdlog::debug("[评估耗时] 任务 {} 阶段 source-validation 完成: {} ms, images={}, missing_source={}",
+                  options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(), images.size(),
+                  missing_source_images);
+    phase_timer.restart();
 
     // (e) 加载预测。
     int prediction_count         = 0;
     int ignored_prediction_count = 0;
     if (!loadEvaluationPredictions(options.task_database_path, options.prediction_dir, images,
                                    evaluation::isAnomaly(method()), &prediction_count, options.cancel_token, err_msg,
-                                   &ignored_prediction_count))
+                                   &ignored_prediction_count, false,
+                                   evaluation::isAnomaly(method()) ? options.confidence_threshold
+                                                                    : std::numeric_limits<double>::quiet_NaN()))
         return false;
+    spdlog::debug("[评估耗时] 任务 {} 阶段 load-predictions 完成: {} ms, images={}, predictions={}, "
+                  "ignored_predictions={}",
+                  options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(), images.size(), prediction_count,
+                  ignored_prediction_count);
+    phase_timer.restart();
     if (ignored_prediction_count > 0)
         spdlog::warn("预测结果中有 {} 条记录不属于当前可用图像，已跳过", ignored_prediction_count);
     int images_without_predictions = 0;
@@ -282,6 +236,7 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     scratch_.matching_strategy       = options.matching_strategy;
     scratch_.preprocessing_config    = options.preprocessing_config;
     scratch_.cancel_token            = options.cancel_token;
+    scratch_.image_dimensions_provider = options.image_dimensions_provider;
     scratch_.collect_events          = true;
 
     QMap<int, QString> classes = global_class_catalog;
@@ -291,25 +246,24 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     buildClasses(images, classes);
     classes.remove(-1);
 
-    // 先遍历所有真实分数切分点。专用搜索器只预计算一次几何关系，并在
-    // 同一轮扫描中产出全局 micro 与各类别曲线，避免逐阈值重复执行正式
-    // 评估和随后再次计算 PR 曲线。
-    QVector<double> threshold_scores;
-    qint64           positive_ground_truth_count = 0;
-    QString          threshold_error;
-    const bool threshold_data_collected
-        = collectThresholdSearchData(images, threshold_scores, positive_ground_truth_count, &threshold_error);
-    if (!threshold_data_collected)
+    QString threshold_error;
+    const bool threshold_search_supported = supportsThresholdSearch();
+    if (!threshold_search_supported)
     {
         if (cancelled(options.cancel_token))
             return fail(QStringLiteral("评估已取消"));
-        if (!threshold_error.isEmpty())
-            return fail(threshold_error);
     }
     else
     {
-        const QString threshold_cache_key = thresholdSearchCacheKey(options, images);
-        if (!thresholdSearchCache().find(threshold_cache_key, scratch_.threshold_search))
+        const QString threshold_cache_key = thresholdSearchCacheKey(options);
+        const bool threshold_cacheable = !threshold_cache_key.isEmpty();
+        const bool threshold_cache_hit
+            = threshold_cacheable && thresholdSearchCache().find(threshold_cache_key, scratch_.threshold_search);
+        spdlog::debug("[评估耗时] 任务 {} 阶段 threshold-cache 完成: {} ms, hit={}, key={}",
+                      options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(), threshold_cache_hit,
+                      threshold_cacheable ? threshold_cache_key.toUtf8().constData() : "<disabled:no-snapshot>");
+        phase_timer.restart();
+        if (!threshold_cache_hit)
         {
             QList<EvaluationImageData> threshold_images;
             threshold_images.reserve(images.size());
@@ -322,9 +276,14 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
                 scratch_.threshold_search = searchInstanceThresholdForImages(
                     threshold_images, options.iou_threshold, options.matching_strategy, {}, options.cancel_token,
                     &threshold_error);
-            if (!cancelled(options.cancel_token) && threshold_error.isEmpty())
+            if (threshold_cacheable && !cancelled(options.cancel_token) && threshold_error.isEmpty())
                 thresholdSearchCache().insert(threshold_cache_key, scratch_.threshold_search);
         }
+        spdlog::debug("[评估耗时] 任务 {} 阶段 threshold-search 完成: {} ms, available={}, points={}, "
+                      "best_threshold={}, best_f1={}",
+                      options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(),
+                      scratch_.threshold_search.available, scratch_.threshold_search.points.size(),
+                      scratch_.threshold_search.best_point.threshold, scratch_.threshold_search.best_point.f1);
         if (cancelled(options.cancel_token))
             return fail(QString("评估已取消"));
         if (!threshold_error.isEmpty())
@@ -336,24 +295,42 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
             ? scratch_.threshold_search.best_point.threshold
             : options.confidence_threshold;
     resetComputationScratch(effective_threshold, true);
+    phase_timer.restart();
 
     // (h) 实例级计数。
     if (!computeInstanceCounts(images, classes, scratch_.per_class, scratch_.overall, err_msg))
         return false;
+    spdlog::debug("[评估耗时] 任务 {} 阶段 instance-counts 完成: {} ms, tp={}, fp={}, fn={}",
+                  options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(), scratch_.overall.tp,
+                  scratch_.overall.fp, scratch_.overall.fn);
+    phase_timer.restart();
     // (i) 图像级计数。
     if (!computeImageCounts(images, scratch_.image_counts, err_msg))
         return false;
+    spdlog::debug("[评估耗时] 任务 {} 阶段 image-counts 完成: {} ms, tp={}, fp={}, fn={}",
+                  options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(), scratch_.image_counts.tp,
+                  scratch_.image_counts.fp, scratch_.image_counts.fn);
+    phase_timer.restart();
     // (j) 实例事件。
     if (!buildEvents(images, scratch_.events, err_msg))
         return false;
+    spdlog::debug("[评估耗时] 任务 {} 阶段 events 完成: {} ms, count={}", options.test_task_uuid.toUtf8().constData(),
+                  phase_timer.elapsed(), scratch_.events.size());
+    phase_timer.restart();
     // (k) 图表与图表类型。
     const QList<QVariantMap> charts      = buildCharts(images, classes, scratch_.overall, scratch_.image_counts,
                                                        scratch_.per_class, scratch_.matrix, scratch_.events, err_msg);
     const QStringList        chart_kinds = chartKinds();
+    spdlog::debug("[评估耗时] 任务 {} 阶段 charts 完成: {} ms, charts={}", options.test_task_uuid.toUtf8().constData(),
+                  phase_timer.elapsed(), charts.size());
+    phase_timer.restart();
     // (l) 混淆矩阵。
     QVector<EvaluationConfusionCell> matrix_cells;
     if (hasConfusionMatrix())
         matrix_cells = buildConfusionMatrix(classes, scratch_.matrix);
+    spdlog::debug("[评估耗时] 任务 {} 阶段 confusion-matrix 完成: {} ms, cells={}",
+                  options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(), matrix_cells.size());
+    phase_timer.restart();
 
     if (cancelled(options.cancel_token))
         return fail(QString("评估已取消"));
@@ -394,6 +371,9 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
 
     if (result)
         *result = std::move(output);
+    spdlog::debug("[评估耗时] 任务 {} 完成: total={} ms, images={}, predictions={}, events={}, charts={}",
+                  options.test_task_uuid.toUtf8().constData(), total_timer.elapsed(), images.size(), prediction_count,
+                  scratch_.events.size(), charts.size());
     return true;
 }
 
