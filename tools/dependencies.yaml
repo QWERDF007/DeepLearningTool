@@ -37,7 +37,7 @@ dependencies:
   - name: opencv
     config: release
     cmake: cmake/ConfigInferRT.cmake
-    root: INFERRT_BIN_DIR
+    root: D:/Software/dev/opencv-4.8.0/build/x64/vc16/bin
     destinations:
       - build/bin
     windows:
@@ -45,7 +45,7 @@ dependencies:
 
   - name: opencv-debug
     config: debug
-    root: F:/Projects/InferRT/build/bin
+    root: D:/Software/dev/opencv-4.8.0/build/x64/vc16/bin
     destinations:
       - build/bin
     windows:
@@ -80,7 +80,7 @@ dependencies:
 
   - name: mkl
     cmake: cmake/ConfigInferRT.cmake
-    root: INFERRT_BIN_DIR
+    root: D:/Software/dev/mkl/mkl/bin
     destinations:
       - build/bin
     windows:
@@ -90,10 +90,18 @@ dependencies:
       - mkl_def.2.dll
       - mkl_intel_thread.2.dll
 
+  - name: libiomp5md
+    cmake: cmake/ConfigInferRT.cmake
+    root: D:/Software/dev/mkl/compiler/bin
+    destinations:
+      - build/bin
+    windows:
+      - libiomp5md.dll
+
   - name: faiss
     config: release
     cmake: cmake/ConfigInferRT.cmake
-    root: INFERRT_BIN_DIR
+    root: F:/Github/faiss/install/bin
     destinations:
       - build/bin
     windows:
@@ -102,7 +110,7 @@ dependencies:
   - name: faiss-debug
     config: debug
     cmake: cmake/ConfigInferRT.cmake
-    root: INFERRT_BIN_DIR
+    root: F:/Github/faiss/install/bin
     destinations:
       - build/bin
     windows:
