@@ -33,6 +33,8 @@ set(_evaluation_refactor_cases
     test_basePropertyAcceptsConcreteViewModelRuntimeExtensions
     test_anomalyThumbnailHeatmapLifecycle
     test_anomalyHeatmapToggleLabelFits
+    test_parameterLabelsUseEnglishNames
+    test_anomalyScoreReferenceTooltipLabels
     test_instanceSortSelectorProvidesMethodSpecificOptions
     test_anomalyChartThresholdLineFollowsChartResize
     test_chartTabsUseCompactStableHeightAndPrTooltipValues

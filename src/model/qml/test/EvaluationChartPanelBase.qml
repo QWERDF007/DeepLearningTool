@@ -103,8 +103,11 @@ Rectangle {
                 ? Number(tooltipItem.datasetIndex) : -1
         var dataset = datasetIndex >= 0 && datasetIndex < datasets.length
                 ? datasets[datasetIndex] : null
-        if (dataset && dataset.tooltipXOnly)
-            return null
+        if (dataset && dataset.tooltipXOnly) {
+            var referenceLabel = dataset.tooltipLabel !== undefined && dataset.tooltipLabel !== null
+                    ? dataset.tooltipLabel : dataset.label
+            return referenceLabel !== undefined && referenceLabel !== null ? String(referenceLabel) : null
+        }
 
         var count = tooltipItem && tooltipItem.yLabel !== undefined && tooltipItem.yLabel !== null
                 ? tooltipItem.yLabel : (tooltipItem ? tooltipItem.value : "")
@@ -131,10 +134,19 @@ Rectangle {
         var precision = point && point.y !== undefined
                 ? point.y
                 : (tooltipItem && tooltipItem.yLabel !== undefined ? tooltipItem.yLabel : "")
+        var f1 = point && point.f1 !== undefined
+                ? point.f1
+                : (point && point.best_f1 !== undefined
+                   ? point.best_f1
+                   : (dataset && dataset.f1 !== undefined
+                      ? dataset.f1
+                      : (dataset && dataset.best_f1 !== undefined ? dataset.best_f1 : NaN)))
         var threshold = point && point.threshold !== undefined
                 ? point.threshold
                 : (dataset && dataset.threshold !== undefined ? dataset.threshold : NaN)
         var lines = ["精确率: " + control.formatChartTooltipNumber(precision)]
+        if (isFinite(Number(f1)))
+            lines.push("F1: " + control.formatChartTooltipNumber(f1))
         if (isFinite(Number(threshold)))
             lines.push("阈值: " + control.formatChartTooltipNumber(threshold))
         return lines

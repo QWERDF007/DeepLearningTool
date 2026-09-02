@@ -4,6 +4,7 @@ import QtTest
 
 import dltool.core
 import dltool.model
+import dltool.ui
 import dltool.modeltest 1.0
 
 TestCase {
@@ -149,6 +150,16 @@ TestCase {
             width: 420
             height: 260
             evaluation: anomalyEvaluation
+        }
+    }
+
+    Component {
+        id: parameterPanelComponent
+        ParamPanel {
+            objectName: "parameterPanel"
+            width: 420
+            height: 240
+            params: root.fixture ? root.fixture.createParameterTestParams() : null
         }
     }
 
@@ -324,6 +335,39 @@ TestCase {
         testWindow.visible = false
     }
 
+    function test_parameterLabelsUseEnglishNames() {
+        testWindow.visible = true
+        var panel = createTemporaryObject(parameterPanelComponent, testWindow.contentItem)
+        verify(panel)
+        tryVerify(function() {
+            return findChild(panel, "parameterGroup") !== null
+                    && findChild(panel, "parameterField") !== null
+        }, 1000)
+
+        var group = findChild(panel, "parameterGroup")
+        var field = findChild(panel, "parameterField")
+        verify(group)
+        verify(field)
+        compare(group.groupLabel, "inference")
+        compare(field.labelText, "image_size")
+        testWindow.visible = false
+    }
+
+    function test_anomalyScoreReferenceTooltipLabels() {
+        testWindow.visible = true
+        var panel = createTemporaryObject(anomalyChartComponent, testWindow.contentItem)
+        verify(panel)
+        var data = { datasets: [
+            { reference: true, tooltipXOnly: true, label: "最佳阈值：1.0000", tooltipLabel: "最佳阈值" },
+            { reference: true, tooltipXOnly: true, label: "正常 最大分数：0.5000", tooltipLabel: "正常最大分数" },
+            { reference: true, tooltipXOnly: true, label: "异常 最小分数：0.7500", tooltipLabel: "异常最小分数" }
+        ] }
+        compare(panel.scoreDistributionTooltipLabel({datasetIndex: 0}, data), "最佳阈值")
+        compare(panel.scoreDistributionTooltipLabel({datasetIndex: 1}, data), "正常最大分数")
+        compare(panel.scoreDistributionTooltipLabel({datasetIndex: 2}, data), "异常最小分数")
+        testWindow.visible = false
+    }
+
     function test_instanceSortSelectorProvidesMethodSpecificOptions() {
         testWindow.visible = true
 
@@ -418,18 +462,20 @@ TestCase {
 
         var data = { datasets: [{
             label: "总体 micro",
-            data: [{ x: 0.25, y: 0.75, threshold: 0.625 }]
+            data: [{ x: 0.25, y: 0.75, f1: 0.375, threshold: 0.625 }]
         }] }
         var item = { datasetIndex: 0, index: 0, xLabel: 0.25, yLabel: 0.75 }
         compare(panel.precisionRecallTooltipTitle([item], data), "召回率: 0.2500")
         var lines = panel.precisionRecallTooltipLabel(item, data)
-        compare(lines.length, 2)
+        compare(lines.length, 3)
         compare(lines[0], "精确率: 0.7500")
-        compare(lines[1], "阈值: 0.6250")
-        var bestPointData = { datasets: [{ data: [{ x: 0.25, y: 0.75, threshold: 0.625, best_f1: 0.8888 }] }] }
+        compare(lines[1], "F1: 0.3750")
+        compare(lines[2], "阈值: 0.6250")
+        var bestPointData = { datasets: [{ data: [{ x: 0.25, y: 0.75, f1: 0.8888,
+                                                     threshold: 0.625, best_f1: 0.8888 }] }] }
         var bestPointLines = panel.precisionRecallTooltipLabel(item, bestPointData)
-        compare(bestPointLines.length, 2)
-        verify(bestPointLines.indexOf("F1: 0.8888") < 0)
+        compare(bestPointLines.length, 3)
+        compare(bestPointLines[1], "F1: 0.8888")
 
         compare(panel.scoreDistributionTooltipTitle([{ xLabel: 12.345678 }], {}), "分数: 12.3457")
         var distributionData = { datasets: [{ data: [{ x: 12.345678, y: 24 }] }] }

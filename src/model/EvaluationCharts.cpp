@@ -6,9 +6,6 @@
 #include "model/EvaluationMatching.h"
 #include "model/ModelEvaluationProtocol.h"
 
-#include <spdlog/spdlog.h>
-
-#include <QElapsedTimer>
 #include <QSet>
 #include <QVariantList>
 #include <QVector>
@@ -249,11 +246,12 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
             {                              QStringLiteral("fill"),                                                           true}
         };
     };
-    const auto referenceDataset
-        = [](const QString &label, const QString &color, const double value, const int max_count)
+    const auto referenceDataset = [](const QString &label, const QString &tooltip_label, const QString &color,
+                                     const double value, const int max_count)
     {
         return QVariantMap{
             {           QStringLiteral("label"),          label                                                },
+            {    QStringLiteral("tooltipLabel"),   tooltip_label                                                },
             {evaluation::fieldName(evaluation::Field::SeriesKind),
              evaluation::seriesKindKey(evaluation::SeriesKind::BestThreshold)},
             {evaluation::fieldName(evaluation::Field::Threshold), value},
@@ -263,8 +261,9 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
              QVariantList{QVariantMap{{QStringLiteral("x"), value}, {QStringLiteral("y"), 0}},
              QVariantMap{{QStringLiteral("x"), value}, {QStringLiteral("y"), max_count}}}                      },
             { QStringLiteral("backgroundColor"),                                                          color},
-            {     QStringLiteral("borderColor"),                                                          color},
-            {    QStringLiteral("tooltipXOnly"),                                                           true},
+             {     QStringLiteral("borderColor"),                                                          color},
+             {                 QStringLiteral("order"),                                                            -1},
+             {    QStringLiteral("tooltipXOnly"),                                                           true},
             {     QStringLiteral("borderWidth"),                                                              2},
             {      QStringLiteral("borderDash"),                                             QVariantList{6, 4}},
             {     QStringLiteral("pointRadius"),                                                              0},
@@ -293,18 +292,18 @@ QVariantMap anomalyScoreChart(const QVariantList &good_scores, const QVariantLis
                                             anomaly_fill, histogram.anomaly_points));
     if (has_good)
         datasets.push_back(referenceDataset(
-            QStringLiteral("正常 最大分数：%1").arg(QString::number(good_max, 'f', 4)), good_color, good_max,
-            histogram.max_count));
+            QStringLiteral("正常 最大分数：%1").arg(QString::number(good_max, 'f', 4)), QStringLiteral("正常最大分数"),
+            good_color, good_max, histogram.max_count));
     if (has_anomaly)
         datasets.push_back(referenceDataset(
-            QStringLiteral("异常 最小分数：%1").arg(QString::number(anomaly_min, 'f', 4)), anomaly_color, anomaly_min,
-            histogram.max_count));
+            QStringLiteral("异常 最小分数：%1").arg(QString::number(anomaly_min, 'f', 4)), QStringLiteral("异常最小分数"),
+            anomaly_color, anomaly_min, histogram.max_count));
     if (threshold_search != nullptr && threshold_search->available && std::isfinite(best_threshold))
     {
         const EvaluationThresholdPoint &best = threshold_search->best_point;
         datasets.push_back(referenceDataset(
-            QStringLiteral("最佳阈值：%1").arg(QString::number(best.threshold, 'f', 4)), QStringLiteral("#D97706"),
-            best.threshold, histogram.max_count));
+            QStringLiteral("最佳阈值：%1").arg(QString::number(best.threshold, 'f', 4)), QStringLiteral("最佳阈值"),
+            QStringLiteral("#D97706"), best.threshold, histogram.max_count));
     }
     const double      suggested_count = histogram.max_count > 0 ? histogram.max_count * 1.1 : 1.0;
     const QVariantMap options{
@@ -393,8 +392,6 @@ EvaluationThresholdSearchResult anomalyThresholdSearchForImages(const QList<Eval
                                                                 const std::shared_ptr<std::atomic_bool> &cancel,
                                                                 QString *err_msg)
 {
-    QElapsedTimer total_timer;
-    total_timer.start();
     struct Sample
     {
         double score{0.0};
@@ -427,21 +424,9 @@ EvaluationThresholdSearchResult anomalyThresholdSearchForImages(const QList<Eval
             ranked_samples.push_back({score, ground_truth_anomaly});
         }
     }
-    spdlog::debug("[评估耗时] threshold-search anomaly collect 完成: {} ms, images={}, scored_images={}, scores={}, "
-                  "positive_gt={}",
-                  total_timer.elapsed(), images.size(), ranked_samples.size(), scores.size(), positive_ground_truth_count);
-
-    QElapsedTimer phase_timer;
-    phase_timer.start();
     std::stable_sort(ranked_samples.begin(), ranked_samples.end(),
                      [](const Sample &lhs, const Sample &rhs) { return lhs.score > rhs.score; });
-    const qint64 sort_elapsed = phase_timer.elapsed();
-    phase_timer.restart();
     const QVector<double> candidates = evaluationThresholdCandidates(scores);
-    const qint64 candidate_elapsed = phase_timer.elapsed();
-    spdlog::debug("[评估耗时] threshold-search anomaly candidates 完成: sort={} ms, unique={} ms, candidates={}",
-                  sort_elapsed, candidate_elapsed, candidates.size());
-    phase_timer.restart();
     QVector<EvaluationThresholdPoint> points(candidates.size());
     EvaluationCounts                  counts{0, 0, positive_ground_truth_count};
     int                               active_count = 0;
@@ -467,15 +452,8 @@ EvaluationThresholdSearchResult anomalyThresholdSearchForImages(const QList<Eval
         }
         points[index] = evaluationThresholdPoint(threshold, counts);
     }
-    const qint64 scan_elapsed = phase_timer.elapsed();
-
-    const qint64 select_elapsed = 0;
     EvaluationThresholdSearchResult result
         = selectBestEvaluationThreshold(points, positive_ground_truth_count);
-    spdlog::debug("[评估耗时] threshold-search anomaly 完成: scan={} ms, select={} ms, total={} ms, points={}, "
-                  "available={}, best_threshold={}, best_f1={}",
-                  scan_elapsed, select_elapsed, total_timer.elapsed(), result.points.size(), result.available,
-                  result.best_point.threshold, result.best_point.f1);
     return result;
 }
 
@@ -617,10 +595,18 @@ struct SampledPrecisionRecallCurve
         double recall{0.0};
         double precision{0.0};
         double threshold{std::numeric_limits<double>::quiet_NaN()};
+        double f1{0.0};
     };
 
     QVector<Point> points;
     double         average_precision{0.0};
+};
+
+struct RawPrecisionRecallPoint
+{
+    double recall{0.0};
+    double precision{0.0};
+    double threshold{std::numeric_limits<double>::quiet_NaN()};
 };
 
 SampledPrecisionRecallCurve sampleThresholdCurve(const QVector<EvaluationThresholdPoint> &threshold_points)
@@ -630,7 +616,7 @@ SampledPrecisionRecallCurve sampleThresholdCurve(const QVector<EvaluationThresho
     if (threshold_points.isEmpty())
         return result;
 
-    QVector<SampledPrecisionRecallCurve::Point> raw_points;
+    QVector<RawPrecisionRecallPoint> raw_points;
     raw_points.reserve(threshold_points.size() + 1);
     raw_points.push_back({0.0, 0.0, threshold_points.back().threshold});
     for (const EvaluationThresholdPoint &point : threshold_points)
@@ -643,8 +629,7 @@ SampledPrecisionRecallCurve sampleThresholdCurve(const QVector<EvaluationThresho
         return result;
 
     std::stable_sort(raw_points.begin(), raw_points.end(),
-                     [](const SampledPrecisionRecallCurve::Point &lhs,
-                        const SampledPrecisionRecallCurve::Point &rhs)
+                     [](const RawPrecisionRecallPoint &lhs, const RawPrecisionRecallPoint &rhs)
                      {
                          if (lhs.recall != rhs.recall)
                              return lhs.recall < rhs.recall;
@@ -705,7 +690,8 @@ SampledPrecisionRecallCurve sampleThresholdCurve(const QVector<EvaluationThresho
     {
         const double x = static_cast<double>(index) / denominator;
         const double y = std::clamp(interpolatePrecision(recall, precision, x), 0.0, 1.0);
-        result.points[index] = {x, y, thresholdAtRecall(x)};
+        const double f1 = x + y > 0.0 ? 2.0 * x * y / (x + y) : 0.0;
+        result.points[index] = {x, y, thresholdAtRecall(x), f1};
         if (index > 0)
             result.average_precision += (x - previous_x) * (y + previous_y) * 0.5;
         previous_x = x;
@@ -728,6 +714,7 @@ QVariantMap precisionRecallChartFromCurves(const QList<PrecisionRecallClassCurve
             points.push_back(QVariantMap{
                 {QStringLiteral("x"), point.recall},
                 {QStringLiteral("y"), point.precision},
+                {evaluation::fieldName(evaluation::Field::F1), point.f1},
                 {evaluation::fieldName(evaluation::Field::Threshold), point.threshold}
             });
 
@@ -758,20 +745,23 @@ QVariantMap precisionRecallChartFromCurves(const QList<PrecisionRecallClassCurve
              QStringLiteral("最佳阈值：%1").arg(QString::number(best.threshold, 'f', 4))},
             {evaluation::fieldName(evaluation::Field::SeriesKind),
              evaluation::seriesKindKey(evaluation::SeriesKind::BestThreshold)},
-            {evaluation::fieldName(evaluation::Field::Threshold), best.threshold},
-            {evaluation::fieldName(evaluation::Field::BestF1), best.f1},
+             {evaluation::fieldName(evaluation::Field::Threshold), best.threshold},
+             {evaluation::fieldName(evaluation::Field::F1), best.f1},
+             {evaluation::fieldName(evaluation::Field::BestF1), best.f1},
             {evaluation::fieldName(evaluation::Field::ReadOnly), true},
-            {evaluation::fieldName(evaluation::Field::Reference), true},
-            {evaluation::fieldName(evaluation::Field::Data),
-             QVariantList{QVariantMap{{QStringLiteral("x"), best.recall},
-                                      {QStringLiteral("y"), best.precision},
-                                      {evaluation::fieldName(evaluation::Field::Threshold), best.threshold},
-                                      {evaluation::fieldName(evaluation::Field::BestF1), best.f1}}}},
-            {QStringLiteral("borderColor"), QStringLiteral("#D97706")},
-            {QStringLiteral("backgroundColor"), QStringLiteral("#D97706")},
-            {QStringLiteral("pointBackgroundColor"), QStringLiteral("#D97706")},
-            {QStringLiteral("pointBorderColor"), QStringLiteral("#D97706")},
-            {QStringLiteral("borderWidth"), 0},
+             {evaluation::fieldName(evaluation::Field::Reference), true},
+             {evaluation::fieldName(evaluation::Field::Data),
+              QVariantList{QVariantMap{{QStringLiteral("x"), best.recall},
+                                       {QStringLiteral("y"), best.precision},
+                                       {evaluation::fieldName(evaluation::Field::Threshold), best.threshold},
+                                       {evaluation::fieldName(evaluation::Field::F1), best.f1},
+                                       {evaluation::fieldName(evaluation::Field::BestF1), best.f1}}}},
+             {QStringLiteral("borderColor"), QStringLiteral("#D97706")},
+             {QStringLiteral("backgroundColor"), QStringLiteral("#D97706")},
+             {QStringLiteral("pointBackgroundColor"), QStringLiteral("#D97706")},
+             {QStringLiteral("pointBorderColor"), QStringLiteral("#D97706")},
+             {QStringLiteral("order"), -1},
+             {QStringLiteral("borderWidth"), 0},
             {QStringLiteral("pointRadius"), 6},
             {QStringLiteral("pointHoverRadius"), 7},
             {QStringLiteral("showLine"), false},
@@ -788,6 +778,7 @@ QVariantMap precisionRecallChartFromCurves(const QList<PrecisionRecallClassCurve
             points.push_back(QVariantMap{
                 {QStringLiteral("x"), point.recall},
                 {QStringLiteral("y"), point.precision},
+                {evaluation::fieldName(evaluation::Field::F1), point.f1},
                 {evaluation::fieldName(evaluation::Field::Threshold), point.threshold}
             });
         const QString color = classColor(curve.class_id);
@@ -885,8 +876,6 @@ EvaluationThresholdSearchResult instanceThresholdSearchForImages(
     const QList<EvaluationImageData> &images, const double iou_threshold, const evaluation::MatchingStrategy strategy,
     const QVariantList &class_ids, const std::shared_ptr<std::atomic_bool> &cancel, QString *err_msg)
 {
-    QElapsedTimer total_timer;
-    total_timer.start();
     const auto allowed = [&class_ids](const int class_id)
     {
         return precisionRecallClassAllowed(class_ids, class_id);
@@ -896,13 +885,6 @@ EvaluationThresholdSearchResult instanceThresholdSearchForImages(
     qint64           positive_ground_truth_count = 0;
     QVector<PreparedThresholdImage> prepared_images;
     prepared_images.reserve(images.size());
-    qint64       prediction_count = 0;
-    qint64       ground_truth_count = 0;
-    qint64       iou_pair_count = 0;
-    qint64       edge_count = 0;
-    qint64       iou_elapsed = 0;
-    QElapsedTimer iou_timer;
-    iou_timer.start();
 
     for (const EvaluationImageData &image : images)
     {
@@ -948,14 +930,11 @@ EvaluationThresholdSearchResult instanceThresholdSearchForImages(
                 prepared_class.predictions.push_back(prediction);
             for (const EvaluationGroundTruthData &value : ground_truth)
                 prepared_class.ground_truth.push_back(value);
-            prediction_count += prepared_class.predictions.size();
-            ground_truth_count += prepared_class.ground_truth.size();
             std::stable_sort(prepared_class.predictions.begin(), prepared_class.predictions.end(),
                              [](const EvaluationPredictionData &lhs, const EvaluationPredictionData &rhs)
                              { return lhs.score > rhs.score; });
 
             prepared_class.ious.resize(prepared_class.predictions.size());
-            iou_timer.restart();
             for (int prediction_index = 0; prediction_index < prepared_class.predictions.size(); ++prediction_index)
             {
                 if (isCancelled(cancel))
@@ -980,7 +959,6 @@ EvaluationThresholdSearchResult instanceThresholdSearchForImages(
                     const double iou = (!prediction_box.valid() && !ground_truth_box.valid())
                                          ? 1.0
                                          : intersectionOverUnion(prediction_box, ground_truth_box);
-                    ++iou_pair_count;
                     prediction_ious[ground_truth_index] = iou;
                     if (iou >= iou_threshold)
                         prepared_class.greedy_edges.push_back({prediction_index, ground_truth_index, iou});
@@ -995,23 +973,12 @@ EvaluationThresholdSearchResult instanceThresholdSearchForImages(
                               return lhs.prediction < rhs.prediction;
                           return lhs.ground_truth < rhs.ground_truth;
                       });
-            iou_elapsed += iou_timer.elapsed();
-            edge_count += prepared_class.greedy_edges.size();
             prepared_image.classes.push_back(std::move(prepared_class));
         }
         prepared_images.push_back(std::move(prepared_image));
     }
 
-    const qint64 preparation_elapsed = total_timer.elapsed();
-    spdlog::debug("[评估耗时] threshold-search instance prepare 完成: {} ms, images={}, predictions={}, gt={}, "
-                  "iou_pairs={}, iou_compute={} ms, edges={}, scores={}, positive_gt={}",
-                  preparation_elapsed, images.size(), prediction_count, ground_truth_count, iou_pair_count,
-                  iou_elapsed, edge_count, scores.size(), positive_ground_truth_count);
-
-    QElapsedTimer phase_timer;
-    phase_timer.start();
     const QVector<double> candidates = evaluationThresholdCandidates(scores);
-    const qint64 candidate_elapsed = phase_timer.elapsed();
     QVector<EvaluationThresholdPoint> global_points(candidates.size());
     QMap<int, QVector<EvaluationThresholdPoint>> class_points;
     for (const PreparedThresholdImage &image : prepared_images)
@@ -1027,12 +994,6 @@ EvaluationThresholdSearchResult instanceThresholdSearchForImages(
                     prepared_class.predictions.size(), prepared_class.ground_truth.size(), prepared_class.ious,
                     iou_threshold));
     }
-    const qint64 matcher_elapsed = phase_timer.elapsed() - candidate_elapsed;
-    spdlog::debug("[评估耗时] threshold-search instance candidates/matchers 完成: candidates={} ({}) ms, matchers={} "
-                  "({} ms), strategy={}",
-                  candidates.size(), candidate_elapsed, hungarian_matchers.size(), matcher_elapsed,
-                  static_cast<int>(strategy));
-
     int matcher_index = 0;
     for (int candidate_index = candidates.size() - 1; candidate_index >= 0; --candidate_index)
     {
@@ -1105,18 +1066,10 @@ EvaluationThresholdSearchResult instanceThresholdSearchForImages(
         }
         global_points[candidate_index] = evaluationThresholdPoint(threshold, global_counts);
     }
-    const qint64 scan_elapsed = phase_timer.elapsed();
-
-    const qint64 select_elapsed = 0;
     EvaluationThresholdSearchResult result
         = selectBestEvaluationThreshold(global_points, positive_ground_truth_count);
     if (result.available)
         result.class_points = std::move(class_points);
-    spdlog::debug("[评估耗时] threshold-search instance 完成: prepare={} ms, candidates={} ms, matchers={} ms, "
-                  "scan={} ms, select={} ms, total={} ms, points={}, available={}, best_threshold={}, best_f1={}",
-                  preparation_elapsed, candidate_elapsed, matcher_elapsed, scan_elapsed, select_elapsed,
-                  total_timer.elapsed(), result.points.size(), result.available, result.best_point.threshold,
-                  result.best_point.f1);
     return result;
 }
 
@@ -1242,9 +1195,10 @@ QVariantMap confidenceDistributionChart(const QList<EvaluationImageData> &images
             {QStringLiteral("data"),
              QVariantList{QVariantMap{{QStringLiteral("x"), threshold}, {QStringLiteral("y"), 0}},
                           QVariantMap{{QStringLiteral("x"), threshold}, {QStringLiteral("y"), max_count}}}},
-            {QStringLiteral("borderColor"), QStringLiteral("#D97706")},
-            {QStringLiteral("backgroundColor"), QStringLiteral("#D97706")},
-            {QStringLiteral("borderWidth"), 2},
+             {QStringLiteral("borderColor"), QStringLiteral("#D97706")},
+             {QStringLiteral("backgroundColor"), QStringLiteral("#D97706")},
+             {QStringLiteral("order"), -1},
+             {QStringLiteral("borderWidth"), 2},
             {QStringLiteral("borderDash"), QVariantList{6, 4}},
             {QStringLiteral("pointRadius"), 0},
             {QStringLiteral("showLine"), true},

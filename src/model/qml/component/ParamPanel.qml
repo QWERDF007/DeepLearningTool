@@ -29,7 +29,7 @@ Item {
                 property int groupPartIndex: Utils.numberValue(groupRole("partIndex", 0), 0)
                 property var groupModel: groupRole("groupModel", null)
                 property string groupNameEn: groupRole("nameEn", "")
-                property string groupLabel: groupRole("nameCn", groupNameEn)
+                property string groupLabel: groupRole("nameEn", "")
                 property string groupDescription: groupRole("description", "")
                 property bool groupVisible: groupPartIndex === control.targetPartIndex
 
@@ -53,6 +53,7 @@ Item {
 
                     Rectangle {
                         id: groupRoot
+                        objectName: "parameterGroup"
 
                         property var groupModel: groupLoader.groupModel
                         property string groupLabel: groupLoader.groupLabel

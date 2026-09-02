@@ -16,7 +16,7 @@ train_params:
         display_type: spin
 
       - name_en: encoder_name
-        name_cn: 预训练模型
+        name_cn: 编码器
         description: 用于提取图像特征的 DINOv2 预训练编码器版本。
         value: dinov2reg_vit_base_14
         value_type: string
@@ -24,8 +24,8 @@ train_params:
         options: [dinov2reg_vit_small_14, dinov2reg_vit_base_14, dinov2reg_vit_large_14]
 
       - name_en: checkpoint
-        name_cn: 初始权重
-        description: 训练使用的初始权重：同架构用户已训练权重，留空使用默认初始化。
+        name_cn: 初始检查点
+        description: 训练开始时恢复的完整训练检查点；留空则从当前网络配置创建模型后开始训练。
         value: ""
         value_type: string
         display_type: group_combo
@@ -43,8 +43,8 @@ train_params:
         enabled: false
 
       - name_en: crop_size
-        name_cn: 裁剪尺寸
-        description: 训练前从缩放后的图像中心裁剪出的目标边长。
+        name_cn: 中心裁剪尺寸
+        description: 先将输入图像缩放到 image_size，再从中心裁剪到该边长；训练、验证/测试和预测使用相同预处理。
         value: 392
         value_type: int
         value_range: [64, 2048, 1]
@@ -55,7 +55,7 @@ train_params:
     part_index: 0
     params:
       - name_en: max_steps
-        name_cn: Max Iters（最大迭代次数）
+        name_cn: 最大训练步数
         description: 训练允许执行的最大优化步骤数。
         value: 5000
         value_type: int
@@ -88,25 +88,25 @@ train_params:
         backend_key: training.compute_devices
 
       - name_en: num_workers
-        name_cn: 数据加载进程
+        name_cn: 数据加载进程数
         description: 用于并行读取和预处理数据的工作进程数。
         value: 2
         value_type: int
-        value_range: [0, 64, 1]
+        value_range: [0, 128, 1]
         display_type: spin
 
       - name_en: check_val_every_n_epoch
         name_cn: 验证间隔
-        description: 每 N 个 Epoch 运行一次验证。增大该值可减少验证和 worker 重建造成的卡顿。
-        value: 5
+        description: 每 N 个 Epoch 运行一次验证。
+        value: 1
         value_type: int
         value_range: [1, 1000, 1]
         display_type: spin
 
       - name_en: checkpoint_every_n_epoch
         name_cn: 保存间隔
-        description: 每 N 个 Epoch 保存一次模型 checkpoint。增大该值可减少写盘造成的卡顿。
-        value: 5
+        description: 每 N 个 Epoch 保存一次模型检查点。
+        value: 1
         value_type: int
         value_range: [1, 1000, 1]
         display_type: spin
@@ -128,9 +128,9 @@ train_params:
         display_type: spin
 
       - name_en: use_context_recentering
-        name_cn: 上下文重居中
+        name_cn: 上下文特征重居中
         description: 是否对上下文特征执行重居中处理。
-        value: true
+        value: false
         value_type: bool
         display_type: checkbox
 
@@ -156,11 +156,11 @@ test_params:
         display_type: spin
 
       - name_en: num_workers
-        name_cn: 数据加载进程
+        name_cn: 数据加载进程数
         description: 用于并行读取和预处理测试数据的工作进程数。
         value: 2
         value_type: int
-        value_range: [0, 64, 1]
+        value_range: [0, 128, 1]
         display_type: spin
 
       - name_en: device

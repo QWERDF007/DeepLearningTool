@@ -16,15 +16,15 @@ train_params:
         display_type: spin
 
       - name_en: crop_size
-        name_cn: 裁剪尺寸
-        description: 训练前从缩放后的图像中心裁剪出的目标边长。
+        name_cn: 中心裁剪尺寸
+        description: 先将输入图像缩放到 image_size，再从中心裁剪到该边长；训练、验证/测试和预测使用相同预处理。
         value: 392
         value_type: int
         value_range: [64, 2048, 1]
         display_type: spin
 
       - name_en: backbone
-        name_cn: 预训练模型
+        name_cn: 编码器
         description: 用于提取图像特征的 DINOv2 预训练编码器版本。
         value: dinov2reg_vit_base_14
         value_type: string
@@ -32,8 +32,8 @@ train_params:
         options: [dinov2reg_vit_small_14, dinov2reg_vit_base_14, dinov2reg_vit_large_14]
 
       - name_en: checkpoint
-        name_cn: 初始权重
-        description: 训练使用的初始权重：同架构用户已训练权重，留空使用默认初始化。
+        name_cn: 初始检查点
+        description: 训练开始时加载的模型状态字典文件；留空则从当前网络配置初始化模型。
         value: ""
         value_type: string
         display_type: group_combo
@@ -60,7 +60,7 @@ train_params:
 
       - name_en: la
         name_cn: 线性注意力
-        description: 解码器是否使用线性注意力（1 使用，0 使用标准注意力）。
+        description: 1 表示使用线性注意力，0 表示使用标准注意力。
         value: true
         value_type: bool
         display_type: checkbox
@@ -108,7 +108,7 @@ train_params:
     part_index: 0
     params:
       - name_en: max_iters
-        name_cn: Max Iters（最大迭代次数）
+        name_cn: 最大训练步数
         description: 训练允许执行的最大优化步骤数。
         value: 40000
         value_type: int
@@ -124,7 +124,7 @@ train_params:
         display_type: spin
 
       - name_en: lr_decay_ratio
-        name_cn: 学习率衰减比例
+        name_cn: 最终学习率比例
         description: 余弦退火结束时学习率相对初始值的比例。
         value: 1.0
         value_type: double
@@ -149,11 +149,11 @@ train_params:
         backend_key: training.compute_devices
 
       - name_en: num_workers
-        name_cn: 数据加载进程
+        name_cn: 数据加载进程数
         description: 用于并行读取和预处理数据的工作进程数。
         value: 2
         value_type: int
-        value_range: [0, 64, 1]
+        value_range: [0, 128, 1]
         display_type: spin
 
   - name_en: mask
@@ -243,11 +243,11 @@ test_params:
         display_type: spin
 
       - name_en: num_workers
-        name_cn: 数据加载进程
+        name_cn: 数据加载进程数
         description: 用于并行读取和预处理测试数据的工作进程数。
         value: 2
         value_type: int
-        value_range: [0, 64, 1]
+        value_range: [0, 128, 1]
         display_type: spin
 
       - name_en: device

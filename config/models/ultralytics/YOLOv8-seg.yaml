@@ -9,7 +9,7 @@ YOLOv8-seg:
       part_index: 0
       params:
         - name_en: model
-          name_cn: 模型
+          name_cn: 模型规格
           description: 官方预训练模型，同时用于决定权重组件的官方权重与过滤用户已训练权重。
           value: yolov8n-seg
           value_type: string
@@ -17,7 +17,7 @@ YOLOv8-seg:
           options: [yolov8n-seg, yolov8s-seg, yolov8m-seg, yolov8l-seg, yolov8x-seg]
 
         - name_en: checkpoint
-          name_cn: 权重
+          name_cn: 初始权重
           description: 训练使用的初始权重：官方预训练权重，或同架构同模型参数的用户已训练权重。
           value: yolov8n-seg.pt
           value_type: string
@@ -28,7 +28,7 @@ YOLOv8-seg:
           official_weight: true
 
         - name_en: imgsz
-          name_cn: 图像尺寸
+          name_cn: 输入图像尺寸
           description: 训练时将输入图像缩放到的边长。
           value: 640
           value_type: int
@@ -56,11 +56,11 @@ YOLOv8-seg:
           display_type: spin
 
         - name_en: workers
-          name_cn: 数据加载进程
+          name_cn: 数据加载进程数
           description: 用于并行读取和预处理数据的工作进程数。
           value: 2
           value_type: int
-          value_range: [0, 64, 1]
+          value_range: [0, 128, 1]
           display_type: spin
 
         - name_en: optimizer
@@ -72,18 +72,17 @@ YOLOv8-seg:
           options: [SGD, Adam, AdamW, Adamax, NAdam, RAdam, RMSprop, MuSGD]
 
         - name_en: momentum
-          name_cn: 动量
-          description: SGD/MuSGD 优化器的动量系数。
+          name_cn: 动量系数
+          description: SGD、MuSGD 和 RMSprop 使用该值作为动量系数；Adam、AdamW、Adamax、NAdam、RAdam 使用该值作为 beta1（一阶矩衰减系数）。
           value: 0.937
           value_type: double
           value_range: [0.0, 1.0, 0.001]
           display_type: slider
-          enabled_when: "optimizer in [SGD, MuSGD]"
 
         - name_en: lr0
           name_cn: 初始学习率
-          description: 优化器的初始学习率。
-          value: 0.01
+          description: AdamW 的初始学习率；Ultralytics 默认配置对 Adam/AdamW 的建议值为 0.001。
+          value: 0.001
           value_type: double
           value_range: [0.000001, 1.0, 0.00001]
           display_type: spin
@@ -175,7 +174,7 @@ YOLOv8-seg:
           display_type: combo
           backend_key: training.compute_devices
 
-        - name_en: val
+        - name_en: val_interval
           name_cn: 验证间隔
           description: 每隔多少个 epoch 在验证集上评估一次，1 表示每个 epoch 都验证。
           value: 1
@@ -220,24 +219,24 @@ YOLOv8-seg:
           display_type: slider
 
         - name_en: hsv_h
-          name_cn: HSV 色相增益
-          description: 色相通道随机扰动的最大强度。
+          name_cn: HSV 色相增强比例
+          description: HSV 色相随机增强的最大比例；实际偏移量为 [-该值, 该值] × 180。
           value: 0.015
           value_type: double
           value_range: [0.0, 0.1, 0.001]
           display_type: slider
 
         - name_en: hsv_s
-          name_cn: HSV 饱和度增益
-          description: 饱和度通道随机扰动的最大强度。
+          name_cn: HSV 饱和度增强比例
+          description: HSV 饱和度随机增强的最大比例；实际缩放因子为 1 + [-该值, 该值]，结果裁剪到 [0, 255]。
           value: 0.7
           value_type: double
           value_range: [0.0, 1.0, 0.01]
           display_type: slider
 
         - name_en: hsv_v
-          name_cn: HSV 明度增益
-          description: 明度通道随机扰动的最大强度。
+          name_cn: HSV 明度增强比例
+          description: HSV 明度随机增强的最大比例；实际缩放因子为 1 + [-该值, 该值]，结果裁剪到 [0, 255]。
           value: 0.4
           value_type: double
           value_range: [0.0, 1.0, 0.01]
@@ -324,7 +323,7 @@ YOLOv8-seg:
           display_type: spin
 
         - name_en: imgsz
-          name_cn: 图像尺寸
+          name_cn: 输入图像尺寸
           description: 推理时将输入图像缩放到的边长。
           value: 640
           value_type: int

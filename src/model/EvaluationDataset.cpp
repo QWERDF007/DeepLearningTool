@@ -9,9 +9,6 @@
 
 #include <opencv2/imgcodecs.hpp>
 
-#include <spdlog/spdlog.h>
-
-#include <QElapsedTimer>
 #include <QCache>
 #include <QFile>
 #include <QFileInfo>
@@ -624,10 +621,6 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
                           const std::function<bool(qint64 image_id, int *width, int *height)> &dimensions_provider,
                           QMap<int, QString> *class_catalog, QMap<int, QString> *class_colors_out)
 {
-    QElapsedTimer total_timer;
-    total_timer.start();
-    QElapsedTimer phase_timer;
-    phase_timer.start();
     images.clear();
     if (class_catalog != nullptr)
         class_catalog->clear();
@@ -647,8 +640,6 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
     QList<QPair<qint64, QString>> rows;
     if (!readEvaluationImageList(file_list_path, rows, cancel_token, err_msg))
         return false;
-    spdlog::debug("[评估耗时] load-images file-list 完成: {} ms, rows={}", phase_timer.elapsed(), rows.size());
-    phase_timer.restart();
 
     if (task_database_path.trimmed().isEmpty() || !QFileInfo(task_database_path).isFile())
     {
@@ -661,9 +652,6 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
     if (!task_database.readDatasets(selection_records, err_msg))
         return false;
     const ModelDatasetSelection selection = modelDatasetSelectionsFromDatabase(selection_records).test;
-    spdlog::debug("[评估耗时] load-images task-selection 完成: {} ms, records={}, selected={}",
-                  phase_timer.elapsed(), selection_records.size(), !selection.isEmpty());
-    phase_timer.restart();
     if (selection.isEmpty())
     {
         if (err_msg)
@@ -737,9 +725,6 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
             *err_msg = QString("项目标签类别数据数量不一致");
         return false;
     }
-    spdlog::debug("[评估耗时] load-images project-database 完成: {} ms, images={}, labels={}, classes={}",
-                  phase_timer.elapsed(), image_ids.size(), label_ids.size(), class_ids.size());
-    phase_timer.restart();
 
     QMap<qint64, SourceImage> source_images;
     for (size_t index = 0; index < image_ids.size(); ++index)
@@ -900,9 +885,6 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
             *err_msg = QString("测试数据集没有有效图像");
         return false;
     }
-    spdlog::debug("[评估耗时] load-images materialize 完成: {} ms, valid_images={}, rows={}", phase_timer.elapsed(),
-                  images.size(), rows.size());
-    spdlog::debug("[评估耗时] load-images 总计: {} ms", total_timer.elapsed());
     return true;
 }
 
@@ -912,8 +894,6 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
                                int *ignored_count, const bool load_anomaly_score_maps,
                                const double retain_anomaly_score_map_threshold)
 {
-    QElapsedTimer total_timer;
-    total_timer.start();
     if (count)
         *count = 0;
     if (ignored_count)
@@ -936,11 +916,7 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
                 *err_msg = message;
             return false;
         };
-        int    total                        = 0;
-        int    existing_files              = 0;
-        qint64 materialized_score_value_count = 0;
-        int    maximum_only_count           = 0;
-        int    maximum_cache_hit_count      = 0;
+        int total = 0;
         std::vector<EvaluationScoreMaximumRequest> requests;
         requests.reserve(static_cast<std::size_t>(images.size()));
         for (auto image_it = images.begin(); image_it != images.end(); ++image_it)
@@ -951,7 +927,6 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
             const QString score_path = QDir(prediction_dir).filePath(QStringLiteral("%1.tiff").arg(image_it.key()));
             if (!QFileInfo(score_path).isFile())
                 continue;
-            ++existing_files;
 
             if (!load_anomaly_score_maps)
             {
@@ -969,7 +944,6 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
             maximum = score_map.maximum_score;
             if (!score_map.has_maximum_score)
                 continue;
-            materialized_score_value_count += score_map.values.size();
             image_it->anomaly_image_score     = maximum;
             image_it->has_anomaly_image_score = true;
             image_it->anomaly_score_map = std::make_shared<const EvaluationScoreMap>(std::move(score_map));
@@ -993,8 +967,6 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
             for (std::size_t index = 0; index < requests.size(); ++index)
             {
                 const EvaluationScoreMaximumResult &result = results[index];
-                if (result.maximum_cache_hit)
-                    ++maximum_cache_hit_count;
                 if (!result.has_score)
                 {
                     if (result.error.isEmpty())
@@ -1015,22 +987,13 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
                 image_it->anomaly_image_score     = result.maximum;
                 image_it->has_anomaly_image_score = true;
                 if (result.score_map != nullptr)
-                {
-                    materialized_score_value_count += result.score_map->values.size();
                     image_it->anomaly_score_map = result.score_map;
-                }
-                else
-                    ++maximum_only_count;
                 image_it->predictions.push_back(std::move(prediction));
                 ++total;
             }
         }
         if (count != nullptr)
             *count = total;
-        spdlog::debug("[评估耗时] load-predictions anomaly-tiff 完成: {} ms, images={}, files={}, loaded={}, "
-                      "materialized_score_values={}, maximum_only={}, maximum_cache_hits={}, prediction_dir={}",
-                      total_timer.elapsed(), images.size(), existing_files, total, materialized_score_value_count,
-                      maximum_only_count, maximum_cache_hit_count, prediction_dir.toUtf8().constData());
         return true;
     }
 
@@ -1041,7 +1004,6 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
     QHash<qint64, QVariant>     records;
     if (!database.readPredictions(records, err_msg))
         return false;
-    spdlog::debug("[评估耗时] load-predictions task-db 完成: {} ms, records={}", total_timer.elapsed(), records.size());
 
     QSet<QString> prediction_ids;
     int           total = 0;
@@ -1161,8 +1123,6 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
     }
     if (count)
         *count = total;
-    spdlog::debug("[评估耗时] load-predictions 完成: {} ms, records={}, predictions={}, ignored={}",
-                  total_timer.elapsed(), records.size(), total, ignored_count != nullptr ? *ignored_count : 0);
     return true;
 }
 

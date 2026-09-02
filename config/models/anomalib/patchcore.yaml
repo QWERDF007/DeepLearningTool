@@ -33,15 +33,15 @@ train_params:
         enabled: false
 
       - name_en: pre_trained
-        name_cn: 预训练模型
+        name_cn: 使用预训练权重
         description: 是否加载主干网络的预训练参数。
         value: true
         value_type: bool
         display_type: checkbox
 
       - name_en: checkpoint
-        name_cn: 初始权重
-        description: 训练使用的初始权重：同架构用户已训练权重，留空使用默认初始化。
+        name_cn: 初始检查点
+        description: 训练开始时恢复的完整训练检查点；留空则从当前网络配置创建模型后开始训练。
         value: ""
         value_type: string
         display_type: group_combo
@@ -57,9 +57,9 @@ train_params:
         display_type: text
 
       - name_en: center_crop_size
-        name_cn: 中心裁剪
-        description: 训练前进行中心裁剪的目标边长，设为 0 可不裁剪。
-        value: 224
+        name_cn: 中心裁剪尺寸
+        description: 先将输入图像缩放到 image_size，再从中心裁剪到该边长；训练、验证/测试和预测使用相同预处理，设为 0 表示不裁剪。
+        value: 0
         value_type: int
         value_range: [0, 2048, 1]
         display_type: spin
@@ -69,7 +69,7 @@ train_params:
     part_index: 0
     params:
       - name_en: max_epochs
-        name_cn: Epoch（轮次）
+        name_cn: 训练轮数
         description: 训练最多完整遍历数据集的次数。
         value: 1
         value_type: int
@@ -93,11 +93,11 @@ train_params:
         backend_key: training.compute_devices
 
       - name_en: num_workers
-        name_cn: 数据加载进程
+        name_cn: 数据加载进程数
         description: 用于并行读取和预处理数据的工作进程数。
         value: 2
         value_type: int
-        value_range: [0, 64, 1]
+        value_range: [0, 128, 1]
         display_type: spin
 
       - name_en: coreset_sampling_ratio
@@ -138,11 +138,11 @@ test_params:
         display_type: spin
 
       - name_en: num_workers
-        name_cn: 数据加载进程
+        name_cn: 数据加载进程数
         description: 用于并行读取和预处理测试数据的工作进程数。
         value: 2
         value_type: int
-        value_range: [0, 64, 1]
+        value_range: [0, 128, 1]
         display_type: spin
 
       - name_en: device

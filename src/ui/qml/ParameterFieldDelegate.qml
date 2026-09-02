@@ -8,6 +8,7 @@ import quickui
 
 Item {
     id: root
+    objectName: "parameterField"
 
     property var fieldModel: null
     property int rowIndex: typeof index === "number" ? index : -1
@@ -16,10 +17,7 @@ Item {
 
     property var fieldData: typeof model !== "undefined" ? model : ({})
     property string nameEn: String(roleValue("nameEn", ""))
-    property string labelText: {
-        const name = roleValue("nameCn", "")
-        return name === undefined || name === null || String(name).length === 0 ? nameEn : String(name)
-    }
+    property string labelText: nameEn
     property string descriptionText: String(roleValue("description", "") || "").trim()
     property string sectionText: String(roleValue("section", "") || "")
     property string previousSectionText: {

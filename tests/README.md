@@ -14,6 +14,8 @@
 
 CTest 注册由 [`../cmake/AddTest.cmake`](../cmake/AddTest.cmake) 统一提供，模块 CMake 只声明依赖、分组规则和 fixture 关系。公共测试辅助代码位于 [`model_support/`](model_support/) 和 [`test_runner.h`](test_runner.h)。
 
+模型配置契约由 `dltool_model_config_tests` 校验；测试源码 [`model/test_ModelConfigConsistency.cpp`](model/test_ModelConfigConsistency.cpp) 扫描 [`config/models/`](../config/models/)，并以框架实现为依据检查参数元数据、默认值及推理/评估分组。
+
 ## 构建和运行
 
 ```powershell

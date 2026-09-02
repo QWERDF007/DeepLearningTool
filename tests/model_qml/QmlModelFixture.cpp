@@ -4,6 +4,7 @@
 
 #include "model/EvaluationViewModelRegistry.h"
 #include "model/ModelEvaluationOptions.h"
+#include "model/ModelParamDefs.h"
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -11,6 +12,33 @@
 #include <QDir>
 
 namespace dltool::model::testsupport {
+
+namespace {
+
+class ParameterTestParams final : public ITestParams
+{
+public:
+    ParameterTestParams()
+    {
+        addGroup(QStringLiteral("inference"), QStringLiteral("推理参数"),
+                 {makeIntegerParam(QStringLiteral("image_size"), QStringLiteral("图像大小"), 448, 1, 2048, 1)},
+                 QStringLiteral("测试推理参数"));
+    }
+
+    QString typeName() const override
+    {
+        return QStringLiteral("Parameter test params");
+    }
+
+    std::unique_ptr<ITestParams> cloneTestParams() const override
+    {
+        auto cloned = std::make_unique<ParameterTestParams>();
+        cloned->copyValuesFrom(*this);
+        return cloned;
+    }
+};
+
+} // namespace
 
 QmlModelFixture::QmlModelFixture(QObject *parent)
     : QObject(parent)
@@ -167,6 +195,13 @@ ModelEvaluationViewModel *QmlModelFixture::createSegmentationEvaluation()
     segmentation_evaluation_->setEvaluationOptions(options);
     segmentation_evaluation_->evaluate(false);
     return segmentation_evaluation_;
+}
+
+ITestParams *QmlModelFixture::createParameterTestParams()
+{
+    if (!parameter_test_params_)
+        parameter_test_params_ = std::make_unique<ParameterTestParams>();
+    return parameter_test_params_.get();
 }
 
 ModelEvaluationViewModel *QmlModelFixture::createViewModel(const evaluation::Method method)

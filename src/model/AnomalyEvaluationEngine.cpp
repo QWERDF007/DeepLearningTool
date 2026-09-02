@@ -10,10 +10,7 @@
 
 #include <opencv2/imgproc.hpp>
 
-#include <spdlog/spdlog.h>
-
 #include <QDir>
-#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QCache>
@@ -203,12 +200,6 @@ bool AnomalyEvaluationEngine::runAnomalyLoop(const QMap<qint64, EvaluationImageD
         return false;
     };
 
-    QElapsedTimer region_timer;
-    region_timer.start();
-    qint64 region_images = 0;
-    qint64 region_values = 0;
-    qint64 region_polygons = 0;
-    qint64 region_cache_hits = 0;
     for (auto image_it = images.begin(); image_it != images.end(); ++image_it)
     {
         if (cancelled(scratch_.cancel_token))
@@ -265,14 +256,8 @@ bool AnomalyEvaluationEngine::runAnomalyLoop(const QMap<qint64, EvaluationImageD
                     return fail(score_error.isEmpty() ? QString("读取异常分数图失败: %1").arg(score_path) : score_error);
                 score_map = &region_score_map;
             }
-            bool region_cache_hit = false;
             regions = anomalyRegions(region_image, *score_map, score_path, scratch_.confidence, scratch_.preprocessing_config,
-                                     &region_cache_hit);
-            if (region_cache_hit)
-                ++region_cache_hits;
-            ++region_images;
-            region_values += score_map->values.size();
-            region_polygons += regions.model_polygons.size();
+                                     nullptr);
         }
         const evaluation::Status status
             = ground_truth_anomaly && predicted_anomaly
@@ -317,8 +302,6 @@ bool AnomalyEvaluationEngine::runAnomalyLoop(const QMap<qint64, EvaluationImageD
             scratch_.events.push_back(std::move(event));
         }
     }
-    spdlog::debug("[评估耗时] anomaly-regions 完成: {} ms, images={}, score_values={}, polygons={}, cache_hits={}",
-                  region_timer.elapsed(), region_images, region_values, region_polygons, region_cache_hits);
     return true;
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TestFixture.h"
+#include "model/IParams.h"
 #include "model/ModelEvaluationViewModel.h"
 
 #include <QPointer>
@@ -20,6 +21,7 @@ public:
     Q_INVOKABLE ModelEvaluationViewModel *createAnomalyEvaluation();
     Q_INVOKABLE ModelEvaluationViewModel *createDetectionViewModel();
     Q_INVOKABLE ModelEvaluationViewModel *createSegmentationEvaluation();
+    Q_INVOKABLE ITestParams *createParameterTestParams();
 
 private:
     ModelEvaluationViewModel *createViewModel(evaluation::Method method);
@@ -30,6 +32,7 @@ private:
     QPointer<ModelEvaluationViewModel> anomaly_evaluation_;
     QPointer<ModelEvaluationViewModel> detection_evaluation_;
     QPointer<ModelEvaluationViewModel> segmentation_evaluation_;
+    std::unique_ptr<ITestParams>       parameter_test_params_;
 };
 
 } // namespace dltool::model::testsupport

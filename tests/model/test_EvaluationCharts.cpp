@@ -131,8 +131,12 @@ private slots:
             if (kind == evaluation::SeriesKind::BestThreshold)
             {
                 const QString label = dataset.value(evaluation::fieldName(evaluation::Field::Label)).toString();
-                has_good_max = has_good_max || label.startsWith(QStringLiteral("正常 最大分数："));
-                has_anomaly_min = has_anomaly_min || label.startsWith(QStringLiteral("异常 最小分数："));
+                QCOMPARE(dataset.value(QStringLiteral("order")).toInt(), -1);
+                const QString tooltip_label = dataset.value(QStringLiteral("tooltipLabel")).toString();
+                has_good_max = has_good_max || (label.startsWith(QStringLiteral("正常 最大分数："))
+                                                && tooltip_label == QStringLiteral("正常最大分数"));
+                has_anomaly_min = has_anomaly_min || (label.startsWith(QStringLiteral("异常 最小分数："))
+                                                      && tooltip_label == QStringLiteral("异常最小分数"));
             }
             has_overall = has_overall || kind == evaluation::SeriesKind::Overall;
             has_best = has_best || kind == evaluation::SeriesKind::BestThreshold;
@@ -281,12 +285,29 @@ private slots:
                 has_best = true;
                 QCOMPARE(points.size(), 1);
                 QVERIFY(dataset.value(evaluation::fieldName(evaluation::Field::ReadOnly)).toBool());
+                QCOMPARE(dataset.value(QStringLiteral("order")).toInt(), -1);
+                QVERIFY(dataset.contains(evaluation::fieldName(evaluation::Field::F1)));
+                const QVariantMap best_point = points.front().toMap();
+                QVERIFY(best_point.contains(evaluation::fieldName(evaluation::Field::F1)));
+                QCOMPARE(best_point.value(evaluation::fieldName(evaluation::Field::F1)).toDouble(),
+                         dataset.value(evaluation::fieldName(evaluation::Field::F1)).toDouble());
             }
             else
             {
                 QCOMPARE(points.size(), kPrecisionRecallInterpolationPoints);
                 QVERIFY(points.front().toMap().contains(evaluation::fieldName(evaluation::Field::Threshold)));
                 QVERIFY(points.back().toMap().contains(evaluation::fieldName(evaluation::Field::Threshold)));
+                for (const QVariant &point_value : points)
+                {
+                    const QVariantMap point = point_value.toMap();
+                    QVERIFY(point.contains(evaluation::fieldName(evaluation::Field::F1)));
+                    const double precision = point.value(QStringLiteral("y")).toDouble();
+                    const double recall    = point.value(QStringLiteral("x")).toDouble();
+                    const double expected_f1
+                        = precision + recall > 0.0 ? 2.0 * precision * recall / (precision + recall) : 0.0;
+                    QVERIFY(qFuzzyCompare(point.value(evaluation::fieldName(evaluation::Field::F1)).toDouble() + 1.0,
+                                          expected_f1 + 1.0));
+                }
             }
         }
         QVERIFY(has_micro);

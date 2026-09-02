@@ -8,7 +8,6 @@
 #include <spdlog/spdlog.h>
 
 #include <QDir>
-#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QHash>
 #include <QMutex>
@@ -125,26 +124,15 @@ EvaluationCounts IEvaluationEngine::thresholdSearchCounts() const
 
 bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, EvaluationResult *result, QString *err_msg)
 {
-    QElapsedTimer total_timer;
-    total_timer.start();
-    QElapsedTimer phase_timer;
-    phase_timer.start();
-    const auto fail = [&err_msg, &options, &total_timer](const QString &message)
+    const auto fail = [&err_msg](const QString &message)
     {
         if (err_msg)
             *err_msg = message;
-        spdlog::debug("[评估耗时] 任务 {} 失败，总耗时 {} ms: {}", options.test_task_uuid.toUtf8().constData(),
-                      total_timer.elapsed(), message.toUtf8().constData());
         return false;
     };
 
     if (err_msg != nullptr)
         err_msg->clear();
-
-    spdlog::debug("[评估耗时] 任务 {} 开始: method={}, file_list={}, prediction_dir={}, confidence={}, iou={}",
-                  options.test_task_uuid.toUtf8().constData(), static_cast<int>(options.method),
-                  options.dataset_file_list_path.toUtf8().constData(), options.prediction_dir.toUtf8().constData(),
-                  options.confidence_threshold, options.iou_threshold);
 
     // (a) 协作取消检查。
     if (cancelled(options.cancel_token))
@@ -166,11 +154,6 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
                               &ignored_selection_images, options.image_dimensions_provider, &global_class_catalog,
                               &global_class_colors))
         return false;
-    spdlog::debug("[评估耗时] 任务 {} 阶段 load-images 完成: {} ms, images={}, classes={}, missing_database={}, "
-                  "ignored_selection={}",
-                  options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(), images.size(),
-                  global_class_catalog.size(), missing_database_images, ignored_selection_images);
-    phase_timer.restart();
     if (missing_database_images > 0)
         spdlog::warn("测试任务文件列表中有 {} 个图像已不在当前项目数据库中，已跳过", missing_database_images);
     if (ignored_selection_images > 0)
@@ -191,11 +174,6 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     }
     if (missing_source_images > 0)
         spdlog::warn("测试评估跳过 {} 个不存在的源图像", missing_source_images);
-    spdlog::debug("[评估耗时] 任务 {} 阶段 source-validation 完成: {} ms, images={}, missing_source={}",
-                  options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(), images.size(),
-                  missing_source_images);
-    phase_timer.restart();
-
     // (e) 加载预测。
     int prediction_count         = 0;
     int ignored_prediction_count = 0;
@@ -205,11 +183,6 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
                                    evaluation::isAnomaly(method()) ? options.confidence_threshold
                                                                     : std::numeric_limits<double>::quiet_NaN()))
         return false;
-    spdlog::debug("[评估耗时] 任务 {} 阶段 load-predictions 完成: {} ms, images={}, predictions={}, "
-                  "ignored_predictions={}",
-                  options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(), images.size(), prediction_count,
-                  ignored_prediction_count);
-    phase_timer.restart();
     if (ignored_prediction_count > 0)
         spdlog::warn("预测结果中有 {} 条记录不属于当前可用图像，已跳过", ignored_prediction_count);
     int images_without_predictions = 0;
@@ -259,10 +232,6 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
         const bool threshold_cacheable = !threshold_cache_key.isEmpty();
         const bool threshold_cache_hit
             = threshold_cacheable && thresholdSearchCache().find(threshold_cache_key, scratch_.threshold_search);
-        spdlog::debug("[评估耗时] 任务 {} 阶段 threshold-cache 完成: {} ms, hit={}, key={}",
-                      options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(), threshold_cache_hit,
-                      threshold_cacheable ? threshold_cache_key.toUtf8().constData() : "<disabled:no-snapshot>");
-        phase_timer.restart();
         if (!threshold_cache_hit)
         {
             QList<EvaluationImageData> threshold_images;
@@ -279,11 +248,6 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
             if (threshold_cacheable && !cancelled(options.cancel_token) && threshold_error.isEmpty())
                 thresholdSearchCache().insert(threshold_cache_key, scratch_.threshold_search);
         }
-        spdlog::debug("[评估耗时] 任务 {} 阶段 threshold-search 完成: {} ms, available={}, points={}, "
-                      "best_threshold={}, best_f1={}",
-                      options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(),
-                      scratch_.threshold_search.available, scratch_.threshold_search.points.size(),
-                      scratch_.threshold_search.best_point.threshold, scratch_.threshold_search.best_point.f1);
         if (cancelled(options.cancel_token))
             return fail(QString("评估已取消"));
         if (!threshold_error.isEmpty())
@@ -295,42 +259,24 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
             ? scratch_.threshold_search.best_point.threshold
             : options.confidence_threshold;
     resetComputationScratch(effective_threshold, true);
-    phase_timer.restart();
 
     // (h) 实例级计数。
     if (!computeInstanceCounts(images, classes, scratch_.per_class, scratch_.overall, err_msg))
         return false;
-    spdlog::debug("[评估耗时] 任务 {} 阶段 instance-counts 完成: {} ms, tp={}, fp={}, fn={}",
-                  options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(), scratch_.overall.tp,
-                  scratch_.overall.fp, scratch_.overall.fn);
-    phase_timer.restart();
     // (i) 图像级计数。
     if (!computeImageCounts(images, scratch_.image_counts, err_msg))
         return false;
-    spdlog::debug("[评估耗时] 任务 {} 阶段 image-counts 完成: {} ms, tp={}, fp={}, fn={}",
-                  options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(), scratch_.image_counts.tp,
-                  scratch_.image_counts.fp, scratch_.image_counts.fn);
-    phase_timer.restart();
     // (j) 实例事件。
     if (!buildEvents(images, scratch_.events, err_msg))
         return false;
-    spdlog::debug("[评估耗时] 任务 {} 阶段 events 完成: {} ms, count={}", options.test_task_uuid.toUtf8().constData(),
-                  phase_timer.elapsed(), scratch_.events.size());
-    phase_timer.restart();
     // (k) 图表与图表类型。
     const QList<QVariantMap> charts      = buildCharts(images, classes, scratch_.overall, scratch_.image_counts,
                                                        scratch_.per_class, scratch_.matrix, scratch_.events, err_msg);
     const QStringList        chart_kinds = chartKinds();
-    spdlog::debug("[评估耗时] 任务 {} 阶段 charts 完成: {} ms, charts={}", options.test_task_uuid.toUtf8().constData(),
-                  phase_timer.elapsed(), charts.size());
-    phase_timer.restart();
     // (l) 混淆矩阵。
     QVector<EvaluationConfusionCell> matrix_cells;
     if (hasConfusionMatrix())
         matrix_cells = buildConfusionMatrix(classes, scratch_.matrix);
-    spdlog::debug("[评估耗时] 任务 {} 阶段 confusion-matrix 完成: {} ms, cells={}",
-                  options.test_task_uuid.toUtf8().constData(), phase_timer.elapsed(), matrix_cells.size());
-    phase_timer.restart();
 
     if (cancelled(options.cancel_token))
         return fail(QString("评估已取消"));
@@ -371,9 +317,6 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
 
     if (result)
         *result = std::move(output);
-    spdlog::debug("[评估耗时] 任务 {} 完成: total={} ms, images={}, predictions={}, events={}, charts={}",
-                  options.test_task_uuid.toUtf8().constData(), total_timer.elapsed(), images.size(), prediction_count,
-                  scratch_.events.size(), charts.size());
     return true;
 }
 

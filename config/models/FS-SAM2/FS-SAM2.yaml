@@ -43,17 +43,17 @@ FS-SAM2:
           display_type: spin
 
         - name_en: batch_size
-          name_cn: Batch Size
+          name_cn: 批量大小
           description: 每次参数更新参与训练的样本数量。
-          value: 2
+          value: 8
           value_type: int
           value_range: [1, 128, 1]
           display_type: spin
 
         - name_en: num_workers
-          name_cn: 数据线程数
-          description: 用于并行读取和预处理数据的工作线程数。
-          value: 0
+          name_cn: 数据加载进程数
+          description: 用于 PyTorch DataLoader 并行读取和预处理数据的进程数。
+          value: 2
           value_type: int
           value_range: [0, 128, 1]
           display_type: spin
@@ -67,7 +67,7 @@ FS-SAM2:
           display_type: spin
 
         - name_en: weight_decay
-          name_cn: Weight Decay
+          name_cn: 权重衰减
           description: 用于抑制过拟合的 L2 正则化强度。
           value: 0.000001
           value_type: double
