@@ -1735,9 +1735,19 @@ bool LabelMeIO::parseLabelMeJson(const QString &json_path, LabelMeData &data)
     }
 }
 
-QVariantMap LabelMeIO::convertShapeToLabelData(const LabelMeShape &shape, int image_width, int image_height,
+QVariantMap LabelMeIO::convertShapeToLabelData(const LabelMeShape &shape, int source_image_width,
+                                               int source_image_height, int image_width, int image_height,
                                                bool convert_rectangle_to_polygon)
 {
+    const auto toImagePoint = [source_image_width, source_image_height, image_width, image_height](const QPointF &point)
+    {
+        if (source_image_width <= 0 || source_image_height <= 0 || image_width <= 0 || image_height <= 0)
+            return point;
+
+        return QPointF(point.x() * static_cast<double>(image_width) / source_image_width,
+                       point.y() * static_cast<double>(image_height) / source_image_height);
+    };
+
     if (shape.shape_type == QStringLiteral("rectangle"))
     {
         if (shape.points.size() < 2)
@@ -1746,8 +1756,8 @@ QVariantMap LabelMeIO::convertShapeToLabelData(const LabelMeShape &shape, int im
             return {};
         }
 
-        const QPointF p1 = shape.points[0];
-        const QPointF p2 = shape.points[1];
+        const QPointF p1 = toImagePoint(shape.points[0]);
+        const QPointF p2 = toImagePoint(shape.points[1]);
         if (target_method_ == DeepLearningMethod::Segmentation
             || target_method_ == DeepLearningMethod::AnomalyDetection)
         {
@@ -1779,7 +1789,12 @@ QVariantMap LabelMeIO::convertShapeToLabelData(const LabelMeShape &shape, int im
             return {};
         }
 
-        const QVariantMap label_data = DatasetIO::pointsToLabelData(shape.points, image_width, image_height);
+        std::vector<QPointF> image_points;
+        image_points.reserve(shape.points.size());
+        for (const QPointF &point : shape.points)
+            image_points.push_back(toImagePoint(point));
+
+        const QVariantMap label_data = DatasetIO::pointsToLabelData(image_points, image_width, image_height);
         if (label_data.isEmpty())
         {
             spdlog::warn("polygon 标注点数不足或超出图像范围: {}", shape.points.size());
@@ -1991,8 +2006,9 @@ void LabelMeIO::doImport(int64_t dataset_id, const QString &image_dir, const QSt
                             if (label_class_name.isEmpty())
                                 continue;
 
-                            const QVariantMap label_data = convertShapeToLabelData(shape, result.width, result.height,
-                                                                                   convert_rectangles_to_polygons);
+                            const QVariantMap label_data
+                                = convertShapeToLabelData(shape, data.image_width, data.image_height, result.width,
+                                                          result.height, convert_rectangles_to_polygons);
                             if (label_data.isEmpty())
                                 continue;
 

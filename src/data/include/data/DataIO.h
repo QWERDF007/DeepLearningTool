@@ -145,8 +145,8 @@ private:
     void doExport(ExportDataset dataset, QString output_dir, int thread_count);
 
     bool        parseLabelMeJson(const QString &json_path, LabelMeData &data);
-    QVariantMap convertShapeToLabelData(const LabelMeShape &shape, int image_width, int image_height,
-                                        bool convert_rectangle_to_polygon);
+    QVariantMap convertShapeToLabelData(const LabelMeShape &shape, int source_image_width, int source_image_height,
+                                        int image_width, int image_height, bool convert_rectangle_to_polygon);
 };
 
 // ============================================================================

@@ -40,7 +40,7 @@ ctest --test-dir build -C Release -L ordinary --output-on-failure
 ```powershell
 ctest --test-dir build -C Release -L model --output-on-failure
 ctest --test-dir build -C Release -R '^tst_dltool_ui$' --output-on-failure
-ctest --test-dir build -C Release -R '^dltool_data_split_tests$' --output-on-failure
+ctest --test-dir build -C Release -R '^dltool_data_dataset_splitter_tests$' --output-on-failure
 ctest --test-dir build -C Release -R '^dltool_model_evaluation_tests$' --output-on-failure
 ```
 

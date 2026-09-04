@@ -131,7 +131,9 @@ private:
                                ClusterApplyPlan &plan,
                                QString &err_msg);
     bool ensureClusterTargetDataset(const QString &target_dataset_name, int64_t &dataset_id, QString &err_msg);
-    ImageClusterApplyResult applyClusterPlan(const ClusterApplyPlan &plan, ImageClusterApplyMode apply_mode);
+    void applyClusterPlan(const ClusterResponse &response, ClusterApplyPlan plan);
+    void completeClusterApply(const ClusterResponse &response, const ClusterApplyPlan &plan,
+                              size_t applied_image_count, const QString &error);
 
     void resetForNewCluster();
     void startProgress(const ClusterRequest &request);

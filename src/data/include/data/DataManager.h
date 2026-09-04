@@ -63,6 +63,7 @@ class DATA_API DataManager : public QObject
 
 public:
     using ImportFinishedHandler = std::function<void(bool, const QString &)>;
+    using ImageOperationCompletion = std::function<void(bool, const QString &)>;
 
     DataManager(const int method, dltool::database::ProjectDataBase *database, const QString &project_dir,
                 QObject *parent = nullptr);
@@ -219,6 +220,14 @@ public:
     Q_INVOKABLE void updateDataset(const int64_t dataset_id, const QString &name);
     Q_INVOKABLE void deleteDatasets(const std::vector<int64_t> &dataset_ids);
 
+    /**
+     * @brief 确保数据集存在，并在内存模型中同步发布新数据集。
+     *
+     * This is reserved for a short foreground coordination step. Large data
+     * operations must continue to use DataOperationWorkflow.
+     */
+    bool ensureDataset(const QString &name, int64_t &dataset_id, QString &err_msg);
+
     Q_INVOKABLE void importData(const int64_t dataset_id, const int data_format, const QString &image_dir,
                                 const QString &data_dir);
     Q_INVOKABLE void scanImportLabelClasses(const int data_format, const QString &image_dir, const QString &data_dir);
@@ -231,6 +240,11 @@ public:
     Q_INVOKABLE void deleteSelectedImages();
     Q_INVOKABLE void copyToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id);
     Q_INVOKABLE void moveToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id);
+
+    bool copyToDatasetAsync(const std::vector<int64_t> &image_ids, int64_t dataset_id, QObject *callback_context,
+                            ImageOperationCompletion completion, bool notify_user = true);
+    bool moveToDatasetAsync(const std::vector<int64_t> &image_ids, int64_t dataset_id, QObject *callback_context,
+                            ImageOperationCompletion completion, bool notify_user = true);
     Q_INVOKABLE void splitDataset(const int64_t dataset_id, const double train_ratio, const double validation_ratio,
                                   const double test_ratio, const bool use_validation);
 
@@ -363,7 +377,8 @@ private:
     void commitImageDeletion(const std::vector<int64_t> &image_ids, bool success, const QString &err_msg,
                              qint64 elapsed_ms);
     void commitImageMove(const std::vector<int64_t> &image_ids, int64_t target_dataset_id, bool success,
-                         const QString &err_msg, qint64 elapsed_ms);
+                         const QString &err_msg, qint64 elapsed_ms, ImageOperationCompletion completion = {},
+                         bool notify_user = true);
 
     struct ImageCopyResult;
     void commitImageCopy(const std::shared_ptr<ImageCopyResult> &result,

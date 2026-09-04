@@ -18,6 +18,7 @@ Rectangle {
     property ModelTaskController modelTaskController: ProjectManager.currentProject ? ProjectManager.currentProject.modelTaskController : null
     property ModelTestTaskManager modelTestTaskManager: ProjectManager.currentProject ? ProjectManager.currentProject.modelTestTaskManager : null
     property DataManager dataManager: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager : null
+
     QuiSplitView {
         anchors.fill: parent
         anchors.margins: 5

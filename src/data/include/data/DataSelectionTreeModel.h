@@ -129,6 +129,7 @@ private:
     void rebuildDatasetClassTree();
     void connectSourceModel(QAbstractItemModel *model);
     void disconnectSourceModels();
+    bool dataChangeAffectsTree(QAbstractItemModel *model, const QList<int> &roles) const;
     bool pruneMissingSelectedIds();
     void emitNodeChanged(const Node *node);
     void emitAllRowsChanged();

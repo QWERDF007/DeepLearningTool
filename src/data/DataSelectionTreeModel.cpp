@@ -674,7 +674,47 @@ void DataSelectionTreeModel::connectSourceModel(QAbstractItemModel *model)
     connect(model, &QAbstractItemModel::rowsRemoved, this, &DataSelectionTreeModel::rebuildTree);
     connect(model, &QAbstractItemModel::rowsMoved, this, &DataSelectionTreeModel::rebuildTree);
     connect(model, &QAbstractItemModel::layoutChanged, this, &DataSelectionTreeModel::rebuildTree);
-    connect(model, &QAbstractItemModel::dataChanged, this, &DataSelectionTreeModel::rebuildTree);
+    connect(model, &QAbstractItemModel::dataChanged, this,
+            [this, model](const QModelIndex &, const QModelIndex &, const QList<int> &roles)
+            {
+                if (dataChangeAffectsTree(model, roles))
+                    rebuildTree();
+            });
+}
+
+bool DataSelectionTreeModel::dataChangeAffectsTree(QAbstractItemModel *model, const QList<int> &roles) const
+{
+    if (roles.isEmpty())
+        return true;
+
+    if (datasets_model_ != nullptr)
+    {
+        if (model == datasets_model_)
+        {
+            return roles.contains(Qt::DisplayRole) || roles.contains(DatasetsListModel::DatasetIdRole)
+                || roles.contains(DatasetsListModel::NameRole);
+        }
+        if (model == label_classes_model_)
+        {
+            return roles.contains(Qt::DisplayRole) || roles.contains(LabelClassesListModel::LabelClassIdRole)
+                || roles.contains(LabelClassesListModel::NameRole)
+                || roles.contains(LabelClassesListModel::ColorRole);
+        }
+        if (model == image_instances_model_)
+        {
+            return roles.contains(ImageInstancesListModel::DatasetIdRole)
+                || roles.contains(ImageInstancesListModel::ImageLabelClassIdRole);
+        }
+        if (model == label_instances_model_)
+        {
+            return roles.contains(LabelInstancesListModel::ImageIdRole)
+                || roles.contains(LabelInstancesListModel::LabelClassIdRole);
+        }
+        return false;
+    }
+
+    return roles.contains(id_role_) || roles.contains(name_role_)
+        || (color_role_ >= 0 && roles.contains(color_role_));
 }
 
 void DataSelectionTreeModel::disconnectSourceModels()

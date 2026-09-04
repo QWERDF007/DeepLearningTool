@@ -16,7 +16,7 @@ dependencies:
 
   - name: tensorrt
     cmake: cmake/ConfigInferRT.cmake
-    root: INFERRT_BIN_DIR
+    root: D:/Software/dev/TensorRT-10.16.1.11/bin
     destinations:
       - build/bin
     windows:
@@ -25,7 +25,7 @@ dependencies:
 
   - name: cuda
     cmake: cmake/ConfigInferRT.cmake
-    root: INFERRT_BIN_DIR
+    root: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8/bin
     destinations:
       - build/bin
     windows:
@@ -84,7 +84,6 @@ dependencies:
     destinations:
       - build/bin
     windows:
-      - libiomp5md.dll
       - mkl_avx2.2.dll
       - mkl_core.2.dll
       - mkl_def.2.dll
