@@ -24,9 +24,9 @@
 #include <QFileInfo>
 #include <QMetaType>
 #include <QPointer>
-#include <QStringList>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
+#include <QStringList>
 #include <algorithm>
 #include <cstddef>
 #include <functional>
@@ -92,8 +92,7 @@ QString exportDatasetSummary(const std::vector<QString> &dataset_names, const st
     {
         QStringList names;
         names.reserve(static_cast<qsizetype>(dataset_names.size()));
-        for (const QString &name : dataset_names)
-            names.append(name);
+        for (const QString &name : dataset_names) names.append(name);
         return QStringLiteral("数据集: %1").arg(names.join(QStringLiteral(", ")));
     }
     return QStringLiteral("数据集数量: %1").arg(selected_count);
@@ -160,8 +159,8 @@ struct DataManager::ImageCopyResult
 {
     std::vector<LoadedImageInstance> images;
     std::vector<LoadedLabelInstance> labels;
-    ImageOperationCompletion          completion;
-    bool                              notify_user{true};
+    ImageOperationCompletion         completion;
+    bool                             notify_user{true};
 };
 
 namespace {
@@ -174,7 +173,7 @@ struct DatasetSplitTarget
 
 struct DatasetSplitRequest
 {
-    int                         label_data_method{-1};
+    int                             label_data_method{-1};
     std::vector<DatasetSplitTarget> targets;
 };
 
@@ -182,8 +181,8 @@ struct DatasetSplitRequest
 
 struct DataManager::DatasetSplitCopyResult
 {
-    std::vector<int64_t>        dataset_ids;
-    std::vector<QString>        dataset_names;
+    std::vector<int64_t>             dataset_ids;
+    std::vector<QString>             dataset_names;
     std::vector<LoadedImageInstance> images;
     std::vector<LoadedLabelInstance> labels;
 };
@@ -675,8 +674,9 @@ void DataManager::addDataset(const QString &name)
     setDataOperationRunning(true);
     auto                           dataset_id = std::make_shared<int64_t>(-1);
     DataOperationWorkflow::Options options;
-    options.title         = QString("添加数据集");
-    options.start_message = QString("正在添加数据集: %1").arg(name);
+    options.title           = QString("添加数据集");
+    options.start_message   = QString("正在添加数据集: %1").arg(name);
+    options.manage_progress = false;
     DataOperationWorkflow::startDatabase(
         this, database_->path(), std::move(options),
         [name, dataset_id](dltool::database::ProjectDataBase &database, DataOperationWorkflow::Result &result)
@@ -689,13 +689,11 @@ void DataManager::addDataset(const QString &name)
                 datasets_->addDatasetFromMemory(*dataset_id, name);
                 const QString message = QString("已添加数据集: %1，耗时 %2 ms").arg(name).arg(result.elapsed_ms);
                 spdlog::info("{}", message.toUtf8().constData());
-                ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
             }
             else
             {
                 const QString message = QString("添加数据集失败: %1").arg(result.error);
                 spdlog::error("{}", message.toUtf8().constData());
-                ui::ProgressManager::getInstance()->addMessage(spdlog::level::err, message);
                 ui::SignalHelper::notifyError(QString("添加数据集失败"), message);
             }
         });
@@ -721,8 +719,9 @@ void DataManager::updateDataset(const int64_t dataset_id, const QString &name)
 
     setDataOperationRunning(true);
     DataOperationWorkflow::Options options;
-    options.title         = QString("更新数据集");
-    options.start_message = QString("正在更新数据集: %1").arg(name);
+    options.title           = QString("更新数据集");
+    options.start_message   = QString("正在更新数据集: %1").arg(name);
+    options.manage_progress = false;
     DataOperationWorkflow::startDatabase(
         this, database_->path(), std::move(options),
         [dataset_id, name](dltool::database::ProjectDataBase &database, DataOperationWorkflow::Result &result)
@@ -735,13 +734,11 @@ void DataManager::updateDataset(const int64_t dataset_id, const QString &name)
                 datasets_->updateDatasetFromMemory(dataset_id, name);
                 const QString message = QString("已更新数据集: %1，耗时 %2 ms").arg(name).arg(result.elapsed_ms);
                 spdlog::info("{}", message.toUtf8().constData());
-                ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
             }
             else
             {
                 const QString message = QString("更新数据集失败: %1").arg(result.error);
                 spdlog::error("{}", message.toUtf8().constData());
-                ui::ProgressManager::getInstance()->addMessage(spdlog::level::err, message);
                 ui::SignalHelper::notifyError(QString("更新数据集失败"), message);
             }
         });
@@ -907,14 +904,12 @@ void DataManager::commitDatasetDeletion(const std::vector<int64_t> &dataset_ids,
 
         const QString message = QString("已删除 %1 个数据集，耗时 %2 ms").arg(dataset_ids.size()).arg(elapsed_ms);
         spdlog::info("{}", message.toUtf8().constData());
-        ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
         ui::SignalHelper::notifySuccess(QString("删除数据集完成"), message);
     }
     else
     {
         const QString message = QString("删除数据集失败: %1").arg(err_msg);
         spdlog::error("{}", message.toUtf8().constData());
-        ui::ProgressManager::getInstance()->addMessage(spdlog::level::err, message);
         ui::SignalHelper::notifyError(QString("删除数据集失败"), message);
     }
 
@@ -972,14 +967,12 @@ void DataManager::commitImageDeletion(const std::vector<int64_t> &image_ids, con
 
         const QString message = QString("已删除 %1 个图像，耗时 %2 ms").arg(image_ids.size()).arg(elapsed_ms);
         spdlog::info("{}", message.toUtf8().constData());
-        ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
         ui::SignalHelper::notifySuccess(QString("删除图像完成"), message);
     }
     else
     {
         const QString message = QString("删除图像失败: %1").arg(err_msg);
         spdlog::error("{}", message.toUtf8().constData());
-        ui::ProgressManager::getInstance()->addMessage(spdlog::level::err, message);
         ui::SignalHelper::notifyError(QString("删除图像失败"), message);
     }
 
@@ -1012,7 +1005,6 @@ void DataManager::commitImageMove(const std::vector<int64_t> &image_ids, const i
         if (notify_user)
         {
             spdlog::info("{}", message.toUtf8().constData());
-            ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
             ui::SignalHelper::notifySuccess(QString("移动图像完成"), message);
         }
     }
@@ -1022,7 +1014,6 @@ void DataManager::commitImageMove(const std::vector<int64_t> &image_ids, const i
         spdlog::error("{}", message.toUtf8().constData());
         if (notify_user)
         {
-            ui::ProgressManager::getInstance()->addMessage(spdlog::level::err, message);
             ui::SignalHelper::notifyError(QString("移动图像失败"), message);
         }
     }
@@ -1083,10 +1074,9 @@ void DataManager::commitImageCopy(const std::shared_ptr<ImageCopyResult> &result
                                     .arg(label_count)
                                     .arg(operation.elapsed_ms)
                                     .arg(model_update_elapsed_ms);
+        spdlog::info("{}", message.toUtf8().constData());
         if (result->notify_user)
         {
-            spdlog::info("{}", message.toUtf8().constData());
-            ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
             ui::SignalHelper::notifySuccess(QString("复制图像完成"), message);
         }
     }
@@ -1097,7 +1087,6 @@ void DataManager::commitImageCopy(const std::shared_ptr<ImageCopyResult> &result
         spdlog::error("{}", message.toUtf8().constData());
         if (result == nullptr || result->notify_user)
         {
-            ui::ProgressManager::getInstance()->addMessage(spdlog::level::err, message);
             ui::SignalHelper::notifyError(QString("复制图像失败"), message);
         }
     }
@@ -1113,13 +1102,14 @@ void DataManager::commitImageCopy(const std::shared_ptr<ImageCopyResult> &result
     {
         const bool operation_success = operation.success;
         result->completion(operation_success,
-                           operation_success ? QString() : (operation.error.isEmpty() ? QStringLiteral("复制图像失败")
-                                                                                         : operation.error));
+                           operation_success
+                               ? QString()
+                               : (operation.error.isEmpty() ? QStringLiteral("复制图像失败") : operation.error));
     }
 }
 
 void DataManager::commitDatasetSplit(const std::shared_ptr<DatasetSplitCopyResult> &result,
-                                     const DataOperationWorkflow::Result            &operation)
+                                     const DataOperationWorkflow::Result           &operation)
 {
     if (result != nullptr && operation.success)
     {
@@ -1153,7 +1143,6 @@ void DataManager::commitDatasetSplit(const std::shared_ptr<DatasetSplitCopyResul
                                     .arg(result->labels.size())
                                     .arg(operation.elapsed_ms);
         spdlog::info("{}", message.toUtf8().constData());
-        ui::ProgressManager::getInstance()->addMessage(spdlog::level::info, message);
         ui::SignalHelper::notifySuccess(QString("划分数据集完成"), message);
         emit datasetSplitFinished(true, message);
     }
@@ -1162,7 +1151,6 @@ void DataManager::commitDatasetSplit(const std::shared_ptr<DatasetSplitCopyResul
         const QString message = QString("划分数据集失败: %1")
                                     .arg(operation.error.isEmpty() ? QStringLiteral("后台操作失败") : operation.error);
         spdlog::error("{}", message.toUtf8().constData());
-        ui::ProgressManager::getInstance()->addMessage(spdlog::level::err, message);
         ui::SignalHelper::notifyError(QString("划分数据集失败"), message);
         emit datasetSplitFinished(false, message);
     }
@@ -1274,11 +1262,6 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
     {
         const QString message = QString("已有数据操作正在运行");
         spdlog::warn("导入数据失败, 已有数据操作正在运行");
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
-                                  Q_ARG(QString, "导入数据"));
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                  Q_ARG(int, spdlog::level::warn), Q_ARG(QString, message));
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
         ui::SignalHelper::notifyWarn(QString("导入失败"), message);
         emit dataImportFinished(false, message);
         return;
@@ -1294,20 +1277,11 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
         return;
     }
 
-    // 显示进度对话框
-    // ui::ProgressManager::getInstance()->startTask("导入数据");
-    // 下面这样会在 UI 线程 (ProgressManager 所在线程) 中调用, 异步调用
-    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
-                              Q_ARG(QString, "导入数据"));
-
     QString db_check_err_msg;
     if (database_ == nullptr || !database_->checkIntegrity(db_check_err_msg))
     {
         const QString message = QString("项目数据库检查失败，无法导入数据: %1").arg(db_check_err_msg);
         spdlog::error("{}", message.toUtf8().constData());
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, message));
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
         ui::SignalHelper::notifyError(QString("导入失败"), message);
         emit dataImportFinished(false, message);
         return;
@@ -1321,14 +1295,15 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
     {
         const QString message = QString("不支持的数据格式");
         spdlog::error("无法为格式 {} 创建导入器", data_format);
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection,
-                                  Q_ARG(int, spdlog::level::err), Q_ARG(QString, message));
-        QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
         ui::SignalHelper::notifyError(QString("导入失败"), message);
         emit dataImportFinished(false, message);
         return;
     }
     setDataOperationRunning(true);
+    // 显示进度对话框
+    // 下面这样会在 UI 线程 (ProgressManager 所在线程) 中调用, 异步调用
+    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
+                              Q_ARG(QString, "导入数据"));
     importer->setTargetMethod(method_);
     import_running_                             = true;
     pending_import_task_                        = std::make_unique<PendingImportTask>();
@@ -1423,19 +1398,20 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
     {
         if (!unique_selected_dataset_ids.insert(dataset_id).second)
             continue;
-        const QString dataset_name = datasets_ != nullptr ? datasets_->getDatasetName(static_cast<int>(dataset_id)) : QString();
+        const QString dataset_name
+            = datasets_ != nullptr ? datasets_->getDatasetName(static_cast<int>(dataset_id)) : QString();
         if (!dataset_name.isEmpty())
             selected_dataset_names.push_back(dataset_name);
     }
     state->dataset_summary = exportDatasetSummary(selected_dataset_names, unique_selected_dataset_ids.size());
     state->elapsed_timer.start();
 
-    const QString format_name = exportFormatName(data_format);
+    const QString format_name   = exportFormatName(data_format);
     const QString start_message = QString("开始导出数据: 格式=%1，%2").arg(format_name, state->dataset_summary);
     spdlog::info("{}", start_message.toUtf8().constData());
     addProgressMessage(spdlog::level::info, start_message);
 
-    DatasetExportRequest       export_request;
+    DatasetExportRequest export_request;
     export_request.dataset_ids = selected_dataset_ids;
 
     DataOperationWorkflow::Options prepare_options;
@@ -1550,9 +1526,11 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
             if (!result.success || state->items.empty())
             {
                 setDataOperationRunning(false);
-                const QString message = result.error.isEmpty() ? QString("没有可导出的数据集") : result.error;
-                const QString completed_message
-                    = QString("%1，%2，耗时 %3 ms").arg(message).arg(state->dataset_summary).arg(state->elapsed_timer.elapsed());
+                const QString message           = result.error.isEmpty() ? QString("没有可导出的数据集") : result.error;
+                const QString completed_message = QString("%1，%2，耗时 %3 ms")
+                                                      .arg(message)
+                                                      .arg(state->dataset_summary)
+                                                      .arg(state->elapsed_timer.elapsed());
                 spdlog::error("导出失败: 格式={}, {}", format_name.toUtf8().constData(),
                               completed_message.toUtf8().constData());
                 addProgressMessage(spdlog::level::err, completed_message);
@@ -1569,7 +1547,7 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
             {
                 if (state->current >= static_cast<int>(state->items.size()))
                 {
-                    const bool success = state->success_count > 0 && state->failed_count == 0;
+                    const bool    success = state->success_count > 0 && state->failed_count == 0;
                     const QString message = QString("导出完成: 成功 %1 个, 失败 %2 个，%3，耗时 %4 ms")
                                                 .arg(state->success_count)
                                                 .arg(state->failed_count)
@@ -1590,8 +1568,8 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                     return;
                 }
 
-                ExportBatchItem item = std::move(state->items[static_cast<size_t>(state->current++)]);
-                const int dataset_index = state->current;
+                ExportBatchItem item          = std::move(state->items[static_cast<size_t>(state->current++)]);
+                const int       dataset_index = state->current;
                 state->dataset_elapsed_timer.restart();
                 if (state->items.size() <= 3)
                 {
@@ -1603,9 +1581,7 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                 else
                 {
                     addProgressMessage(spdlog::level::info,
-                                       QString("正在导出数据集 %1/%2")
-                                           .arg(dataset_index)
-                                           .arg(state->items.size()));
+                                       QString("正在导出数据集 %1/%2").arg(dataset_index).arg(state->items.size()));
                 }
 
                 DataIO *exporter = DataIO::createIO(data_format, this);
@@ -1623,8 +1599,8 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
 
                 connect(
                     exporter, &DataIO::exportFinished, this,
-                    [exporter, state, dataset_name = item.dataset.dataset_name,
-                     start_next = weak_start_next.lock()](bool success, const QString &message)
+                    [exporter, state, dataset_name = item.dataset.dataset_name, start_next = weak_start_next.lock()](
+                        bool success, const QString &message)
                     {
                         if (success)
                             ++state->success_count;
@@ -1632,11 +1608,10 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                             ++state->failed_count;
                         const qint64 dataset_elapsed_ms
                             = state->dataset_elapsed_timer.isValid() ? state->dataset_elapsed_timer.elapsed() : 0;
-                        const QString completed_message
-                            = QString("数据集 %1：%2，耗时 %3 ms")
-                                  .arg(dataset_name)
-                                  .arg(message)
-                                  .arg(dataset_elapsed_ms);
+                        const QString completed_message = QString("数据集 %1：%2，耗时 %3 ms")
+                                                              .arg(dataset_name)
+                                                              .arg(message)
+                                                              .arg(dataset_elapsed_ms);
                         if (state->items.size() <= 3)
                         {
                             if (success)
@@ -1684,8 +1659,9 @@ void DataManager::deleteSelectedImages()
     image_operation_running_ = true;
     emit                           imageOperationRunningChanged();
     DataOperationWorkflow::Options options;
-    options.title         = QString("删除图像");
-    options.start_message = QString("正在删除 %1 个图像及其标注").arg(image_ids.size());
+    options.title           = QString("删除图像");
+    options.start_message   = QString("正在删除 %1 个图像及其标注").arg(image_ids.size());
+    options.manage_progress = false;
     DataOperationWorkflow::startDatabase(
         this, database_->path(), std::move(options),
         [image_ids](dltool::database::ProjectDataBase &database, DataOperationWorkflow::Result &result)
@@ -1741,16 +1717,16 @@ bool DataManager::copyToDatasetAsync(const std::vector<int64_t> &image_ids, cons
 
     setDataOperationRunning(true);
     image_operation_running_ = true;
-    emit                           imageOperationRunningChanged();
-    auto                           result        = std::make_shared<ImageCopyResult>();
-    result->notify_user                      = notify_user;
+    emit imageOperationRunningChanged();
+    auto result         = std::make_shared<ImageCopyResult>();
+    result->notify_user = notify_user;
     if (completion)
     {
         if (callback_context != nullptr)
         {
             const QPointer<QObject> guarded_context(callback_context);
-            result->completion = [guarded_context, completion = std::move(completion)](
-                                     const bool success, const QString &message) mutable
+            result->completion = [guarded_context, completion = std::move(completion)](const bool     success,
+                                                                                       const QString &message) mutable
             {
                 if (guarded_context && completion)
                     completion(success, message);
@@ -1765,9 +1741,9 @@ bool DataManager::copyToDatasetAsync(const std::vector<int64_t> &image_ids, cons
     const LabelInstancesListModel *source_labels = label_source_;
 
     DataOperationWorkflow::Options options;
-    options.title         = QString("复制图像");
-    options.start_message = QString("正在复制 %1 个图像及其标注").arg(request->source_image_ids.size());
-    options.manage_progress = notify_user;
+    options.title           = QString("复制图像");
+    options.start_message   = QString("正在复制 %1 个图像及其标注").arg(request->source_image_ids.size());
+    options.manage_progress = false;
     DataOperationWorkflow::startDatabase(
         this, database_->path(), std::move(options),
         [request, result, source_images, source_labels](dltool::database::ProjectDataBase &database,
@@ -2026,7 +2002,7 @@ void DataManager::splitDataset(const int64_t dataset_id, const double train_rati
         return;
     }
 
-    const auto &all_images = image_source_->getAllImageInstances();
+    const auto                   &all_images = image_source_->getAllImageInstances();
     std::vector<DatasetSplitItem> items;
     for (const auto &[image_id, image] : all_images)
     {
@@ -2036,7 +2012,7 @@ void DataManager::splitDataset(const int64_t dataset_id, const double train_rati
         }
 
         DatasetSplitItem item;
-        item.image_id              = image_id;
+        item.image_id             = image_id;
         item.image_label_class_id = image->imageLabelClassId();
         if (method_ == core::DeepLearningMethod::Detection || method_ == core::DeepLearningMethod::Segmentation)
         {
@@ -2078,14 +2054,14 @@ void DataManager::splitDataset(const int64_t dataset_id, const double train_rati
         return;
     }
 
-    auto request = std::make_shared<DatasetSplitRequest>();
+    auto request               = std::make_shared<DatasetSplitRequest>();
     request->label_data_method = method_;
     std::set<QString> reserved_names;
-    const auto uniqueName = [&](const QString &suffix)
+    const auto        uniqueName = [&](const QString &suffix)
     {
         const QString base_name = source_dataset_name + QStringLiteral("-") + suffix;
-        QString       candidate  = base_name;
-        int           index      = 1;
+        QString       candidate = base_name;
+        int           index     = 1;
         while (datasets_->getDatasetId(candidate) >= 0 || reserved_names.contains(candidate))
         {
             candidate = QStringLiteral("%1(%2)").arg(base_name).arg(index++);
@@ -2102,7 +2078,7 @@ void DataManager::splitDataset(const int64_t dataset_id, const double train_rati
     request->targets.push_back({uniqueName(QStringLiteral("Test")), split.test_image_ids});
 
     setDataOperationRunning(true);
-    auto result = std::make_shared<DatasetSplitCopyResult>();
+    auto                           result        = std::make_shared<DatasetSplitCopyResult>();
     const ImageInstancesListModel *source_images = image_source_;
     const LabelInstancesListModel *source_labels = label_source_;
     DataOperationWorkflow::Options options;
@@ -2114,7 +2090,7 @@ void DataManager::splitDataset(const int64_t dataset_id, const double train_rati
                                                         DataOperationWorkflow::Result     &operation)
         {
             std::vector<int64_t> created_dataset_ids;
-            const auto fail = [&database, &operation, &created_dataset_ids](const QString &message)
+            const auto           fail = [&database, &operation, &created_dataset_ids](const QString &message)
             {
                 if (!created_dataset_ids.empty())
                 {
@@ -2122,7 +2098,7 @@ void DataManager::splitDataset(const int64_t dataset_id, const double train_rati
                     database.deleteDatasetsWithContents(created_dataset_ids, cleanup_error);
                     if (!cleanup_error.isEmpty())
                     {
-                        operation.error = QString("%1；清理失败: %2").arg(message, cleanup_error);
+                        operation.error   = QString("%1；清理失败: %2").arg(message, cleanup_error);
                         operation.success = false;
                         return;
                     }
@@ -2142,9 +2118,9 @@ void DataManager::splitDataset(const int64_t dataset_id, const double train_rati
                 int64_t dataset_id = -1;
                 if (!database.addDataset(target_name, dataset_id, operation.error) || dataset_id < 0)
                 {
-                    operation.error = QStringLiteral("创建子数据集失败: %1")
-                                          .arg(operation.error.isEmpty() ? QStringLiteral("新数据集 ID 无效")
-                                                                         : operation.error);
+                    operation.error
+                        = QStringLiteral("创建子数据集失败: %1")
+                              .arg(operation.error.isEmpty() ? QStringLiteral("新数据集 ID 无效") : operation.error);
                     fail(operation.error);
                     return;
                 }
@@ -2154,9 +2130,9 @@ void DataManager::splitDataset(const int64_t dataset_id, const double train_rati
             result->dataset_ids   = created_dataset_ids;
             result->dataset_names = target_names;
 
-            std::vector<int64_t> source_image_ids;
-            std::vector<int64_t> target_dataset_ids;
-            std::vector<QString> image_paths;
+            std::vector<int64_t>                source_image_ids;
+            std::vector<int64_t>                target_dataset_ids;
+            std::vector<QString>                image_paths;
             std::unordered_map<int64_t, size_t> source_image_indices;
             for (size_t target_index = 0; target_index < request->targets.size(); ++target_index)
             {
@@ -2191,10 +2167,10 @@ void DataManager::splitDataset(const int64_t dataset_id, const double train_rati
             std::vector<int64_t>              copied_label_class_ids;
             std::vector<int64_t>              copied_label_types;
             std::vector<std::vector<uint8_t>> copied_label_data;
-            LabelDataHelper                    helper{nullptr};
+            LabelDataHelper                   helper{nullptr};
             for (const int64_t source_image_id : source_image_ids)
             {
-                const auto image_index = source_image_indices.find(source_image_id);
+                const auto           image_index  = source_image_indices.find(source_image_id);
                 const ImageInstance *source_image = source_images->getImageInstance(source_image_id);
                 if (image_index == source_image_indices.end() || source_image == nullptr)
                 {
@@ -2259,7 +2235,8 @@ void DataManager::splitDataset(const int64_t dataset_id, const double train_rati
             image_extra_data.reserve(result->images.size());
             for (const LoadedImageInstance &image : result->images)
             {
-                image_extra_data.push_back(ImageInstancesListModel::extraDataForImageLabelClassId(image.label_class_id));
+                image_extra_data.push_back(
+                    ImageInstancesListModel::extraDataForImageLabelClassId(image.label_class_id));
             }
             if (!database.updateImagesExtraData(copied_image_ids, image_extra_data, operation.error))
             {
@@ -2299,7 +2276,7 @@ void DataManager::splitDataset(const int64_t dataset_id, const double train_rati
             std::vector<int64_t> copied_label_ids;
             if (!copied_label_image_ids.empty()
                 && (!database.addLabels(copied_label_image_ids, copied_label_class_ids, copied_label_types,
-                                         copied_label_data, copied_label_ids, operation.error)
+                                        copied_label_data, copied_label_ids, operation.error)
                     || copied_label_ids.size() != copied_label_image_ids.size()))
             {
                 fail(QStringLiteral("复制标注失败: %1")
@@ -2390,8 +2367,8 @@ bool DataManager::moveToDatasetAsync(const std::vector<int64_t> &image_ids, cons
     if (completion && callback_context != nullptr)
     {
         const QPointer<QObject> guarded_context(callback_context);
-        completion = [guarded_context, completion = std::move(completion)](const bool success,
-                                                                             const QString &message) mutable
+        completion
+            = [guarded_context, completion = std::move(completion)](const bool success, const QString &message) mutable
         {
             if (guarded_context && completion)
                 completion(success, message);
@@ -2402,16 +2379,16 @@ bool DataManager::moveToDatasetAsync(const std::vector<int64_t> &image_ids, cons
     image_operation_running_ = true;
     emit                           imageOperationRunningChanged();
     DataOperationWorkflow::Options options;
-    options.title         = QString("移动图像");
-    options.start_message = QString("正在移动 %1 个图像").arg(moved_image_ids.size());
-    options.manage_progress = notify_user;
+    options.title           = QString("移动图像");
+    options.start_message   = QString("正在移动 %1 个图像").arg(moved_image_ids.size());
+    options.manage_progress = false;
     DataOperationWorkflow::startDatabase(
         this, database_->path(), std::move(options),
         [moved_image_ids, dataset_id](dltool::database::ProjectDataBase &database,
                                       DataOperationWorkflow::Result     &result)
         { result.success = database.updateImagesDataset(moved_image_ids, dataset_id, result.error); },
-        [this, moved_image_ids, dataset_id, completion = std::move(completion), notify_user](
-            const DataOperationWorkflow::Result &result) mutable
+        [this, moved_image_ids, dataset_id, completion = std::move(completion),
+         notify_user](const DataOperationWorkflow::Result &result) mutable
         {
             commitImageMove(moved_image_ids, dataset_id, result.success, result.error, result.elapsed_ms,
                             std::move(completion), notify_user);
@@ -2478,8 +2455,7 @@ void DataManager::updateLabelClassWithGroup(const int64_t label_class_id, const 
     if (label_classes_ != nullptr)
     {
         const QString label_error = label_classes_->isValid(static_cast<int>(label_class_id), name, color,
-                                                            normalized_shortcut,
-                                                            static_cast<int>(ordinal_index));
+                                                            normalized_shortcut, static_cast<int>(ordinal_index));
         if (label_error.startsWith(QStringLiteral("error:")))
         {
             spdlog::warn("更新标签类别失败: {}", label_error.toUtf8().constData());
@@ -2909,9 +2885,9 @@ void DataManager::refreshAnomalyImageClassesFromPolygons(const std::vector<int64
 
 void DataManager::addTagClass(const QString &name, const QString &shortcut)
 {
-    const QString normalized_name  = name.trimmed();
+    const QString normalized_name     = name.trimmed();
     const QString normalized_shortcut = ShortcutManager::normalizedShortcut(shortcut);
-    const QString validation_error = isValidTag(normalized_name, normalized_shortcut);
+    const QString validation_error    = isValidTag(normalized_name, normalized_shortcut);
     if (!validation_error.isEmpty())
     {
         spdlog::warn("添加 Tag 失败: {}", validation_error.toUtf8().constData());
@@ -2931,9 +2907,9 @@ void DataManager::addTagClass(const QString &name, const QString &shortcut)
 
 bool DataManager::updateTagClass(const int64_t tag_id, const QString &name, const QString &shortcut)
 {
-    const QString normalized_name  = name.trimmed();
+    const QString normalized_name     = name.trimmed();
     const QString normalized_shortcut = ShortcutManager::normalizedShortcut(shortcut);
-    const QString validation_error = isValidTag(normalized_name, normalized_shortcut, tag_id);
+    const QString validation_error    = isValidTag(normalized_name, normalized_shortcut, tag_id);
     if (!validation_error.isEmpty())
     {
         spdlog::warn("更新 Tag 失败: {}", validation_error.toUtf8().constData());
