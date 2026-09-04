@@ -1556,6 +1556,11 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir, const int threa
                             {   "height",            image.height},
                             {  "license",                       0},
                         };
+                    },
+                    [this](const std::size_t completed, const std::size_t total)
+                    {
+                        updateProgress(5 + static_cast<int>(completed * 40 / std::max<std::size_t>(1, total)),
+                                       QString("已复制 COCO 图像 %1/%2").arg(completed).arg(total));
                     });
 
         for (int i = 0; i < image_count; ++i)
@@ -1566,9 +1571,6 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir, const int threa
                 return;
             }
             json_data["images"].push_back(std::move(image_results[i].image_json));
-            if ((i + 1) % std::max(1, image_count / 10) == 0 || i + 1 == image_count)
-                updateProgress((i + 1) * 45 / std::max(1, image_count),
-                               QString("已复制图像 %1/%2").arg(i + 1).arg(image_count));
         }
 
         for (const ExportLabelClass &label_class : dataset.label_classes)
@@ -1628,15 +1630,17 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir, const int threa
                             {"segmentation",         segmentation},
                         };
                         annotation_results[index].valid = true;
+                    },
+                    [this](const std::size_t completed, const std::size_t total)
+                    {
+                        updateProgress(50 + static_cast<int>(completed * 40 / std::max<std::size_t>(1, total)),
+                                       QString("已生成 COCO 标注 %1/%2").arg(completed).arg(total));
                     });
 
         for (int i = 0; i < label_count; ++i)
         {
             if (annotation_results[i].valid)
                 json_data["annotations"].push_back(std::move(annotation_results[i].annotation_json));
-            if ((i + 1) % std::max(1, label_count / 10) == 0 || i + 1 == label_count)
-                updateProgress(45 + (i + 1) * 45 / std::max(1, label_count),
-                               QString("已写入 COCO 标注 %1/%2").arg(i + 1).arg(label_count));
         }
 
         QFile annotation_file(QDir(annotations_dir).filePath(QStringLiteral("instances.json")));
@@ -2122,6 +2126,8 @@ void LabelMeIO::doExport(ExportDataset dataset, QString output_dir, const int th
             return;
         }
 
+        updateProgress(5, QString("正在导出 LabelMe 数据..."));
+
         std::map<QString, int>     used_image_names;
         std::map<QString, int>     used_image_stems;
         std::map<int64_t, QString> image_name_by_id;
@@ -2224,6 +2230,11 @@ void LabelMeIO::doExport(ExportDataset dataset, QString output_dir, const int th
                     return;
                 }
                 annotation_file.write(QByteArray::fromStdString(json_data.dump(2)));
+            },
+            [this](const std::size_t completed, const std::size_t total)
+            {
+                updateProgress(5 + static_cast<int>(completed * 90 / std::max<std::size_t>(1, total)),
+                               QString("已处理 LabelMe 导出 %1/%2").arg(completed).arg(total));
             });
 
         for (int i = 0; i < image_count; ++i)
@@ -2233,11 +2244,9 @@ void LabelMeIO::doExport(ExportDataset dataset, QString output_dir, const int th
                 emit exportFinished(false, results[i].error);
                 return;
             }
-            if ((i + 1) % std::max(1, image_count / 10) == 0 || i + 1 == image_count)
-                updateProgress(45 + (i + 1) * 55 / std::max(1, image_count),
-                               QString("已处理 LabelMe 导出 %1/%2").arg(i + 1).arg(image_count));
         }
 
+        updateProgress(100, QString("LabelMe 导出完成"));
         emit exportFinished(
             true,
             QString("LabelMe 导出完成: %1 个图像, %2 个标注").arg(dataset.images.size()).arg(dataset.labels.size()));
@@ -2760,6 +2769,11 @@ void MaskIO::doExport(ExportDataset dataset, QString output_dir, QVariantMap opt
                     result.success = false;
                     result.error   = QString("写入 Mask 失败: %1").arg(mask_name);
                 }
+            },
+            [this](const std::size_t completed, const std::size_t total)
+            {
+                updateProgress(5 + static_cast<int>(completed * 90 / std::max<std::size_t>(1, total)),
+                               QString("已写入 Mask %1/%2").arg(completed).arg(total));
             });
 
         int written_label_count = 0;
@@ -2773,11 +2787,6 @@ void MaskIO::doExport(ExportDataset dataset, QString output_dir, QVariantMap opt
             }
             written_label_count += results[i].written_labels;
             skipped_label_count += results[i].skipped_labels;
-            if ((i + 1) % std::max(1, image_count / 10) == 0 || i + 1 == image_count)
-            {
-                const int progress = 40 + (i + 1) * 55 / std::max(1, image_count);
-                updateProgress(progress, QString("已写入 Mask %1/%2").arg(i + 1).arg(image_count));
-            }
         }
 
         if (!writeClassMetadata(dataset, output_dir, mode, class_values, err_msg))
@@ -3107,6 +3116,11 @@ void FolderIO::doExport(ExportDataset dataset, QString output_dir, const int thr
                             results[index].success = false;
                             results[index].error   = task_error;
                         }
+                    },
+                    [this](const std::size_t completed, const std::size_t total)
+                    {
+                        updateProgress(5 + static_cast<int>(completed * 90 / std::max<std::size_t>(1, total)),
+                                       QString("已导出图像 %1/%2").arg(completed).arg(total));
                     });
 
         int exported = 0;
@@ -3118,11 +3132,9 @@ void FolderIO::doExport(ExportDataset dataset, QString output_dir, const int thr
                 return;
             }
             ++exported;
-            if ((i + 1) % std::max(1, image_count / 10) == 0 || i + 1 == image_count)
-                updateProgress((i + 1) * 100 / std::max(1, image_count),
-                               QString("已导出图像 %1/%2").arg(i + 1).arg(image_count));
         }
 
+        updateProgress(100, QString("文件夹导出完成"));
         emit exportFinished(true, QString("文件夹导出完成: %1 个图像").arg(exported));
     }
     catch (const std::exception &e)

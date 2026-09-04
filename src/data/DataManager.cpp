@@ -24,6 +24,7 @@
 #include <QFileInfo>
 #include <QMetaType>
 #include <QPointer>
+#include <QStringList>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
 #include <algorithm>
@@ -66,6 +67,36 @@ void addProgressMessage(int level, const QString &message)
 {
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "addMessage", Qt::QueuedConnection, Q_ARG(int, level),
                               Q_ARG(QString, message));
+}
+
+QString exportFormatName(const int data_format)
+{
+    switch (data_format)
+    {
+    case DataFormat::LabelMe:
+        return QStringLiteral("LabelMe");
+    case DataFormat::COCO:
+        return QStringLiteral("COCO");
+    case DataFormat::Mask:
+        return QStringLiteral("Mask");
+    case DataFormat::Folder:
+        return QStringLiteral("Folder");
+    default:
+        return QStringLiteral("未知格式");
+    }
+}
+
+QString exportDatasetSummary(const std::vector<QString> &dataset_names, const std::size_t selected_count)
+{
+    if (selected_count > 0 && selected_count <= 3 && dataset_names.size() == selected_count)
+    {
+        QStringList names;
+        names.reserve(static_cast<qsizetype>(dataset_names.size()));
+        for (const QString &name : dataset_names)
+            names.append(name);
+        return QStringLiteral("数据集: %1").arg(names.join(QStringLiteral(", ")));
+    }
+    return QStringLiteral("数据集数量: %1").arg(selected_count);
 }
 
 std::map<QString, QString> parseLabelClassGroupMap(const QVariantMap &groups)
@@ -1364,6 +1395,8 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
 
     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "startTask", Qt::QueuedConnection,
                               Q_ARG(QString, "导出数据"));
+    QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "updateProgress", Qt::QueuedConnection,
+                              Q_ARG(int, 1));
 
     struct ExportBatchItem
     {
@@ -1374,6 +1407,9 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
     struct ExportBatchState
     {
         std::vector<ExportBatchItem> items;
+        QString                      dataset_summary;
+        QElapsedTimer                elapsed_timer;
+        QElapsedTimer                dataset_elapsed_timer;
         int                          current{0};
         int                          success_count{0};
         int                          failed_count{0};
@@ -1381,6 +1417,24 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
 
     auto                       state                = std::make_shared<ExportBatchState>();
     const std::vector<int64_t> selected_dataset_ids = dataset_ids;
+    std::set<int64_t>          unique_selected_dataset_ids;
+    std::vector<QString>       selected_dataset_names;
+    for (const int64_t dataset_id : selected_dataset_ids)
+    {
+        if (!unique_selected_dataset_ids.insert(dataset_id).second)
+            continue;
+        const QString dataset_name = datasets_ != nullptr ? datasets_->getDatasetName(static_cast<int>(dataset_id)) : QString();
+        if (!dataset_name.isEmpty())
+            selected_dataset_names.push_back(dataset_name);
+    }
+    state->dataset_summary = exportDatasetSummary(selected_dataset_names, unique_selected_dataset_ids.size());
+    state->elapsed_timer.start();
+
+    const QString format_name = exportFormatName(data_format);
+    const QString start_message = QString("开始导出数据: 格式=%1，%2").arg(format_name, state->dataset_summary);
+    spdlog::info("{}", start_message.toUtf8().constData());
+    addProgressMessage(spdlog::level::info, start_message);
+
     DatasetExportRequest       export_request;
     export_request.dataset_ids = selected_dataset_ids;
 
@@ -1491,15 +1545,19 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                 result.error = QString("没有可导出的数据集");
             }
         },
-        [this, state, data_format, options](const DataOperationWorkflow::Result &result) mutable
+        [this, state, data_format, format_name, options](const DataOperationWorkflow::Result &result) mutable
         {
             if (!result.success || state->items.empty())
             {
                 setDataOperationRunning(false);
                 const QString message = result.error.isEmpty() ? QString("没有可导出的数据集") : result.error;
-                addProgressMessage(spdlog::level::err, message);
+                const QString completed_message
+                    = QString("%1，%2，耗时 %3 ms").arg(message).arg(state->dataset_summary).arg(state->elapsed_timer.elapsed());
+                spdlog::error("导出失败: 格式={}, {}", format_name.toUtf8().constData(),
+                              completed_message.toUtf8().constData());
+                addProgressMessage(spdlog::level::err, completed_message);
                 QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
-                ui::SignalHelper::notifyError(QString("导出失败"), message);
+                ui::SignalHelper::notifyError(QString("导出失败"), completed_message);
                 return;
             }
 
@@ -1507,16 +1565,21 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
             setDataOperationRunning(true);
             auto                                 start_next      = std::make_shared<std::function<void()>>();
             std::weak_ptr<std::function<void()>> weak_start_next = start_next;
-            *start_next = [this, data_format, options, state, weak_start_next]()
+            *start_next = [this, data_format, format_name, options, state, weak_start_next]()
             {
                 if (state->current >= static_cast<int>(state->items.size()))
                 {
-                    const QString message = QString("导出完成: 成功 %1 个, 失败 %2 个")
-                                                .arg(state->success_count)
-                                                .arg(state->failed_count);
                     const bool success = state->success_count > 0 && state->failed_count == 0;
+                    const QString message = QString("导出完成: 成功 %1 个, 失败 %2 个，%3，耗时 %4 ms")
+                                                .arg(state->success_count)
+                                                .arg(state->failed_count)
+                                                .arg(state->dataset_summary)
+                                                .arg(state->elapsed_timer.elapsed());
                     setDataOperationRunning(false);
-                    addProgressMessage(state->failed_count == 0 ? spdlog::level::info : spdlog::level::warn, message);
+                    const int level = state->failed_count == 0 ? spdlog::level::info : spdlog::level::warn;
+                    spdlog::log(static_cast<spdlog::level::level_enum>(level), "导出结束: 格式={}, {}",
+                                format_name.toUtf8().constData(), message.toUtf8().constData());
+                    addProgressMessage(level, message);
                     QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "completeTask", Qt::QueuedConnection);
                     if (success)
                         ui::SignalHelper::notifySuccess(QString("导出完成"), message);
@@ -1528,8 +1591,22 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                 }
 
                 ExportBatchItem item = std::move(state->items[static_cast<size_t>(state->current++)]);
-                addProgressMessage(spdlog::level::info,
-                                   QString("开始导出数据集: %1 -> %2").arg(item.dataset.dataset_name, item.output_dir));
+                const int dataset_index = state->current;
+                state->dataset_elapsed_timer.restart();
+                if (state->items.size() <= 3)
+                {
+                    const QString message
+                        = QString("开始导出数据集: %1 -> %2").arg(item.dataset.dataset_name, item.output_dir);
+                    spdlog::info("{}", message.toUtf8().constData());
+                    addProgressMessage(spdlog::level::info, message);
+                }
+                else
+                {
+                    addProgressMessage(spdlog::level::info,
+                                       QString("正在导出数据集 %1/%2")
+                                           .arg(dataset_index)
+                                           .arg(state->items.size()));
+                }
 
                 DataIO *exporter = DataIO::createIO(data_format, this);
                 if (!exporter)
@@ -1546,13 +1623,28 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
 
                 connect(
                     exporter, &DataIO::exportFinished, this,
-                    [exporter, state, start_next = weak_start_next.lock()](bool success, const QString &message)
+                    [exporter, state, dataset_name = item.dataset.dataset_name,
+                     start_next = weak_start_next.lock()](bool success, const QString &message)
                     {
                         if (success)
                             ++state->success_count;
                         else
                             ++state->failed_count;
-                        addProgressMessage(success ? spdlog::level::info : spdlog::level::err, message);
+                        const qint64 dataset_elapsed_ms
+                            = state->dataset_elapsed_timer.isValid() ? state->dataset_elapsed_timer.elapsed() : 0;
+                        const QString completed_message
+                            = QString("数据集 %1：%2，耗时 %3 ms")
+                                  .arg(dataset_name)
+                                  .arg(message)
+                                  .arg(dataset_elapsed_ms);
+                        if (state->items.size() <= 3)
+                        {
+                            if (success)
+                                spdlog::info("导出数据集结束: {}", completed_message.toUtf8().constData());
+                            else
+                                spdlog::error("导出数据集失败: {}", completed_message.toUtf8().constData());
+                        }
+                        addProgressMessage(success ? spdlog::level::info : spdlog::level::err, completed_message);
                         exporter->deleteLater();
                         if (start_next)
                             (*start_next)();

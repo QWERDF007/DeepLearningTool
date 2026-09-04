@@ -47,6 +47,31 @@
 
 ---
 
+## 2026-09-04 — 完善数据集导出进度与耗时反馈
+
+**目标**
+- 让数据导出在并行处理期间分批更新进度。
+- 在结束日志和 InfoBar 消息中显示耗时；开始日志不显示耗时。
+- 少量数据集显示名称，大量数据集仅显示数量。
+
+**当前状态**
+- 已完成：COCO、LabelMe、Mask、Folder 导出接入并行处理进度回调，Folder 成功路径补齐 100% 进度。
+- 已完成：DataManager 增加格式、数据集摘要、单数据集和批量导出的结束耗时反馈。
+- 已完成：项目导出测试校验 Mask、LabelMe、COCO 的成功通知消息包含“耗时”。
+- 已完成：新增 DataIO LabelMe 导出进度测试，锁定并行处理中间进度。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_data_data_ioexport_tests --parallel 4` → Release 构建通过。
+- `ctest --test-dir build -C Release -R "^dltool_data_data_ioexport_tests$" --output-on-failure` → 1/1 通过。
+- `cmake --build build --config Release --target dltool_model_data_export_test --parallel 4` → Release 构建通过。
+- 通过 `python tools\\run_project_tests.py --skip-build` 分层调用 CTest，在同一独立项目根目录依次执行 `project-creation`、`data-creation`、`data-import`、`data-export` → 四层全部通过。
+- `git diff --check` → 未发现差异格式错误。
+
+**下一步**
+- 在真实桌面环境执行一次多数据集导出，确认进度条、开始/结束日志和 InfoBar 的展示符合预期。
+
+---
+
 ## 2026-09-04 — 调整任务账本日志顺序约束
 
 **目标**

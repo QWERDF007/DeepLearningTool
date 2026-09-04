@@ -2,7 +2,9 @@
 
 #include "data/DataFormat.h"
 #include "data/DataManager.h"
+#include "ui/SignalHelper.h"
 
+#include <QSignalSpy>
 #include <QTest>
 
 using namespace dltool::model::integration;
@@ -29,15 +31,26 @@ private slots:
         QCOMPARE(image_count, 14);
         QCOMPARE(label_count, 10);
 
+        QSignalSpy export_notifications(dltool::ui::SignalHelper::getInstance(),
+                                        &dltool::ui::SignalHelper::success);
+
         QVERIFY2(fixture.exportData(dataset_id, dltool::data::DataFormat::Mask,
                                     PersistentProjectFixture::maskExportRoot(), image_count, &error),
                  qPrintable(error));
+        QVERIFY(!export_notifications.isEmpty());
+        QVERIFY(export_notifications.constLast().at(1).toString().contains(QStringLiteral("耗时")));
+
         QVERIFY2(fixture.exportData(dataset_id, dltool::data::DataFormat::LabelMe,
                                     PersistentProjectFixture::labelMeExportRoot(), image_count, &error),
                  qPrintable(error));
+        QVERIFY(export_notifications.size() >= 2);
+        QVERIFY(export_notifications.constLast().at(1).toString().contains(QStringLiteral("耗时")));
+
         QVERIFY2(fixture.exportData(dataset_id, dltool::data::DataFormat::COCO,
                                     PersistentProjectFixture::cocoExportRoot(), image_count, &error),
                  qPrintable(error));
+        QVERIFY(export_notifications.size() >= 3);
+        QVERIFY(export_notifications.constLast().at(1).toString().contains(QStringLiteral("耗时")));
     }
 };
 
