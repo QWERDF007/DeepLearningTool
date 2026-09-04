@@ -16,6 +16,8 @@ private slots:
     void scalarValueHelpersTestCase();
     void valueRangeAtTestCase();
     void paramDecimalsTestCase();
+    void getCleanPathTestCase();
+    void toFileUrlTestCase();
 };
 
 REGISTER_TEST(UtilsTest);

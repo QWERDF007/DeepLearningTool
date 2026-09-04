@@ -20,14 +20,14 @@ Item {
     property alias msg: msgInput.text
     property int method: -1
     property bool isValid: msg === ""
-    property string folder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
+    property string folder: Utils.getCleanPath(StandardPaths.writableLocation(StandardPaths.DocumentsLocation))
 
     onFolderChanged: {
         pathInput.text = projectForm.folder + "/" + nameInput.text + ProjectManager.projectSuffix()
     }
 
     function reset() {
-        projectForm.folder = StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
+        projectForm.folder = Utils.getCleanPath(StandardPaths.writableLocation(StandardPaths.DocumentsLocation))
         projectForm.name = "新项目"
         projectForm.description = ""
         projectForm.image_base_path = ""

@@ -1,5 +1,6 @@
 #include "project/Projects.h"
 
+#include "common/Utils.h"
 #include "core/CoreDef.h"
 #include "database/DataBase.h"
 #include "feature/FeatureManager.h"
@@ -135,7 +136,14 @@ void Project::openProject()
 
 std::tuple<bool, QString> Project::isValid(const int method, const QString &path, bool is_new)
 {
-    bool file_exist = QFile::exists(path);
+    const QString cleaned = dltool::common::cleanPath(path);
+    if (cleaned.isEmpty())
+        return {false, "项目路径为空"};
+
+    if (!QFileInfo(cleaned).isAbsolute())
+        return {false, "项目路径必须是绝对路径"};
+
+    bool file_exist = QFile::exists(cleaned);
     if (is_new)
     {
         if (file_exist)
@@ -149,7 +157,7 @@ std::tuple<bool, QString> Project::isValid(const int method, const QString &path
     {
         if (!file_exist)
             return {false, "项目不存在"};
-        auto      info           = ProjectManager::getInstance()->getProjectInfo(path);
+        auto      info           = ProjectManager::getInstance()->getProjectInfo(cleaned);
         const int project_method = info.value("method", -1).toInt();
         if (!dltool::core::DeepLearningMethod::isSupportedMethod(project_method))
             return {false, QString("项目类型非法: %1").arg(method)};
@@ -528,18 +536,19 @@ Project *ProjectManager::createProject(const QString &name, const int method, co
 {
     if (current_project_)
         closeProject();
-    spdlog::info("创建项目 name: {}, path: {}", name.toUtf8().constData(), path.toUtf8().constData());
-    const auto &[valid, msg] = Project::isValid(method, path, true);
+    const QString clean_path = dltool::common::cleanPath(path);
+    spdlog::info("创建项目 name: {}, path: {}", name.toUtf8().constData(), clean_path.toUtf8().constData());
+    const auto &[valid, msg] = Project::isValid(method, clean_path, true);
     if (!valid)
     {
-        spdlog::error("创建项目失败: {}, error: {}", path.toUtf8().constData(), msg.toUtf8().constData());
+        spdlog::error("创建项目失败: {}, error: {}", clean_path.toUtf8().constData(), msg.toUtf8().constData());
         return nullptr;
     }
     qint64 ctime     = QDateTime::currentSecsSinceEpoch();
-    current_project_ = new Project(name, method, path, description, image_base_path, ctime, ctime, this);
+    current_project_ = new Project(name, method, clean_path, description, image_base_path, ctime, ctime, this);
     current_project_->setQmlEngine(qml_engine_);
     current_project_->initProject();
-    recent_projects_->addProject(path);
+    recent_projects_->addProject(clean_path);
     emit currentProjectChanged();
     emit projectActivated();
     return current_project_;
@@ -547,21 +556,22 @@ Project *ProjectManager::createProject(const QString &name, const int method, co
 
 Project *ProjectManager::openProject(const QString &path)
 {
-    if (current_project_ && current_project_->path() == path)
+    const QString clean_path = dltool::common::cleanPath(path);
+    if (current_project_ && current_project_->path() == clean_path)
     {
-        recent_projects_->openProject(path);
+        recent_projects_->openProject(clean_path);
         emit projectActivated();
         return current_project_;
     }
-    const auto &[valid, msg] = Project::isValid(-1, path, false);
+    const auto &[valid, msg] = Project::isValid(-1, clean_path, false);
     if (!valid)
     {
-        spdlog::error("打开项目失败: {}, error: {}", path.toUtf8().constData(), msg.toUtf8().constData());
+        spdlog::error("打开项目失败: {}, error: {}", clean_path.toUtf8().constData(), msg.toUtf8().constData());
         return nullptr;
     }
     if (current_project_)
         closeProject();
-    current_project_ = new Project(path, this);
+    current_project_ = new Project(clean_path, this);
     current_project_->setQmlEngine(qml_engine_);
     current_project_->openProject();
     recent_projects_->openProject(current_project_->path());

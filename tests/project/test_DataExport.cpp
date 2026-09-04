@@ -52,6 +52,26 @@ private slots:
         QVERIFY(export_notifications.size() >= 3);
         QVERIFY(export_notifications.constLast().at(1).toString().contains(QStringLiteral("耗时")));
     }
+
+    void rejectsRelativeOrInvalidExportPath()
+    {
+        PersistentProjectFixture fixture;
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+        const qint64 dataset_id = fixture.dataManager()->getDatasetId(PersistentProjectFixture::datasetName());
+        QVERIFY2(dataset_id >= 0, qPrintable(fixture.error()));
+
+        QSignalSpy error_notifications(dltool::ui::SignalHelper::getInstance(),
+                                       &dltool::ui::SignalHelper::error);
+
+        fixture.dataManager()->exportDatasets({dataset_id}, dltool::data::DataFormat::Mask,
+                                              QStringLiteral("relative/path/export"));
+        QCOMPARE(error_notifications.size(), 1);
+        QVERIFY(error_notifications.constLast().at(1).toString().contains(QStringLiteral("绝对路径")));
+
+        fixture.dataManager()->exportDatasets({dataset_id}, dltool::data::DataFormat::Mask, QString());
+        QCOMPARE(error_notifications.size(), 2);
+    }
 };
 
 QTEST_GUILESS_MAIN(DataExportIntegrationTest)

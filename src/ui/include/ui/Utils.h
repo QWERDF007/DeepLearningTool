@@ -4,6 +4,7 @@
 #include "dltool/ui/Export.h"
 
 #include <QColor>
+#include <QUrl>
 #include <QVariant>
 
 namespace dltool::ui {
@@ -16,6 +17,9 @@ class UI_API Utils : public QObject
 public:
     Q_INVOKABLE QColor   withOpacity(const QColor &color, qreal opacity) const;
     Q_INVOKABLE QString  getCleanPath(const QString &path) const;
+    Q_INVOKABLE QString  getCleanPath(const QUrl &url) const;
+    Q_INVOKABLE QString  toFileUrl(const QString &path) const;
+    Q_INVOKABLE QString  toFileUrl(const QUrl &url) const;
     Q_INVOKABLE void     openInFileExplorer(const QString &path);
     Q_INVOKABLE QString  stringValue(const QVariant &value) const;
     Q_INVOKABLE double   numberValue(const QVariant &value, double fallback_value) const;

@@ -1177,15 +1177,51 @@ void DataManager::scanImportLabelClasses(const int data_format, const QString &i
     if (!data::DataFormat::isImportDataFormatSupported(method_, data_format))
     {
         const QString message = QString("当前项目类型不支持该导入格式");
+        spdlog::error("扫描导入类别失败, 项目类型 {} 不支持数据格式: {}", method_, data_format);
         ui::SignalHelper::notifyError(QString("导入失败"), message);
         emit importLabelClassesScanned(false, {}, message);
         return;
+    }
+
+    const QString clean_image_dir = dltool::common::cleanPath(image_dir);
+    if (clean_image_dir.isEmpty())
+    {
+        const QString message = QString("导入图像路径为空");
+        spdlog::error("扫描导入类别失败, {}", message.toUtf8().constData());
+        ui::SignalHelper::notifyError(QString("导入失败"), message);
+        emit importLabelClassesScanned(false, {}, message);
+        return;
+    }
+
+    const QFileInfo image_dir_info(clean_image_dir);
+    if (!image_dir_info.isAbsolute() || !image_dir_info.exists())
+    {
+        const QString message = QString("图像路径不存在或路径无效: %1").arg(image_dir);
+        spdlog::error("扫描导入类别失败, {}", message.toUtf8().constData());
+        ui::SignalHelper::notifyError(QString("导入失败"), message);
+        emit importLabelClassesScanned(false, {}, message);
+        return;
+    }
+
+    const QString clean_data_dir = dltool::common::cleanPath(data_dir);
+    if (!clean_data_dir.isEmpty())
+    {
+        const QFileInfo data_dir_info(clean_data_dir);
+        if (!data_dir_info.isAbsolute() || !data_dir_info.exists())
+        {
+            const QString message = QString("标注路径不存在或路径无效: %1").arg(data_dir);
+            spdlog::error("扫描导入类别失败, {}", message.toUtf8().constData());
+            ui::SignalHelper::notifyError(QString("导入失败"), message);
+            emit importLabelClassesScanned(false, {}, message);
+            return;
+        }
     }
 
     DataIO *scanner = DataIO::createIO(data_format, this);
     if (!scanner)
     {
         const QString message = QString("不支持的数据格式");
+        spdlog::error("无法为格式 {} 创建扫描器", data_format);
         ui::SignalHelper::notifyError(QString("导入失败"), message);
         emit importLabelClassesScanned(false, {}, message);
         return;
@@ -1234,8 +1270,9 @@ void DataManager::scanImportLabelClasses(const int data_format, const QString &i
 
             if (!success)
             {
-                ui::SignalHelper::notifyError(QString("导入失败"),
-                                              message.isEmpty() ? QString("扫描导入类别失败") : message);
+                const QString err_msg = message.isEmpty() ? QString("扫描导入类别失败") : message;
+                spdlog::error("{}", err_msg.toUtf8().constData());
+                ui::SignalHelper::notifyError(QString("导入失败"), err_msg);
             }
 
             scanner->deleteLater();
@@ -1245,7 +1282,7 @@ void DataManager::scanImportLabelClasses(const int data_format, const QString &i
         },
         Qt::QueuedConnection);
 
-    scanner->startScanLabelClasses(image_dir, data_dir);
+    scanner->startScanLabelClasses(clean_image_dir, clean_data_dir);
 }
 
 void DataManager::importDataWithLabelClassGroups(const int64_t dataset_id, const int data_format,
@@ -1275,6 +1312,40 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
         ui::SignalHelper::notifyError(QString("导入失败"), message);
         emit dataImportFinished(false, message);
         return;
+    }
+
+    const QString clean_image_dir = dltool::common::cleanPath(image_dir);
+    if (clean_image_dir.isEmpty())
+    {
+        const QString message = QString("导入图像路径为空");
+        spdlog::error("导入数据失败, {}", message.toUtf8().constData());
+        ui::SignalHelper::notifyError(QString("导入失败"), message);
+        emit dataImportFinished(false, message);
+        return;
+    }
+
+    const QFileInfo image_dir_info(clean_image_dir);
+    if (!image_dir_info.isAbsolute() || !image_dir_info.exists())
+    {
+        const QString message = QString("图像路径不存在或路径无效: %1").arg(image_dir);
+        spdlog::error("导入数据失败, {}", message.toUtf8().constData());
+        ui::SignalHelper::notifyError(QString("导入失败"), message);
+        emit dataImportFinished(false, message);
+        return;
+    }
+
+    const QString clean_data_dir = dltool::common::cleanPath(data_dir);
+    if (!clean_data_dir.isEmpty())
+    {
+        const QFileInfo data_dir_info(clean_data_dir);
+        if (!data_dir_info.isAbsolute() || !data_dir_info.exists())
+        {
+            const QString message = QString("标注路径不存在或路径无效: %1").arg(data_dir);
+            spdlog::error("导入数据失败, {}", message.toUtf8().constData());
+            ui::SignalHelper::notifyError(QString("导入失败"), message);
+            emit dataImportFinished(false, message);
+            return;
+        }
     }
 
     QString db_check_err_msg;
@@ -1324,7 +1395,7 @@ void DataManager::startImportData(const int64_t dataset_id, const int data_forma
     connect(importer, &DataIO::importFinished, this, &DataManager::handleImportFinished, Qt::QueuedConnection);
 
     // 启动导入
-    importer->startImport(dataset_id, image_dir, data_dir);
+    importer->startImport(dataset_id, clean_image_dir, clean_data_dir);
 }
 
 void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const int data_format,
@@ -1344,9 +1415,18 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
         return;
     }
 
-    if (output_dir.isEmpty())
+    const QString clean_output_dir = dltool::common::cleanPath(output_dir);
+    if (clean_output_dir.isEmpty())
     {
         const QString message = QString("输出目录为空");
+        spdlog::error("导出数据失败, {}", message.toUtf8().constData());
+        ui::SignalHelper::notifyError(QString("导出失败"), message);
+        return;
+    }
+
+    if (!QFileInfo(clean_output_dir).isAbsolute())
+    {
+        const QString message = QString("导出目录必须是有效的绝对路径: %1").arg(output_dir);
         spdlog::error("导出数据失败, {}", message.toUtf8().constData());
         ui::SignalHelper::notifyError(QString("导出失败"), message);
         return;
@@ -1361,7 +1441,7 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
     }
 
     QString err_msg;
-    if (!ensureDirectory(output_dir, err_msg))
+    if (!ensureDirectory(clean_output_dir, err_msg))
     {
         spdlog::error("导出数据失败, {}", err_msg.toUtf8().constData());
         ui::SignalHelper::notifyError(QString("导出失败"), err_msg);
@@ -1418,8 +1498,8 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
     prepare_options.manage_progress = false;
     runDatasetExportAsync(
         this, std::move(export_request), std::move(prepare_options),
-        [selected_dataset_ids, output_dir, state](const DatasetExportSource     &source,
-                                                  DataOperationWorkflow::Result &result)
+        [selected_dataset_ids, clean_output_dir, state](const DatasetExportSource     &source,
+                                                        DataOperationWorkflow::Result &result)
         {
             std::map<int64_t, size_t>            state_index_by_dataset;
             std::map<int64_t, std::set<int64_t>> class_ids_by_dataset;
@@ -1442,7 +1522,7 @@ void DataManager::exportDatasets(const std::vector<int64_t> &dataset_ids, const 
                 ExportBatchItem item;
                 item.dataset.dataset_id   = dataset_id;
                 item.dataset.dataset_name = dataset_name;
-                item.output_dir           = QDir(output_dir).filePath(dataset_name);
+                item.output_dir           = QDir(clean_output_dir).filePath(dataset_name);
                 QString directory_error;
                 if (!ensureDirectory(item.output_dir, directory_error))
                 {
@@ -1690,6 +1770,7 @@ bool DataManager::copyToDatasetAsync(const std::vector<int64_t> &image_ids, cons
     }
     if (labels_loading_)
     {
+        spdlog::warn("复制图像失败, 标注正在加载中");
         ui::SignalHelper::notifyWarn(QString("复制图像"), QString("标注正在加载，请稍后再试"));
         return false;
     }
@@ -1969,6 +2050,7 @@ void DataManager::splitDataset(const int64_t dataset_id, const double train_rati
 {
     const auto reportFailure = [this](const QString &message)
     {
+        spdlog::error("划分数据集失败: {}", message.toUtf8().constData());
         ui::SignalHelper::notifyError(QString("划分数据集失败"), message);
         emit datasetSplitFinished(false, message);
     };

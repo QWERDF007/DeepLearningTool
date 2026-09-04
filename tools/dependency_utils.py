@@ -226,6 +226,12 @@ def remove_existing_dir_link(path: Path) -> None:
     if not path.exists() and not path.is_symlink():
         return
     is_junction = bool(getattr(path, "is_junction", lambda: False)())
+    if not is_junction and os.name == "nt":
+        try:
+            st = os.stat(path, follow_symlinks=False)
+            is_junction = bool(getattr(st, "st_file_attributes", 0) & 0x400)
+        except OSError:
+            pass
     if is_junction:
         path.rmdir()
         return
@@ -246,8 +252,12 @@ def link_file(source: Path, link: Path) -> None:
         os.symlink(source, link)
         print(f"create symlink {link} -> {source}")
     except OSError:
-        os.link(source, link)
-        print(f"create hardlink {link} -> {source}")
+        try:
+            os.link(source, link)
+            print(f"create hardlink {link} -> {source}")
+        except OSError:
+            shutil.copy2(source, link)
+            print(f"copy file {link} -> {source}")
 
 
 def link_dir(source: Path, link: Path) -> None:

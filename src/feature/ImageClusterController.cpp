@@ -567,6 +567,8 @@ void ImageClusterController::completeClusterApply(const ClusterResponse &respons
         last_summary_.clear();
         emit resultsChanged();
         setLastError(error);
+        spdlog::error("图像聚类失败: {}, 耗时 {}", error.toUtf8().constData(),
+                      formatElapsed(response.elapsed_ms).toUtf8().constData());
         finishProgress(false, QString("%1, 耗时 %2").arg(error, formatElapsed(response.elapsed_ms)));
         ui::SignalHelper::notifyError(QString("图像聚类失败"), error);
         return;
@@ -587,6 +589,8 @@ void ImageClusterController::completeClusterApply(const ClusterResponse &respons
                                    apply_result.target_dataset_count, apply_result.skipped_noise_count,
                                    response.apply_mode == ImageClusterApplyMode::Copy);
 
+    spdlog::info("图像聚类完成: {}, 耗时 {}", last_summary_.toUtf8().constData(),
+                 formatElapsed(response.elapsed_ms).toUtf8().constData());
     finishProgress(true, QString("%1, 耗时 %2").arg(last_summary_, formatElapsed(response.elapsed_ms)));
     ui::SignalHelper::notifySuccess(QString("图像聚类完成"), last_summary_);
     emit resultsChanged();
@@ -623,6 +627,8 @@ void ImageClusterController::finishCluster(const ClusterResponse &response)
         last_summary_.clear();
         emit resultsChanged();
         setLastError(response.error);
+        spdlog::error("图像聚类失败: {}, 耗时 {}", response.error.toUtf8().constData(),
+                      formatElapsed(response.elapsed_ms).toUtf8().constData());
         finishProgress(false, QString("%1, 耗时 %2").arg(response.error, formatElapsed(response.elapsed_ms)));
         ui::SignalHelper::notifyError(QString("图像聚类失败"), response.error);
         return;
@@ -637,6 +643,8 @@ void ImageClusterController::finishCluster(const ClusterResponse &response)
         last_summary_.clear();
         emit resultsChanged();
         setLastError(err_msg);
+        spdlog::error("图像聚类失败: {}, 耗时 {}", err_msg.toUtf8().constData(),
+                      formatElapsed(response.elapsed_ms).toUtf8().constData());
         finishProgress(false, QString("%1, 耗时 %2").arg(err_msg, formatElapsed(response.elapsed_ms)));
         ui::SignalHelper::notifyError(QString("图像聚类失败"), err_msg);
         return;

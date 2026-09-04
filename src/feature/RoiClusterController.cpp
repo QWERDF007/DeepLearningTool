@@ -430,6 +430,8 @@ void RoiClusterController::finishCluster(const Response &response)
         last_summary_.clear();
         emit resultsChanged();
         setLastError(response.error);
+        spdlog::error("标注聚类失败: {}, 耗时 {}", response.error.toUtf8().constData(),
+                      formatElapsed(response.elapsed_ms).toUtf8().constData());
         finishProgress(false, QString("%1, 耗时 %2").arg(response.error, formatElapsed(response.elapsed_ms)));
         ui::SignalHelper::notifyError(QString("标注聚类失败"), response.error);
         return;
@@ -445,6 +447,8 @@ void RoiClusterController::finishCluster(const Response &response)
         last_summary_.clear();
         emit resultsChanged();
         setLastError(err_msg);
+        spdlog::error("标注聚类失败: {}, 耗时 {}", err_msg.toUtf8().constData(),
+                      formatElapsed(response.elapsed_ms).toUtf8().constData());
         finishProgress(false, QString("%1, 耗时 %2").arg(err_msg, formatElapsed(response.elapsed_ms)));
         ui::SignalHelper::notifyError(QString("标注聚类失败"), err_msg);
         return;
@@ -459,6 +463,8 @@ void RoiClusterController::finishCluster(const Response &response)
         last_summary_ += QString("，跳过噪声 %1 个").arg(static_cast<qlonglong>(skipped_noise_count));
 
     setLastError(QString());
+    spdlog::info("标注聚类完成: {}, 耗时 {}", last_summary_.toUtf8().constData(),
+                 formatElapsed(response.elapsed_ms).toUtf8().constData());
     finishProgress(true, QString("%1, 耗时 %2").arg(last_summary_, formatElapsed(response.elapsed_ms)));
     ui::SignalHelper::notifySuccess(QString("标注聚类完成"), last_summary_);
     emit resultsChanged();

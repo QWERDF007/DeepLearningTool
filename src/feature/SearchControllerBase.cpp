@@ -461,6 +461,8 @@ void SearchControllerBase::finishSearch(const SearchResponse &response)
         last_summary_.clear();
         emit resultsChanged();
         setLastError(response.error);
+        spdlog::error("{}失败: {}, 耗时 {}", searchDisplayName().toUtf8().constData(),
+                      response.error.toUtf8().constData(), formatElapsed(response.elapsed_ms).toUtf8().constData());
         finishProgress(false, QString("%1, 耗时 %2").arg(response.error, formatElapsed(response.elapsed_ms)));
         ui::SignalHelper::notifyError(searchDisplayName() + QString("失败"), response.error);
         return;
@@ -472,6 +474,8 @@ void SearchControllerBase::finishSearch(const SearchResponse &response)
 
     applyResults(response);
 
+    spdlog::info("{}完成: {}, 耗时 {}", searchDisplayName().toUtf8().constData(),
+                 response.summary.toUtf8().constData(), formatElapsed(response.elapsed_ms).toUtf8().constData());
     finishProgress(true, QString("%1, 耗时 %2").arg(response.summary, formatElapsed(response.elapsed_ms)));
     ui::SignalHelper::notifySuccess(searchDisplayName() + QString("完成"), response.summary);
     emit resultsChanged();

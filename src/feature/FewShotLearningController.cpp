@@ -846,11 +846,12 @@ void FewShotLearningController::finishRun(bool success, const QString &message)
         output_dir     = current_run_.output_dir;
     }
 
-    if (!success && !message.isEmpty())
+    if (!success)
     {
+        const QString err_msg = message.isEmpty() ? QString("小样本学习任务失败") : message;
         stopRunTasks();
-        setLastError(message);
-        spdlog::error("小样本学习任务失败: {}", message.toUtf8().constData());
+        setLastError(err_msg);
+        spdlog::error("小样本学习任务失败: {}", err_msg.toUtf8().constData());
     }
 
     current_run_ = {};
@@ -885,6 +886,7 @@ void FewShotLearningController::startPredictionImports(std::vector<PredictionImp
 {
     if (data_manager_ == nullptr || targets.empty() || output_dir.trimmed().isEmpty())
     {
+        spdlog::info("小样本学习完成");
         ui::SignalHelper::notifySuccess(QString("小样本学习完成"), QString("小样本学习任务完成"), 4500);
         return;
     }
@@ -905,6 +907,7 @@ void FewShotLearningController::startNextPredictionImport()
         disconnectPredictionImport();
         const QString message = QString("数据管理器未初始化，无法导入小样本预测结果");
         setLastError(message);
+        spdlog::error("{}", message.toUtf8().constData());
         ui::SignalHelper::notifyError(QString("小样本学习失败"), message);
         return;
     }
@@ -912,9 +915,9 @@ void FewShotLearningController::startNextPredictionImport()
     {
         const int imported_count = current_import_index_;
         disconnectPredictionImport();
-        ui::SignalHelper::notifySuccess(QString("小样本学习完成"),
-                                        QString("小样本学习完成，已导入 %1 个测试数据集的预测结果").arg(imported_count),
-                                        4500);
+        const QString message = QString("小样本学习完成，已导入 %1 个测试数据集的预测结果").arg(imported_count);
+        spdlog::info("{}", message.toUtf8().constData());
+        ui::SignalHelper::notifySuccess(QString("小样本学习完成"), message, 4500);
         return;
     }
 

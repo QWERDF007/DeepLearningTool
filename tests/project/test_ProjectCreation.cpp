@@ -23,6 +23,14 @@ private slots:
         QVERIFY(project_file.isFile());
         QCOMPARE(project_file.suffix(), QStringLiteral("dlpro"));
     }
+
+    void validatesProjectPaths()
+    {
+        auto *manager = dltool::project::ProjectManager::getInstance();
+        QCOMPARE(manager->isProjectValid(PersistentProjectFixture::kMethod, QString(), true), QStringLiteral("项目路径为空"));
+        QCOMPARE(manager->isProjectValid(PersistentProjectFixture::kMethod, QStringLiteral("relative/test.dlpro"), true), QStringLiteral("项目路径必须是绝对路径"));
+        QCOMPARE(manager->isProjectValid(PersistentProjectFixture::kMethod, QStringLiteral("//192.168.2.87/share/new_project.dlpro"), true), QString());
+    }
 };
 
 QTEST_GUILESS_MAIN(ProjectCreationIntegrationTest)

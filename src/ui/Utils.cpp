@@ -1,5 +1,7 @@
 #include "ui/Utils.h"
 
+#include "common/Utils.h"
+
 #include <QColor>
 #include <QDir>
 #include <QFileInfo>
@@ -7,6 +9,7 @@
 #include <QSet>
 #include <QStandardPaths>
 #include <QStringList>
+#include <QUrl>
 #include <QVariant>
 #include <algorithm>
 #include <cmath>
@@ -126,11 +129,46 @@ QColor Utils::withOpacity(const QColor &color, qreal opacity) const
 
 QString Utils::getCleanPath(const QString &path) const
 {
-#ifdef _WIN32
-    return path.sliced(8);
-#else
-    return path.sliced(7);
-#endif
+    const QString trimmed = path.trimmed();
+    if (trimmed.isEmpty())
+        return {};
+
+    if (trimmed.startsWith(QLatin1String("file:"), Qt::CaseInsensitive))
+    {
+        const QUrl url(trimmed);
+        if (url.isLocalFile())
+            return dltool::common::cleanPath(url.toLocalFile());
+    }
+
+    return dltool::common::cleanPath(trimmed);
+}
+
+QString Utils::getCleanPath(const QUrl &url) const
+{
+    if (url.isEmpty())
+        return {};
+    if (url.isLocalFile())
+        return dltool::common::cleanPath(url.toLocalFile());
+    return dltool::common::cleanPath(url.toString());
+}
+
+QString Utils::toFileUrl(const QString &path) const
+{
+    const QString trimmed = path.trimmed();
+    if (trimmed.isEmpty())
+        return {};
+
+    if (trimmed.startsWith(QLatin1String("file:"), Qt::CaseInsensitive))
+        return trimmed;
+
+    return QUrl::fromLocalFile(trimmed).toString();
+}
+
+QString Utils::toFileUrl(const QUrl &url) const
+{
+    if (url.isEmpty())
+        return {};
+    return url.toString();
 }
 
 void Utils::openInFileExplorer(const QString &path)

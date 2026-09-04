@@ -31,7 +31,7 @@ Rectangle {
             Layout.fillWidth: true
             asynchronous: true
             fillMode: Image.PreserveAspectFit // Image.PreserveAspectCrop
-            source: control.imagePath ? "file:///" + control.imagePath : ""
+            source: control.imagePath ? Utils.toFileUrl(control.imagePath) : ""
             sourceSize.width: parent.width
             sourceSize.height: parent.height
         }

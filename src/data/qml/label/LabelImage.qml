@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Effects
 
 import dltool.settings
+import dltool.ui
 
 Item {
     id: labelImage
@@ -58,7 +59,7 @@ Item {
         smooth: false
         asynchronous: true
         fillMode: Image.PreserveAspectFit
-        source: currentImagePath ? "file:///" + currentImagePath : ""
+        source: currentImagePath ? Utils.toFileUrl(currentImagePath) : ""
         transformOrigin: Item.TopLeft
 
         onXChanged: {
