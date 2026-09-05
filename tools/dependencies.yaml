@@ -1,156 +1,171 @@
-# Runtime dependency link and package list.
-# roots may be absolute paths or CMake cache/config variable names.
+# Runtime dependency manifest used by link_dependencies.py and package_app.py.
+# root may be a path or a variable read from CMakeCache.txt / the listed CMake file.
+# default defines the local default path (Single Source of Truth).
 dependencies:
+  - name: qt
+    cmake: cmake/ConfigQT.cmake
+    root: Qt6_ROOT
+    default: E:/Softwares/Qt/6.11.0/msvc2022_64
+
   - name: sqlite
     cmake: cmake/ConfigSQLite.cmake
     root: SQLITE_ROOT
+    default: D:/Software/sqlite-3.46.0
     destinations:
       - build/bin
     windows:
+      - lib/sqlite3.dll
       - sqlite3.dll
     linux:
-      - lib/libsqlite3.so
-      - lib/libsqlite3.so.*
+      - lib/libsqlite3.so*
     macos:
       - lib/libsqlite3.dylib
 
-  - name: tensorrt
-    cmake: cmake/ConfigInferRT.cmake
-    root: D:/Software/dev/TensorRT-10.16.1.11/bin
-    destinations:
-      - build/bin
-    windows:
-      - nvinfer_*.dll
-      - nvonnxparser_*.dll
-
-  - name: cuda
-    cmake: cmake/ConfigInferRT.cmake
-    root: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8/bin
-    destinations:
-      - build/bin
-    windows:
-      - cudart64_*.dll
-      - cublas*.dll
-      - cufft*.dll
-      - cudnn*.dll
-
   - name: opencv
-    config: release
-    cmake: cmake/ConfigInferRT.cmake
-    root: D:/Software/dev/opencv-4.8.0/build/x64/vc16/bin
+    cmake: cmake/ConfigOpenCV.cmake
+    root: OpenCV_HOME
+    windows_root: OpenCV_BIN_DIR
+    default: D:/Software/opencv/build/x64/vc16
     destinations:
       - build/bin
     windows:
-      - opencv_world480.dll
-
-  - name: opencv-debug
-    config: debug
-    root: D:/Software/dev/opencv-4.8.0/build/x64/vc16/bin
-    destinations:
-      - build/bin
-    windows:
-      - opencv_world480d.dll
+      - "*.dll"
+      - bin/*.dll
+    linux:
+      - lib/libopencv*.so*
+    macos:
+      - lib/libopencv*.dylib
 
   - name: inferrt
-    config: release
     cmake: cmake/ConfigInferRT.cmake
-    root: INFERRT_BIN_DIR
+    root: INFERRT_ROOT
+    windows_root: INFERRT_BIN_DIR
+    default: D:/Project/InferRT/InferRT-0.0.3
     destinations:
       - build/bin
     windows:
-      - inferrt_core.dll
-      - inferrt_cvcuda.dll
-      - inferrt_ops.dll
-      - inferrt_features.dll
-      - inferrt_model.dll
-      - inferrt_util.dll
+      - bin/*.dll
+      - inferrt_*.dll
+    linux:
+      - lib/libinferrt*.so*
+    macos:
+      - lib/libinferrt*.dylib
 
-  - name: inferrt-debug
-    config: debug
-    root: F:/Projects/InferRT/build/bin
+  - name: cuda
+    cmake: cmake/ConfigCUDA.cmake
+    env: CUDA_PATH
+    root: CUDAToolkit_ROOT
+    default: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8
     destinations:
       - build/bin
     windows:
-      - inferrt_cored.dll
-      - inferrt_cvcudad.dll
-      - inferrt_opsd.dll
-      - inferrt_featuresd.dll
-      - inferrt_modeld.dll
-      - inferrt_utild.dll
+      - bin/cudart64_*.dll
+      - bin/cublas64_*.dll
+      - bin/cublasLt64_*.dll
+      - bin/cufft64_*.dll
+      - bin/cudnn*.dll
+    linux:
+      - lib64/libcudart.so*
+      - lib64/libcublas.so*
+      - lib64/libcublasLt.so*
+      - lib64/libcufft.so*
+      - lib64/libcudnn.so*
+    macos:
+      - lib/libcudart*.dylib
+      - lib/libcublas*.dylib
+      - lib/libcufft*.dylib
+
+  - name: tensorrt
+    cmake: cmake/ConfigInferRT.cmake
+    root: TRT_ROOT
+    default: D:/Software/TensorRT-10.16.0.72
+    destinations:
+      - build/bin
+    windows:
+      - bin/*.dll
+    linux:
+      - lib/libnvinfer*.so*
+      - lib/libnvonnxparser*.so*
+    macos:
+      - lib/libnvinfer*.dylib
+      - lib/libnvonnxparser*.dylib
+
+  - name: faiss
+    cmake: cmake/ConfigInferRT.cmake
+    root: Faiss_HOME
+    default: D:/Software/faiss
+    destinations:
+      - build/bin
+    windows:
+      - bin/*.dll
+    linux:
+      - lib/libfaiss*.so*
+    macos:
+      - lib/libfaiss*.dylib
 
   - name: mkl
     cmake: cmake/ConfigInferRT.cmake
-    root: D:/Software/dev/mkl/mkl/bin
+    root: MKL_ROOT
+    default: D:/Software/mkl/mkl
     destinations:
       - build/bin
     windows:
-      - mkl_avx2.2.dll
-      - mkl_core.2.dll
-      - mkl_def.2.dll
-      - mkl_intel_thread.2.dll
+      - bin/mkl_avx2.2.dll
+      - bin/mkl_core.2.dll
+      - bin/mkl_def.2.dll
+      - bin/mkl_intel_thread.2.dll
+      - ../compiler/bin/libiomp5md.dll
 
   - name: libiomp5md
     cmake: cmake/ConfigInferRT.cmake
-    root: D:/Software/dev/mkl/compiler/bin
+    root: MKL_COMPILER_ROOT
+    default: D:/Software/mkl/compiler
     destinations:
       - build/bin
     windows:
-      - libiomp5md.dll
-
-  - name: faiss
-    config: release
-    cmake: cmake/ConfigInferRT.cmake
-    root: F:/Github/faiss/install/bin
-    destinations:
-      - build/bin
-    windows:
-      - faiss.dll
-
-  - name: faiss-debug
-    config: debug
-    cmake: cmake/ConfigInferRT.cmake
-    root: F:/Github/faiss/install/bin
-    destinations:
-      - build/bin
-    windows:
-      - faissd.dll
+      - bin/libiomp5md.dll
 
   - name: onnxruntime
     cmake: cmake/ConfigInferRT.cmake
-    root: INFERRT_BIN_DIR
+    root: ONNXRUNTIME_ROOT
+    default: D:/Software/onnxruntime-gpu-1.26.0
     destinations:
       - build/bin
     windows:
-      - onnxruntime*.dll
+      - lib/*.dll
+    linux:
+      - lib/libonnxruntime*.so*
+    macos:
+      - lib/libonnxruntime*.dylib
 
   - name: openvino
     cmake: cmake/ConfigInferRT.cmake
-    root: INFERRT_BIN_DIR
+    root: OPENVINO_ROOT
+    default: D:/Software/openvino_toolkit
     destinations:
       - build/bin
     windows:
-      - openvino*.dll
-
-  - name: openvino-debug
-    config: debug
-    root: D:/Software/openvino_toolkit/runtime/bin/intel64/Debug
-    destinations:
-      - build/bin
-    windows:
-      - openvinod.dll
+      - runtime/bin/intel64/*.dll
+      - runtime/bin/intel64/{build_config}/*.dll
+    linux:
+      - runtime/lib/intel64/*.so*
+    macos:
+      - runtime/lib/intel64/*.dylib
 
   - name: tbb
     cmake: cmake/ConfigInferRT.cmake
-    root: INFERRT_BIN_DIR
+    root: OPENVINO_ROOT
+    default: D:/Software/openvino_toolkit
     destinations:
       - build/bin
     windows:
-      - tbb*.dll
+      - runtime/3rdparty/tbb/bin/tbb*.dll
 
   - name: zlib
     cmake: cmake/ConfigInferRT.cmake
-    root: INFERRT_BIN_DIR
+    root: INFERRT_PYTHON_ROOT
+    default: E:/Softwares/Anaconda3/envs/py312
     destinations:
       - build/bin
     windows:
-      - zlib*.dll
+      - Lib/site-packages/torch/lib/zlibwapi.dll

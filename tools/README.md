@@ -137,18 +137,22 @@ dependencies:
 
 | 字段 | 说明 |
 |------|------|
-| `name` | 依赖名称，只用于日志和排查。 |
+| `name` | 依赖名称，用于日志、排查及 CMake 解析。 |
 | `config` | 可选。`release` 只在 release 模式处理，`debug` 只在 debug 模式处理；不写表示通用。 |
-| `cmake` | 可选。用于从 CMake 配置文件读取 `root` 指向的变量。 |
-| `root` | 依赖根目录，或者 CMake cache/config 变量名。 |
+| `cmake` | 可选。用于指定该依赖对应的 CMake 配置文件。 |
+| `root` | CMake cache/config 变量名，或者直接路径。 |
+| `windows_root` | 可选。Windows 平台专用运行时根目录变量名（例如 `OpenCV_BIN_DIR`、`INFERRT_BIN_DIR`）。 |
+| `default` | 本地默认路径（单一真相源，避免在 CMake 脚本中写死路径）。 |
 | `destinations` | `link_dependencies.py` 的链接目标目录。打包时 Windows 复制到包根目录，Linux/macOS 复制到 `lib/`。 |
 | `windows` / `linux` / `macos` | 当前平台要复制或链接的文件模式，支持 `*` 和 `?`。 |
 | `all` | 所有平台通用的文件模式。 |
 
-`root` 解析顺序：
+`root` / 路径探测优先级：
 
-1. 如果是绝对路径、相对路径或带路径分隔符的值，直接按路径解析。
-2. 否则先从 `build/CMakeCache.txt` 查同名变量。
-3. 再从 `cmake` 指定的 CMake 文件里读取同名 `set(...)`。
+1. 命令行 `-D` 显式传参（最高优先级，`origin: user`）。
+2. 环境变量（如 `CUDA_PATH`、`OpenCV_DIR` 等，`origin: environment`）。
+3. `tools/dependencies.yaml` 中的 `default:` 字段（单一真相源，`origin: project-default`）。
+4. 历史构建遗留缓存（`CMakeCache.txt`，`origin: legacy-cache`）。
+5. 静态 CMake 配置文件备选。
 
 DLL 过滤规则：只有当 `xxx.dll` 和 `xxxd.dll` 成对存在时，脚本才把 `xxxd.dll` 视为 debug 变体。这样不会误删文件名本身以 `d` 结尾的 release DLL。

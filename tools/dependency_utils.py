@@ -161,24 +161,68 @@ def read_cmake_set_expanded(cmake_file: Path, name: str) -> str | None:
     return value
 
 
-def resolve_dependency_root(dep: dict[str, Any], build_dir: Path, repo_root: Path = REPO_ROOT) -> Path | None:
+def _candidate_env_names(dep: dict[str, Any], root_spec: str) -> list[str]:
+    """构造依赖 root 可尝试读取的环境变量名列表。"""
+
+    names = [root_spec]
+    names.extend(normalize_list(dep.get("env")))
+    unique: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        key = name.upper()
+        if key not in seen:
+            unique.append(name)
+            seen.add(key)
+    return unique
+
+
+def resolve_dependency_root(
+    dep: dict[str, Any],
+    build_dir: Path,
+    repo_root: Path = REPO_ROOT,
+    platform: str | None = None,
+) -> Path | None:
     """解析依赖条目的 root 目录。
 
-    root 可以是路径，也可以是 CMake cache 或 CMake 配置文件中的变量名。
+    解析顺序为：直接路径、环境变量、平台特定 root 缓存、YAML default 字段、
+    CMakeCache.txt、YAML 指定的 CMake 配置文件。
     """
 
-    root_spec = str(dep.get("root", "")).strip()
+    if platform is None:
+        platform = platform_key()
+
+    platform_root = dep.get(f"{platform}_root") if platform else None
+    root_spec = str(platform_root if platform_root not in (None, "") else dep.get("root", "")).strip()
     if not root_spec:
         return None
 
     if is_direct_root(root_spec) or not dep.get("cmake"):
         return resolve_project_path(root_spec, repo_root)
 
-    # root 可以写 CMake cache/config 变量名。优先读当前 build 的 CMakeCache，
-    # 读不到再回退到 dep.cmake 指向的本地 CMake 配置文件。
+    for env_name in _candidate_env_names(dep, root_spec):
+        value = os.environ.get(env_name)
+        if value:
+            return resolve_project_path(value, repo_root)
+
+    if platform_root not in (None, ""):
+        cache_value = read_cmake_cache_value(build_dir / "CMakeCache.txt", root_spec)
+        if cache_value:
+            cache_root = resolve_project_path(cache_value, repo_root)
+            if cache_root.exists():
+                return cache_root
+
+    default_value = dep.get("default")
+    if default_value:
+        candidate = resolve_project_path(str(default_value), repo_root)
+        if candidate.exists():
+            return candidate
+
     cache_value = read_cmake_cache_value(build_dir / "CMakeCache.txt", root_spec)
     if cache_value:
         return resolve_project_path(cache_value, repo_root)
+
+    if default_value:
+        return resolve_project_path(str(default_value), repo_root)
 
     cmake_file = resolve_project_path(str(dep["cmake"]), repo_root)
     cmake_value = read_cmake_set_expanded(cmake_file, root_spec)

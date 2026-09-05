@@ -14,6 +14,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 from dependency_utils import (
     MARKER_FILE,
     PROJECT_DLL_PREFIX,
@@ -375,8 +378,18 @@ def qt_roots(build_dir: Path) -> list[Path]:
     """按优先级收集 Qt 安装根目录候选项。"""
 
     roots: list[Path] = []
-    # 优先使用项目配置和 CMake cache 中的 Qt6，最后才回退到环境变量和 PATH。
+    # 优先使用 dependencies.yaml 清单和 CMake cache 中的 Qt6，最后才回退到环境变量和 PATH。
     # 这样可以避免 PATH 中旧 Qt 的 windeployqt 被误用。
+    dep_file = REPO_ROOT / "tools" / "dependencies.yaml"
+    if dep_file.is_file():
+        try:
+            for dep in load_dependencies(dep_file):
+                if dep.get("name") in ("qt", "qt6"):
+                    default_val = dep.get("default")
+                    if default_val:
+                        roots.append(Path(default_val))
+        except Exception:
+            pass
     config_root = read_cmake_set_expanded(REPO_ROOT / "cmake" / "ConfigQT.cmake", "Qt6_ROOT")
     if config_root:
         roots.append(Path(config_root))

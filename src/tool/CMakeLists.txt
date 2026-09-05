@@ -43,6 +43,10 @@ qt_add_executable(${PROJECT_NAME}
     ${QRC_SOURCES}
 )
 
+# GUI 程序，避免启动时弹出控制台窗口
+set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
+
+
 set(QML_PLUGIN_DIRECTORY "${CMAKE_BINARY_DIR}/${PROJECT_NAME}/${PLUGIN_NAME}")
 
 # 添加QML模块
