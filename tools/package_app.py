@@ -26,6 +26,7 @@ from dependency_utils import (
     build_config_directory,
     copy_file,
     dependency_matches_config,
+    dependency_default_value,
     dependency_patterns,
     dll_matches_config,
     expand_dependency_pattern,
@@ -436,7 +437,7 @@ def qt_roots(build_dir: Path) -> list[Path]:
         try:
             for dep in load_dependencies(dep_file):
                 if dep.get("name") in ("qt", "qt6"):
-                    default_val = dep.get("default")
+                    default_val = dependency_default_value(dep, platform_key())
                     if default_val:
                         roots.append(Path(default_val))
         except Exception:

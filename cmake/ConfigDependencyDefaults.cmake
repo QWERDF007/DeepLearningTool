@@ -1,4 +1,5 @@
 # Read build-time dependency defaults from the shared runtime manifest.
+# A platform-specific <platform>_default value takes precedence over default.
 # Installed packages may omit the source-tree manifest; callers then continue
 # with environment and CMake prefix discovery.
 function(dlt_dependency_default dependency_name output_variable)
@@ -10,6 +11,17 @@ function(dlt_dependency_default dependency_name output_variable)
     endif()
 
     set(_result "")
+    set(_platform_default_key)
+    if(WIN32)
+        set(_platform_default_key "windows_default")
+    elseif(APPLE)
+        set(_platform_default_key "macos_default")
+    elseif(UNIX)
+        set(_platform_default_key "linux_default")
+    endif()
+
+    set(_platform_result "")
+    set(_fallback_result "")
     if(EXISTS "${_manifest}")
         file(STRINGS "${_manifest}" _manifest_lines)
         set(_in_dependency OFF)
@@ -23,6 +35,8 @@ function(dlt_dependency_default dependency_name output_variable)
                     "" _entry_name "${_entry_name}")
                 if(_entry_name STREQUAL "${dependency_name}")
                     set(_in_dependency ON)
+                    set(_platform_result "")
+                    set(_fallback_result "")
                 else()
                     set(_in_dependency OFF)
                 endif()
@@ -30,18 +44,37 @@ function(dlt_dependency_default dependency_name output_variable)
             endif()
 
             if(_in_dependency)
+                if(_platform_default_key)
+                    string(REGEX MATCH
+                        "^[ ]*${_platform_default_key}:[ ]*(.+)[ ]*$"
+                        _platform_default_match "${_line}")
+                    if(_platform_default_match)
+                        set(_platform_result "${_platform_default_match}")
+                        string(REGEX REPLACE
+                            "^[ ]*${_platform_default_key}:[ ]*"
+                            "" _platform_result "${_platform_result}")
+                        string(REGEX REPLACE "^[ ]*[\"'](.*)[\"'][ ]*$"
+                            "\\1" _platform_result "${_platform_result}")
+                    endif()
+                endif()
+
                 string(REGEX MATCH "^[ ]*default:[ ]*(.+)[ ]*$"
                     _default_match "${_line}")
                 if(_default_match)
-                    set(_result "${_default_match}")
+                    set(_fallback_result "${_default_match}")
                     string(REGEX REPLACE "^[ ]*default:[ ]*"
-                        "" _result "${_result}")
+                        "" _fallback_result "${_fallback_result}")
                     string(REGEX REPLACE "^[ ]*[\"'](.*)[\"'][ ]*$"
-                        "\\1" _result "${_result}")
-                    break()
+                        "\\1" _fallback_result "${_fallback_result}")
                 endif()
             endif()
         endforeach()
+    endif()
+
+    if(_platform_result)
+        set(_result "${_platform_result}")
+    else()
+        set(_result "${_fallback_result}")
     endif()
 
     set(${output_variable} "${_result}" PARENT_SCOPE)

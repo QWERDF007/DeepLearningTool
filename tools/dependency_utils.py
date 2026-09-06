@@ -111,6 +111,18 @@ def build_config_directory(config: str) -> str:
     return BUILD_CONFIG_DIRECTORIES.get(config.lower(), config)
 
 
+def dependency_default_value(dep: dict[str, Any], platform: str | None = None) -> str | None:
+    """返回当前平台的默认依赖路径，缺少平台值时回退到 default。"""
+
+    if platform is None:
+        platform = platform_key()
+    platform_value = dep.get(f"{platform}_default")
+    if platform_value not in (None, ""):
+        return str(platform_value)
+    fallback = dep.get("default")
+    return None if fallback in (None, "") else str(fallback)
+
+
 def is_direct_root(value: str) -> bool:
     """判断 root 字段是否已经是路径而不是 CMake 变量名。"""
 
@@ -223,7 +235,7 @@ def resolve_dependency_root(
             if cache_root.exists():
                 return cache_root
 
-    default_value = dep.get("default")
+    default_value = dependency_default_value(dep, platform)
     if default_value:
         candidate = resolve_project_path(str(default_value), repo_root)
         if candidate.exists():

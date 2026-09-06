@@ -13,7 +13,14 @@ if str(ROOT) not in sys.path:
 
 import pytest
 
-from tools.dependency_utils import build_dll_variant_sets, dll_matches_config, expand_dependency_pattern, load_dependencies, resolve_dependency_root
+from tools.dependency_utils import (
+    build_dll_variant_sets,
+    dll_matches_config,
+    expand_dependency_pattern,
+    load_dependencies,
+    platform_key,
+    resolve_dependency_root,
+)
 from tools.package_app import verify_package
 
 
@@ -85,7 +92,7 @@ def test_cmake_default_reader_returns_manifest_values(tmp_path: Path) -> None:
     lines = (build / "defaults.txt").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 4
     deps = {
-        str(dep["name"]): str(dep.get("default", ""))
+        str(dep["name"]): str(dep.get(f"{platform_key()}_default", dep.get("default", "")))
         for dep in load_dependencies(ROOT / "tools" / "dependencies.yaml")
     }
     assert lines[0] == deps["sqlite"]
@@ -209,7 +216,8 @@ def test_verify_package_checks_required_windows_runtime(tmp_path: Path) -> None:
     (package_dir / "config" / "settings").mkdir(parents=True)
     (package_dir / "config" / "models").mkdir(parents=True)
     (package_dir / "python").mkdir(parents=True)
-    (package_dir / "dltool.exe").write_bytes(b"executable")
+    executable_name = "dltool.exe" if os.name == "nt" else "dltool"
+    (package_dir / executable_name).write_bytes(b"executable")
     (package_dir / "dltool_core.dll").write_bytes(b"module")
     (package_dir / ".dltool_package").write_text("version=0.0.1\n", encoding="utf-8")
     for name in ("Qt6Core.dll", "Qt6Gui.dll", "Qt6Qml.dll", "Qt6Quick.dll"):
@@ -226,3 +234,24 @@ def test_release_filter_excludes_debug_suffix_variants() -> None:
     assert "tbb12_debug.dll" in debug_names
     assert "tbb12.dll" in release_names
     assert not dll_matches_config(paths[1], "release", debug_names, release_names)
+
+
+def test_dependency_utils_resolve_platform_specific_default(tmp_path: Path) -> None:
+    """Platform-specific defaults override the generic fallback."""
+    linux_root = tmp_path / "linux_root"
+    windows_root = tmp_path / "windows_root"
+    linux_root.mkdir()
+    windows_root.mkdir()
+    build_dir = tmp_path / "build"
+    build_dir.mkdir()
+
+    dep = {
+        "name": "sample",
+        "root": "SAMPLE_ROOT",
+        "default": windows_root.as_posix(),
+        "linux_default": linux_root.as_posix(),
+        "cmake": "cmake/ConfigSample.cmake",
+    }
+
+    assert resolve_dependency_root(dep, build_dir, repo_root=tmp_path, platform="linux") == linux_root.resolve()
+    assert resolve_dependency_root(dep, build_dir, repo_root=tmp_path, platform="windows") == windows_root.resolve()
