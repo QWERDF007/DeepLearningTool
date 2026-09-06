@@ -151,7 +151,7 @@ qint64 EvaluationFixture::addClass(const QString &name, const QString &group, co
 
     database::ProjectDataBase database(projectDatabasePath());
     QString                   database_error;
-    qint64                    class_id = -1;
+    int64_t                   class_id = -1;
     if (!database.addLabelClass(name, color,
                                 {
     },

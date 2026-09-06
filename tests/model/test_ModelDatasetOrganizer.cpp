@@ -26,7 +26,7 @@ struct ExportImage
     qint64      dataset_id{0};
     QString     path;
     QVariantMap image_level;
-    std::vector<qint64> labels;
+    std::vector<int64_t> labels;
 };
 
 struct ExportLabel
