@@ -13,7 +13,8 @@ if str(ROOT) not in sys.path:
 
 import pytest
 
-from tools.dependency_utils import load_dependencies, resolve_dependency_root
+from tools.dependency_utils import build_dll_variant_sets, dll_matches_config, expand_dependency_pattern, load_dependencies, resolve_dependency_root
+from tools.package_app import verify_package
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -179,3 +180,49 @@ def test_dependency_utils_resolve_dependency_root(tmp_path: Path, monkeypatch) -
     monkeypatch.setenv("SAMPLE_ROOT", str(env_root))
     res = resolve_dependency_root(dep, build_dir, repo_root=tmp_path)
     assert res == env_root.resolve()
+
+
+def test_dependency_pattern_expands_build_configuration_directory(tmp_path: Path) -> None:
+    """Expand manifest build_config placeholders to the platform directory name."""
+    release_dir = tmp_path / "runtime" / "Release"
+    release_dir.mkdir(parents=True)
+    expected = release_dir / "runtime.dll"
+    expected.write_bytes(b"runtime")
+
+    matches = expand_dependency_pattern(
+        tmp_path,
+        "runtime/{build_config}/*.dll",
+        "release",
+    )
+
+    assert matches == [expected.resolve()]
+
+
+def test_verify_package_checks_required_windows_runtime(tmp_path: Path) -> None:
+    """Verify a Windows package contains the executable, modules, configs, and Qt runtime."""
+    build_dir = tmp_path / "build"
+    module_dir = build_dir / "dltool" / "core"
+    module_dir.mkdir(parents=True)
+    (module_dir / "dltool_core.dll").write_bytes(b"module")
+
+    package_dir = tmp_path / "package"
+    (package_dir / "config" / "settings").mkdir(parents=True)
+    (package_dir / "config" / "models").mkdir(parents=True)
+    (package_dir / "python").mkdir(parents=True)
+    (package_dir / "dltool.exe").write_bytes(b"executable")
+    (package_dir / "dltool_core.dll").write_bytes(b"module")
+    (package_dir / ".dltool_package").write_text("version=0.0.1\n", encoding="utf-8")
+    for name in ("Qt6Core.dll", "Qt6Gui.dll", "Qt6Qml.dll", "Qt6Quick.dll"):
+        (package_dir / name).write_bytes(b"qt")
+
+    verify_package(package_dir, build_dir, require_qt_runtime=True)
+
+
+def test_release_filter_excludes_debug_suffix_variants() -> None:
+    """Exclude paired _debug.dll files from a release dependency set."""
+    paths = [Path("tbb12.dll"), Path("tbb12_debug.dll")]
+    debug_names, release_names = build_dll_variant_sets(paths)
+
+    assert "tbb12_debug.dll" in debug_names
+    assert "tbb12.dll" in release_names
+    assert not dll_matches_config(paths[1], "release", debug_names, release_names)

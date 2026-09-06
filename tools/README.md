@@ -12,7 +12,7 @@ python --version
 
 ## `package_app.py`
 
-`package_app.py` 用于生成 release 发布包，默认从 `build/` 读取构建产物，输出到 `install/DeepLearningTool-<version>/`。
+`package_app.py` 用于生成 release 发布包，默认从 `build/` 读取构建产物，输出到 `install/DeepLearningTool-<version>/`。发布包默认执行完整性校验；缺少依赖、配置或运行时文件时命令失败，不生成假可用包。
 
 它会执行这些步骤：
 
@@ -20,16 +20,24 @@ python --version
 - 从 `build/dltool/<module>/` 复制项目 DLL 或 so，避免使用 `build/bin` 中可能存在的旧链接。
 - Windows 下只从 `build/bin` 额外复制 allowlist 中的本地 DLL，目前是 `quickui.dll`。
 - 按 `tools/dependencies.yaml` 复制第三方运行库，默认只处理 release 条目，跳过 `config: debug`。
+- Release 包会过滤与 release 成对出现的 `*d.dll` 和 `*_debug.dll` 变体。
 - Windows 下复制 MSVC runtime、Windows SDK 的 `dxcompiler.dll` 和 `dxil.dll`，并运行 `windeployqt` 部署 Qt 运行时。
 - Windows 下优先使用 `cmake/ConfigQT.cmake` 或 `CMakeCache.txt` 中的 Qt6 路径，最后才回退到 PATH，避免误用旧 Qt。
 - Windows release 包会删除 `qmltooling/qmldbg_*.dll` 调试插件。
 - Linux/macOS 下复制 Qt QML/plugins/translations，扫描 ELF 依赖，并在可用时用 `patchelf` 设置 rpath。
 - 写入 `.dltool_package` marker，供下次安全清理输出目录使用。
+- 可用 `--build` 在打包前构建已配置的 CMake 构建树，随后校验可执行文件、项目 DLL、配置、Python 运行时和 Qt 核心运行库。
 
 常用命令：
 
 ```powershell
 python tools\package_app.py
+```
+
+构建并直接部署到指定目录：
+
+```powershell
+python tools\package_app.py --build --install-dir F:\dltool
 ```
 
 ```bash
@@ -39,7 +47,7 @@ python tools/package_app.py
 指定构建目录和输出目录：
 
 ```powershell
-python tools\package_app.py --build-dir build --install-dir D:\Project\DeepLearningTool\install\DeepLearningTool-0.0.1
+python tools\package_app.py --build-dir build --install-dir D:\Project\DeepLearningTool\install\DeepLearningTool-<version>
 ```
 
 跳过 Qt 部署和系统运行库，适合快速检查脚本复制逻辑：
@@ -59,9 +67,13 @@ python tools\package_app.py --install-dir build\package_check --skip-windeployqt
 | `--qt-root` / `-QtRoot` | Linux/macOS 下显式指定 Qt 安装根目录。 |
 | `--skip-windeployqt` / `--skip-qt` | 跳过 Qt 部署。 |
 | `--skip-dependencies` | 跳过 `dependencies.yaml` 中声明的第三方依赖。 |
+| `--allow-missing-dependencies` | 允许依赖清单缺项并生成不完整包；仅用于诊断。 |
 | `--skip-system-libs` | 跳过 MSVC/SDK 或 ELF 系统依赖收集。 |
 | `--include-pdb` | 复制 PDB 调试符号。 |
 | `--include-qml-module-dir` | 额外复制散装 QML 模块目录。 |
+| `--build` | 打包前执行 `cmake --build`。 |
+| `--parallel` | `--build` 使用的并行度，默认 `4`。 |
+| `--skip-verify` | 跳过发布包完整性校验。 |
 | `--no-clean` | 不清理输出目录，直接复用。 |
 | `--force-clean` | 即使输出目录没有 `.dltool_package` marker，也强制清理。 |
 

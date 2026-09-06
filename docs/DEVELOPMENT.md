@@ -37,6 +37,14 @@ cmake --build build --config Release --parallel 4
 
 应用入口是 `build/bin/dltool.exe`（Windows）或对应平台的 `dltool`。直接运行前应先完成依赖链接，并确认 Qt QML import path 和第三方动态库可用。测试使用的离屏软件渲染环境不等同于真实桌面运行环境。
 
+## 发布部署
+
+Release 发布包的完整参数和依赖清单见 [`tools/README.md`](../tools/README.md)。Windows 下可用以下命令构建并部署到指定目录；脚本会在发布后校验必需运行时文件：
+
+```powershell
+python tools\package_app.py --build --install-dir F:\dltool
+```
+
 ## 运行任务所需的 Python
 
 模型任务通过全局设置取得 Python 环境目录，再由 `ExternalModelTaskRunner` 启动外部脚本。项目级测试可以在启动测试时覆盖环境目录：

@@ -17,6 +17,12 @@ PROJECT_NAME = "dltool"
 PROJECT_DLL_PREFIX = f"{PROJECT_NAME}_"
 MARKER_FILE = ".dltool_package"
 CONFIG_DIR_NAMES = {"debug", "release", "relwithdebinfo", "minsizerel"}
+BUILD_CONFIG_DIRECTORIES = {
+    "debug": "Debug",
+    "release": "Release",
+    "relwithdebinfo": "RelWithDebInfo",
+    "minsizerel": "MinSizeRel",
+}
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -97,6 +103,12 @@ def dependency_destinations(dep: dict[str, Any]) -> list[str]:
     """返回依赖链接目标目录列表。"""
 
     return normalize_list(dep.get("destinations", dep.get("dest")))
+
+
+def build_config_directory(config: str) -> str:
+    """返回构建配置对应的目录名。"""
+
+    return BUILD_CONFIG_DIRECTORIES.get(config.lower(), config)
 
 
 def is_direct_root(value: str) -> bool:
@@ -232,15 +244,17 @@ def resolve_dependency_root(
     return None
 
 
-def expand_dependency_pattern(root: Path, pattern: str) -> list[Path]:
-    """在依赖根目录下展开文件匹配模式。"""
+def expand_dependency_pattern(root: Path, pattern: str, config: str = "release") -> list[Path]:
+    """按构建配置展开依赖根目录下的文件匹配模式。"""
 
-    full_pattern = str(root / pattern)
+    build_config = build_config_directory(config)
+    rendered_pattern = pattern.replace("{build_config}", build_config)
+    full_pattern = str(root / rendered_pattern)
     matches = [Path(match).resolve(strict=False) for match in glob.glob(full_pattern)]
     if matches:
         return [path for path in matches if path.is_file()]
-    if "*" not in pattern and "?" not in pattern:
-        candidate = (root / pattern).resolve(strict=False)
+    if "*" not in rendered_pattern and "?" not in rendered_pattern:
+        candidate = (root / rendered_pattern).resolve(strict=False)
         if candidate.is_file():
             return [candidate]
     return []
@@ -337,9 +351,12 @@ def build_dll_variant_sets(paths: Iterable[Path]) -> tuple[set[str], set[str]]:
     debug_names: set[str] = set()
     release_names: set[str] = set()
     for name in names:
-        if not name.endswith("d.dll"):
+        if name.endswith("_debug.dll"):
+            release_name = f"{name[:-10]}.dll"
+        elif name.endswith("d.dll"):
+            release_name = f"{name[:-5]}.dll"
+        else:
             continue
-        release_name = f"{name[:-5]}.dll"
         if release_name in names:
             debug_names.add(name)
             release_names.add(release_name)

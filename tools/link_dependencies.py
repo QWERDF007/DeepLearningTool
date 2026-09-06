@@ -104,9 +104,7 @@ def link_external_dependencies(build_dir: Path, dependency_file: Path, config: s
 
         matched: list[Path] = []
         for pattern in patterns:
-            matches = expand_dependency_pattern(root, pattern)
-            if not matches and "*" not in pattern and "?" not in pattern:
-                warn(f"dependency file was not found: {root / pattern}")
+            matches = expand_dependency_pattern(root, pattern, config)
             matched.extend(matches)
 
         debug_names, release_names = build_dll_variant_sets(matched)
