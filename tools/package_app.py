@@ -23,6 +23,7 @@ from dependency_utils import (
     PROJECT_NAME,
     REPO_ROOT,
     build_dll_variant_sets,
+    build_config_directory,
     copy_file,
     dependency_matches_config,
     dependency_patterns,
@@ -58,12 +59,37 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--qt-root", "-QtRoot", default="")
     parser.add_argument("--skip-windeployqt", "-SkipWinDeployQt", "--skip-qt", action="store_true")
     parser.add_argument("--skip-dependencies", "--skip-manifest-dependencies", action="store_true")
+    parser.add_argument(
+        "--allow-missing-dependencies",
+        action="store_true",
+        help="Allow missing manifest dependencies and create an incomplete package.",
+    )
     parser.add_argument("--include-pdb", "-IncludePdb", "--include-debug", "-IncludeDebug", action="store_true")
     parser.add_argument("--include-qml-module-dir", "-IncludeQmlModuleDir", action="store_true")
     parser.add_argument("--no-clean", "-NoClean", action="store_true")
     parser.add_argument("--force-clean", "-ForceClean", action="store_true")
     parser.add_argument("--skip-system-libs", action="store_true")
+    parser.add_argument("--build", action="store_true", help="Build the configured CMake tree before packaging.")
+    parser.add_argument("--parallel", type=int, default=4, help="Build parallelism when --build is enabled (default: 4).")
+    parser.add_argument("--skip-verify", action="store_true", help="Skip post-package runtime layout verification.")
     return parser.parse_args()
+
+
+def build_release(build_dir: Path, config: str, parallel: int) -> None:
+    """构建已配置的 CMake 构建树。"""
+
+    if parallel < 1:
+        raise ValueError("--parallel must be a positive integer")
+    cache_file = build_dir / "CMakeCache.txt"
+    if not cache_file.is_file():
+        raise RuntimeError(f"CMake build tree is not configured: {build_dir}")
+    cmake = shutil.which("cmake")
+    if cmake is None:
+        raise RuntimeError("cmake was not found on PATH")
+
+    command = [cmake, "--build", str(build_dir), "--config", build_config_directory(config), "--parallel", str(parallel)]
+    print("run " + " ".join(command))
+    subprocess.run(command, check=True)
 
 
 def project_version(repo_root: Path = REPO_ROOT) -> str:
@@ -230,8 +256,7 @@ def copy_project_runtime(build_dir: Path, install_dir: Path, include_pdb: bool, 
 def copy_settings_config(install_dir: Path) -> None:
     source = REPO_ROOT / "config" / "settings"
     if not source.is_dir():
-        warn(f"settings config directory was not found: {source}")
-        return
+        raise RuntimeError(f"settings config directory was not found: {source}")
     target = install_dir / "config" / "settings"
     shutil.copytree(source, target, dirs_exist_ok=True)
     print(f"copy {source} -> {target}")
@@ -240,8 +265,7 @@ def copy_settings_config(install_dir: Path) -> None:
 def copy_model_configs(install_dir: Path) -> None:
     source = REPO_ROOT / "config" / "models"
     if not source.is_dir():
-        warn(f"model config directory was not found: {source}")
-        return
+        raise RuntimeError(f"model config directory was not found: {source}")
     target = install_dir / "config" / "models"
     shutil.copytree(source, target, dirs_exist_ok=True)
     print(f"copy {source} -> {target}")
@@ -250,42 +274,69 @@ def copy_model_configs(install_dir: Path) -> None:
 def copy_easytrain_python_runtime(install_dir: Path) -> None:
     source = REPO_ROOT / "3rdparty" / "EasyTrain" / "src" / "python"
     if not source.is_dir():
-        warn(f"EasyTrain python runtime directory was not found: {source}")
-        return
+        raise RuntimeError(f"EasyTrain python runtime directory was not found: {source}")
     target = install_dir / "python"
     shutil.copytree(source, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
     print(f"copy {source} -> {target}")
 
 
-def copy_yaml_dependencies(build_dir: Path, install_dir: Path, dependency_file: Path, config: str) -> None:
+def copy_yaml_dependencies(
+    build_dir: Path,
+    install_dir: Path,
+    dependency_file: Path,
+    config: str,
+    allow_missing: bool = False,
+) -> None:
     """按 YAML 清单复制第三方运行库。"""
 
     # 第三方运行库统一由 dependencies.yaml 声明，release 打包会跳过 config: debug 的条目。
     platform = platform_key()
     target_dir = install_dir if platform == "windows" else install_dir / "lib"
     target_dir.mkdir(parents=True, exist_ok=True)
+    missing_dependencies: list[str] = []
+    copied_runtimes: dict[str, Path] = {}
 
     for dep in load_dependencies(dependency_file):
+        dependency_name = str(dep.get("name", "<unnamed>"))
         if not dependency_matches_config(dep, config):
             continue
         patterns = dependency_patterns(dep, platform)
         if not patterns:
             continue
         root = resolve_dependency_root(dep, build_dir)
-        if root is None:
-            warn(f"skip dependency {dep.get('name', '<unnamed>')}, root {dep.get('root')} was not found")
+        if root is None or not root.is_dir():
+            missing_dependencies.append(f"{dependency_name} (root: {root or dep.get('root')})")
             continue
         matched: list[Path] = []
         for pattern in patterns:
-            matches = expand_dependency_pattern(root, pattern)
-            if not matches and "*" not in pattern and "?" not in pattern:
-                warn(f"dependency file was not found: {root / pattern}")
+            matches = expand_dependency_pattern(root, pattern, config)
             matched.extend(matches)
+        matched = list(dict.fromkeys(matched))
+        if not matched:
+            missing_dependencies.append(f"{dependency_name} (root: {root})")
+            continue
         debug_names, release_names = build_dll_variant_sets(matched)
         for runtime in matched:
             if platform == "windows" and not dll_matches_config(runtime, config, debug_names, release_names):
                 continue
-            copy_file(runtime, target_dir / runtime.name)
+            source = runtime.resolve(strict=True)
+            destination_key = runtime.name.lower()
+            previous_source = copied_runtimes.get(destination_key)
+            if previous_source is not None:
+                if previous_source != source:
+                    raise RuntimeError(
+                        f"runtime dependency name collision for {runtime.name}: "
+                        f"{previous_source} and {source}"
+                    )
+                continue
+            copy_file(source, target_dir / runtime.name)
+            copied_runtimes[destination_key] = source
+
+    if missing_dependencies:
+        message = "missing runtime dependencies: " + "; ".join(missing_dependencies)
+        if not allow_missing:
+            raise RuntimeError(message)
+        warn(message)
 
 
 def version_key(path: Path) -> tuple[int, ...]:
@@ -447,18 +498,44 @@ def invoke_windeployqt(build_dir: Path, install_dir: Path, exe: Path, explicit: 
     subprocess.run(command, check=True)
 
 
-def write_windows_marker(install_dir: Path, build_dir: Path, architecture: str, skip_dependencies: bool, include_qml_module_dir: bool) -> None:
-    """写入 Windows 发布包 marker 文件。"""
+def write_package_marker(
+    install_dir: Path,
+    build_dir: Path,
+    version: str,
+    extra_lines: tuple[str, ...] = (),
+) -> None:
+    """写入发布包 marker 文件。"""
 
     lines = [
         "generated_by=tools/package_app.py",
         f"build_dir={build_dir}",
         "config=release",
-        f"architecture={architecture}",
-        f"skip_dependencies={int(skip_dependencies)}",
-        f"include_qml_module_dir={int(include_qml_module_dir)}",
+        f"version={version}",
+        *extra_lines,
     ]
     (install_dir / MARKER_FILE).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_windows_marker(
+    install_dir: Path,
+    build_dir: Path,
+    architecture: str,
+    version: str,
+    skip_dependencies: bool,
+    include_qml_module_dir: bool,
+) -> None:
+    """写入 Windows 发布包 marker 文件。"""
+
+    write_package_marker(
+        install_dir,
+        build_dir,
+        version,
+        (
+            f"architecture={architecture}",
+            f"skip_dependencies={int(skip_dependencies)}",
+            f"include_qml_module_dir={int(include_qml_module_dir)}",
+        ),
+    )
 
 
 def first_existing_dir(candidates: list[Path]) -> Path | None:
@@ -668,6 +745,80 @@ def patch_rpath_if_possible(install_dir: Path) -> None:
             warn(f"failed to set rpath for {elf_file}")
 
 
+def is_reparse_point(path: Path) -> bool:
+    """判断路径是否为符号链接或 Windows reparse point。"""
+
+    if path.is_symlink():
+        return True
+    if os.name != "nt":
+        return False
+    try:
+        attributes = os.stat(path, follow_symlinks=False).st_file_attributes
+    except OSError:
+        return False
+    return bool(attributes & 0x400)
+
+
+def verify_package(
+    install_dir: Path,
+    build_dir: Path,
+    require_qt_runtime: bool,
+    expected_version: str | None = None,
+) -> None:
+    """校验发布包包含可启动应用所需的文件且不含构建目录链接。"""
+
+    executable_name = f"{PROJECT_NAME}.exe" if os.name == "nt" else PROJECT_NAME
+    required_files = [install_dir / executable_name, install_dir / MARKER_FILE]
+    required_directories = [
+        install_dir / "config" / "settings",
+        install_dir / "config" / "models",
+        install_dir / "python",
+    ]
+
+    module_root = build_dir / PROJECT_NAME
+    project_dlls = immediate_project_dlls(module_root)
+    debug_names, release_names = build_dll_variant_sets(project_dlls)
+    required_files.extend(
+        install_dir / dll.name
+        for dll in project_dlls
+        if dll_matches_config(dll, "release", debug_names, release_names)
+    )
+
+    if require_qt_runtime:
+        required_files.extend(install_dir / name for name in ("Qt6Core.dll", "Qt6Gui.dll", "Qt6Qml.dll", "Qt6Quick.dll"))
+
+    missing_files = [str(path) for path in required_files if not path.is_file()]
+    missing_directories = [str(path) for path in required_directories if not path.is_dir()]
+    empty_files = [str(path) for path in required_files if path.is_file() and path.stat().st_size == 0]
+    linked_paths = [str(path) for path in install_dir.rglob("*") if is_reparse_point(path)]
+    package_dlls = list(install_dir.rglob("*.dll"))
+    package_debug_names, _ = build_dll_variant_sets(package_dlls)
+    debug_files = [str(path) for path in package_dlls if path.name.lower() in package_debug_names]
+
+    marker = install_dir / MARKER_FILE
+    marker_text = marker.read_text(encoding="utf-8") if marker.is_file() else ""
+    invalid_version = expected_version is not None and f"version={expected_version}" not in marker_text.splitlines()
+
+    problems = []
+    if missing_files:
+        problems.append("missing files: " + ", ".join(missing_files))
+    if missing_directories:
+        problems.append("missing directories: " + ", ".join(missing_directories))
+    if empty_files:
+        problems.append("empty files: " + ", ".join(empty_files))
+    if linked_paths:
+        problems.append("package contains links: " + ", ".join(linked_paths))
+    if debug_files:
+        problems.append("package contains release-paired debug DLLs: " + ", ".join(debug_files))
+    if invalid_version:
+        problems.append(f"marker version does not match {expected_version}")
+    if problems:
+        raise RuntimeError("package verification failed: " + "; ".join(problems))
+
+    file_count = sum(1 for path in install_dir.rglob("*") if path.is_file())
+    print(f"package verification complete: {file_count} files")
+
+
 def main() -> int:
     """执行 release 打包主流程。"""
 
@@ -678,9 +829,13 @@ def main() -> int:
 
     if not build_dir.is_dir():
         raise RuntimeError(f"build dir does not exist: {build_dir}")
+    if args.build:
+        build_release(build_dir, args.config, args.parallel)
 
     source_exe = find_executable(build_dir)
+    version = project_version()
     clear_install_directory(install_dir, not args.no_clean, args.force_clean)
+    write_package_marker(install_dir, build_dir, version, ("state=incomplete",))
 
     packaged_exe = install_dir / source_exe.name
     copy_file(source_exe, packaged_exe)
@@ -693,9 +848,13 @@ def main() -> int:
     if args.skip_dependencies:
         print("skip dependencies")
     elif dependency_file.is_file():
-        copy_yaml_dependencies(build_dir, install_dir, dependency_file, "release")
+        copy_yaml_dependencies(build_dir, install_dir, dependency_file, args.config, args.allow_missing_dependencies)
     else:
-        warn(f"skip dependencies, missing {dependency_file}")
+        message = f"dependency manifest was not found: {dependency_file}"
+        if args.allow_missing_dependencies:
+            warn(message)
+        else:
+            raise RuntimeError(message)
 
     if platform_key() == "windows":
         arch = target_architecture(build_dir)
@@ -706,7 +865,9 @@ def main() -> int:
             copy_windows_sdk_dependencies(install_dir, arch)
         invoke_windeployqt(build_dir, install_dir, packaged_exe, args.windeployqt, args.skip_windeployqt)
         cleanup_release_debug_artifacts(install_dir)
-        write_windows_marker(install_dir, build_dir, arch, args.skip_dependencies, args.include_qml_module_dir)
+        write_windows_marker(install_dir, build_dir, arch, version, args.skip_dependencies, args.include_qml_module_dir)
+        if not args.skip_verify:
+            verify_package(install_dir, build_dir, not args.skip_windeployqt, version)
         print(f"\npackage complete: {install_dir}")
         print(f"double-click to run: {packaged_exe}")
     else:
@@ -716,10 +877,9 @@ def main() -> int:
         patch_rpath_if_possible(install_dir)
         write_unix_launcher(install_dir)
         write_qt_conf(install_dir)
-        (install_dir / MARKER_FILE).write_text(
-            f"generated_by=tools/package_app.py\nbuild_dir={build_dir}\nconfig=release\n",
-            encoding="utf-8",
-        )
+        write_package_marker(install_dir, build_dir, version)
+        if not args.skip_verify:
+            verify_package(install_dir, build_dir, not args.skip_windeployqt, version)
         print(f"\npackage complete: {install_dir}")
         print(f"run on Linux/macOS: {install_dir / f'run_{PROJECT_NAME}.sh'}")
     return 0

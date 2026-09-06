@@ -5,7 +5,7 @@ set(PROJECT_NAME "dltool")
 set(PROJECT_NAME_LONG "DeepLearningTool")
 project(${PROJECT_NAME}
         LANGUAGES C CXX
-        VERSION 0.0.1
+        VERSION 0.0.2
         DESCRIPTION "深度学习工具"
 )
 
