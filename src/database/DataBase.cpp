@@ -1,6 +1,6 @@
 #include "database/DataBase.h"
 
-#include "database/SqlDef.h"
+#include "DatabaseSchema.h"
 #include "database/ddl/DatasetsTable.h"
 #include "database/ddl/ImagesTable.h"
 #include "database/ddl/LabelClassesTable.h"
@@ -8,7 +8,6 @@
 #include "database/ddl/ModelsTable.h"
 #include "database/ddl/ProjectTable.h"
 #include "database/ddl/RecentProjectsTable.h"
-#include "database/ddl/SettingsTableTemplate.h"
 #include "database/ddl/TagClassesTable.h"
 #include "database/ddl/TagsTable.h"
 
@@ -26,7 +25,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaType>
-#include <QRegularExpression>
 #include <QSet>
 #include <algorithm>
 #include <cstdint>
@@ -206,6 +204,11 @@ void DataBase::createDataBase()
 ProjectDataBase::ProjectDataBase(const QString &path, QObject *parent)
     : DataBase(path, parent)
 {
+    if (pool_ != nullptr)
+    {
+        auto db = pool_->get();
+        detail::ensureProjectSchema(db, &schema_error_);
+    }
 }
 
 ProjectDataBase::~ProjectDataBase() {}
@@ -223,20 +226,14 @@ bool ProjectDataBase::initProject(const QString &name, const int method, const Q
         }
         // create project table
         auto db = pool_->get();
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateProject));
+        if (!detail::ensureProjectSchema(db, &err_msg))
+            return false;
         db(sqlpp::insert_into(ProjectTable)
                .set(ProjectTable.name = name.toUtf8().constData(), ProjectTable.method = method,
                     ProjectTable.path          = path.toUtf8().constData(),
                     ProjectTable.description   = description.toUtf8().constData(),
                     ProjectTable.imageBasePath = image_base_path.toUtf8().constData(), ProjectTable.ctime = ctime,
                     ProjectTable.mtime = mtime));
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateDatasets));
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateImages));
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateLabelClasses));
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateLabels));
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateTagClasses));
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateTags));
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
         return true;
     }
     catch (const std::exception &e)
@@ -257,6 +254,8 @@ bool ProjectDataBase::openProject(QString &name, int &method, QString &path, QSt
             return false;
         }
         auto db = pool_->get();
+        if (!detail::ensureProjectSchema(db, &err_msg))
+            return false;
         auto data
             = db(sqlpp::select(ProjectTable.name, ProjectTable.method, ProjectTable.path, ProjectTable.description,
                                ProjectTable.imageBasePath, ProjectTable.ctime, ProjectTable.mtime)
@@ -296,6 +295,8 @@ bool ProjectDataBase::updateProject(const QString &name, const QString &path, co
             return false;
         }
         auto db = pool_->get();
+        if (!detail::ensureProjectSchema(db, &err_msg))
+            return false;
         db(sqlpp::update(ProjectTable)
                .set(ProjectTable.name = name.toUtf8().constData(), ProjectTable.path = path.toUtf8().constData(),
                     ProjectTable.description   = description.toUtf8().constData(),
@@ -317,6 +318,8 @@ bool ProjectDataBase::getProjectBaseInfo(const QString &path, QString &name, qin
         if (!QFile::exists(path))
             return false;
         sqlpp::sqlite3::connection db = DataBase::connect(path, SQLITE_OPEN_READONLY);
+        if (!detail::ensureSchema(db.native_handle(), detail::SchemaKind::Project, &err_msg))
+            return false;
         auto data = db(sqlpp::select(ProjectTable.name, ProjectTable.mtime).from(ProjectTable).unconditionally());
         if (!data.empty())
         {
@@ -342,6 +345,8 @@ bool ProjectDataBase::updateProjectBaseInfo(const QString &path, const QString &
     try
     {
         sqlpp::sqlite3::connection db = DataBase::connect(path, SQLITE_OPEN_READWRITE);
+        if (!detail::ensureSchema(db.native_handle(), detail::SchemaKind::Project, &err_msg))
+            return false;
         db(sqlpp::update(ProjectTable)
                .set(ProjectTable.name        = new_name.toUtf8().constData(),
                     ProjectTable.description = new_description.toUtf8().constData(), ProjectTable.mtime = new_mtime)
@@ -360,6 +365,8 @@ bool ProjectDataBase::getProjectInfo(const QString &path, QVariantMap &project_i
     try
     {
         sqlpp::sqlite3::connection db = DataBase::connect(path, SQLITE_OPEN_READONLY);
+        if (!detail::ensureSchema(db.native_handle(), detail::SchemaKind::Project, &err_msg))
+            return false;
 
         auto data
             = db(sqlpp::select(ProjectTable.name, ProjectTable.method, ProjectTable.path, ProjectTable.description,
@@ -397,6 +404,8 @@ bool ProjectDataBase::getLabelInfo(const QString &path, QVariantMap &label_info,
         label_info.insert("label_instances_images", "");
 
         sqlpp::sqlite3::connection db = DataBase::connect(path, SQLITE_OPEN_READONLY);
+        if (!detail::ensureSchema(db.native_handle(), detail::SchemaKind::Project, &err_msg))
+            return false;
 
         QString classes_info;
         int     label_classes_cnt = 0;
@@ -1638,7 +1647,8 @@ bool ProjectDataBase::getAllModels(std::vector<int64_t> &model_ids, std::vector<
         extra_data.clear();
 
         auto db = pool_->get();
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
+        if (!detail::ensureProjectSchema(db, &err_msg))
+            return false;
         auto data
             = db(sqlpp::select(ModelsTable.id, ModelsTable.uuid, ModelsTable.name, ModelsTable.frameworkName,
                                ModelsTable.modelArchitecture, ModelsTable.ctime, ModelsTable.mtime,
@@ -1679,7 +1689,8 @@ bool ProjectDataBase::addModel(const QString &uuid, const QString &name, const Q
         }
 
         auto db = pool_->get();
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
+        if (!detail::ensureProjectSchema(db, &err_msg))
+            return false;
 
         const QByteArray uuid_bytes               = uuid.toUtf8();
         const QByteArray name_bytes               = name.toUtf8();
@@ -1712,7 +1723,8 @@ bool ProjectDataBase::updateModelName(const int64_t model_id, const QString &nam
         }
 
         auto db = pool_->get();
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
+        if (!detail::ensureProjectSchema(db, &err_msg))
+            return false;
 
         const QByteArray name_bytes = name.toUtf8();
         db(sqlpp::update(ModelsTable)
@@ -1739,7 +1751,8 @@ bool ProjectDataBase::updateModelExtraData(const int64_t model_id, const std::ve
         }
 
         auto db = pool_->get();
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
+        if (!detail::ensureProjectSchema(db, &err_msg))
+            return false;
         db(sqlpp::update(ModelsTable)
                .set(ModelsTable.extraData = extra_data)
                .where(ModelsTable.id == model_id));
@@ -1763,7 +1776,8 @@ bool ProjectDataBase::updateModelMtime(const int64_t model_id, const qint64 mtim
         }
 
         auto db = pool_->get();
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
+        if (!detail::ensureProjectSchema(db, &err_msg))
+            return false;
         db(sqlpp::update(ModelsTable)
                .set(ModelsTable.mtime = mtime)
                .where(ModelsTable.id == model_id));
@@ -1787,7 +1801,8 @@ bool ProjectDataBase::deleteModel(const int64_t model_id, QString &err_msg) cons
         }
 
         auto db = pool_->get();
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateModels));
+        if (!detail::ensureProjectSchema(db, &err_msg))
+            return false;
         db(sqlpp::remove_from(ModelsTable).where(ModelsTable.id == model_id));
         return true;
     }
@@ -1996,7 +2011,7 @@ RecentProjectsDataBase::RecentProjectsDataBase(const QString &path, QObject *par
     if (pool_ != nullptr)
     {
         auto db = pool_->get();
-        db.execute(SqlDef::SqlMap.at(SqlDef::CreateRecentProjects));
+        detail::ensureRecentProjectsSchema(db, &schema_error_);
     }
 }
 
@@ -2006,6 +2021,11 @@ bool RecentProjectsDataBase::addProject(const QString &path, QString &err_msg) c
 {
     try
     {
+        if (!schema_error_.isEmpty())
+        {
+            err_msg = schema_error_;
+            return false;
+        }
         if (pool_ == nullptr)
         {
             err_msg = QString("打开数据库失败, %1").arg(path_);
@@ -2026,6 +2046,11 @@ bool RecentProjectsDataBase::removeProject(const QString &path, QString &err_msg
 {
     try
     {
+        if (!schema_error_.isEmpty())
+        {
+            err_msg = schema_error_;
+            return false;
+        }
         if (pool_ == nullptr)
         {
             err_msg = QString("打开数据库失败, %1").arg(path_);
@@ -2046,6 +2071,11 @@ int RecentProjectsDataBase::getProjects(std::vector<QString> &paths, QString &er
 {
     try
     {
+        if (!schema_error_.isEmpty())
+        {
+            err_msg = schema_error_;
+            return 0;
+        }
         if (pool_ == nullptr)
         {
             err_msg = QString("打开数据库失败, %1").arg(path_);
@@ -2092,12 +2122,6 @@ QString variantToText(const QVariant &v)
 }
 
 /// 每个 key-value 表通用的 save 逻辑
-bool isValidSettingsTableName(const QString &table_name)
-{
-    static const QRegularExpression pattern(QStringLiteral("^[A-Za-z_][A-Za-z0-9_]*$"));
-    return pattern.match(table_name).hasMatch();
-}
-
 QString sqlString(const QString &value)
 {
     QString escaped = value;
@@ -2111,11 +2135,6 @@ QString sqlString(const QString &value)
 
 bool SettingsDataBase::ensureSettingsTable(const QString &table_name, QString &err_msg) const
 {
-    if (!isValidSettingsTableName(table_name))
-    {
-        err_msg = QStringLiteral("invalid settings table name: %1").arg(table_name);
-        return false;
-    }
     if (pool_ == nullptr)
     {
         err_msg = QStringLiteral("settings database is not open: %1").arg(path_);
@@ -2125,8 +2144,7 @@ bool SettingsDataBase::ensureSettingsTable(const QString &table_name, QString &e
     try
     {
         auto db = pool_->get();
-        db.execute(ddl::createSettingsTableSql(table_name.toStdString()));
-        return true;
+        return detail::ensureSettingsTable(db, table_name, &err_msg);
     }
     catch (const std::exception &e)
     {

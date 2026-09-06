@@ -47,6 +47,30 @@
 
 ---
 
+## 2026-09-07 — 统一数据库 schema 生命周期
+
+**目标**
+- 将项目、最近项目、模型和任务数据库的建表入口收敛到统一的版本化 schema 入口，并验证未知版本、结构错误和迁移回滚行为。
+
+**当前状态**
+- 已完成：新增 `DatabaseSchema`，通过 Qt resource 读取现有 DDL，统一处理 `PRAGMA user_version`、空库初始化、版本拒绝、事务回滚和表结构校验。
+- 已完成：项目、最近项目、模型和任务数据库改用统一 schema 初始化；设置数据库的动态表也复用同一 schema resource，并校验固定字段结构。
+- 已完成：删除 `SqlDef`、`SettingsTableTemplate` 运行时建表入口；项目静态读取与项目管理在 schema 初始化失败时正确返回失败，不再把无效项目当作成功打开。
+- 已完成：修复 `DataBase.cpp` 中静态项目读取调用 `SchemaKind` 时遗漏 `detail::` 命名空间的问题，并重编所有受基类布局变化影响的测试目标。
+- 保留：`tools/dependencies.yaml` 是已有用户改动，不属于本阶段。
+
+**验证证据**
+- `cmake -S . -B build -DDLT_BUILD_TESTS=ON` → 配置与生成成功。
+- `cmake --build build --config Release --target dltool_database_database_schema_tests dltool_model_project_creation_test dltool_model_dataset_tests dltool_model_tasks_tests --parallel 4` → Release 目标构建成功。
+- `ctest --test-dir build -C Release -R '^(dltool_database_database_schema_tests|dltool_model_dataset_tests|dltool_model_tasks_tests)$' --output-on-failure` → 3/3 通过。
+- `python tools\\run_project_tests.py --project-layer project-creation --project-root F:\\tmp\\schema-phase-15 --recreate-project --skip-build` → 1/1 通过；项目根目录与 `user_version=1` 均由新夹具验证。
+- `git -c safe.directory=F:/Projects/DeepLearningTool diff --check` → 通过。
+
+**下一步**
+- 按 `final_plan.md` 进入阶段 3，先为任务句柄、取消、项目关闭等待和迟到回调补充行为测试，再收敛后台任务生命周期。
+
+---
+
 ## 2026-09-06 — 快照化后台导出与评估输入
 
 **目标**

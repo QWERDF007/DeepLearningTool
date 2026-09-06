@@ -36,13 +36,15 @@ bool failFromException(QString *err_msg, const std::exception &error, const QStr
 ModelDataBase::ModelDataBase(const QString &path, QObject *parent)
     : DataBase(path, parent)
 {
-    ensureSchema(nullptr);
+    ensureSchema(&schema_error_);
 }
 
 ModelDataBase::~ModelDataBase() = default;
 
 bool ModelDataBase::ensureSchema(QString *err_msg) const
 {
+    if (!schema_error_.isEmpty())
+        return setError(err_msg, schema_error_);
     if (connectionPool() == nullptr)
         return setError(err_msg, QString("数据库连接池为空"));
     auto db = connectionPool()->get();

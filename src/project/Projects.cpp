@@ -112,29 +112,31 @@ void Project::init()
     data_manager_->initializeQmlEngine(qml_engine_);
 }
 
-void Project::initProject()
+bool Project::initProject(QString &err_msg)
 {
     spdlog::info("初始化项目, 创建数据库: {}", path_.toUtf8().constData());
     qint64  ctime = QDateTime::currentSecsSinceEpoch();
-    QString err_msg;
     bool    ok = database_->initProject(name_, method_, path_, description_, image_base_path_, ctime, ctime, err_msg);
     if (!ok)
     {
         spdlog::error("初始化项目失败, error: {}", err_msg.toUtf8().constData());
+        return false;
     }
     init();
+    return true;
 }
 
-void Project::openProject()
+bool Project::openProject(QString &err_msg)
 {
     spdlog::info("打开项目: {}", path_.toUtf8().constData());
-    QString err_msg;
     bool    ok = database_->openProject(name_, method_, path_, description_, image_base_path_, ctime_, mtime_, err_msg);
     if (!ok)
     {
         spdlog::error("打开项目失败, error: {}", err_msg.toUtf8().constData());
+        return false;
     }
     init();
+    return true;
 }
 
 std::tuple<bool, QString> Project::isValid(const int method, const QString &path, bool is_new)
@@ -547,10 +549,16 @@ Project *ProjectManager::createProject(const QString &name, const int method, co
         spdlog::error("创建项目失败: {}, error: {}", clean_path.toUtf8().constData(), msg.toUtf8().constData());
         return nullptr;
     }
-    qint64 ctime     = QDateTime::currentSecsSinceEpoch();
-    current_project_ = new Project(name, method, clean_path, description, image_base_path, ctime, ctime, this);
-    current_project_->setQmlEngine(qml_engine_);
-    current_project_->initProject();
+    qint64 ctime = QDateTime::currentSecsSinceEpoch();
+    auto  *project = new Project(name, method, clean_path, description, image_base_path, ctime, ctime, this);
+    project->setQmlEngine(qml_engine_);
+    QString err_msg;
+    if (!project->initProject(err_msg))
+    {
+        delete project;
+        return nullptr;
+    }
+    current_project_ = project;
     recent_projects_->addProject(clean_path);
     emit currentProjectChanged();
     emit projectActivated();
@@ -574,9 +582,15 @@ Project *ProjectManager::openProject(const QString &path)
     }
     if (current_project_)
         closeProject();
-    current_project_ = new Project(clean_path, this);
-    current_project_->setQmlEngine(qml_engine_);
-    current_project_->openProject();
+    auto *project = new Project(clean_path, this);
+    project->setQmlEngine(qml_engine_);
+    QString err_msg;
+    if (!project->openProject(err_msg))
+    {
+        delete project;
+        return nullptr;
+    }
+    current_project_ = project;
     recent_projects_->openProject(current_project_->path());
     emit currentProjectChanged();
     emit projectActivated();

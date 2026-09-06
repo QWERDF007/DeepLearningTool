@@ -10,7 +10,7 @@
 - `ProjectDataBase` 面向 `.dlpro` 项目文件，封装项目元数据、数据集、图像、标注类别、标签、模型记录等读写操作。
 - `RecentProjectsDataBase` 面向应用级 `history.db`，保存最近打开项目路径。
 - `SettingsDataBase` 面向应用级 `settings.db`，按设置分类加载和保存配置行。
-- `include/database/ddl/` 保存 sqlpp11 表定义和建表 SQL，`SqlDef` 保存当前内置建表语句映射。
+- `include/database/ddl/` 保存 sqlpp11 表定义和建表 SQL；`DatabaseSchema` 统一读取这些 SQL resource，负责版本、初始化和结构校验。
 
 ## 功能定义
 
@@ -57,7 +57,7 @@ task.db
 - 不创建 `QAbstractItemModel`，不直接服务 QML。
 - 不解析 LabelMe/COCO 等外部数据格式，导入导出逻辑属于 `data`。
 - 不进行复杂业务校验，名称冲突、选择状态、过滤状态等由上层模型处理。
-- 数据库 schema 变更必须同时考虑建表 SQL、sqlpp11 表定义、读写接口和旧项目兼容。
+- 数据库 schema 变更必须更新 DDL 正本、必要的 sqlpp11 表定义、读写接口和 schema 行为测试；不保留重复的运行时建表 SQL。
 
 ## 扩展约定
 

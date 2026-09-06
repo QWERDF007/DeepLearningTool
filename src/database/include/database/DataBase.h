@@ -69,6 +69,7 @@ public:
 
 protected:
     QString path_;
+    QString schema_error_;
 
     std::size_t capacity_{5};
 

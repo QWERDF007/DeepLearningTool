@@ -51,6 +51,10 @@ set(_project_path_updates
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Quick>"
     "DLT_RUNTIME_ROOT=set:${CMAKE_BINARY_DIR}/bin"
     "DLT_TEST_ASSET_ROOT=set:${CMAKE_SOURCE_DIR}/tests/assets/model"
+    "DLT_TEST_PYTHON_ENV=reset:"
+    "DLT_TEST_PROJECT_ROOT=reset:"
+    "DLT_TEST_PROJECT_NAME=reset:"
+    "DLT_TEST_DATASET_NAME=reset:"
 )
 
 dlt_glob_sources(_project_fixture_sources

@@ -63,8 +63,8 @@ public:
     Project(const QString &path, QObject *parent = nullptr);
     ~Project();
 
-    void initProject();
-    void openProject();
+    bool initProject(QString &err_msg);
+    bool openProject(QString &err_msg);
 
     static std::tuple<bool, QString> isValid(const int method, const QString &path, bool is_new);
 

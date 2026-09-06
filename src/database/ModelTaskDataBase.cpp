@@ -38,13 +38,15 @@ bool failFromException(QString *err_msg, const std::exception &error, const QStr
 ModelTaskDataBase::ModelTaskDataBase(const QString &path, QObject *parent)
     : DataBase(path, parent)
 {
-    ensureSchema(nullptr);
+    ensureSchema(&schema_error_);
 }
 
 ModelTaskDataBase::~ModelTaskDataBase() = default;
 
 bool ModelTaskDataBase::ensureSchema(QString *err_msg) const
 {
+    if (!schema_error_.isEmpty())
+        return setError(err_msg, schema_error_);
     if (connectionPool() == nullptr)
         return setError(err_msg, QString("数据库连接池为空"));
     auto db = connectionPool()->get();

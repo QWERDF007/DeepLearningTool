@@ -1,7 +1,6 @@
 #include "DatabaseSqliteUtils.h"
 
 #include "DatabaseValueUtils.h"
-#include "database/SqlDef.h"
 #include "database/ddl/ModelDatasetsTable.h"
 #include "database/ddl/TestParamsTable.h"
 #include "database/ddl/TrainParamsTable.h"
@@ -64,26 +63,6 @@ QList<qint64> parseClassIds(const QByteArray &value)
     return result;
 }
 
-bool runSchemaSqls(sqlpp::pooled_connection<sqlpp::sqlite3::connection_base> &db, const std::initializer_list<int> &types, QString *err_msg)
-{
-    try
-    {
-        const auto &sql_map = SqlDef::SqlMap;
-        for (const int type : types)
-        {
-            const auto found = sql_map.find(type);
-            if (found == sql_map.cend())
-                return setError(err_msg, QString("缺少建表 SQL 定义"));
-            db.execute(found->second);
-        }
-        return true;
-    }
-    catch (const std::exception &e)
-    {
-        return failFromException(err_msg, e, QString("创建数据库表失败"));
-    }
-}
-
 template <typename Table>
 bool readParamsImpl(sqlpp::pooled_connection<sqlpp::sqlite3::connection_base> &db, QVariantMap &params, QString *err_msg)
 {
@@ -144,15 +123,12 @@ bool replaceParamsImpl(sqlpp::pooled_connection<sqlpp::sqlite3::connection_base>
 
 bool ensureModelSchema(sqlpp::pooled_connection<sqlpp::sqlite3::connection_base> &db, QString *err_msg)
 {
-    return runSchemaSqls(db, {SqlDef::CreateTrainParams, SqlDef::CreateModelDatasets, SqlDef::CreateTestTasks},
-                         err_msg);
+    return ensureSchema(db, SchemaKind::Model, err_msg);
 }
 
 bool ensureTaskSchema(sqlpp::pooled_connection<sqlpp::sqlite3::connection_base> &db, QString *err_msg)
 {
-    return runSchemaSqls(db, {SqlDef::CreateTaskInfo, SqlDef::CreateTestParams, SqlDef::CreateModelDatasets,
-                              SqlDef::CreatePrediction},
-                         err_msg);
+    return ensureSchema(db, SchemaKind::Task, err_msg);
 }
 
 bool readParams(sqlpp::pooled_connection<sqlpp::sqlite3::connection_base> &db, const QString &table_name, QVariantMap &params, QString *err_msg)
