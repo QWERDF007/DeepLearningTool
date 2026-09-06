@@ -3,9 +3,12 @@
 #include "common/Utils.h"
 #include "core/CoreDef.h"
 #include "database/DataBase.h"
+#include "data/DataManager.h"
 #include "feature/FeatureManager.h"
 #include "model/ModelManager.h"
 #include "model/ModelTaskController.h"
+#include "model/ModelTestTaskManager.h"
+#include "model/TaskManager.h"
 #include "settings/GlobalSettings.h"
 
 #include <spdlog/spdlog.h>

@@ -47,6 +47,53 @@
 
 ---
 
+## 2026-09-06 — 收敛构建拓扑与模型测试选择
+
+**目标**
+- 为后续架构改进建立可重复的构建依赖、模型测试选择和 Python 工具测试基线。
+
+**当前状态**
+- 已完成：调整 `src` 子目录顺序，使当前领域依赖顺序明确；公开项目接口改为前向声明，并在实现和直接使用具体类型的测试中补充必要头文件。
+- 已完成：`run_model_tests.py` 默认按 CTest 的 `model`/`qml` 标签选择测试，覆盖评估行为测试；工具测试固定使用构建目录下的 pytest 临时目录。
+- 已完成：新增工具测试 CTest 注册及构建拓扑、模型测试选择回归测试。
+- 保留：已有的发布环境配置改动和未跟踪的 `final_plan.md` 未纳入本阶段提交。
+
+**验证证据**
+- `cmake -S . -B build -DDLT_BUILD_TESTS=ON` → 配置与生成成功。
+- `cmake --build build --config Release --parallel 4` → Release 构建成功。
+- `ctest --test-dir build -C Release -R '^dltool_tools_tests$' --output-on-failure` → 1/1 通过。
+- `python tools\\run_model_tests.py --skip-build` → 33/33 通过。
+- `git diff --check` → 未发现差异格式错误。
+
+**下一步**
+- 按 `final_plan.md` 进入线程/生命周期与数据库事实源阶段，先补行为测试，再替换实现。
+
+---
+
+## 2026-09-06 — 规划 0.0.2 构建与部署
+
+**目标**
+- 将版本更新为 `0.0.2`，完善发布脚本，构建 Release 包并部署到 `F:\dltool`。
+
+**当前状态**
+- 已完成：版本入口更新为 `0.0.2`；发布脚本支持 `--build`、严格依赖缺项失败、配置/运行时校验、版本 marker、链接污染检查、重复运行库去重和 Debug DLL 过滤；部署包已生成到 `F:\dltool`。
+- 已完成：更新 `docs/DEVELOPMENT.md` 与 `tools/README.md` 的发布入口和参数索引。
+- 保留：原有未提交的 `tools/dependencies.yaml` 与未跟踪的 `final_plan.md`。
+
+**验证证据**
+- `python -m pytest tests/tools/test_dependency_defaults.py -q --basetemp build\\pytest-tmp` → 8 passed。
+- `python tools\\package_app.py --build --install-dir F:\\dltool --parallel 4` → CMake 重新配置显示版本 `0.0.2`，Release 构建成功。
+- `python tools\\package_app.py --install-dir F:\\dltool --parallel 4` → 最终发布完成，依赖候选无误报，脚本校验通过。
+- `verify_package(F:\\dltool, build, require_qt_runtime=True, expected_version=0.0.2)` → 2180 个文件校验通过。
+- `F:\\dltool` 严格扫描 → 172 个 DLL、0 个成对 Debug DLL、0 个 reparse point。
+- 最终部署后的 `F:\\dltool\\dltool.exe` 启动 10 秒烟测 → 进程持续运行，测试结束后正常关闭。
+- `git diff --check` → 未发现差异格式错误。
+
+**下一步**
+- 后续发布沿用 `python tools\\package_app.py --build --install-dir <目标目录>`，发布包完整性校验默认开启。
+
+---
+
 ## 2026-09-05 — 修复 UNC 网络路径截断及相对路径写盘问题
 
 **目标**

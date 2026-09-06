@@ -1,5 +1,6 @@
 #include "PersistentProjectFixture.h"
 
+#include "model/ModelTaskController.h"
 #include "model/ModelStorageService.h"
 #include "project/Projects.h"
 

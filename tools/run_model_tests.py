@@ -10,10 +10,7 @@ import sys
 from pathlib import Path
 
 
-DEFAULT_MODEL_TEST_REGEX = (
-    r"^dltool_model_.*_tests$|^tst_dltool_model_qml$|^tst_dltool_model_qml_registry$|"
-    r"^tst_dltool_model_qml_smoke$"
-)
+DEFAULT_MODEL_TEST_LABEL_REGEX = r"^(model|qml)$"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -77,8 +74,6 @@ def main() -> int:
         }
     )
 
-    test_regex = args.test_regex or DEFAULT_MODEL_TEST_REGEX
-
     try:
         if not args.skip_build:
             run(
@@ -94,19 +89,19 @@ def main() -> int:
                 environment,
             )
 
-        run(
-            [
-                "ctest",
-                "--test-dir",
-                str(build_dir),
-                "-C",
-                args.configuration,
-                "-R",
-                test_regex,
-                "--output-on-failure",
-            ],
-            environment,
-        )
+        ctest_command = [
+            "ctest",
+            "--test-dir",
+            str(build_dir),
+            "-C",
+            args.configuration,
+        ]
+        if args.test_regex:
+            ctest_command.extend(["-R", args.test_regex])
+        else:
+            ctest_command.extend(["-L", DEFAULT_MODEL_TEST_LABEL_REGEX])
+        ctest_command.append("--output-on-failure")
+        run(ctest_command, environment)
     except FileNotFoundError as error:
         print(f"error: command not found: {error.filename}", file=sys.stderr)
         return 127

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "data/DataSelectionTreeModel.h"
 #include "dltool/model/Export.h"
 #include "model/ModelEvaluationOptions.h"
 #include "model/ModelEvaluationViewModel.h"
@@ -14,6 +13,8 @@
 #include <QTimer>
 #include <QtQml>
 #include <memory>
+
+Q_MOC_INCLUDE("data/DataSelectionTreeModel.h")
 
 namespace dltool::data {
 class DataManager;

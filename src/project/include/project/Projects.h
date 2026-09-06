@@ -1,25 +1,42 @@
 #pragma once
 
 #include "common/Singleton.h"
-#include "data/DataManager.h"
 #include "dltool/project/Export.h"
-#include "feature/FeatureManager.h"
-#include "model/ModelManager.h"
-#include "model/ModelTaskController.h"
-#include "model/ModelTestTaskManager.h"
-#include "model/TaskManager.h"
 
 #include <QAbstractListModel>
 #include <QItemSelectionModel>
 #include <QObject>
+#include <QtQml>
 
 class QQmlApplicationEngine;
+
+Q_MOC_INCLUDE("data/DataManager.h")
+Q_MOC_INCLUDE("feature/FeatureManager.h")
+Q_MOC_INCLUDE("model/ModelManager.h")
+Q_MOC_INCLUDE("model/ModelTaskController.h")
+Q_MOC_INCLUDE("model/ModelTestTaskManager.h")
+Q_MOC_INCLUDE("model/TaskManager.h")
 
 namespace dltool::database {
 class DataBase;
 class ProjectDataBase;
 class RecentProjectsDataBase;
 } // namespace dltool::database
+
+namespace dltool::data {
+class DataManager;
+} // namespace dltool::data
+
+namespace dltool::feature {
+class FeatureManager;
+} // namespace dltool::feature
+
+namespace dltool::model {
+class ModelManager;
+class ModelTaskController;
+class ModelTestTaskManager;
+class TaskManager;
+} // namespace dltool::model
 
 namespace dltool::project {
 
