@@ -47,6 +47,49 @@
 
 ---
 
+## 2026-09-06 — 快照化后台导出与评估输入
+
+**目标**
+- 消除导出 worker 对 `DataManager`/Qt Model 的回读，并让评估图像尺寸 provider 只消费按值复制的缓存快照。
+
+**当前状态**
+- 已完成：新增 `DatasetExportSnapshot` 值实现，导出提交前复制数据集、图像、标注和类别数据，worker 不再捕获 `DataManager`。
+- 已完成：新增图像尺寸缓存快照接口，评估 provider 改为捕获 `QHash<qint64, QSize>`，缓存未命中仍由评估引擎按路径读取。
+- 已完成：新增快照排序与数据独立性测试，更新 model 模块导出边界说明。
+- 未完成：`final_plan.md` 后续阶段的任务句柄、关闭栅栏和数据库/schema 重构尚未开始。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_data_dataset_export_source_tests dltool_model_tasks_tests --parallel 4` → 构建成功。
+- `ctest --test-dir build -C Release -R "^dltool_data_dataset_export_source_tests$|^dltool_model_tasks_tests$" --output-on-failure` → 2/2 通过。
+- `ctest --test-dir build -C Release -R "^dltool_model_data_export_test$" --output-on-failure` → CTest 自动按 fixture 顺序执行项目创建、数据创建、数据导入和数据导出，4/4 通过。
+- `cmake --build build --config Release --target dltool --parallel 4` → Release 应用目标构建成功。
+- `git -c safe.directory=F:/Projects/DeepLearningTool diff --check` → 通过；未将 `tools/dependencies.yaml` 纳入本阶段改动。
+
+**下一步**
+- 按 `final_plan.md` 阶段 2 先补任务句柄、取消和项目关闭等待的行为测试，再收敛各后台执行者的生命周期。
+
+---
+
+## 2026-09-06 — 汇总架构改进最终方案
+
+**目标**
+- 将架构审查、领域拆分、线程生命周期、评估性能、QML、构建和测试验收要求收敛到唯一的 final_plan.md。
+
+**当前状态**
+- 已完成：重写 final_plan.md，去除重复路线和过时表述，保留当前仓库事实源索引及分阶段实施出口。
+- 已完成：覆盖 ProjectContext、快照跨线程、Schema、任务关闭、DataIO/GeometryKernel、ModelLifecycle、EvaluationEngine、Feature、QML、CTest 和安装验收。
+- 已确认：本工作区及 Git 历史未找到独立的 luna_final_plan.md、gemini_final_plan.md、musespark13_final_plan.md；未改动已有的 tools/dependencies.yaml。
+
+**验证证据**
+- git diff --check -- final_plan.md → 通过，未发现差异格式错误。
+- 章节结构检查 → 顶层章节无重复，文档共 12 个顶层章节。
+- Release 构建和测试 → 本轮未执行，属于文档整理。
+
+**下一步**
+- 按 final_plan.md 阶段 1 先为导出和评估输入快照补充行为测试，再实施线程边界改造。
+
+---
+
 ## 2026-09-06 — 收敛构建拓扑与模型测试选择
 
 **目标**

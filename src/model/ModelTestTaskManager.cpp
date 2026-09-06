@@ -769,12 +769,16 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
     // The marker is persisted at model extra_data scope; once it exists the
     // user's current evaluation threshold remains authoritative.
     options.apply_best_threshold = !automaticThresholdApplied(task.uuid);
-    // 复用 DataManager 后台预取的图像尺寸缓存,评估线程不再逐张打开图像文件。
-    options.image_dimensions_provider = [this](const qint64 image_id, int *width, int *height) -> bool
+    // 只把已缓存尺寸按值交给评估线程；未命中时由评估引擎按图像路径读取，
+    // 不在线程中回读 DataManager 或 ImageInstancesListModel。
+    const QHash<qint64, QSize> image_dimensions
+        = data_manager_ != nullptr ? data_manager_->imageDimensionsSnapshot() : QHash<qint64, QSize>();
+    options.image_dimensions_provider = [image_dimensions](const qint64 image_id, int *width, int *height) -> bool
     {
-        if (data_manager_ == nullptr)
+        const auto found = image_dimensions.constFind(image_id);
+        if (found == image_dimensions.cend())
             return false;
-        const QSize size = data_manager_->imageSize(image_id);
+        const QSize size = found.value();
         if (!size.isValid() || size.width() <= 0 || size.height() <= 0)
             return false;
         if (width != nullptr)

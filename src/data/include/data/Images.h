@@ -330,6 +330,14 @@ public:
      */
     QSize imageSize(int64_t image_id) const;
 
+    /**
+     * @brief 返回当前已缓存的图像尺寸快照。
+     *
+     * 该接口只复制缓存，不访问图像文件，也不触碰图像实体；调用方可以将返回值
+     * 按值交给后台任务。
+     */
+    QHash<int64_t, QSize> cachedImageSizes() const;
+
 private:
     void init();
     void rebuildImageIds();

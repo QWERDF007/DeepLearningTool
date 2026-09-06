@@ -118,7 +118,7 @@ models/<模型名>/
 数据导出属于 `data` 模块：
 
 - `ModelTaskController` 只调用 `DataManager::runDatasetExportAsync()`。
-- `data` 在工作线程创建 `DatasetExportSource`，其实现直接读取 `DataManager` 的内存数据。
+- `data` 在提交后台工作前从当前内存数据创建 `DatasetExportSnapshot`，工作线程只读取快照。
 - `ModelDatasetOrganizer` 只接收 `DatasetExportSource`，不依赖 `DataManager` 或数据库。
 
 因此大数据集导出、文件复制和配置写入均不阻塞 GUI 线程。

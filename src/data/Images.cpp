@@ -152,6 +152,12 @@ QSize ImageInstancesListModel::imageSize(const int64_t image_id) const
     return size;
 }
 
+QHash<int64_t, QSize> ImageInstancesListModel::cachedImageSizes() const
+{
+    QReadLocker locker(&size_lock_);
+    return image_sizes_;
+}
+
 void ImageInstancesListModel::init()
 {
     if (database_ == nullptr)

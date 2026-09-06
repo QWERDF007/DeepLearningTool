@@ -305,6 +305,11 @@ public:
      */
     Q_INVOKABLE QSize imageSize(const int64_t image_id) const;
 
+    /**
+     * @brief 返回评估可用的图像尺寸缓存快照，不执行文件 I/O。
+     */
+    QHash<int64_t, QSize> imageDimensionsSnapshot() const;
+
     std::vector<int64_t> selectedImageIds() const;
     std::vector<int64_t> allImageIds() const;
 
@@ -337,10 +342,11 @@ public:
     std::vector<int64_t> imageLabelIds(int64_t image_id) const;
 
     /**
-     * @brief 在后台以当前内存数据创建导出数据源，并执行导出工作。
+     * @brief 以当前内存数据创建导出快照，并执行后台导出工作。
      *
-     * 模型等调用方只接触 DatasetExportSource，不接触 DataManager 或项目数据库。
-     * source 仅在 work 回调执行期间有效，completion 始终回到 context 所在线程。
+     * 快照在提交后台工作前创建；工作线程只接触 DatasetExportSource，不接触
+     * DataManager 或项目数据库。source 仅在 work 回调执行期间有效，completion
+     * 始终回到 context 所在线程。
      */
     using DatasetExportWork = std::function<void(const DatasetExportSource &, DataOperationWorkflow::Result &)>;
 
