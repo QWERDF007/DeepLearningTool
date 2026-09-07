@@ -250,6 +250,11 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     if (cancelled(options.cancel_token))
         return fail(QString("评估已取消"));
 
+    // 完整像素分数图只在评估和异常区域生成阶段使用。结果交给 GUI 后，
+    // 仅保留图像级分数和已生成的多边形，避免跨线程结果长期持有大块 TIFF 数据。
+    for (auto it = images.begin(); it != images.end(); ++it)
+        it->anomaly_score_map.reset();
+
     // (m) 组装强类型结果。
     EvaluationResult output;
     output.method           = method();

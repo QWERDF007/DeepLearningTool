@@ -47,6 +47,26 @@
 
 ---
 
+## 2026-09-07 — 收敛评估结果中的完整分数图
+
+**目标**
+- 让评估结果不长期持有完整 TIFF 分数图，只保留图像级分数、预测记录、多边形和评估指标。
+
+**当前状态**
+- 已完成：在 `EvaluationEngineTest::anomalyClassificationUsesTheSameScoreMapAsRegions` 增加图像级分数保留的回归断言。
+- 已完成：评估结果组装前释放 `anomaly_score_map`，保留图像级分数、预测记录、事件多边形和 TIFF 路径；清理相互矛盾的旧非空断言。
+- 保留：`tools/dependencies.yaml` 为既有本机环境改动，本轮不处理。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_dataset_tests --parallel 4` → Release 目标构建成功。
+- `ctest --test-dir build -C Release -R "^(dltool_model_dataset_tests|dltool_model_evaluation_tests)$" --output-on-failure` → 2/2 通过。
+- `git diff --check -- WORKLOG.md final_plan.md src/model/IEvaluationEngine.cpp src/model/include/model/EvaluationData.h tests/model/test_EvaluationEngine.cpp` → 通过。
+
+**下一步**
+- 继续按 `final_plan.md` 阶段 6，审查评估结果和异常视觉派生的懒加载边界。
+
+---
+
 ## 2026-09-07 — 按测试文件列表优化评估数据读取
 
 **目标**

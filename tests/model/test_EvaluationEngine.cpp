@@ -560,6 +560,9 @@ private slots:
         QCOMPARE(result.instance_records.front().pred_class_id, 1);
         QCOMPARE(result.instance_records.front().score, 0.75);
         QCOMPARE(result.instance_records.front().anomaly_model_polygons.size(), 1);
+        QVERIFY(result.images.value(image).anomaly_score_map == nullptr);
+        QVERIFY(result.images.value(image).has_anomaly_image_score);
+        QCOMPARE(result.images.value(image).anomaly_image_score, 0.75);
 
         score_map.setTo(0.25F);
         QVERIFY(cv::imwrite(score_path.toStdString(), score_map));
