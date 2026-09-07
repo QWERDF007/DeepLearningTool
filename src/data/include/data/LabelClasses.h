@@ -170,6 +170,13 @@ public:
     bool             updateLabelClassGroup(const int64_t label_class_id, const QString &group);
 
     /**
+     * @brief 从项目数据库重新构建类别模型。
+     *
+     * 供数据操作补偿回滚后恢复数据库与 QAbstractItemModel 的一致性。
+     */
+    bool reloadFromDatabase();
+
+    /**
      * @brief 设置数据操作期间的写入阻断状态。
      * @param blocked 是否阻断直接写入。
      */

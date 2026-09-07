@@ -94,7 +94,7 @@ private slots:
         QVERIFY2(fixture.datasetCounts(source_dataset_id, &source_image_count, &source_label_count, &error),
                  qPrintable(error));
         QCOMPARE(source_image_count, 14);
-        QCOMPARE(source_label_count, 10);
+        QCOMPARE(source_label_count, 11);
 
         const QString source_name = PersistentProjectFixture::datasetName();
         const QString train_name  = nextDatasetName(fixture.dataManager(), source_name + QStringLiteral("-Train"));

@@ -1224,6 +1224,43 @@ bool ProjectDataBase::deleteLabelClass(const int64_t label_class_id, QString &er
     }
 }
 
+bool ProjectDataBase::deleteLabelClasses(const std::vector<int64_t> &label_class_ids, QString &err_msg) const
+{
+    if (label_class_ids.empty())
+    {
+        return true;
+    }
+
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+
+        auto db = pool_->get();
+        auto tx = sqlpp::start_transaction(db);
+        try
+        {
+            db(sqlpp::remove_from(LabelClassesTable)
+                   .where(LabelClassesTable.id.in(sqlpp::value_list(label_class_ids))));
+            tx.commit();
+        }
+        catch (...)
+        {
+            tx.rollback();
+            throw;
+        }
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
 bool ProjectDataBase::getAllTagClasses(std::vector<int64_t> &tag_class_ids, std::vector<QString> &names,
                                        std::vector<std::vector<uint8_t>> &extra_data, QString &err_msg) const
 {

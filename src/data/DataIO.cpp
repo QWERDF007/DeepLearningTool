@@ -178,6 +178,97 @@ QStringList imageNameFilters()
     };
 }
 
+bool validateExportDirectory(const QString &directory_path, const QStringList &filters, const int expected_count,
+                            const QString &kind, QString &err_msg)
+{
+    const QFileInfo directory_info(directory_path);
+    if (!directory_info.isDir())
+    {
+        err_msg = QString("导出产物目录不存在: %1").arg(directory_path);
+        return false;
+    }
+
+    const QDir       directory(directory_path);
+    const QFileInfoList files = directory.entryInfoList(filters, QDir::Files | QDir::Readable, QDir::Name);
+    if (files.size() != expected_count)
+    {
+        err_msg = QString("导出产物数量不完整: %1，期望 %2，实际 %3")
+                      .arg(kind)
+                      .arg(expected_count)
+                      .arg(files.size());
+        return false;
+    }
+
+    for (const QFileInfo &file : files)
+    {
+        if (!file.isFile() || file.size() <= 0)
+        {
+            err_msg = QString("导出产物无效: %1").arg(file.absoluteFilePath());
+            return false;
+        }
+    }
+    return true;
+}
+
+bool validateJsonFile(const QString &path, QString &err_msg)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        err_msg = QString("无法读取导出 JSON: %1").arg(path);
+        return false;
+    }
+
+    try
+    {
+        const QByteArray contents = file.readAll();
+        const auto       document
+            = nlohmann::json::parse(contents.constData(), contents.constData() + contents.size());
+        if (!document.is_object())
+        {
+            err_msg = QString("导出 JSON 不是对象: %1").arg(path);
+            return false;
+        }
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = QString("导出 JSON 无法解析: %1，%2").arg(path, QString::fromUtf8(e.what()));
+        return false;
+    }
+    return true;
+}
+
+bool validateRecursiveImageDirectory(const QString &directory_path, const int expected_count, QString &err_msg)
+{
+    const QFileInfo directory_info(directory_path);
+    if (!directory_info.isDir())
+    {
+        err_msg = QString("导出产物目录不存在: %1").arg(directory_path);
+        return false;
+    }
+
+    int          actual_count = 0;
+    QDirIterator iterator(directory_path, imageNameFilters(), QDir::Files | QDir::Readable,
+                          QDirIterator::Subdirectories);
+    while (iterator.hasNext())
+    {
+        const QFileInfo file(iterator.next());
+        if (file.size() <= 0)
+        {
+            err_msg = QString("导出产物无效: %1").arg(file.absoluteFilePath());
+            return false;
+        }
+        ++actual_count;
+    }
+
+    if (actual_count != expected_count)
+    {
+        err_msg = QString("导出图像数量不完整，期望 %1，实际 %2").arg(expected_count).arg(actual_count);
+        return false;
+    }
+    return true;
+}
+
 std::vector<QString> scanImmediateImageFiles(const QString &image_dir)
 {
     std::vector<QString> image_files;
@@ -800,6 +891,90 @@ DataIO *DataIO::createIO(int data_format, QObject *parent)
     default:
         spdlog::error("未实现的数据格式: {}", data_format);
         return nullptr;
+    }
+}
+
+bool DataIO::validateExportOutput(const int data_format, const ExportDataset &dataset, const QString &output_dir,
+                                  const QVariantMap &options, QString &err_msg)
+{
+    Q_UNUSED(options)
+
+    const int expected_images = static_cast<int>(dataset.images.size());
+    switch (data_format)
+    {
+    case DataFormat::COCO:
+    {
+        if (!validateExportDirectory(QDir(output_dir).filePath(QStringLiteral("images")), imageNameFilters(),
+                                     expected_images,
+                                     QStringLiteral("COCO 图像"), err_msg))
+            return false;
+
+        const QString annotation_path
+            = QDir(output_dir).filePath(QStringLiteral("annotations/instances.json"));
+        if (!validateJsonFile(annotation_path, err_msg))
+            return false;
+
+        QFile annotation_file(annotation_path);
+        if (!annotation_file.open(QIODevice::ReadOnly | QIODevice::Text))
+        {
+            err_msg = QString("无法读取 COCO 标注文件: %1").arg(annotation_path);
+            return false;
+        }
+        try
+        {
+            const QByteArray contents = annotation_file.readAll();
+            const auto       document
+                = nlohmann::json::parse(contents.constData(), contents.constData() + contents.size());
+            if (!document.contains("images") || !document["images"].is_array()
+                || document["images"].size() != dataset.images.size() || !document.contains("annotations")
+                || !document["annotations"].is_array() || !document.contains("categories")
+                || !document["categories"].is_array())
+            {
+                err_msg = QStringLiteral("COCO 标注文件内容不完整");
+                return false;
+            }
+        }
+        catch (const std::exception &e)
+        {
+            err_msg = QString("COCO 标注文件无法解析: %1").arg(QString::fromUtf8(e.what()));
+            return false;
+        }
+        return true;
+    }
+    case DataFormat::LabelMe:
+        if (!validateExportDirectory(QDir(output_dir).filePath(QStringLiteral("images")), imageNameFilters(),
+                                     expected_images,
+                                     QStringLiteral("LabelMe 图像"), err_msg))
+            return false;
+        if (!validateExportDirectory(QDir(output_dir).filePath(QStringLiteral("annotations")),
+                                     {QStringLiteral("*.json")}, expected_images,
+                                     QStringLiteral("LabelMe 标注"), err_msg))
+            return false;
+        for (const QFileInfo &file : QDir(QDir(output_dir).filePath(QStringLiteral("annotations")))
+                                          .entryInfoList({QStringLiteral("*.json")}, QDir::Files | QDir::Readable,
+                                                         QDir::Name))
+        {
+            if (!validateJsonFile(file.absoluteFilePath(), err_msg))
+                return false;
+        }
+        return true;
+    case DataFormat::Mask:
+        if (!validateExportDirectory(QDir(output_dir).filePath(QStringLiteral("images")), imageNameFilters(),
+                                     expected_images,
+                                     QStringLiteral("Mask 图像"), err_msg))
+            return false;
+        if (!validateExportDirectory(QDir(output_dir).filePath(QStringLiteral("masks")), imageNameFilters(),
+                                     expected_images,
+                                     QStringLiteral("Mask 文件"), err_msg))
+            return false;
+        if (!validateJsonFile(QDir(output_dir).filePath(QStringLiteral("classes.json")), err_msg))
+            return false;
+        return true;
+    case DataFormat::Folder:
+        return validateRecursiveImageDirectory(output_dir, expected_images, err_msg);
+    default:
+        err_msg = QString("不支持校验的数据格式: %1").arg(data_format);
+        return false;
     }
 }
 
@@ -1651,6 +1826,12 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir, const int threa
         }
 
         annotation_file.write(QByteArray::fromStdString(json_data.dump(2)));
+        annotation_file.close();
+        if (!DataIO::validateExportOutput(DataFormat::COCO, dataset, output_dir, {}, err_msg))
+        {
+            emit exportFinished(false, err_msg);
+            return;
+        }
         updateProgress(100, QString("COCO 标注文件已写入"));
         emit exportFinished(
             true, QString("COCO 导出完成: %1 个图像, %2 个标注").arg(dataset.images.size()).arg(dataset.labels.size()));
@@ -2246,6 +2427,12 @@ void LabelMeIO::doExport(ExportDataset dataset, QString output_dir, const int th
             }
         }
 
+        if (!DataIO::validateExportOutput(DataFormat::LabelMe, dataset, output_dir, {}, err_msg))
+        {
+            emit exportFinished(false, err_msg);
+            return;
+        }
+
         updateProgress(100, QString("LabelMe 导出完成"));
         emit exportFinished(
             true,
@@ -2781,6 +2968,12 @@ void MaskIO::doExport(ExportDataset dataset, QString output_dir, QVariantMap opt
             return;
         }
 
+        if (!DataIO::validateExportOutput(DataFormat::Mask, dataset, output_dir, options, err_msg))
+        {
+            emit exportFinished(false, err_msg);
+            return;
+        }
+
         updateProgress(100, QString("Mask 类别映射文件已写入"));
         emit exportFinished(true, QString("Mask 导出完成: %1 个图像, %2 个标注, 跳过 %3 个标注")
                                       .arg(dataset.images.size())
@@ -3118,6 +3311,12 @@ void FolderIO::doExport(ExportDataset dataset, QString output_dir, const int thr
                 return;
             }
             ++exported;
+        }
+
+        if (!DataIO::validateExportOutput(DataFormat::Folder, dataset, output_dir, {}, err_msg))
+        {
+            emit exportFinished(false, err_msg);
+            return;
         }
 
         updateProgress(100, QString("文件夹导出完成"));

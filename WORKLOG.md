@@ -47,6 +47,49 @@
 
 ---
 
+## 2026-09-07 — 修复异常检测数据集划分丢失标注
+
+**目标**
+- 保证异常检测项目在划分训练集、验证集和测试集时保留 Mask/多边形标注。
+
+**当前状态**
+- 已完成：`DataManager::splitDataset` 将异常检测与目标检测、语义分割统一视为需要复制几何标注的项目类型，分类项目仍只复制图像级类别。
+- 已完成：项目级数据划分测试精确校验 11 个夹具标注在三个子数据集中的总数不变。
+- 保留：`tools/dependencies.yaml` 为既有用户改动，未纳入本轮。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_data_export_test dltool_model_data_roundtrip_test dltool_model_data_split_test --parallel 4` → 构建成功。
+- `python tools\\run_project_tests.py --project-layer project-creation --recreate-project ...` → 通过。
+- 在干净项目根目录依次执行 `data-creation`、`data-import`、`data-export`、`data-roundtrip`、`data-split` → 6 层项目级 CTest 全部通过；`data-split` 验证 11 个标注完整复制。
+- `rg` 检查 → 无 `[DEBUG-P4]` 或其他临时调试标记。
+- `git diff --check` → 通过。
+
+**下一步**
+- 继续按 `final_plan.md` 的阶段路线推进下一切片；提交阶段 4 前再做一次完整差异审查。
+
+---
+
+## 2026-09-07 — 完成数据导入回滚与导出产物校验切片
+
+**目标**
+- 收敛阶段 4 的批次导入失败/取消回滚，以及导出成功前的最终产物校验。
+
+**当前状态**
+- 已完成：导入记录新增图片、标注、类别和被修改的图像级类别，并在失败/取消时回滚；增加批量类别删除和模型重新加载。
+- 已完成：COCO、LabelMe、Mask、Folder 导出在成功通知前校验目录、文件数量和关键 JSON 产物。
+- 已完成：更新 `final_plan.md` 为统一的架构改进方案。
+- 未完成：新增项目级导入回滚测试尚未编译通过，CTest 尚未执行。
+- 保留：`tools/dependencies.yaml` 为既有用户改动，未纳入本轮。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_data_data_io_tests dltool_model_data_import_test dltool_model_data_export_test --parallel 4` → 构建失败于 `tests/project/test_DataImport.cpp:298`，`std::vector<QString>` 不支持 `contains`。
+- `git diff --check -- final_plan.md` → 通过；代码测试未因编译失败执行。
+
+**下一步**
+- 将导入回滚测试中的容器查找改为当前 C++ 标准支持的写法，重新构建目标后通过 CTest 执行 DataIO 导出、数据导入和数据导出项目级测试；随后检查类别序号压缩及既有类别属性恢复。
+
+---
+
 ## 2026-09-07 — 统一数据几何转换与 DataIO 取消边界
 
 **目标**

@@ -176,6 +176,11 @@ public:
      */
     void removeLabelsForImagesFromMemory(const std::vector<int64_t> &image_ids);
 
+    /**
+     * @brief 删除已由数据库操作移除的精确标注集合，仅更新内存模型。
+     */
+    void removeLabelsFromMemory(const std::vector<int64_t> &label_ids);
+
     std::vector<int64_t> getImageLabelIds(int64_t image_id) const;
 
     /**
@@ -215,7 +220,6 @@ public:
 private:
     void init(bool load_from_database);
     void loadLabelsFromDatabase();
-    void removeLabelsFromMemory(const std::vector<int64_t> &label_ids);
     void rebuildLabelIds();
 
     /**

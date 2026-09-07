@@ -253,6 +253,7 @@ public:
                                                     const QVariantMap &label_class_groups);
     Q_INVOKABLE void exportDatasets(const std::vector<int64_t> &dataset_ids, const int data_format,
                                     const QString &output_dir, const QVariantMap &options = {});
+    Q_INVOKABLE void cancelDataOperation();
 
     Q_INVOKABLE void deleteSelectedImages();
     Q_INVOKABLE void copyToDataset(const std::vector<int64_t> &image_ids, const int64_t dataset_id);
@@ -423,6 +424,8 @@ private:
                               std::vector<int64_t> image_heights, std::map<QString, QString> label_class_info,
                               std::vector<ImportedLabel> labels, int64_t processed_images, int64_t total_images);
     void handleImportFinished(bool success, std::vector<int64_t> image_ids, std::vector<int64_t> label_class_ids);
+    bool rollbackPendingImport(QString &err_msg);
+    void requestDataOperationCancel();
     void startImportData(const int64_t dataset_id, const int data_format, const QString &image_dir,
                          const QString &data_dir, const std::map<QString, QString> &label_class_groups);
     bool addLabelsInternal(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,

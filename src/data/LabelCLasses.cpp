@@ -275,34 +275,50 @@ void LabelClassesListModel::init()
     connect(selection_, &QItemSelectionModel::selectionChanged, this, &LabelClassesListModel::updateSelection);
     connect(selection_, &QItemSelectionModel::currentChanged, this, &LabelClassesListModel::currentLabelClassChanged);
 
+    reloadFromDatabase();
+}
+
+bool LabelClassesListModel::reloadFromDatabase()
+{
     if (database_ == nullptr)
     {
-        return;
+        return false;
     }
+
     QString                           err_msg;
     std::vector<int64_t>              label_class_ids, ordinal_indices;
     std::vector<QString>              names, colors, shortcuts;
     std::vector<std::vector<uint8_t>> extra_data;
-    if (database_->getAllLabelClasses(label_class_ids, names, colors, shortcuts, ordinal_indices, extra_data, err_msg))
-    {
-        for (size_t i = 0; i < label_class_ids.size(); ++i)
-        {
-            label_classes_.emplace(
-                label_class_ids[i],
-                new LabelClass(label_class_ids[i], names[i], colors[i], shortcuts[i], ordinal_indices[i],
-                               i < extra_data.size() ? groupFromExtraData(extra_data[i]) : defaultLabelClassGroup(),
-                               this));
-        }
-        if (label_class_ids.size() > 0)
-        {
-            selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
-            selection_->setCurrentIndex(index(0), QItemSelectionModel::Select);
-        }
-    }
-    else
+    if (!database_->getAllLabelClasses(label_class_ids, names, colors, shortcuts, ordinal_indices, extra_data, err_msg))
     {
         spdlog::error("查询所有标签类别失败: {}", err_msg.toUtf8().constData());
+        return false;
     }
+
+    beginResetModel();
+    for (const auto &[_, label_class] : label_classes_)
+    {
+        delete label_class;
+    }
+    label_classes_.clear();
+
+    for (size_t i = 0; i < label_class_ids.size(); ++i)
+    {
+        label_classes_.emplace(
+            label_class_ids[i],
+            new LabelClass(label_class_ids[i], names[i], colors[i], shortcuts[i], ordinal_indices[i],
+                           i < extra_data.size() ? groupFromExtraData(extra_data[i]) : defaultLabelClassGroup(),
+                           this));
+    }
+    endResetModel();
+
+    selection_->clearSelection();
+    if (!label_class_ids.empty())
+    {
+        selection_->select(index(0), QItemSelectionModel::ClearAndSelect);
+        selection_->setCurrentIndex(index(0), QItemSelectionModel::Select);
+    }
+    return true;
 }
 
 int LabelClassesListModel::rowCount(const QModelIndex &parent) const

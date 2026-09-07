@@ -3,12 +3,17 @@
 #include "data/DataFormat.h"
 #include "data/DataManager.h"
 #include "database/DataBase.h"
+#include "ui/ProgressManager.h"
 
+#include <QCoreApplication>
 #include <QDirIterator>
 #include <QImage>
 #include <QMap>
 #include <QSet>
 #include <QDir>
+#include <QEventLoop>
+#include <QTemporaryDir>
+#include <QTimer>
 #include <QTest>
 
 #include <algorithm>
@@ -203,6 +208,96 @@ class DataImportIntegrationTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void cancelledImportRollsBackCompletedBatches()
+    {
+        PersistentProjectFixture fixture;
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+        const QString dataset_name
+            = QStringLiteral("rollback-import-%1").arg(QCoreApplication::applicationPid());
+        QString dataset_error;
+        const qint64 dataset_id = fixture.ensureDataset(dataset_name, &dataset_error);
+        QVERIFY2(dataset_id >= 0, qPrintable(dataset_error));
+
+        int image_count = 0;
+        int label_count = 0;
+        QVERIFY2(fixture.datasetCounts(dataset_id, &image_count, &label_count, &dataset_error),
+                 qPrintable(dataset_error));
+        QCOMPARE(image_count, 0);
+        QCOMPARE(label_count, 0);
+
+        QTemporaryDir input_dir;
+        QVERIFY(input_dir.isValid());
+        const QString class_dir = QDir(input_dir.path()).filePath(QStringLiteral("rollback-class"));
+        QVERIFY(QDir().mkpath(class_dir));
+        for (int index = 0; index < 257; ++index)
+        {
+            QImage image(QSize(16, 16), QImage::Format_RGB32);
+            image.fill(Qt::white);
+            const QString image_path = QDir(class_dir).filePath(QStringLiteral("image_%1.png").arg(index));
+            QVERIFY(image.save(image_path));
+        }
+
+        bool    cancel_requested = false;
+        bool    completed        = false;
+        bool    success          = false;
+        QString message;
+        QEventLoop loop;
+        QTimer     timeout;
+        timeout.setSingleShot(true);
+        QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+        QObject::connect(fixture.dataManager(), &dltool::data::DataManager::dataImportFinished, &loop,
+                         [&](const bool import_success, const QString &import_message)
+                         {
+                             completed = true;
+                             success   = import_success;
+                             message   = import_message;
+                             loop.quit();
+                         });
+
+        const QMetaObject::Connection progress_connection
+            = QObject::connect(dltool::ui::ProgressManager::getInstance(),
+                               &dltool::ui::ProgressManager::progressChanged, &loop,
+                               [&]
+                               {
+                                   if (!cancel_requested && fixture.dataManager()->importRunning()
+                                       && dltool::ui::ProgressManager::getInstance()->getProgress() >= 80)
+                                   {
+                                       cancel_requested = true;
+                                       fixture.dataManager()->cancelDataOperation();
+                                   }
+                               });
+
+        timeout.start(120000);
+        fixture.dataManager()->importDataWithLabelClassGroups(
+            dataset_id, dltool::data::DataFormat::Folder, input_dir.path(), {},
+            {{QStringLiteral("rollback-class"), QStringLiteral("anomaly")}});
+        loop.exec();
+        QObject::disconnect(progress_connection);
+
+        QVERIFY2(completed, "等待取消导入完成超时");
+        QVERIFY2(cancel_requested, "取消没有发生在首个批次完成之后");
+        QVERIFY2(!success, qPrintable(message));
+
+        QVERIFY2(fixture.datasetCounts(dataset_id, &image_count, &label_count, &dataset_error),
+                 qPrintable(dataset_error));
+        QCOMPARE(image_count, 0);
+        QCOMPARE(label_count, 0);
+
+        dltool::database::ProjectDataBase database(PersistentProjectFixture::projectDatabasePath());
+        std::vector<int64_t>      label_class_ids;
+        std::vector<QString>      names;
+        std::vector<QString>      colors;
+        std::vector<QString>      shortcuts;
+        std::vector<int64_t>      ordinal_indices;
+        std::vector<std::vector<uint8_t>> extra_data;
+        QString                   database_error;
+        QVERIFY2(database.getAllLabelClasses(label_class_ids, names, colors, shortcuts, ordinal_indices, extra_data,
+                                             database_error),
+                 qPrintable(database_error));
+        QVERIFY(std::find(names.begin(), names.end(), QStringLiteral("rollback-class")) == names.end());
+    }
+
     void importsFolderAndSeparateMaskFixtures()
     {
         PersistentProjectFixture fixture;
@@ -235,7 +330,7 @@ private slots:
         QVERIFY2(fixture.datasetCounts(dataset_id, &image_count, &label_count, &error), qPrintable(error));
         QCOMPARE(image_count, 14);
 
-        if (label_count < 10)
+        if (label_count < 11)
         {
             QVERIFY2(fixture.importData(dataset_id, dltool::data::DataFormat::Mask,
                                        PersistentProjectFixture::imageRoot(), PersistentProjectFixture::maskRoot(), {},
@@ -245,12 +340,12 @@ private slots:
 
         QVERIFY2(fixture.datasetCounts(dataset_id, &image_count, &label_count, &error), qPrintable(error));
         QCOMPARE(image_count, 14);
-        QCOMPARE(label_count, 10);
+        QCOMPARE(label_count, 11);
         QMap<QString, int> class_counts;
         QVERIFY2(datasetLabelClassCounts(fixture, dataset_id, &class_counts, &error), qPrintable(error));
         QCOMPARE(class_counts.keys(), QStringList({QStringLiteral("MT_Blowhole"), QStringLiteral("MT_Crack")}));
         QCOMPARE(class_counts.value(QStringLiteral("MT_Blowhole")), 5);
-        QCOMPARE(class_counts.value(QStringLiteral("MT_Crack")), 5);
+        QCOMPARE(class_counts.value(QStringLiteral("MT_Crack")), 6);
         QVERIFY(QDir(PersistentProjectFixture::imageRoot()).exists());
         QVERIFY(QDir(PersistentProjectFixture::maskRoot()).exists());
     }

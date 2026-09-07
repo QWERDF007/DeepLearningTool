@@ -28,7 +28,7 @@ private slots:
         int source_labels = 0;
         QVERIFY2(fixture.datasetCounts(source_dataset, &source_images, &source_labels, &error), qPrintable(error));
         QCOMPARE(source_images, 14);
-        QCOMPARE(source_labels, 10);
+        QCOMPARE(source_labels, 11);
 
         const qint64 mask_dataset
             = fixture.ensureDataset(PersistentProjectFixture::maskRoundtripDatasetName(), &error);
@@ -47,7 +47,7 @@ private slots:
         }
         QVERIFY2(fixture.datasetCounts(mask_dataset, &mask_images, &mask_labels, &error), qPrintable(error));
         QCOMPARE(mask_images, 9);
-        QCOMPARE(mask_labels, 10);
+        QCOMPARE(mask_labels, 11);
 
         const qint64 labelme_dataset
             = fixture.ensureDataset(PersistentProjectFixture::labelMeRoundtripDatasetName(), &error);
@@ -66,7 +66,7 @@ private slots:
         }
         QVERIFY2(fixture.datasetCounts(labelme_dataset, &labelme_images, &labelme_labels, &error), qPrintable(error));
         QCOMPARE(labelme_images, 14);
-        QCOMPARE(labelme_labels, 10);
+        QCOMPARE(labelme_labels, 11);
 
         const qint64 coco_dataset
             = fixture.ensureDataset(PersistentProjectFixture::cocoRoundtripDatasetName(), &error);
@@ -85,7 +85,7 @@ private slots:
         }
         QVERIFY2(fixture.datasetCounts(coco_dataset, &coco_images, &coco_labels, &error), qPrintable(error));
         QCOMPARE(coco_images, 14);
-        QCOMPARE(coco_labels, 10);
+        QCOMPARE(coco_labels, 11);
     }
 };
 

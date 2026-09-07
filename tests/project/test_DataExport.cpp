@@ -29,7 +29,7 @@ private slots:
         int label_count = 0;
         QVERIFY2(fixture.datasetCounts(dataset_id, &image_count, &label_count, &error), qPrintable(error));
         QCOMPARE(image_count, 14);
-        QCOMPARE(label_count, 10);
+        QCOMPARE(label_count, 11);
 
         QSignalSpy export_notifications(dltool::ui::SignalHelper::getInstance(),
                                         &dltool::ui::SignalHelper::success);

@@ -1,4 +1,5 @@
 #include "data/DataIO.h"
+#include "data/DataFormat.h"
 
 #include "ui/ProgressManager.h"
 
@@ -18,6 +19,31 @@ class DataIOExportTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void exportValidationRejectsMissingArtifact()
+    {
+        QTemporaryDir temporary_dir;
+        QVERIFY(temporary_dir.isValid());
+
+        dltool::data::ExportDataset dataset;
+        dataset.dataset_name = QStringLiteral("validation-test");
+        dltool::data::ExportImage image;
+        image.image_id = 1;
+        dataset.images.push_back(image);
+
+        const QString output_dir = QDir(temporary_dir.path()).filePath(QStringLiteral("output"));
+        QVERIFY(QDir().mkpath(QDir(output_dir).filePath(QStringLiteral("images"))));
+        QVERIFY(QDir().mkpath(QDir(output_dir).filePath(QStringLiteral("annotations"))));
+
+        QImage exported_image(QSize(16, 16), QImage::Format_RGB32);
+        exported_image.fill(Qt::white);
+        QVERIFY(exported_image.save(QDir(output_dir).filePath(QStringLiteral("images/image.png"))));
+
+        QString error;
+        QVERIFY(!dltool::data::DataIO::validateExportOutput(dltool::data::DataFormat::LabelMe, dataset, output_dir,
+                                                             {}, error));
+        QVERIFY2(error.contains(QStringLiteral("标注")), qPrintable(error));
+    }
+
     void labelMeReportsProgressDuringExport()
     {
         QTemporaryDir temporary_dir;

@@ -39,6 +39,15 @@ public:
 
     static DataIO *createIO(int data_format, QObject *parent = nullptr);
 
+    /**
+     * @brief 校验导出器报告成功后实际生成的目录产物。
+     *
+     * 该校验在导出 worker 线程内执行，调用方只有在目录结构和关键文件
+     * 完整时才能观察到 exportFinished(true)。
+     */
+    static bool validateExportOutput(int data_format, const ExportDataset &dataset, const QString &output_dir,
+                                     const QVariantMap &options, QString &err_msg);
+
     void setTargetMethod(int method) { target_method_ = method; }
     void requestCancel();
     bool isCancelRequested() const;

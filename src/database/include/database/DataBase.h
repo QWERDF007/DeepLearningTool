@@ -187,6 +187,7 @@ public:
     bool updateLabelClass(const std::vector<int64_t> &label_class_ids, const std::vector<int64_t> &ordinal_indexes,
                           QString &err_msg) const;
     bool deleteLabelClass(const int64_t label_class_id, QString &err_msg) const;
+    bool deleteLabelClasses(const std::vector<int64_t> &label_class_ids, QString &err_msg) const;
 
     bool getAllTagClasses(std::vector<int64_t> &tag_class_ids, std::vector<QString> &names,
                           std::vector<std::vector<uint8_t>> &extra_data, QString &err_msg) const;
