@@ -56,9 +56,10 @@ public:
      * @brief 等待所有外部进程退出。
      *
      * 调用前通常先通过 stop() 请求停止。返回时不再有运行中的外部进程；
-     * timeout_ms 只限制优雅停止等待，超时后会强制结束残留进程。
+     * 默认最多等待 5 秒优雅停止；超时后会强制结束残留进程。
+     * 传入负数时使用相同的默认优雅等待上限，避免项目关闭无限等待。
      */
-    bool waitForDone(int timeout_ms = -1);
+    bool waitForDone(int timeout_ms = 5000);
 
     /**
      * @brief 删除指定任务（先停止再清理）

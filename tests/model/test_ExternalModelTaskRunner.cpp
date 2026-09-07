@@ -3,6 +3,7 @@
 #include "model/ExternalModelTaskRunner.h"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -87,6 +88,36 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 1000);
         QCOMPARE(qvariant_cast<TaskIdentity>(finished.at(0).at(0)), spec.identity);
         QVERIFY(finished.at(0).at(3).toBool());
+    }
+
+    void shutdownHasBoundedWaitForLongRunningProcess()
+    {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+
+        ExternalModelTaskRunner runner;
+        ExternalProcessSpec spec;
+        spec.identity           = {46, QStringLiteral("run-46"), QStringLiteral("project-46")};
+        spec.program             = qEnvironmentVariable("ComSpec", QStringLiteral("C:/Windows/System32/cmd.exe"));
+        spec.arguments           = {QStringLiteral("/C"), QStringLiteral("ping -n 20 127.0.0.1 >NUL")};
+        spec.working_directory   = temp.path();
+        spec.log_path            = QDir(temp.path()).filePath(QStringLiteral("shutdown.log"));
+
+        QString error;
+        QVERIFY2(runner.start(spec, &error), qPrintable(error));
+        QTRY_VERIFY_WITH_TIMEOUT(runner.hasRunningTask(spec.identity), 3000);
+
+        QElapsedTimer shutdown_timer;
+        shutdown_timer.start();
+        runner.shutdown();
+
+        QVERIFY2(shutdown_timer.elapsed() < 12000,
+                 qPrintable(QStringLiteral("关闭外部任务等待超时: %1 ms").arg(shutdown_timer.elapsed())));
+        QVERIFY(!runner.hasRunningTask(spec.identity));
+
+        error.clear();
+        QVERIFY(!runner.start(spec, &error));
+        QVERIFY(error.contains(QStringLiteral("关闭")));
     }
 
     void rejectsIdentityReuseAndCrossTaskControl()

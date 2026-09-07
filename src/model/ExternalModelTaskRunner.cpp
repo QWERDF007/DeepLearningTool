@@ -24,6 +24,8 @@ constexpr qint64 kLogFlushThresholdBytes = 64 * 1024;
 constexpr int    kLogFlushIntervalMs = 200;
 /// 停止进程时两次终止信号之间的等待时间（毫秒）。
 constexpr int    kStopGracePeriodMs = 5000;
+/// 关闭时等待进程优雅退出的最长时间（毫秒）。
+constexpr int    kDefaultWaitTimeoutMs = kStopGracePeriodMs;
 
 /**
  * @brief 进程日志批量写入器。
@@ -335,11 +337,10 @@ bool ExternalModelTaskRunner::waitForDone(const int timeout_ms)
     QElapsedTimer timer;
     timer.start();
 
-    const auto remaining = [&timer, timeout_ms]()
+    const int graceful_timeout_ms = timeout_ms < 0 ? kDefaultWaitTimeoutMs : timeout_ms;
+    const auto remaining = [&timer, graceful_timeout_ms]()
     {
-        if (timeout_ms < 0)
-            return -1;
-        return std::max(0, timeout_ms - static_cast<int>(timer.elapsed()));
+        return std::max(0, graceful_timeout_ms - static_cast<int>(timer.elapsed()));
     };
 
     QList<RunningProcess> processes;
