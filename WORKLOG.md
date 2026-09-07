@@ -47,6 +47,27 @@
 
 ---
 
+## 2026-09-07 — 收敛多方案合并裁决说明
+
+**目标**
+- 将架构方案的输入范围、冲突裁决规则和最终实施取舍明确写入根目录 `final_plan.md`。
+
+**当前状态**
+- 已完成：补充单一事实源、深模块、项目作用域、快照、性能、几何、QML 和验收方案的统一取舍。
+- 已完成：记录未在当前工作区、项目父目录和可见 Git 历史中找到三份独立源方案的事实，避免虚构其内容。
+- 未完成：本轮未实施方案中的代码改造。
+- 保留：`tools/dependencies.yaml` 为既有用户改动，未纳入本轮。
+
+**验证证据**
+- `rg --files -uu F:/Projects/DeepLearningTool F:/Projects ...` → 未找到 `luna_final_plan.md`、`gemini_final_plan.md`、`musespark13_final_plan.md`。
+- `git diff --check -- final_plan.md` → 未发现格式错误。
+- Release 构建和 CTest → 未执行，本轮仅修改方案文档。
+
+**下一步**
+- 按 `final_plan.md` 的阶段路线，从数据快照、任务生命周期和几何行为测试开始实施。
+
+---
+
 ## 2026-09-07 — 统一项目任务生命周期与关闭栅栏
 
 **目标**
