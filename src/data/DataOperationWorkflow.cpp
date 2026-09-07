@@ -5,10 +5,13 @@
 
 #include <spdlog/spdlog.h>
 
+#include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QMetaObject>
 #include <QPointer>
 #include <QThread>
+#include <algorithm>
 #include <exception>
 #include <utility>
 
@@ -246,6 +249,62 @@ DataOperationWorkflow::HandlePtr DataOperationWorkflow::startDatabase(QObject *c
             work(database, result);
         },
         std::move(completion));
+}
+
+bool DataOperationWorkflow::waitForCompletions(const QList<HandlePtr> &handles, const int timeout_ms)
+{
+    QElapsedTimer timer;
+    timer.start();
+
+    const auto remainingMilliseconds = [&timer, timeout_ms]()
+    {
+        if (timeout_ms < 0)
+            return -1;
+        return std::max(0, timeout_ms - static_cast<int>(timer.elapsed()));
+    };
+
+    for (;;)
+    {
+        bool pending = false;
+        for (const auto &handle : handles)
+        {
+            if (handle != nullptr && (!handle->isFinished() || !handle->isCompletionFinished()))
+            {
+                pending = true;
+                break;
+            }
+        }
+
+        if (!pending)
+            return true;
+
+        const int remaining = remainingMilliseconds();
+        if (remaining == 0)
+            return false;
+
+        if (QCoreApplication::instance() != nullptr)
+        {
+            const int event_slice = remaining < 0 ? 10 : std::min(10, remaining);
+            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, event_slice);
+            continue;
+        }
+
+        bool waited_for_worker = false;
+        for (const auto &handle : handles)
+        {
+            if (handle != nullptr && !handle->isFinished())
+            {
+                handle->waitForDone(remaining < 0 ? 10 : std::min(10, remaining));
+                waited_for_worker = true;
+                break;
+            }
+        }
+
+        // Without a Qt event loop a queued completion cannot execute. Return
+        // once workers have stopped instead of sleeping forever on the callback.
+        if (!waited_for_worker)
+            return false;
+    }
 }
 
 } // namespace dltool::data

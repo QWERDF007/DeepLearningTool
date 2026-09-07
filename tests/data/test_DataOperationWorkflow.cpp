@@ -78,6 +78,30 @@ private slots:
         QVERIFY(handle->isCompletionFinished());
     }
 
+    void waitForCompletionsDrainsQueuedCallbacks()
+    {
+        QObject context;
+        bool    completion_called = false;
+
+        const auto handle = DataOperationWorkflow::start(
+            &context, {},
+            [](DataOperationWorkflow::Result &result)
+            {
+                result.success = true;
+            },
+            [&completion_called](const DataOperationWorkflow::Result &result)
+            {
+                completion_called = result.success;
+            });
+
+        QVERIFY(handle != nullptr);
+        QVERIFY(handle->waitForDone(2000));
+        QVERIFY(!handle->isCompletionFinished());
+        QVERIFY(DataOperationWorkflow::waitForCompletions({handle}, 2000));
+        QVERIFY(handle->isCompletionFinished());
+        QVERIFY(completion_called);
+    }
+
     void destroyedContextCancelsWorkerAndDiscardsCompletion()
     {
         auto              context = std::make_unique<QObject>();

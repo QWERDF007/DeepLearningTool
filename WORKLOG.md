@@ -47,6 +47,29 @@
 
 ---
 
+## 2026-09-08 — 收敛模型任务关闭回调生命周期
+
+**目标**
+- 让模型任务关闭等待后台准备 worker 及其 queued completion 全部收敛，避免控制器释放后仍有完成回调访问项目对象。
+
+**当前状态**
+- 已完成：`DataOperationWorkflow` 增加按句柄排空完成回调的等待接口；`ModelTaskController::shutdown()` 取消并等待准备操作后再清理句柄。
+- 已完成：新增 queued completion 生命周期行为测试。
+- 已完成：修正 data/model 测试 CTest PATH 的声明顺序，避免加载 `build/bin` 中的旧模块 DLL。
+- 保留：`final_plan.md`、`src/feature/FeatureManager.cpp`、`tools/dependencies.yaml` 等既有工作区改动未纳入本阶段。
+
+**验证证据**
+- 旧 CTest 环境下两个目标均以 `0xc0000139` 启动失败；依赖检查确认测试可能加载旧 `build/bin` DLL。
+- `cmake -S . -B build -DDLT_BUILD_TESTS=ON` → 配置与生成成功。
+- `cmake --build build --config Release --target dltool_data_data_operation_workflow_tests dltool_model_tasks_tests --parallel 4` → Release 构建成功。
+- `ctest --test-dir build -C Release -R '^(dltool_data_data_operation_workflow_tests|dltool_model_tasks_tests)$' --output-on-failure` → 2/2 通过。
+- `git diff --check` → 通过。
+
+**下一步**
+- 提交本阶段变更；之后按 `final_plan.md` 阶段 3 继续审查其他后台任务的关闭等待和迟到结果丢弃。
+
+---
+
 ## 2026-09-08 — 收敛 ROI 聚类关闭生命周期
 
 **目标**

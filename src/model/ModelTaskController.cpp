@@ -138,11 +138,11 @@ void ModelTaskController::shutdown()
     if (external_task_runner_ != nullptr)
         external_task_runner_->shutdown();
 
+    QList<dltool::data::DataOperationWorkflow::HandlePtr> preparation_operations;
+    preparation_operations.reserve(preparation_operations_.size());
     for (const auto &operation : preparation_operations_)
-    {
-        if (operation != nullptr)
-            operation->waitForDone();
-    }
+        preparation_operations.push_back(operation);
+    dltool::data::DataOperationWorkflow::waitForCompletions(preparation_operations);
 
     // External process signals may have been delivered while waiting. Any
     // remaining active record is now stopped explicitly before its project

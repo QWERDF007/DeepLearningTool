@@ -2,6 +2,7 @@
 
 #include "dltool/data/Export.h"
 
+#include <QList>
 #include <QObject>
 #include <QString>
 #include <atomic>
@@ -112,6 +113,15 @@ public:
      */
     static HandlePtr startDatabase(QObject *context, const QString &database_path, Options options,
                                    DatabaseWork work, Completion completion = {});
+
+    /**
+     * @brief 在当前 context 线程排空一组数据操作的完成回调。
+     *
+     * 调用方必须运行在这些句柄 context 所属的 Qt 线程中。等待期间处理排除用户输入的
+     * Qt 事件，因此 queued completion 可以更新其所属的模型；worker 退出但 completion
+     * 尚未执行不视为完成。timeout_ms 小于 0 表示无限等待。
+     */
+    static bool waitForCompletions(const QList<HandlePtr> &handles, int timeout_ms = -1);
 
 private:
     static void beginProgress(const Options &options);
