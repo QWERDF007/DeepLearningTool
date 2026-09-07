@@ -8,6 +8,7 @@
 #include "model/IModelConfig.h"
 #include "model/IParams.h"
 #include "model/ModelDatasetSelection.h"
+#include "model/ModelLifecycle.h"
 #include "model/ModelStorageService.h"
 #include "model/TaskManager.h"
 #include "settings/GlobalSettings.h"
@@ -17,9 +18,6 @@
 #include <spdlog/spdlog.h>
 
 #include <QDateTime>
-#include <QDir>
-#include <QDirIterator>
-#include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -36,43 +34,6 @@ namespace dltool::model {
 using common::setError;
 
 namespace {
-
-bool copyDirectoryContents(const QString &source, const QString &target, QString *err_msg)
-{
-    const QFileInfo source_info(source);
-    if (!source_info.exists() || !source_info.isDir())
-        return true;
-    if (!QDir().mkpath(target))
-    {
-        if (err_msg)
-            *err_msg = QString("创建模型权重目录失败: %1").arg(target);
-        return false;
-    }
-    QDirIterator iterator(source, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks,
-                          QDirIterator::Subdirectories);
-    while (iterator.hasNext())
-    {
-        const QFileInfo item(iterator.next());
-        const QString   relative    = QDir(source).relativeFilePath(item.absoluteFilePath());
-        const QString   destination = QDir(target).filePath(relative);
-        if (item.isDir())
-        {
-            if (!QDir().mkpath(destination))
-            {
-                if (err_msg)
-                    *err_msg = QString("创建模型权重子目录失败: %1").arg(destination);
-                return false;
-            }
-        }
-        else if (!QFile::copy(item.absoluteFilePath(), destination))
-        {
-            if (err_msg)
-                *err_msg = QString("复制模型权重文件失败: %1").arg(item.absoluteFilePath());
-            return false;
-        }
-    }
-    return true;
-}
 
 bool modelHasActiveTasks(const TaskManager *task_manager, const QString &model_uuid)
 {
@@ -157,6 +118,10 @@ ModelManager::ModelManager(const int method, dltool::database::ProjectDataBase *
                        ? dltool::common::cleanPath(QFileInfo(database->path()).absoluteDir().absolutePath())
                        : QString())
 {
+    model_storage_      = std::make_unique<ModelStorageService>(project_dir_);
+    model_record_store_ = std::make_unique<ProjectModelRecordStore>(database_);
+    model_lifecycle_    = std::make_unique<ModelLifecycle>(*model_record_store_, *model_storage_);
+
     user_visible_model_ = new UserVisibleModelProxy(this);
     user_visible_model_->setSourceModel(this);
     user_visible_model_->setFilterRole(FrameworkNameRole);
@@ -185,6 +150,15 @@ QString ModelManager::projectDatabasePath() const
 
 void ModelManager::init()
 {
+    if (model_lifecycle_ != nullptr)
+    {
+        const ModelLifecycleResult recovery = model_lifecycle_->recoverPending();
+        if (!recovery.succeeded())
+        {
+            spdlog::error("恢复模型未完成操作失败: {}", recovery.error.toUtf8().constData());
+        }
+    }
+
     beginResetModel();
     models_.clear();
     model_instances_.clear();
@@ -345,8 +319,7 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
         spdlog::warn("添加模型失败: {}", message.toUtf8().constData());
         return {};
     }
-    const bool write_to_database = framework.write_to_database;
-    if (write_to_database && database_ == nullptr)
+    if (database_ == nullptr || model_lifecycle_ == nullptr)
     {
         const QString message = QString("数据库对象为空");
         setError(err_msg, message);
@@ -354,54 +327,39 @@ ModelManager::ModelRecordView ModelManager::addModelRecord(const QString &name, 
         return {};
     }
 
-    QString       local_err_msg;
-    int64_t       model_id{-1};
-    const qint64  now  = QDateTime::currentSecsSinceEpoch();
+    const qint64 now  = QDateTime::currentSecsSinceEpoch();
     const QString uuid = dltool::common::uuid();
-    if (!write_to_database)
-    {
-        while (indexOfModel(model_id) >= 0) --model_id;
-    }
+    ModelLifecycleRecord lifecycle_record;
+    lifecycle_record.uuid               = uuid;
+    lifecycle_record.name               = trimmed_name;
+    lifecycle_record.framework_name     = trimmed_framework_name;
+    lifecycle_record.model_architecture = trimmed_model_architecture;
+    lifecycle_record.ctime              = now;
+    lifecycle_record.mtime              = now;
 
-    ModelStorageService storage(project_dir_);
-    const QString       model_dir = storage.path(trimmed_name, ModelStorageLocation::ModelRoot);
-    if (QFileInfo::exists(model_dir))
+    const ModelLifecycleResult result = model_lifecycle_->create(lifecycle_record);
+    if (!result.succeeded())
     {
-        const QString message = QString("模型目录已存在: %1").arg(model_dir);
-        setError(err_msg, message);
-        spdlog::warn("添加模型失败: {}", message.toUtf8().constData());
-        return {};
-    }
-
-    if (!storage.ensureModelStorage(trimmed_name, &local_err_msg))
-    {
-        setError(err_msg, QString("创建模型目录失败: %1").arg(local_err_msg));
-        spdlog::error("添加模型失败, 创建模型目录失败: {}", local_err_msg.toUtf8().constData());
-        return {};
-    }
-
-    if (write_to_database
-        && !database_->addModel(uuid, trimmed_name, trimmed_framework_name, trimmed_model_architecture, now, now,
-                                model_id, local_err_msg))
-    {
-        QString remove_err;
-        storage.removeModelStorage(trimmed_name, &remove_err);
-        setError(err_msg, local_err_msg);
+        setError(err_msg, result.error);
         spdlog::error("添加模型失败, 名称: {}, 框架: {}, 模型架构: {}, 错误: {}", trimmed_name.toUtf8().constData(),
                       trimmed_framework_name.toUtf8().constData(), trimmed_model_architecture.toUtf8().constData(),
-                      local_err_msg.toUtf8().constData());
+                      result.error.toUtf8().constData());
         return {};
     }
 
-    const ModelRecord record{model_id, uuid, trimmed_name, trimmed_framework_name, trimmed_model_architecture,
-                             now,      now};
+    if (result.cleanup_pending)
+        spdlog::warn("添加模型完成但清理待恢复, id: {}, 操作: {}", result.model_id,
+                     result.operation_id.toUtf8().constData());
+
+    const ModelRecord record{result.model_id, uuid, trimmed_name, trimmed_framework_name, trimmed_model_architecture,
+                             now,             now};
     const int         row = rowCount();
     beginInsertRows(QModelIndex(), row, row);
     models_.push_back(record);
     endInsertRows();
 
-    spdlog::info("模型添加成功, id: {}, 写入数据库: {}, 模型名称: {}, 框架: {}, 模型架构: {}", model_id,
-                 write_to_database, trimmed_name.toUtf8().constData(), trimmed_framework_name.toUtf8().constData(),
+    spdlog::info("模型添加成功, id: {}, 模型名称: {}, 框架: {}, 模型架构: {}", result.model_id,
+                 trimmed_name.toUtf8().constData(), trimmed_framework_name.toUtf8().constData(),
                  trimmed_model_architecture.toUtf8().constData());
     return toRecordView(record);
 }
@@ -429,25 +387,20 @@ bool ModelManager::renameModel(const qint64 model_id, const QString &name)
         spdlog::warn("模型重命名失败: 模型仍有活动任务");
         return false;
     }
-    ModelStorageService storage(project_dir_);
-    QString             err_msg;
-    if (!storage.renameModelStorage(old_name, trimmed_name, &err_msg))
+    if (model_lifecycle_ == nullptr)
     {
-        spdlog::error("重命名模型目录失败, id: {}, 错误: {}", model_id, err_msg.toUtf8().constData());
+        spdlog::error("重命名模型失败: 生命周期模块为空");
+        return false;
+    }
+
+    const ModelLifecycleResult result = model_lifecycle_->rename(model_id, old_name, trimmed_name);
+    if (!result.succeeded())
+    {
+        spdlog::error("重命名模型失败, id: {}, 错误: {}", model_id, result.error.toUtf8().constData());
         return false;
     }
 
     const qint64 now = QDateTime::currentSecsSinceEpoch();
-    const bool   ok  = database_ != nullptr && database_->updateModelName(model_id, trimmed_name, now, err_msg);
-    if (!ok)
-    {
-        QString rollback_err;
-        if (!storage.renameModelStorage(trimmed_name, old_name, &rollback_err))
-            spdlog::error("回滚模型目录重命名失败, id: {}, 错误: {}", model_id, rollback_err.toUtf8().constData());
-        spdlog::error("重命名模型失败, id: {}, 错误: {}", model_id, err_msg.toUtf8().constData());
-        return false;
-    }
-
     models_[row].name  = trimmed_name;
     models_[row].mtime = now;
     emit dataChanged(index(row), index(row), {NameRole, MtimeRole});
@@ -469,15 +422,17 @@ bool ModelManager::deleteModel(const qint64 model_id)
         spdlog::warn("模型删除失败: 模型仍有活动任务");
         return false;
     }
-    QString                   err_msg;
-    const QString             uuid              = record.uuid;
-    const QString             name              = record.name;
-    const FrameworkDefinition framework         = registeredFramework(method_, record.framework_name);
-    const bool                write_to_database = framework.name.isEmpty() || framework.write_to_database;
-    const bool ok = !write_to_database || (database_ != nullptr && database_->deleteModel(model_id, err_msg));
-    if (!ok)
+    const QString uuid = record.uuid;
+    const QString name = record.name;
+    if (model_lifecycle_ == nullptr)
     {
-        spdlog::error("删除模型失败, id: {}, 错误: {}", model_id, err_msg.toUtf8().constData());
+        spdlog::error("删除模型失败: 生命周期模块为空");
+        return false;
+    }
+    const ModelLifecycleResult result = model_lifecycle_->remove(model_id, name);
+    if (!result.succeeded())
+    {
+        spdlog::error("删除模型失败, id: {}, 错误: {}", model_id, result.error.toUtf8().constData());
         return false;
     }
 
@@ -486,12 +441,10 @@ bool ModelManager::deleteModel(const qint64 model_id)
     endRemoveRows();
     model_instances_.erase(instanceKey(uuid));
     config_load_started_.erase(instanceKey(uuid));
-    ModelStorageService storage(project_dir_);
-    if (!storage.removeModelStorage(name, &err_msg))
-    {
-        spdlog::error("删除模型目录失败, 名称: {}, 错误: {}", name.toUtf8().constData(), err_msg.toUtf8().constData());
-    }
-    spdlog::info("模型删除成功, id: {}, 写入数据库: {}, 模型名称: {}", model_id, write_to_database,
+    if (result.cleanup_pending)
+        spdlog::warn("模型删除完成但清理待恢复, id: {}, 操作: {}", model_id,
+                     result.operation_id.toUtf8().constData());
+    spdlog::info("模型删除成功, id: {}, 模型名称: {}", model_id,
                  name.toUtf8().constData());
     return true;
 }
@@ -508,69 +461,41 @@ bool ModelManager::copyModel(const qint64 model_id, const bool copy_train_weight
     // Keep the source record stable while inserting the copied model. The
     // insertion may reallocate models_ and invalidate references into it.
     const ModelRecord   source = models_[row];
-    QString             err_msg;
-    int64_t             new_model_id{-1};
+    if (model_lifecycle_ == nullptr)
+    {
+        spdlog::error("复制模型失败: 生命周期模块为空");
+        return false;
+    }
     const qint64        now         = QDateTime::currentSecsSinceEpoch();
     const QString       copied_name = uniqueCopyName(source.name);
-    const QString       new_uuid    = dltool::common::uuid();
-    ModelStorageService storage(project_dir_);
-    if (QFileInfo::exists(storage.path(copied_name, ModelStorageLocation::ModelRoot)))
-    {
-        spdlog::error("复制模型失败, 模型目录已存在: {}",
-                      storage.path(copied_name, ModelStorageLocation::ModelRoot).toUtf8().constData());
-        return false;
-    }
-    if (!storage.ensureModelStorage(copied_name, &err_msg))
-    {
-        spdlog::error("复制模型失败, 创建模型目录失败: {}", err_msg.toUtf8().constData());
-        return false;
-    }
+    ModelLifecycleRecord source_record;
+    source_record.model_id          = source.model_id;
+    source_record.uuid              = source.uuid;
+    source_record.name              = source.name;
+    source_record.framework_name    = source.framework_name;
+    source_record.model_architecture = source.model_architecture;
+    source_record.ctime             = source.ctime;
+    source_record.mtime             = source.mtime;
 
-    // Copy only model-level parameters and dataset selections by default.
-    // Test-task databases/results/logs are intentionally not copied; weights
-    // are an explicit opt-in from the copy dialog/API.
-    database::ModelDataBase                 source_database(storage.modelDatabasePath(source.name));
-    database::ModelDataBase                 target_database(storage.modelDatabasePath(copied_name));
-    QVariantMap                             source_train_params;
-    QList<database::DatasetSelectionRecord> source_dataset_selections;
-    if (!source_database.readTrainParams(source_train_params, &err_msg)
-        || !source_database.readDatasets(source_dataset_selections, &err_msg)
-        || !target_database.replaceTrainParams(source_train_params, &err_msg)
-        || !target_database.replaceDatasets(source_dataset_selections, &err_msg))
+    ModelLifecycleRecord target_record;
+    target_record.uuid               = dltool::common::uuid();
+    target_record.name               = copied_name;
+    target_record.framework_name     = source.framework_name;
+    target_record.model_architecture = source.model_architecture;
+    target_record.ctime              = now;
+    target_record.mtime              = now;
+    const ModelLifecycleResult result = model_lifecycle_->copy(source_record, target_record, copy_train_weights);
+    if (!result.succeeded())
     {
-        spdlog::error("复制模型数据库内容失败: {}", err_msg.toUtf8().constData());
-        QString remove_err;
-        storage.removeModelStorage(copied_name, &remove_err);
-        return false;
-    }
-    if (copy_train_weights)
-    {
-        if (!copyDirectoryContents(storage.trainWeightsPath(source.name), storage.trainWeightsPath(copied_name),
-                                   &err_msg))
-        {
-            spdlog::error("复制模型权重失败: {}", err_msg.toUtf8().constData());
-            QString remove_err;
-            storage.removeModelStorage(copied_name, &remove_err);
-            return false;
-        }
-    }
-
-    const bool ok = database_ != nullptr
-                 && database_->addModel(new_uuid, copied_name, source.framework_name, source.model_architecture, now,
-                                        now, new_model_id, err_msg);
-    if (!ok)
-    {
-        QString remove_err;
-        storage.removeModelStorage(copied_name, &remove_err);
-        spdlog::error("复制模型失败, id: {}, 错误: {}", model_id, err_msg.toUtf8().constData());
+        spdlog::error("复制模型失败, id: {}, 错误: {}", model_id, result.error.toUtf8().constData());
         return false;
     }
 
     const int insert_row = rowCount();
     beginInsertRows(QModelIndex(), insert_row, insert_row);
     models_.push_back(ModelRecord{
-        new_model_id,
-        new_uuid,
+        result.model_id,
+        target_record.uuid,
         copied_name,
         source.framework_name,
         source.model_architecture,
@@ -600,10 +525,10 @@ bool ModelManager::copyModel(const qint64 model_id, const bool copy_train_weight
             }
 
             copied_model->setParent(const_cast<ModelManager *>(this));
-            copied_model->setUuid(new_uuid);
+            copied_model->setUuid(target_record.uuid);
             QQmlEngine::setObjectOwnership(copied_model.get(), QQmlEngine::CppOwnership);
-            model_instances_[instanceKey(new_uuid)] = std::move(copied_model);
-            config_load_started_.insert(instanceKey(new_uuid));
+            model_instances_[instanceKey(target_record.uuid)] = std::move(copied_model);
+            config_load_started_.insert(instanceKey(target_record.uuid));
         }
     }
 

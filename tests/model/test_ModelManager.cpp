@@ -110,6 +110,42 @@ private slots:
         QVERIFY(!reloaded.updateModelExtraData(record.uuid, {{QStringLiteral("x"), 1}}, &error));
         QVERIFY(error.contains(QStringLiteral("不存在")));
     }
+
+    void lifecycleFailureDoesNotRefreshModel()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+        TaskManager task_manager;
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr, &task_manager);
+        QString error;
+        const ModelManager::ModelRecordView record
+            = manager.addModelRecord(QStringLiteral("Stable"), QStringLiteral("ultralytics"),
+                                     QStringLiteral("YOLOv8"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        const ModelStorageService storage(fixture.rootPath());
+        const QString            blocked_target = storage.modelRoot(QStringLiteral("BlockedTarget"));
+        QVERIFY(QDir().mkpath(blocked_target));
+        QVERIFY(!manager.renameModel(record.model_id, QStringLiteral("BlockedTarget")));
+        QCOMPARE(manager.rowCount(), 1);
+        QCOMPARE(manager.modelRecordForUuid(record.uuid).value(QStringLiteral("name")).toString(),
+                 QStringLiteral("Stable"));
+        QVERIFY(QDir(storage.modelRoot(QStringLiteral("Stable"))).exists());
+        QVERIFY(QDir(blocked_target).removeRecursively());
+
+        const QString stable_root = storage.modelRoot(QStringLiteral("Stable"));
+        QVERIFY(QDir(stable_root).removeRecursively());
+        QVERIFY(!manager.deleteModel(record.model_id));
+        QCOMPARE(manager.rowCount(), 1);
+        QVERIFY(manager.modelRecordForUuid(record.uuid).value(QStringLiteral("name")).toString()
+                == QStringLiteral("Stable"));
+
+        QVERIFY2(storage.ensureModelStorage(QStringLiteral("Stable"), &error), qPrintable(error));
+        QVERIFY(manager.deleteModel(record.model_id));
+        QCOMPARE(manager.rowCount(), 0);
+    }
 };
 
 REGISTER_TEST(ModelManagerTest)

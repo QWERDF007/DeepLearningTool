@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dltool/model/Export.h"
+#include "model/ModelLifecycle.h"
 
 #include <QString>
 
@@ -52,7 +53,7 @@ struct MODEL_API ModelTaskPaths
 /**
  * @brief 模型磁盘存储服务，负责管理模型与测试任务的标准目录布局（创建、删除、重命名与路径解析）。
  */
-class MODEL_API ModelStorageService
+class MODEL_API ModelStorageService final : public IModelStorageAdapter
 {
 public:
     /**
@@ -60,6 +61,7 @@ public:
      * @param project_dir 项目根目录路径。
      */
     explicit ModelStorageService(QString project_dir = {});
+    ~ModelStorageService() override = default;
 
     /**
      * @brief 设置当前项目根目录。
@@ -72,6 +74,16 @@ public:
      * @return 项目根目录路径。
      */
     QString projectDirectory() const;
+
+    QString modelsRootPath() const override;
+    QString modelRoot(const QString &model_name) const override;
+    QString modelDatabasePathAt(const QString &model_root) const override;
+    QString trainWeightsPathAt(const QString &model_root) const override;
+
+    QString operationRoot() const override;
+    QString operationStagingRoot(const QString &operation_id) const override;
+    QString operationQuarantineRoot(const QString &operation_id) const override;
+    QString operationJournalPath(const QString &operation_id) const override;
 
     /** @brief 获取模型主数据库路径（models/<model_name>/model.db）。 */
     QString modelDatabasePath(const QString &model_name) const;
@@ -121,6 +133,20 @@ public:
      * @return 成功返回 true。
      */
     bool ensureModelStorage(const QString &model_name, QString *err_msg = nullptr) const;
+
+    /** @brief 在模型根目录或 staging 根目录创建完整模型存储。 */
+    bool ensureModelStorageAt(const QString &model_root, QString *err_msg = nullptr) const override;
+
+    /** @brief 复制目录内容，不复制源目录本身。 */
+    bool copyDirectoryContents(const QString &source, const QString &target,
+                               QString *err_msg = nullptr) const override;
+
+    /** @brief 在模型存储根目录内移动目录。 */
+    bool moveDirectory(const QString &source, const QString &target,
+                       QString *err_msg = nullptr) override;
+
+    /** @brief 删除模型存储根目录内的目录。 */
+    bool removeDirectory(const QString &root, QString *err_msg = nullptr) const override;
 
     /**
      * @brief 递归删除模型的磁盘存储目录。

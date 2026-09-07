@@ -47,6 +47,31 @@
 
 ---
 
+## 2026-09-07 — 实现模型生命周期与跨介质恢复
+
+**目标**
+- 以深模块统一模型创建、复制、重命名、删除和恢复，保证模型目录、模型数据库与 Qt Model 不出现半成功状态。
+
+**当前状态**
+- 已完成：新增 `ModelLifecycle`、`IModelRecordStore`、`IModelStorageAdapter` 及每操作一个 JSON journal；支持 staging/quarantine、创建、复制、重命名、删除和待恢复扫描。
+- 已完成：`ModelStorageService` 增加模型存储根目录、目录移动/复制/删除和操作路径能力；新增失败回滚与发布失败恢复测试，并纳入 model storage 测试目标。
+- 已完成：`ModelManager` 的创建、复制、重命名和删除统一通过 `ModelLifecycle`；恢复待完成操作后再加载模型列表，只有生命周期成功后才刷新 Qt Model 和缓存。
+- 已完成：增加 `ModelManager` 生命周期失败时不刷新模型列表的回归测试。
+- 未完成：项目级 full 流程未在本阶段执行；下一阶段尚未开始。
+- 保留：`tools/dependencies.yaml` 为既有用户改动，未纳入本轮。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_storage_params_tests --parallel 4` → Release 构建成功。
+- `ctest --test-dir build -C Release -R '^dltool_model_storage_params_tests$' --output-on-failure` → 1/1 通过，覆盖生命周期回滚、恢复及 ModelManager CRUD/失败不刷新。
+- `cmake --build build --config Release --target dltool --parallel 4` → Release 应用目标构建成功。
+- `ctest --test-dir build -C Release -L model -LE project --output-on-failure` → 12/12 通过。
+- `git diff --check` → 通过。
+
+**下一步**
+- 修复 `recoverPending()` 的无操作上下文错误返回及 `readJournal` 无用参数，重新构建目标并通过 CTest；随后将 `ModelLifecycle` 接入 `ModelManager`，补齐 CRUD 一致性与重启恢复验证。
+
+---
+
 ## 2026-09-07 — 修复异常检测数据集划分丢失标注
 
 **目标**

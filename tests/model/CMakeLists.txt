@@ -123,7 +123,7 @@ dlt_glob_sources(_model_task_test_sources
 dlt_glob_sources(_model_storage_test_sources
     RECURSE
     ROOT "${CMAKE_CURRENT_SOURCE_DIR}"
-    PATTERNS "test_ModelStorage*.cpp" "test_ModelParam*.cpp" "test_ModelDataBases*.cpp" "test_ModelManager*.cpp"
+    PATTERNS "test_ModelStorage*.cpp" "test_ModelLifecycle*.cpp" "test_ModelParam*.cpp" "test_ModelDataBases*.cpp" "test_ModelManager*.cpp"
 )
 dlt_glob_sources(_model_config_test_sources
     RECURSE

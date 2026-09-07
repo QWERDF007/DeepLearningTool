@@ -4,8 +4,9 @@
 #include "database/ModelDataBase.h"
 
 #include <QDir>
+#include <QDirIterator>
+#include <QFile>
 #include <QFileInfo>
-#include <array>
 #include <map>
 
 using dltool::common::cleanPath;
@@ -31,17 +32,6 @@ const std::map<ModelStorageLocation, QString> &storageLocationNames()
         {  ModelStorageLocation::Datasets, QStringLiteral("datasets")},
     };
     return names;
-}
-
-/**
- * @brief 获取模型子目录位置列表
- * @return 子目录位置数组
- */
-const std::array<ModelStorageLocation, 2> &modelChildLocations()
-{
-    static const std::array<ModelStorageLocation, 2> locations
-        = {ModelStorageLocation::Train, ModelStorageLocation::Test};
-    return locations;
 }
 
 } // namespace
@@ -73,10 +63,31 @@ QString ModelStorageService::projectDirectory() const
     return project_dir_;
 }
 
+QString ModelStorageService::modelsRootPath() const
+{
+    return path({}, ModelStorageLocation::ModelsRoot);
+}
+
+QString ModelStorageService::modelRoot(const QString &model_name) const
+{
+    return path(model_name, ModelStorageLocation::ModelRoot);
+}
+
+QString ModelStorageService::modelDatabasePathAt(const QString &model_root) const
+{
+    const QString root = cleanPath(QFileInfo(model_root).absoluteFilePath());
+    return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral("model.db")));
+}
+
+QString ModelStorageService::trainWeightsPathAt(const QString &model_root) const
+{
+    const QString root = cleanPath(QFileInfo(model_root).absoluteFilePath());
+    return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral("train/weights")));
+}
+
 QString ModelStorageService::modelDatabasePath(const QString &model_name) const
 {
-    const QString root = path(model_name, ModelStorageLocation::ModelRoot);
-    return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral("model.db")));
+    return modelDatabasePathAt(modelRoot(model_name));
 }
 
 QString ModelStorageService::sharedDatasetPath(const QString &model_name) const
@@ -128,6 +139,14 @@ QString safeTaskChild(const QString &root, const QString &child)
     return result;
 }
 
+bool isModelStoragePath(const QString &models_root, const QString &candidate)
+{
+    const QString root = cleanPath(QFileInfo(models_root).absoluteFilePath());
+    const QString path = cleanPath(QFileInfo(candidate).absoluteFilePath());
+    return !root.isEmpty() && !path.isEmpty() && path != root
+        && path.startsWith(root + QStringLiteral("/"), Qt::CaseInsensitive);
+}
+
 } // namespace
 
 QString ModelStorageService::trainRoot(const QString &model_name) const
@@ -137,8 +156,7 @@ QString ModelStorageService::trainRoot(const QString &model_name) const
 
 QString ModelStorageService::trainWeightsPath(const QString &model_name) const
 {
-    const QString root = trainRoot(model_name);
-    return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral("weights")));
+    return trainWeightsPathAt(modelRoot(model_name));
 }
 
 QString ModelStorageService::trainLogsPath(const QString &model_name) const
@@ -221,6 +239,147 @@ ModelTaskPaths ModelStorageService::testPaths(const QString &model_name, const Q
     return paths;
 }
 
+QString ModelStorageService::operationRoot() const
+{
+    const QString root = modelsRootPath();
+    return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral(".operations")));
+}
+
+QString ModelStorageService::operationStagingRoot(const QString &operation_id) const
+{
+    return safeTaskChild(operationRoot(), QStringLiteral("staging-%1").arg(operation_id.trimmed()));
+}
+
+QString ModelStorageService::operationQuarantineRoot(const QString &operation_id) const
+{
+    return safeTaskChild(operationRoot(), QStringLiteral("quarantine-%1").arg(operation_id.trimmed()));
+}
+
+QString ModelStorageService::operationJournalPath(const QString &operation_id) const
+{
+    return safeTaskChild(operationRoot(), QStringLiteral("%1.json").arg(operation_id.trimmed()));
+}
+
+bool ModelStorageService::ensureModelStorageAt(const QString &model_root, QString *err_msg) const
+{
+    const QString root = cleanPath(QFileInfo(model_root).absoluteFilePath());
+    if (!isModelStoragePath(modelsRootPath(), root))
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("模型存储路径非法");
+        return false;
+    }
+    if (!ensureDirectory(root, err_msg, QStringLiteral("模型目录为空"), QStringLiteral("创建模型目录失败: %1")))
+        return false;
+
+    const QString database_path = modelDatabasePathAt(root);
+    if (database_path.isEmpty())
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("模型数据库路径为空");
+        return false;
+    }
+    database::ModelDataBase model_database(database_path);
+    Q_UNUSED(model_database)
+
+    for (const QString &directory : {QDir(root).filePath(QStringLiteral("train")),
+                                     QDir(root).filePath(QStringLiteral("train/weights")),
+                                     QDir(root).filePath(QStringLiteral("train/logs")),
+                                     QDir(root).filePath(QStringLiteral("test")),
+                                     QDir(root).filePath(QStringLiteral("datasets"))})
+    {
+        if (!ensureDirectory(directory, err_msg, QStringLiteral("模型子目录为空"),
+                             QStringLiteral("创建模型子目录失败: %1")))
+            return false;
+    }
+    return true;
+}
+
+bool ModelStorageService::copyDirectoryContents(const QString &source, const QString &target, QString *err_msg) const
+{
+    const QFileInfo source_info(source);
+    if (!source_info.exists() || !source_info.isDir())
+        return true;
+    if (!isModelStoragePath(modelsRootPath(), target) || !QDir().mkpath(target))
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("创建模型复制目录失败: %1").arg(target);
+        return false;
+    }
+
+    QDirIterator iterator(source, QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks,
+                          QDirIterator::Subdirectories);
+    while (iterator.hasNext())
+    {
+        const QFileInfo item(iterator.next());
+        const QString   relative    = QDir(source).relativeFilePath(item.absoluteFilePath());
+        const QString   destination = QDir(target).filePath(relative);
+        if (item.isDir())
+        {
+            if (!QDir().mkpath(destination))
+            {
+                if (err_msg != nullptr)
+                    *err_msg = QStringLiteral("创建模型复制子目录失败: %1").arg(destination);
+                return false;
+            }
+        }
+        else if (!QFile::copy(item.absoluteFilePath(), destination))
+        {
+            if (err_msg != nullptr)
+                *err_msg = QStringLiteral("复制模型文件失败: %1").arg(item.absoluteFilePath());
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ModelStorageService::moveDirectory(const QString &source, const QString &target, QString *err_msg)
+{
+    const QString source_path = cleanPath(QFileInfo(source).absoluteFilePath());
+    const QString target_path = cleanPath(QFileInfo(target).absoluteFilePath());
+    if (!isModelStoragePath(modelsRootPath(), source_path) || !isModelStoragePath(modelsRootPath(), target_path))
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("模型目录移动路径非法");
+        return false;
+    }
+    if (!QDir(source_path).exists())
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("源模型目录不存在: %1").arg(source_path);
+        return false;
+    }
+    if (QFileInfo::exists(target_path))
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("目标模型目录已存在: %1").arg(target_path);
+        return false;
+    }
+    if (!QDir().mkpath(QFileInfo(target_path).absolutePath()) || !QFile::rename(source_path, target_path))
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("移动模型目录失败: %1 -> %2").arg(source_path, target_path);
+        return false;
+    }
+    return true;
+}
+
+bool ModelStorageService::removeDirectory(const QString &root, QString *err_msg) const
+{
+    const QString target = cleanPath(QFileInfo(root).absoluteFilePath());
+    if (!isModelStoragePath(modelsRootPath(), target))
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("拒绝删除非法模型目录: %1").arg(target);
+        return false;
+    }
+    if (!QDir(target).exists() || QDir(target).removeRecursively())
+        return true;
+    if (err_msg != nullptr)
+        *err_msg = QStringLiteral("删除模型目录失败: %1").arg(target);
+    return false;
+}
+
 bool ModelStorageService::ensureTrainStorage(const QString &model_name, QString *err_msg) const
 {
     if (!ensureDirectory(trainRoot(model_name), err_msg, QString("训练目录为空"), QString("创建训练目录失败: %1")))
@@ -257,51 +416,15 @@ bool ModelStorageService::ensureTestTaskStorage(const QString &model_name, const
 
 bool ModelStorageService::ensureModelStorage(const QString &model_name, QString *err_msg) const
 {
-    const QString model_dir = path(model_name, ModelStorageLocation::ModelRoot);
-    if (!ensureDirectory(model_dir, err_msg, QString("目录路径为空"), QString("创建目录失败: %1")))
-        return false;
-
-    if (modelDatabasePath(model_name).isEmpty())
-        return false;
-    // Constructing the database creates the fixed model.db schema.  The
-    // project database remains the source of model metadata; this database
-    // only owns model parameters, selections and test-task index records.
-    database::ModelDataBase model_database(modelDatabasePath(model_name));
-    Q_UNUSED(model_database)
-
-    for (const ModelStorageLocation child_location : modelChildLocations())
-    {
-        if (!ensureDirectory(path(model_name, child_location), err_msg, QString("目录路径为空"),
-                             QString("创建目录失败: %1")))
-            return false;
-    }
-    return ensureDirectory(sharedDatasetPath(model_name), err_msg, QString("数据集目录为空"),
-                           QString("创建数据集目录失败: %1"))
-        && ensureTrainStorage(model_name, err_msg) && ensureTestStorage(model_name, err_msg);
+    return ensureModelStorageAt(modelRoot(model_name), err_msg);
 }
 
 bool ModelStorageService::removeModelStorage(const QString &model_name, QString *err_msg) const
 {
-    const QString root   = cleanPath(QFileInfo(path({}, ModelStorageLocation::ModelsRoot)).absoluteFilePath());
-    const QString target = cleanPath(QFileInfo(path(model_name, ModelStorageLocation::ModelRoot)).absoluteFilePath());
-    if (root.isEmpty() || target.isEmpty() || target == root
-        || !target.startsWith(root + QStringLiteral("/"), Qt::CaseInsensitive))
-    {
-        if (err_msg != nullptr)
-            *err_msg = QString("拒绝删除非法模型目录: %1").arg(target);
-        return false;
-    }
-
-    QDir dir(target);
-    if (!dir.exists())
+    const QString target = modelRoot(model_name);
+    if (!QDir(target).exists())
         return true;
-    if (!dir.removeRecursively())
-    {
-        if (err_msg != nullptr)
-            *err_msg = QString("删除模型目录失败: %1").arg(target);
-        return false;
-    }
-    return true;
+    return removeDirectory(target, err_msg);
 }
 
 bool ModelStorageService::renameModelStorage(const QString &old_model_name, const QString &new_model_name,

@@ -29,6 +29,9 @@ class DataManager;
 namespace dltool::model {
 
 class TaskManager;
+class ModelLifecycle;
+class ModelStorageService;
+class ProjectModelRecordStore;
 
 /**
  * @brief 模型管理器，负责模型的增删改查、缓存管理和 TensorBoard 启动
@@ -452,6 +455,10 @@ private:
     dltool::data::DataManager         *data_manager_{nullptr};       ///< 数据管理器
     TaskManager                       *task_manager_{nullptr};        ///< 当前项目任务运行时
     QSortFilterProxyModel             *user_visible_model_{nullptr}; ///< 用户可见模型代理
+
+    std::unique_ptr<ModelStorageService>     model_storage_;
+    std::unique_ptr<ProjectModelRecordStore> model_record_store_;
+    std::unique_ptr<ModelLifecycle>           model_lifecycle_;
 
     QProcess *tensorboard_process_{nullptr}; ///< TensorBoard 进程
     QString   tensorboard_model_uuid_;       ///< 当前 TensorBoard 模型 UUID
