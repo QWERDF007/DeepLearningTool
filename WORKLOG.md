@@ -47,6 +47,48 @@
 
 ---
 
+## 2026-09-07 — 收敛评估缩略图并发生成
+
+**目标**
+- 避免同一评估视觉请求在多个 QML delegate 并发加载时重复读取 TIFF 和生成热力图。
+
+**当前状态**
+- 已完成：新增 `EvaluationImageRequestCache`，按实际图像字节数缓存结果，并对相同 key 的并发 miss 进行单次生成协调。
+- 已完成：`EvaluationThumbnailImageProvider` 通过内部 PImpl 使用请求缓存，公开头不暴露实现细节。
+- 已完成：新增并发回归测试，验证 8 个并发请求只执行一次 loader，且所有请求都得到结果。
+- 保留：`final_plan.md` 和 `tools/dependencies.yaml` 的既有工作区改动未纳入本阶段。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_evaluation_tests --parallel 4` → Release 构建成功。
+- `ctest --test-dir build -C Release -R '^dltool_model_evaluation_tests$' --output-on-failure` → 1/1 通过。
+- `ctest --test-dir build -C Release -R '^dltool_model_evaluation_tests$' --repeat until-fail:10 --output-on-failure` → 连续 10 次通过。
+- `cmake --build build --config Release --target tst_dltool_model_qml --parallel 4` → Release 构建成功。
+- `ctest --test-dir build -C Release -R '^tst_dltool_model_qml_(test_anomalyThumbnailHeatmapLifecycle|test_anomalyMatrixFilterFirstHeatmapPaintsPolygons)$' --output-on-failure` → 2/2 通过。
+- `git diff --check` → 通过。
+
+**下一步**
+- 继续按 `final_plan.md` 阶段 6 审查评估视觉派生的取消、失效和项目关闭生命周期，再进入下一个独立提交。
+
+---
+
+## 2026-09-07 — 阶段提交后的工作区边界
+
+**目标**
+- 保持分阶段提交可独立恢复，明确当前未提交文件不属于已完成的 ViewModel 所有权切片。
+
+**当前状态**
+- 已完成：`fcb985f refactor: 转移评估图像记录所有权` 已提交。
+- 保留：工作树仅有 `final_plan.md` 和 `tools/dependencies.yaml`，继续作为既有改动保留。
+
+**验证证据**
+- `git status --short` → 仅显示 `final_plan.md`、`tools/dependencies.yaml`。
+- `git log -1 --oneline` → `fcb985f refactor: 转移评估图像记录所有权`。
+
+**下一步**
+- 继续阶段 6 的视觉派生缓存与可见实例按需生成审查，单独验证后再提交。
+
+---
+
 ## 2026-09-07 — 转移评估图像记录所有权
 
 **目标**

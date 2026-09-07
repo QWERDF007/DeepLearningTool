@@ -2,12 +2,16 @@
 
 #include "dltool/model/Export.h"
 
-#include <QCache>
 #include <QImage>
-#include <QMutex>
 #include <QQuickImageProvider>
 
+#include <memory>
+
 namespace dltool::model {
+
+namespace detail {
+class EvaluationImageRequestCache;
+}
 
 /**
  * @brief 评估缩略图图像提供器（QQuickImageProvider）。
@@ -21,6 +25,7 @@ class MODEL_API EvaluationThumbnailImageProvider final : public QQuickImageProvi
 {
 public:
     EvaluationThumbnailImageProvider();
+    ~EvaluationThumbnailImageProvider() override;
 
     /**
      * @brief 响应 QML 图像加载请求并生成缩略图。
@@ -34,8 +39,7 @@ public:
 private:
     QImage loadImage(const QString &id, const QSize &requestedSize) const;
 
-    mutable QMutex                  mutex_; ///< 缓存互斥锁。
-    mutable QCache<QString, QImage> cache_; ///< 按 QImage 实际字节数限制的内存 LRU 缓存。
+    std::unique_ptr<detail::EvaluationImageRequestCache> cache_;
 };
 
 } // namespace dltool::model

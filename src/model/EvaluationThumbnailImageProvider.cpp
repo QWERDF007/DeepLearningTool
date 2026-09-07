@@ -2,6 +2,7 @@
 
 #include "model/AnomalyPreprocessingTransform.h"
 #include "model/EvaluationDataset.h"
+#include "model/detail/EvaluationImageRequestCache.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -12,7 +13,6 @@
 #include <QUrlQuery>
 #include <algorithm>
 #include <cmath>
-#include <limits>
 
 namespace dltool::model {
 
@@ -31,12 +31,6 @@ bool queryFlag(const QUrlQuery &query, const QString &name)
 {
     const QString value = query.queryItemValue(name).trimmed().toLower();
     return value == QStringLiteral("1") || value == QStringLiteral("true") || value == QStringLiteral("yes");
-}
-
-int imageCacheCost(const QImage &image)
-{
-    const qsizetype bytes = std::max<qsizetype>(1, image.sizeInBytes());
-    return static_cast<int>(std::min<qsizetype>(bytes, std::numeric_limits<int>::max()));
 }
 
 QVariantMap preprocessingConfig(const QUrlQuery &query)
@@ -177,9 +171,11 @@ QRect cropRect(const QImage &image, const QUrlQuery &query)
 
 EvaluationThumbnailImageProvider::EvaluationThumbnailImageProvider()
     : QQuickImageProvider(QQuickImageProvider::Image)
-    , cache_(64 * 1024 * 1024)
+    , cache_(std::make_unique<detail::EvaluationImageRequestCache>())
 {
 }
+
+EvaluationThumbnailImageProvider::~EvaluationThumbnailImageProvider() = default;
 
 QImage EvaluationThumbnailImageProvider::requestImage(const QString &id, QSize *size, const QSize &requestedSize)
 {
@@ -190,24 +186,14 @@ QImage EvaluationThumbnailImageProvider::requestImage(const QString &id, QSize *
                                           ? QString()
                                           : QLatin1Char('\x1f') + QString::number(requestedSize.width()) + QLatin1Char('x')
                                                 + QString::number(requestedSize.height()));
+    const QImage image = cache_->getOrCreate(cache_key, [this, id, requestedSize]
     {
-        QMutexLocker locker(&mutex_);
-        if (const QImage *cached = cache_.object(cache_key))
-        {
-            if (size != nullptr)
-                *size = cached->size();
-            return *cached;
-        }
-    }
-
-    const QImage image = loadImage(id, requestedSize);
+        return loadImage(id, requestedSize);
+    });
     if (size != nullptr)
         *size = image.size();
     if (image.isNull())
         return {};
-
-    QMutexLocker locker(&mutex_);
-    cache_.insert(cache_key, new QImage(image), imageCacheCost(image));
     return image;
 }
 
