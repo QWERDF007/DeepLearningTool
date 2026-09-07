@@ -68,12 +68,24 @@ private slots:
         score_file.close();
         QVERIFY(!first.findScoreMaximum(score_path, &loaded_score));
 
+        auto score_map = std::make_shared<EvaluationScoreMap>();
+        score_map->width            = 1;
+        score_map->height           = 1;
+        score_map->values           = {4.5};
+        score_map->maximum_score    = 4.5;
+        score_map->has_maximum_score = true;
+        first.storeScoreMap(score_path, score_map);
+        std::shared_ptr<const EvaluationScoreMap> loaded_score_map;
+        QVERIFY(first.findScoreMap(score_path, &loaded_score_map));
+        QCOMPARE(loaded_score_map.get(), score_map.get());
+
         const EvaluationArtifactScope next_scope{QStringLiteral("project-a"), QStringLiteral("task-a"),
                                                  QStringLiteral("model-a"), QStringLiteral("test-a"),
                                                  QStringLiteral("prediction-b")};
         first.prepare(next_scope);
         QVERIFY(!first.findThreshold(QStringLiteral("threshold-key"), &loaded_threshold));
         QVERIFY(!first.findAnomalyRegions(QStringLiteral("region-key"), &loaded_regions));
+        QVERIFY(!first.findScoreMap(score_path, &loaded_score_map));
 
         first.prepare(first_scope);
         first.storeThreshold(QStringLiteral("project-key"), threshold);

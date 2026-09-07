@@ -171,6 +171,9 @@ EvaluationScoreMaximumResult readScoreMapForEvaluation(const EvaluationScoreMaxi
         if (!result.has_score || !std::isfinite(retain_threshold) || result.maximum < retain_threshold)
             return result;
 
+        if (artifact_cache->findScoreMap(request.path, &result.score_map))
+            return result;
+
         cv::Mat decoded;
         if (!decodeEvaluationScoreMap(request.path, decoded, &result.error))
             return result;
@@ -193,7 +196,11 @@ EvaluationScoreMaximumResult readScoreMapForEvaluation(const EvaluationScoreMaxi
     if (artifact_cache != nullptr)
         artifact_cache->storeScoreMaximum(request.path, true, result.maximum);
     if (std::isfinite(retain_threshold) && result.maximum >= retain_threshold)
+    {
         result.score_map = materializedScoreMap(decoded);
+        if (artifact_cache != nullptr)
+            artifact_cache->storeScoreMap(request.path, result.score_map);
+    }
     return result;
 }
 

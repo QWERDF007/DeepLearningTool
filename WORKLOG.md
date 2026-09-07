@@ -47,6 +47,27 @@
 
 ---
 
+## 2026-09-07 — 复用评估完整分数图并限制缓存
+
+**目标**
+- 在评估阈值变化或异常区域重新生成时复用同一预测文件的完整分数图，避免最大值读取与区域处理之间重复 TIFF 解码。
+
+**当前状态**
+- 已完成：`EvaluationArtifactCache` 增加按文件大小/修改时间校验的完整 `EvaluationScoreMap` 缓存，容量按约 64 MiB 的像素字节成本限制。
+- 已完成：评估读取路径在最大值命中后优先复用完整分数图；预测快照、项目/任务作用域或文件身份变化会失效，超大图不进入缓存。
+- 已完成：补充完整分数图缓存指针复用、作用域失效和已有评估路径回归测试。
+- 保留：`tools/dependencies.yaml` 为既有用户改动，未纳入本阶段提交。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_evaluation_tests --parallel 4` → Release 目标构建成功。
+- `ctest --test-dir build -C Release -R '^dltool_model_evaluation_tests$' --output-on-failure` → 1/1 通过。
+- `git diff --check` → 通过。
+
+**下一步**
+- 继续按 `final_plan.md` 阶段 6，评估完整 `EvaluationResult` 与异常多边形的按需视觉派生边界，避免将不可见实例的重计算放在评估主循环中。
+
+---
+
 ## 2026-09-07 — 限制评估缩略图缓存内存
 
 **目标**

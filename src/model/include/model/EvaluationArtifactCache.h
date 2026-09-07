@@ -26,6 +26,14 @@ struct MODEL_API EvaluationScoreMaximumCacheValue
     double maximum{0.0};
 };
 
+/** @brief 可重建的完整异常分数图缓存值。 */
+struct MODEL_API EvaluationScoreMapCacheValue
+{
+    qint64                                file_size{0};
+    qint64                                last_modified_ms{0};
+    std::shared_ptr<const EvaluationScoreMap> score_map;
+};
+
 /** @brief 异常分割多边形的可重建缓存值。 */
 struct MODEL_API EvaluationAnomalyRegionCacheValue
 {
@@ -67,6 +75,9 @@ public:
     bool findScoreMaximum(const QString &path, EvaluationScoreMaximumCacheValue *result);
     void storeScoreMaximum(const QString &path, bool has_score, double maximum);
 
+    bool findScoreMap(const QString &path, std::shared_ptr<const EvaluationScoreMap> *score_map);
+    void storeScoreMap(const QString &path, const std::shared_ptr<const EvaluationScoreMap> &score_map);
+
     bool findAnomalyRegions(const QString &key, EvaluationAnomalyRegionCacheValue *value);
     void storeAnomalyRegions(const QString &key, const EvaluationAnomalyRegionCacheValue &value);
 
@@ -75,6 +86,7 @@ private:
     EvaluationArtifactScope scope_;
     QCache<QString, EvaluationThresholdSearchResult>    threshold_cache_;
     QCache<QString, EvaluationScoreMaximumCacheValue>   score_maximum_cache_;
+    QCache<QString, EvaluationScoreMapCacheValue>       score_map_cache_;
     QCache<QString, EvaluationAnomalyRegionCacheValue>  anomaly_region_cache_;
 };
 

@@ -22,11 +22,21 @@ int anomalyRegionCost(const EvaluationAnomalyRegionCacheValue &value)
     return static_cast<int>(std::min<qsizetype>(cost, std::numeric_limits<int>::max()));
 }
 
+int scoreMapCost(const std::shared_ptr<const EvaluationScoreMap> &score_map)
+{
+    if (score_map == nullptr)
+        return 0;
+    const qsizetype bytes
+        = std::max<qsizetype>(1, static_cast<qsizetype>(score_map->values.size()) * sizeof(double));
+    return static_cast<int>(std::min<qsizetype>(bytes, std::numeric_limits<int>::max()));
+}
+
 } // namespace
 
 EvaluationArtifactCache::EvaluationArtifactCache()
     : threshold_cache_(32)
     , score_maximum_cache_(4096)
+    , score_map_cache_(64 * 1024 * 1024)
     , anomaly_region_cache_(64 * 1024 * 1024)
 {
 }
@@ -40,6 +50,7 @@ void EvaluationArtifactCache::prepare(const EvaluationArtifactScope &scope)
     scope_ = scope;
     threshold_cache_.clear();
     score_maximum_cache_.clear();
+    score_map_cache_.clear();
     anomaly_region_cache_.clear();
 }
 
@@ -93,6 +104,39 @@ void EvaluationArtifactCache::storeScoreMaximum(const QString &path, const bool 
     score_maximum_cache_.insert(file_info.absoluteFilePath(),
                                 new EvaluationScoreMaximumCacheValue{
                                     file_info.size(), file_info.lastModified().toMSecsSinceEpoch(), has_score, maximum});
+}
+
+bool EvaluationArtifactCache::findScoreMap(const QString &path, std::shared_ptr<const EvaluationScoreMap> *score_map)
+{
+    if (path.isEmpty() || score_map == nullptr)
+        return false;
+
+    const QFileInfo file_info(path);
+    if (!file_info.isFile())
+        return false;
+
+    QMutexLocker locker(&mutex_);
+    const EvaluationScoreMapCacheValue *cached = score_map_cache_.object(file_info.absoluteFilePath());
+    if (cached == nullptr || cached->file_size != file_info.size()
+        || cached->last_modified_ms != file_info.lastModified().toMSecsSinceEpoch() || cached->score_map == nullptr)
+        return false;
+    *score_map = cached->score_map;
+    return true;
+}
+
+void EvaluationArtifactCache::storeScoreMap(const QString &path,
+                                             const std::shared_ptr<const EvaluationScoreMap> &score_map)
+{
+    const QFileInfo file_info(path);
+    const int       cost = scoreMapCost(score_map);
+    if (!file_info.isFile() || cost <= 0)
+        return;
+
+    QMutexLocker locker(&mutex_);
+    score_map_cache_.insert(file_info.absoluteFilePath(),
+                            new EvaluationScoreMapCacheValue{
+                                file_info.size(), file_info.lastModified().toMSecsSinceEpoch(), score_map},
+                            cost);
 }
 
 bool EvaluationArtifactCache::findAnomalyRegions(const QString &key, EvaluationAnomalyRegionCacheValue *value)
