@@ -79,6 +79,30 @@ private slots:
         QVERIFY(second_id > first_id);
     }
 
+    void projectIdentitySeparatesTaskManagers()
+    {
+        TaskManager first;
+        TaskManager second;
+        QVERIFY(!first.projectId().isEmpty());
+        QVERIFY(!second.projectId().isEmpty());
+        QVERIFY(first.projectId() != second.projectId());
+
+        const int second_task_id = second.addTask(QStringLiteral("model"), QStringLiteral("Model"),
+                                                  ModelTaskType::Train);
+        QVERIFY(second.startTask(second_task_id));
+        const TaskIdentity foreign_identity{second_task_id, QStringLiteral("foreign-run"), first.projectId()};
+        TaskMessage foreign_message;
+        foreign_message.identity = foreign_identity;
+        foreign_message.type     = TaskMessageType::Status;
+        foreign_message.status   = TaskProtocolStatus::Finished;
+        QMetaObject::invokeMethod(&second, "handleTaskMessage", Qt::DirectConnection,
+                                  Q_ARG(TaskMessage, foreign_message));
+
+        const TaskManager::Task *task = second.findTask(second_task_id);
+        QVERIFY(task != nullptr);
+        QCOMPARE(task->status, TaskManager::Preparing);
+    }
+
     void messagesFromPreviousRunAreDroppedAfterManagerRestart()
     {
         TaskMessage old_message;

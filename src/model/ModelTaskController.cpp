@@ -407,7 +407,7 @@ bool ModelTaskController::prepareTask(const int task_id)
     const TaskIdentity task_identity = request_ptr->identity;
     const auto completion = [this, task_identity, process_spec](const dltool::data::DataOperationWorkflow::Result &result)
     {
-        preparation_operations_.remove(task_identity.run_id);
+        preparation_operations_.remove(task_identity);
         handlePreparedTask(task_identity, process_spec, result.success, result.error);
     };
 
@@ -417,7 +417,7 @@ bool ModelTaskController::prepareTask(const int task_id)
             this, std::move(options),
             [prepare](dltool::data::DataOperationWorkflow::Result &result) { prepare(nullptr, result); }, completion);
         if (operation != nullptr)
-            preparation_operations_.insert(task_identity.run_id, operation);
+            preparation_operations_.insert(task_identity, operation);
         else if (const TaskManager::Task *current = task_manager_->findTask(task_id);
                  current != nullptr && current->status == TaskManager::Preparing)
         {
@@ -441,7 +441,7 @@ bool ModelTaskController::prepareTask(const int task_id)
                       dltool::data::DataOperationWorkflow::Result &result) { prepare(&source, result); },
             completion);
         if (operation != nullptr)
-            preparation_operations_.insert(task_identity.run_id, operation);
+            preparation_operations_.insert(task_identity, operation);
         else if (const TaskManager::Task *current = task_manager_->findTask(task_id);
                  current != nullptr && current->status == TaskManager::Preparing)
         {
@@ -474,7 +474,7 @@ bool ModelTaskController::deleteTask(const int task_id)
     }
 
     const bool deleted = task_manager_ != nullptr && task_manager_->deleteTask(task_id);
-    if (const auto operation = preparation_operations_.take(identity.run_id); operation != nullptr)
+    if (const auto operation = preparation_operations_.take(identity); operation != nullptr)
         operation->requestCancel();
     if (external_task_runner_ != nullptr && identity.isValid())
         external_task_runner_->deleteTask(identity);
@@ -802,7 +802,7 @@ void ModelTaskController::handleTaskStopRequested(const TaskIdentity &identity)
     if (task == nullptr || task->identity != identity)
         return;
 
-    if (const auto operation = preparation_operations_.value(identity.run_id); operation != nullptr)
+    if (const auto operation = preparation_operations_.value(identity); operation != nullptr)
         operation->requestCancel();
 
     if (external_task_runner_ != nullptr && external_task_runner_->hasRunningTask(identity))

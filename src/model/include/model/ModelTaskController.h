@@ -266,8 +266,8 @@ private:
     std::unique_ptr<ExternalModelTaskRunner> external_task_runner_;   ///< 当前项目 Python 进程运行器。
     ModelTestTaskRepository                  test_task_repository_;
 
-    /// 当前执行的后台准备句柄；按不可复用 run_id 隔离重启后的同一逻辑任务。
-    QHash<QString, dltool::data::DataOperationWorkflow::HandlePtr> preparation_operations_;
+    /// 当前执行的后台准备句柄；按完整任务身份隔离项目和任务重启。
+    QHash<TaskIdentity, dltool::data::DataOperationWorkflow::HandlePtr> preparation_operations_;
     bool                                                        shutting_down_{false};
 
     /// 待合并的任务状态更新缓冲（task_id -> 指标字段），由节流定时器统一落库。

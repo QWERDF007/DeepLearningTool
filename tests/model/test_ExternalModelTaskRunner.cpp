@@ -22,7 +22,7 @@ private slots:
         QString error;
         QVERIFY(!runner.start(spec, &error));
         QVERIFY(error.contains(QStringLiteral("任务")));
-        spec.identity = {1, QStringLiteral("invalid-program")};
+        spec.identity = {1, QStringLiteral("invalid-program"), QStringLiteral("project-1")};
         error.clear();
         QVERIFY(!runner.start(spec, &error));
         QVERIFY(error.contains(QStringLiteral("程序")));
@@ -41,7 +41,7 @@ private slots:
         QSignalSpy started(&runner, &ExternalModelTaskRunner::taskStarted);
         QSignalSpy finished(&runner, &ExternalModelTaskRunner::taskFinished);
         ExternalProcessSpec spec;
-        spec.identity = {41, QStringLiteral("run-41")};
+        spec.identity = {41, QStringLiteral("run-41"), QStringLiteral("project-41")};
         spec.program = qEnvironmentVariable("ComSpec", QStringLiteral("C:/Windows/System32/cmd.exe"));
         spec.arguments = {QStringLiteral("/C"), QStringLiteral("echo runner-output")};
         spec.working_directory = temp.path();
@@ -71,7 +71,7 @@ private slots:
         ExternalModelTaskRunner runner;
         QSignalSpy         finished(&runner, &ExternalModelTaskRunner::taskFinished);
         ExternalProcessSpec spec;
-        spec.identity           = {42, QStringLiteral("run-42")};
+        spec.identity           = {42, QStringLiteral("run-42"), QStringLiteral("project-42")};
         spec.program           = qEnvironmentVariable("ComSpec", QStringLiteral("C:/Windows/System32/cmd.exe"));
         spec.arguments         = {QStringLiteral("/C"), QStringLiteral("ping -n 6 127.0.0.1 >NUL")};
         spec.working_directory = temp.path();
@@ -96,7 +96,7 @@ private slots:
 
         ExternalModelTaskRunner runner;
         ExternalProcessSpec spec;
-        spec.identity           = {43, QStringLiteral("run-43")};
+        spec.identity           = {43, QStringLiteral("run-43"), QStringLiteral("project-43")};
         spec.program            = qEnvironmentVariable("ComSpec", QStringLiteral("C:/Windows/System32/cmd.exe"));
         spec.arguments          = {QStringLiteral("/C"), QStringLiteral("ping -n 4 127.0.0.1 >NUL")};
         spec.working_directory  = temp.path();
@@ -111,12 +111,44 @@ private slots:
         QVERIFY(!runner.start(duplicate, &error));
         QVERIFY(error.contains(QStringLiteral("已注册")));
 
-        const TaskIdentity other_task{44, spec.identity.run_id};
+        const TaskIdentity other_task{44, spec.identity.run_id, spec.identity.project_id};
         QVERIFY(!runner.hasRunningTask(other_task));
         QVERIFY(!runner.stop(other_task));
         QVERIFY(!runner.deleteTask(other_task));
 
         QVERIFY(runner.stop(spec.identity));
+        QVERIFY(runner.waitForDone(5000));
+    }
+
+    void isolatesSameRunIdAcrossProjects()
+    {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+
+        ExternalModelTaskRunner runner;
+        const QString program = qEnvironmentVariable("ComSpec", QStringLiteral("C:/Windows/System32/cmd.exe"));
+
+        ExternalProcessSpec first;
+        first.identity          = {45, QStringLiteral("shared-run"), QStringLiteral("project-a")};
+        first.program           = program;
+        first.arguments         = {QStringLiteral("/C"), QStringLiteral("ping -n 20 127.0.0.1 >NUL")};
+        first.working_directory = temp.path();
+        first.log_path          = QDir(temp.path()).filePath(QStringLiteral("project-a.log"));
+
+        ExternalProcessSpec second = first;
+        second.identity.project_id = QStringLiteral("project-b");
+        second.log_path            = QDir(temp.path()).filePath(QStringLiteral("project-b.log"));
+
+        QString error;
+        QVERIFY2(runner.start(first, &error), qPrintable(error));
+        QVERIFY2(runner.start(second, &error), qPrintable(error));
+        QTRY_VERIFY_WITH_TIMEOUT(runner.hasRunningTask(first.identity), 3000);
+        QTRY_VERIFY_WITH_TIMEOUT(runner.hasRunningTask(second.identity), 3000);
+
+        QVERIFY(runner.stop(first.identity));
+        QVERIFY(runner.hasRunningTask(second.identity));
+
+        QVERIFY(runner.stop(second.identity));
         QVERIFY(runner.waitForDone(5000));
     }
 };

@@ -160,8 +160,8 @@ bool ExternalModelTaskRunner::hasRunningTask(const TaskIdentity &identity) const
     if (!identity.isValid())
         return false;
 
-    const auto found = external_processes_.find(identity.run_id);
-    return found != external_processes_.end() && found->identity == identity && found->process
+    const auto found = external_processes_.find(identity);
+    return found != external_processes_.end() && found->process
         && found->process->state() != QProcess::NotRunning;
 }
 
@@ -180,15 +180,9 @@ bool ExternalModelTaskRunner::start(const ExternalProcessSpec &process_spec, QSt
             *err_msg = QString("任务执行身份无效");
         return false;
     }
-    if (const auto existing = external_processes_.find(process_spec.identity.run_id);
+    if (const auto existing = external_processes_.find(process_spec.identity);
         existing != external_processes_.end())
     {
-        if (existing->identity != process_spec.identity)
-        {
-            if (err_msg != nullptr)
-                *err_msg = QStringLiteral("任务运行身份冲突");
-            return false;
-        }
         if (err_msg != nullptr)
             *err_msg = QStringLiteral("任务运行身份已注册");
         return false;
@@ -259,8 +253,8 @@ bool ExternalModelTaskRunner::start(const ExternalProcessSpec &process_spec, QSt
                     return;
 
                 const QString message = process->errorString();
-                external_processes_.remove(identity.run_id);
-                stop_requested_tasks_.remove(identity.run_id);
+                external_processes_.remove(identity);
+                stop_requested_tasks_.remove(identity);
                 QObject::disconnect(process, nullptr, this, nullptr);
                 process->deleteLater();
                 emit taskStartFailed(identity, message);
@@ -269,8 +263,8 @@ bool ExternalModelTaskRunner::start(const ExternalProcessSpec &process_spec, QSt
             [this, process, identity, sink = QPointer<LogSink>(sink)](
                 int exit_code, QProcess::ExitStatus exit_status)
             {
-                external_processes_.remove(identity.run_id);
-                const bool stop_requested = stop_requested_tasks_.remove(identity.run_id);
+                external_processes_.remove(identity);
+                const bool stop_requested = stop_requested_tasks_.remove(identity);
                 // 进程结束：冲刷日志残余并关闭文件。
                 if (sink != nullptr)
                     sink->finish();
@@ -278,7 +272,7 @@ bool ExternalModelTaskRunner::start(const ExternalProcessSpec &process_spec, QSt
                 process->deleteLater();
             });
 
-    external_processes_[process_spec.identity.run_id] = {process_spec.identity, process};
+    external_processes_[process_spec.identity] = {process_spec.identity, process};
     process->start();
     return true;
 }
@@ -288,13 +282,18 @@ bool ExternalModelTaskRunner::stop(const TaskIdentity &identity)
     if (!identity.isValid())
         return false;
 
-    const auto found = external_processes_.find(identity.run_id);
+    const auto found = external_processes_.find(identity);
     if (found == external_processes_.end() || !found->process)
+    {
+        for (const auto &running : external_processes_)
+        {
+            if (running.identity.run_id == identity.run_id && running.identity != identity)
+                return false;
+        }
         return true;
-    if (found->identity != identity)
-        return false;
+    }
 
-    stop_requested_tasks_.insert(identity.run_id);
+    stop_requested_tasks_.insert(identity);
     QProcess *process = found->process;
     if (process->state() == QProcess::NotRunning)
         return true;
@@ -379,12 +378,17 @@ bool ExternalModelTaskRunner::deleteTask(const TaskIdentity &identity)
 {
     if (!identity.isValid())
         return false;
-    const auto found = external_processes_.find(identity.run_id);
-    if (found != external_processes_.end() && found->identity != identity)
-        return false;
+    if (!external_processes_.contains(identity))
+    {
+        for (const auto &running : external_processes_)
+        {
+            if (running.identity.run_id == identity.run_id && running.identity != identity)
+                return false;
+        }
+    }
     stop(identity);
-    external_processes_.remove(identity.run_id);
-    stop_requested_tasks_.remove(identity.run_id);
+    external_processes_.remove(identity);
+    stop_requested_tasks_.remove(identity);
     return true;
 }
 

@@ -47,6 +47,49 @@
 
 ---
 
+## 2026-09-08 — 完成任务项目身份隔离
+
+**目标**
+- 完成 `project_id + task_id + run_id` 在 C++、EasyTrain、TCP 通信、外部进程和后台准备句柄中的统一路由，阻止跨项目或旧运行的消息、停止命令和进程控制相互影响。
+
+**当前状态**
+- 已完成：`TaskIdentity`、项目级 `TaskManager`、TCP 连接绑定、模型启动参数、EasyTrain 协议客户端及各模型入口均使用完整身份。
+- 已完成：外部进程、停止请求和后台准备操作按完整身份索引；相同 `run_id` 在不同项目可并行，冲突身份控制被拒绝。
+- 已完成：补充 C++ 跨项目进程隔离、项目任务隔离和 Python TCP 协议行为测试；修复 Python TCP 测试夹具未关闭服务端连接导致的 Windows 测试挂起。
+- 保留：`final_plan.md` 与 `tools/dependencies.yaml` 不纳入本阶段提交。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_tasks_tests --parallel 4` → Release 构建通过。
+- `ctest --test-dir build -C Release -R '^dltool_model_tasks_tests$' --output-on-failure` → 1/1 通过。
+- `ctest --test-dir build -C Release -R '^dltool_tools_tests$' --output-on-failure` → 1/1 通过。
+- `D:\Software\anaconda3\envs\py312\python.exe -m compileall -q 3rdparty\EasyTrain\src\python` → 编译检查通过。
+- `python tools\run_project_tests.py --project-layer project-creation --project-root F:\tmp\task-identity-project --project-name 项目身份测试 --skip-build --recreate-project` → CTest 项目创建层 1/1 通过。
+- 主仓库和 EasyTrain `git diff --check` → 通过。
+
+**下一步**
+- 分别提交 EasyTrain 子模块和主仓库本阶段改动；随后按 `final_plan.md` 阶段 3 继续完善项目关闭栅栏、后台句柄等待和迟到回调丢弃。
+
+---
+
+## 2026-09-07 — 隔离任务项目身份
+
+**目标**
+- 在已有 `task_id + run_id` 之外加入 `project_id`，隔离项目重开或多项目并行时的任务消息、停止命令、终态和结果。
+
+**当前状态**
+- 已完成：`TaskIdentity`、`TaskManager`、TCP 通信、任务准备和 `Project` 已开始使用完整项目级任务身份；相关 C++ 行为测试已同步调整。
+- 未完成：EasyTrain Python 协议及各模型入口尚未完成对齐；部分测试夹具仍需补齐有效项目身份；当前切片尚未完成 Release 构建、CTest 验证和提交。
+- 保留：`final_plan.md` 与 `tools/dependencies.yaml` 的既有工作区改动不纳入本切片。
+
+**验证证据**
+- `git diff --check` → 通过。
+- 当前切片的 Release 构建、CTest 和 Python 编译检查 → 未执行。
+
+**下一步**
+- 修正 C++ 测试中的身份构造和连接身份场景，完成 EasyTrain Python 侧身份校验与参数传递，再执行目标 Release 构建和 CTest 验证。
+
+---
+
 ## 2026-09-07 — 统一任务运行身份协议
 
 **目标**
@@ -56,7 +99,7 @@
 - 已完成：C++ 任务管理、外部进程、TCP 通信、任务准备和测试改为校验 `task_id + run_id`。
 - 已完成：EasyTrain 共享协议客户端、异常入口、Ultralytics、Anomalib、Dinomaly2 和 FS-SAM2 入口携带 `--dltool_run_id`。
 - 已完成：新增 Python 协议行为测试，覆盖上报身份、旧运行停止命令隔离和缺少运行身份时拒绝创建客户端。
-- 已完成：EasyTrain 子模块已提交为 `c0b4ee9 refactor: 统一任务运行身份协议`，主仓库已提交为 `3913bb1 refactor: 统一任务运行身份协议`。
+- 已完成：EasyTrain 子模块已提交为 `c0b4ee9 refactor: 统一任务运行身份协议`，主仓库已提交为 `5bb3307 refactor: 统一任务运行身份协议`。
 - 未完成：项目关闭栅栏、所有后台执行者统一等待和跨项目资源释放仍属于阶段 3 后续切片。
 
 **验证证据**

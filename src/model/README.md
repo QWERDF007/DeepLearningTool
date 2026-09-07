@@ -22,13 +22,14 @@
 
 ### TaskManager
 
-`TaskManager` 是应用级 QML 单例，同时是任务中心的 `QAbstractTableModel`。
+`TaskManager` 是项目级 QML 对象，同时是任务中心的 `QAbstractTableModel`。
 
 - 保存唯一的 `Task` 记录，不维护任务快照、`QVariantMap` 副本或额外事件路由器。
 - 负责任务表的局部插入、删除和状态/进度更新。
 - 管理 `TaskCommunicationServer`，直接解析 Python 的 TCP 事件。
 - `startTask()` 为本次执行生成新的 `run_id`，将任务置为 `Preparing` 并发出 `taskStartRequested(TaskIdentity)`。
 - `stopTask()` 将任务置为 `Stopping`、发送带 `TaskIdentity` 的 TCP 停止命令并发出 `taskStopRequested(TaskIdentity)`。
+- 每个 `Project` 实例拥有新的运行时 `project_id`；项目重开后旧项目的消息、停止命令和迟到结果不会匹配新任务。
 
 任务状态如下：
 
@@ -153,19 +154,23 @@ TaskManager.startTask(taskId)
 
 ## Python 任务通信
 
-Python 脚本通过启动参数获得本地 TCP 地址和任务 ID：
+Python 脚本通过启动参数获得本地 TCP 地址和完整任务执行身份：
 
 ```text
 --dltool_task_host <host>
 --dltool_task_port <port>
+--dltool_project_id <project_id>
 --dltool_task_id <task_id>
 --dltool_run_id <run_id>
 ```
 
-脚本必须在每条消息中发送与启动参数一致的 `task_id` 和 `run_id`，并发送
+脚本必须在每条消息中发送与启动参数一致的 `project_id`、`task_id` 和 `run_id`，并发送
 `running`、`stopped`、`finished`、`failed`、`error`、进度和 ETA。
-`TaskManager` 先更新任务表，再发出 `taskMessageReceived`；`ModelTaskController` 随后刷新该模型的
-训练或测试 `extra_data`。已停止、已完成或已失败的任务不会被迟到事件重新打开。
+TCP 服务端将连接绑定到首条有效的完整身份；`TaskManager` 再校验消息是否属于当前
+`Project` 的任务记录和当前 `run_id`。缺少项目身份、身份与连接不一致、属于其他项目
+或已结束运行的消息都会被拒绝。`TaskManager` 先更新任务表，再发出
+`taskMessageReceived`；`ModelTaskController` 随后刷新该模型的训练或测试 `extra_data`。
+已停止、已完成或已失败的任务不会被迟到事件重新打开。
 
 停止时，`TaskManager` 同时向 TCP 客户端发送 `stop` 命令，并通知控制器终止对应 Python 进程。
 

@@ -15,7 +15,7 @@ from dltool_task_protocol import AsyncTaskClient, MessageType, ProtocolField, Ta
 from dltool_task_reporting import create_task_client  # noqa: E402
 
 
-def test_task_messages_carry_run_identity_and_filter_stop_commands() -> None:
+def test_task_messages_carry_project_and_run_identity_and_filter_stop_commands() -> None:
     asyncio.run(_exercise_task_protocol())
 
 
@@ -31,12 +31,21 @@ async def _exercise_task_protocol() -> None:
         commands = [
             {
                 ProtocolField.TYPE.value: MessageType.COMMAND.value,
+                ProtocolField.PROJECT_ID.value: "project-7",
                 ProtocolField.TASK_ID.value: 7,
                 ProtocolField.RUN_ID.value: "old-run",
                 ProtocolField.COMMAND.value: "stop",
             },
             {
                 ProtocolField.TYPE.value: MessageType.COMMAND.value,
+                ProtocolField.PROJECT_ID.value: "project-7",
+                ProtocolField.TASK_ID.value: 7,
+                ProtocolField.RUN_ID.value: "current-run",
+                ProtocolField.COMMAND.value: "stop",
+            },
+            {
+                ProtocolField.TYPE.value: MessageType.COMMAND.value,
+                ProtocolField.PROJECT_ID.value: "other-project",
                 ProtocolField.TASK_ID.value: 7,
                 ProtocolField.RUN_ID.value: "current-run",
                 ProtocolField.COMMAND.value: "stop",
@@ -44,9 +53,11 @@ async def _exercise_task_protocol() -> None:
         ]
         writer.write(("\n".join(json.dumps(command) for command in commands) + "\n").encode("utf-8"))
         await writer.drain()
+        writer.close()
+        await writer.wait_closed()
 
     server = await asyncio.start_server(handle_client, "127.0.0.1", 0)
-    client = AsyncTaskClient("127.0.0.1", server.sockets[0].getsockname()[1], 7, "current-run")
+    client = AsyncTaskClient("127.0.0.1", server.sockets[0].getsockname()[1], 7, "current-run", "project-7")
     try:
         await client.connect()
         await client.status(
@@ -55,6 +66,7 @@ async def _exercise_task_protocol() -> None:
             12,
             -1,
             "running",
+            project_id="other-project",
             run_id="old-run",
             type="log",
         )
@@ -68,6 +80,7 @@ async def _exercise_task_protocol() -> None:
 
     assert received == [
         {
+            ProtocolField.PROJECT_ID.value: "project-7",
             ProtocolField.TASK_ID.value: 7,
             ProtocolField.RUN_ID.value: "current-run",
             ProtocolField.TYPE.value: MessageType.STATUS.value,
@@ -79,13 +92,14 @@ async def _exercise_task_protocol() -> None:
     ]
 
 
-def test_task_client_requires_run_identity_when_transport_is_enabled() -> None:
+def test_task_client_requires_complete_identity_when_transport_is_enabled() -> None:
     args = Namespace(
         dltool_task_host="127.0.0.1",
         dltool_task_port=1,
         dltool_task_id=7,
+        dltool_project_id="",
         dltool_run_id="",
     )
 
-    with pytest.raises(ValueError, match="dltool_run_id"):
+    with pytest.raises(ValueError, match="dltool_project_id"):
         create_task_client(args)

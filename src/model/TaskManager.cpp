@@ -36,11 +36,14 @@ QString durationText(qint64 seconds)
 
 } // namespace
 
-TaskManager::TaskManager(QObject *parent)
+TaskManager::TaskManager(QString project_id, QObject *parent)
     : QAbstractTableModel(parent)
+    , project_id_(project_id.trimmed())
     , runtime_timer_(new QTimer(this))
     , communication_server_(new TaskCommunicationServer(this))
 {
+    if (project_id_.isEmpty())
+        project_id_ = QUuid::createUuid().toString(QUuid::WithoutBraces);
     qRegisterMetaType<TaskIdentity>();
     qRegisterMetaType<TaskMessage>();
     runtime_timer_->setInterval(kRuntimeRefreshIntervalMs);
@@ -81,6 +84,11 @@ int TaskManager::count() const
 int TaskManager::revision() const
 {
     return revision_;
+}
+
+QString TaskManager::projectId() const
+{
+    return project_id_;
 }
 
 QVariant TaskManager::data(const QModelIndex &index, const int role) const
@@ -222,7 +230,8 @@ int TaskManager::addTask(const QString &model_uuid, const QString &model_name, c
     beginInsertRows({}, row, row);
     const int task_id = next_task_id_++;
     Task      task;
-    task.identity.task_id = task_id;
+    task.identity.task_id   = task_id;
+    task.identity.project_id = project_id_;
     task.model_uuid = uuid;
     task.model_name = name;
     task.scope_uuid = scope_uuid.trimmed();
@@ -566,10 +575,10 @@ void TaskManager::handleTaskMessage(const TaskMessage &message)
                                || message.status == TaskProtocolStatus::Finished
                                || message.status == TaskProtocolStatus::Failed
                                || message.status == TaskProtocolStatus::Error;
-    if (terminal_message && terminal_events_.contains(message.identity.run_id))
+    if (terminal_message && terminal_events_.contains(message.identity))
         return;
     if (terminal_message)
-        terminal_events_.insert(message.identity.run_id);
+        terminal_events_.insert(message.identity);
 
     if (message.type == TaskMessageType::Log)
     {
@@ -683,7 +692,7 @@ bool TaskManager::setTaskStatus(const int task_id, const TaskStatus status)
 
     if (status == Preparing)
     {
-        terminal_events_.remove(task.identity.run_id);
+        terminal_events_.remove(task.identity);
         if (previous_status == Stopped || previous_status == Failed)
         {
             task.elapsed_seconds = 0;

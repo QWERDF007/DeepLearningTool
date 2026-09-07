@@ -18,6 +18,7 @@
 #include <QFileInfo>
 #include <QQmlApplicationEngine>
 #include <QTimer>
+#include <QUuid>
 #include <algorithm>
 #include <chrono>
 
@@ -49,6 +50,7 @@ Project::Project(const QString &name, const int method, const QString &path, con
     , name_(name)
     , method_(method)
     , path_(path)
+    , project_id_(QUuid::createUuid().toString(QUuid::WithoutBraces))
     , description_(description)
     , image_base_path_(image_base_path)
     , ctime_(ctime)
@@ -60,6 +62,7 @@ Project::Project(const QString &name, const int method, const QString &path, con
 Project::Project(const QString &path, QObject *parent)
     : QObject(parent)
     , path_(path)
+    , project_id_(QUuid::createUuid().toString(QUuid::WithoutBraces))
 {
     database_ = new dltool::database::ProjectDataBase(path_, this);
 }
@@ -114,7 +117,7 @@ void Project::shutdown()
 void Project::init()
 {
     const QString project_dir = QFileInfo(path_).absoluteDir().absolutePath();
-    task_manager_             = new model::TaskManager(this);
+    task_manager_             = new model::TaskManager(project_id_, this);
     data_manager_             = new data::DataManager(method_, database_, project_dir, this);
     model_manager_ = new model::ModelManager(method_, database_, data_manager_, task_manager_, this);
     model_task_controller_ = new model::ModelTaskController(method_, model_manager_->projectDirectory(), model_manager_,

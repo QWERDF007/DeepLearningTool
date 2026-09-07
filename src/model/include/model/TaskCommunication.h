@@ -16,6 +16,7 @@ namespace dltool::model {
 
 enum class TaskProtocolField
 {
+    ProjectId,
     TaskId,
     RunId,
     Type,
@@ -204,7 +205,7 @@ private:
 
     QHash<QTcpSocket *, TaskIdentity> identity_by_socket_; ///< socket 到任务执行身份的映射
 
-    QHash<QString, QPointer<QTcpSocket>> socket_by_run_id_; ///< run_id 到 socket 的映射
+    QHash<TaskIdentity, QPointer<QTcpSocket>> socket_by_identity_; ///< 完整任务身份到 socket 的映射
     bool shutting_down_{false};
 };
 

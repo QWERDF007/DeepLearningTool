@@ -294,6 +294,7 @@ bool prepareFsSam2Task(int method, const QString &project_dir, const ModelTaskRe
     }
     process_spec.arguments << QStringLiteral("--dltool_task_host") << request.task_server_host
                            << QStringLiteral("--dltool_task_port") << QString::number(request.task_server_port)
+                           << QStringLiteral("--dltool_project_id") << request.identity.project_id
                            << QStringLiteral("--dltool_task_id") << QString::number(request.identity.task_id)
                            << QStringLiteral("--dltool_run_id") << request.identity.run_id;
     if (request.task_type == ModelTaskType::BoxToMask)
@@ -474,6 +475,7 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
     }
     process_spec.arguments << QStringLiteral("--dltool_task_host") << request.task_server_host
                            << QStringLiteral("--dltool_task_port") << QString::number(request.task_server_port)
+                           << QStringLiteral("--dltool_project_id") << request.identity.project_id
                            << QStringLiteral("--dltool_task_id") << QString::number(request.identity.task_id)
                            << QStringLiteral("--dltool_run_id") << request.identity.run_id;
     process_spec.working_directory = request.framework.root;

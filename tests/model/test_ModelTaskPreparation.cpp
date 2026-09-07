@@ -129,7 +129,7 @@ FrameworkDefinition frameworkFor(const QString &name, const QString &root, const
 ModelTaskRequest baseRequest(const FrameworkDefinition &framework, const QString &model_name)
 {
     ModelTaskRequest request;
-    request.identity             = {17, QStringLiteral("run-17")};
+    request.identity             = {17, QStringLiteral("run-17"), QStringLiteral("project-17")};
     request.task_type           = ModelTaskType::Train;
     request.scope_uuid          = QStringLiteral("scope-uuid");
     request.scope_name          = QStringLiteral("Scope");
@@ -177,7 +177,7 @@ private slots:
         QVERIFY(!prepareModelTask(1, QStringLiteral("F:/tmp/model-task"), request, nullptr, spec, &error));
         QVERIFY(error.contains(QStringLiteral("任务")));
 
-        request.identity = {1, QStringLiteral("run-1")};
+        request.identity = {1, QStringLiteral("run-1"), QStringLiteral("project-1")};
         error.clear();
         QVERIFY(!prepareModelTask(1, QStringLiteral("F:/tmp/model-task"), request, nullptr, spec, &error));
         QVERIFY(error.contains(QStringLiteral("类型")));
@@ -277,6 +277,7 @@ private slots:
                                    &error),
                  qPrintable(error));
         QVERIFY(spec.arguments.contains(box_script));
+        QVERIFY(hasArgumentPair(spec.arguments, QStringLiteral("--dltool_project_id"), QStringLiteral("project-17")));
         QVERIFY(hasArgumentPair(spec.arguments, QStringLiteral("--dltool_task_id"), QStringLiteral("17")));
         QVERIFY(hasArgumentPair(spec.arguments, QStringLiteral("--dltool_run_id"), QStringLiteral("run-17")));
 

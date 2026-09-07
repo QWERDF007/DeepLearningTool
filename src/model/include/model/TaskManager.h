@@ -38,7 +38,7 @@ public:
      * @brief 构造一个项目作用域内的任务状态中心。
      * @param parent 所属项目上下文。
      */
-    explicit TaskManager(QObject *parent = nullptr);
+    explicit TaskManager(QString project_id = {}, QObject *parent = nullptr);
 
     enum Column
     {
@@ -174,6 +174,8 @@ public:
      * @return 每次任务记录或状态变化后递增的版本号，供非表格 QML 绑定刷新。
      */
     int revision() const;
+    /** @brief 返回当前项目实例的不可复用身份。 */
+    QString projectId() const;
 
     /**
      * @brief 创建 Pending 任务记录。
@@ -473,7 +475,8 @@ private:
     bool     canFinish(const Task &task) const;
 
     std::vector<Task>        tasks_;                         ///< 任务中心保存的唯一任务记录。
-    QSet<QString>           terminal_events_;               ///< 已发布过终态的执行，拒绝重复/迟到事件。
+    QString                  project_id_;                   ///< 当前项目实例的任务路由身份。
+    QSet<TaskIdentity>       terminal_events_;              ///< 已发布过终态的执行，拒绝重复/迟到事件。
     int                      next_task_id_{1};               ///< 下一个递增任务 ID。
     int                      revision_{0};                   ///< 非表格 QML 刷新版本号。
     QTimer                  *runtime_timer_{nullptr};        ///< 运行时长刷新定时器。

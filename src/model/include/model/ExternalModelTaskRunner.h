@@ -98,8 +98,8 @@ private:
         QPointer<QProcess> process;
     };
 
-    QHash<QString, RunningProcess> external_processes_; ///< run_id 到外部进程及身份的映射。
-    QSet<QString>                     stop_requested_tasks_; ///< 已请求停止的 run_id 集合。
+    QHash<TaskIdentity, RunningProcess> external_processes_; ///< 完整任务身份到外部进程的映射。
+    QSet<TaskIdentity>                  stop_requested_tasks_; ///< 已请求停止的完整任务身份集合。
     bool                                        shutting_down_{false};
 };
 

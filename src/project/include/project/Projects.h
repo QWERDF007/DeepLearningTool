@@ -91,6 +91,11 @@ public:
         return path_;
     }
 
+    QString projectId() const
+    {
+        return project_id_;
+    }
+
     QString description() const
     {
         return description_;
@@ -156,6 +161,7 @@ private:
     QString name_;
     int     method_;
     QString path_;
+    QString project_id_;
     QString description_;
     QString image_base_path_;
     qint64  ctime_;
