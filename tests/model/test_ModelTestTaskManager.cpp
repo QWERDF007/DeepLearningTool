@@ -3,18 +3,87 @@
 #include "TestFixture.h"
 
 #include "database/DataBase.h"
+#include "model/DetectionEvaluationEngine.h"
+#include "model/EvaluationEngineRegistry.h"
+#include "model/ModelEvaluationOptions.h"
 #include "model/ModelManager.h"
 #include "model/ModelStorageService.h"
 #include "model/ModelTestTaskManager.h"
 #include "model/ModelTestTaskRepository.h"
 #include "model/TaskManager.h"
 
+#include <QThread>
 #include <QTest>
 
 #include <algorithm>
+#include <atomic>
+#include <memory>
 
 using namespace dltool::model;
 using namespace dltool::model::testsupport;
+
+namespace {
+
+class BlockingEvaluationEngine final : public DetectionEvaluationEngine
+{
+public:
+    inline static std::atomic_bool first_entered{false};
+    inline static std::atomic_bool cancel_block{false};
+    inline static std::atomic_bool cancel_observed{false};
+    inline static std::atomic_int  active{0};
+
+    static void reset()
+    {
+        first_entered.store(false, std::memory_order_relaxed);
+        cancel_block.store(false, std::memory_order_relaxed);
+        cancel_observed.store(false, std::memory_order_relaxed);
+        active.store(0, std::memory_order_relaxed);
+    }
+
+protected:
+    bool computeInstanceCounts(const QMap<qint64, EvaluationImageData> &images, const QMap<int, QString> &classes,
+                               QMap<int, EvaluationCounts> &per_class, EvaluationCounts &overall,
+                               QString *err_msg) override
+    {
+        active.fetch_add(1, std::memory_order_relaxed);
+        first_entered.store(true, std::memory_order_release);
+        while (!cancel_block.load(std::memory_order_acquire)
+               || !cancelled(scratch_.cancel_token))
+            QThread::msleep(1);
+        cancel_observed.store(true, std::memory_order_release);
+        const bool result = DetectionEvaluationEngine::computeInstanceCounts(images, classes, per_class, overall,
+                                                                               err_msg);
+        active.fetch_sub(1, std::memory_order_relaxed);
+        return result;
+    }
+};
+
+struct RestoreDetectionEvaluationEngine
+{
+    ~RestoreDetectionEvaluationEngine()
+    {
+        EvaluationEngineRegistry::instance().registerEngine(
+            evaluation::Method::Detection, []() { return std::make_unique<DetectionEvaluationEngine>(); });
+    }
+};
+
+ModelEvaluationOptions evaluationOptionsFor(const EvaluationFixture &fixture)
+{
+    ModelEvaluationOptions options;
+    options.model_uuid             = QStringLiteral("manager-model");
+    options.test_task_uuid         = QStringLiteral("manager-task");
+    options.method                 = evaluation::Method::Detection;
+    options.project_database_path  = fixture.projectDatabasePath();
+    options.dataset_file_list_path = fixture.fileListPath();
+    options.task_database_path     = fixture.taskDatabasePath();
+    options.prediction_dir         = fixture.predictionDirectory();
+    options.confidence_threshold   = 0.5;
+    options.iou_threshold          = 0.5;
+    options.matching_strategy      = evaluation::MatchingStrategy::GreedyIoU;
+    return options;
+}
+
+} // namespace
 
 class ModelTestTaskManagerTest : public QObject
 {
@@ -105,6 +174,49 @@ private slots:
         manager.setModelUuid(record.uuid);
         QCOMPARE(manager.count(), 1);
         QCOMPARE(manager.currentTaskName(), QStringLiteral("测试 1"));
+    }
+
+    void switchingModelStopsCachedEvaluationBeforeReturning()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat   = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 image = fixture.addImage(QStringLiteral("cat"));
+        QVERIFY(cat >= 0);
+        QVERIFY(image >= 0);
+        QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({cat}));
+        QVERIFY(fixture.writePrediction(
+            image, detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 10, 10)));
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr);
+        QString       error;
+        const auto    record = model_manager.addModelRecord(QStringLiteral("Managed"), QStringLiteral("ultralytics"),
+                                                             QStringLiteral("YOLOv8"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+        TaskManager task_manager;
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, &task_manager);
+        manager.setModelUuid(record.uuid);
+        QVERIFY(manager.currentEvaluation() != nullptr);
+
+        BlockingEvaluationEngine::reset();
+        BlockingEvaluationEngine::cancel_block.store(false, std::memory_order_release);
+        EvaluationEngineRegistry::instance().registerEngine(
+            evaluation::Method::Detection, []() { return std::make_unique<BlockingEvaluationEngine>(); });
+        RestoreDetectionEvaluationEngine restore_registration;
+        manager.currentEvaluation()->setEvaluationOptions(evaluationOptionsFor(fixture));
+        manager.currentEvaluation()->evaluate();
+        QTRY_VERIFY_WITH_TIMEOUT(BlockingEvaluationEngine::first_entered.load(std::memory_order_acquire), 5000);
+
+        BlockingEvaluationEngine::cancel_block.store(true, std::memory_order_release);
+        manager.setModelUuid({});
+
+        QVERIFY(BlockingEvaluationEngine::cancel_observed.load(std::memory_order_acquire));
+        QCOMPARE(BlockingEvaluationEngine::active.load(std::memory_order_acquire), 0);
+        QCOMPARE(manager.currentEvaluation(), nullptr);
+        QCOMPARE(manager.count(), 0);
     }
 
 };

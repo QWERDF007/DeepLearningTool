@@ -216,13 +216,18 @@ void ModelTestTaskManager::shutdown()
     shutting_down_ = true;
     save_timer_.stop();
 
+    shutdownCachedEvaluations();
+    flush();
+}
+
+void ModelTestTaskManager::shutdownCachedEvaluations()
+{
     for (ModelEvaluationViewModel *evaluation : evaluation_cache_)
     {
         if (evaluation != nullptr)
             evaluation->shutdown();
     }
     evaluation_pool_.waitForDone();
-    flush();
 }
 
 int ModelTestTaskManager::rowCount(const QModelIndex &parent) const
@@ -514,7 +519,10 @@ bool ModelTestTaskManager::deleteTask(const QString &uuid)
     }
     const QString cache_key = evaluationCacheKey(uuid);
     if (ModelEvaluationViewModel *evaluation = evaluation_cache_.take(cache_key); evaluation != nullptr)
+    {
+        evaluation->shutdown();
         delete evaluation;
+    }
     pending_evaluation_notifications_.remove(cache_key);
     const bool deleted_current = row == current_index_;
     beginRemoveRows({}, row, row);
@@ -954,6 +962,7 @@ void ModelTestTaskManager::reload()
     // middle of the TableView model reset and leaves Qt Quick polishing a view
     // whose sync model is already gone.  Defer destruction until the current
     // task bindings have received currentTaskChanged.
+    shutdownCachedEvaluations();
     for (ModelEvaluationViewModel *evaluation : evaluation_cache_)
     {
         if (evaluation != nullptr)

@@ -199,6 +199,7 @@ private slots:
 private:
     void    reload();
     void    clearCurrentObjects();
+    void    shutdownCachedEvaluations();
     bool    selectIndex(int index, bool save_before);
     bool    saveDefinition(ModelTestTaskDefinition &task, bool persist_selection);
     /** 将当前数据集选择视图快照到内存任务记录（不落库）。 */

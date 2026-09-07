@@ -71,6 +71,28 @@
 
 ---
 
+## 2026-09-07 — 收敛测试评估缓存的切换生命周期
+
+**目标**
+- 模型切换、测试任务缓存清理和项目关闭前，停止并等待缓存评估 ViewModel 的后台 worker，避免迟到回调访问已删除对象。
+
+**当前状态**
+- 已完成：`ModelTestTaskManager::reload()` 清理缓存前统一关闭并等待所有评估 ViewModel。
+- 已完成：删除单个测试任务时先关闭对应评估 ViewModel，再释放对象。
+- 已完成：新增管理器级回归测试，验证模型切换会取消活动评估，`setModelUuid()` 返回时 worker 已结束。
+- 保留：`final_plan.md` 和 `tools/dependencies.yaml` 的既有工作区改动未纳入本阶段。
+
+**验证证据**
+- 先行测试在旧实现下无法收敛，CTest 进程因活动评估未收到取消而持续等待；随后终止该具体 CTest 进程。
+- `cmake --build build --config Release --target dltool_model_tasks_tests --parallel 4` → Release 构建成功。
+- `ctest --test-dir build -C Release -R '^dltool_model_tasks_tests$' --output-on-failure` → 1/1 通过。
+- `git diff --check` → 通过。
+
+**下一步**
+- 继续按 `final_plan.md` 阶段 3/6 审查任务终态、项目关闭和评估结果身份校验，补充迟到回调与终态不可重开的行为测试。
+
+---
+
 ## 2026-09-07 — 阶段提交后的工作区边界
 
 **目标**
