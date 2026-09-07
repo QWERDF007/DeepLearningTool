@@ -321,7 +321,11 @@ private:
     void startEvaluation(bool notify);
     void clearEvaluation(const QString &error = {}, evaluation::ViewState state = evaluation::ViewState::NotRun);
     bool sameEvaluationInput(const ModelEvaluationOptions &lhs, const ModelEvaluationOptions &rhs) const;
-    void loadEvaluation(const EvaluationResult &result);
+    /**
+     * 将后台结果消费到 Qt Model；图像记录转移所有权，避免跨线程结果和
+     * ViewModel 同时持有完整 GT/预测数据副本。
+     */
+    void loadEvaluation(EvaluationResult &result);
     void loadInstanceRecords(const QVector<EvaluationInstanceRecord> &records);
 
     /** 将实例记录转换为 QML 映射，委托 EvaluationCommon 公共实现。 */

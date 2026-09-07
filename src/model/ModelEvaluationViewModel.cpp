@@ -793,7 +793,7 @@ void ModelEvaluationViewModel::setRuntimeState(const evaluation::ViewState state
         invalidate(state);
 }
 
-void ModelEvaluationViewModel::loadEvaluation(const EvaluationResult &result)
+void ModelEvaluationViewModel::loadEvaluation(EvaluationResult &result)
 {
     const bool official_available
         = result.official_metrics.value(evaluation::fieldName(evaluation::Field::Available)).toBool();
@@ -878,8 +878,9 @@ void ModelEvaluationViewModel::loadEvaluation(const EvaluationResult &result)
 
     std::vector<EvaluationImageRecord> image_records;
     image_records.reserve(static_cast<size_t>(result.images.size()));
-    for (const EvaluationImageData &image : result.images)
-        image_records.push_back(image);
+    for (auto image_it = result.images.begin(); image_it != result.images.end(); ++image_it)
+        image_records.push_back(std::move(image_it.value()));
+    result.images.clear();
     images_->setRecords(std::move(image_records));
 
     std::vector<EvaluationConfusionCell> cells;

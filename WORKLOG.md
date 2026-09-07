@@ -47,6 +47,42 @@
 
 ---
 
+## 2026-09-07 — 转移评估图像记录所有权
+
+**目标**
+- 避免评估后台结果和 `EvaluationImageModel` 同时持有完整图像 GT/预测记录副本。
+
+**当前状态**
+- 已完成：`ModelEvaluationViewModel::loadEvaluation` 消费后台结果中的图像记录并移动到 Qt Model，评估和过滤行为保持不变。
+- 保留：`final_plan.md` 和 `tools/dependencies.yaml` 的既有未提交改动未纳入本阶段。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_evaluation_tests --parallel 4` → Release 目标构建成功。
+- `ctest --test-dir build -C Release -R "^(dltool_model_evaluation_tests|dltool_model_dataset_tests)$" --output-on-failure` → 2/2 通过。
+
+**下一步**
+- 继续按 `final_plan.md` 阶段 6 审查视觉派生缓存和可见实例按需生成边界。
+
+---
+
+## 2026-09-07 — 保留架构方案与本机环境改动
+
+**目标**
+- 继续按 `final_plan.md` 分阶段推进，同时不将用户已有的方案文档和本机依赖路径混入阶段提交。
+
+**当前状态**
+- 已完成：评估结果分数图生命周期切片已提交为 `28a563f`。
+- 保留：当前工作树仍有 `final_plan.md` 和 `tools/dependencies.yaml` 未提交改动，后续继续保留。
+
+**验证证据**
+- `git status --short` → 仅显示上述两个既有文件变更。
+- `git log -1 --oneline` → `28a563f refactor: 释放评估结果中的完整分数图`。
+
+**下一步**
+- 继续审查阶段 6 的异常视觉派生懒加载边界，完成独立测试后再创建下一阶段提交。
+
+---
+
 ## 2026-09-07 — 收敛评估结果中的完整分数图
 
 **目标**
