@@ -20,6 +20,7 @@
 #include <opencv2/core.hpp>
 
 #include <QDir>
+#include <QColor>
 #include <QImage>
 #include <QUrlQuery>
 
@@ -741,6 +742,40 @@ private slots:
                                     nullptr, QSize(1, 1));
         QVERIFY(!rendered.isNull());
         QCOMPARE(rendered.size(), QSize(4, 4));
+    }
+
+    void thumbnailProviderEvictsByImageByteCost()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString first_path  = QDir(temporary.path()).filePath(QStringLiteral("first.png"));
+        const QString second_path = QDir(temporary.path()).filePath(QStringLiteral("second.png"));
+        const QSize   large_size(3000, 3000);
+        const auto    save_color = [large_size](const QString &path, const QColor &color)
+        {
+            QImage image(large_size, QImage::Format_RGB32);
+            image.fill(color);
+            return image.save(path, "PNG");
+        };
+        QVERIFY(save_color(first_path, QColor(Qt::red)));
+        QVERIFY(save_color(second_path, QColor(Qt::blue)));
+
+        EvaluationThumbnailImageProvider provider;
+        const auto request = [](const QString &id, const QString &path)
+        {
+            QUrlQuery query;
+            query.addQueryItem(QStringLiteral("path"), path);
+            return QStringLiteral("%1?%2").arg(id, query.toString(QUrl::FullyEncoded));
+        };
+        const QImage first = provider.requestImage(request(QStringLiteral("first"), first_path), nullptr, {});
+        QVERIFY(!first.isNull());
+        const QImage second = provider.requestImage(request(QStringLiteral("second"), second_path), nullptr, {});
+        QVERIFY(!second.isNull());
+
+        QVERIFY(save_color(first_path, QColor(Qt::green)));
+        const QImage reloaded = provider.requestImage(request(QStringLiteral("first"), first_path), nullptr, {});
+        QVERIFY(!reloaded.isNull());
+        QCOMPARE(reloaded.pixelColor(0, 0), QColor(Qt::green));
     }
 
     void cancellationAndInvalidInputFailWithoutPartialResult()

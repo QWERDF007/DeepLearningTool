@@ -47,6 +47,26 @@
 
 ---
 
+## 2026-09-07 — 限制评估缩略图缓存内存
+
+**目标**
+- 将评估缩略图 provider 的缓存上限从条目数量改为实际 `QImage` 字节成本，避免大图数量少时仍造成过高内存占用。
+
+**当前状态**
+- 已完成：`EvaluationThumbnailImageProvider` 使用 64 MiB 字节预算，插入缓存时按 `QImage::sizeInBytes()` 计费。
+- 已完成：新增大图淘汰回归测试，验证超出字节预算后会重新读取源图而不是复用旧缓存。
+- 保留：`tools/dependencies.yaml` 为既有用户改动，未纳入本阶段提交。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_evaluation_tests --parallel 4` → Release 目标构建成功。
+- `ctest --test-dir build -C Release -R '^dltool_model_evaluation_tests$' --output-on-failure` → 1/1 通过。
+- `git diff --check` → 通过。
+
+**下一步**
+- 继续按 `final_plan.md` 阶段 6，审查 `EvaluationResult` 中完整图像/视觉数据的物化边界，补齐按需生成与取消行为测试。
+
+---
+
 ## 2026-09-07 — 收敛评估派生缓存作用域
 
 **目标**

@@ -12,6 +12,7 @@
 #include <QUrlQuery>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace dltool::model {
 
@@ -30,6 +31,12 @@ bool queryFlag(const QUrlQuery &query, const QString &name)
 {
     const QString value = query.queryItemValue(name).trimmed().toLower();
     return value == QStringLiteral("1") || value == QStringLiteral("true") || value == QStringLiteral("yes");
+}
+
+int imageCacheCost(const QImage &image)
+{
+    const qsizetype bytes = std::max<qsizetype>(1, image.sizeInBytes());
+    return static_cast<int>(std::min<qsizetype>(bytes, std::numeric_limits<int>::max()));
 }
 
 QVariantMap preprocessingConfig(const QUrlQuery &query)
@@ -170,7 +177,7 @@ QRect cropRect(const QImage &image, const QUrlQuery &query)
 
 EvaluationThumbnailImageProvider::EvaluationThumbnailImageProvider()
     : QQuickImageProvider(QQuickImageProvider::Image)
-    , cache_(128)
+    , cache_(64 * 1024 * 1024)
 {
 }
 
@@ -200,7 +207,7 @@ QImage EvaluationThumbnailImageProvider::requestImage(const QString &id, QSize *
         return {};
 
     QMutexLocker locker(&mutex_);
-    cache_.insert(cache_key, new QImage(image));
+    cache_.insert(cache_key, new QImage(image), imageCacheCost(image));
     return image;
 }
 

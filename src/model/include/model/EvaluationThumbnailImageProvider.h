@@ -35,7 +35,7 @@ private:
     QImage loadImage(const QString &id, const QSize &requestedSize) const;
 
     mutable QMutex                  mutex_; ///< 缓存互斥锁。
-    mutable QCache<QString, QImage> cache_; ///< 内存缩略图 LRU 缓存。
+    mutable QCache<QString, QImage> cache_; ///< 按 QImage 实际字节数限制的内存 LRU 缓存。
 };
 
 } // namespace dltool::model
