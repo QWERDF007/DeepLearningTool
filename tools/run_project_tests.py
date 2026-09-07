@@ -17,8 +17,9 @@ DEFAULT_PROJECT_TEST_REGEX = (
 )
 PROJECT_LAYER_REGEX = {
     "full": DEFAULT_PROJECT_TEST_REGEX,
-    "project-setup": r"^dltool_model_(project_creation|python_environment)_test$",
+    "project-setup": r"^dltool_model_(project_creation|project_shutdown|python_environment)_test$",
     "project-creation": r"^dltool_model_project_creation_test$",
+    "project-shutdown": r"^dltool_model_project_shutdown_test$",
     "set-python-env": r"^dltool_model_python_environment_test$",
     "data": r"^dltool_model_data_(creation|import|export|roundtrip|split)_test$",
     "data-creation": r"^dltool_model_data_creation_test$",

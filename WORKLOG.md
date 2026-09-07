@@ -47,6 +47,47 @@
 
 ---
 
+## 2026-09-08 — 收敛项目关闭生命周期
+
+**目标**
+- 让项目关闭先取消并等待项目内后台数据操作，再写入项目更新时间并释放项目资源，避免 SQLite 写锁导致关闭死锁。
+
+**当前状态**
+- 已完成：`Project::shutdown()` 在关闭栅栏开始时取消 `DataManager` 数据操作；`ProjectManager::closeProject()` 和析构函数先关闭项目后台执行者，再更新项目修改时间。
+- 已完成：新增独立 `project-shutdown` 项目级测试，使用真实 SQLite 写锁验证取消、关闭收敛和更新时间持久化。
+- 未完成：阶段 3 其余后台执行者的统一关闭栅栏和迟到回调丢弃仍待继续；本阶段不包含 `final_plan.md`、`tools/dependencies.yaml` 等既有改动。
+
+**验证证据**
+- `cmake --build build --config Release --parallel 4` → Release 全量构建通过。
+- `ctest --test-dir build -C Release -R '^(dltool_model_project_shutdown_test|dltool_feature_lifecycle_tests|dltool_model_tasks_tests|dltool_data_data_operation_workflow_tests)$' --output-on-failure` → 4/4 通过。
+- `python tools\run_project_tests.py --project-layer project-shutdown --skip-build` → 1/1 通过。
+- `git diff --check` → 通过。
+
+**下一步**
+- 按 `final_plan.md` 阶段 3，先为剩余项目任务句柄、停止/取消等待和项目关闭后的迟到结果丢弃补充行为测试，再收敛实现。
+
+---
+
+## 2026-09-08 — 收敛最终架构改进方案
+
+**目标**
+- 将架构改进内容统一收敛到根目录 `final_plan.md`，作为后续重构的唯一方案入口。
+
+**当前状态**
+- 已完成：方案覆盖事实源、深模块职责、项目与任务生命周期、数据库/文件一致性、评估性能、几何与 QML、构建测试、分阶段路线和验收门。
+- 已确认：工作区未找到 `luna_final_plan.md`、`gemini_final_plan.md`、`musespark13_final_plan.md`；未虚构缺失方案内容，也未修改用户已有的 `tools/dependencies.yaml`。
+- 未完成：本轮仅整理方案，尚未执行代码改造。
+
+**验证证据**
+- `rg --files -uu -g '*luna_final_plan.md' -g '*gemini_final_plan.md' -g '*musespark13_final_plan.md' .` → 未找到三份独立源方案。
+- `git diff --check -- final_plan.md` → 通过。
+- 文档结构检查 → `final_plan.md` 包含 13 个顶层章节、697 行；Release 构建和 CTest 未执行。
+
+**下一步**
+- 按 `final_plan.md` 阶段 3 继续实施，先补充项目关闭栅栏、任务句柄等待和迟到回调丢弃的行为测试。
+
+---
+
 ## 2026-09-08 — 完成任务项目身份隔离
 
 **目标**

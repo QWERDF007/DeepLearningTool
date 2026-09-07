@@ -93,6 +93,7 @@ tests/assets/model/
 | 层级 | CTest 目标 |
 | --- | --- |
 | `project-creation` | `dltool_model_project_creation_test` |
+| `project-shutdown` | `dltool_model_project_shutdown_test` |
 | `set-python-env` | `dltool_model_python_environment_test` |
 | `data-creation` | `dltool_model_data_creation_test` |
 | `data-import` | `dltool_model_data_import_test` |

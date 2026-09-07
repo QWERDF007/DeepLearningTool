@@ -99,6 +99,13 @@ void Project::shutdown()
         return;
     shutting_down_ = true;
 
+    // Downstream feature controllers wait for data operations to finish while
+    // they release their own workers.  Request cancellation before entering
+    // that wait; the DataManager remains alive and performs the full wait and
+    // rollback later in this same barrier.
+    if (data_manager_ != nullptr)
+        data_manager_->cancelDataOperation();
+
     // This is the only project-level shutdown order.  Earlier layers may
     // still need later layers while they stop (for example Feature uses
     // ModelTaskController, and that controller uses TaskManager::stopTask).
@@ -536,6 +543,12 @@ ProjectManager::~ProjectManager()
     {
         Project *project = current_project_;
 
+        // Stop all project-owned workers before touching the project database.
+        // Otherwise an active worker can hold a SQLite lock while the manager
+        // tries to persist the last modification time, preventing the close
+        // barrier from ever reaching the cancellation path.
+        project->shutdown();
+
         // The QML engine may already be tearing down its singleton objects when
         // this destructor runs.  updateProjectMtime() also refreshes the QML
         // recent-project model, whose row count reads GlobalSettings; doing
@@ -621,9 +634,9 @@ void ProjectManager::closeProject()
     if (current_project_)
     {
         Project *project = current_project_;
-        updateProjectMtime(project->path());
         spdlog::info("关闭项目: {}", project->path().toUtf8().constData());
         project->shutdown();
+        updateProjectMtime(project->path());
         current_project_ = nullptr;
         // Delete before publishing currentProjectChanged so a reentrant slot
         // cannot create a new project while the old QObject graph is alive.
