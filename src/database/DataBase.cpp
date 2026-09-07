@@ -1224,6 +1224,65 @@ bool ProjectDataBase::deleteLabelClass(const int64_t label_class_id, QString &er
     }
 }
 
+bool ProjectDataBase::getImagesByIds(const std::vector<int64_t> &requested_image_ids,
+                                    std::vector<int64_t>       &dataset_ids,
+                                    std::vector<int64_t>       &image_ids,
+                                    std::vector<QString>       &paths,
+                                    std::vector<std::vector<uint8_t>> &extra_data,
+                                    QString                    &err_msg) const
+{
+    dataset_ids.clear();
+    image_ids.clear();
+    paths.clear();
+    extra_data.clear();
+    if (requested_image_ids.empty())
+        return true;
+
+    for (const int64_t image_id : requested_image_ids)
+    {
+        if (image_id < 0)
+        {
+            err_msg = QString("图像 ID 无效: %1").arg(image_id);
+            return false;
+        }
+    }
+
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        constexpr std::size_t kBatchSize = 500;
+        for (std::size_t offset = 0; offset < requested_image_ids.size(); offset += kBatchSize)
+        {
+            const auto begin = requested_image_ids.begin() + static_cast<std::ptrdiff_t>(offset);
+            const auto end   = requested_image_ids.begin()
+                             + static_cast<std::ptrdiff_t>(std::min(offset + kBatchSize, requested_image_ids.size()));
+            const std::vector<int64_t> batch(begin, end);
+            auto data
+                = db(sqlpp::select(ImagesTable.id, ImagesTable.datasetId, ImagesTable.path, ImagesTable.extraData)
+                         .from(ImagesTable)
+                         .where(ImagesTable.id.in(sqlpp::value_list(batch))));
+            for (const auto &row : data)
+            {
+                dataset_ids.emplace_back(row.datasetId);
+                image_ids.emplace_back(row.id);
+                paths.emplace_back(QString::fromStdString(row.path));
+                extra_data.emplace_back(row.extraData.is_null() ? std::vector<uint8_t>{} : row.extraData.value());
+            }
+        }
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
 bool ProjectDataBase::deleteLabelClasses(const std::vector<int64_t> &label_class_ids, QString &err_msg) const
 {
     if (label_class_ids.empty())
@@ -1873,6 +1932,69 @@ bool ProjectDataBase::getAllLabels(std::vector<int64_t> &label_ids, std::vector<
             label_class_ids.emplace_back(row.labelClassId);
             label_types.emplace_back(row.regionType);
             labels_data.emplace_back(row.region.value());
+        }
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        err_msg = e.what();
+        return false;
+    }
+}
+
+bool ProjectDataBase::getLabelsByImageIds(const std::vector<int64_t> &requested_image_ids,
+                                         std::vector<int64_t>       &label_ids,
+                                         std::vector<int64_t>       &image_ids,
+                                         std::vector<int64_t>       &label_class_ids,
+                                         std::vector<int64_t>       &label_types,
+                                         std::vector<std::vector<uint8_t>> &labels_data,
+                                         QString                    &err_msg) const
+{
+    label_ids.clear();
+    image_ids.clear();
+    label_class_ids.clear();
+    label_types.clear();
+    labels_data.clear();
+    if (requested_image_ids.empty())
+        return true;
+
+    for (const int64_t image_id : requested_image_ids)
+    {
+        if (image_id < 0)
+        {
+            err_msg = QString("图像 ID 无效: %1").arg(image_id);
+            return false;
+        }
+    }
+
+    try
+    {
+        if (pool_ == nullptr)
+        {
+            err_msg = QString("打开数据库失败, %1").arg(path_);
+            return false;
+        }
+        auto db = pool_->get();
+        constexpr std::size_t kBatchSize = 500;
+        for (std::size_t offset = 0; offset < requested_image_ids.size(); offset += kBatchSize)
+        {
+            const auto begin = requested_image_ids.begin() + static_cast<std::ptrdiff_t>(offset);
+            const auto end   = requested_image_ids.begin()
+                             + static_cast<std::ptrdiff_t>(std::min(offset + kBatchSize, requested_image_ids.size()));
+            const std::vector<int64_t> batch(begin, end);
+            auto data
+                = db(sqlpp::select(LabelsTable.id, LabelsTable.imageId, LabelsTable.labelClassId,
+                                   LabelsTable.regionType, LabelsTable.region)
+                         .from(LabelsTable)
+                         .where(LabelsTable.imageId.in(sqlpp::value_list(batch))));
+            for (const auto &row : data)
+            {
+                label_ids.emplace_back(row.id);
+                image_ids.emplace_back(row.imageId);
+                label_class_ids.emplace_back(row.labelClassId);
+                label_types.emplace_back(row.regionType);
+                labels_data.emplace_back(row.region.value());
+            }
         }
         return true;
     }

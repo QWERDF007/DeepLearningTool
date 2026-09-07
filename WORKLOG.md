@@ -47,6 +47,45 @@
 
 ---
 
+## 2026-09-07 — 按测试文件列表优化评估数据读取
+
+**目标**
+- 消除评估加载阶段读取项目全部图像和标注后再过滤造成的无关物化开销。
+
+**当前状态**
+- 已完成：`ProjectDataBase` 增加按图像 ID 分批读取图像和标注的接口，评估加载器以 `test.txt` 的图像 ID 为查询主轴。
+- 已完成：保留缺失图像计数、测试选择过滤、标注解析和全局类别目录语义；覆盖超过单批大小的查询。
+- 保留：`tools/dependencies.yaml`、`final_plan.md` 及既有文档改动未纳入本阶段代码提交。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_dataset_tests --parallel 4` → Release 目标构建成功。
+- `ctest --test-dir build -C Release -R '^(dltool_database_database_schema_tests|dltool_model_dataset_tests)$' --output-on-failure` → 2/2 通过。
+- `git diff --check -- src/database/DataBase.cpp src/database/include/database/DataBase.h src/model/EvaluationDataset.cpp tests/model/test_EvaluationDataset.cpp` → 通过。
+
+**下一步**
+- 继续按 `final_plan.md` 阶段 6，审查评估结果和异常视觉派生的物化边界，补充可见实例按需生成与取消验证。
+
+---
+
+## 2026-09-07 — 收敛综合架构方案入口
+
+**目标**
+- 将最终架构改进方案统一维护在根目录 `final_plan.md`。
+
+**当前状态**
+- 已完成：补充方案合并后的统一裁决规则，明确以源码、CMake、DDL、YAML、Python 协议和 CTest 为事实源，并保留深模块、单一事实源、生命周期优先和破坏性重构约束。
+- 保留：`tools/dependencies.yaml` 为既有用户改动，未修改。
+
+**验证证据**
+- `git diff --check -- final_plan.md` → 通过。
+- `rg --files -uu -g '*luna_final_plan.md' -g '*gemini_final_plan.md' -g '*musespark13_final_plan.md' .` → 当前工作区未找到三份独立源方案。
+- 本轮仅修改文档，未执行构建或测试。
+
+**下一步**
+- 按 `final_plan.md` 的阶段路线继续实施；每个代码阶段先补行为测试，再进行 Release 构建和 CTest 验证。
+
+---
+
 ## 2026-09-07 — 复用评估完整分数图并限制缓存
 
 **目标**

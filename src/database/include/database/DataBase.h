@@ -168,6 +168,15 @@ public:
                    QString &err_msg) const;
     bool getAllImages(std::vector<int64_t> &dataset_ids, std::vector<int64_t> &image_ids, std::vector<QString> &paths,
                       std::vector<std::vector<uint8_t>> &extra_data, QString &err_msg) const;
+    /**
+     * @brief 按指定图像 ID 批量读取图像记录。
+     *
+     * 查询在内部按 SQLite 参数上限分批执行，输出只包含数据库中存在的
+     * 指定图像，不会扫描或物化项目中的其它图像。
+     */
+    bool getImagesByIds(const std::vector<int64_t> &requested_image_ids, std::vector<int64_t> &dataset_ids,
+                        std::vector<int64_t> &image_ids, std::vector<QString> &paths,
+                        std::vector<std::vector<uint8_t>> &extra_data, QString &err_msg) const;
     bool updateImagesExtraData(const std::vector<int64_t> &image_ids,
                                const std::vector<std::vector<uint8_t>> &extra_data, QString &err_msg) const;
 
@@ -225,6 +234,15 @@ public:
     bool getAllLabels(std::vector<int64_t> &label_ids, std::vector<int64_t> &image_ids,
                       std::vector<int64_t> &label_class_ids, std::vector<int64_t> &label_types,
                       std::vector<std::vector<uint8_t>> &labels_data, QString &err_msg) const;
+    /**
+     * @brief 按指定图像 ID 批量读取标注记录。
+     *
+     * 查询在内部按 SQLite 参数上限分批执行，输出只包含指定图像的标注。
+     */
+    bool getLabelsByImageIds(const std::vector<int64_t> &requested_image_ids, std::vector<int64_t> &label_ids,
+                             std::vector<int64_t> &image_ids, std::vector<int64_t> &label_class_ids,
+                             std::vector<int64_t> &label_types, std::vector<std::vector<uint8_t>> &labels_data,
+                             QString &err_msg) const;
 
     bool addLabels(const std::vector<int64_t> &image_ids, const std::vector<int64_t> &label_class_ids,
                    const std::vector<int64_t> &label_types, const std::vector<std::vector<uint8_t>> &labels_data,

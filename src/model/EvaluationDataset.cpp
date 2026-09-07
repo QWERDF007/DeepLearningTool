@@ -622,11 +622,17 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
 
     database::ProjectDataBase         project_database(project_database_path);
     QString                           database_error;
+    std::vector<int64_t>              listed_image_ids;
+    listed_image_ids.reserve(static_cast<std::size_t>(rows.size()));
+    for (const auto &row : rows)
+        listed_image_ids.push_back(row.first);
+
     std::vector<int64_t>              image_dataset_ids;
     std::vector<int64_t>              image_ids;
     std::vector<QString>              image_paths;
     std::vector<std::vector<uint8_t>> image_extra_data;
-    if (!project_database.getAllImages(image_dataset_ids, image_ids, image_paths, image_extra_data, database_error))
+    if (!project_database.getImagesByIds(listed_image_ids, image_dataset_ids, image_ids, image_paths,
+                                         image_extra_data, database_error))
     {
         if (err_msg)
             *err_msg = QString("读取项目图像失败: %1").arg(database_error);
@@ -645,8 +651,8 @@ bool loadEvaluationImages(const QString &file_list_path, const QString &project_
     std::vector<int64_t>              label_class_ids;
     std::vector<int64_t>              label_types;
     std::vector<std::vector<uint8_t>> label_data;
-    if (!project_database.getAllLabels(label_ids, label_image_ids, label_class_ids, label_types, label_data,
-                                       database_error))
+    if (!project_database.getLabelsByImageIds(listed_image_ids, label_ids, label_image_ids, label_class_ids,
+                                              label_types, label_data, database_error))
     {
         if (err_msg)
             *err_msg = QString("读取项目标注失败: %1").arg(database_error);

@@ -2,6 +2,7 @@
 
 #include "TestFixture.h"
 
+#include "database/DataBase.h"
 #include "database/ModelTaskDataBase.h"
 #include "model/EvaluationDataset.h"
 #include "model/ModelEvaluationProtocol.h"
@@ -77,6 +78,59 @@ private slots:
         error.clear();
         QVERIFY(!readEvaluationImageList(path, rows, cancelled, &error));
         QVERIFY(error.contains(QStringLiteral("取消")));
+    }
+
+    void readsOnlyRequestedProjectRows()
+    {
+        using namespace dltool::model::testsupport;
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 selected_class = fixture.addClass(QStringLiteral("Selected"), QStringLiteral("normal"));
+        const qint64 ignored_class  = fixture.addClass(QStringLiteral("Ignored"), QStringLiteral("normal"));
+        const qint64 selected_image = fixture.addImage(QStringLiteral("selected"));
+        const qint64 ignored_image  = fixture.addImage(QStringLiteral("ignored"));
+        QVERIFY(selected_class >= 0);
+        QVERIFY(ignored_class >= 0);
+        QVERIFY(selected_image >= 0);
+        QVERIFY(ignored_image >= 0);
+        QVERIFY(fixture.addDetectionLabel(selected_image, selected_class, 1, 2, 10, 8) >= 0);
+        QVERIFY(fixture.addDetectionLabel(ignored_image, ignored_class, 3, 4, 5, 6) >= 0);
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        QString                   error;
+        std::vector<int64_t>      dataset_ids;
+        std::vector<int64_t>      image_ids;
+        std::vector<QString>      paths;
+        std::vector<std::vector<uint8_t>> image_extra_data;
+        QVERIFY2(database.getImagesByIds({selected_image}, dataset_ids, image_ids, paths, image_extra_data, error),
+                 qPrintable(error));
+        QCOMPARE(image_ids.size(), size_t(1));
+        QCOMPARE(image_ids.front(), selected_image);
+        QCOMPARE(paths.front(), QStringLiteral("%1/images/selected.png").arg(fixture.rootPath()));
+
+        std::vector<int64_t>              label_ids;
+        std::vector<int64_t>              label_image_ids;
+        std::vector<int64_t>              label_class_ids;
+        std::vector<int64_t>              label_types;
+        std::vector<std::vector<uint8_t>> label_data;
+        QVERIFY2(database.getLabelsByImageIds({selected_image}, label_ids, label_image_ids, label_class_ids,
+                                              label_types, label_data, error),
+                 qPrintable(error));
+        QCOMPARE(label_ids.size(), size_t(1));
+        QCOMPARE(label_image_ids.front(), selected_image);
+        QCOMPARE(label_class_ids.front(), selected_class);
+
+        std::vector<int64_t> missing_image_ids;
+        missing_image_ids.reserve(1001);
+        for (int index = 0; index < 1001; ++index)
+            missing_image_ids.push_back(1'000'000 + index);
+        QVERIFY2(database.getImagesByIds(missing_image_ids, dataset_ids, image_ids, paths, image_extra_data, error),
+                 qPrintable(error));
+        QVERIFY(image_ids.empty());
+        QVERIFY2(database.getLabelsByImageIds(missing_image_ids, label_ids, label_image_ids, label_class_ids,
+                                              label_types, label_data, error),
+                 qPrintable(error));
+        QVERIFY(label_ids.empty());
     }
 
     void loadsSelectedImagesCatalogDimensionsAndMissingCounters()
