@@ -162,6 +162,88 @@ private slots:
         QCOMPARE(points.at(2).toMap().value(QStringLiteral("x")).toDouble(), 90.0);
         QCOMPARE(points.at(2).toMap().value(QStringLiteral("y")).toDouble(), 40.0);
     }
+
+    void clipsPolygonAtImageBoundaryUsingEdgeIntersections()
+    {
+        QTemporaryDir temporary_dir;
+        QVERIFY(temporary_dir.isValid());
+
+        const QString image_dir      = QDir(temporary_dir.path()).filePath(QStringLiteral("images"));
+        const QString annotation_dir = QDir(temporary_dir.path()).filePath(QStringLiteral("annotations"));
+        QVERIFY(QDir().mkpath(image_dir));
+        QVERIFY(QDir().mkpath(annotation_dir));
+
+        QImage image(QSize(100, 100), QImage::Format_RGB32);
+        image.fill(Qt::white);
+        QVERIFY(image.save(QDir(image_dir).filePath(QStringLiteral("sample.png"))));
+
+        QFile annotation_file(QDir(annotation_dir).filePath(QStringLiteral("sample.json")));
+        QVERIFY(annotation_file.open(QIODevice::WriteOnly | QIODevice::Text));
+        QTextStream annotation_stream(&annotation_file);
+        annotation_stream << R"({
+            "imagePath": "sample.png",
+            "imageWidth": 100,
+            "imageHeight": 100,
+            "shapes": [{
+                "label": "defect",
+                "shape_type": "polygon",
+                "points": [[-10, 10], [50, 10], [50, 50], [10, 70], [-10, 50]]
+            }]
+        })";
+        annotation_file.close();
+
+        dltool::data::LabelMeIO importer;
+        importer.setTargetMethod(static_cast<int>(dltool::core::DeepLearningMethod::AnomalyDetection));
+
+        std::vector<dltool::data::ImportedLabel> labels;
+        std::atomic_bool                      finished{false};
+        std::atomic_bool                      success{false};
+        QObject::connect(&importer,
+                         &dltool::data::DataIO::dataBatchReady,
+                         &importer,
+                         [&labels](int64_t,
+                                   std::vector<QString>,
+                                   std::vector<int64_t>,
+                                   std::vector<int64_t>,
+                                   std::map<QString, QString>,
+                                   std::vector<dltool::data::ImportedLabel> batch,
+                                   int64_t,
+                                   int64_t)
+                         { labels = std::move(batch); },
+                         Qt::DirectConnection);
+        QObject::connect(&importer,
+                         &dltool::data::DataIO::importFinished,
+                         &importer,
+                         [&finished, &success](bool import_success, std::vector<int64_t>, std::vector<int64_t>)
+                         {
+                             success.store(import_success, std::memory_order_release);
+                             finished.store(true, std::memory_order_release);
+                         },
+                         Qt::DirectConnection);
+
+        importer.startImport(1, image_dir, annotation_dir);
+        QTRY_VERIFY_WITH_TIMEOUT(finished.load(std::memory_order_acquire), 10000);
+        QVERIFY(success.load(std::memory_order_acquire));
+        QCOMPARE(labels.size(), size_t(1));
+
+        const QVariantList points = labels.front().data.value(QStringLiteral("points")).toList();
+        QCOMPARE(points.size(), 5);
+        bool found_diagonal_intersection = false;
+        for (const QVariant &point : points)
+        {
+            const QVariantMap value = point.toMap();
+            QVERIFY(value.value(QStringLiteral("x")).toDouble() >= 0.0);
+            QVERIFY(value.value(QStringLiteral("x")).toDouble() <= 100.0);
+            QVERIFY(value.value(QStringLiteral("y")).toDouble() >= 0.0);
+            QVERIFY(value.value(QStringLiteral("y")).toDouble() <= 100.0);
+            if (std::abs(value.value(QStringLiteral("x")).toDouble()) < 1e-9
+                && std::abs(value.value(QStringLiteral("y")).toDouble() - 60.0) < 1e-9)
+            {
+                found_diagonal_intersection = true;
+            }
+        }
+        QVERIFY(found_diagonal_intersection);
+    }
 };
 
 QTEST_GUILESS_MAIN(LabelMeIOTest)

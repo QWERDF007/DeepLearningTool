@@ -47,6 +47,29 @@
 
 ---
 
+## 2026-09-07 — 统一数据几何转换与 DataIO 取消边界
+
+**目标**
+- 在阶段 4 先收敛导入格式共用的几何规则，并修正 DataIO 取消状态跨操作复用的问题。
+
+**当前状态**
+- 已完成：新增 `GeometryKernel`，统一矩形、多边形裁剪、尺寸映射和边界计算；LabelMe、Mask、DatasetIO 和 Mask 多边形提取改用同一规则。
+- 已完成：保留小连通 Mask 区域，只有少于 3 个点或退化轮廓才丢弃；LabelMe 跨图像边界多边形保留真实边交点。
+- 已完成：`DataIO` 拒绝同一实例上的并发后台操作，并在完成取消后复用实例时重置取消状态；导入取消后丢弃已经排队的迟到批次。
+- 未完成：DataWorkspace/DataTransfer 的完整批次写库、失败回滚和最终产物校验仍待下一切片。
+- 保留：`tools/dependencies.yaml` 为既有用户改动，未纳入阶段提交。
+
+**验证证据**
+- `cmake -S . -B build -DDLT_BUILD_TESTS=ON` → 配置与生成成功。
+- `cmake --build build --config Release --target dltool_data_data_io_tests dltool_common_geometry_tests dltool_data_label_me_io_tests --parallel 4` → Release 构建成功。
+- `ctest --test-dir build -C Release -R '^(dltool_data_data_io_tests|dltool_common_geometry_tests|dltool_data_label_me_io_tests)$' --output-on-failure` → 3/3 通过。
+- `git diff --check` → 待提交文件无格式错误。
+
+**下一步**
+- 为 DataTransfer 增加批次写入的明确提交/失败结果和导出最终产物校验测试，再替换 DataManager 当前的半成功路径。
+
+---
+
 ## 2026-09-07 — 收敛多方案合并裁决说明
 
 **目标**

@@ -3332,6 +3332,13 @@ void DataManager::handleDataBatchReady(int64_t dataset_id, std::vector<QString> 
         return;
     }
 
+    // A batch may already be queued when cancellation is requested.  Do not
+    // commit that late batch after the importer has entered its terminal path.
+    if (importer == nullptr || importer->isCancelRequested())
+    {
+        return;
+    }
+
     PendingImportTask &task = *pending_import_task_;
     task.processed_images
         = std::max(task.processed_images, static_cast<size_t>(std::max<int64_t>(0, processed_images)));
@@ -3660,7 +3667,9 @@ void DataManager::handleImportFinished(bool success, std::vector<int64_t> image_
         QString message = task.first_error_message;
         if (message.isEmpty())
         {
-            message = QString("数据解析失败或没有数据");
+            message = task.importer != nullptr && task.importer->isCancelRequested()
+                        ? QStringLiteral("数据导入已取消")
+                        : QStringLiteral("数据解析失败或没有数据");
         }
         finishBatchedImport(false, message);
         return;

@@ -1,5 +1,6 @@
 #include "data/DatasetIO.h"
 
+#include "common/GeometryKernel.h"
 #include "common/Utils.h"
 
 #include <spdlog/spdlog.h>
@@ -157,14 +158,10 @@ QVariantMap DatasetIO::pointsToLabelData(const std::vector<QPointF> &points, int
         return {};
     }
 
-    const QRectF         image_rect(0, 0, image_width, image_height);
-    std::vector<QPointF> clipped_points;
-    clipped_points.reserve(points.size());
-    for (const QPointF &point : points)
-    {
-        clipped_points.emplace_back(std::clamp(point.x(), image_rect.left(), image_rect.right()),
-                                    std::clamp(point.y(), image_rect.top(), image_rect.bottom()));
-    }
+    const std::vector<QPointF> clipped_points
+        = common::geometry::clipPolygon(points, QRectF(0.0, 0.0, image_width, image_height));
+    if (clipped_points.size() < 3)
+        return {};
 
     double x_min = clipped_points.front().x();
     double y_min = clipped_points.front().y();

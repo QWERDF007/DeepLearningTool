@@ -1,5 +1,6 @@
 #include "data/DataIO.h"
 
+#include "common/GeometryKernel.h"
 #include "common/MaskPolygonUtils.h"
 #include "common/Utils.h"
 #include "core/CoreDef.h"
@@ -390,22 +391,6 @@ std::vector<QPointF> jsonArrayToPolygon(const nlohmann::json &polygon_json)
     return points.size() >= 3 ? points : std::vector<QPointF>();
 }
 
-// ponytail: COCO import/export 共用，消除重复
-double polygonArea(const std::vector<QPointF> &points)
-{
-    if (points.size() < 3)
-        return 0.0;
-
-    double area = 0.0;
-    for (size_t i = 0; i < points.size(); ++i)
-    {
-        const QPointF &a = points[i];
-        const QPointF &b = points[(i + 1) % points.size()];
-        area += a.x() * b.y() - b.x() * a.y();
-    }
-    return std::abs(area) / 2.0;
-}
-
 bool readRleSize(const nlohmann::json &segmentation, int &height, int &width)
 {
     if (!segmentation.contains("size") || !segmentation["size"].is_array() || segmentation["size"].size() < 2)
@@ -555,22 +540,13 @@ std::vector<std::vector<QPointF>> parseSegmentationPolygons(const nlohmann::json
     }
 
     std::sort(polygons.begin(), polygons.end(), [](const std::vector<QPointF> &left, const std::vector<QPointF> &right)
-              { return polygonArea(left) > polygonArea(right); });
+              { return dltool::common::polygonArea(left) > dltool::common::polygonArea(right); });
     return polygons;
 }
 
 // ============================================================================
 // LabelMe helpers
 // ============================================================================
-
-std::vector<QPointF> rectangleToPolygon(const QPointF &p1, const QPointF &p2)
-{
-    const double x_min = std::min(p1.x(), p2.x());
-    const double y_min = std::min(p1.y(), p2.y());
-    const double x_max = std::max(p1.x(), p2.x());
-    const double y_max = std::max(p1.y(), p2.y());
-    return {QPointF(x_min, y_min), QPointF(x_max, y_min), QPointF(x_max, y_max), QPointF(x_min, y_max)};
-}
 
 // ============================================================================
 // Mask helpers
@@ -858,6 +834,16 @@ void DataIO::updateProgress(int progress, const QString &message)
 
 void DataIO::runInThread(std::function<void()> work)
 {
+    if (operation_handle_ != nullptr && !operation_handle_->isFinished())
+    {
+        spdlog::error("DataIO 后台操作仍在运行，拒绝启动并发操作");
+        return;
+    }
+
+    // A DataIO instance can be reused after a completed cancellation.  The
+    // cancellation flag belongs to the current operation, not to the object.
+    cancel_requested_.store(false, std::memory_order_relaxed);
+
     DataOperationWorkflow::Options options;
     options.manage_progress = false;
 
@@ -1629,7 +1615,7 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir, const int threa
                                 flat_points.push_back(point.y());
                             }
                             segmentation.push_back(flat_points);
-                            area = polygonArea(points);
+                            area = dltool::common::polygonArea(points);
                             if (area <= 0)
                                 area = w * h;
                         }
@@ -1757,13 +1743,16 @@ QVariantMap LabelMeIO::convertShapeToLabelData(const LabelMeShape &shape, int so
                                                int source_image_height, int image_width, int image_height,
                                                bool convert_rectangle_to_polygon)
 {
-    const auto toImagePoint = [source_image_width, source_image_height, image_width, image_height](const QPointF &point)
+    const QSize target_size(image_width, image_height);
+    const auto mapPoints = [source_image_width, source_image_height, target_size](const std::vector<QPointF> &points)
     {
-        if (source_image_width <= 0 || source_image_height <= 0 || image_width <= 0 || image_height <= 0)
-            return point;
-
-        return QPointF(point.x() * static_cast<double>(image_width) / source_image_width,
-                       point.y() * static_cast<double>(image_height) / source_image_height);
+        if (source_image_width > 0 && source_image_height > 0)
+        {
+            return dltool::common::geometry::mapPolygon(
+                points, QSize(source_image_width, source_image_height), target_size);
+        }
+        return dltool::common::geometry::clipPolygon(
+            points, QRectF(0.0, 0.0, target_size.width(), target_size.height()));
     };
 
     if (shape.shape_type == QStringLiteral("rectangle"))
@@ -1774,16 +1763,19 @@ QVariantMap LabelMeIO::convertShapeToLabelData(const LabelMeShape &shape, int so
             return {};
         }
 
-        const QPointF p1 = toImagePoint(shape.points[0]);
-        const QPointF p2 = toImagePoint(shape.points[1]);
+        const std::vector<QPointF> source_rectangle
+            = dltool::common::geometry::rectangleToPolygon(shape.points[0], shape.points[1]);
+        const std::vector<QPointF> image_rectangle = mapPoints(source_rectangle);
+        const QRectF               rectangle_bounds = dltool::common::geometry::polygonBounds(image_rectangle);
+        if (!rectangle_bounds.isValid() || rectangle_bounds.width() <= 0.0 || rectangle_bounds.height() <= 0.0)
+            return {};
         if (target_method_ == DeepLearningMethod::Segmentation
             || target_method_ == DeepLearningMethod::AnomalyDetection)
         {
             if (!convert_rectangle_to_polygon)
                 return {};
 
-            const std::vector<QPointF> polygon    = rectangleToPolygon(p1, p2);
-            const QVariantMap          label_data = DatasetIO::pointsToLabelData(polygon, image_width, image_height);
+            const QVariantMap label_data = DatasetIO::pointsToLabelData(image_rectangle, image_width, image_height);
             if (label_data.isEmpty())
             {
                 spdlog::warn("rectangle 标注无法转换为四点多边形: label={}", shape.label.toUtf8().constData());
@@ -1792,11 +1784,8 @@ QVariantMap LabelMeIO::convertShapeToLabelData(const LabelMeShape &shape, int so
             return label_data;
         }
 
-        const double x_min = std::min(p1.x(), p2.x());
-        const double y_min = std::min(p1.y(), p2.y());
-        const double x_max = std::max(p1.x(), p2.x());
-        const double y_max = std::max(p1.y(), p2.y());
-        return DatasetIO::bboxToLabelData(x_min, y_min, x_max - x_min, y_max - y_min, image_width, image_height);
+        return DatasetIO::bboxToLabelData(rectangle_bounds.x(), rectangle_bounds.y(), rectangle_bounds.width(),
+                                           rectangle_bounds.height(), image_width, image_height);
     }
 
     if (shape.shape_type == QStringLiteral("polygon"))
@@ -1807,10 +1796,7 @@ QVariantMap LabelMeIO::convertShapeToLabelData(const LabelMeShape &shape, int so
             return {};
         }
 
-        std::vector<QPointF> image_points;
-        image_points.reserve(shape.points.size());
-        for (const QPointF &point : shape.points)
-            image_points.push_back(toImagePoint(point));
+        const std::vector<QPointF> image_points = mapPoints(shape.points);
 
         const QVariantMap label_data = DatasetIO::pointsToLabelData(image_points, image_width, image_height);
         if (label_data.isEmpty())
@@ -2583,32 +2569,18 @@ QVariantMap MaskIO::maskToLabelData(const std::vector<QPointF> &polygon, int mas
     if (mask_width <= 0 || mask_height <= 0 || image_width <= 0 || image_height <= 0 || polygon.size() < 3)
         return {};
 
-    const double sx = static_cast<double>(image_width) / mask_width;
-    const double sy = static_cast<double>(image_height) / mask_height;
-
-    double x_min = polygon.front().x();
-    double y_min = polygon.front().y();
-    double x_max = x_min;
-    double y_max = y_min;
-    for (const QPointF &point : polygon)
-    {
-        x_min = std::min(x_min, point.x());
-        y_min = std::min(y_min, point.y());
-        x_max = std::max(x_max, point.x());
-        y_max = std::max(y_max, point.y());
-    }
+    const std::vector<QPointF> mapped_polygon
+        = dltool::common::geometry::mapPolygon(polygon, QSize(mask_width, mask_height), QSize(image_width, image_height));
+    const QRectF mapped_bounds = dltool::common::geometry::polygonBounds(mapped_polygon);
+    if (!mapped_bounds.isValid() || mapped_bounds.width() <= 0.0 || mapped_bounds.height() <= 0.0)
+        return {};
 
     if (target_method_ == DeepLearningMethod::Detection)
-        return DatasetIO::bboxToLabelData(x_min * sx, y_min * sy, (x_max - x_min) * sx, (y_max - y_min) * sy,
-                                          image_width, image_height);
+        return DatasetIO::bboxToLabelData(mapped_bounds.x(), mapped_bounds.y(), mapped_bounds.width(),
+                                          mapped_bounds.height(), image_width, image_height);
 
     if (target_method_ == DeepLearningMethod::Segmentation || target_method_ == DeepLearningMethod::AnomalyDetection)
-    {
-        std::vector<QPointF> scaled_points;
-        scaled_points.reserve(polygon.size());
-        for (const QPointF &point : polygon) scaled_points.emplace_back(point.x() * sx, point.y() * sy);
-        return DatasetIO::pointsToLabelData(scaled_points, image_width, image_height);
-    }
+        return DatasetIO::pointsToLabelData(mapped_polygon, image_width, image_height);
 
     spdlog::warn("Mask 导入仅支持检测、分割和异常检测项目，当前项目类型: {}", target_method_);
     return {};

@@ -147,9 +147,28 @@ std::vector<cv::Point> approximateContour(const std::vector<cv::Point> &contour,
 
     std::vector<cv::Point> fitted;
     cv::approxPolyDP(contour, fitted, epsilon, true);
-    // if (fitted.size() < 3 || std::abs(cv::contourArea(fitted)) <= 0.5)
-    //     return contour;
-    return fitted;
+    return fitted.size() >= 3 ? fitted : contour;
+}
+
+std::vector<QPointF> contourBoundsPolygon(const std::vector<cv::Point> &contour, int width, int height)
+{
+    if (contour.empty())
+        return {};
+
+    const cv::Rect bounds = cv::boundingRect(contour);
+    if (bounds.width <= 0 || bounds.height <= 0)
+        return {};
+
+    const double left   = std::clamp(static_cast<double>(bounds.x - 1), 0.0, static_cast<double>(width));
+    const double top    = std::clamp(static_cast<double>(bounds.y - 1), 0.0, static_cast<double>(height));
+    const double right  = std::clamp(static_cast<double>(bounds.x + bounds.width - 1), 0.0,
+                                    static_cast<double>(width));
+    const double bottom = std::clamp(static_cast<double>(bounds.y + bounds.height - 1), 0.0,
+                                     static_cast<double>(height));
+    if (right <= left || bottom <= top)
+        return {};
+
+    return normalizePolygon({QPointF(left, top), QPointF(right, top), QPointF(right, bottom), QPointF(left, bottom)});
 }
 
 } // namespace
@@ -183,7 +202,7 @@ std::vector<QPointF> normalizePolygon(std::vector<QPointF> points)
     if (normalized.size() > 1 && QLineF(normalized.front(), normalized.back()).length() < 0.001)
         normalized.pop_back();
 
-    if (normalized.size() < 3 || polygonArea(normalized) <= 0.5)
+    if (normalized.size() < 3 || polygonArea(normalized) <= 0.0)
         return {};
     return normalized;
 }
@@ -261,11 +280,14 @@ std::vector<std::vector<QPointF>> maskToPolygons(const std::vector<uint8_t> &mas
 
     for (const std::vector<cv::Point> &contour : contours)
     {
-        if (std::abs(cv::contourArea(contour)) <= 0.5)
-            continue;
-
-        const std::vector<cv::Point> fitted_contour = approximateContour(contour, epsilon_ratio);
-        std::vector<QPointF>         points         = contourToPolygon(fitted_contour, signed_distance, width, height);
+        std::vector<QPointF> points;
+        if (contour.size() >= 3)
+        {
+            const std::vector<cv::Point> fitted_contour = approximateContour(contour, epsilon_ratio);
+            points = contourToPolygon(fitted_contour, signed_distance, width, height);
+        }
+        if (points.empty())
+            points = contourBoundsPolygon(contour, width, height);
         if (points.empty())
             continue;
 
