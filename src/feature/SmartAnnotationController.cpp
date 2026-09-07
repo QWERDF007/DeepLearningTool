@@ -721,11 +721,37 @@ SmartAnnotationController::SmartAnnotationController(QObject *parent)
             });
 }
 
-SmartAnnotationController::~SmartAnnotationController() = default;
+SmartAnnotationController::~SmartAnnotationController()
+{
+    shutdown();
+}
+
+void SmartAnnotationController::shutdown()
+{
+    if (shutting_down_.exchange(true, std::memory_order_acq_rel))
+        return;
+
+    for (const QPointer<QThread> &thread_pointer : std::as_const(worker_threads_))
+    {
+        if (QThread *thread = thread_pointer.data(); thread != nullptr)
+        {
+            thread->wait();
+            delete thread;
+        }
+    }
+    worker_threads_.clear();
+    loading_model_key_.clear();
+    predictor_.reset();
+    cached_model_key_.clear();
+    setLoadingModel(false);
+    setRunning(false);
+}
 
 /// 清除模型缓存并重置状态
 void SmartAnnotationController::clearCache()
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+        return;
     predictor_.reset();
     cached_model_key_.clear();
     loading_model_key_.clear();
@@ -744,19 +770,67 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
                                                     const irt::model::ModelRuntime &runtime,
                                                     const irt::model::ModelPrecision precision)
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+        return;
     const SmartModelLoadRequest request
         = buildSmartModelLoadRequest(model_name, model_path, runtime, precision);
     if (loading_model_ && loading_model_key_ == request.key)
         return;
+
+    for (auto it = worker_threads_.begin(); it != worker_threads_.end();)
+    {
+        if (it->isNull())
+            it = worker_threads_.erase(it);
+        else
+            ++it;
+    }
 
     loading_model_key_ = request.key;
     setLastError(QString());
     setLoadingModel(true);
     setRunning(true);
 
-    QPointer<SmartAnnotationController> controller(this);
-    QThread                            *work_thread = QThread::create(
-        [controller, request]()
+    const auto controller = QPointer<SmartAnnotationController>(this);
+    const auto complete = [controller, request](
+                               std::shared_ptr<std::unique_ptr<irt::features::SAMImagePredictor>> predictor_holder,
+                               QString error, const bool success)
+    {
+        if (!controller || controller->shutting_down_.load(std::memory_order_acquire))
+            return;
+
+        QMetaObject::invokeMethod(
+            controller.data(),
+            [controller, request, predictor_holder, error = std::move(error), success]() mutable
+            {
+                if (!controller || controller->shutting_down_.load(std::memory_order_acquire))
+                    return;
+                if (controller->loading_model_key_ != request.key)
+                    return;
+
+                controller->loading_model_key_.clear();
+                if (success)
+                {
+                    controller->predictor_        = std::move(*predictor_holder);
+                    controller->cached_model_key_ = request.key;
+                    controller->setLastError(QString());
+                }
+                else
+                {
+                    controller->predictor_.reset();
+                    controller->cached_model_key_.clear();
+                    controller->setLastError(error);
+                    ui::SignalHelper::notifyError(QString("智能标注模型加载失败"), error);
+                }
+
+                controller->setLoadingModel(false);
+                controller->setRunning(false);
+                emit controller->modelLoadFinished(success);
+            },
+            Qt::QueuedConnection);
+    };
+
+    QThread *work_thread = QThread::create(
+        [request, complete]()
         {
             auto    predictor_holder = std::make_shared<std::unique_ptr<irt::features::SAMImagePredictor>>();
             QString error;
@@ -777,42 +851,11 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
                 error = QStringLiteral("Unknown smart annotation model load error");
                 spdlog::error("加载智能标注模型失败: {}", error.toUtf8().constData());
             }
-
-            if (!controller)
-                return;
-
-            QMetaObject::invokeMethod(
-                controller.data(),
-                [controller, request, predictor_holder, error, success]() mutable
-                {
-                    if (!controller)
-                        return;
-                    if (controller->loading_model_key_ != request.key)
-                        return;
-
-                    controller->loading_model_key_.clear();
-                    if (success)
-                    {
-                        controller->predictor_        = std::move(*predictor_holder);
-                        controller->cached_model_key_ = request.key;
-                        controller->setLastError(QString());
-                    }
-                    else
-                    {
-                        controller->predictor_.reset();
-                        controller->cached_model_key_.clear();
-                        controller->setLastError(error);
-                        ui::SignalHelper::notifyError(QString("智能标注模型加载失败"), error);
-                    }
-
-                    controller->setLoadingModel(false);
-                    controller->setRunning(false);
-                    emit controller->modelLoadFinished(success);
-                },
-                Qt::QueuedConnection);
+            complete(std::move(predictor_holder), std::move(error), success);
         });
 
     connect(work_thread, &QThread::finished, work_thread, &QObject::deleteLater);
+    worker_threads_.append(QPointer<QThread>(work_thread));
     work_thread->start();
 }
 
@@ -830,6 +873,12 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         {  QStringLiteral("error"),    {}},
         {QStringLiteral("loading"), false}
     };
+
+    if (shutting_down_.load(std::memory_order_acquire))
+    {
+        result[QStringLiteral("error")] = QStringLiteral("智能标注控制器正在关闭");
+        return result;
+    }
 
     if (loading_model_)
     {

@@ -24,6 +24,7 @@ public:
 
 protected:
     FeatureDataProvider *dataProvider() const override;
+    SearchExecutor searchExecutor() const override;
     void clearProviderResults() override;
     void applyResults(const SearchResponse &response) override;
 

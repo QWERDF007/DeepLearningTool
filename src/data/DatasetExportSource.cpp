@@ -142,13 +142,14 @@ QString DatasetExportSnapshot::datasetName(const qint64 dataset_id) const
     return found == data_.datasets.end() ? QString() : found->second.name;
 }
 
-void DataManager::runDatasetExportAsync(QObject *context, DatasetExportRequest request,
-                                        DataOperationWorkflow::Options options, DatasetExportWork work,
-                                        DataOperationWorkflow::Completion completion)
+DataOperationWorkflow::HandlePtr DataManager::runDatasetExportAsync(QObject *context, DatasetExportRequest request,
+                                                                     DataOperationWorkflow::Options options,
+                                                                     DatasetExportWork work,
+                                                                     DataOperationWorkflow::Completion completion)
 {
     if (context == nullptr)
     {
-        return;
+        return {};
     }
 
     if (isDataOperationRunning())
@@ -159,7 +160,7 @@ void DataManager::runDatasetExportAsync(QObject *context, DatasetExportRequest r
         {
             completion(result);
         }
-        return;
+        return {};
     }
 
     if (labels_loading_)
@@ -170,36 +171,35 @@ void DataManager::runDatasetExportAsync(QObject *context, DatasetExportRequest r
         {
             completion(result);
         }
-        return;
+        return {};
     }
 
     if (!work)
     {
-        DataOperationWorkflow::start(
+        return trackOperation(DataOperationWorkflow::start(
             context, std::move(options),
             [](DataOperationWorkflow::Result &result) { result.error = QString("数据集导出工作为空"); },
-            std::move(completion));
-        return;
+            std::move(completion)));
     }
 
     setDataOperationRunning(true);
     auto finish = [this, completion = std::move(completion)](const DataOperationWorkflow::Result &result) mutable
     {
         setDataOperationRunning(false);
-        if (completion)
+        if (!shutting_down_ && completion)
         {
             completion(result);
         }
     };
 
     DatasetExportSnapshot snapshot = makeDatasetExportSnapshot(*this, request.dataset_ids);
-    DataOperationWorkflow::start(
+    return trackOperation(DataOperationWorkflow::start(
         context, std::move(options),
         [snapshot = std::move(snapshot), work = std::move(work)](DataOperationWorkflow::Result &result) mutable
         {
             work(snapshot, result);
         },
-        std::move(finish));
+        std::move(finish)));
 }
 
 } // namespace dltool::data

@@ -32,8 +32,8 @@ private slots:
                                                              QStringLiteral("YOLOv8"), &error);
         QVERIFY2(record.isValid(), qPrintable(error));
 
-        TaskManager *task_manager = TaskManager::getInstance();
-        task_manager->clearTasks();
+        TaskManager task_manager_instance;
+        TaskManager *task_manager = &task_manager_instance;
         ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, task_manager);
         manager.setModelUuid(record.uuid);
 
@@ -65,7 +65,7 @@ private slots:
         QVERIFY(manager.flush());
 
         const int task_id = task_manager->addTask(record.uuid, record.name, ModelTaskType::Test, first_uuid,
-                                                  manager.currentTaskName(), true);
+                                                  manager.currentTaskName());
         QVERIFY(task_id > 0);
         QCOMPARE(manager.taskId(first_uuid), task_id);
         QVERIFY(task_manager->startTask(task_id));

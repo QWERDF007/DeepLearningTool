@@ -66,23 +66,16 @@ Project::Project(const QString &path, QObject *parent)
 
 Project::~Project()
 {
+    shutdown();
+
     delete feature_manager_;
     feature_manager_ = nullptr;
 
-    if (model_test_task_manager_ != nullptr)
-    {
-        model_test_task_manager_->shutdown();
-        model_test_task_manager_->flush();
-    }
-    if (model_task_controller_ != nullptr)
-        model_task_controller_->shutdown();
     delete model_task_controller_;
     model_task_controller_ = nullptr;
 
     delete model_test_task_manager_;
     model_test_task_manager_ = nullptr;
-
-    task_manager_ = nullptr;
 
     delete model_manager_;
     model_manager_ = nullptr;
@@ -90,17 +83,40 @@ Project::~Project()
     delete data_manager_;
     data_manager_ = nullptr;
 
+    delete task_manager_;
+    task_manager_ = nullptr;
+
     delete database_;
     database_ = nullptr;
+}
+
+void Project::shutdown()
+{
+    if (shutting_down_)
+        return;
+    shutting_down_ = true;
+
+    // This is the only project-level shutdown order.  Earlier layers may
+    // still need later layers while they stop (for example Feature uses
+    // ModelTaskController, and that controller uses TaskManager::stopTask).
+    if (feature_manager_ != nullptr)
+        feature_manager_->shutdown();
+    if (model_task_controller_ != nullptr)
+        model_task_controller_->shutdown();
+    if (model_test_task_manager_ != nullptr)
+        model_test_task_manager_->shutdown();
+    if (data_manager_ != nullptr)
+        data_manager_->shutdown();
+    if (task_manager_ != nullptr)
+        task_manager_->shutdown();
 }
 
 void Project::init()
 {
     const QString project_dir = QFileInfo(path_).absoluteDir().absolutePath();
+    task_manager_             = new model::TaskManager(this);
     data_manager_             = new data::DataManager(method_, database_, project_dir, this);
-    model_manager_ = new model::ModelManager(method_, database_, data_manager_, this);
-    task_manager_ = model::TaskManager::getInstance();
-    task_manager_->clearTasks();
+    model_manager_ = new model::ModelManager(method_, database_, data_manager_, task_manager_, this);
     model_task_controller_ = new model::ModelTaskController(method_, model_manager_->projectDirectory(), model_manager_,
                                                             data_manager_, task_manager_, this);
     model_test_task_manager_ = new model::ModelTestTaskManager(model_manager_->projectDirectory(), model_manager_,
@@ -604,18 +620,12 @@ void ProjectManager::closeProject()
         Project *project = current_project_;
         updateProjectMtime(project->path());
         spdlog::info("关闭项目: {}", project->path().toUtf8().constData());
-        // Stop external Python processes and cancel C++ evaluation before the
-        // shared TaskManager records are cleared.  Clearing first makes the
-        // controller unable to discover the task ids it must stop.
-        if (project->modelTestTaskManager() != nullptr)
-            project->modelTestTaskManager()->shutdown();
-        if (project->modelTaskController() != nullptr)
-            project->modelTaskController()->shutdown();
-        if (project->taskManager() != nullptr)
-            project->taskManager()->clearTasks();
+        project->shutdown();
         current_project_ = nullptr;
+        // Delete before publishing currentProjectChanged so a reentrant slot
+        // cannot create a new project while the old QObject graph is alive.
+        delete project;
         emit currentProjectChanged();
-        QTimer::singleShot(0, project, [project]() { project->deleteLater(); });
     }
     else
     {

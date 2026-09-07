@@ -18,6 +18,7 @@ Rectangle {
     property ModelTaskController modelTaskController: ProjectManager.currentProject ? ProjectManager.currentProject.modelTaskController : null
     property ModelTestTaskManager modelTestTaskManager: ProjectManager.currentProject ? ProjectManager.currentProject.modelTestTaskManager : null
     property DataManager dataManager: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager : null
+    property TaskManager taskManager: ProjectManager.currentProject ? ProjectManager.currentProject.taskManager : null
 
     QuiSplitView {
         anchors.fill: parent
@@ -33,7 +34,7 @@ Rectangle {
             headerTitle: "模型测试:"
             addEnable: false
             modelManager: labelPage.modelManager
-            taskManager: TaskManager
+            taskManager: labelPage.taskManager
             testTaskManager: labelPage.modelTestTaskManager
             taskController: labelPage.modelTaskController
             taskType: ModelTaskTypes.Test

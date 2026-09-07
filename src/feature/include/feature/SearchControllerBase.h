@@ -14,11 +14,14 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <atomic>
 #include <filesystem>
 #include <functional>
 #include <map>
 #include <set>
 #include <vector>
+
+class QThread;
 
 namespace dltool::feature {
 
@@ -38,7 +41,10 @@ class FEATURE_API SearchControllerBase : public QObject
 public:
     explicit SearchControllerBase(dltool::settings::generated::AccessorKey settings_accessor,
                                   QObject                                *parent = nullptr);
-    ~SearchControllerBase() override = default;
+    ~SearchControllerBase() override;
+
+    /** @brief 等待当前搜索线程收敛并丢弃迟到结果。 */
+    void shutdown();
 
     bool enabled() const;
     bool isRunning() const;
@@ -84,8 +90,6 @@ protected:
 
         std::vector<irt::features::RoiSearchItem> query_rois;
         std::vector<irt::features::RoiSearchItem> gallery_rois;
-
-        QPointer<SearchControllerBase> controller;
     };
 
     struct SearchResponse
@@ -98,6 +102,7 @@ protected:
     };
 
     using BuildProgressCallback = std::function<void(const irt::features::ImageSearchBuildProgress &)>;
+    using SearchExecutor = void (*)(const SearchRequest &, SearchResponse &, const BuildProgressCallback &);
 
     static SearchScope parseSearchScope(const QVariantList &search_scope);
 
@@ -114,7 +119,9 @@ protected:
     virtual QString computeIndexPath(const SearchRequest &request) const;
     virtual void collectGallery(SearchRequest &request, const SearchScope &search_scope);
     virtual void collectQuery(SearchRequest &request, const std::vector<int64_t> &ids);
-    virtual void executeSearch(const SearchRequest &request, SearchResponse &response);
+    virtual SearchExecutor searchExecutor() const = 0;
+    static void executeImageSearch(const SearchRequest &request, SearchResponse &response,
+                                   const BuildProgressCallback &progress);
 
     virtual QString searchDisplayName() const;
     virtual QString emptyQuerySelectionErrorMessage() const;
@@ -149,6 +156,8 @@ private:
     QString last_error_;
     QString last_summary_;
     int     result_count_{0};
+    QPointer<::QThread> worker_thread_;
+    std::atomic_bool  shutting_down_{false};
 };
 
 } // namespace dltool::feature

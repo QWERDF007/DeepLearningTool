@@ -9,6 +9,7 @@
 #include <QList>
 #include <QObject>
 #include <QPointer>
+#include <QThreadPool>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QVector>
@@ -83,15 +84,15 @@ public:
     Q_PROPERTY(int selectedInstanceRow READ selectedInstanceRow NOTIFY selectedInstanceChanged FINAL)
 
 public:
-    explicit ModelEvaluationViewModel(QObject *parent = nullptr);
+    explicit ModelEvaluationViewModel(QObject *parent = nullptr, QThreadPool *evaluation_pool = nullptr);
     ~ModelEvaluationViewModel() override;
 
     /**
-     * @brief 等待评估专用线程池中的任务完成。
+     * @brief 取消当前评估并等待所属线程池中的任务完成。
      *
-     * 调用方应先取消所有视图模型的评估，再调用本函数完成项目关闭收尾。
+     * 调用方应在项目关闭时调用本函数完成当前 ViewModel 的收尾。
      */
-    static void shutdownEvaluationWorkers();
+    void shutdown();
 
     /** @brief 评估数据是否有效且可用。 */
     bool        available() const;
@@ -333,11 +334,13 @@ private:
     void    scheduleRebuildFilteredAggregates();
     void    rebuildFilteredAggregates();
     bool    hasActiveAggregationFilters() const;
+    QThreadPool *evaluationPool() const;
 
     ModelEvaluationOptions            evaluation_options_;
     bool                              has_evaluation_options_{false};
     bool                              evaluation_attempted_{false};
     bool                              evaluation_worker_active_{false};
+    bool                              shutting_down_{false};
     bool                              discard_active_result_{false};
     std::shared_ptr<std::atomic_bool> cancel_token_;
     bool                              notify_when_finished_{false};
@@ -384,6 +387,8 @@ private:
     bool                              aggregation_matches_evaluation_result_{true};
     int                               aggregation_schedule_token_{0};
     bool                              suppress_aggregation_rebuild_{false};
+    std::unique_ptr<QThreadPool>      owned_evaluation_pool_;
+    QThreadPool                       *evaluation_pool_{nullptr};
 };
 
 } // namespace dltool::model

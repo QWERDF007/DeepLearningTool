@@ -21,7 +21,7 @@ class MODEL_API DetectionEvaluationViewModel : public InstanceMatchingEvaluation
     QML_UNCREATABLE("DetectionEvaluationViewModel is owned by EvaluationViewModelRegistry")
 
 public:
-    explicit DetectionEvaluationViewModel(QObject *parent = nullptr);
+    explicit DetectionEvaluationViewModel(QObject *parent = nullptr, QThreadPool *evaluation_pool = nullptr);
 };
 
 } // namespace dltool::model

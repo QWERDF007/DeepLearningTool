@@ -275,7 +275,7 @@ private slots:
         view_model.invalidate();
         QElapsedTimer timer;
         timer.start();
-        ModelEvaluationViewModel::shutdownEvaluationWorkers();
+        view_model.shutdown();
 
         QVERIFY(SerializedEvaluationProbeEngine::cancel_observed.load(std::memory_order_acquire));
         QCOMPARE(SerializedEvaluationProbeEngine::active.load(std::memory_order_relaxed), 0);

@@ -36,6 +36,11 @@ FeatureDataProvider *ImageSearchController::dataProvider() const
     return data_provider_;
 }
 
+SearchControllerBase::SearchExecutor ImageSearchController::searchExecutor() const
+{
+    return &SearchControllerBase::executeImageSearch;
+}
+
 void ImageSearchController::clearProviderResults()
 {
     if (data_provider_)

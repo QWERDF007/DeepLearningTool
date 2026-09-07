@@ -77,7 +77,8 @@ private slots:
 
         auto &view_models = EvaluationViewModelRegistry::instance();
         view_models.registerViewModel(evaluation::Method::Unknown,
-                                      [](QObject *parent) { return new DetectionEvaluationViewModel(parent); });
+                                      [](QObject *parent, QThreadPool *evaluation_pool)
+                                      { return new DetectionEvaluationViewModel(parent, evaluation_pool); });
         QVERIFY(view_models.createViewModel(evaluation::Method::Unknown) != nullptr);
         QVERIFY(view_models.createViewModel(evaluation::Method::Detection) != nullptr);
 

@@ -5,12 +5,14 @@
 #include <spdlog/spdlog.h>
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QStringList>
 #include <QTimer>
+#include <algorithm>
 
 namespace dltool::model {
 
@@ -140,7 +142,18 @@ ExternalModelTaskRunner::ExternalModelTaskRunner(QObject *parent)
 {
 }
 
-ExternalModelTaskRunner::~ExternalModelTaskRunner() = default;
+ExternalModelTaskRunner::~ExternalModelTaskRunner()
+{
+    shutdown();
+}
+
+void ExternalModelTaskRunner::shutdown()
+{
+    if (shutting_down_)
+        return;
+    shutting_down_ = true;
+    waitForDone();
+}
 
 bool ExternalModelTaskRunner::hasRunningTask(int task_id) const
 {
@@ -150,6 +163,13 @@ bool ExternalModelTaskRunner::hasRunningTask(int task_id) const
 
 bool ExternalModelTaskRunner::start(const ExternalProcessSpec &process_spec, QString *err_msg)
 {
+    if (shutting_down_)
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("外部任务运行器正在关闭");
+        return false;
+    }
+
     if (process_spec.task_id < 0)
     {
         if (err_msg != nullptr)
@@ -288,6 +308,51 @@ bool ExternalModelTaskRunner::stop(int task_id)
     process->terminate();
     escalate(1);
     return true;
+}
+
+bool ExternalModelTaskRunner::waitForDone(const int timeout_ms)
+{
+    QElapsedTimer timer;
+    timer.start();
+
+    const auto remaining = [&timer, timeout_ms]()
+    {
+        if (timeout_ms < 0)
+            return -1;
+        return std::max(0, timeout_ms - static_cast<int>(timer.elapsed()));
+    };
+
+    QList<QPair<int, QPointer<QProcess>>> processes;
+    processes.reserve(static_cast<qsizetype>(external_processes_.size()));
+    for (const auto &[task_id, process] : external_processes_)
+        processes.push_back({task_id, process});
+
+    bool all_finished = true;
+    for (const auto &[task_id, process_pointer] : processes)
+    {
+        QProcess *process = process_pointer.data();
+        if (process == nullptr || process->state() == QProcess::NotRunning)
+            continue;
+
+        stop(task_id);
+        if (process->waitForFinished(remaining()))
+            continue;
+
+        // Graceful termination did not converge within the requested window.
+        // A project close cannot leave a child process behind, so escalate to
+        // kill and wait for QProcess to observe the final state.
+        process->kill();
+        if (!process->waitForFinished(5000))
+            all_finished = false;
+    }
+
+    for (const auto &[task_id, process] : processes)
+    {
+        Q_UNUSED(task_id)
+        if (process != nullptr && process->state() != QProcess::NotRunning)
+            all_finished = false;
+    }
+    return all_finished;
 }
 
 bool ExternalModelTaskRunner::deleteTask(int task_id)

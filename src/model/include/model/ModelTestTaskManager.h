@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QPointer>
 #include <QSet>
+#include <QThreadPool>
 #include <QTimer>
 #include <QtQml>
 #include <memory>
@@ -76,7 +77,7 @@ public:
                                   QObject *parent = nullptr);
     ~ModelTestTaskManager() override;
 
-    /** @brief 取消当前模型的评估并等待评估线程池收尾。 */
+    /** @brief 取消当前模型的评估并等待项目线程池收尾。 */
     void shutdown();
 
     int                    rowCount(const QModelIndex &parent = {}) const override;
@@ -224,9 +225,11 @@ private:
     std::unique_ptr<ITestParams>                   current_test_params_;
     QPointer<dltool::data::DataSelectionTreeModel> current_dataset_view_model_;
     QPointer<ModelEvaluationViewModel>             current_evaluation_;
+    QThreadPool                                    evaluation_pool_;
     QHash<QString, ModelEvaluationViewModel *>     evaluation_cache_;
     QSet<QString>                                  pending_evaluation_notifications_;
     bool                                           applying_best_threshold_{false};
+    bool                                           shutting_down_{false};
     QTimer                                         save_timer_;
 };
 

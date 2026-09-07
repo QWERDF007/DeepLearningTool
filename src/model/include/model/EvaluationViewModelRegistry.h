@@ -34,25 +34,28 @@ public:
      *
      * 已注册的同方法条目允许被替换。
      * @param method 评估方法。
-     * @param factory 工厂函数（接收 QObject 父对象）。
+     * @param factory 工厂函数（接收 QObject 父对象和所属评估线程池）。
      */
     void registerViewModel(evaluation::Method                                         method,
-                           std::function<ModelEvaluationViewModel *(QObject *parent)> factory);
+                           std::function<ModelEvaluationViewModel *(QObject *parent, QThreadPool *evaluation_pool)>
+                               factory);
 
     /**
      * @brief 创建 ViewModel。
      * @param method 评估方法。
      * @param parent QObject 父对象。
+     * @param evaluation_pool 所属线程池；为空时 ViewModel 自己创建线程池。
      * @return 新 ViewModel（父对象为 parent）；未注册的方法返回 nullptr。
      */
-    ModelEvaluationViewModel *createViewModel(evaluation::Method method, QObject *parent = nullptr) const;
+    ModelEvaluationViewModel *createViewModel(evaluation::Method method, QObject *parent = nullptr,
+                                               QThreadPool *evaluation_pool = nullptr) const;
 
 private:
     EvaluationViewModelRegistry();
 
     void registerBuiltins();
 
-    QHash<int, std::function<ModelEvaluationViewModel *(QObject *parent)>> factories_;
+    QHash<int, std::function<ModelEvaluationViewModel *(QObject *parent, QThreadPool *evaluation_pool)>> factories_;
 };
 
 } // namespace dltool::model

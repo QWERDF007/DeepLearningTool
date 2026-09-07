@@ -61,6 +61,32 @@ private slots:
         QVERIFY(runner.stop(41));
         QVERIFY(runner.deleteTask(41));
     }
+
+    void stopCanBeWaitedUntilTheProcessHasExited()
+    {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+
+        ExternalModelTaskRunner runner;
+        QSignalSpy         finished(&runner, &ExternalModelTaskRunner::taskFinished);
+        ExternalProcessSpec spec;
+        spec.task_id           = 42;
+        spec.program           = qEnvironmentVariable("ComSpec", QStringLiteral("C:/Windows/System32/cmd.exe"));
+        spec.arguments         = {QStringLiteral("/C"), QStringLiteral("ping -n 6 127.0.0.1 >NUL")};
+        spec.working_directory = temp.path();
+        spec.log_path          = QDir(temp.path()).filePath(QStringLiteral("long-running.log"));
+
+        QString error;
+        QVERIFY2(runner.start(spec, &error), qPrintable(error));
+        QTRY_VERIFY_WITH_TIMEOUT(runner.hasRunningTask(42), 3000);
+
+        QVERIFY(runner.stop(42));
+        QVERIFY(runner.waitForDone(5000));
+        QVERIFY(!runner.hasRunningTask(42));
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 1000);
+        QCOMPARE(finished.at(0).at(0).toInt(), 42);
+        QVERIFY(finished.at(0).at(3).toBool());
+    }
 };
 
 REGISTER_TEST(ExternalModelTaskRunnerTest)

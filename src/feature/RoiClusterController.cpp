@@ -97,6 +97,30 @@ RoiClusterController::RoiClusterController(RoiClusterDataProvider *data_provider
             });
 }
 
+RoiClusterController::~RoiClusterController()
+{
+    shutdown();
+}
+
+void RoiClusterController::shutdown()
+{
+    if (shutting_down_.exchange(true, std::memory_order_acq_rel))
+        return;
+
+    const bool was_running = running_;
+
+    QThread *thread = worker_thread_.data();
+    if (thread != nullptr)
+    {
+        thread->wait();
+        delete thread;
+    }
+    worker_thread_ = nullptr;
+    setRunning(false);
+    if (was_running)
+        ui::ProgressManager::getInstance()->completeTask();
+}
+
 bool RoiClusterController::enabled() const
 {
     return enabled_;
@@ -129,6 +153,8 @@ QString RoiClusterController::lastSummary() const
 
 QString RoiClusterController::validationError() const
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+        return QStringLiteral("标注聚类控制器正在关闭");
     if (running_)
         return QString("标注聚类正在运行");
     if (data_provider_ == nullptr)
@@ -149,6 +175,11 @@ QString RoiClusterController::validationError() const
 
 bool RoiClusterController::cluster(const QVariantList &dataset_class_scope)
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+    {
+        setLastError(QStringLiteral("标注聚类控制器正在关闭"));
+        return false;
+    }
     if (running_)
     {
         setLastError(QString("标注聚类正在运行"));
@@ -203,39 +234,43 @@ bool RoiClusterController::cluster(const QVariantList &dataset_class_scope)
 
     request.weights_file = QFileInfo(request.weights_file).absoluteFilePath();
     request.started_at   = std::chrono::steady_clock::now();
-    request.controller   = QPointer<RoiClusterController>(this);
 
     resetForNewCluster();
     startProgress(request);
 
+    const auto controller = QPointer<RoiClusterController>(this);
+    const auto progress   = createProgressReporter(controller, request.items.size());
+    const auto complete   = [controller](const Response &response)
+    {
+        if (!controller)
+            return;
+        QMetaObject::invokeMethod(
+            controller.data(),
+            [controller, response]()
+            {
+                if (controller && !controller->shutting_down_.load(std::memory_order_acquire))
+                    controller->finishCluster(response);
+            },
+            Qt::QueuedConnection);
+    };
+    const auto executor = &RoiClusterController::executeCluster;
+
     QThread *work_thread = QThread::create(
-        [request = std::move(request)]() mutable
+        [request = std::move(request), executor, progress, complete]() mutable
         {
             Response response;
             response.include_noise = request.include_noise;
-            if (request.controller)
-                request.controller->executeCluster(request, response);
+            executor(request, response, progress);
 
             response.elapsed_ms = static_cast<qint64>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()
                                                                       - request.started_at)
                     .count());
-
-            if (request.controller)
-            {
-                const auto controller = request.controller;
-                QMetaObject::invokeMethod(
-                    controller.data(),
-                    [controller, response]()
-                    {
-                        if (controller)
-                            controller->finishCluster(response);
-                    },
-                    Qt::QueuedConnection);
-            }
+            complete(response);
         });
 
     connect(work_thread, &QThread::finished, work_thread, &QObject::deleteLater);
+    worker_thread_ = work_thread;
     work_thread->start();
     return true;
 }
@@ -312,7 +347,8 @@ void RoiClusterController::collectClusterItems(Request &request,
     }
 }
 
-void RoiClusterController::executeCluster(const Request &request, Response &response)
+void RoiClusterController::executeCluster(const Request &request, Response &response,
+                                          const irt::features::RoiClusterProgressCallback &progress)
 {
     try
     {
@@ -321,7 +357,7 @@ void RoiClusterController::executeCluster(const Request &request, Response &resp
 
         irt::features::RoiCluster cluster(request.config);
         const auto result = cluster.cluster(toFsPath(request.weights_file), request.items,
-                                            createProgressReporter(request.controller, request.items.size()));
+                                            progress);
 
         response.assignments = result.assignments;
         response.feature_dim = result.feature_dim;
@@ -422,6 +458,9 @@ void RoiClusterController::finishProgress(const bool success, const QString &mes
 
 void RoiClusterController::finishCluster(const Response &response)
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+        return;
+
     setRunning(false);
 
     if (!response.success)
@@ -475,7 +514,8 @@ irt::features::RoiClusterProgressCallback RoiClusterController::createProgressRe
 {
     return [controller, total_count](const irt::features::RoiClusterProgress &progress)
     {
-        if (progress.total_count > 0 && controller)
+        if (progress.total_count > 0 && controller
+            && !controller->shutting_down_.load(std::memory_order_acquire))
         {
             const int processed = static_cast<int>(std::min<size_t>(
                 progress.processed_count, static_cast<size_t>(std::numeric_limits<int>::max())));
@@ -485,17 +525,23 @@ irt::features::RoiClusterProgressCallback RoiClusterController::createProgressRe
                 controller.data(),
                 [controller, processed, total]()
                 {
-                    if (controller)
+                    if (controller && !controller->shutting_down_.load(std::memory_order_acquire))
                         emit controller->buildProgressChanged(processed, total);
                 },
                 Qt::QueuedConnection);
         }
 
         const int percent = roiClusterProgressPercent(progress, total_count);
-        if (percent >= 0)
+        if (percent >= 0 && controller && !controller->shutting_down_.load(std::memory_order_acquire))
         {
-            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "updateProgress", Qt::QueuedConnection,
-                                      Q_ARG(int, percent));
+            QMetaObject::invokeMethod(
+                controller.data(),
+                [controller, percent]()
+                {
+                    if (controller && !controller->shutting_down_.load(std::memory_order_acquire))
+                        ui::ProgressManager::getInstance()->updateProgress(percent);
+                },
+                Qt::QueuedConnection);
         }
 
         const QString message = roiClusterProgressMessage(progress, total_count);

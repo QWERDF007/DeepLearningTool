@@ -23,6 +23,7 @@
 #include <QFileInfo>
 #include <QQmlEngine>
 #include <QSize>
+#include <QThread>
 #include <algorithm>
 #include <cmath>
 
@@ -44,8 +45,6 @@ QString statusText(const TaskManager::Task *task)
         return QString("准备中");
     case TaskManager::Running:
         return QString("运行中");
-    case TaskManager::Paused:
-        return QString("已暂停");
     case TaskManager::Stopping:
         return QString("停止中");
     case TaskManager::Stopped:
@@ -62,7 +61,7 @@ bool activeTask(const TaskManager::Task *task)
 {
     return task != nullptr
         && (task->status == TaskManager::Preparing || task->status == TaskManager::Running
-            || task->status == TaskManager::Paused || task->status == TaskManager::Stopping);
+            || task->status == TaskManager::Stopping);
 }
 
 ModelDatasetSelection readSelection(const data::DataSelectionTreeModel *model)
@@ -192,6 +191,7 @@ ModelTestTaskManager::ModelTestTaskManager(QString project_dir, ModelManager *mo
     , task_manager_(task_manager)
     , repository_(project_dir_)
 {
+    evaluation_pool_.setMaxThreadCount(std::max(1, QThread::idealThreadCount() / 2));
     repository_.setProjectDatabasePath(model_manager_ != nullptr ? model_manager_->projectDatabasePath() : QString());
     save_timer_.setSingleShot(true);
     save_timer_.setInterval(350);
@@ -211,12 +211,18 @@ ModelTestTaskManager::~ModelTestTaskManager()
 
 void ModelTestTaskManager::shutdown()
 {
+    if (shutting_down_)
+        return;
+    shutting_down_ = true;
+    save_timer_.stop();
+
     for (ModelEvaluationViewModel *evaluation : evaluation_cache_)
     {
         if (evaluation != nullptr)
-            evaluation->invalidate(evaluation::ViewState::NotRun);
+            evaluation->shutdown();
     }
-    ModelEvaluationViewModel::shutdownEvaluationWorkers();
+    evaluation_pool_.waitForDone();
+    flush();
 }
 
 int ModelTestTaskManager::rowCount(const QModelIndex &parent) const
@@ -277,6 +283,9 @@ QString ModelTestTaskManager::modelUuid() const
 
 void ModelTestTaskManager::setModelUuid(const QString &uuid)
 {
+    if (shutting_down_)
+        return;
+
     const QString value = uuid.trimmed();
     if (model_uuid_ == value)
         return;
@@ -373,6 +382,9 @@ QString ModelTestTaskManager::validateTaskName(const QString &name) const
 
 QString ModelTestTaskManager::createTask(const QString &name)
 {
+    if (shutting_down_)
+        return QStringLiteral("测试任务管理器正在关闭");
+
     if (model_manager_ == nullptr || model_uuid_.isEmpty())
         return QString("当前模型为空");
     if (currentModelBusy())
@@ -410,6 +422,9 @@ QString ModelTestTaskManager::createTask(const QString &name)
 
 bool ModelTestTaskManager::switchTask(const QString &uuid)
 {
+    if (shutting_down_)
+        return false;
+
     if (currentModelBusy())
     {
         emit errorOccurred(QString("模型任务运行期间不能切换测试任务"));
@@ -422,6 +437,9 @@ bool ModelTestTaskManager::switchTask(const QString &uuid)
 
 bool ModelTestTaskManager::renameTask(const QString &uuid, const QString &name)
 {
+    if (shutting_down_)
+        return false;
+
     if (currentModelBusy())
     {
         emit errorOccurred(QString("模型任务运行期间不能重命名测试任务"));
@@ -465,6 +483,9 @@ bool ModelTestTaskManager::renameTask(const QString &uuid, const QString &name)
 
 bool ModelTestTaskManager::deleteTask(const QString &uuid)
 {
+    if (shutting_down_)
+        return false;
+
     if (currentModelBusy())
     {
         emit errorOccurred(QString("模型任务运行期间不能删除测试任务"));
@@ -561,6 +582,9 @@ void ModelTestTaskManager::snapshotCurrentDatasetSelection()
 
 bool ModelTestTaskManager::commitCurrentDatasetSelection()
 {
+    if (shutting_down_)
+        return false;
+
     // 手动运行测试前把当前数据集选择与参数一起提交落库，保证本次运行
     // 使用界面上的最新选择。
     if (current_index_ < 0 || current_index_ >= tasks_.size())
@@ -597,7 +621,7 @@ int ModelTestTaskManager::taskId(const QString &uuid) const
 
 void ModelTestTaskManager::scheduleSave()
 {
-    if (current_index_ >= 0)
+    if (!shutting_down_ && current_index_ >= 0)
         save_timer_.start();
 }
 
@@ -637,7 +661,7 @@ bool ModelTestTaskManager::markAutomaticThresholdApplied(const QString &task_uui
 
 void ModelTestTaskManager::handleEvaluationCompleted(const QString &cache_key)
 {
-    if (applying_best_threshold_ || current_evaluation_ == nullptr
+    if (shutting_down_ || applying_best_threshold_ || current_evaluation_ == nullptr
         || evaluation_cache_.value(cache_key, nullptr) != current_evaluation_)
         return;
 
@@ -792,6 +816,9 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
 
 void ModelTestTaskManager::handleParameterChanged(const QString &group_name, const QString &parameter_name)
 {
+    if (shutting_down_)
+        return;
+
     scheduleSave();
     if (model_manager_ != nullptr
         && isFewShotModel(model_manager_, model_manager_->modelRecordViewForUuid(model_uuid_)))
@@ -833,6 +860,9 @@ void ModelTestTaskManager::handleParameterChanged(const QString &group_name, con
 
 void ModelTestTaskManager::handleTaskRevisionChanged()
 {
+    if (shutting_down_)
+        return;
+
     if (!tasks_.isEmpty())
     {
         emit dataChanged(index(0), index(tasks_.size() - 1), {RunningRole, ProgressRole, StatusRole});
@@ -886,6 +916,9 @@ void ModelTestTaskManager::handleTaskRevisionChanged()
 
 void ModelTestTaskManager::handleTaskStartRequested(const int task_id)
 {
+    if (shutting_down_)
+        return;
+
     if (task_manager_ == nullptr)
         return;
     const TaskManager::Task *task = task_manager_->findTask(task_id);
@@ -1039,7 +1072,7 @@ void ModelTestTaskManager::bindCurrentObjects()
         if (current_evaluation_ == nullptr)
         {
             current_evaluation_ = EvaluationViewModelRegistry::instance().createViewModel(
-                static_cast<evaluation::Method>(model->method()), this);
+                static_cast<evaluation::Method>(model->method()), this, &evaluation_pool_);
             if (current_evaluation_ == nullptr)
                 return;
             evaluation_cache_.insert(cache_key, current_evaluation_);

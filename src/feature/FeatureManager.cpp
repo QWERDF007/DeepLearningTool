@@ -104,6 +104,7 @@ FeatureManager::FeatureManager(dltool::data::DataManager *data_manager,
 
 FeatureManager::~FeatureManager()
 {
+    shutdown();
     delete few_shot_learning_;
     few_shot_learning_ = nullptr;
     delete smart_annotation_;
@@ -120,6 +121,25 @@ FeatureManager::~FeatureManager()
     roi_cluster_provider_.reset();
     roi_search_provider_.reset();
     image_search_provider_.reset();
+}
+
+void FeatureManager::shutdown()
+{
+    if (shutting_down_.exchange(true, std::memory_order_acq_rel))
+        return;
+
+    if (few_shot_learning_ != nullptr)
+        few_shot_learning_->shutdown();
+    if (smart_annotation_ != nullptr)
+        smart_annotation_->shutdown();
+    if (image_cluster_ != nullptr)
+        image_cluster_->shutdown();
+    if (roi_cluster_ != nullptr)
+        roi_cluster_->shutdown();
+    if (roi_search_ != nullptr)
+        roi_search_->shutdown();
+    if (image_search_ != nullptr)
+        image_search_->shutdown();
 }
 
 ImageSearchController *FeatureManager::imageSearch() const

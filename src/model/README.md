@@ -161,7 +161,7 @@ Python 脚本通过启动参数获得本地 TCP 地址和任务 ID：
 --dltool_task_id <task_id>
 ```
 
-脚本发送 `running`、`paused`、`stopped`、`finished`、`failed`、`error`、进度和 ETA。
+脚本发送 `running`、`stopped`、`finished`、`failed`、`error`、进度和 ETA。
 `TaskManager` 先更新任务表，再发出 `taskMessageReceived`；`ModelTaskController` 随后刷新该模型的
 训练或测试 `extra_data`。已停止、已完成或已失败的任务不会被迟到事件重新打开。
 

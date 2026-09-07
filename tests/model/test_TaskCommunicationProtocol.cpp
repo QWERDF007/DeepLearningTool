@@ -21,7 +21,7 @@ private slots:
     void statusRoundTrip()
     {
         for (const TaskProtocolStatus status : {TaskProtocolStatus::Unknown, TaskProtocolStatus::Pending,
-                                                TaskProtocolStatus::Running, TaskProtocolStatus::Paused,
+                                                TaskProtocolStatus::Running,
                                                 TaskProtocolStatus::Stopped, TaskProtocolStatus::Finished,
                                                 TaskProtocolStatus::Failed, TaskProtocolStatus::Error})
             QCOMPARE(taskProtocolStatusFromName(taskProtocolStatusName(status)), status);

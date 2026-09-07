@@ -23,7 +23,7 @@ class MODEL_API InstanceMatchingEvaluationViewModel : public ModelEvaluationView
     Q_PROPERTY(QVariantList precisionRecallClasses READ precisionRecallClasses NOTIFY methodDataChanged FINAL)
 
 public:
-    explicit InstanceMatchingEvaluationViewModel(QObject *parent = nullptr);
+    explicit InstanceMatchingEvaluationViewModel(QObject *parent = nullptr, QThreadPool *evaluation_pool = nullptr);
 
     QVariantList precisionRecallClasses() const;
 

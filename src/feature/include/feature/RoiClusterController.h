@@ -10,12 +10,15 @@
 #include <QString>
 #include <QVariantList>
 #include <QtQml>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <map>
 #include <set>
 #include <vector>
+
+class QThread;
 
 namespace dltool::data {
 class DataManager;
@@ -40,7 +43,10 @@ public:
     explicit RoiClusterController(RoiClusterDataProvider *data_provider,
                                   dltool::data::DataManager *data_manager,
                                   QObject *parent = nullptr);
-    ~RoiClusterController() override = default;
+    ~RoiClusterController() override;
+
+    /** @brief 等待聚类线程收敛，并丢弃迟到结果。 */
+    void shutdown();
 
     bool enabled() const;
     bool isRunning() const;
@@ -70,7 +76,6 @@ private:
         std::vector<irt::features::RoiClusterItem> items;
 
         std::chrono::steady_clock::time_point started_at;
-        QPointer<RoiClusterController>        controller;
     };
 
     struct Response
@@ -92,7 +97,8 @@ private:
     bool validateRequest(const Request &request);
     QString requestValidationError(const Request &request) const;
     void collectClusterItems(Request &request, const std::map<int64_t, std::set<int64_t>> &scope);
-    void executeCluster(const Request &request, Response &response);
+    static void executeCluster(const Request &request, Response &response,
+                               const irt::features::RoiClusterProgressCallback &progress);
     bool applyClusterResult(const Response &response, size_t &assigned_count, size_t &tag_count,
                             size_t &skipped_noise_count, QString &err_msg);
 
@@ -115,6 +121,8 @@ private:
     QString last_error_;
     QString last_summary_;
     int     result_count_{0};
+    QPointer<::QThread> worker_thread_;
+    std::atomic_bool    shutting_down_{false};
 };
 
 } // namespace dltool::feature

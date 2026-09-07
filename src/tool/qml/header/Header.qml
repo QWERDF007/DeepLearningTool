@@ -257,6 +257,7 @@ Rectangle {
     TaskCenterWindow {
         id: taskCenterWindow
         transientParent: header.Window.window
+        taskManager: ProjectManager.currentProject ? ProjectManager.currentProject.taskManager : null
     }
 
     SettingsDialog {

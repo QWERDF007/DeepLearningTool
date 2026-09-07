@@ -5,12 +5,17 @@
 #include <inferrt/model/ModelRuntime.hpp>
 
 #include <QObject>
+#include <QPointer>
+#include <QList>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml>
+#include <atomic>
 #include <memory>
+
+class QThread;
 
 namespace irt::features {
 class SAMImagePredictor;
@@ -40,6 +45,9 @@ public:
      */
     explicit SmartAnnotationController(QObject *parent = nullptr);
     ~SmartAnnotationController() override;
+
+    /** @brief 等待模型加载线程收敛并丢弃迟到结果。 */
+    void shutdown();
 
     /**
      * @brief 智能标注功能是否启用
@@ -124,6 +132,8 @@ private:
     bool    running_{false};       ///< 是否正在运行
     bool    loading_model_{false}; ///< 是否正在加载模型
     QString last_error_;           ///< 最后一次错误信息
+    QList<QPointer<::QThread>> worker_threads_;
+    std::atomic_bool           shutting_down_{false};
 };
 
 } // namespace dltool::feature

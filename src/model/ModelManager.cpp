@@ -74,9 +74,8 @@ bool copyDirectoryContents(const QString &source, const QString &target, QString
     return true;
 }
 
-bool modelHasActiveTasks(const QString &model_uuid)
+bool modelHasActiveTasks(const TaskManager *task_manager, const QString &model_uuid)
 {
-    const TaskManager *task_manager = TaskManager::getInstance();
     return task_manager != nullptr && task_manager->hasActiveModelTasks(model_uuid);
 }
 
@@ -148,10 +147,11 @@ quint16 availableTensorBoardPort()
 } // namespace
 
 ModelManager::ModelManager(const int method, dltool::database::ProjectDataBase *database,
-                           dltool::data::DataManager *data_manager, QObject *parent)
+                           dltool::data::DataManager *data_manager, TaskManager *task_manager, QObject *parent)
     : QAbstractListModel(parent)
     , database_(database)
     , data_manager_(data_manager)
+    , task_manager_(task_manager)
     , method_(method)
     , project_dir_(database != nullptr
                        ? dltool::common::cleanPath(QFileInfo(database->path()).absoluteDir().absolutePath())
@@ -424,7 +424,7 @@ bool ModelManager::renameModel(const qint64 model_id, const QString &name)
     }
 
     const QString old_name = models_[static_cast<size_t>(row)].name;
-    if (modelHasActiveTasks(models_[static_cast<size_t>(row)].uuid))
+    if (modelHasActiveTasks(task_manager_, models_[static_cast<size_t>(row)].uuid))
     {
         spdlog::warn("模型重命名失败: 模型仍有活动任务");
         return false;
@@ -464,7 +464,7 @@ bool ModelManager::deleteModel(const qint64 model_id)
     }
 
     const ModelRecord record = models_[static_cast<size_t>(row)];
-    if (modelHasActiveTasks(record.uuid))
+    if (modelHasActiveTasks(task_manager_, record.uuid))
     {
         spdlog::warn("模型删除失败: 模型仍有活动任务");
         return false;

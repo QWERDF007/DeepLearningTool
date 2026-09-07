@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DatasetIO.h"
+#include "DataOperationWorkflow.h"
 #include "dltool/data/Export.h"
 
 #include <QObject>
@@ -41,6 +42,12 @@ public:
     void setTargetMethod(int method) { target_method_ = method; }
     void requestCancel();
     bool isCancelRequested() const;
+    /**
+     * @brief 等待当前数据操作的工作线程退出。
+     *
+     * 返回时工作函数已经退出；完成信号仍由原有 Qt 事件队列负责投递。
+     */
+    bool waitForDone(int timeout_ms = -1) const;
 
     virtual void startImport(int64_t dataset_id, const QString &image_dir, const QString &data_dir);
     virtual void startScanLabelClasses(const QString &image_dir, const QString &data_dir);
@@ -58,6 +65,7 @@ signals:
 protected:
     int             target_method_{-1};
     std::atomic_bool cancel_requested_{false};
+    DataOperationWorkflow::HandlePtr operation_handle_;
 
     void updateProgress(int progress, const QString &message);
     void runInThread(std::function<void()> work);

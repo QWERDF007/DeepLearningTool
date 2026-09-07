@@ -1,10 +1,10 @@
 #pragma once
 
-#include "common/Singleton.h"
 #include "dltool/model/Export.h"
 #include "model/ModelTaskTypes.h"
 
 #include <QAbstractTableModel>
+#include <QSet>
 #include <QTimer>
 #include <QtQml>
 #include <vector>
@@ -24,15 +24,21 @@ struct TaskMessage;
  * Preparing 表示数据集导出和配置写入正在后台执行；只有 Python 进程实际启动后
  * 才会进入 Running。TaskManager 不关心模型、数据集或 Python，只负责记录和分发事件。
  */
-class MODEL_API TaskManager final : public QAbstractTableModel
+class MODEL_API TaskManager : public QAbstractTableModel
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(TaskManager)
-    QT_QML_SINGLETON(TaskManager)
+    QML_UNCREATABLE("TaskManager is owned by Project.")
     Q_PROPERTY(int count READ count NOTIFY countChanged FINAL)
     Q_PROPERTY(int revision READ revision NOTIFY revisionChanged FINAL)
 
 public:
+    /**
+     * @brief 构造一个项目作用域内的任务状态中心。
+     * @param parent 所属项目上下文。
+     */
+    explicit TaskManager(QObject *parent = nullptr);
+
     enum Column
     {
         TaskIdColumn = 0,
@@ -53,7 +59,6 @@ public:
         Pending = 0, ///< 已创建，尚未开始。
         Preparing,   ///< 正在后台导出数据集、写入配置并准备进程。
         Running,     ///< Python 进程已成功启动，或内部任务正在运行。
-        Paused,      ///< 内部任务已暂停。
         Stopping,    ///< 已请求停止，等待后台准备或进程收敛。
         Stopped,     ///< 已停止。
         Finished,    ///< 正常结束。
@@ -78,7 +83,6 @@ public:
         EtaRole,
         ProgressRole,
         CanStartRole,
-        CanPauseRole,
         CanStopRole,
         CanFinishRole,
         CanDeleteRole,
@@ -108,7 +112,6 @@ public:
         qint64        elapsed_seconds{0};           ///< 已累计的运行时长。
         qint64        eta_seconds{-1};              ///< 剩余秒数，-1 表示未知。
         int           progress{0};                  ///< 进度（0-100）。
-        bool          supports_pause{true};         ///< 当前任务是否支持暂停。
         QString       phase;                        ///< 推理、评估或结果提交阶段。
         QString       config_path;                  ///< 本次任务使用的配置路径。
         QString       log_path;                     ///< 本次任务日志路径。
@@ -118,6 +121,14 @@ public:
      * @brief 析构任务管理器。
      */
     ~TaskManager() override = default;
+
+    /**
+     * @brief 关闭项目级任务中心。
+     *
+     * 停止本地运行时间刷新、关闭 Python 通信服务并清理任务记录。调用返回后
+     * 不再接受新任务或迟到的外部事件；项目控制器应在此函数之前完成停止请求。
+     */
+    void shutdown();
 
     /**
      * @brief 返回任务记录数。
@@ -171,18 +182,8 @@ public:
      * @return 新任务 ID；参数无效时返回 -1。
      */
     Q_INVOKABLE int addTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type);
-    /**
-     * @brief 创建 Pending 任务记录，并指定其是否支持暂停。
-     * @param model_uuid 所属模型 UUID。
-     * @param model_name 用于任务中心显示的模型名称。
-     * @param task_type 模型任务类型。
-     * @param supports_pause 是否允许暂停。
-     * @return 新任务 ID；参数无效时返回 -1。
-     */
     int             addTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type,
-                            bool supports_pause);
-    int             addTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type,
-                            const QString &scope_uuid, const QString &scope_name, bool supports_pause = true);
+                            const QString &scope_uuid, const QString &scope_name);
 
     /**
      * @brief 设置任务中心显示的实际配置和日志路径。
@@ -200,12 +201,6 @@ public:
      * @return 成功提交开始请求返回 true。
      */
     Q_INVOKABLE bool startTask(int task_id);
-    /**
-     * @brief 暂停支持暂停的运行中内部任务。
-     * @param task_id 任务 ID。
-     * @return 状态转换成功返回 true。
-     */
-    Q_INVOKABLE bool pauseTask(int task_id);
     /**
      * @brief 请求停止运行中或正在准备的任务。
      * @param task_id 任务 ID。
@@ -239,7 +234,7 @@ public:
     /**
      * @brief 删除任务记录。
      * @param task_id 任务 ID。
-     * @return 记录删除成功返回 true；Preparing、Running、Paused、Stopping 状态拒绝删除。
+     * @return 记录删除成功返回 true；Preparing、Running、Stopping 状态拒绝删除。
      */
     Q_INVOKABLE bool deleteTask(int task_id);
     /**
@@ -305,15 +300,9 @@ public:
      */
     Q_INVOKABLE bool canStartTask(int task_id) const;
     /**
-     * @brief 查询任务是否可以暂停。
-     * @param task_id 任务 ID。
-     * @return 可暂停返回 true。
-     */
-    Q_INVOKABLE bool canPauseTask(int task_id) const;
-    /**
      * @brief 查询任务是否可以停止。
      * @param task_id 任务 ID。
-     * @return Preparing、Running 或 Paused 状态返回 true。
+     * @return Preparing 或 Running 状态返回 true。
      */
     Q_INVOKABLE bool canStopTask(int task_id) const;
     /**
@@ -380,12 +369,6 @@ private slots:
     void handleTaskMessage(const dltool::model::TaskMessage &message);
 
 private:
-    /**
-     * @brief 构造任务管理器。
-     * @param parent 父对象。
-     */
-    explicit TaskManager(QObject *parent = nullptr);
-
     /**
      * @brief 根据任务 ID 查找任务表行号。
      * @param task_id 任务 ID。
@@ -470,12 +453,6 @@ private:
      */
     bool     canStart(const Task &task) const;
     /**
-     * @brief 判断任务是否可暂停。
-     * @param task 任务记录。
-     * @return 可暂停返回 true。
-     */
-    bool     canPause(const Task &task) const;
-    /**
      * @brief 判断任务是否可停止。
      * @param task 任务记录。
      * @return 可停止返回 true。
@@ -495,10 +472,12 @@ private:
     bool     canFinish(const Task &task) const;
 
     std::vector<Task>        tasks_;                         ///< 任务中心保存的唯一任务记录。
+    QSet<int>               terminal_events_;               ///< 已发布过终态的任务，拒绝重复/迟到事件。
     int                      next_task_id_{1};               ///< 下一个递增任务 ID。
     int                      revision_{0};                   ///< 非表格 QML 刷新版本号。
     QTimer                  *runtime_timer_{nullptr};        ///< 运行时长刷新定时器。
     TaskCommunicationServer *communication_server_{nullptr}; ///< Python 任务通信服务。
+    bool                     shutting_down_{false};           ///< 是否已进入项目关闭阶段。
 };
 
 } // namespace dltool::model

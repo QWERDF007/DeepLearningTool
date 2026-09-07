@@ -122,6 +122,36 @@ ImageClusterController::ImageClusterController(ImageClusterDataProvider  *data_p
             });
 }
 
+ImageClusterController::~ImageClusterController()
+{
+    shutdown();
+}
+
+void ImageClusterController::shutdown()
+{
+    if (shutting_down_.exchange(true, std::memory_order_acq_rel))
+        return;
+
+    const bool was_running = running_;
+
+    QThread *thread = worker_thread_.data();
+    if (thread != nullptr)
+    {
+        thread->wait();
+        delete thread;
+    }
+    worker_thread_ = nullptr;
+
+    // A completed cluster may already have queued copy/move operations in the
+    // DataManager.  Wait for those operations after the worker has stopped so
+    // the controller cannot be released while their callbacks still capture it.
+    if (data_manager_ != nullptr)
+        data_manager_->waitForOperations();
+    setRunning(false);
+    if (was_running)
+        ui::ProgressManager::getInstance()->completeTask();
+}
+
 bool ImageClusterController::enabled() const
 {
     return enabled_;
@@ -154,6 +184,8 @@ QString ImageClusterController::lastSummary() const
 
 QString ImageClusterController::validationError() const
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+        return QStringLiteral("图像聚类控制器正在关闭");
     if (running_)
     {
         return QString("图像聚类正在运行");
@@ -184,6 +216,11 @@ QString ImageClusterController::validationError() const
 
 bool ImageClusterController::cluster(const QVariantList &dataset_ids)
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+    {
+        setLastError(QStringLiteral("图像聚类控制器正在关闭"));
+        return false;
+    }
     if (running_)
     {
         setLastError(QString("图像聚类正在运行"));
@@ -238,39 +275,43 @@ bool ImageClusterController::cluster(const QVariantList &dataset_ids)
 
     request.weights_file = QFileInfo(request.weights_file).absoluteFilePath();
     request.started_at   = std::chrono::steady_clock::now();
-    request.controller   = QPointer<ImageClusterController>(this);
 
     resetForNewCluster();
     startProgress(request);
 
+    const auto controller = QPointer<ImageClusterController>(this);
+    const auto progress   = createProgressReporter(controller, request.items.size());
+    const auto complete   = [controller](const ClusterResponse &response)
+    {
+        if (!controller)
+            return;
+        QMetaObject::invokeMethod(
+            controller.data(),
+            [controller, response]()
+            {
+                if (controller && !controller->shutting_down_.load(std::memory_order_acquire))
+                    controller->finishCluster(response);
+            },
+            Qt::QueuedConnection);
+    };
+    const auto executor = &ImageClusterController::executeCluster;
+
     QThread *work_thread = QThread::create(
-        [request = std::move(request)]() mutable
+        [request = std::move(request), executor, progress, complete]() mutable
         {
             ClusterResponse response;
             response.include_noise = request.include_noise;
             response.apply_mode    = request.apply_mode;
-            if (request.controller)
-                request.controller->executeCluster(request, response);
+            executor(request, response, progress);
 
             response.elapsed_ms = static_cast<qint64>(std::chrono::duration_cast<std::chrono::milliseconds>(
                                                           std::chrono::steady_clock::now() - request.started_at)
                                                           .count());
-
-            if (request.controller)
-            {
-                const auto ctrl = request.controller;
-                QMetaObject::invokeMethod(
-                    ctrl.data(),
-                    [ctrl, response]()
-                    {
-                        if (ctrl)
-                            ctrl->finishCluster(response);
-                    },
-                    Qt::QueuedConnection);
-            }
+            complete(response);
         });
 
     connect(work_thread, &QThread::finished, work_thread, &QObject::deleteLater);
+    worker_thread_ = work_thread;
     work_thread->start();
     return true;
 }
@@ -365,17 +406,16 @@ void ImageClusterController::collectClusterItems(ClusterRequest                 
     }
 }
 
-void ImageClusterController::executeCluster(const ClusterRequest &request, ClusterResponse &response)
+void ImageClusterController::executeCluster(const ClusterRequest &request, ClusterResponse &response,
+                                            const irt::features::ImageClusterProgressCallback &progress)
 {
-    const auto ctrl = request.controller;
-
     try
     {
         addProgressMessage(spdlog::level::info, QString("正在抽取图像特征并聚类: %1 张图像").arg(request.items.size()));
 
         irt::features::ImageCluster cluster(request.config);
         const auto                  result = cluster.cluster(toFsPath(request.weights_file), request.items,
-                                                             createProgressReporter(ctrl, request.items.size()));
+                                                             progress);
 
         response.assignments.reserve(result.assignments.size());
         for (const auto &assignment : result.assignments)
@@ -512,6 +552,9 @@ void ImageClusterController::applyClusterPlan(const ClusterResponse &response, C
 
     *next_target = [this, response_state, plan_state, targets, target_index, applied_count, weak_next_target]()
     {
+        if (shutting_down_.load(std::memory_order_acquire))
+            return;
+
         if (*target_index >= targets->size())
         {
             completeClusterApply(*response_state, *plan_state, *applied_count, QString());
@@ -533,6 +576,9 @@ void ImageClusterController::applyClusterPlan(const ClusterResponse &response, C
             = [this, response_state, plan_state, applied_count, image_count, next_target_state](
                   const bool success, const QString &error)
         {
+            if (shutting_down_.load(std::memory_order_acquire))
+                return;
+
             if (!success)
             {
                 completeClusterApply(*response_state, *plan_state, *applied_count, error);
@@ -559,6 +605,9 @@ void ImageClusterController::applyClusterPlan(const ClusterResponse &response, C
 void ImageClusterController::completeClusterApply(const ClusterResponse &response, const ClusterApplyPlan &plan,
                                                   const size_t applied_image_count, const QString &error)
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+        return;
+
     setRunning(false);
 
     if (!error.isEmpty())
@@ -620,6 +669,9 @@ void ImageClusterController::finishProgress(bool success, const QString &message
 
 void ImageClusterController::finishCluster(const ClusterResponse &response)
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+        return;
+
     if (!response.success)
     {
         setRunning(false);
@@ -658,7 +710,8 @@ irt::features::ImageClusterProgressCallback ImageClusterController::createProgre
 {
     return [controller, total_count](const irt::features::ImageClusterProgress &progress)
     {
-        if (progress.total_count > 0 && controller)
+        if (progress.total_count > 0 && controller
+            && !controller->shutting_down_.load(std::memory_order_acquire))
         {
             const int processed = static_cast<int>(
                 std::min<size_t>(progress.processed_count, static_cast<size_t>(std::numeric_limits<int>::max())));
@@ -668,17 +721,23 @@ irt::features::ImageClusterProgressCallback ImageClusterController::createProgre
                 controller.data(),
                 [controller, processed, total]()
                 {
-                    if (controller)
+                    if (controller && !controller->shutting_down_.load(std::memory_order_acquire))
                         emit controller->buildProgressChanged(processed, total);
                 },
                 Qt::QueuedConnection);
         }
 
         const int pct = imageClusterProgressPercent(progress, total_count);
-        if (pct >= 0)
+        if (pct >= 0 && controller && !controller->shutting_down_.load(std::memory_order_acquire))
         {
-            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "updateProgress", Qt::QueuedConnection,
-                                      Q_ARG(int, pct));
+            QMetaObject::invokeMethod(
+                controller.data(),
+                [controller, pct]()
+                {
+                    if (controller && !controller->shutting_down_.load(std::memory_order_acquire))
+                        ui::ProgressManager::getInstance()->updateProgress(pct);
+                },
+                Qt::QueuedConnection);
         }
 
         const QString message = imageClusterProgressMessage(progress, total_count);

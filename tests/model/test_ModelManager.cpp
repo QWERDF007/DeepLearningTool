@@ -25,12 +25,12 @@ private slots:
         EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
         QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
 
-        TaskManager::getInstance()->clearTasks();
+        TaskManager task_manager;
         dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
         QString                  error;
         ModelManager::ModelRecordView record;
         {
-            ModelManager manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr);
+            ModelManager manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr, &task_manager);
             QCOMPARE(manager.rowCount(), 0);
             QVERIFY(!manager.validateModelName(QString()).isEmpty());
             QVERIFY(!manager.validateModelName(QStringLiteral("bad/name")).isEmpty());
@@ -91,7 +91,7 @@ private slots:
                         .exists());
         }
 
-        ModelManager reloaded(static_cast<int>(evaluation::Method::Detection), &database, nullptr);
+        ModelManager reloaded(static_cast<int>(evaluation::Method::Detection), &database, nullptr, &task_manager);
         QCOMPARE(reloaded.rowCount(), 2);
         QCOMPARE(reloaded.modelRecordForUuid(record.uuid)
                      .value(QStringLiteral("extra_data"))
@@ -109,7 +109,6 @@ private slots:
                     .exists());
         QVERIFY(!reloaded.updateModelExtraData(record.uuid, {{QStringLiteral("x"), 1}}, &error));
         QVERIFY(error.contains(QStringLiteral("不存在")));
-        TaskManager::getInstance()->clearTasks();
     }
 };
 

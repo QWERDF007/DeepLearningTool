@@ -2,8 +2,8 @@
 
 namespace dltool::model {
 
-DetectionEvaluationViewModel::DetectionEvaluationViewModel(QObject *parent)
-    : InstanceMatchingEvaluationViewModel(parent)
+DetectionEvaluationViewModel::DetectionEvaluationViewModel(QObject *parent, QThreadPool *evaluation_pool)
+    : InstanceMatchingEvaluationViewModel(parent, evaluation_pool)
 {
 }
 

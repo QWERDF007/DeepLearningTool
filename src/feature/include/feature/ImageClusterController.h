@@ -10,12 +10,15 @@
 #include <QString>
 #include <QVariantList>
 #include <QtQml>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <map>
 #include <set>
 #include <vector>
+
+class QThread;
 
 namespace dltool::data {
 class DataManager;
@@ -40,7 +43,10 @@ public:
     explicit ImageClusterController(ImageClusterDataProvider *data_provider,
                                     dltool::data::DataManager *data_manager,
                                     QObject *parent = nullptr);
-    ~ImageClusterController() override = default;
+    ~ImageClusterController() override;
+
+    /** @brief 等待聚类及其数据集应用链路收敛，并丢弃迟到结果。 */
+    void shutdown();
 
     bool enabled() const;
     bool isRunning() const;
@@ -102,7 +108,6 @@ private:
         std::vector<irt::features::ImageClusterItem> items;
 
         std::chrono::steady_clock::time_point started_at;
-        QPointer<ImageClusterController>      controller;
     };
 
     struct ClusterResponse
@@ -125,7 +130,8 @@ private:
     bool validateClusterRequest(const ClusterRequest &request);
     QString clusterRequestValidationError(const ClusterRequest &request) const;
     void collectClusterItems(ClusterRequest &request, const std::map<int64_t, std::set<int64_t>> &scope);
-    void executeCluster(const ClusterRequest &request, ClusterResponse &response);
+    static void executeCluster(const ClusterRequest &request, ClusterResponse &response,
+                               const irt::features::ImageClusterProgressCallback &progress);
     bool buildClusterApplyPlan(const std::vector<ImageClusterAssignment> &assignments,
                                bool include_noise,
                                ClusterApplyPlan &plan,
@@ -154,6 +160,8 @@ private:
     QString last_error_;
     QString last_summary_;
     int     result_count_{0};
+    QPointer<::QThread> worker_thread_;
+    std::atomic_bool    shutting_down_{false};
 };
 
 } // namespace dltool::feature

@@ -28,6 +28,8 @@ class DataManager;
 
 namespace dltool::model {
 
+class TaskManager;
+
 /**
  * @brief 模型管理器，负责模型的增删改查、缓存管理和 TensorBoard 启动
  */
@@ -45,7 +47,8 @@ public:
      * @param parent 父对象
      */
     explicit ModelManager(const int method, dltool::database::ProjectDataBase *database,
-                          dltool::data::DataManager *data_manager, QObject *parent = nullptr);
+                          dltool::data::DataManager *data_manager, TaskManager *task_manager = nullptr,
+                          QObject *parent = nullptr);
     ~ModelManager();
 
     Q_PROPERTY(int method READ method CONSTANT FINAL)
@@ -447,6 +450,7 @@ private:
 
     dltool::database::ProjectDataBase *database_{nullptr};           ///< 数据库
     dltool::data::DataManager         *data_manager_{nullptr};       ///< 数据管理器
+    TaskManager                       *task_manager_{nullptr};        ///< 当前项目任务运行时
     QSortFilterProxyModel             *user_visible_model_{nullptr}; ///< 用户可见模型代理
 
     QProcess *tensorboard_process_{nullptr}; ///< TensorBoard 进程

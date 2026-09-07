@@ -777,16 +777,30 @@ DataIO::DataIO(QObject *parent)
 {
 }
 
-DataIO::~DataIO() = default;
+DataIO::~DataIO()
+{
+    if (operation_handle_ != nullptr)
+    {
+        operation_handle_->requestCancel();
+        operation_handle_->waitForDone();
+    }
+}
 
 void DataIO::requestCancel()
 {
     cancel_requested_.store(true, std::memory_order_relaxed);
+    if (operation_handle_ != nullptr)
+        operation_handle_->requestCancel();
 }
 
 bool DataIO::isCancelRequested() const
 {
     return cancel_requested_.load(std::memory_order_relaxed);
+}
+
+bool DataIO::waitForDone(const int timeout_ms) const
+{
+    return operation_handle_ == nullptr || operation_handle_->waitForDone(timeout_ms);
 }
 
 DataIO *DataIO::createIO(int data_format, QObject *parent)
@@ -847,7 +861,7 @@ void DataIO::runInThread(std::function<void()> work)
     DataOperationWorkflow::Options options;
     options.manage_progress = false;
 
-    DataOperationWorkflow::start(
+    operation_handle_ = DataOperationWorkflow::start(
         this, std::move(options),
         [work = std::move(work)](DataOperationWorkflow::Result &result) mutable
         {

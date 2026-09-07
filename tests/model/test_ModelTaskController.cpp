@@ -59,9 +59,8 @@ private slots:
                                                          QStringLiteral("ControllerModel"), &error);
         QVERIFY2(record.isValid(), qPrintable(error));
 
-        TaskManager *task_manager = TaskManager::getInstance();
-        QVERIFY(task_manager != nullptr);
-        task_manager->clearTasks();
+        TaskManager task_manager_instance;
+        TaskManager *task_manager = &task_manager_instance;
 
         ModelTaskController controller(kControllerTestMethod, fixture.rootPath(), &model_manager, nullptr,
                                        task_manager);

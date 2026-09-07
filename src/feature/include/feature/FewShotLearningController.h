@@ -9,6 +9,7 @@
 #include <QString>
 #include <QVariantList>
 #include <QtQml>
+#include <atomic>
 #include <vector>
 
 namespace dltool::model {
@@ -51,6 +52,9 @@ public:
                                        dltool::model::TaskManager         *task_manager,
                                        QObject                            *parent = nullptr);
     ~FewShotLearningController() override;
+
+    /** @brief 停止当前流程、等待数据导入收敛并丢弃迟到结果。 */
+    void shutdown();
 
     /**
      * @brief 功能是否启用
@@ -185,6 +189,7 @@ private:
     QString pending_import_output_dir_;
     QMetaObject::Connection prediction_import_connection_;
     int current_import_index_{0};
+    std::atomic_bool shutting_down_{false};
 };
 
 } // namespace dltool::feature

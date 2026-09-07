@@ -17,6 +17,7 @@ Rectangle {
     property ModelManager modelManager: ProjectManager.currentProject ? ProjectManager.currentProject.modelManager : null
     property ModelTaskController modelTaskController: ProjectManager.currentProject ? ProjectManager.currentProject.modelTaskController : null
     property DataManager dataManager: ProjectManager.currentProject ? ProjectManager.currentProject.dataManager : null
+    property TaskManager taskManager: ProjectManager.currentProject ? ProjectManager.currentProject.taskManager : null
 
     QuiSplitView {
         anchors.fill: parent
@@ -32,7 +33,7 @@ Rectangle {
             headerTitle: "模型训练:"
             addEnable: true
             modelManager: labelPage.modelManager
-            taskManager: TaskManager
+            taskManager: labelPage.taskManager
             taskController: labelPage.modelTaskController
             taskType: ModelTaskTypes.Train
             taskActionsEnabled: true
@@ -48,7 +49,7 @@ Rectangle {
             currentModelName: modelView.currentModelName
             currentFrameworkName: modelView.currentFrameworkName
             currentModelArchitecture: modelView.currentModelArchitecture
-            taskManager: TaskManager
+            taskManager: labelPage.taskManager
         }
     }
 }

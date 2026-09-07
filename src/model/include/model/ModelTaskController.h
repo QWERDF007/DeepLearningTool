@@ -1,5 +1,6 @@
 #pragma once
 
+#include "data/DataOperationWorkflow.h"
 #include "dltool/model/Export.h"
 #include "model/ModelTaskPreparation.h"
 #include "model/ModelTaskTypes.h"
@@ -260,9 +261,13 @@ private:
 
     ModelManager                            *model_manager_{nullptr}; ///< 当前项目模型管理器。
     dltool::data::DataManager               *data_manager_{nullptr};  ///< 当前项目数据管理器。
-    TaskManager                             *task_manager_{nullptr};  ///< 应用级任务状态中心。
+    TaskManager                             *task_manager_{nullptr};  ///< 当前项目作用域内的任务状态中心。
     std::unique_ptr<ExternalModelTaskRunner> external_task_runner_;   ///< 当前项目 Python 进程运行器。
     ModelTestTaskRepository                  test_task_repository_;
+
+    /// 当前任务的后台准备句柄；项目关闭时统一取消并等待。
+    QHash<int, dltool::data::DataOperationWorkflow::HandlePtr> preparation_operations_;
+    bool                                                        shutting_down_{false};
 
     /// 待合并的任务状态更新缓冲（task_id -> 指标字段），由节流定时器统一落库。
     QHash<int, QVariantMap> pending_extra_updates_;

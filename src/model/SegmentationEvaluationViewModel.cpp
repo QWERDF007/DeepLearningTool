@@ -2,8 +2,8 @@
 
 namespace dltool::model {
 
-SegmentationEvaluationViewModel::SegmentationEvaluationViewModel(QObject *parent)
-    : InstanceMatchingEvaluationViewModel(parent)
+SegmentationEvaluationViewModel::SegmentationEvaluationViewModel(QObject *parent, QThreadPool *evaluation_pool)
+    : InstanceMatchingEvaluationViewModel(parent, evaluation_pool)
 {
 }
 

@@ -78,7 +78,9 @@ protected:
     void collectQuery(SearchRequest &request, const std::vector<int64_t> &ids) override;
 
     /// 执行标注搜索
-    void executeSearch(const SearchRequest &request, SearchResponse &response) override;
+    SearchExecutor searchExecutor() const override;
+    static void executeRoiSearch(const SearchRequest &request, SearchResponse &response,
+                                 const BuildProgressCallback &progress);
 
     /**
      * @brief 获取搜索功能的显示名称

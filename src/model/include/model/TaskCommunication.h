@@ -39,7 +39,6 @@ enum class TaskProtocolStatus
     Unknown,
     Pending,
     Running,
-    Paused,
     Stopped,
     Finished,
     Failed,
@@ -130,6 +129,9 @@ public:
     explicit TaskCommunicationServer(QObject *parent = nullptr);
     ~TaskCommunicationServer() override;
 
+    /** @brief 关闭监听并断开所有外部任务连接；调用后不可再次发送消息。 */
+    void shutdown();
+
     /**
      * @brief 启动服务端监听
      * @param err_msg 错误信息输出
@@ -201,6 +203,7 @@ private:
     QHash<QTcpSocket *, int> task_by_socket_; ///< socket 到 task_id 的映射
 
     QHash<int, QPointer<QTcpSocket>> socket_by_task_; ///< task_id 到 socket 的映射
+    bool shutting_down_{false};
 };
 
 } // namespace dltool::model

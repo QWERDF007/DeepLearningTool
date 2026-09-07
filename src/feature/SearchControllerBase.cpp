@@ -46,6 +46,30 @@ SearchControllerBase::SearchControllerBase(dltool::settings::generated::Accessor
             });
 }
 
+SearchControllerBase::~SearchControllerBase()
+{
+    shutdown();
+}
+
+void SearchControllerBase::shutdown()
+{
+    if (shutting_down_.exchange(true, std::memory_order_acq_rel))
+        return;
+
+    const bool was_running = running_;
+
+    QThread *thread = worker_thread_.data();
+    if (thread != nullptr)
+    {
+        thread->wait();
+        delete thread;
+    }
+    worker_thread_ = nullptr;
+    setRunning(false);
+    if (was_running)
+        ui::ProgressManager::getInstance()->completeTask();
+}
+
 bool SearchControllerBase::enabled() const
 {
     return enabled_;
@@ -78,6 +102,8 @@ QString SearchControllerBase::lastSummary() const
 
 QString SearchControllerBase::validationError() const
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+        return searchDisplayName() + QStringLiteral("控制器正在关闭");
     if (running_)
     {
         return searchDisplayName() + QString("正在运行");
@@ -104,6 +130,11 @@ QString SearchControllerBase::validationError() const
 
 bool SearchControllerBase::search(const QVariantList &ids, const QVariantList &search_scope)
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+    {
+        setLastError(searchDisplayName() + QStringLiteral("控制器正在关闭"));
+        return false;
+    }
     if (running_)
     {
         setLastError(searchDisplayName() + QString("正在运行"));
@@ -151,37 +182,47 @@ bool SearchControllerBase::search(const QVariantList &ids, const QVariantList &s
 
     req.index_file = computeIndexPath(req);
     req.started_at = std::chrono::steady_clock::now();
-    req.controller = QPointer<SearchControllerBase>(this);
 
     resetForNewSearch();
     startProgress(req);
 
+    const auto controller = QPointer<SearchControllerBase>(this);
+    const auto progress   = createBuildProgressReporter(controller, galleryItemCount(req));
+    const auto complete   = [controller](const SearchResponse &response)
+    {
+        if (!controller)
+            return;
+        QMetaObject::invokeMethod(
+            controller.data(),
+            [controller, response]()
+            {
+                if (controller && !controller->shutting_down_.load(std::memory_order_acquire))
+                    controller->finishSearch(response);
+            },
+            Qt::QueuedConnection);
+    };
+    const auto executor = searchExecutor();
+
     QThread *work_thread = QThread::create(
-        [req = std::move(req)]() mutable
+        [req = std::move(req), executor, progress, complete]() mutable
         {
             SearchResponse response;
-            if (req.controller)
-                req.controller->executeSearch(req, response);
+            if (executor != nullptr)
+                executor(req, response, progress);
+            else
+            {
+                response.success = false;
+                response.error   = QStringLiteral("搜索执行器未配置");
+            }
 
             response.elapsed_ms = static_cast<qint64>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - req.started_at)
                     .count());
-
-            if (req.controller)
-            {
-                const auto ctrl = req.controller;
-                QMetaObject::invokeMethod(
-                    ctrl.data(),
-                    [ctrl, response]()
-                    {
-                        if (ctrl)
-                            ctrl->finishSearch(response);
-                    },
-                    Qt::QueuedConnection);
-            }
+            complete(response);
         });
 
     connect(work_thread, &QThread::finished, work_thread, &QObject::deleteLater);
+    worker_thread_ = work_thread;
     work_thread->start();
     return true;
 }
@@ -379,12 +420,10 @@ void SearchControllerBase::collectQuery(SearchRequest &request, const std::vecto
     }
 }
 
-void SearchControllerBase::executeSearch(const SearchRequest &request, SearchResponse &response)
+void SearchControllerBase::executeImageSearch(const SearchRequest &request, SearchResponse &response,
+                                              const BuildProgressCallback &progress)
 {
     const size_t gallery_count = request.gallery_images.size();
-    const auto   ctrl          = request.controller;
-
-    auto reportProgress = createBuildProgressReporter(ctrl, gallery_count);
 
     try
     {
@@ -394,7 +433,7 @@ void SearchControllerBase::executeSearch(const SearchRequest &request, SearchRes
 
         addProgressMessage(spdlog::level::info,
                            QString("正在准备图像搜索特征库: %1 张图像").arg(request.gallery_images.size()));
-        search.buildOrLoad(weights_path, request.gallery_images, index_path, request.rebuild_index, reportProgress);
+        search.buildOrLoad(weights_path, request.gallery_images, index_path, request.rebuild_index, progress);
 
         std::map<int64_t, float> result_scores;
         for (const auto &query_image : request.query_images)
@@ -453,6 +492,9 @@ void SearchControllerBase::finishProgress(bool success, const QString &message)
 
 void SearchControllerBase::finishSearch(const SearchResponse &response)
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+        return;
+
     setRunning(false);
 
     if (!response.success)
@@ -490,7 +532,7 @@ SearchControllerBase::BuildProgressCallback SearchControllerBase::createBuildPro
         size_t     resolved_total     = 0;
         const bool has_count = resolveProgressCount(progress, gallery_count, resolved_processed, resolved_total);
 
-        if (controller && has_count)
+        if (controller && !controller->shutting_down_.load(std::memory_order_acquire) && has_count)
         {
             const int processed
                 = static_cast<int>(std::min<size_t>(resolved_processed, std::numeric_limits<int>::max()));
@@ -499,17 +541,23 @@ SearchControllerBase::BuildProgressCallback SearchControllerBase::createBuildPro
                 controller.data(),
                 [controller, processed, total]()
                 {
-                    if (controller)
+                    if (controller && !controller->shutting_down_.load(std::memory_order_acquire))
                         emit controller->buildProgressChanged(processed, total);
                 },
                 Qt::QueuedConnection);
         }
 
         const int pct = progressPercent(progress, gallery_count);
-        if (pct >= 0)
+        if (pct >= 0 && controller && !controller->shutting_down_.load(std::memory_order_acquire))
         {
-            QMetaObject::invokeMethod(ui::ProgressManager::getInstance(), "updateProgress", Qt::QueuedConnection,
-                                      Q_ARG(int, pct));
+            QMetaObject::invokeMethod(
+                controller.data(),
+                [controller, pct]()
+                {
+                    if (controller && !controller->shutting_down_.load(std::memory_order_acquire))
+                        ui::ProgressManager::getInstance()->updateProgress(pct);
+                },
+                Qt::QueuedConnection);
         }
 
         const QString message = formatBuildProgressMessage(progress, gallery_count);

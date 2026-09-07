@@ -4,8 +4,8 @@
 
 namespace dltool::model {
 
-AnomalyEvaluationViewModel::AnomalyEvaluationViewModel(QObject *parent)
-    : ModelEvaluationViewModel(parent)
+AnomalyEvaluationViewModel::AnomalyEvaluationViewModel(QObject *parent, QThreadPool *evaluation_pool)
+    : ModelEvaluationViewModel(parent, evaluation_pool)
 {
 }
 

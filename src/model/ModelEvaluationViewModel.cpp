@@ -21,6 +21,7 @@
 #include <QMetaObject>
 #include <QPointer>
 #include <QSet>
+#include <QThread>
 #include <QThreadPool>
 #include <QUrl>
 #include <QUrlQuery>
@@ -82,21 +83,6 @@ EvaluationMetricRecord metricFromCounts(const QString &key, const QString &label
     return metric;
 }
 
-/**
- * @brief 获取评估专用线程池。
- *
- * 评估耗时且频繁取消重建，与数据集导出、任务准备共用全局线程池会互相
- * 抢占；此处按硬件并发减半创建评估专用池，并用引用计数保持存活。
- * @return 评估专用线程池。
- */
-QThreadPool *evaluationPool()
-{
-    static QThreadPool pool;
-    static const int   thread_count = std::max(1, QThread::idealThreadCount() / 2);
-    pool.setMaxThreadCount(thread_count);
-    return &pool;
-}
-
 bool validEvaluationResult(const EvaluationResult &result, QString *error)
 {
     const auto fail = [error](const QString &message)
@@ -118,7 +104,7 @@ bool validEvaluationResult(const EvaluationResult &result, QString *error)
 
 } // namespace
 
-ModelEvaluationViewModel::ModelEvaluationViewModel(QObject *parent)
+ModelEvaluationViewModel::ModelEvaluationViewModel(QObject *parent, QThreadPool *evaluation_pool)
     : QObject(parent)
     , instance_metrics_(new EvaluationMetricModel(this))
     , image_metrics_(new EvaluationMetricModel(this))
@@ -130,7 +116,15 @@ ModelEvaluationViewModel::ModelEvaluationViewModel(QObject *parent)
     , global_filtered_instances_(new EvaluationGlobalFilterProxyModel(this))
     , filtered_instances_(new EvaluationCellFilterProxyModel(this))
     , charts_(new EvaluationChartModel(this))
+    , evaluation_pool_(evaluation_pool)
 {
+    if (evaluation_pool_ == nullptr)
+    {
+        owned_evaluation_pool_ = std::make_unique<QThreadPool>();
+        owned_evaluation_pool_->setMaxThreadCount(std::max(1, QThread::idealThreadCount() / 2));
+        evaluation_pool_ = owned_evaluation_pool_.get();
+    }
+
     filtered_images_->setSourceModel(images_);
     global_filtered_instances_->setSourceModel(instances_);
     filtered_instances_->setSourceModel(global_filtered_instances_);
@@ -185,13 +179,32 @@ ModelEvaluationViewModel::ModelEvaluationViewModel(QObject *parent)
 
 ModelEvaluationViewModel::~ModelEvaluationViewModel()
 {
-    if (cancel_token_ != nullptr)
-        cancel_token_->store(true, std::memory_order_relaxed);
+    shutdown();
 }
 
-void ModelEvaluationViewModel::shutdownEvaluationWorkers()
+void ModelEvaluationViewModel::shutdown()
 {
-    evaluationPool()->waitForDone();
+    if (shutting_down_)
+        return;
+    shutting_down_ = true;
+
+    if (cancel_token_ != nullptr)
+        cancel_token_->store(true, std::memory_order_relaxed);
+    discard_active_result_          = true;
+    pending_evaluation_             = false;
+    pending_notify_when_finished_   = false;
+    aggregation_rebuild_scheduled_  = false;
+    ++aggregation_revision_;
+    ++aggregation_schedule_token_;
+    evaluation_worker_active_ = false;
+    cancel_token_.reset();
+    if (evaluation_pool_ != nullptr)
+        evaluation_pool_->waitForDone();
+}
+
+QThreadPool *ModelEvaluationViewModel::evaluationPool() const
+{
+    return evaluation_pool_;
 }
 
 bool ModelEvaluationViewModel::available() const
@@ -511,6 +524,9 @@ void ModelEvaluationViewModel::adoptEvaluationThreshold(const double threshold, 
 
 void ModelEvaluationViewModel::setEvaluationOptions(const ModelEvaluationOptions &options)
 {
+    if (shutting_down_)
+        return;
+
     if (has_evaluation_options_ && sameEvaluationInput(evaluation_options_, options))
         return;
     evaluation_options_     = options;
@@ -528,6 +544,9 @@ void ModelEvaluationViewModel::setEvaluationOptions(const ModelEvaluationOptions
 
 void ModelEvaluationViewModel::invalidate(const evaluation::ViewState state)
 {
+    if (shutting_down_)
+        return;
+
     const bool worker_active = evaluation_worker_active_;
     evaluation_attempted_ = false;
     notify_when_finished_ = false;
@@ -551,6 +570,9 @@ void ModelEvaluationViewModel::invalidate(const evaluation::ViewState state)
 
 void ModelEvaluationViewModel::evaluate(const bool notify)
 {
+    if (shutting_down_)
+        return;
+
     if (!has_evaluation_options_)
     {
         if (loading_)
@@ -576,6 +598,9 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
 
 void ModelEvaluationViewModel::startEvaluation(const bool notify)
 {
+    if (shutting_down_)
+        return;
+
     if (evaluation_worker_active_)
     {
         pending_evaluation_           = true;
@@ -634,14 +659,15 @@ void ModelEvaluationViewModel::startEvaluation(const bool notify)
                 guard.data(),
                 [guard, request_token, options, notify, success, result = std::move(result), error]() mutable
                 {
-                    if (guard.isNull() || !guard->evaluation_worker_active_ || guard->cancel_token_ != request_token)
+                    if (guard.isNull() || guard->shutting_down_ || !guard->evaluation_worker_active_
+                        || guard->cancel_token_ != request_token)
                         return;
 
                     guard->evaluation_worker_active_ = false;
                     guard->cancel_token_.reset();
                     const auto startPendingEvaluation = [&guard]()
                     {
-                        if (guard.isNull() || !guard->pending_evaluation_)
+                        if (guard.isNull() || guard->shutting_down_ || !guard->pending_evaluation_)
                             return false;
                         const bool next_notify
                             = guard->notify_when_finished_ || guard->pending_notify_when_finished_;
@@ -730,6 +756,9 @@ void ModelEvaluationViewModel::startEvaluation(const bool notify)
 
 void ModelEvaluationViewModel::refreshEvaluation()
 {
+    if (shutting_down_)
+        return;
+
     if (loading_)
     {
         pending_evaluation_ = true;
@@ -741,6 +770,9 @@ void ModelEvaluationViewModel::refreshEvaluation()
 
 void ModelEvaluationViewModel::setRuntimeState(const evaluation::ViewState state)
 {
+    if (shutting_down_)
+        return;
+
     if (state_kind_ == state && !available_ && error_.isEmpty())
         return;
     if (state == evaluation::ViewState::Running || state == evaluation::ViewState::Failed
@@ -888,6 +920,9 @@ void ModelEvaluationViewModel::loadInstanceRecords(const QVector<EvaluationInsta
 
 void ModelEvaluationViewModel::scheduleRebuildFilteredAggregates()
 {
+    if (shutting_down_)
+        return;
+
     if (suppress_aggregation_rebuild_ || !available_ || aggregation_rebuild_scheduled_)
         return;
 
@@ -930,6 +965,9 @@ bool ModelEvaluationViewModel::hasActiveAggregationFilters() const
 
 void ModelEvaluationViewModel::rebuildFilteredAggregates()
 {
+    if (shutting_down_)
+        return;
+
     if (!available_)
         return;
 
@@ -1069,7 +1107,7 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
     }
 
     const QPointer<ModelEvaluationViewModel> guard(this);
-    QThreadPool::globalInstance()->start(
+    evaluationPool()->start(
         [guard, revision, input = std::move(input)]() mutable
         {
             if (guard.isNull())
@@ -1078,7 +1116,8 @@ void ModelEvaluationViewModel::rebuildFilteredAggregates()
             QMetaObject::invokeMethod(guard,
                                       [guard, revision, output = std::move(output)]() mutable
                                       {
-                                          if (guard.isNull() || guard->aggregation_revision_ != revision)
+                                          if (guard.isNull() || guard->shutting_down_
+                                              || guard->aggregation_revision_ != revision)
                                               return;
                                           for (auto &rec : output.per_class_metrics)
                                           {
@@ -1159,6 +1198,9 @@ QString ModelEvaluationViewModel::heatmapThumbnailUrl(const qint64 imageId, cons
 
 void ModelEvaluationViewModel::selectInstance(const int proxyRow)
 {
+    if (shutting_down_)
+        return;
+
     const auto clearSelection = [this]()
     {
         selected_proxy_row_ = -1;
@@ -1210,6 +1252,9 @@ void ModelEvaluationViewModel::selectInstance(const int proxyRow)
 
 bool ModelEvaluationViewModel::selectInstance(const QString &eventUuid)
 {
+    if (shutting_down_)
+        return false;
+
     const QString value = eventUuid.trimmed();
     if (value.isEmpty())
     {
@@ -1231,6 +1276,9 @@ bool ModelEvaluationViewModel::selectInstance(const QString &eventUuid)
 
 void ModelEvaluationViewModel::selectMatrixCell(const QString &rowKey, const QString &columnKey)
 {
+    if (shutting_down_)
+        return;
+
     const auto normalizeKey = [this](QString value, const bool row)
     {
         value = value.trimmed();
@@ -1263,6 +1311,9 @@ void ModelEvaluationViewModel::selectMatrixCell(const QString &rowKey, const QSt
 
 bool ModelEvaluationViewModel::selectConfusionCell(const int row, const int column)
 {
+    if (shutting_down_)
+        return false;
+
     if (confusion_matrix_ == nullptr || row < 0 || column < 0 || row >= confusion_matrix_->rowCount()
         || column >= confusion_matrix_->columnCount())
         return false;
@@ -1276,42 +1327,66 @@ bool ModelEvaluationViewModel::selectConfusionCell(const int row, const int colu
 
 void ModelEvaluationViewModel::clearMatrixSelection()
 {
+    if (shutting_down_)
+        return;
+
     filtered_instances_->setMatrixRow({});
     filtered_instances_->setMatrixColumn({});
 }
 
 void ModelEvaluationViewModel::clearConfusionCellFilter()
 {
+    if (shutting_down_)
+        return;
+
     clearMatrixSelection();
 }
 
 void ModelEvaluationViewModel::setDatasetFilter(const QVariantList &datasetIds)
 {
+    if (shutting_down_)
+        return;
+
     global_filtered_instances_->setDatasetIds(datasetIds);
 }
 
 void ModelEvaluationViewModel::setClassFilter(const QVariantList &classIds)
 {
+    if (shutting_down_)
+        return;
+
     global_filtered_instances_->setClassIds(classIds);
 }
 
 void ModelEvaluationViewModel::setPredClassFilter(const qint64 classId)
 {
+    if (shutting_down_)
+        return;
+
     filtered_instances_->setPredClassIds(classId >= 0 ? QVariantList{classId} : QVariantList{});
 }
 
 void ModelEvaluationViewModel::clearPredClassFilter()
 {
+    if (shutting_down_)
+        return;
+
     filtered_instances_->setPredClassIds({});
 }
 
 void ModelEvaluationViewModel::setStatusFilter(const QString &status)
 {
+    if (shutting_down_)
+        return;
+
     filtered_instances_->setStatus(status);
 }
 
 void ModelEvaluationViewModel::clearFilters()
 {
+    if (shutting_down_)
+        return;
+
     global_filtered_instances_->setDatasetIds({});
     global_filtered_instances_->setClassIds({});
     filtered_instances_->setStatus({});
@@ -1323,6 +1398,9 @@ void ModelEvaluationViewModel::clearFilters()
 
 void ModelEvaluationViewModel::setGlobalFilter(QObject *filter)
 {
+    if (shutting_down_)
+        return;
+
     if (global_filter_ != nullptr)
         disconnect(global_filter_, nullptr, this, nullptr);
     global_filter_ = filter;

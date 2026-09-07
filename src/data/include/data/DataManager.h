@@ -17,6 +17,7 @@
 
 #include <QMetaObject>
 #include <QObject>
+#include <QPointer>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml>
@@ -68,6 +69,22 @@ public:
     DataManager(const int method, dltool::database::ProjectDataBase *database, const QString &project_dir,
                 QObject *parent = nullptr);
     ~DataManager();
+
+    /**
+     * @brief 关闭项目数据工作区并等待所有后台操作退出。
+     *
+     * 该函数是幂等的。调用返回后，DataManager 的后台 worker 不再读取其
+     * 子 Model 或发布项目结果；项目随后才可以释放数据模型和数据库。
+     */
+    void shutdown();
+
+    /**
+     * @brief 等待当前数据操作及其 GUI 完成回调全部收敛。
+     *
+     * 仅供项目关闭前仍需等待数据操作后续步骤的项目内协调器使用；该函数
+     * 不进入关闭状态，也不会主动取消操作。
+     */
+    void waitForOperations();
 
     DatasetsListModel *datasets() const
     {
@@ -350,8 +367,10 @@ public:
      */
     using DatasetExportWork = std::function<void(const DatasetExportSource &, DataOperationWorkflow::Result &)>;
 
-    void runDatasetExportAsync(QObject *context, DatasetExportRequest request, DataOperationWorkflow::Options options,
-                               DatasetExportWork work, DataOperationWorkflow::Completion completion = {});
+    DataOperationWorkflow::HandlePtr runDatasetExportAsync(QObject *context, DatasetExportRequest request,
+                                                           DataOperationWorkflow::Options options,
+                                                           DatasetExportWork work,
+                                                           DataOperationWorkflow::Completion completion = {});
 
     void importMaskData(int64_t dataset_id, const QString &image_manifest_path, const QString &prediction_output_dir);
 
@@ -376,6 +395,8 @@ private:
 
     void init(const int method);
     void startAsyncLabelLoading();
+    DataOperationWorkflow::HandlePtr trackOperation(DataOperationWorkflow::HandlePtr handle);
+    void waitForDataIoOperations(const QList<QPointer<DataIO>> &operations);
     void commitLabelsLoaded(std::shared_ptr<std::vector<LoadedLabelInstance>> labels, bool success,
                             const QString &err_msg, qint64 elapsed_ms);
     void commitDatasetDeletion(const std::vector<int64_t> &dataset_ids, bool success, const QString &err_msg,
@@ -473,6 +494,8 @@ private:
     bool dataset_deletion_running_{false};
     bool image_operation_running_{false};
     bool data_operation_running_{false};
+    std::vector<DataOperationWorkflow::HandlePtr> operation_handles_;
+    bool                               shutting_down_{false};
 };
 
 } // namespace dltool::data

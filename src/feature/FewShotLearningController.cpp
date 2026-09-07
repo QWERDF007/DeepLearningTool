@@ -229,7 +229,25 @@ FewShotLearningController::FewShotLearningController(dltool::data::DataManager  
 
 FewShotLearningController::~FewShotLearningController()
 {
+    shutdown();
+}
+
+void FewShotLearningController::shutdown()
+{
+    if (shutting_down_.exchange(true, std::memory_order_acq_rel))
+        return;
+
     disconnectPredictionImport();
+    if (running_)
+    {
+        current_run_.stop_requested = true;
+        stopRunTasks();
+    }
+    current_run_ = {};
+    setRunning(false);
+
+    if (data_manager_ != nullptr)
+        data_manager_->waitForOperations();
 }
 
 bool FewShotLearningController::enabled() const
@@ -309,6 +327,11 @@ void FewShotLearningController::setLabelClassViewModel(QObject *view_model)
 
 bool FewShotLearningController::startFsSam2()
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+    {
+        setLastError(QStringLiteral("小样本学习控制器正在关闭"));
+        return false;
+    }
     QVariantList label_class_ids = selectedLabelClassIdsFromViewModel(train_dataset_view_model_);
     if (label_class_ids.empty())
         label_class_ids = selectedLabelClassIdsFromViewModel(label_class_view_model_);
@@ -320,6 +343,8 @@ bool FewShotLearningController::startFsSam2()
 
 QString FewShotLearningController::validationError() const
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+        return QStringLiteral("小样本学习控制器正在关闭");
     if (running_)
     {
         return QString("小样本学习正在运行");
@@ -343,6 +368,11 @@ bool FewShotLearningController::startFsSam2WithIds(const QVariantList &train_dat
                                                    const QVariantList &test_dataset_ids,
                                                    const QVariantList &label_class_ids)
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+    {
+        setLastError(QStringLiteral("小样本学习控制器正在关闭"));
+        return false;
+    }
     if (running_)
     {
         const QString message = QString("小样本学习正在运行");
@@ -376,7 +406,7 @@ void FewShotLearningController::clearLastError()
 
 void FewShotLearningController::cancel()
 {
-    if (!running_)
+    if (shutting_down_.load(std::memory_order_acquire) || !running_)
         return;
 
     current_run_.stop_requested = true;
@@ -389,6 +419,8 @@ bool FewShotLearningController::startRun(const std::vector<int64_t> &train_datas
                                          const std::vector<int64_t> &test_dataset_ids,
                                          const std::vector<int64_t> &label_class_ids, QString *err_msg)
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+        return setError(err_msg, QStringLiteral("小样本学习控制器正在关闭"));
     const QString validation_error
         = validateStartRequest(train_dataset_ids, validation_dataset_ids, test_dataset_ids, label_class_ids);
     if (!validation_error.isEmpty())
@@ -743,6 +775,8 @@ int FewShotLearningController::addOrdinaryTask(const QString &model_uuid, dltool
 bool FewShotLearningController::startOrdinaryTask(dltool::model::ModelTaskType task_type, int expected_task_id,
                                                   QString *err_msg)
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+        return setError(err_msg, QStringLiteral("小样本学习控制器正在关闭"));
     if (model_task_controller_ == nullptr)
         return setError(err_msg, QString("模型任务控制器未初始化"));
     if (current_run_.model_uuid.trimmed().isEmpty())
@@ -760,7 +794,8 @@ bool FewShotLearningController::startOrdinaryTask(dltool::model::ModelTaskType t
 
 void FewShotLearningController::handleTaskTableRevision()
 {
-    if (!running_ || current_run_.stage == RunStage::Idle || task_manager_ == nullptr)
+    if (shutting_down_.load(std::memory_order_acquire) || !running_ || current_run_.stage == RunStage::Idle
+        || task_manager_ == nullptr)
     {
         return;
     }
@@ -884,6 +919,8 @@ void FewShotLearningController::stopRunTasks()
 void FewShotLearningController::startPredictionImports(std::vector<PredictionImportTarget> targets,
                                                        const QString                      &output_dir)
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+        return;
     if (data_manager_ == nullptr || targets.empty() || output_dir.trimmed().isEmpty())
     {
         spdlog::info("小样本学习完成");
@@ -902,6 +939,11 @@ void FewShotLearningController::startPredictionImports(std::vector<PredictionImp
 
 void FewShotLearningController::startNextPredictionImport()
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+    {
+        disconnectPredictionImport();
+        return;
+    }
     if (data_manager_ == nullptr)
     {
         disconnectPredictionImport();
@@ -927,6 +969,11 @@ void FewShotLearningController::startNextPredictionImport()
 
 void FewShotLearningController::handlePredictionImportFinished(bool success, const QString &message)
 {
+    if (shutting_down_.load(std::memory_order_acquire))
+    {
+        disconnectPredictionImport();
+        return;
+    }
     if (!success)
     {
         const QString detail = message.isEmpty() ? QString("导入小样本预测结果失败") : message;

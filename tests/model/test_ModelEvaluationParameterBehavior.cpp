@@ -140,8 +140,8 @@ private slots:
                                                          QStringLiteral("YOLOv8"), &error);
         QVERIFY2(record.isValid(), qPrintable(error));
 
-        TaskManager *task_manager = TaskManager::getInstance();
-        task_manager->clearTasks();
+        TaskManager task_manager_instance;
+        TaskManager *task_manager = &task_manager_instance;
         ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, task_manager);
         manager.setModelUuid(record.uuid);
         QVERIFY(manager.currentEvaluation() != nullptr);
@@ -238,8 +238,8 @@ private slots:
                                                          QStringLiteral("YOLOv8"), &error);
         QVERIFY2(record.isValid(), qPrintable(error));
 
-        TaskManager *task_manager = TaskManager::getInstance();
-        task_manager->clearTasks();
+        TaskManager task_manager_instance;
+        TaskManager *task_manager = &task_manager_instance;
         ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, task_manager);
         manager.setModelUuid(record.uuid);
         QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image,
@@ -293,8 +293,8 @@ private slots:
                                                          QStringLiteral("patchcore"), &error);
         QVERIFY2(record.isValid(), qPrintable(error));
 
-        TaskManager *task_manager = TaskManager::getInstance();
-        task_manager->clearTasks();
+        TaskManager task_manager_instance;
+        TaskManager *task_manager = &task_manager_instance;
         ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, task_manager);
         manager.setModelUuid(record.uuid);
         const bool prepared_normal
@@ -387,8 +387,8 @@ private slots:
                                                          QStringLiteral("YOLOv8"), &error);
         QVERIFY2(record.isValid(), qPrintable(error));
 
-        TaskManager *task_manager = TaskManager::getInstance();
-        task_manager->clearTasks();
+        TaskManager task_manager_instance;
+        TaskManager *task_manager = &task_manager_instance;
         ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, task_manager);
         manager.setModelUuid(record.uuid);
         QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image, {}, false, &error), qPrintable(error));
@@ -425,8 +425,8 @@ private slots:
                                                          QStringLiteral("YOLOv8"), &error);
         QVERIFY2(record.isValid(), qPrintable(error));
 
-        TaskManager *task_manager = TaskManager::getInstance();
-        task_manager->clearTasks();
+        TaskManager task_manager_instance;
+        TaskManager *task_manager = &task_manager_instance;
         ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, task_manager);
         manager.setModelUuid(record.uuid);
         QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image,
@@ -439,7 +439,7 @@ private slots:
         QVERIFY(evaluation != nullptr);
         QSignalSpy loading_changed(evaluation, &ModelEvaluationViewModel::loadingChanged);
         const int task_id = task_manager->addTask(record.uuid, record.name, ModelTaskType::Test,
-                                                  manager.currentTaskUuid(), manager.currentTaskName(), true);
+                                                  manager.currentTaskUuid(), manager.currentTaskName());
         QVERIFY(task_id > 0);
         QVERIFY(!manager.currentModelBusy());
         QVERIFY(task_manager->markTaskRunning(task_id));
@@ -450,7 +450,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(!manager.currentModelBusy(), 5000);
         const int completed_loading_changes = loading_changed.count();
 
-        const int failed_id = task_manager->addTask(record.uuid, record.name, ModelTaskType::Train, true);
+        const int failed_id = task_manager->addTask(record.uuid, record.name, ModelTaskType::Train);
         QVERIFY(failed_id > 0);
         QVERIFY(task_manager->markTaskRunning(failed_id));
         QVERIFY(manager.currentModelBusy());
@@ -458,7 +458,7 @@ private slots:
         QVERIFY(!manager.currentModelBusy());
         QCOMPARE(loading_changed.count(), completed_loading_changes);
 
-        const int stopped_id = task_manager->addTask(record.uuid, record.name, ModelTaskType::Train, true);
+        const int stopped_id = task_manager->addTask(record.uuid, record.name, ModelTaskType::Train);
         QVERIFY(stopped_id > 0);
         QVERIFY(task_manager->startTask(stopped_id));
         QVERIFY(manager.currentModelBusy());

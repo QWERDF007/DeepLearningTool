@@ -19,7 +19,7 @@ class MODEL_API SegmentationEvaluationViewModel : public InstanceMatchingEvaluat
     QML_UNCREATABLE("SegmentationEvaluationViewModel is owned by EvaluationViewModelRegistry")
 
 public:
-    explicit SegmentationEvaluationViewModel(QObject *parent = nullptr);
+    explicit SegmentationEvaluationViewModel(QObject *parent = nullptr, QThreadPool *evaluation_pool = nullptr);
 };
 
 } // namespace dltool::model

@@ -22,7 +22,7 @@ class MODEL_API AnomalyEvaluationViewModel : public ModelEvaluationViewModel
     Q_PROPERTY(double classificationThreshold READ classificationThreshold NOTIFY methodDataChanged FINAL)
 
 public:
-    explicit AnomalyEvaluationViewModel(QObject *parent = nullptr);
+    explicit AnomalyEvaluationViewModel(QObject *parent = nullptr, QThreadPool *evaluation_pool = nullptr);
 
     double classificationThreshold() const;
 

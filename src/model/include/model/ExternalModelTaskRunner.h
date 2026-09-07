@@ -27,6 +27,9 @@ public:
 
     ~ExternalModelTaskRunner() override;
 
+    /** @brief 停止全部外部进程并等待收敛，关闭后拒绝新的进程。 */
+    void shutdown();
+
     /**
      * @brief 检查指定任务是否正在运行
      * @param task_id 任务 ID
@@ -48,6 +51,14 @@ public:
      * @return 操作成功返回 true
      */
     bool stop(int task_id);
+
+    /**
+     * @brief 等待所有外部进程退出。
+     *
+     * 调用前通常先通过 stop() 请求停止。返回时不再有运行中的外部进程；
+     * timeout_ms 只限制优雅停止等待，超时后会强制结束残留进程。
+     */
+    bool waitForDone(int timeout_ms = -1);
 
     /**
      * @brief 删除指定任务（先停止再清理）
@@ -82,6 +93,7 @@ signals:
 private:
     std::unordered_map<int, QPointer<QProcess>> external_processes_;   ///< task_id 到进程对象的映射。
     std::unordered_set<int>                     stop_requested_tasks_; ///< 已请求停止的任务集合。
+    bool                                        shutting_down_{false};
 };
 
 } // namespace dltool::model

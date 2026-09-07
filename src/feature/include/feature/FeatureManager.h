@@ -10,6 +10,7 @@
 
 #include <QObject>
 #include <QtQml>
+#include <atomic>
 #include <memory>
 
 namespace dltool::data {
@@ -45,6 +46,9 @@ public:
                             QObject *parent = nullptr);
     ~FeatureManager() override;
 
+    /** @brief 关闭所有项目级 feature 控制器并等待后台任务收敛。 */
+    void shutdown();
+
     ImageSearchController *imageSearch() const;
     RoiSearchController *roiSearch() const;
     ImageClusterController *imageCluster() const;
@@ -69,6 +73,7 @@ private:
     RoiClusterController   *roi_cluster_{nullptr};
     SmartAnnotationController *smart_annotation_{nullptr};
     FewShotLearningController *few_shot_learning_{nullptr};
+    std::atomic_bool shutting_down_{false};
 };
 
 } // namespace dltool::feature

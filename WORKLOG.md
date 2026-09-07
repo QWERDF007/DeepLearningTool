@@ -47,6 +47,70 @@
 
 ---
 
+## 2026-09-07 — 统一项目任务生命周期与关闭栅栏
+
+**目标**
+- 为项目内后台任务建立可取消、可等待、可丢弃迟到结果的生命周期，并按固定顺序关闭 Feature、模型任务、评估、数据操作和任务通信。
+
+**当前状态**
+- 已完成：外部模型进程、模型准备、评估线程池、数据操作工作流和 Feature worker 均纳入项目关闭路径；关闭后拒绝新任务并丢弃迟到回调。
+- 已完成：`TaskManager` 终态收敛、`DataOperationWorkflow` 操作句柄、评估取消等待、Feature 控制器关闭状态和对应行为测试。
+- 保留：`final_plan.md`、`tools/dependencies.yaml` 及不属于本阶段的既有工作区改动未纳入阶段提交。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_data_data_operation_workflow_tests dltool_feature_lifecycle_tests dltool_model_tasks_tests --parallel 4` → Release 目标构建成功。
+- `ctest --test-dir build -C Release -R '^(dltool_data_data_operation_workflow_tests|dltool_feature_lifecycle_tests|dltool_model_tasks_tests)$' --output-on-failure` → 3/3 通过。
+- `ctest --test-dir build -C Release -L ordinary --output-on-failure` → 43/43 通过。
+- `git diff --check` → 待提交源码和测试无格式错误。
+
+**下一步**
+- 按 `final_plan.md` 阶段 4 收敛 DataWorkspace、DataTransfer 和 GeometryKernel，先补数据操作、路径和坐标映射行为测试。
+
+---
+
+## 2026-09-07 — 合并架构改进最终方案
+
+**目标**
+- 综合架构方案审查结论，形成根目录唯一的 `final_plan.md`，作为后续重构的统一决策入口。
+
+**当前状态**
+- 已完成：统一单一事实源、深模块、快照跨线程、项目作用域、任务关闭栅栏、数据库 schema、文件与数据库协调、评估性能、几何规则、Feature、QML、构建和测试验收方案。
+- 已完成：补充方案合并时的裁决规则，明确按源码、CMake、DDL、YAML、任务协议和 CTest 作为运行时事实源。
+- 未完成：本轮仅整理文档，未实施方案中的后续代码阶段。
+- 保留：`tools/dependencies.yaml` 及工作区已有代码改动未纳入本轮文档交付。
+
+**验证证据**
+- `git -c safe.directory=F:/Projects/DeepLearningTool diff --check -- final_plan.md WORKLOG.md` → 未发现差异格式错误。
+- 章节结构检查 → `final_plan.md` 保持 12 个顶层章节，包含目标架构、事实源、实施路线、测试矩阵和完成定义。
+- Release 构建和 CTest → 本轮未执行，属于文档整理。
+
+**下一步**
+- 按 `final_plan.md` 阶段 3 完成任务句柄、取消、项目关闭等待和迟到回调的行为测试与实现。
+
+---
+
+## 2026-09-07 — 收敛项目任务作用域与终态事件
+
+**目标**
+- 消除跨项目共享的 `TaskManager` 状态，保护任务终态不被重复或迟到事件改变。
+
+**当前状态**
+- 已完成：`Project` 为每个项目创建并拥有独立的 `TaskManager`；训练页、测试页和任务中心改用当前项目任务实例，`ModelManager` 改为注入当前项目任务状态。
+- 已完成：项目关闭同步释放旧项目，避免旧对象图在新项目创建后仍存活；未知任务、重复终态和终态后的迟到消息被丢弃，重新准备任务时清理旧终态记录。
+- 已完成：新增项目状态隔离与迟到事件行为测试。
+- 未完成：外部进程、数据操作线程、评估线程池及聚合任务尚未全部纳入可等待的项目关闭栅栏；暂停态和统一任务句柄仍待后续阶段收敛。
+- 保留：`tools/dependencies.yaml` 为已有用户改动，不属于本阶段。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_tasks_tests dltool --parallel 4` → Release 构建成功（存在 spdlog 编译警告）。
+- `ctest --test-dir build -C Release -R '^dltool_model_tasks_tests$' --output-on-failure` → 1/1 通过，包含项目任务隔离和终态迟到事件测试。
+- `git -c safe.directory=F:/Projects/DeepLearningTool diff --check` → 未发现差异格式错误。
+
+**下一步**
+- 为外部进程停止等待、`DataOperationWorkflow`、评估/聚合任务句柄和项目关闭后的回调丢弃补充行为测试，再实现统一关闭栅栏。
+
+---
+
 ## 2026-09-07 — 统一数据库 schema 生命周期
 
 **目标**

@@ -5,8 +5,8 @@
 
 namespace dltool::model {
 
-InstanceMatchingEvaluationViewModel::InstanceMatchingEvaluationViewModel(QObject *parent)
-    : ModelEvaluationViewModel(parent)
+InstanceMatchingEvaluationViewModel::InstanceMatchingEvaluationViewModel(QObject *parent, QThreadPool *evaluation_pool)
+    : ModelEvaluationViewModel(parent, evaluation_pool)
 {
 }
 

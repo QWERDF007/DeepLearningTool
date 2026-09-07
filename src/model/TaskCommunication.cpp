@@ -74,8 +74,6 @@ QString taskProtocolStatusName(TaskProtocolStatus status)
         return QStringLiteral("pending");
     case TaskProtocolStatus::Running:
         return QStringLiteral("running");
-    case TaskProtocolStatus::Paused:
-        return QStringLiteral("paused");
     case TaskProtocolStatus::Stopped:
         return QStringLiteral("stopped");
     case TaskProtocolStatus::Finished:
@@ -125,8 +123,6 @@ TaskProtocolStatus taskProtocolStatusFromName(const QString &name)
         return TaskProtocolStatus::Pending;
     if (value == taskProtocolStatusName(TaskProtocolStatus::Running))
         return TaskProtocolStatus::Running;
-    if (value == taskProtocolStatusName(TaskProtocolStatus::Paused))
-        return TaskProtocolStatus::Paused;
     if (value == taskProtocolStatusName(TaskProtocolStatus::Stopped))
         return TaskProtocolStatus::Stopped;
     if (value == taskProtocolStatusName(TaskProtocolStatus::Finished))
@@ -155,8 +151,37 @@ TaskCommunicationServer::TaskCommunicationServer(QObject *parent)
 
 TaskCommunicationServer::~TaskCommunicationServer() = default;
 
+void TaskCommunicationServer::shutdown()
+{
+    if (shutting_down_)
+        return;
+    shutting_down_ = true;
+
+    if (server_ != nullptr)
+        server_->close();
+
+    const QList<QTcpSocket *> sockets = buffers_.keys();
+    for (QTcpSocket *socket : sockets)
+    {
+        if (socket == nullptr)
+            continue;
+        socket->abort();
+        socket->deleteLater();
+    }
+    buffers_.clear();
+    task_by_socket_.clear();
+    socket_by_task_.clear();
+}
+
 bool TaskCommunicationServer::start(QString *err_msg)
 {
+    if (shutting_down_)
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("任务通信服务正在关闭");
+        return false;
+    }
+
     if (server_->isListening())
         return true;
 
@@ -184,6 +209,9 @@ quint16 TaskCommunicationServer::port() const
 
 bool TaskCommunicationServer::sendCommand(int task_id, TaskCommand command, const QVariantMap &payload)
 {
+    if (shutting_down_)
+        return false;
+
     if (!server_->isListening() && !start())
         return false;
 
@@ -217,6 +245,9 @@ bool TaskCommunicationServer::sendCommand(int task_id, TaskCommand command, cons
 
 void TaskCommunicationServer::handleNewConnection()
 {
+    if (shutting_down_)
+        return;
+
     while (server_->hasPendingConnections())
     {
         QTcpSocket *socket = server_->nextPendingConnection();
@@ -232,7 +263,7 @@ void TaskCommunicationServer::handleNewConnection()
 
 void TaskCommunicationServer::handleReadyRead(QTcpSocket *socket)
 {
-    if (socket == nullptr)
+    if (shutting_down_ || socket == nullptr)
         return;
 
     QByteArray buffer = buffers_.value(socket);
@@ -270,6 +301,9 @@ void TaskCommunicationServer::handleDisconnected(QTcpSocket *socket)
 
 void TaskCommunicationServer::processLine(QTcpSocket *socket, const QByteArray &line)
 {
+    if (shutting_down_)
+        return;
+
     QJsonParseError     error;
     const QJsonDocument document = QJsonDocument::fromJson(line, &error);
     if (error.error != QJsonParseError::NoError || !document.isObject())

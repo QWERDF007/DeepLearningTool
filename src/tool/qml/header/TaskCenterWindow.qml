@@ -11,7 +11,7 @@ import quickui
 Window {
     id: dialog
 
-    property var taskManager: TaskManager
+    property var taskManager: ProjectManager.currentProject ? ProjectManager.currentProject.taskManager : null
     property var taskModel: taskManager
     property int selectedTaskId: -1
     property string taskTypeFilter: ""
@@ -40,6 +40,11 @@ Window {
                 dialog.close()
             }
         }
+    }
+
+    onTaskManagerChanged: {
+        selectedTaskId = -1
+        rebuildTasks()
     }
 
     Connections {
@@ -87,7 +92,6 @@ Window {
             eta: displayAt(sourceRow, TaskManager.EtaColumn),
             progress: roleData(sourceRow, TaskManager.ProgressRole),
             can_start: roleData(sourceRow, TaskManager.CanStartRole),
-            can_pause: roleData(sourceRow, TaskManager.CanPauseRole),
             can_stop: roleData(sourceRow, TaskManager.CanStopRole),
             can_delete: roleData(sourceRow, TaskManager.CanDeleteRole),
             progress_cell: tableView.customItem(com_progress),

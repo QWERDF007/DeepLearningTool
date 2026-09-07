@@ -63,6 +63,14 @@ public:
     Project(const QString &path, QObject *parent = nullptr);
     ~Project();
 
+    /**
+     * @brief 按项目级固定顺序停止所有后台执行者。
+     *
+     * Feature、模型任务、评估、数据操作和任务通信依次收敛；该入口幂等，
+     * ProjectManager 和析构函数共享同一条关闭路径。
+     */
+    void shutdown();
+
     bool initProject(QString &err_msg);
     bool openProject(QString &err_msg);
 
@@ -161,6 +169,7 @@ private:
     model::ModelTaskController        *model_task_controller_{nullptr};
     model::ModelTestTaskManager       *model_test_task_manager_{nullptr};
     model::TaskManager                *task_manager_{nullptr};
+    bool                               shutting_down_{false};
 
     QQmlApplicationEngine *qml_engine_{nullptr};
 
