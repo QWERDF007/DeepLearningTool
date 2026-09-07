@@ -256,9 +256,13 @@ public:
      */
     bool             updateTaskEta(int task_id, qint64 eta_seconds);
     /**
-     * @brief 清空当前项目的全部任务记录。
+     * @brief 清空当前项目的任务记录。
+     *
+     * Preparing、Running 或 Stopping 任务必须先收敛；项目关闭阶段允许由
+     * shutdown() 清理剩余记录。
+     * @return 清理成功返回 true；仍有活动任务时返回 false。
      */
-    void             clearTasks();
+    bool             clearTasks();
 
     /**
      * @brief 按模型 UUID 和任务类型查找最新任务。

@@ -72,11 +72,32 @@ private slots:
                                              ModelTaskType::Train);
         QVERIFY(first_id > 0);
 
-        manager.clearTasks();
+        QVERIFY(manager.clearTasks());
 
         const int second_id = manager.addTask(QStringLiteral("second-model"), QStringLiteral("Second"),
                                               ModelTaskType::Train);
         QVERIFY(second_id > first_id);
+    }
+
+    void clearTasksDoesNotDiscardActiveTaskIdentity()
+    {
+        TaskManager manager;
+        const int task_id = manager.addTask(QStringLiteral("active-model"), QStringLiteral("Active"),
+                                             ModelTaskType::Train);
+        QVERIFY(task_id > 0);
+        QVERIFY(manager.startTask(task_id));
+        QVERIFY(manager.markTaskRunning(task_id));
+
+        QVERIFY(!manager.clearTasks());
+
+        QCOMPARE(manager.count(), 1);
+        QVERIFY(manager.findTask(task_id) != nullptr);
+        QCOMPARE(manager.findTask(task_id)->status, TaskManager::Running);
+
+        QVERIFY(manager.stopTask(task_id));
+        QVERIFY(manager.markTaskStopped(task_id));
+        QVERIFY(manager.clearTasks());
+        QCOMPARE(manager.count(), 0);
     }
 
     void projectIdentitySeparatesTaskManagers()

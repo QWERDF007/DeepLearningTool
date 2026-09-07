@@ -448,10 +448,19 @@ bool TaskManager::updateTaskEta(const int task_id, const qint64 eta_seconds)
     return true;
 }
 
-void TaskManager::clearTasks()
+bool TaskManager::clearTasks()
 {
+    if (!shutting_down_
+        && std::any_of(tasks_.cbegin(), tasks_.cend(), [](const Task &task) {
+               return task.status == Preparing || task.status == Running || task.status == Stopping;
+           }))
+    {
+        spdlog::warn("拒绝清空活动任务记录");
+        return false;
+    }
+
     if (tasks_.empty() && terminal_events_.isEmpty())
-        return;
+        return true;
 
     beginResetModel();
     tasks_.clear();
@@ -460,6 +469,7 @@ void TaskManager::clearTasks()
     emit countChanged();
     ++revision_;
     emit revisionChanged();
+    return true;
 }
 
 int TaskManager::findModelTask(const QString &model_uuid, const ModelTaskType task_type,
