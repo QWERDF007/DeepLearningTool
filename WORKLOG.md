@@ -47,6 +47,47 @@
 
 ---
 
+## 2026-09-08 — 收敛 ROI 聚类关闭生命周期
+
+**目标**
+- 项目关闭取消数据操作后，ROI 聚类控制器释放前等待共享 `DataManager` 的后台操作及完成回调收敛，避免迟到回调访问已释放的 feature 对象。
+
+**当前状态**
+- 已完成：`RoiClusterController::shutdown()` 在聚类线程结束后等待 `DataManager` 操作；新增真实 SQLite/数据操作生命周期行为测试。
+- 已完成：取消仍由项目关闭协调器负责，controller 只等待，不越权取消共享数据操作。
+- 保留：`final_plan.md`、`tools/dependencies.yaml`、`FeatureManager.cpp` 等既有工作区改动未纳入本阶段。
+
+**验证证据**
+- 旧实现下 `ctest --test-dir build -C Release -R '^dltool_feature_lifecycle_tests$' --output-on-failure` → 失败，关闭返回时数据操作尚未收敛。
+- `cmake --build build --config Release --parallel 4` → Release 全量构建通过。
+- `ctest --test-dir build -C Release -R '^(dltool_feature_lifecycle_tests|dltool_data_data_operation_workflow_tests|dltool_model_tasks_tests|dltool_model_project_shutdown_test)$' --output-on-failure` → 4/4 通过。
+- `git diff --check` → 通过。
+
+**下一步**
+- 按 `final_plan.md` 阶段 3 继续审查其他 feature、模型任务和项目关闭路径的句柄等待及迟到回调丢弃，再分别补测试和提交。
+
+---
+
+## 2026-09-07 — 汇总最终架构改进方案
+
+**目标**
+- 将架构改进方案统一收敛到根目录 `final_plan.md`，作为后续重构的唯一入口。
+
+**当前状态**
+- 已完成：整理目标架构、职责边界、生命周期、持久化、评估性能、几何/QML、构建测试、分阶段路线和验收标准。
+- 已确认：工作区和 Git 历史中未找到 `luna_final_plan.md`、`gemini_final_plan.md`、`musespark13_final_plan.md`，未虚构缺失来源内容。
+- 保留：其他已有的代码、测试和依赖配置改动未纳入本轮。
+
+**验证证据**
+- `rg --files -uu -g '*luna_final_plan.md' -g '*gemini_final_plan.md' -g '*musespark13_final_plan.md' .` → 未找到三份独立方案。
+- `git diff --check -- final_plan.md` → 通过。
+- 文档检查 → `final_plan.md` 共 703 行；本轮未执行构建和测试。
+
+**下一步**
+- 按 `final_plan.md` 的阶段路线继续实施；先完成当前项目关闭生命周期切片的行为测试和 Release/CTest 验证。
+
+---
+
 ## 2026-09-08 — 收敛项目关闭生命周期
 
 **目标**

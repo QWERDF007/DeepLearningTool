@@ -116,6 +116,14 @@ void RoiClusterController::shutdown()
         delete thread;
     }
     worker_thread_ = nullptr;
+
+    // A completed cluster may already have queued data operations whose
+    // completion callbacks still depend on the project data graph.  Wait for
+    // them after the cluster worker has stopped, before the controller can be
+    // released.
+    if (data_manager_ != nullptr)
+        data_manager_->waitForOperations();
+
     setRunning(false);
     if (was_running)
         ui::ProgressManager::getInstance()->completeTask();
