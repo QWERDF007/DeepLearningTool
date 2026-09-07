@@ -2,6 +2,7 @@
 
 #include "dltool/model/Export.h"
 #include "model/ModelTaskTypes.h"
+#include "model/TaskIdentity.h"
 
 #include <QAbstractTableModel>
 #include <QSet>
@@ -99,7 +100,7 @@ public:
      */
     struct Task
     {
-        int           id{-1};                       ///< 当前项目内递增的任务 ID。
+        TaskIdentity  identity;                     ///< 逻辑任务与当前执行身份。
         QString       model_uuid;                   ///< 所属模型 UUID。
         QString       model_name;                   ///< 用于表格显示的模型名称。
         QString       scope_uuid;                   ///< 任务作用域 UUID；训练固定为 train。
@@ -340,14 +341,14 @@ signals:
     void revisionChanged();
     /**
      * @brief 任务已经进入 Preparing，请所属控制器提交后台准备工作。
-     * @param task_id 任务 ID。
+     * @param identity 逻辑任务与本次执行身份。
      */
-    void taskStartRequested(int task_id);
+    void taskStartRequested(const dltool::model::TaskIdentity &identity);
     /**
      * @brief 用户请求停止，所属控制器应停止进程或收敛仍在执行的后台准备。
-     * @param task_id 任务 ID。
+     * @param identity 逻辑任务与本次执行身份。
      */
-    void taskStopRequested(int task_id);
+    void taskStopRequested(const dltool::model::TaskIdentity &identity);
     /**
      * @brief 本地运行时间发生变化。
      * @param task_id 任务 ID。
@@ -472,7 +473,7 @@ private:
     bool     canFinish(const Task &task) const;
 
     std::vector<Task>        tasks_;                         ///< 任务中心保存的唯一任务记录。
-    QSet<int>               terminal_events_;               ///< 已发布过终态的任务，拒绝重复/迟到事件。
+    QSet<QString>           terminal_events_;               ///< 已发布过终态的执行，拒绝重复/迟到事件。
     int                      next_task_id_{1};               ///< 下一个递增任务 ID。
     int                      revision_{0};                   ///< 非表格 QML 刷新版本号。
     QTimer                  *runtime_timer_{nullptr};        ///< 运行时长刷新定时器。

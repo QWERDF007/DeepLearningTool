@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dltool/model/Export.h"
+#include "model/TaskIdentity.h"
 
 #include <QString>
 #include <QStringList>
@@ -12,7 +13,7 @@ namespace dltool::model {
  */
 struct MODEL_API ExternalProcessSpec
 {
-    int         task_id{-1};       ///< 关联的任务 ID
+    TaskIdentity identity;         ///< 关联的逻辑任务与执行身份
     QString     program;           ///< 可执行程序路径（Python 解释器）
     QStringList arguments;         ///< 命令行参数列表
     QString     working_directory; ///< 工作目录

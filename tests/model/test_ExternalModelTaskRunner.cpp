@@ -22,7 +22,7 @@ private slots:
         QString error;
         QVERIFY(!runner.start(spec, &error));
         QVERIFY(error.contains(QStringLiteral("任务")));
-        spec.task_id = 1;
+        spec.identity = {1, QStringLiteral("invalid-program")};
         error.clear();
         QVERIFY(!runner.start(spec, &error));
         QVERIFY(error.contains(QStringLiteral("程序")));
@@ -30,7 +30,7 @@ private slots:
         error.clear();
         QVERIFY(!runner.start(spec, &error));
         QVERIFY(error.contains(QStringLiteral("不存在")));
-        QVERIFY(!runner.hasRunningTask(1));
+        QVERIFY(!runner.hasRunningTask(spec.identity));
     }
 
     void startsAndCollectsHelperProcessOutput()
@@ -41,7 +41,7 @@ private slots:
         QSignalSpy started(&runner, &ExternalModelTaskRunner::taskStarted);
         QSignalSpy finished(&runner, &ExternalModelTaskRunner::taskFinished);
         ExternalProcessSpec spec;
-        spec.task_id = 41;
+        spec.identity = {41, QStringLiteral("run-41")};
         spec.program = qEnvironmentVariable("ComSpec", QStringLiteral("C:/Windows/System32/cmd.exe"));
         spec.arguments = {QStringLiteral("/C"), QStringLiteral("echo runner-output")};
         spec.working_directory = temp.path();
@@ -50,16 +50,17 @@ private slots:
         QVERIFY2(runner.start(spec, &error), qPrintable(error));
         QTRY_COMPARE_WITH_TIMEOUT(started.count(), 1, 3000);
         QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 5000);
-        QCOMPARE(finished.at(0).at(0).toInt(), 41);
+        QCOMPARE(qvariant_cast<TaskIdentity>(started.at(0).at(0)), spec.identity);
+        QCOMPARE(qvariant_cast<TaskIdentity>(finished.at(0).at(0)), spec.identity);
         QCOMPARE(finished.at(0).at(1).toInt(), 0);
         QVERIFY(finished.at(0).at(2).toBool());
         QVERIFY(QFileInfo::exists(spec.log_path));
         QFile log(spec.log_path);
         QVERIFY(log.open(QIODevice::ReadOnly));
         QVERIFY(QString::fromLocal8Bit(log.readAll()).contains(QStringLiteral("runner-output")));
-        QVERIFY(!runner.hasRunningTask(41));
-        QVERIFY(runner.stop(41));
-        QVERIFY(runner.deleteTask(41));
+        QVERIFY(!runner.hasRunningTask(spec.identity));
+        QVERIFY(runner.stop(spec.identity));
+        QVERIFY(runner.deleteTask(spec.identity));
     }
 
     void stopCanBeWaitedUntilTheProcessHasExited()
@@ -70,7 +71,7 @@ private slots:
         ExternalModelTaskRunner runner;
         QSignalSpy         finished(&runner, &ExternalModelTaskRunner::taskFinished);
         ExternalProcessSpec spec;
-        spec.task_id           = 42;
+        spec.identity           = {42, QStringLiteral("run-42")};
         spec.program           = qEnvironmentVariable("ComSpec", QStringLiteral("C:/Windows/System32/cmd.exe"));
         spec.arguments         = {QStringLiteral("/C"), QStringLiteral("ping -n 6 127.0.0.1 >NUL")};
         spec.working_directory = temp.path();
@@ -78,14 +79,45 @@ private slots:
 
         QString error;
         QVERIFY2(runner.start(spec, &error), qPrintable(error));
-        QTRY_VERIFY_WITH_TIMEOUT(runner.hasRunningTask(42), 3000);
+        QTRY_VERIFY_WITH_TIMEOUT(runner.hasRunningTask(spec.identity), 3000);
 
-        QVERIFY(runner.stop(42));
+        QVERIFY(runner.stop(spec.identity));
         QVERIFY(runner.waitForDone(5000));
-        QVERIFY(!runner.hasRunningTask(42));
+        QVERIFY(!runner.hasRunningTask(spec.identity));
         QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 1000);
-        QCOMPARE(finished.at(0).at(0).toInt(), 42);
+        QCOMPARE(qvariant_cast<TaskIdentity>(finished.at(0).at(0)), spec.identity);
         QVERIFY(finished.at(0).at(3).toBool());
+    }
+
+    void rejectsIdentityReuseAndCrossTaskControl()
+    {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+
+        ExternalModelTaskRunner runner;
+        ExternalProcessSpec spec;
+        spec.identity           = {43, QStringLiteral("run-43")};
+        spec.program            = qEnvironmentVariable("ComSpec", QStringLiteral("C:/Windows/System32/cmd.exe"));
+        spec.arguments          = {QStringLiteral("/C"), QStringLiteral("ping -n 4 127.0.0.1 >NUL")};
+        spec.working_directory  = temp.path();
+        spec.log_path           = QDir(temp.path()).filePath(QStringLiteral("identity.log"));
+
+        QString error;
+        QVERIFY2(runner.start(spec, &error), qPrintable(error));
+        QTRY_VERIFY_WITH_TIMEOUT(runner.hasRunningTask(spec.identity), 3000);
+
+        ExternalProcessSpec duplicate = spec;
+        error.clear();
+        QVERIFY(!runner.start(duplicate, &error));
+        QVERIFY(error.contains(QStringLiteral("已注册")));
+
+        const TaskIdentity other_task{44, spec.identity.run_id};
+        QVERIFY(!runner.hasRunningTask(other_task));
+        QVERIFY(!runner.stop(other_task));
+        QVERIFY(!runner.deleteTask(other_task));
+
+        QVERIFY(runner.stop(spec.identity));
+        QVERIFY(runner.waitForDone(5000));
     }
 };
 

@@ -47,6 +47,52 @@
 
 ---
 
+## 2026-09-07 — 统一任务运行身份协议
+
+**目标**
+- 让一次任务执行使用不可复用的 `run_id`，并使 C++、Python、停止命令和迟到消息按完整身份路由。
+
+**当前状态**
+- 已完成：C++ 任务管理、外部进程、TCP 通信、任务准备和测试改为校验 `task_id + run_id`。
+- 已完成：EasyTrain 共享协议客户端、异常入口、Ultralytics、Anomalib、Dinomaly2 和 FS-SAM2 入口携带 `--dltool_run_id`。
+- 已完成：新增 Python 协议行为测试，覆盖上报身份、旧运行停止命令隔离和缺少运行身份时拒绝创建客户端。
+- 已完成：EasyTrain 子模块已提交为 `c0b4ee9 refactor: 统一任务运行身份协议`，主仓库已提交为 `3913bb1 refactor: 统一任务运行身份协议`。
+- 未完成：项目关闭栅栏、所有后台执行者统一等待和跨项目资源释放仍属于阶段 3 后续切片。
+
+**验证证据**
+- `ctest --test-dir build -C Release -R '^dltool_tools_tests$' --output-on-failure` → 1/1 通过。
+- `cmake --build build --config Release --target dltool_model_tasks_tests --parallel 4` → Release 构建通过。
+- `ctest --test-dir build -C Release -R '^dltool_model_tasks_tests$' --output-on-failure` → 1/1 通过。
+- `python -m compileall -q ...` → Python 协议及入口编译检查通过。
+- 主仓库和 EasyTrain 子模块 `git diff --check` → 通过。
+- `ctest --test-dir build -C Release -R '^dltool_tools_tests$' --output-on-failure` → 1/1 通过。
+- `git diff --cached --check` → 暂存内容无格式错误。
+
+**下一步**
+- 已完成：统一任务运行身份切片已提交；随后按 `final_plan.md` 阶段 3 补充项目关闭栅栏、后台句柄等待和迟到回调丢弃测试。
+
+---
+
+## 2026-09-07 — 汇总最终架构改进方案
+
+**目标**
+- 综合现有架构方案与仓库事实，形成后续改造的唯一 `final_plan.md` 入口。
+
+**当前状态**
+- 已完成：收敛项目作用域、深模块职责、数据库与文件系统一致性、任务生命周期、评估性能、几何转换、QML、构建和测试验收方案。
+- 已完成：补充逻辑 `task_id` 与不可复用执行 `run_id`，要求其贯穿 C++/Python 协议、停止命令、持久化和迟到回调校验。
+- 未完成：方案尚未进入代码实现阶段。
+
+**验证证据**
+- `git diff --check -- final_plan.md` → 通过。
+- 文档结构检查 → 697 行、13 个顶层章节，`run_id` 约束已覆盖任务句柄、协议、实施阶段和验收不变量。
+- Release 构建和 CTest → 未执行，本轮仅修改方案文档。
+
+**下一步**
+- 按 `final_plan.md` 阶段 3，先为任务清空/重启后的旧消息隔离、停止命令身份校验和项目关闭收敛补充行为测试。
+
+---
+
 ## 2026-09-07 — 收敛评估缩略图并发生成
 
 **目标**

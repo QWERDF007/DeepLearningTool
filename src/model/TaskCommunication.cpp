@@ -29,6 +29,8 @@ QString taskProtocolFieldName(TaskProtocolField field)
     {
     case TaskProtocolField::TaskId:
         return QStringLiteral("task_id");
+    case TaskProtocolField::RunId:
+        return QStringLiteral("run_id");
     case TaskProtocolField::Type:
         return QStringLiteral("type");
     case TaskProtocolField::Status:
@@ -146,6 +148,8 @@ TaskCommunicationServer::TaskCommunicationServer(QObject *parent)
     : QObject(parent)
     , server_(new QTcpServer(this))
 {
+    qRegisterMetaType<TaskIdentity>();
+    qRegisterMetaType<TaskMessage>();
     connect(server_, &QTcpServer::newConnection, this, &TaskCommunicationServer::handleNewConnection);
 }
 
@@ -169,8 +173,8 @@ void TaskCommunicationServer::shutdown()
         socket->deleteLater();
     }
     buffers_.clear();
-    task_by_socket_.clear();
-    socket_by_task_.clear();
+    identity_by_socket_.clear();
+    socket_by_run_id_.clear();
 }
 
 bool TaskCommunicationServer::start(QString *err_msg)
@@ -207,9 +211,10 @@ quint16 TaskCommunicationServer::port() const
     return server_->serverPort();
 }
 
-bool TaskCommunicationServer::sendCommand(int task_id, TaskCommand command, const QVariantMap &payload)
+bool TaskCommunicationServer::sendCommand(const TaskIdentity &identity, TaskCommand command,
+                                          const QVariantMap &payload)
 {
-    if (shutting_down_)
+    if (shutting_down_ || !identity.isValid())
         return false;
 
     if (!server_->isListening() && !start())
@@ -221,26 +226,15 @@ bool TaskCommunicationServer::sendCommand(int task_id, TaskCommand command, cons
 
     QVariantMap message                                        = payload;
     message[taskProtocolFieldName(TaskProtocolField::Type)]    = taskMessageTypeName(TaskMessageType::Command);
-    message[taskProtocolFieldName(TaskProtocolField::TaskId)]  = task_id;
+    message[taskProtocolFieldName(TaskProtocolField::TaskId)]  = identity.task_id;
+    message[taskProtocolFieldName(TaskProtocolField::RunId)]   = identity.run_id;
     message[taskProtocolFieldName(TaskProtocolField::Command)] = command_name;
 
-    bool sent = false;
-    if (QPointer<QTcpSocket> socket = socket_by_task_.value(task_id); socket != nullptr)
-    {
-        writeJson(socket.data(), message);
-        sent = true;
-    }
-    else
-    {
-        for (QTcpSocket *socket : buffers_.keys())
-        {
-            if (socket == nullptr)
-                continue;
-            writeJson(socket, message);
-            sent = true;
-        }
-    }
-    return sent;
+    const QPointer<QTcpSocket> socket = socket_by_run_id_.value(identity.run_id);
+    if (socket == nullptr || identity_by_socket_.value(socket.data()) != identity)
+        return false;
+    writeJson(socket.data(), message);
+    return true;
 }
 
 void TaskCommunicationServer::handleNewConnection()
@@ -255,7 +249,7 @@ void TaskCommunicationServer::handleNewConnection()
             continue;
 
         buffers_.insert(socket, QByteArray());
-        task_by_socket_.insert(socket, -1);
+        identity_by_socket_.insert(socket, {});
         connect(socket, &QTcpSocket::readyRead, this, [this, socket]() { handleReadyRead(socket); });
         connect(socket, &QTcpSocket::disconnected, this, [this, socket]() { handleDisconnected(socket); });
     }
@@ -287,15 +281,15 @@ void TaskCommunicationServer::handleDisconnected(QTcpSocket *socket)
     if (socket == nullptr)
         return;
 
-    const int task_id = task_by_socket_.value(socket, -1);
-    if (task_id >= 0 && socket_by_task_.value(task_id) == socket)
+    const TaskIdentity identity = identity_by_socket_.value(socket);
+    if (identity.isValid() && socket_by_run_id_.value(identity.run_id) == socket)
     {
-        socket_by_task_.remove(task_id);
-        emit clientDisconnected(task_id);
+        socket_by_run_id_.remove(identity.run_id);
+        emit clientDisconnected(identity);
     }
 
     buffers_.remove(socket);
-    task_by_socket_.remove(socket);
+    identity_by_socket_.remove(socket);
     socket->deleteLater();
 }
 
@@ -313,9 +307,12 @@ void TaskCommunicationServer::processLine(QTcpSocket *socket, const QByteArray &
     }
 
     const QVariantMap object = document.object().toVariantMap();
-    TaskMessage       message;
-    message.task_id = object.value(taskProtocolFieldName(TaskProtocolField::TaskId), -1).toInt();
-    message.type    = taskMessageTypeFromName(object.value(taskProtocolFieldName(TaskProtocolField::Type)).toString());
+    TaskMessage message;
+    message.identity.task_id
+        = object.value(taskProtocolFieldName(TaskProtocolField::TaskId), -1).toInt();
+    message.identity.run_id
+        = object.value(taskProtocolFieldName(TaskProtocolField::RunId)).toString().trimmed();
+    message.type = taskMessageTypeFromName(object.value(taskProtocolFieldName(TaskProtocolField::Type)).toString());
     message.status
         = taskProtocolStatusFromName(object.value(taskProtocolFieldName(TaskProtocolField::Status)).toString());
     message.progress    = object.value(taskProtocolFieldName(TaskProtocolField::Progress), -1).toInt();
@@ -323,11 +320,28 @@ void TaskCommunicationServer::processLine(QTcpSocket *socket, const QByteArray &
     message.message     = object.value(taskProtocolFieldName(TaskProtocolField::Message)).toString();
     message.payload     = object;
 
-    if (message.task_id >= 0 && socket != nullptr)
+    if (!message.identity.isValid() || message.type == TaskMessageType::Unknown || socket == nullptr)
     {
-        task_by_socket_[socket]          = message.task_id;
-        socket_by_task_[message.task_id] = socket;
+        spdlog::warn("忽略缺少有效任务运行身份的任务通信消息");
+        return;
     }
+
+    const TaskIdentity bound_identity = identity_by_socket_.value(socket);
+    if (bound_identity.isValid() && bound_identity != message.identity)
+    {
+        spdlog::warn("忽略任务运行身份与连接不一致的任务通信消息: task_id={}", message.identity.task_id);
+        return;
+    }
+
+    const QPointer<QTcpSocket> existing_socket = socket_by_run_id_.value(message.identity.run_id);
+    if (existing_socket != nullptr && existing_socket != socket)
+    {
+        spdlog::warn("忽略重复任务运行连接: run_id={}", message.identity.run_id.toUtf8().constData());
+        return;
+    }
+
+    identity_by_socket_[socket] = message.identity;
+    socket_by_run_id_[message.identity.run_id] = socket;
 
     emit messageReceived(message);
 }

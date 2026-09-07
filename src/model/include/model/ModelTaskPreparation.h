@@ -46,7 +46,7 @@ struct MODEL_API ModelTaskConfigInput
  */
 struct MODEL_API ModelTaskRequest
 {
-    int                    task_id{-1};                       ///< 任务在 TaskManager 中的整数 ID。
+    TaskIdentity            identity;                          ///< 逻辑任务与本次执行身份。
     ModelTaskType          task_type{ModelTaskType::Unknown}; ///< 模型任务类型（Train, Test, BoxToMask 等）。
     QString                scope_uuid;                        ///< 测试任务 UUID；训练任务为 "train"。
     QString                scope_name;                        ///< 任务显示名称。

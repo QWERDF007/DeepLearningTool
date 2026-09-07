@@ -404,10 +404,11 @@ bool ModelTaskController::prepareTask(const int task_id)
         }
         result.success = true;
     };
-    const auto completion = [this, task_id, process_spec](const dltool::data::DataOperationWorkflow::Result &result)
+    const TaskIdentity task_identity = request_ptr->identity;
+    const auto completion = [this, task_identity, process_spec](const dltool::data::DataOperationWorkflow::Result &result)
     {
-        preparation_operations_.remove(task_id);
-        handlePreparedTask(task_id, process_spec, result.success, result.error);
+        preparation_operations_.remove(task_identity.run_id);
+        handlePreparedTask(task_identity, process_spec, result.success, result.error);
     };
 
     if (!describeModelTask(request_ptr->task_type).requires_dataset_export)
@@ -416,7 +417,7 @@ bool ModelTaskController::prepareTask(const int task_id)
             this, std::move(options),
             [prepare](dltool::data::DataOperationWorkflow::Result &result) { prepare(nullptr, result); }, completion);
         if (operation != nullptr)
-            preparation_operations_.insert(task_id, operation);
+            preparation_operations_.insert(task_identity.run_id, operation);
         else if (const TaskManager::Task *current = task_manager_->findTask(task_id);
                  current != nullptr && current->status == TaskManager::Preparing)
         {
@@ -440,7 +441,7 @@ bool ModelTaskController::prepareTask(const int task_id)
                       dltool::data::DataOperationWorkflow::Result &result) { prepare(&source, result); },
             completion);
         if (operation != nullptr)
-            preparation_operations_.insert(task_id, operation);
+            preparation_operations_.insert(task_identity.run_id, operation);
         else if (const TaskManager::Task *current = task_manager_->findTask(task_id);
                  current != nullptr && current->status == TaskManager::Preparing)
         {
@@ -464,11 +465,19 @@ bool ModelTaskController::deleteTask(const int task_id)
 {
     if (shutting_down_)
         return false;
+
+    TaskIdentity identity;
+    if (task_manager_ != nullptr)
+    {
+        if (const TaskManager::Task *task = task_manager_->findTask(task_id); task != nullptr)
+            identity = task->identity;
+    }
+
     const bool deleted = task_manager_ != nullptr && task_manager_->deleteTask(task_id);
-    if (const auto operation = preparation_operations_.take(task_id); operation != nullptr)
+    if (const auto operation = preparation_operations_.take(identity.run_id); operation != nullptr)
         operation->requestCancel();
-    if (external_task_runner_ != nullptr)
-        external_task_runner_->deleteTask(task_id);
+    if (external_task_runner_ != nullptr && identity.isValid())
+        external_task_runner_->deleteTask(identity);
     return deleted;
 }
 
@@ -494,7 +503,7 @@ bool ModelTaskController::buildTaskRequest(const int task_id, ModelTaskRequest &
     if (framework.name.isEmpty())
         return setError(err_msg, QString("框架未注册: %1").arg(record.framework_name));
 
-    request.task_id                         = task->id;
+    request.identity                        = task->identity;
     request.task_type                       = task->type;
     request.scope_uuid                      = task->scope_uuid;
     request.scope_name                      = task->scope_name;
@@ -540,29 +549,29 @@ bool ModelTaskController::buildTaskRequest(const int task_id, ModelTaskRequest &
     return true;
 }
 
-void ModelTaskController::handlePreparedTask(const int                                   task_id,
+void ModelTaskController::handlePreparedTask(const TaskIdentity                         &identity,
                                              const std::shared_ptr<ExternalProcessSpec> &process_spec,
                                              const bool success, const QString &error)
 {
     if (shutting_down_ || task_manager_ == nullptr)
         return;
 
-    const TaskManager::Task *task = task_manager_->findTask(task_id);
+    const TaskManager::Task *task = task_manager_->findTask(identity.task_id);
     // 停止或删除发生在后台准备期间时，任务已不再是 Preparing，完成回调只需丢弃。
-    if (task == nullptr || task->status != TaskManager::Preparing)
+    if (task == nullptr || task->identity != identity || task->status != TaskManager::Preparing)
         return;
 
     if (!success)
     {
-        failTask(task_id, error.isEmpty() ? QString("准备模型任务失败") : error);
+        failTask(identity.task_id, error.isEmpty() ? QString("准备模型任务失败") : error);
         return;
     }
 
     QString start_error;
-    if (process_spec == nullptr || external_task_runner_ == nullptr
+    if (process_spec == nullptr || process_spec->identity != identity || external_task_runner_ == nullptr
         || !external_task_runner_->start(*process_spec, &start_error))
     {
-        failTask(task_id, start_error.isEmpty() ? QString("启动外部模型任务失败") : start_error);
+        failTask(identity.task_id, start_error.isEmpty() ? QString("启动外部模型任务失败") : start_error);
     }
 }
 
@@ -703,29 +712,33 @@ void ModelTaskController::flushPendingExtraUpdates()
     for (const int task_id : task_ids) flushModelState(task_id);
 }
 
-void ModelTaskController::handleTaskStartRequested(const int task_id)
+void ModelTaskController::handleTaskStartRequested(const TaskIdentity &identity)
 {
-    if (!shutting_down_ && taskBelongsToCurrentModelManager(task_id))
-        prepareTask(task_id);
+    if (shutting_down_ || task_manager_ == nullptr)
+        return;
+    const TaskManager::Task *task = task_manager_->findTask(identity.task_id);
+    if (task != nullptr && task->identity == identity && taskBelongsToCurrentModelManager(identity.task_id))
+        prepareTask(identity.task_id);
 }
 
 void ModelTaskController::handleTaskMessage(const TaskMessage &message)
 {
-    if (shutting_down_ || model_manager_ == nullptr || task_manager_ == nullptr || message.task_id < 0
+    if (shutting_down_ || model_manager_ == nullptr || task_manager_ == nullptr || !message.identity.isValid()
         || message.type == TaskMessageType::Log || message.type == TaskMessageType::Command)
     {
         return;
     }
 
-    const TaskManager::Task *task = task_manager_->findTask(message.task_id);
-    if (task == nullptr || (!isTrainModelTask(task->type) && !isTestModelTask(task->type)))
+    const TaskManager::Task *task = task_manager_->findTask(message.identity.task_id);
+    if (task == nullptr || task->identity != message.identity
+        || (!isTrainModelTask(task->type) && !isTestModelTask(task->type)))
         return;
 
     // 高频进度消息只合并进内存缓冲，由节流定时器统一落库（≤1 次/秒/任务）。
     // TaskManager 表格仍由 TaskManager 每事件即时更新（纯内存，无磁盘 IO）。
     // 消息只携带指标字段；progress/started 一律由任务状态投影写入（见
     // applyTaskStateToSection），不在此处维护独立进度值。
-    QVariantMap &pending = pending_extra_updates_[message.task_id];
+    QVariantMap &pending = pending_extra_updates_[message.identity.task_id];
     for (const QString &key : {QStringLiteral("epoch"), QStringLiteral("iter"), QStringLiteral("lr"),
                                QStringLiteral("loss"), QStringLiteral("elapsed"), QStringLiteral("eta")})
     {
@@ -748,8 +761,8 @@ void ModelTaskController::handleTaskMessage(const TaskMessage &message)
                        || message.status == TaskProtocolStatus::Error;
     if (terminal)
     {
-        touchTaskModelModifiedTime(message.task_id);
-        flushModelState(message.task_id);
+        touchTaskModelModifiedTime(message.identity.task_id);
+        flushModelState(message.identity.task_id);
         return;
     }
 
@@ -780,107 +793,112 @@ void ModelTaskController::handleTaskRunningTimeChanged(const int task_id)
         extra_flush_timer_->start();
 }
 
-void ModelTaskController::handleTaskStopRequested(const int task_id)
+void ModelTaskController::handleTaskStopRequested(const TaskIdentity &identity)
 {
-    if (!taskBelongsToCurrentModelManager(task_id))
+    if (!taskBelongsToCurrentModelManager(identity.task_id))
         return;
 
-    if (const auto operation = preparation_operations_.value(task_id); operation != nullptr)
+    const TaskManager::Task *task = task_manager_ != nullptr ? task_manager_->findTask(identity.task_id) : nullptr;
+    if (task == nullptr || task->identity != identity)
+        return;
+
+    if (const auto operation = preparation_operations_.value(identity.run_id); operation != nullptr)
         operation->requestCancel();
 
-    if (external_task_runner_ != nullptr && external_task_runner_->hasRunningTask(task_id))
+    if (external_task_runner_ != nullptr && external_task_runner_->hasRunningTask(identity))
     {
-        external_task_runner_->stop(task_id);
+        external_task_runner_->stop(identity);
         return;
     }
 
     if (task_manager_ != nullptr)
-        task_manager_->markTaskStopped(task_id);
-    syncTaskModelState(task_id);
-    touchTaskModelModifiedTime(task_id);
+        task_manager_->markTaskStopped(identity.task_id);
+    syncTaskModelState(identity.task_id);
+    touchTaskModelModifiedTime(identity.task_id);
 }
 
-void ModelTaskController::handleExternalTaskStarted(const int task_id)
+void ModelTaskController::handleExternalTaskStarted(const TaskIdentity &identity)
 {
-    if (shutting_down_ || task_manager_ == nullptr || !taskBelongsToCurrentModelManager(task_id))
+    if (shutting_down_ || task_manager_ == nullptr || !taskBelongsToCurrentModelManager(identity.task_id))
         return;
 
-    const TaskManager::Task *task = task_manager_->findTask(task_id);
-    if (task == nullptr)
+    const TaskManager::Task *task = task_manager_->findTask(identity.task_id);
+    if (task == nullptr || task->identity != identity)
         return;
 
     if (task->status == TaskManager::Preparing)
     {
-        if (task_manager_->markTaskRunning(task_id))
+        if (task_manager_->markTaskRunning(identity.task_id))
         {
-            syncTaskModelState(task_id);
-            touchTaskModelModifiedTime(task_id);
+            syncTaskModelState(identity.task_id);
+            touchTaskModelModifiedTime(identity.task_id);
         }
         return;
     }
 
     // 用户在 QProcess::Starting 阶段点击停止时，进程刚启动也必须继续收敛。
     if (task->status == TaskManager::Stopping && external_task_runner_ != nullptr)
-        external_task_runner_->stop(task_id);
+        external_task_runner_->stop(identity);
 }
 
-void ModelTaskController::handleExternalTaskStartFailed(const int task_id, const QString &error)
+void ModelTaskController::handleExternalTaskStartFailed(const TaskIdentity &identity, const QString &error)
 {
-    if (shutting_down_ || task_manager_ == nullptr || !taskBelongsToCurrentModelManager(task_id))
+    if (shutting_down_ || task_manager_ == nullptr || !taskBelongsToCurrentModelManager(identity.task_id))
         return;
 
-    const TaskManager::Task *task = task_manager_->findTask(task_id);
-    if (task == nullptr)
+    const TaskManager::Task *task = task_manager_->findTask(identity.task_id);
+    if (task == nullptr || task->identity != identity)
         return;
 
     if (task->status == TaskManager::Stopping)
     {
-        task_manager_->markTaskStopped(task_id);
-        syncTaskModelState(task_id);
-        touchTaskModelModifiedTime(task_id);
+        task_manager_->markTaskStopped(identity.task_id);
+        syncTaskModelState(identity.task_id);
+        touchTaskModelModifiedTime(identity.task_id);
         return;
     }
     if (task->status == TaskManager::Preparing)
-        failTask(task_id, error.isEmpty() ? QString("外部模型任务进程启动失败") : error);
+        failTask(identity.task_id, error.isEmpty() ? QString("外部模型任务进程启动失败") : error);
 }
 
-void ModelTaskController::handleExternalTaskFinished(const int task_id, const int exit_code, const bool normal_exit,
+void ModelTaskController::handleExternalTaskFinished(const TaskIdentity &identity, const int exit_code,
+                                                     const bool normal_exit,
                                                      const bool stop_requested)
 {
-    if (shutting_down_ || task_manager_ == nullptr || !taskBelongsToCurrentModelManager(task_id))
+    if (shutting_down_ || task_manager_ == nullptr || !taskBelongsToCurrentModelManager(identity.task_id))
         return;
 
-    const TaskManager::Task *task = task_manager_->findTask(task_id);
-    if (task == nullptr)
+    const TaskManager::Task *task = task_manager_->findTask(identity.task_id);
+    if (task == nullptr || task->identity != identity)
         return;
     if (TaskManager::isTerminal(task->status))
     {
-        syncTaskModelState(task_id);
+        syncTaskModelState(identity.task_id);
         return;
     }
 
-    touchTaskModelModifiedTime(task_id);
+    touchTaskModelModifiedTime(identity.task_id);
     if (task->status == TaskManager::Stopping || stop_requested || (normal_exit && exit_code == 2))
     {
-        task_manager_->markTaskStopped(task_id);
-        syncTaskModelState(task_id);
+        task_manager_->markTaskStopped(identity.task_id);
+        syncTaskModelState(identity.task_id);
         return;
     }
     if (normal_exit && exit_code == 0)
     {
         if (task->status == TaskManager::Preparing)
-            task_manager_->markTaskRunning(task_id);
-        task_manager_->updateTaskPhase(task_id, QStringLiteral("finished"));
-        task_manager_->finishTask(task_id);
-        syncTaskModelState(task_id);
+            task_manager_->markTaskRunning(identity.task_id);
+        task_manager_->updateTaskPhase(identity.task_id, QStringLiteral("finished"));
+        task_manager_->finishTask(identity.task_id);
+        syncTaskModelState(identity.task_id);
         return;
     }
 
-    task = task_manager_->findTask(task_id);
+    task = task_manager_->findTask(identity.task_id);
     if (task != nullptr && !TaskManager::isTerminal(task->status))
     {
         const QString name = modelTaskDisplayName(task->type);
-        failTask(task_id, normal_exit ? QString("%1失败（退出码 %2），请查看模型日志。").arg(name).arg(exit_code)
+        failTask(identity.task_id, normal_exit ? QString("%1失败（退出码 %2），请查看模型日志。").arg(name).arg(exit_code)
                                       : QString("%1异常退出，请查看模型日志。").arg(name));
     }
 }

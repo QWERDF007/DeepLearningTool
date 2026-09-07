@@ -922,15 +922,16 @@ void ModelTestTaskManager::handleTaskRevisionChanged()
     emit taskStateChanged();
 }
 
-void ModelTestTaskManager::handleTaskStartRequested(const int task_id)
+void ModelTestTaskManager::handleTaskStartRequested(const TaskIdentity &identity)
 {
     if (shutting_down_)
         return;
 
     if (task_manager_ == nullptr)
         return;
-    const TaskManager::Task *task = task_manager_->findTask(task_id);
-    if (task == nullptr || !isTestModelTask(task->type) || task->scope_uuid.trimmed().isEmpty())
+    const TaskManager::Task *task = task_manager_->findTask(identity.task_id);
+    if (task == nullptr || task->identity != identity || !isTestModelTask(task->type)
+        || task->scope_uuid.trimmed().isEmpty())
         return;
     if (model_manager_ != nullptr
         && isFewShotModel(model_manager_, model_manager_->modelRecordViewForUuid(task->model_uuid)))

@@ -22,6 +22,7 @@ private slots:
         QCOMPARE(taskCommandFromName(QStringLiteral(" STOP ")), TaskCommand::Stop);
         QCOMPARE(taskMessageTypeFromName(QStringLiteral("unknown")), TaskMessageType::Unknown);
         QCOMPARE(taskProtocolFieldName(TaskProtocolField::TaskId), QStringLiteral("task_id"));
+        QCOMPARE(taskProtocolFieldName(TaskProtocolField::RunId), QStringLiteral("run_id"));
         QCOMPARE(taskCommandName(TaskCommand::Stop), QStringLiteral("stop"));
     }
 
@@ -35,19 +36,21 @@ private slots:
         QVERIFY(socket.waitForConnected(2000));
         QSignalSpy received(&server, &TaskCommunicationServer::messageReceived);
 
-        const QByteArray first = R"({"task_id":7,"type":"progress","status":"running","progress":2)";
+        const QByteArray first
+            = R"({"task_id":7,"run_id":"run-7","type":"progress","status":"running","progress":2)";
         socket.write(first.left(first.size() / 2));
         socket.flush();
         QTest::qWait(20);
         QVERIFY(received.isEmpty());
         socket.write(first.mid(first.size() / 2) + "}\n"
-                     R"({"task_id":7,"type":"log","message":"hello","payload":{"x":3}})"
+                     R"({"task_id":7,"run_id":"run-7","type":"log","message":"hello","payload":{"x":3}})"
                      "\n");
         socket.flush();
         QTRY_COMPARE_WITH_TIMEOUT(received.count(), 2, 2000);
 
         const TaskMessage first_message = qvariant_cast<TaskMessage>(received.at(0).at(0));
-        QCOMPARE(first_message.task_id, 7);
+        QCOMPARE(first_message.identity.task_id, 7);
+        QCOMPARE(first_message.identity.run_id, QStringLiteral("run-7"));
         QCOMPARE(first_message.type, TaskMessageType::Progress);
         QCOMPARE(first_message.status, TaskProtocolStatus::Running);
         QCOMPARE(first_message.progress, 2);
@@ -65,14 +68,16 @@ private slots:
         QVERIFY(socket.waitForConnected(2000));
         QSignalSpy received(&server, &TaskCommunicationServer::messageReceived);
         socket.write("not-json\n");
-        socket.write(R"({"task_id":9,"type":"event","status":"pending"})" "\n");
+        socket.write(R"({"task_id":9,"run_id":"run-9","type":"event","status":"pending"})" "\n");
         socket.flush();
         QTRY_COMPARE_WITH_TIMEOUT(received.count(), 1, 2000);
 
-        QVERIFY(server.sendCommand(9, TaskCommand::Stop, {{QStringLiteral("reason"), QStringLiteral("test")}}));
+        const TaskIdentity identity{9, QStringLiteral("run-9")};
+        QVERIFY(server.sendCommand(identity, TaskCommand::Stop, {{QStringLiteral("reason"), QStringLiteral("test")}}));
         QVERIFY(socket.waitForReadyRead(2000));
         const QJsonObject command = QJsonDocument::fromJson(socket.readLine()).object();
         QCOMPARE(command.value(QStringLiteral("task_id")).toInt(), 9);
+        QCOMPARE(command.value(QStringLiteral("run_id")).toString(), QStringLiteral("run-9"));
         QCOMPARE(command.value(QStringLiteral("type")).toString(), QStringLiteral("command"));
         QCOMPARE(command.value(QStringLiteral("command")).toString(), QStringLiteral("stop"));
         QCOMPARE(command.value(QStringLiteral("reason")).toString(), QStringLiteral("test"));
@@ -81,12 +86,42 @@ private slots:
         socket.disconnectFromHost();
         QVERIFY(socket.waitForDisconnected(2000) || socket.state() == QAbstractSocket::UnconnectedState);
         QTRY_COMPARE_WITH_TIMEOUT(disconnected.count(), 1, 2000);
-        QCOMPARE(disconnected.at(0).at(0).toInt(), 9);
-        QVERIFY(!server.sendCommand(9, TaskCommand::Unknown));
+        const TaskIdentity disconnected_identity = qvariant_cast<TaskIdentity>(disconnected.at(0).at(0));
+        QCOMPARE(disconnected_identity, identity);
+        QVERIFY(!server.sendCommand(identity, TaskCommand::Unknown));
+    }
+
+    void rejectsMissingAndConflictingRunIdentity()
+    {
+        TaskCommunicationServer server;
+        QVERIFY(server.start());
+        QSignalSpy received(&server, &TaskCommunicationServer::messageReceived);
+
+        QTcpSocket socket;
+        socket.connectToHost(server.host(), server.port());
+        QVERIFY(socket.waitForConnected(2000));
+
+        socket.write(R"({"task_id":7,"type":"progress","progress":1})" "\n");
+        socket.write(R"({"task_id":7,"run_id":"run-a","type":"progress","progress":2})" "\n");
+        socket.write(R"({"task_id":8,"run_id":"run-b","type":"progress","progress":3})" "\n");
+        socket.flush();
+        QTRY_COMPARE_WITH_TIMEOUT(received.count(), 1, 2000);
+
+        const TaskIdentity wrong_task{8, QStringLiteral("run-a")};
+        QVERIFY(!server.sendCommand(wrong_task, TaskCommand::Stop));
+        const TaskIdentity identity{7, QStringLiteral("run-a")};
+        QVERIFY(server.sendCommand(identity, TaskCommand::Stop));
+
+        QTcpSocket duplicate;
+        duplicate.connectToHost(server.host(), server.port());
+        QVERIFY(duplicate.waitForConnected(2000));
+        duplicate.write(R"({"task_id":7,"run_id":"run-a","type":"progress","progress":4})" "\n");
+        duplicate.flush();
+        QTest::qWait(100);
+        QCOMPARE(received.count(), 1);
     }
 };
 
-Q_DECLARE_METATYPE(dltool::model::TaskMessage)
 REGISTER_TEST(TaskCommunicationServerTest)
 
 #include "test_TaskCommunicationServer.moc"

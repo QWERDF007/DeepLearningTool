@@ -27,8 +27,8 @@
 - 保存唯一的 `Task` 记录，不维护任务快照、`QVariantMap` 副本或额外事件路由器。
 - 负责任务表的局部插入、删除和状态/进度更新。
 - 管理 `TaskCommunicationServer`，直接解析 Python 的 TCP 事件。
-- `startTask()` 将任务置为 `Preparing` 并发出 `taskStartRequested(task_id)`。
-- `stopTask()` 将任务置为 `Stopping`、发送 TCP 停止命令并发出 `taskStopRequested(task_id)`。
+- `startTask()` 为本次执行生成新的 `run_id`，将任务置为 `Preparing` 并发出 `taskStartRequested(TaskIdentity)`。
+- `stopTask()` 将任务置为 `Stopping`、发送带 `TaskIdentity` 的 TCP 停止命令并发出 `taskStopRequested(TaskIdentity)`。
 
 任务状态如下：
 
@@ -159,9 +159,11 @@ Python 脚本通过启动参数获得本地 TCP 地址和任务 ID：
 --dltool_task_host <host>
 --dltool_task_port <port>
 --dltool_task_id <task_id>
+--dltool_run_id <run_id>
 ```
 
-脚本发送 `running`、`stopped`、`finished`、`failed`、`error`、进度和 ETA。
+脚本必须在每条消息中发送与启动参数一致的 `task_id` 和 `run_id`，并发送
+`running`、`stopped`、`finished`、`failed`、`error`、进度和 ETA。
 `TaskManager` 先更新任务表，再发出 `taskMessageReceived`；`ModelTaskController` 随后刷新该模型的
 训练或测试 `extra_data`。已停止、已完成或已失败的任务不会被迟到事件重新打开。
 

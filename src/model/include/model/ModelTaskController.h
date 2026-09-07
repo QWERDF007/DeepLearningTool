@@ -146,8 +146,8 @@ private:
      * @param success 后台准备是否成功。
      * @param error 后台准备失败信息。
      */
-    void handlePreparedTask(int task_id, const std::shared_ptr<ExternalProcessSpec> &process_spec, bool success,
-                            const QString &error);
+    void handlePreparedTask(const TaskIdentity &identity, const std::shared_ptr<ExternalProcessSpec> &process_spec,
+                            bool success, const QString &error);
 
     /**
      * @brief 判断任务是否属于当前项目的模型管理器。
@@ -213,7 +213,7 @@ private slots:
      * @brief 响应 TaskManager 的开始请求，提交完整后台准备流程。
      * @param task_id 任务 ID。
      */
-    void handleTaskStartRequested(int task_id);
+    void handleTaskStartRequested(const TaskIdentity &identity);
 
     /**
      * @brief 根据已被 TaskManager 接受的 Python 事件刷新模型结果数据。
@@ -231,20 +231,20 @@ private slots:
      * @brief 响应停止请求，停止 Python 进程或收敛后台准备。
      * @param task_id 任务 ID。
      */
-    void handleTaskStopRequested(int task_id);
+    void handleTaskStopRequested(const TaskIdentity &identity);
 
     /**
      * @brief Python 进程实际启动后，将任务置为 Running。
      * @param task_id 任务 ID。
      */
-    void handleExternalTaskStarted(int task_id);
+    void handleExternalTaskStarted(const TaskIdentity &identity);
 
     /**
      * @brief 处理 Python 进程启动失败。
      * @param task_id 任务 ID。
      * @param error 错误信息。
      */
-    void handleExternalTaskStartFailed(int task_id, const QString &error);
+    void handleExternalTaskStartFailed(const TaskIdentity &identity, const QString &error);
 
     /**
      * @brief 根据 Python 进程退出结果收敛任务状态。
@@ -253,7 +253,8 @@ private slots:
      * @param normal_exit 是否正常退出。
      * @param stop_requested 是否由用户请求停止。
      */
-    void handleExternalTaskFinished(int task_id, int exit_code, bool normal_exit, bool stop_requested);
+    void handleExternalTaskFinished(const TaskIdentity &identity, int exit_code, bool normal_exit,
+                                    bool stop_requested);
 
 private:
     int     method_{-1};  ///< 当前项目的深度学习方法。
@@ -265,8 +266,8 @@ private:
     std::unique_ptr<ExternalModelTaskRunner> external_task_runner_;   ///< 当前项目 Python 进程运行器。
     ModelTestTaskRepository                  test_task_repository_;
 
-    /// 当前任务的后台准备句柄；项目关闭时统一取消并等待。
-    QHash<int, dltool::data::DataOperationWorkflow::HandlePtr> preparation_operations_;
+    /// 当前执行的后台准备句柄；按不可复用 run_id 隔离重启后的同一逻辑任务。
+    QHash<QString, dltool::data::DataOperationWorkflow::HandlePtr> preparation_operations_;
     bool                                                        shutting_down_{false};
 
     /// 待合并的任务状态更新缓冲（task_id -> 指标字段），由节流定时器统一落库。

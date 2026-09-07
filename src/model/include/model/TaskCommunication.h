@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dltool/model/Export.h"
+#include "model/TaskIdentity.h"
 
 #include <QHash>
 #include <QObject>
@@ -16,6 +17,7 @@ namespace dltool::model {
 enum class TaskProtocolField
 {
     TaskId,
+    RunId,
     Type,
     Status,
     Progress,
@@ -105,7 +107,7 @@ MODEL_API TaskCommand taskCommandFromName(const QString &name);
  */
 struct MODEL_API TaskMessage
 {
-    int                task_id{-1};                         ///< 任务 ID
+    TaskIdentity       identity;                            ///< 逻辑任务与本次执行身份
     TaskMessageType    type{TaskMessageType::Unknown};      ///< 消息类型
     TaskProtocolStatus status{TaskProtocolStatus::Unknown}; ///< 任务状态
     int                progress{-1};                        ///< 进度（0-100）
@@ -153,16 +155,16 @@ public:
 
     /**
      * @brief 向指定任务发送命令
-     * @param task_id 任务 ID
+     * @param identity 逻辑任务与本次执行身份
      * @param command 命令类型
      * @param payload 附加数据
      * @return 发送成功返回 true
      */
-    bool sendCommand(int task_id, TaskCommand command, const QVariantMap &payload = {});
+    bool sendCommand(const TaskIdentity &identity, TaskCommand command, const QVariantMap &payload = {});
 
 signals:
     void messageReceived(const dltool::model::TaskMessage &message);
-    void clientDisconnected(int task_id);
+    void clientDisconnected(const dltool::model::TaskIdentity &identity);
 
 private:
     /**
@@ -200,10 +202,12 @@ private:
 
     QHash<QTcpSocket *, QByteArray> buffers_; ///< 接收缓冲区映射
 
-    QHash<QTcpSocket *, int> task_by_socket_; ///< socket 到 task_id 的映射
+    QHash<QTcpSocket *, TaskIdentity> identity_by_socket_; ///< socket 到任务执行身份的映射
 
-    QHash<int, QPointer<QTcpSocket>> socket_by_task_; ///< task_id 到 socket 的映射
+    QHash<QString, QPointer<QTcpSocket>> socket_by_run_id_; ///< run_id 到 socket 的映射
     bool shutting_down_{false};
 };
 
 } // namespace dltool::model
+
+Q_DECLARE_METATYPE(dltool::model::TaskMessage)

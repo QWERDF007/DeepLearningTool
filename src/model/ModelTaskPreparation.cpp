@@ -263,7 +263,7 @@ bool prepareFsSam2Task(int method, const QString &project_dir, const ModelTaskRe
     if (log_path.isEmpty())
         return setError(err_msg, QString("FS-SAM2 日志路径为空"));
 
-    process_spec.task_id   = request.task_id;
+    process_spec.identity  = request.identity;
     process_spec.program   = python_executable;
     process_spec.arguments = {
         script_path,
@@ -294,7 +294,8 @@ bool prepareFsSam2Task(int method, const QString &project_dir, const ModelTaskRe
     }
     process_spec.arguments << QStringLiteral("--dltool_task_host") << request.task_server_host
                            << QStringLiteral("--dltool_task_port") << QString::number(request.task_server_port)
-                           << QStringLiteral("--dltool_task_id") << QString::number(request.task_id);
+                           << QStringLiteral("--dltool_task_id") << QString::number(request.identity.task_id)
+                           << QStringLiteral("--dltool_run_id") << request.identity.run_id;
     if (request.task_type == ModelTaskType::BoxToMask)
     {
         process_spec.arguments << QStringLiteral("--dltool_progress_base") << QStringLiteral("0")
@@ -416,7 +417,7 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
     if (is_train && !clearTensorBoardEventFiles(log_dir, &tensorboard_error))
         return setError(err_msg, tensorboard_error);
 
-    process_spec.task_id   = request.task_id;
+    process_spec.identity  = request.identity;
     process_spec.program   = python_executable;
     process_spec.arguments = {
         script_path,
@@ -473,7 +474,8 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
     }
     process_spec.arguments << QStringLiteral("--dltool_task_host") << request.task_server_host
                            << QStringLiteral("--dltool_task_port") << QString::number(request.task_server_port)
-                           << QStringLiteral("--dltool_task_id") << QString::number(request.task_id);
+                           << QStringLiteral("--dltool_task_id") << QString::number(request.identity.task_id)
+                           << QStringLiteral("--dltool_run_id") << request.identity.run_id;
     process_spec.working_directory = request.framework.root;
     process_spec.python_paths      = request.framework.python_paths;
     process_spec.log_path          = log_path;
@@ -487,8 +489,8 @@ bool prepareModelTask(const int method, const QString &project_dir, const ModelT
                       QString *err_msg)
 {
     process_spec = {};
-    if (request.task_id < 0)
-        return setError(err_msg, QString("任务 id 无效"));
+    if (!request.identity.isValid())
+        return setError(err_msg, QString("任务执行身份无效"));
     if (!isKnownModelTask(request.task_type))
         return setError(err_msg, QString("任务类型无效"));
     if (request.task_server_host.trimmed().isEmpty() || request.task_server_port == 0)

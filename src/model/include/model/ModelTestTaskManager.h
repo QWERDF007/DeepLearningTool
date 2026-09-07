@@ -193,7 +193,7 @@ signals:
 
 private slots:
     void scheduleSave();
-    void handleTaskStartRequested(int task_id);
+    void handleTaskStartRequested(const TaskIdentity &identity);
     void handleTaskRevisionChanged();
 
 private:

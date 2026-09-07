@@ -6,6 +6,7 @@
 #include <spdlog/spdlog.h>
 
 #include <QDateTime>
+#include <QUuid>
 #include <algorithm>
 #include <utility>
 
@@ -40,6 +41,8 @@ TaskManager::TaskManager(QObject *parent)
     , runtime_timer_(new QTimer(this))
     , communication_server_(new TaskCommunicationServer(this))
 {
+    qRegisterMetaType<TaskIdentity>();
+    qRegisterMetaType<TaskMessage>();
     runtime_timer_->setInterval(kRuntimeRefreshIntervalMs);
     connect(runtime_timer_, &QTimer::timeout, this, &TaskManager::refreshRunningTasks);
     runtime_timer_->start();
@@ -91,7 +94,7 @@ QVariant TaskManager::data(const QModelIndex &index, const int role) const
     case Qt::DisplayRole:
         return dataForColumn(task, index.column());
     case TaskIdRole:
-        return task.id;
+        return task.identity.task_id;
     case ModelUuidRole:
         return task.model_uuid;
     case ModelNameRole:
@@ -219,7 +222,7 @@ int TaskManager::addTask(const QString &model_uuid, const QString &model_name, c
     beginInsertRows({}, row, row);
     const int task_id = next_task_id_++;
     Task      task;
-    task.id         = task_id;
+    task.identity.task_id = task_id;
     task.model_uuid = uuid;
     task.model_name = name;
     task.scope_uuid = scope_uuid.trimmed();
@@ -275,7 +278,13 @@ bool TaskManager::startTask(const int task_id)
     if (!setTaskStatus(task_id, Preparing))
         return false;
 
-    emit taskStartRequested(task_id);
+    const int row = rowForTask(task_id);
+    if (row < 0)
+        return false;
+    Task &started_task = tasks_[static_cast<size_t>(row)];
+    started_task.identity.run_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    emitTaskChanged(row);
+    emit taskStartRequested(started_task.identity);
     return true;
 }
 
@@ -291,9 +300,12 @@ bool TaskManager::stopTask(const int task_id)
     if (!setTaskStatus(task_id, Stopping))
         return false;
 
-    const bool command_sent
-        = communication_server_ != nullptr && communication_server_->sendCommand(task_id, TaskCommand::Stop);
-    emit taskStopRequested(task_id);
+    const Task *stopping_task = findTask(task_id);
+    const bool  command_sent  = stopping_task != nullptr && stopping_task->identity.isValid()
+                              && communication_server_ != nullptr
+                              && communication_server_->sendCommand(stopping_task->identity, TaskCommand::Stop);
+    if (stopping_task != nullptr)
+        emit taskStopRequested(stopping_task->identity);
     spdlog::info("停止任务, task_id: {}, 通信命令: {}", task_id, command_sent ? "已发送" : "未发送");
     return true;
 }
@@ -435,7 +447,6 @@ void TaskManager::clearTasks()
     beginResetModel();
     tasks_.clear();
     terminal_events_.clear();
-    next_task_id_ = 1;
     endResetModel();
     emit countChanged();
     ++revision_;
@@ -447,14 +458,14 @@ int TaskManager::findModelTask(const QString &model_uuid, const ModelTaskType ta
 {
     const QString scope_uuid = isTrainModelTask(task_type) ? QStringLiteral("train") : QString();
     const Task   *task       = findModelTaskRecord(model_uuid, task_type, scope_uuid, include_finished);
-    return task != nullptr ? task->id : -1;
+    return task != nullptr ? task->identity.task_id : -1;
 }
 
 int TaskManager::findModelTask(const QString &model_uuid, const ModelTaskType task_type, const QString &scope_uuid,
                                const bool include_finished) const
 {
     const Task *task = findModelTaskRecord(model_uuid, task_type, scope_uuid, include_finished);
-    return task != nullptr ? task->id : -1;
+    return task != nullptr ? task->identity.task_id : -1;
 }
 
 const TaskManager::Task *TaskManager::findTask(const int task_id) const
@@ -544,30 +555,30 @@ quint16 TaskManager::taskServerPort() const
 
 void TaskManager::handleTaskMessage(const TaskMessage &message)
 {
-    if (shutting_down_ || message.task_id < 0)
+    if (shutting_down_ || !message.identity.isValid())
         return;
 
-    const Task *task = findTask(message.task_id);
-    if (task == nullptr)
+    const Task *task = findTask(message.identity.task_id);
+    if (task == nullptr || task->identity != message.identity)
         return;
 
     const bool terminal_message = message.status == TaskProtocolStatus::Stopped
                                || message.status == TaskProtocolStatus::Finished
                                || message.status == TaskProtocolStatus::Failed
                                || message.status == TaskProtocolStatus::Error;
-    if (terminal_message && terminal_events_.contains(message.task_id))
+    if (terminal_message && terminal_events_.contains(message.identity.run_id))
         return;
     if (terminal_message)
-        terminal_events_.insert(message.task_id);
+        terminal_events_.insert(message.identity.run_id);
 
     if (message.type == TaskMessageType::Log)
     {
         const QString error_prefix = QStringLiteral("[DLTOOL_ERROR] ");
         if (message.message.startsWith(error_prefix))
-            spdlog::error("任务 {} 失败详情: {}", message.task_id,
+            spdlog::error("任务 {} 失败详情: {}", message.identity.task_id,
                           message.message.sliced(error_prefix.size()).toUtf8().constData());
         else if (!message.message.isEmpty())
-            spdlog::info("任务 {}: {}", message.task_id, message.message.toUtf8().constData());
+            spdlog::info("任务 {}: {}", message.identity.task_id, message.message.toUtf8().constData());
         emit taskMessageReceived(message);
         return;
     }
@@ -583,40 +594,40 @@ void TaskManager::handleTaskMessage(const TaskMessage &message)
         if (message.status == TaskProtocolStatus::Stopped || message.status == TaskProtocolStatus::Finished
             || message.status == TaskProtocolStatus::Failed || message.status == TaskProtocolStatus::Error)
         {
-            markTaskStopped(message.task_id);
+            markTaskStopped(message.identity.task_id);
         }
         emit taskMessageReceived(message);
         return;
     }
 
     if (message.progress >= 0)
-        updateTaskProgress(message.task_id, message.progress);
+        updateTaskProgress(message.identity.task_id, message.progress);
     if (message.payload.contains(taskProtocolFieldName(TaskProtocolField::EtaSeconds)) && message.eta_seconds >= 0)
-        updateTaskEta(message.task_id, message.eta_seconds);
+        updateTaskEta(message.identity.task_id, message.eta_seconds);
     if (message.payload.contains(QStringLiteral("phase")))
-        updateTaskPhase(message.task_id, message.payload.value(QStringLiteral("phase")).toString());
+        updateTaskPhase(message.identity.task_id, message.payload.value(QStringLiteral("phase")).toString());
 
     switch (message.status)
     {
     case TaskProtocolStatus::Running:
-        markTaskRunning(message.task_id);
+        markTaskRunning(message.identity.task_id);
         break;
     case TaskProtocolStatus::Stopped:
-        markTaskStopped(message.task_id);
+        markTaskStopped(message.identity.task_id);
         break;
     case TaskProtocolStatus::Finished:
         // A test runner finishes after inference.  The selected test page
         // starts the lazy in-memory C++ evaluation from this terminal state.
         if (task->type != ModelTaskType::Test)
-            finishTask(message.task_id);
+            finishTask(message.identity.task_id);
         break;
     case TaskProtocolStatus::Failed:
     case TaskProtocolStatus::Error:
-        if (failTask(message.task_id))
+        if (failTask(message.identity.task_id))
         {
-            spdlog::error("任务 {} 失败: {}", message.task_id, message.message.toUtf8().constData());
+            spdlog::error("任务 {} 失败: {}", message.identity.task_id, message.message.toUtf8().constData());
             ui::SignalHelper::notifyError(
-                QString("模型任务 %1 失败").arg(message.task_id),
+                QString("模型任务 %1 失败").arg(message.identity.task_id),
                 message.message.isEmpty() ? QString("任务执行失败，请查看模型日志。") : message.message);
         }
         break;
@@ -631,7 +642,7 @@ int TaskManager::rowForTask(const int task_id) const
 {
     for (int row = 0; row < static_cast<int>(tasks_.size()); ++row)
     {
-        if (tasks_[static_cast<size_t>(row)].id == task_id)
+        if (tasks_[static_cast<size_t>(row)].identity.task_id == task_id)
             return row;
     }
     return -1;
@@ -672,7 +683,7 @@ bool TaskManager::setTaskStatus(const int task_id, const TaskStatus status)
 
     if (status == Preparing)
     {
-        terminal_events_.remove(task_id);
+        terminal_events_.remove(task.identity.run_id);
         if (previous_status == Stopped || previous_status == Failed)
         {
             task.elapsed_seconds = 0;
@@ -713,7 +724,7 @@ bool TaskManager::setTaskStatus(const int task_id, const TaskStatus status)
     emitTaskChanged(row);
     // 状态转换可能会结算本地运行时间（例如停止或完成），因此也要通知
     // 持久化控制器，即使此时没有 Python 消息。
-    emit taskRunningTimeChanged(task.id);
+    emit taskRunningTimeChanged(task.identity.task_id);
     return true;
 }
 
@@ -738,7 +749,7 @@ void TaskManager::refreshRunningTasks()
         {
             emit dataChanged(index(row, RunningTimeColumn), index(row, RunningTimeColumn),
                              {RunningTimeRole, Qt::DisplayRole});
-            emit taskRunningTimeChanged(tasks_[static_cast<size_t>(row)].id);
+            emit taskRunningTimeChanged(tasks_[static_cast<size_t>(row)].identity.task_id);
         }
     }
 }
@@ -748,7 +759,7 @@ QVariant TaskManager::dataForColumn(const Task &task, const int column) const
     switch (column)
     {
     case TaskIdColumn:
-        return task.id;
+        return task.identity.task_id;
     case ModelNameColumn:
         return task.model_name;
     case TaskTypeColumn:
@@ -764,7 +775,7 @@ QVariant TaskManager::dataForColumn(const Task &task, const int column) const
     case ProgressColumn:
         return task.progress;
     case ActionsColumn:
-        return task.id;
+        return task.identity.task_id;
     default:
         return {};
     }

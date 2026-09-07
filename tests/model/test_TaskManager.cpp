@@ -44,9 +44,9 @@ private slots:
 
         QSignalSpy messages(&manager, &TaskManager::taskMessageReceived);
         TaskMessage finished;
-        finished.task_id = task_id;
-        finished.type    = TaskMessageType::Status;
-        finished.status  = TaskProtocolStatus::Finished;
+        finished.identity = manager.findTask(task_id)->identity;
+        finished.type     = TaskMessageType::Status;
+        finished.status   = TaskProtocolStatus::Finished;
         QMetaObject::invokeMethod(&manager, "handleTaskMessage", Qt::DirectConnection,
                                   Q_ARG(TaskMessage, finished));
         QCOMPARE(manager.findTask(task_id)->status, TaskManager::Finished);
@@ -63,6 +63,53 @@ private slots:
         QCOMPARE(manager.findTask(task_id)->status, TaskManager::Finished);
         QCOMPARE(manager.findTask(task_id)->progress, 100);
         QCOMPARE(messages.count(), 1);
+    }
+
+    void taskIdsAreNotReusedAfterClear()
+    {
+        TaskManager manager;
+        const int first_id = manager.addTask(QStringLiteral("first-model"), QStringLiteral("First"),
+                                             ModelTaskType::Train);
+        QVERIFY(first_id > 0);
+
+        manager.clearTasks();
+
+        const int second_id = manager.addTask(QStringLiteral("second-model"), QStringLiteral("Second"),
+                                              ModelTaskType::Train);
+        QVERIFY(second_id > first_id);
+    }
+
+    void messagesFromPreviousRunAreDroppedAfterManagerRestart()
+    {
+        TaskMessage old_message;
+        {
+            TaskManager old_manager;
+            const int old_task_id = old_manager.addTask(QStringLiteral("model"), QStringLiteral("Model"),
+                                                        ModelTaskType::Train);
+            QVERIFY(old_task_id > 0);
+            QVERIFY(old_manager.startTask(old_task_id));
+            const TaskManager::Task *old_task = old_manager.findTask(old_task_id);
+            QVERIFY(old_task != nullptr);
+            QVERIFY(old_task->identity.isValid());
+
+            old_message.identity = old_task->identity;
+            old_message.type     = TaskMessageType::Status;
+            old_message.status   = TaskProtocolStatus::Finished;
+        }
+
+        TaskManager restarted_manager;
+        const int new_task_id = restarted_manager.addTask(QStringLiteral("model"), QStringLiteral("Model"),
+                                                           ModelTaskType::Train);
+        QCOMPARE(new_task_id, old_message.identity.task_id);
+        QVERIFY(restarted_manager.startTask(new_task_id));
+
+        QMetaObject::invokeMethod(&restarted_manager, "handleTaskMessage", Qt::DirectConnection,
+                                  Q_ARG(TaskMessage, old_message));
+
+        const TaskManager::Task *new_task = restarted_manager.findTask(new_task_id);
+        QVERIFY(new_task != nullptr);
+        QVERIFY(new_task->identity.run_id != old_message.identity.run_id);
+        QCOMPARE(new_task->status, TaskManager::Preparing);
     }
 
     void stateMachineNormalizesProgressAndProtectsTerminalStates()
@@ -120,7 +167,7 @@ private slots:
         QVERIFY(manager->startTask(id));
 
         TaskMessage message;
-        message.task_id = id;
+        message.identity = manager->findTask(id)->identity;
         message.type = TaskMessageType::Progress;
         message.status = TaskProtocolStatus::Running;
         message.progress = 37;
@@ -235,6 +282,7 @@ private slots:
                                             ModelTaskType::Train);
         QVERIFY(task_id > 0);
         QVERIFY(manager.startTask(task_id));
+        const TaskIdentity identity = manager.findTask(task_id)->identity;
 
         manager.shutdown();
 
@@ -246,7 +294,7 @@ private slots:
         QVERIFY(!manager.updateTaskProgress(task_id, 50));
 
         TaskMessage late_message;
-        late_message.task_id = task_id;
+        late_message.identity = identity;
         late_message.type    = TaskMessageType::Progress;
         late_message.status  = TaskProtocolStatus::Running;
         late_message.progress = 75;
