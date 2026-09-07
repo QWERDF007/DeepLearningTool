@@ -3,6 +3,7 @@
 #include "model/AggregateEvaluation.h"
 #include "model/EvaluationCommon.h"
 #include "model/EvaluationDataset.h"
+#include "model/EvaluationArtifactCache.h"
 #include "model/EvaluationEngineRegistry.h"
 #include "model/EvaluationMatching.h"
 #include "model/EvaluationResult.h"
@@ -117,6 +118,7 @@ ModelEvaluationViewModel::ModelEvaluationViewModel(QObject *parent, QThreadPool 
     , filtered_instances_(new EvaluationCellFilterProxyModel(this))
     , charts_(new EvaluationChartModel(this))
     , evaluation_pool_(evaluation_pool)
+    , evaluation_artifact_cache_(std::make_shared<EvaluationArtifactCache>())
 {
     if (evaluation_pool_ == nullptr)
     {
@@ -529,7 +531,18 @@ void ModelEvaluationViewModel::setEvaluationOptions(const ModelEvaluationOptions
 
     if (has_evaluation_options_ && sameEvaluationInput(evaluation_options_, options))
         return;
+
+    const bool cache_scope_changed
+        = !has_evaluation_options_ || evaluation_options_.model_uuid != options.model_uuid
+        || evaluation_options_.test_task_uuid != options.test_task_uuid
+        || evaluation_options_.project_database_path != options.project_database_path
+        || evaluation_options_.task_database_path != options.task_database_path
+        || evaluation_options_.prediction_dir != options.prediction_dir;
+    if (cache_scope_changed)
+        evaluation_artifact_cache_ = std::make_shared<EvaluationArtifactCache>();
+
     evaluation_options_     = options;
+    evaluation_options_.evaluation_artifact_cache = evaluation_artifact_cache_;
     has_evaluation_options_ = true;
     method_                 = static_cast<int>(options.method);
     if (loading_)

@@ -11,6 +11,8 @@
 
 namespace dltool::model {
 
+class EvaluationArtifactCache;
+
 /**
  * @brief C++ 评估引擎输入选项结构体。
  *
@@ -29,6 +31,12 @@ struct MODEL_API ModelEvaluationOptions
     QString                      task_database_path;     ///< 测试任务数据库路径（task.db）。
     QString                      prediction_dir;         ///< 预测产物输出目录。
     QString                      prediction_snapshot;    ///< 当前数据与预测产物的进程内快照。
+    /**
+     * @brief 当前项目/测试任务的可重建评估派生缓存。
+     *
+     * 由任务或评估视图模型持有并注入；为空时评估不使用跨调用缓存。
+     */
+    std::shared_ptr<EvaluationArtifactCache> evaluation_artifact_cache;
     /**
      * @brief 模型推理阶段使用的空间预处理参数。
      *

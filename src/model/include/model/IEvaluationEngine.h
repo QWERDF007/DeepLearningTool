@@ -20,6 +20,7 @@
 
 namespace dltool::model {
 
+class EvaluationArtifactCache;
 struct EvaluationResult;
 
 /**
@@ -78,6 +79,7 @@ protected:
         QVariantMap                       official_metrics; ///< 当前阈值工作点的官方指标。
         QVariantMap                       image_metric_definition; ///< 图像级指标定义。
         EvaluationThresholdSearchResult threshold_search; ///< 当前评估的进程内阈值搜索结果。
+        std::shared_ptr<EvaluationArtifactCache> artifact_cache; ///< 当前任务的派生缓存。
 
         QString                           dataset_root;    ///< GT mask 解析根目录（项目库绝对路径）。
         QString                           prediction_root; ///< 预测 mask 解析根目录。

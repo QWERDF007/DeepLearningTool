@@ -5,6 +5,7 @@
 #include "model/EvaluationCharts.h"
 #include "model/EvaluationCommon.h"
 #include "model/EvaluationDataset.h"
+#include "model/EvaluationArtifactCache.h"
 
 #include "data/DatasetIO.h"
 
@@ -13,9 +14,6 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
-#include <QCache>
-#include <QMutex>
-#include <QMutexLocker>
 #include <QVariantList>
 
 #include <cmath>
@@ -39,30 +37,6 @@ QVariantList polygonPoints(const std::vector<cv::Point> &contour)
     return points;
 }
 
-struct AnomalyRegionSnapshot
-{
-    QVariantList model_polygons;
-    QVariantList image_polygons;
-};
-
-QMutex &anomalyRegionCacheMutex()
-{
-    static QMutex mutex;
-    return mutex;
-}
-
-QCache<QString, AnomalyRegionSnapshot> &anomalyRegionCache()
-{
-    static QCache<QString, AnomalyRegionSnapshot> cache;
-    static const bool initialized = []
-    {
-        cache.setMaxCost(64 * 1024);
-        return true;
-    }();
-    Q_UNUSED(initialized);
-    return cache;
-}
-
 QString anomalyRegionCacheKey(const QString &score_path, const EvaluationImageData &image,
                               const EvaluationScoreMap &score_map, const double threshold,
                               const QVariantMap &preprocessing)
@@ -83,42 +57,19 @@ QString anomalyRegionCacheKey(const QString &score_path, const EvaluationImageDa
         .arg(QString::fromUtf8(preprocessing_bytes));
 }
 
-bool cachedAnomalyRegions(const QString &key, AnomalyRegionSnapshot *snapshot)
+EvaluationAnomalyRegionCacheValue anomalyRegions(const EvaluationImageData &image,
+                                                 const EvaluationScoreMap &score_map, const QString &score_path,
+                                                 const double threshold, const QVariantMap &preprocessing,
+                                                 EvaluationArtifactCache *artifact_cache, bool *cache_hit)
 {
-    if (key.isEmpty() || snapshot == nullptr)
-        return false;
-    QMutexLocker locker(&anomalyRegionCacheMutex());
-    const AnomalyRegionSnapshot *cached = anomalyRegionCache().object(key);
-    if (cached == nullptr)
-        return false;
-    *snapshot = *cached;
-    return true;
-}
-
-void cacheAnomalyRegions(const QString &key, const AnomalyRegionSnapshot &snapshot)
-{
-    if (key.isEmpty())
-        return;
-    qsizetype point_count = 0;
-    for (const QVariant &polygon : snapshot.model_polygons) point_count += polygon.toList().size();
-    for (const QVariant &polygon : snapshot.image_polygons) point_count += polygon.toList().size();
-    const int cost_kib = std::max(1, static_cast<int>((point_count * 64 + 1023) / 1024));
-    QMutexLocker locker(&anomalyRegionCacheMutex());
-    anomalyRegionCache().insert(key, new AnomalyRegionSnapshot(snapshot), cost_kib);
-}
-
-AnomalyRegionSnapshot anomalyRegions(const EvaluationImageData &image, const EvaluationScoreMap &score_map,
-                                     const QString &score_path, const double threshold,
-                                     const QVariantMap &preprocessing, bool *cache_hit)
-{
-    AnomalyRegionSnapshot snapshot;
+    EvaluationAnomalyRegionCacheValue snapshot;
     if (cache_hit != nullptr)
         *cache_hit = false;
     if (!score_map.isValid())
         return snapshot;
 
     const QString cache_key = anomalyRegionCacheKey(score_path, image, score_map, threshold, preprocessing);
-    if (cachedAnomalyRegions(cache_key, &snapshot))
+    if (artifact_cache != nullptr && artifact_cache->findAnomalyRegions(cache_key, &snapshot))
     {
         if (cache_hit != nullptr)
             *cache_hit = true;
@@ -160,7 +111,8 @@ AnomalyRegionSnapshot anomalyRegions(const EvaluationImageData &image, const Eva
         }
     }
 
-    cacheAnomalyRegions(cache_key, snapshot);
+    if (artifact_cache != nullptr)
+        artifact_cache->storeAnomalyRegions(cache_key, snapshot);
     return snapshot;
 }
 
@@ -234,7 +186,7 @@ bool AnomalyEvaluationEngine::runAnomalyLoop(const QMap<qint64, EvaluationImageD
             }
         }
         const bool               predicted_anomaly = image_score >= scratch_.confidence;
-        AnomalyRegionSnapshot regions;
+        EvaluationAnomalyRegionCacheValue regions;
         const QString score_path
             = QDir(scratch_.prediction_root).filePath(QStringLiteral("%1.tiff").arg(image.id));
         EvaluationImageData region_image = image;
@@ -257,7 +209,7 @@ bool AnomalyEvaluationEngine::runAnomalyLoop(const QMap<qint64, EvaluationImageD
                 score_map = &region_score_map;
             }
             regions = anomalyRegions(region_image, *score_map, score_path, scratch_.confidence, scratch_.preprocessing_config,
-                                     nullptr);
+                                     scratch_.artifact_cache.get(), nullptr);
         }
         const evaluation::Status status
             = ground_truth_anomaly && predicted_anomaly

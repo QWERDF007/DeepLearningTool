@@ -389,6 +389,7 @@ private:
     bool                              suppress_aggregation_rebuild_{false};
     std::unique_ptr<QThreadPool>      owned_evaluation_pool_;
     QThreadPool                       *evaluation_pool_{nullptr};
+    std::shared_ptr<EvaluationArtifactCache> evaluation_artifact_cache_;
 };
 
 } // namespace dltool::model

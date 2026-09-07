@@ -72,7 +72,7 @@ Python 任务协议、参数和任务目录由 `src/model/` 与 `3rdparty/EasyTr
 - 任务日志由模型存储服务放在训练目录或测试任务目录。
 - Python 任务的 stdout/stderr 由 `ExternalModelTaskRunner` 写入任务日志。
 - 测试失败时优先保留 CTest 的 `--output-on-failure` 输出、任务日志和生成目录，不要直接运行测试可执行文件绕过 CTest 的运行环境设置。
-- 评估 worker 完成后以 `info` 级别记录一条整体评估统计，包含任务、总耗时、成功状态和结果规模。异常检测在评估输入阶段按需读取原图尺寸，仅为需要区域映射的图像补齐尺寸；TIFF 最大值与展示多边形使用进程内有界缓存，并按预测文件身份及计算输入失效；无筛选时 GUI 直接使用主评估结果。具体处理和缓存键以 `IEvaluationEngine`、`EvaluationDataset`、`AnomalyEvaluationEngine`、`EvaluationCharts` 和 `ModelEvaluationViewModel` 的实现为准。
+- 评估 worker 完成后以 `info` 级别记录一条整体评估统计，包含任务、总耗时、成功状态和结果规模。异常检测在评估输入阶段按需读取原图尺寸，仅为需要区域映射的图像补齐尺寸；TIFF 最大值、阈值搜索和展示多边形使用项目/测试任务作用域内的有界缓存，并按项目、任务、预测快照和预测文件身份失效；无筛选时 GUI 直接使用主评估结果。具体处理和缓存键以 `EvaluationArtifactCache`、`IEvaluationEngine`、`EvaluationDataset`、`AnomalyEvaluationEngine`、`EvaluationCharts` 和 `ModelEvaluationViewModel` 的实现为准。
 
 ## 相关入口
 

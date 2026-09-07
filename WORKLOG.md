@@ -47,6 +47,48 @@
 
 ---
 
+## 2026-09-07 — 收敛评估派生缓存作用域
+
+**目标**
+- 将阈值搜索、TIFF 最大值和异常区域多边形缓存从进程级静态状态收敛到项目/测试任务作用域，保证预测快照和文件变化正确失效。
+
+**当前状态**
+- 已完成：新增 `EvaluationArtifactCache`，由 `ModelEvaluationViewModel` 按项目/测试任务持有，并由评估引擎绑定强类型作用域。
+- 已完成：三类缓存统一具备有界容量；预测快照、项目/任务作用域变化或 TIFF 文件大小/修改时间变化时失效。
+- 已完成：新增缓存隔离、快照失效和跨任务相同快照阈值搜索回归测试；更新模型开发文档。
+- 未完成：缩略图缓存按实际字节限制及视觉派生懒加载仍属于阶段 6 后续切片。
+- 保留：`tools/dependencies.yaml` 为既有用户改动，未纳入本阶段提交。
+
+**验证证据**
+- `cmake -S . -B build -DDLT_BUILD_TESTS=ON` → 配置与生成成功。
+- `cmake --build build --config Release --target dltool_model_dataset_tests dltool_model_evaluation_tests --parallel 4` → Release 目标构建成功。
+- `ctest --test-dir build -C Release -R '^(dltool_model_dataset_tests|dltool_model_evaluation_tests)$' --output-on-failure` → 2/2 通过。
+- `git diff --check` → 通过。
+
+**下一步**
+- 继续按 `final_plan.md` 阶段 6，补齐 `EvaluationThumbnailImageProvider` 的按字节有界缓存和可见实例视觉派生的懒加载行为测试。
+
+---
+
+## 2026-09-07 — 汇总最终架构改进方案
+
+**目标**
+- 将现有架构审查结果和仓库事实源收敛为唯一的 `final_plan.md`，作为后续分阶段重构入口。
+
+**当前状态**
+- 已完成：`final_plan.md` 覆盖作用域与所有权、线程/任务生命周期、schema、数据与模型生命周期、评估与视觉派生、QML、构建测试、实施路线和验收标准。
+- 已确认：当前工作区及 Git 历史未找到 `luna_final_plan.md`、`gemini_final_plan.md`、`musespark13_final_plan.md`；未改动既有的 `tools/dependencies.yaml`。
+
+**验证证据**
+- `rg --files -uu -g '*plan*.md'` → 仅发现 `final_plan.md`。
+- `git -c safe.directory=F:/Projects/DeepLearningTool log --all --name-only` → 未发现三份指定源方案。
+- `git diff --check -- final_plan.md` → 通过；本轮未执行构建或测试（仅文档整理）。
+
+**下一步**
+- 按 `final_plan.md` 当前阶段路线，先为评估缓存隔离、预测产物失效和视觉派生懒加载补充行为测试。
+
+---
+
 ## 2026-09-07 — 实现模型生命周期与跨介质恢复
 
 **目标**

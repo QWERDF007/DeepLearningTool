@@ -14,6 +14,8 @@
 
 namespace dltool::model {
 
+class EvaluationArtifactCache;
+
 /** @brief 从 TIFF 预测产物读取原始异常分数图；缺失或格式无效时返回 false。 */
 MODEL_API bool readEvaluationScoreMap(const QString &path, EvaluationScoreMap &score_map,
                                       QString *err_msg = nullptr);
@@ -98,6 +100,7 @@ MODEL_API bool loadEvaluationPredictions(const QString &task_database_path, cons
                                          QString *err_msg = nullptr, int *ignored_count = nullptr,
                                          bool load_anomaly_score_maps = true,
                                          double retain_anomaly_score_map_threshold
-                                         = std::numeric_limits<double>::quiet_NaN());
+                                         = std::numeric_limits<double>::quiet_NaN(),
+                                         const std::shared_ptr<EvaluationArtifactCache> &artifact_cache = {});
 
 } // namespace dltool::model

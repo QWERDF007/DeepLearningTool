@@ -2,6 +2,7 @@
 
 #include "model/EvaluationCommon.h"
 #include "model/EvaluationDataset.h"
+#include "model/EvaluationArtifactCache.h"
 #include "model/EvaluationResult.h"
 #include "model/ModelEvaluationOptions.h"
 
@@ -9,9 +10,6 @@
 
 #include <QDir>
 #include <QFileInfo>
-#include <QHash>
-#include <QMutex>
-#include <QMutexLocker>
 #include <QStringList>
 #include <algorithm>
 #include <atomic>
@@ -29,43 +27,6 @@ bool sourceImageExists(const QString &path, const QString &dataset_root)
     if (!image.isAbsolute() && !image.exists() && !dataset_root.isEmpty())
         image = QFileInfo(QDir(dataset_root), path);
     return image.exists() && image.isFile();
-}
-
-class ThresholdSearchCache final
-{
-public:
-    bool find(const QString &key, EvaluationThresholdSearchResult &result)
-    {
-        QMutexLocker locker(&mutex_);
-        const auto    found = values_.constFind(key);
-        if (found == values_.cend())
-            return false;
-        result = found.value();
-        order_.removeAll(key);
-        order_.push_back(key);
-        return true;
-    }
-
-    void insert(const QString &key, const EvaluationThresholdSearchResult &result)
-    {
-        QMutexLocker locker(&mutex_);
-        values_.insert(key, result);
-        order_.removeAll(key);
-        order_.push_back(key);
-        while (order_.size() > 32)
-            values_.remove(order_.takeFirst());
-    }
-
-private:
-    QMutex                                      mutex_;
-    QHash<QString, EvaluationThresholdSearchResult> values_;
-    QStringList                                 order_;
-};
-
-ThresholdSearchCache &thresholdSearchCache()
-{
-    static ThresholdSearchCache cache;
-    return cache;
 }
 
 QString thresholdSearchCacheKey(const ModelEvaluationOptions &options)
@@ -143,6 +104,11 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
         || options.task_database_path.isEmpty() || options.prediction_dir.isEmpty())
         return fail(QString("评估路径参数不完整"));
 
+    if (options.evaluation_artifact_cache != nullptr)
+        options.evaluation_artifact_cache->prepare({options.project_database_path, options.task_database_path,
+                                                    options.model_uuid, options.test_task_uuid,
+                                                    options.prediction_snapshot});
+
     // (c) 加载图像与真值。
     QMap<qint64, EvaluationImageData> images;
     QMap<int, QString>                global_class_catalog;
@@ -181,7 +147,8 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
                                    evaluation::isAnomaly(method()), &prediction_count, options.cancel_token, err_msg,
                                    &ignored_prediction_count, false,
                                    evaluation::isAnomaly(method()) ? options.confidence_threshold
-                                                                    : std::numeric_limits<double>::quiet_NaN()))
+                                                                    : std::numeric_limits<double>::quiet_NaN(),
+                                   options.evaluation_artifact_cache))
         return false;
     if (ignored_prediction_count > 0)
         spdlog::warn("预测结果中有 {} 条记录不属于当前可用图像，已跳过", ignored_prediction_count);
@@ -209,6 +176,7 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     scratch_.matching_strategy       = options.matching_strategy;
     scratch_.preprocessing_config    = options.preprocessing_config;
     scratch_.cancel_token            = options.cancel_token;
+    scratch_.artifact_cache          = options.evaluation_artifact_cache;
     scratch_.image_dimensions_provider = options.image_dimensions_provider;
     scratch_.collect_events          = true;
 
@@ -229,9 +197,10 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
     else
     {
         const QString threshold_cache_key = thresholdSearchCacheKey(options);
-        const bool threshold_cacheable = !threshold_cache_key.isEmpty();
+        const bool threshold_cacheable = !threshold_cache_key.isEmpty() && options.evaluation_artifact_cache != nullptr;
         const bool threshold_cache_hit
-            = threshold_cacheable && thresholdSearchCache().find(threshold_cache_key, scratch_.threshold_search);
+            = threshold_cacheable
+           && options.evaluation_artifact_cache->findThreshold(threshold_cache_key, &scratch_.threshold_search);
         if (!threshold_cache_hit)
         {
             QList<EvaluationImageData> threshold_images;
@@ -246,7 +215,7 @@ bool IEvaluationEngine::evaluate(const ModelEvaluationOptions &options, Evaluati
                     threshold_images, options.iou_threshold, options.matching_strategy, {}, options.cancel_token,
                     &threshold_error);
             if (threshold_cacheable && !cancelled(options.cancel_token) && threshold_error.isEmpty())
-                thresholdSearchCache().insert(threshold_cache_key, scratch_.threshold_search);
+                options.evaluation_artifact_cache->storeThreshold(threshold_cache_key, scratch_.threshold_search);
         }
         if (cancelled(options.cancel_token))
             return fail(QString("评估已取消"));

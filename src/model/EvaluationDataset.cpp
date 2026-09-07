@@ -5,11 +5,11 @@
 #include "database/DataBase.h"
 #include "database/ModelTaskDataBase.h"
 #include "model/EvaluationGeometry.h"
+#include "model/EvaluationArtifactCache.h"
 #include "model/ModelDatasetSelection.h"
 
 #include <opencv2/imgcodecs.hpp>
 
-#include <QCache>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -17,8 +17,6 @@
 #include <QJsonParseError>
 #include <QMap>
 #include <QMetaType>
-#include <QMutex>
-#include <QMutexLocker>
 #include <QSet>
 #include <QTextStream>
 #include <algorithm>
@@ -109,64 +107,6 @@ struct EvaluationScoreMaximumResult
     QString                               error;
 };
 
-struct EvaluationScoreMaximumCacheEntry
-{
-    qint64 file_size{0};
-    qint64 last_modified_ms{0};
-    bool   has_score{false};
-    double maximum{0.0};
-};
-
-QMutex &evaluationScoreMaximumCacheMutex()
-{
-    static QMutex mutex;
-    return mutex;
-}
-
-QCache<QString, EvaluationScoreMaximumCacheEntry> &evaluationScoreMaximumCache()
-{
-    static QCache<QString, EvaluationScoreMaximumCacheEntry> cache;
-    static const bool initialized = []
-    {
-        cache.setMaxCost(100'000);
-        return true;
-    }();
-    Q_UNUSED(initialized);
-    return cache;
-}
-
-bool cachedEvaluationScoreMapMaximum(const QString &path, double *maximum, bool *has_score)
-{
-    if (maximum == nullptr || has_score == nullptr)
-        return false;
-
-    const QFileInfo file_info(path);
-    if (!file_info.isFile())
-        return false;
-    const QString cache_key       = file_info.absoluteFilePath();
-    const qint64  file_size       = file_info.size();
-    const qint64  last_modified_ms = file_info.lastModified().toMSecsSinceEpoch();
-    QMutexLocker locker(&evaluationScoreMaximumCacheMutex());
-    const EvaluationScoreMaximumCacheEntry *cached = evaluationScoreMaximumCache().object(cache_key);
-    if (cached == nullptr || cached->file_size != file_size || cached->last_modified_ms != last_modified_ms)
-        return false;
-    *maximum  = cached->maximum;
-    *has_score = cached->has_score;
-    return true;
-}
-
-void cacheEvaluationScoreMapMaximum(const QString &path, const bool has_score, const double maximum)
-{
-    const QFileInfo file_info(path);
-    if (!file_info.isFile())
-        return;
-    const QString cache_key = file_info.absoluteFilePath();
-    QMutexLocker  locker(&evaluationScoreMaximumCacheMutex());
-    evaluationScoreMaximumCache().insert(
-        cache_key, new EvaluationScoreMaximumCacheEntry{
-                       file_info.size(), file_info.lastModified().toMSecsSinceEpoch(), has_score, maximum});
-}
-
 std::shared_ptr<const EvaluationScoreMap> materializedScoreMap(const cv::Mat &decoded)
 {
     auto score_map = std::make_shared<EvaluationScoreMap>();
@@ -217,12 +157,16 @@ std::shared_ptr<const EvaluationScoreMap> materializedScoreMap(const cv::Mat &de
 }
 
 EvaluationScoreMaximumResult readScoreMapForEvaluation(const EvaluationScoreMaximumRequest &request,
-                                                        const double retain_threshold)
+                                                        const double retain_threshold,
+                                                        EvaluationArtifactCache *artifact_cache)
 {
     EvaluationScoreMaximumResult result;
     result.image_id = request.image_id;
-    if (cachedEvaluationScoreMapMaximum(request.path, &result.maximum, &result.has_score))
+    EvaluationScoreMaximumCacheValue cached_value;
+    if (artifact_cache != nullptr && artifact_cache->findScoreMaximum(request.path, &cached_value))
     {
+        result.maximum  = cached_value.maximum;
+        result.has_score = cached_value.has_score;
         result.maximum_cache_hit = true;
         if (!result.has_score || !std::isfinite(retain_threshold) || result.maximum < retain_threshold)
             return result;
@@ -240,12 +184,14 @@ EvaluationScoreMaximumResult readScoreMapForEvaluation(const EvaluationScoreMaxi
 
     if (!decodedScoreMapMaximum(decoded, &result.maximum))
     {
-        cacheEvaluationScoreMapMaximum(request.path, false, 0.0);
+        if (artifact_cache != nullptr)
+            artifact_cache->storeScoreMaximum(request.path, false, 0.0);
         result.error.clear();
         return result;
     }
     result.has_score = true;
-    cacheEvaluationScoreMapMaximum(request.path, true, result.maximum);
+    if (artifact_cache != nullptr)
+        artifact_cache->storeScoreMaximum(request.path, true, result.maximum);
     if (std::isfinite(retain_threshold) && result.maximum >= retain_threshold)
         result.score_map = materializedScoreMap(decoded);
     return result;
@@ -253,7 +199,8 @@ EvaluationScoreMaximumResult readScoreMapForEvaluation(const EvaluationScoreMaxi
 
 std::vector<EvaluationScoreMaximumResult> readScoreMapMaximums(
     const std::vector<EvaluationScoreMaximumRequest> &requests,
-    const std::shared_ptr<std::atomic_bool>            &cancel_token, const double retain_threshold)
+    const std::shared_ptr<std::atomic_bool> &cancel_token, const double retain_threshold,
+    EvaluationArtifactCache                  *artifact_cache)
 {
     std::vector<EvaluationScoreMaximumResult> results(requests.size());
     if (requests.empty())
@@ -274,7 +221,7 @@ std::vector<EvaluationScoreMaximumResult> readScoreMapMaximums(
             if (index >= requests.size())
                 return;
 
-            results[index] = readScoreMapForEvaluation(requests[index], retain_threshold);
+            results[index] = readScoreMapForEvaluation(requests[index], retain_threshold, artifact_cache);
         }
     };
     for (std::size_t index = 0; index < worker_count; ++index)
@@ -892,7 +839,8 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
                                QMap<qint64, EvaluationImageData> &images, const bool anomaly_method, int *count,
                                const std::shared_ptr<std::atomic_bool> &cancel_token, QString *err_msg,
                                int *ignored_count, const bool load_anomaly_score_maps,
-                               const double retain_anomaly_score_map_threshold)
+                               const double retain_anomaly_score_map_threshold,
+                               const std::shared_ptr<EvaluationArtifactCache> &artifact_cache)
 {
     if (count)
         *count = 0;
@@ -961,7 +909,8 @@ bool loadEvaluationPredictions(const QString &task_database_path, const QString 
         if (!load_anomaly_score_maps)
         {
             const std::vector<EvaluationScoreMaximumResult> results
-                = readScoreMapMaximums(requests, cancel_token, retain_anomaly_score_map_threshold);
+                = readScoreMapMaximums(requests, cancel_token, retain_anomaly_score_map_threshold,
+                                       artifact_cache.get());
             if (isCancelled(cancel_token))
                 return fail(QStringLiteral("评估已取消"));
             for (std::size_t index = 0; index < requests.size(); ++index)

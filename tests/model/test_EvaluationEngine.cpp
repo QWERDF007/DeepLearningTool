@@ -5,6 +5,7 @@
 #include "model/AnomalyEvaluationEngine.h"
 #include "model/AnomalyPreprocessingTransform.h"
 #include "model/DetectionEvaluationEngine.h"
+#include "model/EvaluationArtifactCache.h"
 #include "model/EvaluationEngineRegistry.h"
 #include "model/EvaluationDataset.h"
 #include "model/EvaluationThumbnailImageProvider.h"
@@ -624,6 +625,54 @@ private slots:
         const QPointF round_trip = transform.imageToModel(image_point);
         QVERIFY(std::abs(round_trip.x() - 1.0) < 1e-9);
         QVERIFY(std::abs(round_trip.y() - 1.0) < 1e-9);
+    }
+
+    void thresholdSearchCacheIsScopedToEvaluationTask()
+    {
+        EvaluationFixture first_fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        EvaluationFixture second_fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        QVERIFY2(first_fixture.isValid(), qPrintable(first_fixture.error()));
+        QVERIFY2(second_fixture.isValid(), qPrintable(second_fixture.error()));
+
+        const auto configure = [](EvaluationFixture &fixture, const double anomaly_score)
+        {
+            const qint64 good    = fixture.addClass(QStringLiteral("Good"), QStringLiteral("good"));
+            const qint64 anomaly = fixture.addClass(QStringLiteral("Scratch"), QStringLiteral("anomaly"));
+            const qint64 good_image
+                = fixture.addImage(QStringLiteral("good"), {{QStringLiteral("image_label_class_id"), good}});
+            const qint64 anomaly_image
+                = fixture.addImage(QStringLiteral("anomaly"), {{QStringLiteral("image_label_class_id"), anomaly}});
+            if (good < 0 || anomaly < 0 || good_image < 0 || anomaly_image < 0)
+                return false;
+            if (!fixture.writeImageList() || !fixture.setTestSelection({good, anomaly}))
+                return false;
+            return fixture.writePrediction(good_image, anomalyPrediction(0.1))
+                && fixture.writePrediction(anomaly_image, anomalyPrediction(anomaly_score));
+        };
+        QVERIFY(configure(first_fixture, 0.9));
+        QVERIFY(configure(second_fixture, 0.2));
+
+        auto first_cache  = std::make_shared<EvaluationArtifactCache>();
+        auto second_cache = std::make_shared<EvaluationArtifactCache>();
+        auto first_options = optionsFor(first_fixture, evaluation::Method::AnomalyDetection);
+        first_options.prediction_snapshot       = QStringLiteral("same-task-snapshot-key");
+        first_options.evaluation_artifact_cache = first_cache;
+        auto second_options = optionsFor(second_fixture, evaluation::Method::AnomalyDetection);
+        second_options.prediction_snapshot       = QStringLiteral("same-task-snapshot-key");
+        second_options.evaluation_artifact_cache = second_cache;
+
+        AnomalyEvaluationEngine first_engine;
+        EvaluationResult         first_result;
+        QString                  error;
+        QVERIFY2(first_engine.evaluate(first_options, &first_result, &error), qPrintable(error));
+
+        AnomalyEvaluationEngine second_engine;
+        EvaluationResult         second_result;
+        QVERIFY2(second_engine.evaluate(second_options, &second_result, &error), qPrintable(error));
+        QVERIFY(first_result.threshold_search.available);
+        QVERIFY(second_result.threshold_search.available);
+        QVERIFY(std::abs(first_result.threshold_search.best_point.threshold - 0.9) < 1e-6);
+        QVERIFY(std::abs(second_result.threshold_search.best_point.threshold - 0.2) < 1e-6);
     }
 
     void heatmapProviderUsesFixedModelSizeAndGlobalThreshold()
