@@ -33,22 +33,24 @@ set(_project_include_dirs
 )
 
 set(_project_path_updates
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_project>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_feature>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_model>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_data>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_database>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_settings>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_parameter>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_core>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_common>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_ui>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:quickui>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Gui>"
+    # CTest applies path_list_prepend in declaration order.  Keep the build
+    # tree module directories declared last so they win over build/bin copies.
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Network>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Qml>"
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Quick>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Qml>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Gui>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:quickui>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_ui>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_common>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_core>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_parameter>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_settings>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_database>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_data>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_model>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_feature>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_project>"
     "DLT_RUNTIME_ROOT=set:${CMAKE_BINARY_DIR}/bin"
     "DLT_TEST_ASSET_ROOT=set:${CMAKE_SOURCE_DIR}/tests/assets/model"
 )

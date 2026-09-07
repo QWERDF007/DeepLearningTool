@@ -6,9 +6,13 @@
 #include "model/ModelEvaluationProtocol.h"
 #include "model/ModelManager.h"
 #include "model/ModelStorageService.h"
+#include "model/TensorBoardRunner.h"
 #include "model/TaskManager.h"
 
+#include <QElapsedTimer>
 #include <QDir>
+#include <QProcessEnvironment>
+#include <QStandardPaths>
 #include <QSignalSpy>
 #include <QTest>
 
@@ -145,6 +149,44 @@ private slots:
         QVERIFY2(storage.ensureModelStorage(QStringLiteral("Stable"), &error), qPrintable(error));
         QVERIFY(manager.deleteModel(record.model_id));
         QCOMPARE(manager.rowCount(), 0);
+    }
+
+    void tensorBoardRunnerShutdownStopsLongRunningProcess()
+    {
+        TensorBoardRunner runner;
+
+        TensorBoardLaunchSpec spec;
+        spec.model_uuid = QStringLiteral("tensorboard-shutdown-test");
+        spec.port       = TensorBoardRunner::availableLocalPort();
+        spec.environment = QProcessEnvironment::systemEnvironment();
+        QVERIFY(spec.port != 0);
+
+#ifdef Q_OS_WIN
+        spec.program   = QStandardPaths::findExecutable(QStringLiteral("powershell.exe"));
+        spec.arguments = {QStringLiteral("-NoLogo"), QStringLiteral("-NoProfile"),
+                          QStringLiteral("-NonInteractive"), QStringLiteral("-Command"),
+                          QStringLiteral("Start-Sleep -Seconds 30")};
+#else
+        spec.program   = QStandardPaths::findExecutable(QStringLiteral("sh"));
+        spec.arguments = {QStringLiteral("-c"), QStringLiteral("sleep 30")};
+#endif
+        QVERIFY2(!spec.program.isEmpty(), "无法找到测试用的进程解释器");
+
+        QString error;
+        QVERIFY2(runner.start(spec, &error), qPrintable(error));
+        QTRY_VERIFY_WITH_TIMEOUT(runner.isRunning(), 2000);
+
+        QElapsedTimer shutdown_timer;
+        shutdown_timer.start();
+        runner.shutdown();
+
+        QVERIFY(!runner.isRunning());
+        QVERIFY2(shutdown_timer.elapsed() < 3000,
+                 qPrintable(QStringLiteral("TensorBoard 进程关闭超时: %1 ms").arg(shutdown_timer.elapsed())));
+
+        runner.shutdown();
+        QVERIFY(!runner.start(spec, &error));
+        QCOMPARE(error, QStringLiteral("TensorBoard 运行器正在关闭"));
     }
 };
 

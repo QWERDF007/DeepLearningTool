@@ -62,6 +62,8 @@ Pending -> Preparing -> Running -> Stopping -> Stopped
 
 控制器持有项目上下文：`ModelManager`、`DataManager`、`TaskManager` 和一个
 `ExternalModelTaskRunner`。它不持有数据库对象，也不把 `DataManager` 传入后台准备函数。
+`ModelManager` 通过 [`TensorBoardRunner`](include/model/TensorBoardRunner.h) 管理 TensorBoard
+进程；项目关闭时由 `ModelManager::shutdown()` 收敛该进程。
 
 ### ModelTaskRequest 与 prepareModelTask
 

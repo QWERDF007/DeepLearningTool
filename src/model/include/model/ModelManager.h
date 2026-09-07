@@ -16,7 +16,6 @@
 #include <vector>
 
 class QSortFilterProxyModel;
-class QProcess;
 
 namespace dltool::database {
 class ProjectDataBase;
@@ -32,6 +31,7 @@ class TaskManager;
 class ModelLifecycle;
 class ModelStorageService;
 class ProjectModelRecordStore;
+class TensorBoardRunner;
 
 /**
  * @brief 模型管理器，负责模型的增删改查、缓存管理和 TensorBoard 启动
@@ -53,6 +53,13 @@ public:
                           dltool::data::DataManager *data_manager, TaskManager *task_manager = nullptr,
                           QObject *parent = nullptr);
     ~ModelManager();
+
+    /**
+     * @brief 停止模型管理器拥有的后台资源。
+     *
+     * 该入口由项目关闭栅栏调用，幂等；关闭后不再接受 TensorBoard 启动请求。
+     */
+    void shutdown();
 
     Q_PROPERTY(int method READ method CONSTANT FINAL)
     Q_PROPERTY(QAbstractItemModel *userVisibleModel READ userVisibleModel CONSTANT FINAL)
@@ -460,9 +467,7 @@ private:
     std::unique_ptr<ProjectModelRecordStore> model_record_store_;
     std::unique_ptr<ModelLifecycle>           model_lifecycle_;
 
-    QProcess *tensorboard_process_{nullptr}; ///< TensorBoard 进程
-    QString   tensorboard_model_uuid_;       ///< 当前 TensorBoard 模型 UUID
-    quint16   tensorboard_port_{0};          ///< 当前 TensorBoard 监听端口
+    std::unique_ptr<TensorBoardRunner> tensorboard_runner_;
 
     int method_{-1}; ///< 深度学习方法
 

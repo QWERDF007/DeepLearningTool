@@ -115,6 +115,8 @@ void Project::shutdown()
         model_task_controller_->shutdown();
     if (model_test_task_manager_ != nullptr)
         model_test_task_manager_->shutdown();
+    if (model_manager_ != nullptr)
+        model_manager_->shutdown();
     if (data_manager_ != nullptr)
         data_manager_->shutdown();
     if (task_manager_ != nullptr)

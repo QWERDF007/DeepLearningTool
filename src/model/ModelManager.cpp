@@ -10,6 +10,7 @@
 #include "model/ModelDatasetSelection.h"
 #include "model/ModelLifecycle.h"
 #include "model/ModelStorageService.h"
+#include "model/TensorBoardRunner.h"
 #include "model/TaskManager.h"
 #include "settings/GlobalSettings.h"
 #include "settings/SettingsKeys.h"
@@ -21,12 +22,10 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonParseError>
-#include <QProcess>
 #include <QProcessEnvironment>
 #include <QQmlEngine>
 #include <QRegularExpression>
 #include <QSortFilterProxyModel>
-#include <QTcpServer>
 #include <algorithm>
 #include <utility>
 
@@ -86,25 +85,6 @@ std::vector<uint8_t> extraDataToBlob(const QVariantMap &data)
     return result;
 }
 
-quint16 availableTensorBoardPort()
-{
-    QTcpServer server;
-    if (server.listen(QHostAddress::LocalHost, 6006))
-    {
-        server.close();
-        return 6006;
-    }
-
-    if (server.listen(QHostAddress::LocalHost, 0))
-    {
-        const quint16 port = server.serverPort();
-        server.close();
-        return port;
-    }
-
-    return 0;
-}
-
 } // namespace
 
 ModelManager::ModelManager(const int method, dltool::database::ProjectDataBase *database,
@@ -121,6 +101,7 @@ ModelManager::ModelManager(const int method, dltool::database::ProjectDataBase *
     model_storage_      = std::make_unique<ModelStorageService>(project_dir_);
     model_record_store_ = std::make_unique<ProjectModelRecordStore>(database_);
     model_lifecycle_    = std::make_unique<ModelLifecycle>(*model_record_store_, *model_storage_);
+    tensorboard_runner_ = std::make_unique<TensorBoardRunner>();
 
     user_visible_model_ = new UserVisibleModelProxy(this);
     user_visible_model_->setSourceModel(this);
@@ -131,16 +112,13 @@ ModelManager::ModelManager(const int method, dltool::database::ProjectDataBase *
 
 ModelManager::~ModelManager()
 {
-    if (tensorboard_process_ != nullptr && tensorboard_process_->state() != QProcess::NotRunning)
-    {
-        tensorboard_process_->terminate();
-        if (!tensorboard_process_->waitForFinished(2000))
-        {
-            tensorboard_process_->kill();
-            tensorboard_process_->waitForFinished(1000);
-        }
-    }
-    tensorboard_port_ = 0;
+    shutdown();
+}
+
+void ModelManager::shutdown()
+{
+    if (tensorboard_runner_ != nullptr)
+        tensorboard_runner_->shutdown();
 }
 
 QString ModelManager::projectDatabasePath() const
@@ -786,29 +764,11 @@ QString ModelManager::startTensorBoard(const QString &model_uuid)
         return {};
     }
 
-    if (tensorboard_process_ != nullptr && tensorboard_process_->state() != QProcess::NotRunning
-        && tensorboard_model_uuid_ == record.uuid)
+    if (tensorboard_runner_ != nullptr && tensorboard_runner_->isRunning()
+        && tensorboard_runner_->modelUuid() == record.uuid)
     {
         spdlog::debug("TensorBoard 已在运行, 模型: {}", record.name.toUtf8().constData());
-        return QStringLiteral("http://127.0.0.1:%1/").arg(tensorboard_port_);
-    }
-
-    if (tensorboard_process_ != nullptr)
-    {
-        if (tensorboard_process_->state() != QProcess::NotRunning)
-        {
-            spdlog::info("切换 TensorBoard 模型, 停止旧进程: {}", tensorboard_model_uuid_.toUtf8().constData());
-            tensorboard_process_->terminate();
-            if (!tensorboard_process_->waitForFinished(1000))
-            {
-                tensorboard_process_->kill();
-                tensorboard_process_->waitForFinished(1000);
-            }
-        }
-        tensorboard_process_->deleteLater();
-        tensorboard_process_ = nullptr;
-        tensorboard_model_uuid_.clear();
-        tensorboard_port_ = 0;
+        return QStringLiteral("http://127.0.0.1:%1/").arg(tensorboard_runner_->port());
     }
 
     const QString   python_env_path = dltool::settings::GlobalSettings::pythonEnvironmentPath();
@@ -846,44 +806,45 @@ QString ModelManager::startTensorBoard(const QString &model_uuid)
         return {};
     }
 
-    const quint16 port = availableTensorBoardPort();
+    const quint16 port = TensorBoardRunner::availableLocalPort();
     if (port == 0)
     {
         spdlog::error("启动 TensorBoard 失败: 无法找到可用本地端口");
         return {};
     }
 
-    tensorboard_process_ = new QProcess(this);
-    tensorboard_process_->setProgram(python);
-    tensorboard_process_->setArguments({QStringLiteral("-m"), QStringLiteral("tensorboard.main"),
-                                        QStringLiteral("--logdir"), log_dir, QStringLiteral("--host"),
-                                        QStringLiteral("127.0.0.1"), QStringLiteral("--port"), QString::number(port)});
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
-    tensorboard_process_->setProcessEnvironment(env);
-    QProcess *process = tensorboard_process_;
-    connect(process, &QProcess::readyReadStandardError, this,
-            [process]()
-            {
-                const QByteArray output = process->readAllStandardError();
-                if (!output.isEmpty())
-                    spdlog::error("TensorBoard: {}", QString::fromLocal8Bit(output).trimmed().toUtf8().constData());
-            });
-    connect(process, &QProcess::errorOccurred, this, [process](QProcess::ProcessError)
-            { spdlog::error("TensorBoard 进程错误: {}", process->errorString().toUtf8().constData()); });
-    connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
-            [process](int exit_code, QProcess::ExitStatus exit_status)
-            {
-                if (exit_code != 0 || exit_status != QProcess::NormalExit)
-                    spdlog::error("TensorBoard 异常退出, 退出码: {}, 状态: {}", exit_code,
-                                  exit_status == QProcess::NormalExit ? "normal" : "crashed");
-            });
-    tensorboard_model_uuid_ = record.uuid;
-    tensorboard_port_       = port;
+    TensorBoardLaunchSpec spec;
+    spec.model_uuid  = record.uuid;
+    spec.program     = python;
+    spec.arguments   = {QStringLiteral("-m"), QStringLiteral("tensorboard.main"),
+                        QStringLiteral("--logdir"), log_dir, QStringLiteral("--host"),
+                        QStringLiteral("127.0.0.1"), QStringLiteral("--port"), QString::number(port)};
+    spec.environment = env;
+    spec.port        = port;
+
+    if (tensorboard_runner_ == nullptr)
+    {
+        spdlog::error("启动 TensorBoard 失败: 运行器不可用");
+        return {};
+    }
+
+    QString runner_error;
+    if (!tensorboard_runner_->start(spec, &runner_error))
+    {
+        spdlog::error("启动 TensorBoard 失败: {}", runner_error.toUtf8().constData());
+        return {};
+    }
+
+    if (tensorboard_runner_->modelUuid() != record.uuid)
+    {
+        spdlog::error("启动 TensorBoard 失败: 运行器未接受模型身份, uuid: {}", record.uuid.toUtf8().constData());
+        return {};
+    }
     spdlog::info("启动 TensorBoard, 模型: {}, 日志目录: {}", record.name.toUtf8().constData(),
                  log_dir.toUtf8().constData());
-    tensorboard_process_->start();
-    return QStringLiteral("http://127.0.0.1:%1/").arg(tensorboard_port_);
+    return QStringLiteral("http://127.0.0.1:%1/").arg(tensorboard_runner_->port());
 }
 
 void ModelManager::applyLoadedModelTaskConfigs(const QString &model_uuid, const QVariantMap &train_params,
