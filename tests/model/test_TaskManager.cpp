@@ -202,6 +202,20 @@ private slots:
         QCOMPARE(manager->count(), 0);
     }
 
+    void pendingTaskCanEnterStopping()
+    {
+        TaskManager manager;
+        const int task_id = manager.addTask(QStringLiteral("pending-model"), QStringLiteral("Pending model"),
+                                             ModelTaskType::Train);
+        QVERIFY(task_id > 0);
+        QCOMPARE(manager.findTask(task_id)->status, TaskManager::Pending);
+        QVERIFY(manager.canStopTask(task_id));
+        QVERIFY(manager.stopTask(task_id));
+        QCOMPARE(manager.findTask(task_id)->status, TaskManager::Stopping);
+        QVERIFY(manager.markTaskStopped(task_id));
+        QCOMPARE(manager.findTask(task_id)->status, TaskManager::Stopped);
+    }
+
     void communicationEventsUpdateStatusAndRoles()
     {
         TaskManager manager_instance;

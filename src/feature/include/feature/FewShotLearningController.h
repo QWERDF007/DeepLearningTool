@@ -164,6 +164,7 @@ private:
     void advanceFinishedTask(dltool::model::ModelTaskType next_task_type, int next_task_id, RunStage next_stage);
     void finishRun(bool success, const QString &message = {});
     void stopRunTasks();
+    bool runTasksSettled() const;
     void startPredictionImports(std::vector<PredictionImportTarget> targets, const QString &output_dir);
     void startNextPredictionImport();
     void handlePredictionImportFinished(bool success, const QString &message);

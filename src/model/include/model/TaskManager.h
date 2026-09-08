@@ -205,7 +205,7 @@ public:
      */
     Q_INVOKABLE bool startTask(int task_id);
     /**
-     * @brief 请求停止运行中或正在准备的任务。
+     * @brief 请求停止尚未进入终态的任务。
      * @param task_id 任务 ID。
      * @return 成功进入 Stopping 并通知所属控制器返回 true。
      */
@@ -309,7 +309,7 @@ public:
     /**
      * @brief 查询任务是否可以停止。
      * @param task_id 任务 ID。
-     * @return Preparing 或 Running 状态返回 true。
+     * @return Pending、Preparing 或 Running 状态返回 true。
      */
     Q_INVOKABLE bool canStopTask(int task_id) const;
     /**

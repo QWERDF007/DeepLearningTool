@@ -107,6 +107,13 @@ private slots:
         QVERIFY(controller.deleteModelTask(record.uuid, ModelTaskType::Train));
         QVERIFY(task_manager->findTask(task_id) == nullptr);
 
+        const int pending_task_id = controller.addModelTask(record.uuid, ModelTaskType::BoxToMask);
+        QVERIFY(pending_task_id > 0);
+        QCOMPARE(task_manager->findTask(pending_task_id)->status, TaskManager::Pending);
+        QVERIFY(controller.stopModelTask(record.uuid, ModelTaskType::BoxToMask));
+        QCOMPARE(task_manager->findTask(pending_task_id)->status, TaskManager::Stopped);
+        QVERIFY(controller.deleteModelTask(record.uuid, ModelTaskType::BoxToMask));
+
         controller.shutdown();
         controller.shutdown();
         task_manager->clearTasks();

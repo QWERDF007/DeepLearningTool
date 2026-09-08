@@ -411,7 +411,8 @@ void FewShotLearningController::cancel()
 
     current_run_.stop_requested = true;
     stopRunTasks();
-    finishRun(false, QString("小样本学习任务已停止"));
+    if (runTasksSettled())
+        finishRun(false, QString("小样本学习任务已停止"));
 }
 
 bool FewShotLearningController::startRun(const std::vector<int64_t> &train_dataset_ids,
@@ -802,6 +803,13 @@ void FewShotLearningController::handleTaskTableRevision()
 
     using Status = dltool::model::TaskManager::TaskStatus;
 
+    if (current_run_.stop_requested)
+    {
+        if (runTasksSettled())
+            finishRun(false, QString("小样本学习任务已停止"));
+        return;
+    }
+
     if (current_run_.stage == RunStage::PreparingMask)
     {
         const auto *task = task_manager_->findTask(current_run_.box_to_mask_task_id);
@@ -914,6 +922,23 @@ void FewShotLearningController::stopRunTasks()
         model_task_controller_->stopModelTask(current_run_.model_uuid, dltool::model::ModelTaskType::Train);
     if (current_run_.predict_task_id >= 0)
         model_task_controller_->stopModelTask(current_run_.model_uuid, dltool::model::ModelTaskType::Test);
+}
+
+bool FewShotLearningController::runTasksSettled() const
+{
+    if (task_manager_ == nullptr)
+        return true;
+
+    const auto settled = [this](const int task_id)
+    {
+        if (task_id < 0)
+            return true;
+        const auto *task = task_manager_->findTask(task_id);
+        return task == nullptr || dltool::model::TaskManager::isTerminal(task->status);
+    };
+
+    return settled(current_run_.box_to_mask_task_id) && settled(current_run_.train_task_id)
+        && settled(current_run_.predict_task_id);
 }
 
 void FewShotLearningController::startPredictionImports(std::vector<PredictionImportTarget> targets,

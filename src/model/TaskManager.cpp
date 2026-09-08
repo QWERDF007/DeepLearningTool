@@ -859,7 +859,7 @@ bool TaskManager::canStart(const Task &task) const
 
 bool TaskManager::canStop(const Task &task) const
 {
-    return task.status == Preparing || task.status == Running;
+    return task.status == Pending || task.status == Preparing || task.status == Running;
 }
 
 bool TaskManager::canDelete(const Task &task) const
