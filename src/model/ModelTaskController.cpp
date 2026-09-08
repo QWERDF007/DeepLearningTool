@@ -396,6 +396,44 @@ void ModelTaskController::restoreModelTasks()
                                            config_path, log_path);
             }
         }
+
+        // 4. 恢复普通测试任务 (test_tasks via test_task_repository_ and task.db)
+        if (!framework.isFewShot())
+        {
+            const QList<ModelTestTaskDefinition> test_tasks = test_task_repository_.listTasks(name);
+            for (const auto &task_def : test_tasks)
+            {
+                const QString task_db_path = storage.testTaskDatabasePath(name, task_def.directory_name);
+                database::ModelTaskDataBase task_db(task_db_path);
+                QVariantMap execution_state;
+                if (!task_db.readExecutionState(execution_state))
+                    continue;
+
+                const QString status_str = execution_state.value(QStringLiteral("status")).toString().trimmed();
+                if (status_str.isEmpty())
+                    continue;
+
+                TaskManager::TaskStatus status = taskManagerStatusFromName(status_str);
+                if (status == TaskManager::Running || status == TaskManager::Stopping)
+                    status = TaskManager::Failed;
+
+                qint64 elapsed_sec = 0;
+                if (execution_state.contains(QStringLiteral("elapsed_seconds")))
+                    elapsed_sec = execution_state.value(QStringLiteral("elapsed_seconds")).toLongLong();
+                else if (execution_state.contains(QStringLiteral("elapsed")))
+                    elapsed_sec = parseDurationText(execution_state.value(QStringLiteral("elapsed")).toString());
+
+                const int progress = execution_state.value(QStringLiteral("progress")).toInt();
+                const QString phase = execution_state.value(QStringLiteral("phase")).toString();
+                const QString run_id = execution_state.value(QStringLiteral("run_id")).toString();
+                const QString config_path = task_db_path;
+                const QString log_path = storage.testTaskLogPath(name, task_def.directory_name);
+
+                task_manager_->restoreTask(uuid, name, ModelTaskType::Test,
+                                           task_def.uuid, task_def.name, status, progress, elapsed_sec,
+                                           phase, run_id, config_path, log_path);
+            }
+        }
     }
 }
 
@@ -616,7 +654,10 @@ bool ModelTaskController::stopTask(const int task_id)
 {
     if (shutting_down_)
         return false;
-    return task_manager_ != nullptr && task_manager_->stopTask(task_id);
+    const bool stopped = task_manager_ != nullptr && task_manager_->stopTask(task_id);
+    if (stopped)
+        flushModelState(task_id);
+    return stopped;
 }
 
 bool ModelTaskController::deleteTask(const int task_id)
@@ -953,23 +994,48 @@ void ModelTaskController::flushModelState(const int task_id)
        && registeredFramework(method_, model_manager_->modelRecordViewForUuid(task->model_uuid).framework_name)
               .isFewShot();
 
-    // 训练与内部子任务耗时的权威来源是 TaskManager 的本地时钟。
-    // 写入 extra_data 链路，保存数值耗时与运行身份，保证项目重开后可以恢复显示与终态。
-    if (train_scope || b2m_scope || legacy_few_shot_test)
+    // 权威来源是 TaskManager 的本地时钟。
+    // 写入 extra_data / task.db 链路，保存数值耗时与运行身份，保证项目重开后可以恢复显示与终态。
+    updates.insert(QStringLiteral("elapsed"), task_manager_->taskRunningTime(task_id));
+    updates.insert(QStringLiteral("elapsed_seconds"), task_manager_->taskRunningTimeSeconds(task_id));
+    if (task->identity.isValid())
     {
-        updates.insert(QStringLiteral("elapsed"), task_manager_->taskRunningTime(task_id));
-        updates.insert(QStringLiteral("elapsed_seconds"), task_manager_->taskRunningTimeSeconds(task_id));
-        if (task->identity.isValid())
+        updates.insert(QStringLiteral("run_id"), task->identity.run_id);
+        updates.insert(QStringLiteral("project_id"), task->identity.project_id);
+        updates.insert(QStringLiteral("task_id"), task->identity.task_id);
+    }
+
+    if (!train_scope && !b2m_scope && !legacy_few_shot_test)
+    {
+        const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(task->model_uuid);
+        if (!record.name.isEmpty())
         {
-            updates.insert(QStringLiteral("run_id"), task->identity.run_id);
-            updates.insert(QStringLiteral("project_id"), task->identity.project_id);
-            updates.insert(QStringLiteral("task_id"), task->identity.task_id);
+            ModelTestTaskDefinition task_def;
+            if (test_task_repository_.loadTask(record.name, task->scope_uuid, task_def))
+            {
+                const QString task_db_path = ModelStorageService(project_dir_).testTaskDatabasePath(record.name, task_def.directory_name);
+                database::ModelTaskDataBase task_db(task_db_path);
+                QVariantMap execution_state;
+                task_db.readExecutionState(execution_state);
+                for (auto it = updates.cbegin(); it != updates.cend(); ++it)
+                {
+                    execution_state.insert(it.key(), it.value());
+                }
+                applyTaskStateToSection(*task, TaskManager::isTerminal(task->status),
+                                        task->status == TaskManager::Finished, execution_state);
+                QString error;
+                if (!task_db.writeExecutionState(execution_state, &error))
+                {
+                    spdlog::error("保存测试任务执行状态失败, task_id: {}, uuid: {}, 错误: {}", task_id,
+                                  task->scope_uuid.toUtf8().constData(), error.toUtf8().constData());
+                }
+            }
         }
+        return;
     }
 
     const QVariantMap current_model = model_manager_->modelRecordForUuid(task->model_uuid);
     const QVariantMap extra_data    = current_model.value(QStringLiteral("extra_data")).toMap();
-    QVariantMap       test_tasks    = extra_data.value(QStringLiteral("test_tasks")).toMap();
     QVariantMap       section;
     if (train_scope)
         section = extra_data.value(QStringLiteral("train")).toMap();
@@ -977,8 +1043,6 @@ void ModelTaskController::flushModelState(const int task_id)
         section = extra_data.value(QStringLiteral("box_to_mask")).toMap();
     else if (legacy_few_shot_test)
         section = extra_data.value(QStringLiteral("test")).toMap();
-    else
-        section = test_tasks.value(task->scope_uuid).toMap();
 
     for (auto it = updates.cbegin(); it != updates.cend(); ++it) section.insert(it.key(), it.value());
 
@@ -994,11 +1058,7 @@ void ModelTaskController::flushModelState(const int task_id)
         state_update.insert(QStringLiteral("box_to_mask"), section);
     else if (legacy_few_shot_test)
         state_update.insert(QStringLiteral("test"), section);
-    else
-    {
-        test_tasks.insert(task->scope_uuid, section);
-        state_update.insert(QStringLiteral("test_tasks"), test_tasks);
-    }
+
     if (!model_manager_->updateModelExtraData(task->model_uuid, state_update, &error))
     {
         spdlog::error("保存模型任务状态失败, task_id: {}, uuid: {}, 错误: {}", task_id,
@@ -1087,8 +1147,9 @@ void ModelTaskController::handleTaskRunningTimeChanged(const int task_id)
         = isTestModelTask(task->type) && task->scope_uuid.trimmed().isEmpty()
        && registeredFramework(method_, model_manager_->modelRecordViewForUuid(task->model_uuid).framework_name)
               .isFewShot();
+    const bool test_scope  = isTestModelTask(task->type);
 
-    if (!train_scope && !b2m_scope && !legacy_few_shot_test)
+    if (!train_scope && !b2m_scope && !legacy_few_shot_test && !test_scope)
         return;
 
     if (TaskManager::isTerminal(task->status))

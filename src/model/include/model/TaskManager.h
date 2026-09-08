@@ -310,6 +310,7 @@ public:
      */
     Q_INVOKABLE QString taskRunningTime(int task_id) const;
     Q_INVOKABLE qint64  taskRunningTimeSeconds(int task_id) const;
+    Q_INVOKABLE QVariantMap taskStateMap(int task_id) const;
     Q_INVOKABLE bool hasActiveModelTasks(const QString &model_uuid) const;
     /**
      * @brief 获取指定模型的最新任务记录。

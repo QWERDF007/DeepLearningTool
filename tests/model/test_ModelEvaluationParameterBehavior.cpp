@@ -163,15 +163,16 @@ private slots:
         // same result publication, so the effective threshold is the single
         // prediction score in this fixture.
         QCOMPARE(evaluation->confidenceThreshold(), 0.9);
-        const QVariantMap automatic_state
-            = model_manager.modelRecordForUuid(record.uuid)
-                  .value(QStringLiteral("extra_data"))
-                  .toMap()
-                  .value(QStringLiteral("test_tasks"))
-                  .toMap()
-                  .value(manager.currentTaskUuid())
-                  .toMap();
-        QVERIFY(automatic_state.value(QStringLiteral("adaptive_threshold_applied")).toBool());
+        // 验收条件 1 & 3: 首评应用标记有唯一持久化来源 task.db，不保留 extra_data.test_tasks 平行权威入口
+        const QVariantMap extra_data = model_manager.modelRecordForUuid(record.uuid).value(QStringLiteral("extra_data")).toMap();
+        QVERIFY(!extra_data.contains(QStringLiteral("test_tasks")));
+
+        const ModelStorageService storage(fixture.rootPath());
+        const QString task_db_path = storage.testTaskDatabasePath(record.name, manager.currentTaskDirectory());
+        dltool::database::ModelTaskDataBase task_database(task_db_path);
+        bool applied = false;
+        QVERIFY(task_database.readAdaptiveThresholdApplied(applied));
+        QVERIFY(applied);
 
         auto *inference = findGroup(manager.currentTestParams(), QStringLiteral("inference"));
         auto *evaluation_params = findGroup(manager.currentTestParams(), QStringLiteral("evaluation"));

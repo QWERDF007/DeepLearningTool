@@ -573,6 +573,49 @@ qint64 TaskManager::taskRunningTimeSeconds(const int task_id) const
     return task != nullptr ? runningTimeSeconds(*task) : 0;
 }
 
+QVariantMap TaskManager::taskStateMap(const int task_id) const
+{
+    const Task *task = findTask(task_id);
+    if (task == nullptr)
+        return {};
+
+    const bool started = (task->status == Preparing || task->status == Running || task->status == Stopping);
+    QString status_str;
+    switch (task->status)
+    {
+    case Pending:
+        status_str = QStringLiteral("pending");
+        break;
+    case Preparing:
+        status_str = QStringLiteral("preparing");
+        break;
+    case Running:
+        status_str = QStringLiteral("running");
+        break;
+    case Stopping:
+        status_str = QStringLiteral("stopping");
+        break;
+    case Stopped:
+        status_str = QStringLiteral("stopped");
+        break;
+    case Finished:
+        status_str = QStringLiteral("finished");
+        break;
+    case Failed:
+        status_str = QStringLiteral("failed");
+        break;
+    }
+
+    QVariantMap result;
+    result.insert(QStringLiteral("started"), started);
+    result.insert(QStringLiteral("progress"), task->progress);
+    result.insert(QStringLiteral("status"), status_str);
+    result.insert(QStringLiteral("elapsed"), taskRunningTime(task_id));
+    result.insert(QStringLiteral("elapsed_seconds"), taskRunningTimeSeconds(task_id));
+    result.insert(QStringLiteral("phase"), task->phase);
+    return result;
+}
+
 bool TaskManager::hasActiveModelTasks(const QString &model_uuid) const
 {
     const QString value = model_uuid.trimmed();

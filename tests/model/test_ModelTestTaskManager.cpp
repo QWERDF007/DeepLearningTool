@@ -3,8 +3,10 @@
 #include "TestFixture.h"
 
 #include "database/DataBase.h"
+#include "database/ModelTaskDataBase.h"
 #include "model/DetectionEvaluationEngine.h"
 #include "model/EvaluationEngineRegistry.h"
+#include "model/IParams.h"
 #include "model/ModelEvaluationOptions.h"
 #include "model/ModelManager.h"
 #include "model/ModelStorageService.h"
@@ -23,6 +25,19 @@ using namespace dltool::model;
 using namespace dltool::model::testsupport;
 
 namespace {
+
+ParamGroupModel *findGroup(const ITestParams *params, const QString &name)
+{
+    if (params == nullptr)
+        return nullptr;
+    for (QObject *object : params->groupObjects())
+    {
+        auto *group = qobject_cast<ParamGroupModel *>(object);
+        if (group != nullptr && group->nameEn() == name)
+            return group;
+    }
+    return nullptr;
+}
 
 class BlockingEvaluationEngine final : public DetectionEvaluationEngine
 {
@@ -284,6 +299,156 @@ private slots:
         QCOMPARE(BlockingEvaluationEngine::active.load(std::memory_order_acquire), 0);
         QVERIFY(!first_evaluation->available());
         QVERIFY(!second_evaluation->available());
+    }
+
+bool prepareEvaluationInputs(EvaluationFixture &fixture, const ModelTestTaskManager &manager,
+                             const ModelManager::ModelRecordView &record, const qint64 image_id,
+                             const QVariant &prediction, const bool write_prediction, QString *error)
+{
+    const ModelStorageService storage(fixture.rootPath());
+    const QString             file_list_path
+        = storage.testTaskFileListPath(record.name, manager.currentTaskDirectory());
+    const QString task_database_path = storage.testTaskDatabasePath(record.name, manager.currentTaskDirectory());
+    if (file_list_path.isEmpty() || task_database_path.isEmpty())
+    {
+        if (error != nullptr)
+            *error = QStringLiteral("测试任务存储路径为空");
+        return false;
+    }
+    if (QFileInfo::exists(file_list_path) && !QFile::remove(file_list_path))
+    {
+        if (error != nullptr)
+            *error = QString("删除旧测试图像列表失败: %1").arg(file_list_path);
+        return false;
+    }
+    if (!QFile::copy(fixture.fileListPath(), file_list_path))
+    {
+        if (error != nullptr)
+            *error = QString("复制测试图像列表失败: %1").arg(file_list_path);
+        return false;
+    }
+
+    dltool::database::ModelTaskDataBase task_database(task_database_path);
+    if (!task_database.replaceDatasets({
+            {QStringLiteral("test"), fixture.datasetId(), fixture.classIds()}
+    }, error))
+        return false;
+    if (write_prediction && !task_database.upsertPrediction({image_id, prediction}, error))
+        return false;
+    return true;
+}
+
+    void reopenReevalReinferMaintainsFirstEvaluationAppliedOnlyOnce()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat   = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 image = fixture.addImage(QStringLiteral("cat"));
+        QVERIFY(cat >= 0 && image >= 0);
+        QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.writeImageList());
+        QVERIFY(fixture.setTestSelection({cat}));
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr);
+        QString error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("Managed"), QStringLiteral("ultralytics"),
+                                                         QStringLiteral("YOLOv8"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+        TaskManager task_manager;
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, &task_manager);
+        manager.setModelUuid(record.uuid);
+
+        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image,
+                                          detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 10, 10),
+                                          true, &error),
+                  qPrintable(error));
+
+        auto *evaluation = manager.currentEvaluation();
+        QVERIFY(evaluation != nullptr);
+        evaluation->evaluate(false);
+        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+        QVERIFY(evaluation->available());
+
+        // 首次评估自动应用最优阈值 0.9
+        QCOMPARE(evaluation->confidenceThreshold(), 0.9);
+
+        // 验收条件 1 & 3: 验证持久化在 task.db，且 extra_data 无 test_tasks
+        const ModelStorageService storage(fixture.rootPath());
+        const QString task_db_path = storage.testTaskDatabasePath(record.name, manager.currentTaskDirectory());
+        dltool::database::ModelTaskDataBase task_database(task_db_path);
+        bool applied = false;
+        QVERIFY(task_database.readAdaptiveThresholdApplied(applied));
+        QVERIFY(applied);
+
+        const QVariantMap extra_data = model_manager.modelRecordForUuid(record.uuid).value(QStringLiteral("extra_data")).toMap();
+        QVERIFY(!extra_data.contains(QStringLiteral("test_tasks")));
+
+        // 用户手动调整阈值为 0.6
+        auto *evaluation_params = findGroup(manager.currentTestParams(), QStringLiteral("evaluation"));
+        QVERIFY(evaluation_params != nullptr);
+        QVERIFY(evaluation_params->setValueForName(QStringLiteral("conf"), 0.6));
+        manager.saveCurrentTask();
+
+        // 1. 重评估保持手动选择
+        evaluation->evaluate(false);
+        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+        QCOMPARE(evaluation->confidenceThreshold(), 0.6);
+        QCOMPARE(evaluation->bestThreshold(), 0.9);
+
+        // 2. 模拟重开项目后保持首评标记与用户选择
+        manager.shutdown();
+        task_manager.clearTasks();
+
+        ModelManager reopened_model_manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr);
+        TaskManager  reopened_task_manager;
+        ModelTestTaskManager reopened_manager(fixture.rootPath(), &reopened_model_manager, nullptr, &reopened_task_manager);
+        reopened_manager.setModelUuid(record.uuid);
+        auto *reopened_eval = reopened_manager.currentEvaluation();
+        QVERIFY(reopened_eval != nullptr);
+        reopened_eval->evaluate(false);
+        QTRY_COMPARE_WITH_TIMEOUT(reopened_eval->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+        QCOMPARE(reopened_eval->confidenceThreshold(), 0.6);
+
+        // 3. 重新推理后评估保持首评标记与用户选择
+        QVERIFY(task_database.upsertPrediction({image, detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.85, 0, 0, 10, 10)}));
+        reopened_eval->evaluate(false);
+        QTRY_COMPARE_WITH_TIMEOUT(reopened_eval->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+        QCOMPARE(reopened_eval->confidenceThreshold(), 0.6);
+
+        bool reopened_applied = false;
+        QVERIFY(task_database.readAdaptiveThresholdApplied(reopened_applied));
+        QVERIFY(reopened_applied);
+    }
+
+    void taskDbWriteFailureDoesNotReportSuccess()
+    {
+        QTemporaryDir temp_dir;
+        QVERIFY(temp_dir.isValid());
+        const QString read_only_db_path = QDir(temp_dir.path()).filePath(QStringLiteral("task.db"));
+        {
+            dltool::database::ModelTaskDataBase temp_db(read_only_db_path);
+            dltool::database::TaskInfoRecord info{QStringLiteral("task1"), 100, 100};
+            QVERIFY(temp_db.upsertTaskInfo(info));
+        }
+
+        // 设置为只读权限
+        QVERIFY(QFile::setPermissions(read_only_db_path, QFileDevice::ReadOwner | QFileDevice::ReadUser));
+
+        dltool::database::ModelTaskDataBase ro_db(read_only_db_path);
+        QString write_error;
+        const bool write_res = ro_db.writeAdaptiveThresholdApplied(true, &write_error);
+        QVERIFY(!write_res);
+        QVERIFY(!write_error.isEmpty());
+
+        QVariantMap state;
+        state.insert(QStringLiteral("status"), QStringLiteral("running"));
+        const bool state_res = ro_db.writeExecutionState(state, &write_error);
+        QVERIFY(!state_res);
+        QVERIFY(!write_error.isEmpty());
+
+        // 恢复写权限以确保临时目录正常释放
+        QFile::setPermissions(read_only_db_path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     }
 };
 

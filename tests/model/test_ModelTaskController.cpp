@@ -668,6 +668,68 @@ private slots:
         QCOMPARE(task_manager.taskRunningTimeSeconds(restored->identity.task_id), static_cast<qint64>(225));
         QCOMPARE(task_manager.taskRunningTime(restored->identity.task_id), QStringLiteral("00:03:45"));
     }
+
+    void testTaskStateAndDurationPersistedInTaskDbAndRestoredOnReopenWithoutExtraData()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(kControllerTestMethod, &database, nullptr);
+        QString error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("TestTaskModel"), QStringLiteral("controller-test"),
+                                                         QStringLiteral("ControllerModel"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        ModelTestTaskRepository test_task_repo(fixture.rootPath());
+        test_task_repo.setProjectDatabasePath(fixture.projectDatabasePath());
+        ModelTestTaskDefinition created_task;
+        QVERIFY(test_task_repo.createTask(record.name, record.uuid, QStringLiteral("TaskAlpha"), {}, {}, created_task, &error));
+
+        TaskManager task_manager;
+        ModelTaskController controller(kControllerTestMethod, fixture.rootPath(), &model_manager, nullptr, &task_manager);
+
+        const int task_id = controller.startModelTestTask(record.uuid, created_task.uuid);
+        QVERIFY(task_id > 0);
+        QTRY_VERIFY(task_manager.findTask(task_id) != nullptr
+                    && task_manager.findTask(task_id)->status == TaskManager::Running);
+
+        const TaskIdentity identity = task_manager.findTask(task_id)->identity;
+
+        QTest::qWait(1100);
+        QMetaObject::invokeMethod(&task_manager, "refreshRunningTasks", Qt::DirectConnection);
+
+        QVERIFY(controller.stopModelTestTask(record.uuid, created_task.uuid));
+        QCOMPARE(task_manager.findTask(task_id)->status, TaskManager::Stopped);
+
+        // 验收条件 1 & 3: extra_data 不保留 test_tasks，执行状态唯一保存在 task.db
+        const QVariantMap extra = model_manager.modelRecordForUuid(record.uuid).value(QStringLiteral("extra_data")).toMap();
+        QVERIFY(!extra.contains(QStringLiteral("test_tasks")));
+
+        const ModelStorageService storage(fixture.rootPath());
+        const QString task_db_path = storage.testTaskDatabasePath(record.name, created_task.directory_name);
+        dltool::database::ModelTaskDataBase task_db(task_db_path);
+        QVariantMap execution_state;
+        QVERIFY(task_db.readExecutionState(execution_state));
+        QCOMPARE(execution_state.value(QStringLiteral("status")).toString(), QStringLiteral("stopped"));
+        QVERIFY(execution_state.value(QStringLiteral("elapsed_seconds")).toLongLong() >= 1);
+        const qint64 stopped_seconds = execution_state.value(QStringLiteral("elapsed_seconds")).toLongLong();
+
+        // 重开并恢复测试任务
+        controller.shutdown();
+        task_manager.clearTasks();
+
+        ModelManager reloaded_model_manager(kControllerTestMethod, &database, nullptr);
+        TaskManager  reopened_task_manager;
+        ModelTaskController reopened_controller(kControllerTestMethod, fixture.rootPath(),
+                                                &reloaded_model_manager, nullptr, &reopened_task_manager);
+
+        const auto *restored = reopened_task_manager.findModelTaskRecord(record.uuid, ModelTaskType::Test, created_task.uuid, true);
+        QVERIFY(restored != nullptr);
+        QCOMPARE(restored->status, TaskManager::Stopped);
+        QCOMPARE(restored->elapsed_seconds, stopped_seconds);
+        QCOMPARE(reopened_task_manager.taskRunningTimeSeconds(restored->identity.task_id), stopped_seconds);
+    }
 };
 
 REGISTER_TEST(ModelTaskControllerTest)

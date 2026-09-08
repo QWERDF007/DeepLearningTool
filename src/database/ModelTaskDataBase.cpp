@@ -4,6 +4,7 @@
 #include "DatabaseValueUtils.h"
 #include "database/ddl/PredictionTable.h"
 #include "database/ddl/TaskInfoTable.h"
+#include "database/ddl/TestParamsTable.h"
 
 #include <sqlpp11/insert.h>
 #include <sqlpp11/remove.h>
@@ -127,7 +128,27 @@ bool ModelTaskDataBase::replaceTestParams(const QVariantMap &params, QString *er
     auto db = connectionPool()->get();
     if (!detail::ensureTaskSchema(db, err_msg))
         return false;
-    return detail::replaceParams(db, QStringLiteral("test_params"), params, err_msg);
+
+    QVariantMap merged = params;
+    if (!merged.contains(QStringLiteral("execution")))
+    {
+        QVariantMap existing_exec;
+        if (readExecutionState(existing_exec) && !existing_exec.isEmpty())
+            merged.insert(QStringLiteral("execution"), existing_exec);
+    }
+    const QVariantMap eval_map = merged.value(QStringLiteral("evaluation")).toMap();
+    if (!eval_map.contains(QStringLiteral("adaptive_threshold_applied")))
+    {
+        bool applied = false;
+        if (readAdaptiveThresholdApplied(applied) && applied)
+        {
+            QVariantMap updated_eval = eval_map;
+            updated_eval.insert(QStringLiteral("adaptive_threshold_applied"), true);
+            merged.insert(QStringLiteral("evaluation"), updated_eval);
+        }
+    }
+
+    return detail::replaceParams(db, QStringLiteral("test_params"), merged, err_msg);
 }
 
 bool ModelTaskDataBase::readDatasets(QList<DatasetSelectionRecord> &selections, QString *err_msg) const
@@ -226,6 +247,120 @@ bool ModelTaskDataBase::upsertPrediction(const PredictionRecord &prediction, QSt
     catch (const std::exception &e)
     {
         return failFromException(err_msg, e, QString("写入 prediction 失败"));
+    }
+}
+
+bool ModelTaskDataBase::readAdaptiveThresholdApplied(bool &applied, QString *err_msg) const
+{
+    applied = false;
+    if (connectionPool() == nullptr)
+        return setError(err_msg, QStringLiteral("数据库连接池为空"));
+    try
+    {
+        auto       db    = connectionPool()->get();
+        const auto table = TestParams{};
+        if (!detail::ensureTaskSchema(db, err_msg))
+            return false;
+        auto rows = db(sqlpp::select(table.value, table.type)
+                          .from(table)
+                          .where(table.group == "evaluation" and table.nameEn == "adaptive_threshold_applied")
+                          .limit(1U));
+        if (!rows.empty())
+        {
+            const auto &row = rows.front();
+            const std::string val = row.value;
+            applied = (val == "true" || val == "1");
+        }
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        return failFromException(err_msg, e, QStringLiteral("读取自适应阈值标记失败"));
+    }
+}
+
+bool ModelTaskDataBase::writeAdaptiveThresholdApplied(const bool applied, QString *err_msg) const
+{
+    if (connectionPool() == nullptr)
+        return setError(err_msg, QStringLiteral("数据库连接池为空"));
+    try
+    {
+        auto       db    = connectionPool()->get();
+        const auto table = TestParams{};
+        if (!detail::ensureTaskSchema(db, err_msg))
+            return false;
+        db(sqlpp::sqlite3::insert_or_replace_into(table)
+               .set(table.group  = std::string("evaluation"),
+                    table.nameEn = std::string("adaptive_threshold_applied"),
+                    table.value  = applied ? std::string("true") : std::string("false"),
+                    table.type   = std::string("bool")));
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        return failFromException(err_msg, e, QStringLiteral("写入自适应阈值标记失败"));
+    }
+}
+
+bool ModelTaskDataBase::readExecutionState(QVariantMap &state, QString *err_msg) const
+{
+    state.clear();
+    if (connectionPool() == nullptr)
+        return setError(err_msg, QStringLiteral("数据库连接池为空"));
+    try
+    {
+        auto       db    = connectionPool()->get();
+        const auto table = TestParams{};
+        if (!detail::ensureTaskSchema(db, err_msg))
+            return false;
+        auto rows = db(sqlpp::select(table.nameEn, table.value, table.type)
+                          .from(table)
+                          .where(table.group == "execution"));
+        for (const auto &row : rows)
+        {
+            const QString key = QString::fromStdString(row.nameEn);
+            const QString val = QString::fromStdString(row.value);
+            const QString type = QString::fromStdString(row.type);
+            QString parse_error;
+            state.insert(key, detail::paramValueFromText(type, val, &parse_error));
+        }
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        return failFromException(err_msg, e, QStringLiteral("读取执行状态失败"));
+    }
+}
+
+bool ModelTaskDataBase::writeExecutionState(const QVariantMap &state, QString *err_msg) const
+{
+    if (connectionPool() == nullptr)
+        return setError(err_msg, QStringLiteral("数据库连接池为空"));
+    try
+    {
+        auto       db    = connectionPool()->get();
+        const auto table = TestParams{};
+        if (!detail::ensureTaskSchema(db, err_msg))
+            return false;
+        auto tx = sqlpp::start_transaction(db);
+        db(sqlpp::remove_from(table).where(table.group == "execution"));
+        for (auto it = state.cbegin(); it != state.cend(); ++it)
+        {
+            const QString key = it.key().trimmed();
+            if (key.isEmpty())
+                continue;
+            db(sqlpp::insert_into(table).set(
+                table.group  = std::string("execution"),
+                table.nameEn = key.toStdString(),
+                table.value  = detail::paramValueText(it.value()).toStdString(),
+                table.type   = detail::paramValueType(it.value()).toStdString()));
+        }
+        tx.commit();
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        return failFromException(err_msg, e, QStringLiteral("写入执行状态失败"));
     }
 }
 

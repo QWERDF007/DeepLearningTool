@@ -35,15 +35,20 @@ Rectangle {
     property int taskRevision: taskManager ? taskManager.revision : 0
 
     function taskExtraData(modelData) {
-        if (!modelData || !modelData.extra_data)
+        const _revision = taskRevision
+        if (!modelData)
             return ({})
 
         if (taskType === ModelTaskTypes.Train)
-            return modelData.extra_data.train || ({})
-        if (taskType === ModelTaskTypes.Test && modelData.uuid === currentModelUuid
-                && taskScopeUuid.length > 0) {
-            const testTasks = modelData.extra_data.test_tasks || ({})
-            return testTasks[taskScopeUuid] || ({})
+            return (modelData.extra_data && modelData.extra_data.train) || ({})
+        if (taskType === ModelTaskTypes.Test && modelData.uuid === currentModelUuid) {
+            if (taskScopeUuid.length > 0 && taskManager) {
+                const taskId = taskManager.findModelTask(modelData.uuid, ModelTaskTypes.Test, taskScopeUuid, true)
+                if (taskId > 0)
+                    return taskManager.taskStateMap(taskId)
+            }
+            if (modelData.extra_data && modelData.extra_data.test)
+                return modelData.extra_data.test
         }
         return ({})
     }

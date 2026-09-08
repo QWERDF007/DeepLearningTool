@@ -569,7 +569,17 @@ bool ModelTestTaskManager::deleteTask(const QString &uuid)
 bool ModelTestTaskManager::saveDefinition(ModelTestTaskDefinition &task, const bool persist_selection)
 {
     if (current_test_params_ != nullptr)
-        task.test_params = current_test_params_->valuesMap();
+    {
+        const QVariantMap new_values = current_test_params_->valuesMap();
+        for (auto it = new_values.cbegin(); it != new_values.cend(); ++it)
+        {
+            QVariantMap group = task.test_params.value(it.key()).toMap();
+            const QVariantMap new_group = it.value().toMap();
+            for (auto git = new_group.cbegin(); git != new_group.cend(); ++git)
+                group.insert(git.key(), git.value());
+            task.test_params.insert(it.key(), group);
+        }
+    }
     // 数据集选择默认不落库：编辑期间只保存在内存（snapshotCurrentDatasetSelection），
     // 仅当 persist_selection（手动运行测试前的提交）时才从视图读取并持久化。
     if (persist_selection)
@@ -653,11 +663,38 @@ bool ModelTestTaskManager::automaticThresholdApplied(const QString &task_uuid) c
 {
     if (model_manager_ == nullptr || task_uuid.trimmed().isEmpty())
         return false;
-    const QVariantMap model_record = model_manager_->modelRecordForUuid(model_uuid_);
-    const QVariantMap extra_data   = model_record.value(QStringLiteral("extra_data")).toMap();
-    const QVariantMap test_tasks   = extra_data.value(QStringLiteral("test_tasks")).toMap();
-    return test_tasks.value(task_uuid.trimmed()).toMap().value(QString::fromLatin1(kAutomaticThresholdApplied))
-        .toBool();
+
+    const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(model_uuid_);
+    if (!record.isValid())
+        return false;
+
+    QString directory_name;
+    for (const auto &task : tasks_)
+    {
+        if (task.uuid == task_uuid.trimmed())
+        {
+            directory_name = task.directory_name;
+            break;
+        }
+    }
+    if (directory_name.isEmpty())
+    {
+        ModelTestTaskDefinition def;
+        if (repository_.loadTask(record.name, task_uuid.trimmed(), def))
+            directory_name = def.directory_name;
+    }
+    if (directory_name.isEmpty())
+        return false;
+
+    const ModelStorageService storage(project_dir_);
+    const QString db_path = storage.testTaskDatabasePath(record.name, directory_name);
+    if (!QFile::exists(db_path))
+        return false;
+
+    dltool::database::ModelTaskDataBase task_db(db_path);
+    bool applied = false;
+    task_db.readAdaptiveThresholdApplied(applied);
+    return applied;
 }
 
 bool ModelTestTaskManager::markAutomaticThresholdApplied(const QString &task_uuid, QString *err_msg)
@@ -669,13 +706,40 @@ bool ModelTestTaskManager::markAutomaticThresholdApplied(const QString &task_uui
         return false;
     }
 
-    const QVariantMap model_record = model_manager_->modelRecordForUuid(model_uuid_);
-    QVariantMap       extra_data   = model_record.value(QStringLiteral("extra_data")).toMap();
-    QVariantMap       test_tasks   = extra_data.value(QStringLiteral("test_tasks")).toMap();
-    QVariantMap       task_state   = test_tasks.value(task_uuid.trimmed()).toMap();
-    task_state.insert(QString::fromLatin1(kAutomaticThresholdApplied), true);
-    test_tasks.insert(task_uuid.trimmed(), task_state);
-    return model_manager_->updateModelExtraData(model_uuid_, {{QStringLiteral("test_tasks"), test_tasks}}, err_msg);
+    const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(model_uuid_);
+    if (!record.isValid())
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("模型记录不存在");
+        return false;
+    }
+
+    QString directory_name;
+    for (const auto &task : tasks_)
+    {
+        if (task.uuid == task_uuid.trimmed())
+        {
+            directory_name = task.directory_name;
+            break;
+        }
+    }
+    if (directory_name.isEmpty())
+    {
+        ModelTestTaskDefinition def;
+        if (repository_.loadTask(record.name, task_uuid.trimmed(), def, err_msg))
+            directory_name = def.directory_name;
+    }
+    if (directory_name.isEmpty())
+    {
+        if (err_msg != nullptr && err_msg->isEmpty())
+            *err_msg = QStringLiteral("找不到测试任务目录");
+        return false;
+    }
+
+    const ModelStorageService storage(project_dir_);
+    const QString db_path = storage.testTaskDatabasePath(record.name, directory_name);
+    dltool::database::ModelTaskDataBase task_db(db_path);
+    return task_db.writeAdaptiveThresholdApplied(true, err_msg);
 }
 
 void ModelTestTaskManager::handleEvaluationCompleted(const QString &cache_key)

@@ -43,6 +43,43 @@
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
 - [x] 开关两态验证：`export_v2=off` 时回退旧路径正常
 
+## 2026-09-08 — 持久化测试任务状态和首评应用事实
+
+**目标**
+- 交付 Ticket 19：持久化测试任务状态和首评应用事实。
+- 运行状态、耗时及首评应用标记有唯一持久化来源（`task.db` 的 `test_params` 表）。
+- 重开、重评估、重新推理保持每个逻辑测试任务仅首次自动应用最佳阈值。
+- 写库失败不报告持久化成功，不保留 `extra_data.test_tasks` 平行权威入口。
+- 遵循 TDD，先增加失败/约束测试，再实现功能，并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `src/database/ModelTaskDataBase.cpp` 与 `ModelTaskDataBase.h` 中：
+  1. 增加 `readAdaptiveThresholdApplied` 与 `writeAdaptiveThresholdApplied`，将自适应首评标记持久化在 `task.db` 的 `test_params` 表（group="evaluation", nameEn="adaptive_threshold_applied"）；
+  2. 增加 `readExecutionState` 与 `writeExecutionState`，将测试任务的运行状态与耗时持久化在 `task.db` 的 `test_params` 表（group="execution"）；
+  3. `replaceTestParams` 中保留现有 `execution` 和 `adaptive_threshold_applied`，避免参数更新清空运行时状态。
+- 已完成：在 `src/model/TaskManager.cpp` 与 `TaskManager.h` 中增加 `taskStateMap`，直接对外提供基于 `TaskManager` 唯一权威状态的状态字典。
+- 已完成：在 `src/model/ModelTestTaskManager.cpp` 中：
+  1. `automaticThresholdApplied` 与 `markAutomaticThresholdApplied` 改为直接读写 `task.db`，删除 `extra_data.test_tasks` 的平行更新；
+  2. `saveDefinition` 采用组级合并，避免覆盖执行和评估标记；
+  3. `ModelView.qml` 中的 `taskExtraData` 委托给 `TaskManager.taskStateMap`，彻底解耦对 `extra_data.test_tasks` 的依赖。
+- 已完成：在 `src/model/ModelTaskController.cpp` 中：
+  1. `flushModelState` 对普通测试任务直接写回 `task.db` 的 `execution` 分组，不再向 `project.db` 的 `extra_data.test_tasks` 写入平行状态；
+  2. `handleTaskRunningTimeChanged` 允许普通测试任务参与耗时更新缓冲和节流写库；
+  3. `stopTask` 停止后立即冲刷终态与耗时；
+  4. `restoreModelTasks` 在启动时通过 `test_task_repository_.listTasks` 与 `task.db` 恢复测试任务记录到 `TaskManager`。
+- 已完成：测试用例更新与扩展：
+  1. `test_ModelEvaluationParameterBehavior.cpp`：验证首评标记持久化至 `task.db` 且 `extra_data` 无 `test_tasks`；
+  2. `test_ModelTestTaskManager.cpp`：新增 `reopenReevalReinferMaintainsFirstEvaluationAppliedOnlyOnce` 与 `taskDbWriteFailureDoesNotReportSuccess`；
+  3. `test_ModelTaskController.cpp`：新增 `testTaskStateAndDurationPersistedInTaskDbAndRestoredOnReopenWithoutExtraData`。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_tasks_tests dltool_model_evaluation_behavior_tests` → 编译链接全部成功 (0 errors)。
+- `ctest --test-dir build --output-on-failure -C Release -R "(dltool_model_tasks_tests|dltool_model_evaluation_behavior_tests)"` → 100% tests passed, 0 tests failed out of 2 (34.16s)。
+- `ctest --test-dir build --output-on-failure -C Release -R dltool_database_database_schema_tests` → 100% passed (0.22s)。
+
+**下一步**
+- 开始 Ticket 20：完整发布新预测隔离失败产物 (`docs/refactor-tickets/20-prediction-publish.md`)。
+
 ## 2026-09-08 — 持久化训练与内部子任务的运行记录
 
 **目标**
