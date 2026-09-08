@@ -1164,6 +1164,171 @@ private slots:
             }
         }
     }
+
+    void crossTaskEvaluationCacheEvictionUnderBudget()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        fixture.addClass(QStringLiteral("Normal"), QStringLiteral("normal"));
+        const qint64 anomaly_class = fixture.addClass(QStringLiteral("Defect"), QStringLiteral("anomaly"));
+        const qint64 image = fixture.addImage(QStringLiteral("sample_img"));
+        QVERIFY(fixture.addAnomalyLabel(image, anomaly_class, {{2, 2}, {6, 2}, {6, 6}, {2, 6}}) >= 0);
+        QVERIFY(fixture.writeImageList());
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::AnomalyDetection), &database, nullptr);
+        QString      error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("LRUTestModel"), QStringLiteral("anomalib"),
+                                                         QStringLiteral("patchcore"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, nullptr);
+        manager.setModelUuid(record.uuid);
+        QCOMPARE(manager.count(), 1);
+        const QString task1_uuid = manager.currentTaskUuid();
+        QVERIFY(!task1_uuid.isEmpty());
+        prepareEvaluationInputs(fixture, manager, record, image, anomalyPrediction(0.8), true, &error);
+
+        // 设定跨任务 VM 缓存预算上限为 2
+        manager.setMaxCachedEvaluations(2);
+        QCOMPARE(manager.maxCachedEvaluations(), 2);
+        QCOMPARE(manager.cachedEvaluationCount(), 1); // 仅有初始 task1
+        QCOMPARE(manager.evictedEvaluationCount(), 0);
+
+        // 创建 task2: 缓存包含 task1 与 task2（达到上限 2，未淘汰）
+        const QString task2_uuid = manager.createTask(QStringLiteral("测试 2"));
+        QVERIFY(!task2_uuid.isEmpty());
+        prepareEvaluationInputs(fixture, manager, record, image, anomalyPrediction(0.8), true, &error);
+        QCOMPARE(manager.cachedEvaluationCount(), 2);
+        QCOMPARE(manager.evictedEvaluationCount(), 0);
+
+        // 创建 task3: 缓存已有 task1 与 task2，新增 task3 超过上限 2，按 LRU 淘汰最旧且空闲的 task1
+        const QString task3_uuid = manager.createTask(QStringLiteral("测试 3"));
+        QVERIFY(!task3_uuid.isEmpty());
+        prepareEvaluationInputs(fixture, manager, record, image, anomalyPrediction(0.8), true, &error);
+        QCOMPARE(manager.count(), 3);
+        QCOMPARE(manager.cachedEvaluationCount(), 2);
+        QCOMPARE(manager.evictedEvaluationCount(), 1);
+
+        // 切换到 task2: task2 仍在缓存中（淘汰的是 task1），未发生新淘汰
+        QVERIFY(manager.switchTask(task2_uuid));
+        QCOMPARE(manager.cachedEvaluationCount(), 2);
+        QCOMPARE(manager.evictedEvaluationCount(), 1);
+
+        // 切换到 task1: task1 此前已被淘汰，重新创建并淘汰当前空闲且最旧的 task3
+        QVERIFY(manager.switchTask(task1_uuid));
+        QCOMPARE(manager.cachedEvaluationCount(), 2);
+        QCOMPARE(manager.evictedEvaluationCount(), 2);
+    }
+
+    void heatmapThresholdChangePreservesMetricsAndPolygonsWhileUpdatingVisualUrl()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        fixture.addClass(QStringLiteral("Normal"), QStringLiteral("normal"));
+        const qint64 anomaly_class = fixture.addClass(QStringLiteral("Defect"), QStringLiteral("anomaly"));
+        const qint64 image = fixture.addImage(QStringLiteral("heatmap_test_sample"));
+        QVERIFY(fixture.addAnomalyLabel(image, anomaly_class, {{2, 2}, {6, 2}, {6, 6}, {2, 6}}) >= 0);
+        QVERIFY(fixture.writeImageList());
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::AnomalyDetection), &database, nullptr);
+        QString      error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("HeatmapTestModel"), QStringLiteral("anomalib"),
+                                                         QStringLiteral("patchcore"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, nullptr);
+        manager.setModelUuid(record.uuid);
+        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image, anomalyPrediction(0.88), true, &error),
+                 qPrintable(error));
+
+        auto *evaluation = manager.currentEvaluation();
+        QVERIFY(evaluation != nullptr);
+        evaluation->evaluate(false);
+        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+
+        const int initial_eval_count = evaluation->evaluationCount();
+        QCOMPARE(initial_eval_count, 1);
+        const auto *instances = evaluation->instances();
+        QVERIFY(instances != nullptr && instances->rowCount() == 1);
+        const QVariantList initial_image_polygons
+            = instances->data(instances->index(0, 0), EvaluationInstanceModel::AnomalyImagePolygonsRole).toList();
+        const QVariantList initial_model_polygons
+            = instances->data(instances->index(0, 0), EvaluationInstanceModel::AnomalyModelPolygonsRole).toList();
+        QVERIFY(!initial_image_polygons.isEmpty());
+        const auto &metric_records = evaluation->imageMetrics()->records();
+        QVERIFY(!metric_records.empty());
+        const double initial_f1 = metric_records.front().f1;
+        const qint64 initial_tp = metric_records.front().tp;
+
+        // 模拟 QML 调整热力图阈值滑块
+        ITestParams *params = manager.currentTestParams();
+        QVERIFY(params != nullptr);
+        auto *eval_group = findGroup(params, QStringLiteral("evaluation"));
+        if (eval_group != nullptr)
+            eval_group->setValueForName(QStringLiteral("heatmap_threshold"), 0.35);
+
+        // 验收条件 2: 仅热力图阈值变化绝对不无故重算指标（evaluationCount 保持 1，F1/Polygon 复用）
+        QCOMPARE(evaluation->evaluationCount(), initial_eval_count);
+        const auto &updated_metric_records = evaluation->imageMetrics()->records();
+        QVERIFY(!updated_metric_records.empty());
+        QCOMPARE(updated_metric_records.front().f1, initial_f1);
+        QCOMPARE(updated_metric_records.front().tp, initial_tp);
+        QCOMPARE(instances->data(instances->index(0, 0), EvaluationInstanceModel::AnomalyImagePolygonsRole).toList(),
+                 initial_image_polygons);
+        QCOMPARE(instances->data(instances->index(0, 0), EvaluationInstanceModel::AnomalyModelPolygonsRole).toList(),
+                 initial_model_polygons);
+
+        // 视觉热力图 URL 更新，并且包含新的阈值 0.35
+        const ModelStorageService storage(fixture.rootPath());
+        const QString pred_dir = storage.testTaskPredictionPath(record.name, manager.currentTaskDirectory());
+        const QString tiff_path = QDir(pred_dir).filePath(QStringLiteral("%1.tiff").arg(image));
+        const QString updated_heatmap_url = evaluation->heatmapThumbnailUrl(image, fixture.imagePaths().front(), tiff_path, 0.35);
+        QVERIFY(updated_heatmap_url.contains(QStringLiteral("heatmapThreshold=0.35")));
+    }
+
+    void cancellationAndReInferenceRejectsStaleEvaluationResults()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        fixture.addClass(QStringLiteral("Normal"), QStringLiteral("normal"));
+        const qint64 anomaly_class = fixture.addClass(QStringLiteral("Defect"), QStringLiteral("anomaly"));
+        const qint64 image = fixture.addImage(QStringLiteral("cancel_sample"));
+        QVERIFY(fixture.addAnomalyLabel(image, anomaly_class, {{2, 2}, {6, 2}, {6, 6}, {2, 6}}) >= 0);
+        QVERIFY(fixture.writeImageList());
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::AnomalyDetection), &database, nullptr);
+        QString      error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("CancelModel"), QStringLiteral("anomalib"),
+                                                         QStringLiteral("patchcore"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, nullptr);
+        manager.setModelUuid(record.uuid);
+        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image, anomalyPrediction(0.85), true, &error),
+                 qPrintable(error));
+
+        auto *evaluation = manager.currentEvaluation();
+        QVERIFY(evaluation != nullptr);
+
+        // 1. 发起评估后立即取消/失效
+        evaluation->evaluate(false);
+        evaluation->invalidate(evaluation::ViewState::NotRun);
+
+        // 等待后台线程池完成运行
+        QTest::qWait(200);
+
+        // 验收条件 3: 取消后旧结果必须被拒绝/丢弃，状态保持 NotRun，且不发布任何旧结果
+        QCOMPARE(evaluation->stateKind(), ModelEvaluationViewModel::NotRun);
+        QCOMPARE(evaluation->instances()->rowCount(), 0);
+
+        // 2. 发起重推理，验证新评估能够正常就绪
+        evaluation->evaluate(false);
+        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+        QCOMPARE(evaluation->instances()->rowCount(), 1);
+    }
 };
 
 REGISTER_TEST(ModelEvaluationParameterBehaviorTest)

@@ -361,6 +361,65 @@ ModelEvaluationViewModel *ModelTestTaskManager::currentEvaluation() const
     return current_evaluation_;
 }
 
+int ModelTestTaskManager::maxCachedEvaluations() const
+{
+    return max_cached_evaluations_;
+}
+
+void ModelTestTaskManager::setMaxCachedEvaluations(const int count)
+{
+    max_cached_evaluations_ = std::max(1, count);
+    enforceEvaluationCacheBudget();
+}
+
+int ModelTestTaskManager::cachedEvaluationCount() const
+{
+    return static_cast<int>(evaluation_cache_.size());
+}
+
+int ModelTestTaskManager::evictedEvaluationCount() const
+{
+    return evicted_evaluations_;
+}
+
+void ModelTestTaskManager::touchEvaluationCache(const QString &cache_key)
+{
+    evaluation_cache_lru_.removeOne(cache_key);
+    evaluation_cache_lru_.append(cache_key);
+}
+
+void ModelTestTaskManager::enforceEvaluationCacheBudget()
+{
+    if (max_cached_evaluations_ <= 0)
+        return;
+
+    while (evaluation_cache_.size() > max_cached_evaluations_)
+    {
+        int evict_idx = -1;
+        for (int i = 0; i < evaluation_cache_lru_.size(); ++i)
+        {
+            const QString &key = evaluation_cache_lru_.at(i);
+            ModelEvaluationViewModel *vm = evaluation_cache_.value(key, nullptr);
+            if (vm != nullptr && vm != current_evaluation_ && !vm->loading())
+            {
+                evict_idx = i;
+                break;
+            }
+        }
+        if (evict_idx < 0)
+            break;
+
+        const QString evict_key = evaluation_cache_lru_.takeAt(evict_idx);
+        if (ModelEvaluationViewModel *vm = evaluation_cache_.take(evict_key))
+        {
+            pending_evaluation_notifications_.remove(evict_key);
+            vm->shutdown();
+            delete vm;
+            ++evicted_evaluations_;
+        }
+    }
+}
+
 const TaskManager::Task *ModelTestTaskManager::currentTaskRecord() const
 {
     if (task_manager_ == nullptr)
@@ -539,6 +598,7 @@ bool ModelTestTaskManager::deleteTask(const QString &uuid)
         return false;
     }
     const QString cache_key = evaluationCacheKey(uuid);
+    evaluation_cache_lru_.removeOne(cache_key);
     if (ModelEvaluationViewModel *evaluation = evaluation_cache_.take(cache_key); evaluation != nullptr)
     {
         evaluation->shutdown();
@@ -1072,6 +1132,7 @@ void ModelTestTaskManager::reload()
             evaluation->deleteLater();
     }
     evaluation_cache_.clear();
+    evaluation_cache_lru_.clear();
     pending_evaluation_notifications_.clear();
 
     replaceTasks({});
@@ -1193,6 +1254,8 @@ void ModelTestTaskManager::bindCurrentObjects()
             connect(current_evaluation_, &ModelEvaluationViewModel::evaluationCompleted, this,
                     [this, cache_key]() { handleEvaluationCompleted(cache_key); });
         }
+        touchEvaluationCache(cache_key);
+        enforceEvaluationCacheBudget();
         if (data_manager_ != nullptr && data_manager_->globalFilter() != nullptr)
             current_evaluation_->setGlobalFilter(data_manager_->globalFilter());
 

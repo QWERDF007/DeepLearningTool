@@ -168,6 +168,11 @@ public:
      */
     Q_INVOKABLE int taskId(const QString &uuid = {}) const;
 
+    int  maxCachedEvaluations() const;
+    void setMaxCachedEvaluations(int count);
+    int  cachedEvaluationCount() const;
+    int  evictedEvaluationCount() const;
+
     /**
      * @brief 将当前数据集选择连同参数提交落库。
      *
@@ -223,6 +228,9 @@ private:
     void    emitTaskRowChanged(int row);
     const TaskManager::Task *currentTaskRecord() const;
 
+    void    touchEvaluationCache(const QString &cache_key);
+    void    enforceEvaluationCacheBudget();
+
     QString                                        project_dir_;
     QPointer<ModelManager>                         model_manager_;
     QPointer<dltool::data::DataManager>            data_manager_;
@@ -235,6 +243,9 @@ private:
     QPointer<dltool::data::DataSelectionTreeModel> current_dataset_view_model_;
     QPointer<ModelEvaluationViewModel>             current_evaluation_;
     QThreadPool                                    evaluation_pool_;
+    int                                            max_cached_evaluations_{4};
+    int                                            evicted_evaluations_{0};
+    QList<QString>                                 evaluation_cache_lru_;
     QHash<QString, ModelEvaluationViewModel *>     evaluation_cache_;
     QSet<QString>                                  pending_evaluation_notifications_;
     bool                                           applying_best_threshold_{false};

@@ -1,5 +1,6 @@
 #include "../test_runner.h"
 
+#include "model/EvaluationThumbnailImageProvider.h"
 #include "model/detail/EvaluationImageRequestCache.h"
 
 #include <QImage>
@@ -66,6 +67,91 @@ private slots:
             QCOMPARE(result.size(), expected.size());
             QCOMPARE(result.format(), expected.format());
         }
+    }
+
+    void requestQueueBudgetAndCacheEvictionEnforced()
+    {
+        // 预算限制：最多 4 个排队请求，最大字节预算 1024 字节
+        detail::EvaluationImageRequestCache cache(1024, 4);
+        QCOMPARE(cache.maxCost(), 1024);
+        QCOMPARE(cache.maxPending(), 4);
+
+        // 1. 验证排队上限：启动 4 个阻塞中请求占满 pending 预算
+        constexpr int slow_requests = 4;
+        QSemaphore entered_loaders;
+        QSemaphore release_loaders;
+        std::atomic_int attempted_count{0};
+        std::vector<std::thread> workers;
+        workers.reserve(slow_requests + 2);
+
+        for (int i = 0; i < slow_requests; ++i)
+        {
+            const QString key = QStringLiteral("slow-%1").arg(i);
+            workers.emplace_back([&, key]
+            {
+                cache.getOrCreate(key, [&]
+                {
+                    attempted_count.fetch_add(1, std::memory_order_relaxed);
+                    entered_loaders.release();
+                    release_loaders.acquire();
+                    return QImage(QSize(4, 4), QImage::Format_ARGB32);
+                });
+            });
+        }
+
+        QVERIFY(entered_loaders.tryAcquire(slow_requests, 1000));
+        QCOMPARE(attempted_count.load(), slow_requests);
+
+        // 第 5 个独立 key 请求发起：已超出 maxPending 预算，必须被拒绝并直接返回空，绝不无限制排队
+        const QImage rejected = cache.getOrCreate(QStringLiteral("excess-request"), [&]
+        {
+            attempted_count.fetch_add(1, std::memory_order_relaxed);
+            return QImage(QSize(4, 4), QImage::Format_ARGB32);
+        });
+        QVERIFY(rejected.isNull());
+        QCOMPARE(attempted_count.load(), slow_requests); // loader 未被调用
+
+        // 释放阻塞中的 loader 并等待工作线程结束
+        release_loaders.release(slow_requests);
+        for (auto &w : workers)
+            w.join();
+
+        QVERIFY(cache.peakPendingCount() <= 4);
+        QCOMPARE(cache.pendingCount(), 0);
+
+        // 2. 验证缓存命中与统计
+        QCOMPARE(cache.hitCount(), 0);
+        QCOMPARE(cache.missCount(), 5); // 4 个 slow + 1 个 excess
+        const QImage hit = cache.getOrCreate(QStringLiteral("slow-0"), [] { return QImage(); });
+        QVERIFY(!hit.isNull());
+        QCOMPARE(cache.hitCount(), 1);
+
+        // 3. 验证内存成本上限与 LRU 回收
+        // 每个 16x16 ARGB32 图像约为 16*16*4 = 1024 字节，恰好占满预算
+        for (int i = 0; i < 10; ++i)
+        {
+            cache.getOrCreate(QStringLiteral("heavy-%1").arg(i), []
+            {
+                QImage img(16, 16, QImage::Format_ARGB32);
+                img.fill(Qt::black);
+                return img;
+            });
+            QVERIFY(cache.totalCost() <= cache.maxCost());
+        }
+    }
+
+    void heatmapFailureReturnsEmptyAndAllowsFallback()
+    {
+        EvaluationThumbnailImageProvider provider;
+        QSize actual_size;
+
+        // 构造指向不存在或损坏分数图的热力图请求 URL
+        const QString invalid_url = QStringLiteral("heatmap-999?path=nonexistent_file.png&scorePath=nonexistent.tiff&heatmap=1&heatmapThreshold=0.5");
+        const QImage result = provider.requestImage(invalid_url, &actual_size, QSize(64, 64));
+
+        // 验收条件 3: 生成失败时返回空图像，允许 QML 捕获 Image.Error 退出 Busy 并安全回退原图
+        QVERIFY(result.isNull());
+        QVERIFY(!actual_size.isValid() || actual_size.isEmpty());
     }
 };
 

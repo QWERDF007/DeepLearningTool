@@ -36,6 +36,9 @@ public:
      */
     QImage requestImage(const QString &id, QSize *size, const QSize &requestedSize) override;
 
+    const detail::EvaluationImageRequestCache &requestCache() const;
+    detail::EvaluationImageRequestCache       &requestCache();
+
 private:
     QImage loadImage(const QString &id, const QSize &requestedSize) const;
 

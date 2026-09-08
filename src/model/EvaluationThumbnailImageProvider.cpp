@@ -177,6 +177,16 @@ EvaluationThumbnailImageProvider::EvaluationThumbnailImageProvider()
 
 EvaluationThumbnailImageProvider::~EvaluationThumbnailImageProvider() = default;
 
+const detail::EvaluationImageRequestCache &EvaluationThumbnailImageProvider::requestCache() const
+{
+    return *cache_;
+}
+
+detail::EvaluationImageRequestCache &EvaluationThumbnailImageProvider::requestCache()
+{
+    return *cache_;
+}
+
 QImage EvaluationThumbnailImageProvider::requestImage(const QString &id, QSize *size, const QSize &requestedSize)
 {
     const int       query_index = id.indexOf(QChar('?'));

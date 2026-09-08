@@ -25,18 +25,35 @@ class MODEL_API EvaluationImageRequestCache final
 public:
     using Loader = std::function<QImage()>;
 
-    explicit EvaluationImageRequestCache(int max_cost = 64 * 1024 * 1024);
+    explicit EvaluationImageRequestCache(int max_cost = 64 * 1024 * 1024, int max_pending = 64);
 
     QImage getOrCreate(const QString &key, const Loader &loader);
+
+    int  maxCost() const;
+    void setMaxCost(int max_cost);
+    int  totalCost() const;
+
+    int  maxPending() const;
+    void setMaxPending(int max_pending);
+    int  pendingCount() const;
+    int  peakPendingCount() const;
+
+    int  hitCount() const;
+    int  missCount() const;
+    void clear();
 
 private:
     struct PendingRequest;
 
     static int imageCost(const QImage &image);
 
-    QMutex mutex_;
-    QCache<QString, QImage> cache_;
+    mutable QMutex                                  mutex_;
+    QCache<QString, QImage>                         cache_;
     QHash<QString, std::shared_ptr<PendingRequest>> pending_;
+    int                                             max_pending_{64};
+    int                                             peak_pending_count_{0};
+    int                                             hit_count_{0};
+    int                                             miss_count_{0};
 };
 
 } // namespace dltool::model::detail

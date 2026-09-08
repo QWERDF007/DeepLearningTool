@@ -42,6 +42,32 @@
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
 
+## 2026-09-09 — 限制跨任务缓存与视觉请求总量
+
+**目标**
+- 交付 Ticket 23：限制跨任务缓存与视觉请求总量。
+- 可见实例按需生成、相同请求合并，总预算包含全部 VM 缓存与排队工作。
+- 缩放或重复切换不无故重算；仅热力图阈值变化复用数值与 polygon。
+- 生成失败退出 Busy，保留数值并回退原图；取消和重推理拒绝旧结果，记录资源证据。
+- 遵循 TDD，先编写失败/约束测试建立基线，再实现并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `EvaluationImageRequestCache` 中引入排队上限 `maxPending`（默认 64）与峰值监测 `peakPendingCount`，当排队并发超过预算时主动拒绝并直接返回空，避免快速滚动缩略图导致后台工作无限堆积；同时完善 `totalCost`/`maxCost` 内存上限、`hitCount`/`missCount` 资源指标统计与 `clear` 清理。
+- 已完成：在 `EvaluationThumbnailImageProvider` 中暴露 `requestCache()` 访问器，并保证热力图原始分数 TIFF 缺失或损坏时安全返回空图像，允许 QML 捕获 `Image.Error` 立即退出 Busy 状态并保留数值回退原图与缺陷多边形叠加。
+- 已完成：在 `ModelTestTaskManager` 中引入跨任务评估视图模型 LRU 缓存预算机制（`max_cached_evaluations_`，默认 4），在多任务切换与创建时动态追踪最近访问顺序并安全回收淘汰最旧空闲的评估 ViewModel（调用 `shutdown()` 与析构），防止长时间浏览多任务发生内存泄露。
+- 已完成：在 `test_EvaluationThumbnailImageProvider.cpp` 中增加并发相同请求合并、排队上限预算拒绝、LRU 字节淘汰与失败回退等全套单元测试。
+- 已完成：在 `test_ModelEvaluationParameterBehavior.cpp` 中增加 `crossTaskEvaluationCacheEvictionUnderBudget`、`heatmapThresholdChangePreservesMetricsAndPolygonsWhileUpdatingVisualUrl` 与 `cancellationAndReInferenceRejectsStaleEvaluationResults` 3 个行为集成测试。
+- 已完成：所有 22 个模型域测试在 Release 模式下 100% 通过（总测试耗时 71.59 秒）。
+
+**验证证据**
+- `cmake --build build --config Release` → 全量编译构建成功，0 错误
+- `ctest --test-dir build --output-on-failure -C Release -R "dltool_model_evaluation_tests|dltool_model_evaluation_behavior_tests"` → 2/2 测试通过（100% passed）
+- `ctest --test-dir build --output-on-failure -C Release -L "model"` → 22/22 测试通过（100% passed，71.59 秒）
+
+**下一步**
+- 提交 Ticket 23 代码。
+- 领取 Ticket 24（`docs/refactor-tickets/24-threshold-charts.md` — 完成阈值搜索与图表的行为验收）。
+
 ## 2026-09-09 — 统一旧预测的坐标解释
 
 **目标**
