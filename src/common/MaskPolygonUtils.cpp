@@ -1,4 +1,5 @@
 #include "common/MaskPolygonUtils.h"
+#include "common/GeometryKernel.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -168,7 +169,7 @@ std::vector<QPointF> contourBoundsPolygon(const std::vector<cv::Point> &contour,
     if (right <= left || bottom <= top)
         return {};
 
-    return normalizePolygon({QPointF(left, top), QPointF(right, top), QPointF(right, bottom), QPointF(left, bottom)});
+    return normalizePolygon(dltool::common::geometry::rectangleToPolygon(QPointF(left, top), QPointF(right, bottom)));
 }
 
 } // namespace

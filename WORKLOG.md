@@ -43,6 +43,30 @@
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
 - [x] 开关两态验证：`export_v2=off` 时回退旧路径正常
 
+## 2026-09-08 — 统一格式转换的几何语义
+
+**目标**
+- 交付 Ticket 11：统一格式转换的几何语义（不同导入导出格式的区域位置与合法性一致）。
+- 固定坐标验证 rectangle、polygon、Mask、边缘裁剪及像素取整。
+- 有效小区域不按面积擅自丢弃，不足三个轮廓点按现有规则处理。
+- 复用几何内核；带孔等格式能力明确验证，不承诺不可表达的无损转换。
+- 遵循 TDD，先增加几何内核约束用例与导入导出数据格式测试，再实现并保证 CTest 通过。
+
+**当前状态**
+- 已完成：扩展 `tests/common/test_GeometryKernel.cpp`，补充坐标退化校验、边缘裁剪保留有效微小面积、精细包围盒计算、单像素/双像素轮廓退化兜底、带孔 Mask 轮廓提取与外扩光栅化特性验证、多边形光栅化像素级测试。
+- 已完成：在 `tests/data/test_DataGeometryFormats.cpp` 建立端到端 TDD 测试套件，覆盖 COCO 分割多边形导入及边界裁剪、COCO 分割项目中无 segmentation 的 bbox 转换为 4 点多边形导入导出、COCO 目标检测项目中 bbox 保持原样不生多边形、LabelMe 矩形与多边形按项目类型转换与裁剪、Mask 掩码非等比尺寸缩放坐标映射。
+- 已完成：重构 `src/data/DataIO.cpp` 中的 `COCOIO::doImport` 与 `COCOIO::doExport`，在分割与异常检测项目中统一使用 `dltool::common::geometry::rectangleToPolygon` 将 bbox 规范化为 4 点多边形，对齐 LabelMe 与 Mask 语义；重构 `MaskIO::readMaskGeometry` 与 `src/common/MaskPolygonUtils.cpp` 中的 fallback 多边形生成统一复用几何内核。
+- 已完成：修复 `test_LabelMeIO.cpp` 异步 worker 线程未等待结束导致的局部析构竞态。
+- 未完成：无。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_data_data_geometry_formats_tests dltool_common_geometry_tests` → 编译成功 0 error。
+- `ctest --test-dir build --output-on-failure -C Release -R "(data_geometry_formats|geometry_tests)"` → 2/2 tests passed (100% passed, 0 failed).
+- `ctest --test-dir build --output-on-failure -C Release -R "(data_io|label_me|roundtrip)"` → 8/8 tests passed (100% passed, 0 failed).
+
+**下一步**
+- 继续推进 Ticket 12：`docs/refactor-tickets/12-model-create-recovery.md`（模型创建中断与脏目录恢复）。
+
 ## 2026-09-08 — 让数据复制移动划分原子完成
 
 **目标**

@@ -80,6 +80,7 @@ private slots:
 
         importer.startImport(1, image_dir, annotation_dir);
         QTRY_VERIFY_WITH_TIMEOUT(finished.load(std::memory_order_acquire), 10000);
+        QVERIFY(importer.waitForDone(5000));
         QVERIFY(success.load(std::memory_order_acquire));
         QCOMPARE(labels.size(), size_t(1));
         QCOMPARE(labels.front().label_class_name, QStringLiteral("3"));
@@ -152,6 +153,7 @@ private slots:
 
         importer.startImport(1, image_dir, annotation_dir);
         QTRY_VERIFY_WITH_TIMEOUT(finished.load(std::memory_order_acquire), 10000);
+        QVERIFY(importer.waitForDone(5000));
         QVERIFY(success.load(std::memory_order_acquire));
         QCOMPARE(labels.size(), size_t(1));
 
@@ -223,6 +225,7 @@ private slots:
 
         importer.startImport(1, image_dir, annotation_dir);
         QTRY_VERIFY_WITH_TIMEOUT(finished.load(std::memory_order_acquire), 10000);
+        QVERIFY(importer.waitForDone(5000));
         QVERIFY(success.load(std::memory_order_acquire));
         QCOMPARE(labels.size(), size_t(1));
 

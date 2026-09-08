@@ -1855,9 +1855,24 @@ void COCOIO::doImport(int64_t dataset_id, const QString &image_dir, const QStrin
                         }
 
                         const auto &bbox       = annotation_json["bbox"];
-                        QVariantMap label_data = DatasetIO::bboxToLabelData(
-                            jsonToDouble(bbox[0]), jsonToDouble(bbox[1]), jsonToDouble(bbox[2]), jsonToDouble(bbox[3]),
-                            image_it->second.width, image_it->second.height);
+                        QVariantMap label_data;
+                        if (target_method == DeepLearningMethod::Segmentation
+                            || target_method == DeepLearningMethod::AnomalyDetection)
+                        {
+                            const double bx = jsonToDouble(bbox[0]);
+                            const double by = jsonToDouble(bbox[1]);
+                            const double bw = jsonToDouble(bbox[2]);
+                            const double bh = jsonToDouble(bbox[3]);
+                            const std::vector<QPointF> rect_poly
+                                = dltool::common::geometry::rectangleToPolygon(QPointF(bx, by), QPointF(bx + bw, by + bh));
+                            label_data = DatasetIO::pointsToLabelData(rect_poly, image_it->second.width, image_it->second.height);
+                        }
+                        else
+                        {
+                            label_data = DatasetIO::bboxToLabelData(
+                                jsonToDouble(bbox[0]), jsonToDouble(bbox[1]), jsonToDouble(bbox[2]), jsonToDouble(bbox[3]),
+                                image_it->second.width, image_it->second.height);
+                        }
                         if (!label_data.isEmpty())
                             label_data_list.push_back(std::move(label_data));
                     }
@@ -2100,6 +2115,23 @@ void COCOIO::doExport(ExportDataset dataset, QString output_dir, const int threa
                             area = dltool::common::polygonArea(points);
                             if (area <= 0)
                                 area = w * h;
+                        }
+                        else if ((target_method_ == DeepLearningMethod::Segmentation
+                                  || target_method_ == DeepLearningMethod::AnomalyDetection)
+                                 && w > 0.0 && h > 0.0)
+                        {
+                            const std::vector<QPointF> rect_poly
+                                = dltool::common::geometry::rectangleToPolygon(QPointF(x, y), QPointF(x + w, y + h));
+                            if (rect_poly.size() >= 3)
+                            {
+                                nlohmann::json flat_points = nlohmann::json::array();
+                                for (const QPointF &point : rect_poly)
+                                {
+                                    flat_points.push_back(point.x());
+                                    flat_points.push_back(point.y());
+                                }
+                                segmentation.push_back(flat_points);
+                            }
                         }
 
                         annotation_results[index].annotation_json = {
@@ -3093,13 +3125,14 @@ bool MaskIO::readMaskGeometry(const QString &mask_path, MaskGeometry &geometry,
     }
     else
     {
-        const double left   = geometry.bbox.x();
-        const double top    = geometry.bbox.y();
-        const double right  = left + geometry.bbox.width();
-        const double bottom = top + geometry.bbox.height();
-        geometry.polygons   = {
-            {QPointF(left, top), QPointF(right, top), QPointF(right, bottom), QPointF(left, bottom)}
-        };
+        const double left      = geometry.bbox.x();
+        const double top       = geometry.bbox.y();
+        const double right     = left + geometry.bbox.width();
+        const double bottom    = top + geometry.bbox.height();
+        const auto   rect_poly = dltool::common::geometry::rectangleToPolygon(QPointF(left, top), QPointF(right, bottom));
+        if (rect_poly.empty())
+            return false;
+        geometry.polygons = {rect_poly};
     }
 
     return true;

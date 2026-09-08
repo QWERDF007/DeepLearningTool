@@ -27,6 +27,7 @@ set(_data_test_include_directories
     ${CMAKE_SOURCE_DIR}/src/core/include
     ${CMAKE_SOURCE_DIR}/src/common/include
     ${CMAKE_SOURCE_DIR}/src/ui/include
+    ${CMAKE_SOURCE_DIR}/3rdparty/nlohmann
 )
 
 # CTest 按声明顺序执行 path_list_prepend；将当前模块目录放在列表末尾，
