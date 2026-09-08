@@ -97,6 +97,71 @@ private slots:
 
         disconnect(connection);
     }
+
+    void parallelWorkerExceptionPropagatesAndPublishesFailureOnce()
+    {
+        ReusableDataIO   io;
+        QVector<bool>    results;
+        QVector<QString> messages;
+        const QMetaObject::Connection connection
+            = connect(&io, &dltool::data::DataIO::exportFinished, this,
+                      [&results, &messages](const bool success, const QString &message)
+                      {
+                          results.push_back(success);
+                          messages.push_back(message);
+                      });
+
+        // 启动后台任务：多个 worker 并行执行，最后一个 worker 抛出异常
+        io.runInThread(
+            []()
+            {
+                std::vector<std::jthread> workers;
+                std::atomic_bool          stop_requested{false};
+                std::exception_ptr        first_exception;
+                std::mutex                mutex;
+
+                for (int i = 0; i < 4; ++i)
+                {
+                    workers.emplace_back(
+                        [&, i]()
+                        {
+                            if (i == 3)
+                            {
+                                QThread::msleep(15);
+                                stop_requested.store(true, std::memory_order_relaxed);
+                                std::lock_guard lock(mutex);
+                                if (!first_exception)
+                                    first_exception = std::make_exception_ptr(std::runtime_error("最后一个 worker 失败"));
+                            }
+                            else
+                            {
+                                while (!stop_requested.load(std::memory_order_relaxed))
+                                    QThread::msleep(2);
+                            }
+                        });
+                }
+
+                for (auto &w : workers)
+                {
+                    if (w.joinable())
+                        w.join();
+                }
+
+                if (first_exception)
+                    std::rethrow_exception(first_exception);
+            },
+            [&io](const QString &error)
+            {
+                emit io.exportFinished(false, error);
+            });
+
+        QVERIFY(io.waitForDone(2000));
+        QTRY_COMPARE_WITH_TIMEOUT(results.size(), 1, 1000);
+        QVERIFY(!results.at(0));
+        QVERIFY(messages.at(0).contains(QStringLiteral("最后一个 worker 失败")));
+
+        disconnect(connection);
+    }
 };
 
 QTEST_GUILESS_MAIN(DataIOTest)

@@ -77,7 +77,7 @@ protected:
     DataOperationWorkflow::HandlePtr operation_handle_;
 
     void updateProgress(int progress, const QString &message);
-    void runInThread(std::function<void()> work);
+    void runInThread(std::function<void()> work, std::function<void(const QString &error)> on_failure = {});
     bool importImagesOnly(int64_t dataset_id, const QString &image_dir, const QString &format_name,
                           int thread_count);
 };

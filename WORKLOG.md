@@ -47,6 +47,198 @@
 
 ---
 
+## 2026-09-08 — 等待数据并行全部 worker 退出后再裁决异常
+
+**目标**
+- 解决数据导入/导出并行执行中，因异常检查早于 worker join 导致末尾 worker 异常被吞掉的问题。
+- 让 DataIO 在后台 worker 抛出异常时准确发布失败终态并结束 Busy，失败只发布一次。
+
+**当前状态**
+- 已完成：`parallelFor` 统一等待所有 worker 线程 join 后再检查并 rethrow 捕获的第一个异常。
+- 已完成：`DataIO::runInThread` 支持传入 `on_failure` 回调，捕获异常时自动触发格式对应的 `importFinished` / `exportFinished` / `labelClassesScanned` 失败发布。
+- 已完成：在 `test_DataIO.cpp` 中新增可控并发异常测试 `parallelWorkerExceptionPropagatesAndPublishesFailureOnce`，验证最后一个 worker 异常被捕获且失败只发布一次。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_data_data_io_tests --parallel 4` → Release 构建通过。
+- `ctest --test-dir build -C Release -R '^dltool_data_data_io_tests$' -V` → 4/4 测试通过（含新增异常测试）。
+- `git diff --check -- src/data/include/data/DataIO.h src/data/DataIO.cpp tests/data/test_DataIO.cpp` → 校验通过。
+
+**下一步**
+- 提交本阶段代码：`refactor: 等待数据并行全部 worker 退出后再裁决异常`。
+- 继续推进 Ticket 02：统一数据操作提交后取消保留已提交结果。
+
+---
+
+## 2026-09-08 — 收敛小样本学习子任务终态
+
+**目标**
+- 让 FS-SAM2 取消时创建的 Pending 子任务也进入可观察终态。
+- 让小样本学习控制器在本轮 BoxToMask、训练和预测任务全部终态后再发布停止结果。
+
+**当前状态**
+- 已完成：TaskManager 允许 Pending 任务进入 Stopping；ModelTaskController 会将没有后台执行者的 Pending 子任务立即收敛为 Stopped。
+- 已完成：FewShotLearningController 取消后保留本轮状态，等待所有子任务终态，再清理运行状态和发布停止结果。
+- 已完成：新增 Pending TaskManager 状态测试和 ModelTaskController 的 BoxToMask Pending 停止测试。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_tasks_tests --parallel 4` → Release 构建通过。
+- `ctest --test-dir build -C Release -R '^(dltool_model_tasks_tests|dltool_feature_lifecycle_tests)$' --output-on-failure` → 2/2 通过。
+- `git diff --check -- src/model/include/model/TaskManager.h src/model/TaskManager.cpp src/feature/include/feature/FewShotLearningController.h src/feature/FewShotLearningController.cpp tests/model/test_TaskManager.cpp tests/model/test_ModelTaskController.cpp` → 通过。
+
+**下一步**
+- 本阶段已提交为 `b2e878c refactor: 收敛小样本学习任务终态`；继续审查项目关闭期间的 Feature/Data 操作等待和迟到回调。
+
+---
+
+## 2026-09-08 — 隔离智能标注模型加载回调
+
+**目标**
+- 防止智能标注清空缓存后重新加载同一模型时，旧加载结果覆盖当前加载。
+- 让模型加载 worker 具备可测试的 Adapter seam，并沿现有控制器生命周期收敛。
+
+**当前状态**
+- 已完成：每次模型加载使用独立取消令牌；`shutdown()`、`clearCache()` 和替换模型时令牌失效，queued 完成回调同时校验令牌和模型 key。
+- 已完成：生产构造继续使用 InferRT 加载器，测试可注入阻塞加载 Adapter；旧加载自然返回但不能发布结果。
+- 已完成：新增同 key 重叠加载回归测试，验证清空缓存后只发布当前加载结果。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_feature_lifecycle_tests --parallel 4` → Release 构建通过。
+- `ctest --test-dir build -C Release -R '^dltool_feature_lifecycle_tests$' --output-on-failure` → 1/1 通过。
+- `git diff --check -- src/feature/include/feature/SmartAnnotationController.h src/feature/SmartAnnotationController.cpp tests/feature/test_FeatureLifecycle.cpp` → 通过。
+
+**下一步**
+- 本阶段已提交为 `468071f refactor: 隔离智能标注模型加载回调`；继续审查小样本学习任务终态等待。
+
+---
+
+## 2026-09-08 — 隔离 feature 任务运行轮次
+
+**目标**
+- 防止搜索、图像聚类和标注聚类上一轮已经完成但仍排队的进度或结果回调写入下一轮任务。
+- 让取消令牌同时承担本轮任务身份校验，保持关闭和重复启动的生命周期语义一致。
+
+**当前状态**
+- 已完成：三类 feature 请求启动新轮次前使旧令牌失效；进度回调、queued UI 更新和完成回调均校验所属令牌与关闭状态。
+- 已完成：新增公开搜索流程回归测试，模拟两轮任务完成后投递第一轮延迟进度，验证旧回调被丢弃。
+- 边界：InferRT 内部计算仍无强制中断接口；令牌负责阻止后续发布和阶段处理，不伪造底层中断能力。
+
+**验证证据**
+- 旧实现下新增回归测试未通过；说明延迟的第一轮进度会穿过控制器进入后续事件队列。
+- `cmake --build build --config Release --target dltool_feature_lifecycle_tests --parallel 4` → Release 构建通过。
+- `ctest --test-dir build -C Release -R '^dltool_feature_lifecycle_tests$' --output-on-failure` → 1/1 通过。
+- `git diff --check -- src/feature/include/feature/SearchControllerBase.h src/feature/SearchControllerBase.cpp src/feature/include/feature/ImageClusterController.h src/feature/ImageClusterController.cpp src/feature/include/feature/RoiClusterController.h src/feature/RoiClusterController.cpp tests/feature/test_FeatureLifecycle.cpp` → 通过。
+
+**下一步**
+- 本阶段已提交为 `e96b0b4 refactor: 隔离 feature 任务运行轮次`；继续审查小样本学习任务终态等待和智能标注模型加载回调。
+
+---
+
+## 2026-09-08 — 收敛 feature 任务取消信号
+
+**目标**
+- 为搜索、图像聚类和标注聚类请求统一设置协作式取消令牌。
+- 控制器关闭时先发出取消信号，再等待 worker 线程和后续数据操作收敛。
+
+**当前状态**
+- 已完成：搜索、图像聚类和标注聚类在请求启动时创建取消令牌，关闭时置位；worker 在阶段入口和 InferRT 返回后检查取消状态。
+- 已完成：生命周期测试执行器验证关闭后观察到取消信号，迟到进度和结果不会继续发布。
+- 已完成：删除 ROI 聚类请求重复的 `started_at` 成员。
+- 边界：InferRT 当前没有强制取消接口，正在执行的内部计算仍需自然返回后才能完成线程关闭。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_feature_lifecycle_tests --parallel 4` → Release 构建通过。
+- `ctest --test-dir build -C Release -R '^dltool_feature_lifecycle_tests$' --output-on-failure` → 1/1 通过。
+- `git diff --check -- src/feature/include/feature/RoiClusterController.h src/feature/RoiClusterController.cpp src/feature/include/feature/ImageClusterController.h src/feature/ImageClusterController.cpp src/feature/include/feature/SearchControllerBase.h src/feature/SearchControllerBase.cpp src/feature/RoiSearchController.cpp tests/feature/test_FeatureLifecycle.cpp` → 通过。
+
+**下一步**
+- 本阶段已提交为 `5086979 refactor: 收敛 feature 任务取消信号`；继续审查 feature 任务句柄、外部计算取消和小样本学习任务终态等待。
+
+---
+
+## 2026-09-08 — 收敛 feature 关闭期间的进度回调
+
+**目标**
+- 阻止搜索、图像聚类和标注聚类的后台进度回调在控制器关闭后继续写入全局进度模型。
+- 让 feature 生命周期测试通过 CTest 使用当前构建树 DLL，避免旧 `build/bin` 模块遮蔽新构建结果。
+
+**当前状态**
+- 已完成：进度回调统一检查控制器有效性和关闭状态，关闭后丢弃迟到进度消息。
+- 已完成：新增可控搜索执行器生命周期测试，覆盖后台回调在关闭期间到达的场景。
+- 已完成：修正 feature 测试 PATH 的模块目录顺序，使当前构建树模块优先于共享运行时目录。
+- 未完成：InferRT 搜索/聚类接口本身没有取消入口，当前只抑制关闭后的 UI 副作用，底层计算仍由后续阶段按取消能力继续收敛。
+
+**验证证据**
+- `cmake -S . -B build -DDLT_BUILD_TESTS=ON` → 配置与生成成功。
+- `cmake --build build --config Release --target dltool_feature_lifecycle_tests --parallel 4` → Release 构建成功。
+- `ctest --test-dir build -C Release -R '^dltool_feature_lifecycle_tests$' --output-on-failure` → 1/1 通过。
+- `git diff --check -- src/feature/README.md src/feature/SearchControllerBase.cpp src/feature/ImageClusterController.cpp src/feature/RoiClusterController.cpp tests/feature/CMakeLists.txt tests/feature/test_FeatureLifecycle.cpp` → 通过。
+
+**下一步**
+- 本阶段提交为 `6b724e6 refactor: 收敛 feature 关闭期间进度回调`；继续审查 feature 的任务句柄、外部计算取消和小样本学习任务终态等待。
+
+---
+
+## 2026-09-08 — 收敛 TensorBoard 项目关闭生命周期
+
+**目标**
+- 将 TensorBoard 外部进程纳入模型管理器和项目关闭栅栏，避免项目释放后仍遗留进程。
+
+**当前状态**
+- 已完成：新增 `TensorBoardRunner` 深生命周期模块，统一启动、切换、终止、强制结束、幂等关闭和关闭后拒绝启动。
+- 已完成：`ModelManager` 委托 TensorBoard 进程生命周期，并由 `Project::shutdown()` 在模型任务和评估关闭后、数据管理器关闭前调用。
+- 已完成：修正项目级 CTest 的 DLL 搜索路径顺序，确保优先加载当前构建树模块。
+- 未完成：阶段 3 其他后台执行者的关闭等待和迟到回调丢弃仍按后续切片继续。
+
+**验证证据**
+- `cmake -S . -B build -DDLT_BUILD_TESTS=ON` → 配置与生成成功。
+- `cmake --build build --config Release --target dltool_model_storage_params_tests dltool_model_project_shutdown_test dltool_model_tasks_tests --parallel 4` → Release 目标构建成功。
+- `ctest --test-dir build -C Release -R '^dltool_model_storage_params_tests$' --output-on-failure` → 1/1 通过，1.83 秒。
+- `ctest --test-dir build -C Release -R '^dltool_model_project_shutdown_test$' --output-on-failure` → 1/1 通过，0.33 秒。
+- `ctest --test-dir build -C Release -R '^(dltool_model_project_shutdown_test|dltool_model_tasks_tests)$' --output-on-failure` → 模型任务测试通过；首次项目测试因旧 DLL 搜索路径失败，调整 CTest 环境后单独重跑通过。
+- `git diff --check` → 待提交文件无新增空白错误。
+
+**下一步**
+- 本阶段提交为 `0fb9970 refactor: 收敛 TensorBoard 项目关闭生命周期`；继续按 `final_plan.md` 阶段 3 收敛其他后台执行者的关闭等待和迟到回调丢弃。
+
+---
+
+## 2026-09-08 — 限制外部模型进程关闭等待
+
+**目标**
+- 外部模型进程停止不响应时，项目关闭仍能在有界时间内升级到强制结束，避免 `shutdown()` 无限等待。
+
+**当前状态**
+- 已完成：`ExternalModelTaskRunner::waitForDone()` 的默认和负数等待使用有限优雅停止窗口，超时复用现有 kill 路径。
+- 已完成：新增长时间外部进程关闭回归测试，验证关闭后进程不可继续运行且运行器拒绝新任务。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_tasks_tests --parallel 4` → Release 构建成功。
+- `ctest --test-dir build -C Release -R '^dltool_model_tasks_tests$' --output-on-failure` → 1/1 通过。
+
+**下一步**
+- 继续按 `final_plan.md` 阶段 3 补齐模型任务控制器与外部进程终态回调的组合行为验证。
+
+---
+
+## 2026-09-08 — 拒绝清理活动模型任务记录
+
+**目标**
+- 清理任务记录前保留 `Preparing`、`Running`、`Stopping` 任务的可路由身份，避免后台任务仍在运行时丢失控制入口。
+
+**当前状态**
+- 已完成：`TaskManager::clearTasks()` 返回清理结果；待处理任务和终态任务可清理，活动任务清理请求被拒绝并保留记录；关闭阶段仍允许统一清理。
+- 已完成：新增活动任务身份回归测试，并修正待处理任务可清理的状态边界。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_tasks_tests --parallel 4` → Release 构建成功。
+- `ctest --test-dir build -C Release -R '^dltool_model_tasks_tests$' --output-on-failure` → 1/1 通过。
+- `git diff --check` → 当前工作区已有 `WORKLOG.md` 行尾差异提示；本阶段源码和测试差异未发现新增格式错误。
+
+**下一步**
+- 提交本阶段任务清理生命周期变更；继续按 `final_plan.md` 审查其他后台任务的关闭等待与迟到结果丢弃。
+
+---
+
 ## 2026-09-08 — 收敛模型任务关闭回调生命周期
 
 **目标**
@@ -67,6 +259,25 @@
 
 **下一步**
 - 提交本阶段变更；之后按 `final_plan.md` 阶段 3 继续审查其他后台任务的关闭等待和迟到结果丢弃。
+
+---
+
+## 2026-09-08 — 收敛最终架构改进方案
+
+**目标**
+- 将架构改进内容收敛到根目录 `final_plan.md`，作为后续重构的唯一方案入口。
+
+**当前状态**
+- 已完成：统一职责边界、深模块、项目与任务生命周期、持久化、评估性能、几何映射、QML、测试和分阶段验收方案。
+- 已确认：`luna_final_plan.md`、`gemini_final_plan.md`、`musespark13_final_plan.md` 不存在于当前工作区、`F:\Projects` 或 Git 历史；未虚构其内容。
+- 保留：`src/feature/FeatureManager.cpp`、`tools/dependencies.yaml` 等既有工作区改动未纳入本轮。
+
+**验证证据**
+- `git diff --check -- final_plan.md` → 通过。
+- 未执行 Release 构建和 CTest，本轮仅修改方案文档。
+
+**下一步**
+- 按 `final_plan.md` 阶段 3 继续补充后台任务句柄、项目关闭等待和迟到回调丢弃的行为测试。
 
 ---
 

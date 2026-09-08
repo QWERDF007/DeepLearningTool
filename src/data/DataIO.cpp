@@ -120,6 +120,12 @@ void parallelFor(const std::size_t count, const int requested_threads, const std
     workers.reserve(worker_count);
     for (std::size_t i = 0; i < worker_count; ++i) workers.emplace_back(worker);
 
+    for (auto &worker_thread : workers)
+    {
+        if (worker_thread.joinable())
+            worker_thread.join();
+    }
+
     if (first_exception)
         std::rethrow_exception(first_exception);
 }
@@ -1007,7 +1013,7 @@ void DataIO::updateProgress(int progress, const QString &message)
                               Q_ARG(int, spdlog::level::info), Q_ARG(QString, message));
 }
 
-void DataIO::runInThread(std::function<void()> work)
+void DataIO::runInThread(std::function<void()> work, std::function<void(const QString &error)> on_failure)
 {
     if (operation_handle_ != nullptr && !operation_handle_->isFinished())
     {
@@ -1029,11 +1035,15 @@ void DataIO::runInThread(std::function<void()> work)
             work();
             result.success = true;
         },
-        [](const DataOperationWorkflow::Result &result)
+        [on_failure = std::move(on_failure)](const DataOperationWorkflow::Result &result)
         {
             if (!result.success)
             {
                 spdlog::error("DataIO 后台任务失败: {}", result.error.toUtf8().constData());
+                if (on_failure)
+                {
+                    on_failure(result.error);
+                }
             }
         });
 }
@@ -1162,13 +1172,15 @@ void COCOIO::startImport(int64_t dataset_id, const QString &image_dir, const QSt
     const double polygon_approx_epsilon_ratio = maskImportPolygonApproxRatio();
     const int    thread_count                 = dataIOThreadCount();
     runInThread([this, dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio, thread_count]()
-                { doImport(dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio, thread_count); });
+                { doImport(dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio, thread_count); },
+                [this](const QString &) { emit importFinished(false, {}, {}); });
 }
 
 void COCOIO::startScanLabelClasses(const QString &image_dir, const QString &data_dir)
 {
     Q_UNUSED(image_dir)
-    runInThread([this, data_dir]() { doScanLabelClasses(data_dir); });
+    runInThread([this, data_dir]() { doScanLabelClasses(data_dir); },
+                [this](const QString &error) { emit labelClassesScanned(false, {}, error); });
 }
 
 void COCOIO::startExport(ExportDataset dataset, const QString &output_dir, const QVariantMap &options)
@@ -1176,7 +1188,8 @@ void COCOIO::startExport(ExportDataset dataset, const QString &output_dir, const
     Q_UNUSED(options)
     const int thread_count = dataIOThreadCount();
     runInThread([this, dataset = std::move(dataset), output_dir, thread_count]()
-                { doExport(std::move(dataset), output_dir, thread_count); });
+                { doExport(std::move(dataset), output_dir, thread_count); },
+                [this](const QString &error) { emit exportFinished(false, error); });
 }
 
 QString COCOIO::findCocoJsonFile(const QString &data_path) const
@@ -1851,12 +1864,14 @@ void LabelMeIO::startImport(int64_t dataset_id, const QString &image_dir, const 
 {
     const int thread_count = dataIOThreadCount();
     runInThread([this, dataset_id, image_dir, data_dir, thread_count]()
-                { doImport(dataset_id, image_dir, data_dir, thread_count); });
+                { doImport(dataset_id, image_dir, data_dir, thread_count); },
+                [this](const QString &) { emit importFinished(false, {}, {}); });
 }
 
 void LabelMeIO::startScanLabelClasses(const QString &image_dir, const QString &data_dir)
 {
-    runInThread([this, image_dir, data_dir]() { doScanLabelClasses(image_dir, data_dir); });
+    runInThread([this, image_dir, data_dir]() { doScanLabelClasses(image_dir, data_dir); },
+                [this](const QString &error) { emit labelClassesScanned(false, {}, error); });
 }
 
 void LabelMeIO::startExport(ExportDataset dataset, const QString &output_dir, const QVariantMap &options)
@@ -1864,7 +1879,8 @@ void LabelMeIO::startExport(ExportDataset dataset, const QString &output_dir, co
     Q_UNUSED(options)
     const int thread_count = dataIOThreadCount();
     runInThread([this, dataset = std::move(dataset), output_dir, thread_count]()
-                { doExport(std::move(dataset), output_dir, thread_count); });
+                { doExport(std::move(dataset), output_dir, thread_count); },
+                [this](const QString &error) { emit exportFinished(false, error); });
 }
 
 bool LabelMeIO::parseLabelMeJson(const QString &json_path, LabelMeData &data)
@@ -2454,20 +2470,23 @@ void MaskIO::startImport(int64_t dataset_id, const QString &image_dir, const QSt
     const double polygon_approx_epsilon_ratio = maskImportPolygonApproxRatio();
     const int    thread_count                 = dataIOThreadCount();
     runInThread([this, dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio, thread_count]()
-                { doImport(dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio, thread_count); });
+                { doImport(dataset_id, image_dir, data_dir, polygon_approx_epsilon_ratio, thread_count); },
+                [this](const QString &) { emit importFinished(false, {}, {}); });
 }
 
 void MaskIO::startScanLabelClasses(const QString &image_dir, const QString &data_dir)
 {
     Q_UNUSED(image_dir)
-    runInThread([this, data_dir]() { doScanLabelClasses(data_dir); });
+    runInThread([this, data_dir]() { doScanLabelClasses(data_dir); },
+                [this](const QString &error) { emit labelClassesScanned(false, {}, error); });
 }
 
 void MaskIO::startExport(ExportDataset dataset, const QString &output_dir, const QVariantMap &options)
 {
     const int thread_count = dataIOThreadCount();
     runInThread([this, dataset = std::move(dataset), output_dir, options, thread_count]()
-                { doExport(std::move(dataset), output_dir, options, thread_count); });
+                { doExport(std::move(dataset), output_dir, options, thread_count); },
+                [this](const QString &error) { emit exportFinished(false, error); });
 }
 
 void MaskIO::doScanLabelClasses(const QString &data_dir)
@@ -2995,13 +3014,15 @@ void FolderIO::startImport(int64_t dataset_id, const QString &image_dir, const Q
 {
     Q_UNUSED(data_dir)
     const int thread_count = dataIOThreadCount();
-    runInThread([this, dataset_id, image_dir, thread_count]() { doImport(dataset_id, image_dir, thread_count); });
+    runInThread([this, dataset_id, image_dir, thread_count]() { doImport(dataset_id, image_dir, thread_count); },
+                [this](const QString &) { emit importFinished(false, {}, {}); });
 }
 
 void FolderIO::startScanLabelClasses(const QString &image_dir, const QString &data_dir)
 {
     Q_UNUSED(data_dir)
-    runInThread([this, image_dir]() { doScanLabelClasses(image_dir); });
+    runInThread([this, image_dir]() { doScanLabelClasses(image_dir); },
+                [this](const QString &error) { emit labelClassesScanned(false, {}, error); });
 }
 
 void FolderIO::startExport(ExportDataset dataset, const QString &output_dir, const QVariantMap &options)
@@ -3009,7 +3030,8 @@ void FolderIO::startExport(ExportDataset dataset, const QString &output_dir, con
     Q_UNUSED(options)
     const int thread_count = dataIOThreadCount();
     runInThread([this, dataset = std::move(dataset), output_dir, thread_count]()
-                { doExport(std::move(dataset), output_dir, thread_count); });
+                { doExport(std::move(dataset), output_dir, thread_count); },
+                [this](const QString &error) { emit exportFinished(false, error); });
 }
 
 void FolderIO::doScanLabelClasses(const QString &image_dir)
