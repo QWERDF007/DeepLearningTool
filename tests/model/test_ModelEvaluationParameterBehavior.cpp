@@ -4,8 +4,9 @@
 
 #include "database/DataBase.h"
 #include "database/ModelTaskDataBase.h"
-#include "model/IParams.h"
+#include "model/AnomalyPreprocessingTransform.h"
 #include "model/EvaluationViewModelRegistry.h"
+#include "model/IParams.h"
 #include "model/ModelManager.h"
 #include "model/ModelStorageService.h"
 #include "model/ModelTestTaskManager.h"
@@ -17,6 +18,8 @@
 #include <QElapsedTimer>
 #include <QSignalSpy>
 #include <QTest>
+
+#include <opencv2/opencv.hpp>
 
 #include <cmath>
 
@@ -805,6 +808,361 @@ private slots:
 
         QVERIFY(!snapshot.isEmpty());
         QVERIFY2(elapsed < 50, qPrintable(QString("快照计算耗时过长: %1 ms").arg(elapsed)));
+    }
+
+    void nonSquareCenterCropPaddingAndResizeFixedCoordinatesAssertion()
+    {
+        // 1. 纯几何变换层面的固定数值断言：非方形原图、Resize、Padding、CenterCrop
+        // source_size: 200 x 100 (非方形 2:1)
+        // model_size: 60 x 30
+        // resize: 160 x 80
+        // padding: left=20, top=10, right=20, bottom=10 -> padded_size = 200 x 100
+        // center_crop_size: 120 x 60 -> crop_rect = (40, 20, 120, 60)
+        const QVariantMap preprocessing = {
+            {QStringLiteral("network"),
+             QVariantMap{
+                 {QStringLiteral("image_size"), QVariantList{80, 160}},
+                 {QStringLiteral("padding"), QVariantList{20, 10, 20, 10}},
+                 {QStringLiteral("center_crop_size"), QVariantList{60, 120}}
+             }}
+        };
+
+        const AnomalyPreprocessingTransform transform
+            = AnomalyPreprocessingTransform::fromConfig(QSize(200, 100), QSize(60, 30), preprocessing);
+        QVERIFY(transform.isValid());
+        QCOMPARE(transform.sourceSize(), QSize(200, 100));
+        QCOMPARE(transform.resizedSize(), QSize(160, 80));
+        QCOMPARE(transform.padding(), QMargins(20, 10, 20, 10));
+        QCOMPARE(transform.paddedSize(), QSize(200, 100));
+        QCOMPARE(transform.cropRect(), QRect(40, 20, 120, 60));
+
+        // 模型中心点 (29.5, 14.5) 映射到 原图中心点 (99.5, 49.5)
+        const QPointF center_model(29.5, 14.5);
+        const QPointF center_image = transform.modelToImage(center_model);
+        QVERIFY(std::abs(center_image.x() - 99.5) < 1e-9);
+        QVERIFY(std::abs(center_image.y() - 49.5) < 1e-9);
+        const QPointF center_roundtrip = transform.imageToModel(center_image);
+        QVERIFY(std::abs(center_roundtrip.x() - center_model.x()) < 1e-9);
+        QVERIFY(std::abs(center_roundtrip.y() - center_model.y()) < 1e-9);
+
+        // 模型左上角边界 (-0.5, -0.5) 映射到 (24.5, 12.0)
+        const QPointF topleft_model(-0.5, -0.5);
+        const QPointF topleft_image = transform.modelToImage(topleft_model);
+        QVERIFY(std::abs(topleft_image.x() - 24.5) < 1e-9);
+        QVERIFY(std::abs(topleft_image.y() - 12.0) < 1e-9);
+        const QPointF topleft_roundtrip = transform.imageToModel(topleft_image);
+        QVERIFY(std::abs(topleft_roundtrip.x() - topleft_model.x()) < 1e-9);
+        QVERIFY(std::abs(topleft_roundtrip.y() - topleft_model.y()) < 1e-9);
+
+        // 模型右下角边界 (59.5, 29.5) 映射到 (174.5, 87.0)
+        const QPointF bottomright_model(59.5, 29.5);
+        const QPointF bottomright_image = transform.modelToImage(bottomright_model);
+        QVERIFY(std::abs(bottomright_image.x() - 174.5) < 1e-9);
+        QVERIFY(std::abs(bottomright_image.y() - 87.0) < 1e-9);
+        const QPointF bottomright_roundtrip = transform.imageToModel(bottomright_image);
+        QVERIFY(std::abs(bottomright_roundtrip.x() - bottomright_model.x()) < 1e-9);
+        QVERIFY(std::abs(bottomright_roundtrip.y() - bottomright_model.y()) < 1e-9);
+
+        // 内部定点 (9.5, 4.5) 映射到 (49.5, 24.5)
+        const QPointF interior_model(9.5, 4.5);
+        const QPointF interior_image = transform.modelToImage(interior_model);
+        QVERIFY(std::abs(interior_image.x() - 49.5) < 1e-9);
+        QVERIFY(std::abs(interior_image.y() - 24.5) < 1e-9);
+
+        // 2. 真实评估引擎端到端固定坐标断言（非方形图片 + TIFF 分数图）
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 normal_class = fixture.addClass(QStringLiteral("Normal"), QStringLiteral("normal"));
+        const qint64 anomaly_class = fixture.addClass(QStringLiteral("Defect"), QStringLiteral("anomaly"));
+        const qint64 image = fixture.addImage(QStringLiteral("nonsquare_sample"));
+        QVERIFY(fixture.addAnomalyLabel(image, anomaly_class, {{1, 1}, {8, 1}, {8, 8}, {1, 8}}) >= 0);
+        QVERIFY(fixture.writeImageList());
+
+        // 覆盖为真实 200 x 100 图像文件
+        QImage nonsquare_file(200, 100, QImage::Format_RGBA8888);
+        nonsquare_file.fill(QColor(100, 100, 100));
+        QVERIFY(nonsquare_file.save(fixture.imagePaths().front(), "PNG"));
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::AnomalyDetection), &database, nullptr);
+        QString      error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("GeomModel"), QStringLiteral("anomalib"),
+                                                         QStringLiteral("patchcore"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, nullptr);
+        manager.setModelUuid(record.uuid);
+        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image,
+                                         anomalyPrediction(0.9), true, &error),
+                 qPrintable(error));
+
+        // 写入与几何配置匹配的 60 x 30 TIFF 分数图，在 [10..30, 5..15] 放置高异常区域
+        const ModelStorageService storage(fixture.rootPath());
+        const QString pred_dir = storage.testTaskPredictionPath(record.name, manager.currentTaskDirectory());
+        QVERIFY(QDir().mkpath(pred_dir));
+        const QString tiff_path = QDir(pred_dir).filePath(QStringLiteral("%1.tiff").arg(image));
+        cv::Mat custom_map = cv::Mat::zeros(30, 60, CV_32FC1);
+        custom_map.setTo(0.05F);
+        custom_map(cv::Range(5, 15), cv::Range(10, 30)).setTo(0.95F);
+        const QString source_tiff = QDir(fixture.predictionDirectory()).filePath(QStringLiteral("%1.tiff").arg(image));
+        QVERIFY(cv::imwrite(source_tiff.toStdString(), custom_map));
+        QFile::remove(tiff_path);
+        QVERIFY(QFile::copy(source_tiff, tiff_path));
+
+        // 写入固定预处理配置到 task.db
+        const QString task_db_path = storage.testTaskDatabasePath(record.name, manager.currentTaskDirectory());
+        dltool::database::ModelTaskDataBase task_db(task_db_path);
+        QVERIFY(task_db.writePreprocessingConfig(preprocessing));
+
+        ModelEvaluationOptions options;
+        QVERIFY(manager.buildEvaluationOptions(options, &error));
+        auto *evaluation = manager.currentEvaluation();
+        QVERIFY(evaluation != nullptr);
+        evaluation->setEvaluationOptions(options);
+        evaluation->evaluate(false);
+        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+
+        const auto *instances = evaluation->instances();
+        QVERIFY(instances != nullptr);
+        QCOMPARE(instances->rowCount(), 1);
+
+        const QVariantList model_polygons
+            = instances->data(instances->index(0, 0), EvaluationInstanceModel::AnomalyModelPolygonsRole).toList();
+        const QVariantList image_polygons
+            = instances->data(instances->index(0, 0), EvaluationInstanceModel::AnomalyImagePolygonsRole).toList();
+        QVERIFY(!model_polygons.isEmpty());
+        QVERIFY(!image_polygons.isEmpty());
+        QCOMPARE(model_polygons.size(), image_polygons.size());
+
+        const QVariantList model_contour = model_polygons.front().toList();
+        const QVariantList image_contour = image_polygons.front().toList();
+        QVERIFY(model_contour.size() >= 4);
+        QCOMPARE(model_contour.size(), image_contour.size());
+
+        for (int i = 0; i < model_contour.size(); ++i)
+        {
+            const QVariantMap m_pt = model_contour.at(i).toMap();
+            const QVariantMap i_pt = image_contour.at(i).toMap();
+            const double mx = m_pt.value(QStringLiteral("x")).toDouble();
+            const double my = m_pt.value(QStringLiteral("y")).toDouble();
+            const double ix = i_pt.value(QStringLiteral("x")).toDouble();
+            const double iy = i_pt.value(QStringLiteral("y")).toDouble();
+
+            // 模型坐标位于 60x30 的 [10..30, 5..15] 异常矩形边缘
+            QVERIFY(mx >= 9.0 && mx <= 31.0);
+            QVERIFY(my >= 4.0 && my <= 16.0);
+
+            // 原图多边形坐标必须严格等于 transform.modelToImage(m_pt)
+            const QPointF expected_mapped = transform.modelToImage(QPointF(mx, my));
+            QVERIFY(std::abs(ix - expected_mapped.x()) < 1e-4);
+            QVERIFY(std::abs(iy - expected_mapped.y()) < 1e-4);
+        }
+    }
+
+    void modifyingCurrentTrainParamsDoesNotAlterOldPredictionInterpretation()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 normal_class = fixture.addClass(QStringLiteral("Normal"), QStringLiteral("normal"));
+        const qint64 anomaly_class = fixture.addClass(QStringLiteral("Defect"), QStringLiteral("anomaly"));
+        const qint64 image = fixture.addImage(QStringLiteral("frozen_sample"));
+        QVERIFY(fixture.addAnomalyLabel(image, anomaly_class, {{2, 2}, {6, 2}, {6, 6}, {2, 6}}) >= 0);
+        QVERIFY(fixture.writeImageList());
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::AnomalyDetection), &database, nullptr);
+        QString      error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("FrozenModel"), QStringLiteral("anomalib"),
+                                                         QStringLiteral("patchcore"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        IModel *model = model_manager.modelForUuid(record.uuid);
+        QVERIFY(model != nullptr && model->config() != nullptr && model->config()->trainParams() != nullptr);
+
+        auto *network_group = findGroup(model->config()->trainParams(), QStringLiteral("network"));
+        QVERIFY(network_group != nullptr);
+        network_group->setValueForName(QStringLiteral("image_size"), 256);
+        network_group->setValueForName(QStringLiteral("center_crop_size"), 200);
+
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, nullptr);
+        manager.setModelUuid(record.uuid);
+        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image,
+                                         anomalyPrediction(0.92), true, &error),
+                 qPrintable(error));
+
+        // 将初始预处理配置持久化至 task.db
+        const ModelStorageService storage(fixture.rootPath());
+        const QString task_db_path = storage.testTaskDatabasePath(record.name, manager.currentTaskDirectory());
+        dltool::database::ModelTaskDataBase task_db(task_db_path);
+        QVariantMap original_prep;
+        original_prep.insert(QStringLiteral("image_size"), 256);
+        original_prep.insert(QStringLiteral("center_crop_size"), 200);
+        QVERIFY(task_db.writePreprocessingConfig(original_prep));
+
+        ModelEvaluationOptions initial_options;
+        QVERIFY(manager.buildEvaluationOptions(initial_options, &error));
+        auto *evaluation = manager.currentEvaluation();
+        QVERIFY(evaluation != nullptr);
+        evaluation->setEvaluationOptions(initial_options);
+        evaluation->evaluate(false);
+        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+
+        const auto *instances = evaluation->instances();
+        QVERIFY(instances != nullptr && instances->rowCount() == 1);
+        const QVariantList initial_image_polygons
+            = instances->data(instances->index(0, 0), EvaluationInstanceModel::AnomalyImagePolygonsRole).toList();
+        const QVariantList initial_model_polygons
+            = instances->data(instances->index(0, 0), EvaluationInstanceModel::AnomalyModelPolygonsRole).toList();
+        QVERIFY(!initial_image_polygons.isEmpty());
+
+        const QString pred_dir = storage.testTaskPredictionPath(record.name, manager.currentTaskDirectory());
+        const QString tiff_path = QDir(pred_dir).filePath(QStringLiteral("%1.tiff").arg(image));
+        const QString initial_heatmap_url = evaluation->heatmapThumbnailUrl(image, fixture.imagePaths().front(), tiff_path, 0.5);
+        QVERIFY(initial_heatmap_url.contains(QStringLiteral("image_size")) && initial_heatmap_url.contains(QStringLiteral("256")));
+
+        // 验收条件 2: 修改当前模型的训练参数，绝对不能改变已有预测的几何解释
+        network_group->setValueForName(QStringLiteral("image_size"), 512);
+        network_group->setValueForName(QStringLiteral("center_crop_size"), 400);
+
+        ModelEvaluationOptions options_after_param_edit;
+        QVERIFY(manager.buildEvaluationOptions(options_after_param_edit, &error));
+        QCOMPARE(options_after_param_edit.preprocessing_config.value(QStringLiteral("image_size")).toInt(), 256);
+        QCOMPARE(options_after_param_edit.preprocessing_config.value(QStringLiteral("center_crop_size")).toInt(), 200);
+
+        // 刷新评估重算
+        evaluation->refreshEvaluation();
+        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+
+        const QVariantList after_image_polygons
+            = instances->data(instances->index(0, 0), EvaluationInstanceModel::AnomalyImagePolygonsRole).toList();
+        const QVariantList after_model_polygons
+            = instances->data(instances->index(0, 0), EvaluationInstanceModel::AnomalyModelPolygonsRole).toList();
+        QCOMPARE(after_image_polygons, initial_image_polygons);
+        QCOMPARE(after_model_polygons, initial_model_polygons);
+
+        const QString after_heatmap_url = evaluation->heatmapThumbnailUrl(image, fixture.imagePaths().front(), tiff_path, 0.5);
+        QCOMPARE(after_heatmap_url, initial_heatmap_url);
+    }
+
+    void confusionMatrixSwitchingKeepsIdenticalRedPolygonAndReusesInspectionOverlay()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 normal_class = fixture.addClass(QStringLiteral("Normal"), QStringLiteral("normal"));
+        const qint64 anomaly_class = fixture.addClass(QStringLiteral("Defect"), QStringLiteral("anomaly"));
+        const qint64 good_image = fixture.addImage(QStringLiteral("good_sample"), {{QStringLiteral("image_label_class_id"), normal_class}});
+        const qint64 bad_image = fixture.addImage(QStringLiteral("defect_sample"), {{QStringLiteral("image_label_class_id"), anomaly_class}});
+        QVERIFY(fixture.addAnomalyLabel(bad_image, anomaly_class, {{2, 2}, {10, 2}, {10, 10}, {2, 10}}) >= 0);
+        QVERIFY(fixture.writeImageList());
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::AnomalyDetection), &database, nullptr);
+        QString      error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("OverlayModel"), QStringLiteral("anomalib"),
+                                                         QStringLiteral("patchcore"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, nullptr);
+        manager.setModelUuid(record.uuid);
+        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, good_image,
+                                         anomalyPrediction(0.1), true, &error),
+                 qPrintable(error));
+        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, bad_image,
+                                         anomalyPrediction(0.95), true, &error),
+                 qPrintable(error));
+
+        auto *evaluation = manager.currentEvaluation();
+        QVERIFY(evaluation != nullptr);
+        evaluation->evaluate(false);
+        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+
+        // 1. 首次打开（未过滤混淆矩阵）：显示全部实例，找到异常实例的多边形
+        auto *filtered_instances = evaluation->filteredInstances();
+        QVERIFY(filtered_instances != nullptr);
+        QCOMPARE(filtered_instances->rowCount(), 2);
+
+        QVariantList initial_tp_model_polygons;
+        QVariantList initial_tp_image_polygons;
+        for (int row = 0; row < filtered_instances->rowCount(); ++row)
+        {
+            const QModelIndex idx = filtered_instances->index(row, 0);
+            const qint64 img_id = idx.data(EvaluationInstanceModel::ImageIdRole).toLongLong();
+            if (img_id == bad_image)
+            {
+                initial_tp_model_polygons = idx.data(EvaluationInstanceModel::AnomalyModelPolygonsRole).toList();
+                initial_tp_image_polygons = idx.data(EvaluationInstanceModel::AnomalyImagePolygonsRole).toList();
+                break;
+            }
+        }
+        QVERIFY(!initial_tp_model_polygons.isEmpty());
+        QVERIFY(!initial_tp_image_polygons.isEmpty());
+
+        // 2. 查找混淆矩阵并选中 TP 单元格
+        auto *matrix = evaluation->confusionMatrix();
+        QVERIFY(matrix != nullptr);
+        int tp_row = -1;
+        int tp_col = -1;
+        int tn_row = -1;
+        int tn_col = -1;
+        for (int r = 0; r < matrix->rowCount(); ++r)
+        {
+            for (int c = 0; c < matrix->columnCount(); ++c)
+            {
+                const QModelIndex midx = matrix->index(r, c);
+                const int r_cid = midx.data(EvaluationConfusionModel::RowClassIdRole).toInt();
+                const int c_cid = midx.data(EvaluationConfusionModel::ColumnClassIdRole).toInt();
+                const int count = midx.data(EvaluationConfusionModel::CountRole).toInt();
+                if (r_cid == 1 && c_cid == anomaly_class && count == 1)
+                {
+                    tp_row = r;
+                    tp_col = c;
+                }
+                else if (r_cid == 0 && c_cid == normal_class && count == 1)
+                {
+                    tn_row = r;
+                    tn_col = c;
+                }
+            }
+        }
+        QVERIFY(tp_row >= 0 && tp_col >= 0);
+        QVERIFY(tn_row >= 0 && tn_col >= 0);
+
+        // 切换到 TP 单元格
+        QVERIFY(evaluation->selectConfusionCell(tp_row, tp_col));
+        QCOMPARE(filtered_instances->rowCount(), 1);
+        const QModelIndex tp_idx = filtered_instances->index(0, 0);
+        QCOMPARE(tp_idx.data(EvaluationInstanceModel::ImageIdRole).toLongLong(), bad_image);
+        // 验收条件 3: 混淆矩阵切换后仍显示同一红色 polygon
+        QCOMPARE(tp_idx.data(EvaluationInstanceModel::AnomalyModelPolygonsRole).toList(), initial_tp_model_polygons);
+        QCOMPARE(tp_idx.data(EvaluationInstanceModel::AnomalyImagePolygonsRole).toList(), initial_tp_image_polygons);
+
+        // 切换到 TN 单元格，验证正常样本无异常多边形
+        QVERIFY(evaluation->selectConfusionCell(tn_row, tn_col));
+        QCOMPARE(filtered_instances->rowCount(), 1);
+        const QModelIndex tn_idx = filtered_instances->index(0, 0);
+        QCOMPARE(tn_idx.data(EvaluationInstanceModel::ImageIdRole).toLongLong(), good_image);
+        QVERIFY(tn_idx.data(EvaluationInstanceModel::AnomalyModelPolygonsRole).toList().isEmpty());
+
+        // 再次切换回 TP 单元格，多边形数值依然完全一致
+        QVERIFY(evaluation->selectConfusionCell(tp_row, tp_col));
+        QCOMPARE(filtered_instances->rowCount(), 1);
+        QCOMPARE(filtered_instances->index(0, 0).data(EvaluationInstanceModel::AnomalyModelPolygonsRole).toList(),
+                 initial_tp_model_polygons);
+        QCOMPARE(filtered_instances->index(0, 0).data(EvaluationInstanceModel::AnomalyImagePolygonsRole).toList(),
+                 initial_tp_image_polygons);
+
+        // 清除混淆矩阵筛选，回到全部视图，多边形仍然完全一致
+        evaluation->clearConfusionCellFilter();
+        QCOMPARE(filtered_instances->rowCount(), 2);
+        for (int row = 0; row < filtered_instances->rowCount(); ++row)
+        {
+            const QModelIndex idx = filtered_instances->index(row, 0);
+            if (idx.data(EvaluationInstanceModel::ImageIdRole).toLongLong() == bad_image)
+            {
+                QCOMPARE(idx.data(EvaluationInstanceModel::AnomalyModelPolygonsRole).toList(), initial_tp_model_polygons);
+                QCOMPARE(idx.data(EvaluationInstanceModel::AnomalyImagePolygonsRole).toList(), initial_tp_image_polygons);
+            }
+        }
     }
 };
 

@@ -287,8 +287,8 @@ struct SourceClass
 QString normalizedLabelClassGroup(const QString &group)
 {
     const QString normalized = group.trimmed().toLower();
-    if (normalized == QString("good") || normalized == QString("良好") || normalized == QString("正常")
-        || normalized == QString("ok"))
+    if (normalized == QString("good") || normalized == QString("normal") || normalized == QString("良好")
+        || normalized == QString("正常") || normalized == QString("ok"))
         return QString("good");
     if (normalized == QString("unlabeled") || normalized == QString("unlabelled") || normalized == QString("未标注"))
         return QString("unlabeled");

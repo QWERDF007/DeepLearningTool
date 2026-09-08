@@ -41,6 +41,35 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
+
+## 2026-09-09 — 统一旧预测的坐标解释
+
+**目标**
+- 交付 Ticket 22：统一旧预测的坐标解释。
+- 非方形、中心裁剪、padding 和 resize 使用固定坐标断言。
+- 修改当前训练参数不能改变旧预测解释。
+- 首次打开和混淆矩阵切换后均显示同一红色 polygon，复用检查页渲染。
+- 遵循 TDD，先编写失败/约束测试建立基线，再实现并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `DatabaseValueUtils` 中扩展 `paramValueType`、`paramValueText` 与 `parseTypeAndText` 支持 `json` 类型，支持 `QVariantMap` 与 `QVariantList` 的序列化/反序列化，确保 `ModelTaskDataBase` 的 `preprocessing_config` 能够无损持久化并完整恢复复杂嵌套与列表结构（如多边形变换参数、非对称填充与裁剪配置）。
+- 已完成：在 `EvaluationAnomalyConfusion` 与 `EvaluationDataset` 中统一将 `"normal"` 语义纳入正常样本/类别的识别（`is_good`），确保工控与制造缺陷领域标准术语的混淆矩阵统计准确，TP/TN/FP/FN 轴分类符合规范。
+- 已完成：在 `EvaluationFixture` 中补充 `imagePaths()` 访问器，并在测试辅助方法中规范化 Unicode 目录下的 TIFF 写入与复制流程。
+- 已完成：在 `test_ModelEvaluationParameterBehavior.cpp` 中编写 3 个全覆盖测试用例：
+  1. `nonSquareCenterCropPaddingAndResizeFixedCoordinatesAssertion`：包含纯几何双向可逆定点断言（中心、边界与内部定点）与非方形原图（200x100）结合自定义 60x30 TIFF 缺陷图端到端评估断言；
+  2. `modifyingCurrentTrainParamsDoesNotAlterOldPredictionInterpretation`：验证修改当前模型训练参数（如 256/200 改为 512/400）不破坏已有任务快照及预测几何坐标解释；
+  3. `confusionMatrixSwitchingKeepsIdenticalRedPolygonAndReusesInspectionOverlay`：验证初始打开、切换至 TP 单元格、切换至 TN 单元格以及清除混淆矩阵筛选后，异常红色多边形坐标保持精确一致。
+- 已完成：所有 22 个模型域测试用例在 Release 模式下 100% 通过。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_database dltool_model dltool_model_evaluation_behavior_tests` → 构建成功，0 错误 0 警告
+- `ctest --test-dir build --output-on-failure -C Release -R "dltool_model_evaluation_behavior_tests|dltool_model_evaluation_tests"` → 2/2 tests passed (100%)
+- `ctest --test-dir build --output-on-failure -C Release -L "model"` → 22/22 tests passed (100%), Total Test time: 69.98 sec
+
+**下一步**
+- 提交 Ticket 22 代码。
+- 领取 Ticket 23（`docs/refactor-tickets/23-visual-cache-budget.md` — 按预算回收可视化缓存与排队）。
+
 ## 2026-09-09 — 修正评估快照获取与失效范围
 
 **目标**

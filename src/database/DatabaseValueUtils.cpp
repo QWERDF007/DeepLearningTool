@@ -60,6 +60,11 @@ bool parseTypeAndText(const QString &type, const QString &text, QVariant &result
         result = text;
         return true;
     }
+    if (normalized == QStringLiteral("json"))
+    {
+        result = jsonToVariant(text.toUtf8(), err_msg);
+        return !result.isNull();
+    }
     return setError(err_msg, QString("未知参数类型: %1").arg(type));
 }
 
@@ -114,6 +119,10 @@ QString paramValueType(const QVariant &value)
     case QMetaType::Float:
     case QMetaType::Double:
         return QStringLiteral("double");
+    case QMetaType::QVariantMap:
+    case QMetaType::QVariantList:
+    case QMetaType::QStringList:
+        return QStringLiteral("json");
     default:
         return QStringLiteral("string");
     }
@@ -123,6 +132,12 @@ QString paramValueText(const QVariant &value)
 {
     if (value.userType() == QMetaType::Bool)
         return value.toBool() ? QStringLiteral("true") : QStringLiteral("false");
+    if (value.userType() == QMetaType::QVariantMap || value.userType() == QMetaType::QVariantList
+        || value.userType() == QMetaType::QStringList)
+    {
+        QString err;
+        return QString::fromUtf8(variantToJson(value, &err));
+    }
     return value.toString();
 }
 

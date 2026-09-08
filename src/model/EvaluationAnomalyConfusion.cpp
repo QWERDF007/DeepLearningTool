@@ -37,6 +37,7 @@ std::vector<EvaluationConfusionCell> buildAnomalyConfusionCells(const QList<Anom
     {
         const QString lower_name = category.value().trimmed().toLower();
         const bool    is_good    = (category.key() == 0) || (lower_name == QStringLiteral("good"))
+                                || (lower_name == QStringLiteral("normal"))
                                 || (lower_name == QStringLiteral("正常")) || (lower_name == QStringLiteral("ok"));
         categories.insert(category.key(), GroundTruthCategory{category.value(), !is_good});
     }

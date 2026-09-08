@@ -41,6 +41,7 @@ public:
     qint64               datasetId() const;
     const QList<qint64> &classIds() const;
     const QList<qint64> &imageIds() const;
+    const QStringList   &imagePaths() const;
 
     qint64 addClass(const QString &name, const QString &group = QStringLiteral("anomaly"),
                     const QString &color = QStringLiteral("#3366cc"));

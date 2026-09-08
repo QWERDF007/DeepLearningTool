@@ -144,6 +144,11 @@ const QList<qint64> &EvaluationFixture::imageIds() const
     return image_ids_;
 }
 
+const QStringList &EvaluationFixture::imagePaths() const
+{
+    return image_paths_;
+}
+
 qint64 EvaluationFixture::addClass(const QString &name, const QString &group, const QString &color)
 {
     if (!isValid() && !error_.isEmpty())
