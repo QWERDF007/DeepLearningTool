@@ -698,16 +698,243 @@ std::vector<uint8_t> selectedBinaryMask(const irt::features::SAMImagePrediction 
     return mask;
 }
 
+struct SmartAnnotationRequest
+{
+    quint64                               request_id{0};
+    QString                               expected_model_key;
+    QString                               image_path;
+    std::vector<PromptPoint>              prompts;
+    std::optional<QRectF>                 prompt_box;
+    QVariantMap                           options;
+    irt::features::SAMImagePredictOptions predict_options;
+    ContourPostprocessOptions             contour_options;
+    QString                               model_name;
+    QString                               model_path;
+    QString                               runtime_text;
+    std::shared_ptr<std::atomic_bool>     cancellation_token;
+
+    bool cancellationRequested() const noexcept
+    {
+        return cancellation_token != nullptr && cancellation_token->load(std::memory_order_relaxed);
+    }
+};
+
 } // namespace
 
+class SmartAnnotationExecutor : public QObject
+{
+    Q_OBJECT
+public:
+    explicit SmartAnnotationExecutor(SmartAnnotationController::PredictExecutor predict_executor,
+                                     QObject *parent = nullptr)
+        : QObject(parent)
+        , predict_executor_(std::move(predict_executor))
+    {
+    }
+
+    ~SmartAnnotationExecutor() override
+    {
+        clearPredictor();
+    }
+
+    void stop()
+    {
+        stopping_.store(true, std::memory_order_release);
+    }
+
+    void setPredictor(std::shared_ptr<std::unique_ptr<irt::features::SAMImagePredictor>> predictor_holder,
+                      const QString &key)
+    {
+        if (stopping_.load(std::memory_order_acquire))
+            return;
+        if (predictor_holder && *predictor_holder)
+        {
+            predictor_        = std::move(*predictor_holder);
+            cached_model_key_ = key;
+        }
+        else
+        {
+            predictor_.reset();
+            cached_model_key_.clear();
+        }
+    }
+
+    void clearPredictor()
+    {
+        predictor_.reset();
+        cached_model_key_.clear();
+    }
+
+    void executeInfer(SmartAnnotationController *controller, const SmartAnnotationRequest &request)
+    {
+        if (stopping_.load(std::memory_order_acquire) || request.cancellationRequested())
+            return;
+
+        if (!predictor_ || cached_model_key_ != request.expected_model_key)
+            return;
+
+        QVariantMap result{
+            {QStringLiteral("success"),    false             },
+            {  QStringLiteral("error"),    {}                },
+            {QStringLiteral("loading"),    false             },
+            {QStringLiteral("request_id"), request.request_id}
+        };
+
+        try
+        {
+            const InferenceImageInput image_input = prepareInferenceImageInput(request.image_path, request.options);
+            if (stopping_.load(std::memory_order_acquire) || request.cancellationRequested())
+                return;
+
+            const std::vector<PromptPoint> input_prompts = mapPromptsToInferenceInput(request.prompts, image_input);
+            const std::optional<QRectF>    input_prompt_box
+                = mapPromptBoxToInferenceInput(request.prompt_box, image_input);
+
+            if (stopping_.load(std::memory_order_acquire) || request.cancellationRequested())
+                return;
+
+            const irt::features::SAMImagePrediction prediction
+                = predict_executor_(predictor_.get(), toFilesystemPath(image_input.path),
+                                    buildImagePrompt(input_prompts, input_prompt_box), request.predict_options);
+
+            if (stopping_.load(std::memory_order_acquire) || request.cancellationRequested())
+                return;
+
+            const int   mask_index   = 0;
+            const float selected_iou = (mask_index >= 0
+                                        && static_cast<size_t>(mask_index) < prediction.iou_predictions.size())
+                                           ? prediction.iou_predictions[mask_index]
+                                           : 0.0F;
+            const int   input_image_width  = prediction.width;
+            const int   input_image_height = prediction.height;
+            const int   image_width
+                = image_input.viewport_input ? image_input.source_size.width() : input_image_width;
+            const int image_height
+                = image_input.viewport_input ? image_input.source_size.height() : input_image_height;
+
+            std::vector<uint8_t> binary_mask = selectedBinaryMask(prediction, mask_index);
+            if (input_prompt_box)
+                intersectMaskWithBox(binary_mask, input_image_width, input_image_height, *input_prompt_box);
+
+            const int foreground_pixels
+                = static_cast<int>(std::count(binary_mask.begin(), binary_mask.end(), uint8_t{1}));
+            const QRectF input_bbox = boundingBoxFromMask(binary_mask, input_image_width, input_image_height);
+            if (input_bbox.isEmpty())
+                throw std::runtime_error("SAM 没有生成有效 mask，请调整提示点或阈值");
+
+            const ContourPostprocessOptions   contour_options = request.contour_options;
+            std::vector<QPointF>              polygon;
+            std::vector<std::vector<QPointF>> polygons = dltool::common::maskToPolygons(
+                binary_mask, input_image_width, input_image_height, false, contour_options.approx_epsilon_ratio);
+
+            if (!polygons.empty())
+            {
+                size_t selected_polygon_index = 0;
+                if (!input_prompt_box)
+                {
+                    int best_positive_count = -1;
+                    for (size_t index = 0; index < polygons.size(); ++index)
+                    {
+                        const int positive_count = positivePointOverlapCount(polygons[index], input_prompts);
+                        if (positive_count > best_positive_count)
+                        {
+                            best_positive_count    = positive_count;
+                            selected_polygon_index = index;
+                        }
+                    }
+                }
+                polygon = std::move(polygons[selected_polygon_index]);
+            }
+            else
+            {
+                polygon = rectanglePoints(input_bbox);
+            }
+
+            const QRectF         bbox           = mapInputRectToSource(input_bbox, image_input);
+            std::vector<QPointF> output_polygon = mapInputPolygonToSource(polygon, image_input);
+            output_polygon = postprocessContourPolygon(std::move(output_polygon), contour_options);
+            if (output_polygon.size() < 3)
+                output_polygon = rectanglePoints(bbox);
+
+            const QVariantList mask_runs
+                = maskRunsToVariantList(binary_mask, input_image_width, input_image_height, image_input);
+
+            if (stopping_.load(std::memory_order_acquire) || request.cancellationRequested())
+                return;
+
+            result[QStringLiteral("success")]          = true;
+            result[QStringLiteral("error")]            = QString();
+            result[QStringLiteral("model_name")]       = request.model_name;
+            result[QStringLiteral("model_path")]       = request.model_path;
+            result[QStringLiteral("runtime")]          = request.runtime_text;
+            result[QStringLiteral("image_path")]       = request.image_path;
+            result[QStringLiteral("image_width")]      = image_width;
+            result[QStringLiteral("image_height")]     = image_height;
+            result[QStringLiteral("x")]                = bbox.x();
+            result[QStringLiteral("y")]                = bbox.y();
+            result[QStringLiteral("width")]            = bbox.width();
+            result[QStringLiteral("height")]           = bbox.height();
+            result[QStringLiteral("points")]           = pointsToVariantList(output_polygon);
+            result[QStringLiteral("point_count")]      = static_cast<int>(output_polygon.size());
+            result[QStringLiteral("prompt_count")]     = static_cast<int>(request.prompts.size());
+            result[QStringLiteral("has_box_prompt")]   = request.prompt_box.has_value();
+            result[QStringLiteral("mask_index")]       = mask_index;
+            result[QStringLiteral("iou")]              = selected_iou;
+            result[QStringLiteral("mask_pixel_count")] = foreground_pixels;
+            result[QStringLiteral("mask_width")]       = image_width;
+            result[QStringLiteral("mask_height")]      = image_height;
+            result[QStringLiteral("mask_runs")]        = mask_runs;
+        }
+        catch (const std::exception &e)
+        {
+            result[QStringLiteral("success")] = false;
+            result[QStringLiteral("error")]   = QString::fromStdString(e.what());
+        }
+        catch (...)
+        {
+            result[QStringLiteral("success")] = false;
+            result[QStringLiteral("error")]   = QStringLiteral("未知智能标注错误");
+        }
+
+        if (stopping_.load(std::memory_order_acquire) || request.cancellationRequested())
+            return;
+
+        const auto controller_ptr = QPointer<SmartAnnotationController>(controller);
+        QMetaObject::invokeMethod(
+            controller,
+            [controller_ptr, req_id = request.request_id, res = std::move(result)]() mutable
+            {
+                if (controller_ptr)
+                {
+                    controller_ptr->onInferCompleted(req_id, std::move(res));
+                }
+            },
+            Qt::QueuedConnection);
+    }
+
+private:
+    std::unique_ptr<irt::features::SAMImagePredictor> predictor_;
+    QString                                           cached_model_key_;
+    SmartAnnotationController::PredictExecutor        predict_executor_;
+    std::atomic_bool                                  stopping_{false};
+};
+
 SmartAnnotationController::SmartAnnotationController(QObject *parent)
-    : SmartAnnotationController(ModelLoader{}, parent)
+    : SmartAnnotationController(ModelLoader{}, PredictExecutor{}, parent)
 {
 }
 
 SmartAnnotationController::SmartAnnotationController(ModelLoader model_loader, QObject *parent)
+    : SmartAnnotationController(std::move(model_loader), PredictExecutor{}, parent)
+{
+}
+
+SmartAnnotationController::SmartAnnotationController(ModelLoader model_loader,
+                                                     PredictExecutor predict_executor,
+                                                     QObject *parent)
     : QObject(parent)
     , model_loader_(std::move(model_loader))
+    , predict_executor_(std::move(predict_executor))
 {
     if (!model_loader_)
     {
@@ -718,23 +945,50 @@ SmartAnnotationController::SmartAnnotationController(ModelLoader model_loader, Q
             return loadSmartPredictor(buildSmartModelLoadRequest(model_name, model_path, runtime, precision));
         };
     }
+    if (!predict_executor_)
+    {
+        predict_executor_ = [](irt::features::SAMImagePredictor *predictor,
+                               const std::filesystem::path &image_path,
+                               const irt::features::SAMImagePrompt &prompt,
+                               const irt::features::SAMImagePredictOptions &options)
+        {
+            if (predictor == nullptr)
+                throw std::runtime_error("SAM 预测器尚未初始化");
+            return predictor->predict(image_path, prompt, options);
+        };
+    }
 
     auto *gs = dltool::settings::GlobalSettings::getInstance();
-    enabled_ = gs->valueForField(dltool::settings::generated::field::SmartAnnotation::Key::Enabled, false).toBool();
+    if (gs != nullptr)
+    {
+        enabled_ = gs->valueForField(dltool::settings::generated::field::SmartAnnotation::Key::Enabled, false).toBool();
 
-    connect(gs->catalog(), &dltool::settings::SettingsCatalog::fieldValueChanged, this,
-            [this](const QString &group_key, const QString &name, const QVariant &value)
-            {
-                if (group_key == QStringLiteral("SmartAnnotationSettings") && name == QStringLiteral("enabled"))
+        connect(gs->catalog(), &dltool::settings::SettingsCatalog::fieldValueChanged, this,
+                [this](const QString &group_key, const QString &name, const QVariant &value)
                 {
-                    const bool v = value.toBool();
-                    if (v != enabled_)
+                    if (group_key != QStringLiteral("SmartAnnotationSettings"))
+                        return;
+
+                    if (name == QStringLiteral("enabled"))
                     {
-                        enabled_ = v;
-                        emit enabledChanged();
+                        const bool v = value.toBool();
+                        if (v != enabled_)
+                        {
+                            enabled_ = v;
+                            if (!enabled_)
+                                clearCache();
+                            emit enabledChanged();
+                        }
                     }
-                }
-            });
+                    else if (name == QStringLiteral("model")
+                             || name == QStringLiteral("model_path")
+                             || name == QStringLiteral("model_runtime")
+                             || name == QStringLiteral("model_precision"))
+                    {
+                        clearCache();
+                    }
+                });
+    }
 }
 
 SmartAnnotationController::~SmartAnnotationController()
@@ -749,6 +1003,27 @@ void SmartAnnotationController::shutdown()
 
     if (loading_cancellation_token_ != nullptr)
         loading_cancellation_token_->store(true, std::memory_order_release);
+    if (infer_cancellation_token_ != nullptr)
+        infer_cancellation_token_->store(true, std::memory_order_release);
+
+    ++current_request_id_;
+
+    if (executor_ != nullptr)
+    {
+        executor_->stop();
+    }
+    if (executor_thread_ != nullptr)
+    {
+        executor_thread_->quit();
+        executor_thread_->wait();
+        delete executor_thread_;
+        executor_thread_ = nullptr;
+    }
+    if (executor_ != nullptr)
+    {
+        delete executor_;
+        executor_ = nullptr;
+    }
 
     for (const QPointer<QThread> &thread_pointer : std::as_const(worker_threads_))
     {
@@ -759,9 +1034,10 @@ void SmartAnnotationController::shutdown()
         }
     }
     worker_threads_.clear();
+
     loading_cancellation_token_.reset();
+    infer_cancellation_token_.reset();
     loading_model_key_.clear();
-    predictor_.reset();
     cached_model_key_.clear();
     setLoadingModel(false);
     setRunning(false);
@@ -774,12 +1050,49 @@ void SmartAnnotationController::clearCache()
         return;
     if (loading_cancellation_token_ != nullptr)
         loading_cancellation_token_->store(true, std::memory_order_release);
-    predictor_.reset();
+    if (infer_cancellation_token_ != nullptr)
+        infer_cancellation_token_->store(true, std::memory_order_release);
+
+    ++current_request_id_;
+
+    if (executor_ != nullptr)
+    {
+        QMetaObject::invokeMethod(executor_, &SmartAnnotationExecutor::clearPredictor, Qt::QueuedConnection);
+    }
+
     cached_model_key_.clear();
     loading_model_key_.clear();
     loading_cancellation_token_.reset();
+    infer_cancellation_token_.reset();
     setLoadingModel(false);
     setRunning(false);
+}
+
+void SmartAnnotationController::ensureExecutorStarted()
+{
+    if (executor_ != nullptr)
+        return;
+
+    executor_thread_ = new QThread();
+    executor_        = new SmartAnnotationExecutor(predict_executor_);
+    executor_->moveToThread(executor_thread_);
+    executor_thread_->start();
+}
+
+bool SmartAnnotationController::waitForFinished(int timeout_ms)
+{
+    if (!running_)
+        return true;
+
+    QElapsedTimer timer;
+    timer.start();
+    while (running_)
+    {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        if (timeout_ms > 0 && timer.elapsed() >= timeout_ms)
+            return !running_;
+    }
+    return true;
 }
 
 /**
@@ -840,13 +1153,25 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
                 controller->loading_model_key_.clear();
                 if (success)
                 {
-                    controller->predictor_        = std::move(*predictor_holder);
+                    controller->ensureExecutorStarted();
+                    QMetaObject::invokeMethod(
+                        controller->executor_,
+                        [executor = controller->executor_, holder = predictor_holder, key = request.key]() mutable
+                        {
+                            executor->setPredictor(holder, key);
+                        },
+                        Qt::QueuedConnection);
+
                     controller->cached_model_key_ = request.key;
                     controller->setLastError(QString());
                 }
                 else
                 {
-                    controller->predictor_.reset();
+                    if (controller->executor_ != nullptr)
+                    {
+                        QMetaObject::invokeMethod(controller->executor_, &SmartAnnotationExecutor::clearPredictor,
+                                                  Qt::QueuedConnection);
+                    }
                     controller->cached_model_key_.clear();
                     controller->setLastError(error);
                     ui::SignalHelper::notifyError(QString("智能标注模型加载失败"), error);
@@ -896,7 +1221,7 @@ void SmartAnnotationController::startAsyncModelLoad(const QString &model_name, c
  * @brief 执行智能标注推理
  * @param image_path 输入图像路径
  * @param prompt_points 提示点列表
- * @return 包含推理结果的 QVariantMap
+ * @return 包含推理状态的 QVariantMap
  */
 QVariantMap SmartAnnotationController::infer(const QString &image_path, const QVariantList &prompt_points,
                                              const QVariantMap &options)
@@ -904,7 +1229,8 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
     QVariantMap result{
         {QStringLiteral("success"), false},
         {  QStringLiteral("error"),    {}},
-        {QStringLiteral("loading"), false}
+        {QStringLiteral("loading"), false},
+        {QStringLiteral("pending"), false}
     };
 
     if (shutting_down_.load(std::memory_order_acquire))
@@ -916,14 +1242,6 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
     if (loading_model_)
     {
         result[QStringLiteral("loading")] = true;
-        return result;
-    }
-
-    if (running_)
-    {
-        const QString error = QString("智能标注正在运行");
-        setLastError(error);
-        result[QStringLiteral("error")] = error;
         return result;
     }
 
@@ -960,101 +1278,49 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
 
         const SmartModelLoadRequest request
             = buildSmartModelLoadRequest(model_name, model_path, runtime, precision);
-        if (predictor_ == nullptr || !predictor_->isReady() || cached_model_key_ != request.key)
+        if (cached_model_key_ != request.key)
         {
             startAsyncModelLoad(model_name, model_path, runtime, precision);
             result[QStringLiteral("loading")] = true;
             return result;
         }
 
+        // Cancel previous in-flight inference if any
+        if (infer_cancellation_token_ != nullptr)
+            infer_cancellation_token_->store(true, std::memory_order_release);
+
+        const quint64 request_id = ++current_request_id_;
+        const auto cancel_token = std::make_shared<std::atomic_bool>(false);
+        infer_cancellation_token_ = cancel_token;
+
+        SmartAnnotationRequest req;
+        req.request_id         = request_id;
+        req.expected_model_key = request.key;
+        req.image_path         = image_path;
+        req.prompts            = prompts;
+        req.prompt_box         = prompt_box;
+        req.options            = options;
+        req.predict_options    = buildPredictOptions(settings);
+        req.contour_options    = buildContourPostprocessOptions(settings);
+        req.model_name         = model_name;
+        req.model_path         = model_info.absoluteFilePath();
+        req.runtime_text       = QString::fromStdString(runtime.toString());
+        req.cancellation_token = cancel_token;
+
+        ensureExecutorStarted();
         setRunning(true);
 
-        const InferenceImageInput      image_input      = prepareInferenceImageInput(image_path, options);
-        const std::vector<PromptPoint> input_prompts    = mapPromptsToInferenceInput(prompts, image_input);
-        const std::optional<QRectF>    input_prompt_box = mapPromptBoxToInferenceInput(prompt_box, image_input);
-        const irt::features::SAMImagePrediction prediction
-            = predictor_->predict(toFilesystemPath(image_input.path), buildImagePrompt(input_prompts, input_prompt_box),
-                                  buildPredictOptions(settings));
-        const int   mask_index = 0;
-        const float selected_iou
-            = (mask_index >= 0 && static_cast<size_t>(mask_index) < prediction.iou_predictions.size())
-                ? prediction.iou_predictions[mask_index]
-                : 0.0F;
-        const int input_image_width  = prediction.width;
-        const int input_image_height = prediction.height;
-        const int image_width        = image_input.viewport_input ? image_input.source_size.width() : input_image_width;
-        const int image_height = image_input.viewport_input ? image_input.source_size.height() : input_image_height;
-
-        std::vector<uint8_t> binary_mask = selectedBinaryMask(prediction, mask_index);
-        if (input_prompt_box)
-            intersectMaskWithBox(binary_mask, input_image_width, input_image_height, *input_prompt_box);
-
-        const int foreground_pixels = static_cast<int>(std::count(binary_mask.begin(), binary_mask.end(), uint8_t{1}));
-
-        const QRectF input_bbox = boundingBoxFromMask(binary_mask, input_image_width, input_image_height);
-        if (input_bbox.isEmpty())
-            throw std::runtime_error("SAM 没有生成有效 mask，请调整提示点或阈值");
-
-        const ContourPostprocessOptions   contour_options = buildContourPostprocessOptions(settings);
-        std::vector<QPointF>              polygon;
-        std::vector<std::vector<QPointF>> polygons = dltool::common::maskToPolygons(
-            binary_mask, input_image_width, input_image_height, false, contour_options.approx_epsilon_ratio);
-        if (!polygons.empty())
-        {
-            size_t selected_polygon_index = 0;
-            if (!input_prompt_box)
+        QMetaObject::invokeMethod(
+            executor_,
+            [executor = executor_, this_ptr = this, req = std::move(req)]()
             {
-                int best_positive_count = -1;
-                for (size_t index = 0; index < polygons.size(); ++index)
-                {
-                    const int positive_count = positivePointOverlapCount(polygons[index], input_prompts);
-                    if (positive_count > best_positive_count)
-                    {
-                        best_positive_count   = positive_count;
-                        selected_polygon_index = index;
-                    }
-                }
-            }
-            polygon = std::move(polygons[selected_polygon_index]);
-        }
-        else
-        {
-            polygon = rectanglePoints(input_bbox);
-        }
+                executor->executeInfer(this_ptr, req);
+            },
+            Qt::QueuedConnection);
 
-        const QRectF         bbox           = mapInputRectToSource(input_bbox, image_input);
-        std::vector<QPointF> output_polygon = mapInputPolygonToSource(polygon, image_input);
-        output_polygon                      = postprocessContourPolygon(std::move(output_polygon), contour_options);
-        if (output_polygon.size() < 3)
-            output_polygon = rectanglePoints(bbox);
-
-        const QVariantList mask_runs
-            = maskRunsToVariantList(binary_mask, input_image_width, input_image_height, image_input);
-
-        result[QStringLiteral("success")]          = true;
-        result[QStringLiteral("error")]            = QString();
-        result[QStringLiteral("model_name")]       = model_name;
-        result[QStringLiteral("model_path")]       = model_info.absoluteFilePath();
-        result[QStringLiteral("runtime")]          = QString::fromStdString(runtime.toString());
-        result[QStringLiteral("image_path")]       = image_path;
-        result[QStringLiteral("image_width")]      = image_width;
-        result[QStringLiteral("image_height")]     = image_height;
-        result[QStringLiteral("x")]                = bbox.x();
-        result[QStringLiteral("y")]                = bbox.y();
-        result[QStringLiteral("width")]            = bbox.width();
-        result[QStringLiteral("height")]           = bbox.height();
-        result[QStringLiteral("points")]           = pointsToVariantList(output_polygon);
-        result[QStringLiteral("point_count")]      = static_cast<int>(output_polygon.size());
-        result[QStringLiteral("prompt_count")]     = static_cast<int>(prompts.size());
-        result[QStringLiteral("has_box_prompt")]   = prompt_box.has_value();
-        result[QStringLiteral("mask_index")]       = mask_index;
-        result[QStringLiteral("iou")]              = selected_iou;
-        result[QStringLiteral("mask_pixel_count")] = foreground_pixels;
-        result[QStringLiteral("mask_width")]       = image_width;
-        result[QStringLiteral("mask_height")]      = image_height;
-        result[QStringLiteral("mask_runs")]        = mask_runs;
-
-        setLastError(QString());
+        result[QStringLiteral("pending")]    = true;
+        result[QStringLiteral("request_id")] = request_id;
+        return result;
     }
     catch (const std::exception &e)
     {
@@ -1064,6 +1330,8 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         setLastError(error);
         spdlog::error("智能标注失败: {}", error.toUtf8().constData());
         ui::SignalHelper::notifyError(QString("智能标注失败"), error);
+        setRunning(false);
+        return result;
     }
     catch (...)
     {
@@ -1073,10 +1341,33 @@ QVariantMap SmartAnnotationController::infer(const QString &image_path, const QV
         setLastError(error);
         spdlog::error("智能标注失败: {}", error.toUtf8().constData());
         ui::SignalHelper::notifyError(QString("智能标注失败"), error);
+        setRunning(false);
+        return result;
+    }
+}
+
+void SmartAnnotationController::onInferCompleted(quint64 request_id, QVariantMap result)
+{
+    if (shutting_down_.load(std::memory_order_acquire))
+        return;
+    if (request_id != current_request_id_)
+        return;
+
+    const bool success  = result.value(QStringLiteral("success")).toBool();
+    const QString error = result.value(QStringLiteral("error")).toString();
+
+    last_result_ = result;
+    setLastError(error);
+    setRunning(false);
+
+    if (!success && !error.isEmpty())
+    {
+        spdlog::error("智能标注失败: {}", error.toUtf8().constData());
+        ui::SignalHelper::notifyError(QString("智能标注失败"), error);
     }
 
-    setRunning(false);
-    return result;
+    emit lastResultChanged();
+    emit inferFinished(result);
 }
 
 void SmartAnnotationController::setRunning(bool running)
@@ -1104,3 +1395,5 @@ void SmartAnnotationController::setLastError(const QString &last_error)
 }
 
 } // namespace dltool::feature
+
+#include "SmartAnnotationController.moc"

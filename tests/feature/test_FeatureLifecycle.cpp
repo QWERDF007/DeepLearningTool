@@ -112,6 +112,71 @@ private:
     bool                    released_{false};
 };
 
+class SmartPredictGate final
+{
+public:
+    void reset()
+    {
+        std::lock_guard lock(mutex_);
+        started_  = false;
+        released_ = false;
+        calls_    = 0;
+    }
+
+    void wait()
+    {
+        {
+            std::lock_guard lock(mutex_);
+            started_ = true;
+            ++calls_;
+        }
+        condition_.notify_all();
+
+        std::unique_lock lock(mutex_);
+        condition_.wait(lock, [this]() { return released_; });
+    }
+
+    void waitUntilStarted()
+    {
+        std::unique_lock lock(mutex_);
+        condition_.wait(lock, [this]() { return started_; });
+    }
+
+    void waitUntilCalls(const int expected_calls)
+    {
+        std::unique_lock lock(mutex_);
+        condition_.wait(lock, [this, expected_calls]() { return calls_ >= expected_calls; });
+    }
+
+    bool started() const
+    {
+        std::lock_guard lock(mutex_);
+        return started_;
+    }
+
+    int calls() const
+    {
+        std::lock_guard lock(mutex_);
+        return calls_;
+    }
+
+    void release()
+    {
+        {
+            std::lock_guard lock(mutex_);
+            released_ = true;
+        }
+        condition_.notify_all();
+    }
+
+private:
+    mutable std::mutex      mutex_;
+    std::condition_variable condition_;
+    bool                    started_{false};
+    bool                    released_{false};
+    int                     calls_{0};
+};
+
 SearchExecutorGate search_executor_gate;
 std::atomic_bool   search_executor_saw_cancellation{false};
 std::atomic_bool   search_executor_delay_progress{false};
@@ -426,6 +491,448 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(load_finished.count() == 1, 2000);
         QTest::qWait(100);
         QCOMPARE(load_finished.count(), 1);
+
+        controller.shutdown();
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Enabled, old_enabled));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, old_model));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelPath, old_modelPath));
+        settings->setAutoSaveEnabled(old_auto_save);
+    }
+
+    void smartAnnotationInferenceIsAsyncAndDoesNotBlockCaller()
+    {
+        auto *settings = dltool::settings::GlobalSettings::getInstance();
+        QVERIFY(settings != nullptr);
+
+        namespace field = dltool::settings::generated::field;
+        const QVariant old_enabled   = settings->valueForField(field::SmartAnnotation::Enabled);
+        const QVariant old_model     = settings->valueForField(field::SmartAnnotation::Model);
+        const QVariant old_modelPath = settings->valueForField(field::SmartAnnotation::ModelPath);
+        const bool     old_auto_save = settings->autoSaveEnabled();
+        settings->setAutoSaveEnabled(false);
+
+        QTemporaryFile model_file;
+        QVERIFY(model_file.open());
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Enabled, true));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, QStringLiteral("edge_sam")));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelPath, model_file.fileName()));
+
+        SmartPredictGate predict_gate;
+        dltool::feature::SmartAnnotationController controller(
+            [](const QString &, const QString &, const irt::model::ModelRuntime &,
+               const irt::model::ModelPrecision)
+                -> std::unique_ptr<irt::features::SAMImagePredictor>
+            {
+                return std::make_unique<irt::features::SAMImagePredictor>();
+            },
+            [&predict_gate](irt::features::SAMImagePredictor *,
+                            const std::filesystem::path &,
+                            const irt::features::SAMImagePrompt &,
+                            const irt::features::SAMImagePredictOptions &)
+                -> irt::features::SAMImagePrediction
+            {
+                predict_gate.wait();
+                irt::features::SAMImagePrediction pred;
+                pred.width = 100;
+                pred.height = 100;
+                pred.mask_count = 1;
+                pred.iou_predictions = {0.95F};
+                pred.binary_masks.assign(100 * 100, 0);
+                for (int y = 20; y < 60; ++y)
+                    for (int x = 20; x < 60; ++x)
+                        pred.binary_masks[y * 100 + x] = 1;
+                return pred;
+            });
+
+        QSignalSpy load_spy(&controller, &dltool::feature::SmartAnnotationController::modelLoadFinished);
+        QSignalSpy infer_spy(&controller, &dltool::feature::SmartAnnotationController::inferFinished);
+
+        QVariantMap point;
+        point.insert(QStringLiteral("x"), 30.0);
+        point.insert(QStringLiteral("y"), 30.0);
+        point.insert(QStringLiteral("label"), 1);
+        const QVariantList prompt_points{point};
+
+        const QString image_path = QStringLiteral("F:/Projects/DeepLearningTool/3rdparty/EasyTrain/src/python/ultralytics/ultralytics/ultralytics/assets/bus.jpg");
+        QVERIFY(QFileInfo::exists(image_path));
+
+        // First call loads model asynchronously
+        const QVariantMap load_result = controller.infer(image_path, prompt_points, {});
+        QVERIFY(load_result.value(QStringLiteral("loading")).toBool());
+        QTRY_VERIFY_WITH_TIMEOUT(load_spy.count() == 1, 2000);
+
+        // Second call triggers async infer without blocking caller
+        predict_gate.reset();
+        const QVariantMap infer_result = controller.infer(image_path, prompt_points, {});
+        QVERIFY(infer_result.value(QStringLiteral("pending")).toBool());
+        QVERIFY(controller.isRunning());
+
+        // Verify inference reached background executor
+        QTRY_VERIFY_WITH_TIMEOUT(predict_gate.started(), 2000);
+        QVERIFY(controller.isRunning());
+        QCOMPARE(infer_spy.count(), 0);
+
+        // Release predict executor and verify completion
+        predict_gate.release();
+        QTRY_VERIFY_WITH_TIMEOUT(infer_spy.count() == 1, 2000);
+        QVERIFY(!controller.isRunning());
+
+        const QVariantMap final_result = infer_spy.first().first().toMap();
+        QVERIFY(final_result.value(QStringLiteral("success")).toBool());
+        QCOMPARE(final_result.value(QStringLiteral("image_path")).toString(), image_path);
+        QCOMPARE(controller.lastResult(), final_result);
+
+        controller.shutdown();
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Enabled, old_enabled));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, old_model));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelPath, old_modelPath));
+        settings->setAutoSaveEnabled(old_auto_save);
+    }
+
+    void staleSmartAnnotationInferenceIsDiscardedOnNewRequest()
+    {
+        auto *settings = dltool::settings::GlobalSettings::getInstance();
+        QVERIFY(settings != nullptr);
+
+        namespace field = dltool::settings::generated::field;
+        const QVariant old_enabled   = settings->valueForField(field::SmartAnnotation::Enabled);
+        const QVariant old_model     = settings->valueForField(field::SmartAnnotation::Model);
+        const QVariant old_modelPath = settings->valueForField(field::SmartAnnotation::ModelPath);
+        const bool     old_auto_save = settings->autoSaveEnabled();
+        settings->setAutoSaveEnabled(false);
+
+        QTemporaryFile model_file;
+        QVERIFY(model_file.open());
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Enabled, true));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, QStringLiteral("edge_sam")));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelPath, model_file.fileName()));
+
+        SmartPredictGate predict_gate;
+        dltool::feature::SmartAnnotationController controller(
+            [](const QString &, const QString &, const irt::model::ModelRuntime &,
+               const irt::model::ModelPrecision)
+                -> std::unique_ptr<irt::features::SAMImagePredictor>
+            {
+                return std::make_unique<irt::features::SAMImagePredictor>();
+            },
+            [&predict_gate](irt::features::SAMImagePredictor *,
+                            const std::filesystem::path &,
+                            const irt::features::SAMImagePrompt &,
+                            const irt::features::SAMImagePredictOptions &)
+                -> irt::features::SAMImagePrediction
+            {
+                predict_gate.wait();
+                irt::features::SAMImagePrediction pred;
+                pred.width = 100;
+                pred.height = 100;
+                pred.mask_count = 1;
+                pred.iou_predictions = {0.90F};
+                pred.binary_masks.assign(100 * 100, 0);
+                for (int y = 10; y < 50; ++y)
+                    for (int x = 10; x < 50; ++x)
+                        pred.binary_masks[y * 100 + x] = 1;
+                return pred;
+            });
+
+        QSignalSpy load_spy(&controller, &dltool::feature::SmartAnnotationController::modelLoadFinished);
+        QSignalSpy infer_spy(&controller, &dltool::feature::SmartAnnotationController::inferFinished);
+
+        const QString image_path = QStringLiteral("F:/Projects/DeepLearningTool/3rdparty/EasyTrain/src/python/ultralytics/ultralytics/ultralytics/assets/bus.jpg");
+
+        QVariantMap point1;
+        point1.insert(QStringLiteral("x"), 20.0);
+        point1.insert(QStringLiteral("y"), 20.0);
+        point1.insert(QStringLiteral("label"), 1);
+        const QVariantList prompt_points1{point1};
+
+        // Load model
+        controller.infer(image_path, prompt_points1, {});
+        QTRY_VERIFY_WITH_TIMEOUT(load_spy.count() == 1, 2000);
+
+        // Request 1 starts and waits at gate
+        predict_gate.reset();
+        controller.infer(image_path, prompt_points1, {});
+        QTRY_VERIFY_WITH_TIMEOUT(predict_gate.started(), 2000);
+
+        // Request 2 supersedes request 1 before request 1 completes
+        QVariantMap point2;
+        point2.insert(QStringLiteral("x"), 40.0);
+        point2.insert(QStringLiteral("y"), 40.0);
+        point2.insert(QStringLiteral("label"), 1);
+        const QVariantList prompt_points2{point2};
+
+        controller.infer(image_path, prompt_points2, {});
+
+        // Release gate for request 1; request 2 will then run
+        predict_gate.release();
+        QTRY_VERIFY_WITH_TIMEOUT(infer_spy.count() == 1, 2000);
+        QTest::qWait(100);
+
+        // Request 1's late output was rejected; only 1 output was emitted
+        QCOMPARE(infer_spy.count(), 1);
+
+        controller.shutdown();
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Enabled, old_enabled));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, old_model));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelPath, old_modelPath));
+        settings->setAutoSaveEnabled(old_auto_save);
+    }
+
+    void staleSmartAnnotationInferenceIsDiscardedOnModelReplaceAndSettingsChange()
+    {
+        auto *settings = dltool::settings::GlobalSettings::getInstance();
+        QVERIFY(settings != nullptr);
+
+        namespace field = dltool::settings::generated::field;
+        const QVariant old_enabled   = settings->valueForField(field::SmartAnnotation::Enabled);
+        const QVariant old_model     = settings->valueForField(field::SmartAnnotation::Model);
+        const QVariant old_modelPath = settings->valueForField(field::SmartAnnotation::ModelPath);
+        const bool     old_auto_save = settings->autoSaveEnabled();
+        settings->setAutoSaveEnabled(false);
+
+        QTemporaryFile model_file;
+        QVERIFY(model_file.open());
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Enabled, true));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, QStringLiteral("edge_sam")));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelPath, model_file.fileName()));
+
+        SmartPredictGate predict_gate;
+        dltool::feature::SmartAnnotationController controller(
+            [](const QString &, const QString &, const irt::model::ModelRuntime &,
+               const irt::model::ModelPrecision)
+                -> std::unique_ptr<irt::features::SAMImagePredictor>
+            {
+                return std::make_unique<irt::features::SAMImagePredictor>();
+            },
+            [&predict_gate](irt::features::SAMImagePredictor *,
+                            const std::filesystem::path &,
+                            const irt::features::SAMImagePrompt &,
+                            const irt::features::SAMImagePredictOptions &)
+                -> irt::features::SAMImagePrediction
+            {
+                predict_gate.wait();
+                irt::features::SAMImagePrediction pred;
+                pred.width = 100;
+                pred.height = 100;
+                pred.mask_count = 1;
+                pred.iou_predictions = {0.90F};
+                pred.binary_masks.assign(100 * 100, 1);
+                return pred;
+            });
+
+        QSignalSpy load_spy(&controller, &dltool::feature::SmartAnnotationController::modelLoadFinished);
+        QSignalSpy infer_spy(&controller, &dltool::feature::SmartAnnotationController::inferFinished);
+
+        const QString image_path = QStringLiteral("F:/Projects/DeepLearningTool/3rdparty/EasyTrain/src/python/ultralytics/ultralytics/ultralytics/assets/bus.jpg");
+        QVariantMap point;
+        point.insert(QStringLiteral("x"), 20.0);
+        point.insert(QStringLiteral("y"), 20.0);
+        point.insert(QStringLiteral("label"), 1);
+
+        controller.infer(image_path, {point}, {});
+        QTRY_VERIFY_WITH_TIMEOUT(load_spy.count() == 1, 2000);
+
+        // Start infer and block in executor
+        predict_gate.reset();
+        controller.infer(image_path, {point}, {});
+        QTRY_VERIFY_WITH_TIMEOUT(predict_gate.started(), 2000);
+
+        // Settings change invalidates model while inference is in flight
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, QStringLiteral("sam_vit_b")));
+
+        // Release executor
+        predict_gate.release();
+        QTest::qWait(150);
+
+        // Stale result from replaced model must be discarded
+        QCOMPARE(infer_spy.count(), 0);
+
+        controller.shutdown();
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Enabled, old_enabled));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, old_model));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelPath, old_modelPath));
+        settings->setAutoSaveEnabled(old_auto_save);
+    }
+
+    void smartAnnotationShutdownWaitsForInferenceAndRejectsLateOutput()
+    {
+        auto *settings = dltool::settings::GlobalSettings::getInstance();
+        QVERIFY(settings != nullptr);
+
+        namespace field = dltool::settings::generated::field;
+        const QVariant old_enabled   = settings->valueForField(field::SmartAnnotation::Enabled);
+        const QVariant old_model     = settings->valueForField(field::SmartAnnotation::Model);
+        const QVariant old_modelPath = settings->valueForField(field::SmartAnnotation::ModelPath);
+        const bool     old_auto_save = settings->autoSaveEnabled();
+        settings->setAutoSaveEnabled(false);
+
+        QTemporaryFile model_file;
+        QVERIFY(model_file.open());
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Enabled, true));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, QStringLiteral("edge_sam")));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelPath, model_file.fileName()));
+
+        SmartPredictGate predict_gate;
+        dltool::feature::SmartAnnotationController controller(
+            [](const QString &, const QString &, const irt::model::ModelRuntime &,
+               const irt::model::ModelPrecision)
+                -> std::unique_ptr<irt::features::SAMImagePredictor>
+            {
+                return std::make_unique<irt::features::SAMImagePredictor>();
+            },
+            [&predict_gate](irt::features::SAMImagePredictor *,
+                            const std::filesystem::path &,
+                            const irt::features::SAMImagePrompt &,
+                            const irt::features::SAMImagePredictOptions &)
+                -> irt::features::SAMImagePrediction
+            {
+                predict_gate.wait();
+                irt::features::SAMImagePrediction pred;
+                pred.width = 100;
+                pred.height = 100;
+                pred.mask_count = 1;
+                pred.iou_predictions = {0.90F};
+                pred.binary_masks.assign(100 * 100, 1);
+                return pred;
+            });
+
+        QSignalSpy load_spy(&controller, &dltool::feature::SmartAnnotationController::modelLoadFinished);
+        QSignalSpy infer_spy(&controller, &dltool::feature::SmartAnnotationController::inferFinished);
+
+        const QString image_path = QStringLiteral("F:/Projects/DeepLearningTool/3rdparty/EasyTrain/src/python/ultralytics/ultralytics/ultralytics/assets/bus.jpg");
+        QVariantMap point;
+        point.insert(QStringLiteral("x"), 20.0);
+        point.insert(QStringLiteral("y"), 20.0);
+        point.insert(QStringLiteral("label"), 1);
+
+        controller.infer(image_path, {point}, {});
+        QTRY_VERIFY_WITH_TIMEOUT(load_spy.count() == 1, 2000);
+
+        predict_gate.reset();
+        controller.infer(image_path, {point}, {});
+        QTRY_VERIFY_WITH_TIMEOUT(predict_gate.started(), 2000);
+
+        std::thread releaser([&predict_gate]()
+                             {
+                                 QThread::msleep(50);
+                                 predict_gate.release();
+                             });
+
+        controller.shutdown();
+        releaser.join();
+
+        QVERIFY(!controller.isRunning());
+        QCOMPARE(infer_spy.count(), 0);
+
+        // After shutdown, infer immediately rejects new work
+        const QVariantMap closed_result = controller.infer(image_path, {point}, {});
+        QVERIFY(!closed_result.value(QStringLiteral("success")).toBool());
+        QCOMPARE(closed_result.value(QStringLiteral("error")).toString(), QStringLiteral("智能标注控制器正在关闭"));
+
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Enabled, old_enabled));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, old_model));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelPath, old_modelPath));
+        settings->setAutoSaveEnabled(old_auto_save);
+    }
+
+    void smartAnnotationRealResourceRegionVerification()
+    {
+        auto *settings = dltool::settings::GlobalSettings::getInstance();
+        QVERIFY(settings != nullptr);
+
+        namespace field = dltool::settings::generated::field;
+        const QVariant old_enabled   = settings->valueForField(field::SmartAnnotation::Enabled);
+        const QVariant old_model     = settings->valueForField(field::SmartAnnotation::Model);
+        const QVariant old_modelPath = settings->valueForField(field::SmartAnnotation::ModelPath);
+        const bool     old_auto_save = settings->autoSaveEnabled();
+        settings->setAutoSaveEnabled(false);
+
+        QTemporaryFile model_file;
+        QVERIFY(model_file.open());
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Enabled, true));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::Model, QStringLiteral("edge_sam")));
+        QVERIFY(settings->setFieldValue(field::SmartAnnotation::ModelPath, model_file.fileName()));
+
+        dltool::feature::SmartAnnotationController controller(
+            [](const QString &, const QString &, const irt::model::ModelRuntime &,
+               const irt::model::ModelPrecision)
+                -> std::unique_ptr<irt::features::SAMImagePredictor>
+            {
+                return std::make_unique<irt::features::SAMImagePredictor>();
+            },
+            [](irt::features::SAMImagePredictor *,
+               const std::filesystem::path &,
+               const irt::features::SAMImagePrompt &,
+               const irt::features::SAMImagePredictOptions &)
+                -> irt::features::SAMImagePrediction
+            {
+                // Predicts a 40x40 region in a 200x200 viewport
+                irt::features::SAMImagePrediction pred;
+                pred.width = 200;
+                pred.height = 200;
+                pred.mask_count = 1;
+                pred.iou_predictions = {0.99F};
+                pred.binary_masks.assign(200 * 200, 0);
+                for (int y = 50; y < 90; ++y)
+                    for (int x = 50; x < 90; ++x)
+                        pred.binary_masks[y * 200 + x] = 1;
+                return pred;
+            });
+
+        QSignalSpy load_spy(&controller, &dltool::feature::SmartAnnotationController::modelLoadFinished);
+        QSignalSpy infer_spy(&controller, &dltool::feature::SmartAnnotationController::inferFinished);
+
+        const QString real_image_path = QStringLiteral("F:/Projects/DeepLearningTool/3rdparty/EasyTrain/src/python/ultralytics/ultralytics/ultralytics/assets/bus.jpg");
+        QVERIFY2(QFileInfo::exists(real_image_path), qPrintable(real_image_path));
+        const QImage real_image(real_image_path);
+        QVERIFY(!real_image.isNull());
+        QVERIFY(real_image.width() > 200 && real_image.height() > 200);
+
+        QVariantMap point;
+        point.insert(QStringLiteral("x"), 160.0);
+        point.insert(QStringLiteral("y"), 160.0);
+        point.insert(QStringLiteral("label"), 1);
+
+        QVariantMap options;
+        options.insert(QStringLiteral("use_viewport_input"), true);
+        options.insert(QStringLiteral("viewport"), QVariantMap{
+            {QStringLiteral("x"), 100.0},
+            {QStringLiteral("y"), 100.0},
+            {QStringLiteral("width"), 200.0},
+            {QStringLiteral("height"), 200.0},
+            {QStringLiteral("input_width"), 200},
+            {QStringLiteral("input_height"), 200}
+        });
+
+        // Load model
+        controller.infer(real_image_path, {point}, options);
+        QTRY_VERIFY_WITH_TIMEOUT(load_spy.count() == 1, 2000);
+
+        // Perform infer with viewport mapping
+        controller.infer(real_image_path, {point}, options);
+        QTRY_VERIFY_WITH_TIMEOUT(infer_spy.count() == 1, 2000);
+
+        const QVariantMap result = infer_spy.first().first().toMap();
+        QVERIFY(result.value(QStringLiteral("success")).toBool());
+        QCOMPARE(result.value(QStringLiteral("image_width")).toInt(), real_image.width());
+        QCOMPARE(result.value(QStringLiteral("image_height")).toInt(), real_image.height());
+
+        // Viewport offset was x=100, y=100. Predictor mask was [50, 90].
+        // Mapped source coords should be around [150, 190].
+        const double bbox_x = result.value(QStringLiteral("x")).toDouble();
+        const double bbox_y = result.value(QStringLiteral("y")).toDouble();
+        const double bbox_w = result.value(QStringLiteral("width")).toDouble();
+        const double bbox_h = result.value(QStringLiteral("height")).toDouble();
+
+        QVERIFY(bbox_x >= 145.0 && bbox_x <= 155.0);
+        QVERIFY(bbox_y >= 145.0 && bbox_y <= 155.0);
+        QVERIFY(bbox_w >= 38.0 && bbox_w <= 42.0);
+        QVERIFY(bbox_h >= 38.0 && bbox_h <= 42.0);
+
+        const QVariantList points = result.value(QStringLiteral("points")).toList();
+        QVERIFY(points.size() >= 3);
+        const QVariantList mask_runs = result.value(QStringLiteral("mask_runs")).toList();
+        QVERIFY(!mask_runs.isEmpty());
 
         controller.shutdown();
         QVERIFY(settings->setFieldValue(field::SmartAnnotation::Enabled, old_enabled));

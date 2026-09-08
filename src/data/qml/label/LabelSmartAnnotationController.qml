@@ -74,6 +74,24 @@ Item {
         function onValueChanged() { refreshSettings() }
     }
 
+    Connections {
+        target: smartAnnotation
+        function onInferFinished(inferResult) {
+            if (!controller.active) {
+                return
+            }
+            if (controller.promptPoints().length === 0 && !controller.boxValid) {
+                controller.clearPreview()
+                return
+            }
+            if (controller.isValidResult(inferResult)) {
+                controller.applyPreview(inferResult)
+            } else if (!inferResult || (!inferResult.loading && !inferResult.pending)) {
+                controller.clearPreview()
+            }
+        }
+    }
+
     function handlePress(pos, button) {
         if (!active || (button !== Qt.LeftButton && button !== Qt.RightButton)) {
             return false
@@ -260,12 +278,11 @@ Item {
         }
 
         let inferResult = smartAnnotation.infer(imageInstances.currentImagePath, prompts, inferenceOptions())
-        if (!isValidResult(inferResult)) {
+        if (isValidResult(inferResult)) {
+            applyPreview(inferResult)
+        } else if (!inferResult || (!inferResult.pending && !inferResult.loading)) {
             clearPreview()
-            return
         }
-
-        applyPreview(inferResult)
     }
 
     function canRun(prompts) {
@@ -344,6 +361,13 @@ Item {
     function ensureResult() {
         if (dirty || !isValidResult(result)) {
             updatePreview()
+            if (smartAnnotation && typeof smartAnnotation.waitForFinished === "function") {
+                smartAnnotation.waitForFinished(1000)
+                let latest = smartAnnotation.lastResult
+                if (isValidResult(latest)) {
+                    applyPreview(latest)
+                }
+            }
         }
         return isValidResult(result)
     }

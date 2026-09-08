@@ -41,6 +41,32 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-09 — 让智能标注推理异步且可安全关闭
+
+**目标**
+- 交付 Ticket 29：让智能标注推理异步且可安全关闭。
+- 专属执行者拥有 predictor，接收冻结图像/提示/参数请求。
+- 推理期间 GUI 可响应，模型替换、停止和关闭拒绝迟到输出并安全等待。
+- 真实资源验证区域结果，设置变更正确失效模型，复用加载与生命周期 seam。
+- 遵循 TDD，公开用例入口及真实下一层依赖，通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `SmartAnnotationController` 中引入专用工作线程与 `SmartAnnotationExecutor`，将 `predictor` 的生命周期与所有权完全移交专属执行者，解耦控制器与耗时推理。
+- 已完成：设计可注入的 `PredictExecutor` 适配 seam，支持生产环境调用底层 `SAMImagePredictor::predict` 与测试环境下精确控制耗时并发/栅栏门。
+- 已完成：引入冻结的 `SmartAnnotationRequest` 数据快照与单调递增的 `current_request_id_` / 取消标记（`cancel_token`）。
+- 已完成：当模型设置变更（`model`、`model_path`、`model_runtime`、`model_precision`、`enabled`）或有新请求发出时，自动失效并取消进行中的推理，丢弃迟到或失效的结果输出。
+- 已完成：支持安全等待推理与优雅关闭机制（`waitForFinished` 与 `shutdown`），保证执行者线程退出时安全同步，拒绝悬挂指针与竞争条件。
+- 已完成：在 QML 控制器 (`LabelSmartAnnotationController.qml`) 中对接 `onInferFinished` 异步信号与 `waitForFinished` 确认兜底，保持 UI 线程流畅响应。
+- 已完成：编写 5 组针对性生命周期与端到端真实图像推理测试用例（覆盖异步不阻塞、新请求抢占丢弃旧结果、设置变更失效丢弃迟到输出、关闭安全等待、真实 `bus.jpg` 资源端到端推理及视口映射）。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_feature_lifecycle_tests` → 编译成功（0 warning/error）
+- `ctest --test-dir build --output-on-failure -R dltool_feature_lifecycle_tests -C Release` → 100% 测试通过（13/13 用例全部通过，耗时 1.92s）
+- `ctest --test-dir build --output-on-failure -L "feature|data|ui" -C Release` → 17/17 测试全部通过，耗时 9.02s
+
+**下一步**
+- 开始执行 Ticket 30：让聚类写回使用固定输入并准确结束 (`docs/refactor-tickets/30-cluster-writeback.md`)。
+
 ## 2026-09-09 — 核对异常检测及内部模型参数执行链
 
 **目标**
