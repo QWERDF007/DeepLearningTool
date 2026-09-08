@@ -16,6 +16,7 @@
 #include <sqlpp11/transaction.h>
 
 #include <exception>
+#include <sqlite3.h>
 #include <tuple>
 
 namespace dltool::database {
@@ -463,6 +464,56 @@ bool ModelTaskDataBase::writePreprocessingConfig(const QVariantMap &config, QStr
     catch (const std::exception &e)
     {
         return failFromException(err_msg, e, QStringLiteral("写入预处理配置失败"));
+    }
+}
+
+bool ModelTaskDataBase::getPredictionFingerprint(QString &fingerprint, QString *err_msg) const
+{
+    fingerprint.clear();
+    if (connectionPool() == nullptr)
+        return setError(err_msg, QStringLiteral("数据库连接池为空"));
+
+    try
+    {
+        auto db = connectionPool()->get();
+        if (!detail::ensureTaskSchema(db, err_msg))
+            return false;
+
+        sqlite3 *handle = db.native_handle();
+        if (handle == nullptr)
+            return setError(err_msg, QStringLiteral("数据库句柄为空"));
+
+        const char *sql = "SELECT "
+                          "(SELECT count(*) FROM prediction), "
+                          "(SELECT coalesce(max(image_id), 0) FROM prediction), "
+                          "(SELECT coalesce(total(length(data)), 0) FROM prediction), "
+                          "(SELECT count(*) FROM datasets), "
+                          "(SELECT coalesce(max(dataset_id), 0) FROM datasets), "
+                          "(SELECT coalesce(total(length(class_ids)), 0) FROM datasets)";
+        sqlite3_stmt *stmt = nullptr;
+        int rc = sqlite3_prepare_v2(handle, sql, -1, &stmt, nullptr);
+        if (rc != SQLITE_OK)
+            return setError(err_msg, QString::fromUtf8(sqlite3_errmsg(handle)));
+
+        rc = sqlite3_step(stmt);
+        if (rc == SQLITE_ROW)
+        {
+            const qint64 pred_count  = sqlite3_column_int64(stmt, 0);
+            const qint64 pred_max_id = sqlite3_column_int64(stmt, 1);
+            const double pred_len    = sqlite3_column_double(stmt, 2);
+            const qint64 ds_count    = sqlite3_column_int64(stmt, 3);
+            const qint64 ds_max_id   = sqlite3_column_int64(stmt, 4);
+            const double ds_len      = sqlite3_column_double(stmt, 5);
+            fingerprint = QStringLiteral("p:%1|%2|%3;d:%4|%5|%6")
+                              .arg(pred_count).arg(pred_max_id).arg(pred_len, 0, 'f', 1)
+                              .arg(ds_count).arg(ds_max_id).arg(ds_len, 0, 'f', 1);
+        }
+        sqlite3_finalize(stmt);
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        return failFromException(err_msg, e, QStringLiteral("获取预测指纹失败"));
     }
 }
 

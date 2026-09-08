@@ -377,6 +377,16 @@ bool ModelEvaluationViewModel::anomalyDetection() const
     return anomaly_detection_;
 }
 
+int ModelEvaluationViewModel::evaluationCount() const
+{
+    return evaluation_count_;
+}
+
+qint64 ModelEvaluationViewModel::lastEvaluationElapsedMs() const
+{
+    return last_evaluation_elapsed_ms_;
+}
+
 EvaluationMetricModel *ModelEvaluationViewModel::instanceMetrics() const
 {
     return instance_metrics_;
@@ -691,12 +701,14 @@ void ModelEvaluationViewModel::startEvaluation(const bool notify)
                          result->prediction_count, result->instance_records.size(), result->charts.size());
             QMetaObject::invokeMethod(
                 guard.data(),
-                [guard, request_token, options, notify, success, result = std::move(result), error]() mutable
+                [guard, request_token, options, notify, success, result = std::move(result), error, worker_elapsed]() mutable
                 {
                     if (guard.isNull() || guard->shutting_down_ || !guard->evaluation_worker_active_
                         || guard->cancel_token_ != request_token)
                         return;
 
+                    guard->last_evaluation_elapsed_ms_ = worker_elapsed;
+                    guard->evaluation_count_++;
                     guard->evaluation_worker_active_ = false;
                     guard->cancel_token_.reset();
                     const auto startPendingEvaluation = [&guard]()

@@ -183,6 +183,10 @@ public:
     bool buildEvaluationOptions(const ModelTestTaskDefinition &task, ModelEvaluationOptions &options,
                                 QString *err_msg = nullptr) const;
 
+    /** @brief 构造评估输入轻量快照身份（基于真值指纹、任务数据库及预测状态，不执行全量序列化或目录扫描）。 */
+    static QString evaluationInputSnapshot(const QString &project_database_path, const QString &dataset_file_list_path,
+                                           const QString &task_database_path, const QString &prediction_dir);
+
 signals:
     /** @brief 关联的模型 UUID 发生改变。 */
     void modelUuidChanged();

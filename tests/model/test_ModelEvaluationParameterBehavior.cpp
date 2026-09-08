@@ -14,6 +14,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QSignalSpy>
 #include <QTest>
 
@@ -632,6 +633,178 @@ private slots:
             QCOMPARE(after_preds.size(), original_preds.size());
             QCOMPARE(after_preds.value(image), original_preds.value(image));
         }
+    }
+
+    void unrelatedModelWritesDoNotInvalidateEvaluationSnapshot()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat   = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 image = fixture.addImage(QStringLiteral("cat_test"));
+        QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.writeImageList());
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr);
+        QString      error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("SnapshotModel"), QStringLiteral("ultralytics"),
+                                                         QStringLiteral("YOLOv8"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        TaskManager task_manager_instance;
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, &task_manager_instance);
+        manager.setModelUuid(record.uuid);
+        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image,
+                                         detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0,
+                                                             10, 10),
+                                         true, &error),
+                 qPrintable(error));
+
+        auto *evaluation = manager.currentEvaluation();
+        QVERIFY(evaluation != nullptr);
+        evaluation->evaluate(false);
+        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+
+        ModelEvaluationOptions base_options;
+        QVERIFY(manager.buildEvaluationOptions(base_options));
+        const QString initial_snapshot = base_options.prediction_snapshot;
+        QVERIFY(!initial_snapshot.isEmpty());
+
+        // 验收条件 2: 无关模型写入（如更新训练损失/耗时、新增其他模型）不改变真值指纹与评估快照
+        QVariantMap train_update;
+        train_update.insert(QStringLiteral("status"), QStringLiteral("running"));
+        train_update.insert(QStringLiteral("loss"), QStringLiteral("0.35"));
+        train_update.insert(QStringLiteral("elapsed_seconds"), 120);
+        QVERIFY(model_manager.updateModelExtraData(record.uuid, {{QStringLiteral("train"), train_update}}, &error));
+
+        const auto other_model = model_manager.addModelRecord(QStringLiteral("OtherModel"), QStringLiteral("ultralytics"),
+                                                              QStringLiteral("YOLOv8"), &error);
+        QVERIFY(other_model.isValid());
+
+        ModelEvaluationOptions options_after_unrelated;
+        QVERIFY(manager.buildEvaluationOptions(options_after_unrelated));
+        QCOMPARE(options_after_unrelated.prediction_snapshot, initial_snapshot);
+
+        // 切换任务/重新选中任务，当前就绪评估保持 Ready，不被重新读取或清空
+        QVERIFY(manager.switchTask(manager.currentTaskUuid()));
+        QCOMPARE(manager.currentEvaluation(), evaluation);
+        QCOMPARE(evaluation->stateKind(), ModelEvaluationViewModel::Ready);
+
+        // 验收条件 2: 相关输入变化（如真值标签增加/变更）正确改变指纹并使当前结果失效
+        const qint64 dog = fixture.addClass(QStringLiteral("Dog"), QStringLiteral("normal"));
+        QVERIFY(fixture.addDetectionLabel(image, dog, 5, 5, 15, 15) >= 0);
+
+        ModelEvaluationOptions options_after_gt_change;
+        QVERIFY(manager.buildEvaluationOptions(options_after_gt_change));
+        QVERIFY(options_after_gt_change.prediction_snapshot != initial_snapshot);
+
+        // 切换或重新绑定任务，评估状态应正确失效重置
+        QVERIFY(manager.switchTask(manager.currentTaskUuid()));
+        QCOMPARE(manager.currentEvaluation(), evaluation);
+        QCOMPARE(evaluation->stateKind(), ModelEvaluationViewModel::NotRun);
+    }
+
+    void coldAndHotEvaluationOpenRecordsMetricsAndGuiResponseWithConsistentValues()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 image = fixture.addImage(QStringLiteral("cat_sample"));
+        QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.writeImageList());
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr);
+        QString      error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("PerfModel"), QStringLiteral("ultralytics"),
+                                                         QStringLiteral("YOLOv8"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, nullptr);
+        manager.setModelUuid(record.uuid);
+        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image,
+                                         detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 10, 10),
+                                         true, &error),
+                 qPrintable(error));
+
+        ModelEvaluationOptions options;
+        QVERIFY(manager.buildEvaluationOptions(options));
+
+        auto *evaluation = manager.currentEvaluation();
+        QVERIFY(evaluation != nullptr);
+
+        // 1. 冷打开：执行后台评估并记录耗时与执行次数
+        QCOMPARE(evaluation->evaluationCount(), 0);
+        evaluation->evaluate(false);
+        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+        QCOMPARE(evaluation->evaluationCount(), 1);
+        QVERIFY(evaluation->lastEvaluationElapsedMs() >= 0);
+
+        const double cold_conf = evaluation->confidenceThreshold();
+        const double cold_best = evaluation->hasBestThreshold() ? evaluation->bestThreshold() : 0.0;
+        const auto *matrix = evaluation->confusionMatrix();
+        QVERIFY(matrix != nullptr);
+        const int cold_cols = matrix->columnCount();
+
+        // 2. 热打开：相同输入下重复 setEvaluationOptions，GUI 立即响应（无需重新触发后台执行），数值完全一致
+        QElapsedTimer hot_timer;
+        hot_timer.start();
+        ModelEvaluationOptions hot_options;
+        QVERIFY(manager.buildEvaluationOptions(hot_options));
+        evaluation->setEvaluationOptions(hot_options);
+        const qint64 hot_gui_elapsed = hot_timer.elapsed();
+        QVERIFY(hot_gui_elapsed < 100);
+        QCOMPARE(evaluation->evaluationCount(), 1);
+        QCOMPARE(evaluation->stateKind(), ModelEvaluationViewModel::Ready);
+        QCOMPARE(evaluation->confidenceThreshold(), cold_conf);
+        QCOMPARE(evaluation->hasBestThreshold() ? evaluation->bestThreshold() : 0.0, cold_best);
+        QCOMPARE(matrix->columnCount(), cold_cols);
+
+        // 3. 显式重新评估：计数递增，结果数值依然一致
+        evaluation->refreshEvaluation();
+        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+        QCOMPARE(evaluation->evaluationCount(), 2);
+        QCOMPARE(evaluation->confidenceThreshold(), cold_conf);
+        QCOMPARE(evaluation->hasBestThreshold() ? evaluation->bestThreshold() : 0.0, cold_best);
+        QCOMPARE(matrix->columnCount(), cold_cols);
+    }
+
+    void evaluationSnapshotAvoidsGuiDirectoryScanningAndFullTableSerialization()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 image = fixture.addImage(QStringLiteral("cat_bench"));
+        QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.writeImageList());
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr);
+        QString      error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("BenchModel"), QStringLiteral("ultralytics"),
+                                                         QStringLiteral("YOLOv8"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, nullptr);
+        manager.setModelUuid(record.uuid);
+        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image,
+                                         detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 10, 10),
+                                         true, &error),
+                 qPrintable(error));
+
+        const ModelStorageService storage(fixture.rootPath());
+        const QString file_list = storage.testTaskFileListPath(record.name, manager.currentTaskDirectory());
+        const QString task_db = storage.testTaskDatabasePath(record.name, manager.currentTaskDirectory());
+        const QString pred_dir = storage.testTaskPredictionPath(record.name, manager.currentTaskDirectory());
+
+        // 验收条件 1: 在 GUI 线程获取快照身份时不进行前台全表序列化或全目录扫描，耗时极低（≤ 50ms）
+        QElapsedTimer timer;
+        timer.start();
+        const QString snapshot = ModelTestTaskManager::evaluationInputSnapshot(fixture.projectDatabasePath(), file_list, task_db, pred_dir);
+        const qint64 elapsed = timer.elapsed();
+
+        QVERIFY(!snapshot.isEmpty());
+        QVERIFY2(elapsed < 50, qPrintable(QString("快照计算耗时过长: %1 ms").arg(elapsed)));
     }
 };
 

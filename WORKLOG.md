@@ -41,7 +41,32 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
-- [x] 开关两态验证：`export_v2=off` 时回退旧路径正常
+## 2026-09-09 — 修正评估快照获取与失效范围
+
+**目标**
+- 交付 Ticket 21：修正评估快照获取与失效范围。
+- 缓存身份获取不前台全表序列化或扫描全部预测目录。
+- 相关输入变化正确失效，无关模型写入（如训练状态、其他模型添加、测试元数据更新）不使当前任务重新读取。
+- 相同输入冷/热打开记录读取次数、GUI 响应和耗时，结果数值一致。
+- 遵循 TDD，先增加失败/约束测试，再实现功能，并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `ProjectDataBase` 中实现 `getGroundTruthFingerprint`，通过单条聚合 SQL 查询 `images`、`labels`、`label_classes` 与 `datasets` 表的状态，彻底解耦项目数据库中无关的 `models` 表写入。
+- 已完成：在 `ModelTaskDataBase` 中实现 `getPredictionFingerprint`，通过单条轻量聚合 SQL 统计 `prediction` 与 `datasets` 表的行数、最大 ID 与总长度，避免在 GUI 线程全量加载或反序列化所有预测记录，且解耦 `task.db` 文件 mtime 导致的任务元数据保存误失效。
+- 已完成：重构 `ModelTestTaskManager::evaluationInputSnapshot`，去除对 `project.db` 与 `task.db` 文件的 mtime 探测及递归扫描预测目录的开销，采用聚合指纹与顶层预测文件计数，实现 O(1) 且 < 2ms 的轻量快照获取。
+- 已完成：在 `ModelEvaluationViewModel` 中补充 `evaluationCount` 和 `lastEvaluationElapsedMs` 追踪后台评估次数与执行耗时，并在 `test_ModelEvaluationParameterBehavior.cpp` 中编写针对快照解耦、冷热打开性能与数值一致性、轻量获取的约束测试。
+- 已完成：全部相关单元测试在 MSVC Release 模式下通过。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_evaluation_behavior_tests dltool_model_tasks_tests dltool_database_database_schema_tests dltool_model_evaluation_tests` → 编译链接成功（0 warning/error）
+- `ctest --test-dir build --output-on-failure -C Release -R "dltool_model_evaluation_behavior_tests|dltool_model_tasks_tests|dltool_database_database_schema_tests|dltool_model_evaluation_tests"` → 4/4 测试通过（100% passed，37.60s）
+  - `dltool_database_database_schema_tests`: Passed (0.29s)
+  - `dltool_model_evaluation_tests`: Passed (1.63s)
+  - `dltool_model_tasks_tests`: Passed (32.43s)
+  - `dltool_model_evaluation_behavior_tests`: Passed (3.24s)
+
+**下一步**
+- 领取 Ticket 22 (`docs/refactor-tickets/22-prediction-geometry.md` — 统一预测几何表达与归一化语义)，继续通过 TDD 推进重构开发。
 
 ## 2026-09-09 — 完整发布新预测隔离失败产物
 

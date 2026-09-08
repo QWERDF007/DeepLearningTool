@@ -313,6 +313,13 @@ public:
     bool updateLabelsClass(const std::vector<int64_t> &label_ids, const std::vector<int64_t> &label_class_ids,
                            QString &err_msg) const;
     bool deleteLabels(const std::vector<int64_t> &label_ids, QString &err_msg) const;
+
+    /**
+     * @brief 获取项目真值数据（图像、标注、类别、数据集）的轻量级指纹。
+     *
+     * 仅汇总与评估相关的真值表状态，不受无关的 models 表写入（如训练状态、耗时、额外数据等）影响。
+     */
+    bool getGroundTruthFingerprint(QString &fingerprint, QString *err_msg = nullptr) const;
 };
 
 class DATABASE_API RecentProjectsDataBase : public DataBase

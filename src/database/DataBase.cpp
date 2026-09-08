@@ -2461,6 +2461,74 @@ bool ProjectDataBase::deleteLabels(const std::vector<int64_t> &label_ids, QStrin
     }
 }
 
+bool ProjectDataBase::getGroundTruthFingerprint(QString &fingerprint, QString *err_msg) const
+{
+    fingerprint.clear();
+    if (pool_ == nullptr)
+    {
+        if (err_msg != nullptr)
+            *err_msg = QString("打开数据库失败, %1").arg(path_);
+        return false;
+    }
+
+    try
+    {
+        auto db = pool_->get();
+        sqlite3 *handle = db.native_handle();
+        if (handle == nullptr)
+        {
+            if (err_msg != nullptr)
+                *err_msg = QStringLiteral("数据库句柄为空");
+            return false;
+        }
+
+        const char *sql = "SELECT "
+                          "(SELECT count(*) FROM images), "
+                          "(SELECT coalesce(max(id), 0) FROM images), "
+                          "(SELECT coalesce(total(length(extra_data)), 0) FROM images), "
+                          "(SELECT coalesce(total(length(path)), 0) FROM images), "
+                          "(SELECT count(*) FROM labels), "
+                          "(SELECT coalesce(max(id), 0) FROM labels), "
+                          "(SELECT coalesce(total(label_class_id), 0) FROM labels), "
+                          "(SELECT coalesce(total(length(region)), 0) FROM labels), "
+                          "(SELECT count(*) FROM label_classes), "
+                          "(SELECT coalesce(total(length(name)), 0) FROM label_classes), "
+                          "(SELECT coalesce(total(length(extra_data)), 0) FROM label_classes), "
+                          "(SELECT count(*) FROM datasets), "
+                          "(SELECT coalesce(total(length(name)), 0) FROM datasets)";
+
+        sqlite3_stmt *stmt = nullptr;
+        int rc = sqlite3_prepare_v2(handle, sql, -1, &stmt, nullptr);
+        if (rc != SQLITE_OK)
+        {
+            if (err_msg != nullptr)
+                *err_msg = QString::fromUtf8(sqlite3_errmsg(handle));
+            return false;
+        }
+
+        rc = sqlite3_step(stmt);
+        if (rc == SQLITE_ROW)
+        {
+            QStringList parts;
+            const int cols = sqlite3_column_count(stmt);
+            for (int i = 0; i < cols; ++i)
+            {
+                const unsigned char *text = sqlite3_column_text(stmt, i);
+                parts.push_back(text != nullptr ? QString::fromUtf8(reinterpret_cast<const char *>(text)) : QStringLiteral("0"));
+            }
+            fingerprint = parts.join(QLatin1Char('|'));
+        }
+        sqlite3_finalize(stmt);
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        if (err_msg != nullptr)
+            *err_msg = e.what();
+        return false;
+    }
+}
+
 RecentProjectsDataBase::RecentProjectsDataBase(const QString &path, QObject *parent)
     : DataBase(path, parent)
 {

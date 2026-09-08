@@ -157,6 +157,11 @@ public:
     /** @brief 是否为异常检测评估。 */
     bool        anomalyDetection() const;
 
+    /** @brief 获取当前评估后台执行过的总次数（冷启动=1，未触发重新评估的热打开不变）。 */
+    int         evaluationCount() const;
+    /** @brief 获取最近一次后台评估计算耗时（毫秒）。 */
+    qint64      lastEvaluationElapsedMs() const;
+
     /** @brief 获取实例级总体指标模型。 */
     EvaluationMetricModel            *instanceMetrics() const;
     /** @brief 获取图像级总体指标模型。 */
@@ -407,6 +412,8 @@ private:
     std::unique_ptr<QThreadPool>      owned_evaluation_pool_;
     QThreadPool                       *evaluation_pool_{nullptr};
     std::shared_ptr<EvaluationArtifactCache> evaluation_artifact_cache_;
+    int                               evaluation_count_{0};
+    qint64                            last_evaluation_elapsed_ms_{0};
 };
 
 } // namespace dltool::model

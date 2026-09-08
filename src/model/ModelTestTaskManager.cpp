@@ -111,8 +111,12 @@ bool isFewShotModel(const QPointer<ModelManager> &model_manager, const ModelMana
     return model_manager != nullptr && registeredFramework(model_manager->method(), record.framework_name).isFewShot();
 }
 
-QString evaluationInputSnapshot(const QString &project_database_path, const QString &dataset_file_list_path,
-                                const QString &task_database_path, const QString &prediction_dir)
+} // namespace
+
+QString ModelTestTaskManager::evaluationInputSnapshot(const QString &project_database_path,
+                                                      const QString &dataset_file_list_path,
+                                                      const QString &task_database_path,
+                                                      const QString &prediction_dir)
 {
     QCryptographicHash hash(QCryptographicHash::Sha256);
     const auto addFileInfo = [&hash](const QString &kind, const QFileInfo &info, const QString &relative_path)
@@ -139,47 +143,53 @@ QString evaluationInputSnapshot(const QString &project_database_path, const QStr
         else
             addFileInfo(kind, QFileInfo{}, info.absoluteFilePath());
     };
-    addSingleFile(QStringLiteral("project"), project_database_path);
-    addSingleFile(QStringLiteral("dataset"), dataset_file_list_path);
-    // The task database also owns dataset/class selection. Its file identity
-    // must invalidate a retained evaluation even when it has no prediction
-    // rows, which is the normal anomaly-TIFF case.
-    addSingleFile(QStringLiteral("task"), task_database_path);
 
-    dltool::database::ModelTaskDataBase task_database(task_database_path);
-    QHash<qint64, QVariant>            predictions;
-    QString                           prediction_error;
-    if (task_database.readPredictions(predictions, &prediction_error))
+    // 1. 项目数据库真值指纹（图像、标注、类别、数据集）：
+    // 仅聚合真值表状态，无关的 models 表写入（训练状态、实时指标、其他模型等）不改变指纹
+    QString gt_fingerprint;
+    if (QFileInfo(project_database_path).isFile())
     {
-        QList<qint64> image_ids = predictions.keys();
-        std::sort(image_ids.begin(), image_ids.end());
-        for (const qint64 image_id : image_ids)
+        dltool::database::ProjectDataBase project_database(project_database_path);
+        project_database.getGroundTruthFingerprint(gt_fingerprint);
+    }
+    hash.addData(QByteArrayView("project_gt\0", 11));
+    hash.addData(QByteArrayView(gt_fingerprint.toUtf8()));
+    hash.addData(QByteArrayView("\n", 1));
+
+    // 2. 数据集文件列表
+    addSingleFile(QStringLiteral("dataset"), dataset_file_list_path);
+
+    // 3. task.db 中预测记录与数据集选择的轻量级聚合指纹（不哈希 task.db 文件 mtime，避免任务状态/modified_at 写入导致误失效）
+    QString prediction_fingerprint;
+    if (QFileInfo(task_database_path).isFile())
+    {
+        dltool::database::ModelTaskDataBase task_database(task_database_path);
+        task_database.getPredictionFingerprint(prediction_fingerprint);
+    }
+    hash.addData(QByteArrayView("task_prediction\0", 16));
+    hash.addData(QByteArrayView(prediction_fingerprint.toUtf8()));
+    hash.addData(QByteArrayView("\n", 1));
+
+    // 4. 预测目录身份（目录存在性、修改时间及顶层文件数，不全量递归扫描所有预测文件）
+    const QFileInfo pred_dir_info(prediction_dir);
+    if (pred_dir_info.exists())
+    {
+        addFileInfo(QStringLiteral("prediction_dir"), pred_dir_info, pred_dir_info.absoluteFilePath());
+        if (pred_dir_info.isDir())
         {
-            const QByteArray prediction_data
-                = QJsonDocument::fromVariant(predictions.value(image_id)).toJson(QJsonDocument::Compact);
-            addFileInfo(QStringLiteral("task-prediction"), QFileInfo{}, QString::number(image_id));
-            hash.addData(QByteArrayView(prediction_data));
+            const int file_count = QDir(prediction_dir).entryList(QDir::Files | QDir::NoDotAndDotDot).size();
+            hash.addData(QByteArrayView("file_count\0", 11));
+            hash.addData(QByteArray::number(file_count));
             hash.addData(QByteArrayView("\n", 1));
         }
     }
-
-    const QDir root(prediction_dir);
-    QStringList files;
-    if (root.exists())
+    else
     {
-        QDirIterator iterator(prediction_dir, QDir::Files | QDir::Hidden | QDir::NoSymLinks,
-                              QDirIterator::Subdirectories);
-        while (iterator.hasNext())
-            files.push_back(QDir::fromNativeSeparators(root.relativeFilePath(iterator.next())));
+        addFileInfo(QStringLiteral("prediction_dir"), QFileInfo{}, prediction_dir);
     }
-    std::sort(files.begin(), files.end());
-    for (const QString &relative_path : files)
-        addFileInfo(QStringLiteral("prediction"), QFileInfo(root.filePath(relative_path)), relative_path);
 
     return QString::fromLatin1(hash.result().toHex());
 }
-
-} // namespace
 
 ModelTestTaskManager::ModelTestTaskManager(QString project_dir, ModelManager *model_manager,
                                            dltool::data::DataManager *data_manager, TaskManager *task_manager,
