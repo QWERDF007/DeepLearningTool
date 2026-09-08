@@ -343,8 +343,17 @@ bool TaskManager::markTaskRunning(const int task_id)
         return false;
 
     const Task *task = findTask(task_id);
-    return task != nullptr && (task->status == Pending || task->status == Preparing)
-        && setTaskStatus(task_id, Running);
+    if (task == nullptr || (task->status != Pending && task->status != Preparing))
+        return false;
+
+    const int row = rowForTask(task_id);
+    if (row < 0)
+        return false;
+    Task &running_task = tasks_[static_cast<size_t>(row)];
+    if (running_task.identity.run_id.isEmpty())
+        running_task.identity.run_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+
+    return setTaskStatus(task_id, Running);
 }
 
 bool TaskManager::markTaskStopped(const int task_id)
@@ -688,10 +697,9 @@ void TaskManager::handleTaskMessage(const TaskMessage &message)
         markTaskStopped(message.identity.task_id);
         break;
     case TaskProtocolStatus::Finished:
-        // A test runner finishes after inference.  The selected test page
-        // starts the lazy in-memory C++ evaluation from this terminal state.
-        if (task->type != ModelTaskType::Test)
-            finishTask(message.identity.task_id);
+        // 外部任务的成功终态必须等待真实执行者进程正常退出并校验产物有效性，
+        // 此处只更新进度（100）和阶段，不直接提前发布 Finished 终态。
+        updateTaskProgress(message.identity.task_id, 100);
         break;
     case TaskProtocolStatus::Failed:
     case TaskProtocolStatus::Error:

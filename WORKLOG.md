@@ -43,6 +43,40 @@
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
 - [x] 开关两态验证：`export_v2=off` 时回退旧路径正常
 
+## 2026-09-08 — 让成功终态等待真实进程与产物
+
+**目标**
+- 交付 Ticket 17：让成功终态等待真实进程与产物（外部任务真实退出并验证产物后才发布成功终态）。
+- 先上报 finished 后非零退出必须失败，零退出码缺产物不能成功。
+- 停止等待实际执行者退出，重复停止只发布一次终态并恢复编辑。
+- 验证 Pending、启动失败、进程崩溃和迟到消息，复用任务控制器。
+- 遵循 TDD，先增加失败/约束测试，再实现功能，并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `src/model/TaskManager.cpp` 中调整 `handleTaskMessage`，当收到 `TaskProtocolStatus::Finished` 协议消息时，任务进度更新为 100 并记录阶段，但任务状态保持 `Running`，不提前提交终态；必须等待外部执行者进程正常退出并通过产物校验后由控制器显式提交终态。
+- 已完成：在 `src/model/include/model/ModelTaskController.h` 和 `src/model/ModelTaskController.cpp` 中：
+  1. 引入 `verifyTaskArtifacts` 校验产物有效性：训练任务校验权重文件存在且非空（若配置 `weight_extensions` 则必须匹配）；测试任务校验目标目录存在有效预测结果及 `task.db`。
+  2. 在 `handleExternalTaskFinished` 中：若进程以 0 退出码退出，执行产物校验；若产物缺失或无效，判定任务失败并清理编辑锁；若产物校验通过，调用 `finishTask` 正式发布成功终态。
+  3. 支持外部任务从 `Preparing` 或 `Running` 安全处理启动失败（`handleExternalTaskStartFailed`），并重置 `extra_data` 恢复编辑状态。
+  4. 进程异常崩溃（非正常退出或非零退出码）立即标记 `Failed`，释放编辑态。
+  5. `stopModelTask` 对外部任务标记 `Stopping` 并等待进程实际退出回调，重复停止请求安全忽略，仅发布一次终态。终态确定后迟到消息一律丢弃，不改变终态与进度。
+- 已完成：在 `tests/model/test_ModelTaskController.cpp` 与 `tests/model/test_TaskManager.cpp` 中编写 6 组约束测试并全部通过：
+  1. `reportsFinishedThenNonZeroExitFails`：上报 finished 后非零退出必须判定为失败。
+  2. `zeroExitCodeWithoutArtifactsFails`：0 退出码但缺失产物权重判定为失败。
+  3. `zeroExitCodeWithValidArtifactsSucceeds`：0 退出码且存在有效产物成功发布 Finished。
+  4. `testTaskRequiresValidPredictionsToSucceed`：测试任务 0 退出码时若无预测产物失败，有预测产物成功。
+  5. `stopWaitsForProcessExitAndDuplicateStopPublishesTerminalOnce`：停止操作等待外部进程退出回调才提交终态，重复停止不重复提交且恢复编辑。
+  6. `handlesPendingStartFailedCrashAndLateMessages`：覆盖 Pending 停止、启动失败、进程崩溃以及终态后迟到消息防护。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_tasks_tests` → 生成成功（0 错误）
+- `ctest --test-dir build --output-on-failure -C Release -R "^dltool_model_tasks_tests$"` → 1/1 passed (100% passed, 0 failed, 32.49s)
+- `pytest tests/tools` → 16 passed in 2.00s
+- `ctest --test-dir build --output-on-failure -C Release -R "^(dltool_model_evaluation_behavior_tests|dltool_model_storage_params_tests)$"` → 2/2 passed (100% passed, 0 failed, 4.04s)
+
+**下一步**
+- 开启 Ticket 18（`docs/refactor-tickets/18-train-state-storage.md`，“持久化训练与内部子任务的运行记录”）。
+
 ## 2026-09-08 — 严格验证 C++ Python 任务协议
 
 **目标**

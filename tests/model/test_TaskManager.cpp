@@ -49,8 +49,11 @@ private slots:
         finished.status   = TaskProtocolStatus::Finished;
         QMetaObject::invokeMethod(&manager, "handleTaskMessage", Qt::DirectConnection,
                                   Q_ARG(TaskMessage, finished));
+        QCOMPARE(manager.findTask(task_id)->status, TaskManager::Running);
+        QCOMPARE(manager.findTask(task_id)->progress, 100);
+        QVERIFY(manager.finishTask(task_id));
         QCOMPARE(manager.findTask(task_id)->status, TaskManager::Finished);
-        QCOMPARE(messages.count(), 1);
+        const int message_count_after_finish = messages.count();
 
         TaskMessage late_running = finished;
         late_running.status      = TaskProtocolStatus::Running;
@@ -62,7 +65,7 @@ private slots:
 
         QCOMPARE(manager.findTask(task_id)->status, TaskManager::Finished);
         QCOMPARE(manager.findTask(task_id)->progress, 100);
-        QCOMPARE(messages.count(), 1);
+        QCOMPARE(messages.count(), message_count_after_finish);
     }
 
     void taskIdsAreNotReusedAfterClear()
@@ -248,8 +251,10 @@ private slots:
         message.status = TaskProtocolStatus::Finished;
         message.progress = 100;
         QMetaObject::invokeMethod(manager, "handleTaskMessage", Qt::DirectConnection, Q_ARG(TaskMessage, message));
-        QCOMPARE(manager->findTask(id)->status, TaskManager::Finished);
+        QCOMPARE(manager->findTask(id)->status, TaskManager::Running);
         QCOMPARE(manager->findTask(id)->progress, 100);
+        QVERIFY(manager->finishTask(id));
+        QCOMPARE(manager->findTask(id)->status, TaskManager::Finished);
         QVERIFY(!manager->updateTaskProgress(id, -1));
         QVERIFY(manager->deleteTask(id));
         manager->clearTasks();

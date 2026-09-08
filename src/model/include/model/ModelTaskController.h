@@ -164,6 +164,14 @@ private:
     void failTask(int task_id, const QString &message);
 
     /**
+     * @brief 校验任务正常退出后的必要产物（训练权重或测试预测）。
+     * @param task 任务记录。
+     * @param error_msg 校验失败输出错误信息，可为 nullptr。
+     * @return 产物有效返回 true。
+     */
+    bool verifyTaskArtifacts(const TaskManager::Task &task, QString *error_msg = nullptr) const;
+
+    /**
      * @brief 更新任务所属模型的修改时间。
      * @param task_id 任务 ID。
      */

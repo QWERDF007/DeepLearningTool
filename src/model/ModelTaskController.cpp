@@ -9,9 +9,11 @@
 #include "model/ExternalModelTaskRunner.h"
 #include "model/IModel.h"
 #include "model/IModelConfig.h"
+#include "database/ModelTaskDataBase.h"
 #include "model/IParams.h"
 #include "model/ModelDatasetSelection.h"
 #include "model/ModelManager.h"
+#include "model/ModelRegistry.h"
 #include "model/ModelStorageService.h"
 #include "model/TaskManager.h"
 #include "ui/SignalHelper.h"
@@ -598,6 +600,134 @@ void ModelTaskController::failTask(const int task_id, const QString &message)
     }
 }
 
+bool ModelTaskController::verifyTaskArtifacts(const TaskManager::Task &task, QString *error_msg) const
+{
+    if (model_manager_ == nullptr)
+        return setError(error_msg, QStringLiteral("模型管理器为空"));
+
+    const ModelManager::ModelRecordView record = model_manager_->modelRecordViewForUuid(task.model_uuid);
+    if (!record.isValid())
+        return setError(error_msg, QStringLiteral("模型不存在: %1").arg(task.model_uuid));
+
+    const FrameworkDefinition framework = registeredFramework(method_, record.framework_name);
+    const ModelStorageService storage(project_dir_);
+
+    if (isTrainModelTask(task.type))
+    {
+        const QString weights_dir = storage.trainWeightsPath(record.name);
+        if (weights_dir.isEmpty() || !QDir(weights_dir).exists())
+            return setError(error_msg, QStringLiteral("模型训练未生成权重目录: %1").arg(weights_dir));
+
+        const QFileInfoList entries = QDir(weights_dir).entryInfoList(QDir::Files | QDir::NoDotAndDotDot);
+        bool found_valid_weight = false;
+
+        const QStringList allowed_extensions = framework.weight_extensions;
+        if (allowed_extensions.isEmpty())
+        {
+            for (const QFileInfo &entry : entries)
+            {
+                if (entry.size() > 0)
+                {
+                    found_valid_weight = true;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            for (const QFileInfo &entry : entries)
+            {
+                if (entry.size() <= 0)
+                    continue;
+                const QString suffix = entry.suffix().trimmed();
+                for (const QString &ext : allowed_extensions)
+                {
+                    const QString clean_ext = ext.startsWith(QLatin1Char('.')) ? ext.mid(1) : ext;
+                    if (suffix.compare(clean_ext, Qt::CaseInsensitive) == 0)
+                    {
+                        found_valid_weight = true;
+                        break;
+                    }
+                }
+                if (found_valid_weight)
+                    break;
+            }
+        }
+
+        if (!found_valid_weight)
+            return setError(error_msg, QStringLiteral("模型训练未生成有效权重文件 (目录: %1)").arg(weights_dir));
+
+        return true;
+    }
+
+    if (isTestModelTask(task.type))
+    {
+        QString directory_name = task.scope_name.trimmed();
+        if (directory_name.isEmpty() && !task.scope_uuid.trimmed().isEmpty())
+        {
+            ModelTestTaskDefinition definition;
+            QString load_err;
+            if (test_task_repository_.loadTask(record.name, task.scope_uuid, definition, &load_err))
+                directory_name = definition.directory_name;
+        }
+
+        bool found_predictions = false;
+        if (!directory_name.isEmpty())
+        {
+            const QString pred_dir = storage.testTaskPredictionPath(record.name, directory_name);
+            if (!pred_dir.isEmpty() && QDir(pred_dir).exists())
+            {
+                const QFileInfoList entries = QDir(pred_dir).entryInfoList(QDir::Files | QDir::NoDotAndDotDot);
+                for (const QFileInfo &entry : entries)
+                {
+                    if (entry.size() > 0)
+                    {
+                        found_predictions = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!found_predictions)
+            {
+                const QString task_db_path = storage.testTaskDatabasePath(record.name, directory_name);
+                if (!task_db_path.isEmpty() && QFile::exists(task_db_path))
+                {
+                    database::ModelTaskDataBase db(task_db_path);
+                    QHash<qint64, QVariant> predictions;
+                    if (db.readPredictions(predictions) && !predictions.isEmpty())
+                        found_predictions = true;
+                }
+            }
+        }
+
+        if (!found_predictions)
+        {
+            const QString root_test_dir = storage.testRoot(record.name);
+            const QString root_pred_dir = QDir(root_test_dir).filePath(QStringLiteral("pred"));
+            if (!root_pred_dir.isEmpty() && QDir(root_pred_dir).exists())
+            {
+                const QFileInfoList entries = QDir(root_pred_dir).entryInfoList(QDir::Files | QDir::NoDotAndDotDot);
+                for (const QFileInfo &entry : entries)
+                {
+                    if (entry.size() > 0)
+                    {
+                        found_predictions = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!found_predictions)
+            return setError(error_msg, QStringLiteral("模型测试未生成有效预测结果"));
+
+        return true;
+    }
+
+    return true;
+}
+
 void ModelTaskController::touchTaskModelModifiedTime(const int task_id) const
 {
     if (task_manager_ == nullptr || model_manager_ == nullptr)
@@ -730,7 +860,7 @@ void ModelTaskController::handleTaskMessage(const TaskMessage &message)
     }
 
     const TaskManager::Task *task = task_manager_->findTask(message.identity.task_id);
-    if (task == nullptr || task->identity != message.identity
+    if (task == nullptr || task->identity != message.identity || TaskManager::isTerminal(task->status)
         || (!isTrainModelTask(task->type) && !isTestModelTask(task->type)))
         return;
 
@@ -811,6 +941,14 @@ void ModelTaskController::handleTaskStopRequested(const TaskIdentity &identity)
         return;
     }
 
+    const ModelManager::ModelRecordView record    = model_manager_->modelRecordViewForUuid(task->model_uuid);
+    const FrameworkDefinition           framework = registeredFramework(method_, record.framework_name);
+    if (framework.supportsExternalTask(task->type))
+    {
+        // 外部任务必须等待实际执行者进程退出并由 handleExternalTaskFinished 发布终态，此处不直接 markTaskStopped。
+        return;
+    }
+
     if (task_manager_ != nullptr)
         task_manager_->markTaskStopped(identity.task_id);
     syncTaskModelState(identity.task_id);
@@ -857,7 +995,7 @@ void ModelTaskController::handleExternalTaskStartFailed(const TaskIdentity &iden
         touchTaskModelModifiedTime(identity.task_id);
         return;
     }
-    if (task->status == TaskManager::Preparing)
+    if (task->status == TaskManager::Preparing || task->status == TaskManager::Running)
         failTask(identity.task_id, error.isEmpty() ? QString("外部模型任务进程启动失败") : error);
 }
 
@@ -886,6 +1024,13 @@ void ModelTaskController::handleExternalTaskFinished(const TaskIdentity &identit
     }
     if (normal_exit && exit_code == 0)
     {
+        QString artifact_error;
+        if (!verifyTaskArtifacts(*task, &artifact_error))
+        {
+            failTask(identity.task_id, artifact_error);
+            return;
+        }
+
         if (task->status == TaskManager::Preparing)
             task_manager_->markTaskRunning(identity.task_id);
         task_manager_->updateTaskPhase(identity.task_id, QStringLiteral("finished"));
