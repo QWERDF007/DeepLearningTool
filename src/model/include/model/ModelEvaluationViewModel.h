@@ -192,8 +192,9 @@ public:
     /**
      * @brief 配置评估输入选项。
      * @param options 包含任务路径、数据集列表、阈值等配置。
+     * @return 选项有实际变化并被应用时返回 true；与当前配置相同时返回 false。
      */
-    void setEvaluationOptions(const ModelEvaluationOptions &options);
+    bool setEvaluationOptions(const ModelEvaluationOptions &options);
 
     /**
      * @brief 触发异步评估计算。

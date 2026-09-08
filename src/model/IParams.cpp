@@ -352,6 +352,16 @@ bool ParamGroupModel::isEnabled() const
     return enabled_;
 }
 
+void ParamGroupModel::setEnabled(const bool enabled)
+{
+    if (enabled_ == enabled)
+        return;
+    enabled_ = enabled;
+    emit enabledChanged();
+    if (rowCount() > 0)
+        emit dataChanged(index(0), index(rowCount() - 1), {EnabledRole});
+}
+
 int ParamGroupModel::partIndex() const
 {
     return part_index_;
@@ -999,6 +1009,33 @@ void IParams::setWeightContext(const QString &project_dir, const QString &projec
         if (group != nullptr)
             group->setWeightContext(project_dir, project_db, framework_name, architecture, model_name);
     }
+}
+
+bool IParams::isEnabled() const
+{
+    if (groups_.empty())
+        return true;
+    for (const auto &group : groups_)
+    {
+        if (group && group->isEnabled())
+            return true;
+    }
+    return false;
+}
+
+void IParams::setEnabled(const bool enabled)
+{
+    bool changed = false;
+    for (auto &group : groups_)
+    {
+        if (group && group->isEnabled() != enabled)
+        {
+            group->setEnabled(enabled);
+            changed = true;
+        }
+    }
+    if (changed)
+        emit enabledChanged();
 }
 
 void IParams::clearGroups()

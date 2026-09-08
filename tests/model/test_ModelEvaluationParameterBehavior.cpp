@@ -7,6 +7,7 @@
 #include "model/AnomalyPreprocessingTransform.h"
 #include "model/EvaluationViewModelRegistry.h"
 #include "model/IParams.h"
+#include "model/ModelParamDefs.h"
 #include "model/ModelManager.h"
 #include "model/ModelStorageService.h"
 #include "model/ModelTestTaskManager.h"
@@ -1392,6 +1393,228 @@ private slots:
         // 等待可能残留的异步信号，验证 evaluationCount 始终保持 1
         QTest::qWait(100);
         QCOMPARE(evaluation->evaluationCount(), 1);
+    }
+
+    void parameterModelEnforcesLegalityByClampingRangeAndPreservingInvalidOption()
+    {
+        std::vector<ParamDefinition> defs;
+        defs.push_back(makeIntegerParam(QStringLiteral("epochs"), QStringLiteral("Epochs"), 10, 1, 100, 1));
+        defs.push_back(makeSliderParam(QStringLiteral("conf"), QStringLiteral("Confidence"), 0.5, 0.0, 1.0, 0.05));
+        defs.push_back(makeComboParam(QStringLiteral("model_type"), QStringLiteral("Type"), QStringLiteral("fast"),
+                                      {QStringLiteral("fast"), QStringLiteral("accurate")}));
+
+        ParamGroupModel group(QStringLiteral("train"), QStringLiteral("Train"), QStringLiteral("Training params"),
+                              true, 0, std::move(defs));
+
+        // 1. Integer clamping to range [1, 100]
+        QVERIFY(group.setValueForName(QStringLiteral("epochs"), 150));
+        QCOMPARE(group.valueForName(QStringLiteral("epochs")).toInt(), 100);
+
+        QVERIFY(group.setValueForName(QStringLiteral("epochs"), -10));
+        QCOMPARE(group.valueForName(QStringLiteral("epochs")).toInt(), 1);
+
+        // 2. Double / slider clamping to range [0.0, 1.0]
+        QVERIFY(group.setValueForName(QStringLiteral("conf"), 1.8));
+        QCOMPARE(group.valueForName(QStringLiteral("conf")).toDouble(), 1.0);
+
+        QVERIFY(group.setValueForName(QStringLiteral("conf"), -0.5));
+        QCOMPARE(group.valueForName(QStringLiteral("conf")).toDouble(), 0.0);
+
+        // 3. Invalid option value is preserved by model without auto-mutating
+        QVERIFY(group.setValueForName(QStringLiteral("model_type"), QStringLiteral("custom_unlisted")));
+        QCOMPARE(group.valueForName(QStringLiteral("model_type")).toString(), QStringLiteral("custom_unlisted"));
+    }
+
+    void nonEvaluationParametersOnlySaveWithoutEvaluationOrInference()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat   = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 image = fixture.addImage(QStringLiteral("cat"));
+        QVERIFY(cat >= 0 && image >= 0);
+        QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.writeImageList());
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr);
+        QString      error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("NonEvalModel"), QStringLiteral("ultralytics"),
+                                                         QStringLiteral("YOLOv8"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        TaskManager task_manager_instance;
+        TaskManager *task_manager = &task_manager_instance;
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, task_manager);
+        manager.setModelUuid(record.uuid);
+        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image,
+                                         detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0,
+                                                             10, 10),
+                                         true, &error),
+                 qPrintable(error));
+
+        auto *evaluation = manager.currentEvaluation();
+        QVERIFY(evaluation != nullptr);
+        evaluation->evaluate(false);
+        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+        QCOMPARE(evaluation->evaluationCount(), 1);
+
+        QSignalSpy loading_changed(evaluation, &ModelEvaluationViewModel::loadingChanged);
+
+        auto *inference = findGroup(manager.currentTestParams(), QStringLiteral("inference"));
+        QVERIFY(inference != nullptr);
+
+        // 修改非 evaluation 参数 (如 batch_size)
+        const int old_batch = inference->valueForName(QStringLiteral("batch_size")).toInt();
+        QVERIFY(inference->setValueForName(QStringLiteral("batch_size"), old_batch + 2));
+
+        // 验证：不触发评估（evaluationCount 保持 1，loadingChanged 为 0）
+        QTest::qWait(100);
+        QCOMPARE(loading_changed.count(), 0);
+        QCOMPARE(evaluation->evaluationCount(), 1);
+
+        // 验证：不自动启动任何推理任务
+        QVERIFY(!task_manager->hasActiveModelTasks(record.uuid));
+        QVERIFY(!manager.currentModelBusy());
+
+        // 验证：flush() 后值正确保存到 task.db
+        QVERIFY(manager.flush());
+        const ModelStorageService storage(fixture.rootPath());
+        const QString task_db_path = storage.testTaskDatabasePath(record.name, manager.currentTaskDirectory());
+        dltool::database::ModelTaskDataBase task_db(task_db_path);
+        QVariantMap saved_params;
+        QVERIFY(task_db.readTestParams(saved_params, &error));
+        QCOMPARE(saved_params.value(QStringLiteral("inference")).toMap().value(QStringLiteral("batch_size")).toInt(),
+                 old_batch + 2);
+        task_manager->clearTasks();
+    }
+
+    void evaluationParameterWithNoActualChangeDoesNotTriggerEvaluation()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat   = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 image = fixture.addImage(QStringLiteral("cat"));
+        QVERIFY(cat >= 0 && image >= 0);
+        QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.writeImageList());
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr);
+        QString      error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("NoChangeEvalModel"), QStringLiteral("ultralytics"),
+                                                         QStringLiteral("YOLOv8"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        TaskManager task_manager_instance;
+        TaskManager *task_manager = &task_manager_instance;
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, task_manager);
+        manager.setModelUuid(record.uuid);
+        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image,
+                                         detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0,
+                                                             10, 10),
+                                         true, &error),
+                 qPrintable(error));
+
+        auto *evaluation = manager.currentEvaluation();
+        QVERIFY(evaluation != nullptr);
+        evaluation->evaluate(false);
+        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+        QCOMPARE(evaluation->evaluationCount(), 1);
+
+        auto *eval_group = findGroup(manager.currentTestParams(), QStringLiteral("evaluation"));
+        QVERIFY(eval_group != nullptr);
+        const double current_conf = eval_group->valueForName(QStringLiteral("conf")).toDouble();
+
+        QSignalSpy loading_changed(evaluation, &ModelEvaluationViewModel::loadingChanged);
+
+        // 设置相同的 conf 值 (无变化)
+        QVERIFY(eval_group->setValueForName(QStringLiteral("conf"), current_conf));
+
+        QTest::qWait(100);
+        // 验证：无变化不触发评估
+        QCOMPARE(loading_changed.count(), 0);
+        QCOMPARE(evaluation->evaluationCount(), 1);
+
+        // 设置不同的 conf 值 (实际变化)
+        const double new_conf = current_conf > 0.5 ? 0.3 : 0.8;
+        QVERIFY(eval_group->setValueForName(QStringLiteral("conf"), new_conf));
+
+        // 验证：实际变化触发评估重算
+        QTRY_VERIFY_WITH_TIMEOUT(loading_changed.count() >= 2, 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+        QCOMPARE(evaluation->evaluationCount(), 2);
+        QCOMPARE(evaluation->confidenceThreshold(), new_conf);
+        task_manager->clearTasks();
+    }
+
+    void activeModelTaskLocksEditingAndRestoresOnTerminalStateWithoutLockingOtherModels()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat   = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 image = fixture.addImage(QStringLiteral("cat"));
+        QVERIFY(cat >= 0 && image >= 0);
+        QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.writeImageList());
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr);
+        QString      error;
+        const auto model1 = model_manager.addModelRecord(QStringLiteral("Model1"), QStringLiteral("ultralytics"),
+                                                         QStringLiteral("YOLOv8"), &error);
+        QVERIFY2(model1.isValid(), qPrintable(error));
+        const auto model2 = model_manager.addModelRecord(QStringLiteral("Model2"), QStringLiteral("ultralytics"),
+                                                         QStringLiteral("YOLOv8"), &error);
+        QVERIFY2(model2.isValid(), qPrintable(error));
+
+        TaskManager task_manager_instance;
+        TaskManager *task_manager = &task_manager_instance;
+        ModelTestTaskManager manager1(fixture.rootPath(), &model_manager, nullptr, task_manager);
+        manager1.setModelUuid(model1.uuid);
+
+        ModelTestTaskManager manager2(fixture.rootPath(), &model_manager, nullptr, task_manager);
+        manager2.setModelUuid(model2.uuid);
+
+        auto *params1 = manager1.currentTestParams();
+        auto *params2 = manager2.currentTestParams();
+        QVERIFY(params1 != nullptr && params2 != nullptr);
+        QVERIFY(params1->isEnabled());
+        QVERIFY(params2->isEnabled());
+
+        // 启动 Model1 的任务
+        const int task1 = task_manager->addTask(model1.uuid, model1.name, ModelTaskType::Train);
+        QVERIFY(task1 > 0);
+        QVERIFY(task_manager->startTask(task1));
+
+        // 验证 Model1 处于忙碌状态，禁用编辑
+        QVERIFY(manager1.currentModelBusy());
+        QVERIFY(!params1->isEnabled());
+        auto *inference1 = findGroup(params1, QStringLiteral("inference"));
+        QVERIFY(inference1 != nullptr);
+        const int old_batch1 = inference1->valueForName(QStringLiteral("batch_size")).toInt();
+        // 尝试在任务运行期间修改 Model1 参数，必须被拒绝 (返回 false)
+        QVERIFY(!inference1->setValueForName(QStringLiteral("batch_size"), old_batch1 + 10));
+        QCOMPARE(inference1->valueForName(QStringLiteral("batch_size")).toInt(), old_batch1);
+
+        // 验证 Model2 没有被无关锁定！
+        QVERIFY(!manager2.currentModelBusy());
+        QVERIFY(params2->isEnabled());
+        auto *inference2 = findGroup(params2, QStringLiteral("inference"));
+        QVERIFY(inference2 != nullptr);
+        const int old_batch2 = inference2->valueForName(QStringLiteral("batch_size")).toInt();
+        QVERIFY(inference2->setValueForName(QStringLiteral("batch_size"), old_batch2 + 5));
+        QCOMPARE(inference2->valueForName(QStringLiteral("batch_size")).toInt(), old_batch2 + 5);
+
+        // Model1 任务到达终态 (Stopped)
+        QVERIFY(task_manager->stopTask(task1));
+        QVERIFY(task_manager->markTaskStopped(task1));
+
+        // 验证 Model1 终态后恢复编辑
+        QVERIFY(!manager1.currentModelBusy());
+        QVERIFY(params1->isEnabled());
+        QVERIFY(inference1->setValueForName(QStringLiteral("batch_size"), old_batch1 + 10));
+        QCOMPARE(inference1->valueForName(QStringLiteral("batch_size")).toInt(), old_batch1 + 10);
+        task_manager->clearTasks();
     }
 };
 

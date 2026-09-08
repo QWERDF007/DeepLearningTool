@@ -551,13 +551,13 @@ void ModelEvaluationViewModel::adoptEvaluationThreshold(const double threshold, 
         evaluation_options_.prediction_snapshot = prediction_snapshot;
 }
 
-void ModelEvaluationViewModel::setEvaluationOptions(const ModelEvaluationOptions &options)
+bool ModelEvaluationViewModel::setEvaluationOptions(const ModelEvaluationOptions &options)
 {
     if (shutting_down_)
-        return;
+        return false;
 
     if (has_evaluation_options_ && sameEvaluationInput(evaluation_options_, options))
-        return;
+        return false;
 
     const bool cache_scope_changed
         = !has_evaluation_options_ || evaluation_options_.model_uuid != options.model_uuid
@@ -577,9 +577,10 @@ void ModelEvaluationViewModel::setEvaluationOptions(const ModelEvaluationOptions
         // Evaluation requests are serialized. Keep only the newest input and
         // let the active worker finish before starting it.
         pending_evaluation_ = true;
-        return;
+        return true;
     }
     invalidate();
+    return true;
 }
 
 void ModelEvaluationViewModel::invalidate(const evaluation::ViewState state)
@@ -632,6 +633,11 @@ void ModelEvaluationViewModel::evaluate(const bool notify)
     {
         pending_evaluation_          = true;
         pending_notify_when_finished_ = pending_notify_when_finished_ || notify;
+        return;
+    }
+    if (!hasPredictionResults())
+    {
+        invalidate(evaluation::ViewState::MissingResult);
         return;
     }
     if (evaluation_attempted_)

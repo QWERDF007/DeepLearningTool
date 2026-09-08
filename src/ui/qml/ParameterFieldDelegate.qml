@@ -139,6 +139,14 @@ Item {
                 result.push(entry)
             }
         }
+
+        if (root.currentValue !== undefined && root.currentValue !== null && String(root.currentValue).trim() !== "") {
+            if (root.optionIndexForValue(root.currentValue, result) < 0) {
+                const label = String(root.currentValue)
+                result.push({ "label": label, "value": root.currentValue })
+            }
+        }
+
         return result
     }
 
@@ -404,12 +412,7 @@ Item {
                 const values = root.optionEntries()
                 model = values
                 const index = root.optionIndexForValue(root.currentValue, values)
-                if (index < 0 && root.hasOptionsMap() && values.length > 0) {
-                    currentIndex = 0
-                    root.commit(combo.currentValue)
-                } else {
-                    currentIndex = index
-                }
+                currentIndex = index
             }
         }
     }

@@ -50,17 +50,21 @@ set(_evaluation_refactor_cases
     test_trainingBusyStateDisablesParameterAndDatasetEditors
 )
 
+# CTest 按声明顺序执行 path_list_prepend；将当前模块目录放在列表末尾，
+# 确保最终 PATH 优先加载构建树 DLL，而不是 build/bin 中的旧部署副本。
 set(_test_path_updates
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_model>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_core>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_parameter>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_common>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_ui>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_settings>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_data>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_database>"
-    "PATH=path_list_prepend:$<TARGET_FILE_DIR:quickui>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Network>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Gui>"
     "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:quickui>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_database>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_data>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_settings>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_ui>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_common>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_parameter>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_core>"
+    "PATH=path_list_prepend:$<TARGET_FILE_DIR:dltool_model>"
     "DLT_RUNTIME_ROOT=set:${CMAKE_SOURCE_DIR}"
     "QML2_IMPORT_PATH=path_list_prepend:${CMAKE_BINARY_DIR}"
     "QML2_IMPORT_PATH=path_list_prepend:${CMAKE_BINARY_DIR}/qml"

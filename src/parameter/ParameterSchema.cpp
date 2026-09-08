@@ -196,9 +196,42 @@ bool resolveParameterOptions(ParameterSpec &parameter, const QVariantMap &contex
     return true;
 }
 
+QVariant clampToRange(const QString &type, const QVariant &value, const QVariantList &range)
+{
+    if (range.size() < 2 || !value.isValid())
+        return value;
+
+    bool min_ok = false;
+    bool max_ok = false;
+    const double min_val = range.at(0).toDouble(&min_ok);
+    const double max_val = range.at(1).toDouble(&max_ok);
+    if (!min_ok || !max_ok || min_val > max_val)
+        return value;
+
+    const QString normalized = type.trimmed().toLower();
+    if (normalized == QStringLiteral("int") || normalized == QStringLiteral("integer")
+        || normalized == QStringLiteral("long"))
+    {
+        const qint64 val = value.toLongLong();
+        const qint64 clamped = std::clamp(val, static_cast<qint64>(min_val), static_cast<qint64>(max_val));
+        return clamped;
+    }
+    if (normalized == QStringLiteral("double") || normalized == QStringLiteral("float")
+        || normalized == QStringLiteral("real"))
+    {
+        const double val = value.toDouble();
+        if (std::isnan(val))
+            return value;
+        const double clamped = std::clamp(val, min_val, max_val);
+        return clamped;
+    }
+    return value;
+}
+
 QVariant normalizeParameterValue(const ParameterSpec &parameter, const QVariant &value, const QVariantMap &context)
 {
-    const QVariant typed = typedScalar(parameter.value_type, mappedOptionValue(parameter, value));
+    const QVariant scalar = typedScalar(parameter.value_type, mappedOptionValue(parameter, value));
+    const QVariant typed  = clampToRange(parameter.value_type, scalar, parameter.value_range);
     if (parameter.kind != ParameterKind::Dynamic || parameter.backend_key.trimmed().isEmpty())
         return typed;
 

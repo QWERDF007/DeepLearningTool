@@ -37,7 +37,7 @@ class MODEL_API ParamGroupModel : public QAbstractListModel
     Q_PROPERTY(QString nameEn READ nameEn CONSTANT FINAL)
     Q_PROPERTY(QString nameCn READ nameCn CONSTANT FINAL)
     Q_PROPERTY(QString description READ description CONSTANT FINAL)
-    Q_PROPERTY(bool enabled READ isEnabled CONSTANT FINAL)
+    Q_PROPERTY(bool enabled READ isEnabled WRITE setEnabled NOTIFY enabledChanged FINAL)
     Q_PROPERTY(int partIndex READ partIndex CONSTANT FINAL)
     Q_PROPERTY(int count READ count NOTIFY countChanged FINAL)
 
@@ -109,6 +109,12 @@ public:
      * @return 启用返回 true
      */
     bool isEnabled() const;
+
+    /**
+     * @brief 设置是否启用
+     * @param enabled 是否启用
+     */
+    Q_INVOKABLE void setEnabled(bool enabled);
 
     /**
      * @brief 获取分组索引
@@ -250,6 +256,7 @@ public:
 
 signals:
     void countChanged();
+    void enabledChanged();
     void valueChanged(const QString &name_en, const QVariant &value);
 
 private:
@@ -336,6 +343,7 @@ class MODEL_API IParams : public QAbstractListModel
     QML_UNCREATABLE("IParams is an abstract interface")
     Q_PROPERTY(QString typeName READ typeName CONSTANT FINAL)
     Q_PROPERTY(int count READ groupCount NOTIFY groupCountChanged FINAL)
+    Q_PROPERTY(bool enabled READ isEnabled WRITE setEnabled NOTIFY enabledChanged FINAL)
 
 public:
     enum Role
@@ -445,8 +453,21 @@ public:
     void setWeightContext(const QString &project_dir, const QString &project_db, const QString &framework_name,
                           const QString &architecture, const QString &model_name);
 
+    /**
+     * @brief 获取所有参数组是否启用
+     * @return 只要有一个参数组启用即返回 true；无参数组返回 true
+     */
+    bool isEnabled() const;
+
+    /**
+     * @brief 批量设置所有参数组是否启用
+     * @param enabled 是否启用
+     */
+    Q_INVOKABLE void setEnabled(bool enabled);
+
 signals:
     void groupCountChanged();
+    void enabledChanged();
 
 protected:
     /**

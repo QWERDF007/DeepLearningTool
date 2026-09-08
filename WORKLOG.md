@@ -40,6 +40,37 @@
 **干到哪了**：
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
+
+## 2026-09-09 — 消除参数控件刷新的写入副作用
+
+**目标**
+- 交付 Ticket 26：消除参数控件刷新的写入副作用。
+- 控件创建、选项刷新和无效选项展示不能自动 commit，合法性修正归参数模型。
+- 非 evaluation 只保存，evaluation 实际变化且有预测才评估，无变化不触发。
+- 当前模型任务中禁用编辑，终态恢复；不锁定无关模型，不自动推理。
+- 遵循 TDD，先编写失败/约束测试建立基线，再实现并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `src/parameter/ParameterSchema.cpp` 中引入 `clampToRange`，并在 `normalizeParameterValue` 中对超出 `value_range` 的数值参数进行合规区间截断，将参数合法性修正统一收归 C++ 参数模型，保留不可选或无效值展示而不被粗暴覆盖。
+- 已完成：在 `src/ui/qml/ParameterFieldDelegate.qml` 的 `optionEntries()` 中确保未列出的当前值仍被纳入展示，并在 `comboEditor.refreshFromModel()` 中彻底移除控件初始化/刷新时向第 0 项的自动 `commit` 写入副作用。
+- 已完成：在 `src/model/include/model/IParams.h` 与 `src/model/IParams.cpp` 中为 `ParamGroupModel` 与 `IParams` 补充 `enabled` Q_PROPERTY 与 `setEnabled(bool)`，数据模型在禁用时直接拒绝 `setData` 编辑；并在 `ParamPanel.qml` 中显式绑定 `editable: control.editable`。
+- 已完成：在 `src/model/include/model/ModelEvaluationViewModel.h` 与 `src/model/ModelEvaluationViewModel.cpp` 中将 `setEvaluationOptions` 改造为返回 `bool`，无实际变化时返回 `false` 且不触发无效化或重算；并在 `evaluate()` 中对缺少预测结果直接标记 `MissingResult` 并返回。
+- 已完成：在 `src/model/ModelTestTaskManager.cpp` 中重构 `handleParameterChanged`，非 evaluation 参数仅调用 `scheduleSave()` 写入数据库而不触发评估或启动推理；evaluation 参数只有在配置真实变化且已有预测结果时才触发评估；并在任务启动、修订变更与绑定时严格同步 `current_test_params_->setEnabled(!currentModelBusy())`，任务运行期间锁定当前模型参数，终态后恢复，不锁定其他模型。
+- 已完成：在 `tests/model/test_ModelEvaluationParameterBehavior.cpp` 中新增 4 个端到端行为测试用例并注册至 CTest，修正 `tests/model_qml/CMakeLists.txt` 的 `ENVIRONMENT_MODIFICATION` 加载顺序避免 DLL 影子污染。
+- 已完成：所有相关测试在 Release 模式下全部通过：
+  - `dltool_model_evaluation_behavior` 10/10 100% 通过
+  - `model` 26/26 100% 通过
+  - `ui|qml` 22/22 100% 通过
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_evaluation_behavior_tests dltool_model_evaluation_tests dltool_model_tasks_tests tst_dltool_model_qml` → 0 errors
+- `ctest --test-dir build -C Release -R "dltool_model_evaluation_behavior" --output-on-failure` → 10/10 passed (12.34 sec)
+- `ctest --test-dir build -C Release -L "model" --output-on-failure` → 26/26 passed (71.98 sec)
+- `ctest --test-dir build -C Release -L "ui|qml" --output-on-failure` → 22/22 passed (16.03 sec)
+
+**下一步**
+- 继续推进 Ticket 27（`docs/refactor-tickets/27-ultralytics-parameters.md`：校准 Ultralytics 参数定义与映射）。
+
 ## 2026-09-09 — 让设置保存失败可见且可重试
 
 **目标**

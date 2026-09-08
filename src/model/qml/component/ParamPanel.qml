@@ -109,6 +109,7 @@ Item {
                                     fieldModel: groupRoot.groupModel
                                     framed: false
                                     showSectionHeaders: true
+                                    editable: control.editable
                                 }
                             }
                         }

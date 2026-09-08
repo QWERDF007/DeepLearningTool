@@ -165,7 +165,11 @@ foreach(_behavior_case
         anomalyClassificationThresholdIsEvaluationOnly
         anomalyViewModelRecognizesTiffPredictionsWithoutTaskRows
         evaluationParameterWithoutPredictionsDoesNotStartEvaluation
-        finishedTestAutomaticallyEvaluatesAndBusyStateRestores)
+        finishedTestAutomaticallyEvaluatesAndBusyStateRestores
+        parameterModelEnforcesLegalityByClampingRangeAndPreservingInvalidOption
+        nonEvaluationParametersOnlySaveWithoutEvaluationOrInference
+        evaluationParameterWithNoActualChangeDoesNotTriggerEvaluation
+        activeModelTaskLocksEditingAndRestoresOnTerminalStateWithoutLockingOtherModels)
     dlt_register_test("dltool_model_evaluation_behavior_${_behavior_case}"
         COMMAND dltool_model_evaluation_behavior_tests "${_behavior_case}"
         LABELS "ordinary;model"

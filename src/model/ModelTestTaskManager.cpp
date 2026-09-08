@@ -1011,7 +1011,9 @@ void ModelTestTaskManager::handleParameterChanged(const QString &group_name, con
             current_evaluation_->invalidate();
             return;
         }
-        current_evaluation_->setEvaluationOptions(options);
+        const bool options_changed = current_evaluation_->setEvaluationOptions(options);
+        if (!options_changed)
+            return;
         if (!current_evaluation_->hasPredictionResults())
         {
             emit taskStateChanged();
@@ -1032,6 +1034,9 @@ void ModelTestTaskManager::handleTaskRevisionChanged()
 {
     if (shutting_down_)
         return;
+
+    if (current_test_params_ != nullptr)
+        current_test_params_->setEnabled(!currentModelBusy());
 
     if (!tasks_.isEmpty())
     {
@@ -1103,6 +1108,9 @@ void ModelTestTaskManager::handleTaskStartRequested(const TaskIdentity &identity
     // been accepted by TaskManager.  Invalidate a cached evaluation even when
     // this task is not the currently visible one; otherwise selecting it after
     // the run finishes could still expose the previous in-memory result.
+    if (task->model_uuid == model_uuid_ && current_test_params_ != nullptr)
+        current_test_params_->setEnabled(!currentModelBusy());
+
     const QString cache_key = task->model_uuid + QLatin1Char('\x1f') + task->scope_uuid.trimmed();
     pending_evaluation_notifications_.insert(cache_key);
     if (ModelEvaluationViewModel *evaluation = evaluation_cache_.value(cache_key, nullptr))
@@ -1229,6 +1237,7 @@ void ModelTestTaskManager::bindCurrentObjects()
         current_test_params_->setWeightContext(project_dir_, model_manager_->projectDatabasePath(),
                                                model->frameworkName(), model->modelArchitecture(), model_name);
         current_test_params_->setValuesMap(tasks_.at(current_index_).test_params);
+        current_test_params_->setEnabled(!currentModelBusy());
     }
     if (data_manager_ != nullptr)
     {
