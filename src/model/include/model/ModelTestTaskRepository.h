@@ -96,6 +96,14 @@ public:
     bool removeTask(const QString &model_name, const QString &uuid, QString *err_msg = nullptr) const;
 
     /**
+     * @brief 恢复指定模型下未完成的测试任务操作（创建、重命名、删除中断）。
+     * @param model_name 模型名称。
+     * @param err_msg 可选错误信息输出。
+     * @return 成功返回 true。
+     */
+    bool recoverPending(const QString &model_name, QString *err_msg = nullptr) const;
+
+    /**
      * @brief 获取指定模型对应的 SQLite 数据库路径（models/<name>/model.db）。
      * @param model_name 模型名称。
      * @return 数据库绝对路径。

@@ -260,6 +260,50 @@ QString ModelStorageService::operationJournalPath(const QString &operation_id) c
     return safeTaskChild(operationRoot(), QStringLiteral("%1.json").arg(operation_id.trimmed()));
 }
 
+QString ModelStorageService::testTaskOperationRoot(const QString &model_name) const
+{
+    const QString root = testRoot(model_name);
+    return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral(".operations")));
+}
+
+QString ModelStorageService::testTaskOperationJournalPath(const QString &model_name, const QString &operation_id) const
+{
+    return safeTaskChild(testTaskOperationRoot(model_name), QStringLiteral("%1.json").arg(operation_id.trimmed()));
+}
+
+QString ModelStorageService::testTaskOperationStagingRoot(const QString &model_name, const QString &operation_id) const
+{
+    return safeTaskChild(testTaskOperationRoot(model_name), QStringLiteral("staging-%1").arg(operation_id.trimmed()));
+}
+
+QString ModelStorageService::testTaskOperationQuarantineRoot(const QString &model_name, const QString &operation_id) const
+{
+    return safeTaskChild(testTaskOperationRoot(model_name), QStringLiteral("quarantine-%1").arg(operation_id.trimmed()));
+}
+
+bool ModelStorageService::ensureTestTaskStorageAt(const QString &task_root, QString *err_msg) const
+{
+    const QString root = cleanPath(QFileInfo(task_root).absoluteFilePath());
+    if (root.isEmpty())
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("测试任务目录路径无效");
+        return false;
+    }
+    if (!ensureDirectory(root, err_msg, QStringLiteral("测试任务目录为空"),
+                         QStringLiteral("创建测试任务目录失败: %1")))
+        return false;
+    const QString pred_dir = cleanPath(QDir(root).filePath(QStringLiteral("pred")));
+    if (!ensureDirectory(pred_dir, err_msg, QStringLiteral("测试任务子目录为空"),
+                         QStringLiteral("创建测试任务子目录失败: %1")))
+        return false;
+    const QString predictions_dir = cleanPath(QDir(root).filePath(QStringLiteral("predictions")));
+    if (!ensureDirectory(predictions_dir, err_msg, QStringLiteral("测试任务子目录为空"),
+                         QStringLiteral("创建测试任务子目录失败: %1")))
+        return false;
+    return true;
+}
+
 bool ModelStorageService::ensureModelStorageAt(const QString &model_root, QString *err_msg) const
 {
     const QString root = cleanPath(QFileInfo(model_root).absoluteFilePath());
@@ -470,14 +514,7 @@ bool ModelStorageService::ensureTestTaskStorage(const QString &model_name, const
     if (!ensureTestStorage(model_name, err_msg))
         return false;
     const QString task_root = testTaskRoot(model_name, task_directory);
-    if (!ensureDirectory(task_root, err_msg, QString("测试任务目录为空"), QString("创建测试任务目录失败: %1")))
-        return false;
-    for (const QString &directory : {testTaskPredictionPath(model_name, task_directory)})
-    {
-        if (!ensureDirectory(directory, err_msg, QString("测试任务子目录为空"), QString("创建测试任务子目录失败: %1")))
-            return false;
-    }
-    return true;
+    return ensureTestTaskStorageAt(task_root, err_msg);
 }
 
 bool ModelStorageService::ensureModelStorage(const QString &model_name, QString *err_msg) const

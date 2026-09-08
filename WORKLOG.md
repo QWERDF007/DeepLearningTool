@@ -43,6 +43,41 @@
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
 - [x] 开关两态验证：`export_v2=off` 时回退旧路径正常
 
+## 2026-09-08 — 让测试任务目录操作可恢复
+
+**目标**
+- 交付 Ticket 15：让测试任务目录操作可恢复（测试任务增删改名后索引与产物始终对应）。
+- 覆盖创建、重命名、删除的目录变更与索引更新之间中断。
+- 重复恢复和目标冲突不会丢失任务或把预测关联到错误任务。
+- 通过任务公开入口操作、重开并查看预测，失败时保留恢复依据。
+- 遵循 TDD，先增加失败/约束测试，再实现功能，并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `src/model/ModelStorageService.h/cpp` 中新增测试任务操作目录标准路径与暂存创建支持：`testTaskOperationRoot(model)`、`testTaskOperationJournalPath(model, op_id)`、`testTaskOperationStagingRoot(model, op_id)`、`testTaskOperationQuarantineRoot(model, op_id)` 以及 `ensureTestTaskStorageAt(task_root)`（自动创建标准 `pred` 和 `predictions` 预测子目录）。
+- 已完成：在 `src/model/ModelTestTaskRepository.h/cpp` 中实现测试任务操作日志与可恢复机制：
+  1. `createTask` 采用 staging 暂存区写入 `task.db`，提交至 `model.db` 后原子移至目标目录，解除并作用域隔离 SQLite 句柄，中断时根据数据库提交状态分别清理暂存区或推进发布。
+  2. `renameTask` 采用预写日志记录 `directory-moved` 与 `database-committed`，中断时根据 `model.db` 状态判定回滚原目录或推进新目录，遇目标冲突时基于 `task_id` 守卫绝不覆盖任何预测文件，保留日志作为恢复证据。
+  3. `removeTask` 采用安全隔离区（quarantine）重命名转移后再从 `model.db` 移除，中断时若未提交则原样还原任务与预测；已提交且清理遇文件锁时自动标记 `cleanup-pending` 保留日志，锁释放后二次恢复清理。
+  4. `recoverPending` 扫描模型 `.operations/*.json` 操作日志，并作为 `listTasks` 前置检查自动触发，确保通过公开入口 `ModelTestTaskManager::setModelUuid` 重开时透明恢复并即刻挂载评估预测。
+- 已完成：在 `tests/model/test_ModelTestTaskRepository.cpp` 中编写 8 组 TDD 约束与恢复测试：
+  1. `createInterruptedBeforeCommitCleansStaging`：验证未提交创建中断时清理暂存目录与日志，无脏任务。
+  2. `createInterruptedAfterCommitPublishesTargetAndRestoresTask`：验证已提交创建中断时自动发布目标目录并恢复全部参数与预测。
+  3. `renameInterruptedBeforeCommitRollsBackDirectoryPreservingPredictions`：验证未提交重命名中断时回滚原目录并完整保留预测文件。
+  4. `renameInterruptedAfterCommitConvergesToNewDirectory`：验证已提交重命名中断时目录收敛至新目标目录且保留预测。
+  5. `renameTargetConflictDuringRecoveryPreservesBothTasksWithoutOverwriting`：验证目标冲突时基于 `task_id` 双向保护，不覆盖冲突任务与预测，保留日志与错误依据。
+  6. `removeInterruptedBeforeCommitRestoresTaskAndPredictions`：验证未提交删除中断时从隔离区完整回滚任务及预测产物。
+  7. `removeInterruptedAfterCommitCleansQuarantineAndRetriesOnLock`：验证已提交删除遇文件锁时保留日志，解锁后二次恢复完成隔离区清理。
+  8. `testTaskManagerPublicEntryRecoversAndExposesPredictionsOnReopen`：验证公开入口 `ModelTestTaskManager::setModelUuid` 重开时触发透明恢复并使评估引擎即刻读取预测。
+- 未完成：无。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_tasks_tests` → Release 编译成功。
+- `ctest --test-dir build --output-on-failure -C Release -R "^dltool_model_tasks_tests$"` → 100% 测试通过（1/1 Test #14: dltool_model_tasks_tests Passed 32.40 sec）。
+- `ctest --test-dir build --output-on-failure -C Release -R "dltool_model_(evaluation|dataset|tasks|storage_params)_tests|patchcore_copy|patchcore_delete|project_creation"` → 10/10 关联模型与项目测试全部通过（100% passed, 0 failed）。
+
+**下一步**
+- 开启 Ticket 16：`docs/refactor-tickets/16-test-prediction-commit.md`（“让测试任务预测与结果提交原子化”）。
+
 ## 2026-09-08 — 让模型复制与恢复不阻塞界面
 
 **目标**

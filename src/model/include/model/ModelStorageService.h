@@ -125,6 +125,14 @@ public:
     /** @brief 确保指定测试任务的目录结构已创建。 */
     bool ensureTestTaskStorage(const QString &model_name, const QString &task_directory,
                                QString *err_msg = nullptr) const;
+    /** @brief 在指定目录（如 staging 目录）创建测试任务目录结构。 */
+    bool ensureTestTaskStorageAt(const QString &task_root, QString *err_msg = nullptr) const;
+
+    // 测试任务操作与恢复路径
+    QString testTaskOperationRoot(const QString &model_name) const;
+    QString testTaskOperationJournalPath(const QString &model_name, const QString &operation_id) const;
+    QString testTaskOperationStagingRoot(const QString &model_name, const QString &operation_id) const;
+    QString testTaskOperationQuarantineRoot(const QString &model_name, const QString &operation_id) const;
 
     /**
      * @brief 创建模型完整的存储目录结构。
