@@ -43,6 +43,34 @@
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
 - [x] 开关两态验证：`export_v2=off` 时回退旧路径正常
 
+## 2026-09-08 — 持久化训练与内部子任务的运行记录
+
+**目标**
+- 交付 Ticket 18：持久化训练与内部子任务的运行记录。
+- 明确唯一存储归属，保存数值耗时与运行身份，删除对应平行写入。
+- Python 长时间不发消息时计时仍推进，完成/停止/失败重开后正确显示。
+- 训练与内部子任务不强套普通测试评估结构；仅迁移支持的当前结构。
+- 遵循 TDD，先增加失败/约束测试，再实现功能，并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `src/model/TaskManager.cpp` 与 `TaskManager.h` 中：
+  1. 增加 `taskRunningTimeSeconds` 与 `restoreTask`，支持在项目启动时幂等恢复历史任务；
+  2. 对终态任务注册终态保护，阻止迟到消息覆盖恢复的终态；
+  3. 支持 BoxToMask 作用域规范映射，将 `refreshRunningTasks` 暴露为公开槽。
+- 已完成：在 `src/model/ModelTaskController.cpp` 与 `ModelTaskController.h` 中：
+  1. 移除 `handleTaskMessage` 中对 Python 消息载荷 `elapsed` 字段的平行写入，确立 TaskManager 本地时钟为权威耗时源（SSOT）；
+  2. `flushModelState` 与 `handleTaskRunningTimeChanged` 同时持久化 `elapsed`（UI 字符串）与 `elapsed_seconds`（数值运行时长秒数），并记录 `run_id`、`project_id`、`task_id` 运行身份；
+  3. 增加 `restoreModelTasks` 并在构造函数中自动执行，在项目加载时自动从模型 `extra_data` 中读取 `train`、`box_to_mask` 及小样本 `test` 运行记录，恢复至 TaskManager 表格，支持旧文本格式耗时平滑解析；
+  4. 明确划分存储归属：普通测试任务归属 `task.db`（Ticket 19），训练与内部子任务（`box_to_mask`、小样本 `test`）归属 `models.extra_data`，不强套普通测试评估目录与数据库结构。
+- 已完成：在 `tests/model/test_ModelTaskController.cpp` 中新增 4 个端到端单元测试用例，覆盖数值耗时持久化、无 Python 消息时计时推进与重开恢复、内部子任务恢复、旧格式耗时迁移等场景。
+
+**验证证据**
+- Release 构建：`cmake --build build --config Release --target dltool_model_tasks_tests` 编译通过（exit code 0）。
+- 单元测试运行：`ctest --test-dir build --output-on-failure -C Release -R "^dltool_model_tasks_tests$"`（100% tests passed, 0 tests failed out of 1，耗时 32.48s）。
+
+**下一步**
+- 开始 Ticket 19：持久化测试任务与评估记录（`docs/refactor-tickets/19-test-state-storage.md`）。
+
 ## 2026-09-08 — 让成功终态等待真实进程与产物
 
 **目标**

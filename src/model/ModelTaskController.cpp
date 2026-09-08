@@ -62,6 +62,39 @@ QString taskManagerStatusName(const TaskManager::TaskStatus status)
     }
 }
 
+TaskManager::TaskStatus taskManagerStatusFromName(const QString &name)
+{
+    const QString lower = name.trimmed().toLower();
+    if (lower == QStringLiteral("finished"))
+        return TaskManager::Finished;
+    if (lower == QStringLiteral("stopped"))
+        return TaskManager::Stopped;
+    if (lower == QStringLiteral("failed") || lower == QStringLiteral("error"))
+        return TaskManager::Failed;
+    if (lower == QStringLiteral("running"))
+        return TaskManager::Running;
+    if (lower == QStringLiteral("stopping"))
+        return TaskManager::Stopping;
+    if (lower == QStringLiteral("preparing"))
+        return TaskManager::Preparing;
+    return TaskManager::Pending;
+}
+
+qint64 parseDurationText(const QString &text)
+{
+    const QStringList parts = text.trimmed().split(QLatin1Char(':'));
+    if (parts.size() == 3)
+    {
+        bool ok_h = false, ok_m = false, ok_s = false;
+        const qint64 h = parts[0].toLongLong(&ok_h);
+        const qint64 m = parts[1].toLongLong(&ok_m);
+        const qint64 s = parts[2].toLongLong(&ok_s);
+        if (ok_h && ok_m && ok_s)
+            return std::max<qint64>(0, h * 3600 + m * 60 + s);
+    }
+    return 0;
+}
+
 } // namespace
 
 ModelTaskController::ModelTaskController(const int method, QString project_dir, ModelManager *model_manager,
@@ -97,6 +130,8 @@ ModelTaskController::ModelTaskController(const int method, QString project_dir, 
     extra_flush_timer_ = new QTimer(this);
     extra_flush_timer_->setInterval(kExtraFlushIntervalMs);
     connect(extra_flush_timer_, &QTimer::timeout, this, &ModelTaskController::flushPendingExtraUpdates);
+
+    restoreModelTasks();
 }
 
 ModelTaskController::~ModelTaskController()
@@ -162,12 +197,9 @@ void ModelTaskController::shutdown()
 
             task_manager_->markTaskStopped(task_id);
             syncTaskModelState(task_id);
-            touchTaskModelModifiedTime(task_id);
         }
     }
-
     preparation_operations_.clear();
-    flushPendingExtraUpdates();
 }
 
 int ModelTaskController::addModelTask(const QString &model_uuid, const ModelTaskType task_type)
@@ -194,19 +226,22 @@ int ModelTaskController::startModelTask(const QString &model_uuid, const ModelTa
         spdlog::error("启动模型任务失败: {}", error.toUtf8().constData());
         return -1;
     }
-    // 训练/评估任务启动时立即清空上一次的训练与评估状态（epoch/iter/lr/loss/
+    // 训练/内部子任务启动时立即清空上一次的状态（epoch/iter/lr/loss/
     // elapsed/eta/metrics 等），进度重置为 0，避免界面保留旧值直到新上报到达。
-    if (isTrainModelTask(task_type) && model_manager_ != nullptr)
+    const bool train_task = isTrainModelTask(task_type);
+    const bool b2m_task   = (task_type == ModelTaskType::BoxToMask);
+    if ((train_task || b2m_task) && model_manager_ != nullptr)
     {
         QString reset_error;
         model_manager_->resetModelTaskState(
-            model_uuid, QStringLiteral("train"),
+            model_uuid, b2m_task ? QStringLiteral("box_to_mask") : QStringLiteral("train"),
             {
                 QStringLiteral("epoch"), QStringLiteral("iter"), QStringLiteral("lr"), QStringLiteral("loss"),
-                QStringLiteral("elapsed"), QStringLiteral("eta"), QStringLiteral("metrics"), QStringLiteral("message"),
+                QStringLiteral("elapsed"), QStringLiteral("elapsed_seconds"), QStringLiteral("eta"),
+                QStringLiteral("metrics"), QStringLiteral("message"),
                 QStringLiteral("status"), QStringLiteral("started"), QStringLiteral("phase"),
-                QStringLiteral("phase_progress")
-        },
+                QStringLiteral("phase_progress"), QStringLiteral("run_id")
+            },
             {{QStringLiteral("progress"), 0}}, &reset_error);
     }
     return task_manager_->startTask(task_id) ? task_id : -1;
@@ -250,8 +285,118 @@ bool ModelTaskController::deleteModelTask(const QString &model_uuid, const Model
     if (shutting_down_ || task_manager_ == nullptr)
         return false;
 
-    const int task_id = task_manager_->findModelTask(model_uuid.trimmed(), task_type, false);
+    const int task_id = task_manager_->findModelTask(model_uuid.trimmed(), task_type, true);
     return task_id >= 0 && deleteTask(task_id);
+}
+
+void ModelTaskController::restoreModelTasks()
+{
+    if (model_manager_ == nullptr || task_manager_ == nullptr)
+        return;
+
+    const int count = model_manager_->rowCount();
+    const ModelStorageService storage(project_dir_);
+
+    for (int row = 0; row < count; ++row)
+    {
+        const QVariantMap model_map = model_manager_->modelAt(row);
+        const QString uuid = model_map.value(QStringLiteral("uuid")).toString().trimmed();
+        const QString name = model_map.value(QStringLiteral("name")).toString().trimmed();
+        const QString framework_name = model_map.value(QStringLiteral("framework_name")).toString().trimmed();
+        const QVariantMap extra_data = model_map.value(QStringLiteral("extra_data")).toMap();
+
+        if (uuid.isEmpty() || name.isEmpty())
+            continue;
+
+        const FrameworkDefinition framework = registeredFramework(method_, framework_name);
+
+        // 1. 恢复训练任务
+        if (extra_data.contains(QStringLiteral("train")))
+        {
+            const QVariantMap train_section = extra_data.value(QStringLiteral("train")).toMap();
+            const QString status_str = train_section.value(QStringLiteral("status")).toString().trimmed();
+            if (!status_str.isEmpty())
+            {
+                TaskManager::TaskStatus status = taskManagerStatusFromName(status_str);
+                if (status == TaskManager::Running || status == TaskManager::Stopping)
+                    status = TaskManager::Failed;
+
+                qint64 elapsed_sec = 0;
+                if (train_section.contains(QStringLiteral("elapsed_seconds")))
+                    elapsed_sec = train_section.value(QStringLiteral("elapsed_seconds")).toLongLong();
+                else if (train_section.contains(QStringLiteral("elapsed")))
+                    elapsed_sec = parseDurationText(train_section.value(QStringLiteral("elapsed")).toString());
+
+                const int progress = train_section.value(QStringLiteral("progress")).toInt();
+                const QString phase = train_section.value(QStringLiteral("phase")).toString();
+                const QString run_id = train_section.value(QStringLiteral("run_id")).toString();
+                const QString config_path = storage.modelDatabasePath(name);
+                const QString log_path = storage.trainLogPath(name);
+
+                task_manager_->restoreTask(uuid, name, ModelTaskType::Train,
+                                           QStringLiteral("train"), {}, status, progress,
+                                           elapsed_sec, phase, run_id, config_path, log_path);
+            }
+        }
+
+        // 2. 恢复 BoxToMask 内部子任务
+        if (extra_data.contains(QStringLiteral("box_to_mask")))
+        {
+            const QVariantMap b2m_section = extra_data.value(QStringLiteral("box_to_mask")).toMap();
+            const QString status_str = b2m_section.value(QStringLiteral("status")).toString().trimmed();
+            if (!status_str.isEmpty())
+            {
+                TaskManager::TaskStatus status = taskManagerStatusFromName(status_str);
+                if (status == TaskManager::Running || status == TaskManager::Stopping)
+                    status = TaskManager::Failed;
+
+                qint64 elapsed_sec = 0;
+                if (b2m_section.contains(QStringLiteral("elapsed_seconds")))
+                    elapsed_sec = b2m_section.value(QStringLiteral("elapsed_seconds")).toLongLong();
+                else if (b2m_section.contains(QStringLiteral("elapsed")))
+                    elapsed_sec = parseDurationText(b2m_section.value(QStringLiteral("elapsed")).toString());
+
+                const int progress = b2m_section.value(QStringLiteral("progress")).toInt();
+                const QString phase = b2m_section.value(QStringLiteral("phase")).toString();
+                const QString run_id = b2m_section.value(QStringLiteral("run_id")).toString();
+                const QString config_path = storage.modelDatabasePath(name);
+                const QString log_path = storage.testTaskLogPath(name, QStringLiteral("fs_sam2_box_to_mask"));
+
+                task_manager_->restoreTask(uuid, name, ModelTaskType::BoxToMask,
+                                           QStringLiteral("box_to_mask"), QStringLiteral("BoxToMask"),
+                                           status, progress, elapsed_sec, phase, run_id, config_path, log_path);
+            }
+        }
+
+        // 3. 恢复小样本测试子任务 (few_shot)
+        if (framework.isFewShot() && extra_data.contains(QStringLiteral("test")))
+        {
+            const QVariantMap test_section = extra_data.value(QStringLiteral("test")).toMap();
+            const QString status_str = test_section.value(QStringLiteral("status")).toString().trimmed();
+            if (!status_str.isEmpty())
+            {
+                TaskManager::TaskStatus status = taskManagerStatusFromName(status_str);
+                if (status == TaskManager::Running || status == TaskManager::Stopping)
+                    status = TaskManager::Failed;
+
+                qint64 elapsed_sec = 0;
+                if (test_section.contains(QStringLiteral("elapsed_seconds")))
+                    elapsed_sec = test_section.value(QStringLiteral("elapsed_seconds")).toLongLong();
+                else if (test_section.contains(QStringLiteral("elapsed")))
+                    elapsed_sec = parseDurationText(test_section.value(QStringLiteral("elapsed")).toString());
+
+                const int progress = test_section.value(QStringLiteral("progress")).toInt();
+                const QString phase = test_section.value(QStringLiteral("phase")).toString();
+                const QString run_id = test_section.value(QStringLiteral("run_id")).toString();
+                const QString config_path = storage.modelDatabasePath(name);
+                const QString log_path = storage.testTaskLogPath(name, QStringLiteral("fs_sam2"));
+
+                task_manager_->restoreTask(uuid, name, ModelTaskType::Test,
+                                           {}, {}, status, progress, elapsed_sec, phase, run_id,
+                                           config_path, log_path);
+            }
+        }
+    }
 }
 
 int ModelTaskController::ensureTaskRecord(const QString &model_uuid, const ModelTaskType task_type,
@@ -298,6 +443,12 @@ int ModelTaskController::ensureTaskRecord(const QString &model_uuid, const Model
     QString resolved_scope_name = scope_name.trimmed();
     if (isTrainModelTask(task_type))
         resolved_scope = QStringLiteral("train");
+    else if (task_type == ModelTaskType::BoxToMask)
+    {
+        resolved_scope = QStringLiteral("box_to_mask");
+        if (resolved_scope_name.isEmpty())
+            resolved_scope_name = QStringLiteral("BoxToMask");
+    }
     // 普通测试任务必须有 UUID 测试任务记录；小样本框架（few_shot 能力位）
     // 的测试任务没有 UUID，直接进入无作用域流程。
     if (isTestModelTask(task_type) && resolved_scope.isEmpty() && !framework.isFewShot())
@@ -328,6 +479,11 @@ int ModelTaskController::ensureTaskRecord(const QString &model_uuid, const Model
     {
         config_path = storage.modelDatabasePath(record.name);
         log_path    = storage.trainLogPath(record.name);
+    }
+    else if (task_type == ModelTaskType::BoxToMask)
+    {
+        config_path = storage.modelDatabasePath(record.name);
+        log_path    = storage.testTaskLogPath(record.name, QStringLiteral("fs_sam2_box_to_mask"));
     }
     else if (has_resolved_definition)
     {
@@ -778,39 +934,52 @@ void ModelTaskController::flushModelState(const int task_id)
         return;
 
     const TaskManager::Task *task = task_manager_->findTask(task_id);
-    if (task == nullptr || (!isTrainModelTask(task->type) && !isTestModelTask(task->type)))
+    if (task == nullptr || (!isTrainModelTask(task->type) && !isTestModelTask(task->type) && task->type != ModelTaskType::BoxToMask))
     {
         pending_extra_updates_.remove(task_id);
         return;
     }
 
-    // 取出本次待合并的指标字段（epoch/iter/lr/loss/elapsed/eta/metrics/
+    // 取出本次待合并的指标字段（epoch/iter/lr/loss/eta/metrics/
     // message/status）。progress 与 started 不在此缓冲，由状态投影写入。
     QVariantMap updates = pending_extra_updates_.take(task_id);
-    // 训练 elapsed 的权威来源是 TaskManager 的本地时钟。它覆盖同名的
-    // Python 上报值，同时仍写入原有 extra_data 链路，保证项目重开后可以恢复显示。
-    if (isTrainModelTask(task->type))
-        updates.insert(QStringLiteral("elapsed"), task_manager_->taskRunningTime(task_id));
 
-    // The top-level model data is keyed by the software task type.  A train
-    // runner may report validation/evaluation as phase "test", but that is
-    // still part of the training task and must not update the separate Test
-    // page's state.
     const bool train_scope = isTrainModelTask(task->type);
+    const bool b2m_scope   = (task->type == ModelTaskType::BoxToMask);
     // 小样本测试任务（框架能力位 few_shot）没有 UUID 测试任务记录，其状态
     // 投影到 extra_data.test 顶层 section；能力来源为框架注册表。
     const bool legacy_few_shot_test
         = isTestModelTask(task->type) && task->scope_uuid.trimmed().isEmpty()
        && registeredFramework(method_, model_manager_->modelRecordViewForUuid(task->model_uuid).framework_name)
               .isFewShot();
-    const QString phase = train_scope ? QStringLiteral("train") : QStringLiteral("test_tasks");
+
+    // 训练与内部子任务耗时的权威来源是 TaskManager 的本地时钟。
+    // 写入 extra_data 链路，保存数值耗时与运行身份，保证项目重开后可以恢复显示与终态。
+    if (train_scope || b2m_scope || legacy_few_shot_test)
+    {
+        updates.insert(QStringLiteral("elapsed"), task_manager_->taskRunningTime(task_id));
+        updates.insert(QStringLiteral("elapsed_seconds"), task_manager_->taskRunningTimeSeconds(task_id));
+        if (task->identity.isValid())
+        {
+            updates.insert(QStringLiteral("run_id"), task->identity.run_id);
+            updates.insert(QStringLiteral("project_id"), task->identity.project_id);
+            updates.insert(QStringLiteral("task_id"), task->identity.task_id);
+        }
+    }
 
     const QVariantMap current_model = model_manager_->modelRecordForUuid(task->model_uuid);
     const QVariantMap extra_data    = current_model.value(QStringLiteral("extra_data")).toMap();
     QVariantMap       test_tasks    = extra_data.value(QStringLiteral("test_tasks")).toMap();
-    QVariantMap       section = train_scope ? extra_data.value(phase).toMap()
-                                            : (legacy_few_shot_test ? extra_data.value(QStringLiteral("test")).toMap()
-                                                                    : test_tasks.value(task->scope_uuid).toMap());
+    QVariantMap       section;
+    if (train_scope)
+        section = extra_data.value(QStringLiteral("train")).toMap();
+    else if (b2m_scope)
+        section = extra_data.value(QStringLiteral("box_to_mask")).toMap();
+    else if (legacy_few_shot_test)
+        section = extra_data.value(QStringLiteral("test")).toMap();
+    else
+        section = test_tasks.value(task->scope_uuid).toMap();
+
     for (auto it = updates.cbegin(); it != updates.cend(); ++it) section.insert(it.key(), it.value());
 
     // 状态投影：进度/开始标记以任务中心为准，与 TaskManager 表格逐帧一致。
@@ -820,7 +989,9 @@ void ModelTaskController::flushModelState(const int task_id)
     QString     error;
     QVariantMap state_update;
     if (train_scope)
-        state_update.insert(phase, section);
+        state_update.insert(QStringLiteral("train"), section);
+    else if (b2m_scope)
+        state_update.insert(QStringLiteral("box_to_mask"), section);
     else if (legacy_few_shot_test)
         state_update.insert(QStringLiteral("test"), section);
     else
@@ -861,16 +1032,17 @@ void ModelTaskController::handleTaskMessage(const TaskMessage &message)
 
     const TaskManager::Task *task = task_manager_->findTask(message.identity.task_id);
     if (task == nullptr || task->identity != message.identity || TaskManager::isTerminal(task->status)
-        || (!isTrainModelTask(task->type) && !isTestModelTask(task->type)))
+        || (!isTrainModelTask(task->type) && !isTestModelTask(task->type) && task->type != ModelTaskType::BoxToMask))
         return;
 
     // 高频进度消息只合并进内存缓冲，由节流定时器统一落库（≤1 次/秒/任务）。
     // TaskManager 表格仍由 TaskManager 每事件即时更新（纯内存，无磁盘 IO）。
     // 消息只携带指标字段；progress/started 一律由任务状态投影写入（见
     // applyTaskStateToSection），不在此处维护独立进度值。
+    // 耗时由本地 TaskManager 时钟权威计算，避免 Python payload 中的 elapsed 平行覆盖。
     QVariantMap &pending = pending_extra_updates_[message.identity.task_id];
     for (const QString &key : {QStringLiteral("epoch"), QStringLiteral("iter"), QStringLiteral("lr"),
-                               QStringLiteral("loss"), QStringLiteral("elapsed"), QStringLiteral("eta")})
+                               QStringLiteral("loss"), QStringLiteral("eta")})
     {
         if (message.payload.contains(key))
             pending.insert(key, message.payload.value(key).toString());
@@ -906,7 +1078,17 @@ void ModelTaskController::handleTaskRunningTimeChanged(const int task_id)
         return;
 
     const TaskManager::Task *task = task_manager_->findTask(task_id);
-    if (task == nullptr || !isTrainModelTask(task->type))
+    if (task == nullptr)
+        return;
+
+    const bool train_scope = isTrainModelTask(task->type);
+    const bool b2m_scope   = (task->type == ModelTaskType::BoxToMask);
+    const bool legacy_few_shot_test
+        = isTestModelTask(task->type) && task->scope_uuid.trimmed().isEmpty()
+       && registeredFramework(method_, model_manager_->modelRecordViewForUuid(task->model_uuid).framework_name)
+              .isFewShot();
+
+    if (!train_scope && !b2m_scope && !legacy_few_shot_test)
         return;
 
     if (TaskManager::isTerminal(task->status))
@@ -916,9 +1098,11 @@ void ModelTaskController::handleTaskRunningTimeChanged(const int task_id)
     }
 
     // 复用 Python 状态更新的缓冲和节流写库路径；没有 Python 消息时，
-    // 本地时钟也会定期把 elapsed 写入模型数据库。
+    // 本地时钟也会定期把 elapsed 与 elapsed_seconds 写入模型数据库。
     pending_extra_updates_[task_id].insert(QStringLiteral("elapsed"),
                                            task_manager_->taskRunningTime(task_id));
+    pending_extra_updates_[task_id].insert(QStringLiteral("elapsed_seconds"),
+                                           task_manager_->taskRunningTimeSeconds(task_id));
     if (!extra_flush_timer_->isActive())
         extra_flush_timer_->start();
 }

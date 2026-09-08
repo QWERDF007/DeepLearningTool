@@ -98,6 +98,18 @@ public:
      */
     Q_INVOKABLE bool deleteModelTask(const QString &model_uuid, ModelTaskTypes::Type task_type);
 
+    /**
+     * @brief 从已持久化的模型 extra_data 恢复训练及内部子任务记录到任务中心。
+     */
+    Q_INVOKABLE void restoreModelTasks();
+
+public slots:
+    /**
+     * @brief 将任务中心的总体进度和终态同步到模型页面使用的任务数据。
+     * @param task_id 任务 ID。
+     */
+    void syncTaskModelState(int task_id);
+
 private:
     /**
      * @brief 创建或查找模型任务记录。
@@ -176,15 +188,6 @@ private:
      * @param task_id 任务 ID。
      */
     void touchTaskModelModifiedTime(int task_id) const;
-
-    /**
-     * @brief 将任务中心的总体进度和终态同步到模型页面使用的任务数据。
-     *
-     * 该函数只是 flushModelState 的状态投影别名：extra_data 是 TaskManager
-     * 状态的持久化投影，不维护独立的进度值。
-     * @param task_id 任务 ID。
-     */
-    void syncTaskModelState(int task_id);
 
     /**
      * @brief 将任务状态投影进模型 extra_data 的目标 section。

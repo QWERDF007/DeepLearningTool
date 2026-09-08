@@ -189,6 +189,28 @@ public:
                             const QString &scope_uuid, const QString &scope_name);
 
     /**
+     * @brief 从持久化状态恢复任务记录。
+     * @param model_uuid 所属模型 UUID。
+     * @param model_name 模型显示名称。
+     * @param task_type 模型任务类型。
+     * @param scope_uuid 任务作用域 UUID。
+     * @param scope_name 任务作用域显示名称。
+     * @param status 任务终态或当前状态。
+     * @param progress 任务进度。
+     * @param elapsed_seconds 数值运行时长（秒）。
+     * @param phase 任务阶段。
+     * @param run_id 运行身份 ID。
+     * @param config_path 配置文件/数据库路径。
+     * @param log_path 日志路径。
+     * @param created_at 创建时间戳。
+     * @return 恢复或已存在的任务 ID；参数无效时返回 -1。
+     */
+    int restoreTask(const QString &model_uuid, const QString &model_name, ModelTaskTypes::Type task_type,
+                    const QString &scope_uuid, const QString &scope_name, TaskStatus status,
+                    int progress, qint64 elapsed_seconds, const QString &phase, const QString &run_id,
+                    const QString &config_path = {}, const QString &log_path = {}, qint64 created_at = 0);
+
+    /**
      * @brief 设置任务中心显示的实际配置和日志路径。
      *
      * 路径由 ModelStorageService 生成，TaskManager 只保存展示值，不自行拼接目录。
@@ -287,6 +309,7 @@ public:
      * @return 任务存在时返回本地计时文本；任务不存在时返回 "-"。
      */
     Q_INVOKABLE QString taskRunningTime(int task_id) const;
+    Q_INVOKABLE qint64  taskRunningTimeSeconds(int task_id) const;
     Q_INVOKABLE bool hasActiveModelTasks(const QString &model_uuid) const;
     /**
      * @brief 获取指定模型的最新任务记录。
@@ -368,6 +391,12 @@ signals:
      */
     void taskMessageReceived(const dltool::model::TaskMessage &message);
 
+public slots:
+    /**
+     * @brief 刷新运行中任务的显示时长。
+     */
+    void refreshRunningTasks();
+
 private slots:
     /**
      * @brief 接收 Python 上报的任务事件并更新任务表。
@@ -405,10 +434,6 @@ private:
      * @param roles 已变化的 role 列表。
      */
     void emitTaskChanged(int row, const QList<int> &roles = {});
-    /**
-     * @brief 刷新运行中任务的显示时长。
-     */
-    void refreshRunningTasks();
 
     /**
      * @brief 获取指定任务列的显示数据。

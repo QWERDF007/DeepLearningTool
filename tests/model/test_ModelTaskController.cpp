@@ -69,6 +69,17 @@ private slots:
         registerFramework(kControllerTestMethod, external_framework);
         registerModel(kControllerTestMethod, external_framework.name, QStringLiteral("ControllerModel"),
                       []() { return std::make_unique<ControllerTestModel>(); });
+
+        FrameworkDefinition fewshot_framework;
+        fewshot_framework.method = kControllerTestMethod;
+        fewshot_framework.name   = QStringLiteral("controller-fewshot");
+        fewshot_framework.few_shot = true;
+        fewshot_framework.task_capabilities.push_back({ModelTaskType::Train, QStringLiteral("mock_train.py")});
+        fewshot_framework.task_capabilities.push_back({ModelTaskType::Test, QStringLiteral("mock_test.py")});
+        fewshot_framework.weight_extensions = {QStringLiteral(".pt")};
+        registerFramework(kControllerTestMethod, fewshot_framework);
+        registerModel(kControllerTestMethod, fewshot_framework.name, QStringLiteral("ControllerModel"),
+                      []() { return std::make_unique<ControllerTestModel>(); });
     }
 
     void validatesInputsAndTransitionsInternalTask()
@@ -455,6 +466,207 @@ private slots:
                                   Q_ARG(TaskMessage, late_msg));
         QCOMPARE(task_manager.findTask(crash_task_id)->status, TaskManager::Failed);
         QCOMPARE(task_manager.findTask(crash_task_id)->progress, 0);
+    }
+
+    void trainStateStoresNumericElapsedAndRunIdentityWithoutParallelElapsed()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager                         model_manager(kControllerTestMethod, &database, nullptr);
+        QString                              error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("NumericElapsedModel"), QStringLiteral("controller-test"),
+                                                         QStringLiteral("ControllerModel"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        TaskManager task_manager;
+        ModelTaskController controller(kControllerTestMethod, fixture.rootPath(), &model_manager, nullptr, &task_manager);
+
+        const int task_id = controller.startModelTask(record.uuid, ModelTaskType::Train);
+        QVERIFY(task_id > 0);
+        QTRY_VERIFY(task_manager.findTask(task_id) != nullptr
+                    && task_manager.findTask(task_id)->status == TaskManager::Running);
+
+        const TaskIdentity identity = task_manager.findTask(task_id)->identity;
+        QVERIFY(identity.isValid());
+
+        // Python 上报带有虚假 elapsed 字符串的消息
+        TaskMessage msg;
+        msg.identity = identity;
+        msg.type     = TaskMessageType::Progress;
+        msg.status   = TaskProtocolStatus::Running;
+        msg.progress = 40;
+        msg.payload.insert(QStringLiteral("elapsed"), QStringLiteral("99:99:99"));
+        msg.payload.insert(QStringLiteral("loss"), QStringLiteral("0.123"));
+        QMetaObject::invokeMethod(&controller, "handleTaskMessage", Qt::DirectConnection, Q_ARG(TaskMessage, msg));
+
+        // 冲刷状态
+        QMetaObject::invokeMethod(&controller, "syncTaskModelState", Qt::DirectConnection, Q_ARG(int, task_id));
+
+        const QVariantMap extra = model_manager.modelRecordForUuid(record.uuid).value(QStringLiteral("extra_data")).toMap();
+        const QVariantMap train_sec = extra.value(QStringLiteral("train")).toMap();
+
+        // 验收条件 1: 删除对应平行写入（Python 的 99:99:99 不能覆盖 C++ 本地计时），保存数值耗时与运行身份
+        QVERIFY(train_sec.value(QStringLiteral("elapsed")).toString() != QStringLiteral("99:99:99"));
+        QVERIFY(train_sec.contains(QStringLiteral("elapsed_seconds")));
+        QCOMPARE(train_sec.value(QStringLiteral("run_id")).toString(), identity.run_id);
+        QCOMPARE(train_sec.value(QStringLiteral("project_id")).toString(), identity.project_id);
+        QCOMPARE(train_sec.value(QStringLiteral("task_id")).toInt(), identity.task_id);
+        QCOMPARE(train_sec.value(QStringLiteral("loss")).toString(), QStringLiteral("0.123"));
+
+        controller.stopModelTask(record.uuid, ModelTaskType::Train);
+    }
+
+    void pythonSilentRuntimeAdvancesAndReopenRestoresTerminalStateAndDuration()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager                         model_manager(kControllerTestMethod, &database, nullptr);
+        QString                              error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("SilentModel"), QStringLiteral("controller-test"),
+                                                         QStringLiteral("ControllerModel"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        TaskManager task_manager;
+        ModelTaskController controller(kControllerTestMethod, fixture.rootPath(), &model_manager, nullptr, &task_manager);
+
+        const int task_id = controller.startModelTask(record.uuid, ModelTaskType::Train);
+        QVERIFY(task_id > 0);
+        QTRY_VERIFY(task_manager.findTask(task_id) != nullptr
+                    && task_manager.findTask(task_id)->status == TaskManager::Running);
+
+        const TaskIdentity identity = task_manager.findTask(task_id)->identity;
+
+        // Python 长时间不发任何消息，本地计时推进
+        QTest::qWait(1100);
+        QMetaObject::invokeMethod(&task_manager, "refreshRunningTasks", Qt::DirectConnection);
+        QMetaObject::invokeMethod(&controller, "syncTaskModelState", Qt::DirectConnection, Q_ARG(int, task_id));
+
+        const qint64 running_sec = task_manager.taskRunningTimeSeconds(task_id);
+        QVERIFY(running_sec >= 1);
+
+        // 停止任务并落库
+        QVERIFY(controller.stopModelTask(record.uuid, ModelTaskType::Train));
+        QCOMPARE(task_manager.findTask(task_id)->status, TaskManager::Stopped);
+
+        const QVariantMap extra_before = model_manager.modelRecordForUuid(record.uuid).value(QStringLiteral("extra_data")).toMap();
+        const QVariantMap train_before = extra_before.value(QStringLiteral("train")).toMap();
+        const qint64 stopped_seconds = train_before.value(QStringLiteral("elapsed_seconds")).toLongLong();
+        const QString stopped_elapsed = train_before.value(QStringLiteral("elapsed")).toString();
+        QVERIFY(stopped_seconds >= 1);
+        QVERIFY(!stopped_elapsed.isEmpty() && stopped_elapsed != QStringLiteral("00:00:00"));
+        QCOMPARE(train_before.value(QStringLiteral("status")).toString(), QStringLiteral("stopped"));
+        QCOMPARE(train_before.value(QStringLiteral("started")).toBool(), false);
+
+        // 模拟关闭项目并重开
+        controller.shutdown();
+        task_manager.clearTasks();
+
+        ModelManager reloaded_model_manager(kControllerTestMethod, &database, nullptr);
+        TaskManager reopened_task_manager;
+        ModelTaskController reopened_controller(kControllerTestMethod, fixture.rootPath(),
+                                                &reloaded_model_manager, nullptr, &reopened_task_manager);
+
+        // 验收条件 2: 完成/停止/失败重开后正确显示终态和准确耗时
+        const auto *restored = reopened_task_manager.findModelTaskRecord(record.uuid, ModelTaskType::Train, true);
+        QVERIFY(restored != nullptr);
+        QCOMPARE(restored->status, TaskManager::Stopped);
+        QCOMPARE(restored->elapsed_seconds, stopped_seconds);
+        QCOMPARE(reopened_task_manager.taskRunningTimeSeconds(restored->identity.task_id), stopped_seconds);
+        QCOMPARE(reopened_task_manager.taskRunningTime(restored->identity.task_id), stopped_elapsed);
+        QCOMPARE(restored->identity.run_id, identity.run_id);
+        QVERIFY(reopened_task_manager.canStartTask(restored->identity.task_id));
+    }
+
+    void internalSubtasksStoreNumericElapsedAndRestoreWithoutTestEvaluationStructure()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager                         model_manager(kControllerTestMethod, &database, nullptr);
+        QString                              error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("SubtaskModel"), QStringLiteral("controller-fewshot"),
+                                                         QStringLiteral("ControllerModel"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        TaskManager task_manager;
+        ModelTaskController controller(kControllerTestMethod, fixture.rootPath(), &model_manager, nullptr, &task_manager);
+
+        // 启动内部子任务 BoxToMask
+        const int b2m_id = controller.startModelTask(record.uuid, ModelTaskType::BoxToMask);
+        QVERIFY(b2m_id > 0);
+        QTRY_VERIFY(task_manager.findTask(b2m_id) != nullptr
+                    && task_manager.findTask(b2m_id)->status == TaskManager::Running);
+
+        const TaskIdentity b2m_identity = task_manager.findTask(b2m_id)->identity;
+        QTest::qWait(1100);
+        QMetaObject::invokeMethod(&task_manager, "refreshRunningTasks", Qt::DirectConnection);
+        QVERIFY(controller.stopModelTask(record.uuid, ModelTaskType::BoxToMask));
+        QCOMPARE(task_manager.findTask(b2m_id)->status, TaskManager::Stopped);
+
+        const QVariantMap extra = model_manager.modelRecordForUuid(record.uuid).value(QStringLiteral("extra_data")).toMap();
+        // 验收条件 3: 训练与内部子任务不强套普通测试评估结构，保存在 extra_data.box_to_mask
+        QVERIFY(extra.contains(QStringLiteral("box_to_mask")));
+        const QVariantMap b2m_sec = extra.value(QStringLiteral("box_to_mask")).toMap();
+        QCOMPARE(b2m_sec.value(QStringLiteral("status")).toString(), QStringLiteral("stopped"));
+        QCOMPARE(b2m_sec.value(QStringLiteral("started")).toBool(), false);
+        QVERIFY(b2m_sec.value(QStringLiteral("elapsed_seconds")).toLongLong() >= 1);
+        QCOMPARE(b2m_sec.value(QStringLiteral("run_id")).toString(), b2m_identity.run_id);
+
+        // 重开后恢复内部任务终态和准确耗时
+        controller.shutdown();
+        task_manager.clearTasks();
+
+        ModelManager reloaded_model_manager(kControllerTestMethod, &database, nullptr);
+        TaskManager reopened_task_manager;
+        ModelTaskController reopened_controller(kControllerTestMethod, fixture.rootPath(),
+                                                &reloaded_model_manager, nullptr, &reopened_task_manager);
+
+        const auto *restored = reopened_task_manager.findModelTaskRecord(record.uuid, ModelTaskType::BoxToMask,
+                                                                         QStringLiteral("box_to_mask"), true);
+        QVERIFY(restored != nullptr);
+        QCOMPARE(restored->status, TaskManager::Stopped);
+        QCOMPARE(restored->elapsed_seconds, b2m_sec.value(QStringLiteral("elapsed_seconds")).toLongLong());
+        QCOMPARE(restored->identity.run_id, b2m_identity.run_id);
+    }
+
+    void legacyDurationTextMigrationParsesNumericElapsed()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager                         model_manager(kControllerTestMethod, &database, nullptr);
+        QString                              error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("LegacyModel"), QStringLiteral("controller-test"),
+                                                         QStringLiteral("ControllerModel"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        // 模拟旧版本仅有文本 elapsed 的 extra_data
+        QVariantMap legacy_train;
+        legacy_train.insert(QStringLiteral("status"), QStringLiteral("finished"));
+        legacy_train.insert(QStringLiteral("started"), false);
+        legacy_train.insert(QStringLiteral("progress"), 100);
+        legacy_train.insert(QStringLiteral("elapsed"), QStringLiteral("00:03:45"));
+        legacy_train.insert(QStringLiteral("phase"), QStringLiteral("train"));
+        QVERIFY(model_manager.updateModelExtraData(record.uuid, {{QStringLiteral("train"), legacy_train}}, &error));
+
+        // 重开并恢复
+        TaskManager task_manager;
+        ModelTaskController controller(kControllerTestMethod, fixture.rootPath(), &model_manager, nullptr, &task_manager);
+
+        const auto *restored = task_manager.findModelTaskRecord(record.uuid, ModelTaskType::Train, true);
+        QVERIFY(restored != nullptr);
+        QCOMPARE(restored->status, TaskManager::Finished);
+        QCOMPARE(restored->progress, 100);
+        // 验收条件 3: 仅迁移支持的当前结构，文本耗时自动解析为准确数值 (3*60 + 45 = 225 秒)
+        QCOMPARE(restored->elapsed_seconds, static_cast<qint64>(225));
+        QCOMPARE(task_manager.taskRunningTimeSeconds(restored->identity.task_id), static_cast<qint64>(225));
+        QCOMPARE(task_manager.taskRunningTime(restored->identity.task_id), QStringLiteral("00:03:45"));
     }
 };
 

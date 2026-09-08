@@ -211,8 +211,10 @@ int TaskManager::addTask(const QString &model_uuid, const QString &model_name, c
     if (shutting_down_)
         return -1;
 
-    const QString scope_uuid = isTrainModelTask(task_type) ? QStringLiteral("train") : QString();
-    return addTask(model_uuid, model_name, task_type, scope_uuid, {});
+    const QString scope_uuid = isTrainModelTask(task_type) ? QStringLiteral("train")
+                             : (task_type == ModelTaskType::BoxToMask ? QStringLiteral("box_to_mask") : QString());
+    const QString scope_name = task_type == ModelTaskType::BoxToMask ? QStringLiteral("BoxToMask") : QString();
+    return addTask(model_uuid, model_name, task_type, scope_uuid, scope_name);
 }
 
 int TaskManager::addTask(const QString &model_uuid, const QString &model_name, const ModelTaskType task_type,
@@ -250,6 +252,62 @@ int TaskManager::addTask(const QString &model_uuid, const QString &model_name, c
     emit revisionChanged();
     spdlog::info("添加任务, task_id: {}, 模型: {}, 类型: {}", task_id, name.toUtf8().constData(),
                  modelTaskKey(task_type).toUtf8().constData());
+    return task_id;
+}
+
+int TaskManager::restoreTask(const QString &model_uuid, const QString &model_name, const ModelTaskType task_type,
+                             const QString &scope_uuid, const QString &scope_name, const TaskStatus status,
+                             const int progress, const qint64 elapsed_seconds, const QString &phase,
+                             const QString &run_id, const QString &config_path, const QString &log_path,
+                             const qint64 created_at)
+{
+    if (shutting_down_)
+        return -1;
+
+    const QString uuid = model_uuid.trimmed();
+    const QString name = model_name.trimmed();
+    if (uuid.isEmpty() || name.isEmpty() || !isKnownModelTask(task_type))
+        return -1;
+
+    // 如果任务已存在，直接返回已存在的任务 ID
+    const int existing_row = rowForModelTask(uuid, task_type, scope_uuid.trimmed(), true);
+    if (existing_row >= 0)
+        return tasks_[static_cast<size_t>(existing_row)].identity.task_id;
+
+    const int row = rowCount();
+    beginInsertRows({}, row, row);
+    const int task_id = next_task_id_++;
+    Task task;
+    task.identity.task_id = task_id;
+    task.identity.project_id = project_id_;
+    task.identity.run_id = run_id.trimmed().isEmpty()
+                               ? QUuid::createUuid().toString(QUuid::WithoutBraces)
+                               : run_id.trimmed();
+    task.model_uuid = uuid;
+    task.model_name = name;
+    task.scope_uuid = scope_uuid.trimmed();
+    task.scope_name = scope_name.trimmed();
+    task.display_name = name;
+    task.type = task_type;
+    task.status = status;
+    task.progress = (status == Finished) ? 100 : std::clamp(progress, 0, 100);
+    task.created_at = created_at > 0 ? created_at : QDateTime::currentSecsSinceEpoch();
+    task.elapsed_seconds = std::max<qint64>(0, elapsed_seconds);
+    task.eta_seconds = (status == Finished || task.progress >= 100) ? 0 : -1;
+    task.phase = phase.trimmed();
+    task.config_path = config_path.trimmed();
+    task.log_path = log_path.trimmed();
+    if (isTerminal(status))
+        terminal_events_.insert(task.identity);
+
+    tasks_.push_back(std::move(task));
+    endInsertRows();
+    emit countChanged();
+    ++revision_;
+    emit revisionChanged();
+    spdlog::info("恢复任务, task_id: {}, 模型: {}, 类型: {}, 状态: {}, 耗时: {}s",
+                 task_id, name.toUtf8().constData(), modelTaskKey(task_type).toUtf8().constData(),
+                 static_cast<int>(status), static_cast<long long>(elapsed_seconds));
     return task_id;
 }
 
@@ -484,7 +542,8 @@ bool TaskManager::clearTasks()
 int TaskManager::findModelTask(const QString &model_uuid, const ModelTaskType task_type,
                                const bool include_finished) const
 {
-    const QString scope_uuid = isTrainModelTask(task_type) ? QStringLiteral("train") : QString();
+    const QString scope_uuid = isTrainModelTask(task_type) ? QStringLiteral("train")
+                             : (task_type == ModelTaskType::BoxToMask ? QStringLiteral("box_to_mask") : QString());
     const Task   *task       = findModelTaskRecord(model_uuid, task_type, scope_uuid, include_finished);
     return task != nullptr ? task->identity.task_id : -1;
 }
@@ -508,6 +567,12 @@ QString TaskManager::taskRunningTime(const int task_id) const
     return task != nullptr ? runningTimeText(*task) : QStringLiteral("-");
 }
 
+qint64 TaskManager::taskRunningTimeSeconds(const int task_id) const
+{
+    const Task *task = findTask(task_id);
+    return task != nullptr ? runningTimeSeconds(*task) : 0;
+}
+
 bool TaskManager::hasActiveModelTasks(const QString &model_uuid) const
 {
     const QString value = model_uuid.trimmed();
@@ -525,7 +590,8 @@ bool TaskManager::hasActiveModelTasks(const QString &model_uuid) const
 const TaskManager::Task *TaskManager::findModelTaskRecord(const QString &model_uuid, const ModelTaskType task_type,
                                                           const bool include_finished) const
 {
-    const QString scope_uuid = isTrainModelTask(task_type) ? QStringLiteral("train") : QString();
+    const QString scope_uuid = isTrainModelTask(task_type) ? QStringLiteral("train")
+                             : (task_type == ModelTaskType::BoxToMask ? QStringLiteral("box_to_mask") : QString());
     const int     row        = rowForModelTask(model_uuid.trimmed(), task_type, scope_uuid, include_finished);
     return row >= 0 ? &tasks_.at(static_cast<size_t>(row)) : nullptr;
 }
