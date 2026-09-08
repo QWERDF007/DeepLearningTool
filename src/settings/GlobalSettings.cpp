@@ -44,7 +44,7 @@ GlobalSettings::GlobalSettings(QObject *parent)
 
     save_timer_->setSingleShot(true);
     save_timer_->setInterval(1000);
-    connect(save_timer_, &QTimer::timeout, this, &GlobalSettings::save);
+    connect(save_timer_, &QTimer::timeout, this, [this]() { save(); });
     connectAutoSave();
 
     try
@@ -94,6 +94,45 @@ SettingsCatalog *GlobalSettings::catalog() const
     return settings_catalog_;
 }
 
+bool GlobalSettings::isDirty() const
+{
+    return is_dirty_;
+}
+
+QString GlobalSettings::lastSaveError() const
+{
+    return last_save_error_;
+}
+
+QString GlobalSettings::databasePath() const
+{
+    return settings_database_ != nullptr ? settings_database_->path() : settingsDatabasePath();
+}
+
+void GlobalSettings::setDatabasePath(const QString &path)
+{
+    if (save_timer_ != nullptr && save_timer_->isActive())
+        save_timer_->stop();
+
+    if (settings_database_ != nullptr)
+    {
+        delete settings_database_;
+        settings_database_ = nullptr;
+    }
+
+    settings_database_ = new dltool::database::SettingsDataBase(path, this);
+    load();
+}
+
+void GlobalSettings::setDirty(const bool dirty)
+{
+    if (is_dirty_ != dirty)
+    {
+        is_dirty_ = dirty;
+        emit isDirtyChanged(is_dirty_);
+    }
+}
+
 QString GlobalSettings::pythonEnvironmentPath()
 {
     GlobalSettings *settings = getInstance();
@@ -112,22 +151,59 @@ void GlobalSettings::load()
         return;
     }
 
+    is_loading_ = true;
     settings_catalog_->syncAndLoad(settings_database_);
     rebuildSettingsObjects();
     applyAutoSaveSettings();
+    setDirty(false);
+    if (!last_save_error_.isEmpty())
+    {
+        last_save_error_.clear();
+        emit lastSaveErrorChanged(QString());
+    }
+    is_loading_ = false;
     spdlog::info("所有设置加载成功");
 }
 
-void GlobalSettings::save()
+bool GlobalSettings::save()
+{
+    QString err;
+    return save(err);
+}
+
+bool GlobalSettings::save(QString &err_msg)
 {
     if (settings_database_ == nullptr)
     {
-        spdlog::error("无法保持设置: 数据库对象为空");
-        return;
+        err_msg = QStringLiteral("无法保存设置: 数据库对象为空");
+        spdlog::error("{}", err_msg.toUtf8().constData());
+        last_save_error_ = err_msg;
+        emit lastSaveErrorChanged(last_save_error_);
+        emit saveFailed(last_save_error_);
+        return false;
     }
 
-    settings_catalog_->save(settings_database_);
-    spdlog::info("设置成功保存到: {}", settingsDatabasePath().toUtf8().constData());
+    QString local_err;
+    const bool ok = settings_catalog_->save(settings_database_, &local_err);
+    if (!ok)
+    {
+        last_save_error_ = local_err;
+        err_msg          = local_err;
+        emit lastSaveErrorChanged(last_save_error_);
+        emit saveFailed(last_save_error_);
+        return false;
+    }
+
+    setDirty(false);
+    err_msg.clear();
+    if (!last_save_error_.isEmpty())
+    {
+        last_save_error_.clear();
+        emit lastSaveErrorChanged(QString());
+    }
+    emit saved();
+    spdlog::info("设置成功保存到: {}", databasePath().toUtf8().constData());
+    return true;
 }
 
 void GlobalSettings::reset()
@@ -140,6 +216,7 @@ void GlobalSettings::reset()
             group->reloadFromModel();
     }
     applyAutoSaveSettings();
+    setDirty(true);
     scheduleSave();
 }
 
@@ -321,6 +398,20 @@ void GlobalSettings::handleCatalogValueChanged(const QString &group_key, const Q
     SettingsGroup *group = groups_by_key_.value(group_key, nullptr);
     if (group != nullptr)
         group->updateFromFieldName(name, value);
+
+    const SettingsFieldModel *model = settings_catalog_ != nullptr ? settings_catalog_->group(group_key) : nullptr;
+    const QString accessor_path     = model != nullptr ? model->accessorPath() : QString();
+
+    emit settingChanged(accessor_path, name, value);
+    if (const auto accessor_opt = accessorKeyForPath(accessor_path); accessor_opt.has_value())
+    {
+        emit fieldValueChanged(*accessor_opt, name, value);
+    }
+
+    if (is_loading_)
+        return;
+
+    setDirty(true);
 
     const SettingsFieldModel *software_model
         = settings_catalog_ != nullptr

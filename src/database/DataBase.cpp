@@ -2701,8 +2701,24 @@ QVariantMap SettingsDataBase::loadSettings(const QString &table_name, QString &e
 
 bool SettingsDataBase::saveSettings(const QString &table_name, const QVariantMap &row, QString &err_msg) const
 {
-    if (!ensureSettingsTable(table_name, err_msg))
+    QMap<QString, QVariantMap> tables_data;
+    tables_data.insert(table_name, row);
+    return saveAllSettings(tables_data, err_msg);
+}
+
+bool SettingsDataBase::saveAllSettings(const QMap<QString, QVariantMap> &tables_data, QString &err_msg) const
+{
+    if (pool_ == nullptr)
+    {
+        err_msg = QStringLiteral("settings database is not open: %1").arg(path_);
         return false;
+    }
+
+    for (auto it = tables_data.cbegin(); it != tables_data.cend(); ++it)
+    {
+        if (!ensureSettingsTable(it.key(), err_msg))
+            return false;
+    }
 
     try
     {
@@ -2710,18 +2726,23 @@ bool SettingsDataBase::saveSettings(const QString &table_name, const QVariantMap
         auto tx = sqlpp::start_transaction(db);
         try
         {
-            for (auto it = row.cbegin(); it != row.cend(); ++it)
+            const qint64 now = QDateTime::currentSecsSinceEpoch();
+            for (auto table_it = tables_data.cbegin(); table_it != tables_data.cend(); ++table_it)
             {
-                const QString name  = it.key();
-                const QString value = variantToText(it.value());
-                if (name.isEmpty())
-                    continue;
+                const QString     &table_name = table_it.key();
+                const QVariantMap &row        = table_it.value();
+                for (auto it = row.cbegin(); it != row.cend(); ++it)
+                {
+                    const QString name  = it.key();
+                    const QString value = variantToText(it.value());
+                    if (name.isEmpty())
+                        continue;
 
-                const QString sql
-                    = QStringLiteral("INSERT OR REPLACE INTO %1 (name_en, value, mtime) VALUES (%2, %3, %4)")
-                          .arg(table_name, sqlString(name), sqlString(value),
-                               QString::number(QDateTime::currentSecsSinceEpoch()));
-                db.execute(sql.toStdString());
+                    const QString sql
+                        = QStringLiteral("INSERT OR REPLACE INTO %1 (name_en, value, mtime) VALUES (%2, %3, %4)")
+                              .arg(table_name, sqlString(name), sqlString(value), QString::number(now));
+                    db.execute(sql.toStdString());
+                }
             }
             tx.commit();
             return true;
@@ -2734,7 +2755,7 @@ bool SettingsDataBase::saveSettings(const QString &table_name, const QVariantMap
     }
     catch (const std::exception &e)
     {
-        err_msg = e.what();
+        err_msg = QString::fromStdString(e.what());
         return false;
     }
 }

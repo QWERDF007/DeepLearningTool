@@ -24,7 +24,23 @@ Window {
     modality: Qt.NonModal
     flags: Qt.Window | Qt.CustomizeWindowHint | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint
 
-    onClosing: GlobalSettings.save()
+    onClosing: function(close) {
+        if (GlobalSettings.isDirty) {
+            if (!GlobalSettings.save()) {
+                if (close) {
+                    close.accepted = false
+                }
+                let errMsg = GlobalSettings.lastSaveError
+                infoBar.showError("保存设置失败", 3500, errMsg ? errMsg : "数据库写入失败")
+            }
+        }
+    }
+
+    QuiInfoBar {
+        id: infoBar
+        root: dialog
+        layoutY: 58
+    }
 
     Shortcut {
         sequence: "Esc"
@@ -88,11 +104,19 @@ Window {
             }
 
             QuiButton {
+                id: saveButton
                 Layout.preferredWidth: 84
                 Layout.preferredHeight: 32
                 text: "保存"
                 normalColor: QuiColor.Highlight
-                onClicked: GlobalSettings.save()
+                onClicked: {
+                    if (!GlobalSettings.save()) {
+                        let errMsg = GlobalSettings.lastSaveError
+                        infoBar.showError("保存设置失败", 3500, errMsg ? errMsg : "数据库写入失败")
+                    } else {
+                        infoBar.showSuccess("设置已保存", 2000)
+                    }
+                }
             }
         }
 

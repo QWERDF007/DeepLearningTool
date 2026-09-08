@@ -330,21 +330,29 @@ void SettingsFieldModel::loadValues(const QVariantMap &values)
     if (fields_.empty())
         return;
 
-    bool changed = false;
-    for (SettingsField &field : fields_)
+    QVector<int> changed_rows;
+    for (size_t row = 0; row < fields_.size(); ++row)
     {
+        SettingsField &field = fields_[row];
         if (!values.contains(field.name_en))
             continue;
         const QVariant next = typedValue(field, values.value(field.name_en));
         if (field.value != next)
         {
             field.value = next;
-            changed     = true;
+            changed_rows.append(static_cast<int>(row));
         }
     }
 
-    if (changed)
+    if (!changed_rows.isEmpty())
+    {
         emit dataChanged(index(0), index(rowCount() - 1), {ValueRole, Qt::EditRole});
+        for (const int row : changed_rows)
+        {
+            const SettingsField &field = fields_.at(static_cast<size_t>(row));
+            emit                 valueChanged(field.name_en, field.value);
+        }
+    }
 }
 
 void SettingsFieldModel::resetValues()
@@ -674,18 +682,31 @@ void SettingsCatalog::syncAndLoad(database::SettingsDataBase *database)
     }
 }
 
-void SettingsCatalog::save(database::SettingsDataBase *database) const
+bool SettingsCatalog::save(database::SettingsDataBase *database, QString *err_msg) const
 {
     if (database == nullptr)
-        return;
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("settings database is null");
+        return false;
+    }
 
+    QMap<QString, QVariantMap> tables_data;
     for (const auto &group_ptr : groups_)
     {
-        QString err_msg;
-        if (!database->saveSettings(group_ptr->tableName(), group_ptr->valuesMap(), err_msg) && !err_msg.isEmpty())
-            spdlog::error("Save settings group failed for {}: {}", group_ptr->tableName().toUtf8().constData(),
-                          err_msg.toUtf8().constData());
+        tables_data.insert(group_ptr->tableName(), group_ptr->valuesMap());
     }
+
+    QString local_err;
+    const bool ok = database->saveAllSettings(tables_data, local_err);
+    if (!ok)
+    {
+        spdlog::error("Save settings catalog failed: {}", local_err.toUtf8().constData());
+        if (err_msg != nullptr)
+            *err_msg = local_err;
+        return false;
+    }
+    return true;
 }
 
 void SettingsCatalog::reset()

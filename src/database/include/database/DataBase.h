@@ -348,6 +348,7 @@ public:
     bool        ensureSettingsTable(const QString &table_name, QString &err_msg) const;
     QVariantMap loadSettings(const QString &table_name, QString &err_msg) const;
     bool        saveSettings(const QString &table_name, const QVariantMap &row, QString &err_msg) const;
+    bool        saveAllSettings(const QMap<QString, QVariantMap> &tables_data, QString &err_msg) const;
 };
 
 } // namespace dltool::database

@@ -40,6 +40,31 @@
 **干到哪了**：
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
+## 2026-09-09 — 让设置保存失败可见且可重试
+
+**目标**
+- 交付 Ticket 25：让设置保存失败可见且可重试。
+- 保存失败返回明确结果并保留 dirty，定义跨组事务语义。
+- 权威字段变化准确驱动缓存失效，不依赖不发通知的属性投影。
+- 用真实设置存储注入失败，验证 UI 提示和重试后重载值。
+- 遵循 TDD，先编写失败/约束测试建立基线，再实现并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `src/database/DataBase.cpp` 与 `DataBase.h` 中新增 `SettingsDataBase::saveAllSettings(const QMap<QString, QVariantMap> &tables_data, QString &err_msg)`，将所有设置组表保存纳入单个数据库事务（`sqlpp::start_transaction(db)`），发生异常时完整回滚，实现跨组保存原子性。
+- 已完成：在 `src/settings/GlobalSettings.h` 与 `GlobalSettings.cpp` 中重构保存语义，提供显式返回 `bool save()` 与 `bool save(QString &err_msg)`，暴露 `isDirty`、`lastSaveError` Q_PROPERTY 及 `isDirtyChanged`、`lastSaveErrorChanged`、`saved`、`saveFailed` 信号。保存失败时保留 `is_dirty_ = true` 并记录具体错误；保存成功时清空错误并重置 dirty。
+- 已完成：在 `src/settings/SettingsSchema.cpp` 的 `SettingsFieldModel::loadValues` 中追踪值变化行并对发生变动的字段触发 `valueChanged` 信号；在 `GlobalSettings` 中新增 `fieldValueChanged` 与 `settingChanged` 信号，并重构 `src/feature/FeatureManager.cpp`，消除对瞬态 `QQmlPropertyMap` 的脆弱依赖，仅在权威模型/设备配置字段变化时精准失效智能标注推理缓存。
+- 已完成：在 `src/settings/qml/SettingsDialog.qml` 中集成 `QuiInfoBar`，保存按钮与窗口关闭时对保存失败呈现明确错误提示并在保存失败时阻止关闭窗口；重试成功后恢复正常。
+- 已完成：创建 `tests/settings/CMakeLists.txt` 与 `tests/settings/test_SettingsSaveBehavior.cpp`，通过真实 SQLite 排他锁（`EXCLUSIVE`）争用注入真实存储故障，完整覆盖跨组事务原子性回滚、权威字段驱动缓存失效、存储失败保留 dirty 及解除故障重试重载值等全套行为测试。
+- 已完成：全部测试在 Release 模式下通过（`settings`: 1/1 100%, `feature`: 1/1 100%, `model`: 22/22 100%）。
+
+**验证证据**
+- `ctest --test-dir build -C Release -L "settings" --output-on-failure` → 1/1 passed, 0 failed, 1.34s
+- `ctest --test-dir build -C Release -L "feature" --output-on-failure` → 1/1 passed, 0 failed, 1.25s
+- `ctest --test-dir build -C Release -L "model" --output-on-failure` → 22/22 passed, 0 failed, 49.04s
+
+**下一步**
+- 推进 Ticket 26：消除参数控件刷新的写入副作用。
+
 ## 2026-09-09 — 完成阈值搜索与图表的行为验收
 
 **目标**

@@ -479,8 +479,10 @@ public:
     /**
      * @brief 将当前设置值保存到数据库。
      * @param database 设置数据库指针。
+     * @param err_msg 错误信息输出指针，可为空。
+     * @return 保存成功返回 true，否则返回 false。
      */
-    void save(database::SettingsDataBase *database) const;
+    bool save(database::SettingsDataBase *database, QString *err_msg = nullptr) const;
 
     /**
      * @brief 将所有字段恢复默认值。

@@ -9,6 +9,7 @@
 #include "dltool/settings/SettingsKeys.hpp"
 
 #include <QString>
+#include <optional>
 #include <string_view>
 
 namespace dltool::settings {
@@ -27,5 +28,19 @@ SETTINGS_API QString toQString(std::string_view value);
  * @return 字段英文键名；未知键返回空字符串。
  */
 SETTINGS_API QString fieldName(generated::AccessorKey accessor_key, int field_key);
+
+/**
+ * @brief 根据访问器路径查找对应的生成访问器枚举键。
+ * @param path 访问器路径，例如 "data" 或 "advanced.smartAnnotation"。
+ * @return 匹配成功返回 AccessorKey，否则返回 std::nullopt。
+ */
+SETTINGS_API std::optional<generated::AccessorKey> accessorKeyForPath(const QString &path);
+
+/**
+ * @brief 根据分组键查找对应的生成访问器枚举键。
+ * @param group_key 分组键，例如 "DataSettings" 或 "SmartAnnotationSettings"。
+ * @return 匹配成功返回 AccessorKey，否则返回 std::nullopt。
+ */
+SETTINGS_API std::optional<generated::AccessorKey> accessorKeyForGroupKey(const QString &group_key);
 
 } // namespace dltool::settings

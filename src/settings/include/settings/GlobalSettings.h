@@ -36,6 +36,8 @@ class SETTINGS_API GlobalSettings : public QObject
 
     Q_PROPERTY(SettingsNamespace *root READ root CONSTANT FINAL)
     Q_PROPERTY(SettingsCatalog *catalog READ catalog CONSTANT FINAL)
+    Q_PROPERTY(bool isDirty READ isDirty NOTIFY isDirtyChanged FINAL)
+    Q_PROPERTY(QString lastSaveError READ lastSaveError NOTIFY lastSaveErrorChanged FINAL)
 
 public:
     /**
@@ -58,14 +60,46 @@ public:
     SettingsCatalog *catalog() const;
 
     /**
+     * @brief 查询当前是否存在未保存的修改。
+     * @return 存在未保存修改返回 true，否则返回 false。
+     */
+    Q_INVOKABLE bool isDirty() const;
+
+    /**
+     * @brief 获取最近一次保存失败的错误信息。
+     * @return 错误信息字符串；无错误返回空字符串。
+     */
+    Q_INVOKABLE QString lastSaveError() const;
+
+    /**
+     * @brief 获取当前设置数据库文件路径。
+     * @return 数据库绝对文件路径。
+     */
+    QString databasePath() const;
+
+    /**
+     * @brief 设置自定义设置数据库路径（主要用于测试隔离）。
+     * @param path 数据库文件路径。
+     */
+    void setDatabasePath(const QString &path);
+
+    /**
      * @brief 从配置和数据库加载全局设置。
      */
     Q_INVOKABLE void load();
 
     /**
      * @brief 将当前设置保存到数据库。
+     * @return 保存成功返回 true，失败返回 false。
      */
-    Q_INVOKABLE void save();
+    Q_INVOKABLE bool save();
+
+    /**
+     * @brief 将当前设置保存到数据库并输出错误信息。
+     * @param err_msg 错误信息输出。
+     * @return 保存成功返回 true，失败返回 false。
+     */
+    bool save(QString &err_msg);
 
     /**
      * @brief 将所有设置恢复为默认值。
@@ -247,9 +281,23 @@ private:
     QHash<QString, SettingsGroup *>     groups_by_key_;
     QHash<QString, SettingsNamespace *> namespaces_by_accessor_path_;
 
+    void setDirty(bool dirty);
+
     database::SettingsDataBase *settings_database_{nullptr};
     QTimer                     *save_timer_{nullptr};
     bool                        auto_save_enabled_{true};
+    bool                        is_dirty_{false};
+    bool                        is_loading_{false};
+    QString                     last_save_error_;
+
+signals:
+    void isDirtyChanged(bool is_dirty);
+    void lastSaveErrorChanged(const QString &error);
+    void saved();
+    void saveFailed(const QString &error);
+    void settingChanged(const QString &accessor_path, const QString &field_name, const QVariant &value);
+    void fieldValueChanged(dltool::settings::generated::AccessorKey accessor_key,
+                           const QString &field_name, const QVariant &value);
 };
 
 } // namespace dltool::settings

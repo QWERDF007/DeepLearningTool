@@ -94,11 +94,27 @@ FeatureManager::FeatureManager(dltool::data::DataManager *data_manager,
     few_shot_learning_ = new FewShotLearningController(data_manager, model_manager, model_task_controller,
                                                        task_manager, this);
 
-    if (auto *settings = dltool::settings::GlobalSettings::getInstance()->settingsGroup(
-            dltool::settings::generated::AccessorKey::SmartAnnotation))
+    if (auto *gs = dltool::settings::GlobalSettings::getInstance())
     {
-        connect(settings, &dltool::settings::SettingsGroup::valueChanged, smart_annotation_,
-                &SmartAnnotationController::clearCache);
+        connect(gs, &dltool::settings::GlobalSettings::fieldValueChanged, smart_annotation_,
+                [this](dltool::settings::generated::AccessorKey accessor_key,
+                       const QString &field_name,
+                       const QVariant & /*value*/)
+                {
+                    if (accessor_key == dltool::settings::generated::AccessorKey::SmartAnnotation)
+                    {
+                        if (field_name == QStringLiteral("model")
+                            || field_name == QStringLiteral("model_path")
+                            || field_name == QStringLiteral("model_runtime")
+                            || field_name == QStringLiteral("model_precision")
+                            || field_name == QStringLiteral("device")
+                            || field_name == QStringLiteral("enabled"))
+                        {
+                            if (smart_annotation_ != nullptr)
+                                smart_annotation_->clearCache();
+                        }
+                    }
+                });
     }
 }
 
