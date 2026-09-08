@@ -24,7 +24,7 @@ using namespace dltool::model::testsupport;
 
 namespace {
 
-ParamGroupModel *findGroup(ITestParams *params, const QString &name)
+ParamGroupModel *findGroup(IParams *params, const QString &name)
 {
     if (params == nullptr)
         return nullptr;
@@ -469,6 +469,169 @@ private slots:
         QVERIFY(!manager.currentModelBusy());
         QCOMPARE(loading_changed.count(), completed_loading_changes);
         task_manager->clearTasks();
+    }
+
+    void modifyingTrainParamsDoesNotAlterPreprocessingContextOfPublishedPredictions()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+        const qint64 cat   = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+        const qint64 image = fixture.addImage(QStringLiteral("cat"));
+        QVERIFY(cat >= 0 && image >= 0);
+        QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+        QVERIFY(fixture.writeImageList());
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr);
+        QString      error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("PreprocessingModel"), QStringLiteral("ultralytics"),
+                                                         QStringLiteral("YOLOv8"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        IModel *model = model_manager.modelForUuid(record.uuid);
+        QVERIFY(model != nullptr && model->config() != nullptr && model->config()->trainParams() != nullptr);
+
+        auto *network_group = findGroup(model->config()->trainParams(), QStringLiteral("network"));
+        QVERIFY(network_group != nullptr);
+        network_group->setValueForName(QStringLiteral("imgsz"), 320);
+
+        ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, nullptr);
+        manager.setModelUuid(record.uuid);
+
+        QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image,
+                                         detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 10, 10),
+                                         true, &error),
+                 qPrintable(error));
+
+        const ModelStorageService storage(fixture.rootPath());
+        const QString task_db_path = storage.testTaskDatabasePath(record.name, manager.currentTaskDirectory());
+        dltool::database::ModelTaskDataBase task_db(task_db_path);
+
+        QVariantMap saved_prep;
+        saved_prep.insert(QStringLiteral("imgsz"), 320);
+        QVERIFY(task_db.writePreprocessingConfig(saved_prep));
+
+        ModelEvaluationOptions options;
+        QVERIFY(manager.buildEvaluationOptions(options, &error));
+        QCOMPARE(options.preprocessing_config.value(QStringLiteral("imgsz")).toInt(), 320);
+
+        // 修改当前模型的 trainParams，不应改变已发布预测的 preprocessing_config
+        network_group->setValueForName(QStringLiteral("imgsz"), 640);
+        QCOMPARE(model->config()->trainParams()->valuesMap().value(QStringLiteral("network")).toMap().value(QStringLiteral("imgsz")).toInt(), 640);
+
+        ModelEvaluationOptions options_after_edit;
+        QVERIFY(manager.buildEvaluationOptions(options_after_edit, &error));
+        QCOMPARE(options_after_edit.preprocessing_config.value(QStringLiteral("imgsz")).toInt(), 320);
+
+        // 重新推理：新预处理上下文写入 task.db
+        saved_prep.insert(QStringLiteral("imgsz"), 640);
+        QVERIFY(task_db.writePreprocessingConfig(saved_prep));
+
+        ModelEvaluationOptions options_reinferenced;
+        QVERIFY(manager.buildEvaluationOptions(options_reinferenced, &error));
+        QCOMPARE(options_reinferenced.preprocessing_config.value(QStringLiteral("imgsz")).toInt(), 640);
+        QVERIFY(options_after_edit.preprocessing_config != options_reinferenced.preprocessing_config);
+    }
+
+    void rawPredictionsAreNotMutatedDuringEvaluationOrThresholdAdjustment()
+    {
+        // 1. Anomaly detection: TIFF 原始文件完全不被修改
+        {
+            EvaluationFixture fixture(static_cast<int>(evaluation::Method::AnomalyDetection));
+            QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+            const qint64 normal_class = fixture.addClass(QStringLiteral("Normal"), QStringLiteral("normal"));
+            const qint64 anomaly_class = fixture.addClass(QStringLiteral("Defect"), QStringLiteral("anomaly"));
+            const qint64 image = fixture.addImage(QStringLiteral("defect_sample"));
+            QVERIFY(fixture.addAnomalyLabel(image, anomaly_class, {{1, 1}, {8, 1}, {8, 8}, {1, 8}}) >= 0);
+            QVERIFY(fixture.writeImageList());
+
+            dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+            ModelManager model_manager(static_cast<int>(evaluation::Method::AnomalyDetection), &database, nullptr);
+            QString      error;
+            const auto record = model_manager.addModelRecord(QStringLiteral("AnomalyRawModel"), QStringLiteral("anomalib"),
+                                                             QStringLiteral("patchcore"), &error);
+            QVERIFY2(record.isValid(), qPrintable(error));
+
+            ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, nullptr);
+            manager.setModelUuid(record.uuid);
+
+            QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image,
+                                             anomalyPrediction(0.85),
+                                             true, &error),
+                     qPrintable(error));
+
+            const ModelStorageService storage(fixture.rootPath());
+            const QString prediction_dir = storage.testTaskPredictionPath(record.name, manager.currentTaskDirectory());
+            const QString tiff_path = QDir(prediction_dir).filePath(QStringLiteral("%1.tiff").arg(image));
+            QVERIFY(QFile::exists(tiff_path));
+
+            QFile tiff_file(tiff_path);
+            QVERIFY(tiff_file.open(QIODevice::ReadOnly));
+            const QByteArray original_bytes = tiff_file.readAll();
+            tiff_file.close();
+            QVERIFY(!original_bytes.isEmpty());
+
+            auto *evaluation = manager.currentEvaluation();
+            QVERIFY(evaluation != nullptr);
+            evaluation->evaluate();
+            QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+
+            evaluation->adoptEvaluationThreshold(0.9);
+            const QString thumb = evaluation->heatmapThumbnailUrl(image, QStringLiteral("defect.png"), tiff_path, 0.9);
+            QVERIFY(!thumb.isEmpty());
+
+            QFile tiff_file_after(tiff_path);
+            QVERIFY(tiff_file_after.open(QIODevice::ReadOnly));
+            const QByteArray after_bytes = tiff_file_after.readAll();
+            tiff_file_after.close();
+            QCOMPARE(after_bytes, original_bytes);
+        }
+
+        // 2. Detection: task.db prediction 表记录完全不被修改
+        {
+            EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+            QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+            const qint64 cat = fixture.addClass(QStringLiteral("Cat"), QStringLiteral("normal"));
+            const qint64 image = fixture.addImage(QStringLiteral("cat_sample"));
+            QVERIFY(fixture.addDetectionLabel(image, cat, 0, 0, 10, 10) >= 0);
+            QVERIFY(fixture.writeImageList());
+
+            dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+            ModelManager model_manager(static_cast<int>(evaluation::Method::Detection), &database, nullptr);
+            QString      error;
+            const auto record = model_manager.addModelRecord(QStringLiteral("DetectionRawModel"), QStringLiteral("ultralytics"),
+                                                             QStringLiteral("YOLOv8"), &error);
+            QVERIFY2(record.isValid(), qPrintable(error));
+
+            ModelTestTaskManager manager(fixture.rootPath(), &model_manager, nullptr, nullptr);
+            manager.setModelUuid(record.uuid);
+
+            const QVariant raw_pred = detectionPrediction(static_cast<int>(cat), QStringLiteral("Cat"), 0.9, 0, 0, 10, 10);
+            QVERIFY2(prepareEvaluationInputs(fixture, manager, record, image, raw_pred, true, &error),
+                     qPrintable(error));
+
+            const ModelStorageService storage(fixture.rootPath());
+            const QString task_db_path = storage.testTaskDatabasePath(record.name, manager.currentTaskDirectory());
+            dltool::database::ModelTaskDataBase task_db(task_db_path);
+
+            QHash<qint64, QVariant> original_preds;
+            QVERIFY(task_db.readPredictions(original_preds));
+            QVERIFY(original_preds.contains(image));
+
+            auto *evaluation = manager.currentEvaluation();
+            QVERIFY(evaluation != nullptr);
+            evaluation->evaluate();
+            QTRY_COMPARE_WITH_TIMEOUT(evaluation->stateKind(), ModelEvaluationViewModel::Ready, 5000);
+
+            auto *evaluation_params = findGroup(manager.currentTestParams(), QStringLiteral("evaluation"));
+            QVERIFY(evaluation_params != nullptr);
+            QVERIFY(evaluation_params->setValueForName(QStringLiteral("conf"), 0.7));
+
+            QHash<qint64, QVariant> after_preds;
+            QVERIFY(task_db.readPredictions(after_preds));
+            QCOMPARE(after_preds.size(), original_preds.size());
+            QCOMPARE(after_preds.value(image), original_preds.value(image));
+        }
     }
 };
 

@@ -268,6 +268,11 @@ int ModelEvaluationViewModel::method() const
     return method_;
 }
 
+const ModelEvaluationOptions &ModelEvaluationViewModel::evaluationOptions() const
+{
+    return evaluation_options_;
+}
+
 QString ModelEvaluationViewModel::state() const
 {
     return evaluation::viewStateKey(state_kind_);

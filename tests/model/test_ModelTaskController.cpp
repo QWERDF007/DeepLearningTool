@@ -730,6 +730,200 @@ private slots:
         QCOMPARE(restored->elapsed_seconds, stopped_seconds);
         QCOMPARE(reopened_task_manager.taskRunningTimeSeconds(restored->identity.task_id), stopped_seconds);
     }
+
+    void failedOrCancelledRunDoesNotPollutePublishedPredictionsAndCannotBeEvaluated()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(kControllerTestMethod, &database, nullptr);
+        QString error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("PublishTestModel"), QStringLiteral("controller-test"),
+                                                         QStringLiteral("ControllerModel"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        ModelTestTaskRepository test_task_repo(fixture.rootPath());
+        test_task_repo.setProjectDatabasePath(fixture.projectDatabasePath());
+        ModelTestTaskDefinition created_task;
+        QVERIFY(test_task_repo.createTask(record.name, record.uuid, QStringLiteral("TaskIsolate"), {}, {}, created_task, &error));
+
+        TaskManager task_manager;
+        ModelTaskController controller(kControllerTestMethod, fixture.rootPath(), &model_manager, nullptr, &task_manager);
+
+        const ModelStorageService storage(fixture.rootPath());
+        const QString staging_pred = storage.testTaskPredictionStagingPath(record.name, created_task.directory_name);
+        const QString staging_db = storage.testTaskDatabaseStagingPath(record.name, created_task.directory_name);
+        const QString live_pred = storage.testTaskPredictionPath(record.name, created_task.directory_name);
+        const QString live_db = storage.testTaskDatabasePath(record.name, created_task.directory_name);
+
+        // 场景 1: 从空开始，任务在 staging 产生了部分预测，但被取消/失败
+        QVERIFY(QDir().mkpath(staging_pred));
+        QFile partial_file(QDir(staging_pred).filePath(QStringLiteral("partial.tiff")));
+        QVERIFY(partial_file.open(QIODevice::WriteOnly));
+        partial_file.write("partial");
+        partial_file.close();
+
+        QVERIFY(QFile::copy(live_db, staging_db));
+        {
+            dltool::database::ModelTaskDataBase staging_task_db(staging_db);
+            QVERIFY(staging_task_db.upsertPrediction({100, QVariantMap{{QStringLiteral("score"), 0.5}}}));
+        }
+
+        // 触发取消/丢弃 staging
+        QVERIFY(controller.discardTestTaskStaging(record.name, created_task.directory_name));
+
+        // 验证 staging 已被清理，且 live 没有混入失败产物
+        QVERIFY(!QDir(staging_pred).exists());
+        QVERIFY(!QFile::exists(staging_db));
+
+        // live 中无预测，无法被评估
+        {
+            dltool::database::ModelTaskDataBase live_task_db(live_db);
+            QHash<qint64, QVariant> live_preds;
+            QVERIFY(live_task_db.readPredictions(live_preds));
+            QVERIFY(live_preds.isEmpty());
+        }
+        if (QDir(live_pred).exists())
+            QCOMPARE(QDir(live_pred).entryList(QDir::Files | QDir::NoDotAndDotDot), QStringList{});
+
+        // 场景 2: 之前已有完整发布的预测 A (image_id 1)
+        {
+            dltool::database::ModelTaskDataBase live_task_db(live_db);
+            QVERIFY(live_task_db.upsertPrediction({1, QVariantMap{{QStringLiteral("class"), QStringLiteral("Cat")}}}));
+        }
+        QVERIFY(QDir().mkpath(live_pred));
+        QFile published_file(QDir(live_pred).filePath(QStringLiteral("1.tiff")));
+        QVERIFY(published_file.open(QIODevice::WriteOnly));
+        published_file.write("published_pred_1");
+        published_file.close();
+
+        // 新一轮运行产生预测 B (image_id 2) 到 staging
+        QVERIFY(QDir().mkpath(staging_pred));
+        QFile new_partial_file(QDir(staging_pred).filePath(QStringLiteral("2.tiff")));
+        QVERIFY(new_partial_file.open(QIODevice::WriteOnly));
+        new_partial_file.write("new_partial_2");
+        new_partial_file.close();
+
+        QVERIFY(QFile::copy(live_db, staging_db));
+        {
+            dltool::database::ModelTaskDataBase staging_db_2(staging_db);
+            QVERIFY(staging_db_2.upsertPrediction({2, QVariantMap{{QStringLiteral("class"), QStringLiteral("Dog")}}}));
+        }
+
+        // 运行失败或取消
+        QVERIFY(controller.discardTestTaskStaging(record.name, created_task.directory_name));
+
+        // 验证：旧发布的预测 A 依然完整，未被覆盖或破坏，且没有混入预测 B
+        {
+            dltool::database::ModelTaskDataBase live_task_db(live_db);
+            QHash<qint64, QVariant> live_preds;
+            QVERIFY(live_task_db.readPredictions(live_preds));
+            QCOMPARE(live_preds.size(), 1);
+            QVERIFY(live_preds.contains(1));
+            QVERIFY(!live_preds.contains(2));
+        }
+        QVERIFY(QFile::exists(published_file.fileName()));
+        QVERIFY(!QFile::exists(QDir(live_pred).filePath(QStringLiteral("2.tiff"))));
+    }
+
+    void successfulRunAtomicallyPublishesPredictionsAndRecoversInterruptedPublish()
+    {
+        EvaluationFixture fixture(static_cast<int>(evaluation::Method::Detection));
+        QVERIFY2(fixture.isValid(), qPrintable(fixture.error()));
+
+        dltool::database::ProjectDataBase database(fixture.projectDatabasePath());
+        ModelManager model_manager(kControllerTestMethod, &database, nullptr);
+        QString error;
+        const auto record = model_manager.addModelRecord(QStringLiteral("PublishSuccessModel"), QStringLiteral("controller-test"),
+                                                         QStringLiteral("ControllerModel"), &error);
+        QVERIFY2(record.isValid(), qPrintable(error));
+
+        ModelTestTaskRepository test_task_repo(fixture.rootPath());
+        test_task_repo.setProjectDatabasePath(fixture.projectDatabasePath());
+        ModelTestTaskDefinition created_task;
+        QVERIFY(test_task_repo.createTask(record.name, record.uuid, QStringLiteral("TaskPublish"), {}, {}, created_task, &error));
+
+        TaskManager task_manager;
+        ModelTaskController controller(kControllerTestMethod, fixture.rootPath(), &model_manager, nullptr, &task_manager);
+
+        const ModelStorageService storage(fixture.rootPath());
+        const QString staging_pred = storage.testTaskPredictionStagingPath(record.name, created_task.directory_name);
+        const QString staging_db = storage.testTaskDatabaseStagingPath(record.name, created_task.directory_name);
+        const QString live_pred = storage.testTaskPredictionPath(record.name, created_task.directory_name);
+        const QString live_db = storage.testTaskDatabasePath(record.name, created_task.directory_name);
+        const QString journal_path = storage.testTaskPublishJournalPath(record.name, created_task.directory_name);
+
+        // 1. 成功发布流程
+        QVERIFY(QDir().mkpath(staging_pred));
+        QFile pred_file(QDir(staging_pred).filePath(QStringLiteral("10.tiff")));
+        QVERIFY(pred_file.open(QIODevice::WriteOnly));
+        pred_file.write("prediction_10");
+        pred_file.close();
+
+        QVERIFY(QFile::copy(live_db, staging_db));
+        {
+            dltool::database::ModelTaskDataBase staging_task_db(staging_db);
+            QVERIFY(staging_task_db.upsertPrediction({10, QVariantMap{{QStringLiteral("class"), QStringLiteral("Target")}}}));
+            QVERIFY(staging_task_db.writePreprocessingConfig(QVariantMap{{QStringLiteral("size"), 512}}));
+        }
+
+        // 发布产物
+        QVERIFY(controller.publishTestTaskArtifacts(record.name, created_task.directory_name, &error));
+
+        // 验证 live_pred 和 live_db
+        QVERIFY(QFile::exists(QDir(live_pred).filePath(QStringLiteral("10.tiff"))));
+        {
+            dltool::database::ModelTaskDataBase live_task_db(live_db);
+            QHash<qint64, QVariant> live_preds;
+            QVERIFY(live_task_db.readPredictions(live_preds));
+            QCOMPARE(live_preds.size(), 1);
+            QVERIFY(live_preds.contains(10));
+
+            QVariantMap prep_config;
+            QVERIFY(live_task_db.readPreprocessingConfig(prep_config));
+            QCOMPARE(prep_config.value(QStringLiteral("size")).toInt(), 512);
+        }
+
+        // 验证 staging 和 journal 已被清理
+        QVERIFY(!QDir(staging_pred).exists());
+        QVERIFY(!QFile::exists(staging_db));
+        QVERIFY(!QFile::exists(journal_path));
+
+        // 2. 发布中断与恢复
+        // 模拟中断：写入 journal 并准备新 staging
+        QVERIFY(QDir().mkpath(staging_pred));
+        QFile interrupted_file(QDir(staging_pred).filePath(QStringLiteral("20.tiff")));
+        QVERIFY(interrupted_file.open(QIODevice::WriteOnly));
+        interrupted_file.write("prediction_20");
+        interrupted_file.close();
+
+        QVERIFY(QFile::copy(live_db, staging_db));
+        {
+            dltool::database::ModelTaskDataBase staging_task_db_2(staging_db);
+            QVERIFY(staging_task_db_2.upsertPrediction({20, QVariantMap{{QStringLiteral("class"), QStringLiteral("Recovered")}}}));
+        }
+
+        QFile journal(journal_path);
+        QVERIFY(journal.open(QIODevice::WriteOnly | QIODevice::Text));
+        journal.write("{\"status\": \"publishing\"}");
+        journal.close();
+
+        // 触发恢复
+        QVERIFY(controller.recoverTestTaskPublish(record.name, created_task.directory_name, &error));
+
+        // 验证恢复完成：20.tiff 已发布，journal 已清理
+        QVERIFY(QFile::exists(QDir(live_pred).filePath(QStringLiteral("20.tiff"))));
+        {
+            dltool::database::ModelTaskDataBase live_task_db(live_db);
+            QHash<qint64, QVariant> live_preds;
+            QVERIFY(live_task_db.readPredictions(live_preds));
+            QVERIFY(live_preds.contains(20));
+        }
+        QVERIFY(!QFile::exists(journal_path));
+        QVERIFY(!QDir(staging_pred).exists());
+        QVERIFY(!QFile::exists(staging_db));
+    }
 };
 
 REGISTER_TEST(ModelTaskControllerTest)

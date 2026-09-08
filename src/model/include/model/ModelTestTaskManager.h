@@ -177,6 +177,12 @@ public:
      */
     Q_INVOKABLE bool commitCurrentDatasetSelection();
 
+    /** @brief 构造当前测试任务的评估输入选项。 */
+    bool buildEvaluationOptions(ModelEvaluationOptions &options, QString *err_msg = nullptr) const;
+    /** @brief 构造指定测试任务的评估输入选项。 */
+    bool buildEvaluationOptions(const ModelTestTaskDefinition &task, ModelEvaluationOptions &options,
+                                QString *err_msg = nullptr) const;
+
 signals:
     /** @brief 关联的模型 UUID 发生改变。 */
     void modelUuidChanged();
@@ -205,8 +211,6 @@ private:
     /** 将当前数据集选择视图快照到内存任务记录（不落库）。 */
     void    snapshotCurrentDatasetSelection();
     void    bindCurrentObjects();
-    bool    buildEvaluationOptions(const ModelTestTaskDefinition &task, ModelEvaluationOptions &options,
-                                   QString *err_msg = nullptr) const;
     void    handleParameterChanged(const QString &group_name, const QString &parameter_name);
     void    handleEvaluationCompleted(const QString &cache_key);
     bool    automaticThresholdApplied(const QString &task_uuid) const;

@@ -136,6 +136,12 @@ bool ModelTaskDataBase::replaceTestParams(const QVariantMap &params, QString *er
         if (readExecutionState(existing_exec) && !existing_exec.isEmpty())
             merged.insert(QStringLiteral("execution"), existing_exec);
     }
+    if (!merged.contains(QStringLiteral("preprocessing")))
+    {
+        QVariantMap existing_prep;
+        if (readPreprocessingConfig(existing_prep) && !existing_prep.isEmpty())
+            merged.insert(QStringLiteral("preprocessing"), existing_prep);
+    }
     const QVariantMap eval_map = merged.value(QStringLiteral("evaluation")).toMap();
     if (!eval_map.contains(QStringLiteral("adaptive_threshold_applied")))
     {
@@ -250,6 +256,40 @@ bool ModelTaskDataBase::upsertPrediction(const PredictionRecord &prediction, QSt
     }
 }
 
+bool ModelTaskDataBase::replacePredictions(const QHash<qint64, QVariant> &predictions, QString *err_msg) const
+{
+    if (connectionPool() == nullptr)
+        return setError(err_msg, QStringLiteral("数据库连接池为空"));
+    try
+    {
+        auto db = connectionPool()->get();
+        const auto table = Prediction{};
+        if (!detail::ensureTaskSchema(db, err_msg))
+            return false;
+        auto tx = sqlpp::start_transaction(db);
+        db(sqlpp::remove_from(table).unconditionally());
+        for (auto it = predictions.cbegin(); it != predictions.cend(); ++it)
+        {
+            const qint64 image_id = it.key();
+            if (image_id < 0)
+                return setError(err_msg, QStringLiteral("prediction.image_id 无效"));
+            QString value_error;
+            const QByteArray encoded = detail::variantToJson(it.value(), &value_error);
+            if (!value_error.isEmpty())
+                return setError(err_msg, value_error);
+            db(sqlpp::insert_into(table).set(
+                table.imageId = static_cast<int64_t>(image_id),
+                table.data    = encoded.toStdString()));
+        }
+        tx.commit();
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        return failFromException(err_msg, e, QStringLiteral("批量替换 prediction 失败"));
+    }
+}
+
 bool ModelTaskDataBase::readAdaptiveThresholdApplied(bool &applied, QString *err_msg) const
 {
     applied = false;
@@ -361,6 +401,68 @@ bool ModelTaskDataBase::writeExecutionState(const QVariantMap &state, QString *e
     catch (const std::exception &e)
     {
         return failFromException(err_msg, e, QStringLiteral("写入执行状态失败"));
+    }
+}
+
+bool ModelTaskDataBase::readPreprocessingConfig(QVariantMap &config, QString *err_msg) const
+{
+    config.clear();
+    if (connectionPool() == nullptr)
+        return setError(err_msg, QStringLiteral("数据库连接池为空"));
+    try
+    {
+        auto       db    = connectionPool()->get();
+        const auto table = TestParams{};
+        if (!detail::ensureTaskSchema(db, err_msg))
+            return false;
+        auto rows = db(sqlpp::select(table.nameEn, table.value, table.type)
+                          .from(table)
+                          .where(table.group == "preprocessing"));
+        for (const auto &row : rows)
+        {
+            const QString key = QString::fromStdString(row.nameEn);
+            const QString val = QString::fromStdString(row.value);
+            const QString type = QString::fromStdString(row.type);
+            QString parse_error;
+            config.insert(key, detail::paramValueFromText(type, val, &parse_error));
+        }
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        return failFromException(err_msg, e, QStringLiteral("读取预处理配置失败"));
+    }
+}
+
+bool ModelTaskDataBase::writePreprocessingConfig(const QVariantMap &config, QString *err_msg) const
+{
+    if (connectionPool() == nullptr)
+        return setError(err_msg, QStringLiteral("数据库连接池为空"));
+    try
+    {
+        auto       db    = connectionPool()->get();
+        const auto table = TestParams{};
+        if (!detail::ensureTaskSchema(db, err_msg))
+            return false;
+        auto tx = sqlpp::start_transaction(db);
+        db(sqlpp::remove_from(table).where(table.group == "preprocessing"));
+        for (auto it = config.cbegin(); it != config.cend(); ++it)
+        {
+            const QString key = it.key().trimmed();
+            if (key.isEmpty())
+                continue;
+            db(sqlpp::insert_into(table).set(
+                table.group  = std::string("preprocessing"),
+                table.nameEn = key.toStdString(),
+                table.value  = detail::paramValueText(it.value()).toStdString(),
+                table.type   = detail::paramValueType(it.value()).toStdString()));
+        }
+        tx.commit();
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        return failFromException(err_msg, e, QStringLiteral("写入预处理配置失败"));
     }
 }
 

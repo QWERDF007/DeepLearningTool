@@ -31,12 +31,16 @@ public:
     bool clearPredictions(QString *err_msg = nullptr) const;
     bool readPredictions(QHash<qint64, QVariant> &predictions, QString *err_msg = nullptr) const;
     bool upsertPrediction(const PredictionRecord &prediction, QString *err_msg = nullptr) const;
+    bool replacePredictions(const QHash<qint64, QVariant> &predictions, QString *err_msg = nullptr) const;
 
     bool readAdaptiveThresholdApplied(bool &applied, QString *err_msg = nullptr) const;
     bool writeAdaptiveThresholdApplied(bool applied, QString *err_msg = nullptr) const;
 
     bool readExecutionState(QVariantMap &state, QString *err_msg = nullptr) const;
     bool writeExecutionState(const QVariantMap &state, QString *err_msg = nullptr) const;
+
+    bool readPreprocessingConfig(QVariantMap &config, QString *err_msg = nullptr) const;
+    bool writePreprocessingConfig(const QVariantMap &config, QString *err_msg = nullptr) const;
 
 private:
     bool ensureSchema(QString *err_msg = nullptr) const;

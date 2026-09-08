@@ -807,6 +807,17 @@ void ModelTestTaskManager::handleEvaluationCompleted(const QString &cache_key)
                      error.toUtf8().constData());
 }
 
+bool ModelTestTaskManager::buildEvaluationOptions(ModelEvaluationOptions &options, QString *err_msg) const
+{
+    if (current_index_ < 0 || current_index_ >= tasks_.size())
+    {
+        if (err_msg != nullptr)
+            *err_msg = QStringLiteral("当前无选中的测试任务");
+        return false;
+    }
+    return buildEvaluationOptions(tasks_.at(current_index_), options, err_msg);
+}
+
 bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition &task, ModelEvaluationOptions &options,
                                                   QString *err_msg) const
 {
@@ -846,7 +857,13 @@ bool ModelTestTaskManager::buildEvaluationOptions(const ModelTestTaskDefinition 
 
     const QVariantMap test_params
         = current_test_params_ != nullptr ? current_test_params_->valuesMap() : task.test_params;
-    if (IModel *model = model_manager_->modelForUuid(model_uuid_); model != nullptr && model->config() != nullptr)
+    QVariantMap saved_preprocessing;
+    if (dltool::database::ModelTaskDataBase(options.task_database_path).readPreprocessingConfig(saved_preprocessing)
+        && !saved_preprocessing.isEmpty())
+    {
+        options.preprocessing_config = saved_preprocessing;
+    }
+    else if (IModel *model = model_manager_->modelForUuid(model_uuid_); model != nullptr && model->config() != nullptr)
     {
         if (const ITrainParams *train_params = model->config()->trainParams(); train_params != nullptr)
             options.preprocessing_config = train_params->valuesMap();

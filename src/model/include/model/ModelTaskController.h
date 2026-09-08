@@ -103,6 +103,36 @@ public:
      */
     Q_INVOKABLE void restoreModelTasks();
 
+    /**
+     * @brief 原子发布测试任务预测产物（从 staging 发布至 live 并清理 journal）。
+     * @param model_name 模型名称。
+     * @param task_directory 测试任务目录名。
+     * @param err_msg 错误输出。
+     * @return 成功返回 true。
+     */
+    bool publishTestTaskArtifacts(const QString &model_name, const QString &task_directory,
+                                  QString *err_msg = nullptr) const;
+
+    /**
+     * @brief 丢弃测试任务未发布的 staging 产物（在取消/停止/失败时调用）。
+     * @param model_name 模型名称。
+     * @param task_directory 测试任务目录名。
+     * @param err_msg 错误输出。
+     * @return 成功返回 true。
+     */
+    bool discardTestTaskStaging(const QString &model_name, const QString &task_directory,
+                                QString *err_msg = nullptr) const;
+
+    /**
+     * @brief 恢复中断的测试任务发布（在系统恢复/加载时调用）。
+     * @param model_name 模型名称。
+     * @param task_directory 测试任务目录名。
+     * @param err_msg 错误输出。
+     * @return 成功返回 true。
+     */
+    bool recoverTestTaskPublish(const QString &model_name, const QString &task_directory,
+                                QString *err_msg = nullptr) const;
+
 public slots:
     /**
      * @brief 将任务中心的总体进度和终态同步到模型页面使用的任务数据。

@@ -249,23 +249,36 @@ private slots:
         request.selections.test.dataset_ids.insert(7);
         ModelStorageService storage(temp.path());
         QVERIFY(storage.ensureTestTaskStorage(QStringLiteral("regular"), QStringLiteral("test-1"), &error));
-        QFile stale(QDir(storage.testTaskPredictionPath(QStringLiteral("regular"), QStringLiteral("test-1")))
-                          .filePath(QStringLiteral("stale.json")));
-        QVERIFY(stale.open(QIODevice::WriteOnly));
-        stale.write("stale");
-        stale.close();
+        // 现有已发布的预测（live 目录中的 published.json）
+        QFile live_pred_file(QDir(storage.testTaskPredictionPath(QStringLiteral("regular"), QStringLiteral("test-1")))
+                                 .filePath(QStringLiteral("published.json")));
+        QVERIFY(live_pred_file.open(QIODevice::WriteOnly));
+        live_pred_file.write("published");
+        live_pred_file.close();
+
+        // staging 中残留的脏文件
+        QVERIFY(QDir().mkpath(storage.testTaskPredictionStagingPath(QStringLiteral("regular"), QStringLiteral("test-1"))));
+        QFile stale_staging_file(QDir(storage.testTaskPredictionStagingPath(QStringLiteral("regular"), QStringLiteral("test-1")))
+                                     .filePath(QStringLiteral("stale.json")));
+        QVERIFY(stale_staging_file.open(QIODevice::WriteOnly));
+        stale_staging_file.write("stale");
+        stale_staging_file.close();
+
         spec = {};
         QVERIFY2(prepareModelTask(static_cast<int>(evaluation::Method::Detection), temp.path(), request, &source, spec,
                                    &error),
                  qPrintable(error));
         QVERIFY(spec.arguments.contains(test_script));
         QVERIFY(QFileInfo::exists(storage.testTaskFileListPath(QStringLiteral("regular"), QStringLiteral("test-1"))));
-        QVERIFY(!QFileInfo::exists(stale.fileName()));
-        QCOMPARE(QDir(storage.testTaskPredictionPath(QStringLiteral("regular"), QStringLiteral("test-1")))
-                     .entryList(QDir::Files | QDir::NoDotAndDotDot),
-                 QStringList{});
+        // 验收条件：live 预测产物在准备阶段不能被清除，仍完整保留
+        QVERIFY(QFileInfo::exists(live_pred_file.fileName()));
+        // staging 临时目录被重置为空
+        QVERIFY(!QFileInfo::exists(stale_staging_file.fileName()));
+        // 参数传入 staging 路径而不是 live 路径
         QVERIFY(hasArgumentPair(spec.arguments, QStringLiteral("--task_db"),
-                                storage.testTaskDatabasePath(QStringLiteral("regular"), QStringLiteral("test-1"))));
+                                storage.testTaskDatabaseStagingPath(QStringLiteral("regular"), QStringLiteral("test-1"))));
+        QVERIFY(hasArgumentPair(spec.arguments, QStringLiteral("--prediction_dir"),
+                                storage.testTaskPredictionStagingPath(QStringLiteral("regular"), QStringLiteral("test-1"))));
 
         request.task_type                   = ModelTaskType::BoxToMask;
         request.scope_uuid                  = QStringLiteral("box-scope");

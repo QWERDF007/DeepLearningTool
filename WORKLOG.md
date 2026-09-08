@@ -43,6 +43,33 @@
 - [x] 隔离实例真实触发目标路径 —— 证据：staging 实测导出 12,000 行 5.1s，HTTP 200
 - [x] 开关两态验证：`export_v2=off` 时回退旧路径正常
 
+## 2026-09-09 — 完整发布新预测隔离失败产物
+
+**目标**
+- 交付 Ticket 20：完整发布新预测隔离失败产物。
+- 预测生成与校验在隔离暂存区（`.staging_pred` 与 `.staging_task.db`）完成，通过后再原子发布一致索引和身份。
+- 失败或取消的部分产物自动丢弃，不污染已发布的预测，无法被评估。
+- 发布中断有基于 `.publish_journal.json` 的明确恢复机制，在启动/恢复时自动检测并恢复或清理。
+- 保存实际预处理上下文至 `task.db`，重新推理使旧派生失效，且评估与展示不修改原始预测。
+- 遵循 TDD，先增加失败/约束测试，再实现功能，并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：在 `src/database/ModelTaskDataBase.cpp` 与 `ModelTaskDataBase.h` 中增加原子替换预测记录 `replacePredictions` 以及读写预处理配置 `readPreprocessingConfig` / `writePreprocessingConfig`，更新 `replaceTestParams` 保护 `preprocessing` 分组。
+- 已完成：在 `src/model/ModelStorageService.cpp` 与 `ModelStorageService.h` 中增加暂存路径与发布日志路径：`testTaskPredictionStagingPath`、`testTaskDatabaseStagingPath`、`testTaskPublishJournalPath`。
+- 已完成：在 `src/model/ModelTaskPreparation.cpp` 中重构预测任务准备逻辑：不再预先删除已发布预测与清空库中记录，改为初始化 `.staging_pred` 与复制 `.staging_task.db`，并向 Python 进程传递 `--task_db` 与 `--prediction_dir` 暂存路径。
+- 已完成：在 `src/model/ModelTaskController.cpp` 与 `ModelTaskController.h` 中实现 `publishTestTaskArtifacts`、`discardTestTaskStaging` 与 `recoverTestTaskPublish`：任务完成时通过日志原子提升目录并写库发布；取消/失败时安全清理暂存；恢复/加载测试任务时自动恢复中断发布；`verifyTaskArtifacts` 优先校验暂存产物。
+- 已完成：在 `src/model/ModelTestTaskManager.cpp` 中将 `buildEvaluationOptions` 对外暴露，并在加载评估参数时优先读取 `task.db` 中持久化的实际预处理配置，避免后续修改训练参数影响已发布预测的预处理上下文。
+- 已完成：在 `tests/model/test_ModelTaskPreparation.cpp`、`tests/model/test_ModelTaskController.cpp`、`tests/model/test_ModelEvaluationParameterBehavior.cpp` 中增加全套隔离、原子发布、中断恢复、预处理上下文隔离与原始预测不可变性测试。
+- 未完成：无。
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_tasks_tests dltool_model_evaluation_behavior_tests` → 编译链接成功（0 错误）。
+- `ctest --test-dir build --output-on-failure -C Release -R "(dltool_model_tasks_tests|dltool_model_evaluation_behavior_tests)"` → 100% 通过（2/2 测试通过，耗时 34.86s）。
+- `ctest --test-dir build --output-on-failure -C Release -R "(dltool_model_storage_params_tests|dltool_model_evaluation_tests)"` → 100% 通过（2/2 测试通过，耗时 4.09s）。
+
+**下一步**
+- 开始执行 Ticket 21（`docs/refactor-tickets/21-evaluation-snapshot.md` — 评估快照与视图模型生命周期统一）。
+
 ## 2026-09-08 — 持久化测试任务状态和首评应用事实
 
 **目标**

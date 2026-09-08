@@ -204,6 +204,24 @@ QString ModelStorageService::testTaskPredictionPath(const QString &model_name, c
     return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral("pred")));
 }
 
+QString ModelStorageService::testTaskPredictionStagingPath(const QString &model_name, const QString &task_directory) const
+{
+    const QString root = testTaskRoot(model_name, task_directory);
+    return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral(".staging_pred")));
+}
+
+QString ModelStorageService::testTaskDatabaseStagingPath(const QString &model_name, const QString &task_directory) const
+{
+    const QString root = testTaskRoot(model_name, task_directory);
+    return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral(".staging_task.db")));
+}
+
+QString ModelStorageService::testTaskPublishJournalPath(const QString &model_name, const QString &task_directory) const
+{
+    const QString root = testTaskRoot(model_name, task_directory);
+    return root.isEmpty() ? QString() : cleanPath(QDir(root).filePath(QStringLiteral(".publish_journal.json")));
+}
+
 QString ModelStorageService::testTaskLogPath(const QString &model_name, const QString &task_directory) const
 {
     const QString root = testTaskRoot(model_name, task_directory);

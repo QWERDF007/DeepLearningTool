@@ -111,6 +111,9 @@ public:
     QString testTaskDatabasePath(const QString &model_name, const QString &task_directory) const;
     QString testTaskFileListPath(const QString &model_name, const QString &task_directory) const;
     QString testTaskPredictionPath(const QString &model_name, const QString &task_directory) const;
+    QString testTaskPredictionStagingPath(const QString &model_name, const QString &task_directory) const;
+    QString testTaskDatabaseStagingPath(const QString &model_name, const QString &task_directory) const;
+    QString testTaskPublishJournalPath(const QString &model_name, const QString &task_directory) const;
     QString testTaskLogPath(const QString &model_name, const QString &task_directory) const;
 
     /** @brief 获取训练任务的标准路径结构。 */

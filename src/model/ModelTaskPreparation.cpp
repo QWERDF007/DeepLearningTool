@@ -345,18 +345,12 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
     {
         return false;
     }
-    else
-    {
-        database::ModelTaskDataBase task_database(storage.testTaskDatabasePath(model_name, task_directory));
-        QString                     prediction_error;
-        if (!task_database.clearPredictions(&prediction_error))
-            return setError(err_msg, QString("清理历史预测结果失败: %1").arg(prediction_error));
-    }
 
     QString prediction_dir;
+    QString staging_task_db_path;
     if (!is_train)
     {
-        prediction_dir = storage.testTaskPredictionPath(model_name, task_directory);
+        prediction_dir = storage.testTaskPredictionStagingPath(model_name, task_directory);
         const QString task_root
             = cleanPath(QFileInfo(storage.testTaskRoot(model_name, task_directory)).absoluteFilePath());
         const QString clean_prediction_dir = cleanPath(QFileInfo(prediction_dir).absoluteFilePath());
@@ -364,12 +358,32 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
             || !clean_prediction_dir.startsWith(task_root + QStringLiteral("/"), Qt::CaseInsensitive))
             return setError(err_msg, QString("测试预测路径非法"));
         if (QDir(clean_prediction_dir).exists() && !QDir(clean_prediction_dir).removeRecursively())
-            return setError(err_msg, QString("清理旧预测目录失败"));
+            return setError(err_msg, QString("清理旧临时预测目录失败"));
         if (!QDir().mkpath(clean_prediction_dir))
-            return setError(err_msg, QString("重建测试结果目录失败"));
+            return setError(err_msg, QString("重建测试临时预测目录失败"));
         const QString file_list_path = storage.testTaskFileListPath(model_name, task_directory);
         if (QFileInfo::exists(file_list_path) && !QFile::remove(file_list_path))
             return setError(err_msg, QString("清理旧测试文件列表失败"));
+
+        staging_task_db_path = storage.testTaskDatabaseStagingPath(model_name, task_directory);
+        if (QFile::exists(staging_task_db_path) && !QFile::remove(staging_task_db_path))
+            return setError(err_msg, QString("清理旧临时任务数据库失败"));
+
+        const QString live_db_path = storage.testTaskDatabasePath(model_name, task_directory);
+        if (!QFile::copy(live_db_path, staging_task_db_path))
+            return setError(err_msg, QString("复制测试任务临时数据库失败"));
+
+        database::ModelTaskDataBase staging_database(staging_task_db_path);
+        QString prediction_error;
+        if (!staging_database.clearPredictions(&prediction_error))
+            return setError(err_msg, QString("清理临时数据库历史预测结果失败: %1").arg(prediction_error));
+
+        if (!request.model_config.train_params.isEmpty())
+        {
+            QString prep_error;
+            if (!staging_database.writePreprocessingConfig(request.model_config.train_params, &prep_error))
+                return setError(err_msg, QString("记录预处理配置失败: %1").arg(prep_error));
+        }
     }
 
     if (dataset_source == nullptr)
@@ -448,7 +462,7 @@ bool prepareRegularTask(int method, const QString &project_dir, const ModelTaskR
     if (!is_train)
     {
         process_spec.arguments << QStringLiteral("--task_db")
-                               << storage.testTaskDatabasePath(model_name, task_directory)
+                               << staging_task_db_path
                                << QStringLiteral("--test_file_list")
                                << storage.testTaskFileListPath(model_name, task_directory)
                                << QStringLiteral("--prediction_dir") << prediction_dir;

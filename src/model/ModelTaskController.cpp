@@ -18,6 +18,9 @@
 #include "model/TaskManager.h"
 #include "ui/SignalHelper.h"
 
+#include <QDateTime>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -403,6 +406,7 @@ void ModelTaskController::restoreModelTasks()
             const QList<ModelTestTaskDefinition> test_tasks = test_task_repository_.listTasks(name);
             for (const auto &task_def : test_tasks)
             {
+                recoverTestTaskPublish(name, task_def.directory_name);
                 const QString task_db_path = storage.testTaskDatabasePath(name, task_def.directory_name);
                 database::ModelTaskDataBase task_db(task_db_path);
                 QVariantMap execution_state;
@@ -871,16 +875,47 @@ bool ModelTaskController::verifyTaskArtifacts(const TaskManager::Task &task, QSt
         bool found_predictions = false;
         if (!directory_name.isEmpty())
         {
-            const QString pred_dir = storage.testTaskPredictionPath(record.name, directory_name);
-            if (!pred_dir.isEmpty() && QDir(pred_dir).exists())
+            // 优先检查本次任务在 staging 目录生成的预测产物
+            const QString staging_pred_dir = storage.testTaskPredictionStagingPath(record.name, directory_name);
+            if (!staging_pred_dir.isEmpty() && QDir(staging_pred_dir).exists())
             {
-                const QFileInfoList entries = QDir(pred_dir).entryInfoList(QDir::Files | QDir::NoDotAndDotDot);
+                const QFileInfoList entries = QDir(staging_pred_dir).entryInfoList(QDir::Files | QDir::NoDotAndDotDot);
                 for (const QFileInfo &entry : entries)
                 {
                     if (entry.size() > 0)
                     {
                         found_predictions = true;
                         break;
+                    }
+                }
+            }
+
+            if (!found_predictions)
+            {
+                const QString staging_db_path = storage.testTaskDatabaseStagingPath(record.name, directory_name);
+                if (!staging_db_path.isEmpty() && QFile::exists(staging_db_path))
+                {
+                    database::ModelTaskDataBase db(staging_db_path);
+                    QHash<qint64, QVariant> predictions;
+                    if (db.readPredictions(predictions) && !predictions.isEmpty())
+                        found_predictions = true;
+                }
+            }
+
+            // 回退检查 live 目录（兼容直接准备 live 产物的测试与历史数据）
+            if (!found_predictions)
+            {
+                const QString pred_dir = storage.testTaskPredictionPath(record.name, directory_name);
+                if (!pred_dir.isEmpty() && QDir(pred_dir).exists())
+                {
+                    const QFileInfoList entries = QDir(pred_dir).entryInfoList(QDir::Files | QDir::NoDotAndDotDot);
+                    for (const QFileInfo &entry : entries)
+                    {
+                        if (entry.size() > 0)
+                        {
+                            found_predictions = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -922,6 +957,146 @@ bool ModelTaskController::verifyTaskArtifacts(const TaskManager::Task &task, QSt
         return true;
     }
 
+    return true;
+}
+
+bool ModelTaskController::publishTestTaskArtifacts(const QString &model_name, const QString &task_directory,
+                                                   QString *err_msg) const
+{
+    const ModelStorageService storage(project_dir_);
+    const QString staging_pred = storage.testTaskPredictionStagingPath(model_name, task_directory);
+    const QString staging_db = storage.testTaskDatabaseStagingPath(model_name, task_directory);
+    const QString live_pred = storage.testTaskPredictionPath(model_name, task_directory);
+    const QString live_db = storage.testTaskDatabasePath(model_name, task_directory);
+    const QString journal_path = storage.testTaskPublishJournalPath(model_name, task_directory);
+    const QString task_root = storage.testTaskRoot(model_name, task_directory);
+    const QString old_pred = task_root + QStringLiteral("/.old_pred");
+
+    const bool has_staging_pred = !staging_pred.isEmpty() && QDir(staging_pred).exists();
+    const bool has_staging_db = !staging_db.isEmpty() && QFile::exists(staging_db);
+    if (!has_staging_pred && !has_staging_db)
+        return true;
+
+    // 1. 写入发布日志
+    QFile journal(journal_path);
+    if (journal.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QJsonObject obj;
+        obj.insert(QStringLiteral("model_name"), model_name);
+        obj.insert(QStringLiteral("task_directory"), task_directory);
+        obj.insert(QStringLiteral("status"), QStringLiteral("publishing"));
+        obj.insert(QStringLiteral("timestamp"), QDateTime::currentSecsSinceEpoch());
+        journal.write(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+        journal.close();
+    }
+
+    // 2. 提升预测结果文件目录
+    if (has_staging_pred)
+    {
+        if (QDir(old_pred).exists())
+            QDir(old_pred).removeRecursively();
+        if (QDir(live_pred).exists())
+        {
+            if (!QDir().rename(live_pred, old_pred))
+                QDir(live_pred).removeRecursively();
+        }
+        if (!QDir().rename(staging_pred, live_pred))
+        {
+            storage.copyDirectoryContents(staging_pred, live_pred, err_msg);
+            QDir(staging_pred).removeRecursively();
+        }
+        if (QDir(old_pred).exists())
+            QDir(old_pred).removeRecursively();
+    }
+
+    // 3. 原子发布数据库记录
+    if (has_staging_db)
+    {
+        QHash<qint64, QVariant> staging_predictions;
+        QVariantMap staging_prep;
+        {
+            database::ModelTaskDataBase staging_task_db(staging_db);
+            if (!staging_task_db.readPredictions(staging_predictions, err_msg))
+                return false;
+
+            staging_task_db.readPreprocessingConfig(staging_prep);
+        }
+
+        database::ModelTaskDataBase live_task_db(live_db);
+        if (!live_task_db.replacePredictions(staging_predictions, err_msg))
+            return false;
+
+        if (!staging_prep.isEmpty())
+        {
+            if (!live_task_db.writePreprocessingConfig(staging_prep, err_msg))
+                return false;
+        }
+        QFile::remove(staging_db);
+    }
+
+    // 4. 清理发布日志
+    if (QFile::exists(journal_path))
+        QFile::remove(journal_path);
+
+    return true;
+}
+
+bool ModelTaskController::discardTestTaskStaging(const QString &model_name, const QString &task_directory,
+                                                 QString *err_msg) const
+{
+    const ModelStorageService storage(project_dir_);
+    const QString staging_pred = storage.testTaskPredictionStagingPath(model_name, task_directory);
+    const QString staging_db = storage.testTaskDatabaseStagingPath(model_name, task_directory);
+    const QString journal_path = storage.testTaskPublishJournalPath(model_name, task_directory);
+    const QString old_pred = storage.testTaskRoot(model_name, task_directory) + QStringLiteral("/.old_pred");
+
+    if (QDir(staging_pred).exists() && !QDir(staging_pred).removeRecursively())
+        return setError(err_msg, QStringLiteral("清理临时预测目录失败"));
+    if (QFile::exists(staging_db) && !QFile::remove(staging_db))
+        return setError(err_msg, QStringLiteral("清理临时任务数据库失败"));
+    if (QDir(old_pred).exists() && !QDir(old_pred).removeRecursively())
+        return setError(err_msg, QStringLiteral("清理备份预测目录失败"));
+    if (QFile::exists(journal_path) && !QFile::remove(journal_path))
+        return setError(err_msg, QStringLiteral("清理发布日志失败"));
+    return true;
+}
+
+bool ModelTaskController::recoverTestTaskPublish(const QString &model_name, const QString &task_directory,
+                                                QString *err_msg) const
+{
+    const ModelStorageService storage(project_dir_);
+    const QString staging_pred = storage.testTaskPredictionStagingPath(model_name, task_directory);
+    const QString staging_db = storage.testTaskDatabaseStagingPath(model_name, task_directory);
+    const QString live_pred = storage.testTaskPredictionPath(model_name, task_directory);
+    const QString journal_path = storage.testTaskPublishJournalPath(model_name, task_directory);
+    const QString old_pred = storage.testTaskRoot(model_name, task_directory) + QStringLiteral("/.old_pred");
+
+    const bool has_journal = QFile::exists(journal_path);
+    const bool has_staging_pred = !staging_pred.isEmpty() && QDir(staging_pred).exists();
+    const bool has_staging_db = !staging_db.isEmpty() && QFile::exists(staging_db);
+
+    if (has_journal)
+    {
+        if (has_staging_pred || has_staging_db)
+        {
+            if (!publishTestTaskArtifacts(model_name, task_directory, err_msg))
+                return false;
+        }
+        else if (QDir(old_pred).exists())
+        {
+            if (!QDir(live_pred).exists())
+                QDir().rename(old_pred, live_pred);
+            else
+                QDir(old_pred).removeRecursively();
+        }
+        if (QFile::exists(journal_path))
+            QFile::remove(journal_path);
+    }
+    else
+    {
+        if (has_staging_pred || has_staging_db || QDir(old_pred).exists())
+            discardTestTaskStaging(model_name, task_directory, err_msg);
+    }
     return true;
 }
 
@@ -1261,8 +1436,24 @@ void ModelTaskController::handleExternalTaskFinished(const TaskIdentity &identit
     }
 
     touchTaskModelModifiedTime(identity.task_id);
+    const QString model_name = model_manager_ != nullptr ? model_manager_->modelRecordViewForUuid(task->model_uuid).name : QString();
+    QString test_directory_name;
+    if (isTestModelTask(task->type))
+    {
+        test_directory_name = task->scope_name.trimmed();
+        if (test_directory_name.isEmpty() && !task->scope_uuid.trimmed().isEmpty() && !model_name.isEmpty())
+        {
+            ModelTestTaskDefinition definition;
+            QString load_err;
+            if (test_task_repository_.loadTask(model_name, task->scope_uuid, definition, &load_err))
+                test_directory_name = definition.directory_name;
+        }
+    }
+
     if (task->status == TaskManager::Stopping || stop_requested || (normal_exit && exit_code == 2))
     {
+        if (isTestModelTask(task->type) && !model_name.isEmpty() && !test_directory_name.isEmpty())
+            discardTestTaskStaging(model_name, test_directory_name);
         task_manager_->markTaskStopped(identity.task_id);
         syncTaskModelState(identity.task_id);
         return;
@@ -1272,8 +1463,21 @@ void ModelTaskController::handleExternalTaskFinished(const TaskIdentity &identit
         QString artifact_error;
         if (!verifyTaskArtifacts(*task, &artifact_error))
         {
+            if (isTestModelTask(task->type) && !model_name.isEmpty() && !test_directory_name.isEmpty())
+                discardTestTaskStaging(model_name, test_directory_name);
             failTask(identity.task_id, artifact_error);
             return;
+        }
+
+        if (isTestModelTask(task->type) && !model_name.isEmpty() && !test_directory_name.isEmpty())
+        {
+            QString publish_err;
+            if (!publishTestTaskArtifacts(model_name, test_directory_name, &publish_err))
+            {
+                discardTestTaskStaging(model_name, test_directory_name);
+                failTask(identity.task_id, QString("发布测试预测产物失败: %1").arg(publish_err));
+                return;
+            }
         }
 
         if (task->status == TaskManager::Preparing)
@@ -1287,6 +1491,8 @@ void ModelTaskController::handleExternalTaskFinished(const TaskIdentity &identit
     task = task_manager_->findTask(identity.task_id);
     if (task != nullptr && !TaskManager::isTerminal(task->status))
     {
+        if (isTestModelTask(task->type) && !model_name.isEmpty() && !test_directory_name.isEmpty())
+            discardTestTaskStaging(model_name, test_directory_name);
         const QString name = modelTaskDisplayName(task->type);
         failTask(identity.task_id, normal_exit ? QString("%1失败（退出码 %2），请查看模型日志。").arg(name).arg(exit_code)
                                       : QString("%1异常退出，请查看模型日志。").arg(name));

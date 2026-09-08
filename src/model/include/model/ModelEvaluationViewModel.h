@@ -142,6 +142,8 @@ public:
      * 只同步内存中的下一次评估选项，不清空当前结果或重新启动评估。
      */
     void adoptEvaluationThreshold(double threshold, const QString &prediction_snapshot = {});
+    /** @brief 获取当前评估选项。 */
+    const ModelEvaluationOptions &evaluationOptions() const;
     /** @brief 当前匹配策略名称。 */
     QString     matchingStrategy() const;
     /** @brief 是否具备实例级指标。 */
