@@ -41,6 +41,35 @@
 - [x] 定位根因：导出走了逐行 N+1 查询 —— 证据：慢日志中同款 SELECT 出现 10,412 次
 - [x] 改为批量查询 + 流式写出 —— 证据：`export_test.go` 新增用例通过；本地 1 万行实测 4.2s
 
+## 2026-09-09 — 核对 Ultralytics 参数到实际执行链
+
+**目标**
+- 交付 Ticket 27：核对 Ultralytics 参数到实际执行链。
+- 对照实际框架消费路径审查各支持配置的名称、说明、默认值、范围和步长。
+- 验证界面、持久化和框架入参使用同一键值，验证间隔功能不误改为布尔值。
+- 保留 batch 8、数据加载进程默认 2 上限 128，区分产品选择与框架默认，不新增 auto。
+- 遵循 TDD，先编写失败/约束测试建立基线，再实现并通过 Release 构建与 CTest。
+
+**当前状态**
+- 已完成：审查 Ultralytics 框架底层执行链（`default.yaml`、`trainer.py`、`train_impl.py`、`predict_impl.py`），对 `YOLOv8.yaml`、`YOLOv5.yaml`、`YOLOv8-seg.yaml` 中的全部参数名称、说明、默认值、范围和步长完成逐项校对。
+- 已完成：将 `YOLOv8.yaml`、`YOLOv5.yaml`、`YOLOv8-seg.yaml` 中的验证间隔参数键名统一收敛为框架原生键名 `val`，保持类型为 `int`，默认值 1，取值范围 `[1, 100, 1]`，展示类型为 `spin`，确保验证间隔功能保持整数步长语义而不被误设为布尔值；界面、模型持久化（`model.db`）与框架入参统一使用单一真相源键名 `val`。
+- 已完成：在 `3rdparty/EasyTrain/src/python/ultralytics/ultralytics/train_impl.py` 中更新 `TRAIN_KWARG_WHITELIST` 包含 `"val"` 并移除旧别名 `"val_interval"`，同时移除 `("val" if key == "val_interval" else key)` 的临时别名映射逻辑，直接以原生键名传参。
+- 已完成：确认保留产品特定默认值选择（batch 默认 8、范围 `[1, 512, 1]`；数据加载进程 workers 默认 2、上限 128、范围 `[0, 128, 1]`；optimizer 默认 AdamW 且选项不含 `auto`）。
+- 已完成：在 `tests/model/test_ModelConfigConsistency.cpp` 中更新框架特定参数校验，并新增 `ultralyticsParametersMatchExecutionAndPersistenceContracts` 行为与持久化测试用例，覆盖 YAML 定义、Python 白名单消费契约与 `ModelDataBase` 持久化读写回环。
+- 已完成：测试全量通过：
+  - `dltool_model_config_tests` 7/7 100% 通过
+  - `model` 26/26 100% 通过
+  - `ui|qml` 22/22 100% 通过
+
+**验证证据**
+- `cmake --build build --config Release --target dltool_model_config_tests` → 0 errors
+- `ctest --test-dir build -C Release -R "dltool_model_config" -V` → 7/7 passed (0.07 sec)
+- `ctest --test-dir build -C Release -L "model" --output-on-failure` → 26/26 passed (73.04 sec)
+- `ctest --test-dir build -C Release -L "ui|qml" --output-on-failure` → 22/22 passed (16.24 sec)
+
+**下一步**
+- 继续推进 Ticket 28（`docs/refactor-tickets/28-anomalib-parameters.md`：校准 Anomalib 参数定义与映射）。
+
 ## 2026-09-09 — 消除参数控件刷新的写入副作用
 
 **目标**

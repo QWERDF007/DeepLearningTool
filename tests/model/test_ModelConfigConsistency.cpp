@@ -2,11 +2,13 @@
 
 #include "common/Utils.h"
 #include "common/YamlUtils.h"
+#include "database/ModelDataBase.h"
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 #include <QSet>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include <yaml-cpp/yaml.h>
@@ -717,15 +719,19 @@ private slots:
                             checkDescription(
                                 hsv_v, QStringLiteral("hsv_v"),
                                 QStringLiteral("HSV 明度随机增强的最大比例；实际缩放因子为 1 + [-该值, 该值]，结果裁剪到 [0, 255]。"));
-                            const YAML::Node val_interval
-                                = checkName(training, QStringLiteral("val_interval"), QStringLiteral("验证间隔"));
-                            if (val_interval && (!val_interval["value_type"]
-                                                 || QString::fromStdString(val_interval["value_type"].as<std::string>())
-                                                        != QStringLiteral("int")))
+                            const YAML::Node val
+                                = checkName(training, QStringLiteral("val"), QStringLiteral("验证间隔"));
+                            if (val && (!val["value_type"]
+                                         || QString::fromStdString(val["value_type"].as<std::string>())
+                                                != QStringLiteral("int")))
                             {
-                                errors.append(QStringLiteral("val_interval 必须是 int"));
+                                errors.append(QStringLiteral("val 必须是 int，不能误改为布尔值"));
                             }
-                            checkIntValue(val_interval, QStringLiteral("val_interval"), 1);
+                            checkIntValue(val, QStringLiteral("val"), 1);
+                            if (hasParameter(training, QStringLiteral("val_interval")))
+                            {
+                                errors.append(QStringLiteral("Ultralytics 训练参数中不得存在别名 val_interval，应统一使用 val"));
+                            }
                         }
                         else if (framework.compare(QStringLiteral("anomalib"), Qt::CaseInsensitive) == 0
                                  && architecture.compare(QStringLiteral("patchcore"), Qt::CaseInsensitive) == 0)
@@ -951,6 +957,113 @@ private slots:
 
         QVERIFY2(checked_models > 0, "没有扫描到普通模型配置");
         QVERIFY2(errors.isEmpty(), qPrintable(errors.join(QChar('\n'))));
+    }
+
+    void ultralyticsParametersMatchExecutionAndPersistenceContracts()
+    {
+        // 1. 验证 Ultralytics 各模型 (YOLOv8, YOLOv5, YOLOv8-seg) 拥有统一正确的参数契约
+        const QDir models_root(dltool::common::runtimePath(QStringLiteral("config/models/ultralytics")));
+        QVERIFY2(models_root.exists(), qPrintable(QStringLiteral("Ultralytics 目录不存在: %1").arg(models_root.absolutePath())));
+
+        const QFileInfoList files = models_root.entryInfoList({QStringLiteral("*.yaml"), QStringLiteral("*.yml")},
+                                                              QDir::Files, QDir::Name);
+        QVERIFY(!files.isEmpty());
+
+        for (const QFileInfo &file : files)
+        {
+            const YAML::Node root = dltool::common::yaml::loadFile(file);
+            const auto nodes = modelNodes(root, file.absoluteFilePath());
+            QVERIFY(!nodes.isEmpty());
+            for (const auto &entry : nodes)
+            {
+                const YAML::Node &model = entry.second;
+                const YAML::Node train_params = model["train_params"];
+                const YAML::Node training = findGroup(train_params, QStringLiteral("training"));
+                QVERIFY2(training.IsDefined(), qPrintable(QStringLiteral("%1 缺少 training 参数组").arg(entry.first)));
+
+                // 验收条件 2 & 3: 验证间隔使用键名 'val'，类型为 int，默认 1，范围 [1, 100, 1]，不误改为布尔值，且不得存在别名 val_interval
+                QVERIFY2(!hasParameter(training, QStringLiteral("val_interval")),
+                         qPrintable(QStringLiteral("%1 不得存在废弃别名 val_interval").arg(entry.first)));
+                const YAML::Node val_node = findParameter(training, QStringLiteral("val"));
+                QVERIFY2(val_node.IsDefined(), qPrintable(QStringLiteral("%1 缺少 val 参数").arg(entry.first)));
+                QCOMPARE(val_node["value_type"].as<std::string>(), std::string("int"));
+                QCOMPARE(val_node["value"].as<int>(), 1);
+                QVERIFY(val_node["value_range"].IsSequence());
+                QCOMPARE(val_node["value_range"].size(), 3);
+                QCOMPARE(val_node["value_range"][0].as<int>(), 1);
+                QCOMPARE(val_node["value_range"][1].as<int>(), 100);
+                QCOMPARE(val_node["value_range"][2].as<int>(), 1);
+
+                // 验收条件 3: batch 默认 8，范围 [1, 512, 1]，不包含 auto
+                const YAML::Node batch_node = findParameter(training, QStringLiteral("batch"));
+                QVERIFY2(batch_node.IsDefined(), qPrintable(QStringLiteral("%1 缺少 batch 参数").arg(entry.first)));
+                QCOMPARE(batch_node["value"].as<int>(), 8);
+                QCOMPARE(batch_node["value_type"].as<std::string>(), std::string("int"));
+                QVERIFY(batch_node["value_range"].IsSequence());
+                QCOMPARE(batch_node["value_range"][0].as<int>(), 1);
+                QCOMPARE(batch_node["value_range"][1].as<int>(), 512);
+
+                // 验收条件 3: workers 默认 2，上限 128，范围 [0, 128, 1]
+                const YAML::Node workers_node = findParameter(training, QStringLiteral("workers"));
+                QVERIFY2(workers_node.IsDefined(), qPrintable(QStringLiteral("%1 缺少 workers 参数").arg(entry.first)));
+                QCOMPARE(workers_node["value"].as<int>(), 2);
+                QCOMPARE(workers_node["value_type"].as<std::string>(), std::string("int"));
+                QVERIFY(workers_node["value_range"].IsSequence());
+                QCOMPARE(workers_node["value_range"][0].as<int>(), 0);
+                QCOMPARE(workers_node["value_range"][1].as<int>(), 128);
+
+                // 优化器不得包含 auto
+                const YAML::Node opt_node = findParameter(training, QStringLiteral("optimizer"));
+                QVERIFY2(opt_node.IsDefined(), qPrintable(QStringLiteral("%1 缺少 optimizer 参数").arg(entry.first)));
+                QCOMPARE(opt_node["value"].as<std::string>(), std::string("AdamW"));
+                if (opt_node["options"] && opt_node["options"].IsSequence())
+                {
+                    for (const YAML::Node &opt : opt_node["options"])
+                    {
+                        QVERIFY(opt.as<std::string>() != "auto");
+                    }
+                }
+            }
+        }
+
+        // 2. 验证 Python 端消费契约：train_impl.py 中 TRAIN_KWARG_WHITELIST 包含 val 且不包含 val_interval，
+        // 且直接使用 key 传递而不做 val_interval 别名重映射
+        const QString train_impl_path = dltool::common::runtimePath(
+            QStringLiteral("3rdparty/EasyTrain/src/python/ultralytics/ultralytics/train_impl.py"));
+        QFile train_impl_file(train_impl_path);
+        QVERIFY2(train_impl_file.open(QIODevice::ReadOnly), qPrintable(train_impl_file.errorString()));
+        const QString content = QString::fromUtf8(train_impl_file.readAll());
+        train_impl_file.close();
+
+        QVERIFY2(content.contains(QStringLiteral("\"val\",")), "train_impl.py 白名单中必须包含 \"val\"");
+        QVERIFY2(!content.contains(QStringLiteral("\"val_interval\",")),
+                 "train_impl.py 白名单中不得存在废弃别名 \"val_interval\"");
+        QVERIFY2(!content.contains(QStringLiteral("\"val\" if key == \"val_interval\"")),
+                 "train_impl.py 不得保留 val_interval 别名补丁逻辑");
+
+        // 3. 验证持久化层与界面、框架入参使用同一键名 val (不使用别名 val_interval)
+        QTemporaryDir temp_dir;
+        QVERIFY(temp_dir.isValid());
+        const QString model_db_path = QDir(temp_dir.path()).filePath(QStringLiteral("model.db"));
+        dltool::database::ModelDataBase model_db(model_db_path);
+
+        QVariantMap training_group;
+        training_group.insert(QStringLiteral("val"), 5);
+        training_group.insert(QStringLiteral("batch"), 8);
+        training_group.insert(QStringLiteral("workers"), 2);
+        QVariantMap train_params_map;
+        train_params_map.insert(QStringLiteral("training"), training_group);
+
+        QString db_error;
+        QVERIFY2(model_db.replaceTrainParams(train_params_map, &db_error), qPrintable(db_error));
+
+        QVariantMap read_back;
+        QVERIFY2(model_db.readTrainParams(read_back, &db_error), qPrintable(db_error));
+        const QVariantMap read_training = read_back.value(QStringLiteral("training")).toMap();
+        QVERIFY(!read_training.contains(QStringLiteral("val_interval")));
+        QCOMPARE(read_training.value(QStringLiteral("val")).toInt(), 5);
+        QCOMPARE(read_training.value(QStringLiteral("batch")).toInt(), 8);
+        QCOMPARE(read_training.value(QStringLiteral("workers")).toInt(), 2);
     }
 };
 
